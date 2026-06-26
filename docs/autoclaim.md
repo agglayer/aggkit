@@ -13,7 +13,7 @@ disabled.
 
 ## Architecture
 
-Auto Claim runs inside the Aggkit process and reuses the existing syncers. One watchdog discovers L1 bridge exits for
+Auto Claim runs inside the Aggkit process and reuses the existing syncers. One bridge detector discovers L1 bridge exits for
 all destinations, and one claimer (with its own policy, sender, `EthTxManager`, and `l2gersync` instance) owns each
 destination network. All Auto Claim request/cursor state lives in a single Auto Claim SQLite database; each claimer's
 `l2gersync` and reorg detector keep their own isolated databases.
@@ -26,7 +26,7 @@ flowchart LR
     end
 
     subgraph AutoClaim["Auto Claim runtime"]
-        WD["L1 to L2 watchdog"]
+        WD["L1 to L2 bridge detector"]
         DB[("SQLite storage")]
         API["REST API (optional)<br/>/autoclaim/v1"]
         subgraph Claimer["Claimer (one per destination network)"]
@@ -64,8 +64,8 @@ Package layout (for contributors):
 
 | Package | Responsibility |
 | --- | --- |
-| `autoclaim/runtime` | Wires storage, watchdog, claimers, senders, transaction managers, and the API at startup. |
-| `autoclaim/watchdog` | L1 to L2 bridge discovery, durable cursor, idempotent enqueue. |
+| `autoclaim/runtime` | Wires storage, bridge detector, claimers, senders, transaction managers, and the API at startup. |
+| `autoclaim/bridgedetector` | L1 to L2 bridge discovery, durable cursor, idempotent enqueue. |
 | `autoclaim/claimer` | Per-destination engine: policy evaluation, proof preparation, send orchestration, recovery. |
 | `l2gersync` (reused) | Per-claimer GER syncer: tracks GERs injected on the target L2, correctly supporting both legacy (`GlobalExitRootMap` polling) and sovereign (event-based) L2 GER managers. |
 | `autoclaim/policy` | Named policy registry and the `allow-all`, `api-approve`, `no-message`, `basic-filter` implementations. |
@@ -84,7 +84,7 @@ Package layout (for contributors):
 ```mermaid
 sequenceDiagram
     participant L1BS as l1bridgesync
-    participant WD as Watchdog
+    participant WD as BridgeDetector
     participant DB as Storage
     participant CL as Claimer
     participant PP as Proof preparer
@@ -131,8 +131,8 @@ sequenceDiagram
     end
 ```
 
-The watchdog enqueues detected bridge exits immediately as `detected` requests — it imposes no GER precondition and
-does not hold its cursor waiting for GER injection. The only watchdog-side filter is an already-claimed pre-check:
+The bridge detector enqueues detected bridge exits immediately as `detected` requests — it imposes no GER precondition and
+does not hold its cursor waiting for GER injection. The only bridge-detector-side filter is an already-claimed pre-check:
 before enqueueing, it asks the destination claimer whether the target bridge already reports the global index as
 claimed (`isClaimed`), and skips such bridges without storing a request. GER readiness is checked per-claimer during proof preparation:
 each claimer runs its own `l2gersync` instance that continuously syncs the GERs injected on the target L2. Because
@@ -153,7 +153,7 @@ even though every request in the current L1 to L2 scope was initiated on L1.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> detected: watchdog enqueues bridge
+    [*] --> detected: bridge detector enqueues bridge
 
     detected --> policy_approved: policy approves
     detected --> policy_rejected: policy rejects
@@ -189,7 +189,7 @@ names). Terminal statuses are `policy-rejected`, `confirmed`, `failed`, and `dry
 
 Step by step:
 
-1. The watchdog polls `l1bridgesync` (so every bridge exit was initiated on L1) and keeps those whose destination
+1. The bridge detector polls `l1bridgesync` (so every bridge exit was initiated on L1) and keeps those whose destination
    matches an enabled claimer, regardless of the bridged token's `origin_network`. Bridges the target bridge contract
    already reports as claimed (`isClaimed`) are skipped without being stored. Each remaining matched bridge exit is
    enqueued immediately as `detected` with no GER precondition. Enqueue is idempotent and deduplicated by the request
@@ -219,7 +219,7 @@ Run Aggkit with the `autoclaim` component selected; that alone enables Auto Clai
 Set `[AutoClaim].DryRun = true` to run the full pipeline (discovery, policy evaluation, proof preparation) while
 skipping claim transaction submission — matching requests end in the terminal `dry-run` status. Startup also requires:
 
-- `l1bridgesync` and `l1infotreesync`, always: the watchdog reads L1 bridge exits and the claimer prepares L1 info
+- `l1bridgesync` and `l1infotreesync`, always: the bridge detector reads L1 bridge exits and the claimer prepares L1 info
   tree proofs in-process.
 
 Each claimer discovers its target L2's GER manager address automatically by calling `GlobalExitRootManager()` on the
@@ -250,7 +250,7 @@ Enabled = true
 Host = "0.0.0.0"
 Port = 5579
 
-[AutoClaim.L1ToL2Watchdog]
+[AutoClaim.L1ToL2BridgeDetector]
 Enabled = true
 StartBlock = 0
 PollInterval = "3s"
@@ -258,7 +258,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 EtrogL1UpgradeBlock = 0
 
-[AutoClaim.L2ToLxWatchdog]
+[AutoClaim.L2ToLxBridgeDetector]
 Enabled = false
 
 [[AutoClaim.Claimers]]
@@ -318,16 +318,14 @@ configuration.
 | --- | --- | --- | --- |
 | `AutoClaim.DryRun` | `false` | No | Runs the full pipeline but skips submitting claim transactions; matching requests end in the terminal `dry-run` status. Auto Claim is enabled by selecting the `autoclaim` component (there is no separate enable flag). |
 | `AutoClaim.StoragePath` | `{{PathRWData}}/autoclaim.sqlite` | Yes | SQLite database for requests, cursors, decisions, proofs, and transaction attempts. |
-| `AutoClaim.API.Enabled` | `false` | No | Starts the optional standalone admin API for manual `approve` / `reject` decisions. Public request inspection is served by the bridge service. |
-| `AutoClaim.API.Host` | `0.0.0.0` | When API enabled | API listen host. |
-| `AutoClaim.API.Port` | `5579` | When API enabled | API listen port. |
-| `AutoClaim.L1ToL2Watchdog.Enabled` | `true` | No | Enables L1 bridge discovery for configured L2 claimers. |
-| `AutoClaim.L1ToL2Watchdog.StartBlock` | `0` | No | First L1 block used when a destination-network cursor does not exist. New claimers backfill from this block. |
-| `AutoClaim.L1ToL2Watchdog.PollInterval` | `3s` | Yes | How often the watchdog polls `l1bridgesync`. Must be greater than zero. |
-| `AutoClaim.L1ToL2Watchdog.RetryAfterErrorPeriod` | `1s` | Yes | Reserved retry delay for watchdog errors. Must be greater than zero. |
-| `AutoClaim.L1ToL2Watchdog.MaxRetryAttemptsAfterError` | `-1` | No | Reserved retry limit. `-1` means unlimited. |
-| `AutoClaim.L1ToL2Watchdog.EtrogL1UpgradeBlock` | `0` | No | L1 block where Etrog global-index encoding becomes active for legacy zkEVM destination network `1`; `0` treats bridges as post-Etrog. |
-| `AutoClaim.L2ToLxWatchdog.Enabled` | `false` | Must stay `false` | Reserved for future L2 to Lx support. This direction is not implemented. |
+| `AutoClaim.API.Enabled` | `false` | No | Enables the admin routes (approve/reject) on the shared admin API server (`[AdminAPI]`). |
+| `AutoClaim.L1ToL2BridgeDetector.Enabled` | `true` | No | Enables L1 bridge discovery for configured L2 claimers. |
+| `AutoClaim.L1ToL2BridgeDetector.StartBlock` | `0` | No | First L1 block used when a destination-network cursor does not exist. New claimers backfill from this block. |
+| `AutoClaim.L1ToL2BridgeDetector.PollInterval` | `3s` | Yes | How often the bridge detector polls `l1bridgesync`. Must be greater than zero. |
+| `AutoClaim.L1ToL2BridgeDetector.RetryAfterErrorPeriod` | `1s` | Yes | Reserved retry delay for bridge detector errors. Must be greater than zero. |
+| `AutoClaim.L1ToL2BridgeDetector.MaxRetryAttemptsAfterError` | `-1` | No | Reserved retry limit. `-1` means unlimited. |
+| `AutoClaim.L1ToL2BridgeDetector.EtrogL1UpgradeBlock` | `0` | No | L1 block where Etrog global-index encoding becomes active for legacy zkEVM destination network `1`; `0` treats bridges as post-Etrog. |
+| `AutoClaim.L2ToLxBridgeDetector.Enabled` | `false` | Must stay `false` | Reserved for future L2 to Lx support. This direction is not implemented. |
 
 ### Claimer keys
 
@@ -377,17 +375,17 @@ or tokens respectively; token matching is case-insensitive. Notes on `basic-filt
 Auto Claim endpoints are split by audience so operators can expose request status publicly without exposing admin
 controls:
 
-- **Public, read-only** request inspection is served by the **bridge service** under its `/bridge/v1` prefix (the shared
-  `[REST]` host/port). These routes are registered only when the `autoclaim` component is running.
-- **Admin** manual decisions stay on the **standalone Auto Claim API** under the `/autoclaim/v1` prefix, gated by
-  `[AutoClaim.API].Enabled` on its own host/port (`[AutoClaim.API].Host` / `Port`), so it can be firewalled off.
+- **Public, read-only** request inspection is served on the **public API** (`[PublicAPI]` port, default 5577) under the
+  `/autoclaim/v1` prefix. These routes are registered only when the `autoclaim` component is running.
+- **Admin** manual decisions are served on the **admin API** (`[AdminAPI]` port, default 5579) under the
+  `/autoclaim/v1` prefix, gated by `[AutoClaim.API].Enabled`, so it can be firewalled off.
 
-| Method and path | Audience | Purpose |
+| Method and path | Server | Purpose |
 | --- | --- | --- |
-| `GET /bridge/v1/autoclaim/bridges` | Public (bridge service) | List tracked requests. |
-| `GET /bridge/v1/autoclaim/bridges/{id}` | Public (bridge service) | Inspect one request by Auto Claim request ID (`origin:destination:deposit_count`). |
-| `POST /autoclaim/v1/bridges/{id}/approve` | Admin (Auto Claim API) | Approve a request currently in `manual-approval-required`. |
-| `POST /autoclaim/v1/bridges/{id}/reject` | Admin (Auto Claim API) | Reject a request currently in `manual-approval-required`. |
+| `GET /autoclaim/v1/bridges` | Public (`[PublicAPI]`) | List tracked requests. |
+| `GET /autoclaim/v1/bridges/{id}` | Public (`[PublicAPI]`) | Inspect one request by Auto Claim request ID (`origin:destination:deposit_count`). |
+| `POST /autoclaim/v1/bridges/{id}/approve` | Admin (`[AdminAPI]`) | Approve a request currently in `manual-approval-required`. |
+| `POST /autoclaim/v1/bridges/{id}/reject` | Admin (`[AdminAPI]`) | Reject a request currently in `manual-approval-required`. |
 
 List query parameters: `origin_network`, `destination_network`, `status`, `policy_status` (alias: `policy_result`),
 `bridge_tx_hash`, `claim_tx_hash`, `from_block`, `to_block`, `page_number`, and `page_size` (maximum 1000).
@@ -412,10 +410,10 @@ metadata, timestamps, and `last_error`.
 Example workflow for `api-approve`:
 
 ```bash
-# Inspect via the bridge service (public, shared [REST] port, e.g. 5577).
-curl "http://localhost:5577/bridge/v1/autoclaim/bridges?status=manual-approval-required"
-curl "http://localhost:5577/bridge/v1/autoclaim/bridges/0:1:42"
-# Approve via the admin Auto Claim API (its own [AutoClaim.API] port).
+# Inspect via the public API ([PublicAPI] port, e.g. 5577).
+curl "http://localhost:5577/autoclaim/v1/bridges?status=manual-approval-required"
+curl "http://localhost:5577/autoclaim/v1/bridges/0:1:42"
+# Approve via the admin API ([AdminAPI] port, e.g. 5579).
 curl -X POST "http://localhost:5579/autoclaim/v1/bridges/0:1:42/approve" \
   -H "Content-Type: application/json" \
   -d '{"reason":"approved after bridge review","decider":"operator","decider_id":"alice"}'
@@ -442,7 +440,7 @@ Auto Claim owns one SQLite database (`AutoClaim.StoragePath`) with three tables,
 | --- | --- | --- |
 | `autoclaim_request` | `request_key`; `UNIQUE(origin_network, destination_network, deposit_count)` | One row per tracked request: status, policy result, global index, L1 info tree index, retry counters, `last_error`, and JSON blobs for the bridge, proof, policy decision, and manual decision. |
 | `autoclaim_transaction_attempt` | `(request_key, attempt_number)` | One row per claim transaction attempt with transaction-manager ID, claim transaction hash, status, and timestamps. |
-| `autoclaim_bridge_cursor` | `cursor_name` | Durable watchdog cursor (block window and position) per destination network. |
+| `autoclaim_bridge_cursor` | `cursor_name` | Durable bridge detector cursor (block window and position) per destination network. |
 
 Each claimer's `EthTxManager` keeps its own independent database at `Claimers.EthTxManager.StoragePath`. Each claimer's
 `l2gersync` instance and its L2 reorg detector also keep isolated SQLite databases, created automatically under
@@ -454,14 +452,14 @@ Each claimer's `EthTxManager` keeps its own independent database at `Claimers.Et
 - Disable the API independently with `[AutoClaim.API].Enabled = false`; automatic claiming continues for non-manual
   policies.
 - Use separate `StoragePath` values for Auto Claim storage and each claimer's `EthTxManager.StoragePath`.
-- The watchdog advances its cursor after each successfully processed poll window, even when nothing was enqueued.
+- The bridge detector advances its cursor after each successfully processed poll window, even when nothing was enqueued.
   Bridges already claimed on the target bridge are skipped before enqueue; duplicate bridge exits are deduplicated by
   the request key and enqueue is idempotent.
-- GER readiness is checked per-claimer during proof preparation, not by the watchdog. Each claimer's `l2gersync`
+- GER readiness is checked per-claimer during proof preparation, not by the bridge detector. Each claimer's `l2gersync`
   instance syncs the GERs injected on the target L2 via the claimer's own RPC client, supporting both legacy and
   sovereign GER managers. If the bridge is not yet covered by an injected GER, the proof preparer returns "not ready"
   and the request is retried next claimer cycle without consuming retry budget.
-- Auto Claim logs startup, API startup, watchdog polling errors, claimer recovery errors, and per-request errors
+- Auto Claim logs startup, API startup, bridge detector polling errors, claimer recovery errors, and per-request errors
   through the standard Aggkit logger. Request-level error details are also stored in `last_error` and exposed by the
   API. The component does not export Prometheus metrics.
 - Failed or evicted transaction-manager results are retried while retry budget remains. Exhausted requests become

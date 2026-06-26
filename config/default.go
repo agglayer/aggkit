@@ -151,9 +151,16 @@ ReadTimeout = "2s"
 WriteTimeout = "2s"
 MaxRequestsPerIPAndSecond = 10
 
-[REST]
+[PublicAPI]
 Host = "0.0.0.0"
 Port = 5577
+ReadTimeout = "5m"
+WriteTimeout = "5m"
+MaxRequestsPerIPAndSecond = 10
+
+[AdminAPI]
+Host = "0.0.0.0"
+Port = 5579
 ReadTimeout = "5m"
 WriteTimeout = "5m"
 MaxRequestsPerIPAndSecond = 10
@@ -388,10 +395,8 @@ Claimers = []
 
 [AutoClaim.API]
 Enabled = false
-Host = "0.0.0.0"
-Port = 5579
 
-[AutoClaim.L1ToL2Watchdog]
+[AutoClaim.L1ToL2BridgeDetector]
 Enabled = true
 StartBlock = 0
 PollInterval = "3s"
@@ -399,7 +404,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 EtrogL1UpgradeBlock = 0
 
-[AutoClaim.L2ToLxWatchdog]
+[AutoClaim.L2ToLxBridgeDetector]
 Enabled = false
 
 [L1Multidownloader]

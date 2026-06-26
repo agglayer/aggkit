@@ -1,9 +1,10 @@
-package bridgeservice
+package api
 
 import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/agglayer/aggkit/autoclaim/apitypes"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
@@ -11,11 +12,39 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetAutoClaimBridgesHandler lists Auto Claim bridge requests.
+const publicPrefix = "/autoclaim/v1"
+
+// Querier is the read-only view of Auto Claim request state needed for the public API.
+type Querier interface {
+	GetRequest(ctx context.Context, key autoclaimtypes.RequestKey) (*autoclaimtypes.AutoClaimRequest, error)
+	ListRequests(ctx context.Context, filter autoclaimtypes.RequestFilter) (*autoclaimtypes.RequestPage, error)
+}
+
+// PublicAPI serves the Auto Claim public read endpoints.
+type PublicAPI struct {
+	querier     Querier
+	readTimeout time.Duration
+}
+
+// NewPublicAPI creates a PublicAPI that serves autoclaim read endpoints.
+func NewPublicAPI(querier Querier, readTimeout time.Duration) *PublicAPI {
+	return &PublicAPI{querier: querier, readTimeout: readTimeout}
+}
+
+// RegisterRoutes registers Auto Claim public read routes on router.
+//
+//	GET /autoclaim/v1/bridges
+//	GET /autoclaim/v1/bridges/:id
+func (p *PublicAPI) RegisterRoutes(router gin.IRouter) {
+	group := router.Group(publicPrefix)
+	group.GET("/bridges", p.listBridges)
+	group.GET("/bridges/:id", p.getBridge)
+}
+
+// listBridges lists Auto Claim bridge requests.
 //
 // @Summary List Auto Claim bridge requests
-// @Description Returns tracked Auto Claim requests with optional filters and pagination. Available
-// @Description only when the autoclaim component is running.
+// @Description Returns tracked Auto Claim requests with optional filters and pagination.
 // @Tags autoclaim
 // @Param origin_network query uint32 false "Filter by origin network ID"
 // @Param destination_network query uint32 false "Filter by destination network ID"
@@ -32,20 +61,20 @@ import (
 // @Success 200 {object} apitypes.ListResponse
 // @Failure 400 {object} apitypes.ErrorResponse "Bad Request"
 // @Failure 500 {object} apitypes.ErrorResponse "Internal Server Error"
-// @Router /autoclaim/bridges [get]
-func (b *BridgeService) GetAutoClaimBridgesHandler(c *gin.Context) {
+// @Router /autoclaim/v1/bridges [get]
+func (p *PublicAPI) listBridges(c *gin.Context) {
 	filter, err := apitypes.ParseRequestFilter(c)
 	if err != nil {
-		writeAutoClaimError(c, http.StatusBadRequest, err)
+		writePublicError(c, http.StatusBadRequest, err)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), p.readTimeout)
 	defer cancel()
 
-	page, err := b.autoClaimQuerier.ListRequests(ctx, filter)
+	page, err := p.querier.ListRequests(ctx, filter)
 	if err != nil {
-		writeAutoClaimError(c, http.StatusInternalServerError, err)
+		writePublicError(c, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -64,35 +93,34 @@ func (b *BridgeService) GetAutoClaimBridgesHandler(c *gin.Context) {
 	})
 }
 
-// GetAutoClaimBridgeHandler returns one Auto Claim bridge request by ID.
+// getBridge returns one Auto Claim bridge request by ID.
 //
 // @Summary Get Auto Claim bridge request
-// @Description Returns one tracked Auto Claim request by request ID. Available only when the
-// @Description autoclaim component is running.
+// @Description Returns one tracked Auto Claim request by request ID.
 // @Tags autoclaim
 // @Param id path string true "Auto Claim request ID"
 // @Produce json
 // @Success 200 {object} apitypes.RequestResponse
 // @Failure 404 {object} apitypes.ErrorResponse "Not Found"
 // @Failure 500 {object} apitypes.ErrorResponse "Internal Server Error"
-// @Router /autoclaim/bridges/{id} [get]
-func (b *BridgeService) GetAutoClaimBridgeHandler(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+// @Router /autoclaim/v1/bridges/{id} [get]
+func (p *PublicAPI) getBridge(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), p.readTimeout)
 	defer cancel()
 
 	key := autoclaimtypes.RequestKey(c.Param("id"))
-	request, err := b.autoClaimQuerier.GetRequest(ctx, key)
+	request, err := p.querier.GetRequest(ctx, key)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			writeAutoClaimError(c, http.StatusNotFound, err)
+			writePublicError(c, http.StatusNotFound, err)
 			return
 		}
-		writeAutoClaimError(c, http.StatusInternalServerError, err)
+		writePublicError(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, apitypes.NewRequestResponse(*request))
 }
 
-func writeAutoClaimError(c *gin.Context, status int, err error) {
+func writePublicError(c *gin.Context, status int, err error) {
 	c.JSON(status, apitypes.ErrorResponse{Error: err.Error()})
 }

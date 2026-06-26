@@ -89,10 +89,10 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.False(t, cfg.AutoClaim.DryRun)
 	require.Equal(t, "/tmp/aggkit/autoclaim.sqlite", cfg.AutoClaim.StoragePath)
 	require.Empty(t, cfg.AutoClaim.Claimers)
-	require.True(t, cfg.AutoClaim.L1ToL2Watchdog.Enabled)
-	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2Watchdog.StartBlock)
-	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2Watchdog.EtrogL1UpgradeBlock)
-	require.False(t, cfg.AutoClaim.L2ToLxWatchdog.Enabled)
+	require.True(t, cfg.AutoClaim.L1ToL2BridgeDetector.Enabled)
+	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2BridgeDetector.StartBlock)
+	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2BridgeDetector.EtrogL1UpgradeBlock)
+	require.False(t, cfg.AutoClaim.L2ToLxBridgeDetector.Enabled)
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {
@@ -194,8 +194,8 @@ func TestLoadConfigWithAutoClaimEnabled(t *testing.T) {
 	require.True(t, cfg.AutoClaim.DryRun)
 	require.Equal(t, "/tmp/aggkit/autoclaim.sqlite", cfg.AutoClaim.StoragePath)
 	require.True(t, cfg.AutoClaim.API.Enabled)
-	require.Equal(t, uint64(1234), cfg.AutoClaim.L1ToL2Watchdog.StartBlock)
-	require.Equal(t, uint64(1000000), cfg.AutoClaim.L1ToL2Watchdog.EtrogL1UpgradeBlock)
+	require.Equal(t, uint64(1234), cfg.AutoClaim.L1ToL2BridgeDetector.StartBlock)
+	require.Equal(t, uint64(1000000), cfg.AutoClaim.L1ToL2BridgeDetector.EtrogL1UpgradeBlock)
 	require.Len(t, cfg.AutoClaim.Claimers, 1)
 
 	claimer := cfg.AutoClaim.Claimers[0]
@@ -283,9 +283,9 @@ func TestLoadConfigWithInvalidAutoClaim(t *testing.T) {
 			expectedErr: "WaitPeriod must be greater than 0",
 		},
 		{
-			name:        "invalid watchdog duration",
+			name:        "invalid bridge detector duration",
 			config:      strings.Replace(validAutoClaimConfig(), `PollInterval = "3s"`, `PollInterval = "0s"`, 1),
-			expectedErr: "AutoClaim.L1ToL2Watchdog.PollInterval must be greater than 0",
+			expectedErr: "AutoClaim.L1ToL2BridgeDetector.PollInterval must be greater than 0",
 		},
 		{
 			name:        "unparseable duration",
@@ -336,7 +336,7 @@ func TestAutoClaimDefaultRender(t *testing.T) {
 	require.Contains(t, rendered, "[AutoClaim]")
 	require.Contains(t, rendered, "DryRun = false")
 	require.Contains(t, rendered, `StoragePath = "/tmp/aggkit/autoclaim.sqlite"`)
-	require.Contains(t, rendered, "[AutoClaim.L2ToLxWatchdog]")
+	require.Contains(t, rendered, "[AutoClaim.L2ToLxBridgeDetector]")
 }
 
 func validAutoClaimConfig() string {
@@ -347,10 +347,8 @@ StoragePath = "/tmp/aggkit/autoclaim.sqlite"
 
 [AutoClaim.API]
 Enabled = true
-Host = "127.0.0.1"
-Port = 5579
 
-	[AutoClaim.L1ToL2Watchdog]
+	[AutoClaim.L1ToL2BridgeDetector]
 	Enabled = true
 	StartBlock = 1234
 	PollInterval = "3s"
@@ -358,7 +356,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 EtrogL1UpgradeBlock = 1000000
 
-[AutoClaim.L2ToLxWatchdog]
+[AutoClaim.L2ToLxBridgeDetector]
 Enabled = false
 
 [[AutoClaim.Claimers]]

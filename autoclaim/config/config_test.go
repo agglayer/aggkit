@@ -36,18 +36,18 @@ func TestConfigValidateRejectsInvalidEnabledConfig(t *testing.T) {
 			wantError: "AutoClaim.StoragePath is required",
 		},
 		{
-			name: "invalid watchdog poll interval",
+			name: "invalid bridge detector poll interval",
 			mutate: func(cfg *Config) {
-				cfg.L1ToL2Watchdog.PollInterval.Duration = 0
+				cfg.L1ToL2BridgeDetector.PollInterval.Duration = 0
 			},
-			wantError: "AutoClaim.L1ToL2Watchdog.PollInterval must be greater than 0",
+			wantError: "AutoClaim.L1ToL2BridgeDetector.PollInterval must be greater than 0",
 		},
 		{
-			name: "invalid watchdog retry period",
+			name: "invalid bridge detector retry period",
 			mutate: func(cfg *Config) {
-				cfg.L1ToL2Watchdog.RetryAfterErrorPeriod.Duration = 0
+				cfg.L1ToL2BridgeDetector.RetryAfterErrorPeriod.Duration = 0
 			},
-			wantError: "AutoClaim.L1ToL2Watchdog.RetryAfterErrorPeriod must be greater than 0",
+			wantError: "AutoClaim.L1ToL2BridgeDetector.RetryAfterErrorPeriod must be greater than 0",
 		},
 		{
 			name: "duplicate enabled claimer id",
@@ -164,7 +164,7 @@ func TestClaimerConfigValidateRejectsInvalidEnabledConfig(t *testing.T) {
 func validConfig() Config {
 	return Config{
 		StoragePath: "/tmp/autoclaim.sqlite",
-		L1ToL2Watchdog: L1ToL2Watchdog{
+		L1ToL2BridgeDetector: L1ToL2BridgeDetector{
 			Enabled:                    true,
 			PollInterval:               cfgtypes.NewDuration(2 * time.Second),
 			RetryAfterErrorPeriod:      cfgtypes.NewDuration(5 * time.Second),

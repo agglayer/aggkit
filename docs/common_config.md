@@ -183,7 +183,7 @@ the destination L2 network.
 
 Auto Claim requires `l1bridgesync` and `l1infotreesync` when enabled. The optional REST API uses
 `/autoclaim/v1` for request inspection and manual approvals. L2 to Lx Auto Claim is not implemented; keep
-`[AutoClaim.L2ToLxWatchdog].Enabled = false`.
+`[AutoClaim.L2ToLxBridgeDetector].Enabled = false`.
 
 See [Auto Claim Service](./autoclaim.md) for the complete configuration table, policy behavior, lifecycle, and API
 workflow.

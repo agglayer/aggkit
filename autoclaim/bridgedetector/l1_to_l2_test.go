@@ -1,4 +1,4 @@
-package watchdog
+package bridgedetector
 
 import (
 	"context"
@@ -24,15 +24,15 @@ func TestPollOnceConstructsPollingWindows(t *testing.T) {
 	source := &fakeBridgeSource{lastProcessedBlock: 25, found: true}
 	store := newMemoryCursorStore()
 	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
-	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(claimer), WithStartBlock(5), WithBlockWindow(10))
+	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithStartBlock(5), WithBlockWindow(10))
 
-	result, err := watchdog.PollOnce(ctx)
+	result, err := detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), result.FromBlock)
 	require.Equal(t, uint64(14), result.ToBlock)
 	require.Equal(t, []blockRange{{from: 5, to: 14}}, source.ranges)
 
-	result, err = watchdog.PollOnce(ctx)
+	result, err = detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(14), result.FromBlock)
 	require.Equal(t, uint64(23), result.ToBlock)
@@ -44,13 +44,13 @@ func TestPollOncePersistsCursorAfterSuccess(t *testing.T) {
 	source := &fakeBridgeSource{lastProcessedBlock: 20, found: true}
 	store := newMemoryCursorStore()
 	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
-	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(claimer), WithBlockWindow(7))
+	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(7))
 
-	result, err := watchdog.PollOnce(ctx)
+	result, err := detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.True(t, result.CursorAdvanced)
 
-	cursor, ok := store.cursors[watchdog.cursorNameForDestination(10)]
+	cursor, ok := store.cursors[detector.cursorNameForDestination(10)]
 	require.True(t, ok)
 	require.Equal(t, uint64(0), cursor.FromBlock)
 	require.Equal(t, uint64(6), cursor.ToBlock)
@@ -71,15 +71,15 @@ func TestDuplicateBridgeOverlapDoesNotCreateDuplicateEnqueue(t *testing.T) {
 	store := newMemoryCursorStore()
 	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
 	registry := newFakeRegistry(claimer)
-	watchdog := newTestWatchdog(t, source, store, registry, WithStartBlock(100), WithBlockWindow(2))
+	detector := newTestDetector(t, source, store, registry, WithStartBlock(100), WithBlockWindow(2))
 
-	result, err := watchdog.PollOnce(ctx)
+	result, err := detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, result.EnqueuedBridgeCount)
 	require.Equal(t, 1, result.SkippedBridgeCount)
 	require.Len(t, claimer.enqueued, 1)
 
-	result, err = watchdog.PollOnce(ctx)
+	result, err = detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 0, result.EnqueuedBridgeCount)
 	require.Equal(t, 1, result.SkippedBridgeCount)
@@ -106,9 +106,9 @@ func TestDestinationFilteringAndUnknownDestinations(t *testing.T) {
 	claimer10 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
 	claimer11 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-11", DestinationNetwork: 11}}
 	registry := newFakeRegistry(claimer10, claimer11)
-	watchdog := newTestWatchdog(t, source, store, registry, WithBlockWindow(13))
+	detector := newTestDetector(t, source, store, registry, WithBlockWindow(13))
 
-	result, err := watchdog.PollOnce(ctx)
+	result, err := detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 4, result.BridgeCount)
 	require.Equal(t, 3, result.MatchedBridgeCount)
@@ -127,9 +127,9 @@ func TestBridgeSyncErrorDoesNotAdvanceCursor(t *testing.T) {
 	source := &fakeBridgeSource{lastProcessedBlock: 12, found: true, getBridgesErr: sourceErr}
 	store := newMemoryCursorStore()
 	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
-	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(claimer), WithBlockWindow(13))
+	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(13))
 
-	_, err := watchdog.PollOnce(ctx)
+	_, err := detector.PollOnce(ctx)
 	require.ErrorIs(t, err, sourceErr)
 	require.Empty(t, store.cursors)
 }
@@ -139,14 +139,14 @@ func TestRestartFromPersistedCursor(t *testing.T) {
 	source := &fakeBridgeSource{lastProcessedBlock: 60, found: true}
 	store := newMemoryCursorStore()
 	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
-	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(claimer), WithBlockWindow(20), WithOverlapBlocks(2))
-	store.cursors[watchdog.cursorNameForDestination(10)] = autoclaimtypes.BridgeCursor{
+	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(20), WithOverlapBlocks(2))
+	store.cursors[detector.cursorNameForDestination(10)] = autoclaimtypes.BridgeCursor{
 		FromBlock: 40,
 		ToBlock:   50,
 		BlockNum:  50,
 	}
 
-	result, err := watchdog.PollOnce(ctx)
+	result, err := detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(49), result.FromBlock)
 	require.Equal(t, uint64(60), result.ToBlock)
@@ -165,7 +165,7 @@ func TestNewDestinationStartsFromConfiguredStartBlock(t *testing.T) {
 	store := newMemoryCursorStore()
 	claimer10 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
 	claimer11 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-11", DestinationNetwork: 11}}
-	watchdog := newTestWatchdog(
+	detector := newTestDetector(
 		t,
 		source,
 		store,
@@ -174,19 +174,19 @@ func TestNewDestinationStartsFromConfiguredStartBlock(t *testing.T) {
 		WithBlockWindow(10),
 		WithOverlapBlocks(2),
 	)
-	store.cursors[watchdog.cursorNameForDestination(10)] = autoclaimtypes.BridgeCursor{
+	store.cursors[detector.cursorNameForDestination(10)] = autoclaimtypes.BridgeCursor{
 		FromBlock: 40,
 		ToBlock:   50,
 		BlockNum:  50,
 	}
 
-	result, err := watchdog.PollOnce(ctx)
+	result, err := detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), result.FromBlock)
 	require.Equal(t, uint64(14), result.ToBlock)
 	require.Equal(t, []blockRange{{from: 5, to: 14}}, source.ranges)
 	require.Len(t, claimer11.enqueued, 1)
-	_, ok := store.cursors[watchdog.cursorNameForDestination(11)]
+	_, ok := store.cursors[detector.cursorNameForDestination(11)]
 	require.True(t, ok)
 }
 
@@ -205,9 +205,9 @@ func TestEnqueueCallsGoToCorrectClaimer(t *testing.T) {
 	store := newMemoryCursorStore()
 	claimer10 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
 	claimer11 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-11", DestinationNetwork: 11}}
-	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(claimer10, claimer11), WithBlockWindow(11))
+	detector := newTestDetector(t, source, store, newFakeRegistry(claimer10, claimer11), WithBlockWindow(11))
 
-	result, err := watchdog.PollOnce(ctx)
+	result, err := detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 2, result.EnqueuedBridgeCount)
 	require.Len(t, claimer10.enqueued, 1)
@@ -240,7 +240,7 @@ func TestPollOnceMarksPreEtrogBridgeBeforeConfiguredUpgradeBlock(t *testing.T) {
 			DestinationNetwork: autoclaimtypes.LegacyZkEVMRollupNetwork,
 		},
 	}
-	watchdog := newTestWatchdog(
+	detector := newTestDetector(
 		t,
 		source,
 		store,
@@ -249,7 +249,7 @@ func TestPollOnceMarksPreEtrogBridgeBeforeConfiguredUpgradeBlock(t *testing.T) {
 		WithEtrogL1UpgradeBlock(10),
 	)
 
-	result, err := watchdog.PollOnce(ctx)
+	result, err := detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, result.EnqueuedBridgeCount)
 	require.Len(t, claimer.enqueued, 1)
@@ -271,9 +271,9 @@ func TestPollOnceIgnoresAlreadyClaimedBridgeBeforeEnqueue(t *testing.T) {
 		target:  autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10},
 		claimed: true,
 	}
-	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(claimer), WithBlockWindow(11))
+	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(11))
 
-	result, err := watchdog.PollOnce(ctx)
+	result, err := detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 0, result.EnqueuedBridgeCount)
 	require.Equal(t, 1, result.IgnoredBridgeCount)
@@ -348,7 +348,7 @@ func TestWithLoggerOption(t *testing.T) {
 	require.Nil(t, w.log)
 }
 
-func TestPollOnceDisabledWatchdog(t *testing.T) {
+func TestPollOnceDisabledBridgeDetector(t *testing.T) {
 	ctx := context.Background()
 	source := &fakeBridgeSource{lastProcessedBlock: 10, found: true}
 	store := newMemoryCursorStore()
@@ -368,7 +368,7 @@ func TestPollOnceGetLastBlockError(t *testing.T) {
 	source := &fakeBridgeSource{lastProcessedErr: sourceErr}
 	store := newMemoryCursorStore()
 	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
-	w := newTestWatchdog(t, source, store, newFakeRegistry(claimer))
+	w := newTestDetector(t, source, store, newFakeRegistry(claimer))
 
 	_, err := w.PollOnce(ctx)
 	require.ErrorIs(t, err, sourceErr)
@@ -379,7 +379,7 @@ func TestPollOnceNotFoundReturnsEmpty(t *testing.T) {
 	source := &fakeBridgeSource{lastProcessedBlock: 0, found: false}
 	store := newMemoryCursorStore()
 	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
-	w := newTestWatchdog(t, source, store, newFakeRegistry(claimer))
+	w := newTestDetector(t, source, store, newFakeRegistry(claimer))
 
 	result, err := w.PollOnce(ctx)
 	require.NoError(t, err)
@@ -402,14 +402,14 @@ func TestClaimerErrorDoesNotAdvanceCursor(t *testing.T) {
 		target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10},
 		err:    enqueueErr,
 	}
-	watchdog := newTestWatchdog(t, source, store, newFakeRegistry(claimer), WithBlockWindow(11))
+	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(11))
 
-	_, err := watchdog.PollOnce(ctx)
+	_, err := detector.PollOnce(ctx)
 	require.ErrorIs(t, err, enqueueErr)
 	require.Empty(t, store.cursors)
 }
 
-func newTestWatchdog(
+func newTestDetector(
 	t *testing.T,
 	source autoclaimtypes.BridgeSource,
 	store CursorStore,
@@ -419,9 +419,9 @@ func newTestWatchdog(
 	t.Helper()
 
 	options = append([]Option{WithNow(func() time.Time { return testNow })}, options...)
-	watchdog, err := NewL1ToL2(source, store, registry, options...)
+	detector, err := NewL1ToL2(source, store, registry, options...)
 	require.NoError(t, err)
-	return watchdog
+	return detector
 }
 
 func makeSyncBridge(

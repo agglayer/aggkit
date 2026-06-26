@@ -142,12 +142,15 @@ Port = "5576"
 # |_| \_\_____|____/ |_|
 #
 # ------------------------------------------------------------------------------
-[REST]
+[PublicAPI]
 # ------------------------------------------------------------------------------
-# Port will configure the port that the REST API HTTP server will
+# Port will configure the port that the public API HTTP server will
 # listen on
 # ------------------------------------------------------------------------------
 Port = "5577"
+
+[AdminAPI]
+Port = 5579
 
 # ==============================================================================
 #     _    ____  ____ ____  _____ _   _ ____  _____ ____
@@ -638,17 +641,15 @@ StoragePath = "/tmp/autoclaim-e2e-allow_all.sqlite"
 
 [AutoClaim.API]
 Enabled = true
-Host = "0.0.0.0"
-Port = 5579
 
-[AutoClaim.L1ToL2Watchdog]
+[AutoClaim.L1ToL2BridgeDetector]
 Enabled = true
 PollInterval = "2s"
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 EtrogL1UpgradeBlock = 0
 
-[AutoClaim.L2ToLxWatchdog]
+[AutoClaim.L2ToLxBridgeDetector]
 Enabled = false
 
 [[AutoClaim.Claimers]]

@@ -262,8 +262,11 @@ type Config struct {
 	// L2NetworkConfig holds configuration specific to the L2 network.
 	L2NetworkConfig ethermanconfig.L2NetworkConfig
 
-	// REST contains the configuration settings for the REST service in the Aggkit
-	REST common.RESTConfig
+	// PublicAPI contains the configuration for the public-facing HTTP API server.
+	PublicAPI common.RESTConfig
+
+	// AdminAPI contains the configuration for the admin HTTP API server.
+	AdminAPI common.RESTConfig
 
 	// RPC is the config for the RPC server
 	RPC jRPC.Config

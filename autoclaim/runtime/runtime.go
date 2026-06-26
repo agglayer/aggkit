@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +14,7 @@ import (
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
 	aggoracletypes "github.com/agglayer/aggkit/aggoracle/types"
 	"github.com/agglayer/aggkit/autoclaim/api"
+	"github.com/agglayer/aggkit/autoclaim/bridgedetector"
 	"github.com/agglayer/aggkit/autoclaim/claimer"
 	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
 	"github.com/agglayer/aggkit/autoclaim/policy"
@@ -23,7 +23,6 @@ import (
 	"github.com/agglayer/aggkit/autoclaim/simulator"
 	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
-	"github.com/agglayer/aggkit/autoclaim/watchdog"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
@@ -76,11 +75,14 @@ type Dependencies struct {
 
 // Runtime owns the started Auto Claim components.
 type Runtime struct {
-	Storage       autoclaimtypes.Storage
-	Claimers      []autoclaimtypes.Claimer
-	Registry      autoclaimtypes.ClaimerRegistry
-	Watchdog      *watchdog.L1ToL2
-	API           *api.API
+	Storage        autoclaimtypes.Storage
+	Claimers       []autoclaimtypes.Claimer
+	Registry       autoclaimtypes.ClaimerRegistry
+	BridgeDetector *bridgedetector.L1ToL2
+	// AdminAPI registers admin routes (approve/reject) on the shared admin HTTP server.
+	AdminAPI *api.API
+	// PublicAPI registers read routes on the shared public HTTP server.
+	PublicAPI     *api.PublicAPI
 	EthTxManagers []EthTxManager
 }
 
@@ -157,18 +159,17 @@ type Factories struct {
 		autoclaimtypes.ClaimSender,
 		...claimer.Option,
 	) (autoclaimtypes.Claimer, error)
-	StartClaimer func(context.Context, autoclaimtypes.Claimer)
-	NewRegistry  func(...autoclaimtypes.Claimer) (autoclaimtypes.ClaimerRegistry, error)
-	NewWatchdog  func(
+	StartClaimer      func(context.Context, autoclaimtypes.Claimer)
+	NewRegistry       func(...autoclaimtypes.Claimer) (autoclaimtypes.ClaimerRegistry, error)
+	NewBridgeDetector func(
 		autoclaimtypes.BridgeSource,
-		watchdog.CursorStore,
+		bridgedetector.CursorStore,
 		autoclaimtypes.ClaimerRegistry,
-		...watchdog.Option,
-	) (*watchdog.L1ToL2, error)
-	StartWatchdog func(context.Context, *watchdog.L1ToL2)
-	NewAPI        func(api.Config, api.Storage, autoclaimtypes.ClaimerRegistry, ...api.Option) (*api.API, error)
-	StartAPI      func(context.Context, *api.API)
-	Go            func(func())
+		...bridgedetector.Option,
+	) (*bridgedetector.L1ToL2, error)
+	StartBridgeDetector func(context.Context, *bridgedetector.L1ToL2)
+	NewAPI              func(api.Config, api.Storage, autoclaimtypes.ClaimerRegistry, ...api.Option) (*api.API, error)
+	Go                  func(func())
 }
 
 // DefaultFactories returns production constructors for Auto Claim runtime startup.
@@ -255,16 +256,11 @@ func DefaultFactories(logConfig log.Config) Factories {
 		NewRegistry: func(claimers ...autoclaimtypes.Claimer) (autoclaimtypes.ClaimerRegistry, error) {
 			return claimer.NewRegistry(claimers...)
 		},
-		NewWatchdog: watchdog.NewL1ToL2,
-		StartWatchdog: func(ctx context.Context, watchdogRunner *watchdog.L1ToL2) {
-			watchdogRunner.Start(ctx)
+		NewBridgeDetector: bridgedetector.NewL1ToL2,
+		StartBridgeDetector: func(ctx context.Context, bd *bridgedetector.L1ToL2) {
+			bd.Start(ctx)
 		},
 		NewAPI: api.New,
-		StartAPI: func(ctx context.Context, apiServer *api.API) {
-			if err := apiServer.Start(ctx); err != nil {
-				log.Errorf("Auto Claim API stopped with error: %v", err)
-			}
-		},
 		Go: func(fn func()) {
 			go fn()
 		},
@@ -338,24 +334,24 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 	runtime.Registry = registry
 	runtime.Claimers = claimers
 
-	cursorStore, ok := storage.(watchdog.CursorStore)
+	cursorStore, ok := storage.(bridgedetector.CursorStore)
 	if !ok {
-		return nil, fmt.Errorf("AutoClaim L1-to-L2 watchdog requires storage with cursor methods")
+		return nil, fmt.Errorf("AutoClaim L1-to-L2 bridge detector requires storage with cursor methods")
 	}
-	watchdogRunner, err := factories.NewWatchdog(
+	bd, err := factories.NewBridgeDetector(
 		deps.L1BridgeSync,
 		cursorStore,
 		registry,
-		watchdog.WithEnabled(cfg.L1ToL2Watchdog.Enabled),
-		watchdog.WithStartBlock(cfg.L1ToL2Watchdog.StartBlock),
-		watchdog.WithPollPeriod(cfg.L1ToL2Watchdog.PollInterval.Duration),
-		watchdog.WithEtrogL1UpgradeBlock(cfg.L1ToL2Watchdog.EtrogL1UpgradeBlock),
-		watchdog.WithLogger(logger),
+		bridgedetector.WithEnabled(cfg.L1ToL2BridgeDetector.Enabled),
+		bridgedetector.WithStartBlock(cfg.L1ToL2BridgeDetector.StartBlock),
+		bridgedetector.WithPollPeriod(cfg.L1ToL2BridgeDetector.PollInterval.Duration),
+		bridgedetector.WithEtrogL1UpgradeBlock(cfg.L1ToL2BridgeDetector.EtrogL1UpgradeBlock),
+		bridgedetector.WithLogger(logger),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("create AutoClaim L1-to-L2 watchdog: %w", err)
+		return nil, fmt.Errorf("create AutoClaim L1-to-L2 bridge detector: %w", err)
 	}
-	runtime.Watchdog = watchdogRunner
+	runtime.BridgeDetector = bd
 
 	for _, txManager := range runtime.EthTxManagers {
 		txManager := txManager
@@ -379,23 +375,24 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 		})
 	}
 	factories.Go(func() {
-		factories.StartWatchdog(ctx, watchdogRunner)
+		factories.StartBridgeDetector(ctx, bd)
 	})
 
+	// Public read API — always created when the runtime is active.
+	runtime.PublicAPI = api.NewPublicAPI(storage, deps.RESTConfig.ReadTimeout.Duration)
+
+	// Admin API — only created when enabled.
 	if cfg.API.Enabled {
 		apiStorage, ok := storage.(api.Storage)
 		if !ok {
 			return nil, fmt.Errorf("AutoClaim API requires storage with manual decision methods")
 		}
-		apiServer, err := factories.NewAPI(autoClaimAPIConfig(cfg.API, deps.RESTConfig), apiStorage, registry,
+		apiServer, err := factories.NewAPI(api.Config{Enabled: true}, apiStorage, registry,
 			api.WithLogger(logger))
 		if err != nil {
-			return nil, fmt.Errorf("create AutoClaim API: %w", err)
+			return nil, fmt.Errorf("create AutoClaim admin API: %w", err)
 		}
-		runtime.API = apiServer
-		factories.Go(func() {
-			factories.StartAPI(ctx, apiServer)
-		})
+		runtime.AdminAPI = apiServer
 	}
 
 	logger.Info("Auto Claim started")
@@ -506,17 +503,14 @@ func withDefaultFactories(factories Factories, logConfig log.Config) Factories {
 	if factories.NewRegistry == nil {
 		factories.NewRegistry = defaults.NewRegistry
 	}
-	if factories.NewWatchdog == nil {
-		factories.NewWatchdog = defaults.NewWatchdog
+	if factories.NewBridgeDetector == nil {
+		factories.NewBridgeDetector = defaults.NewBridgeDetector
 	}
-	if factories.StartWatchdog == nil {
-		factories.StartWatchdog = defaults.StartWatchdog
+	if factories.StartBridgeDetector == nil {
+		factories.StartBridgeDetector = defaults.StartBridgeDetector
 	}
 	if factories.NewAPI == nil {
 		factories.NewAPI = defaults.NewAPI
-	}
-	if factories.StartAPI == nil {
-		factories.StartAPI = defaults.StartAPI
 	}
 	if factories.Go == nil {
 		factories.Go = defaults.Go
@@ -586,15 +580,6 @@ func targetFromConfig(cfg autoclaimcfg.ClaimerConfig) autoclaimtypes.ClaimerTarg
 		WaitPeriod:         cfg.WaitPeriod.Duration,
 		RetryAfter:         retryAfter,
 		MaxRetries:         cfg.MaxRetries,
-	}
-}
-
-func autoClaimAPIConfig(cfg autoclaimcfg.APIConfig, restCfg aggkitcommon.RESTConfig) api.Config {
-	return api.Config{
-		Enabled:      cfg.Enabled,
-		Address:      net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port)),
-		ReadTimeout:  restCfg.ReadTimeout.Duration,
-		WriteTimeout: restCfg.WriteTimeout.Duration,
 	}
 }
 

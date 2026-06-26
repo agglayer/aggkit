@@ -380,7 +380,7 @@ func TestNilL1InfoTreeIndexPersistsAfterProofReady(t *testing.T) {
 		result: autoclaimtypes.PolicyResultApproved,
 	}, fakeProofPreparer{proof: proof}, sender)
 	bridge := makeBridge(60, 10)
-	// Bridge has no L1InfoTreeIndex set — simulates watchdog enqueuing with nil index.
+	// Bridge has no L1InfoTreeIndex set — simulates bridge detector enqueuing with nil index.
 	require.Nil(t, bridge.L1InfoTreeIndex)
 
 	require.NoError(t, claimer.Enqueue(ctx, bridge))

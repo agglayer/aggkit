@@ -10,7 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// BridgeSource exposes bridge sync data for watchdog discovery.
+// BridgeSource exposes bridge sync data for bridge detector discovery.
 type BridgeSource interface {
 	GetBridges(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Bridge, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
@@ -70,7 +70,7 @@ type Claimer interface {
 	Advance(ctx context.Context, key RequestKey) error
 }
 
-// ClaimerRegistry resolves destination-network claimers for watchdog routing.
+// ClaimerRegistry resolves destination-network claimers for bridge detector routing.
 type ClaimerRegistry interface {
 	ClaimerForDestination(ctx context.Context, destinationNetwork uint32) (Claimer, bool, error)
 	Claimers(ctx context.Context) ([]Claimer, error)

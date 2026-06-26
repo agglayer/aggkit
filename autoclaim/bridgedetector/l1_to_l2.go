@@ -1,4 +1,4 @@
-package watchdog
+package bridgedetector
 
 import (
 	"context"
@@ -17,13 +17,13 @@ const (
 	defaultStartBlock  = uint64(0)
 )
 
-// CursorStore persists watchdog bridge-discovery cursors.
+// CursorStore persists bridge detector bridge-discovery cursors.
 type CursorStore interface {
 	GetBridgeCursor(ctx context.Context, name string) (*autoclaimtypes.BridgeCursor, bool, error)
 	SaveBridgeCursor(ctx context.Context, name string, cursor autoclaimtypes.BridgeCursor, now time.Time) error
 }
 
-// Option configures an L1ToL2 watchdog.
+// Option configures an L1ToL2 bridge detector.
 type Option func(*L1ToL2)
 
 // WithCursorName configures the durable cursor name.
@@ -97,7 +97,7 @@ func WithLogger(log aggkitcommon.Logger) Option {
 	}
 }
 
-// PollResult summarizes one watchdog poll.
+// PollResult summarizes one bridge detector poll.
 type PollResult struct {
 	FromBlock           uint64
 	ToBlock             uint64
@@ -110,7 +110,7 @@ type PollResult struct {
 	CursorAdvanced      bool
 }
 
-// L1ToL2 discovers L1-initiated bridge exits and routes them to destination claimers.
+// L1ToL2 is the bridge detector that discovers L1-initiated bridge exits and routes them to destination claimers.
 type L1ToL2 struct {
 	bridgeSource        autoclaimtypes.BridgeSource
 	cursorStore         CursorStore
@@ -136,7 +136,7 @@ type destinationCursorState struct {
 	eligiblePoll bool
 }
 
-// NewL1ToL2 creates an L1-to-L2 Auto Claim watchdog.
+// NewL1ToL2 creates an L1-to-L2 Auto Claim bridge detector.
 func NewL1ToL2(
 	bridgeSource autoclaimtypes.BridgeSource,
 	cursorStore CursorStore,
@@ -144,16 +144,16 @@ func NewL1ToL2(
 	options ...Option,
 ) (*L1ToL2, error) {
 	if bridgeSource == nil {
-		return nil, fmt.Errorf("autoclaim l1-to-l2 watchdog bridge source is nil")
+		return nil, fmt.Errorf("autoclaim l1-to-l2 bridge detector bridge source is nil")
 	}
 	if cursorStore == nil {
-		return nil, fmt.Errorf("autoclaim l1-to-l2 watchdog cursor store is nil")
+		return nil, fmt.Errorf("autoclaim l1-to-l2 bridge detector cursor store is nil")
 	}
 	if registry == nil {
-		return nil, fmt.Errorf("autoclaim l1-to-l2 watchdog claimer registry is nil")
+		return nil, fmt.Errorf("autoclaim l1-to-l2 bridge detector claimer registry is nil")
 	}
 
-	watchdog := &L1ToL2{
+	detector := &L1ToL2{
 		bridgeSource:  bridgeSource,
 		cursorStore:   cursorStore,
 		registry:      registry,
@@ -168,10 +168,10 @@ func NewL1ToL2(
 		},
 	}
 	for _, option := range options {
-		option(watchdog)
+		option(detector)
 	}
 
-	return watchdog, nil
+	return detector, nil
 }
 
 // Start polls bridge sync until ctx is cancelled.
@@ -181,7 +181,7 @@ func (w *L1ToL2) Start(ctx context.Context) {
 	}
 
 	if _, err := w.PollOnce(ctx); err != nil {
-		w.logErrorf("autoclaim l1-to-l2 watchdog poll failed: %v", err)
+		w.logErrorf("autoclaim l1-to-l2 bridge detector poll failed: %v", err)
 	}
 
 	ticker := time.NewTicker(w.pollPeriod)
@@ -192,7 +192,7 @@ func (w *L1ToL2) Start(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if _, err := w.PollOnce(ctx); err != nil {
-				w.logErrorf("autoclaim l1-to-l2 watchdog poll failed: %v", err)
+				w.logErrorf("autoclaim l1-to-l2 bridge detector poll failed: %v", err)
 			}
 		}
 	}
@@ -299,7 +299,7 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 			continue
 		}
 		if err := w.cursorStore.SaveBridgeCursor(ctx, state.cursorName, state.nextCursor, w.now()); err != nil {
-			return result, fmt.Errorf("save autoclaim l1-to-l2 cursor %s: %w", state.cursorName, err)
+			return result, fmt.Errorf("save autoclaim l1-to-l2 bridge detector cursor %s: %w", state.cursorName, err)
 		}
 		result.CursorAdvanced = true
 	}
@@ -313,18 +313,18 @@ func (w *L1ToL2) destinationCursorStates(
 ) (map[uint32]*destinationCursorState, error) {
 	claimers, err := w.registry.Claimers(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list autoclaim l1-to-l2 claimers: %w", err)
+		return nil, fmt.Errorf("list autoclaim l1-to-l2 bridge detector claimers: %w", err)
 	}
 	states := make(map[uint32]*destinationCursorState, len(claimers))
 	for _, runtimeClaimer := range claimers {
 		if runtimeClaimer == nil {
-			return nil, fmt.Errorf("autoclaim l1-to-l2 registry returned nil claimer")
+			return nil, fmt.Errorf("autoclaim l1-to-l2 bridge detector registry returned nil claimer")
 		}
 		target := runtimeClaimer.Target()
 		cursorName := w.cursorNameForDestination(target.DestinationNetwork)
 		cursor, cursorFound, err := w.cursorStore.GetBridgeCursor(ctx, cursorName)
 		if err != nil {
-			return nil, fmt.Errorf("get autoclaim l1-to-l2 cursor %s: %w", cursorName, err)
+			return nil, fmt.Errorf("get autoclaim l1-to-l2 bridge detector cursor %s: %w", cursorName, err)
 		}
 		states[target.DestinationNetwork] = &destinationCursorState{
 			claimer:     runtimeClaimer,

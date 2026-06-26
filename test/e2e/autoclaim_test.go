@@ -239,7 +239,7 @@ func getAutoClaimRequest(
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		fmt.Sprintf("%s/bridge/v1/autoclaim/bridges/%s", bridgeServiceBaseURL, key),
+		fmt.Sprintf("%s/autoclaim/v1/bridges/%s", bridgeServiceBaseURL, key),
 		nil,
 	)
 	if err != nil {
@@ -316,17 +316,15 @@ StoragePath = "/tmp/autoclaim-e2e-%s.sqlite"
 
 [AutoClaim.API]
 Enabled = true
-Host = "0.0.0.0"
-Port = 5579
 
-[AutoClaim.L1ToL2Watchdog]
+[AutoClaim.L1ToL2BridgeDetector]
 Enabled = true
 PollInterval = "2s"
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 EtrogL1UpgradeBlock = 0
 
-[AutoClaim.L2ToLxWatchdog]
+[AutoClaim.L2ToLxBridgeDetector]
 Enabled = false
 
 [[AutoClaim.Claimers]]

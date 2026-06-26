@@ -39,8 +39,7 @@ const (
 
 	swaggerInstanceName = "autoclaim"
 
-	manualPolicy            = "manual"
-	shutdownTimeoutDuration = 5 * time.Second
+	manualPolicy = "manual"
 
 	// maxDecisionBodyBytes caps the manual decision request body to defend against memory exhaustion.
 	maxDecisionBodyBytes = 1 << 20 // 1 MiB
@@ -51,10 +50,12 @@ const (
 
 // Config configures the optional Auto Claim admin API.
 type Config struct {
-	Enabled      bool
-	Address      string
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
+	Enabled bool
+}
+
+// ConfigFromRESTConfig builds an admin API Config from global config.
+func ConfigFromRESTConfig(enabled bool, _ aggkitcommon.RESTConfig) Config {
+	return Config{Enabled: enabled}
 }
 
 // Storage is the admin API persistence boundary.
@@ -101,16 +102,6 @@ type API struct {
 	router   *gin.Engine
 	now      func() time.Time
 	log      aggkitcommon.Logger
-}
-
-// ConfigFromRESTConfig converts a common REST config into an Auto Claim admin API config.
-func ConfigFromRESTConfig(enabled bool, rest aggkitcommon.RESTConfig) Config {
-	return Config{
-		Enabled:      enabled,
-		Address:      rest.Address(),
-		ReadTimeout:  rest.ReadTimeout.Duration,
-		WriteTimeout: rest.WriteTimeout.Duration,
-	}
 }
 
 // New creates an optional Auto Claim admin API. Disabled APIs do not register Auto Claim routes.
@@ -168,35 +159,6 @@ func (a *API) RegisterRoutes(router gin.IRouter) {
 			ctx.Redirect(http.StatusFound, Prefix+"/swagger/index.html")
 		})
 	}
-}
-
-// Start starts the optional API server and blocks until the server exits or ctx is cancelled.
-func (a *API) Start(ctx context.Context) error {
-	if a == nil || !a.cfg.Enabled {
-		return nil
-	}
-
-	server := &http.Server{
-		Addr:         a.cfg.Address,
-		Handler:      a.router,
-		ReadTimeout:  a.cfg.ReadTimeout,
-		WriteTimeout: a.cfg.WriteTimeout,
-	}
-	go func() {
-		<-ctx.Done()
-		// Use a fresh context so cancellation of the parent context starts, rather than aborts, graceful shutdown.
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeoutDuration)
-		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
-	}()
-
-	if a.log != nil {
-		a.log.Infof("Auto Claim admin API listening on %s", a.cfg.Address)
-	}
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("start Auto Claim admin API: %w", err)
-	}
-	return nil
 }
 
 // approveBridge approves a request waiting for manual approval.

@@ -12,13 +12,13 @@ import (
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
 	aggoracletypes "github.com/agglayer/aggkit/aggoracle/types"
 	"github.com/agglayer/aggkit/autoclaim/api"
+	"github.com/agglayer/aggkit/autoclaim/bridgedetector"
 	"github.com/agglayer/aggkit/autoclaim/claimer"
 	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
 	"github.com/agglayer/aggkit/autoclaim/policy"
 	"github.com/agglayer/aggkit/autoclaim/proof"
 	"github.com/agglayer/aggkit/autoclaim/simulator"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
-	"github.com/agglayer/aggkit/autoclaim/watchdog"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
@@ -106,7 +106,7 @@ func TestStartBuildsAndStartsOneTransactionManagerPerEnabledClaimer(t *testing.T
 	claimerTargets := make([]autoclaimtypes.ClaimerTarget, 0)
 	startedManagers := 0
 	startedClaimers := 0
-	startedWatchdog := 0
+	startedBridgeDetector := 0
 	apiCreated := 0
 
 	runtime, err := Start(context.Background(), Dependencies{
@@ -139,10 +139,10 @@ func TestStartBuildsAndStartsOneTransactionManagerPerEnabledClaimer(t *testing.T
 			defer mu.Unlock()
 			startedClaimers++
 		},
-		startWatchdog: func(context.Context, *watchdog.L1ToL2) {
+		startBridgeDetector: func(context.Context, *bridgedetector.L1ToL2) {
 			mu.Lock()
 			defer mu.Unlock()
-			startedWatchdog++
+			startedBridgeDetector++
 		},
 		newAPI: func() {
 			apiCreated++
@@ -159,7 +159,7 @@ func TestStartBuildsAndStartsOneTransactionManagerPerEnabledClaimer(t *testing.T
 	require.Eventually(t, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
-		return startedManagers == 2 && startedClaimers == 2 && startedWatchdog == 1
+		return startedManagers == 2 && startedClaimers == 2 && startedBridgeDetector == 1
 	}, time.Second, 10*time.Millisecond)
 	require.ElementsMatch(t, []string{"http://claimer-1.example", "http://claimer-3.example"}, rpcURLs)
 	require.ElementsMatch(t, []string{"primary", "secondary"}, txManagerIDs)
@@ -180,7 +180,7 @@ func TestStartStopsBackgroundWorkOnContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	txStopped := make(chan struct{})
 	claimerStopped := make(chan struct{})
-	watchdogStopped := make(chan struct{})
+	bridgeDetectorStopped := make(chan struct{})
 
 	_, err := Start(ctx, Dependencies{
 		Config:         validConfig(),
@@ -195,9 +195,9 @@ func TestStartStopsBackgroundWorkOnContextCancellation(t *testing.T) {
 			<-ctx.Done()
 			close(claimerStopped)
 		},
-		startWatchdog: func(ctx context.Context, _ *watchdog.L1ToL2) {
+		startBridgeDetector: func(ctx context.Context, _ *bridgedetector.L1ToL2) {
 			<-ctx.Done()
-			close(watchdogStopped)
+			close(bridgeDetectorStopped)
 		},
 	}))
 	require.NoError(t, err)
@@ -205,14 +205,13 @@ func TestStartStopsBackgroundWorkOnContextCancellation(t *testing.T) {
 	cancel()
 	requireClosed(t, txStopped)
 	requireClosed(t, claimerStopped)
-	requireClosed(t, watchdogStopped)
+	requireClosed(t, bridgeDetectorStopped)
 }
 
 func TestStartDoesNotCreateAPIWhenDisabled(t *testing.T) {
 	cfg := validConfig()
 	cfg.API.Enabled = false
 	apiCreated := false
-	apiStarted := false
 
 	_, err := Start(context.Background(), Dependencies{
 		Config:         cfg,
@@ -222,14 +221,10 @@ func TestStartDoesNotCreateAPIWhenDisabled(t *testing.T) {
 		newAPI: func() {
 			apiCreated = true
 		},
-		startAPI: func(context.Context) {
-			apiStarted = true
-		},
 	}))
 
 	require.NoError(t, err)
 	require.False(t, apiCreated)
-	require.False(t, apiStarted)
 }
 
 func TestStartCreatesTargetSimulatorOnlyForBasicFilter(t *testing.T) {
@@ -351,10 +346,8 @@ func validConfig() autoclaimcfg.Config {
 		StoragePath: "/tmp/autoclaim.sqlite",
 		API: autoclaimcfg.APIConfig{
 			Enabled: false,
-			Host:    "127.0.0.1",
-			Port:    5579,
 		},
-		L1ToL2Watchdog: autoclaimcfg.L1ToL2Watchdog{
+		L1ToL2BridgeDetector: autoclaimcfg.L1ToL2BridgeDetector{
 			Enabled:                    true,
 			PollInterval:               cfgtypes.Duration{Duration: time.Hour},
 			RetryAfterErrorPeriod:      cfgtypes.Duration{Duration: time.Second},
@@ -386,13 +379,13 @@ type factoryHooks struct {
 	newRPCClient func(context.Context, aggkitcommon.Logger, ethermanconfig.RPCClientConfig) (
 		aggkittypes.EthClienter, error,
 	)
-	newEthTxManager    func(context.Context, autoclaimcfg.ClaimerConfig) (EthTxManager, error)
-	startEthTxManager  func(context.Context, EthTxManager)
-	startClaimer       func(context.Context, autoclaimtypes.Claimer)
-	startWatchdog      func(context.Context, *watchdog.L1ToL2)
-	newClaimer         func(autoclaimtypes.ClaimerTarget)
-	newPolicy          func(autoclaimcfg.PolicyName, autoclaimcfg.PolicyConfig, ...policy.RegistryOption)
-	newTargetSimulator func(
+	newEthTxManager     func(context.Context, autoclaimcfg.ClaimerConfig) (EthTxManager, error)
+	startEthTxManager   func(context.Context, EthTxManager)
+	startClaimer        func(context.Context, autoclaimtypes.Claimer)
+	startBridgeDetector func(context.Context, *bridgedetector.L1ToL2)
+	newClaimer          func(autoclaimtypes.ClaimerTarget)
+	newPolicy           func(autoclaimcfg.PolicyName, autoclaimcfg.PolicyConfig, ...policy.RegistryOption)
+	newTargetSimulator  func(
 		simulator.Client,
 		autoclaimtypes.ProofPreparer,
 		autoclaimtypes.ClaimerTarget,
@@ -400,7 +393,6 @@ type factoryHooks struct {
 	)
 	targetSimulatorErr error
 	newAPI             func()
-	startAPI           func(context.Context)
 }
 
 func testFactories(hooks *factoryHooks) Factories {
@@ -503,9 +495,9 @@ func testFactories(hooks *factoryHooks) Factories {
 				hooks.startClaimer(ctx, runtimeClaimer)
 			}
 		},
-		StartWatchdog: func(ctx context.Context, runner *watchdog.L1ToL2) {
-			if hooks.startWatchdog != nil {
-				hooks.startWatchdog(ctx, runner)
+		StartBridgeDetector: func(ctx context.Context, runner *bridgedetector.L1ToL2) {
+			if hooks.startBridgeDetector != nil {
+				hooks.startBridgeDetector(ctx, runner)
 			}
 		},
 		NewAPI: func(
@@ -518,11 +510,6 @@ func testFactories(hooks *factoryHooks) Factories {
 				hooks.newAPI()
 			}
 			return api.New(cfg, storage, registry, options...)
-		},
-		StartAPI: func(ctx context.Context, _ *api.API) {
-			if hooks.startAPI != nil {
-				hooks.startAPI(ctx)
-			}
 		},
 		Go: func(fn func()) {
 			go fn()

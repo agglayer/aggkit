@@ -37,23 +37,22 @@ const (
 type Config struct {
 	// DryRun runs the full Auto Claim pipeline (discovery, policy, proof preparation) but skips
 	// submitting the claim transaction; matching requests end in the "dry-run" terminal status.
-	DryRun         bool             `mapstructure:"DryRun"`
-	StoragePath    string           `mapstructure:"StoragePath"`
-	API            APIConfig        `mapstructure:"API"`
-	Claimers       []ClaimerConfig  `mapstructure:"Claimers"`
-	L1ToL2Watchdog L1ToL2Watchdog   `mapstructure:"L1ToL2Watchdog"`
-	L2ToLxWatchdog DisabledWatchdog `mapstructure:"L2ToLxWatchdog"`
+	DryRun               bool                   `mapstructure:"DryRun"`
+	StoragePath          string                 `mapstructure:"StoragePath"`
+	API                  APIConfig              `mapstructure:"API"`
+	Claimers             []ClaimerConfig        `mapstructure:"Claimers"`
+	L1ToL2BridgeDetector L1ToL2BridgeDetector   `mapstructure:"L1ToL2BridgeDetector"`
+	L2ToLxBridgeDetector DisabledBridgeDetector `mapstructure:"L2ToLxBridgeDetector"`
 }
 
-// APIConfig configures the optional Auto Claim REST API.
+// APIConfig configures the optional Auto Claim admin API.
+// The server address comes from the global AdminAPI config.
 type APIConfig struct {
-	Enabled bool   `mapstructure:"Enabled"`
-	Host    string `mapstructure:"Host"`
-	Port    uint16 `mapstructure:"Port"`
+	Enabled bool `mapstructure:"Enabled"`
 }
 
-// L1ToL2Watchdog configures L1-to-L2 bridge exit discovery.
-type L1ToL2Watchdog struct {
+// L1ToL2BridgeDetector configures L1-to-L2 bridge exit discovery.
+type L1ToL2BridgeDetector struct {
 	Enabled                    bool              `mapstructure:"Enabled"`
 	StartBlock                 uint64            `mapstructure:"StartBlock"`
 	PollInterval               cfgtypes.Duration `mapstructure:"PollInterval"`
@@ -62,8 +61,8 @@ type L1ToL2Watchdog struct {
 	EtrogL1UpgradeBlock        uint64            `mapstructure:"EtrogL1UpgradeBlock"`
 }
 
-// DisabledWatchdog reserves config for disabled watchdog directions.
-type DisabledWatchdog struct {
+// DisabledBridgeDetector reserves config for disabled bridge detector directions.
+type DisabledBridgeDetector struct {
 	Enabled bool `mapstructure:"Enabled"`
 }
 
@@ -115,11 +114,11 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.StoragePath) == "" {
 		return fmt.Errorf("AutoClaim.StoragePath is required when AutoClaim is enabled")
 	}
-	if c.L1ToL2Watchdog.PollInterval.Duration <= 0 {
-		return fmt.Errorf("AutoClaim.L1ToL2Watchdog.PollInterval must be greater than 0")
+	if c.L1ToL2BridgeDetector.PollInterval.Duration <= 0 {
+		return fmt.Errorf("AutoClaim.L1ToL2BridgeDetector.PollInterval must be greater than 0")
 	}
-	if c.L1ToL2Watchdog.RetryAfterErrorPeriod.Duration <= 0 {
-		return fmt.Errorf("AutoClaim.L1ToL2Watchdog.RetryAfterErrorPeriod must be greater than 0")
+	if c.L1ToL2BridgeDetector.RetryAfterErrorPeriod.Duration <= 0 {
+		return fmt.Errorf("AutoClaim.L1ToL2BridgeDetector.RetryAfterErrorPeriod must be greater than 0")
 	}
 	seenIDs := make(map[string]struct{})
 	seenNetworkIDs := make(map[uint32]struct{})

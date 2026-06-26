@@ -20,7 +20,6 @@ import (
 	"math"
 	"math/big"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -88,16 +87,14 @@ type AgglayerManagerUpgradeQuerier interface {
 
 type Config struct {
 	Logger       *log.Logger
-	Address      string
-	WriteTimeout time.Duration
 	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
 	NetworkID    uint32
 }
 
 // BridgeService contains implementations for the bridge service endpoints
 type BridgeService struct {
 	logger                      *log.Logger
-	address                     string
 	readTimeout                 time.Duration
 	writeTimeout                time.Duration
 	networkID                   uint32
@@ -108,11 +105,6 @@ type BridgeService struct {
 	bridgeL2                    Bridger
 	claimL1                     Claimer
 	claimL2                     Claimer
-	// autoClaimQuerier is the optional read-only view of Auto Claim request state. It is non-nil
-	// only when the autoclaim component is running, which is what gates the public Auto Claim routes.
-	autoClaimQuerier AutoClaimQuerier
-
-	router *gin.Engine
 }
 
 // New returns instance of BridgeService
@@ -125,30 +117,11 @@ func New(
 	claimL1 Claimer,
 	bridgeL2 Bridger,
 	claimL2 Claimer,
-	autoClaimQuerier AutoClaimQuerier,
 ) *BridgeService {
-	cfg.Logger.Infof("starting bridge service (network id=%d, address=%s)", cfg.NetworkID, cfg.Address)
-
-	// The GIN_MODE environment variable controls the mode of the Gin framework.
-	// Valid values are "debug", "release", and "test". If an invalid value is provided,
-	// the mode defaults to "release" for safety and performance.
-	ginMode := os.Getenv("GIN_MODE")
-	switch ginMode {
-	case gin.DebugMode, gin.ReleaseMode, gin.TestMode:
-		gin.SetMode(ginMode)
-	default:
-		cfg.Logger.Infof("invalid or missing GIN_MODE value ('%s') provided, defaulting to '%s' mode",
-			ginMode, gin.ReleaseMode)
-		gin.SetMode(gin.ReleaseMode) // fallback to release mode
-	}
-
-	router := gin.New()
-	router.Use(gin.Recovery())
-	router.Use(LoggerHandler(cfg.Logger))
+	cfg.Logger.Infof("starting bridge service (network id=%d)", cfg.NetworkID)
 
 	b := &BridgeService{
 		logger:                      cfg.Logger,
-		address:                     cfg.Address,
 		readTimeout:                 cfg.ReadTimeout,
 		writeTimeout:                cfg.WriteTimeout,
 		networkID:                   cfg.NetworkID,
@@ -159,58 +132,20 @@ func New(
 		bridgeL2:                    bridgeL2,
 		claimL1:                     claimL1,
 		claimL2:                     claimL2,
-		autoClaimQuerier:            autoClaimQuerier,
-		router:                      router,
 	}
 
-	b.registerRoutes()
 	cfg.Logger.Info("bridge service initialized successfully")
-
 	return b
 }
 
-// LoggerHandler returns a Gin middleware that logs HTTP requests using logger at DEBUG level.
-func LoggerHandler(logger aggkitcommon.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		path := c.Request.URL.Path
-		raw := c.Request.URL.RawQuery
+// RegisterRoutes registers all bridge service routes on router.
+func (b *BridgeService) RegisterRoutes(router gin.IRouter) {
+	metrics.Register()
 
-		c.Next()
-
-		latency := time.Since(start)
-		if latency > time.Minute {
-			latency = latency.Truncate(time.Second)
-		}
-
-		clientIP := c.ClientIP()
-		method := c.Request.Method
-		statusCode := c.Writer.Status()
-		errorMessage := c.Errors.ByType(gin.ErrorTypePrivate).String()
-
-		if raw != "" {
-			path += "?" + raw
-		}
-
-		logger.Debugf(
-			"[GIN] %v | %3d | %13v | %15s | %-7s %#v\n%s",
-			start.Format("2006/01/02 - 15:04:05"),
-			statusCode,
-			latency,
-			clientIP,
-			method,
-			path,
-			errorMessage,
-		)
-	}
-}
-
-// registerRoutes registers the routes for the bridge service
-func (b *BridgeService) registerRoutes() {
 	// Health check endpoint at root path
-	b.router.GET("/", b.HealthCheckHandler)
+	router.GET("/", b.HealthCheckHandler)
 
-	bridgeGroup := b.router.Group(BridgeV1Prefix)
+	bridgeGroup := router.Group(BridgeV1Prefix)
 	{
 		bridgeGroup.GET("/bridges", b.GetBridgesHandler)
 		bridgeGroup.GET("/claims", b.GetClaimsHandler)
@@ -228,12 +163,6 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.GET("/bridge-by-deposit-count", b.GetBridgeByDepositCountHandler)
 		bridgeGroup.GET("/bridges-by-content", b.GetBridgesByContentHandler)
 
-		// Auto Claim public read endpoints, served only when the autoclaim component is running.
-		if b.autoClaimQuerier != nil {
-			bridgeGroup.GET("/autoclaim/bridges", b.GetAutoClaimBridgesHandler)
-			bridgeGroup.GET("/autoclaim/bridges/:id", b.GetAutoClaimBridgeHandler)
-		}
-
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 
@@ -242,45 +171,6 @@ func (b *BridgeService) registerRoutes() {
 			ctx.Redirect(http.StatusFound, BridgeV1Prefix+"/swagger/index.html")
 		})
 	}
-}
-
-// Start starts the HTTP bridge service
-func (b *BridgeService) Start(ctx context.Context) {
-	// Register metrics
-	metrics.Register()
-
-	srv := &http.Server{
-		Addr:         b.address,
-		Handler:      b.router,
-		ReadTimeout:  b.readTimeout,
-		WriteTimeout: b.writeTimeout,
-	}
-
-	b.logger.Infof("Bridge service listening on %s...", b.address)
-	err := srv.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
-		b.logger.Panicf("failed to start bridge service: %v", err)
-	}
-
-	<-ctx.Done()
-
-	b.logger.Info("Shutting down bridge service...")
-
-	var parentCtx context.Context
-	if ctx.Err() == nil {
-		parentCtx = ctx
-	} else {
-		parentCtx = context.Background()
-	}
-
-	ctx, cancel := context.WithTimeout(parentCtx, b.readTimeout)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		b.logger.Panicf("Server shutdown error: %v", err)
-	}
-
-	b.logger.Info("Bridge service exited gracefully")
 }
 
 // HealthCheckHandler returns the health status and version information of the bridge service.

@@ -186,10 +186,8 @@ func start(cliCtx *cli.Context) error {
 		}
 	}
 
-	// Open the Auto Claim storage once when the autoclaim component runs, so the bridge service can
-	// serve the public read endpoints and the autoclaim runtime can share the same handle (avoiding a
-	// second open / migration run). run.go owns this handle for the process lifetime.
-	var autoClaimQuerier bridgeservice.AutoClaimQuerier
+	// Open the Auto Claim storage once so the autoclaim runtime does not re-open / re-migrate the DB.
+	// run.go owns this handle for the process lifetime.
 	var autoClaimStorage autoclaimtypes.Storage
 	if shouldRunAutoClaim(components) {
 		storage, err := autoclaimstorage.NewStandalone(
@@ -201,12 +199,16 @@ func start(cliCtx *cli.Context) error {
 			return err
 		}
 		autoClaimStorage = storage
-		autoClaimQuerier = storage
 	}
+
+	// Create shared HTTP servers. Both are always started so that their ports are reachable even
+	// when only some components are enabled.
+	publicServer := aggkitcommon.NewHTTPServer(cfg.PublicAPI, log.WithFields("module", "public-api"))
+	adminServer := aggkitcommon.NewHTTPServer(cfg.AdminAPI, log.WithFields("module", "admin-api"))
 
 	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
 		b := createBridgeService(
-			cfg.REST,
+			cfg.PublicAPI,
 			rollupDataQuerier.RollupID,
 			rollupDataQuerier,
 			l1InfoTreeSync,
@@ -215,10 +217,9 @@ func start(cliCtx *cli.Context) error {
 			l2BridgeSync,
 			l1ClaimSync,
 			l2ClaimSync,
-			autoClaimQuerier,
 		)
-		go b.Start(ctx)
-		log.Info("Bridge service started")
+		b.RegisterRoutes(publicServer.Engine())
+		log.Info("Bridge service routes registered")
 	}
 	if l1MultiDownloader != nil {
 		log.Info("starting L1 MultiDownloader...")
@@ -241,11 +242,11 @@ func start(cliCtx *cli.Context) error {
 	if shouldRunAutoClaim(components) {
 		// Share the storage handle opened above so the runtime does not re-open / re-migrate the DB.
 		sharedAutoClaimStorage := autoClaimStorage
-		if _, err := autoclaimruntime.Start(ctx, autoclaimruntime.Dependencies{
+		acRuntime, err := autoclaimruntime.Start(ctx, autoclaimruntime.Dependencies{
 			Config:                cfg.AutoClaim,
 			LogConfig:             cfg.Log,
 			DBQueryTimeout:        cfg.BridgeL1Sync.DBQueryTimeout.Duration,
-			RESTConfig:            cfg.REST,
+			RESTConfig:            cfg.PublicAPI,
 			L1BridgeSync:          l1BridgeSync,
 			L1InfoTreeSync:        l1InfoTreeSync,
 			L1Client:              l1Client,
@@ -255,10 +256,22 @@ func start(cliCtx *cli.Context) error {
 			OpenStorage: func(aggkitcommon.Logger, string, time.Duration) (autoclaimtypes.Storage, error) {
 				return sharedAutoClaimStorage, nil
 			},
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
+		if acRuntime != nil {
+			acRuntime.PublicAPI.RegisterRoutes(publicServer.Engine())
+			if acRuntime.AdminAPI != nil {
+				acRuntime.AdminAPI.RegisterRoutes(adminServer.Engine())
+			}
+		}
 	}
+
+	go publicServer.Start(ctx)
+	go adminServer.Start(ctx)
+	log.Infof("Public API listening on %s", cfg.PublicAPI.Address())
+	log.Infof("Admin API listening on %s", cfg.AdminAPI.Address())
 
 	for _, component := range components {
 		switch component {
@@ -1097,13 +1110,11 @@ func createBridgeService(
 	bridgeL2 bridgeservice.Bridger,
 	claimL1 bridgeservice.Claimer,
 	claimL2 bridgeservice.Claimer,
-	autoClaimQuerier bridgeservice.AutoClaimQuerier,
 ) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
 
 	bridgeCfg := &bridgeservice.Config{
 		Logger:       logger,
-		Address:      cfg.Address(),
 		ReadTimeout:  cfg.ReadTimeout.Duration,
 		WriteTimeout: cfg.WriteTimeout.Duration,
 		NetworkID:    l2NetworkID,
@@ -1118,7 +1129,6 @@ func createBridgeService(
 		claimL1,
 		bridgeL2,
 		claimL2,
-		autoClaimQuerier,
 	)
 }
 

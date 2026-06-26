@@ -154,7 +154,7 @@ func (p *Preparer) Prepare(ctx context.Context, request types.AutoClaimRequest) 
 }
 
 // selectL1InfoTreeIndex chooses the L1 info tree leaf index to use for a bridge claim.
-// When the watchdog supplied a preset index, that exact index is used.
+// When the bridge detector supplied a preset index, that exact index is used.
 // Otherwise the selector computes the bridge inclusion index and, if a gerSyncer is available,
 // waits until an injected GER on the destination L2 covers that index. It then returns the first
 // (smallest) injected GER leaf index at or after the bridge index — the tightest valid leaf.
