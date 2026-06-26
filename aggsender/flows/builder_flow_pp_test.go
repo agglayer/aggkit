@@ -535,7 +535,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			ppFlow := NewPPBuilderFlow(
 				logger,
 				baseFlow,
-				mockStorage, mockL1InfoTreeQuerier, mockL2BridgeQuerier, nil, tc.forceOneBridgeExit, 0)
+				mockStorage, mockL1InfoTreeQuerier, mockL2BridgeQuerier, nil, tc.forceOneBridgeExit, 0, 0)
 
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockL1InfoTreeQuerier)
 			mockL1InfoTreeQuerier.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).
