@@ -949,27 +949,23 @@ func (r *requestRow) toRequest() (*autoclaimtypes.AutoClaimRequest, error) {
 		index := uint32(r.L1InfoTreeIndex.Int64)
 		request.L1InfoTreeIndex = &index
 	}
-	if hasOptionalJSONValue(r.ProofJSON) {
-		var proof autoclaimtypes.ClaimProof
-		if err := json.Unmarshal(r.ProofJSON, &proof); err != nil {
-			return nil, fmt.Errorf("unmarshal autoclaim proof %s: %w", r.RequestKey, err)
-		}
-		request.Proof = &proof
+	proof, err := unmarshalOptionalJSON[autoclaimtypes.ClaimProof](r.ProofJSON, "proof "+r.RequestKey)
+	if err != nil {
+		return nil, err
 	}
-	if hasOptionalJSONValue(r.PolicyDecisionJSON) {
-		var decision autoclaimtypes.PolicyDecision
-		if err := json.Unmarshal(r.PolicyDecisionJSON, &decision); err != nil {
-			return nil, fmt.Errorf("unmarshal autoclaim decision %s: %w", r.RequestKey, err)
-		}
-		request.PolicyDecision = &decision
+	request.Proof = proof
+
+	policyDecision, err := unmarshalOptionalJSON[autoclaimtypes.PolicyDecision](r.PolicyDecisionJSON, "decision "+r.RequestKey)
+	if err != nil {
+		return nil, err
 	}
-	if hasOptionalJSONValue(r.ManualDecisionJSON) {
-		var decision autoclaimtypes.PolicyDecision
-		if err := json.Unmarshal(r.ManualDecisionJSON, &decision); err != nil {
-			return nil, fmt.Errorf("unmarshal autoclaim manual decision %s: %w", r.RequestKey, err)
-		}
-		request.ManualDecision = &decision
+	request.PolicyDecision = policyDecision
+
+	manualDecision, err := unmarshalOptionalJSON[autoclaimtypes.PolicyDecision](r.ManualDecisionJSON, "manual decision "+r.RequestKey)
+	if err != nil {
+		return nil, err
 	}
+	request.ManualDecision = manualDecision
 	if r.ClaimTxHash.Valid {
 		hash := common.HexToHash(r.ClaimTxHash.String)
 		request.ClaimTxHash = &hash
@@ -1026,6 +1022,19 @@ func marshalOptional(value any) ([]byte, error) {
 
 func hasOptionalJSONValue(value []byte) bool {
 	return len(value) > 0 && string(value) != "null"
+}
+
+// unmarshalOptionalJSON unmarshals raw JSON into a newly-allocated *T when the
+// data is present (non-nil, non-"null").  Returns (nil, nil) when absent.
+func unmarshalOptionalJSON[T any](raw []byte, label string) (*T, error) {
+	if !hasOptionalJSONValue(raw) {
+		return nil, nil
+	}
+	var v T
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, fmt.Errorf("unmarshal autoclaim %s: %w", label, err)
+	}
+	return &v, nil
 }
 
 func nullBytes(value []byte) any {

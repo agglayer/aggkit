@@ -58,7 +58,7 @@ func WithNow(now func() time.Time) Option {
 type Sender struct {
 	storage           autoclaimtypes.Storage
 	ethTxManager      aggoracletypes.EthTxManager
-	targetClaimReader autoclaimtypes.TargetClaimReader
+	targetClaimReader autoclaimtypes.ClaimChecker
 	pollPeriod        time.Duration
 	now               func() time.Time
 }
@@ -67,7 +67,7 @@ type Sender struct {
 func New(
 	storage autoclaimtypes.Storage,
 	ethTxManager aggoracletypes.EthTxManager,
-	targetClaimReader autoclaimtypes.TargetClaimReader,
+	targetClaimReader autoclaimtypes.ClaimChecker,
 	opts ...Option,
 ) (*Sender, error) {
 	if storage == nil {
@@ -151,22 +151,10 @@ func (s *Sender) SubmitClaim(
 	txManagerID, addErr := s.ethTxManager.Add(ctx, &target.BridgeAddr, common.Big0, data, target.GasOffset, nil)
 	attempt.TxManagerID = txManagerID
 	attempt.SentAt = timePtr(s.now())
-	if addErr != nil && !errors.Is(addErr, ethtxmanager.ErrAlreadyExists) {
-		attempt.Status = ethtxtypes.MonitoredTxStatusFailed
-		attempt.StatusReason = "transaction manager add failed"
-		attempt.LastError = addErr.Error()
-		if err := s.storage.RecordTransactionAttempt(ctx, latest.Key, attempt); err != nil {
-			return &attempt, fmt.Errorf("record failed transaction attempt: %w", err)
-		}
-		_ = s.storage.UpdateLastError(ctx, latest.Key, attempt.LastError, attempt.UpdatedAt)
-		return &attempt, fmt.Errorf("add claim transaction: %w", addErr)
+
+	if done, err := s.handleAddErr(ctx, latest.Key, &attempt, addErr); done {
+		return &attempt, err
 	}
-	if errors.Is(addErr, ethtxmanager.ErrAlreadyExists) {
-		attempt.StatusReason = "transaction manager already has claim"
-	} else {
-		attempt.StatusReason = "transaction manager accepted claim"
-	}
-	attempt.Status = ethtxtypes.MonitoredTxStatusCreated
 
 	if err := s.storage.RecordTransactionAttempt(ctx, latest.Key, attempt); err != nil {
 		return &attempt, fmt.Errorf("record submitted transaction attempt: %w", err)
@@ -176,6 +164,34 @@ func (s *Sender) SubmitClaim(
 	}
 
 	return s.pollResult(ctx, latest.Key, attempt, target)
+}
+
+// handleAddErr processes the error returned by ethTxManager.Add. It sets the attempt fields
+// accordingly and returns done=true (with the error) when the caller should return immediately,
+// or done=false when the submit flow should continue.
+func (s *Sender) handleAddErr(
+	ctx context.Context,
+	key autoclaimtypes.RequestKey,
+	attempt *autoclaimtypes.TransactionAttempt,
+	addErr error,
+) (done bool, err error) {
+	if addErr != nil && !errors.Is(addErr, ethtxmanager.ErrAlreadyExists) {
+		attempt.Status = ethtxtypes.MonitoredTxStatusFailed
+		attempt.StatusReason = "transaction manager add failed"
+		attempt.LastError = addErr.Error()
+		if recordErr := s.storage.RecordTransactionAttempt(ctx, key, *attempt); recordErr != nil {
+			return true, fmt.Errorf("record failed transaction attempt: %w", recordErr)
+		}
+		_ = s.storage.UpdateLastError(ctx, key, attempt.LastError, attempt.UpdatedAt)
+		return true, fmt.Errorf("add claim transaction: %w", addErr)
+	}
+	if errors.Is(addErr, ethtxmanager.ErrAlreadyExists) {
+		attempt.StatusReason = "transaction manager already has claim"
+	} else {
+		attempt.StatusReason = "transaction manager accepted claim"
+	}
+	attempt.Status = ethtxtypes.MonitoredTxStatusCreated
+	return false, nil
 }
 
 func (s *Sender) packClaim(
@@ -226,45 +242,68 @@ func (s *Sender) pollResult(
 	}
 
 	for {
-		result, err := s.ethTxManager.Result(ctx, attempt.TxManagerID)
+		done, err := s.handlePollIteration(ctx, key, &attempt, pollPeriod)
+		if done {
+			return &attempt, err
+		}
 		if err != nil {
-			attempt.UpdatedAt = s.now()
-			attempt.LastObservedAt = timePtr(attempt.UpdatedAt)
-			attempt.LastError = err.Error()
-			if recordErr := s.storage.RecordTransactionAttempt(ctx, key, attempt); recordErr != nil {
-				return &attempt, fmt.Errorf("record result error transaction attempt: %w", recordErr)
-			}
-			return &attempt, fmt.Errorf("get claim transaction result %s: %w", attempt.TxManagerID, err)
+			return &attempt, err
 		}
+	}
+}
 
-		s.applyResult(&attempt, result)
-		if err := s.storage.RecordTransactionAttempt(ctx, key, attempt); err != nil {
-			return &attempt, fmt.Errorf("record monitored transaction attempt: %w", err)
+// handlePollIteration executes one iteration of the poll loop: fetch the current result, persist
+// it, and act on the status. It returns done=true when the caller should exit the loop (either
+// successfully or with an error). done=false with err=nil means the caller should loop again.
+func (s *Sender) handlePollIteration(
+	ctx context.Context,
+	key autoclaimtypes.RequestKey,
+	attempt *autoclaimtypes.TransactionAttempt,
+	pollPeriod time.Duration,
+) (done bool, err error) {
+	result, err := s.ethTxManager.Result(ctx, attempt.TxManagerID)
+	if err != nil {
+		attempt.UpdatedAt = s.now()
+		attempt.LastObservedAt = timePtr(attempt.UpdatedAt)
+		attempt.LastError = err.Error()
+		if recordErr := s.storage.RecordTransactionAttempt(ctx, key, *attempt); recordErr != nil {
+			return true, fmt.Errorf("record result error transaction attempt: %w", recordErr)
 		}
+		return true, fmt.Errorf("get claim transaction result %s: %w", attempt.TxManagerID, err)
+	}
 
-		switch result.Status {
-		case ethtxtypes.MonitoredTxStatusCreated, ethtxtypes.MonitoredTxStatusSent:
-			if err := waitForNextPoll(ctx, pollPeriod); err != nil {
-				return &attempt, err
-			}
-		case ethtxtypes.MonitoredTxStatusMined,
-			ethtxtypes.MonitoredTxStatusSafe,
-			ethtxtypes.MonitoredTxStatusFinalized:
-			if err := s.transitionTo(ctx, key, autoclaimtypes.RequestStatusConfirmed); err != nil {
-				return &attempt, err
-			}
-			return &attempt, nil
-		case ethtxtypes.MonitoredTxStatusFailed:
-			return s.handleFailedStatus(ctx, key, attempt, "claim transaction failed")
-		case ethtxtypes.MonitoredTxStatusEvicted:
-			return s.handleFailedStatus(ctx, key, attempt, "claim transaction evicted")
-		default:
-			attempt.LastError = fmt.Sprintf("unexpected transaction status %s", result.Status)
-			if err := s.storage.UpdateLastError(ctx, key, attempt.LastError, s.now()); err != nil {
-				return &attempt, err
-			}
-			return &attempt, fmt.Errorf("%w: %s", ErrTerminalStatus, attempt.LastError)
+	s.applyResult(attempt, result)
+	if err := s.storage.RecordTransactionAttempt(ctx, key, *attempt); err != nil {
+		return true, fmt.Errorf("record monitored transaction attempt: %w", err)
+	}
+
+	switch result.Status {
+	case ethtxtypes.MonitoredTxStatusCreated, ethtxtypes.MonitoredTxStatusSent:
+		if err := waitForNextPoll(ctx, pollPeriod); err != nil {
+			return true, err
 		}
+		return false, nil
+	case ethtxtypes.MonitoredTxStatusMined,
+		ethtxtypes.MonitoredTxStatusSafe,
+		ethtxtypes.MonitoredTxStatusFinalized:
+		if err := s.transitionTo(ctx, key, autoclaimtypes.RequestStatusConfirmed); err != nil {
+			return true, err
+		}
+		return true, nil
+	case ethtxtypes.MonitoredTxStatusFailed:
+		retAttempt, retErr := s.handleFailedStatus(ctx, key, *attempt, "claim transaction failed")
+		*attempt = *retAttempt
+		return true, retErr
+	case ethtxtypes.MonitoredTxStatusEvicted:
+		retAttempt, retErr := s.handleFailedStatus(ctx, key, *attempt, "claim transaction evicted")
+		*attempt = *retAttempt
+		return true, retErr
+	default:
+		attempt.LastError = fmt.Sprintf("unexpected transaction status %s", result.Status)
+		if err := s.storage.UpdateLastError(ctx, key, attempt.LastError, s.now()); err != nil {
+			return true, err
+		}
+		return true, fmt.Errorf("%w: %s", ErrTerminalStatus, attempt.LastError)
 	}
 }
 
@@ -340,8 +379,7 @@ func (s *Sender) transitionTo(
 }
 
 func nextTransition(
-	current autoclaimtypes.RequestStatus,
-	target autoclaimtypes.RequestStatus,
+	current, target autoclaimtypes.RequestStatus,
 ) (autoclaimtypes.RequestStatus, bool) {
 	if current.CanTransitionTo(target) {
 		return target, true

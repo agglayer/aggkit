@@ -24,9 +24,7 @@ import (
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/reorgdetector"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -243,7 +241,7 @@ func TestStartCreatesTargetSimulatorOnlyForBasicFilter(t *testing.T) {
 		L1InfoTreeSync: fakeL1InfoTreeSync{},
 	}, testFactories(&factoryHooks{
 		newTargetSimulator: func(
-			_ simulator.Client,
+			_ simulator.GasEstimator,
 			_ autoclaimtypes.ProofPreparer,
 			target autoclaimtypes.ClaimerTarget,
 			_ common.Address,
@@ -386,7 +384,7 @@ type factoryHooks struct {
 	newClaimer          func(autoclaimtypes.ClaimerTarget)
 	newPolicy           func(autoclaimcfg.PolicyName, autoclaimcfg.PolicyConfig, ...policy.RegistryOption)
 	newTargetSimulator  func(
-		simulator.Client,
+		simulator.GasEstimator,
 		autoclaimtypes.ProofPreparer,
 		autoclaimtypes.ClaimerTarget,
 		common.Address,
@@ -395,58 +393,76 @@ type factoryHooks struct {
 	newAPI             func()
 }
 
+func newRPCClientFactory(hooks *factoryHooks) func(context.Context, aggkitcommon.Logger, ethermanconfig.RPCClientConfig) (aggkittypes.EthClienter, error) {
+	return func(ctx context.Context, logger aggkitcommon.Logger, cfg ethermanconfig.RPCClientConfig) (aggkittypes.EthClienter, error) {
+		if hooks.newRPCClient != nil {
+			return hooks.newRPCClient(ctx, logger, cfg)
+		}
+		return nil, nil
+	}
+}
+
+func newEthTxManagerFactory(hooks *factoryHooks) func(context.Context, autoclaimcfg.ClaimerConfig) (EthTxManager, error) {
+	return func(ctx context.Context, cfg autoclaimcfg.ClaimerConfig) (EthTxManager, error) {
+		if hooks.newEthTxManager != nil {
+			return hooks.newEthTxManager(ctx, cfg)
+		}
+		return &fakeEthTxManager{}, nil
+	}
+}
+
+func newPolicyFactory(hooks *factoryHooks) func(autoclaimcfg.PolicyName, autoclaimcfg.PolicyConfig, ...policy.RegistryOption) (autoclaimtypes.Policy, error) {
+	return func(name autoclaimcfg.PolicyName, cfg autoclaimcfg.PolicyConfig, options ...policy.RegistryOption) (autoclaimtypes.Policy, error) {
+		if hooks.newPolicy != nil {
+			hooks.newPolicy(name, cfg, options...)
+		}
+		return fakePolicy{}, nil
+	}
+}
+
+func newTargetSimulatorFactory(hooks *factoryHooks) func(simulator.GasEstimator, autoclaimtypes.ProofPreparer, autoclaimtypes.ClaimerTarget, common.Address) (policy.TargetSimulator, error) {
+	return func(client simulator.GasEstimator, proofPreparer autoclaimtypes.ProofPreparer, target autoclaimtypes.ClaimerTarget, from common.Address) (policy.TargetSimulator, error) {
+		if hooks.newTargetSimulator != nil {
+			hooks.newTargetSimulator(client, proofPreparer, target, from)
+		}
+		if hooks.targetSimulatorErr != nil {
+			return nil, hooks.targetSimulatorErr
+		}
+		return fakeTargetSimulator{}, nil
+	}
+}
+
+func newClaimerFactory(hooks *factoryHooks) func(autoclaimtypes.ClaimerTarget, autoclaimtypes.Storage, autoclaimtypes.Policy, autoclaimtypes.ProofPreparer, autoclaimtypes.ClaimSender, ...claimer.Option) (autoclaimtypes.Claimer, error) {
+	return func(target autoclaimtypes.ClaimerTarget, _ autoclaimtypes.Storage, _ autoclaimtypes.Policy, _ autoclaimtypes.ProofPreparer, _ autoclaimtypes.ClaimSender, _ ...claimer.Option) (autoclaimtypes.Claimer, error) {
+		if hooks.newClaimer != nil {
+			hooks.newClaimer(target)
+		}
+		return fakeClaimer{target: target}, nil
+	}
+}
+
 func testFactories(hooks *factoryHooks) Factories {
 	if hooks == nil {
 		hooks = &factoryHooks{}
 	}
-	factories := Factories{
+	return Factories{
 		OpenStorage: func(aggkitcommon.Logger, string, time.Duration) (autoclaimtypes.Storage, error) {
 			return &fakeStorage{}, nil
 		},
-		NewRPCClient: func(ctx context.Context, logger aggkitcommon.Logger, cfg ethermanconfig.RPCClientConfig) (
-			aggkittypes.EthClienter, error,
-		) {
-			if hooks.newRPCClient != nil {
-				return hooks.newRPCClient(ctx, logger, cfg)
-			}
-			return nil, nil
-		},
-		NewEthTxManager: func(ctx context.Context, cfg autoclaimcfg.ClaimerConfig) (EthTxManager, error) {
-			if hooks.newEthTxManager != nil {
-				return hooks.newEthTxManager(ctx, cfg)
-			}
-			return &fakeEthTxManager{}, nil
-		},
+		NewRPCClient:    newRPCClientFactory(hooks),
+		NewEthTxManager: newEthTxManagerFactory(hooks),
 		StartEthTxManager: func(ctx context.Context, txManager EthTxManager) {
 			if hooks.startEthTxManager != nil {
 				hooks.startEthTxManager(ctx, txManager)
 			}
 		},
-		NewPolicy: func(
-			name autoclaimcfg.PolicyName,
-			cfg autoclaimcfg.PolicyConfig,
-			options ...policy.RegistryOption,
-		) (autoclaimtypes.Policy, error) {
-			if hooks.newPolicy != nil {
-				hooks.newPolicy(name, cfg, options...)
-			}
-			return fakePolicy{}, nil
-		},
+		NewPolicy: newPolicyFactory(hooks),
 		NewTargetClaimReader: func(common.Address, aggkittypes.BaseEthereumClienter) (
-			autoclaimtypes.TargetClaimReader, error,
+			autoclaimtypes.ClaimChecker, error,
 		) {
 			return fakeTargetClaimReader{}, nil
 		},
-		NewGERSyncer: func(
-			_ context.Context,
-			_ autoclaimcfg.ClaimerConfig,
-			_ l2gersync.Config,
-			_ reorgdetector.Config,
-			_ string,
-			_ aggkittypes.EthClienter,
-			_ l2gersync.L1InfoTreeQuerier,
-			_ aggkittypes.EthClienter,
-		) (proof.L2GERSyncer, func(context.Context), error) {
+		NewGERSyncer: func(_ context.Context, _ GERSyncerDeps) (proof.L2GERSyncer, func(context.Context), error) {
 			return nil, nil, nil
 		},
 		NewProofPreparer: func(
@@ -456,40 +472,15 @@ func testFactories(hooks *factoryHooks) Factories {
 		) (autoclaimtypes.ProofPreparer, error) {
 			return proof.NewPreparer(l1BridgeSync, l1InfoTreeSync, gerSyncer), nil
 		},
-		NewTargetSimulator: func(
-			client simulator.Client,
-			proofPreparer autoclaimtypes.ProofPreparer,
-			target autoclaimtypes.ClaimerTarget,
-			from common.Address,
-		) (policy.TargetSimulator, error) {
-			if hooks.newTargetSimulator != nil {
-				hooks.newTargetSimulator(client, proofPreparer, target, from)
-			}
-			if hooks.targetSimulatorErr != nil {
-				return nil, hooks.targetSimulatorErr
-			}
-			return fakeTargetSimulator{}, nil
-		},
+		NewTargetSimulator: newTargetSimulatorFactory(hooks),
 		NewSender: func(
 			autoclaimtypes.Storage,
 			EthTxManager,
-			autoclaimtypes.TargetClaimReader,
+			autoclaimtypes.ClaimChecker,
 		) (autoclaimtypes.ClaimSender, error) {
 			return fakeSender{}, nil
 		},
-		NewClaimer: func(
-			target autoclaimtypes.ClaimerTarget,
-			_ autoclaimtypes.Storage,
-			_ autoclaimtypes.Policy,
-			_ autoclaimtypes.ProofPreparer,
-			_ autoclaimtypes.ClaimSender,
-			_ ...claimer.Option,
-		) (autoclaimtypes.Claimer, error) {
-			if hooks.newClaimer != nil {
-				hooks.newClaimer(target)
-			}
-			return fakeClaimer{target: target}, nil
-		},
+		NewClaimer: newClaimerFactory(hooks),
 		StartClaimer: func(ctx context.Context, runtimeClaimer autoclaimtypes.Claimer) {
 			if hooks.startClaimer != nil {
 				hooks.startClaimer(ctx, runtimeClaimer)
@@ -515,7 +506,6 @@ func testFactories(hooks *factoryHooks) Factories {
 			go fn()
 		},
 	}
-	return factories
 }
 
 type fakeL1BridgeSync struct{}

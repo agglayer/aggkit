@@ -103,7 +103,7 @@ func TestClaimerIsClaimedWithReader(t *testing.T) {
 	reader := &fakeTargetClaimReader{claimed: true}
 
 	c, err := New(target, storage, approvedPolicy(), readyProof(), sender,
-		WithTargetClaimReader(reader))
+		WithClaimChecker(reader))
 	require.NoError(t, err)
 
 	bridge := makeBridge(1, 10)
@@ -120,7 +120,7 @@ func TestClaimerIsClaimedWithReaderNilGlobalIndex(t *testing.T) {
 	reader := &fakeTargetClaimReader{claimed: false}
 
 	c, err := New(target, storage, approvedPolicy(), readyProof(), sender,
-		WithTargetClaimReader(reader))
+		WithClaimChecker(reader))
 	require.NoError(t, err)
 
 	bridge := makeBridge(1, 10)
@@ -729,7 +729,7 @@ func makeTarget(destination uint32) autoclaimtypes.ClaimerTarget {
 	}
 }
 
-func makeBridge(depositCount uint32, destination uint32) autoclaimtypes.BridgeExit {
+func makeBridge(depositCount, destination uint32) autoclaimtypes.BridgeExit {
 	return autoclaimtypes.BridgeExit{
 		BlockNum:           100 + uint64(depositCount),
 		BlockPos:           uint64(depositCount),
@@ -882,6 +882,30 @@ type fakeSender struct {
 	lastTarget  autoclaimtypes.ClaimerTarget
 }
 
+func (s *fakeSender) advanceToConfirmed(ctx context.Context, key autoclaimtypes.RequestKey) error {
+	latest, err := s.storage.GetRequest(ctx, key)
+	if err != nil {
+		return err
+	}
+	if latest.Status == autoclaimtypes.RequestStatusSending {
+		_, err = s.storage.TransitionRequest(ctx, key, latest.Status, autoclaimtypes.RequestStatusSent, testNow)
+		if err != nil {
+			return err
+		}
+		latest, err = s.storage.GetRequest(ctx, key)
+		if err != nil {
+			return err
+		}
+	}
+	if latest.Status == autoclaimtypes.RequestStatusSent {
+		_, err = s.storage.TransitionRequest(ctx, key, latest.Status, autoclaimtypes.RequestStatusConfirmed, testNow)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *fakeSender) SubmitClaim(
 	ctx context.Context,
 	request autoclaimtypes.AutoClaimRequest,
@@ -897,25 +921,8 @@ func (s *fakeSender) SubmitClaim(
 		return nil, s.err
 	}
 	if s.finalStatus == autoclaimtypes.RequestStatusConfirmed {
-		latest, err := s.storage.GetRequest(ctx, request.Key)
-		if err != nil {
+		if err := s.advanceToConfirmed(ctx, request.Key); err != nil {
 			return nil, err
-		}
-		if latest.Status == autoclaimtypes.RequestStatusSending {
-			_, err = s.storage.TransitionRequest(ctx, request.Key, latest.Status, autoclaimtypes.RequestStatusSent, testNow)
-			if err != nil {
-				return nil, err
-			}
-			latest, err = s.storage.GetRequest(ctx, request.Key)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if latest.Status == autoclaimtypes.RequestStatusSent {
-			_, err = s.storage.TransitionRequest(ctx, request.Key, latest.Status, autoclaimtypes.RequestStatusConfirmed, testNow)
-			if err != nil {
-				return nil, err
-			}
 		}
 	}
 	return &autoclaimtypes.TransactionAttempt{RequestKey: request.Key, ClaimerID: target.ID}, nil

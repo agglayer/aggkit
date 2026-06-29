@@ -14,21 +14,21 @@ import (
 
 const nestedBridgeDetectionSkipped = "skipped"
 
-// Client is the narrow destination RPC surface required for claim simulation.
-type Client interface {
+// GasEstimator is the narrow destination RPC surface required for claim simulation.
+type GasEstimator interface {
 	EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error)
 }
 
 // Simulator estimates target-chain claim gas through normal JSON-RPC.
 type Simulator struct {
-	client Client
+	client GasEstimator
 	target autoclaimtypes.ClaimerTarget
 	from   common.Address
 }
 
 // New creates a target-chain claim simulator.
 func New(
-	client Client,
+	client GasEstimator,
 	proofPreparer autoclaimtypes.ProofPreparer,
 	target autoclaimtypes.ClaimerTarget,
 	from common.Address,

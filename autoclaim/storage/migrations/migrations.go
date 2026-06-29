@@ -2,6 +2,7 @@ package migrations
 
 import (
 	"database/sql"
+	//nolint:blank-imports // embed SQL migration files via go:embed
 	_ "embed"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"

@@ -245,7 +245,7 @@ func makeRequest(
 	}
 }
 
-func makeManualRequest(depositCount uint32, destinationNetwork uint32) autoclaimtypes.AutoClaimRequest {
+func makeManualRequest(depositCount, destinationNetwork uint32) autoclaimtypes.AutoClaimRequest {
 	request := makeRequest(depositCount, destinationNetwork, autoclaimtypes.RequestStatusManualApprovalRequired)
 	request.PolicyDecision = &autoclaimtypes.PolicyDecision{
 		PolicyName: "api-approve",

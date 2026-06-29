@@ -133,7 +133,7 @@ func TestNewSimulatorNilArgs(t *testing.T) {
 
 func newTestSimulator(
 	t *testing.T,
-	client Client,
+	client GasEstimator,
 	target autoclaimtypes.ClaimerTarget,
 	from common.Address,
 ) *Simulator {

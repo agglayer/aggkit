@@ -452,7 +452,7 @@ func newTestSender(
 	t *testing.T,
 	storage *fakeStorage,
 	ethTxManager aggoracletypes.EthTxManager,
-	targetClaimReader autoclaimtypes.TargetClaimReader,
+	targetClaimReader autoclaimtypes.ClaimChecker,
 ) *Sender {
 	t.Helper()
 

@@ -12,8 +12,8 @@ import (
 
 const httpServerShutdownTimeout = 5 * time.Second
 
-// RouteRegistrar can register HTTP routes on a Gin router.
-type RouteRegistrar interface {
+// RoutesRegisterer can register HTTP routes on a Gin router.
+type RoutesRegisterer interface {
 	RegisterRoutes(gin.IRouter)
 }
 

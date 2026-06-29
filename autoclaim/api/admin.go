@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	//nolint:blank-imports // swagger embed for Swag doc generation
 	_ "github.com/agglayer/aggkit/autoclaim/api/docs"
 	"github.com/agglayer/aggkit/autoclaim/apitypes"
 	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"

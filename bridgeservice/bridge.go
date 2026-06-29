@@ -1443,6 +1443,68 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 	return info.L1InfoTreeIndex, nil
 }
 
+// binarySearchAction is a sentinel returned by binarySearchStep to control the outer loop.
+type binarySearchAction uint8
+
+const (
+	binarySearchContinue binarySearchAction = iota // bounds updated, keep looping
+	binarySearchDone                               // exact match or no more blocks, stop
+	binarySearchFallback                           // LER missing in L2, fall back to linear scan
+)
+
+// binarySearchStep executes one iteration of the binary-search loop body.
+// It fetches the verified batch at targetBlock, resolves its LER against the L2 exit tree,
+// and returns the updated (lower, upper, best) bounds together with an action that tells
+// the caller whether to continue, stop, or fall back to a linear scan.
+//
+// lowerLimit and upperLimit are the current search bounds; targetBlock is the midpoint
+// computed by the caller.
+func (b *BridgeService) binarySearchStep(
+	ctx context.Context,
+	targetBlock uint64,
+	lowerLimit uint64,
+	upperLimit uint64,
+	depositCount uint32,
+	best *l1infotreesync.VerifyBatches,
+) (*l1infotreesync.VerifyBatches, uint64, uint64, binarySearchAction, error) {
+	targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, targetBlock)
+	if err != nil {
+		return nil, 0, 0, binarySearchContinue, err
+	}
+
+	if targetVerified.BlockNumber > upperLimit {
+		if targetBlock == 0 {
+			return best, lowerLimit, upperLimit, binarySearchDone, nil
+		}
+		return best, lowerLimit, targetBlock - 1, binarySearchContinue, nil
+	}
+
+	root, err := b.bridgeL2.GetRootByLER(ctx, targetVerified.ExitRoot)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			b.logger.Debugf(
+				"getFirstL1InfoTreeIndexForL2Bridge: LER not found for verified batch at L1 block %d"+
+					" (ExitRoot: %s), falling back to linear scan",
+				targetVerified.BlockNumber, targetVerified.ExitRoot,
+			)
+			return nil, 0, 0, binarySearchFallback, nil
+		}
+		return nil, 0, 0, binarySearchContinue, err
+	}
+
+	switch {
+	case root.Index < depositCount:
+		return best, targetVerified.BlockNumber + 1, upperLimit, binarySearchContinue, nil
+	case root.Index == depositCount:
+		return targetVerified, lowerLimit, upperLimit, binarySearchDone, nil
+	default: // root.Index > depositCount
+		if targetVerified.BlockNumber == 0 {
+			return targetVerified, lowerLimit, upperLimit, binarySearchDone, nil
+		}
+		return targetVerified, lowerLimit, targetVerified.BlockNumber - 1, binarySearchContinue, nil
+	}
+}
+
 func (b *BridgeService) getFirstVerifiedBatchesForL2DepositCountBinary(
 	ctx context.Context,
 	firstVerified *l1infotreesync.VerifyBatches,
@@ -1455,42 +1517,19 @@ func (b *BridgeService) getFirstVerifiedBatchesForL2DepositCountBinary(
 
 	for lowerLimit <= upperLimit {
 		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binarySearchDivider)
-		targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, targetBlock)
+		newBest, newLower, newUpper, action, err := b.binarySearchStep(ctx, targetBlock, lowerLimit, upperLimit, depositCount, bestResult)
 		if err != nil {
 			return nil, false, err
 		}
-		if targetVerified.BlockNumber > upperLimit {
-			if targetBlock == 0 {
-				break
-			}
-			upperLimit = targetBlock - 1
-			continue
-		}
-
-		root, err := b.bridgeL2.GetRootByLER(ctx, targetVerified.ExitRoot)
-		if err != nil {
-			if errors.Is(err, db.ErrNotFound) {
-				b.logger.Debugf(
-					"getFirstL1InfoTreeIndexForL2Bridge: LER not found for verified batch at L1 block %d"+
-						" (ExitRoot: %s), falling back to linear scan",
-					targetVerified.BlockNumber, targetVerified.ExitRoot,
-				)
-				return nil, true, nil
-			}
-			return nil, false, err
-		}
-
-		if root.Index < depositCount {
-			lowerLimit = targetVerified.BlockNumber + 1
-		} else if root.Index == depositCount {
-			bestResult = targetVerified
-			break
-		} else {
-			bestResult = targetVerified
-			if targetVerified.BlockNumber == 0 {
-				break
-			}
-			upperLimit = targetVerified.BlockNumber - 1
+		switch action {
+		case binarySearchFallback:
+			return nil, true, nil
+		case binarySearchDone:
+			return newBest, false, nil
+		default:
+			bestResult = newBest
+			lowerLimit = newLower
+			upperLimit = newUpper
 		}
 	}
 

@@ -249,9 +249,18 @@ func (p *Preparer) firstL1InfoTreeIndexForL1Bridge(
 		return 0, fmt.Errorf("first L1 info tree leaf is empty")
 	}
 
-	bestResult := lastInfo
-	lowerLimit := firstInfo.BlockNumber
-	upperLimit := lastInfo.BlockNumber
+	return p.binarySearchL1InfoIndex(ctx, depositCount, firstInfo.BlockNumber, lastInfo.BlockNumber, lastInfo)
+}
+
+// binarySearchL1InfoIndex performs a binary search over L1 info tree blocks to find the first
+// L1InfoTreeIndex whose bridge root covers depositCount. bestResult is the initial upper-bound
+// candidate (the caller's lastInfo leaf).
+func (p *Preparer) binarySearchL1InfoIndex(
+	ctx context.Context,
+	depositCount uint32,
+	lowerLimit, upperLimit uint64,
+	bestResult *l1infotreesync.L1InfoTreeLeaf,
+) (uint32, error) {
 	for lowerLimit <= upperLimit {
 		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binarySearchDivider)
 		targetInfo, err := p.l1InfoTree.GetFirstInfoAfterBlock(targetBlock)
@@ -272,8 +281,7 @@ func (p *Preparer) firstL1InfoTreeIndexForL1Bridge(
 		case root.Index < depositCount:
 			lowerLimit = targetBlock + 1
 		case root.Index == depositCount:
-			bestResult = targetInfo
-			return bestResult.L1InfoTreeIndex, nil
+			return targetInfo.L1InfoTreeIndex, nil
 		default:
 			bestResult = targetInfo
 			if targetBlock == 0 {

@@ -64,8 +64,8 @@ func WithNow(now func() time.Time) Option {
 	}
 }
 
-// WithTargetClaimReader configures the target bridge reader used for already-claimed pre-checks.
-func WithTargetClaimReader(targetClaimReader autoclaimtypes.TargetClaimReader) Option {
+// WithClaimChecker configures the target bridge checker used for already-claimed pre-checks.
+func WithClaimChecker(targetClaimReader autoclaimtypes.ClaimChecker) Option {
 	return func(claimer *Claimer) {
 		claimer.targetClaimReader = targetClaimReader
 	}
@@ -85,7 +85,7 @@ type Claimer struct {
 	policy            autoclaimtypes.Policy
 	proofPreparer     autoclaimtypes.ProofPreparer
 	sender            autoclaimtypes.ClaimSender
-	targetClaimReader autoclaimtypes.TargetClaimReader
+	targetClaimReader autoclaimtypes.ClaimChecker
 	enabled           bool
 	pollPeriod        time.Duration
 	recoverPageSize   uint32
@@ -93,7 +93,7 @@ type Claimer struct {
 	log               aggkitcommon.Logger
 }
 
-type preparedProofPolicy interface {
+type preparedProofRequirer interface {
 	RequiresPreparedProof() bool
 }
 
@@ -232,35 +232,53 @@ func (c *Claimer) Advance(ctx context.Context, key autoclaimtypes.RequestKey) er
 	}
 
 	for {
-		switch request.Status {
-		case autoclaimtypes.RequestStatusDetected:
-			next, advanceErr := c.evaluatePolicy(ctx, *request)
-			if advanceErr != nil {
-				return advanceErr
-			}
-			if next.Status == request.Status {
-				return nil
-			}
-			request = next
-		case autoclaimtypes.RequestStatusManualApprovalRequired:
-			next, advanceErr := c.advanceManualDecision(ctx, *request)
-			if advanceErr != nil {
-				return advanceErr
-			}
-			if next.Status == request.Status {
-				return nil
-			}
-			request = next
-		case autoclaimtypes.RequestStatusPolicyApproved:
-			request, err = c.transition(ctx, *request, autoclaimtypes.RequestStatusQueued)
-		case autoclaimtypes.RequestStatusQueued, autoclaimtypes.RequestStatusSending, autoclaimtypes.RequestStatusSent:
-			return c.sendWhenReady(ctx, *request)
-		default:
+		next, done, advanceErr := c.advanceOnce(ctx, request)
+		if advanceErr != nil {
+			return advanceErr
+		}
+		if done {
 			return nil
 		}
+		request = next
+	}
+}
+
+// advanceOnce executes one step of the state machine for request.
+// It returns (next, true, nil) when no further progress is possible this cycle,
+// (next, false, nil) when the caller should loop again, or (nil, false, err) on error.
+func (c *Claimer) advanceOnce(
+	ctx context.Context,
+	request *autoclaimtypes.AutoClaimRequest,
+) (*autoclaimtypes.AutoClaimRequest, bool, error) {
+	switch request.Status {
+	case autoclaimtypes.RequestStatusDetected:
+		next, err := c.evaluatePolicy(ctx, *request)
 		if err != nil {
-			return err
+			return nil, false, err
 		}
+		if next.Status == request.Status {
+			return next, true, nil
+		}
+		return next, false, nil
+	case autoclaimtypes.RequestStatusManualApprovalRequired:
+		next, err := c.advanceManualDecision(ctx, *request)
+		if err != nil {
+			return nil, false, err
+		}
+		if next.Status == request.Status {
+			return next, true, nil
+		}
+		return next, false, nil
+	case autoclaimtypes.RequestStatusPolicyApproved:
+		next, err := c.transition(ctx, *request, autoclaimtypes.RequestStatusQueued)
+		if err != nil {
+			return nil, false, err
+		}
+		return next, false, nil
+	case autoclaimtypes.RequestStatusQueued, autoclaimtypes.RequestStatusSending, autoclaimtypes.RequestStatusSent:
+		return request, true, c.sendWhenReady(ctx, *request)
+	default:
+		return request, true, nil
 	}
 }
 
@@ -329,7 +347,7 @@ func (c *Claimer) evaluatePolicy(
 	ctx context.Context,
 	request autoclaimtypes.AutoClaimRequest,
 ) (*autoclaimtypes.AutoClaimRequest, error) {
-	proofPolicy, needsPreparedProof := c.policy.(preparedProofPolicy)
+	proofPolicy, needsPreparedProof := c.policy.(preparedProofRequirer)
 	if needsPreparedProof && proofPolicy.RequiresPreparedProof() && request.Proof == nil {
 		prepared, err := c.preparePolicyProof(ctx, request)
 		if err != nil {
@@ -411,40 +429,17 @@ func (c *Claimer) advanceManualDecision(
 
 func (c *Claimer) sendWhenReady(ctx context.Context, request autoclaimtypes.AutoClaimRequest) error {
 	current := &request
-	var err error
 	if current.Status == autoclaimtypes.RequestStatusQueued {
+		var err error
 		current, err = c.transition(ctx, *current, autoclaimtypes.RequestStatusSending)
 		if err != nil {
 			return err
 		}
 	}
 
-	proof := current.Proof
-	if proof == nil {
-		proof, err = c.proofPreparer.PrepareProof(ctx, *current)
-		if err != nil {
-			if updateErr := c.storage.UpdateLastError(ctx, current.Key, err.Error(), c.now()); updateErr != nil {
-				return fmt.Errorf("record proof error for autoclaim request %s: %w", current.Key, updateErr)
-			}
-			return fmt.Errorf("prepare proof for autoclaim request %s: %w", current.Key, err)
-		}
-		if proof == nil {
-			c.logInfof("autoclaim request %s: proof not ready yet (waiting for L2 GER injection)", current.Key)
-			if current.Status == autoclaimtypes.RequestStatusSending {
-				_, err = c.transition(ctx, *current, autoclaimtypes.RequestStatusQueued)
-			}
-			return err
-		}
-		if !proofReadyForRequest(*proof, *current) {
-			c.logInfof("autoclaim request %s: proof not ready for request constraints", current.Key)
-			if current.Status == autoclaimtypes.RequestStatusSending {
-				_, err = c.transition(ctx, *current, autoclaimtypes.RequestStatusQueued)
-			}
-			return err
-		}
-		if err := c.storage.SaveProof(ctx, current.Key, *proof); err != nil {
-			return fmt.Errorf("save proof for autoclaim request %s: %w", current.Key, err)
-		}
+	proof, done, err := c.prepareAndSaveProof(ctx, current)
+	if err != nil || done {
+		return err
 	}
 
 	_, err = c.sender.SubmitClaim(ctx, *current, *proof, c.target)
@@ -460,6 +455,44 @@ func (c *Claimer) sendWhenReady(ctx context.Context, request autoclaimtypes.Auto
 		return nil
 	}
 	return fmt.Errorf("submit claim for autoclaim request %s: %w", current.Key, err)
+}
+
+// prepareAndSaveProof returns the proof to use for current, fetching and persisting it when not yet attached.
+// It returns (proof, false, nil) when a ready proof is available, (nil, true, nil) when the proof is not yet
+// ready (caller should return without error), or (nil, false, err) on a hard error.
+func (c *Claimer) prepareAndSaveProof(
+	ctx context.Context,
+	current *autoclaimtypes.AutoClaimRequest,
+) (*autoclaimtypes.ClaimProof, bool, error) {
+	if current.Proof != nil {
+		return current.Proof, false, nil
+	}
+
+	proof, err := c.proofPreparer.PrepareProof(ctx, *current)
+	if err != nil {
+		if updateErr := c.storage.UpdateLastError(ctx, current.Key, err.Error(), c.now()); updateErr != nil {
+			return nil, false, fmt.Errorf("record proof error for autoclaim request %s: %w", current.Key, updateErr)
+		}
+		return nil, false, fmt.Errorf("prepare proof for autoclaim request %s: %w", current.Key, err)
+	}
+	if proof == nil {
+		c.logInfof("autoclaim request %s: proof not ready yet (waiting for L2 GER injection)", current.Key)
+		if current.Status == autoclaimtypes.RequestStatusSending {
+			_, err = c.transition(ctx, *current, autoclaimtypes.RequestStatusQueued)
+		}
+		return nil, true, err
+	}
+	if !proofReadyForRequest(*proof, *current) {
+		c.logInfof("autoclaim request %s: proof not ready for request constraints", current.Key)
+		if current.Status == autoclaimtypes.RequestStatusSending {
+			_, err = c.transition(ctx, *current, autoclaimtypes.RequestStatusQueued)
+		}
+		return nil, true, err
+	}
+	if err := c.storage.SaveProof(ctx, current.Key, *proof); err != nil {
+		return nil, false, fmt.Errorf("save proof for autoclaim request %s: %w", current.Key, err)
+	}
+	return proof, false, nil
 }
 
 func (c *Claimer) failIfRetriesExhausted(

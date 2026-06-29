@@ -21,8 +21,8 @@ type ProofPreparer interface {
 	PrepareProof(ctx context.Context, request AutoClaimRequest) (*ClaimProof, error)
 }
 
-// TargetClaimReader checks claim state on the destination bridge.
-type TargetClaimReader interface {
+// ClaimChecker checks claim state on the destination bridge.
+type ClaimChecker interface {
 	IsClaimed(ctx context.Context, globalIndex *big.Int) (bool, error)
 }
 
@@ -76,8 +76,8 @@ type ClaimerRegistry interface {
 	Claimers(ctx context.Context) ([]Claimer, error)
 }
 
-// TransactionManagerFactory constructs transaction managers for configured claimer targets.
-type TransactionManagerFactory interface {
+// EthTxManagerFactory constructs transaction managers for configured claimer targets.
+type EthTxManagerFactory interface {
 	NewEthTxManager(ctx context.Context, target ClaimerTarget) (aggoracletypes.EthTxManager, error)
 }
 

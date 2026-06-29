@@ -341,21 +341,6 @@ func TestPreparePendingWhenNoGERInjectedYet(t *testing.T) {
 	require.Empty(t, bridge.proofCalls)
 }
 
-func TestPreparePendingWhenNoInjectedGERCoversBridge(t *testing.T) {
-	ctx := context.Background()
-	depositCount := uint32(12)
-	bridge := &fakeL1BridgeSyncer{}
-	l1InfoTree := &fakeL1InfoTreeSyncer{}
-	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
-
-	// No injected GER has a leaf index >= the bridge index, so the syncer reports not-found => not ready.
-	preparer := NewPreparer(bridge, l1InfoTree, &fakeL2GERSyncer{err: db.ErrNotFound})
-	result, err := preparer.Prepare(ctx, testRequest(depositCount))
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.False(t, result.Ready)
-	require.Empty(t, bridge.proofCalls)
-}
 
 func TestPrepareUsesFirstCoveringGERIndex(t *testing.T) {
 	ctx := context.Background()

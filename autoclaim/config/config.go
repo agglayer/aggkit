@@ -120,9 +120,14 @@ func (c Config) Validate() error {
 	if c.L1ToL2BridgeDetector.RetryAfterErrorPeriod.Duration <= 0 {
 		return fmt.Errorf("AutoClaim.L1ToL2BridgeDetector.RetryAfterErrorPeriod must be greater than 0")
 	}
+	return validateEnabledClaimers(c.Claimers)
+}
+
+// validateEnabledClaimers validates each enabled claimer and checks for duplicate IDs and NetworkIDs.
+func validateEnabledClaimers(claimers []ClaimerConfig) error {
 	seenIDs := make(map[string]struct{})
 	seenNetworkIDs := make(map[uint32]struct{})
-	for i, claimer := range c.Claimers {
+	for i, claimer := range claimers {
 		if !claimer.Enabled {
 			continue
 		}

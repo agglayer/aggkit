@@ -253,58 +253,94 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 	// token (used later in the claim calldata), not the network where the bridge originated.
 	for _, bridge := range bridges {
 		exit := autoclaimtypes.NewBridgeExitFromSyncWithEtrog(bridge, w.etrogL1UpgradeBlock)
-
-		state, ok := states[exit.DestinationNetwork]
-		if !ok || !state.eligiblePoll {
-			result.IgnoredBridgeCount++
-			continue
+		if err := w.processBridge(ctx, exit, states, seen, result); err != nil {
+			return result, err
 		}
-		if exit.BlockNum < state.fromBlock ||
-			state.cursorFound && state.cursor != nil && atOrBeforeCursor(exit, *state.cursor) {
-			result.SkippedBridgeCount++
-			continue
-		}
-		state.nextCursor = maxCursorPosition(state.nextCursor, exit.BlockNum, exit.BlockPos)
-
-		key := autoclaimtypes.DeriveRequestKey(
-			exit.OriginNetwork,
-			exit.DestinationNetwork,
-			exit.DepositCount,
-		)
-		if _, ok := seen[key]; ok {
-			result.SkippedBridgeCount++
-			continue
-		}
-		seen[key] = struct{}{}
-
-		claimed, err := state.claimer.IsClaimed(ctx, exit)
-		if err != nil {
-			return result, fmt.Errorf("check l1 bridge %s target claim state: %w", key, err)
-		}
-		if claimed {
-			result.IgnoredBridgeCount++
-			continue
-		}
-
-		result.MatchedBridgeCount++
-		if err := state.claimer.Enqueue(ctx, exit); err != nil {
-			return result, fmt.Errorf("enqueue l1 bridge %s to claimer %s: %w",
-				key, state.claimer.Target().ID, err)
-		}
-		result.EnqueuedBridgeCount++
 	}
 
+	if err := w.saveCursors(ctx, states, result); err != nil {
+		return result, err
+	}
+
+	return result, nil
+}
+
+// processBridge evaluates a single bridge exit and enqueues it for claiming when appropriate.
+// It updates result counters and the seen deduplication map in place.
+func (w *L1ToL2) processBridge(
+	ctx context.Context,
+	exit autoclaimtypes.BridgeExit,
+	states map[uint32]*destinationCursorState,
+	seen map[autoclaimtypes.RequestKey]struct{},
+	result *PollResult,
+) error {
+	state, ok := states[exit.DestinationNetwork]
+	if !ok || !state.eligiblePoll {
+		result.IgnoredBridgeCount++
+		return nil
+	}
+
+	if bridgeFilteredByPosition(exit, state, result) {
+		return nil
+	}
+
+	state.nextCursor = maxCursorPosition(state.nextCursor, exit.BlockNum, exit.BlockPos)
+
+	key := autoclaimtypes.DeriveRequestKey(exit.OriginNetwork, exit.DestinationNetwork, exit.DepositCount)
+	if _, dup := seen[key]; dup {
+		result.SkippedBridgeCount++
+		return nil
+	}
+	seen[key] = struct{}{}
+
+	claimed, err := state.claimer.IsClaimed(ctx, exit)
+	if err != nil {
+		return fmt.Errorf("check l1 bridge %s target claim state: %w", key, err)
+	}
+	if claimed {
+		result.IgnoredBridgeCount++
+		return nil
+	}
+
+	result.MatchedBridgeCount++
+	if err := state.claimer.Enqueue(ctx, exit); err != nil {
+		return fmt.Errorf("enqueue l1 bridge %s to claimer %s: %w", key, state.claimer.Target().ID, err)
+	}
+	result.EnqueuedBridgeCount++
+	return nil
+}
+
+// bridgeFilteredByPosition reports whether the exit falls outside the block range covered by
+// state (before fromBlock or at-or-before the already-processed cursor position).
+// When filtered, the appropriate result counter is incremented and true is returned.
+func bridgeFilteredByPosition(exit autoclaimtypes.BridgeExit, state *destinationCursorState, result *PollResult) bool {
+	if exit.BlockNum < state.fromBlock {
+		result.SkippedBridgeCount++
+		return true
+	}
+	if state.cursorFound && state.cursor != nil && atOrBeforeCursor(exit, *state.cursor) {
+		result.SkippedBridgeCount++
+		return true
+	}
+	return false
+}
+
+// saveCursors persists the advanced cursor for every eligible destination state.
+func (w *L1ToL2) saveCursors(
+	ctx context.Context,
+	states map[uint32]*destinationCursorState,
+	result *PollResult,
+) error {
 	for _, state := range orderedStates(states) {
 		if !state.eligiblePoll {
 			continue
 		}
 		if err := w.cursorStore.SaveBridgeCursor(ctx, state.cursorName, state.nextCursor, w.now()); err != nil {
-			return result, fmt.Errorf("save autoclaim l1-to-l2 bridge detector cursor %s: %w", state.cursorName, err)
+			return fmt.Errorf("save autoclaim l1-to-l2 bridge detector cursor %s: %w", state.cursorName, err)
 		}
 		result.CursorAdvanced = true
 	}
-
-	return result, nil
+	return nil
 }
 
 func (w *L1ToL2) destinationCursorStates(
