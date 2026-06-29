@@ -87,7 +87,7 @@ $(GOBIN)/remove_ger: ## Build remove_ger tool
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
-	docker build -t aggkit:local -f ./Dockerfile .
+	docker build -t aggkit:local -t aggkit:local-no_shell -f ./Dockerfile .
 
 .PHONY: build-docker-ci
 build-docker-ci: ## Builds a docker image with the aggkit binary for CI (includes shell)
@@ -95,7 +95,7 @@ build-docker-ci: ## Builds a docker image with the aggkit binary for CI (include
 
 .PHONY: build-docker-nc
 build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
-	docker build --no-cache=true -t aggkit:local -f ./Dockerfile .
+	docker build --no-cache=true -t aggkit:local -t aggkit:local-no_shell -f ./Dockerfile .
 
 .PHONY: build-docker-debug
 build-docker-debug: ## Builds a debug docker image (dlv headless on :40000, no optimizations)
