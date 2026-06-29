@@ -169,6 +169,17 @@ func newBatchRPCServer(t *testing.T, resultFor func(method string, params []json
 	return srv.URL
 }
 
+// newErrorRPCServer returns the URL of a server that fails every RPC request with HTTP 500,
+// so any RPC batch sent to it errors out (after the client's retries are exhausted).
+func newErrorRPCServer(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "rpc unavailable", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
 // firstAddr decodes the first JSON-RPC param as an address hex string.
 func firstAddr(t *testing.T, params []json.RawMessage) common.Address {
 	t.Helper()
@@ -238,10 +249,27 @@ func TestFetchAllTokenBalances(t *testing.T) {
 		return "0x0"
 	})
 
-	out := fetchAllTokenBalances(t.Context(), url,
+	out, err := fetchAllTokenBalances(t.Context(), url,
 		[]WrappedToken{token}, []common.Address{holder, other}, "latest", 10, 2)
+	require.NoError(t, err)
 	require.Len(t, out, 1)
 	require.Equal(t, big.NewInt(5), out[token.WrappedTokenAddress][holder])
+}
+
+// TestFetchAllTokenBalancesFailFast guards against the silent-drop regression: a failing
+// balanceOf batch for any token must abort the scan with an error rather than omitting the
+// token from the map (which would make Step C misroute its whole supply to exitAddress).
+func TestFetchAllTokenBalancesFailFast(t *testing.T) {
+	t.Parallel()
+	token := WrappedToken{WrappedTokenAddress: common.HexToAddress("0xtok"), OriginNetwork: 1}
+	holder := common.HexToAddress("0x01")
+
+	url := newErrorRPCServer(t)
+
+	out, err := fetchAllTokenBalances(t.Context(), url,
+		[]WrappedToken{token}, []common.Address{holder}, "latest", 10, 2)
+	require.Error(t, err)
+	require.Nil(t, out)
 }
 
 // blockTagOf decodes the second JSON-RPC param (the block tag) as a string.
