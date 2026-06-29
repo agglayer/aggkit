@@ -209,6 +209,7 @@ func (a *API) manualDecision(c *gin.Context, result autoclaimtypes.PolicyResult)
 		return
 	}
 
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxDecisionBodyBytes)
 	body, err := readDecisionRequest(c.Request.Body)
 	if err != nil {
 		writeError(c, http.StatusBadRequest, err)

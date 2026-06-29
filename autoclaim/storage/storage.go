@@ -1057,9 +1057,12 @@ func requireUpdated(result sql.Result, action string, key autoclaimtypes.Request
 	return nil
 }
 
+const defaultDBQueryTimeout = 30 * time.Second
+
 func (s *Storage) withDatabaseTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
-	if s.dbQueryTimeout == 0 {
-		return context.WithCancel(ctx)
+	timeout := s.dbQueryTimeout
+	if timeout == 0 {
+		timeout = defaultDBQueryTimeout
 	}
-	return context.WithTimeout(ctx, s.dbQueryTimeout)
+	return context.WithTimeout(ctx, timeout)
 }
