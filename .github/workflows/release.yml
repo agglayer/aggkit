@@ -76,8 +76,8 @@ jobs:
           tags: |
             type=ref,event=branch,suffix=-dev
             type=ref,event=pr,suffix=-dev
-            type=semver,pattern={{version}}-dev
-            type=semver,pattern={{major}}.{{minor}}-dev
+            type=semver,pattern={{version}},suffix=-dev
+            type=semver,pattern={{major}}.{{minor}},suffix=-dev
 
       - name: Image name builder (prod)
         id: image_builder_prod
