@@ -230,3 +230,63 @@ func TestStepE_MergeCertificateExits(t *testing.T) {
 	require.Equal(t, big.NewInt(100), finalCert.BridgeExits[0].Amount)
 	require.Equal(t, big.NewInt(200), finalCert.BridgeExits[1].Amount)
 }
+
+func TestDecodeABIString(t *testing.T) {
+	t.Parallel()
+
+	// abiString builds a well-formed ABI-encoded string: 32-byte offset, 32-byte length, padded data.
+	abiString := func(s string) []byte {
+		out := make([]byte, twoABIWords)
+		out[abiWordBytes-1] = 0x20 // offset = 32
+		lenBytes := big.NewInt(int64(len(s))).Bytes()
+		copy(out[twoABIWords-len(lenBytes):twoABIWords], lenBytes)
+		data := []byte(s)
+		// pad to a multiple of the ABI word size
+		padded := make([]byte, ((len(data)+abiWordBytes-1)/abiWordBytes)*abiWordBytes)
+		copy(padded, data)
+		return append(out, padded...)
+	}
+
+	// header builds just the 64-byte offset+length header with an explicit raw length field.
+	header := func(lenField []byte) []byte {
+		out := make([]byte, twoABIWords)
+		out[abiWordBytes-1] = 0x20
+		copy(out[twoABIWords-len(lenField):twoABIWords], lenField)
+		return out
+	}
+
+	maxUint64 := make([]byte, 8)
+	for i := range maxUint64 {
+		maxUint64[i] = 0xFF
+	}
+	overUint64 := make([]byte, abiWordBytes) // full 32-byte 0xFF... > MaxUint64
+	for i := range overUint64 {
+		overUint64[i] = 0xFF
+	}
+
+	tests := []struct {
+		name     string
+		data     []byte
+		expected string
+	}{
+		{name: "empty", data: nil, expected: ""},
+		{name: "too short", data: make([]byte, twoABIWords-1), expected: ""},
+		{name: "valid string", data: abiString("DAI"), expected: "DAI"},
+		{name: "empty string payload", data: abiString(""), expected: ""},
+		{name: "length exceeds data", data: header([]byte{0x40}), expected: ""},
+		// Regression: a length field near MaxUint64 makes twoABIWords+strLen overflow uint64
+		// and wrap past the bounds guard, causing a slice out-of-range panic with the old code.
+		{name: "uint64 overflow length", data: header(maxUint64), expected: ""},
+		{name: "length larger than uint64", data: header(overUint64), expected: ""},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.NotPanics(t, func() {
+				require.Equal(t, tc.expected, decodeABIString(tc.data))
+			})
+		})
+	}
+}
