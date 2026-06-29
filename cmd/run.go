@@ -201,10 +201,11 @@ func start(cliCtx *cli.Context) error {
 		autoClaimStorage = storage
 	}
 
-	// Create shared HTTP servers. Both are always started so that their ports are reachable even
-	// when only some components are enabled.
+	// Create shared HTTP servers. Servers are only started when at least one component has
+	// registered routes on them.
 	publicServer := aggkitcommon.NewHTTPServer(cfg.PublicAPI, log.WithFields("module", "public-api"))
 	adminServer := aggkitcommon.NewHTTPServer(cfg.AdminAPI, log.WithFields("module", "admin-api"))
+	var publicHasRoutes, adminHasRoutes bool
 
 	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
 		b := createBridgeService(
@@ -219,6 +220,7 @@ func start(cliCtx *cli.Context) error {
 			l2ClaimSync,
 		)
 		b.RegisterRoutes(publicServer.Engine())
+		publicHasRoutes = true
 		log.Info("Bridge service routes registered")
 	}
 	if l1MultiDownloader != nil {
@@ -262,16 +264,30 @@ func start(cliCtx *cli.Context) error {
 		}
 		if acRuntime != nil {
 			acRuntime.PublicAPI.RegisterRoutes(publicServer.Engine())
+			publicHasRoutes = true
 			if acRuntime.AdminAPI != nil {
 				acRuntime.AdminAPI.RegisterRoutes(adminServer.Engine())
+				adminHasRoutes = true
 			}
 		}
 	}
 
-	go publicServer.Start(ctx)
-	go adminServer.Start(ctx)
-	log.Infof("Public API listening on %s", cfg.PublicAPI.Address())
-	log.Infof("Admin API listening on %s", cfg.AdminAPI.Address())
+	if publicHasRoutes {
+		go func() {
+			if err := publicServer.Start(ctx); err != nil {
+				log.Errorf("public-api server stopped with error: %v", err)
+			}
+		}()
+		log.Infof("Public API listening on %s", cfg.PublicAPI.Address())
+	}
+	if adminHasRoutes {
+		go func() {
+			if err := adminServer.Start(ctx); err != nil {
+				log.Errorf("admin-api server stopped with error: %v", err)
+			}
+		}()
+		log.Infof("Admin API listening on %s", cfg.AdminAPI.Address())
+	}
 
 	for _, component := range components {
 		switch component {

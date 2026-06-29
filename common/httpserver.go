@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -46,7 +47,8 @@ func NewHTTPServer(cfg RESTConfig, logger Logger) *HTTPServer {
 func (s *HTTPServer) Engine() *gin.Engine { return s.engine }
 
 // Start starts the HTTP server and blocks until ctx is done, then shuts down gracefully.
-func (s *HTTPServer) Start(ctx context.Context) {
+// It returns an error if the server fails to listen (e.g. port conflict).
+func (s *HTTPServer) Start(ctx context.Context) error {
 	srv := &http.Server{
 		Addr:         s.cfg.Address(),
 		Handler:      s.engine,
@@ -62,8 +64,9 @@ func (s *HTTPServer) Start(ctx context.Context) {
 	}()
 
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		panic("httpserver: ListenAndServe: " + err.Error())
+		return fmt.Errorf("httpserver ListenAndServe: %w", err)
 	}
+	return nil
 }
 
 // HTTPLoggerHandler returns a Gin middleware that logs HTTP requests using logger at DEBUG level.
