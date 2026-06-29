@@ -91,7 +91,7 @@ build-docker: ## Builds a docker image with the aggkit binary
 
 .PHONY: build-docker-ci
 build-docker-ci: ## Builds a docker image with the aggkit binary for CI (includes shell)
-	docker build --build-arg INCLUDE_SHELL=true -t aggkit:local -f ./Dockerfile .
+	docker build --build-arg INCLUDE_SHELL=true -t aggkit:local -t aggkit:local-dev -f ./Dockerfile .
 
 .PHONY: build-docker-nc
 build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
