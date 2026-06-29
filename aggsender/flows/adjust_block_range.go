@@ -112,29 +112,8 @@ func (f *baseFlow) adjustMaxL2BlockNumber(
 			options.MaxL2BlockNumber, buildParams.FromBlock, ErrComplete)
 	}
 
-	adjusted, err := cloneCertificateBuildParamsWithRange(buildParams, buildParams.FromBlock, options.MaxL2BlockNumber)
-	if err != nil {
-		return nil, fmt.Errorf("adjustBlockRange error adjusting the ToBlock of the certificate %d -> %d: %w",
-			buildParams.ToBlock, options.MaxL2BlockNumber, err)
-	}
-
-	if !options.RequireOneBridgeInCertificate && adjusted.IsEmpty() {
-		return adjusted, nil
-	}
-
-	if options.RequireOneBridgeInCertificate && adjusted.NumberOfBridges() == 0 {
-		if adjusted.NumberOfClaims() > 0 {
-			return nil, fmt.Errorf("adjustBlockRange can't send cert. maxL2BlockNumber: %d. "+
-				"the current reduced range [%d to %d] has no bridges but has %d imported bridges",
-				options.MaxL2BlockNumber, adjusted.FromBlock, adjusted.ToBlock, adjusted.NumberOfClaims())
-		}
-
-		f.log.Warnf("Nothing to do. We have submitted all permitted certificate for maxL2BlockNumber: %d",
-			options.MaxL2BlockNumber)
-		return nil, ErrComplete
-	}
-
-	return adjusted, nil
+	return f.adjustToMaxL2Block(buildParams, options, options.MaxL2BlockNumber, "maxL2BlockNumber",
+		options.MaxL2BlockNumber, true)
 }
 
 func (f *baseFlow) adjustMaxL2BlockRange(
@@ -157,10 +136,21 @@ func (f *baseFlow) adjustMaxL2BlockRange(
 			ErrMaxL2BlockRangeExceededInARetryCert)
 	}
 
-	adjusted, err := cloneCertificateBuildParamsWithRange(buildParams, buildParams.FromBlock, newToBlock)
+	return f.adjustToMaxL2Block(buildParams, options, newToBlock, "maxL2BlockRange", options.MaxL2BlockRange, false)
+}
+
+func (f *baseFlow) adjustToMaxL2Block(
+	buildParams *types.CertificateBuildParams,
+	options types.BlockRangeAdjustmentOptions,
+	maxL2BlockNumber uint64,
+	limitName string,
+	limitValue uint64,
+	completeOnEmptyRequiredBridge bool,
+) (*types.CertificateBuildParams, error) {
+	adjusted, err := cloneCertificateBuildParamsWithRange(buildParams, buildParams.FromBlock, maxL2BlockNumber)
 	if err != nil {
 		return nil, fmt.Errorf("adjustBlockRange error adjusting the ToBlock of the certificate %d -> %d: %w",
-			buildParams.ToBlock, newToBlock, err)
+			buildParams.ToBlock, maxL2BlockNumber, err)
 	}
 
 	if !options.RequireOneBridgeInCertificate && adjusted.IsEmpty() {
@@ -169,14 +159,20 @@ func (f *baseFlow) adjustMaxL2BlockRange(
 
 	if options.RequireOneBridgeInCertificate && adjusted.NumberOfBridges() == 0 {
 		if adjusted.NumberOfClaims() > 0 {
-			return nil, fmt.Errorf("adjustBlockRange can't send cert. maxL2BlockRange: %d. "+
+			return nil, fmt.Errorf("adjustBlockRange can't send cert. %s: %d. "+
 				"the current reduced range [%d to %d] has no bridges but has %d imported bridges",
-				options.MaxL2BlockRange, adjusted.FromBlock, adjusted.ToBlock, adjusted.NumberOfClaims())
+				limitName, limitValue, adjusted.FromBlock, adjusted.ToBlock, adjusted.NumberOfClaims())
 		}
 
-		return nil, fmt.Errorf("adjustBlockRange can't send cert. maxL2BlockRange: %d. "+
+		if completeOnEmptyRequiredBridge {
+			f.log.Warnf("Nothing to do. We have submitted all permitted certificate for %s: %d",
+				limitName, limitValue)
+			return nil, ErrComplete
+		}
+
+		return nil, fmt.Errorf("adjustBlockRange can't send cert. %s: %d. "+
 			"the current reduced range [%d to %d] has no bridges",
-			options.MaxL2BlockRange, adjusted.FromBlock, adjusted.ToBlock)
+			limitName, limitValue, adjusted.FromBlock, adjusted.ToBlock)
 	}
 
 	return adjusted, nil
