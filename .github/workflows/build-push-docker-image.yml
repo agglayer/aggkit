@@ -174,13 +174,19 @@ jobs:
         working-directory: /tmp/digests
         run: |
           TAG=${{ steps.vars.outputs.FULL_IMAGE }}
+          TAG_ARGS="-t $TAG"
+          # For the production (no-shell) image, also publish a -no_shell alias to
+          # ease the future migration to shell-by-default images (see #1671).
+          if [ "${{ matrix.variant.suffix }}" = "" ]; then
+            TAG_ARGS="$TAG_ARGS -t ${TAG}-no_shell"
+          fi
           DIGEST_ARGS=""
           # Only include digest files matching the current variant suffix
           for file in *${{ matrix.variant.suffix }}.txt; do
             ref=$(cat "$file")
             DIGEST_ARGS+=" $ref"
           done
-          docker buildx imagetools create -t "$TAG" $DIGEST_ARGS
+          docker buildx imagetools create $TAG_ARGS $DIGEST_ARGS
 
       - name: Inspect final ${{ matrix.variant.description }} image
         run: |
