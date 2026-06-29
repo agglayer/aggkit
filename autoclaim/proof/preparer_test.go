@@ -629,3 +629,117 @@ type rollupProofCall struct {
 	networkID uint32
 	root      common.Hash
 }
+
+func TestPreparePrepareProofReturnsProof(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(12)
+	bridge := &fakeL1BridgeSyncer{proof: testProof("0xaa")}
+	l1InfoTree := &fakeL1InfoTreeSyncer{rollupProof: testProof("0xbb")}
+	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
+	bridge.proof = testProof("0xaa")
+	l1InfoTree.rollupProof = testProof("0xbb")
+
+	preparer := NewPreparer(bridge, l1InfoTree, nil)
+	proof, err := preparer.PrepareProof(ctx, testRequest(depositCount))
+	require.NoError(t, err)
+	require.NotNil(t, proof)
+	require.Equal(t, depositCount, proof.L1InfoTreeIndex)
+}
+
+func TestPreparePendingWhenInfoBlockBeforeBridgeBlock(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(12)
+	selectedIndex := uint32(44)
+	// selectedInfo has BlockNumber=10; bridge.BlockNum defaults to 20 in testRequest.
+	selectedInfo := testL1InfoTreeLeaf(10, selectedIndex, "0xAA")
+
+	bridge := &fakeL1BridgeSyncer{proof: testProof("0x1")}
+	l1InfoTree := &fakeL1InfoTreeSyncer{
+		infoByIndex: map[uint32]*l1infotreesync.L1InfoTreeLeaf{
+			selectedIndex: selectedInfo,
+		},
+		rollupProof: testProof("0x2"),
+	}
+
+	request := testRequest(depositCount)
+	request.Bridge.L1InfoTreeIndex = &selectedIndex
+	// Bridge.BlockNum=20 > selectedInfo.BlockNumber=10 → Ready: false.
+
+	preparer := NewPreparer(bridge, l1InfoTree, nil)
+	result, err := preparer.Prepare(ctx, request)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.Ready)
+}
+
+func TestBinarySearchGetFirstInfoAfterBlockError(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(5)
+	firstInfo := testL1InfoTreeLeaf(10, 0, "0x10")
+	lastInfo := testL1InfoTreeLeaf(30, 5, "0x30")
+
+	preparer := NewPreparer(
+		&fakeL1BridgeSyncer{
+			rootsByLER: map[common.Hash]*treetypes.Root{
+				lastInfo.MainnetExitRoot:  {Index: depositCount},
+				firstInfo.MainnetExitRoot: {Index: 0},
+			},
+		},
+		&fakeL1InfoTreeSyncer{
+			firstInfo:      firstInfo,
+			lastInfo:       lastInfo,
+			infoAfterBlock: map[uint64]*l1infotreesync.L1InfoTreeLeaf{},
+		},
+		nil,
+	)
+
+	result, err := preparer.Prepare(ctx, testRequest(depositCount))
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "info after block")
+}
+
+func TestBinarySearchLowerAndUpperLimitBranches(t *testing.T) {
+	ctx := context.Background()
+	depositCount := uint32(5)
+
+	firstInfo := testL1InfoTreeLeaf(10, 0, "0x10")
+	lastInfo := testL1InfoTreeLeaf(30, 99, "0x30")
+	info20 := testL1InfoTreeLeaf(20, 88, "0x20") // root.Index=7 > 5 → upperLimit--
+	info14 := testL1InfoTreeLeaf(14, 33, "0x14") // root.Index=3 < 5 → lowerLimit++
+	info17 := testL1InfoTreeLeaf(17, 50, "0x17") // root.Index=5 == depositCount → return
+	// infoByIndex[50] is the leaf returned after binary search selects index=50.
+	resultInfo := testL1InfoTreeLeaf(25, 50, "0x50")
+
+	bridge := &fakeL1BridgeSyncer{
+		rootsByLER: map[common.Hash]*treetypes.Root{
+			firstInfo.MainnetExitRoot:  {Index: 0},
+			lastInfo.MainnetExitRoot:   {Index: 5},
+			info20.MainnetExitRoot:     {Index: 7},
+			info14.MainnetExitRoot:     {Index: 3},
+			info17.MainnetExitRoot:     {Index: 5},
+			resultInfo.MainnetExitRoot: {Index: 5},
+		},
+		proof: testProof("0xbb"),
+	}
+	l1InfoTree := &fakeL1InfoTreeSyncer{
+		firstInfo: firstInfo,
+		lastInfo:  lastInfo,
+		infoAfterBlock: map[uint64]*l1infotreesync.L1InfoTreeLeaf{
+			20: info20,
+			14: info14,
+			17: info17,
+		},
+		infoByIndex: map[uint32]*l1infotreesync.L1InfoTreeLeaf{
+			50: resultInfo,
+		},
+		rollupProof: testProof("0xcc"),
+	}
+
+	preparer := NewPreparer(bridge, l1InfoTree, nil)
+	result, err := preparer.Prepare(ctx, testRequest(depositCount))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Ready)
+	require.Equal(t, uint32(50), result.Proof.L1InfoTreeIndex)
+}

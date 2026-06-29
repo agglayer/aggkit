@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -333,4 +334,145 @@ func (c *fakeClaimer) Enqueue(context.Context, autoclaimtypes.BridgeExit) error 
 func (c *fakeClaimer) Advance(_ context.Context, key autoclaimtypes.RequestKey) error {
 	c.advanced = append(c.advanced, key)
 	return nil
+}
+
+// fakeRegistryWithError always returns an error from ClaimerForDestination.
+type fakeRegistryWithError struct{ err error }
+
+func (r *fakeRegistryWithError) ClaimerForDestination(_ context.Context, _ uint32) (autoclaimtypes.Claimer, bool, error) {
+	return nil, false, r.err
+}
+
+func (r *fakeRegistryWithError) Claimers(context.Context) ([]autoclaimtypes.Claimer, error) {
+	return nil, r.err
+}
+
+// errClaimer returns an error from Advance.
+type errClaimer struct {
+	target autoclaimtypes.ClaimerTarget
+	err    error
+}
+
+func (c *errClaimer) Target() autoclaimtypes.ClaimerTarget { return c.target }
+func (c *errClaimer) IsClaimed(context.Context, autoclaimtypes.BridgeExit) (bool, error) {
+	return false, nil
+}
+func (c *errClaimer) Enqueue(context.Context, autoclaimtypes.BridgeExit) error { return nil }
+func (c *errClaimer) Advance(_ context.Context, _ autoclaimtypes.RequestKey) error {
+	return c.err
+}
+
+// fakeRegistryWithAdvanceError wraps an errClaimer that returns an error from Advance.
+type fakeRegistryWithAdvanceError struct{ claimer *errClaimer }
+
+func (r *fakeRegistryWithAdvanceError) ClaimerForDestination(_ context.Context, destinationNetwork uint32) (autoclaimtypes.Claimer, bool, error) {
+	if r.claimer.target.DestinationNetwork == destinationNetwork {
+		return r.claimer, true, nil
+	}
+	return nil, false, nil
+}
+
+func (r *fakeRegistryWithAdvanceError) Claimers(context.Context) ([]autoclaimtypes.Claimer, error) {
+	return []autoclaimtypes.Claimer{r.claimer}, nil
+}
+
+func performRawRequest(t *testing.T, api *API, method, path string, rawBody []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, bytes.NewReader(rawBody))
+	req.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	api.Router().ServeHTTP(response, req)
+	return response
+}
+
+func TestManualDecisionRequestNotFound(t *testing.T) {
+	storage := newTestStorage(t)
+	api := newTestAPI(t, storage, nil)
+
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/0:99:999/approve", nil)
+	require.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestManualDecisionInvalidJSONBody(t *testing.T) {
+	ctx := context.Background()
+	storage := newTestStorage(t)
+	api := newTestAPI(t, storage, nil)
+	request := makeManualRequest(20, 10)
+	enqueueRequest(t, ctx, storage, request)
+
+	response := performRawRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", []byte("not-json"))
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Contains(t, response.Body.String(), "decode manual decision request")
+}
+
+func TestManualDecisionDeciderIDOversize(t *testing.T) {
+	ctx := context.Background()
+	storage := newTestStorage(t)
+	api := newTestAPI(t, storage, nil)
+	request := makeManualRequest(21, 10)
+	enqueueRequest(t, ctx, storage, request)
+
+	body := map[string]any{
+		"decider_id": string(make([]byte, maxDeciderIDLength+1)),
+	}
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", body)
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Contains(t, response.Body.String(), "decider_id exceeds maximum length")
+}
+
+func TestManualDecisionReasonOversize(t *testing.T) {
+	ctx := context.Background()
+	storage := newTestStorage(t)
+	api := newTestAPI(t, storage, nil)
+	request := makeManualRequest(22, 10)
+	enqueueRequest(t, ctx, storage, request)
+
+	body := map[string]any{
+		"reason": string(make([]byte, maxReasonLength+1)),
+	}
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", body)
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Contains(t, response.Body.String(), "reason exceeds maximum length")
+}
+
+func TestManualDecisionNilRegistryApproves(t *testing.T) {
+	ctx := context.Background()
+	storage := newTestStorage(t)
+	api := newTestAPI(t, storage, nil)
+	request := makeManualRequest(23, 99)
+	enqueueRequest(t, ctx, storage, request)
+
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", nil)
+	require.Equal(t, http.StatusOK, response.Code)
+}
+
+func TestManualDecisionNotifyClaimerLookupError(t *testing.T) {
+	ctx := context.Background()
+	storage := newTestStorage(t)
+	registry := &fakeRegistryWithError{err: errors.New("registry rpc failed")}
+	api := newTestAPI(t, storage, registry)
+	request := makeManualRequest(24, 10)
+	enqueueRequest(t, ctx, storage, request)
+
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", nil)
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+	require.Contains(t, response.Body.String(), "registry rpc failed")
+}
+
+func TestManualDecisionNotifyClaimerAdvanceError(t *testing.T) {
+	ctx := context.Background()
+	storage := newTestStorage(t)
+	registry := &fakeRegistryWithAdvanceError{
+		claimer: &errClaimer{
+			target: autoclaimtypes.ClaimerTarget{DestinationNetwork: 10},
+			err:    errors.New("advance failed"),
+		},
+	}
+	api := newTestAPI(t, storage, registry)
+	request := makeManualRequest(25, 10)
+	enqueueRequest(t, ctx, storage, request)
+
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", nil)
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+	require.Contains(t, response.Body.String(), "advance failed")
 }
