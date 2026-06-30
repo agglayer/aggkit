@@ -500,11 +500,7 @@ BlockFinality = "LatestBlock"
 #   - PendingBlock
 #   - FinalizedBlock
 # ------------------------------------------------------------------------------
-# Use LatestBlock because OP-reth in this test env never produces a "finalized"
-# block tag (eth_getBlockByNumber("finalized") returns 0). Using FinalizedBlock
-# blocks the L2ClaimSyncer: the EVMDownloader's safe-zone check requires
-# requestToBlock <= lastFinalizedBlock, which never passes when finalized=0.
-FinalizedBlock = "LatestBlock"
+FinalizedBlock = "FinalizedBlock"
 
 # ------------------------------------------------------------------------------
 # DBPath path of the sqlite db
