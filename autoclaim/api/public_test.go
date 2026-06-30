@@ -40,7 +40,7 @@ func newPublicTestRouter(t *testing.T, storage Querier) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	api := NewPublicAPI(storage, 30*time.Second)
+	api := NewPublicREST(storage, 30*time.Second)
 	api.RegisterRoutes(router)
 	return router
 }
@@ -93,7 +93,7 @@ func doPublicRequest(t *testing.T, router *gin.Engine, path string) *httptest.Re
 
 const autoclaimpublicV1 = "/autoclaim/v1"
 
-func TestPublicAPIListBridgesPaginationAndFilter(t *testing.T) {
+func TestPublicRESTListBridgesPaginationAndFilter(t *testing.T) {
 	storage := newPublicTestStorage(t)
 	router := newPublicTestRouter(t, storage)
 	for i := uint32(1); i <= 3; i++ {
@@ -120,7 +120,7 @@ func TestPublicAPIListBridgesPaginationAndFilter(t *testing.T) {
 	require.Equal(t, uint32(11), filtered.Bridges[0].DestinationNetwork)
 }
 
-func TestPublicAPIListBridgesRejectsOversizedPageSize(t *testing.T) {
+func TestPublicRESTListBridgesRejectsOversizedPageSize(t *testing.T) {
 	router := newPublicTestRouter(t, newPublicTestStorage(t))
 	path := fmt.Sprintf("%s/bridges?page_size=%d", autoclaimpublicV1, autoclaimtypes.MaxRequestPageSize+1)
 	resp := doPublicRequest(t, router, path)
@@ -128,7 +128,7 @@ func TestPublicAPIListBridgesRejectsOversizedPageSize(t *testing.T) {
 	require.Contains(t, resp.Body.String(), "page_size")
 }
 
-func TestPublicAPIGetBridgeByID(t *testing.T) {
+func TestPublicRESTGetBridgeByID(t *testing.T) {
 	storage := newPublicTestStorage(t)
 	router := newPublicTestRouter(t, storage)
 	request := makePublicTestRequest(4, 10)
@@ -144,7 +144,7 @@ func TestPublicAPIGetBridgeByID(t *testing.T) {
 	require.NotEmpty(t, result.GlobalIndex)
 }
 
-func TestPublicAPIGetBridgeNotFound(t *testing.T) {
+func TestPublicRESTGetBridgeNotFound(t *testing.T) {
 	router := newPublicTestRouter(t, newPublicTestStorage(t))
 	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/0:10:404")
 	require.Equal(t, http.StatusNotFound, resp.Code)

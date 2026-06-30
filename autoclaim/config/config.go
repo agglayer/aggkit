@@ -46,7 +46,7 @@ type Config struct {
 }
 
 // APIConfig configures the optional Auto Claim admin API.
-// The server address comes from the global AdminAPI config.
+// The server address comes from the global AdminREST config.
 type APIConfig struct {
 	Enabled bool `mapstructure:"Enabled"`
 }

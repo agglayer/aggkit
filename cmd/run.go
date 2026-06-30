@@ -203,13 +203,13 @@ func start(cliCtx *cli.Context) error {
 
 	// Create shared HTTP servers. Servers are only started when at least one component has
 	// registered routes on them.
-	publicServer := aggkitcommon.NewHTTPServer(cfg.PublicAPI, log.WithFields("module", "public-api"))
-	adminServer := aggkitcommon.NewHTTPServer(cfg.AdminAPI, log.WithFields("module", "admin-api"))
+	publicServer := aggkitcommon.NewHTTPServer(cfg.PublicREST, log.WithFields("module", "public-api"))
+	adminServer := aggkitcommon.NewHTTPServer(cfg.AdminREST, log.WithFields("module", "admin-api"))
 	var publicHasRoutes, adminHasRoutes bool
 
 	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
 		b := createBridgeService(
-			cfg.PublicAPI,
+			cfg.PublicREST,
 			rollupDataQuerier.RollupID,
 			rollupDataQuerier,
 			l1InfoTreeSync,
@@ -248,7 +248,7 @@ func start(cliCtx *cli.Context) error {
 			Config:                cfg.AutoClaim,
 			LogConfig:             cfg.Log,
 			DBQueryTimeout:        cfg.BridgeL1Sync.DBQueryTimeout.Duration,
-			RESTConfig:            cfg.PublicAPI,
+			RESTConfig:            cfg.PublicREST,
 			L1BridgeSync:          l1BridgeSync,
 			L1InfoTreeSync:        l1InfoTreeSync,
 			L1Client:              l1Client,
@@ -263,10 +263,10 @@ func start(cliCtx *cli.Context) error {
 			return err
 		}
 		if acRuntime != nil {
-			acRuntime.PublicAPI.RegisterRoutes(publicServer.Engine())
+			acRuntime.PublicREST.RegisterRoutes(publicServer.Engine())
 			publicHasRoutes = true
-			if acRuntime.AdminAPI != nil {
-				acRuntime.AdminAPI.RegisterRoutes(adminServer.Engine())
+			if acRuntime.AdminREST != nil {
+				acRuntime.AdminREST.RegisterRoutes(adminServer.Engine())
 				adminHasRoutes = true
 			}
 		}
@@ -278,7 +278,7 @@ func start(cliCtx *cli.Context) error {
 				log.Errorf("public-api server stopped with error: %v", err)
 			}
 		}()
-		log.Infof("Public API listening on %s", cfg.PublicAPI.Address())
+		log.Infof("Public API listening on %s", cfg.PublicREST.Address())
 	}
 	if adminHasRoutes {
 		go func() {
@@ -286,7 +286,7 @@ func start(cliCtx *cli.Context) error {
 				log.Errorf("admin-api server stopped with error: %v", err)
 			}
 		}()
-		log.Infof("Admin API listening on %s", cfg.AdminAPI.Address())
+		log.Infof("Admin API listening on %s", cfg.AdminREST.Address())
 	}
 
 	for _, component := range components {

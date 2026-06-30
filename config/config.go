@@ -272,11 +272,11 @@ type Config struct {
 	// L2NetworkConfig holds configuration specific to the L2 network.
 	L2NetworkConfig ethermanconfig.L2NetworkConfig
 
-	// PublicAPI contains the configuration for the public-facing HTTP API server.
-	PublicAPI common.RESTConfig
+	// PublicREST contains the configuration for the public-facing REST API server.
+	PublicREST common.RESTConfig
 
-	// AdminAPI contains the configuration for the admin HTTP API server.
-	AdminAPI common.RESTConfig
+	// AdminREST contains the configuration for the admin REST API server.
+	AdminREST common.RESTConfig
 
 	// RPC is the config for the RPC server
 	RPC jRPC.Config

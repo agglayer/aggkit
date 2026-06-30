@@ -318,7 +318,7 @@ configuration.
 | --- | --- | --- | --- |
 | `AutoClaim.DryRun` | `false` | No | Runs the full pipeline but skips submitting claim transactions; matching requests end in the terminal `dry-run` status. Auto Claim is enabled by selecting the `autoclaim` component (there is no separate enable flag). |
 | `AutoClaim.StoragePath` | `{{PathRWData}}/autoclaim.sqlite` | Yes | SQLite database for requests, cursors, decisions, proofs, and transaction attempts. |
-| `AutoClaim.API.Enabled` | `false` | No | Enables the admin routes (approve/reject) on the shared admin API server (`[AdminAPI]`). |
+| `AutoClaim.API.Enabled` | `false` | No | Enables the admin routes (approve/reject) on the shared admin API server (`[AdminREST]`). |
 | `AutoClaim.L1ToL2BridgeDetector.Enabled` | `true` | No | Enables L1 bridge discovery for configured L2 claimers. |
 | `AutoClaim.L1ToL2BridgeDetector.StartBlock` | `0` | No | First L1 block used when a destination-network cursor does not exist. New claimers backfill from this block. |
 | `AutoClaim.L1ToL2BridgeDetector.PollInterval` | `3s` | Yes | How often the bridge detector polls `l1bridgesync`. Must be greater than zero. |
@@ -375,17 +375,17 @@ or tokens respectively; token matching is case-insensitive. Notes on `basic-filt
 Auto Claim endpoints are split by audience so operators can expose request status publicly without exposing admin
 controls:
 
-- **Public, read-only** request inspection is served on the **public API** (`[PublicAPI]` port, default 5577) under the
+- **Public, read-only** request inspection is served on the **public API** (`[PublicREST]` port, default 5577) under the
   `/autoclaim/v1` prefix. These routes are registered only when the `autoclaim` component is running.
-- **Admin** manual decisions are served on the **admin API** (`[AdminAPI]` port, default 5579) under the
+- **Admin** manual decisions are served on the **admin API** (`[AdminREST]` port, default 5579) under the
   `/autoclaim/v1` prefix, gated by `[AutoClaim.API].Enabled`, so it can be firewalled off.
 
 | Method and path | Server | Purpose |
 | --- | --- | --- |
-| `GET /autoclaim/v1/bridges` | Public (`[PublicAPI]`) | List tracked requests. |
-| `GET /autoclaim/v1/bridges/{id}` | Public (`[PublicAPI]`) | Inspect one request by Auto Claim request ID (`origin:destination:deposit_count`). |
-| `POST /autoclaim/v1/bridges/{id}/approve` | Admin (`[AdminAPI]`) | Approve a request currently in `manual-approval-required`. |
-| `POST /autoclaim/v1/bridges/{id}/reject` | Admin (`[AdminAPI]`) | Reject a request currently in `manual-approval-required`. |
+| `GET /autoclaim/v1/bridges` | Public (`[PublicREST]`) | List tracked requests. |
+| `GET /autoclaim/v1/bridges/{id}` | Public (`[PublicREST]`) | Inspect one request by Auto Claim request ID (`origin:destination:deposit_count`). |
+| `POST /autoclaim/v1/bridges/{id}/approve` | Admin (`[AdminREST]`) | Approve a request currently in `manual-approval-required`. |
+| `POST /autoclaim/v1/bridges/{id}/reject` | Admin (`[AdminREST]`) | Reject a request currently in `manual-approval-required`. |
 
 List query parameters: `origin_network`, `destination_network`, `status`, `policy_status` (alias: `policy_result`),
 `bridge_tx_hash`, `claim_tx_hash`, `from_block`, `to_block`, `page_number`, and `page_size` (maximum 1000).
@@ -410,10 +410,10 @@ metadata, timestamps, and `last_error`.
 Example workflow for `api-approve`:
 
 ```bash
-# Inspect via the public API ([PublicAPI] port, e.g. 5577).
+# Inspect via the public API ([PublicREST] port, e.g. 5577).
 curl "http://localhost:5577/autoclaim/v1/bridges?status=manual-approval-required"
 curl "http://localhost:5577/autoclaim/v1/bridges/0:1:42"
-# Approve via the admin API ([AdminAPI] port, e.g. 5579).
+# Approve via the admin API ([AdminREST] port, e.g. 5579).
 curl -X POST "http://localhost:5579/autoclaim/v1/bridges/0:1:42/approve" \
   -H "Content-Type: application/json" \
   -d '{"reason":"approved after bridge review","decider":"operator","decider_id":"alice"}'

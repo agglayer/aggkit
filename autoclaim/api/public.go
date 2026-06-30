@@ -20,22 +20,22 @@ type Querier interface {
 	ListRequests(ctx context.Context, filter autoclaimtypes.RequestFilter) (*autoclaimtypes.RequestPage, error)
 }
 
-// PublicAPI serves the Auto Claim public read endpoints.
-type PublicAPI struct {
+// PublicREST serves the Auto Claim public read endpoints.
+type PublicREST struct {
 	querier     Querier
 	readTimeout time.Duration
 }
 
-// NewPublicAPI creates a PublicAPI that serves autoclaim read endpoints.
-func NewPublicAPI(querier Querier, readTimeout time.Duration) *PublicAPI {
-	return &PublicAPI{querier: querier, readTimeout: readTimeout}
+// NewPublicREST creates a PublicREST that serves autoclaim read endpoints.
+func NewPublicREST(querier Querier, readTimeout time.Duration) *PublicREST {
+	return &PublicREST{querier: querier, readTimeout: readTimeout}
 }
 
 // RegisterRoutes registers Auto Claim public read routes on router.
 //
 //	GET /autoclaim/v1/bridges
 //	GET /autoclaim/v1/bridges/:id
-func (p *PublicAPI) RegisterRoutes(router gin.IRouter) {
+func (p *PublicREST) RegisterRoutes(router gin.IRouter) {
 	group := router.Group(publicPrefix)
 	group.GET("/bridges", p.listBridges)
 	group.GET("/bridges/:id", p.getBridge)
@@ -62,7 +62,7 @@ func (p *PublicAPI) RegisterRoutes(router gin.IRouter) {
 // @Failure 400 {object} apitypes.ErrorResponse "Bad Request"
 // @Failure 500 {object} apitypes.ErrorResponse "Internal Server Error"
 // @Router /autoclaim/v1/bridges [get]
-func (p *PublicAPI) listBridges(c *gin.Context) {
+func (p *PublicREST) listBridges(c *gin.Context) {
 	filter, err := apitypes.ParseRequestFilter(c)
 	if err != nil {
 		writePublicError(c, http.StatusBadRequest, err)
@@ -104,7 +104,7 @@ func (p *PublicAPI) listBridges(c *gin.Context) {
 // @Failure 404 {object} apitypes.ErrorResponse "Not Found"
 // @Failure 500 {object} apitypes.ErrorResponse "Internal Server Error"
 // @Router /autoclaim/v1/bridges/{id} [get]
-func (p *PublicAPI) getBridge(c *gin.Context) {
+func (p *PublicREST) getBridge(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), p.readTimeout)
 	defer cancel()
 

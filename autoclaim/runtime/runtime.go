@@ -79,10 +79,10 @@ type Runtime struct {
 	Claimers       []autoclaimtypes.Claimer
 	Registry       autoclaimtypes.ClaimerRegistry
 	BridgeDetector *bridgedetector.L1ToL2
-	// AdminAPI registers admin routes (approve/reject) on the shared admin HTTP server.
-	AdminAPI *api.API
-	// PublicAPI registers read routes on the shared public HTTP server.
-	PublicAPI     *api.PublicAPI
+	// AdminREST registers admin routes (approve/reject) on the shared admin HTTP server.
+	AdminREST *api.API
+	// PublicREST registers read routes on the shared public HTTP server.
+	PublicREST     *api.PublicREST
 	EthTxManagers []EthTxManager
 }
 
@@ -308,7 +308,7 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 	startRuntimeComponents(ctx, runtime, gerSyncerStarts, factories)
 
 	// Public read API — always created when the runtime is active.
-	runtime.PublicAPI = api.NewPublicAPI(storage, deps.RESTConfig.ReadTimeout.Duration)
+	runtime.PublicREST = api.NewPublicREST(storage, deps.RESTConfig.ReadTimeout.Duration)
 
 	// Admin API — only created when enabled.
 	if cfg.API.Enabled {
@@ -321,7 +321,7 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 		if err != nil {
 			return nil, fmt.Errorf("create AutoClaim admin API: %w", err)
 		}
-		runtime.AdminAPI = apiServer
+		runtime.AdminREST = apiServer
 	}
 
 	logger.Info("Auto Claim started")
