@@ -82,7 +82,7 @@ type Runtime struct {
 	// AdminREST registers admin routes (approve/reject) on the shared admin HTTP server.
 	AdminREST *api.API
 	// PublicREST registers read routes on the shared public HTTP server.
-	PublicREST     *api.PublicREST
+	PublicREST    *api.PublicREST
 	EthTxManagers []EthTxManager
 }
 
