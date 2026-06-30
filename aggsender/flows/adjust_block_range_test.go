@@ -29,7 +29,7 @@ func Test_baseFlow_AdjustBlockRange_NilBuildParams(t *testing.T) {
 	require.Nil(t, result)
 }
 
-func Test_baseFlow_adjustMaxL2BlockRange(t *testing.T) {
+func Test_baseFlow_adjustMaxL2BlockNumber(t *testing.T) {
 	t.Parallel()
 
 	lastSentCert := &types.CertificateHeader{CertificateID: common.HexToHash("0x1")}
@@ -174,6 +174,166 @@ func Test_baseFlow_adjustMaxL2BlockRange(t *testing.T) {
 			},
 			options:       types.BlockRangeAdjustmentOptions{MaxL2BlockNumber: 9, RequireOneBridgeInCertificate: true},
 			expectedError: ErrComplete,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := &baseFlow{log: log.WithFields("test", t.Name())}
+
+			result, err := f.adjustMaxL2BlockNumber(tc.buildParams, tc.options)
+
+			if tc.expectedError != nil {
+				require.ErrorIs(t, err, tc.expectedError)
+				require.Nil(t, result)
+				return
+			}
+			if tc.errorContains != "" {
+				require.ErrorContains(t, err, tc.errorContains)
+				require.Nil(t, result)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			tc.checkResult(t, result)
+		})
+	}
+}
+
+func Test_baseFlow_adjustMaxL2BlockRange(t *testing.T) {
+	t.Parallel()
+
+	lastSentCert := &types.CertificateHeader{CertificateID: common.HexToHash("0x1")}
+	aggchainProof := &types.AggchainProof{EndBlock: 12}
+
+	tests := []struct {
+		name          string
+		buildParams   *types.CertificateBuildParams
+		options       types.BlockRangeAdjustmentOptions
+		checkResult   func(t *testing.T, result *types.CertificateBuildParams)
+		expectedError error
+		errorContains string
+	}{
+		{
+			name: "no max l2 block range configured keeps original certificate",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 5,
+				ToBlock:   12,
+			},
+			options: types.BlockRangeAdjustmentOptions{},
+			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
+				require.Equal(t, uint64(5), result.FromBlock)
+				require.Equal(t, uint64(12), result.ToBlock)
+			},
+		},
+		{
+			name: "range already within limit keeps original certificate",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 5,
+				ToBlock:   8,
+			},
+			options: types.BlockRangeAdjustmentOptions{MaxL2BlockRange: 3},
+			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
+				require.Equal(t, uint64(5), result.FromBlock)
+				require.Equal(t, uint64(8), result.ToBlock)
+			},
+		},
+		{
+			name: "single block range is always within limit",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 5,
+				ToBlock:   5,
+			},
+			options: types.BlockRangeAdjustmentOptions{MaxL2BlockRange: 1},
+			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
+				require.Equal(t, uint64(5), result.FromBlock)
+				require.Equal(t, uint64(5), result.ToBlock)
+			},
+		},
+		{
+			name: "retry certificate cannot be resized when disabled",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock:                      5,
+				ToBlock:                        12,
+				RetryCount:                     1,
+				LastSentCertificate:            lastSentCert,
+				CertificateType:                types.CertificateTypeFEP,
+				L1InfoTreeLeafCount:            5,
+				AggchainProof:                  aggchainProof,
+				ExtraData:                      "keep-me",
+				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x11"),
+			},
+			options:       types.BlockRangeAdjustmentOptions{MaxL2BlockRange: 3},
+			expectedError: ErrMaxL2BlockRangeExceededInARetryCert,
+		},
+		{
+			name: "shrinks range and preserves metadata",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock:                      5,
+				ToBlock:                        12,
+				Bridges:                        []bridgesync.Bridge{{BlockNum: 5, DepositCount: 1}, {BlockNum: 8, DepositCount: 2}, {BlockNum: 9, DepositCount: 3}},
+				Claims:                         []claimsynctypes.Claim{{BlockNum: 7}, {BlockNum: 9}},
+				Unclaims:                       []claimsynctypes.Unclaim{{BlockNumber: 8}, {BlockNumber: 10}},
+				CreatedAt:                      99,
+				RetryCount:                     1,
+				LastSentCertificate:            lastSentCert,
+				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x22"),
+				L1InfoTreeLeafCount:            12,
+				AggchainProof:                  aggchainProof,
+				CertificateType:                types.CertificateTypePP,
+				ExtraData:                      "extra",
+			},
+			options: types.BlockRangeAdjustmentOptions{MaxL2BlockRange: 3, AllowResizeRetryCert: true},
+			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
+				require.Equal(t, uint64(5), result.FromBlock)
+				require.Equal(t, uint64(8), result.ToBlock)
+				require.Len(t, result.Bridges, 2)
+				require.Len(t, result.Claims, 1)
+				require.Len(t, result.Unclaims, 1)
+				require.Equal(t, uint32(99), result.CreatedAt)
+				require.Equal(t, 1, result.RetryCount)
+				require.Same(t, lastSentCert, result.LastSentCertificate)
+				require.Equal(t, common.HexToHash("0x22"), result.L1InfoTreeRootFromWhichToProve)
+				require.Equal(t, uint32(12), result.L1InfoTreeLeafCount)
+				require.Same(t, aggchainProof, result.AggchainProof)
+				require.Equal(t, types.CertificateTypePP, result.CertificateType)
+				require.Equal(t, "extra", result.ExtraData)
+			},
+		},
+		{
+			name: "allow empty certificate when bridges are not required",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 5,
+				ToBlock:   12,
+				Bridges:   []bridgesync.Bridge{{BlockNum: 12}},
+			},
+			options: types.BlockRangeAdjustmentOptions{MaxL2BlockRange: 3},
+			checkResult: func(t *testing.T, result *types.CertificateBuildParams) {
+				t.Helper()
+				require.Equal(t, uint64(5), result.FromBlock)
+				require.Equal(t, uint64(8), result.ToBlock)
+				require.Empty(t, result.Bridges)
+				require.Empty(t, result.Claims)
+			},
+		},
+		{
+			name: "required bridge with remaining claims returns error",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 5,
+				ToBlock:   12,
+				Bridges:   []bridgesync.Bridge{{BlockNum: 12}},
+				Claims:    []claimsynctypes.Claim{{BlockNum: 7}},
+			},
+			options:       types.BlockRangeAdjustmentOptions{MaxL2BlockRange: 3, RequireOneBridgeInCertificate: true},
+			errorContains: "has no bridges but has 1 imported bridges",
 		},
 	}
 

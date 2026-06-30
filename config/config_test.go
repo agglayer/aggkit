@@ -77,6 +77,8 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.RollupManagerAddr, cfg.Validator.LerQuerier.RollupManagerAddr)
 	require.Equal(t, uint64(0), cfg.AggSender.UnsetClaimsMaxLogBlockRange)
 	require.Equal(t, cfg.AggSender.UnsetClaimsMaxLogBlockRange, cfg.Validator.UnsetClaimsMaxLogBlockRange)
+	require.Equal(t, uint64(0), cfg.AggSender.MaxL2BlockRange)
+	require.Equal(t, cfg.AggSender.MaxL2BlockRange, cfg.Validator.MaxL2BlockRange)
 	require.Equal(t, aggsendertypes.AutoMode, cfg.AggSender.Mode)
 	require.Equal(t, aggsendertypes.AutoMode, cfg.Validator.Mode)
 	require.Equal(t, cfg.AggSender.StorageRetainCertificatesPolicy.String(), "retain all certificates, keep history: true")

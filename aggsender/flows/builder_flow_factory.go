@@ -74,6 +74,7 @@ func NewBuilderFlow(
 			commonFlowComponents.Signer,
 			cfg.RequireOneBridgeInPPCertificate,
 			cfg.MaxL2BlockNumber,
+			cfg.MaxL2BlockRange,
 		), nil
 	case types.AggchainProofMode:
 		aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(cfg.AggkitProverClient)
@@ -134,7 +135,7 @@ func NewBuilderFlow(
 
 		return NewAggchainProverBuilderFlow(
 			logger,
-			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
+			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber, cfg.MaxL2BlockRange),
 			commonFlowComponents.BaseFlow,
 			storage,
 			commonFlowComponents.L1InfoTreeDataQuerier,
