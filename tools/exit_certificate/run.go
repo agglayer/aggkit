@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	aggkit "github.com/agglayer/aggkit"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
@@ -19,6 +20,56 @@ const (
 	dirPermissions  = 0o755
 	filePermissions = 0o600
 )
+
+// printStartupBanner logs a one-off traceability banner with the build version
+// info, the config file path + sha256, and the (shell-escaped) command line.
+// cfg.ConfigSHA256 is computed from the exact bytes LoadConfig parsed, so the
+// hash always matches the config actually used for the run.
+func printStartupBanner(cfg *Config) {
+	v := aggkit.GetVersion()
+
+	log.Info("╔═══════════════════════════════════════════╗")
+	log.Info("║   Exit Certificate Tool — Traceability    ║")
+	log.Info("╚═══════════════════════════════════════════╝")
+	log.Infof("Version:      %s", v.Version)
+	log.Infof("Git revision: %s", v.GitRev)
+	log.Infof("Git branch:   %s", v.GitBranch)
+	log.Infof("Built:        %s", v.BuildDate)
+	log.Infof("Go version:   %s", v.GoVersion)
+	log.Infof("OS/Arch:      %s/%s", v.OS, v.Arch)
+	log.Infof("Config file:  %s (sha256: %s)", cfg.ConfigPath, cfg.ConfigSHA256)
+	log.Infof("Command line: %s", shellQuoteArgs(os.Args))
+}
+
+// shellQuoteArgs joins argv into a single, copy-pasteable command line,
+// single-quoting any argument that contains characters the shell would
+// otherwise interpret (spaces, quotes, globs, …) so argument boundaries are
+// preserved. Empty arguments become ”.
+func shellQuoteArgs(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = shellQuote(a)
+	}
+	return strings.Join(quoted, " ")
+}
+
+// shellQuote returns a POSIX-shell-safe representation of a single argument.
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	if strings.IndexFunc(s, func(r rune) bool { return !isShellSafeRune(r) }) < 0 {
+		return s // only safe characters, no quoting needed
+	}
+	// Wrap in single quotes, escaping any embedded single quote as '\''.
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// isShellSafeRune reports whether r can appear unquoted in a POSIX shell word.
+func isShellSafeRune(r rune) bool {
+	return r == '_' || r == '-' || r == '.' || r == '/' || r == '=' ||
+		(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+}
 
 // Run is the CLI entry point.
 func Run(c *cli.Context) error {
@@ -38,6 +89,8 @@ func Run(c *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+
+	printStartupBanner(cfg)
 
 	if err := os.MkdirAll(cfg.Options.OutputDir, dirPermissions); err != nil {
 		return fmt.Errorf("create output dir: %w", err)

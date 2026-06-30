@@ -1,7 +1,9 @@
 package exit_certificate
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -142,4 +144,48 @@ func TestSaveJSON_ComplexData(t *testing.T) {
 	var loaded map[string]any
 	require.NoError(t, json.Unmarshal(content, &loaded))
 	require.Equal(t, "1000000", loaded["balance"])
+}
+
+func TestShellQuote(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"", "''"},
+		{"plain", "plain"},
+		{"--config", "--config"},
+		{"a/b-c.json", "a/b-c.json"},
+		{"key=value", "key=value"},
+		{"a b", "'a b'"},
+		{"sign, submit", "'sign, submit'"},
+		{"it's", `'it'\''s'`},
+	}
+	for _, tt := range tests {
+		require.Equal(t, tt.want, shellQuote(tt.in), "shellQuote(%q)", tt.in)
+	}
+
+	require.Equal(t, "exit --step 'a b'",
+		shellQuoteArgs([]string{"exit", "--step", "a b"}))
+}
+
+func TestLoadConfigSetsSHA256(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "parameters.json")
+	raw := []byte(`{
+  "l2RpcUrl": "http://localhost:8545",
+  "l2BridgeAddress": "0x0000000000000000000000000000000000000001",
+  "exitAddress": "0x000000000000000000000000000000000000dEaD",
+  "targetBlock": "100",
+  "options": { "useAgglayerAdminToStepFCheck": false }
+}`)
+	require.NoError(t, os.WriteFile(path, raw, 0o600))
+
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.Equal(t, path, cfg.ConfigPath)
+	require.Equal(t, fmt.Sprintf("%x", sha256.Sum256(raw)), cfg.ConfigSHA256)
 }

@@ -10,6 +10,10 @@ import (
 )
 
 func main() {
+	cli.VersionPrinter = func(*cli.Context) {
+		aggkit.PrintVersion(os.Stdout)
+	}
+
 	app := cli.NewApp()
 	app.Name = "exit-certificate"
 	app.Usage = "Generate exit certificates for zkEVM chain migration"
