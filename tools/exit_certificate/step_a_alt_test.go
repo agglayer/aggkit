@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -282,4 +283,168 @@ func TestAccountAddress(t *testing.T) {
 	// Non-address key with no inner field → not ok.
 	_, ok = accountAddress("not-an-address", nil)
 	require.False(t, ok)
+}
+
+func TestAccountRangeParams_DialectShapes(t *testing.T) {
+	t.Parallel()
+
+	start := []byte{0x01, 0x02}
+
+	erigon := accountRangeParams("0x10", start, 5000, dialectErigon)
+	require.Len(t, erigon, 5, "erigon takes 5 args (no incompletes)")
+	require.Equal(t, base64.StdEncoding.EncodeToString(start), erigon[1], "erigon start is base64")
+
+	geth := accountRangeParams("0x10", start, 5000, dialectGeth)
+	require.Len(t, geth, 6, "geth takes 6 args (incompletes)")
+	require.Equal(t, "0x0102", geth[1], "geth start is 0x-hex")
+	require.Equal(t, false, geth[5], "geth incompletes=false")
+}
+
+// A node that returns an empty accounts map without an RPC error (e.g. stock geth without
+// preimages) must be rejected so callers can fall back instead of trusting an empty dump.
+func TestCollectAccountsViaStateDump_ZeroAccountsErrors(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		_, _ = w.Write(encodeRPC(t, req.ID, `{"root":"0x0","accounts":{},"next":""}`))
+	}))
+	defer server.Close()
+
+	cfg := &Config{L2RPCURL: server.URL}
+	_, err := collectAccountsViaStateDump(context.Background(), cfg, 100)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "0 accounts")
+}
+
+// If the node never returns an empty "next" cursor, the dump must fail loudly once the page cap is
+// reached rather than silently returning a truncated set.
+func TestCollectAccountsViaStateDump_TruncationErrors(t *testing.T) {
+	orig := maxAccountRangePages
+	maxAccountRangePages = 2
+	defer func() { maxAccountRangePages = orig }()
+
+	next := base64.StdEncoding.EncodeToString([]byte{0x01})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		// Always one account and a non-empty cursor → the dump never completes.
+		body := `{"root":"0x0","accounts":{"` + aaltAddr1 + `":{"address":"` + aaltAddr1 + `"}},"next":"` + next + `"}`
+		_, _ = w.Write(encodeRPC(t, req.ID, body))
+	}))
+	defer server.Close()
+
+	cfg := &Config{L2RPCURL: server.URL}
+	_, err := collectAccountsViaStateDump(context.Background(), cfg, 100)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "did not complete")
+}
+
+func TestRunStepAAlt_StateDumpOnly(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.Equal(t, rpcMethodDebugAccountRange, req.Method, "stateDump mode must not scan logs")
+		_, _ = w.Write(encodeRPC(t, req.ID,
+			`{"root":"0x0","accounts":{"`+aaltAddr1+`":{"address":"`+aaltAddr1+`"}},"next":""}`))
+	}))
+	defer server.Close()
+
+	cfg := &Config{L2RPCURL: server.URL, Options: Options{AddressDiscovery: addressDiscoveryStateDump}}
+	result, err := RunStepAAlt(context.Background(), cfg, 10, nil)
+	require.NoError(t, err)
+	require.Equal(t, []common.Address{common.HexToAddress(aaltAddr1)}, result.Addresses)
+}
+
+func TestRunStepAAlt_LogsOnly(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.Equal(t, rpcMethodEthGetLogs, req.Method, "logs mode must not dump state")
+		_, _ = w.Write(encodeRPC(t, req.ID,
+			`[{"topics":["`+transferTopic.Hex()+`","`+topicForAddr(aaltAddr1)+`","`+topicForAddr(aaltAddr2)+`"]}]`))
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		L2RPCURL: server.URL,
+		Options:  Options{AddressDiscovery: addressDiscoveryLogs, BlockRange: defaultBlockRange, ConcurrencyLimit: 2},
+	}
+	wrappedTokens := []WrappedToken{{WrappedTokenAddress: common.HexToAddress(aaltToken)}}
+	result, err := RunStepAAlt(context.Background(), cfg, 10, wrappedTokens)
+	require.NoError(t, err)
+	require.Equal(t, []common.Address{
+		common.HexToAddress(aaltAddr1), common.HexToAddress(aaltAddr2),
+	}, result.Addresses)
+}
+
+// The Transfer-log scan must start at block 0 regardless of l2StartBlock, so token-only holders
+// that received before l2StartBlock are not dropped.
+func TestCollectTokenHoldersViaLogs_ScansFromGenesis(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	var fromBlocks []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     int              `json:"id"`
+			Params []map[string]any `json:"params"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		fromBlock, ok := req.Params[0]["fromBlock"].(string)
+		require.True(t, ok)
+		mu.Lock()
+		fromBlocks = append(fromBlocks, fromBlock)
+		mu.Unlock()
+		_, _ = w.Write(encodeRPC(t, req.ID, `[]`))
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		L2RPCURL: server.URL,
+		Options:  Options{BlockRange: defaultBlockRange, ConcurrencyLimit: 4, L2StartBlock: 1_000_000},
+	}
+	wrappedTokens := []WrappedToken{{WrappedTokenAddress: common.HexToAddress(aaltToken)}}
+	_, err := collectTokenHoldersViaLogs(context.Background(), cfg, 10, wrappedTokens)
+	require.NoError(t, err)
+	require.Contains(t, fromBlocks, "0x0", "scan must start at genesis, not l2StartBlock")
+}
+
+func TestDebugAccountRange_Errors(t *testing.T) {
+	t.Parallel()
+
+	// RPC-level error is wrapped and propagated.
+	errServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		_ = json.NewEncoder(w).Encode(jsonRPCResponse{
+			JSONRPC: "2.0", ID: req.ID, Error: &jsonRPCError{Code: -32601, Message: "method not found"},
+		})
+	}))
+	defer errServer.Close()
+	_, err := debugAccountRange(context.Background(), errServer.URL, "0x1", nil, 10, dialectErigon)
+	require.ErrorContains(t, err, "debug_accountRange")
+
+	// Non-JSON result yields an unmarshal error.
+	badServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		_, _ = w.Write(encodeRPC(t, req.ID, `"not-an-object"`))
+	}))
+	defer badServer.Close()
+	_, err = debugAccountRange(context.Background(), badServer.URL, "0x1", nil, 10, dialectGeth)
+	require.ErrorContains(t, err, "unmarshal")
+}
+
+func TestAccountRangeDialectString(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "geth", dialectGeth.String())
+	require.Equal(t, "erigon", dialectErigon.String())
+	require.Equal(t, "undetected", dialectUnknown.String())
 }

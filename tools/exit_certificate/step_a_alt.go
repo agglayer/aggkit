@@ -24,13 +24,12 @@ const (
 
 const (
 	// accountRangePageSize is the number of accounts requested per debug_accountRange page.
-	// Geth caps a single response at 256 regardless (paginating via the next cursor); erigon
-	// honours the requested size, so a larger value reduces the number of sequential round-trips.
-	accountRangePageSize = 5000
-
-	// maxAccountRangePages bounds the pagination loop as a safety valve against a node that
-	// never returns an empty "next" cursor.
-	maxAccountRangePages = 5_000_000
+	// Both geth and erigon/cdk-erigon cap a single response at 256 (paginating via the next cursor),
+	// so requesting 256 yields the same throughput as a larger value while keeping each call cheap.
+	// Requesting more than the cap risks exceeding the HTTP timeout on a slow/loaded node (observed
+	// on cdk-erigon: a 5000-account request timed out, whereas a 256 request returned), so we ask
+	// for exactly the cap.
+	accountRangePageSize = 256
 
 	// accountRangeProgressInterval controls how often progress is logged during the state dump.
 	accountRangeProgressInterval = 50
@@ -45,6 +44,12 @@ const (
 
 // transferTopic is the topic[0] of an ERC-20 Transfer event.
 var transferTopic = common.HexToHash(transferEventSignature)
+
+// maxAccountRangePages bounds the pagination loop as a safety valve against a node that never
+// returns an empty "next" cursor. At accountRangePageSize=256 this allows ~6.4B accounts — far
+// beyond any realistic chain state — before the dump aborts with an error. It is a var (not a
+// const) so tests can shrink it to exercise the truncation guard.
+var maxAccountRangePages = 25_000_000
 
 // accountRangeDialect distinguishes the two incompatible debug_accountRange ABIs in the wild.
 //
@@ -114,6 +119,8 @@ func RunStepAAlt(
 		return nil, err
 	}
 
+	// Remove the zero address (defensive: the individual sources already skip it, but this ensures
+	// it is never present regardless of which discovery paths ran).
 	delete(finalAddrs, common.Address{})
 
 	addresses := make([]common.Address, 0, len(finalAddrs))
@@ -154,8 +161,9 @@ func discoverAddresses(
 	default: // auto
 		accounts, err := collectAccountsViaStateDump(ctx, cfg, targetBlock)
 		if err != nil {
-			log.Warnf("Alternative Step A: debug_accountRange unavailable (%v); falling back to receipt "+
-				"harvesting + Transfer logs (internal value transfers may be missed)", err)
+			log.Warnf("⚠️  Alternative Step A: state dump unavailable (%v); falling back to receipt "+
+				"harvesting + Transfer logs. NOTE: internal value transfers (a CALL with value to a fresh "+
+				"address) are NOT captured by this fallback, so some native-ETH holders may be missed.", err)
 			receiptsAddrs, rerr := collectAddressesViaReceipts(ctx, cfg, targetBlock)
 			if rerr != nil {
 				return fmt.Errorf("receipt-harvest fallback: %w", rerr)
@@ -223,6 +231,7 @@ func collectAccountsViaStateDump(ctx context.Context, cfg *Config, targetBlock u
 	var start []byte
 	stepStart := time.Now()
 
+	completed := false
 	for page := 0; page < maxAccountRangePages; page++ {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -238,6 +247,7 @@ func collectAccountsViaStateDump(ctx context.Context, cfg *Config, targetBlock u
 			return nil, fmt.Errorf("decode accountRange next cursor: %w", err)
 		}
 		if len(next) == 0 {
+			completed = true
 			break
 		}
 		start = next
@@ -251,6 +261,24 @@ func collectAccountsViaStateDump(ctx context.Context, cfg *Config, targetBlock u
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// Fail loudly instead of returning a silently-truncated set: if the page cap was hit while the
+	// node was still returning a non-empty "next" cursor, later steps would run on incomplete data
+	// and under-report balances.
+	if !completed {
+		return nil, fmt.Errorf("debug_accountRange did not complete after %d pages (node kept "+
+			"returning a non-empty next cursor); aborting to avoid a truncated address set", maxAccountRangePages)
+	}
+
+	// Guard against a node that returns an empty dump without an RPC error — e.g. a stock geth
+	// archive node without address preimages, where incompletes=false skips every account. A real
+	// chain at any block always has accounts (at minimum the bridge), so 0 here means the dump is
+	// unusable. Returning an error makes "auto" fall back to receipt harvesting and makes
+	// "stateDump"/"both" fail loudly, instead of silently omitting native holders and contracts.
+	if len(addrSet) == 0 {
+		return nil, fmt.Errorf("debug_accountRange returned 0 accounts at %s (node may lack address "+
+			"preimages); cannot use the state dump", blockTag)
 	}
 
 	log.Infof("State dump complete: %d accounts", len(addrSet))
@@ -367,8 +395,13 @@ func allZero(b []byte) bool {
 }
 
 // collectTokenHoldersViaLogs discovers every wrapped-token holder by scanning Transfer event logs
-// for each token across [l2StartBlock, targetBlock]. Both the indexed `from` and `to` fields are
-// collected, capturing token-only EOAs that never appear in a state dump or trace.
+// for each token across [0, targetBlock]. Both the indexed `from` and `to` fields are collected,
+// capturing token-only EOAs that never appear in a state dump or trace.
+//
+// The scan deliberately starts at block 0 rather than l2StartBlock: a passive holder may have
+// received a wrapped token before l2StartBlock and still hold it at targetBlock. Such token-only
+// EOAs have no nonce/balance/code, so the state dump cannot include them either — the Transfer-log
+// scan is the only source that surfaces them, and skipping early blocks would silently drop them.
 func collectTokenHoldersViaLogs(
 	ctx context.Context, cfg *Config, targetBlock uint64, wrappedTokens []WrappedToken,
 ) ([]common.Address, error) {
@@ -381,7 +414,7 @@ func collectTokenHoldersViaLogs(
 	if blockRange == 0 {
 		blockRange = defaultBlockRange
 	}
-	start := cfg.Options.L2StartBlock
+	const start = uint64(0)
 
 	type logJob struct {
 		token    common.Address

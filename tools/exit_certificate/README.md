@@ -337,7 +337,7 @@ The default Step A traces **every transaction from genesis** with `debug_traceTr
 The alternative Step A (`--step aalt`) discovers the same candidate address set without replaying history, by combining two cheap sources:
 
 1. **State-trie dump** at `targetBlock` via paginated `debug_accountRange` → every account with non-zero balance/nonce/code (all native-ETH holders and every contract), in `O(#accounts)` instead of `O(#transactions)`.
-2. **Transfer event logs** per wrapped token via `eth_getLogs` → every token holder (both `from` and `to`), including the token-only holders that tracing misses. The token list comes from the LBT (Step 0).
+2. **Transfer event logs** per wrapped token via `eth_getLogs` → every token holder (both `from` and `to`), including the token-only holders that tracing misses. The token list comes from the LBT (Step 0). This scan always starts at block 0 (independent of `l2StartBlock`), so passive holders that received a token before `l2StartBlock` and still hold it are not dropped.
 
 The strategy is selected by `options.addressDiscovery` (default `auto`):
 
@@ -354,7 +354,7 @@ The strategy is selected by `options.addressDiscovery` (default `auto`):
 ./target/exit_certificate --config parameters.json --step aalt
 ```
 
-`aalt` is **opt-in** and not part of the default `runAll` pipeline. It writes `step-aalt-addresses.json` and overwrites the canonical `step-a-addresses.json`, so Step B and later steps consume it exactly like the trace-based output. The state-dump path requires an archive node that exposes `debug_accountRange` for `targetBlock`.
+`aalt` is **opt-in** and not part of the default `runAll` pipeline. It writes `step-aalt-addresses.json` and overwrites the canonical `step-a-addresses.json`, so Step B and later steps consume it exactly like the trace-based output. The state-dump path requires an archive node that exposes `debug_accountRange` for `targetBlock` and stores **address preimages** (cdk-erigon does by default; a stock geth node without preimages returns an empty dump, which the tool detects and treats as unavailable so `auto` falls back). A truncated dump (the node never signals completion) is treated as an error rather than silently returning a partial set.
 
 **Output:** `step-aalt-addresses.json`, `step-a-addresses.json` (the file consumed by later steps)
 

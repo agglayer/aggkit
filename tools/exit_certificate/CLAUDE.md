@@ -79,7 +79,9 @@ All checks run regardless of individual failures. A combined error lists every f
 Opt-in replacement for Step A that avoids the full-history `debug_traceTransaction` scan. Not part of `runAll` or step ranges; selected only via `--step aalt`. `RunStepAAlt` combines two sources and merges them:
 
 1. **State dump:** paginated `debug_accountRange(blockTag, start, 256, nocode=true, nostorage=true, incompletes=false)` at `targetBlock` → every account (native-ETH holders + contracts). The `next` cursor is base64 (geth `[]byte`) or 0x-hex; `decodeNextKey` handles both and stops on empty/all-zero.
-2. **Transfer logs:** `eth_getLogs` per wrapped token (topic `Transfer(address,address,uint256)`), collecting indexed `from`/`to` — captures token-only holders that tracing misses (an ERC-20 transfer never touches the recipient account).
+2. **Transfer logs:** `eth_getLogs` per wrapped token (topic `Transfer(address,address,uint256)`) scanned from block 0 (independent of `l2StartBlock`), collecting indexed `from`/`to` — captures token-only holders that tracing misses (an ERC-20 transfer never touches the recipient account).
+
+The state dump fails loudly on a truncated paginated dump (cap reached with a non-empty `next`) and on an empty `accounts` map (e.g. a stock geth node without address preimages); in `auto` mode the empty/unsupported case triggers the receipt-harvest fallback.
 
 - **Option:** `addressDiscovery` = `stateDump` | `logs` | `both` | `auto` (default). `auto` probes `debug_accountRange`; on failure it falls back to receipt harvesting (`scanBlockHeaders` + `receiptAddresses`) + Transfer logs (misses internal value transfers).
 - **Output:** `step-aalt-addresses.json` and the canonical `step-a-addresses.json` (so Step B consumes it unchanged).
