@@ -341,7 +341,6 @@ func TestPreparePendingWhenNoGERInjectedYet(t *testing.T) {
 	require.Empty(t, bridge.proofCalls)
 }
 
-
 func TestPrepareUsesFirstCoveringGERIndex(t *testing.T) {
 	ctx := context.Background()
 	depositCount := uint32(12)

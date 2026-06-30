@@ -125,7 +125,7 @@ type Factories struct {
 	NewTargetClaimReader func(common.Address, aggkittypes.BaseEthereumClienter) (autoclaimtypes.ClaimChecker, error)
 	// NewGERSyncer builds the per-claimer destination-L2 GER syncer and returns a start function that
 	// runs its reorg detector and sync loop (the start function blocks and is meant to run in a goroutine).
-	NewGERSyncer func(ctx context.Context, deps GERSyncerDeps) (proof.L2GERSyncer, func(context.Context), error)
+	NewGERSyncer     func(ctx context.Context, deps GERSyncerDeps) (proof.L2GERSyncer, func(context.Context), error)
 	NewProofPreparer func(
 		l1BridgeSync proof.L1BridgeSyncer,
 		l1InfoTreeSync proof.L1InfoTreeSyncer,

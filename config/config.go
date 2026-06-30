@@ -76,11 +76,11 @@ const (
 	requireValidatorCallDeprecatedHint     = "RequireValidatorCall is deprecated, remove it from configuration"
 	maxSubmitCertificateRateDeprecatedHint = "AggSender.MaxSubmitCertificateRate is deprecated, " +
 		"remove it from configuration, instead use AggSender.AgglayerClient.APIRateLimits"
-	networkIDDeprecatedHint      = "Common.NetworkID is deprecated, remove it from configuration"
-	urlRPCL1DeprecatedHint       = "URLRPCL1 field is deprecated, remove it from configuration"
-	aggsenderEpochPercentageHint              = "AggSender.EpochNotificationPercentage moved to AggSender.TriggerEpochBased.EpochNotificationPercentage" //nolint:lll
-	autoClaimL1ToL2WatchdogDeprecatedHint     = "AutoClaim.L1ToL2Watchdog is renamed to AutoClaim.L1ToL2BridgeDetector, update your configuration"     //nolint:lll
-	autoClaimL2ToLxWatchdogDeprecatedHint     = "AutoClaim.L2ToLxWatchdog is renamed to AutoClaim.L2ToLxBridgeDetector, update your configuration"     //nolint:lll
+	networkIDDeprecatedHint               = "Common.NetworkID is deprecated, remove it from configuration"
+	urlRPCL1DeprecatedHint                = "URLRPCL1 field is deprecated, remove it from configuration"
+	aggsenderEpochPercentageHint          = "AggSender.EpochNotificationPercentage moved to AggSender.TriggerEpochBased.EpochNotificationPercentage" //nolint:lll
+	autoClaimL1ToL2WatchdogDeprecatedHint = "AutoClaim.L1ToL2Watchdog is renamed to AutoClaim.L1ToL2BridgeDetector, update your configuration"       //nolint:lll
+	autoClaimL2ToLxWatchdogDeprecatedHint = "AutoClaim.L2ToLxWatchdog is renamed to AutoClaim.L2ToLxBridgeDetector, update your configuration"       //nolint:lll
 )
 
 type DeprecatedFieldsError struct {

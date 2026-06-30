@@ -18,15 +18,15 @@ type mockHTTPLogger struct {
 	debugfCalls []string
 }
 
-func (m *mockHTTPLogger) Panicf(_ string, _ ...interface{})           {}
-func (m *mockHTTPLogger) Fatalf(_ string, _ ...interface{})           {}
-func (m *mockHTTPLogger) Info(_ ...interface{})                       {}
-func (m *mockHTTPLogger) Infof(_ string, _ ...interface{})            {}
-func (m *mockHTTPLogger) Error(_ ...interface{})                      {}
-func (m *mockHTTPLogger) Errorf(_ string, _ ...interface{})           {}
-func (m *mockHTTPLogger) Warn(_ ...interface{})                       {}
-func (m *mockHTTPLogger) Warnf(_ string, _ ...interface{})            {}
-func (m *mockHTTPLogger) Debug(_ ...interface{})                      {}
+func (m *mockHTTPLogger) Panicf(_ string, _ ...interface{}) {}
+func (m *mockHTTPLogger) Fatalf(_ string, _ ...interface{}) {}
+func (m *mockHTTPLogger) Info(_ ...interface{})             {}
+func (m *mockHTTPLogger) Infof(_ string, _ ...interface{})  {}
+func (m *mockHTTPLogger) Error(_ ...interface{})            {}
+func (m *mockHTTPLogger) Errorf(_ string, _ ...interface{}) {}
+func (m *mockHTTPLogger) Warn(_ ...interface{})             {}
+func (m *mockHTTPLogger) Warnf(_ string, _ ...interface{})  {}
+func (m *mockHTTPLogger) Debug(_ ...interface{})            {}
 func (m *mockHTTPLogger) Debugf(format string, args ...interface{}) {
 	m.debugfCalls = append(m.debugfCalls, fmt.Sprintf(format, args...))
 }
@@ -35,7 +35,9 @@ func freePort(t *testing.T) int {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	port := l.Addr().(*net.TCPAddr).Port
+	tcpAddr, ok := l.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := tcpAddr.Port
 	require.NoError(t, l.Close())
 	return port
 }

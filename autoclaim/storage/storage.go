@@ -955,13 +955,15 @@ func (r *requestRow) toRequest() (*autoclaimtypes.AutoClaimRequest, error) {
 	}
 	request.Proof = proof
 
-	policyDecision, err := unmarshalOptionalJSON[autoclaimtypes.PolicyDecision](r.PolicyDecisionJSON, "decision "+r.RequestKey)
+	policyDecision, err := unmarshalOptionalJSON[autoclaimtypes.PolicyDecision](
+		r.PolicyDecisionJSON, "decision "+r.RequestKey)
 	if err != nil {
 		return nil, err
 	}
 	request.PolicyDecision = policyDecision
 
-	manualDecision, err := unmarshalOptionalJSON[autoclaimtypes.PolicyDecision](r.ManualDecisionJSON, "manual decision "+r.RequestKey)
+	manualDecision, err := unmarshalOptionalJSON[autoclaimtypes.PolicyDecision](
+		r.ManualDecisionJSON, "manual decision "+r.RequestKey)
 	if err != nil {
 		return nil, err
 	}

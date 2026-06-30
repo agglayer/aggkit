@@ -1517,7 +1517,8 @@ func (b *BridgeService) getFirstVerifiedBatchesForL2DepositCountBinary(
 
 	for lowerLimit <= upperLimit {
 		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binarySearchDivider)
-		newBest, newLower, newUpper, action, err := b.binarySearchStep(ctx, targetBlock, lowerLimit, upperLimit, depositCount, bestResult)
+		newBest, newLower, newUpper, action, err := b.binarySearchStep(
+			ctx, targetBlock, lowerLimit, upperLimit, depositCount, bestResult)
 		if err != nil {
 			return nil, false, err
 		}
