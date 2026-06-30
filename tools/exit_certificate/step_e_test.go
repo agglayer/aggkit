@@ -236,15 +236,15 @@ func TestDecodeABIString(t *testing.T) {
 
 	// abiString builds a well-formed ABI-encoded string: 32-byte offset, 32-byte length, padded data.
 	abiString := func(s string) []byte {
-		out := make([]byte, twoABIWords)
+		data := []byte(s)
+		// pad the data to a multiple of the ABI word size
+		paddedLen := ((len(data) + abiWordBytes - 1) / abiWordBytes) * abiWordBytes
+		out := make([]byte, twoABIWords+paddedLen)
 		out[abiWordBytes-1] = 0x20 // offset = 32
 		lenBytes := big.NewInt(int64(len(s))).Bytes()
 		copy(out[twoABIWords-len(lenBytes):twoABIWords], lenBytes)
-		data := []byte(s)
-		// pad to a multiple of the ABI word size
-		padded := make([]byte, ((len(data)+abiWordBytes-1)/abiWordBytes)*abiWordBytes)
-		copy(padded, data)
-		return append(out, padded...)
+		copy(out[twoABIWords:], data)
+		return out
 	}
 
 	// header builds just the 64-byte offset+length header with an explicit raw length field.
@@ -281,7 +281,6 @@ func TestDecodeABIString(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			require.NotPanics(t, func() {
