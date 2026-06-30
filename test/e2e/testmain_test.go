@@ -30,7 +30,14 @@ func TestMain(m *testing.M) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 
-	env, err := envs.LoadEnv(ctx, envs.EnvOpPP)
+	// Select which env to load via AGGKIT_E2E_ENV (used by CI to run the 2-chain matrix);
+	// defaults to the single-chain op-pp env.
+	envName := envs.ENVName(os.Getenv("AGGKIT_E2E_ENV"))
+	if envName == "" {
+		envName = envs.EnvOpPP
+	}
+
+	env, err := envs.LoadEnv(ctx, envName)
 	if err != nil {
 		cancel()
 		log.Fatalf("failed to load env: %v", err)

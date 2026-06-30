@@ -517,3 +517,176 @@ func BridgeL2ToL1(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	log.Info("L2->L1 flow completed successfully (helper)")
 	return nil
 }
+
+// BridgeL2ToL2 runs the L2A -> L2B bridge flow using the given environment and transactors.
+// originOpts authorizes the bridge tx on L2A; destOpts authorizes the claim on L2B and its
+// From address is used as the destination address. token is the L2A-native asset to bridge
+// (the caller is responsible for funding/approving it on L2A). Returns error for any failure.
+//
+// This helper requires a multi-chain env: env.L2B must be non-nil (EnvOpPP2Chains).
+func BridgeL2ToL2(
+	ctx context.Context, env *envs.Env, originOpts, destOpts *bind.TransactOpts, token common.Address,
+) error {
+	log.Info("Starting L2->L2 bridge flow (helper)")
+	if env.L2B == nil {
+		return errors.New("L2->L2 bridge requires a multi-chain env (env.L2B is nil)")
+	}
+	callOpts := &bind.CallOpts{Context: ctx}
+	originNetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
+	if err != nil {
+		return fmt.Errorf("failed to get origin (L2A) network ID: %w", err)
+	}
+	destNetworkID, err := env.L2B.Contracts.L2Bridge.NetworkID(callOpts)
+	if err != nil {
+		return fmt.Errorf("failed to get destination (L2B) network ID: %w", err)
+	}
+	bridgeAmount := big.NewInt(1e14)
+	destinationAddress := destOpts.From
+	forceUpdateGlobalExitRoot := true
+
+	initialDestBalance, err := env.L2B.Client.BalanceAt(ctx, destinationAddress, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get initial L2B balance: %w", err)
+	}
+
+	zeroAddr := common.Address{}
+	if token == zeroAddr {
+		originOpts.Value = bridgeAmount
+	}
+	defer func() { originOpts.Value = nil }()
+
+	// 1. Send bridge tx on L2A, destination network = L2B's network ID.
+	bridgeTx, err := env.L2.Contracts.L2Bridge.BridgeAsset(
+		originOpts, destNetworkID, destinationAddress, bridgeAmount, token, forceUpdateGlobalExitRoot, nil,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to send L2->L2 bridge tx: %w", err)
+	}
+	log.Debugf("L2->L2 bridge tx submitted, waiting for mining: tx=%s", bridgeTx.Hash().Hex())
+	receipt, err := bind.WaitMined(ctx, env.Clients.L2, bridgeTx)
+	if err != nil {
+		return fmt.Errorf("failed to wait for L2->L2 bridge tx: %w", err)
+	}
+	log.Debugf("L2->L2 bridge tx mined: tx=%s block=%d", bridgeTx.Hash().Hex(), receipt.BlockNumber.Uint64())
+	if receipt.Status != ethtypes.ReceiptStatusSuccessful {
+		return errors.New("L2->L2 bridge transaction failed")
+	}
+
+	// 2. Poll the origin (L2A) bridge service until the deposit is indexed.
+	log.Debugf("waiting for L2->L2 bridge to appear in origin bridge service: tx=%s", bridgeTx.Hash().Hex())
+	var bridge *types.BridgeResponse
+	for i := 0; i < 30; i++ {
+		pageSize := uint32(100)
+		params := client.GetBridgesParams{NetworkID: originNetworkID, PageSize: &pageSize}
+		bridgesResult, err := env.L2.BridgeService.GetBridges(ctx, params)
+		if err == nil && bridgesResult != nil {
+			for _, b := range bridgesResult.Bridges {
+				if string(b.TxHash) == bridgeTx.Hash().Hex() {
+					bridge = b
+					break
+				}
+			}
+		}
+		if bridge != nil {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if bridge == nil {
+		return errors.New("bridge not found in origin bridge service")
+	}
+	log.Debugf("L2->L2 bridge found in origin bridge service: deposit_count=%d", bridge.DepositCount)
+	depositCount := bridge.DepositCount
+
+	// 3. Poll until the origin bridge is included in the L1 Info Tree (exit root settled to L1).
+	log.Debugf("waiting for L2->L2 bridge to be included in L1 Info Tree: deposit_count=%d", depositCount)
+	var l1InfoTreeIndex uint32
+	for i := 0; i < 120; i++ {
+		idx, err := env.L2.BridgeService.GetL1InfoTreeIndex(ctx, int(originNetworkID), int(depositCount))
+		if err == nil {
+			l1InfoTreeIndex = idx
+			break
+		}
+		time.Sleep(5 * time.Second)
+	}
+	if l1InfoTreeIndex == 0 {
+		return errors.New("bridge not included in L1 Info Tree (L2->L2)")
+	}
+	log.Debugf("L2->L2 bridge in L1 Info Tree: deposit_count=%d l1InfoTreeIndex=%d", depositCount, l1InfoTreeIndex)
+
+	// 4. GER-propagation wait (the L2->L2-specific step): poll the DESTINATION (L2B) bridge
+	// service until the L1 info leaf has been injected on L2B. This proves agglayer settled
+	// the origin exit root and aggoracle injected the corresponding GER leaf onto L2B.
+	log.Debugf("waiting for L1InfoTreeLeaf injection on L2B: dest=%d leafIndex=%d", destNetworkID, l1InfoTreeIndex)
+	var injectedLeaf *types.L1InfoTreeLeafResponse
+	for i := 0; i < 120; i++ {
+		leaf, err := env.L2B.BridgeService.GetInjectedL1InfoLeaf(ctx, int(destNetworkID), int(l1InfoTreeIndex))
+		if err == nil && leaf != nil {
+			injectedLeaf = leaf
+			break
+		}
+		time.Sleep(5 * time.Second)
+	}
+	if injectedLeaf == nil {
+		return errors.New("L1InfoTreeLeaf was not injected on L2B")
+	}
+	log.Debugf("L1InfoTreeLeaf injected on L2B: destNetworkID=%d l1InfoTreeIndex=%d", destNetworkID, l1InfoTreeIndex)
+
+	// 5. Fetch the claim proof from the DESTINATION (L2B) bridge service.
+	log.Debugf("fetching L2->L2 claim proof: dest=%d leaf=%d deposit=%d", destNetworkID, l1InfoTreeIndex, depositCount)
+	claimProof, err := env.L2B.BridgeService.GetClaimProof(ctx, destNetworkID, l1InfoTreeIndex, depositCount)
+	if err != nil || claimProof == nil {
+		return fmt.Errorf("failed to get L2->L2 claim proof from L2B: %w", err)
+	}
+	log.Debugf("L2->L2 claim proof fetched from L2B")
+	var smtProofLocalExitRoot [32][32]byte
+	for i, proofHex := range claimProof.ProofLocalExitRoot {
+		if i >= 32 {
+			break
+		}
+		smtProofLocalExitRoot[i] = common.HexToHash(string(proofHex))
+	}
+	var smtProofRollupExitRoot [32][32]byte
+	for i, proofHex := range claimProof.ProofRollupExitRoot {
+		if i >= 32 {
+			break
+		}
+		smtProofRollupExitRoot[i] = common.HexToHash(string(proofHex))
+	}
+	mainnetExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.MainnetExitRoot))
+	rollupExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot))
+	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
+	metadata := common.FromHex(bridge.Metadata)
+
+	// 6. Execute the claim on L2B.
+	log.Debugf("sending L2->L2 claim transaction on L2B")
+	claimTx, err := env.L2B.Contracts.L2Bridge.ClaimAsset(
+		destOpts, smtProofLocalExitRoot, smtProofRollupExitRoot, bridge.GlobalIndex,
+		mainnetExitRoot, rollupExitRoot, bridge.OriginNetwork, originTokenAddress,
+		bridge.DestinationNetwork, destinationAddress, bridgeAmount, metadata,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to send L2->L2 claim transaction: %w", err)
+	}
+	log.Debugf("L2B claim tx submitted, waiting for mining: tx=%s", claimTx.Hash().Hex())
+	claimReceipt, err := bind.WaitMined(ctx, env.L2B.Client, claimTx)
+	if err != nil {
+		return fmt.Errorf("failed to wait for L2->L2 claim tx: %w", err)
+	}
+	log.Debugf("L2B claim tx mined: tx=%s block=%d", claimTx.Hash().Hex(), claimReceipt.BlockNumber.Uint64())
+	if claimReceipt.Status != ethtypes.ReceiptStatusSuccessful {
+		return errors.New("L2->L2 claim tx failed")
+	}
+
+	// 7. Assert the destination (L2B) balance increased.
+	finalDestBalance, err := env.L2B.Client.BalanceAt(ctx, destinationAddress, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get final L2B balance: %w", err)
+	}
+	if finalDestBalance.Cmp(initialDestBalance) <= 0 {
+		return fmt.Errorf("L2B balance did not increase: initial=%s final=%s",
+			initialDestBalance.String(), finalDestBalance.String())
+	}
+	log.Info("L2->L2 flow completed successfully (helper)")
+	return nil
+}
