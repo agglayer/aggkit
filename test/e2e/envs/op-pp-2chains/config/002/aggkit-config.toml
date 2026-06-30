@@ -202,8 +202,9 @@ TriggerCertMode = "ASAP"
 # 0 is infinite
 # ------------------------------------------------------------------------------
 # MaxCertSize = 0
-[AggSender.ValidatorClient]
-URL = "aggkit-validator-002:5578"
+
+[AggSender.CommitteeOverride]
+URLMapping = {"http://aggkit-002-aggsender-validator-002:5578" = "http://aggsender-validator-002-c2:5578", "http://aggkit-002-aggsender-validator-003:5578" = "http://aggsender-validator-002-c2:5578"}
 
 [AggSender.AggkitProverClient]
 UseTLS = false

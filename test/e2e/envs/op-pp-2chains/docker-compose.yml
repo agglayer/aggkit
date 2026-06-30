@@ -44,17 +44,32 @@ services:
       - "9001:9001"    # Metrics
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
+      # Wait until geth has imported its full snapshot chain (block 320 = 0x140) before the
+      # beacon starts. Without this, the beacon connects while geth is still replaying historical
+      # blocks and enters optimistic-sync mode, which permanently stalls L1 block production.
+      # Threshold is 320 (geth data volume contains chain up to block 328, so 320 is always met).
+      test: ["CMD-SHELL", "B=$$(wget -qO- --post-data='{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}' --header='Content-Type:application/json' http://localhost:8545 | grep -o '0x[0-9a-f]*' | head -1); [ -n \"$$B\" ] && [ \"$$(( $$B ))\" -ge 320 ]"]
       interval: 2s
-      timeout: 3s
+      timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 30s
 
   beacon:
     image: arnaubennassar/beacon:op-pp-2chains
     container_name: aggkit-2chains-20260630-151013-beacon
     hostname: beacon
     # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
+    volumes:
+      # Override spec.yaml with a patched version that includes Fulu constants required by Teku 26.2.0.
+      # The image's spec.yaml is missing NUMBER_OF_CUSTODY_GROUPS, DATA_COLUMN_SIDECAR_SUBNET_COUNT,
+      # SAMPLES_PER_SLOT, CUSTODY_REQUIREMENT, VALIDATOR_CUSTODY_REQUIREMENT,
+      # BALANCE_PER_ADDITIONAL_CUSTODY_GROUP, MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS,
+      # and MAX_REQUEST_DATA_COLUMN_SIDECARS — all required when FULU_FORK_EPOCH != max uint64.
+      - ./config/beacon-spec.yaml:/network-configs/spec.yaml:ro
+      # Override entrypoint to handle genesis.ssz patching failure gracefully.
+      # genesis.ssz is a pre-Fulu state that cannot be deserialized with Fulu schema; patching it
+      # is non-critical since Teku uses --initial-state (checkpoint_state.ssz), not genesis.ssz.
+      - ./config/beacon-entrypoint.sh:/usr/local/bin/beacon-entrypoint.sh:ro
     ports:
       - "4000:4000"    # Beacon API
       - "9000:9000"    # P2P TCP
@@ -76,6 +91,9 @@ services:
     container_name: aggkit-2chains-20260630-151013-validator
     hostname: validator
     # Command is handled by validator-entrypoint.sh which gates startup on beacon sync
+    volumes:
+      # Override spec.yaml with patched version including Fulu constants (same fix as beacon).
+      - ./config/beacon-spec.yaml:/network-configs/spec.yaml:ro
     depends_on:
       beacon:
         condition: service_healthy
@@ -135,13 +153,18 @@ services:
     depends_on:
       geth:
         condition: service_healthy
+      beacon:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
+      # op-reth returns HTTP 405 to bare GET; use a JSON-RPC POST instead.
+      test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8545"]
       interval: 2s
       timeout: 3s
       retries: 3
-      start_period: 180s
+      start_period: 300s
+    networks:
+      - default
 
   op-node-001:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
@@ -172,7 +195,30 @@ services:
       interval: 2s
       timeout: 3s
       retries: 3
-      start_period: 240s
+      start_period: 300s
+
+  aggsender-validator-002:
+    image: aggkit:local
+    container_name: aggkit-2chains-20260630-151013-aggsender-validator-002
+    hostname: aggsender-validator-002
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender-validator"
+    volumes:
+      - ./config/001/aggsender-validator-config.toml:/etc/aggkit/config.toml:ro
+      - ./config/001/aggsendervalidator-2.keystore:/etc/aggkit/aggsendervalidator-2.keystore:ro
+    ports:
+      - "11578:5578"    # Validator gRPC
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-reth-001:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
 
   aggkit-001:
     image: aggkit:local
@@ -200,6 +246,8 @@ services:
         condition: service_healthy
       agglayer:
         condition: service_healthy
+      aggsender-validator-002:
+        condition: service_started
     restart: unless-stopped
     environment:
       - RUST_BACKTRACE=1
@@ -222,13 +270,16 @@ services:
     depends_on:
       geth:
         condition: service_healthy
+      beacon:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8545"]
+      # op-reth returns HTTP 405 to bare GET; use a JSON-RPC POST instead.
+      test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8545"]
       interval: 2s
       timeout: 3s
       retries: 3
-      start_period: 180s
+      start_period: 300s
 
   op-node-002:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
@@ -259,7 +310,30 @@ services:
       interval: 2s
       timeout: 3s
       retries: 3
-      start_period: 240s
+      start_period: 300s
+
+  aggsender-validator-002-c2:
+    image: aggkit:local
+    container_name: aggkit-2chains-20260630-151013-aggsender-validator-002-c2
+    hostname: aggsender-validator-002-c2
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender-validator"
+    volumes:
+      - ./config/002/aggsender-validator-config.toml:/etc/aggkit/config.toml:ro
+      - ./config/002/aggsendervalidator-2.keystore:/etc/aggkit/aggsendervalidator-2.keystore:ro
+    ports:
+      - "12578:5578"    # Validator gRPC
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-reth-002:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
 
   aggkit-002:
     image: aggkit:local
@@ -287,6 +361,8 @@ services:
         condition: service_healthy
       agglayer:
         condition: service_healthy
+      aggsender-validator-002-c2:
+        condition: service_started
     restart: unless-stopped
     environment:
       - RUST_BACKTRACE=1
@@ -296,3 +372,6 @@ volumes:
   l2-shared-002:
 # L1 state is baked in, L2 starts fresh with config-only mounts
 # Agglayer and AggKit use host-mounted config files (read-only)
+
+networks:
+  default:

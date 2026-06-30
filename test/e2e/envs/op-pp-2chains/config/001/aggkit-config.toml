@@ -202,8 +202,12 @@ TriggerCertMode = "ASAP"
 # 0 is infinite
 # ------------------------------------------------------------------------------
 # MaxCertSize = 0
-[AggSender.ValidatorClient]
-URL = "aggkit-validator-001:5578"
+
+# CommitteeOverride redirects the on-chain kurtosis validator URLs to our local
+# validator service which has the same key (committee member 002) and is synced
+# from our own op-reth-001 L2 node.
+[AggSender.CommitteeOverride]
+URLMapping = {"http://aggkit-001-aggsender-validator-002:5578" = "http://aggsender-validator-002:5578", "http://aggkit-001-aggsender-validator-003:5578" = "http://aggsender-validator-002:5578"}
 
 [AggSender.AggkitProverClient]
 UseTLS = false

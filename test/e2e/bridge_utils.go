@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/test/contracts/mintableerc20"
 	"github.com/agglayer/aggkit/test/e2e/envs"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -544,11 +545,6 @@ func BridgeL2ToL2(
 	destinationAddress := destOpts.From
 	forceUpdateGlobalExitRoot := true
 
-	initialDestBalance, err := env.L2B.Client.BalanceAt(ctx, destinationAddress, nil)
-	if err != nil {
-		return fmt.Errorf("failed to get initial L2B balance: %w", err)
-	}
-
 	zeroAddr := common.Address{}
 	if token == zeroAddr {
 		originOpts.Value = bridgeAmount
@@ -632,13 +628,35 @@ func BridgeL2ToL2(
 	}
 	log.Debugf("L1InfoTreeLeaf injected on L2B: destNetworkID=%d l1InfoTreeIndex=%d", destNetworkID, l1InfoTreeIndex)
 
-	// 5. Fetch the claim proof from the DESTINATION (L2B) bridge service.
-	log.Debugf("fetching L2->L2 claim proof: dest=%d leaf=%d deposit=%d", destNetworkID, l1InfoTreeIndex, depositCount)
-	claimProof, err := env.L2B.BridgeService.GetClaimProof(ctx, destNetworkID, l1InfoTreeIndex, depositCount)
-	if err != nil || claimProof == nil {
-		return fmt.Errorf("failed to get L2->L2 claim proof from L2B: %w", err)
+	// 5. Record initial destination balance (before claim) for balance assertion.
+	var initialDestBalance *big.Int
+	if token != (common.Address{}) {
+		wrappedTokenAddr, err := env.L2B.Contracts.L2Bridge.ComputeTokenProxyAddress(callOpts, originNetworkID, token)
+		if err != nil {
+			return fmt.Errorf("failed to compute wrapped token address on L2B: %w", err)
+		}
+		wrappedToken, err := mintableerc20.NewMintableerc20(wrappedTokenAddr, env.L2B.Client)
+		if err != nil {
+			return fmt.Errorf("failed to bind wrapped token on L2B: %w", err)
+		}
+		bal, err := wrappedToken.BalanceOf(callOpts, destinationAddress)
+		if err != nil {
+			// Token contract not yet deployed at this address; initial balance is zero.
+			initialDestBalance = big.NewInt(0)
+		} else {
+			initialDestBalance = bal
+		}
 	}
-	log.Debugf("L2->L2 claim proof fetched from L2B")
+
+	// 6. Fetch the claim proof from the ORIGIN (L2A) bridge service.
+	// The origin bridge service knows about L2A's deposits; networkID must be
+	// originNetworkID so the service uses L2A's bridge syncer for the local exit proof.
+	log.Debugf("fetching L2->L2 claim proof: origin=%d leaf=%d deposit=%d", originNetworkID, l1InfoTreeIndex, depositCount)
+	claimProof, err := env.L2.BridgeService.GetClaimProof(ctx, originNetworkID, l1InfoTreeIndex, depositCount)
+	if err != nil || claimProof == nil {
+		return fmt.Errorf("failed to get L2->L2 claim proof from L2A: %w", err)
+	}
+	log.Debugf("L2->L2 claim proof fetched from L2A")
 	var smtProofLocalExitRoot [32][32]byte
 	for i, proofHex := range claimProof.ProofLocalExitRoot {
 		if i >= 32 {
@@ -658,7 +676,7 @@ func BridgeL2ToL2(
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
 	metadata := common.FromHex(bridge.Metadata)
 
-	// 6. Execute the claim on L2B.
+	// 7. Execute the claim on L2B.
 	log.Debugf("sending L2->L2 claim transaction on L2B")
 	claimTx, err := env.L2B.Contracts.L2Bridge.ClaimAsset(
 		destOpts, smtProofLocalExitRoot, smtProofRollupExitRoot, bridge.GlobalIndex,
@@ -678,15 +696,28 @@ func BridgeL2ToL2(
 		return errors.New("L2->L2 claim tx failed")
 	}
 
-	// 7. Assert the destination (L2B) balance increased.
-	finalDestBalance, err := env.L2B.Client.BalanceAt(ctx, destinationAddress, nil)
-	if err != nil {
-		return fmt.Errorf("failed to get final L2B balance: %w", err)
+	// 8. Assert destination balance increased by bridgeAmount.
+	if initialDestBalance != nil {
+		wrappedTokenAddr, err := env.L2B.Contracts.L2Bridge.ComputeTokenProxyAddress(callOpts, originNetworkID, token)
+		if err != nil {
+			return fmt.Errorf("failed to compute wrapped token address on L2B for balance check: %w", err)
+		}
+		wrappedToken, err := mintableerc20.NewMintableerc20(wrappedTokenAddr, env.L2B.Client)
+		if err != nil {
+			return fmt.Errorf("failed to bind wrapped token on L2B for balance check: %w", err)
+		}
+		finalDestBalance, err := wrappedToken.BalanceOf(callOpts, destinationAddress)
+		if err != nil {
+			return fmt.Errorf("failed to get destination balance after claim: %w", err)
+		}
+		expected := new(big.Int).Add(initialDestBalance, bridgeAmount)
+		if finalDestBalance.Cmp(expected) != 0 {
+			return fmt.Errorf("destination balance mismatch: got %s, expected %s (initial %s + bridged %s)",
+				finalDestBalance, expected, initialDestBalance, bridgeAmount)
+		}
+		log.Debugf("L2->L2 destination balance verified: %s (initial %s + bridged %s)", finalDestBalance, initialDestBalance, bridgeAmount)
 	}
-	if finalDestBalance.Cmp(initialDestBalance) <= 0 {
-		return fmt.Errorf("L2B balance did not increase: initial=%s final=%s",
-			initialDestBalance.String(), finalDestBalance.String())
-	}
+
 	log.Info("L2->L2 flow completed successfully (helper)")
 	return nil
 }
