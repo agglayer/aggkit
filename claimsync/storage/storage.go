@@ -17,6 +17,7 @@ import (
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	aggsync "github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum/common"
+	sqlite "github.com/mattn/go-sqlite3"
 	"github.com/russross/meddler"
 )
 
@@ -147,10 +148,18 @@ func (s *claimStorage) getQuerier(tx dbtypes.Querier) dbtypes.Querier {
 }
 
 // InsertBlock inserts a block row using meddler.
+// It is idempotent: if the block already exists (PRIMARY KEY / UNIQUE constraint
+// violation on block.num), the insert is treated as a successful no-op. This guards
+// against the startup race where the L2ClaimSyncer auto-start goroutine and the
+// aggsender's SetClaimSyncerNextRequiredBlock loop both bootstrap the same block.
 func (s *claimStorage) InsertBlock(
 	_ context.Context, tx dbtypes.Querier, blockNum uint64, blockHash common.Hash,
 ) error {
 	if err := meddler.Insert(s.getQuerier(tx), "block", &blockRecord{Num: blockNum, Hash: blockHash.Hex()}); err != nil {
+		if sqliteErr, ok := db.SQLiteErr(err); ok && sqliteErr.Code == sqlite.ErrConstraint {
+			// Block already inserted by a concurrent bootstrap; nothing more to do.
+			return nil
+		}
 		return fmt.Errorf("InsertBlock %d: %w", blockNum, err)
 	}
 	return nil
