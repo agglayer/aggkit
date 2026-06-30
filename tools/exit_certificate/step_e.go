@@ -429,7 +429,7 @@ func checkBridgeServicePendingBridges(ctx context.Context, cfg *Config, unclaime
 		label = "zkevm bridge service"
 		log.Infof("Querying zkevm bridge service for pending bridges (url=%s, l2NetworkID=%d)", baseURL, cfg.L2NetworkID)
 		var fetchErr error
-		svcCounts, fetchErr = fetchZkevmPendingBridges(ctx, baseURL, leafTypeAsset)
+		svcCounts, fetchErr = fetchZkevmPendingBridges(ctx, baseURL, cfg.L2NetworkID, leafTypeAsset)
 		if fetchErr != nil {
 			return fetchErr
 		}
@@ -588,15 +588,17 @@ type zkevmPendingBridgesResponse struct {
 
 // checkZkevmPendingBridges fetches pending (unclaimed, ready-to-claim) deposits from the
 // zkevm-bridge-service (GET /pending-bridges, both leaf types) and compares against the L1 scan.
-// fetchZkevmPendingBridges pages through GET /pending-bridges for the given leafType and
-// returns the set of deposit counts reported as pending by the zkevm bridge service.
-func fetchZkevmPendingBridges(ctx context.Context, baseURL string, leafType uint32) (map[uint32]struct{}, error) {
+// fetchZkevmPendingBridges pages through GET /pending-bridges for the given destNet and leafType
+// and returns the set of deposit counts reported as pending by the zkevm bridge service.
+func fetchZkevmPendingBridges(
+	ctx context.Context, baseURL string, destNet, leafType uint32,
+) (map[uint32]struct{}, error) {
 	svcCounts := make(map[uint32]struct{})
 
 	var offset uint32
 	for {
-		reqURL := fmt.Sprintf("%s/pending-bridges?dest_net=1&leaf_type=%d&limit=%d&offset=%d",
-			baseURL, leafType, bridgeSvcPageSize, offset)
+		reqURL := fmt.Sprintf("%s/pending-bridges?dest_net=%d&leaf_type=%d&limit=%d&offset=%d",
+			baseURL, destNet, leafType, bridgeSvcPageSize, offset)
 
 		body, err := httpGetJSON(ctx, reqURL)
 		if err != nil {
