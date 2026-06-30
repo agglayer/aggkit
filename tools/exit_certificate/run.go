@@ -2,6 +2,7 @@ package exit_certificate
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	aggkit "github.com/agglayer/aggkit"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
@@ -19,6 +21,30 @@ const (
 	dirPermissions  = 0o755
 	filePermissions = 0o600
 )
+
+// printStartupBanner logs a one-off banner with the build version info, the
+// sha256 of the config file and the raw command-line arguments. This replaces
+// the per-log-line "version" field that used to be attached to every trace.
+func printStartupBanner(configPath string) {
+	v := aggkit.GetVersion()
+
+	configSHA := "n/a"
+	if data, err := os.ReadFile(configPath); err == nil {
+		configSHA = fmt.Sprintf("%x", sha256.Sum256(data))
+	}
+
+	log.Info("╔═══════════════════════════════════════════╗")
+	log.Info("║   Exit Certificate Tool — Version         ║")
+	log.Info("╚═══════════════════════════════════════════╝")
+	log.Infof("Version:      %s", v.Version)
+	log.Infof("Git revision: %s", v.GitRev)
+	log.Infof("Git branch:   %s", v.GitBranch)
+	log.Infof("Built:        %s", v.BuildDate)
+	log.Infof("Go version:   %s", v.GoVersion)
+	log.Infof("OS/Arch:      %s/%s", v.OS, v.Arch)
+	log.Infof("Config file:  %s (sha256: %s)", configPath, configSHA)
+	log.Infof("Command line: %s", strings.Join(os.Args, " "))
+}
 
 // Run is the CLI entry point.
 func Run(c *cli.Context) error {
@@ -33,6 +59,8 @@ func Run(c *cli.Context) error {
 		Level:       logLevel,
 		Outputs:     []string{"stderr"},
 	})
+
+	printStartupBanner(c.String("config"))
 
 	cfg, err := LoadConfig(c.String("config"))
 	if err != nil {
