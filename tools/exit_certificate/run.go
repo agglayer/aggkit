@@ -58,14 +58,17 @@ func shellQuote(s string) string {
 	if s == "" {
 		return "''"
 	}
-	if strings.IndexFunc(s, func(r rune) bool {
-		return !(r == '_' || r == '-' || r == '.' || r == '/' || r == '=' ||
-			(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9'))
-	}) < 0 {
+	if strings.IndexFunc(s, func(r rune) bool { return !isShellSafeRune(r) }) < 0 {
 		return s // only safe characters, no quoting needed
 	}
 	// Wrap in single quotes, escaping any embedded single quote as '\''.
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// isShellSafeRune reports whether r can appear unquoted in a POSIX shell word.
+func isShellSafeRune(r rune) bool {
+	return r == '_' || r == '-' || r == '.' || r == '/' || r == '=' ||
+		(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
 }
 
 // Run is the CLI entry point.
