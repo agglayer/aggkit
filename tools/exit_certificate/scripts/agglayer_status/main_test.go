@@ -199,6 +199,20 @@ func TestWaitForSettled(t *testing.T) {
 		require.EqualError(t, err, "get network info: conn refused")
 	})
 
+	t.Run("retries while network type is undetermined", func(t *testing.T) {
+		t.Parallel()
+		client := mocks.NewAgglayerClientMock(t)
+		// First poll: agglayer has not classified the network yet. Second poll: settled.
+		client.EXPECT().GetNetworkInfo(mockCtx(), uint32(1)).
+			Return(agglayertypes.NetworkInfo{}, errors.New("rpc error: Network type could not be determined")).Once()
+		client.EXPECT().GetNetworkInfo(mockCtx(), uint32(1)).
+			Return(agglayertypes.NetworkInfo{LatestPendingStatus: nil}, nil).Once()
+		client.EXPECT().GetLatestPendingCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil)
+		client.EXPECT().GetLatestSettledCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil)
+
+		require.NoError(t, waitForSettled(context.Background(), client, 1, interval, time.Minute))
+	})
+
 	t.Run("polls until settled", func(t *testing.T) {
 		t.Parallel()
 		client := mocks.NewAgglayerClientMock(t)

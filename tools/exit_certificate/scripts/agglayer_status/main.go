@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -166,11 +167,23 @@ func waitForSettled(
 	start := time.Now()
 	for {
 		info, err := client.GetNetworkInfo(ctx, netID)
+		elapsed := time.Since(start).Round(time.Second)
 		if err != nil {
+			// Right after the network starts, the agglayer cannot yet classify the
+			// network and GetNetworkInfo fails with "Network type could not be
+			// determined". That is transient — keep polling instead of aborting.
+			if isNetworkTypeUndetermined(err) {
+				fmt.Printf("  network type not determined yet — still waiting... (%s elapsed)\n", elapsed)
+				select {
+				case <-ctx.Done():
+					return fmt.Errorf("timed out waiting for settlement after %s", durStr(timeout))
+				case <-time.After(interval):
+				}
+				continue
+			}
 			return fmt.Errorf("get network info: %w", err)
 		}
 
-		elapsed := time.Since(start).Round(time.Second)
 		if info.LatestPendingStatus != nil {
 			status := *info.LatestPendingStatus
 			height := u64ptr(info.LatestPendingHeight)
@@ -195,6 +208,13 @@ func waitForSettled(
 		case <-time.After(interval):
 		}
 	}
+}
+
+// isNetworkTypeUndetermined reports whether err is the transient agglayer error
+// raised before the node has classified the network ("Network type could not be
+// determined"), which is expected right after the network starts.
+func isNetworkTypeUndetermined(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "Network type could not be determined")
 }
 
 func u64ptr(p *uint64) string {
