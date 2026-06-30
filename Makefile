@@ -109,7 +109,7 @@ $(GOBIN)/remove_ger:
 
 .PHONY: $(GOBIN)/exit_certificate
 $(GOBIN)/exit_certificate:
-	$(GOENVVARS) go build -o $(GOBIN)/exit_certificate ./tools/exit_certificate/cmd
+	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/exit_certificate ./tools/exit_certificate/cmd
 
 .PHONY: $(GOBIN)/exit_certificate_claimer
 $(GOBIN)/exit_certificate_claimer:

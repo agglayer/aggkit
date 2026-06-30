@@ -1,6 +1,7 @@
 package exit_certificate
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -101,6 +102,12 @@ type Config struct {
 	RollupManagerAddress common.Address           `json:"rollupManagerAddress"`
 	Options              Options                  `json:"options"`
 	SignerConfig         signertypes.SignerConfig `json:"-"`
+
+	// ConfigPath is the path the config was loaded from, and ConfigSHA256 is the
+	// hex sha256 of the exact on-disk bytes that produced this Config. Both are set
+	// by LoadConfig and used by the startup traceability banner. Not serialized.
+	ConfigPath   string `json:"-"`
+	ConfigSHA256 string `json:"-"`
 }
 
 const (
@@ -127,37 +134,45 @@ var defaultOptions = Options{
 // LoadConfig reads and validates the config file. The format is selected by file extension:
 // ".toml" is parsed as TOML, anything else (".json" or no extension) as JSON.
 func LoadConfig(configPath string) (*Config, error) {
-	raw, err := readRawConfig(configPath)
+	raw, rawBytes, err := readRawConfig(configPath)
 	if err != nil {
 		return nil, err
 	}
 	if err := validateRawConfig(raw); err != nil {
 		return nil, err
 	}
-	return buildConfig(raw, filepath.Dir(configPath))
+	cfg, err := buildConfig(raw, filepath.Dir(configPath))
+	if err != nil {
+		return nil, err
+	}
+	cfg.ConfigPath = configPath
+	cfg.ConfigSHA256 = fmt.Sprintf("%x", sha256.Sum256(rawBytes))
+	return cfg, nil
 }
 
 // readRawConfig reads the config file at configPath, normalizing TOML to JSON so a single code path
 // handles both formats (including the signerConfig json.RawMessage and agglayerClient custom JSON
-// unmarshalling), then unmarshals it into a rawConfig.
-func readRawConfig(configPath string) (*rawConfig, error) {
-	data, err := os.ReadFile(configPath)
+// unmarshalling), then unmarshals it into a rawConfig. It also returns the original on-disk bytes
+// (before any TOML→JSON normalization) so callers can hash the exact file content that was loaded.
+func readRawConfig(configPath string) (*rawConfig, []byte, error) {
+	rawBytes, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("read config file %s: %w", configPath, err)
+		return nil, nil, fmt.Errorf("read config file %s: %w", configPath, err)
 	}
 
+	data := rawBytes
 	if strings.EqualFold(filepath.Ext(configPath), ".toml") {
-		data, err = tomlToJSON(data)
+		data, err = tomlToJSON(rawBytes)
 		if err != nil {
-			return nil, fmt.Errorf("parse config TOML %s: %w", configPath, err)
+			return nil, nil, fmt.Errorf("parse config TOML %s: %w", configPath, err)
 		}
 	}
 
 	var raw rawConfig
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("parse config JSON: %w", err)
+		return nil, nil, fmt.Errorf("parse config JSON: %w", err)
 	}
-	return &raw, nil
+	return &raw, rawBytes, nil
 }
 
 // validateRawConfig checks the required parameters and the exitAddress format/value.
