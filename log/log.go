@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/agglayer/aggkit"
 	"github.com/hermeznetwork/tracerr"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -85,7 +86,8 @@ func NewLogger(cfg Config) (*zap.SugaredLogger, *zap.AtomicLevel, error) {
 	zapCfg.Level = level
 	zapCfg.OutputPaths = cfg.Outputs
 	zapCfg.InitialFields = map[string]interface{}{
-		"pid": os.Getpid(),
+		"version": aggkit.Version,
+		"pid":     os.Getpid(),
 	}
 
 	logger, err := zapCfg.Build()
