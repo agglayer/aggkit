@@ -28,6 +28,12 @@ Pipeline steps (run in order by default):
   A  Collect all unique sender/receiver addresses from bridge events up to the
      target block.
 
+  A (alt)  Alternative to step A (run with --step aalt). Discovers value-holding
+     addresses via a state-trie dump (debug_accountRange) plus Transfer-event
+     logs, avoiding the costly full-history debug_traceTransaction scan. Writes
+     the same step-a-addresses.json so step B consumes it unchanged. Opt-in; not
+     part of the default pipeline. Strategy is set via options.addressDiscovery.
+
   B  Scan EOA native-token balances and wrapped-token balances for every address
      found in step A.
 
@@ -68,7 +74,7 @@ the output files from previous steps must already exist in the output directory.
 		},
 		&cli.StringFlag{
 			Name:  "step",
-			Usage: "Run a specific step: 0, a, b, c, d, e, f, g, sign, or all",
+			Usage: "Run a specific step: 0, a, aalt, b, c, d, e, f, g, sign, or all",
 			Value: "all",
 		},
 		&cli.BoolFlag{

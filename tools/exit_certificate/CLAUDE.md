@@ -20,6 +20,7 @@ tools/exit_certificate/
 ├── hex.go               — hex/uint64 conversion utilities
 ├── step_0.go            — LBT generation
 ├── step_a.go            — address collection via debug_traceTransaction
+├── step_a_alt.go        — alternative Step A (debug_accountRange + Transfer logs), opt-in
 ├── step_b.go            — EOA classification + balance fetching
 ├── step_c.go            — SC-locked value computation
 ├── step_d.go            — build agglayer Certificate
@@ -72,6 +73,17 @@ All checks run regardless of individual failures. A combined error lists every f
 - **RPC:** `eth_getBlockByNumber` (headers, `false`) → tx hashes; then `debug_traceTransaction` with `prestateTracer`+`diffMode` per hash.
 - **Output:** `step-a-addresses.json` (`[]common.Address`), `step-a-failed-traces.json` (`[]common.Hash`)
 - **Option:** `ignoreOnTraceError=true` skips failed traces instead of aborting.
+
+### Alternative Step A — `--step aalt` (opt-in, `step_a_alt.go`)
+
+Opt-in replacement for Step A that avoids the full-history `debug_traceTransaction` scan. Not part of `runAll` or step ranges; selected only via `--step aalt`. `RunStepAAlt` combines two sources and merges them:
+
+1. **State dump:** paginated `debug_accountRange(blockTag, start, 256, nocode=true, nostorage=true, incompletes=false)` at `targetBlock` → every account (native-ETH holders + contracts). The `next` cursor is base64 (geth `[]byte`) or 0x-hex; `decodeNextKey` handles both and stops on empty/all-zero.
+2. **Transfer logs:** `eth_getLogs` per wrapped token (topic `Transfer(address,address,uint256)`), collecting indexed `from`/`to` — captures token-only holders that tracing misses (an ERC-20 transfer never touches the recipient account).
+
+- **Option:** `addressDiscovery` = `stateDump` | `logs` | `both` | `auto` (default). `auto` probes `debug_accountRange`; on failure it falls back to receipt harvesting (`scanBlockHeaders` + `receiptAddresses`) + Transfer logs (misses internal value transfers).
+- **Output:** `step-aalt-addresses.json` and the canonical `step-a-addresses.json` (so Step B consumes it unchanged).
+- **Requires:** an archive node exposing `debug_accountRange` for the state-dump path; LBT (Step 0) for the wrapped-token list.
 
 ### Step B — EOA balance checking + ERC-20 detection
 

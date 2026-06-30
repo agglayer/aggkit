@@ -110,6 +110,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `outputDir` | `./output` | Directory for intermediate and final output files. Relative paths resolve from the config file directory. |
 | `l1StartBlock` | `0` | L1 block to start scanning from (Step E). |
 | `l2StartBlock` | `0` | L2 block to start scanning from (Step A). Useful when genesis activity can be skipped. |
+| `addressDiscovery` | `"auto"` | Strategy for the **alternative Step A** (`--step aalt`): `"stateDump"` (`debug_accountRange` only), `"logs"` (Transfer logs only), `"both"`, or `"auto"` (probe `debug_accountRange`; use `both` if available, else fall back to receipt harvesting + Transfer logs). Ignored by the default trace-based Step A. |
 | `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F in agglayer mode (Step F errors if it runs without this set). Not needed when `useAgglayerAdminToStepFCheck: false` (offline LBT mode). |
 | `agglayerAdminToken` | `""` | Bearer token for authenticating requests to `agglayerAdminURL`. Required when the admin endpoint is protected by Google Cloud IAP. See [Authenticating with IAP](#authenticating-with-iap) for how to obtain it. |
 | `agglayerClient` | `{}` | Agglayer gRPC client config (same as aggsender's `agglayer.ClientConfig`). Set at least `agglayerClient.GRPC.URL`. Required for Steps H, SUBMIT, and WAIT. |
@@ -259,7 +260,7 @@ Ranges use `from-to` (inclusive). An open-ended `from-` runs through `sign`; `su
 | Flag | Short | Default | Description |
 | :--: | :---: | :-----: | :---------: |
 | `--config` | `-c` | `parameters.json` | Path to the config file. |
-| `--step` | — | `all` | Step(s) to run. Accepts `all`; a single step name; a comma-separated list (e.g. `h,i,sign`); or a range `from-to` (inclusive, e.g. `a-c` → `a,b,c`). An **open-ended** range `from-` runs through `sign` (e.g. `g-` → `g,h,i,sign`); `submit`/`wait` are excluded from open ranges and must be named explicitly — use `0-wait` to run every step. Valid names: `check`, `0`, `a`/`a1`/`a2`, `b`/`b1`/`b2`/`b3`, `c`–`f`, `g`/`g1`/`g2`, `h`, `i`, `sign`, `submit`, `wait`. The aliases `a`, `b`, `g` expand to their sub-steps and also work as range bounds. |
+| `--step` | — | `all` | Step(s) to run. Accepts `all`; a single step name; a comma-separated list (e.g. `h,i,sign`); or a range `from-to` (inclusive, e.g. `a-c` → `a,b,c`). An **open-ended** range `from-` runs through `sign` (e.g. `g-` → `g,h,i,sign`); `submit`/`wait` are excluded from open ranges and must be named explicitly — use `0-wait` to run every step. Valid names: `check`, `0`, `a`/`a1`/`a2`, `aalt` (opt-in alternative to `a`, not part of `all` or ranges), `b`/`b1`/`b2`/`b3`, `c`–`f`, `g`/`g1`/`g2`, `h`, `i`, `sign`, `submit`, `wait`. The aliases `a`, `b`, `g` expand to their sub-steps and also work as range bounds. |
 | `--verbose` | — | `false` | Enable debug logging. Without this flag only `info`, `warn` and `error` messages are shown. |
 
 ## Pipeline steps
@@ -328,6 +329,34 @@ Transactions whose trace fails are recorded as failed traces (unless `ignoreOnTr
 For each trace that failed in A1, calls `eth_getTransactionReceipt` and extracts every address found in the receipt (sender, recipient, created contract, and log emitters). Failed receipt fetches are logged as warnings and skipped rather than aborting. The recovered addresses are merged with the A1 set to produce the combined address list.
 
 **Output:** `step-a2-addresses.json`, `step-a-addresses.json` (combined A1 + A2 addresses — the file consumed by later steps)
+
+#### Alternative Step A — state dump + Transfer logs (opt-in)
+
+The default Step A traces **every transaction from genesis** with `debug_traceTransaction`, which is the most expensive scan in the pipeline. It is also **incomplete for token-only holders**: an ERC-20 `transfer` only mutates the token contract's storage, so a wallet that merely *received* a wrapped token (no ETH, never sent a tx) is never "touched" by any trace.
+
+The alternative Step A (`--step aalt`) discovers the same candidate address set without replaying history, by combining two cheap sources:
+
+1. **State-trie dump** at `targetBlock` via paginated `debug_accountRange` → every account with non-zero balance/nonce/code (all native-ETH holders and every contract), in `O(#accounts)` instead of `O(#transactions)`.
+2. **Transfer event logs** per wrapped token via `eth_getLogs` → every token holder (both `from` and `to`), including the token-only holders that tracing misses. The token list comes from the LBT (Step 0).
+
+The strategy is selected by `options.addressDiscovery` (default `auto`):
+
+| Value | Behaviour |
+| :---: | :-------: |
+| `stateDump` | `debug_accountRange` only |
+| `logs` | Transfer logs only |
+| `both` | state dump + Transfer logs |
+| `auto` | probe `debug_accountRange`; if supported use `both`, otherwise fall back to receipt harvesting (block bodies + `eth_getTransactionReceipt`) + Transfer logs and log a warning. The receipt fallback misses internal value transfers (a `CALL` with value to a fresh address emits no log/receipt entry). |
+
+```bash
+# Generate the LBT first (provides the wrapped-token list), then run the alternative Step A
+./target/exit_certificate --config parameters.json --step 0
+./target/exit_certificate --config parameters.json --step aalt
+```
+
+`aalt` is **opt-in** and not part of the default `runAll` pipeline. It writes `step-aalt-addresses.json` and overwrites the canonical `step-a-addresses.json`, so Step B and later steps consume it exactly like the trace-based output. The state-dump path requires an archive node that exposes `debug_accountRange` for `targetBlock`.
+
+**Output:** `step-aalt-addresses.json`, `step-a-addresses.json` (the file consumed by later steps)
 
 ### Step B — EOA balance checking + ERC-20 detection
 

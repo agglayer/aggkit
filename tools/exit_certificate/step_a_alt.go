@@ -1,0 +1,512 @@
+package exit_certificate
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/agglayer/aggkit/log"
+	"github.com/ethereum/go-ethereum/common"
+)
+
+// Address discovery modes selectable via options.addressDiscovery for the alternative Step A.
+const (
+	addressDiscoveryAuto      = "auto"
+	addressDiscoveryStateDump = "stateDump"
+	addressDiscoveryLogs      = "logs"
+	addressDiscoveryBoth      = "both"
+)
+
+const (
+	// accountRangePageSize is the number of accounts requested per debug_accountRange page.
+	// Geth caps a single response at 256 regardless (paginating via the next cursor); erigon
+	// honours the requested size, so a larger value reduces the number of sequential round-trips.
+	accountRangePageSize = 5000
+
+	// maxAccountRangePages bounds the pagination loop as a safety valve against a node that
+	// never returns an empty "next" cursor.
+	maxAccountRangePages = 5_000_000
+
+	// accountRangeProgressInterval controls how often progress is logged during the state dump.
+	accountRangeProgressInterval = 50
+
+	// transferEventSignature is keccak256("Transfer(address,address,uint256)").
+	transferEventSignature = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+
+	// transferTopicFrom and transferTopicTo are the indexed-topic positions of a Transfer event.
+	transferTopicFrom = 1
+	transferTopicTo   = 2
+)
+
+// transferTopic is the topic[0] of an ERC-20 Transfer event.
+var transferTopic = common.HexToHash(transferEventSignature)
+
+// accountRangeDialect distinguishes the two incompatible debug_accountRange ABIs in the wild.
+//
+//   - geth/op-geth: AccountRange(block, start hexutil.Bytes, maxResults, nocode, nostorage,
+//     incompletes) — `start` is 0x-hex and there are 6 args.
+//   - erigon/cdk-erigon: AccountRange(block, start []byte, maxResults, excludeCode, excludeStorage)
+//     — `start` is base64 (Go []byte) and there are 5 args.
+//
+// Both return accounts keyed by address and a base64 `next` cursor.
+type accountRangeDialect int
+
+const (
+	dialectUnknown accountRangeDialect = iota
+	dialectGeth
+	dialectErigon
+)
+
+func (d accountRangeDialect) String() string {
+	switch d {
+	case dialectGeth:
+		return "geth"
+	case dialectErigon:
+		return "erigon"
+	default:
+		return "undetected"
+	}
+}
+
+// RunStepAAlt is an alternative to Step A that collects value-holding addresses without
+// replaying the full transaction history via debug_traceTransaction.
+//
+// It combines two cheap sources and merges them:
+//  1. a state-trie dump at targetBlock (debug_accountRange) — every account with non-zero
+//     balance/nonce/code (all native-ETH holders and every contract), and
+//  2. Transfer event logs per wrapped token (eth_getLogs) — every token holder, including
+//     token-only EOAs that never appear in a trace (an ERC-20 transfer only mutates the token
+//     contract's storage, so the recipient account itself is never "touched").
+//
+// The behaviour is selected by cfg.Options.AddressDiscovery:
+//   - "stateDump": source 1 only
+//   - "logs":      source 2 only
+//   - "both":      sources 1 + 2
+//   - "auto" (default): probe debug_accountRange; if supported use 1 + 2, otherwise fall back to
+//     receipt harvesting (block bodies + tx receipts) + 2 and log a warning.
+func RunStepAAlt(
+	ctx context.Context, cfg *Config, targetBlock uint64, wrappedTokens []WrappedToken,
+) (*StepAResult, error) {
+	log.Info("═══════════════════════════════════════════")
+	log.Info(" ALTERNATIVE STEP A — Collect addresses (state dump + Transfer logs)")
+	log.Info("═══════════════════════════════════════════")
+
+	if targetBlock < cfg.Options.L2StartBlock {
+		return nil, fmt.Errorf("targetBlock %d is before l2StartBlock %d", targetBlock, cfg.Options.L2StartBlock)
+	}
+
+	mode := normalizeAddressDiscovery(cfg.Options.AddressDiscovery)
+	log.Infof("Address discovery mode: %s", mode)
+
+	finalAddrs := make(map[common.Address]struct{})
+	add := func(addrs []common.Address) {
+		for _, a := range addrs {
+			finalAddrs[a] = struct{}{}
+		}
+	}
+
+	if err := discoverAddresses(ctx, cfg, targetBlock, wrappedTokens, mode, add); err != nil {
+		return nil, err
+	}
+
+	delete(finalAddrs, common.Address{})
+
+	addresses := make([]common.Address, 0, len(finalAddrs))
+	for addr := range finalAddrs {
+		addresses = append(addresses, addr)
+	}
+	sort.Slice(addresses, func(i, j int) bool {
+		return strings.ToLower(addresses[i].Hex()) < strings.ToLower(addresses[j].Hex())
+	})
+
+	log.Infof("ALTERNATIVE STEP A complete: %d unique addresses", len(addresses))
+	return &StepAResult{Addresses: addresses, WrappedTokens: wrappedTokens}, nil
+}
+
+// discoverAddresses runs the address-discovery sources selected by mode, feeding every collected
+// address into add. The "auto" mode probes the state dump and falls back to receipt harvesting.
+func discoverAddresses(
+	ctx context.Context, cfg *Config, targetBlock uint64,
+	wrappedTokens []WrappedToken, mode string, add func([]common.Address),
+) error {
+	switch mode {
+	case addressDiscoveryStateDump:
+		accounts, err := collectAccountsViaStateDump(ctx, cfg, targetBlock)
+		if err != nil {
+			return fmt.Errorf("state dump: %w", err)
+		}
+		add(accounts)
+	case addressDiscoveryLogs:
+		holders, err := collectTokenHoldersViaLogs(ctx, cfg, targetBlock, wrappedTokens)
+		if err != nil {
+			return fmt.Errorf("token holders via logs: %w", err)
+		}
+		add(holders)
+	case addressDiscoveryBoth:
+		if err := addStateDumpAndLogs(ctx, cfg, targetBlock, wrappedTokens, add); err != nil {
+			return err
+		}
+	default: // auto
+		accounts, err := collectAccountsViaStateDump(ctx, cfg, targetBlock)
+		if err != nil {
+			log.Warnf("Alternative Step A: debug_accountRange unavailable (%v); falling back to receipt "+
+				"harvesting + Transfer logs (internal value transfers may be missed)", err)
+			receiptsAddrs, rerr := collectAddressesViaReceipts(ctx, cfg, targetBlock)
+			if rerr != nil {
+				return fmt.Errorf("receipt-harvest fallback: %w", rerr)
+			}
+			add(receiptsAddrs)
+		} else {
+			add(accounts)
+		}
+		holders, err := collectTokenHoldersViaLogs(ctx, cfg, targetBlock, wrappedTokens)
+		if err != nil {
+			return fmt.Errorf("token holders via logs: %w", err)
+		}
+		add(holders)
+	}
+	return nil
+}
+
+// addStateDumpAndLogs runs both the state dump and the Transfer-log scan.
+func addStateDumpAndLogs(
+	ctx context.Context, cfg *Config, targetBlock uint64,
+	wrappedTokens []WrappedToken, add func([]common.Address),
+) error {
+	accounts, err := collectAccountsViaStateDump(ctx, cfg, targetBlock)
+	if err != nil {
+		return fmt.Errorf("state dump: %w", err)
+	}
+	add(accounts)
+	holders, err := collectTokenHoldersViaLogs(ctx, cfg, targetBlock, wrappedTokens)
+	if err != nil {
+		return fmt.Errorf("token holders via logs: %w", err)
+	}
+	add(holders)
+	return nil
+}
+
+// normalizeAddressDiscovery validates the configured discovery mode, defaulting to "auto".
+func normalizeAddressDiscovery(mode string) string {
+	switch mode {
+	case addressDiscoveryStateDump, addressDiscoveryLogs, addressDiscoveryBoth, addressDiscoveryAuto:
+		return mode
+	case "":
+		return addressDiscoveryAuto
+	default:
+		log.Warnf("Unknown addressDiscovery %q; defaulting to %q", mode, addressDiscoveryAuto)
+		return addressDiscoveryAuto
+	}
+}
+
+// collectAccountsViaStateDump walks the entire account trie at targetBlock via paginated
+// debug_accountRange calls and returns every account address. This captures all native-ETH
+// holders and every contract in O(#accounts), without replaying transaction history.
+// The node's debug_accountRange dialect (geth vs erigon) is auto-detected on the first page.
+func collectAccountsViaStateDump(ctx context.Context, cfg *Config, targetBlock uint64) ([]common.Address, error) {
+	blockTag := toBlockTag(targetBlock)
+	log.Infof("Dumping account trie at block %d via debug_accountRange (page size %d)...",
+		targetBlock, accountRangePageSize)
+
+	dialect, res, err := firstAccountRangePage(ctx, cfg.L2RPCURL, blockTag)
+	if err != nil {
+		return nil, err
+	}
+	log.Infof("debug_accountRange dialect: %s", dialect)
+
+	addrSet := make(map[common.Address]struct{})
+	var start []byte
+	stepStart := time.Now()
+
+	for page := 0; page < maxAccountRangePages; page++ {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		for key, acc := range res.Accounts {
+			if addr, ok := accountAddress(key, acc.Address); ok {
+				addrSet[addr] = struct{}{}
+			}
+		}
+
+		next, err := decodeNextKey(res.Next)
+		if err != nil {
+			return nil, fmt.Errorf("decode accountRange next cursor: %w", err)
+		}
+		if len(next) == 0 {
+			break
+		}
+		start = next
+
+		if (page+1)%accountRangeProgressInterval == 0 {
+			log.Infof("  debug_accountRange: %d accounts so far (%.0fs)",
+				len(addrSet), time.Since(stepStart).Seconds())
+		}
+
+		res, err = debugAccountRange(ctx, cfg.L2RPCURL, blockTag, start, accountRangePageSize, dialect)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	log.Infof("State dump complete: %d accounts", len(addrSet))
+	addresses := make([]common.Address, 0, len(addrSet))
+	for addr := range addrSet {
+		addresses = append(addresses, addr)
+	}
+	return addresses, nil
+}
+
+// firstAccountRangePage fetches the first page of the state dump, auto-detecting the node's
+// debug_accountRange dialect by trying erigon (the cdk-erigon form) first, then geth. It returns
+// the detected dialect so the caller can paginate with the same encoding.
+func firstAccountRangePage(
+	ctx context.Context, rpcURL, blockTag string,
+) (accountRangeDialect, *accountRangeResult, error) {
+	start := make([]byte, common.HashLength) // 32 zero bytes → start at the beginning of the trie
+	errs := make([]string, 0, 2)             //nolint:mnd // geth + erigon
+	for _, d := range []accountRangeDialect{dialectErigon, dialectGeth} {
+		res, err := debugAccountRange(ctx, rpcURL, blockTag, start, accountRangePageSize, d)
+		if err == nil {
+			return d, res, nil
+		}
+		errs = append(errs, fmt.Sprintf("%s: %v", d, err))
+	}
+	return dialectUnknown, nil, fmt.Errorf("debug_accountRange not supported (%s)", strings.Join(errs, "; "))
+}
+
+// accountRangeResult is the subset of debug_accountRange's response we consume.
+type accountRangeResult struct {
+	Accounts map[string]accountRangeEntry `json:"accounts"`
+	// Next is the cursor for the next page. Both geth and erigon marshal it from a Go []byte, so it
+	// arrives base64-encoded; some clients return a 0x-hex string. decodeNextKey handles both.
+	Next string `json:"next"`
+}
+
+type accountRangeEntry struct {
+	Address *string `json:"address"`
+}
+
+// debugAccountRange fetches one page of accounts from the state trie at blockTag, starting at the
+// given trie key, encoding the request for the given client dialect. Code and storage are excluded
+// to keep responses small; the geth form additionally passes incompletes=false to skip accounts
+// whose address preimage is unknown.
+func debugAccountRange(
+	ctx context.Context, rpcURL, blockTag string, start []byte, maxResults int, dialect accountRangeDialect,
+) (*accountRangeResult, error) {
+	result, err := singleRPC(ctx, rpcURL, "debug_accountRange",
+		accountRangeParams(blockTag, start, maxResults, dialect), defaultRetries)
+	if err != nil {
+		return nil, fmt.Errorf("debug_accountRange at %s: %w", blockTag, err)
+	}
+	var res accountRangeResult
+	if err := json.Unmarshal(result, &res); err != nil {
+		return nil, fmt.Errorf("unmarshal debug_accountRange response: %w", err)
+	}
+	return &res, nil
+}
+
+// accountRangeParams builds the debug_accountRange parameter list for the given dialect.
+func accountRangeParams(blockTag string, start []byte, maxResults int, dialect accountRangeDialect) []any {
+	if dialect == dialectErigon {
+		// erigon: [block, start(base64), maxResults, excludeCode, excludeStorage]
+		return []any{blockTag, base64.StdEncoding.EncodeToString(start), maxResults, true, true}
+	}
+	// geth: [block, start(0x-hex), maxResults, nocode, nostorage, incompletes]
+	return []any{blockTag, "0x" + hex.EncodeToString(start), maxResults, true, true, false}
+}
+
+// accountAddress resolves an address from a debug_accountRange entry. The map key is the account
+// address (common.Address) when the node has the preimage; the inner "address" field is used as a
+// fallback. Returns ok=false when neither yields a valid address.
+func accountAddress(key string, innerAddr *string) (common.Address, bool) {
+	if innerAddr != nil && common.IsHexAddress(*innerAddr) {
+		return common.HexToAddress(*innerAddr), true
+	}
+	if common.IsHexAddress(key) {
+		return common.HexToAddress(key), true
+	}
+	return common.Address{}, false
+}
+
+// decodeNextKey decodes the debug_accountRange "next" cursor. Geth encodes the Go []byte as
+// base64; other clients may return a 0x-hex string or an empty value. An empty or all-zero result
+// means the dump is complete.
+func decodeNextKey(next string) ([]byte, error) {
+	if next == "" {
+		return nil, nil
+	}
+	var raw []byte
+	if strings.HasPrefix(next, "0x") || strings.HasPrefix(next, "0X") {
+		raw = common.FromHex(next)
+	} else {
+		decoded, err := base64.StdEncoding.DecodeString(next)
+		if err != nil {
+			return nil, fmt.Errorf("base64 decode %q: %w", next, err)
+		}
+		raw = decoded
+	}
+	if allZero(raw) {
+		return nil, nil
+	}
+	return raw, nil
+}
+
+// allZero reports whether b is empty or contains only zero bytes.
+func allZero(b []byte) bool {
+	for _, x := range b {
+		if x != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// collectTokenHoldersViaLogs discovers every wrapped-token holder by scanning Transfer event logs
+// for each token across [l2StartBlock, targetBlock]. Both the indexed `from` and `to` fields are
+// collected, capturing token-only EOAs that never appear in a state dump or trace.
+func collectTokenHoldersViaLogs(
+	ctx context.Context, cfg *Config, targetBlock uint64, wrappedTokens []WrappedToken,
+) ([]common.Address, error) {
+	if len(wrappedTokens) == 0 {
+		log.Info("No wrapped tokens provided; skipping Transfer-log holder discovery")
+		return nil, nil
+	}
+
+	blockRange := uint64(cfg.Options.BlockRange)
+	if blockRange == 0 {
+		blockRange = defaultBlockRange
+	}
+	start := cfg.Options.L2StartBlock
+
+	type logJob struct {
+		token    common.Address
+		from, to uint64
+	}
+	var jobs []logJob
+	for _, tok := range wrappedTokens {
+		for from := start; from <= targetBlock; from += blockRange {
+			to := min(from+blockRange-1, targetBlock)
+			jobs = append(jobs, logJob{token: tok.WrappedTokenAddress, from: from, to: to})
+		}
+	}
+
+	log.Infof("Scanning Transfer logs for %d wrapped tokens over blocks %d→%d (%d ranges, concurrency=%d)...",
+		len(wrappedTokens), start, targetBlock, len(jobs), cfg.Options.ConcurrencyLimit)
+
+	addrSet := make(map[common.Address]struct{})
+	err := runWorkerPool(
+		ctx, jobs, cfg.Options.ConcurrencyLimit,
+		func(j logJob) ([]common.Address, error) {
+			return fetchTransferHoldersInRange(ctx, cfg.L2RPCURL, j.token, j.from, j.to)
+		},
+		func(addrs []common.Address) {
+			for _, a := range addrs {
+				addrSet[a] = struct{}{}
+			}
+		},
+		"TransferLogs",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("scan Transfer logs: %w", err)
+	}
+
+	log.Infof("Transfer-log scan complete: %d unique holder addresses", len(addrSet))
+	addresses := make([]common.Address, 0, len(addrSet))
+	for addr := range addrSet {
+		addresses = append(addresses, addr)
+	}
+	return addresses, nil
+}
+
+// fetchTransferHoldersInRange returns the `from` and `to` addresses of every Transfer event
+// emitted by token within [fromBlock, toBlock].
+func fetchTransferHoldersInRange(
+	ctx context.Context, rpcURL string, token common.Address, fromBlock, toBlock uint64,
+) ([]common.Address, error) {
+	result, err := singleRPC(ctx, rpcURL, "eth_getLogs", []any{
+		map[string]any{
+			"address":   token.Hex(),
+			"topics":    []string{transferTopic.Hex()},
+			"fromBlock": toBlockTag(fromBlock),
+			"toBlock":   toBlockTag(toBlock),
+		},
+	}, defaultRetries)
+	if err != nil {
+		return nil, err
+	}
+	var logs []struct {
+		Topics []string `json:"topics"`
+	}
+	if err := json.Unmarshal(result, &logs); err != nil {
+		return nil, fmt.Errorf("unmarshal Transfer logs: %w", err)
+	}
+
+	addrs := make([]common.Address, 0, len(logs)*2) //nolint:mnd // from + to per log
+	for _, lg := range logs {
+		// topics[0] is the event signature; topics[1]=from, topics[2]=to (both indexed).
+		for _, pos := range []int{transferTopicFrom, transferTopicTo} {
+			if pos >= len(lg.Topics) {
+				continue
+			}
+			if addr := common.HexToAddress(lg.Topics[pos]); addr != (common.Address{}) {
+				addrs = append(addrs, addr)
+			}
+		}
+	}
+	return addrs, nil
+}
+
+// collectAddressesViaReceipts is the auto-mode fallback used when debug_accountRange is
+// unavailable. It scans block bodies for tx hashes in windows (bounding memory) and extracts
+// addresses from each transaction receipt (from, to, created contract, log emitters) via the
+// existing receiptAddresses helper. It is much cheaper than full tracing but misses internal
+// value transfers (a CALL with value to a fresh address emits no log or receipt entry).
+func collectAddressesViaReceipts(ctx context.Context, cfg *Config, targetBlock uint64) ([]common.Address, error) {
+	windowSize := uint64(cfg.Options.StepAWindowSize)
+	if windowSize == 0 {
+		windowSize = defaultStepAWindowSize
+	}
+
+	addrSet := make(map[common.Address]struct{})
+	for start := cfg.Options.L2StartBlock; start <= targetBlock; start += windowSize {
+		end := min(start+windowSize-1, targetBlock)
+		hashes, err := scanBlockHeaders(ctx, cfg.L2RPCURL, start, end,
+			cfg.Options.RPCBatchSize, cfg.Options.ConcurrencyLimit)
+		if err != nil {
+			return nil, fmt.Errorf("scan blocks [%d-%d]: %w", start, end, err)
+		}
+		if len(hashes) == 0 {
+			continue
+		}
+		if err := runWorkerPool(
+			ctx, hashes, cfg.Options.ConcurrencyLimit,
+			func(hash common.Hash) ([]common.Address, error) {
+				addrs, rerr := receiptAddresses(ctx, cfg.L2RPCURL, hash)
+				if rerr != nil {
+					log.Warnf("Alternative Step A fallback: receipt failed for %s (skipping): %v", hash.Hex(), rerr)
+					return nil, nil
+				}
+				return addrs, nil
+			},
+			func(addrs []common.Address) {
+				for _, a := range addrs {
+					addrSet[a] = struct{}{}
+				}
+			},
+			"Receipts",
+		); err != nil {
+			return nil, fmt.Errorf("fetch receipts [%d-%d]: %w", start, end, err)
+		}
+	}
+
+	addresses := make([]common.Address, 0, len(addrSet))
+	for addr := range addrSet {
+		addresses = append(addresses, addr)
+	}
+	return addresses, nil
+}

@@ -549,6 +549,8 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 		return runSingleA1(ctx, cfg, dir)
 	case "a2":
 		return runSingleA2(ctx, cfg, dir)
+	case "aalt":
+		return runSingleAAlt(ctx, cfg, dir)
 	case "b":
 		return runSingleB(ctx, cfg, dir)
 	case "b1":
@@ -583,7 +585,8 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 		return runSingleWait(ctx, cfg, dir)
 	default:
 		return fmt.Errorf(
-			"unknown step: %s (use check, 0, a, a1, a2, b, b1, b2, b3, c, d, e, f, g, g1, g2, h, i, sign, submit, wait, or all)",
+			"unknown step: %s (use check, 0, a, a1, a2, aalt, b, b1, b2, b3, c, d, e, f, g, g1, g2, h, i, "+
+				"sign, submit, wait, or all)",
 			step,
 		)
 	}
@@ -655,6 +658,28 @@ func runSingleA2(ctx context.Context, cfg *Config, dir string) error {
 	log.Infof("STEP A complete: %d addresses (A1: %d, A2 new: %d)",
 		len(combined), len(a1Addresses), len(combined)-len(a1Addresses))
 	saveJSON(dir, fileStepAAddresses, combined)
+	return nil
+}
+
+// runSingleAAlt runs the alternative Step A (state dump + Transfer logs) and writes both
+// step-aalt-addresses.json and the canonical step-a-addresses.json, so Steps B–D consume it like
+// the trace-based Step A output. It is opt-in (--step aalt) and not part of the default pipeline.
+func runSingleAAlt(ctx context.Context, cfg *Config, dir string) error {
+	targetBlock, err := loadTargetBlock(dir)
+	if err != nil {
+		return err
+	}
+	wrappedTokens, err := loadWrappedTokensFromLBT(dir)
+	if err != nil {
+		log.Warnf("Alternative Step A: no LBT wrapped tokens available (%v); "+
+			"Transfer-log holder discovery will be skipped", err)
+	}
+	result, err := RunStepAAlt(ctx, cfg, targetBlock, wrappedTokens)
+	if err != nil {
+		return err
+	}
+	saveJSON(dir, fileStepAAltAddresses, result.Addresses)
+	saveJSON(dir, fileStepAAddresses, result.Addresses)
 	return nil
 }
 

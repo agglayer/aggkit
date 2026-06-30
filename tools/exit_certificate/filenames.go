@@ -14,6 +14,7 @@ const (
 	fileStepA1Addresses   = "step-a1-addresses.json"
 	fileStepA1FailedTrace = "step-a1-failed-traces.json"
 	fileStepA2Addresses   = "step-a2-addresses.json"
+	fileStepAAltAddresses = "step-aalt-addresses.json"
 
 	fileStepBAccumulated       = "step-b-accumulated.json"
 	fileStepBContractAddresses = "step-b-contract-addresses.json"

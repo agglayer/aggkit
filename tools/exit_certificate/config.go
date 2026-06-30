@@ -48,6 +48,11 @@ type Options struct {
 	// IgnoreOnTraceError skips transactions whose debug_traceTransaction call fails instead of
 	// aborting Step A. Failed tx hashes are saved to step-a-failed-traces.json for review.
 	IgnoreOnTraceError bool `json:"ignoreOnTraceError"`
+	// AddressDiscovery selects the strategy used by the alternative Step A (--step aalt):
+	// "stateDump" (debug_accountRange only), "logs" (Transfer logs only), "both", or "auto"
+	// (the default: probe debug_accountRange and use both, else fall back to receipt harvesting
+	// plus Transfer logs). Ignored by the default trace-based Step A.
+	AddressDiscovery string `json:"addressDiscovery"`
 	// IgnoreBalanceMismatch suppresses the error returned by Step F when token balances
 	// do not match. Set to true only when investigating discrepancies without blocking the pipeline.
 	IgnoreBalanceMismatch bool `json:"ignoreBalanceMismatch"`
@@ -126,6 +131,7 @@ var defaultOptions = Options{
 	OutputDir:                             "output",
 	L1StartBlock:                          0,
 	L2StartBlock:                          0,
+	AddressDiscovery:                      addressDiscoveryAuto,
 	UseAgglayerAdminToStepFCheck:          true,
 	VerifyNewLocalExitRootUsingShadowFork: true,
 	// IgnoreGenesisBalance defaults to false (do abort on a genesis preload).
@@ -368,6 +374,9 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	if raw.L2StartBlock > 0 {
 		opts.L2StartBlock = raw.L2StartBlock
 	}
+	if raw.AddressDiscovery != "" {
+		opts.AddressDiscovery = raw.AddressDiscovery
+	}
 	if raw.AgglayerAdminURL != "" {
 		opts.AgglayerAdminURL = raw.AgglayerAdminURL
 	}
@@ -466,6 +475,7 @@ type rawOpts struct {
 	OutputDir                             string                 `json:"outputDir"`
 	L1StartBlock                          uint64                 `json:"l1StartBlock"`
 	L2StartBlock                          uint64                 `json:"l2StartBlock"`
+	AddressDiscovery                      string                 `json:"addressDiscovery"`
 	AgglayerAdminURL                      string                 `json:"agglayerAdminURL"`
 	AgglayerAdminToken                    string                 `json:"agglayerAdminToken"`
 	AgglayerClient                        *agglayer.ClientConfig `json:"agglayerClient"`
