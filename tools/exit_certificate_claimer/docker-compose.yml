@@ -1,0 +1,44 @@
+# exit_certificate_claimer — read-only HTTP service that serves AgglayerBridge.claimAsset
+# parameters for the bridge exits of a settled exit certificate.
+#
+# It runs from the SAME working directory the exit_certificate tool used: that directory holds the
+# tool's config (parameters.toml) and its output/ subdir (signed certificate, local-exit-tree and
+# L1-info-tree SQLite DBs, step-wait-result.json). We mount it as a volume and point the claimer at
+# the exit_certificate config with --exit-certificate-config, which derives the whole claimer config
+# (paths, networkId, L1 sync) from it.
+#
+# Configure everything through environment variables (see .env.example). Quick start:
+#   cp .env.example .env      # edit EXIT_TOOL_DIR, CLAIMER_PORT, etc.
+#   docker compose up --build
+#
+# Note: deriving from the exit_certificate config enables L1 sync, so the l1RpcUrl set inside that
+# parameters.toml must be reachable FROM THE CONTAINER. If it points at the host (e.g.
+# http://localhost:8545) use http://host.docker.internal:8545 — host.docker.internal is wired below.
+
+services:
+  exit-certificate-claimer:
+    build:
+      # The Dockerfile lives at the repo root and builds every tool, including this one.
+      context: ../..
+      dockerfile: Dockerfile
+    image: ${AGGKIT_IMAGE:-aggkit:exit-certificate}
+    # Override the image's default `aggkit` entrypoint with the claimer binary. Exec form: the
+    # production image ships without a shell.
+    entrypoint: ["/usr/local/bin/exit_certificate_claimer"]
+    command:
+      - "--exit-certificate-config"
+      - "/data/${EXIT_CERT_CONFIG:-parameters.toml}"
+      - "--address"
+      - "${CLAIMER_ADDRESS:-0.0.0.0}"
+      - "--port"
+      - "${CLAIMER_PORT:-8080}"
+    volumes:
+      # The exit_certificate working dir (parameters.toml + output/). Read-write because L1 sync
+      # keeps its own SQLite DBs up to date inside output/.
+      - "${EXIT_TOOL_DIR:-../exit_certificate}:/data"
+    ports:
+      - "${CLAIMER_PORT:-8080}:${CLAIMER_PORT:-8080}"
+    # Lets a parameters.toml l1RpcUrl pointing at the host (host.docker.internal) reach it on Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
