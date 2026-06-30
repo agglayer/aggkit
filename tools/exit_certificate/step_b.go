@@ -9,6 +9,7 @@ import (
 
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -79,7 +80,12 @@ func RunStepB1(ctx context.Context, cfg *Config, targetBlock uint64, stepA *Step
 	log.Infof("ETH: %d EOAs with non-zero balance", len(eoaEthBalances))
 
 	// Phase 3: fetch wrapped token balances (parallel across tokens)
-	tokenBalances := fetchAllTokenBalances(ctx, rpcURL, stepA.WrappedTokens, eoaAddrs, blockTag, batchSize, concurrency)
+	tokenBalances, err := fetchAllTokenBalances(
+		ctx, rpcURL, stepA.WrappedTokens, eoaAddrs, blockTag, batchSize, concurrency,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("fetch token balances: %w", err)
+	}
 
 	// Build outputs
 	tokenLookup := make(map[common.Address]WrappedToken, len(stepA.WrappedTokens))
@@ -253,31 +259,32 @@ func fetchETHBalances(
 }
 
 // fetchAllTokenBalances scans all wrapped tokens in parallel (limited by tokenConcurrency).
+//
+// It fails fast: if any token's balanceOf batch errors, the first error is returned and the
+// remaining scans are cancelled. Silently dropping a failed token would leave it absent from the
+// balance map, making Step C treat its entire LBT supply as SC-locked and misroute the whole
+// supply to exitAddress, excluding the real EOA holders from the certificate.
 func fetchAllTokenBalances(
 	ctx context.Context, rpcURL string, tokens []WrappedToken,
 	eoaAddresses []common.Address, blockTag string, batchSize, concurrency int,
-) map[common.Address]map[common.Address]*big.Int {
+) (map[common.Address]map[common.Address]*big.Int, error) {
 	log.Infof("Fetching balances for %d wrapped tokens × %d EOAs...", len(tokens), len(eoaAddresses))
 
 	var mu sync.Mutex
 	tokenBalances := make(map[common.Address]map[common.Address]*big.Int)
-	sem := make(chan struct{}, tokenConcurrency)
 
-	var wg sync.WaitGroup
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(tokenConcurrency)
+
 	for _, token := range tokens {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(tok WrappedToken) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
+		tok := token
+		g.Go(func() error {
 			balances, err := fetchTokenBalances(
-				ctx, rpcURL, tok.WrappedTokenAddress,
+				gctx, rpcURL, tok.WrappedTokenAddress,
 				eoaAddresses, blockTag, batchSize, concurrency,
 			)
 			if err != nil {
-				log.Warnf("Failed to fetch balances for token %s: %v", tok.WrappedTokenAddress.Hex(), err)
-				return
+				return fmt.Errorf("fetch balances for token %s: %w", tok.WrappedTokenAddress.Hex(), err)
 			}
 			if len(balances) > 0 {
 				mu.Lock()
@@ -285,11 +292,15 @@ func fetchAllTokenBalances(
 				mu.Unlock()
 				log.Infof("  Token %s...: %d holders", tok.WrappedTokenAddress.Hex()[:12], len(balances))
 			}
-		}(token)
+			return nil
+		})
 	}
-	wg.Wait()
 
-	return tokenBalances
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return tokenBalances, nil
 }
 
 // fetchTokenBalances queries ERC20 balanceOf for all EOAs for a single token.
