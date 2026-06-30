@@ -348,11 +348,18 @@ func decodeABIString(data []byte) string {
 	if len(data) < twoABIWords {
 		return ""
 	}
-	strLen := new(big.Int).SetBytes(data[32:64]).Uint64()
-	if 64+strLen > uint64(len(data)) {
+	lenField := new(big.Int).SetBytes(data[abiWordBytes:twoABIWords])
+	// Reject lengths that don't fit in uint64; the payload can never be that large anyway.
+	if !lenField.IsUint64() {
 		return ""
 	}
-	return string(data[64 : 64+strLen])
+	strLen := lenField.Uint64()
+	// Compare against the remaining bytes without computing twoABIWords+strLen, which would
+	// overflow uint64 for a maliciously oversized length field and wrap past this guard.
+	if strLen > uint64(len(data))-twoABIWords {
+		return ""
+	}
+	return string(data[twoABIWords : twoABIWords+strLen])
 }
 
 // formatTokenAmount formats an amount using the token's decimals.
