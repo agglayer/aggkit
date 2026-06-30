@@ -209,6 +209,7 @@ func TestFetchZkevmPendingBridges(t *testing.T) {
 	t.Parallel()
 	// two pages: total_cnt=3, page size capped so the loop iterates.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "5", r.URL.Query().Get("dest_net"), "dest_net must use the configured l2NetworkId")
 		offset := r.URL.Query().Get("offset")
 		var deposits []map[string]any
 		if offset == "0" {
@@ -222,7 +223,7 @@ func TestFetchZkevmPendingBridges(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	got, err := fetchZkevmPendingBridges(context.Background(), srv.URL, leafTypeAsset)
+	got, err := fetchZkevmPendingBridges(context.Background(), srv.URL, 5, leafTypeAsset)
 	require.NoError(t, err)
 	require.Len(t, got, 3)
 	for _, dc := range []uint32{10, 11, 12} {
@@ -298,6 +299,6 @@ func TestFetchZkevmPendingBridgesHTTPError(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	t.Cleanup(srv.Close)
-	_, err := fetchZkevmPendingBridges(context.Background(), srv.URL, leafTypeAsset)
+	_, err := fetchZkevmPendingBridges(context.Background(), srv.URL, 1, leafTypeAsset)
 	require.Error(t, err)
 }
