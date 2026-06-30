@@ -34,7 +34,7 @@ func printStartupBanner(configPath string) {
 	}
 
 	log.Info("╔═══════════════════════════════════════════╗")
-	log.Info("║   Exit Certificate Tool — Version         ║")
+	log.Info("║   Exit Certificate Tool — Traceability    ║")
 	log.Info("╚═══════════════════════════════════════════╝")
 	log.Infof("Version:      %s", v.Version)
 	log.Infof("Git revision: %s", v.GitRev)
