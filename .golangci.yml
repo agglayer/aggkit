@@ -1,8 +1,6 @@
 version: "2"
 run:
   tests: true
-  exclude-dirs:
-    - tmp
 linters:
   default: none
   enable:
@@ -69,7 +67,6 @@ linters:
       - third_party$
       - builtin$
       - examples$
-      - ^tmp/
 issues:
   whole-files: true
 formatters:
@@ -87,4 +84,3 @@ formatters:
       - third_party$
       - builtin$
       - examples$
-      - ^tmp/
