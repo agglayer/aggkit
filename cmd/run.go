@@ -32,6 +32,7 @@ import (
 	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
+	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
 	claimsyncstorage "github.com/agglayer/aggkit/claimsync/storage"
@@ -222,6 +223,14 @@ func start(cliCtx *cli.Context) error {
 		b.RegisterRoutes(publicServer.Engine())
 		publicHasRoutes = true
 		log.Info("Bridge service routes registered")
+	}
+	if bridgeServiceFinder := createBridgeServiceFinder(cfg.BridgeServiceFinder, l1Client); bridgeServiceFinder != nil {
+		go func() {
+			if err := bridgeServiceFinder.Start(ctx); err != nil {
+				log.Errorf("bridge service finder stopped: %v", err)
+			}
+		}()
+		log.Info("Bridge service finder started")
 	}
 	if l1MultiDownloader != nil {
 		log.Info("starting L1 MultiDownloader...")
@@ -1144,6 +1153,38 @@ func createBridgeService(
 		bridgeL2,
 		claimL2,
 	)
+}
+
+// createBridgeServiceFinder builds the bridge service finder from cfg, using l1Client as the shared
+// L1 eth client to enumerate rollups from the rollup manager and read on-chain sources. It returns
+// nil (doing nothing) when the finder is disabled or no L1 client is available, so callers can gate
+// starting it with a simple nil check.
+func createBridgeServiceFinder(
+	cfg config.BridgeServiceFinderConfig,
+	l1Client aggkittypes.BaseEthereumClienter,
+) bridgeservicefinder.Finder {
+	if !cfg.Enabled {
+		log.Debugf("bridge service finder is disabled, not creating the service")
+		return nil
+	}
+
+	if l1Client == nil {
+		log.Warnf("bridge service finder is enabled but no L1 client is available, not creating the service")
+		return nil
+	}
+
+	logger := log.WithFields("module", "bridgeservicefinder")
+
+	finder, err := bridgeservicefinder.New(cfg.Config, bridgeservicefinder.Options{
+		EthClient: l1Client,
+		Logger:    logger,
+	})
+	if err != nil {
+		log.Errorf("failed to create bridge service finder: %v", err)
+		return nil
+	}
+
+	return finder
 }
 
 func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {
