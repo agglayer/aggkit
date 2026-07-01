@@ -428,16 +428,4 @@ Enabled = false
 	BlockFinality = "LatestBlock"
 	WaitPeriodToCheckCatchUp = "10s"
 	PeriodToCheckReorgs = "5s"
-
-[BridgeServiceFinder]
-Enabled = false
-RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
-# URLs is a static networkID -> bridge service url override map, empty by default.
-# URLs = { 0 = "http://localhost:5577" }
-BlockFinality = "FinalizedBlock"
-PollInterval = "30s"
-BlockChunkSize = 10000
-HealthCheckPath = "/health"
-HealthCheckTimeout = "5s"
-RequireAllHealthyOnStart = false
 `

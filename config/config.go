@@ -14,7 +14,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/prover"
 	validator "github.com/agglayer/aggkit/aggsender/validator"
 	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
-	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
 	"github.com/agglayer/aggkit/common"
@@ -329,22 +328,6 @@ type Config struct {
 
 	// L2Multidownloader is the configuration of the multidownloader service for L2
 	L2Multidownloader multidownloader.Config
-
-	// BridgeServiceFinder is the configuration of the bridge service finder, which resolves and
-	// serves the bridge service URL for every network attached to the L1 rollup manager.
-	BridgeServiceFinder BridgeServiceFinderConfig
-}
-
-// BridgeServiceFinderConfig wraps bridgeservicefinder.Config with an Enabled flag so the component
-// can be turned on/off from the top-level config, following the same pattern as multidownloader.Config.
-type BridgeServiceFinderConfig struct {
-	// Enabled indicates whether the bridge service finder should be started. It defaults to false
-	// because it requires an explicit RollupManagerAddr (or config URLs) to be useful.
-	Enabled bool `mapstructure:"Enabled"`
-
-	// Config is the bridgeservicefinder package configuration (squashed so its fields appear
-	// directly under [BridgeServiceFinder] in the TOML config file).
-	bridgeservicefinder.Config `mapstructure:",squash"`
 }
 
 // Load loads the configuration
