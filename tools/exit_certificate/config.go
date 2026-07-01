@@ -87,11 +87,11 @@ type Options struct {
 	// off-chain leaf encoding (notably each exit's metadata) rather than verifying it on-chain.
 	VerifyNewLocalExitRootUsingShadowFork bool `json:"verifyNewLocalExitRootUsingShadowFork"`
 	// CapMode selects how bridge exits are trimmed when Step F caps a certificate whose token totals
-	// exceed the allowed budget (only reached with IgnoreBalanceMismatch=true). "appearance" (the
-	// default) allocates each token's budget to its exits in the order they appear, capping/dropping
-	// the ones that no longer fit. "amount" allocates to the smallest-amount exits first, so the
-	// largest holders are the first to be capped/dropped once the budget runs out. In both modes the
-	// surviving exits are emitted in their original order.
+	// exceed the allowed budget (only reached with IgnoreBalanceMismatch=true). "amount" (the default)
+	// allocates each token's budget to its smallest-amount exits first, so the largest holders are the
+	// first to be capped/dropped once the budget runs out. "appearance" allocates to its exits in the
+	// order they appear, capping/dropping the ones that no longer fit. In both modes the surviving
+	// exits are emitted in their original order.
 	CapMode string `json:"capMode"`
 }
 
@@ -151,7 +151,7 @@ var defaultOptions = Options{
 	L2StartBlock:                          0,
 	UseAgglayerAdminToStepFCheck:          true,
 	VerifyNewLocalExitRootUsingShadowFork: true,
-	CapMode:                               CapModeByAppearance,
+	CapMode:                               CapModeByAmount,
 	// IgnoreGenesisBalance defaults to false (do abort on a genesis preload).
 }
 

@@ -194,19 +194,19 @@ func TestLoadConfig_CapMode(t *testing.T) {
 		"options": {"useAgglayerAdminToStepFCheck": false%s}
 	}`
 
-	// Default: unset capMode resolves to "appearance".
+	// Default: unset capMode resolves to "amount".
 	pathDefault := filepath.Join(t.TempDir(), "default.json")
 	require.NoError(t, os.WriteFile(pathDefault, fmt.Appendf(nil, base, ""), 0o600))
 	cfg, err := LoadConfig(pathDefault)
 	require.NoError(t, err)
-	require.Equal(t, CapModeByAppearance, cfg.Options.CapMode)
-
-	// Explicit "amount".
-	pathAmount := filepath.Join(t.TempDir(), "amount.json")
-	require.NoError(t, os.WriteFile(pathAmount, fmt.Appendf(nil, base, `, "capMode": "amount"`), 0o600))
-	cfg, err = LoadConfig(pathAmount)
-	require.NoError(t, err)
 	require.Equal(t, CapModeByAmount, cfg.Options.CapMode)
+
+	// Explicit "appearance".
+	pathAppearance := filepath.Join(t.TempDir(), "appearance.json")
+	require.NoError(t, os.WriteFile(pathAppearance, fmt.Appendf(nil, base, `, "capMode": "appearance"`), 0o600))
+	cfg, err = LoadConfig(pathAppearance)
+	require.NoError(t, err)
+	require.Equal(t, CapModeByAppearance, cfg.Options.CapMode)
 
 	// Invalid value is rejected.
 	pathBad := filepath.Join(t.TempDir(), "bad.json")

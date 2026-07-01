@@ -22,7 +22,7 @@
         "ignoreGenesisBalance": false,
         "ignoreUnclaimed": false,
         "ignoreBalanceMismatch": false,
-        "capMode": "appearance",
+        "capMode": "amount",
         "verifyNewLocalExitRootUsingShadowFork": true,
         "extraErc20Contracts": [],
         "ignoreAddresses": [],
