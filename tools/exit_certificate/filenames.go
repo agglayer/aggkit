@@ -38,6 +38,8 @@ const (
 	fileStepFChecks            = "step-f-checks.json"
 	//nolint:gosec // G101 false positive: this is an output filename, not a credential.
 	fileStepFTokenBalances = "step-f-token-balances.json"
+	//nolint:gosec // G101 false positive: this is an output filename, not a credential.
+	fileStepFAgglayerLBT = "step-f-agglayer-lbt.json"
 
 	fileStepG1ShadowForkBlock     = "step-g1-shadow-fork-block.json"
 	fileStepG1LiteDB              = "step-g1-l2bridgesyncerlite.sqlite"

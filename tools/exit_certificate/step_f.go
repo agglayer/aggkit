@@ -49,6 +49,19 @@ func RunStepF(
 	log.Info(" STEP F — Agglayer token balance check")
 	log.Info("═══════════════════════════════════════════")
 
+	// Whenever the agglayer admin endpoint is configured, dump its full local balance tree (LBT) to
+	// disk up front — regardless of the comparison mode below — so the agglayer-side balances are always
+	// captured. The response is reused by the agglayer comparison to avoid a second RPC round-trip.
+	var agglayerRaw json.RawMessage
+	if cfg.Options.AgglayerAdminURL != "" {
+		raw, err := queryAgglayerTokenBalance(ctx, cfg)
+		if err != nil {
+			return nil, err
+		}
+		agglayerRaw = raw
+		saveJSON(cfg.Options.OutputDir, fileStepFAgglayerLBT, agglayerRaw)
+	}
+
 	// The agglayer admin query is opt-out. When disabled we still run an offline LBT vs certificate
 	// comparison instead of skipping the step outright.
 	if !cfg.Options.UseAgglayerAdminToStepFCheck {
@@ -59,22 +72,7 @@ func RunStepF(
 		return nil, fmt.Errorf("step F requires agglayerAdminURL to be set in options")
 	}
 
-	log.Infof("Querying %s (network %d)", cfg.Options.AgglayerAdminURL, cfg.L2NetworkID)
-	if cfg.Options.AgglayerAdminToken != "" {
-		log.Info("Using bearer token for agglayer admin authentication")
-	}
-
-	raw, err := singleRPCAuth(
-		ctx, cfg.Options.AgglayerAdminURL,
-		"admin_getTokenBalance",
-		[]any{cfg.L2NetworkID, nil},
-		defaultRetries,
-		cfg.Options.AgglayerAdminToken,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("admin_getTokenBalance (network %d): %w", cfg.L2NetworkID, err)
-	}
-
+	raw := agglayerRaw
 	var agglayerResp agglayerBalanceResponse
 	if err := json.Unmarshal(raw, &agglayerResp); err != nil {
 		return nil, fmt.Errorf("parse admin_getTokenBalance response: %w", err)
@@ -119,6 +117,27 @@ func RunStepF(
 	log.Info("STEP F complete")
 
 	return finalizeStepFResult(cfg, certificate, checks, raw, allMatch)
+}
+
+// queryAgglayerTokenBalance calls admin_getTokenBalance on the agglayer admin RPC for the configured
+// L2 network and returns the raw JSON response (the agglayer's full local balance tree for the network).
+func queryAgglayerTokenBalance(ctx context.Context, cfg *Config) (json.RawMessage, error) {
+	log.Infof("Querying %s (network %d)", cfg.Options.AgglayerAdminURL, cfg.L2NetworkID)
+	if cfg.Options.AgglayerAdminToken != "" {
+		log.Info("Using bearer token for agglayer admin authentication")
+	}
+
+	raw, err := singleRPCAuth(
+		ctx, cfg.Options.AgglayerAdminURL,
+		"admin_getTokenBalance",
+		[]any{cfg.L2NetworkID, nil},
+		defaultRetries,
+		cfg.Options.AgglayerAdminToken,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("admin_getTokenBalance (network %d): %w", cfg.L2NetworkID, err)
+	}
+	return raw, nil
 }
 
 // runStepFOfflineLBT runs Step F without contacting the agglayer admin API
