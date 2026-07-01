@@ -571,7 +571,7 @@ func BridgeL2ToL2(
 	// 2. Poll the origin (L2A) bridge service until the deposit is indexed.
 	log.Debugf("waiting for L2->L2 bridge to appear in origin bridge service: tx=%s", bridgeTx.Hash().Hex())
 	var bridge *types.BridgeResponse
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 60; i++ {
 		pageSize := uint32(100)
 		params := client.GetBridgesParams{NetworkID: originNetworkID, PageSize: &pageSize}
 		bridgesResult, err := env.L2.BridgeService.GetBridges(ctx, params)
@@ -586,7 +586,7 @@ func BridgeL2ToL2(
 		if bridge != nil {
 			break
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(5 * time.Second)
 	}
 	if bridge == nil {
 		return errors.New("bridge not found in origin bridge service")

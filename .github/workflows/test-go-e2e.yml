@@ -75,7 +75,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env: [op-pp, op-pp-2chains]
+        include:
+          - env: op-pp
+            run: ""
+          - env: op-pp-2chains
+            run: TestBridgeL2ToL2
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -110,7 +114,7 @@ jobs:
       - name: Run E2E tests
         env:
           AGGKIT_E2E_ENV: ${{ matrix.env }}
-        run: make test-e2e
+        run: make test-e2e TEST_RUN="${{ matrix.run }}"
 
       - name: Upload test results
         if: always()

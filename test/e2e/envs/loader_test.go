@@ -60,7 +60,7 @@ func TestParseSummary_TwoChains(t *testing.T) {
 	require.NoError(t, err, "FindEnvsDir should not return an error")
 
 	summaryPath := filepath.Join(envsDir, string(EnvOpPP2Chains), "summary.json")
-	data, err := os.ReadFile(summaryPath) //nolint:gosec // test reads a known repo path
+	data, err := os.ReadFile(summaryPath)
 	require.NoError(t, err, "should read op-pp-2chains summary.json")
 
 	var summary summaryJSON
@@ -105,7 +105,7 @@ func TestParseSummary_SingleChain(t *testing.T) {
 	require.NoError(t, err, "FindEnvsDir should not return an error")
 
 	summaryPath := filepath.Join(envsDir, string(EnvOpPP), "summary.json")
-	data, err := os.ReadFile(summaryPath) //nolint:gosec // test reads a known repo path
+	data, err := os.ReadFile(summaryPath)
 	require.NoError(t, err, "should read op-pp summary.json")
 
 	var summary summaryJSON
