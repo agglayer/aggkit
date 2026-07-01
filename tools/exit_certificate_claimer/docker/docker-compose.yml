@@ -19,9 +19,9 @@ services:
   exit-certificate-claimer:
     build:
       # The Dockerfile lives at the repo root and builds every tool, including this one.
-      context: ../..
+      context: ../../..
       dockerfile: Dockerfile
-    image: ${AGGKIT_IMAGE:-aggkit:exit-certificate}
+    image: ${AGGKIT_IMAGE:-aggkit:local}
     # Override the image's default `aggkit` entrypoint with the claimer binary. Exec form: the
     # production image ships without a shell.
     entrypoint: ["/usr/local/bin/exit_certificate_claimer"]
@@ -35,7 +35,7 @@ services:
     volumes:
       # The exit_certificate working dir (parameters.toml + output/). Read-write because L1 sync
       # keeps its own SQLite DBs up to date inside output/.
-      - "${EXIT_TOOL_DIR:-../exit_certificate}:/data"
+      - "${EXIT_TOOL_DIR:-../../exit_certificate}:/data"
     ports:
       - "${CLAIMER_PORT:-8080}:${CLAIMER_PORT:-8080}"
     # Lets a parameters.toml l1RpcUrl pointing at the host (host.docker.internal) reach it on Linux.
