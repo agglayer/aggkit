@@ -104,6 +104,12 @@ verifyNewLocalExitRootUsingShadowFork = true
 # Default: [] (empty).
 extraErc20Contracts = []
 
+# Optional list of addresses whose balances must NOT be returned to them. Step B still fetches and
+# records their balances (step-b-ignored-balances.json) but excludes them from the EOA exits and
+# accumulated totals, so their value rolls into SC-locked and is bridged to exitAddress in Step D.
+# Default: [] (empty).
+ignoreAddresses = []
+
 # Base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits and
 # errors on discrepancies. Default: "" (disabled).
 bridgeServiceURL = ""

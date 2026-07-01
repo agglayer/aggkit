@@ -29,6 +29,48 @@ func TestFilterEOAs(t *testing.T) {
 	require.Equal(t, []common.Address{a, b}, filterEOAs([]common.Address{a, b}, nil))
 }
 
+func TestExtractIgnoredBalances(t *testing.T) {
+	t.Parallel()
+	keep := common.HexToAddress("0x1")
+	ignore := common.HexToAddress("0x2")
+	token := common.HexToAddress("0xaaa")
+
+	ethBalances := map[common.Address]*big.Int{
+		keep:   big.NewInt(100),
+		ignore: big.NewInt(70),
+	}
+	tokenBalances := map[common.Address]map[common.Address]*big.Int{
+		token: {keep: big.NewInt(5), ignore: big.NewInt(9)},
+	}
+	tokenLookup := map[common.Address]WrappedToken{
+		token: {WrappedTokenAddress: token, OriginNetwork: 1, OriginTokenAddress: common.HexToAddress("0xbbb")},
+	}
+
+	ignoreSet := map[common.Address]struct{}{ignore: {}}
+	ignored := extractIgnoredBalances(ignoreSet, ethBalances, tokenBalances, tokenLookup)
+
+	// The ignored address is recorded with its ETH + token balance.
+	require.Len(t, ignored, 1)
+	require.Equal(t, ignore, ignored[0].Address)
+	require.Equal(t, "70", ignored[0].ETHBalance)
+	require.Len(t, ignored[0].Tokens, 1)
+	require.Equal(t, "9", ignored[0].Tokens[0].Balance)
+
+	// It is removed from both balance maps, so downstream EOA/accumulated builders never see it.
+	_, ethHasIgnore := ethBalances[ignore]
+	require.False(t, ethHasIgnore)
+	_, tokHasIgnore := tokenBalances[token][ignore]
+	require.False(t, tokHasIgnore)
+
+	// The kept address is untouched.
+	require.Equal(t, big.NewInt(100), ethBalances[keep])
+	require.Equal(t, big.NewInt(5), tokenBalances[token][keep])
+
+	// No ignore set → nil, maps untouched.
+	require.Nil(t, extractIgnoredBalances(nil, ethBalances, tokenBalances, tokenLookup))
+	require.Len(t, ethBalances, 1)
+}
+
 func TestPadLeft(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "abc", padLeft("abc", 2)) // already long enough → unchanged

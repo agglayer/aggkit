@@ -144,6 +144,10 @@ type StepB1Result struct {
 	EOABalances       []EOABalance         `json:"eoaBalances"`
 	Accumulated       []AccumulatedBalance `json:"accumulated"`
 	ContractAddresses []common.Address     `json:"contractAddresses"`
+	// IgnoredBalances holds the fetched balances of the options.ignoreAddresses accounts. They are
+	// recorded here for traceability but excluded from EOABalances and Accumulated, so their value
+	// rolls into the SC-locked total and is bridged to exitAddress by Step D.
+	IgnoredBalances []EOABalance `json:"ignoredBalances,omitempty"`
 }
 
 // StepBResult holds the combined output of Step B (B1 + B2 + B3).
@@ -151,6 +155,7 @@ type StepBResult struct {
 	EOABalances           []EOABalance           `json:"eoaBalances"`
 	Accumulated           []AccumulatedBalance   `json:"accumulated"`
 	ContractAddresses     []common.Address       `json:"contractAddresses"`
+	IgnoredBalances       []EOABalance           `json:"ignoredBalances,omitempty"`
 	DetectedERC20s        []DetectedERC20        `json:"detectedErc20s,omitempty"`
 	DiscardedERC20s       []DiscardedERC20       `json:"discardedErc20s,omitempty"`
 	ERC20HolderBreakdowns []ERC20HolderBreakdown `json:"erc20HolderBreakdowns,omitempty"`
