@@ -66,6 +66,24 @@ type ClaimParamsResponse struct {
 	Claims             []ClaimAssetParams `json:"claims"`
 }
 
+// VersionInfo mirrors aggkit.FullVersion as a JSON-friendly payload.
+type VersionInfo struct {
+	Version   string `json:"version"`
+	GitRev    string `json:"git_rev"`
+	GitBranch string `json:"git_branch"`
+	BuildDate string `json:"build_date"`
+	GoVersion string `json:"go_version"`
+	OS        string `json:"os"`
+	Arch      string `json:"arch"`
+}
+
+// HealthResponse is the body returned by GET /health.
+type HealthResponse struct {
+	Status    string      `json:"status"`
+	NetworkID uint32      `json:"network_id"`
+	Version   VersionInfo `json:"version"`
+}
+
 // errorResponse is the JSON body returned on error.
 type errorResponse struct {
 	Error string `json:"error"`

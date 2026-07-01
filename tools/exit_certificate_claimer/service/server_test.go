@@ -39,10 +39,14 @@ func TestServerHealth(t *testing.T) {
 	rec := doRequest(t, srv, apiBasePath+"/health")
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var body map[string]any
+	var body HealthResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	require.Equal(t, "ok", body["status"])
-	require.Equal(t, float64(1), body["network_id"])
+	require.Equal(t, "ok", body.Status)
+	require.Equal(t, uint32(1), body.NetworkID)
+	require.NotEmpty(t, body.Version.Version)
+	require.NotEmpty(t, body.Version.GoVersion)
+	require.NotEmpty(t, body.Version.OS)
+	require.NotEmpty(t, body.Version.Arch)
 }
 
 func TestServerBridges(t *testing.T) {

@@ -10,6 +10,10 @@ import (
 )
 
 func main() {
+	cli.VersionPrinter = func(*cli.Context) {
+		aggkit.PrintVersion(os.Stdout)
+	}
+
 	app := cli.NewApp()
 	app.Name = "exit-certificate-claimer"
 	app.Usage = "Serve claimAsset parameters for the bridge exits of a settled exit certificate"
