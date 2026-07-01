@@ -414,7 +414,7 @@ func runAllStepF(
 	if result.CappedCertificate != nil {
 		// Apply the same per-token caps to the final certificate (which may include step E exits).
 		cappedFinal := *finalCert
-		cappedFinal.BridgeExits = capCertificateExits(finalCert.BridgeExits, result.Checks)
+		cappedFinal.BridgeExits = capCertificateExits(finalCert.BridgeExits, result.Checks, cfg.Options.CapMode)
 		saveJSON(dir, fileStepFCappedCertificate, &cappedFinal)
 		log.Infof("🔧 Capped final certificate saved (%d → %d bridge exits)",
 			len(finalCert.BridgeExits), len(cappedFinal.BridgeExits))

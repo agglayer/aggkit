@@ -294,7 +294,8 @@ type StepFResult struct {
 	TokenBalances json.RawMessage     `json:"tokenBalances,omitempty"`
 	Checks        []TokenBalanceCheck `json:"checks,omitempty"`
 	// CappedCertificate is set when mismatches were found and ignoreBalanceMismatch=true.
-	// Bridge exits are proportionally scaled down to min(agglayer, lbt) per token.
+	// Bridge exits are trimmed so their per-token sum equals min(agglayer, lbt); the allocation
+	// order is controlled by Options.CapMode (see capCertificateExits).
 	CappedCertificate *agglayertypes.Certificate `json:"cappedCertificate,omitempty"`
 }
 

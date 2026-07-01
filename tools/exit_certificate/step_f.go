@@ -188,7 +188,7 @@ func finalizeStepFResult(
 		}
 	}
 	capped := *certificate
-	capped.BridgeExits = capCertificateExits(certificate.BridgeExits, checks)
+	capped.BridgeExits = capCertificateExits(certificate.BridgeExits, checks, cfg.Options.CapMode)
 	result.CappedCertificate = &capped
 	log.Infof("🔧 Capped certificate: %d → %d bridge exits",
 		len(certificate.BridgeExits), len(capped.BridgeExits))
@@ -390,10 +390,17 @@ func compareCertificateToLBT(
 
 // capCertificateExits returns a new slice of bridge exits trimmed to stay within each
 // token's RemainingBalance (= min(LBT, agglayer) from its TokenBalanceCheck).
-// Exits are processed in order: each exit's amount is deducted from the token budget.
-// An exit that would exceed the budget is capped to the remaining amount.
-// Exits with a resulting zero amount are dropped.
-func capCertificateExits(exits []*agglayertypes.BridgeExit, checks []TokenBalanceCheck) []*agglayertypes.BridgeExit {
+//
+// The mode selects the order in which each token's budget is allocated to its exits:
+//   - CapModeByAppearance: exits are served in the order they appear.
+//   - CapModeByAmount: exits are served largest-amount first, so the big holders keep their full
+//     amount and the small ones are capped/dropped once the budget runs out.
+//
+// An exit that would exceed the remaining budget is capped to it; an exit with no budget left is
+// dropped. Regardless of mode, the surviving exits are emitted in their original order.
+func capCertificateExits(
+	exits []*agglayertypes.BridgeExit, checks []TokenBalanceCheck, mode string,
+) []*agglayertypes.BridgeExit {
 	remaining := make(map[tokenKey]*big.Int, len(checks))
 	for _, c := range checks {
 		if c.RemainingBalance == nil {
@@ -403,43 +410,92 @@ func capCertificateExits(exits []*agglayertypes.BridgeExit, checks []TokenBalanc
 		remaining[k] = new(big.Int).Set(c.RemainingBalance)
 	}
 
-	result := make([]*agglayertypes.BridgeExit, 0, len(exits))
-	for _, e := range exits {
+	// capExit carries the per-exit outcome computed during budget allocation; nil capTo with
+	// drop=false means "keep the exit unchanged".
+	type capExit struct {
+		drop  bool
+		capTo *big.Int
+	}
+	outcomes := make([]capExit, len(exits))
+
+	for _, idx := range capAllocationOrder(exits, mode) {
+		e := exits[idx]
 		if e == nil || e.TokenInfo == nil || e.Amount == nil {
-			result = append(result, e)
 			continue
 		}
 		k := tokenKey{e.TokenInfo.OriginNetwork, e.TokenInfo.OriginTokenAddress}
 		rem, hasCap := remaining[k]
 		if !hasCap {
-			result = append(result, e)
 			continue
 		}
 		if rem.Sign() == 0 {
-			log.Debugf("🔧 Drop bridge exit (network=%d addr=%s amount=%s): no budget left",
-				k.OriginNetwork, k.OriginTokenAddress, e.Amount)
+			outcomes[idx].drop = true
 			continue
 		}
 		if e.Amount.Cmp(rem) <= 0 {
 			rem.Sub(rem, e.Amount)
-			result = append(result, e)
 		} else {
-			exitCopy := *e
-			if e.TokenInfo != nil {
-				tc := *e.TokenInfo
-				exitCopy.TokenInfo = &tc
-			}
-			if e.Metadata != nil {
-				md := make([]byte, len(e.Metadata))
-				copy(md, e.Metadata)
-				exitCopy.Metadata = md
-			}
-			log.Infof("🔧 Cap bridge exit (network=%d addr=%s): %s → %s",
-				k.OriginNetwork, k.OriginTokenAddress, e.Amount, rem)
-			exitCopy.Amount = new(big.Int).Set(rem)
+			outcomes[idx].capTo = new(big.Int).Set(rem)
 			rem.SetInt64(0)
-			result = append(result, &exitCopy)
+		}
+	}
+
+	result := make([]*agglayertypes.BridgeExit, 0, len(exits))
+	for idx, e := range exits {
+		switch {
+		case outcomes[idx].drop:
+			k := tokenKey{e.TokenInfo.OriginNetwork, e.TokenInfo.OriginTokenAddress}
+			log.Debugf("🔧 Drop bridge exit (network=%d addr=%s amount=%s): no budget left",
+				k.OriginNetwork, k.OriginTokenAddress, e.Amount)
+		case outcomes[idx].capTo != nil:
+			k := tokenKey{e.TokenInfo.OriginNetwork, e.TokenInfo.OriginTokenAddress}
+			log.Infof("🔧 Cap bridge exit (network=%d addr=%s): %s → %s",
+				k.OriginNetwork, k.OriginTokenAddress, e.Amount, outcomes[idx].capTo)
+			result = append(result, capExitCopy(e, outcomes[idx].capTo))
+		default:
+			result = append(result, e)
 		}
 	}
 	return result
+}
+
+// capAllocationOrder returns the exit indices in the order their token budget should be allocated.
+// For CapModeByAmount it is a stable sort by descending amount (exits without a comparable amount
+// keep their original relative position); every other mode uses appearance order.
+func capAllocationOrder(exits []*agglayertypes.BridgeExit, mode string) []int {
+	order := make([]int, len(exits))
+	for i := range order {
+		order[i] = i
+	}
+	if mode != CapModeByAmount {
+		return order
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		ea, eb := exits[order[a]], exits[order[b]]
+		if ea == nil || ea.Amount == nil {
+			return false
+		}
+		if eb == nil || eb.Amount == nil {
+			return true
+		}
+		return ea.Amount.Cmp(eb.Amount) > 0
+	})
+	return order
+}
+
+// capExitCopy returns a deep copy of e with its amount replaced by capTo, so the original exit
+// (still referenced by the uncapped certificate) is left untouched.
+func capExitCopy(e *agglayertypes.BridgeExit, capTo *big.Int) *agglayertypes.BridgeExit {
+	exitCopy := *e
+	if e.TokenInfo != nil {
+		tc := *e.TokenInfo
+		exitCopy.TokenInfo = &tc
+	}
+	if e.Metadata != nil {
+		md := make([]byte, len(e.Metadata))
+		copy(md, e.Metadata)
+		exitCopy.Metadata = md
+	}
+	exitCopy.Amount = new(big.Int).Set(capTo)
+	return &exitCopy
 }

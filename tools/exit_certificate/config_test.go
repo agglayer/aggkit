@@ -183,6 +183,39 @@ func TestLoadConfig_ZeroIgnoreAddress(t *testing.T) {
 	require.Contains(t, err.Error(), "zero address")
 }
 
+func TestLoadConfig_CapMode(t *testing.T) {
+	t.Parallel()
+
+	base := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
+		"targetBlock": "100",
+		"options": {"useAgglayerAdminToStepFCheck": false%s}
+	}`
+
+	// Default: unset capMode resolves to "appearance".
+	pathDefault := filepath.Join(t.TempDir(), "default.json")
+	require.NoError(t, os.WriteFile(pathDefault, fmt.Appendf(nil, base, ""), 0o600))
+	cfg, err := LoadConfig(pathDefault)
+	require.NoError(t, err)
+	require.Equal(t, CapModeByAppearance, cfg.Options.CapMode)
+
+	// Explicit "amount".
+	pathAmount := filepath.Join(t.TempDir(), "amount.json")
+	require.NoError(t, os.WriteFile(pathAmount, fmt.Appendf(nil, base, `, "capMode": "amount"`), 0o600))
+	cfg, err = LoadConfig(pathAmount)
+	require.NoError(t, err)
+	require.Equal(t, CapModeByAmount, cfg.Options.CapMode)
+
+	// Invalid value is rejected.
+	pathBad := filepath.Join(t.TempDir(), "bad.json")
+	require.NoError(t, os.WriteFile(pathBad, fmt.Appendf(nil, base, `, "capMode": "biggest"`), 0o600))
+	_, err = LoadConfig(pathBad)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "capMode")
+}
+
 func TestLoadConfig_MinimalValid(t *testing.T) {
 	t.Parallel()
 

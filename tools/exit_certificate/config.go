@@ -86,7 +86,22 @@ type Options struct {
 	// the certificate's bridge exits) without launching Anvil — much faster, but it trusts the
 	// off-chain leaf encoding (notably each exit's metadata) rather than verifying it on-chain.
 	VerifyNewLocalExitRootUsingShadowFork bool `json:"verifyNewLocalExitRootUsingShadowFork"`
+	// CapMode selects how bridge exits are trimmed when Step F caps a certificate whose token totals
+	// exceed the allowed budget (only reached with IgnoreBalanceMismatch=true). "appearance" (the
+	// default) allocates each token's budget to its exits in the order they appear, capping/dropping
+	// the ones that no longer fit. "amount" allocates to the largest-amount exits first, so the big
+	// holders are kept intact and the small ones are capped/dropped once the budget runs out. In both
+	// modes the surviving exits are emitted in their original order.
+	CapMode string `json:"capMode"`
 }
+
+// Cap modes for Options.CapMode (how Step F trims exits when capping a certificate).
+const (
+	// CapModeByAppearance allocates each token's cap budget to its exits in appearance order.
+	CapModeByAppearance = "appearance"
+	// CapModeByAmount allocates each token's cap budget to its largest-amount exits first.
+	CapModeByAmount = "amount"
+)
 
 // Config holds all parameters required by the exit certificate tool.
 type Config struct {
@@ -135,6 +150,7 @@ var defaultOptions = Options{
 	L2StartBlock:                          0,
 	UseAgglayerAdminToStepFCheck:          true,
 	VerifyNewLocalExitRootUsingShadowFork: true,
+	CapMode:                               CapModeByAppearance,
 	// IgnoreGenesisBalance defaults to false (do abort on a genesis preload).
 }
 
@@ -225,6 +241,12 @@ func validateRawConfig(raw *rawConfig) error {
 				return fmt.Errorf("invalid ignoreAddresses entry: the zero address (0x00...00) is not allowed")
 			}
 		}
+	}
+	// capMode, when set, must be one of the known modes.
+	if raw.Options != nil && raw.Options.CapMode != "" &&
+		raw.Options.CapMode != CapModeByAppearance && raw.Options.CapMode != CapModeByAmount {
+		return fmt.Errorf("invalid options.capMode %q: must be %q or %q",
+			raw.Options.CapMode, CapModeByAppearance, CapModeByAmount)
 	}
 	// Step F (the agglayer admin balance check) needs agglayerAdminURL. When the check is enabled
 	// (useAgglayerAdminToStepFCheck, default true), the URL must be set; otherwise set the flag to
@@ -424,6 +446,9 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	if raw.BridgeServiceType != "" {
 		opts.BridgeServiceType = raw.BridgeServiceType
 	}
+	if raw.CapMode != "" {
+		opts.CapMode = raw.CapMode
+	}
 }
 
 // mergeFlagOptions overrides the boolean (tri-state *bool) option flags that were explicitly set.
@@ -513,6 +538,7 @@ type rawOpts struct {
 	IgnoreUnclaimed                       *bool                  `json:"ignoreUnclaimed"`
 	ExtraERC20Contracts                   []string               `json:"extraErc20Contracts"`
 	IgnoreAddresses                       []string               `json:"ignoreAddresses"`
+	CapMode                               string                 `json:"capMode"`
 	BridgeServiceURL                      string                 `json:"bridgeServiceURL"`
 	BridgeServiceType                     string                 `json:"bridgeServiceType"`
 	IgnoreUnsupportedL2Events             *bool                  `json:"ignoreUnsupportedL2Events"`
