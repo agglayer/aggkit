@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // BridgeL1ToL2 runs the L1 -> L2 bridge flow using the given environment and transactors.
@@ -127,6 +128,19 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	rollupExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot))
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
 	metadata := common.FromHex(bridge.Metadata)
+	// Wait for the GER to be confirmed on-chain via the L2 GER contract. The bridge service
+	// may report injection before the op-reth RPC node exposes the new block at 'latest',
+	// which would cause ClaimAsset simulation to revert.
+	gerHash := crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
+	log.Debugf("waiting for GER to be confirmed on L2: gerHash=%s", gerHash.Hex())
+	for i := 0; i < 30; i++ {
+		ts, gerErr := env.L2.Contracts.GlobalExitRoot.GlobalExitRootMap(callOpts, gerHash)
+		if gerErr == nil && ts.Sign() > 0 {
+			log.Debugf("GER confirmed on L2: gerHash=%s", gerHash.Hex())
+			break
+		}
+		time.Sleep(time.Second)
+	}
 	log.Debugf("sending claim transaction on L2")
 	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
 		l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
@@ -269,6 +283,17 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 	rollupExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot))
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
 	metadata := common.FromHex(bridge.Metadata)
+	// Wait for the GER to be confirmed on-chain (same race guard as in BridgeL1ToL2).
+	gerHash := crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
+	log.Debugf("waiting for GER to be confirmed on L2: gerHash=%s", gerHash.Hex())
+	for i := 0; i < 30; i++ {
+		ts, gerErr := env.L2.Contracts.GlobalExitRoot.GlobalExitRootMap(callOpts, gerHash)
+		if gerErr == nil && ts.Sign() > 0 {
+			log.Debugf("GER confirmed on L2: gerHash=%s", gerHash.Hex())
+			break
+		}
+		time.Sleep(time.Second)
+	}
 	log.Debugf("sending claim transaction on L2")
 	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
 		l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
