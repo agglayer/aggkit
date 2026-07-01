@@ -415,55 +415,55 @@ func TestCapCertificateExits_TokenNotInChecksPassesThrough(t *testing.T) {
 	require.Equal(t, big.NewInt(999), result[0].Amount)
 }
 
-// TestCapCertificateExits_ByAmountKeepsLargest checks that CapModeByAmount allocates the budget to
-// the largest-amount exit first, so a small exit that appears earlier is the one dropped — while the
-// surviving exits are still emitted in their original order.
-func TestCapCertificateExits_ByAmountKeepsLargest(t *testing.T) {
+// TestCapCertificateExits_ByAmountCapsLargest checks that CapModeByAmount serves the smallest exit
+// first, so the largest exit is the one capped/dropped — while the surviving exits are still emitted
+// in their original order.
+func TestCapCertificateExits_ByAmountCapsLargest(t *testing.T) {
 	t.Parallel()
 
 	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-	// Small exit appears first, large one second. Budget only fits the large one.
+	// Large exit appears first, small one second. Budget 700.
 	newExits := func() []*agglayertypes.BridgeExit {
 		return []*agglayertypes.BridgeExit{
-			{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(300)},
 			{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(700)},
+			{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(300)},
 		}
 	}
 	checks := []TokenBalanceCheck{
 		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(700)},
 	}
 
-	// By amount: the 700 exit is served first (kept full), the 300 exit gets no budget → dropped.
+	// By amount: the 300 exit is served first (kept full), the 700 exit gets the leftover 400 → capped.
+	// Surviving exits stay in original order.
 	byAmount := capCertificateExits(newExits(), checks, CapModeByAmount)
-	require.Len(t, byAmount, 1)
-	require.Equal(t, big.NewInt(700), byAmount[0].Amount)
+	require.Len(t, byAmount, 2)
+	require.Equal(t, big.NewInt(400), byAmount[0].Amount) // the 700 exit, capped to leftover
+	require.Equal(t, big.NewInt(300), byAmount[1].Amount) // the 300 exit, kept full
 
-	// By appearance: the 300 exit is served first (kept), the 700 exit is capped to 400.
+	// By appearance: the 700 exit is served first (kept full, budget exhausted), the 300 is dropped.
 	byAppearance := capCertificateExits(newExits(), checks, CapModeByAppearance)
-	require.Len(t, byAppearance, 2)
-	require.Equal(t, big.NewInt(300), byAppearance[0].Amount)
-	require.Equal(t, big.NewInt(400), byAppearance[1].Amount)
+	require.Len(t, byAppearance, 1)
+	require.Equal(t, big.NewInt(700), byAppearance[0].Amount)
 }
 
-// TestCapCertificateExits_ByAmountPreservesOriginalOrder checks that even when the largest exit
-// appears last, the surviving exits keep their original positions in the output.
-func TestCapCertificateExits_ByAmountPreservesOriginalOrder(t *testing.T) {
+// TestCapCertificateExits_ByAmountDropsLargest checks that when the budget is too small the largest
+// exit is dropped entirely while the smaller ones survive, still in their original order.
+func TestCapCertificateExits_ByAmountDropsLargest(t *testing.T) {
 	t.Parallel()
 
 	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	exits := []*agglayertypes.BridgeExit{
-		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(200)},
 		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(800)},
+		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(200)},
 	}
-	// Budget 900: 800 served first (full), then 200 capped to 100. Output stays in original order.
+	// Budget 200: only the small (200) exit fits; the large (800) exit is dropped.
 	checks := []TokenBalanceCheck{
-		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(900)},
+		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(200)},
 	}
 
 	result := capCertificateExits(exits, checks, CapModeByAmount)
-	require.Len(t, result, 2)
-	require.Equal(t, big.NewInt(100), result[0].Amount) // the 200 exit, capped
-	require.Equal(t, big.NewInt(800), result[1].Amount) // the 800 exit, full
+	require.Len(t, result, 1)
+	require.Equal(t, big.NewInt(200), result[0].Amount) // the 200 exit, kept; the 800 dropped
 }
 
 func TestCapCertificateExits_LBTMinAgglayer(t *testing.T) {

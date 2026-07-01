@@ -393,8 +393,8 @@ func compareCertificateToLBT(
 //
 // The mode selects the order in which each token's budget is allocated to its exits:
 //   - CapModeByAppearance: exits are served in the order they appear.
-//   - CapModeByAmount: exits are served largest-amount first, so the big holders keep their full
-//     amount and the small ones are capped/dropped once the budget runs out.
+//   - CapModeByAmount: exits are served smallest-amount first, so the small holders keep their full
+//     amount and the largest ones are the first to be capped/dropped once the budget runs out.
 //
 // An exit that would exceed the remaining budget is capped to it; an exit with no budget left is
 // dropped. Regardless of mode, the surviving exits are emitted in their original order.
@@ -460,8 +460,10 @@ func capCertificateExits(
 }
 
 // capAllocationOrder returns the exit indices in the order their token budget should be allocated.
-// For CapModeByAmount it is a stable sort by descending amount (exits without a comparable amount
-// keep their original relative position); every other mode uses appearance order.
+// For CapModeByAmount it is a stable sort by ascending amount, so the smallest exits are served
+// first and the largest ones are the first to run out of budget (capped/dropped). Exits without a
+// comparable amount are pushed to the end (they never consume budget); every other mode uses
+// appearance order.
 func capAllocationOrder(exits []*agglayertypes.BridgeExit, mode string) []int {
 	order := make([]int, len(exits))
 	for i := range order {
@@ -478,7 +480,7 @@ func capAllocationOrder(exits []*agglayertypes.BridgeExit, mode string) []int {
 		if eb == nil || eb.Amount == nil {
 			return true
 		}
-		return ea.Amount.Cmp(eb.Amount) > 0
+		return ea.Amount.Cmp(eb.Amount) < 0
 	})
 	return order
 }

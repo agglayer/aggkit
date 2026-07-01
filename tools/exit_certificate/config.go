@@ -89,9 +89,9 @@ type Options struct {
 	// CapMode selects how bridge exits are trimmed when Step F caps a certificate whose token totals
 	// exceed the allowed budget (only reached with IgnoreBalanceMismatch=true). "appearance" (the
 	// default) allocates each token's budget to its exits in the order they appear, capping/dropping
-	// the ones that no longer fit. "amount" allocates to the largest-amount exits first, so the big
-	// holders are kept intact and the small ones are capped/dropped once the budget runs out. In both
-	// modes the surviving exits are emitted in their original order.
+	// the ones that no longer fit. "amount" allocates to the smallest-amount exits first, so the
+	// largest holders are the first to be capped/dropped once the budget runs out. In both modes the
+	// surviving exits are emitted in their original order.
 	CapMode string `json:"capMode"`
 }
 
@@ -99,7 +99,8 @@ type Options struct {
 const (
 	// CapModeByAppearance allocates each token's cap budget to its exits in appearance order.
 	CapModeByAppearance = "appearance"
-	// CapModeByAmount allocates each token's cap budget to its largest-amount exits first.
+	// CapModeByAmount allocates each token's cap budget to its smallest-amount exits first, so the
+	// largest-amount exits are the first to be capped/dropped.
 	CapModeByAmount = "amount"
 )
 

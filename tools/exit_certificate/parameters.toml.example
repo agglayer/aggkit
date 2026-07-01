@@ -91,8 +91,9 @@ ignoreBalanceMismatch = false
 
 # How Step F allocates each token's cap budget when trimming exits (only relevant with
 # ignoreBalanceMismatch = true). "appearance" (default) serves exits in the order they appear;
-# "amount" serves the largest-amount exits first (big holders kept intact, small ones capped/dropped).
-# Surviving exits are emitted in their original order in both modes. Default: "appearance".
+# "amount" serves the smallest-amount exits first, so the largest holders are the first to be
+# capped/dropped. Surviving exits are emitted in their original order in both modes.
+# Default: "appearance".
 capMode = "appearance"
 
 # Make the Step G lite syncer warn and continue (instead of aborting) on L2 events that would
