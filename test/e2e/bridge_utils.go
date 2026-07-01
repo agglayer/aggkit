@@ -103,9 +103,14 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	if injectedLeaf == nil {
 		return errors.New("L1InfoTreeLeaf was not injected")
 	}
-	log.Debugf("L1InfoTreeLeaf injected: l2NetworkID=%d l1InfoTreeIndex=%d", l2NetworkID, l1InfoTreeIndex)
-	log.Debugf("fetching claim proof: networkID=0 l1InfoTreeIndex=%d depositCount=%d", l1InfoTreeIndex, depositCount)
-	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, l1InfoTreeIndex, depositCount)
+	// GetInjectedL1InfoLeaf returns the first GER injected on L2 with index >= our deposit's
+	// l1InfoTreeIndex. The aggoracle may have skipped ahead (e.g. because a parallel L2→L1
+	// bridge updated the L1InfoTree to a higher index first). Use the ACTUAL injected index
+	// so the claim proof's mainnetExitRoot/rollupExitRoot match what is in GlobalExitRootMap.
+	claimL1InfoTreeIndex := injectedLeaf.L1InfoTreeIndex
+	log.Debugf("L1InfoTreeLeaf injected: l2NetworkID=%d depositIndex=%d claimIndex=%d", l2NetworkID, l1InfoTreeIndex, claimL1InfoTreeIndex)
+	log.Debugf("fetching claim proof: networkID=0 l1InfoTreeIndex=%d depositCount=%d", claimL1InfoTreeIndex, depositCount)
+	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, claimL1InfoTreeIndex, depositCount)
 	if err != nil || claimProof == nil {
 		return fmt.Errorf("failed to get claim proof: %w", err)
 	}
@@ -128,9 +133,7 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	rollupExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot))
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
 	metadata := common.FromHex(bridge.Metadata)
-	// Wait for the GER to be confirmed on-chain via the L2 GER contract. The bridge service
-	// may report injection before the op-reth RPC node exposes the new block at 'latest',
-	// which would cause ClaimAsset simulation to revert.
+	// Verify the GER is confirmed on-chain before claiming.
 	gerHash := crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
 	log.Debugf("waiting for GER to be confirmed on L2: gerHash=%s", gerHash.Hex())
 	for i := 0; i < 30; i++ {
@@ -251,16 +254,23 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 	}
 	log.Debugf("bridge included in L1 Info Tree: deposit_count=%d l1InfoTreeIndex=%d", depositCount, l1InfoTreeIndex)
 	log.Debugf("waiting for L1InfoTreeLeaf to be injected on L2: l2NetworkID=%d l1InfoTreeIndex=%d", l2NetworkID, l1InfoTreeIndex)
+	var injectedLeafWithResult *types.L1InfoTreeLeafResponse
 	for i := 0; i < 120; i++ {
-		_, err := env.Clients.BridgeService.GetInjectedL1InfoLeaf(ctx, int(l2NetworkID), int(l1InfoTreeIndex))
-		if err == nil {
+		leaf, err := env.Clients.BridgeService.GetInjectedL1InfoLeaf(ctx, int(l2NetworkID), int(l1InfoTreeIndex))
+		if err == nil && leaf != nil {
+			injectedLeafWithResult = leaf
 			break
 		}
 		time.Sleep(5 * time.Second)
 	}
-	log.Debugf("L1InfoTreeLeaf injected: l2NetworkID=%d l1InfoTreeIndex=%d", l2NetworkID, l1InfoTreeIndex)
-	log.Debugf("fetching claim proof: networkID=0 l1InfoTreeIndex=%d depositCount=%d", l1InfoTreeIndex, depositCount)
-	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, l1InfoTreeIndex, depositCount)
+	if injectedLeafWithResult == nil {
+		return nil, errors.New("L1InfoTreeLeaf was not injected")
+	}
+	// Use the ACTUAL injected index (may be ≥ deposit's own index; see BridgeL1ToL2 comment).
+	claimL1InfoTreeIndex := injectedLeafWithResult.L1InfoTreeIndex
+	log.Debugf("L1InfoTreeLeaf injected: l2NetworkID=%d depositIndex=%d claimIndex=%d", l2NetworkID, l1InfoTreeIndex, claimL1InfoTreeIndex)
+	log.Debugf("fetching claim proof: networkID=0 l1InfoTreeIndex=%d depositCount=%d", claimL1InfoTreeIndex, depositCount)
+	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, claimL1InfoTreeIndex, depositCount)
 	if err != nil || claimProof == nil {
 		return nil, fmt.Errorf("failed to get claim proof: %w", err)
 	}
@@ -283,7 +293,7 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 	rollupExitRoot := common.HexToHash(string(claimProof.L1InfoTreeLeaf.RollupExitRoot))
 	originTokenAddress := common.HexToAddress(string(bridge.OriginAddress))
 	metadata := common.FromHex(bridge.Metadata)
-	// Wait for the GER to be confirmed on-chain (same race guard as in BridgeL1ToL2).
+	// Verify the GER is confirmed on-chain before claiming.
 	gerHash := crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
 	log.Debugf("waiting for GER to be confirmed on L2: gerHash=%s", gerHash.Hex())
 	for i := 0; i < 30; i++ {
