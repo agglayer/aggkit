@@ -493,3 +493,40 @@ func TestCapCertificateExits_LBTMinAgglayer(t *testing.T) {
 	require.Equal(t, big.NewInt(600), result[0].Amount)
 	require.Equal(t, big.NewInt(100), result[1].Amount) // capped: 700-600=100
 }
+
+func TestSubtractGenesisPrefund(t *testing.T) {
+	t.Parallel()
+
+	token := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	newEntries := func() []LBTEntry {
+		return []LBTEntry{
+			{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "1000"},
+			{WrappedTokenAddress: token, OriginNetwork: 1, OriginTokenAddress: token, Balance: "500"},
+		}
+	}
+
+	// Empty prefund → entries returned unchanged (same backing slice).
+	entries := newEntries()
+	require.Equal(t, "1000", subtractGenesisPrefund(entries, "")[0].Balance)
+
+	// Subtracts only from the native (zero WrappedTokenAddress) entry; token entry untouched.
+	adjusted := subtractGenesisPrefund(newEntries(), "300")
+	require.Equal(t, "700", adjusted[0].Balance)
+	require.Equal(t, "500", adjusted[1].Balance)
+
+	// Does not mutate the caller's slice.
+	orig := newEntries()
+	_ = subtractGenesisPrefund(orig, "300")
+	require.Equal(t, "1000", orig[0].Balance)
+
+	// Prefund larger than the native balance floors at 0 (never negative).
+	require.Equal(t, "0", subtractGenesisPrefund(newEntries(), "4000")[0].Balance)
+
+	// Zero / invalid prefund is a no-op.
+	require.Equal(t, "1000", subtractGenesisPrefund(newEntries(), "0")[0].Balance)
+	require.Equal(t, "1000", subtractGenesisPrefund(newEntries(), "not-a-number")[0].Balance)
+
+	// No native entry present → nothing subtracted, token entry preserved.
+	onlyToken := []LBTEntry{{WrappedTokenAddress: token, OriginNetwork: 1, OriginTokenAddress: token, Balance: "500"}}
+	require.Equal(t, "500", subtractGenesisPrefund(onlyToken, "300")[0].Balance)
+}

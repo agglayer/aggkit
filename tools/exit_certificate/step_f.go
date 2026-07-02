@@ -49,6 +49,11 @@ func RunStepF(
 	log.Info(" STEP F — Agglayer token balance check")
 	log.Info("═══════════════════════════════════════════")
 
+	// Subtract any configured genesis pre-fund from the native LBT total before comparing: that native
+	// balance is inflated by funds minted at genesis (not backed by a real agglayer deposit), so the
+	// comparison must run against the genuinely bridged amount. Applies to both comparison modes below.
+	lbtEntries = subtractGenesisPrefund(lbtEntries, cfg.Options.GenesisPrefundETHWei)
+
 	// Whenever the agglayer admin endpoint is configured, dump its full local balance tree (LBT) to
 	// disk up front — regardless of the comparison mode below — so the agglayer-side balances are always
 	// captured. The response is reused by the agglayer comparison to avoid a second RPC round-trip.
@@ -117,6 +122,46 @@ func RunStepF(
 	log.Info("STEP F complete")
 
 	return finalizeStepFResult(cfg, certificate, checks, raw, allMatch)
+}
+
+// subtractGenesisPrefund returns a copy of entries with prefundWei subtracted from the native-token
+// LBT entry (the gas token, identified by a zero WrappedTokenAddress), floored at zero. It is used to
+// discount native tokens minted at genesis, which inflate the native LBT total without a matching
+// agglayer deposit. prefundWei is a decimal Wei string; an empty/zero/invalid value (validation happens
+// in LoadConfig) or the absence of a native entry leaves entries unchanged.
+func subtractGenesisPrefund(entries []LBTEntry, prefundWei string) []LBTEntry {
+	if prefundWei == "" {
+		return entries
+	}
+	prefund, ok := new(big.Int).SetString(prefundWei, decimalBase)
+	if !ok || prefund.Sign() <= 0 {
+		return entries
+	}
+
+	adjusted := make([]LBTEntry, len(entries))
+	copy(adjusted, entries)
+	for i := range adjusted {
+		if adjusted[i].WrappedTokenAddress != (common.Address{}) {
+			continue // not the native entry
+		}
+		current, ok := new(big.Int).SetString(adjusted[i].Balance, decimalBase)
+		if !ok {
+			log.Warnf("genesisPrefundETHWei: could not parse native LBT balance %q; leaving it unchanged",
+				adjusted[i].Balance)
+			return adjusted
+		}
+		reduced := new(big.Int).Sub(current, prefund)
+		if reduced.Sign() < 0 {
+			log.Warnf("genesisPrefundETHWei (%s) exceeds native LBT balance (%s); flooring the LBT total at 0",
+				prefund, current)
+			reduced = new(big.Int)
+		}
+		log.Infof("🔧 Genesis pre-fund: native LBT %s − %s = %s (Step F comparison)", current, prefund, reduced)
+		adjusted[i].Balance = reduced.String()
+		return adjusted
+	}
+	log.Warnf("genesisPrefundETHWei is set (%s) but no native LBT entry was found; nothing subtracted", prefund)
+	return adjusted
 }
 
 // queryAgglayerTokenBalance calls admin_getTokenBalance on the agglayer admin RPC for the configured

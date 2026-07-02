@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,6 +94,15 @@ type Options struct {
 	// order they appear, capping/dropping the ones that no longer fit. In both modes the surviving
 	// exits are emitted in their original order.
 	CapMode string `json:"capMode"`
+	// GenesisPrefundETHWei is an optional amount of native token (in Wei, as a decimal string) that was
+	// pre-funded at genesis and therefore inflates the native-token LBT total without being backed by a
+	// real deposit on the agglayer. When set, Step F subtracts it from the native LBT entry (the gas
+	// token, identified by a zero WrappedTokenAddress) before comparing against the agglayer balance and
+	// the certificate sum — so the comparison balances against the genuinely bridged amount. It affects
+	// the Step F comparison only (and, with IgnoreBalanceMismatch=true, the cap budget); the LBT written
+	// by Step 0 and the Step C SC-locked totals are left untouched. Empty means 0. Typical testnet value:
+	// 100000 ETH = "100000000000000000000000".
+	GenesisPrefundETHWei string `json:"genesisPrefundETHWei"`
 }
 
 // Cap modes for Options.CapMode (how Step F trims exits when capping a certificate).
@@ -248,6 +258,18 @@ func validateRawConfig(raw *rawConfig) error {
 		raw.Options.CapMode != CapModeByAppearance && raw.Options.CapMode != CapModeByAmount {
 		return fmt.Errorf("invalid options.capMode %q: must be %q or %q",
 			raw.Options.CapMode, CapModeByAppearance, CapModeByAmount)
+	}
+	// genesisPrefundETHWei, when set, must be a non-negative base-10 integer (Wei).
+	if raw.Options != nil && raw.Options.GenesisPrefundETHWei != "" {
+		v, ok := new(big.Int).SetString(raw.Options.GenesisPrefundETHWei, decimalBase)
+		if !ok {
+			return fmt.Errorf("invalid options.genesisPrefundETHWei %q: must be a base-10 integer amount in Wei",
+				raw.Options.GenesisPrefundETHWei)
+		}
+		if v.Sign() < 0 {
+			return fmt.Errorf("invalid options.genesisPrefundETHWei %q: must not be negative",
+				raw.Options.GenesisPrefundETHWei)
+		}
 	}
 	// Step F (the agglayer admin balance check) needs agglayerAdminURL. When the check is enabled
 	// (useAgglayerAdminToStepFCheck, default true), the URL must be set; otherwise set the flag to
@@ -450,6 +472,9 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	if raw.CapMode != "" {
 		opts.CapMode = raw.CapMode
 	}
+	if raw.GenesisPrefundETHWei != "" {
+		opts.GenesisPrefundETHWei = raw.GenesisPrefundETHWei
+	}
 }
 
 // mergeFlagOptions overrides the boolean (tri-state *bool) option flags that were explicitly set.
@@ -540,6 +565,7 @@ type rawOpts struct {
 	ExtraERC20Contracts                   []string               `json:"extraErc20Contracts"`
 	IgnoreAddresses                       []string               `json:"ignoreAddresses"`
 	CapMode                               string                 `json:"capMode"`
+	GenesisPrefundETHWei                  string                 `json:"genesisPrefundETHWei"`
 	BridgeServiceURL                      string                 `json:"bridgeServiceURL"`
 	BridgeServiceType                     string                 `json:"bridgeServiceType"`
 	IgnoreUnsupportedL2Events             *bool                  `json:"ignoreUnsupportedL2Events"`

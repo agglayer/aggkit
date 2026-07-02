@@ -216,6 +216,47 @@ func TestLoadConfig_CapMode(t *testing.T) {
 	require.Contains(t, err.Error(), "capMode")
 }
 
+func TestLoadConfig_GenesisPrefundETHWei(t *testing.T) {
+	t.Parallel()
+
+	base := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
+		"targetBlock": "100",
+		"options": {"useAgglayerAdminToStepFCheck": false%s}
+	}`
+
+	// Unset → empty (treated as 0 by Step F).
+	pathDefault := filepath.Join(t.TempDir(), "default.json")
+	require.NoError(t, os.WriteFile(pathDefault, fmt.Appendf(nil, base, ""), 0o600))
+	cfg, err := LoadConfig(pathDefault)
+	require.NoError(t, err)
+	require.Equal(t, "", cfg.Options.GenesisPrefundETHWei)
+
+	// Valid large Wei value (100000 ETH).
+	pathValid := filepath.Join(t.TempDir(), "valid.json")
+	require.NoError(t, os.WriteFile(pathValid,
+		fmt.Appendf(nil, base, `, "genesisPrefundETHWei": "100000000000000000000000"`), 0o600))
+	cfg, err = LoadConfig(pathValid)
+	require.NoError(t, err)
+	require.Equal(t, "100000000000000000000000", cfg.Options.GenesisPrefundETHWei)
+
+	// Non-numeric → rejected.
+	pathBad := filepath.Join(t.TempDir(), "bad.json")
+	require.NoError(t, os.WriteFile(pathBad, fmt.Appendf(nil, base, `, "genesisPrefundETHWei": "10 ETH"`), 0o600))
+	_, err = LoadConfig(pathBad)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "genesisPrefundETHWei")
+
+	// Negative → rejected.
+	pathNeg := filepath.Join(t.TempDir(), "neg.json")
+	require.NoError(t, os.WriteFile(pathNeg, fmt.Appendf(nil, base, `, "genesisPrefundETHWei": "-1"`), 0o600))
+	_, err = LoadConfig(pathNeg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "genesisPrefundETHWei")
+}
+
 func TestLoadConfig_MinimalValid(t *testing.T) {
 	t.Parallel()
 
