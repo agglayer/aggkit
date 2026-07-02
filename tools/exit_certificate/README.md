@@ -94,6 +94,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `destinationNetwork` | No | Destination network for bridge exits. Defaults to `0` (L1). |
 | `sovereignRollupAddr` | Yes* | Address of the `aggchainbase` contract on L1. Required by Step CHECK (network type and threshold verification). |
 | `l1GlobalExitRootAddress` | Yes* | Address of `PolygonZkEVMGlobalExitRootV2` on L1. Required by Step I to fetch `L1InfoTreeLeafCount`. |
+| `rollupManagerAddress` | No | Address of the `PolygonRollupManager` (AgglayerManager) contract on L1. Used by Step WAIT to confirm the certificate's L1 settlement (`VerifyBatchesTrustedAggregator`). When unset it is resolved on-chain from `sovereignRollupAddr.rollupManager()`. |
 | `signerConfig` | No | Signer configuration object for Step SIGN. Same format as aggsender's `AggsenderPrivateKey`. Example: `{"Method": "local", "Path": "keystore.json", "Password": "pass"}`. |
 
 > **\*Required for specific steps:** `l1RpcUrl` is required by Steps E and I; `sovereignRollupAddr` is required by Step CHECK; `l1GlobalExitRootAddress` is required by Step I. Without them those steps fail.
@@ -103,7 +104,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | Field | Default | Description |
 | :---: | :-----: | :---------: |
 | `blockRange` | `5000` | Block range per `eth_getLogs` query (Steps 0, B, E). |
-| `stepAWindowSize` | `5000` | Number of blocks loaded into memory per iteration in Step A (address collection via `debug_traceTransaction`). Set independently when trace calls need a different chunk size than log queries. |
+| `stepAWindowSize` | `150000` | Number of blocks loaded into memory per iteration in Step A (address collection via `debug_traceTransaction`). Set independently when trace calls need a different chunk size than log queries. |
 | `concurrencyLimit` | `20` | Max concurrent RPC requests. |
 | `rpcBatchSize` | `200` | Max calls per JSON-RPC batch request. |
 | `rpcDelayMs` | `0` | Delay between RPC batches (rate limiting). |
@@ -223,7 +224,7 @@ This produces and signs the certificate but **does not submit it**. SUBMIT and W
 | A | Collect addresses | A1: traces every L2 transaction via `debug_traceTransaction` and collects all addresses that touched state. A2: for any transaction whose trace failed in A1, recovers its addresses from the tx receipt (`eth_getTransactionReceipt`). |
 | B | EOA balances + ERC-20 detection | B1: classifies addresses and fetches ETH/token balances for EOAs. B2: probes contracts for the ERC-20 interface and checks if they hold tracked wrapped tokens. B3: fetches holder breakdowns for `extraErc20Contracts` (skips any already processed by B2). |
 | C | SC-locked value | Computes value locked in contracts: `SC_locked = LBT_totalSupply − EOA_accumulated` per token. |
-| D | Build certificate | Creates the `Certificate` with `BridgeExit` entries for every (EOA, token) pair and every token with SC-locked value. |
+| D | Build certificate | Creates the `Certificate` with `BridgeExit` entries for every (EOA, token) pair, every decomposed ERC-20 holder (Step C holder bridges), and every token with SC-locked value. |
 | E | Unclaimed deposits | Scans L1 for unclaimed `BridgeEvent` deposits targeting L2. Message deposits (`leaf_type=1`) are saved to `step-e-unclaimed-messages.json` and never added to the certificate. Asset deposits (`leaf_type=0`): if none are found the certificate is passed through unchanged; if any are found and `ignoreUnclaimed=true` they are logged but the certificate remains unchanged; if found and `ignoreUnclaimed=false` the pipeline errors (Merkle proof support not yet implemented). Optionally cross-checks against a bridge service. |
 | F | Balance verification | Three-way comparison (LBT, agglayer, certificate) per token. Aborts on mismatch by default; with `ignoreBalanceMismatch=true` produces a capped certificate (allocation order set by `capMode`). Whenever `agglayerAdminURL` is set it also dumps the agglayer LBT to `step-f-agglayer-lbt.json`. With `useAgglayerAdminToStepFCheck=false` it skips the agglayer comparison and does an offline LBT-vs-certificate comparison instead. |
 | G | NewLocalExitRoot | G1: syncs the L2 bridge history from genesis up to `targetBlock` into a lite DB and resolves the shadow-fork block. G2: computes the `NewLocalExitRoot` — by default shadow-forks L2 via Anvil, replays all bridge exits, and reads the resulting root from the forked bridge contract (or computes it off-chain when `verifyNewLocalExitRootUsingShadowFork=false`). |
@@ -368,16 +369,17 @@ Skipped automatically when `options.extraErc20Contracts` is empty.
 
 ### Step C — SC-locked value extraction
 
-Computes value locked in smart contracts using: `SC_locked = LBT_totalSupply - accumulated_EOA_balances`. Uses the LBT data (Step 0) for total supply per token.
+Computes value locked in smart contracts using: `SC_locked = LBT_totalSupply - accumulated_EOA_balances`. Uses the LBT data (Step 0) for total supply per token. It also emits the per-holder bridge entries derived from the Step B3 ERC-20 decomposition, which Step D turns into exits back to each holder.
 
-**Output:** `step-c-sc-locked-values.json`
+**Output:** `step-c-sc-locked-values.json`, `step-c-holder-bridges.json`
 
 ### Step D — Build exit certificate
 
 Creates the agglayer `Certificate` with `BridgeExit` entries for:
 
 1. Every (EOA, token) pair with a non-zero balance → exits to the same address on the destination network
-2. Every token with SC-locked value → exits to `exitAddress` on the destination network
+2. Every holder of a decomposed ERC-20 contract (from Step C's holder bridges, i.e. the `extraErc20Contracts` / detected-vault breakdowns) → exits to the holder's address on the destination network
+3. Every token with SC-locked value → exits to `exitAddress` on the destination network
 
 **Output:** `step-d-exit-certificate.json`
 
@@ -395,7 +397,7 @@ When `bridgeServiceURL` is set, Step E compares its detected unclaimed set again
 
 Requires `l1RpcUrl`.
 
-**Output:** `step-e-unclaimed-bridges.json`, `step-e-unclaimed-messages.json`, `step-e-exit-certificate.json`
+**Output:** `step-e-unclaimed-bridges.json`, `step-e-unclaimed-messages.json` (both always written), `step-e-exit-certificate.json` *(only when the step produces a certificate — i.e. not on the `ignoreUnclaimed=false` abort path)*
 
 ### Step F — Agglayer token balance verification
 
