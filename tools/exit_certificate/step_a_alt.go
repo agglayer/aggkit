@@ -120,8 +120,13 @@ func RunStepAAlt(
 	}
 
 	// Remove the zero address (defensive: the individual sources already skip it, but this ensures
-	// it is never present regardless of which discovery paths ran).
-	delete(finalAddrs, common.Address{})
+	// it is never present regardless of which discovery paths ran). When includeZeroAddress is set,
+	// keep it so its native/token balances are exited in the certificate.
+	if !cfg.Options.IncludeZeroAddress {
+		delete(finalAddrs, common.Address{})
+	} else if _, ok := finalAddrs[common.Address{}]; ok {
+		log.Info("includeZeroAddress=true — keeping the zero address in the collected set")
+	}
 
 	addresses := make([]common.Address, 0, len(finalAddrs))
 	for addr := range finalAddrs {

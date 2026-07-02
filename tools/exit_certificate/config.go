@@ -48,6 +48,15 @@ type Options struct {
 	// IgnoreOnTraceError skips transactions whose debug_traceTransaction call fails instead of
 	// aborting Step A. Failed tx hashes are saved to step-a-failed-traces.json for review.
 	IgnoreOnTraceError bool `json:"ignoreOnTraceError"`
+	// IncludeZeroAddress, when true, keeps the zero address (0x000…000) in the collected address set
+	// (alternative Step A) instead of dropping it, so its native/token balances become bridge exits
+	// in the certificate. Defaults to false (the zero address is excluded).
+	IncludeZeroAddress bool `json:"includeZeroAddress"`
+	// NativeSCLockedFromContracts, when true, computes the native-token SC-locked value in Step C
+	// from the actual ETH balances held by contract accounts (summed, excluding the L2 bridge) rather
+	// than from LBT − EOA_accumulated. This is needed on chains with a native genesis premint, where
+	// LBT − EOA underflows and clamps to 0, silently dropping contract-held ETH. Defaults to false.
+	NativeSCLockedFromContracts bool `json:"nativeSCLockedFromContracts"`
 	// AddressDiscovery selects the strategy used by the alternative Step A (--step aalt):
 	// "stateDump" (debug_accountRange only), "logs" (Transfer logs only), "both", or "auto"
 	// (the default: probe debug_accountRange and use both, else fall back to receipt harvesting
@@ -409,6 +418,12 @@ func mergeFlagOptions(opts *Options, raw *rawOpts) {
 	if raw.IgnoreOnTraceError != nil {
 		opts.IgnoreOnTraceError = *raw.IgnoreOnTraceError
 	}
+	if raw.IncludeZeroAddress != nil {
+		opts.IncludeZeroAddress = *raw.IncludeZeroAddress
+	}
+	if raw.NativeSCLockedFromContracts != nil {
+		opts.NativeSCLockedFromContracts = *raw.NativeSCLockedFromContracts
+	}
 	if raw.IgnoreBalanceMismatch != nil {
 		opts.IgnoreBalanceMismatch = *raw.IgnoreBalanceMismatch
 	}
@@ -482,6 +497,8 @@ type rawOpts struct {
 	UseAgglayerAdminToStepFCheck          *bool                  `json:"useAgglayerAdminToStepFCheck"`
 	IgnoreGenesisBalance                  *bool                  `json:"ignoreGenesisBalance"`
 	IgnoreOnTraceError                    *bool                  `json:"ignoreOnTraceError"`
+	IncludeZeroAddress                    *bool                  `json:"includeZeroAddress"`
+	NativeSCLockedFromContracts           *bool                  `json:"nativeSCLockedFromContracts"`
 	IgnoreBalanceMismatch                 *bool                  `json:"ignoreBalanceMismatch"`
 	IgnoreUnclaimed                       *bool                  `json:"ignoreUnclaimed"`
 	ExtraERC20Contracts                   []string               `json:"extraErc20Contracts"`

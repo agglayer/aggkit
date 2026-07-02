@@ -154,6 +154,10 @@ type StepBResult struct {
 	DetectedERC20s        []DetectedERC20        `json:"detectedErc20s,omitempty"`
 	DiscardedERC20s       []DiscardedERC20       `json:"discardedErc20s,omitempty"`
 	ERC20HolderBreakdowns []ERC20HolderBreakdown `json:"erc20HolderBreakdowns,omitempty"`
+	// NativeContractLocked, when non-empty, is the total native ETH (wei, decimal) held by contract
+	// accounts (bridge excluded). Set only when options.nativeSCLockedFromContracts is enabled; Step C
+	// uses it as the native token's SC-locked value instead of the LBT − EOA formula.
+	NativeContractLocked string `json:"-"`
 }
 
 // ERC20HolderBreakdown holds the full holder decomposition for a single ERC-20 contract

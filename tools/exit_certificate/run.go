@@ -277,7 +277,7 @@ func runAll(ctx context.Context, cfg *Config) error {
 		return err
 	}
 
-	stepCResult, err := runAllStepC(dir, lbtEntries, stepBResult)
+	stepCResult, err := runAllStepC(ctx, cfg, dir, lbtEntries, stepBResult)
 	if err != nil {
 		return err
 	}
@@ -378,10 +378,15 @@ func runAllStepB(
 	return stepBResult, nil
 }
 
-func runAllStepC(dir string, lbtEntries []LBTEntry, stepBResult *StepBResult) (*StepCResult, error) {
+func runAllStepC(
+	ctx context.Context, cfg *Config, dir string, lbtEntries []LBTEntry, stepBResult *StepBResult,
+) (*StepCResult, error) {
 	if len(lbtEntries) == 0 {
 		log.Warn("STEP C skipped: no LBT data available")
 		return &StepCResult{}, nil
+	}
+	if err := applyNativeContractLocked(ctx, cfg, dir, stepBResult); err != nil {
+		return nil, fmt.Errorf("step C: %w", err)
 	}
 	stepCResult, err := RunStepC(lbtEntries, stepBResult)
 	if err != nil {
@@ -560,7 +565,7 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 	case "b3":
 		return runSingleB3(ctx, cfg, dir)
 	case "c":
-		return runSingleC(dir)
+		return runSingleC(ctx, cfg, dir)
 	case "d":
 		return runSingleD(cfg, dir)
 	case "e":
@@ -812,7 +817,7 @@ func runSingleB3(ctx context.Context, cfg *Config, dir string) error {
 	return nil
 }
 
-func runSingleC(dir string) error {
+func runSingleC(ctx context.Context, cfg *Config, dir string) error {
 	var accumulated []AccumulatedBalance
 	if err := loadJSON(dir, fileStepBAccumulated, &accumulated); err != nil {
 		return fmt.Errorf("load step B output: %w", err)
@@ -825,15 +830,43 @@ func runSingleC(dir string) error {
 	var breakdowns []ERC20HolderBreakdown
 	_ = loadJSON(dir, fileStepB3ERC20Holders, &breakdowns)
 
-	result, err := RunStepC(lbtEntries, &StepBResult{
-		Accumulated:           accumulated,
-		ERC20HolderBreakdowns: breakdowns,
-	})
+	stepB := &StepBResult{Accumulated: accumulated, ERC20HolderBreakdowns: breakdowns}
+	if err := applyNativeContractLocked(ctx, cfg, dir, stepB); err != nil {
+		return err
+	}
+
+	result, err := RunStepC(lbtEntries, stepB)
 	if err != nil {
 		return err
 	}
 	saveJSON(dir, fileStepCSCLockedValues, result.SCLockedValues)
 	saveJSON(dir, fileStepCHolderBridges, result.HolderBridges)
+	return nil
+}
+
+// applyNativeContractLocked computes the native token's SC-locked value from contract ETH balances
+// (options.nativeSCLockedFromContracts) and stores it on stepB. contractAddrs are loaded either from
+// stepB (in-memory pipeline) or the step-b-contract-addresses.json file (single-step runs). No-op
+// when the option is disabled.
+func applyNativeContractLocked(ctx context.Context, cfg *Config, dir string, stepB *StepBResult) error {
+	if !cfg.Options.NativeSCLockedFromContracts {
+		return nil
+	}
+	contractAddrs := stepB.ContractAddresses
+	if len(contractAddrs) == 0 {
+		if err := loadJSON(dir, fileStepBContractAddresses, &contractAddrs); err != nil {
+			return fmt.Errorf("load contract addresses for native SC-locked (run step b first): %w", err)
+		}
+	}
+	targetBlock, err := loadTargetBlock(dir)
+	if err != nil {
+		return err
+	}
+	total, err := sumContractNativeBalances(ctx, cfg, contractAddrs, toBlockTag(targetBlock))
+	if err != nil {
+		return fmt.Errorf("compute native SC-locked from contracts: %w", err)
+	}
+	stepB.NativeContractLocked = total.String()
 	return nil
 }
 

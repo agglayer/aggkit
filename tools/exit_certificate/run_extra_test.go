@@ -110,7 +110,7 @@ func TestRunSingleCAndD(t *testing.T) {
 	})
 
 	// Step C: pure compute from the fixtures.
-	require.NoError(t, runSingleC(dir))
+	require.NoError(t, runSingleC(context.Background(), &Config{}, dir))
 	require.True(t, fileExists(filepath.Join(dir, "step-c-sc-locked-values.json")))
 
 	// Step D: build the certificate from B + C.
@@ -127,7 +127,7 @@ func TestRunSingleCAndD(t *testing.T) {
 
 func TestRunSingleCMissingInput(t *testing.T) {
 	t.Parallel()
-	err := runSingleC(t.TempDir()) // no fixtures → load error
+	err := runSingleC(context.Background(), &Config{}, t.TempDir()) // no fixtures → load error
 	require.Error(t, err)
 }
 
