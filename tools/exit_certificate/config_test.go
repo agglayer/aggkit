@@ -536,7 +536,7 @@ func TestMergeOptions_BoolFlags(t *testing.T) {
 		"options": {
 			"agglayerAdminURL": "https://admin.example.com",
 			"ignoreGenesisBalance": true,
-			"ignoreOnTraceError": true,
+			"addressDiscovery": "stateDump",
 			"ignoreBalanceMismatch": true,
 			"ignoreUnclaimed": true
 		}
@@ -546,7 +546,7 @@ func TestMergeOptions_BoolFlags(t *testing.T) {
 	cfg, err := LoadConfig(path)
 	require.NoError(t, err)
 	require.True(t, cfg.Options.IgnoreGenesisBalance)
-	require.True(t, cfg.Options.IgnoreOnTraceError)
+	require.Equal(t, addressDiscoveryStateDump, cfg.Options.AddressDiscovery)
 	require.True(t, cfg.Options.IgnoreBalanceMismatch)
 	require.True(t, cfg.Options.IgnoreUnclaimed)
 }

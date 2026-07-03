@@ -19,7 +19,7 @@
         "outputDir": "./output",
         "l1StartBlock": 0,
         "l1EndBlock": 0,
-        "ignoreOnTraceError": false,
+        "addressDiscovery": "auto",
         "ignoreGenesisBalance": false,
         "nativeSCLockedFromContracts": true,
         "ignoreUnclaimed": false,

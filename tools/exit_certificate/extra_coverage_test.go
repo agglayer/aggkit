@@ -12,19 +12,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// RunStepA in "auto" mode with an unusable state dump falls back to receipt harvesting; with
+// transaction-free blocks and no wrapped tokens the result is an empty address set.
 func TestRunStepAEmptyBlocks(t *testing.T) {
 	t.Parallel()
 	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
 		if method == rpcMethodEthGetBlockByNumber {
 			return map[string]any{"transactions": []string{}}
 		}
-		return "0x"
+		return "0x" // debug_accountRange probe fails → receipt-harvest fallback
 	})
 	cfg := &Config{
 		L2RPCURL: url,
 		Options:  Options{RPCBatchSize: 10, ConcurrencyLimit: 2, StepAWindowSize: 100},
 	}
-	res, err := RunStepA(context.Background(), cfg, 2)
+	res, err := RunStepA(context.Background(), cfg, 2, nil)
 	require.NoError(t, err)
 	require.Empty(t, res.Addresses)
 }
@@ -123,17 +125,6 @@ func TestComputeNativeBalance(t *testing.T) {
 	require.Equal(t, common.Address{}, entry.WrappedTokenAddress)
 }
 
-func TestMergeAddresses(t *testing.T) {
-	t.Parallel()
-	a := common.HexToAddress("0x01")
-	b := common.HexToAddress("0x02")
-	c := common.HexToAddress("0x03")
-	// The zero address is kept: it can hold value (e.g. burned funds) that the certificate
-	// must account for.
-	merged := mergeAddresses([]common.Address{a, b}, []common.Address{b, c, {}})
-	require.ElementsMatch(t, []common.Address{a, b, c, {}}, merged)
-}
-
 func TestSaveJSONErrorBranches(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -177,30 +168,6 @@ func TestReceiptAddressesNull(t *testing.T) {
 	})
 	_, err := receiptAddresses(context.Background(), srv.URL, common.HexToHash("0xabc"))
 	require.ErrorContains(t, err, "is null")
-}
-
-func TestRunStepA2(t *testing.T) {
-	t.Parallel()
-
-	t.Run("no failed traces", func(t *testing.T) {
-		t.Parallel()
-		res, err := RunStepA2(context.Background(), &Config{}, nil)
-		require.NoError(t, err)
-		require.Empty(t, res.Addresses)
-	})
-
-	t.Run("recovers addresses from receipts", func(t *testing.T) {
-		t.Parallel()
-		from := "0x1000000000000000000000000000000000000001"
-		srv := newRPCStub(t, func(string, []any) (json.RawMessage, *jsonRPCError) {
-			out, _ := json.Marshal(map[string]any{"from": from})
-			return out, nil
-		})
-		cfg := &Config{L2RPCURL: srv.URL, Options: Options{ConcurrencyLimit: 2}}
-		res, err := RunStepA2(context.Background(), cfg, []FailedTrace{{Hash: common.HexToHash("0xabc")}})
-		require.NoError(t, err)
-		require.Equal(t, []common.Address{common.HexToAddress(from)}, res.Addresses)
-	})
 }
 
 func TestFetchL2ChainID(t *testing.T) {

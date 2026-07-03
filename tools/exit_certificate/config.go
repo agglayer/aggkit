@@ -20,9 +20,9 @@ import (
 // Options holds tuning parameters for RPC parallelism and output.
 type Options struct {
 	BlockRange int `json:"blockRange"`
-	// StepAWindowSize is the number of blocks loaded into memory at once during Step A
-	// (address collection via debug_traceTransaction). Defaults to 150000, independently of BlockRange.
-	// Tune independently when trace calls need a different chunk size than log queries.
+	// StepAWindowSize is the number of blocks loaded into memory at once by Step A's
+	// receipt-harvesting fallback (used when debug_accountRange is unavailable in "auto" mode).
+	// Defaults to 150000, independently of BlockRange.
 	StepAWindowSize  int    `json:"stepAWindowSize"`
 	ConcurrencyLimit int    `json:"concurrencyLimit"`
 	RPCBatchSize     int    `json:"rpcBatchSize"`
@@ -53,15 +53,17 @@ type Options struct {
 	// totals): the check still runs and warns, but the run continues. Defaults to false (abort); set
 	// to true only for Kurtosis or test environments.
 	IgnoreGenesisBalance bool `json:"ignoreGenesisBalance"`
-	// IgnoreOnTraceError skips transactions whose debug_traceTransaction call fails instead of
-	// aborting Step A. Failed tx hashes are saved to step-a-failed-traces.json for review.
-	IgnoreOnTraceError bool `json:"ignoreOnTraceError"`
 	// NativeSCLockedFromContracts, when true (the default), computes the native-token SC-locked value
 	// in Step C from the actual ETH balances held by contract accounts (summed, excluding the L2
 	// bridge) rather than from LBT − EOA_accumulated. That formula underflows on chains with a native
 	// genesis premint, clamping to 0 and silently dropping contract-held ETH. Set to false to fall
 	// back to the LBT − EOA derivation for the native token.
 	NativeSCLockedFromContracts bool `json:"nativeSCLockedFromContracts"`
+	// AddressDiscovery selects the strategy used by Step A to collect value-holding addresses:
+	// "stateDump" (debug_accountRange only), "logs" (Transfer logs only), "both", or "auto"
+	// (the default: probe debug_accountRange and use both, else fall back to receipt harvesting
+	// plus Transfer logs).
+	AddressDiscovery string `json:"addressDiscovery"`
 	// IgnoreBalanceMismatch suppresses the error returned by Step F when token balances
 	// do not match. Set to true only when investigating discrepancies without blocking the pipeline.
 	IgnoreBalanceMismatch bool `json:"ignoreBalanceMismatch"`
@@ -167,6 +169,7 @@ var defaultOptions = Options{
 	OutputDir:                             "output",
 	L1StartBlock:                          0,
 	L2StartBlock:                          0,
+	AddressDiscovery:                      addressDiscoveryAuto,
 	UseAgglayerAdminToStepFCheck:          true,
 	VerifyNewLocalExitRootUsingShadowFork: true,
 	CapMode:                               CapModeByAmount,
@@ -435,6 +438,9 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	if raw.L2StartBlock > 0 {
 		opts.L2StartBlock = raw.L2StartBlock
 	}
+	if raw.AddressDiscovery != "" {
+		opts.AddressDiscovery = raw.AddressDiscovery
+	}
 	if raw.AgglayerAdminURL != "" {
 		opts.AgglayerAdminURL = raw.AgglayerAdminURL
 	}
@@ -469,9 +475,6 @@ func mergeFlagOptions(opts *Options, raw *rawOpts) {
 	}
 	if raw.IgnoreGenesisBalance != nil {
 		opts.IgnoreGenesisBalance = *raw.IgnoreGenesisBalance
-	}
-	if raw.IgnoreOnTraceError != nil {
-		opts.IgnoreOnTraceError = *raw.IgnoreOnTraceError
 	}
 	if raw.NativeSCLockedFromContracts != nil {
 		opts.NativeSCLockedFromContracts = *raw.NativeSCLockedFromContracts
@@ -543,12 +546,12 @@ type rawOpts struct {
 	L1StartBlock                          uint64                 `json:"l1StartBlock"`
 	L1EndBlock                            uint64                 `json:"l1EndBlock"`
 	L2StartBlock                          uint64                 `json:"l2StartBlock"`
+	AddressDiscovery                      string                 `json:"addressDiscovery"`
 	AgglayerAdminURL                      string                 `json:"agglayerAdminURL"`
 	AgglayerAdminToken                    string                 `json:"agglayerAdminToken"`
 	AgglayerClient                        *agglayer.ClientConfig `json:"agglayerClient"`
 	UseAgglayerAdminToStepFCheck          *bool                  `json:"useAgglayerAdminToStepFCheck"`
 	IgnoreGenesisBalance                  *bool                  `json:"ignoreGenesisBalance"`
-	IgnoreOnTraceError                    *bool                  `json:"ignoreOnTraceError"`
 	NativeSCLockedFromContracts           *bool                  `json:"nativeSCLockedFromContracts"`
 	IgnoreBalanceMismatch                 *bool                  `json:"ignoreBalanceMismatch"`
 	IgnoreUnclaimed                       *bool                  `json:"ignoreUnclaimed"`

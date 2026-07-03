@@ -19,7 +19,7 @@ tools/exit_certificate/
 ├── worker.go            — generic worker pool (runWorkerPool)
 ├── hex.go               — hex/uint64 conversion utilities
 ├── step_0.go            — LBT generation
-├── step_a.go            — address collection via debug_traceTransaction
+├── step_a.go            — address collection via debug_accountRange state dump + Transfer logs
 ├── step_b.go            — EOA classification + balance fetching
 ├── step_c.go            — SC-locked value computation
 ├── step_d.go            — build agglayer Certificate
@@ -69,9 +69,20 @@ All checks run regardless of individual failures. A combined error lists every f
 
 ### Step A — Collect addresses
 
-- **RPC:** `eth_getBlockByNumber` (headers, `false`) → tx hashes; then `debug_traceTransaction` with `prestateTracer`+`diffMode` per hash.
-- **Output:** `step-a-addresses.json` (`[]common.Address`), `step-a-failed-traces.json` (`[]common.Hash`)
-- **Option:** `ignoreOnTraceError=true` skips failed traces instead of aborting.
+Discovers every value-holding address at `targetBlock` from two merged sources instead of replaying
+transaction history:
+
+1. **State dump** — paginated `debug_accountRange` at `targetBlock` (every ETH holder and contract,
+   `O(#accounts)`). The geth vs erigon/cdk-erigon dialect is auto-detected on the first page. Fails
+   loudly on truncation (page cap hit with a non-empty cursor) or a 0-account dump.
+2. **`Transfer` event logs** — `eth_getLogs` per wrapped token (from the Step 0 LBT) over
+   `[0, targetBlock]`, collecting the indexed `from`/`to` — the only source that surfaces token-only
+   EOAs (no nonce/balance/code). Always starts at block 0, not `l2StartBlock`.
+
+- **Option:** `addressDiscovery` — `"auto"` (default: probe `debug_accountRange`, use dump + logs;
+  else fall back to receipt harvesting via `eth_getBlockByNumber` + `eth_getTransactionReceipt` in
+  `stepAWindowSize` windows, which misses internal value transfers), `"stateDump"`, `"logs"`, `"both"`.
+- **Output:** `step-a-addresses.json` (`[]common.Address`)
 
 ### Step B — EOA balance checking + ERC-20 detection
 
@@ -394,7 +405,9 @@ Defaults applied by `LoadConfig`:
 - **File chain with capping:** when `ignoreBalanceMismatch=true` produces a capped cert, the effective chain becomes: Step D → Step E → **Step F (capped)** → Step G → … Always check whether `step-f-capped-certificate.json` exists when investigating balance issues.
 - **`--verbose` flag:** the logger defaults to `info` level; pass `--verbose` to enable `debug` output.
 - **SC-locked value can be negative** when genesis state was pre-loaded or the LBT is stale — the genesis-balance guard (`ignoreGenesisBalance=false`, the default) catches this early.
-- **`debug_traceTransaction` must be available** on the L2 RPC (Step A). Archive node required.
+- **Step A needs an archive node.** `debug_accountRange` at `targetBlock` is the preferred source;
+  when unavailable, the `auto` discovery mode falls back to receipt harvesting (which misses internal
+  value transfers).
 - **Step G2 requires Anvil only in shadow-fork mode** (`options.verifyNewLocalExitRootUsingShadowFork=true`; `anvil` binary in `$PATH`, from the Foundry toolchain). The default off-chain mode needs no Anvil.
 - **FEP chains are not supported.** Only Pessimistic Proof certificates are generated.
 - **`SetClaim` and `UpdatedUnsetGlobalIndexHashChain` events are not handled** — value from those flows may be missing.

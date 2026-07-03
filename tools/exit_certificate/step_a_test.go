@@ -2,277 +2,451 @@ package exit_certificate
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
+	"sync"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
-const testAddr1 = "0x1000000000000000000000000000000000000001"
-
-// newTraceServer returns a test server that responds to debug_traceTransaction.
-// The handler receives the tx hash (from params[0]) and returns the result/error
-// provided by the given responder function.
-func newTraceServer(t *testing.T, responder func(txHex string) jsonRPCResponse) *httptest.Server {
+// decodeBody reads the full request body so the handler can branch on batch ('[') vs single ('{').
+func decodeBody(t *testing.T, r *http.Request) []byte {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Params []json.RawMessage `json:"params"`
-		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
-		var txHex string
-		require.NoError(t, json.Unmarshal(req.Params[0], &txHex))
-
-		resp := responder(txHex)
-		w.Header().Set("Content-Type", "application/json")
-		require.NoError(t, json.NewEncoder(w).Encode(resp))
-	}))
-}
-
-func TestTraceOneTransaction_Success(t *testing.T) {
-	t.Parallel()
-
-	addr1 := testAddr1
-	addr2 := "0x2000000000000000000000000000000000000002"
-	addr3 := "0x3000000000000000000000000000000000000003"
-
-	server := newTraceServer(t, func(_ string) jsonRPCResponse {
-		return jsonRPCResponse{
-			JSONRPC: "2.0",
-			ID:      1,
-			Result:  json.RawMessage(`{"pre":{"` + addr1 + `":{},"` + addr2 + `":{}},"post":{"` + addr3 + `":{}}}`),
-		}
-	})
-	defer server.Close()
-
-	addrs, err := traceOneTransaction(context.Background(), server.URL, common.HexToHash("0xabc"))
+	body, err := io.ReadAll(r.Body)
 	require.NoError(t, err)
-	require.Len(t, addrs, 3)
-
-	addrSet := make(map[common.Address]struct{}, len(addrs))
-	for _, a := range addrs {
-		addrSet[a] = struct{}{}
-	}
-	require.Contains(t, addrSet, common.HexToAddress(addr1))
-	require.Contains(t, addrSet, common.HexToAddress(addr2))
-	require.Contains(t, addrSet, common.HexToAddress(addr3))
+	return body
 }
 
-// An address that appears in both pre and post must be deduplicated.
-func TestTraceOneTransaction_DeduplicatesPreAndPost(t *testing.T) {
-	t.Parallel()
+const (
+	stepAAddr1 = "0x1000000000000000000000000000000000000001"
+	stepAAddr2 = "0x2000000000000000000000000000000000000002"
+	stepAAddr3 = "0x3000000000000000000000000000000000000003"
+	stepAToken = "0x4000000000000000000000000000000000000004"
 
-	addr := testAddr1
+	rpcMethodDebugAccountRange = "debug_accountRange"
+	rpcMethodEthGetTxReceipt   = "eth_getTransactionReceipt"
+)
 
-	server := newTraceServer(t, func(_ string) jsonRPCResponse {
-		return jsonRPCResponse{
-			JSONRPC: "2.0",
-			ID:      1,
-			Result:  json.RawMessage(`{"pre":{"` + addr + `":{}},"post":{"` + addr + `":{}}}`),
-		}
-	})
-	defer server.Close()
+// topicForAddr left-pads a 20-byte address into a 32-byte indexed event topic.
+func topicForAddr(addr string) string {
+	return "0x000000000000000000000000" + addr[2:]
+}
 
-	addrs, err := traceOneTransaction(context.Background(), server.URL, common.HexToHash("0xabc"))
+func encodeRPC(t *testing.T, id int, result string) []byte {
+	t.Helper()
+	resp := jsonRPCResponse{JSONRPC: "2.0", ID: id, Result: json.RawMessage(result)}
+	b, err := json.Marshal(resp)
 	require.NoError(t, err)
-	require.Len(t, addrs, 1)
-	require.Equal(t, common.HexToAddress(addr), addrs[0])
+	return b
 }
 
-// An RPC-level error must be wrapped with the tx hash and propagated.
-func TestTraceOneTransaction_RPCError(t *testing.T) {
+func TestCollectAccountsViaStateDump_Paginates(t *testing.T) {
 	t.Parallel()
 
-	server := newTraceServer(t, func(_ string) jsonRPCResponse {
-		return jsonRPCResponse{
-			JSONRPC: "2.0",
-			ID:      1,
-			Error:   &jsonRPCError{Code: -32000, Message: "transaction not found"},
-		}
-	})
-	defer server.Close()
-
-	txHash := common.HexToHash("0xdeadbeef")
-	_, err := traceOneTransaction(context.Background(), server.URL, txHash)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "transaction not found")
-	require.ErrorContains(t, err, txHash.Hex())
-}
-
-// A valid RPC response whose result can't be decoded as a trace must return an unmarshal error.
-func TestTraceOneTransaction_BadJSONResult(t *testing.T) {
-	t.Parallel()
-
-	server := newTraceServer(t, func(_ string) jsonRPCResponse {
-		return jsonRPCResponse{
-			JSONRPC: "2.0",
-			ID:      1,
-			Result:  json.RawMessage(`"not-an-object"`),
-		}
-	})
-	defer server.Close()
-
-	txHash := common.HexToHash("0xbadf00d")
-	_, err := traceOneTransaction(context.Background(), server.URL, txHash)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "unmarshal trace")
-}
-
-// A response with result:null alongside an error field must still propagate the error
-// (some nodes return both fields simultaneously when the handler crashes).
-func TestTraceOneTransaction_NullResultWithError(t *testing.T) {
-	t.Parallel()
-
-	server := newTraceServer(t, func(_ string) jsonRPCResponse {
-		return jsonRPCResponse{
-			JSONRPC: "2.0",
-			ID:      1,
-			Result:  json.RawMessage("null"),
-			Error:   &jsonRPCError{Code: -32000, Message: "method handler crashed"},
-		}
-	})
-	defer server.Close()
-
-	txHash := common.HexToHash("0xcafe")
-	_, err := traceOneTransaction(context.Background(), server.URL, txHash)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "method handler crashed")
-	require.ErrorContains(t, err, txHash.Hex())
-}
-
-// When continueOnError=true, failed traces are collected in failedTraces and
-// do not abort the run; successful traces still return their addresses.
-func TestTraceTransactions_ContinueOnError_CollectsFailed(t *testing.T) {
-	t.Parallel()
-
-	goodHash := common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000001111")
-	badHash := common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000002222")
-	addrGood := testAddr1
-
-	server := newTraceServer(t, func(txHex string) jsonRPCResponse {
-		if txHex == goodHash.Hex() {
-			return jsonRPCResponse{
-				JSONRPC: "2.0",
-				ID:      1,
-				Result:  json.RawMessage(`{"pre":{"` + addrGood + `":{}},"post":{}}`),
-			}
-		}
-		return jsonRPCResponse{
-			JSONRPC: "2.0",
-			ID:      1,
-			Error:   &jsonRPCError{Code: -32000, Message: "trace failed"},
-		}
-	})
-	defer server.Close()
-
-	addrs, failed, err := traceTransactions(
-		context.Background(), server.URL,
-		[]common.Hash{goodHash, badHash}, 1, true,
-	)
-	require.NoError(t, err)
-	require.Len(t, addrs, 1)
-	require.Equal(t, common.HexToAddress(addrGood), addrs[0])
-	require.Len(t, failed, 1)
-	require.Equal(t, badHash, failed[0].Hash)
-}
-
-// When continueOnError=false, the first trace failure aborts the run.
-func TestTraceTransactions_AbortOnError(t *testing.T) {
-	t.Parallel()
-
-	server := newTraceServer(t, func(_ string) jsonRPCResponse {
-		return jsonRPCResponse{
-			JSONRPC: "2.0",
-			ID:      1,
-			Error:   &jsonRPCError{Code: -32000, Message: "archive node required"},
-		}
-	})
-	defer server.Close()
-
-	_, _, err := traceTransactions(
-		context.Background(), server.URL,
-		[]common.Hash{common.HexToHash("0x9999")}, 1, false,
-	)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "trace failures")
-}
-
-// TestRunStepA_AbortOnTraceError verifies that RunStepA returns an error (and does not
-// silently continue) when a debug_traceTransaction call fails and IgnoreOnTraceError=false.
-//
-// Before the fix, collectResults drained every result from the worker pool before
-// returning the error — i.e. all remaining transactions in the window were still traced.
-// The fix adds context cancellation so in-flight workers abort as soon as the first
-// failure is detected.
-//
-// The test uses two transactions in a single block window with ConcurrencyLimit=1 so they
-// are dispatched sequentially. The first trace always fails; the second should be cancelled
-// before it is sent, proving that the worker pool stops early rather than tracing everything.
-func TestRunStepA_AbortOnTraceError(t *testing.T) {
-	t.Parallel()
-
-	const (
-		txHex  = "0x0000000000000000000000000000000000000000000000000000000000001234"
-		txHex2 = "0x0000000000000000000000000000000000000000000000000000000000005678"
-	)
-
-	var traceCalls atomic.Int32
-
-	// The server must handle two call shapes:
-	//   • batch  (body starts with '[') — eth_getBlockByNumber from scanBlockHeaders
-	//   • single (body starts with '{') — debug_traceTransaction from traceOneTransaction
+	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.Equal(t, rpcMethodDebugAccountRange, req.Method)
+		calls++
 		w.Header().Set("Content-Type", "application/json")
 
-		if len(body) > 0 && body[0] == '[' {
-			var reqs []jsonRPCRequest
-			require.NoError(t, json.Unmarshal(body, &reqs))
-			resps := make([]jsonRPCResponse, len(reqs))
-			for i, req := range reqs {
-				resps[i] = jsonRPCResponse{
-					JSONRPC: "2.0",
-					ID:      req.ID,
-					Result:  json.RawMessage(`{"transactions":["` + txHex + `","` + txHex2 + `"]}`),
-				}
-			}
-			require.NoError(t, json.NewEncoder(w).Encode(resps))
-			return
+		var result string
+		if calls == 1 {
+			// Non-zero base64 next cursor → tool must request a second page.
+			next := base64.StdEncoding.EncodeToString([]byte{0x01, 0x02, 0x03})
+			result = `{"root":"0x0","accounts":{` +
+				`"` + stepAAddr1 + `":{"address":"` + stepAAddr1 + `"},` +
+				`"` + stepAAddr2 + `":{"address":"` + stepAAddr2 + `"}},"next":"` + next + `"}`
+		} else {
+			result = `{"root":"0x0","accounts":{` +
+				`"` + stepAAddr3 + `":{"address":"` + stepAAddr3 + `"}},"next":""}`
 		}
+		_, _ = w.Write(encodeRPC(t, req.ID, result))
+	}))
+	defer server.Close()
 
-		// Single request: count and always fail the trace.
-		traceCalls.Add(1)
-		require.NoError(t, json.NewEncoder(w).Encode(jsonRPCResponse{
-			JSONRPC: "2.0",
-			ID:      1,
-			Error:   &jsonRPCError{Code: -32000, Message: "trace not available"},
-		}))
+	cfg := &Config{L2RPCURL: server.URL}
+	addrs, err := collectAccountsViaStateDump(context.Background(), cfg, 100)
+	require.NoError(t, err)
+	require.Equal(t, 2, calls, "must paginate until next is empty")
+	require.ElementsMatch(t, []common.Address{
+		common.HexToAddress(stepAAddr1),
+		common.HexToAddress(stepAAddr2),
+		common.HexToAddress(stepAAddr3),
+	}, addrs)
+}
+
+func TestFetchTransferHoldersInRange_ExtractsFromAndTo(t *testing.T) {
+	t.Parallel()
+
+	zeroTopic := topicForAddr("0x0000000000000000000000000000000000000000")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.Equal(t, rpcMethodEthGetLogs, req.Method)
+		w.Header().Set("Content-Type", "application/json")
+		// One mint (from = zero address, filtered out) and one transfer addr1 → addr2.
+		logs := `[` +
+			`{"topics":["` + transferTopic.Hex() + `","` + zeroTopic + `","` + topicForAddr(stepAAddr1) + `"]},` +
+			`{"topics":["` + transferTopic.Hex() + `","` + topicForAddr(stepAAddr1) + `","` + topicForAddr(stepAAddr2) + `"]}` +
+			`]`
+		_, _ = w.Write(encodeRPC(t, req.ID, logs))
+	}))
+	defer server.Close()
+
+	addrs, err := fetchTransferHoldersInRange(
+		context.Background(), server.URL, common.HexToAddress(stepAToken), 0, 100)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []common.Address{
+		common.HexToAddress(stepAAddr1),
+		common.HexToAddress(stepAAddr1),
+		common.HexToAddress(stepAAddr2),
+	}, addrs, "from and to of each log are collected; the zero address is filtered out")
+}
+
+// RunStepA in "both" mode merges the state-dump accounts with the Transfer-log holders.
+func TestRunStepA_Both_MergesSources(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		w.Header().Set("Content-Type", "application/json")
+
+		switch req.Method {
+		case rpcMethodDebugAccountRange:
+			result := `{"root":"0x0","accounts":{"` + stepAAddr1 + `":{"address":"` + stepAAddr1 + `"}},"next":""}`
+			_, _ = w.Write(encodeRPC(t, req.ID, result))
+		case rpcMethodEthGetLogs:
+			// Holder addr2 received the wrapped token but is not an account in the dump.
+			logs := `[{"topics":["` + transferTopic.Hex() + `","` +
+				topicForAddr(stepAAddr1) + `","` + topicForAddr(stepAAddr2) + `"]}]`
+			_, _ = w.Write(encodeRPC(t, req.ID, logs))
+		default:
+			t.Fatalf("unexpected method %q", req.Method)
+		}
 	}))
 	defer server.Close()
 
 	cfg := &Config{
 		L2RPCURL: server.URL,
 		Options: Options{
-			L2StartBlock:       0,
-			StepAWindowSize:    1,
-			RPCBatchSize:       1,
-			ConcurrencyLimit:   1,
-			IgnoreOnTraceError: false,
+			AddressDiscovery: addressDiscoveryBoth,
+			BlockRange:       defaultBlockRange,
+			ConcurrencyLimit: 2,
+			L2StartBlock:     0,
 		},
 	}
+	wrappedTokens := []WrappedToken{{WrappedTokenAddress: common.HexToAddress(stepAToken)}}
 
-	_, err := RunStepA(context.Background(), cfg, 0)
+	result, err := RunStepA(context.Background(), cfg, 10, wrappedTokens)
+	require.NoError(t, err)
+	require.Equal(t, []common.Address{
+		common.HexToAddress(stepAAddr1),
+		common.HexToAddress(stepAAddr2),
+	}, result.Addresses, "addresses are merged, de-duplicated and sorted")
+}
+
+// In "auto" mode, when debug_accountRange is unavailable the step falls back to receipt
+// harvesting (block bodies + receipts) and still collects Transfer-log holders.
+func TestRunStepA_Auto_FallsBackToReceipts(t *testing.T) {
+	t.Parallel()
+
+	txHash := "0x0000000000000000000000000000000000000000000000000000000000001234"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := decodeBody(t, r)
+		w.Header().Set("Content-Type", "application/json")
+
+		// Batch request (block headers) — body is a JSON array.
+		if len(body) > 0 && body[0] == '[' {
+			var reqs []jsonRPCRequest
+			require.NoError(t, json.Unmarshal(body, &reqs))
+			resps := make([]jsonRPCResponse, len(reqs))
+			for i, req := range reqs {
+				resps[i] = jsonRPCResponse{
+					JSONRPC: "2.0", ID: req.ID,
+					Result: json.RawMessage(`{"transactions":["` + txHash + `"]}`),
+				}
+			}
+			b, err := json.Marshal(resps)
+			require.NoError(t, err)
+			_, _ = w.Write(b)
+			return
+		}
+
+		var req jsonRPCRequest
+		require.NoError(t, json.Unmarshal(body, &req))
+		switch req.Method {
+		case rpcMethodDebugAccountRange:
+			// Simulate a node without the debug_accountRange method.
+			resp := jsonRPCResponse{JSONRPC: "2.0", ID: req.ID,
+				Error: &jsonRPCError{Code: -32601, Message: "the method " + rpcMethodDebugAccountRange + " does not exist"}}
+			b, err := json.Marshal(resp)
+			require.NoError(t, err)
+			_, _ = w.Write(b)
+		case rpcMethodEthGetTxReceipt:
+			receipt := `{"from":"` + stepAAddr1 + `","to":"` + stepAAddr3 +
+				`","contractAddress":null,"logs":[]}`
+			_, _ = w.Write(encodeRPC(t, req.ID, receipt))
+		case rpcMethodEthGetLogs:
+			logs := `[{"topics":["` + transferTopic.Hex() + `","` +
+				topicForAddr(stepAAddr1) + `","` + topicForAddr(stepAAddr2) + `"]}]`
+			_, _ = w.Write(encodeRPC(t, req.ID, logs))
+		default:
+			t.Fatalf("unexpected method %q", req.Method)
+		}
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		L2RPCURL: server.URL,
+		Options: Options{
+			AddressDiscovery: addressDiscoveryAuto,
+			BlockRange:       defaultBlockRange,
+			StepAWindowSize:  10,
+			RPCBatchSize:     10,
+			ConcurrencyLimit: 2,
+			L2StartBlock:     0,
+		},
+	}
+	wrappedTokens := []WrappedToken{{WrappedTokenAddress: common.HexToAddress(stepAToken)}}
+
+	result, err := RunStepA(context.Background(), cfg, 5, wrappedTokens)
+	require.NoError(t, err)
+	// addr1, addr3 from the receipt; addr2 from the Transfer log.
+	require.ElementsMatch(t, []common.Address{
+		common.HexToAddress(stepAAddr1),
+		common.HexToAddress(stepAAddr2),
+		common.HexToAddress(stepAAddr3),
+	}, result.Addresses)
+}
+
+func TestDecodeNextKey(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty means done", func(t *testing.T) {
+		t.Parallel()
+		b, err := decodeNextKey("")
+		require.NoError(t, err)
+		require.Empty(t, b)
+	})
+	t.Run("base64", func(t *testing.T) {
+		t.Parallel()
+		b, err := decodeNextKey(base64.StdEncoding.EncodeToString([]byte{0xde, 0xad}))
+		require.NoError(t, err)
+		require.Equal(t, []byte{0xde, 0xad}, b)
+	})
+	t.Run("hex", func(t *testing.T) {
+		t.Parallel()
+		b, err := decodeNextKey("0xdead")
+		require.NoError(t, err)
+		require.Equal(t, []byte{0xde, 0xad}, b)
+	})
+	t.Run("all-zero means done", func(t *testing.T) {
+		t.Parallel()
+		b, err := decodeNextKey(base64.StdEncoding.EncodeToString([]byte{0x00, 0x00}))
+		require.NoError(t, err)
+		require.Empty(t, b)
+	})
+}
+
+func TestNormalizeAddressDiscovery(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, addressDiscoveryAuto, normalizeAddressDiscovery(""))
+	require.Equal(t, addressDiscoveryAuto, normalizeAddressDiscovery("nonsense"))
+	require.Equal(t, addressDiscoveryStateDump, normalizeAddressDiscovery(addressDiscoveryStateDump))
+	require.Equal(t, addressDiscoveryLogs, normalizeAddressDiscovery(addressDiscoveryLogs))
+	require.Equal(t, addressDiscoveryBoth, normalizeAddressDiscovery(addressDiscoveryBoth))
+}
+
+func TestAccountAddress(t *testing.T) {
+	t.Parallel()
+
+	inner := stepAAddr2
+	// Inner address field takes precedence.
+	addr, ok := accountAddress(stepAAddr1, &inner)
+	require.True(t, ok)
+	require.Equal(t, common.HexToAddress(stepAAddr2), addr)
+
+	// Falls back to the map key when the inner field is absent.
+	addr, ok = accountAddress(stepAAddr1, nil)
+	require.True(t, ok)
+	require.Equal(t, common.HexToAddress(stepAAddr1), addr)
+
+	// Non-address key with no inner field → not ok.
+	_, ok = accountAddress("not-an-address", nil)
+	require.False(t, ok)
+}
+
+func TestAccountRangeParams_DialectShapes(t *testing.T) {
+	t.Parallel()
+
+	start := []byte{0x01, 0x02}
+
+	erigon := accountRangeParams("0x10", start, 5000, dialectErigon)
+	require.Len(t, erigon, 5, "erigon takes 5 args (no incompletes)")
+	require.Equal(t, base64.StdEncoding.EncodeToString(start), erigon[1], "erigon start is base64")
+
+	geth := accountRangeParams("0x10", start, 5000, dialectGeth)
+	require.Len(t, geth, 6, "geth takes 6 args (incompletes)")
+	require.Equal(t, "0x0102", geth[1], "geth start is 0x-hex")
+	require.Equal(t, false, geth[5], "geth incompletes=false")
+}
+
+// A node that returns an empty accounts map without an RPC error (e.g. stock geth without
+// preimages) must be rejected so callers can fall back instead of trusting an empty dump.
+func TestCollectAccountsViaStateDump_ZeroAccountsErrors(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		_, _ = w.Write(encodeRPC(t, req.ID, `{"root":"0x0","accounts":{},"next":""}`))
+	}))
+	defer server.Close()
+
+	cfg := &Config{L2RPCURL: server.URL}
+	_, err := collectAccountsViaStateDump(context.Background(), cfg, 100)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "trace transactions")
-	require.ErrorContains(t, err, "trace not available")
-	// With abort-on-first-failure the second tx must not be traced.
-	require.Less(t, traceCalls.Load(), int32(2), "worker pool must abort after the first trace failure")
+	require.ErrorContains(t, err, "0 accounts")
+}
+
+// If the node never returns an empty "next" cursor, the dump must fail loudly once the page cap is
+// reached rather than silently returning a truncated set.
+func TestCollectAccountsViaStateDump_TruncationErrors(t *testing.T) {
+	orig := maxAccountRangePages
+	maxAccountRangePages = 2
+	defer func() { maxAccountRangePages = orig }()
+
+	next := base64.StdEncoding.EncodeToString([]byte{0x01})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		// Always one account and a non-empty cursor → the dump never completes.
+		body := `{"root":"0x0","accounts":{"` + stepAAddr1 + `":{"address":"` + stepAAddr1 + `"}},"next":"` + next + `"}`
+		_, _ = w.Write(encodeRPC(t, req.ID, body))
+	}))
+	defer server.Close()
+
+	cfg := &Config{L2RPCURL: server.URL}
+	_, err := collectAccountsViaStateDump(context.Background(), cfg, 100)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "did not complete")
+}
+
+func TestRunStepA_StateDumpOnly(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.Equal(t, rpcMethodDebugAccountRange, req.Method, "stateDump mode must not scan logs")
+		_, _ = w.Write(encodeRPC(t, req.ID,
+			`{"root":"0x0","accounts":{"`+stepAAddr1+`":{"address":"`+stepAAddr1+`"}},"next":""}`))
+	}))
+	defer server.Close()
+
+	cfg := &Config{L2RPCURL: server.URL, Options: Options{AddressDiscovery: addressDiscoveryStateDump}}
+	result, err := RunStepA(context.Background(), cfg, 10, nil)
+	require.NoError(t, err)
+	require.Equal(t, []common.Address{common.HexToAddress(stepAAddr1)}, result.Addresses)
+}
+
+func TestRunStepA_LogsOnly(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.Equal(t, rpcMethodEthGetLogs, req.Method, "logs mode must not dump state")
+		_, _ = w.Write(encodeRPC(t, req.ID,
+			`[{"topics":["`+transferTopic.Hex()+`","`+topicForAddr(stepAAddr1)+`","`+topicForAddr(stepAAddr2)+`"]}]`))
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		L2RPCURL: server.URL,
+		Options:  Options{AddressDiscovery: addressDiscoveryLogs, BlockRange: defaultBlockRange, ConcurrencyLimit: 2},
+	}
+	wrappedTokens := []WrappedToken{{WrappedTokenAddress: common.HexToAddress(stepAToken)}}
+	result, err := RunStepA(context.Background(), cfg, 10, wrappedTokens)
+	require.NoError(t, err)
+	require.Equal(t, []common.Address{
+		common.HexToAddress(stepAAddr1), common.HexToAddress(stepAAddr2),
+	}, result.Addresses)
+}
+
+// The Transfer-log scan must start at block 0 regardless of l2StartBlock, so token-only holders
+// that received before l2StartBlock are not dropped.
+func TestCollectTokenHoldersViaLogs_ScansFromGenesis(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	var fromBlocks []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     int              `json:"id"`
+			Params []map[string]any `json:"params"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		fromBlock, ok := req.Params[0]["fromBlock"].(string)
+		require.True(t, ok)
+		mu.Lock()
+		fromBlocks = append(fromBlocks, fromBlock)
+		mu.Unlock()
+		_, _ = w.Write(encodeRPC(t, req.ID, `[]`))
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		L2RPCURL: server.URL,
+		Options:  Options{BlockRange: defaultBlockRange, ConcurrencyLimit: 4, L2StartBlock: 1_000_000},
+	}
+	wrappedTokens := []WrappedToken{{WrappedTokenAddress: common.HexToAddress(stepAToken)}}
+	_, err := collectTokenHoldersViaLogs(context.Background(), cfg, 10, wrappedTokens)
+	require.NoError(t, err)
+	require.Contains(t, fromBlocks, "0x0", "scan must start at genesis, not l2StartBlock")
+}
+
+func TestDebugAccountRange_Errors(t *testing.T) {
+	t.Parallel()
+
+	// RPC-level error is wrapped and propagated.
+	errServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		_ = json.NewEncoder(w).Encode(jsonRPCResponse{
+			JSONRPC: "2.0", ID: req.ID, Error: &jsonRPCError{Code: -32601, Message: "method not found"},
+		})
+	}))
+	defer errServer.Close()
+	_, err := debugAccountRange(context.Background(), errServer.URL, "0x1", nil, 10, dialectErigon)
+	require.ErrorContains(t, err, "debug_accountRange")
+
+	// Non-JSON result yields an unmarshal error.
+	badServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		_, _ = w.Write(encodeRPC(t, req.ID, `"not-an-object"`))
+	}))
+	defer badServer.Close()
+	_, err = debugAccountRange(context.Background(), badServer.URL, "0x1", nil, 10, dialectGeth)
+	require.ErrorContains(t, err, "unmarshal")
+}
+
+func TestAccountRangeDialectString(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "geth", dialectGeth.String())
+	require.Equal(t, "erigon", dialectErigon.String())
+	require.Equal(t, "undetected", dialectUnknown.String())
 }
 
 func TestHexToUint64(t *testing.T) {

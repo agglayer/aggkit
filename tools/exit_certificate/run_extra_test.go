@@ -18,9 +18,9 @@ func TestExpandStepRange(t *testing.T) {
 	require.Equal(t, lastAutoStep, open[len(open)-1])
 
 	// closed range
-	closed, err := expandStepRange("a1-c")
+	closed, err := expandStepRange("a-c")
 	require.NoError(t, err)
-	require.Equal(t, []string{"a1", "a2", "b1", "b2", "b3", "c"}, closed)
+	require.Equal(t, []string{"a", "b1", "b2", "b3", "c"}, closed)
 
 	// unknown start / end
 	_, err = expandStepRange("zzz-c")
@@ -35,12 +35,12 @@ func TestExpandStepRange(t *testing.T) {
 
 func TestAliasRange(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, "a1", aliasRangeStart("a"))
+	require.Equal(t, "a", aliasRangeStart("a")) // passthrough — "a" has no sub-steps
 	require.Equal(t, "b1", aliasRangeStart("b"))
 	require.Equal(t, "g1", aliasRangeStart("g"))
 	require.Equal(t, "x", aliasRangeStart("x")) // passthrough
 
-	require.Equal(t, "a2", aliasRangeEnd("a"))
+	require.Equal(t, "a", aliasRangeEnd("a"))
 	require.Equal(t, "b3", aliasRangeEnd("b"))
 	require.Equal(t, "g2", aliasRangeEnd("g"))
 	require.Equal(t, "x", aliasRangeEnd("x"))
@@ -129,18 +129,6 @@ func TestRunSingleCMissingInput(t *testing.T) {
 	t.Parallel()
 	err := runSingleC(context.Background(), &Config{}, t.TempDir()) // no fixtures → load error
 	require.Error(t, err)
-}
-
-func TestMigrateStepAToA1(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	// no files → no-op, no error
-	require.NoError(t, migrateStepAToA1(dir))
-
-	saveJSON(dir, "step-a-addresses.json", []common.Address{common.BytesToAddress([]byte("a"))})
-	require.NoError(t, migrateStepAToA1(dir))
-	require.True(t, fileExists(filepath.Join(dir, "step-a1-addresses.json")))
-	require.False(t, fileExists(filepath.Join(dir, "step-a-addresses.json")))
 }
 
 func TestSaveStepEFiles(t *testing.T) {
