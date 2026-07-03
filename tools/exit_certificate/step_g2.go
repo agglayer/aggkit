@@ -972,11 +972,17 @@ func logReplayProgress(done, total int, start time.Time) {
 		done, total, float64(done)/float64(total)*percentMultiplier, rate, eta)
 }
 
+// isNativeBridgeExit reports whether a bridge exit is the local native gas token — the only asset
+// bridged via the native path (bridgeAsset with token=0x0 and msg.value). An exit is native only when
+// its origin identity matches the gas token's (network AND address), or when TokenInfo is nil (which
+// defaults to the gas token). A zero OriginTokenAddress alone is NOT sufficient: another network's
+// native asset is represented on this L2 as a wrapped ERC-20 with OriginTokenAddress=0x0 but a
+// non-local OriginNetwork, and must be replayed as an ERC-20 — matching on address alone would
+// misclassify it as the gas token and compute the LER from the wrong leaves.
 func isNativeBridgeExit(
 	ti *agglayertypes.TokenInfo, gasTokenNetwork uint32, gasTokenAddress common.Address,
 ) bool {
 	return ti == nil ||
-		ti.OriginTokenAddress == (common.Address{}) ||
 		(ti.OriginNetwork == gasTokenNetwork && ti.OriginTokenAddress == gasTokenAddress)
 }
 
