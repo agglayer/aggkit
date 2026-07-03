@@ -49,6 +49,11 @@ type Options struct {
 	// IgnoreOnTraceError skips transactions whose debug_traceTransaction call fails instead of
 	// aborting Step A. Failed tx hashes are saved to step-a-failed-traces.json for review.
 	IgnoreOnTraceError bool `json:"ignoreOnTraceError"`
+	// NativeSCLockedFromContracts, when true, computes the native-token SC-locked value in Step C
+	// from the actual ETH balances held by contract accounts (summed, excluding the L2 bridge) rather
+	// than from LBT − EOA_accumulated. This is needed on chains with a native genesis premint, where
+	// LBT − EOA underflows and clamps to 0, silently dropping contract-held ETH. Defaults to false.
+	NativeSCLockedFromContracts bool `json:"nativeSCLockedFromContracts"`
 	// IgnoreBalanceMismatch suppresses the error returned by Step F when token balances
 	// do not match. Set to true only when investigating discrepancies without blocking the pipeline.
 	IgnoreBalanceMismatch bool `json:"ignoreBalanceMismatch"`
@@ -452,6 +457,9 @@ func mergeFlagOptions(opts *Options, raw *rawOpts) {
 	if raw.IgnoreOnTraceError != nil {
 		opts.IgnoreOnTraceError = *raw.IgnoreOnTraceError
 	}
+	if raw.NativeSCLockedFromContracts != nil {
+		opts.NativeSCLockedFromContracts = *raw.NativeSCLockedFromContracts
+	}
 	if raw.IgnoreBalanceMismatch != nil {
 		opts.IgnoreBalanceMismatch = *raw.IgnoreBalanceMismatch
 	}
@@ -524,6 +532,7 @@ type rawOpts struct {
 	UseAgglayerAdminToStepFCheck          *bool                  `json:"useAgglayerAdminToStepFCheck"`
 	IgnoreGenesisBalance                  *bool                  `json:"ignoreGenesisBalance"`
 	IgnoreOnTraceError                    *bool                  `json:"ignoreOnTraceError"`
+	NativeSCLockedFromContracts           *bool                  `json:"nativeSCLockedFromContracts"`
 	IgnoreBalanceMismatch                 *bool                  `json:"ignoreBalanceMismatch"`
 	IgnoreUnclaimed                       *bool                  `json:"ignoreUnclaimed"`
 	ExtraERC20Contracts                   []string               `json:"extraErc20Contracts"`

@@ -81,6 +81,11 @@ ignoreOnTraceError = false
 # Enable only for Kurtosis/test environments. Default: false.
 ignoreGenesisBalance = false
 
+# Compute the native token's SC-locked value in Step C from the actual ETH held by contract accounts
+# (bridge excluded) instead of LBT - EOA. Needed on chains with a native genesis premint, where
+# LBT - EOA underflows and silently drops contract-held ETH. Default: false.
+nativeSCLockedFromContracts = false
+
 # Skip adding unclaimed L1->L2 deposits to the certificate in Step E (still detected and warned).
 # Default: false.
 ignoreUnclaimed = false

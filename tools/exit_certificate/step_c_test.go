@@ -1,6 +1,8 @@
 package exit_certificate
 
 import (
+	"context"
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -283,4 +285,137 @@ func TestRunStepC_TokenNotInLBT(t *testing.T) {
 	// Only token1 is in LBT, so only 1 SC-locked entry
 	require.Len(t, result.SCLockedValues, 1)
 	require.Equal(t, "700000", result.SCLockedValues[0].PendingSCLockedBalance)
+}
+
+// With options.nativeSCLockedFromContracts, the native token's SC-locked value comes from the
+// measured contract balances (StepBResult.NativeContractLocked) instead of LBT − EOA, which on a
+// premint chain underflows and clamps to 0 (dropping the ETH actually held by contracts).
+func TestRunStepC_NativeSCLockedFromContracts(t *testing.T) {
+	t.Parallel()
+
+	tokenAddr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+
+	lbtEntries := []LBTEntry{
+		// Native entry: bridge released 100, but EOAs hold 150 (genesis premint) → LBT − EOA < 0.
+		{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, Balance: "100"},
+		// Wrapped token: untouched by the override.
+		{WrappedTokenAddress: tokenAddr, OriginNetwork: 0, OriginTokenAddress: tokenAddr, Balance: "1000"},
+	}
+	stepB := &StepBResult{
+		Accumulated: []AccumulatedBalance{
+			{WrappedTokenAddress: common.Address{}, TotalBalance: "150"},
+			{WrappedTokenAddress: tokenAddr, TotalBalance: "400"},
+		},
+		NativeContractLocked: "70",
+	}
+
+	result, err := RunStepC(lbtEntries, stepB)
+	require.NoError(t, err)
+	require.Len(t, result.SCLockedValues, 2)
+
+	byToken := make(map[common.Address]SCLockedValue, 2)
+	for _, v := range result.SCLockedValues {
+		byToken[v.WrappedTokenAddress] = v
+	}
+	require.Equal(t, "70", byToken[common.Address{}].PendingSCLockedBalance,
+		"native SC-locked must be the measured contract total, not the clamped LBT − EOA")
+	require.Equal(t, "600", byToken[tokenAddr].PendingSCLockedBalance,
+		"wrapped tokens keep the LBT − EOA formula")
+}
+
+// Without NativeContractLocked the native entry keeps today's behaviour: LBT − EOA clamped to 0.
+func TestRunStepC_NativeClampedWithoutContractOverride(t *testing.T) {
+	t.Parallel()
+
+	lbtEntries := []LBTEntry{{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, Balance: "100"}}
+	stepB := &StepBResult{
+		Accumulated: []AccumulatedBalance{{WrappedTokenAddress: common.Address{}, TotalBalance: "150"}},
+	}
+
+	result, err := RunStepC(lbtEntries, stepB)
+	require.NoError(t, err)
+	require.Len(t, result.SCLockedValues, 1)
+	require.Equal(t, "0", result.SCLockedValues[0].PendingSCLockedBalance)
+}
+
+func TestSumContractNativeBalances(t *testing.T) {
+	t.Parallel()
+
+	bridge := common.HexToAddress("0x00000000000000000000000000000000000000bb")
+	contract1 := common.HexToAddress("0x00000000000000000000000000000000000000c1")
+	contract2 := common.HexToAddress("0x00000000000000000000000000000000000000c2")
+
+	balances := map[string]string{
+		contract1.Hex(): "0x64", // 100
+		contract2.Hex(): "0x0a", // 10
+		bridge.Hex():    "0xff", // must never be queried
+	}
+	url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
+		require.Equal(t, rpcMethodEthGetBalance, method)
+		var addr string
+		require.NoError(t, json.Unmarshal(params[0], &addr))
+		require.NotEqual(t, bridge.Hex(), addr, "the bridge reserve must be excluded")
+		return balances[addr]
+	})
+
+	cfg := &Config{
+		L2RPCURL: url, L2BridgeAddress: bridge,
+		Options: Options{ConcurrencyLimit: 2, RPCBatchSize: 10},
+	}
+	total, err := sumContractNativeBalances(
+		context.Background(), cfg, []common.Address{contract1, bridge, contract2}, "0x10")
+	require.NoError(t, err)
+	require.Equal(t, "110", total.String())
+}
+
+// Only the bridge in the list (or an empty list) → zero total without any RPC call.
+func TestSumContractNativeBalances_NoContracts(t *testing.T) {
+	t.Parallel()
+
+	bridge := common.HexToAddress("0x00000000000000000000000000000000000000bb")
+	cfg := &Config{
+		L2RPCURL: "http://127.0.0.1:1", L2BridgeAddress: bridge,
+		Options: Options{ConcurrencyLimit: 2, RPCBatchSize: 10},
+	}
+	total, err := sumContractNativeBalances(context.Background(), cfg, []common.Address{bridge}, "0x10")
+	require.NoError(t, err)
+	require.Equal(t, "0", total.String())
+}
+
+func TestApplyNativeContractLocked(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no-op when the option is disabled", func(t *testing.T) {
+		t.Parallel()
+		stepB := &StepBResult{}
+		require.NoError(t, applyNativeContractLocked(context.Background(), &Config{}, t.TempDir(), stepB))
+		require.Empty(t, stepB.NativeContractLocked)
+	})
+
+	t.Run("errors without step B contract addresses", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{Options: Options{NativeSCLockedFromContracts: true}}
+		err := applyNativeContractLocked(context.Background(), cfg, t.TempDir(), &StepBResult{})
+		require.ErrorContains(t, err, "run step b first")
+	})
+
+	t.Run("sums balances from the file-loaded contract list", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		contract := common.HexToAddress("0x00000000000000000000000000000000000000c1")
+		saveJSON(dir, fileStepBContractAddresses, []common.Address{contract})
+		saveJSON(dir, fileStep0TargetBlock, uint64(16))
+
+		url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
+			require.Equal(t, rpcMethodEthGetBalance, method)
+			return "0x64"
+		})
+		cfg := &Config{
+			L2RPCURL: url,
+			Options:  Options{NativeSCLockedFromContracts: true, ConcurrencyLimit: 2, RPCBatchSize: 10},
+		}
+		stepB := &StepBResult{}
+		require.NoError(t, applyNativeContractLocked(context.Background(), cfg, dir, stepB))
+		require.Equal(t, "100", stepB.NativeContractLocked)
+	})
 }
