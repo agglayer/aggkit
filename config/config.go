@@ -79,7 +79,6 @@ const (
 	networkIDDeprecatedHint      = "Common.NetworkID is deprecated, remove it from configuration"
 	urlRPCL1DeprecatedHint       = "URLRPCL1 field is deprecated, remove it from configuration"
 	aggsenderEpochPercentageHint = "AggSender.EpochNotificationPercentage moved to AggSender.TriggerEpochBased.EpochNotificationPercentage" //nolint:lll
-	restSectionDeprecatedHint    = "REST section is deprecated, split into PublicREST and AdminREST, update your configuration"             //nolint:lll
 )
 
 type DeprecatedFieldsError struct {
@@ -240,10 +239,6 @@ var (
 		{
 			FieldNamePattern: "AggSender.EpochNotificationPercentage",
 			Reason:           aggsenderEpochPercentageHint,
-		},
-		{
-			FieldNamePattern: "REST",
-			Reason:           restSectionDeprecatedHint,
 		},
 	}
 )

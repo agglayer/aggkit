@@ -486,10 +486,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[LastGERSync]
 	SyncMode = "Legacy"
 	DBPath = "{{PathRWData}}/l2gersync.sqlite"
-
-	[REST]
-	Host = "0.0.0.0"
-	Port = 5577
 `))
 	require.NoError(t, err)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
@@ -520,5 +516,4 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, maxSubmitCertificateRateDeprecatedHint)
 	require.ErrorContains(t, err, urlRPCL1DeprecatedHint)
 	require.ErrorContains(t, err, aggsenderEpochPercentageHint)
-	require.ErrorContains(t, err, restSectionDeprecatedHint)
 }
