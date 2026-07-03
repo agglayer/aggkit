@@ -159,10 +159,10 @@ services:
     healthcheck:
       # op-reth returns HTTP 405 to bare GET; use a JSON-RPC POST instead.
       test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8545"]
-      interval: 2s
-      timeout: 3s
-      retries: 3
-      start_period: 300s
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 120s
     networks:
       - default
 
@@ -192,10 +192,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"optimism_syncStatus\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8547"]
-      interval: 2s
-      timeout: 3s
-      retries: 3
-      start_period: 300s
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 120s
 
   aggsender-validator-002:
     image: aggkit:local
@@ -276,10 +276,10 @@ services:
     healthcheck:
       # op-reth returns HTTP 405 to bare GET; use a JSON-RPC POST instead.
       test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8545"]
-      interval: 2s
-      timeout: 3s
-      retries: 3
-      start_period: 300s
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 120s
 
   op-node-002:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
@@ -307,10 +307,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"optimism_syncStatus\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8547"]
-      interval: 2s
-      timeout: 3s
-      retries: 3
-      start_period: 300s
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 120s
 
   aggsender-validator-002-c2:
     image: aggkit:local

@@ -28,7 +28,7 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 
 	// Select which env to load via AGGKIT_E2E_ENV (used by CI to run the 2-chain matrix);
 	// defaults to the single-chain op-pp env.

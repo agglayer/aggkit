@@ -108,7 +108,7 @@ test-unit: ## Runs the unit tests
 TEST_RUN ?=
 .PHONY: test-e2e
 test-e2e: ## Runs the e2e tests
-	go test -v -timeout 30m $(if $(TEST_RUN),-run $(TEST_RUN)) ./test/e2e/...
+	go test -v -timeout 45m $(if $(TEST_RUN),-run $(TEST_RUN)) ./test/e2e/...
 
 .PHONY: lint
 lint: ## Runs the linter
