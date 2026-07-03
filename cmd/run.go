@@ -275,7 +275,7 @@ func start(cliCtx *cli.Context) error {
 	if publicHasRoutes {
 		go func() {
 			if err := publicServer.Start(ctx); err != nil {
-				log.Errorf("public-api server stopped with error: %v", err)
+				log.Fatalf("public-api server stopped with error: %v", err)
 			}
 		}()
 		log.Infof("Public API listening on %s", cfg.PublicREST.Address())
@@ -283,7 +283,7 @@ func start(cliCtx *cli.Context) error {
 	if adminHasRoutes {
 		go func() {
 			if err := adminServer.Start(ctx); err != nil {
-				log.Errorf("admin-api server stopped with error: %v", err)
+				log.Fatalf("admin-api server stopped with error: %v", err)
 			}
 		}()
 		log.Infof("Admin API listening on %s", cfg.AdminREST.Address())
