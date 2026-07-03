@@ -119,9 +119,10 @@ func RunStepA(
 		return nil, err
 	}
 
-	// Remove the zero address (defensive: the individual sources already skip it, but this ensures
-	// it is never present regardless of which discovery paths ran).
-	delete(finalAddrs, common.Address{})
+	// The zero address is deliberately kept: it can hold value like any other account (a plain
+	// transfer(0x0, amount) is not a burn — the tokens stay in totalSupply — and native ETH can be
+	// sent there too). Dropping it would leave that value uncovered by the certificate and the
+	// per-token totals would no longer reconcile with the LBT.
 
 	addresses := make([]common.Address, 0, len(finalAddrs))
 	for addr := range finalAddrs {
@@ -482,13 +483,13 @@ func fetchTransferHoldersInRange(
 	addrs := make([]common.Address, 0, len(logs)*2) //nolint:mnd // from + to per log
 	for _, lg := range logs {
 		// topics[0] is the event signature; topics[1]=from, topics[2]=to (both indexed).
+		// The zero address is kept like any other holder: tokens transferred to 0x0 remain in
+		// totalSupply, so the certificate must cover them for the LBT to reconcile.
 		for _, pos := range []int{transferTopicFrom, transferTopicTo} {
 			if pos >= len(lg.Topics) {
 				continue
 			}
-			if addr := common.HexToAddress(lg.Topics[pos]); addr != (common.Address{}) {
-				addrs = append(addrs, addr)
-			}
+			addrs = append(addrs, common.HexToAddress(lg.Topics[pos]))
 		}
 	}
 	return addrs, nil
@@ -573,6 +574,7 @@ func receiptAddresses(ctx context.Context, rpcURL string, hash common.Hash) ([]c
 		if s == "" || s == "0x" {
 			return
 		}
+		// The zero address is kept like any other account (see RunStepA).
 		addrSet[common.HexToAddress(s)] = struct{}{}
 	}
 

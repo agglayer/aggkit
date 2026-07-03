@@ -91,7 +91,7 @@ func TestFetchTransferHoldersInRange_ExtractsFromAndTo(t *testing.T) {
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		require.Equal(t, rpcMethodEthGetLogs, req.Method)
 		w.Header().Set("Content-Type", "application/json")
-		// One mint (from = zero address, filtered out) and one transfer addr1 → addr2.
+		// One mint (from = zero address, kept like any other holder) and one transfer addr1 → addr2.
 		logs := `[` +
 			`{"topics":["` + transferTopic.Hex() + `","` + zeroTopic + `","` + topicForAddr(stepAAddr1) + `"]},` +
 			`{"topics":["` + transferTopic.Hex() + `","` + topicForAddr(stepAAddr1) + `","` + topicForAddr(stepAAddr2) + `"]}` +
@@ -104,10 +104,42 @@ func TestFetchTransferHoldersInRange_ExtractsFromAndTo(t *testing.T) {
 		context.Background(), server.URL, common.HexToAddress(stepAToken), 0, 100)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []common.Address{
+		{}, // zero address — kept: tokens sent to 0x0 stay in totalSupply and must be covered
 		common.HexToAddress(stepAAddr1),
 		common.HexToAddress(stepAAddr1),
 		common.HexToAddress(stepAAddr2),
-	}, addrs, "from and to of each log are collected; the zero address is filtered out")
+	}, addrs, "from and to of each log are collected, including the zero address")
+}
+
+// The zero address must be treated like any other account end to end: tokens transferred to
+// 0x000…000 remain in the token's totalSupply, so dropping it would leave the certificate
+// unbalanced against the LBT (https://github.com/agglayer/aggkit/issues/1700).
+func TestRunStepA_KeepsZeroAddress(t *testing.T) {
+	t.Parallel()
+
+	zeroTopic := topicForAddr("0x0000000000000000000000000000000000000000")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.Equal(t, rpcMethodEthGetLogs, req.Method)
+		// A transfer addr1 → 0x0 (tokens parked at the zero address).
+		logs := `[{"topics":["` + transferTopic.Hex() + `","` +
+			topicForAddr(stepAAddr1) + `","` + zeroTopic + `"]}]`
+		_, _ = w.Write(encodeRPC(t, req.ID, logs))
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		L2RPCURL: server.URL,
+		Options:  Options{AddressDiscovery: addressDiscoveryLogs, BlockRange: defaultBlockRange, ConcurrencyLimit: 2},
+	}
+	wrappedTokens := []WrappedToken{{WrappedTokenAddress: common.HexToAddress(stepAToken)}}
+	result, err := RunStepA(context.Background(), cfg, 10, wrappedTokens)
+	require.NoError(t, err)
+	require.Equal(t, []common.Address{
+		{},
+		common.HexToAddress(stepAAddr1),
+	}, result.Addresses, "the zero address survives the final merge and sort")
 }
 
 // RunStepA in "both" mode merges the state-dump accounts with the Transfer-log holders.

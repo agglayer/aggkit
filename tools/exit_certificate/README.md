@@ -329,6 +329,8 @@ The strategy is selected by `options.addressDiscovery`:
 
 The state dump fails loudly (instead of returning a truncated or empty set) when the node keeps returning a non-empty pagination cursor past the page cap or returns 0 accounts (e.g. a geth archive node without address preimages) — in `auto` mode the latter triggers the receipt-harvesting fallback.
 
+The **zero address** (`0x000…000`) is treated like any other account: a plain `transfer(0x0, amount)` is not a burn (the tokens remain in `totalSupply`) and native ETH can be sent there too, so its balances must be scanned and covered by the certificate for the totals to reconcile with the LBT.
+
 **Output:** `step-a-addresses.json` (the file consumed by later steps)
 
 ### Step B — EOA balance checking + ERC-20 detection

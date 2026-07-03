@@ -79,6 +79,10 @@ transaction history:
    `[0, targetBlock]`, collecting the indexed `from`/`to` — the only source that surfaces token-only
    EOAs (no nonce/balance/code). Always starts at block 0, not `l2StartBlock`.
 
+The zero address is **kept** like any other account: tokens transferred to `0x000…000` stay in
+`totalSupply` (a plain transfer is not a burn) and it can hold native ETH, so dropping it would
+leave the certificate unbalanced against the LBT.
+
 - **Option:** `addressDiscovery` — `"auto"` (default: probe `debug_accountRange`, use dump + logs;
   else fall back to receipt harvesting via `eth_getBlockByNumber` + `eth_getTransactionReceipt` in
   `stepAWindowSize` windows, which misses internal value transfers), `"stateDump"`, `"logs"`, `"both"`.
