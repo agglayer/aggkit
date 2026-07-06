@@ -1,9 +1,10 @@
 # ==============================================================================
-# OWNERSHIP: This template is owned by the aggkit repo (see README.md in this
-# directory). It is the cdk-erigon variant of the kurtosis e2e aggkit config,
-# rendered by kurtosis-cdk using the variables produced by `_build_config_data`.
-# During aggkit CI it is overlaid on top of kurtosis-cdk's static_files copy
-# (cdk-config.toml) before `kurtosis run`.
+# OWNERSHIP: This template is owned by the aggkit repo (test/e2e/kurtosis/, see
+# README.md). Seeded from kurtosis-cdk commit 507e4e8 — the KURTOSIS_CDK_COMMIT
+# pinned in .github/workflows/test-e2e.yml — with [REST] renamed to [PublicREST].
+# It is a Go text/template rendered by THAT kurtosis-cdk commit's _build_config_data
+# and overlaid onto kurtosis-cdk's static_files by agglayer/e2e before kurtosis run.
+# When bumping KURTOSIS_CDK_COMMIT, re-seed this file from the new commit.
 # ==============================================================================
 
 PathRWData = "{{.zkevm_path_rw_data}}"

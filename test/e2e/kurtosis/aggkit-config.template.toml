@@ -1,4 +1,13 @@
 # ==============================================================================
+# OWNERSHIP: This template is owned by the aggkit repo (test/e2e/kurtosis/, see
+# README.md). Seeded from kurtosis-cdk commit 507e4e8 — the KURTOSIS_CDK_COMMIT
+# pinned in .github/workflows/test-e2e.yml — with [REST] renamed to [PublicREST].
+# It is a Go text/template rendered by THAT kurtosis-cdk commit's _build_config_data
+# and overlaid onto kurtosis-cdk's static_files by agglayer/e2e before kurtosis run.
+# When bumping KURTOSIS_CDK_COMMIT, re-seed this file from the new commit.
+# ==============================================================================
+
+# ==============================================================================
 #     _    ____  ____ _  _____ _____
 #    / \  / ___|/ ___| |/ /_ _|_   _|
 #   / _ \| |  _| |  _| ' / | |  | |
@@ -10,18 +19,12 @@
 # production environments. DYOR
 # The below configs are the default mandatory parameters to be used.
 # ==============================================================================
-#
-# OWNERSHIP: This template is owned by the aggkit repo (see README.md in this
-# directory). It is a Go text/template rendered by kurtosis-cdk using the
-# variables produced by kurtosis-cdk's `_build_config_data`. During aggkit CI it
-# is overlaid on top of kurtosis-cdk's static_files copy before `kurtosis run`.
-# ==============================================================================
 
 PathRWData = "{{.zkevm_path_rw_data}}"
 L1URL = "{{.l1_rpc_url}}"
 {{- if eq .sequencer_type "cdk-erigon"}}
 L2URL = "{{.l2_rpc_url}}"
-{{- else if eq .sequencer_type "op-reth" }}
+{{- else if eq .sequencer_type "op-geth" }}
 L2URL = "{{.op_el_rpc_url}}"
 {{- else}}
 L2URL = ""
@@ -37,7 +40,7 @@ AggLayerURL = "{{.agglayer_readrpc_url}}"
 
 AggchainProofURL= "{{.aggkit_prover_grpc_url_prefix}}{{.deployment_suffix}}:{{.aggkit_prover_grpc_port_number}}"
 
-{{- if or (eq .sequencer_type "op-reth") (eq .consensus_contract_type "pessimistic") (eq .consensus_contract_type "ecdsa-multisig") }}
+{{- if or (eq .sequencer_type "op-geth") (eq .consensus_contract_type "pessimistic") (eq .consensus_contract_type "ecdsa-multisig") }}
 SequencerPrivateKeyPath = "/etc/aggkit/sequencer.keystore"
 SequencerPrivateKeyPassword  = "{{.l2_keystore_password}}"
 {{- else }}
@@ -49,7 +52,7 @@ SequencerPrivateKeyPassword  = ""
 polygonBridgeAddr = "{{.l1_bridge_address}}"
 {{- end }}
 
-{{- if eq .sequencer_type "op-reth" }}
+{{- if eq .sequencer_type "op-geth" }}
 RPCURL = "{{.op_el_rpc_url}}"
 {{- end}}
 
@@ -98,7 +101,7 @@ polTokenAddress = "{{.pol_token_address}}"
 # ------------------------------------------------------------------------------
 {{- if eq .sequencer_type "cdk-erigon" }}
 polygonZkEVMAddress = "{{.rollup_address}}"
-{{- else if eq .sequencer_type "op-reth" }}
+{{- else if eq .sequencer_type "op-geth" }}
 polygonZkEVMAddress = "{{.sovereign_rollup_addr}}"
 {{- else }}
 polygonZkEVMAddress = ""
@@ -121,7 +124,7 @@ BridgeAddr = "{{.l1_bridge_address}}"
 {{- if eq .sequencer_type "cdk-erigon" }}
 GlobalExitRootAddr = "{{.l2_ger_address}}"
 BridgeAddr = "{{.l2_bridge_address}}"
-{{- else if eq .sequencer_type "op-reth" }}
+{{- else if eq .sequencer_type "op-geth" }}
 GlobalExitRootAddr = "{{.sovereign_ger_proxy_addr}}"
 BridgeAddr = "{{.sovereign_bridge_proxy_addr}}"
 {{- else }}
@@ -178,17 +181,17 @@ Outputs = ["stderr"]
 Port = "{{.cdk_node_rpc_port}}"
 
 # ==============================================================================
-#  ____  _   _ ____  _     ___ ____   ____  _____ ____ _____
-# |  _ \| | | | __ )| |   |_ _/ ___| |  _ \| ____/ ___|_   _|
-# | |_) | | | |  _ \| |    | | |     | |_) |  _| \___ \ | |
-# |  __/| |_| | |_) | |___ | | |___  |  _ <| |___ ___) || |
-# |_|    \___/|____/|_____|___\____| |_| \_\_____|____/ |_|
+#  ____  _____ ____ _____
+# |  _ \| ____/ ___|_   _|
+# | |_) |  _| \___ \ | |
+# |  _ <| |___ ___) || |
+# |_| \_\_____|____/ |_|
 #
 # ------------------------------------------------------------------------------
 [PublicREST]
 # ------------------------------------------------------------------------------
-# Port will configure the port that the public REST API HTTP server will
-# listen on (bridge service + Auto Claim public read endpoints)
+# Port will configure the port that the REST API HTTP server will
+# listen on
 # ------------------------------------------------------------------------------
 Port = "{{.aggkit_node_rest_api_port}}"
 
@@ -223,30 +226,6 @@ Mode = "PessimisticProof"
 Mode = "AggchainProof"
 {{- end}}
 CheckStatusCertificateInterval = "1s"
-
-# ------------------------------------------------------------------------------
-# TriggerCertMode is the mode used to trigger certificate sending
-# Valid values are: "EpochBased", "NewBridge", "ASAP", "Auto"
-# EpochBased: this is the legacy mode that waits until reach a percentage of a epoch (you can configure here: AggSender.TriggerEpochBased)
-# ASAP: this mode try to generate a new certificate after a successful settled certificate
-# NewBridge: Each time that a new bridge is done in L2 it generate a certificate (if it's possible) (experimental)
-# ------------------------------------------------------------------------------
-TriggerCertMode = "{{.trigger_cert_mode}}"
-
-# # Encouraged to use the default values - the parameters are left commented out for reference
-# {{- if eq .trigger_cert_mode "ASAP" }}
-# [AggSender.TriggerASAP]
-# # Delay between the moment the aggsender becomes idle and when it sends a new certificate trigger
-# DelayBetweenCertificates = "1s"
-# # Minimum time that must elapse between certificate generation triggers, regardless of the trigger source
-# MinimumNewCertificateInterval = "5s"
-# # When enabled, the ASAP trigger will automatically generate certificate triggers when new bridge events are detected on L2
-# OnNewL2Bridge = false
-# {{- else if eq .trigger_cert_mode "EpochBased" }}
-# [AggSender.TriggerEpochBased]
-# # Percentage of epoch completion to trigger certificate sending
-# EpochNotificationPercentage = 80
-# {{- end}}
 
 # ------------------------------------------------------------------------------
 # MaxCertSize is the maximum size of the certificate
@@ -413,7 +392,7 @@ EnableAggOracleCommittee = false
 # ------------------------------------------------------------------------------
 {{- if eq .sequencer_type "cdk-erigon" }}
 GlobalExitRootL2 = "{{.l2_ger_address}}"
-{{- else if eq .sequencer_type "op-reth" }}
+{{- else if eq .sequencer_type "op-geth" }}
 GlobalExitRootL2 = "{{.sovereign_ger_proxy_addr}}"
 {{- else }}
 GlobalExitRootL2 = ""
@@ -558,34 +537,11 @@ L1ChainID = "{{.l2_chain_id}}"
 # ------------------------------------------------------------------------------
 {{- if eq .sequencer_type "cdk-erigon" }}
 BridgeAddr = "{{.l2_bridge_address}}"
-{{- else if eq .sequencer_type "op-reth" }}
+{{- else if eq .sequencer_type "op-geth" }}
 BridgeAddr = "{{.sovereign_bridge_proxy_addr}}"
 {{- else }}
 BridgeAddr = ""
 {{- end }}
-
-# ------------------------------------------------------------------------------
-# BlockFinality selects which L2 block type to use when querying the bridge
-# contract for synchronization
-# Accepted values:
-#   - LatestBlock
-#   - SafeBlock
-#   - PendingBlock
-#   - FinalizedBlock
-# ------------------------------------------------------------------------------
-BlockFinality = "LatestBlock"
-
-[ReorgDetectorL2]
-# ------------------------------------------------------------------------------
-# FinalizedBlock defines which L2 block tag is used as the source of truth when
-# checking for reorgs on L2
-# Accepted values:
-#   - LatestBlock
-#   - SafeBlock
-#   - PendingBlock
-#   - FinalizedBlock
-# ------------------------------------------------------------------------------
-FinalizedBlock = "FinalizedBlock"
 
 # ------------------------------------------------------------------------------
 # DBPath path of the sqlite db
@@ -650,6 +606,72 @@ InitialBlock = "{{.rollup_manager_block_number}}"
 BlockFinality = "LatestBlock"
 
 # ==============================================================================
+#   ____ _        _    ___ __  __ ____  ____   ___  _   _ ____   ___  ____
+#  / ___| |      / \  |_ _|  \/  / ___||  _ \ / _ \| \ | / ___| / _ \|  _ \
+# | |   | |     / _ \  | || |\/| \___ \| |_) | | | |  \| \___ \| | | | |_) |
+# | |___| |___ / ___ \ | || |  | |___) |  __/| |_| | |\  |___) | |_| |  _ <
+#  \____|_____/_/   \_\___|_|  |_|____/|_|    \___/|_| \_|____/ \___/|_| \_\
+# ------------------------------------------------------------------------------
+[ClaimSponsor]
+# ------------------------------------------------------------------------------
+# Path of the DB
+# ------------------------------------------------------------------------------
+DBPath = "{{.zkevm_path_rw_data}}/claimsponsor.sqlite"
+
+# ------------------------------------------------------------------------------
+# Enabled indicates if the sponsor should be run or not
+# ------------------------------------------------------------------------------
+Enabled = "{{.enable_aggkit_claim_sponsor}}"
+
+# ------------------------------------------------------------------------------
+# SenderAddr is the address that will be used to send the claim txs
+# ------------------------------------------------------------------------------
+SenderAddr = "{{.l2_claimsponsor_address}}"
+
+# ------------------------------------------------------------------------------
+# BridgeAddrL2 is the address of the bridge smart contract on L2
+# ------------------------------------------------------------------------------
+{{- if eq .sequencer_type "cdk-erigon" }}
+BridgeAddrL2 = "{{.l2_bridge_address}}"
+{{- else if eq .sequencer_type "op-geth" }}
+BridgeAddrL2 = "{{.sovereign_bridge_proxy_addr}}"
+{{- else }}
+BridgeAddrL2 = ""
+{{- end }}
+
+[ClaimSponsor.EthTxManager]
+# ------------------------------------------------------------------------------
+# PrivateKeys defines all the key store files that are going
+# to be read in order to provide the private keys to sign the L1 txs
+# ------------------------------------------------------------------------------
+PrivateKeys = [
+    {Path = "/etc/aggkit/claimsponsor.keystore", Password = "{{.l2_keystore_password}}"},
+]
+
+# ------------------------------------------------------------------------------
+# StoragePath is the path of the internal storage
+# ------------------------------------------------------------------------------
+StoragePath = "{{.zkevm_path_rw_data}}/ethtxmanager-claimsponsor.sqlite"
+
+[ClaimSponsor.EthTxManager.Etherman]
+# ------------------------------------------------------------------------------
+# URL is the URL of the Ethereum node for L2
+# ------------------------------------------------------------------------------
+{{- if eq .sequencer_type "cdk-erigon" }}
+URL= "{{.l2_rpc_url}}"
+{{- else if eq .sequencer_type "op-geth" }}
+URL = "{{.op_el_rpc_url}}"
+{{- else }}
+URL = ""
+{{- end }}
+
+# ------------------------------------------------------------------------------
+# Needs to be set to be the sovereign L2 chain id
+# If set to 0, the chain ID will be fetched from the RPC endpoint
+# ------------------------------------------------------------------------------
+L1ChainID = "{{.l2_chain_id}}"
+
+# ==============================================================================
 #                        _           _                              __
 #  __ _  __ _  __ _  ___| |__   __ _(_)_ __  _ __  _ __ ___   ___  / _| __ _  ___ _ __
 # / _` |/ _` |/ _` |/ __| '_ \ / _` | | '_ \| '_ \| '__/ _ \ / _ \| |_ / _` |/ _ \ '_ \
@@ -663,7 +685,7 @@ BlockFinality = "LatestBlock"
 # ------------------------------------------------------------------------------
 {{- if eq .sequencer_type "cdk-erigon" }}
 SovereignRollupAddr = "{{.rollup_address}}"
-{{- else if eq .sequencer_type "op-reth" }}
+{{- else if eq .sequencer_type "op-geth" }}
 SovereignRollupAddr = "{{.sovereign_rollup_addr}}"
 {{- else }}
 SovereignRollupAddr = ""
@@ -675,7 +697,7 @@ SovereignRollupAddr = ""
 # ------------------------------------------------------------------------------
 {{- if eq .sequencer_type "cdk-erigon" }}
 GlobalExitRootL2 = "{{.l2_ger_address}}"
-{{- else if eq .sequencer_type "op-reth" }}
+{{- else if eq .sequencer_type "op-geth" }}
 GlobalExitRootL2 = "{{.sovereign_ger_proxy_addr}}"
 {{- else }}
 GlobalExitRootL2 = ""
@@ -751,3 +773,4 @@ Capacity = 100
 [Validator.AgglayerClient.GRPC]
 URL = "{{.agglayer_grpc_url}}"
 UseTLS = false
+
