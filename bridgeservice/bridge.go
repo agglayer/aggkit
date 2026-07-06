@@ -20,7 +20,6 @@ import (
 	"math"
 	"math/big"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -88,16 +87,14 @@ type AgglayerManagerUpgradeQuerier interface {
 
 type Config struct {
 	Logger       *log.Logger
-	Address      string
-	WriteTimeout time.Duration
 	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
 	NetworkID    uint32
 }
 
 // BridgeService contains implementations for the bridge service endpoints
 type BridgeService struct {
 	logger                      *log.Logger
-	address                     string
 	readTimeout                 time.Duration
 	writeTimeout                time.Duration
 	networkID                   uint32
@@ -108,8 +105,6 @@ type BridgeService struct {
 	bridgeL2                    Bridger
 	claimL1                     Claimer
 	claimL2                     Claimer
-
-	router *gin.Engine
 }
 
 // New returns instance of BridgeService
@@ -123,28 +118,10 @@ func New(
 	bridgeL2 Bridger,
 	claimL2 Claimer,
 ) *BridgeService {
-	cfg.Logger.Infof("starting bridge service (network id=%d, address=%s)", cfg.NetworkID, cfg.Address)
-
-	// The GIN_MODE environment variable controls the mode of the Gin framework.
-	// Valid values are "debug", "release", and "test". If an invalid value is provided,
-	// the mode defaults to "release" for safety and performance.
-	ginMode := os.Getenv("GIN_MODE")
-	switch ginMode {
-	case gin.DebugMode, gin.ReleaseMode, gin.TestMode:
-		gin.SetMode(ginMode)
-	default:
-		cfg.Logger.Infof("invalid or missing GIN_MODE value ('%s') provided, defaulting to '%s' mode",
-			ginMode, gin.ReleaseMode)
-		gin.SetMode(gin.ReleaseMode) // fallback to release mode
-	}
-
-	router := gin.New()
-	router.Use(gin.Recovery())
-	router.Use(LoggerHandler(cfg.Logger))
+	cfg.Logger.Infof("starting bridge service (network id=%d)", cfg.NetworkID)
 
 	b := &BridgeService{
 		logger:                      cfg.Logger,
-		address:                     cfg.Address,
 		readTimeout:                 cfg.ReadTimeout,
 		writeTimeout:                cfg.WriteTimeout,
 		networkID:                   cfg.NetworkID,
@@ -155,57 +132,20 @@ func New(
 		bridgeL2:                    bridgeL2,
 		claimL1:                     claimL1,
 		claimL2:                     claimL2,
-		router:                      router,
 	}
 
-	b.registerRoutes()
 	cfg.Logger.Info("bridge service initialized successfully")
-
 	return b
 }
 
-// LoggerHandler returns a Gin middleware that logs HTTP requests using logger at DEBUG level.
-func LoggerHandler(logger aggkitcommon.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		path := c.Request.URL.Path
-		raw := c.Request.URL.RawQuery
+// RegisterRoutes registers all bridge service routes on router.
+func (b *BridgeService) RegisterRoutes(router gin.IRouter) {
+	metrics.Register()
 
-		c.Next()
-
-		latency := time.Since(start)
-		if latency > time.Minute {
-			latency = latency.Truncate(time.Second)
-		}
-
-		clientIP := c.ClientIP()
-		method := c.Request.Method
-		statusCode := c.Writer.Status()
-		errorMessage := c.Errors.ByType(gin.ErrorTypePrivate).String()
-
-		if raw != "" {
-			path += "?" + raw
-		}
-
-		logger.Debugf(
-			"[GIN] %v | %3d | %13v | %15s | %-7s %#v\n%s",
-			start.Format("2006/01/02 - 15:04:05"),
-			statusCode,
-			latency,
-			clientIP,
-			method,
-			path,
-			errorMessage,
-		)
-	}
-}
-
-// registerRoutes registers the routes for the bridge service
-func (b *BridgeService) registerRoutes() {
 	// Health check endpoint at root path
-	b.router.GET("/", b.HealthCheckHandler)
+	router.GET("/", b.HealthCheckHandler)
 
-	bridgeGroup := b.router.Group(BridgeV1Prefix)
+	bridgeGroup := router.Group(BridgeV1Prefix)
 	{
 		bridgeGroup.GET("/bridges", b.GetBridgesHandler)
 		bridgeGroup.GET("/claims", b.GetClaimsHandler)
@@ -231,45 +171,6 @@ func (b *BridgeService) registerRoutes() {
 			ctx.Redirect(http.StatusFound, BridgeV1Prefix+"/swagger/index.html")
 		})
 	}
-}
-
-// Start starts the HTTP bridge service
-func (b *BridgeService) Start(ctx context.Context) {
-	// Register metrics
-	metrics.Register()
-
-	srv := &http.Server{
-		Addr:         b.address,
-		Handler:      b.router,
-		ReadTimeout:  b.readTimeout,
-		WriteTimeout: b.writeTimeout,
-	}
-
-	b.logger.Infof("Bridge service listening on %s...", b.address)
-	err := srv.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
-		b.logger.Panicf("failed to start bridge service: %v", err)
-	}
-
-	<-ctx.Done()
-
-	b.logger.Info("Shutting down bridge service...")
-
-	var parentCtx context.Context
-	if ctx.Err() == nil {
-		parentCtx = ctx
-	} else {
-		parentCtx = context.Background()
-	}
-
-	ctx, cancel := context.WithTimeout(parentCtx, b.readTimeout)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		b.logger.Panicf("Server shutdown error: %v", err)
-	}
-
-	b.logger.Info("Bridge service exited gracefully")
 }
 
 // HealthCheckHandler returns the health status and version information of the bridge service.
@@ -1495,6 +1396,9 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 
 	root, err := b.bridgeL2.GetRootByLER(ctx, lastVerified.ExitRoot)
 	if err != nil {
+		if !errors.Is(err, db.ErrNotFound) {
+			return 0, fmt.Errorf("failed to get root by LER for L2: %w", err)
+		}
 		b.logger.Infof(
 			"failed to get root by LER for L2: %v, lastVerified ExitRoot: %v, using fallback mechanism",
 			err,
@@ -1503,10 +1407,6 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 		root, err = b.bridgeL2.GetLastRoot(ctx)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get last root for L2: %w", err)
-		}
-		lastVerified, err = b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, root.BlockNum)
-		if err != nil {
-			return 0, fmt.Errorf("failed to get first verified batch after block for L2: %w, block num: %d", err, root.BlockNum)
 		}
 	}
 	if root.Index < depositCount {
@@ -1521,27 +1421,18 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 	// Binary search between the first and last blocks where batches were verified.
 	// Find the smallest deposit count that is greater than depositCount and matches with
 	// a LER that is verified
-	bestResult := lastVerified
-	lowerLimit := firstVerified.BlockNumber
-	upperLimit := lastVerified.BlockNumber
-	for lowerLimit <= upperLimit {
-		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binarySearchDivider)
-		targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, targetBlock)
+	bestResult, missingLER, err := b.getFirstVerifiedBatchesForL2DepositCountBinary(
+		ctx, firstVerified, lastVerified, depositCount,
+	)
+	if err != nil {
+		return 0, err
+	}
+	if missingLER {
+		bestResult, err = b.getFirstVerifiedBatchesForL2DepositCountLinear(
+			ctx, firstVerified.BlockNumber, lastVerified.BlockNumber, depositCount,
+		)
 		if err != nil {
 			return 0, err
-		}
-		root, err = b.bridgeL2.GetRootByLER(ctx, targetVerified.ExitRoot)
-		if err != nil {
-			return 0, err
-		}
-		if root.Index < depositCount {
-			lowerLimit = targetBlock + 1
-		} else if root.Index == depositCount {
-			bestResult = targetVerified
-			break
-		} else {
-			bestResult = targetVerified
-			upperLimit = targetBlock - 1
 		}
 	}
 
@@ -1550,6 +1441,138 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 		return 0, err
 	}
 	return info.L1InfoTreeIndex, nil
+}
+
+// binarySearchAction is a sentinel returned by binarySearchStep to control the outer loop.
+type binarySearchAction uint8
+
+const (
+	binarySearchContinue binarySearchAction = iota // bounds updated, keep looping
+	binarySearchDone                               // exact match or no more blocks, stop
+	binarySearchFallback                           // LER missing in L2, fall back to linear scan
+)
+
+// binarySearchStep executes one iteration of the binary-search loop body.
+// It fetches the verified batch at targetBlock, resolves its LER against the L2 exit tree,
+// and returns the updated (lower, upper, best) bounds together with an action that tells
+// the caller whether to continue, stop, or fall back to a linear scan.
+//
+// lowerLimit and upperLimit are the current search bounds; targetBlock is the midpoint
+// computed by the caller.
+func (b *BridgeService) binarySearchStep(
+	ctx context.Context,
+	targetBlock uint64,
+	lowerLimit uint64,
+	upperLimit uint64,
+	depositCount uint32,
+	best *l1infotreesync.VerifyBatches,
+) (*l1infotreesync.VerifyBatches, uint64, uint64, binarySearchAction, error) {
+	targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, targetBlock)
+	if err != nil {
+		return nil, 0, 0, binarySearchContinue, err
+	}
+
+	if targetVerified.BlockNumber > upperLimit {
+		if targetBlock == 0 {
+			return best, lowerLimit, upperLimit, binarySearchDone, nil
+		}
+		return best, lowerLimit, targetBlock - 1, binarySearchContinue, nil
+	}
+
+	root, err := b.bridgeL2.GetRootByLER(ctx, targetVerified.ExitRoot)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			b.logger.Debugf(
+				"getFirstL1InfoTreeIndexForL2Bridge: LER not found for verified batch at L1 block %d"+
+					" (ExitRoot: %s), falling back to linear scan",
+				targetVerified.BlockNumber, targetVerified.ExitRoot,
+			)
+			return nil, 0, 0, binarySearchFallback, nil
+		}
+		return nil, 0, 0, binarySearchContinue, err
+	}
+
+	switch {
+	case root.Index < depositCount:
+		return best, targetVerified.BlockNumber + 1, upperLimit, binarySearchContinue, nil
+	case root.Index == depositCount:
+		return targetVerified, lowerLimit, upperLimit, binarySearchDone, nil
+	default: // root.Index > depositCount
+		if targetVerified.BlockNumber == 0 {
+			return targetVerified, lowerLimit, upperLimit, binarySearchDone, nil
+		}
+		return targetVerified, lowerLimit, targetVerified.BlockNumber - 1, binarySearchContinue, nil
+	}
+}
+
+func (b *BridgeService) getFirstVerifiedBatchesForL2DepositCountBinary(
+	ctx context.Context,
+	firstVerified *l1infotreesync.VerifyBatches,
+	lastVerified *l1infotreesync.VerifyBatches,
+	depositCount uint32,
+) (*l1infotreesync.VerifyBatches, bool, error) {
+	bestResult := lastVerified
+	lowerLimit := firstVerified.BlockNumber
+	upperLimit := lastVerified.BlockNumber
+
+	for lowerLimit <= upperLimit {
+		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binarySearchDivider)
+		newBest, newLower, newUpper, action, err := b.binarySearchStep(
+			ctx, targetBlock, lowerLimit, upperLimit, depositCount, bestResult)
+		if err != nil {
+			return nil, false, err
+		}
+		switch action {
+		case binarySearchFallback:
+			return nil, true, nil
+		case binarySearchDone:
+			return newBest, false, nil
+		default:
+			bestResult = newBest
+			lowerLimit = newLower
+			upperLimit = newUpper
+		}
+	}
+
+	return bestResult, false, nil
+}
+
+func (b *BridgeService) getFirstVerifiedBatchesForL2DepositCountLinear(
+	ctx context.Context,
+	firstBlock uint64,
+	lastBlock uint64,
+	depositCount uint32,
+) (*l1infotreesync.VerifyBatches, error) {
+	for nextBlock := firstBlock; nextBlock <= lastBlock; {
+		verified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, nextBlock)
+		if err != nil {
+			return nil, err
+		}
+		if verified.BlockNumber > lastBlock {
+			break
+		}
+
+		root, err := b.bridgeL2.GetRootByLER(ctx, verified.ExitRoot)
+		if err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				b.logger.Debugf(
+					"getFirstL1InfoTreeIndexForL2Bridge: skipping verified batch at L1 block %d"+
+						" because its LER is not in the L2 exit tree (ExitRoot: %s)",
+					verified.BlockNumber, verified.ExitRoot,
+				)
+				nextBlock = verified.BlockNumber + 1
+				continue
+			}
+			return nil, err
+		}
+
+		if root.Index >= depositCount {
+			return verified, nil
+		}
+		nextBlock = verified.BlockNumber + 1
+	}
+
+	return nil, ErrNotOnL1Info
 }
 
 // setupRequest parses the pagination parameters from the request context

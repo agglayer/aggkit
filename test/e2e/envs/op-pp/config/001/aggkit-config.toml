@@ -142,12 +142,15 @@ Port = "5576"
 # |_| \_\_____|____/ |_|
 #
 # ------------------------------------------------------------------------------
-[REST]
+[PublicREST]
 # ------------------------------------------------------------------------------
-# Port will configure the port that the REST API HTTP server will
+# Port will configure the port that the public REST API HTTP server will
 # listen on
 # ------------------------------------------------------------------------------
 Port = "5577"
+
+[AdminREST]
+Port = 5579
 
 # ==============================================================================
 #     _    ____  ____ ____  _____ _   _ ____  _____ ____
@@ -531,6 +534,10 @@ FinalizedBlock = "FinalizedBlock"
 # ------------------------------------------------------------------------------
 InitialBlock = "37"
 
+# Use latest blocks in the local e2e stack so bridge-service can resolve the
+# L1 info tree index without waiting for beacon finalization epochs.
+BlockFinality = "LatestBlock"
+
 # ==============================================================================
 #  _     ____   ____ _____ ____  ______   ___   _  ____
 # | |   |___ \ / ___| ____|  _ \/ ___\ \ / / \ | |/ ___|
@@ -628,3 +635,62 @@ Capacity = 100
 [Validator.AgglayerClient.GRPC]
 URL = "http://agglayer:4443"
 UseTLS = false
+
+[AutoClaim]
+StoragePath = "/tmp/autoclaim-e2e-allow_all.sqlite"
+
+[AutoClaim.API]
+Enabled = true
+
+[AutoClaim.L1ToL2BridgeDetector]
+Enabled = true
+PollInterval = "2s"
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
+EtrogL1UpgradeBlock = 0
+
+[AutoClaim.L2ToLxBridgeDetector]
+Enabled = false
+
+[[AutoClaim.Claimers]]
+Enabled = false
+ID = "l2-autoclaim-e2e"
+NetworkType = "EVM"
+NetworkID = 1
+URLRPC = "http://op-geth-001:8545"
+BridgeAddr = "0xC8cbEBf950B9Df44d987c8619f092beA980fF038"
+PolicyName = "allow-all"
+GasOffset = 100000
+WaitPeriod = "1s"
+RetryAfter = "1s"
+MaxRetries = 180
+
+[AutoClaim.Claimers.Policy]
+AllowMessageClaims = false
+AllowedOrigins = [0]
+AllowedTokens = []
+ManualFallback = false
+MaxGas = 500000
+
+[AutoClaim.Claimers.EthTxManager]
+FrequencyToMonitorTxs = "1s"
+WaitTxToBeMined = "2s"
+WaitReceiptMaxTime = "250ms"
+WaitReceiptCheckInterval = "1s"
+PrivateKeys = [
+	{Method = "local", Path = "/etc/aggkit/aggoracle.keystore", Password = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"},
+]
+ForcedGas = 0
+GasPriceMarginFactor = 1
+MaxGasPriceLimit = 0
+StoragePath = "/tmp/ethtxmanager-autoclaim-e2e-allow_all.sqlite"
+ReadPendingL1Txs = false
+SafeStatusL1NumberOfBlocks = 0
+FinalizedStatusL1NumberOfBlocks = 0
+EstimateGasMaxRetries = 1
+
+[AutoClaim.Claimers.EthTxManager.Etherman]
+URL = "http://op-geth-001:8545"
+MultiGasProvider = false
+L1ChainID = 2151908
+HTTPHeaders = {}

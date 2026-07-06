@@ -13,6 +13,7 @@ import (
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	validator "github.com/agglayer/aggkit/aggsender/validator"
+	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
 	"github.com/agglayer/aggkit/common"
@@ -78,6 +79,7 @@ const (
 	networkIDDeprecatedHint      = "Common.NetworkID is deprecated, remove it from configuration"
 	urlRPCL1DeprecatedHint       = "URLRPCL1 field is deprecated, remove it from configuration"
 	aggsenderEpochPercentageHint = "AggSender.EpochNotificationPercentage moved to AggSender.TriggerEpochBased.EpochNotificationPercentage" //nolint:lll
+	restSectionDeprecatedHint    = "REST section is deprecated and ignored, split into PublicREST and AdminREST, update your configuration" //nolint:lll
 )
 
 type DeprecatedFieldsError struct {
@@ -107,6 +109,9 @@ type DeprecatedField struct {
 	// If the field name ends with a dot means that match a section
 	FieldNamePattern string
 	Reason           string
+	// WarnOnly fields log a warning instead of failing the config load. Use it
+	// for renames whose old section is still emitted by external tooling.
+	WarnOnly bool
 }
 
 var (
@@ -239,6 +244,10 @@ var (
 			FieldNamePattern: "AggSender.EpochNotificationPercentage",
 			Reason:           aggsenderEpochPercentageHint,
 		},
+		{
+			FieldNamePattern: "REST",
+			Reason:           restSectionDeprecatedHint,
+		},
 	}
 )
 
@@ -261,8 +270,11 @@ type Config struct {
 	// L2NetworkConfig holds configuration specific to the L2 network.
 	L2NetworkConfig ethermanconfig.L2NetworkConfig
 
-	// REST contains the configuration settings for the REST service in the Aggkit
-	REST common.RESTConfig
+	// PublicREST contains the configuration for the public-facing REST API server.
+	PublicREST common.RESTConfig
+
+	// AdminREST contains the configuration for the admin REST API server.
+	AdminREST common.RESTConfig
 
 	// RPC is the config for the RPC server
 	RPC jRPC.Config
@@ -307,6 +319,9 @@ type Config struct {
 
 	// Validator is the configuration of the aggsender validator service
 	Validator validator.Config
+
+	// AutoClaim is the configuration of the auto claim service.
+	AutoClaim autoclaimcfg.Config
 
 	// L1Multidownloader is the configuration of the multidownloader service for L1
 	L1Multidownloader multidownloader.Config
@@ -462,6 +477,9 @@ func loadString(cfg *Config, configData string, configType string,
 	if err != nil {
 		return err
 	}
+	if err := cfg.AutoClaim.Validate(); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -470,9 +488,14 @@ func checkDeprecatedFields(keysOnConfig []string) error {
 	err := NewErrDeprecatedFields()
 	for _, key := range keysOnConfig {
 		forbbidenInfo := getDeprecatedField(key)
-		if forbbidenInfo != nil {
-			err.AddDeprecatedField(key, *forbbidenInfo)
+		if forbbidenInfo == nil {
+			continue
 		}
+		if forbbidenInfo.WarnOnly {
+			log.Warnf("deprecated config field %s: %s", key, forbbidenInfo.Reason)
+			continue
+		}
+		err.AddDeprecatedField(key, *forbbidenInfo)
 	}
 	if len(err.Fields) > 0 {
 		return err

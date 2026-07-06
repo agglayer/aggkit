@@ -151,9 +151,16 @@ ReadTimeout = "2s"
 WriteTimeout = "2s"
 MaxRequestsPerIPAndSecond = 10
 
-[REST]
+[PublicREST]
 Host = "0.0.0.0"
 Port = 5577
+ReadTimeout = "5m"
+WriteTimeout = "5m"
+MaxRequestsPerIPAndSecond = 10
+
+[AdminREST]
+Host = "0.0.0.0"
+Port = 5579
 ReadTimeout = "5m"
 WriteTimeout = "5m"
 MaxRequestsPerIPAndSecond = 10
@@ -382,6 +389,25 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 			MaxBackoff = "{{AggSender.AgglayerClient.GRPC.Retry.MaxBackoff}}"
 			BackoffMultiplier = "{{AggSender.AgglayerClient.GRPC.Retry.BackoffMultiplier}}"
 			MaxAttempts = "{{AggSender.AgglayerClient.GRPC.Retry.MaxAttempts}}"
+
+[AutoClaim]
+DryRun = false
+StoragePath = "{{PathRWData}}/autoclaim.sqlite"
+Claimers = []
+
+[AutoClaim.API]
+Enabled = false
+
+[AutoClaim.L1ToL2BridgeDetector]
+Enabled = true
+StartBlock = 0
+PollInterval = "3s"
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
+EtrogL1UpgradeBlock = 0
+
+[AutoClaim.L2ToLxBridgeDetector]
+Enabled = false
 
 [L1Multidownloader]
 	Enabled = true

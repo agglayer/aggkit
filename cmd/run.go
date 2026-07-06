@@ -28,6 +28,9 @@ import (
 	"github.com/agglayer/aggkit/aggsender/query"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
+	autoclaimruntime "github.com/agglayer/aggkit/autoclaim/runtime"
+	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
+	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
@@ -183,9 +186,30 @@ func start(cliCtx *cli.Context) error {
 		}
 	}
 
+	// Open the Auto Claim storage once so the autoclaim runtime does not re-open / re-migrate the DB.
+	// run.go owns this handle for the process lifetime.
+	var autoClaimStorage autoclaimtypes.Storage
+	if shouldRunAutoClaim(components) {
+		storage, err := autoclaimstorage.NewStandalone(
+			log.WithFields("module", aggkitcommon.AUTOCLAIM),
+			cfg.AutoClaim.StoragePath,
+			cfg.BridgeL1Sync.DBQueryTimeout.Duration,
+		)
+		if err != nil {
+			return err
+		}
+		autoClaimStorage = storage
+	}
+
+	// Create shared HTTP servers. Servers are only started when at least one component has
+	// registered routes on them.
+	publicServer := aggkitcommon.NewHTTPServer(cfg.PublicREST, log.WithFields("module", "public-api"))
+	adminServer := aggkitcommon.NewHTTPServer(cfg.AdminREST, log.WithFields("module", "admin-api"))
+	var publicHasRoutes, adminHasRoutes bool
+
 	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
 		b := createBridgeService(
-			cfg.REST,
+			cfg.PublicREST,
 			rollupDataQuerier.RollupID,
 			rollupDataQuerier,
 			l1InfoTreeSync,
@@ -195,8 +219,9 @@ func start(cliCtx *cli.Context) error {
 			l1ClaimSync,
 			l2ClaimSync,
 		)
-		go b.Start(ctx)
-		log.Info("Bridge service started")
+		b.RegisterRoutes(publicServer.Engine())
+		publicHasRoutes = true
+		log.Info("Bridge service routes registered")
 	}
 	if l1MultiDownloader != nil {
 		log.Info("starting L1 MultiDownloader...")
@@ -215,6 +240,51 @@ func start(cliCtx *cli.Context) error {
 	if l1InfoTreeSync != nil {
 		log.Info("starting L1 Info Tree Syncer...")
 		go l1InfoTreeSync.Start(ctx)
+	}
+	if shouldRunAutoClaim(components) {
+		// Share the storage handle opened above so the runtime does not re-open / re-migrate the DB.
+		sharedAutoClaimStorage := autoClaimStorage
+		acRuntime, err := autoclaimruntime.Start(ctx, autoclaimruntime.Dependencies{
+			Config:                cfg.AutoClaim,
+			LogConfig:             cfg.Log,
+			DBQueryTimeout:        cfg.BridgeL1Sync.DBQueryTimeout.Duration,
+			RESTConfig:            cfg.PublicREST,
+			L1BridgeSync:          l1BridgeSync,
+			L1InfoTreeSync:        l1InfoTreeSync,
+			L1Client:              l1Client,
+			L2GERSyncConfig:       cfg.L2GERSync,
+			ReorgDetectorL2Config: cfg.ReorgDetectorL2,
+		}, autoclaimruntime.Factories{
+			OpenStorage: func(aggkitcommon.Logger, string, time.Duration) (autoclaimtypes.Storage, error) {
+				return sharedAutoClaimStorage, nil
+			},
+		})
+		if err != nil {
+			return err
+		}
+		if acRuntime != nil {
+			acRuntime.PublicREST.RegisterRoutes(publicServer.Engine())
+			publicHasRoutes = true
+			if acRuntime.AdminREST != nil {
+				acRuntime.AdminREST.RegisterRoutes(adminServer.Engine())
+				adminHasRoutes = true
+			}
+		}
+	}
+
+	// Start binds the listener synchronously, so a failure (e.g. port already in
+	// use) aborts startup instead of leaving the process running without its API.
+	if publicHasRoutes {
+		if err := publicServer.Start(ctx); err != nil {
+			log.Fatalf("failed to start public-api server: %v", err)
+		}
+		log.Infof("Public API listening on %s", cfg.PublicREST.Address())
+	}
+	if adminHasRoutes {
+		if err := adminServer.Start(ctx); err != nil {
+			log.Fatalf("failed to start admin-api server: %v", err)
+		}
+		log.Infof("Admin API listening on %s", cfg.AdminREST.Address())
 	}
 
 	for _, component := range components {
@@ -584,11 +654,15 @@ func isNeeded(casesWhereNeeded, actualCases []string) bool {
 	return false
 }
 
+func shouldRunAutoClaim(components []string) bool {
+	return isNeeded([]string{aggkitcommon.AUTOCLAIM}, components)
+}
+
 func l1InfoTreeMustRun(components []string) bool {
 	return isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
-		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components)
+		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN, aggkitcommon.AUTOCLAIM}, components)
 }
 
 func runL1InfoTreeSyncerIfNeeded(
@@ -677,7 +751,7 @@ func runReorgDetectorL1IfNeeded(
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC, aggkitcommon.L1INFOTREESYNC,
-		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN},
+		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN, aggkitcommon.AUTOCLAIM},
 		components) {
 		return nil, nil
 	}
@@ -827,7 +901,7 @@ func runBridgeSyncL1IfNeeded(
 	rollupID uint32,
 	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
-	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
+	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC, aggkitcommon.AUTOCLAIM}, components) {
 		return nil
 	}
 
@@ -1055,7 +1129,6 @@ func createBridgeService(
 
 	bridgeCfg := &bridgeservice.Config{
 		Logger:       logger,
-		Address:      cfg.Address(),
 		ReadTimeout:  cfg.ReadTimeout.Duration,
 		WriteTimeout: cfg.WriteTimeout.Duration,
 		NetworkID:    l2NetworkID,

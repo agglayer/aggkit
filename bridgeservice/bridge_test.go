@@ -41,6 +41,7 @@ const (
 
 type bridgeWithMocks struct {
 	bridge         *BridgeService
+	router         *gin.Engine
 	upgradeQuerier *mocks.AgglayerManagerUpgradeQuerier
 	l1InfoTree     *mocks.L1InfoTreeSyncer
 	injectedGERs   *mocks.L2GERSyncer
@@ -52,6 +53,7 @@ type bridgeWithMocks struct {
 
 func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	t.Helper()
+	gin.SetMode(gin.TestMode)
 	b := bridgeWithMocks{
 		upgradeQuerier: mocks.NewAgglayerManagerUpgradeQuerier(t),
 		l1InfoTree:     mocks.NewL1InfoTreeSyncer(t),
@@ -64,12 +66,14 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	logger := log.WithFields("module", "test bridge service")
 	cfg := &Config{
 		Logger:       logger,
-		Address:      "localhost",
 		ReadTimeout:  0,
 		WriteTimeout: 0,
 		NetworkID:    networkID,
 	}
-	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
+	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs,
+		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
+	b.router = gin.New()
+	b.bridge.RegisterRoutes(b.router)
 	return b
 }
 
@@ -357,41 +361,35 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 			expectedErr:   fooErr,
 		},
 		{
-			description: "error on first GetRootByLER",
+			description: "non not found error on first GetRootByLER",
 			setupMocks: func() {
 				b.l1InfoTree.EXPECT().GetLastVerifiedBatches(networkID).
 					Return(lastVerified, nil).
 					Once()
 				b.bridgeL2.EXPECT().GetRootByLER(ctx, lastVerified.ExitRoot).
-					Return(&tree.Root{}, fooErr).
-					Once()
-				b.bridgeL2.EXPECT().GetLastRoot(ctx).
 					Return(&tree.Root{}, fooErr).
 					Once()
 			},
 			depositCount:  11,
 			expectedIndex: 0,
-			expectedErr:   fmt.Errorf("failed to get last root for L2: %w", fooErr),
+			expectedErr:   fmt.Errorf("failed to get root by LER for L2: %w", fooErr),
 		},
 		{
-			description: "error on first GetLastRoot",
+			description: "latest verified LER missing and last local L2 root is behind deposit",
 			setupMocks: func() {
 				b.l1InfoTree.EXPECT().GetLastVerifiedBatches(networkID).
 					Return(lastVerified, nil).
 					Once()
 				b.bridgeL2.EXPECT().GetRootByLER(ctx, lastVerified.ExitRoot).
-					Return(&tree.Root{}, fooErr).
+					Return(&tree.Root{}, db.ErrNotFound).
 					Once()
 				b.bridgeL2.EXPECT().GetLastRoot(ctx).
 					Return(&tree.Root{}, nil).
 					Once()
-				b.l1InfoTree.EXPECT().GetFirstVerifiedBatchesAfterBlock(networkID, mock.Anything).
-					Return(nil, fooErr).
-					Once()
 			},
 			depositCount:  11,
 			expectedIndex: 0,
-			expectedErr:   fmt.Errorf("failed to get first verified batch after block for L2: %w, block num: %d", fooErr, 0),
+			expectedErr:   ErrNotOnL1Info,
 		},
 		{
 			description: "not included yet",
@@ -522,6 +520,70 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 	}
 }
 
+func TestGetFirstL1InfoTreeIndexForL2Bridge_MissingLatestLERDoesNotUseL2BlockAsL1Block(t *testing.T) {
+	ctx := context.Background()
+	networkID := uint32(2)
+	b := newBridgeWithMocks(t, networkID)
+
+	validExitRoot := common.HexToHash("0x1000")
+	validRollupExitRoot := common.HexToHash("0x2000")
+	missingExitRoot := common.HexToHash("0x3000")
+	missingRollupExitRoot := common.HexToHash("0x4000")
+
+	firstVerified := &l1infotreesync.VerifyBatches{
+		BlockNumber:    10,
+		ExitRoot:       validExitRoot,
+		RollupExitRoot: validRollupExitRoot,
+	}
+	lastVerified := &l1infotreesync.VerifyBatches{
+		BlockNumber:    100,
+		ExitRoot:       missingExitRoot,
+		RollupExitRoot: missingRollupExitRoot,
+	}
+
+	b.l1InfoTree.EXPECT().GetLastVerifiedBatches(networkID).
+		Return(lastVerified, nil).
+		Once()
+	b.bridgeL2.EXPECT().GetRootByLER(ctx, missingExitRoot).
+		Return(&tree.Root{}, db.ErrNotFound).
+		Once()
+	b.bridgeL2.EXPECT().GetLastRoot(ctx).
+		Return(&tree.Root{Index: 10, BlockNum: 1_000_000}, nil).
+		Once()
+	b.l1InfoTree.EXPECT().GetFirstVerifiedBatches(networkID).
+		Return(firstVerified, nil).
+		Once()
+
+	verifiedAfterBlock := &l1infotreesync.VerifyBatches{}
+	b.l1InfoTree.On("GetFirstVerifiedBatchesAfterBlock", networkID, mock.Anything).
+		Run(func(args mock.Arguments) {
+			blockNum, ok := args.Get(1).(uint64)
+			require.True(t, ok)
+			require.LessOrEqual(t, blockNum, lastVerified.BlockNumber)
+			if blockNum <= firstVerified.BlockNumber {
+				*verifiedAfterBlock = *firstVerified
+			} else {
+				*verifiedAfterBlock = *lastVerified
+			}
+		}).
+		Return(verifiedAfterBlock, nil)
+
+	b.bridgeL2.EXPECT().GetRootByLER(ctx, validExitRoot).
+		Return(&tree.Root{Index: 10}, nil).
+		Once()
+	b.bridgeL2.On("GetRootByLER", ctx, missingExitRoot).
+		Return(&tree.Root{}, db.ErrNotFound)
+
+	expectedInfo := &l1infotreesync.L1InfoTreeLeaf{L1InfoTreeIndex: 77}
+	b.l1InfoTree.EXPECT().GetFirstL1InfoWithRollupExitRoot(validRollupExitRoot).
+		Return(expectedInfo, nil).
+		Once()
+
+	actualIndex, err := b.bridge.getFirstL1InfoTreeIndexForL2Bridge(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, expectedInfo.L1InfoTreeIndex, actualIndex)
+}
+
 func TestGetBridgesHandler(t *testing.T) {
 	t.Run("GetBridges for L1 network", func(t *testing.T) {
 		page := uint32(1)
@@ -565,7 +627,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -593,7 +655,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get bridges for the L1 network")
@@ -611,7 +673,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get bridges for the L2 network")
@@ -657,7 +719,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -675,7 +737,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		queryParams := url.Values{networkIDParam: []string{fmt.Sprintf("%d", unsupportedNetworkID)}}
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id: %d", unsupportedNetworkID))
 	})
@@ -684,7 +746,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		queryParams := url.Values{networkIDParam: []string{"foo"}}
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
@@ -696,7 +758,7 @@ func TestGetBridgesHandler(t *testing.T) {
 			networkIDParam:  []string{strconv.Itoa(mainnetNetworkID)},
 			pageNumberParam: []string{"foo"},
 		}
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageNumberParam))
 	})
@@ -708,7 +770,7 @@ func TestGetBridgesHandler(t *testing.T) {
 			networkIDParam:    []string{strconv.Itoa(mainnetNetworkID)},
 			depositCountParam: []string{"foo"},
 		}
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", depositCountParam))
 	})
@@ -720,7 +782,7 @@ func TestGetBridgesHandler(t *testing.T) {
 			networkIDParam:  []string{strconv.Itoa(mainnetNetworkID)},
 			networkIDsParam: []string{"foo", "bar"},
 		}
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDsParam))
 	})
@@ -734,7 +796,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
@@ -753,7 +815,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
@@ -797,7 +859,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			pageSizeParam:   []string{"10"},
 		}
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.ClaimsResult
@@ -839,7 +901,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		query.Set(pageNumberParam, "1")
 		query.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.ClaimsResult
@@ -856,7 +918,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		query := url.Values{}
 		query.Set(networkIDParam, strconv.Itoa(unsupportedNetworkID))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id: %d", unsupportedNetworkID))
 	})
@@ -872,7 +934,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		query.Set(pageNumberParam, "1")
 		query.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get claims for the L1 network")
 	})
@@ -888,7 +950,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		query.Set(pageNumberParam, "1")
 		query.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get claims for the L2 network")
 	})
@@ -901,7 +963,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		query.Set(pageNumberParam, "1")
 		query.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
@@ -915,7 +977,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		query.Set(pageSizeParam, "10")
 		query.Set(networkIDsParam, "foo,bar")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDsParam))
 	})
@@ -929,7 +991,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		query.Set(pageSizeParam, "10")
 		query.Set(globalIndexParam, "invalid")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", globalIndexParam))
 	})
@@ -942,7 +1004,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		query.Set(pageNumberParam, "invalid")
 		query.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageNumberParam))
 	})
@@ -993,7 +1055,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			includeAllFields: []string{"true"},
 		}
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.ClaimsResult
@@ -1065,7 +1127,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		query.Set(pageSizeParam, "10")
 		query.Set(includeAllFields, "true")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.ClaimsResult
@@ -1137,7 +1199,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			includeAllFields: []string{"false"},
 		}
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.ClaimsResult
@@ -1160,7 +1222,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		query.Set(pageSizeParam, "10")
 		query.Set(includeAllFields, "invalid")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "invalid include_all_fields parameter")
 	})
@@ -1174,7 +1236,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
@@ -1193,7 +1255,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
@@ -1237,7 +1299,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			pageSizeParam:   []string{"10"},
 		}
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.ClaimsResult
@@ -1302,7 +1364,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			pageSizeParam:   []string{"10"},
 		}
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.ClaimsResult
@@ -1391,7 +1453,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			pageSizeParam:   []string{"10"},
 		}
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.ClaimsResult
@@ -1428,7 +1490,7 @@ func TestGetUnsetClaimsHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/unset-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -1452,7 +1514,7 @@ func TestGetUnsetClaimsHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/unset-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("failed to get unset claims for the L2 network (ID=%d)", l2NetworkID))
@@ -1466,7 +1528,7 @@ func TestGetUnsetClaimsHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/unset-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
@@ -1502,7 +1564,7 @@ func TestGetSetClaimsHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -1543,7 +1605,7 @@ func TestGetSetClaimsHandler(t *testing.T) {
 		queryParams.Set(pageSizeParam, "10")
 		queryParams.Set(globalIndexParam, globalIndex.String())
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -1567,7 +1629,7 @@ func TestGetSetClaimsHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("failed to get set claims for the L2 network (ID=%d)", l2NetworkID))
@@ -1581,7 +1643,7 @@ func TestGetSetClaimsHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
@@ -1599,7 +1661,7 @@ func TestGetSetClaimsHandler(t *testing.T) {
 		queryParams.Set(pageSizeParam, "10")
 		queryParams.Set(globalIndexParam, "invalid")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", globalIndexParam))
@@ -1612,7 +1674,7 @@ func TestGetSetClaimsHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "invalid")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageNumberParam))
@@ -1625,7 +1687,7 @@ func TestGetSetClaimsHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "invalid")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/set-claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", pageSizeParam))
@@ -1655,7 +1717,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 			GetRemoveGEREvents(mock.Anything, (*common.Hash)(nil), uint32(50)).
 			Return(expectedEvents, nil)
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/removed-gers", BridgeV1Prefix), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -1689,7 +1751,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		queryParams := url.Values{}
 		queryParams.Set("global_exit_root", targetGER.Hex())
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/removed-gers?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -1707,7 +1769,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		queryParams := url.Values{}
 		queryParams.Set("global_exit_root", "invalid_hash")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/removed-gers?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "invalid global_exit_root parameter")
@@ -1720,7 +1782,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 			GetRemoveGEREvents(mock.Anything, (*common.Hash)(nil), uint32(50)).
 			Return(nil, errors.New("database error"))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/removed-gers", BridgeV1Prefix), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get remove GER events")
@@ -1730,7 +1792,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridge.injectedGERs = nil
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/removed-gers", BridgeV1Prefix), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
@@ -1759,7 +1821,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		queryParams := url.Values{}
 		queryParams.Set("limit", "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/removed-gers?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -1777,7 +1839,7 @@ func TestGetRemoveGEREventsHandler(t *testing.T) {
 		queryParams := url.Values{}
 		queryParams.Set("limit", "0")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/removed-gers?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "limit must be greater than 0")
@@ -1834,7 +1896,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		query.Set(pageNumberParam, "1")
 		query.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.TokenMappingsResult
@@ -1874,7 +1936,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		query.Set(pageNumberParam, "1")
 		query.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.TokenMappingsResult
@@ -1891,7 +1953,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		query := url.Values{}
 		query.Set(networkIDParam, "999")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "unsupported network id: 999")
 	})
@@ -1904,7 +1966,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		query := url.Values{}
 		query.Set(networkIDParam, "0")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("failed to fetch token mappings: %s", fooErrMsg))
 	})
@@ -1917,7 +1979,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		query := url.Values{}
 		query.Set(networkIDParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("failed to fetch token mappings: %s", barErrMsg))
 	})
@@ -1930,7 +1992,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		query.Set(pageNumberParam, "1")
 		query.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
@@ -1964,7 +2026,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		query.Set(pageSizeParam, "10")
 		query.Set("origin_token_address", originTokenAddr)
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.TokenMappingsResult
@@ -2007,7 +2069,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		query.Set(pageSizeParam, "10")
 		query.Set("origin_token_address", originTokenAddr)
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.TokenMappingsResult
@@ -2028,7 +2090,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
@@ -2047,7 +2109,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		queryParams.Set(pageNumberParam, "1")
 		queryParams.Set(pageSizeParam, "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
@@ -2088,7 +2150,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 		queryParams.Set("page_number", "1")
 		queryParams.Set("page_size", "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -2129,7 +2191,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 		queryParams.Set("page_number", "1")
 		queryParams.Set("page_size", "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response bridgetypes.LegacyTokenMigrationsResult
@@ -2148,7 +2210,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 		queryParams := url.Values{}
 		queryParams.Set("network_id", fmt.Sprintf("%d", unsupportedNetworkID))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id: %d", unsupportedNetworkID))
@@ -2163,7 +2225,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 		queryParams := url.Values{}
 		queryParams.Set("network_id", "0")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), fooErrMsg)
@@ -2178,7 +2240,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 		queryParams := url.Values{}
 		queryParams.Set("network_id", fmt.Sprintf("%d", l2NetworkID))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), barErrMsg)
@@ -2193,7 +2255,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 			pageSizeParam:   []string{"10"},
 		}
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
@@ -2207,7 +2269,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 		queryParams.Set("page_number", "1")
 		queryParams.Set("page_size", "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
@@ -2226,7 +2288,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 		queryParams.Set("page_number", "1")
 		queryParams.Set("page_size", "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 
@@ -2273,7 +2335,7 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 		queryParams.Set("network_id", "0")
 		queryParams.Set("deposit_count", fmt.Sprintf("%d", depositCount))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response uint32
@@ -2317,7 +2379,7 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 		queryParams.Set("network_id", fmt.Sprintf("%d", l2NetworkID))
 		queryParams.Set("deposit_count", fmt.Sprintf("%d", depositCount))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response uint32
@@ -2336,7 +2398,7 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 		queryParams.Set("network_id", fmt.Sprintf("%d", invalidNetworkID))
 		queryParams.Set("deposit_count", fmt.Sprintf("%d", depositCount))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id: %d", invalidNetworkID))
 	})
@@ -2352,7 +2414,7 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 		queryParams.Set("network_id", "0")
 		queryParams.Set("deposit_count", fmt.Sprintf("%d", depositCount))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), fooErrMsg)
 	})
@@ -2383,7 +2445,7 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 		queryParams.Set("network_id", "0")
 		queryParams.Set("deposit_count", fmt.Sprintf("%d", depositCount))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "last root error")
 	})
@@ -2395,7 +2457,7 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 		queryParams.Set("network_id", "invalid")
 		queryParams.Set("deposit_count", "10")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
@@ -2407,7 +2469,7 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 		queryParams.Set("network_id", "10")
 		queryParams.Set("deposit_count", "test")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		w := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", depositCountParam))
 	})
@@ -2438,7 +2500,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "0")
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, response.Code)
 
 		var result l1infotreesync.L1InfoTreeLeaf
@@ -2465,7 +2527,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "10")
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, response.Code)
 
 		var result l1infotreesync.L1InfoTreeLeaf
@@ -2483,7 +2545,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, fmt.Sprintf("%d", unsupportedNetworkID))
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("unsupported network id: %d", unsupportedNetworkID))
@@ -2500,7 +2562,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(),
 			fmt.Sprintf("failed to get L1 info tree leaf (network id=%d, leaf index=%d), error: %s",
@@ -2518,7 +2580,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get injected global exit root for leaf index=%d", l1InfoTreeLeaf.L1InfoTreeIndex))
 	})
@@ -2541,7 +2603,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(),
 			fmt.Sprintf("failed to get L1 info tree leaf (leaf index=%d), error: %s", l1InfoTreeLeaf.L1InfoTreeIndex, fooErrMsg))
@@ -2554,7 +2616,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "invalid")
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
@@ -2566,7 +2628,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "10")
 		queryParams.Set(leafIndexParam, "invalid")
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("invalid %s parameter", leafIndexParam))
 	})
@@ -2595,7 +2657,7 @@ func TestClaimProofHandler(t *testing.T) {
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get l1 info tree leaf for index %d", l1InfoTreeIndex))
 	})
@@ -2614,7 +2676,7 @@ func TestClaimProofHandler(t *testing.T) {
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get claim proof, unsupported network %d", unsupportedNetworkID))
 	})
@@ -2636,7 +2698,7 @@ func TestClaimProofHandler(t *testing.T) {
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(), "failed to get local exit proof")
 	})
@@ -2660,7 +2722,7 @@ func TestClaimProofHandler(t *testing.T) {
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get rollup exit proof (network id=%d, leaf index=%d, deposit count=%d), error: %s",
 			mainnetNetworkID, l1InfoTreeIndex, depositCount, fooErrMsg))
@@ -2683,7 +2745,7 @@ func TestClaimProofHandler(t *testing.T) {
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(), "failed to get local exit root")
 	})
@@ -2708,7 +2770,7 @@ func TestClaimProofHandler(t *testing.T) {
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get local exit proof, error: %s", fooErrMsg))
 	})
@@ -2750,7 +2812,7 @@ func TestClaimProofHandler(t *testing.T) {
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, response.Code)
 
 		var result bridgetypes.ClaimProof
@@ -2767,7 +2829,7 @@ func TestClaimProofHandler(t *testing.T) {
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
@@ -2780,7 +2842,7 @@ func TestClaimProofHandler(t *testing.T) {
 		queryParams.Set(leafIndexParam, "invalid")
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("invalid %s parameter", leafIndexParam))
 	})
@@ -2793,7 +2855,7 @@ func TestClaimProofHandler(t *testing.T) {
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, "invalid")
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("invalid %s parameter", depositCountParam))
 	})
@@ -2811,7 +2873,7 @@ func TestClaimProofHandler(t *testing.T) {
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, response.Code)
 
 		var result gin.H
@@ -2837,7 +2899,7 @@ func TestClaimProofHandler(t *testing.T) {
 		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
 		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		response := performRequest(t, bridgeMocks.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, response.Code)
 
 		var result gin.H
@@ -2863,7 +2925,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 			networkIDParam: []string{strconv.Itoa(mainnetNetworkID)},
 		}
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		response := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/last-reorg-event?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, response.Code)
 
@@ -2884,7 +2946,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 
 		bridgeMocks.bridgeL2.EXPECT().GetLastReorgEvent(mock.Anything).Return(reorgEvent, nil)
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		response := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/last-reorg-event?network_id=%d", BridgeV1Prefix, l2NetworkID), nil)
 		require.Equal(t, http.StatusOK, response.Code)
 
@@ -2899,7 +2961,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 
 		unsupportedNetworkID := uint32(999)
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		response := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/last-reorg-event?network_id=%d", BridgeV1Prefix, unsupportedNetworkID), nil)
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get last reorg event, unsupported network %d", unsupportedNetworkID))
@@ -2910,7 +2972,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 
 		bridgeMocks.bridgeL1.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, errors.New(fooErrMsg))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		response := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/last-reorg-event?network_id=%d", BridgeV1Prefix, mainnetNetworkID), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get last reorg event for the L1 network, error: %s", fooErrMsg))
@@ -2921,7 +2983,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 
 		bridgeMocks.bridgeL2.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, errors.New(barErrMsg))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		response := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/last-reorg-event?network_id=%d", BridgeV1Prefix, l2NetworkID), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(),
@@ -2934,7 +2996,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, "invalid")
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		response := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/last-reorg-event?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Contains(t, response.Body.String(),
@@ -2948,7 +3010,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		response := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/last-reorg-event?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, response.Code)
 
@@ -2965,7 +3027,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		response := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/last-reorg-event?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, response.Code)
 
@@ -3398,7 +3460,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 
 func TestHealthCheckHandler(t *testing.T) {
 	b := newBridgeWithMocks(t, l2NetworkID)
-	w := performRequest(t, b.bridge.router, http.MethodGet, "/", nil)
+	w := performRequest(t, b.router, http.MethodGet, "/", nil)
 	require.Equal(t, http.StatusOK, w.Code)
 
 	var response bridgetypes.HealthCheckResponse
@@ -3833,7 +3895,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
 		queryParams.Set("global_exit_root", validGER)
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -3856,7 +3918,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "0")
 		queryParams.Set("global_exit_root", validGER)
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -3872,7 +3934,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, "0")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "global_exit_root is mandatory")
@@ -3885,7 +3947,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "0")
 		queryParams.Set("global_exit_root", "not_a_hash")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "invalid global_exit_root")
@@ -3898,7 +3960,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "999")
 		queryParams.Set("global_exit_root", validGER)
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 	})
@@ -3911,7 +3973,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "0")
 		queryParams.Set("global_exit_root", validGER)
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 		require.Contains(t, w.Body.String(), "L1 claim syncer is not available")
@@ -3925,7 +3987,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
 		queryParams.Set("global_exit_root", validGER)
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 		require.Contains(t, w.Body.String(), "L2 claim syncer is not available")
@@ -3942,7 +4004,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "0")
 		queryParams.Set("global_exit_root", validGER)
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get claims by GER")
@@ -3959,7 +4021,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
 		queryParams.Set("global_exit_root", validGER)
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get claims by GER")
@@ -3976,7 +4038,7 @@ func TestGetClaimsByGERHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
 		queryParams.Set("global_exit_root", validGER)
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -4017,7 +4079,7 @@ func TestGetBridgeByDepositCountHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
 		queryParams.Set(depositCountParam, "42")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridge-by-deposit-count?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -4041,7 +4103,7 @@ func TestGetBridgeByDepositCountHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "0")
 		queryParams.Set(depositCountParam, "42")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridge-by-deposit-count?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 	})
@@ -4052,7 +4114,7 @@ func TestGetBridgeByDepositCountHandler(t *testing.T) {
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, "0")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridge-by-deposit-count?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 	})
@@ -4064,7 +4126,7 @@ func TestGetBridgeByDepositCountHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "0")
 		queryParams.Set(depositCountParam, "not_a_number")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridge-by-deposit-count?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 	})
@@ -4080,7 +4142,7 @@ func TestGetBridgeByDepositCountHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "0")
 		queryParams.Set(depositCountParam, "99")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridge-by-deposit-count?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusNotFound, w.Code)
 		require.Contains(t, w.Body.String(), "not found")
@@ -4097,7 +4159,7 @@ func TestGetBridgeByDepositCountHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
 		queryParams.Set(depositCountParam, "99")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridge-by-deposit-count?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusNotFound, w.Code)
 	})
@@ -4110,7 +4172,7 @@ func TestGetBridgeByDepositCountHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "0")
 		queryParams.Set(depositCountParam, "42")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridge-by-deposit-count?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 		require.Contains(t, w.Body.String(), "L1 bridge syncer is not available")
@@ -4124,7 +4186,7 @@ func TestGetBridgeByDepositCountHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
 		queryParams.Set(depositCountParam, "42")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridge-by-deposit-count?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 		require.Contains(t, w.Body.String(), "L2 bridge syncer is not available")
@@ -4141,7 +4203,7 @@ func TestGetBridgeByDepositCountHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "0")
 		queryParams.Set(depositCountParam, "42")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridge-by-deposit-count?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get bridge by deposit count")
@@ -4158,7 +4220,7 @@ func TestGetBridgeByDepositCountHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
 		queryParams.Set(depositCountParam, "42")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridge-by-deposit-count?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get bridge by deposit count")
@@ -4171,7 +4233,7 @@ func TestGetBridgeByDepositCountHandler(t *testing.T) {
 		queryParams.Set(networkIDParam, "999")
 		queryParams.Set(depositCountParam, "42")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridge-by-deposit-count?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 	})
@@ -4218,7 +4280,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 			GetUpgradeBlock(mock.Anything, mock.Anything).
 			Return(uint64(0))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, buildQuery(int(l2NetworkID)).Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -4238,7 +4300,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 			GetUpgradeBlock(mock.Anything, mock.Anything).
 			Return(uint64(0))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, buildQuery(mainnetNetworkID).Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
@@ -4262,7 +4324,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 		q := buildQuery(int(l2NetworkID))
 		q.Set("metadata", "0xdeadbeef")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, q.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 	})
@@ -4273,7 +4335,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 		q := buildQuery(int(l2NetworkID))
 		q.Set("metadata", "0xZZZZZZ")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, q.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "invalid metadata")
@@ -4285,7 +4347,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 		q := buildQuery(int(l2NetworkID))
 		q.Del("origin_address")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, q.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "origin_address is mandatory")
@@ -4297,7 +4359,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 		q := buildQuery(int(l2NetworkID))
 		q.Set("origin_address", "not_an_address")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, q.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "invalid")
@@ -4309,7 +4371,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 		q := buildQuery(int(l2NetworkID))
 		q.Del("destination_address")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, q.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "destination_address is mandatory")
@@ -4321,7 +4383,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 		q := buildQuery(int(l2NetworkID))
 		q.Set("destination_address", "not_an_address")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, q.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "invalid")
@@ -4333,7 +4395,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 		q := buildQuery(int(l2NetworkID))
 		q.Del("amount")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, q.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "amount is mandatory")
@@ -4345,7 +4407,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 		q := buildQuery(int(l2NetworkID))
 		q.Set("amount", "not_a_number")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, q.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "invalid amount")
@@ -4357,7 +4419,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 		q := buildQuery(int(l2NetworkID))
 		q.Set("leaf_type", "256")
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, q.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "leaf_type must be 0 or 1")
@@ -4367,7 +4429,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridge.bridgeL1 = nil
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, buildQuery(mainnetNetworkID).Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 		require.Contains(t, w.Body.String(), "L1 bridge syncer is not available")
@@ -4377,7 +4439,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridge.bridgeL2 = nil
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, buildQuery(int(l2NetworkID)).Encode()), nil)
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 		require.Contains(t, w.Body.String(), "L2 bridge syncer is not available")
@@ -4390,7 +4452,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 			GetBridgesByContent(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, errors.New("db error"))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, buildQuery(mainnetNetworkID).Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get bridges by content")
@@ -4403,7 +4465,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 			GetBridgesByContent(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, errors.New("db error"))
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, buildQuery(int(l2NetworkID)).Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get bridges by content")
@@ -4412,7 +4474,7 @@ func TestGetBridgesByContentHandler(t *testing.T) {
 	t.Run("unsupported network ID", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
+		w := performRequest(t, bridgeMocks.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, buildQuery(999).Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 	})

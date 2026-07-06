@@ -174,3 +174,16 @@ RetryMode = "delays"
 MaxRetries = 6
 Delays = ["1s", "2s", "5s", "10s", "30s", "60s"]
 ```
+
+## AutoClaim
+
+`AutoClaim` configures the optional L1 to L2 Auto Claim runtime. It is disabled by default. To enable it, select the
+`autoclaim` component, set `[AutoClaim].Enabled = true`, configure storage, and add at least one enabled EVM claimer for
+the destination L2 network.
+
+Auto Claim requires `l1bridgesync` and `l1infotreesync` when enabled. The optional REST API uses
+`/autoclaim/v1` for request inspection and manual approvals. L2 to Lx Auto Claim is not implemented; keep
+`[AutoClaim.L2ToLxBridgeDetector].Enabled = false`.
+
+See [Auto Claim Service](./autoclaim.md) for the complete configuration table, policy behavior, lifecycle, and API
+workflow.
