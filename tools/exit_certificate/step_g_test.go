@@ -40,6 +40,14 @@ func TestIsNativeBridgeExit(t *testing.T) {
 			ti:     &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: common.HexToAddress("0x1111")},
 			native: false,
 		},
+		{
+			// Regression (AET-01): another network's native asset is a wrapped ERC-20 on this L2 with
+			// OriginTokenAddress=0x0 but a non-gas-token OriginNetwork. It must NOT be treated as the
+			// local gas token, otherwise Step G replays it natively and computes the LER from wrong leaves.
+			name:   "external native token (zero addr, non-gas-token network) is not native",
+			ti:     &agglayertypes.TokenInfo{OriginNetwork: 5, OriginTokenAddress: common.Address{}},
+			native: false,
+		},
 	}
 
 	for _, tc := range tests {

@@ -41,8 +41,12 @@ func buildLiteTreeFromCertificate(
 	leaves := make([]bridgesyncerlite.BridgeLeaf, len(exits))
 	metadatas := make([][]byte, len(exits))
 	for i, be := range exits {
+		// Native (gas token) exits take the gas token as origin; every other exit — including another
+		// network's native asset wrapped on this L2 (OriginTokenAddress=0x0 but non-local
+		// OriginNetwork) — takes its own TokenInfo origin. Using isNativeBridgeExit keeps this in lock
+		// step with the shadow-fork replay's native/ERC-20 decision.
 		originNetwork, originAddr := gasTokenNetwork, gasTokenAddress
-		if be.TokenInfo != nil && be.TokenInfo.OriginTokenAddress != (common.Address{}) {
+		if !isNativeBridgeExit(be.TokenInfo, gasTokenNetwork, gasTokenAddress) {
 			originNetwork = be.TokenInfo.OriginNetwork
 			originAddr = be.TokenInfo.OriginTokenAddress
 		}
