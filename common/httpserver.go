@@ -2,7 +2,9 @@ package common
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -22,6 +24,7 @@ type RoutesRegisterer interface {
 type HTTPServer struct {
 	cfg    RESTConfig
 	engine *gin.Engine
+	logger Logger
 }
 
 // NewHTTPServer creates an HTTP server with gin.Recovery and logger middleware.
@@ -40,17 +43,24 @@ func NewHTTPServer(cfg RESTConfig, logger Logger) *HTTPServer {
 	if logger != nil {
 		engine.Use(HTTPLoggerHandler(logger))
 	}
-	return &HTTPServer{cfg: cfg, engine: engine}
+	return &HTTPServer{cfg: cfg, engine: engine, logger: logger}
 }
 
 // Engine returns the Gin router so callers can register routes.
 func (s *HTTPServer) Engine() *gin.Engine { return s.engine }
 
-// Start starts the HTTP server and blocks until ctx is done, then shuts down gracefully.
-// It returns an error if the server fails to listen (e.g. port conflict).
+// Start binds the configured address and serves requests in the background.
+// The listener is created synchronously, so a bind failure (e.g. port already
+// in use) is returned immediately and the caller can abort startup. Once Start
+// returns nil the server is accepting connections; it shuts down gracefully
+// when ctx is done.
 func (s *HTTPServer) Start(ctx context.Context) error {
+	listener, err := net.Listen("tcp", s.cfg.Address())
+	if err != nil {
+		return fmt.Errorf("httpserver: failed to listen on %s: %w", s.cfg.Address(), err)
+	}
+
 	srv := &http.Server{
-		Addr:         s.cfg.Address(),
 		Handler:      s.engine,
 		ReadTimeout:  s.cfg.ReadTimeout.Duration,
 		WriteTimeout: s.cfg.WriteTimeout.Duration,
@@ -63,17 +73,20 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("httpserver ListenAndServe: %w", err)
-	}
+	go func() {
+		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if s.logger != nil {
+				s.logger.Errorf("httpserver on %s stopped unexpectedly: %v", s.cfg.Address(), err)
+			}
+		}
+	}()
+
 	return nil
 }
 
 // HTTPLoggerHandler returns a Gin middleware that logs HTTP requests using logger at DEBUG level.
 func HTTPLoggerHandler(logger Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		start := c.Request.Context().Value(struct{}{}) // unused sentinel; start time captured below
-		_ = start
 		startTime := time.Now()
 		path := c.Request.URL.Path
 		raw := c.Request.URL.RawQuery

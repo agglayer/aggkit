@@ -96,23 +96,24 @@ func TestHTTPServerStartGracefulShutdown(t *testing.T) {
 	srv.Engine().GET("/health", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	ctx, cancel := context.WithCancel(context.Background())
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- srv.Start(ctx)
-	}()
+	require.NoError(t, srv.Start(ctx))
 
+	// Once Start returns, the listener is bound and requests are served.
 	addr := cfg.Address()
-	require.Eventually(t, func() bool {
-		resp, err := http.Get("http://" + addr + "/health")
-		if err == nil {
-			resp.Body.Close()
-			return true
-		}
-		return false
-	}, 3*time.Second, 20*time.Millisecond)
+	resp, err := http.Get("http://" + addr + "/health")
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	cancel()
-	require.NoError(t, <-errCh)
+	require.Eventually(t, func() bool {
+		resp, err := http.Get("http://" + addr + "/health")
+		if err != nil {
+			return true
+		}
+		resp.Body.Close()
+		return false
+	}, 3*time.Second, 20*time.Millisecond)
 }
 
 func TestHTTPServerStartPortConflict(t *testing.T) {
@@ -125,7 +126,7 @@ func TestHTTPServerStartPortConflict(t *testing.T) {
 
 	srv := NewHTTPServer(cfg, nil)
 	err = srv.Start(context.Background())
-	require.ErrorContains(t, err, "httpserver ListenAndServe")
+	require.ErrorContains(t, err, "failed to listen on")
 }
 
 func TestHTTPLoggerHandlerWithQueryString(t *testing.T) {

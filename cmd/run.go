@@ -272,20 +272,18 @@ func start(cliCtx *cli.Context) error {
 		}
 	}
 
+	// Start binds the listener synchronously, so a failure (e.g. port already in
+	// use) aborts startup instead of leaving the process running without its API.
 	if publicHasRoutes {
-		go func() {
-			if err := publicServer.Start(ctx); err != nil {
-				log.Fatalf("public-api server stopped with error: %v", err)
-			}
-		}()
+		if err := publicServer.Start(ctx); err != nil {
+			log.Fatalf("failed to start public-api server: %v", err)
+		}
 		log.Infof("Public API listening on %s", cfg.PublicREST.Address())
 	}
 	if adminHasRoutes {
-		go func() {
-			if err := adminServer.Start(ctx); err != nil {
-				log.Fatalf("admin-api server stopped with error: %v", err)
-			}
-		}()
+		if err := adminServer.Start(ctx); err != nil {
+			log.Fatalf("failed to start admin-api server: %v", err)
+		}
 		log.Infof("Admin API listening on %s", cfg.AdminREST.Address())
 	}
 

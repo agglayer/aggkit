@@ -486,6 +486,10 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[LastGERSync]
 	SyncMode = "Legacy"
 	DBPath = "{{PathRWData}}/l2gersync.sqlite"
+
+	[REST]
+	Host = "0.0.0.0"
+	Port = 5577
 `))
 	require.NoError(t, err)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
@@ -516,4 +520,22 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, maxSubmitCertificateRateDeprecatedHint)
 	require.ErrorContains(t, err, urlRPCL1DeprecatedHint)
 	require.ErrorContains(t, err, aggsenderEpochPercentageHint)
+	// [REST] is warn-only (still emitted by e2e tooling), so it must not be
+	// part of the deprecated-fields error.
+	require.NotContains(t, err.Error(), restSectionDeprecatedHint)
+}
+
+func TestLoadConfigWithWarnOnlyRESTSection(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "ut_config")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	_, err = tmpFile.Write([]byte(`
+	[REST]
+	Host = "0.0.0.0"
+	Port = 5577
+`))
+	require.NoError(t, err)
+	ctx := newCliContextConfigFlag(t, tmpFile.Name())
+	_, err = Load(ctx)
+	require.NoError(t, err)
 }

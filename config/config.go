@@ -79,6 +79,7 @@ const (
 	networkIDDeprecatedHint      = "Common.NetworkID is deprecated, remove it from configuration"
 	urlRPCL1DeprecatedHint       = "URLRPCL1 field is deprecated, remove it from configuration"
 	aggsenderEpochPercentageHint = "AggSender.EpochNotificationPercentage moved to AggSender.TriggerEpochBased.EpochNotificationPercentage" //nolint:lll
+	restSectionDeprecatedHint    = "REST section is deprecated and ignored, split into PublicREST and AdminREST, update your configuration" //nolint:lll
 )
 
 type DeprecatedFieldsError struct {
@@ -108,6 +109,9 @@ type DeprecatedField struct {
 	// If the field name ends with a dot means that match a section
 	FieldNamePattern string
 	Reason           string
+	// WarnOnly fields log a warning instead of failing the config load. Use it
+	// for renames whose old section is still emitted by external tooling.
+	WarnOnly bool
 }
 
 var (
@@ -239,6 +243,13 @@ var (
 		{
 			FieldNamePattern: "AggSender.EpochNotificationPercentage",
 			Reason:           aggsenderEpochPercentageHint,
+		},
+		{
+			// WarnOnly: the e2e infra (kurtosis-cdk) still generates configs with
+			// a [REST] section; fail hard once it is migrated to [PublicREST].
+			FieldNamePattern: "REST",
+			Reason:           restSectionDeprecatedHint,
+			WarnOnly:         true,
 		},
 	}
 )
@@ -480,9 +491,14 @@ func checkDeprecatedFields(keysOnConfig []string) error {
 	err := NewErrDeprecatedFields()
 	for _, key := range keysOnConfig {
 		forbbidenInfo := getDeprecatedField(key)
-		if forbbidenInfo != nil {
-			err.AddDeprecatedField(key, *forbbidenInfo)
+		if forbbidenInfo == nil {
+			continue
 		}
+		if forbbidenInfo.WarnOnly {
+			log.Warnf("deprecated config field %s: %s", key, forbbidenInfo.Reason)
+			continue
+		}
+		err.AddDeprecatedField(key, *forbbidenInfo)
 	}
 	if len(err.Fields) > 0 {
 		return err
