@@ -91,11 +91,14 @@ func RunStepF(
 		if !c.Match {
 			allMatch = false
 			if c.LBTAmount != "" {
-				log.Warnf("❌ MISMATCH (network=%d addr=%s): lbt=%s  certificate=%s  agglayer=%s",
-					c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount, c.AgglayerAmount)
+				log.Warnf("❌ MISMATCH (network=%d addr=%s): lbt=%s  certificate=%s  agglayer=%s  "+
+					"(certificate−agglayer=%s, certificate−lbt=%s)",
+					c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount, c.AgglayerAmount,
+					amountDiff(c.CertificateAmount, c.AgglayerAmount), amountDiff(c.CertificateAmount, c.LBTAmount))
 			} else {
-				log.Warnf("❌ MISMATCH (network=%d addr=%s): certificate=%s  agglayer=%s",
-					c.OriginNetwork, c.OriginTokenAddress, c.CertificateAmount, c.AgglayerAmount)
+				log.Warnf("❌ MISMATCH (network=%d addr=%s): certificate=%s  agglayer=%s  (certificate−agglayer=%s)",
+					c.OriginNetwork, c.OriginTokenAddress, c.CertificateAmount, c.AgglayerAmount,
+					amountDiff(c.CertificateAmount, c.AgglayerAmount))
 			}
 			for i, e := range c.CertificateEntries {
 				log.Debugf("    ⚠️ [%d] dest_network=%d dest=%s amount=%s",
@@ -127,6 +130,17 @@ func RunStepF(
 // nativeTokenKey identifies the native token (the gas token: origin network 0, zero origin address)
 // in the comparison maps.
 var nativeTokenKey = tokenKey{}
+
+// amountDiff returns the signed decimal difference a − b between two internally generated decimal
+// amount strings, or "?" if either is not parseable.
+func amountDiff(a, b string) string {
+	av, okA := new(big.Int).SetString(a, decimalBase)
+	bv, okB := new(big.Int).SetString(b, decimalBase)
+	if !okA || !okB {
+		return "?"
+	}
+	return new(big.Int).Sub(av, bv).String()
+}
 
 // genesisPrefundWei parses options.genesisPrefundETHWei into a *big.Int, nil when unset. The format
 // is validated by LoadConfig, so a parse failure only happens on hand-built configs and is treated
@@ -205,8 +219,9 @@ func runStepFOfflineLBT(
 	for _, c := range checks {
 		if !c.Match {
 			allMatch = false
-			log.Warnf("❌ MISMATCH (network=%d addr=%s): lbt=%s  certificate=%s",
-				c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount)
+			log.Warnf("❌ MISMATCH (network=%d addr=%s): lbt=%s  certificate=%s  (certificate−lbt=%s)",
+				c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount,
+				amountDiff(c.CertificateAmount, c.LBTAmount))
 			for i, e := range c.CertificateEntries {
 				log.Infof("    ⚠️ [%d] dest_network=%d dest=%s amount=%s",
 					i, e.DestinationNetwork, e.DestinationAddress, e.Amount)
