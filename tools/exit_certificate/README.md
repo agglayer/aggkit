@@ -124,7 +124,6 @@ The field names are identical in both formats. Pass whichever you created with `
 | `bridgeServiceURL` | `""` | Base URL of the bridge service REST API. When set, Step E cross-checks its unclaimed deposit set against the bridge service and returns an error on any discrepancy. |
 | `bridgeServiceType` | `"aggkit"` | Bridge service API flavour. `"aggkit"` uses `GET /bridge/v1/bridges` (aggkit bridge service); `"zkevm"` uses `GET /pending-bridges` (zkevm-bridge-service). |
 | `extraErc20Contracts` | `[]` | Optional list of ERC-20 contract addresses to decompose into individual holder balances in Step B3. For each address the tool calls `balanceOf` for every EOA collected in Step A. Example: `["0xAbc...123", "0xDef...456"]`. |
-| `ignoreAddresses` | `[]` | Optional list of addresses whose balances must **not** be returned to them. Step B1 still fetches their ETH and token balances (recorded separately in `step-b-ignored-balances.json` for traceability), but excludes them from the EOA exits and accumulated totals. Their value rolls into the per-token SC-locked total and is bridged to `exitAddress` by Step D instead, so the certificate stays balanced against the LBT (Step F stays green) — no exit is ever created back to an ignored address. Each entry is validated by `LoadConfig` (must be a valid, non-zero hex address). Example: `["0xAbc...123"]`. |
 | `ignoreUnsupportedL2Events` | `false` | When `true`, the Step G lite syncer logs a warning and continues instead of aborting when it sees an L2 event that would invalidate a BridgeEvent-only reconstruction (`SetSovereignTokenAddress`, `MigrateLegacyToken`, `RemoveLegacySovereignTokenAddress`, `BackwardLET`, `ForwardLET`). The computed `NewLocalExitRoot` may then be incorrect — enable only to knowingly inspect such a chain. |
 | `verifyNewLocalExitRootUsingShadowFork` | `true` | Selects the Step G2 mode. When `true` (default), Step G2 spins up an Anvil shadow-fork, replays every bridge exit against the real bridge contract, reorders the certificate to the on-chain deposit order, and verifies the computed `NewLocalExitRoot` against the contract's `getRoot()` (requires `anvil` in `$PATH`). When `false`, Step G2 computes the `NewLocalExitRoot` off-chain from the lite exit tree (no Anvil) — much faster, but it trusts the off-chain leaf encoding/metadata. See [Step G](#step-g--compute-newlocalexitroot) for details. |
 
@@ -347,9 +346,7 @@ Classifies addresses as EOA vs contract, then queries ETH balance and every wrap
 2. `eth_getBalance` for all EOAs
 3. `balanceOf` calls per token × per EOA (token list from LBT)
 
-Any address in `options.ignoreAddresses` still has its balances fetched, but it is then split off into `step-b-ignored-balances.json` and removed from both the EOA balances and the accumulated totals — so its value rolls into the SC-locked total (Step C) and is bridged to `exitAddress` by Step D instead of back to the address itself.
-
-**Output:** `step-b-eoa-balances.json`, `step-b-accumulated.json`, `step-b-contract-addresses.json`, `step-b-ignored-balances.json` *(only when `options.ignoreAddresses` matched at least one address)*
+**Output:** `step-b-eoa-balances.json`, `step-b-accumulated.json`, `step-b-contract-addresses.json`
 
 #### Step B2 — ERC-20 detection in contracts
 

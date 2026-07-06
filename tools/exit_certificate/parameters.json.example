@@ -26,7 +26,6 @@
         "genesisPrefundETHWei": "",
         "verifyNewLocalExitRootUsingShadowFork": true,
         "extraErc20Contracts": [],
-        "ignoreAddresses": [],
         "bridgeServiceURL": "",
         "bridgeServiceType": "aggkit",
         "agglayerClient": {

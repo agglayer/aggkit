@@ -83,13 +83,7 @@ Three sub-steps: B1, B2, B3. Running `--step b` executes all three.
 2. `eth_getBalance` for all EOAs at `targetBlock`
 3. `balanceOf(address)` per wrapped token × per EOA (token list from LBT)
 
-**`options.ignoreAddresses`:** any EOA in this list still has its balances fetched, but it is then
-split off (`extractIgnoredBalances`) into `step-b-ignored-balances.json` and removed from both
-`EOABalances` and `Accumulated`. Because its value no longer counts as EOA-held, it rolls into the
-per-token SC-locked total (Step C) and is bridged to `exitAddress` by Step D — the certificate still
-balances against the LBT (Step F stays green). No exit is ever created back to the ignored address.
-
-- **Output:** `step-b-eoa-balances.json` (`[]EOABalance`), `step-b-accumulated.json` (`[]AccumulatedBalance`), `step-b-contract-addresses.json` (`[]common.Address`), `step-b-ignored-balances.json` (`[]EOABalance`, *only when `options.ignoreAddresses` matched at least one address*)
+- **Output:** `step-b-eoa-balances.json` (`[]EOABalance`), `step-b-accumulated.json` (`[]AccumulatedBalance`), `step-b-contract-addresses.json` (`[]common.Address`)
 
 #### Step B2 — ERC-20 detection in contracts
 
@@ -351,7 +345,6 @@ Notable optional fields:
 - `rollupManagerAddress` — **optional** address of the `PolygonRollupManager` (AgglayerManager) contract on L1. Used by Step WAIT to confirm the certificate's L1 settlement via the `VerifyBatchesTrustedAggregator` event. When unset it is resolved on-chain from `sovereignRollupAddr.rollupManager()` (PolygonConsensusBase). Step WAIT errors if neither `rollupManagerAddress` nor `sovereignRollupAddr` is set.
 - `options.capMode` — `"amount"` (default) or `"appearance"`. Only relevant with `ignoreBalanceMismatch=true`: selects how Step F allocates each token's cap budget when trimming exits. `"amount"` serves the smallest-amount exits first, so the largest holders are the first to be capped/dropped; `"appearance"` serves exits in the order they appear. Surviving exits are emitted in their original order in both modes.
 - `options.genesisPrefundETHWei` — optional native-token amount (Wei, decimal string) pre-funded at genesis. Step F subtracts it from the native LBT entry (the gas token, identified by a zero `WrappedTokenAddress`) via `subtractGenesisPrefund` before comparing against the agglayer balance and certificate sum, so genesis-minted native tokens (which have no matching agglayer deposit) don't cause a spurious mismatch. Affects the Step F comparison and the cap budget only; the Step 0 LBT and Step C SC-locked totals are untouched. Validated by `LoadConfig` (non-negative base-10 integer). Empty = 0.
-- `options.ignoreAddresses` — optional `[]string` of addresses whose balances must not be returned to them. Validated by `LoadConfig` (each must be a valid, non-zero hex address). Step B1 still fetches their balances and records them in `step-b-ignored-balances.json`, but excludes them from the EOA exits and accumulated totals, so their value rolls into the SC-locked total and is bridged to `exitAddress` by Step D (the certificate stays balanced against the LBT — Step F stays green).
 - `options.bridgeServiceURL` — base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits against the bridge service and errors on discrepancies.
 - `options.bridgeServiceType` — `"aggkit"` (default) or `"zkevm"`. Selects the API flavour used for the cross-check.
 - `options.useAgglayerAdminToStepFCheck` — `true` (default). When `true`, Step F runs the agglayer admin balance check (`admin_getTokenBalance`, three-way comparison; requires `agglayerAdminURL`). When `false`, Step F skips the agglayer query and instead compares the LBT (Step 0) totals against the certificate bridge-exit sums offline (no `agglayerAdminURL` needed; skipped only if no LBT data exists). Set to `false` when no agglayer admin endpoint is available.

@@ -18,7 +18,6 @@ const (
 	fileStepBAccumulated       = "step-b-accumulated.json"
 	fileStepBContractAddresses = "step-b-contract-addresses.json"
 	fileStepBEOABalances       = "step-b-eoa-balances.json"
-	fileStepBIgnoredBalances   = "step-b-ignored-balances.json"
 	fileStepB2DetectedERC20s   = "step-b2-detected-erc20s.json"
 	fileStepB2DiscardedERC20s  = "step-b2-discarded-erc20s.json"
 	fileStepB3ERC20Holders     = "step-b3-erc20-holders.json"

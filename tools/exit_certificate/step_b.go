@@ -47,7 +47,6 @@ func RunStepB(ctx context.Context, cfg *Config, targetBlock uint64, stepA *StepA
 		EOABalances:           b1Result.EOABalances,
 		Accumulated:           b1Result.Accumulated,
 		ContractAddresses:     b1Result.ContractAddresses,
-		IgnoredBalances:       b1Result.IgnoredBalances,
 		DetectedERC20s:        b2Result.DetectedERC20s,
 		DiscardedERC20s:       b2Result.DiscardedERC20s,
 		ERC20HolderBreakdowns: b3Result.Breakdowns,
@@ -94,16 +93,6 @@ func RunStepB1(ctx context.Context, cfg *Config, targetBlock uint64, stepA *Step
 		tokenLookup[t.WrappedTokenAddress] = t
 	}
 
-	// Split off the ignored addresses before building the outputs: their balances are recorded
-	// separately, then removed from the balance maps so they count towards neither the EOA exits nor
-	// the accumulated totals (their value rolls into SC-locked → exitAddress in Step D).
-	ignoredBalances := extractIgnoredBalances(
-		cfg.Options.ignoreAddressSet(), eoaEthBalances, tokenBalances, tokenLookup,
-	)
-	if len(ignoredBalances) > 0 {
-		log.Infof("Ignoring %d address(es): excluded from EOA exits, value rolled into SC-locked", len(ignoredBalances))
-	}
-
 	eoaBalances := buildEOABalances(eoaAddrs, eoaEthBalances, tokenBalances, tokenLookup)
 	accumulated := buildAccumulated(eoaEthBalances, tokenBalances, tokenLookup)
 
@@ -123,38 +112,7 @@ func RunStepB1(ctx context.Context, cfg *Config, targetBlock uint64, stepA *Step
 		EOABalances:       eoaBalances,
 		Accumulated:       accumulated,
 		ContractAddresses: contractAddrs,
-		IgnoredBalances:   ignoredBalances,
 	}, nil
-}
-
-// extractIgnoredBalances builds the balance records for the ignored addresses from the full balance
-// maps, then removes those addresses from both maps so they no longer contribute to the EOA exits or
-// the accumulated totals. Returns nil when no addresses are ignored.
-func extractIgnoredBalances(
-	ignoreSet map[common.Address]struct{},
-	ethBalances map[common.Address]*big.Int,
-	tokenBalances map[common.Address]map[common.Address]*big.Int,
-	tokenLookup map[common.Address]WrappedToken,
-) []EOABalance {
-	if len(ignoreSet) == 0 {
-		return nil
-	}
-
-	ignoredAddrs := make([]common.Address, 0, len(ignoreSet))
-	for addr := range ignoreSet {
-		ignoredAddrs = append(ignoredAddrs, addr)
-	}
-
-	// Capture the balances before stripping them so the record keeps the ignored value.
-	ignored := buildEOABalances(ignoredAddrs, ethBalances, tokenBalances, tokenLookup)
-
-	for addr := range ignoreSet {
-		delete(ethBalances, addr)
-		for _, holders := range tokenBalances {
-			delete(holders, addr)
-		}
-	}
-	return ignored
 }
 
 // filterEOAs returns all addresses in addrs that do not appear in contracts.

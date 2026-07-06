@@ -372,9 +372,6 @@ func runAllStepB(
 	saveJSON(dir, fileStepBEOABalances, stepBResult.EOABalances)
 	saveJSON(dir, fileStepBAccumulated, stepBResult.Accumulated)
 	saveJSON(dir, fileStepBContractAddresses, stepBResult.ContractAddresses)
-	if len(stepBResult.IgnoredBalances) > 0 {
-		saveJSON(dir, fileStepBIgnoredBalances, stepBResult.IgnoredBalances)
-	}
 	saveJSON(dir, fileStepB2DetectedERC20s, stepBResult.DetectedERC20s)
 	saveJSON(dir, fileStepB2DiscardedERC20s, stepBResult.DiscardedERC20s)
 	saveJSON(dir, fileStepB3ERC20Holders, stepBResult.ERC20HolderBreakdowns)
@@ -723,9 +720,6 @@ func runSingleB1(ctx context.Context, cfg *Config, dir string) error {
 	saveJSON(dir, fileStepBEOABalances, result.EOABalances)
 	saveJSON(dir, fileStepBAccumulated, result.Accumulated)
 	saveJSON(dir, fileStepBContractAddresses, result.ContractAddresses)
-	if len(result.IgnoredBalances) > 0 {
-		saveJSON(dir, fileStepBIgnoredBalances, result.IgnoredBalances)
-	}
 	return nil
 }
 

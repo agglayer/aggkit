@@ -59,13 +59,6 @@ type Options struct {
 	// are decomposed in Step B3. Each contract is queried with balanceOf for every EOA address
 	// collected in Step A.
 	ExtraERC20Contracts []common.Address `json:"extraErc20Contracts,omitempty"`
-	// IgnoreAddresses is an optional list of addresses whose balances must NOT be returned to them
-	// in the exit certificate. Step B still fetches their ETH and token balances (recorded separately
-	// in step-b-ignored-balances.json for traceability), but they are excluded from both the EOA
-	// balances and the accumulated totals. Because their value no longer counts as EOA-held, it rolls
-	// into the per-token SC-locked value and Step D bridges it to exitAddress instead — so the
-	// certificate still balances against the LBT total (Step F stays green).
-	IgnoreAddresses []common.Address `json:"ignoreAddresses,omitempty"`
 	// BridgeServiceURL is the base URL of the bridge service REST API.
 	// When set, Step E queries the bridge service for pending bridges targeting this L2 and returns an
 	// error if any unclaimed deposits are found.
@@ -165,16 +158,6 @@ var defaultOptions = Options{
 	// IgnoreGenesisBalance defaults to false (do abort on a genesis preload).
 }
 
-// ignoreAddressSet returns the IgnoreAddresses as a lookup set. It is empty (and cheap to probe)
-// when no addresses are configured.
-func (o Options) ignoreAddressSet() map[common.Address]struct{} {
-	set := make(map[common.Address]struct{}, len(o.IgnoreAddresses))
-	for _, a := range o.IgnoreAddresses {
-		set[a] = struct{}{}
-	}
-	return set
-}
-
 // LoadConfig reads and validates the config file. The format is selected by file extension:
 // ".toml" is parsed as TOML, anything else (".json" or no extension) as JSON.
 func LoadConfig(configPath string) (*Config, error) {
@@ -239,19 +222,6 @@ func validateRawConfig(raw *rawConfig) error {
 	if common.HexToAddress(raw.ExitAddress) == (common.Address{}) {
 		return fmt.Errorf("invalid exitAddress: the zero address (0x00...00) is not allowed; " +
 			"set an address whose private key you control so the SC-locked funds can be recovered")
-	}
-	// Validate every ignoreAddresses entry: a malformed hex (or the zero address, which
-	// common.HexToAddress silently produces on bad input) must fail loudly rather than silently
-	// ignore the wrong account.
-	if raw.Options != nil {
-		for _, s := range raw.Options.IgnoreAddresses {
-			if !common.IsHexAddress(s) {
-				return fmt.Errorf("invalid ignoreAddresses entry %q: not a valid hex address", s)
-			}
-			if common.HexToAddress(s) == (common.Address{}) {
-				return fmt.Errorf("invalid ignoreAddresses entry: the zero address (0x00...00) is not allowed")
-			}
-		}
 	}
 	// capMode, when set, must be one of the known modes.
 	if raw.Options != nil && raw.Options.CapMode != "" &&
@@ -456,13 +426,6 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 		}
 		opts.ExtraERC20Contracts = addrs
 	}
-	if len(raw.IgnoreAddresses) > 0 {
-		addrs := make([]common.Address, 0, len(raw.IgnoreAddresses))
-		for _, s := range raw.IgnoreAddresses {
-			addrs = append(addrs, common.HexToAddress(s))
-		}
-		opts.IgnoreAddresses = addrs
-	}
 	if raw.BridgeServiceURL != "" {
 		opts.BridgeServiceURL = raw.BridgeServiceURL
 	}
@@ -563,7 +526,6 @@ type rawOpts struct {
 	IgnoreBalanceMismatch                 *bool                  `json:"ignoreBalanceMismatch"`
 	IgnoreUnclaimed                       *bool                  `json:"ignoreUnclaimed"`
 	ExtraERC20Contracts                   []string               `json:"extraErc20Contracts"`
-	IgnoreAddresses                       []string               `json:"ignoreAddresses"`
 	CapMode                               string                 `json:"capMode"`
 	GenesisPrefundETHWei                  string                 `json:"genesisPrefundETHWei"`
 	BridgeServiceURL                      string                 `json:"bridgeServiceURL"`
