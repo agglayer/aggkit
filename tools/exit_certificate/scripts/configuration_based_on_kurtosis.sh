@@ -380,7 +380,8 @@ ${SOVEREIGN_ROLLUP_LINE}${L1_GLOBAL_EXIT_ROOT_LINE}${SIGNER_CONFIG_BLOCK}    "op
         "agglayerClient": { "GRPC": { "URL": "$AGGLAYER_GRPC_URL" } },
         "ignoreGenesisBalance": true,
         "genesisPrefundETHWei": "$GENESIS_PREFUND_ETH_WEI",
-        "ignoreBalanceMismatch": true,
+        "ignoreBalanceMismatch": false,
+        "capMode": "amount",
         "ignoreUnsupportedL2Events": true${BRIDGE_SERVICE_OPTS:+,
 $BRIDGE_SERVICE_OPTS}
     }
