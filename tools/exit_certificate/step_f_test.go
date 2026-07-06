@@ -527,39 +527,54 @@ func TestCapCertificateExits_LBTMinAgglayer(t *testing.T) {
 	require.Equal(t, big.NewInt(100), result[1].Amount) // capped: 700-600=100
 }
 
-// TestCapCertificateExits_MatchedTokenNeverTrimmed guards against capping a matched token when an
-// unrelated token triggers capping: with the genesis pre-fund discount the native token can match
-// while its raw exits exceed min(agglayer, lbt), so budgeting it would drop the pre-funded ETH.
-func TestCapCertificateExits_MatchedTokenNeverTrimmed(t *testing.T) {
+// TestRunStepF_PrefundMatchedStillCapsToLBT checks that even when every check matches thanks to
+// the genesis pre-fund discount, Step F still produces a capped certificate trimming the native
+// exits to the LBT: the pre-funded amount has no agglayer collateral and cannot be bridged out.
+func TestRunStepF_PrefundMatchedStillCapsToLBT(t *testing.T) {
 	t.Parallel()
 
-	token := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-	checks := []TokenBalanceCheck{
-		{
-			// Native token: matched thanks to the pre-fund discount; bridged budget (300) is far
-			// below its raw exits (1000).
-			OriginNetwork:      0,
-			OriginTokenAddress: common.Address{}.Hex(),
-			Match:              true,
-			RemainingBalance:   big.NewInt(300),
-		},
-		{
-			// Unrelated mismatched token that triggers the capping.
-			OriginNetwork:      1,
-			OriginTokenAddress: token.Hex(),
-			Match:              false,
-			RemainingBalance:   big.NewInt(100),
-		},
+	dest := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	// Native exits: 300 genuinely bridged + 700 genesis pre-fund = 1000 raw; LBT covers 300.
+	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
+		{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(300)},
+		{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(700)},
+	}}
+	lbt := []LBTEntry{
+		{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "300"},
 	}
-	exits := []*agglayertypes.BridgeExit{
-		{TokenInfo: &agglayertypes.TokenInfo{}, Amount: big.NewInt(1000)},
-		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 1, OriginTokenAddress: token}, Amount: big.NewInt(250)},
-	}
+	cfg := &Config{Options: Options{
+		UseAgglayerAdminToStepFCheck: false,
+		GenesisPrefundETHWei:         "700",
+		CapMode:                      CapModeByAmount,
+	}}
 
-	result := capCertificateExits(exits, checks, CapModeByAmount)
-	require.Len(t, result, 2)
-	require.Equal(t, big.NewInt(1000), result[0].Amount) // matched native exit untouched
-	require.Equal(t, big.NewInt(100), result[1].Amount)  // mismatched token capped to its budget
+	result, err := RunStepF(context.Background(), cfg, cert, lbt)
+	require.NoError(t, err)
+	require.True(t, result.AllMatch) // 1000 − 700 == 300 → the check itself matches
+	// ...but the certificate is still capped: the 700 pre-fund exit (the largest) is dropped.
+	require.NotNil(t, result.CappedCertificate)
+	require.Len(t, result.CappedCertificate.BridgeExits, 1)
+	require.Equal(t, big.NewInt(300), result.CappedCertificate.BridgeExits[0].Amount)
+}
+
+// TestRunStepF_NoPrefundNoCapOnAllMatch checks the allMatch fast path stays cap-free when no
+// genesis pre-fund is declared.
+func TestRunStepF_NoPrefundNoCapOnAllMatch(t *testing.T) {
+	t.Parallel()
+
+	dest := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
+		{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(300)},
+	}}
+	lbt := []LBTEntry{
+		{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "300"},
+	}
+	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false, CapMode: CapModeByAmount}}
+
+	result, err := RunStepF(context.Background(), cfg, cert, lbt)
+	require.NoError(t, err)
+	require.True(t, result.AllMatch)
+	require.Nil(t, result.CappedCertificate)
 }
 
 func TestDiscountGenesisPrefund(t *testing.T) {

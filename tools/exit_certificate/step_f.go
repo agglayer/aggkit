@@ -243,8 +243,11 @@ func runStepFOfflineLBT(
 
 // finalizeStepFResult assembles the StepFResult from the comparison checks, applying the
 // ignoreBalanceMismatch policy: on a mismatch it either caps the certificate's bridge exits to each
-// token's RemainingBalance (ignoreBalanceMismatch=true) or returns an error. raw is the agglayer admin
-// response when available (nil for the offline LBT-only check).
+// token's RemainingBalance (ignoreBalanceMismatch=true) or returns an error. Even when every check
+// matches, a configured genesisPrefundETHWei still caps the certificate: the pre-funded native
+// amount has no agglayer collateral, so the native exits must be trimmed to min(agglayer, lbt)
+// before submission. raw is the agglayer admin response when available (nil for the offline
+// LBT-only check).
 func finalizeStepFResult(
 	cfg *Config, certificate *agglayertypes.Certificate,
 	checks []TokenBalanceCheck, raw json.RawMessage, allMatch bool,
@@ -255,6 +258,17 @@ func finalizeStepFResult(
 		Checks:        checks,
 	}
 	if allMatch {
+		if prefund := genesisPrefundWei(cfg); prefund != nil && prefund.Sign() > 0 {
+			cappedExits := capCertificateExits(certificate.BridgeExits, checks, cfg.Options.CapMode)
+			if !sameExits(cappedExits, certificate.BridgeExits) {
+				capped := *certificate
+				capped.BridgeExits = cappedExits
+				result.CappedCertificate = &capped
+				log.Warnf("🔧 Genesis pre-fund: capped certificate %d → %d bridge exits — the pre-funded "+
+					"native amount (%s wei) has no agglayer collateral and cannot be bridged out",
+					len(certificate.BridgeExits), len(capped.BridgeExits), prefund)
+			}
+		}
 		return result, nil
 	}
 	if !cfg.Options.IgnoreBalanceMismatch {
@@ -274,6 +288,21 @@ func finalizeStepFResult(
 	log.Infof("🔧 Capped certificate: %d → %d bridge exits",
 		len(certificate.BridgeExits), len(capped.BridgeExits))
 	return result, nil
+}
+
+// sameExits reports whether capped contains exactly the original exits, element by element
+// (capCertificateExits returns the original pointers for untouched exits, so pointer identity
+// detects a no-op capping).
+func sameExits(capped, original []*agglayertypes.BridgeExit) bool {
+	if len(capped) != len(original) {
+		return false
+	}
+	for i := range capped {
+		if capped[i] != original[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // groupBridgeExitsByToken groups bridge exits from the certificate by TokenInfo.
@@ -474,9 +503,8 @@ func compareCertificateToLBT(
 	return checks
 }
 
-// capCertificateExits returns a new slice of bridge exits where each mismatched token's exits are
-// trimmed to stay within its RemainingBalance (= min(LBT, agglayer) from its TokenBalanceCheck).
-// Matched tokens are never trimmed, even when capping triggers for another token.
+// capCertificateExits returns a new slice of bridge exits trimmed to stay within each
+// token's RemainingBalance (= min(LBT, agglayer) from its TokenBalanceCheck).
 //
 // The mode selects the order in which each token's budget is allocated to its exits:
 //   - CapModeByAppearance: exits are served in the order they appear.
@@ -490,11 +518,11 @@ func capCertificateExits(
 ) []*agglayertypes.BridgeExit {
 	remaining := make(map[tokenKey]*big.Int, len(checks))
 	for _, c := range checks {
-		// Only mismatched tokens are trimmed. A matched token must never be touched: with the
-		// genesis pre-fund discount, the native token can match while its raw exits legitimately
-		// exceed min(agglayer, lbt) — budgeting it here would silently drop the pre-funded ETH
-		// whenever an unrelated token triggers capping.
-		if c.Match || c.RemainingBalance == nil {
+		// Every token is budgeted, matched ones included: for them capping is a no-op (sum ==
+		// budget) except the native token under the genesis pre-fund discount, whose raw exits
+		// exceed the budget by exactly the pre-fund — value with no agglayer collateral that must
+		// never be bridged out.
+		if c.RemainingBalance == nil {
 			continue
 		}
 		k := tokenKey{c.OriginNetwork, common.HexToAddress(c.OriginTokenAddress)}

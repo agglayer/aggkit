@@ -97,8 +97,9 @@ type Options struct {
 	// pre-funded at genesis. Those funds sit in accounts — and therefore in the certificate's bridge
 	// exits — without a matching agglayer deposit, so Step F subtracts this value from the native-token
 	// certificate sum before comparing it against the agglayer balance and the LBT (which only count
-	// genuinely bridged funds), logging the certificate total, the pre-fund and the difference. Only the
-	// compared certificate amount is affected: the cap budget stays min(agglayer, LBT), and the Step 0
+	// genuinely bridged funds), logging the certificate total, the pre-fund and the difference. The
+	// pre-fund has no agglayer collateral and can never be bridged out: even when the checks match,
+	// Step F produces a capped certificate trimming the native exits to min(agglayer, LBT). The Step 0
 	// LBT and Step C SC-locked totals are untouched. Step B verifies the declared value against the
 	// detected genesis ETH preload total. Empty means 0. Typical testnet value:
 	// 100000 ETH = "100000000000000000000000".
