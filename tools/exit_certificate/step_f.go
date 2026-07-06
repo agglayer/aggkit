@@ -90,15 +90,17 @@ func RunStepF(
 	for _, c := range checks {
 		if !c.Match {
 			allMatch = false
+			// When the LBT and agglayer amounts are equal, both differences are the same — show one.
+			diffs := fmt.Sprintf("certificate−agglayer=%s", amountDiff(c.CertificateAmount, c.AgglayerAmount))
+			if c.LBTAmount != "" && c.LBTAmount != c.AgglayerAmount {
+				diffs += fmt.Sprintf(", certificate−lbt=%s", amountDiff(c.CertificateAmount, c.LBTAmount))
+			}
 			if c.LBTAmount != "" {
-				log.Warnf("❌ MISMATCH (network=%d addr=%s): lbt=%s  certificate=%s  agglayer=%s  "+
-					"(certificate−agglayer=%s, certificate−lbt=%s)",
-					c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount, c.AgglayerAmount,
-					amountDiff(c.CertificateAmount, c.AgglayerAmount), amountDiff(c.CertificateAmount, c.LBTAmount))
+				log.Warnf("❌ MISMATCH (network=%d addr=%s): lbt=%s  certificate=%s  agglayer=%s  (%s)",
+					c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount, c.AgglayerAmount, diffs)
 			} else {
-				log.Warnf("❌ MISMATCH (network=%d addr=%s): certificate=%s  agglayer=%s  (certificate−agglayer=%s)",
-					c.OriginNetwork, c.OriginTokenAddress, c.CertificateAmount, c.AgglayerAmount,
-					amountDiff(c.CertificateAmount, c.AgglayerAmount))
+				log.Warnf("❌ MISMATCH (network=%d addr=%s): certificate=%s  agglayer=%s  (%s)",
+					c.OriginNetwork, c.OriginTokenAddress, c.CertificateAmount, c.AgglayerAmount, diffs)
 			}
 			for i, e := range c.CertificateEntries {
 				log.Debugf("    ⚠️ [%d] dest_network=%d dest=%s amount=%s",
