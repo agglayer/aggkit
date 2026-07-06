@@ -64,7 +64,12 @@ func RunStepF(
 			return nil, err
 		}
 		agglayerRaw = raw
-		saveJSON(cfg.Options.OutputDir, fileStepFAgglayerLBT, agglayerRaw)
+		// LoadConfig always sets OutputDir, so it is empty only for programmatically built configs
+		// (e.g. unit tests) — skip the dump there rather than dropping the file in the process's
+		// working directory.
+		if cfg.Options.OutputDir != "" {
+			saveJSON(cfg.Options.OutputDir, fileStepFAgglayerLBT, agglayerRaw)
+		}
 	}
 
 	// The agglayer admin query is opt-out. When disabled we still run an offline LBT vs certificate

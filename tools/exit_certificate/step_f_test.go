@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -27,17 +28,49 @@ func TestRunStepF_WithBearerToken(t *testing.T) {
 	}))
 	defer server.Close()
 
+	outputDir := t.TempDir()
 	cfg := &Config{
 		L2NetworkID: 1,
 		Options: Options{
 			UseAgglayerAdminToStepFCheck: true,
 			AgglayerAdminURL:             server.URL,
 			AgglayerAdminToken:           "my-iap-token",
+			OutputDir:                    outputDir,
 		},
 	}
 	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	// The raw agglayer LBT is dumped to the output dir whenever the admin endpoint is queried.
+	require.FileExists(t, filepath.Join(outputDir, fileStepFAgglayerLBT))
+}
+
+// TestRunStepF_EmptyOutputDir_SkipsLBTDump guards against the LBT dump landing in the process's
+// working directory when OutputDir is unset (a programmatically built Config, never a loaded one).
+func TestRunStepF_EmptyOutputDir_SkipsLBTDump(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		resp := jsonRPCResponse{
+			JSONRPC: "2.0", ID: 1,
+			Result: json.RawMessage(`{"balances":[]}`),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		L2NetworkID: 1,
+		Options: Options{
+			UseAgglayerAdminToStepFCheck: true,
+			AgglayerAdminURL:             server.URL,
+		},
+	}
+	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NoFileExists(t, fileStepFAgglayerLBT)
 }
 
 func TestRunStepF_MissingAdminURL_Error(t *testing.T) {
