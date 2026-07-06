@@ -49,6 +49,24 @@ func RunStepF(
 	log.Info(" STEP F — Agglayer token balance check")
 	log.Info("═══════════════════════════════════════════")
 
+	// Whenever the agglayer admin endpoint is configured, dump its full local balance tree (LBT) to
+	// disk up front — regardless of the comparison mode below — so the agglayer-side balances are always
+	// captured. The response is reused by the agglayer comparison to avoid a second RPC round-trip.
+	var agglayerRaw json.RawMessage
+	if cfg.Options.AgglayerAdminURL != "" {
+		raw, err := queryAgglayerTokenBalance(ctx, cfg)
+		if err != nil {
+			return nil, err
+		}
+		agglayerRaw = raw
+		// LoadConfig always sets OutputDir, so it is empty only for programmatically built configs
+		// (e.g. unit tests) — skip the dump there rather than dropping the file in the process's
+		// working directory.
+		if cfg.Options.OutputDir != "" {
+			saveJSON(cfg.Options.OutputDir, fileStepFAgglayerLBT, agglayerRaw)
+		}
+	}
+
 	// The agglayer admin query is opt-out. When disabled we still run an offline LBT vs certificate
 	// comparison instead of skipping the step outright.
 	if !cfg.Options.UseAgglayerAdminToStepFCheck {
@@ -59,43 +77,33 @@ func RunStepF(
 		return nil, fmt.Errorf("step F requires agglayerAdminURL to be set in options")
 	}
 
-	log.Infof("Querying %s (network %d)", cfg.Options.AgglayerAdminURL, cfg.L2NetworkID)
-	if cfg.Options.AgglayerAdminToken != "" {
-		log.Info("Using bearer token for agglayer admin authentication")
-	}
-
-	raw, err := singleRPCAuth(
-		ctx, cfg.Options.AgglayerAdminURL,
-		"admin_getTokenBalance",
-		[]any{cfg.L2NetworkID, nil},
-		defaultRetries,
-		cfg.Options.AgglayerAdminToken,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("admin_getTokenBalance (network %d): %w", cfg.L2NetworkID, err)
-	}
-
+	raw := agglayerRaw
 	var agglayerResp agglayerBalanceResponse
 	if err := json.Unmarshal(raw, &agglayerResp); err != nil {
 		return nil, fmt.Errorf("parse admin_getTokenBalance response: %w", err)
 	}
 
 	groups := groupBridgeExitsByToken(certificate)
-	checks := compareTokenBalances(groups, agglayerResp.Balances, lbtEntries)
+	checks := compareTokenBalances(groups, agglayerResp.Balances, lbtEntries, genesisPrefundWei(cfg))
 
 	allMatch := true
 	for _, c := range checks {
 		if !c.Match {
 			allMatch = false
+			// When the LBT and agglayer amounts are equal, both differences are the same — show one.
+			diffs := fmt.Sprintf("certificate−agglayer=%s", amountDiff(c.CertificateAmount, c.AgglayerAmount))
+			if c.LBTAmount != "" && c.LBTAmount != c.AgglayerAmount {
+				diffs += fmt.Sprintf(", certificate−lbt=%s", amountDiff(c.CertificateAmount, c.LBTAmount))
+			}
 			if c.LBTAmount != "" {
-				log.Warnf("❌ MISMATCH (network=%d addr=%s): lbt=%s  certificate=%s  agglayer=%s",
-					c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount, c.AgglayerAmount)
+				log.Warnf("❌ MISMATCH (network=%d addr=%s): lbt=%s  certificate=%s  agglayer=%s  (%s)",
+					c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount, c.AgglayerAmount, diffs)
 			} else {
-				log.Warnf("❌ MISMATCH (network=%d addr=%s): certificate=%s  agglayer=%s",
-					c.OriginNetwork, c.OriginTokenAddress, c.CertificateAmount, c.AgglayerAmount)
+				log.Warnf("❌ MISMATCH (network=%d addr=%s): certificate=%s  agglayer=%s  (%s)",
+					c.OriginNetwork, c.OriginTokenAddress, c.CertificateAmount, c.AgglayerAmount, diffs)
 			}
 			for i, e := range c.CertificateEntries {
-				log.Infof("    ⚠️ [%d] dest_network=%d dest=%s amount=%s",
+				log.Debugf("    ⚠️ [%d] dest_network=%d dest=%s amount=%s",
 					i, e.DestinationNetwork, e.DestinationAddress, e.Amount)
 			}
 		} else {
@@ -121,6 +129,78 @@ func RunStepF(
 	return finalizeStepFResult(cfg, certificate, checks, raw, allMatch)
 }
 
+// nativeTokenKey identifies the native token (the gas token: origin network 0, zero origin address)
+// in the comparison maps.
+var nativeTokenKey = tokenKey{}
+
+// amountDiff returns the signed decimal difference a − b between two internally generated decimal
+// amount strings, or "?" if either is not parseable.
+func amountDiff(a, b string) string {
+	av, okA := new(big.Int).SetString(a, decimalBase)
+	bv, okB := new(big.Int).SetString(b, decimalBase)
+	if !okA || !okB {
+		return "?"
+	}
+	return new(big.Int).Sub(av, bv).String()
+}
+
+// genesisPrefundWei parses options.genesisPrefundETHWei into a *big.Int, nil when unset. The format
+// is validated by LoadConfig, so a parse failure only happens on hand-built configs and is treated
+// as unset (with a warning).
+func genesisPrefundWei(cfg *Config) *big.Int {
+	if cfg.Options.GenesisPrefundETHWei == "" {
+		return nil
+	}
+	v, ok := new(big.Int).SetString(cfg.Options.GenesisPrefundETHWei, decimalBase)
+	if !ok {
+		log.Warnf("invalid options.genesisPrefundETHWei %q ignored", cfg.Options.GenesisPrefundETHWei)
+		return nil
+	}
+	return v
+}
+
+// discountGenesisPrefund subtracts the declared genesis pre-fund from the native-token certificate
+// sum before it is compared, floored at zero. Genesis-minted native funds sit in accounts — and
+// therefore in the certificate's bridge exits — without a matching agglayer deposit, so the
+// comparison must run against the genuinely bridged amount. It logs the certificate total, the
+// declared pre-fund and the resulting difference. Non-native tokens and an unset/zero pre-fund are
+// returned unchanged.
+func discountGenesisPrefund(certAmt *big.Int, k tokenKey, prefund *big.Int) *big.Int {
+	if prefund == nil || prefund.Sign() <= 0 || k != nativeTokenKey {
+		return certAmt
+	}
+	adjusted := new(big.Int).Sub(certAmt, prefund)
+	if adjusted.Sign() < 0 {
+		log.Warnf("🔧 Genesis pre-fund (native token): genesisPrefundETHWei (%s) exceeds the certificate sum (%s); "+
+			"flooring the compared certificate amount at 0", prefund, certAmt)
+		return new(big.Int)
+	}
+	log.Infof("🔧 Genesis pre-fund (native token): certificate=%s − genesisPrefundETHWei=%s = %s "+
+		"(compared certificate amount)", certAmt, prefund, adjusted)
+	return adjusted
+}
+
+// queryAgglayerTokenBalance calls admin_getTokenBalance on the agglayer admin RPC for the configured
+// L2 network and returns the raw JSON response (the agglayer's full local balance tree for the network).
+func queryAgglayerTokenBalance(ctx context.Context, cfg *Config) (json.RawMessage, error) {
+	log.Infof("Querying %s (network %d)", cfg.Options.AgglayerAdminURL, cfg.L2NetworkID)
+	if cfg.Options.AgglayerAdminToken != "" {
+		log.Info("Using bearer token for agglayer admin authentication")
+	}
+
+	raw, err := singleRPCAuth(
+		ctx, cfg.Options.AgglayerAdminURL,
+		"admin_getTokenBalance",
+		[]any{cfg.L2NetworkID, nil},
+		defaultRetries,
+		cfg.Options.AgglayerAdminToken,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("admin_getTokenBalance (network %d): %w", cfg.L2NetworkID, err)
+	}
+	return raw, nil
+}
+
 // runStepFOfflineLBT runs Step F without contacting the agglayer admin API
 // (useAgglayerAdminToStepFCheck=false): it compares the LBT (Step 0) totals against the certificate
 // bridge-exit sums per token. When no LBT data is available there is nothing to compare and the step
@@ -135,14 +215,15 @@ func runStepFOfflineLBT(
 
 	log.Info("useAgglayerAdminToStepFCheck=false — comparing LBT (step 0) vs certificate bridge exits (no agglayer query)")
 	groups := groupBridgeExitsByToken(certificate)
-	checks := compareCertificateToLBT(groups, lbtEntries)
+	checks := compareCertificateToLBT(groups, lbtEntries, genesisPrefundWei(cfg))
 
 	allMatch := true
 	for _, c := range checks {
 		if !c.Match {
 			allMatch = false
-			log.Warnf("❌ MISMATCH (network=%d addr=%s): lbt=%s  certificate=%s",
-				c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount)
+			log.Warnf("❌ MISMATCH (network=%d addr=%s): lbt=%s  certificate=%s  (certificate−lbt=%s)",
+				c.OriginNetwork, c.OriginTokenAddress, c.LBTAmount, c.CertificateAmount,
+				amountDiff(c.CertificateAmount, c.LBTAmount))
 			for i, e := range c.CertificateEntries {
 				log.Infof("    ⚠️ [%d] dest_network=%d dest=%s amount=%s",
 					i, e.DestinationNetwork, e.DestinationAddress, e.Amount)
@@ -162,8 +243,11 @@ func runStepFOfflineLBT(
 
 // finalizeStepFResult assembles the StepFResult from the comparison checks, applying the
 // ignoreBalanceMismatch policy: on a mismatch it either caps the certificate's bridge exits to each
-// token's RemainingBalance (ignoreBalanceMismatch=true) or returns an error. raw is the agglayer admin
-// response when available (nil for the offline LBT-only check).
+// token's RemainingBalance (ignoreBalanceMismatch=true) or returns an error. Even when every check
+// matches, a configured genesisPrefundETHWei still caps the certificate: the pre-funded native
+// amount has no agglayer collateral, so the native exits must be trimmed to min(agglayer, lbt)
+// before submission. raw is the agglayer admin response when available (nil for the offline
+// LBT-only check).
 func finalizeStepFResult(
 	cfg *Config, certificate *agglayertypes.Certificate,
 	checks []TokenBalanceCheck, raw json.RawMessage, allMatch bool,
@@ -174,6 +258,17 @@ func finalizeStepFResult(
 		Checks:        checks,
 	}
 	if allMatch {
+		if prefund := genesisPrefundWei(cfg); prefund != nil && prefund.Sign() > 0 {
+			cappedExits := capCertificateExits(certificate.BridgeExits, checks, cfg.Options.CapMode)
+			if !sameExits(cappedExits, certificate.BridgeExits) {
+				capped := *certificate
+				capped.BridgeExits = cappedExits
+				result.CappedCertificate = &capped
+				log.Warnf("🔧 Genesis pre-fund: capped certificate %d → %d bridge exits — the pre-funded "+
+					"native amount (%s wei) has no agglayer collateral and cannot be bridged out",
+					len(certificate.BridgeExits), len(capped.BridgeExits), prefund)
+			}
+		}
 		return result, nil
 	}
 	if !cfg.Options.IgnoreBalanceMismatch {
@@ -188,11 +283,26 @@ func finalizeStepFResult(
 		}
 	}
 	capped := *certificate
-	capped.BridgeExits = capCertificateExits(certificate.BridgeExits, checks)
+	capped.BridgeExits = capCertificateExits(certificate.BridgeExits, checks, cfg.Options.CapMode)
 	result.CappedCertificate = &capped
 	log.Infof("🔧 Capped certificate: %d → %d bridge exits",
 		len(certificate.BridgeExits), len(capped.BridgeExits))
 	return result, nil
+}
+
+// sameExits reports whether capped contains exactly the original exits, element by element
+// (capCertificateExits returns the original pointers for untouched exits, so pointer identity
+// detects a no-op capping).
+func sameExits(capped, original []*agglayertypes.BridgeExit) bool {
+	if len(capped) != len(original) {
+		return false
+	}
+	for i := range capped {
+		if capped[i] != original[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // groupBridgeExitsByToken groups bridge exits from the certificate by TokenInfo.
@@ -214,11 +324,13 @@ func groupBridgeExitsByToken(cert *agglayertypes.Certificate) map[tokenKey][]*ag
 // compareTokenBalances builds the per-token three-way comparison list.
 // When lbtEntries is non-nil, match requires LBT == agglayer == certificate sum.
 // When lbtEntries is nil, match requires agglayer == certificate sum (two-way fallback).
-// CertificateEntries is populated only on mismatch.
+// nativePrefund (nil when unset) is discounted from the native-token certificate sum before
+// comparing (see discountGenesisPrefund). CertificateEntries is populated only on mismatch.
 func compareTokenBalances(
 	groups map[tokenKey][]*agglayertypes.BridgeExit,
 	agglayerEntries []agglayerTokenEntry,
 	lbtEntries []LBTEntry,
+	nativePrefund *big.Int,
 ) []TokenBalanceCheck {
 	agglayerMap := make(map[tokenKey]*big.Int, len(agglayerEntries))
 	for _, e := range agglayerEntries {
@@ -264,6 +376,7 @@ func compareTokenBalances(
 		for _, e := range exits {
 			certAmt.Add(certAmt, e.Amount)
 		}
+		certAmt = discountGenesisPrefund(certAmt, k, nativePrefund)
 
 		agglAmt := agglayerMap[k]
 		if agglAmt == nil {
@@ -319,10 +432,11 @@ func compareTokenBalances(
 // compareCertificateToLBT builds a per-token comparison of the certificate bridge-exit sums against
 // the LBT (Step 0) totals, without any agglayer data (used when useAgglayerAdminToStepFCheck=false).
 // Match requires certificate sum == LBT total per token; AgglayerAmount is left empty. RemainingBalance
-// is the LBT total, used as the cap budget when ignoreBalanceMismatch is set. CertificateEntries is
-// populated only on mismatch.
+// is the LBT total, used as the cap budget when ignoreBalanceMismatch is set. nativePrefund (nil when
+// unset) is discounted from the native-token certificate sum before comparing (see
+// discountGenesisPrefund). CertificateEntries is populated only on mismatch.
 func compareCertificateToLBT(
-	groups map[tokenKey][]*agglayertypes.BridgeExit, lbtEntries []LBTEntry,
+	groups map[tokenKey][]*agglayertypes.BridgeExit, lbtEntries []LBTEntry, nativePrefund *big.Int,
 ) []TokenBalanceCheck {
 	lbtMap := make(map[tokenKey]*big.Int, len(lbtEntries))
 	for _, e := range lbtEntries {
@@ -351,6 +465,7 @@ func compareCertificateToLBT(
 		for _, e := range exits {
 			certAmt.Add(certAmt, e.Amount)
 		}
+		certAmt = discountGenesisPrefund(certAmt, k, nativePrefund)
 
 		lbtAmt := lbtMap[k]
 		if lbtAmt == nil {
@@ -390,12 +505,23 @@ func compareCertificateToLBT(
 
 // capCertificateExits returns a new slice of bridge exits trimmed to stay within each
 // token's RemainingBalance (= min(LBT, agglayer) from its TokenBalanceCheck).
-// Exits are processed in order: each exit's amount is deducted from the token budget.
-// An exit that would exceed the budget is capped to the remaining amount.
-// Exits with a resulting zero amount are dropped.
-func capCertificateExits(exits []*agglayertypes.BridgeExit, checks []TokenBalanceCheck) []*agglayertypes.BridgeExit {
+//
+// The mode selects the order in which each token's budget is allocated to its exits:
+//   - CapModeByAppearance: exits are served in the order they appear.
+//   - CapModeByAmount: exits are served smallest-amount first, so the small holders keep their full
+//     amount and the largest ones are the first to be capped/dropped once the budget runs out.
+//
+// An exit that would exceed the remaining budget is capped to it; an exit with no budget left is
+// dropped. Regardless of mode, the surviving exits are emitted in their original order.
+func capCertificateExits(
+	exits []*agglayertypes.BridgeExit, checks []TokenBalanceCheck, mode string,
+) []*agglayertypes.BridgeExit {
 	remaining := make(map[tokenKey]*big.Int, len(checks))
 	for _, c := range checks {
+		// Every token is budgeted, matched ones included: for them capping is a no-op (sum ==
+		// budget) except the native token under the genesis pre-fund discount, whose raw exits
+		// exceed the budget by exactly the pre-fund — value with no agglayer collateral that must
+		// never be bridged out.
 		if c.RemainingBalance == nil {
 			continue
 		}
@@ -403,43 +529,94 @@ func capCertificateExits(exits []*agglayertypes.BridgeExit, checks []TokenBalanc
 		remaining[k] = new(big.Int).Set(c.RemainingBalance)
 	}
 
-	result := make([]*agglayertypes.BridgeExit, 0, len(exits))
-	for _, e := range exits {
+	// capExit carries the per-exit outcome computed during budget allocation; nil capTo with
+	// drop=false means "keep the exit unchanged".
+	type capExit struct {
+		drop  bool
+		capTo *big.Int
+	}
+	outcomes := make([]capExit, len(exits))
+
+	for _, idx := range capAllocationOrder(exits, mode) {
+		e := exits[idx]
 		if e == nil || e.TokenInfo == nil || e.Amount == nil {
-			result = append(result, e)
 			continue
 		}
 		k := tokenKey{e.TokenInfo.OriginNetwork, e.TokenInfo.OriginTokenAddress}
 		rem, hasCap := remaining[k]
 		if !hasCap {
-			result = append(result, e)
 			continue
 		}
 		if rem.Sign() == 0 {
-			log.Debugf("🔧 Drop bridge exit (network=%d addr=%s amount=%s): no budget left",
-				k.OriginNetwork, k.OriginTokenAddress, e.Amount)
+			outcomes[idx].drop = true
 			continue
 		}
 		if e.Amount.Cmp(rem) <= 0 {
 			rem.Sub(rem, e.Amount)
-			result = append(result, e)
 		} else {
-			exitCopy := *e
-			if e.TokenInfo != nil {
-				tc := *e.TokenInfo
-				exitCopy.TokenInfo = &tc
-			}
-			if e.Metadata != nil {
-				md := make([]byte, len(e.Metadata))
-				copy(md, e.Metadata)
-				exitCopy.Metadata = md
-			}
-			log.Infof("🔧 Cap bridge exit (network=%d addr=%s): %s → %s",
-				k.OriginNetwork, k.OriginTokenAddress, e.Amount, rem)
-			exitCopy.Amount = new(big.Int).Set(rem)
+			outcomes[idx].capTo = new(big.Int).Set(rem)
 			rem.SetInt64(0)
-			result = append(result, &exitCopy)
+		}
+	}
+
+	result := make([]*agglayertypes.BridgeExit, 0, len(exits))
+	for idx, e := range exits {
+		switch {
+		case outcomes[idx].drop:
+			k := tokenKey{e.TokenInfo.OriginNetwork, e.TokenInfo.OriginTokenAddress}
+			log.Debugf("🔧 Drop bridge exit (network=%d addr=%s amount=%s): no budget left",
+				k.OriginNetwork, k.OriginTokenAddress, e.Amount)
+		case outcomes[idx].capTo != nil:
+			k := tokenKey{e.TokenInfo.OriginNetwork, e.TokenInfo.OriginTokenAddress}
+			log.Infof("🔧 Cap bridge exit (network=%d addr=%s): %s → %s",
+				k.OriginNetwork, k.OriginTokenAddress, e.Amount, outcomes[idx].capTo)
+			result = append(result, capExitCopy(e, outcomes[idx].capTo))
+		default:
+			result = append(result, e)
 		}
 	}
 	return result
+}
+
+// capAllocationOrder returns the exit indices in the order their token budget should be allocated.
+// For CapModeByAmount it is a stable sort by ascending amount, so the smallest exits are served
+// first and the largest ones are the first to run out of budget (capped/dropped). Exits without a
+// comparable amount are pushed to the end (they never consume budget); every other mode uses
+// appearance order.
+func capAllocationOrder(exits []*agglayertypes.BridgeExit, mode string) []int {
+	order := make([]int, len(exits))
+	for i := range order {
+		order[i] = i
+	}
+	if mode != CapModeByAmount {
+		return order
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		ea, eb := exits[order[a]], exits[order[b]]
+		if ea == nil || ea.Amount == nil {
+			return false
+		}
+		if eb == nil || eb.Amount == nil {
+			return true
+		}
+		return ea.Amount.Cmp(eb.Amount) < 0
+	})
+	return order
+}
+
+// capExitCopy returns a deep copy of e with its amount replaced by capTo, so the original exit
+// (still referenced by the uncapped certificate) is left untouched.
+func capExitCopy(e *agglayertypes.BridgeExit, capTo *big.Int) *agglayertypes.BridgeExit {
+	exitCopy := *e
+	if e.TokenInfo != nil {
+		tc := *e.TokenInfo
+		exitCopy.TokenInfo = &tc
+	}
+	if e.Metadata != nil {
+		md := make([]byte, len(e.Metadata))
+		copy(md, e.Metadata)
+		exitCopy.Metadata = md
+	}
+	exitCopy.Amount = new(big.Int).Set(capTo)
+	return &exitCopy
 }

@@ -1,11 +1,13 @@
 package exit_certificate
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"strings"
 
 	"github.com/agglayer/aggkit/log"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // RunStepC computes the value locked in smart contracts for each token.
@@ -36,7 +38,13 @@ func RunStepC(lbtEntries []LBTEntry, stepB *StepBResult) (*StepCResult, error) {
 		return nil, err
 	}
 
-	scLockedValues, nonZeroCount, err := computeSCLocked(lbtByToken, eoaByToken, covered)
+	var nativeContractLocked *big.Int
+	if stepB.NativeContractLocked != "" {
+		nativeContractLocked = parseDecimalBigInt(stepB.NativeContractLocked)
+		log.Infof("Native SC-locked will be taken from contract balances: %s wei", nativeContractLocked)
+	}
+
+	scLockedValues, nonZeroCount, err := computeSCLocked(lbtByToken, eoaByToken, covered, nativeContractLocked)
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +132,7 @@ func computeSCLocked(
 	lbtByToken map[string]LBTEntry,
 	eoaByToken map[string]*big.Int,
 	covered map[string]*big.Int,
+	nativeContractLocked *big.Int,
 ) ([]SCLockedValue, int, error) {
 	scLockedValues := make([]SCLockedValue, 0, len(lbtByToken))
 	nonZeroCount := 0
@@ -136,7 +145,16 @@ func computeSCLocked(
 		}
 
 		locked := new(big.Int).Sub(lbtBalance, eoaTotal)
-		if locked.Sign() < 0 {
+		isNative := lbt.WrappedTokenAddress == (common.Address{})
+		switch {
+		case isNative && nativeContractLocked != nil:
+			// Override the LBT − EOA formula for native ETH with the measured contract-held balance.
+			// LBT − EOA underflows to a negative value on chains with a native genesis premint, which
+			// would otherwise clamp to 0 and drop the ETH actually held by contracts.
+			log.Infof("Native token: SC-locked set from contract balances = %s (LBT − EOA would be %s)",
+				nativeContractLocked, locked)
+			locked = new(big.Int).Set(nativeContractLocked)
+		case locked.Sign() < 0:
 			log.Warnf("Token %s: EOA total (%s) exceeds LBT (%s) by %s. Clamping to 0.",
 				lbt.WrappedTokenAddress.Hex(), eoaTotal, lbtBalance, new(big.Int).Neg(locked))
 			locked = new(big.Int)
@@ -182,6 +200,45 @@ func computeSCLocked(
 	}
 
 	return scLockedValues, nonZeroCount, nil
+}
+
+// sumContractNativeBalances fetches the native ETH balance of every contract account at blockTag and
+// returns the total, excluding the L2 bridge contract (whose balance is the un-released native
+// reserve, not circulating value). Used to compute the native token's SC-locked value directly from
+// contract holdings when options.nativeSCLockedFromContracts is enabled.
+func sumContractNativeBalances(
+	ctx context.Context, cfg *Config, contracts []common.Address, blockTag string,
+) (*big.Int, error) {
+	bridge := cfg.L2BridgeAddress
+	calls := make([]RPCCall, 0, len(contracts))
+	for _, a := range contracts {
+		if a == bridge {
+			continue // exclude the bridge reserve
+		}
+		calls = append(calls, RPCCall{Method: "eth_getBalance", Params: []any{a.Hex(), blockTag}})
+	}
+	if len(calls) == 0 {
+		return new(big.Int), nil
+	}
+
+	batchSize := min(max(len(calls)/cfg.Options.ConcurrencyLimit, 1), cfg.Options.RPCBatchSize)
+	results, err := concurrentBatchRPC(ctx, cfg.L2RPCURL, calls, batchSize,
+		cfg.Options.ConcurrencyLimit, "L2 RPC/contractBalance")
+	if err != nil {
+		return nil, fmt.Errorf("fetch contract native balances: %w", err)
+	}
+
+	total := new(big.Int)
+	nonZero := 0
+	for _, r := range results {
+		if b := unmarshalHexBigInt(r); b != nil && b.Sign() > 0 {
+			total.Add(total, b)
+			nonZero++
+		}
+	}
+	log.Infof("Contract native balances: %s wei across %d contracts (%d non-zero, bridge excluded)",
+		total, len(calls), nonZero)
+	return total, nil
 }
 
 // indexByAddress indexes LBT entries by lowercased hex address.

@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -27,17 +28,49 @@ func TestRunStepF_WithBearerToken(t *testing.T) {
 	}))
 	defer server.Close()
 
+	outputDir := t.TempDir()
 	cfg := &Config{
 		L2NetworkID: 1,
 		Options: Options{
 			UseAgglayerAdminToStepFCheck: true,
 			AgglayerAdminURL:             server.URL,
 			AgglayerAdminToken:           "my-iap-token",
+			OutputDir:                    outputDir,
 		},
 	}
 	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	// The raw agglayer LBT is dumped to the output dir whenever the admin endpoint is queried.
+	require.FileExists(t, filepath.Join(outputDir, fileStepFAgglayerLBT))
+}
+
+// TestRunStepF_EmptyOutputDir_SkipsLBTDump guards against the LBT dump landing in the process's
+// working directory when OutputDir is unset (a programmatically built Config, never a loaded one).
+func TestRunStepF_EmptyOutputDir_SkipsLBTDump(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		resp := jsonRPCResponse{
+			JSONRPC: "2.0", ID: 1,
+			Result: json.RawMessage(`{"balances":[]}`),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		L2NetworkID: 1,
+		Options: Options{
+			UseAgglayerAdminToStepFCheck: true,
+			AgglayerAdminURL:             server.URL,
+		},
+	}
+	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NoFileExists(t, fileStepFAgglayerLBT)
 }
 
 func TestRunStepF_MissingAdminURL_Error(t *testing.T) {
@@ -279,7 +312,7 @@ func TestCompareTokenBalances_AllMatch(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "1000"},
 	}
 
-	checks := compareTokenBalances(groups, agglayerEntries, nil)
+	checks := compareTokenBalances(groups, agglayerEntries, nil, nil)
 	require.Len(t, checks, 1)
 	require.True(t, checks[0].Match)
 	require.Empty(t, checks[0].CertificateEntries)
@@ -301,7 +334,7 @@ func TestCompareTokenBalances_Mismatch(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "999"},
 	}
 
-	checks := compareTokenBalances(groups, agglayerEntries, nil)
+	checks := compareTokenBalances(groups, agglayerEntries, nil, nil)
 	require.Len(t, checks, 1)
 	require.False(t, checks[0].Match)
 	require.Equal(t, "1000", checks[0].CertificateAmount)
@@ -323,7 +356,7 @@ func TestCompareTokenBalances_MissingInAgglayer(t *testing.T) {
 		},
 	}
 
-	checks := compareTokenBalances(groups, nil, nil)
+	checks := compareTokenBalances(groups, nil, nil, nil)
 	require.Len(t, checks, 1)
 	require.False(t, checks[0].Match)
 	require.Equal(t, "500", checks[0].CertificateAmount)
@@ -344,7 +377,7 @@ func TestCapCertificateExits_FitsWithinBudget(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(1000)},
 	}
 
-	result := capCertificateExits(exits, checks)
+	result := capCertificateExits(exits, checks, CapModeByAppearance)
 	require.Len(t, result, 2)
 	require.Equal(t, big.NewInt(400), result[0].Amount)
 	require.Equal(t, big.NewInt(300), result[1].Amount)
@@ -363,7 +396,7 @@ func TestCapCertificateExits_CapsLastExit(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(900)},
 	}
 
-	result := capCertificateExits(exits, checks)
+	result := capCertificateExits(exits, checks, CapModeByAppearance)
 	require.Len(t, result, 2)
 	require.Equal(t, big.NewInt(600), result[0].Amount)
 	require.Equal(t, big.NewInt(300), result[1].Amount)
@@ -382,7 +415,7 @@ func TestCapCertificateExits_DropsExitsWhenBudgetExhausted(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(500)},
 	}
 
-	result := capCertificateExits(exits, checks)
+	result := capCertificateExits(exits, checks, CapModeByAppearance)
 	require.Len(t, result, 1)
 	require.Equal(t, big.NewInt(500), result[0].Amount)
 }
@@ -398,7 +431,7 @@ func TestCapCertificateExits_ZeroBudgetDropsAll(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(0)},
 	}
 
-	result := capCertificateExits(exits, checks)
+	result := capCertificateExits(exits, checks, CapModeByAppearance)
 	require.Empty(t, result)
 }
 
@@ -410,9 +443,60 @@ func TestCapCertificateExits_TokenNotInChecksPassesThrough(t *testing.T) {
 		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(999)},
 	}
 
-	result := capCertificateExits(exits, nil)
+	result := capCertificateExits(exits, nil, CapModeByAppearance)
 	require.Len(t, result, 1)
 	require.Equal(t, big.NewInt(999), result[0].Amount)
+}
+
+// TestCapCertificateExits_ByAmountCapsLargest checks that CapModeByAmount serves the smallest exit
+// first, so the largest exit is the one capped/dropped — while the surviving exits are still emitted
+// in their original order.
+func TestCapCertificateExits_ByAmountCapsLargest(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	// Large exit appears first, small one second. Budget 700.
+	newExits := func() []*agglayertypes.BridgeExit {
+		return []*agglayertypes.BridgeExit{
+			{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(700)},
+			{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(300)},
+		}
+	}
+	checks := []TokenBalanceCheck{
+		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(700)},
+	}
+
+	// By amount: the 300 exit is served first (kept full), the 700 exit gets the leftover 400 → capped.
+	// Surviving exits stay in original order.
+	byAmount := capCertificateExits(newExits(), checks, CapModeByAmount)
+	require.Len(t, byAmount, 2)
+	require.Equal(t, big.NewInt(400), byAmount[0].Amount) // the 700 exit, capped to leftover
+	require.Equal(t, big.NewInt(300), byAmount[1].Amount) // the 300 exit, kept full
+
+	// By appearance: the 700 exit is served first (kept full, budget exhausted), the 300 is dropped.
+	byAppearance := capCertificateExits(newExits(), checks, CapModeByAppearance)
+	require.Len(t, byAppearance, 1)
+	require.Equal(t, big.NewInt(700), byAppearance[0].Amount)
+}
+
+// TestCapCertificateExits_ByAmountDropsLargest checks that when the budget is too small the largest
+// exit is dropped entirely while the smaller ones survive, still in their original order.
+func TestCapCertificateExits_ByAmountDropsLargest(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	exits := []*agglayertypes.BridgeExit{
+		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(800)},
+		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(200)},
+	}
+	// Budget 200: only the small (200) exit fits; the large (800) exit is dropped.
+	checks := []TokenBalanceCheck{
+		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(200)},
+	}
+
+	result := capCertificateExits(exits, checks, CapModeByAmount)
+	require.Len(t, result, 1)
+	require.Equal(t, big.NewInt(200), result[0].Amount) // the 200 exit, kept; the 800 dropped
 }
 
 func TestCapCertificateExits_LBTMinAgglayer(t *testing.T) {
@@ -430,15 +514,116 @@ func TestCapCertificateExits_LBTMinAgglayer(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "800"},
 	}, []LBTEntry{
 		{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "700"},
-	})
+	}, nil)
 	require.Equal(t, big.NewInt(700), checks[0].RemainingBalance)
 
 	exits := []*agglayertypes.BridgeExit{
 		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(600)},
 		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(400)},
 	}
-	result := capCertificateExits(exits, checks)
+	result := capCertificateExits(exits, checks, CapModeByAppearance)
 	require.Len(t, result, 2)
 	require.Equal(t, big.NewInt(600), result[0].Amount)
 	require.Equal(t, big.NewInt(100), result[1].Amount) // capped: 700-600=100
+}
+
+// TestRunStepF_PrefundMatchedStillCapsToLBT checks that even when every check matches thanks to
+// the genesis pre-fund discount, Step F still produces a capped certificate trimming the native
+// exits to the LBT: the pre-funded amount has no agglayer collateral and cannot be bridged out.
+func TestRunStepF_PrefundMatchedStillCapsToLBT(t *testing.T) {
+	t.Parallel()
+
+	dest := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	// Native exits: 300 genuinely bridged + 700 genesis pre-fund = 1000 raw; LBT covers 300.
+	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
+		{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(300)},
+		{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(700)},
+	}}
+	lbt := []LBTEntry{
+		{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "300"},
+	}
+	cfg := &Config{Options: Options{
+		UseAgglayerAdminToStepFCheck: false,
+		GenesisPrefundETHWei:         "700",
+		CapMode:                      CapModeByAmount,
+	}}
+
+	result, err := RunStepF(context.Background(), cfg, cert, lbt)
+	require.NoError(t, err)
+	require.True(t, result.AllMatch) // 1000 − 700 == 300 → the check itself matches
+	// ...but the certificate is still capped: the 700 pre-fund exit (the largest) is dropped.
+	require.NotNil(t, result.CappedCertificate)
+	require.Len(t, result.CappedCertificate.BridgeExits, 1)
+	require.Equal(t, big.NewInt(300), result.CappedCertificate.BridgeExits[0].Amount)
+}
+
+// TestRunStepF_NoPrefundNoCapOnAllMatch checks the allMatch fast path stays cap-free when no
+// genesis pre-fund is declared.
+func TestRunStepF_NoPrefundNoCapOnAllMatch(t *testing.T) {
+	t.Parallel()
+
+	dest := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
+		{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(300)},
+	}}
+	lbt := []LBTEntry{
+		{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "300"},
+	}
+	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false, CapMode: CapModeByAmount}}
+
+	result, err := RunStepF(context.Background(), cfg, cert, lbt)
+	require.NoError(t, err)
+	require.True(t, result.AllMatch)
+	require.Nil(t, result.CappedCertificate)
+}
+
+func TestDiscountGenesisPrefund(t *testing.T) {
+	t.Parallel()
+
+	token := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	tokenKeyNonNative := tokenKey{OriginNetwork: 1, OriginTokenAddress: token}
+
+	// Unset prefund → certificate amount unchanged.
+	require.Equal(t, big.NewInt(1000), discountGenesisPrefund(big.NewInt(1000), nativeTokenKey, nil))
+
+	// Discounts only the native token; other tokens untouched.
+	require.Equal(t, big.NewInt(700),
+		discountGenesisPrefund(big.NewInt(1000), nativeTokenKey, big.NewInt(300)))
+	require.Equal(t, big.NewInt(1000),
+		discountGenesisPrefund(big.NewInt(1000), tokenKeyNonNative, big.NewInt(300)))
+
+	// Prefund larger than the certificate sum floors at 0 (never negative).
+	require.Equal(t, big.NewInt(0),
+		discountGenesisPrefund(big.NewInt(1000), nativeTokenKey, big.NewInt(4000)))
+
+	// Zero prefund is a no-op.
+	require.Equal(t, big.NewInt(1000),
+		discountGenesisPrefund(big.NewInt(1000), nativeTokenKey, big.NewInt(0)))
+}
+
+// TestCompareTokenBalances_GenesisPrefundDiscount checks the native certificate sum is discounted
+// by the declared genesis pre-fund before the three-way comparison, and other tokens are untouched.
+func TestCompareTokenBalances_GenesisPrefundDiscount(t *testing.T) {
+	t.Parallel()
+
+	dest := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	// Native exits: 300 genuinely bridged + 700 genesis pre-fund = 1000 total.
+	groups := map[tokenKey][]*agglayertypes.BridgeExit{
+		nativeTokenKey: {
+			{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(1000)},
+		},
+	}
+	agglayerEntries := []agglayerTokenEntry{
+		{OriginNetwork: 0, OriginTokenAddress: common.Address{}, Amount: "300"},
+	}
+	lbt := []LBTEntry{
+		{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "300"},
+	}
+
+	checks := compareTokenBalances(groups, agglayerEntries, lbt, big.NewInt(700))
+	require.Len(t, checks, 1)
+	require.True(t, checks[0].Match)
+	require.Equal(t, "300", checks[0].CertificateAmount) // discounted sum is what gets compared
+	// The cap budget stays min(agglayer, lbt): the genuinely bridged amount, not the raw cert sum.
+	require.Equal(t, big.NewInt(300), checks[0].RemainingBalance)
 }

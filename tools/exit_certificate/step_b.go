@@ -3,6 +3,7 @@ package exit_certificate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -98,8 +99,11 @@ func RunStepB1(ctx context.Context, cfg *Config, targetBlock uint64, stepA *Step
 
 	if err := checkGenesisBalances(
 		ctx, rpcURL, eoaAddrs, contractAddrs, eoaEthBalances, blockTag, batchSize, concurrency,
+		cfg.Options.GenesisPrefundETHWei,
 	); err != nil {
-		if !cfg.Options.IgnoreGenesisBalance {
+		// A wrong genesisPrefundETHWei declaration is always fatal: Step F would subtract the wrong
+		// amount from the native LBT entry. Only the preload itself can be accepted.
+		if !cfg.Options.IgnoreGenesisBalance || errors.Is(err, errGenesisPrefundMismatch) {
 			return nil, err
 		}
 		log.Warnf("Genesis balance check failed (ignoreGenesisBalance=true, continuing): %v", err)
@@ -146,14 +150,23 @@ func sumBalances(balances map[common.Address]*big.Int) *big.Int {
 	return total
 }
 
+// errGenesisPrefundMismatch marks a declared options.genesisPrefundETHWei that does not match the
+// detected genesis ETH preload total. It is never suppressed by ignoreGenesisBalance: a wrong
+// declaration would make the Step F native-LBT subtraction silently wrong.
+var errGenesisPrefundMismatch = errors.New(
+	"options.genesisPrefundETHWei does not match the detected genesis ETH preload total")
+
 // checkGenesisBalances fetches ETH balances at block 0 for EOAs and contracts and returns
 // an error if any account has a non-zero genesis balance, since that indicates a genesis
-// preload that would inflate the exit certificate totals.
+// preload that would inflate the exit certificate totals. When declaredPrefundWei is set, it also
+// verifies that it equals the detected genesis preload total, returning errGenesisPrefundMismatch
+// otherwise.
 func checkGenesisBalances(
 	ctx context.Context, rpcURL string,
 	eoaAddrs, contractAddrs []common.Address,
 	eoaEthBalances map[common.Address]*big.Int,
 	blockTag string, batchSize, concurrency int,
+	declaredPrefundWei string,
 ) error {
 	scBalances, err := fetchETHBalances(ctx, rpcURL, contractAddrs, blockTag, batchSize, concurrency)
 	if err != nil {
@@ -162,6 +175,10 @@ func checkGenesisBalances(
 	genesisBalances, err := fetchETHBalances(ctx, rpcURL, eoaAddrs, toBlockTag(0), batchSize, concurrency)
 	if err != nil {
 		return fmt.Errorf("fetch genesis ETH balances: %w", err)
+	}
+	if err := checkDeclaredGenesisPrefund(declaredPrefundWei, sumBalances(genesisBalances),
+		len(genesisBalances)); err != nil {
+		return err
 	}
 	if len(genesisBalances) == 0 {
 		return nil
@@ -181,10 +198,31 @@ func checkGenesisBalances(
 	log.Infof("                           -------------------------------")
 	log.Infof("Total genesis subtraction: %s wei (%d accounts)", padLeft(diffStr, maxLen), len(eoaEthBalances))
 	return fmt.Errorf(
-		"genesis ETH preload detected in %d accounts: "+
-			"balances at block 0 are non-zero, indicating this is not a real network",
+		"genesis ETH preload detected in %d accounts: pre-funding accounts at genesis is not allowed; "+
+			"set options.ignoreGenesisBalance=true to accept the preload and continue",
 		len(genesisBalances),
 	)
+}
+
+// checkDeclaredGenesisPrefund verifies that the declared options.genesisPrefundETHWei (when set)
+// equals the detected genesis ETH preload total, so the amount Step F subtracts from the native LBT
+// entry is known to be the real preload. genesisSum covers the EOA addresses collected in Step A.
+func checkDeclaredGenesisPrefund(declaredWei string, genesisSum *big.Int, accounts int) error {
+	if declaredWei == "" {
+		return nil
+	}
+	declared, ok := new(big.Int).SetString(declaredWei, decimalBase)
+	if !ok {
+		// LoadConfig validates the format, so this is only reachable with a hand-built Config.
+		return fmt.Errorf("invalid options.genesisPrefundETHWei %q: must be a base-10 integer amount in Wei",
+			declaredWei)
+	}
+	if declared.Cmp(genesisSum) != 0 {
+		return fmt.Errorf("%w: declared %s wei but detected %s wei across %d accounts",
+			errGenesisPrefundMismatch, declared, genesisSum, accounts)
+	}
+	log.Infof("✅ options.genesisPrefundETHWei (%s wei) matches the genesis ETH preload total", declared)
+	return nil
 }
 
 // classifyAddresses separates addresses into EOA and contract via eth_getCode.

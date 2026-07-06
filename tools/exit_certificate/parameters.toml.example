@@ -81,13 +81,33 @@ ignoreOnTraceError = false
 # Enable only for Kurtosis/test environments. Default: false.
 ignoreGenesisBalance = false
 
+# Compute the native token's SC-locked value in Step C from the actual ETH held by contract accounts
+# (bridge excluded) instead of LBT - EOA, which underflows on chains with a native genesis premint
+# and silently drops contract-held ETH. Set to false to use the LBT - EOA derivation. Default: true.
+nativeSCLockedFromContracts = true
+
 # Skip adding unclaimed L1->L2 deposits to the certificate in Step E (still detected and warned).
 # Default: false.
 ignoreUnclaimed = false
 
 # Do not abort Step F on token balance mismatches; instead produce step-f-capped-certificate.json
-# with mismatched exits scaled down to min(agglayer, lbt). Default: false.
+# with mismatched exits trimmed so their per-token sum equals min(agglayer, lbt). Default: false.
 ignoreBalanceMismatch = false
+
+# How Step F allocates each token's cap budget when trimming exits (only relevant with
+# ignoreBalanceMismatch = true). "amount" (default) serves the smallest-amount exits first, so the
+# largest holders are the first to be capped/dropped; "appearance" serves exits in the order they
+# appear. Surviving exits are emitted in their original order in both modes.
+# Default: "amount".
+capMode = "amount"
+
+# Optional amount of native token (in Wei, as a decimal string) pre-funded at genesis. Such funds sit
+# in accounts — and therefore in the certificate's bridge exits — without a matching agglayer deposit,
+# so Step F subtracts this value from the native-token certificate sum before comparing it against the
+# agglayer balance and the LBT (only the compared certificate amount is affected; the cap budget stays
+# min(agglayer, lbt)). Step B verifies the value against the detected genesis ETH preload total.
+# Example: 100000 ETH = "100000000000000000000000". Default: "" (0, disabled).
+genesisPrefundETHWei = ""
 
 # Make the Step G lite syncer warn and continue (instead of aborting) on L2 events that would
 # invalidate a BridgeEvent-only reconstruction. The computed NewLocalExitRoot may then be incorrect.

@@ -29,6 +29,20 @@ func TestFilterEOAs(t *testing.T) {
 	require.Equal(t, []common.Address{a, b}, filterEOAs([]common.Address{a, b}, nil))
 }
 
+func TestCheckDeclaredGenesisPrefund(t *testing.T) {
+	t.Parallel()
+	// unset → no check
+	require.NoError(t, checkDeclaredGenesisPrefund("", big.NewInt(5), 1))
+	// declared == detected → ok
+	require.NoError(t, checkDeclaredGenesisPrefund("5", big.NewInt(5), 1))
+	require.NoError(t, checkDeclaredGenesisPrefund("0", big.NewInt(0), 0))
+	// declared != detected → mismatch, including when no preload was detected at all
+	require.ErrorIs(t, checkDeclaredGenesisPrefund("4", big.NewInt(5), 1), errGenesisPrefundMismatch)
+	require.ErrorIs(t, checkDeclaredGenesisPrefund("4", big.NewInt(0), 0), errGenesisPrefundMismatch)
+	// non-numeric (unreachable via LoadConfig) → error
+	require.Error(t, checkDeclaredGenesisPrefund("10 ETH", big.NewInt(5), 1))
+}
+
 func TestPadLeft(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "abc", padLeft("abc", 2)) // already long enough → unchanged
@@ -346,6 +360,7 @@ func TestRunStepB1GenesisPreloadAborts(t *testing.T) {
 	// default: a genesis preload aborts Step B1
 	_, err := RunStepB1(t.Context(), stepBConfig(url), 100, stepA)
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "ignoreGenesisBalance")
 
 	// ignoreGenesisBalance downgrades it to a warning and continues
 	cfg := stepBConfig(url)
@@ -353,6 +368,38 @@ func TestRunStepB1GenesisPreloadAborts(t *testing.T) {
 	res, err := RunStepB1(t.Context(), cfg, 100, stepA)
 	require.NoError(t, err)
 	require.NotNil(t, res)
+}
+
+func TestRunStepB1GenesisPrefundDeclared(t *testing.T) {
+	t.Parallel()
+	addr := common.HexToAddress("0x01")
+	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
+		switch method {
+		case rpcMethodEthGetCode:
+			return "0x"
+		case rpcMethodEthGetBalance:
+			return "0x64" // 100 wei everywhere, including genesis → preload total = 100
+		default:
+			return "0x0"
+		}
+	})
+
+	stepA := &StepAResult{Addresses: []common.Address{addr}}
+
+	// declared prefund matches the detected preload total → the preload itself is still only
+	// acceptable with ignoreGenesisBalance=true
+	cfg := stepBConfig(url)
+	cfg.Options.IgnoreGenesisBalance = true
+	cfg.Options.GenesisPrefundETHWei = "100"
+	res, err := RunStepB1(t.Context(), cfg, 100, stepA)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	// a mismatching declaration is fatal even with ignoreGenesisBalance=true: Step F would
+	// subtract the wrong amount from the native LBT entry
+	cfg.Options.GenesisPrefundETHWei = "50"
+	_, err = RunStepB1(t.Context(), cfg, 100, stepA)
+	require.ErrorIs(t, err, errGenesisPrefundMismatch)
 }
 
 func TestRunStepB(t *testing.T) {
