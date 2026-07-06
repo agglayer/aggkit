@@ -154,6 +154,10 @@ type StepBResult struct {
 	DetectedERC20s        []DetectedERC20        `json:"detectedErc20s,omitempty"`
 	DiscardedERC20s       []DiscardedERC20       `json:"discardedErc20s,omitempty"`
 	ERC20HolderBreakdowns []ERC20HolderBreakdown `json:"erc20HolderBreakdowns,omitempty"`
+	// NativeContractLocked, when non-empty, is the total native ETH (wei, decimal) held by contract
+	// accounts (bridge excluded). Set only when options.nativeSCLockedFromContracts is enabled; Step C
+	// uses it as the native token's SC-locked value instead of the LBT − EOA formula.
+	NativeContractLocked string `json:"-"`
 }
 
 // ERC20HolderBreakdown holds the full holder decomposition for a single ERC-20 contract
@@ -289,7 +293,8 @@ type StepFResult struct {
 	TokenBalances json.RawMessage     `json:"tokenBalances,omitempty"`
 	Checks        []TokenBalanceCheck `json:"checks,omitempty"`
 	// CappedCertificate is set when mismatches were found and ignoreBalanceMismatch=true.
-	// Bridge exits are proportionally scaled down to min(agglayer, lbt) per token.
+	// Bridge exits are trimmed so their per-token sum equals min(agglayer, lbt); the allocation
+	// order is controlled by Options.CapMode (see capCertificateExits).
 	CappedCertificate *agglayertypes.Certificate `json:"cappedCertificate,omitempty"`
 }
 

@@ -93,7 +93,7 @@ func TestRunAllStepCAndD(t *testing.T) {
 	dir := t.TempDir()
 	lbt, bResult := pipelineFixtures()
 
-	cResult, err := runAllStepC(dir, lbt, bResult)
+	cResult, err := runAllStepC(context.Background(), &Config{}, dir, lbt, bResult)
 	require.NoError(t, err)
 	require.NotEmpty(t, cResult.SCLockedValues)
 	require.True(t, fileExists(filepath.Join(dir, fileStepCSCLockedValues)))
@@ -111,7 +111,7 @@ func TestRunAllStepCAndD(t *testing.T) {
 func TestRunAllStepCSkippedNoLBT(t *testing.T) {
 	t.Parallel()
 	_, bResult := pipelineFixtures()
-	cResult, err := runAllStepC(t.TempDir(), nil, bResult)
+	cResult, err := runAllStepC(context.Background(), &Config{}, t.TempDir(), nil, bResult)
 	require.NoError(t, err)
 	require.Empty(t, cResult.SCLockedValues)
 }

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +21,7 @@ import (
 type Options struct {
 	BlockRange int `json:"blockRange"`
 	// StepAWindowSize is the number of blocks loaded into memory at once during Step A
-	// (address collection via debug_traceTransaction). Defaults to 5000, independently of BlockRange.
+	// (address collection via debug_traceTransaction). Defaults to 150000, independently of BlockRange.
 	// Tune independently when trace calls need a different chunk size than log queries.
 	StepAWindowSize  int    `json:"stepAWindowSize"`
 	ConcurrencyLimit int    `json:"concurrencyLimit"`
@@ -48,6 +49,12 @@ type Options struct {
 	// IgnoreOnTraceError skips transactions whose debug_traceTransaction call fails instead of
 	// aborting Step A. Failed tx hashes are saved to step-a-failed-traces.json for review.
 	IgnoreOnTraceError bool `json:"ignoreOnTraceError"`
+	// NativeSCLockedFromContracts, when true (the default), computes the native-token SC-locked value
+	// in Step C from the actual ETH balances held by contract accounts (summed, excluding the L2
+	// bridge) rather than from LBT − EOA_accumulated. That formula underflows on chains with a native
+	// genesis premint, clamping to 0 and silently dropping contract-held ETH. Set to false to fall
+	// back to the LBT − EOA derivation for the native token.
+	NativeSCLockedFromContracts bool `json:"nativeSCLockedFromContracts"`
 	// IgnoreBalanceMismatch suppresses the error returned by Step F when token balances
 	// do not match. Set to true only when investigating discrepancies without blocking the pipeline.
 	IgnoreBalanceMismatch bool `json:"ignoreBalanceMismatch"`
@@ -79,7 +86,34 @@ type Options struct {
 	// the certificate's bridge exits) without launching Anvil — much faster, but it trusts the
 	// off-chain leaf encoding (notably each exit's metadata) rather than verifying it on-chain.
 	VerifyNewLocalExitRootUsingShadowFork bool `json:"verifyNewLocalExitRootUsingShadowFork"`
+	// CapMode selects how bridge exits are trimmed when Step F caps a certificate whose token totals
+	// exceed the allowed budget (only reached with IgnoreBalanceMismatch=true). "amount" (the default)
+	// allocates each token's budget to its smallest-amount exits first, so the largest holders are the
+	// first to be capped/dropped once the budget runs out. "appearance" allocates to its exits in the
+	// order they appear, capping/dropping the ones that no longer fit. In both modes the surviving
+	// exits are emitted in their original order.
+	CapMode string `json:"capMode"`
+	// GenesisPrefundETHWei is an optional amount of native token (in Wei, as a decimal string) that was
+	// pre-funded at genesis. Those funds sit in accounts — and therefore in the certificate's bridge
+	// exits — without a matching agglayer deposit, so Step F subtracts this value from the native-token
+	// certificate sum before comparing it against the agglayer balance and the LBT (which only count
+	// genuinely bridged funds), logging the certificate total, the pre-fund and the difference. The
+	// pre-fund has no agglayer collateral and can never be bridged out: even when the checks match,
+	// Step F produces a capped certificate trimming the native exits to min(agglayer, LBT). The Step 0
+	// LBT and Step C SC-locked totals are untouched. Step B verifies the declared value against the
+	// detected genesis ETH preload total. Empty means 0. Typical testnet value:
+	// 100000 ETH = "100000000000000000000000".
+	GenesisPrefundETHWei string `json:"genesisPrefundETHWei"`
 }
+
+// Cap modes for Options.CapMode (how Step F trims exits when capping a certificate).
+const (
+	// CapModeByAppearance allocates each token's cap budget to its exits in appearance order.
+	CapModeByAppearance = "appearance"
+	// CapModeByAmount allocates each token's cap budget to its smallest-amount exits first, so the
+	// largest-amount exits are the first to be capped/dropped.
+	CapModeByAmount = "amount"
+)
 
 // Config holds all parameters required by the exit certificate tool.
 type Config struct {
@@ -128,6 +162,8 @@ var defaultOptions = Options{
 	L2StartBlock:                          0,
 	UseAgglayerAdminToStepFCheck:          true,
 	VerifyNewLocalExitRootUsingShadowFork: true,
+	CapMode:                               CapModeByAmount,
+	NativeSCLockedFromContracts:           true,
 	// IgnoreGenesisBalance defaults to false (do abort on a genesis preload).
 }
 
@@ -195,6 +231,24 @@ func validateRawConfig(raw *rawConfig) error {
 	if common.HexToAddress(raw.ExitAddress) == (common.Address{}) {
 		return fmt.Errorf("invalid exitAddress: the zero address (0x00...00) is not allowed; " +
 			"set an address whose private key you control so the SC-locked funds can be recovered")
+	}
+	// capMode, when set, must be one of the known modes.
+	if raw.Options != nil && raw.Options.CapMode != "" &&
+		raw.Options.CapMode != CapModeByAppearance && raw.Options.CapMode != CapModeByAmount {
+		return fmt.Errorf("invalid options.capMode %q: must be %q or %q",
+			raw.Options.CapMode, CapModeByAppearance, CapModeByAmount)
+	}
+	// genesisPrefundETHWei, when set, must be a non-negative base-10 integer (Wei).
+	if raw.Options != nil && raw.Options.GenesisPrefundETHWei != "" {
+		v, ok := new(big.Int).SetString(raw.Options.GenesisPrefundETHWei, decimalBase)
+		if !ok {
+			return fmt.Errorf("invalid options.genesisPrefundETHWei %q: must be a base-10 integer amount in Wei",
+				raw.Options.GenesisPrefundETHWei)
+		}
+		if v.Sign() < 0 {
+			return fmt.Errorf("invalid options.genesisPrefundETHWei %q: must not be negative",
+				raw.Options.GenesisPrefundETHWei)
+		}
 	}
 	// Step F (the agglayer admin balance check) needs agglayerAdminURL. When the check is enabled
 	// (useAgglayerAdminToStepFCheck, default true), the URL must be set; otherwise set the flag to
@@ -387,6 +441,12 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	if raw.BridgeServiceType != "" {
 		opts.BridgeServiceType = raw.BridgeServiceType
 	}
+	if raw.CapMode != "" {
+		opts.CapMode = raw.CapMode
+	}
+	if raw.GenesisPrefundETHWei != "" {
+		opts.GenesisPrefundETHWei = raw.GenesisPrefundETHWei
+	}
 }
 
 // mergeFlagOptions overrides the boolean (tri-state *bool) option flags that were explicitly set.
@@ -399,6 +459,9 @@ func mergeFlagOptions(opts *Options, raw *rawOpts) {
 	}
 	if raw.IgnoreOnTraceError != nil {
 		opts.IgnoreOnTraceError = *raw.IgnoreOnTraceError
+	}
+	if raw.NativeSCLockedFromContracts != nil {
+		opts.NativeSCLockedFromContracts = *raw.NativeSCLockedFromContracts
 	}
 	if raw.IgnoreBalanceMismatch != nil {
 		opts.IgnoreBalanceMismatch = *raw.IgnoreBalanceMismatch
@@ -472,9 +535,12 @@ type rawOpts struct {
 	UseAgglayerAdminToStepFCheck          *bool                  `json:"useAgglayerAdminToStepFCheck"`
 	IgnoreGenesisBalance                  *bool                  `json:"ignoreGenesisBalance"`
 	IgnoreOnTraceError                    *bool                  `json:"ignoreOnTraceError"`
+	NativeSCLockedFromContracts           *bool                  `json:"nativeSCLockedFromContracts"`
 	IgnoreBalanceMismatch                 *bool                  `json:"ignoreBalanceMismatch"`
 	IgnoreUnclaimed                       *bool                  `json:"ignoreUnclaimed"`
 	ExtraERC20Contracts                   []string               `json:"extraErc20Contracts"`
+	CapMode                               string                 `json:"capMode"`
+	GenesisPrefundETHWei                  string                 `json:"genesisPrefundETHWei"`
 	BridgeServiceURL                      string                 `json:"bridgeServiceURL"`
 	BridgeServiceType                     string                 `json:"bridgeServiceType"`
 	IgnoreUnsupportedL2Events             *bool                  `json:"ignoreUnsupportedL2Events"`

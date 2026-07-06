@@ -96,8 +96,6 @@ func RunStepA1(ctx context.Context, cfg *Config, targetBlock uint64) (*StepAResu
 			blocksPerSec, eta)
 	}
 
-	delete(finalAddrs, common.Address{})
-
 	if len(finalAddrs) == 0 && len(allFailed) == 0 {
 		log.Info("STEP A1 complete: 0 unique addresses (no transactions found)")
 		return &StepAResult{}, nil
@@ -164,8 +162,6 @@ func RunStepA2(ctx context.Context, cfg *Config, failedTraces []FailedTrace) (*S
 		return nil, fmt.Errorf("fetch receipts: %w", err)
 	}
 
-	delete(addrSet, common.Address{})
-
 	addresses := make([]common.Address, 0, len(addrSet))
 	for addr := range addrSet {
 		addresses = append(addresses, addr)
@@ -207,10 +203,7 @@ func receiptAddresses(ctx context.Context, rpcURL string, hash common.Hash) ([]c
 		if s == "" || s == "0x" {
 			return
 		}
-		addr := common.HexToAddress(s)
-		if addr != (common.Address{}) {
-			addrSet[addr] = struct{}{}
-		}
+		addrSet[common.HexToAddress(s)] = struct{}{}
 	}
 
 	addHex(receipt.From)
@@ -240,7 +233,6 @@ func mergeAddresses(a, b []common.Address) []common.Address {
 	for _, addr := range b {
 		seen[addr] = struct{}{}
 	}
-	delete(seen, common.Address{})
 
 	merged := make([]common.Address, 0, len(seen))
 	for addr := range seen {

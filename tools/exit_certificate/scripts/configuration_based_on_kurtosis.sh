@@ -34,6 +34,8 @@ Environment variables (override defaults):
   L1_SERVICE                          Kurtosis L1 execution service name (default: el-1-geth-lighthouse)
   ZKEVM_BRIDGE_SERVICE_PREFIX         Kurtosis zkevm-bridge-service prefix (default: zkevm-bridge-service)
   EXIT_ADDRESS                        Address to receive SC-locked value (default: zero address)
+  GENESIS_PREFUND_ETH_WEI             options.genesisPrefundETHWei value: native ETH preminted at
+                                      genesis by the Kurtosis enclave (default: 110000 ETH in wei)
   OUTPUT_FILE                         Output path (relative to project root)
 
 Examples:
@@ -78,6 +80,8 @@ if [[ "$EXIT_ADDRESS" == "$_EXIT_ADDRESS_DEFAULT" ]]; then
     fi
 fi
 OUTPUT_FILE="${OUTPUT_FILE:-tmp/exit_certificate-kurtosis.json}"
+# Native ETH preminted at genesis by the Kurtosis enclave (110000 ETH), discounted by Step F.
+GENESIS_PREFUND_ETH_WEI="${GENESIS_PREFUND_ETH_WEI:-110000000000000000000000}"
 NETWORK_INDEX=1
 
 # Parse flags and positional args
@@ -375,6 +379,7 @@ ${SOVEREIGN_ROLLUP_LINE}${L1_GLOBAL_EXIT_ROOT_LINE}${SIGNER_CONFIG_BLOCK}    "op
         "agglayerAdminURL": "$AGGLAYER_ADMIN_URL",
         "agglayerClient": { "GRPC": { "URL": "$AGGLAYER_GRPC_URL" } },
         "ignoreGenesisBalance": true,
+        "genesisPrefundETHWei": "$GENESIS_PREFUND_ETH_WEI",
         "ignoreBalanceMismatch": true,
         "ignoreUnsupportedL2Events": true${BRIDGE_SERVICE_OPTS:+,
 $BRIDGE_SERVICE_OPTS}
