@@ -95,12 +95,13 @@ type Options struct {
 	// the certificate's bridge exits) without launching Anvil — much faster, but it trusts the
 	// off-chain leaf encoding (notably each exit's metadata) rather than verifying it on-chain.
 	VerifyNewLocalExitRootUsingShadowFork bool `json:"verifyNewLocalExitRootUsingShadowFork"`
-	// CapMode selects how bridge exits are trimmed when Step F caps a certificate whose token totals
-	// exceed the allowed budget (only reached with IgnoreBalanceMismatch=true). "amount" (the default)
-	// allocates each token's budget to its smallest-amount exits first, so the largest holders are the
-	// first to be capped/dropped once the budget runs out. "appearance" allocates to its exits in the
-	// order they appear, capping/dropping the ones that no longer fit. In both modes the surviving
-	// exits are emitted in their original order.
+	// CapMode selects how bridge exits are trimmed when Step F needs to cap a certificate whose token
+	// totals exceed the allowed budget. "none" (the default) forbids capping entirely: if any exit
+	// would have to be trimmed, Step F fails instead. "amount" allocates each token's budget to its
+	// smallest-amount exits first, so the largest holders are the first to be capped/dropped once the
+	// budget runs out. "appearance" allocates to its exits in the order they appear, capping/dropping
+	// the ones that no longer fit. In both trimming modes the surviving exits are emitted in their
+	// original order.
 	CapMode string `json:"capMode"`
 	// GenesisPrefundETHWei is an optional amount of native token (in Wei, as a decimal string) that was
 	// pre-funded at genesis. Those funds sit in accounts — and therefore in the certificate's bridge
@@ -108,15 +109,18 @@ type Options struct {
 	// certificate sum before comparing it against the agglayer balance and the LBT (which only count
 	// genuinely bridged funds), logging the certificate total, the pre-fund and the difference. The
 	// pre-fund has no agglayer collateral and can never be bridged out: even when the checks match,
-	// Step F produces a capped certificate trimming the native exits to min(agglayer, LBT). The Step 0
-	// LBT and Step C SC-locked totals are untouched. Step B verifies the declared value against the
-	// detected genesis ETH preload total. Empty means 0. Typical testnet value:
+	// Step F produces a capped certificate trimming the native exits to min(agglayer, LBT) — this
+	// requires a trimming CapMode ("amount" or "appearance"; the default "none" fails instead). The
+	// Step 0 LBT and Step C SC-locked totals are untouched. Step B verifies the declared value against
+	// the detected genesis ETH preload total. Empty means 0. Typical testnet value:
 	// 100000 ETH = "100000000000000000000000".
 	GenesisPrefundETHWei string `json:"genesisPrefundETHWei"`
 }
 
 // Cap modes for Options.CapMode (how Step F trims exits when capping a certificate).
 const (
+	// CapModeNone forbids capping: Step F fails if any bridge exit would have to be trimmed.
+	CapModeNone = "none"
 	// CapModeByAppearance allocates each token's cap budget to its exits in appearance order.
 	CapModeByAppearance = "appearance"
 	// CapModeByAmount allocates each token's cap budget to its smallest-amount exits first, so the
@@ -172,7 +176,7 @@ var defaultOptions = Options{
 	AddressDiscovery:                      addressDiscoveryAuto,
 	UseAgglayerAdminToStepFCheck:          true,
 	VerifyNewLocalExitRootUsingShadowFork: true,
-	CapMode:                               CapModeByAmount,
+	CapMode:                               CapModeNone,
 	NativeSCLockedFromContracts:           true,
 	// IgnoreGenesisBalance defaults to false (do abort on a genesis preload).
 }
@@ -244,9 +248,10 @@ func validateRawConfig(raw *rawConfig) error {
 	}
 	// capMode, when set, must be one of the known modes.
 	if raw.Options != nil && raw.Options.CapMode != "" &&
+		raw.Options.CapMode != CapModeNone &&
 		raw.Options.CapMode != CapModeByAppearance && raw.Options.CapMode != CapModeByAmount {
-		return fmt.Errorf("invalid options.capMode %q: must be %q or %q",
-			raw.Options.CapMode, CapModeByAppearance, CapModeByAmount)
+		return fmt.Errorf("invalid options.capMode %q: must be %q, %q or %q",
+			raw.Options.CapMode, CapModeNone, CapModeByAppearance, CapModeByAmount)
 	}
 	// genesisPrefundETHWei, when set, must be a non-negative base-10 integer (Wei).
 	if raw.Options != nil && raw.Options.GenesisPrefundETHWei != "" {

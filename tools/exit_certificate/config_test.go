@@ -121,12 +121,12 @@ func TestLoadConfig_CapMode(t *testing.T) {
 
 	base := optionsTestConfigBase
 
-	// Default: unset capMode resolves to "amount".
+	// Default: unset capMode resolves to "none" (capping forbidden).
 	pathDefault := filepath.Join(t.TempDir(), "default.json")
 	require.NoError(t, os.WriteFile(pathDefault, fmt.Appendf(nil, base, ""), 0o600))
 	cfg, err := LoadConfig(pathDefault)
 	require.NoError(t, err)
-	require.Equal(t, CapModeByAmount, cfg.Options.CapMode)
+	require.Equal(t, CapModeNone, cfg.Options.CapMode)
 	// nativeSCLockedFromContracts defaults to true; an explicit false must survive the merge.
 	require.True(t, cfg.Options.NativeSCLockedFromContracts)
 	pathNoNative := filepath.Join(t.TempDir(), "no-native.json")
@@ -142,6 +142,20 @@ func TestLoadConfig_CapMode(t *testing.T) {
 	cfg, err = LoadConfig(pathAppearance)
 	require.NoError(t, err)
 	require.Equal(t, CapModeByAppearance, cfg.Options.CapMode)
+
+	// Explicit "amount".
+	pathAmount := filepath.Join(t.TempDir(), "amount.json")
+	require.NoError(t, os.WriteFile(pathAmount, fmt.Appendf(nil, base, `, "capMode": "amount"`), 0o600))
+	cfg, err = LoadConfig(pathAmount)
+	require.NoError(t, err)
+	require.Equal(t, CapModeByAmount, cfg.Options.CapMode)
+
+	// Explicit "none".
+	pathNone := filepath.Join(t.TempDir(), "none.json")
+	require.NoError(t, os.WriteFile(pathNone, fmt.Appendf(nil, base, `, "capMode": "none"`), 0o600))
+	cfg, err = LoadConfig(pathNone)
+	require.NoError(t, err)
+	require.Equal(t, CapModeNone, cfg.Options.CapMode)
 
 	// Invalid value is rejected.
 	pathBad := filepath.Join(t.TempDir(), "bad.json")

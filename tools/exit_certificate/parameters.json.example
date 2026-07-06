@@ -24,7 +24,7 @@
         "nativeSCLockedFromContracts": true,
         "ignoreUnclaimed": false,
         "ignoreBalanceMismatch": false,
-        "capMode": "amount",
+        "capMode": "none",
         "genesisPrefundETHWei": "",
         "verifyNewLocalExitRootUsingShadowFork": true,
         "extraErc20Contracts": [],

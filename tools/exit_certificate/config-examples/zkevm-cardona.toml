@@ -56,6 +56,11 @@ extraErc20Contracts = []
 # this amount from the native certificate sum before its comparison. 100.000 ETH = 100000e18 Wei.
 genesisPrefundETHWei = "100000000000000000000000"
 
+# The pre-funded amount has no agglayer collateral, so Step F must trim the native exits to the
+# budget — the default capMode ("none") forbids trimming and would fail, so a trimming mode is
+# required here. "amount" makes the large pre-funded holders absorb the trim.
+capMode = "amount"
+
 # Base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits and
 # errors on discrepancies. Default: "" (disabled).
 bridgeServiceURL = "https://bridge-api.cardona.zkevm-rpc.com"
