@@ -128,8 +128,10 @@ func TestMergeAddresses(t *testing.T) {
 	a := common.HexToAddress("0x01")
 	b := common.HexToAddress("0x02")
 	c := common.HexToAddress("0x03")
+	// The zero address is kept: it can hold value (e.g. burned funds) that the certificate
+	// must account for.
 	merged := mergeAddresses([]common.Address{a, b}, []common.Address{b, c, {}})
-	require.ElementsMatch(t, []common.Address{a, b, c}, merged)
+	require.ElementsMatch(t, []common.Address{a, b, c, {}}, merged)
 }
 
 func TestSaveJSONErrorBranches(t *testing.T) {
