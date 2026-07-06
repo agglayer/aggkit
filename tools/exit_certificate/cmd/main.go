@@ -26,10 +26,8 @@ Pipeline steps (run in order by default):
      for wrapped token mappings.
 
   A  Collect every value-holding address at the target block via a state-trie
-     dump (debug_accountRange) plus Transfer-event logs per wrapped token.
-     Strategy is set via options.addressDiscovery (auto | stateDump | logs |
-     both); "auto" falls back to receipt harvesting when debug_accountRange is
-     unavailable.
+     dump (debug_accountRange, for native-ETH holders and contracts) plus
+     Transfer-event logs per wrapped token (for token holders).
 
   B  Scan EOA native-token balances and wrapped-token balances for every address
      found in step A.

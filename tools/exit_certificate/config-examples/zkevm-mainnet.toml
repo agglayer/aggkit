@@ -38,14 +38,12 @@ Password = "<PASSWORD>"
 
 [options]
 blockRange = 10000
-stepAWindowSize = 20000
 concurrencyLimit = 200
 rpcBatchSize = 99
 rpcDelayMs = 10
 outputDir = "./output-mainnet"
 l1StartBlock = 22431675
 l2StartBlock = 0
-addressDiscovery = "auto"
 ignoreGenesisBalance = false
 ignoreUnclaimed = false
 ignoreBalanceMismatch = false

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -14,14 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// decodeBody reads the full request body so the handler can branch on batch ('[') vs single ('{').
-func decodeBody(t *testing.T, r *http.Request) []byte {
-	t.Helper()
-	body, err := io.ReadAll(r.Body)
-	require.NoError(t, err)
-	return body
-}
-
 const (
 	stepAAddr1 = "0x1000000000000000000000000000000000000001"
 	stepAAddr2 = "0x2000000000000000000000000000000000000002"
@@ -29,7 +20,6 @@ const (
 	stepAToken = "0x4000000000000000000000000000000000000004"
 
 	rpcMethodDebugAccountRange = "debug_accountRange"
-	rpcMethodEthGetTxReceipt   = "eth_getTransactionReceipt"
 )
 
 // topicForAddr left-pads a 20-byte address into a 32-byte indexed event topic.
@@ -121,17 +111,24 @@ func TestRunStepA_KeepsZeroAddress(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req jsonRPCRequest
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
-		require.Equal(t, rpcMethodEthGetLogs, req.Method)
-		// A transfer addr1 → 0x0 (tokens parked at the zero address).
-		logs := `[{"topics":["` + transferTopic.Hex() + `","` +
-			topicForAddr(stepAAddr1) + `","` + zeroTopic + `"]}]`
-		_, _ = w.Write(encodeRPC(t, req.ID, logs))
+		switch req.Method {
+		case rpcMethodDebugAccountRange:
+			result := `{"root":"0x0","accounts":{"` + stepAAddr1 + `":{"address":"` + stepAAddr1 + `"}},"next":""}`
+			_, _ = w.Write(encodeRPC(t, req.ID, result))
+		case rpcMethodEthGetLogs:
+			// A transfer addr1 → 0x0 (tokens parked at the zero address).
+			logs := `[{"topics":["` + transferTopic.Hex() + `","` +
+				topicForAddr(stepAAddr1) + `","` + zeroTopic + `"]}]`
+			_, _ = w.Write(encodeRPC(t, req.ID, logs))
+		default:
+			t.Errorf("unexpected method %q", req.Method)
+		}
 	}))
 	defer server.Close()
 
 	cfg := &Config{
 		L2RPCURL: server.URL,
-		Options:  Options{AddressDiscovery: addressDiscoveryLogs, BlockRange: defaultBlockRange, ConcurrencyLimit: 2},
+		Options:  Options{BlockRange: defaultBlockRange, ConcurrencyLimit: 2},
 	}
 	wrappedTokens := []WrappedToken{{WrappedTokenAddress: common.HexToAddress(stepAToken)}}
 	result, err := RunStepA(context.Background(), cfg, 10, wrappedTokens)
@@ -142,8 +139,8 @@ func TestRunStepA_KeepsZeroAddress(t *testing.T) {
 	}, result.Addresses, "the zero address survives the final merge and sort")
 }
 
-// RunStepA in "both" mode merges the state-dump accounts with the Transfer-log holders.
-func TestRunStepA_Both_MergesSources(t *testing.T) {
+// RunStepA merges the state-dump accounts with the Transfer-log holders.
+func TestRunStepA_MergesSources(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +166,6 @@ func TestRunStepA_Both_MergesSources(t *testing.T) {
 	cfg := &Config{
 		L2RPCURL: server.URL,
 		Options: Options{
-			AddressDiscovery: addressDiscoveryBoth,
 			BlockRange:       defaultBlockRange,
 			ConcurrencyLimit: 2,
 			L2StartBlock:     0,
@@ -183,80 +179,6 @@ func TestRunStepA_Both_MergesSources(t *testing.T) {
 		common.HexToAddress(stepAAddr1),
 		common.HexToAddress(stepAAddr2),
 	}, result.Addresses, "addresses are merged, de-duplicated and sorted")
-}
-
-// In "auto" mode, when debug_accountRange is unavailable the step falls back to receipt
-// harvesting (block bodies + receipts) and still collects Transfer-log holders.
-func TestRunStepA_Auto_FallsBackToReceipts(t *testing.T) {
-	t.Parallel()
-
-	txHash := "0x0000000000000000000000000000000000000000000000000000000000001234"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body := decodeBody(t, r)
-		w.Header().Set("Content-Type", "application/json")
-
-		// Batch request (block headers) — body is a JSON array.
-		if len(body) > 0 && body[0] == '[' {
-			var reqs []jsonRPCRequest
-			require.NoError(t, json.Unmarshal(body, &reqs))
-			resps := make([]jsonRPCResponse, len(reqs))
-			for i, req := range reqs {
-				resps[i] = jsonRPCResponse{
-					JSONRPC: "2.0", ID: req.ID,
-					Result: json.RawMessage(`{"transactions":["` + txHash + `"]}`),
-				}
-			}
-			b, err := json.Marshal(resps)
-			require.NoError(t, err)
-			_, _ = w.Write(b)
-			return
-		}
-
-		var req jsonRPCRequest
-		require.NoError(t, json.Unmarshal(body, &req))
-		switch req.Method {
-		case rpcMethodDebugAccountRange:
-			// Simulate a node without the debug_accountRange method.
-			resp := jsonRPCResponse{JSONRPC: "2.0", ID: req.ID,
-				Error: &jsonRPCError{Code: -32601, Message: "the method " + rpcMethodDebugAccountRange + " does not exist"}}
-			b, err := json.Marshal(resp)
-			require.NoError(t, err)
-			_, _ = w.Write(b)
-		case rpcMethodEthGetTxReceipt:
-			receipt := `{"from":"` + stepAAddr1 + `","to":"` + stepAAddr3 +
-				`","contractAddress":null,"logs":[]}`
-			_, _ = w.Write(encodeRPC(t, req.ID, receipt))
-		case rpcMethodEthGetLogs:
-			logs := `[{"topics":["` + transferTopic.Hex() + `","` +
-				topicForAddr(stepAAddr1) + `","` + topicForAddr(stepAAddr2) + `"]}]`
-			_, _ = w.Write(encodeRPC(t, req.ID, logs))
-		default:
-			t.Fatalf("unexpected method %q", req.Method)
-		}
-	}))
-	defer server.Close()
-
-	cfg := &Config{
-		L2RPCURL: server.URL,
-		Options: Options{
-			AddressDiscovery: addressDiscoveryAuto,
-			BlockRange:       defaultBlockRange,
-			StepAWindowSize:  10,
-			RPCBatchSize:     10,
-			ConcurrencyLimit: 2,
-			L2StartBlock:     0,
-		},
-	}
-	wrappedTokens := []WrappedToken{{WrappedTokenAddress: common.HexToAddress(stepAToken)}}
-
-	result, err := RunStepA(context.Background(), cfg, 5, wrappedTokens)
-	require.NoError(t, err)
-	// addr1, addr3 from the receipt; addr2 from the Transfer log.
-	require.ElementsMatch(t, []common.Address{
-		common.HexToAddress(stepAAddr1),
-		common.HexToAddress(stepAAddr2),
-		common.HexToAddress(stepAAddr3),
-	}, result.Addresses)
 }
 
 func TestDecodeNextKey(t *testing.T) {
@@ -286,16 +208,6 @@ func TestDecodeNextKey(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, b)
 	})
-}
-
-func TestNormalizeAddressDiscovery(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, addressDiscoveryAuto, normalizeAddressDiscovery(""))
-	require.Equal(t, addressDiscoveryAuto, normalizeAddressDiscovery("nonsense"))
-	require.Equal(t, addressDiscoveryStateDump, normalizeAddressDiscovery(addressDiscoveryStateDump))
-	require.Equal(t, addressDiscoveryLogs, normalizeAddressDiscovery(addressDiscoveryLogs))
-	require.Equal(t, addressDiscoveryBoth, normalizeAddressDiscovery(addressDiscoveryBoth))
 }
 
 func TestAccountAddress(t *testing.T) {
@@ -371,48 +283,6 @@ func TestCollectAccountsViaStateDump_TruncationErrors(t *testing.T) {
 	_, err := collectAccountsViaStateDump(context.Background(), cfg, 100)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "did not complete")
-}
-
-func TestRunStepA_StateDumpOnly(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req jsonRPCRequest
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
-		require.Equal(t, rpcMethodDebugAccountRange, req.Method, "stateDump mode must not scan logs")
-		_, _ = w.Write(encodeRPC(t, req.ID,
-			`{"root":"0x0","accounts":{"`+stepAAddr1+`":{"address":"`+stepAAddr1+`"}},"next":""}`))
-	}))
-	defer server.Close()
-
-	cfg := &Config{L2RPCURL: server.URL, Options: Options{AddressDiscovery: addressDiscoveryStateDump}}
-	result, err := RunStepA(context.Background(), cfg, 10, nil)
-	require.NoError(t, err)
-	require.Equal(t, []common.Address{common.HexToAddress(stepAAddr1)}, result.Addresses)
-}
-
-func TestRunStepA_LogsOnly(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req jsonRPCRequest
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
-		require.Equal(t, rpcMethodEthGetLogs, req.Method, "logs mode must not dump state")
-		_, _ = w.Write(encodeRPC(t, req.ID,
-			`[{"topics":["`+transferTopic.Hex()+`","`+topicForAddr(stepAAddr1)+`","`+topicForAddr(stepAAddr2)+`"]}]`))
-	}))
-	defer server.Close()
-
-	cfg := &Config{
-		L2RPCURL: server.URL,
-		Options:  Options{AddressDiscovery: addressDiscoveryLogs, BlockRange: defaultBlockRange, ConcurrencyLimit: 2},
-	}
-	wrappedTokens := []WrappedToken{{WrappedTokenAddress: common.HexToAddress(stepAToken)}}
-	result, err := RunStepA(context.Background(), cfg, 10, wrappedTokens)
-	require.NoError(t, err)
-	require.Equal(t, []common.Address{
-		common.HexToAddress(stepAAddr1), common.HexToAddress(stepAAddr2),
-	}, result.Addresses)
 }
 
 // The Transfer-log scan must start at block 0 regardless of l2StartBlock, so token-only holders

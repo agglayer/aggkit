@@ -83,13 +83,10 @@ The zero address is **kept** like any other account: tokens transferred to `0x00
 `totalSupply` (a plain transfer is not a burn) and it can hold native ETH, so dropping it would
 leave the certificate unbalanced against the LBT.
 
-- **Option:** `addressDiscovery` — `"auto"` (default: probe `debug_accountRange`, use dump + logs;
-  else fall back to receipt harvesting via `eth_getBlockByNumber` + `eth_getTransactionReceipt` in
-  `stepAWindowSize` windows, which misses internal value transfers), `"stateDump"`, `"logs"`, `"both"`.
-  The sources cover complementary blind spots — the dump cannot see token-only EOAs (not in the
-  account trie) and the logs cannot see accounts that never touched a wrapped token (native-ETH
-  holders, contracts) — so the single-source modes are debugging aids: a run on one source
-  under-covers value and Step F aborts on the LBT mismatch. Use `auto`/`both` for real runs.
+Both sources always run and merge — they cover complementary blind spots (the dump cannot see
+token-only EOAs, not in the account trie; the logs cannot see accounts that never touched a wrapped
+token: native-ETH holders, contracts). There is no fallback: an unusable dump fails Step A.
+
 - **Output:** `step-a-addresses.json` (`[]common.Address`)
 
 ### Step B — EOA balance checking + ERC-20 detection
@@ -413,9 +410,9 @@ Defaults applied by `LoadConfig`:
 - **File chain with capping:** when `ignoreBalanceMismatch=true` produces a capped cert, the effective chain becomes: Step D → Step E → **Step F (capped)** → Step G → … Always check whether `step-f-capped-certificate.json` exists when investigating balance issues.
 - **`--verbose` flag:** the logger defaults to `info` level; pass `--verbose` to enable `debug` output.
 - **SC-locked value can be negative** when genesis state was pre-loaded or the LBT is stale — the genesis-balance guard (`ignoreGenesisBalance=false`, the default) catches this early.
-- **Step A needs an archive node.** `debug_accountRange` at `targetBlock` is the preferred source;
-  when unavailable, the `auto` discovery mode falls back to receipt harvesting (which misses internal
-  value transfers).
+- **Step A needs an archive node exposing `debug_accountRange`.** The state dump at `targetBlock`
+  is mandatory (no fallback): without it Step A fails, since native-ETH holders and contracts would
+  be silently omitted.
 - **Step G2 requires Anvil only in shadow-fork mode** (`options.verifyNewLocalExitRootUsingShadowFork=true`; `anvil` binary in `$PATH`, from the Foundry toolchain). The default off-chain mode needs no Anvil.
 - **FEP chains are not supported.** Only Pessimistic Proof certificates are generated.
 - **`SetClaim` and `UpdatedUnsetGlobalIndexHashChain` events are not handled** — value from those flows may be missing.

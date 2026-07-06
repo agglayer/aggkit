@@ -14,14 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// Address discovery modes selectable via options.addressDiscovery for Step A.
-const (
-	addressDiscoveryAuto      = "auto"
-	addressDiscoveryStateDump = "stateDump"
-	addressDiscoveryLogs      = "logs"
-	addressDiscoveryBoth      = "both"
-)
-
 const (
 	// accountRangePageSize is the number of accounts requested per debug_accountRange page.
 	// Both geth and erigon/cdk-erigon cap a single response at 256 (paginating via the next cursor),
@@ -81,19 +73,12 @@ func (d accountRangeDialect) String() string {
 // RunStepA collects every value-holding address at targetBlock without replaying the full
 // transaction history via debug_traceTransaction.
 //
-// It combines two cheap sources and merges them:
+// It always combines two cheap sources and merges them, each covering the other's blind spot:
 //  1. a state-trie dump at targetBlock (debug_accountRange) — every account with non-zero
 //     balance/nonce/code (all native-ETH holders and every contract), and
 //  2. Transfer event logs per wrapped token (eth_getLogs) — every token holder, including
-//     token-only EOAs that never appear in a trace (an ERC-20 transfer only mutates the token
-//     contract's storage, so the recipient account itself is never "touched").
-//
-// The behaviour is selected by cfg.Options.AddressDiscovery:
-//   - "stateDump": source 1 only
-//   - "logs":      source 2 only
-//   - "both":      sources 1 + 2
-//   - "auto" (default): probe debug_accountRange; if supported use 1 + 2, otherwise fall back to
-//     receipt harvesting (block bodies + tx receipts) + 2 and log a warning.
+//     token-only EOAs that never appear in a state dump or a trace (an ERC-20 transfer only
+//     mutates the token contract's storage, so the recipient account itself is never "touched").
 func RunStepA(
 	ctx context.Context, cfg *Config, targetBlock uint64, wrappedTokens []WrappedToken,
 ) (*StepAResult, error) {
@@ -105,9 +90,6 @@ func RunStepA(
 		return nil, fmt.Errorf("targetBlock %d is before l2StartBlock %d", targetBlock, cfg.Options.L2StartBlock)
 	}
 
-	mode := normalizeAddressDiscovery(cfg.Options.AddressDiscovery)
-	log.Infof("Address discovery mode: %s", mode)
-
 	finalAddrs := make(map[common.Address]struct{})
 	add := func(addrs []common.Address) {
 		for _, a := range addrs {
@@ -115,9 +97,16 @@ func RunStepA(
 		}
 	}
 
-	if err := discoverAddresses(ctx, cfg, targetBlock, wrappedTokens, mode, add); err != nil {
-		return nil, err
+	accounts, err := collectAccountsViaStateDump(ctx, cfg, targetBlock)
+	if err != nil {
+		return nil, fmt.Errorf("state dump: %w", err)
 	}
+	add(accounts)
+	holders, err := collectTokenHoldersViaLogs(ctx, cfg, targetBlock, wrappedTokens)
+	if err != nil {
+		return nil, fmt.Errorf("token holders via logs: %w", err)
+	}
+	add(holders)
 
 	// The zero address is deliberately kept: it can hold value like any other account (a plain
 	// transfer(0x0, amount) is not a burn — the tokens stay in totalSupply — and native ETH can be
@@ -134,83 +123,6 @@ func RunStepA(
 
 	log.Infof("STEP A complete: %d unique addresses", len(addresses))
 	return &StepAResult{Addresses: addresses, WrappedTokens: wrappedTokens}, nil
-}
-
-// discoverAddresses runs the address-discovery sources selected by mode, feeding every collected
-// address into add. The "auto" mode probes the state dump and falls back to receipt harvesting.
-func discoverAddresses(
-	ctx context.Context, cfg *Config, targetBlock uint64,
-	wrappedTokens []WrappedToken, mode string, add func([]common.Address),
-) error {
-	switch mode {
-	case addressDiscoveryStateDump:
-		accounts, err := collectAccountsViaStateDump(ctx, cfg, targetBlock)
-		if err != nil {
-			return fmt.Errorf("state dump: %w", err)
-		}
-		add(accounts)
-	case addressDiscoveryLogs:
-		holders, err := collectTokenHoldersViaLogs(ctx, cfg, targetBlock, wrappedTokens)
-		if err != nil {
-			return fmt.Errorf("token holders via logs: %w", err)
-		}
-		add(holders)
-	case addressDiscoveryBoth:
-		if err := addStateDumpAndLogs(ctx, cfg, targetBlock, wrappedTokens, add); err != nil {
-			return err
-		}
-	default: // auto
-		accounts, err := collectAccountsViaStateDump(ctx, cfg, targetBlock)
-		if err != nil {
-			log.Warnf("⚠️  STEP A: state dump unavailable (%v); falling back to receipt "+
-				"harvesting + Transfer logs. NOTE: internal value transfers (a CALL with value to a fresh "+
-				"address) are NOT captured by this fallback, so some native-ETH holders may be missed.", err)
-			receiptsAddrs, rerr := collectAddressesViaReceipts(ctx, cfg, targetBlock)
-			if rerr != nil {
-				return fmt.Errorf("receipt-harvest fallback: %w", rerr)
-			}
-			add(receiptsAddrs)
-		} else {
-			add(accounts)
-		}
-		holders, err := collectTokenHoldersViaLogs(ctx, cfg, targetBlock, wrappedTokens)
-		if err != nil {
-			return fmt.Errorf("token holders via logs: %w", err)
-		}
-		add(holders)
-	}
-	return nil
-}
-
-// addStateDumpAndLogs runs both the state dump and the Transfer-log scan.
-func addStateDumpAndLogs(
-	ctx context.Context, cfg *Config, targetBlock uint64,
-	wrappedTokens []WrappedToken, add func([]common.Address),
-) error {
-	accounts, err := collectAccountsViaStateDump(ctx, cfg, targetBlock)
-	if err != nil {
-		return fmt.Errorf("state dump: %w", err)
-	}
-	add(accounts)
-	holders, err := collectTokenHoldersViaLogs(ctx, cfg, targetBlock, wrappedTokens)
-	if err != nil {
-		return fmt.Errorf("token holders via logs: %w", err)
-	}
-	add(holders)
-	return nil
-}
-
-// normalizeAddressDiscovery validates the configured discovery mode, defaulting to "auto".
-func normalizeAddressDiscovery(mode string) string {
-	switch mode {
-	case addressDiscoveryStateDump, addressDiscoveryLogs, addressDiscoveryBoth, addressDiscoveryAuto:
-		return mode
-	case "":
-		return addressDiscoveryAuto
-	default:
-		log.Warnf("Unknown addressDiscovery %q; defaulting to %q", mode, addressDiscoveryAuto)
-		return addressDiscoveryAuto
-	}
 }
 
 // collectAccountsViaStateDump walks the entire account trie at targetBlock via paginated
@@ -275,8 +187,7 @@ func collectAccountsViaStateDump(ctx context.Context, cfg *Config, targetBlock u
 	// Guard against a node that returns an empty dump without an RPC error — e.g. a stock geth
 	// archive node without address preimages, where incompletes=false skips every account. A real
 	// chain at any block always has accounts (at minimum the bridge), so 0 here means the dump is
-	// unusable. Returning an error makes "auto" fall back to receipt harvesting and makes
-	// "stateDump"/"both" fail loudly, instead of silently omitting native holders and contracts.
+	// unusable and Step A fails loudly instead of silently omitting native holders and contracts.
 	if len(addrSet) == 0 {
 		return nil, fmt.Errorf("debug_accountRange returned 0 accounts at %s (node may lack address "+
 			"preimages); cannot use the state dump", blockTag)
@@ -493,146 +404,4 @@ func fetchTransferHoldersInRange(
 		}
 	}
 	return addrs, nil
-}
-
-// collectAddressesViaReceipts is the auto-mode fallback used when debug_accountRange is
-// unavailable. It scans block bodies for tx hashes in windows (bounding memory) and extracts
-// addresses from each transaction receipt (from, to, created contract, log emitters). It is much
-// cheaper than full tracing but misses internal value transfers (a CALL with value to a fresh
-// address emits no log or receipt entry).
-func collectAddressesViaReceipts(ctx context.Context, cfg *Config, targetBlock uint64) ([]common.Address, error) {
-	windowSize := uint64(cfg.Options.StepAWindowSize)
-	if windowSize == 0 {
-		windowSize = defaultStepAWindowSize
-	}
-
-	addrSet := make(map[common.Address]struct{})
-	for start := cfg.Options.L2StartBlock; start <= targetBlock; start += windowSize {
-		end := min(start+windowSize-1, targetBlock)
-		hashes, err := scanBlockHeaders(ctx, cfg.L2RPCURL, start, end,
-			cfg.Options.RPCBatchSize, cfg.Options.ConcurrencyLimit)
-		if err != nil {
-			return nil, fmt.Errorf("scan blocks [%d-%d]: %w", start, end, err)
-		}
-		if len(hashes) == 0 {
-			continue
-		}
-		if err := runWorkerPool(
-			ctx, hashes, cfg.Options.ConcurrencyLimit,
-			func(hash common.Hash) ([]common.Address, error) {
-				addrs, rerr := receiptAddresses(ctx, cfg.L2RPCURL, hash)
-				if rerr != nil {
-					log.Warnf("STEP A fallback: receipt failed for %s (skipping): %v", hash.Hex(), rerr)
-					return nil, nil
-				}
-				return addrs, nil
-			},
-			func(addrs []common.Address) {
-				for _, a := range addrs {
-					addrSet[a] = struct{}{}
-				}
-			},
-			"Receipts",
-		); err != nil {
-			return nil, fmt.Errorf("fetch receipts [%d-%d]: %w", start, end, err)
-		}
-	}
-
-	addresses := make([]common.Address, 0, len(addrSet))
-	for addr := range addrSet {
-		addresses = append(addresses, addr)
-	}
-	return addresses, nil
-}
-
-// receiptAddresses fetches eth_getTransactionReceipt for hash and returns all addresses
-// found in the receipt: sender (from), recipient (to), created contract, and log emitters.
-func receiptAddresses(ctx context.Context, rpcURL string, hash common.Hash) ([]common.Address, error) {
-	result, err := singleRPC(ctx, rpcURL, "eth_getTransactionReceipt", []any{hash.Hex()}, defaultRetries)
-	if err != nil {
-		return nil, fmt.Errorf("receipt %s: %w", hash.Hex(), err)
-	}
-
-	if len(result) == 0 || string(result) == "null" {
-		return nil, fmt.Errorf("receipt for %s is null", hash.Hex())
-	}
-
-	var receipt struct {
-		From            string  `json:"from"`
-		To              *string `json:"to"`
-		ContractAddress *string `json:"contractAddress"`
-		Logs            []struct {
-			Address string `json:"address"`
-		} `json:"logs"`
-	}
-	if err := json.Unmarshal(result, &receipt); err != nil {
-		return nil, fmt.Errorf("unmarshal receipt %s: %w", hash.Hex(), err)
-	}
-
-	addrSet := make(map[common.Address]struct{})
-	addHex := func(s string) {
-		if s == "" || s == "0x" {
-			return
-		}
-		// The zero address is kept like any other account (see RunStepA).
-		addrSet[common.HexToAddress(s)] = struct{}{}
-	}
-
-	addHex(receipt.From)
-	if receipt.To != nil {
-		addHex(*receipt.To)
-	}
-	if receipt.ContractAddress != nil {
-		addHex(*receipt.ContractAddress)
-	}
-	for _, l := range receipt.Logs {
-		addHex(l.Address)
-	}
-
-	addresses := make([]common.Address, 0, len(addrSet))
-	for addr := range addrSet {
-		addresses = append(addresses, addr)
-	}
-	return addresses, nil
-}
-
-func scanBlockHeaders(
-	ctx context.Context, rpcURL string, startBlock, targetBlock uint64, batchSize, concurrency int,
-) ([]common.Hash, error) {
-	totalBlocks := targetBlock - startBlock + 1
-	log.Infof("Scanning %d blocks [ %d to %d ] for tx hashes (concurrency=%d, batchSize=%d)...",
-		totalBlocks, startBlock, targetBlock, concurrency, batchSize)
-
-	calls := make([]RPCCall, totalBlocks)
-	for b := startBlock; b <= targetBlock; b++ {
-		calls[b-startBlock] = RPCCall{
-			Method: "eth_getBlockByNumber",
-			Params: []any{toBlockTag(b), false},
-		}
-	}
-
-	results, err := concurrentBatchRPC(ctx, rpcURL, calls, batchSize, concurrency, "STEP A: L2 RPC/blockHeaders")
-	if err != nil {
-		return nil, fmt.Errorf("scan block headers: %w", err)
-	}
-
-	var hashes []common.Hash
-	for _, result := range results {
-		if result == nil {
-			continue
-		}
-		var block struct {
-			Transactions []string `json:"transactions"`
-		}
-		if err := json.Unmarshal(result, &block); err != nil {
-			log.Warnf("Failed to unmarshal block header: %v", err)
-			continue
-		}
-		for _, h := range block.Transactions {
-			hashes = append(hashes, common.HexToHash(h))
-		}
-	}
-
-	log.Infof("Scan complete: %d tx hashes from %d blocks", len(hashes), totalBlocks)
-	return hashes, nil
 }

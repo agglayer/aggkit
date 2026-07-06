@@ -51,10 +51,6 @@ rollupManagerAddress = "<ROLLUP_MANAGER_ADDRESS>"
 # Number of blocks per log query (e.g. BridgeEvent scans). Default: 5000.
 blockRange = 10000
 
-# Blocks loaded into memory at once by Step A's receipt-harvesting fallback (used when
-# debug_accountRange is unavailable in "auto" mode). Default: 150000.
-stepAWindowSize = 150000
-
 # Max concurrent RPC batches / worker count. Default: 20.
 concurrencyLimit = 200
 
@@ -81,12 +77,6 @@ l1EndBlock = 0
 
 # First L2 block to scan. Default: 0 (genesis).
 l2StartBlock = 0
-
-# Step A address-discovery strategy: "auto" (default: state dump + Transfer logs, falling back to
-# receipt harvesting when debug_accountRange is unavailable), "stateDump", "logs" or "both".
-# "stateDump" and "logs" alone are debugging modes: the dump misses token-only EOAs and the logs
-# miss native-ETH holders and contracts. Use "auto" or "both" for real runs.
-addressDiscovery = "auto"
 
 # Downgrade the genesis-balance guard (non-zero ETH balance at block 0) from an abort to a warning.
 # Enable only for Kurtosis/test environments. Default: false.

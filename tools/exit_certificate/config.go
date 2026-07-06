@@ -19,11 +19,7 @@ import (
 
 // Options holds tuning parameters for RPC parallelism and output.
 type Options struct {
-	BlockRange int `json:"blockRange"`
-	// StepAWindowSize is the number of blocks loaded into memory at once by Step A's
-	// receipt-harvesting fallback (used when debug_accountRange is unavailable in "auto" mode).
-	// Defaults to 150000, independently of BlockRange.
-	StepAWindowSize  int    `json:"stepAWindowSize"`
+	BlockRange       int    `json:"blockRange"`
 	ConcurrencyLimit int    `json:"concurrencyLimit"`
 	RPCBatchSize     int    `json:"rpcBatchSize"`
 	RPCDelayMs       int    `json:"rpcDelayMs"`
@@ -59,12 +55,6 @@ type Options struct {
 	// genesis premint, clamping to 0 and silently dropping contract-held ETH. Set to false to fall
 	// back to the LBT − EOA derivation for the native token.
 	NativeSCLockedFromContracts bool `json:"nativeSCLockedFromContracts"`
-	// AddressDiscovery selects the strategy used by Step A to collect value-holding addresses:
-	// "stateDump" (debug_accountRange only), "logs" (Transfer logs only), "both", or "auto"
-	// (the default: probe debug_accountRange and use both, else fall back to receipt harvesting
-	// plus Transfer logs). The single-source modes are debugging aids — the dump misses token-only
-	// EOAs and the logs miss native-ETH holders and contracts — so real runs need "auto" or "both".
-	AddressDiscovery string `json:"addressDiscovery"`
 	// IgnoreBalanceMismatch suppresses the error returned by Step F when token balances
 	// do not match. Set to true only when investigating discrepancies without blocking the pipeline.
 	IgnoreBalanceMismatch bool `json:"ignoreBalanceMismatch"`
@@ -160,21 +150,18 @@ type Config struct {
 
 const (
 	defaultBlockRange       = 5000
-	defaultStepAWindowSize  = 150000
 	defaultConcurrencyLimit = 20
 	defaultRPCBatchSize     = 200
 )
 
 var defaultOptions = Options{
 	BlockRange:                            defaultBlockRange,
-	StepAWindowSize:                       defaultStepAWindowSize,
 	ConcurrencyLimit:                      defaultConcurrencyLimit,
 	RPCBatchSize:                          defaultRPCBatchSize,
 	RPCDelayMs:                            0,
 	OutputDir:                             "output",
 	L1StartBlock:                          0,
 	L2StartBlock:                          0,
-	AddressDiscovery:                      addressDiscoveryAuto,
 	UseAgglayerAdminToStepFCheck:          true,
 	VerifyNewLocalExitRootUsingShadowFork: true,
 	CapMode:                               CapModeNone,
@@ -420,9 +407,6 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	if raw.BlockRange > 0 {
 		opts.BlockRange = raw.BlockRange
 	}
-	if raw.StepAWindowSize > 0 {
-		opts.StepAWindowSize = raw.StepAWindowSize
-	}
 	if raw.ConcurrencyLimit > 0 {
 		opts.ConcurrencyLimit = raw.ConcurrencyLimit
 	}
@@ -443,9 +427,6 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	}
 	if raw.L2StartBlock > 0 {
 		opts.L2StartBlock = raw.L2StartBlock
-	}
-	if raw.AddressDiscovery != "" {
-		opts.AddressDiscovery = raw.AddressDiscovery
 	}
 	if raw.AgglayerAdminURL != "" {
 		opts.AgglayerAdminURL = raw.AgglayerAdminURL
@@ -544,7 +525,6 @@ type rawConfig struct {
 
 type rawOpts struct {
 	BlockRange                            int                    `json:"blockRange"`
-	StepAWindowSize                       int                    `json:"stepAWindowSize"`
 	ConcurrencyLimit                      int                    `json:"concurrencyLimit"`
 	RPCBatchSize                          int                    `json:"rpcBatchSize"`
 	RPCDelayMs                            int                    `json:"rpcDelayMs"`
@@ -552,7 +532,6 @@ type rawOpts struct {
 	L1StartBlock                          uint64                 `json:"l1StartBlock"`
 	L1EndBlock                            uint64                 `json:"l1EndBlock"`
 	L2StartBlock                          uint64                 `json:"l2StartBlock"`
-	AddressDiscovery                      string                 `json:"addressDiscovery"`
 	AgglayerAdminURL                      string                 `json:"agglayerAdminURL"`
 	AgglayerAdminToken                    string                 `json:"agglayerAdminToken"`
 	AgglayerClient                        *agglayer.ClientConfig `json:"agglayerClient"`

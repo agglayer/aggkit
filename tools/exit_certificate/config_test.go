@@ -371,57 +371,11 @@ func TestLoadConfig_DefaultOptions(t *testing.T) {
 	cfg, err := LoadConfig(path)
 	require.NoError(t, err)
 	require.Equal(t, 5000, cfg.Options.BlockRange)
-	require.Equal(t, 150000, cfg.Options.StepAWindowSize)
 	require.Equal(t, 20, cfg.Options.ConcurrencyLimit)
 	require.Equal(t, 200, cfg.Options.RPCBatchSize)
 	require.Equal(t, 0, cfg.Options.RPCDelayMs)
 	require.Equal(t, uint64(0), cfg.Options.L1StartBlock)
 	require.True(t, cfg.Options.UseAgglayerAdminToStepFCheck)
-}
-
-func TestLoadConfig_StepAWindowSize(t *testing.T) {
-	t.Parallel()
-
-	t.Run("explicit value is read from file", func(t *testing.T) {
-		t.Parallel()
-
-		path := filepath.Join(t.TempDir(), "cfg.json")
-		data := `{
-			"l2RpcUrl": "http://localhost:8545",
-			"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
-			"exitAddress": "0x0000000000000000000000000000000000000001",
-			"targetBlock": "100",
-			"options": {
-				"agglayerAdminURL": "https://admin.example.com",
-				"stepAWindowSize": 2000
-			}
-		}`
-		require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
-
-		cfg, err := LoadConfig(path)
-		require.NoError(t, err)
-		require.Equal(t, 2000, cfg.Options.StepAWindowSize)
-	})
-
-	t.Run("defaults to 5000 when absent", func(t *testing.T) {
-		t.Parallel()
-
-		path := filepath.Join(t.TempDir(), "cfg.json")
-		data := `{
-			"l2RpcUrl": "http://localhost:8545",
-			"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
-			"exitAddress": "0x0000000000000000000000000000000000000001",
-			"targetBlock": "100",
-			"options": {
-				"agglayerAdminURL": "https://admin.example.com"
-			}
-		}`
-		require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
-
-		cfg, err := LoadConfig(path)
-		require.NoError(t, err)
-		require.Equal(t, defaultStepAWindowSize, cfg.Options.StepAWindowSize)
-	})
 }
 
 func TestLoadConfig_RelativeOutputDir(t *testing.T) {
@@ -550,7 +504,6 @@ func TestMergeOptions_BoolFlags(t *testing.T) {
 		"options": {
 			"agglayerAdminURL": "https://admin.example.com",
 			"ignoreGenesisBalance": true,
-			"addressDiscovery": "stateDump",
 			"ignoreBalanceMismatch": true,
 			"ignoreUnclaimed": true
 		}
@@ -560,7 +513,6 @@ func TestMergeOptions_BoolFlags(t *testing.T) {
 	cfg, err := LoadConfig(path)
 	require.NoError(t, err)
 	require.True(t, cfg.Options.IgnoreGenesisBalance)
-	require.Equal(t, addressDiscoveryStateDump, cfg.Options.AddressDiscovery)
 	require.True(t, cfg.Options.IgnoreBalanceMismatch)
 	require.True(t, cfg.Options.IgnoreUnclaimed)
 }

@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newStepAServer returns a stub that serves a one-account state dump, so Step A completes via the
-// stateDump path without any log or receipt call.
+// newStepAServer returns a stub that serves a one-account state dump; with no wrapped tokens the
+// Transfer-log scan is skipped, so Step A completes on the dump alone.
 func newStepAServer(t *testing.T) string {
 	t.Helper()
 	return newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
@@ -34,10 +34,7 @@ func TestRunSingleA(t *testing.T) {
 
 	cfg := &Config{
 		L2RPCURL: newStepAServer(t), L2BridgeAddress: common.BytesToAddress([]byte("bridge")),
-		Options: Options{
-			OutputDir: dir, RPCBatchSize: 10, ConcurrencyLimit: 2,
-			AddressDiscovery: addressDiscoveryStateDump,
-		},
+		Options: Options{OutputDir: dir, RPCBatchSize: 10, ConcurrencyLimit: 2},
 	}
 
 	// No LBT file → wrapped tokens unavailable, logged as a warning; the step still runs.
@@ -55,10 +52,7 @@ func TestRunAllStepASuccess(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &Config{
 		L2RPCURL: newStepAServer(t), L2BridgeAddress: common.BytesToAddress([]byte("bridge")),
-		Options: Options{
-			OutputDir: dir, RPCBatchSize: 10, ConcurrencyLimit: 2,
-			AddressDiscovery: addressDiscoveryStateDump,
-		},
+		Options: Options{OutputDir: dir, RPCBatchSize: 10, ConcurrencyLimit: 2},
 	}
 
 	res, err := runAllStepA(context.Background(), cfg, dir, 2, nil)

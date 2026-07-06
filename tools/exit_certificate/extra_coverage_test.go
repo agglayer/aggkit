@@ -12,23 +12,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// RunStepA in "auto" mode with an unusable state dump falls back to receipt harvesting; with
-// transaction-free blocks and no wrapped tokens the result is an empty address set.
-func TestRunStepAEmptyBlocks(t *testing.T) {
+// RunStepA fails when the state dump is unusable: there is no fallback, since a run without the
+// dump would silently omit every native-ETH holder and contract.
+func TestRunStepA_FailsWhenDumpUnavailable(t *testing.T) {
 	t.Parallel()
-	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
-		if method == rpcMethodEthGetBlockByNumber {
-			return map[string]any{"transactions": []string{}}
-		}
-		return "0x" // debug_accountRange probe fails → receipt-harvest fallback
+	url := newBatchRPCServer(t, func(string, []json.RawMessage) any {
+		return "0x" // debug_accountRange probe fails in both dialects
 	})
 	cfg := &Config{
 		L2RPCURL: url,
-		Options:  Options{RPCBatchSize: 10, ConcurrencyLimit: 2, StepAWindowSize: 100},
+		Options:  Options{RPCBatchSize: 10, ConcurrencyLimit: 2},
 	}
-	res, err := RunStepA(context.Background(), cfg, 2, nil)
-	require.NoError(t, err)
-	require.Empty(t, res.Addresses)
+	_, err := RunStepA(context.Background(), cfg, 2, nil)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "state dump")
 }
 
 func TestFetchWETHBalance(t *testing.T) {
@@ -137,37 +134,6 @@ func TestSaveJSONErrorBranches(t *testing.T) {
 	notADir := filepath.Join(dir, "afile")
 	require.NoError(t, os.WriteFile(notADir, []byte("x"), 0o600))
 	require.NotPanics(t, func() { saveJSON(notADir, "out.json", map[string]int{"a": 1}) })
-}
-
-func TestReceiptAddresses(t *testing.T) {
-	t.Parallel()
-	from := "0x1000000000000000000000000000000000000001"
-	to := "0x1000000000000000000000000000000000000002"
-	logAddr := "0x1000000000000000000000000000000000000003"
-
-	srv := newRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
-		require.Equal(t, "eth_getTransactionReceipt", method)
-		receipt := map[string]any{
-			"from": from, "to": to,
-			"logs": []map[string]string{{"address": logAddr}},
-		}
-		out, _ := json.Marshal(receipt)
-		return out, nil
-	})
-
-	addrs, err := receiptAddresses(context.Background(), srv.URL, common.HexToHash("0xabc"))
-	require.NoError(t, err)
-	require.ElementsMatch(t,
-		[]common.Address{common.HexToAddress(from), common.HexToAddress(to), common.HexToAddress(logAddr)}, addrs)
-}
-
-func TestReceiptAddressesNull(t *testing.T) {
-	t.Parallel()
-	srv := newRPCStub(t, func(string, []any) (json.RawMessage, *jsonRPCError) {
-		return json.RawMessage(`null`), nil
-	})
-	_, err := receiptAddresses(context.Background(), srv.URL, common.HexToHash("0xabc"))
-	require.ErrorContains(t, err, "is null")
 }
 
 func TestFetchL2ChainID(t *testing.T) {

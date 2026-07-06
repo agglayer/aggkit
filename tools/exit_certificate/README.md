@@ -84,7 +84,7 @@ The field names are identical in both formats. Pass whichever you created with `
 
 | Field | Required | Description |
 | :---: | :------: | :---------: |
-| `l2RpcUrl` | Yes | L2 JSON-RPC endpoint. Step A uses `debug_accountRange` when available (an archive node is required to query state at `targetBlock`); without it, the `auto` discovery mode falls back to receipt harvesting. |
+| `l2RpcUrl` | Yes | L2 JSON-RPC endpoint. Step A requires `debug_accountRange` (an archive node exposing the `debug` namespace, to query state at `targetBlock`); without it Step A fails. |
 | `l1RpcUrl` | Yes* | L1 JSON-RPC endpoint. Required by Step E (unclaimed deposit detection) and Step I (`L1InfoTreeLeafCount`). Without it Step E is silently skipped and Step I fails — the resulting certificate will be incomplete. |
 | `l2BridgeAddress` | Yes | L2 bridge contract address. |
 | `l1BridgeAddress` | No | L1 bridge contract address. Defaults to `l2BridgeAddress`. |
@@ -104,15 +104,13 @@ The field names are identical in both formats. Pass whichever you created with `
 | Field | Default | Description |
 | :---: | :-----: | :---------: |
 | `blockRange` | `5000` | Block range per `eth_getLogs` query (Steps 0, B, E). |
-| `stepAWindowSize` | `150000` | Number of blocks loaded into memory per iteration by Step A's receipt-harvesting fallback (used when `debug_accountRange` is unavailable in `auto` mode). |
 | `concurrencyLimit` | `20` | Max concurrent RPC requests. |
 | `rpcBatchSize` | `200` | Max calls per JSON-RPC batch request. |
 | `rpcDelayMs` | `0` | Delay between RPC batches (rate limiting). |
 | `outputDir` | `./output` | Directory for intermediate and final output files. Relative paths resolve from the config file directory. |
 | `l1StartBlock` | `0` | L1 block to start scanning from (Step E). |
 | `l1EndBlock` | `0` | Optional L1 cutoff block. When set (> 0), Step E scans L1 for unclaimed deposits only up to this block (and filters the bridge-service cross-check accordingly) and Step I starts its backward `UpdateL1InfoTreeV2` scan from it. This prevents L1 deposits submitted after the L2 snapshot from blocking the pipeline (AET-03): pick a block at or after the moment the sequencer was stopped. `0` (default) means no cutoff — the current latest L1 block is used. A value below `l1StartBlock` is rejected at config load; a value beyond the current L1 head is rejected when the step runs (it is almost surely a misconfiguration, e.g. an L2 block number). |
-| `l2StartBlock` | `0` | L2 block to start scanning from (Step A's receipt-harvesting fallback only; the state dump reads the trie at `targetBlock` and the Transfer-log scan always starts at genesis). |
-| `addressDiscovery` | `"auto"` | Step A address-discovery strategy: `"auto"` (probe `debug_accountRange` and use state dump + Transfer logs, else fall back to receipt harvesting + Transfer logs), `"stateDump"`, `"logs"`, or `"both"`. The two sources cover complementary blind spots, so the single-source modes are for debugging only: `"stateDump"` misses token-only EOAs and `"logs"` misses native-ETH holders and contracts (see [Step A](#step-a--collect-addresses)). Unknown values fall back to `"auto"` with a warning. |
+| `l2StartBlock` | `0` | Sanity guard: Step A errors if `targetBlock` is below this value. The state dump reads the trie at `targetBlock` and the Transfer-log scan always starts at genesis. |
 | `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F in agglayer mode (Step F errors if it runs without this set). Not needed when `useAgglayerAdminToStepFCheck: false` (offline LBT mode). |
 | `agglayerAdminToken` | `""` | Optional bearer token for authenticating requests to `agglayerAdminURL`. Leave empty when the admin endpoint is unauthenticated; set it only when the endpoint is protected (e.g. behind Google Cloud IAP). |
 | `agglayerClient` | `{}` | Agglayer gRPC client config (same as aggsender's `agglayer.ClientConfig`). Set at least `agglayerClient.GRPC.URL`. Required for Steps H, SUBMIT, and WAIT. |
@@ -221,7 +219,7 @@ This produces and signs the certificate but **does not submit it**. SUBMIT and W
 | :--: | ---- | ------------ |
 | CHECK | Verify prerequisites | Checks Anvil, L1 RPC, network type (PP only), threshold = 1, no custom gas token. |
 | 0 | Generate LBT | Resolves `targetBlock` to a concrete block number, then scans `NewWrappedToken` events and fetches `totalSupply` per wrapped token at that block. |
-| A | Collect addresses | Discovers every value-holding address from the final state (`debug_accountRange` state dump) plus `Transfer` event logs per wrapped token. Strategy selected by `addressDiscovery` (`auto` falls back to receipt harvesting when `debug_accountRange` is unavailable). |
+| A | Collect addresses | Discovers every value-holding address from the final state (`debug_accountRange` state dump, for native-ETH holders and contracts) plus `Transfer` event logs per wrapped token (for token holders). Both sources always run and merge. |
 | B | EOA balances + ERC-20 detection | B1: classifies addresses and fetches ETH/token balances for EOAs. B2: probes contracts for the ERC-20 interface and checks if they hold tracked wrapped tokens. B3: fetches holder breakdowns for `extraErc20Contracts` (skips any already processed by B2). |
 | C | SC-locked value | Computes value locked in contracts: `SC_locked = LBT_totalSupply − EOA_accumulated` per token. With `nativeSCLockedFromContracts=true` the native token's SC-locked value is measured from actual contract ETH balances instead. |
 | D | Build certificate | Creates the `Certificate` with `BridgeExit` entries for every (EOA, token) pair, every decomposed ERC-20 holder (Step C holder bridges), and every token with SC-locked value. |
@@ -318,18 +316,9 @@ Discovers every value-holding address at `targetBlock` from the **final state** 
 1. **State dump** — walks the entire account trie at `targetBlock` via paginated `debug_accountRange` calls: every account with non-zero balance/nonce/code (all native-ETH holders and every contract) in `O(#accounts)`. The node's `debug_accountRange` dialect (geth vs erigon/cdk-erigon) is auto-detected on the first page.
 2. **`Transfer` event logs** — scans `eth_getLogs` for each wrapped token (list from the Step 0 LBT) across `[0, targetBlock]`, collecting the indexed `from`/`to` of every `Transfer`. This surfaces token-only EOAs that have no nonce/balance/code and therefore appear in neither a state dump nor a trace. The scan deliberately starts at block 0 (not `l2StartBlock`) so passive holders that received tokens early are not dropped.
 
-The strategy is selected by `options.addressDiscovery`:
+Both sources always run and their results are merged: they cover complementary blind spots (the state dump cannot see token-only EOAs, which do not exist in the account trie; the Transfer logs cannot see accounts that never touched a wrapped token, i.e. native-ETH holders and contracts), so neither is sufficient on its own.
 
-| Value | Behaviour |
-| ----- | --------- |
-| `auto` (default) | Probe `debug_accountRange`; if supported, use state dump + Transfer logs. Otherwise fall back to **receipt harvesting** (block bodies + `eth_getTransactionReceipt` from `l2StartBlock`, in windows of `options.stepAWindowSize`) + Transfer logs, with a warning — the fallback misses internal value transfers (a CALL with value to a fresh address leaves no receipt entry). |
-| `stateDump` | State dump only. **Misses token-only EOAs**: an ERC-20 transfer only mutates the token contract's storage, so a recipient with no nonce/balance/code does not exist in the account trie. |
-| `logs` | Transfer logs only. **Misses native-ETH holders and contracts**: an account that never sent or received a wrapped token appears in no `Transfer` event, so it is never discovered and Step B never fetches its balances. (Addresses that *are* discovered do get both their token **and** ETH balances fetched.) |
-| `both` | State dump + Transfer logs; errors if `debug_accountRange` is unavailable. |
-
-The two sources cover complementary blind spots, so **`stateDump` and `logs` alone are debugging modes** (e.g. to isolate one source or compare their outputs) — a certificate generated from a single source under-covers value and Step F will abort on the resulting LBT mismatch. Use `auto` or `both` for a real run.
-
-The state dump fails loudly (instead of returning a truncated or empty set) when the node keeps returning a non-empty pagination cursor past the page cap or returns 0 accounts (e.g. a geth archive node without address preimages) — in `auto` mode the latter triggers the receipt-harvesting fallback.
+The state dump fails loudly (instead of returning a truncated or empty set) when `debug_accountRange` is unavailable, when the node keeps returning a non-empty pagination cursor past the page cap, or when it returns 0 accounts (e.g. a geth archive node without address preimages) — there is no fallback, since a run without the dump would silently omit every native-ETH holder and contract.
 
 The **zero address** (`0x000…000`) is treated like any other account: a plain `transfer(0x0, amount)` is not a burn (the tokens remain in `totalSupply`) and native ETH can be sent there too, so its balances must be scanned and covered by the certificate for the totals to reconcile with the LBT.
 
