@@ -86,6 +86,10 @@ leave the certificate unbalanced against the LBT.
 - **Option:** `addressDiscovery` — `"auto"` (default: probe `debug_accountRange`, use dump + logs;
   else fall back to receipt harvesting via `eth_getBlockByNumber` + `eth_getTransactionReceipt` in
   `stepAWindowSize` windows, which misses internal value transfers), `"stateDump"`, `"logs"`, `"both"`.
+  The sources cover complementary blind spots — the dump cannot see token-only EOAs (not in the
+  account trie) and the logs cannot see accounts that never touched a wrapped token (native-ETH
+  holders, contracts) — so the single-source modes are debugging aids: a run on one source
+  under-covers value and Step F aborts on the LBT mismatch. Use `auto`/`both` for real runs.
 - **Output:** `step-a-addresses.json` (`[]common.Address`)
 
 ### Step B — EOA balance checking + ERC-20 detection

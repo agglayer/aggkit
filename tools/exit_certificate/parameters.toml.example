@@ -84,6 +84,8 @@ l2StartBlock = 0
 
 # Step A address-discovery strategy: "auto" (default: state dump + Transfer logs, falling back to
 # receipt harvesting when debug_accountRange is unavailable), "stateDump", "logs" or "both".
+# "stateDump" and "logs" alone are debugging modes: the dump misses token-only EOAs and the logs
+# miss native-ETH holders and contracts. Use "auto" or "both" for real runs.
 addressDiscovery = "auto"
 
 # Downgrade the genesis-balance guard (non-zero ETH balance at block 0) from an abort to a warning.

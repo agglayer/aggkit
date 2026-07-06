@@ -112,7 +112,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `l1StartBlock` | `0` | L1 block to start scanning from (Step E). |
 | `l1EndBlock` | `0` | Optional L1 cutoff block. When set (> 0), Step E scans L1 for unclaimed deposits only up to this block (and filters the bridge-service cross-check accordingly) and Step I starts its backward `UpdateL1InfoTreeV2` scan from it. This prevents L1 deposits submitted after the L2 snapshot from blocking the pipeline (AET-03): pick a block at or after the moment the sequencer was stopped. `0` (default) means no cutoff — the current latest L1 block is used. A value below `l1StartBlock` is rejected at config load; a value beyond the current L1 head is rejected when the step runs (it is almost surely a misconfiguration, e.g. an L2 block number). |
 | `l2StartBlock` | `0` | L2 block to start scanning from (Step A's receipt-harvesting fallback only; the state dump reads the trie at `targetBlock` and the Transfer-log scan always starts at genesis). |
-| `addressDiscovery` | `"auto"` | Step A address-discovery strategy: `"auto"` (probe `debug_accountRange` and use state dump + Transfer logs, else fall back to receipt harvesting + Transfer logs), `"stateDump"`, `"logs"`, or `"both"`. Unknown values fall back to `"auto"` with a warning. |
+| `addressDiscovery` | `"auto"` | Step A address-discovery strategy: `"auto"` (probe `debug_accountRange` and use state dump + Transfer logs, else fall back to receipt harvesting + Transfer logs), `"stateDump"`, `"logs"`, or `"both"`. The two sources cover complementary blind spots, so the single-source modes are for debugging only: `"stateDump"` misses token-only EOAs and `"logs"` misses native-ETH holders and contracts (see [Step A](#step-a--collect-addresses)). Unknown values fall back to `"auto"` with a warning. |
 | `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F in agglayer mode (Step F errors if it runs without this set). Not needed when `useAgglayerAdminToStepFCheck: false` (offline LBT mode). |
 | `agglayerAdminToken` | `""` | Optional bearer token for authenticating requests to `agglayerAdminURL`. Leave empty when the admin endpoint is unauthenticated; set it only when the endpoint is protected (e.g. behind Google Cloud IAP). |
 | `agglayerClient` | `{}` | Agglayer gRPC client config (same as aggsender's `agglayer.ClientConfig`). Set at least `agglayerClient.GRPC.URL`. Required for Steps H, SUBMIT, and WAIT. |
@@ -323,9 +323,11 @@ The strategy is selected by `options.addressDiscovery`:
 | Value | Behaviour |
 | ----- | --------- |
 | `auto` (default) | Probe `debug_accountRange`; if supported, use state dump + Transfer logs. Otherwise fall back to **receipt harvesting** (block bodies + `eth_getTransactionReceipt` from `l2StartBlock`, in windows of `options.stepAWindowSize`) + Transfer logs, with a warning — the fallback misses internal value transfers (a CALL with value to a fresh address leaves no receipt entry). |
-| `stateDump` | State dump only. |
-| `logs` | Transfer logs only. |
+| `stateDump` | State dump only. **Misses token-only EOAs**: an ERC-20 transfer only mutates the token contract's storage, so a recipient with no nonce/balance/code does not exist in the account trie. |
+| `logs` | Transfer logs only. **Misses native-ETH holders and contracts**: an account that never sent or received a wrapped token appears in no `Transfer` event, so it is never discovered and Step B never fetches its balances. (Addresses that *are* discovered do get both their token **and** ETH balances fetched.) |
 | `both` | State dump + Transfer logs; errors if `debug_accountRange` is unavailable. |
+
+The two sources cover complementary blind spots, so **`stateDump` and `logs` alone are debugging modes** (e.g. to isolate one source or compare their outputs) — a certificate generated from a single source under-covers value and Step F will abort on the resulting LBT mismatch. Use `auto` or `both` for a real run.
 
 The state dump fails loudly (instead of returning a truncated or empty set) when the node keeps returning a non-empty pagination cursor past the page cap or returns 0 accounts (e.g. a geth archive node without address preimages) — in `auto` mode the latter triggers the receipt-harvesting fallback.
 

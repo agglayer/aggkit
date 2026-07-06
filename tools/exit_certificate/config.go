@@ -62,7 +62,8 @@ type Options struct {
 	// AddressDiscovery selects the strategy used by Step A to collect value-holding addresses:
 	// "stateDump" (debug_accountRange only), "logs" (Transfer logs only), "both", or "auto"
 	// (the default: probe debug_accountRange and use both, else fall back to receipt harvesting
-	// plus Transfer logs).
+	// plus Transfer logs). The single-source modes are debugging aids — the dump misses token-only
+	// EOAs and the logs miss native-ETH holders and contracts — so real runs need "auto" or "both".
 	AddressDiscovery string `json:"addressDiscovery"`
 	// IgnoreBalanceMismatch suppresses the error returned by Step F when token balances
 	// do not match. Set to true only when investigating discrepancies without blocking the pipeline.
