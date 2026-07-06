@@ -245,11 +245,8 @@ var (
 			Reason:           aggsenderEpochPercentageHint,
 		},
 		{
-			// WarnOnly: the e2e infra (kurtosis-cdk) still generates configs with
-			// a [REST] section; fail hard once it is migrated to [PublicREST].
 			FieldNamePattern: "REST",
 			Reason:           restSectionDeprecatedHint,
-			WarnOnly:         true,
 		},
 	}
 )

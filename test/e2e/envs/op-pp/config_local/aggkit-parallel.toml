@@ -51,7 +51,7 @@ Outputs     = ["stderr"]
 [RPC]
 Port = "5596"
 
-[REST]
+[PublicREST]
 Port = "5597"
 
 [Prometheus]
