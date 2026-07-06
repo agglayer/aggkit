@@ -49,10 +49,11 @@ type Options struct {
 	// IgnoreOnTraceError skips transactions whose debug_traceTransaction call fails instead of
 	// aborting Step A. Failed tx hashes are saved to step-a-failed-traces.json for review.
 	IgnoreOnTraceError bool `json:"ignoreOnTraceError"`
-	// NativeSCLockedFromContracts, when true, computes the native-token SC-locked value in Step C
-	// from the actual ETH balances held by contract accounts (summed, excluding the L2 bridge) rather
-	// than from LBT − EOA_accumulated. This is needed on chains with a native genesis premint, where
-	// LBT − EOA underflows and clamps to 0, silently dropping contract-held ETH. Defaults to false.
+	// NativeSCLockedFromContracts, when true (the default), computes the native-token SC-locked value
+	// in Step C from the actual ETH balances held by contract accounts (summed, excluding the L2
+	// bridge) rather than from LBT − EOA_accumulated. That formula underflows on chains with a native
+	// genesis premint, clamping to 0 and silently dropping contract-held ETH. Set to false to fall
+	// back to the LBT − EOA derivation for the native token.
 	NativeSCLockedFromContracts bool `json:"nativeSCLockedFromContracts"`
 	// IgnoreBalanceMismatch suppresses the error returned by Step F when token balances
 	// do not match. Set to true only when investigating discrepancies without blocking the pipeline.
@@ -161,6 +162,7 @@ var defaultOptions = Options{
 	UseAgglayerAdminToStepFCheck:          true,
 	VerifyNewLocalExitRootUsingShadowFork: true,
 	CapMode:                               CapModeByAmount,
+	NativeSCLockedFromContracts:           true,
 	// IgnoreGenesisBalance defaults to false (do abort on a genesis preload).
 }
 

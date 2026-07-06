@@ -82,9 +82,9 @@ ignoreOnTraceError = false
 ignoreGenesisBalance = false
 
 # Compute the native token's SC-locked value in Step C from the actual ETH held by contract accounts
-# (bridge excluded) instead of LBT - EOA. Needed on chains with a native genesis premint, where
-# LBT - EOA underflows and silently drops contract-held ETH. Default: false.
-nativeSCLockedFromContracts = false
+# (bridge excluded) instead of LBT - EOA, which underflows on chains with a native genesis premint
+# and silently drops contract-held ETH. Set to false to use the LBT - EOA derivation. Default: true.
+nativeSCLockedFromContracts = true
 
 # Skip adding unclaimed L1->L2 deposits to the certificate in Step E (still detected and warned).
 # Default: false.

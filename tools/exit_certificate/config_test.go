@@ -124,6 +124,14 @@ func TestLoadConfig_CapMode(t *testing.T) {
 	cfg, err := LoadConfig(pathDefault)
 	require.NoError(t, err)
 	require.Equal(t, CapModeByAmount, cfg.Options.CapMode)
+	// nativeSCLockedFromContracts defaults to true; an explicit false must survive the merge.
+	require.True(t, cfg.Options.NativeSCLockedFromContracts)
+	pathNoNative := filepath.Join(t.TempDir(), "no-native.json")
+	require.NoError(t, os.WriteFile(pathNoNative,
+		fmt.Appendf(nil, base, `, "nativeSCLockedFromContracts": false`), 0o600))
+	cfg, err = LoadConfig(pathNoNative)
+	require.NoError(t, err)
+	require.False(t, cfg.Options.NativeSCLockedFromContracts)
 
 	// Explicit "appearance".
 	pathAppearance := filepath.Join(t.TempDir(), "appearance.json")

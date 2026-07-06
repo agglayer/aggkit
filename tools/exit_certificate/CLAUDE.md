@@ -108,13 +108,14 @@ Skipped automatically when `options.extraErc20Contracts` is empty.
 ### Step C — SC-locked value
 
 - **Formula:** `SC_locked = LBT_totalSupply − accumulated_EOA_balances` per token (clamped to 0 when negative).
-- **Native override:** with `options.nativeSCLockedFromContracts=true`, the native token's SC-locked
-  value is instead measured directly — `applyNativeContractLocked` (run.go) sums `eth_getBalance` of
-  every Step B contract at `targetBlock` (L2 bridge excluded, its balance is the un-released reserve)
-  into `StepBResult.NativeContractLocked`, and `computeSCLocked` uses that instead of `LBT − EOA`.
-  Needed on premint chains where `LBT − EOA` underflows, clamps to 0 and drops contract-held ETH.
-  Wrapped tokens keep the formula. In this mode `--step c` needs the L2 RPC, the Step 0 target block
-  and `step-b-contract-addresses.json`.
+- **Native override:** with `options.nativeSCLockedFromContracts=true` (the default), the native
+  token's SC-locked value is instead measured directly — `applyNativeContractLocked` (run.go) sums
+  `eth_getBalance` of every Step B contract at `targetBlock` (L2 bridge excluded, its balance is the
+  un-released reserve) into `StepBResult.NativeContractLocked`, and `computeSCLocked` uses that
+  instead of `LBT − EOA`, which underflows on premint chains (clamps to 0 and drops contract-held
+  ETH). Wrapped tokens keep the formula; set the option to `false` to use it for the native token
+  too. In this mode `--step c` needs the L2 RPC, the Step 0 target block and
+  `step-b-contract-addresses.json`.
 - **Output:** `step-c-sc-locked-values.json` (`[]SCLockedValue`)
 
 ### Step D — Build certificate

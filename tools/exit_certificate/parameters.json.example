@@ -20,7 +20,7 @@
         "l1StartBlock": 0,
         "ignoreOnTraceError": false,
         "ignoreGenesisBalance": false,
-        "nativeSCLockedFromContracts": false,
+        "nativeSCLockedFromContracts": true,
         "ignoreUnclaimed": false,
         "ignoreBalanceMismatch": false,
         "capMode": "amount",
