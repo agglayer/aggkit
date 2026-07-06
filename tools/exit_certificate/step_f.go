@@ -474,8 +474,9 @@ func compareCertificateToLBT(
 	return checks
 }
 
-// capCertificateExits returns a new slice of bridge exits trimmed to stay within each
-// token's RemainingBalance (= min(LBT, agglayer) from its TokenBalanceCheck).
+// capCertificateExits returns a new slice of bridge exits where each mismatched token's exits are
+// trimmed to stay within its RemainingBalance (= min(LBT, agglayer) from its TokenBalanceCheck).
+// Matched tokens are never trimmed, even when capping triggers for another token.
 //
 // The mode selects the order in which each token's budget is allocated to its exits:
 //   - CapModeByAppearance: exits are served in the order they appear.
@@ -489,7 +490,11 @@ func capCertificateExits(
 ) []*agglayertypes.BridgeExit {
 	remaining := make(map[tokenKey]*big.Int, len(checks))
 	for _, c := range checks {
-		if c.RemainingBalance == nil {
+		// Only mismatched tokens are trimmed. A matched token must never be touched: with the
+		// genesis pre-fund discount, the native token can match while its raw exits legitimately
+		// exceed min(agglayer, lbt) — budgeting it here would silently drop the pre-funded ETH
+		// whenever an unrelated token triggers capping.
+		if c.Match || c.RemainingBalance == nil {
 			continue
 		}
 		k := tokenKey{c.OriginNetwork, common.HexToAddress(c.OriginTokenAddress)}

@@ -527,6 +527,41 @@ func TestCapCertificateExits_LBTMinAgglayer(t *testing.T) {
 	require.Equal(t, big.NewInt(100), result[1].Amount) // capped: 700-600=100
 }
 
+// TestCapCertificateExits_MatchedTokenNeverTrimmed guards against capping a matched token when an
+// unrelated token triggers capping: with the genesis pre-fund discount the native token can match
+// while its raw exits exceed min(agglayer, lbt), so budgeting it would drop the pre-funded ETH.
+func TestCapCertificateExits_MatchedTokenNeverTrimmed(t *testing.T) {
+	t.Parallel()
+
+	token := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	checks := []TokenBalanceCheck{
+		{
+			// Native token: matched thanks to the pre-fund discount; bridged budget (300) is far
+			// below its raw exits (1000).
+			OriginNetwork:      0,
+			OriginTokenAddress: common.Address{}.Hex(),
+			Match:              true,
+			RemainingBalance:   big.NewInt(300),
+		},
+		{
+			// Unrelated mismatched token that triggers the capping.
+			OriginNetwork:      1,
+			OriginTokenAddress: token.Hex(),
+			Match:              false,
+			RemainingBalance:   big.NewInt(100),
+		},
+	}
+	exits := []*agglayertypes.BridgeExit{
+		{TokenInfo: &agglayertypes.TokenInfo{}, Amount: big.NewInt(1000)},
+		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 1, OriginTokenAddress: token}, Amount: big.NewInt(250)},
+	}
+
+	result := capCertificateExits(exits, checks, CapModeByAmount)
+	require.Len(t, result, 2)
+	require.Equal(t, big.NewInt(1000), result[0].Amount) // matched native exit untouched
+	require.Equal(t, big.NewInt(100), result[1].Amount)  // mismatched token capped to its budget
+}
+
 func TestDiscountGenesisPrefund(t *testing.T) {
 	t.Parallel()
 
