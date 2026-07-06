@@ -88,12 +88,13 @@ type Options struct {
 	// exits are emitted in their original order.
 	CapMode string `json:"capMode"`
 	// GenesisPrefundETHWei is an optional amount of native token (in Wei, as a decimal string) that was
-	// pre-funded at genesis and therefore inflates the native-token LBT total without being backed by a
-	// real deposit on the agglayer. When set, Step F subtracts it from the native LBT entry (the gas
-	// token, identified by a zero WrappedTokenAddress) before comparing against the agglayer balance and
-	// the certificate sum — so the comparison balances against the genuinely bridged amount. It affects
-	// the Step F comparison only (and, with IgnoreBalanceMismatch=true, the cap budget); the LBT written
-	// by Step 0 and the Step C SC-locked totals are left untouched. Empty means 0. Typical testnet value:
+	// pre-funded at genesis. Those funds sit in accounts — and therefore in the certificate's bridge
+	// exits — without a matching agglayer deposit, so Step F subtracts this value from the native-token
+	// certificate sum before comparing it against the agglayer balance and the LBT (which only count
+	// genuinely bridged funds), logging the certificate total, the pre-fund and the difference. Only the
+	// compared certificate amount is affected: the cap budget stays min(agglayer, LBT), and the Step 0
+	// LBT and Step C SC-locked totals are untouched. Step B verifies the declared value against the
+	// detected genesis ETH preload total. Empty means 0. Typical testnet value:
 	// 100000 ETH = "100000000000000000000000".
 	GenesisPrefundETHWei string `json:"genesisPrefundETHWei"`
 }

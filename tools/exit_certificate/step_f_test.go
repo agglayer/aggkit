@@ -312,7 +312,7 @@ func TestCompareTokenBalances_AllMatch(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "1000"},
 	}
 
-	checks := compareTokenBalances(groups, agglayerEntries, nil)
+	checks := compareTokenBalances(groups, agglayerEntries, nil, nil)
 	require.Len(t, checks, 1)
 	require.True(t, checks[0].Match)
 	require.Empty(t, checks[0].CertificateEntries)
@@ -334,7 +334,7 @@ func TestCompareTokenBalances_Mismatch(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "999"},
 	}
 
-	checks := compareTokenBalances(groups, agglayerEntries, nil)
+	checks := compareTokenBalances(groups, agglayerEntries, nil, nil)
 	require.Len(t, checks, 1)
 	require.False(t, checks[0].Match)
 	require.Equal(t, "1000", checks[0].CertificateAmount)
@@ -356,7 +356,7 @@ func TestCompareTokenBalances_MissingInAgglayer(t *testing.T) {
 		},
 	}
 
-	checks := compareTokenBalances(groups, nil, nil)
+	checks := compareTokenBalances(groups, nil, nil, nil)
 	require.Len(t, checks, 1)
 	require.False(t, checks[0].Match)
 	require.Equal(t, "500", checks[0].CertificateAmount)
@@ -514,7 +514,7 @@ func TestCapCertificateExits_LBTMinAgglayer(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "800"},
 	}, []LBTEntry{
 		{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "700"},
-	})
+	}, nil)
 	require.Equal(t, big.NewInt(700), checks[0].RemainingBalance)
 
 	exits := []*agglayertypes.BridgeExit{
@@ -527,39 +527,53 @@ func TestCapCertificateExits_LBTMinAgglayer(t *testing.T) {
 	require.Equal(t, big.NewInt(100), result[1].Amount) // capped: 700-600=100
 }
 
-func TestSubtractGenesisPrefund(t *testing.T) {
+func TestDiscountGenesisPrefund(t *testing.T) {
 	t.Parallel()
 
 	token := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-	newEntries := func() []LBTEntry {
-		return []LBTEntry{
-			{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "1000"},
-			{WrappedTokenAddress: token, OriginNetwork: 1, OriginTokenAddress: token, Balance: "500"},
-		}
+	tokenKeyNonNative := tokenKey{OriginNetwork: 1, OriginTokenAddress: token}
+
+	// Unset prefund → certificate amount unchanged.
+	require.Equal(t, big.NewInt(1000), discountGenesisPrefund(big.NewInt(1000), nativeTokenKey, nil))
+
+	// Discounts only the native token; other tokens untouched.
+	require.Equal(t, big.NewInt(700),
+		discountGenesisPrefund(big.NewInt(1000), nativeTokenKey, big.NewInt(300)))
+	require.Equal(t, big.NewInt(1000),
+		discountGenesisPrefund(big.NewInt(1000), tokenKeyNonNative, big.NewInt(300)))
+
+	// Prefund larger than the certificate sum floors at 0 (never negative).
+	require.Equal(t, big.NewInt(0),
+		discountGenesisPrefund(big.NewInt(1000), nativeTokenKey, big.NewInt(4000)))
+
+	// Zero prefund is a no-op.
+	require.Equal(t, big.NewInt(1000),
+		discountGenesisPrefund(big.NewInt(1000), nativeTokenKey, big.NewInt(0)))
+}
+
+// TestCompareTokenBalances_GenesisPrefundDiscount checks the native certificate sum is discounted
+// by the declared genesis pre-fund before the three-way comparison, and other tokens are untouched.
+func TestCompareTokenBalances_GenesisPrefundDiscount(t *testing.T) {
+	t.Parallel()
+
+	dest := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	// Native exits: 300 genuinely bridged + 700 genesis pre-fund = 1000 total.
+	groups := map[tokenKey][]*agglayertypes.BridgeExit{
+		nativeTokenKey: {
+			{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(1000)},
+		},
+	}
+	agglayerEntries := []agglayerTokenEntry{
+		{OriginNetwork: 0, OriginTokenAddress: common.Address{}, Amount: "300"},
+	}
+	lbt := []LBTEntry{
+		{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "300"},
 	}
 
-	// Empty prefund → entries returned unchanged (same backing slice).
-	entries := newEntries()
-	require.Equal(t, "1000", subtractGenesisPrefund(entries, "")[0].Balance)
-
-	// Subtracts only from the native (zero WrappedTokenAddress) entry; token entry untouched.
-	adjusted := subtractGenesisPrefund(newEntries(), "300")
-	require.Equal(t, "700", adjusted[0].Balance)
-	require.Equal(t, "500", adjusted[1].Balance)
-
-	// Does not mutate the caller's slice.
-	orig := newEntries()
-	_ = subtractGenesisPrefund(orig, "300")
-	require.Equal(t, "1000", orig[0].Balance)
-
-	// Prefund larger than the native balance floors at 0 (never negative).
-	require.Equal(t, "0", subtractGenesisPrefund(newEntries(), "4000")[0].Balance)
-
-	// Zero / invalid prefund is a no-op.
-	require.Equal(t, "1000", subtractGenesisPrefund(newEntries(), "0")[0].Balance)
-	require.Equal(t, "1000", subtractGenesisPrefund(newEntries(), "not-a-number")[0].Balance)
-
-	// No native entry present → nothing subtracted, token entry preserved.
-	onlyToken := []LBTEntry{{WrappedTokenAddress: token, OriginNetwork: 1, OriginTokenAddress: token, Balance: "500"}}
-	require.Equal(t, "500", subtractGenesisPrefund(onlyToken, "300")[0].Balance)
+	checks := compareTokenBalances(groups, agglayerEntries, lbt, big.NewInt(700))
+	require.Len(t, checks, 1)
+	require.True(t, checks[0].Match)
+	require.Equal(t, "300", checks[0].CertificateAmount) // discounted sum is what gets compared
+	// The cap budget stays min(agglayer, lbt): the genuinely bridged amount, not the raw cert sum.
+	require.Equal(t, big.NewInt(300), checks[0].RemainingBalance)
 }

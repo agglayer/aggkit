@@ -49,11 +49,6 @@ func RunStepF(
 	log.Info(" STEP F — Agglayer token balance check")
 	log.Info("═══════════════════════════════════════════")
 
-	// Subtract any configured genesis pre-fund from the native LBT total before comparing: that native
-	// balance is inflated by funds minted at genesis (not backed by a real agglayer deposit), so the
-	// comparison must run against the genuinely bridged amount. Applies to both comparison modes below.
-	lbtEntries = subtractGenesisPrefund(lbtEntries, cfg.Options.GenesisPrefundETHWei)
-
 	// Whenever the agglayer admin endpoint is configured, dump its full local balance tree (LBT) to
 	// disk up front — regardless of the comparison mode below — so the agglayer-side balances are always
 	// captured. The response is reused by the agglayer comparison to avoid a second RPC round-trip.
@@ -89,7 +84,7 @@ func RunStepF(
 	}
 
 	groups := groupBridgeExitsByToken(certificate)
-	checks := compareTokenBalances(groups, agglayerResp.Balances, lbtEntries)
+	checks := compareTokenBalances(groups, agglayerResp.Balances, lbtEntries, genesisPrefundWei(cfg))
 
 	allMatch := true
 	for _, c := range checks {
@@ -103,7 +98,7 @@ func RunStepF(
 					c.OriginNetwork, c.OriginTokenAddress, c.CertificateAmount, c.AgglayerAmount)
 			}
 			for i, e := range c.CertificateEntries {
-				log.Infof("    ⚠️ [%d] dest_network=%d dest=%s amount=%s",
+				log.Debugf("    ⚠️ [%d] dest_network=%d dest=%s amount=%s",
 					i, e.DestinationNetwork, e.DestinationAddress, e.Amount)
 			}
 		} else {
@@ -129,43 +124,43 @@ func RunStepF(
 	return finalizeStepFResult(cfg, certificate, checks, raw, allMatch)
 }
 
-// subtractGenesisPrefund returns a copy of entries with prefundWei subtracted from the native-token
-// LBT entry (the gas token, identified by a zero WrappedTokenAddress), floored at zero. It is used to
-// discount native tokens minted at genesis, which inflate the native LBT total without a matching
-// agglayer deposit. prefundWei is a decimal Wei string; an empty/zero/invalid value (validation happens
-// in LoadConfig) or the absence of a native entry leaves entries unchanged.
-func subtractGenesisPrefund(entries []LBTEntry, prefundWei string) []LBTEntry {
-	if prefundWei == "" {
-		return entries
-	}
-	prefund, ok := new(big.Int).SetString(prefundWei, decimalBase)
-	if !ok || prefund.Sign() <= 0 {
-		return entries
-	}
+// nativeTokenKey identifies the native token (the gas token: origin network 0, zero origin address)
+// in the comparison maps.
+var nativeTokenKey = tokenKey{}
 
-	adjusted := make([]LBTEntry, len(entries))
-	copy(adjusted, entries)
-	for i := range adjusted {
-		if adjusted[i].WrappedTokenAddress != (common.Address{}) {
-			continue // not the native entry
-		}
-		current, ok := new(big.Int).SetString(adjusted[i].Balance, decimalBase)
-		if !ok {
-			log.Warnf("genesisPrefundETHWei: could not parse native LBT balance %q; leaving it unchanged",
-				adjusted[i].Balance)
-			return adjusted
-		}
-		reduced := new(big.Int).Sub(current, prefund)
-		if reduced.Sign() < 0 {
-			log.Warnf("genesisPrefundETHWei (%s) exceeds native LBT balance (%s); flooring the LBT total at 0",
-				prefund, current)
-			reduced = new(big.Int)
-		}
-		log.Infof("🔧 Genesis pre-fund: native LBT %s − %s = %s (Step F comparison)", current, prefund, reduced)
-		adjusted[i].Balance = reduced.String()
-		return adjusted
+// genesisPrefundWei parses options.genesisPrefundETHWei into a *big.Int, nil when unset. The format
+// is validated by LoadConfig, so a parse failure only happens on hand-built configs and is treated
+// as unset (with a warning).
+func genesisPrefundWei(cfg *Config) *big.Int {
+	if cfg.Options.GenesisPrefundETHWei == "" {
+		return nil
 	}
-	log.Warnf("genesisPrefundETHWei is set (%s) but no native LBT entry was found; nothing subtracted", prefund)
+	v, ok := new(big.Int).SetString(cfg.Options.GenesisPrefundETHWei, decimalBase)
+	if !ok {
+		log.Warnf("invalid options.genesisPrefundETHWei %q ignored", cfg.Options.GenesisPrefundETHWei)
+		return nil
+	}
+	return v
+}
+
+// discountGenesisPrefund subtracts the declared genesis pre-fund from the native-token certificate
+// sum before it is compared, floored at zero. Genesis-minted native funds sit in accounts — and
+// therefore in the certificate's bridge exits — without a matching agglayer deposit, so the
+// comparison must run against the genuinely bridged amount. It logs the certificate total, the
+// declared pre-fund and the resulting difference. Non-native tokens and an unset/zero pre-fund are
+// returned unchanged.
+func discountGenesisPrefund(certAmt *big.Int, k tokenKey, prefund *big.Int) *big.Int {
+	if prefund == nil || prefund.Sign() <= 0 || k != nativeTokenKey {
+		return certAmt
+	}
+	adjusted := new(big.Int).Sub(certAmt, prefund)
+	if adjusted.Sign() < 0 {
+		log.Warnf("🔧 Genesis pre-fund (native token): genesisPrefundETHWei (%s) exceeds the certificate sum (%s); "+
+			"flooring the compared certificate amount at 0", prefund, certAmt)
+		return new(big.Int)
+	}
+	log.Infof("🔧 Genesis pre-fund (native token): certificate=%s − genesisPrefundETHWei=%s = %s "+
+		"(compared certificate amount)", certAmt, prefund, adjusted)
 	return adjusted
 }
 
@@ -204,7 +199,7 @@ func runStepFOfflineLBT(
 
 	log.Info("useAgglayerAdminToStepFCheck=false — comparing LBT (step 0) vs certificate bridge exits (no agglayer query)")
 	groups := groupBridgeExitsByToken(certificate)
-	checks := compareCertificateToLBT(groups, lbtEntries)
+	checks := compareCertificateToLBT(groups, lbtEntries, genesisPrefundWei(cfg))
 
 	allMatch := true
 	for _, c := range checks {
@@ -283,11 +278,13 @@ func groupBridgeExitsByToken(cert *agglayertypes.Certificate) map[tokenKey][]*ag
 // compareTokenBalances builds the per-token three-way comparison list.
 // When lbtEntries is non-nil, match requires LBT == agglayer == certificate sum.
 // When lbtEntries is nil, match requires agglayer == certificate sum (two-way fallback).
-// CertificateEntries is populated only on mismatch.
+// nativePrefund (nil when unset) is discounted from the native-token certificate sum before
+// comparing (see discountGenesisPrefund). CertificateEntries is populated only on mismatch.
 func compareTokenBalances(
 	groups map[tokenKey][]*agglayertypes.BridgeExit,
 	agglayerEntries []agglayerTokenEntry,
 	lbtEntries []LBTEntry,
+	nativePrefund *big.Int,
 ) []TokenBalanceCheck {
 	agglayerMap := make(map[tokenKey]*big.Int, len(agglayerEntries))
 	for _, e := range agglayerEntries {
@@ -333,6 +330,7 @@ func compareTokenBalances(
 		for _, e := range exits {
 			certAmt.Add(certAmt, e.Amount)
 		}
+		certAmt = discountGenesisPrefund(certAmt, k, nativePrefund)
 
 		agglAmt := agglayerMap[k]
 		if agglAmt == nil {
@@ -388,10 +386,11 @@ func compareTokenBalances(
 // compareCertificateToLBT builds a per-token comparison of the certificate bridge-exit sums against
 // the LBT (Step 0) totals, without any agglayer data (used when useAgglayerAdminToStepFCheck=false).
 // Match requires certificate sum == LBT total per token; AgglayerAmount is left empty. RemainingBalance
-// is the LBT total, used as the cap budget when ignoreBalanceMismatch is set. CertificateEntries is
-// populated only on mismatch.
+// is the LBT total, used as the cap budget when ignoreBalanceMismatch is set. nativePrefund (nil when
+// unset) is discounted from the native-token certificate sum before comparing (see
+// discountGenesisPrefund). CertificateEntries is populated only on mismatch.
 func compareCertificateToLBT(
-	groups map[tokenKey][]*agglayertypes.BridgeExit, lbtEntries []LBTEntry,
+	groups map[tokenKey][]*agglayertypes.BridgeExit, lbtEntries []LBTEntry, nativePrefund *big.Int,
 ) []TokenBalanceCheck {
 	lbtMap := make(map[tokenKey]*big.Int, len(lbtEntries))
 	for _, e := range lbtEntries {
@@ -420,6 +419,7 @@ func compareCertificateToLBT(
 		for _, e := range exits {
 			certAmt.Add(certAmt, e.Amount)
 		}
+		certAmt = discountGenesisPrefund(certAmt, k, nativePrefund)
 
 		lbtAmt := lbtMap[k]
 		if lbtAmt == nil {

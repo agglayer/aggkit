@@ -52,8 +52,8 @@ ignoreBalanceMismatch = false
 extraErc20Contracts = []
 
 # Native token pre-funded at genesis (Wei, decimal string). Cardona minted 100000 ETH at genesis,
-# which inflates the native LBT total without a matching agglayer deposit; Step F subtracts this
-# amount from the native LBT entry before its comparison. 100.000 ETH = 100000e18 Wei.
+# which inflates the certificate's native exits without a matching agglayer deposit; Step F subtracts
+# this amount from the native certificate sum before its comparison. 100.000 ETH = 100000e18 Wei.
 genesisPrefundETHWei = "100000000000000000000000"
 
 # Base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits and

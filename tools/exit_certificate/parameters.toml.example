@@ -96,12 +96,12 @@ ignoreBalanceMismatch = false
 # Default: "amount".
 capMode = "amount"
 
-# Optional amount of native token (in Wei, as a decimal string) pre-funded at genesis. Such funds
-# inflate the native-token LBT total without a matching agglayer deposit, so Step F subtracts this
-# value from the native LBT entry before comparing it against the agglayer balance and the certificate
-# sum (affects the Step F comparison and, with ignoreBalanceMismatch = true, the cap budget only; the
-# Step 0 LBT and Step C SC-locked totals are untouched). Example: 100000 ETH = "100000000000000000000000".
-# Default: "" (0, disabled).
+# Optional amount of native token (in Wei, as a decimal string) pre-funded at genesis. Such funds sit
+# in accounts — and therefore in the certificate's bridge exits — without a matching agglayer deposit,
+# so Step F subtracts this value from the native-token certificate sum before comparing it against the
+# agglayer balance and the LBT (only the compared certificate amount is affected; the cap budget stays
+# min(agglayer, lbt)). Step B verifies the value against the detected genesis ETH preload total.
+# Example: 100000 ETH = "100000000000000000000000". Default: "" (0, disabled).
 genesisPrefundETHWei = ""
 
 # Make the Step G lite syncer warn and continue (instead of aborting) on L2 events that would
