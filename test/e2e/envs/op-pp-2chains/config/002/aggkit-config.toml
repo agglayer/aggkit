@@ -651,3 +651,15 @@ Capacity = 100
 URL = "http://agglayer:4443"
 UseTLS = false
 
+# ------------------------------------------------------------------------------
+# [AutoClaim] is present so the `autoclaim` process component (added to this
+# node's --components in docker-compose.yml) can open its storage on boot. With
+# no [[AutoClaim.Claimers]] configured the runtime is a no-op (autoclaim/runtime
+# returns early when no claimer is enabled). The Go e2e test TestAutoClaimL2ToL2AllowAll
+# rewrites this [AutoClaim] section at runtime (see enableAutoClaimL2ToL2 in
+# test/e2e/autoclaim_test.go) to enable the L2ToLx detector + a network-2 claimer,
+# then restores this stub on cleanup. [AutoClaim] must remain the LAST top-level
+# section in this file so the test's patchAutoClaimConfig can replace it cleanly.
+[AutoClaim]
+StoragePath = "/tmp/autoclaim-002.sqlite"
+

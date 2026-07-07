@@ -57,6 +57,33 @@ const (
 	// The on-chain fallback (trusted sequencer URL + port 5577) would resolve to the wrong host in
 	// this docker-compose env, so a static override is required.
 	autoClaimSourceBridgeServiceURL = "http://aggkit-001:5577"
+
+	// The following constants describe the 2-chain env (EnvOpPP2Chains) used by
+	// TestAutoClaimL2ToL2AllowAll. In that env Auto Claim runs on the aggkit-002 (network 2 / L2B)
+	// node: it detects the L2-001 -> L2-002 bridge via the L2ToLx detector, resolves the source
+	// (network 1) bridge service statically, and claims on network 2 through a claimer with its own
+	// l2gersync.
+
+	// autoClaimL2BRPC is the in-network RPC URL of the 2-chain env's second L2 execution client
+	// (op-reth-002). It backs the network-2 claimer's tx sender and its l2gersync.
+	autoClaimL2BRPC = "http://op-reth-002:8545"
+	// autoClaimL2BChainID is the 2-chain env's second L2 chain ID (summary.json: l2_networks.002.chain_id).
+	autoClaimL2BChainID = 20202
+	// autoClaimNet1BridgeServiceURL / autoClaimNet2BridgeServiceURL are the in-network URLs of the two
+	// L2 bridge services, used as static AutoClaim.BridgeServiceFinder.URLs overrides (the on-chain
+	// fallback resolves the wrong host in this docker-compose env).
+	autoClaimNet1BridgeServiceURL = "http://aggkit-001:5577"
+	autoClaimNet2BridgeServiceURL = "http://aggkit-002:5577"
+	// autoClaimL1RollupManagerAddr is the 2-chain env's L1 rollup manager address (summary.json:
+	// networks.l1.contracts.rollup_manager). Required by AutoClaim.BridgeServiceFinder when the
+	// L2ToLx detector is enabled.
+	autoClaimL1RollupManagerAddr = "0x6c6c009cC348976dB4A908c92B24433d4F6edA43"
+	// autoClaimL2BBridgeServiceBaseURL is the external (host) URL of the network-2 bridge service,
+	// which also serves the public Auto Claim request-status API (/autoclaim/v1/bridges/<key>).
+	autoClaimL2BBridgeServiceBaseURL = "http://127.0.0.1:12577"
+	// l2NetworkKeyB mirrors envs.l2NetworkKeyB (unexported): the summary.json key / config dir of the
+	// secondary L2 network (L2B) whose aggkit node runs Auto Claim in the L2->L2 test.
+	l2NetworkKeyB = "002"
 )
 
 type autoClaimRequestResponse struct {
@@ -334,6 +361,292 @@ func assertClaimedOnL1(ctx context.Context, t *testing.T, env *envs.Env, deposit
 	)
 }
 
+// TestAutoClaimL2ToL2AllowAll proves the L2->L2 Auto Claim direction end to end on the 2-chain env
+// (EnvOpPP2Chains, selected via AGGKIT_E2E_ENV=op-pp-2chains). Auto Claim runs on the network-2
+// (L2B) node: the L2ToLx detector observes network 1's local exit root settle to L1, fetches the
+// L2-001 -> L2-002 bridge from network 1's bridge service (static finder URL), and a network-2
+// claimer with its own l2gersync waits for the GER covering that LER to be injected on network 2
+// (GER-injection gating) before claiming. The bridge under test is performed without claiming; the
+// test asserts Auto Claim reaches Confirmed, IsClaimed(depositCount, sourceNetwork=1) on network 2's
+// bridge, and that the destination wrapped-token balance increased.
+func TestAutoClaimL2ToL2AllowAll(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping E2E test in short mode")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 28*time.Minute)
+	defer cancel()
+
+	env := loadAutoClaimL2ToL2TestEnv(t, ctx)
+
+	enableAutoClaimL2ToL2(t, ctx, env, "allow-all")
+	waitForBridgeServiceSynced(ctx, t)
+
+	// Origin (L2A / network 1) transactor funds+bridges the L2-native token; destination
+	// (L2B / network 2) transactor's From address is the claim destination.
+	originOpts, originKey, err := env.L2.Keys.Checkout()
+	require.NoError(t, err)
+	t.Cleanup(func() { env.L2.Keys.Return(originKey) })
+	destOpts, destKey, err := env.L2B.Keys.Checkout()
+	require.NoError(t, err)
+	t.Cleanup(func() { env.L2B.Keys.Return(destKey) })
+
+	// The 2-chain env has no op-batcher/op-proposer for either L2, so the source L2's safe/finalized
+	// heads never advance on their own and its aggsender only certifies blocks up to
+	// min(lastBridgeBlock, lastClaimBlock). A pure L2->L2 bridge produces no claim on the source L2,
+	// so without extra activity the source aggsender never certifies past the bridge and the origin
+	// local exit root is never settled to L1 -- leaving the L2ToLx detector nothing to detect. Drive
+	// background L1->L2 bridge+claim activity on network 1 so an unrelated claim lands after this
+	// bridge, advancing network 1's claim syncer so its aggsender can certify and settle the L2->L2
+	// bridge's LER. This is an environment precondition only; it neither claims the bridge under test
+	// nor relaxes any assertion below. (Same trick as TestAutoClaimL2ToL1AllowAll, applied to the
+	// source network. Network 2 needs no priming: its l2gersync reads at LatestBlock finality, so it
+	// observes aggoracle's GER injection without requiring network-2 finality to advance.)
+	stopPrime := make(chan struct{})
+	primeDone := make(chan struct{})
+	go func() {
+		defer close(primeDone)
+		primeL2ToL2SourceSettlement(ctx, t, env, stopPrime)
+	}()
+	t.Cleanup(func() {
+		close(stopPrime)
+		<-primeDone
+	})
+
+	bridgeAmount := big.NewInt(autoClaimBridgeAmountWei)
+	result, err := BridgeL2ToL2NoClaim(ctx, env, originOpts, destOpts, bridgeAmount, "autoclaim-l2-to-l2-allow-all")
+	require.NoError(t, err)
+	require.Empty(t, result.ClaimTxHash, "test helper must not manually claim on L2B")
+
+	callOpts := &bind.CallOpts{Context: ctx}
+	originAddr := common.HexToAddress(string(result.Bridge.OriginAddress))
+	// The L2B wrapped-token proxy for this L2A-native token is deployed lazily on its first-ever
+	// claim on L2B; before that its balance is definitionally zero.
+	initialBalance := big.NewInt(0)
+
+	// Request key = source:destination:deposit_count. Source is the bridge's literal source network
+	// (env.L2.NetworkID == 1), NOT result.Bridge.OriginNetwork (the token origin network); for an
+	// L2A-native token these are both 1, but keying off the source network is the correct, general
+	// rule -- see the same note in TestAutoClaimL2ToL1AllowAll.
+	requestKey := autoclaimtypes.DeriveRequestKey(env.L2.NetworkID, env.L2B.NetworkID, result.DepositCount)
+
+	confirmed := waitForAutoClaimStatusAt(
+		ctx, t, autoClaimL2BBridgeServiceBaseURL, requestKey, autoclaimtypes.RequestStatusConfirmed,
+	)
+	require.NotNil(t, confirmed.ClaimTxHash, "confirmed Auto Claim request should expose claim tx hash")
+	require.Equal(t, string(result.Bridge.TxHash), confirmed.BridgeTxHash)
+
+	assertClaimedOnL2B(ctx, t, env, result.DepositCount, env.L2.NetworkID)
+
+	// The wrapped token on L2B is deployed by the claim; compute its address and assert the
+	// destination balance increased by the bridged amount.
+	wrappedTokenAddr, err := env.L2B.Contracts.L2Bridge.ComputeTokenProxyAddress(
+		callOpts, result.Bridge.OriginNetwork, originAddr,
+	)
+	require.NoError(t, err, "compute L2B wrapped token address")
+	wrappedToken, err := mintableerc20.NewMintableerc20(wrappedTokenAddr, env.L2B.Client)
+	require.NoError(t, err, "bind L2B wrapped token contract")
+	finalBalance, err := wrappedToken.BalanceOf(callOpts, result.DestinationAddr)
+	require.NoError(t, err, "get L2B wrapped token balance")
+	require.GreaterOrEqual(t, new(big.Int).Sub(finalBalance, initialBalance).Cmp(bridgeAmount), 0)
+}
+
+// primeL2ToL2SourceSettlement repeatedly performs full L1->L2 bridge+claim flows on the source L2
+// (network 1) until stop is closed or ctx is done. Each manual claim advances network 1's aggsender
+// L2 claim syncer, which -- in this batcher-less env where the L2 finalized head is stuck at genesis
+// -- is the only way the source aggsender's certifiable block range grows past a freshly-bridged
+// L2->L2 deposit so its LER can settle to L1. It never touches the L2->L2 bridge under test. Unlike
+// primeL2ClaimSyncer (which relies on an already-enabled L1->L2 Auto Claim path), this claims
+// manually via BridgeL1ToL2 because the source node (aggkit-001) does not run Auto Claim in this test.
+func primeL2ToL2SourceSettlement(ctx context.Context, t *testing.T, env *envs.Env, stop <-chan struct{}) {
+	t.Helper()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		l1Opts, l1Key, err := env.Keys.L1Keys.Checkout()
+		if err != nil {
+			if !sleepOrStop(ctx, stop, 5*time.Second) {
+				return
+			}
+			continue
+		}
+		l2Opts, l2Key, err := env.L2.Keys.Checkout()
+		if err != nil {
+			env.Keys.L1Keys.Return(l1Key)
+			if !sleepOrStop(ctx, stop, 5*time.Second) {
+				return
+			}
+			continue
+		}
+
+		if bridgeErr := BridgeL1ToL2(ctx, env, l1Opts, l2Opts); bridgeErr != nil {
+			log.Infof("prime-l2-to-l2: L1->L2 bridge+claim on network 1 failed: %v", bridgeErr)
+		}
+
+		env.L2.Keys.Return(l2Key)
+		env.Keys.L1Keys.Return(l1Key)
+
+		if !sleepOrStop(ctx, stop, 5*time.Second) {
+			return
+		}
+	}
+}
+
+// assertClaimedOnL2B asserts that network 2's (L2B) bridge marks the claim for the given deposit
+// count and source network as claimed. Mirrors assertClaimedOnL1 but targets env.L2B's bridge.
+func assertClaimedOnL2B(ctx context.Context, t *testing.T, env *envs.Env, depositCount, sourceNetwork uint32) {
+	t.Helper()
+	require.NotNil(t, env.L2B, "assertClaimedOnL2B requires a multi-chain env (env.L2B is nil)")
+	callOpts := &bind.CallOpts{Context: ctx}
+	claimed, err := env.L2B.Contracts.L2Bridge.IsClaimed(callOpts, depositCount, sourceNetwork)
+	require.NoError(t, err, "IsClaimed")
+	require.True(
+		t, claimed,
+		"claim should be marked claimed on L2B (deposit_count=%d source_network=%d)", depositCount, sourceNetwork,
+	)
+}
+
+// loadAutoClaimL2ToL2TestEnv loads the 2-chain env (EnvOpPP2Chains) for the L2->L2 Auto Claim test.
+// It requires env.L2B to be populated (only EnvOpPP2Chains provides it).
+func loadAutoClaimL2ToL2TestEnv(t *testing.T, ctx context.Context) *envs.Env {
+	t.Helper()
+	loadCtx, loadCancel := context.WithTimeout(ctx, 8*time.Minute)
+	defer loadCancel()
+	env, err := envs.LoadEnv(loadCtx, envs.EnvOpPP2Chains)
+	require.NoError(t, err)
+	require.NotNil(t, env.L2B, "TestAutoClaimL2ToL2AllowAll requires the 2-chain env (env.L2B must be non-nil)")
+
+	checkCtx, checkCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer checkCancel()
+	require.NoError(t, env.CheckEnv(checkCtx))
+
+	testEnv = env
+	return env
+}
+
+// enableAutoClaimL2ToL2 restarts the network-2 (aggkit-002) node with a patched config that enables
+// the L2ToLx bridge detector, a BridgeServiceFinder with static URLs for both L2 bridge services,
+// and a single network-2 destination claimer (with its own l2gersync). The original config is
+// restored on cleanup. Auto Claim is left disabled on the network-1 node; the source LER is settled
+// via manual priming instead (see primeL2ToL2SourceSettlement).
+func enableAutoClaimL2ToL2(t *testing.T, ctx context.Context, env *envs.Env, policyName string) {
+	t.Helper()
+	configPath := env.GetAggkitConfigPathForNetwork(l2NetworkKeyB)
+	originalConfig, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		restoreCtx, cancel := context.WithTimeout(context.Background(), autoClaimRestoreWait)
+		defer cancel()
+		if err := env.RestartAggkitServiceWithConfig(restoreCtx, l2NetworkKeyB, func(p string) error {
+			return os.WriteFile(p, originalConfig, 0o600)
+		}); err != nil {
+			t.Logf("failed to restore aggkit-%s config after Auto Claim L2->L2 test: %v", l2NetworkKeyB, err)
+		}
+	})
+
+	restartCtx, cancel := context.WithTimeout(ctx, autoClaimRestartWait)
+	defer cancel()
+	err = env.RestartAggkitServiceWithConfig(restartCtx, l2NetworkKeyB, func(p string) error {
+		patched := patchAutoClaimConfig(string(originalConfig), autoClaimL2ToL2Config(policyName, env.L2B.NetworkID))
+		return os.WriteFile(p, []byte(patched), 0o600)
+	})
+	require.NoError(t, err, "restart aggkit-%s with Auto Claim L2->L2 %s policy", l2NetworkKeyB, policyName)
+}
+
+// autoClaimL2ToL2Config renders the [AutoClaim] TOML section for the network-2 (L2B) node in the
+// L2->L2 test: the L2ToLx detector enabled, a BridgeServiceFinder with static URLs for both L2
+// bridge services, and one destination claimer for destNetworkID (network 2) funded from the
+// node's mounted aggoracle keystore. The L1ToL2 detector is present-but-disabled (its PollInterval
+// must still be > 0 to satisfy config validation).
+func autoClaimL2ToL2Config(policyName string, destNetworkID uint32) string {
+	suffix := strings.ReplaceAll(policyName, "-", "_")
+	return fmt.Sprintf(`
+[AutoClaim]
+StoragePath = "/tmp/autoclaim-l2tol2-e2e-%s.sqlite"
+
+[AutoClaim.API]
+Enabled = true
+
+[AutoClaim.L1ToL2BridgeDetector]
+Enabled = false
+PollInterval = "2s"
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
+EtrogL1UpgradeBlock = 0
+
+[AutoClaim.L2ToLxBridgeDetector]
+Enabled = true
+StartL1Block = 0
+PollInterval = "3s"
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
+
+[AutoClaim.BridgeServiceFinder]
+RollupManagerAddr = %q
+PollInterval = "3s"
+
+[AutoClaim.BridgeServiceFinder.URLs]
+1 = %q
+2 = %q
+
+[[AutoClaim.Claimers]]
+Enabled = true
+ID = "l2b-autoclaim-e2e"
+NetworkType = "EVM"
+NetworkID = %d
+URLRPC = %q
+BridgeAddr = %q
+PolicyName = %q
+GasOffset = 100000
+WaitPeriod = "1s"
+RetryAfter = "1s"
+MaxRetries = 180
+
+[AutoClaim.Claimers.Policy]
+AllowMessageClaims = false
+AllowedOrigins = [0, 1]
+AllowedTokens = []
+ManualFallback = false
+MaxGas = 500000
+
+[AutoClaim.Claimers.EthTxManager]
+FrequencyToMonitorTxs = "1s"
+WaitTxToBeMined = "2s"
+WaitReceiptMaxTime = "250ms"
+WaitReceiptCheckInterval = "1s"
+PrivateKeys = [
+	{Method = "local", Path = "/etc/aggkit/aggoracle.keystore", Password = %q},
+]
+ForcedGas = 0
+GasPriceMarginFactor = 1
+MaxGasPriceLimit = 0
+StoragePath = "/tmp/ethtxmanager-autoclaim-l2b-e2e-%s.sqlite"
+ReadPendingL1Txs = false
+SafeStatusL1NumberOfBlocks = 0
+FinalizedStatusL1NumberOfBlocks = 0
+EstimateGasMaxRetries = 1
+
+[AutoClaim.Claimers.EthTxManager.Etherman]
+URL = %q
+MultiGasProvider = false
+L1ChainID = %d
+HTTPHeaders = {}
+`,
+		suffix,
+		autoClaimL1RollupManagerAddr,
+		autoClaimNet1BridgeServiceURL, autoClaimNet2BridgeServiceURL,
+		destNetworkID, autoClaimL2BRPC, autoClaimBridgeAddr, policyName,
+		autoClaimKeystorePass, suffix,
+		autoClaimL2BRPC, autoClaimL2BChainID,
+	)
+}
+
 func loadAutoClaimTestEnv(t *testing.T, ctx context.Context) *envs.Env {
 	t.Helper()
 	loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Minute)
@@ -386,13 +699,36 @@ func waitForAutoClaimStatus(
 	expected autoclaimtypes.RequestStatus,
 ) autoClaimRequestResponse {
 	t.Helper()
-	latest, err := waitForAutoClaimStatusResult(ctx, key, expected)
-	require.NoError(t, err, "wait for Auto Claim request %s status %s", key, expected)
+	return waitForAutoClaimStatusAt(ctx, t, bridgeServiceBaseURL, key, expected)
+}
+
+// waitForAutoClaimStatusAt is waitForAutoClaimStatus against a specific bridge-service base URL, so
+// tests can poll a non-default node's public Auto Claim API (e.g. the network-2 node at
+// autoClaimL2BBridgeServiceBaseURL in the L2->L2 test).
+func waitForAutoClaimStatusAt(
+	ctx context.Context,
+	t *testing.T,
+	baseURL string,
+	key autoclaimtypes.RequestKey,
+	expected autoclaimtypes.RequestStatus,
+) autoClaimRequestResponse {
+	t.Helper()
+	latest, err := waitForAutoClaimStatusResultAt(ctx, baseURL, key, expected)
+	require.NoError(t, err, "wait for Auto Claim request %s status %s (%s)", key, expected, baseURL)
 	return latest
 }
 
 func waitForAutoClaimStatusResult(
 	ctx context.Context,
+	key autoclaimtypes.RequestKey,
+	expected autoclaimtypes.RequestStatus,
+) (autoClaimRequestResponse, error) {
+	return waitForAutoClaimStatusResultAt(ctx, bridgeServiceBaseURL, key, expected)
+}
+
+func waitForAutoClaimStatusResultAt(
+	ctx context.Context,
+	baseURL string,
 	key autoclaimtypes.RequestKey,
 	expected autoclaimtypes.RequestStatus,
 ) (autoClaimRequestResponse, error) {
@@ -406,7 +742,7 @@ func waitForAutoClaimStatusResult(
 		backoffMax,
 		fmt.Sprintf("autoclaim-%s-%s", key, expected),
 		func() (bool, error) {
-			request, found, err := getAutoClaimRequest(pollCtx, key)
+			request, found, err := getAutoClaimRequestAt(pollCtx, baseURL, key)
 			if err != nil {
 				return false, err
 			}
@@ -444,15 +780,19 @@ func waitForAutoClaimStatusResult(
 	return latest, nil
 }
 
-func getAutoClaimRequest(
+// getAutoClaimRequestAt fetches an Auto Claim request's public status from the bridge service at
+// baseURL (each node's bridge service serves its own autoclaim status; the default single-chain
+// tests use bridgeServiceBaseURL, the L2->L2 test polls the network-2 node's own URL).
+func getAutoClaimRequestAt(
 	ctx context.Context,
+	baseURL string,
 	key autoclaimtypes.RequestKey,
 ) (autoClaimRequestResponse, bool, error) {
 	// Public request inspection is served by the bridge service, not the admin Auto Claim API.
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		fmt.Sprintf("%s/autoclaim/v1/bridges/%s", bridgeServiceBaseURL, key),
+		fmt.Sprintf("%s/autoclaim/v1/bridges/%s", baseURL, key),
 		nil,
 	)
 	if err != nil {

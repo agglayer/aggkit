@@ -739,6 +739,77 @@ func (e *Env) RestartAggkitWithConfig(ctx context.Context, editFn func(configPat
 	return e.StartAggkit(ctx)
 }
 
+// aggkitServiceForNetwork returns the docker-compose service name of the aggkit node for the given
+// L2 network key ("001" for L2A, "002" for L2B).
+func aggkitServiceForNetwork(networkKey string) string {
+	return "aggkit-" + networkKey
+}
+
+// GetAggkitConfigPathForNetwork returns the host path to the aggkit config file for the given L2
+// network key ("001", "002"). GetAggkitConfigPath is the "001" special case kept for callers that
+// only ever target the primary network.
+func (e *Env) GetAggkitConfigPathForNetwork(networkKey string) string {
+	return filepath.Join(e.EnvDir, "config", networkKey, "aggkit-config.toml")
+}
+
+// bridgeServiceURLForNetwork returns the external bridge-service URL used to gate readiness after a
+// restart of the given L2 network's aggkit node.
+func (e *Env) bridgeServiceURLForNetwork(networkKey string) string {
+	if networkKey == l2NetworkKeyB && e.L2B != nil {
+		return e.L2B.BridgeServiceURL
+	}
+	return e.bridgeServiceURL
+}
+
+// StopAggkitService stops only the aggkit node of the given L2 network key so a test can rewrite its
+// config without racing the running process. Generalizes StopAggkit (which targets "001").
+func (e *Env) StopAggkitService(ctx context.Context, networkKey string) error {
+	service := aggkitServiceForNetwork(networkKey)
+	cmd := newDockerComposeCmd(ctx, e.EnvDir, "stop", service)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker compose stop %s: %w\nOutput:\n%s", service, err, string(output))
+	}
+	if len(output) > 0 {
+		log.Debugf("docker compose stop %s output:\n%s\n", service, string(output))
+	}
+	return nil
+}
+
+// StartAggkitService starts the aggkit node of the given L2 network key and waits for that network's
+// bridge service to be ready. Generalizes StartAggkit (which targets "001").
+func (e *Env) StartAggkitService(ctx context.Context, networkKey string) error {
+	service := aggkitServiceForNetwork(networkKey)
+	cmd := newDockerComposeCmd(ctx, e.EnvDir, "start", service)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker compose start %s: %w\nOutput:\n%s", service, err, string(output))
+	}
+	if len(output) > 0 {
+		log.Debugf("docker compose start %s output:\n%s\n", service, string(output))
+	}
+	if err := waitForBridgeService(ctx, e.bridgeServiceURLForNetwork(networkKey)); err != nil {
+		return fmt.Errorf("wait for bridge service after start of %s: %w", service, err)
+	}
+	return nil
+}
+
+// RestartAggkitServiceWithConfig stops the given L2 network's aggkit node, calls editFn to rewrite
+// its config, then starts it and waits for its bridge service. Generalizes RestartAggkitWithConfig
+// to any L2 network in a multi-chain env.
+func (e *Env) RestartAggkitServiceWithConfig(
+	ctx context.Context, networkKey string, editFn func(configPath string) error,
+) error {
+	if err := e.StopAggkitService(ctx, networkKey); err != nil {
+		return fmt.Errorf("stop aggkit %s: %w", aggkitServiceForNetwork(networkKey), err)
+	}
+	configPath := e.GetAggkitConfigPathForNetwork(networkKey)
+	if err := editFn(configPath); err != nil {
+		return fmt.Errorf("edit aggkit config %s: %w", configPath, err)
+	}
+	return e.StartAggkitService(ctx, networkKey)
+}
+
 // ensureDockerComposeRunning brings down any running containers, cleans the aggkit data
 // directory, then starts docker compose fresh. This guarantees a predictable initial state
 // on every test run.

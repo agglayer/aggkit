@@ -347,7 +347,7 @@ services:
     command:
       - "run"
       - "--cfg=/etc/aggkit/config.toml"
-      - "--components=aggsender,aggoracle,bridge"
+      - "--components=aggsender,aggoracle,bridge,autoclaim"
     volumes:
       - ./config/002/aggkit-config.toml:/etc/aggkit/config.toml:ro
       - ./config/002/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
