@@ -44,7 +44,7 @@ trap cleanup EXIT
 
 if [[ ! -f "$EXIT_CERT_CONFIG" ]]; then
     log_error "exit_certificate config not found: $EXIT_CERT_CONFIG"
-    log_error "Run the exit tool first (run_exit_tool.sh) to generate it."
+    log_error "Run the exit tool first (40-generate_exit_certificate.sh) to generate it."
     exit 1
 fi
 

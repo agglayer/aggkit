@@ -51,4 +51,4 @@ jobs:
 
       - name: Stop Kurtosis enclave
         if: always()
-        run: ./test/e2e-exit_certificate/run_network.sh stop || true
+        run: ./test/e2e-exit_certificate/10-run_network.sh stop || true
