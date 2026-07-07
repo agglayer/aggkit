@@ -40,6 +40,9 @@ Port = "5576"
 [PublicREST]
 Port = "5577"
 
+[AdminREST]
+Port = 5579
+
 [Validator]
 EnableRPC = true
 Signer = { Method = "local", Path = "/etc/aggkit/aggsendervalidator-2.keystore", Password = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m" }
