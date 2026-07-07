@@ -437,6 +437,121 @@ func BridgeL1NoClaim(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Tr
 	}, nil
 }
 
+// BridgeL2ToL1NoClaim performs a real L2->L1 bridge using a MintableERC20 token minted on L2 (L2-native
+// tokens bypass the Local Balance Tree underflow check in the L2 bridge, see testmain_test.go) and waits
+// for it to be fully indexed (bridge service + L1 Info Tree inclusion), but does not claim on L1.
+// label is used in log messages to identify the caller context (e.g. "B1", "B2-1").
+func BridgeL2ToL1NoClaim(
+	ctx context.Context, env *envs.Env, l2Opts *bind.TransactOpts, bridgeAmount *big.Int, label string,
+) (*bridgeResult, error) {
+	callOpts := &bind.CallOpts{Context: ctx}
+	l2NetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get L2 network ID: %w", err)
+	}
+	destinationAddress := l2Opts.From
+	token := env.L2.Contracts.MintableERC20Address
+
+	log.Infof("[%s] minting MintableERC20 on L2 before L2->L1 bridge", label)
+	mintTx, err := env.L2.Contracts.MintableERC20.Mint(l2Opts, l2Opts.From, bridgeAmount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mint MintableERC20: %w", err)
+	}
+	if _, err := bind.WaitMined(ctx, env.Clients.L2, mintTx); err != nil {
+		return nil, fmt.Errorf("failed to wait for mint tx: %w", err)
+	}
+
+	log.Debugf("[%s] approving L2 bridge to spend MintableERC20", label)
+	approveTx, err := env.L2.Contracts.MintableERC20.Approve(l2Opts, env.L2.Contracts.L2BridgeAddress, bridgeAmount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to approve L2 bridge for MintableERC20: %w", err)
+	}
+	if _, err := bind.WaitMined(ctx, env.Clients.L2, approveTx); err != nil {
+		return nil, fmt.Errorf("failed to wait for approve tx: %w", err)
+	}
+
+	forceUpdateGlobalExitRoot := true
+	bridgeTx, err := env.L2.Contracts.L2Bridge.BridgeAsset(
+		l2Opts, 0, destinationAddress, bridgeAmount, token, forceUpdateGlobalExitRoot, nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send L2->L1 bridge tx: %w", err)
+	}
+	log.Infof("[%s] L2->L1 bridge tx sent, tx=%s", label, bridgeTx.Hash().Hex())
+	mineCtx, mineCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer mineCancel()
+	receipt, err := bind.WaitMined(mineCtx, env.Clients.L2, bridgeTx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for L2->L1 bridge tx: %w", err)
+	}
+	if receipt.Status != ethtypes.ReceiptStatusSuccessful {
+		return nil, errors.New("L2->L1 bridge transaction failed")
+	}
+	log.Infof("[%s] L2->L1 bridge tx mined at block %d", label, receipt.BlockNumber.Uint64())
+
+	// ERC20 bridging also emits a Transfer log, so scan all logs for the BridgeEvent.
+	var depositCount uint32
+	var foundBridgeEvent bool
+	for _, lg := range receipt.Logs {
+		bridgeEvent, parseErr := env.L2.Contracts.L2Bridge.ParseBridgeEvent(*lg)
+		if parseErr == nil {
+			depositCount = bridgeEvent.DepositCount
+			foundBridgeEvent = true
+			break
+		}
+	}
+	if !foundBridgeEvent {
+		return nil, errors.New("BridgeEvent not found in L2->L1 bridge tx receipt logs")
+	}
+	log.Debugf("[%s] L2->L1 bridge tx mined dc=%d block=%d", label, depositCount, receipt.BlockNumber.Uint64())
+
+	log.Debugf("[%s] waiting for L2->L1 bridge to appear in bridge service: deposit_count=%d", label, depositCount)
+	var bridge *types.BridgeResponse
+	for i := 0; i < 30; i++ {
+		b, err := env.Clients.BridgeService.GetBridgeByDepositCount(ctx, l2NetworkID, depositCount)
+		if err == nil && b != nil {
+			bridge = b
+			break
+		}
+		if (i+1)%5 == 0 {
+			log.Infof("[%s] bridge not in bridge service yet, attempt %d/30", label, i+1)
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if bridge == nil {
+		return nil, errors.New("L2->L1 bridge not found in bridge service")
+	}
+	log.Infof("[%s] L2->L1 bridge found, deposit_count=%d", label, bridge.DepositCount)
+
+	log.Debugf("[%s] waiting for L2->L1 bridge to be included in L1 Info Tree: deposit_count=%d", label, depositCount)
+	var l1InfoTreeIndex uint32
+	for i := 0; i < 120; i++ {
+		idx, err := env.Clients.BridgeService.GetL1InfoTreeIndex(ctx, int(l2NetworkID), int(depositCount))
+		if err == nil {
+			l1InfoTreeIndex = idx
+			break
+		}
+		if (i+1)%12 == 0 {
+			log.Infof("[%s] L1InfoTreeIndex not ready, attempt %d/120", label, i+1)
+		}
+		time.Sleep(5 * time.Second)
+	}
+	if l1InfoTreeIndex == 0 {
+		return nil, errors.New("L2->L1 bridge not included in L1 Info Tree")
+	}
+	log.Infof("[%s] L2->L1 bridge fully indexed (no claim): l1InfoTreeIndex=%d", label, l1InfoTreeIndex)
+
+	return &bridgeResult{
+		Bridge:          bridge,
+		DepositCount:    depositCount,
+		L1InfoTreeIndex: l1InfoTreeIndex,
+		ClaimTxHash:     common.Hash{},
+		GlobalIndex:     bridge.GlobalIndex,
+		DestinationAddr: destinationAddress,
+		BridgeAmount:    bridgeAmount,
+	}, nil
+}
+
 // BridgeL2ToL1 runs the L2 -> L1 bridge flow using the given environment and transactors.
 // Returns error for any failure.
 func BridgeL2ToL1(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.TransactOpts, token common.Address) error {

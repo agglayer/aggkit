@@ -104,3 +104,20 @@ func (p *processor) GetFirstVerifiedBatchesAfterBlock(rollupID uint32, blockNum 
 	`, rollupID, blockNum)
 	return verified, db.ReturnErrNotFound(err)
 }
+
+// GetVerifiedBatchesInBlockRange returns every verify_batches row whose block_num is in the
+// inclusive range [fromBlock, toBlock], across all rollups and both the zkEVM
+// (VerifyBatchesTrustedAggregator) and pessimistic (VerifyPessimisticStateTransition) event types,
+// ordered by block_num ASC, block_pos ASC. An empty range returns an empty slice and no error.
+func (p *processor) GetVerifiedBatchesInBlockRange(fromBlock, toBlock uint64) ([]*VerifyBatches, error) {
+	var verified []*VerifyBatches
+	err := meddler.QueryAll(p.db, &verified, `
+		SELECT * FROM verify_batches
+		WHERE block_num >= $1 AND block_num <= $2
+		ORDER BY block_num ASC, block_pos ASC;
+	`, fromBlock, toBlock)
+	if err != nil {
+		return nil, err
+	}
+	return verified, nil
+}

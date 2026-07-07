@@ -1,3 +1,4 @@
+//nolint:lll,gosec // test file; long test-setup lines and test integer conversions are not security-sensitive
 package l1infotreesync_test
 
 import (

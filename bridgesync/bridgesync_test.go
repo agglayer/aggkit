@@ -1,3 +1,4 @@
+//nolint:lll,gosec // test file; long assertion lines and test integer conversions are not security-sensitive
 package bridgesync
 
 import (

@@ -154,7 +154,7 @@ func (c *Claimer) IsClaimed(ctx context.Context, bridge autoclaimtypes.BridgeExi
 	}
 	globalIndex := bridge.GlobalIndex
 	if globalIndex == nil {
-		globalIndex = autoclaimtypes.DeriveL1GlobalIndex(bridge.DepositCount)
+		globalIndex = autoclaimtypes.DeriveGlobalIndexForSource(bridge.SourceNetwork, bridge.DepositCount)
 	}
 	claimed, err := c.targetClaimReader.IsClaimed(ctx, globalIndex)
 	if err != nil {

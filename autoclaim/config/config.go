@@ -5,10 +5,16 @@ import (
 	"strings"
 
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
+	"github.com/agglayer/aggkit/bridgeservicefinder"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	gethcommon "github.com/ethereum/go-ethereum/common"
 )
+
+// l1DestinationNetworkID is the NetworkID of an L1-destination claimer. Only the L2ToLx bridge
+// detector can ever route a request to such a claimer, since the L1ToL2 detector only discovers
+// L1-origin bridges (which always target an L2 destination).
+const l1DestinationNetworkID = uint32(0)
 
 // NetworkType identifies the destination chain family a claimer targets.
 type NetworkType string
@@ -37,12 +43,16 @@ const (
 type Config struct {
 	// DryRun runs the full Auto Claim pipeline (discovery, policy, proof preparation) but skips
 	// submitting the claim transaction; matching requests end in the "dry-run" terminal status.
-	DryRun               bool                   `mapstructure:"DryRun"`
-	StoragePath          string                 `mapstructure:"StoragePath"`
-	API                  APIConfig              `mapstructure:"API"`
-	Claimers             []ClaimerConfig        `mapstructure:"Claimers"`
-	L1ToL2BridgeDetector L1ToL2BridgeDetector   `mapstructure:"L1ToL2BridgeDetector"`
-	L2ToLxBridgeDetector DisabledBridgeDetector `mapstructure:"L2ToLxBridgeDetector"`
+	DryRun               bool                 `mapstructure:"DryRun"`
+	StoragePath          string               `mapstructure:"StoragePath"`
+	API                  APIConfig            `mapstructure:"API"`
+	Claimers             []ClaimerConfig      `mapstructure:"Claimers"`
+	L1ToL2BridgeDetector L1ToL2BridgeDetector `mapstructure:"L1ToL2BridgeDetector"`
+	L2ToLxBridgeDetector L2ToLxBridgeDetector `mapstructure:"L2ToLxBridgeDetector"`
+	// BridgeServiceFinder configures resolution of each source rollup's bridge service URL, used by
+	// the L2ToLx bridge detector and by the rollup-origin proof preparer's staleness refresh. It is
+	// only required when L2ToLxBridgeDetector.Enabled is true.
+	BridgeServiceFinder bridgeservicefinder.Config `mapstructure:"BridgeServiceFinder"`
 }
 
 // APIConfig configures the optional Auto Claim admin API.
@@ -61,16 +71,43 @@ type L1ToL2BridgeDetector struct {
 	EtrogL1UpgradeBlock        uint64            `mapstructure:"EtrogL1UpgradeBlock"`
 }
 
-// DisabledBridgeDetector reserves config for disabled bridge detector directions.
-type DisabledBridgeDetector struct {
+// L2ToLxBridgeDetector configures L2-to-Lx (rollup-origin) bridge exit discovery, covering both
+// L2-to-L1 and L2-to-L2 bridges. Enabling it requires AutoClaim.BridgeServiceFinder to be configured
+// with a valid RollupManagerAddr, since the detector resolves each source rollup's bridge service
+// through it.
+type L2ToLxBridgeDetector struct {
 	Enabled bool `mapstructure:"Enabled"`
+	// StartL1Block is the L1 block used to derive a newly discovered source network's initial LER
+	// cursor (via the GER at that block). 0 means full history (from_ler omitted on first fetch).
+	StartL1Block               uint64            `mapstructure:"StartL1Block"`
+	PollInterval               cfgtypes.Duration `mapstructure:"PollInterval"`
+	RetryAfterErrorPeriod      cfgtypes.Duration `mapstructure:"RetryAfterErrorPeriod"`
+	MaxRetryAttemptsAfterError int               `mapstructure:"MaxRetryAttemptsAfterError"`
+}
+
+// Validate checks whether an enabled L2ToLxBridgeDetector config is usable. It is a no-op when
+// disabled, since a disabled detector never uses these fields.
+func (c L2ToLxBridgeDetector) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.PollInterval.Duration <= 0 {
+		return fmt.Errorf("PollInterval must be greater than 0")
+	}
+	if c.RetryAfterErrorPeriod.Duration <= 0 {
+		return fmt.Errorf("RetryAfterErrorPeriod must be greater than 0")
+	}
+	return nil
 }
 
 // ClaimerConfig configures one destination-network claimer.
 type ClaimerConfig struct {
-	Enabled      bool                `mapstructure:"Enabled"`
-	ID           string              `mapstructure:"ID"`
-	NetworkType  NetworkType         `mapstructure:"NetworkType"`
+	Enabled     bool        `mapstructure:"Enabled"`
+	ID          string      `mapstructure:"ID"`
+	NetworkType NetworkType `mapstructure:"NetworkType"`
+	// NetworkID is the destination network this claimer targets. 0 means L1: such a claimer is only
+	// reachable when AutoClaim.L2ToLxBridgeDetector is enabled, since only it discovers requests
+	// destined for L1.
 	NetworkID    uint32              `mapstructure:"NetworkID"`
 	URLRPC       string              `mapstructure:"URLRPC"`
 	BridgeAddr   gethcommon.Address  `mapstructure:"BridgeAddr"`
@@ -102,10 +139,13 @@ type PolicyConfig struct {
 // is effectively inert (e.g. the default config), so validation is skipped.
 func (c Config) Validate() error {
 	hasEnabledClaimer := false
+	hasL1DestinationClaimer := false
 	for _, claimer := range c.Claimers {
 		if claimer.Enabled {
 			hasEnabledClaimer = true
-			break
+			if claimer.NetworkID == l1DestinationNetworkID {
+				hasL1DestinationClaimer = true
+			}
 		}
 	}
 	if !hasEnabledClaimer {
@@ -119,6 +159,18 @@ func (c Config) Validate() error {
 	}
 	if c.L1ToL2BridgeDetector.RetryAfterErrorPeriod.Duration <= 0 {
 		return fmt.Errorf("AutoClaim.L1ToL2BridgeDetector.RetryAfterErrorPeriod must be greater than 0")
+	}
+	if err := c.L2ToLxBridgeDetector.Validate(); err != nil {
+		return fmt.Errorf("AutoClaim.L2ToLxBridgeDetector: %w", err)
+	}
+	if c.L2ToLxBridgeDetector.Enabled && c.BridgeServiceFinder.RollupManagerAddr == (gethcommon.Address{}) {
+		return fmt.Errorf(
+			"AutoClaim.BridgeServiceFinder.RollupManagerAddr is required when AutoClaim.L2ToLxBridgeDetector is enabled")
+	}
+	if hasL1DestinationClaimer && !c.L2ToLxBridgeDetector.Enabled {
+		return fmt.Errorf(
+			"AutoClaim.L2ToLxBridgeDetector.Enabled must be true when an L1-destination " +
+				"(NetworkID=0) claimer is configured, since only it can route requests to L1")
 	}
 	return validateEnabledClaimers(c.Claimers)
 }

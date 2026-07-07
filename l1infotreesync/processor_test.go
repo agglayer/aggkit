@@ -303,6 +303,7 @@ func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
 		errCh = make(chan error, 2)
 	)
 
+	//nolint:gosec // test-only randomization, not security-sensitive
 	reorgBlock := uint64(rand.Intn(int(maxBlockNum/2)) + int(maxBlockNum/4)) // middle 50%
 	t.Logf("📍 Chosen reorg block: %d", reorgBlock)
 
@@ -341,12 +342,14 @@ func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
 			}
 			t.Logf("✅ Processed block %d", i)
 
+			//nolint:gosec // test-only randomization, not security-sensitive
 			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 		}
 	})
 
 	// Reorg goroutine
 	wg.Go(func() {
+		//nolint:gosec // test-only randomization, not security-sensitive
 		time.Sleep(time.Duration(rand.Intn(200)+50) * time.Millisecond)
 
 		t.Logf("🔄 Starting Reorg to block %d", reorgBlock)
@@ -390,7 +393,8 @@ func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
 }
 
 func TestProcessBlockUpdateL1InfoTreeV2DontMatchTree(t *testing.T) {
-	sut, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTestProcessBlockUpdateL1InfoTreeV2DontMatchTree.sqlite"))
+	sut, err := newProcessor(
+		path.Join(t.TempDir(), "l1infotreesyncTestProcessBlockUpdateL1InfoTreeV2DontMatchTree.sqlite"))
 	require.NoError(t, err)
 	block := aggkitsync.Block{
 		Num: 10,

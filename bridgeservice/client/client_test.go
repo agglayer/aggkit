@@ -611,7 +611,9 @@ func TestGetClaimProof(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.Equal(t, types.Hash("0x1234567890123456789012345678901234567890123456789012345678901234"), resp.ProofLocalExitRoot[0])
+		require.Equal(t,
+			types.Hash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+			resp.ProofLocalExitRoot[0])
 		require.Equal(t, uint32(10), resp.L1InfoTreeLeaf.L1InfoTreeIndex)
 	})
 }
@@ -996,6 +998,122 @@ func TestGetBridgesByContent(t *testing.T) {
 
 		require.Error(t, err)
 		require.Nil(t, resp)
+	})
+}
+
+func TestGetClaimCandidates(t *testing.T) {
+	const testToLER = "0xtoler"
+
+	t.Run("successful request with minimal params", func(t *testing.T) {
+		var localProof types.Proof
+		localProof[0] = "0x1234567890123456789012345678901234567890123456789012345678901234"
+
+		expectedResp := &types.ClaimCandidatesResult{
+			ClaimCandidates: []*types.ClaimCandidateResponse{
+				{
+					Bridge:             &types.BridgeResponse{DepositCount: 3},
+					ProofLocalExitRoot: localProof,
+					LocalExitRoot:      "0xler",
+				},
+			},
+			Count: 1,
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "GET", r.Method)
+			require.Equal(t, "/bridge/v1/claim-candidates", r.URL.Path)
+			require.Equal(t, []string{"1"}, r.URL.Query()["destination_network_ids"])
+			require.Equal(t, testToLER, r.URL.Query().Get("to_ler"))
+			require.Empty(t, r.URL.Query().Get("from_ler"))
+			require.Empty(t, r.URL.Query().Get("page_number"))
+			require.Empty(t, r.URL.Query().Get("page_size"))
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimCandidates(context.Background(), GetClaimCandidatesParams{
+			DestinationNetworkIDs: []uint32{1},
+			ToLER:                 testToLER,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, 1, resp.Count)
+		require.Len(t, resp.ClaimCandidates, 1)
+		require.Equal(t, uint32(3), resp.ClaimCandidates[0].Bridge.DepositCount)
+	})
+
+	t.Run("sends destination_network_ids as repeated query param and all optional params", func(t *testing.T) {
+		fromLER := "0xfromler"
+		pageNum := uint32(2)
+		pageSize := uint32(25)
+
+		expectedResp := &types.ClaimCandidatesResult{
+			ClaimCandidates: []*types.ClaimCandidateResponse{},
+			Count:           0,
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, []string{"1", "2", "3"}, r.URL.Query()["destination_network_ids"])
+			require.Equal(t, testToLER, r.URL.Query().Get("to_ler"))
+			require.Equal(t, fromLER, r.URL.Query().Get("from_ler"))
+			require.Equal(t, "2", r.URL.Query().Get("page_number"))
+			require.Equal(t, "25", r.URL.Query().Get("page_size"))
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimCandidates(context.Background(), GetClaimCandidatesParams{
+			DestinationNetworkIDs: []uint32{1, 2, 3},
+			ToLER:                 testToLER,
+			FromLER:               &fromLER,
+			PageNumber:            &pageNum,
+			PageSize:              &pageSize,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+	})
+
+	t.Run("returns ErrNotFound when to_ler is not synced yet", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"to_ler 0xtoler not found (not synced yet)"}`))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimCandidates(context.Background(), GetClaimCandidatesParams{
+			DestinationNetworkIDs: []uint32{1},
+			ToLER:                 testToLER,
+		})
+
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Nil(t, resp)
+	})
+
+	t.Run("handles server error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("internal error"))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimCandidates(context.Background(), GetClaimCandidatesParams{
+			DestinationNetworkIDs: []uint32{1},
+			ToLER:                 testToLER,
+		})
+
+		require.Error(t, err)
+		require.Nil(t, resp)
+		require.NotErrorIs(t, err, ErrNotFound)
 	})
 }
 

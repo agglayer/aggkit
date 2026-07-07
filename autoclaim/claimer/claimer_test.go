@@ -128,6 +128,28 @@ func TestClaimerIsClaimedWithReaderNilGlobalIndex(t *testing.T) {
 	claimed, err := c.IsClaimed(ctx, bridge)
 	require.NoError(t, err)
 	require.False(t, claimed)
+	require.Zero(t, autoclaimtypes.DeriveL1GlobalIndex(bridge.DepositCount).Cmp(reader.gotGlobalIndex))
+}
+
+func TestClaimerIsClaimedWithReaderNilGlobalIndexRollupSource(t *testing.T) {
+	ctx := context.Background()
+	target := makeTarget(10)
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	reader := &fakeTargetClaimReader{claimed: false}
+
+	c, err := New(target, storage, approvedPolicy(), readyProof(), sender,
+		WithClaimChecker(reader))
+	require.NoError(t, err)
+
+	bridge := makeBridge(1, 10)
+	bridge.SourceNetwork = 3
+	bridge.GlobalIndex = nil
+	claimed, err := c.IsClaimed(ctx, bridge)
+	require.NoError(t, err)
+	require.False(t, claimed)
+	require.Zero(t, autoclaimtypes.DeriveGlobalIndexForSource(3, bridge.DepositCount).Cmp(reader.gotGlobalIndex))
+	require.NotZero(t, autoclaimtypes.DeriveL1GlobalIndex(bridge.DepositCount).Cmp(reader.gotGlobalIndex))
 }
 
 func TestClaimerStartDisabled(t *testing.T) {
@@ -596,7 +618,7 @@ func TestRestartRecoveryUsesStableSnapshotAcrossPages(t *testing.T) {
 	}
 	bridges := make([]autoclaimtypes.BridgeExit, 0, len(recoverable))
 	for i, status := range recoverable {
-		bridge := makeBridge(uint32(30+i), 10)
+		bridge := makeBridge(uint32(30+i), 10) //nolint:gosec // test-only, i is a small loop index
 		bridges = append(bridges, bridge)
 		insertStoredRequest(t, ctx, storage, bridge, status)
 	}
@@ -1147,11 +1169,13 @@ func (s *memoryStorage) update(
 }
 
 type fakeTargetClaimReader struct {
-	claimed bool
-	err     error
+	claimed        bool
+	err            error
+	gotGlobalIndex *big.Int
 }
 
-func (r *fakeTargetClaimReader) IsClaimed(_ context.Context, _ *big.Int) (bool, error) {
+func (r *fakeTargetClaimReader) IsClaimed(_ context.Context, globalIndex *big.Int) (bool, error) {
+	r.gotGlobalIndex = globalIndex
 	return r.claimed, r.err
 }
 

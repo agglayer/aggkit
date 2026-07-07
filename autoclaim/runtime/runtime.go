@@ -23,6 +23,7 @@ import (
 	"github.com/agglayer/aggkit/autoclaim/simulator"
 	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
+	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
@@ -60,7 +61,9 @@ type Dependencies struct {
 	}
 	L1InfoTreeSync interface {
 		proof.L1InfoTreeSyncer
+		proof.RollupL1InfoTreeSyncer
 		l2gersync.L1InfoTreeQuerier
+		bridgedetector.VerifiedBatchSource
 	}
 	// L1Client is the L1 JSON-RPC client shared by every per-claimer l2gersync instance.
 	L1Client aggkittypes.EthClienter
@@ -79,11 +82,25 @@ type Runtime struct {
 	Claimers       []autoclaimtypes.Claimer
 	Registry       autoclaimtypes.ClaimerRegistry
 	BridgeDetector *bridgedetector.L1ToL2
+	// L2ToLxBridgeDetector discovers rollup-origin (L2-to-L1, L2-to-L2) bridge exits. It is always
+	// constructed but only does work when AutoClaim.L2ToLxBridgeDetector.Enabled is true.
+	L2ToLxBridgeDetector *bridgedetector.L2ToLx
+	// BridgeServiceFinder resolves source-network bridge service URLs for L2ToLxBridgeDetector and
+	// the rollup-origin proof preparer's staleness refresh. It is a no-op stub when
+	// AutoClaim.L2ToLxBridgeDetector.Enabled is false.
+	BridgeServiceFinder bridgeservicefinder.Finder
 	// AdminREST registers admin routes (approve/reject) on the shared admin HTTP server.
 	AdminREST *api.API
 	// PublicREST registers read routes on the shared public HTTP server.
 	PublicREST    *api.PublicREST
 	EthTxManagers []EthTxManager
+}
+
+// ProofL1InfoTreeSyncer is the l1infotreesync surface shared by both the L1-origin and rollup-origin
+// proof preparers. It is satisfied by Dependencies.L1InfoTreeSync.
+type ProofL1InfoTreeSyncer interface {
+	proof.L1InfoTreeSyncer
+	proof.RollupL1InfoTreeSyncer
 }
 
 // EthTxManager is the concrete transaction-manager boundary used by senders and startup lifecycle.
@@ -125,11 +142,17 @@ type Factories struct {
 	NewTargetClaimReader func(common.Address, aggkittypes.BaseEthereumClienter) (autoclaimtypes.ClaimChecker, error)
 	// NewGERSyncer builds the per-claimer destination-L2 GER syncer and returns a start function that
 	// runs its reorg detector and sync loop (the start function blocks and is meant to run in a goroutine).
-	NewGERSyncer     func(ctx context.Context, deps GERSyncerDeps) (proof.L2GERSyncer, func(context.Context), error)
+	NewGERSyncer func(ctx context.Context, deps GERSyncerDeps) (proof.L2GERSyncer, func(context.Context), error)
+	// NewProofPreparer builds the single dispatcher (proof.SourceAwarePreparer) passed to every
+	// claimer (both L1- and L2-destination): it wraps an L1-origin proof.Preparer and a rollup-origin
+	// proof.RollupPreparer, routing on the request's source network. gerSyncer is nil for an
+	// L1-destination claimer. refresher is shared across every claimer (it resolves the source
+	// network's bridge service dynamically per call).
 	NewProofPreparer func(
 		l1BridgeSync proof.L1BridgeSyncer,
-		l1InfoTreeSync proof.L1InfoTreeSyncer,
+		l1InfoTreeSync ProofL1InfoTreeSyncer,
 		gerSyncer proof.L2GERSyncer,
+		refresher proof.LeafProofRefresher,
 	) (autoclaimtypes.ProofPreparer, error)
 	NewTargetSimulator func(
 		simulator.GasEstimator,
@@ -159,6 +182,36 @@ type Factories struct {
 		...bridgedetector.Option,
 	) (*bridgedetector.L1ToL2, error)
 	StartBridgeDetector func(context.Context, *bridgedetector.L1ToL2)
+	// NewBridgeServiceFinder constructs the shared bridgeservicefinder.Finder. It is only invoked
+	// when AutoClaim.L2ToLxBridgeDetector.Enabled is true; a no-op stub is used otherwise, so
+	// existing deployments that never configure [AutoClaim.BridgeServiceFinder] are unaffected.
+	NewBridgeServiceFinder func(
+		cfg bridgeservicefinder.Config,
+		ethClient aggkittypes.EthClienter,
+	) (bridgeservicefinder.Finder, error)
+	// StartBridgeServiceFinder builds the finder's initial cache and launches its background
+	// listener. It is synchronous (it only blocks for the initial cache build) and is only called
+	// when the L2-to-Lx bridge detector is enabled.
+	StartBridgeServiceFinder func(context.Context, bridgeservicefinder.Finder) error
+	// NewLeafProofRefresher builds the shared LeafProofRefresher passed to every rollup-origin proof
+	// preparer. Safe to build even when the detector is disabled: it is backed by the (possibly
+	// no-op) finder and is never invoked without a rollup-origin request, which only the L2ToLx
+	// detector ever creates.
+	NewLeafProofRefresher func(bridgeservicefinder.Finder) proof.LeafProofRefresher
+	// NewClaimCandidatesFetcher builds the ClaimCandidatesFetcher backing the L2-to-Lx detector.
+	NewClaimCandidatesFetcher func(bridgeservicefinder.Finder) bridgedetector.ClaimCandidatesFetcher
+	// NewL2ToLxDetector builds the L2-to-Lx bridge detector. It is always constructed, gated by
+	// bridgedetector.WithL2ToLxEnabled, mirroring how the L1-to-L2 detector is always built.
+	NewL2ToLxDetector func(
+		bridgedetector.VerifiedBatchSource,
+		bridgedetector.ClaimCandidatesFetcher,
+		autoclaimtypes.ClaimerRegistry,
+		bridgedetector.CursorStore,
+		bridgedetector.LERCursorStore,
+		bridgedetector.RequestEnqueuer,
+		...bridgedetector.L2ToLxOption,
+	) (*bridgedetector.L2ToLx, error)
+	StartL2ToLxDetector func(context.Context, *bridgedetector.L2ToLx)
 	NewAPI              func(api.Config, api.Storage, autoclaimtypes.ClaimerRegistry, ...api.Option) (*api.API, error)
 	Go                  func(func())
 }
@@ -204,10 +257,13 @@ func DefaultFactories(logConfig log.Config) Factories {
 		NewGERSyncer:         newGERSyncer,
 		NewProofPreparer: func(
 			l1BridgeSync proof.L1BridgeSyncer,
-			l1InfoTreeSync proof.L1InfoTreeSyncer,
+			l1InfoTreeSync ProofL1InfoTreeSyncer,
 			gerSyncer proof.L2GERSyncer,
+			refresher proof.LeafProofRefresher,
 		) (autoclaimtypes.ProofPreparer, error) {
-			return proof.NewPreparer(l1BridgeSync, l1InfoTreeSync, gerSyncer), nil
+			l1Preparer := proof.NewPreparer(l1BridgeSync, l1InfoTreeSync, gerSyncer)
+			rollupPreparer := proof.NewRollupPreparer(l1InfoTreeSync, gerSyncer, refresher)
+			return proof.NewSourceAwarePreparer(l1Preparer, rollupPreparer)
 		},
 		NewTargetSimulator: func(
 			client simulator.GasEstimator,
@@ -249,6 +305,24 @@ func DefaultFactories(logConfig log.Config) Factories {
 		},
 		NewBridgeDetector: bridgedetector.NewL1ToL2,
 		StartBridgeDetector: func(ctx context.Context, bd *bridgedetector.L1ToL2) {
+			bd.Start(ctx)
+		},
+		NewBridgeServiceFinder: func(
+			cfg bridgeservicefinder.Config, ethClient aggkittypes.EthClienter,
+		) (bridgeservicefinder.Finder, error) {
+			return bridgeservicefinder.New(cfg, bridgeservicefinder.Options{EthClient: ethClient})
+		},
+		StartBridgeServiceFinder: func(ctx context.Context, finder bridgeservicefinder.Finder) error {
+			return finder.Start(ctx)
+		},
+		NewLeafProofRefresher: func(finder bridgeservicefinder.Finder) proof.LeafProofRefresher {
+			return proof.NewBridgeServiceLeafProofRefresher(finder)
+		},
+		NewClaimCandidatesFetcher: func(finder bridgeservicefinder.Finder) bridgedetector.ClaimCandidatesFetcher {
+			return bridgedetector.NewServiceFetcher(finder)
+		},
+		NewL2ToLxDetector: bridgedetector.NewL2ToLx,
+		StartL2ToLxDetector: func(ctx context.Context, bd *bridgedetector.L2ToLx) {
 			bd.Start(ctx)
 		},
 		NewAPI: api.New,
@@ -300,10 +374,18 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 		return nil, fmt.Errorf("open AutoClaim storage: %w", err)
 	}
 
-	runtime, gerSyncerStarts, err := createAndRegisterClaimers(ctx, cfg, deps, storage, logger, factories)
+	finder, err := buildBridgeServiceFinder(ctx, cfg, deps, factories)
 	if err != nil {
 		return nil, err
 	}
+	refresher := factories.NewLeafProofRefresher(finder)
+
+	runtime, gerSyncerStarts, err := createAndRegisterClaimers(
+		ctx, cfg, deps, storage, refresher, finder, logger, factories)
+	if err != nil {
+		return nil, err
+	}
+	runtime.BridgeServiceFinder = finder
 
 	startRuntimeComponents(ctx, runtime, gerSyncerStarts, factories)
 
@@ -335,6 +417,8 @@ func createAndRegisterClaimers(
 	cfg autoclaimcfg.Config,
 	deps Dependencies,
 	storage autoclaimtypes.Storage,
+	refresher proof.LeafProofRefresher,
+	finder bridgeservicefinder.Finder,
 	logger aggkitcommon.Logger,
 	factories Factories,
 ) (*Runtime, []func(context.Context), error) {
@@ -348,7 +432,7 @@ func createAndRegisterClaimers(
 			continue
 		}
 		c, txManager, gerSyncerStart, err := createClaimer(
-			ctx, claimerCfg, storage, deps, storageBaseDir, logger, factories)
+			ctx, claimerCfg, storage, deps, storageBaseDir, refresher, logger, factories)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -383,7 +467,89 @@ func createAndRegisterClaimers(
 	}
 	runtime.BridgeDetector = bd
 
+	l2ToLxDetector, err := createL2ToLxDetector(cfg, deps, storage, registry, cursorStore, finder, logger, factories)
+	if err != nil {
+		return nil, nil, err
+	}
+	runtime.L2ToLxBridgeDetector = l2ToLxDetector
+
 	return runtime, gerSyncerStarts, nil
+}
+
+// createL2ToLxDetector builds the L2-to-Lx bridge detector. It is always constructed (mirroring the
+// L1-to-L2 detector), gated by bridgedetector.WithL2ToLxEnabled, so back-compat configs that never
+// set AutoClaim.L2ToLxBridgeDetector.Enabled=true get a detector that never does any work.
+func createL2ToLxDetector(
+	cfg autoclaimcfg.Config,
+	deps Dependencies,
+	storage autoclaimtypes.Storage,
+	registry autoclaimtypes.ClaimerRegistry,
+	cursorStore bridgedetector.CursorStore,
+	finder bridgeservicefinder.Finder,
+	logger aggkitcommon.Logger,
+	factories Factories,
+) (*bridgedetector.L2ToLx, error) {
+	lerCursorStore, ok := storage.(bridgedetector.LERCursorStore)
+	if !ok {
+		return nil, fmt.Errorf("AutoClaim L2-to-Lx bridge detector requires storage with LER cursor methods")
+	}
+
+	fetcher := factories.NewClaimCandidatesFetcher(finder)
+	l2ToLxDetector, err := factories.NewL2ToLxDetector(
+		deps.L1InfoTreeSync,
+		fetcher,
+		registry,
+		cursorStore,
+		lerCursorStore,
+		storage,
+		bridgedetector.WithL2ToLxEnabled(cfg.L2ToLxBridgeDetector.Enabled),
+		bridgedetector.WithL2ToLxStartL1Block(cfg.L2ToLxBridgeDetector.StartL1Block),
+		bridgedetector.WithL2ToLxPollPeriod(cfg.L2ToLxBridgeDetector.PollInterval.Duration),
+		bridgedetector.WithL2ToLxLogger(logger),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create AutoClaim L2-to-Lx bridge detector: %w", err)
+	}
+	return l2ToLxDetector, nil
+}
+
+// buildBridgeServiceFinder constructs and starts the shared bridge service finder when the L2-to-Lx
+// bridge detector is enabled. When disabled, it returns a no-op stub so existing deployments that
+// never configure [AutoClaim.BridgeServiceFinder] (and may not even have an L1 client available)
+// behave exactly as before.
+func buildBridgeServiceFinder(
+	ctx context.Context,
+	cfg autoclaimcfg.Config,
+	deps Dependencies,
+	factories Factories,
+) (bridgeservicefinder.Finder, error) {
+	if !cfg.L2ToLxBridgeDetector.Enabled {
+		return noopBridgeServiceFinder{}, nil
+	}
+
+	finder, err := factories.NewBridgeServiceFinder(cfg.BridgeServiceFinder, deps.L1Client)
+	if err != nil {
+		return nil, fmt.Errorf("create AutoClaim bridge service finder: %w", err)
+	}
+	if err := factories.StartBridgeServiceFinder(ctx, finder); err != nil {
+		return nil, fmt.Errorf("start AutoClaim bridge service finder: %w", err)
+	}
+	return finder, nil
+}
+
+// noopBridgeServiceFinder is used in place of a real bridgeservicefinder.Finder when the L2-to-Lx
+// bridge detector is disabled. It never resolves any bridge service URL; this is safe because no
+// rollup-origin request is ever discovered without that detector running, so nothing calls GetURL.
+type noopBridgeServiceFinder struct{}
+
+var _ bridgeservicefinder.Finder = noopBridgeServiceFinder{}
+
+func (noopBridgeServiceFinder) Start(context.Context) error { return nil }
+
+func (noopBridgeServiceFinder) GetURL(networkID uint32) (string, error) {
+	return "", fmt.Errorf(
+		"autoclaim bridge service finder is not configured (AutoClaim.L2ToLxBridgeDetector.Enabled=false): network %d",
+		networkID)
 }
 
 // startRuntimeComponents launches the goroutines for tx managers, GER syncers, claimers, and the
@@ -418,6 +584,9 @@ func startRuntimeComponents(
 	factories.Go(func() {
 		factories.StartBridgeDetector(ctx, runtime.BridgeDetector)
 	})
+	factories.Go(func() {
+		factories.StartL2ToLxDetector(ctx, runtime.L2ToLxBridgeDetector)
+	})
 }
 
 func createClaimer(
@@ -426,6 +595,7 @@ func createClaimer(
 	storage autoclaimtypes.Storage,
 	deps Dependencies,
 	storageBaseDir string,
+	refresher proof.LeafProofRefresher,
 	logger aggkitcommon.Logger,
 	factories Factories,
 ) (autoclaimtypes.Claimer, EthTxManager, func(context.Context), error) {
@@ -437,20 +607,26 @@ func createClaimer(
 		return nil, nil, nil, fmt.Errorf("create AutoClaim RPC client for claimer %s: %w", cfg.ID, err)
 	}
 
-	gerSyncer, gerSyncerStart, err := factories.NewGERSyncer(ctx, GERSyncerDeps{
-		ClaimerCfg:     cfg,
-		SharedGERCfg:   deps.L2GERSyncConfig,
-		SharedRDCfg:    deps.ReorgDetectorL2Config,
-		StorageBaseDir: storageBaseDir,
-		L2Client:       rpcClient,
-		L1InfoTreeSync: deps.L1InfoTreeSync,
-		L1Client:       deps.L1Client,
-	})
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("create GER syncer for claimer %s: %w", cfg.ID, err)
+	// An L1-destination claimer (NetworkID 0) has no destination-L2 GER manager to sync, so it gets no
+	// GER syncer: readiness for it is gated solely on l1infotreesync having the relevant leaf.
+	var gerSyncer proof.L2GERSyncer
+	var gerSyncerStart func(context.Context)
+	if cfg.NetworkID != autoclaimtypes.L1OriginNetwork {
+		gerSyncer, gerSyncerStart, err = factories.NewGERSyncer(ctx, GERSyncerDeps{
+			ClaimerCfg:     cfg,
+			SharedGERCfg:   deps.L2GERSyncConfig,
+			SharedRDCfg:    deps.ReorgDetectorL2Config,
+			StorageBaseDir: storageBaseDir,
+			L2Client:       rpcClient,
+			L1InfoTreeSync: deps.L1InfoTreeSync,
+			L1Client:       deps.L1Client,
+		})
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("create GER syncer for claimer %s: %w", cfg.ID, err)
+		}
 	}
 
-	proofPreparer, err := factories.NewProofPreparer(deps.L1BridgeSync, deps.L1InfoTreeSync, gerSyncer)
+	proofPreparer, err := factories.NewProofPreparer(deps.L1BridgeSync, deps.L1InfoTreeSync, gerSyncer, refresher)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("create proof preparer for claimer %s: %w", cfg.ID, err)
 	}
@@ -533,6 +709,18 @@ func withDefaultComponentFactories(factories, defaults Factories) Factories {
 	if factories.NewBridgeDetector == nil {
 		factories.NewBridgeDetector = defaults.NewBridgeDetector
 	}
+	if factories.NewBridgeServiceFinder == nil {
+		factories.NewBridgeServiceFinder = defaults.NewBridgeServiceFinder
+	}
+	if factories.NewLeafProofRefresher == nil {
+		factories.NewLeafProofRefresher = defaults.NewLeafProofRefresher
+	}
+	if factories.NewClaimCandidatesFetcher == nil {
+		factories.NewClaimCandidatesFetcher = defaults.NewClaimCandidatesFetcher
+	}
+	if factories.NewL2ToLxDetector == nil {
+		factories.NewL2ToLxDetector = defaults.NewL2ToLxDetector
+	}
 	if factories.NewAPI == nil {
 		factories.NewAPI = defaults.NewAPI
 	}
@@ -549,6 +737,12 @@ func withDefaultLifecycleFactories(factories, defaults Factories) Factories {
 	}
 	if factories.StartBridgeDetector == nil {
 		factories.StartBridgeDetector = defaults.StartBridgeDetector
+	}
+	if factories.StartBridgeServiceFinder == nil {
+		factories.StartBridgeServiceFinder = defaults.StartBridgeServiceFinder
+	}
+	if factories.StartL2ToLxDetector == nil {
+		factories.StartL2ToLxDetector = defaults.StartL2ToLxDetector
 	}
 	if factories.Go == nil {
 		factories.Go = defaults.Go

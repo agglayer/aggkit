@@ -23,7 +23,7 @@ func TestPollOnceConstructsPollingWindows(t *testing.T) {
 	ctx := context.Background()
 	source := &fakeBridgeSource{lastProcessedBlock: 25, found: true}
 	store := newMemoryCursorStore()
-	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
 	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithStartBlock(5), WithBlockWindow(10))
 
 	result, err := detector.PollOnce(ctx)
@@ -43,7 +43,7 @@ func TestPollOncePersistsCursorAfterSuccess(t *testing.T) {
 	ctx := context.Background()
 	source := &fakeBridgeSource{lastProcessedBlock: 20, found: true}
 	store := newMemoryCursorStore()
-	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
 	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(7))
 
 	result, err := detector.PollOnce(ctx)
@@ -69,7 +69,7 @@ func TestDuplicateBridgeOverlapDoesNotCreateDuplicateEnqueue(t *testing.T) {
 		},
 	}
 	store := newMemoryCursorStore()
-	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
 	registry := newFakeRegistry(claimer)
 	detector := newTestDetector(t, source, store, registry, WithStartBlock(100), WithBlockWindow(2))
 
@@ -103,8 +103,8 @@ func TestDestinationFilteringAndUnknownDestinations(t *testing.T) {
 		},
 	}
 	store := newMemoryCursorStore()
-	claimer10 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
-	claimer11 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-11", DestinationNetwork: 11}}
+	claimer10 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
+	claimer11 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer11ID, DestinationNetwork: 11}}
 	registry := newFakeRegistry(claimer10, claimer11)
 	detector := newTestDetector(t, source, store, registry, WithBlockWindow(13))
 
@@ -126,7 +126,7 @@ func TestBridgeSyncErrorDoesNotAdvanceCursor(t *testing.T) {
 	sourceErr := errors.New("bridge sync unavailable")
 	source := &fakeBridgeSource{lastProcessedBlock: 12, found: true, getBridgesErr: sourceErr}
 	store := newMemoryCursorStore()
-	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
 	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(13))
 
 	_, err := detector.PollOnce(ctx)
@@ -138,7 +138,7 @@ func TestRestartFromPersistedCursor(t *testing.T) {
 	ctx := context.Background()
 	source := &fakeBridgeSource{lastProcessedBlock: 60, found: true}
 	store := newMemoryCursorStore()
-	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
 	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(20), WithOverlapBlocks(2))
 	store.cursors[detector.cursorNameForDestination(10)] = autoclaimtypes.BridgeCursor{
 		FromBlock: 40,
@@ -163,8 +163,8 @@ func TestNewDestinationStartsFromConfiguredStartBlock(t *testing.T) {
 		},
 	}
 	store := newMemoryCursorStore()
-	claimer10 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
-	claimer11 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-11", DestinationNetwork: 11}}
+	claimer10 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
+	claimer11 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer11ID, DestinationNetwork: 11}}
 	detector := newTestDetector(
 		t,
 		source,
@@ -203,8 +203,8 @@ func TestEnqueueCallsGoToCorrectClaimer(t *testing.T) {
 		},
 	}
 	store := newMemoryCursorStore()
-	claimer10 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
-	claimer11 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-11", DestinationNetwork: 11}}
+	claimer10 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
+	claimer11 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer11ID, DestinationNetwork: 11}}
 	detector := newTestDetector(t, source, store, newFakeRegistry(claimer10, claimer11), WithBlockWindow(11))
 
 	result, err := detector.PollOnce(ctx)
@@ -236,7 +236,7 @@ func TestPollOnceMarksPreEtrogBridgeBeforeConfiguredUpgradeBlock(t *testing.T) {
 	store := newMemoryCursorStore()
 	claimer := &fakeClaimer{
 		target: autoclaimtypes.ClaimerTarget{
-			ID:                 "claimer-1",
+			ID:                 fakeClaimer1ID,
 			DestinationNetwork: autoclaimtypes.LegacyZkEVMRollupNetwork,
 		},
 	}
@@ -268,7 +268,7 @@ func TestPollOnceIgnoresAlreadyClaimedBridgeBeforeEnqueue(t *testing.T) {
 	}
 	store := newMemoryCursorStore()
 	claimer := &fakeClaimer{
-		target:  autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10},
+		target:  autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10},
 		claimed: true,
 	}
 	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(11))
@@ -367,7 +367,7 @@ func TestPollOnceGetLastBlockError(t *testing.T) {
 	sourceErr := errors.New("bridge sync unavailable")
 	source := &fakeBridgeSource{lastProcessedErr: sourceErr}
 	store := newMemoryCursorStore()
-	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
 	w := newTestDetector(t, source, store, newFakeRegistry(claimer))
 
 	_, err := w.PollOnce(ctx)
@@ -378,7 +378,7 @@ func TestPollOnceNotFoundReturnsEmpty(t *testing.T) {
 	ctx := context.Background()
 	source := &fakeBridgeSource{lastProcessedBlock: 0, found: false}
 	store := newMemoryCursorStore()
-	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10}}
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
 	w := newTestDetector(t, source, store, newFakeRegistry(claimer))
 
 	result, err := w.PollOnce(ctx)
@@ -399,7 +399,7 @@ func TestClaimerErrorDoesNotAdvanceCursor(t *testing.T) {
 	}
 	store := newMemoryCursorStore()
 	claimer := &fakeClaimer{
-		target: autoclaimtypes.ClaimerTarget{ID: "claimer-10", DestinationNetwork: 10},
+		target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10},
 		err:    enqueueErr,
 	}
 	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(11))
@@ -407,6 +407,35 @@ func TestClaimerErrorDoesNotAdvanceCursor(t *testing.T) {
 	_, err := detector.PollOnce(ctx)
 	require.ErrorIs(t, err, enqueueErr)
 	require.Empty(t, store.cursors)
+}
+
+// TestL1ToL2DedupsByL1SourceNotTokenOrigin proves the L1→L2 request key (and the in-poll dedup)
+// depends only on the source network (always L1 / network 0) and not on the bridged token's origin
+// network. Two exits to the same destination with the same deposit count are the same claim identity
+// regardless of token origin, so the detector must dedup them to a single enqueue. Before the fix
+// (which keyed the dedup on exit.OriginNetwork) these two exits produced two distinct keys and were
+// both enqueued.
+func TestL1ToL2DedupsByL1SourceNotTokenOrigin(t *testing.T) {
+	ctx := context.Background()
+	// Same destination + deposit count, different token origin networks.
+	a := makeSyncBridge(5, 7, 10, 100, 0)
+	b := makeSyncBridge(5, 8, 10, 100, 1)
+	source := &fakeBridgeSource{
+		lastProcessedBlock: 100,
+		found:              true,
+		bridgesByRange: map[blockRange][]bridgesync.Bridge{
+			{from: 0, to: 100}: {a, b},
+		},
+	}
+	store := newMemoryCursorStore()
+	claimer := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
+	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(101))
+
+	result, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.EnqueuedBridgeCount, "both exits share the L1-source claim identity 0:10:5")
+	require.Equal(t, 1, result.SkippedBridgeCount, "the second exit is deduped by the L1-source key")
+	require.Len(t, claimer.enqueued, 1)
 }
 
 func newTestDetector(
@@ -579,7 +608,7 @@ func (c *fakeClaimer) Enqueue(_ context.Context, bridge autoclaimtypes.BridgeExi
 	if c.seen == nil {
 		c.seen = make(map[autoclaimtypes.RequestKey]struct{})
 	}
-	key := autoclaimtypes.DeriveRequestKey(bridge.OriginNetwork, bridge.DestinationNetwork, bridge.DepositCount)
+	key := autoclaimtypes.DeriveRequestKey(bridge.SourceNetwork, bridge.DestinationNetwork, bridge.DepositCount)
 	if _, ok := c.seen[key]; ok {
 		return nil
 	}

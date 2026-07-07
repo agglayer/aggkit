@@ -159,7 +159,7 @@ lint: ## Runs the linter
 generate-swagger-docs: ## Generates the swagger docs
 	@echo "Generating swagger docs"
 	@$(SWAG) init -g bridgeservice/bridge.go -o bridgeservice/docs --exclude autoclaim/api
-	@$(SWAG) init -g api.go -d autoclaim/api,autoclaim/apitypes -o autoclaim/api/docs --instanceName autoclaim
+	@$(SWAG) init -g admin.go -d autoclaim/api,autoclaim/apitypes -o autoclaim/api/docs --instanceName autoclaim
 	@mkdir -p docs/assets/swagger/bridge_service
 	@cp bridgeservice/docs/swagger.json docs/assets/swagger/bridge_service/swagger.json
 	@echo "Copied swagger.json to docs/assets/swagger/bridge_service/"

@@ -1,3 +1,4 @@
+//nolint:lll // test file; long require.Equal/mock-setup lines read clearer unwrapped
 package runtime
 
 import (
@@ -19,6 +20,7 @@ import (
 	"github.com/agglayer/aggkit/autoclaim/proof"
 	"github.com/agglayer/aggkit/autoclaim/simulator"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
+	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
@@ -279,6 +281,93 @@ func TestStartFailsWhenBasicFilterSimulatorConstructionFails(t *testing.T) {
 	require.ErrorContains(t, err, "simulator unavailable")
 }
 
+// fakeBridgeServiceFinder is a harmless stand-in for a real bridgeservicefinder.Finder, injected via
+// Factories.NewBridgeServiceFinder so tests never make real RPC calls.
+type fakeBridgeServiceFinder struct{}
+
+func (fakeBridgeServiceFinder) Start(context.Context) error { return nil }
+
+func (fakeBridgeServiceFinder) GetURL(uint32) (string, error) { return "http://fake-source", nil }
+
+func withL2ToLxEnabled(cfg autoclaimcfg.Config) autoclaimcfg.Config {
+	cfg.L2ToLxBridgeDetector = autoclaimcfg.L2ToLxBridgeDetector{
+		Enabled:                    true,
+		PollInterval:               cfgtypes.Duration{Duration: time.Second},
+		RetryAfterErrorPeriod:      cfgtypes.Duration{Duration: time.Second},
+		MaxRetryAttemptsAfterError: -1,
+	}
+	cfg.BridgeServiceFinder = bridgeservicefinder.Config{
+		RollupManagerAddr: common.HexToAddress("0x2000000000000000000000000000000000000002"),
+	}
+	return cfg
+}
+
+func TestCreateClaimerSkipsGERSyncerForL1DestinationClaimerOnly(t *testing.T) {
+	cfg := withL2ToLxEnabled(validConfig())
+	cfg.Claimers = []autoclaimcfg.ClaimerConfig{
+		validClaimer("l1-dest", 0, true),
+		validClaimer("l2-dest", 5, true),
+	}
+
+	var mu sync.Mutex
+	gerSyncerCalledFor := make([]uint32, 0)
+
+	factories := testFactories(&factoryHooks{})
+	factories.NewBridgeServiceFinder = func(bridgeservicefinder.Config, aggkittypes.EthClienter) (
+		bridgeservicefinder.Finder, error,
+	) {
+		return fakeBridgeServiceFinder{}, nil
+	}
+	factories.StartBridgeServiceFinder = func(context.Context, bridgeservicefinder.Finder) error {
+		return nil
+	}
+	factories.NewGERSyncer = func(_ context.Context, deps GERSyncerDeps) (proof.L2GERSyncer, func(context.Context), error) {
+		mu.Lock()
+		defer mu.Unlock()
+		gerSyncerCalledFor = append(gerSyncerCalledFor, deps.ClaimerCfg.NetworkID)
+		return nil, nil, nil
+	}
+
+	rt, err := Start(context.Background(), Dependencies{
+		Config:         cfg,
+		L1BridgeSync:   fakeL1BridgeSync{},
+		L1InfoTreeSync: fakeL1InfoTreeSync{},
+	}, factories)
+
+	require.NoError(t, err)
+	require.NotNil(t, rt)
+	// The L1-destination (NetworkID 0) claimer must not trigger a GER syncer; the L2-destination one
+	// (NetworkID 5) still gets its own.
+	require.ElementsMatch(t, []uint32{5}, gerSyncerCalledFor)
+}
+
+func TestStartL2ToLxDetectorDisabledNeverBuildsRealFinder(t *testing.T) {
+	// validConfig() leaves L2ToLxBridgeDetector at its zero value (Enabled=false), matching every
+	// pre-existing config that never opted into it.
+	cfg := validConfig()
+	finderBuilt := false
+
+	factories := testFactories(&factoryHooks{})
+	factories.NewBridgeServiceFinder = func(bridgeservicefinder.Config, aggkittypes.EthClienter) (
+		bridgeservicefinder.Finder, error,
+	) {
+		finderBuilt = true
+		return fakeBridgeServiceFinder{}, nil
+	}
+
+	rt, err := Start(context.Background(), Dependencies{
+		Config:         cfg,
+		L1BridgeSync:   fakeL1BridgeSync{},
+		L1InfoTreeSync: fakeL1InfoTreeSync{},
+	}, factories)
+
+	require.NoError(t, err)
+	require.NotNil(t, rt)
+	require.False(t, finderBuilt, "NewBridgeServiceFinder must not be called when the detector is disabled")
+	require.NotNil(t, rt.L2ToLxBridgeDetector)
+	require.NotNil(t, rt.BridgeServiceFinder)
+}
+
 func TestEthTxManagerAdapterMethods(t *testing.T) {
 	startCalled := false
 	stopCalled := false
@@ -305,8 +394,8 @@ func TestEthTxManagerAdapterMethods(t *testing.T) {
 func TestDefaultFactoriesSimpleConstructors(t *testing.T) {
 	factories := DefaultFactories(log.Config{})
 
-	// NewProofPreparer wraps proof.NewPreparer.
-	preparer, err := factories.NewProofPreparer(fakeL1BridgeSync{}, fakeL1InfoTreeSync{}, nil)
+	// NewProofPreparer wraps a SourceAwarePreparer over proof.NewPreparer/proof.NewRollupPreparer.
+	preparer, err := factories.NewProofPreparer(fakeL1BridgeSync{}, fakeL1InfoTreeSync{}, nil, fakeLeafProofRefresher{})
 	require.NoError(t, err)
 	require.NotNil(t, preparer)
 
@@ -467,8 +556,9 @@ func testFactories(hooks *factoryHooks) Factories {
 		},
 		NewProofPreparer: func(
 			l1BridgeSync proof.L1BridgeSyncer,
-			l1InfoTreeSync proof.L1InfoTreeSyncer,
+			l1InfoTreeSync ProofL1InfoTreeSyncer,
 			gerSyncer proof.L2GERSyncer,
+			_ proof.LeafProofRefresher,
 		) (autoclaimtypes.ProofPreparer, error) {
 			return proof.NewPreparer(l1BridgeSync, l1InfoTreeSync, gerSyncer), nil
 		},
@@ -564,6 +654,32 @@ func (fakeL1InfoTreeSync) IsUpToDate(context.Context, aggkittypes.BaseEthereumCl
 	return true, nil
 }
 
+func (fakeL1InfoTreeSync) GetLocalExitRoot(context.Context, uint32, common.Hash) (common.Hash, error) {
+	return common.Hash{}, nil
+}
+
+func (fakeL1InfoTreeSync) GetLastProcessedBlock(context.Context) (uint64, error) {
+	return 0, nil
+}
+
+func (fakeL1InfoTreeSync) GetVerifiedBatchesInBlockRange(uint64, uint64) ([]*l1infotreesync.VerifyBatches, error) {
+	return nil, nil
+}
+
+func (fakeL1InfoTreeSync) GetLatestL1InfoLeafUntilBlock(
+	context.Context, uint64,
+) (*l1infotreesync.L1InfoTreeLeaf, error) {
+	return nil, nil
+}
+
+type fakeLeafProofRefresher struct{}
+
+func (fakeLeafProofRefresher) RefreshLeafProof(
+	context.Context, uint32, uint32, uint32,
+) (treetypes.Proof, error) {
+	return treetypes.Proof{}, nil
+}
+
 type fakeStorage struct{}
 
 func (*fakeStorage) EnqueueRequest(
@@ -646,6 +762,14 @@ func (*fakeStorage) SaveBridgeCursor(
 	autoclaimtypes.BridgeCursor,
 	time.Time,
 ) error {
+	return nil
+}
+
+func (*fakeStorage) GetLERCursor(context.Context, uint32) (*autoclaimtypes.LERCursor, bool, error) {
+	return nil, false, nil
+}
+
+func (*fakeStorage) SaveLERCursor(context.Context, uint32, autoclaimtypes.LERCursor, time.Time) error {
 	return nil
 }
 

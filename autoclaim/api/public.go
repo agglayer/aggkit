@@ -46,6 +46,7 @@ func (p *PublicREST) RegisterRoutes(router gin.IRouter) {
 // @Summary List Auto Claim bridge requests
 // @Description Returns tracked Auto Claim requests with optional filters and pagination.
 // @Tags autoclaim
+// @Param source_network query uint32 false "Filter by source network ID (network the bridge exit originated on)"
 // @Param origin_network query uint32 false "Filter by origin network ID"
 // @Param destination_network query uint32 false "Filter by destination network ID"
 // @Param status query string false "Filter by request status"

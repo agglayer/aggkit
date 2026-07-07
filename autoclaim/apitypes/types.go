@@ -28,6 +28,7 @@ type ListResponse struct {
 type RequestResponse struct {
 	ID                 string            `json:"id"`
 	Status             string            `json:"status"`
+	SourceNetwork      uint32            `json:"source_network"`
 	OriginNetwork      uint32            `json:"origin_network"`
 	DestinationNetwork uint32            `json:"destination_network"`
 	DepositCount       uint32            `json:"deposit_count"`
@@ -46,6 +47,7 @@ type RequestResponse struct {
 	BlockPos           uint64            `json:"block_pos"`
 	BlockTimestamp     uint64            `json:"block_timestamp"`
 	L1InfoTreeIndex    *uint32           `json:"l1_info_tree_index,omitempty"`
+	LER                string            `json:"ler,omitempty"`
 	RetryCount         uint64            `json:"retry_count"`
 	MaxRetries         uint64            `json:"max_retries"`
 	LastObservedSendAt *time.Time        `json:"last_observed_send_at,omitempty"`
@@ -83,6 +85,7 @@ func NewRequestResponse(request autoclaimtypes.AutoClaimRequest) RequestResponse
 	response := RequestResponse{
 		ID:                 string(request.Key),
 		Status:             request.Status.String(),
+		SourceNetwork:      request.Bridge.SourceNetwork,
 		OriginNetwork:      request.Bridge.OriginNetwork,
 		DestinationNetwork: request.Bridge.DestinationNetwork,
 		DepositCount:       request.Bridge.DepositCount,
@@ -101,6 +104,7 @@ func NewRequestResponse(request autoclaimtypes.AutoClaimRequest) RequestResponse
 		BlockPos:           request.Bridge.BlockPos,
 		BlockTimestamp:     request.Bridge.BlockTimestamp,
 		L1InfoTreeIndex:    request.L1InfoTreeIndex,
+		LER:                lerHex(request.LER),
 		RetryCount:         request.RetryCount,
 		MaxRetries:         request.MaxRetries,
 		LastObservedSendAt: request.LastObservedSendAt,
@@ -145,4 +149,13 @@ func bigIntString(value *big.Int) string {
 		return ""
 	}
 	return value.String()
+}
+
+// lerHex renders the source network's local exit root as a hex string, or "" for the zero hash
+// (L1-origin requests do not carry a LER).
+func lerHex(value common.Hash) string {
+	if value == (common.Hash{}) {
+		return ""
+	}
+	return value.Hex()
 }

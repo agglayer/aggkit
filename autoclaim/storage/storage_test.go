@@ -13,6 +13,7 @@ import (
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/db"
 	logger "github.com/agglayer/aggkit/log"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -117,6 +118,115 @@ func TestBridgeCursorPersistence(t *testing.T) {
 	_, found, err = storage.GetBridgeCursor(ctx, "missing")
 	require.NoError(t, err)
 	require.False(t, found)
+}
+
+func TestLERCursorPersistence(t *testing.T) {
+	storage, _ := newTestStorage(t)
+	defer storage.Close()
+	ctx := context.Background()
+
+	const sourceNetwork uint32 = 2
+	cursor := autoclaimtypes.LERCursor{
+		SourceNetwork:      sourceNetwork,
+		LastLER:            common.HexToHash("0xaaaa"),
+		LastVerifyBlockNum: 100,
+	}
+	require.NoError(t, storage.SaveLERCursor(ctx, sourceNetwork, cursor, time.Now().UTC()))
+
+	stored, found, err := storage.GetLERCursor(ctx, sourceNetwork)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, cursor, *stored)
+
+	cursor.LastLER = common.HexToHash("0xbbbb")
+	cursor.LastVerifyBlockNum = 250
+	require.NoError(t, storage.SaveLERCursor(ctx, sourceNetwork, cursor, time.Now().UTC()))
+
+	stored, found, err = storage.GetLERCursor(ctx, sourceNetwork)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, cursor, *stored)
+
+	// A different source network keeps its own cursor.
+	other := autoclaimtypes.LERCursor{
+		SourceNetwork:      3,
+		LastLER:            common.HexToHash("0xcccc"),
+		LastVerifyBlockNum: 42,
+	}
+	require.NoError(t, storage.SaveLERCursor(ctx, 3, other, time.Now().UTC()))
+	storedOther, found, err := storage.GetLERCursor(ctx, 3)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, other, *storedOther)
+
+	// The first source network's cursor is unaffected by the second.
+	stored, found, err = storage.GetLERCursor(ctx, sourceNetwork)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, cursor, *stored)
+
+	_, found, err = storage.GetLERCursor(ctx, 99)
+	require.NoError(t, err)
+	require.False(t, found)
+}
+
+func TestEnqueueRequestPersistsSourceLERAndLeafProof(t *testing.T) {
+	storage, _ := newTestStorage(t)
+	defer storage.Close()
+	ctx := context.Background()
+
+	const (
+		sourceNetwork      uint32 = 2
+		destinationNetwork uint32 = 0
+		depositCount       uint32 = 9
+	)
+	var leafProof treetypes.Proof
+	leafProof[0] = common.HexToHash("0x11")
+	leafProof[1] = common.HexToHash("0x22")
+
+	bridge := autoclaimtypes.BridgeExit{
+		SourceNetwork:      sourceNetwork,
+		BlockNum:           500,
+		TxHash:             common.HexToHash("0xdead"),
+		OriginNetwork:      7,
+		DestinationNetwork: destinationNetwork,
+		DepositCount:       depositCount,
+		Amount:             big.NewInt(1),
+	}
+	request := autoclaimtypes.AutoClaimRequest{
+		Status:         autoclaimtypes.RequestStatusDetected,
+		Bridge:         bridge,
+		LER:            common.HexToHash("0xfeed"),
+		VerifyBlockNum: 4242,
+		LeafProof:      leafProof,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
+
+	stored, inserted, err := storage.EnqueueRequest(ctx, request)
+	require.NoError(t, err)
+	require.True(t, inserted)
+
+	// Key and global index are derived from the source network, not the token origin network.
+	require.Equal(t,
+		autoclaimtypes.DeriveRequestKey(sourceNetwork, destinationNetwork, depositCount),
+		stored.Key,
+	)
+	require.Equal(t, 0,
+		autoclaimtypes.DeriveGlobalIndexForSource(sourceNetwork, depositCount).Cmp(stored.GlobalIndex),
+	)
+	require.Equal(t, sourceNetwork, stored.Bridge.SourceNetwork)
+	require.Equal(t, common.HexToHash("0xfeed"), stored.LER)
+	require.Equal(t, uint64(4242), stored.VerifyBlockNum)
+	require.Equal(t, leafProof, stored.LeafProof)
+
+	// Round-trips through a fresh read as well.
+	reread, err := storage.GetRequest(ctx, stored.Key)
+	require.NoError(t, err)
+	require.Equal(t, sourceNetwork, reread.Bridge.SourceNetwork)
+	require.Equal(t, common.HexToHash("0xfeed"), reread.LER)
+	require.Equal(t, uint64(4242), reread.VerifyBlockNum)
+	require.Equal(t, leafProof, reread.LeafProof)
 }
 
 func TestEnqueueRequestIsIdempotentAndDetectsDuplicates(t *testing.T) {

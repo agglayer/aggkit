@@ -383,6 +383,17 @@ func (s *L1InfoTreeSync) GetFirstVerifiedBatchesAfterBlock(rollupID uint32, bloc
 	return s.processor.GetFirstVerifiedBatchesAfterBlock(rollupID, blockNum)
 }
 
+// GetVerifiedBatchesInBlockRange returns all verified-batches rows (both zkEVM
+// VerifyBatchesTrustedAggregator and pessimistic VerifyPessimisticStateTransition transitions,
+// across all rollups) whose block_num is in the inclusive range [fromBlock, toBlock], ordered by
+// block_num ASC, block_pos ASC.
+func (s *L1InfoTreeSync) GetVerifiedBatchesInBlockRange(fromBlock, toBlock uint64) ([]*VerifyBatches, error) {
+	if s.processor.isHalted() {
+		return nil, sync.ErrInconsistentState
+	}
+	return s.processor.GetVerifiedBatchesInBlockRange(fromBlock, toBlock)
+}
+
 func (s *L1InfoTreeSync) GetFirstL1InfoWithRollupExitRoot(rollupExitRoot common.Hash) (*L1InfoTreeLeaf, error) {
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
