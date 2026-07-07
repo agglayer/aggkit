@@ -82,16 +82,9 @@ func fetchL1InfoTreeLeafCount(ctx context.Context, cfg *Config) (uint32, error) 
 		return 0, fmt.Errorf("l1GlobalExitRootAddress not configured")
 	}
 
-	var toBlock uint64
-	if cfg.Options.L1EndBlock > 0 {
-		toBlock = cfg.Options.L1EndBlock
-		log.Infof("UpdateL1InfoTreeV2 scan capped at l1EndBlock %d", toBlock)
-	} else {
-		var err error
-		toBlock, err = resolveLatestBlock(ctx, cfg.L1RPCURL)
-		if err != nil {
-			return 0, fmt.Errorf("resolve latest L1 block: %w", err)
-		}
+	toBlock, err := resolveL1EndBlock(ctx, cfg)
+	if err != nil {
+		return 0, err
 	}
 	chunkSize := uint64(cfg.Options.BlockRange)
 	if chunkSize == 0 {

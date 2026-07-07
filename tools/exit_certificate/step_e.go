@@ -45,7 +45,7 @@ func RunStepE(
 	log.Info(" STEP E — Unclaimed L1→L2 bridge deposits")
 	log.Info("═══════════════════════════════════════════")
 
-	l1EndBlock, err := resolveL1ScanEndBlock(ctx, cfg)
+	l1EndBlock, err := resolveL1EndBlock(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -116,15 +116,12 @@ func RunStepE(
 		)
 }
 
-// resolveL1ScanEndBlock returns the last L1 block Step E scans for BridgeEvents: the l1EndBlock
-// cutoff when configured (a block tied to the frozen L2 snapshot, so post-snapshot deposits cannot
-// block the pipeline — AET-03), otherwise the current latest L1 block.
-func resolveL1ScanEndBlock(ctx context.Context, cfg *Config) (uint64, error) {
-	if cfg.Options.L1EndBlock > 0 {
-		log.Infof("L1 scan capped at l1EndBlock %d, scanning from %d",
-			cfg.Options.L1EndBlock, cfg.Options.L1StartBlock)
-		return cfg.Options.L1EndBlock, nil
-	}
+// resolveL1EndBlock returns the last L1 block the L1 reads cover: the l1EndBlock cutoff when
+// configured (a block tied to the frozen L2 snapshot, so post-snapshot deposits cannot block the
+// pipeline — AET-03), otherwise the current latest L1 block. A cutoff beyond the current head is
+// rejected: it is almost surely a misconfiguration (e.g. an L2 block number), and some L1 clients
+// reject eth_getLogs ranges past the head with a cryptic "invalid block range params" error.
+func resolveL1EndBlock(ctx context.Context, cfg *Config) (uint64, error) {
 	latestResult, err := singleRPC(ctx, cfg.L1RPCURL, "eth_blockNumber", nil, defaultRetries)
 	if err != nil {
 		return 0, fmt.Errorf("get L1 latest block: %w", err)
@@ -133,9 +130,20 @@ func resolveL1ScanEndBlock(ctx context.Context, cfg *Config) (uint64, error) {
 	if err := json.Unmarshal(latestResult, &latestHex); err != nil {
 		return 0, fmt.Errorf("parse L1 latest block: %w", err)
 	}
-	block := hexToUint64(latestHex)
-	log.Infof("L1 latest block: %d, scanning from %d", block, cfg.Options.L1StartBlock)
-	return block, nil
+	latest := hexToUint64(latestHex)
+
+	if cfg.Options.L1EndBlock > 0 {
+		if cfg.Options.L1EndBlock > latest {
+			return 0, fmt.Errorf("options.l1EndBlock %d is beyond the current L1 latest block %d; "+
+				"set it to an L1 block at or after the sequencer stop (or 0 to use the latest block)",
+				cfg.Options.L1EndBlock, latest)
+		}
+		log.Infof("L1 reads capped at l1EndBlock %d (L1 latest: %d), scanning from %d",
+			cfg.Options.L1EndBlock, latest, cfg.Options.L1StartBlock)
+		return cfg.Options.L1EndBlock, nil
+	}
+	log.Infof("L1 latest block: %d, scanning from %d", latest, cfg.Options.L1StartBlock)
+	return latest, nil
 }
 
 // checkClaimedBatch calls isClaimed(depositCount, 0) on the L2 bridge for each deposit.

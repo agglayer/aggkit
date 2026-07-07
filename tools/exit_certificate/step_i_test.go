@@ -41,7 +41,7 @@ func TestFetchL1InfoTreeLeafCount(t *testing.T) {
 			switch method {
 			case rpcMethodEthBlockNumber:
 				return "0x1a4" // 420
-			case "eth_getLogs":
+			case rpcMethodEthGetLogs:
 				var filter struct {
 					ToBlock string `json:"toBlock"`
 				}
@@ -60,13 +60,19 @@ func TestFetchL1InfoTreeLeafCount(t *testing.T) {
 	t.Run("scan starts at l1EndBlock when set", func(t *testing.T) {
 		t.Parallel()
 		url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
-			require.Equal(t, "eth_getLogs", method, "no eth_blockNumber call expected with an l1EndBlock cutoff")
-			var filter struct {
-				ToBlock string `json:"toBlock"`
+			switch method {
+			case rpcMethodEthBlockNumber:
+				return "0x1a4" // 420 — head, above the cutoff
+			case rpcMethodEthGetLogs:
+				var filter struct {
+					ToBlock string `json:"toBlock"`
+				}
+				require.NoError(t, json.Unmarshal(params[0], &filter))
+				require.Equal(t, toBlockTag(300), filter.ToBlock)
+				return logsResult
 			}
-			require.NoError(t, json.Unmarshal(params[0], &filter))
-			require.Equal(t, toBlockTag(300), filter.ToBlock)
-			return logsResult
+			t.Fatalf("unexpected method %s", method)
+			return nil
 		})
 		cfg := makeCfg(url)
 		cfg.Options.L1EndBlock = 300

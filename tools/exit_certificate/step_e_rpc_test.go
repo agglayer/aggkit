@@ -37,25 +37,31 @@ func TestSplitByLeafType(t *testing.T) {
 	require.Equal(t, uint32(1), messages[0].DepositCount)
 }
 
-func TestResolveL1ScanEndBlock(t *testing.T) {
+func TestResolveL1EndBlock(t *testing.T) {
 	t.Parallel()
 	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
 		require.Equal(t, rpcMethodEthBlockNumber, method)
 		return "0x1a4" // 420
 	})
+
+	// No cutoff → latest L1 block.
 	cfg := &Config{L1RPCURL: url}
-	block, err := resolveL1ScanEndBlock(context.Background(), cfg)
+	block, err := resolveL1EndBlock(context.Background(), cfg)
 	require.NoError(t, err)
 	require.Equal(t, uint64(420), block)
-}
 
-func TestResolveL1ScanEndBlockWithL1EndBlock(t *testing.T) {
-	t.Parallel()
-	// A configured l1EndBlock is returned directly, without any RPC call.
-	cfg := &Config{Options: Options{L1EndBlock: 1234}}
-	block, err := resolveL1ScanEndBlock(context.Background(), cfg)
+	// Cutoff at or below the head → returned as-is.
+	cfg = &Config{L1RPCURL: url, Options: Options{L1EndBlock: 300}}
+	block, err = resolveL1EndBlock(context.Background(), cfg)
 	require.NoError(t, err)
-	require.Equal(t, uint64(1234), block)
+	require.Equal(t, uint64(300), block)
+
+	// Cutoff beyond the head → clear config error (some L1 clients reject
+	// eth_getLogs ranges past the head with "invalid block range params").
+	cfg = &Config{L1RPCURL: url, Options: Options{L1EndBlock: 1234}}
+	_, err = resolveL1EndBlock(context.Background(), cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "l1EndBlock 1234 is beyond the current L1 latest block 420")
 }
 
 func TestCheckClaimedBatch(t *testing.T) {
