@@ -483,7 +483,7 @@ func BridgeL2ToL1NoClaim(
 		return nil, fmt.Errorf("failed to send L2->L1 bridge tx: %w", err)
 	}
 	log.Infof("[%s] L2->L1 bridge tx sent, tx=%s", label, bridgeTx.Hash().Hex())
-	mineCtx, mineCancel := context.WithTimeout(ctx, 30*time.Second)
+	mineCtx, mineCancel := context.WithTimeout(ctx, bridgeMineWait)
 	defer mineCancel()
 	receipt, err := bind.WaitMined(mineCtx, env.Clients.L2, bridgeTx)
 	if err != nil {
