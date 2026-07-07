@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -50,10 +49,10 @@ func TestResolveL1ScanEndBlock(t *testing.T) {
 	require.Equal(t, uint64(420), block)
 }
 
-func TestResolveL1ScanEndBlockWithTargetL1BlockNumber(t *testing.T) {
+func TestResolveL1ScanEndBlockWithL1EndBlock(t *testing.T) {
 	t.Parallel()
-	// A constant targetL1BlockNumber is returned directly, without any RPC call.
-	cfg := &Config{TargetL1BlockNumber: *aggkittypes.NewBlockNumber(1234)}
+	// A configured l1EndBlock is returned directly, without any RPC call.
+	cfg := &Config{Options: Options{L1EndBlock: 1234}}
 	block, err := resolveL1ScanEndBlock(context.Background(), cfg)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1234), block)

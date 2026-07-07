@@ -24,14 +24,6 @@ l2NetworkId = 1
 # Empty string defaults to LatestBlock. Resolved to a concrete number at the start of Step 0.
 targetBlock = "LatestBlock"
 
-# OPTIONAL — L1 cutoff block for the L1 reads. Same format as targetBlock (finality keyword with
-# optional offset, or a decimal/hex block number). When set, Step E scans L1 for unclaimed deposits
-# only up to this block (and filters the bridge service cross-check accordingly) and Step I starts
-# its backward UpdateL1InfoTreeV2 scan from it, so L1 deposits submitted after the L2 snapshot cannot
-# block the pipeline (AET-03). Pick a block at or after the moment the sequencer was stopped. A
-# concrete number keeps re-runs deterministic. Default: "" (use the latest L1 block).
-targetL1BlockNumber = ""
-
 # Destination address on destinationNetwork for SC-locked value (tokens not held by any EOA).
 # REQUIRED. Must be an address whose private key you control and must NOT be the zero address
 # (0x00..00) — these funds can only be recovered by signing from it. LoadConfig rejects both.
@@ -77,6 +69,13 @@ outputDir = "./output"
 
 # First L1 block to scan in Step E. Default: 0 (genesis).
 l1StartBlock = 0
+
+# OPTIONAL — L1 cutoff block for the L1 reads. When set (> 0), Step E scans L1 for unclaimed
+# deposits only up to this block (and filters the bridge service cross-check accordingly) and Step I
+# starts its backward UpdateL1InfoTreeV2 scan from it, so L1 deposits submitted after the L2
+# snapshot cannot block the pipeline (AET-03). Pick a block at or after the moment the sequencer was
+# stopped. Default: 0 (no cutoff: use the latest L1 block).
+l1EndBlock = 0
 
 # First L2 block to scan. Default: 0 (genesis).
 l2StartBlock = 0

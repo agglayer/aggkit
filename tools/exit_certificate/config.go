@@ -29,6 +29,13 @@ type Options struct {
 	RPCDelayMs       int    `json:"rpcDelayMs"`
 	OutputDir        string `json:"outputDir"`
 	L1StartBlock     uint64 `json:"l1StartBlock"`
+	// L1EndBlock is an optional L1 cutoff block for the L1 reads. When set (>0), Step E scans L1 for
+	// unclaimed deposits only up to this block (and filters the bridge service cross-check
+	// accordingly) and Step I starts its backward UpdateL1InfoTreeV2 scan from it, so L1 deposits
+	// submitted after the L2 snapshot cannot block the pipeline (AET-03). Pick a block at or after
+	// the moment the sequencer was stopped. 0 (the default) means no cutoff: the current latest L1
+	// block is used (previous behaviour).
+	L1EndBlock       uint64 `json:"l1EndBlock"`
 	L2StartBlock     uint64 `json:"l2StartBlock"`
 	AgglayerAdminURL string `json:"agglayerAdminURL"`
 	// AgglayerAdminToken is an optional Bearer token for authenticating requests to agglayerAdminURL.
@@ -117,18 +124,12 @@ const (
 
 // Config holds all parameters required by the exit certificate tool.
 type Config struct {
-	L2RPCURL        string                          `json:"l2RpcUrl"`
-	L1RPCURL        string                          `json:"l1RpcUrl"`
-	L2BridgeAddress common.Address                  `json:"l2BridgeAddress"`
-	L1BridgeAddress common.Address                  `json:"l1BridgeAddress"`
-	L2NetworkID     uint32                          `json:"l2NetworkId"`
-	TargetBlock     aggkittypes.BlockNumberFinality `json:"targetBlock"`
-	// TargetL1BlockNumber is an optional L1 cutoff (block number or finality tag, e.g. "FinalizedBlock").
-	// When set, Step E scans L1 for unclaimed deposits only up to this block (and filters the bridge
-	// service cross-check accordingly) and Step I starts its backward UpdateL1InfoTreeV2 scan from it,
-	// so L1 deposits submitted after the L2 snapshot cannot block the pipeline (AET-03). When empty,
-	// the current latest L1 block is used (previous behaviour).
-	TargetL1BlockNumber aggkittypes.BlockNumberFinality `json:"targetL1BlockNumber"`
+	L2RPCURL            string                          `json:"l2RpcUrl"`
+	L1RPCURL            string                          `json:"l1RpcUrl"`
+	L2BridgeAddress     common.Address                  `json:"l2BridgeAddress"`
+	L1BridgeAddress     common.Address                  `json:"l1BridgeAddress"`
+	L2NetworkID         uint32                          `json:"l2NetworkId"`
+	TargetBlock         aggkittypes.BlockNumberFinality `json:"targetBlock"`
 	ExitAddress         common.Address                  `json:"exitAddress"`
 	DestinationNetwork  uint32                          `json:"destinationNetwork"`
 	SovereignRollupAddr common.Address                  `json:"sovereignRollupAddr"`
@@ -284,11 +285,6 @@ func buildConfig(raw *rawConfig, configDir string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid targetBlock %q: %w", raw.TargetBlock, err)
 	}
-	targetL1Block, err := parseTargetL1BlockNumber(raw.TargetL1BlockNumber)
-	if err != nil {
-		return nil, fmt.Errorf("invalid targetL1BlockNumber %q: %w", raw.TargetL1BlockNumber, err)
-	}
-
 	cfg := &Config{
 		L2RPCURL:                raw.L2RPCURL,
 		L1RPCURL:                raw.L1RPCURL,
@@ -297,7 +293,6 @@ func buildConfig(raw *rawConfig, configDir string) (*Config, error) {
 		ExitAddress:             common.HexToAddress(raw.ExitAddress),
 		DestinationNetwork:      raw.DestinationNetwork,
 		TargetBlock:             targetBlock,
-		TargetL1BlockNumber:     targetL1Block,
 		SovereignRollupAddr:     common.HexToAddress(raw.SovereignRollupAddr),
 		L1GlobalExitRootAddress: common.HexToAddress(raw.L1GlobalExitRootAddress),
 		RollupManagerAddress:    common.HexToAddress(raw.RollupManagerAddress),
@@ -314,9 +309,9 @@ func buildConfig(raw *rawConfig, configDir string) (*Config, error) {
 	}
 
 	cfg.Options = mergeOptions(raw.Options, configDir)
-	if cfg.TargetL1BlockNumber.IsConstant() && cfg.TargetL1BlockNumber.Specific < cfg.Options.L1StartBlock {
-		return nil, fmt.Errorf("invalid targetL1BlockNumber %d: below options.l1StartBlock %d",
-			cfg.TargetL1BlockNumber.Specific, cfg.Options.L1StartBlock)
+	if cfg.Options.L1EndBlock > 0 && cfg.Options.L1EndBlock < cfg.Options.L1StartBlock {
+		return nil, fmt.Errorf("invalid options.l1EndBlock %d: below options.l1StartBlock %d",
+			cfg.Options.L1EndBlock, cfg.Options.L1StartBlock)
 	}
 	if len(raw.SignerConfig) > 0 {
 		signerCfg, err := parseSignerConfig(raw.SignerConfig, configDir)
@@ -352,19 +347,6 @@ func parseTargetBlock(s string) (aggkittypes.BlockNumberFinality, error) {
 	tb, err := aggkittypes.NewBlockNumberFinality(s)
 	if err != nil {
 		return aggkittypes.LatestBlock, err
-	}
-	return *tb, nil
-}
-
-// parseTargetL1BlockNumber converts the raw JSON string to a BlockNumberFinality.
-// Unlike targetBlock, an empty value stays empty (no L1 cutoff: the latest L1 block is used).
-func parseTargetL1BlockNumber(s string) (aggkittypes.BlockNumberFinality, error) {
-	if s == "" {
-		return aggkittypes.BlockNumberFinality{}, nil
-	}
-	tb, err := aggkittypes.NewBlockNumberFinality(s)
-	if err != nil {
-		return aggkittypes.BlockNumberFinality{}, err
 	}
 	return *tb, nil
 }
@@ -446,6 +428,9 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	}
 	if raw.L1StartBlock > 0 {
 		opts.L1StartBlock = raw.L1StartBlock
+	}
+	if raw.L1EndBlock > 0 {
+		opts.L1EndBlock = raw.L1EndBlock
 	}
 	if raw.L2StartBlock > 0 {
 		opts.L2StartBlock = raw.L2StartBlock
@@ -539,7 +524,6 @@ type rawConfig struct {
 	L1BridgeAddress         string          `json:"l1BridgeAddress"`
 	L2NetworkID             uint32          `json:"l2NetworkId"`
 	TargetBlock             string          `json:"targetBlock"`
-	TargetL1BlockNumber     string          `json:"targetL1BlockNumber"`
 	ExitAddress             string          `json:"exitAddress"`
 	DestinationNetwork      uint32          `json:"destinationNetwork"`
 	SovereignRollupAddr     string          `json:"sovereignRollupAddr"`
@@ -557,6 +541,7 @@ type rawOpts struct {
 	RPCDelayMs                            int                    `json:"rpcDelayMs"`
 	OutputDir                             string                 `json:"outputDir"`
 	L1StartBlock                          uint64                 `json:"l1StartBlock"`
+	L1EndBlock                            uint64                 `json:"l1EndBlock"`
 	L2StartBlock                          uint64                 `json:"l2StartBlock"`
 	AgglayerAdminURL                      string                 `json:"agglayerAdminURL"`
 	AgglayerAdminToken                    string                 `json:"agglayerAdminToken"`

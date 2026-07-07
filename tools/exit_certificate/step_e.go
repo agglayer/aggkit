@@ -67,13 +67,10 @@ func RunStepE(
 	log.Infof("Unclaimed L1→L2 deposits: %d  (asset=%d, messages=%d)",
 		len(unclaimed), len(unclaimedAssets), len(unclaimedMessages))
 
-	// With a targetL1BlockNumber cutoff, deposits past the cutoff are excluded from the scan, so
-	// they must also be filtered out of the bridge service comparison or they would resurface as
-	// mismatches. Without a cutoff (0) the service sets are compared unfiltered, as before.
-	maxL1Block := uint64(0)
-	if !cfg.TargetL1BlockNumber.IsEmpty() {
-		maxL1Block = l1EndBlock
-	}
+	// With an l1EndBlock cutoff, deposits past the cutoff are excluded from the scan, so they must
+	// also be filtered out of the bridge service comparison or they would resurface as mismatches.
+	// Without a cutoff (0) the service sets are compared unfiltered, as before.
+	maxL1Block := cfg.Options.L1EndBlock
 
 	if cfg.Options.BridgeServiceURL != "" {
 		log.Infof("step E: checking pending bridges from bridge service %s", cfg.Options.BridgeServiceURL)
@@ -119,19 +116,14 @@ func RunStepE(
 		)
 }
 
-// resolveL1ScanEndBlock returns the last L1 block Step E scans for BridgeEvents: the resolved
-// targetL1BlockNumber cutoff when configured (a block number or finality tag tied to the frozen L2
-// snapshot, so post-snapshot deposits cannot block the pipeline — AET-03), otherwise the current
-// latest L1 block.
+// resolveL1ScanEndBlock returns the last L1 block Step E scans for BridgeEvents: the l1EndBlock
+// cutoff when configured (a block tied to the frozen L2 snapshot, so post-snapshot deposits cannot
+// block the pipeline — AET-03), otherwise the current latest L1 block.
 func resolveL1ScanEndBlock(ctx context.Context, cfg *Config) (uint64, error) {
-	if !cfg.TargetL1BlockNumber.IsEmpty() {
-		block, err := resolveTargetBlockNumber(ctx, cfg.L1RPCURL, cfg.TargetL1BlockNumber)
-		if err != nil {
-			return 0, fmt.Errorf("resolve targetL1BlockNumber %s: %w", cfg.TargetL1BlockNumber.String(), err)
-		}
-		log.Infof("L1 scan capped at targetL1BlockNumber %s → block %d, scanning from %d",
-			cfg.TargetL1BlockNumber.String(), block, cfg.Options.L1StartBlock)
-		return block, nil
+	if cfg.Options.L1EndBlock > 0 {
+		log.Infof("L1 scan capped at l1EndBlock %d, scanning from %d",
+			cfg.Options.L1EndBlock, cfg.Options.L1StartBlock)
+		return cfg.Options.L1EndBlock, nil
 	}
 	latestResult, err := singleRPC(ctx, cfg.L1RPCURL, "eth_blockNumber", nil, defaultRetries)
 	if err != nil {
@@ -447,7 +439,7 @@ const (
 // checkBridgeServicePendingBridges fetches the pending-bridges set from the configured bridge
 // service (aggkit or zkevm) and compares it against the unclaimed deposits found on L1.
 // A non-zero maxL1Block drops service entries deposited after that L1 block, keeping the
-// comparison aligned with a scan capped at targetL1BlockNumber.
+// comparison aligned with a scan capped at l1EndBlock.
 func checkBridgeServicePendingBridges(
 	ctx context.Context, cfg *Config, unclaimed []L1Deposit, maxL1Block uint64,
 ) error {
@@ -580,7 +572,7 @@ func fetchAggkitPendingBridges(
 		}
 	}
 	if skippedPastCutoff > 0 {
-		log.Warnf("Aggkit bridge service: ignored %d deposit(s) past targetL1BlockNumber cutoff (block %d)",
+		log.Warnf("Aggkit bridge service: ignored %d deposit(s) past l1EndBlock cutoff (block %d)",
 			skippedPastCutoff, maxL1Block)
 	}
 
@@ -682,7 +674,7 @@ func fetchZkevmPendingBridges(
 		}
 	}
 	if skippedPastCutoff > 0 {
-		log.Warnf("Zkevm bridge service: ignored %d deposit(s) past targetL1BlockNumber cutoff (block %d)",
+		log.Warnf("Zkevm bridge service: ignored %d deposit(s) past l1EndBlock cutoff (block %d)",
 			skippedPastCutoff, maxL1Block)
 	}
 

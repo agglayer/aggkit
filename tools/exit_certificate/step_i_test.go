@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +35,7 @@ func TestFetchL1InfoTreeLeafCount(t *testing.T) {
 		"topics": []string{updateL1InfoTreeV2Topic.Hex(), leafCountTopic},
 	}}
 
-	t.Run("latest block when targetL1BlockNumber is unset", func(t *testing.T) {
+	t.Run("latest block when l1EndBlock is unset", func(t *testing.T) {
 		t.Parallel()
 		url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
 			switch method {
@@ -58,10 +57,10 @@ func TestFetchL1InfoTreeLeafCount(t *testing.T) {
 		require.Equal(t, uint32(42), leafCount)
 	})
 
-	t.Run("scan starts at targetL1BlockNumber when set", func(t *testing.T) {
+	t.Run("scan starts at l1EndBlock when set", func(t *testing.T) {
 		t.Parallel()
 		url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
-			require.Equal(t, "eth_getLogs", method, "no eth_blockNumber call expected with a constant cutoff")
+			require.Equal(t, "eth_getLogs", method, "no eth_blockNumber call expected with an l1EndBlock cutoff")
 			var filter struct {
 				ToBlock string `json:"toBlock"`
 			}
@@ -70,7 +69,7 @@ func TestFetchL1InfoTreeLeafCount(t *testing.T) {
 			return logsResult
 		})
 		cfg := makeCfg(url)
-		cfg.TargetL1BlockNumber = *aggkittypes.NewBlockNumber(300)
+		cfg.Options.L1EndBlock = 300
 		leafCount, err := fetchL1InfoTreeLeafCount(context.Background(), cfg)
 		require.NoError(t, err)
 		require.Equal(t, uint32(42), leafCount)
