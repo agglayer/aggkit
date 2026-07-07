@@ -103,7 +103,10 @@ func TestFetchTransferHoldersInRange_ExtractsFromAndTo(t *testing.T) {
 
 // The zero address must be treated like any other account end to end: tokens transferred to
 // 0x000…000 remain in the token's totalSupply, so dropping it would leave the certificate
-// unbalanced against the LBT (https://github.com/agglayer/aggkit/issues/1700).
+// unbalanced against the LBT (https://github.com/agglayer/aggkit/issues/1700). It is also added
+// unconditionally (the state dump can miss it when the node has no preimage for the zero key, and
+// the Transfer-log scan only surfaces it on mint/burn), so genesis allocs to 0x0 are always
+// detected regardless of token activity.
 func TestRunStepA_KeepsZeroAddress(t *testing.T) {
 	t.Parallel()
 
@@ -176,9 +179,10 @@ func TestRunStepA_MergesSources(t *testing.T) {
 	result, err := RunStepA(context.Background(), cfg, 10, wrappedTokens)
 	require.NoError(t, err)
 	require.Equal(t, []common.Address{
+		{}, // always included, even when no discovery source surfaced it
 		common.HexToAddress(stepAAddr1),
 		common.HexToAddress(stepAAddr2),
-	}, result.Addresses, "addresses are merged, de-duplicated and sorted")
+	}, result.Addresses, "addresses are merged, de-duplicated and sorted; the zero address is always present")
 }
 
 func TestDecodeNextKey(t *testing.T) {

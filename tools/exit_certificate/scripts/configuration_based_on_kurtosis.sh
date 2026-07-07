@@ -80,8 +80,11 @@ if [[ "$EXIT_ADDRESS" == "$_EXIT_ADDRESS_DEFAULT" ]]; then
     fi
 fi
 OUTPUT_FILE="${OUTPUT_FILE:-tmp/exit_certificate-kurtosis.json}"
-# Native ETH preminted at genesis by the Kurtosis enclave (110000 ETH), discounted by Step F.
-GENESIS_PREFUND_ETH_WEI="${GENESIS_PREFUND_ETH_WEI:-110000000000000000000000}"
+# Native ETH preminted at genesis by the Kurtosis enclave, discounted by Step F:
+# 110000 ETH across two accounts plus the 1 wei the OP-stack genesis allocates to
+# the zero address (Step A always includes 0x000…000, so Step B detects that wei
+# as part of the genesis preload and the declared value must account for it).
+GENESIS_PREFUND_ETH_WEI="${GENESIS_PREFUND_ETH_WEI:-110000000000000000000001}"
 NETWORK_INDEX=1
 
 # Parse flags and positional args

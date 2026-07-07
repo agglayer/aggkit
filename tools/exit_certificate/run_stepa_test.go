@@ -43,7 +43,8 @@ func TestRunSingleA(t *testing.T) {
 
 	var addrs []common.Address
 	require.NoError(t, loadJSON(dir, fileStepAAddresses, &addrs))
-	require.Equal(t, []common.Address{common.HexToAddress(stepAAddr1)}, addrs)
+	require.Equal(t, []common.Address{{}, common.HexToAddress(stepAAddr1)}, addrs,
+		"the zero address is always included alongside the discovered accounts")
 }
 
 // TestRunAllStepASuccess covers the runAll Step A wrapper against the same state-dump stub.
@@ -57,6 +58,7 @@ func TestRunAllStepASuccess(t *testing.T) {
 
 	res, err := runAllStepA(context.Background(), cfg, dir, 2, nil)
 	require.NoError(t, err)
-	require.Equal(t, []common.Address{common.HexToAddress(stepAAddr1)}, res.Addresses)
+	require.Equal(t, []common.Address{{}, common.HexToAddress(stepAAddr1)}, res.Addresses,
+		"the zero address is always included alongside the discovered accounts")
 	require.True(t, fileExists(filepath.Join(dir, fileStepAAddresses)))
 }

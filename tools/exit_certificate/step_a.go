@@ -108,10 +108,14 @@ func RunStepA(
 	}
 	add(holders)
 
-	// The zero address is deliberately kept: it can hold value like any other account (a plain
+	// The zero address is always included: it can hold value like any other account (a plain
 	// transfer(0x0, amount) is not a burn — the tokens stay in totalSupply — and native ETH can be
-	// sent there too). Dropping it would leave that value uncovered by the certificate and the
-	// per-token totals would no longer reconcile with the LBT.
+	// sent there too, including genesis allocs). Dropping it would leave that value uncovered by
+	// the certificate and the per-token totals would no longer reconcile with the LBT. It is added
+	// unconditionally rather than trusting discovery: the state dump can miss it (no preimage for
+	// the zero key) and the Transfer-log scan only surfaces it when a mint/burn happened, which
+	// would make the Step B genesis-preload detection depend on unrelated token activity.
+	finalAddrs[common.Address{}] = struct{}{}
 
 	addresses := make([]common.Address, 0, len(finalAddrs))
 	for addr := range finalAddrs {

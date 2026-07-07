@@ -79,9 +79,13 @@ transaction history:
    `[0, targetBlock]`, collecting the indexed `from`/`to` — the only source that surfaces token-only
    EOAs (no nonce/balance/code). Always starts at block 0, not `l2StartBlock`.
 
-The zero address is **kept** like any other account: tokens transferred to `0x000…000` stay in
-`totalSupply` (a plain transfer is not a burn) and it can hold native ETH, so dropping it would
-leave the certificate unbalanced against the LBT.
+The zero address is **always included**, regardless of what the sources return: tokens transferred
+to `0x000…000` stay in `totalSupply` (a plain transfer is not a burn) and it can hold native ETH
+(including genesis allocs — the OP-stack genesis gives it 1 wei), so dropping it would leave the
+certificate unbalanced against the LBT. It is added unconditionally because the state dump can miss
+it (no preimage for the zero key) and the Transfer-log scan only surfaces it when a mint/burn
+happened — discovery must not depend on unrelated token activity, or the Step B genesis-preload
+detection (and the declared `genesisPrefundETHWei`) would change between runs.
 
 Both sources always run and merge — they cover complementary blind spots (the dump cannot see
 token-only EOAs, not in the account trie; the logs cannot see accounts that never touched a wrapped
