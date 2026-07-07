@@ -5,6 +5,7 @@
     "l1BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
     "l2NetworkId": 1,
     "targetBlock": "LatestBlock",
+    "targetL1BlockNumber": "",
     "exitAddress": "0x0000000000000000000000000000000000000001",
     "destinationNetwork": 0,
     "sovereignRollupAddr": "<SOVEREIGN_ROLLUP_ADDR>",

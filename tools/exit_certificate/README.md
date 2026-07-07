@@ -90,6 +90,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `l1BridgeAddress` | No | L1 bridge contract address. Defaults to `l2BridgeAddress`. |
 | `l2NetworkId` | No | L2 network ID. Defaults to `1`. |
 | `targetBlock` | No | Target block for state capture. Accepts a decimal number (`"21000000"`), hex (`"0x1406f40"`), or a finality keyword: `"LatestBlock"`, `"FinalizedBlock"`, `"SafeBlock"`, `"PendingBlock"`. An optional negative offset can be appended (e.g. `"LatestBlock/-10"` = ten blocks before latest). Omitting the field or setting it to `""` defaults to `"LatestBlock"`. The keyword is resolved to a concrete block number at the start of Step 0 and saved to `step-0-l2_target_block.json`. All subsequent steps use that fixed number. |
+| `targetL1BlockNumber` | No | L1 cutoff block for the L1 reads. Same format as `targetBlock`. When set, Step E scans L1 for unclaimed deposits only up to this block (and filters the bridge-service cross-check accordingly) and Step I starts its backward `UpdateL1InfoTreeV2` scan from it. This prevents L1 deposits submitted after the L2 snapshot from blocking the pipeline (AET-03): pick a block at or after the moment the sequencer was stopped. A concrete number keeps re-runs deterministic (a keyword is re-resolved each time a step runs). Omitting the field (default) uses the current latest L1 block. |
 | `exitAddress` | Yes | Address that receives SC-locked value exits on `destinationNetwork`. **Must be an address whose private key you control**, and **must not be the zero address** (`0x00…00`) — `LoadConfig` rejects both an empty value and the zero address, since these funds can only be recovered by signing from this address. **A multisig (e.g. a Gnosis Safe) is strongly recommended** over a single EOA, so that recovering these funds does not depend on a single private key. |
 | `destinationNetwork` | No | Destination network for bridge exits. Defaults to `0` (L1). |
 | `sovereignRollupAddr` | Yes* | Address of the `aggchainbase` contract on L1. Required by Step CHECK (network type and threshold verification). |
@@ -395,6 +396,8 @@ Scans L1 for `BridgeEvent` events targeting the L2 and checks each deposit again
 
 When `bridgeServiceURL` is set, Step E compares its detected unclaimed set against the bridge service's pending-bridges and errors if the sets differ. Supports both aggkit (`/bridge/v1/bridges`) and zkevm-bridge-service (`/pending-bridges`) via `bridgeServiceType`.
 
+The scan ends at the resolved `targetL1BlockNumber` when configured (deposits made on L1 after that cutoff are ignored, both in the scan and in the bridge-service comparison), otherwise at the current latest L1 block.
+
 Requires `l1RpcUrl`.
 
 **Output:** `step-e-unclaimed-bridges.json`, `step-e-unclaimed-messages.json` (both always written), `step-e-exit-certificate.json` *(only when the step produces a certificate — i.e. not on the `ignoreUnclaimed=false` abort path)*
@@ -470,7 +473,7 @@ Takes the deposit-order certificate produced by Step G and applies:
 
 - `NewLocalExitRoot` from Step G
 - `PreviousLocalExitRoot` and certificate height from Step H
-- `L1InfoTreeLeafCount` — scans L1 backwards from the latest L1 block for the most recent `UpdateL1InfoTreeV2` event on the `l1GlobalExitRootAddress` contract. Requires `l1RpcUrl` and `l1GlobalExitRootAddress` in config.
+- `L1InfoTreeLeafCount` — scans L1 backwards from the resolved `targetL1BlockNumber` (or the latest L1 block when unset) for the most recent `UpdateL1InfoTreeV2` event on the `l1GlobalExitRootAddress` contract. Requires `l1RpcUrl` and `l1GlobalExitRootAddress` in config.
 
 **Reads:** `step-g-reordered-certificate.json` (run Step G first — there is no fallback to the Step E / Step F certificates, so the final certificate always matches the computed `NewLocalExitRoot`); plus `step-g-new-local-exit-root.json` and `step-h-previous-local-exit-root.json`.
 

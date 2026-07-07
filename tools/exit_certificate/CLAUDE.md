@@ -131,6 +131,7 @@ Creates the `*agglayertypes.Certificate` with `BridgeExit` entries:
 
 - **Requires:** `l1RpcUrl` (skipped otherwise).
 - Scans L1 `BridgeEvent` events targeting L2 network, checks each deposit against `isClaimed` on L2 bridge.
+- **L1 cutoff:** the scan ends at the resolved `targetL1BlockNumber` when configured (deposits made on L1 after that block are ignored — AET-03 mitigation; the bridge service cross-check filters them out too), otherwise at the current latest L1 block.
 - Splits unclaimed deposits by leaf type: **assets** (`leaf_type=0`) are added to the certificate as `bridge_exits` + `imported_bridge_exits` (with `claim_data: null`); **messages** (`leaf_type=1`) are excluded from the certificate and saved separately.
 - **Bridge service cross-check:** when `options.bridgeServiceURL` is set, compares the detected unclaimed asset set against the bridge service's pending-bridges and errors on any discrepancy. Controlled by `options.bridgeServiceType` (`"aggkit"` → `GET /bridge/v1/bridges`; `"zkevm"` → `GET /pending-bridges`).
 - **Output:** `step-e-unclaimed-bridges.json` (`[]L1Deposit`), `step-e-unclaimed-messages.json` (`[]L1Deposit`, always written), `step-e-exit-certificate.json`
@@ -282,7 +283,8 @@ certificate matches the computed LER.
   certificates); in `runAll` the in-memory reordered certificate flows directly from Step G. Also
   reads `step-g-new-local-exit-root.json` and `step-h-previous-local-exit-root.json` (optional).
 - Sets `Certificate.NewLocalExitRoot` from G and `Certificate.PrevLocalExitRoot` from H.
-- **Fetches `L1InfoTreeLeafCount`** — scans L1 backwards from the latest L1 block for the most
+- **Fetches `L1InfoTreeLeafCount`** — scans L1 backwards from the resolved `targetL1BlockNumber`
+  (when configured; otherwise from the latest L1 block) for the most
   recent `UpdateL1InfoTreeV2` event emitted by `l1GlobalExitRootAddress` and sets
   `Certificate.L1InfoTreeLeafCount`. Requires `l1RpcUrl` and `l1GlobalExitRootAddress` in config.
 - **Output:** `exit-certificate-final.json` (updated with both roots and leaf count)
@@ -346,6 +348,8 @@ Required: `l2RpcUrl`, `l2BridgeAddress`, `exitAddress`, `targetBlock`.
 only be recovered by signing from it).
 
 `targetBlock` accepts: a finality keyword (`LatestBlock`, `FinalizedBlock`, `SafeBlock`, `PendingBlock`), an optional negative offset appended with `/` (e.g. `LatestBlock/-10`), a decimal block number (`"21000000"`), or a hex block number (`"0x1406f40"`). An empty string defaults to `LatestBlock`. The keyword is resolved to a concrete `uint64` at the start of Step 0 and written to `step-0-l2_target_block.json`; all subsequent steps (A, B, G) read that fixed number. The old lowercase aliases (`latest`, `finalized`, `safe`, `pending`) are **not** accepted — use the PascalCase keywords.
+
+`targetL1BlockNumber` (optional) is the L1 cutoff for the L1 reads, in the same format as `targetBlock`. When set, Step E scans L1 for unclaimed deposits only up to this block (filtering the bridge service cross-check to match) and Step I starts its backward `UpdateL1InfoTreeV2` scan from it, so post-snapshot L1 deposits cannot block the pipeline (AET-03). Unlike `targetBlock`, an empty value does **not** default to `LatestBlock` — it stays unset and the latest L1 block is used (previous behaviour). It is resolved where used (not persisted), so a finality keyword re-resolves on each step run; use a concrete number for deterministic re-runs. A constant value below `options.l1StartBlock` is rejected by `LoadConfig`.
 
 Notable optional fields:
 

@@ -189,6 +189,58 @@ func TestLoadConfig_GenesisPrefundETHWei(t *testing.T) {
 	require.Contains(t, err.Error(), "genesisPrefundETHWei")
 }
 
+func TestLoadConfig_TargetL1BlockNumber(t *testing.T) {
+	t.Parallel()
+
+	base := `{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		"exitAddress": "0x0000000000000000000000000000000000000001",
+		"targetBlock": "100",
+		"options": {"useAgglayerAdminToStepFCheck": false%s}%s
+	}`
+
+	// Unset → empty (Step E/I use the latest L1 block, the previous behaviour).
+	pathDefault := filepath.Join(t.TempDir(), "default.json")
+	require.NoError(t, os.WriteFile(pathDefault, fmt.Appendf(nil, base, "", ""), 0o600))
+	cfg, err := LoadConfig(pathDefault)
+	require.NoError(t, err)
+	require.True(t, cfg.TargetL1BlockNumber.IsEmpty())
+
+	// Concrete block number.
+	pathNumber := filepath.Join(t.TempDir(), "number.json")
+	require.NoError(t, os.WriteFile(pathNumber,
+		fmt.Appendf(nil, base, "", `, "targetL1BlockNumber": "1234"`), 0o600))
+	cfg, err = LoadConfig(pathNumber)
+	require.NoError(t, err)
+	require.Equal(t, *aggkittypes.NewBlockNumber(1234), cfg.TargetL1BlockNumber)
+
+	// Finality tag with offset.
+	pathTag := filepath.Join(t.TempDir(), "tag.json")
+	require.NoError(t, os.WriteFile(pathTag,
+		fmt.Appendf(nil, base, "", `, "targetL1BlockNumber": "FinalizedBlock/-5"`), 0o600))
+	cfg, err = LoadConfig(pathTag)
+	require.NoError(t, err)
+	require.True(t, cfg.TargetL1BlockNumber.IsFinalized())
+	require.Equal(t, int64(-5), cfg.TargetL1BlockNumber.Offset)
+
+	// Invalid value → rejected.
+	pathBad := filepath.Join(t.TempDir(), "bad.json")
+	require.NoError(t, os.WriteFile(pathBad,
+		fmt.Appendf(nil, base, "", `, "targetL1BlockNumber": "NotABlockTag"`), 0o600))
+	_, err = LoadConfig(pathBad)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "targetL1BlockNumber")
+
+	// Constant below options.l1StartBlock → rejected.
+	pathBelow := filepath.Join(t.TempDir(), "below.json")
+	require.NoError(t, os.WriteFile(pathBelow,
+		fmt.Appendf(nil, base, `, "l1StartBlock": 2000`, `, "targetL1BlockNumber": "1234"`), 0o600))
+	_, err = LoadConfig(pathBelow)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "below options.l1StartBlock")
+}
+
 func TestLoadConfig_MinimalValid(t *testing.T) {
 	t.Parallel()
 
