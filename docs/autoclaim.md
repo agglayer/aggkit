@@ -695,13 +695,26 @@ make lint
 make test-unit
 ```
 
-The focused end-to-end tests run against the dockerized e2e environment (see [End-to-end tests](./e2e_tests.md)):
+The focused end-to-end tests run against the dockerized e2e environment (see [End-to-end tests](./e2e_tests.md)).
+L1-to-L2 and L2-to-L1 run against the single-chain `op-pp` environment (the default):
 
 ```bash
-go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove|BasicFilter)' -timeout 30m ./test/e2e
+go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove|BasicFilter)|TestAutoClaimL2ToL1AllowAll' -timeout 30m ./test/e2e
 ```
 
 `TestAutoClaimL1ToL2AllowAll` exercises the fully automatic L1-to-L2 flow with the `allow-all` policy;
 `TestAutoClaimL1ToL2APIApprove` exercises the manual flow, approving the request through the API;
-`TestAutoClaimL1ToL2BasicFilter` exercises the `basic-filter` policy with target-chain gas simulation. Mocks for the
-interfaces in `autoclaim/types` are generated with `make generate-mocks`.
+`TestAutoClaimL1ToL2BasicFilter` exercises the `basic-filter` policy with target-chain gas simulation;
+`TestAutoClaimL2ToL1AllowAll` exercises the fully automatic L2-to-L1 flow (L2-to-Lx detector, `RollupPreparer`, an
+`NetworkID = 0` claimer).
+
+L2-to-L2 requires the two-rollup `op-pp-2chains` environment, selected via `AGGKIT_E2E_ENV`:
+
+```bash
+AGGKIT_E2E_ENV=op-pp-2chains go test -v -run 'TestAutoClaimL2ToL2AllowAll' -timeout 30m ./test/e2e
+```
+
+`TestAutoClaimL2ToL2AllowAll` exercises the fully automatic L2-to-L2 flow end to end: the L2-to-Lx detector and
+`bridgeservicefinder` resolving both source networks, GER-injection gating on the destination L2, and the
+staleness leaf-proof refresh path. Mocks for the interfaces in `autoclaim/types` and the other touched packages are
+generated with `make generate-mocks`.
