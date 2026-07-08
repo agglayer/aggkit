@@ -20,7 +20,7 @@ func (p *processor) processVerifyBatches(tx dbtypes.Txer, blockNumber uint64, ev
 		return fmt.Errorf("processVerifyBatches: tx is nil, is mandatory to pass a tx")
 	}
 	log.Debugf("VerifyBatches: rollupExitTree.UpsertLeaf (blockNumber=%d, event=%s)", blockNumber, event.String())
-	// If ExitRoot is zero if the leaf doesnt exists doesnt change the root of tree.
+	// If ExitRoot is zero, the leaf doesn't exist and doesn't change the root of the tree.
 	//  	if leaf already exists doesn't make sense to 'empty' the leaf, so we keep previous value
 	if event.ExitRoot == (common.Hash{}) {
 		log.Infof("skipping VerifyBatches event with empty ExitRoot (blockNumber=%d, event=%s)", blockNumber, event.String())
