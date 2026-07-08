@@ -9,11 +9,7 @@ const (
 	fileStep0TargetBlock = "step-0-l2_target_block.json"
 	fileStep0LBT         = "step-0-lbt.json"
 
-	fileStepAAddresses    = "step-a-addresses.json"
-	fileStepAFailedTraces = "step-a-failed-traces.json"
-	fileStepA1Addresses   = "step-a1-addresses.json"
-	fileStepA1FailedTrace = "step-a1-failed-traces.json"
-	fileStepA2Addresses   = "step-a2-addresses.json"
+	fileStepAAddresses = "step-a-addresses.json"
 
 	fileStepBAccumulated       = "step-b-accumulated.json"
 	fileStepBContractAddresses = "step-b-contract-addresses.json"

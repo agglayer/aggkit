@@ -377,10 +377,12 @@ func TestCapCertificateExits_FitsWithinBudget(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(1000)},
 	}
 
-	result := capCertificateExits(exits, checks, CapModeByAppearance)
+	result, err := capCertificateExits(exits, checks, CapModeByAppearance)
+	require.NoError(t, err)
 	require.Len(t, result, 2)
-	require.Equal(t, big.NewInt(400), result[0].Amount)
-	require.Equal(t, big.NewInt(300), result[1].Amount)
+	// Untouched exits are returned as the original pointers (sameExits relies on this).
+	require.Same(t, exits[0], result[0])
+	require.Same(t, exits[1], result[1])
 }
 
 func TestCapCertificateExits_CapsLastExit(t *testing.T) {
@@ -396,7 +398,8 @@ func TestCapCertificateExits_CapsLastExit(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(900)},
 	}
 
-	result := capCertificateExits(exits, checks, CapModeByAppearance)
+	result, err := capCertificateExits(exits, checks, CapModeByAppearance)
+	require.NoError(t, err)
 	require.Len(t, result, 2)
 	require.Equal(t, big.NewInt(600), result[0].Amount)
 	require.Equal(t, big.NewInt(300), result[1].Amount)
@@ -415,7 +418,8 @@ func TestCapCertificateExits_DropsExitsWhenBudgetExhausted(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(500)},
 	}
 
-	result := capCertificateExits(exits, checks, CapModeByAppearance)
+	result, err := capCertificateExits(exits, checks, CapModeByAppearance)
+	require.NoError(t, err)
 	require.Len(t, result, 1)
 	require.Equal(t, big.NewInt(500), result[0].Amount)
 }
@@ -431,7 +435,8 @@ func TestCapCertificateExits_ZeroBudgetDropsAll(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(0)},
 	}
 
-	result := capCertificateExits(exits, checks, CapModeByAppearance)
+	result, err := capCertificateExits(exits, checks, CapModeByAppearance)
+	require.NoError(t, err)
 	require.Empty(t, result)
 }
 
@@ -443,9 +448,67 @@ func TestCapCertificateExits_TokenNotInChecksPassesThrough(t *testing.T) {
 		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(999)},
 	}
 
-	result := capCertificateExits(exits, nil, CapModeByAppearance)
+	result, err := capCertificateExits(exits, nil, CapModeByAppearance)
+	require.NoError(t, err)
 	require.Len(t, result, 1)
 	require.Equal(t, big.NewInt(999), result[0].Amount)
+}
+
+// TestCapCertificateExits_NoneAllowsNoOp checks that CapModeNone passes the exits through untouched
+// when they all fit within the budget.
+func TestCapCertificateExits_NoneAllowsNoOp(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	exits := []*agglayertypes.BridgeExit{
+		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(400)},
+		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(300)},
+	}
+	checks := []TokenBalanceCheck{
+		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(700)},
+	}
+
+	result, err := capCertificateExits(exits, checks, CapModeNone)
+	require.NoError(t, err)
+	require.Len(t, result, 2)
+	require.Same(t, exits[0], result[0])
+	require.Same(t, exits[1], result[1])
+}
+
+// TestCapCertificateExits_NoneFailsOnTrim checks that CapModeNone returns errCapForbidden instead of
+// capping an exit that exceeds the budget.
+func TestCapCertificateExits_NoneFailsOnTrim(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	exits := []*agglayertypes.BridgeExit{
+		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(600)},
+		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(400)},
+	}
+	// Budget covers the first exit fully; the second would have to be capped to 300.
+	checks := []TokenBalanceCheck{
+		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(900)},
+	}
+
+	_, err := capCertificateExits(exits, checks, CapModeNone)
+	require.ErrorIs(t, err, errCapForbidden)
+}
+
+// TestCapCertificateExits_NoneFailsOnDrop checks that CapModeNone returns errCapForbidden instead of
+// dropping an exit whose token budget is exhausted.
+func TestCapCertificateExits_NoneFailsOnDrop(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	exits := []*agglayertypes.BridgeExit{
+		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(100)},
+	}
+	checks := []TokenBalanceCheck{
+		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(0)},
+	}
+
+	_, err := capCertificateExits(exits, checks, CapModeNone)
+	require.ErrorIs(t, err, errCapForbidden)
 }
 
 // TestCapCertificateExits_ByAmountCapsLargest checks that CapModeByAmount serves the smallest exit
@@ -468,13 +531,15 @@ func TestCapCertificateExits_ByAmountCapsLargest(t *testing.T) {
 
 	// By amount: the 300 exit is served first (kept full), the 700 exit gets the leftover 400 → capped.
 	// Surviving exits stay in original order.
-	byAmount := capCertificateExits(newExits(), checks, CapModeByAmount)
+	byAmount, err := capCertificateExits(newExits(), checks, CapModeByAmount)
+	require.NoError(t, err)
 	require.Len(t, byAmount, 2)
 	require.Equal(t, big.NewInt(400), byAmount[0].Amount) // the 700 exit, capped to leftover
 	require.Equal(t, big.NewInt(300), byAmount[1].Amount) // the 300 exit, kept full
 
 	// By appearance: the 700 exit is served first (kept full, budget exhausted), the 300 is dropped.
-	byAppearance := capCertificateExits(newExits(), checks, CapModeByAppearance)
+	byAppearance, err := capCertificateExits(newExits(), checks, CapModeByAppearance)
+	require.NoError(t, err)
 	require.Len(t, byAppearance, 1)
 	require.Equal(t, big.NewInt(700), byAppearance[0].Amount)
 }
@@ -494,7 +559,8 @@ func TestCapCertificateExits_ByAmountDropsLargest(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr.Hex(), RemainingBalance: big.NewInt(200)},
 	}
 
-	result := capCertificateExits(exits, checks, CapModeByAmount)
+	result, err := capCertificateExits(exits, checks, CapModeByAmount)
+	require.NoError(t, err)
 	require.Len(t, result, 1)
 	require.Equal(t, big.NewInt(200), result[0].Amount) // the 200 exit, kept; the 800 dropped
 }
@@ -521,7 +587,8 @@ func TestCapCertificateExits_LBTMinAgglayer(t *testing.T) {
 		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(600)},
 		{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(400)},
 	}
-	result := capCertificateExits(exits, checks, CapModeByAppearance)
+	result, err := capCertificateExits(exits, checks, CapModeByAppearance)
+	require.NoError(t, err)
 	require.Len(t, result, 2)
 	require.Equal(t, big.NewInt(600), result[0].Amount)
 	require.Equal(t, big.NewInt(100), result[1].Amount) // capped: 700-600=100
@@ -575,6 +642,53 @@ func TestRunStepF_NoPrefundNoCapOnAllMatch(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, result.AllMatch)
 	require.Nil(t, result.CappedCertificate)
+}
+
+// TestRunStepF_CapModeNoneFailsOnPrefundCap checks that with capMode=none the genesis pre-fund
+// trim (which caps the native exits even on allMatch) fails instead of capping.
+func TestRunStepF_CapModeNoneFailsOnPrefundCap(t *testing.T) {
+	t.Parallel()
+
+	dest := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	// Native exits: 300 genuinely bridged + 700 genesis pre-fund = 1000 raw; LBT covers 300.
+	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
+		{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(300)},
+		{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(700)},
+	}}
+	lbt := []LBTEntry{
+		{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "300"},
+	}
+	cfg := &Config{Options: Options{
+		UseAgglayerAdminToStepFCheck: false,
+		GenesisPrefundETHWei:         "700",
+		CapMode:                      CapModeNone,
+	}}
+
+	_, err := RunStepF(context.Background(), cfg, cert, lbt)
+	require.ErrorIs(t, err, errCapForbidden)
+}
+
+// TestRunStepF_CapModeNoneFailsOnMismatchCap checks that a mismatch with ignoreBalanceMismatch=true
+// (which normally produces a capped certificate) fails under capMode=none instead of capping.
+func TestRunStepF_CapModeNoneFailsOnMismatchCap(t *testing.T) {
+	t.Parallel()
+
+	dest := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	// Certificate claims 500 but the LBT only covers 300 → mismatch requiring a trim.
+	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
+		{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(500)},
+	}}
+	lbt := []LBTEntry{
+		{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "300"},
+	}
+	cfg := &Config{Options: Options{
+		UseAgglayerAdminToStepFCheck: false,
+		IgnoreBalanceMismatch:        true,
+		CapMode:                      CapModeNone,
+	}}
+
+	_, err := RunStepF(context.Background(), cfg, cert, lbt)
+	require.ErrorIs(t, err, errCapForbidden)
 }
 
 func TestDiscountGenesisPrefund(t *testing.T) {

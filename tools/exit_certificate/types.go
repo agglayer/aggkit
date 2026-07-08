@@ -119,22 +119,10 @@ type SCLockedValue struct {
 	PendingSCLockedBalance string `json:"pendingSCLockedBalance"`
 }
 
-// FailedTrace pairs a transaction hash with the RPC error that caused its trace to fail.
-type FailedTrace struct {
-	Hash  common.Hash `json:"hash"`
-	Error string      `json:"error"`
-}
-
-// StepAResult holds the combined output of Step A (A1 + A2).
+// StepAResult holds the output of Step A (address discovery via state dump + Transfer logs).
 type StepAResult struct {
 	Addresses     []common.Address `json:"addresses"`
-	FailedTraces  []FailedTrace    `json:"failedTraces"`
 	WrappedTokens []WrappedToken   `json:"-"`
-}
-
-// StepA2Result holds addresses recovered from tx receipts of failed traces (Step A2).
-type StepA2Result struct {
-	Addresses []common.Address `json:"addresses"`
 }
 
 // StepB1Result holds the output produced exclusively by Step B1

@@ -25,8 +25,9 @@ Pipeline steps (run in order by default):
   0  Generate the Locked Balance Table (LBT) by scanning the L2 bridge contract
      for wrapped token mappings.
 
-  A  Collect all unique sender/receiver addresses from bridge events up to the
-     target block.
+  A  Collect every value-holding address at the target block via a state-trie
+     dump (debug_accountRange, for native-ETH holders and contracts) plus
+     Transfer-event logs per wrapped token (for token holders).
 
   B  Scan EOA native-token balances and wrapped-token balances for every address
      found in step A.

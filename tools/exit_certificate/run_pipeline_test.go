@@ -131,7 +131,7 @@ func TestRunAllStepESkippedNoL1(t *testing.T) {
 func TestRunSingleStepDispatchAllSteps(t *testing.T) {
 	t.Parallel()
 	steps := []string{
-		"check", "0", "a", "a1", "a2", "b", "b1", "b2", "b3", "c", "d",
+		"check", "0", "a", "b", "b1", "b2", "b3", "c", "d",
 		"e", "f", "g", "g1", "g2", "h", "i", "sign", "submit", "wait",
 	}
 	for _, step := range steps {

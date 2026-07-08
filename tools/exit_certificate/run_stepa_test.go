@@ -10,56 +10,55 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRunSingleAChain drives runSingleA1 then runSingleA2 against a stub whose blocks carry no
-// transactions, so address collection yields an empty set without any debug_traceTransaction call.
-// It covers the run.go Step A wrappers and their file chaining.
-func TestRunSingleAChain(t *testing.T) {
+// newStepAServer returns a stub that serves a one-account state dump; with no wrapped tokens the
+// Transfer-log scan is skipped, so Step A completes on the dump alone.
+func newStepAServer(t *testing.T) string {
+	t.Helper()
+	return newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
+		if method == rpcMethodDebugAccountRange {
+			return map[string]any{
+				"accounts": map[string]any{stepAAddr1: map[string]any{"address": stepAAddr1}},
+				"next":     "",
+			}
+		}
+		return "0x"
+	})
+}
+
+// TestRunSingleA drives runSingleA against a state-dump stub. It covers the run.go Step A wrapper:
+// target-block loading, the missing-LBT warning path, and the output file.
+func TestRunSingleA(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	saveJSON(dir, fileStep0TargetBlock, uint64(2))
 
-	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
-		if method == rpcMethodEthGetBlockByNumber {
-			return map[string]any{"transactions": []string{}}
-		}
-		return "0x"
-	})
 	cfg := &Config{
-		L2RPCURL: url, L2BridgeAddress: common.BytesToAddress([]byte("bridge")),
-		Options: Options{
-			OutputDir: dir, RPCBatchSize: 10, ConcurrencyLimit: 2, StepAWindowSize: 100,
-		},
+		L2RPCURL: newStepAServer(t), L2BridgeAddress: common.BytesToAddress([]byte("bridge")),
+		Options: Options{OutputDir: dir, RPCBatchSize: 10, ConcurrencyLimit: 2},
 	}
 
-	require.NoError(t, runSingleA1(context.Background(), cfg, dir))
-	require.True(t, fileExists(filepath.Join(dir, fileStepA1Addresses)))
-	require.True(t, fileExists(filepath.Join(dir, fileStepA1FailedTrace)))
-
-	require.NoError(t, runSingleA2(context.Background(), cfg, dir))
+	// No LBT file → wrapped tokens unavailable, logged as a warning; the step still runs.
+	require.NoError(t, runSingleA(context.Background(), cfg, dir))
 	require.True(t, fileExists(filepath.Join(dir, fileStepAAddresses)))
 
-	// runSingleA runs A1 then A2 in sequence.
-	require.NoError(t, runSingleA(context.Background(), cfg, dir))
+	var addrs []common.Address
+	require.NoError(t, loadJSON(dir, fileStepAAddresses, &addrs))
+	require.Equal(t, []common.Address{{}, common.HexToAddress(stepAAddr1)}, addrs,
+		"the zero address is always included alongside the discovered accounts")
 }
 
-// TestRunAllStepASuccess covers the runAll Step A wrapper (RunStepA1 + RunStepA2) against a stub with
-// transaction-free blocks.
+// TestRunAllStepASuccess covers the runAll Step A wrapper against the same state-dump stub.
 func TestRunAllStepASuccess(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
-		if method == rpcMethodEthGetBlockByNumber {
-			return map[string]any{"transactions": []string{}}
-		}
-		return "0x"
-	})
 	cfg := &Config{
-		L2RPCURL: url, L2BridgeAddress: common.BytesToAddress([]byte("bridge")),
-		Options: Options{OutputDir: dir, RPCBatchSize: 10, ConcurrencyLimit: 2, StepAWindowSize: 100},
+		L2RPCURL: newStepAServer(t), L2BridgeAddress: common.BytesToAddress([]byte("bridge")),
+		Options: Options{OutputDir: dir, RPCBatchSize: 10, ConcurrencyLimit: 2},
 	}
 
 	res, err := runAllStepA(context.Background(), cfg, dir, 2, nil)
 	require.NoError(t, err)
-	require.Empty(t, res.Addresses)
+	require.Equal(t, []common.Address{{}, common.HexToAddress(stepAAddr1)}, res.Addresses,
+		"the zero address is always included alongside the discovered accounts")
 	require.True(t, fileExists(filepath.Join(dir, fileStepAAddresses)))
 }

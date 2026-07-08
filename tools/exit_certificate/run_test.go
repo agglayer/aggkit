@@ -36,10 +36,9 @@ func TestParseStepList(t *testing.T) {
 		{"unknown from step", "z-i", nil, true},
 		{"unknown to step", "f-z", nil, true},
 		// Step A and B alias and sub-step expansion.
-		{"a alias expands to a1 a2", "a", []string{"a1", "a2"}, false},
+		{"a has no sub-steps", "a", []string{"a"}, false},
 		{"b alias expands to b1 b2 b3", "b", []string{"b1", "b2", "b3"}, false},
-		{"a-b expands a to a1 a2 and b to b1 b2 b3", "a-b", []string{"a1", "a2", "b1", "b2", "b3"}, false},
-		{"a2-b range expands b to b1 b2 b3", "a2-b", []string{"a2", "b1", "b2", "b3"}, false},
+		{"a-b expands b to b1 b2 b3", "a-b", []string{"a", "b1", "b2", "b3"}, false},
 		{"b-c range expands b to b1 b2 b3", "b-c", []string{"b1", "b2", "b3", "c"}, false},
 	}
 

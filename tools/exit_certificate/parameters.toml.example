@@ -51,9 +51,6 @@ rollupManagerAddress = "<ROLLUP_MANAGER_ADDRESS>"
 # Number of blocks per log query (e.g. BridgeEvent scans). Default: 5000.
 blockRange = 10000
 
-# Blocks loaded into memory at once during Step A (debug_traceTransaction). Default: 150000.
-stepAWindowSize = 150000
-
 # Max concurrent RPC batches / worker count. Default: 20.
 concurrencyLimit = 200
 
@@ -81,10 +78,6 @@ l1EndBlock = 0
 # First L2 block to scan. Default: 0 (genesis).
 l2StartBlock = 0
 
-# Skip a transaction whose debug_traceTransaction fails in Step A instead of aborting (failed hashes
-# are saved to step-a-failed-traces.json). Default: false.
-ignoreOnTraceError = false
-
 # Downgrade the genesis-balance guard (non-zero ETH balance at block 0) from an abort to a warning.
 # Enable only for Kurtosis/test environments. Default: false.
 ignoreGenesisBalance = false
@@ -102,12 +95,13 @@ ignoreUnclaimed = false
 # with mismatched exits trimmed so their per-token sum equals min(agglayer, lbt). Default: false.
 ignoreBalanceMismatch = false
 
-# How Step F allocates each token's cap budget when trimming exits (only relevant with
-# ignoreBalanceMismatch = true). "amount" (default) serves the smallest-amount exits first, so the
-# largest holders are the first to be capped/dropped; "appearance" serves exits in the order they
-# appear. Surviving exits are emitted in their original order in both modes.
-# Default: "amount".
-capMode = "amount"
+# How Step F allocates each token's cap budget when it needs to trim exits. "none" (default) forbids
+# capping entirely: Step F fails if any exit would have to be trimmed. "amount" serves the
+# smallest-amount exits first, so the largest holders are the first to be capped/dropped;
+# "appearance" serves exits in the order they appear. Surviving exits are emitted in their original
+# order in both trimming modes.
+# Default: "none".
+capMode = "none"
 
 # Optional amount of native token (in Wei, as a decimal string) pre-funded at genesis. Such funds sit
 # in accounts — and therefore in the certificate's bridge exits — without a matching agglayer deposit,

@@ -19,11 +19,7 @@ import (
 
 // Options holds tuning parameters for RPC parallelism and output.
 type Options struct {
-	BlockRange int `json:"blockRange"`
-	// StepAWindowSize is the number of blocks loaded into memory at once during Step A
-	// (address collection via debug_traceTransaction). Defaults to 150000, independently of BlockRange.
-	// Tune independently when trace calls need a different chunk size than log queries.
-	StepAWindowSize  int    `json:"stepAWindowSize"`
+	BlockRange       int    `json:"blockRange"`
 	ConcurrencyLimit int    `json:"concurrencyLimit"`
 	RPCBatchSize     int    `json:"rpcBatchSize"`
 	RPCDelayMs       int    `json:"rpcDelayMs"`
@@ -53,9 +49,6 @@ type Options struct {
 	// totals): the check still runs and warns, but the run continues. Defaults to false (abort); set
 	// to true only for Kurtosis or test environments.
 	IgnoreGenesisBalance bool `json:"ignoreGenesisBalance"`
-	// IgnoreOnTraceError skips transactions whose debug_traceTransaction call fails instead of
-	// aborting Step A. Failed tx hashes are saved to step-a-failed-traces.json for review.
-	IgnoreOnTraceError bool `json:"ignoreOnTraceError"`
 	// NativeSCLockedFromContracts, when true (the default), computes the native-token SC-locked value
 	// in Step C from the actual ETH balances held by contract accounts (summed, excluding the L2
 	// bridge) rather than from LBT − EOA_accumulated. That formula underflows on chains with a native
@@ -69,8 +62,9 @@ type Options struct {
 	// The step still detects and warns about any unclaimed deposits, but the certificate is left unchanged.
 	IgnoreUnclaimed bool `json:"ignoreUnclaimed"`
 	// ExtraERC20Contracts is an optional list of ERC-20 contract addresses whose token holders
-	// are decomposed in Step B3. Each contract is queried with balanceOf for every EOA address
-	// collected in Step A.
+	// are decomposed in Step B3. Step A includes these contracts in its Transfer-log scan so even
+	// passive holders (no ETH/nonce/code) are discovered; Step B3 then queries each contract with
+	// balanceOf for every EOA address collected in Step A.
 	ExtraERC20Contracts []common.Address `json:"extraErc20Contracts,omitempty"`
 	// BridgeServiceURL is the base URL of the bridge service REST API.
 	// When set, Step E queries the bridge service for pending bridges targeting this L2 and returns an
@@ -93,12 +87,13 @@ type Options struct {
 	// the certificate's bridge exits) without launching Anvil — much faster, but it trusts the
 	// off-chain leaf encoding (notably each exit's metadata) rather than verifying it on-chain.
 	VerifyNewLocalExitRootUsingShadowFork bool `json:"verifyNewLocalExitRootUsingShadowFork"`
-	// CapMode selects how bridge exits are trimmed when Step F caps a certificate whose token totals
-	// exceed the allowed budget (only reached with IgnoreBalanceMismatch=true). "amount" (the default)
-	// allocates each token's budget to its smallest-amount exits first, so the largest holders are the
-	// first to be capped/dropped once the budget runs out. "appearance" allocates to its exits in the
-	// order they appear, capping/dropping the ones that no longer fit. In both modes the surviving
-	// exits are emitted in their original order.
+	// CapMode selects how bridge exits are trimmed when Step F needs to cap a certificate whose token
+	// totals exceed the allowed budget. "none" (the default) forbids capping entirely: if any exit
+	// would have to be trimmed, Step F fails instead. "amount" allocates each token's budget to its
+	// smallest-amount exits first, so the largest holders are the first to be capped/dropped once the
+	// budget runs out. "appearance" allocates to its exits in the order they appear, capping/dropping
+	// the ones that no longer fit. In both trimming modes the surviving exits are emitted in their
+	// original order.
 	CapMode string `json:"capMode"`
 	// GenesisPrefundETHWei is an optional amount of native token (in Wei, as a decimal string) that was
 	// pre-funded at genesis. Those funds sit in accounts — and therefore in the certificate's bridge
@@ -106,15 +101,18 @@ type Options struct {
 	// certificate sum before comparing it against the agglayer balance and the LBT (which only count
 	// genuinely bridged funds), logging the certificate total, the pre-fund and the difference. The
 	// pre-fund has no agglayer collateral and can never be bridged out: even when the checks match,
-	// Step F produces a capped certificate trimming the native exits to min(agglayer, LBT). The Step 0
-	// LBT and Step C SC-locked totals are untouched. Step B verifies the declared value against the
-	// detected genesis ETH preload total. Empty means 0. Typical testnet value:
+	// Step F produces a capped certificate trimming the native exits to min(agglayer, LBT) — this
+	// requires a trimming CapMode ("amount" or "appearance"; the default "none" fails instead). The
+	// Step 0 LBT and Step C SC-locked totals are untouched. Step B verifies the declared value against
+	// the detected genesis ETH preload total. Empty means 0. Typical testnet value:
 	// 100000 ETH = "100000000000000000000000".
 	GenesisPrefundETHWei string `json:"genesisPrefundETHWei"`
 }
 
 // Cap modes for Options.CapMode (how Step F trims exits when capping a certificate).
 const (
+	// CapModeNone forbids capping: Step F fails if any bridge exit would have to be trimmed.
+	CapModeNone = "none"
 	// CapModeByAppearance allocates each token's cap budget to its exits in appearance order.
 	CapModeByAppearance = "appearance"
 	// CapModeByAmount allocates each token's cap budget to its smallest-amount exits first, so the
@@ -153,14 +151,12 @@ type Config struct {
 
 const (
 	defaultBlockRange       = 5000
-	defaultStepAWindowSize  = 150000
 	defaultConcurrencyLimit = 20
 	defaultRPCBatchSize     = 200
 )
 
 var defaultOptions = Options{
 	BlockRange:                            defaultBlockRange,
-	StepAWindowSize:                       defaultStepAWindowSize,
 	ConcurrencyLimit:                      defaultConcurrencyLimit,
 	RPCBatchSize:                          defaultRPCBatchSize,
 	RPCDelayMs:                            0,
@@ -169,7 +165,7 @@ var defaultOptions = Options{
 	L2StartBlock:                          0,
 	UseAgglayerAdminToStepFCheck:          true,
 	VerifyNewLocalExitRootUsingShadowFork: true,
-	CapMode:                               CapModeByAmount,
+	CapMode:                               CapModeNone,
 	NativeSCLockedFromContracts:           true,
 	// IgnoreGenesisBalance defaults to false (do abort on a genesis preload).
 }
@@ -241,9 +237,10 @@ func validateRawConfig(raw *rawConfig) error {
 	}
 	// capMode, when set, must be one of the known modes.
 	if raw.Options != nil && raw.Options.CapMode != "" &&
+		raw.Options.CapMode != CapModeNone &&
 		raw.Options.CapMode != CapModeByAppearance && raw.Options.CapMode != CapModeByAmount {
-		return fmt.Errorf("invalid options.capMode %q: must be %q or %q",
-			raw.Options.CapMode, CapModeByAppearance, CapModeByAmount)
+		return fmt.Errorf("invalid options.capMode %q: must be %q, %q or %q",
+			raw.Options.CapMode, CapModeNone, CapModeByAppearance, CapModeByAmount)
 	}
 	// genesisPrefundETHWei, when set, must be a non-negative base-10 integer (Wei).
 	if raw.Options != nil && raw.Options.GenesisPrefundETHWei != "" {
@@ -411,9 +408,6 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	if raw.BlockRange > 0 {
 		opts.BlockRange = raw.BlockRange
 	}
-	if raw.StepAWindowSize > 0 {
-		opts.StepAWindowSize = raw.StepAWindowSize
-	}
 	if raw.ConcurrencyLimit > 0 {
 		opts.ConcurrencyLimit = raw.ConcurrencyLimit
 	}
@@ -469,9 +463,6 @@ func mergeFlagOptions(opts *Options, raw *rawOpts) {
 	}
 	if raw.IgnoreGenesisBalance != nil {
 		opts.IgnoreGenesisBalance = *raw.IgnoreGenesisBalance
-	}
-	if raw.IgnoreOnTraceError != nil {
-		opts.IgnoreOnTraceError = *raw.IgnoreOnTraceError
 	}
 	if raw.NativeSCLockedFromContracts != nil {
 		opts.NativeSCLockedFromContracts = *raw.NativeSCLockedFromContracts
@@ -535,7 +526,6 @@ type rawConfig struct {
 
 type rawOpts struct {
 	BlockRange                            int                    `json:"blockRange"`
-	StepAWindowSize                       int                    `json:"stepAWindowSize"`
 	ConcurrencyLimit                      int                    `json:"concurrencyLimit"`
 	RPCBatchSize                          int                    `json:"rpcBatchSize"`
 	RPCDelayMs                            int                    `json:"rpcDelayMs"`
@@ -548,7 +538,6 @@ type rawOpts struct {
 	AgglayerClient                        *agglayer.ClientConfig `json:"agglayerClient"`
 	UseAgglayerAdminToStepFCheck          *bool                  `json:"useAgglayerAdminToStepFCheck"`
 	IgnoreGenesisBalance                  *bool                  `json:"ignoreGenesisBalance"`
-	IgnoreOnTraceError                    *bool                  `json:"ignoreOnTraceError"`
 	NativeSCLockedFromContracts           *bool                  `json:"nativeSCLockedFromContracts"`
 	IgnoreBalanceMismatch                 *bool                  `json:"ignoreBalanceMismatch"`
 	IgnoreUnclaimed                       *bool                  `json:"ignoreUnclaimed"`
