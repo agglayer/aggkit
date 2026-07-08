@@ -1,4 +1,3 @@
-//nolint:lll // test file; long require.Equal/mock-setup lines read clearer unwrapped
 package runtime
 
 import (

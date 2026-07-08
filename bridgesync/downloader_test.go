@@ -1,4 +1,3 @@
-//nolint:lll // test file; long mock-setup lines read clearer unwrapped
 package bridgesync
 
 import (

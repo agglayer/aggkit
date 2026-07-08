@@ -1077,7 +1077,6 @@ func (r *requestRow) toRequest() (*autoclaimtypes.AutoClaimRequest, error) {
 		request.GlobalIndex = globalIndex
 	}
 	if r.L1InfoTreeIndex.Valid {
-		//nolint:gosec // G115 is excluded project-wide in .golangci.yml; value always originates from a uint32
 		index := uint32(r.L1InfoTreeIndex.Int64)
 		request.L1InfoTreeIndex = &index
 	}

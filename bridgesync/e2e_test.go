@@ -1,4 +1,3 @@
-//nolint:lll,gosec // test file; long test-setup lines and test integer conversions are not security-sensitive
 package bridgesync_test
 
 import (

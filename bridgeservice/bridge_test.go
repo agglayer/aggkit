@@ -1,4 +1,3 @@
-//nolint:lll,gosec // test file; long mock/assertion lines and test timestamp conversions are not security-sensitive
 package bridgeservice
 
 import (

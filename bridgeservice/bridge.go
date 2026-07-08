@@ -1229,7 +1229,6 @@ func (b *BridgeService) populateNetworkSyncInfo(
 		return statusCode
 	}
 
-	//nolint:gosec // G115 is excluded project-wide in .golangci.yml; bridgesCount is a non-negative row count
 	networkInfo.SynchronizedDepositCount = uint32(bridgesCount)
 	networkInfo.ContractDepositCount = contractDepositCount
 	networkInfo.IsSynced = networkInfo.ContractDepositCount == networkInfo.SynchronizedDepositCount
@@ -1371,7 +1370,6 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, 
 		if err != nil {
 			return 0, err
 		}
-		//nolint:gocritic // ifElseChain is disabled project-wide in .golangci.yml; if-else reads clearer than switch here
 		if root.Index < depositCount {
 			lowerLimit = targetBlock + 1
 		} else if root.Index == depositCount {

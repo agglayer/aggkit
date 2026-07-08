@@ -618,7 +618,7 @@ func TestRestartRecoveryUsesStableSnapshotAcrossPages(t *testing.T) {
 	}
 	bridges := make([]autoclaimtypes.BridgeExit, 0, len(recoverable))
 	for i, status := range recoverable {
-		bridge := makeBridge(uint32(30+i), 10) //nolint:gosec // test-only, i is a small loop index
+		bridge := makeBridge(uint32(30+i), 10)
 		bridges = append(bridges, bridge)
 		insertStoredRequest(t, ctx, storage, bridge, status)
 	}
