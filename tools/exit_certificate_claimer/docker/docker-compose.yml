@@ -25,6 +25,10 @@ services:
     # Override the image's default `aggkit` entrypoint with the claimer binary. Exec form: the
     # production image ships without a shell.
     entrypoint: ["/usr/local/bin/exit_certificate_claimer"]
+    # Runs as the image's appuser (uid 1000) by default. Override with "uid:gid" (e.g.
+    # CLAIMER_USER="$(id -u):$(id -g)") when the mounted EXIT_TOOL_DIR belongs to another user, so
+    # L1 sync can write its SQLite DBs inside output/.
+    user: "${CLAIMER_USER:-appuser}"
     command:
       - "--exit-certificate-config"
       - "/data/${EXIT_CERT_CONFIG:-parameters.toml}"

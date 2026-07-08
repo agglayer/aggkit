@@ -52,12 +52,15 @@ CLAIMER_LOG="$(mktemp -t exit_certificate_claimer.XXXXXX.log)"
 DOCKER_CONFIG_COPY=""
 
 # Runs docker compose against the claimer compose file with the e2e environment.
+# CLAIMER_USER runs the container as the host user so L1 sync can write its
+# SQLite DBs inside the mounted config dir regardless of the host uid.
 compose() {
     EXIT_TOOL_DIR="$(dirname "$EXIT_CERT_CONFIG")" \
     EXIT_CERT_CONFIG="$(basename "$DOCKER_CONFIG_COPY")" \
     CLAIMER_ADDRESS="0.0.0.0" \
     CLAIMER_PORT="$CLAIMER_PORT" \
     AGGKIT_IMAGE="$AGGKIT_IMAGE" \
+    CLAIMER_USER="$(id -u):$(id -g)" \
         docker compose --project-directory "$CLAIMER_COMPOSE_DIR" \
         --project-name "$CLAIMER_COMPOSE_PROJECT" "$@"
 }

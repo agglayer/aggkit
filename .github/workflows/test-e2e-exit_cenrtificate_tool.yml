@@ -8,7 +8,9 @@ on:
   pull_request:
     paths:
       - "tools/exit_certificate/**"
+      - "tools/exit_certificate_claimer/**"
       - "test/e2e-exit_certificate/**"
+      - "Dockerfile"
       - ".github/workflows/test-e2e-exit_cenrtificate_tool.yml"
   workflow_dispatch: {}
 
@@ -47,6 +49,9 @@ jobs:
       - name: Run exit-certificate E2E test
         env:
           VERBOSE: "1"
+          # Exercise the claimer through its docker-compose deployment (the same
+          # artifact users deploy) instead of a host binary.
+          CLAIMER_MODE: docker
         run: ./test/e2e-exit_certificate/run_e2e_test.sh
 
       - name: Stop Kurtosis enclave
