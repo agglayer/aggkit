@@ -3,6 +3,7 @@ package exit_certificate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"sort"
@@ -259,7 +260,11 @@ func finalizeStepFResult(
 	}
 	if allMatch {
 		if prefund := genesisPrefundWei(cfg); prefund != nil && prefund.Sign() > 0 {
-			cappedExits := capCertificateExits(certificate.BridgeExits, checks, cfg.Options.CapMode)
+			cappedExits, err := capCertificateExits(certificate.BridgeExits, checks, cfg.Options.CapMode)
+			if err != nil {
+				return result, fmt.Errorf("genesis pre-fund (%s wei) requires capping the native exits: %w",
+					prefund, err)
+			}
 			if !sameExits(cappedExits, certificate.BridgeExits) {
 				capped := *certificate
 				capped.BridgeExits = cappedExits
@@ -283,7 +288,11 @@ func finalizeStepFResult(
 		}
 	}
 	capped := *certificate
-	capped.BridgeExits = capCertificateExits(certificate.BridgeExits, checks, cfg.Options.CapMode)
+	cappedExits, err := capCertificateExits(certificate.BridgeExits, checks, cfg.Options.CapMode)
+	if err != nil {
+		return result, fmt.Errorf("token balance mismatches require capping the certificate: %w", err)
+	}
+	capped.BridgeExits = cappedExits
 	result.CappedCertificate = &capped
 	log.Infof("🔧 Capped certificate: %d → %d bridge exits",
 		len(certificate.BridgeExits), len(capped.BridgeExits))
@@ -503,10 +512,17 @@ func compareCertificateToLBT(
 	return checks
 }
 
+// errCapForbidden is returned by capCertificateExits when at least one bridge exit would have to be
+// trimmed but options.capMode is "none", which forbids modifying the certificate.
+var errCapForbidden = errors.New(
+	`certificate exceeds the allowed budget and options.capMode is "none" (the default), ` +
+		`which forbids trimming exits; set options.capMode to "amount" or "appearance" to allow capping`)
+
 // capCertificateExits returns a new slice of bridge exits trimmed to stay within each
 // token's RemainingBalance (= min(LBT, agglayer) from its TokenBalanceCheck).
 //
 // The mode selects the order in which each token's budget is allocated to its exits:
+//   - CapModeNone: no exit may be trimmed — if any would be, errCapForbidden is returned.
 //   - CapModeByAppearance: exits are served in the order they appear.
 //   - CapModeByAmount: exits are served smallest-amount first, so the small holders keep their full
 //     amount and the largest ones are the first to be capped/dropped once the budget runs out.
@@ -515,7 +531,7 @@ func compareCertificateToLBT(
 // dropped. Regardless of mode, the surviving exits are emitted in their original order.
 func capCertificateExits(
 	exits []*agglayertypes.BridgeExit, checks []TokenBalanceCheck, mode string,
-) []*agglayertypes.BridgeExit {
+) ([]*agglayertypes.BridgeExit, error) {
 	remaining := make(map[tokenKey]*big.Int, len(checks))
 	for _, c := range checks {
 		// Every token is budgeted, matched ones included: for them capping is a no-op (sum ==
@@ -564,10 +580,21 @@ func capCertificateExits(
 		switch {
 		case outcomes[idx].drop:
 			k := tokenKey{e.TokenInfo.OriginNetwork, e.TokenInfo.OriginTokenAddress}
+			if mode == CapModeNone {
+				log.Errorf("❌ Bridge exit (network=%d addr=%s amount=%s) has no budget left and "+
+					"capMode=none forbids dropping it", k.OriginNetwork, k.OriginTokenAddress, e.Amount)
+				return nil, errCapForbidden
+			}
 			log.Debugf("🔧 Drop bridge exit (network=%d addr=%s amount=%s): no budget left",
 				k.OriginNetwork, k.OriginTokenAddress, e.Amount)
 		case outcomes[idx].capTo != nil:
 			k := tokenKey{e.TokenInfo.OriginNetwork, e.TokenInfo.OriginTokenAddress}
+			if mode == CapModeNone {
+				log.Errorf("❌ Bridge exit (network=%d addr=%s) exceeds the budget (%s > %s) and "+
+					"capMode=none forbids trimming it",
+					k.OriginNetwork, k.OriginTokenAddress, e.Amount, outcomes[idx].capTo)
+				return nil, errCapForbidden
+			}
 			log.Infof("🔧 Cap bridge exit (network=%d addr=%s): %s → %s",
 				k.OriginNetwork, k.OriginTokenAddress, e.Amount, outcomes[idx].capTo)
 			result = append(result, capExitCopy(e, outcomes[idx].capTo))
@@ -575,7 +602,7 @@ func capCertificateExits(
 			result = append(result, e)
 		}
 	}
-	return result
+	return result, nil
 }
 
 // capAllocationOrder returns the exit indices in the order their token budget should be allocated.

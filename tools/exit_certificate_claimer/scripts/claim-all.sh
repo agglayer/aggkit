@@ -158,6 +158,13 @@ add_address() {
 	local a
 	a="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
 	[[ "$a" =~ ^0x[0-9a-f]{40}$ ]] || return 0
+	# The zero address can appear in the certificate (value parked at 0x0 is covered so the
+	# totals reconcile with the LBT), but nobody owns it and the bridge rejects claims to it:
+	# claiming would just revert (or burn the funds on L1), so it is skipped.
+	if [ "$a" = "0x0000000000000000000000000000000000000000" ]; then
+		echo "note: skipping the zero address (its bridge exits are unclaimable by design)"
+		return 0
+	fi
 	[ -n "${seen[$a]:-}" ] && return 0
 	seen[$a]=1
 	ADDRESSES+=("$a")

@@ -12,21 +12,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRunStepAEmptyBlocks(t *testing.T) {
+// RunStepA fails when the state dump is unusable: there is no fallback, since a run without the
+// dump would silently omit every native-ETH holder and contract.
+func TestRunStepA_FailsWhenDumpUnavailable(t *testing.T) {
 	t.Parallel()
-	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
-		if method == rpcMethodEthGetBlockByNumber {
-			return map[string]any{"transactions": []string{}}
-		}
-		return "0x"
+	url := newBatchRPCServer(t, func(string, []json.RawMessage) any {
+		return "0x" // debug_accountRange probe fails in both dialects
 	})
 	cfg := &Config{
 		L2RPCURL: url,
-		Options:  Options{RPCBatchSize: 10, ConcurrencyLimit: 2, StepAWindowSize: 100},
+		Options:  Options{RPCBatchSize: 10, ConcurrencyLimit: 2},
 	}
-	res, err := RunStepA(context.Background(), cfg, 2)
-	require.NoError(t, err)
-	require.Empty(t, res.Addresses)
+	_, err := RunStepA(context.Background(), cfg, 2, nil)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "state dump")
 }
 
 func TestFetchWETHBalance(t *testing.T) {
@@ -123,17 +122,6 @@ func TestComputeNativeBalance(t *testing.T) {
 	require.Equal(t, common.Address{}, entry.WrappedTokenAddress)
 }
 
-func TestMergeAddresses(t *testing.T) {
-	t.Parallel()
-	a := common.HexToAddress("0x01")
-	b := common.HexToAddress("0x02")
-	c := common.HexToAddress("0x03")
-	// The zero address is kept: it can hold value (e.g. burned funds) that the certificate
-	// must account for.
-	merged := mergeAddresses([]common.Address{a, b}, []common.Address{b, c, {}})
-	require.ElementsMatch(t, []common.Address{a, b, c, {}}, merged)
-}
-
 func TestSaveJSONErrorBranches(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -146,61 +134,6 @@ func TestSaveJSONErrorBranches(t *testing.T) {
 	notADir := filepath.Join(dir, "afile")
 	require.NoError(t, os.WriteFile(notADir, []byte("x"), 0o600))
 	require.NotPanics(t, func() { saveJSON(notADir, "out.json", map[string]int{"a": 1}) })
-}
-
-func TestReceiptAddresses(t *testing.T) {
-	t.Parallel()
-	from := "0x1000000000000000000000000000000000000001"
-	to := "0x1000000000000000000000000000000000000002"
-	logAddr := "0x1000000000000000000000000000000000000003"
-
-	srv := newRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
-		require.Equal(t, "eth_getTransactionReceipt", method)
-		receipt := map[string]any{
-			"from": from, "to": to,
-			"logs": []map[string]string{{"address": logAddr}},
-		}
-		out, _ := json.Marshal(receipt)
-		return out, nil
-	})
-
-	addrs, err := receiptAddresses(context.Background(), srv.URL, common.HexToHash("0xabc"))
-	require.NoError(t, err)
-	require.ElementsMatch(t,
-		[]common.Address{common.HexToAddress(from), common.HexToAddress(to), common.HexToAddress(logAddr)}, addrs)
-}
-
-func TestReceiptAddressesNull(t *testing.T) {
-	t.Parallel()
-	srv := newRPCStub(t, func(string, []any) (json.RawMessage, *jsonRPCError) {
-		return json.RawMessage(`null`), nil
-	})
-	_, err := receiptAddresses(context.Background(), srv.URL, common.HexToHash("0xabc"))
-	require.ErrorContains(t, err, "is null")
-}
-
-func TestRunStepA2(t *testing.T) {
-	t.Parallel()
-
-	t.Run("no failed traces", func(t *testing.T) {
-		t.Parallel()
-		res, err := RunStepA2(context.Background(), &Config{}, nil)
-		require.NoError(t, err)
-		require.Empty(t, res.Addresses)
-	})
-
-	t.Run("recovers addresses from receipts", func(t *testing.T) {
-		t.Parallel()
-		from := "0x1000000000000000000000000000000000000001"
-		srv := newRPCStub(t, func(string, []any) (json.RawMessage, *jsonRPCError) {
-			out, _ := json.Marshal(map[string]any{"from": from})
-			return out, nil
-		})
-		cfg := &Config{L2RPCURL: srv.URL, Options: Options{ConcurrencyLimit: 2}}
-		res, err := RunStepA2(context.Background(), cfg, []FailedTrace{{Hash: common.HexToHash("0xabc")}})
-		require.NoError(t, err)
-		require.Equal(t, []common.Address{common.HexToAddress(from)}, res.Addresses)
-	})
 }
 
 func TestFetchL2ChainID(t *testing.T) {

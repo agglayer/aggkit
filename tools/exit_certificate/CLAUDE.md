@@ -19,7 +19,7 @@ tools/exit_certificate/
 ├── worker.go            — generic worker pool (runWorkerPool)
 ├── hex.go               — hex/uint64 conversion utilities
 ├── step_0.go            — LBT generation
-├── step_a.go            — address collection via debug_traceTransaction
+├── step_a.go            — address collection via debug_accountRange state dump + Transfer logs
 ├── step_b.go            — EOA classification + balance fetching
 ├── step_c.go            — SC-locked value computation
 ├── step_d.go            — build agglayer Certificate
@@ -69,9 +69,33 @@ All checks run regardless of individual failures. A combined error lists every f
 
 ### Step A — Collect addresses
 
-- **RPC:** `eth_getBlockByNumber` (headers, `false`) → tx hashes; then `debug_traceTransaction` with `prestateTracer`+`diffMode` per hash.
-- **Output:** `step-a-addresses.json` (`[]common.Address`), `step-a-failed-traces.json` (`[]common.Hash`)
-- **Option:** `ignoreOnTraceError=true` skips failed traces instead of aborting.
+Discovers every value-holding address at `targetBlock` from two merged sources instead of replaying
+transaction history:
+
+1. **State dump** — paginated `debug_accountRange` at `targetBlock` (every ETH holder and contract,
+   `O(#accounts)`). The geth vs erigon/cdk-erigon dialect is auto-detected on the first page. Fails
+   loudly on truncation (page cap hit with a non-empty cursor) or a 0-account dump.
+2. **`Transfer` event logs** — `eth_getLogs` per wrapped token (from the Step 0 LBT) **and per
+   extra ERC-20 contract** (`options.extraErc20Contracts`, deduplicated against the wrapped tokens)
+   over `[0, targetBlock]`, collecting the indexed `from`/`to` — the only source that surfaces
+   token-only EOAs (no nonce/balance/code). Always starts at block 0, not `l2StartBlock`. The
+   extras are scanned here (not in Step B3) because B3 only probes `balanceOf` against Step A's
+   address set: a passive holder of an extra token would otherwise never be discovered and their
+   collateral share would flow to `exitAddress`.
+
+The zero address is **always included**, regardless of what the sources return: tokens transferred
+to `0x000…000` stay in `totalSupply` (a plain transfer is not a burn) and it can hold native ETH
+(including genesis allocs — the OP-stack genesis gives it 1 wei), so dropping it would leave the
+certificate unbalanced against the LBT. It is added unconditionally because the state dump can miss
+it (no preimage for the zero key) and the Transfer-log scan only surfaces it when a mint/burn
+happened — discovery must not depend on unrelated token activity, or the Step B genesis-preload
+detection (and the declared `genesisPrefundETHWei`) would change between runs.
+
+Both sources always run and merge — they cover complementary blind spots (the dump cannot see
+token-only EOAs, not in the account trie; the logs cannot see accounts that never touched a wrapped
+token: native-ETH holders, contracts). There is no fallback: an unusable dump fails Step A.
+
+- **Output:** `step-a-addresses.json` (`[]common.Address`)
 
 ### Step B — EOA balance checking + ERC-20 detection
 
@@ -100,6 +124,9 @@ Iterates over `options.extraErc20Contracts`. For each address:
 
 - If Step B2 already populated `Holders` for it, copies those holders and marks `AlreadyFromB2=true` — no RPC call.
 - Otherwise, calls `fetchTokenBalances` (one RPC batch of `balanceOf` for every EOA from Step A).
+
+Holder coverage relies on Step A having scanned the extra contracts' `Transfer` logs: B3 itself
+never discovers addresses, it only probes the Step A set.
 
 Skipped automatically when `options.extraErc20Contracts` is empty.
 
@@ -144,9 +171,9 @@ Creates the `*agglayertypes.Certificate` with `BridgeExit` entries:
 - **Agglayer LBT dump:** whenever `agglayerAdminURL` is set, Step F queries `admin_getTokenBalance` once at the very start and writes the full raw response (the agglayer's local balance tree for `l2NetworkId`) to `step-f-agglayer-lbt.json`, regardless of the comparison mode. In agglayer mode this same response is reused for the comparison (no second RPC). This means offline mode (`useAgglayerAdminToStepFCheck=false`) still issues this single query when `agglayerAdminURL` happens to be configured — the file is written but not used for the offline LBT-vs-certificate comparison.
 - Each token is logged with ✅ or ❌. The shared `finalizeStepFResult` applies the `ignoreBalanceMismatch` policy in both modes.
 - **On mismatch:** aborts the pipeline with an error by default.
-- **`ignoreBalanceMismatch=true`:** suppresses the error and produces `step-f-capped-certificate.json`, where each mismatched token's bridge exits are trimmed so their sum equals the token budget `min(agglayer, lbt)`. The pipeline (and `runSingleG`) automatically uses this capped certificate for subsequent steps.
-- `capCertificateExits` is the internal helper that applies the caps. It is a **greedy per-token allocator**: it walks each token's exits, deducting each amount from the budget, capping the boundary exit to the leftover and dropping any exit once the budget is exhausted. `options.capMode` selects the allocation order — `"amount"` (default) serves the smallest-amount exits first, so the largest holders are the first to be capped/dropped once the budget runs out; `"appearance"` serves exits in the order they appear. In both modes the surviving exits are emitted in their original order.
-- **Genesis pre-fund capping:** the pre-funded native amount (`genesisPrefundETHWei`) has no agglayer collateral and can never be bridged out. Even when every check matches (thanks to the discount), `finalizeStepFResult` still produces the capped certificate, trimming the native exits to `min(agglayer, lbt)` — no `ignoreBalanceMismatch` required.
+- **`ignoreBalanceMismatch=true`:** suppresses the error and produces `step-f-capped-certificate.json`, where each mismatched token's bridge exits are trimmed so their sum equals the token budget `min(agglayer, lbt)`. Requires a trimming `capMode` (`"amount"` or `"appearance"`); with the default `"none"` Step F fails instead of trimming. The pipeline (and `runSingleG`) automatically uses this capped certificate for subsequent steps.
+- `capCertificateExits` is the internal helper that applies the caps. It is a **greedy per-token allocator**: it walks each token's exits, deducting each amount from the budget, capping the boundary exit to the leftover and dropping any exit once the budget is exhausted. `options.capMode` selects the allocation order — `"none"` (default) forbids capping entirely: the helper returns `errCapForbidden` if any exit would have to be trimmed/dropped, failing Step F; `"amount"` serves the smallest-amount exits first, so the largest holders are the first to be capped/dropped once the budget runs out; `"appearance"` serves exits in the order they appear. In both trimming modes the surviving exits are emitted in their original order.
+- **Genesis pre-fund capping:** the pre-funded native amount (`genesisPrefundETHWei`) has no agglayer collateral and can never be bridged out. Even when every check matches (thanks to the discount), `finalizeStepFResult` still produces the capped certificate, trimming the native exits to `min(agglayer, lbt)` — no `ignoreBalanceMismatch` required, but a trimming `capMode` is (the default `"none"` fails instead).
 - **Output:** `step-f-token-balances.json`, `step-f-checks.json` (`[]TokenBalanceCheck`), `step-f-agglayer-lbt.json` *(only when `agglayerAdminURL` is set)*, `step-f-capped-certificate.json` *(when `ignoreBalanceMismatch=true` and mismatches exist, or when `genesisPrefundETHWei` trims the native exits)*
 
 ### Step G — Compute NewLocalExitRoot (shadow-fork)
@@ -356,7 +383,7 @@ Notable optional fields:
 - `sovereignRollupAddr` — address of the `aggchainbase` contract on L1. Required by Step CHECK (checks 4–6). Without it Step CHECK fails.
 - `l1GlobalExitRootAddress` — address of `PolygonZkEVMGlobalExitRootV2` on L1. Required by Step I to fetch `L1InfoTreeLeafCount`. Without it Step I fails.
 - `rollupManagerAddress` — **optional** address of the `PolygonRollupManager` (AgglayerManager) contract on L1. Used by Step WAIT to confirm the certificate's L1 settlement via the `VerifyBatchesTrustedAggregator` event. When unset it is resolved on-chain from `sovereignRollupAddr.rollupManager()` (PolygonConsensusBase). Step WAIT errors if neither `rollupManagerAddress` nor `sovereignRollupAddr` is set.
-- `options.capMode` — `"amount"` (default) or `"appearance"`. Only relevant with `ignoreBalanceMismatch=true`: selects how Step F allocates each token's cap budget when trimming exits. `"amount"` serves the smallest-amount exits first, so the largest holders are the first to be capped/dropped; `"appearance"` serves exits in the order they appear. Surviving exits are emitted in their original order in both modes.
+- `options.capMode` — `"none"` (default), `"amount"` or `"appearance"`. Selects how Step F allocates each token's cap budget when it needs to trim exits. `"none"` forbids capping: Step F fails (`errCapForbidden`) if any exit would have to be trimmed — including the genesis pre-fund trim, so `genesisPrefundETHWei` requires a trimming mode. `"amount"` serves the smallest-amount exits first, so the largest holders are the first to be capped/dropped; `"appearance"` serves exits in the order they appear. Surviving exits are emitted in their original order in both trimming modes.
 - `options.genesisPrefundETHWei` — optional native-token amount (Wei, decimal string) pre-funded at genesis. Those funds sit in accounts — and therefore in the certificate's bridge exits — without a matching agglayer deposit, so Step F subtracts the value from the native-token certificate sum via `discountGenesisPrefund` before comparing against the agglayer balance and the LBT (which only count genuinely bridged funds), logging the certificate total, the pre-fund and the difference. The cap budget stays `min(agglayer, lbt)`, and the Step 0 LBT and Step C SC-locked totals are untouched. The pre-fund has no agglayer collateral, so even on allMatch Step F emits `step-f-capped-certificate.json` trimming the native exits to that budget. Validated by `LoadConfig` (non-negative base-10 integer). Empty = 0. When set, Step B verifies the declared value against the detected genesis ETH preload total (`checkDeclaredGenesisPrefund`); a mismatch is fatal even with `ignoreGenesisBalance=true`.
 - `options.bridgeServiceURL` — base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits against the bridge service and errors on discrepancies.
 - `options.bridgeServiceType` — `"aggkit"` (default) or `"zkevm"`. Selects the API flavour used for the cross-check.
@@ -370,7 +397,7 @@ Defaults applied by `LoadConfig`:
 - `l2NetworkId` defaults to `1`
 - `options.blockRange` = 5000, `concurrencyLimit` = 20, `rpcBatchSize` = 200
 - `options.ignoreGenesisBalance` = `false` — when `false` (default), Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `true` to downgrade it to a warning, only for Kurtosis/test environments.
-- `options.ignoreBalanceMismatch` = `false` — when `true`, Step F does not abort on token balance mismatches and instead produces a capped certificate.
+- `options.ignoreBalanceMismatch` = `false` — when `true`, Step F does not abort on token balance mismatches and instead produces a capped certificate (needs `capMode` `"amount"` or `"appearance"`; the default `"none"` forbids trimming and fails).
 - `options.useAgglayerAdminToStepFCheck` = `true` — when `false`, Step F skips the agglayer admin query and compares LBT (Step 0) vs certificate sums offline instead.
 - Relative paths in `options.outputDir` and `signerConfig.Path` resolve from the directory containing the config file.
 
@@ -394,7 +421,9 @@ Defaults applied by `LoadConfig`:
 - **File chain with capping:** when `ignoreBalanceMismatch=true` produces a capped cert, the effective chain becomes: Step D → Step E → **Step F (capped)** → Step G → … Always check whether `step-f-capped-certificate.json` exists when investigating balance issues.
 - **`--verbose` flag:** the logger defaults to `info` level; pass `--verbose` to enable `debug` output.
 - **SC-locked value can be negative** when genesis state was pre-loaded or the LBT is stale — the genesis-balance guard (`ignoreGenesisBalance=false`, the default) catches this early.
-- **`debug_traceTransaction` must be available** on the L2 RPC (Step A). Archive node required.
+- **Step A needs an archive node exposing `debug_accountRange`.** The state dump at `targetBlock`
+  is mandatory (no fallback): without it Step A fails, since native-ETH holders and contracts would
+  be silently omitted.
 - **Step G2 requires Anvil only in shadow-fork mode** (`options.verifyNewLocalExitRootUsingShadowFork=true`; `anvil` binary in `$PATH`, from the Foundry toolchain). The default off-chain mode needs no Anvil.
 - **FEP chains are not supported.** Only Pessimistic Proof certificates are generated.
 - **`SetClaim` and `UpdatedUnsetGlobalIndexHashChain` events are not handled** — value from those flows may be missing.
