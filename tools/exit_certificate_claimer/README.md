@@ -114,6 +114,10 @@ CGO_ENABLED=1 go build -o exit-certificate-claimer ./tools/exit_certificate_clai
 
 # print the full build/version info and exit (same fields as GET /health):
 ./exit-certificate-claimer --version
+
+# probe a running claimer and exit 0/1 (backs the docker-compose healthcheck; the production
+# image has no shell or curl, so the binary performs the HTTP probe itself):
+./exit-certificate-claimer healthcheck --address 127.0.0.1 --port 8080
 ```
 
 `CGO_ENABLED=1` is required (SQLite via `mattn/go-sqlite3`).

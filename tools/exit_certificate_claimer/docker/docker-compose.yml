@@ -34,11 +34,27 @@ services:
       - "${CLAIMER_PORT:-8080}"
     volumes:
       # The exit_certificate working dir (parameters.toml + output/). Read-write because L1 sync
-      # keeps its own SQLite DBs up to date inside output/.
+      # keeps its own SQLite DBs up to date inside output/. The container runs as appuser (uid
+      # 1000); if the host directory belongs to another uid, grant it write access to output/
+      # (e.g. chmod -R g+w / setfacl) or run the tool and the claimer as the same user.
       - "${EXIT_TOOL_DIR:-../../exit_certificate}:/data"
     ports:
       - "${CLAIMER_PORT:-8080}:${CLAIMER_PORT:-8080}"
     # Lets a parameters.toml l1RpcUrl pointing at the host (host.docker.internal) reach it on Linux.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # The production image ships without a shell or curl, so the claimer binary probes itself.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/usr/local/bin/exit_certificate_claimer",
+          "healthcheck",
+          "--port",
+          "${CLAIMER_PORT:-8080}",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
