@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -319,6 +320,92 @@ func TestCollectTokenHoldersViaLogs_ScansFromGenesis(t *testing.T) {
 	_, err := collectTokenHoldersViaLogs(context.Background(), cfg, 10, wrappedTokens)
 	require.NoError(t, err)
 	require.Contains(t, fromBlocks, "0x0", "scan must start at genesis, not l2StartBlock")
+}
+
+// Extra ERC-20 contracts must be part of the Transfer-log scan: a passive holder of an extra token
+// (no ETH/nonce/code, never touched a wrapped token) is invisible to the state dump and to the
+// wrapped-token logs, so this scan is the only source that surfaces them for Step B3. An extra
+// contract that duplicates a wrapped token must be scanned only once.
+func TestCollectTokenHoldersViaLogs_IncludesExtraERC20Contracts(t *testing.T) {
+	t.Parallel()
+
+	extraToken := "0x5000000000000000000000000000000000000005"
+
+	var mu sync.Mutex
+	scanned := make(map[string]int)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     int              `json:"id"`
+			Params []map[string]any `json:"params"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		token, ok := req.Params[0]["address"].(string)
+		require.True(t, ok)
+		mu.Lock()
+		scanned[strings.ToLower(token)]++
+		mu.Unlock()
+
+		// Only the extra token has activity: a mint to a passive holder.
+		result := `[]`
+		if strings.EqualFold(token, extraToken) {
+			result = `[{"topics":["` + transferTopic.Hex() + `","` +
+				topicForAddr(stepAAddr3) + `","` + topicForAddr(stepAAddr1) + `"]}]`
+		}
+		_, _ = w.Write(encodeRPC(t, req.ID, result))
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		L2RPCURL: server.URL,
+		Options: Options{
+			BlockRange:       defaultBlockRange,
+			ConcurrencyLimit: 4,
+			ExtraERC20Contracts: []common.Address{
+				common.HexToAddress(extraToken),
+				common.HexToAddress(stepAToken), // duplicates a wrapped token → scanned once
+			},
+		},
+	}
+	wrappedTokens := []WrappedToken{{WrappedTokenAddress: common.HexToAddress(stepAToken)}}
+	holders, err := collectTokenHoldersViaLogs(context.Background(), cfg, 10, wrappedTokens)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, scanned[strings.ToLower(extraToken)], "extra ERC-20 must be scanned")
+	require.Equal(t, 1, scanned[strings.ToLower(stepAToken)], "duplicated token must be scanned only once")
+	require.ElementsMatch(t, []common.Address{
+		common.HexToAddress(stepAAddr3),
+		common.HexToAddress(stepAAddr1),
+	}, holders, "the extra token's passive holder must be discovered")
+}
+
+// With no wrapped tokens but extra ERC-20 contracts configured, the scan must still run — the
+// extras are the only source of their passive holders.
+func TestCollectTokenHoldersViaLogs_ExtraERC20WithoutWrappedTokens(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		result := `[{"topics":["` + transferTopic.Hex() + `","` +
+			topicForAddr(stepAAddr1) + `","` + topicForAddr(stepAAddr2) + `"]}]`
+		_, _ = w.Write(encodeRPC(t, req.ID, result))
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		L2RPCURL: server.URL,
+		Options: Options{
+			BlockRange:          defaultBlockRange,
+			ConcurrencyLimit:    2,
+			ExtraERC20Contracts: []common.Address{common.HexToAddress(stepAToken)},
+		},
+	}
+	holders, err := collectTokenHoldersViaLogs(context.Background(), cfg, 10, nil)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []common.Address{
+		common.HexToAddress(stepAAddr1),
+		common.HexToAddress(stepAAddr2),
+	}, holders)
 }
 
 func TestDebugAccountRange_Errors(t *testing.T) {

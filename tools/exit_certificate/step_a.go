@@ -76,9 +76,11 @@ func (d accountRangeDialect) String() string {
 // It always combines two cheap sources and merges them, each covering the other's blind spot:
 //  1. a state-trie dump at targetBlock (debug_accountRange) — every account with non-zero
 //     balance/nonce/code (all native-ETH holders and every contract), and
-//  2. Transfer event logs per wrapped token (eth_getLogs) — every token holder, including
-//     token-only EOAs that never appear in a state dump or a trace (an ERC-20 transfer only
-//     mutates the token contract's storage, so the recipient account itself is never "touched").
+//  2. Transfer event logs (eth_getLogs) per wrapped token and per extra ERC-20 contract
+//     (cfg.Options.ExtraERC20Contracts) — every token holder, including token-only EOAs that never
+//     appear in a state dump or a trace (an ERC-20 transfer only mutates the token contract's
+//     storage, so the recipient account itself is never "touched"). Extra ERC-20 holders must be
+//     discovered here so Step B3 can probe their balances.
 func RunStepA(
 	ctx context.Context, cfg *Config, targetBlock uint64, wrappedTokens []WrappedToken,
 ) (*StepAResult, error) {
@@ -310,19 +312,39 @@ func allZero(b []byte) bool {
 	return true
 }
 
-// collectTokenHoldersViaLogs discovers every wrapped-token holder by scanning Transfer event logs
-// for each token across [0, targetBlock]. Both the indexed `from` and `to` fields are collected,
-// capturing token-only EOAs that never appear in a state dump or trace.
+// collectTokenHoldersViaLogs discovers every token holder by scanning Transfer event logs across
+// [0, targetBlock] for each wrapped token and each extra ERC-20 contract from
+// cfg.Options.ExtraERC20Contracts. Both the indexed `from` and `to` fields are collected,
+// capturing token-only EOAs that never appear in a state dump or trace. The extra ERC-20s are
+// scanned here — not in Step B3 — because B3 only probes balanceOf against Step A's address set:
+// a passive holder of an extra token would otherwise never be discovered and their share of the
+// collateral would flow to exitAddress instead.
 //
 // The scan deliberately starts at block 0 rather than l2StartBlock: a passive holder may have
-// received a wrapped token before l2StartBlock and still hold it at targetBlock. Such token-only
+// received a token before l2StartBlock and still hold it at targetBlock. Such token-only
 // EOAs have no nonce/balance/code, so the state dump cannot include them either — the Transfer-log
 // scan is the only source that surfaces them, and skipping early blocks would silently drop them.
 func collectTokenHoldersViaLogs(
 	ctx context.Context, cfg *Config, targetBlock uint64, wrappedTokens []WrappedToken,
 ) ([]common.Address, error) {
-	if len(wrappedTokens) == 0 {
-		log.Info("No wrapped tokens provided; skipping Transfer-log holder discovery")
+	tokens := make([]common.Address, 0, len(wrappedTokens)+len(cfg.Options.ExtraERC20Contracts))
+	seen := make(map[common.Address]struct{}, cap(tokens))
+	addToken := func(addr common.Address) {
+		if _, ok := seen[addr]; ok {
+			return
+		}
+		seen[addr] = struct{}{}
+		tokens = append(tokens, addr)
+	}
+	for _, tok := range wrappedTokens {
+		addToken(tok.WrappedTokenAddress)
+	}
+	for _, addr := range cfg.Options.ExtraERC20Contracts {
+		addToken(addr)
+	}
+
+	if len(tokens) == 0 {
+		log.Info("No wrapped tokens or extra ERC-20 contracts provided; skipping Transfer-log holder discovery")
 		return nil, nil
 	}
 
@@ -337,15 +359,17 @@ func collectTokenHoldersViaLogs(
 		from, to uint64
 	}
 	var jobs []logJob
-	for _, tok := range wrappedTokens {
+	for _, token := range tokens {
 		for from := start; from <= targetBlock; from += blockRange {
 			to := min(from+blockRange-1, targetBlock)
-			jobs = append(jobs, logJob{token: tok.WrappedTokenAddress, from: from, to: to})
+			jobs = append(jobs, logJob{token: token, from: from, to: to})
 		}
 	}
 
-	log.Infof("Scanning Transfer logs for %d wrapped tokens over blocks %d→%d (%d ranges, concurrency=%d)...",
-		len(wrappedTokens), start, targetBlock, len(jobs), cfg.Options.ConcurrencyLimit)
+	log.Infof("Scanning Transfer logs for %d tokens (%d wrapped + %d extra ERC-20, deduplicated) "+
+		"over blocks %d→%d (%d ranges, concurrency=%d)...",
+		len(tokens), len(wrappedTokens), len(cfg.Options.ExtraERC20Contracts),
+		start, targetBlock, len(jobs), cfg.Options.ConcurrencyLimit)
 
 	addrSet := make(map[common.Address]struct{})
 	err := runWorkerPool(

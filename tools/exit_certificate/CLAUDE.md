@@ -75,9 +75,13 @@ transaction history:
 1. **State dump** — paginated `debug_accountRange` at `targetBlock` (every ETH holder and contract,
    `O(#accounts)`). The geth vs erigon/cdk-erigon dialect is auto-detected on the first page. Fails
    loudly on truncation (page cap hit with a non-empty cursor) or a 0-account dump.
-2. **`Transfer` event logs** — `eth_getLogs` per wrapped token (from the Step 0 LBT) over
-   `[0, targetBlock]`, collecting the indexed `from`/`to` — the only source that surfaces token-only
-   EOAs (no nonce/balance/code). Always starts at block 0, not `l2StartBlock`.
+2. **`Transfer` event logs** — `eth_getLogs` per wrapped token (from the Step 0 LBT) **and per
+   extra ERC-20 contract** (`options.extraErc20Contracts`, deduplicated against the wrapped tokens)
+   over `[0, targetBlock]`, collecting the indexed `from`/`to` — the only source that surfaces
+   token-only EOAs (no nonce/balance/code). Always starts at block 0, not `l2StartBlock`. The
+   extras are scanned here (not in Step B3) because B3 only probes `balanceOf` against Step A's
+   address set: a passive holder of an extra token would otherwise never be discovered and their
+   collateral share would flow to `exitAddress`.
 
 The zero address is **always included**, regardless of what the sources return: tokens transferred
 to `0x000…000` stay in `totalSupply` (a plain transfer is not a burn) and it can hold native ETH
@@ -120,6 +124,9 @@ Iterates over `options.extraErc20Contracts`. For each address:
 
 - If Step B2 already populated `Holders` for it, copies those holders and marks `AlreadyFromB2=true` — no RPC call.
 - Otherwise, calls `fetchTokenBalances` (one RPC batch of `balanceOf` for every EOA from Step A).
+
+Holder coverage relies on Step A having scanned the extra contracts' `Transfer` logs: B3 itself
+never discovers addresses, it only probes the Step A set.
 
 Skipped automatically when `options.extraErc20Contracts` is empty.
 

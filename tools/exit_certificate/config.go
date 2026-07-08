@@ -62,8 +62,9 @@ type Options struct {
 	// The step still detects and warns about any unclaimed deposits, but the certificate is left unchanged.
 	IgnoreUnclaimed bool `json:"ignoreUnclaimed"`
 	// ExtraERC20Contracts is an optional list of ERC-20 contract addresses whose token holders
-	// are decomposed in Step B3. Each contract is queried with balanceOf for every EOA address
-	// collected in Step A.
+	// are decomposed in Step B3. Step A includes these contracts in its Transfer-log scan so even
+	// passive holders (no ETH/nonce/code) are discovered; Step B3 then queries each contract with
+	// balanceOf for every EOA address collected in Step A.
 	ExtraERC20Contracts []common.Address `json:"extraErc20Contracts,omitempty"`
 	// BridgeServiceURL is the base URL of the bridge service REST API.
 	// When set, Step E queries the bridge service for pending bridges targeting this L2 and returns an
