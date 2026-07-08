@@ -70,9 +70,10 @@ func RunStepI(
 	return nil
 }
 
-// fetchL1InfoTreeLeafCount scans L1 backwards from the latest L1 block looking for the
-// most recent UpdateL1InfoTreeV2 event emitted by cfg.L1GlobalExitRootAddress and returns
-// its indexed leafCount field.
+// fetchL1InfoTreeLeafCount scans L1 backwards looking for the most recent UpdateL1InfoTreeV2
+// event emitted by cfg.L1GlobalExitRootAddress and returns its indexed leafCount field.
+// The scan starts at the l1EndBlock cutoff when configured (so the leaf count is deterministic
+// and unaffected by post-snapshot L1 activity), otherwise at the latest L1 block.
 func fetchL1InfoTreeLeafCount(ctx context.Context, cfg *Config) (uint32, error) {
 	if cfg.L1RPCURL == "" {
 		return 0, fmt.Errorf("l1RpcUrl not configured")
@@ -81,9 +82,9 @@ func fetchL1InfoTreeLeafCount(ctx context.Context, cfg *Config) (uint32, error) 
 		return 0, fmt.Errorf("l1GlobalExitRootAddress not configured")
 	}
 
-	toBlock, err := resolveLatestBlock(ctx, cfg.L1RPCURL)
+	toBlock, err := resolveL1EndBlock(ctx, cfg)
 	if err != nil {
-		return 0, fmt.Errorf("resolve latest L1 block: %w", err)
+		return 0, err
 	}
 	chunkSize := uint64(cfg.Options.BlockRange)
 	if chunkSize == 0 {

@@ -107,16 +107,19 @@ func TestLoadConfig_InvalidExitAddress(t *testing.T) {
 	require.Contains(t, err.Error(), "not a valid hex address")
 }
 
+// optionsTestConfigBase is a minimal valid config with a %s slot for extra options fields.
+const optionsTestConfigBase = `{
+	"l2RpcUrl": "http://localhost:8545",
+	"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+	"exitAddress": "0x0000000000000000000000000000000000000001",
+	"targetBlock": "100",
+	"options": {"useAgglayerAdminToStepFCheck": false%s}
+}`
+
 func TestLoadConfig_CapMode(t *testing.T) {
 	t.Parallel()
 
-	base := `{
-		"l2RpcUrl": "http://localhost:8545",
-		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
-		"exitAddress": "0x0000000000000000000000000000000000000001",
-		"targetBlock": "100",
-		"options": {"useAgglayerAdminToStepFCheck": false%s}
-	}`
+	base := optionsTestConfigBase
 
 	// Default: unset capMode resolves to "amount".
 	pathDefault := filepath.Join(t.TempDir(), "default.json")
@@ -151,13 +154,7 @@ func TestLoadConfig_CapMode(t *testing.T) {
 func TestLoadConfig_GenesisPrefundETHWei(t *testing.T) {
 	t.Parallel()
 
-	base := `{
-		"l2RpcUrl": "http://localhost:8545",
-		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
-		"exitAddress": "0x0000000000000000000000000000000000000001",
-		"targetBlock": "100",
-		"options": {"useAgglayerAdminToStepFCheck": false%s}
-	}`
+	base := optionsTestConfigBase
 
 	// Unset → empty (treated as 0 by Step F).
 	pathDefault := filepath.Join(t.TempDir(), "default.json")
@@ -187,6 +184,35 @@ func TestLoadConfig_GenesisPrefundETHWei(t *testing.T) {
 	_, err = LoadConfig(pathNeg)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "genesisPrefundETHWei")
+}
+
+func TestLoadConfig_L1EndBlock(t *testing.T) {
+	t.Parallel()
+
+	base := optionsTestConfigBase
+
+	// Unset → 0 (Step E/I use the latest L1 block, the previous behaviour).
+	pathDefault := filepath.Join(t.TempDir(), "default.json")
+	require.NoError(t, os.WriteFile(pathDefault, fmt.Appendf(nil, base, ""), 0o600))
+	cfg, err := LoadConfig(pathDefault)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), cfg.Options.L1EndBlock)
+
+	// Concrete block number.
+	pathNumber := filepath.Join(t.TempDir(), "number.json")
+	require.NoError(t, os.WriteFile(pathNumber,
+		fmt.Appendf(nil, base, `, "l1EndBlock": 1234`), 0o600))
+	cfg, err = LoadConfig(pathNumber)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1234), cfg.Options.L1EndBlock)
+
+	// Below options.l1StartBlock → rejected.
+	pathBelow := filepath.Join(t.TempDir(), "below.json")
+	require.NoError(t, os.WriteFile(pathBelow,
+		fmt.Appendf(nil, base, `, "l1StartBlock": 2000, "l1EndBlock": 1234`), 0o600))
+	_, err = LoadConfig(pathBelow)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "below options.l1StartBlock")
 }
 
 func TestLoadConfig_MinimalValid(t *testing.T) {

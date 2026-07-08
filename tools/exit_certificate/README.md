@@ -110,6 +110,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `rpcDelayMs` | `0` | Delay between RPC batches (rate limiting). |
 | `outputDir` | `./output` | Directory for intermediate and final output files. Relative paths resolve from the config file directory. |
 | `l1StartBlock` | `0` | L1 block to start scanning from (Step E). |
+| `l1EndBlock` | `0` | Optional L1 cutoff block. When set (> 0), Step E scans L1 for unclaimed deposits only up to this block (and filters the bridge-service cross-check accordingly) and Step I starts its backward `UpdateL1InfoTreeV2` scan from it. This prevents L1 deposits submitted after the L2 snapshot from blocking the pipeline (AET-03): pick a block at or after the moment the sequencer was stopped. `0` (default) means no cutoff — the current latest L1 block is used. A value below `l1StartBlock` is rejected at config load; a value beyond the current L1 head is rejected when the step runs (it is almost surely a misconfiguration, e.g. an L2 block number). |
 | `l2StartBlock` | `0` | L2 block to start scanning from (Step A). Useful when genesis activity can be skipped. |
 | `agglayerAdminURL` | `""` | Agglayer admin RPC endpoint. Required for Step F in agglayer mode (Step F errors if it runs without this set). Not needed when `useAgglayerAdminToStepFCheck: false` (offline LBT mode). |
 | `agglayerAdminToken` | `""` | Optional bearer token for authenticating requests to `agglayerAdminURL`. Leave empty when the admin endpoint is unauthenticated; set it only when the endpoint is protected (e.g. behind Google Cloud IAP). |
@@ -395,6 +396,8 @@ Scans L1 for `BridgeEvent` events targeting the L2 and checks each deposit again
 
 When `bridgeServiceURL` is set, Step E compares its detected unclaimed set against the bridge service's pending-bridges and errors if the sets differ. Supports both aggkit (`/bridge/v1/bridges`) and zkevm-bridge-service (`/pending-bridges`) via `bridgeServiceType`.
 
+The scan ends at `options.l1EndBlock` when configured (deposits made on L1 after that cutoff are ignored, both in the scan and in the bridge-service comparison), otherwise at the current latest L1 block.
+
 Requires `l1RpcUrl`.
 
 **Output:** `step-e-unclaimed-bridges.json`, `step-e-unclaimed-messages.json` (both always written), `step-e-exit-certificate.json` *(only when the step produces a certificate — i.e. not on the `ignoreUnclaimed=false` abort path)*
@@ -470,7 +473,7 @@ Takes the deposit-order certificate produced by Step G and applies:
 
 - `NewLocalExitRoot` from Step G
 - `PreviousLocalExitRoot` and certificate height from Step H
-- `L1InfoTreeLeafCount` — scans L1 backwards from the latest L1 block for the most recent `UpdateL1InfoTreeV2` event on the `l1GlobalExitRootAddress` contract. Requires `l1RpcUrl` and `l1GlobalExitRootAddress` in config.
+- `L1InfoTreeLeafCount` — scans L1 backwards from `options.l1EndBlock` (or the latest L1 block when unset) for the most recent `UpdateL1InfoTreeV2` event on the `l1GlobalExitRootAddress` contract. Requires `l1RpcUrl` and `l1GlobalExitRootAddress` in config.
 
 **Reads:** `step-g-reordered-certificate.json` (run Step G first — there is no fallback to the Step E / Step F certificates, so the final certificate always matches the computed `NewLocalExitRoot`); plus `step-g-new-local-exit-root.json` and `step-h-previous-local-exit-root.json`.
 
