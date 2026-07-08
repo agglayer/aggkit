@@ -15,6 +15,7 @@ require (
 	github.com/ethereum/go-ethereum v1.17.4
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
+	github.com/google/uuid v1.6.0
 	github.com/hermeznetwork/tracerr v0.3.2
 	github.com/invopop/jsonschema v0.14.0
 	github.com/jellydator/ttlcache/v3 v3.4.1
@@ -129,7 +130,6 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/googleapis/gax-go v1.0.3 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.1 // indirect
@@ -174,7 +174,7 @@ require (
 	github.com/prometheus/common v0.70.0 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	github.com/quic-go/quic-go v0.59.0 // indirect
+	github.com/quic-go/quic-go v0.59.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/rs/cors v1.11.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect

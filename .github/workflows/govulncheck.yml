@@ -10,10 +10,45 @@ jobs:
   govulncheck_job:
     runs-on: ubuntu-latest
     name: Run govulncheck
+    env:
+      # GO-2026-4479: github.com/pion/dtls/v2 AES-GCM nonce reuse. No fixed version exists
+      # upstream (v2.2.12 is latest). Only reachable via go-ethereum's simulated backend,
+      # used in test/helpers and the tools/backward_forward_let debug utility - not part of
+      # any shipped aggkit binary's network path. Remove once pion/dtls ships a fix.
+      GOVULNCHECK_IGNORE_IDS: GO-2026-4479
     steps:
-      - id: govulncheck
-        uses: golang/govulncheck-action@v1
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
-          go-version-input: 1.25.7
-          go-package: ./...
+          go-version: stable
+          check-latest: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Run govulncheck
+        run: |
+          set +e
+          govulncheck -C . -format text ./... | tee govulncheck-output.txt
+          exit_code=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$exit_code" -eq 0 ]; then
+            echo "No vulnerabilities found."
+            exit 0
+          fi
+          if [ "$exit_code" -ne 3 ]; then
+            echo "govulncheck failed to run (exit code $exit_code)."
+            exit "$exit_code"
+          fi
+
+          found_ids=$(grep -oE '^Vulnerability #[0-9]+: GO-[0-9]+-[0-9]+' govulncheck-output.txt | awk '{print $NF}' | sort -u)
+          ignored_ids=$(echo "$GOVULNCHECK_IGNORE_IDS" | tr ',' '\n' | sed '/^$/d' | sort -u)
+          unaddressed_ids=$(comm -23 <(echo "$found_ids") <(echo "$ignored_ids"))
+
+          if [ -n "$unaddressed_ids" ]; then
+            echo "::error::Unaddressed vulnerabilities found (not in GOVULNCHECK_IGNORE_IDS):"
+            echo "$unaddressed_ids"
+            exit 1
+          fi
+
+          echo "Only known, explicitly ignored vulnerabilities found: $found_ids"
+        shell: bash
