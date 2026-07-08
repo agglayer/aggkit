@@ -58,7 +58,7 @@ flowchart LR
 
     L1BS -->|bridge exits| WD1
     L1IT -->|verified-batches LER updates| WD2
-    BSF -->|GetURL(source)| WD2
+    BSF -->|"GetURL(source)"| WD2
     WD2 -->|claim candidates + leaf proofs| SRCBS
     L1IT -->|inclusion index, proofs| PP
     L1IT -->|GER leaf lookup| GER
@@ -210,7 +210,7 @@ sequenceDiagram
             PP->>GER: GetFirstGERAfterL1InfoTreeIndex(covering leaf)
             Note over PP,GER: not ready until an injected GER covers it
         else Destination is L1 (network 0)
-            Note over PP: no l2gersync; ready as soon as l1infotreesync has the leaf
+            Note over PP: no l2gersync, ready as soon as l1infotreesync has the leaf
         end
         alt Stored LER superseded by a newer one at the chosen leaf
             PP->>SRC: GET /bridge/v1/claim-proof?network_id=source&leaf_index=...&deposit_count=... (refresh)
