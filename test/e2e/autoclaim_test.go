@@ -373,10 +373,10 @@ func TestAutoClaimL2ToL2AllowAll(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
+	env := loadAutoClaimL2ToL2TestEnv(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 28*time.Minute)
 	defer cancel()
-
-	env := loadAutoClaimL2ToL2TestEnv(t, ctx)
 
 	enableAutoClaimL2ToL2(t, ctx, env, "allow-all")
 	waitForBridgeServiceSynced(ctx, t)
@@ -511,22 +511,17 @@ func assertClaimedOnL2B(ctx context.Context, t *testing.T, env *envs.Env, deposi
 	)
 }
 
-// loadAutoClaimL2ToL2TestEnv loads the 2-chain env (EnvOpPP2Chains) for the L2->L2 Auto Claim test.
-// It requires env.L2B to be populated (only EnvOpPP2Chains provides it).
-func loadAutoClaimL2ToL2TestEnv(t *testing.T, ctx context.Context) *envs.Env {
+// loadAutoClaimL2ToL2TestEnv returns the shared env loaded once by TestMain (selected via
+// AGGKIT_E2E_ENV), skipping the test when it isn't the 2-chain env (EnvOpPP2Chains). Mirrors
+// TestBridgeL2ToL2's pattern: a second, independent docker-compose stack must not be brought up
+// alongside the singleton env TestMain already started, since both envs bind the same host ports.
+func loadAutoClaimL2ToL2TestEnv(t *testing.T) *envs.Env {
 	t.Helper()
-	loadCtx, loadCancel := context.WithTimeout(ctx, 8*time.Minute)
-	defer loadCancel()
-	env, err := envs.LoadEnv(loadCtx, envs.EnvOpPP2Chains)
-	require.NoError(t, err)
-	require.NotNil(t, env.L2B, "TestAutoClaimL2ToL2AllowAll requires the 2-chain env (env.L2B must be non-nil)")
-
-	checkCtx, checkCancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer checkCancel()
-	require.NoError(t, env.CheckEnv(checkCtx))
-
-	testEnv = env
-	return env
+	require.NotNil(t, testEnv, "testEnv must be set by TestMain")
+	if testEnv.L2B == nil {
+		t.Skip("L2->L2 Auto Claim test requires EnvOpPP2Chains (L2B must be non-nil)")
+	}
+	return testEnv
 }
 
 // enableAutoClaimL2ToL2 restarts the network-2 (aggkit-002) node with a patched config that enables
