@@ -136,7 +136,7 @@ func (p *RollupPreparer) Prepare(ctx context.Context, request types.AutoClaimReq
 		return &Result{Ready: false}, nil
 	}
 
-	proofLocalExitRoot, ready, err := p.resolveLeafProof(ctx, request, finalIndex, actualLER)
+	proofLocalExitRoot, ready, err := p.resolveLeafProof(ctx, request, finalIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -195,8 +195,8 @@ func (p *RollupPreparer) selectRollupLeafIndex(
 		return coveringIndex, true, nil
 	}
 
-	gerInfo, err := p.gerSyncer.GetFirstGERAfterL1InfoTreeIndex(ctx, coveringIndex)
-	if errors.Is(err, db.ErrNotFound) {
+	gerIndex, err := p.gerSyncer.GetFirstGERAfterL1InfoTreeIndex(ctx, coveringIndex)
+	if errors.Is(err, ErrGERNotInjected) {
 		log.Debugf("autoclaim rollup proof: source=%d deposit=%d: no injected GER with l1InfoTreeIndex>=%d yet",
 			request.Bridge.SourceNetwork, request.Bridge.DepositCount, coveringIndex)
 		return 0, false, nil
@@ -205,7 +205,7 @@ func (p *RollupPreparer) selectRollupLeafIndex(
 		return 0, false, fmt.Errorf("get first injected GER after index %d: %w", coveringIndex, err)
 	}
 
-	return gerInfo.L1InfoTreeIndex, true, nil
+	return gerIndex, true, nil
 }
 
 // firstCoveringLeafIndex returns the index of the first L1 info tree leaf, at or after the request's
@@ -239,7 +239,8 @@ func (p *RollupPreparer) firstCoveringLeafIndex(
 		case lerErr != nil:
 			return 0, false, fmt.Errorf("get local exit root for source network %d: %w", sourceNetwork, lerErr)
 		case actualLER == request.LER:
-			// Exact match: the stored leaf proof applies directly.
+			// Exact match: this leaf carries the LER observed at detection and is the tightest covering
+			// leaf. Its leaf-to-LER proof is fetched fresh at claim time (see resolveLeafProof).
 			return candidate.L1InfoTreeIndex, true, nil
 		case actualLER == (common.Hash{}):
 			// Source network not yet verified as of this leaf's rollup exit root — advance.
@@ -269,21 +270,16 @@ func (p *RollupPreparer) firstCoveringLeafIndex(
 	return 0, false, nil
 }
 
-// resolveLeafProof returns the leaf-to-LER proof to use for the claim. When the LER at the chosen leaf
-// matches the stored one, the stored proof is returned. Otherwise a newer LER has superseded the
-// stored one (staleness): a fresh proof is fetched from the source network's bridge service and
-// returned so it is persisted with the claim proof. A transient refresh failure yields ready=false
-// (retry next cycle) rather than an error, so it does not consume the claim retry budget.
+// resolveLeafProof returns the leaf-to-LER proof to use for the claim. The proof is always fetched
+// fresh from the source network's bridge service at claim time (it is GER-sensitive and would be stale
+// if captured at detection), then persisted with the claim proof. A transient refresh failure yields
+// ready=false (retry next cycle) rather than an error, so it does not consume the claim retry budget.
 func (p *RollupPreparer) resolveLeafProof(
-	ctx context.Context, request types.AutoClaimRequest, finalIndex uint32, actualLER common.Hash,
+	ctx context.Context, request types.AutoClaimRequest, finalIndex uint32,
 ) (treetypes.Proof, bool, error) {
-	if actualLER == request.LER {
-		return request.LeafProof, true, nil
-	}
-
 	if p.refresher == nil {
 		return treetypes.Proof{}, false, fmt.Errorf(
-			"stored LER superseded for source network %d but no leaf proof refresher is configured",
+			"no leaf proof refresher is configured for source network %d",
 			request.Bridge.SourceNetwork)
 	}
 

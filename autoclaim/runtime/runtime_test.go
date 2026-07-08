@@ -301,7 +301,7 @@ func withL2ToLxEnabled(cfg autoclaimcfg.Config) autoclaimcfg.Config {
 	return cfg
 }
 
-func TestCreateClaimerSkipsGERSyncerForL1DestinationClaimerOnly(t *testing.T) {
+func TestCreateClaimerBuildsGERGateForL2DestinationClaimerOnly(t *testing.T) {
 	cfg := withL2ToLxEnabled(validConfig())
 	cfg.Claimers = []autoclaimcfg.ClaimerConfig{
 		validClaimer("l1-dest", 0, true),
@@ -309,7 +309,7 @@ func TestCreateClaimerSkipsGERSyncerForL1DestinationClaimerOnly(t *testing.T) {
 	}
 
 	var mu sync.Mutex
-	gerSyncerCalledFor := make([]uint32, 0)
+	gateNonNil := make([]bool, 0)
 
 	factories := testFactories(&factoryHooks{})
 	factories.NewBridgeServiceFinder = func(bridgeservicefinder.Config, aggkittypes.EthClienter) (
@@ -320,11 +320,16 @@ func TestCreateClaimerSkipsGERSyncerForL1DestinationClaimerOnly(t *testing.T) {
 	factories.StartBridgeServiceFinder = func(context.Context, bridgeservicefinder.Finder) error {
 		return nil
 	}
-	factories.NewGERSyncer = func(_ context.Context, deps GERSyncerDeps) (proof.L2GERSyncer, func(context.Context), error) {
+	factories.NewProofPreparer = func(
+		l1BridgeSync proof.L1BridgeSyncer,
+		l1InfoTreeSync ProofL1InfoTreeSyncer,
+		gerSyncer proof.L2GERSyncer,
+		_ proof.LeafProofRefresher,
+	) (autoclaimtypes.ProofPreparer, error) {
 		mu.Lock()
 		defer mu.Unlock()
-		gerSyncerCalledFor = append(gerSyncerCalledFor, deps.ClaimerCfg.NetworkID)
-		return nil, nil, nil
+		gateNonNil = append(gateNonNil, gerSyncer != nil)
+		return proof.NewPreparer(l1BridgeSync, l1InfoTreeSync, gerSyncer), nil
 	}
 
 	rt, err := Start(context.Background(), Dependencies{
@@ -335,14 +340,15 @@ func TestCreateClaimerSkipsGERSyncerForL1DestinationClaimerOnly(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, rt)
-	// The L1-destination (NetworkID 0) claimer must not trigger a GER syncer; the L2-destination one
-	// (NetworkID 5) still gets its own.
-	require.ElementsMatch(t, []uint32{5}, gerSyncerCalledFor)
+	// The L1-destination (NetworkID 0) claimer gets a nil gate (readiness rests on l1infotreesync);
+	// the L2-destination one (NetworkID 5) gets a BridgeServiceGERGate against its own network.
+	require.ElementsMatch(t, []bool{false, true}, gateNonNil)
 }
 
-func TestStartL2ToLxDetectorDisabledNeverBuildsRealFinder(t *testing.T) {
-	// validConfig() leaves L2ToLxBridgeDetector at its zero value (Enabled=false), matching every
-	// pre-existing config that never opted into it.
+func TestStartBuildsRealFinderForL2DestinationClaimerWhenDetectorDisabled(t *testing.T) {
+	// validConfig() leaves L2ToLxBridgeDetector disabled but configures an L2-destination claimer
+	// (NetworkID 1), whose GER gate resolves through the bridge service finder — so a real finder must
+	// be built even with the detector disabled.
 	cfg := validConfig()
 	finderBuilt := false
 
@@ -353,6 +359,9 @@ func TestStartL2ToLxDetectorDisabledNeverBuildsRealFinder(t *testing.T) {
 		finderBuilt = true
 		return fakeBridgeServiceFinder{}, nil
 	}
+	factories.StartBridgeServiceFinder = func(context.Context, bridgeservicefinder.Finder) error {
+		return nil
+	}
 
 	rt, err := Start(context.Background(), Dependencies{
 		Config:         cfg,
@@ -362,9 +371,31 @@ func TestStartL2ToLxDetectorDisabledNeverBuildsRealFinder(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, rt)
-	require.False(t, finderBuilt, "NewBridgeServiceFinder must not be called when the detector is disabled")
+	require.True(t, finderBuilt, "a real finder must be built for an L2-destination claimer's GER gate")
 	require.NotNil(t, rt.L2ToLxBridgeDetector)
 	require.NotNil(t, rt.BridgeServiceFinder)
+}
+
+func TestBuildBridgeServiceFinderReturnsNoopWhenNoL2Destination(t *testing.T) {
+	// A config with the detector disabled and no L2-destination claimer needs no finder, so the noop
+	// stub is returned and NewBridgeServiceFinder is never called.
+	cfg := validConfig()
+	cfg.Claimers = []autoclaimcfg.ClaimerConfig{validClaimer("l1-dest", 0, true)}
+	built := false
+
+	factories := withDefaultFactories(testFactories(&factoryHooks{}), log.Config{})
+	factories.NewBridgeServiceFinder = func(bridgeservicefinder.Config, aggkittypes.EthClienter) (
+		bridgeservicefinder.Finder, error,
+	) {
+		built = true
+		return fakeBridgeServiceFinder{}, nil
+	}
+
+	finder, err := buildBridgeServiceFinder(context.Background(), cfg, Dependencies{}, factories)
+	require.NoError(t, err)
+	require.False(t, built, "NewBridgeServiceFinder must not be called when no finder is needed")
+	_, ok := finder.(noopBridgeServiceFinder)
+	require.True(t, ok, "expected the noop finder stub")
 }
 
 func TestEthTxManagerAdapterMethods(t *testing.T) {
@@ -440,6 +471,11 @@ func validConfig() autoclaimcfg.Config {
 			MaxRetryAttemptsAfterError: -1,
 		},
 		Claimers: []autoclaimcfg.ClaimerConfig{validClaimer("primary", 1, true)},
+		// The primary claimer targets an L2 destination (NetworkID 1), so its GER gate resolves
+		// through the bridge service finder, which requires a RollupManagerAddr.
+		BridgeServiceFinder: bridgeservicefinder.Config{
+			RollupManagerAddr: common.HexToAddress("0x2000000000000000000000000000000000000002"),
+		},
 	}
 }
 
@@ -550,8 +586,13 @@ func testFactories(hooks *factoryHooks) Factories {
 		) {
 			return fakeTargetClaimReader{}, nil
 		},
-		NewGERSyncer: func(_ context.Context, _ GERSyncerDeps) (proof.L2GERSyncer, func(context.Context), error) {
-			return nil, nil, nil
+		NewBridgeServiceFinder: func(bridgeservicefinder.Config, aggkittypes.EthClienter) (
+			bridgeservicefinder.Finder, error,
+		) {
+			return fakeBridgeServiceFinder{}, nil
+		},
+		StartBridgeServiceFinder: func(context.Context, bridgeservicefinder.Finder) error {
+			return nil
 		},
 		NewProofPreparer: func(
 			l1BridgeSync proof.L1BridgeSyncer,

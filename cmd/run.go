@@ -245,15 +245,13 @@ func start(cliCtx *cli.Context) error {
 		// Share the storage handle opened above so the runtime does not re-open / re-migrate the DB.
 		sharedAutoClaimStorage := autoClaimStorage
 		acRuntime, err := autoclaimruntime.Start(ctx, autoclaimruntime.Dependencies{
-			Config:                cfg.AutoClaim,
-			LogConfig:             cfg.Log,
-			DBQueryTimeout:        cfg.BridgeL1Sync.DBQueryTimeout.Duration,
-			RESTConfig:            cfg.PublicREST,
-			L1BridgeSync:          l1BridgeSync,
-			L1InfoTreeSync:        l1InfoTreeSync,
-			L1Client:              l1Client,
-			L2GERSyncConfig:       cfg.L2GERSync,
-			ReorgDetectorL2Config: cfg.ReorgDetectorL2,
+			Config:         cfg.AutoClaim,
+			LogConfig:      cfg.Log,
+			DBQueryTimeout: cfg.BridgeL1Sync.DBQueryTimeout.Duration,
+			RESTConfig:     cfg.PublicREST,
+			L1BridgeSync:   l1BridgeSync,
+			L1InfoTreeSync: l1InfoTreeSync,
+			L1Client:       l1Client,
 		}, autoclaimruntime.Factories{
 			OpenStorage: func(aggkitcommon.Logger, string, time.Duration) (autoclaimtypes.Storage, error) {
 				return sharedAutoClaimStorage, nil

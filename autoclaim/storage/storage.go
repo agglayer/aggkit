@@ -14,7 +14,6 @@ import (
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 )
@@ -69,7 +68,6 @@ type requestRow struct {
 	ManualDecisionJSON   []byte         `meddler:"manual_decision_json"`
 	LER                  sql.NullString `meddler:"ler"`
 	VerifyBlockNum       uint64         `meddler:"verify_block_num"`
-	LeafProofJSON        []byte         `meddler:"leaf_proof_json"`
 }
 
 type bridgeCursorRow struct {
@@ -353,9 +351,8 @@ func (s *Storage) EnqueueRequest(
 			policy_decision_json,
 			manual_decision_json,
 			ler,
-			verify_block_num,
-			leaf_proof_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			verify_block_num
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		row.RequestKey,
 		row.SourceNetwork,
 		row.OriginNetwork,
@@ -383,7 +380,6 @@ func (s *Storage) EnqueueRequest(
 		nullBytes(row.ManualDecisionJSON),
 		row.LER,
 		row.VerifyBlockNum,
-		nullBytes(row.LeafProofJSON),
 	)
 	if err != nil {
 		return nil, false, fmt.Errorf("enqueue autoclaim request %s: %w", request.Key, err)
@@ -987,11 +983,6 @@ func makeRequestRow(request autoclaimtypes.AutoClaimRequest) (*requestRow, error
 		return nil, fmt.Errorf("marshal manual decision for autoclaim request %s: %w", request.Key, err)
 	}
 
-	leafProofJSON, err := marshalLeafProof(request.LeafProof)
-	if err != nil {
-		return nil, fmt.Errorf("marshal leaf proof for autoclaim request %s: %w", request.Key, err)
-	}
-
 	row := &requestRow{
 		RequestKey:           string(request.Key),
 		SourceNetwork:        request.Bridge.SourceNetwork,
@@ -1014,7 +1005,6 @@ func makeRequestRow(request autoclaimtypes.AutoClaimRequest) (*requestRow, error
 		PolicyDecisionJSON:   policyDecisionJSON,
 		ManualDecisionJSON:   manualDecisionJSON,
 		VerifyBlockNum:       request.VerifyBlockNum,
-		LeafProofJSON:        leafProofJSON,
 	}
 
 	if request.LER != (common.Hash{}) {
@@ -1048,11 +1038,6 @@ func (r *requestRow) toRequest() (*autoclaimtypes.AutoClaimRequest, error) {
 	// The source_network column is authoritative: older rows predate the field in bridge_json.
 	bridge.SourceNetwork = r.SourceNetwork
 
-	leafProof, err := unmarshalLeafProof(r.LeafProofJSON, r.RequestKey)
-	if err != nil {
-		return nil, err
-	}
-
 	request := &autoclaimtypes.AutoClaimRequest{
 		Key:            autoclaimtypes.RequestKey(r.RequestKey),
 		Status:         autoclaimtypes.RequestStatus(r.Status),
@@ -1063,7 +1048,6 @@ func (r *requestRow) toRequest() (*autoclaimtypes.AutoClaimRequest, error) {
 		UpdatedAt:      r.UpdatedAt,
 		LastError:      r.LastError,
 		VerifyBlockNum: r.VerifyBlockNum,
-		LeafProof:      leafProof,
 	}
 	if r.LER.Valid {
 		request.LER = common.HexToHash(r.LER.String)
@@ -1145,8 +1129,7 @@ func selectRequestSQL() string {
 		policy_decision_json,
 		manual_decision_json,
 		ler,
-		verify_block_num,
-		leaf_proof_json
+		verify_block_num
 	FROM autoclaim_request`
 }
 
@@ -1155,26 +1138,6 @@ func marshalOptional(value any) ([]byte, error) {
 		return nil, nil
 	}
 	return json.Marshal(value)
-}
-
-// marshalLeafProof serializes a non-empty leaf-to-LER proof; an empty proof maps to a NULL column.
-func marshalLeafProof(proof treetypes.Proof) ([]byte, error) {
-	if proof == (treetypes.Proof{}) {
-		return nil, nil
-	}
-	return json.Marshal(proof)
-}
-
-// unmarshalLeafProof deserializes a stored leaf-to-LER proof, returning the zero proof when absent.
-func unmarshalLeafProof(raw []byte, label string) (treetypes.Proof, error) {
-	var proof treetypes.Proof
-	if !hasOptionalJSONValue(raw) {
-		return proof, nil
-	}
-	if err := json.Unmarshal(raw, &proof); err != nil {
-		return proof, fmt.Errorf("unmarshal autoclaim leaf proof %s: %w", label, err)
-	}
-	return proof, nil
 }
 
 func hasOptionalJSONValue(value []byte) bool {

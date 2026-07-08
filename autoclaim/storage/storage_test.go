@@ -13,7 +13,6 @@ import (
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/db"
 	logger "github.com/agglayer/aggkit/log"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -170,7 +169,7 @@ func TestLERCursorPersistence(t *testing.T) {
 	require.False(t, found)
 }
 
-func TestEnqueueRequestPersistsSourceLERAndLeafProof(t *testing.T) {
+func TestEnqueueRequestPersistsSourceLER(t *testing.T) {
 	storage, _ := newTestStorage(t)
 	defer storage.Close()
 	ctx := context.Background()
@@ -180,9 +179,6 @@ func TestEnqueueRequestPersistsSourceLERAndLeafProof(t *testing.T) {
 		destinationNetwork uint32 = 0
 		depositCount       uint32 = 9
 	)
-	var leafProof treetypes.Proof
-	leafProof[0] = common.HexToHash("0x11")
-	leafProof[1] = common.HexToHash("0x22")
 
 	bridge := autoclaimtypes.BridgeExit{
 		SourceNetwork:      sourceNetwork,
@@ -198,7 +194,6 @@ func TestEnqueueRequestPersistsSourceLERAndLeafProof(t *testing.T) {
 		Bridge:         bridge,
 		LER:            common.HexToHash("0xfeed"),
 		VerifyBlockNum: 4242,
-		LeafProof:      leafProof,
 		CreatedAt:      time.Now().UTC(),
 		UpdatedAt:      time.Now().UTC(),
 	}
@@ -218,7 +213,6 @@ func TestEnqueueRequestPersistsSourceLERAndLeafProof(t *testing.T) {
 	require.Equal(t, sourceNetwork, stored.Bridge.SourceNetwork)
 	require.Equal(t, common.HexToHash("0xfeed"), stored.LER)
 	require.Equal(t, uint64(4242), stored.VerifyBlockNum)
-	require.Equal(t, leafProof, stored.LeafProof)
 
 	// Round-trips through a fresh read as well.
 	reread, err := storage.GetRequest(ctx, stored.Key)
@@ -226,7 +220,6 @@ func TestEnqueueRequestPersistsSourceLERAndLeafProof(t *testing.T) {
 	require.Equal(t, sourceNetwork, reread.Bridge.SourceNetwork)
 	require.Equal(t, common.HexToHash("0xfeed"), reread.LER)
 	require.Equal(t, uint64(4242), reread.VerifyBlockNum)
-	require.Equal(t, leafProof, reread.LeafProof)
 }
 
 func TestEnqueueRequestIsIdempotentAndDetectsDuplicates(t *testing.T) {

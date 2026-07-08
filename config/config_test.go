@@ -363,6 +363,9 @@ EtrogL1UpgradeBlock = 1000000
 [AutoClaim.L2ToLxBridgeDetector]
 Enabled = false
 
+[AutoClaim.BridgeServiceFinder]
+RollupManagerAddr = "0x2000000000000000000000000000000000000002"
+
 [[AutoClaim.Claimers]]
 Enabled = true
 ID = "l2-claim"

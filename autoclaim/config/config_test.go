@@ -170,6 +170,24 @@ func TestConfigValidateL2ToLxRequiresFinderConfig(t *testing.T) {
 		RetryAfterErrorPeriod:      cfgtypes.NewDuration(time.Second),
 		MaxRetryAttemptsAfterError: -1,
 	}
+	// Clear the RollupManagerAddr set by validConfig to exercise the requirement.
+	cfg.BridgeServiceFinder = bridgeservicefinder.Config{}
+
+	err := cfg.Validate()
+	require.ErrorContains(t, err, "AutoClaim.BridgeServiceFinder.RollupManagerAddr is required")
+
+	cfg.BridgeServiceFinder = bridgeservicefinder.Config{
+		RollupManagerAddr: common.HexToAddress("0x2000000000000000000000000000000000000002"),
+	}
+	require.NoError(t, cfg.Validate())
+}
+
+func TestConfigValidateL2DestinationClaimerRequiresFinderConfig(t *testing.T) {
+	// An enabled L2-destination claimer builds a GER gate against the destination bridge service, so
+	// RollupManagerAddr is required even when the L2ToLx bridge detector is disabled.
+	cfg := validConfig()
+	require.False(t, cfg.L2ToLxBridgeDetector.Enabled)
+	cfg.BridgeServiceFinder = bridgeservicefinder.Config{}
 
 	err := cfg.Validate()
 	require.ErrorContains(t, err, "AutoClaim.BridgeServiceFinder.RollupManagerAddr is required")
@@ -263,6 +281,11 @@ func validConfig() Config {
 		},
 		Claimers: []ClaimerConfig{
 			validClaimerConfig("l2-a", 10),
+		},
+		// The l2-a claimer targets an L2 destination, whose GER gate resolves through the bridge
+		// service finder, so a RollupManagerAddr is required.
+		BridgeServiceFinder: bridgeservicefinder.Config{
+			RollupManagerAddr: common.HexToAddress("0x2000000000000000000000000000000000000002"),
 		},
 	}
 }

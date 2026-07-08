@@ -11,7 +11,6 @@ import (
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/tree"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -58,7 +57,6 @@ func newRollupProofScenario(destNetwork uint32, leafBlock uint64) rollupProofSce
 	request := autoclaimtypes.AutoClaimRequest{
 		Bridge:         bridge,
 		LER:            actualLER,
-		LeafProof:      proofLocal,
 		VerifyBlockNum: testVerifyBlock,
 	}
 
@@ -228,10 +226,10 @@ func TestRollupPrepareReadyL2Destination(t *testing.T) {
 	preparedAt := time.Unix(200, 0).UTC()
 
 	l1InfoTree := newExactMatchL1InfoTree(s)
-	gerSyncer := &fakeL2GERSyncer{
-		info: l2gersync.GlobalExitRootInfo{L1InfoTreeIndex: testFinalIndex},
-	}
-	refresher := &fakeRefresher{}
+	gerSyncer := &fakeL2GERSyncer{index: testFinalIndex}
+	// The leaf-to-LER proof is always fetched fresh at claim time; the refresher returns the proof
+	// that reconstructs the leaf's LER.
+	refresher := &fakeRefresher{proof: s.proofLocal}
 
 	preparer := NewRollupPreparer(l1InfoTree, gerSyncer, refresher)
 	preparer.now = func() time.Time { return preparedAt }
@@ -254,8 +252,12 @@ func TestRollupPrepareReadyL2Destination(t *testing.T) {
 	require.Equal(t, autoclaimtypes.ProofToABIProof(s.proofRollupExt), proof.ABIRollupExitRoot)
 	require.Equal(t, preparedAt, proof.PreparedAt)
 
-	// Exact match: no staleness refresh performed.
-	require.Empty(t, refresher.calls)
+	// The proof is always fetched fresh at claim time, with the chosen leaf index and deposit count.
+	require.Equal(t, []refreshCall{{
+		sourceNetwork: testSourceNetwork,
+		leafIndex:     testFinalIndex,
+		depositCount:  testDepositCount,
+	}}, refresher.calls)
 	// Rollup exit proof requested for the source network at the leaf's rollup exit root.
 	require.Equal(t, []rollupProofCall{{networkID: testSourceNetwork, root: s.leaf.RollupExitRoot}},
 		l1InfoTree.rollupProofCalls)
@@ -267,7 +269,7 @@ func TestRollupPrepareReadyL1Destination(t *testing.T) {
 	s := newRollupProofScenario(autoclaimtypes.L1OriginNetwork, 60)
 
 	l1InfoTree := newExactMatchL1InfoTree(s)
-	preparer := NewRollupPreparer(l1InfoTree, nil, &fakeRefresher{})
+	preparer := NewRollupPreparer(l1InfoTree, nil, &fakeRefresher{proof: s.proofLocal})
 
 	result, err := preparer.Prepare(ctx, s.request)
 	require.NoError(t, err)
@@ -284,7 +286,7 @@ func TestRollupPrepareNotReadyNoGERInjected(t *testing.T) {
 	s := newRollupProofScenario(1101, 60)
 
 	l1InfoTree := newExactMatchL1InfoTree(s)
-	gerSyncer := &fakeL2GERSyncer{err: db.ErrNotFound}
+	gerSyncer := &fakeL2GERSyncer{err: ErrGERNotInjected}
 
 	preparer := NewRollupPreparer(l1InfoTree, gerSyncer, &fakeRefresher{})
 	result, err := preparer.Prepare(ctx, s.request)
@@ -337,12 +339,9 @@ func TestRollupPrepareStalenessRefreshesAndUsesProof(t *testing.T) {
 	staleLER := common.HexToHash("0xdeadbeef")
 	staleProof := testProof("0xdead")
 	s.request.LER = staleLER
-	s.request.LeafProof = staleProof
 
 	l1InfoTree := newExactMatchL1InfoTree(s)
-	gerSyncer := &fakeL2GERSyncer{
-		info: l2gersync.GlobalExitRootInfo{L1InfoTreeIndex: testFinalIndex},
-	}
+	gerSyncer := &fakeL2GERSyncer{index: testFinalIndex}
 	// The refresher returns the correct proof against the actual (newer) LER.
 	refresher := &fakeRefresher{proof: s.proofLocal}
 
@@ -367,12 +366,9 @@ func TestRollupPrepareStalenessRefreshFailureIsNotReady(t *testing.T) {
 	ctx := context.Background()
 	s := newRollupProofScenario(1101, testVerifyBlock+10)
 	s.request.LER = common.HexToHash("0xdeadbeef")
-	s.request.LeafProof = testProof("0xdead")
 
 	l1InfoTree := newExactMatchL1InfoTree(s)
-	gerSyncer := &fakeL2GERSyncer{
-		info: l2gersync.GlobalExitRootInfo{L1InfoTreeIndex: testFinalIndex},
-	}
+	gerSyncer := &fakeL2GERSyncer{index: testFinalIndex}
 	refresher := &fakeRefresher{err: errors.New("bridge service unavailable")}
 
 	preparer := NewRollupPreparer(l1InfoTree, gerSyncer, refresher)
@@ -391,9 +387,7 @@ func TestRollupPrepareStalenessNoRefresherConfiguredIsError(t *testing.T) {
 	s.request.LER = common.HexToHash("0xdeadbeef")
 
 	l1InfoTree := newExactMatchL1InfoTree(s)
-	gerSyncer := &fakeL2GERSyncer{
-		info: l2gersync.GlobalExitRootInfo{L1InfoTreeIndex: testFinalIndex},
-	}
+	gerSyncer := &fakeL2GERSyncer{index: testFinalIndex}
 
 	preparer := NewRollupPreparer(l1InfoTree, gerSyncer, nil)
 	result, err := preparer.Prepare(ctx, s.request)
@@ -408,11 +402,9 @@ func TestRollupPrepareRollupExitProofVerificationFailureIsHardError(t *testing.T
 	l1InfoTree := newExactMatchL1InfoTree(s)
 	// Corrupt the LER-to-rollup-exit-root proof so it no longer reconstructs the leaf's rollup exit root.
 	l1InfoTree.rollupProof[s.leaf.RollupExitRoot] = testProof("0xffff", "0xeeee")
-	gerSyncer := &fakeL2GERSyncer{
-		info: l2gersync.GlobalExitRootInfo{L1InfoTreeIndex: testFinalIndex},
-	}
+	gerSyncer := &fakeL2GERSyncer{index: testFinalIndex}
 
-	preparer := NewRollupPreparer(l1InfoTree, gerSyncer, &fakeRefresher{})
+	preparer := NewRollupPreparer(l1InfoTree, gerSyncer, &fakeRefresher{proof: s.proofLocal})
 	result, err := preparer.Prepare(ctx, s.request)
 	require.Nil(t, result)
 	require.ErrorContains(t, err, "verify LER-to-rollup-exit-root proof")
@@ -423,13 +415,11 @@ func TestRollupPrepareLeafToLERProofVerificationFailureIsHardError(t *testing.T)
 	s := newRollupProofScenario(1101, 60)
 
 	l1InfoTree := newExactMatchL1InfoTree(s)
-	gerSyncer := &fakeL2GERSyncer{
-		info: l2gersync.GlobalExitRootInfo{L1InfoTreeIndex: testFinalIndex},
-	}
-	// Corrupt the stored leaf-to-LER proof so it no longer reconstructs the LER.
-	s.request.LeafProof = testProof("0x0bad")
+	gerSyncer := &fakeL2GERSyncer{index: testFinalIndex}
+	// The freshly-fetched leaf-to-LER proof does not reconstruct the LER (bad proof from the refresher).
+	refresher := &fakeRefresher{proof: testProof("0x0bad")}
 
-	preparer := NewRollupPreparer(l1InfoTree, gerSyncer, &fakeRefresher{})
+	preparer := NewRollupPreparer(l1InfoTree, gerSyncer, refresher)
 	result, err := preparer.Prepare(ctx, s.request)
 	require.Nil(t, result)
 	require.ErrorContains(t, err, "verify leaf-to-LER proof")
@@ -456,7 +446,7 @@ func TestRollupPrepareAdvancesPastSameBlockNonCoveringLeaf(t *testing.T) {
 	l1InfoTree.infoByIndex[testFinalIndex-1] = sameBlockLeaf
 	l1InfoTree.localExitRoot[sameBlockLeaf.RollupExitRoot] = common.HexToHash("0xotherler")
 
-	preparer := NewRollupPreparer(l1InfoTree, nil, &fakeRefresher{})
+	preparer := NewRollupPreparer(l1InfoTree, nil, &fakeRefresher{proof: s.proofLocal})
 	result, err := preparer.Prepare(ctx, s.request)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -483,7 +473,7 @@ func TestRollupPrepareAdvancesPastNotYetVerifiedLeaf(t *testing.T) {
 	l1InfoTree.infoByIndex[testFinalIndex-1] = notYetLeaf
 	// notYetLeaf.RollupExitRoot intentionally absent from localExitRoot -> ErrNotFound.
 
-	preparer := NewRollupPreparer(l1InfoTree, nil, &fakeRefresher{})
+	preparer := NewRollupPreparer(l1InfoTree, nil, &fakeRefresher{proof: s.proofLocal})
 	result, err := preparer.Prepare(ctx, s.request)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -501,9 +491,9 @@ func TestRollupPrepareUsesPresetL1InfoTreeIndex(t *testing.T) {
 	// Remove the firstAfterBlock wiring to prove the preset index path bypasses leaf selection.
 	l1InfoTree.firstAfterBlock = map[uint64]*l1infotreesync.L1InfoTreeLeaf{}
 	// gerSyncer present but should be skipped for a preset index.
-	gerSyncer := &fakeL2GERSyncer{err: db.ErrNotFound}
+	gerSyncer := &fakeL2GERSyncer{err: ErrGERNotInjected}
 
-	preparer := NewRollupPreparer(l1InfoTree, gerSyncer, &fakeRefresher{})
+	preparer := NewRollupPreparer(l1InfoTree, gerSyncer, &fakeRefresher{proof: s.proofLocal})
 	result, err := preparer.Prepare(ctx, s.request)
 	require.NoError(t, err)
 	require.NotNil(t, result)

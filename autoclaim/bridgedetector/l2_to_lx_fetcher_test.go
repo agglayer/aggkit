@@ -9,7 +9,6 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -97,7 +96,6 @@ func TestServiceFetcherGetClaimCandidates(t *testing.T) {
 						Amount:             "1000",
 						Metadata:           "0xdead",
 					},
-					LocalExitRoot: bridgetypes.Hash(toLER.Hex()),
 				},
 			},
 			Count: 1,
@@ -109,7 +107,6 @@ func TestServiceFetcherGetClaimCandidates(t *testing.T) {
 		require.Len(t, candidates, 1)
 		require.Equal(t, uint64(1), candidates[0].Bridge.BlockNum)
 		require.Nil(t, candidates[0].Bridge.FromAddress)
-		require.Equal(t, toLER, candidates[0].LER)
 	})
 
 	t.Run("success with FromLER and FromAddress", func(t *testing.T) {
@@ -210,24 +207,11 @@ func TestToClaimCandidate(t *testing.T) {
 				TxnSender:          "0x04",
 				ToAddress:          "0x05",
 			},
-			LocalExitRoot: "0x06",
 		})
 		require.NoError(t, err)
 		require.Equal(t, uint64(5), candidate.Bridge.BlockNum)
-		require.Equal(t, common.HexToHash("0x06"), candidate.LER)
 		require.Equal(t, []byte{0xbe, 0xef}, candidate.Bridge.Metadata)
 	})
-}
-
-func TestToTreeProof(t *testing.T) {
-	var proof bridgetypes.Proof
-	proof[0] = "0x01"
-	proof[1] = "0x02"
-
-	out := toTreeProof(proof)
-	require.Equal(t, common.HexToHash("0x01"), out[0])
-	require.Equal(t, common.HexToHash("0x02"), out[1])
-	require.IsType(t, treetypes.Proof{}, out)
 }
 
 func TestParseAmount(t *testing.T) {

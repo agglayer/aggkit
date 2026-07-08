@@ -10,7 +10,6 @@ import (
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -57,12 +56,10 @@ type RequestEnqueuer interface {
 	) (*autoclaimtypes.AutoClaimRequest, bool, error)
 }
 
-// ClaimCandidate is one bridge exit a source network offers for claiming together with the
-// leaf-to-LER Merkle proof proving its inclusion in the local exit root it was fetched against.
+// ClaimCandidate is one bridge exit a source network offers for claiming. The leaf-to-LER Merkle
+// proof is no longer carried here; it is fetched fresh at claim time by the proof preparer.
 type ClaimCandidate struct {
-	Bridge    autoclaimtypes.BridgeExit
-	LeafProof treetypes.Proof
-	LER       common.Hash
+	Bridge autoclaimtypes.BridgeExit
 }
 
 // ClaimCandidatesQuery parameterises a single page fetch of claim candidates from a source network's
@@ -543,7 +540,6 @@ func (w *L2ToLx) enqueueCandidates(
 		request.MaxRetries = claimer.Target().MaxRetries
 		request.LER = source.ler
 		request.VerifyBlockNum = source.verifyNum
-		request.LeafProof = candidate.LeafProof
 
 		if _, inserted, err := w.enqueuer.EnqueueRequest(ctx, request); err != nil {
 			return fmt.Errorf("enqueue autoclaim request %s: %w", request.Key, err)

@@ -280,7 +280,11 @@ func (c *Client) GetL1InfoTreeIndex(ctx context.Context, networkID, depositCount
 	return index, nil
 }
 
-// GetInjectedL1InfoLeaf retrieves an injected L1 info tree leaf
+// GetInjectedL1InfoLeaf retrieves an injected L1 info tree leaf.
+//
+// Uses doRequestAllowNotFound: when the destination network has not yet injected a global exit
+// root covering the requested leaf index, the endpoint returns HTTP 404, surfaced here as
+// ErrNotFound so callers can treat it as "retry later" rather than a hard error.
 func (c *Client) GetInjectedL1InfoLeaf(
 	ctx context.Context, networkID, leafIndex int,
 ) (*types.L1InfoTreeLeafResponse, error) {
@@ -289,7 +293,7 @@ func (c *Client) GetInjectedL1InfoLeaf(
 	query.Set("leaf_index", strconv.Itoa(leafIndex))
 
 	var resp types.L1InfoTreeLeafResponse
-	if err := c.doRequest(ctx, "/bridge/v1/injected-l1-info-leaf?"+query.Encode(), &resp); err != nil {
+	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/injected-l1-info-leaf?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

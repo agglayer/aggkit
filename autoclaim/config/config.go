@@ -7,7 +7,6 @@ import (
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
-	aggkittypes "github.com/agglayer/aggkit/types"
 	gethcommon "github.com/ethereum/go-ethereum/common"
 )
 
@@ -118,12 +117,6 @@ type ClaimerConfig struct {
 	RetryAfter   cfgtypes.Duration   `mapstructure:"RetryAfter"`
 	MaxRetries   uint64              `mapstructure:"MaxRetries"`
 	EthTxManager ethtxmanager.Config `mapstructure:"EthTxManager"`
-	// BlockFinality optionally overrides the shared [L2GERSync] block finality for this claimer's
-	// destination-L2 GER syncer. Empty means inherit the shared value.
-	BlockFinality aggkittypes.BlockNumberFinality `mapstructure:"BlockFinality"`
-	// InitialBlockNum optionally overrides the shared [L2GERSync] initial sync block for this
-	// claimer's destination-L2 GER syncer. Zero means inherit the shared value.
-	InitialBlockNum uint64 `mapstructure:"InitialBlockNum"`
 }
 
 // PolicyConfig configures named policy behavior.
@@ -140,11 +133,14 @@ type PolicyConfig struct {
 func (c Config) Validate() error {
 	hasEnabledClaimer := false
 	hasL1DestinationClaimer := false
+	hasL2DestinationClaimer := false
 	for _, claimer := range c.Claimers {
 		if claimer.Enabled {
 			hasEnabledClaimer = true
 			if claimer.NetworkID == l1DestinationNetworkID {
 				hasL1DestinationClaimer = true
+			} else {
+				hasL2DestinationClaimer = true
 			}
 		}
 	}
@@ -163,9 +159,11 @@ func (c Config) Validate() error {
 	if err := c.L2ToLxBridgeDetector.Validate(); err != nil {
 		return fmt.Errorf("AutoClaim.L2ToLxBridgeDetector: %w", err)
 	}
-	if c.L2ToLxBridgeDetector.Enabled && c.BridgeServiceFinder.RollupManagerAddr == (gethcommon.Address{}) {
+	if (c.L2ToLxBridgeDetector.Enabled || hasL2DestinationClaimer) &&
+		c.BridgeServiceFinder.RollupManagerAddr == (gethcommon.Address{}) {
 		return fmt.Errorf(
-			"AutoClaim.BridgeServiceFinder.RollupManagerAddr is required when AutoClaim.L2ToLxBridgeDetector is enabled")
+			"AutoClaim.BridgeServiceFinder.RollupManagerAddr is required when AutoClaim.L2ToLxBridgeDetector " +
+				"is enabled or an L2-destination claimer is configured")
 	}
 	if hasL1DestinationClaimer && !c.L2ToLxBridgeDetector.Enabled {
 		return fmt.Errorf(

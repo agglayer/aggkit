@@ -276,7 +276,7 @@
         },
         "/claim-candidates": {
             "get": {
-                "description": "Returns bridges originated on this network with deposit_count in\n(from_ler's index, to_ler's index] whose destination network is one of\ndestination_network_ids, together with the leaf proof against to_ler.",
+                "description": "Returns bridges originated on this network with deposit_count in\n(from_ler's index, to_ler's index] whose destination network is one of\ndestination_network_ids. to_ler/from_ler define the deposit-count range only.",
                 "produces": [
                     "application/json"
                 ],
@@ -299,7 +299,7 @@
                     },
                     {
                         "type": "string",
-                        "description": "Local exit root the proofs are built against (0x-prefixed 32-byte hex)",
+                        "description": "Local exit root, upper bound of the deposit-count range (0x-prefixed 32-byte hex)",
                         "name": "to_ler",
                         "in": "query",
                         "required": true
@@ -587,6 +587,12 @@
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found - global exit root not injected yet",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -1193,7 +1199,7 @@
             }
         },
         "types.ClaimCandidateResponse": {
-            "description": "A bridge event plus the leaf-to-local-exit-root proof needed to claim it",
+            "description": "A bridge event that is a candidate for claiming",
             "type": "object",
             "properties": {
                 "bridge": {
@@ -1203,28 +1209,11 @@
                             "$ref": "#/definitions/types.BridgeResponse"
                         }
                     ]
-                },
-                "local_exit_root": {
-                    "description": "Local exit root the proof was built against (the requested to_ler)",
-                    "type": "string",
-                    "example": "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
-                },
-                "proof_local_exit_root": {
-                    "description": "Merkle proof proving the bridge's inclusion in LocalExitRoot",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "example": [
-                        "[0x1",
-                        " 0x2",
-                        " 0x3...]"
-                    ]
                 }
             }
         },
         "types.ClaimCandidatesResult": {
-            "description": "Paginated response of claim candidates (bridges + leaf-to-LER proofs)",
+            "description": "Paginated response of claim candidates (bridge events)",
             "type": "object",
             "properties": {
                 "claim_candidates": {

@@ -467,22 +467,16 @@ type SetClaimsResult struct {
 }
 
 // ClaimCandidateResponse represents a single claim candidate: a bridge originated on this
-// network together with the Merkle proof that proves its inclusion in the local exit root
-// the candidates were requested against.
-// @Description A bridge event plus the leaf-to-local-exit-root proof needed to claim it
+// network whose deposit count falls within the requested local-exit-root range. The leaf-to-LER
+// proof is fetched separately at claim time, so it is no longer part of this response.
+// @Description A bridge event that is a candidate for claiming
 type ClaimCandidateResponse struct {
 	// The bridge event that is a candidate for claiming
 	Bridge *BridgeResponse `json:"bridge"`
-
-	// Merkle proof proving the bridge's inclusion in LocalExitRoot
-	ProofLocalExitRoot Proof `json:"proof_local_exit_root" example:"[0x1, 0x2, 0x3...]"`
-
-	// Local exit root the proof was built against (the requested to_ler)
-	LocalExitRoot Hash `json:"local_exit_root" example:"0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"` //nolint:lll
 }
 
 // ClaimCandidatesResult contains the claim candidates matching the query and their total count
-// @Description Paginated response of claim candidates (bridges + leaf-to-LER proofs)
+// @Description Paginated response of claim candidates (bridge events)
 type ClaimCandidatesResult struct {
 	// List of claim candidates
 	ClaimCandidates []*ClaimCandidateResponse `json:"claim_candidates"`

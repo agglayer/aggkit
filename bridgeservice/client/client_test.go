@@ -576,6 +576,20 @@ func TestGetInjectedL1InfoLeaf(t *testing.T) {
 		require.Equal(t, uint32(5), resp.L1InfoTreeIndex)
 		require.Equal(t, uint64(100), resp.BlockNumber)
 	})
+
+	t.Run("returns ErrNotFound when GER not injected yet (404)", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "not injected yet"})
+		}))
+		defer server.Close()
+
+		client := New(Config{BaseURL: server.URL})
+		resp, err := client.GetInjectedL1InfoLeaf(context.Background(), 2, 5)
+
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Nil(t, resp)
+	})
 }
 
 func TestGetClaimProof(t *testing.T) {
@@ -1005,15 +1019,10 @@ func TestGetClaimCandidates(t *testing.T) {
 	const testToLER = "0xtoler"
 
 	t.Run("successful request with minimal params", func(t *testing.T) {
-		var localProof types.Proof
-		localProof[0] = "0x1234567890123456789012345678901234567890123456789012345678901234"
-
 		expectedResp := &types.ClaimCandidatesResult{
 			ClaimCandidates: []*types.ClaimCandidateResponse{
 				{
-					Bridge:             &types.BridgeResponse{DepositCount: 3},
-					ProofLocalExitRoot: localProof,
-					LocalExitRoot:      "0xler",
+					Bridge: &types.BridgeResponse{DepositCount: 3},
 				},
 			},
 			Count: 1,

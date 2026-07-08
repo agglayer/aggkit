@@ -917,33 +917,42 @@ func writeAutoClaimL1Keystore(env *envs.Env, priv *ecdsa.PrivateKey) (string, er
 	return "/tmp/autoclaim-l1-keystore/" + keystoreFileName, nil
 }
 
-// autoClaimConfig renders the [AutoClaim] TOML section used by e2e tests. When l2ToLx is non-nil it
-// additionally enables the L2ToLx bridge detector, configures a BridgeServiceFinder static URL
-// override for l2ToLx.SourceNetworkID, and adds an L1-destination (NetworkID=0) claimer funded from
+// autoClaimConfig renders the [AutoClaim] TOML section used by e2e tests. It always emits a
+// BridgeServiceFinder static URL override so the destination-bridge-service GER gate can resolve
+// the L1->L2 claimer's destination (networkID) without falling back to on-chain trusted-sequencer
+// discovery, which resolves to the wrong host in this docker-compose env. When l2ToLx is non-nil it
+// additionally enables the L2ToLx bridge detector, repoints that same BridgeServiceFinder override
+// at l2ToLx.SourceNetworkID, and adds an L1-destination (NetworkID=0) claimer funded from
 // l2ToLx.L1KeystorePath.
 func autoClaimConfig(policyName string, networkID uint32, l2ToLx *autoClaimL2ToLxConfig) string {
 	suffix := strings.ReplaceAll(policyName, "-", "_")
 
-	l2ToLxSection := `
+	// bridgeServiceFinderNetworkID/-URL default to the L1->L2 claimer's own destination network
+	// (networkID, the env's single L2 network) so the destination-bridge-service GER gate can
+	// resolve it via a static override; the on-chain trusted-sequencer-URL fallback would resolve to
+	// the wrong host in this docker-compose env (see autoClaimSourceBridgeServiceURL's doc comment).
+	// When l2ToLx is non-nil, the L2ToLx detector's source network reuses this same override slot
+	// (in this file's tests it is the same network/URL, since there is only one L2 network).
+	bridgeServiceFinderNetworkID := networkID
+	bridgeServiceFinderURL := autoClaimSourceBridgeServiceURL
+
+	l2ToLxDetectorSection := `
 [AutoClaim.L2ToLxBridgeDetector]
 Enabled = false
 `
 	var l1ClaimerSection string
 	if l2ToLx != nil {
-		l2ToLxSection = fmt.Sprintf(`
+		bridgeServiceFinderNetworkID = l2ToLx.SourceNetworkID
+		bridgeServiceFinderURL = l2ToLx.SourceBridgeServiceURL
+
+		l2ToLxDetectorSection = `
 [AutoClaim.L2ToLxBridgeDetector]
 Enabled = true
 StartL1Block = 0
 PollInterval = "3s"
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
-
-[AutoClaim.BridgeServiceFinder]
-PollInterval = "3s"
-
-[AutoClaim.BridgeServiceFinder.URLs]
-%d = %q
-`, l2ToLx.SourceNetworkID, l2ToLx.SourceBridgeServiceURL)
+`
 
 		l1ClaimerSection = fmt.Sprintf(`
 [[AutoClaim.Claimers]]
@@ -994,6 +1003,14 @@ HTTPHeaders = {}
 			autoClaimL1RPC, autoClaimL1ChainID,
 		)
 	}
+
+	l2ToLxSection := l2ToLxDetectorSection + fmt.Sprintf(`
+[AutoClaim.BridgeServiceFinder]
+PollInterval = "3s"
+
+[AutoClaim.BridgeServiceFinder.URLs]
+%d = %q
+`, bridgeServiceFinderNetworkID, bridgeServiceFinderURL)
 
 	return fmt.Sprintf(`
 [AutoClaim]

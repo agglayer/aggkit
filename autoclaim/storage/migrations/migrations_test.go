@@ -63,16 +63,15 @@ func TestAutoClaim0002MigratesExistingRows(t *testing.T) {
 
 	// Request keys recomputed to 0:destination:deposit_count, source_network is 0, new columns default.
 	type reqRow struct {
-		key          string
-		source       uint32
-		origin       uint32
-		verifyBlock  uint64
-		lerIsNull    bool
-		leafProofNil bool
+		key         string
+		source      uint32
+		origin      uint32
+		verifyBlock uint64
+		lerIsNull   bool
 	}
 	rows, err := database.Query(`
 		SELECT request_key, source_network, origin_network, verify_block_num,
-			ler IS NULL, leaf_proof_json IS NULL
+			ler IS NULL
 		FROM autoclaim_request ORDER BY deposit_count`)
 	require.NoError(t, err)
 	defer rows.Close()
@@ -80,13 +79,13 @@ func TestAutoClaim0002MigratesExistingRows(t *testing.T) {
 	var got []reqRow
 	for rows.Next() {
 		var r reqRow
-		require.NoError(t, rows.Scan(&r.key, &r.source, &r.origin, &r.verifyBlock, &r.lerIsNull, &r.leafProofNil))
+		require.NoError(t, rows.Scan(&r.key, &r.source, &r.origin, &r.verifyBlock, &r.lerIsNull))
 		got = append(got, r)
 	}
 	require.NoError(t, rows.Err())
 	require.Equal(t, []reqRow{
-		{key: "0:1101:7", source: 0, origin: 5, verifyBlock: 0, lerIsNull: true, leafProofNil: true},
-		{key: "0:1101:8", source: 0, origin: 0, verifyBlock: 0, lerIsNull: true, leafProofNil: true},
+		{key: "0:1101:7", source: 0, origin: 5, verifyBlock: 0, lerIsNull: true},
+		{key: "0:1101:8", source: 0, origin: 0, verifyBlock: 0, lerIsNull: true},
 	}, got)
 
 	// The child transaction attempt is re-pointed at the recomputed request key.
@@ -100,6 +99,27 @@ func TestAutoClaim0002MigratesExistingRows(t *testing.T) {
 	require.NoError(t, database.QueryRow(
 		"SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'autoclaim_ler_cursor'").Scan(&lerTable))
 	require.Equal(t, "autoclaim_ler_cursor", lerTable)
+
+	// The leaf_proof_json column was dropped: the leaf-to-LER proof is fetched fresh at claim time,
+	// never stored.
+	columnRows, err := database.Query("PRAGMA table_info(autoclaim_request)")
+	require.NoError(t, err)
+	defer columnRows.Close()
+	var columns []string
+	for columnRows.Next() {
+		var (
+			cid        int
+			name       string
+			ctype      string
+			notNull    int
+			defaultVal sql.NullString
+			pk         int
+		)
+		require.NoError(t, columnRows.Scan(&cid, &name, &ctype, &notNull, &defaultVal, &pk))
+		columns = append(columns, name)
+	}
+	require.NoError(t, columnRows.Err())
+	require.NotContains(t, columns, "leaf_proof_json")
 
 	// New uniqueness holds: a duplicate (source_network, destination_network, deposit_count) is rejected.
 	_, err = database.Exec(insertRequestSQL(),

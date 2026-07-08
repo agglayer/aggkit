@@ -160,15 +160,13 @@ type AutoClaimRequest struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	LastError            string
-	// LER is the source network's local exit root the stored leaf proof is built against
-	// (zero for L1-origin requests). The state machine branches on this value during proof preparation.
+	// LER is the source network's local exit root observed at detection time
+	// (zero for L1-origin requests). Used to select the covering L1 info tree leaf during proof
+	// preparation; the leaf-to-LER proof itself is always fetched fresh at claim time.
 	LER common.Hash
 	// VerifyBlockNum is the L1 block at which the source network's LER was verified
 	// (zero for L1-origin requests). Used to select the L1 info tree leaf during proof preparation.
 	VerifyBlockNum uint64
-	// LeafProof is the source network's leaf-to-LER Merkle proof fetched at detection time
-	// (empty for L1-origin requests). Refreshed by the proof preparer when the LER is stale.
-	LeafProof treetypes.Proof
 }
 
 // BridgeExit contains the bridge leaf fields copied from bridge sync data.

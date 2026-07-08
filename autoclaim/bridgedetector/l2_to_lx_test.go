@@ -10,7 +10,6 @@ import (
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -37,8 +36,6 @@ func makeVerifyRow(rollupID uint32, ler common.Hash, blockNum uint64) *l1infotre
 }
 
 func makeCandidate(depositCount, destinationNetwork uint32) ClaimCandidate {
-	var proof treetypes.Proof
-	proof[0] = common.BigToHash(big.NewInt(int64(depositCount) + 7))
 	return ClaimCandidate{
 		Bridge: autoclaimtypes.BridgeExit{
 			BlockNum:           1000 + uint64(depositCount),
@@ -48,7 +45,6 @@ func makeCandidate(depositCount, destinationNetwork uint32) ClaimCandidate {
 			Amount:             big.NewInt(int64(depositCount)),
 			DepositCount:       depositCount,
 		},
-		LeafProof: proof,
 	}
 }
 
@@ -97,7 +93,6 @@ func TestL2ToLxNewLERDetectionMultipleSources(t *testing.T) {
 	require.Equal(t, ler1, req1.LER)
 	require.Equal(t, uint64(20), req1.VerifyBlockNum)
 	require.Equal(t, uint64(4), req1.MaxRetries)
-	require.NotEqual(t, treetypes.Proof{}, req1.LeafProof)
 
 	req2 := enqueuer.requests[autoclaimtypes.DeriveRequestKey(2, 3, 6)]
 	require.Equal(t, uint32(2), req2.Bridge.SourceNetwork)

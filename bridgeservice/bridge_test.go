@@ -22,7 +22,6 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
-	merkletree "github.com/agglayer/aggkit/tree"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -2583,6 +2582,23 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get injected global exit root for leaf index=%d", l1InfoTreeLeaf.L1InfoTreeIndex))
 	})
 
+	t.Run("L2 network - GER not injected yet returns 404", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.injectedGERs.EXPECT().
+			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(l2gersync.GlobalExitRootInfo{}, db.ErrNotFound)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
+
+		response := performRequest(t, bridgeMocks.router, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusNotFound, response.Code)
+		require.Contains(t, response.Body.String(),
+			fmt.Sprintf("no injected global exit root at or after leaf index %d yet (not injected)", l1InfoTreeLeaf.L1InfoTreeIndex))
+	})
+
 	t.Run("L2 network - GetInfoByIndex error", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
@@ -4476,7 +4492,7 @@ func TestGetClaimCandidatesHandler(t *testing.T) {
 		return q
 	}
 
-	t.Run("happy path with proof verifying via tree.VerifyProof against to_ler", func(t *testing.T) {
+	t.Run("happy path returns bridges in the deposit-count range without proofs", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		br := &bridgesync.Bridge{
@@ -4494,9 +4510,7 @@ func TestGetClaimCandidatesHandler(t *testing.T) {
 			ToAddress:          common.HexToAddress("0xDDD"),
 		}
 
-		var proof tree.Proof // zero-value proof; content is irrelevant, only consistency with the root matters
-		leafHash := br.Hash()
-		toLER := merkletree.CalculateRoot(leafHash, proof, br.DepositCount)
+		toLER := common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 
 		bridgeMocks.bridgeL2.EXPECT().
 			GetRootByLER(mock.Anything, toLER).
@@ -4505,9 +4519,6 @@ func TestGetClaimCandidatesHandler(t *testing.T) {
 			GetBridgesInDepositRange(mock.Anything, DefaultPage, DefaultPageSize,
 				(*uint64)(nil), uint64(br.DepositCount), []uint32{0}).
 			Return([]*bridgesync.Bridge{br}, 1, nil)
-		bridgeMocks.bridgeL2.EXPECT().
-			GetProof(mock.Anything, br.DepositCount, toLER).
-			Return(proof, nil)
 		bridgeMocks.upgradeQuerier.EXPECT().
 			GetUpgradeBlock(mock.Anything, mock.Anything).
 			Return(uint64(0))
@@ -4524,15 +4535,7 @@ func TestGetClaimCandidatesHandler(t *testing.T) {
 		require.Len(t, response.ClaimCandidates, 1)
 
 		candidate := response.ClaimCandidates[0]
-		require.Equal(t, bridgetypes.Hash(toLER.Hex()), candidate.LocalExitRoot)
 		require.Equal(t, br.DepositCount, candidate.Bridge.DepositCount)
-
-		// Reconstruct the proof from the response and independently verify it against to_ler.
-		var respProof tree.Proof
-		for i, h := range candidate.ProofLocalExitRoot {
-			respProof[i] = common.HexToHash(string(h))
-		}
-		require.NoError(t, merkletree.VerifyProof(leafHash, respProof, br.DepositCount, toLER))
 	})
 
 	t.Run("unknown to_ler returns 404", func(t *testing.T) {
@@ -4699,32 +4702,6 @@ func TestGetClaimCandidatesHandler(t *testing.T) {
 			GetBridgesInDepositRange(mock.Anything, DefaultPage, DefaultPageSize,
 				(*uint64)(nil), uint64(3), []uint32{0}).
 			Return(nil, 0, errors.New(fooErrMsg))
-
-		queryParams := buildQuery([]uint32{0}, toLER.Hex(), "", "", "")
-		w := performRequest(t, bridgeMocks.router,
-			fmt.Sprintf("%s/claim-candidates?%s", BridgeV1Prefix, queryParams.Encode()))
-		require.Equal(t, http.StatusInternalServerError, w.Code)
-	})
-
-	t.Run("GetProof error returns 500", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		br := &bridgesync.Bridge{DepositCount: 3, Amount: big.NewInt(0)}
-		toLER := common.HexToHash("0x01")
-
-		bridgeMocks.bridgeL2.EXPECT().
-			GetRootByLER(mock.Anything, toLER).
-			Return(&tree.Root{Index: 3}, nil)
-		bridgeMocks.bridgeL2.EXPECT().
-			GetBridgesInDepositRange(mock.Anything, DefaultPage, DefaultPageSize,
-				(*uint64)(nil), uint64(3), []uint32{0}).
-			Return([]*bridgesync.Bridge{br}, 1, nil)
-		bridgeMocks.bridgeL2.EXPECT().
-			GetProof(mock.Anything, br.DepositCount, toLER).
-			Return(tree.Proof{}, errors.New(barErrMsg))
-		bridgeMocks.upgradeQuerier.EXPECT().
-			GetUpgradeBlock(mock.Anything, mock.Anything).
-			Return(uint64(0))
 
 		queryParams := buildQuery([]uint32{0}, toLER.Hex(), "", "", "")
 		w := performRequest(t, bridgeMocks.router,

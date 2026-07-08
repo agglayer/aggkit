@@ -1,6 +1,6 @@
 -- +migrate Down
 -- Reverses autoclaim0002: drops the LER cursor table and rebuilds autoclaim_request back to the
--- autoclaim0001 schema (removing source_network/ler/verify_block_num/leaf_proof_json and restoring the
+-- autoclaim0001 schema (removing source_network/ler/verify_block_num and restoring the
 -- origin-network uniqueness constraint). The request_key values are left in their source-based format
 -- because the original origin-based keys are not recoverable. The child transaction-attempt table is
 -- detached and reattached around the parent rebuild so foreign keys never dangle (dropping a table that
@@ -186,7 +186,6 @@ CREATE TABLE autoclaim_request_new (
     manual_decision_json         BLOB,
     ler                          TEXT,
     verify_block_num             INTEGER NOT NULL DEFAULT 0,
-    leaf_proof_json              BLOB,
     UNIQUE(source_network, destination_network, deposit_count)
 );
 INSERT INTO autoclaim_request_new (
@@ -194,7 +193,7 @@ INSERT INTO autoclaim_request_new (
     policy_result, bridge_tx_hash, claim_tx_hash, tx_manager_id, block_num, block_pos, global_index,
     l1_info_tree_index, retry_count, max_retries, last_observed_send_at, last_observed_result_at,
     created_at, updated_at, last_error, bridge_json, proof_json, policy_decision_json,
-    manual_decision_json, ler, verify_block_num, leaf_proof_json
+    manual_decision_json, ler, verify_block_num
 )
 SELECT
     '0:' || destination_network || ':' || deposit_count,
@@ -203,7 +202,7 @@ SELECT
     claim_tx_hash, tx_manager_id, block_num, block_pos, global_index, l1_info_tree_index, retry_count,
     max_retries, last_observed_send_at, last_observed_result_at, created_at, updated_at, last_error,
     bridge_json, proof_json, policy_decision_json, manual_decision_json,
-    NULL, 0, NULL
+    NULL, 0
 FROM autoclaim_request;
 DROP TABLE autoclaim_request;
 ALTER TABLE autoclaim_request_new RENAME TO autoclaim_request;

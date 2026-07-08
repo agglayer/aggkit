@@ -844,6 +844,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} types.L1InfoTreeLeafResponse
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 404 {object} types.ErrorResponse "Not Found - global exit root not injected yet"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /injected-l1-info-leaf [get]
 func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
@@ -883,6 +884,14 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	case b.networkID:
 		e, err := b.injectedGERs.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
 		if err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				b.logger.Debugf("no injected global exit root at or after leaf index=%d yet (not injected)", l1InfoTreeIndex)
+				statusCode = http.StatusNotFound
+				c.JSON(statusCode,
+					gin.H{"error": fmt.Sprintf(
+						"no injected global exit root at or after leaf index %d yet (not injected)", l1InfoTreeIndex)})
+				return
+			}
 			b.logger.Errorf("failed to get injected global exit root for leaf index=%d: %v", l1InfoTreeIndex, err)
 			statusCode = http.StatusInternalServerError
 			c.JSON(statusCode,
@@ -1971,16 +1980,17 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 }
 
 // GetClaimCandidatesHandler retrieves the bridges originated on this network (the "source"
-// network of this bridge service instance) that are candidates for claiming, together with the
-// Merkle proof of their inclusion in the requested local exit root (to_ler).
+// network of this bridge service instance) that are candidates for claiming. The to_ler/from_ler
+// local exit roots define the deposit-count range; the caller fetches the (GER-sensitive) leaf
+// proofs separately at claim time.
 //
 // @Summary Get claim candidates
 // @Description Returns bridges originated on this network with deposit_count in
 // @Description (from_ler's index, to_ler's index] whose destination network is one of
-// @Description destination_network_ids, together with the leaf proof against to_ler.
+// @Description destination_network_ids. to_ler/from_ler define the deposit-count range only.
 // @Tags bridges
 // @Param destination_network_ids query []uint32 true "Destination network IDs to filter by (maximum 5)"
-// @Param to_ler query string true "Local exit root the proofs are built against (0x-prefixed 32-byte hex)"
+// @Param to_ler query string true "Local exit root, upper bound of the deposit-count range (0x-prefixed 32-byte hex)"
 // @Param from_ler query string false "Exclusive lower-bound local exit root; omitted means full history"
 // @Param page_number query uint32 false "Page number (default 1)"
 // @Param page_size query uint32 false "Page size (default 100)"
@@ -2101,19 +2111,8 @@ func (b *BridgeService) GetClaimCandidatesHandler(c *gin.Context) {
 
 	claimCandidates := make([]*types.ClaimCandidateResponse, 0, len(bridges))
 	for _, bridge := range bridges {
-		proof, perr := b.bridgeL2.GetProof(ctx, bridge.DepositCount, toLER)
-		if perr != nil {
-			b.logger.Errorf("failed to get proof for deposit count %d against %s: %v", bridge.DepositCount, toLERStr, perr)
-			statusCode = http.StatusInternalServerError
-			c.JSON(statusCode,
-				gin.H{"error": fmt.Sprintf("failed to get proof for deposit count %d: %s", bridge.DepositCount, perr)})
-			return
-		}
-
 		claimCandidates = append(claimCandidates, &types.ClaimCandidateResponse{
-			Bridge:             NewBridgeResponse(bridge, b.networkID, etrogUpgradeL1Block),
-			ProofLocalExitRoot: types.ConvertToProofResponse(proof),
-			LocalExitRoot:      types.Hash(toLER.Hex()),
+			Bridge: NewBridgeResponse(bridge, b.networkID, etrogUpgradeL1Block),
 		})
 	}
 

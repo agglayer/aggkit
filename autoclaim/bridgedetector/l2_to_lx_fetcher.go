@@ -13,7 +13,6 @@ import (
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -144,21 +143,7 @@ func toClaimCandidate(dto *bridgetypes.ClaimCandidateResponse) (ClaimCandidate, 
 		ToAddress:          common.HexToAddress(string(bridge.ToAddress)),
 	}
 
-	return ClaimCandidate{
-		Bridge:    exit,
-		LeafProof: toTreeProof(dto.ProofLocalExitRoot),
-		LER:       common.HexToHash(string(dto.LocalExitRoot)),
-	}, nil
-}
-
-func toTreeProof(proof bridgetypes.Proof) treetypes.Proof {
-	var out treetypes.Proof
-	// Both bridgetypes.Proof and treetypes.Proof are fixed [tree.DefaultHeight] arrays, so copying up
-	// to len(out) never exceeds either bound.
-	for i := 0; i < len(out) && i < len(proof); i++ {
-		out[i] = common.HexToHash(string(proof[i]))
-	}
-	return out
+	return ClaimCandidate{Bridge: exit}, nil
 }
 
 func parseAmount(value string) (*big.Int, error) {
