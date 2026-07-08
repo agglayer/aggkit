@@ -70,6 +70,14 @@ outputDir = "./output"
 # First L1 block to scan in Step E. Default: 0 (genesis).
 l1StartBlock = 0
 
+# OPTIONAL — L1 cutoff block for the L1 reads. When set (> 0), Step E scans L1 for unclaimed
+# deposits only up to this block (and filters the bridge service cross-check accordingly) and Step I
+# starts its backward UpdateL1InfoTreeV2 scan from it, so L1 deposits submitted after the L2
+# snapshot cannot block the pipeline (AET-03). Pick a block at or after the moment the sequencer was
+# stopped. Must be >= l1StartBlock and must not exceed the current L1 head (both are validated).
+# Default: 0 (no cutoff: use the latest L1 block).
+l1EndBlock = 0
+
 # First L2 block to scan. Default: 0 (genesis).
 l2StartBlock = 0
 

@@ -45,12 +45,12 @@ func RunStepE(
 	log.Info(" STEP E — Unclaimed L1→L2 bridge deposits")
 	log.Info("═══════════════════════════════════════════")
 
-	l1LatestBlock, err := resolveL1LatestBlock(ctx, cfg)
+	l1EndBlock, err := resolveL1EndBlock(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	l1Deposits, err := fetchL1BridgeEvents(ctx, cfg, l1LatestBlock)
+	l1Deposits, err := fetchL1BridgeEvents(ctx, cfg, l1EndBlock)
 	if err != nil {
 		return nil, err
 	}
@@ -67,9 +67,14 @@ func RunStepE(
 	log.Infof("Unclaimed L1→L2 deposits: %d  (asset=%d, messages=%d)",
 		len(unclaimed), len(unclaimedAssets), len(unclaimedMessages))
 
+	// With an l1EndBlock cutoff, deposits past the cutoff are excluded from the scan, so they must
+	// also be filtered out of the bridge service comparison or they would resurface as mismatches.
+	// Without a cutoff (0) the service sets are compared unfiltered, as before.
+	maxL1Block := cfg.Options.L1EndBlock
+
 	if cfg.Options.BridgeServiceURL != "" {
 		log.Infof("step E: checking pending bridges from bridge service %s", cfg.Options.BridgeServiceURL)
-		if err := checkBridgeServicePendingBridges(ctx, cfg, unclaimedAssets); err != nil {
+		if err := checkBridgeServicePendingBridges(ctx, cfg, unclaimedAssets, maxL1Block); err != nil {
 			return nil, fmt.Errorf("bridge service pending bridges check: %w", err)
 		}
 	} else {
@@ -111,7 +116,12 @@ func RunStepE(
 		)
 }
 
-func resolveL1LatestBlock(ctx context.Context, cfg *Config) (uint64, error) {
+// resolveL1EndBlock returns the last L1 block the L1 reads cover: the l1EndBlock cutoff when
+// configured (a block tied to the frozen L2 snapshot, so post-snapshot deposits cannot block the
+// pipeline — AET-03), otherwise the current latest L1 block. A cutoff beyond the current head is
+// rejected: it is almost surely a misconfiguration (e.g. an L2 block number), and some L1 clients
+// reject eth_getLogs ranges past the head with a cryptic "invalid block range params" error.
+func resolveL1EndBlock(ctx context.Context, cfg *Config) (uint64, error) {
 	latestResult, err := singleRPC(ctx, cfg.L1RPCURL, "eth_blockNumber", nil, defaultRetries)
 	if err != nil {
 		return 0, fmt.Errorf("get L1 latest block: %w", err)
@@ -120,9 +130,20 @@ func resolveL1LatestBlock(ctx context.Context, cfg *Config) (uint64, error) {
 	if err := json.Unmarshal(latestResult, &latestHex); err != nil {
 		return 0, fmt.Errorf("parse L1 latest block: %w", err)
 	}
-	block := hexToUint64(latestHex)
-	log.Infof("L1 latest block: %d, scanning from %d", block, cfg.Options.L1StartBlock)
-	return block, nil
+	latest := hexToUint64(latestHex)
+
+	if cfg.Options.L1EndBlock > 0 {
+		if cfg.Options.L1EndBlock > latest {
+			return 0, fmt.Errorf("options.l1EndBlock %d is beyond the current L1 latest block %d; "+
+				"set it to an L1 block at or after the sequencer stop (or 0 to use the latest block)",
+				cfg.Options.L1EndBlock, latest)
+		}
+		log.Infof("L1 reads capped at l1EndBlock %d (L1 latest: %d), scanning from %d",
+			cfg.Options.L1EndBlock, latest, cfg.Options.L1StartBlock)
+		return cfg.Options.L1EndBlock, nil
+	}
+	log.Infof("L1 latest block: %d, scanning from %d", latest, cfg.Options.L1StartBlock)
+	return latest, nil
 }
 
 // checkClaimedBatch calls isClaimed(depositCount, 0) on the L2 bridge for each deposit.
@@ -425,7 +446,11 @@ const (
 
 // checkBridgeServicePendingBridges fetches the pending-bridges set from the configured bridge
 // service (aggkit or zkevm) and compares it against the unclaimed deposits found on L1.
-func checkBridgeServicePendingBridges(ctx context.Context, cfg *Config, unclaimed []L1Deposit) error {
+// A non-zero maxL1Block drops service entries deposited after that L1 block, keeping the
+// comparison aligned with a scan capped at l1EndBlock.
+func checkBridgeServicePendingBridges(
+	ctx context.Context, cfg *Config, unclaimed []L1Deposit, maxL1Block uint64,
+) error {
 	baseURL := strings.TrimRight(cfg.Options.BridgeServiceURL, "/")
 
 	var label string
@@ -436,7 +461,7 @@ func checkBridgeServicePendingBridges(ctx context.Context, cfg *Config, unclaime
 		label = "zkevm bridge service"
 		log.Infof("Querying zkevm bridge service for pending bridges (url=%s, l2NetworkID=%d)", baseURL, cfg.L2NetworkID)
 		var fetchErr error
-		svcCounts, fetchErr = fetchZkevmPendingBridges(ctx, baseURL, cfg.L2NetworkID, leafTypeAsset)
+		svcCounts, fetchErr = fetchZkevmPendingBridges(ctx, baseURL, cfg.L2NetworkID, leafTypeAsset, maxL1Block)
 		if fetchErr != nil {
 			return fetchErr
 		}
@@ -444,7 +469,7 @@ func checkBridgeServicePendingBridges(ctx context.Context, cfg *Config, unclaime
 		label = "aggkit bridge service"
 		log.Infof("Querying aggkit bridge service for pending bridges (url=%s, l2NetworkID=%d)", baseURL, cfg.L2NetworkID)
 		var fetchErr error
-		svcCounts, fetchErr = fetchAggkitPendingBridges(ctx, cfg, baseURL, leafTypeAsset)
+		svcCounts, fetchErr = fetchAggkitPendingBridges(ctx, cfg, baseURL, leafTypeAsset, maxL1Block)
 		if fetchErr != nil {
 			return fetchErr
 		}
@@ -518,10 +543,12 @@ type aggkitBridgesResult struct {
 
 // fetchAggkitPendingBridges fetches unclaimed deposits from the aggkit bridge service
 // (GET /bridge/v1/bridges?network_id=0&leaf_type=<leafType> + isClaimed check) and returns the set of deposit counts.
+// A non-zero maxL1Block excludes entries deposited on L1 after that block.
 func fetchAggkitPendingBridges(
-	ctx context.Context, cfg *Config, baseURL string, leafType uint32,
+	ctx context.Context, cfg *Config, baseURL string, leafType uint32, maxL1Block uint64,
 ) (map[uint32]struct{}, error) {
 	var matching []*aggkitBridgeEntry
+	var skippedPastCutoff int
 	for page := 1; ; page++ {
 		reqURL := fmt.Sprintf("%s/bridge/v1/bridges?network_id=0&leaf_type=%d&page_number=%d&page_size=%d",
 			baseURL, leafType, page, bridgeSvcPageSize)
@@ -537,15 +564,24 @@ func fetchAggkitPendingBridges(
 		}
 
 		for _, b := range result.Bridges {
-			if b.DestinationNetwork == cfg.L2NetworkID {
-				matching = append(matching, b)
+			if b.DestinationNetwork != cfg.L2NetworkID {
+				continue
 			}
+			if maxL1Block > 0 && b.BlockNum > maxL1Block {
+				skippedPastCutoff++
+				continue
+			}
+			matching = append(matching, b)
 		}
 		log.Infof("Aggkit bridge service page %d: %d entries, %d targeting L2", page, len(result.Bridges), len(matching))
 
 		if len(result.Bridges) < bridgeSvcPageSize {
 			break
 		}
+	}
+	if skippedPastCutoff > 0 {
+		log.Warnf("Aggkit bridge service: ignored %d deposit(s) past l1EndBlock cutoff (block %d)",
+			skippedPastCutoff, maxL1Block)
 	}
 
 	deposits := make([]L1Deposit, len(matching))
@@ -597,10 +633,12 @@ type zkevmPendingBridgesResponse struct {
 // zkevm-bridge-service (GET /pending-bridges, both leaf types) and compares against the L1 scan.
 // fetchZkevmPendingBridges pages through GET /pending-bridges for the given destNet and leafType
 // and returns the set of deposit counts reported as pending by the zkevm bridge service.
+// A non-zero maxL1Block excludes deposits made on L1 after that block.
 func fetchZkevmPendingBridges(
-	ctx context.Context, baseURL string, destNet, leafType uint32,
+	ctx context.Context, baseURL string, destNet, leafType uint32, maxL1Block uint64, //nolint:unparam
 ) (map[uint32]struct{}, error) {
 	svcCounts := make(map[uint32]struct{})
+	var skippedPastCutoff int
 
 	var offset uint32
 	for {
@@ -622,6 +660,17 @@ func fetchZkevmPendingBridges(
 		}
 
 		for _, d := range result.Deposits {
+			if maxL1Block > 0 {
+				blockNum, err := strconv.ParseUint(d.BlockNum, 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("parse block_num %q for deposit_cnt %d (leaf_type=%d): %w",
+						d.BlockNum, d.DepositCnt, leafType, err)
+				}
+				if blockNum > maxL1Block {
+					skippedPastCutoff++
+					continue
+				}
+			}
 			svcCounts[d.DepositCnt] = struct{}{}
 		}
 		log.Infof("Zkevm bridge service leaf_type=%d offset=%d: %d/%d deposits",
@@ -631,6 +680,10 @@ func fetchZkevmPendingBridges(
 		if len(result.Deposits) == 0 || uint64(offset) >= totalCnt {
 			break
 		}
+	}
+	if skippedPastCutoff > 0 {
+		log.Warnf("Zkevm bridge service: ignored %d deposit(s) past l1EndBlock cutoff (block %d)",
+			skippedPastCutoff, maxL1Block)
 	}
 
 	return svcCounts, nil

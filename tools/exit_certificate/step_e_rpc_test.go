@@ -37,16 +37,31 @@ func TestSplitByLeafType(t *testing.T) {
 	require.Equal(t, uint32(1), messages[0].DepositCount)
 }
 
-func TestResolveL1LatestBlock(t *testing.T) {
+func TestResolveL1EndBlock(t *testing.T) {
 	t.Parallel()
 	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
 		require.Equal(t, rpcMethodEthBlockNumber, method)
 		return "0x1a4" // 420
 	})
+
+	// No cutoff → latest L1 block.
 	cfg := &Config{L1RPCURL: url}
-	block, err := resolveL1LatestBlock(context.Background(), cfg)
+	block, err := resolveL1EndBlock(context.Background(), cfg)
 	require.NoError(t, err)
 	require.Equal(t, uint64(420), block)
+
+	// Cutoff at or below the head → returned as-is.
+	cfg = &Config{L1RPCURL: url, Options: Options{L1EndBlock: 300}}
+	block, err = resolveL1EndBlock(context.Background(), cfg)
+	require.NoError(t, err)
+	require.Equal(t, uint64(300), block)
+
+	// Cutoff beyond the head → clear config error (some L1 clients reject
+	// eth_getLogs ranges past the head with "invalid block range params").
+	cfg = &Config{L1RPCURL: url, Options: Options{L1EndBlock: 1234}}
+	_, err = resolveL1EndBlock(context.Background(), cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "l1EndBlock 1234 is beyond the current L1 latest block 420")
 }
 
 func TestCheckClaimedBatch(t *testing.T) {
@@ -223,7 +238,7 @@ func TestFetchZkevmPendingBridges(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	got, err := fetchZkevmPendingBridges(context.Background(), srv.URL, 5, leafTypeAsset)
+	got, err := fetchZkevmPendingBridges(context.Background(), srv.URL, 5, leafTypeAsset, 0)
 	require.NoError(t, err)
 	require.Len(t, got, 3)
 	for _, dc := range []uint32{10, 11, 12} {
@@ -245,11 +260,11 @@ func TestCheckBridgeServicePendingBridgesZkevmMatch(t *testing.T) {
 		BridgeServiceURL: srv.URL, BridgeServiceType: BridgeServiceTypeZkevm,
 	}}
 	// L1 scan also found deposit 7 → match, no error
-	err := checkBridgeServicePendingBridges(context.Background(), cfg, []L1Deposit{{DepositCount: 7}})
+	err := checkBridgeServicePendingBridges(context.Background(), cfg, []L1Deposit{{DepositCount: 7}}, 0)
 	require.NoError(t, err)
 
 	// L1 scan found a different set → mismatch error
-	err = checkBridgeServicePendingBridges(context.Background(), cfg, []L1Deposit{{DepositCount: 8}})
+	err = checkBridgeServicePendingBridges(context.Background(), cfg, []L1Deposit{{DepositCount: 8}}, 0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mismatch")
 }
@@ -286,7 +301,71 @@ func TestFetchAggkitPendingBridges(t *testing.T) {
 	cfg := &Config{L2RPCURL: rpc, L2NetworkID: 1, L2BridgeAddress: common.HexToAddress("0xbridge"),
 		Options: Options{RPCBatchSize: 10, ConcurrencyLimit: 2}}
 
-	got, err := fetchAggkitPendingBridges(context.Background(), cfg, svc.URL, leafTypeAsset)
+	got, err := fetchAggkitPendingBridges(context.Background(), cfg, svc.URL, leafTypeAsset, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	_, ok := got[20]
+	require.True(t, ok)
+}
+
+func TestFetchZkevmPendingBridgesCutoff(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"deposits": []map[string]any{
+				{"deposit_cnt": 10, "block_num": "100"},
+				{"deposit_cnt": 11, "block_num": "500"}, // past the cutoff → dropped
+				{"deposit_cnt": 12, "block_num": "300"},
+			},
+			"total_cnt": "3",
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	got, err := fetchZkevmPendingBridges(context.Background(), srv.URL, 5, leafTypeAsset, 300)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	_, ok := got[11]
+	require.False(t, ok, "deposit 11 is past the cutoff")
+}
+
+func TestFetchZkevmPendingBridgesCutoffBadBlockNum(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"deposits":  []map[string]any{{"deposit_cnt": 10, "block_num": "not-a-number"}},
+			"total_cnt": "1",
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := fetchZkevmPendingBridges(context.Background(), srv.URL, 5, leafTypeAsset, 300)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "block_num")
+}
+
+func TestFetchAggkitPendingBridgesCutoff(t *testing.T) {
+	t.Parallel()
+	svc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"bridges": []map[string]any{
+				{"deposit_count": 20, "destination_network": 1, "block_num": 100},
+				{"deposit_count": 21, "destination_network": 1, "block_num": 500}, // past the cutoff → dropped
+			},
+			"count": 2,
+		})
+	}))
+	t.Cleanup(svc.Close)
+
+	// isClaimed: nothing claimed.
+	rpc := newBatchRPCServer(t, func(_ string, _ []json.RawMessage) any {
+		return "0x0000000000000000000000000000000000000000000000000000000000000000"
+	})
+
+	cfg := &Config{L2RPCURL: rpc, L2NetworkID: 1, L2BridgeAddress: common.HexToAddress("0xbridge"),
+		Options: Options{RPCBatchSize: 10, ConcurrencyLimit: 2}}
+
+	got, err := fetchAggkitPendingBridges(context.Background(), cfg, svc.URL, leafTypeAsset, 300)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	_, ok := got[20]
@@ -299,6 +378,6 @@ func TestFetchZkevmPendingBridgesHTTPError(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	t.Cleanup(srv.Close)
-	_, err := fetchZkevmPendingBridges(context.Background(), srv.URL, 1, leafTypeAsset)
+	_, err := fetchZkevmPendingBridges(context.Background(), srv.URL, 1, leafTypeAsset, 0)
 	require.Error(t, err)
 }
