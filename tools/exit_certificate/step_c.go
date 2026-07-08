@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"sort"
 	"strings"
 
 	"github.com/agglayer/aggkit/log"
@@ -137,7 +138,17 @@ func computeSCLocked(
 	scLockedValues := make([]SCLockedValue, 0, len(lbtByToken))
 	nonZeroCount := 0
 
-	for tokenKey, lbt := range lbtByToken {
+	// Iterate the LBT in sorted-key order: ranging over the map directly would make the
+	// SCLockedValues order — and hence the offchain lite-tree NewLocalExitRoot — random per
+	// run (AET-32).
+	tokenKeys := make([]string, 0, len(lbtByToken))
+	for tokenKey := range lbtByToken {
+		tokenKeys = append(tokenKeys, tokenKey)
+	}
+	sort.Strings(tokenKeys)
+
+	for _, tokenKey := range tokenKeys {
+		lbt := lbtByToken[tokenKey]
 		lbtBalance := parseDecimalBigInt(lbt.Balance)
 		eoaTotal := new(big.Int)
 		if val, exists := eoaByToken[tokenKey]; exists {

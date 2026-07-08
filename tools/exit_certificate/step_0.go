@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"sort"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/agglayer/aggkit/log"
@@ -141,11 +142,20 @@ func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config, toBlock uint64
 	return allEvents
 }
 
-// fetchEventLogsInRange calls eth_getLogs for one topic on bridgeAddr and returns the raw data hex strings.
+// eventLogEntry is a raw eth_getLogs entry: the data hex plus the log's chain position,
+// so callers can restore chronological order after concurrent range scans.
+type eventLogEntry struct {
+	Data        string
+	BlockNumber uint64
+	LogIndex    uint64
+}
+
+// fetchEventLogsInRange calls eth_getLogs for one topic on bridgeAddr and returns the raw
+// data hex strings along with each log's block number and log index.
 func fetchEventLogsInRange(
 	ctx context.Context, rpcURL string, bridgeAddr common.Address,
 	topic common.Hash, fromBlock, toBlock uint64,
-) ([]string, error) {
+) ([]eventLogEntry, error) {
 	result, err := singleRPC(ctx, rpcURL, "eth_getLogs", []any{
 		map[string]any{
 			"address":   bridgeAddr.Hex(),
@@ -158,16 +168,22 @@ func fetchEventLogsInRange(
 		return nil, err
 	}
 	var logs []struct {
-		Data string `json:"data"`
+		Data        string `json:"data"`
+		BlockNumber string `json:"blockNumber"`
+		LogIndex    string `json:"logIndex"`
 	}
 	if err := json.Unmarshal(result, &logs); err != nil {
 		return nil, fmt.Errorf("unmarshal logs: %w", err)
 	}
-	data := make([]string, len(logs))
+	entries := make([]eventLogEntry, len(logs))
 	for i, lg := range logs {
-		data[i] = lg.Data
+		entries[i] = eventLogEntry{
+			Data:        lg.Data,
+			BlockNumber: hexToUint64(lg.BlockNumber),
+			LogIndex:    hexToUint64(lg.LogIndex),
+		}
 	}
-	return data, nil
+	return entries, nil
 }
 
 // fetchWrappedTokenEventsInRange fetches NewWrappedToken logs in a single block range.
@@ -180,8 +196,8 @@ func fetchWrappedTokenEventsInRange(
 		return nil, err
 	}
 	events := make([]wrappedTokenEvent, 0, len(logData))
-	for _, data := range logData {
-		ev, err := decodeNewWrappedTokenEvent(data)
+	for _, lg := range logData {
+		ev, err := decodeNewWrappedTokenEvent(lg.Data)
 		if err != nil {
 			log.Warnf("Failed to decode NewWrappedToken event: %v", err)
 			continue
@@ -206,15 +222,19 @@ func applySovereignTokenOverrides(
 		return events, nil
 	}
 
-	// Build override map: (originNetwork, originToken) → sovereignAddr
+	// Build override history: (originNetwork, originToken) → sovereign addresses in
+	// chronological order (overrides are sorted by block/log position). The last entry is the
+	// live sovereign address; earlier ones become legacy addresses so downstream steps still
+	// query balances held on every historical sovereign token.
 	type originKey struct {
 		network uint32
 		addr    common.Address
 	}
-	overrideMap := make(map[originKey]common.Address, len(overrides))
+	overrideHistory := make(map[originKey][]common.Address, len(overrides))
 	for _, ov := range overrides {
 		if ov.SovereignAddr != (common.Address{}) {
-			overrideMap[originKey{ov.OriginNetwork, ov.OriginTokenAddress}] = ov.SovereignAddr
+			k := originKey{ov.OriginNetwork, ov.OriginTokenAddress}
+			overrideHistory[k] = append(overrideHistory[k], ov.SovereignAddr)
 		}
 	}
 
@@ -225,10 +245,11 @@ func applySovereignTokenOverrides(
 	for _, ev := range events {
 		k := originKey{ev.OriginNetwork, ev.OriginTokenAddress}
 		seen[k] = true
-		if sovereign, ok := overrideMap[k]; ok {
-			log.Infof("SetSovereignTokenAddress override for origin(network=%d addr=%s): %s → %s",
-				ev.OriginNetwork, ev.OriginTokenAddress.Hex(), ev.WrappedTokenAddr.Hex(), sovereign.Hex())
-			ev.LegacyAddrs = append(ev.LegacyAddrs, ev.WrappedTokenAddr)
+		if history, ok := overrideHistory[k]; ok {
+			sovereign := history[len(history)-1]
+			log.Infof("SetSovereignTokenAddress override for origin(network=%d addr=%s): %s → %s (%d override(s))",
+				ev.OriginNetwork, ev.OriginTokenAddress.Hex(), ev.WrappedTokenAddr.Hex(), sovereign.Hex(), len(history))
+			ev.LegacyAddrs = mergeLegacyAddrs(ev.LegacyAddrs, ev.WrappedTokenAddr, history)
 			ev.WrappedTokenAddr = sovereign
 		}
 		result = append(result, ev)
@@ -238,12 +259,15 @@ func applySovereignTokenOverrides(
 	for _, ov := range overrides {
 		k := originKey{ov.OriginNetwork, ov.OriginTokenAddress}
 		if !seen[k] && ov.SovereignAddr != (common.Address{}) {
+			history := overrideHistory[k]
+			sovereign := history[len(history)-1]
 			log.Infof("SetSovereignTokenAddress new entry: origin(network=%d addr=%s) → %s",
-				ov.OriginNetwork, ov.OriginTokenAddress.Hex(), ov.SovereignAddr.Hex())
+				ov.OriginNetwork, ov.OriginTokenAddress.Hex(), sovereign.Hex())
 			result = append(result, wrappedTokenEvent{
 				OriginNetwork:      ov.OriginNetwork,
 				OriginTokenAddress: ov.OriginTokenAddress,
-				WrappedTokenAddr:   ov.SovereignAddr,
+				WrappedTokenAddr:   sovereign,
+				LegacyAddrs:        mergeLegacyAddrs(nil, common.Address{}, history),
 			})
 			seen[k] = true
 		}
@@ -252,11 +276,39 @@ func applySovereignTokenOverrides(
 	return result, nil
 }
 
+// mergeLegacyAddrs appends the original wrapped address (when non-zero) and every intermediate
+// sovereign address from history to legacy, deduplicated and excluding the live address
+// (the last history entry) — a token remapped back to a previous address must not list its
+// current address as legacy.
+func mergeLegacyAddrs(legacy []common.Address, original common.Address, history []common.Address) []common.Address {
+	live := history[len(history)-1]
+	present := make(map[common.Address]bool, len(legacy)+len(history))
+	for _, a := range legacy {
+		present[a] = true
+	}
+	candidates := history[:len(history)-1]
+	if original != (common.Address{}) {
+		candidates = append([]common.Address{original}, candidates...)
+	}
+	for _, a := range candidates {
+		if a != live && !present[a] {
+			legacy = append(legacy, a)
+			present[a] = true
+		}
+	}
+	return legacy
+}
+
 // sovereignTokenOverride holds data decoded from a SetSovereignTokenAddress event.
+// BlockNumber/LogIndex record the event's chain position: the concurrent range scan collects
+// results in completion order, so overrides must be re-sorted chronologically before applying
+// them — otherwise a stale remap could win over the latest one (AET-16).
 type sovereignTokenOverride struct {
 	OriginNetwork      uint32
 	OriginTokenAddress common.Address
 	SovereignAddr      common.Address
+	BlockNumber        uint64
+	LogIndex           uint64
 }
 
 // fetchSetSovereignTokenEvents scans for SetSovereignTokenAddress events via a worker pool.
@@ -285,6 +337,15 @@ func fetchSetSovereignTokenEvents(ctx context.Context, cfg *Config, toBlock uint
 		return nil, err
 	}
 
+	// The worker pool appends results in completion order; restore chronological (chain) order
+	// so a later remap of the same origin token always wins over an earlier one.
+	sort.Slice(allOverrides, func(i, j int) bool {
+		if allOverrides[i].BlockNumber != allOverrides[j].BlockNumber {
+			return allOverrides[i].BlockNumber < allOverrides[j].BlockNumber
+		}
+		return allOverrides[i].LogIndex < allOverrides[j].LogIndex
+	})
+
 	log.Infof("Found %d SetSovereignTokenAddress overrides", len(allOverrides))
 	return allOverrides, nil
 }
@@ -299,12 +360,14 @@ func fetchSetSovereignTokenEventsInRange(
 		return nil, err
 	}
 	overrides := make([]sovereignTokenOverride, 0, len(logData))
-	for _, data := range logData {
-		ov, err := decodeSetSovereignTokenEvent(data)
+	for _, lg := range logData {
+		ov, err := decodeSetSovereignTokenEvent(lg.Data)
 		if err != nil {
 			log.Warnf("Failed to decode SetSovereignTokenAddress event: %v", err)
 			continue
 		}
+		ov.BlockNumber = lg.BlockNumber
+		ov.LogIndex = lg.LogIndex
 		overrides = append(overrides, ov)
 	}
 	return overrides, nil

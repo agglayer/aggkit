@@ -88,6 +88,123 @@ func TestApplySovereignTokenOverridesNone(t *testing.T) {
 	require.Equal(t, events, out)
 }
 
+// sovereignRangeStub serves eth_getLogs for the SetSovereignTokenAddress scan, honouring the
+// fromBlock/toBlock filter so each event is returned only by its own block range — unlike
+// sovereignStub, which repeats the same payload for every range.
+func sovereignRangeStub(t *testing.T, logs []eventLogEntry) string {
+	t.Helper()
+	return newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
+		if method != rpcMethodEthGetLogs {
+			return "0x"
+		}
+		var f struct {
+			Topics    []string `json:"topics"`
+			FromBlock string   `json:"fromBlock"`
+			ToBlock   string   `json:"toBlock"`
+		}
+		_ = json.Unmarshal(params[0], &f)
+		if len(f.Topics) == 0 || !strings.EqualFold(f.Topics[0], setSovereignTokenTopic.Hex()) {
+			return []map[string]string{}
+		}
+		from, to := hexToUint64(f.FromBlock), hexToUint64(f.ToBlock)
+		out := []map[string]string{}
+		for _, lg := range logs {
+			if lg.BlockNumber >= from && lg.BlockNumber <= to {
+				out = append(out, map[string]string{
+					"data":        lg.Data,
+					"blockNumber": toBlockTag(lg.BlockNumber),
+					"logIndex":    toBlockTag(lg.LogIndex),
+				})
+			}
+		}
+		return out
+	})
+}
+
+// TestApplySovereignTokenOverridesChronological covers AET-16: when the same origin token is
+// remapped more than once, the chronologically latest onchain remap must win regardless of the
+// worker-pool completion order, and the intermediate sovereign addresses must become legacy.
+func TestApplySovereignTokenOverridesChronological(t *testing.T) {
+	t.Parallel()
+	origin := common.BytesToAddress([]byte("origin"))
+	wrapped := common.BytesToAddress([]byte("wrapped"))
+	sovereign1 := common.BytesToAddress([]byte("sovereign1"))
+	sovereign2 := common.BytesToAddress([]byte("sovereign2"))
+
+	// Two remaps of the same origin token in different block ranges (BlockRange=50):
+	// block 10 → sovereign1, block 60 → sovereign2. The latest (sovereign2) must win.
+	url := sovereignRangeStub(t, []eventLogEntry{
+		{Data: makeWrappedTokenData(1, origin, sovereign1), BlockNumber: 10},
+		{Data: makeWrappedTokenData(1, origin, sovereign2), BlockNumber: 60},
+	})
+	cfg := &Config{
+		L2RPCURL: url, L2BridgeAddress: common.BytesToAddress([]byte("bridge")),
+		Options: Options{BlockRange: 50, ConcurrencyLimit: 4, RPCBatchSize: 10},
+	}
+
+	events := []wrappedTokenEvent{
+		{OriginNetwork: 1, OriginTokenAddress: origin, WrappedTokenAddr: wrapped},
+	}
+	out, err := applySovereignTokenOverrides(context.Background(), cfg, 100, events)
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Equal(t, sovereign2, out[0].WrappedTokenAddr)
+	require.Equal(t, []common.Address{wrapped, sovereign1}, out[0].LegacyAddrs)
+}
+
+// TestApplySovereignTokenOverridesSameBlockLogIndex checks that within a block the log index
+// decides which remap is the latest.
+func TestApplySovereignTokenOverridesSameBlockLogIndex(t *testing.T) {
+	t.Parallel()
+	origin := common.BytesToAddress([]byte("origin"))
+	sovereign1 := common.BytesToAddress([]byte("sovereign1"))
+	sovereign2 := common.BytesToAddress([]byte("sovereign2"))
+
+	url := sovereignRangeStub(t, []eventLogEntry{
+		{Data: makeWrappedTokenData(1, origin, sovereign2), BlockNumber: 10, LogIndex: 3},
+		{Data: makeWrappedTokenData(1, origin, sovereign1), BlockNumber: 10, LogIndex: 1},
+	})
+	cfg := &Config{
+		L2RPCURL: url, L2BridgeAddress: common.BytesToAddress([]byte("bridge")),
+		Options: Options{BlockRange: 50, ConcurrencyLimit: 2, RPCBatchSize: 10},
+	}
+
+	// No prior NewWrappedToken event → new entry with the latest sovereign and the earlier
+	// one recorded as legacy.
+	out, err := applySovereignTokenOverrides(context.Background(), cfg, 20, nil)
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Equal(t, sovereign2, out[0].WrappedTokenAddr)
+	require.Equal(t, []common.Address{sovereign1}, out[0].LegacyAddrs)
+}
+
+func TestMergeLegacyAddrs(t *testing.T) {
+	t.Parallel()
+	w := common.BytesToAddress([]byte("w"))
+	s1 := common.BytesToAddress([]byte("s1"))
+	s2 := common.BytesToAddress([]byte("s2"))
+
+	// Original wrapped + intermediate sovereign become legacy; the live one does not.
+	require.Equal(t, []common.Address{w, s1},
+		mergeLegacyAddrs(nil, w, []common.Address{s1, s2}))
+
+	// Remapped back to the original wrapped address: only the intermediate is legacy.
+	require.Equal(t, []common.Address{s1},
+		mergeLegacyAddrs(nil, w, []common.Address{s1, w}))
+
+	// No original wrapped address (sovereign-only token).
+	require.Equal(t, []common.Address{s1},
+		mergeLegacyAddrs(nil, common.Address{}, []common.Address{s1, s2}))
+
+	// Duplicates in history are recorded once.
+	require.Equal(t, []common.Address{w, s1},
+		mergeLegacyAddrs(nil, w, []common.Address{s1, s1, s2}))
+
+	// Pre-existing legacy entries are preserved and not duplicated.
+	require.Equal(t, []common.Address{s1, w},
+		mergeLegacyAddrs([]common.Address{s1}, w, []common.Address{s1, s2}))
+}
+
 func TestRetrieveBlockHeadersNotImplemented(t *testing.T) {
 	t.Parallel()
 	a := &ethClientAdapter{}

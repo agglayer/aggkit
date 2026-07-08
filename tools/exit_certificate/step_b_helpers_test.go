@@ -109,6 +109,50 @@ func TestBuildSingleEOABalance(t *testing.T) {
 	require.Equal(t, uint32(1), entry.Tokens[0].OriginNetwork)
 }
 
+// TestBuildSingleEOABalanceSortedTokens covers AET-17: the token list must come out sorted by
+// wrapped token address regardless of the map iteration order.
+func TestBuildSingleEOABalanceSortedTokens(t *testing.T) {
+	t.Parallel()
+	addr := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	tok1 := common.HexToAddress("0xAAAA000000000000000000000000000000000001")
+	tok2 := common.HexToAddress("0xBBBB000000000000000000000000000000000002")
+	tok3 := common.HexToAddress("0xCCCC000000000000000000000000000000000003")
+
+	tokenBalances := map[common.Address]map[common.Address]*big.Int{
+		tok3: {addr: big.NewInt(3)},
+		tok1: {addr: big.NewInt(1)},
+		tok2: {addr: big.NewInt(2)},
+	}
+	entry, ok := buildSingleEOABalance(addr, nil, tokenBalances, map[common.Address]WrappedToken{})
+	require.True(t, ok)
+	require.Len(t, entry.Tokens, 3)
+	require.Equal(t, tok1, entry.Tokens[0].WrappedTokenAddress)
+	require.Equal(t, tok2, entry.Tokens[1].WrappedTokenAddress)
+	require.Equal(t, tok3, entry.Tokens[2].WrappedTokenAddress)
+}
+
+// TestBuildAccumulatedSorted covers AET-17: native entry first, then tokens sorted by address.
+func TestBuildAccumulatedSorted(t *testing.T) {
+	t.Parallel()
+	holder := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	tok1 := common.HexToAddress("0xAAAA000000000000000000000000000000000001")
+	tok2 := common.HexToAddress("0xBBBB000000000000000000000000000000000002")
+	tok3 := common.HexToAddress("0xCCCC000000000000000000000000000000000003")
+
+	tokenBalances := map[common.Address]map[common.Address]*big.Int{
+		tok2: {holder: big.NewInt(2)},
+		tok3: {holder: big.NewInt(3)},
+		tok1: {holder: big.NewInt(1)},
+	}
+	got := buildAccumulated(map[common.Address]*big.Int{holder: big.NewInt(9)},
+		tokenBalances, map[common.Address]WrappedToken{})
+	require.Len(t, got, 4)
+	require.Equal(t, common.Address{}, got[0].WrappedTokenAddress)
+	require.Equal(t, tok1, got[1].WrappedTokenAddress)
+	require.Equal(t, tok2, got[2].WrappedTokenAddress)
+	require.Equal(t, tok3, got[3].WrappedTokenAddress)
+}
+
 func TestBuildEOABalances(t *testing.T) {
 	t.Parallel()
 	a := common.HexToAddress("0xa")

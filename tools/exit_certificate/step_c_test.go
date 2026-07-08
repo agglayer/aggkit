@@ -45,6 +45,28 @@ func TestRunStepC_Basic(t *testing.T) {
 	require.Equal(t, big.NewInt(400000), scLocked)
 }
 
+// TestComputeSCLockedDeterministicOrder covers AET-32: SCLockedValues must come out in
+// sorted token-key order, not in the (random) map iteration order.
+func TestComputeSCLockedDeterministicOrder(t *testing.T) {
+	t.Parallel()
+	tok1 := common.HexToAddress("0xAAAA000000000000000000000000000000000001")
+	tok2 := common.HexToAddress("0xBBBB000000000000000000000000000000000002")
+	tok3 := common.HexToAddress("0xCCCC000000000000000000000000000000000003")
+
+	lbtByToken := indexByAddress([]LBTEntry{
+		{WrappedTokenAddress: tok3, Balance: "30"},
+		{WrappedTokenAddress: tok1, Balance: "10"},
+		{WrappedTokenAddress: tok2, Balance: "20"},
+	})
+	got, nonZero, err := computeSCLocked(lbtByToken, map[string]*big.Int{}, map[string]*big.Int{}, nil)
+	require.NoError(t, err)
+	require.Equal(t, 3, nonZero)
+	require.Len(t, got, 3)
+	require.Equal(t, tok1, got[0].WrappedTokenAddress)
+	require.Equal(t, tok2, got[1].WrappedTokenAddress)
+	require.Equal(t, tok3, got[2].WrappedTokenAddress)
+}
+
 func TestRunStepC_EOAExceedsLBT(t *testing.T) {
 	t.Parallel()
 

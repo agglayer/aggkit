@@ -1,11 +1,13 @@
 package exit_certificate
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
+	"sort"
 	"sync"
 
 	"github.com/agglayer/aggkit/log"
@@ -433,6 +435,14 @@ func buildSingleEOABalance(
 		}
 	}
 
+	// tokenBalances is a map, so the range order above is random per run; sort so the token
+	// order — and hence the certificate's BridgeExits order and the offchain
+	// NewLocalExitRoot — is reproducible across runs (AET-17).
+	sort.Slice(entry.Tokens, func(i, j int) bool {
+		return bytes.Compare(entry.Tokens[i].WrappedTokenAddress.Bytes(),
+			entry.Tokens[j].WrappedTokenAddress.Bytes()) < 0
+	})
+
 	if entry.ETHBalance == "0" && len(entry.Tokens) == 0 {
 		return EOABalance{}, false
 	}
@@ -461,6 +471,14 @@ func buildAccumulated(
 			TotalBalance:        sumBalances(holders).String(),
 		})
 	}
+
+	// Keep the native entry first and sort the token entries: tokenBalances is a map, so the
+	// range order above is random per run (AET-17).
+	tokens := result[1:]
+	sort.Slice(tokens, func(i, j int) bool {
+		return bytes.Compare(tokens[i].WrappedTokenAddress.Bytes(),
+			tokens[j].WrappedTokenAddress.Bytes()) < 0
+	})
 
 	return result
 }

@@ -1,8 +1,10 @@
 package exit_certificate
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
@@ -54,6 +56,11 @@ func RunStepB3(
 		for holderAddr, bal := range holderBalances {
 			holders = append(holders, ERC20Holder{Address: holderAddr, Balance: bal.String()})
 		}
+		// holderBalances is a map, so the range order above is random per run; sort by address
+		// (same pattern as Step A) so the holders file is reproducible across runs (AET-33).
+		sort.Slice(holders, func(i, j int) bool {
+			return bytes.Compare(holders[i].Address.Bytes(), holders[j].Address.Bytes()) < 0
+		})
 		log.Infof("  %s — %d holder(s) found", addr.Hex(), len(holders))
 
 		breakdowns = append(breakdowns, ERC20HolderBreakdown{
