@@ -524,6 +524,185 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			},
 			expectedError: "aggchainProverFlow - block range adjustment required after prover result: [6,8] -> [6,6]",
 		},
+		{
+			// The InError certificate used an L1 info tree root that is no longer the canonical
+			// root for its leaf count (L1 reorg). The stale aggchain proof must be dropped and the
+			// certificate rebuilt from scratch with fresh L1 info tree data.
+			name: "InError certificate with reorged L1 info root - rebuild from scratch",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
+				mockAggchainProofQuerier *mocks.AggchainProofQuerier,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier) {
+				reorgedRoot := common.HexToHash("0x99")
+				rer := common.HexToHash("0x1")
+				mer := common.HexToHash("0x2")
+				ger := l1infotreesync.CalculateGER(mer, rer)
+				inErrorCert := &types.CertificateHeader{
+					Height:                  0,
+					FromBlock:               1,
+					ToBlock:                 10,
+					Status:                  agglayertypes.InError,
+					FinalizedL1InfoTreeRoot: &finalizedL1Root,
+					CertType:                types.CertificateTypeFEP,
+					L1InfoTreeLeafCount:     11,
+				}
+				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(
+					inErrorCert,
+					&types.AggchainProof{
+						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("stale-proof")},
+						LastProvenBlock: 0,
+						EndBlock:        10,
+					}, nil).Once()
+				// Current canonical root for that leaf count differs -> reorg detected.
+				mockL1InfoDataQuery.EXPECT().GetL1InfoRootByLeafIndex(ctx, uint32(10)).Return(
+					&treetypes.Root{Hash: reorgedRoot, Index: 10}, nil).Once()
+				// Rebuild-from-scratch path with fresh L1 info tree data.
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(inErrorCert, nil).Once()
+				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), true, nil)
+				mockL1InfoDataQuery.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
+					&treetypes.Root{Hash: reorgedRoot, BlockNum: 10, Index: 10}, nil, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return(
+					[]bridgesync.Bridge{{}},
+					[]claimsynctypes.Claim{{
+						GlobalIndex:     big.NewInt(1),
+						GlobalExitRoot:  ger,
+						MainnetExitRoot: mer,
+						RollupExitRoot:  rer,
+					}}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return(
+					[]claimsynctypes.Unclaim{}, nil)
+				mockAggchainProofQuerier.EXPECT().
+					GenerateAggchainProof(context.Background(), uint64(0), uint64(10), mock.Anything).
+					Return(&types.AggchainProof{
+						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("fresh-proof")},
+						LastProvenBlock: 0,
+						EndBlock:        10,
+					}, nil).Once()
+			},
+			expectedParams: &types.CertificateBuildParams{
+				FromBlock:  1,
+				ToBlock:    10,
+				RetryCount: 1,
+				LastSentCertificate: &types.CertificateHeader{
+					Height:                  0,
+					FromBlock:               1,
+					ToBlock:                 10,
+					Status:                  agglayertypes.InError,
+					FinalizedL1InfoTreeRoot: &finalizedL1Root,
+					CertType:                types.CertificateTypeFEP,
+					L1InfoTreeLeafCount:     11,
+				},
+				Bridges: []bridgesync.Bridge{{}},
+				Claims: []claimsynctypes.Claim{{
+					GlobalIndex:     big.NewInt(1),
+					RollupExitRoot:  common.HexToHash("0x1"),
+					MainnetExitRoot: common.HexToHash("0x2"),
+					GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
+				}},
+				Unclaims:                       []claimsynctypes.Unclaim{},
+				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x99"),
+				L1InfoTreeLeafCount:            11,
+				AggchainProof: &types.AggchainProof{
+					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("fresh-proof")},
+					LastProvenBlock: 0,
+					EndBlock:        10,
+				},
+				CreatedAt:       timeNowUTCForTest(),
+				CertificateType: types.CertificateTypeFEP,
+			},
+		},
+		{
+			// The leaf backing the InError certificate is no longer part of the canonical L1 info
+			// tree (reorged out), so the certificate must be rebuilt from scratch.
+			name: "InError certificate with L1 info leaf reorged out - rebuild from scratch",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
+				mockAggchainProofQuerier *mocks.AggchainProofQuerier,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier) {
+				inErrorCert := &types.CertificateHeader{
+					Height:                  0,
+					FromBlock:               1,
+					ToBlock:                 10,
+					Status:                  agglayertypes.InError,
+					FinalizedL1InfoTreeRoot: &finalizedL1Root,
+					CertType:                types.CertificateTypeFEP,
+					L1InfoTreeLeafCount:     11,
+				}
+				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(
+					inErrorCert,
+					&types.AggchainProof{
+						SP1StarkProof: &types.SP1StarkProof{Proof: []byte("stale-proof")},
+						EndBlock:      10,
+					}, nil).Once()
+				mockL1InfoDataQuery.EXPECT().GetL1InfoRootByLeafIndex(ctx, uint32(10)).Return(
+					nil, fmt.Errorf("wrapped: %w", l1infotreesync.ErrNotFound)).Once()
+				// Rebuild-from-scratch path with fresh L1 info tree data.
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(inErrorCert, nil).Once()
+				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), true, nil)
+				mockL1InfoDataQuery.EXPECT().GetTargetL1InfoRoot(mock.Anything).Return(
+					&treetypes.Root{Hash: finalizedL1Root, BlockNum: 10, Index: 10}, nil, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return(
+					[]bridgesync.Bridge{{}}, []claimsynctypes.Claim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return(
+					[]claimsynctypes.Unclaim{}, nil)
+				mockAggchainProofQuerier.EXPECT().
+					GenerateAggchainProof(context.Background(), uint64(0), uint64(10), mock.Anything).
+					Return(&types.AggchainProof{
+						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("fresh-proof")},
+						LastProvenBlock: 0,
+						EndBlock:        10,
+					}, nil).Once()
+			},
+			expectedParams: &types.CertificateBuildParams{
+				FromBlock:  1,
+				ToBlock:    10,
+				RetryCount: 1,
+				LastSentCertificate: &types.CertificateHeader{
+					Height:                  0,
+					FromBlock:               1,
+					ToBlock:                 10,
+					Status:                  agglayertypes.InError,
+					FinalizedL1InfoTreeRoot: &finalizedL1Root,
+					CertType:                types.CertificateTypeFEP,
+					L1InfoTreeLeafCount:     11,
+				},
+				Bridges:                        []bridgesync.Bridge{{}},
+				Claims:                         []claimsynctypes.Claim{},
+				Unclaims:                       []claimsynctypes.Unclaim{},
+				L1InfoTreeRootFromWhichToProve: finalizedL1Root,
+				L1InfoTreeLeafCount:            11,
+				AggchainProof: &types.AggchainProof{
+					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("fresh-proof")},
+					LastProvenBlock: 0,
+					EndBlock:        10,
+				},
+				CreatedAt:       timeNowUTCForTest(),
+				CertificateType: types.CertificateTypeFEP,
+			},
+		},
+		{
+			// A non-"not found" error while resolving the L1 info root must be propagated so the
+			// retry is attempted again later, rather than silently dropping the proof.
+			name: "InError certificate L1 info root validation error is propagated",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
+				mockAggchainProofQuerier *mocks.AggchainProofQuerier,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier) {
+				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(
+					&types.CertificateHeader{
+						Height:                  0,
+						FromBlock:               1,
+						ToBlock:                 10,
+						Status:                  agglayertypes.InError,
+						FinalizedL1InfoTreeRoot: &finalizedL1Root,
+						CertType:                types.CertificateTypeFEP,
+						L1InfoTreeLeafCount:     11,
+					}, nil, nil).Once()
+				mockL1InfoDataQuery.EXPECT().GetL1InfoRootByLeafIndex(ctx, uint32(10)).Return(
+					nil, errors.New("db is down")).Once()
+			},
+			expectedError: "error getting L1 info tree root by leaf count 11: db is down",
+		},
 	}
 
 	for _, tca := range testCases {
@@ -563,6 +742,10 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockL1InfoTreeDataQuerier.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).
 				Return(&l1infotreesync.L1InfoTreeLeaf{}, treetypes.Proof{}, nil).Maybe()
 			mockL1InfoTreeDataQuerier.EXPECT().DoesGERExistsOnL1(mock.Anything).Return(true, nil).Maybe()
+			// By default the L1 info tree root of an InError certificate is still valid, so the
+			// resend path is taken. Test cases that exercise an L1 reorg override this in their mockFn.
+			mockL1InfoTreeDataQuerier.EXPECT().GetL1InfoRootByLeafIndex(mock.Anything, mock.Anything).
+				Return(&treetypes.Root{Hash: finalizedL1Root}, nil).Maybe()
 
 			params, err := aggchainFlow.GetCertificateBuildParams(ctx)
 			if tc.expectedError != "" {
