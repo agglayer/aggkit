@@ -49,6 +49,9 @@ func TestValidateL2GERContract(t *testing.T) {
 
 func TestL2EVMGERReader_GetInjectedGERsForRange(t *testing.T) {
 	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 
 	ctx := context.Background()
 
@@ -170,6 +173,9 @@ func TestL2EVMGERReader_GetInjectedGERsForRange(t *testing.T) {
 
 func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 
 	ctx := context.Background()
 

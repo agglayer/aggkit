@@ -238,6 +238,9 @@ func TestFetchRollupID(t *testing.T) {
 }
 
 func TestRollupDataQuerier_GetUpgradeBlock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	const (
 		latestAgglayerManagerVersion = uint8(5)
 		startBlock                   = uint64(0)

@@ -29,6 +29,9 @@ const (
 )
 
 func TestL2GERSyncE2E(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	t.Parallel()
 
 	t.Skip("Skipping E2E test, this test is broken and needs a PR to be fixed. The lastProcessedBlock doesn't take in account empty blocks")
@@ -65,6 +68,9 @@ func TestL2GERSyncE2E(t *testing.T) {
 }
 
 func TestL2GERSync_GERRemoval(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	t.Parallel()
 
 	t.Skip("Skipping E2E test, this test is broken and needs a PR to be fixed. The lastProcessedBlock doesn't take in account empty blocks")
@@ -130,6 +136,9 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 }
 
 func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	t.Parallel()
 
 	ctx := context.Background()

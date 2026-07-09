@@ -107,6 +107,9 @@ func Test_ReorgDetector(t *testing.T) {
 }
 
 func TestGetTrackedBlocks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetector_TestGetTrackedBlocks.sqlite")
 	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil, nil), Config{
@@ -208,6 +211,9 @@ func TestGetTrackedBlocks(t *testing.T) {
 }
 
 func TestNotSubscribed(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetectorTestNotSubscribed.sqlite")
 	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil, nil),
@@ -219,6 +225,9 @@ func TestNotSubscribed(t *testing.T) {
 
 func TestDetectReorgs(t *testing.T) {
 	t.Parallel()
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 
 	ctx := context.Background()
 	syncerID := "test-syncer"
@@ -314,6 +323,9 @@ func TestDetectReorgs(t *testing.T) {
 }
 
 func TestLoadTrackedHeaders_ConcurrentWithSaveTrackedBlock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetectorTestConcurrentSave.sqlite")
 	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil, nil), Config{
@@ -363,6 +375,9 @@ func TestLoadTrackedHeaders_ConcurrentWithSaveTrackedBlock(t *testing.T) {
 }
 
 func TestGetTrackedBlockByBlockNumber(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	ctx := context.Background()
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetectorTestGetTrackedBlockByBlockNumber.sqlite")
@@ -402,6 +417,9 @@ func TestGetTrackedBlockByBlockNumber(t *testing.T) {
 }
 
 func TestGetDB(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetectorTestGetDB.sqlite")
 

@@ -56,6 +56,9 @@ func mockClientCallGetTransactionByHash(t *testing.T,
 }
 
 func TestBridgeEventE2E(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	const (
 		blockTime    = time.Millisecond * 10
 		totalBridges = 80
@@ -178,6 +181,9 @@ func getFinalizedBlockNumber(t *testing.T, ctx context.Context, client simulated
 
 // TestBridgeL1SyncerWithReorgDetector tests the bridge L1 syncer with reorg detector
 func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	ctx := context.Background()
 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestWithReorgs_sync.sqlite")
 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestWithReorgs_reorg.sqlite")
@@ -363,6 +369,9 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 
 // TestReorgWithSameHashEdgeCase tests reorg detection when blocks have same hash
 func TestReorgWithSameHashEdgeCase(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	ctx := context.Background()
 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestSameHashReorg_sync.sqlite")
 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestSameHashReorg_reorg.sqlite")
@@ -482,6 +491,9 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 
 // TestBridgeL1SyncerWithMultipleReorgs tests the bridge L1 syncer with multiple reorgs
 func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
 	ctx := context.Background()
 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestWithReorgs_sync.sqlite")
 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestWithReorgs_reorg.sqlite")
