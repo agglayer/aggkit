@@ -54,6 +54,10 @@ Data sources:
 			Name:  "verbose",
 			Usage: "Enable debug logging",
 		},
+		&cli.BoolFlag{
+			Name:  "log-json",
+			Usage: "Emit logs in JSON format (default is human-readable console format)",
+		},
 	}
 	app.Action = claimer.Run
 	app.Commands = []*cli.Command{

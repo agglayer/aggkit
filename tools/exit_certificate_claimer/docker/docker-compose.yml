@@ -36,6 +36,7 @@ services:
       - "${CLAIMER_ADDRESS:-0.0.0.0}"
       - "--port"
       - "${CLAIMER_PORT:-8080}"
+      - "--log-json=${CLAIMER_LOG_JSON:-false}"
     volumes:
       # The exit_certificate working dir (parameters.toml + output/). Read-write because L1 sync
       # keeps its own SQLite DBs up to date inside output/. The container runs as appuser (uid

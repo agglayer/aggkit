@@ -112,6 +112,9 @@ CGO_ENABLED=1 go build -o exit-certificate-claimer ./tools/exit_certificate_clai
 # override the bind host/port from the command line (works in both modes):
 ./exit-certificate-claimer --config config.toml --address 127.0.0.1 --port 9090
 
+# emit logs in JSON format (default is the human-readable console format):
+./exit-certificate-claimer --config config.toml --log-json
+
 # print the full build/version info and exit (same fields as GET /health):
 ./exit-certificate-claimer --version
 

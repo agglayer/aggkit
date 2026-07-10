@@ -18,8 +18,12 @@ func Run(c *cli.Context) error {
 	if c.Bool("verbose") {
 		logLevel = "debug"
 	}
+	logEnvironment := log.EnvironmentDevelopment
+	if c.Bool("log-json") {
+		logEnvironment = log.EnvironmentProduction
+	}
 	log.Init(log.Config{
-		Environment: log.EnvironmentDevelopment,
+		Environment: logEnvironment,
 		Level:       logLevel,
 		Outputs:     []string{"stderr"},
 	})
