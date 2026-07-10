@@ -28,13 +28,13 @@ func nativeExit(dest common.Address, amount int64) *agglayertypes.BridgeExit {
 	}
 }
 
-// leafWithDepositCount builds a replayed BridgeLeaf carrying the given deposit count and a metadata
-// tag, as it would be captured from the replay of the matching certificate exit.
-func leafWithDepositCount(depositCount uint32, metadata []byte) bridgesyncerlite.BridgeLeaf {
-	return bridgesyncerlite.BridgeLeaf{DepositCount: depositCount, Metadata: metadata}
+// leafWithDepositCount builds a replayed BridgeLeaf carrying the given deposit count, as it would be
+// captured from the replay of the matching certificate exit.
+func leafWithDepositCount(depositCount uint32) bridgesyncerlite.BridgeLeaf {
+	return bridgesyncerlite.BridgeLeaf{DepositCount: depositCount}
 }
 
-func TestReorderCertificateByDepositCount(t *testing.T) {
+func TestDepositOrderedExits(t *testing.T) {
 	t.Parallel()
 
 	tokenA := common.HexToAddress("0xaaaa")
@@ -42,38 +42,46 @@ func TestReorderCertificateByDepositCount(t *testing.T) {
 	destB := common.HexToAddress("0x2222")
 	destC := common.HexToAddress("0x3333")
 
-	// Certificate order: [A, B, C], metadata tagged by original index.
+	// Certificate order: [A, B, C], generated metadata tagged by original index.
 	exits := []*agglayertypes.BridgeExit{
 		erc20Exit(1, tokenA, destA, 100),
 		nativeExit(destB, 200),
 		erc20Exit(1, tokenA, destC, 300),
 	}
-	cert := &agglayertypes.Certificate{BridgeExits: exits}
+	generatedMetadata := [][]byte{{0xA}, {0xB}, {0xC}}
 
 	// Replay assigned deposit counts C(0), A(1), B(2) — leaves are indexed by the original exit
 	// position, so leaves[0] is A's, leaves[1] is B's, leaves[2] is C's.
 	leaves := []bridgesyncerlite.BridgeLeaf{
-		leafWithDepositCount(1, []byte{0xA}),
-		leafWithDepositCount(2, []byte{0xB}),
-		leafWithDepositCount(0, []byte{0xC}),
+		leafWithDepositCount(1),
+		leafWithDepositCount(2),
+		leafWithDepositCount(0),
 	}
 
-	onChainMeta, err := reorderCertificateByDepositCount(cert, leaves)
+	orderedExits, orderedMeta, err := depositOrderedExits(exits, generatedMetadata, leaves)
 	require.NoError(t, err)
 
-	require.Equal(t, destC, cert.BridgeExits[0].DestinationAddress)
-	require.Equal(t, destA, cert.BridgeExits[1].DestinationAddress)
-	require.Equal(t, destB, cert.BridgeExits[2].DestinationAddress)
-	// the returned on-chain metadata is aligned to the reordered exits.
-	require.Equal(t, [][]byte{{0xC}, {0xA}, {0xB}}, onChainMeta)
+	// The sorted copy follows the replay deposit order and keeps the metadata aligned to it.
+	require.Equal(t, destC, orderedExits[0].DestinationAddress)
+	require.Equal(t, destA, orderedExits[1].DestinationAddress)
+	require.Equal(t, destB, orderedExits[2].DestinationAddress)
+	require.Equal(t, [][]byte{{0xC}, {0xA}, {0xB}}, orderedMeta)
+
+	// The input slices are untouched: the certificate keeps its deterministic order.
+	require.Equal(t, destA, exits[0].DestinationAddress)
+	require.Equal(t, destB, exits[1].DestinationAddress)
+	require.Equal(t, destC, exits[2].DestinationAddress)
+	require.Equal(t, [][]byte{{0xA}, {0xB}, {0xC}}, generatedMetadata)
 }
 
-func TestReorderCertificateByDepositCountCountMismatch(t *testing.T) {
+func TestDepositOrderedExitsCountMismatch(t *testing.T) {
 	t.Parallel()
 
-	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
-		nativeExit(common.HexToAddress("0x1111"), 100),
-	}}
-	_, err := reorderCertificateByDepositCount(cert, nil)
+	exits := []*agglayertypes.BridgeExit{nativeExit(common.HexToAddress("0x1111"), 100)}
+
+	_, _, err := depositOrderedExits(exits, [][]byte{{0x1}}, nil)
 	require.ErrorContains(t, err, "!= certificate bridge exit count")
+
+	_, _, err = depositOrderedExits(exits, nil, []bridgesyncerlite.BridgeLeaf{leafWithDepositCount(0)})
+	require.ErrorContains(t, err, "generated metadata count")
 }

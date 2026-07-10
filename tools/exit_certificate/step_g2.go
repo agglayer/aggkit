@@ -185,16 +185,20 @@ func isTransientForkError(err error) bool {
 
 // RunStepG2 computes Certificate.NewLocalExitRoot and the per-exit metadata.
 //
-// The flow is the same in both modes: optionally run the shadow-fork, then build the local exit tree
-// from the certificate, then compare the roots when both exist.
+// In both modes the certificate's bridge exits keep their incoming order — deterministic since
+// Steps D/E/F are — and the NewLocalExitRoot is the off-chain lite tree root built from the exits
+// in that order (the order agglayer rebuilds the LER from), so the same on-chain state always
+// yields the same certificate.
 //
 //   - By default (options.verifyNewLocalExitRootUsingShadowFork is true — see defaultOptions) it spins
-//     up the Anvil shadow-fork, replays every exit against the real bridge contract, and takes the
-//     contract's getRoot() as the NewLocalExitRoot, having reordered the certificate to the on-chain
-//     deposit order and recovered the on-chain metadata. The off-chain tree built next must match it.
-//   - When the option is false it skips Anvil, leaves the certificate as-is, and takes the off-chain
-//     lite tree root as the NewLocalExitRoot (trusting the off-chain leaf encoding — nothing to verify
-//     against).
+//     up the Anvil shadow-fork, replays every exit against the real bridge contract, and recovers the
+//     on-chain metadata. The replay's tx ordering (and thus each exit's deposit count) is
+//     non-deterministic, so the contract's getRoot() is used only as a verification anchor: a lite
+//     tree built from the exits sorted by the replayed deposit counts must reproduce it, proving the
+//     off-chain leaf encoding matches the real exit tree before that same encoding is trusted for
+//     the certificate-order root.
+//   - When the option is false it skips Anvil and takes the off-chain lite tree root directly
+//     (trusting the off-chain leaf encoding — nothing to verify against).
 //
 // forkBlock is the block resolved by Step G1. lbtEntries (Step 0 output) is used only by the
 // shadow-fork path as a wrapped-token lookup so getTokenWrappedAddress RPC calls are avoided.
@@ -233,14 +237,15 @@ func runStepG2(
 	}
 
 	// Optionally run the shadow-fork. It replays every exit against the real bridge contract and
-	// returns the authoritative LER (the contract's getRoot()) and the LER at the fork block, having
-	// reordered certificate.BridgeExits to the on-chain deposit order. When disabled, the certificate
-	// is left as-is and there is no contract LER to compare to.
+	// returns the contract's getRoot(), the LER at the fork block and the replayed leaves (aligned by
+	// index with the certificate's exits). The certificate keeps its incoming order — deterministic
+	// since Steps D/E/F are — so the final certificate is reproducible across runs. When disabled,
+	// there is nothing on-chain to compare to.
 	var (
-		shadowForkLER             *common.Hash
-		initialLERShadowFork      common.Hash
-		err                       error
-		onChainMetadataShadowFork [][]byte
+		shadowForkLER        *common.Hash
+		initialLERShadowFork common.Hash
+		err                  error
+		replayedLeaves       []bridgesyncerlite.BridgeLeaf
 	)
 	// metadataBackend is the bridge contract endpoint generateMetadata queries getTokenMetadata against:
 	// the Anvil shadow-fork when it runs (already at forkBlock), otherwise a backend over the real L2.
@@ -254,7 +259,7 @@ func runStepG2(
 		metadataBackend = backend
 
 		var lerShadowFork common.Hash
-		lerShadowFork, initialLERShadowFork, onChainMetadataShadowFork, err =
+		lerShadowFork, initialLERShadowFork, replayedLeaves, err =
 			runStepG2ShadowFork(ctx, cfg, backend, certificate, lbtEntries)
 		if err != nil {
 			return nil, err
@@ -278,55 +283,75 @@ func runStepG2(
 	if err != nil {
 		return nil, fmt.Errorf("generate metadata: %w", err)
 	}
-	if onChainMetadataShadowFork != nil {
+	if replayedLeaves != nil {
+		// The replay's on-chain metadata, aligned by index with the certificate's exits (leaves[i] is
+		// the BridgeEvent the replay of exits[i] emitted).
+		onChainMetadata := make([][]byte, len(replayedLeaves))
+		for i := range replayedLeaves {
+			onChainMetadata[i] = replayedLeaves[i].Metadata
+		}
 		log.Debug("step G2: comparing generated metadata with on-chain metadata...")
-		if err := compareMetadata(certificate, onChainMetadataShadowFork, generatedMetadata); err != nil {
-			log.Infof("❌ generated metadata mismath on-chain metadata recovered from the shadow-fork: err %w", err)
+		if err := compareMetadata(certificate, onChainMetadata, generatedMetadata); err != nil {
+			log.Infof("❌ generated metadata mismatch with on-chain metadata recovered from the shadow-fork: %v", err)
 			return nil, fmt.Errorf("compare metadata: %w", err)
 		}
-		log.Infof("✅ generated metadata matches on-chain metadata recovered from the shadow-fork replay for all %d exits")
+		log.Infof("✅ generated metadata matches on-chain metadata recovered from the shadow-fork replay for all %d exits",
+			len(certificate.BridgeExits))
 	}
 	// When the shadow-fork ran we have two on-chain anchors to verify the off-chain reconstruction
 	// against: the LER at the fork block (initialLER) and getRoot() after the replay (shadowForkLER).
-	// Build the genesis→fork lite tree (Step G1's bridges, no cert exits) first; its root must equal
-	// initialLER. This validates Step G1's bridge-history reconstruction on its own before the cert
-	// exits are added.
-	var genesisForkRoot common.Hash
+	// First build the genesis→fork lite tree (Step G1's bridges, no cert exits); its root must equal
+	// initialLER — this validates Step G1's bridge-history reconstruction on its own. Then rebuild the
+	// tree with the certificate exits sorted by the replay's on-chain deposit counts (a copy — the
+	// certificate keeps its deterministic order) using the generated metadata; its root must equal the
+	// contract's getRoot() — this validates the off-chain leaf encoding leaf by leaf against the real
+	// exit tree. Any divergence aborts.
 	if shadowForkLER != nil {
+		var genesisForkRoot common.Hash
 		if genesisForkRoot, err = buildLiteTreeWithReplayed(ctx, cfg, nil); err != nil {
 			return nil, err
-		}
-	}
-
-	// Always build the local exit tree from the (possibly reordered) certificate bridge exits. This is
-	// the sqlite the claimer later reads for its proofs, so it must be built last (overwriting the
-	// genesis→fork tree above with the full tree) and from the certificate exits themselves, using each
-	// exit's own metadata.
-	treeRoot, metadatas, err := runStepG2BuildLocalExitTree(ctx, cfg, forkBlock, certificate, generatedMetadata)
-	if err != nil {
-		return nil, err
-	}
-
-	// The NewLocalExitRoot is the contract's getRoot() when the shadow-fork ran, otherwise the
-	// off-chain tree root. When the shadow-fork ran, the off-chain BridgeEvent-only reconstruction must
-	// match the real on-chain exit tree at both anchors — genesis→fork root vs initialLER and full tree
-	// root vs getRoot() — or the certificate would carry a wrong LER, so any divergence aborts.
-	newLER := treeRoot
-	if shadowForkLER != nil {
-		newLER = *shadowForkLER
-		if treeRoot != *shadowForkLER {
-			return nil, fmt.Errorf("lite exit tree root %s does not match contract getRoot %s: "+
-				"the BridgeEvent-only reconstruction diverged from the on-chain exit tree",
-				treeRoot.Hex(), shadowForkLER.Hex())
 		}
 		if genesisForkRoot != initialLERShadowFork {
 			return nil, fmt.Errorf("genesis→fork lite tree root %s does not match contract initial LER %s: "+
 				"Step G1's bridge-history reconstruction diverged from the on-chain exit tree at the fork block",
 				genesisForkRoot.Hex(), initialLERShadowFork.Hex())
 		}
+
+		orderedExits, orderedMetadata, err := depositOrderedExits(
+			certificate.BridgeExits, generatedMetadata, replayedLeaves,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("sort exits by replay deposit order: %w", err)
+		}
+		gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
+		replayOrderRoot, _, err := buildLiteTreeFromCertificate(
+			ctx, cfg, &agglayertypes.Certificate{BridgeExits: orderedExits},
+			forkBlock, gasTokenNetwork, gasTokenAddress, orderedMetadata,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("build replay-order lite tree: %w", err)
+		}
+		if replayOrderRoot != *shadowForkLER {
+			return nil, fmt.Errorf("lite exit tree root %s does not match contract getRoot %s: "+
+				"the BridgeEvent-only reconstruction diverged from the on-chain exit tree",
+				replayOrderRoot.Hex(), shadowForkLER.Hex())
+		}
 		log.Infof("✅ lite exit tree matches contract: initial LER %s, getRoot %s",
 			initialLERShadowFork.Hex(), shadowForkLER.Hex())
 	}
+
+	// Build the local exit tree from the certificate bridge exits in their own (deterministic) order.
+	// This is the sqlite the claimer later reads for its proofs, so it must be built last (overwriting
+	// the verification trees above with the full tree) and from the certificate exits themselves, using
+	// each exit's own metadata. Its root is the NewLocalExitRoot in both modes: agglayer rebuilds the
+	// LER by inserting bridge_exits in certificate order, and when the shadow-fork ran the leaf
+	// encoding was already verified against the contract's getRoot() above — the replay's tx ordering
+	// (getRoot's leaf order) is a non-deterministic artifact that must not leak into the certificate.
+	treeRoot, metadatas, err := runStepG2BuildLocalExitTree(ctx, cfg, forkBlock, certificate, generatedMetadata)
+	if err != nil {
+		return nil, err
+	}
+	newLER := treeRoot
 
 	result := &StepGResult{
 		InitialLocalExitRoot: initialLERShadowFork,
@@ -450,15 +475,17 @@ func compareMetadata(
 }
 
 // runStepG2ShadowFork replays every bridge exit against the shadow-fork backend (an Anvil fork of the
-// L2 chain at the Step G1 block) and returns the authoritative NewLocalExitRoot (the contract's
-// getRoot() after the replay) and the initial LER at the fork block. As a side effect it reorders
-// certificate.BridgeExits to the on-chain deposit order so callers build the local exit tree in the
-// same order agglayer rebuilds the LER from. It does not build the tree or verify the root — that is
-// the orchestrator's job (RunStepG2). The backend's lifecycle is owned by the caller.
+// L2 chain at the Step G1 block) and returns the contract's getRoot() after the replay, the initial
+// LER at the fork block, and the replayed leaves (leaves[i] is the BridgeEvent the replay of
+// certificate.BridgeExits[i] emitted, carrying the on-chain deposit count and metadata). The
+// certificate is NOT touched: its exits keep their deterministic incoming order, so the final
+// certificate is reproducible across runs even though the parallel replay assigns deposit counts
+// non-deterministically. It does not build the tree or verify the root — that is the orchestrator's
+// job (RunStepG2). The backend's lifecycle is owned by the caller.
 func runStepG2ShadowFork(
 	ctx context.Context, cfg *Config, backend forkBackend,
 	certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
-) (common.Hash, common.Hash, [][]byte, error) {
+) (common.Hash, common.Hash, []bridgesyncerlite.BridgeLeaf, error) {
 	gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
 
 	initialLER, err := backend.LocalExitRoot(ctx, "latest")
@@ -496,22 +523,16 @@ func runStepG2ShadowFork(
 		return common.Hash{}, common.Hash{}, nil, fmt.Errorf("read local exit root: %w", err)
 	}
 
-	// Reorder the certificate to the canonical exit-tree order. The parallel replay assigned
-	// depositCounts non-deterministically across exits; each replayed BridgeEvent carries the
-	// depositCount the contract gave it, so sorting the exits by it aligns Certificate.BridgeExits with
-	// the leaf order agglayer rebuilds the LER from. The returned metadata is the replay's on-chain
-	// metadata aligned to the reordered exits.
-	onChainMetadata, err := reorderCertificateByDepositCount(certificate, leaves)
-	if err != nil {
-		return common.Hash{}, common.Hash{}, nil, fmt.Errorf("reorder certificate by deposit order: %w", err)
+	if len(leaves) != len(certificate.BridgeExits) {
+		return common.Hash{}, common.Hash{}, nil, fmt.Errorf("replayed leaf count %d != certificate bridge exit count %d",
+			len(leaves), len(certificate.BridgeExits))
 	}
-	log.Infof("Reordered %d bridge exits to match the replay deposit order", len(certificate.BridgeExits))
 
-	return ler, initialLER, onChainMetadata, nil
+	return ler, initialLER, leaves, nil
 }
 
 // verifyReplayMetadata checks that each bridge exit's own metadata equals the on-chain metadata the
-// replay recovered for it (aligned by index after reordering). The local exit tree is built from the
+// replay recovered for it (aligned by index). The local exit tree is built from the
 // exits' own metadata, so a mismatch means the certificate carries wrong metadata for that exit and
 // the off-chain tree would diverge from the contract's getRoot(); failing here names the offending
 // exit instead of surfacing only as an opaque root mismatch.
@@ -705,9 +726,10 @@ func replayBridgeExits(
 	gasTokenNetwork uint32, gasTokenAddress common.Address,
 ) ([]bridgesyncerlite.BridgeLeaf, error) {
 	// leaves[i] holds the full BridgeEvent (leaf content + depositCount + block position) emitted by
-	// the replay of exits[i]. The depositCount gives the canonical exit-tree order (used to reorder
-	// the certificate), and the leaf is inserted into the lite DB directly — no second pass over the
-	// fork is needed to recover either.
+	// the replay of exits[i]. The depositCount gives the on-chain exit-tree order of the replay (used
+	// to rebuild the contract's getRoot() for verification — never to reorder the certificate), and
+	// the leaf is inserted into the lite DB directly — no second pass over the fork is needed to
+	// recover either.
 	leaves := make([]bridgesyncerlite.BridgeLeaf, len(exits))
 
 	groupsBySender := make(map[common.Address][]exitJob)
@@ -1521,10 +1543,10 @@ func waitForReceipt(ctx context.Context, anvilURL string, txHash common.Hash) ([
 }
 
 // replayedLeafFromReceipt finds the BridgeEvent log in a replayed bridgeAsset's receipt logs and
-// builds the bridgesyncerlite.BridgeLeaf for it, carrying the on-chain depositCount (the canonical
-// exit-tree position), the leaf content, the metadata, and the block position. txHash is the
-// replaying transaction. The leaf is both inserted into the lite DB (no second fork pass) and used
-// to reorder the certificate by depositCount.
+// builds the bridgesyncerlite.BridgeLeaf for it, carrying the on-chain depositCount (the leaf's
+// position in the forked contract's exit tree), the leaf content, the metadata, and the block
+// position. txHash is the replaying transaction. The leaf is both inserted into the lite DB (no
+// second fork pass) and used to verify the getRoot() anchor in replay deposit order.
 func replayedLeafFromReceipt(logs []rpcLog, txHash common.Hash) (bridgesyncerlite.BridgeLeaf, error) {
 	for _, l := range logs {
 		event, matched, err := parseBridgeEventLog(l.Topics, l.Data)

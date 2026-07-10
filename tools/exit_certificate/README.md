@@ -125,7 +125,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `bridgeServiceType` | `"aggkit"` | Bridge service API flavour. `"aggkit"` uses `GET /bridge/v1/bridges` (aggkit bridge service); `"zkevm"` uses `GET /pending-bridges` (zkevm-bridge-service). |
 | `extraErc20Contracts` | `[]` | Optional list of ERC-20 contract addresses to decompose into individual holder balances in Step B3. Step A includes these contracts in its `Transfer`-log scan so even passive holders (no ETH/nonce/code) are discovered; Step B3 then calls `balanceOf` for every EOA collected in Step A. Example: `["0xAbc...123", "0xDef...456"]`. |
 | `ignoreUnsupportedL2Events` | `false` | When `true`, the Step G lite syncer logs a warning and continues instead of aborting when it sees an L2 event that would invalidate a BridgeEvent-only reconstruction (`SetSovereignTokenAddress`, `MigrateLegacyToken`, `RemoveLegacySovereignTokenAddress`, `BackwardLET`, `ForwardLET`). The computed `NewLocalExitRoot` may then be incorrect — enable only to knowingly inspect such a chain. |
-| `verifyNewLocalExitRootUsingShadowFork` | `true` | Selects the Step G2 mode. When `true` (default), Step G2 spins up an Anvil shadow-fork, replays every bridge exit against the real bridge contract, reorders the certificate to the on-chain deposit order, and verifies the computed `NewLocalExitRoot` against the contract's `getRoot()` (requires `anvil` in `$PATH`). When `false`, Step G2 computes the `NewLocalExitRoot` off-chain from the lite exit tree (no Anvil) — much faster, but it trusts the off-chain leaf encoding/metadata. See [Step G](#step-g--compute-newlocalexitroot) for details. |
+| `verifyNewLocalExitRootUsingShadowFork` | `true` | Selects the Step G2 mode. When `true` (default), Step G2 spins up an Anvil shadow-fork, replays every bridge exit against the real bridge contract, recovers the on-chain metadata, and verifies the off-chain leaf encoding against the contract's `getRoot()` (requires `anvil` in `$PATH`). When `false`, Step G2 skips Anvil — much faster, but it trusts the off-chain leaf encoding/metadata. In both modes the certificate keeps its deterministic exit order and the `NewLocalExitRoot` is the lite exit tree root in that order. See [Step G](#step-g--compute-newlocalexitroot) for details. |
 
 ### Important configuration notes
 
@@ -439,7 +439,7 @@ The pre-funded amount has **no agglayer collateral**, so it can never be bridged
 
 ### Step G — Compute NewLocalExitRoot
 
-Split into **G1** (sync the L2 bridge history from genesis up to the target block into a lite DB, resolving the shadow-fork block) and **G2** (compute the `new_local_exit_root`). By default (`options.verifyNewLocalExitRootUsingShadowFork=true`) G2 replays every `bridge_exit` against a shadow-fork of the L2 chain via [Anvil](https://getfoundry.sh), reorders the certificate to the on-chain deposit order, and verifies the lite exit tree root against the forked contract's `getRoot()`. Set the option to `false` to instead compute the root **off-chain** from the lite exit tree (G1's bridges + the certificate's exits, in order) without Anvil — faster, but it trusts the off-chain leaf encoding/metadata.
+Split into **G1** (sync the L2 bridge history from genesis up to the target block into a lite DB, resolving the shadow-fork block) and **G2** (compute the `new_local_exit_root`). In both modes the certificate's `bridge_exits` keep their deterministic incoming order and the `new_local_exit_root` is the lite exit tree root built from them in that order (the order agglayer rebuilds the LER from), so the same on-chain state always produces the same certificate. By default (`options.verifyNewLocalExitRootUsingShadowFork=true`) G2 additionally replays every `bridge_exit` against a shadow-fork of the L2 chain via [Anvil](https://getfoundry.sh), recovers the on-chain metadata, and verifies the off-chain leaf encoding against the forked contract's `getRoot()` (using a copy of the exits sorted by the replayed deposit counts — the replay's tx ordering is non-deterministic and never leaks into the certificate). Set the option to `false` to skip Anvil — faster, but it trusts the off-chain leaf encoding/metadata.
 
 **Anvil is required in the default shadow-fork mode** (`anvil` binary in `$PATH`); the off-chain mode (`verifyNewLocalExitRootUsingShadowFork=false`) needs no Anvil. When the certificate has no bridge exits, the canonical empty LER is used.
 
@@ -448,7 +448,7 @@ Split into **G1** (sync the L2 bridge history from genesis up to the target bloc
 **Output:**
 
 - **G1:** `step-g1-shadow-fork-block.json` (resolved shadow-fork block) and the lite syncer DB `output/step-g1-l2bridgesyncerlite.sqlite`.
-- **G2:** `step-g-new-local-exit-root.json`, `step-g-reordered-certificate.json` (the deposit-order certificate Step I consumes) and `step-g-l2bridgesyncerlite.sqlite` (working copy of the G1 DB with the tree built); in shadow-fork mode also `step-g-failed-exit.json` *(only on replay failure)*.
+- **G2:** `step-g-new-local-exit-root.json`, `step-g-reordered-certificate.json` (the certificate Step I consumes — same deterministic exit order, metadata hashes set; the file name is historical) and `step-g-l2bridgesyncerlite.sqlite` (working copy of the G1 DB with the tree built); in shadow-fork mode also `step-g-failed-exit.json` *(only on replay failure)*.
 
 ### Step H — Fetch PreviousLocalExitRoot
 
@@ -460,7 +460,7 @@ Requires `agglayerClient.GRPC.URL` in options.
 
 ### Step I — Assemble final certificate
 
-Takes the deposit-order certificate produced by Step G and applies:
+Takes the certificate produced by Step G and applies:
 
 - `NewLocalExitRoot` from Step G
 - `PreviousLocalExitRoot` and certificate height from Step H

@@ -54,6 +54,9 @@ run_quiet env L2_SERVICE_PATTERN='^op-(batcher|cl).*-001$' "${SCRIPT_DIR}/30-sto
 log_info "🌇 Generate exit certificate to sunset network"
 run_quiet "${SCRIPT_DIR}/40-generate_exit_certificate.sh"
 
+log_info "🔁 Check certificate determinism (repeated runs)"
+run_quiet "${SCRIPT_DIR}/42-check_deterministic_certificate.sh"
+
 log_info "🔎 Check exit certificate"
 run_quiet "${SCRIPT_DIR}/45-check_exit_certificate.sh"
 
