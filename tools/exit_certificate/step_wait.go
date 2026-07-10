@@ -443,7 +443,11 @@ func queryVerifyBatches(
 		}
 		// data layout: [0:32] numBatch, [32:64] stateRoot, [64:96] exitRoot.
 		if common.BytesToHash(data[64:96]) == exitRoot {
-			return hexToUint64(l.BlockNumber), common.HexToHash(l.TxHash), true, nil
+			block, err := hexToUint64(l.BlockNumber)
+			if err != nil {
+				return 0, common.Hash{}, false, fmt.Errorf("parse VerifyBatchesTrustedAggregator block number: %w", err)
+			}
+			return block, common.HexToHash(l.TxHash), true, nil
 		}
 	}
 	return 0, common.Hash{}, false, nil
@@ -464,5 +468,5 @@ func resolveFinalizedBlock(ctx context.Context, rpcURL string) (uint64, error) {
 	if block.Number == "" {
 		return 0, fmt.Errorf("finalized block not available")
 	}
-	return hexToUint64(block.Number), nil
+	return hexToUint64(block.Number)
 }

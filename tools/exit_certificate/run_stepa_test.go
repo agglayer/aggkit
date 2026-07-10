@@ -30,7 +30,7 @@ func newStepAServer(t *testing.T) string {
 func TestRunSingleA(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	saveJSON(dir, fileStep0TargetBlock, uint64(2))
+	mustSaveJSON(t, dir, fileStep0TargetBlock, uint64(2))
 
 	cfg := &Config{
 		L2RPCURL: newStepAServer(t), L2BridgeAddress: common.BytesToAddress([]byte("bridge")),

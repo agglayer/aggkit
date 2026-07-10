@@ -462,7 +462,8 @@ func TestHexToUint64(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := hexToUint64(tt.input)
+			result, err := hexToUint64(tt.input)
+			require.NoError(t, err)
 			require.Equal(t, tt.expected, result)
 		})
 	}

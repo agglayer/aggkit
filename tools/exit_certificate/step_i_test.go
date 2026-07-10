@@ -19,6 +19,28 @@ func TestFetchL1InfoTreeLeafCountRequiresConfig(t *testing.T) {
 	require.ErrorContains(t, err, "l1GlobalExitRootAddress")
 }
 
+// TestFetchL1InfoTreeLeafCountAbortsOnGetLogsError covers AET-37: an eth_getLogs failure aborts
+// the backward scan instead of moving on to older blocks — if the failed range held the most
+// recent UpdateL1InfoTreeV2 event, continuing would return a stale leaf count.
+func TestFetchL1InfoTreeLeafCountAbortsOnGetLogsError(t *testing.T) {
+	t.Parallel()
+
+	srv := newRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
+		if method == rpcMethodEthBlockNumber {
+			return quoted("0x1a4"), nil
+		}
+		return nil, &jsonRPCError{Code: -32000, Message: "range too large"}
+	})
+	cfg := &Config{
+		L1RPCURL:                srv.URL,
+		L1GlobalExitRootAddress: common.HexToAddress("0x0000000000000000000000000000000000000abc"),
+		Options:                 Options{BlockRange: 100},
+	}
+	_, err := fetchL1InfoTreeLeafCount(context.Background(), cfg)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "eth_getLogs UpdateL1InfoTreeV2")
+}
+
 func TestFetchL1InfoTreeLeafCount(t *testing.T) {
 	t.Parallel()
 

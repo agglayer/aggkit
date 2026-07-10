@@ -22,11 +22,11 @@ func TestRunSingleBChain(t *testing.T) {
 	orig := common.BytesToAddress([]byte("orig"))
 
 	// Prerequisites normally produced by Step 0 and Step A.
-	saveJSON(dir, fileStep0TargetBlock, uint64(100))
-	saveJSON(dir, fileStep0LBT, []LBTEntry{
+	mustSaveJSON(t, dir, fileStep0TargetBlock, uint64(100))
+	mustSaveJSON(t, dir, fileStep0LBT, []LBTEntry{
 		{WrappedTokenAddress: tok, OriginNetwork: 1, OriginTokenAddress: orig, Balance: "1000"},
 	})
-	saveJSON(dir, fileStepAAddresses, []common.Address{rich, poor})
+	mustSaveJSON(t, dir, fileStepAAddresses, []common.Address{rich, poor})
 
 	url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
 		switch method {

@@ -312,7 +312,8 @@ func TestCompareTokenBalances_AllMatch(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "1000"},
 	}
 
-	checks := compareTokenBalances(groups, agglayerEntries, nil, nil)
+	checks, err := compareTokenBalances(groups, agglayerEntries, nil, nil)
+	require.NoError(t, err)
 	require.Len(t, checks, 1)
 	require.True(t, checks[0].Match)
 	require.Empty(t, checks[0].CertificateEntries)
@@ -334,7 +335,8 @@ func TestCompareTokenBalances_Mismatch(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "999"},
 	}
 
-	checks := compareTokenBalances(groups, agglayerEntries, nil, nil)
+	checks, err := compareTokenBalances(groups, agglayerEntries, nil, nil)
+	require.NoError(t, err)
 	require.Len(t, checks, 1)
 	require.False(t, checks[0].Match)
 	require.Equal(t, "1000", checks[0].CertificateAmount)
@@ -356,7 +358,8 @@ func TestCompareTokenBalances_MissingInAgglayer(t *testing.T) {
 		},
 	}
 
-	checks := compareTokenBalances(groups, nil, nil, nil)
+	checks, err := compareTokenBalances(groups, nil, nil, nil)
+	require.NoError(t, err)
 	require.Len(t, checks, 1)
 	require.False(t, checks[0].Match)
 	require.Equal(t, "500", checks[0].CertificateAmount)
@@ -576,11 +579,12 @@ func TestCapCertificateExits_LBTMinAgglayer(t *testing.T) {
 			{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr}, Amount: big.NewInt(400)},
 		},
 	}
-	checks := compareTokenBalances(groups, []agglayerTokenEntry{
+	checks, err := compareTokenBalances(groups, []agglayerTokenEntry{
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "800"},
 	}, []LBTEntry{
 		{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "700"},
 	}, nil)
+	require.NoError(t, err)
 	require.Equal(t, big.NewInt(700), checks[0].RemainingBalance)
 
 	exits := []*agglayertypes.BridgeExit{
@@ -734,7 +738,8 @@ func TestCompareTokenBalances_GenesisPrefundDiscount(t *testing.T) {
 		{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "300"},
 	}
 
-	checks := compareTokenBalances(groups, agglayerEntries, lbt, big.NewInt(700))
+	checks, err := compareTokenBalances(groups, agglayerEntries, lbt, big.NewInt(700))
+	require.NoError(t, err)
 	require.Len(t, checks, 1)
 	require.True(t, checks[0].Match)
 	require.Equal(t, "300", checks[0].CertificateAmount) // discounted sum is what gets compared

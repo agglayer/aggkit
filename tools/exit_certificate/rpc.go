@@ -156,11 +156,14 @@ func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]
 		}
 
 		var nextPending []int
+		answered := make([]bool, len(pendingIdxs))
 		for _, r := range responses {
 			localIdx := r.ID - 1
 			if localIdx < 0 || localIdx >= len(pendingIdxs) {
+				log.Warnf("batchRPC: response ID %d outside expected range [1-%d] — ignoring", r.ID, len(pendingIdxs))
 				continue
 			}
+			answered[localIdx] = true
 			origIdx := pendingIdxs[localIdx]
 			if r.Error != nil {
 				if isRevertError(r.Error) {
@@ -175,6 +178,16 @@ func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]
 				continue
 			}
 			results[origIdx] = r.Result
+		}
+		// Re-queue every pending call whose ID never showed up in the responses (e.g. a mismatched
+		// response ID): dropping it would leave a silent nil hole in results that callers may
+		// misread as a benign empty value.
+		for i, origIdx := range pendingIdxs {
+			if !answered[i] {
+				log.Warnf("batchRPC: no response for %s id=%d (attempt %d/%d) — re-queuing",
+					calls[origIdx].Method, i+1, attempt, retries)
+				nextPending = append(nextPending, origIdx)
+			}
 		}
 		pendingIdxs = nextPending
 	}

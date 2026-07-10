@@ -323,7 +323,10 @@ func runStepG2(
 		if err != nil {
 			return nil, fmt.Errorf("sort exits by replay deposit order: %w", err)
 		}
-		gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
+		gasTokenNetwork, gasTokenAddress, err := fetchL2GasTokenInfo(ctx, cfg)
+		if err != nil {
+			return nil, err
+		}
 		replayOrderRoot, _, err := buildLiteTreeFromCertificate(
 			ctx, cfg, &agglayertypes.Certificate{BridgeExits: orderedExits},
 			forkBlock, gasTokenNetwork, gasTokenAddress, orderedMetadata,
@@ -403,7 +406,10 @@ func generateMetadata(
 		return metadatas, nil
 	}
 
-	gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
+	gasTokenNetwork, gasTokenAddress, err := fetchL2GasTokenInfo(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	// Resolve each ERC-20 exit's L2 token address; the bridge's getTokenMetadata is keyed by that
 	// address, exactly as bridgeAsset(token) is.
@@ -486,7 +492,10 @@ func runStepG2ShadowFork(
 	ctx context.Context, cfg *Config, backend forkBackend,
 	certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
 ) (common.Hash, common.Hash, []bridgesyncerlite.BridgeLeaf, error) {
-	gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
+	gasTokenNetwork, gasTokenAddress, err := fetchL2GasTokenInfo(ctx, cfg)
+	if err != nil {
+		return common.Hash{}, common.Hash{}, nil, err
+	}
 
 	initialLER, err := backend.LocalExitRoot(ctx, "latest")
 	if err != nil {
@@ -562,7 +571,10 @@ func runStepG2BuildLocalExitTree(
 	ctx context.Context, cfg *Config, forkBlock uint64,
 	certificate *agglayertypes.Certificate, generatedMetadata [][]byte,
 ) (common.Hash, [][]byte, error) {
-	gasTokenNetwork, gasTokenAddress := fetchGasTokenInfoOrDefault(ctx, cfg)
+	gasTokenNetwork, gasTokenAddress, err := fetchL2GasTokenInfo(ctx, cfg)
+	if err != nil {
+		return common.Hash{}, nil, err
+	}
 	root, metadatas, err := buildLiteTreeFromCertificate(
 		ctx, cfg, certificate, forkBlock, gasTokenNetwork, gasTokenAddress, generatedMetadata,
 	)
@@ -576,15 +588,16 @@ func runStepG2BuildLocalExitTree(
 	return root, metadatas, nil
 }
 
-// fetchGasTokenInfoOrDefault returns the L2 gas token (network, address), falling back to standard
-// ETH (network 0, zero address) with a warning if the lookup fails.
-func fetchGasTokenInfoOrDefault(ctx context.Context, cfg *Config) (uint32, common.Address) {
+// fetchL2GasTokenInfo returns the L2 gas token (network, address). A lookup failure is propagated
+// instead of assuming standard ETH: on a chain with a custom gas token that default would
+// mis-encode the native exit leaves and produce a wrong NewLocalExitRoot.
+func fetchL2GasTokenInfo(ctx context.Context, cfg *Config) (uint32, common.Address, error) {
 	gasTokenNetwork, gasTokenAddress, err := fetchGasTokenInfo(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress)
 	if err != nil {
-		log.Warnf("Failed to fetch gas token info (assuming standard ETH): %v", err)
-		return 0, common.Address{}
+		return 0, common.Address{}, fmt.Errorf("fetch gas token info from bridge %s: %w",
+			cfg.L2BridgeAddress.Hex(), err)
 	}
-	return gasTokenNetwork, gasTokenAddress
+	return gasTokenNetwork, gasTokenAddress, nil
 }
 
 // forkBackend abstracts every side-effecting interaction Step G2's shadow-fork replay has with the
@@ -962,7 +975,7 @@ func retryDeferredExit(
 
 // saveFailedExit writes the bridge exit whose replay aborted Step G to step-g-failed-exit.json in
 // dir, so the offending exit can be inspected after the run fails. Best-effort: any write error is
-// logged by saveJSON and does not mask the original replay error.
+// logged here and does not mask the original replay error.
 func saveFailedExit(dir string, job exitJob, replayErr error) {
 	fe := FailedBridgeExit{
 		Index:              job.index,
@@ -977,7 +990,9 @@ func saveFailedExit(dir string, job exitJob, replayErr error) {
 		fe.OriginNetwork = job.bridge.TokenInfo.OriginNetwork
 		fe.OriginTokenAddress = job.bridge.TokenInfo.OriginTokenAddress.Hex()
 	}
-	saveJSON(dir, fileStepGFailedExit, fe)
+	if err := saveJSON(dir, fileStepGFailedExit, fe); err != nil {
+		log.Errorf("failed to save %s: %v", fileStepGFailedExit, err)
+	}
 }
 
 // logReplayProgress logs the replay completion percentage, throughput, and ETA. start is the
@@ -1556,9 +1571,17 @@ func replayedLeafFromReceipt(logs []rpcLog, txHash common.Hash) (bridgesyncerlit
 		if !matched {
 			continue
 		}
+		blockNum, err := hexToUint64(l.BlockNumber)
+		if err != nil {
+			return bridgesyncerlite.BridgeLeaf{}, fmt.Errorf("parse BridgeEvent block number: %w", err)
+		}
+		blockPos, err := hexToUint64(l.LogIndex)
+		if err != nil {
+			return bridgesyncerlite.BridgeLeaf{}, fmt.Errorf("parse BridgeEvent log index: %w", err)
+		}
 		return bridgesyncerlite.BridgeLeaf{
-			BlockNum:           hexToUint64(l.BlockNumber),
-			BlockPos:           hexToUint64(l.LogIndex),
+			BlockNum:           blockNum,
+			BlockPos:           blockPos,
 			LeafType:           event.LeafType,
 			OriginNetwork:      event.OriginNetwork,
 			OriginAddress:      event.OriginAddress,

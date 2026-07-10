@@ -177,10 +177,18 @@ func fetchEventLogsInRange(
 	}
 	entries := make([]eventLogEntry, len(logs))
 	for i, lg := range logs {
+		blockNumber, err := hexToUint64(lg.BlockNumber)
+		if err != nil {
+			return nil, fmt.Errorf("parse log blockNumber %q: %w", lg.BlockNumber, err)
+		}
+		logIndex, err := hexToUint64(lg.LogIndex)
+		if err != nil {
+			return nil, fmt.Errorf("parse log logIndex %q: %w", lg.LogIndex, err)
+		}
 		entries[i] = eventLogEntry{
 			Data:        lg.Data,
-			BlockNumber: hexToUint64(lg.BlockNumber),
-			LogIndex:    hexToUint64(lg.LogIndex),
+			BlockNumber: blockNumber,
+			LogIndex:    logIndex,
 		}
 	}
 	return entries, nil

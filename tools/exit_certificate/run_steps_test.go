@@ -56,7 +56,7 @@ func TestRunSingleSign(t *testing.T) {
 	t.Run("requires signer method", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		saveJSON(dir, fileFinalCertificate, map[string]any{}) // valid empty cert
+		mustSaveJSON(t, dir, fileFinalCertificate, map[string]any{}) // valid empty cert
 		err := runSingleSign(ctx, &Config{Options: Options{OutputDir: dir}}, dir)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "signerConfig.Method")
@@ -107,8 +107,8 @@ func TestRunSingleG2_EmptyCertificate(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	saveJSON(dir, fileStepG1ShadowForkBlock, StepG1Result{ShadowForkBlock: 100})
-	saveJSON(dir, fileStepECertificate, map[string]any{}) // empty cert → no bridge exits
+	mustSaveJSON(t, dir, fileStepG1ShadowForkBlock, StepG1Result{ShadowForkBlock: 100})
+	mustSaveJSON(t, dir, fileStepECertificate, map[string]any{}) // empty cert → no bridge exits
 
 	cfg := &Config{
 		L2RPCURL:        srv.URL,

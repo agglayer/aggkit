@@ -39,8 +39,8 @@ func TestRunSingleG2LiteNonEmpty(t *testing.T) {
 		"amount":       "1000",
 	}})
 	require.NoError(t, err)
-	saveJSON(dir, fileStepG1ShadowForkBlock, StepG1Result{ShadowForkBlock: 100})
-	saveJSON(dir, fileStepECertificate, &certificateJSON{NetworkID: 1, BridgeExits: bridgeExits})
+	require.NoError(t, saveJSON(dir, fileStepG1ShadowForkBlock, StepG1Result{ShadowForkBlock: 100}))
+	require.NoError(t, saveJSON(dir, fileStepECertificate, &certificateJSON{NetworkID: 1, BridgeExits: bridgeExits}))
 
 	getRootSel := selectorHex(bridgeABI, "getRoot")
 	gasMetaSel := selectorHex(bridgeABI, "gasTokenMetadata")
@@ -62,9 +62,9 @@ func TestRunSingleG2LiteNonEmpty(t *testing.T) {
 		case strings.HasPrefix(data, gasMetaSel):
 			return hexResult(gasMetaOut), nil
 		default:
-			// gasTokenNetwork/gasTokenAddress: an empty result makes fetchGasTokenInfo fall back to the
-			// ETH default (network 0, zero address), which is what this native exit expects.
-			return quoted("0x"), nil
+			// gasTokenNetwork/gasTokenAddress: a zero ABI word decodes as the ETH values (network 0,
+			// zero address), which is what this native exit expects.
+			return hexResult(make([]byte, abiWordBytes)), nil
 		}
 	})
 

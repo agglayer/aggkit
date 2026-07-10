@@ -40,7 +40,7 @@ func TestRunSingle0Success(t *testing.T) {
 func TestRunSingleFOffline(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	saveJSON(dir, fileStepDCertificate, map[string]any{"network_id": 1})
+	mustSaveJSON(t, dir, fileStepDCertificate, map[string]any{"network_id": 1})
 	cfg := &Config{Options: Options{OutputDir: dir, UseAgglayerAdminToStepFCheck: false}}
 
 	require.NoError(t, runSingleF(context.Background(), cfg, dir))
@@ -50,9 +50,9 @@ func TestRunSingleFOffline(t *testing.T) {
 func TestRunSingleISuccess(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	saveJSON(dir, fileStepGReorderedCertificate, map[string]any{"network_id": 1})
-	saveJSON(dir, fileStepGNewLocalExitRoot, StepGResult{NewLocalExitRoot: common.HexToHash("0xbeef")})
-	saveJSON(dir, fileStepHPreviousLocalExitRoot, StepHResult{PreviousLocalExitRoot: common.HexToHash("0xabcd"), Height: 2})
+	mustSaveJSON(t, dir, fileStepGReorderedCertificate, map[string]any{"network_id": 1})
+	mustSaveJSON(t, dir, fileStepGNewLocalExitRoot, StepGResult{NewLocalExitRoot: common.HexToHash("0xbeef")})
+	mustSaveJSON(t, dir, fileStepHPreviousLocalExitRoot, StepHResult{PreviousLocalExitRoot: common.HexToHash("0xabcd"), Height: 2})
 
 	topic1 := common.BytesToHash([]byte{0x0a})
 	srv := newBatchRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {

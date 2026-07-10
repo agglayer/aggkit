@@ -65,7 +65,7 @@ func TestGenerateMetadataNativeAndERC20(t *testing.T) {
 	}
 	// LBT maps the external-origin token to its L2 wrapped address (avoids a getTokenWrappedAddress RPC).
 	lbt := []LBTEntry{{OriginNetwork: 99, OriginTokenAddress: origin, WrappedTokenAddress: wrapped}}
-	cfg := &Config{L2NetworkID: 1}
+	cfg := &Config{L2NetworkID: 1, L2RPCURL: gasTokenStubURL(t)}
 
 	metas, err := generateMetadata(context.Background(), backend, cfg, cert, lbt)
 	require.NoError(t, err)

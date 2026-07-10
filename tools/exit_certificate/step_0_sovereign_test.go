@@ -23,7 +23,7 @@ func sovereignStub(t *testing.T, sovereignData string) string {
 		}
 		_ = json.Unmarshal(params[0], &f)
 		if len(f.Topics) > 0 && strings.EqualFold(f.Topics[0], setSovereignTokenTopic.Hex()) {
-			return []map[string]string{{"data": sovereignData}}
+			return []map[string]string{{"data": sovereignData, "blockNumber": "0x1", "logIndex": "0x0"}}
 		}
 		return []map[string]string{}
 	})
@@ -106,7 +106,16 @@ func sovereignRangeStub(t *testing.T, logs []eventLogEntry) string {
 		if len(f.Topics) == 0 || !strings.EqualFold(f.Topics[0], setSovereignTokenTopic.Hex()) {
 			return []map[string]string{}
 		}
-		from, to := hexToUint64(f.FromBlock), hexToUint64(f.ToBlock)
+		from, err := hexToUint64(f.FromBlock)
+		if err != nil {
+			t.Errorf("parse fromBlock %q: %v", f.FromBlock, err)
+			return []map[string]string{}
+		}
+		to, err := hexToUint64(f.ToBlock)
+		if err != nil {
+			t.Errorf("parse toBlock %q: %v", f.ToBlock, err)
+			return []map[string]string{}
+		}
 		out := []map[string]string{}
 		for _, lg := range logs {
 			if lg.BlockNumber >= from && lg.BlockNumber <= to {

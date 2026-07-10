@@ -31,7 +31,11 @@ func RunStepC(lbtEntries []LBTEntry, stepB *StepBResult) (*StepCResult, error) {
 	eoaByToken := make(map[string]*big.Int, len(stepB.Accumulated))
 	for _, entry := range stepB.Accumulated {
 		key := strings.ToLower(entry.WrappedTokenAddress.Hex())
-		eoaByToken[key] = parseDecimalBigInt(entry.TotalBalance)
+		total, err := parseDecimalBigInt(entry.TotalBalance)
+		if err != nil {
+			return nil, fmt.Errorf("accumulated EOA balance for token %s: %w", entry.WrappedTokenAddress.Hex(), err)
+		}
+		eoaByToken[key] = total
 	}
 
 	holderBridges, covered, err := processBreakdowns(stepB.ERC20HolderBreakdowns)
@@ -41,7 +45,10 @@ func RunStepC(lbtEntries []LBTEntry, stepB *StepBResult) (*StepCResult, error) {
 
 	var nativeContractLocked *big.Int
 	if stepB.NativeContractLocked != "" {
-		nativeContractLocked = parseDecimalBigInt(stepB.NativeContractLocked)
+		nativeContractLocked, err = parseDecimalBigInt(stepB.NativeContractLocked)
+		if err != nil {
+			return nil, fmt.Errorf("native contract-locked balance: %w", err)
+		}
 		log.Infof("Native SC-locked will be taken from contract balances: %s wei", nativeContractLocked)
 	}
 
@@ -79,7 +86,11 @@ func processBreakdowns(breakdowns []ERC20HolderBreakdown) ([]HolderBridge, map[s
 		}
 
 		for _, wtb := range bd.Detected.WrappedTokenBalances {
-			contractHolds := parseDecimalBigInt(wtb.Balance)
+			contractHolds, err := parseDecimalBigInt(wtb.Balance)
+			if err != nil {
+				return nil, nil, fmt.Errorf("vault %s balance of token %s: %w",
+					bd.Address.Hex(), wtb.Token.WrappedTokenAddress.Hex(), err)
+			}
 			if contractHolds.Sign() == 0 {
 				continue
 			}
@@ -88,7 +99,11 @@ func processBreakdowns(breakdowns []ERC20HolderBreakdown) ([]HolderBridge, map[s
 
 			distributed := new(big.Int)
 			for _, h := range bd.Holders {
-				amount := parseDecimalBigInt(h.Balance)
+				amount, err := parseDecimalBigInt(h.Balance)
+				if err != nil {
+					return nil, nil, fmt.Errorf("vault %s holder %s balance: %w",
+						bd.Address.Hex(), h.Address.Hex(), err)
+				}
 				if amount.Sign() <= 0 {
 					continue
 				}
@@ -149,7 +164,10 @@ func computeSCLocked(
 
 	for _, tokenKey := range tokenKeys {
 		lbt := lbtByToken[tokenKey]
-		lbtBalance := parseDecimalBigInt(lbt.Balance)
+		lbtBalance, err := parseDecimalBigInt(lbt.Balance)
+		if err != nil {
+			return nil, 0, fmt.Errorf("LBT balance for token %s: %w", lbt.WrappedTokenAddress.Hex(), err)
+		}
 		eoaTotal := new(big.Int)
 		if val, exists := eoaByToken[tokenKey]; exists {
 			eoaTotal.Set(val)

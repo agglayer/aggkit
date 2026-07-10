@@ -425,8 +425,8 @@ func TestApplyNativeContractLocked(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		contract := common.HexToAddress("0x00000000000000000000000000000000000000c1")
-		saveJSON(dir, fileStepBContractAddresses, []common.Address{contract})
-		saveJSON(dir, fileStep0TargetBlock, uint64(16))
+		mustSaveJSON(t, dir, fileStepBContractAddresses, []common.Address{contract})
+		mustSaveJSON(t, dir, fileStep0TargetBlock, uint64(16))
 
 		url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
 			require.Equal(t, rpcMethodEthGetBalance, method)

@@ -75,7 +75,7 @@ func step0Stub(t *testing.T, wrappedData string) string {
 			}
 			_ = json.Unmarshal(params[0], &f)
 			if len(f.Topics) > 0 && strings.EqualFold(f.Topics[0], newWrappedTokenTopic.Hex()) {
-				return []map[string]string{{"data": wrappedData}}
+				return []map[string]string{{"data": wrappedData, "blockNumber": "0x1", "logIndex": "0x0"}}
 			}
 			return []map[string]string{} // SetSovereignTokenAddress: none
 		case rpcMethodEthCall:

@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strconv"
 	"strings"
 )
 
 const (
 	hexBase         = 16
 	decimalBase     = 10
-	hexLetterOffset = 10
 	maxMetadataSize = 1 << 20 // 1 MB
 
 	abiWordBytes      = 32  // EVM ABI word size in bytes
@@ -42,22 +42,16 @@ func safeUint8(val *big.Int) (uint8, error) {
 }
 
 // hexToUint64 parses a hex string (with or without 0x prefix) to uint64.
-func hexToUint64(s string) uint64 {
-	s = strings.TrimPrefix(s, "0x")
-	s = strings.TrimPrefix(s, "0X")
-	var n uint64
-	for _, c := range s {
-		n <<= 4
-		switch {
-		case c >= '0' && c <= '9':
-			n |= uint64(c - '0')
-		case c >= 'a' && c <= 'f':
-			n |= uint64(c - 'a' + hexLetterOffset)
-		case c >= 'A' && c <= 'F':
-			n |= uint64(c - 'A' + hexLetterOffset)
-		}
+// Invalid characters, empty input and overflow are errors: the strings it parses
+// are RPC-provided block numbers, so a garbage value must never silently become
+// a plausible-looking number.
+func hexToUint64(s string) (uint64, error) {
+	trimmed := strings.TrimPrefix(strings.TrimPrefix(s, "0x"), "0X")
+	n, err := strconv.ParseUint(trimmed, hexBase, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse hex uint64 %q: %w", s, err)
 	}
-	return n
+	return n, nil
 }
 
 // hexToBigInt parses a 0x-prefixed hex string to a *big.Int. Returns zero on empty/invalid input.
@@ -79,14 +73,13 @@ func toBlockTag(blockNum uint64) string {
 	return fmt.Sprintf("0x%x", blockNum)
 }
 
-// parseDecimalBigInt parses a decimal string to *big.Int. Returns zero on empty/invalid input.
-func parseDecimalBigInt(s string) *big.Int {
-	if s == "" {
-		return new(big.Int)
-	}
+// parseDecimalBigInt parses a decimal string to *big.Int. Empty or invalid input is an error:
+// the strings it parses are tool-generated, so a failure always means corrupted intermediate
+// files and must never silently become a zero amount (which would drop a bridge exit).
+func parseDecimalBigInt(s string) (*big.Int, error) {
 	n, ok := new(big.Int).SetString(s, decimalBase)
 	if !ok {
-		return new(big.Int)
+		return nil, fmt.Errorf("parse decimal big int: invalid value %q", s)
 	}
-	return n
+	return n, nil
 }
