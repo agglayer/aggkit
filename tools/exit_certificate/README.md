@@ -87,7 +87,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `l2RpcUrl` | Yes | L2 JSON-RPC endpoint. Step A requires `debug_accountRange` (an archive node exposing the `debug` namespace, to query state at `targetBlock`); without it Step A fails. |
 | `l1RpcUrl` | Yes* | L1 JSON-RPC endpoint. Required by Step E (unclaimed deposit detection) and Step I (`L1InfoTreeLeafCount`). Without it Step E is silently skipped and Step I fails — the resulting certificate will be incomplete. |
 | `l2BridgeAddress` | Yes | L2 bridge contract address. |
-| `l1BridgeAddress` | No | L1 bridge contract address. Defaults to `l2BridgeAddress`. |
+| `l1BridgeAddress` | No | L1 bridge contract address. Defaults to `l2BridgeAddress`. Verified on-chain by Step CHECK (`networkID()==0` plus the `aggchainbase`/`rollupManager` bridge-address cross-checks) and by the Step E `depositCount()` cross-check. |
 | `l2NetworkId` | No | L2 network ID. Defaults to `1`. |
 | `targetBlock` | No | Target block for state capture. Accepts a decimal number (`"21000000"`), hex (`"0x1406f40"`), or a finality keyword: `"LatestBlock"`, `"FinalizedBlock"`, `"SafeBlock"`, `"PendingBlock"`. An optional negative offset can be appended (e.g. `"LatestBlock/-10"` = ten blocks before latest). Omitting the field or setting it to `""` defaults to `"LatestBlock"`. The keyword is resolved to a concrete block number at the start of Step 0 and saved to `step-0-l2_target_block.json`. All subsequent steps use that fixed number. |
 | `exitAddress` | Yes | Address that receives SC-locked value exits on `destinationNetwork`. **Must be an address whose private key you control**, and **must not be the zero address** (`0x00…00`) — `LoadConfig` rejects both an empty value and the zero address, since these funds can only be recovered by signing from this address. **A multisig (e.g. a Gnosis Safe) is strongly recommended** over a single EOA, so that recovering these funds does not depend on a single private key. |
@@ -277,11 +277,12 @@ All checks run regardless of individual failures; a combined error lists every f
 
 1. **Anvil installed** — `anvil` must be in `$PATH` (required by Step G2 only when `options.verifyNewLocalExitRootUsingShadowFork=true`). Fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh) if missing.
 2. **L1 RPC reachable** — dials `l1RpcUrl` and calls `eth_blockNumber`. Fails if not set or unreachable.
-3. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.
-4. **`sovereignRollupAddr` is set** — required; fails if zero address.
-5. **Network type is PP** — queries `AGGCHAINTYPE()` on the `aggchainbase` contract at `sovereignRollupAddr` on L1. FEP is not supported. Only runs if checks 2 and 4 passed.
-6. **Threshold is 1** — queries the multisig threshold. Fails if > 1. Also verifies the bridge address on the contract matches config. Logs all committee signers and their URLs. Only runs if checks 2 and 4 passed.
-7. **No custom gas token** — calls `gasTokenAddress()`/`gasTokenNetwork()` on the L2 bridge. Fails if a non-zero gas token is configured (not supported).
+3. **`l1BridgeAddress` is the L1 bridge** — calls `networkID()` on `l1BridgeAddress` over the L1 RPC and requires 0 (the L1/mainnet network). A wrong address (a typo, a non-bridge contract, or the `l2BridgeAddress` default not existing on L1) would make Step E silently miss every unclaimed L1→L2 deposit. Only runs if check 2 passed.
+4. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.
+5. **`sovereignRollupAddr` is set** — required; fails if zero address.
+6. **Network type is PP** — queries `AGGCHAINTYPE()` on the `aggchainbase` contract at `sovereignRollupAddr` on L1. FEP is not supported. Only runs if checks 2 and 5 passed.
+7. **Threshold is 1 + bridge addresses match** — queries the multisig threshold. Fails if > 1. Also verifies `l1BridgeAddress` matches both `aggchainbase.bridgeAddress()` and the canonical `rollupManager.bridgeAddress()` (the mismatch error shows the correct address to configure). Logs all committee signers and their URLs. Only runs if checks 2 and 5 passed.
+8. **No custom gas token** — calls `gasTokenAddress()`/`gasTokenNetwork()` on the L2 bridge. Fails if a non-zero gas token is configured (not supported).
 
 **Output:** `step-check-result.json`
 
@@ -384,6 +385,8 @@ Scans L1 for `BridgeEvent` events targeting the L2 and checks each deposit again
   - **No unclaimed asset deposits** → step completes, certificate passed through unchanged.
   - **Unclaimed asset deposits found + `ignoreUnclaimed=true`** → deposits are detected, amounts logged with a warning, certificate left unchanged.
   - **Unclaimed asset deposits found + `ignoreUnclaimed=false`** → pipeline **errors**. Adding unclaimed deposits to the certificate requires Merkle proofs which are not yet implemented.
+
+After the scan, Step E cross-checks the raw `BridgeEvent` log count (all destination networks) against the L1 bridge's on-chain `depositCount()` over the scanned range and errors on a mismatch: a wrong `l1BridgeAddress` makes `eth_getLogs` silently return no logs (which would read as "no unclaimed deposits"), and a flaky L1 RPC can truncate results. If the node has pruned the state at the scan's end block the exact match degrades to an upper-bound check against `depositCount()` at latest (with a warning); a `depositCount()` call that fails even at latest is fatal — there is no bridge at that address.
 
 When `bridgeServiceURL` is set, Step E compares its detected unclaimed set against the bridge service's pending-bridges and errors if the sets differ. Supports both aggkit (`/bridge/v1/bridges`) and zkevm-bridge-service (`/pending-bridges`) via `bridgeServiceType`.
 

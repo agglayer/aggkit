@@ -711,17 +711,24 @@ func fetchL1BridgeEvents(
 	log.Infof("Fetching L1 BridgeEvents: blocks %d→%d, %d ranges, concurrency=%d",
 		fromBlock, l1LatestBlock, len(jobs), concurrency)
 
+	type rangeResult struct {
+		deposits []L1Deposit
+		logCount int
+	}
 	var allDeposits []L1Deposit
+	var totalLogs int
 
 	err := runWorkerPool(
 		ctx, jobs, concurrency,
-		func(j blockRangeJob) ([]L1Deposit, error) {
-			return fetchBridgeEventsInRange(
+		func(j blockRangeJob) (rangeResult, error) {
+			deposits, logCount, err := fetchBridgeEventsInRange(
 				ctx, cfg.L1RPCURL, cfg.L1BridgeAddress, cfg.L2NetworkID, j.from, j.to,
 			)
+			return rangeResult{deposits: deposits, logCount: logCount}, err
 		},
-		func(deposits []L1Deposit) {
-			allDeposits = append(allDeposits, deposits...)
+		func(r rangeResult) {
+			allDeposits = append(allDeposits, r.deposits...)
+			totalLogs += r.logCount
 		},
 		"L1 BridgeEvent",
 	)
@@ -729,15 +736,107 @@ func fetchL1BridgeEvents(
 		return nil, fmt.Errorf("L1 BridgeEvent scan: %w", err)
 	}
 
-	log.Infof("L1 BridgeEvent: %d events found", len(allDeposits))
+	log.Infof("L1 BridgeEvent: %d events found (%d targeting network %d)",
+		totalLogs, len(allDeposits), cfg.L2NetworkID)
+
+	if err := verifyL1BridgeDepositCount(ctx, cfg, l1LatestBlock, totalLogs); err != nil {
+		return nil, err
+	}
 	return allDeposits, nil
 }
 
-// fetchBridgeEventsInRange fetches BridgeEvent logs in a single block range.
+// verifyL1BridgeDepositCount cross-checks the scanned BridgeEvent total against the L1 bridge's
+// on-chain depositCount(). With an incorrect l1BridgeAddress eth_getLogs silently returns no logs
+// and Step E would conclude there is nothing unclaimed, so the number of BridgeEvent logs found
+// (all destination networks) must equal the depositCount() delta over the scanned block range.
+// State pruned beyond the node's horizon degrades the exact match to an upper-bound check with a
+// warning; a depositCount() call that fails even at the latest block is fatal — the address does
+// not host the L1 bridge.
+func verifyL1BridgeDepositCount(ctx context.Context, cfg *Config, l1EndBlock uint64, totalEvents int) error {
+	endCount, err := fetchL1BridgeDepositCount(ctx, cfg, toBlockTag(l1EndBlock))
+	if err != nil {
+		// l1EndBlock may be behind the node's state horizon; latest always has state.
+		latestCount, latestErr := fetchL1BridgeDepositCount(ctx, cfg, "latest")
+		if latestErr != nil {
+			return fmt.Errorf("depositCount() failed on the L1 bridge %s (%w) — "+
+				"l1BridgeAddress is probably wrong (not the L1 bridge contract), so the unclaimed "+
+				"L1→L2 deposit scan cannot be trusted", cfg.L1BridgeAddress.Hex(), latestErr)
+		}
+		log.Warnf("depositCount() at L1 block %d unavailable (%v) — state pruned? Degrading to an "+
+			"upper-bound check against depositCount at latest (%d)", l1EndBlock, err, latestCount)
+		if uint64(totalEvents) > latestCount {
+			return fmt.Errorf("L1 BridgeEvent scan found %d events but the L1 bridge %s reports "+
+				"depositCount()=%d at latest — inconsistent scan", totalEvents, cfg.L1BridgeAddress.Hex(), latestCount)
+		}
+		return nil
+	}
+
+	expected := endCount
+	exact := true
+	if cfg.Options.L1StartBlock > 0 {
+		startCount, err := fetchL1BridgeDepositCount(ctx, cfg, toBlockTag(cfg.Options.L1StartBlock-1))
+		switch {
+		case err != nil:
+			log.Warnf("depositCount() at L1 block %d unavailable (%v) — cannot subtract pre-l1StartBlock "+
+				"deposits; degrading to an upper-bound check", cfg.Options.L1StartBlock-1, err)
+			exact = false
+		case startCount > endCount:
+			return fmt.Errorf("L1 bridge depositCount went backwards: %d at block %d, %d at block %d — "+
+				"inconsistent L1 RPC data", startCount, cfg.Options.L1StartBlock-1, endCount, l1EndBlock)
+		default:
+			expected = endCount - startCount
+		}
+	}
+
+	switch {
+	case exact && uint64(totalEvents) != expected:
+		return fmt.Errorf("L1 BridgeEvent scan mismatch: found %d events in blocks %d→%d but the L1 "+
+			"bridge %s depositCount reports %d — either l1BridgeAddress is wrong or the L1 RPC "+
+			"truncated eth_getLogs results",
+			totalEvents, cfg.Options.L1StartBlock, l1EndBlock, cfg.L1BridgeAddress.Hex(), expected)
+	case !exact && uint64(totalEvents) > endCount:
+		return fmt.Errorf("L1 BridgeEvent scan found %d events in blocks %d→%d but the L1 bridge %s "+
+			"reports only depositCount()=%d — inconsistent scan",
+			totalEvents, cfg.Options.L1StartBlock, l1EndBlock, cfg.L1BridgeAddress.Hex(), endCount)
+	}
+	log.Infof("✅ L1 BridgeEvent scan matches the bridge depositCount (%d events)", totalEvents)
+	return nil
+}
+
+// fetchL1BridgeDepositCount reads depositCount() from the L1 bridge via eth_call at the given
+// block tag. Empty return data (an address with no contract code) is an error.
+func fetchL1BridgeDepositCount(ctx context.Context, cfg *Config, blockTag string) (uint64, error) {
+	callData := "0x" + common.Bytes2Hex(bridgeABI.Methods["depositCount"].ID)
+	result, err := singleRPC(ctx, cfg.L1RPCURL, "eth_call", []any{
+		map[string]string{"to": cfg.L1BridgeAddress.Hex(), "data": callData},
+		blockTag,
+	}, defaultRetries)
+	if err != nil {
+		return 0, fmt.Errorf("depositCount() at block %s: %w", blockTag, err)
+	}
+
+	var hex string
+	if err := json.Unmarshal(result, &hex); err != nil {
+		return 0, fmt.Errorf("parse depositCount() result at block %s: %w", blockTag, err)
+	}
+	if len(common.FromHex(hex)) == 0 {
+		return 0, fmt.Errorf("depositCount() at block %s returned no data — no contract code at %s",
+			blockTag, cfg.L1BridgeAddress.Hex())
+	}
+	count := hexToBigInt(hex)
+	if !count.IsUint64() {
+		return 0, fmt.Errorf("depositCount() at block %s returned a non-uint64 value %s", blockTag, hex)
+	}
+	return count.Uint64(), nil
+}
+
+// fetchBridgeEventsInRange fetches BridgeEvent logs in a single block range. It returns the
+// deposits targeting l2NetworkID plus the raw BridgeEvent log count (all destination networks),
+// which fetchL1BridgeEvents cross-checks against the bridge's on-chain depositCount().
 func fetchBridgeEventsInRange(
 	ctx context.Context, rpcURL string, bridgeAddress common.Address,
 	l2NetworkID uint32, fromBlock, toBlock uint64,
-) ([]L1Deposit, error) {
+) ([]L1Deposit, int, error) {
 	result, err := singleRPC(ctx, rpcURL, "eth_getLogs", []any{
 		map[string]any{
 			"address":   bridgeAddress.Hex(),
@@ -747,7 +846,7 @@ func fetchBridgeEventsInRange(
 		},
 	}, defaultRetries)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	var logs []struct {
@@ -756,7 +855,7 @@ func fetchBridgeEventsInRange(
 		TransactionHash string `json:"transactionHash"`
 	}
 	if err := json.Unmarshal(result, &logs); err != nil {
-		return nil, fmt.Errorf("unmarshal logs: %w", err)
+		return nil, 0, fmt.Errorf("unmarshal logs: %w", err)
 	}
 
 	var deposits []L1Deposit
@@ -769,7 +868,7 @@ func fetchBridgeEventsInRange(
 			deposits = append(deposits, dep)
 		}
 	}
-	return deposits, nil
+	return deposits, len(logs), nil
 }
 
 // decodeBridgeEvent decodes ABI-encoded BridgeEvent data.

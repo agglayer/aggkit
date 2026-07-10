@@ -53,11 +53,12 @@ All checks run regardless of individual failures. A combined error lists every f
 
 1. **Anvil installed** — `anvil` must be in `$PATH` (required by Step G2 only when `options.verifyNewLocalExitRootUsingShadowFork=true`). Fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh) if missing.
 2. **L1 RPC reachable** — dials `l1RpcUrl` and calls `eth_blockNumber`. Fails if not set or unreachable.
-3. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.
-4. **`sovereignRollupAddr` is set** — required; fails if zero address.
-5. **Network type is PP** — queries `AGGCHAINTYPE()` on the `aggchainbase` contract at `sovereignRollupAddr` on L1. Fails if FEP. Only runs if checks 2 and 4 passed.
-6. **Threshold is 1** — queries `Threshold()` and `GetAggchainSignerInfos()`. Fails if threshold > 1. Also verifies the bridge address on the contract matches config. Only runs if checks 2 and 4 passed.
-7. **No custom gas token** — calls `gasTokenAddress()`/`gasTokenNetwork()` on the L2 bridge. Fails if a non-zero gas token is set (not supported).
+3. **`l1BridgeAddress` is the L1 bridge** — calls `networkID()` on `l1BridgeAddress` over the L1 RPC and requires 0 (the L1/mainnet network). Catches a typo, a non-bridge contract, or the `l2BridgeAddress` default pointing at an address that is not the L1 bridge — Step E trusts this address to detect unclaimed L1→L2 deposits and `eth_getLogs` silently returns nothing on a wrong one. Only runs if check 2 passed.
+4. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.
+5. **`sovereignRollupAddr` is set** — required; fails if zero address.
+6. **Network type is PP** — queries `AGGCHAINTYPE()` on the `aggchainbase` contract at `sovereignRollupAddr` on L1. Fails if FEP. Only runs if checks 2 and 5 passed.
+7. **Threshold is 1 + bridge addresses match** — queries `Threshold()` and `GetAggchainSignerInfos()`. Fails if threshold > 1. Also verifies `aggchainbase.bridgeAddress()` (the L1 bridge the consensus contract references) matches `l1BridgeAddress`, and cross-checks `l1BridgeAddress` against the canonical `rollupManager.bridgeAddress()` — the mismatch error carries the correct address to put in the config (recorded in the result as `rollupManagerBridgeAddress`). Only runs if checks 2 and 5 passed.
+8. **No custom gas token** — calls `gasTokenAddress()`/`gasTokenNetwork()` on the L2 bridge. Fails if a non-zero gas token is set (not supported).
 
 - **Output:** `step-check-result.json` (`StepCheckResult`)
 
@@ -158,6 +159,7 @@ Creates the `*agglayertypes.Certificate` with `BridgeExit` entries:
 
 - **Requires:** `l1RpcUrl` (skipped otherwise).
 - Scans L1 `BridgeEvent` events targeting L2 network, checks each deposit against `isClaimed` on L2 bridge.
+- **depositCount cross-check:** after the scan, `verifyL1BridgeDepositCount` requires the raw `BridgeEvent` log count (all destination networks) to equal the L1 bridge's on-chain `depositCount()` delta over the scanned range — a wrong `l1BridgeAddress` makes `eth_getLogs` silently return nothing (and a flaky L1 RPC can truncate results), which would otherwise read as "no unclaimed deposits". State pruned beyond the node's horizon degrades the exact match to an upper-bound check against `depositCount()` at latest (with a warning); a `depositCount()` call that fails even at latest is fatal (no bridge at that address).
 - **L1 cutoff:** the scan ends at `options.l1EndBlock` when configured (deposits made on L1 after that block are ignored — AET-03 mitigation; the bridge service cross-check filters them out too), otherwise at the current latest L1 block.
 - Splits unclaimed deposits by leaf type: **assets** (`leaf_type=0`) are added to the certificate as `bridge_exits` + `imported_bridge_exits` (with `claim_data: null`); **messages** (`leaf_type=1`) are excluded from the certificate and saved separately.
 - **Bridge service cross-check:** when `options.bridgeServiceURL` is set, compares the detected unclaimed asset set against the bridge service's pending-bridges and errors on any discrepancy. Controlled by `options.bridgeServiceType` (`"aggkit"` → `GET /bridge/v1/bridges`; `"zkevm"` → `GET /pending-bridges`).
@@ -393,7 +395,7 @@ Notable optional fields:
 
 Defaults applied by `LoadConfig`:
 
-- `l1BridgeAddress` defaults to `l2BridgeAddress`
+- `l1BridgeAddress` defaults to `l2BridgeAddress`. The value (default or explicit) is verified on-chain by Step CHECK (`networkID()==0`, `aggchainbase.bridgeAddress()`, `rollupManager.bridgeAddress()`) and by the Step E `depositCount()` cross-check — a wrong address would otherwise silently hide unclaimed L1→L2 deposits.
 - `l2NetworkId` defaults to `1`
 - `options.blockRange` = 5000, `concurrencyLimit` = 20, `rpcBatchSize` = 200
 - `options.ignoreGenesisBalance` = `false` — when `false` (default), Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `true` to downgrade it to a warning, only for Kurtosis/test environments.

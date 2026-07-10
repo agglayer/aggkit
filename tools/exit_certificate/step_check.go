@@ -21,10 +21,12 @@ var aggchainTypePP = [2]byte{0, 0}
 // RunStepCheck verifies prerequisites before running the pipeline:
 //  1. Anvil is installed ($PATH).
 //  2. L1 RPC is set and reachable.
-//  3. L2 network ID matches the bridge contract.
-//  4. sovereignRollupAddr is set.
-//  5. Network type is PP (FEP is not supported).
-//  6. Multisig threshold is 1.
+//  3. l1BridgeAddress is the L1 bridge: networkID() on it must return 0 (the L1/mainnet network).
+//  4. L2 network ID matches the bridge contract.
+//  5. sovereignRollupAddr is set.
+//  6. Network type is PP (FEP is not supported).
+//  7. Multisig threshold is 1, and l1BridgeAddress matches both aggchainbase.bridgeAddress() and
+//     the canonical rollupManager.bridgeAddress().
 //
 // All checks run regardless of individual failures. Returns a combined error listing every
 // failed check.
@@ -74,10 +76,17 @@ func RunStepCheck(ctx context.Context, cfg *Config) (*StepCheckResult, error) {
 		defer l1Client.Close()
 	}
 
-	// --- 3. L2 network ID matches bridge contract ---
+	// --- 3. l1BridgeAddress is the L1 bridge ---
+	if l1Client != nil {
+		checkL1BridgeNetworkID(ctx, cfg, l1Client, &failures)
+	} else {
+		log.Info("❌ l1BridgeAddress check skipped — l1RpcUrl is not available")
+	}
+
+	// --- 4. L2 network ID matches bridge contract ---
 	checkL2NetworkID(ctx, cfg, result, &failures)
 
-	// --- 4. sovereignRollupAddr is set ---
+	// --- 5. sovereignRollupAddr is set ---
 	zeroAddr := [20]byte{}
 	if cfg.SovereignRollupAddr == zeroAddr {
 		log.Info("❌ sovereignRollupAddr is not set — required to verify network type and threshold")
@@ -85,7 +94,7 @@ func RunStepCheck(ctx context.Context, cfg *Config) (*StepCheckResult, error) {
 		failures = append(failures, msg)
 		result.NetworkType = uncheckedStatus
 	} else if l1Client != nil {
-		// --- 5 & 6. Network type + threshold ---
+		// --- 6 & 7. Network type + threshold + bridge addresses ---
 		checkContractPrereqs(ctx, cfg, l1Client, result, &failures)
 	} else {
 		// L1 client failed — contract checks cannot run
@@ -105,6 +114,39 @@ func RunStepCheck(ctx context.Context, cfg *Config) (*StepCheckResult, error) {
 	log.Infof("❌ %d check(s) failed", len(failures))
 	log.Info("STEP CHECK failed")
 	return result, fmt.Errorf("prerequisite checks failed:\n  - %s", strings.Join(failures, "\n  - "))
+}
+
+// checkL1BridgeNetworkID verifies cfg.L1BridgeAddress really is the L1 bridge by calling
+// networkID() on it over the L1 RPC and requiring 0 (the L1/mainnet network in agglayer).
+// Step E trusts this address to detect unclaimed L1→L2 deposits via eth_getLogs, which silently
+// returns no logs on a wrong address, so a typo, a non-bridge contract, or an L2-only bridge
+// address (the default when l1BridgeAddress is unset) must be caught here.
+func checkL1BridgeNetworkID(ctx context.Context, cfg *Config, l1Client *ethclient.Client, failures *[]string) {
+	caller, err := agglayerbridgel2.NewAgglayerbridgel2Caller(cfg.L1BridgeAddress, l1Client)
+	if err != nil {
+		msg := fmt.Sprintf("create L1 bridge caller (addr=%s): %v", cfg.L1BridgeAddress.Hex(), err)
+		log.Infof("❌ %s", msg)
+		*failures = append(*failures, msg)
+		return
+	}
+
+	onChainID, err := caller.NetworkID(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		msg := fmt.Sprintf("query networkID() on l1BridgeAddress %s: %v — the address is probably not "+
+			"the L1 bridge contract (Step E would silently miss every unclaimed L1→L2 deposit)",
+			cfg.L1BridgeAddress.Hex(), err)
+		log.Infof("❌ %s", msg)
+		*failures = append(*failures, msg)
+		return
+	}
+	if onChainID != 0 {
+		msg := fmt.Sprintf("l1BridgeAddress %s is not the L1 bridge: networkID()=%d, expected 0 "+
+			"(the L1/mainnet network)", cfg.L1BridgeAddress.Hex(), onChainID)
+		log.Infof("❌ %s", msg)
+		*failures = append(*failures, msg)
+		return
+	}
+	log.Infof("✅ l1BridgeAddress is the L1 bridge (networkID()=0, %s)", cfg.L1BridgeAddress.Hex())
 }
 
 // checkL2NetworkID dials the L2 RPC, calls NetworkID() on the bridge contract, and verifies
@@ -242,13 +284,15 @@ func checkContractPrereqs(
 		log.Infof("❌ %s", msg)
 		*failures = append(*failures, msg)
 	} else {
-		if bridgeAddr != cfg.L2BridgeAddress {
-			msg := fmt.Sprintf("bridge address mismatch: bridge contract=%s, config=%s",
-				bridgeAddr.Hex(), cfg.L2BridgeAddress.Hex())
+		// aggchainbase lives on L1 and its bridgeAddress is the L1 bridge, so it must match
+		// l1BridgeAddress — the address Step E scans for unclaimed L1→L2 deposits.
+		if bridgeAddr != cfg.L1BridgeAddress {
+			msg := fmt.Sprintf("L1 bridge address mismatch: aggchainbase bridgeAddress()=%s, config l1BridgeAddress=%s",
+				bridgeAddr.Hex(), cfg.L1BridgeAddress.Hex())
 			log.Infof("❌ %s", msg)
 			*failures = append(*failures, msg)
 		} else {
-			log.Infof("✅ bridge address from aggchainbase matches config (%s)", bridgeAddr.Hex())
+			log.Infof("✅ l1BridgeAddress matches aggchainbase bridgeAddress() (%s)", bridgeAddr.Hex())
 		}
 	}
 
@@ -259,7 +303,43 @@ func checkContractPrereqs(
 		*failures = append(*failures, msg)
 	} else {
 		log.Infof("   RollupManager address: %s", rollupManager.Hex())
+		checkRollupManagerBridgeAddress(ctx, cfg, rollupManager, l1Client, result, failures)
 	}
+}
+
+// checkRollupManagerBridgeAddress cross-checks cfg.L1BridgeAddress against the canonical L1 bridge
+// the RollupManager publishes (bridgeAddress()). This is the authoritative source, so the mismatch
+// error carries the correct address to put in the config.
+func checkRollupManagerBridgeAddress(
+	ctx context.Context, cfg *Config, rollupManagerAddr common.Address,
+	l1Client *ethclient.Client, result *StepCheckResult, failures *[]string,
+) {
+	rmCaller, err := polygonrollupmanagerpessimistic.NewPolygonrollupmanagerpessimisticCaller(rollupManagerAddr, l1Client)
+	if err != nil {
+		msg := fmt.Sprintf("create rollup manager caller (addr=%s): %v", rollupManagerAddr.Hex(), err)
+		log.Infof("❌ %s", msg)
+		*failures = append(*failures, msg)
+		return
+	}
+
+	canonicalBridge, err := rmCaller.BridgeAddress(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		msg := fmt.Sprintf("query rollupManager bridgeAddress() (addr=%s): %v", rollupManagerAddr.Hex(), err)
+		log.Infof("❌ %s", msg)
+		*failures = append(*failures, msg)
+		return
+	}
+
+	result.RollupManagerBridgeAddress = canonicalBridge.Hex()
+	if canonicalBridge != cfg.L1BridgeAddress {
+		msg := fmt.Sprintf("l1BridgeAddress mismatch: rollupManager %s reports the L1 bridge is %s, config has %s — "+
+			"set l1BridgeAddress=%s", rollupManagerAddr.Hex(), canonicalBridge.Hex(),
+			cfg.L1BridgeAddress.Hex(), canonicalBridge.Hex())
+		log.Infof("❌ %s", msg)
+		*failures = append(*failures, msg)
+		return
+	}
+	log.Infof("✅ l1BridgeAddress matches rollupManager bridgeAddress() (%s)", canonicalBridge.Hex())
 }
 
 // logLegacyRollupInfo gathers rollup manager diagnostics when AGGCHAINTYPE is unavailable

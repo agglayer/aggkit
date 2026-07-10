@@ -101,7 +101,7 @@ func TestCheckClaimedBatchEmpty(t *testing.T) {
 func TestFetchBridgeEventsInRange(t *testing.T) {
 	t.Parallel()
 	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
-		require.Equal(t, "eth_getLogs", method)
+		require.Equal(t, rpcMethodEthGetLogs, method)
 		return []map[string]string{
 			{ // targets L2 (destNet=1) → kept
 				"data":            makeBridgeEventData(0, 0, 1, 5, 1000),
@@ -115,28 +115,129 @@ func TestFetchBridgeEventsInRange(t *testing.T) {
 			},
 		}
 	})
-	deposits, err := fetchBridgeEventsInRange(context.Background(), url, common.HexToAddress("0xbridge"), 1, 0, 100)
+	deposits, logCount, err := fetchBridgeEventsInRange(
+		context.Background(), url, common.HexToAddress("0xbridge"), 1, 0, 100)
 	require.NoError(t, err)
 	require.Len(t, deposits, 1)
+	require.Equal(t, 2, logCount, "raw log count includes every destination network")
 	require.Equal(t, uint32(5), deposits[0].DepositCount)
 	require.Equal(t, big.NewInt(1000), deposits[0].Amount)
 }
 
+// depositCountWord encodes a depositCount() eth_call return value (a single uint256 word).
+func depositCountWord(n uint64) string {
+	word := make([]byte, 32)
+	new(big.Int).SetUint64(n).FillBytes(word)
+	return "0x" + common.Bytes2Hex(word)
+}
+
 func TestFetchL1BridgeEvents(t *testing.T) {
 	t.Parallel()
+	// blockRange=50 over blocks 0→100 → 3 getLogs ranges of 1 event each; depositCount must match 3.
 	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
-		require.Equal(t, "eth_getLogs", method)
-		return []map[string]string{{
-			"data":            makeBridgeEventData(0, 0, 1, 0, 50),
-			"blockNumber":     "0x1",
-			"transactionHash": common.HexToHash("0xaaa").Hex(),
-		}}
+		switch method {
+		case rpcMethodEthGetLogs:
+			return []map[string]string{{
+				"data":            makeBridgeEventData(0, 0, 1, 0, 50),
+				"blockNumber":     "0x1",
+				"transactionHash": common.HexToHash("0xaaa").Hex(),
+			}}
+		case rpcMethodEthCall:
+			return depositCountWord(3)
+		}
+		require.Failf(t, "unexpected RPC method", "%s", method)
+		return nil
 	})
-	cfg := &Config{L1RPCURL: url, L2NetworkID: 1,
+	cfg := &Config{L1RPCURL: url, L2NetworkID: 1, L1BridgeAddress: common.HexToAddress("0xbridge"),
 		Options: Options{BlockRange: 50, ConcurrencyLimit: 2, L1StartBlock: 0}}
 	deposits, err := fetchL1BridgeEvents(context.Background(), cfg, 100)
 	require.NoError(t, err)
-	require.NotEmpty(t, deposits)
+	require.Len(t, deposits, 3)
+}
+
+func TestFetchL1BridgeEventsDepositCountMismatch(t *testing.T) {
+	t.Parallel()
+	// The scan finds 0 events (the wrong-l1BridgeAddress symptom) but the bridge reports
+	// depositCount()=5 → the scan cannot be trusted and the step must error.
+	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
+		switch method {
+		case rpcMethodEthGetLogs:
+			return []map[string]string{}
+		case rpcMethodEthCall:
+			return depositCountWord(5)
+		}
+		return nil
+	})
+	cfg := &Config{L1RPCURL: url, L2NetworkID: 1, L1BridgeAddress: common.HexToAddress("0xbridge"),
+		Options: Options{BlockRange: 200, ConcurrencyLimit: 2}}
+	_, err := fetchL1BridgeEvents(context.Background(), cfg, 100)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "depositCount")
+	require.Contains(t, err.Error(), "l1BridgeAddress")
+}
+
+func TestFetchL1BridgeEventsNoContractAtL1BridgeAddress(t *testing.T) {
+	t.Parallel()
+	// eth_call on an address with no code returns empty data at every block → fatal error.
+	url := newBatchRPCServer(t, func(method string, _ []json.RawMessage) any {
+		switch method {
+		case rpcMethodEthGetLogs:
+			return []map[string]string{}
+		case rpcMethodEthCall:
+			return "0x"
+		}
+		return nil
+	})
+	cfg := &Config{L1RPCURL: url, L2NetworkID: 1, L1BridgeAddress: common.HexToAddress("0xdead"),
+		Options: Options{BlockRange: 200, ConcurrencyLimit: 2}}
+	_, err := fetchL1BridgeEvents(context.Background(), cfg, 100)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "l1BridgeAddress is probably wrong")
+}
+
+func TestVerifyL1BridgeDepositCountWithStartBlock(t *testing.T) {
+	t.Parallel()
+	// depositCount()=2 at block 9 (l1StartBlock-1) and 5 at block 100 → the scan over 10→100 must
+	// have found exactly 3 events.
+	url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
+		require.Equal(t, rpcMethodEthCall, method)
+		var blockTag string
+		require.NoError(t, json.Unmarshal(params[1], &blockTag))
+		if blockTag == "0x9" {
+			return depositCountWord(2)
+		}
+		return depositCountWord(5)
+	})
+	cfg := &Config{L1RPCURL: url, L1BridgeAddress: common.HexToAddress("0xbridge"),
+		Options: Options{L1StartBlock: 10}}
+
+	require.NoError(t, verifyL1BridgeDepositCount(context.Background(), cfg, 100, 3))
+
+	err := verifyL1BridgeDepositCount(context.Background(), cfg, 100, 2)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mismatch")
+}
+
+func TestVerifyL1BridgeDepositCountPrunedStateFallsBackToLatest(t *testing.T) {
+	t.Parallel()
+	// Historical state unavailable (empty return) but latest works → upper-bound check against
+	// depositCount at latest.
+	url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
+		require.Equal(t, rpcMethodEthCall, method)
+		var blockTag string
+		require.NoError(t, json.Unmarshal(params[1], &blockTag))
+		if blockTag == "latest" {
+			return depositCountWord(5)
+		}
+		return "0x"
+	})
+	cfg := &Config{L1RPCURL: url, L1BridgeAddress: common.HexToAddress("0xbridge")}
+
+	require.NoError(t, verifyL1BridgeDepositCount(context.Background(), cfg, 100, 4))
+
+	err := verifyL1BridgeDepositCount(context.Background(), cfg, 100, 9)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "inconsistent scan")
 }
 
 func TestFetchL1BridgeEventsEmptyRange(t *testing.T) {
