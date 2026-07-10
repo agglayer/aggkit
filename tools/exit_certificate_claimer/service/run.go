@@ -11,9 +11,9 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// Run is the urfave/cli action entry point: it initializes logging and runs the service. With
-// --log-json a fatal error is emitted through the logger (keeping the whole output machine
-// parseable); otherwise it is returned so main prints the plain "Error: ..." line.
+// Run is the urfave/cli action entry point: it initializes logging and runs the service. A fatal
+// error is emitted through the configured logger — honoring --log-json — rather than returned to
+// urfave/cli's plain-text error handling.
 func Run(c *cli.Context) error {
 	logLevel := "info"
 	if c.Bool("verbose") {
@@ -31,11 +31,8 @@ func Run(c *cli.Context) error {
 	logger := log.WithFields("module", "exit-certificate-claimer")
 
 	if err := run(c, logger); err != nil {
-		if c.Bool("log-json") {
-			logger.Error(err)
-			return cli.Exit("", 1)
-		}
-		return err
+		logger.Error(err)
+		return cli.Exit("", 1)
 	}
 	return nil
 }
