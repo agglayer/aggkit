@@ -246,14 +246,12 @@ func TestRunStepIGuards(t *testing.T) {
 func TestRunAllStepEFull(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	srv := newBatchRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
+	srv := newBatchRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
 		switch method {
 		case rpcMethodEthBlockNumber:
 			return quoted("0x10"), nil
 		case rpcMethodEthGetLogs:
 			return json.RawMessage(`[]`), nil
-		case rpcMethodEthCall:
-			return stepECallResult(params, 0, false), nil
 		default:
 			return quoted("0x"), nil
 		}

@@ -86,20 +86,6 @@ func claimedResult(claimed bool) json.RawMessage {
 	return quoted("0x0000000000000000000000000000000000000000000000000000000000000000")
 }
 
-// stepECallResult dispatches an eth_call by selector: depositCount() (Step E's L1 bridge
-// cross-check) gets the given count, anything else (isClaimed) gets the claimed flag.
-func stepECallResult(params []any, count uint64, claimed bool) json.RawMessage {
-	depositCountData := "0x" + common.Bytes2Hex(bridgeABI.Methods["depositCount"].ID)
-	if len(params) > 0 {
-		if call, ok := params[0].(map[string]any); ok {
-			if data, ok := call["data"].(string); ok && data == depositCountData {
-				return quoted(depositCountWord(count))
-			}
-		}
-	}
-	return claimedResult(claimed)
-}
-
 // stepEConfig builds a Config wired to the given stub URL for both L1 and L2 RPC.
 func stepEConfig(url string) *Config {
 	return &Config{
@@ -123,14 +109,12 @@ func emptyCert() *agglayertypes.Certificate {
 
 func TestRunStepE_NoDeposits(t *testing.T) {
 	t.Parallel()
-	srv := newBatchRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
+	srv := newBatchRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
 		switch method {
 		case rpcMethodEthBlockNumber:
 			return quoted("0x10"), nil
 		case rpcMethodEthGetLogs:
 			return json.RawMessage(`[]`), nil
-		case rpcMethodEthCall:
-			return stepECallResult(params, 0, false), nil
 		default:
 			t.Fatalf("unexpected method %s", method)
 			return nil, nil
@@ -146,14 +130,14 @@ func TestRunStepE_NoDeposits(t *testing.T) {
 func TestRunStepE_AllClaimed(t *testing.T) {
 	t.Parallel()
 	data := bridgeEventData(0, 0, 1, 7, big.NewInt(100))
-	srv := newBatchRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
+	srv := newBatchRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
 		switch method {
 		case rpcMethodEthBlockNumber:
 			return quoted("0x10"), nil
 		case rpcMethodEthGetLogs:
 			return bridgeLogsResult(t, data), nil
 		case rpcMethodEthCall:
-			return stepECallResult(params, 1, true), nil
+			return claimedResult(true), nil
 		default:
 			t.Fatalf("unexpected method %s", method)
 			return nil, nil
@@ -168,14 +152,14 @@ func TestRunStepE_AllClaimed(t *testing.T) {
 func TestRunStepE_UnclaimedAssetErrors(t *testing.T) {
 	t.Parallel()
 	data := bridgeEventData(0, 0, 1, 7, big.NewInt(100))
-	srv := newBatchRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
+	srv := newBatchRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
 		switch method {
 		case rpcMethodEthBlockNumber:
 			return quoted("0x10"), nil
 		case rpcMethodEthGetLogs:
 			return bridgeLogsResult(t, data), nil
 		case rpcMethodEthCall:
-			return stepECallResult(params, 1, false), nil
+			return claimedResult(false), nil
 		default:
 			t.Fatalf("unexpected method %s", method)
 			return nil, nil
@@ -192,14 +176,14 @@ func TestRunStepE_UnclaimedAssetIgnored(t *testing.T) {
 	t.Parallel()
 	data := bridgeEventData(0, 0, 1, 7, big.NewInt(100))
 	cfg := stepEConfig("")
-	srv := newBatchRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
+	srv := newBatchRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
 		switch method {
 		case rpcMethodEthBlockNumber:
 			return quoted("0x10"), nil
 		case rpcMethodEthGetLogs:
 			return bridgeLogsResult(t, data), nil
 		case rpcMethodEthCall:
-			return stepECallResult(params, 1, false), nil
+			return claimedResult(false), nil
 		default:
 			return quoted("0x"), nil
 		}
@@ -218,14 +202,14 @@ func TestRunStepE_UnclaimedMessagesOnly(t *testing.T) {
 	t.Parallel()
 	// leaf_type=1 (message) → excluded from certificate, no asset error.
 	data := bridgeEventData(1, 0, 1, 9, big.NewInt(0))
-	srv := newBatchRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
+	srv := newBatchRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
 		switch method {
 		case rpcMethodEthBlockNumber:
 			return quoted("0x10"), nil
 		case rpcMethodEthGetLogs:
 			return bridgeLogsResult(t, data), nil
 		case rpcMethodEthCall:
-			return stepECallResult(params, 1, false), nil
+			return claimedResult(false), nil
 		default:
 			return quoted("0x"), nil
 		}
@@ -253,14 +237,14 @@ func TestRunStepE_BridgeServiceMatch(t *testing.T) {
 	}))
 	defer bridgeSvc.Close()
 
-	srv := newBatchRPCStub(t, func(method string, params []any) (json.RawMessage, *jsonRPCError) {
+	srv := newBatchRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
 		switch method {
 		case rpcMethodEthBlockNumber:
 			return quoted("0x10"), nil
 		case rpcMethodEthGetLogs:
 			return bridgeLogsResult(t, data), nil
 		case rpcMethodEthCall:
-			return stepECallResult(params, 1, false), nil
+			return claimedResult(false), nil
 		default:
 			return quoted("0x"), nil
 		}

@@ -159,7 +159,6 @@ Creates the `*agglayertypes.Certificate` with `BridgeExit` entries:
 
 - **Requires:** `l1RpcUrl` (skipped otherwise).
 - Scans L1 `BridgeEvent` events targeting L2 network, checks each deposit against `isClaimed` on L2 bridge.
-- **depositCount cross-check:** after the scan, `verifyL1BridgeDepositCount` requires the raw `BridgeEvent` log count (all destination networks) to equal the L1 bridge's on-chain `depositCount()` delta over the scanned range — a wrong `l1BridgeAddress` makes `eth_getLogs` silently return nothing (and a flaky L1 RPC can truncate results), which would otherwise read as "no unclaimed deposits". State pruned beyond the node's horizon degrades the exact match to an upper-bound check against `depositCount()` at latest (with a warning); a `depositCount()` call that fails even at latest is fatal (no bridge at that address).
 - **L1 cutoff:** the scan ends at `options.l1EndBlock` when configured (deposits made on L1 after that block are ignored — AET-03 mitigation; the bridge service cross-check filters them out too), otherwise at the current latest L1 block.
 - Splits unclaimed deposits by leaf type: **assets** (`leaf_type=0`) are added to the certificate as `bridge_exits` + `imported_bridge_exits` (with `claim_data: null`); **messages** (`leaf_type=1`) are excluded from the certificate and saved separately.
 - **Bridge service cross-check:** when `options.bridgeServiceURL` is set, compares the detected unclaimed asset set against the bridge service's pending-bridges and errors on any discrepancy. Controlled by `options.bridgeServiceType` (`"aggkit"` → `GET /bridge/v1/bridges`; `"zkevm"` → `GET /pending-bridges`).
@@ -395,7 +394,7 @@ Notable optional fields:
 
 Defaults applied by `LoadConfig`:
 
-- `l1BridgeAddress` defaults to `l2BridgeAddress`. The value (default or explicit) is verified on-chain by Step CHECK (`networkID()==0`, `aggchainbase.bridgeAddress()`, `rollupManager.bridgeAddress()`) and by the Step E `depositCount()` cross-check — a wrong address would otherwise silently hide unclaimed L1→L2 deposits.
+- `l1BridgeAddress` defaults to `l2BridgeAddress`. The value (default or explicit) is verified on-chain by Step CHECK (`networkID()==0`, `aggchainbase.bridgeAddress()`, `rollupManager.bridgeAddress()`) — a wrong address would otherwise silently hide unclaimed L1→L2 deposits.
 - `l2NetworkId` defaults to `1`
 - `options.blockRange` = 5000, `concurrencyLimit` = 20, `rpcBatchSize` = 200
 - `options.ignoreGenesisBalance` = `false` — when `false` (default), Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `true` to downgrade it to a warning, only for Kurtosis/test environments.

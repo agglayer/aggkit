@@ -87,7 +87,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `l2RpcUrl` | Yes | L2 JSON-RPC endpoint. Step A requires `debug_accountRange` (an archive node exposing the `debug` namespace, to query state at `targetBlock`); without it Step A fails. |
 | `l1RpcUrl` | Yes* | L1 JSON-RPC endpoint. Required by Step E (unclaimed deposit detection) and Step I (`L1InfoTreeLeafCount`). Without it Step E is silently skipped and Step I fails — the resulting certificate will be incomplete. |
 | `l2BridgeAddress` | Yes | L2 bridge contract address. |
-| `l1BridgeAddress` | No | L1 bridge contract address. Defaults to `l2BridgeAddress`. Verified on-chain by Step CHECK (`networkID()==0` plus the `aggchainbase`/`rollupManager` bridge-address cross-checks) and by the Step E `depositCount()` cross-check. |
+| `l1BridgeAddress` | No | L1 bridge contract address. Defaults to `l2BridgeAddress`. Verified on-chain by Step CHECK (`networkID()==0` plus the `aggchainbase`/`rollupManager` bridge-address cross-checks). |
 | `l2NetworkId` | No | L2 network ID. Defaults to `1`. |
 | `targetBlock` | No | Target block for state capture. Accepts a decimal number (`"21000000"`), hex (`"0x1406f40"`), or a finality keyword: `"LatestBlock"`, `"FinalizedBlock"`, `"SafeBlock"`, `"PendingBlock"`. An optional negative offset can be appended (e.g. `"LatestBlock/-10"` = ten blocks before latest). Omitting the field or setting it to `""` defaults to `"LatestBlock"`. The keyword is resolved to a concrete block number at the start of Step 0 and saved to `step-0-l2_target_block.json`. All subsequent steps use that fixed number. |
 | `exitAddress` | Yes | Address that receives SC-locked value exits on `destinationNetwork`. **Must be an address whose private key you control**, and **must not be the zero address** (`0x00…00`) — `LoadConfig` rejects both an empty value and the zero address, since these funds can only be recovered by signing from this address. **A multisig (e.g. a Gnosis Safe) is strongly recommended** over a single EOA, so that recovering these funds does not depend on a single private key. |
@@ -385,8 +385,6 @@ Scans L1 for `BridgeEvent` events targeting the L2 and checks each deposit again
   - **No unclaimed asset deposits** → step completes, certificate passed through unchanged.
   - **Unclaimed asset deposits found + `ignoreUnclaimed=true`** → deposits are detected, amounts logged with a warning, certificate left unchanged.
   - **Unclaimed asset deposits found + `ignoreUnclaimed=false`** → pipeline **errors**. Adding unclaimed deposits to the certificate requires Merkle proofs which are not yet implemented.
-
-After the scan, Step E cross-checks the raw `BridgeEvent` log count (all destination networks) against the L1 bridge's on-chain `depositCount()` over the scanned range and errors on a mismatch: a wrong `l1BridgeAddress` makes `eth_getLogs` silently return no logs (which would read as "no unclaimed deposits"), and a flaky L1 RPC can truncate results. If the node has pruned the state at the scan's end block the exact match degrades to an upper-bound check against `depositCount()` at latest (with a warning); a `depositCount()` call that fails even at latest is fatal — there is no bridge at that address.
 
 When `bridgeServiceURL` is set, Step E compares its detected unclaimed set against the bridge service's pending-bridges and errors if the sets differ. Supports both aggkit (`/bridge/v1/bridges`) and zkevm-bridge-service (`/pending-bridges`) via `bridgeServiceType`.
 
