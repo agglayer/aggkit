@@ -11,20 +11,34 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// Run is the urfave/cli action entry point: it loads the config, opens the data sources, and runs
-// the HTTP server until interrupted.
+// Run is the urfave/cli action entry point: it initializes logging and runs the service. A fatal
+// error is emitted through the configured logger — honoring --log-json — rather than returned to
+// urfave/cli's plain-text error handling.
 func Run(c *cli.Context) error {
 	logLevel := "info"
 	if c.Bool("verbose") {
 		logLevel = "debug"
 	}
+	logEnvironment := log.EnvironmentDevelopment
+	if c.Bool("log-json") {
+		logEnvironment = log.EnvironmentProduction
+	}
 	log.Init(log.Config{
-		Environment: log.EnvironmentDevelopment,
+		Environment: logEnvironment,
 		Level:       logLevel,
 		Outputs:     []string{"stderr"},
 	})
 	logger := log.WithFields("module", "exit-certificate-claimer")
 
+	if err := run(c, logger); err != nil {
+		logger.Error(err)
+		return cli.Exit("", 1)
+	}
+	return nil
+}
+
+// run loads the config, opens the data sources, and runs the HTTP server until interrupted.
+func run(c *cli.Context, logger *log.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

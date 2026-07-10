@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	aggkit "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
@@ -80,7 +81,20 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 func (s *Server) handleHealth(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "network_id": s.claimer.NetworkID()})
+	v := aggkit.GetVersion()
+	c.JSON(http.StatusOK, HealthResponse{
+		Status:    "ok",
+		NetworkID: s.claimer.NetworkID(),
+		Version: VersionInfo{
+			Version:   v.Version,
+			GitRev:    v.GitRev,
+			GitBranch: v.GitBranch,
+			BuildDate: v.BuildDate,
+			GoVersion: v.GoVersion,
+			OS:        v.OS,
+			Arch:      v.Arch,
+		},
+	})
 }
 
 func (s *Server) handleBridges(c *gin.Context) {

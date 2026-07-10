@@ -114,7 +114,16 @@ Liveness/readiness probe.
 ```json
 {
   "status": "ok",
-  "network_id": 1
+  "network_id": 1,
+  "version": {
+    "version": "v0.1.0",
+    "git_rev": "abc1234",
+    "git_branch": "feature/exit-certificate-tool",
+    "build_date": "Mon, 30 Jun 2026 10:00:00 +0200",
+    "go_version": "go1.22.0",
+    "os": "linux",
+    "arch": "amd64"
+  }
 }
 ```
 
@@ -122,6 +131,7 @@ Liveness/readiness probe.
 | ----- | ---- | ----------- |
 | `status` | string | Always `ok`. The HTTP server only starts after the L1 Info Tree has been synced up to the certificate's settlement GER, so a reachable endpoint is always ready to serve claim requests. |
 | `network_id` | number | The source network ID the claimer is serving. |
+| `version` | object | Build/version info (same fields the exit_certificate tool prints in its startup banner): `version`, `git_rev`, `git_branch`, `build_date`, `go_version`, `os`, `arch`. Populated at build time via ldflags. |
 
 ### `GET /bridges`
 

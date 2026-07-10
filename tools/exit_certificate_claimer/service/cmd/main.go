@@ -10,6 +10,10 @@ import (
 )
 
 func main() {
+	cli.VersionPrinter = func(*cli.Context) {
+		aggkit.PrintVersion(os.Stdout)
+	}
+
 	app := cli.NewApp()
 	app.Name = "exit-certificate-claimer"
 	app.Usage = "Serve claimAsset parameters for the bridge exits of a settled exit certificate"
@@ -50,8 +54,38 @@ Data sources:
 			Name:  "verbose",
 			Usage: "Enable debug logging",
 		},
+		&cli.BoolFlag{
+			Name:  "log-json",
+			Usage: "Emit logs in JSON format (default is human-readable console format)",
+		},
 	}
 	app.Action = claimer.Run
+	app.Commands = []*cli.Command{
+		{
+			Name:  "healthcheck",
+			Usage: "Probe a running claimer's health endpoint and exit 0 (healthy) or 1 (unhealthy)",
+			Description: "Meant to back a container HEALTHCHECK: the production image has no shell or curl, " +
+				"so the claimer binary itself performs the HTTP probe.",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:  "address",
+					Usage: "Host/IP where the claimer is listening",
+					Value: "127.0.0.1",
+				},
+				&cli.IntFlag{
+					Name:  "port",
+					Usage: "Port where the claimer is listening",
+					Value: claimer.HealthCheckDefaultPort,
+				},
+				&cli.DurationFlag{
+					Name:  "timeout",
+					Usage: "Probe timeout",
+					Value: claimer.HealthCheckDefaultTimeout,
+				},
+			},
+			Action: claimer.RunHealthCheck,
+		},
+	}
 
 	if err := app.Run(os.Args); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)

@@ -111,9 +111,23 @@ CGO_ENABLED=1 go build -o exit-certificate-claimer ./tools/exit_certificate_clai
 
 # override the bind host/port from the command line (works in both modes):
 ./exit-certificate-claimer --config config.toml --address 127.0.0.1 --port 9090
+
+# emit logs in JSON format (default is the human-readable console format):
+./exit-certificate-claimer --config config.toml --log-json
+
+# print the full build/version info and exit (same fields as GET /health):
+./exit-certificate-claimer --version
+
+# probe a running claimer and exit 0/1 (backs the docker-compose healthcheck; the production
+# image has no shell or curl, so the binary performs the HTTP probe itself):
+./exit-certificate-claimer healthcheck --address 127.0.0.1 --port 8080
 ```
 
 `CGO_ENABLED=1` is required (SQLite via `mattn/go-sqlite3`).
+
+`--version` (alias `-v`) prints the build traceability info — version, git revision/branch, build
+date, Go version and OS/arch — the same data served by `GET /claimer/v1/health`. The values are
+injected at build time via ldflags (use the Makefile target so they are populated).
 
 ## Tests
 
