@@ -78,9 +78,12 @@ func RunStepCheck(ctx context.Context, cfg *Config) (*StepCheckResult, error) {
 
 	// --- 3. l1BridgeAddress is the L1 bridge ---
 	if l1Client != nil {
-		checkL1BridgeNetworkID(ctx, cfg, l1Client, &failures)
+		checkL1BridgeNetworkID(ctx, cfg, l1Client, result, &failures)
 	} else {
-		log.Info("❌ l1BridgeAddress check skipped — l1RpcUrl is not available")
+		result.L1BridgeAddressStatus = uncheckedStatus
+		msg := "l1BridgeAddress could not be verified (l1RpcUrl unavailable)"
+		log.Infof("❌ %s", msg)
+		failures = append(failures, msg)
 	}
 
 	// --- 4. L2 network ID matches bridge contract ---
@@ -121,9 +124,14 @@ func RunStepCheck(ctx context.Context, cfg *Config) (*StepCheckResult, error) {
 // Step E trusts this address to detect unclaimed L1→L2 deposits via eth_getLogs, which silently
 // returns no logs on a wrong address, so a typo, a non-bridge contract, or an L2-only bridge
 // address (the default when l1BridgeAddress is unset) must be caught here.
-func checkL1BridgeNetworkID(ctx context.Context, cfg *Config, l1Client *ethclient.Client, failures *[]string) {
+// The outcome is recorded in result.L1BridgeAddressStatus.
+func checkL1BridgeNetworkID(
+	ctx context.Context, cfg *Config, l1Client *ethclient.Client,
+	result *StepCheckResult, failures *[]string,
+) {
 	caller, err := agglayerbridgel2.NewAgglayerbridgel2Caller(cfg.L1BridgeAddress, l1Client)
 	if err != nil {
+		result.L1BridgeAddressStatus = errorStatus
 		msg := fmt.Sprintf("create L1 bridge caller (addr=%s): %v", cfg.L1BridgeAddress.Hex(), err)
 		log.Infof("❌ %s", msg)
 		*failures = append(*failures, msg)
@@ -132,6 +140,7 @@ func checkL1BridgeNetworkID(ctx context.Context, cfg *Config, l1Client *ethclien
 
 	onChainID, err := caller.NetworkID(&bind.CallOpts{Context: ctx})
 	if err != nil {
+		result.L1BridgeAddressStatus = errorStatus
 		msg := fmt.Sprintf("query networkID() on l1BridgeAddress %s: %v — the address is probably not "+
 			"the L1 bridge contract (Step E would silently miss every unclaimed L1→L2 deposit)",
 			cfg.L1BridgeAddress.Hex(), err)
@@ -140,12 +149,14 @@ func checkL1BridgeNetworkID(ctx context.Context, cfg *Config, l1Client *ethclien
 		return
 	}
 	if onChainID != 0 {
+		result.L1BridgeAddressStatus = fmt.Sprintf("invalid (networkID()=%d)", onChainID)
 		msg := fmt.Sprintf("l1BridgeAddress %s is not the L1 bridge: networkID()=%d, expected 0 "+
 			"(the L1/mainnet network)", cfg.L1BridgeAddress.Hex(), onChainID)
 		log.Infof("❌ %s", msg)
 		*failures = append(*failures, msg)
 		return
 	}
+	result.L1BridgeAddressStatus = okStatus
 	log.Infof("✅ l1BridgeAddress is the L1 bridge (networkID()=0, %s)", cfg.L1BridgeAddress.Hex())
 }
 

@@ -248,9 +248,11 @@ func TestCheckL1BridgeNetworkIDIsL1(t *testing.T) {
 		selectorHex(bridgeABI, "networkID"): packReturn(t, bridgeABI, "networkID", uint32(0)),
 	})
 	cfg := &Config{L1BridgeAddress: common.HexToAddress("0xbridge")}
+	result := &StepCheckResult{}
 	var failures []string
-	checkL1BridgeNetworkID(context.Background(), cfg, dialStub(t, url), &failures)
+	checkL1BridgeNetworkID(context.Background(), cfg, dialStub(t, url), result, &failures)
 	require.Empty(t, failures)
+	require.Equal(t, okStatus, result.L1BridgeAddressStatus)
 }
 
 func TestCheckL1BridgeNetworkIDNotL1(t *testing.T) {
@@ -260,11 +262,13 @@ func TestCheckL1BridgeNetworkIDNotL1(t *testing.T) {
 		selectorHex(bridgeABI, "networkID"): packReturn(t, bridgeABI, "networkID", uint32(2)),
 	})
 	cfg := &Config{L1BridgeAddress: common.HexToAddress("0xbridge")}
+	result := &StepCheckResult{}
 	var failures []string
-	checkL1BridgeNetworkID(context.Background(), cfg, dialStub(t, url), &failures)
+	checkL1BridgeNetworkID(context.Background(), cfg, dialStub(t, url), result, &failures)
 	require.Len(t, failures, 1)
 	require.Contains(t, failures[0], "not the L1 bridge")
 	require.Contains(t, failures[0], "networkID()=2")
+	require.Equal(t, "invalid (networkID()=2)", result.L1BridgeAddressStatus)
 }
 
 func TestCheckL1BridgeNetworkIDCallError(t *testing.T) {
@@ -272,10 +276,12 @@ func TestCheckL1BridgeNetworkIDCallError(t *testing.T) {
 	// no networkID selector registered → eth_call errors (a non-bridge contract or no code at all)
 	url := newContractStub(t, map[string]string{})
 	cfg := &Config{L1BridgeAddress: common.HexToAddress("0xdead")}
+	result := &StepCheckResult{}
 	var failures []string
-	checkL1BridgeNetworkID(context.Background(), cfg, dialStub(t, url), &failures)
+	checkL1BridgeNetworkID(context.Background(), cfg, dialStub(t, url), result, &failures)
 	require.Len(t, failures, 1)
 	require.Contains(t, failures[0], "networkID()")
+	require.Equal(t, errorStatus, result.L1BridgeAddressStatus)
 }
 
 // --- RunStepCheck (failure aggregation) ----------------------------------------------------------
@@ -293,7 +299,9 @@ func TestRunStepCheckMissingL1AndSovereign(t *testing.T) {
 	result, err := RunStepCheck(context.Background(), cfg)
 	require.Error(t, err)
 	require.Equal(t, uncheckedStatus, result.NetworkType)
+	require.Equal(t, uncheckedStatus, result.L1BridgeAddressStatus)
 	require.Contains(t, err.Error(), "l1RpcUrl is required")
+	require.Contains(t, err.Error(), "l1BridgeAddress could not be verified")
 	require.Contains(t, err.Error(), "sovereignRollupAddr is required")
 }
 
@@ -329,5 +337,6 @@ func TestRunStepCheckAllReachable(t *testing.T) {
 	}
 	require.Equal(t, "PP", result.NetworkType)
 	require.Equal(t, uint32(1), result.BridgeNetworkID)
+	require.Equal(t, okStatus, result.L1BridgeAddressStatus)
 	require.Equal(t, uint64(1), result.Threshold)
 }

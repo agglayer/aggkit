@@ -290,6 +290,10 @@ type StepFResult struct {
 type StepCheckResult struct {
 	AnvilInstalled  bool   `json:"anvilInstalled"`
 	BridgeNetworkID uint32 `json:"bridgeNetworkID"`
+	// L1BridgeAddressStatus records the l1BridgeAddress verification outcome: "ok" when networkID()
+	// on the configured address returns 0 (the L1/mainnet network), "invalid (networkID()=N)" when
+	// it hosts a non-L1 bridge, "error" when the call fails, "unchecked" when the L1 RPC is unavailable.
+	L1BridgeAddressStatus string `json:"l1BridgeAddressStatus"`
 	// RollupManagerBridgeAddress is the canonical L1 bridge address published by the RollupManager
 	// (bridgeAddress()), recorded so a failed l1BridgeAddress check shows the correct value to use.
 	RollupManagerBridgeAddress string   `json:"rollupManagerBridgeAddress,omitempty"`

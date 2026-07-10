@@ -53,7 +53,7 @@ All checks run regardless of individual failures. A combined error lists every f
 
 1. **Anvil installed** — `anvil` must be in `$PATH` (required by Step G2 only when `options.verifyNewLocalExitRootUsingShadowFork=true`). Fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh) if missing.
 2. **L1 RPC reachable** — dials `l1RpcUrl` and calls `eth_blockNumber`. Fails if not set or unreachable.
-3. **`l1BridgeAddress` is the L1 bridge** — calls `networkID()` on `l1BridgeAddress` over the L1 RPC and requires 0 (the L1/mainnet network). Catches a typo, a non-bridge contract, or the `l2BridgeAddress` default pointing at an address that is not the L1 bridge — Step E trusts this address to detect unclaimed L1→L2 deposits and `eth_getLogs` silently returns nothing on a wrong one. Only runs if check 2 passed.
+3. **`l1BridgeAddress` is the L1 bridge** — calls `networkID()` on `l1BridgeAddress` over the L1 RPC and requires 0 (the L1/mainnet network). Catches a typo, a non-bridge contract, or the `l2BridgeAddress` default pointing at an address that is not the L1 bridge — Step E trusts this address to detect unclaimed L1→L2 deposits and `eth_getLogs` silently returns nothing on a wrong one. The outcome is recorded in the result as `l1BridgeAddressStatus` (`ok` / `invalid (networkID()=N)` / `error` / `unchecked`); if check 2 failed it is `unchecked` and counted as a failure.
 4. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.
 5. **`sovereignRollupAddr` is set** — required; fails if zero address.
 6. **Network type is PP** — queries `AGGCHAINTYPE()` on the `aggchainbase` contract at `sovereignRollupAddr` on L1. Fails if FEP. Only runs if checks 2 and 5 passed.
