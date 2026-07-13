@@ -16,6 +16,7 @@ The chain being deprecated must meet **all** of the following conditions for the
 - **The committee threshold must be 1.** Exactly one committee member must be required to approve certificates. Step CHECK queries the multisig threshold and aborts if it is greater than 1.
 - **The network must have settled at least one certificate.** The tool needs a prior certificate to derive the `PreviousLocalExitRoot` (Step H); a chain that has never settled a certificate cannot be exited with this tool.
 - **The network's sequencer must be stopped.** Halt the sequencer before running the tool so that no new bridges (or other state changes) are produced while the certificate is being built. New activity after the target block would not be reflected in the certificate.
+- **Every L2→L1 bridge exit up to the target block must be settled by the agglayer.** Halting the sequencer is not sufficient: an ordinary bridge withdrawal made *before* the halt advances the L2 local exit root, and if no certificate settling it has been finalized, the tool cannot produce a certificate from that snapshot (the L2 LER no longer matches the agglayer's `settled_ler`). In practice: keep the aggsender running after the halt until the last certificate settles, and only then run the tool. The pipeline verifies this right after Step 0 (LER preflight, AET-11) and aborts with an actionable error before the expensive scan/replay phases; Step H re-checks the same condition at the end. In single-step mode (`--step g2`, …) the preflight does not run and Step H remains the final safety net.
 
 ## Known limitations
 
@@ -205,6 +206,8 @@ Some options let you continue past conditions that would otherwise abort the pip
 
 Runs all steps sequentially: CHECK → 0 → A → B → C → D → E → F → G → H → I → SIGN (if `signerConfig` is set).
 
+Right after Step 0 resolves the target block, the pipeline runs the **LER preflight** (AET-11): it reads the L2 bridge's local exit root at the target block and compares it against the agglayer's `settled_ler` (requires `agglayerClient.grpc.url`, the same requirement Step H enforces later). A mismatch means the target block contains L2→L1 bridge exits no settled certificate covers, and the pipeline aborts immediately — before the expensive scan (Steps A/B) and replay (Step G) phases — with instructions to wait for settlement or pick a target block at or below the settled state.
+
 This produces and signs the certificate but **does not submit it**. SUBMIT and WAIT are intentionally left out of the default pipeline — once you have reviewed the signed certificate, run them explicitly:
 
 ```bash
@@ -218,7 +221,7 @@ This produces and signs the certificate but **does not submit it**. SUBMIT and W
 | Step | Name | What it does |
 | :--: | ---- | ------------ |
 | CHECK | Verify prerequisites | Checks Anvil, L1 RPC, network type (PP only), threshold = 1, no custom gas token. |
-| 0 | Generate LBT | Resolves `targetBlock` to a concrete block number, then scans `NewWrappedToken` events and fetches `totalSupply` per wrapped token at that block. |
+| 0 | Generate LBT | Resolves `targetBlock` to a concrete block number, then scans `NewWrappedToken` events and fetches `totalSupply` per wrapped token at that block. Immediately after, the pipeline runs the LER preflight (see above): L2 bridge LER at the target block vs the agglayer's `settled_ler`, aborting early on unsettled bridge exits. |
 | A | Collect addresses | Discovers every value-holding address from the final state (`debug_accountRange` state dump, for native-ETH holders and contracts) plus `Transfer` event logs per wrapped token (for token holders). Both sources always run and merge. |
 | B | EOA balances + ERC-20 detection | B1: classifies addresses and fetches ETH/token balances for EOAs. B2: probes contracts for the ERC-20 interface and checks if they hold tracked wrapped tokens. B3: fetches holder breakdowns for `extraErc20Contracts` (skips any already processed by B2). |
 | C | SC-locked value | Computes value locked in contracts: `SC_locked = LBT_totalSupply − EOA_accumulated` per token. With `nativeSCLockedFromContracts=true` the native token's SC-locked value is measured from actual contract ETH balances instead. |
@@ -454,6 +457,8 @@ Split into **G1** (sync the L2 bridge history from genesis up to the target bloc
 ### Step H — Fetch PreviousLocalExitRoot
 
 Calls `interop_getNetworkInfo` on the agglayer JSON-RPC and reads the `settled_ler` for the L2 network. If no certificate has been settled yet, `PreviousLocalExitRoot` is zero.
+
+It also cross-checks Step G's `InitialLocalExitRoot` (the L2 bridge LER at the target block) against `settled_ler` and aborts on mismatch: the target block contains bridge exits no settled certificate covers (exits made before the sequencer halt that the agglayer never settled), or a new certificate settled while the certificate was being generated. Re-running with the same target block fails identically — wait until the agglayer settles every bridge exit up to the target block, or pick a target block at or below the settled state. In the full pipeline the LER preflight after Step 0 catches this before the expensive work; in single-step mode this check is the final safety net.
 
 Requires `agglayerClient.GRPC.URL` in options.
 

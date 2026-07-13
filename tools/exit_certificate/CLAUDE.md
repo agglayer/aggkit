@@ -38,7 +38,7 @@ tools/exit_certificate/
 
 ## Pipeline
 
-Full pipeline order (`runAll`): **CHECK → 0 → A → B → C → D → E → F → G → H → I → SIGN**
+Full pipeline order (`runAll`): **CHECK → 0 → (LER preflight) → A → B → C → D → E → F → G → H → I → SIGN**
 
 Post-submission steps (explicit only, not part of `runAll`): **SUBMIT → WAIT**
 
@@ -67,6 +67,20 @@ All checks run regardless of individual failures. A combined error lists every f
 - **Trigger:** always runs as part of the full pipeline.
 - **Does:** first resolves `targetBlock` (finality keyword, optional offset, or concrete number) to a `uint64` via an RPC call when needed; then scans L2 bridge `NewWrappedToken` events, fetches `totalSupply` per token at the resolved block, computes unlocked native balance.
 - **Output:** `step-0-l2_target_block.json` (resolved block number as `uint64`), `step-0-lbt.json` (`[]LBTEntry`)
+
+### LER preflight (AET-11) — Unsettled bridge exits check
+
+Runs in `runAll` immediately after Step 0 (the first point where the target block is resolved); it
+is not an individually runnable step and writes no output file. `RunStepLERPreflight`
+(`step_preflight.go`) applies the same pending-certificate guard and settled-LER derivation as
+Step H (shared helper `fetchSettledNetworkState` in `step_h.go`), then reads the L2 bridge's
+`getRoot()` at the target block and compares it against the agglayer's `settled_ler`. A mismatch
+means the target block contains L2→L1 bridge exits no settled certificate covers (permissionless
+exits made before the sequencer halt) — the pipeline aborts with an actionable error *before* the
+expensive scan (Steps A/B) and replay (Step G) phases instead of failing late in Step H. Requires
+`agglayerClient.grpc.url` (the same requirement Step H enforces later, so this only moves the
+failure earlier). In single-step mode the preflight does not run and Step H's cross-check remains
+the final safety net.
 
 ### Step A — Collect addresses
 
@@ -309,6 +323,10 @@ certificate matches the computed LER.
 - **Requires:** `options.agglayerGrpcUrl` — uses `agglayer.NewAgglayerClient` (gRPC), same as step SUBMIT.
 - Calls `interop_getNetworkInfo` with `l2NetworkId` on the agglayer JSON-RPC and reads `settled_ler`.
 - If no certificate has been settled yet (`settled_ler` is null), `PreviousLocalExitRoot` is zero.
+- Cross-checks Step G's `InitialLocalExitRoot` against `settled_ler` and aborts on mismatch (unsettled
+  pre-halt bridge exits, or a certificate settled mid-generation); the error points to waiting for
+  settlement or picking a target block at or below the settled state — re-running with the same
+  target block fails identically. The LER preflight after Step 0 catches this early in `runAll`.
 - **Output:** `step-h-previous-local-exit-root.json` (`StepHResult`)
 
 ### Step I — Assemble final certificate
