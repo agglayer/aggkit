@@ -272,7 +272,8 @@ func verifyNoUnsettledBridgeExits(
 // target block: unlike Step CHECK (which aggregates failures) it aborts the step, and it always
 // validates the exact block the rest of the pipeline uses. When agglayerClient.grpc.url is not
 // configured the check is skipped with a warning — Step CHECK already reports the missing URL as
-// a failure, and Step H will require it anyway.
+// a failure, and Step H will require it anyway. With options.ignoreLERMismatch the abort
+// is downgraded to a warning.
 func assertNoUnsettledBridgeExits(ctx context.Context, cfg *Config, targetBlock uint64) error {
 	agglayerClientCfg := cfg.Options.AgglayerClient
 	if agglayerClientCfg.GRPC == nil || agglayerClientCfg.GRPC.URL == "" {
@@ -283,16 +284,47 @@ func assertNoUnsettledBridgeExits(ctx context.Context, cfg *Config, targetBlock 
 
 	client, err := agglayer.NewAgglayerClient(agglayerClientCfg, log.GetDefaultLogger())
 	if err != nil {
-		return fmt.Errorf("create agglayer client: %w", err)
+		return suppressUnsettledExitsError(cfg, fmt.Errorf("create agglayer client: %w", err))
 	}
 
-	settledLER, _, err := verifyNoUnsettledBridgeExits(ctx, cfg, client, readLocalExitRoot, targetBlock)
+	return assertNoUnsettledBridgeExitsWith(ctx, cfg, client, readLocalExitRoot, targetBlock)
+}
+
+// assertNoUnsettledBridgeExitsWith is the injectable core of assertNoUnsettledBridgeExits (tests
+// pass an agglayer client mock and a stub LER reader).
+func assertNoUnsettledBridgeExitsWith(
+	ctx context.Context, cfg *Config, client agglayer.AgglayerClientInterface,
+	readLER lerReaderFn, targetBlock uint64,
+) error {
+	settledLER, _, err := verifyNoUnsettledBridgeExits(ctx, cfg, client, readLER, targetBlock)
 	if err != nil {
-		return err
+		return suppressUnsettledExitsError(cfg, err)
 	}
 	log.Infof("✅ L2 bridge LER at target block %d matches the agglayer settled LER (%s)",
 		targetBlock, settledLER.Hex())
 	return nil
+}
+
+// suppressUnsettledExitsError downgrades an AET-11 check error to a warning when
+// options.ignoreLERMismatch is set; otherwise it returns the error unchanged.
+func suppressUnsettledExitsError(cfg *Config, err error) error {
+	if cfg.Options.IgnoreLERMismatch {
+		log.Warnf("⚠️  unsettled-bridge-exits check failed but ignoreLERMismatch=true — "+
+			"continuing (the agglayer will most likely reject the certificate): %v", err)
+		return nil
+	}
+	return err
+}
+
+// reportUnsettledExitsFailure appends msg to the Step CHECK failure list, or only warns when
+// options.ignoreLERMismatch is set (the check outcome is still recorded in the result).
+func reportUnsettledExitsFailure(cfg *Config, failures *[]string, msg string) {
+	if cfg.Options.IgnoreLERMismatch {
+		log.Warnf("⚠️  %s (ignored: ignoreLERMismatch=true)", msg)
+		return
+	}
+	log.Infof("❌ %s", msg)
+	*failures = append(*failures, msg)
 }
 
 // checkTargetBlock returns the block the unsettled-exits check runs at: the block Step 0 already
@@ -321,19 +353,16 @@ func checkUnsettledBridgeExits(ctx context.Context, cfg *Config, result *StepChe
 	agglayerClientCfg := cfg.Options.AgglayerClient
 	if agglayerClientCfg.GRPC == nil || agglayerClientCfg.GRPC.URL == "" {
 		result.UnsettledExitsStatus = uncheckedStatus
-		msg := "agglayerClient.grpc.url is required (needed to verify no unsettled L2 bridge exits, " +
-			"and later by step H)"
-		log.Infof("❌ %s", msg)
-		*failures = append(*failures, msg)
+		reportUnsettledExitsFailure(cfg, failures,
+			"agglayerClient.grpc.url is required (needed to verify no unsettled L2 bridge exits, "+
+				"and later by step H)")
 		return
 	}
 
 	client, err := agglayer.NewAgglayerClient(agglayerClientCfg, log.GetDefaultLogger())
 	if err != nil {
 		result.UnsettledExitsStatus = errorStatus
-		msg := fmt.Sprintf("create agglayer client: %v", err)
-		log.Infof("❌ %s", msg)
-		*failures = append(*failures, msg)
+		reportUnsettledExitsFailure(cfg, failures, fmt.Sprintf("create agglayer client: %v", err))
 		return
 	}
 
@@ -350,9 +379,8 @@ func checkUnsettledBridgeExitsWith(
 	targetBlock, source, err := checkTargetBlock(ctx, cfg)
 	if err != nil {
 		result.UnsettledExitsStatus = errorStatus
-		msg := fmt.Sprintf("resolve target block for the unsettled-exits check: %v", err)
-		log.Infof("❌ %s", msg)
-		*failures = append(*failures, msg)
+		reportUnsettledExitsFailure(cfg, failures,
+			fmt.Sprintf("resolve target block for the unsettled-exits check: %v", err))
 		return
 	}
 	log.Infof("   unsettled-exits check target block: %d (from %s)", targetBlock, source)
@@ -366,8 +394,7 @@ func checkUnsettledBridgeExitsWith(
 		} else {
 			result.UnsettledExitsStatus = errorStatus
 		}
-		log.Infof("❌ %v", err)
-		*failures = append(*failures, err.Error())
+		reportUnsettledExitsFailure(cfg, failures, err.Error())
 		return
 	}
 

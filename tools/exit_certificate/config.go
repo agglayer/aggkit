@@ -80,6 +80,14 @@ type Options struct {
 	// RemoveLegacySovereignTokenAddress, BackwardLET, ForwardLET). The computed NewLocalExitRoot may
 	// then be incorrect; enable only to inspect such a chain knowingly. Defaults to false.
 	IgnoreUnsupportedL2Events bool `json:"ignoreUnsupportedL2Events"`
+	// IgnoreLERMismatch, when true, downgrades the AET-11 unsettled-bridge-exits
+	// verification — Step CHECK check 9, the Step 0 guard and Step H's LER cross-check — from an
+	// abort to a warning: the pipeline proceeds even when the L2 bridge's LER at the target block
+	// does not match the agglayer's settled LER. The resulting certificate chains from a
+	// PrevLocalExitRoot that does not cover every emitted bridge exit, so the agglayer will most
+	// likely reject it — enable only to inspect such a snapshot knowingly. It does not affect
+	// Step H's pending-certificate guard. Defaults to false.
+	IgnoreLERMismatch bool `json:"ignoreLERMismatch"`
 	// VerifyNewLocalExitRootUsingShadowFork, when true (the default), makes Step G2 spin up the Anvil
 	// shadow-fork, replay every bridge exit against the real bridge contract, and verify the computed
 	// NewLocalExitRoot against the contract's getRoot(). When false, Step G2 computes the

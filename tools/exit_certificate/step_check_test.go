@@ -533,3 +533,73 @@ func TestAssertNoUnsettledBridgeExitsSkippedWithoutGRPC(t *testing.T) {
 	cfg := &Config{Options: Options{AgglayerClient: agglayer.ClientConfig{GRPC: &aggkitgrpc.ClientConfig{}}}}
 	require.NoError(t, assertNoUnsettledBridgeExits(context.Background(), cfg, 42))
 }
+
+// TestIgnoreLERMismatch covers options.ignoreLERMismatch: the AET-11 mismatch
+// is downgraded from an abort to a warning in Step CHECK, the Step 0 guard, and Step H's LER
+// cross-check, while the Step CHECK result still records the real outcome.
+func TestIgnoreLERMismatch(t *testing.T) {
+	t.Parallel()
+	settledLER := common.HexToHash("0xabc")
+	l2LER := common.HexToHash("0xdead")
+	mismatchClient := func(networkID uint32) *mocks.AgglayerClientMock {
+		client := mocks.NewAgglayerClientMock(t)
+		client.EXPECT().GetNetworkInfo(mock.Anything, networkID).Return(agglayertypes.NetworkInfo{
+			SettledLER: &settledLER,
+		}, nil)
+		return client
+	}
+
+	t.Run("step CHECK records the mismatch but adds no failure", func(t *testing.T) {
+		t.Parallel()
+		cfg := unsettledCheckConfig(t, 1)
+		cfg.Options.IgnoreLERMismatch = true
+
+		result := &StepCheckResult{}
+		var failures []string
+		checkUnsettledBridgeExitsWith(context.Background(), cfg, mismatchClient(1),
+			staticLERReader(l2LER, nil), result, &failures)
+		require.Empty(t, failures)
+		require.Equal(t, "unsettled exits at block 42", result.UnsettledExitsStatus)
+		require.Equal(t, settledLER.Hex(), result.SettledLER)
+		require.Equal(t, l2LER.Hex(), result.L2BridgeLER)
+	})
+
+	t.Run("step CHECK missing gRPC URL adds no failure", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{Options: Options{IgnoreLERMismatch: true}}
+
+		result := &StepCheckResult{}
+		var failures []string
+		checkUnsettledBridgeExits(context.Background(), cfg, result, &failures)
+		require.Empty(t, failures)
+		require.Equal(t, uncheckedStatus, result.UnsettledExitsStatus)
+	})
+
+	t.Run("step 0 guard warns instead of aborting", func(t *testing.T) {
+		t.Parallel()
+		cfg := unsettledCheckConfig(t, 1)
+		cfg.Options.IgnoreLERMismatch = true
+
+		err := assertNoUnsettledBridgeExitsWith(context.Background(), cfg, mismatchClient(1),
+			staticLERReader(l2LER, nil), 42)
+		require.NoError(t, err)
+	})
+
+	t.Run("step 0 guard still aborts without the flag", func(t *testing.T) {
+		t.Parallel()
+		err := assertNoUnsettledBridgeExitsWith(context.Background(), unsettledCheckConfig(t, 1),
+			mismatchClient(1), staticLERReader(l2LER, nil), 42)
+		require.ErrorIs(t, err, errUnsettledBridgeExits)
+		require.ErrorContains(t, err, "target block 42 has unsettled L2 bridge exits")
+	})
+
+	t.Run("step H cross-check warns instead of aborting", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{L2NetworkID: 1, Options: Options{IgnoreLERMismatch: true}}
+		gResult := &StepGResult{InitialLocalExitRoot: l2LER}
+
+		res, err := runStepH(context.Background(), cfg, mismatchClient(1), gResult)
+		require.NoError(t, err)
+		require.Equal(t, settledLER, res.PreviousLocalExitRoot)
+	})
+}
