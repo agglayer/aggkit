@@ -264,13 +264,6 @@ func runAll(ctx context.Context, cfg *Config) error {
 		return fmt.Errorf("step 0 (LBT): %w", err)
 	}
 
-	// AET-11: fail fast on unsettled L2 bridge exits at the target block, before the expensive
-	// scan (Steps A/B) and replay (Step G) phases. Anchored here because Step 0 is the first
-	// point where the target block is resolved; Step H re-checks the same condition at the end.
-	if err := RunStepLERPreflight(ctx, cfg, targetBlock); err != nil {
-		return fmt.Errorf("step LER preflight: %w", err)
-	}
-
 	stepAResult, err := runAllStepA(ctx, cfg, dir, targetBlock, wrappedTokens)
 	if err != nil {
 		return err

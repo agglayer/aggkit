@@ -2,6 +2,7 @@ package exit_certificate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainbase"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonrollupmanagerpessimistic"
+	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,6 +29,11 @@ var aggchainTypePP = [2]byte{0, 0}
 //  6. Network type is PP (FEP is not supported).
 //  7. Multisig threshold is 1, and l1BridgeAddress matches both aggchainbase.bridgeAddress() and
 //     the canonical rollupManager.bridgeAddress().
+//  8. No custom gas token is configured on the L2 bridge.
+//  9. No unsettled L2 bridge exits at the target block (AET-11): the L2 bridge's local exit root
+//     at the resolved target block must equal the agglayer's last settled LER, otherwise the
+//     certificate cannot be generated from that snapshot and Step H would abort after the
+//     expensive scan/replay phases.
 //
 // All checks run regardless of individual failures. Returns a combined error listing every
 // failed check.
@@ -106,6 +113,9 @@ func RunStepCheck(ctx context.Context, cfg *Config) (*StepCheckResult, error) {
 		failures = append(failures, "network type and threshold could not be verified (l1RpcUrl unavailable)")
 	}
 	checkNativeGasToken(ctx, cfg, &failures)
+
+	// --- 9. No unsettled L2 bridge exits at the target block (AET-11) ---
+	checkUnsettledBridgeExits(ctx, cfg, result, &failures)
 
 	log.Info("───────────────────────────────────────────")
 	if len(failures) == 0 {
@@ -213,6 +223,159 @@ func checkNativeGasToken(ctx context.Context, cfg *Config, failures *[]string) {
 	} else {
 		log.Infof("✅ No bridge gas token: network=%d, address=%s", gasTokenNetwork, gasTokenAddr.Hex())
 	}
+}
+
+// lerReaderFn reads the bridge contract's local exit root (getRoot()) at blockTag. It matches
+// readLocalExitRoot's signature so tests can inject a stub in place of the real RPC call.
+type lerReaderFn func(
+	ctx context.Context, rpcURL string, bridgeAddr common.Address, blockTag string,
+) (common.Hash, error)
+
+// errUnsettledBridgeExits marks the AET-11 mismatch (as opposed to a query failure) so callers
+// can distinguish "the target block really has unsettled exits" from "the check could not run".
+var errUnsettledBridgeExits = errors.New("unsettled L2 bridge exits")
+
+// verifyNoUnsettledBridgeExits is the AET-11 core shared by Step CHECK and Step 0: it applies the
+// same pending-certificate guard and settled-LER derivation as Step H (fetchSettledNetworkState),
+// reads the L2 bridge's LER at targetBlock, and compares the two — whatever Step H would reject at
+// the end of the pipeline, this rejects up front. A mismatch wraps errUnsettledBridgeExits; both
+// roots are returned whenever they were fetched so callers can record them.
+func verifyNoUnsettledBridgeExits(
+	ctx context.Context, cfg *Config, client agglayer.AgglayerClientInterface,
+	readLER lerReaderFn, targetBlock uint64,
+) (settledLER, l2LER common.Hash, err error) {
+	settledLER, _, err = fetchSettledNetworkState(ctx, cfg, client)
+	if err != nil {
+		return common.Hash{}, common.Hash{}, err
+	}
+
+	l2LER, err = readLER(ctx, cfg.L2RPCURL, cfg.L2BridgeAddress, toBlockTag(targetBlock))
+	if err != nil {
+		return common.Hash{}, common.Hash{},
+			fmt.Errorf("read L2 bridge local exit root at target block %d: %w", targetBlock, err)
+	}
+
+	if l2LER != settledLER {
+		return settledLER, l2LER, fmt.Errorf(
+			"target block %d has %w: L2 bridge LER %s != agglayer settled LER %s — "+
+				"every L2→L1 bridge exit up to the target block must be settled by the agglayer before the "+
+				"certificate can be generated; wait until the agglayer settles them (keep the aggsender running "+
+				"after the sequencer halt until the last certificate settles) and re-run, or choose a target "+
+				"block at or below the settled state",
+			targetBlock, errUnsettledBridgeExits, l2LER.Hex(), settledLER.Hex(),
+		)
+	}
+	return settledLER, l2LER, nil
+}
+
+// assertNoUnsettledBridgeExits is the hard-failing variant Step 0 runs right after resolving the
+// target block: unlike Step CHECK (which aggregates failures) it aborts the step, and it always
+// validates the exact block the rest of the pipeline uses. When agglayerClient.grpc.url is not
+// configured the check is skipped with a warning — Step CHECK already reports the missing URL as
+// a failure, and Step H will require it anyway.
+func assertNoUnsettledBridgeExits(ctx context.Context, cfg *Config, targetBlock uint64) error {
+	agglayerClientCfg := cfg.Options.AgglayerClient
+	if agglayerClientCfg.GRPC == nil || agglayerClientCfg.GRPC.URL == "" {
+		log.Warn("unsettled-bridge-exits check skipped: agglayerClient.grpc.url is not configured " +
+			"(step CHECK reports this as a failure; step H requires it)")
+		return nil
+	}
+
+	client, err := agglayer.NewAgglayerClient(agglayerClientCfg, log.GetDefaultLogger())
+	if err != nil {
+		return fmt.Errorf("create agglayer client: %w", err)
+	}
+
+	settledLER, _, err := verifyNoUnsettledBridgeExits(ctx, cfg, client, readLocalExitRoot, targetBlock)
+	if err != nil {
+		return err
+	}
+	log.Infof("✅ L2 bridge LER at target block %d matches the agglayer settled LER (%s)",
+		targetBlock, settledLER.Hex())
+	return nil
+}
+
+// checkTargetBlock returns the block the unsettled-exits check runs at: the block Step 0 already
+// resolved (step-0-l2_target_block.json) when available — so the check validates the exact block
+// the rest of the pipeline uses — otherwise cfg.TargetBlock resolved on the spot (in the full
+// pipeline Step CHECK runs before Step 0; with the sequencer halted — an operational
+// precondition — the resolution is stable, and Step 0 re-validates its own resolved block anyway).
+func checkTargetBlock(ctx context.Context, cfg *Config) (uint64, string, error) {
+	if n, err := loadTargetBlock(cfg.Options.OutputDir); err == nil {
+		return n, "step 0 output (" + fileStep0TargetBlock + ")", nil
+	}
+	n, err := resolveTargetBlockNumber(ctx, cfg.L2RPCURL, cfg.TargetBlock)
+	return n, "config targetBlock", err
+}
+
+// checkUnsettledBridgeExits is the AET-11 preflight: a permissionless L2→L1 bridge exit made
+// before the sequencer halt but never settled by the agglayer advances the L2 local exit root
+// past the settled state; the certificate cannot include that exit, so Step H would abort — but
+// only after the expensive scan (Steps A/B) and replay (Step G) phases already ran. Checking it
+// here gives the operator the actionable error before any expensive work. Step 0 re-runs the
+// same verification on its own resolved block (assertNoUnsettledBridgeExits).
+//
+// It requires options.agglayerClient.grpc.url — the same requirement Step H enforces later, so
+// this only moves the failure earlier. The outcome is recorded in result.UnsettledExitsStatus.
+func checkUnsettledBridgeExits(ctx context.Context, cfg *Config, result *StepCheckResult, failures *[]string) {
+	agglayerClientCfg := cfg.Options.AgglayerClient
+	if agglayerClientCfg.GRPC == nil || agglayerClientCfg.GRPC.URL == "" {
+		result.UnsettledExitsStatus = uncheckedStatus
+		msg := "agglayerClient.grpc.url is required (needed to verify no unsettled L2 bridge exits, " +
+			"and later by step H)"
+		log.Infof("❌ %s", msg)
+		*failures = append(*failures, msg)
+		return
+	}
+
+	client, err := agglayer.NewAgglayerClient(agglayerClientCfg, log.GetDefaultLogger())
+	if err != nil {
+		result.UnsettledExitsStatus = errorStatus
+		msg := fmt.Sprintf("create agglayer client: %v", err)
+		log.Infof("❌ %s", msg)
+		*failures = append(*failures, msg)
+		return
+	}
+
+	checkUnsettledBridgeExitsWith(ctx, cfg, client, readLocalExitRoot, result, failures)
+}
+
+// checkUnsettledBridgeExitsWith is the injectable core of checkUnsettledBridgeExits (tests pass
+// an agglayer client mock and a stub LER reader). It picks the target block (checkTargetBlock),
+// runs verifyNoUnsettledBridgeExits, and maps the outcome onto the Step CHECK result/failures.
+func checkUnsettledBridgeExitsWith(
+	ctx context.Context, cfg *Config, client agglayer.AgglayerClientInterface,
+	readLER lerReaderFn, result *StepCheckResult, failures *[]string,
+) {
+	targetBlock, source, err := checkTargetBlock(ctx, cfg)
+	if err != nil {
+		result.UnsettledExitsStatus = errorStatus
+		msg := fmt.Sprintf("resolve target block for the unsettled-exits check: %v", err)
+		log.Infof("❌ %s", msg)
+		*failures = append(*failures, msg)
+		return
+	}
+	log.Infof("   unsettled-exits check target block: %d (from %s)", targetBlock, source)
+
+	settledLER, l2LER, err := verifyNoUnsettledBridgeExits(ctx, cfg, client, readLER, targetBlock)
+	if err != nil {
+		if errors.Is(err, errUnsettledBridgeExits) {
+			result.UnsettledExitsStatus = fmt.Sprintf("unsettled exits at block %d", targetBlock)
+			result.SettledLER = settledLER.Hex()
+			result.L2BridgeLER = l2LER.Hex()
+		} else {
+			result.UnsettledExitsStatus = errorStatus
+		}
+		log.Infof("❌ %v", err)
+		*failures = append(*failures, err.Error())
+		return
+	}
+
+	result.SettledLER = settledLER.Hex()
+	result.L2BridgeLER = l2LER.Hex()
+	result.UnsettledExitsStatus = okStatus
+	log.Infof("✅ L2 bridge LER at target block %d matches the agglayer settled LER (%s)",
+		targetBlock, settledLER.Hex())
 }
 
 // checkContractPrereqs queries the aggchainbase contract for network type and threshold.

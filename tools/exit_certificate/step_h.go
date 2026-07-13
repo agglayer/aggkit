@@ -32,8 +32,8 @@ func RunStepH(ctx context.Context, cfg *Config, gResult *StepGResult) (*StepHRes
 }
 
 // fetchSettledNetworkState queries the agglayer network info, refuses to proceed on a pending
-// (open) certificate, and derives the settled LER / next certificate height. Shared by the
-// post-Step-0 LER preflight and Step H so both apply the exact same guard and derivation.
+// (open) certificate, and derives the settled LER / next certificate height. Shared by Step
+// CHECK's unsettled-bridge-exits check and Step H so both apply the exact same guard and derivation.
 func fetchSettledNetworkState(
 	ctx context.Context, cfg *Config, client agglayer.AgglayerClientInterface,
 ) (settledLER common.Hash, nextHeight uint64, err error) {

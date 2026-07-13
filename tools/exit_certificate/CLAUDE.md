@@ -38,7 +38,7 @@ tools/exit_certificate/
 
 ## Pipeline
 
-Full pipeline order (`runAll`): **CHECK → 0 → (LER preflight) → A → B → C → D → E → F → G → H → I → SIGN**
+Full pipeline order (`runAll`): **CHECK → 0 → A → B → C → D → E → F → G → H → I → SIGN**
 
 Post-submission steps (explicit only, not part of `runAll`): **SUBMIT → WAIT**
 
@@ -59,28 +59,15 @@ All checks run regardless of individual failures. A combined error lists every f
 6. **Network type is PP** — queries `AGGCHAINTYPE()` on the `aggchainbase` contract at `sovereignRollupAddr` on L1. Fails if FEP. Only runs if checks 2 and 5 passed.
 7. **Threshold is 1 + bridge addresses match** — queries `Threshold()` and `GetAggchainSignerInfos()`. Fails if threshold > 1. Also verifies `aggchainbase.bridgeAddress()` (the L1 bridge the consensus contract references) matches `l1BridgeAddress`, and cross-checks `l1BridgeAddress` against the canonical `rollupManager.bridgeAddress()` — the mismatch error carries the correct address to put in the config (recorded in the result as `rollupManagerBridgeAddress`). Only runs if checks 2 and 5 passed.
 8. **No custom gas token** — calls `gasTokenAddress()`/`gasTokenNetwork()` on the L2 bridge. Fails if a non-zero gas token is set (not supported).
+9. **No unsettled L2 bridge exits (AET-11)** — requires `agglayerClient.grpc.url` (the same requirement Step H enforces later, so this only moves the failure earlier). `checkUnsettledBridgeExits` applies the same pending-certificate guard and settled-LER derivation as Step H (shared helper `fetchSettledNetworkState` in `step_h.go`), picks the target block via `checkTargetBlock` (the block Step 0 already resolved — `step-0-l2_target_block.json` — when present, otherwise `cfg.TargetBlock` resolved on the spot), reads the L2 bridge's `getRoot()` at that block and compares it against the agglayer's `settled_ler` (`verifyNoUnsettledBridgeExits`, mismatch wraps `errUnsettledBridgeExits`). A mismatch means the target block contains L2→L1 bridge exits no settled certificate covers (permissionless exits made before the sequencer halt) — failing here avoids paying the expensive scan (Steps A/B) and replay (Step G) phases before Step H's late abort. Step 0 re-runs the same verification on its own resolved block (`assertNoUnsettledBridgeExits`, hard abort), so a stale step-0 file or a keyword re-resolution here cannot weaken the guarantee. The outcome is recorded as `unsettledExitsStatus` (plus the compared roots `settledLER` / `l2BridgeLER`). In single-step mode Step CHECK does not run automatically; Step 0's guard and Step H's cross-check remain the safety nets.
 
 - **Output:** `step-check-result.json` (`StepCheckResult`)
 
 ### Step 0 — Generate LBT
 
 - **Trigger:** always runs as part of the full pipeline.
-- **Does:** first resolves `targetBlock` (finality keyword, optional offset, or concrete number) to a `uint64` via an RPC call when needed; then scans L2 bridge `NewWrappedToken` events, fetches `totalSupply` per token at the resolved block, computes unlocked native balance.
+- **Does:** first resolves `targetBlock` (finality keyword, optional offset, or concrete number) to a `uint64` via an RPC call when needed; right after the resolution — before the LBT scan — re-runs the AET-11 unsettled-bridge-exits verification on the resolved block (`assertNoUnsettledBridgeExits`, hard abort on mismatch; skipped with a warning when `agglayerClient.grpc.url` is unset, which Step CHECK reports as a failure); then scans L2 bridge `NewWrappedToken` events, fetches `totalSupply` per token at the resolved block, computes unlocked native balance.
 - **Output:** `step-0-l2_target_block.json` (resolved block number as `uint64`), `step-0-lbt.json` (`[]LBTEntry`)
-
-### LER preflight (AET-11) — Unsettled bridge exits check
-
-Runs in `runAll` immediately after Step 0 (the first point where the target block is resolved); it
-is not an individually runnable step and writes no output file. `RunStepLERPreflight`
-(`step_preflight.go`) applies the same pending-certificate guard and settled-LER derivation as
-Step H (shared helper `fetchSettledNetworkState` in `step_h.go`), then reads the L2 bridge's
-`getRoot()` at the target block and compares it against the agglayer's `settled_ler`. A mismatch
-means the target block contains L2→L1 bridge exits no settled certificate covers (permissionless
-exits made before the sequencer halt) — the pipeline aborts with an actionable error *before* the
-expensive scan (Steps A/B) and replay (Step G) phases instead of failing late in Step H. Requires
-`agglayerClient.grpc.url` (the same requirement Step H enforces later, so this only moves the
-failure earlier). In single-step mode the preflight does not run and Step H's cross-check remains
-the final safety net.
 
 ### Step A — Collect addresses
 
@@ -326,7 +313,7 @@ certificate matches the computed LER.
 - Cross-checks Step G's `InitialLocalExitRoot` against `settled_ler` and aborts on mismatch (unsettled
   pre-halt bridge exits, or a certificate settled mid-generation); the error points to waiting for
   settlement or picking a target block at or below the settled state — re-running with the same
-  target block fails identically. The LER preflight after Step 0 catches this early in `runAll`.
+  target block fails identically. Step CHECK (check 9) catches this early in `runAll`.
 - **Output:** `step-h-previous-local-exit-root.json` (`StepHResult`)
 
 ### Step I — Assemble final certificate
