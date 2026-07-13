@@ -775,7 +775,10 @@ func fetchBridgeEventsInRange(
 	for _, lg := range logs {
 		dep, err := decodeBridgeEvent(lg.Data, lg.BlockNumber, lg.TransactionHash)
 		if err != nil {
-			continue
+			// A BridgeEvent that does not decode must fail the scan: skipping it would silently
+			// drop a potentially unclaimed deposit and produce a false clean Step E result.
+			return nil, fmt.Errorf("decode BridgeEvent (tx %s, block %s): %w",
+				lg.TransactionHash, lg.BlockNumber, err)
 		}
 		if dep.DestinationNetwork == l2NetworkID {
 			deposits = append(deposits, dep)
@@ -811,23 +814,23 @@ func parseBridgeFields(
 ) (L1Deposit, error) {
 	leafType, err := safeUint8(new(big.Int).SetBytes(data[0:32]))
 	if err != nil {
-		return L1Deposit{}, fmt.Errorf("leafType: %w", err)
+		return L1Deposit{}, fmt.Errorf("parse field leafType: %w", err)
 	}
 	originNetwork, err := safeUint32(new(big.Int).SetBytes(data[32:64]))
 	if err != nil {
-		return L1Deposit{}, fmt.Errorf("originNetwork: %w", err)
+		return L1Deposit{}, fmt.Errorf("parse field originNetwork: %w", err)
 	}
 	destNetwork, err := safeUint32(new(big.Int).SetBytes(data[96:128]))
 	if err != nil {
-		return L1Deposit{}, fmt.Errorf("destNetwork: %w", err)
+		return L1Deposit{}, fmt.Errorf("parse field destNetwork: %w", err)
 	}
 	depositCount, err := safeUint32(new(big.Int).SetBytes(data[224:256]))
 	if err != nil {
-		return L1Deposit{}, fmt.Errorf("depositCount: %w", err)
+		return L1Deposit{}, fmt.Errorf("parse field depositCount: %w", err)
 	}
 	blockNumber, err := hexToUint64(blockNumberHex)
 	if err != nil {
-		return L1Deposit{}, fmt.Errorf("blockNumber: %w", err)
+		return L1Deposit{}, fmt.Errorf("parse field blockNumber: %w", err)
 	}
 
 	return L1Deposit{

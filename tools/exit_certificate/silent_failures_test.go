@@ -200,6 +200,24 @@ func TestDecodeBridgeEventInvalidBlockNumber(t *testing.T) {
 	require.Contains(t, err.Error(), "blockNumber")
 }
 
+func TestFetchBridgeEventsInRangeDecodeError(t *testing.T) {
+	t.Parallel()
+	srv := newRPCStub(t, func(string, []any) (json.RawMessage, *jsonRPCError) {
+		out, err := json.Marshal([]map[string]string{{
+			"data":            "0x0000", // too short to be a BridgeEvent payload
+			"blockNumber":     "0x1",
+			"transactionHash": common.HexToHash("0xdead").Hex(),
+		}})
+		require.NoError(t, err)
+		return out, nil
+	})
+	_, err := fetchBridgeEventsInRange(
+		context.Background(), srv.URL, common.HexToAddress("0xbridge"), 1, 0, 10,
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "decode BridgeEvent")
+}
+
 func TestQueryVerifyBatchesInvalidBlockNumber(t *testing.T) {
 	t.Parallel()
 	exitRoot := common.HexToHash("0xabc123")
