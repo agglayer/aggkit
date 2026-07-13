@@ -146,6 +146,25 @@ func TestRunStep0(t *testing.T) {
 	require.Equal(t, "90", native.Balance)
 }
 
+// A NewWrappedToken log that fails to decode must abort Step 0 instead of being skipped:
+// a partial scan would silently drop wrapped tokens from the LBT and downstream collateral checks.
+func TestRunStep0MalformedNewWrappedTokenEvent(t *testing.T) {
+	t.Parallel()
+	url := step0Stub(t, "0x1234") // too short to decode as a NewWrappedToken payload
+
+	cfg := &Config{
+		L2RPCURL:        url,
+		L2BridgeAddress: common.BytesToAddress([]byte("bridge")),
+		TargetBlock:     *aggkittypes.NewBlockNumber(100),
+		Options:         Options{BlockRange: 50, ConcurrencyLimit: 2, RPCBatchSize: 10},
+	}
+
+	_, err := RunStep0(context.Background(), cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fetch NewWrappedToken events")
+	require.Contains(t, err.Error(), "decode NewWrappedToken event")
+}
+
 func TestResolveTargetBlockNumberConstant(t *testing.T) {
 	t.Parallel()
 	// a constant block number resolves with no RPC call.

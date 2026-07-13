@@ -55,7 +55,10 @@ func RunStep0(ctx context.Context, cfg *Config) (*Step0Result, error) {
 	log.Infof("Block number:   %d", blockNum)
 
 	// 1. Scan for NewWrappedToken events
-	events := fetchNewWrappedTokenEvents(ctx, cfg, blockNum)
+	events, err := fetchNewWrappedTokenEvents(ctx, cfg, blockNum)
+	if err != nil {
+		return nil, fmt.Errorf("fetch NewWrappedToken events: %w", err)
+	}
 	log.Infof("Found %d NewWrappedToken events", len(events))
 
 	// 2. Apply SetSovereignTokenAddress overrides: if the bridge manager remapped an origin
@@ -108,8 +111,10 @@ type wrappedTokenEvent struct {
 	LegacyAddrs []common.Address
 }
 
-// fetchNewWrappedTokenEvents scans for NewWrappedToken events via a worker pool.
-func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config, toBlock uint64) []wrappedTokenEvent {
+// fetchNewWrappedTokenEvents scans for NewWrappedToken events via a worker pool. Any range that
+// fails aborts the scan: returning a partial list would silently drop wrapped tokens from the LBT
+// and downstream balance/certificate generation would proceed with incomplete collateral data.
+func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config, toBlock uint64) ([]wrappedTokenEvent, error) {
 	blockRange := cfg.Options.BlockRange
 	concurrency := cfg.Options.ConcurrencyLimit
 
@@ -136,10 +141,10 @@ func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config, toBlock uint64
 		"NewWrappedToken",
 	)
 	if err != nil {
-		log.Warnf("Some NewWrappedToken queries failed: %v", err)
+		return nil, err
 	}
 
-	return allEvents
+	return allEvents, nil
 }
 
 // eventLogEntry is a raw eth_getLogs entry: the data hex plus the log's chain position,
@@ -207,8 +212,10 @@ func fetchWrappedTokenEventsInRange(
 	for _, lg := range logData {
 		ev, err := decodeNewWrappedTokenEvent(lg.Data)
 		if err != nil {
-			log.Warnf("Failed to decode NewWrappedToken event: %v", err)
-			continue
+			// A NewWrappedToken event that does not decode must fail the scan: skipping it would
+			// silently drop the token from the LBT and downstream collateral checks.
+			return nil, fmt.Errorf("decode NewWrappedToken event (block %d, log %d): %w",
+				lg.BlockNumber, lg.LogIndex, err)
 		}
 		events = append(events, ev)
 	}
