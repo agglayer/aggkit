@@ -114,11 +114,35 @@ func TestParseClaimedResults(t *testing.T) {
 
 	results := []json.RawMessage{trueHex, falseHex, trueHex}
 
-	claimed := parseClaimedResults(results, deposits)
+	claimed, err := parseClaimedResults(results, deposits)
+	require.NoError(t, err)
 
 	require.Contains(t, claimed, uint32(1))
 	require.NotContains(t, claimed, uint32(2))
 	require.Contains(t, claimed, uint32(3))
+}
+
+func TestParseClaimedResults_MissingResult(t *testing.T) {
+	t.Parallel()
+
+	deposits := []L1Deposit{{DepositCount: 7}}
+	_, err := parseClaimedResults([]json.RawMessage{nil}, deposits)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing isClaimed result for deposit count 7")
+}
+
+func TestParseClaimedResults_UnparseableResult(t *testing.T) {
+	t.Parallel()
+
+	deposits := []L1Deposit{{DepositCount: 8}}
+
+	_, err := parseClaimedResults([]json.RawMessage{json.RawMessage(`{"bad":1}`)}, deposits)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "deposit count 8")
+
+	_, err = parseClaimedResults([]json.RawMessage{json.RawMessage(`"0xnothex"`)}, deposits)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "deposit count 8")
 }
 
 func TestFilterUnclaimedDeposits(t *testing.T) {

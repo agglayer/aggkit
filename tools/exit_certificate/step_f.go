@@ -64,7 +64,9 @@ func RunStepF(
 		// (e.g. unit tests) — skip the dump there rather than dropping the file in the process's
 		// working directory.
 		if cfg.Options.OutputDir != "" {
-			saveJSON(cfg.Options.OutputDir, fileStepFAgglayerLBT, agglayerRaw)
+			if err := saveJSON(cfg.Options.OutputDir, fileStepFAgglayerLBT, agglayerRaw); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -85,7 +87,10 @@ func RunStepF(
 	}
 
 	groups := groupBridgeExitsByToken(certificate)
-	checks := compareTokenBalances(groups, agglayerResp.Balances, lbtEntries, genesisPrefundWei(cfg))
+	checks, err := compareTokenBalances(groups, agglayerResp.Balances, lbtEntries, genesisPrefundWei(cfg))
+	if err != nil {
+		return nil, err
+	}
 
 	allMatch := true
 	for _, c := range checks {
@@ -216,7 +221,10 @@ func runStepFOfflineLBT(
 
 	log.Info("useAgglayerAdminToStepFCheck=false — comparing LBT (step 0) vs certificate bridge exits (no agglayer query)")
 	groups := groupBridgeExitsByToken(certificate)
-	checks := compareCertificateToLBT(groups, lbtEntries, genesisPrefundWei(cfg))
+	checks, err := compareCertificateToLBT(groups, lbtEntries, genesisPrefundWei(cfg))
+	if err != nil {
+		return nil, err
+	}
 
 	allMatch := true
 	for _, c := range checks {
@@ -335,34 +343,28 @@ func groupBridgeExitsByToken(cert *agglayertypes.Certificate) map[tokenKey][]*ag
 // When lbtEntries is nil, match requires agglayer == certificate sum (two-way fallback).
 // nativePrefund (nil when unset) is discounted from the native-token certificate sum before
 // comparing (see discountGenesisPrefund). CertificateEntries is populated only on mismatch.
+// An unparseable agglayer or LBT amount is an error: skipping the entry would compare — and cap —
+// that token against a silently substituted zero budget.
 func compareTokenBalances(
 	groups map[tokenKey][]*agglayertypes.BridgeExit,
 	agglayerEntries []agglayerTokenEntry,
 	lbtEntries []LBTEntry,
 	nativePrefund *big.Int,
-) []TokenBalanceCheck {
+) ([]TokenBalanceCheck, error) {
 	agglayerMap := make(map[tokenKey]*big.Int, len(agglayerEntries))
 	for _, e := range agglayerEntries {
 		k := tokenKey{e.OriginNetwork, e.OriginTokenAddress}
 		amount, ok := new(big.Int).SetString(e.Amount, decimalBase)
 		if !ok {
-			log.Warnf("Could not parse agglayer amount %q for token (network=%d addr=%s)",
+			return nil, fmt.Errorf("parse agglayer amount %q for token (network=%d addr=%s)",
 				e.Amount, e.OriginNetwork, e.OriginTokenAddress.Hex())
-			continue
 		}
 		agglayerMap[k] = amount
 	}
 
-	lbtMap := make(map[tokenKey]*big.Int, len(lbtEntries))
-	for _, e := range lbtEntries {
-		k := tokenKey{e.OriginNetwork, e.OriginTokenAddress}
-		amount, ok := new(big.Int).SetString(e.Balance, decimalBase)
-		if !ok {
-			log.Warnf("Could not parse LBT balance %q for token (network=%d addr=%s)",
-				e.Balance, e.OriginNetwork, e.OriginTokenAddress.Hex())
-			continue
-		}
-		lbtMap[k] = amount
+	lbtMap, err := lbtBalanceMap(lbtEntries)
+	if err != nil {
+		return nil, err
 	}
 
 	seen := make(map[tokenKey]struct{}, len(groups)+len(agglayerMap)+len(lbtMap))
@@ -435,7 +437,23 @@ func compareTokenBalances(
 		}
 		return checks[i].OriginTokenAddress < checks[j].OriginTokenAddress
 	})
-	return checks
+	return checks, nil
+}
+
+// lbtBalanceMap indexes the LBT entries' balances by token. An unparseable balance is an error:
+// skipping the entry would compare — and cap — that token against a silently substituted zero.
+func lbtBalanceMap(lbtEntries []LBTEntry) (map[tokenKey]*big.Int, error) {
+	lbtMap := make(map[tokenKey]*big.Int, len(lbtEntries))
+	for _, e := range lbtEntries {
+		k := tokenKey{e.OriginNetwork, e.OriginTokenAddress}
+		amount, ok := new(big.Int).SetString(e.Balance, decimalBase)
+		if !ok {
+			return nil, fmt.Errorf("parse LBT balance %q for token (network=%d addr=%s)",
+				e.Balance, e.OriginNetwork, e.OriginTokenAddress.Hex())
+		}
+		lbtMap[k] = amount
+	}
+	return lbtMap, nil
 }
 
 // compareCertificateToLBT builds a per-token comparison of the certificate bridge-exit sums against
@@ -446,17 +464,10 @@ func compareTokenBalances(
 // discountGenesisPrefund). CertificateEntries is populated only on mismatch.
 func compareCertificateToLBT(
 	groups map[tokenKey][]*agglayertypes.BridgeExit, lbtEntries []LBTEntry, nativePrefund *big.Int,
-) []TokenBalanceCheck {
-	lbtMap := make(map[tokenKey]*big.Int, len(lbtEntries))
-	for _, e := range lbtEntries {
-		k := tokenKey{e.OriginNetwork, e.OriginTokenAddress}
-		amount, ok := new(big.Int).SetString(e.Balance, decimalBase)
-		if !ok {
-			log.Warnf("Could not parse LBT balance %q for token (network=%d addr=%s)",
-				e.Balance, e.OriginNetwork, e.OriginTokenAddress.Hex())
-			continue
-		}
-		lbtMap[k] = amount
+) ([]TokenBalanceCheck, error) {
+	lbtMap, err := lbtBalanceMap(lbtEntries)
+	if err != nil {
+		return nil, err
 	}
 
 	seen := make(map[tokenKey]struct{}, len(groups)+len(lbtMap))
@@ -509,7 +520,7 @@ func compareCertificateToLBT(
 		}
 		return checks[i].OriginTokenAddress < checks[j].OriginTokenAddress
 	})
-	return checks
+	return checks, nil
 }
 
 // errCapForbidden is returned by capCertificateExits when at least one bridge exit would have to be

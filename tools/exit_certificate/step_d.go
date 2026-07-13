@@ -1,6 +1,7 @@
 package exit_certificate
 
 import (
+	"fmt"
 	"math/big"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -23,13 +24,22 @@ func RunStepD(cfg *Config, stepB *StepBResult, stepC *StepCResult) (*StepDResult
 	destNetwork := cfg.DestinationNetwork
 	exitAddr := cfg.ExitAddress
 
-	eoaExits := buildEOAExits(stepB, destNetwork)
+	eoaExits, err := buildEOAExits(stepB, destNetwork)
+	if err != nil {
+		return nil, err
+	}
 	log.Infof("EOA exits: %d", len(eoaExits))
 
-	holderExits := buildHolderBridgeExits(stepC, destNetwork)
+	holderExits, err := buildHolderBridgeExits(stepC, destNetwork)
+	if err != nil {
+		return nil, err
+	}
 	log.Infof("Holder exits: %d", len(holderExits))
 
-	scExits := buildSCLockedExits(stepC, destNetwork, exitAddr)
+	scExits, err := buildSCLockedExits(stepC, destNetwork, exitAddr)
+	if err != nil {
+		return nil, err
+	}
 	log.Infof("SC-locked exits: %d", len(scExits))
 
 	bridgeExits := make([]*agglayertypes.BridgeExit, 0, len(eoaExits)+len(holderExits)+len(scExits))
@@ -50,7 +60,7 @@ func RunStepD(cfg *Config, stepB *StepBResult, stepC *StepCResult) (*StepDResult
 	return &StepDResult{Certificate: certificate}, nil
 }
 
-func buildEOAExits(stepB *StepBResult, destNetwork uint32) []*agglayertypes.BridgeExit {
+func buildEOAExits(stepB *StepBResult, destNetwork uint32) ([]*agglayertypes.BridgeExit, error) {
 	totalEOAs := len(stepB.EOABalances)
 	log.Infof("Processing %d EOA balance entries...", totalEOAs)
 
@@ -60,52 +70,73 @@ func buildEOAExits(stepB *StepBResult, destNetwork uint32) []*agglayertypes.Brid
 		if totalEOAs > 0 && (i+1)%logInterval == 0 {
 			log.Infof("  EOA progress: %d/%d", i+1, totalEOAs)
 		}
-		exits = append(exits, eoaToExits(eoa, destNetwork)...)
+		eoaExits, err := eoaToExits(eoa, destNetwork)
+		if err != nil {
+			return nil, err
+		}
+		exits = append(exits, eoaExits...)
 	}
-	return exits
+	return exits, nil
 }
 
-func eoaToExits(eoa EOABalance, destNetwork uint32) []*agglayertypes.BridgeExit {
+func eoaToExits(eoa EOABalance, destNetwork uint32) ([]*agglayertypes.BridgeExit, error) {
 	var exits []*agglayertypes.BridgeExit
-	if amount := parseDecimalBigInt(eoa.ETHBalance); amount.Sign() > 0 {
+	amount, err := parseDecimalBigInt(eoa.ETHBalance)
+	if err != nil {
+		return nil, fmt.Errorf("EOA %s ETH balance: %w", eoa.Address.Hex(), err)
+	}
+	if amount.Sign() > 0 {
 		exits = append(exits, makeBridgeExit(0, common.Address{}, destNetwork, eoa.Address, amount))
 	}
 	for _, token := range eoa.Tokens {
-		if amount := parseDecimalBigInt(token.Balance); amount.Sign() > 0 {
+		amount, err := parseDecimalBigInt(token.Balance)
+		if err != nil {
+			return nil, fmt.Errorf("EOA %s balance of token %s: %w",
+				eoa.Address.Hex(), token.WrappedTokenAddress.Hex(), err)
+		}
+		if amount.Sign() > 0 {
 			exits = append(exits, makeBridgeExit(
 				token.OriginNetwork, token.OriginTokenAddress, destNetwork, eoa.Address, amount,
 			))
 		}
 	}
-	return exits
+	return exits, nil
 }
 
-func buildHolderBridgeExits(stepC *StepCResult, destNetwork uint32) []*agglayertypes.BridgeExit {
+func buildHolderBridgeExits(stepC *StepCResult, destNetwork uint32) ([]*agglayertypes.BridgeExit, error) {
 	exits := make([]*agglayertypes.BridgeExit, 0, len(stepC.HolderBridges))
 	for _, hb := range stepC.HolderBridges {
-		amount := parseDecimalBigInt(hb.Amount)
+		amount, err := parseDecimalBigInt(hb.Amount)
+		if err != nil {
+			return nil, fmt.Errorf("holder bridge amount for %s (vault %s): %w",
+				hb.HolderAddress.Hex(), hb.VaultAddress.Hex(), err)
+		}
 		if amount.Sign() <= 0 {
 			continue
 		}
 		exits = append(exits, makeBridgeExit(hb.OriginNetwork, hb.OriginTokenAddress, destNetwork, hb.HolderAddress, amount))
 	}
-	return exits
+	return exits, nil
 }
 
 func buildSCLockedExits(
 	stepC *StepCResult, destNetwork uint32, exitAddr common.Address,
-) []*agglayertypes.BridgeExit {
+) ([]*agglayertypes.BridgeExit, error) {
 	log.Infof("Processing SC-locked values → exit address: %s", exitAddr.Hex())
 
 	exits := make([]*agglayertypes.BridgeExit, 0, len(stepC.SCLockedValues))
 	for _, entry := range stepC.SCLockedValues {
-		amount := parseDecimalBigInt(entry.PendingSCLockedBalance)
+		amount, err := parseDecimalBigInt(entry.PendingSCLockedBalance)
+		if err != nil {
+			return nil, fmt.Errorf("pending SC-locked balance for token %s: %w",
+				entry.WrappedTokenAddress.Hex(), err)
+		}
 		if amount.Sign() <= 0 {
 			continue
 		}
 		exits = append(exits, makeBridgeExit(entry.OriginNetwork, entry.OriginTokenAddress, destNetwork, exitAddr, amount))
 	}
-	return exits
+	return exits, nil
 }
 
 // MakeBridgeExit creates a BridgeExit for an asset transfer. Exported for tests.

@@ -56,13 +56,19 @@ func TestParseStepList(t *testing.T) {
 	}
 }
 
+// mustSaveJSON writes a JSON fixture file, failing the test on error.
+func mustSaveJSON(t *testing.T, dir, filename string, data any) {
+	t.Helper()
+	require.NoError(t, saveJSON(dir, filename, data))
+}
+
 func TestSaveAndLoadJSON(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	testData := []string{"hello", "world"}
 
-	saveJSON(dir, "test.json", testData)
+	mustSaveJSON(t, dir, "test.json", testData)
 
 	var loaded []string
 	err := loadJSON(dir, "test.json", &loaded)
@@ -91,6 +97,35 @@ func TestLoadJSON_InvalidJSON(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestSaveJSON_WriteError(t *testing.T) {
+	t.Parallel()
+
+	// A nonexistent directory makes the write fail; saveJSON must report it, not swallow it.
+	err := saveJSON(filepath.Join(t.TempDir(), "missing-subdir"), "out.json", []string{"x"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out.json")
+}
+
+func TestLoadOptionalJSON(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	var target []string
+
+	// Absence is fine.
+	require.NoError(t, loadOptionalJSON(dir, "absent.json", &target))
+	require.Empty(t, target)
+
+	// A present, valid file loads normally.
+	mustSaveJSON(t, dir, "present.json", []string{"a"})
+	require.NoError(t, loadOptionalJSON(dir, "present.json", &target))
+	require.Equal(t, []string{"a"}, target)
+
+	// Corruption is an error, not absence.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "corrupt.json"), []byte("{bad}"), 0o600))
+	require.Error(t, loadOptionalJSON(dir, "corrupt.json", &target))
+}
+
 func TestCertificateJSON_ToAgglayerCertificate(t *testing.T) {
 	t.Parallel()
 
@@ -112,7 +147,8 @@ func TestCertificateJSON_ToAgglayerCertificate(t *testing.T) {
 		BridgeExits: bridgeExitsJSON,
 	}
 
-	cert := certJSON.toAgglayerCertificate()
+	cert, err := certJSON.toAgglayerCertificate()
+	require.NoError(t, err)
 	require.Equal(t, uint32(1), cert.NetworkID)
 	require.Len(t, cert.BridgeExits, 1)
 }
@@ -121,9 +157,30 @@ func TestCertificateJSON_EmptyBridgeExits(t *testing.T) {
 	t.Parallel()
 
 	certJSON := &certificateJSON{NetworkID: 1}
-	cert := certJSON.toAgglayerCertificate()
+	cert, err := certJSON.toAgglayerCertificate()
+	require.NoError(t, err)
 	require.Equal(t, uint32(1), cert.NetworkID)
 	require.Empty(t, cert.BridgeExits)
+}
+
+func TestCertificateJSON_CorruptedBridgeExits(t *testing.T) {
+	t.Parallel()
+
+	certJSON := &certificateJSON{
+		NetworkID:   1,
+		BridgeExits: json.RawMessage(`{"not":"an-array"}`),
+	}
+	_, err := certJSON.toAgglayerCertificate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "bridge_exits")
+
+	certJSON = &certificateJSON{
+		NetworkID:       1,
+		ImportedBridges: json.RawMessage(`"garbage"`),
+	}
+	_, err = certJSON.toAgglayerCertificate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "imported_bridge_exits")
 }
 
 func TestSaveJSON_ComplexData(t *testing.T) {
@@ -135,7 +192,7 @@ func TestSaveJSON_ComplexData(t *testing.T) {
 		"balance": "1000000",
 	}
 
-	saveJSON(dir, "complex.json", data)
+	mustSaveJSON(t, dir, "complex.json", data)
 
 	content, err := os.ReadFile(filepath.Join(dir, "complex.json"))
 	require.NoError(t, err)

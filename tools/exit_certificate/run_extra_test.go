@@ -50,7 +50,7 @@ func TestFileExists(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	require.False(t, fileExists(filepath.Join(dir, "nope.json")))
-	saveJSON(dir, "yes.json", map[string]int{"a": 1})
+	mustSaveJSON(t, dir, "yes.json", map[string]int{"a": 1})
 	require.True(t, fileExists(filepath.Join(dir, "yes.json")))
 }
 
@@ -60,7 +60,7 @@ func TestLoadTargetBlock(t *testing.T) {
 	_, err := loadTargetBlock(dir) // missing → error
 	require.Error(t, err)
 
-	saveJSON(dir, "step-0-l2_target_block.json", uint64(12345))
+	mustSaveJSON(t, dir, "step-0-l2_target_block.json", uint64(12345))
 	n, err := loadTargetBlock(dir)
 	require.NoError(t, err)
 	require.Equal(t, uint64(12345), n)
@@ -72,7 +72,7 @@ func TestLoadWrappedTokensFromLBT(t *testing.T) {
 	_, err := loadWrappedTokensFromLBT(dir) // missing → error
 	require.Error(t, err)
 
-	saveJSON(dir, "step-0-lbt.json", []LBTEntry{
+	mustSaveJSON(t, dir, "step-0-lbt.json", []LBTEntry{
 		{WrappedTokenAddress: common.BytesToAddress([]byte("wrap")), OriginNetwork: 1,
 			OriginTokenAddress: common.BytesToAddress([]byte("orig")), Balance: "1000"},
 	})
@@ -97,13 +97,13 @@ func TestRunSingleCAndD(t *testing.T) {
 	orig := common.BytesToAddress([]byte("orig"))
 
 	// Step 0 + B fixtures: LBT supply 1000, accumulated EOA 100 → SC-locked 900.
-	saveJSON(dir, "step-0-lbt.json", []LBTEntry{
+	mustSaveJSON(t, dir, "step-0-lbt.json", []LBTEntry{
 		{WrappedTokenAddress: tok, OriginNetwork: 1, OriginTokenAddress: orig, Balance: "1000"},
 	})
-	saveJSON(dir, "step-b-accumulated.json", []AccumulatedBalance{
+	mustSaveJSON(t, dir, "step-b-accumulated.json", []AccumulatedBalance{
 		{WrappedTokenAddress: tok, OriginNetwork: 1, OriginTokenAddress: orig, TotalBalance: "100"},
 	})
-	saveJSON(dir, "step-b-eoa-balances.json", []EOABalance{
+	mustSaveJSON(t, dir, "step-b-eoa-balances.json", []EOABalance{
 		{Address: common.BytesToAddress([]byte("eoa")), ETHBalance: "0", Tokens: []EOATokenBalance{
 			{WrappedTokenAddress: tok, OriginNetwork: 1, OriginTokenAddress: orig, Balance: "100"},
 		}},
@@ -134,10 +134,10 @@ func TestRunSingleCMissingInput(t *testing.T) {
 func TestSaveStepEFiles(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	saveStepEFiles(dir, &StepEResult{
+	require.NoError(t, saveStepEFiles(dir, &StepEResult{
 		UnclaimedBridges:  []L1Deposit{{DepositCount: 1}},
 		UnclaimedMessages: []L1Deposit{{DepositCount: 2}},
-	})
+	}))
 	require.True(t, fileExists(filepath.Join(dir, "step-e-unclaimed-bridges.json")))
 	require.True(t, fileExists(filepath.Join(dir, "step-e-unclaimed-messages.json")))
 }

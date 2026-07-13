@@ -75,7 +75,7 @@ func step0Stub(t *testing.T, wrappedData string) string {
 			}
 			_ = json.Unmarshal(params[0], &f)
 			if len(f.Topics) > 0 && strings.EqualFold(f.Topics[0], newWrappedTokenTopic.Hex()) {
-				return []map[string]string{{"data": wrappedData}}
+				return []map[string]string{{"data": wrappedData, "blockNumber": "0x1", "logIndex": "0x0"}}
 			}
 			return []map[string]string{} // SetSovereignTokenAddress: none
 		case rpcMethodEthCall:
@@ -144,6 +144,25 @@ func TestRunStep0(t *testing.T) {
 	require.Equal(t, uint32(1), wrapped.OriginNetwork)
 	require.NotNil(t, native, "native entry present")
 	require.Equal(t, "90", native.Balance)
+}
+
+// A NewWrappedToken log that fails to decode must abort Step 0 instead of being skipped:
+// a partial scan would silently drop wrapped tokens from the LBT and downstream collateral checks.
+func TestRunStep0MalformedNewWrappedTokenEvent(t *testing.T) {
+	t.Parallel()
+	url := step0Stub(t, "0x1234") // too short to decode as a NewWrappedToken payload
+
+	cfg := &Config{
+		L2RPCURL:        url,
+		L2BridgeAddress: common.BytesToAddress([]byte("bridge")),
+		TargetBlock:     *aggkittypes.NewBlockNumber(100),
+		Options:         Options{BlockRange: 50, ConcurrencyLimit: 2, RPCBatchSize: 10},
+	}
+
+	_, err := RunStep0(context.Background(), cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "fetch NewWrappedToken events")
+	require.Contains(t, err.Error(), "decode NewWrappedToken event")
 }
 
 func TestResolveTargetBlockNumberConstant(t *testing.T) {

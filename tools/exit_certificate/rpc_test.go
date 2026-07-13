@@ -44,6 +44,69 @@ func TestBatchRPC_Success(t *testing.T) {
 	require.Equal(t, "0xc8", val2)
 }
 
+// TestBatchRPC_MismatchedIDRequeuedThenFails covers AET-24: a response whose ID falls outside the
+// expected range must not leave a silent nil hole in the results — the unanswered call is re-queued
+// and, if it never gets a response, batchRPC errors out.
+func TestBatchRPC_MismatchedIDRequeuedThenFails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var requests []jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&requests))
+		responses := make([]jsonRPCResponse, len(requests))
+		for i := range requests {
+			// First response gets a bogus out-of-range ID; the rest answer normally.
+			id := requests[i].ID
+			if i == 0 {
+				id = 999
+			}
+			responses[i] = jsonRPCResponse{JSONRPC: "2.0", ID: id, Result: json.RawMessage(`"0x1"`)}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(responses))
+	}))
+	defer server.Close()
+
+	calls := []RPCCall{
+		{Method: "eth_blockNumber", Params: nil},
+		{Method: "eth_blockNumber", Params: nil},
+	}
+	_, err := batchRPC(context.Background(), server.URL, calls, 2)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "still failing")
+}
+
+// TestBatchRPC_MismatchedIDRecoveredOnRetry checks the re-queued call succeeds when a later
+// attempt answers with the right ID, leaving no nil slot.
+func TestBatchRPC_MismatchedIDRecoveredOnRetry(t *testing.T) {
+	var attempts int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var requests []jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&requests))
+		attempts++
+		responses := make([]jsonRPCResponse, len(requests))
+		for i := range requests {
+			id := requests[i].ID
+			if attempts == 1 && i == 0 {
+				id = 999 // first attempt: bogus ID for the first call
+			}
+			responses[i] = jsonRPCResponse{JSONRPC: "2.0", ID: id, Result: json.RawMessage(`"0x1"`)}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(responses))
+	}))
+	defer server.Close()
+
+	calls := []RPCCall{
+		{Method: "eth_blockNumber", Params: nil},
+		{Method: "eth_blockNumber", Params: nil},
+	}
+	results, err := batchRPC(context.Background(), server.URL, calls, 3)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	for i, res := range results {
+		require.NotNil(t, res, "result %d must not be a silent nil hole", i)
+	}
+}
+
 func TestBatchRPC_RPCError(t *testing.T) {
 	// Single-call batch where the node always returns a per-item RPC error.
 	// batchRPC exhausts retries and returns an error.

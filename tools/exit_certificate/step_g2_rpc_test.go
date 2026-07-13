@@ -46,6 +46,17 @@ func quoted(s string) json.RawMessage {
 	return json.RawMessage(`"` + s + `"`)
 }
 
+// gasTokenStubURL returns the URL of an RPC stub whose eth_call always returns a zero ABI word,
+// satisfying the bridge gasTokenNetwork()/gasTokenAddress() lookups with the standard-ETH values
+// (fetchL2GasTokenInfo no longer falls back to them on lookup failure).
+func gasTokenStubURL(t *testing.T) string {
+	t.Helper()
+	srv := newRPCStub(t, func(string, []any) (json.RawMessage, *jsonRPCError) {
+		return hexResult(make([]byte, abiWordBytes)), nil
+	})
+	return srv.URL
+}
+
 func TestSetSenderBalance(t *testing.T) {
 	t.Parallel()
 	sender := common.HexToAddress("0x1111111111111111111111111111111111111111")

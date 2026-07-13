@@ -55,7 +55,10 @@ func RunStep0(ctx context.Context, cfg *Config) (*Step0Result, error) {
 	log.Infof("Block number:   %d", blockNum)
 
 	// 1. Scan for NewWrappedToken events
-	events := fetchNewWrappedTokenEvents(ctx, cfg, blockNum)
+	events, err := fetchNewWrappedTokenEvents(ctx, cfg, blockNum)
+	if err != nil {
+		return nil, fmt.Errorf("fetch NewWrappedToken events: %w", err)
+	}
 	log.Infof("Found %d NewWrappedToken events", len(events))
 
 	// 2. Apply SetSovereignTokenAddress overrides: if the bridge manager remapped an origin
@@ -78,15 +81,14 @@ func RunStep0(ctx context.Context, cfg *Config) (*Step0Result, error) {
 	}
 
 	// 3. Native token unlocked balance
-	var nativeEntry *LBTEntry
-	if nativeEntry, err = computeNativeBalance(ctx, rpcURL, bridgeAddr, blockTag); err != nil {
-		log.Warnf("Failed to compute native balance: %v", err)
-	} else {
-		entries = append(entries, *nativeEntry)
-		log.Infof("Native token unlocked balance: %s", nativeEntry.Balance)
-		log.Infof("Native token info - OriginNetwork: %d, OriginTokenAddress: %s",
-			nativeEntry.OriginNetwork, nativeEntry.OriginTokenAddress.Hex())
+	nativeEntry, err := computeNativeBalance(ctx, rpcURL, bridgeAddr, blockTag)
+	if err != nil {
+		return nil, fmt.Errorf("compute native balance: %w", err)
 	}
+	entries = append(entries, *nativeEntry)
+	log.Infof("Native token unlocked balance: %s", nativeEntry.Balance)
+	log.Infof("Native token info - OriginNetwork: %d, OriginTokenAddress: %s",
+		nativeEntry.OriginNetwork, nativeEntry.OriginTokenAddress.Hex())
 	// 4. WETH token (only on chains with a custom gas token)
 	if wethEntry, err := fetchWETHBalance(ctx, rpcURL, bridgeAddr, blockTag); err != nil {
 		log.Infof("No WETH token on this chain (no custom gas token)")
@@ -108,8 +110,10 @@ type wrappedTokenEvent struct {
 	LegacyAddrs []common.Address
 }
 
-// fetchNewWrappedTokenEvents scans for NewWrappedToken events via a worker pool.
-func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config, toBlock uint64) []wrappedTokenEvent {
+// fetchNewWrappedTokenEvents scans for NewWrappedToken events via a worker pool. Any range that
+// fails aborts the scan: returning a partial list would silently drop wrapped tokens from the LBT
+// and downstream balance/certificate generation would proceed with incomplete collateral data.
+func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config, toBlock uint64) ([]wrappedTokenEvent, error) {
 	blockRange := cfg.Options.BlockRange
 	concurrency := cfg.Options.ConcurrencyLimit
 
@@ -136,10 +140,10 @@ func fetchNewWrappedTokenEvents(ctx context.Context, cfg *Config, toBlock uint64
 		"NewWrappedToken",
 	)
 	if err != nil {
-		log.Warnf("Some NewWrappedToken queries failed: %v", err)
+		return nil, err
 	}
 
-	return allEvents
+	return allEvents, nil
 }
 
 // eventLogEntry is a raw eth_getLogs entry: the data hex plus the log's chain position,
@@ -177,10 +181,18 @@ func fetchEventLogsInRange(
 	}
 	entries := make([]eventLogEntry, len(logs))
 	for i, lg := range logs {
+		blockNumber, err := hexToUint64(lg.BlockNumber)
+		if err != nil {
+			return nil, fmt.Errorf("parse log blockNumber %q: %w", lg.BlockNumber, err)
+		}
+		logIndex, err := hexToUint64(lg.LogIndex)
+		if err != nil {
+			return nil, fmt.Errorf("parse log logIndex %q: %w", lg.LogIndex, err)
+		}
 		entries[i] = eventLogEntry{
 			Data:        lg.Data,
-			BlockNumber: hexToUint64(lg.BlockNumber),
-			LogIndex:    hexToUint64(lg.LogIndex),
+			BlockNumber: blockNumber,
+			LogIndex:    logIndex,
 		}
 	}
 	return entries, nil
@@ -199,8 +211,10 @@ func fetchWrappedTokenEventsInRange(
 	for _, lg := range logData {
 		ev, err := decodeNewWrappedTokenEvent(lg.Data)
 		if err != nil {
-			log.Warnf("Failed to decode NewWrappedToken event: %v", err)
-			continue
+			// A NewWrappedToken event that does not decode must fail the scan: skipping it would
+			// silently drop the token from the LBT and downstream collateral checks.
+			return nil, fmt.Errorf("decode NewWrappedToken event (block %d, log %d): %w",
+				lg.BlockNumber, lg.LogIndex, err)
 		}
 		events = append(events, ev)
 	}
@@ -363,8 +377,10 @@ func fetchSetSovereignTokenEventsInRange(
 	for _, lg := range logData {
 		ov, err := decodeSetSovereignTokenEvent(lg.Data)
 		if err != nil {
-			log.Warnf("Failed to decode SetSovereignTokenAddress event: %v", err)
-			continue
+			// A skipped override would leave the LBT pointing at the pre-remap wrapped
+			// address, diverging from what getTokenWrappedAddress() returns on-chain.
+			return nil, fmt.Errorf("decode SetSovereignTokenAddress event (block %d, log %d): %w",
+				lg.BlockNumber, lg.LogIndex, err)
 		}
 		ov.BlockNumber = lg.BlockNumber
 		ov.LogIndex = lg.LogIndex

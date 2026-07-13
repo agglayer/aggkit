@@ -126,14 +126,14 @@ func TestSaveJSONErrorBranches(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
-	// Marshal failure: a channel cannot be JSON-encoded → logged, no panic, nothing written.
-	require.NotPanics(t, func() { saveJSON(dir, "bad.json", make(chan int)) })
+	// Marshal failure: a channel cannot be JSON-encoded → error returned, nothing written.
+	require.Error(t, saveJSON(dir, "bad.json", make(chan int)))
 	require.False(t, fileExists(filepath.Join(dir, "bad.json")))
 
 	// Write failure: using a regular file as the "directory" makes WriteFile fail.
 	notADir := filepath.Join(dir, "afile")
 	require.NoError(t, os.WriteFile(notADir, []byte("x"), 0o600))
-	require.NotPanics(t, func() { saveJSON(notADir, "out.json", map[string]int{"a": 1}) })
+	require.Error(t, saveJSON(notADir, "out.json", map[string]int{"a": 1}))
 }
 
 func TestFetchL2ChainID(t *testing.T) {
@@ -155,7 +155,8 @@ func TestBuildHolderBridgeExits(t *testing.T) {
 		{OriginNetwork: 1, OriginTokenAddress: common.HexToAddress("0xcc"),
 			HolderAddress: common.HexToAddress("0xdd"), Amount: "0"}, // zero → skipped
 	}}
-	exits := buildHolderBridgeExits(stepC, 0)
+	exits, err := buildHolderBridgeExits(stepC, 0)
+	require.NoError(t, err)
 	require.Len(t, exits, 1)
 	require.Equal(t, common.HexToAddress("0xbb"), exits[0].DestinationAddress)
 }

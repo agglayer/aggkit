@@ -151,11 +151,14 @@ func bridgeEventReceipt(depositCount uint32, blockNum, logIndex uint64) []rpcLog
 
 func replayTestConfig(t *testing.T) *Config {
 	t.Helper()
-	return &Config{Options: Options{
-		OutputDir:                             t.TempDir(),
-		ConcurrencyLimit:                      2,
-		VerifyNewLocalExitRootUsingShadowFork: true, // these tests exercise the shadow-fork orchestration
-	}}
+	return &Config{
+		L2RPCURL: gasTokenStubURL(t),
+		Options: Options{
+			OutputDir:                             t.TempDir(),
+			ConcurrencyLimit:                      2,
+			VerifyNewLocalExitRootUsingShadowFork: true, // these tests exercise the shadow-fork orchestration
+		},
+	}
 }
 
 // nativeAssetExit builds a native (gas-token) exit the way step_d does: a non-nil TokenInfo with a

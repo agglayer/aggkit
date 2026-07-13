@@ -130,7 +130,10 @@ func resolveL1EndBlock(ctx context.Context, cfg *Config) (uint64, error) {
 	if err := json.Unmarshal(latestResult, &latestHex); err != nil {
 		return 0, fmt.Errorf("parse L1 latest block: %w", err)
 	}
-	latest := hexToUint64(latestHex)
+	latest, err := hexToUint64(latestHex)
+	if err != nil {
+		return 0, fmt.Errorf("parse L1 latest block: %w", err)
+	}
 
 	if cfg.Options.L1EndBlock > 0 {
 		if cfg.Options.L1EndBlock > latest {
@@ -186,7 +189,7 @@ func checkClaimedBatch(
 		return nil, fmt.Errorf("batch isClaimed: %w", err)
 	}
 
-	return parseClaimedResults(results, deposits), nil
+	return parseClaimedResults(results, deposits)
 }
 
 // encodeIsClaimed ABI-encodes isClaimed(uint32 leafIndex, uint32 sourceBridgeNetwork).
@@ -198,22 +201,31 @@ func encodeIsClaimed(leafIndex, sourceBridgeNetwork uint32) string {
 	return "0x" + common.Bytes2Hex(data)
 }
 
-func parseClaimedResults(results []json.RawMessage, deposits []L1Deposit) map[uint32]struct{} {
+// parseClaimedResults decodes the batched isClaimed responses into the set of claimed deposit
+// counts. A missing or unparseable result is an error: silently classifying it as unclaimed
+// would re-add an already-claimed deposit to the certificate, double-counting its value.
+func parseClaimedResults(results []json.RawMessage, deposits []L1Deposit) (map[uint32]struct{}, error) {
 	claimed := make(map[uint32]struct{})
 	for i, result := range results {
 		if result == nil {
-			continue
+			return nil, fmt.Errorf("missing isClaimed result for deposit count %d", deposits[i].DepositCount)
 		}
-		var hex string
-		if json.Unmarshal(result, &hex) != nil {
-			continue
+		var hexResult string
+		if err := json.Unmarshal(result, &hexResult); err != nil {
+			return nil, fmt.Errorf("parse isClaimed result for deposit count %d: %w",
+				deposits[i].DepositCount, err)
 		}
-		val := hexToBigInt(hex)
+		trimmed := strings.TrimPrefix(strings.TrimPrefix(hexResult, "0x"), "0X")
+		val, ok := new(big.Int).SetString(trimmed, hexBase)
+		if !ok {
+			return nil, fmt.Errorf("invalid isClaimed value %q for deposit count %d",
+				hexResult, deposits[i].DepositCount)
+		}
 		if val.Sign() > 0 {
 			claimed[deposits[i].DepositCount] = struct{}{}
 		}
 	}
-	return claimed
+	return claimed, nil
 }
 
 func filterUnclaimedDeposits(
@@ -763,7 +775,10 @@ func fetchBridgeEventsInRange(
 	for _, lg := range logs {
 		dep, err := decodeBridgeEvent(lg.Data, lg.BlockNumber, lg.TransactionHash)
 		if err != nil {
-			continue
+			// A BridgeEvent that does not decode must fail the scan: skipping it would silently
+			// drop a potentially unclaimed deposit and produce a false clean Step E result.
+			return nil, fmt.Errorf("decode BridgeEvent (tx %s, block %s): %w",
+				lg.TransactionHash, lg.BlockNumber, err)
 		}
 		if dep.DestinationNetwork == l2NetworkID {
 			deposits = append(deposits, dep)
@@ -799,19 +814,23 @@ func parseBridgeFields(
 ) (L1Deposit, error) {
 	leafType, err := safeUint8(new(big.Int).SetBytes(data[0:32]))
 	if err != nil {
-		return L1Deposit{}, fmt.Errorf("leafType: %w", err)
+		return L1Deposit{}, fmt.Errorf("parse field leafType: %w", err)
 	}
 	originNetwork, err := safeUint32(new(big.Int).SetBytes(data[32:64]))
 	if err != nil {
-		return L1Deposit{}, fmt.Errorf("originNetwork: %w", err)
+		return L1Deposit{}, fmt.Errorf("parse field originNetwork: %w", err)
 	}
 	destNetwork, err := safeUint32(new(big.Int).SetBytes(data[96:128]))
 	if err != nil {
-		return L1Deposit{}, fmt.Errorf("destNetwork: %w", err)
+		return L1Deposit{}, fmt.Errorf("parse field destNetwork: %w", err)
 	}
 	depositCount, err := safeUint32(new(big.Int).SetBytes(data[224:256]))
 	if err != nil {
-		return L1Deposit{}, fmt.Errorf("depositCount: %w", err)
+		return L1Deposit{}, fmt.Errorf("parse field depositCount: %w", err)
+	}
+	blockNumber, err := hexToUint64(blockNumberHex)
+	if err != nil {
+		return L1Deposit{}, fmt.Errorf("parse field blockNumber: %w", err)
 	}
 
 	return L1Deposit{
@@ -823,7 +842,7 @@ func parseBridgeFields(
 		Amount:             new(big.Int).SetBytes(data[160:192]),
 		Metadata:           metadata,
 		DepositCount:       depositCount,
-		BlockNumber:        hexToUint64(blockNumberHex),
+		BlockNumber:        blockNumber,
 		TxHash:             common.HexToHash(txHashHex),
 	}, nil
 }

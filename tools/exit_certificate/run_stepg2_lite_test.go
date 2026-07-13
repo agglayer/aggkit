@@ -3,6 +3,7 @@ package exit_certificate
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,12 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRunSingleG2LiteNonEmpty drives runSingleG2 in off-chain (no shadow-fork) mode with a single
-// native bridge exit. It builds an empty Step G1 lite DB up front, then serves the bridge getRoot /
-// gasTokenMetadata eth_calls so RunStepG2 builds the lite exit tree and writes its outputs.
-func TestRunSingleG2LiteNonEmpty(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
+// setupLiteG2 prepares everything runSingleG2 needs to run in off-chain (no shadow-fork) mode
+// with a single native bridge exit: an empty Step G1 lite DB, the G1/step-e fixtures, and a stub
+// serving the bridge getRoot / gasTokenMetadata / gas-token eth_calls. Returns the ready Config
+// (its OutputDir is dir).
+func setupLiteG2(t *testing.T, dir string) *Config {
+	t.Helper()
 	ctx := context.Background()
 
 	// Empty Step G1 lite DB (genesis→fork bridges = none → cert exits start at deposit count 0).
@@ -39,8 +40,8 @@ func TestRunSingleG2LiteNonEmpty(t *testing.T) {
 		"amount":       "1000",
 	}})
 	require.NoError(t, err)
-	saveJSON(dir, fileStepG1ShadowForkBlock, StepG1Result{ShadowForkBlock: 100})
-	saveJSON(dir, fileStepECertificate, &certificateJSON{NetworkID: 1, BridgeExits: bridgeExits})
+	require.NoError(t, saveJSON(dir, fileStepG1ShadowForkBlock, StepG1Result{ShadowForkBlock: 100}))
+	require.NoError(t, saveJSON(dir, fileStepECertificate, &certificateJSON{NetworkID: 1, BridgeExits: bridgeExits}))
 
 	getRootSel := selectorHex(bridgeABI, "getRoot")
 	gasMetaSel := selectorHex(bridgeABI, "gasTokenMetadata")
@@ -62,20 +63,41 @@ func TestRunSingleG2LiteNonEmpty(t *testing.T) {
 		case strings.HasPrefix(data, gasMetaSel):
 			return hexResult(gasMetaOut), nil
 		default:
-			// gasTokenNetwork/gasTokenAddress: an empty result makes fetchGasTokenInfo fall back to the
-			// ETH default (network 0, zero address), which is what this native exit expects.
-			return quoted("0x"), nil
+			// gasTokenNetwork/gasTokenAddress: a zero ABI word decodes as the ETH values (network 0,
+			// zero address), which is what this native exit expects.
+			return hexResult(make([]byte, abiWordBytes)), nil
 		}
 	})
 
-	cfg := &Config{
+	return &Config{
 		L2RPCURL:        srv.URL,
 		L2BridgeAddress: common.HexToAddress("0x2222222222222222222222222222222222222222"),
 		L2NetworkID:     1,
 		Options:         Options{OutputDir: dir, VerifyNewLocalExitRootUsingShadowFork: false},
 	}
+}
 
-	require.NoError(t, runSingleG2(ctx, cfg, dir))
+// TestRunSingleG2LiteNonEmpty drives runSingleG2 in off-chain (no shadow-fork) mode with a single
+// native bridge exit: RunStepG2 builds the lite exit tree and writes its outputs.
+func TestRunSingleG2LiteNonEmpty(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := setupLiteG2(t, dir)
+
+	require.NoError(t, runSingleG2(context.Background(), cfg, dir))
 	require.True(t, fileExists(filepath.Join(dir, fileStepGNewLocalExitRoot)))
 	require.True(t, fileExists(filepath.Join(dir, fileStepGReorderedCertificate)))
+}
+
+// TestRunSingleG2LiteSaveError covers the AET-39 write-error branch: the step succeeds but its
+// result file cannot be written, which must fail the step instead of leaving a stale file behind.
+func TestRunSingleG2LiteSaveError(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := setupLiteG2(t, dir)
+	require.NoError(t, os.Mkdir(filepath.Join(dir, fileStepGNewLocalExitRoot), 0o755))
+
+	err := runSingleG2(context.Background(), cfg, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), fileStepGNewLocalExitRoot)
 }

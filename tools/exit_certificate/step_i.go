@@ -103,8 +103,12 @@ func fetchL1InfoTreeLeafCount(ctx context.Context, cfg *Config) (uint32, error) 
 
 		leafCount, found, err := queryUpdateL1InfoTreeV2(ctx, cfg.L1RPCURL, cfg.L1GlobalExitRootAddress, start, end)
 		if err != nil {
-			log.Warnf("eth_getLogs [%d-%d] error: %v", start, end, err)
-		} else if found {
+			// Abort instead of moving on to older blocks: if the failed range held the most recent
+			// event, continuing would silently pick an older one and write a stale leaf count into
+			// the final certificate (singleRPC already retried the query internally).
+			return 0, fmt.Errorf("eth_getLogs UpdateL1InfoTreeV2 [%d-%d]: %w", start, end, err)
+		}
+		if found {
 			log.Infof("Found UpdateL1InfoTreeV2 at block range [%d-%d]: leafCount=%d", start, end, leafCount)
 			return leafCount, nil
 		}

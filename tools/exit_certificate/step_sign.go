@@ -76,5 +76,5 @@ func fetchL2ChainID(ctx context.Context, rpcURL string) (uint64, error) {
 	if err := json.Unmarshal(result, &hexStr); err != nil {
 		return 0, fmt.Errorf("parse chain ID: %w", err)
 	}
-	return hexToUint64(hexStr), nil
+	return hexToUint64(hexStr)
 }

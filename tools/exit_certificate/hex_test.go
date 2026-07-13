@@ -19,17 +19,37 @@ func TestToBlockTag(t *testing.T) {
 
 func TestParseDecimalBigInt_Valid(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, big.NewInt(12345), parseDecimalBigInt("12345"))
+	v, err := parseDecimalBigInt("12345")
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(12345), v)
 }
 
 func TestParseDecimalBigInt_Empty(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, new(big.Int), parseDecimalBigInt(""))
+	_, err := parseDecimalBigInt("")
+	require.Error(t, err)
 }
 
 func TestParseDecimalBigInt_Invalid(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, new(big.Int), parseDecimalBigInt("not-a-number"))
+	_, err := parseDecimalBigInt("not-a-number")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not-a-number")
+}
+
+func TestHexToUint64_Valid(t *testing.T) {
+	t.Parallel()
+	v, err := hexToUint64("0x1406f40")
+	require.NoError(t, err)
+	require.Equal(t, uint64(0x1406f40), v)
+}
+
+func TestHexToUint64_Invalid(t *testing.T) {
+	t.Parallel()
+	for _, in := range []string{"", "0x", "0xzz", "not-hex", "0x10000000000000000"} {
+		_, err := hexToUint64(in)
+		require.Error(t, err, "input %q must not parse", in)
+	}
 }
 
 func TestSafeUint32_OK(t *testing.T) {
