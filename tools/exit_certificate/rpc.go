@@ -185,7 +185,7 @@ func batchRPC(ctx context.Context, url string, calls []RPCCall, retries int) ([]
 		for i, origIdx := range pendingIdxs {
 			if !answered[i] {
 				log.Warnf("batchRPC: no response for %s id=%d (attempt %d/%d) — re-queuing",
-					calls[origIdx].Method, i+1, attempt, retries)
+					calls[origIdx].Method, origIdx+1, attempt, retries)
 				nextPending = append(nextPending, origIdx)
 			}
 		}
