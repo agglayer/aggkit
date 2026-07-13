@@ -420,8 +420,9 @@ func runAllStepG(
 		return nil, fmt.Errorf("step G2: %w", err)
 	}
 	saveJSON(dir, fileStepGNewLocalExitRoot, result)
-	// RunStepG2 reorders certificate.BridgeExits to the shadow-fork deposit order; persist the
-	// reordered certificate for inspection and parity with single-step mode.
+	// RunStepG2 keeps the certificate's deterministic exit order (it never reorders); persist the
+	// certificate as Step G left it for inspection and parity with single-step mode (the file name is
+	// kept for compatibility).
 	saveJSON(dir, fileStepGReorderedCertificate, certificate)
 	return result, nil
 }
@@ -902,8 +903,9 @@ func runSingleG1(ctx context.Context, cfg *Config, dir string) error {
 }
 
 // runSingleG2 runs Step G2: it loads the shadow-fork block from G1, the certificate (capped from F
-// or from E), and the LBT entries, then writes step-g-new-local-exit-root.json and the reordered
-// step-g-reordered-certificate.json.
+// or from E), and the LBT entries, then writes step-g-new-local-exit-root.json and
+// step-g-reordered-certificate.json (the certificate as Step G left it — same deterministic exit
+// order it came in with; the file name is kept for compatibility).
 func runSingleG2(ctx context.Context, cfg *Config, dir string) error {
 	var g1Result StepG1Result
 	if err := loadJSON(dir, fileStepG1ShadowForkBlock, &g1Result); err != nil {
@@ -939,8 +941,8 @@ func runSingleG2(ctx context.Context, cfg *Config, dir string) error {
 		return err
 	}
 	saveJSON(dir, fileStepGNewLocalExitRoot, result)
-	// RunStepG2 reorders aggCert.BridgeExits to the shadow-fork deposit order. Persist it so the
-	// single-step Step I picks up the reordered exits instead of the pre-G ordering.
+	// RunStepG2 keeps the exits' deterministic order but updates each exit's Metadata (hash). Persist
+	// it so the single-step Step I picks up the certificate that matches the computed NewLocalExitRoot.
 	saveJSON(dir, fileStepGReorderedCertificate, aggCert)
 	return nil
 }
@@ -959,14 +961,15 @@ func runSingleH(ctx context.Context, cfg *Config, dir string) error {
 }
 
 func runSingleI(ctx context.Context, cfg *Config, dir string) error {
-	// Step I always builds on the Step G reordered certificate: Step G2 reorders the bridge exits
-	// to the shadow-fork deposit order (the authoritative ordering that matches the computed
-	// NewLocalExitRoot) and always writes step-g-reordered-certificate.json. Run Step G first.
+	// Step I always builds on the Step G certificate: Step G2 keeps the exits' deterministic order
+	// but sets each exit's Metadata (hash), so this is the certificate that matches the computed
+	// NewLocalExitRoot. It always writes step-g-reordered-certificate.json (name kept for
+	// compatibility). Run Step G first.
 	var cert certificateJSON
 	if err := loadJSON(dir, fileStepGReorderedCertificate, &cert); err != nil {
-		return fmt.Errorf("load step G reordered certificate (run step g first): %w", err)
+		return fmt.Errorf("load step G certificate (run step g first): %w", err)
 	}
-	log.Info("Using reordered certificate from step G (step-g-reordered-certificate.json)")
+	log.Info("Using certificate from step G (step-g-reordered-certificate.json)")
 	var gResult StepGResult
 	if err := loadJSON(dir, fileStepGNewLocalExitRoot, &gResult); err != nil {
 		return fmt.Errorf("load step G result: %w", err)

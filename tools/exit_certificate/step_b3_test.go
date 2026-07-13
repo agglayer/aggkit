@@ -111,6 +111,43 @@ func TestRunStepB3_FetchesHolders_NotInB2(t *testing.T) {
 	require.Equal(t, "400", bd.Holders[0].Balance)
 }
 
+// TestRunStepB3_HoldersSorted covers AET-33: the holders slice must come out sorted by address
+// regardless of the balance-map iteration order.
+func TestRunStepB3_HoldersSorted(t *testing.T) {
+	t.Parallel()
+
+	contractAddr := common.HexToAddress("0xCCCC000000000000000000000000000000000001")
+	eoa1 := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	eoa2 := common.HexToAddress("0x2222222222222222222222222222222222222222")
+	eoa3 := common.HexToAddress("0x3333333333333333333333333333333333333333")
+
+	server := newEthCallServer(t, func(tc rpcTestCall) (json.RawMessage, *jsonRPCError) {
+		if tc.To == addrLow(contractAddr) && tc.Selector == balanceOfSelector {
+			return abiUint256(big.NewInt(50)), nil
+		}
+		return abiZero(), nil
+	})
+	defer server.Close()
+
+	cfg := &Config{
+		L2RPCURL: server.URL,
+		Options: Options{
+			RPCBatchSize:        200,
+			ConcurrencyLimit:    5,
+			ExtraERC20Contracts: []common.Address{contractAddr},
+		},
+	}
+	// Pass the EOAs out of order: the result must always be address-sorted.
+	result, err := RunStepB3(context.Background(), cfg, 0, []common.Address{eoa3, eoa1, eoa2}, &StepB2Result{})
+	require.NoError(t, err)
+	require.Len(t, result.Breakdowns, 1)
+	holders := result.Breakdowns[0].Holders
+	require.Len(t, holders, 3)
+	require.Equal(t, eoa1, holders[0].Address)
+	require.Equal(t, eoa2, holders[1].Address)
+	require.Equal(t, eoa3, holders[2].Address)
+}
+
 func TestRunStepB3_NoEOAs_EmptyHolders(t *testing.T) {
 	t.Parallel()
 

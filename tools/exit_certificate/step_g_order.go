@@ -16,21 +16,25 @@ func bigIntKey(v *big.Int) string {
 	return v.String()
 }
 
-// reorderCertificateByDepositCount reorders certificate.BridgeExits to the canonical exit-tree order
-// and returns the replay's on-chain metadata aligned to the reordered exits, so the caller can
-// cross-check it against each exit's own metadata. leaves[i] is the BridgeEvent the replay of
-// certificate.BridgeExits[i] emitted; its DepositCount is the on-chain leaf index. The parallel
-// replay assigns deposit counts non-deterministically across exits, so the exits must be sorted by
-// that count for the certificate to be consistent with the computed NewLocalExitRoot (agglayer
-// rebuilds the LER by inserting the bridge exits in order). Because each exit maps directly to one
-// replayed leaf by index, no content matching is needed and duplicate exits are handled trivially.
-func reorderCertificateByDepositCount(
-	certificate *agglayertypes.Certificate, leaves []bridgesyncerlite.BridgeLeaf,
-) ([][]byte, error) {
-	exits := certificate.BridgeExits
+// depositOrderedExits returns copies of the certificate exits and their generated metadata sorted
+// by the replay's on-chain deposit count, leaving the certificate itself untouched. leaves[i] is
+// the BridgeEvent the replay of exits[i] emitted; its DepositCount is the on-chain leaf index. The
+// parallel replay assigns deposit counts non-deterministically across exits, so the sorted copy
+// reflects the order the forked contract inserted the leaves in — the order needed to rebuild the
+// contract's getRoot() and cross-check the off-chain leaf encoding against it. The certificate
+// keeps its own (deterministic) order; its NewLocalExitRoot is computed from that order instead.
+// Because each exit maps directly to one replayed leaf by index, no content matching is needed and
+// duplicate exits are handled trivially.
+func depositOrderedExits(
+	exits []*agglayertypes.BridgeExit, generatedMetadata [][]byte, leaves []bridgesyncerlite.BridgeLeaf,
+) ([]*agglayertypes.BridgeExit, [][]byte, error) {
 	if len(leaves) != len(exits) {
-		return nil, fmt.Errorf("replayed leaf count %d != certificate bridge exit count %d",
+		return nil, nil, fmt.Errorf("replayed leaf count %d != certificate bridge exit count %d",
 			len(leaves), len(exits))
+	}
+	if len(generatedMetadata) != len(exits) {
+		return nil, nil, fmt.Errorf("generated metadata count %d != certificate bridge exit count %d",
+			len(generatedMetadata), len(exits))
 	}
 
 	order := make([]int, len(exits))
@@ -41,13 +45,11 @@ func reorderCertificateByDepositCount(
 		return leaves[order[a]].DepositCount < leaves[order[b]].DepositCount
 	})
 
-	newExits := make([]*agglayertypes.BridgeExit, len(exits))
-	onChainMetadata := make([][]byte, len(exits))
+	orderedExits := make([]*agglayertypes.BridgeExit, len(exits))
+	orderedMetadata := make([][]byte, len(exits))
 	for pos, idx := range order {
-		newExits[pos] = exits[idx]
-		onChainMetadata[pos] = leaves[idx].Metadata
+		orderedExits[pos] = exits[idx]
+		orderedMetadata[pos] = generatedMetadata[idx]
 	}
-
-	certificate.BridgeExits = newExits
-	return onChainMetadata, nil
+	return orderedExits, orderedMetadata, nil
 }

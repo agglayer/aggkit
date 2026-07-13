@@ -259,16 +259,22 @@ divergence risk, and verifies the off-chain reconstruction against it.
    `BridgeEvent` is parsed into a `bridgesyncerlite.BridgeLeaf` — the on-chain `depositCount`, leaf
    content, metadata and block position — and stored at the exit's original index
    (`replayBridgeExits` returns `[]BridgeLeaf`).
-4. **Read `getRoot()`** on the forked contract after every exit is replayed — the authoritative
-   on-chain LER, which becomes `Certificate.NewLocalExitRoot`.
-5. **Reorder the certificate by deposit count** — `reorderCertificateByDepositCount` (`step_g_order.go`)
-   sorts the exits (and the metadata slice) by the captured `DepositCount`, aligning the certificate
-   with the on-chain exit-tree leaf order (agglayer rebuilds the LER by inserting `bridge_exits` in
-   order). The metadata also comes from the replayed leaves (the real on-chain metadata).
-6. **Verify** — `buildLiteTreeWithReplayed` inserts the replayed leaves into the copied lite DB on
-   top of the genesis→fork bridges and builds the tree; its root **must** equal the contract's
-   `getRoot()`. A mismatch aborts Step G2 — except when `options.ignoreUnsupportedL2Events=true`,
-   where divergence is expected (the syncer skipped events the contract processed) and is only logged.
+4. **Read `getRoot()`** on the forked contract after every exit is replayed — an on-chain
+   verification anchor. It is **not** the certificate's `NewLocalExitRoot`: the parallel replay
+   executes the txs (and therefore assigns deposit counts) in a non-deterministic order, so
+   `getRoot()`'s leaf order is a replay artifact that must not leak into the certificate.
+5. **Verify the leaf encoding against `getRoot()`** — `depositOrderedExits` (`step_g_order.go`)
+   produces a **copy** of the exits (and their generated metadata) sorted by the captured
+   `DepositCount`; a lite tree built from that copy (on top of the genesis→fork bridges) **must**
+   reproduce the contract's `getRoot()`. The genesis→fork tree alone is also checked against the
+   contract's LER at the fork block (`initialLER`). A mismatch of either anchor aborts Step G2
+   (hard error even with `options.ignoreUnsupportedL2Events=true` — that option only affects the
+   Step G1 lite syncer). The replay's per-exit on-chain metadata is also cross-checked against the
+   generated metadata (`compareMetadata`), exit by exit.
+6. **Compute `NewLocalExitRoot` in certificate order** — the certificate's exits keep their
+   incoming order (deterministic since Steps D/E/F are), and the lite tree built from them in that
+   order — the order agglayer rebuilds the LER from — is the `NewLocalExitRoot`. Same on-chain
+   state → same certificate, run after run; both G2 modes converge to the same result.
 
    The replay is **fail-fast on hard errors**: the first `approve`/`bridgeAsset` send failure or
    on-chain revert cancels the shared context, aborts with the real error (not `context.Canceled`),
@@ -288,8 +294,9 @@ divergence risk, and verifies the off-chain reconstruction against it.
 **Empty bridge exits:** if the certificate has no `bridge_exits`, both modes skip straight to the
 canonical `bridgesynctypes.EmptyLER` (no Anvil, no tree).
 
-**Reordered certificate output:** the orchestrator saves the (shadow-fork-reordered, or
-default-order) certificate as `step-g-reordered-certificate.json` — written in both G2 modes. In
+**Step G certificate output:** the orchestrator saves the certificate as
+`step-g-reordered-certificate.json` — written in both G2 modes (the file name is historical: the
+exits keep their deterministic incoming order; G2 only sets each exit's `Metadata` hash). In
 `runAll` the in-memory certificate flows to Step I; in single-step mode Step I **always** reads
 `step-g-reordered-certificate.json` (no fallback to the capped/Step-E certificates) so the final
 certificate matches the computed LER.
@@ -353,7 +360,7 @@ certificate matches the computed LER.
 | `L1Deposit` | Parsed `BridgeEvent` log from L1 |
 | `TokenBalanceCheck` | Step F three-way comparison: `LBTAmount` (Step 0), `CertificateAmount` (sum of exits), `AgglayerAmount`. `LBTAmount` is empty when LBT data was unavailable (two-way fallback). |
 | `StepG1Result` | `ShadowForkBlock` (the L2 block Step G2 forks at; the resolved targetBlock up to which G1 lite-synced the bridge history) |
-| `StepGResult` | `NewLocalExitRoot` hash + bridge exit count + `BridgeExitMetadata` (per-exit BridgeEvent metadata, in deposit order) |
+| `StepGResult` | `NewLocalExitRoot` hash + bridge exit count + `BridgeExitMetadata` (per-exit raw leaf metadata, aligned with the certificate's exits) |
 | `StepHResult` | `PreviousLocalExitRoot` + next certificate height from agglayer |
 | `StepSubmitResult` | `certificateHash` returned by the agglayer after submission + `l1LatestBlockBeforeSubmittingCertificate` (latest L1 block captured just before the submit) |
 | `StepWaitResult` | `certificateHash`, `finalStatus`, optional `settlementTxHash`, `elapsedSeconds`, the L1 `VerifyBatchesTrustedAggregator` settlement (`verifyBatchesL1Block` + `verifyBatchesTxHash`), and the last `updateL1InfoTree` / `updateL1InfoTreeV2` GER events in that block |
@@ -390,7 +397,7 @@ Notable optional fields:
 - `options.bridgeServiceType` — `"aggkit"` (default) or `"zkevm"`. Selects the API flavour used for the cross-check.
 - `options.useAgglayerAdminToStepFCheck` — `true` (default). When `true`, Step F runs the agglayer admin balance check (`admin_getTokenBalance`, three-way comparison; requires `agglayerAdminURL`). When `false`, Step F skips the agglayer query and instead compares the LBT (Step 0) totals against the certificate bridge-exit sums offline (no `agglayerAdminURL` needed; skipped only if no LBT data exists). Set to `false` when no agglayer admin endpoint is available.
 - `options.ignoreUnsupportedL2Events` — `false` (default). When `true`, the Step G lite syncer logs a warning and continues instead of aborting when it encounters an event that would invalidate a BridgeEvent-only reconstruction (`SetSovereignTokenAddress`, `MigrateLegacyToken`, `RemoveLegacySovereignTokenAddress`, `BackwardLET`, `ForwardLET`). The computed `NewLocalExitRoot` may then be incorrect — enable only to inspect such a chain knowingly.
-- `options.verifyNewLocalExitRootUsingShadowFork` — `true` (default). When `true`, Step G2 spins up the Anvil shadow-fork, replays every exit against the real bridge contract, reorders the certificate to the on-chain deposit order with the on-chain metadata, and verifies the lite tree root against the contract's `getRoot()` (requires Anvil). When `false`, Step G2 computes the `NewLocalExitRoot` off-chain from the lite exit tree (G1's genesis→fork bridges + the certificate's exits) — fast, no Anvil, but it trusts the off-chain leaf encoding/metadata.
+- `options.verifyNewLocalExitRootUsingShadowFork` — `true` (default). When `true`, Step G2 spins up the Anvil shadow-fork, replays every exit against the real bridge contract, recovers the on-chain metadata, and verifies the off-chain leaf encoding against the contract's `getRoot()` via a deposit-count-ordered copy of the exits (requires Anvil). When `false`, Step G2 skips Anvil and trusts the off-chain leaf encoding/metadata. In both modes the certificate keeps its deterministic exit order and the `NewLocalExitRoot` is the lite exit tree root in that order (G1's genesis→fork bridges + the certificate's exits).
 
 Defaults applied by `LoadConfig`:
 
@@ -416,7 +423,7 @@ Defaults applied by `LoadConfig`:
 
 - **Output dir:** All intermediate files land in `options.outputDir` (default `./output` relative to the config file). The dir is created automatically.
 - **`parameters.json` and `output/` are git-ignored** — never commit them.
-- **File chain:** Step D → `step-d-exit-certificate.json`; Step E → `step-e-exit-certificate.json` (adds unclaimed deposits); Step G2 → `step-g-reordered-certificate.json` (deposit-order exits); Step I reads `step-g-reordered-certificate.json` → `exit-certificate-final.json` (sets `NewLocalExitRoot` from G and `PrevLocalExitRoot` from H). Always submit `exit-certificate-final.json` (or the signed variant).
+- **File chain:** Step D → `step-d-exit-certificate.json`; Step E → `step-e-exit-certificate.json` (adds unclaimed deposits); Step G2 → `step-g-reordered-certificate.json` (same exit order, metadata hashes set — the name is historical); Step I reads `step-g-reordered-certificate.json` → `exit-certificate-final.json` (sets `NewLocalExitRoot` from G and `PrevLocalExitRoot` from H). Always submit `exit-certificate-final.json` (or the signed variant).
 - **LBT resolution:** `resolveOrGenerateLBT` always runs Step 0 and saves `step-0-lbt.json`.
 - **Step F reads from `step-d-exit-certificate.json`** for the balance check (not the final certificate), so the comparison reflects pure L2 exits before Step E additions. When capping is triggered, the caps are also applied to the final (Step E) certificate's `BridgeExits` in `runAll`, and saved as `step-f-capped-certificate.json`.
 - **File chain with capping:** when `ignoreBalanceMismatch=true` produces a capped cert, the effective chain becomes: Step D → Step E → **Step F (capped)** → Step G → … Always check whether `step-f-capped-certificate.json` exists when investigating balance issues.

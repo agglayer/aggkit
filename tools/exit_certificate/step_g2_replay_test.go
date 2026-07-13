@@ -437,7 +437,47 @@ func TestRunStepG2ShadowForkLauncherError(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestRunStepG2ShadowForkRootMismatchAborts(t *testing.T) {
+// genesisForkRootOf computes the lite tree root of a genesis→fork DB holding `genesis` bridges (as
+// makeG1LiteDB creates them), using a scratch config so the caller's G2 DB is untouched.
+func genesisForkRootOf(t *testing.T, genesis int) common.Hash {
+	t.Helper()
+	cfg := replayTestConfig(t)
+	makeG1LiteDB(t, cfg, genesis)
+	root, err := buildLiteTreeWithReplayed(context.Background(), cfg, nil)
+	require.NoError(t, err)
+	return root
+}
+
+// certOrderRootOf computes the lite tree root of `genesis` genesis→fork bridges followed by the
+// given exits (empty metadata) in the given order, using a scratch config.
+func certOrderRootOf(t *testing.T, genesis int, exits []*agglayertypes.BridgeExit) common.Hash {
+	t.Helper()
+	cfg := replayTestConfig(t)
+	makeG1LiteDB(t, cfg, genesis)
+	root, _, err := buildLiteTreeFromCertificate(
+		context.Background(), cfg, &agglayertypes.Certificate{BridgeExits: exits},
+		100, 0, common.Address{}, make([][]byte, len(exits)),
+	)
+	require.NoError(t, err)
+	return root
+}
+
+// initialLERThen returns a localExitRoot mock: the first call (the initial LER, read before the
+// replay) returns initial; every later call (getRoot after the replay) returns afterReplay.
+func initialLERThen(initial, afterReplay common.Hash) func(context.Context, string) (common.Hash, error) {
+	calls := 0
+	return func(context.Context, string) (common.Hash, error) {
+		calls++
+		if calls == 1 {
+			return initial, nil
+		}
+		return afterReplay, nil
+	}
+}
+
+// TestRunStepG2ShadowForkInitialLERMismatchAborts verifies that a divergence between the
+// genesis→fork lite tree and the contract's LER at the fork block is a hard error.
+func TestRunStepG2ShadowForkInitialLERMismatchAborts(t *testing.T) {
 	t.Parallel()
 	cfg := replayTestConfig(t)
 	makeG1LiteDB(t, cfg, 2)
@@ -447,6 +487,26 @@ func TestRunStepG2ShadowForkRootMismatchAborts(t *testing.T) {
 	backend.localExitRoot = func(context.Context, string) (common.Hash, error) {
 		return common.HexToHash("0xdeadbeef"), nil // never matches the rebuilt lite tree
 	}
+	launcher := &mockForkLauncher{backend: backend}
+
+	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
+		nativeAssetExit(common.HexToAddress("0x01"), 100),
+	}}
+	_, err := runStepG2(context.Background(), cfg, launcher, 100, cert, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not match contract initial LER")
+	require.True(t, launcher.started)
+}
+
+func TestRunStepG2ShadowForkGetRootMismatchAborts(t *testing.T) {
+	t.Parallel()
+	cfg := replayTestConfig(t)
+	makeG1LiteDB(t, cfg, 2)
+
+	backend := newMockBackend()
+	backend.nextDeposit = 2 // replayed deposit counts continue after the 2 genesis→fork bridges
+	// The initial LER matches the genesis→fork tree, but getRoot after the replay never matches.
+	backend.localExitRoot = initialLERThen(genesisForkRootOf(t, 2), common.HexToHash("0xdeadbeef"))
 	launcher := &mockForkLauncher{backend: backend}
 
 	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
@@ -469,9 +529,7 @@ func TestRunStepG2ShadowForkRootMismatchAbortsEvenWithIgnoreOption(t *testing.T)
 
 	backend := newMockBackend()
 	backend.nextDeposit = 2 // replayed deposit counts continue after the 2 genesis→fork bridges
-	backend.localExitRoot = func(context.Context, string) (common.Hash, error) {
-		return common.HexToHash("0xdeadbeef"), nil
-	}
+	backend.localExitRoot = initialLERThen(genesisForkRootOf(t, 2), common.HexToHash("0xdeadbeef"))
 	launcher := &mockForkLauncher{backend: backend}
 
 	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
@@ -481,4 +539,65 @@ func TestRunStepG2ShadowForkRootMismatchAbortsEvenWithIgnoreOption(t *testing.T)
 	_, err := runStepG2(context.Background(), cfg, launcher, 100, cert, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "does not match contract getRoot")
+}
+
+// TestRunStepG2ShadowForkDeterministicOrder is the AET regression test for the non-deterministic
+// certificate ordering: the parallel replay assigns on-chain deposit counts in whatever order the
+// txs happen to execute, and that order must NOT leak into the certificate. Two runs whose replays
+// execute in opposite orders must produce the same exit order (the incoming one) and the same
+// NewLocalExitRoot (the cert-order lite tree root), while each run's getRoot() — which does depend
+// on the replay order — is still verified against a lite tree in that replay order.
+func TestRunStepG2ShadowForkDeterministicOrder(t *testing.T) {
+	t.Parallel()
+
+	destA := common.HexToAddress("0x0a")
+	destB := common.HexToAddress("0x0b")
+	newExits := func() []*agglayertypes.BridgeExit {
+		return []*agglayertypes.BridgeExit{
+			nativeAssetExit(destA, 100),
+			nativeAssetExit(destB, 200),
+		}
+	}
+
+	genesisRoot := genesisForkRootOf(t, 2)
+	// certOrderRoot is the tree for [A, B]; replayReversedRoot the one for [B, A].
+	certOrderRoot := certOrderRootOf(t, 2, newExits())
+	replayReversedRoot := certOrderRootOf(t, 2, []*agglayertypes.BridgeExit{newExits()[1], newExits()[0]})
+	require.NotEqual(t, certOrderRoot, replayReversedRoot, "amounts must differ so order changes the root")
+
+	run := func(depositCounts map[common.Address]uint32, getRoot common.Hash) (*StepGResult, []*agglayertypes.BridgeExit) {
+		cfg := replayTestConfig(t)
+		makeG1LiteDB(t, cfg, 2)
+
+		backend := newMockBackend()
+		backend.localExitRoot = initialLERThen(genesisRoot, getRoot)
+		backend.sendTx = func(_ context.Context, e *agglayertypes.BridgeExit, _ bool, _ common.Address) (common.Hash, error) {
+			backend.mu.Lock()
+			defer backend.mu.Unlock()
+			dc := depositCounts[e.DestinationAddress]
+			hash := common.BigToHash(big.NewInt(int64(dc) + 1))
+			backend.hashToDeposit[hash] = dc
+			return hash, nil
+		}
+		launcher := &mockForkLauncher{backend: backend}
+
+		cert := &agglayertypes.Certificate{BridgeExits: newExits()}
+		result, err := runStepG2(context.Background(), cfg, launcher, 100, cert, nil)
+		require.NoError(t, err)
+		return result, cert.BridgeExits
+	}
+
+	// Run 1: the replay happens to execute in certificate order (A gets deposit count 2, B gets 3).
+	inOrder, exitsInOrder := run(map[common.Address]uint32{destA: 2, destB: 3}, certOrderRoot)
+	// Run 2: the replay executes in the opposite order (B gets 2, A gets 3) — getRoot differs.
+	reversed, exitsReversed := run(map[common.Address]uint32{destA: 3, destB: 2}, replayReversedRoot)
+
+	// Both runs keep the deterministic incoming exit order and compute the same NewLocalExitRoot.
+	for _, exits := range [][]*agglayertypes.BridgeExit{exitsInOrder, exitsReversed} {
+		require.Equal(t, destA, exits[0].DestinationAddress)
+		require.Equal(t, destB, exits[1].DestinationAddress)
+	}
+	require.Equal(t, certOrderRoot, inOrder.NewLocalExitRoot)
+	require.Equal(t, certOrderRoot, reversed.NewLocalExitRoot)
+	require.Equal(t, uint64(2), inOrder.BridgeExitCount)
 }
