@@ -21,6 +21,8 @@ const (
 	ethDecimals       = 18  // standard ETH/ERC-20 decimal precision
 	minTopicsForLeaf  = 2   // minimum topics required to extract leaf count
 	uncheckedStatus   = "unchecked"
+	okStatus          = "ok"
+	errorStatus       = "error"
 )
 
 // safeUint32 converts a big.Int to uint32, returning an error on overflow.

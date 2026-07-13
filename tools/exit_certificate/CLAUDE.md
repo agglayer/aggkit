@@ -53,11 +53,12 @@ All checks run regardless of individual failures. A combined error lists every f
 
 1. **Anvil installed** — `anvil` must be in `$PATH` (required by Step G2 only when `options.verifyNewLocalExitRootUsingShadowFork=true`). Fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh) if missing.
 2. **L1 RPC reachable** — dials `l1RpcUrl` and calls `eth_blockNumber`. Fails if not set or unreachable.
-3. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.
-4. **`sovereignRollupAddr` is set** — required; fails if zero address.
-5. **Network type is PP** — queries `AGGCHAINTYPE()` on the `aggchainbase` contract at `sovereignRollupAddr` on L1. Fails if FEP. Only runs if checks 2 and 4 passed.
-6. **Threshold is 1** — queries `Threshold()` and `GetAggchainSignerInfos()`. Fails if threshold > 1. Also verifies the bridge address on the contract matches config. Only runs if checks 2 and 4 passed.
-7. **No custom gas token** — calls `gasTokenAddress()`/`gasTokenNetwork()` on the L2 bridge. Fails if a non-zero gas token is set (not supported).
+3. **`l1BridgeAddress` is the L1 bridge** — calls `networkID()` on `l1BridgeAddress` over the L1 RPC and requires 0 (the L1/mainnet network). Catches a typo, a non-bridge contract, or the `l2BridgeAddress` default pointing at an address that is not the L1 bridge — Step E trusts this address to detect unclaimed L1→L2 deposits and `eth_getLogs` silently returns nothing on a wrong one. The outcome is recorded in the result as `l1BridgeAddressStatus` (`ok` / `invalid (networkID()=N)` / `error` / `unchecked`); if check 2 failed it is `unchecked` and counted as a failure.
+4. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.
+5. **`sovereignRollupAddr` is set** — required; fails if zero address.
+6. **Network type is PP** — queries `AGGCHAINTYPE()` on the `aggchainbase` contract at `sovereignRollupAddr` on L1. Fails if FEP. Only runs if checks 2 and 5 passed.
+7. **Threshold is 1 + bridge addresses match** — queries `Threshold()` and `GetAggchainSignerInfos()`. Fails if threshold > 1. Also verifies `aggchainbase.bridgeAddress()` (the L1 bridge the consensus contract references) matches `l1BridgeAddress`, and cross-checks `l1BridgeAddress` against the canonical `rollupManager.bridgeAddress()` — the mismatch error carries the correct address to put in the config (recorded in the result as `rollupManagerBridgeAddress`). Only runs if checks 2 and 5 passed.
+8. **No custom gas token** — calls `gasTokenAddress()`/`gasTokenNetwork()` on the L2 bridge. Fails if a non-zero gas token is set (not supported).
 
 - **Output:** `step-check-result.json` (`StepCheckResult`)
 
@@ -393,7 +394,7 @@ Notable optional fields:
 
 Defaults applied by `LoadConfig`:
 
-- `l1BridgeAddress` defaults to `l2BridgeAddress`
+- `l1BridgeAddress` defaults to `l2BridgeAddress`. The value (default or explicit) is verified on-chain by Step CHECK (`networkID()==0`, `aggchainbase.bridgeAddress()`, `rollupManager.bridgeAddress()`) — a wrong address would otherwise silently hide unclaimed L1→L2 deposits.
 - `l2NetworkId` defaults to `1`
 - `options.blockRange` = 5000, `concurrencyLimit` = 20, `rpcBatchSize` = 200
 - `options.ignoreGenesisBalance` = `false` — when `false` (default), Step B aborts if any address has a non-zero ETH balance at block 0 (genesis preload guard). Set `true` to downgrade it to a warning, only for Kurtosis/test environments.

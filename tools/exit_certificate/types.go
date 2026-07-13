@@ -288,15 +288,22 @@ type StepFResult struct {
 
 // StepCheckResult holds the output of Step CHECK (prerequisite verification).
 type StepCheckResult struct {
-	AnvilInstalled  bool     `json:"anvilInstalled"`
-	BridgeNetworkID uint32   `json:"bridgeNetworkID"`
-	NetworkType     string   `json:"networkType"`
-	Threshold       uint64   `json:"threshold"`
-	SignerCount     int      `json:"signerCount"`
-	Signers         []string `json:"signers,omitempty"`
-	GasTokenAddress string   `json:"gasTokenAddress,omitempty"`
-	GasTokenNetwork uint32   `json:"gasTokenNetwork,omitempty"`
-	WETHToken       string   `json:"wethToken,omitempty"`
+	AnvilInstalled  bool   `json:"anvilInstalled"`
+	BridgeNetworkID uint32 `json:"bridgeNetworkID"`
+	// L1BridgeAddressStatus records the l1BridgeAddress verification outcome: "ok" when networkID()
+	// on the configured address returns 0 (the L1/mainnet network), "invalid (networkID()=N)" when
+	// it hosts a non-L1 bridge, "error" when the call fails, "unchecked" when the L1 RPC is unavailable.
+	L1BridgeAddressStatus string `json:"l1BridgeAddressStatus"`
+	// RollupManagerBridgeAddress is the canonical L1 bridge address published by the RollupManager
+	// (bridgeAddress()), recorded so a failed l1BridgeAddress check shows the correct value to use.
+	RollupManagerBridgeAddress string   `json:"rollupManagerBridgeAddress,omitempty"`
+	NetworkType                string   `json:"networkType"`
+	Threshold                  uint64   `json:"threshold"`
+	SignerCount                int      `json:"signerCount"`
+	Signers                    []string `json:"signers,omitempty"`
+	GasTokenAddress            string   `json:"gasTokenAddress,omitempty"`
+	GasTokenNetwork            uint32   `json:"gasTokenNetwork,omitempty"`
+	WETHToken                  string   `json:"wethToken,omitempty"`
 }
 
 // StepG1Result holds the output of Step G1: the L2 block at which Step G2 spins up its Anvil

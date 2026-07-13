@@ -192,19 +192,25 @@ func TestCheckContractPrereqsPP(t *testing.T) {
 	t.Parallel()
 	bridgeAddr := common.BytesToAddress([]byte("bridge"))
 	url := newContractStub(t, contractPrereqReturns(t, bridgeAddr, [2]byte{0, 0}, 1))
-	cfg := &Config{SovereignRollupAddr: common.BytesToAddress([]byte("sov")), L2BridgeAddress: bridgeAddr}
+	// bridgeAddress() shares its selector between aggchainbase and the rollup manager, so the stub
+	// answers both the aggchainbase check and the rollup manager cross-check with bridgeAddr.
+	cfg := &Config{SovereignRollupAddr: common.BytesToAddress([]byte("sov")),
+		L2BridgeAddress: bridgeAddr, L1BridgeAddress: bridgeAddr}
 	result := &StepCheckResult{}
 	var failures []string
 	checkContractPrereqs(context.Background(), cfg, dialStub(t, url), result, &failures)
 	require.Empty(t, failures)
 	require.Equal(t, "PP", result.NetworkType)
 	require.Equal(t, uint64(1), result.Threshold)
+	require.Equal(t, bridgeAddr.Hex(), result.RollupManagerBridgeAddress)
 }
 
 func TestCheckContractPrereqsFEPThresholdAndBridgeMismatch(t *testing.T) {
 	t.Parallel()
 	url := newContractStub(t, contractPrereqReturns(t, common.BytesToAddress([]byte("other")), [2]byte{0, 1}, 2))
-	cfg := &Config{SovereignRollupAddr: common.BytesToAddress([]byte("sov")), L2BridgeAddress: common.BytesToAddress([]byte("bridge"))}
+	cfg := &Config{SovereignRollupAddr: common.BytesToAddress([]byte("sov")),
+		L2BridgeAddress: common.BytesToAddress([]byte("bridge")),
+		L1BridgeAddress: common.BytesToAddress([]byte("bridge"))}
 	result := &StepCheckResult{}
 	var failures []string
 	checkContractPrereqs(context.Background(), cfg, dialStub(t, url), result, &failures)
@@ -214,6 +220,8 @@ func TestCheckContractPrereqsFEPThresholdAndBridgeMismatch(t *testing.T) {
 	require.Contains(t, joined, "FEP")
 	require.Contains(t, joined, "threshold is 2")
 	require.Contains(t, joined, "bridge address mismatch")
+	require.Contains(t, joined, "rollupManager")
+	require.Contains(t, joined, "set l1BridgeAddress=")
 }
 
 func TestCheckContractPrereqsAggchainTypeErrorTriggersLegacy(t *testing.T) {
@@ -222,13 +230,58 @@ func TestCheckContractPrereqsAggchainTypeErrorTriggersLegacy(t *testing.T) {
 	rets := contractPrereqReturns(t, common.HexToAddress("0xbridge"), [2]byte{0, 0}, 1)
 	delete(rets, selectorHex(aggchainbaseABI, "AGGCHAIN_TYPE"))
 	url := newContractStub(t, rets)
-	cfg := &Config{SovereignRollupAddr: common.HexToAddress("0xsov"), L2BridgeAddress: common.HexToAddress("0xbridge")}
+	cfg := &Config{SovereignRollupAddr: common.HexToAddress("0xsov"),
+		L2BridgeAddress: common.HexToAddress("0xbridge"), L1BridgeAddress: common.HexToAddress("0xbridge")}
 	result := &StepCheckResult{}
 	var failures []string
 	checkContractPrereqs(context.Background(), cfg, dialStub(t, url), result, &failures)
 	require.Equal(t, "unknown", result.NetworkType)
 	// threshold/bridge still resolved fine, so the only failure is the AGGCHAINTYPE query
 	require.Contains(t, strings.Join(failures, "\n"), "AGGCHAINTYPE")
+}
+
+// --- checkL1BridgeNetworkID ------------------------------------------------------------------------
+
+func TestCheckL1BridgeNetworkIDIsL1(t *testing.T) {
+	t.Parallel()
+	url := newContractStub(t, map[string]string{
+		selectorHex(bridgeABI, "networkID"): packReturn(t, bridgeABI, "networkID", uint32(0)),
+	})
+	cfg := &Config{L1BridgeAddress: common.HexToAddress("0xbridge")}
+	result := &StepCheckResult{}
+	var failures []string
+	checkL1BridgeNetworkID(context.Background(), cfg, dialStub(t, url), result, &failures)
+	require.Empty(t, failures)
+	require.Equal(t, okStatus, result.L1BridgeAddressStatus)
+}
+
+func TestCheckL1BridgeNetworkIDNotL1(t *testing.T) {
+	t.Parallel()
+	// networkID()=2 → the address hosts an L2 bridge (e.g. the l2BridgeAddress default), not the L1 one.
+	url := newContractStub(t, map[string]string{
+		selectorHex(bridgeABI, "networkID"): packReturn(t, bridgeABI, "networkID", uint32(2)),
+	})
+	cfg := &Config{L1BridgeAddress: common.HexToAddress("0xbridge")}
+	result := &StepCheckResult{}
+	var failures []string
+	checkL1BridgeNetworkID(context.Background(), cfg, dialStub(t, url), result, &failures)
+	require.Len(t, failures, 1)
+	require.Contains(t, failures[0], "not the L1 bridge")
+	require.Contains(t, failures[0], "networkID()=2")
+	require.Equal(t, "invalid (networkID()=2)", result.L1BridgeAddressStatus)
+}
+
+func TestCheckL1BridgeNetworkIDCallError(t *testing.T) {
+	t.Parallel()
+	// no networkID selector registered → eth_call errors (a non-bridge contract or no code at all)
+	url := newContractStub(t, map[string]string{})
+	cfg := &Config{L1BridgeAddress: common.HexToAddress("0xdead")}
+	result := &StepCheckResult{}
+	var failures []string
+	checkL1BridgeNetworkID(context.Background(), cfg, dialStub(t, url), result, &failures)
+	require.Len(t, failures, 1)
+	require.Contains(t, failures[0], "networkID()")
+	require.Equal(t, errorStatus, result.L1BridgeAddressStatus)
 }
 
 // --- RunStepCheck (failure aggregation) ----------------------------------------------------------
@@ -246,23 +299,33 @@ func TestRunStepCheckMissingL1AndSovereign(t *testing.T) {
 	result, err := RunStepCheck(context.Background(), cfg)
 	require.Error(t, err)
 	require.Equal(t, uncheckedStatus, result.NetworkType)
+	require.Equal(t, uncheckedStatus, result.L1BridgeAddressStatus)
 	require.Contains(t, err.Error(), "l1RpcUrl is required")
+	require.Contains(t, err.Error(), "l1BridgeAddress could not be verified")
 	require.Contains(t, err.Error(), "sovereignRollupAddr is required")
 }
 
 func TestRunStepCheckAllReachable(t *testing.T) {
 	t.Parallel()
 	bridgeAddr := common.BytesToAddress([]byte("bridge"))
-	rets := contractPrereqReturns(t, bridgeAddr, [2]byte{0, 0}, 1)
-	rets[selectorHex(bridgeABI, "networkID")] = packReturn(t, bridgeABI, "networkID", uint32(1))
-	rets[selectorHex(bridgeABI, "gasTokenNetwork")] = packReturn(t, bridgeABI, "gasTokenNetwork", uint32(0))
-	rets[selectorHex(bridgeABI, "gasTokenAddress")] = packReturn(t, bridgeABI, "gasTokenAddress", common.Address{})
-	url := newContractStub(t, rets)
 
-	// One stub backs both L1 and L2 (it dispatches purely on selector).
+	// Separate L1/L2 stubs: the same networkID() selector must return 0 on the L1 bridge and the
+	// configured l2NetworkId on the L2 bridge.
+	l1Rets := contractPrereqReturns(t, bridgeAddr, [2]byte{0, 0}, 1)
+	l1Rets[selectorHex(bridgeABI, "networkID")] = packReturn(t, bridgeABI, "networkID", uint32(0))
+	l1URL := newContractStub(t, l1Rets)
+
+	l2Rets := map[string]string{
+		selectorHex(bridgeABI, "networkID"):       packReturn(t, bridgeABI, "networkID", uint32(1)),
+		selectorHex(bridgeABI, "gasTokenNetwork"): packReturn(t, bridgeABI, "gasTokenNetwork", uint32(0)),
+		selectorHex(bridgeABI, "gasTokenAddress"): packReturn(t, bridgeABI, "gasTokenAddress", common.Address{}),
+	}
+	l2URL := newContractStub(t, l2Rets)
+
 	cfg := &Config{
-		L1RPCURL: url, L2RPCURL: url, L2NetworkID: 1,
-		L2BridgeAddress: bridgeAddr, SovereignRollupAddr: common.BytesToAddress([]byte("sov")),
+		L1RPCURL: l1URL, L2RPCURL: l2URL, L2NetworkID: 1,
+		L2BridgeAddress: bridgeAddr, L1BridgeAddress: bridgeAddr,
+		SovereignRollupAddr: common.BytesToAddress([]byte("sov")),
 	}
 
 	result, err := RunStepCheck(context.Background(), cfg)
@@ -274,5 +337,6 @@ func TestRunStepCheckAllReachable(t *testing.T) {
 	}
 	require.Equal(t, "PP", result.NetworkType)
 	require.Equal(t, uint32(1), result.BridgeNetworkID)
+	require.Equal(t, okStatus, result.L1BridgeAddressStatus)
 	require.Equal(t, uint64(1), result.Threshold)
 }
