@@ -81,15 +81,14 @@ func RunStep0(ctx context.Context, cfg *Config) (*Step0Result, error) {
 	}
 
 	// 3. Native token unlocked balance
-	var nativeEntry *LBTEntry
-	if nativeEntry, err = computeNativeBalance(ctx, rpcURL, bridgeAddr, blockTag); err != nil {
-		log.Warnf("Failed to compute native balance: %v", err)
-	} else {
-		entries = append(entries, *nativeEntry)
-		log.Infof("Native token unlocked balance: %s", nativeEntry.Balance)
-		log.Infof("Native token info - OriginNetwork: %d, OriginTokenAddress: %s",
-			nativeEntry.OriginNetwork, nativeEntry.OriginTokenAddress.Hex())
+	nativeEntry, err := computeNativeBalance(ctx, rpcURL, bridgeAddr, blockTag)
+	if err != nil {
+		return nil, fmt.Errorf("compute native balance: %w", err)
 	}
+	entries = append(entries, *nativeEntry)
+	log.Infof("Native token unlocked balance: %s", nativeEntry.Balance)
+	log.Infof("Native token info - OriginNetwork: %d, OriginTokenAddress: %s",
+		nativeEntry.OriginNetwork, nativeEntry.OriginTokenAddress.Hex())
 	// 4. WETH token (only on chains with a custom gas token)
 	if wethEntry, err := fetchWETHBalance(ctx, rpcURL, bridgeAddr, blockTag); err != nil {
 		log.Infof("No WETH token on this chain (no custom gas token)")
@@ -378,8 +377,10 @@ func fetchSetSovereignTokenEventsInRange(
 	for _, lg := range logData {
 		ov, err := decodeSetSovereignTokenEvent(lg.Data)
 		if err != nil {
-			log.Warnf("Failed to decode SetSovereignTokenAddress event: %v", err)
-			continue
+			// A skipped override would leave the LBT pointing at the pre-remap wrapped
+			// address, diverging from what getTokenWrappedAddress() returns on-chain.
+			return nil, fmt.Errorf("decode SetSovereignTokenAddress event (block %d, log %d): %w",
+				lg.BlockNumber, lg.LogIndex, err)
 		}
 		ov.BlockNumber = lg.BlockNumber
 		ov.LogIndex = lg.LogIndex
