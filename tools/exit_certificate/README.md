@@ -10,12 +10,13 @@ Generate exit certificates for a chain migration — scans L2 state, computes ba
 
 ## Requirements
 
-The chain being deprecated must meet **all** of the following conditions for the tool to produce a valid certificate. The first two are verified automatically by [Step CHECK](#step-check--verify-prerequisites); the last two are operational prerequisites you must ensure yourself.
+The chain being deprecated must meet **all** of the following conditions for the tool to produce a valid certificate. The first two and the last one are verified automatically by [Step CHECK](#step-check--verify-prerequisites); the others are operational prerequisites you must ensure yourself.
 
 - **The network must be Pessimistic Proof (PP).** FEP (Finality by Execution Proof) chains are not supported. Step CHECK queries `AGGCHAINTYPE()` and aborts if the network is FEP.
 - **The committee threshold must be 1.** Exactly one committee member must be required to approve certificates. Step CHECK queries the multisig threshold and aborts if it is greater than 1.
-- **The network must have settled at least one certificate.** The tool needs a prior certificate to derive the `PreviousLocalExitRoot` (Step H); a chain that has never settled a certificate cannot be exited with this tool.
+- **The network must have settled at least one certificate.** Step H derives the `PreviousLocalExitRoot` from the agglayer's `settled_ler`, treating a missing value (no certificate ever settled) as zero. In practice a never-settled chain still cannot be exited: the AET-11 verification requires the L2 bridge LER at the target block to equal the settled LER, and the bridge's LER (the root of its deposit tree, non-zero even when empty) never matches that zero fallback.
 - **The network's sequencer must be stopped.** Halt the sequencer before running the tool so that no new bridges (or other state changes) are produced while the certificate is being built. New activity after the target block would not be reflected in the certificate.
+- **Every L2→L1 bridge exit up to the target block must be settled by the agglayer.** Halting the sequencer is not sufficient: an ordinary bridge withdrawal made *before* the halt advances the L2 local exit root, and if no certificate settling it has been finalized, the tool cannot produce a certificate from that snapshot (the L2 LER no longer matches the agglayer's `settled_ler`). In practice: keep the aggsender running after the halt until the last certificate settles, and only then run the tool. Step CHECK verifies this (check 9, AET-11) and Step 0 re-verifies it on its resolved target block, aborting with an actionable error before the expensive scan/replay phases; Step H re-checks the same condition at the end. In single-step mode past Step 0 (`--step g2`, …) Step H remains the final safety net.
 
 ## Known limitations
 
@@ -125,6 +126,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `bridgeServiceType` | `"aggkit"` | Bridge service API flavour. `"aggkit"` uses `GET /bridge/v1/bridges` (aggkit bridge service); `"zkevm"` uses `GET /pending-bridges` (zkevm-bridge-service). |
 | `extraErc20Contracts` | `[]` | Optional list of ERC-20 contract addresses to decompose into individual holder balances in Step B3. Step A includes these contracts in its `Transfer`-log scan so even passive holders (no ETH/nonce/code) are discovered; Step B3 then calls `balanceOf` for every EOA collected in Step A. Example: `["0xAbc...123", "0xDef...456"]`. |
 | `ignoreUnsupportedL2Events` | `false` | When `true`, the Step G lite syncer logs a warning and continues instead of aborting when it sees an L2 event that would invalidate a BridgeEvent-only reconstruction (`SetSovereignTokenAddress`, `MigrateLegacyToken`, `RemoveLegacySovereignTokenAddress`, `BackwardLET`, `ForwardLET`). The computed `NewLocalExitRoot` may then be incorrect — enable only to knowingly inspect such a chain. |
+| `ignoreLERMismatch` | `false` | When `true`, the AET-11 unsettled-bridge-exits verification (Step CHECK check 9, the Step 0 guard, and Step H's LER cross-check) logs a warning and continues instead of aborting when the L2 bridge's LER at the target block does not match the agglayer's `settled_ler`. The certificate then chains from a `PrevLocalExitRoot` that does not cover every emitted bridge exit, so the agglayer will most likely reject it — enable only to knowingly inspect such a snapshot. Step H's pending-certificate guard is unaffected. |
 | `verifyNewLocalExitRootUsingShadowFork` | `true` | Selects the Step G2 mode. When `true` (default), Step G2 spins up an Anvil shadow-fork, replays every bridge exit against the real bridge contract, recovers the on-chain metadata, and verifies the off-chain leaf encoding against the contract's `getRoot()` (requires `anvil` in `$PATH`). When `false`, Step G2 skips Anvil — much faster, but it trusts the off-chain leaf encoding/metadata. In both modes the certificate keeps its deterministic exit order and the `NewLocalExitRoot` is the lite exit tree root in that order. See [Step G](#step-g--compute-newlocalexitroot) for details. |
 
 ### Important configuration notes
@@ -217,7 +219,7 @@ This produces and signs the certificate but **does not submit it**. SUBMIT and W
 
 | Step | Name | What it does |
 | :--: | ---- | ------------ |
-| CHECK | Verify prerequisites | Checks Anvil, L1 RPC, network type (PP only), threshold = 1, no custom gas token. |
+| CHECK | Verify prerequisites | Checks Anvil, L1 RPC, network type (PP only), threshold = 1, no custom gas token, and no unsettled L2 bridge exits at the target block (L2 bridge LER vs the agglayer's `settled_ler`, AET-11). |
 | 0 | Generate LBT | Resolves `targetBlock` to a concrete block number, then scans `NewWrappedToken` events and fetches `totalSupply` per wrapped token at that block. |
 | A | Collect addresses | Discovers every value-holding address from the final state (`debug_accountRange` state dump, for native-ETH holders and contracts) plus `Transfer` event logs per wrapped token (for token holders). Both sources always run and merge. |
 | B | EOA balances + ERC-20 detection | B1: classifies addresses and fetches ETH/token balances for EOAs. B2: probes contracts for the ERC-20 interface and checks if they hold tracked wrapped tokens. B3: fetches holder breakdowns for `extraErc20Contracts` (skips any already processed by B2). |
@@ -283,6 +285,7 @@ All checks run regardless of individual failures; a combined error lists every f
 6. **Network type is PP** — queries `AGGCHAINTYPE()` on the `aggchainbase` contract at `sovereignRollupAddr` on L1. FEP is not supported. Only runs if checks 2 and 5 passed.
 7. **Threshold is 1 + bridge addresses match** — queries the multisig threshold. Fails if > 1. Also verifies `l1BridgeAddress` matches both `aggchainbase.bridgeAddress()` and the canonical `rollupManager.bridgeAddress()` (the mismatch error shows the correct address to configure). Logs all committee signers and their URLs. Only runs if checks 2 and 5 passed.
 8. **No custom gas token** — calls `gasTokenAddress()`/`gasTokenNetwork()` on the L2 bridge. Fails if a non-zero gas token is configured (not supported).
+9. **No unsettled L2 bridge exits (AET-11)** — requires `agglayerClient.grpc.url` (the same requirement Step H enforces later). Reads the L2 bridge's local exit root (`getRoot()`) at the target block — the block Step 0 already resolved (`step-0-l2_target_block.json`) when present, otherwise resolved from the config on the spot — and compares it against the agglayer's `settled_ler` (refusing to proceed on a pending certificate, like Step H). A mismatch means the target block's bridge LER and the settled LER have diverged — the pipeline aborts here, before the expensive scan (Steps A/B) and replay (Step G) phases, with instructions to pick a target block whose bridge LER matches the settled LER (wait for settlement or move the target block back when the bridge is ahead; move it forward when a certificate settled past it). Step 0 re-runs this same verification on its own resolved block. The outcome is recorded in the result as `unsettledExitsStatus` (plus the two compared roots, `settledLER` / `l2BridgeLER`). With `ignoreLERMismatch=true` the failure is logged as a warning and not counted (the result still records the real outcome).
 
 **Output:** `step-check-result.json`
 
@@ -290,7 +293,7 @@ All checks run regardless of individual failures; a combined error lists every f
 
 #### Target block resolution
 
-The `targetBlock` config field accepts a finality keyword, an optional offset, or a concrete block number. Step 0 resolves it to a `uint64` before doing any work:
+The `targetBlock` config field accepts a finality keyword, an optional offset, or a concrete block number. Step 0 resolves it to a `uint64` before doing any work. Right after the resolution — and before the LBT scan — Step 0 re-runs the unsettled-bridge-exits verification (AET-11, same as Step CHECK's check 9) on the resolved block and aborts on mismatch (a warning instead with `ignoreLERMismatch=true`); the check is skipped with a warning when `agglayerClient.grpc.url` is not configured (Step CHECK reports that as a failure).
 
 | `targetBlock` value | How it is resolved |
 | ------------------- | ------------------ |
@@ -454,6 +457,8 @@ Split into **G1** (sync the L2 bridge history from genesis up to the target bloc
 ### Step H — Fetch PreviousLocalExitRoot
 
 Calls `interop_getNetworkInfo` on the agglayer JSON-RPC and reads the `settled_ler` for the L2 network. If no certificate has been settled yet, `PreviousLocalExitRoot` is zero.
+
+It also cross-checks Step G's `InitialLocalExitRoot` (the L2 bridge LER at the target block) against `settled_ler` and aborts on mismatch: the target block contains bridge exits no settled certificate covers (exits made before the sequencer halt that the agglayer never settled), or a new certificate settled while the certificate was being generated. Re-running with the same target block fails identically — pick a target block whose bridge LER matches the agglayer settled LER: when the bridge is ahead, wait until the agglayer settles every bridge exit up to the target block or move the target block back to the settled state; when the settled LER is ahead, move the target block forward. In the full pipeline Step CHECK (check 9) and the Step 0 guard catch this before the expensive work; in single-step mode this check is the final safety net. With `ignoreLERMismatch=true` the mismatch is logged as a warning and the step continues (the pending-certificate guard is unaffected).
 
 Requires `agglayerClient.GRPC.URL` in options.
 

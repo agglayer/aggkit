@@ -304,6 +304,15 @@ type StepCheckResult struct {
 	GasTokenAddress            string   `json:"gasTokenAddress,omitempty"`
 	GasTokenNetwork            uint32   `json:"gasTokenNetwork,omitempty"`
 	WETHToken                  string   `json:"wethToken,omitempty"`
+	// UnsettledExitsStatus records the AET-11 unsettled-bridge-exits check outcome: "ok" when the
+	// L2 bridge's LER at the target block equals the agglayer's settled LER, "unsettled exits at
+	// block N" on mismatch, "error" when a query failed, "unchecked" when the agglayer gRPC URL is
+	// not configured.
+	UnsettledExitsStatus string `json:"unsettledExitsStatus,omitempty"`
+	// SettledLER / L2BridgeLER are the two roots the AET-11 check compared: the agglayer's last
+	// settled LER and the L2 bridge's getRoot() at the resolved target block.
+	SettledLER  string `json:"settledLER,omitempty"`
+	L2BridgeLER string `json:"l2BridgeLER,omitempty"`
 }
 
 // StepG1Result holds the output of Step G1: the L2 block at which Step G2 spins up its Anvil

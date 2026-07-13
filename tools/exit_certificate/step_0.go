@@ -46,6 +46,14 @@ func RunStep0(ctx context.Context, cfg *Config) (*Step0Result, error) {
 		log.Infof("Resolved targetBlock=%q → %d", cfg.TargetBlock.String(), blockNum)
 	}
 
+	// AET-11 guard on the authoritative resolved block (Step CHECK may have validated a stale or
+	// differently-resolved one): abort before the LBT scan when the block contains L2→L1 bridge
+	// exits the agglayer never settled. Skipped with a warning when the agglayer gRPC URL is not
+	// configured (Step CHECK reports that as a failure).
+	if err := assertNoUnsettledBridgeExits(ctx, cfg, blockNum); err != nil {
+		return nil, err
+	}
+
 	rpcURL := cfg.L2RPCURL
 	bridgeAddr := cfg.L2BridgeAddress
 
