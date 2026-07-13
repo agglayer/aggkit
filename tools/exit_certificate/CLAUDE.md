@@ -307,7 +307,7 @@ certificate matches the computed LER.
 
 ### Step H — Fetch PreviousLocalExitRoot
 
-- **Requires:** `options.agglayerGrpcUrl` — uses `agglayer.NewAgglayerClient` (gRPC), same as step SUBMIT.
+- **Requires:** `options.agglayerClient.GRPC.URL` — uses `agglayer.NewAgglayerClient` (gRPC), same as step SUBMIT.
 - Calls `interop_getNetworkInfo` with `l2NetworkId` on the agglayer JSON-RPC and reads `settled_ler`.
 - If no certificate has been settled yet (`settled_ler` is null), `PreviousLocalExitRoot` is zero.
 - Cross-checks Step G's `InitialLocalExitRoot` against `settled_ler` and aborts on mismatch (unsettled
@@ -342,14 +342,14 @@ certificate matches the computed LER.
 ### Step SUBMIT — Send certificate to agglayer
 
 - **Not part of `runAll`** — must be triggered explicitly with `--step submit`.
-- **Requires:** `options.agglayerGrpcUrl` — the agglayer gRPC endpoint; and `l1RpcUrl`.
+- **Requires:** `options.agglayerClient.GRPC.URL` — the agglayer gRPC endpoint; and `l1RpcUrl`.
 - Loads `exit-certificate-signed.json`, creates an agglayer gRPC client, captures the **latest L1 block right before submission**, and calls `SendCertificate`.
 - **Output:** `step-submit-result.json` (`StepSubmitResult` with `certificateHash` and `l1LatestBlockBeforeSubmittingCertificate`)
 
 ### Step WAIT — Wait for certificate settlement
 
 - **Not part of `runAll`** — must be triggered explicitly with `--step wait`.
-- **Requires:** `options.agglayerGrpcUrl` and `l1RpcUrl`.
+- **Requires:** `options.agglayerClient.GRPC.URL` and `l1RpcUrl`.
 - Reads `step-submit-result.json` (the whole `StepSubmitResult`, including `l1LatestBlockBeforeSubmittingCertificate`).
 - Polls `GetCertificateHeader` by hash every 5 seconds until the submitted certificate is `Settled` (success) or `InError` (returns an error). Logs the settlement tx hash on success.
 - **L1 settlement confirmation:** after the certificate settles, scans the RollupManager contract on L1 from `l1LatestBlockBeforeSubmittingCertificate` to the **finalized** block for the `VerifyBatchesTrustedAggregator` event matching the rollupID (`l2NetworkId`) and the certificate's `NewLocalExitRoot`. The RollupManager address is `rollupManagerAddress` if set, otherwise resolved on-chain from `sovereignRollupAddr.rollupManager()`. It re-resolves the finalized block and re-scans every 5 seconds until found (the settlement tx may not be finalized yet) or the context is cancelled, recording the L1 block and tx hash. **Errors** when `l1RpcUrl` is unset or when neither `rollupManagerAddress` nor `sovereignRollupAddr` is available to resolve the RollupManager.
