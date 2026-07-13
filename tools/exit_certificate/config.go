@@ -484,6 +484,9 @@ func mergeFlagOptions(opts *Options, raw *rawOpts) {
 	if raw.IgnoreUnsupportedL2Events != nil {
 		opts.IgnoreUnsupportedL2Events = *raw.IgnoreUnsupportedL2Events
 	}
+	if raw.IgnoreLERMismatch != nil {
+		opts.IgnoreLERMismatch = *raw.IgnoreLERMismatch
+	}
 	if raw.VerifyNewLocalExitRootUsingShadowFork != nil {
 		opts.VerifyNewLocalExitRootUsingShadowFork = *raw.VerifyNewLocalExitRootUsingShadowFork
 	}
@@ -555,6 +558,7 @@ type rawOpts struct {
 	BridgeServiceURL                      string                 `json:"bridgeServiceURL"`
 	BridgeServiceType                     string                 `json:"bridgeServiceType"`
 	IgnoreUnsupportedL2Events             *bool                  `json:"ignoreUnsupportedL2Events"`
+	IgnoreLERMismatch                     *bool                  `json:"ignoreLERMismatch"`
 	VerifyNewLocalExitRootUsingShadowFork *bool                  `json:"verifyNewLocalExitRootUsingShadowFork"`
 }
 

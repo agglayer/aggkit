@@ -754,3 +754,40 @@ func TestLoadLBTEntries_ValidFile(t *testing.T) {
 	require.Len(t, result, 1)
 	require.Equal(t, "1000000", result[0].Balance)
 }
+
+// TestLoadConfig_IgnoreLERMismatch is a regression test for the raw→Options merge: the flag must
+// survive LoadConfig (it was once silently dropped because rawOpts had no field for it).
+func TestLoadConfig_IgnoreLERMismatch(t *testing.T) {
+	t.Parallel()
+
+	// Default: false.
+	pathDefault := filepath.Join(t.TempDir(), "default.json")
+	require.NoError(t, os.WriteFile(pathDefault, fmt.Appendf(nil, optionsTestConfigBase, ""), 0o600))
+	cfg, err := LoadConfig(pathDefault)
+	require.NoError(t, err)
+	require.False(t, cfg.Options.IgnoreLERMismatch)
+
+	// Explicit true (JSON).
+	pathTrue := filepath.Join(t.TempDir(), "true.json")
+	require.NoError(t, os.WriteFile(pathTrue,
+		fmt.Appendf(nil, optionsTestConfigBase, `, "ignoreLERMismatch": true`), 0o600))
+	cfg, err = LoadConfig(pathTrue)
+	require.NoError(t, err)
+	require.True(t, cfg.Options.IgnoreLERMismatch)
+
+	// Explicit true (TOML).
+	pathTOML := filepath.Join(t.TempDir(), "true.toml")
+	require.NoError(t, os.WriteFile(pathTOML, []byte(`
+l2RpcUrl = "http://localhost:8545"
+l2BridgeAddress = "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe"
+exitAddress = "0x0000000000000000000000000000000000000001"
+targetBlock = "100"
+
+[options]
+useAgglayerAdminToStepFCheck = false
+ignoreLERMismatch = true
+`), 0o600))
+	cfg, err = LoadConfig(pathTOML)
+	require.NoError(t, err)
+	require.True(t, cfg.Options.IgnoreLERMismatch)
+}
