@@ -270,10 +270,11 @@ func verifyNoUnsettledBridgeExits(
 	if l2LER != settledLER {
 		return settledLER, l2LER, fmt.Errorf(
 			"target block %d has %w: L2 bridge LER %s != agglayer settled LER %s — "+
-				"every L2→L1 bridge exit up to the target block must be settled by the agglayer before the "+
-				"certificate can be generated; wait until the agglayer settles them (keep the aggsender running "+
-				"after the sequencer halt until the last certificate settles) and re-run, or choose a target "+
-				"block at or below the settled state",
+				"the certificate must be generated from a target block whose L2 bridge LER matches the agglayer "+
+				"settled LER; if the bridge LER is ahead (L2→L1 bridge exits no settled certificate covers), wait "+
+				"until the agglayer settles them (keep the aggsender running after the sequencer halt until the "+
+				"last certificate settles) and re-run, or move the target block back to the settled state; if the "+
+				"settled LER is ahead (a certificate settled past the target block), move the target block forward",
 			targetBlock, errUnsettledBridgeExits, l2LER.Hex(), settledLER.Hex(),
 		)
 	}

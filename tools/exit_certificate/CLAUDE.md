@@ -311,8 +311,9 @@ certificate matches the computed LER.
 - Calls `interop_getNetworkInfo` with `l2NetworkId` on the agglayer JSON-RPC and reads `settled_ler`.
 - If no certificate has been settled yet (`settled_ler` is null), `PreviousLocalExitRoot` is zero.
 - Cross-checks Step G's `InitialLocalExitRoot` against `settled_ler` and aborts on mismatch (unsettled
-  pre-halt bridge exits, or a certificate settled mid-generation); the error points to waiting for
-  settlement or picking a target block at or below the settled state — re-running with the same
+  pre-halt bridge exits, or a certificate settled mid-generation); the error points to picking a target
+  block whose bridge LER matches the settled LER (wait for settlement or move the target block back when
+  the bridge is ahead; move it forward when the settled LER is ahead) — re-running with the same
   target block fails identically. Step CHECK (check 9) and the Step 0 guard catch this early in
   `runAll`. With `options.ignoreLERMismatch=true` the mismatch is a warning instead of an abort
   (the pending-certificate guard is unaffected).

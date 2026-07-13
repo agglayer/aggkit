@@ -86,12 +86,13 @@ func runStepH(
 		if gResult.InitialLocalExitRoot != prevLER {
 			mismatchErr := fmt.Errorf(
 				"LocalExitRoot mismatch: Step G started from %s (read from bridgeContract) but agglayer last settled %s — "+
-					"the L2 bridge at the target block contains bridge exits that no settled certificate covers "+
-					"(exits made before the sequencer halt that the agglayer never settled), or a new certificate "+
-					"was settled while this certificate was being generated; re-running with the same target block "+
-					"will fail identically — wait until the agglayer settles every bridge exit up to the target "+
-					"block (keep the aggsender running after the sequencer halt until the last certificate "+
-					"settles), or choose a target block at or below the settled state",
+					"re-running with the same target block will fail identically; the certificate must be generated "+
+					"from a target block whose L2 bridge LER matches the agglayer settled LER: if the bridge LER is "+
+					"ahead (bridge exits no settled certificate covers, e.g. exits made before the sequencer halt), "+
+					"wait until the agglayer settles every bridge exit up to the target block (keep the aggsender "+
+					"running after the sequencer halt until the last certificate settles) or move the target block "+
+					"back to the settled state; if the settled LER is ahead (a certificate settled while this one "+
+					"was being generated), move the target block forward",
 				gResult.InitialLocalExitRoot.Hex(), prevLER.Hex(),
 			)
 			if err := suppressUnsettledExitsError(cfg, mismatchErr); err != nil {
