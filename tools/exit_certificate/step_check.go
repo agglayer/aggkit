@@ -118,8 +118,20 @@ func RunStepCheck(ctx context.Context, cfg *Config) (*StepCheckResult, error) {
 	checkUnsettledBridgeExits(ctx, cfg, result, &failures)
 
 	log.Info("───────────────────────────────────────────")
+	// The AET-11 check records its real outcome even when ignoreLERMismatch suppresses the
+	// failure — surface it in the summary so an ignored non-pass never reads as a clean run.
+	lerIgnored := cfg.Options.IgnoreLERMismatch && result.UnsettledExitsStatus != okStatus
+	if lerIgnored {
+		log.Warnf("⚠️  the unsettled-bridge-exits check (AET-11) did not pass (status %q) but is ignored "+
+			"(ignoreLERMismatch=true) — the agglayer will most likely reject the certificate",
+			result.UnsettledExitsStatus)
+	}
 	if len(failures) == 0 {
-		log.Info("✅ All checks passed")
+		if lerIgnored {
+			log.Info("⚠️  All enforced checks passed (1 check ignored — see warning above)")
+		} else {
+			log.Info("✅ All checks passed")
+		}
 		log.Info("STEP CHECK complete")
 		return result, nil
 	}
