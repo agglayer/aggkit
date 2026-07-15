@@ -108,6 +108,36 @@ func TestRunAllStepCAndD(t *testing.T) {
 	require.True(t, fileExists(filepath.Join(dir, fileStepDCertificate)))
 }
 
+// TestRunAllSkipSCLockedPipeline chains Step C → D → F with skipSCLockedValue=true: Step C still
+// runs and persists its output, the certificate omits the SC-locked exit, and the offline Step F
+// check still matches thanks to the omitted-amount discount.
+func TestRunAllSkipSCLockedPipeline(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	lbt, bResult := pipelineFixtures()
+
+	cfg := &Config{
+		DestinationNetwork: 0, L2NetworkID: 1,
+		Options: Options{OutputDir: dir, UseAgglayerAdminToStepFCheck: false, SkipSCLockedValue: true},
+	}
+
+	cResult, err := runAllStepC(context.Background(), cfg, dir, lbt, bResult)
+	require.NoError(t, err)
+	require.NotEmpty(t, cResult.SCLockedValues)
+	require.True(t, fileExists(filepath.Join(dir, fileStepCSCLockedValues)))
+
+	dResult, err := runAllStepD(cfg, dir, bResult, cResult)
+	require.NoError(t, err)
+	// Only the EOA exit remains: the SC-locked exit (LBT 1000 − EOA 100 = 900) is omitted.
+	require.Len(t, dResult.Certificate.BridgeExits, 1)
+
+	out, err := runAllStepF(context.Background(), cfg, dir, lbt, cResult.SCLockedValues,
+		dResult.Certificate, dResult.Certificate)
+	require.NoError(t, err)
+	require.Same(t, dResult.Certificate, out)
+	require.True(t, fileExists(filepath.Join(dir, fileStepFChecks)))
+}
+
 func TestRunAllStepCSkippedNoLBT(t *testing.T) {
 	t.Parallel()
 	_, bResult := pipelineFixtures()
@@ -192,7 +222,7 @@ func TestRunAllStepFOffline(t *testing.T) {
 	stepD := emptyCert()
 	final := emptyCert()
 
-	out, err := runAllStepF(context.Background(), cfg, dir, nil, stepD, final)
+	out, err := runAllStepF(context.Background(), cfg, dir, nil, nil, stepD, final)
 	require.NoError(t, err)
 	require.Same(t, final, out)
 	require.True(t, fileExists(filepath.Join(dir, fileStepFChecks)))

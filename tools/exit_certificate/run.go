@@ -289,7 +289,8 @@ func runAll(ctx context.Context, cfg *Config) error {
 		return err
 	}
 
-	finalCertificate, err = runAllStepF(ctx, cfg, dir, lbtEntries, stepDResult.Certificate, finalCertificate)
+	finalCertificate, err = runAllStepF(
+		ctx, cfg, dir, lbtEntries, stepCResult.SCLockedValues, stepDResult.Certificate, finalCertificate)
 	if err != nil {
 		return err
 	}
@@ -419,12 +420,13 @@ func saveStepCFiles(dir string, stepCResult *StepCResult) error {
 func runAllStepF(
 	ctx context.Context, cfg *Config, dir string,
 	lbtEntries []LBTEntry,
+	scLockedValues []SCLockedValue,
 	stepDCert *agglayertypes.Certificate,
 	finalCert *agglayertypes.Certificate,
 ) (*agglayertypes.Certificate, error) {
 	// RunStepF itself honours useAgglayerAdminToStepFCheck: when false it runs the offline LBT vs
 	// certificate comparison instead of the agglayer admin query.
-	result, err := RunStepF(ctx, cfg, stepDCert, lbtEntries)
+	result, err := RunStepF(ctx, cfg, stepDCert, lbtEntries, scLockedValues)
 	if err != nil {
 		return nil, fmt.Errorf("step F: %w", err)
 	}
@@ -562,7 +564,11 @@ func logPipelineConfig(cfg *Config) {
 	log.Infof("L2 Bridge:        %s", cfg.L2BridgeAddress.Hex())
 	log.Infof("Target Block:     %s", cfg.TargetBlock.String())
 	log.Infof("L2 Network ID:    %d", cfg.L2NetworkID)
-	log.Infof("Exit Address:     %s", cfg.ExitAddress.Hex())
+	if cfg.Options.SkipSCLockedValue {
+		log.Info("Exit Address:     (unused — skipSCLockedValue=true, SC-locked funds left behind)")
+	} else {
+		log.Infof("Exit Address:     %s", cfg.ExitAddress.Hex())
+	}
 	log.Infof("Dest Network:     %d", cfg.DestinationNetwork)
 	log.Infof("Output Dir:       %s", cfg.Options.OutputDir)
 	log.Infof("Concurrency:      %d", cfg.Options.ConcurrencyLimit)
@@ -926,11 +932,21 @@ func runSingleF(ctx context.Context, cfg *Config, dir string) error {
 		log.Warnf("STEP F: LBT data not available, falling back to two-way comparison: %v", err)
 	}
 
+	// With skipSCLockedValue enabled, Step D omitted the SC-locked exits from the certificate, so
+	// Step F needs the Step C amounts to discount them from the LBT/agglayer budgets. Required in
+	// that case: without them every affected token would report a misleading mismatch.
+	var scLockedValues []SCLockedValue
+	if cfg.Options.SkipSCLockedValue {
+		if err := loadJSON(dir, fileStepCSCLockedValues, &scLockedValues); err != nil {
+			return fmt.Errorf("load step C output (required by skipSCLockedValue, run step c first): %w", err)
+		}
+	}
+
 	aggCert, err := cert.toAgglayerCertificate()
 	if err != nil {
 		return fmt.Errorf("load step D certificate: %w", err)
 	}
-	result, err := RunStepF(ctx, cfg, aggCert, lbtEntries)
+	result, err := RunStepF(ctx, cfg, aggCert, lbtEntries, scLockedValues)
 	if err != nil {
 		return err
 	}

@@ -20,6 +20,7 @@
         "l1EndBlock": 0,
         "ignoreGenesisBalance": false,
         "nativeSCLockedFromContracts": true,
+        "skipSCLockedValue": false,
         "ignoreUnclaimed": false,
         "ignoreBalanceMismatch": false,
         "capMode": "none",

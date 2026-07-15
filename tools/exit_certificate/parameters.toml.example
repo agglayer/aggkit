@@ -25,9 +25,11 @@ l2NetworkId = 1
 targetBlock = "LatestBlock"
 
 # Destination address on destinationNetwork for SC-locked value (tokens not held by any EOA).
-# REQUIRED. Must be an address whose private key you control and must NOT be the zero address
-# (0x00..00) — these funds can only be recovered by signing from it. LoadConfig rejects both.
-# A multisig (e.g. a Gnosis Safe) is strongly recommended over a single EOA for better security.
+# REQUIRED unless options.skipSCLockedValue = true (the SC-locked funds are then left behind and
+# this address is unused). Must be an address whose private key you control and must NOT be the
+# zero address (0x00..00) — these funds can only be recovered by signing from it. LoadConfig
+# rejects both. A multisig (e.g. a Gnosis Safe) is strongly recommended over a single EOA for
+# better security.
 exitAddress = "0x0000000000000000000000000000000000000001"
 
 # Destination network ID for the generated bridge exits. Default: 0 (L1/mainnet).
@@ -86,6 +88,13 @@ ignoreGenesisBalance = false
 # (bridge excluded) instead of LBT - EOA, which underflows on chains with a native genesis premint
 # and silently drops contract-held ETH. Set to false to use the LBT - EOA derivation. Default: true.
 nativeSCLockedFromContracts = true
+
+# Exclude the SC-locked funds from the certificate: Step D does not create the per-token exits that
+# send each pending SC-locked balance (Step C) to exitAddress — those funds are intentionally left
+# behind, and exitAddress is then no longer required. Step C still runs (its output records what is
+# left behind) and Step F discounts the omitted amounts from the LBT/agglayer balances so the check
+# still requires strict equality. Holder-bridge exits are unaffected. Default: false.
+skipSCLockedValue = false
 
 # Skip adding unclaimed L1->L2 deposits to the certificate in Step E (still detected and warned).
 # Default: false.

@@ -41,10 +41,16 @@ type tokenKey struct {
 // When useAgglayerAdminToStepFCheck is false it skips the agglayer admin query and instead runs an
 // offline two-way comparison of the LBT (Step 0) totals against the certificate bridge-exit sums (see
 // runStepFOfflineLBT). When no LBT data is available there is nothing to compare and the step is skipped.
+//
+// scLockedValues carries the Step C per-token SC-locked amounts. It is only used when
+// options.skipSCLockedValue is true: those amounts were intentionally omitted from the certificate
+// by Step D, so they are discounted from the LBT/agglayer amounts before comparing (see
+// discountSkippedSCLocked). With the option disabled the values are ignored.
 func RunStepF(
 	ctx context.Context, cfg *Config,
 	certificate *agglayertypes.Certificate,
 	lbtEntries []LBTEntry,
+	scLockedValues []SCLockedValue,
 ) (*StepFResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP F — Agglayer token balance check")
@@ -70,10 +76,16 @@ func RunStepF(
 		}
 	}
 
+	// Per-token SC-locked amounts omitted from the certificate (nil unless skipSCLockedValue is set).
+	skippedSCLocked, err := skippedSCLockedMap(cfg, scLockedValues)
+	if err != nil {
+		return nil, err
+	}
+
 	// The agglayer admin query is opt-out. When disabled we still run an offline LBT vs certificate
 	// comparison instead of skipping the step outright.
 	if !cfg.Options.UseAgglayerAdminToStepFCheck {
-		return runStepFOfflineLBT(cfg, certificate, lbtEntries)
+		return runStepFOfflineLBT(cfg, certificate, lbtEntries, skippedSCLocked)
 	}
 
 	if cfg.Options.AgglayerAdminURL == "" {
@@ -87,7 +99,8 @@ func RunStepF(
 	}
 
 	groups := groupBridgeExitsByToken(certificate)
-	checks, err := compareTokenBalances(groups, agglayerResp.Balances, lbtEntries, genesisPrefundWei(cfg))
+	checks, err := compareTokenBalances(groups, agglayerResp.Balances, lbtEntries, genesisPrefundWei(cfg),
+		skippedSCLocked)
 	if err != nil {
 		return nil, err
 	}
@@ -186,6 +199,49 @@ func discountGenesisPrefund(certAmt *big.Int, k tokenKey, prefund *big.Int) *big
 	return adjusted
 }
 
+// skippedSCLockedMap indexes by token the Step C SC-locked amounts that Step D intentionally omitted
+// from the certificate (options.skipSCLockedValue). It returns nil when the option is disabled — the
+// certificate then contains the SC-locked exits and no discount must be applied. An unparseable
+// amount is an error: skipping the entry would silently leave that token's budget undiscounted and
+// fail — or worse, cap — the comparison against an inflated balance.
+func skippedSCLockedMap(cfg *Config, scLockedValues []SCLockedValue) (map[tokenKey]*big.Int, error) {
+	if !cfg.Options.SkipSCLockedValue {
+		return nil, nil
+	}
+	skipped := make(map[tokenKey]*big.Int, len(scLockedValues))
+	for _, v := range scLockedValues {
+		k := tokenKey{v.OriginNetwork, v.OriginTokenAddress}
+		amount, ok := new(big.Int).SetString(v.PendingSCLockedBalance, decimalBase)
+		if !ok {
+			return nil, fmt.Errorf("parse pending SC-locked balance %q for token (network=%d addr=%s)",
+				v.PendingSCLockedBalance, v.OriginNetwork, v.OriginTokenAddress.Hex())
+		}
+		skipped[k] = amount
+	}
+	return skipped, nil
+}
+
+// discountSkippedSCLocked subtracts the SC-locked amount intentionally omitted from the certificate
+// (options.skipSCLockedValue) from the given LBT/agglayer amount before it is compared, floored at
+// zero. The omitted funds stay behind on the L2, so the balance the certificate's exits must account
+// for is the bridged balance minus them. side labels the adjusted amount ("lbt" or "agglayer") in
+// the logs. Tokens with no omitted amount are returned unchanged.
+func discountSkippedSCLocked(amt *big.Int, k tokenKey, side string, skipped map[tokenKey]*big.Int) *big.Int {
+	sc := skipped[k]
+	if sc == nil || sc.Sign() <= 0 {
+		return amt
+	}
+	adjusted := new(big.Int).Sub(amt, sc)
+	if adjusted.Sign() < 0 {
+		log.Warnf("🔧 Skipped SC-locked (network=%d addr=%s): omitted amount (%s) exceeds the %s amount (%s); "+
+			"flooring the compared %s amount at 0", k.OriginNetwork, k.OriginTokenAddress, sc, side, amt, side)
+		return new(big.Int)
+	}
+	log.Infof("🔧 Skipped SC-locked (network=%d addr=%s): %s=%s − omitted=%s = %s (compared %s amount)",
+		k.OriginNetwork, k.OriginTokenAddress, side, amt, sc, adjusted, side)
+	return adjusted
+}
+
 // queryAgglayerTokenBalance calls admin_getTokenBalance on the agglayer admin RPC for the configured
 // L2 network and returns the raw JSON response (the agglayer's full local balance tree for the network).
 func queryAgglayerTokenBalance(ctx context.Context, cfg *Config) (json.RawMessage, error) {
@@ -210,9 +266,11 @@ func queryAgglayerTokenBalance(ctx context.Context, cfg *Config) (json.RawMessag
 // runStepFOfflineLBT runs Step F without contacting the agglayer admin API
 // (useAgglayerAdminToStepFCheck=false): it compares the LBT (Step 0) totals against the certificate
 // bridge-exit sums per token. When no LBT data is available there is nothing to compare and the step
-// is skipped with a benign all-match result.
+// is skipped with a benign all-match result. skippedSCLocked (nil unless options.skipSCLockedValue)
+// is discounted from the LBT totals before comparing (see discountSkippedSCLocked).
 func runStepFOfflineLBT(
 	cfg *Config, certificate *agglayertypes.Certificate, lbtEntries []LBTEntry,
+	skippedSCLocked map[tokenKey]*big.Int,
 ) (*StepFResult, error) {
 	if len(lbtEntries) == 0 {
 		log.Warn("STEP F skipped: useAgglayerAdminToStepFCheck=false and no LBT data available for the offline check")
@@ -221,7 +279,7 @@ func runStepFOfflineLBT(
 
 	log.Info("useAgglayerAdminToStepFCheck=false — comparing LBT (step 0) vs certificate bridge exits (no agglayer query)")
 	groups := groupBridgeExitsByToken(certificate)
-	checks, err := compareCertificateToLBT(groups, lbtEntries, genesisPrefundWei(cfg))
+	checks, err := compareCertificateToLBT(groups, lbtEntries, genesisPrefundWei(cfg), skippedSCLocked)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +400,9 @@ func groupBridgeExitsByToken(cert *agglayertypes.Certificate) map[tokenKey][]*ag
 // When lbtEntries is non-nil, match requires LBT == agglayer == certificate sum.
 // When lbtEntries is nil, match requires agglayer == certificate sum (two-way fallback).
 // nativePrefund (nil when unset) is discounted from the native-token certificate sum before
-// comparing (see discountGenesisPrefund). CertificateEntries is populated only on mismatch.
+// comparing (see discountGenesisPrefund). skippedSCLocked (nil unless options.skipSCLockedValue) is
+// discounted per token from the agglayer and LBT amounts before comparing (see
+// discountSkippedSCLocked). CertificateEntries is populated only on mismatch.
 // An unparseable agglayer or LBT amount is an error: skipping the entry would compare — and cap —
 // that token against a silently substituted zero budget.
 func compareTokenBalances(
@@ -350,6 +410,7 @@ func compareTokenBalances(
 	agglayerEntries []agglayerTokenEntry,
 	lbtEntries []LBTEntry,
 	nativePrefund *big.Int,
+	skippedSCLocked map[tokenKey]*big.Int,
 ) ([]TokenBalanceCheck, error) {
 	agglayerMap := make(map[tokenKey]*big.Int, len(agglayerEntries))
 	for _, e := range agglayerEntries {
@@ -393,6 +454,7 @@ func compareTokenBalances(
 		if agglAmt == nil {
 			agglAmt = new(big.Int)
 		}
+		agglAmt = discountSkippedSCLocked(agglAmt, k, "agglayer", skippedSCLocked)
 
 		check := TokenBalanceCheck{
 			OriginNetwork:      k.OriginNetwork,
@@ -400,12 +462,16 @@ func compareTokenBalances(
 			CertificateAmount:  certAmt.String(),
 			AgglayerAmount:     agglAmt.String(),
 		}
+		if sc := skippedSCLocked[k]; sc != nil && sc.Sign() > 0 {
+			check.SkippedSCLockedAmount = sc.String()
+		}
 
 		if hasLBT {
 			lbtAmt := lbtMap[k]
 			if lbtAmt == nil {
 				lbtAmt = new(big.Int)
 			}
+			lbtAmt = discountSkippedSCLocked(lbtAmt, k, "lbt", skippedSCLocked)
 			check.LBTAmount = lbtAmt.String()
 			check.Match = certAmt.Cmp(agglAmt) == 0 && agglAmt.Cmp(lbtAmt) == 0
 			if agglAmt.Cmp(lbtAmt) <= 0 {
@@ -461,9 +527,12 @@ func lbtBalanceMap(lbtEntries []LBTEntry) (map[tokenKey]*big.Int, error) {
 // Match requires certificate sum == LBT total per token; AgglayerAmount is left empty. RemainingBalance
 // is the LBT total, used as the cap budget when ignoreBalanceMismatch is set. nativePrefund (nil when
 // unset) is discounted from the native-token certificate sum before comparing (see
-// discountGenesisPrefund). CertificateEntries is populated only on mismatch.
+// discountGenesisPrefund). skippedSCLocked (nil unless options.skipSCLockedValue) is discounted per
+// token from the LBT totals before comparing (see discountSkippedSCLocked). CertificateEntries is
+// populated only on mismatch.
 func compareCertificateToLBT(
 	groups map[tokenKey][]*agglayertypes.BridgeExit, lbtEntries []LBTEntry, nativePrefund *big.Int,
+	skippedSCLocked map[tokenKey]*big.Int,
 ) ([]TokenBalanceCheck, error) {
 	lbtMap, err := lbtBalanceMap(lbtEntries)
 	if err != nil {
@@ -491,6 +560,7 @@ func compareCertificateToLBT(
 		if lbtAmt == nil {
 			lbtAmt = new(big.Int)
 		}
+		lbtAmt = discountSkippedSCLocked(lbtAmt, k, "lbt", skippedSCLocked)
 
 		check := TokenBalanceCheck{
 			OriginNetwork:      k.OriginNetwork,
@@ -499,6 +569,9 @@ func compareCertificateToLBT(
 			CertificateAmount:  certAmt.String(),
 			Match:              certAmt.Cmp(lbtAmt) == 0,
 			RemainingBalance:   new(big.Int).Set(lbtAmt),
+		}
+		if sc := skippedSCLocked[k]; sc != nil && sc.Sign() > 0 {
+			check.SkippedSCLockedAmount = sc.String()
 		}
 
 		if !check.Match {
