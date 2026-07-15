@@ -51,7 +51,7 @@ Runs automatically as the first step of the full pipeline, and can also be trigg
 
 All checks run regardless of individual failures. A combined error lists every failed check.
 
-1. **Anvil installed** — `anvil` must be in `$PATH` (required by Step G2 only when `options.verifyNewLocalExitRootUsingShadowFork=true`). Fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh) if missing.
+1. **Anvil installed** — `anvil` must be in `$PATH` only when `options.verifyNewLocalExitRootUsingShadowFork=true` (the mode where Step G2 uses it); a missing binary then fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh). With the option set to `false` its absence is only logged (not counted as a failure); `anvilInstalled` in the result records the real status either way.
 2. **L1 RPC reachable** — dials `l1RpcUrl` and calls `eth_blockNumber`. Fails if not set or unreachable.
 3. **`l1BridgeAddress` is the L1 bridge** — calls `networkID()` on `l1BridgeAddress` over the L1 RPC and requires 0 (the L1/mainnet network). Catches a typo, a non-bridge contract, or the `l2BridgeAddress` default pointing at an address that is not the L1 bridge — Step E trusts this address to detect unclaimed L1→L2 deposits and `eth_getLogs` silently returns nothing on a wrong one. The outcome is recorded in the result as `l1BridgeAddressStatus` (`ok` / `invalid (networkID()=N)` / `error` / `unchecked`); if check 2 failed it is `unchecked` and counted as a failure.
 4. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.

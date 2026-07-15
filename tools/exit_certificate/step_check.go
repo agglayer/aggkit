@@ -21,7 +21,9 @@ import (
 var aggchainTypePP = [2]byte{0, 0}
 
 // RunStepCheck verifies prerequisites before running the pipeline:
-//  1. Anvil is installed ($PATH).
+//  1. Anvil is installed ($PATH) — only required (counted as a failure) when Step G2 will use the
+//     shadow-fork (options.verifyNewLocalExitRootUsingShadowFork=true); otherwise its absence is
+//     just logged.
 //  2. L1 RPC is set and reachable.
 //  3. l1BridgeAddress is the L1 bridge: networkID() on it must return 0 (the L1/mainnet network).
 //  4. L2 network ID matches the bridge contract.
@@ -46,10 +48,19 @@ func RunStepCheck(ctx context.Context, cfg *Config) (*StepCheckResult, error) {
 	var failures []string
 
 	// --- 1. Anvil ---
+	// Anvil is only used by Step G2's shadow-fork mode, so its absence is a failure only when
+	// options.verifyNewLocalExitRootUsingShadowFork is true; the result still records the real
+	// installation status either way.
 	if _, err := exec.LookPath("anvil"); err != nil {
 		result.AnvilInstalled = false
-		log.Info("❌ anvil not found in $PATH — install the Foundry toolchain from https://getfoundry.sh")
-		failures = append(failures, "anvil not found in $PATH (install from https://getfoundry.sh)")
+		if cfg.Options.VerifyNewLocalExitRootUsingShadowFork {
+			log.Info("❌ anvil not found in $PATH — install the Foundry toolchain from https://getfoundry.sh")
+			failures = append(failures, "anvil not found in $PATH (required by "+
+				"verifyNewLocalExitRootUsingShadowFork=true; install from https://getfoundry.sh)")
+		} else {
+			log.Info("ℹ️ anvil not found in $PATH — not required " +
+				"(verifyNewLocalExitRootUsingShadowFork=false, Step G2 runs off-chain)")
+		}
 	} else {
 		result.AnvilInstalled = true
 		log.Info("✅ anvil is installed")
