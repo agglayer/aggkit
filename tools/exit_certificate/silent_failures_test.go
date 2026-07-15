@@ -260,19 +260,19 @@ func TestCompareTokenBalancesBadAmounts(t *testing.T) {
 
 	_, err := compareTokenBalances(nil, []agglayerTokenEntry{
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "not-a-number"},
-	}, nil, nil)
+	}, nil, nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "agglayer amount")
 
 	_, err = compareTokenBalances(nil, nil, []LBTEntry{
 		{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "xx"},
-	}, nil)
+	}, nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "LBT balance")
 
 	_, err = compareCertificateToLBT(nil, []LBTEntry{
 		{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "xx"},
-	}, nil)
+	}, nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "LBT balance")
 }
@@ -284,7 +284,7 @@ func TestRunStepFBadAgglayerAmountAborts(t *testing.T) {
 			`"originTokenAddress":"0x0000000000000000000000000000000000000000","amount":"garbage"}]}`), nil
 	})
 	cfg := &Config{Options: Options{AgglayerAdminURL: srv.URL, UseAgglayerAdminToStepFCheck: true}}
-	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
+	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "agglayer amount")
 }
@@ -294,7 +294,7 @@ func TestRunStepFOfflineBadLBTAborts(t *testing.T) {
 	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false}}
 	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, []LBTEntry{
 		{Balance: "not-a-number"},
-	})
+	}, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "LBT balance")
 }
@@ -309,7 +309,7 @@ func TestRunStepFAgglayerDumpWriteError(t *testing.T) {
 	cfg := &Config{Options: Options{
 		AgglayerAdminURL: srv.URL, UseAgglayerAdminToStepFCheck: true, OutputDir: dir,
 	}}
-	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
+	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), fileStepFAgglayerLBT)
 }
@@ -488,7 +488,7 @@ func TestRunAllStepWrappersSaveErrors(t *testing.T) {
 		sabotageOutputFile(t, dir, fileStepFChecks)
 		cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false}}
 		cert := &agglayertypes.Certificate{}
-		_, err := runAllStepF(ctx, cfg, dir, nil, cert, cert)
+		_, err := runAllStepF(ctx, cfg, dir, nil, nil, cert, cert)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), fileStepFChecks)
 	})
@@ -515,7 +515,7 @@ func TestRunAllStepWrappersSaveErrors(t *testing.T) {
 			AgglayerAdminURL: srv.URL, UseAgglayerAdminToStepFCheck: true, OutputDir: t.TempDir(),
 		}}
 		cert := &agglayertypes.Certificate{}
-		_, err := runAllStepF(ctx, cfg, dir, nil, cert, cert)
+		_, err := runAllStepF(ctx, cfg, dir, nil, nil, cert, cert)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), fileStepFTokenBalances)
 	})
@@ -534,7 +534,7 @@ func TestRunAllStepWrappersSaveErrors(t *testing.T) {
 			MakeBridgeExit(0, token, 0, common.HexToAddress("0x1"), big.NewInt(1000)),
 		}}
 		lbt := []LBTEntry{{WrappedTokenAddress: token, OriginTokenAddress: token, Balance: "500"}}
-		_, err := runAllStepF(ctx, cfg, dir, lbt, cert, cert)
+		_, err := runAllStepF(ctx, cfg, dir, lbt, nil, cert, cert)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), fileStepFCappedCertificate)
 	})

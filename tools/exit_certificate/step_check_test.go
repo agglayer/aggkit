@@ -351,6 +351,25 @@ func TestRunStepCheckAllReachable(t *testing.T) {
 	require.Equal(t, uint64(1), result.Threshold)
 }
 
+// TestRunStepCheckAnvilOnlyRequiredForShadowFork checks that a missing anvil binary is counted as
+// a failure only when Step G2 will use the shadow-fork (verifyNewLocalExitRootUsingShadowFork=true);
+// in off-chain mode its absence is informational, though the result still records the real status.
+func TestRunStepCheckAnvilOnlyRequiredForShadowFork(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // empty dir → anvil is not reachable
+
+	cfgShadowFork := &Config{Options: Options{VerifyNewLocalExitRootUsingShadowFork: true}}
+	result, err := RunStepCheck(context.Background(), cfgShadowFork)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "anvil not found")
+	require.False(t, result.AnvilInstalled)
+
+	cfgOffchain := &Config{Options: Options{VerifyNewLocalExitRootUsingShadowFork: false}}
+	result, err = RunStepCheck(context.Background(), cfgOffchain)
+	require.Error(t, err) // the other prerequisites still fail (no RPC endpoints configured)
+	require.NotContains(t, err.Error(), "anvil")
+	require.False(t, result.AnvilInstalled)
+}
+
 // --- checkUnsettledBridgeExits (AET-11) ------------------------------------------------------------
 
 // staticLERReader returns a lerReaderFn that always yields the given root, recording the

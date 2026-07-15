@@ -114,6 +114,55 @@ func TestRunStepD_WithSCLockedValues(t *testing.T) {
 	require.Equal(t, tokenOriginAddr, exit.TokenInfo.OriginTokenAddress)
 }
 
+func TestRunStepD_SkipSCLockedValue(t *testing.T) {
+	t.Parallel()
+
+	eoaAddr := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	holderAddr := common.HexToAddress("0x2222222222222222222222222222222222222222")
+
+	cfg := &Config{
+		L2NetworkID:        2,
+		DestinationNetwork: 0,
+		Options:            Options{SkipSCLockedValue: true},
+	}
+
+	stepB := &StepBResult{
+		EOABalances: []EOABalance{{Address: eoaAddr, ETHBalance: "1000"}},
+	}
+	stepC := &StepCResult{
+		SCLockedValues: []SCLockedValue{
+			{
+				WrappedTokenAddress:    common.HexToAddress("0xBBBB"),
+				OriginNetwork:          0,
+				OriginTokenAddress:     common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+				LBTBalance:             "1000000",
+				EOAAccumulated:         "300000",
+				PendingSCLockedBalance: "700000",
+			},
+		},
+		HolderBridges: []HolderBridge{
+			{
+				HolderAddress:      holderAddr,
+				VaultAddress:       common.HexToAddress("0xCCCC"),
+				OriginNetwork:      0,
+				OriginTokenAddress: common.HexToAddress("0xDDDD"),
+				Amount:             "42",
+			},
+		},
+	}
+
+	result, err := RunStepD(cfg, stepB, stepC)
+	require.NoError(t, err)
+
+	// The SC-locked exit is omitted; the EOA and holder-bridge exits are kept.
+	require.Len(t, result.Certificate.BridgeExits, 2)
+	require.Equal(t, eoaAddr, result.Certificate.BridgeExits[0].DestinationAddress)
+	require.Equal(t, holderAddr, result.Certificate.BridgeExits[1].DestinationAddress)
+	for _, exit := range result.Certificate.BridgeExits {
+		require.NotEqual(t, cfg.ExitAddress, exit.DestinationAddress)
+	}
+}
+
 func TestRunStepD_EmptyInputs(t *testing.T) {
 	t.Parallel()
 

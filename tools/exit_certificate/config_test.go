@@ -107,6 +107,66 @@ func TestLoadConfig_InvalidExitAddress(t *testing.T) {
 	require.Contains(t, err.Error(), "not a valid hex address")
 }
 
+// skipSCLockedTestConfig builds a minimal config with the given exitAddress line (empty to omit it)
+// and options.skipSCLockedValue set to the given literal.
+func skipSCLockedTestConfig(exitAddressLine, skipSCLockedValue string) string {
+	return fmt.Sprintf(`{
+		"l2RpcUrl": "http://localhost:8545",
+		"l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+		%s
+		"targetBlock": "100",
+		"options": {"useAgglayerAdminToStepFCheck": false, "skipSCLockedValue": %s}
+	}`, exitAddressLine, skipSCLockedValue)
+}
+
+func TestLoadConfig_SkipSCLockedValue(t *testing.T) {
+	t.Parallel()
+
+	// Default: unset skipSCLockedValue resolves to false.
+	pathDefault := filepath.Join(t.TempDir(), "default.json")
+	require.NoError(t, os.WriteFile(pathDefault, fmt.Appendf(nil, optionsTestConfigBase, ""), 0o600))
+	cfg, err := LoadConfig(pathDefault)
+	require.NoError(t, err)
+	require.False(t, cfg.Options.SkipSCLockedValue)
+
+	// An explicit true must survive the merge.
+	pathTrue := filepath.Join(t.TempDir(), "true.json")
+	require.NoError(t, os.WriteFile(pathTrue,
+		fmt.Appendf(nil, optionsTestConfigBase, `, "skipSCLockedValue": true`), 0o600))
+	cfg, err = LoadConfig(pathTrue)
+	require.NoError(t, err)
+	require.True(t, cfg.Options.SkipSCLockedValue)
+
+	// exitAddress is optional when the flag is enabled.
+	pathNoExit := filepath.Join(t.TempDir(), "no-exit.json")
+	require.NoError(t, os.WriteFile(pathNoExit, []byte(skipSCLockedTestConfig("", "true")), 0o600))
+	cfg, err = LoadConfig(pathNoExit)
+	require.NoError(t, err)
+	require.Equal(t, common.Address{}, cfg.ExitAddress)
+
+	// The zero address is tolerated when the flag is enabled (the value is unused).
+	pathZeroExit := filepath.Join(t.TempDir(), "zero-exit.json")
+	require.NoError(t, os.WriteFile(pathZeroExit, []byte(skipSCLockedTestConfig(
+		`"exitAddress": "0x0000000000000000000000000000000000000000",`, "true")), 0o600))
+	_, err = LoadConfig(pathZeroExit)
+	require.NoError(t, err)
+
+	// A malformed exitAddress is still rejected even when the flag is enabled (typo detection).
+	pathBadExit := filepath.Join(t.TempDir(), "bad-exit.json")
+	require.NoError(t, os.WriteFile(pathBadExit, []byte(skipSCLockedTestConfig(
+		`"exitAddress": "not-an-address",`, "true")), 0o600))
+	_, err = LoadConfig(pathBadExit)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not a valid hex address")
+
+	// With the flag explicitly disabled, a missing exitAddress is still an error.
+	pathStillRequired := filepath.Join(t.TempDir(), "still-required.json")
+	require.NoError(t, os.WriteFile(pathStillRequired, []byte(skipSCLockedTestConfig("", "false")), 0o600))
+	_, err = LoadConfig(pathStillRequired)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exitAddress")
+}
+
 // optionsTestConfigBase is a minimal valid config with a %s slot for extra options fields.
 const optionsTestConfigBase = `{
 	"l2RpcUrl": "http://localhost:8545",

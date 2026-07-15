@@ -270,7 +270,12 @@ type TokenBalanceCheck struct {
 	AgglayerAmount     string             `json:"agglayerAmount"`
 	Match              bool               `json:"match"`
 	CertificateEntries []CertificateEntry `json:"certificateEntries,omitempty"`
-	// RemainingBalance is the cap budget for this token: min(LBT, agglayer).
+	// SkippedSCLockedAmount is the SC-locked amount intentionally omitted from the certificate
+	// (options.skipSCLockedValue) and discounted from this token's LBT/agglayer amounts before the
+	// comparison (see discountSkippedSCLocked). Empty when no discount was applied.
+	SkippedSCLockedAmount string `json:"skippedSCLockedAmount,omitempty"`
+	// RemainingBalance is the cap budget for this token: min(LBT, agglayer), minus the omitted
+	// SC-locked amount when options.skipSCLockedValue discounts it.
 	// Not persisted to JSON; used internally by capCertificateExits.
 	RemainingBalance *big.Int `json:"-"`
 }

@@ -38,7 +38,7 @@ func TestRunStepF_WithBearerToken(t *testing.T) {
 			OutputDir:                    outputDir,
 		},
 	}
-	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
+	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	// The raw agglayer LBT is dumped to the output dir whenever the admin endpoint is queried.
@@ -67,7 +67,7 @@ func TestRunStepF_EmptyOutputDir_SkipsLBTDump(t *testing.T) {
 			AgglayerAdminURL:             server.URL,
 		},
 	}
-	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
+	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NoFileExists(t, fileStepFAgglayerLBT)
@@ -77,7 +77,7 @@ func TestRunStepF_MissingAdminURL_Error(t *testing.T) {
 	t.Parallel()
 
 	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: true}}
-	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
+	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "agglayerAdminURL")
 }
@@ -88,7 +88,7 @@ func TestRunStepF_DisabledNoLBT_Skips(t *testing.T) {
 	// useAgglayerAdminToStepFCheck=false and no LBT data: nothing to compare, so the step is
 	// skipped with a benign all-match result and no RPC call (no agglayerAdminURL set).
 	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false}}
-	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
+	result, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.True(t, result.AllMatch)
@@ -114,7 +114,7 @@ func TestRunStepF_DisabledWithLBT_MatchOffline(t *testing.T) {
 	lbt := []LBTEntry{{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "1000"}}
 
 	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false}}
-	result, err := RunStepF(context.Background(), cfg, cert, lbt)
+	result, err := RunStepF(context.Background(), cfg, cert, lbt, nil)
 	require.NoError(t, err)
 	require.True(t, result.AllMatch)
 	require.Nil(t, result.TokenBalances)
@@ -140,7 +140,7 @@ func TestRunStepF_DisabledWithLBT_MismatchAborts(t *testing.T) {
 	lbt := []LBTEntry{{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "500"}}
 
 	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false}}
-	_, err := RunStepF(context.Background(), cfg, cert, lbt)
+	_, err := RunStepF(context.Background(), cfg, cert, lbt, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mismatch")
 }
@@ -161,7 +161,7 @@ func TestRunStepF_DisabledWithLBT_MismatchCaps(t *testing.T) {
 	lbt := []LBTEntry{{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "500"}}
 
 	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false, IgnoreBalanceMismatch: true}}
-	result, err := RunStepF(context.Background(), cfg, cert, lbt)
+	result, err := RunStepF(context.Background(), cfg, cert, lbt, nil)
 	require.NoError(t, err)
 	require.False(t, result.AllMatch)
 	require.NotNil(t, result.CappedCertificate)
@@ -193,7 +193,7 @@ func TestRunStepF_AllMatch(t *testing.T) {
 	lbt := []LBTEntry{{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "1000"}}
 
 	cfg := &Config{L2NetworkID: 0, Options: Options{UseAgglayerAdminToStepFCheck: true, AgglayerAdminURL: server.URL}}
-	result, err := RunStepF(context.Background(), cfg, cert, lbt)
+	result, err := RunStepF(context.Background(), cfg, cert, lbt, nil)
 	require.NoError(t, err)
 	require.True(t, result.AllMatch)
 	require.Nil(t, result.CappedCertificate)
@@ -223,7 +223,7 @@ func TestRunStepF_MismatchAborts(t *testing.T) {
 		},
 	}
 	cfg := &Config{L2NetworkID: 0, Options: Options{UseAgglayerAdminToStepFCheck: true, AgglayerAdminURL: server.URL}}
-	_, err := RunStepF(context.Background(), cfg, cert, nil)
+	_, err := RunStepF(context.Background(), cfg, cert, nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mismatch")
 }
@@ -259,7 +259,7 @@ func TestRunStepF_MismatchContinues(t *testing.T) {
 			IgnoreBalanceMismatch:        true,
 		},
 	}
-	result, err := RunStepF(context.Background(), cfg, cert, nil)
+	result, err := RunStepF(context.Background(), cfg, cert, nil, nil)
 	require.NoError(t, err)
 	require.False(t, result.AllMatch)
 	require.NotNil(t, result.CappedCertificate)
@@ -274,7 +274,7 @@ func TestRunStepF_RPCError(t *testing.T) {
 	defer server.Close()
 
 	cfg := &Config{L2NetworkID: 1, Options: Options{UseAgglayerAdminToStepFCheck: true, AgglayerAdminURL: server.URL}}
-	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil)
+	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, nil, nil)
 	require.Error(t, err)
 }
 
@@ -312,7 +312,7 @@ func TestCompareTokenBalances_AllMatch(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "1000"},
 	}
 
-	checks, err := compareTokenBalances(groups, agglayerEntries, nil, nil)
+	checks, err := compareTokenBalances(groups, agglayerEntries, nil, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, checks, 1)
 	require.True(t, checks[0].Match)
@@ -335,7 +335,7 @@ func TestCompareTokenBalances_Mismatch(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "999"},
 	}
 
-	checks, err := compareTokenBalances(groups, agglayerEntries, nil, nil)
+	checks, err := compareTokenBalances(groups, agglayerEntries, nil, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, checks, 1)
 	require.False(t, checks[0].Match)
@@ -358,7 +358,7 @@ func TestCompareTokenBalances_MissingInAgglayer(t *testing.T) {
 		},
 	}
 
-	checks, err := compareTokenBalances(groups, nil, nil, nil)
+	checks, err := compareTokenBalances(groups, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, checks, 1)
 	require.False(t, checks[0].Match)
@@ -583,7 +583,7 @@ func TestCapCertificateExits_LBTMinAgglayer(t *testing.T) {
 		{OriginNetwork: 0, OriginTokenAddress: addr, Amount: "800"},
 	}, []LBTEntry{
 		{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "700"},
-	}, nil)
+	}, nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, big.NewInt(700), checks[0].RemainingBalance)
 
@@ -619,7 +619,7 @@ func TestRunStepF_PrefundMatchedStillCapsToLBT(t *testing.T) {
 		CapMode:                      CapModeByAmount,
 	}}
 
-	result, err := RunStepF(context.Background(), cfg, cert, lbt)
+	result, err := RunStepF(context.Background(), cfg, cert, lbt, nil)
 	require.NoError(t, err)
 	require.True(t, result.AllMatch) // 1000 − 700 == 300 → the check itself matches
 	// ...but the certificate is still capped: the 700 pre-fund exit (the largest) is dropped.
@@ -642,7 +642,7 @@ func TestRunStepF_NoPrefundNoCapOnAllMatch(t *testing.T) {
 	}
 	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false, CapMode: CapModeByAmount}}
 
-	result, err := RunStepF(context.Background(), cfg, cert, lbt)
+	result, err := RunStepF(context.Background(), cfg, cert, lbt, nil)
 	require.NoError(t, err)
 	require.True(t, result.AllMatch)
 	require.Nil(t, result.CappedCertificate)
@@ -668,7 +668,7 @@ func TestRunStepF_CapModeNoneFailsOnPrefundCap(t *testing.T) {
 		CapMode:                      CapModeNone,
 	}}
 
-	_, err := RunStepF(context.Background(), cfg, cert, lbt)
+	_, err := RunStepF(context.Background(), cfg, cert, lbt, nil)
 	require.ErrorIs(t, err, errCapForbidden)
 }
 
@@ -691,7 +691,7 @@ func TestRunStepF_CapModeNoneFailsOnMismatchCap(t *testing.T) {
 		CapMode:                      CapModeNone,
 	}}
 
-	_, err := RunStepF(context.Background(), cfg, cert, lbt)
+	_, err := RunStepF(context.Background(), cfg, cert, lbt, nil)
 	require.ErrorIs(t, err, errCapForbidden)
 }
 
@@ -738,11 +738,228 @@ func TestCompareTokenBalances_GenesisPrefundDiscount(t *testing.T) {
 		{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "300"},
 	}
 
-	checks, err := compareTokenBalances(groups, agglayerEntries, lbt, big.NewInt(700))
+	checks, err := compareTokenBalances(groups, agglayerEntries, lbt, big.NewInt(700), nil)
 	require.NoError(t, err)
 	require.Len(t, checks, 1)
 	require.True(t, checks[0].Match)
 	require.Equal(t, "300", checks[0].CertificateAmount) // discounted sum is what gets compared
 	// The cap budget stays min(agglayer, lbt): the genuinely bridged amount, not the raw cert sum.
 	require.Equal(t, big.NewInt(300), checks[0].RemainingBalance)
+}
+
+func TestDiscountSkippedSCLocked(t *testing.T) {
+	t.Parallel()
+
+	token := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	k := tokenKey{OriginNetwork: 1, OriginTokenAddress: token}
+	other := tokenKey{OriginNetwork: 2, OriginTokenAddress: token}
+
+	// nil map (skipSCLockedValue disabled) → amount unchanged.
+	require.Equal(t, big.NewInt(1000), discountSkippedSCLocked(big.NewInt(1000), k, "lbt", nil))
+
+	skipped := map[tokenKey]*big.Int{k: big.NewInt(300)}
+
+	// Discounts only the token with an omitted amount; other tokens untouched.
+	require.Equal(t, big.NewInt(700), discountSkippedSCLocked(big.NewInt(1000), k, "lbt", skipped))
+	require.Equal(t, big.NewInt(1000), discountSkippedSCLocked(big.NewInt(1000), other, "lbt", skipped))
+
+	// An omitted amount larger than the balance floors at 0 (never negative).
+	require.Equal(t, big.NewInt(0),
+		discountSkippedSCLocked(big.NewInt(100), k, "lbt", skipped))
+
+	// A zero omitted amount is a no-op.
+	require.Equal(t, big.NewInt(1000),
+		discountSkippedSCLocked(big.NewInt(1000), k, "lbt", map[tokenKey]*big.Int{k: big.NewInt(0)}))
+}
+
+// TestCompareTokenBalances_SkippedSCLockedDiscount checks the omitted SC-locked amount is discounted
+// from both the LBT and agglayer amounts before the three-way comparison, recorded in the check, and
+// excluded from the cap budget; tokens without an omitted amount are untouched.
+func TestCompareTokenBalances_SkippedSCLockedDiscount(t *testing.T) {
+	t.Parallel()
+
+	dest := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	skippedTok := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	plainTok := common.HexToAddress("0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")
+	skippedKey := tokenKey{OriginNetwork: 1, OriginTokenAddress: skippedTok}
+	plainKey := tokenKey{OriginNetwork: 1, OriginTokenAddress: plainTok}
+
+	// skippedTok: certificate holds the EOA share (300); 700 SC-locked was omitted from it.
+	// plainTok: fully covered by the certificate (500), no omission.
+	groups := map[tokenKey][]*agglayertypes.BridgeExit{
+		skippedKey: {
+			{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 1, OriginTokenAddress: skippedTok},
+				DestinationAddress: dest, Amount: big.NewInt(300)},
+		},
+		plainKey: {
+			{TokenInfo: &agglayertypes.TokenInfo{OriginNetwork: 1, OriginTokenAddress: plainTok},
+				DestinationAddress: dest, Amount: big.NewInt(500)},
+		},
+	}
+	agglayerEntries := []agglayerTokenEntry{
+		{OriginNetwork: 1, OriginTokenAddress: skippedTok, Amount: "1000"},
+		{OriginNetwork: 1, OriginTokenAddress: plainTok, Amount: "500"},
+	}
+	lbt := []LBTEntry{
+		{WrappedTokenAddress: skippedTok, OriginNetwork: 1, OriginTokenAddress: skippedTok, Balance: "1000"},
+		{WrappedTokenAddress: plainTok, OriginNetwork: 1, OriginTokenAddress: plainTok, Balance: "500"},
+	}
+	skipped := map[tokenKey]*big.Int{skippedKey: big.NewInt(700)}
+
+	checks, err := compareTokenBalances(groups, agglayerEntries, lbt, nil, skipped)
+	require.NoError(t, err)
+	require.Len(t, checks, 2)
+
+	byAddr := map[string]TokenBalanceCheck{}
+	for _, c := range checks {
+		byAddr[c.OriginTokenAddress] = c
+	}
+
+	skippedCheck := byAddr[skippedTok.Hex()]
+	require.True(t, skippedCheck.Match)
+	require.Equal(t, "300", skippedCheck.CertificateAmount)
+	require.Equal(t, "300", skippedCheck.AgglayerAmount) // 1000 − 700 omitted
+	require.Equal(t, "300", skippedCheck.LBTAmount)      // 1000 − 700 omitted
+	require.Equal(t, "700", skippedCheck.SkippedSCLockedAmount)
+	// The cap budget excludes the left-behind funds: they must never be bridged out.
+	require.Equal(t, big.NewInt(300), skippedCheck.RemainingBalance)
+
+	plainCheck := byAddr[plainTok.Hex()]
+	require.True(t, plainCheck.Match)
+	require.Equal(t, "500", plainCheck.LBTAmount)
+	require.Empty(t, plainCheck.SkippedSCLockedAmount)
+	require.Equal(t, big.NewInt(500), plainCheck.RemainingBalance)
+}
+
+// TestRunStepF_SkipSCLockedOffline checks the offline LBT comparison end to end: a certificate that
+// omits the SC-locked exits matches once the omitted amounts (Step C) are discounted from the LBT —
+// and mismatches when the flag is off (same inputs, no discount).
+func TestRunStepF_SkipSCLockedOffline(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	cert := &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{
+			{
+				TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: 1, OriginTokenAddress: addr},
+				Amount:             big.NewInt(300),
+				DestinationAddress: common.HexToAddress("0xBBBB"),
+			},
+		},
+	}
+	lbt := []LBTEntry{{OriginNetwork: 1, OriginTokenAddress: addr, Balance: "1000"}}
+	scLocked := []SCLockedValue{
+		{OriginNetwork: 1, OriginTokenAddress: addr, PendingSCLockedBalance: "700"},
+	}
+
+	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false, SkipSCLockedValue: true}}
+	result, err := RunStepF(context.Background(), cfg, cert, lbt, scLocked)
+	require.NoError(t, err)
+	require.True(t, result.AllMatch)
+	require.Nil(t, result.CappedCertificate)
+	require.Len(t, result.Checks, 1)
+	require.Equal(t, "300", result.Checks[0].LBTAmount) // 1000 − 700 omitted
+	require.Equal(t, "300", result.Checks[0].CertificateAmount)
+	require.Equal(t, "700", result.Checks[0].SkippedSCLockedAmount)
+
+	// Same inputs with the flag disabled: the SC-locked values are ignored, no discount → mismatch.
+	cfgOff := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false}}
+	_, err = RunStepF(context.Background(), cfgOff, cert, lbt, scLocked)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mismatch")
+}
+
+// TestRunStepF_SkipSCLockedAgglayerMode checks the discount through the agglayer (three-way) path.
+func TestRunStepF_SkipSCLockedAgglayerMode(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := jsonRPCResponse{
+			JSONRPC: "2.0", ID: 1,
+			Result: json.RawMessage(`{"balances":[{"originNetwork":0,"originTokenAddress":"0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa","amount":"1000"}]}`),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cert := &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{
+			{
+				TokenInfo:          &agglayertypes.TokenInfo{OriginNetwork: 0, OriginTokenAddress: addr},
+				Amount:             big.NewInt(300),
+				DestinationAddress: common.HexToAddress("0xBBBB"),
+			},
+		},
+	}
+	lbt := []LBTEntry{{OriginNetwork: 0, OriginTokenAddress: addr, Balance: "1000"}}
+	scLocked := []SCLockedValue{
+		{OriginNetwork: 0, OriginTokenAddress: addr, PendingSCLockedBalance: "700"},
+	}
+
+	cfg := &Config{L2NetworkID: 0, Options: Options{
+		UseAgglayerAdminToStepFCheck: true,
+		AgglayerAdminURL:             server.URL,
+		SkipSCLockedValue:            true,
+	}}
+	result, err := RunStepF(context.Background(), cfg, cert, lbt, scLocked)
+	require.NoError(t, err)
+	require.True(t, result.AllMatch)
+	require.Len(t, result.Checks, 1)
+	require.Equal(t, "300", result.Checks[0].AgglayerAmount) // 1000 − 700 omitted
+	require.Equal(t, "300", result.Checks[0].LBTAmount)
+	require.Equal(t, "700", result.Checks[0].SkippedSCLockedAmount)
+}
+
+// TestRunStepF_SkipSCLockedComposesWithPrefund checks the two discounts compose: the genesis
+// pre-fund is discounted from the native certificate sum and the omitted SC-locked amount from the
+// LBT — and the pre-fund capping on allMatch still applies against the reduced budget.
+func TestRunStepF_SkipSCLockedComposesWithPrefund(t *testing.T) {
+	t.Parallel()
+
+	dest := common.HexToAddress("0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+	// Native exits: 300 genuinely bridged + 700 genesis pre-fund = 1000 raw.
+	// LBT holds 1000, of which 700 SC-locked was omitted from the certificate.
+	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
+		{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(300)},
+		{TokenInfo: &agglayertypes.TokenInfo{}, DestinationAddress: dest, Amount: big.NewInt(700)},
+	}}
+	lbt := []LBTEntry{
+		{WrappedTokenAddress: common.Address{}, OriginNetwork: 0, OriginTokenAddress: common.Address{}, Balance: "1000"},
+	}
+	scLocked := []SCLockedValue{
+		{OriginNetwork: 0, OriginTokenAddress: common.Address{}, PendingSCLockedBalance: "700"},
+	}
+	cfg := &Config{Options: Options{
+		UseAgglayerAdminToStepFCheck: false,
+		GenesisPrefundETHWei:         "700",
+		SkipSCLockedValue:            true,
+		CapMode:                      CapModeByAmount,
+	}}
+
+	result, err := RunStepF(context.Background(), cfg, cert, lbt, scLocked)
+	require.NoError(t, err)
+	require.True(t, result.AllMatch) // cert 1000 − 700 prefund == lbt 1000 − 700 omitted
+	// The pre-fund exit still cannot be bridged out: capped to the reduced budget (300).
+	require.NotNil(t, result.CappedCertificate)
+	require.Len(t, result.CappedCertificate.BridgeExits, 1)
+	require.Equal(t, big.NewInt(300), result.CappedCertificate.BridgeExits[0].Amount)
+}
+
+// TestRunStepF_SkipSCLockedBadPendingBalanceAborts checks an unparseable Step C amount fails loudly
+// instead of silently leaving the token's budget undiscounted.
+func TestRunStepF_SkipSCLockedBadPendingBalanceAborts(t *testing.T) {
+	t.Parallel()
+
+	addr := common.HexToAddress("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	scLocked := []SCLockedValue{
+		{OriginNetwork: 1, OriginTokenAddress: addr, PendingSCLockedBalance: "not-a-number"},
+	}
+	cfg := &Config{Options: Options{UseAgglayerAdminToStepFCheck: false, SkipSCLockedValue: true}}
+	_, err := RunStepF(context.Background(), cfg, &agglayertypes.Certificate{}, []LBTEntry{
+		{OriginNetwork: 1, OriginTokenAddress: addr, Balance: "1000"},
+	}, scLocked)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "pending SC-locked balance")
 }

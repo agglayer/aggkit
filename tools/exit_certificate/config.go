@@ -55,6 +55,13 @@ type Options struct {
 	// genesis premint, clamping to 0 and silently dropping contract-held ETH. Set to false to fall
 	// back to the LBT − EOA derivation for the native token.
 	NativeSCLockedFromContracts bool `json:"nativeSCLockedFromContracts"`
+	// SkipSCLockedValue, when true, excludes the SC-locked funds from the certificate: Step D does not
+	// create the per-token bridge exits that send each PendingSCLockedBalance (Step C) to exitAddress —
+	// those funds are intentionally left behind. exitAddress is then no longer required. Step C still
+	// runs (its output records what is left behind), and Step F discounts the omitted per-token amounts
+	// from the LBT/agglayer budgets so the balance check still requires strict equality. Holder-bridge
+	// exits (vault redistribution to real holders) are unaffected. Defaults to false.
+	SkipSCLockedValue bool `json:"skipSCLockedValue"`
 	// IgnoreBalanceMismatch suppresses the error returned by Step F when token balances
 	// do not match. Set to true only when investigating discrepancies without blocking the pipeline.
 	IgnoreBalanceMismatch bool `json:"ignoreBalanceMismatch"`
@@ -230,16 +237,21 @@ func validateRawConfig(raw *rawConfig) error {
 	if raw.L2BridgeAddress == "" {
 		return fmt.Errorf("missing required parameter: l2BridgeAddress")
 	}
-	if raw.ExitAddress == "" {
-		return fmt.Errorf("missing required parameter: exitAddress")
+	// exitAddress only receives the SC-locked funds (Step D), so with skipSCLockedValue enabled it is
+	// no longer required (nor meaningful): the presence and zero-address checks are skipped. The hex
+	// format check still runs on any non-empty value to catch typos early.
+	skipSCLocked := skipSCLockedValueEnabled(raw.Options)
+	if raw.ExitAddress == "" && !skipSCLocked {
+		return fmt.Errorf("missing required parameter: exitAddress " +
+			"(only optional with options.skipSCLockedValue=true)")
 	}
 	// Validate the hex format explicitly: common.HexToAddress silently returns the zero address on
 	// any malformed input, so without this check a typo would surface as the (misleading) zero-address
 	// error below instead of pointing at the real problem.
-	if !common.IsHexAddress(raw.ExitAddress) {
+	if raw.ExitAddress != "" && !common.IsHexAddress(raw.ExitAddress) {
 		return fmt.Errorf("invalid exitAddress %q: not a valid hex address", raw.ExitAddress)
 	}
-	if common.HexToAddress(raw.ExitAddress) == (common.Address{}) {
+	if !skipSCLocked && common.HexToAddress(raw.ExitAddress) == (common.Address{}) {
 		return fmt.Errorf("invalid exitAddress: the zero address (0x00...00) is not allowed; " +
 			"set an address whose private key you control so the SC-locked funds can be recovered")
 	}
@@ -271,6 +283,16 @@ func validateRawConfig(raw *rawConfig) error {
 			"is true (the default); set agglayerAdminURL, or set useAgglayerAdminToStepFCheck=false to skip Step F")
 	}
 	return nil
+}
+
+// skipSCLockedValueEnabled reports the effective value of options.skipSCLockedValue, mirroring the
+// default applied by mergeOptions: it is false when the option is absent (nil rawOpts or unset
+// tri-state flag) and otherwise takes the explicit value.
+func skipSCLockedValueEnabled(raw *rawOpts) bool {
+	if raw == nil || raw.SkipSCLockedValue == nil {
+		return defaultOptions.SkipSCLockedValue
+	}
+	return *raw.SkipSCLockedValue
 }
 
 // useAgglayerAdminToStepFCheckEnabled reports the effective value of
@@ -475,6 +497,9 @@ func mergeFlagOptions(opts *Options, raw *rawOpts) {
 	if raw.NativeSCLockedFromContracts != nil {
 		opts.NativeSCLockedFromContracts = *raw.NativeSCLockedFromContracts
 	}
+	if raw.SkipSCLockedValue != nil {
+		opts.SkipSCLockedValue = *raw.SkipSCLockedValue
+	}
 	if raw.IgnoreBalanceMismatch != nil {
 		opts.IgnoreBalanceMismatch = *raw.IgnoreBalanceMismatch
 	}
@@ -550,6 +575,7 @@ type rawOpts struct {
 	UseAgglayerAdminToStepFCheck          *bool                  `json:"useAgglayerAdminToStepFCheck"`
 	IgnoreGenesisBalance                  *bool                  `json:"ignoreGenesisBalance"`
 	NativeSCLockedFromContracts           *bool                  `json:"nativeSCLockedFromContracts"`
+	SkipSCLockedValue                     *bool                  `json:"skipSCLockedValue"`
 	IgnoreBalanceMismatch                 *bool                  `json:"ignoreBalanceMismatch"`
 	IgnoreUnclaimed                       *bool                  `json:"ignoreUnclaimed"`
 	ExtraERC20Contracts                   []string               `json:"extraErc20Contracts"`

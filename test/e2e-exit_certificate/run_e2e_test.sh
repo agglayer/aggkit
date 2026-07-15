@@ -57,6 +57,9 @@ run_quiet "${SCRIPT_DIR}/40-generate_exit_certificate.sh"
 log_info "🔁 Check certificate determinism (repeated runs)"
 run_quiet "${SCRIPT_DIR}/42-check_deterministic_certificate.sh"
 
+log_info "🙈 Check skipSCLockedValue (SC-locked funds left behind)"
+run_quiet "${SCRIPT_DIR}/43-check_skip_sclocked.sh"
+
 log_info "🔎 Check exit certificate"
 run_quiet "${SCRIPT_DIR}/45-check_exit_certificate.sh"
 

@@ -15,7 +15,9 @@ import (
 // Creates BridgeExit entries for:
 //  1. Every (EOA, token) pair with a non-zero balance
 //  2. Every holder of an ERC-20 vault/staking contract (from Step C HolderBridges)
-//  3. Every token with remaining SC-locked value, directed to exitAddress
+//  3. Every token with remaining SC-locked value, directed to exitAddress — omitted entirely when
+//     options.skipSCLockedValue is true (those funds are intentionally left behind; Step F discounts
+//     them from the LBT/agglayer budgets)
 func RunStepD(cfg *Config, stepB *StepBResult, stepC *StepCResult) (*StepDResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP D — Build exit certificate")
@@ -36,11 +38,17 @@ func RunStepD(cfg *Config, stepB *StepBResult, stepC *StepCResult) (*StepDResult
 	}
 	log.Infof("Holder exits: %d", len(holderExits))
 
-	scExits, err := buildSCLockedExits(stepC, destNetwork, exitAddr)
-	if err != nil {
-		return nil, err
+	var scExits []*agglayertypes.BridgeExit
+	if cfg.Options.SkipSCLockedValue {
+		log.Infof("SC-locked exits: skipped (skipSCLockedValue=true) — %d SC-locked value entries "+
+			"intentionally left out of the certificate", len(stepC.SCLockedValues))
+	} else {
+		scExits, err = buildSCLockedExits(stepC, destNetwork, exitAddr)
+		if err != nil {
+			return nil, err
+		}
+		log.Infof("SC-locked exits: %d", len(scExits))
 	}
-	log.Infof("SC-locked exits: %d", len(scExits))
 
 	bridgeExits := make([]*agglayertypes.BridgeExit, 0, len(eoaExits)+len(holderExits)+len(scExits))
 	bridgeExits = append(bridgeExits, eoaExits...)

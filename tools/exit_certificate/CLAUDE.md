@@ -51,7 +51,7 @@ Runs automatically as the first step of the full pipeline, and can also be trigg
 
 All checks run regardless of individual failures. A combined error lists every failed check.
 
-1. **Anvil installed** — `anvil` must be in `$PATH` (required by Step G2 only when `options.verifyNewLocalExitRootUsingShadowFork=true`). Fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh) if missing.
+1. **Anvil installed** — `anvil` must be in `$PATH` only when `options.verifyNewLocalExitRootUsingShadowFork=true` (the mode where Step G2 uses it); a missing binary then fails with a clear error pointing to [getfoundry.sh](https://getfoundry.sh). With the option set to `false` its absence is only logged (not counted as a failure); `anvilInstalled` in the result records the real status either way.
 2. **L1 RPC reachable** — dials `l1RpcUrl` and calls `eth_blockNumber`. Fails if not set or unreachable.
 3. **`l1BridgeAddress` is the L1 bridge** — calls `networkID()` on `l1BridgeAddress` over the L1 RPC and requires 0 (the L1/mainnet network). Catches a typo, a non-bridge contract, or the `l2BridgeAddress` default pointing at an address that is not the L1 bridge — Step E trusts this address to detect unclaimed L1→L2 deposits and `eth_getLogs` silently returns nothing on a wrong one. The outcome is recorded in the result as `l1BridgeAddressStatus` (`ok` / `invalid (networkID()=N)` / `error` / `unchecked`); if check 2 failed it is `unchecked` and counted as a failure.
 4. **L2 network ID matches bridge** — calls `NetworkID()` on the L2 bridge contract and verifies it matches `l2NetworkId` in config.
@@ -153,6 +153,9 @@ Creates the `*agglayertypes.Certificate` with `BridgeExit` entries:
 
 - One per (EOA, token) pair with non-zero balance → destination is the EOA address on `destinationNetwork`.
 - One per token with SC-locked value > 0 → destination is `exitAddress` on `destinationNetwork`.
+  **Omitted entirely with `options.skipSCLockedValue=true`**: those funds are intentionally left
+  behind (Step C still runs and its output records them; Step F discounts them from the
+  LBT/agglayer balances). Holder-bridge exits (Step C `HolderBridges`) are unaffected.
 
 - **Output:** `step-d-exit-certificate.json`
 
@@ -176,6 +179,7 @@ Creates the `*agglayertypes.Certificate` with `BridgeExit` entries:
 - **`ignoreBalanceMismatch=true`:** suppresses the error and produces `step-f-capped-certificate.json`, where each mismatched token's bridge exits are trimmed so their sum equals the token budget `min(agglayer, lbt)`. Requires a trimming `capMode` (`"amount"` or `"appearance"`); with the default `"none"` Step F fails instead of trimming. The pipeline (and `runSingleG`) automatically uses this capped certificate for subsequent steps.
 - `capCertificateExits` is the internal helper that applies the caps. It is a **greedy per-token allocator**: it walks each token's exits, deducting each amount from the budget, capping the boundary exit to the leftover and dropping any exit once the budget is exhausted. `options.capMode` selects the allocation order — `"none"` (default) forbids capping entirely: the helper returns `errCapForbidden` if any exit would have to be trimmed/dropped, failing Step F; `"amount"` serves the smallest-amount exits first, so the largest holders are the first to be capped/dropped once the budget runs out; `"appearance"` serves exits in the order they appear. In both trimming modes the surviving exits are emitted in their original order.
 - **Genesis pre-fund capping:** the pre-funded native amount (`genesisPrefundETHWei`) has no agglayer collateral and can never be bridged out. Even when every check matches (thanks to the discount), `finalizeStepFResult` still produces the capped certificate, trimming the native exits to `min(agglayer, lbt)` — no `ignoreBalanceMismatch` required, but a trimming `capMode` is (the default `"none"` fails instead).
+- **Skipped SC-locked discount:** with `options.skipSCLockedValue=true` the certificate omits the SC-locked exits (Step D), so Step F discounts each token's `PendingSCLockedBalance` (Step C) from the **LBT and agglayer amounts** via `discountSkippedSCLocked` before comparing — the check remains strict equality and the cap budget (`RemainingBalance`) excludes the left-behind funds. The applied discount is recorded per token as `skippedSCLockedAmount` in `step-f-checks.json` (the persisted LBT/agglayer amounts are the adjusted ones). In single-step mode `--step f` then requires `step-c-sc-locked-values.json` (run Step C first).
 - **Output:** `step-f-token-balances.json`, `step-f-checks.json` (`[]TokenBalanceCheck`), `step-f-agglayer-lbt.json` *(only when `agglayerAdminURL` is set)*, `step-f-capped-certificate.json` *(when `ignoreBalanceMismatch=true` and mismatches exist, or when `genesisPrefundETHWei` trims the native exits)*
 
 ### Step G — Compute NewLocalExitRoot (shadow-fork)
@@ -383,12 +387,15 @@ to JSON internally (`tomlToJSON`: decode to a map, re-encode as JSON) so both fo
 parsing/validation path, including `signerConfig` and `agglayerClient`. Field names are identical in
 both formats (camelCase keys, e.g. `l2RpcUrl`; `signerConfig` uses PascalCase `Method`/`Path`/`Password`).
 
-Required: `l2RpcUrl`, `l2BridgeAddress`, `exitAddress`, `targetBlock`.
+Required: `l2RpcUrl`, `l2BridgeAddress`, `exitAddress` (unless `options.skipSCLockedValue=true`),
+`targetBlock`.
 
 `exitAddress` is validated by `LoadConfig`: it must be present **and** must not be the zero address
 (`0x00…00`) — both cases return an error. SC-locked value is bridged to this address on
 `destinationNetwork`, so it must be an address whose private key the operator controls (the funds can
-only be recovered by signing from it).
+only be recovered by signing from it). With `options.skipSCLockedValue=true` the SC-locked funds are
+left behind and `exitAddress` is unused: the presence and zero-address checks are skipped (a
+non-empty value must still be valid hex).
 
 `targetBlock` accepts: a finality keyword (`LatestBlock`, `FinalizedBlock`, `SafeBlock`, `PendingBlock`), an optional negative offset appended with `/` (e.g. `LatestBlock/-10`), a decimal block number (`"21000000"`), or a hex block number (`"0x1406f40"`). An empty string defaults to `LatestBlock`. The keyword is resolved to a concrete `uint64` at the start of Step 0 and written to `step-0-l2_target_block.json`; all subsequent steps (A, B, G) read that fixed number. The old lowercase aliases (`latest`, `finalized`, `safe`, `pending`) are **not** accepted — use the PascalCase keywords.
 
@@ -401,6 +408,7 @@ Notable optional fields:
 - `rollupManagerAddress` — **optional** address of the `PolygonRollupManager` (AgglayerManager) contract on L1. Used by Step WAIT to confirm the certificate's L1 settlement via the `VerifyBatchesTrustedAggregator` event. When unset it is resolved on-chain from `sovereignRollupAddr.rollupManager()` (PolygonConsensusBase). Step WAIT errors if neither `rollupManagerAddress` nor `sovereignRollupAddr` is set.
 - `options.capMode` — `"none"` (default), `"amount"` or `"appearance"`. Selects how Step F allocates each token's cap budget when it needs to trim exits. `"none"` forbids capping: Step F fails (`errCapForbidden`) if any exit would have to be trimmed — including the genesis pre-fund trim, so `genesisPrefundETHWei` requires a trimming mode. `"amount"` serves the smallest-amount exits first, so the largest holders are the first to be capped/dropped; `"appearance"` serves exits in the order they appear. Surviving exits are emitted in their original order in both trimming modes.
 - `options.genesisPrefundETHWei` — optional native-token amount (Wei, decimal string) pre-funded at genesis. Those funds sit in accounts — and therefore in the certificate's bridge exits — without a matching agglayer deposit, so Step F subtracts the value from the native-token certificate sum via `discountGenesisPrefund` before comparing against the agglayer balance and the LBT (which only count genuinely bridged funds), logging the certificate total, the pre-fund and the difference. The cap budget stays `min(agglayer, lbt)`, and the Step 0 LBT and Step C SC-locked totals are untouched. The pre-fund has no agglayer collateral, so even on allMatch Step F emits `step-f-capped-certificate.json` trimming the native exits to that budget. Validated by `LoadConfig` (non-negative base-10 integer). Empty = 0. When set, Step B verifies the declared value against the detected genesis ETH preload total (`checkDeclaredGenesisPrefund`); a mismatch is fatal even with `ignoreGenesisBalance=true`.
+- `options.skipSCLockedValue` — `false` (default). When `true`, Step D omits the per-token SC-locked exits (`PendingSCLockedBalance` → `exitAddress`) from the certificate: those funds are intentionally left behind on the L2, and `exitAddress` is no longer required. Step C still runs — `step-c-sc-locked-values.json` records what is left behind — and Step F discounts the omitted amounts from the LBT/agglayer balances via `discountSkippedSCLocked` (the check stays strict equality; each token's `skippedSCLockedAmount` is recorded in `step-f-checks.json`, and the cap budget excludes the omitted funds). Holder-bridge exits are unaffected. In single-step mode, `--step f` then requires `step-c-sc-locked-values.json`.
 - `options.bridgeServiceURL` — base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits against the bridge service and errors on discrepancies.
 - `options.bridgeServiceType` — `"aggkit"` (default) or `"zkevm"`. Selects the API flavour used for the cross-check.
 - `options.useAgglayerAdminToStepFCheck` — `true` (default). When `true`, Step F runs the agglayer admin balance check (`admin_getTokenBalance`, three-way comparison; requires `agglayerAdminURL`). When `false`, Step F skips the agglayer query and instead compares the LBT (Step 0) totals against the certificate bridge-exit sums offline (no `agglayerAdminURL` needed; skipped only if no LBT data exists). Set to `false` when no agglayer admin endpoint is available.

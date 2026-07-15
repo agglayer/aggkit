@@ -47,6 +47,9 @@ l2StartBlock = 0
 ignoreGenesisBalance = false
 ignoreUnclaimed = false
 ignoreBalanceMismatch = false
+
+# skip bridge SC locked values
+skipSCLockedValue = true
 extraErc20Contracts = ["0x4F9A0e7FD2Bf6067db6994CF12E4495Df938E6e9"]
 
 # Base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits and
