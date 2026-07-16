@@ -25,7 +25,7 @@ require (
 	github.com/knadh/koanf/v2 v2.3.4
 	github.com/mattn/go-sqlite3 v1.14.42
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pelletier/go-toml/v2 v2.3.0
+	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/rubenv/sql-migrate v1.8.1
