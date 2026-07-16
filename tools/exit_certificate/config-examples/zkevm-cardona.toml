@@ -1,0 +1,85 @@
+# Example config for Polygon zkEVM Cardona (testnet). Copy to a .toml file and fill in the fields
+# marked below. Field names are identical in the JSON format; format is chosen by file extension.
+# See ./README.md and ../README.md for a full description of every field.
+
+# REQUIRED — L1 JSON-RPC endpoint (Steps E and I). Use a *Sepolia* RPC for Cardona. Without it
+# Step E is silently skipped and Step I fails, so the certificate will be incomplete.
+l1RpcUrl = "<YOUR_L1_RPC_URL>"
+
+# REQUIRED — L2 JSON-RPC endpoint. Must expose debug_traceTransaction (archive node) for Step A.
+l2RpcUrl = "https://rpc-debug.cardona.zkevm-rpc.com/"
+
+# Optional — L1 bridge contract address. Defaults to l2BridgeAddress when unset.
+l1BridgeAddress = "0x528e26b25a34a4A5d0dbDa1d57D318153d2ED582"
+
+# REQUIRED — L2 bridge contract address.
+l2BridgeAddress = "0x528e26b25a34a4A5d0dbDa1d57D318153d2ED582"
+l2NetworkId = 1
+targetBlock = "LatestBlock"
+
+# REQUIRED — address that receives SC-locked value (tokens held in smart contracts). Use an address
+# whose private key you control; settled funds can only be recovered by signing from it. Must not be
+# the zero address. A multisig (e.g. a Gnosis Safe) is strongly recommended over a single EOA for
+# better security. Uncomment and set your own address before running.
+#exitAddress = "0x0000000000000000000000000000000000001234"
+sovereignRollupAddr = "0xA13Ddb14437A8F34897131367ad3ca78416d6bCa"
+l1GlobalExitRootAddress = "<L1_GLOBAL_EXIT_ROOT_ADDRESS>"
+# OPTIONAL — PolygonRollupManager on Sepolia (Cardona), used by Step WAIT to confirm L1 settlement.
+# If omitted it is resolved on-chain from sovereignRollupAddr.rollupManager().
+rollupManagerAddress = "0x32d33D5137a7cFFb54c5Bf8371172bcEc5f310ff"
+destinationNetwork = 0
+
+# REQUIRED to sign — signer for Step SIGN (same format as aggsender's AggsenderPrivateKey). Other
+# backends (GCP KMS, AWS KMS, …) are supported; see the go_signer repo.
+[signerConfig]
+Method = "local"
+Path = "signer.keystore"
+Password = "<PASSWORD>"
+
+[options]
+blockRange = 10000
+concurrencyLimit = 10
+rpcBatchSize = 99
+rpcDelayMs = 10
+outputDir = "./output-cardona"
+l1StartBlock = 5157692
+l2StartBlock = 0
+ignoreGenesisBalance = false
+ignoreUnclaimed = false
+ignoreBalanceMismatch = false
+extraErc20Contracts = []
+
+# Native token pre-funded at genesis (Wei, decimal string). Cardona minted 100000 ETH at genesis,
+# which inflates the certificate's native exits without a matching agglayer deposit; Step F subtracts
+# this amount from the native certificate sum before its comparison. 100.000 ETH = 100000e18 Wei.
+genesisPrefundETHWei = "100000000000000000000000"
+
+# The pre-funded amount has no agglayer collateral, so Step F must trim the native exits to the
+# budget — the default capMode ("none") forbids trimming and would fail, so a trimming mode is
+# required here. "amount" makes the large pre-funded holders absorb the trim.
+capMode = "amount"
+
+# Base URL of the bridge service REST API. When set, Step E cross-checks unclaimed deposits and
+# errors on discrepancies. Default: "" (disabled).
+bridgeServiceURL = "https://bridge-api.cardona.zkevm-rpc.com"
+
+# Bridge service API flavour for the cross-check: "aggkit" or "zkevm". Default: "aggkit".
+bridgeServiceType = "zkevm"
+
+# When true (default), Step F runs the agglayer admin balance check (three-way: LBT == agglayer ==
+# certificate). When false, it skips the agglayer query and compares LBT (step 0) vs certificate sums
+# offline (no agglayerAdminURL needed; skipped only if no LBT data exists).
+useAgglayerAdminToStepFCheck = true
+
+# REQUIRED for Step F in agglayer mode — agglayer admin RPC endpoint (admin_getTokenBalance). Step F
+# errors if it runs in agglayer mode without this set. Not needed when useAgglayerAdminToStepFCheck = false.
+agglayerAdminURL = "<AGGLAYER_ADMIN_URL>"
+# REQUIRED for Step F when the admin endpoint is behind Google Cloud IAP — Bearer token for
+# agglayerAdminURL (see the "Authenticating with IAP" section of the README).
+agglayerAdminToken = "<JWT>"
+
+# REQUIRED for Steps H, SUBMIT and WAIT — agglayer gRPC client config (same as aggsender's
+# agglayer.ClientConfig). Set at least GRPC.URL (e.g. "agglayer.example.com:50051").
+[options.agglayerClient.GRPC]
+URL = "<AGGLAYER_GRPC_URL>"
+UseTLS = true
