@@ -8,7 +8,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainbase"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonrollupbaseetrog"
-	"github.com/agglayer/aggkit/log"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -31,7 +31,7 @@ var bridgeServiceURLKeyTopic = crypto.Keccak256Hash([]byte(MetadataBridgeService
 // it is a single goroutine driven by a ticker calling eth_getLogs (FilterLogs) over a chunked block
 // range bounded by Config.BlockFinality.
 type listener struct {
-	logger        *log.Logger
+	logger        aggkitcommon.Logger
 	logFilterer   LogFilterer
 	healthChecker HealthChecker
 	resolver      *resolver
@@ -67,7 +67,7 @@ type listener struct {
 // newListener builds the event listener from the finder's already-resolved dependencies. It computes
 // the watched-address slice and the event topics up front and binds the decoding filterers.
 func newListener(
-	logger *log.Logger,
+	logger aggkitcommon.Logger,
 	logFilterer LogFilterer,
 	healthChecker HealthChecker,
 	res *resolver,

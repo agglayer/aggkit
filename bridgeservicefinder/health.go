@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agglayer/aggkit/log"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 )
 
 // httpHealthChecker is the default HealthChecker. It issues an HTTP GET against
@@ -16,13 +16,13 @@ type httpHealthChecker struct {
 	client     *http.Client
 	healthPath string
 	timeout    time.Duration
-	logger     *log.Logger
+	logger     aggkitcommon.Logger
 }
 
 // newHTTPHealthChecker builds the default HealthChecker. If client is nil a client with the given
 // timeout is created. healthPath is the path appended to each probed base URL (e.g. "/health").
 func newHTTPHealthChecker(
-	client *http.Client, healthPath string, timeout time.Duration, logger *log.Logger,
+	client *http.Client, healthPath string, timeout time.Duration, logger aggkitcommon.Logger,
 ) *httpHealthChecker {
 	if client == nil {
 		client = &http.Client{Timeout: timeout}

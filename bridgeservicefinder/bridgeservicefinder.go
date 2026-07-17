@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -48,14 +49,14 @@ type Options struct {
 	// update step; not exercised by Start's initial cache build. Defaults to EthClient.
 	LogFilterer LogFilterer
 	// Logger is the logger used by the finder. Defaults to log.WithFields("module", moduleName).
-	Logger *log.Logger
+	Logger aggkitcommon.Logger
 }
 
 // finder is the concrete Finder. It holds the resolved dependencies, the config, and the
 // networkID -> URL cache. See doc.go for the full design.
 type finder struct {
 	cfg           Config
-	logger        *log.Logger
+	logger        aggkitcommon.Logger
 	rollupManager RollupManagerQuerier
 	readerFactory RollupContractReaderFactory
 	healthChecker HealthChecker
