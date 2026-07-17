@@ -33,6 +33,100 @@ func startFinder(t *testing.T, cfg Config, opts Options) *finder {
 	return concrete
 }
 
+// TestLiveDiscovery_NewRollupResolvedImmediately covers dynamic rollup discovery: a rollup attached
+// to the manager AFTER Start (announced via a CreateNewRollup event) already exposes a bridge service
+// source, so it is resolved and served live without a restart.
+func TestLiveDiscovery_NewRollupResolvedImmediately(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, _ := deployRollupManagerWithRollups(t, backend, auth, 1)
+
+	cfg := baseTestConfig(mgrAddr)
+
+	f := startFinder(t, cfg, Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: newMapHealthChecker(nil),
+	})
+
+	const newNetworkID = uint32(2)
+	_, err := f.GetURL(newNetworkID)
+	require.ErrorIs(t, err, ErrURLNotFound, "network must be unknown before it is announced")
+
+	sleepPastSeedTick(testPollInterval)
+
+	// Deploy a brand-new rollup, give it a resolvable source, then announce it on the manager. The
+	// finder resolves the source via a direct on-chain read during discovery (not via the metadata
+	// event), so only the CreateNewRollup event needs to be observed.
+	newRollup := deployStandaloneRollup(t, backend, auth, newNetworkID)
+	const metadataURL = "https://new-rollup.example.com:5577"
+	_, err = newRollup.contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, metadataURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	mgr := newRollupManagerContract(t, backend, mgrAddr)
+	_, err = mgr.EmitCreateNewRollup(auth, newNetworkID, newRollup.addr)
+	require.NoError(t, err)
+	backend.Commit()
+
+	require.Eventually(t, func() bool {
+		got, err := f.GetURL(newNetworkID)
+		return err == nil && got == metadataURL
+	}, testEventuallyWait, testEventuallyTick, "expected newly attached rollup to be discovered live")
+
+	entry, ok := f.cache.get(newNetworkID)
+	require.True(t, ok)
+	require.Equal(t, SourceMetadata, entry.source)
+}
+
+// TestLiveDiscovery_NewRollupNoSourceThenHealedByEvent covers the second discovery path: a rollup
+// announced via AddExistingRollup that exposes no bridge service source yet is registered (watched)
+// but left without a cache entry, and a subsequent SetTrustedSequencerURL event on it then populates
+// the entry. This proves discovery adds the new rollup's address to the watched set.
+func TestLiveDiscovery_NewRollupNoSourceThenHealedByEvent(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, _ := deployRollupManagerWithRollups(t, backend, auth, 1)
+
+	cfg := baseTestConfig(mgrAddr)
+
+	f := startFinder(t, cfg, Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: newMapHealthChecker(nil),
+	})
+
+	const newNetworkID = uint32(2)
+
+	sleepPastSeedTick(testPollInterval)
+
+	// Announce a new rollup that has no bridge service source yet.
+	newRollup := deployStandaloneRollup(t, backend, auth, newNetworkID)
+	mgr := newRollupManagerContract(t, backend, mgrAddr)
+	_, err := mgr.EmitAddExistingRollup(auth, newNetworkID, newRollup.addr)
+	require.NoError(t, err)
+	backend.Commit()
+
+	// Give discovery several ticks to register the address before the URL event is emitted, so the
+	// event falls within the (now-extended) watched-address filter.
+	sleepPastSeedTick(testPollInterval)
+	sleepPastSeedTick(testPollInterval)
+
+	_, err = f.GetURL(newNetworkID)
+	require.ErrorIs(t, err, ErrURLNotFound, "no-source discovered rollup must not have a cache entry yet")
+
+	// Now the rollup publishes a trusted sequencer URL; the finder must pick it up because discovery
+	// added the rollup contract to the watched set.
+	_, err = newRollup.contract.SetTrustedSequencerURL(auth, "https://seq.example.com:8545")
+	require.NoError(t, err)
+	backend.Commit()
+
+	require.Eventually(t, func() bool {
+		got, err := f.GetURL(newNetworkID)
+		return err == nil && got != ""
+	}, testEventuallyWait, testEventuallyTick, "expected discovered rollup to be healed by a later URL event")
+
+	got, err := f.GetURL(newNetworkID)
+	require.NoError(t, err)
+	require.Contains(t, got, fmt.Sprintf(":%d", DefaultBridgeServicePort))
+}
+
 // TestLiveUpdate_SequencerThenMetadataUpgrades covers matrix item #4a: a sequencer-sourced network
 // is upgraded to metadata (higher priority) via a live AggchainMetadataSet event.
 func TestLiveUpdate_SequencerThenMetadataUpgrades(t *testing.T) {

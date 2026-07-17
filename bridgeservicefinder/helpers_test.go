@@ -97,6 +97,35 @@ func deployRollupManagerWithRollups(
 	return mgrAddr, rollups
 }
 
+// newRollupManagerContract re-binds an already-deployed RollupManagerMock so a test can drive its
+// event-emitting setters (e.g. EmitCreateNewRollup) after the finder has started, exercising live
+// rollup discovery.
+func newRollupManagerContract(
+	t *testing.T, backend *simulated.Backend, mgrAddr common.Address,
+) *rollupmanagermock.Rollupmanagermock {
+	t.Helper()
+
+	c, err := rollupmanagermock.NewRollupmanagermock(mgrAddr, backend.Client())
+	require.NoError(t, err)
+
+	return c
+}
+
+// deployStandaloneRollup deploys an AggchainRollupMock WITHOUT registering it on any manager, for
+// tests that attach it to the manager later via a lifecycle event to exercise live discovery. The
+// returned handle carries the rollupID the test intends to announce it under.
+func deployStandaloneRollup(
+	t *testing.T, backend *simulated.Backend, auth *bind.TransactOpts, rollupID uint32,
+) testRollup {
+	t.Helper()
+
+	addr, _, contract, err := aggchainrollupmock.DeployAggchainrollupmock(auth, backend.Client())
+	require.NoError(t, err)
+	backend.Commit()
+
+	return testRollup{rollupID: rollupID, addr: addr, contract: contract}
+}
+
 // newTestEthClient builds an aggkittypes.BaseEthereumClienter (also satisfying
 // bridgeservicefinder.LogFilterer) backed by the given simulated backend, reusing
 // test/helpers.TestClient rather than reinventing the wrapper.

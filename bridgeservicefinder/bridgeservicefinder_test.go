@@ -22,8 +22,9 @@ func TestNew_ErrNilRollupManagerQuerier(t *testing.T) {
 
 // TestNew_AcceptsInjectedRollupManagerWithoutEthClient verifies a fully injected RollupManager
 // (with a LogFilterer also supplied so no listener defaulting is needed) allows New to succeed and
-// Start to run without any EthClient. With RollupCount=0 there are no watched addresses, so the
-// listener goroutine returns immediately without ever touching the LogFilterer.
+// Start to run without any EthClient. With RollupCount=0 the listener only watches the rollup
+// manager address (to discover future rollups); the test's ctx is cancelled before the first poll
+// tick, so the LogFilterer is never touched.
 func TestNew_AcceptsInjectedRollupManagerWithoutEthClient(t *testing.T) {
 	rm := mocks.NewRollupManagerQuerier(t)
 	reader := mocks.NewRollupContractReader(t)
@@ -144,31 +145,71 @@ func TestBuildInitialCache_RollupCountErrorAbortsStart(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestBuildInitialCache_RollupDataErrorSkipsNetworkButContinues verifies a per-network hard error
-// from RollupIDToRollupData is logged and skipped, without aborting enumeration of the remaining
-// networks.
-func TestBuildInitialCache_RollupDataErrorSkipsNetworkButContinues(t *testing.T) {
+// TestBuildInitialCache_RollupDataErrorAbortsStart verifies a genuine RPC/transport error from
+// RollupIDToRollupData is surfaced (aborting Start) rather than silently skipped: enumeration stops
+// at the failing network and the wrapped error is returned. This is the "fail loudly" behaviour that
+// distinguishes a broken L1 endpoint from a network that legitimately exposes no bridge service.
+func TestBuildInitialCache_RollupDataErrorAbortsStart(t *testing.T) {
 	rm := mocks.NewRollupManagerQuerier(t)
-	hc := mocks.NewHealthChecker(t)
 
 	rm.EXPECT().RollupCount(mock.Anything).Return(uint32(2), nil)
 	rm.EXPECT().RollupIDToRollupData(mock.Anything, uint32(1)).
 		Return(agglayermanager.AgglayerManagerRollupDataReturn{}, context.DeadlineExceeded)
-	rm.EXPECT().RollupIDToRollupData(mock.Anything, uint32(2)).
-		Return(agglayermanager.AgglayerManagerRollupDataReturn{
-			RollupContract: common.HexToAddress("0xabc0000000000000000000000000000000000a"),
-		}, nil)
 
-	reader := mocks.NewRollupContractReader(t)
-	reader.EXPECT().AggchainMetadata(mock.Anything, MetadataBridgeServiceURLKey).
+	f, err := New(Config{}, Options{
+		RollupManager: rm,
+		HealthChecker: mocks.NewHealthChecker(t),
+		Logger:        testLogger(),
+	})
+	require.NoError(t, err)
+
+	err = f.Start(context.Background())
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	// Nothing was cached and the second network was never enumerated (Start aborted at network 1).
+	_, err = f.GetURL(1)
+	require.ErrorIs(t, err, ErrURLNotFound)
+	_, err = f.GetURL(2)
+	require.ErrorIs(t, err, ErrURLNotFound)
+}
+
+// TestBuildInitialCache_NoSourceSkipsNetworkButContinues verifies the benign counterpart: a network
+// that legitimately exposes no bridge service URL source (ErrNoSourceAvailable) is skipped without an
+// entry, while enumeration continues and later networks are still resolved. This is the graceful
+// degradation that must remain, in contrast to the hard-error abort above.
+func TestBuildInitialCache_NoSourceSkipsNetworkButContinues(t *testing.T) {
+	rm := mocks.NewRollupManagerQuerier(t)
+	hc := mocks.NewHealthChecker(t)
+
+	noSourceAddr := common.HexToAddress("0xabc00000000000000000000000000000000001")
+	resolvedAddr := common.HexToAddress("0xabc00000000000000000000000000000000002")
+
+	rm.EXPECT().RollupCount(mock.Anything).Return(uint32(2), nil)
+	rm.EXPECT().RollupIDToRollupData(mock.Anything, uint32(1)).
+		Return(agglayermanager.AgglayerManagerRollupDataReturn{RollupContract: noSourceAddr}, nil)
+	rm.EXPECT().RollupIDToRollupData(mock.Anything, uint32(2)).
+		Return(agglayermanager.AgglayerManagerRollupDataReturn{RollupContract: resolvedAddr}, nil)
+
+	noSourceReader := mocks.NewRollupContractReader(t)
+	noSourceReader.EXPECT().AggchainMetadata(mock.Anything, MetadataBridgeServiceURLKey).
+		Return("", ErrSourceNotAvailable)
+	noSourceReader.EXPECT().TrustedSequencerURL(mock.Anything).Return("", ErrSourceNotAvailable)
+
+	resolvedReader := mocks.NewRollupContractReader(t)
+	resolvedReader.EXPECT().AggchainMetadata(mock.Anything, MetadataBridgeServiceURLKey).
 		Return("https://metadata.example.com:5577", nil)
 
 	hc.EXPECT().IsHealthy(mock.Anything, "https://metadata.example.com:5577").Return(true)
 
 	f, err := New(Config{}, Options{
 		RollupManager: rm,
-		ReaderFactory: func(common.Address, aggkittypes.BaseEthereumClienter) (RollupContractReader, error) {
-			return reader, nil
+		ReaderFactory: func(addr common.Address, _ aggkittypes.BaseEthereumClienter) (RollupContractReader, error) {
+			if addr == noSourceAddr {
+				return noSourceReader, nil
+			}
+
+			return resolvedReader, nil
 		},
 		HealthChecker: hc,
 		LogFilterer:   mocks.NewLogFilterer(t),

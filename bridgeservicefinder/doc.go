@@ -9,6 +9,10 @@
 // endpoint), and then keeps the cache fresh by polling on-chain events. GetURL returns the
 // currently cached URL for a given networkID.
 //
+// The event poller watches both per-rollup URL changes and rollup-manager lifecycle events, so a
+// rollup attached to the manager AFTER Start is discovered and served live, without a restart (see
+// "Dynamic rollup discovery" below).
+//
 // This package is intentionally lightweight. It does NOT depend on the heavy sync /
 // reorgdetector / DB stack, and it does NOT rely on websocket Watch* subscriptions. Event
 // listening is a self-contained polling loop built on eth_getLogs (FilterLogs) over a
@@ -111,6 +115,38 @@
 // The finder maps each watched contract address back to a networkID (built at Start from the
 // enumeration) so an incoming log can be routed to the correct cache entry.
 //
+// # Dynamic rollup discovery
+//
+// The initial enumeration is only a snapshot of the rollups attached at Start. To avoid requiring a
+// restart when a new rollup is added later, the listener also watches the rollup manager address for
+// its lifecycle events and registers the announced network live:
+//
+//   - CreateNewRollup, CreateNewAggchain, AddExistingRollup (on the rollup manager). Each carries the
+//     new rollupID and the rollup contract address directly, so no follow-up RollupIDToRollupData
+//     call is needed. On such an event the listener resolves the new network's URL (same three-source
+//     priority as the initial build), installs a cache entry, and adds the rollup contract to the
+//     watched-address set so its subsequent URL events are picked up too. A rollup that exposes no
+//     source yet is still added to the watched set so a later URL event can populate it.
+//
+// The rollup manager address is always part of the watched-address filter (even when the initial
+// enumeration found zero rollups), so the very first rollups can be discovered this way.
+//
+// # Error handling at Start (fail loudly vs graceful skip)
+//
+// During the initial cache build a per-network outcome is classified as either a hard failure or a
+// benign skip:
+//
+//   - A hard failure - a genuine RPC/transport error reading a rollup's data, a reader-construction
+//     error, or a genuine (non-fall-through) resolution error - is returned from Start. These mean
+//     the network could not even be inspected (e.g. a broken L1 endpoint), which must not be
+//     swallowed into silent partial coverage.
+//   - A benign "no source available" outcome (ErrNoSourceAvailable) is logged and skipped: the
+//     network is left without a cache entry (GetURL returns ErrURLNotFound) but its address stays in
+//     the routing table so a later on-chain URL event, or discovery, can still populate it.
+//
+// Live discovery, by contrast, runs on the background polling goroutine and never tears it down: its
+// failures are logged, not propagated.
+//
 // # Health gating (EXACT RULE)
 //
 // /health probing is performed by an injectable HealthChecker (default: HTTP GET on
@@ -157,6 +193,12 @@
 //   - agglayermanager.Agglayermanager.RollupIDToRollupData(opts, rollupID uint32)
 //     (agglayermanager.AgglayerManagerRollupDataReturn, error)
 //     -> struct field RollupContract common.Address, ChainID uint64 (the rollup contract address).
+//   - agglayermanager rollup lifecycle events, each with a RollupID uint32 and RollupAddress
+//     common.Address field; Parse helpers ParseCreateNewRollup / ParseCreateNewAggchain /
+//     ParseAddExistingRollup. Used to discover rollups attached after Start:
+//     CreateNewRollup(uint32 indexed rollupID, uint32 rollupTypeID, address rollupAddress, ...);
+//     CreateNewAggchain(uint32 indexed rollupID, uint32 rollupTypeID, address rollupAddress, ...);
+//     AddExistingRollup(uint32 indexed rollupID, uint64 forkID, address rollupAddress, ...).
 //   - aggchainbase.Aggchainbase.AggchainMetadata(opts, key string) (string, error)
 //     [Solidity: aggchainMetadata(string) view returns (string)]
 //   - aggchainbase event AggchainMetadataSet(string indexed key, string value); binding struct

@@ -47,8 +47,8 @@ type RollupManagerMockRollupDataReturn struct {
 
 // RollupmanagermockMetaData contains all meta data concerning the Rollupmanagermock contract.
 var RollupmanagermockMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[],\"name\":\"rollupCount\",\"outputs\":[{\"internalType\":\"uint32\",\"name\":\"\",\"type\":\"uint32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"rollupID\",\"type\":\"uint32\"}],\"name\":\"rollupIDToRollupData\",\"outputs\":[{\"components\":[{\"internalType\":\"address\",\"name\":\"rollupContract\",\"type\":\"address\"},{\"internalType\":\"uint64\",\"name\":\"chainID\",\"type\":\"uint64\"},{\"internalType\":\"address\",\"name\":\"verifier\",\"type\":\"address\"},{\"internalType\":\"uint64\",\"name\":\"forkID\",\"type\":\"uint64\"},{\"internalType\":\"bytes32\",\"name\":\"lastLocalExitRoot\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"lastBatchSequenced\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"lastVerifiedBatch\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"_legacyLastPendingState\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"_legacyLastPendingStateConsolidated\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"lastVerifiedBatchBeforeUpgrade\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"rollupTypeID\",\"type\":\"uint64\"},{\"internalType\":\"uint8\",\"name\":\"rollupVerifierType\",\"type\":\"uint8\"}],\"internalType\":\"structRollupManagerMock.RollupDataReturn\",\"name\":\"rollupData\",\"type\":\"tuple\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"rollupID\",\"type\":\"uint32\"},{\"internalType\":\"address\",\"name\":\"rollupContractAddr\",\"type\":\"address\"}],\"name\":\"setRollupContract\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"newRollupCount\",\"type\":\"uint32\"}],\"name\":\"setRollupCount\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
-	Bin: "0x608060405234801561001057600080fd5b5061042a806100206000396000f3fe608060405234801561001057600080fd5b506004361061004c5760003560e01c806323c998d514610051578063f4e926751461007d578063f9c4c2ae146100a7578063f9f43b1a146101fb575b600080fd5b61007b61005f366004610282565b6000805463ffffffff191663ffffffff92909216919091179055565b005b60005461008d9063ffffffff1681565b60405163ffffffff90911681526020015b60405180910390f35b6101ee6100b5366004610282565b6040805161018081018252600080825260208201819052918101829052606081018290526080810182905260a0810182905260c0810182905260e081018290526101008101829052610120810182905261014081018290526101608101919091525063ffffffff1660009081526001602081815260409283902083516101808101855281546001600160a01b03808216835267ffffffffffffffff600160a01b928390048116958401959095529483015494851695820195909552939092048116606084015260028201546080840152600382015480821660a085015268010000000000000000808204831660c0860152600160801b808304841660e0870152600160c01b909204831661010086015260049093015480831661012086015292830490911661014084015260ff91041661016082015290565b60405161009e91906102a4565b61007b6102093660046103b1565b60005463ffffffff9081169083161115610233576000805463ffffffff191663ffffffff84161790555b63ffffffff91909116600090815260016020526040902080546001600160a01b0319166001600160a01b03909216919091179055565b803563ffffffff8116811461027d57600080fd5b919050565b60006020828403121561029457600080fd5b61029d82610269565b9392505050565b81516001600160a01b03168152610180810160208301516102d1602084018267ffffffffffffffff169052565b5060408301516102ec60408401826001600160a01b03169052565b506060830151610308606084018267ffffffffffffffff169052565b506080830151608083015260a083015161032e60a084018267ffffffffffffffff169052565b5060c083015161034a60c084018267ffffffffffffffff169052565b5060e083015161036660e084018267ffffffffffffffff169052565b506101008381015167ffffffffffffffff908116918401919091526101208085015182169084015261014080850151909116908301526101609283015160ff16929091019190915290565b600080604083850312156103c457600080fd5b6103cd83610269565b915060208301356001600160a01b03811681146103e957600080fd5b80915050925092905056fea26469706673582212209fe330adb50466addcb337374d69daeea986aef2caa8d053d26f7c388b597c4364736f6c63430008120033",
+	ABI: "[{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint32\",\"name\":\"rollupID\",\"type\":\"uint32\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"forkID\",\"type\":\"uint64\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"rollupAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"chainID\",\"type\":\"uint64\"},{\"indexed\":false,\"internalType\":\"uint8\",\"name\":\"rollupVerifierType\",\"type\":\"uint8\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"lastVerifiedBatchBeforeUpgrade\",\"type\":\"uint64\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"programVKey\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"initPessimisticRoot\",\"type\":\"bytes32\"}],\"name\":\"AddExistingRollup\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint32\",\"name\":\"rollupID\",\"type\":\"uint32\"},{\"indexed\":false,\"internalType\":\"uint32\",\"name\":\"rollupTypeID\",\"type\":\"uint32\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"rollupAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"chainID\",\"type\":\"uint64\"},{\"indexed\":false,\"internalType\":\"uint8\",\"name\":\"rollupVerifierType\",\"type\":\"uint8\"},{\"indexed\":false,\"internalType\":\"bytes\",\"name\":\"initializeBytesAggchain\",\"type\":\"bytes\"}],\"name\":\"CreateNewAggchain\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"uint32\",\"name\":\"rollupID\",\"type\":\"uint32\"},{\"indexed\":false,\"internalType\":\"uint32\",\"name\":\"rollupTypeID\",\"type\":\"uint32\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"rollupAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"chainID\",\"type\":\"uint64\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"gasTokenAddress\",\"type\":\"address\"}],\"name\":\"CreateNewRollup\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"rollupID\",\"type\":\"uint32\"},{\"internalType\":\"address\",\"name\":\"rollupContractAddr\",\"type\":\"address\"}],\"name\":\"emitAddExistingRollup\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"rollupID\",\"type\":\"uint32\"},{\"internalType\":\"address\",\"name\":\"rollupContractAddr\",\"type\":\"address\"}],\"name\":\"emitCreateNewAggchain\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"rollupID\",\"type\":\"uint32\"},{\"internalType\":\"address\",\"name\":\"rollupContractAddr\",\"type\":\"address\"}],\"name\":\"emitCreateNewRollup\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"rollupCount\",\"outputs\":[{\"internalType\":\"uint32\",\"name\":\"\",\"type\":\"uint32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"rollupID\",\"type\":\"uint32\"}],\"name\":\"rollupIDToRollupData\",\"outputs\":[{\"components\":[{\"internalType\":\"address\",\"name\":\"rollupContract\",\"type\":\"address\"},{\"internalType\":\"uint64\",\"name\":\"chainID\",\"type\":\"uint64\"},{\"internalType\":\"address\",\"name\":\"verifier\",\"type\":\"address\"},{\"internalType\":\"uint64\",\"name\":\"forkID\",\"type\":\"uint64\"},{\"internalType\":\"bytes32\",\"name\":\"lastLocalExitRoot\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"lastBatchSequenced\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"lastVerifiedBatch\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"_legacyLastPendingState\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"_legacyLastPendingStateConsolidated\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"lastVerifiedBatchBeforeUpgrade\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"rollupTypeID\",\"type\":\"uint64\"},{\"internalType\":\"uint8\",\"name\":\"rollupVerifierType\",\"type\":\"uint8\"}],\"internalType\":\"structRollupManagerMock.RollupDataReturn\",\"name\":\"rollupData\",\"type\":\"tuple\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"rollupID\",\"type\":\"uint32\"},{\"internalType\":\"address\",\"name\":\"rollupContractAddr\",\"type\":\"address\"}],\"name\":\"setRollupContract\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint32\",\"name\":\"newRollupCount\",\"type\":\"uint32\"}],\"name\":\"setRollupCount\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]",
+	Bin: "0x608060405234801561001057600080fd5b5061069e806100206000396000f3fe608060405234801561001057600080fd5b506004361061007d5760003560e01c8063f103ffff1161005b578063f103ffff146100d4578063f4e92675146100e7578063f9c4c2ae14610111578063f9f43b1a1461026557600080fd5b806323c998d5146100825780632b844fe8146100ae5780632cd34f32146100c1575b600080fd5b6100ac6100903660046104f6565b6000805463ffffffff191663ffffffff92909216919091179055565b005b6100ac6100bc366004610518565b610278565b6100ac6100cf366004610518565b610333565b6100ac6100e2366004610518565b6103df565b6000546100f79063ffffffff1681565b60405163ffffffff90911681526020015b60405180910390f35b61025861011f3660046104f6565b6040805161018081018252600080825260208201819052918101829052606081018290526080810182905260a0810182905260c0810182905260e081018290526101008101829052610120810182905261014081018290526101608101919091525063ffffffff1660009081526001602081815260409283902083516101808101855281546001600160a01b03808216835267ffffffffffffffff600160a01b928390048116958401959095529483015494851695820195909552939092048116606084015260028201546080840152600382015480821660a085015268010000000000000000808204831660c0860152600160801b808304841660e0870152600160c01b909204831661010086015260049093015480831661012086015292830490911661014084015260ff91041661016082015290565b604051610108919061055b565b6100ac610273366004610518565b61047d565b60005463ffffffff90811690831611156102a2576000805463ffffffff191663ffffffff84161790555b63ffffffff8216600081815260016020908152604080832080546001600160a01b0319166001600160a01b0387169081179091558151848152928301528101829052606081018290526080810182905260a0810182905260c08101919091527f4da47f6e9bbd9ef91887183a576aaebcf1b9bb7d2a567b33b075044c6d36082e9060e0015b60405180910390a25050565b60005463ffffffff908116908316111561035d576000805463ffffffff191663ffffffff84161790555b63ffffffff8216600081815260016020908152604080832080546001600160a01b0319166001600160a01b03871690811790915581518481529283015281018290526060810182905260a0608082018190528101919091527f144e3f9b5c63682a3bb7e9ad31e99c043890d3d540cd79dcebc3b5bdfba94c9b9060c001610327565b60005463ffffffff9081169083161115610409576000805463ffffffff191663ffffffff84161790555b63ffffffff8216600081815260016020908152604080832080546001600160a01b0319166001600160a01b038716908117909155815184815292830152810182905260608101919091527f194c983456df6701c6a50830b90fe80e72b823411d0d524970c9590dc277a64190608001610327565b60005463ffffffff90811690831611156104a7576000805463ffffffff191663ffffffff84161790555b63ffffffff91909116600090815260016020526040902080546001600160a01b0319166001600160a01b03909216919091179055565b803563ffffffff811681146104f157600080fd5b919050565b60006020828403121561050857600080fd5b610511826104dd565b9392505050565b6000806040838503121561052b57600080fd5b610534836104dd565b915060208301356001600160a01b038116811461055057600080fd5b809150509250929050565b81516001600160a01b0316815261018081016020830151610588602084018267ffffffffffffffff169052565b5060408301516105a360408401826001600160a01b03169052565b5060608301516105bf606084018267ffffffffffffffff169052565b506080830151608083015260a08301516105e560a084018267ffffffffffffffff169052565b5060c083015161060160c084018267ffffffffffffffff169052565b5060e083015161061d60e084018267ffffffffffffffff169052565b506101008381015167ffffffffffffffff908116918401919091526101208085015182169084015261014080850151909116908301526101609283015160ff1692909101919091529056fea2646970667358221220995e60aad17d2c1c9557140629e5212521c2aa0037ef5ff30b3920608aba648d64736f6c63430008120033",
 }
 
 // RollupmanagermockABI is the input ABI used to generate the binding from.
@@ -280,6 +280,69 @@ func (_Rollupmanagermock *RollupmanagermockCallerSession) RollupIDToRollupData(r
 	return _Rollupmanagermock.Contract.RollupIDToRollupData(&_Rollupmanagermock.CallOpts, rollupID)
 }
 
+// EmitAddExistingRollup is a paid mutator transaction binding the contract method 0x2b844fe8.
+//
+// Solidity: function emitAddExistingRollup(uint32 rollupID, address rollupContractAddr) returns()
+func (_Rollupmanagermock *RollupmanagermockTransactor) EmitAddExistingRollup(opts *bind.TransactOpts, rollupID uint32, rollupContractAddr common.Address) (*types.Transaction, error) {
+	return _Rollupmanagermock.contract.Transact(opts, "emitAddExistingRollup", rollupID, rollupContractAddr)
+}
+
+// EmitAddExistingRollup is a paid mutator transaction binding the contract method 0x2b844fe8.
+//
+// Solidity: function emitAddExistingRollup(uint32 rollupID, address rollupContractAddr) returns()
+func (_Rollupmanagermock *RollupmanagermockSession) EmitAddExistingRollup(rollupID uint32, rollupContractAddr common.Address) (*types.Transaction, error) {
+	return _Rollupmanagermock.Contract.EmitAddExistingRollup(&_Rollupmanagermock.TransactOpts, rollupID, rollupContractAddr)
+}
+
+// EmitAddExistingRollup is a paid mutator transaction binding the contract method 0x2b844fe8.
+//
+// Solidity: function emitAddExistingRollup(uint32 rollupID, address rollupContractAddr) returns()
+func (_Rollupmanagermock *RollupmanagermockTransactorSession) EmitAddExistingRollup(rollupID uint32, rollupContractAddr common.Address) (*types.Transaction, error) {
+	return _Rollupmanagermock.Contract.EmitAddExistingRollup(&_Rollupmanagermock.TransactOpts, rollupID, rollupContractAddr)
+}
+
+// EmitCreateNewAggchain is a paid mutator transaction binding the contract method 0x2cd34f32.
+//
+// Solidity: function emitCreateNewAggchain(uint32 rollupID, address rollupContractAddr) returns()
+func (_Rollupmanagermock *RollupmanagermockTransactor) EmitCreateNewAggchain(opts *bind.TransactOpts, rollupID uint32, rollupContractAddr common.Address) (*types.Transaction, error) {
+	return _Rollupmanagermock.contract.Transact(opts, "emitCreateNewAggchain", rollupID, rollupContractAddr)
+}
+
+// EmitCreateNewAggchain is a paid mutator transaction binding the contract method 0x2cd34f32.
+//
+// Solidity: function emitCreateNewAggchain(uint32 rollupID, address rollupContractAddr) returns()
+func (_Rollupmanagermock *RollupmanagermockSession) EmitCreateNewAggchain(rollupID uint32, rollupContractAddr common.Address) (*types.Transaction, error) {
+	return _Rollupmanagermock.Contract.EmitCreateNewAggchain(&_Rollupmanagermock.TransactOpts, rollupID, rollupContractAddr)
+}
+
+// EmitCreateNewAggchain is a paid mutator transaction binding the contract method 0x2cd34f32.
+//
+// Solidity: function emitCreateNewAggchain(uint32 rollupID, address rollupContractAddr) returns()
+func (_Rollupmanagermock *RollupmanagermockTransactorSession) EmitCreateNewAggchain(rollupID uint32, rollupContractAddr common.Address) (*types.Transaction, error) {
+	return _Rollupmanagermock.Contract.EmitCreateNewAggchain(&_Rollupmanagermock.TransactOpts, rollupID, rollupContractAddr)
+}
+
+// EmitCreateNewRollup is a paid mutator transaction binding the contract method 0xf103ffff.
+//
+// Solidity: function emitCreateNewRollup(uint32 rollupID, address rollupContractAddr) returns()
+func (_Rollupmanagermock *RollupmanagermockTransactor) EmitCreateNewRollup(opts *bind.TransactOpts, rollupID uint32, rollupContractAddr common.Address) (*types.Transaction, error) {
+	return _Rollupmanagermock.contract.Transact(opts, "emitCreateNewRollup", rollupID, rollupContractAddr)
+}
+
+// EmitCreateNewRollup is a paid mutator transaction binding the contract method 0xf103ffff.
+//
+// Solidity: function emitCreateNewRollup(uint32 rollupID, address rollupContractAddr) returns()
+func (_Rollupmanagermock *RollupmanagermockSession) EmitCreateNewRollup(rollupID uint32, rollupContractAddr common.Address) (*types.Transaction, error) {
+	return _Rollupmanagermock.Contract.EmitCreateNewRollup(&_Rollupmanagermock.TransactOpts, rollupID, rollupContractAddr)
+}
+
+// EmitCreateNewRollup is a paid mutator transaction binding the contract method 0xf103ffff.
+//
+// Solidity: function emitCreateNewRollup(uint32 rollupID, address rollupContractAddr) returns()
+func (_Rollupmanagermock *RollupmanagermockTransactorSession) EmitCreateNewRollup(rollupID uint32, rollupContractAddr common.Address) (*types.Transaction, error) {
+	return _Rollupmanagermock.Contract.EmitCreateNewRollup(&_Rollupmanagermock.TransactOpts, rollupID, rollupContractAddr)
+}
+
 // SetRollupContract is a paid mutator transaction binding the contract method 0xf9f43b1a.
 //
 // Solidity: function setRollupContract(uint32 rollupID, address rollupContractAddr) returns()
@@ -320,4 +383,452 @@ func (_Rollupmanagermock *RollupmanagermockSession) SetRollupCount(newRollupCoun
 // Solidity: function setRollupCount(uint32 newRollupCount) returns()
 func (_Rollupmanagermock *RollupmanagermockTransactorSession) SetRollupCount(newRollupCount uint32) (*types.Transaction, error) {
 	return _Rollupmanagermock.Contract.SetRollupCount(&_Rollupmanagermock.TransactOpts, newRollupCount)
+}
+
+// RollupmanagermockAddExistingRollupIterator is returned from FilterAddExistingRollup and is used to iterate over the raw logs and unpacked data for AddExistingRollup events raised by the Rollupmanagermock contract.
+type RollupmanagermockAddExistingRollupIterator struct {
+	Event *RollupmanagermockAddExistingRollup // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *RollupmanagermockAddExistingRollupIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(RollupmanagermockAddExistingRollup)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(RollupmanagermockAddExistingRollup)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *RollupmanagermockAddExistingRollupIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *RollupmanagermockAddExistingRollupIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// RollupmanagermockAddExistingRollup represents a AddExistingRollup event raised by the Rollupmanagermock contract.
+type RollupmanagermockAddExistingRollup struct {
+	RollupID                       uint32
+	ForkID                         uint64
+	RollupAddress                  common.Address
+	ChainID                        uint64
+	RollupVerifierType             uint8
+	LastVerifiedBatchBeforeUpgrade uint64
+	ProgramVKey                    [32]byte
+	InitPessimisticRoot            [32]byte
+	Raw                            types.Log // Blockchain specific contextual infos
+}
+
+// FilterAddExistingRollup is a free log retrieval operation binding the contract event 0x4da47f6e9bbd9ef91887183a576aaebcf1b9bb7d2a567b33b075044c6d36082e.
+//
+// Solidity: event AddExistingRollup(uint32 indexed rollupID, uint64 forkID, address rollupAddress, uint64 chainID, uint8 rollupVerifierType, uint64 lastVerifiedBatchBeforeUpgrade, bytes32 programVKey, bytes32 initPessimisticRoot)
+func (_Rollupmanagermock *RollupmanagermockFilterer) FilterAddExistingRollup(opts *bind.FilterOpts, rollupID []uint32) (*RollupmanagermockAddExistingRollupIterator, error) {
+
+	var rollupIDRule []interface{}
+	for _, rollupIDItem := range rollupID {
+		rollupIDRule = append(rollupIDRule, rollupIDItem)
+	}
+
+	logs, sub, err := _Rollupmanagermock.contract.FilterLogs(opts, "AddExistingRollup", rollupIDRule)
+	if err != nil {
+		return nil, err
+	}
+	return &RollupmanagermockAddExistingRollupIterator{contract: _Rollupmanagermock.contract, event: "AddExistingRollup", logs: logs, sub: sub}, nil
+}
+
+// WatchAddExistingRollup is a free log subscription operation binding the contract event 0x4da47f6e9bbd9ef91887183a576aaebcf1b9bb7d2a567b33b075044c6d36082e.
+//
+// Solidity: event AddExistingRollup(uint32 indexed rollupID, uint64 forkID, address rollupAddress, uint64 chainID, uint8 rollupVerifierType, uint64 lastVerifiedBatchBeforeUpgrade, bytes32 programVKey, bytes32 initPessimisticRoot)
+func (_Rollupmanagermock *RollupmanagermockFilterer) WatchAddExistingRollup(opts *bind.WatchOpts, sink chan<- *RollupmanagermockAddExistingRollup, rollupID []uint32) (event.Subscription, error) {
+
+	var rollupIDRule []interface{}
+	for _, rollupIDItem := range rollupID {
+		rollupIDRule = append(rollupIDRule, rollupIDItem)
+	}
+
+	logs, sub, err := _Rollupmanagermock.contract.WatchLogs(opts, "AddExistingRollup", rollupIDRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(RollupmanagermockAddExistingRollup)
+				if err := _Rollupmanagermock.contract.UnpackLog(event, "AddExistingRollup", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseAddExistingRollup is a log parse operation binding the contract event 0x4da47f6e9bbd9ef91887183a576aaebcf1b9bb7d2a567b33b075044c6d36082e.
+//
+// Solidity: event AddExistingRollup(uint32 indexed rollupID, uint64 forkID, address rollupAddress, uint64 chainID, uint8 rollupVerifierType, uint64 lastVerifiedBatchBeforeUpgrade, bytes32 programVKey, bytes32 initPessimisticRoot)
+func (_Rollupmanagermock *RollupmanagermockFilterer) ParseAddExistingRollup(log types.Log) (*RollupmanagermockAddExistingRollup, error) {
+	event := new(RollupmanagermockAddExistingRollup)
+	if err := _Rollupmanagermock.contract.UnpackLog(event, "AddExistingRollup", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
+}
+
+// RollupmanagermockCreateNewAggchainIterator is returned from FilterCreateNewAggchain and is used to iterate over the raw logs and unpacked data for CreateNewAggchain events raised by the Rollupmanagermock contract.
+type RollupmanagermockCreateNewAggchainIterator struct {
+	Event *RollupmanagermockCreateNewAggchain // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *RollupmanagermockCreateNewAggchainIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(RollupmanagermockCreateNewAggchain)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(RollupmanagermockCreateNewAggchain)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *RollupmanagermockCreateNewAggchainIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *RollupmanagermockCreateNewAggchainIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// RollupmanagermockCreateNewAggchain represents a CreateNewAggchain event raised by the Rollupmanagermock contract.
+type RollupmanagermockCreateNewAggchain struct {
+	RollupID                uint32
+	RollupTypeID            uint32
+	RollupAddress           common.Address
+	ChainID                 uint64
+	RollupVerifierType      uint8
+	InitializeBytesAggchain []byte
+	Raw                     types.Log // Blockchain specific contextual infos
+}
+
+// FilterCreateNewAggchain is a free log retrieval operation binding the contract event 0x144e3f9b5c63682a3bb7e9ad31e99c043890d3d540cd79dcebc3b5bdfba94c9b.
+//
+// Solidity: event CreateNewAggchain(uint32 indexed rollupID, uint32 rollupTypeID, address rollupAddress, uint64 chainID, uint8 rollupVerifierType, bytes initializeBytesAggchain)
+func (_Rollupmanagermock *RollupmanagermockFilterer) FilterCreateNewAggchain(opts *bind.FilterOpts, rollupID []uint32) (*RollupmanagermockCreateNewAggchainIterator, error) {
+
+	var rollupIDRule []interface{}
+	for _, rollupIDItem := range rollupID {
+		rollupIDRule = append(rollupIDRule, rollupIDItem)
+	}
+
+	logs, sub, err := _Rollupmanagermock.contract.FilterLogs(opts, "CreateNewAggchain", rollupIDRule)
+	if err != nil {
+		return nil, err
+	}
+	return &RollupmanagermockCreateNewAggchainIterator{contract: _Rollupmanagermock.contract, event: "CreateNewAggchain", logs: logs, sub: sub}, nil
+}
+
+// WatchCreateNewAggchain is a free log subscription operation binding the contract event 0x144e3f9b5c63682a3bb7e9ad31e99c043890d3d540cd79dcebc3b5bdfba94c9b.
+//
+// Solidity: event CreateNewAggchain(uint32 indexed rollupID, uint32 rollupTypeID, address rollupAddress, uint64 chainID, uint8 rollupVerifierType, bytes initializeBytesAggchain)
+func (_Rollupmanagermock *RollupmanagermockFilterer) WatchCreateNewAggchain(opts *bind.WatchOpts, sink chan<- *RollupmanagermockCreateNewAggchain, rollupID []uint32) (event.Subscription, error) {
+
+	var rollupIDRule []interface{}
+	for _, rollupIDItem := range rollupID {
+		rollupIDRule = append(rollupIDRule, rollupIDItem)
+	}
+
+	logs, sub, err := _Rollupmanagermock.contract.WatchLogs(opts, "CreateNewAggchain", rollupIDRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(RollupmanagermockCreateNewAggchain)
+				if err := _Rollupmanagermock.contract.UnpackLog(event, "CreateNewAggchain", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseCreateNewAggchain is a log parse operation binding the contract event 0x144e3f9b5c63682a3bb7e9ad31e99c043890d3d540cd79dcebc3b5bdfba94c9b.
+//
+// Solidity: event CreateNewAggchain(uint32 indexed rollupID, uint32 rollupTypeID, address rollupAddress, uint64 chainID, uint8 rollupVerifierType, bytes initializeBytesAggchain)
+func (_Rollupmanagermock *RollupmanagermockFilterer) ParseCreateNewAggchain(log types.Log) (*RollupmanagermockCreateNewAggchain, error) {
+	event := new(RollupmanagermockCreateNewAggchain)
+	if err := _Rollupmanagermock.contract.UnpackLog(event, "CreateNewAggchain", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
+}
+
+// RollupmanagermockCreateNewRollupIterator is returned from FilterCreateNewRollup and is used to iterate over the raw logs and unpacked data for CreateNewRollup events raised by the Rollupmanagermock contract.
+type RollupmanagermockCreateNewRollupIterator struct {
+	Event *RollupmanagermockCreateNewRollup // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *RollupmanagermockCreateNewRollupIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(RollupmanagermockCreateNewRollup)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(RollupmanagermockCreateNewRollup)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *RollupmanagermockCreateNewRollupIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *RollupmanagermockCreateNewRollupIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// RollupmanagermockCreateNewRollup represents a CreateNewRollup event raised by the Rollupmanagermock contract.
+type RollupmanagermockCreateNewRollup struct {
+	RollupID        uint32
+	RollupTypeID    uint32
+	RollupAddress   common.Address
+	ChainID         uint64
+	GasTokenAddress common.Address
+	Raw             types.Log // Blockchain specific contextual infos
+}
+
+// FilterCreateNewRollup is a free log retrieval operation binding the contract event 0x194c983456df6701c6a50830b90fe80e72b823411d0d524970c9590dc277a641.
+//
+// Solidity: event CreateNewRollup(uint32 indexed rollupID, uint32 rollupTypeID, address rollupAddress, uint64 chainID, address gasTokenAddress)
+func (_Rollupmanagermock *RollupmanagermockFilterer) FilterCreateNewRollup(opts *bind.FilterOpts, rollupID []uint32) (*RollupmanagermockCreateNewRollupIterator, error) {
+
+	var rollupIDRule []interface{}
+	for _, rollupIDItem := range rollupID {
+		rollupIDRule = append(rollupIDRule, rollupIDItem)
+	}
+
+	logs, sub, err := _Rollupmanagermock.contract.FilterLogs(opts, "CreateNewRollup", rollupIDRule)
+	if err != nil {
+		return nil, err
+	}
+	return &RollupmanagermockCreateNewRollupIterator{contract: _Rollupmanagermock.contract, event: "CreateNewRollup", logs: logs, sub: sub}, nil
+}
+
+// WatchCreateNewRollup is a free log subscription operation binding the contract event 0x194c983456df6701c6a50830b90fe80e72b823411d0d524970c9590dc277a641.
+//
+// Solidity: event CreateNewRollup(uint32 indexed rollupID, uint32 rollupTypeID, address rollupAddress, uint64 chainID, address gasTokenAddress)
+func (_Rollupmanagermock *RollupmanagermockFilterer) WatchCreateNewRollup(opts *bind.WatchOpts, sink chan<- *RollupmanagermockCreateNewRollup, rollupID []uint32) (event.Subscription, error) {
+
+	var rollupIDRule []interface{}
+	for _, rollupIDItem := range rollupID {
+		rollupIDRule = append(rollupIDRule, rollupIDItem)
+	}
+
+	logs, sub, err := _Rollupmanagermock.contract.WatchLogs(opts, "CreateNewRollup", rollupIDRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(RollupmanagermockCreateNewRollup)
+				if err := _Rollupmanagermock.contract.UnpackLog(event, "CreateNewRollup", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseCreateNewRollup is a log parse operation binding the contract event 0x194c983456df6701c6a50830b90fe80e72b823411d0d524970c9590dc277a641.
+//
+// Solidity: event CreateNewRollup(uint32 indexed rollupID, uint32 rollupTypeID, address rollupAddress, uint64 chainID, address gasTokenAddress)
+func (_Rollupmanagermock *RollupmanagermockFilterer) ParseCreateNewRollup(log types.Log) (*RollupmanagermockCreateNewRollup, error) {
+	event := new(RollupmanagermockCreateNewRollup)
+	if err := _Rollupmanagermock.contract.UnpackLog(event, "CreateNewRollup", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
 }

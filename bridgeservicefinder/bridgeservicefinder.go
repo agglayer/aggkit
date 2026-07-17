@@ -179,9 +179,12 @@ func (f *finder) Start(ctx context.Context) error {
 
 	// Launch the finality-based event-polling loop. The listener is built here (not in New) because
 	// it needs the addrToNetworkID routing table, which is only populated by buildInitialCache above.
+	// It also watches the rollup manager for newly created rollups so networks attached after Start
+	// are discovered live (no restart required), hence it is given the reader factory and eth client.
 	// It runs in the background until ctx is done and shuts down cleanly on ctx.Done().
 	lst, err := newListener(
-		f.logger, f.logFilterer, f.healthChecker, f.resolver, f.cache, f.addrToNetworkID, f.cfg)
+		f.logger, f.logFilterer, f.healthChecker, f.resolver, f.cache, f.addrToNetworkID,
+		f.cfg.RollupManagerAddr, f.readerFactory, f.ethClient, f.cfg)
 	if err != nil {
 		return fmt.Errorf("failed to build event listener: %w", err)
 	}
@@ -219,28 +222,38 @@ func (f *finder) buildInitialCache(ctx context.Context) error {
 			return err
 		}
 
-		f.resolveNetwork(ctx, rollupID)
+		if err := f.resolveNetwork(ctx, rollupID); err != nil {
+			return fmt.Errorf("failed to build initial cache for network %d: %w", rollupID, err)
+		}
 	}
 
 	return nil
 }
 
 // resolveNetwork resolves a single rollupID (== networkID), building its contract reader, running
-// the priority resolver and installing the resulting cache entry. Fall-through / no-source cases are
-// logged and skipped; the network is left without an entry.
-func (f *finder) resolveNetwork(ctx context.Context, rollupID uint32) {
+// the priority resolver and installing the resulting cache entry.
+//
+// Error handling distinguishes two cases so a genuinely broken environment fails loudly instead of
+// degrading silently:
+//
+//   - A hard failure (an RPC/transport error reading the rollup's data, a reader-construction error,
+//     or a genuine resolution error) is returned so Start aborts. These indicate we could not even
+//     inspect the network, which is not the same as the network simply not exposing a bridge service.
+//   - A benign "no source available" outcome (ErrNoSourceAvailable) is logged and skipped, returning
+//     nil: the network is left without a cache entry but its address stays in the routing table so a
+//     later on-chain URL event can still populate it.
+func (f *finder) resolveNetwork(ctx context.Context, rollupID uint32) error {
 	// Config override short-circuits everything and needs no on-chain read.
 	if url, ok := f.cfg.URLs[rollupID]; ok && url != "" {
 		f.cache.set(rollupID, cacheEntry{url: url, source: SourceConfig})
 		f.logger.Debugf("network %d resolved from config: %s", rollupID, url)
 
-		return
+		return nil
 	}
 
 	data, err := f.rollupManager.RollupIDToRollupData(&bind.CallOpts{Context: ctx}, rollupID)
 	if err != nil {
-		f.logger.Warnf("failed to read rollup data for network %d, skipping: %v", rollupID, err)
-		return
+		return fmt.Errorf("failed to read rollup data for network %d: %w", rollupID, err)
 	}
 
 	addr := data.RollupContract
@@ -248,23 +261,23 @@ func (f *finder) resolveNetwork(ctx context.Context, rollupID uint32) {
 
 	reader, err := f.readerFactory(addr, f.ethClient)
 	if err != nil {
-		f.logger.Warnf("failed to build contract reader for network %d (%s), skipping: %v", rollupID, addr, err)
-		return
+		return fmt.Errorf("failed to build contract reader for network %d (%s): %w", rollupID, addr, err)
 	}
 
 	url, source, err := f.resolver.resolve(ctx, rollupID, reader)
 	if err != nil {
 		if errors.Is(err, ErrNoSourceAvailable) {
 			f.logger.Warnf("no bridge service url source available for network %d (%s), skipping", rollupID, addr)
-		} else {
-			f.logger.Warnf("failed to resolve bridge service url for network %d (%s), skipping: %v", rollupID, addr, err)
+			return nil
 		}
 
-		return
+		return fmt.Errorf("failed to resolve bridge service url for network %d (%s): %w", rollupID, addr, err)
 	}
 
 	f.cache.set(rollupID, cacheEntry{url: url, source: source})
 	f.logger.Infof("network %d resolved bridge service url %s (source=%d)", rollupID, url, source)
+
+	return nil
 }
 
 // probeAll runs a /health probe against every cached entry, updating each entry's healthy flag, and

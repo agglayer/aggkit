@@ -192,8 +192,8 @@ func TestStart_PriorityCombosOnSingleNetwork(t *testing.T) {
 // route those events to in the first place).
 func TestStart_ConfigImmunity(t *testing.T) {
 	backend, auth := newTestBackend(t)
-	// Deploy a second, on-chain-resolved rollup too, so the listener actually has something to
-	// watch and runs its polling loop (a purely config-only fleet would never tick at all).
+	// Deploy a second, on-chain-resolved rollup too, so the listener has a rollup contract to watch
+	// for URL events (beyond the rollup manager address it always watches for discovery).
 	mgrAddr, rollups := deployRollupManagerWithRollups(t, backend, auth, 2)
 
 	const (

@@ -2,11 +2,13 @@ package bridgeservicefinder
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainbase"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/polygonrollupbaseetrog"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -23,9 +25,14 @@ import (
 // comparison, no hashing of the incoming value is required).
 var bridgeServiceURLKeyTopic = crypto.Keccak256Hash([]byte(MetadataBridgeServiceURLKey))
 
-// listener is the self-contained, finality-bounded event poller. It scans the two watched events
-// (SetTrustedSequencerURL -> source #3, AggchainMetadataSet -> source #2) over the set of watched
-// rollup/aggchain contract addresses and applies health-gated, priority-respecting cache updates.
+// listener is the self-contained, finality-bounded event poller. It scans two kinds of events:
+//
+//   - Per-rollup URL events on the watched rollup/aggchain contracts: SetTrustedSequencerURL
+//     (-> source #3) and AggchainMetadataSet (-> source #2). These drive health-gated,
+//     priority-respecting cache updates for already-known networks.
+//   - Rollup-manager lifecycle events on the rollup manager address: CreateNewRollup,
+//     CreateNewAggchain and AddExistingRollup. These announce networks attached after Start, which
+//     the listener then resolves and registers live so no restart is required to serve them.
 //
 // It deliberately avoids the heavy sync/reorgdetector/DB stack and websocket Watch* subscriptions:
 // it is a single goroutine driven by a ticker calling eth_getLogs (FilterLogs) over a chunked block
@@ -37,24 +44,43 @@ type listener struct {
 	resolver      *resolver
 	cache         *cache
 
+	// rollupManagerAddr is the rollup manager contract address. It is watched (alongside the rollup
+	// contracts) so newly attached rollups can be discovered live, and it is how processLog tells a
+	// rollup-manager lifecycle log apart from a per-rollup URL log.
+	rollupManagerAddr common.Address
+	// readerFactory / ethClient build a RollupContractReader for a rollup discovered after Start, so
+	// its URL can be resolved exactly like the initial-cache networks were.
+	readerFactory RollupContractReaderFactory
+	ethClient     aggkittypes.BaseEthereumClienter
+
 	// addrToNetworkID routes an incoming log (keyed by the emitting contract address) back to the
-	// networkID whose cache entry it may update. It is the table built by Start's enumeration.
+	// networkID whose cache entry it may update. It is the table built by Start's enumeration and is
+	// extended in place when a new rollup is discovered. It is only ever mutated on the listener
+	// goroutine (after Start hands it over), so no extra locking is required.
 	addrToNetworkID map[common.Address]uint32
-	// watchedAddresses is the deterministic slice of addrToNetworkID keys used as the FilterLogs
-	// address filter, computed once at construction.
+	// watchedAddresses is the slice used as the FilterLogs address filter: the rollup manager address
+	// plus every known rollup contract. It is appended to when a rollup is discovered live and, like
+	// addrToNetworkID, is only mutated on the listener goroutine.
 	watchedAddresses []common.Address
 
 	blockFinality  aggkittypes.BlockNumberFinality
 	pollInterval   time.Duration
 	blockChunkSize uint64
 
-	// topics are the two event signature hashes (topic0) the scan filters on.
+	// topics are the event signature hashes (topic0) the scan filters on: the two per-rollup URL
+	// events plus the three rollup-manager lifecycle events.
 	topics []common.Hash
-	// aggchainFilterer / rollupFilterer decode matched logs. They are bound to the zero address; the
-	// go-ethereum Parse* helpers only use the ABI (not the bound address or backend) to unpack a log,
-	// so a single filterer instance decodes logs from every watched contract.
+	// createNewRollupTopic / createNewAggchainTopic / addExistingRollupTopic are the topic0 hashes of
+	// the rollup-manager lifecycle events, kept for routing in processRollupManagerLog.
+	createNewRollupTopic   common.Hash
+	createNewAggchainTopic common.Hash
+	addExistingRollupTopic common.Hash
+	// aggchainFilterer / rollupFilterer / mgrFilterer decode matched logs. They are bound to the zero
+	// address; the go-ethereum Parse* helpers only use the ABI (not the bound address or backend) to
+	// unpack a log, so a single filterer instance decodes logs from every watched contract.
 	aggchainFilterer *aggchainbase.AggchainbaseFilterer
 	rollupFilterer   *polygonrollupbaseetrog.PolygonrollupbaseetrogFilterer
+	mgrFilterer      *agglayermanager.AgglayermanagerFilterer
 
 	// lastScannedBlock is the highest block already processed. It is tracked in-memory only (no DB):
 	// on the first tick it is seeded to the current finalized upper bound so the listener reacts to
@@ -73,6 +99,9 @@ func newListener(
 	res *resolver,
 	c *cache,
 	addrToNetworkID map[common.Address]uint32,
+	rollupManagerAddr common.Address,
+	readerFactory RollupContractReaderFactory,
+	ethClient aggkittypes.BaseEthereumClienter,
 	cfg Config,
 ) (*listener, error) {
 	aggchainABI, err := aggchainbase.AggchainbaseMetaData.GetAbi()
@@ -85,10 +114,20 @@ func newListener(
 		return nil, fmt.Errorf("failed to load polygonrollupbaseetrog ABI: %w", err)
 	}
 
-	// topic0 for the two watched events. Both the aggchainbase and polygonrollupbaseetrog ABIs
+	mgrABI, err := agglayermanager.AgglayermanagerMetaData.GetAbi()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load agglayermanager ABI: %w", err)
+	}
+
+	// topic0 for the two per-rollup URL events. Both the aggchainbase and polygonrollupbaseetrog ABIs
 	// produce the identical SetTrustedSequencerURL signature hash, so a single topic covers both.
 	metadataTopic := aggchainABI.Events["AggchainMetadataSet"].ID
 	seqURLTopic := rollupABI.Events["SetTrustedSequencerURL"].ID
+
+	// topic0 for the three rollup-manager lifecycle events that announce a newly attached rollup.
+	createNewRollupTopic := mgrABI.Events["CreateNewRollup"].ID
+	createNewAggchainTopic := mgrABI.Events["CreateNewAggchain"].ID
+	addExistingRollupTopic := mgrABI.Events["AddExistingRollup"].ID
 
 	aggchainFilterer, err := aggchainbase.NewAggchainbaseFilterer(common.Address{}, nil)
 	if err != nil {
@@ -100,25 +139,41 @@ func newListener(
 		return nil, fmt.Errorf("failed to build polygonrollupbaseetrog filterer: %w", err)
 	}
 
-	watched := make([]common.Address, 0, len(addrToNetworkID))
+	mgrFilterer, err := agglayermanager.NewAgglayermanagerFilterer(common.Address{}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build agglayermanager filterer: %w", err)
+	}
+
+	// Watch the rollup manager (for lifecycle events) plus every known rollup contract (for URL
+	// events). The manager address is always present so the first rollups can be discovered even when
+	// the initial enumeration found none.
+	watched := make([]common.Address, 0, len(addrToNetworkID)+1)
+	watched = append(watched, rollupManagerAddr)
 	for addr := range addrToNetworkID {
 		watched = append(watched, addr)
 	}
 
 	return &listener{
-		logger:           logger,
-		logFilterer:      logFilterer,
-		healthChecker:    healthChecker,
-		resolver:         res,
-		cache:            c,
-		addrToNetworkID:  addrToNetworkID,
-		watchedAddresses: watched,
-		blockFinality:    cfg.BlockFinality,
-		pollInterval:     cfg.PollInterval.Duration,
-		blockChunkSize:   cfg.BlockChunkSize,
-		topics:           []common.Hash{metadataTopic, seqURLTopic},
-		aggchainFilterer: aggchainFilterer,
-		rollupFilterer:   rollupFilterer,
+		logger:                 logger,
+		logFilterer:            logFilterer,
+		healthChecker:          healthChecker,
+		resolver:               res,
+		cache:                  c,
+		rollupManagerAddr:      rollupManagerAddr,
+		readerFactory:          readerFactory,
+		ethClient:              ethClient,
+		addrToNetworkID:        addrToNetworkID,
+		watchedAddresses:       watched,
+		blockFinality:          cfg.BlockFinality,
+		pollInterval:           cfg.PollInterval.Duration,
+		blockChunkSize:         cfg.BlockChunkSize,
+		topics:                 []common.Hash{metadataTopic, seqURLTopic, createNewRollupTopic, createNewAggchainTopic, addExistingRollupTopic}, //nolint:lll
+		createNewRollupTopic:   createNewRollupTopic,
+		createNewAggchainTopic: createNewAggchainTopic,
+		addExistingRollupTopic: addExistingRollupTopic,
+		aggchainFilterer:       aggchainFilterer,
+		rollupFilterer:         rollupFilterer,
+		mgrFilterer:            mgrFilterer,
 	}, nil
 }
 
@@ -234,17 +289,22 @@ func (l *listener) scanRange(ctx context.Context, from, to uint64) error {
 	return nil
 }
 
-// processLog decodes a single matched log, extracts the candidate URL and source, routes it to a
-// networkID and applies the priority + health-gated cache update. Unrecognised or irrelevant logs
-// are ignored.
+// processLog decodes a single matched log and dispatches it. A log emitted by the rollup manager is
+// routed to rollup discovery; a log emitted by a watched rollup contract is turned into a candidate
+// URL and applied to that network's cache entry. Unrecognised or irrelevant logs are ignored.
 func (l *listener) processLog(ctx context.Context, lg types.Log) {
-	networkID, ok := l.addrToNetworkID[lg.Address]
-	if !ok {
-		// A log from an address we do not route (should not happen given the address filter).
+	if len(lg.Topics) == 0 {
 		return
 	}
 
-	if len(lg.Topics) == 0 {
+	if lg.Address == l.rollupManagerAddr {
+		l.processRollupManagerLog(ctx, lg)
+		return
+	}
+
+	networkID, ok := l.addrToNetworkID[lg.Address]
+	if !ok {
+		// A log from an address we do not route (should not happen given the address filter).
 		return
 	}
 
@@ -254,6 +314,97 @@ func (l *listener) processLog(ctx context.Context, lg types.Log) {
 	}
 
 	l.applyUpdate(ctx, networkID, candidateURL, source, lg)
+}
+
+// processRollupManagerLog decodes a rollup-manager lifecycle log announcing a newly attached rollup
+// (CreateNewRollup / CreateNewAggchain / AddExistingRollup) and hands its rollupID + contract address
+// to discoverRollup. All three events carry the rollupID and the rollup contract address directly, so
+// no follow-up RollupIDToRollupData call is needed. Any other rollup-manager event is ignored.
+func (l *listener) processRollupManagerLog(ctx context.Context, lg types.Log) {
+	var (
+		rollupID uint32
+		addr     common.Address
+	)
+
+	switch lg.Topics[0] {
+	case l.createNewRollupTopic:
+		ev, err := l.mgrFilterer.ParseCreateNewRollup(lg)
+		if err != nil {
+			l.logger.Debugf("failed to parse CreateNewRollup log: %v", err)
+			return
+		}
+
+		rollupID, addr = ev.RollupID, ev.RollupAddress
+
+	case l.createNewAggchainTopic:
+		ev, err := l.mgrFilterer.ParseCreateNewAggchain(lg)
+		if err != nil {
+			l.logger.Debugf("failed to parse CreateNewAggchain log: %v", err)
+			return
+		}
+
+		rollupID, addr = ev.RollupID, ev.RollupAddress
+
+	case l.addExistingRollupTopic:
+		ev, err := l.mgrFilterer.ParseAddExistingRollup(lg)
+		if err != nil {
+			l.logger.Debugf("failed to parse AddExistingRollup log: %v", err)
+			return
+		}
+
+		rollupID, addr = ev.RollupID, ev.RollupAddress
+
+	default:
+		return
+	}
+
+	l.discoverRollup(ctx, rollupID, addr)
+}
+
+// discoverRollup registers a rollup that was attached to the rollup manager after Start. It resolves
+// the rollup's bridge service URL (same priority rules as the initial cache build), installs a cache
+// entry and adds the rollup contract to the watched set so its later URL-changing events are picked
+// up. It is a no-op if the rollup contract is already watched.
+//
+// Unlike the initial cache build (which aborts Start on a hard error), discovery runs on the polling
+// goroutine and must not tear it down, so failures are logged rather than propagated. The address is
+// still registered on failure so a subsequent URL event can populate the entry.
+func (l *listener) discoverRollup(ctx context.Context, rollupID uint32, addr common.Address) {
+	if _, known := l.addrToNetworkID[addr]; known {
+		return
+	}
+
+	reader, err := l.readerFactory(addr, l.ethClient)
+	if err != nil {
+		l.logger.Warnf("discovered network %d (%s): failed to build contract reader: %v", rollupID, addr, err)
+		return
+	}
+
+	url, source, err := l.resolver.resolve(ctx, rollupID, reader)
+	if err != nil {
+		// Register the address regardless so a later URL-changing event can still populate the entry.
+		l.addrToNetworkID[addr] = rollupID
+		l.watchedAddresses = append(l.watchedAddresses, addr)
+
+		if errors.Is(err, ErrNoSourceAvailable) {
+			l.logger.Infof(
+				"discovered network %d (%s) with no bridge service url source yet; watching for updates",
+				rollupID, addr)
+		} else {
+			l.logger.Warnf("discovered network %d (%s): failed to resolve bridge service url: %v", rollupID, addr, err)
+		}
+
+		return
+	}
+
+	healthy := l.healthChecker.IsHealthy(ctx, url)
+
+	l.addrToNetworkID[addr] = rollupID
+	l.watchedAddresses = append(l.watchedAddresses, addr)
+	l.cache.set(rollupID, cacheEntry{url: url, source: source, healthy: healthy})
+
+	l.logger.Infof("discovered network %d bridge service url %s (source=%d, healthy=%t)",
+		rollupID, url, source, healthy)
 }
 
 // decodeLog turns a matched log into a candidate (url, source). It returns ok=false when the log is

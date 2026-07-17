@@ -89,6 +89,69 @@ func TestRollupManagerMock_CompatibleWithRealAgglayermanagerBinding(t *testing.T
 	require.Equal(t, wantRollupContract, data.RollupContract)
 }
 
+// TestRollupManagerMock_LifecycleEvents_CompatibleWithRealAgglayermanagerBinding deploys
+// RollupManagerMock, emits each rollup-lifecycle event through the mock's own binding, and verifies
+// the REAL agglayermanager binding can parse them and decode the rollupID + rollupAddress fields the
+// bridgeservicefinder listener relies on for live rollup discovery.
+func TestRollupManagerMock_LifecycleEvents_CompatibleWithRealAgglayermanagerBinding(t *testing.T) {
+	backend, auth := newSmokeTestBackend(t)
+	client := backend.Client()
+
+	mockAddr, _, mockContract, err := rollupmanagermock.DeployRollupmanagermock(auth, client)
+	require.NoError(t, err)
+	backend.Commit()
+
+	realRollupManager, err := agglayermanager.NewAgglayermanager(mockAddr, client)
+	require.NoError(t, err)
+
+	wantAddr := common.HexToAddress("0x00000000000000000000000000000000c0ffee")
+
+	t.Run("CreateNewRollup", func(t *testing.T) {
+		tx, err := mockContract.EmitCreateNewRollup(auth, smokeTestRollupID, wantAddr)
+		require.NoError(t, err)
+		backend.Commit()
+
+		receipt, err := client.TransactionReceipt(context.Background(), tx.Hash())
+		require.NoError(t, err)
+		require.Len(t, receipt.Logs, 1)
+
+		ev, err := realRollupManager.ParseCreateNewRollup(*receipt.Logs[0])
+		require.NoError(t, err)
+		require.Equal(t, smokeTestRollupID, ev.RollupID)
+		require.Equal(t, wantAddr, ev.RollupAddress)
+	})
+
+	t.Run("CreateNewAggchain", func(t *testing.T) {
+		tx, err := mockContract.EmitCreateNewAggchain(auth, smokeTestRollupID, wantAddr)
+		require.NoError(t, err)
+		backend.Commit()
+
+		receipt, err := client.TransactionReceipt(context.Background(), tx.Hash())
+		require.NoError(t, err)
+		require.Len(t, receipt.Logs, 1)
+
+		ev, err := realRollupManager.ParseCreateNewAggchain(*receipt.Logs[0])
+		require.NoError(t, err)
+		require.Equal(t, smokeTestRollupID, ev.RollupID)
+		require.Equal(t, wantAddr, ev.RollupAddress)
+	})
+
+	t.Run("AddExistingRollup", func(t *testing.T) {
+		tx, err := mockContract.EmitAddExistingRollup(auth, smokeTestRollupID, wantAddr)
+		require.NoError(t, err)
+		backend.Commit()
+
+		receipt, err := client.TransactionReceipt(context.Background(), tx.Hash())
+		require.NoError(t, err)
+		require.Len(t, receipt.Logs, 1)
+
+		ev, err := realRollupManager.ParseAddExistingRollup(*receipt.Logs[0])
+		require.NoError(t, err)
+		require.Equal(t, smokeTestRollupID, ev.RollupID)
+		require.Equal(t, wantAddr, ev.RollupAddress)
+	})
+}
+
 // TestAggchainRollupMock_TrustedSequencerURL_CompatibleWithRealBindings deploys
 // AggchainRollupMock, sets the trusted sequencer URL through the mock's own binding, and verifies
 // that both REAL bindings that expose trustedSequencerURL/SetTrustedSequencerURL

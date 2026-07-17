@@ -12,6 +12,38 @@ pragma solidity 0.8.18;
 /// zero-valued; only `rollupContract` is settable, since that's the only field
 /// bridgeservicefinder reads.
 contract RollupManagerMock {
+    /// @dev Rollup lifecycle events, matched EXACTLY (name + param types + indexed-ness) against the
+    /// real AgglayerManager binding so the bridgeservicefinder listener can parse them with the real
+    /// agglayermanager filterer to discover rollups attached after startup.
+    // solhint-disable-next-line event-name-camelcase
+    event CreateNewRollup(
+        uint32 indexed rollupID,
+        uint32 rollupTypeID,
+        address rollupAddress,
+        uint64 chainID,
+        address gasTokenAddress
+    );
+    // solhint-disable-next-line event-name-camelcase
+    event CreateNewAggchain(
+        uint32 indexed rollupID,
+        uint32 rollupTypeID,
+        address rollupAddress,
+        uint64 chainID,
+        uint8 rollupVerifierType,
+        bytes initializeBytesAggchain
+    );
+    // solhint-disable-next-line event-name-camelcase
+    event AddExistingRollup(
+        uint32 indexed rollupID,
+        uint64 forkID,
+        address rollupAddress,
+        uint64 chainID,
+        uint8 rollupVerifierType,
+        uint64 lastVerifiedBatchBeforeUpgrade,
+        bytes32 programVKey,
+        bytes32 initPessimisticRoot
+    );
+
     /// @dev Mirrors AgglayerManager.RollupDataReturn exactly (field names, order and types),
     /// so the tuple layout returned by `rollupIDToRollupData` matches the real contract.
     struct RollupDataReturn {
@@ -45,6 +77,37 @@ contract RollupManagerMock {
     /// @notice Test-only setter: directly sets rollupCount, independent of setRollupContract.
     function setRollupCount(uint32 newRollupCount) external {
         rollupCount = newRollupCount;
+    }
+
+    /// @notice Test-only: registers a rollup (like setRollupContract) and emits CreateNewRollup, as
+    /// the real manager does when a brand-new rollup is created from a rollup type. The extra event
+    /// fields are zero-valued since bridgeservicefinder only reads rollupID and rollupAddress.
+    function emitCreateNewRollup(uint32 rollupID, address rollupContractAddr) external {
+        if (rollupID > rollupCount) {
+            rollupCount = rollupID;
+        }
+        _rollupIDToRollupData[rollupID].rollupContract = rollupContractAddr;
+        emit CreateNewRollup(rollupID, 0, rollupContractAddr, 0, address(0));
+    }
+
+    /// @notice Test-only: registers a rollup and emits CreateNewAggchain, as the real manager does
+    /// when a new aggchain-type rollup is created.
+    function emitCreateNewAggchain(uint32 rollupID, address rollupContractAddr) external {
+        if (rollupID > rollupCount) {
+            rollupCount = rollupID;
+        }
+        _rollupIDToRollupData[rollupID].rollupContract = rollupContractAddr;
+        emit CreateNewAggchain(rollupID, 0, rollupContractAddr, 0, 0, "");
+    }
+
+    /// @notice Test-only: registers a rollup and emits AddExistingRollup, as the real manager does
+    /// when an already-deployed rollup contract is attached.
+    function emitAddExistingRollup(uint32 rollupID, address rollupContractAddr) external {
+        if (rollupID > rollupCount) {
+            rollupCount = rollupID;
+        }
+        _rollupIDToRollupData[rollupID].rollupContract = rollupContractAddr;
+        emit AddExistingRollup(rollupID, 0, rollupContractAddr, 0, 0, 0, bytes32(0), bytes32(0));
     }
 
     /// @notice Matches AgglayerManager.rollupIDToRollupData(uint32) exactly.
