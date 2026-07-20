@@ -68,15 +68,40 @@ func blockingSender(block <-chan struct{}) *fakeSender {
 func TestRunLoop_StaleOnBoot_SendsExactlyOnce(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	monitor := &fakeMonitor{events: make(chan GERUpdateEvent)} // never written to: no organic update
-	sender := blockingSender(ctx.Done())
+	// The single send blocks (on ctx.Done(), via blockingSender) so it stays "in flight" for the
+	// whole assertion window, letting us prove the in-flight guard suppresses every subsequent tick.
+	// The release channel is never closed: the send unblocks only when ctx is cancelled at teardown.
+	sender := blockingSender(make(chan struct{}))
 
-	err := runLoop(ctx, monitor, sender, time.Time{}, 5*time.Millisecond, time.Millisecond)
-	require.NoError(t, err)
-	require.Equal(t, int32(1), sender.calls.Load(), "expected exactly one forced-update send when stale on boot")
+	done := make(chan error, 1)
+	go func() {
+		done <- runLoop(ctx, monitor, sender, time.Time{}, 2*time.Millisecond, time.Millisecond)
+	}()
+
+	// Booting with the stale sentinel (zero time.Time) makes elapsed enormous, so the first tick
+	// fires a send.
+	require.Eventually(t, func() bool { return sender.calls.Load() == 1 }, time.Second, time.Millisecond,
+		"stale boot must trigger the first forced-update send")
+
+	// While that send is still in flight, many more ticks fire (every 2ms); the in-flight guard must
+	// suppress all of them. We assert on this stable in-flight window rather than after the loop
+	// returns: a tick racing with ctx cancellation could otherwise legitimately start a second
+	// (harmless) send during shutdown, which is not what this test is about.
+	time.Sleep(30 * time.Millisecond)
+	require.Equal(t, int32(1), sender.calls.Load(),
+		"in-flight guard must suppress every duplicate send while one is in flight")
+
+	cancel()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("runLoop did not return promptly after ctx cancellation")
+	}
 }
 
 // TestRunLoop_EventBeforeThreshold_NoSend covers acceptance scenario (b): an UpdateL1InfoTree
@@ -86,31 +111,31 @@ func TestRunLoop_EventBeforeThreshold_NoSend(t *testing.T) {
 	t.Parallel()
 
 	const (
-		checkInterval  = 5 * time.Millisecond
-		maxWithoutGER  = 100 * time.Millisecond
-		testDuration   = 50 * time.Millisecond
-		initialElapsed = 80 * time.Millisecond // 20ms shy of tripping maxWithoutGER
+		checkInterval = 5 * time.Millisecond
+		maxWithoutGER = 100 * time.Millisecond
+		testDuration  = 60 * time.Millisecond
 	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), testDuration)
 	defer cancel()
 
+	// Pre-load a fresh UpdateL1InfoTree event so it is already buffered when runLoop starts. The
+	// first ticker tick is checkInterval (5ms) away, so the loop's first select iteration consumes
+	// the buffered event and resets lastGERUpdate to ~now before any tick can evaluate the elapsed
+	// time against the threshold. This keeps the test deterministic on slow/loaded CI runners,
+	// rather than relying on a goroutine delivering the event within a narrow race window (the
+	// earlier version flaked when that delivery was delayed past the threshold tick).
 	events := make(chan GERUpdateEvent, 1)
+	events <- GERUpdateEvent{BlockNumber: 42, BlockTimestamp: time.Now()}
 	monitor := &fakeMonitor{events: events}
 	sender := blockingSender(nil)
 
-	// Well before the tick that would otherwise trip the threshold (elapsed reaches 100ms at
-	// ~20ms), the monitor observes a fresh UpdateL1InfoTree event, resetting the timer for the
-	// remainder of the test.
-	go func() {
-		time.Sleep(5 * time.Millisecond)
-		events <- GERUpdateEvent{BlockNumber: 42, BlockTimestamp: time.Now()}
-	}()
-
-	lastGERUpdate := time.Now().Add(-initialElapsed)
+	// Boot with the timer already well past the threshold; the buffered event must reset it first,
+	// so no send is ever triggered for the remainder of the loop.
+	lastGERUpdate := time.Now().Add(-2 * maxWithoutGER)
 	err := runLoop(ctx, monitor, sender, lastGERUpdate, checkInterval, maxWithoutGER)
 	require.NoError(t, err)
-	require.Equal(t, int32(0), sender.calls.Load(), "the reset timer must not trip a forced update")
+	require.Equal(t, int32(0), sender.calls.Load(), "the reset from an observed event must prevent any send")
 }
 
 // TestRunLoop_InFlightGuard_NoDoubleSend covers acceptance scenario (c): while a forced-update
