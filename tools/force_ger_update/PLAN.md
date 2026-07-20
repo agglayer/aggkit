@@ -225,7 +225,7 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
 
 ### S5 — Tier-1 integration test on the simulated backend (parallel-group B, worktree)
 
-- **Status:** in_progress
+- **Status:** done
 - **Goal:** Add `tools/force_ger_update/integration_test.go` (guarded so it runs under `make test-unit`, keep it fast) using `test/helpers.NewSimulatedL1(t)`: deploy L1 bridge+GER, wire the real monitor + real sender with the mock-ethtxmanager-backed-by-simulated-client (`test/helpers/ethtxmanmock_e2e.go` pattern), configure `MaxTimeWithoutGERUpdate` to ~2s and fast intervals; assert: (1) boot with no prior event → tool sends a `bridgeMessage` tx and the GER contract emits `UpdateL1InfoTree`; (2) the monitor observes the event and resets — no second send within the next threshold window; (3) an externally-sent `BridgeAsset(..., forceUpdateGER=true, ...)` resets the timer so the tool stays quiet. Use the simulated client's in-process `SubscribeFilterLogs` to also exercise watch mode in at least one sub-test, and polling mode in another.
 - **Non-goals:** No real network, no changes to tool production code (if a bug is found, report it back — the main agent creates a fix step), no kurtosis/docker.
 - **Context pack:** `test/helpers/simulated.go`, `test/helpers/e2e.go:381` (`NewSimulatedL1`), `test/helpers/ethtxmanmock_e2e.go`, `test/e2e/bridge_utils.go:21-40` (BridgeAsset call shape), S2–S4 code.
@@ -234,7 +234,26 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
   - Assertions check on-chain effects (event logs from the GER contract), not just tool-internal state.
 - **Dependencies:** S4
 - **Model:** sonnet, high effort (async test choreography against a simulated chain; flake-resistance matters).
-- **Log:** _(fill after execution)_
+- **Log:** Created `tools/force_ger_update/integration_test.go` (worktree `agent-a2d97c5e6b6cf536f`,
+  merged by file-copy). Wires the REAL `Monitor`+`Sender` via `runLoop` against
+  `test/helpers.NewSimulatedL1(t)` with `test/helpers.NewEthTxManMock` (mock ethtxmanager that really
+  submits/mines on the simulated chain). `TestForceGERUpdate` has two subtests — `WatchMode`
+  (`L1WSURL` set, non-nil wsClient → `WatchUpdateL1InfoTree` path) and `PollMode` (nil wsClient →
+  `FilterLogs` poll) — each running all 3 scenarios: (1) boot-stale → forced `bridgeMessage`
+  send, asserted via `gerContract.FilterUpdateL1InfoTree` log AND that the producing tx's selector ==
+  `0x240ff378`; (2) `require.Never` no second send in the quiet window after reset; (3) external
+  `bridgeAsset(forceUpdate=true)` from a separate funded account produces a 2nd `UpdateL1InfoTree`
+  (selector = bridgeAsset, not the tool's) and the tool stays quiet. No production code touched.
+  **Orchestrator-verified in main checkout:** `go test -race -count=1 -run TestForceGERUpdate
+  ./tools/force_ger_update/...` PASS (both subtests, ~4s), run 2× (sub-agent ran 8×, no flakes);
+  `golangci-lint v2.4.0` → 0 issues. On-chain assertions confirmed (real GER-contract event logs +
+  tx selector), not tool-internal state.
+  **For S8 (semantics review):** sub-agent flagged that in POLL mode, if `EventPollInterval` is not
+  comfortably < send/mine time, the in-flight guard can release (tx mined) before the next poll resets
+  `lastGERUpdate`, permitting one extra "redundant (harmless)" send against the still-stale timestamp
+  — matches the design doc's own "at worst one redundant forced update" caveat; cannot occur in prod
+  (real tx mine time ≫ any sane poll interval). Resolved as test-tuning (`EventPollInterval=10ms`), no
+  prod change. S8 should confirm this is coherent and documented.
 
 ### S6 — Tier-2 real e2e test in `test/e2e/` (parallel-group B, worktree)
 
