@@ -61,6 +61,9 @@ COPY --from=builder /app/target/aggsender_find_imported_bridge /usr/local/bin/ag
 COPY --from=builder /app/target/exit_certificate /usr/local/bin/exit_certificate
 COPY --from=builder /app/target/exit_certificate_claimer /usr/local/bin/exit_certificate_claimer
 
+# Long-running tool that forces L1 Global Exit Root updates when none happen organically.
+COPY --from=builder /app/target/force_ger_update /usr/local/bin/force_ger_update
+
 EXPOSE 5576/tcp
 
 ENTRYPOINT ["/usr/local/bin/aggkit"]
