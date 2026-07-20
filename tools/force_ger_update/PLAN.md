@@ -425,7 +425,7 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
 
 ### S10 — Run the Tier-2 e2e isolated on its own CI runner (added 2026-07-20, user request)
 
-- **Status:** pending
+- **Status:** done
 - **Goal:** Make `TestForceGERUpdateE2E` **actually run in CI**, but on a **dedicated, isolated job/runner** so it (a) is not skipped in CI, yet (b) does not interfere with the main e2e suite and is not broken by the shared post-test bridge health check. Context (verified 2026-07-20): `make test-e2e` = `go test -v -timeout 30m ./test/e2e/...` runs ALL tests in ONE process against ONE shared `op-pp` docker-compose env; `test/e2e/testmain_test.go` `TestMain` runs a post-test L1↔L2 bridge health check after `m.Run()` **only when `code == 0`**, and a GER-manipulating test leaves the L2→L1 flow unable to settle → post-test `log.Fatalf` (this is exactly why `removeger_test.go:46,52,71` and currently `forcegerupdate_test.go:320` `t.Skip`). The existing precedent `.github/workflows/test-e2e-exit_cenrtificate_tool.yml` isolates a tool's e2e in its own job/runner (own env), path-triggered. Implement (env-var contract — pick clear names, document them):
   1. **`test/e2e/forcegerupdate_test.go`** — replace the *unconditional* `t.Skip` at the top of `TestForceGERUpdateE2E` with an **env-gated** skip: run the test only when a dedicated env var is set (e.g. `RUN_FORCE_GER_UPDATE_E2E=true`), otherwise `t.Skip` (keep the existing `-short` skip). This preserves "skipped in the normal `make test-e2e` suite → no interference," while letting the dedicated job opt in.
   2. **`test/e2e/testmain_test.go`** — add an **opt-in** env var (e.g. `E2E_SKIP_POSTTEST_BRIDGE_CHECK=true`) that skips ONLY the post-test bridge health-check block. Default (unset) = current behavior, so no other test/job is affected. Rationale in a code comment: GER-manipulating e2e tests legitimately leave that global check unhealthy (same reason removeger skips), so the dedicated job disables it.
@@ -442,7 +442,58 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
   - Env-var names + the isolation rationale documented in the README "How to test" section.
 - **Dependencies:** S8
 - **Model:** sonnet, high effort (CI wiring + shared test-infra change with default-preserving semantics).
-- **Log:** _(fill after execution)_
+- **Log:** Implemented the env-var contract exactly as specified:
+  `test/e2e/forcegerupdate_test.go` — `TestForceGERUpdateE2E`'s unconditional `t.Skip` replaced with
+  an env-gate (`os.Getenv("RUN_FORCE_GER_UPDATE_E2E") == "true"`), `-short` skip kept inside
+  `testForceGERUpdateE2E` unchanged. `test/e2e/testmain_test.go` — the post-test bridge health-check
+  `if code == 0 { ... }` became `if os.Getenv("E2E_SKIP_POSTTEST_BRIDGE_CHECK") == "true" { log.Info(...) }
+  else if code == 0 { ...unchanged... }` with a code comment explaining GER-manipulating tests
+  legitimately leave the check unhealthy — default (unset) behavior is byte-identical to before.
+  `Makefile` — new `.PHONY test-e2e-force_ger_update` target next to `test-e2e` running
+  `RUN_FORCE_GER_UPDATE_E2E=true E2E_SKIP_POSTTEST_BRIDGE_CHECK=true go test -v -timeout 30m -run
+  TestForceGERUpdateE2E ./test/e2e/...`. `.github/workflows/test-go-e2e.yml` — new job
+  `test-go-e2e-force-ger-update` (name "Run force_ger_update E2E (isolated)", `timeout-minutes: 45`)
+  mirroring `test-go-e2e`'s checkout/setup-go@v6(1.25.7)/docker-compose install/download both image
+  artifacts/docker-load steps, `needs: [build-docker-image, pull-docker-images]`, final step `run:
+  make test-e2e-force_ger_update`; upload-test-results step kept with a distinct artifact name
+  (`e2e-test-results-force-ger-update`, since GH Actions requires unique artifact names within a
+  workflow run — the two jobs run in parallel in the same run). The existing `test-go-e2e` job's
+  steps are byte-for-byte unchanged (diff is purely additive).
+  **Also fixed (in scope, same file):** `make lint`/`golangci-lint ./test/e2e/...` surfaced one
+  PRE-EXISTING `thelper` finding at `forcegerupdate_test.go:330` (`testForceGERUpdateE2E` missing
+  `t.Helper()`) — confirmed via `git stash`/relint that it predates this step's diff entirely (same
+  finding present at HEAD `06c8de03` before any S10 edits). Added `t.Helper()` as the function's
+  first statement to restore `make lint` → `0 issues.` (required by this step's own acceptance
+  criteria); no other production/test logic touched.
+  **Verification (all commands re-run, exit codes shown):**
+  - AC1: `go test -v -run TestForceGERUpdateE2E ./test/e2e/...` (no env vars) — full live run (TestMain
+    brought up/tore down the real `op-pp` docker env since no `-short` arg was present): `--- SKIP:
+    TestForceGERUpdateE2E (0.00s)` with message "set RUN_FORCE_GER_UPDATE_E2E=true to run this
+    isolated e2e ..."; package `ok`. Also re-confirmed cheaply with `-short` for repeatability: same
+    SKIP line.
+  - AC2: `RUN_FORCE_GER_UPDATE_E2E=true go test -v -short -run TestForceGERUpdateE2E ./test/e2e/...`
+    → env-gate SKIP line is gone; test proceeds into `testForceGERUpdateE2E` and hits the inner
+    `-short` skip instead ("Skipping E2E test in short mode") — proves the gate flips.
+  - AC3: `go vet ./test/e2e/...` exit 0; `go test -c -o <tmp> ./test/e2e/` exit 0; code read confirms
+    `else if code == 0` branch is untouched logic-wise when the var is unset.
+  - AC4: `yq e '.' .github/workflows/test-go-e2e.yml` parses; new job's `needs:
+    [build-docker-image, pull-docker-images]`; its only non-setup `run:` step is `make
+    test-e2e-force_ger_update`; diff shows the existing `test-go-e2e` job is untouched (purely
+    additive diff).
+  - AC5: `golangci-lint run --timeout 5m ./test/e2e/...` → `0 issues.` after the `t.Helper()` fix;
+    `make lint` (whole repo) → `0 issues.`
+  - AC6: `grep -A2 'test-e2e-force_ger_update' Makefile` shows the `.PHONY` line, the `##`-commented
+    target, and the exact two-env-var command.
+  README `tools/force_ger_update/README.md` "How to test" Tier-2 section rewritten: documents `make
+  test-e2e-force_ger_update`, both env vars individually, and the isolation rationale (shared
+  post-test bridge health-check perturbation), plus names the new CI job.
+  **Deviation from plan's stated fallback:** the plan anticipated `go test -v -run
+  TestForceGERUpdateE2E ./test/e2e/...` (no env, no `-short`) might need to bring up docker just to
+  reach the skip, breaking AC1's simplicity — in practice `TestMain` DID bring up/tear down the real
+  env (took ~107s) but this was harmless (the test itself skips instantly, and the shared post-test
+  bridge check still ran normally afterward since `code==0` and the var was unset) and still produced
+  the exact `--- SKIP` line required, so no fallback was needed; documented both the full run and the
+  cheap `-short` re-check for the record.
 
 ### S11 — Push branch and open the PR (added 2026-07-20, user request)
 
@@ -488,6 +539,7 @@ _(Main agent: append one line per plan modification — date, step(s) affected, 
 - 2026-07-20 — Parallel-group B (S5/S6/S9) kept in worktrees (a full-repo `make test-unit` was running in the main checkout, so new test files must stay isolated). Each agent syncs the current tool source into its worktree via `cp -rf` and produces ONE disjoint deliverable (integration_test.go / test/e2e/forcegerupdate_test.go / README.md); orchestrator merges by copying that single file back (same proven approach as group A). S6 permitted to take a compile-check path (`go vet` + `go test -c`) if the docker `op-pp` env isn't reachable, deferring live e2e execution to S7.
 - 2026-07-20 — Added S10 (run Tier-2 e2e isolated on its own CI runner so it actually runs in CI without interfering with the shared-env post-test bridge check) and S11 (push branch + open PR following `.github` template) at the user's request, after S8. Graph extended `… S8 ── S10 ── S11`.
 - 2026-07-20 — S8 (fresh opus agent, not the orchestrator, to avoid build-confirmation bias) found + fixed one HIGH-severity bug: `CheckInterval`/`EventPollInterval` were unvalidated and feed `time.NewTicker`, which panics on ≤0 → crash-on-boot for a config omitting them. Fix adds `>0` validation for `MaxTimeWithoutGERUpdate`/`CheckInterval`/poll-mode `EventPollInterval`/`FilterLogsChunkSize` (+ tests). Also: made `TestForceGERUpdateE2E` skip-by-default (unconditional `t.Skip`, matching `removeger_test.go`) so it can't perturb the shared-env post-test bridge health check in CI (live PASS already captured in S6/S7; body runnable manually); fixed README docker `--entrypoint` + required-field markers. Orchestrator independently re-verified: commit 157adf3a, validation checks present, e2e skip present, `go build ./...`/package `-race` tests/`golangci-lint` all green, section 7 holds the final summary + template PR draft. **ALL STEPS S1–S9 DONE.** Branch has 10 commits; nothing pushed, no PR opened (awaiting user).
+- 2026-07-20 — S10 executed: replaced the unconditional e2e skip with the `RUN_FORCE_GER_UPDATE_E2E`/`E2E_SKIP_POSTTEST_BRIDGE_CHECK` env-var gate contract, added the `test-e2e-force_ger_update` Makefile target, and a new isolated `test-go-e2e-force-ger-update` CI job in `test-go-e2e.yml` that reuses the existing image pipeline. While verifying `make lint`, found (via `git stash` diffing) one pre-existing `thelper` finding in `forcegerupdate_test.go` predating S10 (not introduced by this step) and fixed it in-place (added `t.Helper()`) since S10's own acceptance criteria required whole-repo `make lint` to stay at 0 issues.
 
 ## 7. Final summary / PR draft
 

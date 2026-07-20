@@ -313,15 +313,22 @@ func buildForceGERUpdateBinary(ctx context.Context, t *testing.T) string {
 //
 //	go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...
 func TestForceGERUpdateE2E(t *testing.T) {
-	// Skipped by default (like the remove_ger e2e tests): forcing a GER update perturbs the shared
-	// op-pp env's post-test L1<->L2 bridge health check that TestMain runs, which can then time out
-	// even though this test's own assertions pass. Run it explicitly with the command in the doc
-	// comment above when validating the tool against a live environment.
-	t.Skip("Skipping known flaky e2e: forcing a GER update can leave the post-test bridge health check unhealthy")
+	// Like the remove_ger e2e tests, forcing a GER update perturbs the shared op-pp env's post-test
+	// L1<->L2 bridge health check that TestMain runs (see testmain_test.go), which can then time out
+	// even though this test's own assertions pass. Rather than skipping unconditionally, this test
+	// only runs when explicitly opted into via RUN_FORCE_GER_UPDATE_E2E=true — the dedicated CI job
+	// (see workflow test-go-e2e.yml / make test-e2e-force_ger_update) sets that AND
+	// E2E_SKIP_POSTTEST_BRIDGE_CHECK=true (see testmain_test.go) so it runs in isolation without
+	// perturbing the main e2e suite. The normal `make test-e2e` run (no env vars) still skips here.
+	if os.Getenv("RUN_FORCE_GER_UPDATE_E2E") != "true" {
+		t.Skip("set RUN_FORCE_GER_UPDATE_E2E=true to run this isolated e2e " +
+			"(see workflow test-go-e2e.yml / make test-e2e-force_ger_update)")
+	}
 	testForceGERUpdateE2E(t)
 }
 
 func testForceGERUpdateE2E(t *testing.T) {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}

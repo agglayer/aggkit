@@ -146,6 +146,10 @@ test-unit: ## Runs the unit tests
 test-e2e: ## Runs the e2e tests
 	go test -v -timeout 30m ./test/e2e/...
 
+.PHONY: test-e2e-force_ger_update
+test-e2e-force_ger_update: ## Runs the isolated force_ger_update e2e test (dedicated CI job/runner only)
+	RUN_FORCE_GER_UPDATE_E2E=true E2E_SKIP_POSTTEST_BRIDGE_CHECK=true go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...
+
 .PHONY: lint
 lint: ## Runs the linter
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/golangci-lint run --timeout 5m

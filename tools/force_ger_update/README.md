@@ -189,11 +189,39 @@ docker run --rm -v /path/to/config:/app/config --entrypoint force_ger_update agg
 go test -race -run TestForceGERUpdate ./tools/force_ger_update/...
 ```
 
-**Tier 2 — real-network end-to-end (docker-compose environment):**
+**Tier 2 — real-network end-to-end (docker-compose environment), isolated:**
 
 ```bash
-go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...
+make test-e2e-force_ger_update
+```
+
+which is equivalent to:
+
+```bash
+RUN_FORCE_GER_UPDATE_E2E=true E2E_SKIP_POSTTEST_BRIDGE_CHECK=true \
+    go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...
 ```
 
 The Tier-2 test exercises the built binary against a live docker-compose environment and proves
 the tool actually forces a GER update on a real network end to end.
+
+**Why it's gated behind two env vars, and why it runs on its own CI job:** forcing a GER update is,
+by design, disruptive to the shared `op-pp` e2e environment's state. `test/e2e/testmain_test.go`'s
+`TestMain` runs a post-test L1<->L2 bridge health check after the whole `./test/e2e/...` suite
+finishes, and a GER-manipulating test can leave the L2->L1 settlement flow unable to complete —
+failing that shared check even though `TestForceGERUpdateE2E`'s own assertions passed (the same
+reason `test/e2e/removeger_test.go`'s remove-GER scenarios are skipped by default). To let this
+test actually run in CI without either being permanently skipped or breaking the main e2e suite,
+it is gated behind two env vars:
+
+- `RUN_FORCE_GER_UPDATE_E2E=true` — opts `TestForceGERUpdateE2E` itself into running. Without it
+  (e.g. the normal `make test-e2e` run, and therefore the main `test-go-e2e` CI job), the test is
+  skipped, so it never interferes with the shared suite.
+- `E2E_SKIP_POSTTEST_BRIDGE_CHECK=true` — opts `TestMain` out of running its post-test bridge
+  health check for that run, since the isolated job owns its own environment and doesn't need that
+  cross-test health signal. Left unset (the default everywhere else), `TestMain`'s behavior is
+  unchanged.
+
+`make test-e2e-force_ger_update` sets both. CI runs this on a **dedicated job**
+(`test-go-e2e-force-ger-update` in `.github/workflows/test-go-e2e.yml`), on its own runner with its
+own environment bring-up, alongside — but independent from — the main `test-go-e2e` job.
