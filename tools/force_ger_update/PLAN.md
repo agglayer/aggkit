@@ -497,7 +497,7 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
 
 ### S11 — Push branch and open the PR (added 2026-07-20, user request)
 
-- **Status:** pending
+- **Status:** in_progress
 - **Goal:** Push `feat/force-ger-update-tool` to `origin` and open a pull request against `develop` following `.github/PULL_REQUEST_TEMPLATE.md`, using the PR draft already in section 7 (updated to include the S10 isolated-CI-job change under Testing/Notes). `gh` is authenticated (account `arnaubennassar`), remote is `git@github.com:agglayer/aggkit.git`. Steps: (1) ensure the working tree is clean and all step commits are present; (2) reconcile section-7 PR draft with the final state incl. S10; (3) `git push -u origin feat/force-ger-update-tool`; (4) `gh pr create --base develop --head feat/force-ger-update-tool --title "<concise>" --body "<section-7 PR draft rendered into the template>"`. The PR body MUST follow the template section order and cite the OP-FEP/DA-provability rationale as the motivation, and list both test tiers (Tier-1 unit/integration + the isolated Tier-2 CI job).
 - **Non-goals:** No merging, no force-push, no changes to code/tests (S10 owns those); do not close/modify unrelated PRs. (Note: the memory gate `project_autoclaim_l2_lx_pr1691_gate.md` concerns a DIFFERENT branch `feat/autoclaim-l2-lx` and does NOT gate this PR.)
 - **Context pack:** `.github/PULL_REQUEST_TEMPLATE.md`, section 7 of this plan (PR draft + final summary), the full commit series (`git log develop..HEAD`), S10's Log (CI job details for the Testing section).
@@ -599,6 +599,10 @@ e2e was run live against the `op-pp` docker env (forced tx mined, `From` == tool
   `zkevm-ethtx-manager`; keys via `go_signer` (local keystore or GCP/AWS KMS).
 - Wired into `Makefile` (`build-force_ger_update`, added to `build-tools`) and shipped in the
   Docker image at `/usr/local/bin/force_ger_update`.
+- CI: the Tier-2 real-network e2e (`TestForceGERUpdateE2E`) now runs in CI on its own dedicated,
+  isolated job/runner (`test-go-e2e-force-ger-update` in `.github/workflows/test-go-e2e.yml`)
+  instead of being permanently skipped, so it is exercised automatically without risking the shared
+  `test-go-e2e` env/job.
 
 ## ⚠️ Breaking Changes
 - 🛠️ **Config**: none (new standalone tool config; no existing config changed).
@@ -614,18 +618,31 @@ e2e was run live against the `op-pp` docker env (forced tx mined, `From` == tool
 
 ## ✅ Testing
 - 🤖 **Automatic**:
-  - Unit: config load/validate, monitor (boot scan + watch/poll), sender (calldata/selector,
-    statuses, dry-run), main loop (stale-on-boot, event-reset, in-flight guard, clean shutdown) —
-    `go test -race ./tools/force_ger_update/...`.
-  - Tier-1 integration on the go-ethereum simulated backend (`integration_test.go`), both watch and
-    poll modes, asserting real on-chain `UpdateL1InfoTree` events and the `0x240ff378` selector.
+  - **Tier-1** (unit + integration on the simulated backend, run by `make test-unit`): config
+    load/validate, monitor (boot scan + watch/poll), sender (calldata/selector, statuses, dry-run),
+    main loop (stale-on-boot, event-reset, in-flight guard, clean shutdown) — `go test -race
+    ./tools/force_ger_update/...`; plus a simulated-backend integration test
+    (`integration_test.go`) exercising both watch and poll modes and asserting real on-chain
+    `UpdateL1InfoTree` events and the `0x240ff378` selector.
+  - **Tier-2** (isolated real-network e2e CI job): `TestForceGERUpdateE2E` (`test/e2e/`) execs the
+    built binary against the docker-compose `op-pp` env and proves causality — the new GER update's
+    tx `From` == tool sender and input starts with `0x240ff378`. It is env-gated
+    (`RUN_FORCE_GER_UPDATE_E2E=true`) so it stays skipped in the shared `make test-e2e` / main
+    `test-go-e2e` CI job (avoiding interference with that job's shared post-test bridge health
+    check), and instead runs automatically in CI on its own dedicated runner —
+    `test-go-e2e-force-ger-update`, a new job in `.github/workflows/test-go-e2e.yml` that reuses the
+    existing docker-image build/pull pipeline and calls `make test-e2e-force_ger_update`. That
+    target sets both `RUN_FORCE_GER_UPDATE_E2E=true` and `E2E_SKIP_POSTTEST_BRIDGE_CHECK=true` (the
+    latter opts the isolated job out of `TestMain`'s shared post-test L1↔L2 bridge health check,
+    since forcing GER updates legitimately leaves that check unhealthy — same root cause as the
+    existing `remove_ger` e2e skips). Locally: `make test-e2e-force_ger_update` (docker-compose env
+    must be up).
 - 🖱️ **Manual**:
-  - Tier-2 e2e against the docker-compose `op-pp` env (skipped by default; run
-    `go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...`): proves causality — the new
-    GER update's tx `From` == tool sender and input starts with `0x240ff378`.
+  - `DryRun = true` smoke test against a live env logs the boot-derived last-GER-update age without
+    sending a transaction.
 
 ## 🐞 Issues
-- Closes #[issue-number]
+- N/A
 
 ## 🔗 Related PRs
 - [Optional]
@@ -641,3 +658,6 @@ e2e was run live against the `op-pp` docker env (forced tx mined, `From` == tool
   unbounded.
 - `gasOffset` is hardcoded to 0; gas is controlled via the ethtxmanager config
   (`ForcedGas`/`GasPriceMarginFactor`/`MaxGasPriceLimit`).
+- The Tier-2 e2e's isolation contract (`RUN_FORCE_GER_UPDATE_E2E`, `E2E_SKIP_POSTTEST_BRIDGE_CHECK`)
+  is documented in the README's "How to test" section and in code comments at both env-var
+  check-sites.
