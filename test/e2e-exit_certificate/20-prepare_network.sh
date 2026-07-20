@@ -115,7 +115,13 @@ log_info "ERC-20 scenario state saved to: $ERC20_STATE_FILE"
 log_info "🔗 Run L2 -> L1 bridge to produce a certificate"
 run_quiet "${EXIT_CETIFICATE_SCRIPT_DIR}/bridge_l2_to_l1.sh" --amount 1
 
-log_info "⏳ Wait for the certificate to be settled"
-run_quiet "${EXIT_CETIFICATE_SCRIPT_DIR}/agglayer_certificate_status.sh" --wait
+# The L2 bridge's current root is the exact local exit root the agglayer must settle before the
+# exit certificate can be generated (its AET-11 guard requires L2 bridge getRoot() == settled LER).
+# No more L2 bridge exits happen after this point, so the root is stable. Waiting for this specific
+# root closes the race where the aggsender has not yet submitted the new certificate — a plain
+# "no pending certificate == settled" check would return prematurely and leave the bridge LER ahead.
+EXPECTED_LER=$(cast call --rpc-url "$L2_RPC_URL" "$BRIDGE_ADDR" "getRoot()(bytes32)" | cut -f1 -d' ')
+log_info "⏳ Wait for the certificate settling L2 bridge root ${EXPECTED_LER}"
+run_quiet "${EXIT_CETIFICATE_SCRIPT_DIR}/agglayer_certificate_status.sh" --wait --expected-ler "$EXPECTED_LER"
 
 log_info "✅ Done, the network is ready for exit-certificate tests"
