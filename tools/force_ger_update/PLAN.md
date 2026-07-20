@@ -497,7 +497,7 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
 
 ### S11 — Push branch and open the PR (added 2026-07-20, user request)
 
-- **Status:** in_progress
+- **Status:** done
 - **Goal:** Push `feat/force-ger-update-tool` to `origin` and open a pull request against `develop` following `.github/PULL_REQUEST_TEMPLATE.md`, using the PR draft already in section 7 (updated to include the S10 isolated-CI-job change under Testing/Notes). `gh` is authenticated (account `arnaubennassar`), remote is `git@github.com:agglayer/aggkit.git`. Steps: (1) ensure the working tree is clean and all step commits are present; (2) reconcile section-7 PR draft with the final state incl. S10; (3) `git push -u origin feat/force-ger-update-tool`; (4) `gh pr create --base develop --head feat/force-ger-update-tool --title "<concise>" --body "<section-7 PR draft rendered into the template>"`. The PR body MUST follow the template section order and cite the OP-FEP/DA-provability rationale as the motivation, and list both test tiers (Tier-1 unit/integration + the isolated Tier-2 CI job).
 - **Non-goals:** No merging, no force-push, no changes to code/tests (S10 owns those); do not close/modify unrelated PRs. (Note: the memory gate `project_autoclaim_l2_lx_pr1691_gate.md` concerns a DIFFERENT branch `feat/autoclaim-l2-lx` and does NOT gate this PR.)
 - **Context pack:** `.github/PULL_REQUEST_TEMPLATE.md`, section 7 of this plan (PR draft + final summary), the full commit series (`git log develop..HEAD`), S10's Log (CI job details for the Testing section).
