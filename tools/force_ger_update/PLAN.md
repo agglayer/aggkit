@@ -423,16 +423,52 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
     0 issues; `make lint` (whole repo) 0 issues; `make build-force_ger_update` + `--help` OK;
     README build + Tier-1 commands copy-paste-run green; `make test-unit` see S8 report to user.
 
+### S10 — Run the Tier-2 e2e isolated on its own CI runner (added 2026-07-20, user request)
+
+- **Status:** pending
+- **Goal:** Make `TestForceGERUpdateE2E` **actually run in CI**, but on a **dedicated, isolated job/runner** so it (a) is not skipped in CI, yet (b) does not interfere with the main e2e suite and is not broken by the shared post-test bridge health check. Context (verified 2026-07-20): `make test-e2e` = `go test -v -timeout 30m ./test/e2e/...` runs ALL tests in ONE process against ONE shared `op-pp` docker-compose env; `test/e2e/testmain_test.go` `TestMain` runs a post-test L1↔L2 bridge health check after `m.Run()` **only when `code == 0`**, and a GER-manipulating test leaves the L2→L1 flow unable to settle → post-test `log.Fatalf` (this is exactly why `removeger_test.go:46,52,71` and currently `forcegerupdate_test.go:320` `t.Skip`). The existing precedent `.github/workflows/test-e2e-exit_cenrtificate_tool.yml` isolates a tool's e2e in its own job/runner (own env), path-triggered. Implement (env-var contract — pick clear names, document them):
+  1. **`test/e2e/forcegerupdate_test.go`** — replace the *unconditional* `t.Skip` at the top of `TestForceGERUpdateE2E` with an **env-gated** skip: run the test only when a dedicated env var is set (e.g. `RUN_FORCE_GER_UPDATE_E2E=true`), otherwise `t.Skip` (keep the existing `-short` skip). This preserves "skipped in the normal `make test-e2e` suite → no interference," while letting the dedicated job opt in.
+  2. **`test/e2e/testmain_test.go`** — add an **opt-in** env var (e.g. `E2E_SKIP_POSTTEST_BRIDGE_CHECK=true`) that skips ONLY the post-test bridge health-check block. Default (unset) = current behavior, so no other test/job is affected. Rationale in a code comment: GER-manipulating e2e tests legitimately leave that global check unhealthy (same reason removeger skips), so the dedicated job disables it.
+  3. **`Makefile`** — add a target (e.g. `test-e2e-force_ger_update`) that runs `RUN_FORCE_GER_UPDATE_E2E=true E2E_SKIP_POSTTEST_BRIDGE_CHECK=true go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...` (parity with the per-tool convention; makes the isolated run reproducible locally and callable from CI).
+  4. **CI** — add a **dedicated job/runner** that runs only this test with those env vars against its own `op-pp` env. Preferred: a NEW job in `.github/workflows/test-go-e2e.yml` that `needs: [build-docker-image, pull-docker-images]` and reuses the same image artifacts + docker-load steps as the existing `test-go-e2e` job, but whose run step calls `make test-e2e-force_ger_update` (a separate job = a separate runner, isolated env, and the main `test-go-e2e` job is untouched). A standalone workflow file is acceptable only if it cleanly reuses/rebuilds the images; do NOT duplicate the whole image pipeline if a job in the existing workflow reuses the artifacts.
+- **Non-goals:** No changes to tool production code (`config.go/types.go/monitor.go/sender.go/run.go`); do NOT un-skip the test for the *main* suite (it must stay skipped there so the shared post-test check is never perturbed by it); no rewrite of the exit_certificate harness; do not touch other tools' tests.
+- **Context pack:** `.github/workflows/test-go-e2e.yml` (the build/pull/load artifact pipeline + the `test-go-e2e` job to mirror), `.github/workflows/test-e2e-exit_cenrtificate_tool.yml` (per-tool isolation precedent), `test/e2e/testmain_test.go` (TestMain + post-test check, ~lines 46-113), `test/e2e/forcegerupdate_test.go` (the `t.Skip` at ~line 320 and `testForceGERUpdateE2E` body), `test/e2e/removeger_test.go` (skip precedent + comment), `Makefile:145-147` (`test-e2e` target).
+- **Acceptance criteria:**
+  - The main `test-go-e2e` job / `make test-e2e` behavior is **unchanged**: `TestForceGERUpdateE2E` still skips there (verify: `go test -v -run TestForceGERUpdateE2E ./test/e2e/...` with no env vars set → `--- SKIP`).
+  - With the gate set, the test is selected: `RUN_FORCE_GER_UPDATE_E2E=true go test -v -short -run TestForceGERUpdateE2E ./test/e2e/...` no longer SKIPs on the env-gate line (it will still `-short`-skip in short mode, or attempt to run without `-short`); demonstrate the gate flips via the skip-line disappearing (a full live run needs the env and is exercised by CI, not required here).
+  - `testmain_test.go` change is opt-in: with `E2E_SKIP_POSTTEST_BRIDGE_CHECK` unset the post-test block still compiles and is reached as before; when set it is skipped. Prove via `go vet ./test/e2e/...` + `go test -c -o /dev/null ./test/e2e/` (compiles) and a code read.
+  - New CI job present in a workflow, on its own runner, running only `TestForceGERUpdateE2E` with both env vars, reusing (not duplicating) the docker-image pipeline; workflow YAML is valid (parse-check).
+  - `go vet ./test/e2e/...` clean; `golangci-lint` reports nothing for the changed files; `make lint` still 0 issues.
+  - Env-var names + the isolation rationale documented in the README "How to test" section.
+- **Dependencies:** S8
+- **Model:** sonnet, high effort (CI wiring + shared test-infra change with default-preserving semantics).
+- **Log:** _(fill after execution)_
+
+### S11 — Push branch and open the PR (added 2026-07-20, user request)
+
+- **Status:** pending
+- **Goal:** Push `feat/force-ger-update-tool` to `origin` and open a pull request against `develop` following `.github/PULL_REQUEST_TEMPLATE.md`, using the PR draft already in section 7 (updated to include the S10 isolated-CI-job change under Testing/Notes). `gh` is authenticated (account `arnaubennassar`), remote is `git@github.com:agglayer/aggkit.git`. Steps: (1) ensure the working tree is clean and all step commits are present; (2) reconcile section-7 PR draft with the final state incl. S10; (3) `git push -u origin feat/force-ger-update-tool`; (4) `gh pr create --base develop --head feat/force-ger-update-tool --title "<concise>" --body "<section-7 PR draft rendered into the template>"`. The PR body MUST follow the template section order and cite the OP-FEP/DA-provability rationale as the motivation, and list both test tiers (Tier-1 unit/integration + the isolated Tier-2 CI job).
+- **Non-goals:** No merging, no force-push, no changes to code/tests (S10 owns those); do not close/modify unrelated PRs. (Note: the memory gate `project_autoclaim_l2_lx_pr1691_gate.md` concerns a DIFFERENT branch `feat/autoclaim-l2-lx` and does NOT gate this PR.)
+- **Context pack:** `.github/PULL_REQUEST_TEMPLATE.md`, section 7 of this plan (PR draft + final summary), the full commit series (`git log develop..HEAD`), S10's Log (CI job details for the Testing section).
+- **Acceptance criteria:**
+  - Branch pushed to origin; `gh pr view` shows an open PR against `develop` whose body follows the template section order and includes the DA-provability motivation + both test tiers.
+  - The PR URL is returned in the step Log.
+  - No other branches/PRs touched; nothing merged.
+- **Dependencies:** S10
+- **Model:** sonnet, medium effort (git + gh; outward-facing, so careful and idempotent).
+- **Log:** _(fill after execution)_
+
 ### Dependency graph / parallelism
 
 ```
 S1 ──┬── S2 (worktree A1) ──┐
      └── S3 (worktree A2) ──┴── S4 ──┬── S5 (worktree B1) ──┐
-                                     ├── S6 (worktree B2) ──┼── S7 ── S8
+                                     ├── S6 (worktree B2) ──┼── S7 ── S8 ── S10 ── S11
                                      └── S9 (worktree B3) ──┘
 ```
 
 - S2 ∥ S3 and S5 ∥ S6 ∥ S9 are the two parallel groups; all members write, so **each runs in its own isolated worktree** and the next step begins by merging.
+- S10 (isolated CI for the Tier-2 e2e) and S11 (push + open PR) were added after S8 at the user's request; both are sequential single-writer steps.
 - Everything else is sequential (single writer at a time).
 
 ---
@@ -450,6 +486,7 @@ _(Main agent: append one line per plan modification — date, step(s) affected, 
   health check), documented timer/clock-skew semantics, and appended the PR draft + final summary to
   section 7. Decided against a docs/SUMMARY.md pointer (no tool README is indexed there).
 - 2026-07-20 — Parallel-group B (S5/S6/S9) kept in worktrees (a full-repo `make test-unit` was running in the main checkout, so new test files must stay isolated). Each agent syncs the current tool source into its worktree via `cp -rf` and produces ONE disjoint deliverable (integration_test.go / test/e2e/forcegerupdate_test.go / README.md); orchestrator merges by copying that single file back (same proven approach as group A). S6 permitted to take a compile-check path (`go vet` + `go test -c`) if the docker `op-pp` env isn't reachable, deferring live e2e execution to S7.
+- 2026-07-20 — Added S10 (run Tier-2 e2e isolated on its own CI runner so it actually runs in CI without interfering with the shared-env post-test bridge check) and S11 (push branch + open PR following `.github` template) at the user's request, after S8. Graph extended `… S8 ── S10 ── S11`.
 - 2026-07-20 — S8 (fresh opus agent, not the orchestrator, to avoid build-confirmation bias) found + fixed one HIGH-severity bug: `CheckInterval`/`EventPollInterval` were unvalidated and feed `time.NewTicker`, which panics on ≤0 → crash-on-boot for a config omitting them. Fix adds `>0` validation for `MaxTimeWithoutGERUpdate`/`CheckInterval`/poll-mode `EventPollInterval`/`FilterLogsChunkSize` (+ tests). Also: made `TestForceGERUpdateE2E` skip-by-default (unconditional `t.Skip`, matching `removeger_test.go`) so it can't perturb the shared-env post-test bridge health check in CI (live PASS already captured in S6/S7; body runnable manually); fixed README docker `--entrypoint` + required-field markers. Orchestrator independently re-verified: commit 157adf3a, validation checks present, e2e skip present, `go build ./...`/package `-race` tests/`golangci-lint` all green, section 7 holds the final summary + template PR draft. **ALL STEPS S1–S9 DONE.** Branch has 10 commits; nothing pushed, no PR opened (awaiting user).
 
 ## 7. Final summary / PR draft
