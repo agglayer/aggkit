@@ -131,7 +131,7 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
 
 ### S2 — GER monitor: boot fetch + event watch/poll (parallel-group A, worktree)
 
-- **Status:** pending
+- **Status:** done
 - **Goal:** Implement `GERMonitor` in `tools/force_ger_update/monitor.go` (+ `monitor_test.go`): (a) boot: backward chunked `FilterLogs` scan for the newest `UpdateL1InfoTree` log per section 2, resolving its block timestamp; (b) watch: if `L1WSURL` set, use `WatchUpdateL1InfoTree` with re-subscribe/backoff on subscription error; else poll `FilterLogs` from `lastSeenBlock+1` every `EventPollInterval`. Each observed event (with its block timestamp) is pushed to the channel. Unit tests use the generated mocks for `aggkittypes.BaseEthereumClienter` (see `types/mocks/`) covering: event found in first chunk, event found N chunks back, no event within lookback (returns stale sentinel), poll loop picks up a new log, context cancellation stops cleanly.
 - **Non-goals:** No sending logic, no main loop, no changes to files created in S1 other than adding methods to its own new files (if an interface signature from S1 must change, report it — the main agent coordinates), no persistence/DB.
 - **Context pack:** `l1infotreesync/downloader.go:16-24,60-135` (topic hashes, Parse usage), the `agglayerger` binding (`Filter/Watch/ParseUpdateL1InfoTree`), `types/eth_client.go`, `types/mocks/`, `sync/evmdownloader.go:566` (FilterLogs usage style, timeouts), CLAUDE.md test rules.
@@ -141,11 +141,25 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
   - `make lint` clean.
 - **Dependencies:** S1
 - **Model:** sonnet, high effort (concurrency + chunked scanning edge cases).
-- **Log:** _(fill after execution)_
+- **Log:** Implemented `monitor.go` (+ `monitor_test.go`) in worktree
+  `worktree-agent-a317bf54d08061f1d`. `Monitor.LastGERUpdate` does a backward chunked `FilterLogs`
+  scan (topic0 `0xda61aa78...`), bounded by `InitialLookbackBlocks`/`FilterLogsChunkSize`, resolving
+  the newest hit's block timestamp via `CustomHeaderByNumber`; returns zero `time.Time` (no error) as
+  the stale sentinel. `Start` closes the returned channel on ctx cancel; WS mode uses
+  `agglayerger.WatchUpdateL1InfoTree` with re-subscribe+backoff, poll mode `FilterLogs` from
+  `lastSeenBlock+1` every `EventPollInterval`. Added `bootScanCallTimeout` (30s) per RPC since
+  `LastGERUpdate` takes no ctx. **Orchestrator-verified after merge into main checkout:** `go build`,
+  `go test -race -count=1 ./tools/force_ger_update/...` PASS, `golangci-lint v2.4.0` → 0 issues;
+  grep confirms no `sync`/`l1infotreesync`/`reorgdetector`/`sqlite` imports.
+  For S4: constructor `NewMonitor(cfg ForceGERUpdateConfig, l1Client, wsClient
+  aggkittypes.BaseEthereumClienter) (*Monitor, error)`. `l1Client` mandatory (HTTP: boot scan +
+  timestamp resolution in all modes + polling); `wsClient` must be non-nil **iff** `L1WSURL != ""`.
+  **run.go currently dials only HTTP — S4 must also dial a WS client when L1WSURL is set.** Monitor
+  depends only on `aggkittypes.BaseEthereumClienter`.
 
 ### S3 — Sender: bridgeMessage via ethtxmanager (parallel-group A, worktree)
 
-- **Status:** pending
+- **Status:** done
 - **Goal:** Implement `ForcedUpdateSender` in `tools/force_ger_update/sender.go` (+ `sender_test.go`): pack `bridgeMessage(DestinationNetwork, DestinationAddress, true, []byte{})` calldata from the `agglayerbridge` ABI, submit through the ethtxmanager interface (`Add` with `to=BridgeAddr`, `value=0`), then poll `Result` until Mined/Safe/Finalized (success), Failed (error), Evicted (log + return) — mirroring `aggoracle/chaingersender/evm.go:213-277` including the `ErrAlreadyExists` handling. Support `DryRun` (log calldata, skip Add). Default `DestinationAddress` to `ethTxManager.From()` when unset. Unit tests with a mocked ethtxmanager interface: success path (assert exact calldata: selector `0x240ff378` + args), failed status, already-exists, dry-run sends nothing.
 - **Non-goals:** No monitor logic, no main loop, no gas-strategy tuning beyond `GasOffset` passthrough, no changes to S1 files.
 - **Context pack:** `aggoracle/chaingersender/evm.go` (whole file), `aggoracle/types/types.go:14-29`, `autoclaim/sender/sender.go:151` (Add usage), `bridgesync/downloader.go:46-49,250-259` (ABI/selector), `agglayerbridge` binding, existing mock for the ethtxmanager interface (`aggoracle/mocks/` or `test/helpers/mock_ethtxmanager.go`; regenerate with `make generate-mocks` if a new one is needed).
@@ -155,7 +169,22 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
   - `make lint` clean.
 - **Dependencies:** S1
 - **Model:** sonnet, medium effort (pattern exists in `chaingersender`; mostly careful transcription + tests).
-- **Log:** _(fill after execution)_
+- **Log:** Implemented `sender.go` (+ `sender_test.go`) in worktree branch
+  `worktree-agent-ac307895278bbe295`. `Sender` packs `bridgeMessage(destNet, destAddr, true, [])`
+  via `agglayerbridge.AgglayerbridgeMetaData.GetAbi()`, submits through the narrow `EthTxManager`
+  interface (`Add(ctx, &BridgeAddr, common.Big0, data, 0, nil)`), polls `Result` until terminal,
+  mirroring `chaingersender/evm.go` incl. the two-`if` `ErrAlreadyExists` handling (gocritic-safe).
+  `DryRun` logs hex calldata, skips Add. `DestinationAddress` defaults to `ethTxManager.From()` when
+  zero. Reuses existing `aggoracle/mocks.EthTxManager` (no mockery change). Sub-agent-reported
+  verification: `go test -race ./tools/force_ger_update/...` PASS (5 tests incl. calldata decode
+  asserting selector `240ff378`/forceUpdate=true/empty metadata, Failed→error, ErrAlreadyExists ok,
+  DryRun sends nothing); no `ethtxmanager.Client` in sender.go; package lint clean. **Authoritative
+  re-verification deferred to S4 merge.**
+  For S4: constructor `NewSender(cfg ForceGERUpdateConfig, ethTxManager EthTxManager, opts ...Option)
+  (*Sender, error)`; `WithPollInterval(d)` option (default 2s) for fast tests; `SendForcedGERUpdate`
+  BLOCKS until terminal status/ctx.Done() (returns nil on cancel); the in-flight guard is S4's
+  responsibility (loop must not call again until the prior call returns). **Gap flagged:** no
+  `GasOffset` config field exists, so gasOffset is hardcoded `0` — S8 may add config if desired.
 
 ### S4 — Merge + main loop wiring
 
@@ -264,6 +293,7 @@ _(Main agent: append one line per plan modification — date, step(s) affected, 
 
 - 2026-07-20 — Initial plan created.
 - 2026-07-20 — Added S9 (docs step with mandatory OP-FEP/DA-provability rationale) per task owner; README writing moved out of S8 (S8 now reviews docs for accuracy); S7 merges/depends on S9; graph updated.
+- 2026-07-20 — S2/S3 parallel-group A worktrees diverged (both re-created S1's files with different commit hashes), so a git-branch merge would falsely conflict on identical S1 files. Orchestrator merged instead by copying the 4 disjoint new files (monitor.go, monitor_test.go, sender.go, sender_test.go) into the main checkout and verified the combined package (build + `-race` tests + lint v2.4.0 all green). S4's "merge" sub-goal is therefore already satisfied; S4 now covers only the main-loop wiring in run.go.
 
 ## 7. Final summary / PR draft
 
