@@ -37,17 +37,27 @@ const (
 	// long enough that the negative ("stays quiet") assertions below have comfortable margin
 	// against the monitor's own detection latency (at most one EventPollInterval in polling mode).
 	//
-	// integrationEventPollInterval is deliberately much smaller than integrationCheckInterval: the
-	// mock ethtxmanager mines a forced-update transaction near-instantly (well under 50ms), so
-	// polling mode's monitor must re-scan for the resulting event faster than that, or the
-	// in-flight guard can release (tx mined) and the next CheckInterval tick can still see the
-	// stale (pre-reset) lastGERUpdate and legitimately fire a second, PLAN.md-acknowledged
-	// "redundant (harmless)" send before the poll loop catches up. Real deployments don't hit this:
-	// a real transaction takes far longer to mine than any sane EventPollInterval.
+	// The tool has an inherent, PLAN.md-acknowledged race in polling mode: the in-flight guard is
+	// released when the send is *confirmed mined*, and if that happens before the monitor's poll
+	// loop has observed the resulting UpdateL1InfoTree event and reset lastGERUpdate, the next
+	// CheckInterval tick still sees the stale (pre-reset) timestamp and legitimately fires a second,
+	// "redundant (harmless)" send. Real deployments never hit this because a transaction takes far
+	// longer to *mine* than the monitor takes to *detect* an event. This test must encode that same
+	// invariant, and robustly (CI runners starve goroutines unpredictably), so what matters is the
+	// RATIO, not absolute values:
+	//   - integrationSenderPoll (how long the send stays "in flight" — the mock mines instantly, so
+	//     the send is confirmed only on the sender's first Result poll, i.e. after one senderPoll) is
+	//     kept MUCH larger than integrationEventPollInterval (how often the monitor re-scans). With a
+	//     ~30x ratio, the monitor observes the event and resets the timer many poll cycles before the
+	//     guard releases, even under heavy, proportional scheduler starvation — so no second send.
+	//   - integrationEventPollInterval is also < integrationCheckInterval so detection generally beats
+	//     the next elapsed-time evaluation regardless.
+	// (The two subtests also run sequentially rather than in parallel — see TestForceGERUpdate — so a
+	// constrained CI runner isn't driving two simulated backends + monitor/sender loops at once.)
 	integrationMaxTimeWithoutGER = 2 * time.Second
 	integrationCheckInterval     = 50 * time.Millisecond
 	integrationEventPollInterval = 10 * time.Millisecond
-	integrationSenderPoll        = 10 * time.Millisecond
+	integrationSenderPoll        = 300 * time.Millisecond
 
 	// integrationQuietWindow is how long the "no second send" assertions watch for, measured from
 	// the moment the resetting event is first observed on-chain by the test. It is deliberately
@@ -249,17 +259,17 @@ func (e *integrationEnv) sendExternalForcedBridgeAsset(t *testing.T) {
 
 // TestForceGERUpdate drives the real Monitor + Sender (via runLoop) against a simulated L1 and
 // asserts the three PLAN.md S5 scenarios, once in watch mode (WS subscription) and once in polling
-// mode (FilterLogs), running in parallel to keep the suite's total runtime well under 60s.
+// mode (FilterLogs). The two subtests run SEQUENTIALLY (not parallel): each spins up its own
+// simulated backend plus a monitor/sender loop, and running both at once starves the timing-
+// sensitive poll/commit goroutines on constrained CI runners. Sequential keeps the whole test a few
+// seconds — still well under 60s. The parent is intentionally NOT t.Parallel(): its subtests run
+// sequentially, so it runs in the package's serial phase instead of contending with other tests.
 func TestForceGERUpdate(t *testing.T) {
-	t.Parallel()
-
 	t.Run("WatchMode", func(t *testing.T) {
-		t.Parallel()
 		testForceGERUpdateScenarios(t, true)
 	})
 
 	t.Run("PollMode", func(t *testing.T) {
-		t.Parallel()
 		testForceGERUpdateScenarios(t, false)
 	})
 }
