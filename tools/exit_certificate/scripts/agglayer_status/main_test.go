@@ -283,7 +283,7 @@ func TestIsHexHash(t *testing.T) {
 	t.Parallel()
 	require.True(t, isHexHash("0x"+strings.Repeat("a", 64)))
 	require.True(t, isHexHash("0X"+strings.Repeat("0", 64)))
-	require.False(t, isHexHash(strings.Repeat("a", 64)))    // missing 0x
+	require.False(t, isHexHash(strings.Repeat("a", 64)))      // missing 0x
 	require.False(t, isHexHash("0x"+strings.Repeat("a", 63))) // too short
 	require.False(t, isHexHash("0x"+strings.Repeat("g", 64))) // non-hex
 	require.False(t, isHexHash(""))
