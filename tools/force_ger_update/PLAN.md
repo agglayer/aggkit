@@ -188,7 +188,7 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
 
 ### S4 — Merge + main loop wiring
 
-- **Status:** pending
+- **Status:** done
 - **Goal:** Merge the S2/S3 worktrees into the branch (files are disjoint; resolve anything trivial). Then implement the real `Run` in `run.go`: instantiate ethtxmanager (`New` + `go Start()`), monitor, sender; main loop = ticker every `CheckInterval` computing `elapsed = now - lastGERUpdate`; if `elapsed >= MaxTimeWithoutGERUpdate` and no forced update is in flight → send; on every monitor event → update `lastGERUpdate`. Graceful shutdown on SIGINT/SIGTERM (context cancellation propagates to monitor, sender, ethtxmanager). Startup banner logs config summary (no secrets), sender address, and the boot-derived last GER update time/age. Add a small `run_test.go` driving the loop with mocked monitor+sender: (a) stale on boot → exactly one send; (b) event arrives before threshold → no send; (c) event resets timer after a send → no double-send while in flight.
 - **Non-goals:** No e2e, no README (S8), no metrics/telemetry endpoint.
 - **Context pack:** S1–S3 code, `cmd/run.go:543-569` (ethtxmanager lifecycle), `aggoracle/oracle.go` (loop/shutdown style if present), CLAUDE.md.
@@ -199,7 +199,29 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
   - Manual smoke: `./target/force_ger_update --cfg <example config pointing at an unreachable RPC>` fails fast with a clear wrapped error (no panic, no hang).
 - **Dependencies:** S2, S3
 - **Model:** sonnet, high effort (merge + concurrency-sensitive loop; the timer/in-flight semantics are where bugs would live).
-- **Log:** _(fill after execution)_
+- **Log:** Merge of S2/S3 was done by the orchestrator by file-copy (see changelog 2026-07-20 entry);
+  S4 sub-agent implemented only the wiring in `run.go` (+ hand-written test doubles in `run_test.go`,
+  no mocks dir — mockery entries for the two interfaces were deemed non-trivial, so minimal doubles
+  live inline). `Run`: LoadConfig→Validate→signal.NotifyContext(SIGINT/SIGTERM)→dial HTTP L1 (and WS
+  when `L1WSURL` set)→`ethtxmanager.New`+`go Start()`(defer Stop)→NewMonitor→NewSender→boot
+  `LastGERUpdate`→startup banner→`runLoop`. `runLoop` (factored out for testing): `monitor.Start(ctx)`,
+  ticker every `CheckInterval`; on tick, `elapsed=time.Since(lastGERUpdate)` ≥ threshold + not in-flight
+  → `triggerSend`; on event → `lastGERUpdate=ev.BlockTimestamp`; on ctx.Done → return nil after
+  `wg.Wait()`. In-flight guard = `atomic.Bool.CompareAndSwap(false,true)` gating a `wg`-tracked send
+  goroutine (race-free). Closed events channel is nil'd to avoid busy-spin. Banner logs no secrets.
+  **Orchestrator-verified:** `go build ./...` exit 0; `make build-force_ger_update` → 58MB binary;
+  `go test -race -count=1 ./tools/force_ger_update/...` PASS — 4 loop tests
+  (`StaleOnBoot_SendsExactlyOnce`, `EventBeforeThreshold_NoSend`, `InFlightGuard_NoDoubleSend`,
+  `ContextCancelled_ReturnsPromptly`) assert exactly-once via `atomic.Int32` call counter;
+  `golangci-lint v2.4.0 ./tools/force_ger_update/...` → 0 issues; smoke test vs `http://localhost:1`
+  fails fast: `Error: dial L1 (...): fetch chain ID: ...connection refused`, exit 1, no panic/hang.
+  Full-repo `make test-unit` deferred to S7's authoritative sweep (kicked off in background here as
+  early warning; `go build ./...` already confirms no compile breakage elsewhere).
+  For S5/S6: drive `runLoop(ctx, monitor GERMonitor, sender ForcedUpdateSender, lastGERUpdate
+  time.Time, checkInterval, maxTimeWithoutGERUpdate time.Duration) error` directly; `Run` wires
+  clients via `dialL1(ctx,url) (aggkittypes.BaseEthereumClienter, *big.Int, error)` using
+  `etherman.NewDefaultEthClient` — integration test can construct `NewMonitor`/`NewSender` itself
+  against the simulated client + mock ethtxmanager rather than calling `Run`.
 
 ### S5 — Tier-1 integration test on the simulated backend (parallel-group B, worktree)
 
