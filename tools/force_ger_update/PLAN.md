@@ -225,7 +225,7 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
 
 ### S5 — Tier-1 integration test on the simulated backend (parallel-group B, worktree)
 
-- **Status:** pending
+- **Status:** in_progress
 - **Goal:** Add `tools/force_ger_update/integration_test.go` (guarded so it runs under `make test-unit`, keep it fast) using `test/helpers.NewSimulatedL1(t)`: deploy L1 bridge+GER, wire the real monitor + real sender with the mock-ethtxmanager-backed-by-simulated-client (`test/helpers/ethtxmanmock_e2e.go` pattern), configure `MaxTimeWithoutGERUpdate` to ~2s and fast intervals; assert: (1) boot with no prior event → tool sends a `bridgeMessage` tx and the GER contract emits `UpdateL1InfoTree`; (2) the monitor observes the event and resets — no second send within the next threshold window; (3) an externally-sent `BridgeAsset(..., forceUpdateGER=true, ...)` resets the timer so the tool stays quiet. Use the simulated client's in-process `SubscribeFilterLogs` to also exercise watch mode in at least one sub-test, and polling mode in another.
 - **Non-goals:** No real network, no changes to tool production code (if a bug is found, report it back — the main agent creates a fix step), no kurtosis/docker.
 - **Context pack:** `test/helpers/simulated.go`, `test/helpers/e2e.go:381` (`NewSimulatedL1`), `test/helpers/ethtxmanmock_e2e.go`, `test/e2e/bridge_utils.go:21-40` (BridgeAsset call shape), S2–S4 code.
@@ -238,7 +238,7 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
 
 ### S6 — Tier-2 real e2e test in `test/e2e/` (parallel-group B, worktree)
 
-- **Status:** pending
+- **Status:** in_progress
 - **Goal:** Add `test/e2e/forcegerupdate_test.go` running against the docker-compose `op-pp` env: build the tool binary (`make build-force_ger_update`), render a config file into a temp dir (L1 RPC + bridge/GER addresses from `env` / `summary.json`, a funded key from `env.Keys.L1Keys.Checkout()` written as a keystore or reuse an existing env keystore, threshold ~30s, sqlite in temp dir), **exec the real binary** as a subprocess, then: (1) record the latest `UpdateL1InfoTree` block; (2) wait past the threshold; (3) assert a new `UpdateL1InfoTree` event appears whose tx is a `bridgeMessage` (selector `0x240ff378`) from the tool's sender address to the bridge; (4) kill the process, assert clean exit. Follow the style of `removeger_test.go` / `bridge_utils.go`.
 - **Non-goals:** No kurtosis/bats suite, no CI workflow changes (note it as follow-up in the log if `test-go-e2e.yml` needs nothing — it globs `./test/e2e/...` already), no changes to tool production code.
 - **Context pack:** `test/e2e/testmain_test.go`, `test/e2e/envs/loader.go` (KeyPool, summary.json fields, contract handles), `test/e2e/removeger_test.go`, `test/e2e/bridge_utils.go`, `.github/workflows/test-go-e2e.yml`, S1 config schema.
@@ -252,7 +252,7 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
 
 ### S9 — Documentation: README with rationale (parallel-group B, worktree)
 
-- **Status:** pending
+- **Status:** done
 - **Goal:** Write `tools/force_ger_update/README.md` containing, in this order:
   1. **"Why this tool exists" — the rationale (mandatory, this exact argument):** For aggchains running **OP-FEP**, there is a direct relation between *when the last L1 info root was updated* and *what can be proven*. Every GER update on L1 appends a leaf to the L1 info tree, and that leaf includes an **L1 block hash**; the aggchain proof uses the block hash contained in the L1 info root to assert things that happened on L1 — **including data availability (DA)**. Consequently, anything posted on L1 *after* the last L1 info root update is not covered by any block hash inside an L1 info root and **cannot be proven** until a new update lands. If DA is posted after the last L1 info root update, the aggchain proof cannot attest to it, and certificate progress stalls until an organic GER update happens. This tool removes that unbounded wait: it watches the last `UpdateL1InfoTree` event on L1 and, if no update happens organically within a configured window `X`, it sends a `bridgeMessage` transaction with `forceUpdateGlobalExitRoot = true`, forcing a new L1 info root that covers everything (DA included) posted up to that point. Include a small sequence/timeline diagram (mermaid or ASCII) showing: DA posted → no GER update → unprovable window → forced update → provable.
   2. **Configuration reference:** every `[ForceGERUpdate]` field from section 2 with meaning and default, plus signer examples for local keystore, GCP KMS, and AWS KMS adapted from `docs/common_config.md`.
@@ -268,7 +268,22 @@ You are the **main agent**. You do not implement steps yourself — you dispatch
   - `make lint` unaffected (markdown only).
 - **Dependencies:** S4
 - **Model:** sonnet, medium effort (writing-heavy; the hard reasoning is already supplied verbatim).
-- **Log:** _(fill after execution)_
+- **Log:** Created `tools/force_ger_update/README.md` (worktree `agent-ac338f7199a8bc196`, merged into
+  main by file-copy). Four sections in order: (1) **Why** — the mandatory OP-FEP/L1-info-root/block-
+  hash/DA-provability rationale verbatim + a mermaid sequence diagram AND an ASCII timeline (DA posted
+  → unprovable window → forced update → provable); (2) **Configuration reference** — full
+  `[ForceGERUpdate]` table (all 12 scalar fields), `[ForceGERUpdate.EthTxManager]` and `.Etherman`
+  sub-tables, plus local/GCP/AWS signer examples adapted from `docs/common_config.md`; (3) **How to
+  run** — `make build-force_ger_update`, run command, `DryRun`, docker image at
+  `/usr/local/bin/force_ger_update`; (4) **How to test** — Tier-1
+  (`go test -race -run TestForceGERUpdate ./tools/force_ger_update/...`) + Tier-2
+  (`go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...`).
+  **Orchestrator-verified:** all four `##` sections present; all 12 scalar config fields
+  cross-checked present (13th, `EthTxManager`, has its own sub-table); mermaid + selector `240ff378`
+  + `forceUpdateGlobalExitRoot` all referenced. Deeper accuracy review is S8's job.
+  **Follow-up for S8:** S9 flagged `docs/SUMMARY.md` as the natural docs index — a one-line pointer
+  `- [force_ger_update tool](../tools/force_ger_update/README.md)` could be added there (S9 did not
+  edit docs/ per its non-goals; S8 to decide).
 
 ### S7 — Full validation sweep
 
@@ -316,6 +331,7 @@ _(Main agent: append one line per plan modification — date, step(s) affected, 
 - 2026-07-20 — Initial plan created.
 - 2026-07-20 — Added S9 (docs step with mandatory OP-FEP/DA-provability rationale) per task owner; README writing moved out of S8 (S8 now reviews docs for accuracy); S7 merges/depends on S9; graph updated.
 - 2026-07-20 — S2/S3 parallel-group A worktrees diverged (both re-created S1's files with different commit hashes), so a git-branch merge would falsely conflict on identical S1 files. Orchestrator merged instead by copying the 4 disjoint new files (monitor.go, monitor_test.go, sender.go, sender_test.go) into the main checkout and verified the combined package (build + `-race` tests + lint v2.4.0 all green). S4's "merge" sub-goal is therefore already satisfied; S4 now covers only the main-loop wiring in run.go.
+- 2026-07-20 — Parallel-group B (S5/S6/S9) kept in worktrees (a full-repo `make test-unit` was running in the main checkout, so new test files must stay isolated). Each agent syncs the current tool source into its worktree via `cp -rf` and produces ONE disjoint deliverable (integration_test.go / test/e2e/forcegerupdate_test.go / README.md); orchestrator merges by copying that single file back (same proven approach as group A). S6 permitted to take a compile-check path (`go vet` + `go test -c`) if the docker `op-pp` env isn't reachable, deferring live e2e execution to S7.
 
 ## 7. Final summary / PR draft
 
