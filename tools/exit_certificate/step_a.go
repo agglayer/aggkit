@@ -44,6 +44,15 @@ var transferTopic = common.HexToHash(transferEventSignature)
 // const) so tests can shrink it to exercise the truncation guard.
 var maxAccountRangePages = 25_000_000
 
+// accountRangeEmptyRetries and accountRangeEmptyRetryDelay control the end-of-walk verification
+// re-seek: how many times an empty re-seek result is retried (to ride out the endpoint's transient
+// truncated/empty pages) before concluding the trie is exhausted, and how long to pause between
+// tries. They are vars so tests can shrink them.
+var (
+	accountRangeEmptyRetries    = 3
+	accountRangeEmptyRetryDelay = 500 * time.Millisecond
+)
+
 // accountRangeDialect distinguishes the two incompatible debug_accountRange ABIs in the wild.
 //
 //   - geth/op-geth: AccountRange(block, start hexutil.Bytes, maxResults, nocode, nostorage,
@@ -272,9 +281,8 @@ func incrementKey(key []byte) []byte {
 func reseekPastFrontier(
 	ctx context.Context, rpcURL, blockTag string, frontier []byte, dialect accountRangeDialect,
 ) (*accountRangeResult, bool, error) {
-	const emptyRetries = 3
 	start := incrementKey(frontier)
-	for attempt := 0; attempt < emptyRetries; attempt++ {
+	for attempt := 0; attempt < accountRangeEmptyRetries; attempt++ {
 		res, err := debugAccountRange(ctx, rpcURL, blockTag, start, accountRangePageSize, dialect)
 		if err != nil {
 			return nil, false, err
@@ -284,7 +292,9 @@ func reseekPastFrontier(
 				return res, false, nil
 			}
 		}
-		time.Sleep(500 * time.Millisecond) //nolint:mnd // brief pause before retrying an empty page
+		if accountRangeEmptyRetryDelay > 0 {
+			time.Sleep(accountRangeEmptyRetryDelay) // brief pause before retrying an empty page
+		}
 	}
 	return nil, true, nil
 }
