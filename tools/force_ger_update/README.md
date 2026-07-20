@@ -71,11 +71,11 @@ runnable example.
 | `L1WSURL` | string | Optional, default `""` | Optional L1 websocket RPC endpoint. When set, the monitor watches `UpdateL1InfoTree` via a live subscription (`WatchUpdateL1InfoTree`), with automatic re-subscribe on error. When unset (default), the monitor polls via `FilterLogs` every `EventPollInterval`. |
 | `GlobalExitRootManagerAddr` | address | **Required**, must not be the zero address | L1 `PolygonZkEVMGlobalExitRootV2` (`agglayerger` binding) address. This is the contract the monitor scans/watches for `UpdateL1InfoTree` events. |
 | `BridgeAddr` | address | **Required**, must not be the zero address | L1 `PolygonZkEVMBridgeV2` (`agglayerbridge` binding) address. This is the contract the forced `bridgeMessage` transaction is sent to. |
-| `MaxTimeWithoutGERUpdate` | duration | **Required** (this is `X`) | Max time allowed to elapse since the last GER update before a forced update is sent. Example: `"1h"`. |
-| `CheckInterval` | duration | Example `"10s"` | How often the timer loop evaluates the elapsed time since the last GER update against `MaxTimeWithoutGERUpdate`. |
-| `EventPollInterval` | duration | Example `"15s"` | Polling-mode only (`L1WSURL` unset): how often to `FilterLogs` for new `UpdateL1InfoTree` events. |
+| `MaxTimeWithoutGERUpdate` | duration | **Required**, must be `> 0` (this is `X`) | Max time allowed to elapse since the last GER update before a forced update is sent. Compared against the tool's wall clock using the last GER update's L1 block timestamp. Example: `"1h"`. |
+| `CheckInterval` | duration | **Required**, must be `> 0` (example `"10s"`) | How often the timer loop evaluates the elapsed time since the last GER update against `MaxTimeWithoutGERUpdate`. |
+| `EventPollInterval` | duration | **Required in polling mode** (`L1WSURL` unset), must be `> 0`; ignored in watch mode (example `"15s"`) | Polling-mode only: how often to `FilterLogs` for new `UpdateL1InfoTree` events. |
 | `InitialLookbackBlocks` | uint64 | Example `50000` | Bounds how far back (in `FilterLogsChunkSize`-sized chunks) the boot scan for the last `UpdateL1InfoTree` event looks. If no event is found within this window, the GER is treated as stale and the tool forces an update on the first tick. |
-| `FilterLogsChunkSize` | uint64 | Example `10000` | Block range used per `FilterLogs` call, both at boot and (in polling mode) for the watch loop. |
+| `FilterLogsChunkSize` | uint64 | **Required**, must be `> 0` (example `10000`) | Block range used per `FilterLogs` call, both at boot and (in polling mode) for the watch loop. |
 | `DestinationNetwork` | uint32 | **Required**, must not be `0` | `bridgeMessage` `destinationNetwork`. Must not be `0` (L1 itself) — the point of the message is to be a cross-network message that forces the GER update as a side effect. |
 | `DestinationAddress` | address | Optional, default zero address | `bridgeMessage` `destinationAddress`. When left as the zero address, defaults to the sender address (the ethtxmanager `From()` address) at send time. |
 | `DryRun` | bool | Default `false` | When `true`, logs the calldata that would be sent instead of actually sending the transaction. Useful for verifying wiring (RPC connectivity, boot-derived last-GER age) without spending gas. |
@@ -173,12 +173,12 @@ boot-derived age of the last GER update before wiring in real funded keys.
 ### Docker image
 
 The binary is shipped inside the main aggkit Docker image at `/usr/local/bin/force_ger_update`
-(see the `COPY --from=builder` line in the repo's `Dockerfile`). Run it the same way as any other
-tool binary inside the image:
+(see the `COPY --from=builder` line in the repo's `Dockerfile`). The image's `ENTRYPOINT` is the
+`aggkit` binary, so run the tool by overriding the entrypoint:
 
 ```bash
-docker run --rm -v /path/to/config:/app/config aggkit:local \
-    force_ger_update --cfg /app/config/force_ger_update.toml
+docker run --rm -v /path/to/config:/app/config --entrypoint force_ger_update aggkit:local \
+    --cfg /app/config/force_ger_update.toml
 ```
 
 ## 4. How to test

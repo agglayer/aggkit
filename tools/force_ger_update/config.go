@@ -82,6 +82,27 @@ func (c *ForceGERUpdateConfig) Validate() error {
 	if c.GlobalExitRootManagerAddr == (common.Address{}) {
 		return fmt.Errorf("ForceGERUpdate.GlobalExitRootManagerAddr is required and must not be the zero address")
 	}
+	// MaxTimeWithoutGERUpdate must be positive: a zero/negative window would make every tick
+	// consider the GER stale and force an update, spending gas indefinitely.
+	if c.MaxTimeWithoutGERUpdate.Duration <= 0 {
+		return fmt.Errorf("ForceGERUpdate.MaxTimeWithoutGERUpdate is required and must be greater than 0")
+	}
+	// CheckInterval must be positive: the main loop feeds it to time.NewTicker, which panics on a
+	// non-positive interval.
+	if c.CheckInterval.Duration <= 0 {
+		return fmt.Errorf("ForceGERUpdate.CheckInterval is required and must be greater than 0")
+	}
+	// EventPollInterval is only used in polling mode (L1WSURL unset), where the poll loop feeds it
+	// to time.NewTicker; it must be positive there for the same reason as CheckInterval.
+	if c.L1WSURL == "" && c.EventPollInterval.Duration <= 0 {
+		return fmt.Errorf(
+			"ForceGERUpdate.EventPollInterval is required (and must be greater than 0) when L1WSURL is not set")
+	}
+	// FilterLogsChunkSize must be positive: it is the block span of every FilterLogs call in the
+	// boot scan and the poll loop; a zero chunk size would make the boot scan unable to advance.
+	if c.FilterLogsChunkSize == 0 {
+		return fmt.Errorf("ForceGERUpdate.FilterLogsChunkSize is required and must be greater than 0")
+	}
 
 	return nil
 }

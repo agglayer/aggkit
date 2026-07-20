@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	configtypes "github.com/agglayer/aggkit/config/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -149,6 +150,10 @@ func validBaseConfig() ForceGERUpdateConfig {
 		GlobalExitRootManagerAddr: common.HexToAddress("0x1111111111111111111111111111111111111111"),
 		BridgeAddr:                common.HexToAddress("0x2222222222222222222222222222222222222222"),
 		DestinationNetwork:        1,
+		MaxTimeWithoutGERUpdate:   configtypes.Duration{Duration: time.Hour},
+		CheckInterval:             configtypes.Duration{Duration: 10 * time.Second},
+		EventPollInterval:         configtypes.Duration{Duration: 15 * time.Second},
+		FilterLogsChunkSize:       10000,
 	}
 }
 
@@ -176,6 +181,29 @@ func TestForceGERUpdateConfig_Validate(t *testing.T) {
 		"zero GlobalExitRootManagerAddr": {
 			mutate:  func(cfg *ForceGERUpdateConfig) { cfg.GlobalExitRootManagerAddr = common.Address{} },
 			wantErr: "GlobalExitRootManagerAddr is required",
+		},
+		"zero MaxTimeWithoutGERUpdate": {
+			mutate:  func(cfg *ForceGERUpdateConfig) { cfg.MaxTimeWithoutGERUpdate = configtypes.Duration{} },
+			wantErr: "MaxTimeWithoutGERUpdate is required",
+		},
+		"zero CheckInterval": {
+			mutate:  func(cfg *ForceGERUpdateConfig) { cfg.CheckInterval = configtypes.Duration{} },
+			wantErr: "CheckInterval is required",
+		},
+		"zero EventPollInterval in poll mode": {
+			mutate:  func(cfg *ForceGERUpdateConfig) { cfg.EventPollInterval = configtypes.Duration{} },
+			wantErr: "EventPollInterval is required",
+		},
+		"zero EventPollInterval allowed in watch mode": {
+			mutate: func(cfg *ForceGERUpdateConfig) {
+				cfg.L1WSURL = "ws://localhost:8546"
+				cfg.EventPollInterval = configtypes.Duration{}
+			},
+			wantErr: "",
+		},
+		"zero FilterLogsChunkSize": {
+			mutate:  func(cfg *ForceGERUpdateConfig) { cfg.FilterLogsChunkSize = 0 },
+			wantErr: "FilterLogsChunkSize is required",
 		},
 	}
 

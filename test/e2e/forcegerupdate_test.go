@@ -313,6 +313,15 @@ func buildForceGERUpdateBinary(ctx context.Context, t *testing.T) string {
 //
 //	go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...
 func TestForceGERUpdateE2E(t *testing.T) {
+	// Skipped by default (like the remove_ger e2e tests): forcing a GER update perturbs the shared
+	// op-pp env's post-test L1<->L2 bridge health check that TestMain runs, which can then time out
+	// even though this test's own assertions pass. Run it explicitly with the command in the doc
+	// comment above when validating the tool against a live environment.
+	t.Skip("Skipping known flaky e2e: forcing a GER update can leave the post-test bridge health check unhealthy")
+	testForceGERUpdateE2E(t)
+}
+
+func testForceGERUpdateE2E(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}

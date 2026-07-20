@@ -123,6 +123,14 @@ func dialL1(ctx context.Context, url string) (aggkittypes.BaseEthereumClienter, 
 // one is still pending; the timer itself is only ever reset by an observed monitor event, never by
 // the send completing.
 //
+// Timer semantics / clock skew: lastGERUpdate is an L1 *block* timestamp (chain clock) while
+// elapsed is measured against the tool's local wall clock (time.Since). In practice L1 block
+// timestamps track real time closely, so the small skew between the two clocks is immaterial next
+// to a MaxTimeWithoutGERUpdate that is realistically minutes-to-hours. The skew is also safe in
+// both directions: if a block timestamp is slightly ahead of the local clock, time.Since is
+// negative, elapsed stays below the threshold, and the tool simply waits a little longer before
+// forcing an update (it never over-fires from skew, and a negative duration never panics).
+//
 // runLoop returns nil once ctx is cancelled, after every goroutine it started has finished.
 func runLoop(
 	ctx context.Context,
