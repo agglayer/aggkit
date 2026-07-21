@@ -34,6 +34,8 @@ Options:
   -w, --wait                   Poll until the latest certificate is Settled
   -i, --interval  DURATION     Poll interval with --wait (default: 5s)
   -t, --timeout   DURATION     Max time to wait with --wait, 0 = no limit (default: 10m)
+  -e, --expected-ler HASH      With --wait: poll until the settled local exit root equals HASH
+                               (0x-prefixed 32-byte hash); avoids the pre-submission settlement race
       --tls                    Use TLS for the gRPC connection
   -h, --help                   Show this help
 
@@ -62,6 +64,7 @@ WAIT_FOR_SETTLED=false
 POLL_INTERVAL="5s"
 POLL_TIMEOUT="10m"
 USE_TLS=false
+EXPECTED_LER=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -77,6 +80,9 @@ while [[ $# -gt 0 ]]; do
         -t|--timeout)
             [[ $# -lt 2 ]] && { log_error "--timeout requires a value"; usage; }
             POLL_TIMEOUT="$2"; shift 2 ;;
+        -e|--expected-ler)
+            [[ $# -lt 2 ]] && { log_error "--expected-ler requires a value"; usage; }
+            EXPECTED_LER="$2"; shift 2 ;;
         --tls)
             USE_TLS=true; shift ;;
         *)
@@ -110,6 +116,7 @@ ARGS=(-grpc "$AGGLAYER_GRPC_URL" -network "$NETWORK_ID")
 [[ "$USE_TLS" == "true" ]] && ARGS+=(-tls)
 if [[ "$WAIT_FOR_SETTLED" == "true" ]]; then
     ARGS+=(-wait -interval "$POLL_INTERVAL" -timeout "$POLL_TIMEOUT")
+    [[ -n "$EXPECTED_LER" ]] && ARGS+=(-expected-ler "$EXPECTED_LER")
 fi
 
 cd "$REPO_ROOT"

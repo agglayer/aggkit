@@ -36,8 +36,20 @@ func encodeRPC(t *testing.T, id int, result string) []byte {
 	return b
 }
 
+// withFastAccountRangeReseek shrinks the end-of-walk verification re-seek (one try, no delay) so
+// tests don't pay the production retry/backoff. It restores the originals on cleanup. It mutates
+// package vars, so callers must not run in parallel.
+func withFastAccountRangeReseek(t *testing.T) {
+	t.Helper()
+	origRetries, origDelay := accountRangeEmptyRetries, accountRangeEmptyRetryDelay
+	accountRangeEmptyRetries, accountRangeEmptyRetryDelay = 1, 0
+	t.Cleanup(func() {
+		accountRangeEmptyRetries, accountRangeEmptyRetryDelay = origRetries, origDelay
+	})
+}
+
 func TestCollectAccountsViaStateDump_Paginates(t *testing.T) {
-	t.Parallel()
+	withFastAccountRangeReseek(t)
 
 	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,15 +60,19 @@ func TestCollectAccountsViaStateDump_Paginates(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		var result string
-		if calls == 1 {
+		switch calls {
+		case 1:
 			// Non-zero base64 next cursor → tool must request a second page.
 			next := base64.StdEncoding.EncodeToString([]byte{0x01, 0x02, 0x03})
 			result = `{"root":"0x0","accounts":{` +
 				`"` + stepAAddr1 + `":{"address":"` + stepAAddr1 + `"},` +
 				`"` + stepAAddr2 + `":{"address":"` + stepAAddr2 + `"}},"next":"` + next + `"}`
-		} else {
+		case 2:
 			result = `{"root":"0x0","accounts":{` +
 				`"` + stepAAddr3 + `":{"address":"` + stepAAddr3 + `"}},"next":""}`
+		default:
+			// End-of-walk verification re-seek past the highest key: genuinely no new accounts.
+			result = `{"root":"0x0","accounts":{},"next":""}`
 		}
 		_, _ = w.Write(encodeRPC(t, req.ID, result))
 	}))
@@ -65,12 +81,55 @@ func TestCollectAccountsViaStateDump_Paginates(t *testing.T) {
 	cfg := &Config{L2RPCURL: server.URL}
 	addrs, err := collectAccountsViaStateDump(context.Background(), cfg, 100)
 	require.NoError(t, err)
-	require.Equal(t, 2, calls, "must paginate until next is empty")
 	require.ElementsMatch(t, []common.Address{
 		common.HexToAddress(stepAAddr1),
 		common.HexToAddress(stepAAddr2),
 		common.HexToAddress(stepAAddr3),
 	}, addrs)
+}
+
+// TestCollectAccountsViaStateDump_ReseeksPastPrematureEmptyCursor guards the fix: the cdk-erigon
+// endpoint can return a valid page with an empty "next" cursor before the trie ends. The dump must
+// not treat that as done — it re-seeks past the highest key seen and recovers the remaining
+// accounts instead of silently truncating.
+func TestCollectAccountsViaStateDump_ReseeksPastPrematureEmptyCursor(t *testing.T) {
+	withFastAccountRangeReseek(t)
+
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req jsonRPCRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.Equal(t, rpcMethodDebugAccountRange, req.Method)
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+
+		var result string
+		switch calls {
+		case 1:
+			// PREMATURE empty cursor: only addr1 returned, but addr2/addr3 still remain.
+			result = `{"root":"0x0","accounts":{` +
+				`"` + stepAAddr1 + `":{"address":"` + stepAAddr1 + `"}},"next":""}`
+		case 2:
+			// Re-seek past addr1 recovers the accounts the premature cursor would have dropped.
+			result = `{"root":"0x0","accounts":{` +
+				`"` + stepAAddr2 + `":{"address":"` + stepAAddr2 + `"},` +
+				`"` + stepAAddr3 + `":{"address":"` + stepAAddr3 + `"}},"next":""}`
+		default:
+			// Re-seek past addr3: genuinely empty → the walk is complete.
+			result = `{"root":"0x0","accounts":{},"next":""}`
+		}
+		_, _ = w.Write(encodeRPC(t, req.ID, result))
+	}))
+	defer server.Close()
+
+	cfg := &Config{L2RPCURL: server.URL}
+	addrs, err := collectAccountsViaStateDump(context.Background(), cfg, 100)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []common.Address{
+		common.HexToAddress(stepAAddr1),
+		common.HexToAddress(stepAAddr2),
+		common.HexToAddress(stepAAddr3),
+	}, addrs, "re-seek must recover accounts dropped by a premature empty cursor")
 }
 
 func TestFetchTransferHoldersInRange_ExtractsFromAndTo(t *testing.T) {

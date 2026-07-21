@@ -1,6 +1,7 @@
 package exit_certificate
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/hex"
@@ -42,6 +43,15 @@ var transferTopic = common.HexToHash(transferEventSignature)
 // beyond any realistic chain state — before the dump aborts with an error. It is a var (not a
 // const) so tests can shrink it to exercise the truncation guard.
 var maxAccountRangePages = 25_000_000
+
+// accountRangeEmptyRetries and accountRangeEmptyRetryDelay control the end-of-walk verification
+// re-seek: how many times an empty re-seek result is retried (to ride out the endpoint's transient
+// truncated/empty pages) before concluding the trie is exhausted, and how long to pause between
+// tries. They are vars so tests can shrink them.
+var (
+	accountRangeEmptyRetries    = 3
+	accountRangeEmptyRetryDelay = 500 * time.Millisecond
+)
 
 // accountRangeDialect distinguishes the two incompatible debug_accountRange ABIs in the wild.
 //
@@ -148,6 +158,7 @@ func collectAccountsViaStateDump(ctx context.Context, cfg *Config, targetBlock u
 
 	addrSet := make(map[common.Address]struct{})
 	var start []byte
+	var frontier []byte // highest raw account key seen so far (monotonic), for re-seeking
 	stepStart := time.Now()
 
 	completed := false
@@ -159,17 +170,40 @@ func collectAccountsViaStateDump(ctx context.Context, cfg *Config, targetBlock u
 			if addr, ok := accountAddress(key, acc.Address); ok {
 				addrSet[addr] = struct{}{}
 			}
+			if kb, ok := accountKeyBytes(key); ok && (frontier == nil || bytes.Compare(kb, frontier) > 0) {
+				frontier = kb
+			}
 		}
 
 		next, err := decodeNextKey(res.Next)
 		if err != nil {
 			return nil, fmt.Errorf("decode accountRange next cursor: %w", err)
 		}
-		if len(next) == 0 {
+
+		// Decide the next page's start. This cdk-erigon endpoint (behind a load balancer)
+		// intermittently returns a valid HTTP 200 page with an empty "next" cursor BEFORE the trie
+		// end, which naive cursor-following mistakes for completion — silently dropping accounts
+		// (observed: 735k of 899k). For the erigon dialect we therefore never trust an empty cursor
+		// as "done": we re-seek strictly past the highest key seen and only stop once a re-seek
+		// genuinely returns no new account (retried a few times to ride out transient empty pages).
+		// The geth dialect (a real archive node) keeps the plain cursor semantics.
+		if len(next) > 0 {
+			start = next
+		} else if dialect == dialectErigon && frontier != nil {
+			reseek, done, rerr := reseekPastFrontier(ctx, cfg.L2RPCURL, blockTag, frontier, dialect)
+			if rerr != nil {
+				return nil, rerr
+			}
+			if done {
+				completed = true
+				break
+			}
+			res = reseek
+			continue
+		} else {
 			completed = true
 			break
 		}
-		start = next
 
 		if (page+1)%accountRangeProgressInterval == 0 {
 			log.Infof("  debug_accountRange: %d accounts so far (%.0fs)",
@@ -183,11 +217,11 @@ func collectAccountsViaStateDump(ctx context.Context, cfg *Config, targetBlock u
 	}
 
 	// Fail loudly instead of returning a silently-truncated set: if the page cap was hit while the
-	// node was still returning a non-empty "next" cursor, later steps would run on incomplete data
-	// and under-report balances.
+	// node was still returning accounts, later steps would run on incomplete data and under-report
+	// balances.
 	if !completed {
 		return nil, fmt.Errorf("debug_accountRange did not complete after %d pages (node kept "+
-			"returning a non-empty next cursor); aborting to avoid a truncated address set", maxAccountRangePages)
+			"returning accounts); aborting to avoid a truncated address set", maxAccountRangePages)
 	}
 
 	// Guard against a node that returns an empty dump without an RPC error — e.g. a stock geth
@@ -205,6 +239,64 @@ func collectAccountsViaStateDump(ctx context.Context, cfg *Config, targetBlock u
 		addresses = append(addresses, addr)
 	}
 	return addresses, nil
+}
+
+// accountKeyBytes decodes a debug_accountRange map key (a 0x-hex account key — the address for the
+// erigon dialect) into its raw bytes, used to track the pagination frontier when re-seeking past an
+// intermittently-truncated page.
+func accountKeyBytes(key string) ([]byte, bool) {
+	s := strings.TrimPrefix(key, "0x")
+	s = strings.TrimPrefix(s, "0X")
+	if len(s) == 0 || len(s)%2 != 0 {
+		return nil, false
+	}
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return nil, false
+	}
+	return b, true
+}
+
+// incrementKey returns key+1 (big-endian). On overflow (an all-0xff key) it returns an all-0xff key
+// of the same length, so the follow-up seek lands at the very end of the address space.
+func incrementKey(key []byte) []byte {
+	out := make([]byte, len(key))
+	copy(out, key)
+	for i := len(out) - 1; i >= 0; i-- {
+		out[i]++
+		if out[i] != 0 {
+			return out
+		}
+	}
+	for i := range out {
+		out[i] = 0xff
+	}
+	return out
+}
+
+// reseekPastFrontier fetches the accounts strictly after frontier. It returns (page, done=false) when
+// new accounts remain, or (nil, done=true) once a re-seek yields no new account. Empty results are
+// retried a few times to ride out the endpoint's intermittent truncated pages (a valid HTTP 200
+// response with no accounts / an empty cursor), which would otherwise be mistaken for the trie end.
+func reseekPastFrontier(
+	ctx context.Context, rpcURL, blockTag string, frontier []byte, dialect accountRangeDialect,
+) (*accountRangeResult, bool, error) {
+	start := incrementKey(frontier)
+	for attempt := 0; attempt < accountRangeEmptyRetries; attempt++ {
+		res, err := debugAccountRange(ctx, rpcURL, blockTag, start, accountRangePageSize, dialect)
+		if err != nil {
+			return nil, false, err
+		}
+		for key := range res.Accounts {
+			if kb, ok := accountKeyBytes(key); ok && bytes.Compare(kb, frontier) > 0 {
+				return res, false, nil
+			}
+		}
+		if accountRangeEmptyRetryDelay > 0 {
+			time.Sleep(accountRangeEmptyRetryDelay) // brief pause before retrying an empty page
+		}
+	}
+	return nil, true, nil
 }
 
 // firstAccountRangePage fetches the first page of the state dump, auto-detecting the node's

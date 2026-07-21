@@ -24,6 +24,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
@@ -61,12 +62,23 @@ func run(args []string, newClient clientFactory) error {
 	wait := fs.Bool("wait", false, "poll until the latest certificate is Settled")
 	interval := fs.Duration("interval", defaultPollInterval, "poll interval when -wait is set")
 	timeout := fs.Duration("timeout", defaultWaitTimeout, "max time to wait with -wait (0 = no limit)")
+	expectedLERFlag := fs.String("expected-ler", "",
+		"with -wait: keep polling until the latest settled certificate's NewLocalExitRoot equals this "+
+			"0x-prefixed 32-byte hash (defeats the settlement race where no pending certificate exists yet)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	if *grpcURL == "" {
 		return errors.New("agglayer gRPC URL is required (set AGGLAYER_GRPC_URL or pass -grpc)")
+	}
+
+	var expectedLER common.Hash
+	if *expectedLERFlag != "" {
+		if !isHexHash(*expectedLERFlag) {
+			return fmt.Errorf("invalid -expected-ler %q: must be a 0x-prefixed 32-byte hex hash", *expectedLERFlag)
+		}
+		expectedLER = common.HexToHash(*expectedLERFlag)
 	}
 
 	logger := log.WithFields("module", "agglayer_status")
@@ -91,7 +103,7 @@ func run(args []string, newClient clientFactory) error {
 		return printStatus(ctx, client, netID)
 	}
 
-	return waitForSettled(ctx, client, netID, *interval, *timeout)
+	return waitForSettled(ctx, client, netID, *interval, *timeout, expectedLER)
 }
 
 // printStatus shows the latest certificate (pending if any, otherwise settled).
@@ -148,12 +160,16 @@ func printHeader(h *agglayertypes.CertificateHeader, label string) {
 	}
 }
 
-// waitForSettled polls GetNetworkInfo until the latest certificate is settled (no open
-// pending certificate). Returns an error if a pending certificate is in error state or
-// the timeout elapses.
+// waitForSettled polls GetNetworkInfo until the pending pipeline is drained (no open pending
+// certificate, or the latest pending is settled). When expectedLER is non-zero it additionally
+// requires the latest settled certificate's NewLocalExitRoot to equal it — this closes the
+// settlement race where, right after a bridge, no pending certificate exists yet (the aggsender
+// has not submitted it), so a plain "no pending == settled" check would return prematurely and
+// leave the L2 bridge LER ahead of the agglayer's settled LER. Returns an error if a pending
+// certificate is in error state or the timeout elapses.
 func waitForSettled(
 	ctx context.Context, client agglayer.AgglayerClientInterface,
-	netID uint32, interval, timeout time.Duration,
+	netID uint32, interval, timeout time.Duration, expectedLER common.Hash,
 ) error {
 	if timeout > 0 {
 		var cancel context.CancelFunc
@@ -161,8 +177,13 @@ func waitForSettled(
 		defer cancel()
 	}
 
-	fmt.Printf("Waiting until the latest certificate is settled (interval=%s, timeout=%s)...\n",
-		interval, durStr(timeout))
+	if expectedLER != (common.Hash{}) {
+		fmt.Printf("Waiting until the settled local exit root is %s (interval=%s, timeout=%s)...\n",
+			expectedLER.Hex(), interval, durStr(timeout))
+	} else {
+		fmt.Printf("Waiting until the latest certificate is settled (interval=%s, timeout=%s)...\n",
+			interval, durStr(timeout))
+	}
 
 	start := time.Now()
 	for {
@@ -184,22 +205,25 @@ func waitForSettled(
 			return fmt.Errorf("get network info: %w", err)
 		}
 
-		if info.LatestPendingStatus != nil {
-			status := *info.LatestPendingStatus
-			height := u64ptr(info.LatestPendingHeight)
-			switch {
-			case status.IsInError():
-				return fmt.Errorf("latest certificate (height %s) is in error state", height)
-			case status.IsSettled():
-				fmt.Printf("Certificate settled (height %s).\n", height)
-				return printStatus(ctx, client, netID)
-			default:
-				fmt.Printf("  height=%s status=%s — still waiting... (%s elapsed)\n", height, status.String(), elapsed)
-			}
-		} else {
-			// No open pending certificate: whatever was submitted has settled.
-			fmt.Printf("No pending certificate — latest is settled. (%s elapsed)\n", elapsed)
+		// A pending certificate in error is terminal regardless of the expected LER.
+		if info.LatestPendingStatus != nil && info.LatestPendingStatus.IsInError() {
+			return fmt.Errorf("latest certificate (height %s) is in error state", u64ptr(info.LatestPendingHeight))
+		}
+
+		done, err := settlementReached(ctx, client, netID, info, expectedLER)
+		if err != nil {
+			return err
+		}
+		if done {
+			fmt.Printf("Settlement reached. (%s elapsed)\n", elapsed)
 			return printStatus(ctx, client, netID)
+		}
+
+		if info.LatestPendingStatus != nil {
+			fmt.Printf("  height=%s status=%s — still waiting... (%s elapsed)\n",
+				u64ptr(info.LatestPendingHeight), info.LatestPendingStatus.String(), elapsed)
+		} else {
+			fmt.Printf("  settled LER not yet %s — still waiting... (%s elapsed)\n", expectedLER.Hex(), elapsed)
 		}
 
 		select {
@@ -208,6 +232,50 @@ func waitForSettled(
 		case <-time.After(interval):
 		}
 	}
+}
+
+// settlementReached reports whether settlement is complete: the pending pipeline is drained (no
+// open pending certificate, or the latest pending is settled) and — when expectedLER is non-zero —
+// the latest settled certificate's NewLocalExitRoot equals it.
+func settlementReached(
+	ctx context.Context, client agglayer.AgglayerClientInterface,
+	netID uint32, info agglayertypes.NetworkInfo, expectedLER common.Hash,
+) (bool, error) {
+	drained := info.LatestPendingStatus == nil || info.LatestPendingStatus.IsSettled()
+	if !drained {
+		return false, nil
+	}
+	if expectedLER == (common.Hash{}) {
+		return true, nil
+	}
+	settled, err := client.GetLatestSettledCertificateHeader(ctx, netID)
+	if err != nil {
+		return false, fmt.Errorf("get latest settled certificate header: %w", err)
+	}
+	if settled == nil {
+		return false, nil
+	}
+	return settled.NewLocalExitRoot == expectedLER, nil
+}
+
+// isHexHash reports whether s is a 0x-prefixed 32-byte (64 hex digit) hash.
+func isHexHash(s string) bool {
+	if !strings.HasPrefix(s, "0x") && !strings.HasPrefix(s, "0X") {
+		return false
+	}
+	hexPart := s[2:]
+	if len(hexPart) != common.HashLength*2 {
+		return false
+	}
+	for _, c := range hexPart {
+		isDigit := c >= '0' && c <= '9'
+		isLower := c >= 'a' && c <= 'f'
+		isUpper := c >= 'A' && c <= 'F'
+		if !isDigit && !isLower && !isUpper {
+			return false
+		}
+	}
+	return true
 }
 
 // isNetworkTypeUndetermined reports whether err is the transient agglayer error
