@@ -352,8 +352,9 @@ type L1InfoTreeLeafResponse struct {
 // "is_synced":true,"is_active":true},"l2_info":{"contract_deposit_count":200,
 // "synchronized_deposit_count":200,"is_synced":true,"is_active":true}}
 type SyncStatus struct {
-	L1Info *NetworkSyncInfo `json:"l1_info" description:"L1 network bridge sync status"`
-	L2Info *NetworkSyncInfo `json:"l2_info" description:"L2 network bridge sync status"`
+	L1Info    *NetworkSyncInfo `json:"l1_info" description:"L1 network bridge sync status"`
+	L2Info    *NetworkSyncInfo `json:"l2_info" description:"L2 network bridge sync status"`
+	L2GERInfo *L2GERSyncInfo   `json:"l2_ger_info,omitempty" description:"l2gersync (injected-GER) sync status"`
 }
 
 // NetworkSyncInfo represents the bridge synchronization status of a single network (L1 or L2)
@@ -367,6 +368,14 @@ type NetworkSyncInfo struct {
 	IsActive                 bool   `json:"is_active" example:"true" description:"True if bridge syncer is running"`
 	LastProcessedBlock       uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last block processed"` //nolint:lll
 	NetworkBlock             uint64 `json:"network_block,omitempty" example:"12350000" description:"Current latest block"`
+}
+
+// L2GERSyncInfo represents the l2gersync (injected-GER) synchronization status.
+// @Description l2gersync (injected-GER) synchronization status
+// @example {"is_active":true,"last_processed_block":12345678}
+type L2GERSyncInfo struct {
+	IsActive           bool   `json:"is_active" example:"true" description:"True if the l2gersync syncer is available"`                     //nolint:lll
+	LastProcessedBlock uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last L2 block processed by l2gersync"` //nolint:lll
 }
 
 // HealthCheckResponse represents the JSON returned by HealthCheckHandler.

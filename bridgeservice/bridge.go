@@ -1261,11 +1261,13 @@ func (b *BridgeService) populateNetworkSyncInfo(
 	return statusCode
 }
 
-// GetSyncStatusHandler returns the bridge synchronization status for L1 and L2 networks.
+// GetSyncStatusHandler returns the bridge synchronization status for L1 and L2 networks,
+// as well as the l2gersync (injected-GER) synchronization status.
 //
 // @Summary Get bridge synchronization status
 // @Description Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.
 // @Description Shows if bridge syncers are active and whether they're keeping up with on-chain events.
+// @Description Also reports the l2gersync (injected-GER) sync status when available.
 // @Tags sync
 // @Produce json
 // @Success 200 {object} types.SyncStatus "Bridge synchronization status for L1 and L2 networks"
@@ -1321,6 +1323,26 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 		}
 	} else {
 		syncStatus.L2Info = &types.NetworkSyncInfo{
+			IsActive: false,
+		}
+	}
+
+	// Check l2gersync (injected-GER) sync status
+	if b.injectedGERs != nil {
+		syncStatus.L2GERInfo = &types.L2GERSyncInfo{
+			IsActive: true,
+		}
+
+		lastProcessedBlock, err := b.injectedGERs.GetLastProcessedBlock(ctx)
+		if err != nil {
+			b.logger.Errorf("failed to get last processed block for l2gersync: %s", err)
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get last processed block for l2gersync: %s", err)})
+			return
+		}
+		syncStatus.L2GERInfo.LastProcessedBlock = lastProcessedBlock
+	} else {
+		syncStatus.L2GERInfo = &types.L2GERSyncInfo{
 			IsActive: false,
 		}
 	}

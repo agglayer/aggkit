@@ -3133,6 +3133,11 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				Return(nil, int(tc.l2BridgeCount), nil).
 				Once()
 
+			// l2gersync status check
+			b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
+				Return(uint64(0), nil).
+				Once()
+
 			// Add expectations for block information when not synced
 			if !tc.l1IsSynced {
 				b.bridgeL1.EXPECT().GetLastProcessedBlock(mock.Anything).
@@ -3331,6 +3336,9 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 					Return(nil, 200, nil).
 					Once()
+				b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(uint64(0), nil).
+					Once()
 				return b
 			},
 			expectedStatusCode: http.StatusOK,
@@ -3352,6 +3360,9 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				b.bridgeL2.EXPECT().IsActive(mock.Anything).
 					Return(false).
 					Once()
+				b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(uint64(0), nil).
+					Once()
 				return b
 			},
 			expectedStatusCode: http.StatusOK,
@@ -3366,6 +3377,9 @@ func TestGetSyncStatusHandler(t *testing.T) {
 					Once()
 				b.bridgeL2.EXPECT().IsActive(mock.Anything).
 					Return(false).
+					Once()
+				b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(uint64(0), nil).
 					Once()
 				return b
 			},
