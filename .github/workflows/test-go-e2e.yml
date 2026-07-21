@@ -84,10 +84,9 @@ jobs:
             group: default
             run: "^(TestJustBridge|TestAutoClaimL1ToL2AllowAll|TestAutoClaimL1ToL2APIApprove|TestAutoClaimL1ToL2BasicFilter|TestAutoClaimL2ToL1AllowAll|TestAutoClaimL2ToL2AllowAll|TestBridgeL2ToL2|TestBackwardForwardLET_NoDivergence|TestBackwardForwardLET_Case1|TestBackwardForwardLET_Case2|TestBackwardForwardLET_Case3|TestBackwardForwardLET_Case4|TestBackwardForwardLET_AggsenderAPIFallback)$"
           # Remove-GER groups (op-pp): split across 3 CI matrix entries under the 20-min-per-group
-          # budget. This split is PROVISIONAL -- S8 measures actual per-test wall-clock durations and
-          # finalizes the grouping (and tightens per-test timeouts) in S9; today B1/B2 alone can take
-          # up to ~25/35 minutes by their internal context budgets, which does not yet fit the 20-min
-          # target and is expected to be revisited then.
+          # budget. Measured passing-path wall-clock (S8/S9 reports) is well under this budget for
+          # every group (all five tests combined finish in under 6 minutes single-run), so no further
+          # regrouping is needed.
           - env: op-pp
             group: removeger-fast
             run: TestRemoveGER_NoProblematicClaims|TestRemoveGER_CategoryA|TestGenerateInvalidGER

@@ -64,7 +64,20 @@ GER <GER_HASH> not found in L1 contract globalExitRootMap
 GER lookup for <GER_HASH> failed in L1 contract: ...
 ```
 
-When the l2gersync is up-to-date with L1 and detects a GER on L2 that doesn't exist on L1, it will log these errors. The component performs a direct check against the L1 contract's `globalExitRootMap` to verify if the GER exists (timestamp = 0 means not found).
+These errors are logged on **every retry** while an invalid GER is present — not gated on whether `L1InfoTreeSync` is up-to-date with L1 (that check, and the direct `globalExitRootMap` lookup against the L1 contract, are informational-only log lines from here on; neither gates the recovery decision, which is entirely L2-side — see "Blocking and automatic recovery" below).
+
+#### Blocking and automatic recovery
+
+Once l2gersync hits an invalid GER (an `UpdateHashChainValue` insert event whose GER cannot be found in the local L1 info tree), **it blocks**: it does not skip the block, does not crash, and does not exit — it retries the same block forever, logging the error patterns above on every attempt. This is deliberately noisy but never fatal: the blocking error is wrapped with the `sync.ErrRetryForeverNonFatal` sentinel, which is exempt from the `MaxRetryAttemptsAfterError` fatal guard that would otherwise apply to appender errors. It is safe to leave l2gersync running in this state while performing the "Remove GER" step below — no restart or config change is required.
+
+Once the operator calls `removeGlobalExitRoots` (step 2 of the Reaction section), **l2gersync recovers automatically** on its next retry of the blocked insert: it re-checks two L2-only signals, both read at the current L2 head, and only skips the stale insert when BOTH agree the GER was actually removed:
+
+- a durable `UpdateRemovalHashChainValue` removal event for that GER, scanned from the insert block onward, exists (≥ 1 match); AND
+- the L2 `globalExitRootMap` entry for that GER currently reads `0`.
+
+Requiring both guards against two false-unstick scenarios: a transient/stale zero-map read with no real removal event (first condition fails), and a removal that gets reversed by re-injection before the retry runs (second condition fails). Once both agree, l2gersync skips the stale insert and resumes normal processing from the removal-event block onward.
+
+**Verifying recovery:** poll `GET /bridge/v1/sync-status` on the L2 bridgeservice and watch `l2_ger_info.last_processed_block` (see [Bridge service component](./bridge_service.md#sync-status)). While blocked it stays pinned at (or just below) the invalid insert's block even as the L2 chain head keeps advancing; once recovery kicks in it advances past the `removeGlobalExitRoots` transaction's block, confirming l2gersync is unstuck and caught back up.
 
 #### Preventive detection
 
@@ -1009,12 +1022,20 @@ After completing the recovery steps for your category, perform these final check
    - Certificates are being generated and sent successfully
    - No "certificate validation failed" errors
 
-4. **Verify claim states (if applicable):**
+4. **Verify l2gersync unstuck:**
+   ```bash
+   curl "$AGGKIT_BRIDGE_URL/bridge/v1/sync-status" | jq .l2_ger_info
+   ```
+   `last_processed_block` should now be advancing past the `removeGlobalExitRoots` transaction's
+   block (see "Blocking and automatic recovery" above). If it is still pinned below that block, the
+   removal has not yet been observed by l2gersync — wait for its next retry and check again.
+
+5. **Verify claim states (if applicable):**
    - Category A: Unset claims remain unclaimed
    - Category B.2: New claims with correct indexes are properly recorded
    - Aggkit bridgesync database has correct claim records
 
-5. **Monitor certificate settlement:**
+6. **Monitor certificate settlement:**
    - Check that new certificates are being settled by agglayer
    - Verify L1InfoTree sync is operating normally
    - Confirm no new invalid GER detection
