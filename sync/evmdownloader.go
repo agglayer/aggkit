@@ -529,6 +529,15 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 					// This error class must retry forever and must never trigger the fatal guard,
 					// regardless of the configured MaxRetryAttemptsAfterError.
 					d.rh.waitRetryPeriod(ctx)
+					// Bail out if the context was cancelled during the wait (node shutdown or a
+					// reorg-triggered reset): otherwise this loop would spin forever ignoring
+					// cancellation, leaking the downloader goroutine and hammering the RPC
+					// endpoints. Returning nil matches the other cancellation exits in this
+					// function; the driver re-downloads from lastProcessed+1 on its next Sync
+					// iteration.
+					if ctx.Err() != nil {
+						return nil
+					}
 					continue
 				}
 				d.rh.Handle(ctx, "appendLogs", attempts)
