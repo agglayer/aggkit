@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -161,7 +162,7 @@ func TestWaitForSettled(t *testing.T) {
 		client.EXPECT().GetLatestPendingCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil)
 		client.EXPECT().GetLatestSettledCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil)
 
-		require.NoError(t, waitForSettled(context.Background(), client, 1, interval, time.Minute))
+		require.NoError(t, waitForSettled(context.Background(), client, 1, interval, time.Minute, common.Hash{}))
 	})
 
 	t.Run("pending already settled", func(t *testing.T) {
@@ -174,7 +175,7 @@ func TestWaitForSettled(t *testing.T) {
 		client.EXPECT().GetLatestPendingCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil)
 		client.EXPECT().GetLatestSettledCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil)
 
-		require.NoError(t, waitForSettled(context.Background(), client, 1, interval, time.Minute))
+		require.NoError(t, waitForSettled(context.Background(), client, 1, interval, time.Minute, common.Hash{}))
 	})
 
 	t.Run("pending in error", func(t *testing.T) {
@@ -185,7 +186,7 @@ func TestWaitForSettled(t *testing.T) {
 			LatestPendingStatus: ptrStatus(agglayertypes.InError),
 		}, nil)
 
-		err := waitForSettled(context.Background(), client, 1, interval, time.Minute)
+		err := waitForSettled(context.Background(), client, 1, interval, time.Minute, common.Hash{})
 		require.EqualError(t, err, "latest certificate (height 8) is in error state")
 	})
 
@@ -195,7 +196,7 @@ func TestWaitForSettled(t *testing.T) {
 		client.EXPECT().GetNetworkInfo(mockCtx(), uint32(1)).
 			Return(agglayertypes.NetworkInfo{}, errors.New("conn refused"))
 
-		err := waitForSettled(context.Background(), client, 1, interval, time.Minute)
+		err := waitForSettled(context.Background(), client, 1, interval, time.Minute, common.Hash{})
 		require.EqualError(t, err, "get network info: conn refused")
 	})
 
@@ -210,7 +211,7 @@ func TestWaitForSettled(t *testing.T) {
 		client.EXPECT().GetLatestPendingCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil)
 		client.EXPECT().GetLatestSettledCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil)
 
-		require.NoError(t, waitForSettled(context.Background(), client, 1, interval, time.Minute))
+		require.NoError(t, waitForSettled(context.Background(), client, 1, interval, time.Minute, common.Hash{}))
 	})
 
 	t.Run("polls until settled", func(t *testing.T) {
@@ -228,7 +229,7 @@ func TestWaitForSettled(t *testing.T) {
 		client.EXPECT().GetLatestPendingCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil)
 		client.EXPECT().GetLatestSettledCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil)
 
-		require.NoError(t, waitForSettled(context.Background(), client, 1, interval, time.Minute))
+		require.NoError(t, waitForSettled(context.Background(), client, 1, interval, time.Minute, common.Hash{}))
 	})
 
 	t.Run("times out while still pending", func(t *testing.T) {
@@ -239,10 +240,53 @@ func TestWaitForSettled(t *testing.T) {
 			LatestPendingStatus: ptrStatus(agglayertypes.Proven),
 		}, nil)
 
-		err := waitForSettled(context.Background(), client, 1, interval, 20*time.Millisecond)
+		err := waitForSettled(context.Background(), client, 1, interval, 20*time.Millisecond, common.Hash{})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "timed out waiting for settlement")
 	})
+
+	t.Run("expected LER: waits until the settled LER matches", func(t *testing.T) {
+		t.Parallel()
+		expected := common.HexToHash("0xabc")
+		client := mocks.NewAgglayerClientMock(t)
+		// Both polls see no pending certificate (the classic race), so without the
+		// expected-LER check the wait would return on the first poll. The settled LER
+		// only matches on the second poll.
+		client.EXPECT().GetNetworkInfo(mockCtx(), uint32(1)).
+			Return(agglayertypes.NetworkInfo{LatestPendingStatus: nil}, nil).Twice()
+		client.EXPECT().GetLatestSettledCertificateHeader(mockCtx(), uint32(1)).
+			Return(&agglayertypes.CertificateHeader{NewLocalExitRoot: common.HexToHash("0x111")}, nil).Once()
+		client.EXPECT().GetLatestSettledCertificateHeader(mockCtx(), uint32(1)).
+			Return(&agglayertypes.CertificateHeader{NewLocalExitRoot: expected}, nil).Once()
+		// printStatus after done.
+		client.EXPECT().GetLatestPendingCertificateHeader(mockCtx(), uint32(1)).Return(nil, nil).Once()
+		client.EXPECT().GetLatestSettledCertificateHeader(mockCtx(), uint32(1)).
+			Return(&agglayertypes.CertificateHeader{NewLocalExitRoot: expected}, nil).Once()
+
+		require.NoError(t, waitForSettled(context.Background(), client, 1, interval, time.Minute, expected))
+	})
+
+	t.Run("expected LER: pending in error still fails", func(t *testing.T) {
+		t.Parallel()
+		client := mocks.NewAgglayerClientMock(t)
+		client.EXPECT().GetNetworkInfo(mockCtx(), uint32(1)).Return(agglayertypes.NetworkInfo{
+			LatestPendingHeight: ptrUint64(8),
+			LatestPendingStatus: ptrStatus(agglayertypes.InError),
+		}, nil)
+
+		err := waitForSettled(context.Background(), client, 1, interval, time.Minute, common.HexToHash("0xabc"))
+		require.EqualError(t, err, "latest certificate (height 8) is in error state")
+	})
+}
+
+func TestIsHexHash(t *testing.T) {
+	t.Parallel()
+	require.True(t, isHexHash("0x"+strings.Repeat("a", 64)))
+	require.True(t, isHexHash("0X"+strings.Repeat("0", 64)))
+	require.False(t, isHexHash(strings.Repeat("a", 64)))      // missing 0x
+	require.False(t, isHexHash("0x"+strings.Repeat("a", 63))) // too short
+	require.False(t, isHexHash("0x"+strings.Repeat("g", 64))) // non-hex
+	require.False(t, isHexHash(""))
 }
 
 func TestRun(t *testing.T) {
