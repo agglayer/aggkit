@@ -319,6 +319,26 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
 		},
+		{
+			// S2 §3 reorg scenario: the insert block reorgs out with NO actual
+			// removeGlobalExitRoots event ever emitted (S-log stays empty, since none was ever
+			// emitted for this GER). A bare reorg-out must NOT falsely unstick the syncer:
+			// isGERRemovedFromL2 short-circuits on the empty S-log scan and never even calls
+			// S-map (GlobalExitRootMap) -- so it does not matter what S-map would have reported,
+			// the appender must keep returning the blocking error. l2ContractTimestamp is
+			// deliberately left unset: the harness only mocks CallContract on the L2 client when
+			// removalLogFound is true, so if isGERRemovedFromL2 ever called the L2 map here, the
+			// unmocked call would panic and fail this test.
+			name:                 "reorg_insert_block_reorged_out_no_removal_event_never_unsticks",
+			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
+			isUpToDateResult:     true,
+			isUpToDateError:      nil,
+			l1ContractTimestamp:  big.NewInt(0),
+			l1ContractError:      nil,
+			removalLogFound:      false,
+			expectError:          true,
+			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
+		},
 	}
 
 	for _, tt := range tests {
@@ -418,9 +438,18 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			if tt.expectError {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.expectedErrorMessage)
+				// The blocking error must always be retry-forever-non-fatal: while the invalid GER
+				// is present on L2 and absent from the L1 info tree, the appender keeps erroring but
+				// must never route into RetryHandler's fatal guard (plan S4 intent 1).
+				require.ErrorIs(t, err, sync.ErrRetryForeverNonFatal,
+					"blocking error must be wrapped with sync.ErrRetryForeverNonFatal so it never fatals")
 			} else {
 				require.NoError(t, err, "Expected no error when GER is removed from L2")
 			}
+			// Whether blocked (error) or genuinely skipped (nil), the stale insert must never be
+			// recorded as an event (plan S4 intent 2: the insert event is skipped, not just the error
+			// suppressed).
+			require.Empty(t, block.Events, "insert event must never be appended for an unresolved GER")
 
 			mockL2Client.AssertExpectations(t)
 			mockL1Client.AssertExpectations(t)
