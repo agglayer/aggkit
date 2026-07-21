@@ -145,7 +145,10 @@ test-unit: ## Runs the unit tests
 TEST_RUN ?=
 .PHONY: test-e2e
 test-e2e: ## Runs the e2e tests
-	go test -v -timeout 45m $(if $(TEST_RUN),-run "$(TEST_RUN)") ./test/e2e/...
+	# 60m: covers the CI matrix's remove-GER groups (test-go-e2e.yml), whose combined per-test context
+	# budgets can exceed the previous 45m; kept in step with job timeout-minutes: 60 there. Provisional
+	# -- S8/S9 tighten per-test timeouts and may lower this once real durations are measured.
+	go test -v -timeout 60m $(if $(TEST_RUN),-run "$(TEST_RUN)") ./test/e2e/...
 
 .PHONY: test-e2e-force_ger_update
 test-e2e-force_ger_update: ## Runs the isolated force_ger_update e2e test (dedicated CI job/runner only)

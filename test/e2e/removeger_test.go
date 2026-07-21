@@ -39,36 +39,41 @@ const (
 	keystorePassword = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"
 	backoffInitial   = 500 * time.Millisecond
 	backoffMax       = 10 * time.Second
+
+	// l2GERStallObserveWindow bounds how long assertL2GERSyncStalledAt watches /sync-status to
+	// confirm l2gersync has stopped advancing while the invalid GER is present. The op-pp env's L2
+	// (op-stack) produces a block every second (test/e2e/envs/op-pp/config/001/rollup.json
+	// "block_time": 1), so this window comfortably covers many L2 blocks, giving a clear signal that
+	// the chain moves while l2gersync does not.
+	l2GERStallObserveWindow = 20 * time.Second
+	// l2GERCatchUpTimeout bounds how long waitForL2GERSyncCaughtUp waits for l2gersync to resume and
+	// process past the removal block after ExecuteRecovery removes the invalid GER on-chain.
+	l2GERCatchUpTimeout = 3 * time.Minute
 )
 
 // TestRemoveGER_NoProblematicClaims runs the No Problematic Claims
 func TestRemoveGER_NoProblematicClaims(t *testing.T) {
-	t.Skip("Skipping known flaky e2e: remove-GER scenarios can leave the post-test bridge health check unhealthy")
 	testRemoveGER_NoProblematicClaims(t)
 }
 
 // TestRemoveGER_CategoryA runs the Category A
 func TestRemoveGER_CategoryA(t *testing.T) {
-	t.Skip("Skipping known flaky e2e: remove-GER scenarios can leave the post-test bridge health check unhealthy")
 	testRemoveGER_CategoryA(t)
 }
 
 // TestRemoveGER_CategoryB1 runs the Category B.1
 func TestRemoveGER_CategoryB1(t *testing.T) {
-	t.Skip("Skipping known flaky e2e: diagnosis can classify this scenario as category_b2 instead of category_b1")
 	testRemoveGER_CategoryB1(t)
 }
 
 // TestRemoveGER_CategoryB2 runs the Category B.2
 func TestRemoveGER_CategoryB2(t *testing.T) {
-	t.Skip("Skipping known flaky e2e: invalid GER log detection can time out")
 	testRemoveGER_CategoryB2(t)
 }
 
 // TestGenerateInvalidGER tests the generate subcommand end-to-end:
 // builds the CLI binary, runs generate, parses cast commands, executes them, and asserts results.
 func TestGenerateInvalidGER(t *testing.T) {
-	t.Skip("Skipping known flaky e2e: remove-GER scenarios can leave the post-test bridge health check unhealthy")
 	testGenerateInvalidGER(t)
 }
 
@@ -498,6 +503,96 @@ func waitForClaimOnBridgeService(ctx context.Context, t *testing.T, env *envs.En
 	require.NoError(t, err, "wait for claim on bridge service")
 }
 
+// assertL2GERSyncStalledAt polls the bridgeservice /sync-status endpoint over observeWindow and
+// asserts that l2gersync's LastProcessedBlock (in L2GERInfo) never reaches insertBlock -- the block
+// containing the invalid GER insert event -- while the L2 chain head keeps advancing over the same
+// window. This proves l2gersync is genuinely stuck on the invalid GER (per S2 design §7), as opposed
+// to merely running slow: the chain moves but the syncer's last-processed-block does not.
+func assertL2GERSyncStalledAt(ctx context.Context, t *testing.T, env *envs.Env, insertBlock uint64, observeWindow time.Duration) {
+	t.Helper()
+
+	startL2Block, err := env.Clients.L2.BlockNumber(ctx)
+	require.NoError(t, err, "read initial L2 chain head")
+
+	pollCtx, cancel := context.WithTimeout(ctx, observeWindow)
+	defer cancel()
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	var lastSeenProcessed uint64
+	sawL2GERInfo := false
+	for {
+		select {
+		case <-pollCtx.Done():
+			require.True(t, sawL2GERInfo, "/sync-status never returned l2_ger_info during the stall observation window")
+			endL2Block, err := env.Clients.L2.BlockNumber(ctx)
+			require.NoError(t, err, "read final L2 chain head")
+			require.Greater(t, endL2Block, startL2Block,
+				"L2 chain head must keep advancing while l2gersync is stalled (start=%d, end=%d)", startL2Block, endL2Block)
+			log.Infof("[assertL2GERSyncStalledAt] confirmed stalled: lastProcessed=%d insertBlock=%d l2Head=%d->%d",
+				lastSeenProcessed, insertBlock, startL2Block, endL2Block)
+			return
+		case <-ticker.C:
+			resp, err := env.Clients.BridgeService.GetSyncStatus(pollCtx)
+			if err != nil {
+				// Transient polling error (e.g. brief connection hiccup); keep observing rather than
+				// failing the whole assertion on a single blip.
+				log.Infof("[assertL2GERSyncStalledAt] transient /sync-status error, retrying: %v", err)
+				continue
+			}
+			require.NotNil(t, resp.L2GERInfo, "/sync-status must expose l2_ger_info for an L2 chain running l2gersync")
+			sawL2GERInfo = true
+			lastSeenProcessed = resp.L2GERInfo.LastProcessedBlock
+			require.Less(t, lastSeenProcessed, insertBlock,
+				"l2gersync must stay stalled below the invalid-GER insert block (insertBlock=%d, lastProcessed=%d)",
+				insertBlock, lastSeenProcessed)
+		}
+	}
+}
+
+// waitForL2GERSyncCaughtUp polls /sync-status until l2gersync's LastProcessedBlock (in L2GERInfo)
+// reaches at least removalBlock, within timeout. This is the core proof that l2gersync resumed and
+// processed past the removal event after ExecuteRecovery removed the invalid GER on-chain (S2 design
+// §7 "unstuck" sequence, step 1).
+func waitForL2GERSyncCaughtUp(ctx context.Context, t *testing.T, env *envs.Env, removalBlock uint64, timeout time.Duration) {
+	t.Helper()
+	pollCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	var lastSeen uint64
+	err := pollWithBackoff(pollCtx, timeout, backoffInitial, backoffMax, "l2gersync caught up past removal block",
+		func() (bool, error) {
+			resp, err := env.Clients.BridgeService.GetSyncStatus(pollCtx)
+			if err != nil {
+				// Transient polling error; keep retrying until timeout rather than failing immediately.
+				return false, nil
+			}
+			if resp.L2GERInfo == nil {
+				return false, nil
+			}
+			lastSeen = resp.L2GERInfo.LastProcessedBlock
+			return lastSeen >= removalBlock, nil
+		})
+	require.NoError(t, err, "l2gersync did not catch up past removal block %d (last seen last_processed_block=%d)",
+		removalBlock, lastSeen)
+}
+
+// assertL2GERSyncStillAlive exercises a fresh, valid L1->L2 bridge end-to-end -- including GER
+// injection served via bridgeservice /injected-l1-info-leaf, asserted inside BridgeL1ToL2 -- after
+// remove-GER recovery. This proves l2gersync truly returned to normal operation past the removal
+// (not merely unblocked once), per S2 design §7 "unstuck" sequence, step 4.
+func assertL2GERSyncStillAlive(ctx context.Context, t *testing.T, env *envs.Env) {
+	t.Helper()
+	l1Opts, l1Key, err := env.Keys.L1Keys.Checkout()
+	require.NoError(t, err)
+	defer env.Keys.L1Keys.Return(l1Key)
+	l2Opts, l2Key, err := env.Keys.L2Keys.Checkout()
+	require.NoError(t, err)
+	defer env.Keys.L2Keys.Return(l2Key)
+	require.NoError(t, BridgeL1ToL2(ctx, env, l1Opts, l2Opts),
+		"still-alive check: valid L1->L2 bridge (incl. GER injection served via /injected-l1-info-leaf) must succeed after recovery")
+}
+
 // gerHashInLogsRegex matches a 32-byte hex hash (0x + 64 hex chars) as in runbook error messages.
 var gerHashInLogsRegex = regexp.MustCompile(`0x[0-9a-fA-F]{64}`)
 
@@ -709,7 +804,8 @@ func testRemoveGER_NoProblematicClaims(t *testing.T) {
 	env := testEnv
 	require.NotNil(t, env, "testEnv must be set by TestMain")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	// 20min: base 15min budget + time for the end-of-scenario still-alive check (a full L1->L2 bridge).
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
 	// Best-effort: restore bridge if left in emergency state (e.g. on test failure)
@@ -735,14 +831,18 @@ func testRemoveGER_NoProblematicClaims(t *testing.T) {
 	injectedGER := common.Hash(gerBytes)
 
 	require.NoError(t, env.StopAggkit(ctx))
-	injectInvalidGER(ctx, t, env, injectedGER)
+	injectReceipt := injectInvalidGER(ctx, t, env, injectedGER)
 	require.NoError(t, env.StartAggkit(ctx))
 
 	assertGERExistsOnL2(ctx, t, env, injectedGER)
 
+	// --- Assert l2gersync is stalled and noisy while the invalid GER is present (S2 design §7) ---
+	assertL2GERSyncStalledAt(ctx, t, env, injectReceipt.BlockNumber.Uint64(), l2GERStallObserveWindow)
+
 	// --- GER detection (runbook-aligned): obtain GER only from logs ---
 	// Pass &injectedGER so we only accept this test's GER; when run in suite, logs contain
 	// GERs from earlier tests (CategoryA, CategoryB1) and nil would return the first one found.
+	// This is a complementary signal to the sync-status stall assertion above (also discovers the GER hash).
 	detectedGER, err := detectInvalidGERFromAggkitLogs(ctx, t, 3*time.Minute, &injectedGER)
 	require.NoError(t, err)
 	require.NotEqual(t, common.Hash{}, detectedGER, "detected GER must not be zero")
@@ -769,6 +869,12 @@ func testRemoveGER_NoProblematicClaims(t *testing.T) {
 	err = remove_ger.ExecuteRecovery(recoveryCtx, cfg, toolEnv, diagnosis)
 	require.NoError(t, err)
 
+	// removalBlock is a conservative upper bound of the removeGlobalExitRoots tx's block: ExecuteRecovery
+	// already waited for that tx's receipt, so any L2 head read now is >= the actual removal block.
+	removalBlock, err := env.Clients.L2.BlockNumber(ctx)
+	require.NoError(t, err, "read L2 chain head after recovery")
+	waitForL2GERSyncCaughtUp(ctx, t, env, removalBlock, l2GERCatchUpTimeout)
+
 	assertGERRemovedFromL2(ctx, t, env, detectedGER)
 	waitForGEROnBridgeService(ctx, t, env, detectedGER, 2*time.Minute)
 
@@ -778,6 +884,9 @@ func testRemoveGER_NoProblematicClaims(t *testing.T) {
 
 	// // --- Post-recovery ---
 	// assertNetworkHealthy(ctx, t, env)
+
+	// --- End-of-scenario still-alive check: l2gersync must serve fresh state past the removal ---
+	assertL2GERSyncStillAlive(ctx, t, env)
 }
 
 // testRemoveGER_CategoryA runs the Category A scenario: invalid GER + dummy claim (no bridge on L1), detect GER from logs, diagnose Category A, recover (unset claim), assert health.
@@ -789,7 +898,8 @@ func testRemoveGER_CategoryA(t *testing.T) {
 	env := testEnv
 	require.NotNil(t, env, "testEnv must be set by TestMain")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	// 20min: base 15min budget + time for the end-of-scenario still-alive check (a full L1->L2 bridge).
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
 	defer func() {
@@ -816,7 +926,7 @@ func testRemoveGER_CategoryA(t *testing.T) {
 		"bats GER must equal keccak256(mainnetExitRootBats, rollupExitRootBats)")
 
 	require.NoError(t, env.StopAggkit(ctx))
-	injectInvalidGER(ctx, t, env, injectedGER)
+	injectReceipt := injectInvalidGER(ctx, t, env, injectedGER)
 	assertGERExistsOnL2(ctx, t, env, injectedGER)
 	globalIndex := batsGlobalIndexCategoryA
 	params := batsCategoryADummyClaimParams() // exact bats params so leaf hashes match and proof verifies
@@ -828,10 +938,13 @@ func testRemoveGER_CategoryA(t *testing.T) {
 
 	assertClaimedOnL2(ctx, t, env, globalIndex)
 
+	// --- Assert l2gersync is stalled and noisy while the invalid GER is present (S2 design §7) ---
+	assertL2GERSyncStalledAt(ctx, t, env, injectReceipt.BlockNumber.Uint64(), l2GERStallObserveWindow)
+
 	// Wait for bridge L2 sync to index the claim; otherwise diagnosis sees no claims.
 	waitForClaimOnBridgeService(ctx, t, env, globalIndex, 2*time.Minute)
 
-	// --- GER detection (runbook-aligned) ---
+	// --- GER detection (runbook-aligned); complementary signal to the sync-status stall assertion above ---
 	detectedGER, err := detectInvalidGERFromAggkitLogs(ctx, t, 3*time.Minute, &injectedGER)
 	require.NoError(t, err)
 	require.NotEqual(t, common.Hash{}, detectedGER)
@@ -860,6 +973,12 @@ func testRemoveGER_CategoryA(t *testing.T) {
 	err = remove_ger.ExecuteRecovery(recoveryCtx, cfg, toolEnv, diagnosis)
 	require.NoError(t, err)
 
+	// removalBlock is a conservative upper bound of the removeGlobalExitRoots tx's block: ExecuteRecovery
+	// already waited for that tx's receipt, so any L2 head read now is >= the actual removal block.
+	removalBlock, err := env.Clients.L2.BlockNumber(ctx)
+	require.NoError(t, err, "read L2 chain head after recovery")
+	waitForL2GERSyncCaughtUp(ctx, t, env, removalBlock, l2GERCatchUpTimeout)
+
 	assertGERRemovedFromL2(ctx, t, env, detectedGER)
 	waitForGEROnBridgeService(ctx, t, env, detectedGER, 2*time.Minute)
 
@@ -870,6 +989,9 @@ func testRemoveGER_CategoryA(t *testing.T) {
 	// --- Post-recovery: unset claim remains unset, network healthy ---
 	assertClaimUnsetOnL2(ctx, t, env, globalIndex)
 	// assertNetworkHealthy(ctx, t, env)
+
+	// --- End-of-scenario still-alive check: l2gersync must serve fresh state past the removal ---
+	assertL2GERSyncStillAlive(ctx, t, env)
 }
 
 // testRemoveGER_CategoryB1 runs the Category B.1 scenario: real bridge, inject invalid GER, claim with invalid GER but correct bridge data, detect from logs, diagnose B.1, recover (remove GER + force emit), assert health.
@@ -881,8 +1003,9 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 	env := testEnv
 	require.NotNil(t, env, "testEnv must be set by TestMain")
 
-	// B.1 needs more time: real bridge + claim + DB wait + GER detection (up to 6 min) + recovery
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	// B.1 needs more time: real bridge + claim + DB wait + GER detection (up to 6 min) + recovery +
+	// end-of-scenario still-alive check (a full L1->L2 bridge).
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
 
 	defer func() {
@@ -905,9 +1028,13 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 	log.Info("[B1] step: buildB1ClaimProof, injectInvalidGER, executeB1Claim")
 	proof := buildB1ClaimProof(t, bridgeResult.Bridge, bridgeResult.DepositCount)
 	require.NoError(t, env.StopAggkit(ctx))
-	injectInvalidGER(ctx, t, env, proof.InvalidGER)
+	injectReceipt := injectInvalidGER(ctx, t, env, proof.InvalidGER)
 	require.NoError(t, env.StartAggkit(ctx))
 	assertGERExistsOnL2(ctx, t, env, proof.InvalidGER)
+
+	// --- Assert l2gersync is stalled and noisy while the invalid GER is present (S2 design §7) ---
+	assertL2GERSyncStalledAt(ctx, t, env, injectReceipt.BlockNumber.Uint64(), l2GERStallObserveWindow)
+
 	executeB1Claim(ctx, t, env, bridgeResult, proof)
 	assertClaimedOnL2(ctx, t, env, bridgeResult.GlobalIndex)
 
@@ -919,7 +1046,7 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 	log.Info("[B1] step: waitForClaimInBridgeL2DBByGER (up to 2m)", "ger", proof.InvalidGER.Hex())
 	waitForClaimInBridgeL2DBByGER(ctx, t, env.Clients.BridgeService, env.L2.NetworkID, proof.InvalidGER, 2*time.Minute)
 
-	// --- GER detection (runbook-aligned) ---
+	// --- GER detection (runbook-aligned); complementary signal to the sync-status stall assertion above ---
 	log.Info("[B1] step: detectInvalidGERFromAggkitLogs (up to 6m)")
 	// B.1: wait for our injected GER to appear in logs (l2gersync logs when it processes the InsertGER block and fails to fetch L1 info)
 	detectedGER, err := detectInvalidGERFromAggkitLogs(ctx, t, 6*time.Minute, &proof.InvalidGER)
@@ -955,6 +1082,12 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 	err = remove_ger.ExecuteRecovery(recoveryCtx, cfg, toolEnv, diagnosis)
 	require.NoError(t, err)
 
+	// removalBlock is a conservative upper bound of the removeGlobalExitRoots tx's block: ExecuteRecovery
+	// already waited for that tx's receipt, so any L2 head read now is >= the actual removal block.
+	removalBlock, err := env.Clients.L2.BlockNumber(ctx)
+	require.NoError(t, err, "read L2 chain head after recovery")
+	waitForL2GERSyncCaughtUp(ctx, t, env, removalBlock, l2GERCatchUpTimeout)
+
 	// --- Post-recovery assertions ---
 	log.Info("[B1] step: post-recovery assertions")
 	assertGERRemovedFromL2(ctx, t, env, detectedGER)
@@ -965,6 +1098,9 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 
 	// // --- Post-recovery health ---
 	// assertNetworkHealthy(ctx, t, env)
+
+	// --- End-of-scenario still-alive check: l2gersync must serve fresh state past the removal ---
+	assertL2GERSyncStillAlive(ctx, t, env)
 }
 
 // testRemoveGER_CategoryB2 runs the Category B.2 scenario:
@@ -984,7 +1120,8 @@ func testRemoveGER_CategoryB2(t *testing.T) {
 	env := testEnv
 	require.NotNil(t, env, "testEnv must be set by TestMain")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	// 35min: base 30min budget + time for the end-of-scenario still-alive check (a full L1->L2 bridge).
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Minute)
 	defer cancel()
 
 	defer func() {
@@ -1018,9 +1155,12 @@ func testRemoveGER_CategoryB2(t *testing.T) {
 	// --- Step 3: Stop aggkit, inject fake GER, start aggkit ---
 	log.Info("[B2] step: inject fake GER")
 	require.NoError(t, env.StopAggkit(ctx))
-	injectInvalidGER(ctx, t, env, fakeProof1.GER)
+	injectReceipt := injectInvalidGER(ctx, t, env, fakeProof1.GER)
 	require.NoError(t, env.StartAggkit(ctx))
 	assertGERExistsOnL2(ctx, t, env, fakeProof1.GER)
+
+	// --- Assert l2gersync is stalled and noisy while the invalid GER is present (S2 design §7) ---
+	assertL2GERSyncStalledAt(ctx, t, env, injectReceipt.BlockNumber.Uint64(), l2GERStallObserveWindow)
 
 	// --- Step 4: Claim using fake proof at wrong deposit count ---
 	// The claim uses the real bridge leaf data but at a wrong deposit_count, verified against the fake GER.
@@ -1060,7 +1200,7 @@ func testRemoveGER_CategoryB2(t *testing.T) {
 	log.Info("[B2] step: wait for claim by GER on bridge service (up to 2m)")
 	waitForClaimInBridgeL2DBByGER(ctx, t, env.Clients.BridgeService, env.L2.NetworkID, fakeProof1.GER, 2*time.Minute)
 
-	// --- Step 6: GER detection (runbook-aligned) ---
+	// --- Step 6: GER detection (runbook-aligned); complementary signal to the sync-status stall assertion above ---
 	log.Info("[B2] step: detect invalid GER from aggkit logs (up to 6m)")
 	detectedGER1, err := detectInvalidGERFromAggkitLogs(ctx, t, 6*time.Minute, &fakeProof1.GER)
 	require.NoError(t, err)
@@ -1093,6 +1233,12 @@ func testRemoveGER_CategoryB2(t *testing.T) {
 	err = remove_ger.ExecuteRecovery(recoveryCtx1, cfg, toolEnv, diagnosis1)
 	require.NoError(t, err)
 
+	// removalBlock is a conservative upper bound of the removeGlobalExitRoots tx's block: ExecuteRecovery
+	// already waited for that tx's receipt, so any L2 head read now is >= the actual removal block.
+	removalBlock, err := env.Clients.L2.BlockNumber(ctx)
+	require.NoError(t, err, "read L2 chain head after recovery")
+	waitForL2GERSyncCaughtUp(ctx, t, env, removalBlock, l2GERCatchUpTimeout)
+
 	// --- Post-recovery assertions ---
 	log.Info("[B2] step: post-recovery assertions")
 	assertGERRemovedFromL2(ctx, t, env, detectedGER1)
@@ -1103,6 +1249,9 @@ func testRemoveGER_CategoryB2(t *testing.T) {
 	isEmergency, err := env.L2.Contracts.L2Bridge.IsEmergencyState(&bind.CallOpts{Context: ctx})
 	require.NoError(t, err)
 	require.False(t, isEmergency, "bridge must not be in emergency state after recovery")
+
+	// --- End-of-scenario still-alive check: l2gersync must serve fresh state past the removal ---
+	assertL2GERSyncStillAlive(ctx, t, env)
 }
 
 // fakeMerkleProof holds the components needed to make a fake B.2 claim.
