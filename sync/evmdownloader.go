@@ -520,13 +520,18 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 			attempts := 0
 			for {
 				err := appenderFn(latestBlock, l)
-				if err != nil {
-					attempts++
-					d.log.Error("error trying to append log: ", err)
-					d.rh.Handle(ctx, "appendLogs", attempts)
+				if err == nil {
+					break
+				}
+				attempts++
+				d.log.Error("error trying to append log: ", err)
+				if errors.Is(err, ErrRetryForeverNonFatal) {
+					// This error class must retry forever and must never trigger the fatal guard,
+					// regardless of the configured MaxRetryAttemptsAfterError.
+					d.rh.waitRetryPeriod(ctx)
 					continue
 				}
-				break
+				d.rh.Handle(ctx, "appendLogs", attempts)
 			}
 		}
 
