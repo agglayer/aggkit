@@ -234,7 +234,8 @@ func ExampleClient_GetSyncStatus() {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("L1 Synced: %v, L2 Synced: %v\n", resp.L1Info.IsSynced, resp.L2Info.IsSynced)
+	fmt.Printf("L1 Synced: %v, L2 Synced: %v, L2GERSync active: %v\n",
+		resp.L1Info.IsSynced, resp.L2Info.IsSynced, resp.L2GERInfo.IsActive)
 }
 
 func ExampleClient_GetRemoveGEREvents() {
