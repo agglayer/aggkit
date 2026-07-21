@@ -83,7 +83,7 @@ build-aggkit: ## Builds aggkit binary
 	GIN_MODE=release $(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
 
 .PHONY: build-tools
-build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger $(GOBIN)/exit_certificate $(GOBIN)/exit_certificate_claimer ## Builds the tools
+build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger $(GOBIN)/exit_certificate $(GOBIN)/exit_certificate_claimer $(GOBIN)/force_ger_update ## Builds the tools
 
 
 .PHONY: build-aggsender_find_imported_bridge
@@ -97,6 +97,9 @@ build-exit_certificate: $(GOBIN)/exit_certificate ## Build exit_certificate tool
 
 .PHONY: build-exit_certificate_claimer
 build-exit_certificate_claimer: $(GOBIN)/exit_certificate_claimer ## Build exit_certificate_claimer backend tool
+
+.PHONY: build-force_ger_update
+build-force_ger_update: $(GOBIN)/force_ger_update ## Build force_ger_update tool
 
 .PHONY: $(GOBIN)/aggsender_find_imported_bridge
 $(GOBIN)/aggsender_find_imported_bridge:
@@ -114,6 +117,10 @@ $(GOBIN)/exit_certificate:
 .PHONY: $(GOBIN)/exit_certificate_claimer
 $(GOBIN)/exit_certificate_claimer:
 	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/exit_certificate_claimer ./tools/exit_certificate_claimer/service/cmd
+
+.PHONY: $(GOBIN)/force_ger_update
+$(GOBIN)/force_ger_update:
+	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/force_ger_update ./tools/force_ger_update/cmd
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
@@ -138,6 +145,10 @@ test-unit: ## Runs the unit tests
 .PHONY: test-e2e
 test-e2e: ## Runs the e2e tests
 	go test -v -timeout 30m ./test/e2e/...
+
+.PHONY: test-e2e-force_ger_update
+test-e2e-force_ger_update: ## Runs the isolated force_ger_update e2e test (dedicated CI job/runner only)
+	RUN_FORCE_GER_UPDATE_E2E=true E2E_SKIP_POSTTEST_BRIDGE_CHECK=true go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...
 
 .PHONY: lint
 lint: ## Runs the linter

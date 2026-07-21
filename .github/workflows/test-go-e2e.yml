@@ -109,3 +109,52 @@ jobs:
             test/e2e/*.log
             test/e2e/envs/**/logs/
           if-no-files-found: ignore
+
+  test-go-e2e-force-ger-update:
+    name: Run force_ger_update E2E (isolated)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [build-docker-image, pull-docker-images]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.7
+
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+
+      - name: Download aggkit Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: aggkit-docker-image
+          path: /tmp
+
+      - name: Download pulled Docker images
+        uses: actions/download-artifact@v4
+        with:
+          name: pulled-docker-images
+          path: /tmp
+
+      - name: Load Docker images
+        run: |
+          docker load -i /tmp/aggkit-image.tar
+          docker load -i /tmp/docker-images.tar
+
+      - name: Run force_ger_update E2E test
+        run: make test-e2e-force_ger_update
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results-force-ger-update
+          path: |
+            test/e2e/*.log
+            test/e2e/envs/**/logs/
+          if-no-files-found: ignore
