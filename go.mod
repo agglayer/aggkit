@@ -5,7 +5,7 @@ go 1.25.7
 require (
 	buf.build/gen/go/agglayer/agglayer/grpc/go v1.6.2-20260721180539-9c8c052f9efb.1
 	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.11-20260721180539-9c8c052f9efb.1
-	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.11-20250519093743-85e8a3d9f59c.1
+	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.11-20260710075619-0eb421e8039d.1
 	buf.build/gen/go/agglayer/provers/grpc/go v1.6.2-20251202141513-a9dcd71009d1.1
 	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.11-20251202141513-a9dcd71009d1.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.13
