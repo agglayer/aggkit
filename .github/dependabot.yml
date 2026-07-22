@@ -10,5 +10,14 @@ updates:
       all-dependencies:
         patterns:
           - "*"
+    # The agglayer buf.build proto modules use pseudo-versions whose semver
+    # prefix (e.g. v1.36.11) is just the protobuf-go generator version, while
+    # the actual schema is identified by the embedded commit timestamp.
+    # Dependabot compares only semver, so it can "upgrade" to a module carrying
+    # an OLDER schema and drop generated types the code depends on, breaking the
+    # build. These are first-party modules bumped deliberately by the team, so
+    # exclude them from automated updates.
+    ignore:
+      - dependency-name: "buf.build/gen/go/agglayer/*"
     reviewers:
       - "agglayer/aggkit"
