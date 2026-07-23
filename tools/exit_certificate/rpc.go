@@ -49,7 +49,7 @@ type jsonRPCRequest struct {
 type jsonRPCResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
 	Result  json.RawMessage `json:"result"`
-	Error   *jsonRPCError   `json:"error"`
+	Error   *jsonRPCError   `json:"error,omitempty"`
 	ID      int             `json:"id"`
 }
 
