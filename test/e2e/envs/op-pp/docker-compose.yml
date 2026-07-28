@@ -182,7 +182,7 @@ services:
     command:
       - "run"
       - "--cfg=/etc/aggkit/config.toml"
-      - "--components=aggsender,aggoracle,bridge"
+      - "--components=aggsender,aggoracle,bridge,autoclaim"
     volumes:
       - ./config/001/aggkit-config.toml:/etc/aggkit/config.toml:ro
       - ./config/001/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
@@ -192,6 +192,7 @@ services:
     ports:
       - "11576:5576"    # RPC
       - "11577:5577"    # REST API
+      - "11579:5579"    # Auto Claim API
     depends_on:
       geth:
         condition: service_healthy
@@ -222,7 +223,7 @@ services:
   #   command:
   #     - "run"
   #     - "--cfg=/etc/aggkit/config.toml"
-  #     - "--components=aggsender,aggoracle,bridge"
+  #     - "--components=aggsender,aggoracle,bridge,autoclaim"
   #   volumes:
   #     - ./config/001/aggkit-config.toml:/etc/aggkit/config.toml:ro
   #     - ./config/001/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
@@ -232,6 +233,7 @@ services:
   #   ports:
   #     - "11576:5576"    # RPC
   #     - "11577:5577"    # REST API
+  #     - "11579:5579"    # Auto Claim API
   #     - "40000:40000"   # dlv remote debug
   #   cap_add:
   #     - SYS_PTRACE

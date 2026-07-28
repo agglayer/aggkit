@@ -165,6 +165,15 @@ jobs:
         with:
           name: aggsender_find_imported_bridge
           path: ./target/aggsender_find_imported_bridge
+      # aggkit owns the kurtosis e2e config templates (test/e2e/kurtosis/). They
+      # are uploaded here and overlaid on kurtosis-cdk's static_files by the
+      # agglayer/e2e reusable workflows (input: aggkit-config-artifact), so a
+      # config change ships in the same PR as the code — no kurtosis-cdk PR.
+      - name: Upload aggkit e2e config templates
+        uses: actions/upload-artifact@v4
+        with:
+          name: aggkit-e2e-config
+          path: ./test/e2e/kurtosis/*.template.toml
 
   test-single-l2-network-op-pessimistic:
     name: Single L2 chain tests (OP, pessimistic)
@@ -173,11 +182,13 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@76b1ff29e2ab38697aa2fb8d51fd8563bca2bb5f
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 76b1ff29e2ab38697aa2fb8d51fd8563bca2bb5f # main
+      agglayer-e2e-ref: e0dcceca73cc66c1dd577da2b491887586c0d4b8 # agglayer/e2e#263 (aggkit-config-artifact support)
+      # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
+      aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-pessimistic }}
       test-name: "test-single-l2-network-op-pessimistic"
@@ -201,11 +212,13 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@76b1ff29e2ab38697aa2fb8d51fd8563bca2bb5f
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 76b1ff29e2ab38697aa2fb8d51fd8563bca2bb5f # main
+      agglayer-e2e-ref: e0dcceca73cc66c1dd577da2b491887586c0d4b8 # agglayer/e2e#263 (aggkit-config-artifact support)
+      # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
+      aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct }}
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
@@ -229,12 +242,14 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@76b1ff29e2ab38697aa2fb8d51fd8563bca2bb5f
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 76b1ff29e2ab38697aa2fb8d51fd8563bca2bb5f # main
+      agglayer-e2e-ref: e0dcceca73cc66c1dd577da2b491887586c0d4b8 # agglayer/e2e#263 (aggkit-config-artifact support)
+      # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
+      aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct-aggoracle-committee }}
       test-name: "test-single-l2-network-op-succinct-aggoracle-committee"
@@ -258,11 +273,13 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@76b1ff29e2ab38697aa2fb8d51fd8563bca2bb5f
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 76b1ff29e2ab38697aa2fb8d51fd8563bca2bb5f # main
+      agglayer-e2e-ref: e0dcceca73cc66c1dd577da2b491887586c0d4b8 # agglayer/e2e#263 (aggkit-config-artifact support)
+      # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
+      aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
@@ -284,11 +301,13 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@76b1ff29e2ab38697aa2fb8d51fd8563bca2bb5f
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 76b1ff29e2ab38697aa2fb8d51fd8563bca2bb5f # main
+      agglayer-e2e-ref: e0dcceca73cc66c1dd577da2b491887586c0d4b8 # agglayer/e2e#263 (aggkit-config-artifact support)
+      # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
+      aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}

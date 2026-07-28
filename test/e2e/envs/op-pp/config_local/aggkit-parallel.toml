@@ -51,7 +51,7 @@ Outputs     = ["stderr"]
 [RPC]
 Port = "5596"
 
-[REST]
+[PublicREST]
 Port = "5597"
 
 [Prometheus]
@@ -103,6 +103,7 @@ FinalizedBlock = "FinalizedBlock"
 # ------------------------------------------------------------------------------
 [L1InfoTreeSync]
 InitialBlock = "37"
+BlockFinality = "LatestBlock"
 
 # ------------------------------------------------------------------------------
 [L2GERSync]

@@ -1,0 +1,66 @@
+# ==============================================================================
+# OWNERSHIP: This template is owned by the aggkit repo (test/e2e/kurtosis/, see
+# README.md). Seeded from kurtosis-cdk commit 507e4e8 — the KURTOSIS_CDK_COMMIT
+# pinned in .github/workflows/test-e2e.yml — with [REST] renamed to [PublicREST].
+# It is a Go text/template rendered by THAT kurtosis-cdk commit's _build_config_data
+# and overlaid onto kurtosis-cdk's static_files by agglayer/e2e before kurtosis run.
+# When bumping KURTOSIS_CDK_COMMIT, re-seed this file from the new commit.
+# ==============================================================================
+
+PathRWData = "{{.zkevm_path_rw_data}}"
+L1URL="{{.l1_rpc_url}}"
+L2URL="{{.l2_rpc_url}}"
+AggLayerURL="{{.agglayer_grpc_url}}"
+
+NetworkID = {{.l2_network_id}}
+SequencerPrivateKeyPath = "{{or .l2_sequencer_keystore_file "/etc/aggkit/sequencer.keystore"}}"
+SequencerPrivateKeyPassword  = "{{.l2_keystore_password}}"
+
+{{- if lt .aggkit_version "0.8" }}
+polygonBridgeAddr = "{{.l1_bridge_address}}"
+{{- end }}
+
+RPCURL = "{{.l2_rpc_url}}"
+
+# This values can be override directly from genesis.json
+rollupCreationBlockNumber = "{{.rollup_manager_block_number}}"
+rollupManagerCreationBlockNumber = "{{.rollup_manager_block_number}}"
+genesisBlockNumber = "{{.rollup_manager_block_number}}"
+[L1Config]
+	URL = "{{.l1_rpc_url}}"
+	chainId = "{{.l1_chain_id}}"
+	polygonZkEVMGlobalExitRootAddress = "{{.l1_ger_address}}"
+	polygonRollupManagerAddress = "{{.rollup_manager_address}}"
+	polTokenAddress = "{{.pol_token_address}}"
+	polygonZkEVMAddress = "{{.rollup_address}}"
+
+[L2Config]
+	GlobalExitRootAddr = "{{.l2_ger_address}}"
+
+[Log]
+Level = "{{.log_level}}"
+Outputs = ["stderr"]
+Environment = "{{.environment}}"
+
+[PublicREST]
+Port = "{{.aggkit_node_rest_api_port}}"
+
+[AggSender]
+CertificateSendInterval = "1m"
+CheckSettledInterval = "5s"
+
+[ClaimSponsor]
+DBPath = "{{.zkevm_path_rw_data}}/claimsponsor.sqlite"
+Enabled = "{{.enable_aggkit_claim_sponsor}}"
+SenderAddr = "{{.l2_claimsponsor_address}}"
+BridgeAddrL2 = "{{.l2_bridge_address}}"
+
+[ClaimSponsor.EthTxManager]
+PrivateKeys = [
+    {Path = "/etc/aggkit/claimsponsor.keystore", Password = "{{.l2_keystore_password}}"},
+]
+StoragePath = "{{.zkevm_path_rw_data}}/ethtxmanager-claimsponsor.sqlite"
+
+[ClaimSponsor.EthTxManager.Etherman]
+URL = "{{.l2_rpc_url}}"
+L1ChainID = "{{.l2_chain_id}}"

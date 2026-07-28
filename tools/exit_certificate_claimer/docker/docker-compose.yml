@@ -1,0 +1,65 @@
+# exit_certificate_claimer — read-only HTTP service that serves AgglayerBridge.claimAsset
+# parameters for the bridge exits of a settled exit certificate.
+#
+# It runs from the SAME working directory the exit_certificate tool used: that directory holds the
+# tool's config (parameters.toml) and its output/ subdir (signed certificate, local-exit-tree and
+# L1-info-tree SQLite DBs, step-wait-result.json). We mount it as a volume and point the claimer at
+# the exit_certificate config with --exit-certificate-config, which derives the whole claimer config
+# (paths, networkId, L1 sync) from it.
+#
+# Configure everything through environment variables (see .env.example). Quick start:
+#   cp .env.example .env      # edit EXIT_TOOL_DIR, CLAIMER_PORT, etc.
+#   docker compose up --build
+#
+# Note: deriving from the exit_certificate config enables L1 sync, so the l1RpcUrl set inside that
+# parameters.toml must be reachable FROM THE CONTAINER. If it points at the host (e.g.
+# http://localhost:8545) use http://host.docker.internal:8545 — host.docker.internal is wired below.
+
+services:
+  exit-certificate-claimer:
+    build:
+      # The Dockerfile lives at the repo root and builds every tool, including this one.
+      context: ../../..
+      dockerfile: Dockerfile
+    image: ${AGGKIT_IMAGE:-aggkit:local}
+    # Override the image's default `aggkit` entrypoint with the claimer binary. Exec form: the
+    # production image ships without a shell.
+    entrypoint: ["/usr/local/bin/exit_certificate_claimer"]
+    # Runs as the image's appuser (uid 1000) by default. Override with "uid:gid" (e.g.
+    # CLAIMER_USER="$(id -u):$(id -g)") when the mounted EXIT_TOOL_DIR belongs to another user, so
+    # L1 sync can write its SQLite DBs inside output/.
+    user: "${CLAIMER_USER:-appuser}"
+    command:
+      - "--exit-certificate-config"
+      - "/data/${EXIT_CERT_CONFIG:-parameters.toml}"
+      - "--address"
+      - "${CLAIMER_ADDRESS:-0.0.0.0}"
+      - "--port"
+      - "${CLAIMER_PORT:-8080}"
+      - "--log-json=${CLAIMER_LOG_JSON:-false}"
+    volumes:
+      # The exit_certificate working dir (parameters.toml + output/). Read-write because L1 sync
+      # keeps its own SQLite DBs up to date inside output/. The container runs as appuser (uid
+      # 1000); if the host directory belongs to another uid, grant it write access to output/
+      # (e.g. chmod -R g+w / setfacl) or run the tool and the claimer as the same user.
+      - "${EXIT_TOOL_DIR:-../../exit_certificate}:/data"
+    ports:
+      - "${CLAIMER_PORT:-8080}:${CLAIMER_PORT:-8080}"
+    # Lets a parameters.toml l1RpcUrl pointing at the host (host.docker.internal) reach it on Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # The production image ships without a shell or curl, so the claimer binary probes itself.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/usr/local/bin/exit_certificate_claimer",
+          "healthcheck",
+          "--port",
+          "${CLAIMER_PORT:-8080}",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped

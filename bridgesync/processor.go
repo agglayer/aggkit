@@ -1554,6 +1554,30 @@ func GenerateGlobalIndexForNetworkID(networkID uint32, depositCount uint32) *big
 	return GenerateGlobalIndex(mainnetFlag, rollupIndex, depositCount)
 }
 
+// LegacyZkEVMRollupNetworkID is the legacy zkEVM rollup network ID whose pre-Etrog bridges used a
+// bare deposit-count global index instead of the encoded global index.
+const LegacyZkEVMRollupNetworkID uint32 = 1
+
+// GlobalIndexForBridge computes the global index for a bridge exit, applying the legacy pre-Etrog
+// zkEVM encoding (a bare deposit count) for bridges destined to the legacy zkEVM rollup at or before
+// etrogL1UpgradeBlock. An etrogL1UpgradeBlock of 0 disables the pre-Etrog special-casing. networkID
+// is the network used to encode the post-Etrog global index. It returns the global index and whether
+// the bridge was treated as pre-Etrog.
+func GlobalIndexForBridge(
+	destinationNetwork uint32,
+	blockNum uint64,
+	depositCount uint32,
+	networkID uint32,
+	etrogL1UpgradeBlock uint64,
+) (*big.Int, bool) {
+	if etrogL1UpgradeBlock > 0 &&
+		destinationNetwork == LegacyZkEVMRollupNetworkID &&
+		blockNum <= etrogL1UpgradeBlock {
+		return new(big.Int).SetUint64(uint64(depositCount)), true
+	}
+	return GenerateGlobalIndexForNetworkID(networkID, depositCount), false
+}
+
 // GenerateGlobalIndex encodes a unique "global index" used for identifying bridges and claims.
 // The index is constructed as a big integer from three components:
 // - mainnetFlag: indicates if the origin network is mainnet (true) or a rollup (false).

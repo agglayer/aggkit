@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
+	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
@@ -86,6 +88,13 @@ func TestLoadDefaultConfig(t *testing.T) {
 	cfgL2Multidownloader.Enabled = false
 	require.Equal(t, cfgL2Multidownloader, cfg.L2Multidownloader)
 	require.Nil(t, cfg.L2NetworkConfig.InitialLER)
+	require.False(t, cfg.AutoClaim.DryRun)
+	require.Equal(t, "/tmp/aggkit/autoclaim.sqlite", cfg.AutoClaim.StoragePath)
+	require.Empty(t, cfg.AutoClaim.Claimers)
+	require.True(t, cfg.AutoClaim.L1ToL2BridgeDetector.Enabled)
+	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2BridgeDetector.StartBlock)
+	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2BridgeDetector.EtrogL1UpgradeBlock)
+	require.False(t, cfg.AutoClaim.L2ToLxBridgeDetector.Enabled)
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {
@@ -181,6 +190,240 @@ InitialLER = "` + zeroHash + `"
 	}
 }
 
+func TestLoadConfigWithAutoClaimEnabled(t *testing.T) {
+	cfg, err := LoadFile([]FileData{{Name: "autoclaim.toml", Content: validAutoClaimConfig()}}, "", true, false)
+	require.NoError(t, err)
+	require.True(t, cfg.AutoClaim.DryRun)
+	require.Equal(t, "/tmp/aggkit/autoclaim.sqlite", cfg.AutoClaim.StoragePath)
+	require.True(t, cfg.AutoClaim.API.Enabled)
+	require.Equal(t, uint64(1234), cfg.AutoClaim.L1ToL2BridgeDetector.StartBlock)
+	require.Equal(t, uint64(1000000), cfg.AutoClaim.L1ToL2BridgeDetector.EtrogL1UpgradeBlock)
+	require.Len(t, cfg.AutoClaim.Claimers, 1)
+
+	claimer := cfg.AutoClaim.Claimers[0]
+	require.True(t, claimer.Enabled)
+	require.Equal(t, "l2-claim", claimer.ID)
+	require.Equal(t, autoclaimcfg.NetworkTypeEVM, claimer.NetworkType)
+	require.Equal(t, uint32(1), claimer.NetworkID)
+	require.Equal(t, "http://localhost:8123", claimer.URLRPC)
+	require.Equal(t, "0x000000000000000000000000000000000000bEEF", claimer.BridgeAddr.Hex())
+	require.Equal(t, autoclaimcfg.PolicyNameAllowAll, claimer.PolicyName)
+	require.Equal(t, uint64(500000), claimer.Policy.MaxGas)
+	require.Equal(t, uint64(100000), claimer.GasOffset)
+	require.Equal(t, 2*time.Second, claimer.WaitPeriod.Duration)
+	require.Equal(t, 3*time.Second, claimer.RetryAfter.Duration)
+	require.Equal(t, uint64(4), claimer.MaxRetries)
+	require.Equal(t, "/tmp/aggkit/ethtxmanager-autoclaim-l2-claim.sqlite", claimer.EthTxManager.StoragePath)
+	require.Len(t, claimer.EthTxManager.PrivateKeys, 1)
+	require.Equal(t, "local", claimer.EthTxManager.PrivateKeys[0].Method.String())
+}
+
+func TestLoadConfigWithInvalidAutoClaim(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      string
+		expectedErr string
+	}{
+		{
+			name: "missing storage path",
+			config: strings.Replace(
+				validAutoClaimConfig(),
+				`StoragePath = "/tmp/aggkit/autoclaim.sqlite"`,
+				`StoragePath = ""`,
+				1,
+			),
+			expectedErr: "AutoClaim.StoragePath is required",
+		},
+		{
+			name: "missing claimer bridge address",
+			config: strings.Replace(
+				validAutoClaimConfig(),
+				`BridgeAddr = "0x000000000000000000000000000000000000bEEF"`,
+				`BridgeAddr = "0x0000000000000000000000000000000000000000"`,
+				1,
+			),
+			expectedErr: "BridgeAddr is required",
+		},
+		{
+			name:        "missing claimer rpc url",
+			config:      strings.Replace(validAutoClaimConfig(), `URLRPC = "http://localhost:8123"`, `URLRPC = ""`, 1),
+			expectedErr: "URLRPC is required",
+		},
+		{
+			name: "missing claimer eth tx manager storage path",
+			config: strings.Replace(
+				validAutoClaimConfig(),
+				`StoragePath = "/tmp/aggkit/ethtxmanager-autoclaim-l2-claim.sqlite"`,
+				`StoragePath = ""`,
+				1,
+			),
+			expectedErr: "EthTxManager.StoragePath is required",
+		},
+		{
+			name:        "duplicate claimer id",
+			config:      validAutoClaimConfig() + duplicateAutoClaimClaimer("l2-claim", 2),
+			expectedErr: "duplicate enabled AutoClaim claimer ID: l2-claim",
+		},
+		{
+			name:        "duplicate network id",
+			config:      validAutoClaimConfig() + duplicateAutoClaimClaimer("l2-claim-2", 1),
+			expectedErr: "duplicate enabled AutoClaim claimer NetworkID: 1",
+		},
+		{
+			name:        "unsupported network type",
+			config:      strings.Replace(validAutoClaimConfig(), `NetworkType = "EVM"`, `NetworkType = "unsupported"`, 1),
+			expectedErr: "unsupported NetworkType: unsupported",
+		},
+		{
+			name:        "unknown policy",
+			config:      strings.Replace(validAutoClaimConfig(), `PolicyName = "allow-all"`, `PolicyName = "unknown"`, 1),
+			expectedErr: "unknown PolicyName: unknown",
+		},
+		{
+			name:        "invalid claimer duration",
+			config:      strings.Replace(validAutoClaimConfig(), `WaitPeriod = "2s"`, `WaitPeriod = "0s"`, 1),
+			expectedErr: "WaitPeriod must be greater than 0",
+		},
+		{
+			name:        "invalid bridge detector duration",
+			config:      strings.Replace(validAutoClaimConfig(), `PollInterval = "3s"`, `PollInterval = "0s"`, 1),
+			expectedErr: "AutoClaim.L1ToL2BridgeDetector.PollInterval must be greater than 0",
+		},
+		{
+			name:        "unparseable duration",
+			config:      strings.Replace(validAutoClaimConfig(), `WaitPeriod = "2s"`, `WaitPeriod = "invalid"`, 1),
+			expectedErr: "time: invalid duration",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := LoadFile([]FileData{{Name: "autoclaim.toml", Content: tt.config}}, "", true, false)
+			require.Error(t, err)
+			require.Nil(t, cfg)
+			require.ErrorContains(t, err, tt.expectedErr)
+		})
+	}
+}
+
+func TestLoadConfigWithDisabledInvalidAutoClaim(t *testing.T) {
+	// With no enabled claimer the AutoClaim config is inert, so an otherwise invalid claimer config
+	// must not fail validation at load time.
+	cfg, err := LoadFile([]FileData{{Name: "autoclaim.toml", Content: `
+[AutoClaim]
+StoragePath = ""
+
+[[AutoClaim.Claimers]]
+Enabled = false
+ID = "invalid-disabled"
+NetworkType = "unsupported"
+NetworkID = 1
+URLRPC = ""
+BridgeAddr = "0x0000000000000000000000000000000000000000"
+PolicyName = "unknown"
+WaitPeriod = "0s"
+`}}, "", true, false)
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	require.False(t, cfg.AutoClaim.DryRun)
+}
+
+func TestAutoClaimDefaultRender(t *testing.T) {
+	rendered, err := NewConfigRender([]FileData{
+		{Name: "default_mandatory_vars", Content: DefaultMandatoryVars},
+		{Name: "default_vars", Content: DefaultVars},
+		{Name: "default_values", Content: DefaultValues},
+	}, EnvVarPrefix).Render()
+	require.NoError(t, err)
+	require.Contains(t, rendered, "[AutoClaim]")
+	require.Contains(t, rendered, "DryRun = false")
+	require.Contains(t, rendered, `StoragePath = "/tmp/aggkit/autoclaim.sqlite"`)
+	require.Contains(t, rendered, "[AutoClaim.L2ToLxBridgeDetector]")
+}
+
+func validAutoClaimConfig() string {
+	return `
+[AutoClaim]
+DryRun = true
+StoragePath = "/tmp/aggkit/autoclaim.sqlite"
+
+[AutoClaim.API]
+Enabled = true
+
+	[AutoClaim.L1ToL2BridgeDetector]
+	Enabled = true
+	StartBlock = 1234
+	PollInterval = "3s"
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
+EtrogL1UpgradeBlock = 1000000
+
+[AutoClaim.L2ToLxBridgeDetector]
+Enabled = false
+
+[[AutoClaim.Claimers]]
+Enabled = true
+ID = "l2-claim"
+NetworkType = "EVM"
+NetworkID = 1
+URLRPC = "http://localhost:8123"
+BridgeAddr = "0x000000000000000000000000000000000000bEEF"
+PolicyName = "allow-all"
+GasOffset = 100000
+WaitPeriod = "2s"
+RetryAfter = "3s"
+MaxRetries = 4
+
+[AutoClaim.Claimers.Policy]
+AllowMessageClaims = false
+AllowedOrigins = [0]
+AllowedTokens = []
+ManualFallback = false
+MaxGas = 500000
+
+[AutoClaim.Claimers.EthTxManager]
+FrequencyToMonitorTxs = "1s"
+WaitTxToBeMined = "2s"
+GetReceiptMaxTime = "250ms"
+GetReceiptWaitInterval = "1s"
+PrivateKeys = [
+	{Method = "local", Path = "/app/keystore/autoclaim.keystore", Password = "testonly"},
+]
+ForcedGas = 0
+GasPriceMarginFactor = 1
+MaxGasPriceLimit = 0
+StoragePath = "/tmp/aggkit/ethtxmanager-autoclaim-l2-claim.sqlite"
+ReadPendingL1Txs = false
+SafeStatusL1NumberOfBlocks = 5
+FinalizedStatusL1NumberOfBlocks = 10
+EstimateGasMaxRetries = 1
+
+[AutoClaim.Claimers.EthTxManager.Etherman]
+URL = "http://localhost:8123"
+MultiGasProvider = false
+L1ChainID = 0
+HTTPHeaders = []
+`
+}
+
+func duplicateAutoClaimClaimer(id string, networkID uint32) string {
+	return fmt.Sprintf(`
+
+[[AutoClaim.Claimers]]
+Enabled = true
+ID = "%s"
+NetworkType = "EVM"
+NetworkID = %d
+URLRPC = "http://localhost:8124"
+BridgeAddr = "0x000000000000000000000000000000000000bEEd"
+PolicyName = "allow-all"
+WaitPeriod = "2s"
+
+[AutoClaim.Claimers.EthTxManager]
+StoragePath = "/tmp/aggkit/ethtxmanager-autoclaim-%s.sqlite"
+`, id, networkID, id)
+}
+
 func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "ut_config")
 	require.NoError(t, err)
@@ -243,6 +486,10 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[LastGERSync]
 	SyncMode = "Legacy"
 	DBPath = "{{PathRWData}}/l2gersync.sqlite"
+
+	[REST]
+	Host = "0.0.0.0"
+	Port = 5577
 `))
 	require.NoError(t, err)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
@@ -273,4 +520,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, maxSubmitCertificateRateDeprecatedHint)
 	require.ErrorContains(t, err, urlRPCL1DeprecatedHint)
 	require.ErrorContains(t, err, aggsenderEpochPercentageHint)
+	require.ErrorContains(t, err, restSectionDeprecatedHint)
 }

@@ -1,0 +1,206 @@
+basePath: /autoclaim/v1
+definitions:
+  apitypes.DecisionRequest:
+    properties:
+      decider:
+        example: operator
+        type: string
+      decider_id:
+        example: alice
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      reason:
+        example: approved by operator
+        type: string
+    type: object
+  apitypes.DecisionResponse:
+    properties:
+      created_at:
+        type: string
+      decider:
+        type: string
+      decider_id:
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      policy_name:
+        type: string
+      reason:
+        type: string
+      result:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  apitypes.ErrorResponse:
+    properties:
+      error:
+        example: request 0:1:42 not found
+        type: string
+    type: object
+  apitypes.RequestResponse:
+    properties:
+      amount:
+        type: string
+      block_num:
+        type: integer
+      block_pos:
+        type: integer
+      block_timestamp:
+        type: integer
+      bridge_tx_hash:
+        type: string
+      claim_tx_hash:
+        type: string
+      created_at:
+        type: string
+      deposit_count:
+        type: integer
+      destination_address:
+        type: string
+      destination_network:
+        type: integer
+      global_index:
+        type: string
+      id:
+        type: string
+      l1_info_tree_index:
+        type: integer
+      last_error:
+        type: string
+      last_observed_result_at:
+        type: string
+      last_observed_send_at:
+        type: string
+      leaf_type:
+        type: integer
+      manual_decision:
+        $ref: '#/definitions/apitypes.DecisionResponse'
+      max_retries:
+        type: integer
+      metadata:
+        type: string
+      origin_address:
+        type: string
+      origin_network:
+        type: integer
+      policy_decision:
+        $ref: '#/definitions/apitypes.DecisionResponse'
+      policy_status:
+        type: string
+      retry_count:
+        type: integer
+      status:
+        type: string
+      to_address:
+        type: string
+      tx_manager_id:
+        type: string
+      txn_sender:
+        type: string
+      updated_at:
+        type: string
+    type: object
+info:
+  contact:
+    name: API Support
+    url: https://polygon.technology/
+  description: Admin API for the Auto Claim service (manual approval and rejection).
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: Auto Claim Admin API
+  version: "1.0"
+paths:
+  /bridges/{id}/approve:
+    post:
+      consumes:
+      - application/json
+      description: Approves a request currently in manual-approval-required and advances
+        the matching claimer when present.
+      parameters:
+      - description: Auto Claim request ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Manual approval metadata
+        in: body
+        name: decision
+        schema:
+          $ref: '#/definitions/apitypes.DecisionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apitypes.RequestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apitypes.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apitypes.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apitypes.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apitypes.ErrorResponse'
+      summary: Approve Auto Claim bridge request
+      tags:
+      - autoclaim
+  /bridges/{id}/reject:
+    post:
+      consumes:
+      - application/json
+      description: Rejects a request currently in manual-approval-required and advances
+        the matching claimer when present.
+      parameters:
+      - description: Auto Claim request ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Manual rejection metadata
+        in: body
+        name: decision
+        schema:
+          $ref: '#/definitions/apitypes.DecisionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apitypes.RequestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apitypes.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apitypes.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apitypes.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apitypes.ErrorResponse'
+      summary: Reject Auto Claim bridge request
+      tags:
+      - autoclaim
+swagger: "2.0"

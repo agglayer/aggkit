@@ -14,6 +14,8 @@ GOBIN := $(GOBASE)/target
 GOENVVARS := GOBIN=$(GOBIN) CGO_ENABLED=1 GOARCH=$(ARCH)
 GOBINARY := aggkit
 GOCMD := $(GOBASE)/cmd
+SWAG_VERSION ?= v1.16.6
+SWAG := $(shell command -v swag 2>/dev/null || echo "$$(go env GOPATH)/bin/swag")
 
 LDFLAGS += -X 'github.com/agglayer/aggkit.Version=$(VERSION)'
 LDFLAGS += -X 'github.com/agglayer/aggkit.GitRev=$(GITREV)'
@@ -51,10 +53,14 @@ check-golangci-lint:
 # Check for Swag
 .PHONY: check-swag
 check-swag:
-	@command -v swag >/dev/null 2>&1 || { \
-		echo >&2 "Error: swag not installed. Please install it: https://github.com/swaggo/swag"; \
+	@test -x "$(SWAG)" || { \
+		echo >&2 "Error: swag not installed. Run: make install-swag"; \
 		exit 1; \
 	}
+
+.PHONY: install-swag
+install-swag: check-go ## Install swag for swagger generation
+	GOBIN=$$(go env GOPATH)/bin go install github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION)
 
 # Targets that require the checks
 build: check-go
@@ -77,13 +83,44 @@ build-aggkit: ## Builds aggkit binary
 	GIN_MODE=release $(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
 
 .PHONY: build-tools
-build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger ## Builds the tools
+build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger $(GOBIN)/exit_certificate $(GOBIN)/exit_certificate_claimer $(GOBIN)/force_ger_update ## Builds the tools
 
-$(GOBIN)/aggsender_find_imported_bridge: ## Build aggsender_find_imported_bridge tool
+
+.PHONY: build-aggsender_find_imported_bridge
+build-aggsender_find_imported_bridge: $(GOBIN)/aggsender_find_imported_bridge ## Build aggsender_find_imported_bridge tool
+
+.PHONY: build-remove_ger
+build-remove_ger: $(GOBIN)/remove_ger ## Build remove_ger tool
+
+.PHONY: build-exit_certificate
+build-exit_certificate: $(GOBIN)/exit_certificate ## Build exit_certificate tool
+
+.PHONY: build-exit_certificate_claimer
+build-exit_certificate_claimer: $(GOBIN)/exit_certificate_claimer ## Build exit_certificate_claimer backend tool
+
+.PHONY: build-force_ger_update
+build-force_ger_update: $(GOBIN)/force_ger_update ## Build force_ger_update tool
+
+.PHONY: $(GOBIN)/aggsender_find_imported_bridge
+$(GOBIN)/aggsender_find_imported_bridge:
 	$(GOENVVARS) go build -o $(GOBIN)/aggsender_find_imported_bridge ./tools/aggsender_find_imported_bridge
 
-$(GOBIN)/remove_ger: ## Build remove_ger tool
+
+.PHONY: $(GOBIN)/remove_ger
+$(GOBIN)/remove_ger:
 	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/remove_ger ./tools/remove_ger/cmd
+
+.PHONY: $(GOBIN)/exit_certificate
+$(GOBIN)/exit_certificate:
+	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/exit_certificate ./tools/exit_certificate/cmd
+
+.PHONY: $(GOBIN)/exit_certificate_claimer
+$(GOBIN)/exit_certificate_claimer:
+	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/exit_certificate_claimer ./tools/exit_certificate_claimer/service/cmd
+
+.PHONY: $(GOBIN)/force_ger_update
+$(GOBIN)/force_ger_update:
+	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/force_ger_update ./tools/force_ger_update/cmd
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
@@ -110,6 +147,10 @@ TEST_RUN ?=
 test-e2e: ## Runs the e2e tests
 	go test -v -timeout 45m $(if $(TEST_RUN),-run $(TEST_RUN)) ./test/e2e/...
 
+.PHONY: test-e2e-force_ger_update
+test-e2e-force_ger_update: ## Runs the isolated force_ger_update e2e test (dedicated CI job/runner only)
+	RUN_FORCE_GER_UPDATE_E2E=true E2E_SKIP_POSTTEST_BRIDGE_CHECK=true go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...
+
 .PHONY: lint
 lint: ## Runs the linter
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/golangci-lint run --timeout 5m
@@ -117,10 +158,14 @@ lint: ## Runs the linter
 .PHONY: generate-swagger-docs
 generate-swagger-docs: ## Generates the swagger docs
 	@echo "Generating swagger docs"
-	@swag init -g bridgeservice/bridge.go -o bridgeservice/docs
+	@$(SWAG) init -g bridgeservice/bridge.go -o bridgeservice/docs --exclude autoclaim/api
+	@$(SWAG) init -g api.go -d autoclaim/api,autoclaim/apitypes -o autoclaim/api/docs --instanceName autoclaim
 	@mkdir -p docs/assets/swagger/bridge_service
 	@cp bridgeservice/docs/swagger.json docs/assets/swagger/bridge_service/swagger.json
 	@echo "Copied swagger.json to docs/assets/swagger/bridge_service/"
+	@mkdir -p docs/assets/swagger/autoclaim
+	@cp autoclaim/api/docs/autoclaim_swagger.json docs/assets/swagger/autoclaim/swagger.json
+	@echo "Copied autoclaim_swagger.json to docs/assets/swagger/autoclaim/"
 
 .PHONY: vulncheck
 vulncheck: ## Runs the vulnerability checker tool

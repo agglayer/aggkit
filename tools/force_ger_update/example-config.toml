@@ -1,0 +1,65 @@
+# Example configuration for the force_ger_update tool.
+#
+# Run with:
+#   ./target/force_ger_update --cfg tools/force_ger_update/example-config.toml
+
+[ForceGERUpdate]
+# HTTP RPC endpoint for L1 (mandatory).
+L1URL = "http://localhost:8545"
+
+# Optional websocket RPC endpoint for L1. When set, event watching subscribes via
+# WatchUpdateL1InfoTree instead of polling FilterLogs.
+L1WSURL = ""
+
+# L1 PolygonZkEVMGlobalExitRootV2 (agglayerger binding) address.
+GlobalExitRootManagerAddr = "0x1111111111111111111111111111111111111111"
+
+# L1 PolygonZkEVMBridgeV2 (agglayerbridge binding) address.
+BridgeAddr = "0x2222222222222222222222222222222222222222"
+
+# X: send a forced bridgeMessage when now - lastGERUpdate >= this.
+MaxTimeWithoutGERUpdate = "1h"
+
+# How often the timer loop evaluates the elapsed time since the last GER update.
+CheckInterval = "10s"
+
+# Polling mode only: how often to FilterLogs for new UpdateL1InfoTree events.
+EventPollInterval = "15s"
+
+# Boot: how far back (in FilterLogsChunkSize chunks) to scan for the last UpdateL1InfoTree event.
+InitialLookbackBlocks = 50000
+
+# Block range per FilterLogs call.
+FilterLogsChunkSize = 10000
+
+# bridgeMessage destinationNetwork. Must not be 0 (L1 itself).
+DestinationNetwork = 1
+
+# bridgeMessage destinationAddress. Defaults to the ethtxmanager sender address when unset.
+DestinationAddress = "0x0000000000000000000000000000000000000000"
+
+# When true, log the calldata instead of sending the transaction.
+DryRun = false
+
+	[ForceGERUpdate.EthTxManager]
+	FrequencyToMonitorTxs = "1s"
+	WaitTxToBeMined = "2s"
+	GetReceiptMaxTime = "250ms"
+	GetReceiptWaitInterval = "1s"
+	PrivateKeys = [
+		{Method = "local", Path = "/app/keystore/force_ger_update.keystore", Password = "testonly"},
+	]
+	ForcedGas = 0
+	GasPriceMarginFactor = 1
+	MaxGasPriceLimit = 0
+	StoragePath = "/tmp/aggkit/ethtxmanager-force_ger_update.sqlite"
+	ReadPendingL1Txs = false
+	SafeStatusL1NumberOfBlocks = 5
+	FinalizedStatusL1NumberOfBlocks = 10
+	EstimateGasMaxRetries = 1
+
+		[ForceGERUpdate.EthTxManager.Etherman]
+		URL = "http://localhost:8545"
+		MultiGasProvider = false
+		L1ChainID = 1337
+		HTTPHeaders = []

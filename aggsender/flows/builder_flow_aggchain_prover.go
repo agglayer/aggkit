@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -186,68 +187,28 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 	}
 
 	if lastSentCert != nil && lastSentCert.Status.IsInError() && lastSentCert.CertType == typeCert {
-		a.log.Infof("resending the same InError certificate: %s", lastSentCert.String())
-		fromBlock := lastSentCert.FromBlock
-		toBlock := lastSentCert.ToBlock
-
-		lastProvenBlock := a.getLastProvenBlock(fromBlock, lastSentCert)
-		if lastSentCert.FromBlock != lastProvenBlock+1 {
-			a.log.Warnf("aggchainProverFlow - last sent certificate is InError and its fromBlock: %d doesn't match "+
-				"lastProvenBlock: %d + 1. Check update process 😅", lastSentCert.FromBlock, lastProvenBlock)
-		}
-
-		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock)
+		// Before blindly resending the exact same InError certificate, make sure the L1 info
+		// tree data it used (finalized root + leaf count) is still valid. An L1 reorg can change
+		// the finalized L1 info tree root at that leaf count, which invalidates the certificate's
+		// L1 info root and the imported bridge exit proofs derived from it. Resending the identical
+		// certificate in that case is futile because agglayer will keep returning InError.
+		rootValid, err := a.isInErrorCertL1InfoRootValid(ctx, lastSentCert)
 		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
+			return nil, fmt.Errorf("aggchainProverFlow - error validating InError certificate L1 info tree root: %w", err)
 		}
 
-		unclaims, err := a.l2BridgeQuerier.GetUnsetClaimsForBlockRange(ctx,
-			fromBlock, toBlock)
-		if err != nil {
-			return nil, fmt.Errorf("error getting unset claims for block range: %w", err)
+		if rootValid {
+			return a.buildRetrySameCertificateParams(ctx, lastSentCert, proof, typeCert)
 		}
 
-		buildParams := &types.CertificateBuildParams{
-			FromBlock:           fromBlock,
-			ToBlock:             toBlock,
-			RetryCount:          lastSentCert.RetryCount + 1,
-			Bridges:             bridges,
-			Claims:              claims,
-			LastSentCertificate: lastSentCert,
-			CreatedAt:           lastSentCert.CreatedAt,
-			CertificateType:     typeCert,
-			Unclaims:            unclaims,
-			// old certificate already got the finalized l1 info tree data
-			L1InfoTreeRootFromWhichToProve: *lastSentCert.FinalizedL1InfoTreeRoot,
-			L1InfoTreeLeafCount:            lastSentCert.L1InfoTreeLeafCount,
-		}
-		originalFromBlock := buildParams.FromBlock
-		originalToBlock := buildParams.ToBlock
-		buildParams, err = a.baseFlow.AdjustBlockRange(ctx, buildParams, a.adjustmentOptions(false))
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error adjusting block range: %w", err)
-		}
-		rangeChanged := buildParams.FromBlock != originalFromBlock || buildParams.ToBlock != originalToBlock
-
-		if !a.canReuseRetryProof(buildParams, lastSentCert, proof, rangeChanged) {
-			proof = nil
-		}
-
-		if proof == nil {
-			// this can happen if the aggsender db was deleted, so the aggsender
-			// got the last sent certificate from agglayer, but in that data we do not have
-			// the aggchain proof that was generated before, so we need to call the prover again
-
-			return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
-		}
-
-		// if we have the aggchain proof, we need to set it in the build params
-		buildParams.AggchainProof = proof
-
-		return buildParams, nil
-	}
-	// This line is just for emitting a warning
-	if lastSentCert != nil && lastSentCert.Status.IsInError() && lastSentCert.CertType != typeCert {
+		// The L1 info tree data used by the InError certificate is no longer valid (L1 reorg).
+		// We drop the (now stale) aggchain proof and rebuild the certificate from scratch with
+		// fresh L1 info tree data by falling through to the normal build path below, which also
+		// re-triggers the aggchain prover.
+		a.log.Infof("aggchainProverFlow - InError certificate %s used L1 info tree data invalidated by a reorg, "+
+			"dropping the aggchain proof and rebuilding the certificate from scratch", lastSentCert.String())
+	} else if lastSentCert != nil && lastSentCert.Status.IsInError() && lastSentCert.CertType != typeCert {
+		// This line is just for emitting a warning
 		a.log.Warnf("aggchainProverFlow - next cert is a retry but type %s is != from current one %s. "+
 			" So it going to generate a totally new certificate",
 			lastSentCert.CertType, typeCert)
@@ -278,6 +239,114 @@ func (a *AggchainProverBuilderFlow) GetCertificateBuildParams(
 	}
 
 	return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
+}
+
+// buildRetrySameCertificateParams builds the parameters to resend the exact same InError
+// certificate. It reuses the block range and the finalized L1 info tree data of the last sent
+// certificate, and reuses the cached aggchain proof when it is still applicable, otherwise it
+// re-triggers the aggchain prover.
+func (a *AggchainProverBuilderFlow) buildRetrySameCertificateParams(
+	ctx context.Context,
+	lastSentCert *types.CertificateHeader,
+	proof *types.AggchainProof,
+	typeCert types.CertificateType,
+) (*types.CertificateBuildParams, error) {
+	a.log.Infof("resending the same InError certificate: %s", lastSentCert.String())
+	fromBlock := lastSentCert.FromBlock
+	toBlock := lastSentCert.ToBlock
+
+	lastProvenBlock := a.getLastProvenBlock(fromBlock, lastSentCert)
+	if lastSentCert.FromBlock != lastProvenBlock+1 {
+		a.log.Warnf("aggchainProverFlow - last sent certificate is InError and its fromBlock: %d doesn't match "+
+			"lastProvenBlock: %d + 1. Check update process 😅", lastSentCert.FromBlock, lastProvenBlock)
+	}
+
+	bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
+	}
+
+	unclaims, err := a.l2BridgeQuerier.GetUnsetClaimsForBlockRange(ctx,
+		fromBlock, toBlock)
+	if err != nil {
+		return nil, fmt.Errorf("error getting unset claims for block range: %w", err)
+	}
+
+	buildParams := &types.CertificateBuildParams{
+		FromBlock:           fromBlock,
+		ToBlock:             toBlock,
+		RetryCount:          lastSentCert.RetryCount + 1,
+		Bridges:             bridges,
+		Claims:              claims,
+		LastSentCertificate: lastSentCert,
+		CreatedAt:           lastSentCert.CreatedAt,
+		CertificateType:     typeCert,
+		Unclaims:            unclaims,
+		// old certificate already got the finalized l1 info tree data
+		L1InfoTreeRootFromWhichToProve: *lastSentCert.FinalizedL1InfoTreeRoot,
+		L1InfoTreeLeafCount:            lastSentCert.L1InfoTreeLeafCount,
+	}
+	originalFromBlock := buildParams.FromBlock
+	originalToBlock := buildParams.ToBlock
+	buildParams, err = a.baseFlow.AdjustBlockRange(ctx, buildParams, a.adjustmentOptions(false))
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error adjusting block range: %w", err)
+	}
+	rangeChanged := buildParams.FromBlock != originalFromBlock || buildParams.ToBlock != originalToBlock
+
+	if !a.canReuseRetryProof(buildParams, lastSentCert, proof, rangeChanged) {
+		proof = nil
+	}
+
+	if proof == nil {
+		// this can happen if the aggsender db was deleted, so the aggsender
+		// got the last sent certificate from agglayer, but in that data we do not have
+		// the aggchain proof that was generated before, so we need to call the prover again
+
+		return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
+	}
+
+	// if we have the aggchain proof, we need to set it in the build params
+	buildParams.AggchainProof = proof
+
+	return buildParams, nil
+}
+
+// isInErrorCertL1InfoRootValid checks whether the L1 info tree data (finalized root and leaf count)
+// recorded in an InError certificate is still valid against the current canonical L1 info tree.
+// It returns false when an L1 reorg has changed the root at that leaf count, or removed the leaf
+// altogether, meaning the certificate can never settle as is and must be rebuilt from scratch.
+func (a *AggchainProverBuilderFlow) isInErrorCertL1InfoRootValid(
+	ctx context.Context, lastSentCert *types.CertificateHeader) (bool, error) {
+	if lastSentCert.FinalizedL1InfoTreeRoot == nil || lastSentCert.L1InfoTreeLeafCount == 0 {
+		// No finalized L1 info tree data recorded for this certificate, so there is nothing
+		// we can validate here. Keep the existing resend behavior.
+		return true, nil
+	}
+
+	rootForLeafCount, err := a.l1InfoTreeDataQuerier.GetL1InfoRootByLeafIndex(ctx, lastSentCert.L1InfoTreeLeafCount-1)
+	if err != nil {
+		if errors.Is(err, l1infotreesync.ErrNotFound) {
+			// The leaf that backed the certificate is no longer part of the canonical L1 info
+			// tree (reorged out), so the certificate can never settle as is.
+			a.log.Warnf("aggchainProverFlow - L1 info tree leaf count %d of InError certificate %s not found "+
+				"(likely reorged out). Considering its L1 info tree data invalid",
+				lastSentCert.L1InfoTreeLeafCount, lastSentCert.ID())
+			return false, nil
+		}
+		return false, fmt.Errorf("error getting L1 info tree root by leaf count %d: %w",
+			lastSentCert.L1InfoTreeLeafCount, err)
+	}
+
+	if rootForLeafCount.Hash != *lastSentCert.FinalizedL1InfoTreeRoot {
+		a.log.Warnf("aggchainProverFlow - L1 info tree root of InError certificate %s changed "+
+			"(stored %s, current %s for leaf count %d). L1 info tree was reorged, considering it invalid",
+			lastSentCert.ID(), lastSentCert.FinalizedL1InfoTreeRoot.Hex(),
+			rootForLeafCount.Hash.Hex(), lastSentCert.L1InfoTreeLeafCount)
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // verifyBuildParams verifies the certificate build params and returns an error if they are not valid
