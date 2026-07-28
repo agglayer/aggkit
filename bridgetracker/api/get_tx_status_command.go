@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	"github.com/gin-gonic/gin"
 )
@@ -13,7 +14,7 @@ var _ command = (*getTxStatusCommand)(nil)
 // getTxStatusCommand registers (or looks up) the bridge identified by the request's network id
 // and transaction hash in the supervised registry.
 type getTxStatusCommand struct {
-	supervised types.SupervisedRegistry
+	supervised domain.SupervisedRegistry
 }
 
 // Execute implements command: it parses the network_id/tx_hash path params, registers the
@@ -26,15 +27,10 @@ func (cmd *getTxStatusCommand) Execute(c *gin.Context) (int, any, *types.ErrorDa
 		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: err.Error()}
 	}
 
-	trackingStatus, status, stepIndex, allSteps, errStep := cmd.supervised.Register(req.NetworkID, req.TxHash)
+	tracking, err := cmd.supervised.Get(domain.TrackingID{NetworkID: req.NetworkID, TxHash: req.TxHash}, true)
+	if err != nil {
+		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()}
+	}
 
-	return http.StatusOK, types.TrackingData{
-		TrackingStatus: trackingStatus,
-		NetworkID:      req.NetworkID,
-		TxHash:         req.TxHash,
-		BridgeStatus:   status,
-		StepIndex:      stepIndex,
-		AllSteps:       allSteps,
-		Error:          errStep,
-	}, nil
+	return http.StatusOK, trackingDataFrom(tracking), nil
 }

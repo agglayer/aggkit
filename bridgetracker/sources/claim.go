@@ -34,7 +34,7 @@ func (s *ClaimSource) ClaimFor(
 		return nil, err
 	}
 
-	globalIndex := bridgesync.GenerateGlobalIndexForNetworkID(bridge.Key.NetworkID, bridge.DepositCount)
+	globalIndex := bridgesync.GenerateGlobalIndexForNetworkID(bridge.NetworkID, bridge.DepositCount)
 	claims, err := svc.GetClaims(ctx, client.GetClaimsParams{
 		NetworkID:   bridge.DestinationNetwork,
 		GlobalIndex: globalIndex,

@@ -69,7 +69,7 @@ func TestLiveDiscovery_NewRollupResolvedImmediately(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		got, err := f.GetURL(newNetworkID)
-		return err == nil && got == metadataURL
+		return err == nil && got.BridgeURL == metadataURL
 	}, testEventuallyWait, testEventuallyTick, "expected newly attached rollup to be discovered live")
 
 	entry, ok := f.cache.get(newNetworkID)
@@ -119,12 +119,14 @@ func TestLiveDiscovery_NewRollupNoSourceThenHealedByEvent(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		got, err := f.GetURL(newNetworkID)
-		return err == nil && got != ""
+		return err == nil && got.BridgeURL != ""
 	}, testEventuallyWait, testEventuallyTick, "expected discovered rollup to be healed by a later URL event")
 
 	got, err := f.GetURL(newNetworkID)
 	require.NoError(t, err)
-	require.Contains(t, got, fmt.Sprintf(":%d", DefaultBridgeServicePort))
+	require.Contains(t, got.BridgeURL, fmt.Sprintf(":%d", DefaultBridgeServicePort))
+	require.Equal(t, "https://seq.example.com:8545", got.JSONRPCURL,
+		"the healing SetTrustedSequencerURL event must also install the json-rpc endpoint")
 }
 
 // TestLiveUpdate_SequencerThenMetadataUpgrades covers matrix item #4a: a sequencer-sourced network
@@ -147,7 +149,7 @@ func TestLiveUpdate_SequencerThenMetadataUpgrades(t *testing.T) {
 
 	initial, err := f.GetURL(networkID)
 	require.NoError(t, err)
-	require.Contains(t, initial, fmt.Sprintf(":%d", DefaultBridgeServicePort))
+	require.Contains(t, initial.BridgeURL, fmt.Sprintf(":%d", DefaultBridgeServicePort))
 
 	sleepPastSeedTick(testPollInterval)
 
@@ -158,7 +160,7 @@ func TestLiveUpdate_SequencerThenMetadataUpgrades(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		got, err := f.GetURL(networkID)
-		return err == nil && got == metadataURL
+		return err == nil && got.BridgeURL == metadataURL
 	}, testEventuallyWait, testEventuallyTick, "expected cache to upgrade to metadata-sourced URL")
 
 	entry, ok := f.cache.get(networkID)
@@ -187,21 +189,27 @@ func TestLiveUpdate_MetadataThenSequencerRejected(t *testing.T) {
 
 	got, err := f.GetURL(networkID)
 	require.NoError(t, err)
-	require.Equal(t, metadataURL, got)
+	require.Equal(t, metadataURL, got.BridgeURL)
 
 	sleepPastSeedTick(testPollInterval)
 
-	_, err = rollups[0].contract.SetTrustedSequencerURL(auth, "https://seq.example.com:8545")
+	const newSeqURL = "https://seq.example.com:8545"
+	_, err = rollups[0].contract.SetTrustedSequencerURL(auth, newSeqURL)
 	require.NoError(t, err)
 	backend.Commit()
 
-	// Generous wait past when the event should have been scanned; the URL must remain unchanged.
-	sleepPastSeedTick(testPollInterval)
-	sleepPastSeedTick(testPollInterval)
+	// The json-rpc endpoint IS refreshed by the (bridge-wise rejected) sequencer event; waiting on it
+	// also guarantees the event was scanned before the bridge-URL immutability assertion below.
+	require.Eventually(t, func() bool {
+		got, err := f.GetURL(networkID)
+		return err == nil && got.JSONRPCURL == newSeqURL
+	}, testEventuallyWait, testEventuallyTick,
+		"SetTrustedSequencerURL must refresh the json-rpc endpoint of a metadata-sourced entry")
 
 	got, err = f.GetURL(networkID)
 	require.NoError(t, err)
-	require.Equal(t, metadataURL, got, "lower-priority sequencer event must not downgrade a metadata-sourced entry")
+	require.Equal(t, metadataURL, got.BridgeURL,
+		"lower-priority sequencer event must not downgrade a metadata-sourced entry")
 }
 
 // TestLiveUpdate_FirstInstallViaEventOnNoSourceNetwork covers matrix item #7: a network that had
@@ -231,12 +239,13 @@ func TestLiveUpdate_FirstInstallViaEventOnNoSourceNetwork(t *testing.T) {
 
 		require.Eventually(t, func() bool {
 			got, err := f.GetURL(networkID)
-			return err == nil && got != ""
+			return err == nil && got.BridgeURL != ""
 		}, testEventuallyWait, testEventuallyTick, "expected first-ever install via SetTrustedSequencerURL")
 
 		got, err := f.GetURL(networkID)
 		require.NoError(t, err)
-		require.Contains(t, got, fmt.Sprintf(":%d", DefaultBridgeServicePort))
+		require.Contains(t, got.BridgeURL, fmt.Sprintf(":%d", DefaultBridgeServicePort))
+		require.Equal(t, "https://seq.example.com:8545", got.JSONRPCURL)
 	})
 
 	t.Run("via AggchainMetadataSet", func(t *testing.T) {
@@ -263,7 +272,7 @@ func TestLiveUpdate_FirstInstallViaEventOnNoSourceNetwork(t *testing.T) {
 
 		require.Eventually(t, func() bool {
 			got, err := f.GetURL(networkID)
-			return err == nil && got == metadataURL
+			return err == nil && got.BridgeURL == metadataURL
 		}, testEventuallyWait, testEventuallyTick, "expected first-ever install via AggchainMetadataSet")
 	})
 }
@@ -333,7 +342,7 @@ func TestLiveUpdate_CrossTierRejectionIsUnconditional(t *testing.T) {
 
 	got, err := f.GetURL(networkID)
 	require.NoError(t, err)
-	require.Equal(t, deadMetadataURL, got)
+	require.Equal(t, deadMetadataURL, got.BridgeURL)
 
 	entry, ok := f.cache.get(networkID)
 	require.True(t, ok)
@@ -351,6 +360,6 @@ func TestLiveUpdate_CrossTierRejectionIsUnconditional(t *testing.T) {
 
 	got, err = f.GetURL(networkID)
 	require.NoError(t, err)
-	require.Equal(t, deadMetadataURL, got,
+	require.Equal(t, deadMetadataURL, got.BridgeURL,
 		"lower-priority sequencer event must be rejected outright even though it is healthy and current is unhealthy")
 }

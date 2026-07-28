@@ -4,14 +4,16 @@ import (
 	"sync"
 )
 
-// cacheEntry is a single networkID -> bridge service URL cache record. It tracks not only the URL
-// but the Source that produced it (so config entries stay immune to on-chain updates and the
-// metadata-over-sequencer precedence can be enforced on live updates) and the result of the most
-// recent /health probe (used by the health-gating rule).
+// cacheEntry is a single networkID -> network URLs cache record. Besides the bridge service URL it
+// tracks the Source that produced it (so config entries stay immune to on-chain updates and the
+// metadata-over-sequencer precedence can be enforced on live updates), the result of the most
+// recent /health probe (used by the health-gating rule), and the network's JSON-RPC endpoint (the
+// raw trustedSequencerURL, which is independent of the bridge-URL priority and health rules).
 type cacheEntry struct {
-	url     string
-	source  Source
-	healthy bool
+	url        string
+	jsonRPCURL string
+	source     Source
+	healthy    bool
 }
 
 // cache is a concurrency-safe map of networkID -> cacheEntry. GetURL reads under a read lock while

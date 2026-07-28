@@ -80,6 +80,10 @@ func BuildSteps(
 			if res.Certificate != nil {
 				sp.Result = res.Certificate
 			}
+		case types.StepWaitingGERInjection:
+			if res.InjectedGER != nil {
+				sp.Result = res.InjectedGER
+			}
 		case types.StepWaitingClaim:
 			if res.Claim != nil {
 				sp.Result = res.Claim

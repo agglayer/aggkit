@@ -109,6 +109,18 @@ func TestBuildSteps(t *testing.T) {
 		require.Equal(t, gerUpdate, second[0].Result)
 	})
 
+	t.Run("injected GER result attaches to WaitingGERInjection once resolved", func(t *testing.T) {
+		t.Parallel()
+
+		injectedGER := &types.InjectedGERResult{GER: common.Hash{3}}
+		steps := BuildSteps(types.BridgeTypeL1ToL2, StepResolution{
+			Step:        types.StepWaitingClaim,
+			InjectedGER: injectedGER,
+		}, nil, t1)
+
+		require.Equal(t, injectedGER, steps[1].Result)
+	})
+
 	t.Run("claim result attaches to WaitingClaim once claimed", func(t *testing.T) {
 		t.Parallel()
 

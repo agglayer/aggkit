@@ -243,36 +243,3 @@ func TestCertificateDataMarshalJSON(t *testing.T) {
 	expected.StatusString = cert.Status.String()
 	require.Equal(t, expected, decoded)
 }
-
-func TestBridgeStatusJSONRoundTrip(t *testing.T) {
-	status := BridgeStatus{
-		BridgeType:     BridgeTypeL2ToL2,
-		BridgeLeafType: BridgeLeafTypeMessage,
-		BlockNumber:    12345,
-		LogIndex:       3,
-	}
-
-	data, err := json.Marshal(status)
-	require.NoError(t, err)
-
-	var raw map[string]any
-	require.NoError(t, json.Unmarshal(data, &raw))
-	require.EqualValues(t, 2, raw["bridge_type"])
-	require.Equal(t, "L2->L2", raw["bridge_type_string"])
-	require.EqualValues(t, 1, raw["bridge_leaf_type"])
-	require.Equal(t, "Message", raw["bridge_leaf_type_string"])
-	require.EqualValues(t, 12345, raw["block_number"])
-	require.EqualValues(t, 3, raw["log_index"])
-	_, hasStepIndex := raw["step_index"]
-	require.False(t, hasStepIndex, "step_index now lives on TrackingData, not BridgeStatus")
-	_, hasAllSteps := raw["all_steps"]
-	require.False(t, hasAllSteps, "all_steps now lives on TrackingData, not BridgeStatus")
-
-	var decoded BridgeStatus
-	require.NoError(t, json.Unmarshal(data, &decoded))
-
-	expected := status
-	expected.BridgeTypeString = status.BridgeType.String()
-	expected.BridgeLeafTypeString = status.BridgeLeafType.String()
-	require.Equal(t, expected, decoded)
-}

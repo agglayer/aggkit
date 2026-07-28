@@ -39,29 +39,28 @@ func NewBridgeEventSource(clients EthClientResolver) (*BridgeEventSource, error)
 }
 
 // FindBridge implements bridgetracker.BridgeEventSource: it resolves the receipt of the tx
-// on its origin network and extracts the BridgeEvent facts. A missing tx, a reverted tx or
-// a receipt without BridgeEvent logs are all ErrBridgeTxNotFound (the engine retries a few
-// polls before failing the bridge, covering the not-yet-mined window)
+// on its origin network and extracts the BridgeEvent facts. A missing tx is ErrBridgeTxNotFound
+// (it may simply not be mined yet, so the engine retries); a reverted tx or a mined receipt
+// without BridgeEvent logs are both ErrBridgeTxNotABridge, since neither can ever change on
+// retry (the engine fails the bridge immediately for those)
 func (s *BridgeEventSource) FindBridge(
-	ctx context.Context, networkID uint32, txHash common.Hash,
+	ctx context.Context, id bridgetracker.TrackingID,
 ) (*bridgetracker.BridgeInfo, error) {
-	client, err := s.clients.ClientFor(ctx, networkID)
+	client, err := s.clients.ClientFor(ctx, id.NetworkID)
 	if err != nil {
-		return nil, fmt.Errorf("resolving JSON-RPC client for network %d: %w", networkID, err)
+		return nil, fmt.Errorf("resolving JSON-RPC client for network %d: %w", id.NetworkID, err)
 	}
 
-	receipt, err := client.TransactionReceipt(ctx, txHash)
+	receipt, err := client.TransactionReceipt(ctx, id.TxHash)
 	if errors.Is(err, ethereum.NotFound) {
-		return nil, fmt.Errorf("tx %s not found on network %d: %w",
-			txHash, networkID, bridgetracker.ErrBridgeTxNotFound)
+		return nil, fmt.Errorf("%s not found: %w", id, bridgetracker.ErrBridgeTxNotFound)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("fetching receipt of tx %s on network %d: %w", txHash, networkID, err)
+		return nil, fmt.Errorf("fetching receipt of %s: %w", id, err)
 	}
 
 	if receipt.Status != gethtypes.ReceiptStatusSuccessful {
-		return nil, fmt.Errorf("tx %s reverted on network %d: %w",
-			txHash, networkID, bridgetracker.ErrBridgeTxNotFound)
+		return nil, fmt.Errorf("%s reverted: %w", id, bridgetracker.ErrBridgeTxNotABridge)
 	}
 
 	for _, l := range receipt.Logs {
@@ -70,10 +69,10 @@ func (s *BridgeEventSource) FindBridge(
 		}
 		event, err := s.parser.ParseBridgeEvent(*l)
 		if err != nil {
-			return nil, fmt.Errorf("parsing BridgeEvent log of tx %s: %w", txHash, err)
+			return nil, fmt.Errorf("parsing BridgeEvent log of %s: %w", id, err)
 		}
 		return &bridgetracker.BridgeInfo{
-			Key:                bridgetracker.BridgeKey{NetworkID: networkID, TxHash: txHash},
+			NetworkID:          id.NetworkID,
 			LeafType:           trackertypes.BridgeLeafType(event.LeafType),
 			DestinationNetwork: event.DestinationNetwork,
 			DepositCount:       event.DepositCount,
@@ -82,6 +81,5 @@ func (s *BridgeEventSource) FindBridge(
 		}, nil
 	}
 
-	return nil, fmt.Errorf("tx %s on network %d emitted no BridgeEvent: %w",
-		txHash, networkID, bridgetracker.ErrBridgeTxNotFound)
+	return nil, fmt.Errorf("%s emitted no BridgeEvent: %w", id, bridgetracker.ErrBridgeTxNotABridge)
 }

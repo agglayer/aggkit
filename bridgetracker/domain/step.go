@@ -47,6 +47,9 @@ type StepResolution struct {
 	// Certificate is the result of StepCertificateProcessing, set only once the certificate
 	// including the bridge is settled
 	Certificate *types.CertificateData
+	// InjectedGER is the result of StepWaitingGERInjection, set once the covering GER has
+	// been injected on the destination network (L2 destinations only)
+	InjectedGER *types.InjectedGERResult
 	// Claim is the result of StepWaitingClaim, set once the bridge has been claimed
 	Claim *types.ClaimResult
 }
@@ -110,6 +113,7 @@ func DeriveStep(
 			res.Step = types.StepWaitingGERInjection
 			return res, nil
 		}
+		res.InjectedGER = &types.InjectedGERResult{GER: *injected.GER}
 	}
 
 	claim, err := facts.ClaimFor(ctx)

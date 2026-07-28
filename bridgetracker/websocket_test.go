@@ -90,7 +90,7 @@ func TestWSTrackingThenStatusUpdates(t *testing.T) {
 	require.Equal(t, "null", string(tracking.BridgeStatus))
 
 	// engine publishes an in-progress status -> tracking_status/bridge_status populated
-	tracker.Publish(1, common.HexToHash(testTxHash), types.TrackingStatusRunning, testBridgeStatus(), 0, testAllSteps(false))
+	tracker.Publish(TrackingID{NetworkID: 1, TxHash: common.HexToHash(testTxHash)}, testBridgeInfo(), testAllSteps(false))
 	msg = readEnvelope(t, conn)
 	require.Equal(t, types.WSTypeStatus, msg.Type)
 	require.NoError(t, json.Unmarshal(msg.Data, &tracking))
@@ -103,7 +103,7 @@ func TestWSTrackingThenStatusUpdates(t *testing.T) {
 	require.Equal(t, "PendingInclusion", allSteps[tracking.StepIndex].StepString)
 
 	// terminal state -> final status followed by a normal closure (1000)
-	tracker.Publish(1, common.HexToHash(testTxHash), types.TrackingStatusFinished, testBridgeStatus(), 0, testAllSteps(true))
+	tracker.Publish(TrackingID{NetworkID: 1, TxHash: common.HexToHash(testTxHash)}, testBridgeInfo(), testAllSteps(true))
 	msg = readEnvelope(t, conn)
 	require.Equal(t, types.WSTypeStatus, msg.Type)
 	require.NoError(t, json.Unmarshal(msg.Data, &tracking))
@@ -124,7 +124,7 @@ func TestWSInitialStatusWhenKnown(t *testing.T) {
 	// register + publish before connecting
 	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/network/1/tx/"+testTxHash)
 	require.Equal(t, http.StatusOK, resp.Code)
-	tracker.Publish(1, common.HexToHash(testTxHash), types.TrackingStatusRunning, testBridgeStatus(), 0, testAllSteps(false))
+	tracker.Publish(TrackingID{NetworkID: 1, TxHash: common.HexToHash(testTxHash)}, testBridgeInfo(), testAllSteps(false))
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") +
 		api.TrackerV1Prefix + "/network/1/tx/" + testTxHash + "/ws"
@@ -148,7 +148,7 @@ func TestWSTerminalError(t *testing.T) {
 	msg := readEnvelope(t, conn)
 	require.Equal(t, types.WSTypeStatus, msg.Type)
 
-	tracker.PublishError(1, common.HexToHash(testTxHash), testErrorStep())
+	tracker.PublishError(TrackingID{NetworkID: 1, TxHash: common.HexToHash(testTxHash)}, testErrorStep())
 
 	msg = readEnvelope(t, conn)
 	require.Equal(t, types.WSTypeStatus, msg.Type)

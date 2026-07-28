@@ -257,9 +257,10 @@ type BridgeStepPath struct {
 	EndDate          *time.Time `json:"end_date,omitempty"`
 	ExpectedDuration *Duration  `json:"expected_duration,omitempty"`
 	// Result is the data produced by the step once it completes; its shape depends on Step:
-	// *GERUpdateResult (StepWaitingGERUpdate), *LERUpdateResult (StepWaitingLERUpdate),
-	// *CertificateData (StepCertificateProcessing) or *ClaimResult (StepWaitingClaim). nil
-	// until the step produces it, and for steps that never produce one
+	// *GERUpdateResult (StepWaitingGERUpdate), *InjectedGERResult (StepWaitingGERInjection),
+	// *LERUpdateResult (StepWaitingLERUpdate), *CertificateData (StepCertificateProcessing) or
+	// *ClaimResult (StepWaitingClaim). nil until the step produces it, and for steps that
+	// never produce one
 	Result any `json:"result,omitempty"`
 	// Error carries the error details when Status is StepStatusError, nil otherwise
 	Error *ErrorStep `json:"error,omitempty"`
@@ -270,6 +271,13 @@ type BridgeStepPath struct {
 type GERUpdateResult struct {
 	GER         common.Hash `json:"ger"`
 	BlockNumber uint64      `json:"block_number"`
+}
+
+// InjectedGERResult is the result of StepWaitingGERInjection once it completes: the GER
+// injected on the destination network that covers the bridge. The injection source does not
+// expose the block it was injected in, unlike GERUpdateResult
+type InjectedGERResult struct {
+	GER common.Hash `json:"ger"`
 }
 
 // LERUpdateResult is the result of StepWaitingLERUpdate once it completes: the LER produced
@@ -343,28 +351,4 @@ func (c CertificateData) MarshalJSON() ([]byte, error) {
 	c.StatusString = c.Status.String()
 	type certificateDataAlias CertificateData
 	return json.Marshal(certificateDataAlias(c))
-}
-
-// BridgeStatus is part of the response of GET /tracker/v1/tx/{txHash} (see TrackingData),
-// identifying the bridge that TrackingData.AllSteps describes
-type BridgeStatus struct {
-	BridgeType BridgeType `json:"bridge_type"`
-	// BridgeTypeString is the string representation of BridgeType, auto-populated on JSON marshaling
-	BridgeTypeString string         `json:"bridge_type_string"`
-	BridgeLeafType   BridgeLeafType `json:"bridge_leaf_type"`
-	// BridgeLeafTypeString is the string representation of BridgeLeafType, auto-populated on JSON marshaling
-	BridgeLeafTypeString string `json:"bridge_leaf_type_string"`
-	// BlockNumber is the block, on the origin network, where the BridgeEvent was emitted
-	BlockNumber uint64 `json:"block_number"`
-	// LogIndex is the position of the BridgeEvent log within BlockNumber
-	LogIndex uint32 `json:"log_index"`
-}
-
-// MarshalJSON is the implementation of the json.Marshaler interface.
-// It populates the string representation of the numeric enum fields
-func (b BridgeStatus) MarshalJSON() ([]byte, error) {
-	b.BridgeTypeString = b.BridgeType.String()
-	b.BridgeLeafTypeString = b.BridgeLeafType.String()
-	type bridgeStatusAlias BridgeStatus
-	return json.Marshal(bridgeStatusAlias(b))
 }

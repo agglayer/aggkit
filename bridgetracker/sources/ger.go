@@ -58,7 +58,7 @@ func (s *GERSource) OriginGER(
 	ger := common.HexToHash(string(leaf.GlobalExitRoot))
 	blockNumber := leaf.BlockNumber
 	return &trackertypes.GERData{
-		NetworkID:   bridge.Key.NetworkID,
+		NetworkID:   bridge.NetworkID,
 		GER:         &ger,
 		LERType:     trackertypes.LERTypeMainnet,
 		BlockNumber: &blockNumber,
@@ -114,13 +114,13 @@ func (s *GERSource) coveringLeafIndex(
 	if err != nil {
 		return 0, err // transient: URL resolution failure, retried by the engine
 	}
-	index, err := svc.GetL1InfoTreeIndex(ctx, int(bridge.Key.NetworkID), int(bridge.DepositCount))
+	index, err := svc.GetL1InfoTreeIndex(ctx, int(bridge.NetworkID), int(bridge.DepositCount))
 	if isNotFound(err) {
 		return 0, errNotCoveredYet
 	}
 	if err != nil {
 		return 0, fmt.Errorf("fetching L1 info tree index for network %d deposit %d: %w",
-			bridge.Key.NetworkID, bridge.DepositCount, err)
+			bridge.NetworkID, bridge.DepositCount, err)
 	}
 	return index, nil
 }

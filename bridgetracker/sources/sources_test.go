@@ -25,7 +25,7 @@ var testTxHash = common.HexToHash("0x1234567890123456789012345678901234567890123
 // l1ToL2Bridge is the BridgeInfo of an L1->L2 bridge used across the source tests
 func l1ToL2Bridge() *bridgetracker.BridgeInfo {
 	return &bridgetracker.BridgeInfo{
-		Key:                bridgetracker.BridgeKey{NetworkID: 0, TxHash: testTxHash},
+		NetworkID:          0,
 		LeafType:           trackertypes.BridgeLeafTypeAsset,
 		DestinationNetwork: 1,
 		DepositCount:       7,
@@ -73,23 +73,32 @@ func TestBridgeEventSourceFindBridge(t *testing.T) {
 	}, nil)
 
 	source := newBridgeEventSource(t, client)
-	info, err := source.FindBridge(t.Context(), 0, testTxHash)
+	info, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})
 	require.NoError(t, err)
 	require.Equal(t, l1ToL2Bridge(), info)
 }
 
 func TestBridgeEventSourceNotFoundCases(t *testing.T) {
 	testCases := []struct {
-		name    string
-		receipt *gethtypes.Receipt
-		err     error
+		name        string
+		receipt     *gethtypes.Receipt
+		err         error
+		expectedErr error
 	}{
-		{name: "tx does not exist", err: ethereum.NotFound},
-		{name: "tx reverted", receipt: &gethtypes.Receipt{Status: gethtypes.ReceiptStatusFailed}},
-		{name: "no BridgeEvent log", receipt: &gethtypes.Receipt{
-			Status: gethtypes.ReceiptStatusSuccessful,
-			Logs:   []*gethtypes.Log{{Topics: []common.Hash{common.HexToHash("0x01")}}},
-		}},
+		{name: "tx does not exist", err: ethereum.NotFound, expectedErr: bridgetracker.ErrBridgeTxNotFound},
+		{
+			name:        "tx reverted",
+			receipt:     &gethtypes.Receipt{Status: gethtypes.ReceiptStatusFailed},
+			expectedErr: bridgetracker.ErrBridgeTxNotABridge,
+		},
+		{
+			name: "no BridgeEvent log",
+			receipt: &gethtypes.Receipt{
+				Status: gethtypes.ReceiptStatusSuccessful,
+				Logs:   []*gethtypes.Log{{Topics: []common.Hash{common.HexToHash("0x01")}}},
+			},
+			expectedErr: bridgetracker.ErrBridgeTxNotABridge,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -97,8 +106,8 @@ func TestBridgeEventSourceNotFoundCases(t *testing.T) {
 			client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(tc.receipt, tc.err)
 
 			source := newBridgeEventSource(t, client)
-			_, err := source.FindBridge(t.Context(), 0, testTxHash)
-			require.ErrorIs(t, err, bridgetracker.ErrBridgeTxNotFound)
+			_, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})
+			require.ErrorIs(t, err, tc.expectedErr)
 		})
 	}
 }
@@ -106,7 +115,7 @@ func TestBridgeEventSourceNotFoundCases(t *testing.T) {
 func TestBridgeEventSourceUnknownNetwork(t *testing.T) {
 	source := newBridgeEventSource(t, mocks.NewBaseEthereumClienter(t))
 
-	_, err := source.FindBridge(t.Context(), 5, testTxHash)
+	_, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 5, TxHash: testTxHash})
 	require.ErrorContains(t, err, "network 5")
 	require.NotErrorIs(t, err, bridgetracker.ErrBridgeTxNotFound,
 		"a resolver failure is transient, not a terminal not-found")

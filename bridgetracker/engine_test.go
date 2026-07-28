@@ -6,6 +6,7 @@ import (
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
@@ -32,7 +33,7 @@ type fakeSources struct {
 	claimErr error
 }
 
-func (f *fakeSources) FindBridge(_ context.Context, _ uint32, _ common.Hash) (*BridgeInfo, error) {
+func (f *fakeSources) FindBridge(_ context.Context, _ TrackingID) (*BridgeInfo, error) {
 	return f.bridge, f.bridgeErr
 }
 
@@ -65,7 +66,7 @@ func newTestEngine(t *testing.T, sources *fakeSources) (*Engine, *memoryRegistry
 	t.Helper()
 
 	store := newMemoryRegistry()
-	engine, err := NewEngine(EngineConfig{NotFoundAfter: 2},
+	engine, err := NewEngine(EngineConfig{UnresolvedTimeout: 20 * time.Second},
 		log.WithFields("module", "engine_test"), store, sources.engineSources())
 	require.NoError(t, err)
 
@@ -74,9 +75,35 @@ func newTestEngine(t *testing.T, sources *fakeSources) (*Engine, *memoryRegistry
 	return engine, store, &clock
 }
 
+// mustRegister adds id to the supervised list, failing the test on error
+func mustRegister(t *testing.T, store *memoryRegistry, id TrackingID) {
+	t.Helper()
+
+	_, err := store.Get(id, true)
+	require.NoError(t, err)
+}
+
+// mustGet reads the current snapshot of id, failing the test on error
+func mustGet(t *testing.T, store *memoryRegistry, id TrackingID) *domain.TrackingData {
+	t.Helper()
+
+	tracking, err := store.Get(id, false)
+	require.NoError(t, err)
+	return tracking
+}
+
+// mustGetTrackerActives reads the current active list, failing the test on error
+func mustGetTrackerActives(t *testing.T, store *memoryRegistry) []*domain.TrackingData {
+	t.Helper()
+
+	active, err := store.GetTrackerActives(nil)
+	require.NoError(t, err)
+	return active
+}
+
 func l2ToL2Bridge() *BridgeInfo {
 	return &BridgeInfo{
-		Key:                BridgeKey{NetworkID: 1, TxHash: testHash},
+		NetworkID:          1,
 		LeafType:           types.BridgeLeafTypeAsset,
 		DestinationNetwork: 2,
 		DepositCount:       7,
@@ -88,10 +115,10 @@ func l2ToL2Bridge() *BridgeInfo {
 func currentStep(t *testing.T, store *memoryRegistry) types.BridgeStep {
 	t.Helper()
 
-	_, status, stepIndex, allSteps, errData := store.Register(1, testHash)
-	require.Nil(t, errData)
-	require.NotNil(t, status)
-	return allSteps[*stepIndex].Step
+	tracking := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.False(t, tracking.Failed())
+	require.NotNil(t, tracking.Info())
+	return tracking.AllSteps()[*tracking.StepIndex()].Step
 }
 
 func TestEngineNewValidation(t *testing.T) {
@@ -112,44 +139,131 @@ func TestEngineNewValidation(t *testing.T) {
 	require.ErrorContains(t, err, "ClaimSource")
 }
 
-// TestEngineNotFound pins the give-up policy: the tx gets NotFoundAfter chances (it may not
-// be mined yet) and is then marked as terminally failed to resolve (TrackingStatus: Error,
-// an exhausted ErrorStep) and dropped from the engine state
+// TestEngineNotFound pins the give-up policy: the tx gets UnresolvedTimeout to show up (it
+// may not be mined yet) and is then marked as terminally failed to resolve (TrackingStatus:
+// Error, an exhausted ErrorStep) and dropped from the active list
 func TestEngineNotFound(t *testing.T) {
 	f := &fakeSources{bridgeErr: ErrBridgeTxNotFound}
-	engine, store, _ := newTestEngine(t, f)
+	engine, store, clock := newTestEngine(t, f)
 
-	store.Register(1, testHash)
+	mustRegister(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
 
 	// first miss: still tracked, still no status for clients (bridge_status: null)
 	engine.tick(t.Context())
-	trackingStatus, status, stepIndex, allSteps, errStep := store.Register(1, testHash)
-	require.Equal(t, types.TrackingStatusRegistered, trackingStatus)
-	require.Nil(t, status)
-	require.Nil(t, stepIndex)
-	require.Nil(t, allSteps)
-	require.Nil(t, errStep)
+	tracking := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
+	require.Nil(t, tracking.Info())
+	require.Nil(t, tracking.StepIndex())
+	require.Nil(t, tracking.AllSteps())
+	require.False(t, tracking.Failed())
 
-	// second consecutive miss reaches NotFoundAfter=2 -> gives up resolving the bridge
+	// UnresolvedTimeout elapses since the first miss (StartDate) -> gives up resolving the bridge
+	*clock = clock.Add(engine.cfg.UnresolvedTimeout)
 	engine.tick(t.Context())
-	trackingStatus, status, stepIndex, allSteps, errStep = store.Register(1, testHash)
-	require.Equal(t, types.TrackingStatusError, trackingStatus)
-	require.Nil(t, status)
-	require.Nil(t, stepIndex)
-	require.Nil(t, allSteps)
+	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.Equal(t, types.TrackingStatusError, tracking.TrackingStatus())
+	require.Nil(t, tracking.Info())
+	require.Nil(t, tracking.StepIndex())
+	require.Nil(t, tracking.AllSteps())
+	require.True(t, tracking.Failed())
+	errStep := tracking.Error()
 	require.NotNil(t, errStep)
 	require.Equal(t, types.StepErrorExhausted, errStep.ErrorType)
 	require.Equal(t, 2, errStep.RetryCount)
-	require.Empty(t, engine.tracked, "failed bridges must leave the engine state")
+	require.Empty(t, mustGetTrackerActives(t, store), "failed bridges must leave the active list")
 }
 
-// TestEngineNotFoundCounterResets pins that a transient error between misses does not
-// accumulate towards the 404
+// TestEngineNotABridge pins that a tx which exists but is not a bridge transaction (reverted,
+// or emitted no BridgeEvent) is marked as terminally failed immediately, with no retries: the
+// receipt is already final, so waiting cannot change the outcome
+func TestEngineNotABridge(t *testing.T) {
+	f := &fakeSources{bridgeErr: ErrBridgeTxNotABridge}
+	engine, store, _ := newTestEngine(t, f)
+
+	mustRegister(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+
+	engine.tick(t.Context())
+	tracking := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.Equal(t, types.TrackingStatusError, tracking.TrackingStatus())
+	require.Nil(t, tracking.Info())
+	require.True(t, tracking.Failed())
+	errStep := tracking.Error()
+	require.NotNil(t, errStep)
+	require.Equal(t, types.StepErrorPermanent, errStep.ErrorType)
+	require.Equal(t, 0, errStep.RetryCount, "no retries: an already-mined tx cannot change on retry")
+	require.Empty(t, mustGetTrackerActives(t, store), "failed bridges must leave the active list")
+}
+
+// TestEngineResolveErrorAccumulatesAndClears pins that a FindBridge failure other than
+// ErrBridgeTxNotFound / ErrBridgeTxNotABridge is recorded on the bridge (retry count
+// accumulating across ticks) without marking it as failed, and clears once FindBridge
+// succeeds
+func TestEngineResolveErrorAccumulatesAndClears(t *testing.T) {
+	f := &fakeSources{bridgeErr: context.DeadlineExceeded}
+	engine, store, _ := newTestEngine(t, f)
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	mustRegister(t, store, id)
+
+	engine.tick(t.Context())
+	tracking := mustGet(t, store, id)
+	require.False(t, tracking.Failed())
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
+	errStep := tracking.Error()
+	require.NotNil(t, errStep)
+	require.Equal(t, types.StepErrorTransient, errStep.ErrorType)
+	require.Equal(t, 1, errStep.RetryCount)
+	require.Contains(t, errStep.Description[0], "context deadline exceeded")
+
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, id)
+	errStep = tracking.Error()
+	require.Equal(t, 2, errStep.RetryCount)
+	require.Len(t, errStep.Description, 2)
+	require.NotEmpty(t, mustGetTrackerActives(t, store), "a transient error must not drop the bridge from the active list")
+
+	f.bridgeErr = nil
+	f.bridge = l2ToL2Bridge()
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, id)
+	require.False(t, tracking.Failed())
+	require.Nil(t, tracking.BridgeTx().Error, "a successful resolution clears the accumulated error")
+}
+
+// TestEngineTransientErrorEventuallyGivesUp pins that a persistent transient FindBridge
+// failure (anything other than ErrBridgeTxNotFound) is also given up on once UnresolvedTimeout
+// elapses since it was first seen unresolved — unlike a bare retry counter, the timeout
+// applies uniformly regardless of why the bridge never resolved
+func TestEngineTransientErrorEventuallyGivesUp(t *testing.T) {
+	f := &fakeSources{bridgeErr: context.DeadlineExceeded}
+	engine, store, clock := newTestEngine(t, f)
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	mustRegister(t, store, id)
+
+	engine.tick(t.Context())
+	require.False(t, mustGet(t, store, id).Failed())
+
+	*clock = clock.Add(engine.cfg.UnresolvedTimeout)
+	engine.tick(t.Context())
+
+	tracking := mustGet(t, store, id)
+	require.True(t, tracking.Failed())
+	require.Equal(t, types.TrackingStatusError, tracking.TrackingStatus())
+	errStep := tracking.Error()
+	require.NotNil(t, errStep)
+	require.Equal(t, types.StepErrorExhausted, errStep.ErrorType)
+	require.Equal(t, 2, errStep.RetryCount)
+	require.Empty(t, mustGetTrackerActives(t, store), "failed bridges must leave the active list")
+}
+
+// TestEngineNotFoundCounterResets pins that a bridge which resolves before UnresolvedTimeout
+// elapses is tracked normally, regardless of how many misses it took to get there
 func TestEngineNotFoundCounterResets(t *testing.T) {
 	f := &fakeSources{bridgeErr: ErrBridgeTxNotFound}
 	engine, store, _ := newTestEngine(t, f)
 
-	store.Register(1, testHash)
+	mustRegister(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
 
 	engine.tick(t.Context())
 
@@ -158,10 +272,10 @@ func TestEngineNotFoundCounterResets(t *testing.T) {
 	f.bridge = l2ToL2Bridge()
 	engine.tick(t.Context())
 
-	_, status, stepIndex, allSteps, errData := store.Register(1, testHash)
-	require.Nil(t, errData)
-	require.NotNil(t, status)
-	require.Equal(t, types.StepWaitingLERUpdate, allSteps[*stepIndex].Step)
+	tracking := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.False(t, tracking.Failed())
+	require.NotNil(t, tracking.Info())
+	require.Equal(t, types.StepWaitingLERUpdate, tracking.AllSteps()[*tracking.StepIndex()].Step)
 }
 
 // TestEngineLifecycleL2ToL2 walks a bridge through the full L2->L2' path, checking the step
@@ -170,7 +284,7 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	f := &fakeSources{bridge: l2ToL2Bridge()}
 	engine, store, _ := newTestEngine(t, f)
 
-	store.Register(1, testHash)
+	mustRegister(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
 
 	engine.tick(t.Context())
 	require.Equal(t, types.StepWaitingLERUpdate, currentStep(t, store))
@@ -189,11 +303,12 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 
 	f.cert = &types.CertificateData{CertificateID: common.HexToHash("0x02"), Status: agglayertypes.Settled}
 	engine.tick(t.Context())
-	_, status, stepIndex, allSteps, errData := store.Register(1, testHash)
-	require.Nil(t, errData)
-	require.Equal(t, types.StepWaitingGERInjection, allSteps[*stepIndex].Step)
-	require.Equal(t, uint64(1000), status.BlockNumber, "the creating BridgeEvent's block/log position is carried through")
-	require.Equal(t, uint32(2), status.LogIndex)
+	tracking := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.False(t, tracking.Failed())
+	info, allSteps := tracking.Info(), tracking.AllSteps()
+	require.Equal(t, types.StepWaitingGERInjection, allSteps[*tracking.StepIndex()].Step)
+	require.Equal(t, uint64(1000), info.BlockNumber, "the creating BridgeEvent's block/log position is carried through")
+	require.Equal(t, uint32(2), info.LogIndex)
 	// the certificate step reports the settled certificate as its result once it completes
 	for _, sp := range allSteps {
 		if sp.Step == types.StepCertificateProcessing {
@@ -201,15 +316,24 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 		}
 	}
 
-	f.injectedGER = &types.GERData{NetworkID: 2, LERType: types.LERTypeLocal}
+	injectedGER := common.HexToHash("0x04")
+	f.injectedGER = &types.GERData{NetworkID: 2, GER: &injectedGER, LERType: types.LERTypeLocal}
 	engine.tick(t.Context())
+	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	allSteps = tracking.AllSteps()
 	require.Equal(t, types.StepWaitingClaim, currentStep(t, store))
+	for _, sp := range allSteps {
+		if sp.Step == types.StepWaitingGERInjection {
+			require.Equal(t, &types.InjectedGERResult{GER: injectedGER}, sp.Result)
+		}
+	}
 
 	f.claim = &types.ClaimResult{ClaimTx: common.HexToHash("0x03"), BlockNumber: 30}
 	engine.tick(t.Context())
-	_, _, stepIndex, allSteps, errData = store.Register(1, testHash)
-	require.Nil(t, errData)
-	require.Equal(t, types.StepClaimed, allSteps[*stepIndex].Step)
+	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.False(t, tracking.Failed())
+	allSteps = tracking.AllSteps()
+	require.Equal(t, types.StepClaimed, allSteps[*tracking.StepIndex()].Step)
 	final := allSteps[len(allSteps)-1]
 	require.Equal(t, types.StepClaimed, final.Step)
 	require.Equal(t, types.StepStatusDone, final.Status, "Claimed is terminal: done, not inProgress")
@@ -220,16 +344,15 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 		}
 	}
 
-	// claimed bridges leave the active set and the engine state on the next round
+	// claimed bridges leave the active list on the next round
 	engine.tick(t.Context())
-	require.Empty(t, engine.tracked)
-	require.Empty(t, store.ActiveBridges())
+	require.Empty(t, mustGetTrackerActives(t, store))
 }
 
 // TestEngineL1ToL2Path pins that L1-originated bridges skip the certificate and LER steps
 func TestEngineL1ToL2Path(t *testing.T) {
 	f := &fakeSources{bridge: &BridgeInfo{
-		Key:                BridgeKey{NetworkID: 0, TxHash: testHash},
+		NetworkID:          0,
 		LeafType:           types.BridgeLeafTypeMessage,
 		DestinationNetwork: 1,
 		BlockNumber:        500,
@@ -237,19 +360,20 @@ func TestEngineL1ToL2Path(t *testing.T) {
 	}}
 	engine, store, _ := newTestEngine(t, f)
 
-	store.Register(0, testHash)
+	mustRegister(t, store, TrackingID{NetworkID: 0, TxHash: testHash})
 	ger := common.HexToHash("0x0a")
 	blockNumber := uint64(10)
 	f.originGER = &types.GERData{NetworkID: 0, GER: &ger, BlockNumber: &blockNumber, LERType: types.LERTypeMainnet}
 	engine.tick(t.Context())
 
-	_, status, stepIndex, allSteps, errData := store.Register(0, testHash)
-	require.Nil(t, errData)
-	require.Equal(t, types.BridgeTypeL1ToL2, status.BridgeType)
-	require.Equal(t, types.BridgeLeafTypeMessage, status.BridgeLeafType)
-	require.Equal(t, uint64(500), status.BlockNumber)
-	require.Equal(t, uint32(1), status.LogIndex)
-	require.Equal(t, types.StepWaitingGERInjection, allSteps[*stepIndex].Step)
+	tracking := mustGet(t, store, TrackingID{NetworkID: 0, TxHash: testHash})
+	require.False(t, tracking.Failed())
+	info, allSteps := tracking.Info(), tracking.AllSteps()
+	require.Equal(t, types.BridgeTypeL1ToL2, info.BridgeType())
+	require.Equal(t, types.BridgeLeafTypeMessage, info.LeafType)
+	require.Equal(t, uint64(500), info.BlockNumber)
+	require.Equal(t, uint32(1), info.LogIndex)
+	require.Equal(t, types.StepWaitingGERInjection, allSteps[*tracking.StepIndex()].Step)
 	for _, sp := range allSteps {
 		require.NotEqual(t, types.StepWaitingLERUpdate, sp.Step)
 		require.NotEqual(t, types.StepPendingInclusion, sp.Step)
@@ -267,8 +391,8 @@ func TestEngineNoChangeNoRepublish(t *testing.T) {
 	f := &fakeSources{bridge: l2ToL2Bridge()}
 	engine, store, _ := newTestEngine(t, f)
 
-	store.Register(1, testHash)
-	updates, unsubscribe := store.Subscribe(1, testHash)
+	mustRegister(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	updates, unsubscribe := store.Subscribe(TrackingID{NetworkID: 1, TxHash: testHash})
 	defer unsubscribe()
 
 	engine.tick(t.Context())
@@ -288,7 +412,7 @@ func TestEngineStepDates(t *testing.T) {
 	f := &fakeSources{bridge: l2ToL2Bridge()}
 	engine, store, clock := newTestEngine(t, f)
 
-	store.Register(1, testHash)
+	mustRegister(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
 
 	start := *clock
 	engine.tick(t.Context())
@@ -296,9 +420,10 @@ func TestEngineStepDates(t *testing.T) {
 	// time passes with no fact change: StartDate must not move
 	*clock = clock.Add(time.Minute)
 	engine.tick(t.Context())
-	_, _, stepIndex, allSteps, errData := store.Register(1, testHash)
-	require.Nil(t, errData)
-	require.Equal(t, 0, *stepIndex)
+	tracking := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.False(t, tracking.Failed())
+	allSteps := tracking.AllSteps()
+	require.Equal(t, 0, *tracking.StepIndex())
 	require.Equal(t, types.StepWaitingLERUpdate, allSteps[0].Step)
 	require.Equal(t, start, *allSteps[0].StartDate)
 	require.Nil(t, allSteps[0].EndDate)
@@ -309,9 +434,10 @@ func TestEngineStepDates(t *testing.T) {
 	f.originLER = &types.LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0a"), BlockNumber: 10}
 	engine.tick(t.Context())
 
-	_, _, stepIndex, allSteps, errData = store.Register(1, testHash)
-	require.Nil(t, errData)
-	require.Equal(t, 1, *stepIndex, "current step moved on to WaitingLERUpdate's successor")
+	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.False(t, tracking.Failed())
+	allSteps = tracking.AllSteps()
+	require.Equal(t, 1, *tracking.StepIndex(), "current step moved on to WaitingLERUpdate's successor")
 	require.Equal(t, types.StepStatusDone, allSteps[0].Status)
 	require.Equal(t, start, *allSteps[0].StartDate)
 	require.Equal(t, transition, *allSteps[0].EndDate)
@@ -320,18 +446,44 @@ func TestEngineStepDates(t *testing.T) {
 }
 
 // TestEngineTransientErrorKeepsState pins that a transient source failure neither publishes
-// nor loses the resolved bridge facts
+// nor loses the resolved bridge facts, and that it is persisted as a step-level error whose
+// retry count accumulates across ticks and clears once the source recovers
 func TestEngineTransientErrorKeepsState(t *testing.T) {
 	f := &fakeSources{bridge: l2ToL2Bridge()}
 	engine, store, _ := newTestEngine(t, f)
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
 
-	store.Register(1, testHash)
+	mustRegister(t, store, id)
 	engine.tick(t.Context())
 	require.Equal(t, types.StepWaitingLERUpdate, currentStep(t, store))
 
 	f.originLERErr = context.DeadlineExceeded
 	engine.tick(t.Context())
 	require.Equal(t, types.StepWaitingLERUpdate, currentStep(t, store))
-	require.NotNil(t, engine.tracked[BridgeKey{NetworkID: 1, TxHash: testHash}].info,
-		"transient errors must not drop the resolved bridge info")
+	tracking := mustGet(t, store, id)
+	require.NotNil(t, tracking.Info(), "transient errors must not drop the resolved bridge info")
+
+	errStep := tracking.AllSteps()[*tracking.StepIndex()]
+	require.Equal(t, types.StepStatusError, errStep.Status)
+	require.Equal(t, types.StepErrorTransient, errStep.Error.ErrorType)
+	require.Equal(t, 1, errStep.Error.RetryCount)
+	require.Contains(t, errStep.Error.Description[0], "context deadline exceeded")
+
+	// a second consecutive failure accumulates onto the same step's retry count
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, id)
+	errStep = tracking.AllSteps()[*tracking.StepIndex()]
+	require.Equal(t, 2, errStep.Error.RetryCount)
+	require.Len(t, errStep.Error.Description, 2)
+
+	// the source recovers: the step-level error clears on its own (BuildSteps never carries
+	// an old step's Error forward)
+	f.originLERErr = nil
+	f.originLER = &types.LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0a"), BlockNumber: 10}
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, id)
+	require.Equal(t, types.StepPendingInclusion, currentStep(t, store))
+	for _, sp := range tracking.AllSteps() {
+		require.Nil(t, sp.Error)
+	}
 }

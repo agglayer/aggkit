@@ -308,12 +308,12 @@ func (l *listener) processLog(ctx context.Context, lg types.Log) {
 		return
 	}
 
-	candidateURL, source, ok := l.decodeLog(networkID, lg)
+	candidateURL, jsonRPCURL, source, ok := l.decodeLog(networkID, lg)
 	if !ok {
 		return
 	}
 
-	l.applyUpdate(ctx, networkID, candidateURL, source, lg)
+	l.applyUpdate(ctx, networkID, candidateURL, jsonRPCURL, source, lg)
 }
 
 // processRollupManagerLog decodes a rollup-manager lifecycle log announcing a newly attached rollup
@@ -380,7 +380,7 @@ func (l *listener) discoverRollup(ctx context.Context, rollupID uint32, addr com
 		return
 	}
 
-	url, source, err := l.resolver.resolve(ctx, rollupID, reader)
+	urls, source, err := l.resolver.resolve(ctx, rollupID, reader)
 	if err != nil {
 		// Register the address regardless so a later URL-changing event can still populate the entry.
 		l.addrToNetworkID[addr] = rollupID
@@ -397,67 +397,74 @@ func (l *listener) discoverRollup(ctx context.Context, rollupID uint32, addr com
 		return
 	}
 
-	healthy := l.healthChecker.IsHealthy(ctx, url)
+	healthy := l.healthChecker.IsHealthy(ctx, urls.BridgeURL)
 
 	l.addrToNetworkID[addr] = rollupID
 	l.watchedAddresses = append(l.watchedAddresses, addr)
-	l.cache.set(rollupID, cacheEntry{url: url, source: source, healthy: healthy})
+	l.cache.set(rollupID, cacheEntry{
+		url: urls.BridgeURL, jsonRPCURL: urls.JSONRPCURL, source: source, healthy: healthy})
 
-	l.logger.Infof("discovered network %d bridge service url %s (source=%d, healthy=%t)",
-		rollupID, url, source, healthy)
+	l.logger.Infof("discovered network %d bridge service url %s, json-rpc url %s (source=%d, healthy=%t)",
+		rollupID, urls.BridgeURL, urls.JSONRPCURL, source, healthy)
 }
 
-// decodeLog turns a matched log into a candidate (url, source). It returns ok=false when the log is
-// not relevant (unknown topic, wrong metadata key, empty/unparsable value, or a port-substitution
-// failure). For SetTrustedSequencerURL the port is substituted with DefaultBridgeServicePort.
-func (l *listener) decodeLog(networkID uint32, lg types.Log) (string, Source, bool) {
+// decodeLog turns a matched log into a candidate (bridge url, json-rpc url, source). It returns
+// ok=false when the log is not relevant (unknown topic, wrong metadata key, empty/unparsable value,
+// or a port-substitution failure). For SetTrustedSequencerURL the bridge candidate has its port
+// substituted with DefaultBridgeServicePort while the json-rpc url is the announced URL verbatim;
+// an AggchainMetadataSet log carries no json-rpc information (empty).
+func (l *listener) decodeLog(networkID uint32, lg types.Log) (string, string, Source, bool) {
 	switch lg.Topics[0] {
 	case l.topics[0]: // AggchainMetadataSet -> source #2 (metadata)
 		ev, err := l.aggchainFilterer.ParseAggchainMetadataSet(lg)
 		if err != nil {
 			l.logger.Debugf("failed to parse AggchainMetadataSet log for network %d: %v", networkID, err)
-			return "", SourceMetadata, false
+			return "", "", SourceMetadata, false
 		}
 
 		// The indexed string key arrives pre-hashed; only the BRIDGE_SERVICE_URL key is relevant.
 		if ev.Key != bridgeServiceURLKeyTopic {
-			return "", SourceMetadata, false
+			return "", "", SourceMetadata, false
 		}
 
 		if ev.Value == "" {
 			l.logger.Debugf("ignoring empty BRIDGE_SERVICE_URL metadata for network %d", networkID)
-			return "", SourceMetadata, false
+			return "", "", SourceMetadata, false
 		}
 
-		return ev.Value, SourceMetadata, true
+		return ev.Value, "", SourceMetadata, true
 
-	case l.topics[1]: // SetTrustedSequencerURL -> source #3 (sequencer URL + port)
+	case l.topics[1]: // SetTrustedSequencerURL -> source #3 (sequencer URL + port) and json-rpc url
 		ev, err := l.rollupFilterer.ParseSetTrustedSequencerURL(lg)
 		if err != nil {
 			l.logger.Debugf("failed to parse SetTrustedSequencerURL log for network %d: %v", networkID, err)
-			return "", SourceSequencerURL, false
+			return "", "", SourceSequencerURL, false
 		}
 
 		if ev.NewTrustedSequencerURL == "" {
-			return "", SourceSequencerURL, false
+			return "", "", SourceSequencerURL, false
 		}
 
 		url, err := withPort(ev.NewTrustedSequencerURL, l.resolver.bridgeServicePort)
 		if err != nil {
 			l.logger.Warnf("failed to substitute port in sequencer url %q for network %d: %v",
 				ev.NewTrustedSequencerURL, networkID, err)
-			return "", SourceSequencerURL, false
+			return "", "", SourceSequencerURL, false
 		}
 
-		return url, SourceSequencerURL, true
+		return url, ev.NewTrustedSequencerURL, SourceSequencerURL, true
 
 	default:
-		return "", SourceSequencerURL, false
+		return "", "", SourceSequencerURL, false
 	}
 }
 
 // applyUpdate applies the strict priority rules and the health-gating rule (both spelled out in
-// doc.go) for a candidate (url, source) targeting networkID.
+// doc.go) for a candidate (url, source) targeting networkID. jsonRPCURL is the network's JSON-RPC
+// endpoint carried by a SetTrustedSequencerURL event (empty for metadata events); it is refreshed
+// on the current entry up front, exempt from the rules below, because it is independent of which
+// source serves the bridge URL and has no /health semantics. The one restriction is a Config.RPCURLs
+// override, which is terminal and makes the event's json-rpc payload ignored entirely.
 //
 // Priority (strict, using the current entry's recorded source):
 //   - SourceConfig entries are terminal: never overwritten by any event.
@@ -473,9 +480,21 @@ func (l *listener) decodeLog(networkID uint32, lg types.Log) (string, Source, bo
 //   - Prior entry unhealthy: replace regardless of the candidate's probe result (avoid getting
 //     stuck on a dead URL), recording the candidate's probe result.
 func (l *listener) applyUpdate(
-	ctx context.Context, networkID uint32, candidateURL string, source Source, lg types.Log,
+	ctx context.Context, networkID uint32, candidateURL, jsonRPCURL string, source Source, lg types.Log,
 ) {
+	// A config-overridden JSON-RPC endpoint is terminal, exactly like a config-sourced bridge URL:
+	// drop the event's json-rpc payload so it can neither refresh nor be installed below.
+	if l.resolver.configRPCURL(networkID) != "" {
+		jsonRPCURL = ""
+	}
+
 	cur, exists := l.cache.get(networkID)
+
+	if exists && jsonRPCURL != "" && cur.jsonRPCURL != jsonRPCURL {
+		cur.jsonRPCURL = jsonRPCURL
+		l.cache.set(networkID, cur)
+		l.logger.Infof("network %d json-rpc url updated to %s (block=%d)", networkID, jsonRPCURL, lg.BlockNumber)
+	}
 
 	if exists {
 		// SourceConfig is terminal.
@@ -510,7 +529,12 @@ func (l *listener) applyUpdate(
 		return
 	}
 
-	l.cache.set(networkID, cacheEntry{url: candidateURL, source: source, healthy: newHealthy})
+	entry := cacheEntry{url: candidateURL, jsonRPCURL: cur.jsonRPCURL, source: source, healthy: newHealthy}
+	if jsonRPCURL != "" {
+		entry.jsonRPCURL = jsonRPCURL
+	}
+
+	l.cache.set(networkID, entry)
 	l.logger.Infof("network %d bridge service url updated to %s via %s event (source=%d, healthy=%t, block=%d)",
 		networkID, candidateURL, eventName(source), source, newHealthy, lg.BlockNumber)
 }

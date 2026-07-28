@@ -121,7 +121,7 @@ func New(cfg Config, opts Options) (Finder, error) {
 		healthChecker:   healthChecker,
 		logFilterer:     logFilterer,
 		ethClient:       opts.EthClient,
-		resolver:        newResolver(cfg.URLs, DefaultBridgeServicePort),
+		resolver:        newResolver(cfg.BridgeURLs, cfg.RPCURLs, DefaultBridgeServicePort),
 		cache:           newCache(),
 		addrToNetworkID: make(map[common.Address]uint32),
 	}, nil
@@ -194,20 +194,21 @@ func (f *finder) Start(ctx context.Context) error {
 	return nil
 }
 
-// buildInitialCache enumerates rollups 1..RollupCount(), resolves each network's URL and installs a
-// cache entry (source-tagged, healthy defaults to false and is set by probeAll). Config-only
-// networks (e.g. network 0 / L1) present in Config.URLs are also installed. Networks with no source
-// are skipped.
+// buildInitialCache enumerates rollups 1..RollupCount(), resolves each network's URLs and installs
+// a cache entry (source-tagged, healthy defaults to false and is set by probeAll). Config-only
+// networks (e.g. network 0 / L1) present in Config.BridgeURLs are also installed, together with
+// their Config.RPCURLs override if any. Networks with no source are skipped.
 func (f *finder) buildInitialCache(ctx context.Context) error {
 	// Seed config-only entries first (including network 0 / L1) so they are served even if they are
-	// not among the enumerated rollups. Enumeration will overwrite an entry only via SourceConfig
-	// again (identical), so ordering is harmless.
-	for networkID, url := range f.cfg.URLs {
+	// not among the enumerated rollups. Enumeration re-installs an enumerated network's entry with
+	// the same config bridge URL enriched with its JSON-RPC endpoint, so ordering is harmless.
+	for networkID, url := range f.cfg.BridgeURLs {
 		if url == "" {
 			continue
 		}
 
-		f.cache.set(networkID, cacheEntry{url: url, source: SourceConfig})
+		f.cache.set(networkID, cacheEntry{
+			url: url, jsonRPCURL: f.cfg.RPCURLs[networkID], source: SourceConfig})
 	}
 
 	count, err := f.rollupManager.RollupCount(&bind.CallOpts{Context: ctx})
@@ -231,7 +232,12 @@ func (f *finder) buildInitialCache(ctx context.Context) error {
 }
 
 // resolveNetwork resolves a single rollupID (== networkID), building its contract reader, running
-// the priority resolver and installing the resulting cache entry.
+// the priority resolver and installing the resulting cache entry (bridge URL + JSON-RPC endpoint).
+// Networks whose bridge URL is config-overridden but whose JSON-RPC is not are still inspected
+// on-chain so their JSON-RPC endpoint (the raw trustedSequencerURL) can be served alongside the
+// config bridge URL, and their contract address is registered so later SetTrustedSequencerURL
+// events keep that endpoint fresh. A network with BOTH overrides is fully terminal and skips
+// on-chain inspection entirely.
 //
 // Error handling distinguishes two cases so a genuinely broken environment fails loudly instead of
 // degrading silently:
@@ -239,20 +245,38 @@ func (f *finder) buildInitialCache(ctx context.Context) error {
 //   - A hard failure (an RPC/transport error reading the rollup's data, a reader-construction error,
 //     or a genuine resolution error) is returned so Start aborts. These indicate we could not even
 //     inspect the network, which is not the same as the network simply not exposing a bridge service.
+//     Exception: a network covered by a config override never aborts Start on such a failure - its
+//     bridge URL is served from config and only the JSON-RPC endpoint is lost (logged as a warning),
+//     preserving the pre-existing guarantee that config overrides work without on-chain access.
 //   - A benign "no source available" outcome (ErrNoSourceAvailable) is logged and skipped, returning
 //     nil: the network is left without a cache entry but its address stays in the routing table so a
 //     later on-chain URL event can still populate it.
 func (f *finder) resolveNetwork(ctx context.Context, rollupID uint32) error {
-	// Config override short-circuits everything and needs no on-chain read.
-	if url, ok := f.cfg.URLs[rollupID]; ok && url != "" {
-		f.cache.set(rollupID, cacheEntry{url: url, source: SourceConfig})
-		f.logger.Debugf("network %d resolved from config: %s", rollupID, url)
+	configBridgeURL := f.cfg.BridgeURLs[rollupID]
+	configRPCURL := f.cfg.RPCURLs[rollupID]
+
+	// Fully config-covered networks need no on-chain inspection at all: both URLs are terminal.
+	if configBridgeURL != "" && configRPCURL != "" {
+		f.cache.set(rollupID, cacheEntry{url: configBridgeURL, jsonRPCURL: configRPCURL, source: SourceConfig})
+		f.logger.Debugf("network %d fully resolved from config: bridge %s, json-rpc %s",
+			rollupID, configBridgeURL, configRPCURL)
 
 		return nil
 	}
 
+	installConfigFallback := func(reason string, err error) {
+		f.logger.Warnf("network %d: %s (%v); serving config bridge url without an on-chain json-rpc endpoint",
+			rollupID, reason, err)
+		f.cache.set(rollupID, cacheEntry{url: configBridgeURL, jsonRPCURL: configRPCURL, source: SourceConfig})
+	}
+
 	data, err := f.rollupManager.RollupIDToRollupData(&bind.CallOpts{Context: ctx}, rollupID)
 	if err != nil {
+		if configBridgeURL != "" {
+			installConfigFallback("failed to read rollup data", err)
+			return nil
+		}
+
 		return fmt.Errorf("failed to read rollup data for network %d: %w", rollupID, err)
 	}
 
@@ -261,10 +285,15 @@ func (f *finder) resolveNetwork(ctx context.Context, rollupID uint32) error {
 
 	reader, err := f.readerFactory(addr, f.ethClient)
 	if err != nil {
+		if configBridgeURL != "" {
+			installConfigFallback("failed to build contract reader", err)
+			return nil
+		}
+
 		return fmt.Errorf("failed to build contract reader for network %d (%s): %w", rollupID, addr, err)
 	}
 
-	url, source, err := f.resolver.resolve(ctx, rollupID, reader)
+	urls, source, err := f.resolver.resolve(ctx, rollupID, reader)
 	if err != nil {
 		if errors.Is(err, ErrNoSourceAvailable) {
 			f.logger.Warnf("no bridge service url source available for network %d (%s), skipping", rollupID, addr)
@@ -274,8 +303,9 @@ func (f *finder) resolveNetwork(ctx context.Context, rollupID uint32) error {
 		return fmt.Errorf("failed to resolve bridge service url for network %d (%s): %w", rollupID, addr, err)
 	}
 
-	f.cache.set(rollupID, cacheEntry{url: url, source: source})
-	f.logger.Infof("network %d resolved bridge service url %s (source=%d)", rollupID, url, source)
+	f.cache.set(rollupID, cacheEntry{url: urls.BridgeURL, jsonRPCURL: urls.JSONRPCURL, source: source})
+	f.logger.Infof("network %d resolved bridge service url %s, json-rpc url %s (source=%d)",
+		rollupID, urls.BridgeURL, urls.JSONRPCURL, source)
 
 	return nil
 }
@@ -301,13 +331,15 @@ func (f *finder) probeAll(ctx context.Context) int {
 	return unhealthy
 }
 
-// GetURL returns the currently cached bridge service URL for networkID, or ErrURLNotFound if none is
-// cached. It reads under the cache read lock so it is safe to call concurrently.
-func (f *finder) GetURL(networkID uint32) (string, error) {
+// GetURL returns the currently cached URLs (bridge service + JSON-RPC endpoint) for networkID, or
+// ErrURLNotFound if nothing is cached. The JSONRPCURL field may be empty when that source is
+// unavailable (see NetworkURLs). It reads under the cache read lock so it is safe to call
+// concurrently.
+func (f *finder) GetURL(networkID uint32) (NetworkURLs, error) {
 	entry, ok := f.cache.get(networkID)
 	if !ok {
-		return "", fmt.Errorf("%w: network %d", ErrURLNotFound, networkID)
+		return NetworkURLs{}, fmt.Errorf("%w: network %d", ErrURLNotFound, networkID)
 	}
 
-	return entry.url, nil
+	return NetworkURLs{BridgeURL: entry.url, JSONRPCURL: entry.jsonRPCURL}, nil
 }

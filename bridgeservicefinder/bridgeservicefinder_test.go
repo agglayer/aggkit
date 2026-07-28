@@ -62,7 +62,7 @@ func TestStart_RequireAllHealthyOnStart_MockedBranching(t *testing.T) {
 		hc.EXPECT().IsHealthy(mock.Anything, "https://dead.example.com").Return(false)
 
 		f, err := New(Config{
-			URLs:                     map[uint32]string{1: "https://dead.example.com"},
+			BridgeURLs:               map[uint32]string{1: "https://dead.example.com"},
 			RequireAllHealthyOnStart: false,
 		}, Options{
 			RollupManager: rm,
@@ -78,7 +78,7 @@ func TestStart_RequireAllHealthyOnStart_MockedBranching(t *testing.T) {
 
 		got, err := f.GetURL(1)
 		require.NoError(t, err)
-		require.Equal(t, "https://dead.example.com", got)
+		require.Equal(t, "https://dead.example.com", got.BridgeURL)
 	})
 
 	t.Run("unhealthy config-sourced network with RequireAllHealthyOnStart=true: Start fails", func(t *testing.T) {
@@ -89,7 +89,7 @@ func TestStart_RequireAllHealthyOnStart_MockedBranching(t *testing.T) {
 		hc.EXPECT().IsHealthy(mock.Anything, "https://dead.example.com").Return(false)
 
 		f, err := New(Config{
-			URLs:                     map[uint32]string{1: "https://dead.example.com"},
+			BridgeURLs:               map[uint32]string{1: "https://dead.example.com"},
 			RequireAllHealthyOnStart: true,
 		}, Options{
 			RollupManager: rm,
@@ -111,7 +111,7 @@ func TestStart_RequireAllHealthyOnStart_MockedBranching(t *testing.T) {
 		hc.EXPECT().IsHealthy(mock.Anything, "https://alive.example.com").Return(true)
 
 		f, err := New(Config{
-			URLs:                     map[uint32]string{1: "https://alive.example.com"},
+			BridgeURLs:               map[uint32]string{1: "https://alive.example.com"},
 			RequireAllHealthyOnStart: true,
 		}, Options{
 			RollupManager: rm,
@@ -197,6 +197,7 @@ func TestBuildInitialCache_NoSourceSkipsNetworkButContinues(t *testing.T) {
 	noSourceReader.EXPECT().TrustedSequencerURL(mock.Anything).Return("", ErrSourceNotAvailable)
 
 	resolvedReader := mocks.NewRollupContractReader(t)
+	resolvedReader.EXPECT().TrustedSequencerURL(mock.Anything).Return("", ErrSourceNotAvailable)
 	resolvedReader.EXPECT().AggchainMetadata(mock.Anything, MetadataBridgeServiceURLKey).
 		Return("https://metadata.example.com:5577", nil)
 
@@ -226,5 +227,6 @@ func TestBuildInitialCache_NoSourceSkipsNetworkButContinues(t *testing.T) {
 
 	got, err := f.GetURL(2)
 	require.NoError(t, err)
-	require.Equal(t, "https://metadata.example.com:5577", got)
+	require.Equal(t, "https://metadata.example.com:5577", got.BridgeURL)
+	require.Empty(t, got.JSONRPCURL, "no sequencer url available, so no json-rpc endpoint")
 }

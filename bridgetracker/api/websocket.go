@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/gin-gonic/gin"
@@ -29,7 +30,7 @@ var wsUpgrader = websocket.Upgrader{
 // construction time with the supervised registry and logger it needs.
 type wsHandler struct {
 	logger     aggkitcommon.Logger
-	supervised types.SupervisedRegistry
+	supervised domain.SupervisedRegistry
 }
 
 // TxStatusWSHandler upgrades the request to a WebSocket connection subscribed to the bridge
@@ -70,16 +71,22 @@ func (w *wsHandler) TxStatusWSHandler(c *gin.Context) {
 		return
 	}
 
+	id := domain.TrackingID{NetworkID: req.NetworkID, TxHash: req.TxHash}
+
 	// Subscribe before reading the snapshot so no update published in between is missed;
 	// the latest-value channel semantics collapse any duplicate with the initial message
-	updates, unsubscribe := w.supervised.Subscribe(req.NetworkID, req.TxHash)
+	updates, unsubscribe := w.supervised.Subscribe(id)
 	defer unsubscribe()
-	trackingStatus, status, stepIndex, allSteps, errStep := w.supervised.Register(req.NetworkID, req.TxHash)
-
-	if !w.wsSendTracking(conn, req, trackingStatus, status, stepIndex, allSteps, errStep) {
+	tracking, err := w.supervised.Get(id, true)
+	if err != nil {
+		w.wsSendError(conn, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()})
 		return
 	}
-	if reason, done := wsTerminalReason(trackingStatus, status); done {
+
+	if !w.wsSendTracking(conn, tracking) {
+		return
+	}
+	if reason, done := wsTerminalReason(tracking); done {
 		w.wsClose(conn, websocket.CloseNormalClosure, reason)
 		return
 	}
@@ -109,13 +116,10 @@ func (w *wsHandler) TxStatusWSHandler(c *gin.Context) {
 	for {
 		select {
 		case update := <-updates:
-			sent := w.wsSendTracking(
-				conn, req, update.TrackingStatus, update.Status, update.StepIndex, update.AllSteps, update.Error,
-			)
-			if !sent {
+			if !w.wsSendTracking(conn, update) {
 				return
 			}
-			if reason, done := wsTerminalReason(update.TrackingStatus, update.Status); done {
+			if reason, done := wsTerminalReason(update); done {
 				// Terminal state: final status already sent, close normally
 				w.wsClose(conn, websocket.CloseNormalClosure, reason)
 				return
@@ -132,34 +136,23 @@ func (w *wsHandler) TxStatusWSHandler(c *gin.Context) {
 	}
 }
 
-// wsSendTracking pushes a "status" message carrying the TrackingData for req; status/
-// stepIndex/allSteps are nil until the tracker resolves the bridge, and errStep is set only
-// if it gave up trying to resolve the bridge at all. Returns false if the write failed
-func (w *wsHandler) wsSendTracking(
-	conn *websocket.Conn, req *types.BridgeRequest,
-	trackingStatus types.TrackingStatus, status *types.BridgeStatus, stepIndex *int, allSteps []types.BridgeStepPath,
-	errStep *types.ErrorStep,
-) bool {
-	return w.wsSend(conn, types.WSMessage{Type: types.WSTypeStatus, Data: types.TrackingData{
-		TrackingStatus: trackingStatus,
-		NetworkID:      req.NetworkID,
-		TxHash:         req.TxHash,
-		BridgeStatus:   status,
-		StepIndex:      stepIndex,
-		AllSteps:       allSteps,
-		Error:          errStep,
-	}})
+// wsSendTracking pushes a "status" message carrying the wire TrackingData built from
+// tracking; BridgeStatus/StepIndex/AllSteps are nil until the tracker resolves the bridge, and
+// Error is set only if it gave up trying to resolve the bridge at all. Returns false if the
+// write failed
+func (w *wsHandler) wsSendTracking(conn *websocket.Conn, tracking *domain.TrackingData) bool {
+	return w.wsSend(conn, types.WSMessage{Type: types.WSTypeStatus, Data: trackingDataFrom(tracking)})
 }
 
 // wsTerminalReason reports whether the given snapshot is a terminal state the connection
 // should close normally after, and the reason to close with: the bridge reached Claimed, or
-// the tracker gave up trying to resolve it at all (TrackingStatusError with no BridgeStatus —
-// a step-level error on an otherwise-resolved bridge is not terminal, the engine keeps polling it)
-func wsTerminalReason(trackingStatus types.TrackingStatus, status *types.BridgeStatus) (reason string, done bool) {
+// the tracker gave up trying to resolve it at all (domain.TrackingData.Failed — a step-level
+// error on an otherwise-resolved bridge is not terminal, the engine keeps polling it)
+func wsTerminalReason(tracking *domain.TrackingData) (reason string, done bool) {
 	switch {
-	case trackingStatus == types.TrackingStatusFinished:
+	case tracking.TrackingStatus() == types.TrackingStatusFinished:
 		return "bridge claimed", true
-	case trackingStatus == types.TrackingStatusError && status == nil:
+	case tracking.Failed():
 		return "tracker gave up resolving the bridge", true
 	default:
 		return "", false

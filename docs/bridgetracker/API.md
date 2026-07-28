@@ -21,7 +21,7 @@ Calling this endpoint **adds the bridge to the list of supervised bridges** (if 
 
 ## Response types
 
-Implemented in `aggkit/bridgetracker/types/` (`status.go`, `tracking.go`, `health.go`, `websocket.go`).
+Implemented in `aggkit/bridgetracker/types/` (`status.go`, `tracking.go`, `health.go`, `websocket.go`), except `TrackingData` itself, which lives in `aggkit/bridgetracker/api/tracking_data.go` — it's the only place that constructs it.
 
 All the enums are serialized as numeric values, and each enum field has a companion
 `<field>_string` field with its string representation. The companion fields are regular
@@ -77,6 +77,7 @@ Carried in the `result` field of a [BridgeStepPath](#bridgesteppath). It is a JS
 | WaitingGERUpdate | `ger` (Hash), `block_number` (uint64) | GER resulting from the update on L1 and the block where it was updated |
 | WaitingLERUpdate | `network_id` (uint32), `ler` (Hash), `block_number` (uint64) | LER resulting from the update on the origin L2 and the block where it was updated |
 | CertificateProcessing | [CertificateData](#certificatedata) | the certificate data at settlement |
+| WaitingGERInjection | `ger` (Hash) | GER injected on the destination network that covers the bridge; no block number, the injection source does not expose it |
 | WaitingClaim | `claim_tx` (Hash), `block_number` (uint64) | claim transaction on the destination network and its block |
 | any other step | — | no result: always `nil` |
 

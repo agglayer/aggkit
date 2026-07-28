@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,7 +34,7 @@ type API struct {
 }
 
 // NewAPI returns the tracker HTTP service serving the given supervised registry
-func NewAPI(logger aggkitcommon.Logger, configSHA1 string, supervised types.SupervisedRegistry) *API {
+func NewAPI(logger aggkitcommon.Logger, configSHA1 string, supervised domain.SupervisedRegistry) *API {
 	return &API{
 		getTxStatusCmd: &getTxStatusCommand{supervised: supervised},
 		healthCmd: &healthCommand{
@@ -61,9 +62,8 @@ func NewAPI(logger aggkitcommon.Logger, configSHA1 string, supervised types.Supe
 // @Produce json
 // @Param network_id path uint32 true "Network where the bridge transaction was sent (0 -> Mainnet)"
 // @Param tx_hash path string true "Hash of the transaction that created the bridge (bridgeAsset or bridgeMessage)"
-// @Success 200 {object} types.TrackingData "Bridge registered; bridge_status is populated once the tracker resolves it"
+// @Success 200 {object} TrackingData "Bridge registered; bridge_status/error fill in once resolved"
 // @Failure 400 {object} types.ErrorData "Invalid transaction hash or network id"
-// @Failure 404 {object} types.ErrorData "The transaction does not exist or is not a bridge transaction"
 // @Router /network/{network_id}/tx/{tx_hash} [get]
 //
 // HealthHandler is the health-check endpoint: no parameters and no side effects (it does

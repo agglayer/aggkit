@@ -75,6 +75,7 @@ func TestDeriveStep(t *testing.T) {
 		expectedGERUpdate   *types.GERUpdateResult
 		expectedLERUpdate   *types.LERUpdateResult
 		expectedCertificate *types.CertificateData
+		expectedInjectedGER *types.InjectedGERResult
 		expectedClaim       *types.ClaimResult
 	}{
 		{
@@ -181,17 +182,19 @@ func TestDeriveStep(t *testing.T) {
 			expectedQueried:     []string{"originLER", "certificate", "injectedGER", "claimFor"},
 			expectedLERUpdate:   originLER,
 			expectedCertificate: settledCert,
+			expectedInjectedGER: &types.InjectedGERResult{GER: common.Hash{1}},
 			expectedClaim:       claim,
 		},
 		{
-			name:               "L1->L2 claimed",
-			originNetwork:      0,
-			destinationNetwork: 1,
-			facts:              fakeFacts{originGER: originGER, injectedGER: injectedGER, claim: claim},
-			expectedStep:       types.StepClaimed,
-			expectedQueried:    []string{"originGER", "injectedGER", "claimFor"},
-			expectedGERUpdate:  &types.GERUpdateResult{GER: ger, BlockNumber: blockNumber},
-			expectedClaim:      claim,
+			name:                "L1->L2 claimed",
+			originNetwork:       0,
+			destinationNetwork:  1,
+			facts:               fakeFacts{originGER: originGER, injectedGER: injectedGER, claim: claim},
+			expectedStep:        types.StepClaimed,
+			expectedQueried:     []string{"originGER", "injectedGER", "claimFor"},
+			expectedGERUpdate:   &types.GERUpdateResult{GER: ger, BlockNumber: blockNumber},
+			expectedInjectedGER: &types.InjectedGERResult{GER: common.Hash{1}},
+			expectedClaim:       claim,
 		},
 	}
 
@@ -207,6 +210,7 @@ func TestDeriveStep(t *testing.T) {
 			require.Equal(t, tc.expectedGERUpdate, res.GERUpdate)
 			require.Equal(t, tc.expectedLERUpdate, res.LERUpdate)
 			require.Equal(t, tc.expectedCertificate, res.Certificate)
+			require.Equal(t, tc.expectedInjectedGER, res.InjectedGER)
 			require.Equal(t, tc.expectedClaim, res.Claim)
 		})
 	}

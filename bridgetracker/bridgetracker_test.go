@@ -45,18 +45,18 @@ func performRequest(t *testing.T, router *gin.Engine, method, path string) *http
 	return recorder
 }
 
-// testBridgeStatus returns a BridgeStatus snapshot for tests. The matching TrackingStatus
-// (Running or Finished), step index (always 0: the single entry testAllSteps returns) and
-// steps (testAllSteps) are the caller's responsibility to pass alongside it to
-// SetStatus/Publish
-func testBridgeStatus() *types.BridgeStatus {
-	return &types.BridgeStatus{
-		BridgeType:     types.BridgeTypeL2ToL1,
-		BridgeLeafType: types.BridgeLeafTypeAsset,
+// testBridgeInfo returns a BridgeInfo snapshot for tests (BridgeType derives to L2ToL1 since
+// DestinationNetwork is the zero value, Mainnet). The matching TrackingStatus (Running or
+// Finished), step index (always 0: the single entry testAllSteps returns) and steps
+// (testAllSteps) are the caller's responsibility to pass alongside it to Publish
+func testBridgeInfo() *BridgeInfo {
+	return &BridgeInfo{
+		NetworkID: 1,
+		LeafType:  types.BridgeLeafTypeAsset,
 	}
 }
 
-// testAllSteps returns the expected-path snapshot matching testBridgeStatus, claimed or in progress
+// testAllSteps returns the expected-path snapshot matching testBridgeInfo, claimed or in progress
 func testAllSteps(claimed bool) []types.BridgeStepPath {
 	step := types.StepPendingInclusion
 	stepStatus := types.StepStatusInProgress
@@ -67,8 +67,13 @@ func testAllSteps(claimed bool) []types.BridgeStepPath {
 	return []types.BridgeStepPath{{Step: step, Status: stepStatus}}
 }
 
-// intPtr returns a pointer to i, for tests exercising *int fields (e.g. TrackingData.StepIndex)
-func intPtr(i int) *int { return &i }
+// testAllStepsWithError returns an expected-path snapshot with its in-progress step failed,
+// for tests exercising a step-level error (as opposed to a terminal resolution failure)
+func testAllStepsWithError() []types.BridgeStepPath {
+	return []types.BridgeStepPath{{
+		Step: types.StepPendingInclusion, Status: types.StepStatusError, Error: testErrorStep(),
+	}}
+}
 
 // testErrorStep returns the ErrorStep snapshot for tests exercising a bridge the tracker
 // gave up resolving (e.g. tx not found / not a bridge transaction)
@@ -171,7 +176,7 @@ func TestGetTxStatusHandlerRegisters(t *testing.T) {
 	require.Equal(t, "null", string(tracking.BridgeStatus))
 
 	// the tracking engine publishes a status -> tracking_status/bridge_status are populated
-	tracker.Publish(1, common.HexToHash(testTxHash), types.TrackingStatusRunning, testBridgeStatus(), 0, testAllSteps(false))
+	tracker.Publish(TrackingID{NetworkID: 1, TxHash: common.HexToHash(testTxHash)}, testBridgeInfo(), testAllSteps(false))
 	resp = performRequest(t, router, http.MethodGet, path)
 	require.Equal(t, http.StatusOK, resp.Code)
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &tracking))
@@ -207,7 +212,7 @@ func TestGetTxStatusHandlerTerminalError(t *testing.T) {
 	resp := performRequest(t, router, http.MethodGet, path)
 	require.Equal(t, http.StatusOK, resp.Code)
 
-	tracker.PublishError(1, common.HexToHash(testTxHash), testErrorStep())
+	tracker.PublishError(TrackingID{NetworkID: 1, TxHash: common.HexToHash(testTxHash)}, testErrorStep())
 
 	resp = performRequest(t, router, http.MethodGet, path)
 	require.Equal(t, http.StatusOK, resp.Code)

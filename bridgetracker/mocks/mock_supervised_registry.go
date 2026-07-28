@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	common "github.com/ethereum/go-ethereum/common"
+	domain "github.com/agglayer/aggkit/bridgetracker/domain"
 	mock "github.com/stretchr/testify/mock"
 
 	types "github.com/agglayer/aggkit/bridgetracker/types"
@@ -22,235 +22,249 @@ func (_m *SupervisedRegistry) EXPECT() *SupervisedRegistry_Expecter {
 	return &SupervisedRegistry_Expecter{mock: &_m.Mock}
 }
 
-// ActiveBridges provides a mock function with no fields
-func (_m *SupervisedRegistry) ActiveBridges() []types.BridgeKey {
+// Get provides a mock function with given fields: id, createIfNotExists
+func (_m *SupervisedRegistry) Get(id domain.TrackingID, createIfNotExists bool) (*domain.TrackingData, error) {
+	ret := _m.Called(id, createIfNotExists)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Get")
+	}
+
+	var r0 *domain.TrackingData
+	var r1 error
+	if rf, ok := ret.Get(0).(func(domain.TrackingID, bool) (*domain.TrackingData, error)); ok {
+		return rf(id, createIfNotExists)
+	}
+	if rf, ok := ret.Get(0).(func(domain.TrackingID, bool) *domain.TrackingData); ok {
+		r0 = rf(id, createIfNotExists)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.TrackingData)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(domain.TrackingID, bool) error); ok {
+		r1 = rf(id, createIfNotExists)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SupervisedRegistry_Get_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Get'
+type SupervisedRegistry_Get_Call struct {
+	*mock.Call
+}
+
+// Get is a helper method to define mock.On call
+//   - id domain.TrackingID
+//   - createIfNotExists bool
+func (_e *SupervisedRegistry_Expecter) Get(id interface{}, createIfNotExists interface{}) *SupervisedRegistry_Get_Call {
+	return &SupervisedRegistry_Get_Call{Call: _e.mock.On("Get", id, createIfNotExists)}
+}
+
+func (_c *SupervisedRegistry_Get_Call) Run(run func(id domain.TrackingID, createIfNotExists bool)) *SupervisedRegistry_Get_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(domain.TrackingID), args[1].(bool))
+	})
+	return _c
+}
+
+func (_c *SupervisedRegistry_Get_Call) Return(_a0 *domain.TrackingData, _a1 error) *SupervisedRegistry_Get_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *SupervisedRegistry_Get_Call) RunAndReturn(run func(domain.TrackingID, bool) (*domain.TrackingData, error)) *SupervisedRegistry_Get_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetNetworks provides a mock function with given fields: status
+func (_m *SupervisedRegistry) GetNetworks(status *types.TrackingStatus) ([]uint32, error) {
+	ret := _m.Called(status)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetNetworks")
+	}
+
+	var r0 []uint32
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*types.TrackingStatus) ([]uint32, error)); ok {
+		return rf(status)
+	}
+	if rf, ok := ret.Get(0).(func(*types.TrackingStatus) []uint32); ok {
+		r0 = rf(status)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]uint32)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(*types.TrackingStatus) error); ok {
+		r1 = rf(status)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SupervisedRegistry_GetNetworks_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetNetworks'
+type SupervisedRegistry_GetNetworks_Call struct {
+	*mock.Call
+}
+
+// GetNetworks is a helper method to define mock.On call
+//   - status *types.TrackingStatus
+func (_e *SupervisedRegistry_Expecter) GetNetworks(status interface{}) *SupervisedRegistry_GetNetworks_Call {
+	return &SupervisedRegistry_GetNetworks_Call{Call: _e.mock.On("GetNetworks", status)}
+}
+
+func (_c *SupervisedRegistry_GetNetworks_Call) Run(run func(status *types.TrackingStatus)) *SupervisedRegistry_GetNetworks_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*types.TrackingStatus))
+	})
+	return _c
+}
+
+func (_c *SupervisedRegistry_GetNetworks_Call) Return(_a0 []uint32, _a1 error) *SupervisedRegistry_GetNetworks_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *SupervisedRegistry_GetNetworks_Call) RunAndReturn(run func(*types.TrackingStatus) ([]uint32, error)) *SupervisedRegistry_GetNetworks_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetNumTracker provides a mock function with no fields
+func (_m *SupervisedRegistry) GetNumTracker() int {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
-		panic("no return value specified for ActiveBridges")
+		panic("no return value specified for GetNumTracker")
 	}
 
-	var r0 []types.BridgeKey
-	if rf, ok := ret.Get(0).(func() []types.BridgeKey); ok {
+	var r0 int
+	if rf, ok := ret.Get(0).(func() int); ok {
 		r0 = rf()
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]types.BridgeKey)
-		}
+		r0 = ret.Get(0).(int)
 	}
 
 	return r0
 }
 
-// SupervisedRegistry_ActiveBridges_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ActiveBridges'
-type SupervisedRegistry_ActiveBridges_Call struct {
+// SupervisedRegistry_GetNumTracker_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetNumTracker'
+type SupervisedRegistry_GetNumTracker_Call struct {
 	*mock.Call
 }
 
-// ActiveBridges is a helper method to define mock.On call
-func (_e *SupervisedRegistry_Expecter) ActiveBridges() *SupervisedRegistry_ActiveBridges_Call {
-	return &SupervisedRegistry_ActiveBridges_Call{Call: _e.mock.On("ActiveBridges")}
+// GetNumTracker is a helper method to define mock.On call
+func (_e *SupervisedRegistry_Expecter) GetNumTracker() *SupervisedRegistry_GetNumTracker_Call {
+	return &SupervisedRegistry_GetNumTracker_Call{Call: _e.mock.On("GetNumTracker")}
 }
 
-func (_c *SupervisedRegistry_ActiveBridges_Call) Run(run func()) *SupervisedRegistry_ActiveBridges_Call {
+func (_c *SupervisedRegistry_GetNumTracker_Call) Run(run func()) *SupervisedRegistry_GetNumTracker_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run()
 	})
 	return _c
 }
 
-func (_c *SupervisedRegistry_ActiveBridges_Call) Return(_a0 []types.BridgeKey) *SupervisedRegistry_ActiveBridges_Call {
+func (_c *SupervisedRegistry_GetNumTracker_Call) Return(_a0 int) *SupervisedRegistry_GetNumTracker_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *SupervisedRegistry_ActiveBridges_Call) RunAndReturn(run func() []types.BridgeKey) *SupervisedRegistry_ActiveBridges_Call {
+func (_c *SupervisedRegistry_GetNumTracker_Call) RunAndReturn(run func() int) *SupervisedRegistry_GetNumTracker_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// Register provides a mock function with given fields: networkID, txHash
-func (_m *SupervisedRegistry) Register(networkID uint32, txHash common.Hash) (types.TrackingStatus, *types.BridgeStatus, *int, []types.BridgeStepPath, *types.ErrorStep) {
-	ret := _m.Called(networkID, txHash)
+// GetTrackerActives provides a mock function with given fields: networkID
+func (_m *SupervisedRegistry) GetTrackerActives(networkID *uint32) ([]*domain.TrackingData, error) {
+	ret := _m.Called(networkID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Register")
+		panic("no return value specified for GetTrackerActives")
 	}
 
-	var r0 types.TrackingStatus
-	var r1 *types.BridgeStatus
-	var r2 *int
-	var r3 []types.BridgeStepPath
-	var r4 *types.ErrorStep
-	if rf, ok := ret.Get(0).(func(uint32, common.Hash) (types.TrackingStatus, *types.BridgeStatus, *int, []types.BridgeStepPath, *types.ErrorStep)); ok {
-		return rf(networkID, txHash)
+	var r0 []*domain.TrackingData
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*uint32) ([]*domain.TrackingData, error)); ok {
+		return rf(networkID)
 	}
-	if rf, ok := ret.Get(0).(func(uint32, common.Hash) types.TrackingStatus); ok {
-		r0 = rf(networkID, txHash)
+	if rf, ok := ret.Get(0).(func(*uint32) []*domain.TrackingData); ok {
+		r0 = rf(networkID)
 	} else {
-		r0 = ret.Get(0).(types.TrackingStatus)
-	}
-
-	if rf, ok := ret.Get(1).(func(uint32, common.Hash) *types.BridgeStatus); ok {
-		r1 = rf(networkID, txHash)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*types.BridgeStatus)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*domain.TrackingData)
 		}
 	}
 
-	if rf, ok := ret.Get(2).(func(uint32, common.Hash) *int); ok {
-		r2 = rf(networkID, txHash)
+	if rf, ok := ret.Get(1).(func(*uint32) error); ok {
+		r1 = rf(networkID)
 	} else {
-		if ret.Get(2) != nil {
-			r2 = ret.Get(2).(*int)
-		}
+		r1 = ret.Error(1)
 	}
 
-	if rf, ok := ret.Get(3).(func(uint32, common.Hash) []types.BridgeStepPath); ok {
-		r3 = rf(networkID, txHash)
-	} else {
-		if ret.Get(3) != nil {
-			r3 = ret.Get(3).([]types.BridgeStepPath)
-		}
-	}
-
-	if rf, ok := ret.Get(4).(func(uint32, common.Hash) *types.ErrorStep); ok {
-		r4 = rf(networkID, txHash)
-	} else {
-		if ret.Get(4) != nil {
-			r4 = ret.Get(4).(*types.ErrorStep)
-		}
-	}
-
-	return r0, r1, r2, r3, r4
+	return r0, r1
 }
 
-// SupervisedRegistry_Register_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Register'
-type SupervisedRegistry_Register_Call struct {
+// SupervisedRegistry_GetTrackerActives_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTrackerActives'
+type SupervisedRegistry_GetTrackerActives_Call struct {
 	*mock.Call
 }
 
-// Register is a helper method to define mock.On call
-//   - networkID uint32
-//   - txHash common.Hash
-func (_e *SupervisedRegistry_Expecter) Register(networkID interface{}, txHash interface{}) *SupervisedRegistry_Register_Call {
-	return &SupervisedRegistry_Register_Call{Call: _e.mock.On("Register", networkID, txHash)}
+// GetTrackerActives is a helper method to define mock.On call
+//   - networkID *uint32
+func (_e *SupervisedRegistry_Expecter) GetTrackerActives(networkID interface{}) *SupervisedRegistry_GetTrackerActives_Call {
+	return &SupervisedRegistry_GetTrackerActives_Call{Call: _e.mock.On("GetTrackerActives", networkID)}
 }
 
-func (_c *SupervisedRegistry_Register_Call) Run(run func(networkID uint32, txHash common.Hash)) *SupervisedRegistry_Register_Call {
+func (_c *SupervisedRegistry_GetTrackerActives_Call) Run(run func(networkID *uint32)) *SupervisedRegistry_GetTrackerActives_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(uint32), args[1].(common.Hash))
+		run(args[0].(*uint32))
 	})
 	return _c
 }
 
-func (_c *SupervisedRegistry_Register_Call) Return(_a0 types.TrackingStatus, _a1 *types.BridgeStatus, _a2 *int, _a3 []types.BridgeStepPath, _a4 *types.ErrorStep) *SupervisedRegistry_Register_Call {
-	_c.Call.Return(_a0, _a1, _a2, _a3, _a4)
+func (_c *SupervisedRegistry_GetTrackerActives_Call) Return(_a0 []*domain.TrackingData, _a1 error) *SupervisedRegistry_GetTrackerActives_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *SupervisedRegistry_Register_Call) RunAndReturn(run func(uint32, common.Hash) (types.TrackingStatus, *types.BridgeStatus, *int, []types.BridgeStepPath, *types.ErrorStep)) *SupervisedRegistry_Register_Call {
+func (_c *SupervisedRegistry_GetTrackerActives_Call) RunAndReturn(run func(*uint32) ([]*domain.TrackingData, error)) *SupervisedRegistry_GetTrackerActives_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// SetError provides a mock function with given fields: networkID, txHash, errStep
-func (_m *SupervisedRegistry) SetError(networkID uint32, txHash common.Hash, errStep *types.ErrorStep) {
-	_m.Called(networkID, txHash, errStep)
-}
-
-// SupervisedRegistry_SetError_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetError'
-type SupervisedRegistry_SetError_Call struct {
-	*mock.Call
-}
-
-// SetError is a helper method to define mock.On call
-//   - networkID uint32
-//   - txHash common.Hash
-//   - errStep *types.ErrorStep
-func (_e *SupervisedRegistry_Expecter) SetError(networkID interface{}, txHash interface{}, errStep interface{}) *SupervisedRegistry_SetError_Call {
-	return &SupervisedRegistry_SetError_Call{Call: _e.mock.On("SetError", networkID, txHash, errStep)}
-}
-
-func (_c *SupervisedRegistry_SetError_Call) Run(run func(networkID uint32, txHash common.Hash, errStep *types.ErrorStep)) *SupervisedRegistry_SetError_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(uint32), args[1].(common.Hash), args[2].(*types.ErrorStep))
-	})
-	return _c
-}
-
-func (_c *SupervisedRegistry_SetError_Call) Return() *SupervisedRegistry_SetError_Call {
-	_c.Call.Return()
-	return _c
-}
-
-func (_c *SupervisedRegistry_SetError_Call) RunAndReturn(run func(uint32, common.Hash, *types.ErrorStep)) *SupervisedRegistry_SetError_Call {
-	_c.Run(run)
-	return _c
-}
-
-// SetStatus provides a mock function with given fields: networkID, txHash, trackingStatus, status, stepIndex, allSteps
-func (_m *SupervisedRegistry) SetStatus(networkID uint32, txHash common.Hash, trackingStatus types.TrackingStatus, status *types.BridgeStatus, stepIndex *int, allSteps []types.BridgeStepPath) {
-	_m.Called(networkID, txHash, trackingStatus, status, stepIndex, allSteps)
-}
-
-// SupervisedRegistry_SetStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetStatus'
-type SupervisedRegistry_SetStatus_Call struct {
-	*mock.Call
-}
-
-// SetStatus is a helper method to define mock.On call
-//   - networkID uint32
-//   - txHash common.Hash
-//   - trackingStatus types.TrackingStatus
-//   - status *types.BridgeStatus
-//   - stepIndex *int
-//   - allSteps []types.BridgeStepPath
-func (_e *SupervisedRegistry_Expecter) SetStatus(networkID interface{}, txHash interface{}, trackingStatus interface{}, status interface{}, stepIndex interface{}, allSteps interface{}) *SupervisedRegistry_SetStatus_Call {
-	return &SupervisedRegistry_SetStatus_Call{Call: _e.mock.On("SetStatus", networkID, txHash, trackingStatus, status, stepIndex, allSteps)}
-}
-
-func (_c *SupervisedRegistry_SetStatus_Call) Run(run func(networkID uint32, txHash common.Hash, trackingStatus types.TrackingStatus, status *types.BridgeStatus, stepIndex *int, allSteps []types.BridgeStepPath)) *SupervisedRegistry_SetStatus_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(uint32), args[1].(common.Hash), args[2].(types.TrackingStatus), args[3].(*types.BridgeStatus), args[4].(*int), args[5].([]types.BridgeStepPath))
-	})
-	return _c
-}
-
-func (_c *SupervisedRegistry_SetStatus_Call) Return() *SupervisedRegistry_SetStatus_Call {
-	_c.Call.Return()
-	return _c
-}
-
-func (_c *SupervisedRegistry_SetStatus_Call) RunAndReturn(run func(uint32, common.Hash, types.TrackingStatus, *types.BridgeStatus, *int, []types.BridgeStepPath)) *SupervisedRegistry_SetStatus_Call {
-	_c.Run(run)
-	return _c
-}
-
-// Subscribe provides a mock function with given fields: networkID, txHash
-func (_m *SupervisedRegistry) Subscribe(networkID uint32, txHash common.Hash) (<-chan types.BridgeUpdate, func()) {
-	ret := _m.Called(networkID, txHash)
+// Subscribe provides a mock function with given fields: id
+func (_m *SupervisedRegistry) Subscribe(id domain.TrackingID) (<-chan *domain.TrackingData, func()) {
+	ret := _m.Called(id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Subscribe")
 	}
 
-	var r0 <-chan types.BridgeUpdate
+	var r0 <-chan *domain.TrackingData
 	var r1 func()
-	if rf, ok := ret.Get(0).(func(uint32, common.Hash) (<-chan types.BridgeUpdate, func())); ok {
-		return rf(networkID, txHash)
+	if rf, ok := ret.Get(0).(func(domain.TrackingID) (<-chan *domain.TrackingData, func())); ok {
+		return rf(id)
 	}
-	if rf, ok := ret.Get(0).(func(uint32, common.Hash) <-chan types.BridgeUpdate); ok {
-		r0 = rf(networkID, txHash)
+	if rf, ok := ret.Get(0).(func(domain.TrackingID) <-chan *domain.TrackingData); ok {
+		r0 = rf(id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(<-chan types.BridgeUpdate)
+			r0 = ret.Get(0).(<-chan *domain.TrackingData)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(uint32, common.Hash) func()); ok {
-		r1 = rf(networkID, txHash)
+	if rf, ok := ret.Get(1).(func(domain.TrackingID) func()); ok {
+		r1 = rf(id)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(func())
@@ -266,25 +280,120 @@ type SupervisedRegistry_Subscribe_Call struct {
 }
 
 // Subscribe is a helper method to define mock.On call
-//   - networkID uint32
-//   - txHash common.Hash
-func (_e *SupervisedRegistry_Expecter) Subscribe(networkID interface{}, txHash interface{}) *SupervisedRegistry_Subscribe_Call {
-	return &SupervisedRegistry_Subscribe_Call{Call: _e.mock.On("Subscribe", networkID, txHash)}
+//   - id domain.TrackingID
+func (_e *SupervisedRegistry_Expecter) Subscribe(id interface{}) *SupervisedRegistry_Subscribe_Call {
+	return &SupervisedRegistry_Subscribe_Call{Call: _e.mock.On("Subscribe", id)}
 }
 
-func (_c *SupervisedRegistry_Subscribe_Call) Run(run func(networkID uint32, txHash common.Hash)) *SupervisedRegistry_Subscribe_Call {
+func (_c *SupervisedRegistry_Subscribe_Call) Run(run func(id domain.TrackingID)) *SupervisedRegistry_Subscribe_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(uint32), args[1].(common.Hash))
+		run(args[0].(domain.TrackingID))
 	})
 	return _c
 }
 
-func (_c *SupervisedRegistry_Subscribe_Call) Return(_a0 <-chan types.BridgeUpdate, _a1 func()) *SupervisedRegistry_Subscribe_Call {
+func (_c *SupervisedRegistry_Subscribe_Call) Return(_a0 <-chan *domain.TrackingData, _a1 func()) *SupervisedRegistry_Subscribe_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *SupervisedRegistry_Subscribe_Call) RunAndReturn(run func(uint32, common.Hash) (<-chan types.BridgeUpdate, func())) *SupervisedRegistry_Subscribe_Call {
+func (_c *SupervisedRegistry_Subscribe_Call) RunAndReturn(run func(domain.TrackingID) (<-chan *domain.TrackingData, func())) *SupervisedRegistry_Subscribe_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateTrackingBridgeTx provides a mock function with given fields: id, trackingStatus, tx
+func (_m *SupervisedRegistry) UpdateTrackingBridgeTx(id domain.TrackingID, trackingStatus types.TrackingStatus, tx domain.TrackingBridgeTx) error {
+	ret := _m.Called(id, trackingStatus, tx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateTrackingBridgeTx")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(domain.TrackingID, types.TrackingStatus, domain.TrackingBridgeTx) error); ok {
+		r0 = rf(id, trackingStatus, tx)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// SupervisedRegistry_UpdateTrackingBridgeTx_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateTrackingBridgeTx'
+type SupervisedRegistry_UpdateTrackingBridgeTx_Call struct {
+	*mock.Call
+}
+
+// UpdateTrackingBridgeTx is a helper method to define mock.On call
+//   - id domain.TrackingID
+//   - trackingStatus types.TrackingStatus
+//   - tx domain.TrackingBridgeTx
+func (_e *SupervisedRegistry_Expecter) UpdateTrackingBridgeTx(id interface{}, trackingStatus interface{}, tx interface{}) *SupervisedRegistry_UpdateTrackingBridgeTx_Call {
+	return &SupervisedRegistry_UpdateTrackingBridgeTx_Call{Call: _e.mock.On("UpdateTrackingBridgeTx", id, trackingStatus, tx)}
+}
+
+func (_c *SupervisedRegistry_UpdateTrackingBridgeTx_Call) Run(run func(id domain.TrackingID, trackingStatus types.TrackingStatus, tx domain.TrackingBridgeTx)) *SupervisedRegistry_UpdateTrackingBridgeTx_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(domain.TrackingID), args[1].(types.TrackingStatus), args[2].(domain.TrackingBridgeTx))
+	})
+	return _c
+}
+
+func (_c *SupervisedRegistry_UpdateTrackingBridgeTx_Call) Return(_a0 error) *SupervisedRegistry_UpdateTrackingBridgeTx_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *SupervisedRegistry_UpdateTrackingBridgeTx_Call) RunAndReturn(run func(domain.TrackingID, types.TrackingStatus, domain.TrackingBridgeTx) error) *SupervisedRegistry_UpdateTrackingBridgeTx_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateTrackingStep provides a mock function with given fields: id, stepIndex, step
+func (_m *SupervisedRegistry) UpdateTrackingStep(id domain.TrackingID, stepIndex uint, step types.BridgeStepPath) error {
+	ret := _m.Called(id, stepIndex, step)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateTrackingStep")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(domain.TrackingID, uint, types.BridgeStepPath) error); ok {
+		r0 = rf(id, stepIndex, step)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// SupervisedRegistry_UpdateTrackingStep_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateTrackingStep'
+type SupervisedRegistry_UpdateTrackingStep_Call struct {
+	*mock.Call
+}
+
+// UpdateTrackingStep is a helper method to define mock.On call
+//   - id domain.TrackingID
+//   - stepIndex uint
+//   - step types.BridgeStepPath
+func (_e *SupervisedRegistry_Expecter) UpdateTrackingStep(id interface{}, stepIndex interface{}, step interface{}) *SupervisedRegistry_UpdateTrackingStep_Call {
+	return &SupervisedRegistry_UpdateTrackingStep_Call{Call: _e.mock.On("UpdateTrackingStep", id, stepIndex, step)}
+}
+
+func (_c *SupervisedRegistry_UpdateTrackingStep_Call) Run(run func(id domain.TrackingID, stepIndex uint, step types.BridgeStepPath)) *SupervisedRegistry_UpdateTrackingStep_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(domain.TrackingID), args[1].(uint), args[2].(types.BridgeStepPath))
+	})
+	return _c
+}
+
+func (_c *SupervisedRegistry_UpdateTrackingStep_Call) Return(_a0 error) *SupervisedRegistry_UpdateTrackingStep_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *SupervisedRegistry_UpdateTrackingStep_Call) RunAndReturn(run func(domain.TrackingID, uint, types.BridgeStepPath) error) *SupervisedRegistry_UpdateTrackingStep_Call {
 	_c.Call.Return(run)
 	return _c
 }
