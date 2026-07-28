@@ -142,9 +142,9 @@ Port = "5576"
 # |_| \_\_____|____/ |_|
 #
 # ------------------------------------------------------------------------------
-[REST]
+[PublicREST]
 # ------------------------------------------------------------------------------
-# Port will configure the port that the REST API HTTP server will
+# Port will configure the port that the public REST API HTTP server will
 # listen on
 # ------------------------------------------------------------------------------
 Port = "5577"
