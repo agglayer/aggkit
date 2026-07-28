@@ -158,11 +158,13 @@ services:
     restart: unless-stopped
     healthcheck:
       # op-reth returns HTTP 405 to bare GET; use a JSON-RPC POST instead.
+      # The entrypoint blocks the RPC until L1 block 344 exists (up to 300s), so the
+      # health window must cover that wait plus the genesis-hash extraction on slow runners.
       test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8545"]
       interval: 10s
       timeout: 5s
-      retries: 6
-      start_period: 120s
+      retries: 12
+      start_period: 300s
     networks:
       - default
 
@@ -275,11 +277,13 @@ services:
     restart: unless-stopped
     healthcheck:
       # op-reth returns HTTP 405 to bare GET; use a JSON-RPC POST instead.
+      # The entrypoint blocks the RPC until L1 block 344 exists (up to 300s), so the
+      # health window must cover that wait plus the genesis-hash extraction on slow runners.
       test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8545"]
       interval: 10s
       timeout: 5s
-      retries: 6
-      start_period: 120s
+      retries: 12
+      start_period: 300s
 
   op-node-002:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
