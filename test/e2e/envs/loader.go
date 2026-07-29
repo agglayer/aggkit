@@ -34,6 +34,15 @@ const (
 	// EnvOpPP is a testing env that has a single OP-PP network deployed
 	EnvOpPP ENVName = "op-pp"
 
+	// EnvOpPP2Chains is a testing env that has two OP-PP L2 networks deployed (L2A + L2B)
+	EnvOpPP2Chains ENVName = "op-pp-2chains"
+
+	// l2NetworkKeyA is the summary.json key of the primary L2 network (L2A).
+	l2NetworkKeyA = "001"
+	// l2NetworkKeyB is the summary.json key of the secondary L2 network (L2B), present
+	// only in multi-chain envs such as EnvOpPP2Chains.
+	l2NetworkKeyB = "002"
+
 	// Constants for string parsing and timeouts
 	decimalBase          = 10
 	serviceReadyTimeout  = 4 * time.Minute
@@ -43,8 +52,11 @@ const (
 
 // Env represents a loaded E2E test environment
 type Env struct {
-	L1               L1Config
-	L2               L2Config
+	L1 L1Config
+	L2 L2Config
+	// L2B is the secondary L2 network (L2B). It is nil for single-chain envs (EnvOpPP)
+	// and populated for multi-chain envs (EnvOpPP2Chains).
+	L2B              *L2Config
 	Clients          ClientsConfig
 	Keys             KeysConfig
 	EnvDir           string
@@ -89,6 +101,20 @@ type L2Config struct {
 	NetworkID  uint32
 	Contracts  L2Contracts
 	Transactor *bind.TransactOpts
+	// Client is the ethclient dialed against this L2's op-geth RPC. For the primary
+	// network (L2A) this is the same client stored in Env.Clients.L2. It is set here
+	// so each L2 (including L2B) carries its own client for multi-chain tests.
+	Client *ethclient.Client
+	// BridgeService is the bridge-service REST client scoped to this L2 network.
+	// In op-pp envs all networks may share a single bridge service; this field lets
+	// each L2 reference the correct endpoint.
+	BridgeService *client.Client
+	// BridgeServiceURL is the external REST URL of this L2's bridge service.
+	BridgeServiceURL string
+	// Keys is the pool of pre-funded keys for this L2 network.
+	Keys *KeyPool
+	// AggsenderRPCURL is the external aggsender JSON-RPC URL for this L2 network.
+	AggsenderRPCURL string
 }
 
 // L2Contracts contains initialized L2 contract bindings
@@ -128,33 +154,62 @@ type summaryJSON struct {
 				PrivateKey *string `json:"private_key"`
 			} `json:"accounts"`
 		} `json:"l1"`
-		L2Networks map[string]struct {
-			ChainID   string `json:"chain_id"`
-			Contracts struct {
-				L2Bridge       string `json:"l2_bridge"`
-				GlobalExitRoot string `json:"global_exit_root"`
-			} `json:"contracts"`
-			Services struct {
-				OpGeth struct {
-					HTTPRpc struct {
-						External string `json:"external"`
-					} `json:"http_rpc"`
-				} `json:"op-geth"`
-				Aggkit struct {
-					RPC struct {
-						External string `json:"external"`
-					} `json:"rpc"`
-					BridgeService struct {
-						External string `json:"external"`
-					} `json:"rest_api"`
-				} `json:"aggkit"`
-			} `json:"services"`
-			Accounts []struct {
-				Address    string  `json:"address"`
-				PrivateKey *string `json:"private_key"`
-			} `json:"accounts"`
-		} `json:"l2_networks"`
+		L2Networks map[string]summaryL2Network `json:"l2_networks"`
 	} `json:"networks"`
+}
+
+// summaryL2Network represents a single L2 network entry in summary.json.
+type summaryL2Network struct {
+	ChainID   string `json:"chain_id"`
+	Contracts struct {
+		L2Bridge       string `json:"l2_bridge"`
+		GlobalExitRoot string `json:"global_exit_root"`
+	} `json:"contracts"`
+	Services struct {
+		// OpGeth and OpReth are alternative L2 execution clients. A given snapshot exposes
+		// one of them (op-pp uses op-geth, op-pp-2chains uses op-reth). Use l2RPCExternal()
+		// to read the active client's external RPC URL regardless of which is set.
+		OpGeth struct {
+			HTTPRpc struct {
+				External string `json:"external"`
+			} `json:"http_rpc"`
+		} `json:"op-geth"`
+		OpReth struct {
+			HTTPRpc struct {
+				External string `json:"external"`
+			} `json:"http_rpc"`
+		} `json:"op-reth"`
+		Aggkit struct {
+			RPC struct {
+				External string `json:"external"`
+			} `json:"rpc"`
+			BridgeService struct {
+				External string `json:"external"`
+			} `json:"rest_api"`
+		} `json:"aggkit"`
+	} `json:"services"`
+	Accounts []struct {
+		Address    string  `json:"address"`
+		PrivateKey *string `json:"private_key"`
+	} `json:"accounts"`
+}
+
+// l2RPCExternal returns the external HTTP RPC URL of this L2 network's execution client,
+// transparently supporting both op-geth (op-pp) and op-reth (op-pp-2chains) snapshots.
+func (n summaryL2Network) l2RPCExternal() string {
+	if n.Services.OpGeth.HTTPRpc.External != "" {
+		return n.Services.OpGeth.HTTPRpc.External
+	}
+	return n.Services.OpReth.HTTPRpc.External
+}
+
+// parseChainID parses a decimal chain ID string into a *big.Int.
+func parseChainID(s string) (*big.Int, error) {
+	id := new(big.Int)
+	if _, ok := id.SetString(s, decimalBase); !ok {
+		return nil, fmt.Errorf("parse chain ID: %s", s)
+	}
+	return id, nil
 }
 
 // FindEnvsDir finds the envs directory dynamically
@@ -236,29 +291,6 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		return nil, fmt.Errorf("dial L1 client: %w", err)
 	}
 
-	// Get L2 network (assuming first network is "001")
-	l2Network, ok := summary.Networks.L2Networks["001"]
-	if !ok {
-		return nil, fmt.Errorf("L2 network 001 not found in summary.json")
-	}
-
-	// Parse L2 chain ID
-	l2ChainID := new(big.Int)
-	if _, ok := l2ChainID.SetString(l2Network.ChainID, decimalBase); !ok {
-		return nil, fmt.Errorf("parse L2 chain ID: %s", l2Network.ChainID)
-	}
-
-	// Create L2 client
-	l2Client, err := ethclient.DialContext(ctx, l2Network.Services.OpGeth.HTTPRpc.External)
-	if err != nil {
-		return nil, fmt.Errorf("dial L2 client: %w", err)
-	}
-
-	// Create bridge service client
-	bridgeServiceClient := client.New(client.Config{
-		BaseURL: l2Network.Services.Aggkit.BridgeService.External,
-	})
-
 	// Initialize L1 contracts
 	rollupManagerAddr := common.HexToAddress(summary.Networks.L1.Contracts.RollupManager)
 	rollupManager, err := agglayermanager.NewAgglayermanager(rollupManagerAddr, l1Client)
@@ -271,6 +303,116 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 	if err != nil {
 		return nil, fmt.Errorf("initialize bridge contract: %w", err)
 	}
+
+	// Load primary L2 network (L2A, key "001"). Required for every env.
+	l2A, err := loadL2Config(ctx, summary, l2NetworkKeyA)
+	if err != nil {
+		return nil, fmt.Errorf("load L2 network %s: %w", l2NetworkKeyA, err)
+	}
+
+	// Load secondary L2 network (L2B, key "002") only for multi-chain envs.
+	var l2B *L2Config
+	if envName == EnvOpPP2Chains {
+		l2B, err = loadL2Config(ctx, summary, l2NetworkKeyB)
+		if err != nil {
+			return nil, fmt.Errorf("load L2 network %s: %w", l2NetworkKeyB, err)
+		}
+	}
+
+	// Collect all L1 keys with private_key for the pool (deduplicate by address)
+	seenL1Addr := make(map[common.Address]bool)
+	var l1Keys []*ecdsa.PrivateKey
+	for _, account := range summary.Networks.L1.Accounts {
+		if account.PrivateKey != nil && *account.PrivateKey != "" {
+			pk, err := parsePrivateKey(*account.PrivateKey)
+			if err != nil {
+				return nil, fmt.Errorf("parse L1 private key: %w", err)
+			}
+			addr := crypto.PubkeyToAddress(pk.PublicKey)
+			if seenL1Addr[addr] {
+				continue
+			}
+			seenL1Addr[addr] = true
+			l1Keys = append(l1Keys, pk)
+		}
+	}
+	if len(l1Keys) == 0 {
+		return nil, fmt.Errorf("no L1 account with private key found")
+	}
+	l1KeyPool := newKeyPool(l1Keys, l1ChainID)
+	l1Transactor, err := bind.NewKeyedTransactorWithChainID(l1Keys[0], l1ChainID)
+	if err != nil {
+		return nil, fmt.Errorf("create L1 transactor: %w", err)
+	}
+
+	// Load aggoracle and sovereign admin from keystores (fallback to hardcoded test keys)
+	const keystorePassword = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"
+	aggoracleKey, err := loadAggOracleKey(envDir, keystorePassword)
+	if err != nil {
+		return nil, fmt.Errorf("load aggoracle key: %w", err)
+	}
+	sovereignAdminKey, err := loadSovereignAdminKey(envDir, keystorePassword)
+	if err != nil {
+		return nil, fmt.Errorf("load sovereign admin key: %w", err)
+	}
+
+	return &Env{
+		L1: L1Config{
+			ChainID: l1ChainID,
+			Contracts: L1Contracts{
+				RollupManager: rollupManager,
+				Bridge:        bridgeContract,
+			},
+			Transactor: l1Transactor,
+		},
+		L2:  *l2A,
+		L2B: l2B,
+		Clients: ClientsConfig{
+			L1:            l1Client,
+			L2:            l2A.Client,
+			BridgeService: l2A.BridgeService,
+		},
+		Keys: KeysConfig{
+			L1Keys:         l1KeyPool,
+			L2Keys:         l2A.Keys,
+			AggOracle:      aggoracleKey,
+			SovereignAdmin: sovereignAdminKey,
+		},
+		EnvDir:           envDir,
+		AggsenderRPCURL:  l2A.AggsenderRPCURL,
+		envName:          envName,
+		bridgeServiceURL: l2A.BridgeServiceURL,
+		aggkitDataDir:    aggkit001DataDir(envDir),
+	}, nil
+}
+
+// loadL2Config dials and wires a single L2 network identified by its summary.json key
+// (e.g. "001" for L2A, "002" for L2B). It creates the op-geth client and bridge-service
+// client, initializes the L2 bridge and global-exit-root contracts, deploys a
+// MintableERC20 (L2-native tokens bypass the Local Balance Tree underflow check), and
+// builds the per-network key pool and transactor. It performs network calls (RPC dial,
+// NetworkID read, contract deploy) and therefore requires a live enclave.
+func loadL2Config(ctx context.Context, summary summaryJSON, networkKey string) (*L2Config, error) {
+	l2Network, ok := summary.Networks.L2Networks[networkKey]
+	if !ok {
+		return nil, fmt.Errorf("L2 network %s not found in summary.json", networkKey)
+	}
+
+	l2ChainID, err := parseChainID(l2Network.ChainID)
+	if err != nil {
+		return nil, fmt.Errorf("parse L2 chain ID: %w", err)
+	}
+
+	// Create L2 client
+	l2Client, err := ethclient.DialContext(ctx, l2Network.l2RPCExternal())
+	if err != nil {
+		return nil, fmt.Errorf("dial L2 client: %w", err)
+	}
+
+	// Create bridge service client scoped to this L2 network
+	bridgeServiceClient := client.New(client.Config{
+		BaseURL: l2Network.Services.Aggkit.BridgeService.External,
+	})
 
 	// Initialize L2 contracts
 	l2BridgeAddr := common.HexToAddress(l2Network.Contracts.L2Bridge)
@@ -316,33 +458,7 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 	if _, err := bind.WaitMined(ctx, l2Client, erc20Tx); err != nil {
 		return nil, fmt.Errorf("wait for MintableERC20 deployment: %w", err)
 	}
-	log.Infof("[LoadEnv] MintableERC20 deployed at %s", erc20Addr.Hex())
-
-	// Collect all L1 keys with private_key for the pool (deduplicate by address)
-	seenL1Addr := make(map[common.Address]bool)
-	var l1Keys []*ecdsa.PrivateKey
-	for _, account := range summary.Networks.L1.Accounts {
-		if account.PrivateKey != nil && *account.PrivateKey != "" {
-			pk, err := parsePrivateKey(*account.PrivateKey)
-			if err != nil {
-				return nil, fmt.Errorf("parse L1 private key: %w", err)
-			}
-			addr := crypto.PubkeyToAddress(pk.PublicKey)
-			if seenL1Addr[addr] {
-				continue
-			}
-			seenL1Addr[addr] = true
-			l1Keys = append(l1Keys, pk)
-		}
-	}
-	if len(l1Keys) == 0 {
-		return nil, fmt.Errorf("no L1 account with private key found")
-	}
-	l1KeyPool := newKeyPool(l1Keys, l1ChainID)
-	l1Transactor, err := bind.NewKeyedTransactorWithChainID(l1Keys[0], l1ChainID)
-	if err != nil {
-		return nil, fmt.Errorf("create L1 transactor: %w", err)
-	}
+	log.Infof("[LoadEnv] MintableERC20 for L2 network %s deployed at %s", networkKey, erc20Addr.Hex())
 
 	// Collect all L2 keys with private_key for the pool (deduplicate by address)
 	seenL2Addr := make(map[common.Address]bool)
@@ -370,54 +486,22 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		return nil, fmt.Errorf("create L2 transactor: %w", err)
 	}
 
-	// Load aggoracle and sovereign admin from keystores (fallback to hardcoded test keys)
-	const keystorePassword = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"
-	aggoracleKey, err := loadAggOracleKey(envDir, keystorePassword)
-	if err != nil {
-		return nil, fmt.Errorf("load aggoracle key: %w", err)
-	}
-	sovereignAdminKey, err := loadSovereignAdminKey(envDir, keystorePassword)
-	if err != nil {
-		return nil, fmt.Errorf("load sovereign admin key: %w", err)
-	}
-
-	return &Env{
-		L1: L1Config{
-			ChainID: l1ChainID,
-			Contracts: L1Contracts{
-				RollupManager: rollupManager,
-				Bridge:        bridgeContract,
-			},
-			Transactor: l1Transactor,
+	return &L2Config{
+		ChainID:   l2ChainID,
+		NetworkID: l2NetworkID,
+		Contracts: L2Contracts{
+			L2Bridge:             l2Bridge,
+			L2BridgeAddress:      l2BridgeAddr,
+			GlobalExitRoot:       globalExitRoot,
+			MintableERC20:        erc20Contract,
+			MintableERC20Address: erc20Addr,
 		},
-		L2: L2Config{
-			ChainID:   l2ChainID,
-			NetworkID: l2NetworkID,
-			Contracts: L2Contracts{
-				L2Bridge:             l2Bridge,
-				L2BridgeAddress:      l2BridgeAddr,
-				GlobalExitRoot:       globalExitRoot,
-				MintableERC20:        erc20Contract,
-				MintableERC20Address: erc20Addr,
-			},
-			Transactor: l2Transactor,
-		},
-		Clients: ClientsConfig{
-			L1:            l1Client,
-			L2:            l2Client,
-			BridgeService: bridgeServiceClient,
-		},
-		Keys: KeysConfig{
-			L1Keys:         l1KeyPool,
-			L2Keys:         l2KeyPool,
-			AggOracle:      aggoracleKey,
-			SovereignAdmin: sovereignAdminKey,
-		},
-		EnvDir:           envDir,
+		Transactor:       l2Transactor,
+		Client:           l2Client,
+		BridgeService:    bridgeServiceClient,
+		BridgeServiceURL: l2Network.Services.Aggkit.BridgeService.External,
+		Keys:             l2KeyPool,
 		AggsenderRPCURL:  l2Network.Services.Aggkit.RPC.External,
-		envName:          envName,
-		bridgeServiceURL: l2Network.Services.Aggkit.BridgeService.External,
-		aggkitDataDir:    aggkit001DataDir(envDir),
 	}, nil
 }
 
@@ -747,17 +831,18 @@ func waitForServices(ctx context.Context, summary *summaryJSON) error {
 		return fmt.Errorf("wait for L1 geth: %w", err)
 	}
 
-	// Wait for L2 op-geth to be ready (assuming first network is "001")
-	for _, l2Network := range summary.Networks.L2Networks {
-		if err := waitForEthereumService(ctx, l2Network.Services.OpGeth.HTTPRpc.External); err != nil {
-			return fmt.Errorf("wait for L2 op-geth: %w", err)
+	// Wait for every L2 network's op-geth and bridge service to be ready. For single-chain
+	// envs (op-pp) this is just network "001"; for multi-chain envs (op-pp-2chains) it
+	// covers both "001" and "002".
+	for key, l2Network := range summary.Networks.L2Networks {
+		if err := waitForEthereumService(ctx, l2Network.l2RPCExternal()); err != nil {
+			return fmt.Errorf("wait for L2 execution client (network %s): %w", key, err)
 		}
 
 		// Wait for bridge service to be ready
 		if err := waitForBridgeService(ctx, l2Network.Services.Aggkit.BridgeService.External); err != nil {
-			return fmt.Errorf("wait for bridge service: %w", err)
+			return fmt.Errorf("wait for bridge service (network %s): %w", key, err)
 		}
-		break // Only check first L2 network
 	}
 
 	return nil

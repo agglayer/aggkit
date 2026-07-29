@@ -1,0 +1,381 @@
+# Ethereum L1 Snapshot Environment
+# Enclave: aggkit-2chains
+# Tag: aggkit-2chains-20260630-151226-op-pp-2chains
+# Genesis: 0x1f7bda7e2b02c413b5b2f1e41228a2a804fa905c82888b40222a771219a2ba51
+
+services:
+  geth:
+    image: arnaubennassar/geth:op-pp-2chains
+    container_name: aggkit-2chains-20260630-151013-geth
+    hostname: geth
+    command:
+      - "--http"
+      - "--http.addr=0.0.0.0"
+      - "--http.port=8545"
+      - "--http.vhosts=*"
+      - "--http.corsdomain=*"
+      - "--http.api=admin,engine,net,eth,web3,debug,txpool"
+      - "--ws"
+      - "--ws.addr=0.0.0.0"
+      - "--ws.port=8546"
+      - "--ws.origins=*"
+      - "--ws.api=admin,engine,net,eth,web3,debug,txpool"
+      - "--authrpc.addr=0.0.0.0"
+      - "--authrpc.port=8551"
+      - "--authrpc.vhosts=*"
+      - "--authrpc.jwtsecret=/jwt/jwtsecret"
+      - "--datadir=/data/geth/execution-data"
+      - "--port=30303"
+      - "--discovery.port=30303"
+      - "--syncmode=full"
+      - "--gcmode=archive"
+      - "--networkid=271828"
+      - "--metrics"
+      - "--metrics.addr=0.0.0.0"
+      - "--metrics.port=9001"
+      - "--allow-insecure-unlock"
+      - "--nodiscover"
+    ports:
+      - "8545:8545"    # HTTP RPC
+      - "8546:8546"    # WebSocket RPC
+      - "8551:8551"    # Engine API
+      - "30303:30303"  # P2P TCP
+      - "30303:30303/udp"  # P2P UDP
+      - "9001:9001"    # Metrics
+    restart: unless-stopped
+    healthcheck:
+      # Wait until geth has imported its full snapshot chain (block 320 = 0x140) before the
+      # beacon starts. Without this, the beacon connects while geth is still replaying historical
+      # blocks and enters optimistic-sync mode, which permanently stalls L1 block production.
+      # Threshold is 320 (geth data volume contains chain up to block 328, so 320 is always met).
+      test: ["CMD-SHELL", "B=$$(wget -qO- --post-data='{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}' --header='Content-Type:application/json' http://localhost:8545 | grep -o '0x[0-9a-f]*' | head -1); [ -n \"$$B\" ] && [ \"$$(( $$B ))\" -ge 320 ]"]
+      interval: 2s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  beacon:
+    image: arnaubennassar/beacon:op-pp-2chains
+    container_name: aggkit-2chains-20260630-151013-beacon
+    hostname: beacon
+    # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
+    volumes:
+      # Override spec.yaml with a patched version that includes Fulu constants required by Teku 26.2.0.
+      # The image's spec.yaml is missing NUMBER_OF_CUSTODY_GROUPS, DATA_COLUMN_SIDECAR_SUBNET_COUNT,
+      # SAMPLES_PER_SLOT, CUSTODY_REQUIREMENT, VALIDATOR_CUSTODY_REQUIREMENT,
+      # BALANCE_PER_ADDITIONAL_CUSTODY_GROUP, MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS,
+      # and MAX_REQUEST_DATA_COLUMN_SIDECARS — all required when FULU_FORK_EPOCH != max uint64.
+      - ./config/beacon-spec.yaml:/network-configs/spec.yaml:ro
+      # Override entrypoint to handle genesis.ssz patching failure gracefully.
+      # genesis.ssz is a pre-Fulu state that cannot be deserialized with Fulu schema; patching it
+      # is non-critical since Teku uses --initial-state (checkpoint_state.ssz), not genesis.ssz.
+      - ./config/beacon-entrypoint.sh:/usr/local/bin/beacon-entrypoint.sh:ro
+    ports:
+      - "4000:4000"    # Beacon API
+      - "9000:9000"    # P2P TCP
+      - "9000:9000/udp"  # P2P UDP
+      - "5054:5054"    # Metrics
+    depends_on:
+      geth:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/eth/v1/node/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  validator:
+    image: arnaubennassar/validator:op-pp-2chains
+    container_name: aggkit-2chains-20260630-151013-validator
+    hostname: validator
+    # Command is handled by validator-entrypoint.sh which gates startup on beacon sync
+    volumes:
+      # Override spec.yaml with patched version including Fulu constants (same fix as beacon).
+      - ./config/beacon-spec.yaml:/network-configs/spec.yaml:ro
+    depends_on:
+      beacon:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "validator-client"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  agglayer:
+    image: europe-west2-docker.pkg.dev/prj-polygonlabs-devtools-dev/public/agglayer:0.4.4-remove-agglayer-prover
+    container_name: aggkit-2chains-20260630-151013-agglayer
+    hostname: agglayer
+    entrypoint: ["/usr/local/bin/agglayer"]
+    command:
+      - "run"
+      - "--cfg"
+      - "/etc/agglayer/config.toml"
+    volumes:
+      - ./config/agglayer/config.toml:/etc/agglayer/config.toml:ro
+      - ./config/agglayer/aggregator.keystore:/etc/agglayer/aggregator.keystore:ro
+    ports:
+      - "4443:4443"    # gRPC RPC
+      - "4444:4444"    # Read RPC
+      - "4446:4446"    # Admin API
+      - "9092:9092"    # Prometheus metrics
+    depends_on:
+      geth:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -f /proc/1/cmdline"]
+      interval: 2s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    environment:
+      - RUST_BACKTRACE=1
+
+  op-reth-001:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-reth:v2.3.1
+    container_name: aggkit-2chains-20260630-151013-op-reth-001
+    hostname: op-reth-001
+    entrypoint: ["/bin/sh", "/entrypoint/op-reth-entrypoint.sh"]
+    volumes:
+      - ./config/001/jwt.hex:/jwt/jwtsecret:ro
+      - ./config/001/l2-genesis.json:/genesis-ro/l2-genesis.json:ro
+      - ./config/001/rollup.json:/rollup-ro/rollup.json:ro
+      - ./config/001/op-reth-entrypoint.sh:/entrypoint/op-reth-entrypoint.sh:ro
+      - l2-shared-001:/shared
+    ports:
+      - "11545:8545"    # HTTP RPC
+      - "11546:8546"    # WebSocket RPC
+      - "11551:8551"    # Engine API
+    depends_on:
+      geth:
+        condition: service_healthy
+      beacon:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      # op-reth returns HTTP 405 to bare GET; use a JSON-RPC POST instead.
+      # The entrypoint blocks the RPC until L1 block 344 exists (up to 300s), so the
+      # health window must cover that wait plus the genesis-hash extraction on slow runners.
+      test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8545"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 300s
+    networks:
+      - default
+
+  op-node-001:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
+    container_name: aggkit-2chains-20260630-151013-op-node-001
+    hostname: op-node-001
+    entrypoint: ["/bin/sh", "/entrypoint/op-node-entrypoint.sh"]
+    environment:
+      - OP_RETH_HOST=op-reth-001
+    volumes:
+      - ./config/001/rollup.json:/rollup-ro/rollup.json:ro
+      - ./config/001/l1-genesis.json:/network-configs/l1-genesis.json:ro
+      - ./config/001/jwt.hex:/jwt/jwtsecret:ro
+      - ./config/001/op-node-entrypoint.sh:/entrypoint/op-node-entrypoint.sh:ro
+      - l2-shared-001:/shared:ro
+    ports:
+      - "11547:8547"    # RPC
+      - "11300:7300"    # Metrics
+    depends_on:
+      geth:
+        condition: service_healthy
+      beacon:
+        condition: service_healthy
+      op-reth-001:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"optimism_syncStatus\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8547"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 120s
+
+  aggsender-validator-002:
+    image: aggkit:local
+    container_name: aggkit-2chains-20260630-151013-aggsender-validator-002
+    hostname: aggsender-validator-002
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender-validator"
+    volumes:
+      - ./config/001/aggsender-validator-config.toml:/etc/aggkit/config.toml:ro
+      - ./config/001/aggsendervalidator-2.keystore:/etc/aggkit/aggsendervalidator-2.keystore:ro
+    ports:
+      - "11578:5578"    # Validator gRPC
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-reth-001:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+
+  aggkit-001:
+    image: aggkit:local
+    container_name: aggkit-2chains-20260630-151013-aggkit-001
+    hostname: aggkit-001
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender,aggoracle,bridge"
+    volumes:
+      - ./config/001/aggkit-config.toml:/etc/aggkit/config.toml:ro
+      - ./config/001/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
+      - ./config/001/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
+      - ./config/001/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
+    ports:
+      - "11576:5576"    # RPC
+      - "11577:5577"    # REST API
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-reth-001:
+        condition: service_healthy
+      op-node-001:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+      aggsender-validator-002:
+        condition: service_started
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
+  op-reth-002:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-reth:v2.3.1
+    container_name: aggkit-2chains-20260630-151013-op-reth-002
+    hostname: op-reth-002
+    entrypoint: ["/bin/sh", "/entrypoint/op-reth-entrypoint.sh"]
+    volumes:
+      - ./config/002/jwt.hex:/jwt/jwtsecret:ro
+      - ./config/002/l2-genesis.json:/genesis-ro/l2-genesis.json:ro
+      - ./config/002/rollup.json:/rollup-ro/rollup.json:ro
+      - ./config/002/op-reth-entrypoint.sh:/entrypoint/op-reth-entrypoint.sh:ro
+      - l2-shared-002:/shared
+    ports:
+      - "12545:8545"    # HTTP RPC
+      - "12546:8546"    # WebSocket RPC
+      - "12551:8551"    # Engine API
+    depends_on:
+      geth:
+        condition: service_healthy
+      beacon:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      # op-reth returns HTTP 405 to bare GET; use a JSON-RPC POST instead.
+      # The entrypoint blocks the RPC until L1 block 344 exists (up to 300s), so the
+      # health window must cover that wait plus the genesis-hash extraction on slow runners.
+      test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8545"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 300s
+
+  op-node-002:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.12
+    container_name: aggkit-2chains-20260630-151013-op-node-002
+    hostname: op-node-002
+    entrypoint: ["/bin/sh", "/entrypoint/op-node-entrypoint.sh"]
+    environment:
+      - OP_RETH_HOST=op-reth-002
+    volumes:
+      - ./config/002/rollup.json:/rollup-ro/rollup.json:ro
+      - ./config/002/l1-genesis.json:/network-configs/l1-genesis.json:ro
+      - ./config/002/jwt.hex:/jwt/jwtsecret:ro
+      - ./config/002/op-node-entrypoint.sh:/entrypoint/op-node-entrypoint.sh:ro
+      - l2-shared-002:/shared:ro
+    ports:
+      - "12547:8547"    # RPC
+      - "12300:7300"    # Metrics
+    depends_on:
+      geth:
+        condition: service_healthy
+      beacon:
+        condition: service_healthy
+      op-reth-002:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"optimism_syncStatus\",\"params\":[],\"id\":1}", "--header=Content-Type:application/json", "http://localhost:8547"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 120s
+
+  aggsender-validator-002-c2:
+    image: aggkit:local
+    container_name: aggkit-2chains-20260630-151013-aggsender-validator-002-c2
+    hostname: aggsender-validator-002-c2
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender-validator"
+    volumes:
+      - ./config/002/aggsender-validator-config.toml:/etc/aggkit/config.toml:ro
+      - ./config/002/aggsendervalidator-2.keystore:/etc/aggkit/aggsendervalidator-2.keystore:ro
+    ports:
+      - "12578:5578"    # Validator gRPC
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-reth-002:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+
+  aggkit-002:
+    image: aggkit:local
+    container_name: aggkit-2chains-20260630-151013-aggkit-002
+    hostname: aggkit-002
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender,aggoracle,bridge"
+    volumes:
+      - ./config/002/aggkit-config.toml:/etc/aggkit/config.toml:ro
+      - ./config/002/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
+      - ./config/002/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
+      - ./config/002/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
+    ports:
+      - "12576:5576"    # RPC
+      - "12577:5577"    # REST API
+    depends_on:
+      geth:
+        condition: service_healthy
+      op-reth-002:
+        condition: service_healthy
+      op-node-002:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+      aggsender-validator-002-c2:
+        condition: service_started
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+
+volumes:
+  l2-shared-001:
+  l2-shared-002:
+# L1 state is baked in, L2 starts fresh with config-only mounts
+# Agglayer and AggKit use host-mounted config files (read-only)
+
+networks:
+  default:
