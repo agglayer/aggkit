@@ -8,6 +8,7 @@ import (
 	"time"
 
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
+	"github.com/agglayer/aggkit/bridgeservice"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
@@ -298,6 +299,19 @@ type sourceLER struct {
 	sourceID  uint32
 }
 
+// sourceOutcome is the result of processing one source network within a poll.
+type sourceOutcome int
+
+const (
+	// sourceUpToDate means the source's newest LER already matches its cursor: nothing to do.
+	sourceUpToDate sourceOutcome = iota
+	// sourceProcessed means the source's candidates were fetched and its LER cursor advanced.
+	sourceProcessed
+	// sourceRetryLater means the source was skipped for a transient reason (finder miss or source
+	// bridge service not synced yet) and must be retried on a later poll.
+	sourceRetryLater
+)
+
 // PollOnce processes at most one L1 block window of verified-batch rows.
 func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 	if !w.enabled {
@@ -336,27 +350,47 @@ func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 		return result, err
 	}
 
+	// retryBlock is the block of the earliest verify row whose source was skipped for a transient
+	// reason (finder miss or source not synced yet); 0 = none.
+	var retryBlock uint64
 	for _, source := range orderedSourceLERs(latestBySource) {
-		processed, err := w.processSource(ctx, source, destinationNetworks, result)
+		outcome, err := w.processSource(ctx, source, destinationNetworks, result)
 		if err != nil {
 			return result, err
 		}
-		if processed {
+		switch outcome {
+		case sourceProcessed:
 			result.ProcessedSourceCount++
-		} else {
+		case sourceRetryLater:
+			result.SkippedSourceCount++
+			if retryBlock == 0 || source.verifyNum < retryBlock {
+				retryBlock = source.verifyNum
+			}
+		case sourceUpToDate:
 			result.SkippedSourceCount++
 		}
 	}
 
-	// The block-window cursor advances on every non-erroring poll. Sources skipped this round (finder
-	// miss or not synced yet) keep their per-source LER cursor at its previous value, so when their
-	// next LER update is observed the fetch still uses from_ler = <old cursor>, which covers every
-	// candidate missed in between. A hard error above returns before this point, leaving the cursor
-	// unchanged so the whole window is retried.
+	// The block-window cursor advances on every non-erroring poll, except that it never advances past
+	// the verify row of a source skipped for a transient reason: it is held just before that row, so
+	// the next poll re-observes it and retries the source even if it never publishes another LER.
+	// Sources skipped this round keep their per-source LER cursor at its previous value, so the retry
+	// fetch still uses from_ler = <old cursor>, which covers every candidate missed in between. A hard
+	// error above returns before this point, leaving the cursor unchanged so the whole window is
+	// retried.
+	cursorToBlock := toBlock
+	if retryBlock > 0 {
+		if retryBlock <= fromBlock {
+			// The retried row sits at the very start of the window: there is no forward progress to
+			// record, keep the stored cursor untouched and retry the same window next poll.
+			return result, nil
+		}
+		cursorToBlock = retryBlock - 1
+	}
 	nextCursor := autoclaimtypes.BridgeCursor{
 		FromBlock: fromBlock,
-		ToBlock:   toBlock,
-		BlockNum:  toBlock,
+		ToBlock:   cursorToBlock,
+		BlockNum:  cursorToBlock,
 		BlockPos:  0,
 	}
 	if err := w.cursorStore.SaveBridgeCursor(ctx, w.cursorName, nextCursor, w.now()); err != nil {
@@ -369,22 +403,22 @@ func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 
 // processSource evaluates one source network's newest LER: it resolves the source bridge service,
 // fetches every claim-candidate page, routes each candidate to its destination claimer, and advances
-// the source's LER cursor only after all pages have been enqueued. It returns (false, nil) when the
-// source is skipped this round (already up to date, finder miss, or not synced yet) and (true, nil)
-// when the source's LER cursor was advanced.
+// the source's LER cursor only after all pages have been enqueued. It returns sourceUpToDate when the
+// source has nothing new, sourceRetryLater when it was skipped for a transient reason (finder miss or
+// not synced yet), and sourceProcessed when its LER cursor was advanced.
 func (w *L2ToLx) processSource(
 	ctx context.Context,
 	source sourceLER,
 	destinationNetworks []uint32,
 	result *L2ToLxPollResult,
-) (bool, error) {
+) (sourceOutcome, error) {
 	fromLER, hasNewLER, err := w.resolveFromLER(ctx, source)
 	if err != nil {
-		return false, err
+		return sourceUpToDate, err
 	}
 	if !hasNewLER {
 		// The source's newest LER already matches its cursor: nothing new to process.
-		return false, nil
+		return sourceUpToDate, nil
 	}
 	result.NewLERSourceCount++
 
@@ -392,33 +426,33 @@ func (w *L2ToLx) processSource(
 	if len(destinationIDs) == 0 {
 		// No enabled destination claimer other than the source itself: nothing to claim, but the LER
 		// is genuinely processed, so advance the cursor to avoid re-evaluating it every poll.
-		return true, w.advanceLERCursor(ctx, source)
+		return sourceProcessed, w.advanceLERCursor(ctx, source)
 	}
 
 	url, err := w.fetcher.GetURL(source.sourceID)
 	if err != nil {
 		w.logInfof("autoclaim l2-to-lx bridge detector: skip source %d (url not resolved): %v", source.sourceID, err)
-		return false, nil
+		return sourceRetryLater, nil
 	}
 
 	candidates, err := w.fetchAllCandidates(ctx, url, destinationIDs, fromLER, source.ler)
 	if err != nil {
 		if errors.Is(err, ErrCandidatesNotSynced) {
 			w.logInfof("autoclaim l2-to-lx bridge detector: skip source %d (not synced yet)", source.sourceID)
-			return false, nil
+			return sourceRetryLater, nil
 		}
-		return false, fmt.Errorf("fetch claim candidates for source %d: %w", source.sourceID, err)
+		return sourceUpToDate, fmt.Errorf("fetch claim candidates for source %d: %w", source.sourceID, err)
 	}
 	result.CandidateCount += len(candidates)
 
 	if err := w.enqueueCandidates(ctx, source, candidates, result); err != nil {
-		return false, err
+		return sourceUpToDate, err
 	}
 
 	if err := w.advanceLERCursor(ctx, source); err != nil {
-		return false, err
+		return sourceUpToDate, err
 	}
-	return true, nil
+	return sourceProcessed, nil
 }
 
 // resolveFromLER reports whether the source has a new LER (different from its cursor) and, if so, the
@@ -454,6 +488,11 @@ func (w *L2ToLx) initialFromLER(ctx context.Context, sourceID uint32) (*common.H
 
 	leaf, err := w.source.GetLatestL1InfoLeafUntilBlock(ctx, w.startL1Block)
 	if err != nil {
+		if errors.Is(err, l1infotreesync.ErrNotFound) {
+			// StartL1Block predates the first L1 info tree leaf, so there is no baseline to derive a
+			// lower-bound LER from. Same situation as a zero LER at that block: fetch the full history.
+			return nil, nil
+		}
 		return nil, fmt.Errorf("get latest l1 info leaf until block %d for source %d: %w",
 			w.startL1Block, sourceID, err)
 	}
@@ -469,9 +508,31 @@ func (w *L2ToLx) initialFromLER(ctx context.Context, sourceID uint32) (*common.H
 	return &ler, nil
 }
 
-// fetchAllCandidates pages through the source bridge service's claim candidates until every candidate
-// matching the query has been collected.
+// fetchAllCandidates collects every claim candidate matching the query. The bridge service caps the
+// number of destination network IDs per request (bridgeservice.MaxNetworkIDs), so the destination
+// filter is split into batches of at most that size, paging through each batch.
 func (w *L2ToLx) fetchAllCandidates(
+	ctx context.Context,
+	url string,
+	destinationIDs []uint32,
+	fromLER *common.Hash,
+	toLER common.Hash,
+) ([]ClaimCandidate, error) {
+	all := make([]ClaimCandidate, 0)
+	for start := 0; start < len(destinationIDs); start += bridgeservice.MaxNetworkIDs {
+		end := min(start+bridgeservice.MaxNetworkIDs, len(destinationIDs))
+		batch, err := w.fetchCandidatesForDestinations(ctx, url, destinationIDs[start:end], fromLER, toLER)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, batch...)
+	}
+	return all, nil
+}
+
+// fetchCandidatesForDestinations pages through the source bridge service's claim candidates for one
+// batch of destination network IDs until every matching candidate has been collected.
+func (w *L2ToLx) fetchCandidatesForDestinations(
 	ctx context.Context,
 	url string,
 	destinationIDs []uint32,

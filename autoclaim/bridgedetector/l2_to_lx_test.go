@@ -3,11 +3,13 @@ package bridgedetector
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
 
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
+	"github.com/agglayer/aggkit/bridgeservice"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
@@ -179,8 +181,9 @@ func TestL2ToLxFinderMissSkipsSourceWithoutAdvancingCursor(t *testing.T) {
 	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
 	lerStore := newFakeLERStore()
 	enqueuer := newFakeEnqueuer()
+	cursorStore := newMemoryCursorStore()
 	detector := newTestL2ToLxDetector(
-		t, source, fetcher, newFakeRegistry(claimer0), newMemoryCursorStore(), lerStore, enqueuer,
+		t, source, fetcher, newFakeRegistry(claimer0), cursorStore, lerStore, enqueuer,
 		WithL2ToLxBlockWindow(50),
 	)
 
@@ -194,6 +197,8 @@ func TestL2ToLxFinderMissSkipsSourceWithoutAdvancingCursor(t *testing.T) {
 	require.False(t, ok, "skipped source 1 must not advance its LER cursor")
 	require.Equal(t, ler2, lerStore.cursors[2].LastLER, "source 2 processed independently")
 	require.True(t, result.CursorAdvanced)
+	require.Equal(t, uint64(19), cursorStore.cursors[defaultL2ToLxCursorName].ToBlock,
+		"block cursor must hold before the skipped source's verify row (block 20)")
 }
 
 func TestL2ToLxNotSyncedSkipsSourceWithoutAdvancingCursor(t *testing.T) {
@@ -211,8 +216,9 @@ func TestL2ToLxNotSyncedSkipsSourceWithoutAdvancingCursor(t *testing.T) {
 	fetcher.pageErr[fetchKey{url: fakeSrcURL1, page: 1}] = ErrCandidatesNotSynced
 	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
 	lerStore := newFakeLERStore()
+	cursorStore := newMemoryCursorStore()
 	detector := newTestL2ToLxDetector(
-		t, source, fetcher, newFakeRegistry(claimer0), newMemoryCursorStore(), lerStore, newFakeEnqueuer(),
+		t, source, fetcher, newFakeRegistry(claimer0), cursorStore, lerStore, newFakeEnqueuer(),
 		WithL2ToLxBlockWindow(50),
 	)
 
@@ -223,6 +229,146 @@ func TestL2ToLxNotSyncedSkipsSourceWithoutAdvancingCursor(t *testing.T) {
 	_, ok := lerStore.cursors[1]
 	require.False(t, ok)
 	require.True(t, result.CursorAdvanced)
+	require.Equal(t, uint64(19), cursorStore.cursors[defaultL2ToLxCursorName].ToBlock,
+		"block cursor must hold before the skipped source's verify row (block 20)")
+}
+
+func TestL2ToLxRetriesSkippedSourceOnLaterPollWithoutNewLER(t *testing.T) {
+	// A source skipped for a transient reason (here: finder miss) must be retried on a later poll
+	// even if it never publishes another LER: the block-window cursor is held before the skipped
+	// verify row, so the row is re-observed once the skip condition clears.
+	ctx := context.Background()
+	ler1 := lerHash(11)
+	source := &fakeVerifiedBatchSource{
+		lastProcessedBlock: 50,
+		rowsByRange: map[blockRange][]*l1infotreesync.VerifyBatches{
+			{from: 0, to: 49}:  {makeVerifyRow(1, ler1, 20)},
+			{from: 19, to: 50}: {makeVerifyRow(1, ler1, 20)},
+		},
+	}
+	fetcher := newFakeFetcher() // no URL for source 1 yet
+	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
+	lerStore := newFakeLERStore()
+	enqueuer := newFakeEnqueuer()
+	cursorStore := newMemoryCursorStore()
+	detector := newTestL2ToLxDetector(
+		t, source, fetcher, newFakeRegistry(claimer0), cursorStore, lerStore, enqueuer,
+		WithL2ToLxBlockWindow(50),
+	)
+
+	result, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.SkippedSourceCount)
+	require.Equal(t, uint64(19), cursorStore.cursors[defaultL2ToLxCursorName].ToBlock)
+
+	// The source's bridge service URL becomes resolvable; the next poll re-observes the same
+	// verify row and processes the source, with no new LER published in between.
+	fetcher.urls[1] = fakeSrcURL1
+	fetcher.setPage(fakeSrcURL1, 1, []ClaimCandidate{makeCandidate(5, 0)}, 1)
+
+	result, err = detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.ProcessedSourceCount)
+	require.Equal(t, 1, result.EnqueuedCount)
+	require.Equal(t, ler1, lerStore.cursors[1].LastLER)
+	require.Equal(t, uint64(50), cursorStore.cursors[defaultL2ToLxCursorName].ToBlock,
+		"block cursor catches up once the skipped source is processed")
+}
+
+func TestL2ToLxRetrySkipAtWindowStartKeepsStoredCursor(t *testing.T) {
+	// When the retried row sits at the very start of the window there is no forward progress to
+	// record: the stored cursor must stay untouched (not move backward) and the poll must not error.
+	ctx := context.Background()
+	ler1 := lerHash(11)
+	source := &fakeVerifiedBatchSource{
+		lastProcessedBlock: 50,
+		rowsByRange: map[blockRange][]*l1infotreesync.VerifyBatches{
+			{from: 20, to: 50}: {makeVerifyRow(1, ler1, 20)},
+		},
+	}
+	fetcher := newFakeFetcher() // no URL for source 1
+	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
+	cursorStore := newMemoryCursorStore()
+	cursorStore.cursors[defaultL2ToLxCursorName] = autoclaimtypes.BridgeCursor{
+		FromBlock: 0, ToBlock: 20, BlockNum: 20,
+	}
+	detector := newTestL2ToLxDetector(
+		t, source, fetcher, newFakeRegistry(claimer0), cursorStore, newFakeLERStore(), newFakeEnqueuer(),
+		WithL2ToLxBlockWindow(50), WithL2ToLxOverlapBlocks(1),
+	)
+
+	result, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.SkippedSourceCount)
+	require.False(t, result.CursorAdvanced)
+	require.Equal(t, uint64(20), cursorStore.cursors[defaultL2ToLxCursorName].ToBlock,
+		"stored cursor stays put so the row at block 20 keeps being re-observed")
+}
+
+func TestL2ToLxBatchesDestinationNetworkIDs(t *testing.T) {
+	// The bridge service rejects claim-candidates requests with more than bridgeservice.MaxNetworkIDs
+	// destination IDs, so the detector must partition the destination filter into batches.
+	ctx := context.Background()
+	ler1 := lerHash(11)
+	source := &fakeVerifiedBatchSource{
+		lastProcessedBlock: 50,
+		rowsByRange: map[blockRange][]*l1infotreesync.VerifyBatches{
+			{from: 0, to: 49}: {makeVerifyRow(1, ler1, 20)},
+		},
+	}
+	fetcher := newFakeFetcher()
+	fetcher.urls[1] = fakeSrcURL1
+	fetcher.setPage(fakeSrcURL1, 1, nil, 0)
+	// Seven destinations besides source 1: 0 and 2..7.
+	claimers := []*fakeClaimer{
+		{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}},
+	}
+	for destination := uint32(2); destination <= 7; destination++ {
+		claimers = append(claimers, &fakeClaimer{
+			target: autoclaimtypes.ClaimerTarget{ID: fmt.Sprintf("claimer-%d", destination), DestinationNetwork: destination},
+		})
+	}
+	detector := newTestL2ToLxDetector(
+		t, source, fetcher, newFakeRegistry(claimers...), newMemoryCursorStore(), newFakeLERStore(), newFakeEnqueuer(),
+		WithL2ToLxBlockWindow(50),
+	)
+
+	_, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Len(t, fetcher.queries, 2, "seven destinations must be split into two batches")
+	require.Equal(t, []uint32{0, 2, 3, 4, 5}, fetcher.queries[0].DestinationNetworkIDs)
+	require.Equal(t, []uint32{6, 7}, fetcher.queries[1].DestinationNetworkIDs)
+	for _, query := range fetcher.queries {
+		require.LessOrEqual(t, len(query.DestinationNetworkIDs), bridgeservice.MaxNetworkIDs)
+	}
+}
+
+func TestL2ToLxInitialCursorLeafNotFoundOmitsFromLER(t *testing.T) {
+	// A StartL1Block that predates the first L1 info tree leaf has no baseline to derive a
+	// lower-bound LER from; it must behave like the zero-LER case and request the full history.
+	ctx := context.Background()
+	newLER := lerHash(9)
+	source := &fakeVerifiedBatchSource{
+		lastProcessedBlock: 100,
+		rowsByRange: map[blockRange][]*l1infotreesync.VerifyBatches{
+			{from: 40, to: 100}: {makeVerifyRow(1, newLER, 60)},
+		},
+		latestLeafErr: l1infotreesync.ErrNotFound,
+	}
+	fetcher := newFakeFetcher()
+	fetcher.urls[1] = fakeSrcURL1
+	fetcher.setPage(fakeSrcURL1, 1, []ClaimCandidate{makeCandidate(5, 0)}, 1)
+	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
+	detector := newTestL2ToLxDetector(
+		t, source, fetcher, newFakeRegistry(claimer0), newMemoryCursorStore(), newFakeLERStore(), newFakeEnqueuer(),
+		WithL2ToLxStartL1Block(40), WithL2ToLxBlockWindow(100),
+	)
+
+	_, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Len(t, fetcher.queries, 1)
+	require.Nil(t, fetcher.queries[0].FromLER,
+		"a StartL1Block older than the first L1 info tree leaf must omit from_ler (full history)")
 }
 
 func TestL2ToLxPaginationAndDedup(t *testing.T) {
