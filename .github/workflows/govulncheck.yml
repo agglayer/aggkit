@@ -11,11 +11,24 @@ jobs:
     runs-on: ubuntu-latest
     name: Run govulncheck
     env:
-      # GO-2026-4479: github.com/pion/dtls/v2 AES-GCM nonce reuse. No fixed version exists
-      # upstream (v2.2.12 is latest). Only reachable via go-ethereum's simulated backend,
-      # used in test/helpers and the tools/backward_forward_let debug utility - not part of
-      # any shipped aggkit binary's network path. Remove once pion/dtls ships a fix.
-      GOVULNCHECK_IGNORE_IDS: GO-2026-4479
+      # Comma-separated list of vulnerability IDs to tolerate in the full-repo scan, for
+      # findings with no upstream fix that are only reachable from non-shipped code (tests,
+      # debug utilities). Each entry must state why it is ignored. Two safeguards keep the
+      # list honest:
+      # - the shipped-binaries scan below runs WITHOUT the ignore list, so an ignored vuln
+      #   that becomes reachable from a shipped binary still fails CI;
+      # - an ignored ID that govulncheck no longer reports fails CI as stale, so entries
+      #   are removed as soon as the fix lands (this caught GO-2026-4479, since resolved).
+      GOVULNCHECK_IGNORE_IDS: ""
+      # Main packages of the binaries shipped by `make build` (build-aggkit + build-tools).
+      # Keep in sync with the Makefile.
+      SHIPPED_PACKAGES: >-
+        ./cmd
+        ./tools/aggsender_find_imported_bridge/...
+        ./tools/remove_ger/...
+        ./tools/exit_certificate/...
+        ./tools/exit_certificate_claimer/...
+        ./tools/force_ger_update/...
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -26,14 +39,28 @@ jobs:
         # Pinned to the commit tagged v1.5.0 (not the tag itself): SonarCloud's S8545 rule
         # requires a verified commit hash rather than a mutable version range/tag.
         run: go install golang.org/x/vuln/cmd/govulncheck@3e6f44f962742443c11ae2261f02e0c917aeb2bc
-      - name: Run govulncheck
+      - name: Run govulncheck (shipped binaries, no ignore list)
+        run: |
+          # The ignore list does not apply here: any vulnerability reachable from a shipped
+          # binary fails the job, even one ignored in the full-repo scan below.
+          # shellcheck disable=SC2086
+          govulncheck -C . -format text $SHIPPED_PACKAGES
+        shell: bash
+      - name: Run govulncheck (full repo, with ignore list)
         run: |
           set +e
           govulncheck -C . -format text ./... | tee govulncheck-output.txt
           exit_code=${PIPESTATUS[0]}
           set -e
 
+          ignored_ids=$(echo "$GOVULNCHECK_IGNORE_IDS" | tr ',' '\n' | sed '/^$/d' | sort -u)
+
           if [ "$exit_code" -eq 0 ]; then
+            if [ -n "$ignored_ids" ]; then
+              echo "::error::Stale entries in GOVULNCHECK_IGNORE_IDS (no longer reported, remove them):"
+              echo "$ignored_ids"
+              exit 1
+            fi
             echo "No vulnerabilities found."
             exit 0
           fi
@@ -43,12 +70,17 @@ jobs:
           fi
 
           found_ids=$(grep -oE '^Vulnerability #[0-9]+: GO-[0-9]+-[0-9]+' govulncheck-output.txt | awk '{print $NF}' | sort -u)
-          ignored_ids=$(echo "$GOVULNCHECK_IGNORE_IDS" | tr ',' '\n' | sed '/^$/d' | sort -u)
           unaddressed_ids=$(comm -23 <(echo "$found_ids") <(echo "$ignored_ids"))
+          stale_ids=$(comm -13 <(echo "$found_ids") <(echo "$ignored_ids"))
 
           if [ -n "$unaddressed_ids" ]; then
             echo "::error::Unaddressed vulnerabilities found (not in GOVULNCHECK_IGNORE_IDS):"
             echo "$unaddressed_ids"
+            exit 1
+          fi
+          if [ -n "$stale_ids" ]; then
+            echo "::error::Stale entries in GOVULNCHECK_IGNORE_IDS (no longer reported, remove them):"
+            echo "$stale_ids"
             exit 1
           fi
 
