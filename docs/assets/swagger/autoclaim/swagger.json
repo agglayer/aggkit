@@ -15,6 +15,160 @@
     },
     "basePath": "/autoclaim/v1",
     "paths": {
+        "/autoclaim/v1/bridges": {
+            "get": {
+                "description": "Returns tracked Auto Claim requests with optional filters and pagination.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "autoclaim"
+                ],
+                "summary": "List Auto Claim bridge requests",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Filter by source network ID (network the bridge exit originated on)",
+                        "name": "source_network",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Filter by origin network ID",
+                        "name": "origin_network",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Filter by destination network ID",
+                        "name": "destination_network",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by request status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by policy result",
+                        "name": "policy_status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Alias for policy_status",
+                        "name": "policy_result",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by 0x-prefixed bridge transaction hash",
+                        "name": "bridge_tx_hash",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by 0x-prefixed claim transaction hash",
+                        "name": "claim_tx_hash",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Filter by minimum bridge block number",
+                        "name": "from_block",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Filter by maximum bridge block number",
+                        "name": "to_block",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Page number (default 0)",
+                        "name": "page_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Page size (default 100, max 1000)",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/apitypes.ListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/autoclaim/v1/bridges/{id}": {
+            "get": {
+                "description": "Returns one tracked Auto Claim request by request ID.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "autoclaim"
+                ],
+                "summary": "Get Auto Claim bridge request",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Auto Claim request ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/apitypes.RequestResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/bridges/{id}/approve": {
             "post": {
                 "description": "Approves a request currently in manual-approval-required and advances the matching claimer when present.",
@@ -209,6 +363,26 @@
                 }
             }
         },
+        "apitypes.ListResponse": {
+            "type": "object",
+            "properties": {
+                "bridges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/apitypes.RequestResponse"
+                    }
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "page_number": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                }
+            }
+        },
         "apitypes.RequestResponse": {
             "type": "object",
             "properties": {
@@ -263,6 +437,9 @@
                 "leaf_type": {
                     "type": "integer"
                 },
+                "ler": {
+                    "type": "string"
+                },
                 "manual_decision": {
                     "$ref": "#/definitions/apitypes.DecisionResponse"
                 },
@@ -285,6 +462,9 @@
                     "type": "string"
                 },
                 "retry_count": {
+                    "type": "integer"
+                },
+                "source_network": {
                     "type": "integer"
                 },
                 "status": {

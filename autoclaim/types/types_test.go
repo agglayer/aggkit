@@ -66,6 +66,17 @@ func TestDeriveRequestKey(t *testing.T) {
 	require.Equal(t, RequestKey("0:1101:42"), key)
 }
 
+func TestDeriveGlobalIndexForSource(t *testing.T) {
+	// L1 source (0) is mainnet-flagged, identical to DeriveL1GlobalIndex.
+	require.Equal(t, 0, DeriveL1GlobalIndex(7).Cmp(DeriveGlobalIndexForSource(0, 7)))
+
+	// A rollup source encodes rollupIndex = source - 1.
+	const sourceNetwork uint32 = 3
+	const depositCount uint32 = 11
+	expected := bridgesync.GenerateGlobalIndexForNetworkID(sourceNetwork, depositCount)
+	require.Equal(t, 0, expected.Cmp(DeriveGlobalIndexForSource(sourceNetwork, depositCount)))
+}
+
 func TestNewBridgeExitFromSyncWithEtrogMarksLegacyZkEVMBridge(t *testing.T) {
 	bridge := bridgesync.Bridge{
 		BlockNum:           100,

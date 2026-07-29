@@ -569,7 +569,8 @@ func TestDatabaseQueryTimeout(t *testing.T) {
 // TestInsertBlockIdempotent verifies that inserting the same block twice does not
 // return an error. This guards against the startup race where two goroutines both
 // bootstrap the same block (e.g. block 0) concurrently; the second insert must be a
-// successful no-op rather than a UNIQUE/PRIMARY KEY constraint failure.
+// successful no-op rather than a UNIQUE/PRIMARY KEY constraint failure. A duplicate
+// insert with a DIFFERENT hash is not a benign duplicate and must error.
 func TestInsertBlockIdempotent(t *testing.T) {
 	s, _ := newTestStorage(t)
 	ctx := context.Background()
@@ -577,10 +578,12 @@ func TestInsertBlockIdempotent(t *testing.T) {
 	// First insert succeeds.
 	require.NoError(t, s.InsertBlock(ctx, nil, 0, common.HexToHash("0xaaa")))
 
-	// Duplicate insert with the same num must be treated as a no-op (no error).
+	// Duplicate insert with the same num and hash must be treated as a no-op (no error).
 	require.NoError(t, s.InsertBlock(ctx, nil, 0, common.HexToHash("0xaaa")))
-	// Duplicate insert with a different hash must also be a no-op (the row already exists).
-	require.NoError(t, s.InsertBlock(ctx, nil, 0, common.HexToHash("0xbbb")))
+	// Duplicate insert with a different hash must be surfaced as an error.
+	err := s.InsertBlock(ctx, nil, 0, common.HexToHash("0xbbb"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "different hash")
 
 	// Block 0 is now present and discoverable.
 	last, found, err := s.GetLastProcessedBlock(ctx, nil)
@@ -588,10 +591,10 @@ func TestInsertBlockIdempotent(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, uint64(0), last)
 
-	// A concurrent insert inside a transaction must also succeed (no-op) and allow commit.
+	// A concurrent same-hash insert inside a transaction must also succeed (no-op) and allow commit.
 	tx, err := s.NewTx(ctx)
 	require.NoError(t, err)
-	require.NoError(t, s.InsertBlock(ctx, tx, 0, common.HexToHash("0xccc")))
+	require.NoError(t, s.InsertBlock(ctx, tx, 0, common.HexToHash("0xaaa")))
 	require.NoError(t, tx.Commit())
 }
 

@@ -27,7 +27,7 @@ var (
 
 const (
 	recoveryFilterClauseCapacity = 2
-	requestFilterClauseCapacity  = 8
+	requestFilterClauseCapacity  = 9
 	base10                       = 10
 )
 
@@ -42,6 +42,7 @@ type Storage struct {
 
 type requestRow struct {
 	RequestKey           string         `meddler:"request_key"`
+	SourceNetwork        uint32         `meddler:"source_network"`
 	OriginNetwork        uint32         `meddler:"origin_network"`
 	DestinationNetwork   uint32         `meddler:"destination_network"`
 	DepositCount         uint32         `meddler:"deposit_count"`
@@ -65,6 +66,8 @@ type requestRow struct {
 	ProofJSON            []byte         `meddler:"proof_json"`
 	PolicyDecisionJSON   []byte         `meddler:"policy_decision_json"`
 	ManualDecisionJSON   []byte         `meddler:"manual_decision_json"`
+	LER                  sql.NullString `meddler:"ler"`
+	VerifyBlockNum       uint64         `meddler:"verify_block_num"`
 }
 
 type bridgeCursorRow struct {
@@ -74,6 +77,13 @@ type bridgeCursorRow struct {
 	BlockNum  uint64    `meddler:"block_num"`
 	BlockPos  uint64    `meddler:"block_pos"`
 	UpdatedAt time.Time `meddler:"updated_at"`
+}
+
+type lerCursorRow struct {
+	SourceNetwork      uint32    `meddler:"source_network"`
+	LastLER            string    `meddler:"last_ler"`
+	LastVerifyBlockNum uint64    `meddler:"last_verify_block_num"`
+	UpdatedAt          time.Time `meddler:"updated_at"`
 }
 
 // NewStandalone opens a SQLite database, runs Auto Claim migrations, and returns storage.
@@ -196,6 +206,86 @@ func (s *Storage) SaveBridgeCursor(
 	return nil
 }
 
+// GetLERCursor returns the durable local-exit-root discovery cursor for a source network.
+func (s *Storage) GetLERCursor(
+	ctx context.Context,
+	sourceNetwork uint32,
+) (*autoclaimtypes.LERCursor, bool, error) {
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	rows, err := s.database.QueryContext(dbCtx, `
+		SELECT source_network, last_ler, last_verify_block_num, updated_at
+		FROM autoclaim_ler_cursor
+		WHERE source_network = ?`,
+		sourceNetwork,
+	)
+	if err != nil {
+		return nil, false, fmt.Errorf("get autoclaim ler cursor %d: %w", sourceNetwork, err)
+	}
+
+	row := &lerCursorRow{}
+	if err := meddler.ScanRow(rows, row); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("get autoclaim ler cursor %d: %w", sourceNetwork, err)
+	}
+
+	cursor := autoclaimtypes.LERCursor{
+		SourceNetwork:      row.SourceNetwork,
+		LastLER:            common.HexToHash(row.LastLER),
+		LastVerifyBlockNum: row.LastVerifyBlockNum,
+	}
+
+	return &cursor, true, nil
+}
+
+// SaveLERCursor upserts the durable local-exit-root discovery cursor for a source network.
+func (s *Storage) SaveLERCursor(
+	ctx context.Context,
+	sourceNetwork uint32,
+	cursor autoclaimtypes.LERCursor,
+	now time.Time,
+) error {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	result, err := s.database.ExecContext(dbCtx, `
+		INSERT INTO autoclaim_ler_cursor (
+			source_network,
+			last_ler,
+			last_verify_block_num,
+			updated_at
+		) VALUES (?, ?, ?, ?)
+		ON CONFLICT(source_network) DO UPDATE SET
+			last_ler = excluded.last_ler,
+			last_verify_block_num = excluded.last_verify_block_num,
+			updated_at = excluded.updated_at`,
+		sourceNetwork,
+		cursor.LastLER.Hex(),
+		cursor.LastVerifyBlockNum,
+		now,
+	)
+	if err != nil {
+		return fmt.Errorf("save autoclaim ler cursor %d: %w", sourceNetwork, err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("save autoclaim ler cursor %d rows affected: %w", sourceNetwork, err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("save autoclaim ler cursor %d: no rows affected", sourceNetwork)
+	}
+
+	return nil
+}
+
 // EnqueueRequest inserts a request once per origin, destination, and deposit count.
 func (s *Storage) EnqueueRequest(
 	ctx context.Context,
@@ -203,7 +293,7 @@ func (s *Storage) EnqueueRequest(
 ) (*autoclaimtypes.AutoClaimRequest, bool, error) {
 	if request.Key == "" {
 		request.Key = autoclaimtypes.DeriveRequestKey(
-			request.Bridge.OriginNetwork,
+			request.Bridge.SourceNetwork,
 			request.Bridge.DestinationNetwork,
 			request.Bridge.DepositCount,
 		)
@@ -219,7 +309,10 @@ func (s *Storage) EnqueueRequest(
 		request.UpdatedAt = request.CreatedAt
 	}
 	if request.GlobalIndex == nil {
-		request.GlobalIndex = autoclaimtypes.DeriveL1GlobalIndex(request.Bridge.DepositCount)
+		request.GlobalIndex = autoclaimtypes.DeriveGlobalIndexForSource(
+			request.Bridge.SourceNetwork,
+			request.Bridge.DepositCount,
+		)
 	}
 
 	row, err := makeRequestRow(request)
@@ -233,6 +326,7 @@ func (s *Storage) EnqueueRequest(
 	result, err := s.database.ExecContext(dbCtx, `
 		INSERT OR IGNORE INTO autoclaim_request (
 			request_key,
+			source_network,
 			origin_network,
 			destination_network,
 			deposit_count,
@@ -255,9 +349,12 @@ func (s *Storage) EnqueueRequest(
 			bridge_json,
 			proof_json,
 			policy_decision_json,
-			manual_decision_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			manual_decision_json,
+			ler,
+			verify_block_num
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		row.RequestKey,
+		row.SourceNetwork,
 		row.OriginNetwork,
 		row.DestinationNetwork,
 		row.DepositCount,
@@ -281,6 +378,8 @@ func (s *Storage) EnqueueRequest(
 		nullBytes(row.ProofJSON),
 		nullBytes(row.PolicyDecisionJSON),
 		nullBytes(row.ManualDecisionJSON),
+		row.LER,
+		row.VerifyBlockNum,
 	)
 	if err != nil {
 		return nil, false, fmt.Errorf("enqueue autoclaim request %s: %w", request.Key, err)
@@ -821,6 +920,10 @@ func buildRequestWhereClause(filter autoclaimtypes.RequestFilter) (string, []any
 	clauses := make([]string, 0, requestFilterClauseCapacity)
 	args := make([]any, 0, requestFilterClauseCapacity)
 
+	if filter.SourceNetwork != nil {
+		clauses = append(clauses, "source_network = ?")
+		args = append(args, *filter.SourceNetwork)
+	}
 	if filter.OriginNetwork != nil {
 		clauses = append(clauses, "origin_network = ?")
 		args = append(args, *filter.OriginNetwork)
@@ -882,6 +985,7 @@ func makeRequestRow(request autoclaimtypes.AutoClaimRequest) (*requestRow, error
 
 	row := &requestRow{
 		RequestKey:           string(request.Key),
+		SourceNetwork:        request.Bridge.SourceNetwork,
 		OriginNetwork:        request.Bridge.OriginNetwork,
 		DestinationNetwork:   request.Bridge.DestinationNetwork,
 		DepositCount:         request.Bridge.DepositCount,
@@ -900,6 +1004,11 @@ func makeRequestRow(request autoclaimtypes.AutoClaimRequest) (*requestRow, error
 		ProofJSON:            proofJSON,
 		PolicyDecisionJSON:   policyDecisionJSON,
 		ManualDecisionJSON:   manualDecisionJSON,
+		VerifyBlockNum:       request.VerifyBlockNum,
+	}
+
+	if request.LER != (common.Hash{}) {
+		row.LER = sql.NullString{String: request.LER.Hex(), Valid: true}
 	}
 
 	if request.PolicyDecision != nil {
@@ -926,16 +1035,22 @@ func (r *requestRow) toRequest() (*autoclaimtypes.AutoClaimRequest, error) {
 	if err := json.Unmarshal(r.BridgeJSON, &bridge); err != nil {
 		return nil, fmt.Errorf("unmarshal autoclaim bridge %s: %w", r.RequestKey, err)
 	}
+	// The source_network column is authoritative: older rows predate the field in bridge_json.
+	bridge.SourceNetwork = r.SourceNetwork
 
 	request := &autoclaimtypes.AutoClaimRequest{
-		Key:        autoclaimtypes.RequestKey(r.RequestKey),
-		Status:     autoclaimtypes.RequestStatus(r.Status),
-		Bridge:     bridge,
-		RetryCount: r.RetryCount,
-		MaxRetries: r.MaxRetries,
-		CreatedAt:  r.CreatedAt,
-		UpdatedAt:  r.UpdatedAt,
-		LastError:  r.LastError,
+		Key:            autoclaimtypes.RequestKey(r.RequestKey),
+		Status:         autoclaimtypes.RequestStatus(r.Status),
+		Bridge:         bridge,
+		RetryCount:     r.RetryCount,
+		MaxRetries:     r.MaxRetries,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+		LastError:      r.LastError,
+		VerifyBlockNum: r.VerifyBlockNum,
+	}
+	if r.LER.Valid {
+		request.LER = common.HexToHash(r.LER.String)
 	}
 
 	if r.GlobalIndex.Valid {
@@ -989,6 +1104,7 @@ func (r *requestRow) toRequest() (*autoclaimtypes.AutoClaimRequest, error) {
 func selectRequestSQL() string {
 	return `SELECT
 		request_key,
+		source_network,
 		origin_network,
 		destination_network,
 		deposit_count,
@@ -1011,7 +1127,9 @@ func selectRequestSQL() string {
 		bridge_json,
 		proof_json,
 		policy_decision_json,
-		manual_decision_json
+		manual_decision_json,
+		ler,
+		verify_block_num
 	FROM autoclaim_request`
 }
 

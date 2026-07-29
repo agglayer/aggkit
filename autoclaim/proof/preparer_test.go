@@ -12,7 +12,6 @@ import (
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -333,7 +332,7 @@ func TestPreparePendingWhenNoGERInjectedYet(t *testing.T) {
 	l1InfoTree := &fakeL1InfoTreeSyncer{}
 	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
 
-	preparer := NewPreparer(bridge, l1InfoTree, &fakeL2GERSyncer{err: db.ErrNotFound})
+	preparer := NewPreparer(bridge, l1InfoTree, &fakeL2GERSyncer{err: ErrGERNotInjected})
 	result, err := preparer.Prepare(ctx, testRequest(depositCount))
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -353,9 +352,7 @@ func TestPrepareUsesFirstCoveringGERIndex(t *testing.T) {
 	configureSuccessfulIndexLookup(t, depositCount, bridge, l1InfoTree)
 	l1InfoTree.infoByIndex[injectedIndex] = injectedInfo
 
-	preparer := NewPreparer(bridge, l1InfoTree, &fakeL2GERSyncer{
-		info: l2gersync.GlobalExitRootInfo{L1InfoTreeIndex: injectedIndex},
-	})
+	preparer := NewPreparer(bridge, l1InfoTree, &fakeL2GERSyncer{index: injectedIndex})
 	result, err := preparer.Prepare(ctx, testRequest(depositCount))
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -516,14 +513,14 @@ func testProof(values ...string) treetypes.Proof {
 
 // fakeL2GERSyncer implements L2GERSyncer for tests.
 type fakeL2GERSyncer struct {
-	info l2gersync.GlobalExitRootInfo
-	err  error
+	index uint32
+	err   error
 }
 
 func (f *fakeL2GERSyncer) GetFirstGERAfterL1InfoTreeIndex(
 	_ context.Context, _ uint32,
-) (l2gersync.GlobalExitRootInfo, error) {
-	return f.info, f.err
+) (uint32, error) {
+	return f.index, f.err
 }
 
 // Compile-time assertion: fakeL2GERSyncer implements L2GERSyncer.

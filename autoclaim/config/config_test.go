@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
+	"github.com/agglayer/aggkit/bridgeservicefinder"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -41,13 +42,6 @@ func TestConfigValidateRejectsInvalidEnabledConfig(t *testing.T) {
 				cfg.L1ToL2BridgeDetector.PollInterval.Duration = 0
 			},
 			wantError: "AutoClaim.L1ToL2BridgeDetector.PollInterval must be greater than 0",
-		},
-		{
-			name: "invalid bridge detector retry period",
-			mutate: func(cfg *Config) {
-				cfg.L1ToL2BridgeDetector.RetryAfterErrorPeriod.Duration = 0
-			},
-			wantError: "AutoClaim.L1ToL2BridgeDetector.RetryAfterErrorPeriod must be greater than 0",
 		},
 		{
 			name: "duplicate enabled claimer id",
@@ -161,17 +155,115 @@ func TestClaimerConfigValidateRejectsInvalidEnabledConfig(t *testing.T) {
 	}
 }
 
+func TestConfigValidateL2ToLxRequiresFinderConfig(t *testing.T) {
+	cfg := validConfig()
+	cfg.L2ToLxBridgeDetector = L2ToLxBridgeDetector{
+		Enabled:      true,
+		PollInterval: cfgtypes.NewDuration(3 * time.Second),
+	}
+	// Clear the RollupManagerAddr set by validConfig to exercise the requirement.
+	cfg.BridgeServiceFinder = bridgeservicefinder.Config{}
+
+	err := cfg.Validate()
+	require.ErrorContains(t, err, "AutoClaim.BridgeServiceFinder.RollupManagerAddr is required")
+
+	cfg.BridgeServiceFinder = bridgeservicefinder.Config{
+		RollupManagerAddr: common.HexToAddress("0x2000000000000000000000000000000000000002"),
+	}
+	require.NoError(t, cfg.Validate())
+}
+
+func TestConfigValidateL2DestinationClaimerRequiresFinderConfig(t *testing.T) {
+	// An enabled L2-destination claimer builds a GER gate against the destination bridge service, so
+	// RollupManagerAddr is required even when the L2ToLx bridge detector is disabled.
+	cfg := validConfig()
+	require.False(t, cfg.L2ToLxBridgeDetector.Enabled)
+	cfg.BridgeServiceFinder = bridgeservicefinder.Config{}
+
+	err := cfg.Validate()
+	require.ErrorContains(t, err, "AutoClaim.BridgeServiceFinder.RollupManagerAddr is required")
+
+	cfg.BridgeServiceFinder = bridgeservicefinder.Config{
+		RollupManagerAddr: common.HexToAddress("0x2000000000000000000000000000000000000002"),
+	}
+	require.NoError(t, cfg.Validate())
+}
+
+func TestConfigValidateL2ToLxRejectsInvalidPollingFields(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		mutate    func(*L2ToLxBridgeDetector)
+		wantError string
+	}{
+		{
+			name: "zero poll interval",
+			mutate: func(c *L2ToLxBridgeDetector) {
+				c.PollInterval.Duration = 0
+			},
+			wantError: "PollInterval must be greater than 0",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.L2ToLxBridgeDetector = L2ToLxBridgeDetector{
+				Enabled:      true,
+				PollInterval: cfgtypes.NewDuration(3 * time.Second),
+			}
+			cfg.BridgeServiceFinder = bridgeservicefinder.Config{
+				RollupManagerAddr: common.HexToAddress("0x2000000000000000000000000000000000000002"),
+			}
+			tt.mutate(&cfg.L2ToLxBridgeDetector)
+
+			require.ErrorContains(t, cfg.Validate(), tt.wantError)
+		})
+	}
+}
+
+func TestConfigValidateL2ToLxDisabledSkipsPollingFieldValidation(t *testing.T) {
+	// A disabled L2ToLxBridgeDetector never uses its polling fields, so a zero-value config (the
+	// back-compat default) must remain valid.
+	cfg := validConfig()
+	cfg.L2ToLxBridgeDetector = L2ToLxBridgeDetector{Enabled: false}
+
+	require.NoError(t, cfg.Validate())
+}
+
+func TestConfigValidateAcceptsL1DestinationClaimerWhenL2ToLxEnabled(t *testing.T) {
+	cfg := validConfig()
+	cfg.L2ToLxBridgeDetector = L2ToLxBridgeDetector{
+		Enabled:      true,
+		PollInterval: cfgtypes.NewDuration(3 * time.Second),
+	}
+	cfg.BridgeServiceFinder = bridgeservicefinder.Config{
+		RollupManagerAddr: common.HexToAddress("0x2000000000000000000000000000000000000002"),
+	}
+	cfg.Claimers = append(cfg.Claimers, validClaimerConfig("l1-destination", 0))
+
+	require.NoError(t, cfg.Validate())
+}
+
+func TestConfigValidateRejectsL1DestinationClaimerWhenL2ToLxDisabled(t *testing.T) {
+	cfg := validConfig()
+	cfg.Claimers = append(cfg.Claimers, validClaimerConfig("l1-destination", 0))
+
+	err := cfg.Validate()
+	require.ErrorContains(t, err, "AutoClaim.L2ToLxBridgeDetector.Enabled must be true")
+}
+
 func validConfig() Config {
 	return Config{
 		StoragePath: "/tmp/autoclaim.sqlite",
 		L1ToL2BridgeDetector: L1ToL2BridgeDetector{
-			Enabled:                    true,
-			PollInterval:               cfgtypes.NewDuration(2 * time.Second),
-			RetryAfterErrorPeriod:      cfgtypes.NewDuration(5 * time.Second),
-			MaxRetryAttemptsAfterError: 3,
+			Enabled:      true,
+			PollInterval: cfgtypes.NewDuration(2 * time.Second),
 		},
 		Claimers: []ClaimerConfig{
 			validClaimerConfig("l2-a", 10),
+		},
+		// The l2-a claimer targets an L2 destination, whose GER gate resolves through the bridge
+		// service finder, so a RollupManagerAddr is required.
+		BridgeServiceFinder: bridgeservicefinder.Config{
+			RollupManagerAddr: common.HexToAddress("0x2000000000000000000000000000000000000002"),
 		},
 	}
 }

@@ -99,7 +99,7 @@ func NewClaimSync(
 		appender,
 		[]common.Address{cfg.BridgeAddr},
 		rh,
-		cfg.BlockFinality,
+		rd.GetFinalizedBlockType(),
 		rd,
 		syncerID.String(),
 	)

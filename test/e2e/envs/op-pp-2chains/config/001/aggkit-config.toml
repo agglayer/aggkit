@@ -149,6 +149,9 @@ Port = "5576"
 # ------------------------------------------------------------------------------
 Port = "5577"
 
+[AdminREST]
+Port = 5579
+
 # ==============================================================================
 #     _    ____  ____ ____  _____ _   _ ____  _____ ____
 #    / \  / ___|/ ___/ ___|| ____| \ | |  _ \| ____|  _ \
@@ -504,7 +507,11 @@ BlockFinality = "LatestBlock"
 #   - PendingBlock
 #   - FinalizedBlock
 # ------------------------------------------------------------------------------
-FinalizedBlock = "FinalizedBlock"
+# NOTE: op-reth in this kurtosis env never advances the "finalized" tag
+# (eth_getBlockByNumber("finalized") stays at 0), which would permanently stall
+# the safe-zone check of every L2 syncer that relies on the reorg detector's
+# finalized block type. The env has no L2 reorgs, so LatestBlock is safe here.
+FinalizedBlock = "LatestBlock"
 
 # ------------------------------------------------------------------------------
 # DBPath path of the sqlite db

@@ -249,8 +249,9 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 
 	seen := make(map[autoclaimtypes.RequestKey]struct{}, len(bridges))
 	// Every bridge exit returned by l1bridgesync was initiated on L1, so there is no
-	// bridge-origin filter to apply here. exit.OriginNetwork is the network of the bridged
-	// token (used later in the claim calldata), not the network where the bridge originated.
+	// bridge-origin filter to apply here. The claim identity (and the request key) is keyed on the
+	// source network, which for this detector is always L1 (network 0), not exit.OriginNetwork
+	// (the bridged token's origin network, which can be any network for a wrapped token).
 	for _, bridge := range bridges {
 		exit := autoclaimtypes.NewBridgeExitFromSyncWithEtrog(bridge, w.etrogL1UpgradeBlock)
 		if err := w.processBridge(ctx, exit, states, seen, result); err != nil {
@@ -286,7 +287,10 @@ func (w *L1ToL2) processBridge(
 
 	state.nextCursor = maxCursorPosition(state.nextCursor, exit.BlockNum, exit.BlockPos)
 
-	key := autoclaimtypes.DeriveRequestKey(exit.OriginNetwork, exit.DestinationNetwork, exit.DepositCount)
+	// The source network is always L1 (network 0) for L1-initiated exits, independent of the
+	// bridged token's origin network. This mirrors the key storage.EnqueueRequest derives from
+	// exit.SourceNetwork, so the in-poll dedup and the persisted uniqueness stay consistent.
+	key := autoclaimtypes.DeriveRequestKey(autoclaimtypes.L1OriginNetwork, exit.DestinationNetwork, exit.DepositCount)
 	if _, dup := seen[key]; dup {
 		result.SkippedBridgeCount++
 		return nil

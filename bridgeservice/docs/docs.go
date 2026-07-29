@@ -48,153 +48,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/autoclaim/bridges": {
-            "get": {
-                "description": "Returns tracked Auto Claim requests with optional filters and pagination. Available\nonly when the autoclaim component is running.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "autoclaim"
-                ],
-                "summary": "List Auto Claim bridge requests",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "format": "int32",
-                        "description": "Filter by origin network ID",
-                        "name": "origin_network",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "format": "int32",
-                        "description": "Filter by destination network ID",
-                        "name": "destination_network",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by request status",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by policy result",
-                        "name": "policy_status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Alias for policy_status",
-                        "name": "policy_result",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by 0x-prefixed bridge transaction hash",
-                        "name": "bridge_tx_hash",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by 0x-prefixed claim transaction hash",
-                        "name": "claim_tx_hash",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "format": "int64",
-                        "description": "Filter by minimum bridge block number",
-                        "name": "from_block",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "format": "int64",
-                        "description": "Filter by maximum bridge block number",
-                        "name": "to_block",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "format": "int32",
-                        "description": "Page number (default 0)",
-                        "name": "page_number",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "format": "int32",
-                        "description": "Page size (default 100, max 1000)",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/apitypes.ListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/apitypes.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/apitypes.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/autoclaim/bridges/{id}": {
-            "get": {
-                "description": "Returns one tracked Auto Claim request by request ID. Available only when the\nautoclaim component is running.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "autoclaim"
-                ],
-                "summary": "Get Auto Claim bridge request",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Auto Claim request ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/apitypes.RequestResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/apitypes.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/apitypes.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/bridge-by-deposit-count": {
             "get": {
                 "description": "Returns the bridge by deposit count for the specified network (checks bridge and bridge_archive).",
@@ -409,6 +262,91 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/claim-candidates": {
+            "get": {
+                "description": "Returns bridges originated on this network with deposit_count in\n(from_ler's index, to_ler's index] whose destination network is one of\ndestination_network_ids. to_ler/from_ler define the deposit-count range only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bridges"
+                ],
+                "summary": "Get claim candidates",
+                "parameters": [
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                            "format": "int32"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Destination network IDs to filter by (maximum 5)",
+                        "name": "destination_network_ids",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Local exit root, upper bound of the deposit-count range (0x-prefixed 32-byte hex)",
+                        "name": "to_ler",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Exclusive lower-bound local exit root; omitted means full history",
+                        "name": "from_ler",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Page number (default 1)",
+                        "name": "page_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Page size (default 100)",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.ClaimCandidatesResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found - to_ler or from_ler not synced yet",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -656,6 +594,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found - global exit root not injected yet",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -1067,162 +1011,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "apitypes.DecisionResponse": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "decider": {
-                    "type": "string"
-                },
-                "decider_id": {
-                    "type": "string"
-                },
-                "metadata": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
-                "policy_name": {
-                    "type": "string"
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "result": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
-        "apitypes.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "error": {
-                    "type": "string",
-                    "example": "request 0:1:42 not found"
-                }
-            }
-        },
-        "apitypes.ListResponse": {
-            "type": "object",
-            "properties": {
-                "bridges": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/apitypes.RequestResponse"
-                    }
-                },
-                "count": {
-                    "type": "integer"
-                },
-                "page_number": {
-                    "type": "integer"
-                },
-                "page_size": {
-                    "type": "integer"
-                }
-            }
-        },
-        "apitypes.RequestResponse": {
-            "type": "object",
-            "properties": {
-                "amount": {
-                    "type": "string"
-                },
-                "block_num": {
-                    "type": "integer"
-                },
-                "block_pos": {
-                    "type": "integer"
-                },
-                "block_timestamp": {
-                    "type": "integer"
-                },
-                "bridge_tx_hash": {
-                    "type": "string"
-                },
-                "claim_tx_hash": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "deposit_count": {
-                    "type": "integer"
-                },
-                "destination_address": {
-                    "type": "string"
-                },
-                "destination_network": {
-                    "type": "integer"
-                },
-                "global_index": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "l1_info_tree_index": {
-                    "type": "integer"
-                },
-                "last_error": {
-                    "type": "string"
-                },
-                "last_observed_result_at": {
-                    "type": "string"
-                },
-                "last_observed_send_at": {
-                    "type": "string"
-                },
-                "leaf_type": {
-                    "type": "integer"
-                },
-                "manual_decision": {
-                    "$ref": "#/definitions/apitypes.DecisionResponse"
-                },
-                "max_retries": {
-                    "type": "integer"
-                },
-                "metadata": {
-                    "type": "string"
-                },
-                "origin_address": {
-                    "type": "string"
-                },
-                "origin_network": {
-                    "type": "integer"
-                },
-                "policy_decision": {
-                    "$ref": "#/definitions/apitypes.DecisionResponse"
-                },
-                "policy_status": {
-                    "type": "string"
-                },
-                "retry_count": {
-                    "type": "integer"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "to_address": {
-                    "type": "string"
-                },
-                "tx_manager_id": {
-                    "type": "string"
-                },
-                "txn_sender": {
-                    "type": "string"
-                },
-                "updated_at": {
-                    "type": "string"
-                }
-            }
-        },
         "bridgesync.LastReorg": {
             "type": "object",
             "properties": {
@@ -1414,6 +1202,38 @@ const docTemplate = `{
                     "description": "Total number of bridge events",
                     "type": "integer",
                     "example": 42
+                }
+            }
+        },
+        "types.ClaimCandidateResponse": {
+            "description": "A bridge event that is a candidate for claiming",
+            "type": "object",
+            "properties": {
+                "bridge": {
+                    "description": "The bridge event that is a candidate for claiming",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/types.BridgeResponse"
+                        }
+                    ]
+                }
+            }
+        },
+        "types.ClaimCandidatesResult": {
+            "description": "Paginated response of claim candidates (bridge events)",
+            "type": "object",
+            "properties": {
+                "claim_candidates": {
+                    "description": "List of claim candidates",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.ClaimCandidateResponse"
+                    }
+                },
+                "count": {
+                    "description": "Total number of matching claim candidates",
+                    "type": "integer",
+                    "example": 5
                 }
             }
         },
