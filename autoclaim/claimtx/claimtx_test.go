@@ -74,6 +74,44 @@ func TestGlobalIndexDerived(t *testing.T) {
 	require.Zero(t, GlobalIndex(request).Cmp(expected))
 }
 
+func TestGlobalIndexDerivedForRollupSource(t *testing.T) {
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	request.GlobalIndex = nil
+	request.Bridge.GlobalIndex = nil
+	request.Bridge.SourceNetwork = 5
+
+	expected := autoclaimtypes.DeriveGlobalIndexForSource(5, request.Bridge.DepositCount)
+	require.Zero(t, GlobalIndex(request).Cmp(expected))
+	// Sanity: a rollup-origin global index must differ from the L1-origin one for the same deposit count.
+	require.NotZero(t, GlobalIndex(request).Cmp(autoclaimtypes.DeriveL1GlobalIndex(request.Bridge.DepositCount)))
+}
+
+func TestPackClaimRollupOriginCalldata(t *testing.T) {
+	sourceNetwork := uint32(5)
+	request := makeRequest(bridgesynctypes.LeafTypeAsset)
+	request.Bridge.SourceNetwork = sourceNetwork
+	request.Bridge.GlobalIndex = nil
+	request.GlobalIndex = autoclaimtypes.DeriveGlobalIndexForSource(sourceNetwork, request.Bridge.DepositCount)
+	proof := makeProof()
+
+	data, err := PackClaim(request, proof)
+	require.NoError(t, err)
+
+	bridgeABI, err := agglayerbridgel2.Agglayerbridgel2MetaData.GetAbi()
+	require.NoError(t, err)
+	require.Equal(t, bridgeABI.Methods[claimAssetMethod].ID, data[:4])
+	inputs, err := bridgeABI.Methods[claimAssetMethod].Inputs.Unpack(data[4:])
+	require.NoError(t, err)
+	requireClaimInputs(t, inputs, request, proof)
+
+	globalIndex, ok := inputs[2].(*big.Int)
+	require.True(t, ok)
+	// The packed global index must encode the rollup source (rollupIndex = sourceNetwork - 1,
+	// mainnetFlag = false), not the L1-origin (mainnet-flagged) index for the same deposit count.
+	require.Zero(t, autoclaimtypes.DeriveGlobalIndexForSource(sourceNetwork, request.Bridge.DepositCount).Cmp(globalIndex))
+	require.NotZero(t, autoclaimtypes.DeriveL1GlobalIndex(request.Bridge.DepositCount).Cmp(globalIndex))
+}
+
 func TestGlobalIndexPreservesPreEtrogRawIndex(t *testing.T) {
 	request := makeRequest(bridgesynctypes.LeafTypeAsset)
 	request.Bridge.DestinationNetwork = autoclaimtypes.LegacyZkEVMRollupNetwork

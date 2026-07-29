@@ -152,6 +152,76 @@ func (_c *Bridger_GetBridgesByContent_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
+// GetBridgesInDepositRange provides a mock function with given fields: ctx, pageNumber, pageSize, fromDepositCount, toDepositCount, destinationNetworkIDs
+func (_m *Bridger) GetBridgesInDepositRange(ctx context.Context, pageNumber uint32, pageSize uint32, fromDepositCount *uint64, toDepositCount uint64, destinationNetworkIDs []uint32) ([]*bridgesync.Bridge, int, error) {
+	ret := _m.Called(ctx, pageNumber, pageSize, fromDepositCount, toDepositCount, destinationNetworkIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetBridgesInDepositRange")
+	}
+
+	var r0 []*bridgesync.Bridge
+	var r1 int
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *uint64, uint64, []uint32) ([]*bridgesync.Bridge, int, error)); ok {
+		return rf(ctx, pageNumber, pageSize, fromDepositCount, toDepositCount, destinationNetworkIDs)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *uint64, uint64, []uint32) []*bridgesync.Bridge); ok {
+		r0 = rf(ctx, pageNumber, pageSize, fromDepositCount, toDepositCount, destinationNetworkIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*bridgesync.Bridge)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, *uint64, uint64, []uint32) int); ok {
+		r1 = rf(ctx, pageNumber, pageSize, fromDepositCount, toDepositCount, destinationNetworkIDs)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, *uint64, uint64, []uint32) error); ok {
+		r2 = rf(ctx, pageNumber, pageSize, fromDepositCount, toDepositCount, destinationNetworkIDs)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// Bridger_GetBridgesInDepositRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBridgesInDepositRange'
+type Bridger_GetBridgesInDepositRange_Call struct {
+	*mock.Call
+}
+
+// GetBridgesInDepositRange is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pageNumber uint32
+//   - pageSize uint32
+//   - fromDepositCount *uint64
+//   - toDepositCount uint64
+//   - destinationNetworkIDs []uint32
+func (_e *Bridger_Expecter) GetBridgesInDepositRange(ctx interface{}, pageNumber interface{}, pageSize interface{}, fromDepositCount interface{}, toDepositCount interface{}, destinationNetworkIDs interface{}) *Bridger_GetBridgesInDepositRange_Call {
+	return &Bridger_GetBridgesInDepositRange_Call{Call: _e.mock.On("GetBridgesInDepositRange", ctx, pageNumber, pageSize, fromDepositCount, toDepositCount, destinationNetworkIDs)}
+}
+
+func (_c *Bridger_GetBridgesInDepositRange_Call) Run(run func(ctx context.Context, pageNumber uint32, pageSize uint32, fromDepositCount *uint64, toDepositCount uint64, destinationNetworkIDs []uint32)) *Bridger_GetBridgesInDepositRange_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32), args[3].(*uint64), args[4].(uint64), args[5].([]uint32))
+	})
+	return _c
+}
+
+func (_c *Bridger_GetBridgesInDepositRange_Call) Return(_a0 []*bridgesync.Bridge, _a1 int, _a2 error) *Bridger_GetBridgesInDepositRange_Call {
+	_c.Call.Return(_a0, _a1, _a2)
+	return _c
+}
+
+func (_c *Bridger_GetBridgesInDepositRange_Call) RunAndReturn(run func(context.Context, uint32, uint32, *uint64, uint64, []uint32) ([]*bridgesync.Bridge, int, error)) *Bridger_GetBridgesInDepositRange_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetBridgesPaged provides a mock function with given fields: ctx, pageNumber, pageSize, depositCount, networkIDs, fromAddress
 func (_m *Bridger) GetBridgesPaged(ctx context.Context, pageNumber uint32, pageSize uint32, depositCount *uint64, networkIDs []uint32, fromAddress string) ([]*bridgesync.Bridge, int, error) {
 	ret := _m.Called(ctx, pageNumber, pageSize, depositCount, networkIDs, fromAddress)

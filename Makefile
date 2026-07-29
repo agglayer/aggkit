@@ -142,9 +142,10 @@ build-docker-debug: ## Builds a debug docker image (dlv headless on :40000, no o
 test-unit: ## Runs the unit tests
 	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out -timeout 15m ./...
 
+TEST_RUN ?=
 .PHONY: test-e2e
 test-e2e: ## Runs the e2e tests
-	go test -v -timeout 30m ./test/e2e/...
+	go test -v -timeout 45m $(if $(TEST_RUN),-run "$(TEST_RUN)") ./test/e2e/...
 
 .PHONY: test-e2e-force_ger_update
 test-e2e-force_ger_update: ## Runs the isolated force_ger_update e2e test (dedicated CI job/runner only)
@@ -158,7 +159,7 @@ lint: ## Runs the linter
 generate-swagger-docs: ## Generates the swagger docs
 	@echo "Generating swagger docs"
 	@$(SWAG) init -g bridgeservice/bridge.go -o bridgeservice/docs --exclude autoclaim/api
-	@$(SWAG) init -g api.go -d autoclaim/api,autoclaim/apitypes -o autoclaim/api/docs --instanceName autoclaim
+	@$(SWAG) init -g admin.go -d autoclaim/api,autoclaim/apitypes -o autoclaim/api/docs --instanceName autoclaim
 	@mkdir -p docs/assets/swagger/bridge_service
 	@cp bridgeservice/docs/swagger.json docs/assets/swagger/bridge_service/swagger.json
 	@echo "Copied swagger.json to docs/assets/swagger/bridge_service/"

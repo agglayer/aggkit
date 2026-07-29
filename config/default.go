@@ -402,12 +402,18 @@ Enabled = false
 Enabled = true
 StartBlock = 0
 PollInterval = "3s"
-RetryAfterErrorPeriod = "1s"
-MaxRetryAttemptsAfterError = -1
 EtrogL1UpgradeBlock = 0
 
 [AutoClaim.L2ToLxBridgeDetector]
 Enabled = false
+StartL1Block = 0
+PollInterval = "3s"
+
+[AutoClaim.BridgeServiceFinder]
+RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
+PollInterval = "30s"
+
+[AutoClaim.BridgeServiceFinder.URLs]
 
 [L1Multidownloader]
 	Enabled = true

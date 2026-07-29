@@ -1,0 +1,71 @@
+# Config for the local aggsender validator service for chain 002 (committee member 002)
+# This service validates certificates using the on-chain committee member-002 key
+# so that aggkit-002 can reach the 2/3 threshold without depending on kurtosis validators.
+
+PathRWData = "/tmp"
+L1URL = "http://geth:8545"
+L2URL = "http://op-reth-002:8545"
+OpNodeURL = "http://op-node-002:8547"
+AggLayerURL = "http://agglayer:4443"
+AggchainProofURL = "localhost:4446"
+SequencerPrivateKeyPath = "/etc/aggkit/aggsendervalidator-2.keystore"
+SequencerPrivateKeyPassword = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"
+RPCURL = "http://op-reth-002:8545"
+
+rollupCreationBlockNumber = "34"
+rollupManagerCreationBlockNumber = "34"
+genesisBlockNumber = "34"
+
+[L1Config]
+URL = "http://geth:8545"
+chainId = "271828"
+polygonZkEVMGlobalExitRootAddress = "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674"
+polygonRollupManagerAddress = "0x6c6c009cC348976dB4A908c92B24433d4F6edA43"
+polTokenAddress = "0xEdE9cf798E0fE25D35469493f43E88FeA4a5da0E"
+polygonZkEVMAddress = "0x5D1A491A416feEbf8C123A558ec28A239960bd0E"
+BridgeAddr = "0xC8cbEBf950B9Df44d987c8619f092beA980fF038"
+
+[L2Config]
+GlobalExitRootAddr = "0xa40d5f56745a118d0906a34e69aec8c0db1cb8fa"
+BridgeAddr = "0xC8cbEBf950B9Df44d987c8619f092beA980fF038"
+
+[Log]
+Environment = "development"
+Level = "info"
+Outputs = ["stderr"]
+
+[RPC]
+Port = "5576"
+
+[PublicREST]
+Port = "5577"
+
+[AdminREST]
+Port = 5579
+
+[Validator]
+EnableRPC = true
+Signer = { Method = "local", Path = "/etc/aggkit/aggsendervalidator-2.keystore", Password = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m" }
+Mode = "PessimisticProof"
+
+[Validator.ServerConfig]
+Host = "0.0.0.0"
+Port = 5578
+MaxDecodingMessageSize = 1073741824
+
+[Validator.LerQuerierConfig]
+RollupManagerAddr = "0x6c6c009cC348976dB4A908c92B24433d4F6edA43"
+RollupCreationBlockL1 = 34
+
+[Validator.AgglayerClient]
+Cached = true
+
+[Validator.AgglayerClient.ConfigurationCache]
+TTL = "15m"
+Capacity = 100
+
+[Validator.AgglayerClient.GRPC]
+URL = "http://agglayer:4443"
+UseTLS = false
+
+BlockFinalityForL1InfoTree = "LatestBlock"

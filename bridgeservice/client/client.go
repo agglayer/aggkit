@@ -280,7 +280,11 @@ func (c *Client) GetL1InfoTreeIndex(ctx context.Context, networkID, depositCount
 	return index, nil
 }
 
-// GetInjectedL1InfoLeaf retrieves an injected L1 info tree leaf
+// GetInjectedL1InfoLeaf retrieves an injected L1 info tree leaf.
+//
+// Uses doRequestAllowNotFound: when the destination network has not yet injected a global exit
+// root covering the requested leaf index, the endpoint returns HTTP 404, surfaced here as
+// ErrNotFound so callers can treat it as "retry later" rather than a hard error.
 func (c *Client) GetInjectedL1InfoLeaf(
 	ctx context.Context, networkID, leafIndex int,
 ) (*types.L1InfoTreeLeafResponse, error) {
@@ -289,7 +293,7 @@ func (c *Client) GetInjectedL1InfoLeaf(
 	query.Set("leaf_index", strconv.Itoa(leafIndex))
 
 	var resp types.L1InfoTreeLeafResponse
-	if err := c.doRequest(ctx, "/bridge/v1/injected-l1-info-leaf?"+query.Encode(), &resp); err != nil {
+	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/injected-l1-info-leaf?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -306,6 +310,53 @@ func (c *Client) GetClaimProof(
 
 	var resp types.ClaimProof
 	if err := c.doRequest(ctx, "/bridge/v1/claim-proof?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GetClaimCandidatesParams contains parameters for GetClaimCandidates
+type GetClaimCandidatesParams struct {
+	// DestinationNetworkIDs filters candidates by destination network (mandatory, max 5)
+	DestinationNetworkIDs []uint32
+	// ToLER is the local exit root the proofs are built against (mandatory, hex hash)
+	ToLER string
+	// FromLER is an exclusive lower-bound local exit root; nil means full history
+	FromLER    *string
+	PageNumber *uint32
+	PageSize   *uint32
+}
+
+// GetClaimCandidates retrieves bridges originated on the bridge service's own source network
+// (the network that bridge service instance itself syncs) that are candidates for claiming,
+// together with the Merkle proof of their inclusion in the requested local exit root (ToLER).
+//
+// Unlike other list endpoints, DestinationNetworkIDs is sent as a repeated query parameter
+// (destination_network_ids=1&destination_network_ids=2), not comma-separated.
+//
+// Uses doRequestAllowNotFound: an unresolvable ToLER/FromLER (not synced yet by the source
+// bridge service) results in ErrNotFound, which callers should treat as "retry later" rather
+// than a hard error.
+func (c *Client) GetClaimCandidates(
+	ctx context.Context, params GetClaimCandidatesParams,
+) (*types.ClaimCandidatesResult, error) {
+	query := url.Values{}
+	for _, id := range params.DestinationNetworkIDs {
+		query.Add("destination_network_ids", strconv.FormatUint(uint64(id), 10))
+	}
+	query.Set("to_ler", params.ToLER)
+	if params.FromLER != nil {
+		query.Set("from_ler", *params.FromLER)
+	}
+	if params.PageNumber != nil {
+		query.Set("page_number", strconv.FormatUint(uint64(*params.PageNumber), 10))
+	}
+	if params.PageSize != nil {
+		query.Set("page_size", strconv.FormatUint(uint64(*params.PageSize), 10))
+	}
+
+	var resp types.ClaimCandidatesResult
+	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/claim-candidates?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

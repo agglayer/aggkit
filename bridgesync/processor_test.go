@@ -36,6 +36,10 @@ import (
 
 const dbQueryTimeout = 30 * time.Second
 
+// errInvalidPageNumberForBridges is the error message returned by calculateOffset for the
+// "bridges" table when the requested page is out of range; shared by paged-bridge query tests.
+const errInvalidPageNumberForBridges = "invalid page number for given page size and total number of bridges"
+
 // newTestProcessor is a test helper that creates a processor from a file path.
 func newTestProcessor(dbPath string, syncerID string, logger *log.Logger, dbQueryTimeout time.Duration) (*processor, error) {
 	database, err := newSqliteDB(dbPath)
@@ -853,7 +857,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:    uint64Ptr(1),
 			expectedCount:   0,
 			expectedBridges: []*Bridge{},
-			expectedError:   "invalid page number for given page size and total number of bridges",
+			expectedError:   errInvalidPageNumberForBridges,
 		},
 		{
 			name:            "t6",
@@ -862,7 +866,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:    nil,
 			expectedCount:   len(bridges),
 			expectedBridges: []*Bridge{},
-			expectedError:   "invalid page number for given page size and total number of bridges",
+			expectedError:   errInvalidPageNumberForBridges,
 		},
 		{
 			name:            "t7",
@@ -954,6 +958,193 @@ func TestGetBridgesPaged(t *testing.T) {
 
 			ctx := context.Background()
 			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, tc.depositCount, tc.networkIDs, tc.fromAddress)
+
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedBridges, bridges)
+				require.Equal(t, tc.expectedCount, count)
+			}
+		})
+	}
+}
+
+func TestGetBridgesInDepositRange(t *testing.T) {
+	t.Parallel()
+	fromBlock := uint64(1)
+	toBlock := uint64(10)
+	bridges := []*Bridge{
+		{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1), DestinationNetwork: 10},
+		{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), DestinationNetwork: 10},
+		{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1), DestinationNetwork: 20},
+		{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1), DestinationNetwork: 30},
+		{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1), DestinationNetwork: 30},
+		{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1), DestinationNetwork: 40},
+		{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1), DestinationNetwork: 50},
+	}
+	// Bridge only present in the archive table (e.g. rolled back by a BackwardLET). Its
+	// deposit_count falls inside every range used below, so it doubles as the
+	// archive-exclusion check for all test cases.
+	archivedBridge := &Bridge{DepositCount: 7, BlockNum: 8, Amount: big.NewInt(1), DestinationNetwork: 10}
+
+	path := path.Join(t.TempDir(), "bridgesyncGetBridgesInDepositRange.sqlite")
+	require.NoError(t, migrations.RunMigrations(path))
+	logger := log.WithFields("bridge-syncer", "foo")
+	p, err := newTestProcessor(path, "bridge-syncer", logger, dbQueryTimeout)
+	require.NoError(t, err)
+
+	tx, err := p.db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+
+	for i := fromBlock; i <= toBlock; i++ {
+		_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+		require.NoError(t, err)
+	}
+
+	for _, bridge := range bridges {
+		require.NoError(t, meddler.Insert(tx, "bridge", bridge))
+	}
+	require.NoError(t, meddler.Insert(tx, "bridge_archive", archivedBridge))
+	require.NoError(t, tx.Commit())
+
+	testCases := []struct {
+		name             string
+		pageSize         uint32
+		page             uint32
+		fromDepositCount *uint64
+		toDepositCount   uint64
+		networkIDs       []uint32
+		expectedCount    int
+		expectedBridges  []*Bridge
+		expectedError    string
+	}{
+		{
+			name:             "from omitted returns full history up to toDepositCount",
+			pageSize:         20,
+			page:             1,
+			fromDepositCount: nil,
+			toDepositCount:   6,
+			expectedCount:    len(bridges),
+			expectedBridges: []*Bridge{
+				bridges[0], bridges[1], bridges[2], bridges[3], bridges[4], bridges[5], bridges[6],
+			},
+		},
+		{
+			name:             "from omitted, narrower toDepositCount",
+			pageSize:         20,
+			page:             1,
+			fromDepositCount: nil,
+			toDepositCount:   2,
+			expectedCount:    3,
+			expectedBridges:  []*Bridge{bridges[0], bridges[1], bridges[2]},
+		},
+		{
+			name:             "empty range when from == to",
+			pageSize:         20,
+			page:             1,
+			fromDepositCount: uint64Ptr(3),
+			toDepositCount:   3,
+			expectedCount:    0,
+			expectedBridges:  []*Bridge{},
+		},
+		{
+			name:             "empty range when no bridges fall within bounds",
+			pageSize:         20,
+			page:             1,
+			fromDepositCount: uint64Ptr(100),
+			toDepositCount:   200,
+			expectedCount:    0,
+			expectedBridges:  []*Bridge{},
+		},
+		{
+			name:             "exclusive lower bound, inclusive upper bound",
+			pageSize:         20,
+			page:             1,
+			fromDepositCount: uint64Ptr(1),
+			toDepositCount:   4,
+			expectedCount:    3,
+			expectedBridges:  []*Bridge{bridges[2], bridges[3], bridges[4]},
+		},
+		{
+			name:             "destination filtering",
+			pageSize:         20,
+			page:             1,
+			fromDepositCount: nil,
+			toDepositCount:   6,
+			networkIDs:       []uint32{bridges[0].DestinationNetwork, bridges[6].DestinationNetwork},
+			expectedCount:    3,
+			expectedBridges:  []*Bridge{bridges[0], bridges[1], bridges[6]},
+		},
+		{
+			name:             "destination filtering combined with range excludes out-of-range matches",
+			pageSize:         20,
+			page:             1,
+			fromDepositCount: nil,
+			toDepositCount:   1,
+			networkIDs:       []uint32{bridges[6].DestinationNetwork},
+			expectedCount:    0,
+			expectedBridges:  []*Bridge{},
+		},
+		{
+			name:             "pagination first page ordered ascending by deposit_count",
+			pageSize:         2,
+			page:             1,
+			fromDepositCount: nil,
+			toDepositCount:   6,
+			expectedCount:    len(bridges),
+			expectedBridges:  []*Bridge{bridges[0], bridges[1]},
+		},
+		{
+			name:             "pagination second page ordered ascending by deposit_count",
+			pageSize:         2,
+			page:             2,
+			fromDepositCount: nil,
+			toDepositCount:   6,
+			expectedCount:    len(bridges),
+			expectedBridges:  []*Bridge{bridges[2], bridges[3]},
+		},
+		{
+			name:             "pagination last (partial) page",
+			pageSize:         2,
+			page:             4,
+			fromDepositCount: nil,
+			toDepositCount:   6,
+			expectedCount:    len(bridges),
+			expectedBridges:  []*Bridge{bridges[6]},
+		},
+		{
+			name:             "pagination out of range page errors",
+			pageSize:         2,
+			page:             20,
+			fromDepositCount: nil,
+			toDepositCount:   6,
+			expectedCount:    len(bridges),
+			expectedBridges:  []*Bridge{},
+			expectedError:    errInvalidPageNumberForBridges,
+		},
+		{
+			// archivedBridge (deposit_count=7) lives only in bridge_archive; it must never be
+			// returned even though it falls within this range.
+			name:             "archive table is excluded",
+			pageSize:         20,
+			page:             1,
+			fromDepositCount: nil,
+			toDepositCount:   7,
+			expectedCount:    len(bridges),
+			expectedBridges: []*Bridge{
+				bridges[0], bridges[1], bridges[2], bridges[3], bridges[4], bridges[5], bridges[6],
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			bridges, count, err := p.GetBridgesInDepositRange(
+				ctx, tc.page, tc.pageSize, tc.fromDepositCount, tc.toDepositCount, tc.networkIDs)
 
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)

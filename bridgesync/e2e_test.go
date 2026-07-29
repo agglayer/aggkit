@@ -43,13 +43,14 @@ func (a *bridgeSyncAdapter) GetLastProcessedBlock(ctx context.Context) (uint64, 
 
 func mockClientCallGetTransactionByHash(t *testing.T,
 	mockClient *mocks.RPCClienter,
-	expectedTxHash common.Hash, fromAddress string, toAddress string) {
+	expectedTxHash common.Hash) {
 	t.Helper()
+	const zeroAddress = "0x0000000000000000000000000000000000000000000"
 	mockClient.EXPECT().Call(mock.Anything, bridgesync.GetTransactionByHashEndpoint, mock.Anything).Run(func(result any, method string, args ...any) {
 		arg, ok := result.(*bridgesync.Transaction)
 		require.True(t, ok)
-		arg.FromRaw = fromAddress
-		arg.To = toAddress
+		arg.FromRaw = zeroAddress
+		arg.To = zeroAddress
 		arg.Hash = expectedTxHash.Hex()
 		arg.Input = common.Bytes2Hex(bridgesync.BridgeAssetMethodID)
 	}).Return(nil).Maybe()
@@ -65,8 +66,7 @@ func TestBridgeEventE2E(t *testing.T) {
 
 	// txReceipt To is not bridgeAddr, so must call debugTrace
 	mockClientCallGetTransactionByHash(t, rpcClient,
-		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
-		"0x0000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000")
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
 
 	rpcClient.EXPECT().Call(mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
@@ -212,8 +212,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	rpcClient := mocks.NewRPCClienter(t)
 	// txReceipt To is not bridgeAddr, so must call debugTrace
 	mockClientCallGetTransactionByHash(t, rpcClient,
-		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
-		"0x0000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000")
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
 
 	rpcClient.EXPECT().Call(mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
@@ -268,7 +267,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	forkBlockNum, err := client.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 	// Fork from the current block (which should be tracked) to ensure reorg detection
-	forkBlockHeader, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(forkBlockNum)))
+	forkBlockHeader, err := client.Client().HeaderByNumber(ctx, new(big.Int).SetUint64(forkBlockNum))
 	require.NoError(t, err)
 	forkBlockHash := forkBlockHeader.Hash()
 	t.Logf("  Fork point: block %d, hash %s", forkBlockNum, forkBlockHash.Hex())
@@ -318,7 +317,7 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	currBlockNum, err := client.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 	t.Logf("  After fork Current block number: %d", currBlockNum)
-	forkedBlockHash, err := client.Client().HeaderByNumber(ctx, big.NewInt(int64(currBlockNum)))
+	forkedBlockHash, err := client.Client().HeaderByNumber(ctx, new(big.Int).SetUint64(currBlockNum))
 	require.NoError(t, err)
 	t.Logf("Hash of the forked block: %s", forkedBlockHash.Hash().Hex())
 
@@ -399,8 +398,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 	rpcClient := mocks.NewRPCClienter(t)
 	// txReceipt To is not bridgeAddr, so must call debugTrace
 	mockClientCallGetTransactionByHash(t, rpcClient,
-		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
-		"0x0000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000")
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
 
 	rpcClient.EXPECT().Call(mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
@@ -516,8 +514,7 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	rpcClient := mocks.NewRPCClienter(t)
 	// txReceipt To is not bridgeAddr, so must call debugTrace
 	mockClientCallGetTransactionByHash(t, rpcClient,
-		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
-		"0x0000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000")
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
 
 	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(result any, method string, args ...any) {
