@@ -356,8 +356,6 @@ Enabled = true
 	Enabled = true
 	StartBlock = 1234
 	PollInterval = "3s"
-RetryAfterErrorPeriod = "1s"
-MaxRetryAttemptsAfterError = -1
 EtrogL1UpgradeBlock = 1000000
 
 [AutoClaim.L2ToLxBridgeDetector]

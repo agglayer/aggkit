@@ -60,28 +60,26 @@ type APIConfig struct {
 	Enabled bool `mapstructure:"Enabled"`
 }
 
-// L1ToL2BridgeDetector configures L1-to-L2 bridge exit discovery.
+// L1ToL2BridgeDetector configures L1-to-L2 bridge exit discovery. A failed poll is logged and
+// retried on the next PollInterval tick; there is no separate error-retry policy.
 type L1ToL2BridgeDetector struct {
-	Enabled                    bool              `mapstructure:"Enabled"`
-	StartBlock                 uint64            `mapstructure:"StartBlock"`
-	PollInterval               cfgtypes.Duration `mapstructure:"PollInterval"`
-	RetryAfterErrorPeriod      cfgtypes.Duration `mapstructure:"RetryAfterErrorPeriod"`
-	MaxRetryAttemptsAfterError int               `mapstructure:"MaxRetryAttemptsAfterError"`
-	EtrogL1UpgradeBlock        uint64            `mapstructure:"EtrogL1UpgradeBlock"`
+	Enabled             bool              `mapstructure:"Enabled"`
+	StartBlock          uint64            `mapstructure:"StartBlock"`
+	PollInterval        cfgtypes.Duration `mapstructure:"PollInterval"`
+	EtrogL1UpgradeBlock uint64            `mapstructure:"EtrogL1UpgradeBlock"`
 }
 
 // L2ToLxBridgeDetector configures L2-to-Lx (rollup-origin) bridge exit discovery, covering both
 // L2-to-L1 and L2-to-L2 bridges. Enabling it requires AutoClaim.BridgeServiceFinder to be configured
 // with a valid RollupManagerAddr, since the detector resolves each source rollup's bridge service
-// through it.
+// through it. A failed poll is logged and retried on the next PollInterval tick; there is no
+// separate error-retry policy.
 type L2ToLxBridgeDetector struct {
 	Enabled bool `mapstructure:"Enabled"`
 	// StartL1Block is the L1 block used to derive a newly discovered source network's initial LER
 	// cursor (via the GER at that block). 0 means full history (from_ler omitted on first fetch).
-	StartL1Block               uint64            `mapstructure:"StartL1Block"`
-	PollInterval               cfgtypes.Duration `mapstructure:"PollInterval"`
-	RetryAfterErrorPeriod      cfgtypes.Duration `mapstructure:"RetryAfterErrorPeriod"`
-	MaxRetryAttemptsAfterError int               `mapstructure:"MaxRetryAttemptsAfterError"`
+	StartL1Block uint64            `mapstructure:"StartL1Block"`
+	PollInterval cfgtypes.Duration `mapstructure:"PollInterval"`
 }
 
 // Validate checks whether an enabled L2ToLxBridgeDetector config is usable. It is a no-op when
@@ -92,9 +90,6 @@ func (c L2ToLxBridgeDetector) Validate() error {
 	}
 	if c.PollInterval.Duration <= 0 {
 		return fmt.Errorf("PollInterval must be greater than 0")
-	}
-	if c.RetryAfterErrorPeriod.Duration <= 0 {
-		return fmt.Errorf("RetryAfterErrorPeriod must be greater than 0")
 	}
 	return nil
 }
@@ -152,9 +147,6 @@ func (c Config) Validate() error {
 	}
 	if c.L1ToL2BridgeDetector.PollInterval.Duration <= 0 {
 		return fmt.Errorf("AutoClaim.L1ToL2BridgeDetector.PollInterval must be greater than 0")
-	}
-	if c.L1ToL2BridgeDetector.RetryAfterErrorPeriod.Duration <= 0 {
-		return fmt.Errorf("AutoClaim.L1ToL2BridgeDetector.RetryAfterErrorPeriod must be greater than 0")
 	}
 	if err := c.L2ToLxBridgeDetector.Validate(); err != nil {
 		return fmt.Errorf("AutoClaim.L2ToLxBridgeDetector: %w", err)

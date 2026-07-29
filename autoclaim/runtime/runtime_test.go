@@ -290,10 +290,8 @@ func (fakeBridgeServiceFinder) GetURL(uint32) (string, error) { return "http://f
 
 func withL2ToLxEnabled(cfg autoclaimcfg.Config) autoclaimcfg.Config {
 	cfg.L2ToLxBridgeDetector = autoclaimcfg.L2ToLxBridgeDetector{
-		Enabled:                    true,
-		PollInterval:               cfgtypes.Duration{Duration: time.Second},
-		RetryAfterErrorPeriod:      cfgtypes.Duration{Duration: time.Second},
-		MaxRetryAttemptsAfterError: -1,
+		Enabled:      true,
+		PollInterval: cfgtypes.Duration{Duration: time.Second},
 	}
 	cfg.BridgeServiceFinder = bridgeservicefinder.Config{
 		RollupManagerAddr: common.HexToAddress("0x2000000000000000000000000000000000000002"),
@@ -465,10 +463,8 @@ func validConfig() autoclaimcfg.Config {
 			Enabled: false,
 		},
 		L1ToL2BridgeDetector: autoclaimcfg.L1ToL2BridgeDetector{
-			Enabled:                    true,
-			PollInterval:               cfgtypes.Duration{Duration: time.Hour},
-			RetryAfterErrorPeriod:      cfgtypes.Duration{Duration: time.Second},
-			MaxRetryAttemptsAfterError: -1,
+			Enabled:      true,
+			PollInterval: cfgtypes.Duration{Duration: time.Hour},
 		},
 		Claimers: []autoclaimcfg.ClaimerConfig{validClaimer("primary", 1, true)},
 		// The primary claimer targets an L2 destination (NetworkID 1), so its GER gate resolves

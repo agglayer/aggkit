@@ -44,13 +44,6 @@ func TestConfigValidateRejectsInvalidEnabledConfig(t *testing.T) {
 			wantError: "AutoClaim.L1ToL2BridgeDetector.PollInterval must be greater than 0",
 		},
 		{
-			name: "invalid bridge detector retry period",
-			mutate: func(cfg *Config) {
-				cfg.L1ToL2BridgeDetector.RetryAfterErrorPeriod.Duration = 0
-			},
-			wantError: "AutoClaim.L1ToL2BridgeDetector.RetryAfterErrorPeriod must be greater than 0",
-		},
-		{
 			name: "duplicate enabled claimer id",
 			mutate: func(cfg *Config) {
 				duplicate := validClaimerConfig("l2-a", 11)
@@ -165,10 +158,8 @@ func TestClaimerConfigValidateRejectsInvalidEnabledConfig(t *testing.T) {
 func TestConfigValidateL2ToLxRequiresFinderConfig(t *testing.T) {
 	cfg := validConfig()
 	cfg.L2ToLxBridgeDetector = L2ToLxBridgeDetector{
-		Enabled:                    true,
-		PollInterval:               cfgtypes.NewDuration(3 * time.Second),
-		RetryAfterErrorPeriod:      cfgtypes.NewDuration(time.Second),
-		MaxRetryAttemptsAfterError: -1,
+		Enabled:      true,
+		PollInterval: cfgtypes.NewDuration(3 * time.Second),
 	}
 	// Clear the RollupManagerAddr set by validConfig to exercise the requirement.
 	cfg.BridgeServiceFinder = bridgeservicefinder.Config{}
@@ -211,21 +202,12 @@ func TestConfigValidateL2ToLxRejectsInvalidPollingFields(t *testing.T) {
 			},
 			wantError: "PollInterval must be greater than 0",
 		},
-		{
-			name: "zero retry after error period",
-			mutate: func(c *L2ToLxBridgeDetector) {
-				c.RetryAfterErrorPeriod.Duration = 0
-			},
-			wantError: "RetryAfterErrorPeriod must be greater than 0",
-		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
 			cfg.L2ToLxBridgeDetector = L2ToLxBridgeDetector{
-				Enabled:                    true,
-				PollInterval:               cfgtypes.NewDuration(3 * time.Second),
-				RetryAfterErrorPeriod:      cfgtypes.NewDuration(time.Second),
-				MaxRetryAttemptsAfterError: -1,
+				Enabled:      true,
+				PollInterval: cfgtypes.NewDuration(3 * time.Second),
 			}
 			cfg.BridgeServiceFinder = bridgeservicefinder.Config{
 				RollupManagerAddr: common.HexToAddress("0x2000000000000000000000000000000000000002"),
@@ -249,10 +231,8 @@ func TestConfigValidateL2ToLxDisabledSkipsPollingFieldValidation(t *testing.T) {
 func TestConfigValidateAcceptsL1DestinationClaimerWhenL2ToLxEnabled(t *testing.T) {
 	cfg := validConfig()
 	cfg.L2ToLxBridgeDetector = L2ToLxBridgeDetector{
-		Enabled:                    true,
-		PollInterval:               cfgtypes.NewDuration(3 * time.Second),
-		RetryAfterErrorPeriod:      cfgtypes.NewDuration(time.Second),
-		MaxRetryAttemptsAfterError: -1,
+		Enabled:      true,
+		PollInterval: cfgtypes.NewDuration(3 * time.Second),
 	}
 	cfg.BridgeServiceFinder = bridgeservicefinder.Config{
 		RollupManagerAddr: common.HexToAddress("0x2000000000000000000000000000000000000002"),
@@ -274,10 +254,8 @@ func validConfig() Config {
 	return Config{
 		StoragePath: "/tmp/autoclaim.sqlite",
 		L1ToL2BridgeDetector: L1ToL2BridgeDetector{
-			Enabled:                    true,
-			PollInterval:               cfgtypes.NewDuration(2 * time.Second),
-			RetryAfterErrorPeriod:      cfgtypes.NewDuration(5 * time.Second),
-			MaxRetryAttemptsAfterError: 3,
+			Enabled:      true,
+			PollInterval: cfgtypes.NewDuration(2 * time.Second),
 		},
 		Claimers: []ClaimerConfig{
 			validClaimerConfig("l2-a", 10),
