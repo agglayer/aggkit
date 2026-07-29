@@ -571,16 +571,12 @@ Enabled = true
 [AutoClaim.L1ToL2BridgeDetector]
 Enabled = false
 PollInterval = "2s"
-RetryAfterErrorPeriod = "1s"
-MaxRetryAttemptsAfterError = -1
 EtrogL1UpgradeBlock = 0
 
 [AutoClaim.L2ToLxBridgeDetector]
 Enabled = true
 StartL1Block = 0
 PollInterval = "3s"
-RetryAfterErrorPeriod = "1s"
-MaxRetryAttemptsAfterError = -1
 
 [AutoClaim.BridgeServiceFinder]
 RollupManagerAddr = %q
@@ -950,8 +946,6 @@ Enabled = false
 Enabled = true
 StartL1Block = 0
 PollInterval = "3s"
-RetryAfterErrorPeriod = "1s"
-MaxRetryAttemptsAfterError = -1
 `
 
 		l1ClaimerSection = fmt.Sprintf(`
@@ -1022,8 +1016,6 @@ Enabled = true
 [AutoClaim.L1ToL2BridgeDetector]
 Enabled = true
 PollInterval = "2s"
-RetryAfterErrorPeriod = "1s"
-MaxRetryAttemptsAfterError = -1
 EtrogL1UpgradeBlock = 0
 %s
 [[AutoClaim.Claimers]]
