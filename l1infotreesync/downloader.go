@@ -18,13 +18,12 @@ var (
 	updateL1InfoTreeSignatureV2 = crypto.Keccak256Hash(
 		[]byte("UpdateL1InfoTreeV2(bytes32,uint32,uint256,uint64)"),
 	)
+	// verifyBatchesTrustedAggregatorSignature covers pessimistic/aggchain rollups too: the rollup
+	// manager emits VerifyBatchesTrustedAggregator (with the new LER, zero NumBatch/StateRoot) on
+	// every pessimistic verification alongside VerifyPessimisticStateTransition, precisely so that
+	// syncers only need this one event.
 	verifyBatchesTrustedAggregatorSignature = crypto.Keccak256Hash(
 		[]byte("VerifyBatchesTrustedAggregator(uint32,uint64,bytes32,bytes32,address)"),
-	)
-	// verifyPessimisticStateTransitionSignature is emitted by pessimistic/aggchain rollups instead of
-	// VerifyBatchesTrustedAggregator. Its newLocalExitRoot field carries the rollup's new LER.
-	verifyPessimisticStateTransitionSignature = crypto.Keccak256Hash(
-		[]byte("VerifyPessimisticStateTransition(uint32,bytes32,bytes32,bytes32,bytes32,bytes32,address)"),
 	)
 	initL1InfoRootMapSignature = crypto.Keccak256Hash([]byte("InitL1InfoRootMap(uint32,bytes32)"))
 )
@@ -160,27 +159,6 @@ func buildAppender(client aggkittypes.BaseEthereumClienter, globalExitRoot,
 			StateRoot:     verifyBatches.StateRoot,
 			ExitRoot:      verifyBatches.ExitRoot,
 			Aggregator:    verifyBatches.Aggregator,
-		}})
-
-		return nil
-	}
-	appender[verifyPessimisticStateTransitionSignature] = func(b *sync.EVMBlock, l types.Log) error {
-		verifyPessimistic, err := rm.ParseVerifyPessimisticStateTransition(l)
-		if err != nil {
-			return fmt.Errorf(
-				"error parsing log %+v using rm.ParseVerifyPessimisticStateTransition: %w",
-				l, err,
-			)
-		}
-		// Pessimistic/aggchain rollups do not emit VerifyBatchesTrustedAggregator. Their LER update is
-		// carried by newLocalExitRoot. We map it into the same VerifyBatches representation so it lands in
-		// the rollupExitTree (leaf rollupID-1) and the verify_batches table exactly like the zkEVM path.
-		// There is no batch/state-root concept in the pessimistic path, so NumBatch/StateRoot stay zero.
-		b.Events = append(b.Events, Event{VerifyBatches: &VerifyBatches{
-			BlockPosition: uint64(l.Index),
-			RollupID:      verifyPessimistic.RollupID,
-			ExitRoot:      common.Hash(verifyPessimistic.NewLocalExitRoot),
-			Aggregator:    verifyPessimistic.TrustedAggregator,
 		}})
 
 		return nil

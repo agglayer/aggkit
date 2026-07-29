@@ -127,10 +127,10 @@ func TestGetVerifiedBatches(t *testing.T) {
 	require.Equal(t, expected2, actual)
 }
 
-// TestProcessPessimisticVerifyBatches proves that a pessimistic LER update (mapped from
-// VerifyPessimisticStateTransition into the VerifyBatches representation, with zero
-// NumBatch/StateRoot) updates the rollupExitTree leaf rollupID-1 to newLocalExitRoot and produces a
-// verify_batches-queryable row.
+// TestProcessPessimisticVerifyBatches proves that a pessimistic LER update (the
+// VerifyBatchesTrustedAggregator event the rollup manager emits on pessimistic verifications,
+// with zero NumBatch/StateRoot) updates the rollupExitTree leaf rollupID-1 to newLocalExitRoot
+// and produces a verify_batches-queryable row.
 func TestProcessPessimisticVerifyBatches(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestProcessPessimisticVerifyBatches.sqlite")
 	p, err := newProcessor(dbPath)
@@ -142,7 +142,7 @@ func TestProcessPessimisticVerifyBatches(t *testing.T) {
 	pessimistic := &VerifyBatches{
 		BlockPosition: 4,
 		RollupID:      rollupID,
-		ExitRoot:      newLocalExitRoot, // maps from newLocalExitRoot; NumBatch/StateRoot stay zero
+		ExitRoot:      newLocalExitRoot, // carries newLocalExitRoot; NumBatch/StateRoot stay zero
 		Aggregator:    common.HexToAddress("0xdead"),
 	}
 	err = p.ProcessBlock(ctx, sync.Block{

@@ -383,9 +383,9 @@ func (s *L1InfoTreeSync) GetFirstVerifiedBatchesAfterBlock(rollupID uint32, bloc
 	return s.processor.GetFirstVerifiedBatchesAfterBlock(rollupID, blockNum)
 }
 
-// GetVerifiedBatchesInBlockRange returns all verified-batches rows (both zkEVM
-// VerifyBatchesTrustedAggregator and pessimistic VerifyPessimisticStateTransition transitions,
-// across all rollups) whose block_num is in the inclusive range [fromBlock, toBlock], ordered by
+// GetVerifiedBatchesInBlockRange returns all verified-batches rows (across all rollups; the
+// rollup manager emits VerifyBatchesTrustedAggregator for both zkEVM and pessimistic
+// verifications) whose block_num is in the inclusive range [fromBlock, toBlock], ordered by
 // block_num ASC, block_pos ASC.
 func (s *L1InfoTreeSync) GetVerifiedBatchesInBlockRange(fromBlock, toBlock uint64) ([]*VerifyBatches, error) {
 	if s.processor.isHalted() {

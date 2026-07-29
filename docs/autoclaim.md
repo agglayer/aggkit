@@ -191,7 +191,7 @@ sequenceDiagram
 
     loop Every PollInterval
         WD->>L1IT: GetVerifiedBatchesInBlockRange(from, to)
-        Note over WD,L1IT: rows come from both VerifyBatchesTrustedAggregator (zkEVM)<br/>and VerifyPessimisticStateTransition (pessimistic/aggchain) sources
+        Note over WD,L1IT: rows come from VerifyBatchesTrustedAggregator, which the rollup manager<br/>emits for both zkEVM and pessimistic/aggchain verifications
         WD->>WD: Keep newest LER per source rollup in the window
         alt Source has a new LER since its cursor
             WD->>BSF: GetURL(source)
@@ -238,9 +238,9 @@ sequenceDiagram
 The L2-to-Lx detector (`bridgedetector.L2ToLx`) does not sync any source L2 locally. It polls
 `l1infotreesync.GetVerifiedBatchesInBlockRange` over an L1 block window (same window/overlap mechanism as the
 L1-to-L2 detector, durable cursor name `l2-to-lx`) for verified-batches rows — populated by `l1infotreesync` from
-both `VerifyBatchesTrustedAggregator` (zkEVM/state-transition rollups) and `VerifyPessimisticStateTransition`
-(pessimistic/aggchain rollups) — and keeps the newest local exit root (LER) per source rollup network observed in
-the window.
+`VerifyBatchesTrustedAggregator`, which the rollup manager emits for both zkEVM/state-transition and
+pessimistic/aggchain verifications — and keeps the newest local exit root (LER) per source rollup network observed
+in the window.
 
 For each source network whose newest LER differs from its stored **LER cursor** (`autoclaim_ler_cursor`, keyed by
 `source_network`):
@@ -429,16 +429,12 @@ Port = 5579
 Enabled = true
 StartBlock = 0
 PollInterval = "3s"
-RetryAfterErrorPeriod = "1s"
-MaxRetryAttemptsAfterError = -1
 EtrogL1UpgradeBlock = 0
 
 [AutoClaim.L2ToLxBridgeDetector]
 Enabled = true
 StartL1Block = 0
 PollInterval = "3s"
-RetryAfterErrorPeriod = "1s"
-MaxRetryAttemptsAfterError = -1
 
 [AutoClaim.BridgeServiceFinder]
 RollupManagerAddr = "0x0000000000000000000000000000000000000000"
@@ -511,14 +507,10 @@ it has no GER-injection gate at all, since the GER already exists on L1 by const
 | `AutoClaim.L1ToL2BridgeDetector.Enabled` | `true` | No | Enables L1 bridge discovery for configured L2 claimers. |
 | `AutoClaim.L1ToL2BridgeDetector.StartBlock` | `0` | No | First L1 block used when a destination-network cursor does not exist. New claimers backfill from this block. |
 | `AutoClaim.L1ToL2BridgeDetector.PollInterval` | `3s` | Yes | How often the bridge detector polls `l1bridgesync`. Must be greater than zero. |
-| `AutoClaim.L1ToL2BridgeDetector.RetryAfterErrorPeriod` | `1s` | Yes | Reserved retry delay for bridge detector errors. Must be greater than zero. |
-| `AutoClaim.L1ToL2BridgeDetector.MaxRetryAttemptsAfterError` | `-1` | No | Reserved retry limit. `-1` means unlimited. |
 | `AutoClaim.L1ToL2BridgeDetector.EtrogL1UpgradeBlock` | `0` | No | L1 block where Etrog global-index encoding becomes active for legacy zkEVM destination network `1`; `0` treats bridges as post-Etrog. |
 | `AutoClaim.L2ToLxBridgeDetector.Enabled` | `false` | No | Enables rollup-origin (L2-to-L1, L2-to-L2) bridge discovery. Requires `AutoClaim.BridgeServiceFinder.RollupManagerAddr` to be set, and is itself required by any claimer with `NetworkID = 0`. |
 | `AutoClaim.L2ToLxBridgeDetector.StartL1Block` | `0` | No | L1 block used to derive a newly discovered source network's initial LER cursor (via the GER at that block); `0` means full history (`from_ler` omitted on first fetch). |
 | `AutoClaim.L2ToLxBridgeDetector.PollInterval` | `3s` | Yes, when the detector is enabled | How often the detector polls `l1infotreesync` for new verified-batches rows. Must be greater than zero. |
-| `AutoClaim.L2ToLxBridgeDetector.RetryAfterErrorPeriod` | `1s` | Yes, when the detector is enabled | Reserved retry delay for detector errors. Must be greater than zero. |
-| `AutoClaim.L2ToLxBridgeDetector.MaxRetryAttemptsAfterError` | `-1` | No | Reserved retry limit. `-1` means unlimited. |
 | `AutoClaim.BridgeServiceFinder.RollupManagerAddr` | `{{L1NetworkConfig.RollupManagerAddr}}` | Yes, when `L2ToLxBridgeDetector.Enabled = true` or any enabled claimer has an L2 destination (`NetworkID != 0`) | Address of the rollup manager / agglayer manager contract on L1 used to enumerate attached rollups and resolve their bridge service URLs — both as claim-candidate/claim-proof sources and as GER-injection-gate destinations — and their bridge contracts. |
 | `AutoClaim.BridgeServiceFinder.URLs` | `{}` | No | Static override map from source network ID to bridge service base URL (e.g. `1 = "http://bridge-svc-1:5577"`). Highest-priority source; never overridden by on-chain events. The only way to resolve network 0 (L1), which is not enumerated on-chain. |
 | `AutoClaim.BridgeServiceFinder.PollInterval` | `30s` | No | Period between finder event-scan iterations that keep cached URLs fresh from on-chain events. |
