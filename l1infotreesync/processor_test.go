@@ -389,6 +389,225 @@ func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
 	}
 }
 
+func TestProcessor_Reorg_PublishesGERReorgEvent(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := path.Join(t.TempDir(), "processor_reorg_publishes_event.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	// Subscribe to reorg events
+	reorgCh := p.gerReorgNotifier.Subscribe("test-subscriber")
+
+	// Create initial state with multiple L1InfoTree leaves
+	info1 := &UpdateL1InfoTree{
+		MainnetExitRoot: common.HexToHash("beef"),
+		RollupExitRoot:  common.HexToHash("5ca1e"),
+		ParentHash:      common.HexToHash("1010101"),
+		Timestamp:       420,
+		BlockPosition:   0,
+	}
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
+		Num:    1,
+		Hash:   common.HexToHash("block1"),
+		Events: []interface{}{Event{UpdateL1InfoTree: info1}},
+	})
+	require.NoError(t, err)
+
+	info2 := &UpdateL1InfoTree{
+		MainnetExitRoot: common.HexToHash("dead"),
+		RollupExitRoot:  common.HexToHash("c0de"),
+		ParentHash:      common.HexToHash("2020202"),
+		Timestamp:       421,
+		BlockPosition:   0,
+	}
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
+		Num:    2,
+		Hash:   common.HexToHash("block2"),
+		Events: []interface{}{Event{UpdateL1InfoTree: info2}},
+	})
+	require.NoError(t, err)
+
+	info3 := &UpdateL1InfoTree{
+		MainnetExitRoot: common.HexToHash("fade"),
+		RollupExitRoot:  common.HexToHash("babe"),
+		ParentHash:      common.HexToHash("3030303"),
+		Timestamp:       422,
+		BlockPosition:   0,
+	}
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
+		Num:    3,
+		Hash:   common.HexToHash("block3"),
+		Events: []interface{}{Event{UpdateL1InfoTree: info3}},
+	})
+	require.NoError(t, err)
+
+	// Verify initial state
+	lastInfo, err := p.GetLastInfo()
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), lastInfo.BlockNumber)
+	require.Equal(t, uint32(2), lastInfo.L1InfoTreeIndex)
+
+	// Perform reorg from block 2
+	err = p.Reorg(ctx, 2)
+	require.NoError(t, err)
+
+	// Verify reorg event was published
+	select {
+	case event := <-reorgCh:
+		require.Equal(t, uint64(2), event.FirstReorgedBlock)
+		require.Len(t, event.ReorgedLeaves, 2, "should have 2 reorged leaves (blocks 2 and 3)")
+
+		// Verify the reorged leaves contain correct data
+		require.Equal(t, uint64(2), event.ReorgedLeaves[0].BlockNumber)
+		require.Equal(t, uint32(1), event.ReorgedLeaves[0].L1InfoTreeIndex)
+		require.Equal(t, CalculateGER(info2.MainnetExitRoot, info2.RollupExitRoot),
+			event.ReorgedLeaves[0].GlobalExitRoot)
+
+		require.Equal(t, uint64(3), event.ReorgedLeaves[1].BlockNumber)
+		require.Equal(t, uint32(2), event.ReorgedLeaves[1].L1InfoTreeIndex)
+		require.Equal(t, CalculateGER(info3.MainnetExitRoot, info3.RollupExitRoot),
+			event.ReorgedLeaves[1].GlobalExitRoot)
+
+		require.Greater(t, event.Timestamp, uint64(0), "timestamp should be set")
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for reorg event")
+	}
+
+	// Verify database state after reorg
+	lastInfo, err = p.GetLastInfo()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), lastInfo.BlockNumber, "only block 1 should remain")
+	require.Equal(t, uint32(0), lastInfo.L1InfoTreeIndex)
+}
+
+func TestProcessor_Reorg_NoEventWhenNoLeaves(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := path.Join(t.TempDir(), "processor_reorg_no_event.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	// Subscribe to reorg events
+	reorgCh := p.gerReorgNotifier.Subscribe("test-subscriber")
+
+	// Create a block without any L1InfoTree events
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
+		Num:    1,
+		Hash:   common.HexToHash("block1"),
+		Events: []interface{}{},
+	})
+	require.NoError(t, err)
+
+	// Perform reorg
+	err = p.Reorg(ctx, 1)
+	require.NoError(t, err)
+
+	// Verify NO event was published (since no l1info_leaf entries were affected)
+	select {
+	case event := <-reorgCh:
+		t.Fatalf("unexpected reorg event received: %+v", event)
+	case <-time.After(100 * time.Millisecond):
+		// Expected: no event
+	}
+}
+
+func TestProcessor_Reorg_NoEventWhenRowsNotAffected(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := path.Join(t.TempDir(), "processor_reorg_no_rows.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	// Subscribe to reorg events
+	reorgCh := p.gerReorgNotifier.Subscribe("test-subscriber")
+
+	// Create initial state
+	info1 := &UpdateL1InfoTree{
+		MainnetExitRoot: common.HexToHash("beef"),
+		RollupExitRoot:  common.HexToHash("5ca1e"),
+		ParentHash:      common.HexToHash("1010101"),
+		Timestamp:       420,
+		BlockPosition:   0,
+	}
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
+		Num:    1,
+		Hash:   common.HexToHash("block1"),
+		Events: []interface{}{Event{UpdateL1InfoTree: info1}},
+	})
+	require.NoError(t, err)
+
+	// Reorg from block 10 (which doesn't exist)
+	err = p.Reorg(ctx, 10)
+	require.NoError(t, err)
+
+	// Verify NO event was published (since rowsAffected == 0)
+	select {
+	case event := <-reorgCh:
+		t.Fatalf("unexpected reorg event received: %+v", event)
+	case <-time.After(100 * time.Millisecond):
+		// Expected: no event
+	}
+}
+
+func TestProcessor_Reorg_MultipleSubscribers(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := path.Join(t.TempDir(), "processor_reorg_multiple_subs.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	// Create multiple subscribers
+	sub1Ch := p.gerReorgNotifier.Subscribe("subscriber-1")
+	sub2Ch := p.gerReorgNotifier.Subscribe("subscriber-2")
+	sub3Ch := p.gerReorgNotifier.Subscribe("subscriber-3")
+
+	// Create initial state
+	info1 := &UpdateL1InfoTree{
+		MainnetExitRoot: common.HexToHash("beef"),
+		RollupExitRoot:  common.HexToHash("5ca1e"),
+		ParentHash:      common.HexToHash("1010101"),
+		Timestamp:       420,
+		BlockPosition:   0,
+	}
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
+		Num:    1,
+		Hash:   common.HexToHash("block1"),
+		Events: []interface{}{Event{UpdateL1InfoTree: info1}},
+	})
+	require.NoError(t, err)
+
+	// Perform reorg
+	err = p.Reorg(ctx, 1)
+	require.NoError(t, err)
+
+	// Verify all subscribers receive the event
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	checkSubscriber := func(ch <-chan GERReorgEvent, name string) {
+		defer wg.Done()
+		select {
+		case event := <-ch:
+			require.Equal(t, uint64(1), event.FirstReorgedBlock)
+			require.Len(t, event.ReorgedLeaves, 1)
+			t.Logf("%s received event successfully", name)
+		case <-time.After(1 * time.Second):
+			t.Errorf("%s: timeout waiting for reorg event", name)
+		}
+	}
+
+	go checkSubscriber(sub1Ch, "subscriber-1")
+	go checkSubscriber(sub2Ch, "subscriber-2")
+	go checkSubscriber(sub3Ch, "subscriber-3")
+
+	wg.Wait()
+}
+
 func TestProcessBlockUpdateL1InfoTreeV2DontMatchTree(t *testing.T) {
 	sut, err := newProcessor(
 		path.Join(t.TempDir(), "l1infotreesyncTestProcessBlockUpdateL1InfoTreeV2DontMatchTree.sqlite"))

@@ -481,3 +481,27 @@ func (s *L1InfoTreeSync) IsUpToDate(ctx context.Context, l1Client aggkittypes.Ba
 
 	return lastProcessedBlock >= finalizedBlock.Number.Uint64(), nil
 }
+
+// SubscribeToGERReorg allows subscribers to receive notifications when GERs are removed due to reorgs.
+// The returned channel will receive GERReorgEvent instances containing information about the reorged block
+// and all affected L1InfoTreeLeaf entries.
+//
+// Parameters:
+//   - subscriberName: A unique identifier for the subscriber (used for logging and debugging)
+//
+// Returns:
+//   - A receive-only channel that will receive GERReorgEvent notifications
+//
+// Example usage:
+//
+//	reorgCh := l1InfoTreeSync.SubscribeToGERReorg("aggsender")
+//	go func() {
+//	    for event := range reorgCh {
+//	        log.Infof("Received reorg affecting %d GERs from block %d",
+//	            len(event.ReorgedLeaves), event.FirstReorgedBlock)
+//	        // Handle the reorg event
+//	    }
+//	}()
+func (s *L1InfoTreeSync) SubscribeToGERReorg(subscriberName string) <-chan GERReorgEvent {
+	return s.processor.gerReorgNotifier.Subscribe(subscriberName)
+}

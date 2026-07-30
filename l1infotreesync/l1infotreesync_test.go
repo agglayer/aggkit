@@ -332,3 +332,44 @@ func TestL1InfoTreeSync_GetCompletionPercentage(t *testing.T) {
 	mockEVMDriver.EXPECT().GetCompletionPercentage().Return(&percent).Once()
 	require.Equal(t, &percent, s.GetCompletionPercentage())
 }
+
+func TestL1InfoTreeSync_SubscribeToGERReorg(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPath := path.Join(t.TempDir(), "l1infotreesync_subscribe_reorg.sqlite")
+
+	l1InfoTreeSync, err := NewReadOnly(ctx, dbPath)
+	require.NoError(t, err)
+
+	// Subscribe via public interface
+	reorgCh := l1InfoTreeSync.SubscribeToGERReorg("test-consumer")
+
+	// Create state
+	info := &UpdateL1InfoTree{
+		MainnetExitRoot: common.HexToHash("beef"),
+		RollupExitRoot:  common.HexToHash("5ca1e"),
+		ParentHash:      common.HexToHash("1010101"),
+		Timestamp:       420,
+		BlockPosition:   0,
+	}
+	err = l1InfoTreeSync.processor.ProcessBlock(ctx, sync.Block{
+		Num:    1,
+		Hash:   common.HexToHash("block1"),
+		Events: []interface{}{Event{UpdateL1InfoTree: info}},
+	})
+	require.NoError(t, err)
+
+	// Trigger reorg
+	err = l1InfoTreeSync.processor.Reorg(ctx, 1)
+	require.NoError(t, err)
+
+	// Verify event received
+	select {
+	case event := <-reorgCh:
+		require.Equal(t, uint64(1), event.FirstReorgedBlock)
+		require.Len(t, event.ReorgedLeaves, 1)
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for reorg event")
+	}
+}

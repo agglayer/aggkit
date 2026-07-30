@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	mutex "sync"
+	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
@@ -28,13 +29,14 @@ var (
 )
 
 type processor struct {
-	db             *sql.DB
-	l1InfoTree     treetypes.FullTreer
-	rollupExitTree treetypes.FullTreer
-	mu             mutex.RWMutex
-	halted         bool
-	haltedReason   string
-	log            *log.Logger
+	db               *sql.DB
+	l1InfoTree       treetypes.FullTreer
+	rollupExitTree   treetypes.FullTreer
+	mu               mutex.RWMutex
+	halted           bool
+	haltedReason     string
+	log              *log.Logger
+	gerReorgNotifier aggkitcommon.PubSub[GERReorgEvent]
 }
 
 // UpdateL1InfoTree representation of the UpdateL1InfoTree event
@@ -121,6 +123,18 @@ func (l *L1InfoTreeInitial) String() string {
 	return fmt.Sprintf("BlockNumber: %d, LeafCount: %d, L1InfoRoot: %s", l.BlockNumber, l.LeafCount, l.L1InfoRoot.String())
 }
 
+// GERReorgEvent represents information about GERs removed during a reorg
+type GERReorgEvent struct {
+	FirstReorgedBlock uint64            // Block number where reorg started
+	ReorgedLeaves     []*L1InfoTreeLeaf // All affected L1InfoTree leaves
+	Timestamp         uint64            // Unix timestamp when reorg occurred
+}
+
+func (g *GERReorgEvent) String() string {
+	return fmt.Sprintf("GERReorgEvent{FirstReorgedBlock: %d, ReorgedLeaves: %d, Timestamp: %d}",
+		g.FirstReorgedBlock, len(g.ReorgedLeaves), g.Timestamp)
+}
+
 // Hash as expected by the tree
 func (l *L1InfoTreeLeaf) GetHash() common.Hash {
 	rawTimestamp := aggkitcommon.Uint64ToBigEndianBytes(l.Timestamp)
@@ -148,10 +162,11 @@ func newProcessor(dbPath string) (*processor, error) {
 		return nil, err
 	}
 	return &processor{
-		db:             database,
-		l1InfoTree:     tree.NewAppendOnlyTree(database, migrations.L1InfoTreePrefix),
-		rollupExitTree: tree.NewUpdatableTree(database, migrations.RollupExitTreePrefix),
-		log:            log.WithFields("processor", "l1infotreesync"),
+		db:               database,
+		l1InfoTree:       tree.NewAppendOnlyTree(database, migrations.L1InfoTreePrefix),
+		rollupExitTree:   tree.NewUpdatableTree(database, migrations.RollupExitTreePrefix),
+		log:              log.WithFields("processor", "l1infotreesync"),
+		gerReorgNotifier: aggkitcommon.NewGenericSubscriber[GERReorgEvent](),
 	}, nil
 }
 
@@ -337,6 +352,18 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		}
 	}()
 
+	// Query affected L1InfoTreeLeaves BEFORE cascade delete
+	var reorgedLeaves []*L1InfoTreeLeaf
+	err = meddler.QueryAll(tx, &reorgedLeaves,
+		`SELECT * FROM l1info_leaf WHERE block_num >= $1 ORDER BY block_num ASC, block_pos ASC;`,
+		firstReorgedBlock)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("failed to query affected l1info_leaf entries: %w", err)
+	}
+
+	p.log.Debugf("found %d l1info_leaf entries to be reorged from block %d",
+		len(reorgedLeaves), firstReorgedBlock)
+
 	res, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
 	if err != nil {
 		return err
@@ -359,12 +386,24 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		return err
 	}
 
-	p.log.Infof("reorged to block %d, %d rows affected", firstReorgedBlock, rowsAffected)
+	p.log.Infof("reorged to block %d, %d block rows affected, %d l1info_leaf entries removed",
+		firstReorgedBlock, rowsAffected, len(reorgedLeaves))
 
 	shouldRollback = false
 
 	if rowsAffected > 0 {
 		p.unhalt()
+
+		// Publish notification ONLY if there were affected leaves
+		if len(reorgedLeaves) > 0 {
+			event := GERReorgEvent{
+				FirstReorgedBlock: firstReorgedBlock,
+				ReorgedLeaves:     reorgedLeaves,
+				Timestamp:         uint64(time.Now().Unix()),
+			}
+			p.log.Infof("publishing GER reorg event: %s", event.String())
+			p.gerReorgNotifier.Publish(event)
+		}
 	}
 	return nil
 }
