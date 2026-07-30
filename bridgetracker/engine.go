@@ -147,7 +147,9 @@ func (e *Engine) tick(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		e.resolveBridgeStep(ctx, tracking)
+		// errors are already logged/persisted inside resolveBridgeStep; one bridge failing to
+		// resolve must not stop the tick for the rest of the active list
+		_ = e.resolveBridgeStep(ctx, tracking)
 	}
 
 	pruned, err := e.store.PruneTerminal(e.now().Add(-e.cfg.RetentionPeriod))
