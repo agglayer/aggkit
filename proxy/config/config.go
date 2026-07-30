@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/agglayer/aggkit/bridgeservicefinder"
+	"github.com/agglayer/aggkit/bridgetracker"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
@@ -64,6 +65,9 @@ Port = 8080
 ReadTimeout = "5m"
 WriteTimeout = "5m"
 MaxRequestsPerIPAndSecond = 10
+
+[Tracker]
+RetentionPeriod = "1m"
 `
 
 // Config holds the full configuration of the proxy component
@@ -82,6 +86,10 @@ type Config struct {
 	// REST configures the shared HTTP server where every component of this binary registers
 	// its routes (tracker REST/WS endpoints, proxy routes)
 	REST aggkitcommon.RESTConfig `mapstructure:"REST"`
+
+	// Tracker configures the bridge tracker component (only its file-borne fields; the
+	// programmatic ones are wired by the binary, see cmd)
+	Tracker bridgetracker.Config `mapstructure:"Tracker"`
 }
 
 // ValidateComponents validates that all provided components are known/supported by the proxy binary.

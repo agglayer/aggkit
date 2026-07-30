@@ -3,6 +3,7 @@ package bridgetracker
 import (
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
@@ -15,6 +16,9 @@ type bridgeEntry struct {
 	tracking *domain.TrackingData
 	// subscribers holds one channel per active subscription (WebSocket connection)
 	subscribers map[chan *domain.TrackingData]struct{}
+	// terminalSince is when the snapshot first became terminal (see isTerminal); zero while
+	// it is not. It anchors the retention window PruneTerminal evicts by
+	terminalSince time.Time
 }
 
 // memoryRegistry is the in-memory adapter of the SupervisedRegistry port: the supervised
@@ -23,18 +27,28 @@ type bridgeEntry struct {
 type memoryRegistry struct {
 	mu      sync.RWMutex
 	bridges map[TrackingID]*bridgeEntry
+	// now is the clock terminalSince is stamped with, injectable for tests
+	now func() time.Time
+}
+
+// isTerminal reports whether the snapshot will never change again: the bridge finished, or
+// the tracker gave up resolving it. It is exactly the predicate GetTrackerActives excludes
+// by — an entry out of the active list is never updated again, so it is safe to forget once
+// its retention elapses
+func isTerminal(tracking *domain.TrackingData) bool {
+	return tracking.Failed() || tracking.TrackingStatus() == types.TrackingStatusFinished
 }
 
 // compile-time check: the in-memory adapter fulfils the full port
 var _ SupervisedRegistry = (*memoryRegistry)(nil)
 
-// terminallyFailed reports whether the tracker has ever given up resolving the bridge at all
-// (the stored raw TrackingStatus was explicitly set to Error by handleNotFound / publishError).
-// Unlike domain.TrackingData.Failed(), it never depends on AllSteps, so it stays accurate for
-// a batch still being written (steps already updated, status not yet): a step-level error
-// would otherwise make Failed() report a false terminal failure mid-batch
+// terminallyFailed reports whether the tracker gave up resolving the bridge at all: same as
+// domain.TrackingData.Failed(). There is no separate raw flag to consult anymore —
+// TrackingStatus is fully derived from the snapshot, so a mid-batch state (steps already
+// updated, tx not yet) cannot disagree with it: a step-level error on a resolved bridge
+// keeps Info populated and is therefore never mistaken for a terminal failure
 func terminallyFailed(tracking *domain.TrackingData) bool {
-	return tracking.RawTrackingStatus() == types.TrackingStatusError
+	return tracking.Failed()
 }
 
 // NewMemoryRegistry returns an in-memory SupervisedRegistry
@@ -44,7 +58,7 @@ func NewMemoryRegistry() SupervisedRegistry {
 
 // newMemoryRegistry returns the concrete type, for tests that inspect internals
 func newMemoryRegistry() *memoryRegistry {
-	return &memoryRegistry{bridges: make(map[TrackingID]*bridgeEntry)}
+	return &memoryRegistry{bridges: make(map[TrackingID]*bridgeEntry), now: time.Now}
 }
 
 // Get implements SupervisedStore
@@ -85,14 +99,12 @@ func (r *memoryRegistry) Subscribe(id TrackingID) (<-chan *domain.TrackingData, 
 }
 
 // UpdateTrackingBridgeTx implements SupervisedStore, notifying every subscriber of the bridge.
-// The stored snapshot is only rebuilt (new pointer) when trackingStatus/tx actually differ
-// from what is stored — a pure allocation optimization, since AllSteps is carried over either
-// way — but notify always fires: a batch that only changed AllSteps (via UpdateTrackingStep)
-// still calls this method precisely to deliver that merged snapshot to subscribers (see the
-// "even a no-op one" note on UpdateTrackingStep)
-func (r *memoryRegistry) UpdateTrackingBridgeTx(
-	id TrackingID, trackingStatus types.TrackingStatus, tx domain.TrackingBridgeTx,
-) error {
+// The stored snapshot is only rebuilt (new pointer) when tx actually differs from what is
+// stored — a pure allocation optimization, since AllSteps is carried over either way — but
+// notify always fires: a batch that only changed AllSteps (via UpdateTrackingStep) still
+// calls this method precisely to deliver that merged snapshot to subscribers (see the "even
+// a no-op one" note on UpdateTrackingStep)
+func (r *memoryRegistry) UpdateTrackingBridgeTx(id TrackingID, tx domain.TrackingBridgeTx) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -100,9 +112,13 @@ func (r *memoryRegistry) UpdateTrackingBridgeTx(
 	if !ok {
 		return domain.ErrTrackingNotFound
 	}
-	if entry.tracking.RawTrackingStatus() != trackingStatus ||
-		entry.tracking.TrackingBridgeTx().String() != tx.String() {
-		entry.tracking = domain.NewTrackingData(id, trackingStatus, tx, entry.tracking.AllSteps())
+	if entry.tracking.TrackingBridgeTx().String() != tx.String() {
+		entry.tracking = domain.NewTrackingData(id, tx, entry.tracking.AllSteps())
+	}
+	// every batch of changes ends in this call (see UpdateTrackingStep), so this is the single
+	// place where an entry can be seen turning terminal, whichever field did it
+	if entry.terminalSince.IsZero() && isTerminal(entry.tracking) {
+		entry.terminalSince = r.now()
 	}
 	entry.notify(entry.tracking)
 	return nil
@@ -131,7 +147,7 @@ func (r *memoryRegistry) UpdateTrackingStep(id TrackingID, stepIndex uint, step 
 	copy(allSteps, prevSteps)
 	allSteps[stepIndex] = step
 
-	entry.tracking = domain.NewTrackingData(id, entry.tracking.RawTrackingStatus(), entry.tracking.BridgeTx(), allSteps)
+	entry.tracking = domain.NewTrackingData(id, entry.tracking.BridgeTx(), allSteps)
 	return nil
 }
 
@@ -146,12 +162,32 @@ func (r *memoryRegistry) GetTrackerActives(networkID *uint32) ([]*domain.Trackin
 		if networkID != nil && id.NetworkID != *networkID {
 			continue
 		}
-		if entry.tracking.Failed() || entry.tracking.TrackingStatus() == types.TrackingStatusFinished {
+		if isTerminal(entry.tracking) {
 			continue
 		}
 		active = append(active, entry.tracking)
 	}
 	return active, nil
+}
+
+// PruneTerminal implements SupervisedStore: it forgets every entry that became terminal
+// before olderThan. A pruned entry is gone as if never requested — a later Get with
+// createIfNotExists re-registers it from scratch, which is how a client retries a bridge the
+// tracker gave up on. Subscribers are not a concern: the WebSocket handler closes the
+// connection right after pushing a terminal snapshot, and an unsubscribe on an already
+// pruned entry is harmless (it operates on the orphaned record)
+func (r *memoryRegistry) PruneTerminal(olderThan time.Time) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	pruned := 0
+	for id, entry := range r.bridges {
+		if !entry.terminalSince.IsZero() && entry.terminalSince.Before(olderThan) {
+			delete(r.bridges, id)
+			pruned++
+		}
+	}
+	return pruned, nil
 }
 
 // GetNetworks implements SupervisedStore: the networks with at least one supervised bridge,
@@ -187,7 +223,7 @@ func (r *memoryRegistry) GetNumTracker() int {
 // create adds a fresh (Registered, nil BridgeStatus) entry for id. Callers must hold r.mu
 func (r *memoryRegistry) create(id TrackingID) *bridgeEntry {
 	entry := &bridgeEntry{
-		tracking:    domain.NewTrackingData(id, types.TrackingStatusRegistered, domain.TrackingBridgeTx{}, nil),
+		tracking:    domain.NewTrackingData(id, domain.TrackingBridgeTx{}, nil),
 		subscribers: make(map[chan *domain.TrackingData]struct{}),
 	}
 	r.bridges[id] = entry

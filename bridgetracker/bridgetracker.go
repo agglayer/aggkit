@@ -7,21 +7,6 @@ import (
 	proxytypes "github.com/agglayer/aggkit/proxy/types"
 )
 
-// Config holds the configuration of the bridge tracker service
-type Config struct {
-	Logger aggkitcommon.Logger
-
-	// ConfigSHA1 is the sha1sum (hex) of the configuration the binary was started with,
-	// exposed by the health endpoint to check that all instances behind a proxy run the
-	// same configuration
-	ConfigSHA1 string
-
-	// Registry is the supervised-bridges subsystem to use. Leave nil to get the in-memory
-	// adapter (single instance); inject a shared-store implementation so several tracker
-	// instances behind a proxy answer for any registered tx
-	Registry SupervisedRegistry
-}
-
 // BridgeTracker is the bridge tracker component: it owns the supervised-bridges registry and
 // the HTTP service implementing the tracker endpoints (API). The tracking engine is wired
 // separately (see NewEngine) over the same registry passed in Config
@@ -100,11 +85,13 @@ func publishStatus(
 
 	tx := tracking.BridgeTx()
 	tx.Info = info
-	return store.UpdateTrackingBridgeTx(id, tracking.RawTrackingStatus(), tx)
+	return store.UpdateTrackingBridgeTx(id, tx)
 }
 
 // publishError marks the bridge as terminally failed to resolve at all through the store. It
-// is a no-op (ErrTrackingNotFound) if the bridge is not in the supervised list
+// is a no-op (ErrTrackingNotFound) if the bridge is not in the supervised list. errStep must
+// carry a terminal ErrorType (Permanent or Exhausted): TrackingStatus derives Error from it,
+// a Transient one would read as still being resolved (see TrackingData.TrackingStatus)
 func publishError(store SupervisedStore, id TrackingID, errStep *types.ErrorStep) error {
 	tracking, err := store.Get(id, false)
 	if err != nil {
@@ -113,7 +100,7 @@ func publishError(store SupervisedStore, id TrackingID, errStep *types.ErrorStep
 
 	tx := tracking.BridgeTx()
 	tx.Error = errStep
-	return store.UpdateTrackingBridgeTx(id, types.TrackingStatusError, tx)
+	return store.UpdateTrackingBridgeTx(id, tx)
 }
 
 func Dependencies() []proxytypes.Component {

@@ -22,10 +22,13 @@ Creates tmp/proxy-kurtosis.toml based on a running Kurtosis enclave.
 The generated config points [L1RPC] at the enclave's L1 node, sets
 [BridgeServiceFinder].RollupManagerAddr from the aggkit config artifact, and
 fills static [BridgeServiceFinder.BridgeURLs] / [BridgeServiceFinder.RPCURLs]
-overrides for every L2 network found in the enclave. The static overrides are
-required when running the proxy from the host: the URLs the finder resolves
-on-chain (trustedSequencerURL / aggchainMetadata) point at Kurtosis-internal
-hostnames that are not reachable outside the enclave.
+overrides for every L2 network found in the enclave, plus network 0 (L1):
+its RPC is the enclave's L1 node and its bridge service is the first aggkit
+instance (all of them sync the L1 side). The static overrides are required
+when running the proxy from the host: the URLs the finder resolves on-chain
+(trustedSequencerURL / aggchainMetadata) point at Kurtosis-internal hostnames
+that are not reachable outside the enclave — and network 0 is not enumerated
+on-chain at all, so the override is the only way to serve it.
 
 Options:
   -e, --enclave   ENCLAVE    Kurtosis enclave name (default: \$KURTOSIS_ENCLAVE or "aggkit")
@@ -195,6 +198,7 @@ log_info "RollupManagerAddr: $ROLLUP_MANAGER_ADDR"
 log_info "Discovering L2 networks (up to $MAX_NETWORKS)..."
 BRIDGE_URLS_BLOCK=""
 RPC_URLS_BLOCK=""
+L1_BRIDGE_URL=""
 DISCOVERED=0
 for ((i = 1; i <= MAX_NETWORKS; i++)); do
     suffix=$(printf '%03d' "$i")
@@ -206,6 +210,8 @@ for ((i = 1; i <= MAX_NETWORKS; i++)); do
     log_info "Network $i: bridge service URL: $bridge_url"
     BRIDGE_URLS_BLOCK+="$i = \"$bridge_url\"
 "
+    # every aggkit bridge service syncs L1 too: the first instance answers for network 0
+    [[ -z "$L1_BRIDGE_URL" ]] && L1_BRIDGE_URL="$bridge_url"
 
     if l2_rpc_url=$(get_l2_rpc_url "$suffix"); then
         log_info "Network $i: L2 RPC URL:         $l2_rpc_url"
@@ -224,6 +230,20 @@ if [[ $DISCOVERED -eq 0 ]]; then
 else
     log_info "Discovered $DISCOVERED network(s)"
 fi
+
+# Network 0 (L1) is not enumerated on-chain, so the static overrides are the only way the
+# finder can serve it: the L1 RPC is already known, and the first aggkit bridge service
+# answers for network 0 (all instances sync the L1 side)
+RPC_URLS_BLOCK="0 = \"$L1_RPC_URL\"
+$RPC_URLS_BLOCK"
+if [[ -n "$L1_BRIDGE_URL" ]]; then
+    log_info "Network 0 (L1): bridge service URL: $L1_BRIDGE_URL"
+    BRIDGE_URLS_BLOCK="0 = \"$L1_BRIDGE_URL\"
+$BRIDGE_URLS_BLOCK"
+else
+    log_warn "Network 0 (L1): no bridge service discovered — BridgeURLs override omitted"
+fi
+log_info "Network 0 (L1): RPC URL:            $L1_RPC_URL"
 
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 

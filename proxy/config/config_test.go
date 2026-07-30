@@ -30,6 +30,8 @@ func TestLoadFilesDefaults(t *testing.T) {
 	require.Equal(t, "/health", cfg.BridgeServiceFinder.HealthCheckPath)
 	require.Equal(t, 5*time.Second, cfg.BridgeServiceFinder.HealthCheckTimeout.Duration)
 	require.False(t, cfg.BridgeServiceFinder.RequireAllHealthyOnStart)
+
+	require.Equal(t, time.Minute, cfg.Tracker.RetentionPeriod.Duration)
 }
 
 func TestLoadFilesOverridesDefaults(t *testing.T) {
@@ -45,6 +47,9 @@ URL = "http://l1.example.com:8545"
 [BridgeServiceFinder]
 RollupManagerAddr = "0x1234567890123456789012345678901234567890"
 PollInterval = "10s"
+
+[Tracker]
+RetentionPeriod = "1h"
 `
 	require.NoError(t, os.WriteFile(cfgFile, []byte(cfgContent), 0600))
 
@@ -57,6 +62,7 @@ PollInterval = "10s"
 		common.HexToAddress("0x1234567890123456789012345678901234567890"),
 		cfg.BridgeServiceFinder.RollupManagerAddr)
 	require.Equal(t, 10*time.Second, cfg.BridgeServiceFinder.PollInterval.Duration)
+	require.Equal(t, time.Hour, cfg.Tracker.RetentionPeriod.Duration)
 	// not overridden fields keep the default value
 	require.Equal(t, []string{"stderr"}, cfg.Log.Outputs)
 	require.Equal(t, ethermanconfig.RPCModeBasic, cfg.L1RPC.Mode)

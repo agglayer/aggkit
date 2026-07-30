@@ -19,27 +19,25 @@ func (id TrackingID) String() string {
 	return fmt.Sprintf("network=%d/tx=%s", id.NetworkID, id.TxHash)
 }
 
+// TrackingData is the snapshot of a supervised bridge at a given moment
 type TrackingData struct {
-	id TrackingID
-	// trackingStatus is the tx-level lifecycle flag as last written by handleNotFound /
-	// handleNotABridge / publishError; TrackingStatus() below layers AllSteps on top of it
-	trackingStatus   types.TrackingStatus
+	id               TrackingID
 	trackingBridgeTx TrackingBridgeTx
 	allSteps         []types.BridgeStepPath
 }
 
-// NewTrackingData builds the snapshot of a supervised bridge from its identity, tx-level
-// lifecycle flag, tracked tx facts and its expected path (nil while the tracker has not
-// resolved the bridge yet)
+// NewTrackingData builds the snapshot of a supervised bridge from its identity, tracked tx
+// facts and its expected path (nil while the tracker has not resolved the bridge yet).
+// TrackingStatus is not stored: it is fully derived from those two (see TrackingStatus)
 func NewTrackingData(
-	id TrackingID, trackingStatus types.TrackingStatus, bridgeTx TrackingBridgeTx, allSteps []types.BridgeStepPath,
+	id TrackingID, bridgeTx TrackingBridgeTx, allSteps []types.BridgeStepPath,
 ) *TrackingData {
-	return &TrackingData{id: id, trackingStatus: trackingStatus, trackingBridgeTx: bridgeTx, allSteps: allSteps}
+	return &TrackingData{id: id, trackingBridgeTx: bridgeTx, allSteps: allSteps}
 }
 
 // Error returns whatever error currently explains the bridge's state, if any: the current
 // step's error once AllSteps is resolved (nil if that step is not in error), or the tx-level
-// Error while it is not — set for a terminal give-up (handleNotFound / handleNotABridge) as
+// Error while it is not — set for a terminal give-up (handleUnresolved / handlePermanentFailure) as
 // well as a transient FindBridge failure still being retried (persistResolveError); nil if
 // nothing has failed
 func (t *TrackingData) Error() *types.ErrorStep {
@@ -103,6 +101,11 @@ func (t *TrackingData) StepIndex() *int {
 	return &lastIdx
 }
 
+// TrackingStatus derives the bridge's lifecycle status from the snapshot, nothing is stored:
+// once AllSteps is resolved it reflects the step that explains it (see StepIndex); until
+// then, the tx-level facts say it all — a terminal Error (the tracker gave up resolving the
+// tx: exhausted or permanent) reads as Error, a resolved tx (IsDone) as Running, and
+// anything else (including a transient failure still being retried) as Registered
 func (t *TrackingData) TrackingStatus() types.TrackingStatus {
 	if t == nil {
 		return types.TrackingStatusError
@@ -111,19 +114,13 @@ func (t *TrackingData) TrackingStatus() types.TrackingStatus {
 	if stepIndex != nil {
 		return convertStepStatusToTrackingStatus(t.allSteps[*stepIndex].Status)
 	}
-	return t.trackingStatus
-}
-
-// RawTrackingStatus returns the stored tx-level lifecycle flag exactly as last written by
-// handleNotFound / handleNotABridge / publishError, regardless of what AllSteps might
-// otherwise derive. Unlike TrackingStatus(), it never depends on AllSteps: it stays accurate
-// for a batch still being written (steps already updated, tx-level flag not yet), when a
-// step-level error would otherwise make TrackingStatus() report a false terminal failure
-func (t *TrackingData) RawTrackingStatus() types.TrackingStatus {
-	if t == nil {
+	if t.trackingBridgeTx.IsInTerminalError() {
 		return types.TrackingStatusError
 	}
-	return t.trackingStatus
+	if t.trackingBridgeTx.IsDone() {
+		return types.TrackingStatusRunning
+	}
+	return types.TrackingStatusRegistered
 }
 
 func (t *TrackingData) ID() TrackingID {

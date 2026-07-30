@@ -65,7 +65,7 @@ func TestTrackingDataMarshalJSONError(t *testing.T) {
 // terminal give-up
 func TestTrackingDataFromExposesTransientError(t *testing.T) {
 	id := domain.TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}
-	tracking := domain.NewTrackingData(id, types.TrackingStatusRegistered, domain.TrackingBridgeTx{
+	tracking := domain.NewTrackingData(id, domain.TrackingBridgeTx{
 		Error: &types.ErrorStep{
 			ErrorType:   types.StepErrorTransient,
 			RetryCount:  2,
@@ -84,7 +84,7 @@ func TestTrackingDataFromExposesTransientError(t *testing.T) {
 // Error instead of an empty ErrorStep object
 func TestTrackingDataFromNoErrorIsNil(t *testing.T) {
 	id := domain.TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}
-	tracking := domain.NewTrackingData(id, types.TrackingStatusRegistered, domain.TrackingBridgeTx{}, nil)
+	tracking := domain.NewTrackingData(id, domain.TrackingBridgeTx{}, nil)
 
 	data := trackingDataFrom(tracking)
 	require.Nil(t, data.Error)

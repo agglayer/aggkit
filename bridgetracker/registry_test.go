@@ -2,6 +2,7 @@ package bridgetracker
 
 import (
 	"testing"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
@@ -37,7 +38,7 @@ func TestRegistryGetSnapshot(t *testing.T) {
 	require.False(t, tracking.Failed())
 
 	// terminal error on a bridge never resolved -> Get returns it as Failed. This mirrors the
-	// only way the engine reaches a tx-level terminal error (handleNotFound/handleNotABridge,
+	// only way the engine reaches a tx-level terminal error (handleUnresolved/handlePermanentFailure,
 	// both before AllSteps is ever populated): UpdateTrackingBridgeTx does not clear
 	// Status/AllSteps itself, so a terminal error published after AllSteps was already set
 	// would not read back as Failed (see TestRegistryUpdateTrackingBridgeTxAfterErrorRevives)
@@ -56,10 +57,11 @@ func TestRegistryGetSnapshot(t *testing.T) {
 	require.Equal(t, terminal, tracking.Error())
 }
 
-// TestRegistryUpdateTrackingBridgeTxAfterErrorRevives pins a known gap: UpdateTrackingBridgeTx
-// does not guard against being called after a terminal error, unlike UpdateTrackingStep. If
-// AllSteps was already populated, a later tx-level update can make the bridge read as
-// non-Failed again, because TrackingStatus/Failed derive from AllSteps whenever it is non-nil
+// TestRegistryUpdateTrackingBridgeTxAfterErrorRevives pins that a tx-level error published on
+// an already-resolved bridge (Info and AllSteps populated) is not terminal: TrackingStatus
+// keeps deriving from AllSteps and Failed stays false (it requires Info to be nil), so later
+// updates fully apply — the bridge simply keeps running. Terminal failures proper only happen
+// before resolution (give-up paths), where Info/AllSteps are still nil
 func TestRegistryUpdateTrackingBridgeTxAfterErrorRevives(t *testing.T) {
 	r := newMemoryRegistry()
 	id := TrackingID{NetworkID: 1, TxHash: testHash}
@@ -68,16 +70,20 @@ func TestRegistryUpdateTrackingBridgeTxAfterErrorRevives(t *testing.T) {
 
 	require.NoError(t, publishStatus(r, id, testBridgeInfo(), testAllSteps(false)))
 	require.NoError(t, publishError(r, id, testErrorStep()))
-	revived := testBridgeInfo()
-	// the step update inside this publishStatus is itself a no-op (UpdateTrackingStep does
-	// guard on terminal failure), so AllSteps stays at its pre-error, in-progress value
-	require.NoError(t, publishStatus(r, id, revived, testAllSteps(true)))
 
 	tracking, err := r.Get(id, false)
 	require.NoError(t, err)
-	require.Equal(t, types.TrackingStatusRunning, tracking.TrackingStatus())
-	// not require.Same: revived is value-identical to the already-stored Info, so the store
-	// keeps its existing pointer instead of reallocating (see UpdateTrackingBridgeTx)
+	require.Equal(t, types.TrackingStatusRunning, tracking.TrackingStatus(),
+		"a tx-level error on a resolved bridge is not terminal: AllSteps still rules")
+	require.False(t, tracking.Failed())
+
+	revived := testBridgeInfo()
+	require.NoError(t, publishStatus(r, id, revived, testAllSteps(true)))
+
+	tracking, err = r.Get(id, false)
+	require.NoError(t, err)
+	require.Equal(t, types.TrackingStatusFinished, tracking.TrackingStatus(),
+		"the later update fully applies, steps included")
 	require.Equal(t, revived, tracking.Info())
 	require.False(t, tracking.Failed())
 }
@@ -96,6 +102,49 @@ func TestRegistryGetWithoutCreateReturnsNotFound(t *testing.T) {
 	require.Empty(t, r.bridges)
 }
 
+// TestRegistryPruneTerminal pins the retention semantics: only entries that became terminal
+// (Failed or Finished) before the deadline are forgotten; live entries survive however old
+// they are, and a forgotten tx re-registers from scratch — the retry path for a bridge the
+// tracker gave up on
+func TestRegistryPruneTerminal(t *testing.T) {
+	r := newMemoryRegistry()
+	clock := time.Date(2026, 7, 22, 10, 0, 0, 0, time.UTC)
+	r.now = func() time.Time { return clock }
+
+	live := TrackingID{NetworkID: 1, TxHash: testHash}
+	failed := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x05")}
+	finished := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x06")}
+	for _, id := range []TrackingID{live, failed, finished} {
+		_, err := r.Get(id, true)
+		require.NoError(t, err)
+	}
+	require.NoError(t, publishStatus(r, live, testBridgeInfo(), testAllSteps(false)))
+	require.NoError(t, publishError(r, failed, testErrorStep()))
+	require.NoError(t, publishStatus(r, finished, testBridgeInfo(), testAllSteps(true)))
+
+	// nothing became terminal before the deadline yet: everything is kept
+	pruned, err := r.PruneTerminal(clock.Add(-time.Minute))
+	require.NoError(t, err)
+	require.Zero(t, pruned)
+	require.Equal(t, 3, r.GetNumTracker())
+
+	// past the deadline both terminals are forgotten; the live entry is kept however old
+	pruned, err = r.PruneTerminal(clock.Add(time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, 2, pruned)
+	require.Equal(t, 1, r.GetNumTracker())
+	_, err = r.Get(live, false)
+	require.NoError(t, err)
+	_, err = r.Get(failed, false)
+	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
+
+	// a forgotten tx re-registers as new, with no trace of the old failure
+	tracking, err := r.Get(failed, true)
+	require.NoError(t, err)
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
+	require.Nil(t, tracking.Error())
+}
+
 // TestRegistryUpdateTrackingBridgeTxUnregisteredReturnsNotFound pins that, unlike Get,
 // UpdateTrackingBridgeTx never creates the entry on its own: the bridge must already be in
 // the supervised list (via Get(id, true) or Subscribe)
@@ -103,7 +152,7 @@ func TestRegistryUpdateTrackingBridgeTxUnregisteredReturnsNotFound(t *testing.T)
 	r := newMemoryRegistry()
 	id := TrackingID{NetworkID: 1, TxHash: testHash}
 
-	err := r.UpdateTrackingBridgeTx(id, types.TrackingStatusRegistered, domain.TrackingBridgeTx{Info: testBridgeInfo()})
+	err := r.UpdateTrackingBridgeTx(id, domain.TrackingBridgeTx{Info: testBridgeInfo()})
 	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
 }
 
@@ -120,13 +169,14 @@ func TestRegistryUpdateTrackingBridgeTxError(t *testing.T) {
 			Description: []string{"test error"},
 		},
 	}
-	require.NoError(t, r.UpdateTrackingBridgeTx(id, types.TrackingStatusError, trackingBridgeTx))
+	require.NoError(t, r.UpdateTrackingBridgeTx(id, trackingBridgeTx))
 
 	v, err := r.Get(id, false)
 	require.NoError(t, err)
 	require.Equal(t, v.TrackingBridgeTx(), trackingBridgeTx)
 	require.Equal(t, trackingBridgeTx.Error, v.Error())
-	require.Equal(t, types.TrackingStatusError, v.RawTrackingStatus())
+	// the permanent tx-level error alone derives the terminal status, nothing else was stored
+	require.Equal(t, types.TrackingStatusError, v.TrackingStatus())
 }
 
 func TestRegistryKeyIsolation(t *testing.T) {

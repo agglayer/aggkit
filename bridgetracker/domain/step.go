@@ -56,55 +56,73 @@ type StepResolution struct {
 
 // DeriveStep derives the current step of a bridge from its facts. The checks follow the
 // bridge lifecycle and stop at the first unmet milestone, so later facts are not queried
-// until the bridge reaches them
+// until the bridge reaches them. prevSteps is the bridge's last persisted path (nil on the
+// first resolution) and makes the derivation incremental: a milestone already recorded as
+// done is never queried again — its result was persisted with the step and BuildSteps
+// carries it forward — so an already-advanced bridge only pays for the facts it is still
+// waiting on
 func DeriveStep(
 	ctx context.Context, originNetwork, destinationNetwork uint32, facts BridgeFacts,
+	prevSteps []types.BridgeStepPath,
 ) (StepResolution, error) {
+	done := make(map[types.BridgeStep]bool, len(prevSteps))
+	for _, sp := range prevSteps {
+		done[sp.Step] = sp.Status == types.StepStatusDone
+	}
+
 	res := StepResolution{}
 
 	if originNetwork == 0 {
-		ger, err := facts.OriginGER(ctx)
-		if err != nil {
-			return res, fmt.Errorf("origin GER: %w", err)
+		if !done[types.StepWaitingGERUpdate] {
+			ger, err := facts.OriginGER(ctx)
+			if err != nil {
+				return res, fmt.Errorf("origin GER: %w", err)
+			}
+			if ger == nil {
+				res.Step = types.StepWaitingGERUpdate
+				return res, nil
+			}
+			res.GERUpdate = &types.GERUpdateResult{GER: *ger.GER, BlockNumber: *ger.BlockNumber}
 		}
-		if ger == nil {
-			res.Step = types.StepWaitingGERUpdate
-			return res, nil
-		}
-		res.GERUpdate = &types.GERUpdateResult{GER: *ger.GER, BlockNumber: *ger.BlockNumber}
 	} else {
-		ler, err := facts.OriginLER(ctx)
-		if err != nil {
-			return res, fmt.Errorf("origin LER: %w", err)
+		if !done[types.StepWaitingLERUpdate] {
+			ler, err := facts.OriginLER(ctx)
+			if err != nil {
+				return res, fmt.Errorf("origin LER: %w", err)
+			}
+			if ler == nil {
+				res.Step = types.StepWaitingLERUpdate
+				return res, nil
+			}
+			res.LERUpdate = ler
 		}
-		if ler == nil {
-			res.Step = types.StepWaitingLERUpdate
-			return res, nil
-		}
-		res.LERUpdate = ler
 
-		// bridges originated on an L2 exit through an agglayer certificate
-		cert, err := facts.Certificate(ctx)
-		if err != nil {
-			return res, fmt.Errorf("certificate: %w", err)
-		}
-		switch {
-		case cert == nil:
-			res.Step = types.StepPendingInclusion
-			return res, nil
-		case cert.Status.IsSettled():
-			res.Certificate = cert
-		case cert.Status == agglayertypes.Pending:
-			res.Step = types.StepCertificatePending
-			return res, nil
-		default: // Proven, Candidate or InError
-			res.Step = types.StepCertificateProcessing
-			return res, nil
+		// bridges originated on an L2 exit through an agglayer certificate; the certificate
+		// milestone only closes at settlement, so it is re-queried until
+		// StepCertificateProcessing is done
+		if !done[types.StepCertificateProcessing] {
+			cert, err := facts.Certificate(ctx)
+			if err != nil {
+				return res, fmt.Errorf("certificate: %w", err)
+			}
+			switch {
+			case cert == nil:
+				res.Step = types.StepPendingInclusion
+				return res, nil
+			case cert.Status.IsSettled():
+				res.Certificate = cert
+			case cert.Status == agglayertypes.Pending:
+				res.Step = types.StepCertificatePending
+				return res, nil
+			default: // Proven, Candidate or InError
+				res.Step = types.StepCertificateProcessing
+				return res, nil
+			}
 		}
 	}
 
 	// L2 destinations need the covering GER injected (does not apply to Mainnet)
-	if destinationNetwork != 0 {
+	if destinationNetwork != 0 && !done[types.StepWaitingGERInjection] {
 		injected, err := facts.InjectedGER(ctx)
 		if err != nil {
 			return res, fmt.Errorf("injected GER: %w", err)

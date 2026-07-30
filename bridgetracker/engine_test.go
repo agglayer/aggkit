@@ -2,6 +2,7 @@ package bridgetracker
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -12,6 +13,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
+
+// errSourceDown is the canned transient failure tests inject on a fact source
+var errSourceDown = errors.New("source down")
 
 // fakeSources implements the five engine fact ports with mutable canned answers, so each
 // test drives the bridge lifecycle by changing the facts between ticks
@@ -72,6 +76,7 @@ func newTestEngine(t *testing.T, sources *fakeSources) (*Engine, *memoryRegistry
 
 	clock := time.Date(2026, 7, 22, 10, 0, 0, 0, time.UTC)
 	engine.now = func() time.Time { return clock }
+	store.now = engine.now
 	return engine, store, &clock
 }
 
@@ -173,6 +178,43 @@ func TestEngineNotFound(t *testing.T) {
 	require.Empty(t, mustGetTrackerActives(t, store), "failed bridges must leave the active list")
 }
 
+// TestEngineRetentionAndRetry pins the retry path for a bridge the tracker gave up on: the
+// terminal Error stays queryable for RetentionPeriod (so pollers observe it), then the tick
+// janitor forgets the entry, and a new request for the same tx re-registers it from scratch —
+// this time resolving normally
+func TestEngineRetentionAndRetry(t *testing.T) {
+	f := &fakeSources{bridgeErr: ErrBridgeTxNotFound}
+	engine, store, clock := newTestEngine(t, f)
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	mustRegister(t, store, id)
+	engine.tick(t.Context())
+	*clock = clock.Add(engine.cfg.UnresolvedTimeout)
+	engine.tick(t.Context())
+	require.True(t, mustGet(t, store, id).Failed())
+
+	// within the retention window the terminal Error stays queryable
+	*clock = clock.Add(engine.cfg.RetentionPeriod / 2)
+	engine.tick(t.Context())
+	require.Equal(t, types.TrackingStatusError, mustGet(t, store, id).TrackingStatus())
+
+	// past the window the tick janitor forgets the entry: it no longer occupies memory
+	*clock = clock.Add(engine.cfg.RetentionPeriod)
+	engine.tick(t.Context())
+	require.Zero(t, store.GetNumTracker())
+	_, err := store.Get(id, false)
+	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
+
+	// the retry: the tx is mined by now; asking again re-registers it and it resolves
+	f.bridgeErr = nil
+	f.bridge = l2ToL2Bridge()
+	tracking, err := store.Get(id, true)
+	require.NoError(t, err)
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
+	engine.tick(t.Context())
+	require.Equal(t, types.StepWaitingLERUpdate, currentStep(t, store))
+}
+
 // TestEngineNotABridge pins that a tx which exists but is not a bridge transaction (reverted,
 // or emitted no BridgeEvent) is marked as terminally failed immediately, with no retries: the
 // receipt is already final, so waiting cannot change the outcome
@@ -191,6 +233,27 @@ func TestEngineNotABridge(t *testing.T) {
 	require.NotNil(t, errStep)
 	require.Equal(t, types.StepErrorPermanent, errStep.ErrorType)
 	require.Equal(t, 0, errStep.RetryCount, "no retries: an already-mined tx cannot change on retry")
+	require.Empty(t, mustGetTrackerActives(t, store), "failed bridges must leave the active list")
+}
+
+// TestEngineSourceUnavailable pins that a network with no source configured to resolve it
+// (e.g. no JSON-RPC client) is marked as terminally failed immediately, with no retries: the
+// gap is a static configuration fact, so waiting cannot change the outcome
+func TestEngineSourceUnavailable(t *testing.T) {
+	f := &fakeSources{bridgeErr: ErrSourceUnavailable}
+	engine, store, _ := newTestEngine(t, f)
+
+	mustRegister(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+
+	engine.tick(t.Context())
+	tracking := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.Equal(t, types.TrackingStatusError, tracking.TrackingStatus())
+	require.Nil(t, tracking.Info())
+	require.True(t, tracking.Failed())
+	errStep := tracking.Error()
+	require.NotNil(t, errStep)
+	require.Equal(t, types.StepErrorPermanent, errStep.ErrorType)
+	require.Equal(t, 0, errStep.RetryCount, "no retries: a missing source cannot change on retry")
 	require.Empty(t, mustGetTrackerActives(t, store), "failed bridges must leave the active list")
 }
 
@@ -349,6 +412,46 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	require.Empty(t, mustGetTrackerActives(t, store))
 }
 
+// TestEngineIncrementalResolution pins that resolution is incremental: once the bridge tx and
+// a milestone step are resolved and persisted, later ticks skip their sources entirely — the
+// engine only queries the facts the bridge is still waiting on
+func TestEngineIncrementalResolution(t *testing.T) {
+	f := &fakeSources{bridge: l2ToL2Bridge()}
+	engine, store, _ := newTestEngine(t, f)
+
+	mustRegister(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+
+	// walk the bridge up to WaitingClaim: every milestone but the claim is done
+	f.originLER = &types.LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0a"), BlockNumber: 10}
+	f.cert = &types.CertificateData{CertificateID: common.HexToHash("0x01"), Status: agglayertypes.Settled}
+	injectedGER := common.HexToHash("0x04")
+	f.injectedGER = &types.GERData{NetworkID: 2, GER: &injectedGER, LERType: types.LERTypeLocal}
+	engine.tick(t.Context())
+	require.Equal(t, types.StepWaitingClaim, currentStep(t, store))
+
+	// break every already-resolved source: if any of them were queried again, FindBridge would
+	// fail the tx resolution and DeriveStep would persist a step-level error
+	f.bridgeErr = ErrBridgeTxNotFound
+	f.bridge = nil
+	f.originLERErr = errSourceDown
+	f.originLER = nil
+	f.certErr = errSourceDown
+	f.cert = nil
+	f.injectedErr = errSourceDown
+	f.injectedGER = nil
+
+	engine.tick(t.Context())
+	tracking := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.Nil(t, tracking.Error(), "done milestones must not be re-queried")
+	require.Equal(t, types.StepWaitingClaim, currentStep(t, store))
+
+	// the bridge still finishes through the only remaining fact, the claim
+	f.claim = &types.ClaimResult{ClaimTx: common.HexToHash("0x03"), BlockNumber: 30}
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.Equal(t, types.TrackingStatusFinished, tracking.TrackingStatus())
+}
+
 // TestEngineL1ToL2Path pins that L1-originated bridges skip the certificate and LER steps
 func TestEngineL1ToL2Path(t *testing.T) {
 	f := &fakeSources{bridge: &BridgeInfo{
@@ -443,6 +546,40 @@ func TestEngineStepDates(t *testing.T) {
 	require.Equal(t, transition, *allSteps[0].EndDate)
 	require.Equal(t, types.StepStatusInProgress, allSteps[1].Status)
 	require.Equal(t, transition, *allSteps[1].StartDate)
+}
+
+// TestEngineResolutionPublishesFullRoute pins that resolving the bridge tx publishes its
+// whole expected path at once (all steps pending, the first in progress) — the resolved type
+// reveals the route, so clients see the full way to walk even if every fact source is down
+// and no milestone can be derived yet
+func TestEngineResolutionPublishesFullRoute(t *testing.T) {
+	f := &fakeSources{bridge: l2ToL2Bridge(), originLERErr: errSourceDown}
+	engine, store, _ := newTestEngine(t, f)
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	mustRegister(t, store, id)
+	engine.tick(t.Context())
+
+	tracking := mustGet(t, store, id)
+	require.NotNil(t, tracking.Info(), "the tx resolved even though the step derivation failed")
+	allSteps := tracking.AllSteps()
+	expectedPath := domain.ExpectedPath(types.BridgeTypeL2ToL2)
+	require.Len(t, allSteps, len(expectedPath), "the whole route is visible from resolution")
+	for i, sp := range allSteps {
+		require.Equal(t, expectedPath[i], sp.Step)
+	}
+	// the first step carries the derivation failure; the rest of the route is pending
+	require.Equal(t, types.StepStatusError, allSteps[0].Status)
+	require.NotNil(t, allSteps[0].Error)
+	for _, sp := range allSteps[1:] {
+		require.Equal(t, types.StepStatusPending, sp.Status)
+	}
+
+	// the source recovers: the route is walked normally from where it stood
+	f.originLERErr = nil
+	f.originLER = &types.LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0a"), BlockNumber: 10}
+	engine.tick(t.Context())
+	require.Equal(t, types.StepPendingInclusion, currentStep(t, store))
 }
 
 // TestEngineTransientErrorKeepsState pins that a transient source failure neither publishes

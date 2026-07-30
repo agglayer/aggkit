@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
 )
@@ -21,12 +22,13 @@ type SupervisedStore interface {
 	// which case it creates a fresh entry (Registered, with a nil BridgeStatus) and returns it
 	Get(id TrackingID, createIfNotExists bool) (*TrackingData, error)
 
-	// UpdateTrackingBridgeTx overwrites the tx-level lifecycle flag and facts of a supervised
-	// bridge (trackingStatus, Status, Error, Info) and notifies subscribers with the resulting
-	// snapshot; AllSteps is untouched by this call (see UpdateTrackingStep). It is a no-op if
-	// both are identical to what is already stored. Returns ErrTrackingNotFound if the bridge
-	// is not in the supervised list — unlike Get, it never creates the entry
-	UpdateTrackingBridgeTx(id TrackingID, trackingStatus types.TrackingStatus, tx TrackingBridgeTx) error
+	// UpdateTrackingBridgeTx overwrites the tx-level facts of a supervised bridge (Error,
+	// Info, StartDate, Timeout) and notifies subscribers with the resulting snapshot;
+	// AllSteps is untouched by this call (see UpdateTrackingStep) and TrackingStatus needs no
+	// writing at all, it is derived from the snapshot (see TrackingData.TrackingStatus). It
+	// is a no-op if tx is identical to what is already stored. Returns ErrTrackingNotFound if
+	// the bridge is not in the supervised list — unlike Get, it never creates the entry
+	UpdateTrackingBridgeTx(id TrackingID, tx TrackingBridgeTx) error
 
 	// UpdateTrackingStep replaces the step at stepIndex in the bridge's expected path,
 	// growing AllSteps if stepIndex is beyond its current length. Unlike
@@ -47,6 +49,15 @@ type SupervisedStore interface {
 
 	// GetNumTracker returns the number of supervised bridges
 	GetNumTracker() int
+
+	// PruneTerminal forgets the supervised bridges that reached a terminal state — Finished,
+	// or the tracker gave up resolving them (Failed) — before olderThan, returning how many
+	// were forgotten. A forgotten bridge is gone as if it had never been requested: a later
+	// Get with createIfNotExists re-registers it and tracking starts from scratch, which is
+	// how a client retries a bridge the tracker gave up on. Terminal snapshots stay queryable
+	// until they are pruned, so clients observe the final TrackingStatus during the whole
+	// retention window
+	PruneTerminal(olderThan time.Time) (int, error)
 }
 
 // StatusNotifier is the driven port push consumers (the WebSocket handler) use to follow a

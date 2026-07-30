@@ -39,10 +39,26 @@ func (t TrackingBridgeTx) IsDone() bool {
 	return t.Info != nil && t.Error == nil
 }
 
-// IsDead reports whether tstamp is past the point where the tracker gives up on resolving
+// IsInPermanentError reports whether the tx-level Error is permanent: retrying cannot change
+// the outcome (e.g. the tx exists but is not a bridge transaction)
+func (t TrackingBridgeTx) IsInPermanentError() bool {
+	return t.Error != nil && t.Error.ErrorType == types.StepErrorPermanent
+}
+
+// IsInTerminalError reports whether the tx-level Error is one the tracker will not retry:
+// permanent, or exhausted (it gave up after Timeout). A transient error still being retried
+// is not terminal. It is the fact TrackingStatus derives Error from while AllSteps is not
+// resolved yet
+func (t TrackingBridgeTx) IsInTerminalError() bool {
+	return t.IsInPermanentError() || (t.Error != nil && t.Error.ErrorType == types.StepErrorExhausted)
+}
+
+// IsOutdated reports whether tstamp is past the point where the tracker gives up on resolving
 // the bridge: Timeout has elapsed since StartDate. False while StartDate is still zero (the
-// tracker has not started counting yet). Mirrors the give-up check in Engine.handleUnresolved
-func (t TrackingBridgeTx) IsDead(tstamp time.Time) bool {
+// tracker has not started counting yet). It is the give-up check of Engine.handleUnresolved,
+// which records the death as an Exhausted Error — the persisted fact TrackingStatus derives
+// Error from
+func (t TrackingBridgeTx) IsOutdated(tstamp time.Time) bool {
 	if t.StartDate.IsZero() {
 		return false
 	}

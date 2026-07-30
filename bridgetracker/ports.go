@@ -43,6 +43,13 @@ var ErrBridgeTxNotFound = errors.New("bridge tx not found")
 // marks the bridge as terminally failed immediately, with no retries
 var ErrBridgeTxNotABridge = errors.New("tx is not a bridge transaction")
 
+// ErrSourceUnavailable is returned by BridgeEventSource.FindBridge when the bridge's origin
+// network has no source configured to resolve it (e.g. no JSON-RPC client for a
+// statically-configured network): like ErrBridgeTxNotABridge, this is a permanent condition
+// that retrying cannot change, so the engine marks the bridge as terminally failed
+// immediately, with no retries
+var ErrSourceUnavailable = errors.New("bridge source unavailable")
+
 // BridgeInfo holds the immutable facts of a bridge, resolved once from its creation tx
 type BridgeInfo = domain.BridgeInfo
 
@@ -50,8 +57,9 @@ type BridgeInfo = domain.BridgeInfo
 // its origin network (RPC receipt or bridge service, resolved per network via the finder)
 type BridgeEventSource interface {
 	// FindBridge returns the facts of the bridge created by the tx, ErrBridgeTxNotFound if
-	// the tx does not exist yet, or ErrBridgeTxNotABridge if it exists but is definitely not
-	// a bridge transaction. Other errors are transient
+	// the tx does not exist yet, ErrBridgeTxNotABridge if it exists but is definitely not
+	// a bridge transaction, or ErrSourceUnavailable if the origin network has no source
+	// configured to resolve it. Other errors are transient
 	FindBridge(ctx context.Context, id TrackingID) (*BridgeInfo, error)
 }
 

@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -12,6 +13,8 @@ import (
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
 	trackertypes "github.com/agglayer/aggkit/bridgetracker/types"
+	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -187,6 +190,53 @@ func (s staticURLs) GetURL(networkID uint32) (bridgeservicefinder.NetworkURLs, e
 		return bridgeservicefinder.NetworkURLs{}, bridgeservicefinder.ErrURLNotFound
 	}
 	return urls, nil
+}
+
+// TestFinderClients pins the finder-backed EthClientResolver: overrides win without asking
+// the finder, resolved URLs are dialed once and cached, and unresolvable networks are a
+// transient failure (not ErrSourceUnavailable, which the engine treats as permanent)
+func TestFinderClients(t *testing.T) {
+	t.Parallel()
+
+	override := mocks.NewBaseEthereumClienter(t)
+	dialed := mocks.NewBaseEthereumClienter(t)
+
+	urls := staticURLs{
+		1: bridgeservicefinder.NetworkURLs{JSONRPCURL: "http://rpc-1"},
+		3: bridgeservicefinder.NetworkURLs{BridgeURL: "http://bridge-3"}, // no JSON-RPC URL
+	}
+	fc := NewFinderClients(log.WithFields("module", "sources_test"), urls, StaticClients{0: override})
+
+	dialCalls := 0
+	fc.dial = func(_ context.Context, url string) (aggkittypes.BaseEthereumClienter, error) {
+		dialCalls++
+		require.Equal(t, "http://rpc-1", url)
+		return dialed, nil
+	}
+
+	// overrides win and never ask the finder (network 0 is not in urls)
+	c, err := fc.ClientFor(context.Background(), 0)
+	require.NoError(t, err)
+	require.Same(t, override, c)
+	require.Zero(t, dialCalls)
+
+	// a finder-resolved network dials once; later calls reuse the cached client
+	c, err = fc.ClientFor(context.Background(), 1)
+	require.NoError(t, err)
+	require.Same(t, dialed, c)
+	c, err = fc.ClientFor(context.Background(), 1)
+	require.NoError(t, err)
+	require.Same(t, dialed, c)
+	require.Equal(t, 1, dialCalls)
+
+	// a network the finder does not know is transient: the finder may discover it later
+	_, err = fc.ClientFor(context.Background(), 2)
+	require.ErrorIs(t, err, bridgeservicefinder.ErrURLNotFound)
+	require.NotErrorIs(t, err, bridgetracker.ErrSourceUnavailable)
+
+	// a network resolved without JSON-RPC endpoint is also an error
+	_, err = fc.ClientFor(context.Background(), 3)
+	require.ErrorContains(t, err, "no JSON-RPC URL resolved for network 3")
 }
 
 func TestGERSourceOriginGER(t *testing.T) {

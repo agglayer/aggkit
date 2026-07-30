@@ -147,7 +147,7 @@ func runProxy(
 // per-network sources.
 func runTracker(
 	ctx context.Context,
-	_ *proxyconfig.Config,
+	cfg *proxyconfig.Config,
 	finder bridgeservicefinder.Finder,
 	configSHA1 string,
 	l1Client aggkittypes.EthClienter,
@@ -155,21 +155,23 @@ func runTracker(
 ) {
 	registry := bridgetracker.NewMemoryRegistry()
 
-	tracker := bridgetracker.New(&bridgetracker.Config{
-		Logger:     log.WithFields("module", "bridgetracker"),
-		ConfigSHA1: configSHA1,
-		Registry:   registry,
-	})
+	trackerCfg := cfg.Tracker
+	trackerCfg.Logger = log.WithFields("module", "bridgetracker")
+	trackerCfg.ConfigSHA1 = configSHA1
+	trackerCfg.Registry = registry
+	tracker := bridgetracker.New(&trackerCfg)
 
-	// L1 (network 0) resolves through the proxy's own L1 client; L2-originated bridges are
-	// not supported yet (see bridgetracker/sources doc)
-	bridgeEvents, err := sources.NewBridgeEventSource(sources.StaticClients{0: l1Client})
+	// Per-network JSON-RPC clients resolve through the finder; L1 (network 0) is pinned to
+	// the proxy's own L1 client, which carries the configured retry policy
+	rpcClients := sources.NewFinderClients(
+		log.WithFields("module", "bridgetracker-rpcclients"), finder, sources.StaticClients{0: l1Client})
+	bridgeEvents, err := sources.NewBridgeEventSource(rpcClients)
 	if err != nil {
 		log.Fatalf("failed to create bridge event source: %v", err)
 	}
 
 	engine, err := bridgetracker.NewEngine(
-		bridgetracker.EngineConfig{},
+		bridgetracker.EngineConfig{RetentionPeriod: trackerCfg.RetentionPeriod.Duration},
 		log.WithFields("module", "bridgetracker-engine"),
 		registry,
 		bridgetracker.EngineSources{

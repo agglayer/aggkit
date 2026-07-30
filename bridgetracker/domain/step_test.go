@@ -70,6 +70,7 @@ func TestDeriveStep(t *testing.T) {
 		originNetwork       uint32
 		destinationNetwork  uint32
 		facts               fakeFacts
+		prevSteps           []types.BridgeStepPath
 		expectedStep        types.BridgeStep
 		expectedQueried     []string
 		expectedGERUpdate   *types.GERUpdateResult
@@ -196,6 +197,61 @@ func TestDeriveStep(t *testing.T) {
 			expectedInjectedGER: &types.InjectedGERResult{GER: common.Hash{1}},
 			expectedClaim:       claim,
 		},
+		{
+			name:               "L1->L2 with GER update already done skips OriginGER",
+			originNetwork:      0,
+			destinationNetwork: 1,
+			facts:              fakeFacts{},
+			prevSteps: []types.BridgeStepPath{
+				{Step: types.StepWaitingGERUpdate, Status: types.StepStatusDone},
+				{Step: types.StepWaitingGERInjection, Status: types.StepStatusInProgress},
+			},
+			expectedStep:    types.StepWaitingGERInjection,
+			expectedQueried: []string{"injectedGER"},
+		},
+		{
+			name:               "L2->L2 with every milestone done but the claim only queries the claim",
+			originNetwork:      1,
+			destinationNetwork: 2,
+			facts:              fakeFacts{claim: claim},
+			prevSteps: []types.BridgeStepPath{
+				{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone},
+				{Step: types.StepPendingInclusion, Status: types.StepStatusDone},
+				{Step: types.StepCertificatePending, Status: types.StepStatusDone},
+				{Step: types.StepCertificateProcessing, Status: types.StepStatusDone},
+				{Step: types.StepWaitingGERInjection, Status: types.StepStatusDone},
+				{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress},
+			},
+			expectedStep:    types.StepClaimed,
+			expectedQueried: []string{"claimFor"},
+			expectedClaim:   claim,
+		},
+		{
+			name:               "certificate keeps being queried while CertificateProcessing is not done",
+			originNetwork:      1,
+			destinationNetwork: 0,
+			facts: fakeFacts{
+				certificate: &types.CertificateData{Status: agglayertypes.Pending},
+			},
+			prevSteps: []types.BridgeStepPath{
+				{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone},
+				{Step: types.StepPendingInclusion, Status: types.StepStatusDone},
+				{Step: types.StepCertificatePending, Status: types.StepStatusInProgress},
+			},
+			expectedStep:    types.StepCertificatePending,
+			expectedQueried: []string{"certificate"},
+		},
+		{
+			name:               "an in-progress step is still queried",
+			originNetwork:      1,
+			destinationNetwork: 0,
+			facts:              fakeFacts{},
+			prevSteps: []types.BridgeStepPath{
+				{Step: types.StepWaitingLERUpdate, Status: types.StepStatusInProgress},
+			},
+			expectedStep:    types.StepWaitingLERUpdate,
+			expectedQueried: []string{"originLER"},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -203,7 +259,7 @@ func TestDeriveStep(t *testing.T) {
 			t.Parallel()
 
 			res, err := DeriveStep(context.Background(),
-				tc.originNetwork, tc.destinationNetwork, &tc.facts)
+				tc.originNetwork, tc.destinationNetwork, &tc.facts, tc.prevSteps)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedStep, res.Step)
 			require.Equal(t, tc.expectedQueried, tc.facts.queried)
@@ -276,7 +332,7 @@ func TestDeriveStepErrors(t *testing.T) {
 			t.Parallel()
 
 			_, err := DeriveStep(context.Background(),
-				tc.originNetwork, tc.destinationNetwork, &tc.facts)
+				tc.originNetwork, tc.destinationNetwork, &tc.facts, nil)
 			require.ErrorIs(t, err, factsErr)
 			require.ErrorContains(t, err, tc.expectedErr)
 		})

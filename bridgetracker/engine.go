@@ -21,6 +21,12 @@ const (
 	// (FindBridge succeeding) before it is marked as terminally failed, regardless of why it
 	// hasn't resolved (the tx may not be mined yet, or a source keeps failing transiently)
 	DefaultEngineUnresolvedTimeout = 30 * time.Second
+	// DefaultEngineRetentionPeriod is the default time a terminal bridge (Finished, or failed
+	// to ever resolve) stays queryable before being forgotten. Clients polling or subscribed
+	// observe the terminal TrackingStatus during this window; once forgotten, a new request
+	// for the same tx re-registers it and tracking restarts from scratch — the retry path for
+	// a tx the tracker gave up on
+	DefaultEngineRetentionPeriod = 10 * time.Minute
 )
 
 // EngineConfig holds the tracking engine tunables. Zero values take the defaults above
@@ -33,6 +39,9 @@ type EngineConfig struct {
 	// have FindBridge succeed before it is marked terminally failed (TrackingStatus becomes
 	// Error, with an exhausted ErrorStep explaining why)
 	UnresolvedTimeout time.Duration
+	// RetentionPeriod is how long a terminal bridge stays queryable before being forgotten
+	// (see DefaultEngineRetentionPeriod)
+	RetentionPeriod time.Duration
 }
 
 // withDefaults returns cfg with every zero-value tunable replaced by its default
@@ -45,6 +54,9 @@ func (cfg EngineConfig) withDefaults() EngineConfig {
 	}
 	if cfg.UnresolvedTimeout <= 0 {
 		cfg.UnresolvedTimeout = DefaultEngineUnresolvedTimeout
+	}
+	if cfg.RetentionPeriod <= 0 {
+		cfg.RetentionPeriod = DefaultEngineRetentionPeriod
 	}
 	return cfg
 }
@@ -121,7 +133,8 @@ func (e *Engine) Start(ctx context.Context) {
 	}()
 }
 
-// tick runs one resolution round over the supervised list
+// tick runs one resolution round over the supervised list, then forgets the terminal
+// entries whose retention has elapsed (see EngineConfig.RetentionPeriod)
 func (e *Engine) tick(ctx context.Context) {
 	active, err := e.store.GetTrackerActives(nil)
 	if err != nil {
@@ -136,11 +149,22 @@ func (e *Engine) tick(ctx context.Context) {
 		}
 		e.resolveBridgeStep(ctx, tracking)
 	}
+
+	pruned, err := e.store.PruneTerminal(e.now().Add(-e.cfg.RetentionPeriod))
+	if err != nil {
+		e.logger.Warnf("failed to prune terminal bridges: %v", err)
+		return
+	}
+	if pruned > 0 {
+		e.logger.Infof("forgot %d terminal bridges past the %s retention", pruned, e.cfg.RetentionPeriod)
+	}
 }
 
-// resolveBridgeStep resolves one step of progress for a bridge: FindBridge if its facts are
-// not yet known, then domain.DeriveStep for whichever step is currently unmet (it naturally
-// stops at the first one). A source failure is persisted as a step-level error instead of
+// resolveBridgeStep resolves one step of progress for a bridge, incrementally: FindBridge
+// only if its facts are not yet known (once resolved they are persisted and skipped on later
+// ticks), then domain.DeriveStep for whichever step is currently unmet — milestones already
+// persisted as done are not re-queried, only the pending ones are (it naturally stops at the
+// first unmet one). A source failure is persisted as a step-level error instead of
 // only being logged — see persistStepError. On success, all mutations for the tick are merged
 // into a single tx, committed through exactly one UpdateTrackingBridgeTx call (preceded by
 // the step writes, if any changed) so subscribers see one consistent, fully-merged snapshot
@@ -152,40 +176,43 @@ func (e *Engine) resolveBridgeStep(ctx context.Context, tracking *domain.Trackin
 	id := tracking.ID()
 	tx := tracking.BridgeTx()
 
-	info, err := e.resolveBridgeTx(ctx, tracking)
+	info, lastSteps, err := e.resolveBridgeTx(ctx, tracking)
 	if err != nil {
 		e.logger.Debugf("resolving bridge %s fails", id)
 		return err
 	}
-	// resolveBridgeTx persists its own tx update to the store; keep the local copy in sync so
+	// resolveBridgeTx persists its own updates to the store; keep the local copy in sync so
 	// persistStepError/persist below don't overwrite it with the stale pre-call Info/Error
 	tx.Info = info
 	tx.Error = nil
 
-	allSteps, err := e.computeAllSteps(ctx, info, tracking.AllSteps())
+	allSteps, err := e.computeAllSteps(ctx, info, lastSteps)
 	if err != nil {
-		// tx is committed regardless: it may carry a freshly resolved Info even though this
-		// tick's step failed, and the next tick must not re-resolve it via FindBridge
-		e.persistStepError(id, tx, info, tracking, err)
+		e.persistStepError(id, tx, lastSteps, err)
 		return err
 	}
 
-	if !reflect.DeepEqual(tracking.AllSteps(), allSteps) {
-		e.persist(id, tracking.RawTrackingStatus(), tx, allSteps)
+	if !reflect.DeepEqual(lastSteps, allSteps) {
+		return e.persist(id, tx, allSteps)
 	}
 	return nil
 }
 
-// resolveBridgeTx returns the bridge's resolved facts, calling FindBridge and persisting the
-// result if they are not yet known (or a previous resolution attempt left an outstanding
-// Error to retry)
-func (e *Engine) resolveBridgeTx(ctx context.Context, tracking *domain.TrackingData) (*BridgeInfo, error) {
+// resolveBridgeTx returns the bridge's resolved facts and its current expected path, calling
+// FindBridge and persisting the result if they are not yet known (or a previous resolution
+// attempt left an outstanding Error to retry). The resolved bridge type reveals the full
+// route, so a first resolution persists the tx together with the whole path as pending steps
+// (domain.PendingPath) in one batch: clients see the complete way the bridge will walk from
+// the very moment it resolves, before any milestone has been checked
+func (e *Engine) resolveBridgeTx(
+	ctx context.Context, tracking *domain.TrackingData,
+) (*BridgeInfo, []types.BridgeStepPath, error) {
 	if tracking == nil {
-		return nil, errors.New("nil tracking data")
+		return nil, nil, errors.New("nil tracking data")
 	}
 	tx := tracking.BridgeTx()
 	if tx.IsDone() {
-		return tx.Info, nil
+		return tx.Info, tracking.AllSteps(), nil
 	}
 	id := tracking.ID()
 	if tx.StartDate.IsZero() {
@@ -198,48 +225,45 @@ func (e *Engine) resolveBridgeTx(ctx context.Context, tracking *domain.TrackingD
 	switch {
 	case errors.Is(err, ErrBridgeTxNotFound):
 		// the tx may simply not be mined yet: give it until Timeout before giving up
-		e.handleUnresolved(id, tracking.RawTrackingStatus(), tx, fmt.Sprintf("%s does not exist on the network", id))
-		return nil, err
-	case errors.Is(err, ErrBridgeTxNotABridge):
-		// permanent: the tx exists and definitively is not a bridge tx, retrying cannot
-		// change that
-		e.handleNotABridge(id, tx, err)
-		return nil, err
+		e.handleUnresolved(id, tx, fmt.Sprintf("%s does not exist on the network", id))
+		return nil, nil, err
+	case errors.Is(err, ErrBridgeTxNotABridge), errors.Is(err, ErrSourceUnavailable):
+		// permanent: either the tx exists and definitively is not a bridge tx, or the origin
+		// network has no source configured to resolve it — retrying cannot change either
+		e.handlePermanentFailure(id, tx, err)
+		return nil, nil, err
 	case err != nil:
-		e.handleUnresolved(id, tracking.RawTrackingStatus(), tx, err.Error())
-		return nil, err
+		e.handleUnresolved(id, tx, err.Error())
+		return nil, nil, err
 	}
 	tx.Info = info
 	tx.Error = nil
-	if err := e.store.UpdateTrackingBridgeTx(id, tracking.RawTrackingStatus(), tx); err != nil {
-		e.logger.Warnf("failed to persist bridge %s: %v", id, err)
-		return nil, err
+	allSteps := tracking.AllSteps()
+	if allSteps == nil {
+		allSteps = domain.PendingPath(info.BridgeType(), e.now())
 	}
-	return info, nil
+	if err := e.persist(id, tx, allSteps); err != nil {
+		return nil, nil, err
+	}
+	return info, allSteps, nil
 }
 
-// persistStepError marks the bridge's current step (or, for a bridge resolved for the first
-// time this tick, the first step of its expected path) as failed, incrementing its retry
-// count instead of silently discarding a transient source failure. A later successful
-// resolution clears it automatically: BuildSteps never carries an old step's Error forward
+// persistStepError marks the bridge's current step as failed, incrementing its retry count
+// instead of silently discarding a transient source failure. lastSteps is the bridge's
+// current expected path, always populated by resolveBridgeTx before any step is derived. A
+// later successful resolution clears the error automatically: BuildSteps never carries an
+// old step's Error forward
 func (e *Engine) persistStepError(
-	id TrackingID, tx domain.TrackingBridgeTx, info *BridgeInfo, tracking *domain.TrackingData, causeErr error,
+	id TrackingID, tx domain.TrackingBridgeTx, lastSteps []types.BridgeStepPath, causeErr error,
 ) {
 	e.logger.Warnf("failed to resolve a step of bridge %s: %v", id, causeErr)
 
-	allSteps := tracking.AllSteps()
 	stepIndex := 0
-	if allSteps == nil {
-		path := domain.ExpectedPath(info.BridgeType())
-		allSteps = make([]types.BridgeStepPath, len(path))
-		for i, step := range path {
-			allSteps[i] = types.BridgeStepPath{Step: step, Status: types.StepStatusPending}
-		}
-	} else {
-		stepIndex = *tracking.StepIndex()
+	if idx := domain.NewTrackingData(id, tx, lastSteps).StepIndex(); idx != nil {
+		stepIndex = *idx
 	}
 
-	current := allSteps[stepIndex]
+	current := lastSteps[stepIndex]
 	retryCount, description := 1, []string{causeErr.Error()}
 	if current.Error != nil {
 		retryCount = current.Error.RetryCount + 1
@@ -256,39 +280,37 @@ func (e *Engine) persistStepError(
 		e.logger.Warnf("failed to persist step error of bridge %s: %v", id, err)
 		return
 	}
-	if err := e.store.UpdateTrackingBridgeTx(id, tracking.RawTrackingStatus(), tx); err != nil {
+	if err := e.store.UpdateTrackingBridgeTx(id, tx); err != nil {
 		e.logger.Warnf("failed to persist bridge %s: %v", id, err)
 	}
 }
 
 // persist writes allSteps (UpdateTrackingStep, silent) then tx (UpdateTrackingBridgeTx, which
 // notifies) as a single commit, so subscribers see one consistent, fully-merged snapshot
-// instead of one partial notification per field
-func (e *Engine) persist(
-	id TrackingID, trackingStatus types.TrackingStatus, tx domain.TrackingBridgeTx,
-	allSteps []types.BridgeStepPath,
-) {
+// instead of one partial notification per field. Failures are logged here; the returned
+// error lets callers abort the tick for this bridge
+func (e *Engine) persist(id TrackingID, tx domain.TrackingBridgeTx, allSteps []types.BridgeStepPath) error {
 	for i, step := range allSteps {
 		if err := e.store.UpdateTrackingStep(id, uint(i), step); err != nil {
 			e.logger.Warnf("failed to persist step %d of bridge %s: %v", i, id, err)
-			return
+			return err
 		}
 	}
 
-	if err := e.store.UpdateTrackingBridgeTx(id, trackingStatus, tx); err != nil {
+	if err := e.store.UpdateTrackingBridgeTx(id, tx); err != nil {
 		e.logger.Warnf("failed to persist status of bridge %s: %v", id, err)
+		return err
 	}
+	return nil
 }
 
 // handleUnresolved records a FindBridge failure (the tx not found yet, or any other transient
 // source error) on the bridge's tx-level Error field, accumulating its retry count, and gives
-// up (TrackingStatus becomes Error) once Timeout has elapsed since the bridge was first seen
-// unresolved (StartDate) — regardless of the specific cause, so a source that keeps failing
-// transiently doesn't retry forever. trackingStatus is the bridge's current raw status,
-// carried through unchanged unless the bridge is now given up on
-func (e *Engine) handleUnresolved(
-	id TrackingID, trackingStatus types.TrackingStatus, tx domain.TrackingBridgeTx, cause string,
-) {
+// up once Timeout has elapsed since the bridge was first seen unresolved (StartDate) —
+// regardless of the specific cause, so a source that keeps failing transiently doesn't retry
+// forever. Giving up is expressed purely through the Error's type turning Exhausted:
+// TrackingStatus derives Error from it (see TrackingData.TrackingStatus)
+func (e *Engine) handleUnresolved(id TrackingID, tx domain.TrackingBridgeTx, cause string) {
 	retryCount, description := 1, []string{cause}
 	if tx.Error != nil {
 		retryCount = tx.Error.RetryCount + 1
@@ -296,9 +318,8 @@ func (e *Engine) handleUnresolved(
 	}
 
 	errorType := types.StepErrorTransient
-	if e.now().Sub(tx.StartDate) >= tx.Timeout {
+	if tx.IsOutdated(e.now()) {
 		e.logger.Infof("%s not resolved after %s, marking as failed", id, tx.Timeout)
-		trackingStatus = types.TrackingStatusError
 		errorType = types.StepErrorExhausted
 	}
 
@@ -308,24 +329,26 @@ func (e *Engine) handleUnresolved(
 		Description: description,
 	}
 
-	if err := e.store.UpdateTrackingBridgeTx(id, trackingStatus, tx); err != nil {
+	if err := e.store.UpdateTrackingBridgeTx(id, tx); err != nil {
 		e.logger.Warnf("failed to persist bridge %s: %v", id, err)
 	}
 }
 
-// handleNotABridge marks a bridge as terminally failed because its creating tx exists but is
-// definitely not a bridge transaction (reverted, or mined without emitting a BridgeEvent
-// log). Unlike handleUnresolved, there is no grace period: retrying an already-mined tx
-// cannot change the outcome
-func (e *Engine) handleNotABridge(id TrackingID, tx domain.TrackingBridgeTx, causeErr error) {
-	e.logger.Infof("%s is not a bridge transaction, marking as failed: %v", id, causeErr)
+// handlePermanentFailure marks a bridge as terminally failed because FindBridge returned an
+// error that retrying cannot fix: its creating tx exists but is definitely not a bridge
+// transaction (reverted, or mined without emitting a BridgeEvent log), or its origin network
+// has no source configured to resolve it. Unlike handleUnresolved, there is no grace period.
+// The Permanent error type is what makes TrackingStatus derive Error (see TrackingData.
+// TrackingStatus)
+func (e *Engine) handlePermanentFailure(id TrackingID, tx domain.TrackingBridgeTx, causeErr error) {
+	e.logger.Infof("%s failed permanently, marking as failed: %v", id, causeErr)
 
 	tx.Error = &types.ErrorStep{
 		ErrorType:   types.StepErrorPermanent,
 		Description: []string{causeErr.Error()},
 	}
 
-	if err := e.store.UpdateTrackingBridgeTx(id, types.TrackingStatusError, tx); err != nil {
+	if err := e.store.UpdateTrackingBridgeTx(id, tx); err != nil {
 		e.logger.Warnf("failed to persist bridge %s: %v", id, err)
 	}
 }
@@ -333,12 +356,14 @@ func (e *Engine) handleNotABridge(id TrackingID, tx domain.TrackingBridgeTx, cau
 // computeAllSteps builds the expected path of a resolved bridge from the fact sources;
 // TrackingStatus and step index are not computed here, TrackingData derives them from the
 // returned steps. The bridge's public BridgeStatus is derived separately, from info alone
-// (see api.BridgeStatus)
+// (see api.BridgeStatus). Resolution is incremental: lastAllSteps (as persisted by the
+// previous tick) tells DeriveStep which milestones are already done so their sources are
+// not queried again
 func (e *Engine) computeAllSteps(
 	ctx context.Context, info *BridgeInfo, lastAllSteps []types.BridgeStepPath,
 ) ([]types.BridgeStepPath, error) {
 	res, err := domain.DeriveStep(ctx, info.NetworkID, info.DestinationNetwork,
-		&bridgeFacts{sources: e.sources, bridge: info})
+		&bridgeFacts{sources: e.sources, bridge: info}, lastAllSteps)
 	if err != nil {
 		return nil, err
 	}

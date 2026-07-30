@@ -20,6 +20,9 @@ import (
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
 	"github.com/agglayer/aggkit/bridgetracker/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/etherman"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
@@ -35,15 +38,81 @@ type EthClientResolver interface {
 }
 
 // StaticClients is a fixed networkID -> client EthClientResolver (e.g. {0: the proxy's L1
-// client}). Networks absent from the map resolve to an error, retried by the engine
+// client}). The map never changes at runtime, so a network absent from it resolves to a
+// permanent bridgetracker.ErrSourceUnavailable, not retried by the engine
 type StaticClients map[uint32]aggkittypes.BaseEthereumClienter
 
 // ClientFor implements EthClientResolver
 func (s StaticClients) ClientFor(_ context.Context, networkID uint32) (aggkittypes.BaseEthereumClienter, error) {
 	c, ok := s[networkID]
 	if !ok {
-		return nil, fmt.Errorf("no JSON-RPC client configured for network %d", networkID)
+		return nil, fmt.Errorf("%w: no JSON-RPC client configured for network %d",
+			bridgetracker.ErrSourceUnavailable, networkID)
 	}
+	return c, nil
+}
+
+// FinderClients is an EthClientResolver that resolves each network's JSON-RPC endpoint
+// through the bridgeservicefinder and dials (and caches, keyed by URL) one client per
+// endpoint. Overrides pin specific networks to pre-built clients — e.g. {0: the binary's L1
+// client, which carries its own retry configuration} — and are never asked to the finder.
+//
+// Unlike StaticClients, a network the finder cannot resolve is a transient failure (no
+// bridgetracker.ErrSourceUnavailable): the finder discovers rollups live, so the engine
+// keeps retrying until the network appears or the bridge exhausts its timeout
+type FinderClients struct {
+	finder    NetworkURLResolver
+	overrides StaticClients
+
+	mu      sync.Mutex
+	clients map[string]aggkittypes.BaseEthereumClienter
+	// dial builds the client of one URL, injectable for tests
+	dial func(ctx context.Context, url string) (aggkittypes.BaseEthereumClienter, error)
+}
+
+// NewFinderClients returns a FinderClients resolving per-network JSON-RPC endpoints through
+// finder, with overrides (may be nil) taking precedence
+func NewFinderClients(
+	logger aggkitcommon.Logger, finder NetworkURLResolver, overrides StaticClients,
+) *FinderClients {
+	return &FinderClients{
+		finder:    finder,
+		overrides: overrides,
+		clients:   make(map[string]aggkittypes.BaseEthereumClienter),
+		dial: func(ctx context.Context, url string) (aggkittypes.BaseEthereumClienter, error) {
+			cfg := ethermanconfig.NewDefaultRPCClientConfig()
+			cfg.URL = url
+			return etherman.NewRPCClient(ctx, logger, *cfg)
+		},
+	}
+}
+
+// ClientFor implements EthClientResolver. URLs are re-resolved on every call (the finder
+// refreshes them from on-chain events); the cache only avoids re-dialing a stable URL
+func (f *FinderClients) ClientFor(ctx context.Context, networkID uint32) (aggkittypes.BaseEthereumClienter, error) {
+	if c, ok := f.overrides[networkID]; ok {
+		return c, nil
+	}
+
+	urls, err := f.finder.GetURL(networkID)
+	if err != nil {
+		return nil, fmt.Errorf("resolving JSON-RPC URL for network %d: %w", networkID, err)
+	}
+	if urls.JSONRPCURL == "" {
+		return nil, fmt.Errorf("no JSON-RPC URL resolved for network %d", networkID)
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c, ok := f.clients[urls.JSONRPCURL]; ok {
+		return c, nil
+	}
+	c, err := f.dial(ctx, urls.JSONRPCURL)
+	if err != nil {
+		return nil, fmt.Errorf("dialing JSON-RPC client of network %d at %s: %w",
+			networkID, urls.JSONRPCURL, err)
+	}
+	f.clients[urls.JSONRPCURL] = c
 	return c, nil
 }
 
