@@ -13,7 +13,7 @@ import (
 
 // urlResolver is the subset of bridgeservicefinder.Finder the refresher needs.
 type urlResolver interface {
-	GetURL(networkID uint32) (string, error)
+	GetURL(networkID uint32) (bridgeservicefinder.NetworkURLs, error)
 }
 
 // claimProofClient is the subset of bridgeservice/client.Client the refresher needs.
@@ -52,13 +52,13 @@ func NewBridgeServiceLeafProofRefresher(finder bridgeservicefinder.Finder) *Brid
 func (r *BridgeServiceLeafProofRefresher) RefreshLeafProof(
 	ctx context.Context, sourceNetwork, leafIndex, depositCount uint32,
 ) (treetypes.Proof, error) {
-	baseURL, err := r.finder.GetURL(sourceNetwork)
+	urls, err := r.finder.GetURL(sourceNetwork)
 	if err != nil {
 		return treetypes.Proof{}, fmt.Errorf(
 			"resolve bridge service url for source network %d: %w", sourceNetwork, err)
 	}
 
-	resp, err := r.newClient(baseURL).GetClaimProof(ctx, sourceNetwork, leafIndex, depositCount)
+	resp, err := r.newClient(urls.BridgeURL).GetClaimProof(ctx, sourceNetwork, leafIndex, depositCount)
 	if err != nil {
 		return treetypes.Proof{}, fmt.Errorf(
 			"get claim proof from source network %d bridge service: %w", sourceNetwork, err)
