@@ -2,7 +2,6 @@ package bridgetracker
 
 import (
 	"context"
-	"errors"
 
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
@@ -32,36 +31,31 @@ type StatusNotifier = domain.StatusNotifier
 type SupervisedRegistry = domain.SupervisedRegistry
 
 // ErrBridgeTxNotFound is returned by BridgeEventSource.FindBridge when the transaction does
-// not exist on the network yet. The engine keeps retrying for up to EngineConfig.
+// not exist on the network yet. domain.ResolveBridgeTx keeps retrying for up to EngineConfig.
 // UnresolvedTimeout (the tx may simply not be mined yet) before marking the bridge as
 // terminally failed
-var ErrBridgeTxNotFound = errors.New("bridge tx not found")
+var ErrBridgeTxNotFound = domain.ErrBridgeTxNotFound
 
 // ErrBridgeTxNotABridge is returned by BridgeEventSource.FindBridge when the transaction
 // exists but is definitely not a bridge transaction (reverted, or mined without emitting a
-// BridgeEvent log): unlike ErrBridgeTxNotFound, retrying cannot change this, so the engine
-// marks the bridge as terminally failed immediately, with no retries
-var ErrBridgeTxNotABridge = errors.New("tx is not a bridge transaction")
+// BridgeEvent log): unlike ErrBridgeTxNotFound, retrying cannot change this, so it is wrapped
+// as domain.Permanent — the tracker marks the bridge as terminally failed immediately, with no
+// retries
+var ErrBridgeTxNotABridge = domain.ErrBridgeTxNotABridge
 
 // ErrSourceUnavailable is returned by BridgeEventSource.FindBridge when the bridge's origin
 // network has no source configured to resolve it (e.g. no JSON-RPC client for a
 // statically-configured network): like ErrBridgeTxNotABridge, this is a permanent condition
-// that retrying cannot change, so the engine marks the bridge as terminally failed
-// immediately, with no retries
-var ErrSourceUnavailable = errors.New("bridge source unavailable")
+// that retrying cannot change, so it is wrapped as domain.Permanent too
+var ErrSourceUnavailable = domain.ErrSourceUnavailable
 
 // BridgeInfo holds the immutable facts of a bridge, resolved once from its creation tx
 type BridgeInfo = domain.BridgeInfo
 
 // BridgeEventSource is the driven port resolving the BridgeEvent behind a supervised tx on
-// its origin network (RPC receipt or bridge service, resolved per network via the finder)
-type BridgeEventSource interface {
-	// FindBridge returns the facts of the bridge created by the tx, ErrBridgeTxNotFound if
-	// the tx does not exist yet, ErrBridgeTxNotABridge if it exists but is definitely not
-	// a bridge transaction, or ErrSourceUnavailable if the origin network has no source
-	// configured to resolve it. Other errors are transient
-	FindBridge(ctx context.Context, id TrackingID) (*BridgeInfo, error)
-}
+// its origin network (RPC receipt or bridge service, resolved per network via the finder).
+// domain.ResolveBridgeTx calls it directly — see its doc
+type BridgeEventSource = domain.BridgeEventSource
 
 // CertificateSource is the driven port to the agglayer: which certificate includes a bridge
 // and in which state it is

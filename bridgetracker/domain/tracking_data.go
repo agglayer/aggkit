@@ -81,8 +81,7 @@ func (t *TrackingData) AllSteps() []types.BridgeStepPath {
 // StepIndex returns the index into AllSteps of the step that explains TrackingStatus: the
 // first step in error if any step failed, the step currently in progress if the bridge is
 // still running, or the last step (Claimed, always the tail of every path) once it is
-// finished. nil while AllSteps is nil (mirrors domain.Lifecycle, without needing the
-// resolver's current-step hint: BuildSteps guarantees exactly one of these three shapes)
+// finished. nil while AllSteps is nil
 func (t *TrackingData) StepIndex() *int {
 	if t == nil || t.allSteps == nil {
 		return nil
