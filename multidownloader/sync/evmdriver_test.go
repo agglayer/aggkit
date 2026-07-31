@@ -178,3 +178,83 @@ func TestNewEVMDriver_ProcessBlocks(t *testing.T) {
 		require.Equal(t, data.CompletionPercentage, *testData.driver.GetCompletionPercentage())
 	})
 }
+
+func newDownloadResultForTest(firstBlock, lastBlock uint64) *mdrsynctypes.DownloadResult {
+	blocks := sync.EVMBlocks{}
+	for num := firstBlock; num <= lastBlock; num++ {
+		blocks = append(blocks, &sync.EVMBlock{
+			EVMBlockHeader: sync.EVMBlockHeader{Num: num},
+		})
+	}
+	return &mdrsynctypes.DownloadResult{
+		Data:                 blocks,
+		CompletionPercentage: 50,
+	}
+}
+
+func TestWithRetryAbortsOnInconsistentState(t *testing.T) {
+	testData := newEVMDriverTestData(t, true)
+	testData.driver.rh.MaxRetryAttemptsAfterError = -1
+	invocations := 0
+	wrappedErr := fmt.Errorf("processing block 10: %w", sync.ErrInconsistentState)
+	err := testData.driver.withRetry(t.Context(), "test", func() error {
+		invocations++
+		return wrappedErr
+	})
+	require.ErrorIs(t, err, sync.ErrInconsistentState)
+	require.Equal(t, 1, invocations, "withRetry must abort on the first inconsistent-state error")
+}
+
+func TestWithRetryStillRetriesOtherErrors(t *testing.T) {
+	testData := newEVMDriverTestData(t, true)
+	testData.driver.rh.MaxRetryAttemptsAfterError = -1
+	invocations := 0
+	err := testData.driver.withRetry(t.Context(), "test", func() error {
+		invocations++
+		if invocations < 3 {
+			return errors.New("transient error")
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, invocations)
+}
+
+func TestProcessBlocksDiscardsPoisonedBatch(t *testing.T) {
+	testData := newEVMDriverTestData(t, true)
+	testData.driver.rh.MaxRetryAttemptsAfterError = -1
+	data := newDownloadResultForTest(10, 12)
+	wrappedErr := fmt.Errorf("processing block 10: %w", sync.ErrInconsistentState)
+	testData.mockProcessor.EXPECT().
+		ProcessBlocks(mock.Anything, data).Return(wrappedErr).Once()
+	testData.mockProcessor.EXPECT().
+		Reorg(mock.Anything, uint64(10)).Return(nil).Once()
+	err := testData.driver.processBlocks(t.Context(), data)
+	require.ErrorIs(t, err, sync.ErrInconsistentState)
+	require.Nil(t, testData.driver.GetCompletionPercentage(), "completion percentage must not be updated")
+}
+
+func TestProcessBlocksReorgFailurePropagates(t *testing.T) {
+	testData := newEVMDriverTestData(t, true)
+	testData.driver.rh.MaxRetryAttemptsAfterError = -1
+	data := newDownloadResultForTest(10, 12)
+	reorgErr := errors.New("db is locked")
+	testData.mockProcessor.EXPECT().
+		ProcessBlocks(mock.Anything, data).Return(sync.ErrInconsistentState).Once()
+	testData.mockProcessor.EXPECT().
+		Reorg(mock.Anything, uint64(10)).Return(reorgErr).Once()
+	err := testData.driver.processBlocks(t.Context(), data)
+	require.ErrorIs(t, err, reorgErr)
+	require.Nil(t, testData.driver.GetCompletionPercentage(), "completion percentage must not be updated")
+}
+
+func TestProcessBlocksHappyPathUnchanged(t *testing.T) {
+	testData := newEVMDriverTestData(t, true)
+	data := newDownloadResultForTest(10, 12)
+	// No Reorg expectation: mockery fails the test if Reorg is called
+	testData.mockProcessor.EXPECT().
+		ProcessBlocks(mock.Anything, data).Return(nil).Once()
+	err := testData.driver.processBlocks(t.Context(), data)
+	require.NoError(t, err)
+	require.Equal(t, data.CompletionPercentage, *testData.driver.GetCompletionPercentage())
+}
