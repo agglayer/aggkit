@@ -136,6 +136,22 @@ func (d *EVMDriver) processBlocks(ctx context.Context, data *mdrsynctypes.Downlo
 	err := d.withRetry(ctx, "processBlocks", func() error {
 		return d.processor.ProcessBlocks(ctx, data)
 	})
+	if errors.Is(err, aggkitsync.ErrInconsistentState) {
+		// The processor halted while processing this in-memory batch (nothing was persisted:
+		// the processing tx rolled back). Retrying the same batch can never succeed, most likely
+		// it was built from an undetected L1 tip reorg. Discard it and reset the processor to its
+		// last committed block (a zero-row purge that unhalts it), then propagate the error so the
+		// Sync loop backs off and re-downloads the range from the last committed block.
+		firstBlock := data.Data[0].Num
+		d.logger.Errorf("processor halted while processing in-memory batch [%d..%d], most likely built from "+
+			"an undetected L1 tip reorg: %v. Discarding the batch and resetting the processor to its last "+
+			"committed block; the range will be re-downloaded", firstBlock, data.Data.LastBlock().Num, err)
+		if reorgErr := d.processor.Reorg(ctx, firstBlock); reorgErr != nil {
+			return fmt.Errorf("recovering from inconsistent state: processor.Reorg(%d) failed: %w "+
+				"(original error: %v)", firstBlock, reorgErr, err)
+		}
+		return err
+	}
 	// If no error update percentage
 	if err == nil {
 		d.setCompletionPercentage(data.CompletionPercentage)
@@ -150,7 +166,9 @@ func (d *EVMDriver) handleReorg(ctx context.Context, err *mdrtypes.ReorgedError)
 	})
 }
 
-// withRetry is a helper wrapper function that invokes the fn callback on failed attempts
+// withRetry is a helper wrapper function that invokes the fn callback on failed attempts.
+// It aborts (returning the error) if fn reports an inconsistent state: a halted processor can
+// never succeed on the same input, so retrying is pointless — the caller must recover instead.
 func (d *EVMDriver) withRetry(ctx context.Context, opName string, fn func() error) error {
 	attempts := 0
 	for {
@@ -161,6 +179,10 @@ func (d *EVMDriver) withRetry(ctx context.Context, opName string, fn func() erro
 		default:
 			err := fn()
 			if err != nil {
+				if errors.Is(err, aggkitsync.ErrInconsistentState) {
+					d.logger.Errorf("%s returned inconsistent-state, aborting retries: %v", opName, err)
+					return err
+				}
 				attempts++
 				d.logger.Errorf("error during %s (attempt %d): %v", opName, attempts, err)
 				d.rh.Handle(ctx, opName, attempts)
