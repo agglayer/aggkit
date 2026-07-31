@@ -3400,3 +3400,61 @@ func TestProcessor_GetBridgesByContent(t *testing.T) {
 		require.Equal(t, uint32(20), result[0].DepositCount)
 	})
 }
+
+// TestReorgUnhaltsWhenNoRowsAffected covers the recovery path for a halt caused by a block whose
+// tx rolled back and left nothing persisted (same latent wedge as the l1infotreesync
+// cardona-67-op incident of 2026-07-23): a recovery Reorg deletes 0 rows — it must still unhalt
+// the processor.
+func TestReorgUnhaltsWhenNoRowsAffected(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgesyncTestReorgUnhaltsWhenNoRowsAffected.sqlite")
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newTestProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+	require.NoError(t, err)
+
+	p.halt("test: poisoned block never persisted")
+	require.True(t, p.isHalted())
+
+	require.NoError(t, p.Reorg(context.Background(), 100))
+	require.False(t, p.isHalted(), "Reorg must unhalt even when it deleted 0 rows")
+}
+
+// TestReorgUnhaltsWhenRowsAffected guards the previously-working branch: a Reorg that actually
+// purges committed rows keeps unhalting the processor.
+func TestReorgUnhaltsWhenRowsAffected(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgesyncTestReorgUnhaltsWhenRowsAffected.sqlite")
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newTestProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	require.NoError(t, p.ProcessBlock(ctx, block1))
+
+	p.halt("test: halted after committed block")
+	require.True(t, p.isHalted())
+
+	require.NoError(t, p.Reorg(ctx, 1))
+	require.False(t, p.isHalted())
+}
+
+// TestProcessBlockWorksAfterUnhaltingReorg verifies the full recovery cycle: halt ->
+// ProcessBlock short-circuits with ErrInconsistentState -> Reorg (0 rows) unhalts -> a valid
+// block is processed and persisted.
+func TestProcessBlockWorksAfterUnhaltingReorg(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgesyncTestProcessBlockWorksAfterUnhaltingReorg.sqlite")
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newTestProcessor(dbPath, "bridge-syncer", logger, dbQueryTimeout)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	p.halt("test: poisoned block never persisted")
+	err = p.ProcessBlock(ctx, block1)
+	require.ErrorIs(t, err, sync.ErrInconsistentState)
+
+	require.NoError(t, p.Reorg(ctx, 1))
+	require.False(t, p.isHalted())
+
+	require.NoError(t, p.ProcessBlock(ctx, block1))
+	lastProcessed, _, err := p.GetLastProcessedBlock(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), lastProcessed)
+}

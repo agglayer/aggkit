@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/db"
+	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	aggkitsync "github.com/agglayer/aggkit/sync"
 	treetypesmocks "github.com/agglayer/aggkit/tree/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -600,4 +601,89 @@ func TestGetLastProcessedBlockHeader(t *testing.T) {
 		require.Equal(t, expectedNum, hdr.Number)
 		require.Equal(t, expectedHash, hdr.Hash)
 	})
+}
+
+// TestReorgUnhaltsWhenNoRowsAffected covers the recovery path of the cardona-67-op incident
+// (2026-07-23): a halt caused by a batch whose tx rolled back leaves nothing persisted, so a
+// recovery Reorg deletes 0 rows — it must still unhalt the processor.
+func TestReorgUnhaltsWhenNoRowsAffected(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestReorgUnhaltsWhenNoRowsAffected.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	p.halt("test: poisoned in-memory batch")
+	require.True(t, p.isHalted())
+
+	require.NoError(t, p.Reorg(context.Background(), 100))
+	require.False(t, p.isHalted(), "Reorg must unhalt even when it deleted 0 rows")
+}
+
+// TestReorgUnhaltsWhenRowsAffected guards the previously-working branch: a Reorg that actually
+// purges committed rows keeps unhalting the processor.
+func TestReorgUnhaltsWhenRowsAffected(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestReorgUnhaltsWhenRowsAffected.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
+		Num: 1,
+		Events: []any{
+			Event{UpdateL1InfoTree: &UpdateL1InfoTree{
+				MainnetExitRoot: common.HexToHash("beef"),
+				RollupExitRoot:  common.HexToHash("5ca1e"),
+				ParentHash:      common.HexToHash("1010101"),
+				Timestamp:       420,
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	p.halt("test: halted after committed block")
+	require.True(t, p.isHalted())
+
+	require.NoError(t, p.Reorg(ctx, 1))
+	require.False(t, p.isHalted())
+}
+
+// TestProcessBlocksWorksAfterUnhaltingReorg verifies the full recovery cycle used by the
+// multidownloader driver: halt -> ProcessBlocks short-circuits with ErrInconsistentState ->
+// Reorg (0 rows) unhalts -> a valid batch is processed and persisted.
+func TestProcessBlocksWorksAfterUnhaltingReorg(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestProcessBlocksWorksAfterUnhaltingReorg.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	batch := &mdrsynctypes.DownloadResult{
+		Data: aggkitsync.EVMBlocks{
+			{
+				EVMBlockHeader: aggkitsync.EVMBlockHeader{Num: 1},
+				Events: []any{
+					Event{UpdateL1InfoTree: &UpdateL1InfoTree{
+						MainnetExitRoot: common.HexToHash("beef"),
+						RollupExitRoot:  common.HexToHash("5ca1e"),
+						ParentHash:      common.HexToHash("1010101"),
+						Timestamp:       420,
+					}},
+				},
+			},
+		},
+		CompletionPercentage: 100,
+	}
+
+	p.halt("test: poisoned in-memory batch")
+	err = p.ProcessBlocks(ctx, batch)
+	require.ErrorIs(t, err, aggkitsync.ErrInconsistentState)
+
+	require.NoError(t, p.Reorg(ctx, 1))
+	require.False(t, p.isHalted())
+
+	require.NoError(t, p.ProcessBlocks(ctx, batch))
+	lastProcessed, _, err := p.GetLastProcessedBlock(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), lastProcessed)
+	info, err := p.GetLastInfo()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), info.BlockNumber)
 }
