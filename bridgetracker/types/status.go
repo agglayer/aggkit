@@ -80,12 +80,11 @@ const (
 	StepWaitingLERUpdate
 	// StepPendingInclusion the bridge is not yet part of any certificate
 	StepPendingInclusion
-	// StepCertificatePending the bridge is included in a certificate sent to the
-	// Agglayer and is awaiting its first status change
+	// StepCertificatePending the bridge is included in a certificate sent to the Agglayer;
+	// covers every status the certificate goes through (Pending, Proven, Candidate, InError)
+	// until it settles — those intermediate statuses do not change the step, only the
+	// certificate data carried in its Result (see BridgeStepPath.Result)
 	StepCertificatePending
-	// StepCertificateProcessing the certificate is progressing through the Agglayer
-	// (Proven, Candidate or InError) but has not settled yet
-	StepCertificateProcessing
 	// StepWaitingGERInjection the certificate is settled but the Global Exit Root has
 	// not been injected on the destination network yet
 	StepWaitingGERInjection
@@ -97,14 +96,13 @@ const (
 )
 
 var bridgeStepNames = map[BridgeStep]string{
-	StepWaitingGERUpdate:      "WaitingGERUpdate",
-	StepWaitingLERUpdate:      "WaitingLERUpdate",
-	StepPendingInclusion:      "PendingInclusion",
-	StepCertificatePending:    "CertificatePending",
-	StepCertificateProcessing: "CertificateProcessing",
-	StepWaitingGERInjection:   "WaitingGERInjection",
-	StepWaitingClaim:          "WaitingClaim",
-	StepClaimed:               "Claimed",
+	StepWaitingGERUpdate:    "WaitingGERUpdate",
+	StepWaitingLERUpdate:    "WaitingLERUpdate",
+	StepPendingInclusion:    "PendingInclusion",
+	StepCertificatePending:  "CertificatePending",
+	StepWaitingGERInjection: "WaitingGERInjection",
+	StepWaitingClaim:        "WaitingClaim",
+	StepClaimed:             "Claimed",
 }
 
 // String representation of the enum
@@ -256,11 +254,14 @@ type BridgeStepPath struct {
 	StartDate        *time.Time `json:"start_date,omitempty"`
 	EndDate          *time.Time `json:"end_date,omitempty"`
 	ExpectedDuration *Duration  `json:"expected_duration,omitempty"`
-	// Result is the data produced by the step once it completes; its shape depends on Step:
+	// Result is the data the step has produced so far; its shape depends on Step:
 	// *GERUpdateResult (StepWaitingGERUpdate), *InjectedGERResult (StepWaitingGERInjection),
-	// *LERUpdateResult (StepWaitingLERUpdate), *CertificateData (StepCertificateProcessing) or
-	// *ClaimResult (StepWaitingClaim). nil until the step produces it, and for steps that
-	// never produce one
+	// *LERUpdateResult (StepWaitingLERUpdate), common.Hash (StepPendingInclusion, the
+	// certificate's CertificateID), *CertificateData (StepCertificatePending) or *ClaimResult
+	// (StepWaitingClaim). nil until the step produces one, and for steps that never do. Most
+	// steps only set this once Done, but StepCertificatePending (Status still InProgress) may
+	// already carry the certificate's current, not yet settled, status — see
+	// domain.ErrCertificateNotSettled
 	Result any `json:"result,omitempty"`
 	// Error carries the error details when Status is StepStatusError, nil otherwise
 	Error *ErrorStep `json:"error,omitempty"`

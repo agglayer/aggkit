@@ -123,42 +123,52 @@ func TestResolveSteps(t *testing.T) {
 			result:          originLER,
 		},
 		{
-			name:       "certificate pending -> CertificatePending",
+			// a fresh path completes PendingInclusion and lands on CertificatePending in the
+			// same call, so certificate is queried twice: PendingInclusionResolver and
+			// CertificatePendingResolver each fetch it independently, nothing is cached
+			// between them
+			name:       "certificate pending -> CertificatePending, cert shown while waiting",
 			bridgeType: types.BridgeTypeL2ToL1,
 			facts: fakeFacts{
 				originLER:   originLER,
 				certificate: &types.CertificateData{Status: agglayertypes.Pending},
 			},
 			expectedStep:    types.StepCertificatePending,
-			expectedQueried: []string{"originLER", "certificate"},
+			expectedQueried: []string{"originLER", "certificate", "certificate"},
+			resultOf:        types.StepCertificatePending,
+			result:          &types.CertificateData{Status: agglayertypes.Pending},
 		},
 		{
-			name:       "certificate proven -> CertificateProcessing",
+			name:       "certificate proven -> stays at CertificatePending, cert shown while waiting",
 			bridgeType: types.BridgeTypeL2ToL1,
 			facts: fakeFacts{
 				originLER:   originLER,
 				certificate: &types.CertificateData{Status: agglayertypes.Proven},
 			},
-			expectedStep:    types.StepCertificateProcessing,
-			expectedQueried: []string{"originLER", "certificate"},
+			expectedStep:    types.StepCertificatePending,
+			expectedQueried: []string{"originLER", "certificate", "certificate"},
+			resultOf:        types.StepCertificatePending,
+			result:          &types.CertificateData{Status: agglayertypes.Proven},
 		},
 		{
-			name:       "certificate in error -> CertificateProcessing, skipping CertificatePending",
+			name:       "certificate in error -> stays at CertificatePending, cert shown while waiting",
 			bridgeType: types.BridgeTypeL2ToL1,
 			facts: fakeFacts{
 				originLER:   originLER,
 				certificate: &types.CertificateData{Status: agglayertypes.InError},
 			},
-			expectedStep:    types.StepCertificateProcessing,
-			expectedQueried: []string{"originLER", "certificate"},
+			expectedStep:    types.StepCertificatePending,
+			expectedQueried: []string{"originLER", "certificate", "certificate"},
+			resultOf:        types.StepCertificatePending,
+			result:          &types.CertificateData{Status: agglayertypes.InError},
 		},
 		{
 			name:            "L2->L1 settled skips injection and is claimable",
 			bridgeType:      types.BridgeTypeL2ToL1,
 			facts:           fakeFacts{originLER: originLER, certificate: settledCert},
 			expectedStep:    types.StepWaitingClaim,
-			expectedQueried: []string{"originLER", "certificate", "claimFor"},
-			resultOf:        types.StepCertificateProcessing,
+			expectedQueried: []string{"originLER", "certificate", "certificate", "claimFor"},
+			resultOf:        types.StepCertificatePending,
 			result:          settledCert,
 		},
 		{
@@ -166,7 +176,7 @@ func TestResolveSteps(t *testing.T) {
 			bridgeType:      types.BridgeTypeL2ToL2,
 			facts:           fakeFacts{originLER: originLER, certificate: settledCert},
 			expectedStep:    types.StepWaitingGERInjection,
-			expectedQueried: []string{"originLER", "certificate", "injectedGER"},
+			expectedQueried: []string{"originLER", "certificate", "certificate", "injectedGER"},
 		},
 		{
 			name:       "L2->L2 claimed -> Claimed, terminal, with Claim result",
@@ -178,7 +188,7 @@ func TestResolveSteps(t *testing.T) {
 				claim:       claim,
 			},
 			expectedStep:    types.StepClaimed,
-			expectedQueried: []string{"originLER", "certificate", "injectedGER", "claimFor"},
+			expectedQueried: []string{"originLER", "certificate", "certificate", "injectedGER", "claimFor"},
 			resultOf:        types.StepWaitingClaim,
 			result:          claim,
 		},
@@ -210,7 +220,6 @@ func TestResolveSteps(t *testing.T) {
 				{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone},
 				{Step: types.StepPendingInclusion, Status: types.StepStatusDone},
 				{Step: types.StepCertificatePending, Status: types.StepStatusDone},
-				{Step: types.StepCertificateProcessing, Status: types.StepStatusDone},
 				{Step: types.StepWaitingGERInjection, Status: types.StepStatusDone},
 				{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress},
 				{Step: types.StepClaimed, Status: types.StepStatusPending},
@@ -228,7 +237,6 @@ func TestResolveSteps(t *testing.T) {
 				{Step: types.StepWaitingLERUpdate, Status: types.StepStatusInProgress},
 				{Step: types.StepPendingInclusion, Status: types.StepStatusPending},
 				{Step: types.StepCertificatePending, Status: types.StepStatusPending},
-				{Step: types.StepCertificateProcessing, Status: types.StepStatusPending},
 				{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
 				{Step: types.StepClaimed, Status: types.StepStatusPending},
 			},
@@ -254,6 +262,15 @@ func TestResolveSteps(t *testing.T) {
 			if tc.resultOf != 0 || tc.result != nil {
 				sp := result.AllSteps()[indexOfStep(result.AllSteps(), tc.resultOf)]
 				require.Equal(t, tc.result, sp.Result)
+			}
+
+			if tc.facts.certificate != nil {
+				if pIdx := indexOfStep(result.AllSteps(), types.StepPendingInclusion); pIdx >= 0 {
+					if pi := result.AllSteps()[pIdx]; pi.Status == types.StepStatusDone {
+						require.Equal(t, tc.facts.certificate.CertificateID, pi.Result,
+							"PendingInclusion carries the certificate ID once met")
+					}
+				}
 			}
 		})
 	}
@@ -415,12 +432,53 @@ func TestUpdateStep(t *testing.T) {
 		require.Equal(t, types.StepStatusInProgress, advanced.AllSteps()[0].Status)
 		require.Equal(t, &t1, advanced.AllSteps()[0].StartDate, "the step's original start time is preserved")
 	})
+
+	t.Run("attaches a result even though the step is not complete yet", func(t *testing.T) {
+		t.Parallel()
+
+		tracking := newTracking(types.BridgeTypeL2ToL1, []types.BridgeStepPath{
+			{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone, EndDate: &t1},
+			{Step: types.StepPendingInclusion, Status: types.StepStatusDone, EndDate: &t1},
+			{Step: types.StepCertificatePending, Status: types.StepStatusInProgress, StartDate: &t1},
+			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+			{Step: types.StepClaimed, Status: types.StepStatusPending},
+		}, t1)
+
+		cert := &types.CertificateData{Status: agglayertypes.Pending}
+		advanced := UpdateStep(tracking, 2, cert, false, t2)
+
+		require.NotSame(t, tracking, advanced)
+		sp := advanced.AllSteps()[2]
+		require.Equal(t, types.StepStatusInProgress, sp.Status, "still waiting, not complete")
+		require.Equal(t, cert, sp.Result, "the current (unsettled) certificate is visible while waiting")
+		require.Equal(t, &t1, sp.StartDate, "unaffected by the result update")
+	})
+
+	t.Run("no progress once the same result has already been recorded", func(t *testing.T) {
+		t.Parallel()
+
+		tracking := newTracking(types.BridgeTypeL2ToL1, []types.BridgeStepPath{
+			{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone, EndDate: &t1},
+			{Step: types.StepPendingInclusion, Status: types.StepStatusDone, EndDate: &t1},
+			{
+				Step: types.StepCertificatePending, Status: types.StepStatusInProgress, StartDate: &t1,
+				Result: &types.CertificateData{Status: agglayertypes.Pending},
+			},
+			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+			{Step: types.StepClaimed, Status: types.StepStatusPending},
+		}, t1)
+
+		result := UpdateStep(tracking, 2, &types.CertificateData{Status: agglayertypes.Pending}, false, t2)
+
+		require.Same(t, tracking, result, "an equal result is not a change worth republishing")
+	})
 }
 
 // TestCertificateResolverSkipsWaypoints pins that a certificate observed already Settled, with
-// PendingInclusion still current, completes PendingInclusion and CertificatePending in the same
-// call as plain waypoints (dated, no result) alongside CertificateProcessing itself (dated,
-// carrying the certificate) — all from the single Certificate call this resolver made
+// PendingInclusion still current, completes both PendingInclusion (a plain waypoint, dated, no
+// result) and CertificatePending itself (dated, carrying the settled certificate) in the same
+// call — querying Certificate twice, once per step, since PendingInclusionResolver and
+// CertificatePendingResolver each fetch it independently
 func TestCertificateResolverSkipsWaypoints(t *testing.T) {
 	t.Parallel()
 
@@ -431,27 +489,23 @@ func TestCertificateResolverSkipsWaypoints(t *testing.T) {
 		{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone, EndDate: &t1},
 		{Step: types.StepPendingInclusion, Status: types.StepStatusInProgress, StartDate: &t1},
 		{Step: types.StepCertificatePending, Status: types.StepStatusPending},
-		{Step: types.StepCertificateProcessing, Status: types.StepStatusPending},
 		{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
 		{Step: types.StepClaimed, Status: types.StepStatusPending},
 	}, t1)
 
-	cert := &types.CertificateData{Status: agglayertypes.Settled}
+	cert := &types.CertificateData{CertificateID: common.Hash{9}, Status: agglayertypes.Settled}
 	facts := &fakeFacts{certificate: cert}
 
 	result, err := ResolveSteps(context.Background(), facts, tracking, t2)
 	require.NoError(t, err)
-	require.Equal(t, []string{"certificate", "claimFor"}, facts.queried, "one Certificate call resolves all three waypoints")
+	require.Equal(t, []string{"certificate", "certificate", "claimFor"}, facts.queried)
 
 	steps := result.AllSteps()
 	require.Equal(t, types.StepStatusDone, steps[1].Status, "PendingInclusion skipped straight through")
 	require.Equal(t, &t2, steps[1].EndDate)
-	require.Nil(t, steps[1].Result)
-	require.Equal(t, types.StepStatusDone, steps[2].Status, "CertificatePending skipped straight through")
+	require.Equal(t, cert.CertificateID, steps[1].Result)
+	require.Equal(t, types.StepStatusDone, steps[2].Status)
 	require.Equal(t, &t2, steps[2].EndDate)
-	require.Nil(t, steps[2].Result)
-	require.Equal(t, types.StepStatusDone, steps[3].Status)
-	require.Equal(t, &t2, steps[3].EndDate)
-	require.Equal(t, cert, steps[3].Result)
-	require.Equal(t, types.StepStatusInProgress, steps[4].Status, "WaitingClaim opens next")
+	require.Equal(t, cert, steps[2].Result)
+	require.Equal(t, types.StepStatusInProgress, steps[3].Status, "WaitingClaim opens next")
 }

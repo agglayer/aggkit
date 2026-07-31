@@ -8,9 +8,7 @@ A bridge (deposit) goes through the following states, from its creation with `br
 | State | Description |
 | --- | --- |
 | Pending to be included in certificate | The bridge has been created (`BridgeEvent` emitted) but is not yet part of any certificate. |
-| Certificate: Pending | The bridge is included in a certificate that has been sent to the Agglayer and is awaiting settlement. |
-| Certificate: InError | The certificate containing the bridge failed. The bridge must be included in a new certificate (back to Pending). |
-| Certificate: Settled | The certificate containing the bridge has been settled by the Agglayer. |
+| Certificate: Pending | The bridge is included in a certificate sent to the Agglayer. Covers every status the certificate goes through (Pending, Proven, Candidate, InError) — none of them move the bridge to a different state, they only change the certificate data shown alongside this one, until it settles. |
 | WaitingClaim | The Global Exit Root that includes the bridge has been injected on the destination network, so the bridge is ready to be claimed. |
 | Claimed | The bridge has been claimed on the destination network. |
 
@@ -20,7 +18,6 @@ stateDiagram-v2
     state "Waiting LER update" as WaitingLERUpdate
     state "Pending to be included in certificate" as PendingInclusion
     state "Certificate: Pending" as CertPending
-    state "Certificate: Processing" as CertProcessing
     state " Waiting GER Injection" as  WaitingGERInjection
     state "WaitingClaim" as WaitingClaim
 
@@ -29,10 +26,9 @@ stateDiagram-v2
     WaitingLERUpdate --> PendingInclusion: LER update (L2->Lx)
     WaitingGERUpdate --> WaitingGERInjection: GER update (L1->L2)
     PendingInclusion --> CertPending: included in a certificate
-    CertPending --> CertProcessing: certificate change state
-    CertProcessing --> CertProcessing: certificate new state
+    CertPending --> CertPending: certificate status change (still not settled)
     CertPending --> WaitingGERInjection: settled by Agglayer (L2->L2)
-    CertProcessing --> WaitingClaim: settled by Agglayer (L2->L1)
+    CertPending --> WaitingClaim: settled by Agglayer (L2->L1)
      WaitingGERInjection --> WaitingClaim: GER injected on destination network
     WaitingClaim --> Claimed: claim on destination network
     Claimed --> [*]

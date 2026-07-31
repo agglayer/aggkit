@@ -362,7 +362,11 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 
 	f.cert = &types.CertificateData{CertificateID: common.HexToHash("0x01"), Status: agglayertypes.InError}
 	engine.tick(t.Context())
-	require.Equal(t, types.StepCertificateProcessing, currentStep(t, store))
+	require.Equal(t, types.StepCertificatePending, currentStep(t, store),
+		"an unsettled certificate status change stays at CertificatePending, it does not move the step")
+	inError := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.Equal(t, f.cert, inError.AllSteps()[*inError.StepIndex()].Result,
+		"the certificate's current, not yet settled, status is visible while waiting")
 
 	f.cert = &types.CertificateData{CertificateID: common.HexToHash("0x02"), Status: agglayertypes.Settled}
 	engine.tick(t.Context())
@@ -374,7 +378,7 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	require.Equal(t, uint32(2), info.LogIndex)
 	// the certificate step reports the settled certificate as its result once it completes
 	for _, sp := range allSteps {
-		if sp.Step == types.StepCertificateProcessing {
+		if sp.Step == types.StepCertificatePending {
 			require.Equal(t, f.cert, sp.Result)
 		}
 	}
@@ -481,7 +485,6 @@ func TestEngineL1ToL2Path(t *testing.T) {
 		require.NotEqual(t, types.StepWaitingLERUpdate, sp.Step)
 		require.NotEqual(t, types.StepPendingInclusion, sp.Step)
 		require.NotEqual(t, types.StepCertificatePending, sp.Step)
-		require.NotEqual(t, types.StepCertificateProcessing, sp.Step)
 		if sp.Step == types.StepWaitingGERUpdate {
 			require.Equal(t, &types.GERUpdateResult{GER: ger, BlockNumber: blockNumber}, sp.Result)
 		}

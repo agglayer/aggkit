@@ -58,7 +58,7 @@ Body of every REST response (always `200 OK`) and of every WebSocket `status` me
 ## BridgeStepPath
 | field | type | desc |
 | ------|------|------|
-| step | BridgeStep (int) | 0->WaitingGERUpdate, 1->WaitingLERUpdate, 2->PendingInclusion, 3->CertificatePending, 4->CertificateProcessing, 5->WaitingGERInjection, 6->WaitingClaim, 7->Claimed |
+| step | BridgeStep (int) | 0->WaitingGERUpdate, 1->WaitingLERUpdate, 2->PendingInclusion, 3->CertificatePending, 4->WaitingGERInjection, 5->WaitingClaim, 6->Claimed |
 | step_string | string | string representation of step (e.g. "WaitingGERUpdate") |
 | status | StepStatus (int) | 0->pending, 1->inProgress, 2->done, 3->error
 | status_string | string | string representation of status (e.g. "inProgress") |
@@ -70,13 +70,14 @@ Body of every REST response (always `200 OK`) and of every WebSocket `status` me
 
 ## StepResult
 
-Carried in the `result` field of a [BridgeStepPath](#bridgesteppath). It is a JSON object whose shape depends on the step that produced it:
+Carried in the `result` field of a [BridgeStepPath](#bridgesteppath). Its shape depends on the step that produced it — a JSON object for most, a bare value for PendingInclusion:
 
 | step | result fields | desc |
 | --- | --- | --- |
 | WaitingGERUpdate | `ger` (Hash), `block_number` (uint64) | GER resulting from the update on L1 and the block where it was updated |
 | WaitingLERUpdate | `network_id` (uint32), `ler` (Hash), `block_number` (uint64) | LER resulting from the update on the origin L2 and the block where it was updated |
-| CertificateProcessing | [CertificateData](#certificatedata) | the certificate data at settlement |
+| PendingInclusion | Hash | the ID of the certificate that includes the bridge, set as soon as one exists |
+| CertificatePending | [CertificateData](#certificatedata) | the certificate's current data; set as soon as a certificate exists, updated as its status changes (Pending, Proven, Candidate, InError), and reflects the final settled data once `status` is `done` |
 | WaitingGERInjection | `ger` (Hash) | GER injected on the destination network that covers the bridge; no block number, the injection source does not expose it |
 | WaitingClaim | `claim_tx` (Hash), `block_number` (uint64) | claim transaction on the destination network and its block |
 | any other step | — | no result: always `nil` |
