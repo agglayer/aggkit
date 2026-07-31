@@ -53,7 +53,7 @@ const (
 	// autoClaimL1ChainID is the op-pp env's L1 chain ID (summary.json: networks.l1.chain_id).
 	autoClaimL1ChainID = 271828
 	// autoClaimSourceBridgeServiceURL is the in-network URL of the op-pp env's (only) L2 bridge
-	// service, used as a static AutoClaim.BridgeServiceFinder.URLs override for the L2ToLx detector.
+	// service, used as a static AutoClaim.BridgeServiceFinder.BridgeURLs override for the L2ToLx detector.
 	// The on-chain fallback (trusted sequencer URL + port 5577) would resolve to the wrong host in
 	// this docker-compose env, so a static override is required.
 	autoClaimSourceBridgeServiceURL = "http://aggkit-001:5577"
@@ -70,7 +70,7 @@ const (
 	// autoClaimL2BChainID is the 2-chain env's second L2 chain ID (summary.json: l2_networks.002.chain_id).
 	autoClaimL2BChainID = 20202
 	// autoClaimNet1BridgeServiceURL / autoClaimNet2BridgeServiceURL are the in-network URLs of the two
-	// L2 bridge services, used as static AutoClaim.BridgeServiceFinder.URLs overrides (the on-chain
+	// L2 bridge services, used as static AutoClaim.BridgeServiceFinder.BridgeURLs overrides (the on-chain
 	// fallback resolves the wrong host in this docker-compose env).
 	autoClaimNet1BridgeServiceURL = "http://aggkit-001:5577"
 	autoClaimNet2BridgeServiceURL = "http://aggkit-002:5577"
@@ -582,7 +582,7 @@ PollInterval = "3s"
 RollupManagerAddr = %q
 PollInterval = "3s"
 
-[AutoClaim.BridgeServiceFinder.URLs]
+[AutoClaim.BridgeServiceFinder.BridgeURLs]
 1 = %q
 2 = %q
 
@@ -858,7 +858,7 @@ func patchAutoClaimConfig(baseConfig, autoClaimSection string) string {
 // autoClaimConfig leaves L2ToLx disabled, matching the existing L1->L2-only tests' behavior.
 type autoClaimL2ToLxConfig struct {
 	// SourceNetworkID is the L2 (rollup) network whose bridge service URL is statically overridden
-	// in [AutoClaim.BridgeServiceFinder.URLs]; the on-chain fallback would resolve the sequencer
+	// in [AutoClaim.BridgeServiceFinder.BridgeURLs]; the on-chain fallback would resolve the sequencer
 	// URL host, which is wrong in this docker-compose env.
 	SourceNetworkID uint32
 	// SourceBridgeServiceURL is the in-network URL of SourceNetworkID's bridge service.
@@ -1002,7 +1002,7 @@ HTTPHeaders = {}
 [AutoClaim.BridgeServiceFinder]
 PollInterval = "3s"
 
-[AutoClaim.BridgeServiceFinder.URLs]
+[AutoClaim.BridgeServiceFinder.BridgeURLs]
 %d = %q
 `, bridgeServiceFinderNetworkID, bridgeServiceFinderURL)
 

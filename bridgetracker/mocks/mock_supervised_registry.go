@@ -301,7 +301,7 @@ func (_c *SupervisedRegistry_PruneTerminal_Call) RunAndReturn(run func(time.Time
 }
 
 // Subscribe provides a mock function with given fields: id
-func (_m *SupervisedRegistry) Subscribe(id domain.TrackingID) (<-chan *domain.TrackingData, func()) {
+func (_m *SupervisedRegistry) Subscribe(id domain.TrackingID) (<-chan *domain.TrackingData, func(), error) {
 	ret := _m.Called(id)
 
 	if len(ret) == 0 {
@@ -310,7 +310,8 @@ func (_m *SupervisedRegistry) Subscribe(id domain.TrackingID) (<-chan *domain.Tr
 
 	var r0 <-chan *domain.TrackingData
 	var r1 func()
-	if rf, ok := ret.Get(0).(func(domain.TrackingID) (<-chan *domain.TrackingData, func())); ok {
+	var r2 error
+	if rf, ok := ret.Get(0).(func(domain.TrackingID) (<-chan *domain.TrackingData, func(), error)); ok {
 		return rf(id)
 	}
 	if rf, ok := ret.Get(0).(func(domain.TrackingID) <-chan *domain.TrackingData); ok {
@@ -329,7 +330,13 @@ func (_m *SupervisedRegistry) Subscribe(id domain.TrackingID) (<-chan *domain.Tr
 		}
 	}
 
-	return r0, r1
+	if rf, ok := ret.Get(2).(func(domain.TrackingID) error); ok {
+		r2 = rf(id)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
 // SupervisedRegistry_Subscribe_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Subscribe'
@@ -350,12 +357,12 @@ func (_c *SupervisedRegistry_Subscribe_Call) Run(run func(id domain.TrackingID))
 	return _c
 }
 
-func (_c *SupervisedRegistry_Subscribe_Call) Return(_a0 <-chan *domain.TrackingData, _a1 func()) *SupervisedRegistry_Subscribe_Call {
-	_c.Call.Return(_a0, _a1)
+func (_c *SupervisedRegistry_Subscribe_Call) Return(_a0 <-chan *domain.TrackingData, _a1 func(), _a2 error) *SupervisedRegistry_Subscribe_Call {
+	_c.Call.Return(_a0, _a1, _a2)
 	return _c
 }
 
-func (_c *SupervisedRegistry_Subscribe_Call) RunAndReturn(run func(domain.TrackingID) (<-chan *domain.TrackingData, func())) *SupervisedRegistry_Subscribe_Call {
+func (_c *SupervisedRegistry_Subscribe_Call) RunAndReturn(run func(domain.TrackingID) (<-chan *domain.TrackingData, func(), error)) *SupervisedRegistry_Subscribe_Call {
 	_c.Call.Return(run)
 	return _c
 }

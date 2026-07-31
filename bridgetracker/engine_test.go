@@ -69,7 +69,7 @@ func (f *fakeSources) engineSources() EngineSources {
 func newTestEngine(t *testing.T, sources *fakeSources) (*Engine, *memoryRegistry, *time.Time) {
 	t.Helper()
 
-	store := newMemoryRegistry()
+	store := newMemoryRegistry(0)
 	engine, err := NewEngine(EngineConfig{UnresolvedTimeout: 20 * time.Second},
 		log.WithFields("module", "engine_test"), store, sources.engineSources())
 	require.NoError(t, err)
@@ -135,12 +135,12 @@ func TestEngineNewValidation(t *testing.T) {
 
 	sources := f.engineSources()
 	sources.LERs = nil
-	_, err = NewEngine(EngineConfig{}, logger, newMemoryRegistry(), sources)
+	_, err = NewEngine(EngineConfig{}, logger, newMemoryRegistry(0), sources)
 	require.ErrorContains(t, err, "LERSource")
 
 	sources = f.engineSources()
 	sources.Claims = nil
-	_, err = NewEngine(EngineConfig{}, logger, newMemoryRegistry(), sources)
+	_, err = NewEngine(EngineConfig{}, logger, newMemoryRegistry(0), sources)
 	require.ErrorContains(t, err, "ClaimSource")
 }
 
@@ -498,7 +498,8 @@ func TestEngineNoChangeNoRepublish(t *testing.T) {
 	engine, store, _ := newTestEngine(t, f)
 
 	mustRegister(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
-	updates, unsubscribe := store.Subscribe(TrackingID{NetworkID: 1, TxHash: testHash})
+	updates, unsubscribe, err := store.Subscribe(TrackingID{NetworkID: 1, TxHash: testHash})
+	require.NoError(t, err)
 	defer unsubscribe()
 
 	engine.tick(t.Context())
@@ -626,4 +627,50 @@ func TestEngineTransientErrorKeepsState(t *testing.T) {
 	for _, sp := range tracking.AllSteps() {
 		require.Nil(t, sp.Error)
 	}
+}
+
+// countingStore wraps a real memoryRegistry, counting UpdateTrackingBridgeTx calls — the only
+// SupervisedStore method that notifies subscribers (see registry.go) — so a test can assert the
+// engine commits a bridge's resolved facts and its computed steps together, in a single call,
+// rather than a premature notification (Info populated, steps still the bare just-seeded path)
+// followed by a second one once the steps are actually computed.
+type countingStore struct {
+	*memoryRegistry
+	txCommits int
+}
+
+func (s *countingStore) UpdateTrackingBridgeTx(id TrackingID, tx domain.TrackingBridgeTx) error {
+	s.txCommits++
+	return s.memoryRegistry.UpdateTrackingBridgeTx(id, tx)
+}
+
+// TestEngineFirstResolutionCommitsInfoAndStepsTogether guards against the bug where a bridge's
+// first successful FindBridge was persisted (and subscribers notified) immediately, ahead of
+// computeAllSteps actually deriving its steps — a fast subscriber could observe BridgeStatus
+// populated while AllSteps still held the bare, uncomputed seed. There must be exactly one
+// UpdateTrackingBridgeTx call for the tick that resolves the bridge, carrying both Info and the
+// already-computed steps.
+func TestEngineFirstResolutionCommitsInfoAndStepsTogether(t *testing.T) {
+	// No originGER configured: the first step (StepWaitingGERUpdate) resolves to ErrStepPending,
+	// so AllSteps stays byte-for-byte identical to the freshly-seeded pending path — the case that
+	// would skip persisting altogether without the tx-level change check (see resolveBridgeStep).
+	f := &fakeSources{bridge: &BridgeInfo{
+		NetworkID: 0, LeafType: types.BridgeLeafTypeMessage, DestinationNetwork: 1,
+		BlockNumber: 500, LogIndex: 1,
+	}}
+	store := &countingStore{memoryRegistry: newMemoryRegistry(0)}
+	engine, err := NewEngine(EngineConfig{UnresolvedTimeout: 20 * time.Second},
+		log.WithFields("module", "engine_test"), store, f.engineSources())
+	require.NoError(t, err)
+
+	id := TrackingID{NetworkID: 0, TxHash: testHash}
+	mustRegister(t, store.memoryRegistry, id)
+	engine.tick(t.Context())
+
+	require.Equal(t, 1, store.txCommits,
+		"info and computed steps must land in exactly one commit, not a premature one followed by another")
+
+	tracking := mustGet(t, store.memoryRegistry, id)
+	require.NotNil(t, tracking.Info(), "the single commit must already carry the resolved bridge info")
+	require.NotNil(t, tracking.AllSteps(), "the single commit must already carry the seeded/computed steps")
 }

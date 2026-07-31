@@ -75,7 +75,11 @@ func (w *wsHandler) TxStatusWSHandler(c *gin.Context) {
 
 	// Subscribe before reading the snapshot so no update published in between is missed;
 	// the latest-value channel semantics collapse any duplicate with the initial message
-	updates, unsubscribe := w.supervised.Subscribe(id)
+	updates, unsubscribe, err := w.supervised.Subscribe(id)
+	if err != nil {
+		w.wsSendError(conn, &types.ErrorData{Code: http.StatusServiceUnavailable, Message: err.Error()})
+		return
+	}
 	defer unsubscribe()
 	tracking, err := w.supervised.Get(id, true)
 	if err != nil {

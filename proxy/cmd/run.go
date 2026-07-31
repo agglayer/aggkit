@@ -34,7 +34,7 @@ func start(cliCtx *cli.Context) error {
 	}
 
 	// Fingerprint of the effective configuration, exposed by the tracker health endpoint
-	configSHA1, err := proxyconfig.SHA1(cliCtx.StringSlice(proxyconfig.FlagCfg))
+	configSHA1, err := proxyconfig.SHA1(cfg)
 	if err != nil {
 		return err
 	}
@@ -153,9 +153,8 @@ func runTracker(
 	l1Client aggkittypes.EthClienter,
 	restServer *proxy.RESTServer,
 ) {
-	registry := bridgetracker.NewMemoryRegistry()
-
 	trackerCfg := cfg.Tracker
+	registry := bridgetracker.NewMemoryRegistry(trackerCfg.MaxTrackedBridges)
 	trackerCfg.Logger = log.WithFields("module", "bridgetracker")
 	trackerCfg.ConfigSHA1 = configSHA1
 	trackerCfg.Registry = registry
@@ -165,7 +164,7 @@ func runTracker(
 	// the proxy's own L1 client, which carries the configured retry policy
 	rpcClients := sources.NewFinderClients(
 		log.WithFields("module", "bridgetracker-rpcclients"), finder, sources.StaticClients{0: l1Client})
-	bridgeEvents, err := sources.NewBridgeEventSource(rpcClients)
+	bridgeEvents, err := sources.NewBridgeEventSource(rpcClients, trackerCfg.BlockFinality, trackerCfg.BridgeAddrs)
 	if err != nil {
 		log.Fatalf("failed to create bridge event source: %v", err)
 	}
@@ -178,7 +177,7 @@ func runTracker(
 			Bridges:      bridgeEvents,
 			Certificates: sources.NotImplementedCertificateSource{},
 			GERs:         sources.NewGERSource(finder),
-			LERs:         sources.NotImplementedLERSource{},
+			LERs:         sources.NewLERSource(rpcClients),
 			Claims:       sources.NewClaimSource(finder),
 		},
 	)

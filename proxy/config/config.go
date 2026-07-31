@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1" //nolint:gosec // not used for security: config fingerprint for the health endpoint
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -67,7 +68,9 @@ WriteTimeout = "5m"
 MaxRequestsPerIPAndSecond = 10
 
 [Tracker]
-RetentionPeriod = "1m"
+RetentionPeriod = "10m"
+BlockFinality = "FinalizedBlock"
+MaxTrackedBridges = 100000
 `
 
 // Config holds the full configuration of the proxy component
@@ -122,20 +125,18 @@ func Load(ctx *cli.Context) (*Config, error) {
 	return LoadFiles(ctx.StringSlice(FlagCfg))
 }
 
-// SHA1 returns the sha1sum (hex) of the configuration the binary was started with: the
-// concatenation of the config files in the order they were passed. It identifies the
-// effective configuration of an instance (exposed by the tracker health endpoint), so
-// instances behind a proxy can be checked to run the same configuration
-func SHA1(configFiles []string) (string, error) {
-	hasher := sha1.New() //nolint:gosec // not used for security: config fingerprint for the health endpoint
-	for _, file := range configFiles {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			return "", fmt.Errorf("error reading config file %s: %w", file, err)
-		}
-		hasher.Write(content)
+// SHA1 returns the sha1sum (hex) of the effective configuration cfg was decoded into: config
+// file(s), defaults, and any CDK_PROXY_* environment overrides. It identifies the effective
+// configuration of an instance (exposed by the tracker health endpoint), so instances behind a
+// proxy can be checked to run the same configuration; hashing only the input files would miss
+// environment overrides and let differently-behaving instances report the same fingerprint.
+func SHA1(cfg *Config) (string, error) {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return "", fmt.Errorf("error marshalling config for fingerprint: %w", err)
 	}
-	return hex.EncodeToString(hasher.Sum(nil)), nil
+	sum := sha1.Sum(data) //nolint:gosec // not used for security: config fingerprint for the health endpoint
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // LoadFiles loads the configuration merging the default values with the given config files

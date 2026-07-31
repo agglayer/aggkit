@@ -13,7 +13,7 @@ import (
 var testHash = common.HexToHash(testTxHash)
 
 func TestRegistryGetSnapshot(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	id := TrackingID{NetworkID: 1, TxHash: testHash}
 
 	// first read: entry created, no info -> Registered
@@ -63,7 +63,7 @@ func TestRegistryGetSnapshot(t *testing.T) {
 // updates fully apply — the bridge simply keeps running. Terminal failures proper only happen
 // before resolution (give-up paths), where Info/AllSteps are still nil
 func TestRegistryUpdateTrackingBridgeTxAfterErrorRevives(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	id := TrackingID{NetworkID: 1, TxHash: testHash}
 	_, err := r.Get(id, true)
 	require.NoError(t, err)
@@ -91,7 +91,7 @@ func TestRegistryUpdateTrackingBridgeTxAfterErrorRevives(t *testing.T) {
 // TestRegistryGetWithoutCreateReturnsNotFound pins the read-only lookup: Get with
 // createIfNotExists=false neither creates nor guesses, it just reports the miss
 func TestRegistryGetWithoutCreateReturnsNotFound(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 
 	tracking, err := r.Get(TrackingID{NetworkID: 1, TxHash: testHash}, false)
 	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
@@ -107,7 +107,7 @@ func TestRegistryGetWithoutCreateReturnsNotFound(t *testing.T) {
 // they are, and a forgotten tx re-registers from scratch — the retry path for a bridge the
 // tracker gave up on
 func TestRegistryPruneTerminal(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	clock := time.Date(2026, 7, 22, 10, 0, 0, 0, time.UTC)
 	r.now = func() time.Time { return clock }
 
@@ -149,7 +149,7 @@ func TestRegistryPruneTerminal(t *testing.T) {
 // UpdateTrackingBridgeTx never creates the entry on its own: the bridge must already be in
 // the supervised list (via Get(id, true) or Subscribe)
 func TestRegistryUpdateTrackingBridgeTxUnregisteredReturnsNotFound(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	id := TrackingID{NetworkID: 1, TxHash: testHash}
 
 	err := r.UpdateTrackingBridgeTx(id, domain.TrackingBridgeTx{Info: testBridgeInfo()})
@@ -157,7 +157,7 @@ func TestRegistryUpdateTrackingBridgeTxUnregisteredReturnsNotFound(t *testing.T)
 }
 
 func TestRegistryUpdateTrackingBridgeTxError(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	id := TrackingID{NetworkID: 1, TxHash: testHash}
 	_, err := r.Get(id, true)
 	require.NoError(t, err)
@@ -180,7 +180,7 @@ func TestRegistryUpdateTrackingBridgeTxError(t *testing.T) {
 }
 
 func TestRegistryKeyIsolation(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	network1 := TrackingID{NetworkID: 1, TxHash: testHash}
 	network2 := TrackingID{NetworkID: 2, TxHash: testHash} // same tx hash, different network
 
@@ -199,10 +199,11 @@ func TestRegistryKeyIsolation(t *testing.T) {
 }
 
 func TestRegistrySubscribeReceivesUpdates(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	id := TrackingID{NetworkID: 1, TxHash: testHash}
 
-	ch, unsubscribe := r.Subscribe(id)
+	ch, unsubscribe, err := r.Subscribe(id)
+	require.NoError(t, err)
 	defer unsubscribe()
 
 	published := testBridgeInfo()
@@ -221,10 +222,11 @@ func TestRegistrySubscribeReceivesUpdates(t *testing.T) {
 // never resolved (AllSteps still nil): unlike TestRegistryUpdateTrackingBridgeTxAfterErrorRevives,
 // there is no stale AllSteps to mask the derived TrackingStatus
 func TestRegistrySubscribeReceivesErrorUpdate(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	id := TrackingID{NetworkID: 1, TxHash: testHash}
 
-	ch, unsubscribe := r.Subscribe(id)
+	ch, unsubscribe, err := r.Subscribe(id)
+	require.NoError(t, err)
 	defer unsubscribe()
 
 	terminal := testErrorStep()
@@ -240,10 +242,11 @@ func TestRegistrySubscribeReceivesErrorUpdate(t *testing.T) {
 // TestRegistrySubscribeCoalesces pins the latest-value semantics: a slow subscriber never
 // blocks the publisher and always observes the most recent snapshot
 func TestRegistrySubscribeCoalesces(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	id := TrackingID{NetworkID: 1, TxHash: testHash}
 
-	ch, unsubscribe := r.Subscribe(id)
+	ch, unsubscribe, err := r.Subscribe(id)
+	require.NoError(t, err)
 	defer unsubscribe()
 
 	first := testBridgeInfo()
@@ -270,7 +273,7 @@ func TestRegistrySubscribeCoalesces(t *testing.T) {
 // TestRegistryGetTrackerActives pins which entries the engine keeps tracking: registered
 // bridges that never failed to resolve and are not yet claimed
 func TestRegistryGetTrackerActives(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 
 	pending := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}
 	claimed := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x02")}
@@ -291,7 +294,7 @@ func TestRegistryGetTrackerActives(t *testing.T) {
 
 // TestRegistryGetTrackerActivesFiltersByNetwork pins the optional network filter
 func TestRegistryGetTrackerActivesFiltersByNetwork(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 
 	network1 := TrackingID{NetworkID: 1, TxHash: testHash}
 	network2 := TrackingID{NetworkID: 2, TxHash: testHash}
@@ -312,7 +315,7 @@ func TestRegistryGetTrackerActivesFiltersByNetwork(t *testing.T) {
 // polling it in case the error clears, unlike a bridge the tracker never managed to resolve
 // at all
 func TestRegistryGetTrackerActivesKeepsStepLevelErrors(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	erroring := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x04")}
 
 	_, err := r.Get(erroring, true)
@@ -326,10 +329,11 @@ func TestRegistryGetTrackerActivesKeepsStepLevelErrors(t *testing.T) {
 }
 
 func TestRegistryUnsubscribeStopsUpdates(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	id := TrackingID{NetworkID: 1, TxHash: testHash}
 
-	ch, unsubscribe := r.Subscribe(id)
+	ch, unsubscribe, err := r.Subscribe(id)
+	require.NoError(t, err)
 	unsubscribe()
 
 	require.NoError(t, publishStatus(r, id, testBridgeInfo(), testAllSteps(false)))
@@ -342,7 +346,7 @@ func TestRegistryUnsubscribeStopsUpdates(t *testing.T) {
 }
 
 func TestRegistryGetNetworks(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 
 	running := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}
 	registered := TrackingID{NetworkID: 2, TxHash: common.HexToHash("0x02")}
@@ -363,7 +367,7 @@ func TestRegistryGetNetworks(t *testing.T) {
 }
 
 func TestRegistryGetNumTracker(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	require.Equal(t, 0, r.GetNumTracker())
 
 	_, err := r.Get(TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}, true)
@@ -375,7 +379,7 @@ func TestRegistryGetNumTracker(t *testing.T) {
 }
 
 func TestRegistryUpdateTrackingStepGrowsAllSteps(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 	id := TrackingID{NetworkID: 1, TxHash: testHash}
 	_, err := r.Get(id, true)
 	require.NoError(t, err)
@@ -393,8 +397,46 @@ func TestRegistryUpdateTrackingStepGrowsAllSteps(t *testing.T) {
 }
 
 func TestRegistryUpdateTrackingStepUnregisteredReturnsNotFound(t *testing.T) {
-	r := newMemoryRegistry()
+	r := newMemoryRegistry(0)
 
 	err := r.UpdateTrackingStep(TrackingID{NetworkID: 1, TxHash: testHash}, 0, types.BridgeStepPath{})
 	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
+}
+
+// TestRegistryGetRefusesNewEntryPastCapacity guards against an unauthenticated caller growing
+// the registry without bound: once maxEntries distinct bridges are registered, Get refuses to
+// create another one (ErrRegistryFull), while already-registered bridges remain fully usable.
+func TestRegistryGetRefusesNewEntryPastCapacity(t *testing.T) {
+	r := newMemoryRegistry(2)
+
+	_, err := r.Get(TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}, true)
+	require.NoError(t, err)
+	_, err = r.Get(TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x02")}, true)
+	require.NoError(t, err)
+
+	// A third, distinct bridge is refused: the registry is at capacity.
+	_, err = r.Get(TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x03")}, true)
+	require.ErrorIs(t, err, domain.ErrRegistryFull)
+	require.Equal(t, 2, r.GetNumTracker())
+
+	// An already-registered bridge is unaffected by the cap, whether or not createIfNotExists.
+	_, err = r.Get(TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}, true)
+	require.NoError(t, err)
+	_, err = r.Get(TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}, false)
+	require.NoError(t, err)
+}
+
+// TestRegistrySubscribeRefusesNewEntryPastCapacity mirrors the Get case for the WebSocket
+// subscription path, which registers a new bridge exactly the same way if it does not exist yet.
+func TestRegistrySubscribeRefusesNewEntryPastCapacity(t *testing.T) {
+	r := newMemoryRegistry(1)
+
+	_, err := r.Get(TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}, true)
+	require.NoError(t, err)
+
+	ch, unsubscribe, err := r.Subscribe(TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x02")})
+	require.ErrorIs(t, err, domain.ErrRegistryFull)
+	require.Nil(t, ch)
+	require.Nil(t, unsubscribe)
+	require.Equal(t, 1, r.GetNumTracker())
 }

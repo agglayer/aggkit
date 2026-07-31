@@ -11,6 +11,13 @@ import (
 // supervised list and createIfNotExists was false
 var ErrTrackingNotFound = errors.New("tracking not found")
 
+// ErrRegistryFull is returned by SupervisedStore.Get and StatusNotifier.Subscribe when
+// creating a new entry would exceed the registry's configured capacity. Without this bound,
+// an unauthenticated caller could register an unbounded number of distinct (network, tx hash)
+// pairs — each staying in memory until it resolves or its unresolved/retention timeout elapses
+// — and exhaust the process's memory and the engine's active work queue
+var ErrRegistryFull = errors.New("supervised registry is full")
+
 // SupervisedStore is the driven port to the supervised-bridges state. The HTTP handlers use
 // its read side (Get) and the tracking engine its write side (UpdateTrackingBridgeTx /
 // UpdateTrackingStep).
@@ -71,8 +78,9 @@ type StatusNotifier interface {
 	// TrackingData snapshot plus an unsubscribe function. Deliveries follow latest-value
 	// semantics: a slow subscriber never blocks the producer and always observes the most
 	// recent snapshot (every update carries the full snapshot, so intermediate ones can be
-	// dropped safely)
-	Subscribe(id TrackingID) (<-chan *TrackingData, func())
+	// dropped safely). Returns ErrRegistryFull (nil channel/unsubscribe) if the bridge is not
+	// yet registered and the registry is at capacity
+	Subscribe(id TrackingID) (<-chan *TrackingData, func(), error)
 }
 
 // SupervisedRegistry is the full supervised-bridges subsystem: state plus change

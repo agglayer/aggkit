@@ -29,6 +29,11 @@ type memoryRegistry struct {
 	bridges map[TrackingID]*bridgeEntry
 	// now is the clock terminalSince is stamped with, injectable for tests
 	now func() time.Time
+	// maxEntries bounds how many distinct bridges can be registered at once (see create): an
+	// unauthenticated caller registering an unbounded number of distinct (network, tx hash)
+	// pairs would otherwise grow the registry (and the engine's active work queue) without
+	// limit until each entry's unresolved/retention timeout elapses
+	maxEntries int
 }
 
 // isTerminal reports whether the snapshot will never change again: the bridge finished, or
@@ -42,23 +47,31 @@ func isTerminal(tracking *domain.TrackingData) bool {
 // compile-time check: the in-memory adapter fulfils the full port
 var _ SupervisedRegistry = (*memoryRegistry)(nil)
 
-// terminallyFailed reports whether the tracker gave up resolving the bridge at all: same as
-// domain.TrackingData.Failed(). There is no separate raw flag to consult anymore —
-// TrackingStatus is fully derived from the snapshot, so a mid-batch state (steps already
-// updated, tx not yet) cannot disagree with it: a step-level error on a resolved bridge
-// keeps Info populated and is therefore never mistaken for a terminal failure
+// terminallyFailed reports whether the tracker gave up resolving the bridge's tx at all: a
+// tx-level terminal Error recorded while Info was still nil. Deliberately not
+// domain.TrackingData.Failed(): TrackingStatus prioritizes AllSteps once it is non-nil, so a
+// step-level error persisted in the same batch that also carries the bridge's first-ever Info —
+// still nil in the store until the batch's UpdateTrackingBridgeTx call lands, see Engine.persist —
+// would read as Failed() too, permanently blocking that same batch's remaining step writes.
+// Checking the tx fields directly is immune to that write-order dependency
 func terminallyFailed(tracking *domain.TrackingData) bool {
-	return tracking.Failed()
+	tx := tracking.BridgeTx()
+	return tx.Info == nil && tx.IsInTerminalError()
 }
 
-// NewMemoryRegistry returns an in-memory SupervisedRegistry
-func NewMemoryRegistry() SupervisedRegistry {
-	return newMemoryRegistry()
+// NewMemoryRegistry returns an in-memory SupervisedRegistry that refuses to register more than
+// maxEntries distinct bridges at once (see memoryRegistry.maxEntries); maxEntries <= 0 falls
+// back to DefaultMaxTrackedBridges.
+func NewMemoryRegistry(maxEntries int) SupervisedRegistry {
+	return newMemoryRegistry(maxEntries)
 }
 
 // newMemoryRegistry returns the concrete type, for tests that inspect internals
-func newMemoryRegistry() *memoryRegistry {
-	return &memoryRegistry{bridges: make(map[TrackingID]*bridgeEntry), now: time.Now}
+func newMemoryRegistry(maxEntries int) *memoryRegistry {
+	if maxEntries <= 0 {
+		maxEntries = DefaultMaxTrackedBridges
+	}
+	return &memoryRegistry{bridges: make(map[TrackingID]*bridgeEntry), now: time.Now, maxEntries: maxEntries}
 }
 
 // Get implements SupervisedStore
@@ -71,20 +84,28 @@ func (r *memoryRegistry) Get(id TrackingID, createIfNotExists bool) (*domain.Tra
 		if !createIfNotExists {
 			return nil, domain.ErrTrackingNotFound
 		}
-		entry = r.create(id)
+		var err error
+		entry, err = r.create(id)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return entry.tracking, nil
 }
 
 // Subscribe implements StatusNotifier. The channel has a buffer of one and updates are
 // coalesced: if the subscriber is slow, older pending updates are replaced by the newest one
-func (r *memoryRegistry) Subscribe(id TrackingID) (<-chan *domain.TrackingData, func()) {
+func (r *memoryRegistry) Subscribe(id TrackingID) (<-chan *domain.TrackingData, func(), error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	entry, ok := r.bridges[id]
 	if !ok {
-		entry = r.create(id)
+		var err error
+		entry, err = r.create(id)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	ch := make(chan *domain.TrackingData, 1)
 	entry.subscribers[ch] = struct{}{}
@@ -95,7 +116,7 @@ func (r *memoryRegistry) Subscribe(id TrackingID) (<-chan *domain.TrackingData, 
 		delete(entry.subscribers, ch)
 	}
 
-	return ch, unsubscribe
+	return ch, unsubscribe, nil
 }
 
 // UpdateTrackingBridgeTx implements SupervisedStore, notifying every subscriber of the bridge.
@@ -220,14 +241,19 @@ func (r *memoryRegistry) GetNumTracker() int {
 	return len(r.bridges)
 }
 
-// create adds a fresh (Registered, nil BridgeStatus) entry for id. Callers must hold r.mu
-func (r *memoryRegistry) create(id TrackingID) *bridgeEntry {
+// create adds a fresh (Registered, nil BridgeStatus) entry for id, or domain.ErrRegistryFull if
+// the registry is already at maxEntries. Callers must hold r.mu
+func (r *memoryRegistry) create(id TrackingID) (*bridgeEntry, error) {
+	if len(r.bridges) >= r.maxEntries {
+		return nil, domain.ErrRegistryFull
+	}
+
 	entry := &bridgeEntry{
 		tracking:    domain.NewTrackingData(id, domain.TrackingBridgeTx{}, nil),
 		subscribers: make(map[chan *domain.TrackingData]struct{}),
 	}
 	r.bridges[id] = entry
-	return entry
+	return entry, nil
 }
 
 // notify delivers the update to every subscriber with latest-value semantics:

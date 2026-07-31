@@ -183,7 +183,7 @@ func (f *finder) Start(ctx context.Context) error {
 	// are discovered live (no restart required), hence it is given the reader factory and eth client.
 	// It runs in the background until ctx is done and shuts down cleanly on ctx.Done().
 	lst, err := newListener(
-		f.logger, f.logFilterer, f.healthChecker, f.resolver, f.cache, f.addrToNetworkID,
+		ctx, f.logger, f.logFilterer, f.healthChecker, f.resolver, f.cache, f.addrToNetworkID,
 		f.cfg.RollupManagerAddr, f.readerFactory, f.ethClient, f.cfg)
 	if err != nil {
 		return fmt.Errorf("failed to build event listener: %w", err)

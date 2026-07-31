@@ -31,7 +31,9 @@ func TestLoadFilesDefaults(t *testing.T) {
 	require.Equal(t, 5*time.Second, cfg.BridgeServiceFinder.HealthCheckTimeout.Duration)
 	require.False(t, cfg.BridgeServiceFinder.RequireAllHealthyOnStart)
 
-	require.Equal(t, time.Minute, cfg.Tracker.RetentionPeriod.Duration)
+	require.Equal(t, 10*time.Minute, cfg.Tracker.RetentionPeriod.Duration)
+	require.Equal(t, aggkittypes.FinalizedBlock, cfg.Tracker.BlockFinality)
+	require.Equal(t, 100000, cfg.Tracker.MaxTrackedBridges)
 }
 
 func TestLoadFilesOverridesDefaults(t *testing.T) {

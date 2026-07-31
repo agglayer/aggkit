@@ -193,15 +193,18 @@ func (e *Engine) tick(ctx context.Context) {
 // ticks), then domain.ResolveSteps for whichever step is currently unmet — milestones already
 // persisted as done are not re-queried, only the pending ones are (it naturally stops at the
 // first unmet one). A source failure is persisted as a step-level error instead of
-// only being logged — see persistStepError. On success, all mutations for the tick are merged
-// into a single tx, committed through exactly one UpdateTrackingBridgeTx call (preceded by
-// the step writes, if any changed) so subscribers see one consistent, fully-merged snapshot
-// instead of one partial notification per field
+// only being logged — see persistStepError. On success, all mutations for the tick — including
+// the bridge's tx-level facts (Info) the first time FindBridge resolves it — are merged into a
+// single tx, committed through exactly one UpdateTrackingBridgeTx call (preceded by the step
+// writes, if any changed) so subscribers only ever see one consistent, fully-merged snapshot:
+// never one where BridgeStatus is already populated but AllSteps still reflects the bare,
+// just-seeded pending path instead of what ResolveSteps actually computed for it
 func (e *Engine) resolveBridgeStep(ctx context.Context, tracking *domain.TrackingData) error {
 	ctx, cancel := context.WithTimeout(ctx, e.cfg.ResolveTimeout)
 	defer cancel()
 
 	id := tracking.ID()
+	originalTx := tracking.BridgeTx()
 
 	resolved, err := e.resolveBridgeTx(ctx, tracking)
 	if err != nil {
@@ -216,17 +219,21 @@ func (e *Engine) resolveBridgeStep(ctx context.Context, tracking *domain.Trackin
 		return err
 	}
 
-	if !reflect.DeepEqual(lastSteps, stepped.AllSteps()) {
+	txChanged := originalTx.String() != stepped.BridgeTx().String()
+	if txChanged || !reflect.DeepEqual(lastSteps, stepped.AllSteps()) {
 		return e.persist(id, stepped.BridgeTx(), stepped.AllSteps())
 	}
 	return nil
 }
 
-// resolveBridgeTx returns the bridge's resolved facts and its current expected path, persisting
-// the result if it is not yet known (or a previous resolution attempt left an outstanding Error
-// to retry). domain.ResolveBridgeTx owns the FindBridge call and its outcome (see its doc); this
-// method's own job is only logging and persistence — the IsDone guard is duplicated here so the
-// FindBridge debug log below is skipped, too, once the bridge no longer needs it
+// resolveBridgeTx returns the bridge's resolved facts and its current expected path. Unlike a
+// transient/permanent failure (persisted immediately via persistResolveFailure, since there is
+// nothing further to compute for it this tick), a success is deliberately left unpersisted: the
+// caller (resolveBridgeStep) still has to run computeAllSteps over it, and commits both together
+// in one call so subscribers never observe Info populated ahead of the steps it unlocked.
+// domain.ResolveBridgeTx owns the FindBridge call and its outcome (see its doc); this method's
+// own job is only logging and persisting the failure case — the IsDone guard is duplicated here
+// so the FindBridge debug log below is skipped, too, once the bridge no longer needs it
 func (e *Engine) resolveBridgeTx(
 	ctx context.Context, tracking *domain.TrackingData,
 ) (*domain.TrackingData, error) {
@@ -245,9 +252,6 @@ func (e *Engine) resolveBridgeTx(
 		return nil, err
 	}
 
-	if perr := e.persist(id, resolved.BridgeTx(), resolved.AllSteps()); perr != nil {
-		return nil, perr
-	}
 	return resolved, nil
 }
 

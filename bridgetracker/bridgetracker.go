@@ -27,7 +27,7 @@ func New(cfg *Config) *BridgeTracker {
 
 	supervised := cfg.Registry
 	if supervised == nil {
-		supervised = NewMemoryRegistry()
+		supervised = NewMemoryRegistry(cfg.MaxTrackedBridges)
 	}
 
 	return &BridgeTracker{

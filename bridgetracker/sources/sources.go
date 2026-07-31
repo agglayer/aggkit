@@ -1,12 +1,15 @@
 // Package sources implements the driven fact ports of the bridge tracker engine
-// (bridgetracker.BridgeEventSource, GERSource, ClaimSource) over the real backends: the
-// per-network JSON-RPC endpoints and the aggkit bridge service REST API, both resolved per
+// (bridgetracker.BridgeEventSource, GERSource, LERSource, ClaimSource) over the real backends:
+// the per-network JSON-RPC endpoints and the aggkit bridge service REST API, both resolved per
 // network through the bridgeservicefinder.
 //
-// Current coverage: L1 -> L2 bridges. The CertificateSource (needed by L2-originated
-// bridges) is not implemented yet; NotImplementedCertificateSource stubs it so the engine
-// can be wired — L2-origin bridges fail their resolution (and are retried) until the real
-// adapter lands.
+// Current coverage: L1 -> L2 bridges, plus the LER half of L2-originated ones. The
+// CertificateSource (also needed by L2-originated bridges) is partially implemented: see
+// certificate.go — fetching a known certificate's header is wired to the agglayer, but
+// matching a bridge to its covering certificate (CertificateSource.certificateIDFor) is still a
+// stub, so L2-origin bridges still fail their resolution (and are retried) once they reach the
+// certificate steps, until that lands. NotImplementedCertificateSource is kept as the simpler
+// stub for callers that have not wired an agglayer client yet.
 package sources
 
 import (
@@ -34,7 +37,7 @@ type NetworkURLResolver interface {
 
 // EthClientResolver resolves the JSON-RPC client of a network
 type EthClientResolver interface {
-	ClientFor(ctx context.Context, networkID uint32) (aggkittypes.BaseEthereumClienter, error)
+	RPCClientFor(ctx context.Context, networkID uint32) (aggkittypes.BaseEthereumClienter, error)
 }
 
 // StaticClients is a fixed networkID -> client EthClientResolver (e.g. {0: the proxy's L1
@@ -42,8 +45,8 @@ type EthClientResolver interface {
 // permanent bridgetracker.ErrSourceUnavailable, not retried by the engine
 type StaticClients map[uint32]aggkittypes.BaseEthereumClienter
 
-// ClientFor implements EthClientResolver
-func (s StaticClients) ClientFor(_ context.Context, networkID uint32) (aggkittypes.BaseEthereumClienter, error) {
+// RPCClientFor implements EthClientResolver
+func (s StaticClients) RPCClientFor(_ context.Context, networkID uint32) (aggkittypes.BaseEthereumClienter, error) {
 	c, ok := s[networkID]
 	if !ok {
 		return nil, fmt.Errorf("%w: no JSON-RPC client configured for network %d",
@@ -87,9 +90,9 @@ func NewFinderClients(
 	}
 }
 
-// ClientFor implements EthClientResolver. URLs are re-resolved on every call (the finder
+// RPCClientFor implements EthClientResolver. URLs are re-resolved on every call (the finder
 // refreshes them from on-chain events); the cache only avoids re-dialing a stable URL
-func (f *FinderClients) ClientFor(ctx context.Context, networkID uint32) (aggkittypes.BaseEthereumClienter, error) {
+func (f *FinderClients) RPCClientFor(ctx context.Context, networkID uint32) (aggkittypes.BaseEthereumClienter, error) {
 	if c, ok := f.overrides[networkID]; ok {
 		return c, nil
 	}
@@ -174,16 +177,4 @@ func (NotImplementedCertificateSource) CertificateFor(
 	_ context.Context, _ *bridgetracker.BridgeInfo,
 ) (*types.CertificateData, error) {
 	return nil, errors.New("certificate source not implemented yet (L2-originated bridges are not supported)")
-}
-
-// NotImplementedLERSource stubs bridgetracker.LERSource until a bridgeservice endpoint
-// resolves the Local Exit Root covering an L2 deposit: every call errors, so L2-originated
-// bridges keep being retried by the engine without ever advancing past WaitingLERUpdate
-type NotImplementedLERSource struct{}
-
-// OriginLER implements bridgetracker.LERSource
-func (NotImplementedLERSource) OriginLER(
-	_ context.Context, _ *bridgetracker.BridgeInfo,
-) (*types.LERUpdateResult, error) {
-	return nil, errors.New("LER source not implemented yet (L2-originated bridges are not supported)")
 }
