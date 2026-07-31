@@ -37,7 +37,7 @@ func NewGERSource(finder NetworkURLResolver) *GERSource {
 func (s *GERSource) OriginGER(
 	ctx context.Context, bridge *bridgetracker.BridgeInfo,
 ) (*trackertypes.GERData, error) {
-	svc, err := s.services.clientFor(bridge.DestinationNetwork)
+	svc, err := s.services.aggkitBridgeClientFor(bridge.DestinationNetwork)
 	if err != nil {
 		return nil, err // transient: URL resolution failure, retried by the engine
 	}
@@ -79,7 +79,7 @@ func (s *GERSource) InjectedGER(
 		return nil, err
 	}
 
-	svc, err := s.services.clientFor(bridge.DestinationNetwork)
+	svc, err := s.services.aggkitBridgeClientFor(bridge.DestinationNetwork)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (s *GERSource) InjectedGER(
 func (s *GERSource) coveringLeafIndex(
 	ctx context.Context, bridge *bridgetracker.BridgeInfo,
 ) (uint32, error) {
-	svc, err := s.services.clientFor(bridge.DestinationNetwork)
+	svc, err := s.services.aggkitBridgeClientFor(bridge.DestinationNetwork)
 	if err != nil {
 		return 0, err // transient: URL resolution failure, retried by the engine
 	}

@@ -133,8 +133,8 @@ func newBridgeServiceClients(finder NetworkURLResolver) *bridgeServiceClients {
 	}
 }
 
-// clientFor returns the bridge service client of the given network
-func (b *bridgeServiceClients) clientFor(networkID uint32) (*client.Client, error) {
+// aggkitBridgeClientFor returns the aggkit bridge service client of the given network
+func (b *bridgeServiceClients) aggkitBridgeClientFor(networkID uint32) (*client.Client, error) {
 	urls, err := b.finder.GetURL(networkID)
 	if err != nil {
 		return nil, fmt.Errorf("resolving bridge service URL for network %d: %w", networkID, err)

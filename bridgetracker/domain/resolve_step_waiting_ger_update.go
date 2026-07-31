@@ -8,8 +8,8 @@ import (
 )
 
 // WaitingGERUpdateResolver resolves StepWaitingGERUpdate: whether the Global Exit Root has
-// been updated to cover an L1-originated bridge. Only ever the current step of an L1->L2 or
-// L1->L1' path, since ExpectedPath omits it otherwise
+// been updated to cover an L1-originated bridge. Only ever the current step of an L1->L2 path,
+// since ExpectedPath omits it otherwise
 type WaitingGERUpdateResolver struct{}
 
 // Resolve implements StepResolver

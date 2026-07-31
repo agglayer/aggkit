@@ -29,7 +29,7 @@ func NewClaimSource(finder NetworkURLResolver) *ClaimSource {
 func (s *ClaimSource) ClaimFor(
 	ctx context.Context, bridge *bridgetracker.BridgeInfo,
 ) (*trackertypes.ClaimResult, error) {
-	svc, err := s.services.clientFor(bridge.DestinationNetwork)
+	svc, err := s.services.aggkitBridgeClientFor(bridge.DestinationNetwork)
 	if err != nil {
 		return nil, err
 	}
