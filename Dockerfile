@@ -16,7 +16,7 @@ RUN go mod download
 COPY . .
 
 # Compile binary
-RUN make build-aggkit build-tools
+RUN make build-aggkit build-aggkit-proxy build-tools
 
 # ================================
 # STAGE 2: Final runtime image
@@ -55,6 +55,7 @@ USER appuser
 
 # Copy the built binary from the builder stage
 COPY --from=builder /app/target/aggkit /usr/local/bin/aggkit
+COPY --from=builder /app/target/aggkit-proxy /usr/local/bin/aggkit-proxy
 COPY --from=builder /app/target/aggsender_find_imported_bridge /usr/local/bin/aggsender_find_imported_bridge
 
 # Exit certificate tooling: the generator and the claimer HTTP service.

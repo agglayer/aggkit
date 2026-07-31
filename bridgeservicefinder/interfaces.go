@@ -42,8 +42,21 @@ var (
 	ErrSourceNotAvailable = errors.New("bridge service url source not available on this contract")
 )
 
-// Finder resolves and serves the bridge service URL for every network attached to a rollup manager.
-// It is the package's public type. See doc.go for the design.
+// NetworkURLs bundles the two endpoints the finder resolves for a network: the bridge service REST
+// URL and the network's JSON-RPC endpoint. The JSON-RPC endpoint is the Config.RPCURLs override if
+// present, otherwise the rollup's on-chain trustedSequencerURL() served verbatim (no port
+// substitution); it may be empty when neither source is available (e.g. a config-only network such
+// as L1, or a legacy rollup whose call reverts). BridgeURL is always non-empty on a successful
+// GetURL.
+type NetworkURLs struct {
+	// BridgeURL is the bridge service REST URL resolved via the three-source priority algorithm.
+	BridgeURL string
+	// JSONRPCURL is the network's JSON-RPC endpoint (config override or raw trustedSequencerURL).
+	JSONRPCURL string
+}
+
+// Finder resolves and serves the bridge service URL and JSON-RPC endpoint for every network
+// attached to a rollup manager. It is the package's public type. See doc.go for the design.
 type Finder interface {
 	// Start builds the initial networkID -> url cache for all attached networks, probes each resolved
 	// service via /health, and starts the finality-based event-polling loop. It blocks until the
@@ -51,10 +64,10 @@ type Finder interface {
 	// ctx is done. Depending on Config.RequireAllHealthyOnStart it may return an error if any resolved
 	// service is unreachable at startup.
 	Start(ctx context.Context) error
-	// GetURL returns the currently cached bridge service URL for the given networkID, or ErrURLNotFound
-	// if no URL is cached. networkID follows the mapping documented in doc.go (networkID == rollupID;
-	// network 0 is L1 and is only served if provided via Config.URLs).
-	GetURL(networkID uint32) (string, error)
+	// GetURL returns the currently cached URLs (bridge service + JSON-RPC) for the given networkID, or
+	// ErrURLNotFound if nothing is cached. networkID follows the mapping documented in doc.go
+	// (networkID == rollupID; network 0 is L1 and is only served if provided via Config.BridgeURLs).
+	GetURL(networkID uint32) (NetworkURLs, error)
 }
 
 // RollupManagerQuerier enumerates the rollups attached to a rollup manager and reads their data.

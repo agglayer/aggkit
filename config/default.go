@@ -413,7 +413,7 @@ PollInterval = "3s"
 RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
 PollInterval = "30s"
 
-[AutoClaim.BridgeServiceFinder.URLs]
+[AutoClaim.BridgeServiceFinder.BridgeURLs]
 
 [L1Multidownloader]
 	Enabled = true

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
+	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -27,12 +28,12 @@ type fakeURLResolver struct {
 
 func (f *fakeURLResolver) Start(context.Context) error { return nil }
 
-func (f *fakeURLResolver) GetURL(networkID uint32) (string, error) {
+func (f *fakeURLResolver) GetURL(networkID uint32) (bridgeservicefinder.NetworkURLs, error) {
 	f.calls = append(f.calls, networkID)
 	if err, ok := f.errs[networkID]; ok {
-		return "", err
+		return bridgeservicefinder.NetworkURLs{}, err
 	}
-	return f.urls[networkID], nil
+	return bridgeservicefinder.NetworkURLs{BridgeURL: f.urls[networkID]}, nil
 }
 
 // fakeClaimProofClient implements claimProofClient for tests, keyed by base URL.

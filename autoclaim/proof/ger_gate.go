@@ -44,12 +44,12 @@ func NewBridgeServiceGERGate(finder bridgeservicefinder.Finder, networkID uint32
 func (g *BridgeServiceGERGate) GetFirstGERAfterL1InfoTreeIndex(
 	ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
 ) (uint32, error) {
-	baseURL, err := g.finder.GetURL(g.networkID)
+	urls, err := g.finder.GetURL(g.networkID)
 	if err != nil {
 		return 0, fmt.Errorf("resolve bridge service url for destination network %d: %w", g.networkID, err)
 	}
 
-	resp, err := g.newClient(baseURL).GetInjectedL1InfoLeaf(ctx, int(g.networkID), int(atOrAfterL1InfoTreeIndex))
+	resp, err := g.newClient(urls.BridgeURL).GetInjectedL1InfoLeaf(ctx, int(g.networkID), int(atOrAfterL1InfoTreeIndex))
 	if err != nil {
 		if errors.Is(err, client.ErrNotFound) {
 			return 0, ErrGERNotInjected

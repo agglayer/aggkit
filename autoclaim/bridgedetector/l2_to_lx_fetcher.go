@@ -20,7 +20,7 @@ const base10 = 10
 
 // urlResolver is the subset of bridgeservicefinder.Finder the fetcher needs.
 type urlResolver interface {
-	GetURL(networkID uint32) (string, error)
+	GetURL(networkID uint32) (bridgeservicefinder.NetworkURLs, error)
 }
 
 // candidatesClient is the subset of bridgeservice/client.Client the fetcher needs.
@@ -53,14 +53,14 @@ func NewServiceFetcher(finder bridgeservicefinder.Finder) *ServiceFetcher {
 // GetURL resolves the source network's bridge service URL, mapping the finder's not-found error to
 // the detector-local ErrURLNotFound.
 func (f *ServiceFetcher) GetURL(sourceNetwork uint32) (string, error) {
-	url, err := f.finder.GetURL(sourceNetwork)
+	urls, err := f.finder.GetURL(sourceNetwork)
 	if err != nil {
 		if errors.Is(err, bridgeservicefinder.ErrURLNotFound) {
 			return "", fmt.Errorf("%w: source %d: %w", ErrURLNotFound, sourceNetwork, err)
 		}
 		return "", err
 	}
-	return url, nil
+	return urls.BridgeURL, nil
 }
 
 // GetClaimCandidates fetches one page of claim candidates from the source bridge service reachable at

@@ -1,13 +1,13 @@
-// Package bridgeservicefinder resolves and serves the bridge service REST URL for every
-// network attached to a given rollup manager.
+// Package bridgeservicefinder resolves and serves the bridge service REST URL and the JSON-RPC
+// endpoint for every network attached to a given rollup manager.
 //
 // # Overview
 //
-// The finder builds and maintains an in-memory cache mapping networkID -> bridge service URL.
-// On Start it enumerates every rollup attached to the configured rollup manager, resolves a
-// bridge service URL for each, asserts each resolved service is reachable (via its /health
-// endpoint), and then keeps the cache fresh by polling on-chain events. GetURL returns the
-// currently cached URL for a given networkID.
+// The finder builds and maintains an in-memory cache mapping networkID -> network URLs (the bridge
+// service REST URL plus the network's JSON-RPC endpoint). On Start it enumerates every rollup
+// attached to the configured rollup manager, resolves the URLs for each, asserts each resolved
+// bridge service is reachable (via its /health endpoint), and then keeps the cache fresh by
+// polling on-chain events. GetURL returns the currently cached NetworkURLs for a given networkID.
 //
 // The event poller watches both per-rollup URL changes and rollup-manager lifecycle events, so a
 // rollup attached to the manager AFTER Start is discovered and served live, without a restart (see
@@ -25,8 +25,9 @@
 //   - networkID == 0 is the L1 / mainnet network. It is NOT a rollup and is NOT enumerated by
 //     the rollup manager. The rollup manager only knows about rollups 1..N. L1 (network 0) has
 //     no bridge service resolvable from the rollup manager. If GetURL is asked about network 0,
-//     the finder returns the config value if one was provided for it, otherwise a not-found
-//     error. network 0 is out of scope for on-chain enumeration and event watching.
+//     the finder returns the config values if provided (Config.BridgeURLs / Config.RPCURLs),
+//     otherwise a not-found error. network 0 is out of scope for on-chain enumeration and event
+//     watching.
 //   - For attached rollups, networkID == rollupID. Rollups are numbered 1..RollupCount(). This
 //     matches how the repo already treats the identifier: etherman/querier/rollup_data_querier.go
 //     obtains the rollup's id via RollupAddressToID and feeds that same id into
@@ -42,24 +43,51 @@
 //
 // A URL for a network is resolved from three sources, in strict descending priority:
 //
-//  1. Config      - a user-provided static map networkID -> url (Config.URLs). Highest priority.
-//     A config-sourced entry is NEVER overridden by an on-chain event.
+//  1. Config      - a user-provided static map networkID -> url (Config.BridgeURLs). Highest
+//     priority. A config-sourced entry is NEVER overridden by an on-chain event.
 //  2. On-chain     - the aggchain contract's aggchainMetadata(string) mapping, read with key
 //     metadata     "BRIDGE_SERVICE_URL". Present only on aggchain-type rollups. Outranks #3.
 //  3. Sequencer    - the rollup contract's trustedSequencerURL(), with its port replaced by the
 //     URL+port    hardcoded default bridge REST port (DefaultBridgeServicePort = 5577). Lowest
 //     priority. This is the universal fallback available on legacy rollups too.
 //
-// Resolution algorithm for a single network (resolver.go):
+// Resolution algorithm for a single network (resolver.go). The trusted sequencer URL is read up
+// front because it serves double duty: verbatim it is the network's JSON-RPC endpoint, and with
+// the bridge port substituted it is bridge source #3:
 //
-//	if url, ok := config.URLs[networkID]; ok { return url, SourceConfig }
+//	rpc := config.RPCURLs[networkID] // "" if absent; non-empty is terminal
+//	if url, ok := config.BridgeURLs[networkID]; ok {
+//	    return {url, rpc or bestEffort(seqURL)}, SourceConfig
+//	}
+//	seqURL := reader.TrustedSequencerURL(ctx) // ErrSourceNotAvailable -> "", hard error aborts
 //	if url, err := reader.AggchainMetadata(ctx, "BRIDGE_SERVICE_URL"); err == nil && url != "" {
-//	    return url, SourceMetadata
+//	    return {url, rpc or seqURL}, SourceMetadata
 //	}   // a revert / "method not found" / empty value falls through, it is NOT a hard error
-//	if seqURL, err := reader.TrustedSequencerURL(ctx); err == nil && seqURL != "" {
-//	    return withPort(seqURL, DefaultBridgeServicePort), SourceSequencerURL
-//	}   // a revert / "method not found" falls through
-//	return "", ErrNoSourceAvailable
+//	if seqURL != "" {
+//	    return {withPort(seqURL, DefaultBridgeServicePort), rpc or seqURL}, SourceSequencerURL
+//	}
+//	return {}, ErrNoSourceAvailable
+//
+// # JSON-RPC endpoint (independent of the bridge priority)
+//
+// Alongside the bridge service URL, each cache entry carries the network's JSON-RPC endpoint,
+// resolved config-first with the same override semantics as the bridge URL:
+//
+//  1. Config.RPCURLs[networkID], if present. Served verbatim and terminal: never refreshed or
+//     overwritten by on-chain events. This is also the only way to provide a JSON-RPC endpoint for
+//     network 0 (L1). A network with BOTH config overrides skips on-chain inspection entirely.
+//  2. Otherwise the rollup's trustedSequencerURL() served VERBATIM (no port substitution).
+//
+// The on-chain-sourced endpoint is informational and orthogonal to the bridge-URL rules:
+//
+//   - It is populated regardless of which source produced the bridge URL (config included: a
+//     bridge-only-overridden network is still inspected on-chain, best-effort, to fill it in). It
+//     stays empty when the read is unavailable (network 0 / L1, method absent, RPC failure on a
+//     config-covered network).
+//   - A live SetTrustedSequencerURL event always refreshes it (unless config-overridden) - even on
+//     a config-sourced bridge entry and even when the event's bridge-URL candidate is rejected by
+//     the priority or health-gating rules. It is not subject to /health probing (the health check
+//     targets the bridge service).
 //
 // Fallthrough (graceful degradation): different rollup types expose different methods. Legacy
 // (polygonrollupbaseetrog) rollups have trustedSequencerURL() but NOT aggchainMetadata(); calling
@@ -70,12 +98,13 @@
 //
 // # Cache and per-entry source tracking (cache.go)
 //
-// The cache stores, per networkID, both the URL and the Source that produced it:
+// The cache stores, per networkID, the URLs and the Source that produced the bridge URL:
 //
 //	type cacheEntry struct {
-//	    url     string
-//	    source  Source // SourceConfig | SourceMetadata | SourceSequencerURL
-//	    healthy bool   // result of the most recent /health probe for this url
+//	    url        string
+//	    jsonRPCURL string // config override or raw trustedSequencerURL; exempt from the rules below
+//	    source     Source // SourceConfig | SourceMetadata | SourceSequencerURL
+//	    healthy    bool   // result of the most recent /health probe for this url
 //	}
 //
 // Recording the source is what makes config entries immune to on-chain updates and enforces the
@@ -139,7 +168,10 @@
 //   - A hard failure - a genuine RPC/transport error reading a rollup's data, a reader-construction
 //     error, or a genuine (non-fall-through) resolution error - is returned from Start. These mean
 //     the network could not even be inspected (e.g. a broken L1 endpoint), which must not be
-//     swallowed into silent partial coverage.
+//     swallowed into silent partial coverage. Exception: a network covered by a config override
+//     never aborts Start this way - its bridge URL is installed from config and only the JSON-RPC
+//     endpoint is lost (logged as a warning), so config overrides keep working without on-chain
+//     access.
 //   - A benign "no source available" outcome (ErrNoSourceAvailable) is logged and skipped: the
 //     network is left without a cache entry (GetURL returns ErrURLNotFound) but its address stays in
 //     the routing table so a later on-chain URL event, or discovery, can still populate it.
@@ -179,7 +211,7 @@
 //
 //	New(cfg Config, deps ...) (*Finder, error) // construct with config + injected dependencies
 //	(f *Finder) Start(ctx context.Context) error // build initial cache, health-gate, start polling
-//	(f *Finder) GetURL(networkID uint32) (string, error) // return cached URL or a not-found error
+//	(f *Finder) GetURL(networkID uint32) (NetworkURLs, error) // cached URLs or a not-found error
 //
 // See interfaces.go for the dependency interfaces (rollup-manager querier, per-rollup contract
 // reader, FilterLogs-capable eth client, health checker) and config.go for the Config struct and

@@ -18,8 +18,8 @@ type fakeURLResolver struct {
 	err error
 }
 
-func (f fakeURLResolver) GetURL(uint32) (string, error) {
-	return f.url, f.err
+func (f fakeURLResolver) GetURL(uint32) (bridgeservicefinder.NetworkURLs, error) {
+	return bridgeservicefinder.NetworkURLs{BridgeURL: f.url}, f.err
 }
 
 type fakeCandidatesClient struct {

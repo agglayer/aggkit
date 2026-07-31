@@ -530,8 +530,8 @@ var _ bridgeservicefinder.Finder = noopBridgeServiceFinder{}
 
 func (noopBridgeServiceFinder) Start(context.Context) error { return nil }
 
-func (noopBridgeServiceFinder) GetURL(networkID uint32) (string, error) {
-	return "", fmt.Errorf(
+func (noopBridgeServiceFinder) GetURL(networkID uint32) (bridgeservicefinder.NetworkURLs, error) {
+	return bridgeservicefinder.NetworkURLs{}, fmt.Errorf(
 		"autoclaim bridge service finder is not configured (AutoClaim.L2ToLxBridgeDetector.Enabled=false): network %d",
 		networkID)
 }
