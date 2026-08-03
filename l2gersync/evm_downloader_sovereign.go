@@ -29,7 +29,6 @@ type downloaderSovereign struct {
 	l2GERManager       *agglayergerl2.Agglayergerl2
 	l2GERAddr          common.Address
 	l1InfoTreeSync     L1InfoTreeQuerier
-	l1Client           aggkittypes.BaseEthereumClienter
 	l1GERManager       *agglayerger.Agglayerger
 	rh                 *sync.RetryHandler
 	syncBlockChunkSize uint64
@@ -61,7 +60,6 @@ func newDownloaderSovereign(
 		l2GERManager:       l2GERManager,
 		l2GERAddr:          l2GERAddr,
 		l1InfoTreeSync:     l1InfoTreeSync,
-		l1Client:           l1Client,
 		l1GERManager:       l1GERManager,
 		rh:                 rh,
 		syncBlockChunkSize: syncBlockChunkSize,
@@ -153,17 +151,7 @@ func (d *downloaderSovereign) buildAppender(
 				gerHash.Hex(), b.Num, err)
 			ctx := context.Background()
 
-			// IsUpToDate is informational only from here on: it no longer gates the removal check
-			// below, since it is independent of whether l1infotreesync has caught up to L1's
-			// finalized head (see plan S2 §1).
-			isUpToDate, upToDateErr := d.l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
-			if upToDateErr != nil {
-				log.Errorf("failed to check if L1InfoTreeSync is up to date: %v", upToDateErr)
-			} else {
-				log.Infof("L1InfoTreeSync up to date: %t (informational only)", isUpToDate)
-			}
-
-			// The L1 contract read is likewise informational only: it is redundant with the
+			// The L1 contract read is informational only: it is redundant with the
 			// invalid-GER condition ("on L2, not in L1 info tree") and must not gate the skip
 			// decision; the recovery signal is entirely L2-side (see §1 below).
 			timestamp, contractErr := d.l1GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerHash)

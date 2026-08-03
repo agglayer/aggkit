@@ -64,7 +64,7 @@ GER <GER_HASH> not found in L1 contract globalExitRootMap
 GER lookup for <GER_HASH> failed in L1 contract: ...
 ```
 
-These errors are logged on **every retry** while an invalid GER is present — not gated on whether `L1InfoTreeSync` is up-to-date with L1 (that check, and the direct `globalExitRootMap` lookup against the L1 contract, are informational-only log lines from here on; neither gates the recovery decision, which is entirely L2-side — see "Blocking and automatic recovery" below).
+These errors are logged on **every retry** while an invalid GER is present — the direct `globalExitRootMap` lookup against the L1 contract is an informational-only log line from here on; it does not gate the recovery decision, which is entirely L2-side — see "Blocking and automatic recovery" below.
 
 #### Blocking and automatic recovery
 
