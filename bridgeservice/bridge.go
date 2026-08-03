@@ -62,6 +62,7 @@ const (
 	destinationNetworkIDsParam = "destination_network_ids"
 	toLERParam                 = "to_ler"
 	fromLERParam               = "from_ler"
+	lerParam                   = "ler"
 	// DefaultRemoveGERLimit is the default number of remove GER events to return when no limit is specified
 	DefaultRemoveGERLimit = uint32(50)
 
@@ -166,6 +167,7 @@ func (b *BridgeService) RegisterRoutes(router gin.IRouter) {
 		bridgeGroup.GET("/bridge-by-deposit-count", b.GetBridgeByDepositCountHandler)
 		bridgeGroup.GET("/bridges-by-content", b.GetBridgesByContentHandler)
 		bridgeGroup.GET("/claim-candidates", b.GetClaimCandidatesHandler)
+		bridgeGroup.GET("/root-by-ler", b.RootByLERHandler)
 
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -2141,6 +2143,96 @@ func (b *BridgeService) GetClaimCandidatesHandler(c *gin.Context) {
 	c.JSON(statusCode, types.ClaimCandidatesResult{
 		ClaimCandidates: claimCandidates,
 		Count:           count,
+	})
+}
+
+// RootByLERHandler resolves ler to the position (deposit-count index) it had in network_id's
+// local exit tree when it was computed. This lets a caller order two LERs (e.g. a bridge's own
+// LER against a certificate's NewLocalExitRoot) by comparing their Index, instead of walking or
+// syncing the whole tree itself.
+//
+// @Summary Get the deposit-count index of a local exit root
+// @Description Resolves ler to the position (deposit-count index) it had in network_id's local
+// @Description exit tree when it was computed.
+// @Tags bridges
+// @Param network_id query int true "Network ID (0 for L1, L2 network ID otherwise)"
+// @Param ler query string true "Local exit root (0x-prefixed 32-byte hex)"
+// @Produce json
+// @Success 200 {object} types.RootByLERResponse
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 404 {object} types.ErrorResponse "Not Found - ler not synced yet"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable"
+// @Router /root-by-ler [get]
+func (b *BridgeService) RootByLERHandler(c *gin.Context) {
+	b.logger.Debugf("RootByLER request received (network id=%s, ler=%s)",
+		c.Query(networkIDParam), c.Query(lerParam))
+
+	statusCode := http.StatusOK
+	startTime := time.Now()
+	defer func() {
+		reportMetrics(metrics.GetRootByLERReq, statusCode, startTime)
+	}()
+
+	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
+	if err != nil {
+		b.logger.Warnf(errNetworkID, err)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+
+	lerStr := c.Query(lerParam)
+	if lerStr == "" {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("%s is mandatory", lerParam)})
+		return
+	}
+	if !isValidHexHash(lerStr) {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errInvalidParam, lerParam)})
+		return
+	}
+	ler := common.HexToHash(lerStr)
+
+	var bridger Bridger
+	switch networkID {
+	case mainnetNetworkID:
+		bridger = b.bridgeL1
+	case b.networkID:
+		bridger = b.bridgeL2
+	default:
+		b.logger.Warnf(errNetworkID, networkID)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
+		return
+	}
+	if bridger == nil {
+		statusCode = http.StatusServiceUnavailable
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("bridge syncer for network %d is not available", networkID)})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	root, err := bridger.GetRootByLER(ctx, ler)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			statusCode = http.StatusNotFound
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("%s %s not found (not synced yet)", lerParam, lerStr)})
+			return
+		}
+		b.logger.Errorf("failed to resolve %s %s for network %d: %v", lerParam, lerStr, networkID, err)
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to resolve %s: %s", lerParam, err)})
+		return
+	}
+
+	c.JSON(statusCode, types.RootByLERResponse{
+		Index:         root.Index,
+		BlockNum:      root.BlockNum,
+		BlockPosition: root.BlockPosition,
 	})
 }
 

@@ -178,7 +178,7 @@ AggSenderPrivateKey = {Path = "/etc/aggkit/sequencer.keystore", Password = "pSnv
 # RequireCommitteeMembershipCheck = false
 Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "1s"
-
+TriggerCertMode = "ASAP"
 # ------------------------------------------------------------------------------
 # MaxCertSize is the maximum size of the certificate
 # i.e (the emitted certificate cannot be bigger that this size)

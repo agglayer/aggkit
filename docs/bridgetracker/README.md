@@ -109,13 +109,13 @@ sequenceDiagram
 - Aggoracle injected[bridgeEvent.depositCount]: 
   - bridge: `GET /bridge/v1/injected-l1-info-leaf?network_id=X&leaf_index=N`
 
-- L2: Certificate Agglayer[GER] -> [ certID, certStatus, SettlementTxHash]
-  - from GER we can get the L2BlockNumber (need LER synchronized)
+- L2: Certificate Agglayer[LER] -> [ certID, certStatus, SettlementTxHash]
+  - from LER we can get the L2BlockNumber (need LER synchronized)
   - agglayer:GetLatestSettledCertificateHeader aka LS
-    - GER <= LS.NewLocalExitRoot ? -> [certID, status: settled, SettlementTxHash]
-    - GER >  LS.NewLocalExitRoot: GetLatestPendingCertificateHeader aka LP
-      - GER <= LP.NewLocalExitRoot: -> [certID, status: LP.status ]
-      - GER >  LS.NewLocalExitRoot -> [-, status: not include yet ]
+    - LER <= LS.NewLocalExitRoot ? -> [certID, status: settled, SettlementTxHash]
+    - LER >  LS.NewLocalExitRoot: GetLatestPendingCertificateHeader aka LP
+      - LER <= LP.NewLocalExitRoot: -> [certID, status: LP.status ]
+      - LER >  LS.NewLocalExitRoot -> [-, status: not include yet ]
 
 # Data source
 - Wait event `UpdateL1InfoTree`: 

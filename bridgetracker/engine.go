@@ -256,9 +256,9 @@ func (e *Engine) resolveBridgeTx(
 }
 
 // persistStepError logs and persists a step-level failure: stepped already carries it (see
-// domain.MarkStepError, applied by ResolveSteps on error) — the accumulated retry count and
-// description, and the failed step's Status turned Error. A later successful resolution clears
-// it automatically: UpdateStep never carries a step's Error forward
+// domain.UpdateStep's stepErr, applied by ResolveSteps on error) — the accumulated retry count
+// and description, and the failed step's Status turned Error. A later successful resolution
+// clears it automatically: UpdateStep never carries a step's Error forward
 func (e *Engine) persistStepError(id TrackingID, causeErr error, stepped *domain.TrackingData) {
 	e.logger.Warnf("failed to resolve a step of bridge %s: %v", id, causeErr)
 	_ = e.persist(id, stepped.BridgeTx(), stepped.AllSteps())

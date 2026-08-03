@@ -57,6 +57,8 @@ func (f *fakeFacts) ClaimFor(_ context.Context, _ *BridgeInfo) (*types.ClaimResu
 
 var resolveStepsTestID = TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}
 
+var errFakeUpdateStep = errors.New("fake update step error")
+
 // newTracking seeds a fresh (PendingPath) or given path for bridgeType, wrapped as TrackingData
 func newTracking(bridgeType types.BridgeType, prevSteps []types.BridgeStepPath, now time.Time) *TrackingData {
 	steps := prevSteps
@@ -285,28 +287,32 @@ func TestResolveStepsErrors(t *testing.T) {
 	factsErr := errors.New("source down")
 
 	testCases := []struct {
-		name        string
-		bridgeType  types.BridgeType
-		facts       fakeFacts
-		expectedErr string
+		name         string
+		bridgeType   types.BridgeType
+		facts        fakeFacts
+		expectedErr  string
+		expectedStep types.BridgeStep
 	}{
 		{
-			name:        "origin GER error",
-			bridgeType:  types.BridgeTypeL1ToL2,
-			facts:       fakeFacts{originGERErr: factsErr},
-			expectedErr: "origin GER",
+			name:         "origin GER error",
+			bridgeType:   types.BridgeTypeL1ToL2,
+			facts:        fakeFacts{originGERErr: factsErr},
+			expectedErr:  "origin GER",
+			expectedStep: types.StepWaitingGERUpdate,
 		},
 		{
-			name:        "origin LER error",
-			bridgeType:  types.BridgeTypeL2ToL1,
-			facts:       fakeFacts{originLERErr: factsErr},
-			expectedErr: "origin LER",
+			name:         "origin LER error",
+			bridgeType:   types.BridgeTypeL2ToL1,
+			facts:        fakeFacts{originLERErr: factsErr},
+			expectedErr:  "origin LER",
+			expectedStep: types.StepWaitingLERUpdate,
 		},
 		{
-			name:        "certificate error",
-			bridgeType:  types.BridgeTypeL2ToL1,
-			facts:       fakeFacts{originLER: originLER, certificateErr: factsErr},
-			expectedErr: "certificate",
+			name:         "certificate error",
+			bridgeType:   types.BridgeTypeL2ToL1,
+			facts:        fakeFacts{originLER: originLER, certificateErr: factsErr},
+			expectedErr:  "certificate",
+			expectedStep: types.StepPendingInclusion,
 		},
 		{
 			name:       "injected GER error",
@@ -315,7 +321,8 @@ func TestResolveStepsErrors(t *testing.T) {
 				originGER:      &types.GERData{GER: &common.Hash{1}, BlockNumber: new(uint64)},
 				injectedGERErr: factsErr,
 			},
-			expectedErr: "injected GER",
+			expectedErr:  "injected GER",
+			expectedStep: types.StepWaitingGERInjection,
 		},
 		{
 			name:       "claim status error",
@@ -325,7 +332,8 @@ func TestResolveStepsErrors(t *testing.T) {
 				certificate: settledCert,
 				claimErr:    factsErr,
 			},
-			expectedErr: "claim status",
+			expectedErr:  "claim status",
+			expectedStep: types.StepWaitingClaim,
 		},
 	}
 
@@ -339,12 +347,13 @@ func TestResolveStepsErrors(t *testing.T) {
 			require.ErrorIs(t, err, factsErr)
 			require.ErrorContains(t, err, tc.expectedErr)
 
-			// the error is attributed to the step that was current before this call, even if a
-			// cascade (e.g. "certificate error": LER resolves before Certificate fails) reached
-			// further this same tick — that progress is discarded, not just left unpersisted
-			idx := tracking.StepIndex()
-			require.NotNil(t, idx)
-			errStep := result.AllSteps()[*idx]
+			// any step resolved earlier this same tick (e.g. "certificate error": LER resolves
+			// before Certificate fails) stays Done — only the step whose resolver actually
+			// failed is marked, so retries are counted against it, not whatever was current at
+			// entry
+			idx := indexOfStep(result.AllSteps(), tc.expectedStep)
+			require.GreaterOrEqual(t, idx, 0)
+			errStep := result.AllSteps()[idx]
 			require.Equal(t, types.StepStatusError, errStep.Status)
 			require.NotNil(t, errStep.Error)
 			require.Equal(t, types.StepErrorTransient, errStep.Error.ErrorType)
@@ -352,10 +361,14 @@ func TestResolveStepsErrors(t *testing.T) {
 			require.Contains(t, errStep.Error.Description[0], tc.expectedErr)
 
 			for i, sp := range result.AllSteps() {
-				if i == *idx {
+				switch {
+				case i == idx:
 					continue
+				case i < idx:
+					require.Equal(t, types.StepStatusDone, sp.Status, "steps resolved earlier this tick stay Done")
+				default:
+					require.Equal(t, tracking.AllSteps()[i], sp, "steps not yet reached stay untouched")
 				}
-				require.Equal(t, tracking.AllSteps()[i], sp, "no partial cascade may survive on a later step's error")
 			}
 		})
 	}
@@ -371,7 +384,7 @@ func TestUpdateStep(t *testing.T) {
 		t.Parallel()
 
 		tracking := newTracking(types.BridgeTypeL1ToL2, nil, t1)
-		result := UpdateStep(tracking, 0, nil, false, t2)
+		result := UpdateStep(tracking, 0, nil, false, nil, t2)
 
 		require.Same(t, tracking, result)
 	})
@@ -381,7 +394,7 @@ func TestUpdateStep(t *testing.T) {
 
 		tracking := newTracking(types.BridgeTypeL1ToL2, nil, t1)
 		gerUpdate := &types.GERUpdateResult{GER: common.Hash{1}, BlockNumber: 100}
-		advanced := UpdateStep(tracking, 0, gerUpdate, true, t2)
+		advanced := UpdateStep(tracking, 0, gerUpdate, true, nil, t2)
 
 		steps := advanced.AllSteps()
 		require.Equal(t, []types.BridgeStepPath{
@@ -403,7 +416,7 @@ func TestUpdateStep(t *testing.T) {
 		}, t1)
 
 		claim := &types.ClaimResult{ClaimTx: common.Hash{2}, BlockNumber: 200}
-		advanced := UpdateStep(tracking, 2, claim, true, t2)
+		advanced := UpdateStep(tracking, 2, claim, true, nil, t2)
 
 		last := advanced.AllSteps()[len(advanced.AllSteps())-1]
 		require.Equal(t, types.StepClaimed, last.Step)
@@ -425,7 +438,7 @@ func TestUpdateStep(t *testing.T) {
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
 		}, t1)
 
-		advanced := UpdateStep(tracking, 0, nil, false, t2)
+		advanced := UpdateStep(tracking, 0, nil, false, nil, t2)
 
 		require.NotSame(t, tracking, advanced, "the error clearing must be recorded")
 		require.Nil(t, advanced.AllSteps()[0].Error)
@@ -445,7 +458,7 @@ func TestUpdateStep(t *testing.T) {
 		}, t1)
 
 		cert := &types.CertificateData{Status: agglayertypes.Pending}
-		advanced := UpdateStep(tracking, 2, cert, false, t2)
+		advanced := UpdateStep(tracking, 2, cert, false, nil, t2)
 
 		require.NotSame(t, tracking, advanced)
 		sp := advanced.AllSteps()[2]
@@ -468,9 +481,52 @@ func TestUpdateStep(t *testing.T) {
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
 		}, t1)
 
-		result := UpdateStep(tracking, 2, &types.CertificateData{Status: agglayertypes.Pending}, false, t2)
+		result := UpdateStep(tracking, 2, &types.CertificateData{Status: agglayertypes.Pending}, false, nil, t2)
 
 		require.Same(t, tracking, result, "an equal result is not a change worth republishing")
+	})
+
+	t.Run("a non-nil stepErr marks the step as failed instead of completing it", func(t *testing.T) {
+		t.Parallel()
+
+		tracking := newTracking(types.BridgeTypeL1ToL2, []types.BridgeStepPath{
+			{Step: types.StepWaitingGERUpdate, Status: types.StepStatusInProgress, StartDate: &t1},
+			{Step: types.StepWaitingGERInjection, Status: types.StepStatusPending},
+			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+			{Step: types.StepClaimed, Status: types.StepStatusPending},
+		}, t1)
+
+		advanced := UpdateStep(tracking, 0, nil, true, errFakeUpdateStep, t2)
+
+		sp := advanced.AllSteps()[0]
+		require.Equal(t, types.StepStatusError, sp.Status, "stepErr takes over regardless of complete")
+		require.NotNil(t, sp.Error)
+		require.Equal(t, types.StepErrorTransient, sp.Error.ErrorType)
+		require.Equal(t, 1, sp.Error.RetryCount)
+		require.Equal(t, []string{errFakeUpdateStep.Error()}, sp.Error.Description)
+	})
+
+	t.Run("a repeated stepErr accumulates onto the previous retry count and description", func(t *testing.T) {
+		t.Parallel()
+
+		tracking := newTracking(types.BridgeTypeL1ToL2, []types.BridgeStepPath{
+			{
+				Step: types.StepWaitingGERUpdate, Status: types.StepStatusError, StartDate: &t1,
+				Error: &types.ErrorStep{
+					ErrorType: types.StepErrorTransient, RetryCount: 1,
+					Description: []string{errFakeUpdateStep.Error()},
+				},
+			},
+			{Step: types.StepWaitingGERInjection, Status: types.StepStatusPending},
+			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+			{Step: types.StepClaimed, Status: types.StepStatusPending},
+		}, t1)
+
+		advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStep, t2)
+
+		sp := advanced.AllSteps()[0]
+		require.Equal(t, 2, sp.Error.RetryCount)
+		require.Equal(t, []string{errFakeUpdateStep.Error(), errFakeUpdateStep.Error()}, sp.Error.Description)
 	})
 }
 

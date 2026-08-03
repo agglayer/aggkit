@@ -34,4 +34,21 @@ RetentionPeriod = "10m"
 L1BlockFinality = "LatestBlock"
 L2BlockFinality = "LatestBlock"
 MaxTrackedBridges = 100000
+
+[Tracker.AgglayerClient]
+Cached = true
+[Tracker.AgglayerClient.ConfigurationCache]
+TTL = "1s"
+Capacity = 100
+[Tracker.AgglayerClient.GRPC]
+#URL = "https://agglayer-dev.polygon.technology"
+UseTLS = false
+MinConnectTimeout = "5s"
+RequestTimeout = "300s"
+
+[Tracker.AgglayerClient.GRPC.Retry]
+InitialBackoff = "1s"
+MaxBackoff = "10s"
+BackoffMultiplier = 2.0
+MaxAttempts = 20
 `

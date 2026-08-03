@@ -2,27 +2,22 @@ package sources
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgetracker"
 	trackertypes "github.com/agglayer/aggkit/bridgetracker/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// ErrCertificateResolutionNotImplemented is returned by CertificateSource.CertificateFor until
-// certificateIDFor is implemented: matching a bridge to the certificate that covers it (or the
-// most recently submitted one, if it is not covered by any yet — see certificateIDFor's doc) is
-// left for a follow-up change. Until then, L2-originated bridges keep being retried by the
-// engine without ever advancing past the certificate steps
-var ErrCertificateResolutionNotImplemented = errors.New(
-	"certificate resolution not implemented yet (L2-originated bridges are not supported)")
-
-// CertificateHeaderClient is the slice of the agglayer client CertificateSource needs: fetching
-// a certificate's current header (status, settlement tx hash) by its ID
+// CertificateHeaderClient is the slice of the agglayer client CertificateSource needs: the
+// latest settled/pending certificate of a network (certificateIDFor) and a known certificate's
+// current header (status, settlement tx hash — certificateHeaderFor)
 type CertificateHeaderClient interface {
 	GetCertificateHeader(ctx context.Context, certificateID common.Hash) (*agglayertypes.CertificateHeader, error)
+	GetLatestSettledCertificateHeader(ctx context.Context, networkID uint32) (*agglayertypes.CertificateHeader, error)
+	GetLatestPendingCertificateHeader(ctx context.Context, networkID uint32) (*agglayertypes.CertificateHeader, error)
 }
 
 // CertificateSource implements bridgetracker.CertificateSource over the agglayer: which
@@ -30,11 +25,19 @@ type CertificateHeaderClient interface {
 // (certificateHeaderFor)
 type CertificateSource struct {
 	client CertificateHeaderClient
+	// services resolves bridge.NetworkID's own aggkit bridge service, used to translate a
+	// certificate's NewLocalExitRoot into a deposit-count position (see rootIndexFor)
+	services *bridgeServiceClients
+	logger   aggkitcommon.Logger
 }
 
-// NewCertificateSource returns a CertificateSource fetching certificate headers through client
-func NewCertificateSource(client CertificateHeaderClient) *CertificateSource {
-	return &CertificateSource{client: client}
+// NewCertificateSource returns a CertificateSource fetching certificate headers through client,
+// and resolving local exit root positions through the per-network bridge service clients finder
+// resolves
+func NewCertificateSource(
+	client CertificateHeaderClient, finder NetworkURLResolver, logger aggkitcommon.Logger,
+) *CertificateSource {
+	return &CertificateSource{client: client, services: newBridgeServiceClients(finder), logger: logger}
 }
 
 // CertificateFor implements bridgetracker.CertificateSource: it resolves the certificate that
@@ -58,12 +61,67 @@ func (s *CertificateSource) CertificateFor(
 // not-yet-covering certificate still lets StepCertificatePending surface its progress, instead
 // of showing nothing at all while bridge waits for the next certificate to even open.
 //
-// TODO: not implemented yet — needs to fetch bridge.NetworkID's pending/settled certificates
-// from the agglayer and check whether bridge's global index falls within their covered range
+// A settled certificate is only ever returned if it actually covers bridge: unlike a pending
+// one, CertificatePendingResolver treats Settled as "done", so surfacing a settled certificate
+// that does not cover bridge would make the tracker think the step completed when it did not.
+// A pending certificate has no such risk (it is never terminal), so it is always surfaced once
+// found, whether or not it covers bridge yet.
 func (s *CertificateSource) certificateIDFor(
-	_ context.Context, _ *bridgetracker.BridgeInfo,
+	ctx context.Context, bridge *bridgetracker.BridgeInfo,
 ) (*common.Hash, error) {
-	return nil, ErrCertificateResolutionNotImplemented
+	settled, err := s.client.GetLatestSettledCertificateHeader(ctx, bridge.NetworkID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching latest settled certificate of network %d: %w", bridge.NetworkID, err)
+	}
+	s.logger.Debugf("latest settled certificate of network %d -> status: %s height: %d newLER: %s id: %s ",
+		bridge.NetworkID, settled.Status.String(), settled.Height, settled.NewLocalExitRoot, settled.CertificateID)
+	if settled != nil {
+		covers, err := s.covers(ctx, bridge, settled.NewLocalExitRoot)
+		if err != nil {
+			return nil, err
+		}
+		if covers {
+			return &settled.CertificateID, nil
+		}
+	}
+
+	pending, err := s.client.GetLatestPendingCertificateHeader(ctx, bridge.NetworkID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching latest pending certificate of network %d: %w", bridge.NetworkID, err)
+	}
+	if pending != nil {
+		return &pending.CertificateID, nil
+	}
+
+	return nil, nil // not covered by any certificate, and none is in flight either
+}
+
+// covers reports whether ler (a settled or pending certificate's NewLocalExitRoot) already
+// includes bridge: the local exit tree is append-only, so this holds once ler's resolved
+// deposit-count position (see rootIndexFor) is at or past bridge.DepositCount
+func (s *CertificateSource) covers(
+	ctx context.Context, bridge *bridgetracker.BridgeInfo, ler common.Hash,
+) (bool, error) {
+	index, err := s.rootIndexFor(ctx, bridge.NetworkID, ler)
+	if err != nil {
+		return false, err
+	}
+	return bridge.DepositCount <= index, nil
+}
+
+// rootIndexFor resolves ler's deposit-count position in networkID's local exit tree, asking
+// networkID's own aggkit bridge service (which syncs that network's bridge events and tracks
+// every historical root it has produced) instead of walking or syncing the tree itself
+func (s *CertificateSource) rootIndexFor(ctx context.Context, networkID uint32, ler common.Hash) (uint32, error) {
+	svc, err := s.services.aggkitBridgeClientFor(networkID)
+	if err != nil {
+		return 0, err // transient: URL resolution failure, retried by the engine
+	}
+	root, err := svc.GetRootByLER(ctx, networkID, ler.Hex())
+	if err != nil {
+		return 0, fmt.Errorf("resolving root index of LER %s on network %d: %w", ler, networkID, err)
+	}
+	return root.Index, nil
 }
 
 // certificateHeaderFor fetches certificateID's current header from the agglayer and maps it
@@ -80,6 +138,8 @@ func (s *CertificateSource) certificateHeaderFor(
 	if header.Error != nil {
 		errMsg = header.Error.Error()
 	}
+	s.logger.Debugf("certificate %s status: %s (settlementTxHash=%s, error=%q)",
+		certificateID, header.Status, header.SettlementTxHash, errMsg)
 	return &trackertypes.CertificateData{
 		CertificateID:    header.CertificateID,
 		Status:           header.Status,

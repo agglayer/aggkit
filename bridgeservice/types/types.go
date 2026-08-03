@@ -493,3 +493,19 @@ type ClaimCandidatesResult struct {
 	// Total number of matching claim candidates
 	Count int `json:"count" example:"5"`
 }
+
+// RootByLERResponse locates a local exit root (LER) in its network's local exit tree: the
+// deposit-count position it had when it was computed. Resolving two LERs to their Index lets
+// a caller order them (or compare a known deposit count against one) without walking the tree
+// itself.
+// @Description The deposit-count position of a local exit root in its network's local exit tree
+type RootByLERResponse struct {
+	// Index is the deposit count at which this root became the local exit root (0-based)
+	Index uint32 `json:"index" example:"42"`
+
+	// BlockNum is the block in which the leaf that produced this root was added
+	BlockNum uint64 `json:"block_num" example:"123456"`
+
+	// BlockPosition orders same-block roots (multiple deposits in one block)
+	BlockPosition uint64 `json:"block_position" example:"0"`
+}

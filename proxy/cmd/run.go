@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/agglayer/aggkit"
+	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
 	"github.com/agglayer/aggkit/bridgetracker/sources"
@@ -160,6 +161,15 @@ func runTracker(
 	trackerCfg.Registry = registry
 	tracker := bridgetracker.New(&trackerCfg)
 
+	if err := trackerCfg.AgglayerClient.Validate(); err != nil {
+		log.Fatalf("invalid agglayer client config: %v", err)
+	}
+	agglayerClient, err := agglayer.NewAgglayerClient(
+		trackerCfg.AgglayerClient, log.WithFields("module", "bridgetracker-agglayerclient"))
+	if err != nil {
+		log.Fatalf("failed to create agglayer client: %v", err)
+	}
+
 	// Per-network JSON-RPC clients resolve through the finder; L1 (network 0) is pinned to
 	// the proxy's own L1 client, which carries the configured retry policy
 	rpcClients := sources.NewFinderClients(
@@ -175,11 +185,12 @@ func runTracker(
 		log.WithFields("module", "bridgetracker-engine"),
 		registry,
 		bridgetracker.EngineSources{
-			Bridges:      bridgeEvents,
-			Certificates: sources.NotImplementedCertificateSource{},
-			GERs:         sources.NewGERSource(finder),
-			LERs:         sources.NewLERSource(rpcClients),
-			Claims:       sources.NewClaimSource(finder),
+			Bridges: bridgeEvents,
+			Certificates: sources.NewCertificateSource(
+				agglayerClient, finder, log.WithFields("module", "bridgetracker-certificatesource")),
+			GERs:   sources.NewGERSource(finder),
+			LERs:   sources.NewLERSource(rpcClients),
+			Claims: sources.NewClaimSource(finder),
 		},
 	)
 	if err != nil {

@@ -11,8 +11,8 @@ import (
 
 // ErrStepPending is returned by StepResolver.Resolve, or wrapped by a more specific sentinel
 // (see ErrCertificateNotSettled), when the fact check succeeded but the milestone has not
-// happened yet — not a failure, so ResolveSteps neither retries it as one (see MarkStepError)
-// nor logs it; it simply means there is nothing further to check this call. A resolver may
+// happened yet — not a failure, so ResolveSteps neither retries it as one (see UpdateStep's
+// stepErr) nor logs it; it simply means there is nothing further to check this call. A resolver may
 // still return a non-nil result alongside it, which UpdateStep attaches even though the step
 // stays InProgress — e.g. a certificate's current (unsettled) status, so clients can see it
 // progress while they wait instead of only once it settles
@@ -65,14 +65,13 @@ type StepResolver interface {
 // domain.ResolveBridgeTx/domain.PendingPath) through as much of its expected path as its
 // current facts allow: it resolves the current step (the first not yet Done) via UpdateStep,
 // and if that completed it, whichever step it lands on next, and so on, stopping at the first
-// milestone still unmet (ErrStepPending) or the first real error. On error every mutation
-// attempted this call is discarded — see MarkStepError — so retries are counted against the
-// step that was actually current before this call, not a partial in-tick advance
+// milestone still unmet (ErrStepPending) or the first real error. On a real error, every step
+// completed earlier this same call stays Done — only the step whose resolver just failed is
+// marked, via UpdateStep's stepErr, incrementing its retry count instead of discarding the
+// in-tick progress
 func ResolveSteps(
 	ctx context.Context, facts BridgeFacts, tracking *TrackingData, now time.Time,
 ) (*TrackingData, error) {
-	original := tracking
-
 	for {
 		idx := currentStepIndex(tracking.AllSteps())
 		if idx < 0 {
@@ -86,44 +85,12 @@ func ResolveSteps(
 		result, err := resolver.Resolve(ctx, facts, tracking, idx)
 		switch {
 		case errors.Is(err, ErrStepPending):
-			return UpdateStep(tracking, idx, result, false, now), nil
+			return UpdateStep(tracking, idx, result, false, nil, now), nil
 		case err != nil:
-			return MarkStepError(original, err), err
+			return UpdateStep(tracking, idx, result, false, err, now), err
 		}
-		tracking = UpdateStep(tracking, idx, result, true, now)
+		tracking = UpdateStep(tracking, idx, result, true, nil, now)
 	}
-}
-
-// MarkStepError marks tracking's current step (see currentStepIndex) as failed, incrementing
-// its retry count instead of discarding the accumulated history of a transient source failure
-// — the step-level counterpart of the tx-level error handling in ResolveBridgeTx. A later
-// successful resolution clears it automatically: UpdateStep never carries a step's Error
-// forward. Returns tracking unchanged if its whole path is already Done (defensive: ResolveSteps
-// never calls this once currentStepIndex is -1)
-func MarkStepError(tracking *TrackingData, causeErr error) *TrackingData {
-	steps := tracking.AllSteps()
-	idx := currentStepIndex(steps)
-	if idx < 0 {
-		return tracking
-	}
-
-	newSteps := append([]types.BridgeStepPath(nil), steps...)
-	current := newSteps[idx]
-
-	retryCount, description := 1, []string{causeErr.Error()}
-	if current.Error != nil {
-		retryCount = current.Error.RetryCount + 1
-		description = append(append([]string{}, current.Error.Description...), causeErr.Error())
-	}
-	current.Status = types.StepStatusError
-	current.Error = &types.ErrorStep{
-		ErrorType:   types.StepErrorTransient,
-		RetryCount:  retryCount,
-		Description: description,
-	}
-	newSteps[idx] = current
-
-	return NewTrackingData(tracking.ID(), tracking.BridgeTx(), newSteps)
 }
 
 // resolvers wires every BridgeStep that needs a fact check to its StepResolver, shared as
@@ -154,33 +121,54 @@ func currentStepIndex(steps []types.BridgeStepPath) int {
 // UpdateStep marks tracking's step at idx: Done with result and EndDate stamped if complete, or
 // the current step still in progress (StartDate stamped if not already) otherwise — either way
 // result becomes its Result, so a resolver can surface data before its milestone is fully met
-// (see ErrCertificateNotSettled). Its previous Error, if any, is cleared either way: a
-// successful fact check, even an inconclusive one, clears a previous transient failure, evidence
-// the retry is working, not just that a milestone was met. Completing idx opens idx+1 as the new
-// current step (InProgress), completing it immediately, terminal, if it is StepClaimed — a step
-// that never has a fact check of its own. Returns tracking unchanged only when there is truly
-// nothing new to record: not complete, no Error to clear, and result unchanged from what is
-// already stored. ResolveSteps calls this once per loop iteration, so completing one step (e.g.
-// PendingInclusionResolver, see its doc) simply has the next resolver asked in turn
-func UpdateStep(tracking *TrackingData, idx int, result any, complete bool, now time.Time) *TrackingData {
+// (see ErrCertificateNotSettled). If stepErr is non-nil, the step is instead marked
+// StepStatusError, accumulating stepErr onto its retry count and description rather than
+// discarding the history of a transient source failure — the step-level counterpart of the
+// tx-level error handling in ResolveBridgeTx; complete is meaningless in that case (a step
+// cannot both fail and complete) and idx+1 is left untouched. With stepErr nil, any previous
+// Error is cleared instead: a successful fact check, even an inconclusive one, clears a previous
+// transient failure, evidence the retry is working, not just that a milestone was met.
+// Completing idx opens idx+1 as the new current step (InProgress), completing it immediately,
+// terminal, if it is StepClaimed — a step that never has a fact check of its own. Returns
+// tracking unchanged only when there is truly nothing new to record: not complete, no stepErr,
+// no Error to clear, and result unchanged from what is already stored. ResolveSteps calls this
+// once per loop iteration, so completing one step (e.g. PendingInclusionResolver, see its doc)
+// simply has the next resolver asked in turn
+func UpdateStep(
+	tracking *TrackingData, idx int, result any, complete bool, stepErr error, now time.Time,
+) *TrackingData {
 	steps := tracking.AllSteps()
 	if idx < 0 || idx >= len(steps) {
 		return tracking
 	}
-	if !complete && steps[idx].Error == nil && reflect.DeepEqual(steps[idx].Result, result) {
+	if stepErr == nil && !complete && steps[idx].Error == nil && reflect.DeepEqual(steps[idx].Result, result) {
 		return tracking
 	}
 
 	newSteps := append([]types.BridgeStepPath(nil), steps...)
 
 	current := newSteps[idx]
-	current.Error = nil
 	current.Result = result
-	if complete {
+	switch {
+	case stepErr != nil:
+		retryCount, description := 1, []string{stepErr.Error()}
+		if current.Error != nil {
+			retryCount = current.Error.RetryCount + 1
+			description = append(append([]string{}, current.Error.Description...), stepErr.Error())
+		}
+		current.Status = types.StepStatusError
+		current.Error = &types.ErrorStep{
+			ErrorType:   types.StepErrorTransient,
+			RetryCount:  retryCount,
+			Description: description,
+		}
+	case complete:
+		current.Error = nil
 		current.Status = types.StepStatusDone
 		endDate := now
 		current.EndDate = &endDate
-	} else {
+	default:
+		current.Error = nil
 		current.Status = types.StepStatusInProgress
 		if current.StartDate == nil {
 			startDate := now

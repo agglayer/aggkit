@@ -362,6 +362,24 @@ func (c *Client) GetClaimCandidates(
 	return &resp, nil
 }
 
+// GetRootByLER resolves ler to the position (deposit-count index) it had in networkID's local
+// exit tree when it was computed, letting a caller order two LERs (or compare a known deposit
+// count against one) without walking or syncing the whole tree itself.
+//
+// Uses doRequestAllowNotFound: an unresolved ler (not synced yet by networkID's bridge service)
+// results in ErrNotFound, which callers should treat as "retry later" rather than a hard error.
+func (c *Client) GetRootByLER(ctx context.Context, networkID uint32, ler string) (*types.RootByLERResponse, error) {
+	query := url.Values{}
+	query.Set("network_id", strconv.FormatUint(uint64(networkID), 10))
+	query.Set("ler", ler)
+
+	var resp types.RootByLERResponse
+	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/root-by-ler?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // GetLastReorgEvent retrieves the last reorganization event
 func (c *Client) GetLastReorgEvent(ctx context.Context, networkID int) (*bridgesync.LastReorg, error) {
 	query := url.Values{}

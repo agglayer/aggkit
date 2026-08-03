@@ -4813,3 +4813,140 @@ func TestGetClaimCandidatesHandler(t *testing.T) {
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 	})
 }
+
+func TestRootByLERHandler(t *testing.T) {
+	ler := common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
+
+	t.Run("L2 network success", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.bridgeL2.EXPECT().
+			GetRootByLER(mock.Anything, ler).
+			Return(&tree.Root{Index: 7, BlockNum: 123, BlockPosition: 1}, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		queryParams.Set(lerParam, ler.Hex())
+
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/root-by-ler?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.RootByLERResponse
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, uint32(7), response.Index)
+		require.Equal(t, uint64(123), response.BlockNum)
+		require.Equal(t, uint64(1), response.BlockPosition)
+	})
+
+	t.Run("L1 network success", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.bridgeL1.EXPECT().
+			GetRootByLER(mock.Anything, ler).
+			Return(&tree.Root{Index: 3}, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "0")
+		queryParams.Set(lerParam, ler.Hex())
+
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/root-by-ler?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("missing ler", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "0")
+
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/root-by-ler?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("invalid ler", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "0")
+		queryParams.Set(lerParam, "not-a-hash")
+
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/root-by-ler?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("unknown network id", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "999")
+		queryParams.Set(lerParam, ler.Hex())
+
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/root-by-ler?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("ler not synced yet returns 404", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.bridgeL2.EXPECT().
+			GetRootByLER(mock.Anything, ler).
+			Return(nil, db.ErrNotFound)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		queryParams.Set(lerParam, ler.Hex())
+
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/root-by-ler?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusNotFound, w.Code)
+		require.Contains(t, w.Body.String(), "not synced yet")
+	})
+
+	t.Run("GetRootByLER error returns 500", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.bridgeL2.EXPECT().
+			GetRootByLER(mock.Anything, ler).
+			Return(nil, errors.New(fooErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		queryParams.Set(lerParam, ler.Hex())
+
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/root-by-ler?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+	})
+
+	t.Run("L1 bridge nil", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL1 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "0")
+		queryParams.Set(lerParam, ler.Hex())
+
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/root-by-ler?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	})
+
+	t.Run("L2 bridge nil", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.bridgeL2 = nil
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+		queryParams.Set(lerParam, ler.Hex())
+
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/root-by-ler?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	})
+}

@@ -1,6 +1,7 @@
 package bridgetracker
 
 import (
+	"github.com/agglayer/aggkit/agglayer"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -59,6 +60,10 @@ type Config struct {
 	// A value <= 0 falls back to DefaultMaxTrackedBridges. Only applies to the default in-memory
 	// adapter — ignored when Registry is set to a custom implementation.
 	MaxTrackedBridges int `mapstructure:"MaxTrackedBridges"`
+
+	// AgglayerClient configures the client used to query the agglayer for a bridge's covering
+	// certificate and that certificate's current status (see sources.CertificateSource)
+	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
 
 	Logger aggkitcommon.Logger `mapstructure:"-"`
 
