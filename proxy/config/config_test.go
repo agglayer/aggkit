@@ -32,7 +32,8 @@ func TestLoadFilesDefaults(t *testing.T) {
 	require.False(t, cfg.BridgeServiceFinder.RequireAllHealthyOnStart)
 
 	require.Equal(t, 10*time.Minute, cfg.Tracker.RetentionPeriod.Duration)
-	require.Equal(t, aggkittypes.FinalizedBlock, cfg.Tracker.BlockFinality)
+	require.Equal(t, aggkittypes.LatestBlock, cfg.Tracker.L1BlockFinality)
+	require.Equal(t, aggkittypes.LatestBlock, cfg.Tracker.L2BlockFinality)
 	require.Equal(t, 100000, cfg.Tracker.MaxTrackedBridges)
 }
 

@@ -12,10 +12,15 @@ import (
 // section of the proxy's default config)
 var DefaultRetentionPeriod = types.Duration{Duration: DefaultEngineRetentionPeriod}
 
-// DefaultBlockFinality is the default Config.BlockFinality: a bridge's creating tx is only
-// accepted once its receipt reaches this finality, so a reorg cannot leave the tracker
+// DefaultL1BlockFinality is the default Config.L1BlockFinality: an L1 bridge's creating tx is
+// only accepted once its receipt reaches this finality, so a reorg cannot leave the tracker
 // permanently following an orphaned deposit/block
-var DefaultBlockFinality = aggkittypes.FinalizedBlock
+var DefaultL1BlockFinality = aggkittypes.LatestBlock
+
+// DefaultL2BlockFinality is the default Config.L2BlockFinality: an L2 bridge's creating tx is
+// only accepted once its receipt reaches this finality, so a reorg cannot leave the tracker
+// permanently following an orphaned deposit/block
+var DefaultL2BlockFinality = aggkittypes.LatestBlock
 
 // DefaultMaxTrackedBridges is the default Config.MaxTrackedBridges: how many distinct bridges
 // the in-memory registry accepts before refusing new ones (see registry.go's memoryRegistry).
@@ -32,12 +37,16 @@ type Config struct {
 	// the tracker gave up on
 	RetentionPeriod types.Duration `mapstructure:"RetentionPeriod"`
 
-	// BlockFinality is the finality level a bridge's creating tx receipt must reach on its
-	// origin network before the tracker accepts it (see sources.BridgeEventSource): accepting
+	// L1BlockFinality is the finality level a bridge's creating tx receipt must reach on L1
+	// (network 0) before the tracker accepts it (see sources.BridgeEventSource): accepting
 	// a receipt from a block that later gets reorged out would otherwise leave the tracker
 	// permanently following an orphaned deposit count/block, since a resolved bridge is never
 	// re-checked (see TrackingBridgeTx.IsDone)
-	BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=PendingBlock,enum=LatestBlock,enum=SafeBlock,enum=FinalizedBlock,enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
+	L1BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=PendingBlock,enum=LatestBlock,enum=SafeBlock,enum=FinalizedBlock,enum=EarliestBlock" mapstructure:"L1BlockFinality"` //nolint:lll
+
+	// L2BlockFinality is the finality level a bridge's creating tx receipt must reach on any
+	// L2 (non-zero network) before the tracker accepts it; see L1BlockFinality for the reasoning
+	L2BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=PendingBlock,enum=LatestBlock,enum=SafeBlock,enum=FinalizedBlock,enum=EarliestBlock" mapstructure:"L2BlockFinality"` //nolint:lll
 
 	// BridgeAddrs is the static networkID -> canonical bridge contract address map used to
 	// reject a BridgeEvent log emitted by a contract other than the origin network's real

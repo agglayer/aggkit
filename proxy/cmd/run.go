@@ -164,7 +164,8 @@ func runTracker(
 	// the proxy's own L1 client, which carries the configured retry policy
 	rpcClients := sources.NewFinderClients(
 		log.WithFields("module", "bridgetracker-rpcclients"), finder, sources.StaticClients{0: l1Client})
-	bridgeEvents, err := sources.NewBridgeEventSource(rpcClients, trackerCfg.BlockFinality, trackerCfg.BridgeAddrs)
+	bridgeEvents, err := sources.NewBridgeEventSource(
+		rpcClients, trackerCfg.L1BlockFinality, trackerCfg.L2BlockFinality, trackerCfg.BridgeAddrs)
 	if err != nil {
 		log.Fatalf("failed to create bridge event source: %v", err)
 	}

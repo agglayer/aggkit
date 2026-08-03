@@ -27,10 +27,13 @@ type BridgeEventSource struct {
 	clients EthClientResolver
 	// parser is the bridge contract binding used only for ABI log unpacking (no backend calls)
 	parser *agglayerbridge.Agglayerbridge
-	// finality is the block finality a receipt must reach before it is accepted (see
-	// FindBridge): a resolved bridge is never re-checked (TrackingBridgeTx.IsDone), so
-	// accepting a receipt that later gets reorged out would otherwise be permanent
-	finality aggkittypes.BlockNumberFinality
+	// l1Finality is the block finality an L1 (network 0) receipt must reach before it is
+	// accepted (see FindBridge): a resolved bridge is never re-checked (TrackingBridgeTx.IsDone),
+	// so accepting a receipt that later gets reorged out would otherwise be permanent
+	l1Finality aggkittypes.BlockNumberFinality
+	// l2Finality is the block finality an L2 (non-zero network) receipt must reach before it
+	// is accepted; see l1Finality for the reasoning
+	l2Finality aggkittypes.BlockNumberFinality
 	// bridgeAddrs is the per-network canonical bridge contract address a BridgeEvent log's
 	// emitter must match to be accepted (see FindBridge). A network absent from this map has
 	// no configured address yet, so its logs are still matched on the event signature alone.
@@ -38,18 +41,31 @@ type BridgeEventSource struct {
 }
 
 // NewBridgeEventSource returns a BridgeEventSource resolving per-network JSON-RPC clients
-// through the given resolver, accepting a tx's receipt only once it reaches finality. bridgeAddrs
-// is the static networkID -> canonical bridge contract address map used to reject a BridgeEvent
-// log emitted by an unrelated or malicious contract; a network absent from it (or a nil map)
-// keeps matching logs on the event signature alone.
+// through the given resolver, accepting a tx's receipt only once it reaches l1Finality (for
+// network 0) or l2Finality (for any other network). bridgeAddrs is the static
+// networkID -> canonical bridge contract address map used to reject a BridgeEvent log emitted
+// by an unrelated or malicious contract; a network absent from it (or a nil map) keeps matching
+// logs on the event signature alone.
 func NewBridgeEventSource(
-	clients EthClientResolver, finality aggkittypes.BlockNumberFinality, bridgeAddrs map[uint32]common.Address,
+	clients EthClientResolver, l1Finality, l2Finality aggkittypes.BlockNumberFinality,
+	bridgeAddrs map[uint32]common.Address,
 ) (*BridgeEventSource, error) {
 	parser, err := agglayerbridge.NewAgglayerbridge(common.Address{}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating bridge contract parser: %w", err)
 	}
-	return &BridgeEventSource{clients: clients, parser: parser, finality: finality, bridgeAddrs: bridgeAddrs}, nil
+	return &BridgeEventSource{
+		clients: clients, parser: parser, l1Finality: l1Finality, l2Finality: l2Finality, bridgeAddrs: bridgeAddrs,
+	}, nil
+}
+
+// finalityFor returns the block finality a receipt on networkID must reach before it is
+// accepted: l1Finality for L1 (network 0), l2Finality for any other network.
+func (s *BridgeEventSource) finalityFor(networkID uint32) aggkittypes.BlockNumberFinality {
+	if networkID == 0 {
+		return s.l1Finality
+	}
+	return s.l2Finality
 }
 
 // FindBridge implements bridgetracker.BridgeEventSource: it resolves the receipt of the tx
@@ -77,12 +93,13 @@ func (s *BridgeEventSource) FindBridge(
 		return nil, fmt.Errorf("fetching receipt of %s: %w", id, err)
 	}
 
-	finalized, err := client.CustomHeaderByNumber(ctx, &s.finality)
+	finality := s.finalityFor(id.NetworkID)
+	finalized, err := client.CustomHeaderByNumber(ctx, &finality)
 	if err != nil {
-		return nil, fmt.Errorf("fetching %s header for network %d: %w", s.finality.String(), id.NetworkID, err)
+		return nil, fmt.Errorf("fetching %s header for network %d: %w", finality.String(), id.NetworkID, err)
 	}
 	if receipt.BlockNumber == nil || receipt.BlockNumber.Uint64() > finalized.Number {
-		return nil, fmt.Errorf("%s not yet %s: %w", id, s.finality.String(), bridgetracker.ErrBridgeTxNotFound)
+		return nil, fmt.Errorf("%s not yet %s: %w", id, finality.String(), bridgetracker.ErrBridgeTxNotFound)
 	}
 
 	if receipt.Status != gethtypes.ReceiptStatusSuccessful {

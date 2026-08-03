@@ -75,7 +75,8 @@ func bridgeEventLog(t *testing.T, destinationNetwork, depositCount uint32) *geth
 func newBridgeEventSource(t *testing.T, client *mocks.BaseEthereumClienter) *BridgeEventSource {
 	t.Helper()
 
-	source, err := NewBridgeEventSource(StaticClients{0: client}, aggkittypes.FinalizedBlock, nil)
+	source, err := NewBridgeEventSource(
+		StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock, nil)
 	require.NoError(t, err)
 	return source
 }
@@ -172,7 +173,8 @@ func TestBridgeEventSourceRejectsUnverifiedEmitter(t *testing.T) {
 	expectFinalized(client, 12345)
 
 	source, err := NewBridgeEventSource(
-		StaticClients{0: client}, aggkittypes.FinalizedBlock, map[uint32]common.Address{0: realBridgeAddr})
+		StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock,
+		map[uint32]common.Address{0: realBridgeAddr})
 	require.NoError(t, err)
 
 	_, err = source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})
