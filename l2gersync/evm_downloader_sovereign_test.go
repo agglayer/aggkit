@@ -438,11 +438,6 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			if tt.expectError {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.expectedErrorMessage)
-				// The blocking error must always be retry-forever-non-fatal: while the invalid GER
-				// is present on L2 and absent from the L1 info tree, the appender keeps erroring but
-				// must never route into RetryHandler's fatal guard (plan S4 intent 1).
-				require.ErrorIs(t, err, sync.ErrRetryForeverNonFatal,
-					"blocking error must be wrapped with sync.ErrRetryForeverNonFatal so it never fatals")
 			} else {
 				require.NoError(t, err, "Expected no error when GER is removed from L2")
 			}

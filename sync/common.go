@@ -2,19 +2,11 @@ package sync
 
 import (
 	"context"
-	"errors"
 	"log"
 	"time"
 )
 
 var LogFatalf = log.Fatalf
-
-// ErrRetryForeverNonFatal is a sentinel error class that must be retried indefinitely and must never
-// trigger RetryHandler's fatal guard, regardless of the configured MaxRetryAttemptsAfterError. Callers
-// that need this semantic should wrap their error with %w and this sentinel; the appender retry loop in
-// evmdownloader.go checks errors.Is(err, ErrRetryForeverNonFatal) to route around Handle's fatal branch,
-// sleeping via waitRetryPeriod instead.
-var ErrRetryForeverNonFatal = errors.New("retry forever without fatal")
 
 type RetryHandler struct {
 	RetryAfterErrorPeriod      time.Duration
@@ -34,13 +26,6 @@ func (h *RetryHandler) Handle(ctx context.Context, funcName string, attempts int
 		)
 	}
 
-	h.waitRetryPeriod(ctx)
-}
-
-// waitRetryPeriod blocks until ctx is done or RetryAfterErrorPeriod elapses. It is the non-fatal sleep
-// tail of Handle, extracted so callers that must never hit the fatal guard (e.g. the
-// ErrRetryForeverNonFatal error class) can still back off between retries.
-func (h *RetryHandler) waitRetryPeriod(ctx context.Context) {
 	select {
 	case <-ctx.Done():
 		return
