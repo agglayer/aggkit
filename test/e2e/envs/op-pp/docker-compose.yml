@@ -55,6 +55,14 @@ services:
     container_name: cdk-20260216-212314-beacon
     hostname: beacon
     # Note: command is handled by beacon-entrypoint.sh which patches genesis time and starts Teku
+    volumes:
+      # Override entrypoint to add a watchdog around Teku: Teku v24.12.0 occasionally wedges
+      # silently (slot processing stops while /eth/v1/node/health still returns 200), freezing L1
+      # block production for the rest of the run. The watchdog restarts the Teku process in-place
+      # when the head slot stops advancing; a container-level restart isn't viable since the
+      # image's entrypoint clears the Teku DB and re-patches genesis time from wall clock on every
+      # start, which would desync the slot clock from the already-running geth chain.
+      - ./config/beacon-entrypoint.sh:/usr/local/bin/beacon-entrypoint.sh:ro
     ports:
       - "4000:4000"    # Beacon API
       - "9000:9000"    # P2P TCP
