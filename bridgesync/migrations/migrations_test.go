@@ -22,7 +22,8 @@ import (
 )
 
 func TestRunMigrationsExploratory(t *testing.T) {
-	t.Skip("This test is for exploratory testing of migrations during development. It is not meant to be run as part of automated tests.")
+	t.Skip("This test is for exploratory testing of migrations during development. " +
+		"It is not meant to be run as part of automated tests.")
 	dbPath := "/tmp/bridgel1sync.sqlite"
 	err := RunMigrations(dbPath)
 	require.NoError(t, err)

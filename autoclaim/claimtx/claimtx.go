@@ -65,5 +65,5 @@ func GlobalIndex(request autoclaimtypes.AutoClaimRequest) *big.Int {
 	if request.Bridge.GlobalIndex != nil {
 		return new(big.Int).Set(request.Bridge.GlobalIndex)
 	}
-	return autoclaimtypes.DeriveL1GlobalIndex(request.Bridge.DepositCount)
+	return autoclaimtypes.DeriveGlobalIndexForSource(request.Bridge.SourceNetwork, request.Bridge.DepositCount)
 }

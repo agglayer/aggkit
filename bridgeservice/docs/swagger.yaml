@@ -1,108 +1,5 @@
 basePath: /bridge/v1
 definitions:
-  apitypes.DecisionResponse:
-    properties:
-      created_at:
-        type: string
-      decider:
-        type: string
-      decider_id:
-        type: string
-      metadata:
-        additionalProperties:
-          type: string
-        type: object
-      policy_name:
-        type: string
-      reason:
-        type: string
-      result:
-        type: string
-      updated_at:
-        type: string
-    type: object
-  apitypes.ErrorResponse:
-    properties:
-      error:
-        example: request 0:1:42 not found
-        type: string
-    type: object
-  apitypes.ListResponse:
-    properties:
-      bridges:
-        items:
-          $ref: '#/definitions/apitypes.RequestResponse'
-        type: array
-      count:
-        type: integer
-      page_number:
-        type: integer
-      page_size:
-        type: integer
-    type: object
-  apitypes.RequestResponse:
-    properties:
-      amount:
-        type: string
-      block_num:
-        type: integer
-      block_pos:
-        type: integer
-      block_timestamp:
-        type: integer
-      bridge_tx_hash:
-        type: string
-      claim_tx_hash:
-        type: string
-      created_at:
-        type: string
-      deposit_count:
-        type: integer
-      destination_address:
-        type: string
-      destination_network:
-        type: integer
-      global_index:
-        type: string
-      id:
-        type: string
-      l1_info_tree_index:
-        type: integer
-      last_error:
-        type: string
-      last_observed_result_at:
-        type: string
-      last_observed_send_at:
-        type: string
-      leaf_type:
-        type: integer
-      manual_decision:
-        $ref: '#/definitions/apitypes.DecisionResponse'
-      max_retries:
-        type: integer
-      metadata:
-        type: string
-      origin_address:
-        type: string
-      origin_network:
-        type: integer
-      policy_decision:
-        $ref: '#/definitions/apitypes.DecisionResponse'
-      policy_status:
-        type: string
-      retry_count:
-        type: integer
-      status:
-        type: string
-      to_address:
-        type: string
-      tx_manager_id:
-        type: string
-      txn_sender:
-        type: string
-      updated_at:
-        type: string
-    type: object
   bridgesync.LastReorg:
     properties:
       detected_at:
@@ -248,6 +145,27 @@ definitions:
       count:
         description: Total number of bridge events
         example: 42
+        type: integer
+    type: object
+  types.ClaimCandidateResponse:
+    description: A bridge event that is a candidate for claiming
+    properties:
+      bridge:
+        allOf:
+        - $ref: '#/definitions/types.BridgeResponse'
+        description: The bridge event that is a candidate for claiming
+    type: object
+  types.ClaimCandidatesResult:
+    description: Paginated response of claim candidates (bridge events)
+    properties:
+      claim_candidates:
+        description: List of claim candidates
+        items:
+          $ref: '#/definitions/types.ClaimCandidateResponse'
+        type: array
+      count:
+        description: Total number of matching claim candidates
+        example: 5
         type: integer
     type: object
   types.ClaimResponse:
@@ -687,109 +605,6 @@ paths:
       summary: Get health status
       tags:
       - health
-  /autoclaim/bridges:
-    get:
-      description: |-
-        Returns tracked Auto Claim requests with optional filters and pagination. Available
-        only when the autoclaim component is running.
-      parameters:
-      - description: Filter by origin network ID
-        format: int32
-        in: query
-        name: origin_network
-        type: integer
-      - description: Filter by destination network ID
-        format: int32
-        in: query
-        name: destination_network
-        type: integer
-      - description: Filter by request status
-        in: query
-        name: status
-        type: string
-      - description: Filter by policy result
-        in: query
-        name: policy_status
-        type: string
-      - description: Alias for policy_status
-        in: query
-        name: policy_result
-        type: string
-      - description: Filter by 0x-prefixed bridge transaction hash
-        in: query
-        name: bridge_tx_hash
-        type: string
-      - description: Filter by 0x-prefixed claim transaction hash
-        in: query
-        name: claim_tx_hash
-        type: string
-      - description: Filter by minimum bridge block number
-        format: int64
-        in: query
-        name: from_block
-        type: integer
-      - description: Filter by maximum bridge block number
-        format: int64
-        in: query
-        name: to_block
-        type: integer
-      - description: Page number (default 0)
-        format: int32
-        in: query
-        name: page_number
-        type: integer
-      - description: Page size (default 100, max 1000)
-        format: int32
-        in: query
-        name: page_size
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/apitypes.ListResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/apitypes.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/apitypes.ErrorResponse'
-      summary: List Auto Claim bridge requests
-      tags:
-      - autoclaim
-  /autoclaim/bridges/{id}:
-    get:
-      description: |-
-        Returns one tracked Auto Claim request by request ID. Available only when the
-        autoclaim component is running.
-      parameters:
-      - description: Auto Claim request ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/apitypes.RequestResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/apitypes.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/apitypes.ErrorResponse'
-      summary: Get Auto Claim bridge request
-      tags:
-      - autoclaim
   /bridge-by-deposit-count:
     get:
       description: Returns the bridge by deposit count for the specified network (checks
@@ -952,6 +767,68 @@ paths:
       summary: Get bridges by content
       tags:
       - bridges
+  /claim-candidates:
+    get:
+      description: |-
+        Returns bridges originated on this network with deposit_count in
+        (from_ler's index, to_ler's index] whose destination network is one of
+        destination_network_ids. to_ler/from_ler define the deposit-count range only.
+      parameters:
+      - collectionFormat: csv
+        description: Destination network IDs to filter by (maximum 5)
+        in: query
+        items:
+          format: int32
+          type: integer
+        name: destination_network_ids
+        required: true
+        type: array
+      - description: Local exit root, upper bound of the deposit-count range (0x-prefixed
+          32-byte hex)
+        in: query
+        name: to_ler
+        required: true
+        type: string
+      - description: Exclusive lower-bound local exit root; omitted means full history
+        in: query
+        name: from_ler
+        type: string
+      - description: Page number (default 1)
+        format: int32
+        in: query
+        name: page_number
+        type: integer
+      - description: Page size (default 100)
+        format: int32
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.ClaimCandidatesResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "404":
+          description: Not Found - to_ler or from_ler not synced yet
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get claim candidates
+      tags:
+      - bridges
   /claim-proof:
     get:
       description: |-
@@ -1112,6 +989,10 @@ paths:
             $ref: '#/definitions/types.L1InfoTreeLeafResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "404":
+          description: Not Found - global exit root not injected yet
           schema:
             $ref: '#/definitions/types.ErrorResponse'
         "500":

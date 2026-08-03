@@ -177,13 +177,17 @@ Delays = ["1s", "2s", "5s", "10s", "30s", "60s"]
 
 ## AutoClaim
 
-`AutoClaim` configures the optional L1 to L2 Auto Claim runtime. It is disabled by default. To enable it, select the
-`autoclaim` component, set `[AutoClaim].Enabled = true`, configure storage, and add at least one enabled EVM claimer for
-the destination L2 network.
+`AutoClaim` configures the optional Auto Claim runtime, which automates both L1-to-L2 and L2-to-Lx (L2-to-L1,
+L2-to-L2) bridge claims. It is disabled by default. To enable it, select the `autoclaim` component (there is no
+separate enable flag), configure storage, and add at least one enabled EVM claimer for the destination network.
 
-Auto Claim requires `l1bridgesync` and `l1infotreesync` when enabled. The optional REST API uses
-`/autoclaim/v1` for request inspection and manual approvals. L2 to Lx Auto Claim is not implemented; keep
-`[AutoClaim.L2ToLxBridgeDetector].Enabled = false`.
+Auto Claim requires `l1bridgesync` and `l1infotreesync` when enabled. `[AutoClaim.BridgeServiceFinder].RollupManagerAddr`
+is required whenever `[AutoClaim.L2ToLxBridgeDetector].Enabled = true` **or** any enabled claimer has an L2
+destination (`NetworkID != 0`), in either direction — the finder resolves rollup bridge service URLs both as
+sources (bridge discovery and claim-proof fetch) and as destinations (the per-claimer GER-injection readiness gate,
+which replaced the previous per-claimer `l2gersync` instance). There are no longer per-claimer `BlockFinality` /
+`InitialBlockNum` config keys, since claimers no longer run their own GER syncer. The optional REST API uses
+`/autoclaim/v1` for request inspection and manual approvals.
 
 See [Auto Claim Service](./autoclaim.md) for the complete configuration table, policy behavior, lifecycle, and API
 workflow.

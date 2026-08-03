@@ -1,0 +1,47 @@
+{
+    "l2RpcUrl": "https://your-l2-rpc.example.com",
+    "l1RpcUrl": "https://your-l1-rpc.example.com",
+    "l2BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+    "l1BridgeAddress": "0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe",
+    "l2NetworkId": 1,
+    "targetBlock": "LatestBlock",
+    "exitAddress": "0x0000000000000000000000000000000000000001",
+    "destinationNetwork": 0,
+    "sovereignRollupAddr": "<SOVEREIGN_ROLLUP_ADDR>",
+    "l1GlobalExitRootAddress": "<L1_GLOBAL_EXIT_ROOT_ADDRESS>",
+    "rollupManagerAddress": "<ROLLUP_MANAGER_ADDRESS>",
+    "options": {
+        "blockRange": 10000,
+        "concurrencyLimit": 200,
+        "rpcBatchSize": 200,
+        "rpcDelayMs": 10,
+        "outputDir": "./output",
+        "l1StartBlock": 0,
+        "l1EndBlock": 0,
+        "ignoreGenesisBalance": false,
+        "nativeSCLockedFromContracts": true,
+        "skipSCLockedValue": false,
+        "ignoreUnclaimed": false,
+        "ignoreBalanceMismatch": false,
+        "capMode": "none",
+        "genesisPrefundETHWei": "",
+        "verifyNewLocalExitRootUsingShadowFork": true,
+        "extraErc20Contracts": [],
+        "bridgeServiceURL": "",
+        "bridgeServiceType": "aggkit",
+        "agglayerClient": {
+            "GRPC": {
+                "URL": "<AGGLAYER_GRPC_URL>",
+                "UseTLS": false
+            }
+        },
+        "useAgglayerAdminToStepFCheck": true,
+        "agglayerAdminURL": "<AGGLAYER_ADMIN_URL>",
+        "agglayerAdminToken": "<JWT>"
+    },
+    "signerConfig": {
+        "Method": "local",
+        "Path": "/path/to/keystore.json",
+        "Password": "<PASSWORD>"
+    }
+}

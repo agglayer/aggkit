@@ -363,9 +363,11 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 
 	shouldRollback = false
 
-	if rowsAffected > 0 {
-		p.unhalt()
-	}
+	// Unhalt unconditionally: a successfully committed purge leaves the DB at a valid
+	// consolidation point even when it deleted nothing (rowsAffected == 0), because a halt
+	// can be caused by a batch whose tx was rolled back and never persisted (e.g. data built
+	// from an undetected L1 tip reorg).
+	p.unhalt()
 	return nil
 }
 func (p *processor) ProcessBlocks(ctx context.Context, blocks *mdrsynctypes.DownloadResult) error {

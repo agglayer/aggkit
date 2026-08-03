@@ -20,7 +20,7 @@ func (p *processor) processVerifyBatches(tx dbtypes.Txer, blockNumber uint64, ev
 		return fmt.Errorf("processVerifyBatches: tx is nil, is mandatory to pass a tx")
 	}
 	log.Debugf("VerifyBatches: rollupExitTree.UpsertLeaf (blockNumber=%d, event=%s)", blockNumber, event.String())
-	// If ExitRoot is zero if the leaf doesnt exists doesnt change the root of tree.
+	// If ExitRoot is zero, the leaf doesn't exist and doesn't change the root of the tree.
 	//  	if leaf already exists doesn't make sense to 'empty' the leaf, so we keep previous value
 	if event.ExitRoot == (common.Hash{}) {
 		log.Infof("skipping VerifyBatches event with empty ExitRoot (blockNumber=%d, event=%s)", blockNumber, event.String())
@@ -103,4 +103,21 @@ func (p *processor) GetFirstVerifiedBatchesAfterBlock(rollupID uint32, blockNum 
 		LIMIT 1;
 	`, rollupID, blockNum)
 	return verified, db.ReturnErrNotFound(err)
+}
+
+// GetVerifiedBatchesInBlockRange returns every verify_batches row whose block_num is in the
+// inclusive range [fromBlock, toBlock], across all rollups (the rollup manager emits
+// VerifyBatchesTrustedAggregator for both zkEVM and pessimistic verifications), ordered by
+// block_num ASC, block_pos ASC. An empty range returns an empty slice and no error.
+func (p *processor) GetVerifiedBatchesInBlockRange(fromBlock, toBlock uint64) ([]*VerifyBatches, error) {
+	var verified []*VerifyBatches
+	err := meddler.QueryAll(p.db, &verified, `
+		SELECT * FROM verify_batches
+		WHERE block_num >= $1 AND block_num <= $2
+		ORDER BY block_num ASC, block_pos ASC;
+	`, fromBlock, toBlock)
+	if err != nil {
+		return nil, err
+	}
+	return verified, nil
 }

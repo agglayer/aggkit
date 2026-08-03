@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -35,6 +36,9 @@ func (l *LeafType) UnmarshalJSON(raw []byte) error {
 		var value int
 		if _, err := fmt.Sscanf(rawStr, "%d", &value); err != nil {
 			return fmt.Errorf("invalid LeafType: %s", rawStr)
+		}
+		if value < 0 || value > math.MaxUint8 {
+			return fmt.Errorf("invalid LeafType: %s out of uint8 range", rawStr)
 		}
 		*l = LeafType(value)
 	}

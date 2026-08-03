@@ -21,6 +21,10 @@ packages:
   github.com/agglayer/aggkit/aggsender/db:
     config:
       all: true
+  github.com/agglayer/aggkit/bridgetracker:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true
   github.com/agglayer/aggkit/types:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
@@ -179,3 +183,21 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
+  github.com/agglayer/aggkit/bridgeservicefinder:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: false
+    interfaces:
+      RollupManagerQuerier:
+      RollupContractReader:
+      LogFilterer:
+      HealthChecker:
+  github.com/agglayer/aggkit/autoclaim/bridgedetector:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+    interfaces:
+      ClaimCandidatesFetcher:
+      VerifiedBatchSource:
+      LERCursorStore:
+      RequestEnqueuer:
+      CursorStore:

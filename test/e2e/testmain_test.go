@@ -28,9 +28,16 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 
-	env, err := envs.LoadEnv(ctx, envs.EnvOpPP)
+	// Select which env to load via AGGKIT_E2E_ENV (used by CI to run the 2-chain matrix);
+	// defaults to the single-chain op-pp env.
+	envName := envs.ENVName(os.Getenv("AGGKIT_E2E_ENV"))
+	if envName == "" {
+		envName = envs.EnvOpPP
+	}
+
+	env, err := envs.LoadEnv(ctx, envName)
 	if err != nil {
 		cancel()
 		log.Fatalf("failed to load env: %v", err)
@@ -47,8 +54,20 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
-	// Post-test bridge health-check
-	if code == 0 {
+	// Post-test bridge health-check.
+	//
+	// Some e2e tests legitimately manipulate the GER (e.g. removeger_test.go's remove-GER scenarios,
+	// forcegerupdate_test.go's TestForceGERUpdateE2E) in ways that can leave the L2->L1 settlement
+	// flow unable to complete, which would make this global check fail even though the test's own
+	// assertions passed. Those tests are skipped by default in the shared `make test-e2e` suite for
+	// exactly that reason, but the dedicated isolated CI job that opts into running
+	// TestForceGERUpdateE2E (RUN_FORCE_GER_UPDATE_E2E=true) also sets
+	// E2E_SKIP_POSTTEST_BRIDGE_CHECK=true to disable this check for that run, since it owns its own
+	// env and doesn't need (or want) this cross-test health signal. Unset (the default), behavior is
+	// unchanged.
+	if os.Getenv("E2E_SKIP_POSTTEST_BRIDGE_CHECK") == "true" {
+		log.Info("[POSTTEST] E2E_SKIP_POSTTEST_BRIDGE_CHECK=true: skipping post-test bridge health-check.")
+	} else if code == 0 {
 		log.Info("Running a L1 -> L2 and L2 -> L1 bridge flow to check network health post-test...")
 		bridgeCheckCtx, bridgeCancel := context.WithTimeout(context.Background(), 8*time.Minute)
 

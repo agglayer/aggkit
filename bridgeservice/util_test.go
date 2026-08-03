@@ -112,7 +112,8 @@ func TestParseBigIntQuery(t *testing.T) {
 					assert.Nil(t, result)
 				} else {
 					require.NotNil(t, result)
-					assert.Equal(t, 0, tt.expectedResult.Cmp(result), "expected %s, got %s", tt.expectedResult.String(), result.String())
+					assert.Equal(t, 0, tt.expectedResult.Cmp(result),
+						"expected %s, got %s", tt.expectedResult.String(), result.String())
 				}
 			}
 		})

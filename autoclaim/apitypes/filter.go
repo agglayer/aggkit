@@ -15,6 +15,9 @@ import (
 func ParseRequestFilter(c *gin.Context) (autoclaimtypes.RequestFilter, error) {
 	var filter autoclaimtypes.RequestFilter
 	var err error
+	if filter.SourceNetwork, err = parseOptionalUint32(c, "source_network"); err != nil {
+		return filter, err
+	}
 	if filter.OriginNetwork, err = parseOptionalUint32(c, "origin_network"); err != nil {
 		return filter, err
 	}

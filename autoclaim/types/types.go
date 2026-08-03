@@ -160,10 +160,22 @@ type AutoClaimRequest struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	LastError            string
+	// LER is the source network's local exit root observed at detection time
+	// (zero for L1-origin requests). Used to select the covering L1 info tree leaf during proof
+	// preparation; the leaf-to-LER proof itself is always fetched fresh at claim time.
+	LER common.Hash
+	// VerifyBlockNum is the L1 block at which the source network's LER was verified
+	// (zero for L1-origin requests). Used to select the L1 info tree leaf during proof preparation.
+	VerifyBlockNum uint64
 }
 
 // BridgeExit contains the bridge leaf fields copied from bridge sync data.
 type BridgeExit struct {
+	// SourceNetwork is the network on which the bridge exit was initiated (0 for L1-origin exits).
+	// It is the real claim identity together with DestinationNetwork and DepositCount, and it is the
+	// network encoded into the claim global index. This is distinct from OriginNetwork, which is the
+	// bridged token's origin network.
+	SourceNetwork      uint32
 	BlockNum           uint64
 	BlockPos           uint64
 	FromAddress        *common.Address
@@ -252,6 +264,7 @@ type ABIProof [treetypes.DefaultHeight][common.HashLength]byte
 
 // RequestFilter contains optional filters for listing Auto Claim requests.
 type RequestFilter struct {
+	SourceNetwork      *uint32
 	OriginNetwork      *uint32
 	DestinationNetwork *uint32
 	Status             *RequestStatus
@@ -297,9 +310,19 @@ type BridgeCursor struct {
 	BlockPos  uint64
 }
 
-// DeriveRequestKey derives the unique request key from origin network, destination network, and deposit count.
-func DeriveRequestKey(originNetwork, destinationNetwork, depositCount uint32) RequestKey {
-	return RequestKey(fmt.Sprintf("%d:%d:%d", originNetwork, destinationNetwork, depositCount))
+// LERCursor stores the durable per-source-network local-exit-root discovery cursor used by the
+// L2-to-Lx bridge detector to track the last processed LER of a source network.
+type LERCursor struct {
+	SourceNetwork      uint32
+	LastLER            common.Hash
+	LastVerifyBlockNum uint64
+}
+
+// DeriveRequestKey derives the unique request key from the source network, destination network, and
+// deposit count. The tuple (sourceNetwork, destinationNetwork, depositCount) is the real claim identity
+// and mirrors the claim global index.
+func DeriveRequestKey(sourceNetwork, destinationNetwork, depositCount uint32) RequestKey {
+	return RequestKey(fmt.Sprintf("%d:%d:%d", sourceNetwork, destinationNetwork, depositCount))
 }
 
 // DeriveL1GlobalIndex derives the global index for first-scope L1-origin requests.
@@ -310,6 +333,14 @@ func DeriveL1GlobalIndex(depositCount uint32) *big.Int {
 // DeriveGlobalIndex derives the global index for a bridge origin network and deposit count.
 func DeriveGlobalIndex(originNetwork, depositCount uint32) *big.Int {
 	return bridgesync.GenerateGlobalIndexForNetworkID(originNetwork, depositCount)
+}
+
+// DeriveGlobalIndexForSource derives the claim global index for a request keyed by its source network
+// and deposit count. For L1-origin requests (sourceNetwork == 0) it yields the mainnet-flagged index;
+// for rollup-origin requests it encodes rollupIndex = sourceNetwork - 1. This is the source-aware
+// replacement for DeriveL1GlobalIndex used across the claim path.
+func DeriveGlobalIndexForSource(sourceNetwork, depositCount uint32) *big.Int {
+	return bridgesync.GenerateGlobalIndexForNetworkID(sourceNetwork, depositCount)
 }
 
 // NewBridgeExitFromSync converts a bridge sync record into an Auto Claim bridge exit.
@@ -348,10 +379,10 @@ func NewBridgeExitFromSyncWithEtrog(bridge bridgesync.Bridge, etrogL1UpgradeBloc
 
 // NewRequestFromBridgeExit builds a detected Auto Claim request from a discovered bridge exit.
 func NewRequestFromBridgeExit(bridge BridgeExit, now time.Time) AutoClaimRequest {
-	key := DeriveRequestKey(bridge.OriginNetwork, bridge.DestinationNetwork, bridge.DepositCount)
+	key := DeriveRequestKey(bridge.SourceNetwork, bridge.DestinationNetwork, bridge.DepositCount)
 	globalIndex := copyBigInt(bridge.GlobalIndex)
 	if globalIndex == nil {
-		globalIndex = DeriveL1GlobalIndex(bridge.DepositCount)
+		globalIndex = DeriveGlobalIndexForSource(bridge.SourceNetwork, bridge.DepositCount)
 	}
 	var l1InfoTreeIndex *uint32
 	if bridge.L1InfoTreeIndex != nil {

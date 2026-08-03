@@ -65,7 +65,7 @@ func makePublicTestRequest(depositCount, destinationNetwork uint32) autoclaimtyp
 		GlobalIndex:        autoclaimtypes.DeriveGlobalIndex(autoclaimtypes.L1OriginNetwork, depositCount),
 	}
 	return autoclaimtypes.AutoClaimRequest{
-		Key:         autoclaimtypes.DeriveRequestKey(bridge.OriginNetwork, bridge.DestinationNetwork, depositCount),
+		Key:         autoclaimtypes.DeriveRequestKey(bridge.SourceNetwork, bridge.DestinationNetwork, depositCount),
 		Status:      autoclaimtypes.RequestStatusDetected,
 		Bridge:      bridge,
 		GlobalIndex: new(big.Int).Set(bridge.GlobalIndex),
@@ -76,7 +76,23 @@ func makePublicTestRequest(depositCount, destinationNetwork uint32) autoclaimtyp
 	}
 }
 
-func enqueuePublicTestRequest(t *testing.T, storage *autoclaimstorage.Storage, request autoclaimtypes.AutoClaimRequest) {
+// makePublicTestRequestWithSource builds a test request whose bridge exit originated on
+// sourceNetwork, distinct from the bridged token's OriginNetwork set by makePublicTestRequest.
+// This exercises the source:destination:deposit_count request ID format (S06/S07) end to end.
+func makePublicTestRequestWithSource(
+	depositCount, sourceNetwork uint32,
+) autoclaimtypes.AutoClaimRequest {
+	const destinationNetwork = 10
+	request := makePublicTestRequest(depositCount, destinationNetwork)
+	request.Bridge.SourceNetwork = sourceNetwork
+	request.GlobalIndex = autoclaimtypes.DeriveGlobalIndexForSource(sourceNetwork, depositCount)
+	request.Key = autoclaimtypes.DeriveRequestKey(sourceNetwork, destinationNetwork, depositCount)
+	return request
+}
+
+func enqueuePublicTestRequest(
+	t *testing.T, storage *autoclaimstorage.Storage, request autoclaimtypes.AutoClaimRequest,
+) {
 	t.Helper()
 	_, inserted, err := storage.EnqueueRequest(context.Background(), request)
 	require.NoError(t, err)
@@ -120,6 +136,25 @@ func TestPublicRESTListBridgesPaginationAndFilter(t *testing.T) {
 	require.Equal(t, uint32(11), filtered.Bridges[0].DestinationNetwork)
 }
 
+func TestPublicRESTListBridgesFiltersBySourceNetwork(t *testing.T) {
+	storage := newPublicTestStorage(t)
+	router := newPublicTestRouter(t, storage)
+	enqueuePublicTestRequest(t, storage, makePublicTestRequestWithSource(1, 0))
+	enqueuePublicTestRequest(t, storage, makePublicTestRequestWithSource(2, 1))
+	enqueuePublicTestRequest(t, storage, makePublicTestRequestWithSource(3, 2))
+
+	query := url.Values{}
+	query.Set("source_network", "1")
+	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges?"+query.Encode())
+	require.Equal(t, http.StatusOK, resp.Code)
+	var filtered apitypes.ListResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &filtered))
+	require.Equal(t, 1, filtered.Count)
+	require.Len(t, filtered.Bridges, 1)
+	require.Equal(t, uint32(1), filtered.Bridges[0].SourceNetwork)
+	require.Equal(t, "1:10:2", filtered.Bridges[0].ID)
+}
+
 func TestPublicRESTListBridgesRejectsOversizedPageSize(t *testing.T) {
 	router := newPublicTestRouter(t, newPublicTestStorage(t))
 	path := fmt.Sprintf("%s/bridges?page_size=%d", autoclaimpublicV1, autoclaimtypes.MaxRequestPageSize+1)
@@ -142,6 +177,41 @@ func TestPublicRESTGetBridgeByID(t *testing.T) {
 	require.Equal(t, uint32(10), result.DestinationNetwork)
 	require.Equal(t, uint32(4), result.DepositCount)
 	require.NotEmpty(t, result.GlobalIndex)
+}
+
+func TestPublicRESTGetBridgeByIDWithRollupSource(t *testing.T) {
+	storage := newPublicTestStorage(t)
+	router := newPublicTestRouter(t, storage)
+	// SourceNetwork (1, a rollup) differs from OriginNetwork (L1, set by makePublicTestRequest) to
+	// exercise a wrapped-token bridge whose source:destination:deposit_count ID (S06/S07 format) is
+	// not derived from the token's origin network.
+	request := makePublicTestRequestWithSource(5, 1)
+	request.LER = common.HexToHash("0xabc")
+	enqueuePublicTestRequest(t, storage, request)
+
+	require.Equal(t, autoclaimtypes.RequestKey("1:10:5"), request.Key)
+
+	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/1:10:5")
+	require.Equal(t, http.StatusOK, resp.Code)
+	var result apitypes.RequestResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &result))
+	require.Equal(t, "1:10:5", result.ID)
+	require.Equal(t, uint32(1), result.SourceNetwork)
+	require.Equal(t, autoclaimtypes.L1OriginNetwork, result.OriginNetwork)
+	require.Equal(t, common.HexToHash("0xabc").Hex(), result.LER)
+}
+
+func TestPublicRESTGetBridgeByIDOmitsZeroLER(t *testing.T) {
+	storage := newPublicTestStorage(t)
+	router := newPublicTestRouter(t, storage)
+	request := makePublicTestRequest(6, 10)
+	enqueuePublicTestRequest(t, storage, request)
+
+	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/"+string(request.Key))
+	require.Equal(t, http.StatusOK, resp.Code)
+	var result apitypes.RequestResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &result))
+	require.Empty(t, result.LER)
 }
 
 func TestPublicRESTGetBridgeNotFound(t *testing.T) {

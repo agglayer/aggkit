@@ -589,6 +589,98 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 	return "", nil
 }
 
+// GetBridgesInDepositRange returns bridges with deposit_count in the range
+// (fromDepositCount, toDepositCount] (exclusive lower bound, inclusive upper bound) whose
+// destination_network is one of destinationNetworkIDs (all destination networks when empty),
+// ordered by deposit_count ASC and paged. A nil fromDepositCount means no lower bound (full
+// history up to toDepositCount). Only the live "bridge" table is queried; bridge_archive rows
+// (bridges rolled back by a BackwardLET) are intentionally excluded, since claim candidates are
+// only meaningful for bridges still present in the current exit tree.
+func (p *processor) GetBridgesInDepositRange(
+	ctx context.Context, pageNumber, pageSize uint32,
+	fromDepositCount *uint64, toDepositCount uint64, destinationNetworkIDs []uint32,
+) ([]*Bridge, int, error) {
+	whereClause, whereArgs := p.buildDepositRangeFilterClause(fromDepositCount, toDepositCount, destinationNetworkIDs)
+	const orderByClause = "deposit_count ASC"
+
+	bridgesCount, err := p.GetTotalNumberOfRecordsWithParams(ctx, bridgeTableName, whereClause, whereArgs)
+	if err != nil {
+		return []*Bridge{}, 0, err
+	}
+
+	if bridgesCount == 0 {
+		return []*Bridge{}, 0, nil
+	}
+
+	offset, err := p.calculateOffset(pageNumber, pageSize, bridgesCount, "bridges")
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := p.queryPagedWithParams(ctx, p.db, offset, pageSize, bridgeTableName,
+		orderByClause, whereClause, whereArgs)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no bridges were found in deposit range for provided parameters "+
+				"(pageNumber=%d, pageSize=%d, where clause=%s)", pageNumber, pageSize, whereClause)
+			return nil, bridgesCount, nil
+		}
+		p.log.Errorf("GetBridgesInDepositRange: queryPagedWithParams failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
+	bridges := []*Bridge{}
+	if err = meddler.ScanAll(rows, &bridges); err != nil {
+		p.log.Errorf("GetBridgesInDepositRange: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+
+	return bridges, bridgesCount, nil
+}
+
+// buildDepositRangeFilterClause builds the WHERE clause for GetBridgesInDepositRange:
+// deposit_count in (fromDepositCount, toDepositCount] and, when non-empty, destination_network
+// IN networkIDs. Returns the WHERE clause with placeholders and the corresponding arguments for
+// parameterized queries.
+func (p *processor) buildDepositRangeFilterClause(
+	fromDepositCount *uint64, toDepositCount uint64, networkIDs []uint32,
+) (string, []interface{}) {
+	const clauseCapacity = 2
+	clauses := make([]string, 0, clauseCapacity)
+	args := make([]interface{}, 0, clauseCapacity)
+	paramIndex := 1
+
+	if fromDepositCount != nil {
+		clauses = append(clauses, fmt.Sprintf("deposit_count > $%d", paramIndex))
+		args = append(args, *fromDepositCount)
+		paramIndex++
+	}
+
+	clauses = append(clauses, fmt.Sprintf("deposit_count <= $%d", paramIndex))
+	args = append(args, toDepositCount)
+	paramIndex++
+
+	if len(networkIDs) > 0 {
+		placeholders := make([]string, len(networkIDs))
+		for i, id := range networkIDs {
+			placeholders[i] = fmt.Sprintf("$%d", paramIndex)
+			args = append(args, id)
+			paramIndex++
+		}
+		clauses = append(clauses, fmt.Sprintf("destination_network IN (%s)", strings.Join(placeholders, ", ")))
+	}
+
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
 // buildTokenMappingsFilterClause builds the WHERE clause for the token_mapping table
 // based on the provided originTokenAddress
 func (p *processor) buildTokenMappingsFilterClause(originTokenAddress string) string {
@@ -823,9 +915,11 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 
 	shouldRollback = false
 
-	if rowsAffected > 0 {
-		p.unhalt()
-	}
+	// Unhalt unconditionally: a successfully committed purge leaves the DB at a valid
+	// consolidation point even when it deleted nothing (rowsAffected == 0), because a halt
+	// can be caused by a block whose tx was rolled back and never persisted (e.g. data built
+	// from an undetected tip reorg).
+	p.unhalt()
 
 	p.log.Infof("reorged to block %d, %d rows affected", firstReorgedBlock, rowsAffected)
 
@@ -1228,7 +1322,10 @@ func (p *processor) handleForwardLETEvent(tx dbtypes.Txer, event *ForwardLET, bl
 	// When PreviousRoot matches the initial LER, the tree is empty, so the first leaf index is 0 (Go zero value).
 	var newDepositCount uint32
 	if event.PreviousRoot != p.initialLER {
-		newDepositCount = uint32(event.PreviousDepositCount.Uint64())
+		_, newDepositCount, err = normalizeDepositCount(event.PreviousDepositCount)
+		if err != nil {
+			return 0, fmt.Errorf("failed to normalize previous deposit count in forward LET: %w", err)
+		}
 	}
 	newBlockPos := event.BlockPos
 	if blockPos != nil {
@@ -1659,7 +1756,7 @@ func (p *processor) rollbackTransaction(tx dbtypes.SQLTxer) {
 func (p *processor) calculateOffset(pageNumber, pageSize uint32,
 	recordsCount int, tableName string) (uint32, error) {
 	offset := (pageNumber - 1) * pageSize
-	if offset >= uint32(recordsCount) {
+	if int64(offset) >= int64(recordsCount) {
 		msg := fmt.Sprintf("invalid page number for given page size and total number of %s (page=%d, size=%d, total=%d)",
 			tableName, pageNumber, pageSize, recordsCount)
 		p.log.Debugf(msg)

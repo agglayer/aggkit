@@ -36,23 +36,29 @@ jobs:
   pull-docker-images:
     name: Pull Docker Images
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Pull Docker images from compose file
+      - name: Pull Docker images from compose files
         run: |
+          # op-pp env
           cd test/e2e/envs/op-pp
           docker compose pull geth beacon validator agglayer op-geth-001 op-node-001
+          cd ../op-pp-2chains
+          # kurtosis-cdk snapshot branch: feat/op-pp-2chains-snapshot @ 627340aa
+          # This commit generated the op-pp-2chains env snapshot
+          docker compose pull geth beacon validator agglayer \
+            op-reth-001 op-node-001 op-reth-002 op-node-002
 
       - name: Save pulled Docker images
         run: |
-          cd test/e2e/envs/op-pp
-          # Extract image names from docker compose file
-          images=$(docker compose config --images | grep -v 'aggkit:local')
-          echo "Images to save: $images"
-          docker save $images -o /tmp/docker-images.tar
+          imgs=""
+          for d in op-pp op-pp-2chains; do
+            imgs="$imgs $(cd test/e2e/envs/$d && docker compose config --images | grep -v 'aggkit:local')"
+          done
+          docker save $(echo "$imgs" | tr ' ' '\n' | sort -u) -o /tmp/docker-images.tar
 
       - name: Upload Docker images artifact
         uses: actions/upload-artifact@v4
@@ -62,7 +68,66 @@ jobs:
           retention-days: 1
 
   test-go-e2e:
-    name: Run Go E2E Tests
+    name: Run Go E2E Tests (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: [build-docker-image, pull-docker-images]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: op-pp
+            run: ""
+          - env: op-pp-2chains
+            run: TestBridgeL2ToL2|TestAutoClaimL2ToL2AllowAll
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.7
+
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+
+      - name: Download aggkit Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: aggkit-docker-image
+          path: /tmp
+
+      - name: Download pulled Docker images
+        uses: actions/download-artifact@v4
+        with:
+          name: pulled-docker-images
+          path: /tmp
+
+      - name: Load Docker images
+        run: |
+          docker load -i /tmp/aggkit-image.tar
+          docker load -i /tmp/docker-images.tar
+
+      - name: Run E2E tests
+        env:
+          AGGKIT_E2E_ENV: ${{ matrix.env }}
+        run: make test-e2e TEST_RUN="${{ matrix.run }}"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results-${{ matrix.env }}
+          path: |
+            test/e2e/*.log
+            test/e2e/envs/**/logs/
+          if-no-files-found: ignore
+
+  test-go-e2e-force-ger-update:
+    name: Run force_ger_update E2E (isolated)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: [build-docker-image, pull-docker-images]
@@ -97,14 +162,14 @@ jobs:
           docker load -i /tmp/aggkit-image.tar
           docker load -i /tmp/docker-images.tar
 
-      - name: Run E2E tests
-        run: make test-e2e
+      - name: Run force_ger_update E2E test
+        run: make test-e2e-force_ger_update
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-test-results
+          name: e2e-test-results-force-ger-update
           path: |
             test/e2e/*.log
             test/e2e/envs/**/logs/

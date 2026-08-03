@@ -1,0 +1,1091 @@
+<title>Aggkit Bridge Tracker — How It Works</title>
+<style>
+  :root {
+    --ground: #F7F6FB;
+    --card: #FFFFFF;
+    --card-2: #F1EFF8;
+    --ink: #201B33;
+    --muted: #6B6485;
+    --line: #E3DFF0;
+    --accent: #6C3BD4;
+    --accent-soft: #EEE8FB;
+    --route-l1l2: #0E7C86;
+    --route-l1l2-soft: #E0F3F4;
+    --route-l2l1: #B0387A;
+    --route-l2l1-soft: #F9E7F1;
+    --route-l2l2: #6C3BD4;
+    --route-l2l2-soft: #EEE8FB;
+    --ok: #0E8A5F;
+    --ok-soft: #E1F4EC;
+    --warn: #A16207;
+    --warn-soft: #FBF0DA;
+    --err: #B3403C;
+    --err-soft: #F9E8E7;
+    --code-bg: #221D38;
+    --code-ink: #E9E4F6;
+    --code-key: #B9A5F2;
+    --code-str: #8FD4C1;
+    --code-num: #F2C285;
+    --code-null: #8D85A8;
+    --shadow: 0 1px 2px rgba(32,27,51,.05), 0 8px 24px -12px rgba(32,27,51,.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #14111F;
+      --card: #1D1930;
+      --card-2: #262138;
+      --ink: #ECE8F8;
+      --muted: #9B93BA;
+      --line: #322B4C;
+      --accent: #A98BF2;
+      --accent-soft: #2C2347;
+      --route-l1l2: #4CC5CE;
+      --route-l1l2-soft: #14333A;
+      --route-l2l1: #E683B7;
+      --route-l2l1-soft: #3A1F30;
+      --route-l2l2: #A98BF2;
+      --route-l2l2-soft: #2C2347;
+      --ok: #4CC894;
+      --ok-soft: #16332A;
+      --warn: #E0B45C;
+      --warn-soft: #362C17;
+      --err: #E0736E;
+      --err-soft: #3A1F1E;
+      --code-bg: #171326;
+      --code-ink: #E9E4F6;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #F7F6FB; --card: #FFFFFF; --card-2: #F1EFF8; --ink: #201B33; --muted: #6B6485;
+    --line: #E3DFF0; --accent: #6C3BD4; --accent-soft: #EEE8FB;
+    --route-l1l2: #0E7C86; --route-l1l2-soft: #E0F3F4;
+    --route-l2l1: #B0387A; --route-l2l1-soft: #F9E7F1;
+    --route-l2l2: #6C3BD4; --route-l2l2-soft: #EEE8FB;
+    --ok: #0E8A5F; --ok-soft: #E1F4EC; --warn: #A16207; --warn-soft: #FBF0DA;
+    --err: #B3403C; --err-soft: #F9E8E7;
+    --code-bg: #221D38; --code-ink: #E9E4F6;
+    --shadow: 0 1px 2px rgba(32,27,51,.05), 0 8px 24px -12px rgba(32,27,51,.12);
+  }
+  :root[data-theme="dark"] {
+    --ground: #14111F; --card: #1D1930; --card-2: #262138; --ink: #ECE8F8; --muted: #9B93BA;
+    --line: #322B4C; --accent: #A98BF2; --accent-soft: #2C2347;
+    --route-l1l2: #4CC5CE; --route-l1l2-soft: #14333A;
+    --route-l2l1: #E683B7; --route-l2l1-soft: #3A1F30;
+    --route-l2l2: #A98BF2; --route-l2l2-soft: #2C2347;
+    --ok: #4CC894; --ok-soft: #16332A; --warn: #E0B45C; --warn-soft: #362C17;
+    --err: #E0736E; --err-soft: #3A1F1E;
+    --code-bg: #171326; --code-ink: #E9E4F6;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    line-height: 1.55;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, Menlo, monospace; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- header ---------- */
+  header { padding: 64px 0 40px; border-bottom: 1px solid var(--line); }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(30px, 5vw, 46px); line-height: 1.08; font-weight: 750;
+    letter-spacing: -.02em; margin: 0 0 16px; text-wrap: balance;
+  }
+  .lede { font-size: 18px; color: var(--muted); max-width: 62ch; margin: 0 0 24px; }
+  .lede strong { color: var(--ink); font-weight: 600; }
+  .meta-chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .meta-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 14px; font-size: 13px; color: var(--muted);
+  }
+  .meta-chip b { color: var(--ink); font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+
+  /* ---------- sections ---------- */
+  section { padding: 52px 0 8px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+  .sec-kicker {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent);
+  }
+  h2 { font-size: 26px; font-weight: 700; letter-spacing: -.015em; margin: 0 0 8px; text-wrap: balance; }
+  .sec-intro { color: var(--muted); max-width: 68ch; margin: 0 0 28px; }
+  .sec-intro code, p code, li code, td code {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .88em;
+    background: var(--card-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px;
+  }
+
+  /* ---------- lifecycle timeline ---------- */
+  .timeline { display: grid; gap: 0; }
+  .step {
+    display: grid; grid-template-columns: 56px 1fr; gap: 0 20px; position: relative;
+    padding-bottom: 26px;
+  }
+  .step::before {
+    content: ""; position: absolute; left: 27px; top: 44px; bottom: 4px;
+    width: 2px; background: var(--line);
+  }
+  .step:last-child::before { display: none; }
+  .step-num {
+    width: 56px; height: 44px; border-radius: 12px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--card); border: 1.5px solid var(--line);
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 17px; font-weight: 700; color: var(--accent);
+    box-shadow: var(--shadow);
+  }
+  .step-num.terminal { background: var(--ok-soft); border-color: transparent; color: var(--ok); }
+  .step-num.error { background: var(--err-soft); border-color: transparent; color: var(--err); }
+  .step-body { padding-top: 4px; }
+  .step-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 4px; }
+  .step-name {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 16px; font-weight: 700; letter-spacing: -.01em;
+  }
+  .step-desc { color: var(--muted); margin: 0; max-width: 66ch; font-size: 15px; }
+  .routes { display: inline-flex; gap: 5px; }
+  .route-tag {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .02em;
+    padding: 2.5px 8px; border-radius: 999px;
+  }
+  .tag-l1l2 { background: var(--route-l1l2-soft); color: var(--route-l1l2); }
+  .tag-l2l1 { background: var(--route-l2l1-soft); color: var(--route-l2l1); }
+  .tag-l2l2 { background: var(--route-l2l2-soft); color: var(--route-l2l2); }
+
+  .enum-note {
+    font-size: 13px; color: var(--muted); background: var(--card-2);
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px;
+    display: inline-block; margin-bottom: 30px;
+  }
+
+  /* ---------- routes ---------- */
+  .route-cards { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .route-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 22px 24px; box-shadow: var(--shadow);
+    border-top: 3px solid var(--rc);
+  }
+  .route-card.l1l2 { --rc: var(--route-l1l2); --rcs: var(--route-l1l2-soft); }
+  .route-card.l2l1 { --rc: var(--route-l2l1); --rcs: var(--route-l2l1-soft); }
+  .route-card.l2l2 { --rc: var(--route-l2l2); --rcs: var(--route-l2l2-soft); }
+  .route-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .route-name {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 17px; font-weight: 700; color: var(--rc);
+  }
+  .route-sub { font-size: 13.5px; color: var(--muted); }
+  .path { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0 10px; }
+  .node {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 12.5px; font-weight: 600;
+    background: var(--rcs); color: var(--rc);
+    border-radius: 8px; padding: 6px 11px; white-space: nowrap;
+  }
+  .node.ghost {
+    background: transparent; color: var(--muted);
+    border: 1.5px dashed var(--line); text-decoration: line-through; opacity: .75;
+  }
+  .node.retry { background: var(--err-soft); color: var(--err); }
+  .arrow { color: var(--muted); font-size: 13px; flex: none; user-select: none; }
+  .route-note { font-size: 14px; color: var(--muted); margin: 0; max-width: 72ch; }
+  .route-note b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- API ---------- */
+  .endpoint {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: var(--code-bg); color: var(--code-ink);
+    border-radius: 12px; padding: 14px 18px; margin: 0 0 22px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 14.5px;
+    overflow-x: auto;
+  }
+  .verb {
+    background: var(--accent); color: #fff; font-weight: 700; font-size: 12px;
+    letter-spacing: .06em; border-radius: 6px; padding: 3px 9px; flex: none;
+  }
+  .endpoint .ph { color: var(--code-num); }
+
+  .api-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; }
+  @media (max-width: 780px) { .api-grid { grid-template-columns: 1fr; } }
+  .api-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 20px 22px; box-shadow: var(--shadow);
+  }
+  .status-pill {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-weight: 700; font-size: 13px; border-radius: 999px; padding: 4px 12px;
+    display: inline-block; margin-bottom: 10px;
+  }
+  .pill-resolved { background: var(--ok-soft); color: var(--ok); }
+  .pill-pending { background: var(--warn-soft); color: var(--warn); }
+  .api-card h3 { margin: 0 0 6px; font-size: 16.5px; font-weight: 650; }
+  .api-card p { margin: 0; font-size: 14.5px; color: var(--muted); }
+  .api-card p + p { margin-top: 8px; }
+
+  .callout {
+    display: grid; grid-template-columns: 4px 1fr; gap: 16px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 0; overflow: hidden; margin-bottom: 22px;
+  }
+  .callout .bar { background: var(--accent); }
+  .callout .inner { padding: 16px 20px 16px 6px; }
+  .callout p { margin: 0; font-size: 14.5px; color: var(--muted); max-width: 78ch; }
+  .callout p b { color: var(--ink); }
+  .callout.warn .bar { background: var(--warn); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); margin-bottom: 22px; }
+  th {
+    text-align: left; font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; padding: 11px 16px; border-bottom: 1px solid var(--line);
+    background: var(--card-2); white-space: nowrap;
+  }
+  td { padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { white-space: nowrap; }
+  .num-col { font-variant-numeric: tabular-nums; }
+
+  /* ---------- ws flow ---------- */
+  .ws-flow { display: grid; gap: 10px; margin-bottom: 22px; }
+  .ws-msg {
+    display: grid; grid-template-columns: 110px 1fr; gap: 14px; align-items: baseline;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 13px 18px;
+  }
+  @media (max-width: 560px) { .ws-msg { grid-template-columns: 1fr; gap: 4px; } }
+  .ws-type {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 13px; font-weight: 700;
+  }
+  .ws-status { color: var(--ok); }
+  .ws-error { color: var(--err); }
+  .ws-msg p { margin: 0; font-size: 14.5px; color: var(--muted); }
+  .ws-msg p code { font-size: .85em; }
+
+  /* ---------- JSON sample ---------- */
+  .code-block {
+    background: var(--code-bg); color: var(--code-ink); border-radius: 14px;
+    padding: 20px 22px; overflow-x: auto; margin-bottom: 22px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 13px; line-height: 1.6;
+  }
+  .code-block pre { margin: 0; }
+  .k { color: var(--code-key); }
+  .s { color: var(--code-str); }
+  .n { color: var(--code-num); }
+  .z { color: var(--code-null); font-style: italic; }
+  .c { color: var(--code-null); }
+
+  .field-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 22px; }
+  .fg { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .fg h4 {
+    margin: 0 0 8px; font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 14px; color: var(--accent);
+  }
+  .fg p { margin: 0; font-size: 13.5px; color: var(--muted); }
+
+  /* ---------- simulator ---------- */
+  .sim {
+    background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+    padding: 24px; box-shadow: var(--shadow); margin-bottom: 22px;
+  }
+  .sim.l1l2 { --rc: var(--route-l1l2); --rcs: var(--route-l1l2-soft); }
+  .sim.l2l1 { --rc: var(--route-l2l1); --rcs: var(--route-l2l1-soft); }
+  .sim.l2l2 { --rc: var(--route-l2l2); --rcs: var(--route-l2l2-soft); }
+  .sim-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .sim-tabs { display: flex; gap: 6px; }
+  .sim-tab {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 13px; font-weight: 700; padding: 7px 15px; border-radius: 999px;
+    border: 1.5px solid var(--line); background: transparent; color: var(--muted); cursor: pointer;
+  }
+  .sim-tab.on { background: var(--rcs); color: var(--rc); border-color: var(--rc); }
+  .sim-ctrls { display: flex; gap: 6px; }
+  .sim-btn {
+    font-family: inherit; font-size: 13.5px; font-weight: 600; padding: 7px 15px;
+    border-radius: 9px; border: 1.5px solid var(--line); background: var(--card-2);
+    color: var(--ink); cursor: pointer;
+  }
+  .sim-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .sim-btn:disabled { opacity: .45; cursor: default; }
+  .sim-stepper { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .sim-chip {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 12.5px; font-weight: 600; border-radius: 8px; padding: 6px 11px;
+    white-space: nowrap; border: 1.5px solid transparent;
+    background: var(--card-2); color: var(--muted);
+  }
+  .sim-chip.done { background: var(--rcs); color: var(--rc); }
+  .sim-chip.done::before { content: "✓ "; }
+  .sim-chip.active {
+    background: var(--rc); color: var(--ground); border-color: var(--rc);
+    animation: simpulse 1.6s ease-in-out infinite;
+  }
+  @keyframes simpulse {
+    0%, 100% { box-shadow: 0 0 0 0 var(--rcs); }
+    50% { box-shadow: 0 0 0 6px var(--rcs); }
+  }
+  .sim-caption { font-size: 14.5px; color: var(--muted); margin: 0 0 16px; min-height: 1.5em; }
+  .sim-caption b { color: var(--rc); font-variant-numeric: tabular-nums; }
+  .sim .code-block { margin-bottom: 0; }
+  .ln { display: inline; }
+  .ln.hl { animation: simflash 1.4s ease-out; border-radius: 4px; }
+  @keyframes simflash {
+    0% { background: color-mix(in srgb, var(--accent) 38%, transparent); }
+    100% { background: transparent; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sim-chip.active { animation: none; }
+    .ln.hl { animation: none; background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  }
+
+  footer { border-top: 1px solid var(--line); margin-top: 48px; padding: 26px 0 48px; }
+  footer p { font-size: 13px; color: var(--muted); margin: 0; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .step-num, .route-card, .api-card { transition: transform .18s ease; }
+    .route-card:hover, .api-card:hover { transform: translateY(-2px); }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">aggkit-proxy · bridge status tracker</p>
+    <h1>One endpoint to follow a bridge<br>from <span class="mono">bridgeAsset()</span> to claimed</h1>
+    <p class="lede">
+      The tracker is a component of the <strong>aggkit proxy</strong>. Given the transaction that
+      created a bridge — <span class="mono">bridgeAsset()</span> or <span class="mono">bridgeMessage()</span>,
+      both are supervised — it aggregates data from the origin network, the Agglayer and the destination
+      network, and answers a single question: <strong>where is my bridge right now?</strong>
+    </p>
+    <div class="meta-chips">
+      <span class="meta-chip"><span class="dot"></span><b>8</b>&nbsp;lifecycle states</span>
+      <span class="meta-chip"><span class="dot"></span><b>3</b>&nbsp;bridge routes</span>
+      <span class="meta-chip"><span class="dot"></span>REST&nbsp;<b>+</b>&nbsp;WebSocket</span>
+      <span class="meta-chip"><span class="dot"></span>full status on every update</span>
+      <span class="meta-chip"><span class="dot"></span>per-step error detail</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head"><span class="sec-kicker">01 · Lifecycle</span></div>
+    <h2>The eight states of a bridge</h2>
+    <p class="sec-intro">
+      Every bridge moves through a subset of these states, from the <code>BridgeEvent</code> emitted by
+      <code>bridgeAsset()</code> or <code>bridgeMessage()</code> until it is claimed on the destination network. Where a bridge
+      starts depends on where it was created: on L1 it waits for a <strong>GER</strong> update; on an L2 it
+      waits for a <strong>LER</strong> update. The badge is the <code>BridgeStep</code> enum value returned
+      by the API; the tags show which routes visit each state.
+    </p>
+
+    <div class="timeline">
+      <div class="step">
+        <div class="step-num">0</div>
+        <div class="step-body">
+          <div class="step-title-row">
+            <span class="step-name">WaitingGERUpdate</span>
+            <span class="routes"><span class="route-tag tag-l1l2">L1→L2</span></span>
+          </div>
+          <p class="step-desc">The bridge has been created on L1 — <code>BridgeEvent</code> emitted — but the Global Exit Root has not been updated yet (e.g. <code>forceUpdateGlobalExitRoot=false</code>).</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title-row">
+            <span class="step-name">WaitingLERUpdate</span>
+            <span class="routes"><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
+          </div>
+          <p class="step-desc">The bridge has been created on an L2 — <code>BridgeEvent</code> emitted — but the network's Local Exit Root has not been updated yet.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title-row">
+            <span class="step-name">PendingInclusion</span>
+            <span class="routes"><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
+          </div>
+          <p class="step-desc">The LER is updated but the bridge is not yet part of any certificate. The Aggsender will pick it up when composing the next certificate.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title-row">
+            <span class="step-name">CertificatePending</span>
+            <span class="routes"><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
+          </div>
+          <p class="step-desc">The bridge is included in a certificate that has been sent to the Agglayer and is awaiting progress.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title-row">
+            <span class="step-name">CertificateProcessing</span>
+            <span class="routes"><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
+          </div>
+          <p class="step-desc">The certificate is walking the Agglayer states (<code>Proven</code>, <code>Candidate</code>…). An <code>InError</code> certificate surfaces right here as a step-level error — see <a href="#errorstep"><code>ErrorStep</code></a> — instead of moving the bridge elsewhere. The step loops on every certificate state change until settlement.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title-row">
+            <span class="step-name">WaitingGERInjection</span>
+            <span class="routes"><span class="route-tag tag-l1l2">L1→L2</span><span class="route-tag tag-l2l2">L2→L2</span></span>
+          </div>
+          <p class="step-desc">The GER that covers the bridge exists on L1, but the Aggoracle has not injected it into the destination L2 yet.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <div class="step-title-row">
+            <span class="step-name">WaitingClaim</span>
+            <span class="routes"><span class="route-tag tag-l1l2">L1→L2</span><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
+          </div>
+          <p class="step-desc">The GER that includes the bridge is available on the destination network. The bridge is ready to be claimed with <code>claimAsset()</code> / <code>claimMessage()</code>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num terminal">7</div>
+        <div class="step-body">
+          <div class="step-title-row">
+            <span class="step-name">Claimed</span>
+            <span class="routes"><span class="route-tag tag-l1l2">L1→L2</span><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
+          </div>
+          <p class="step-desc">Terminal state — the asset has been claimed on the destination network and delivered to the recipient.</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="enum-note">
+      These values are the <span class="mono">BridgeStep</span> enum, carried in every
+      <span class="mono">all_steps[].step</span> entry: <span class="mono">0→WaitingGERUpdate … 7→Claimed</span>.
+      The envelope doesn't repeat it at the top — instead it carries
+      <span class="mono">step_index</span> (the position within <span class="mono">all_steps</span> of the
+      step that explains the bridge's status), while
+      <span class="mono">tracking_status</span>/<span class="mono">tracking_status_string</span> carry the
+      lifecycle itself. Every enum field ships with a <span class="mono">*_string</span> companion, so
+      clients never need a mapping table.
+    </p>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-kicker">02 · Routes</span></div>
+    <h2>Three routes, three different paths</h2>
+    <p class="sec-intro">
+      Not every bridge visits every state. The direction decides where the bridge starts
+      (<code>WaitingGERUpdate</code> on L1, <code>WaitingLERUpdate</code> on an L2), whether it needs a
+      certificate (only bridges leaving an L2) and whether it needs a GER injection
+      (only bridges arriving at an L2). Skipped states are shown crossed out; ⟳ marks the step that
+      loops while the certificate changes state.
+    </p>
+
+    <div class="route-cards">
+      <div class="route-card l1l2">
+        <div class="route-head">
+          <span class="route-name">L1 → L2</span>
+          <span class="route-sub">no certificate — L1 is the source of truth</span>
+        </div>
+        <div class="path">
+          <span class="node">0 · WaitingGERUpdate</span><span class="arrow">→</span>
+          <span class="node ghost">1–4 · certificate</span><span class="arrow">→</span>
+          <span class="node">5 · WaitingGERInjection</span><span class="arrow">→</span>
+          <span class="node">6 · WaitingClaim</span><span class="arrow">→</span>
+          <span class="node">7 · Claimed</span>
+        </div>
+        <p class="route-note"><b>GER update (L1→L2):</b> the deposit updates the GER directly on L1, so it jumps straight to waiting for the Aggoracle to inject that GER into the destination L2. No certificate is involved.</p>
+      </div>
+
+      <div class="route-card l2l1">
+        <div class="route-head">
+          <span class="route-name">L2 → L1</span>
+          <span class="route-sub">certificate, but no injection needed</span>
+        </div>
+        <div class="path">
+          <span class="node">1 · WaitingLERUpdate</span><span class="arrow">→</span>
+          <span class="node">2 · PendingInclusion</span><span class="arrow">→</span>
+          <span class="node">3 · CertificatePending</span><span class="arrow">→</span>
+          <span class="node">4 · CertProcessing ⟳</span><span class="arrow">→</span>
+          <span class="node ghost">5 · injection</span><span class="arrow">→</span>
+          <span class="node">6 · WaitingClaim</span><span class="arrow">→</span>
+          <span class="node">7 · Claimed</span>
+        </div>
+        <p class="route-note"><b>Settled by Agglayer (L2→L1):</b> the certificate walks the Agglayer states inside <span class="mono">CertificateProcessing</span> — a failed certificate (<span class="mono">InError</span>) surfaces there as a step-level error. Settlement happens on L1, which is also the destination: the GER is already there, so the bridge becomes claimable the moment it settles.</p>
+      </div>
+
+      <div class="route-card l2l2">
+        <div class="route-head">
+          <span class="route-name">L2 → L2′</span>
+          <span class="route-sub">the full path — certificate and injection</span>
+        </div>
+        <div class="path">
+          <span class="node">1 · WaitingLERUpdate</span><span class="arrow">→</span>
+          <span class="node">2 · PendingInclusion</span><span class="arrow">→</span>
+          <span class="node">3 · CertificatePending</span><span class="arrow">→</span>
+          <span class="node">4 · CertProcessing ⟳</span><span class="arrow">→</span>
+          <span class="node">5 · WaitingGERInjection</span><span class="arrow">→</span>
+          <span class="node">6 · WaitingClaim</span><span class="arrow">→</span>
+          <span class="node">7 · Claimed</span>
+        </div>
+        <p class="route-note"><b>Settled by Agglayer (L2→L2):</b> after settlement on L1, the Aggoracle still has to inject the new GER into the destination L2′ before the claim can happen. Two exit-root updates are involved — each reported in the <span class="mono">result</span> of its own step.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-kicker">03 · Simulation</span></div>
+    <h2>Watch a bridge move — data included</h2>
+    <p class="sec-intro">
+      Pick a route and play. The stepper walks the lifecycle exactly as the tracker reports it, and the
+      panel below shows the <code>TrackingData</code> a client would receive at each moment — steps completing,
+      GER data appearing, the certificate settling. Highlighted lines are the fields that just changed.
+    </p>
+
+    <div class="sim l1l2" id="sim">
+      <div class="sim-bar">
+        <div class="sim-tabs" role="tablist">
+          <button class="sim-tab on" data-route="l1l2">L1→L2</button>
+          <button class="sim-tab" data-route="l2l1">L2→L1</button>
+          <button class="sim-tab" data-route="l2l2">L2→L2′</button>
+        </div>
+        <div class="sim-ctrls">
+          <button class="sim-btn primary" id="sim-play">▶ Play</button>
+          <button class="sim-btn" id="sim-step">Step</button>
+          <button class="sim-btn" id="sim-reset">Reset</button>
+        </div>
+      </div>
+      <div class="sim-stepper" id="sim-stepper"></div>
+      <p class="sim-caption" id="sim-caption"></p>
+      <div class="code-block"><pre id="sim-json"></pre></div>
+    </div>
+
+    <script>
+      (function () {
+        const STEPS = {0:"WaitingGERUpdate",1:"WaitingLERUpdate",2:"PendingInclusion",
+                       3:"CertificatePending",4:"CertificateProcessing",
+                       5:"WaitingGERInjection",6:"WaitingClaim",7:"Claimed"};
+        const DUR = {0:"30s",1:"30s",2:"1m0s",3:"2m0s",4:"5m0s",5:"2m0s",6:null,7:null};
+        const GER_L1  = {net:0, ger:"0x9f2c…", ler:"Mainnet"};
+        const GER_L2  = {net:3, ger:"0x9f2c…", ler:"Local"};
+        const GER_L2P = {net:5, ger:"0x6b81…", ler:"Local"};
+        const CERT_PEND    = {id:"0x41ab…", st:"Pending",  settle:null};
+        const CERT_PROVEN  = {id:"0x41ab…", st:"Proven",   settle:null};
+        const CERT_SETTLED = {id:"0x41ab…", st:"Settled",  settle:"0x77de…"};
+
+        const ROUTES = {
+          l1l2: { type:0, typeStr:"L1->L2", netId:0, txHash:"0x71c4a2…", blockNumber:8123456, logIndex:2, path:[0,5,6,7], frames:[
+            {cur:0, ger1:null,   ger2:null, cert:null, chg:["cur"],
+             cap:"bridgeAsset() sent on L1 — BridgeEvent emitted, waiting for the GER update."},
+            {cur:5, ger1:GER_L1, ger2:null, cert:null, chg:["cur","ger1"],
+             cap:"GER updated on L1 (no certificate needed) — waiting for the Aggoracle to inject it into the destination L2."},
+            {cur:6, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
+             cap:"Aggoracle injected the GER on L2 — the bridge is ready to claim."},
+            {cur:7, done:true, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
+             cap:"claimAsset() executed — asset delivered. The WebSocket sends this final status and closes (code 1000)."}
+          ]},
+          l2l1: { type:1, typeStr:"L2->L1", netId:3, txHash:"0x5e9ab7…", blockNumber:5012301, logIndex:0, path:[1,2,3,4,6,7], frames:[
+            {cur:1, ger1:null,   ger2:null, cert:null, chg:["cur"],
+             cap:"bridgeAsset() sent on L2 — BridgeEvent emitted, waiting for the LER update."},
+            {cur:2, ger1:GER_L2, ger2:null, cert:null, chg:["cur","ger1"],
+             cap:"LER updated on L2 — waiting for the Aggsender to include the bridge in a certificate."},
+            {cur:3, ger1:GER_L2, ger2:null, cert:CERT_PEND, chg:["cur","cert"],
+             cap:"Certificate sent to the Agglayer — waiting for it to start moving."},
+            {cur:4, ger1:GER_L2, ger2:null, cert:CERT_PROVEN, chg:["cur","cert"],
+             cap:"Certificate processing on the Agglayer (Proven, Candidate… an InError certificate surfaces right here as a step-level error, without leaving this step)."},
+            {cur:6, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur","cert"],
+             cap:"Certificate settled on L1 — the destination is L1 itself, so no injection is needed: claimable right away."},
+            {cur:7, done:true, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
+             cap:"claimAsset() executed on L1 — asset delivered. Final status pushed, connection closed."}
+          ]},
+          l2l2: { type:2, typeStr:"L2->L2", netId:3, txHash:"0x2b6fd1…", blockNumber:5012301, logIndex:1, path:[1,2,3,4,5,6,7], frames:[
+            {cur:1, ger1:null,   ger2:null, cert:null, chg:["cur"],
+             cap:"bridgeAsset() sent on L2 — BridgeEvent emitted, waiting for the LER update."},
+            {cur:2, ger1:GER_L2, ger2:null, cert:null, chg:["cur","ger1"],
+             cap:"LER updated on L2 — waiting for the Aggsender to include the bridge in a certificate."},
+            {cur:3, ger1:GER_L2, ger2:null, cert:CERT_PEND, chg:["cur","cert"],
+             cap:"Certificate sent to the Agglayer — waiting for it to start moving."},
+            {cur:4, ger1:GER_L2, ger2:null, cert:CERT_PROVEN, chg:["cur","cert"],
+             cap:"Certificate processing on the Agglayer (Proven, Candidate… an InError certificate surfaces right here as a step-level error, without leaving this step)."},
+            {cur:5, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur","cert"],
+             cap:"Certificate settled on L1 — now the Aggoracle must inject the new GER into the destination L2′."},
+            {cur:6, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur","ger2"],
+             cap:"GER injected on L2′ — the bridge is ready to claim."},
+            {cur:7, done:true, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur"],
+             cap:"claimAsset() executed on L2′ — asset delivered. Final status pushed, connection closed."}
+          ]}
+        };
+
+        const K = k => '<span class="k">"' + k + '"</span>';
+        const S = v => '<span class="s">"' + v + '"</span>';
+        const N = v => '<span class="n">' + v + '</span>';
+        const NUL = '<span class="z">null</span>';
+        const kv = (k, v) => K(k) + ': ' + v;
+        const certStr = c => c ? '{ ' + kv("certificate_id", S(c.id)) + ', ' + kv("status_string", S(c.st))
+                                + ', ' + kv("settlement_tx_hash", c.settle ? S(c.settle) : NUL) + ' }' : NUL;
+        // step-specific `result`, present once the step is done (see StepResult in API.md)
+        const RES = {
+          0: () => '{ ' + kv("ger", S("0x9f2c…")) + ', ' + kv("block_number", N(8123456)) + ' }',
+          1: () => '{ ' + kv("network_id", N(3)) + ', ' + kv("ler", S("0x2c41…")) + ', ' + kv("block_number", N(5012345)) + ' }',
+          4: () => certStr(CERT_SETTLED),
+          6: () => '{ ' + kv("claim_tx", S("0x55aa…")) + ', ' + kv("block_number", N(9345678)) + ' }'
+        };
+
+        const simEl = document.getElementById("sim");
+        const stepperEl = document.getElementById("sim-stepper");
+        const captionEl = document.getElementById("sim-caption");
+        const jsonEl = document.getElementById("sim-json");
+        const playBtn = document.getElementById("sim-play");
+        const stepBtn = document.getElementById("sim-step");
+        const resetBtn = document.getElementById("sim-reset");
+        const tabs = simEl.querySelectorAll(".sim-tab");
+
+        const st = { route: "l1l2", frame: 0, playing: false, timer: null };
+
+        function stepStatus(r, f, idx) {
+          const ci = r.path.indexOf(f.cur);
+          if (f.done || idx < ci) return "done";
+          return idx === ci ? "active" : "pend";
+        }
+
+        function render() {
+          const r = ROUTES[st.route];
+          const f = r.frames[st.frame];
+          const last = st.frame === r.frames.length - 1;
+
+          stepperEl.innerHTML = r.path.map((s, i) =>
+            '<span class="sim-chip ' + stepStatus(r, f, i) + '">' + s + ' · ' + STEPS[s] + '</span>'
+          ).join('<span class="arrow">→</span>');
+
+          captionEl.innerHTML = '<b>' + (st.frame + 1) + '/' + r.frames.length + '</b> — ' + f.cap;
+
+          const hl = (tag, html) => '<span class="ln' + (f.chg.includes(tag) ? ' hl' : '') + '">' + html + '</span>';
+          const ci = r.path.indexOf(f.cur);
+          const STAT_NUM = {pending:0, inProgress:1, done:2};
+          const stepsLines = r.path.map((s, i) => {
+            const stat = f.done || i < ci ? "done" : (i === ci ? "inProgress" : "pending");
+            const line = '    { ' + kv("step", N(s)) + ', ' + kv("step_string", S(STEPS[s]))
+                       + ', ' + kv("status", N(STAT_NUM[stat])) + ', ' + kv("status_string", S(stat))
+                       + ', ' + kv("expected_duration", DUR[s] ? S(DUR[s]) : NUL)
+                       + ', ' + kv("result", stat === "done" && RES[s] ? RES[s]() : NUL)
+                       + ' }' + (i < r.path.length - 1 ? ',' : '');
+            return (i === ci && f.chg.includes("cur")) ? hl("cur", line) : line;
+          }).join('\n');
+
+          const lcStatus = f.done ? "finished" : "running";
+          jsonEl.innerHTML = [
+            '{',
+            '  ' + hl("cur", kv("tracking_status", N(f.done ? 3 : 1)) + ', ' + kv("tracking_status_string", S(lcStatus)) + ','),
+            '  ' + kv("network_id", N(r.netId)) + ', ' + kv("tx_hash", S(r.txHash)) + ',',
+            '  ' + kv("bridge_status", '{'),
+            '    ' + kv("bridge_type", N(r.type)) + ', ' + kv("bridge_type_string", S(r.typeStr)) + ',',
+            '    ' + kv("bridge_leaf_type", N(0)) + ', ' + kv("bridge_leaf_type_string", S("Asset")) + ',',
+            '    ' + kv("block_number", N(r.blockNumber)) + ', ' + kv("log_index", N(r.logIndex)),
+            '  },',
+            '  ' + hl("cur", kv("step_index", N(ci)) + ','),
+            '  ' + kv("all_steps", '[') ,
+            stepsLines,
+            '  ],',
+            '  ' + kv("error", NUL),
+            '}'
+          ].join('\n');
+
+          stepBtn.disabled = last;
+          playBtn.textContent = st.playing ? "⏸ Pause" : "▶ Play";
+          if (last && st.playing) pause();
+        }
+
+        function advance() {
+          const r = ROUTES[st.route];
+          if (st.frame < r.frames.length - 1) { st.frame++; render(); }
+          if (st.frame === r.frames.length - 1) pause();
+        }
+        function play() {
+          if (st.frame === ROUTES[st.route].frames.length - 1) st.frame = 0;
+          st.playing = true;
+          st.timer = setInterval(advance, 2200);
+          render();
+        }
+        function pause() {
+          st.playing = false;
+          if (st.timer) { clearInterval(st.timer); st.timer = null; }
+          playBtn.textContent = "▶ Play";
+        }
+        function reset() { pause(); st.frame = 0; render(); }
+
+        playBtn.addEventListener("click", () => st.playing ? (pause(), render()) : play());
+        stepBtn.addEventListener("click", () => { pause(); advance(); });
+        resetBtn.addEventListener("click", reset);
+        tabs.forEach(t => t.addEventListener("click", () => {
+          pause();
+          st.route = t.dataset.route; st.frame = 0;
+          tabs.forEach(x => x.classList.toggle("on", x === t));
+          simEl.classList.remove("l1l2", "l2l1", "l2l2");
+          simEl.classList.add(st.route);
+          render();
+        }));
+
+        render();
+      })();
+    </script>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-kicker">04 · REST API</span></div>
+    <h2>Ask once, get the full picture</h2>
+    <p class="sec-intro">
+      One REST endpoint covers the whole tracker. You identify the bridge by the network where it was
+      sent and the hash of the transaction that created it — nothing else.
+    </p>
+
+    <div class="endpoint">
+      <span class="verb">GET</span>
+      <span>/tracker/v1/network/<span class="ph">{network_id}</span>/tx/<span class="ph">{tx_hash}</span></span>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Param</th><th>Location</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">network_id</td><td>path</td><td class="mono">uint32</td><td>Network where the bridge transaction was sent (<code>0</code> → Mainnet)</td></tr>
+          <tr><td class="mono">tx_hash</td><td>path</td><td class="mono">Hash</td><td>Hash of the transaction that created the bridge (<code>bridgeAsset</code> or <code>bridgeMessage</code>)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <div class="bar"></div>
+      <div class="inner">
+        <p><b>Calling is subscribing.</b> The first call for a transaction adds the bridge to the tracker's
+        list of supervised bridges. From then on the tracker keeps its status up to date on its own.</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="bar"></div>
+      <div class="inner">
+        <p><b>Always 200 — no 202, no 404.</b> Every response is the same <span class="mono">TrackingData</span>
+        shape; only its <span class="mono">bridge_status</span>/<span class="mono">step_index</span>/<span class="mono">all_steps</span>/<span class="mono">error</span>
+        fields change — even when the tracker gives up on the tx entirely.</p>
+      </div>
+    </div>
+
+    <div class="api-grid">
+      <div class="api-card">
+        <span class="status-pill pill-pending">bridge_status: null</span>
+        <h3>Just registered, no info yet</h3>
+        <p>The bridge was added to the supervised list but nothing is known about it yet:
+        <span class="mono">tracking_status</span> is <span class="mono">registered</span> and
+        <span class="mono">bridge_status</span>, <span class="mono">step_index</span> and
+        <span class="mono">all_steps</span> are all <span class="mono">null</span>. Poll again until
+        they're populated — or use the WebSocket and skip polling entirely.</p>
+      </div>
+      <div class="api-card">
+        <span class="status-pill pill-resolved">bridge_status: {…}</span>
+        <h3>Status is known</h3>
+        <p>The bridge is supervised and resolved: the same <span class="mono">TrackingData</span> now carries
+        a populated <span class="mono">bridge_status</span> — the bridge's identity: type, and the block/log
+        of the tx that created it — plus <span class="mono">step_index</span> and
+        <span class="mono">all_steps</span>: the whole expected path with per-step progress and dates.</p>
+      </div>
+      <div class="api-card" style="grid-column: 1 / -1;">
+        <span class="status-pill pill-pending">error: {…}</span>
+        <h3>The tracker gave up — no 404</h3>
+        <p>The transaction never existed on the network, or existed but emitted no
+        <span class="mono">BridgeEvent</span> (not a bridge transaction): after
+        <span class="mono">NotFoundAfter</span> consecutive misses the tracker stops trying.
+        <span class="mono">tracking_status</span> becomes <span class="mono">error</span>,
+        <span class="mono">bridge_status</span>/<span class="mono">step_index</span>/<span class="mono">all_steps</span>
+        stay <span class="mono">null</span> <strong>forever</strong>, and <span class="mono">error</span> carries
+        why — see <a href="#tracking-error"><span class="mono">ErrorStep</span></a>. Polling again keeps answering
+        the same thing; there's nothing left to wait for.</p>
+      </div>
+    </div>
+
+    <h2 style="font-size:21px; margin-top:34px;">Health check</h2>
+    <p class="sec-intro">
+      A second endpoint answers a different question: <strong>is this instance alive, and which build is it
+      running?</strong> It takes no parameters and has no side effects — it does <strong>not</strong> register
+      anything in the supervised list.
+    </p>
+
+    <div class="endpoint">
+      <span class="verb">GET</span>
+      <span>/tracker/v1/health</span>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">status</td><td class="mono">string</td><td>Always <code>"ok"</code> — the endpoint itself always returns <code>200 OK</code></td></tr>
+          <tr><td class="mono">instanceId</td><td class="mono">string</td><td>UUID generated at startup; changes on every execution. Two responses with different <code>instanceId</code> come from different instances (or the same one after a restart)</td></tr>
+          <tr><td class="mono">configSha1</td><td class="mono">string</td><td>sha1 (hex) of the config file the instance was started with — lets you verify all instances run the same configuration</td></tr>
+          <tr><td class="mono">version</td><td class="mono">VersionInfo</td><td>Build info of the running binary: <code>version</code>, <code>gitRev</code>, <code>gitBranch</code>, <code>buildDate</code>, <code>goVersion</code>, <code>os</code>, <code>arch</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <div class="bar"></div>
+      <div class="inner">
+        <p><b>Useful behind a proxy.</b> Beyond liveness/readiness probes, <span class="mono">instanceId</span> and
+        <span class="mono">configSha1</span> make it easy to detect the multi-instance pitfalls described in the
+        deployment note below — mismatched configs, or requests bouncing between instances.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-kicker">05 · WebSocket</span></div>
+    <h2>Or subscribe, and let the tracker push</h2>
+    <p class="sec-intro">
+      The same path with a <code>/ws</code> suffix upgrades to a WebSocket. Connecting registers the
+      bridge exactly like the REST call, but instead of polling, the client receives a message every time
+      anything changes.
+    </p>
+
+    <div class="endpoint">
+      <span class="verb">GET</span>
+      <span>/tracker/v1/network/<span class="ph">{network_id}</span>/tx/<span class="ph">{tx_hash}</span>/ws</span>
+    </div>
+
+    <p class="sec-intro">Every frame is a JSON envelope — <code>{ "type": …, "data": … }</code> — with two message types:</p>
+
+    <div class="ws-flow">
+      <div class="ws-msg">
+        <span class="ws-type ws-status">status</span>
+        <p>The full <code>TrackingData</code> — never a delta. Sent immediately on connect, with
+        <code>bridge_status</code>/<code>step_index</code>/<code>all_steps</code> all <code>null</code> if
+        the tracker has no information yet, or all populated if it does. Pushed again on every change:
+        <code>tracking_status</code> moves, <code>bridge_status</code>/<code>step_index</code>/<code>all_steps</code>
+        fill in, <code>step_index</code> moves, a step in <code>all_steps</code> changes status or dates, the
+        certificate status changes, or the tracker gives up resolving the bridge at all
+        (<code>error</code> fills in instead).</p>
+      </div>
+      <div class="ws-msg">
+        <span class="ws-type ws-error">error</span>
+        <p><code>ErrorData</code> with an HTTP-like code — <code>400</code> invalid path parameters only —
+        then the server closes the connection. This is a pre-registration failure: once a bridge is
+        registered, every outcome, including the tracker giving up on it, arrives as a <code>status</code>
+        message instead.</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="bar"></div>
+      <div class="inner">
+        <p><b>Clean ending.</b> The connection closes normally (code <span class="mono">1000</span>) right
+        after the final <span class="mono">status</span> message for either terminal outcome: the bridge
+        reaches <span class="mono">Claimed</span> (<span class="mono">tracking_status_string: "finished"</span>),
+        or the tracker gives up resolving it at all
+        (<span class="mono">tracking_status_string: "error"</span> with <span class="mono">bridge_status: null</span>
+        and <span class="mono">error</span> set). A step-level error on an otherwise-resolved bridge is
+        <b>not</b> terminal — the connection stays open and the tracker keeps retrying. Keepalive is standard
+        ping/pong — most WebSocket libraries handle it automatically.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-kicker">06 · Response</span></div>
+    <h2>Anatomy of a <span class="mono">TrackingData</span> response</h2>
+    <p class="sec-intro">
+      The same envelope everywhere — REST body and WebSocket <code>status</code> frames.
+      <code>tracking_status</code> carries the bridge's <strong>entire</strong> lifecycle — registered,
+      then running / error / finished once resolved — so none of <code>bridge_status</code>,
+      <code>step_index</code> or <code>all_steps</code> need a status of their own: all three are
+      <code>null</code> while <code>tracking_status</code> is <code>registered</code>, and from then on
+      together they carry the full picture below — not just where the bridge is, but the whole path it is
+      expected to walk, with timing per step.
+    </p>
+
+    <div class="field-groups">
+      <div class="fg">
+        <h4>tracking_status · bridge_status</h4>
+        <p><span class="mono">tracking_status</span>: <span class="mono">0→registered</span> (no info yet,
+        <span class="mono">bridge_status: null</span>), <span class="mono">1→running</span>,
+        <span class="mono">2→error</span> (a step reached an error), <span class="mono">3→finished</span>
+        (reached <span class="mono">Claimed</span>). One field replaces what used to be two.</p>
+      </div>
+      <div class="fg">
+        <h4>bridge_type · bridge_leaf_type</h4>
+        <p>What kind of bridge (<span class="mono">L1→L2</span>, <span class="mono">L2→L1</span>,
+        <span class="mono">L2→L2</span>) and whether it carries an asset or a message
+        (<span class="mono">Asset</span> / <span class="mono">Message</span>). Numeric enums with
+        <span class="mono">*_string</span> companions.</p>
+      </div>
+      <div class="fg">
+        <h4>block_number · log_index</h4>
+        <p>Where the creating <span class="mono">bridgeAsset()</span>/<span class="mono">bridgeMessage()</span>
+        call lives on the origin network: the block it was mined in and the position of its
+        <span class="mono">BridgeEvent</span> log within that block — a stable pointer back to the
+        on-chain event, handy for cross-referencing an explorer.</p>
+      </div>
+      <div class="fg">
+        <h4>step_index</h4>
+        <p>Points into <span class="mono">all_steps</span> at the step that explains the envelope's
+        <span class="mono">tracking_status</span>: the step in progress when <span class="mono">running</span>,
+        the step in error when <span class="mono">error</span>, or the last one
+        (<span class="mono">Claimed</span>) when <span class="mono">finished</span>.</p>
+      </div>
+      <div class="fg">
+        <h4>all_steps[]</h4>
+        <p>The full expected path for this route. Each step carries a status
+        (<span class="mono">pending / inProgress / done / error</span>), start and end dates, and an
+        <span class="mono">expected_duration</span> — everything a UI needs to render a progress tracker.</p>
+      </div>
+      <div class="fg">
+        <h4>result (per step)</h4>
+        <p>Step outcomes live inside each step, not at the top level: the GER
+        (<span class="mono">WaitingGERUpdate</span>) or LER (<span class="mono">WaitingLERUpdate</span>)
+        produced with its block number, the certificate data — id, status, settlement tx —
+        (<span class="mono">CertificateProcessing</span>), and the claim tx
+        (<span class="mono">WaitingClaim</span>). <span class="mono">null</span> until the step completes,
+        and for steps without a result.</p>
+      </div>
+      <div class="fg" id="errorstep">
+        <h4>all_steps[].error (per step)</h4>
+        <p>Set only when a step's <span class="mono">status</span> is <span class="mono">error</span> (3).
+        <span class="mono">error_type</span> tells you whether it's <span class="mono">transient</span>,
+        <span class="mono">permanent</span>, or <span class="mono">exhausted</span> (retries given up on);
+        <span class="mono">retry_count</span> and <span class="mono">description[]</span> carry how many
+        attempts and why.</p>
+      </div>
+      <div class="fg" id="tracking-error">
+        <h4>error (whole bridge)</h4>
+        <p><span class="mono">null</span> unless the tracker gave up trying to resolve the bridge at all —
+        the tx doesn't exist, or isn't a bridge transaction. Same <span class="mono">ErrorStep</span> shape as
+        above, but here <span class="mono">retry_count</span> counts not-found polls and
+        <span class="mono">error_type</span> is always <span class="mono">exhausted</span>. When this is set,
+        <span class="mono">bridge_status</span>/<span class="mono">step_index</span>/<span class="mono">all_steps</span>
+        stay <span class="mono">null</span> forever — there's nothing to resolve.</p>
+      </div>
+    </div>
+
+    <p class="sec-intro" style="margin-bottom:14px;">Right after registering, the envelope looks like this:</p>
+
+    <div class="code-block"><pre>{
+  <span class="k">"tracking_status"</span>: <span class="n">0</span>, <span class="k">"tracking_status_string"</span>: <span class="s">"registered"</span>,
+  <span class="k">"network_id"</span>: <span class="n">5</span>, <span class="k">"tx_hash"</span>: <span class="s">"0x9ac1e4…"</span>,
+  <span class="k">"bridge_status"</span>: <span class="z">null</span>,
+  <span class="k">"step_index"</span>: <span class="z">null</span>,
+  <span class="k">"all_steps"</span>: <span class="z">null</span>,
+  <span class="k">"error"</span>: <span class="z">null</span>
+}</pre></div>
+    <p class="sec-intro" style="margin:-8px 0 22px;">…until the tracker resolves the bridge. From then on every
+    response keeps the same envelope, with <span class="mono">tracking_status</span> mirroring the bridge's
+    lifecycle and <span class="mono">bridge_status</span>/<span class="mono">step_index</span>/<span class="mono">all_steps</span>
+    filled in — here, a certificate has hit an error:</p>
+
+    <div class="code-block"><pre>{
+  <span class="k">"tracking_status"</span>: <span class="n">2</span>, <span class="k">"tracking_status_string"</span>: <span class="s">"error"</span>,
+  <span class="k">"network_id"</span>: <span class="n">5</span>, <span class="k">"tx_hash"</span>: <span class="s">"0x9ac1e4…"</span>,
+  <span class="k">"bridge_status"</span>: {
+    <span class="k">"bridge_type"</span>: <span class="n">2</span>,  <span class="k">"bridge_type_string"</span>: <span class="s">"L2-&gt;L2"</span>,
+    <span class="k">"bridge_leaf_type"</span>: <span class="n">0</span>, <span class="k">"bridge_leaf_type_string"</span>: <span class="s">"Asset"</span>,
+    <span class="k">"block_number"</span>: <span class="n">5012301</span>, <span class="k">"log_index"</span>: <span class="n">1</span>
+  },
+  <span class="k">"step_index"</span>: <span class="n">3</span>,
+  <span class="k">"all_steps"</span>: [
+    { <span class="k">"step"</span>: <span class="n">1</span>, <span class="k">"step_string"</span>: <span class="s">"WaitingLERUpdate"</span>, <span class="k">"status"</span>: <span class="n">2</span>, <span class="k">"status_string"</span>: <span class="s">"done"</span>,
+      <span class="k">"start_date"</span>: <span class="s">"2026-07-21T09:14:02Z"</span>, <span class="k">"end_date"</span>: <span class="s">"2026-07-21T09:14:31Z"</span>,
+      <span class="k">"result"</span>: { <span class="k">"network_id"</span>: <span class="n">3</span>, <span class="k">"ler"</span>: <span class="s">"0x2c41…"</span>, <span class="k">"block_number"</span>: <span class="n">5012345</span> } },
+    { <span class="k">"step"</span>: <span class="n">2</span>, <span class="k">"step_string"</span>: <span class="s">"PendingInclusion"</span>, <span class="k">"status"</span>: <span class="n">2</span>, <span class="k">"status_string"</span>: <span class="s">"done"</span> },
+    { <span class="k">"step"</span>: <span class="n">3</span>, <span class="k">"step_string"</span>: <span class="s">"CertificatePending"</span>, <span class="k">"status"</span>: <span class="n">2</span>, <span class="k">"status_string"</span>: <span class="s">"done"</span> },
+    { <span class="k">"step"</span>: <span class="n">4</span>, <span class="k">"step_string"</span>: <span class="s">"CertificateProcessing"</span>, <span class="k">"status"</span>: <span class="n">3</span>, <span class="k">"status_string"</span>: <span class="s">"error"</span>,
+      <span class="k">"expected_duration"</span>: <span class="s">"5m0s"</span>, <span class="k">"result"</span>: <span class="z">null</span>,
+      <span class="k">"error"</span>: { <span class="k">"error_type"</span>: <span class="n">0</span>, <span class="k">"error_type_string"</span>: <span class="s">"transient"</span>,
+        <span class="k">"retry_count"</span>: <span class="n">2</span>,
+        <span class="k">"description"</span>: [<span class="s">"agglayer grpc: context deadline exceeded"</span>] } },
+    <span class="c">… WaitingGERInjection, WaitingClaim, Claimed (pending) …</span>
+  ],
+  <span class="k">"error"</span>: <span class="z">null</span>
+}</pre></div>
+
+    <div class="callout">
+      <div class="bar"></div>
+      <div class="inner">
+        <p><b>A step error stops the whole bridge — but not necessarily for long.</b> The moment any step's
+        <span class="mono">status</span> becomes <span class="mono">error</span> (3), the envelope's
+        <span class="mono">tracking_status</span> flips to <span class="mono">error</span> too, and
+        <span class="mono">step_index</span> points straight at it. What happens next depends on
+        <span class="mono">error_type</span>:
+        <span class="mono">transient</span> (0) means the tracker keeps retrying that step on its own —
+        <span class="mono">retry_count</span> keeps climbing and <span class="mono">description[]</span> gains
+        one entry per occurrence, and <span class="mono">tracking_status</span> returns to
+        <span class="mono">running</span> once it clears. <span class="mono">permanent</span> (1) and
+        <span class="mono">exhausted</span> (2) mean it won't resolve by itself. Note the top-level
+        <span class="mono">error</span> field stays <span class="mono">null</span> throughout — it is reserved
+        for a different, more final failure.</p>
+      </div>
+    </div>
+
+    <p class="sec-intro" style="margin-bottom:14px;">And if the tracker never manages to resolve the bridge at
+    all — the tx doesn't exist, or isn't a bridge transaction — <span class="mono">bridge_status</span>,
+    <span class="mono">step_index</span> and <span class="mono">all_steps</span> stay <span class="mono">null</span>
+    <strong>forever</strong>, and <span class="mono">error</span> fills in instead:</p>
+
+    <div class="code-block"><pre>{
+  <span class="k">"tracking_status"</span>: <span class="n">2</span>, <span class="k">"tracking_status_string"</span>: <span class="s">"error"</span>,
+  <span class="k">"network_id"</span>: <span class="n">5</span>, <span class="k">"tx_hash"</span>: <span class="s">"0x7b3f2a…"</span>,
+  <span class="k">"bridge_status"</span>: <span class="z">null</span>,
+  <span class="k">"step_index"</span>: <span class="z">null</span>,
+  <span class="k">"all_steps"</span>: <span class="z">null</span>,
+  <span class="k">"error"</span>: { <span class="k">"error_type"</span>: <span class="n">2</span>, <span class="k">"error_type_string"</span>: <span class="s">"exhausted"</span>,
+    <span class="k">"retry_count"</span>: <span class="n">10</span>,
+    <span class="k">"description"</span>: [<span class="s">"transaction 0x7b3f2a… does not exist on network 5 or is not a bridge transaction"</span>] }
+}</pre></div>
+
+    <div class="callout">
+      <div class="bar"></div>
+      <div class="inner">
+        <p><b>Terminal — polling again won't help.</b> This is the same <span class="mono">ErrorStep</span>
+        shape as a per-step error, but here <span class="mono">retry_count</span> counts consecutive
+        not-found polls (<span class="mono">NotFoundAfter</span> in the tracker's config) rather than step
+        retries, and <span class="mono">error_type</span> is always <span class="mono">exhausted</span> — there
+        is no <span class="mono">transient</span>/<span class="mono">permanent</span> distinction for a tx that
+        was never found. The tracker stops tracking this <span class="mono">tx_hash</span> for good.</p>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <div class="bar"></div>
+      <div class="inner">
+        <p><b>Deployment note — the server is stateful.</b> The supervised-bridges list lives in the instance that
+        served the request. Behind a load balancer with several instances, polls can see
+        <span class="mono">bridge_status</span> flicker between <span class="mono">null</span> and populated,
+        and WebSockets re-register on reconnect. Mitigations: a single instance,
+        sticky sessions by <span class="mono">tx_hash</span>, or a shared store for the supervised list.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Aggkit proxy · bridge status tracker — sources: README.md, API.md, docs/PROPOSAL.md · July 2026</p>
+  </footer>
+
+</div>
+
