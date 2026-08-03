@@ -76,11 +76,20 @@ generate-code-from-proto: check-protoc ## Generate Go code from proto files in-p
 	buf generate
 
 .PHONY: build ## Builds the binaries locally into ./target
-build: build-aggkit build-tools
+build: build-aggkit build-aggkit-proxy build-tools
 
 .PHONY: build-aggkit
 build-aggkit: ## Builds aggkit binary
 	GIN_MODE=release $(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
+
+.PHONY: build-aggkit-proxy
+build-aggkit-proxy: ## Builds aggkit-proxy binary
+	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/aggkit-proxy ./proxy/cmd
+
+ARGS ?= run
+.PHONY: run-proxy
+run-proxy: build-aggkit-proxy ## Runs aggkit-proxy (pass args with ARGS, e.g. make run-proxy ARGS="run --cfg proxy.toml")
+	$(GOBIN)/aggkit-proxy $(ARGS)
 
 .PHONY: build-tools
 build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger $(GOBIN)/exit_certificate $(GOBIN)/exit_certificate_claimer $(GOBIN)/force_ger_update ## Builds the tools

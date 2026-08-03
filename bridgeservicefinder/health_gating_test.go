@@ -32,7 +32,7 @@ func TestHealthGating_HealthyCurrentRejectsUnhealthyCandidate(t *testing.T) {
 
 	got, err := f.GetURL(networkID)
 	require.NoError(t, err)
-	require.Equal(t, healthySrv.Server.URL, got)
+	require.Equal(t, healthySrv.Server.URL, got.BridgeURL)
 
 	entry, ok := f.cache.get(networkID)
 	require.True(t, ok)
@@ -50,7 +50,8 @@ func TestHealthGating_HealthyCurrentRejectsUnhealthyCandidate(t *testing.T) {
 
 	got, err = f.GetURL(networkID)
 	require.NoError(t, err)
-	require.Equal(t, healthySrv.Server.URL, got, "healthy current URL must not be displaced by an unreachable candidate")
+	require.Equal(t, healthySrv.Server.URL, got.BridgeURL,
+		"healthy current URL must not be displaced by an unreachable candidate")
 }
 
 // TestHealthGating_UnhealthyCurrentAlwaysReplaced covers matrix item #8b: when the current entry is
@@ -86,7 +87,7 @@ func TestHealthGating_UnhealthyCurrentAlwaysReplaced(t *testing.T) {
 
 		require.Eventually(t, func() bool {
 			got, err := f.GetURL(networkID)
-			return err == nil && got == healthySrv.Server.URL
+			return err == nil && got.BridgeURL == healthySrv.Server.URL
 		}, testEventuallyWait, testEventuallyTick, "unhealthy current must be replaced by a healthy candidate")
 
 		entry, ok = f.cache.get(networkID)
@@ -123,7 +124,7 @@ func TestHealthGating_UnhealthyCurrentAlwaysReplaced(t *testing.T) {
 
 		require.Eventually(t, func() bool {
 			got, err := f.GetURL(networkID)
-			return err == nil && got == deadURL2
+			return err == nil && got.BridgeURL == deadURL2
 		}, testEventuallyWait, testEventuallyTick,
 			"unhealthy current must be replaced by a new candidate even if the candidate is also unhealthy")
 
@@ -138,7 +139,7 @@ func TestHealthGating_UnhealthyCurrentAlwaysReplaced(t *testing.T) {
 // candidate and records its probe result verbatim, for both a healthy and an unhealthy candidate.
 func TestHealthGating_NoPriorEntryInstallsRegardlessOfHealth(t *testing.T) {
 	c := newCache()
-	res := newResolver(nil, DefaultBridgeServicePort)
+	res := newResolver(nil, nil, DefaultBridgeServicePort)
 
 	t.Run("healthy candidate", func(t *testing.T) {
 		hc := newMapHealthChecker(map[string]bool{"http://healthy.example.com": true})
@@ -149,11 +150,14 @@ func TestHealthGating_NoPriorEntryInstallsRegardlessOfHealth(t *testing.T) {
 			cache:         c,
 		}
 
-		lst.applyUpdate(context.Background(), 100, "http://healthy.example.com", SourceSequencerURL, dummyLog())
+		lst.applyUpdate(
+			context.Background(), 100, "http://healthy.example.com", "http://healthy.example.com:8545",
+			SourceSequencerURL, dummyLog())
 
 		entry, ok := c.get(100)
 		require.True(t, ok)
 		require.Equal(t, "http://healthy.example.com", entry.url)
+		require.Equal(t, "http://healthy.example.com:8545", entry.jsonRPCURL)
 		require.True(t, entry.healthy)
 	})
 
@@ -166,7 +170,8 @@ func TestHealthGating_NoPriorEntryInstallsRegardlessOfHealth(t *testing.T) {
 			cache:         c,
 		}
 
-		lst.applyUpdate(context.Background(), 101, "http://unhealthy.example.com", SourceSequencerURL, dummyLog())
+		lst.applyUpdate(
+			context.Background(), 101, "http://unhealthy.example.com", "", SourceSequencerURL, dummyLog())
 
 		entry, ok := c.get(101)
 		require.True(t, ok)

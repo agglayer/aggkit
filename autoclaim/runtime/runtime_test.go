@@ -286,7 +286,9 @@ type fakeBridgeServiceFinder struct{}
 
 func (fakeBridgeServiceFinder) Start(context.Context) error { return nil }
 
-func (fakeBridgeServiceFinder) GetURL(uint32) (string, error) { return "http://fake-source", nil }
+func (fakeBridgeServiceFinder) GetURL(uint32) (bridgeservicefinder.NetworkURLs, error) {
+	return bridgeservicefinder.NetworkURLs{BridgeURL: "http://fake-source"}, nil
+}
 
 func withL2ToLxEnabled(cfg autoclaimcfg.Config) autoclaimcfg.Config {
 	cfg.L2ToLxBridgeDetector = autoclaimcfg.L2ToLxBridgeDetector{

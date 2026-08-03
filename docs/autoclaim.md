@@ -442,7 +442,7 @@ PollInterval = "30s"
 # BlockFinality, BlockChunkSize, HealthCheckPath, HealthCheckTimeout, RequireAllHealthyOnStart default to
 # FinalizedBlock, 10000, "/health", "5s", and false respectively when left unset (see the table below).
 
-[AutoClaim.BridgeServiceFinder.URLs]
+[AutoClaim.BridgeServiceFinder.BridgeURLs]
 # Static override map from source network ID to bridge service base URL. Required to reach network 0 (L1),
 # which is never enumerated on-chain:
 # 0 = "http://static-override-l1:5577"
@@ -512,7 +512,7 @@ it has no GER-injection gate at all, since the GER already exists on L1 by const
 | `AutoClaim.L2ToLxBridgeDetector.StartL1Block` | `0` | No | L1 block used to derive a newly discovered source network's initial LER cursor (via the GER at that block); `0` means full history (`from_ler` omitted on first fetch). |
 | `AutoClaim.L2ToLxBridgeDetector.PollInterval` | `3s` | Yes, when the detector is enabled | How often the detector polls `l1infotreesync` for new verified-batches rows. Must be greater than zero. |
 | `AutoClaim.BridgeServiceFinder.RollupManagerAddr` | `{{L1NetworkConfig.RollupManagerAddr}}` | Yes, when `L2ToLxBridgeDetector.Enabled = true` or any enabled claimer has an L2 destination (`NetworkID != 0`) | Address of the rollup manager / agglayer manager contract on L1 used to enumerate attached rollups and resolve their bridge service URLs — both as claim-candidate/claim-proof sources and as GER-injection-gate destinations — and their bridge contracts. |
-| `AutoClaim.BridgeServiceFinder.URLs` | `{}` | No | Static override map from source network ID to bridge service base URL (e.g. `1 = "http://bridge-svc-1:5577"`). Highest-priority source; never overridden by on-chain events. The only way to resolve network 0 (L1), which is not enumerated on-chain. |
+| `AutoClaim.BridgeServiceFinder.BridgeURLs` | `{}` | No | Static override map from source network ID to bridge service base URL (e.g. `1 = "http://bridge-svc-1:5577"`). Highest-priority source; never overridden by on-chain events. The only way to resolve network 0 (L1), which is not enumerated on-chain. |
 | `AutoClaim.BridgeServiceFinder.PollInterval` | `30s` | No | Period between finder event-scan iterations that keep cached URLs fresh from on-chain events. |
 | `AutoClaim.BridgeServiceFinder.BlockFinality` | `FinalizedBlock` | No | Finality level bounding the upper block of each event scan. Empty inherits the default. |
 | `AutoClaim.BridgeServiceFinder.BlockChunkSize` | `10000` | No | Maximum number of blocks queried per `FilterLogs` request while scanning. `0` inherits the default. |

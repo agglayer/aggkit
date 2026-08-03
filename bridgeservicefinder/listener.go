@@ -83,16 +83,22 @@ type listener struct {
 	mgrFilterer      *agglayermanager.AgglayermanagerFilterer
 
 	// lastScannedBlock is the highest block already processed. It is tracked in-memory only (no DB):
-	// on the first tick it is seeded to the current finalized upper bound so the listener reacts to
-	// events that happen after Start, not to historical ones (those were already read directly on-
-	// chain when the initial cache was built). See run() for the seeding logic.
+	// it is seeded, at construction time, to the finalized upper bound resolved right then, so the
+	// first tick's scan covers everything from that instant onward. Events emitted before it (i.e.
+	// before or during buildInitialCache) were already reflected in the cache by the direct on-chain
+	// reads performed while building the initial cache. See newListener for the seeding.
 	lastScannedBlock uint64
-	seeded           bool
 }
 
 // newListener builds the event listener from the finder's already-resolved dependencies. It computes
-// the watched-address slice and the event topics up front and binds the decoding filterers.
+// the watched-address slice and the event topics up front, binds the decoding filterers, and seeds
+// lastScannedBlock to the finalized upper bound resolved right now (ctx). Seeding here — rather than
+// on the listener's first tick, pollInterval later — closes the gap between it and the direct
+// on-chain reads buildInitialCache just performed: any URL update or rollup-creation event emitted
+// in that window would otherwise never be scanned, since the first tick would seed straight to its
+// own (later) upper bound without reading any logs.
 func newListener(
+	ctx context.Context,
 	logger aggkitcommon.Logger,
 	logFilterer LogFilterer,
 	healthChecker HealthChecker,
@@ -153,7 +159,7 @@ func newListener(
 		watched = append(watched, addr)
 	}
 
-	return &listener{
+	l := &listener{
 		logger:                 logger,
 		logFilterer:            logFilterer,
 		healthChecker:          healthChecker,
@@ -174,7 +180,15 @@ func newListener(
 		aggchainFilterer:       aggchainFilterer,
 		rollupFilterer:         rollupFilterer,
 		mgrFilterer:            mgrFilterer,
-	}, nil
+	}
+
+	upper, err := l.finalizedUpperBound(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve initial finalized upper bound: %w", err)
+	}
+	l.lastScannedBlock = upper
+
+	return l, nil
 }
 
 // run is the polling loop. It ticks every pollInterval, resolves the finalized upper block bound,
@@ -206,24 +220,13 @@ func (l *listener) run(ctx context.Context) {
 }
 
 // scanOnce resolves the current finalized upper bound and processes the block range
-// (lastScannedBlock+1 .. upper] in chunks of blockChunkSize.
-//
-// Seeding (no persistence): on the first invocation lastScannedBlock is set to the current upper
-// bound and no logs are scanned. Historical events prior to Start were already reflected in the
-// cache by the direct on-chain reads performed while building the initial cache, so replaying them
-// would be redundant; the listener only needs to observe changes that happen after Start.
+// (lastScannedBlock+1 .. upper] in chunks of blockChunkSize. lastScannedBlock starts out seeded
+// (see newListener) to the finalized upper bound resolved at construction time, so even the first
+// tick scans everything finalized since then.
 func (l *listener) scanOnce(ctx context.Context) error {
 	upper, err := l.finalizedUpperBound(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to resolve finalized upper block for finality %s: %w", l.blockFinality.String(), err)
-	}
-
-	if !l.seeded {
-		l.lastScannedBlock = upper
-		l.seeded = true
-		l.logger.Debugf("event listener seeded at finalized block %d", upper)
-
-		return nil
 	}
 
 	if upper <= l.lastScannedBlock {
@@ -308,12 +311,76 @@ func (l *listener) processLog(ctx context.Context, lg types.Log) {
 		return
 	}
 
-	candidateURL, source, ok := l.decodeLog(networkID, lg)
+	if lg.Topics[0] == l.topics[0] && l.isMetadataServiceURLCleared(networkID, lg) {
+		l.refreshFromChain(ctx, networkID, lg.Address)
+		return
+	}
+
+	candidateURL, jsonRPCURL, source, ok := l.decodeLog(networkID, lg)
 	if !ok {
 		return
 	}
 
-	l.applyUpdate(ctx, networkID, candidateURL, source, lg)
+	l.applyUpdate(ctx, networkID, candidateURL, jsonRPCURL, source, lg)
+}
+
+// isMetadataServiceURLCleared reports whether lg is an AggchainMetadataSet log for the
+// BRIDGE_SERVICE_URL key carrying an empty value — i.e. the operator cleared it on-chain.
+// decodeLog folds this case into an ignored no-op (no usable candidate), but it must not be
+// silently dropped: with the stale metadata-sourced entry still cached, metadata continuing to
+// outrank sequencer-derived updates would leave the finder stuck on it forever. Callers route this
+// case to refreshFromChain instead, which re-resolves the network from scratch.
+func (l *listener) isMetadataServiceURLCleared(networkID uint32, lg types.Log) bool {
+	ev, err := l.aggchainFilterer.ParseAggchainMetadataSet(lg)
+	if err != nil {
+		l.logger.Debugf("failed to parse AggchainMetadataSet log for network %d: %v", networkID, err)
+		return false
+	}
+
+	return ev.Key == bridgeServiceURLKeyTopic && ev.Value == ""
+}
+
+// refreshFromChain re-resolves networkID's URLs directly on-chain (the same source-priority
+// algorithm as the initial cache build), applying the result under the health-gating rule only —
+// not the source-priority rule, since this is a full re-evaluation meant to let a lower-priority
+// source take over once a higher-priority one (e.g. aggchain metadata) is cleared on-chain.
+// Failures are logged and the stale entry, if any, is left in place so a later event can still
+// refresh it.
+func (l *listener) refreshFromChain(ctx context.Context, networkID uint32, addr common.Address) {
+	reader, err := l.readerFactory(addr, l.ethClient)
+	if err != nil {
+		l.logger.Warnf("network %d: failed to build contract reader to refresh after metadata clear: %v", networkID, err)
+		return
+	}
+
+	urls, source, err := l.resolver.resolve(ctx, networkID, reader)
+	if err != nil {
+		if errors.Is(err, ErrNoSourceAvailable) {
+			l.logger.Infof(
+				"network %d: bridge service metadata cleared and no other source available; keeping last known url",
+				networkID)
+		} else {
+			l.logger.Warnf("network %d: failed to re-resolve bridge service url after metadata clear: %v", networkID, err)
+		}
+
+		return
+	}
+
+	cur, exists := l.cache.get(networkID)
+	if exists && cur.url == urls.BridgeURL && cur.source == source {
+		return
+	}
+
+	healthy := l.healthChecker.IsHealthy(ctx, urls.BridgeURL)
+	if exists && cur.healthy && !healthy {
+		l.logger.Debugf("network %d: keeping current healthy url %s over unhealthy fallback %s",
+			networkID, cur.url, urls.BridgeURL)
+		return
+	}
+
+	l.cache.set(networkID, cacheEntry{url: urls.BridgeURL, jsonRPCURL: urls.JSONRPCURL, source: source, healthy: healthy})
+	l.logger.Infof("network %d bridge service url refreshed to %s after metadata clear (source=%d, healthy=%t)",
+		networkID, urls.BridgeURL, source, healthy)
 }
 
 // processRollupManagerLog decodes a rollup-manager lifecycle log announcing a newly attached rollup
@@ -380,7 +447,7 @@ func (l *listener) discoverRollup(ctx context.Context, rollupID uint32, addr com
 		return
 	}
 
-	url, source, err := l.resolver.resolve(ctx, rollupID, reader)
+	urls, source, err := l.resolver.resolve(ctx, rollupID, reader)
 	if err != nil {
 		// Register the address regardless so a later URL-changing event can still populate the entry.
 		l.addrToNetworkID[addr] = rollupID
@@ -397,67 +464,74 @@ func (l *listener) discoverRollup(ctx context.Context, rollupID uint32, addr com
 		return
 	}
 
-	healthy := l.healthChecker.IsHealthy(ctx, url)
+	healthy := l.healthChecker.IsHealthy(ctx, urls.BridgeURL)
 
 	l.addrToNetworkID[addr] = rollupID
 	l.watchedAddresses = append(l.watchedAddresses, addr)
-	l.cache.set(rollupID, cacheEntry{url: url, source: source, healthy: healthy})
+	l.cache.set(rollupID, cacheEntry{
+		url: urls.BridgeURL, jsonRPCURL: urls.JSONRPCURL, source: source, healthy: healthy})
 
-	l.logger.Infof("discovered network %d bridge service url %s (source=%d, healthy=%t)",
-		rollupID, url, source, healthy)
+	l.logger.Infof("discovered network %d bridge service url %s, json-rpc url %s (source=%d, healthy=%t)",
+		rollupID, urls.BridgeURL, urls.JSONRPCURL, source, healthy)
 }
 
-// decodeLog turns a matched log into a candidate (url, source). It returns ok=false when the log is
-// not relevant (unknown topic, wrong metadata key, empty/unparsable value, or a port-substitution
-// failure). For SetTrustedSequencerURL the port is substituted with DefaultBridgeServicePort.
-func (l *listener) decodeLog(networkID uint32, lg types.Log) (string, Source, bool) {
+// decodeLog turns a matched log into a candidate (bridge url, json-rpc url, source). It returns
+// ok=false when the log is not relevant (unknown topic, wrong metadata key, empty/unparsable value,
+// or a port-substitution failure). For SetTrustedSequencerURL the bridge candidate has its port
+// substituted with DefaultBridgeServicePort while the json-rpc url is the announced URL verbatim;
+// an AggchainMetadataSet log carries no json-rpc information (empty).
+func (l *listener) decodeLog(networkID uint32, lg types.Log) (string, string, Source, bool) {
 	switch lg.Topics[0] {
 	case l.topics[0]: // AggchainMetadataSet -> source #2 (metadata)
 		ev, err := l.aggchainFilterer.ParseAggchainMetadataSet(lg)
 		if err != nil {
 			l.logger.Debugf("failed to parse AggchainMetadataSet log for network %d: %v", networkID, err)
-			return "", SourceMetadata, false
+			return "", "", SourceMetadata, false
 		}
 
 		// The indexed string key arrives pre-hashed; only the BRIDGE_SERVICE_URL key is relevant.
 		if ev.Key != bridgeServiceURLKeyTopic {
-			return "", SourceMetadata, false
+			return "", "", SourceMetadata, false
 		}
 
 		if ev.Value == "" {
 			l.logger.Debugf("ignoring empty BRIDGE_SERVICE_URL metadata for network %d", networkID)
-			return "", SourceMetadata, false
+			return "", "", SourceMetadata, false
 		}
 
-		return ev.Value, SourceMetadata, true
+		return ev.Value, "", SourceMetadata, true
 
-	case l.topics[1]: // SetTrustedSequencerURL -> source #3 (sequencer URL + port)
+	case l.topics[1]: // SetTrustedSequencerURL -> source #3 (sequencer URL + port) and json-rpc url
 		ev, err := l.rollupFilterer.ParseSetTrustedSequencerURL(lg)
 		if err != nil {
 			l.logger.Debugf("failed to parse SetTrustedSequencerURL log for network %d: %v", networkID, err)
-			return "", SourceSequencerURL, false
+			return "", "", SourceSequencerURL, false
 		}
 
 		if ev.NewTrustedSequencerURL == "" {
-			return "", SourceSequencerURL, false
+			return "", "", SourceSequencerURL, false
 		}
 
 		url, err := withPort(ev.NewTrustedSequencerURL, l.resolver.bridgeServicePort)
 		if err != nil {
 			l.logger.Warnf("failed to substitute port in sequencer url %q for network %d: %v",
 				ev.NewTrustedSequencerURL, networkID, err)
-			return "", SourceSequencerURL, false
+			return "", "", SourceSequencerURL, false
 		}
 
-		return url, SourceSequencerURL, true
+		return url, ev.NewTrustedSequencerURL, SourceSequencerURL, true
 
 	default:
-		return "", SourceSequencerURL, false
+		return "", "", SourceSequencerURL, false
 	}
 }
 
 // applyUpdate applies the strict priority rules and the health-gating rule (both spelled out in
-// doc.go) for a candidate (url, source) targeting networkID.
+// doc.go) for a candidate (url, source) targeting networkID. jsonRPCURL is the network's JSON-RPC
+// endpoint carried by a SetTrustedSequencerURL event (empty for metadata events); it is refreshed
+// on the current entry up front, exempt from the rules below, because it is independent of which
+// source serves the bridge URL and has no /health semantics. The one restriction is a Config.RPCURLs
+// override, which is terminal and makes the event's json-rpc payload ignored entirely.
 //
 // Priority (strict, using the current entry's recorded source):
 //   - SourceConfig entries are terminal: never overwritten by any event.
@@ -473,9 +547,21 @@ func (l *listener) decodeLog(networkID uint32, lg types.Log) (string, Source, bo
 //   - Prior entry unhealthy: replace regardless of the candidate's probe result (avoid getting
 //     stuck on a dead URL), recording the candidate's probe result.
 func (l *listener) applyUpdate(
-	ctx context.Context, networkID uint32, candidateURL string, source Source, lg types.Log,
+	ctx context.Context, networkID uint32, candidateURL, jsonRPCURL string, source Source, lg types.Log,
 ) {
+	// A config-overridden JSON-RPC endpoint is terminal, exactly like a config-sourced bridge URL:
+	// drop the event's json-rpc payload so it can neither refresh nor be installed below.
+	if l.resolver.configRPCURL(networkID) != "" {
+		jsonRPCURL = ""
+	}
+
 	cur, exists := l.cache.get(networkID)
+
+	if exists && jsonRPCURL != "" && cur.jsonRPCURL != jsonRPCURL {
+		cur.jsonRPCURL = jsonRPCURL
+		l.cache.set(networkID, cur)
+		l.logger.Infof("network %d json-rpc url updated to %s (block=%d)", networkID, jsonRPCURL, lg.BlockNumber)
+	}
 
 	if exists {
 		// SourceConfig is terminal.
@@ -510,7 +596,12 @@ func (l *listener) applyUpdate(
 		return
 	}
 
-	l.cache.set(networkID, cacheEntry{url: candidateURL, source: source, healthy: newHealthy})
+	entry := cacheEntry{url: candidateURL, jsonRPCURL: cur.jsonRPCURL, source: source, healthy: newHealthy}
+	if jsonRPCURL != "" {
+		entry.jsonRPCURL = jsonRPCURL
+	}
+
+	l.cache.set(networkID, entry)
 	l.logger.Infof("network %d bridge service url updated to %s via %s event (source=%d, healthy=%t, block=%d)",
 		networkID, candidateURL, eventName(source), source, newHealthy, lg.BlockNumber)
 }

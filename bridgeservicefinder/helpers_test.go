@@ -145,7 +145,7 @@ func newTestEthClient(backend *simulated.Backend) *helpers.TestClient {
 func baseTestConfig(rollupManagerAddr common.Address) Config {
 	return Config{
 		RollupManagerAddr:        rollupManagerAddr,
-		URLs:                     map[uint32]string{},
+		BridgeURLs:               map[uint32]string{},
 		BlockFinality:            aggkittypes.LatestBlock,
 		PollInterval:             configtypes.Duration{Duration: testPollInterval},
 		BlockChunkSize:           testBlockChunkSize,
