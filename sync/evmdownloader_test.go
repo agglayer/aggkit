@@ -595,20 +595,19 @@ func TestDownloadBeforeFinalized(t *testing.T) {
 		{finalizedBlock: 33, fromBlock: 12, toBlock: 22, eventsReponse: EVMBlocks{createEVMBlock(t, 14, true)}, getBlockHeader: &EVMBlockHeader{Num: 22}},
 		// It returns the last block of range, so it don't need to create a empty one
 		{finalizedBlock: 33, fromBlock: 23, toBlock: 33, eventsReponse: EVMBlocks{createEVMBlock(t, 33, true)}},
-		// It reach the top of chain (block 35)
-		{finalizedBlock: 33, fromBlock: 34, toBlock: 35},
-		// Previous iteration we reach top of chain so we need update the latest block
-		{finalizedBlock: 33, fromBlock: 34, toBlock: 54, waitForNewBlocks: true, waitForNewBlocksRequest: 35, waitForNewBlockReply: 60},
-		// finalized block is 35, so we can reduce emit an emptyBlock and reduce the range
-		{finalizedBlock: 35, fromBlock: 34, toBlock: 60, getBlockHeader: &EVMBlockHeader{Num: 35}},
-		{finalizedBlock: 35, fromBlock: 36, toBlock: 46},
-		{finalizedBlock: 35, fromBlock: 36, toBlock: 56, eventsReponse: EVMBlocks{createEVMBlock(t, 36, false)}},
-		// Block 36 is the new last block,so it reduce the range again to [37-47]
-		{finalizedBlock: 35, fromBlock: 37, toBlock: 47},
-		{finalizedBlock: 57, fromBlock: 37, toBlock: 57, eventsReponse: EVMBlocks{createEVMBlock(t, 57, false)}},
-		{finalizedBlock: 61, fromBlock: 58, toBlock: 60, eventsReponse: EVMBlocks{createEVMBlock(t, 60, false)}},
-		{finalizedBlock: 61, fromBlock: 61, toBlock: 61, waitForNewBlocks: true, waitForNewBlocksRequest: 60, waitForNewBlockReply: 61, getBlockHeader: &EVMBlockHeader{Num: 61}},
-		{finalizedBlock: 61, fromBlock: 62, toBlock: 62, waitForNewBlocks: true, waitForNewBlocksRequest: 61, waitForNewBlockReply: 62},
+		// It reaches the top of chain (block 35) with no events, and finalized (33) is still behind
+		// fromBlock (34): requestToBlock is reported as an (unfinalized) empty block instead of
+		// looping forever without making progress (regression test for the aggsender-stall bug).
+		{finalizedBlock: 33, fromBlock: 34, toBlock: 35, getBlockHeader: &EVMBlockHeader{Num: 35}},
+		// Chain advances to 60. Still below finalized(33)/(35), so the range keeps extending
+		// (RPC-friendly) instead of being reported block by block...
+		{finalizedBlock: 33, fromBlock: 36, toBlock: 46, waitForNewBlocks: true, waitForNewBlocksRequest: 35, waitForNewBlockReply: 60},
+		{finalizedBlock: 35, fromBlock: 36, toBlock: 56},
+		// ...until it reaches the new top (block 60), which gets reported as empty even though
+		// finalized (35) is still behind it.
+		{finalizedBlock: 35, fromBlock: 36, toBlock: 60, getBlockHeader: &EVMBlockHeader{Num: 60}},
+		{finalizedBlock: 35, fromBlock: 61, toBlock: 61, waitForNewBlocks: true, waitForNewBlocksRequest: 60, waitForNewBlockReply: 61, getBlockHeader: &EVMBlockHeader{Num: 61}},
+		{finalizedBlock: 35, fromBlock: 62, toBlock: 62, waitForNewBlocks: true, waitForNewBlocksRequest: 61, waitForNewBlockReply: 62, getBlockHeader: &EVMBlockHeader{Num: 62}},
 	}
 	runSteps(t, 1, steps)
 }
