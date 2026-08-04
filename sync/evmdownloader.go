@@ -270,8 +270,25 @@ func (d *EVMDownloader) Download(
 					if lastBlockNum != nil {
 						toBlock = min(toBlock, *lastBlockNum)
 					}
+				} else if reachTop {
+					// We've swept the whole observed range up to the chain tip (requestToBlock ==
+					// lastBlock) without finding any event and the reorg detector's finalized block
+					// hasn't caught up yet. Report requestToBlock as an (unfinalized) empty block so
+					// GetLastProcessedBlock reflects real sync progress instead of staying pinned to
+					// the last block that had an event; the driver tracks it for reorgs like any other
+					// non-finalized block.
+					skipEmpty := preReportedInitial && requestToBlock == initialFromBlock
+					if !skipEmpty {
+						d.reportEmptyBlock(ctx, downloadedCh, requestToBlock, lastFinalizedBlockNumber)
+					}
+					fromBlock = requestToBlock + 1
+					toBlock = fromBlock + d.syncBlockChunkSize
+					if lastBlockNum != nil {
+						toBlock = min(toBlock, *lastBlockNum)
+					}
 				} else if lastBlockNum == nil {
-					// Extend range until find logs or reach the last finalized block
+					// Not at the tip yet: extend range until we find logs or reach the last
+					// finalized/observed block, instead of re-querying tiny increments.
 					toBlock += d.syncBlockChunkSize
 					// If lastBlockNum is set, don't extend; stop condition below handles it
 				}
