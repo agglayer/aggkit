@@ -31,6 +31,21 @@ type getTxStatusCommand struct {
 // instead of the bare Registered state; a lookup of an already-registered tx never waits.
 // 200 OK unless: invalid path parameters (ErrorData/400), or the registry is at capacity and
 // this tx is not already registered (ErrorData/503, see domain.ErrRegistryFull)
+//
+// @Summary Get bridge status by transaction hash
+// @Description Returns the current step of the bridge and the full path it is expected to
+// @Description follow. Calling this endpoint adds the bridge to the list of supervised
+// @Description bridges. The response is always a TrackingData: its bridge_status field is
+// @Description null until the tracker resolves the bridge, so the client keeps polling (or
+// @Description subscribes over the WebSocket) until it is populated
+// @Tags bridge-tracker
+// @Produce json
+// @Param network_id path uint32 true "Network where the bridge transaction was sent (0 -> Mainnet)"
+// @Param tx_hash path string true "Hash of the transaction that created the bridge (bridgeAsset or bridgeMessage)"
+// @Success 200 {object} TrackingData "Bridge registered; bridge_status/error fill in once resolved"
+// @Failure 400 {object} types.ErrorData "Invalid transaction hash or network id"
+// @Failure 503 {object} types.ErrorData "Supervised registry is at capacity"
+// @Router /network/{network_id}/tx/{tx_hash} [get]
 func (cmd *getTxStatusCommand) Execute(c *gin.Context) (int, any, *types.ErrorData) {
 	req, err := parseBridgeRequest(c)
 	if err != nil {
