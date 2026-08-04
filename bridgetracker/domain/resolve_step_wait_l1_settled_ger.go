@@ -67,8 +67,8 @@ func (r *WaitL1SettledGERResolver) Resolve(
 	if idx < 0 {
 		return nil, ErrStepPending
 	}
-	cert, ok := steps[idx].Result.(*types.CertificateData)
-	if !ok || cert == nil || cert.SettlementTxHash == nil {
+	cert := steps[idx].ResultCertificateData
+	if cert == nil || cert.SettlementTxHash == nil {
 		// the settlement tx hash may lag a tick behind the certificate turning Settled (see
 		// agglayer/types.CertificateHeader.SettlementTxHash), so this is a transient wait, not
 		// an inconsistent state

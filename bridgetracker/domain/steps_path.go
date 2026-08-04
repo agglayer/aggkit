@@ -12,11 +12,11 @@ import (
 // the tx resolves — clients see the full way the bridge will walk before any milestone has
 // been checked. The per-step protocol duration estimations (ExpectedDuration) will be
 // stamped here when they land
-func PendingPath(bridgeType types.BridgeType, now time.Time) []types.BridgeStepPath {
+func PendingPath(bridgeType types.BridgeType, now time.Time) []BridgeStepPath {
 	path := ExpectedPath(bridgeType)
-	steps := make([]types.BridgeStepPath, len(path))
+	steps := make([]BridgeStepPath, len(path))
 	for i, stepID := range path {
-		steps[i] = types.BridgeStepPath{Step: stepID, Status: types.StepStatusPending}
+		steps[i] = BridgeStepPath{Step: stepID, Status: types.StepStatusPending}
 	}
 	steps[0].Status = types.StepStatusInProgress
 	steps[0].StartDate = &now

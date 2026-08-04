@@ -250,30 +250,6 @@ func (e ErrorStep) MarshalJSON() ([]byte, error) {
 	return json.Marshal(errorStepAlias(e))
 }
 
-// BridgeStepPath describes one step of the expected path of a bridge
-type BridgeStepPath struct {
-	Step BridgeStep `json:"step"`
-	// StepString is the string representation of Step, auto-populated on JSON marshaling
-	StepString string     `json:"step_string"`
-	Status     StepStatus `json:"status"`
-	// StatusString is the string representation of Status, auto-populated on JSON marshaling
-	StatusString     string     `json:"status_string"`
-	StartDate        *time.Time `json:"start_date,omitempty"`
-	EndDate          *time.Time `json:"end_date,omitempty"`
-	ExpectedDuration *Duration  `json:"expected_duration,omitempty"`
-	// Result is the data the step has produced so far; its shape depends on Step:
-	// *GERUpdateResult (StepWaitingGERUpdate), *InjectedGERResult (StepWaitingGERInjection),
-	// *LERUpdateResult (StepWaitingLERUpdate), *PendingInclusionResult (StepPendingInclusion),
-	// *CertificateData (StepCertificatePending), *L1SettledGERResult (StepWaitL1SettledGER) or
-	// *ClaimResult (StepWaitingClaim). nil until
-	// the step produces one, and for steps that never do. Most steps only set this once Done,
-	// but StepCertificatePending (Status still InProgress) may already carry the certificate's
-	// current, not yet settled, status — see domain.ErrCertificateNotSettled
-	Result any `json:"result,omitempty"`
-	// Error carries the error details when Status is StepStatusError, nil otherwise
-	Error *ErrorStep `json:"error,omitempty"`
-}
-
 // GERUpdateResult is the result of StepWaitingGERUpdate once it completes: the GER produced
 // by the update on the origin network (L1) and the block it was updated in
 type GERUpdateResult struct {
@@ -328,15 +304,6 @@ type L1SettledGERResult struct {
 	HasVerifyBatchesTrustedAggregator bool        `json:"has_verify_batches_trusted_aggregator"`
 	HasUpdateL1InfoTree               bool        `json:"has_update_l1_info_tree"`
 	HasUpdateL1InfoTreeV2             bool        `json:"has_update_l1_info_tree_v2"`
-}
-
-// MarshalJSON is the implementation of the json.Marshaler interface.
-// It populates the string representation of the numeric enum fields
-func (b BridgeStepPath) MarshalJSON() ([]byte, error) {
-	b.StepString = b.Step.String()
-	b.StatusString = b.Status.String()
-	type bridgeStepPathAlias BridgeStepPath
-	return json.Marshal(bridgeStepPathAlias(b))
 }
 
 // GERData holds the exit roots of a Global Exit Root update relevant to a bridge

@@ -64,8 +64,8 @@ func (r *WaitingGERInjectionResolver) getLeafIndexFromPreviousStep(
 	steps := tracking.AllSteps()
 	switch steps[idx-1].Step {
 	case types.StepWaitL1SettledGER:
-		settlement, ok := steps[idx-1].Result.(*types.L1SettledGERResult)
-		if !ok || settlement == nil || settlement.L1InfoTreeIndex == nil {
+		settlement := steps[idx-1].ResultL1SettledGer
+		if settlement == nil || settlement.L1InfoTreeIndex == nil {
 			// StepWaitL1SettledGER never completes without a resolved leaf index (straight from
 			// UpdateL1InfoTreeV2, or resolved by that step itself otherwise — see
 			// WaitL1SettledGERResolver), so this only guards against an inconsistent read
@@ -73,8 +73,8 @@ func (r *WaitingGERInjectionResolver) getLeafIndexFromPreviousStep(
 		}
 		return *settlement.L1InfoTreeIndex, nil
 	case types.StepWaitingGERUpdate:
-		update, ok := steps[idx-1].Result.(*types.GERUpdateResult)
-		if !ok || update == nil {
+		update := steps[idx-1].ResultGerUpdate
+		if update == nil {
 			// StepWaitingGERUpdate never completes without a resolved GER (straight from
 			// UpdateL1InfoTree/UpdateL1InfoTreeV2, or resolved by that step itself otherwise — see
 			// WaitingGERUpdateResolver), so this only guards against an inconsistent read

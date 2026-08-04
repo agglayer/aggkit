@@ -25,6 +25,19 @@ import (
 
 var testTxHash = common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234")
 
+// testBlockHash is the block hash bridgeEventLog reports its log as mined in, used to stub
+// HeaderByHash in tests that resolve a BridgeInfo's BlockTimestamp
+var testBlockHash = common.HexToHash("0xaaaa567890123456789012345678901234567890123456789012345678901234")
+
+// testBlockTimestamp is the timestamp expectBlockTimestamp stubs testBlockHash's header to
+const testBlockTimestamp = uint64(1700000000)
+
+// expectBlockTimestamp stubs client's HeaderByHash for testBlockHash to report testBlockTimestamp
+func expectBlockTimestamp(client *mocks.BaseEthereumClienter) {
+	client.EXPECT().HeaderByHash(mock.Anything, testBlockHash).
+		Return(&gethtypes.Header{Time: testBlockTimestamp}, nil)
+}
+
 // l1ToL2Bridge is the BridgeInfo of an L1->L2 bridge used across the source tests
 func l1ToL2Bridge() *bridgetracker.BridgeInfo {
 	return &bridgetracker.BridgeInfo{
@@ -34,6 +47,11 @@ func l1ToL2Bridge() *bridgetracker.BridgeInfo {
 		DepositCount:       7,
 		BlockNumber:        12345,
 		LogIndex:           3,
+		OriginNetwork:      0,
+		OriginAddress:      common.HexToAddress("0x20"),
+		DestinationAddress: common.HexToAddress("0x30"),
+		Amount:             big.NewInt(100),
+		BlockTimestamp:     testBlockTimestamp,
 	}
 }
 
@@ -68,6 +86,7 @@ func bridgeEventLog(t *testing.T, destinationNetwork, depositCount uint32) *geth
 		Topics:      []common.Hash{bridgeEventSignature},
 		Data:        data,
 		BlockNumber: 12345,
+		BlockHash:   testBlockHash,
 		Index:       3,
 	}
 }
@@ -96,6 +115,7 @@ func TestBridgeEventSourceFindBridge(t *testing.T) {
 		Logs:        []*gethtypes.Log{bridgeEventLog(t, 1, 7)},
 	}, nil)
 	expectFinalized(client, 12345)
+	expectBlockTimestamp(client)
 
 	source := newBridgeEventSource(t, client)
 	info, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})

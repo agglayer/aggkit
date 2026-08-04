@@ -209,7 +209,7 @@ func (r *memoryRegistry) UpdateTrackingBridgeTx(id TrackingID, tx domain.Trackin
 // opens the next) would otherwise surface as one partial snapshot per call. Callers that
 // change one or more steps must follow up with an UpdateTrackingBridgeTx call — even a
 // no-op one — so subscribers see exactly one consistent, fully-merged snapshot per batch
-func (r *memoryRegistry) UpdateTrackingStep(id TrackingID, stepIndex uint, step types.BridgeStepPath) error {
+func (r *memoryRegistry) UpdateTrackingStep(id TrackingID, stepIndex uint, step BridgeStepPath) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -223,7 +223,7 @@ func (r *memoryRegistry) UpdateTrackingStep(id TrackingID, stepIndex uint, step 
 	}
 
 	prevSteps := entry.tracking.AllSteps()
-	allSteps := make([]types.BridgeStepPath, max(len(prevSteps), int(stepIndex)+1))
+	allSteps := make([]BridgeStepPath, max(len(prevSteps), int(stepIndex)+1))
 	copy(allSteps, prevSteps)
 	allSteps[stepIndex] = step
 

@@ -384,7 +384,7 @@ func TestRegistryUpdateTrackingStepGrowsAllSteps(t *testing.T) {
 	_, err := r.Get(id, true)
 	require.NoError(t, err)
 
-	step := types.BridgeStepPath{Step: types.StepClaimed, Status: types.StepStatusDone}
+	step := BridgeStepPath{Step: types.StepClaimed, Status: types.StepStatusDone}
 	require.NoError(t, r.UpdateTrackingStep(id, 2, step))
 
 	tracking, err := r.Get(id, false)
@@ -399,7 +399,7 @@ func TestRegistryUpdateTrackingStepGrowsAllSteps(t *testing.T) {
 func TestRegistryUpdateTrackingStepUnregisteredReturnsNotFound(t *testing.T) {
 	r := newMemoryRegistry(0)
 
-	err := r.UpdateTrackingStep(TrackingID{NetworkID: 1, TxHash: testHash}, 0, types.BridgeStepPath{})
+	err := r.UpdateTrackingStep(TrackingID{NetworkID: 1, TxHash: testHash}, 0, BridgeStepPath{})
 	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
 }
 

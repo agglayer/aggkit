@@ -474,7 +474,7 @@ func (_c *SupervisedRegistry_UpdateTrackingBridgeTx_Call) RunAndReturn(run func(
 }
 
 // UpdateTrackingStep provides a mock function with given fields: id, stepIndex, step
-func (_m *SupervisedRegistry) UpdateTrackingStep(id domain.TrackingID, stepIndex uint, step types.BridgeStepPath) error {
+func (_m *SupervisedRegistry) UpdateTrackingStep(id domain.TrackingID, stepIndex uint, step domain.BridgeStepPath) error {
 	ret := _m.Called(id, stepIndex, step)
 
 	if len(ret) == 0 {
@@ -482,7 +482,7 @@ func (_m *SupervisedRegistry) UpdateTrackingStep(id domain.TrackingID, stepIndex
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(domain.TrackingID, uint, types.BridgeStepPath) error); ok {
+	if rf, ok := ret.Get(0).(func(domain.TrackingID, uint, domain.BridgeStepPath) error); ok {
 		r0 = rf(id, stepIndex, step)
 	} else {
 		r0 = ret.Error(0)
@@ -499,14 +499,14 @@ type SupervisedRegistry_UpdateTrackingStep_Call struct {
 // UpdateTrackingStep is a helper method to define mock.On call
 //   - id domain.TrackingID
 //   - stepIndex uint
-//   - step types.BridgeStepPath
+//   - step domain.BridgeStepPath
 func (_e *SupervisedRegistry_Expecter) UpdateTrackingStep(id interface{}, stepIndex interface{}, step interface{}) *SupervisedRegistry_UpdateTrackingStep_Call {
 	return &SupervisedRegistry_UpdateTrackingStep_Call{Call: _e.mock.On("UpdateTrackingStep", id, stepIndex, step)}
 }
 
-func (_c *SupervisedRegistry_UpdateTrackingStep_Call) Run(run func(id domain.TrackingID, stepIndex uint, step types.BridgeStepPath)) *SupervisedRegistry_UpdateTrackingStep_Call {
+func (_c *SupervisedRegistry_UpdateTrackingStep_Call) Run(run func(id domain.TrackingID, stepIndex uint, step domain.BridgeStepPath)) *SupervisedRegistry_UpdateTrackingStep_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(domain.TrackingID), args[1].(uint), args[2].(types.BridgeStepPath))
+		run(args[0].(domain.TrackingID), args[1].(uint), args[2].(domain.BridgeStepPath))
 	})
 	return _c
 }
@@ -516,7 +516,7 @@ func (_c *SupervisedRegistry_UpdateTrackingStep_Call) Return(_a0 error) *Supervi
 	return _c
 }
 
-func (_c *SupervisedRegistry_UpdateTrackingStep_Call) RunAndReturn(run func(domain.TrackingID, uint, types.BridgeStepPath) error) *SupervisedRegistry_UpdateTrackingStep_Call {
+func (_c *SupervisedRegistry_UpdateTrackingStep_Call) RunAndReturn(run func(domain.TrackingID, uint, domain.BridgeStepPath) error) *SupervisedRegistry_UpdateTrackingStep_Call {
 	_c.Call.Return(run)
 	return _c
 }

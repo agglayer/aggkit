@@ -52,7 +52,7 @@ type SupervisedStore interface {
 	// UpdateTrackingBridgeTx call so a batch of step changes surfaces as one consistent
 	// snapshot instead of one partial notification per step. Returns ErrTrackingNotFound if
 	// the bridge is not in the supervised list
-	UpdateTrackingStep(id TrackingID, stepIndex uint, step types.BridgeStepPath) error
+	UpdateTrackingStep(id TrackingID, stepIndex uint, step BridgeStepPath) error
 
 	// GetTrackerActives returns the snapshots of the supervised bridges that still need
 	// tracking (never failed to resolve and not yet Finished), optionally filtered to a

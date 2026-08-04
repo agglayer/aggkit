@@ -468,7 +468,7 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	require.Equal(t, types.StepCertificatePending, currentStep(t, store),
 		"an unsettled certificate status change stays at CertificatePending, it does not move the step")
 	inError := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
-	require.Equal(t, &f.cert.CertificateData, inError.AllSteps()[*inError.StepIndex()].Result,
+	require.Equal(t, &f.cert.CertificateData, inError.AllSteps()[*inError.StepIndex()].Result(),
 		"the certificate's current, not yet settled, status is visible while waiting")
 
 	f.cert = &types.CertificateInclusionData{
@@ -488,7 +488,7 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	// the certificate step reports the settled certificate as its result once it completes
 	for _, sp := range allSteps {
 		if sp.Step == types.StepCertificatePending {
-			require.Equal(t, &f.cert.CertificateData, sp.Result)
+			require.Equal(t, &f.cert.CertificateData, sp.Result())
 		}
 	}
 
@@ -504,7 +504,7 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	require.Equal(t, types.StepWaitingGERInjection, allSteps[*tracking.StepIndex()].Step)
 	for _, sp := range allSteps {
 		if sp.Step == types.StepWaitL1SettledGER {
-			require.Equal(t, f.settlement, sp.Result)
+			require.Equal(t, f.settlement, sp.Result())
 		}
 	}
 
@@ -516,7 +516,7 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	require.Equal(t, types.StepWaitingClaim, currentStep(t, store))
 	for _, sp := range allSteps {
 		if sp.Step == types.StepWaitingGERInjection {
-			require.Equal(t, &types.InjectedGERResult{GER: injectedGER}, sp.Result)
+			require.Equal(t, &types.InjectedGERResult{GER: injectedGER}, sp.Result())
 		}
 	}
 
@@ -532,7 +532,7 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 
 	for _, sp := range allSteps {
 		if sp.Step == types.StepWaitingClaim {
-			require.Equal(t, f.claim, sp.Result)
+			require.Equal(t, f.claim, sp.Result())
 		}
 	}
 
@@ -624,7 +624,7 @@ func TestEngineL1ToL2Path(t *testing.T) {
 		require.NotEqual(t, types.StepCertificatePending, sp.Step)
 		require.NotEqual(t, types.StepWaitL1SettledGER, sp.Step)
 		if sp.Step == types.StepWaitingGERUpdate {
-			require.Equal(t, &types.GERUpdateResult{GER: ger, BlockNumber: blockNumber}, sp.Result)
+			require.Equal(t, &types.GERUpdateResult{GER: ger, BlockNumber: blockNumber}, sp.Result())
 		}
 	}
 }

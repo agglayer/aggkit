@@ -59,20 +59,20 @@ func testBridgeInfo() *BridgeInfo {
 }
 
 // testAllSteps returns the expected-path snapshot matching testBridgeInfo, claimed or in progress
-func testAllSteps(claimed bool) []types.BridgeStepPath {
+func testAllSteps(claimed bool) []BridgeStepPath {
 	step := types.StepPendingInclusion
 	stepStatus := types.StepStatusInProgress
 	if claimed {
 		step = types.StepClaimed
 		stepStatus = types.StepStatusDone
 	}
-	return []types.BridgeStepPath{{Step: step, Status: stepStatus}}
+	return []BridgeStepPath{{Step: step, Status: stepStatus}}
 }
 
 // testAllStepsWithError returns an expected-path snapshot with its in-progress step failed,
 // for tests exercising a step-level error (as opposed to a terminal resolution failure)
-func testAllStepsWithError() []types.BridgeStepPath {
-	return []types.BridgeStepPath{{
+func testAllStepsWithError() []BridgeStepPath {
+	return []BridgeStepPath{{
 		Step: types.StepPendingInclusion, Status: types.StepStatusError, Error: testErrorStep(),
 	}}
 }
@@ -155,17 +155,15 @@ func TestGetTxStatusHandlerRegisters(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.Code)
 
 	var tracking struct {
-		TrackingStatus       int             `json:"tracking_status"`
-		TrackingStatusString string          `json:"tracking_status_string"`
-		NetworkID            uint32          `json:"network_id"`
-		TxHash               string          `json:"tx_hash"`
-		BridgeStatus         json.RawMessage `json:"bridge_status"`
-		StepIndex            int             `json:"step_index"`
-		AllSteps             json.RawMessage `json:"all_steps"`
+		TrackingStatus string          `json:"tracking_status"`
+		NetworkID      uint32          `json:"network_id"`
+		TxHash         string          `json:"tx_hash"`
+		BridgeStatus   json.RawMessage `json:"bridge_status"`
+		StepIndex      int             `json:"step_index"`
+		AllSteps       json.RawMessage `json:"all_steps"`
 	}
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &tracking))
-	require.Equal(t, int(types.TrackingStatusRegistered), tracking.TrackingStatus)
-	require.Equal(t, "registered", tracking.TrackingStatusString)
+	require.Equal(t, "registered", tracking.TrackingStatus)
 	require.Equal(t, uint32(1), tracking.NetworkID)
 	require.Equal(t, testTxHash, tracking.TxHash)
 	require.Equal(t, "null", string(tracking.BridgeStatus))
@@ -182,25 +180,23 @@ func TestGetTxStatusHandlerRegisters(t *testing.T) {
 	resp = performRequest(t, router, http.MethodGet, path)
 	require.Equal(t, http.StatusOK, resp.Code)
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &tracking))
-	require.Equal(t, "running", tracking.TrackingStatusString)
+	require.Equal(t, "running", tracking.TrackingStatus)
 
 	var status struct {
-		BridgeType           int    `json:"bridge_type"`
-		BridgeTypeString     string `json:"bridge_type_string"`
-		BridgeLeafType       int    `json:"bridge_leaf_type"`
-		BridgeLeafTypeString string `json:"bridge_leaf_type_string"`
+		BridgeType string `json:"bridge_type"`
+		Event      struct {
+			LeafType string `json:"leaf_type"`
+		} `json:"event"`
 	}
 	require.NoError(t, json.Unmarshal(tracking.BridgeStatus, &status))
-	require.Equal(t, int(types.BridgeTypeL2ToL1), status.BridgeType)
-	require.Equal(t, "L2->L1", status.BridgeTypeString)
-	require.Equal(t, int(types.BridgeLeafTypeAsset), status.BridgeLeafType)
-	require.Equal(t, "Asset", status.BridgeLeafTypeString)
+	require.Equal(t, "L2->L1", status.BridgeType)
+	require.Equal(t, "Asset", status.Event.LeafType)
 
 	var allSteps []struct {
-		StepString string `json:"step_string"`
+		StepName string `json:"step_name"`
 	}
 	require.NoError(t, json.Unmarshal(tracking.AllSteps, &allSteps))
-	require.Equal(t, "PendingInclusion", allSteps[tracking.StepIndex].StepString)
+	require.Equal(t, "PendingInclusion", allSteps[tracking.StepIndex].StepName)
 }
 
 // TestGetTxStatusHandlerResolvesWithinRegisterResolveTimeout pins the end-to-end wiring of
@@ -230,11 +226,11 @@ func TestGetTxStatusHandlerResolvesWithinRegisterResolveTimeout(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.Code)
 
 	var tracking struct {
-		TrackingStatusString string          `json:"tracking_status_string"`
-		BridgeStatus         json.RawMessage `json:"bridge_status"`
+		TrackingStatus string          `json:"tracking_status"`
+		BridgeStatus   json.RawMessage `json:"bridge_status"`
 	}
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &tracking))
-	require.Equal(t, "running", tracking.TrackingStatusString)
+	require.Equal(t, "running", tracking.TrackingStatus)
 	require.NotEqual(t, "null", string(tracking.BridgeStatus))
 }
 
@@ -255,16 +251,16 @@ func TestGetTxStatusHandlerTerminalError(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.Code)
 
 	var tracking struct {
-		TrackingStatusString string          `json:"tracking_status_string"`
-		BridgeStatus         json.RawMessage `json:"bridge_status"`
-		Error                struct {
+		TrackingStatus string          `json:"tracking_status"`
+		BridgeStatus   json.RawMessage `json:"bridge_status"`
+		Error          struct {
 			ErrorTypeString string   `json:"error_type_string"`
 			RetryCount      int      `json:"retry_count"`
 			Description     []string `json:"description"`
 		} `json:"error"`
 	}
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &tracking))
-	require.Equal(t, "error", tracking.TrackingStatusString)
+	require.Equal(t, "error", tracking.TrackingStatus)
 	require.Equal(t, "null", string(tracking.BridgeStatus), "the bridge was never resolved")
 	require.Equal(t, "exhausted", tracking.Error.ErrorTypeString)
 	require.Equal(t, 3, tracking.Error.RetryCount)

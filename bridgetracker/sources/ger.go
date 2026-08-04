@@ -160,25 +160,13 @@ func (s *GERSource) resultAtLogs(
 	result.BlockNumber = last.BlockNumber
 	result.LogIndex = last.Index
 
-	timestamp, err := s.blockTimestamp(ctx, client, last.BlockHash)
+	timestamp, err := blockTimestamp(ctx, client, last.BlockHash)
 	if err != nil {
 		return nil, err
 	}
 	result.BlockTimestamp = timestamp
 
 	return result, nil
-}
-
-// blockTimestamp resolves a block's timestamp off its hash: logs only carry BlockNumber, not
-// the block's own timestamp
-func (s *GERSource) blockTimestamp(
-	ctx context.Context, client aggkittypes.BaseEthereumClienter, blockHash common.Hash,
-) (uint64, error) {
-	header, err := client.HeaderByHash(ctx, blockHash)
-	if err != nil {
-		return 0, fmt.Errorf("fetching header of block %s: %w", blockHash, err)
-	}
-	return header.Time, nil
 }
 
 // OriginGER implements bridgetracker.GERSource. Only called for L1-originated bridges: the

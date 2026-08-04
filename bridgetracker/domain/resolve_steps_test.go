@@ -121,7 +121,7 @@ func testResolvers(f *fakeFacts) map[types.BridgeStep]StepResolver {
 // newTracking seeds a fresh (PendingPath) or given path for bridgeType, wrapped as TrackingData.
 // Info is set to a zero BridgeInfo (not nil): ResolveSteps only ever runs on a resolved bridge
 // (BridgeTx().IsDone(), see its doc), and WaitingGERUpdateResolver reads tracking.Info() directly
-func newTracking(bridgeType types.BridgeType, prevSteps []types.BridgeStepPath, now time.Time) *TrackingData {
+func newTracking(bridgeType types.BridgeType, prevSteps []BridgeStepPath, now time.Time) *TrackingData {
 	steps := prevSteps
 	if steps == nil {
 		steps = PendingPath(bridgeType, now)
@@ -154,7 +154,7 @@ func TestResolveSteps(t *testing.T) {
 		name            string
 		bridgeType      types.BridgeType
 		facts           fakeFacts
-		prevSteps       []types.BridgeStepPath
+		prevSteps       []BridgeStepPath
 		expectedStep    types.BridgeStep
 		expectedQueried []string
 		// resultOf, if set, is checked against the Result of the named step in the outcome
@@ -351,10 +351,12 @@ func TestResolveSteps(t *testing.T) {
 			name:       "L1->L2 with GER update already done skips OriginGER",
 			bridgeType: types.BridgeTypeL1ToL2,
 			facts:      fakeFacts{},
-			prevSteps: []types.BridgeStepPath{
+			prevSteps: []BridgeStepPath{
 				{
 					Step: types.StepWaitingGERUpdate, Status: types.StepStatusDone,
-					Result: &types.GERUpdateResult{L1InfoTreeIndex: originGERLeafIndex, GER: ger, BlockNumber: blockNumber},
+					ResultGerUpdate: &types.GERUpdateResult{
+						L1InfoTreeIndex: originGERLeafIndex, GER: ger, BlockNumber: blockNumber,
+					},
 				},
 				{Step: types.StepWaitingGERInjection, Status: types.StepStatusInProgress},
 				{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
@@ -367,7 +369,7 @@ func TestResolveSteps(t *testing.T) {
 			name:       "L2->L2 with every milestone done but the claim only queries the claim",
 			bridgeType: types.BridgeTypeL2ToL2,
 			facts:      fakeFacts{claim: claim},
-			prevSteps: []types.BridgeStepPath{
+			prevSteps: []BridgeStepPath{
 				{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone},
 				{Step: types.StepPendingInclusion, Status: types.StepStatusDone},
 				{Step: types.StepCertificatePending, Status: types.StepStatusDone},
@@ -384,7 +386,7 @@ func TestResolveSteps(t *testing.T) {
 			name:       "an in-progress step is still queried",
 			bridgeType: types.BridgeTypeL2ToL1,
 			facts:      fakeFacts{},
-			prevSteps: []types.BridgeStepPath{
+			prevSteps: []BridgeStepPath{
 				{Step: types.StepWaitingLERUpdate, Status: types.StepStatusInProgress},
 				{Step: types.StepPendingInclusion, Status: types.StepStatusPending},
 				{Step: types.StepCertificatePending, Status: types.StepStatusPending},
@@ -412,7 +414,7 @@ func TestResolveSteps(t *testing.T) {
 
 			if tc.resultOf != 0 || tc.result != nil {
 				sp := result.AllSteps()[indexOfStep(result.AllSteps(), tc.resultOf)]
-				require.Equal(t, tc.result, sp.Result)
+				require.Equal(t, tc.result, sp.Result())
 			}
 
 			if tc.facts.certificate != nil {
@@ -422,7 +424,7 @@ func TestResolveSteps(t *testing.T) {
 							CertificateID: tc.facts.certificate.CertificateID,
 							NewLER:        tc.facts.certificate.NewLocalExitRoot,
 							PreviousLER:   tc.facts.certificate.PreviousLocalExitRoot,
-						}, pi.Result, "PendingInclusion carries the certificate ID and LER transition once met")
+						}, pi.Result(), "PendingInclusion carries the certificate ID and LER transition once met")
 					}
 				}
 			}
@@ -569,8 +571,11 @@ func TestUpdateStep(t *testing.T) {
 		advanced := UpdateStep(tracking, 0, gerUpdate, true, nil, t2)
 
 		steps := advanced.AllSteps()
-		require.Equal(t, []types.BridgeStepPath{
-			{Step: types.StepWaitingGERUpdate, Status: types.StepStatusDone, StartDate: &t1, EndDate: &t2, Result: gerUpdate},
+		require.Equal(t, []BridgeStepPath{
+			{
+				Step: types.StepWaitingGERUpdate, Status: types.StepStatusDone,
+				StartDate: &t1, EndDate: &t2, ResultGerUpdate: gerUpdate,
+			},
 			{Step: types.StepWaitingGERInjection, Status: types.StepStatusInProgress, StartDate: &t2},
 			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
@@ -580,7 +585,7 @@ func TestUpdateStep(t *testing.T) {
 	t.Run("terminal step completes the moment it is reached", func(t *testing.T) {
 		t.Parallel()
 
-		tracking := newTracking(types.BridgeTypeL1ToL2, []types.BridgeStepPath{
+		tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
 			{Step: types.StepWaitingGERUpdate, Status: types.StepStatusDone, EndDate: &t1},
 			{Step: types.StepWaitingGERInjection, Status: types.StepStatusDone, EndDate: &t1},
 			{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress, StartDate: &t1},
@@ -600,7 +605,7 @@ func TestUpdateStep(t *testing.T) {
 	t.Run("a successful check clears a previous transient error even without progress", func(t *testing.T) {
 		t.Parallel()
 
-		tracking := newTracking(types.BridgeTypeL1ToL2, []types.BridgeStepPath{
+		tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
 			{
 				Step: types.StepWaitingGERUpdate, Status: types.StepStatusError, StartDate: &t1,
 				Error: &types.ErrorStep{ErrorType: types.StepErrorTransient, RetryCount: 2},
@@ -621,7 +626,7 @@ func TestUpdateStep(t *testing.T) {
 	t.Run("attaches a result even though the step is not complete yet", func(t *testing.T) {
 		t.Parallel()
 
-		tracking := newTracking(types.BridgeTypeL2ToL1, []types.BridgeStepPath{
+		tracking := newTracking(types.BridgeTypeL2ToL1, []BridgeStepPath{
 			{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone, EndDate: &t1},
 			{Step: types.StepPendingInclusion, Status: types.StepStatusDone, EndDate: &t1},
 			{Step: types.StepCertificatePending, Status: types.StepStatusInProgress, StartDate: &t1},
@@ -635,19 +640,19 @@ func TestUpdateStep(t *testing.T) {
 		require.NotSame(t, tracking, advanced)
 		sp := advanced.AllSteps()[2]
 		require.Equal(t, types.StepStatusInProgress, sp.Status, "still waiting, not complete")
-		require.Equal(t, cert, sp.Result, "the current (unsettled) certificate is visible while waiting")
+		require.Equal(t, cert, sp.Result(), "the current (unsettled) certificate is visible while waiting")
 		require.Equal(t, &t1, sp.StartDate, "unaffected by the result update")
 	})
 
 	t.Run("no progress once the same result has already been recorded", func(t *testing.T) {
 		t.Parallel()
 
-		tracking := newTracking(types.BridgeTypeL2ToL1, []types.BridgeStepPath{
+		tracking := newTracking(types.BridgeTypeL2ToL1, []BridgeStepPath{
 			{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone, EndDate: &t1},
 			{Step: types.StepPendingInclusion, Status: types.StepStatusDone, EndDate: &t1},
 			{
 				Step: types.StepCertificatePending, Status: types.StepStatusInProgress, StartDate: &t1,
-				Result: &types.CertificateData{Status: agglayertypes.Pending},
+				ResultCertificateData: &types.CertificateData{Status: agglayertypes.Pending},
 			},
 			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
@@ -661,7 +666,7 @@ func TestUpdateStep(t *testing.T) {
 	t.Run("a non-nil stepErr marks the step as failed instead of completing it", func(t *testing.T) {
 		t.Parallel()
 
-		tracking := newTracking(types.BridgeTypeL1ToL2, []types.BridgeStepPath{
+		tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
 			{Step: types.StepWaitingGERUpdate, Status: types.StepStatusInProgress, StartDate: &t1},
 			{Step: types.StepWaitingGERInjection, Status: types.StepStatusPending},
 			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
@@ -681,7 +686,7 @@ func TestUpdateStep(t *testing.T) {
 	t.Run("a repeated stepErr accumulates onto the previous retry count and description", func(t *testing.T) {
 		t.Parallel()
 
-		tracking := newTracking(types.BridgeTypeL1ToL2, []types.BridgeStepPath{
+		tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
 			{
 				Step: types.StepWaitingGERUpdate, Status: types.StepStatusError, StartDate: &t1,
 				Error: &types.ErrorStep{
@@ -713,7 +718,7 @@ func TestCertificateResolverSkipsWaypoints(t *testing.T) {
 	t1 := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
 	t2 := t1.Add(time.Minute)
 
-	tracking := newTracking(types.BridgeTypeL2ToL1, []types.BridgeStepPath{
+	tracking := newTracking(types.BridgeTypeL2ToL1, []BridgeStepPath{
 		{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone, EndDate: &t1},
 		{Step: types.StepPendingInclusion, Status: types.StepStatusInProgress, StartDate: &t1},
 		{Step: types.StepCertificatePending, Status: types.StepStatusPending},
@@ -733,9 +738,9 @@ func TestCertificateResolverSkipsWaypoints(t *testing.T) {
 	steps := result.AllSteps()
 	require.Equal(t, types.StepStatusDone, steps[1].Status, "PendingInclusion skipped straight through")
 	require.Equal(t, &t2, steps[1].EndDate)
-	require.Equal(t, &types.PendingInclusionResult{CertificateID: cert.CertificateID}, steps[1].Result)
+	require.Equal(t, &types.PendingInclusionResult{CertificateID: cert.CertificateID}, steps[1].Result())
 	require.Equal(t, types.StepStatusDone, steps[2].Status)
 	require.Equal(t, &t2, steps[2].EndDate)
-	require.Equal(t, &cert.CertificateData, steps[2].Result)
+	require.Equal(t, &cert.CertificateData, steps[2].Result())
 	require.Equal(t, types.StepStatusInProgress, steps[3].Status, "WaitingClaim opens next")
 }

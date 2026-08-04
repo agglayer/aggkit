@@ -119,6 +119,10 @@ func (s *BridgeEventSource) FindBridge(
 		if err != nil {
 			return nil, fmt.Errorf("parsing BridgeEvent log of %s: %w", id, err)
 		}
+		timestamp, err := blockTimestamp(ctx, client, l.BlockHash)
+		if err != nil {
+			return nil, err
+		}
 		return &bridgetracker.BridgeInfo{
 			NetworkID:          id.NetworkID,
 			LeafType:           trackertypes.BridgeLeafType(event.LeafType),
@@ -126,6 +130,11 @@ func (s *BridgeEventSource) FindBridge(
 			DepositCount:       event.DepositCount,
 			BlockNumber:        l.BlockNumber,
 			LogIndex:           uint32(l.Index),
+			OriginNetwork:      event.OriginNetwork,
+			OriginAddress:      event.OriginAddress,
+			DestinationAddress: event.DestinationAddress,
+			Amount:             event.Amount,
+			BlockTimestamp:     timestamp,
 		}, nil
 	}
 

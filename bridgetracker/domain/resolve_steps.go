@@ -76,7 +76,7 @@ func ResolveSteps(
 
 // currentStepIndex returns the index of the first step not yet Done — the one that needs
 // resolving next — or -1 once the whole path (through StepClaimed) is Done
-func currentStepIndex(steps []types.BridgeStepPath) int {
+func currentStepIndex(steps []BridgeStepPath) int {
 	for i, sp := range steps {
 		if sp.Status != types.StepStatusDone {
 			return i
@@ -108,14 +108,14 @@ func UpdateStep(
 	if idx < 0 || idx >= len(steps) {
 		return tracking
 	}
-	if stepErr == nil && !complete && steps[idx].Error == nil && reflect.DeepEqual(steps[idx].Result, result) {
+	if stepErr == nil && !complete && steps[idx].Error == nil && reflect.DeepEqual(steps[idx].Result(), result) {
 		return tracking
 	}
 
-	newSteps := append([]types.BridgeStepPath(nil), steps...)
+	newSteps := append([]BridgeStepPath(nil), steps...)
 
 	current := newSteps[idx]
-	current.Result = result
+	current.SetResult(result)
 	switch {
 	case stepErr != nil:
 		retryCount, description := 1, []string{stepErr.Error()}
@@ -162,7 +162,7 @@ func UpdateStep(
 }
 
 // indexOfStep returns the index of stepID within steps, or -1 if it is not part of the path
-func indexOfStep(steps []types.BridgeStepPath, stepID types.BridgeStep) int {
+func indexOfStep(steps []BridgeStepPath, stepID types.BridgeStep) int {
 	for i, sp := range steps {
 		if sp.Step == stepID {
 			return i

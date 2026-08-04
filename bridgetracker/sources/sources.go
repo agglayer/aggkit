@@ -23,6 +23,7 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // NetworkURLResolver is the slice of the bridgeservicefinder.Finder the sources need: the
@@ -150,6 +151,18 @@ func (b *bridgeServiceClients) aggkitBridgeClientFor(networkID uint32) (*client.
 	c := client.New(client.Config{BaseURL: urls.BridgeURL})
 	b.clients[urls.BridgeURL] = c
 	return c, nil
+}
+
+// blockTimestamp resolves a block's timestamp off its hash: logs only carry BlockNumber, not
+// the block's own timestamp
+func blockTimestamp(
+	ctx context.Context, client aggkittypes.BaseEthereumClienter, blockHash common.Hash,
+) (uint64, error) {
+	header, err := client.HeaderByHash(ctx, blockHash)
+	if err != nil {
+		return 0, fmt.Errorf("fetching header of block %s: %w", blockHash, err)
+	}
+	return header.Time, nil
 }
 
 // isNotFound reports whether a bridge service error means "the resource does not exist

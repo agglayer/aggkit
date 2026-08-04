@@ -53,6 +53,10 @@ var ErrSourceUnavailable = domain.ErrSourceUnavailable
 // BridgeInfo holds the immutable facts of a bridge, resolved once from its creation tx
 type BridgeInfo = domain.BridgeInfo
 
+// BridgeStepPath is the domain-internal representation of one step of the expected path of a
+// bridge; see api.BridgeStepPath for the wire shape published to clients
+type BridgeStepPath = domain.BridgeStepPath
+
 // BridgeEventSource is the driven port resolving the BridgeEvent behind a supervised tx on
 // its origin network (RPC receipt or bridge service, resolved per network via the finder).
 // domain.ResolveBridgeTx calls it directly — see its doc

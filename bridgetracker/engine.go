@@ -286,7 +286,7 @@ func (e *Engine) persistStepError(id TrackingID, causeErr error, stepped *domain
 // notifies) as a single commit, so subscribers see one consistent, fully-merged snapshot
 // instead of one partial notification per field. Failures are logged here; the returned
 // error lets callers abort the tick for this bridge
-func (e *Engine) persist(id TrackingID, tx domain.TrackingBridgeTx, allSteps []types.BridgeStepPath) error {
+func (e *Engine) persist(id TrackingID, tx domain.TrackingBridgeTx, allSteps []BridgeStepPath) error {
 	for i, step := range allSteps {
 		if err := e.store.UpdateTrackingStep(id, uint(i), step); err != nil {
 			e.logger.Warnf("failed to persist step %d of bridge %s: %v", i, id, err)
