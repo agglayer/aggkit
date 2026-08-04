@@ -1,11 +1,13 @@
 package bridgetracker
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/bridgetracker/api"
@@ -199,6 +201,41 @@ func TestGetTxStatusHandlerRegisters(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(tracking.AllSteps, &allSteps))
 	require.Equal(t, "PendingInclusion", allSteps[tracking.StepIndex].StepString)
+}
+
+// TestGetTxStatusHandlerResolvesWithinRegisterResolveTimeout pins the end-to-end wiring of
+// Config.RegisterResolveTimeout: with a live tracking engine sharing the same registry, the
+// very first response for a freshly registered tx already carries the resolved status instead
+// of the bare Registered state a caller would otherwise have to poll for
+func TestGetTxStatusHandlerResolvesWithinRegisterResolveTimeout(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tracker := New(&Config{
+		Logger:                 log.WithFields("module", "bridgetracker_test"),
+		ConfigSHA1:             testConfigSHA1,
+		RegisterResolveTimeout: DefaultRegisterResolveTimeout,
+	})
+	router := gin.New()
+	tracker.API().RegisterRoutes(router)
+
+	f := &fakeSources{bridge: l2ToL2Bridge()}
+	engine, err := NewEngine(
+		EngineConfig{PollInterval: time.Hour}, // far in the future: only the trigger path can resolve in time
+		log.WithFields("module", "bridgetracker_test"), tracker.supervised, f.engineSources())
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	engine.Start(ctx)
+
+	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/network/1/tx/"+testTxHash)
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	var tracking struct {
+		TrackingStatusString string          `json:"tracking_status_string"`
+		BridgeStatus         json.RawMessage `json:"bridge_status"`
+	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &tracking))
+	require.Equal(t, "running", tracking.TrackingStatusString)
+	require.NotEqual(t, "null", string(tracking.BridgeStatus))
 }
 
 // TestGetTxStatusHandlerTerminalError pins the terminal-resolution-failure semantics: when

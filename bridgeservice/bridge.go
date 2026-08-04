@@ -63,6 +63,7 @@ const (
 	toLERParam                 = "to_ler"
 	fromLERParam               = "from_ler"
 	lerParam                   = "ler"
+	globalExitRootParam        = "global_exit_root"
 	// DefaultRemoveGERLimit is the default number of remove GER events to return when no limit is specified
 	DefaultRemoveGERLimit = uint32(50)
 
@@ -159,6 +160,7 @@ func (b *BridgeService) RegisterRoutes(router gin.IRouter) {
 		bridgeGroup.GET("/legacy-token-migrations", b.GetLegacyTokenMigrationsHandler)
 		bridgeGroup.GET("/l1-info-tree-index", b.L1InfoTreeIndexForBridgeHandler)
 		bridgeGroup.GET("/injected-l1-info-leaf", b.InjectedL1InfoLeafHandler)
+		bridgeGroup.GET("/l1-info-tree-leaf-by-ger", b.L1InfoTreeLeafByGERHandler)
 		bridgeGroup.GET("/claim-proof", b.ClaimProofHandler)
 		bridgeGroup.GET("/last-reorg-event", b.GetLastReorgEventHandler)
 		bridgeGroup.GET("/sync-status", b.GetSyncStatusHandler)
@@ -924,6 +926,73 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 		c.JSON(statusCode,
 			gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf (network id=%d, leaf index=%d), error: %s",
 				networkID, l1InfoTreeIndex, err)})
+		return
+	}
+
+	c.JSON(statusCode, NewL1InfoTreeLeafResponse(l1InfoLeaf))
+}
+
+// @Summary Get L1 info tree leaf by Global Exit Root
+// @Description Returns the L1 info tree leaf (index, exit roots, block info) for the given
+// @Description Global Exit Root. The L1 info tree only exists on L1, so network_id must be 0.
+// @Tags l1-info-tree-leaf
+// @Param network_id query int true "Network ID (must be 0, mainnet)"
+// @Param global_exit_root query string true "Global Exit Root"
+// @Produce json
+// @Success 200 {object} types.L1InfoTreeLeafResponse
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 404 {object} types.ErrorResponse "Not Found - GER not part of the L1 info tree (yet)"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Router /l1-info-tree-leaf-by-ger [get]
+func (b *BridgeService) L1InfoTreeLeafByGERHandler(c *gin.Context) {
+	b.logger.Debugf("L1InfoTreeLeafByGER request received (network id=%s, global_exit_root=%s)",
+		c.Query(networkIDParam), c.Query(globalExitRootParam))
+
+	statusCode := http.StatusOK
+	startTime := time.Now()
+	defer func() {
+		reportMetrics(metrics.GetL1InfoTreeLeafByGERReq, statusCode, startTime)
+	}()
+
+	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
+	if err != nil {
+		b.logger.Warnf(errNetworkID, err)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+	if networkID != mainnetNetworkID {
+		b.logger.Warnf(errNetworkID, networkID)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "the L1 info tree only exists on network 0 (mainnet)"})
+		return
+	}
+
+	gerStr := c.Query(globalExitRootParam)
+	if gerStr == "" {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "global_exit_root is mandatory"})
+		return
+	}
+	if !isValidHexHash(gerStr) {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "invalid global_exit_root parameter, must be a valid hex hash"})
+		return
+	}
+
+	l1InfoLeaf, err := b.l1InfoTree.GetInfoByGlobalExitRoot(common.HexToHash(gerStr))
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			b.logger.Debugf("global exit root %s not found in the L1 info tree yet", gerStr)
+			statusCode = http.StatusNotFound
+			c.JSON(statusCode,
+				gin.H{"error": fmt.Sprintf("global exit root %s not found in the L1 info tree yet", gerStr)})
+			return
+		}
+		b.logger.Errorf("failed to get L1 info tree leaf by GER %s: %v", gerStr, err)
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode,
+			gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf by GER %s, error: %s", gerStr, err)})
 		return
 	}
 

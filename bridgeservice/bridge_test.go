@@ -2648,6 +2648,127 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 	})
 }
 
+func TestL1InfoTreeLeafByGERHandler(t *testing.T) {
+	l1InfoTreeLeaf := &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:       uint64(3),
+		BlockPosition:     uint64(0),
+		L1InfoTreeIndex:   uint32(1),
+		PreviousBlockHash: common.HexToHash("0x1"),
+		Timestamp:         uint64(time.Now().Unix()),
+		MainnetExitRoot:   common.HexToHash("0x2"),
+		RollupExitRoot:    common.HexToHash("0x3"),
+		Hash:              common.HexToHash("0x4"),
+	}
+	l1InfoTreeLeaf.GlobalExitRoot = crypto.Keccak256Hash(
+		append(l1InfoTreeLeaf.MainnetExitRoot.Bytes(), l1InfoTreeLeaf.RollupExitRoot.Bytes()...))
+	gerStr := l1InfoTreeLeaf.GlobalExitRoot.Hex()
+
+	t.Run("success", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByGlobalExitRoot(l1InfoTreeLeaf.GlobalExitRoot).
+			Return(l1InfoTreeLeaf, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "0")
+		queryParams.Set(globalExitRootParam, gerStr)
+
+		response := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/l1-info-tree-leaf-by-ger?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusOK, response.Code)
+
+		var result l1infotreesync.L1InfoTreeLeaf
+		err := json.Unmarshal(response.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Equal(t, *l1InfoTreeLeaf, result)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByGlobalExitRoot(l1InfoTreeLeaf.GlobalExitRoot).
+			Return(nil, db.ErrNotFound)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "0")
+		queryParams.Set(globalExitRootParam, gerStr)
+
+		response := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/l1-info-tree-leaf-by-ger?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusNotFound, response.Code)
+		require.Contains(t, response.Body.String(), "not found in the L1 info tree")
+	})
+
+	t.Run("underlying error", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByGlobalExitRoot(l1InfoTreeLeaf.GlobalExitRoot).
+			Return(nil, errors.New(fooErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "0")
+		queryParams.Set(globalExitRootParam, gerStr)
+
+		response := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/l1-info-tree-leaf-by-ger?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(), fooErrMsg)
+	})
+
+	t.Run("unsupported network (only L1 has the tree)", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
+		queryParams.Set(globalExitRootParam, gerStr)
+
+		response := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/l1-info-tree-leaf-by-ger?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), "only exists on network 0")
+	})
+
+	t.Run("missing global_exit_root", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "0")
+
+		response := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/l1-info-tree-leaf-by-ger?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), "global_exit_root is mandatory")
+	})
+
+	t.Run("invalid global_exit_root", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "0")
+		queryParams.Set(globalExitRootParam, "not_a_hash")
+
+		response := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/l1-info-tree-leaf-by-ger?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), "invalid global_exit_root")
+	})
+
+	t.Run("invalid network id param", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "invalid")
+		queryParams.Set(globalExitRootParam, gerStr)
+
+		response := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/l1-info-tree-leaf-by-ger?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusBadRequest, response.Code)
+	})
+}
+
 func TestClaimProofHandler(t *testing.T) {
 	l1InfoTreeIndex := uint32(1)
 	depositCount := uint32(1)

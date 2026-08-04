@@ -76,10 +76,14 @@ func (f fakeRootIndexes) start(t *testing.T) NetworkURLResolver {
 func TestCertificateSourceCertificateHeaderFor(t *testing.T) {
 	certID := common.HexToHash("0x0f")
 	settlementTx := common.HexToHash("0x10")
+	previousLER := common.HexToHash("0x11")
+	newLER := common.HexToHash("0x12")
 	fake := &fakeCertificateHeaderClient{header: &agglayertypes.CertificateHeader{
-		CertificateID:    certID,
-		Status:           agglayertypes.Settled,
-		SettlementTxHash: &settlementTx,
+		CertificateID:         certID,
+		Status:                agglayertypes.Settled,
+		SettlementTxHash:      &settlementTx,
+		PreviousLocalExitRoot: &previousLER,
+		NewLocalExitRoot:      newLER,
 	}}
 	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), testLogger)
 
@@ -89,6 +93,8 @@ func TestCertificateSourceCertificateHeaderFor(t *testing.T) {
 	require.Equal(t, agglayertypes.Settled, cert.Status)
 	require.Equal(t, &settlementTx, cert.SettlementTxHash)
 	require.Empty(t, cert.Error)
+	require.Equal(t, &previousLER, cert.PreviousLocalExitRoot)
+	require.Equal(t, newLER, cert.NewLocalExitRoot)
 }
 
 func TestCertificateSourceCertificateHeaderForTransientError(t *testing.T) {

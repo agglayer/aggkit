@@ -299,6 +299,24 @@ func (c *Client) GetInjectedL1InfoLeaf(
 	return &resp, nil
 }
 
+// GetL1InfoTreeLeafByGER retrieves the L1 info tree leaf for the given Global Exit Root. The L1
+// info tree only exists on L1, so this must always be called against the L1 bridge service
+// (networkID 0).
+//
+// Uses doRequestAllowNotFound: a GER not yet part of the L1 info tree (e.g. still propagating)
+// answers HTTP 404, surfaced here as ErrNotFound so callers can treat it as "retry later".
+func (c *Client) GetL1InfoTreeLeafByGER(ctx context.Context, ger string) (*types.L1InfoTreeLeafResponse, error) {
+	query := url.Values{}
+	query.Set("network_id", strconv.Itoa(0))
+	query.Set("global_exit_root", ger)
+
+	var resp types.L1InfoTreeLeafResponse
+	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/l1-info-tree-leaf-by-ger?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // GetClaimProof retrieves Merkle proofs for claim verification
 func (c *Client) GetClaimProof(
 	ctx context.Context, networkID, leafIndex, depositCount uint32,

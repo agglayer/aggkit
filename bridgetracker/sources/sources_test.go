@@ -298,7 +298,7 @@ func TestFinderClients(t *testing.T) {
 
 func TestGERSourceOriginGER(t *testing.T) {
 	fake := &fakeBridgeService{}
-	source := NewGERSource(fake.start(t))
+	source := NewGERSource(fake.start(t), nil, common.Address{}, aggkittypes.FinalizedBlock, nil)
 
 	// not covered yet -> nil, nil
 	ger, err := source.OriginGER(t.Context(), l1ToL2Bridge())
@@ -326,7 +326,7 @@ func TestGERSourceOriginGER(t *testing.T) {
 
 func TestGERSourceInjectedGER(t *testing.T) {
 	fake := &fakeBridgeService{}
-	source := NewGERSource(fake.start(t))
+	source := NewGERSource(fake.start(t), nil, common.Address{}, aggkittypes.FinalizedBlock, nil)
 
 	// not even covered on origin -> nil
 	injected, err := source.InjectedGER(t.Context(), l1ToL2Bridge())
@@ -435,7 +435,7 @@ func TestLERSourceBridgeEventLogNotFound(t *testing.T) {
 
 func TestSourcesUnresolvedNetworkIsTransient(t *testing.T) {
 	resolver := staticURLs{} // no networks resolved
-	gerSource := NewGERSource(resolver)
+	gerSource := NewGERSource(resolver, nil, common.Address{}, aggkittypes.FinalizedBlock, nil)
 	claimSource := NewClaimSource(resolver)
 	lerSource := NewLERSource(StaticClients{})
 

@@ -83,6 +83,65 @@ func (_c *SupervisedStore_Get_Call) RunAndReturn(run func(domain.TrackingID, boo
 	return _c
 }
 
+// GetAndAwait provides a mock function with given fields: id, timeout
+func (_m *SupervisedStore) GetAndAwait(id domain.TrackingID, timeout time.Duration) (*domain.TrackingData, error) {
+	ret := _m.Called(id, timeout)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetAndAwait")
+	}
+
+	var r0 *domain.TrackingData
+	var r1 error
+	if rf, ok := ret.Get(0).(func(domain.TrackingID, time.Duration) (*domain.TrackingData, error)); ok {
+		return rf(id, timeout)
+	}
+	if rf, ok := ret.Get(0).(func(domain.TrackingID, time.Duration) *domain.TrackingData); ok {
+		r0 = rf(id, timeout)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.TrackingData)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(domain.TrackingID, time.Duration) error); ok {
+		r1 = rf(id, timeout)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SupervisedStore_GetAndAwait_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAndAwait'
+type SupervisedStore_GetAndAwait_Call struct {
+	*mock.Call
+}
+
+// GetAndAwait is a helper method to define mock.On call
+//   - id domain.TrackingID
+//   - timeout time.Duration
+func (_e *SupervisedStore_Expecter) GetAndAwait(id interface{}, timeout interface{}) *SupervisedStore_GetAndAwait_Call {
+	return &SupervisedStore_GetAndAwait_Call{Call: _e.mock.On("GetAndAwait", id, timeout)}
+}
+
+func (_c *SupervisedStore_GetAndAwait_Call) Run(run func(id domain.TrackingID, timeout time.Duration)) *SupervisedStore_GetAndAwait_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(domain.TrackingID), args[1].(time.Duration))
+	})
+	return _c
+}
+
+func (_c *SupervisedStore_GetAndAwait_Call) Return(_a0 *domain.TrackingData, _a1 error) *SupervisedStore_GetAndAwait_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *SupervisedStore_GetAndAwait_Call) RunAndReturn(run func(domain.TrackingID, time.Duration) (*domain.TrackingData, error)) *SupervisedStore_GetAndAwait_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetNetworks provides a mock function with given fields: status
 func (_m *SupervisedStore) GetNetworks(status *types.TrackingStatus) ([]uint32, error) {
 	ret := _m.Called(status)

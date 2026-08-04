@@ -45,7 +45,7 @@ func NewCertificateSource(
 // domain.CertificatePendingResolver can tell when it reaches Settled
 func (s *CertificateSource) CertificateFor(
 	ctx context.Context, bridge *bridgetracker.BridgeInfo,
-) (*trackertypes.CertificateData, error) {
+) (*trackertypes.CertificateInclusionData, error) {
 	certID, err := s.certificateIDFor(ctx, bridge)
 	if err != nil {
 		return nil, err
@@ -73,9 +73,9 @@ func (s *CertificateSource) certificateIDFor(
 	if err != nil {
 		return nil, fmt.Errorf("fetching latest settled certificate of network %d: %w", bridge.NetworkID, err)
 	}
-	s.logger.Debugf("latest settled certificate of network %d -> status: %s height: %d newLER: %s id: %s ",
-		bridge.NetworkID, settled.Status.String(), settled.Height, settled.NewLocalExitRoot, settled.CertificateID)
 	if settled != nil {
+		s.logger.Debugf("latest settled certificate of network %d -> status: %s height: %d newLER: %s id: %s ",
+			bridge.NetworkID, settled.Status.String(), settled.Height, settled.NewLocalExitRoot, settled.CertificateID)
 		covers, err := s.covers(ctx, bridge, settled.NewLocalExitRoot)
 		if err != nil {
 			return nil, err
@@ -125,10 +125,10 @@ func (s *CertificateSource) rootIndexFor(ctx context.Context, networkID uint32, 
 }
 
 // certificateHeaderFor fetches certificateID's current header from the agglayer and maps it
-// into the tracker's trackertypes.CertificateData
+// into the tracker's trackertypes.CertificateInclusionData
 func (s *CertificateSource) certificateHeaderFor(
 	ctx context.Context, certificateID common.Hash,
-) (*trackertypes.CertificateData, error) {
+) (*trackertypes.CertificateInclusionData, error) {
 	header, err := s.client.GetCertificateHeader(ctx, certificateID)
 	if err != nil {
 		return nil, fmt.Errorf("fetching certificate header %s: %w", certificateID, err)
@@ -140,10 +140,14 @@ func (s *CertificateSource) certificateHeaderFor(
 	}
 	s.logger.Debugf("certificate %s status: %s (settlementTxHash=%s, error=%q)",
 		certificateID, header.Status, header.SettlementTxHash, errMsg)
-	return &trackertypes.CertificateData{
-		CertificateID:    header.CertificateID,
-		Status:           header.Status,
-		Error:            errMsg,
-		SettlementTxHash: header.SettlementTxHash,
+	return &trackertypes.CertificateInclusionData{
+		CertificateData: trackertypes.CertificateData{
+			CertificateID:    header.CertificateID,
+			Status:           header.Status,
+			Error:            errMsg,
+			SettlementTxHash: header.SettlementTxHash,
+		},
+		PreviousLocalExitRoot: header.PreviousLocalExitRoot,
+		NewLocalExitRoot:      header.NewLocalExitRoot,
 	}, nil
 }

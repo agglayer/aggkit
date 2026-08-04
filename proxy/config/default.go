@@ -31,6 +31,7 @@ MaxRequestsPerIPAndSecond = 10
 
 [Tracker]
 RetentionPeriod = "10m"
+RegisterResolveTimeout = "3s"
 L1BlockFinality = "LatestBlock"
 L2BlockFinality = "LatestBlock"
 MaxTrackedBridges = 100000

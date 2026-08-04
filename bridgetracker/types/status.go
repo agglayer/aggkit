@@ -85,6 +85,12 @@ const (
 	// until it settles — those intermediate statuses do not change the step, only the
 	// certificate data carried in its Result (see BridgeStepPath.Result)
 	StepCertificatePending
+	// StepWaitL1SettledGER the certificate has settled, but its settlement tx has not been
+	// confirmed on L1 yet: the tracker waits for that tx to reach the configured L1 finality
+	// and its receipt to carry both VerifyBatchesTrustedAggregator and UpdateL1InfoTree
+	// (UpdateL1InfoTreeV2 is captured too, if present, but is not required). Only reached by
+	// L2-originated bridges (L2->L1 and L2->L2), right after StepCertificatePending
+	StepWaitL1SettledGER
 	// StepWaitingGERInjection the certificate is settled but the Global Exit Root has
 	// not been injected on the destination network yet
 	StepWaitingGERInjection
@@ -100,6 +106,7 @@ var bridgeStepNames = map[BridgeStep]string{
 	StepWaitingLERUpdate:    "WaitingLERUpdate",
 	StepPendingInclusion:    "PendingInclusion",
 	StepCertificatePending:  "CertificatePending",
+	StepWaitL1SettledGER:    "WaitL1SettledGER",
 	StepWaitingGERInjection: "WaitingGERInjection",
 	StepWaitingClaim:        "WaitingClaim",
 	StepClaimed:             "Claimed",
@@ -256,12 +263,12 @@ type BridgeStepPath struct {
 	ExpectedDuration *Duration  `json:"expected_duration,omitempty"`
 	// Result is the data the step has produced so far; its shape depends on Step:
 	// *GERUpdateResult (StepWaitingGERUpdate), *InjectedGERResult (StepWaitingGERInjection),
-	// *LERUpdateResult (StepWaitingLERUpdate), common.Hash (StepPendingInclusion, the
-	// certificate's CertificateID), *CertificateData (StepCertificatePending) or *ClaimResult
-	// (StepWaitingClaim). nil until the step produces one, and for steps that never do. Most
-	// steps only set this once Done, but StepCertificatePending (Status still InProgress) may
-	// already carry the certificate's current, not yet settled, status — see
-	// domain.ErrCertificateNotSettled
+	// *LERUpdateResult (StepWaitingLERUpdate), *PendingInclusionResult (StepPendingInclusion),
+	// *CertificateData (StepCertificatePending), *L1SettledGERResult (StepWaitL1SettledGER) or
+	// *ClaimResult (StepWaitingClaim). nil until
+	// the step produces one, and for steps that never do. Most steps only set this once Done,
+	// but StepCertificatePending (Status still InProgress) may already carry the certificate's
+	// current, not yet settled, status — see domain.ErrCertificateNotSettled
 	Result any `json:"result,omitempty"`
 	// Error carries the error details when Status is StepStatusError, nil otherwise
 	Error *ErrorStep `json:"error,omitempty"`
@@ -270,8 +277,15 @@ type BridgeStepPath struct {
 // GERUpdateResult is the result of StepWaitingGERUpdate once it completes: the GER produced
 // by the update on the origin network (L1) and the block it was updated in
 type GERUpdateResult struct {
-	GER         common.Hash `json:"ger"`
-	BlockNumber uint64      `json:"block_number"`
+	// L1InfoTreeIndex is the leaf index the update landed at, resolved from the contract's own
+	// leaf count (1-based) as of the update's block: index = count - 1
+	L1InfoTreeIndex uint32      `json:"l1_info_tree_index"`
+	GER             common.Hash `json:"ger"`
+	MainnetExitRoot common.Hash `json:"mer"`
+	RollupExitRoot  common.Hash `json:"rer"`
+	BlockNumber     uint64      `json:"block_number"`
+	BlockTimestamp  uint64      `json:"block_timestamp"`
+	LogIndex        uint        `json:"log_index"`
 }
 
 // InjectedGERResult is the result of StepWaitingGERInjection once it completes: the GER
@@ -294,6 +308,26 @@ type LERUpdateResult struct {
 type ClaimResult struct {
 	ClaimTx     common.Hash `json:"claim_tx"`
 	BlockNumber uint64      `json:"block_number"`
+}
+
+// L1SettledGERResult is the result of StepWaitL1SettledGER once it completes: the evidence,
+// read off the certificate's settlement tx receipt on L1, that the settlement propagated to
+// the L1 Global Exit Root. HasVerifyBatchesTrustedAggregator and HasUpdateL1InfoTree are both
+// required for the step to complete; HasUpdateL1InfoTreeV2 is only informational. GER is the
+// Global Exit Root produced by the settlement (computed from UpdateL1InfoTree's mainnet/rollup
+// exit roots), used by StepWaitingGERInjection to check whether it has reached the destination.
+// L1InfoTreeIndex is the leaf index GER landed at: populated straight from UpdateL1InfoTreeV2's
+// LeafCount when that (optional) event fires, otherwise resolved by the step itself with one
+// extra lookup (GER -> leaf) before it can complete — either way, by the time this step is
+// Done, L1InfoTreeIndex is never nil
+type L1SettledGERResult struct {
+	TxHash                            common.Hash `json:"tx_hash"`
+	BlockNumber                       uint64      `json:"block_number"`
+	GER                               common.Hash `json:"ger"`
+	L1InfoTreeIndex                   *uint32     `json:"l1_info_tree_index,omitempty"`
+	HasVerifyBatchesTrustedAggregator bool        `json:"has_verify_batches_trusted_aggregator"`
+	HasUpdateL1InfoTree               bool        `json:"has_update_l1_info_tree"`
+	HasUpdateL1InfoTreeV2             bool        `json:"has_update_l1_info_tree_v2"`
 }
 
 // MarshalJSON is the implementation of the json.Marshaler interface.
@@ -352,4 +386,25 @@ func (c CertificateData) MarshalJSON() ([]byte, error) {
 	c.StatusString = c.Status.String()
 	type certificateDataAlias CertificateData
 	return json.Marshal(certificateDataAlias(c))
+}
+
+// CertificateInclusionData is the data CertificateSource.CertificateFor resolves for the
+// certificate that covers (or may come to cover) a bridge: its status (CertificateData, also
+// StepCertificatePending's own Result type) plus the LER transition it produced, which only
+// PendingInclusionResolver needs
+type CertificateInclusionData struct {
+	CertificateData
+	// PreviousLocalExitRoot is the LER right before this certificate, nil for a network's first
+	// certificate
+	PreviousLocalExitRoot *common.Hash
+	// NewLocalExitRoot is the LER this certificate advances to, the one that covers the bridge
+	NewLocalExitRoot common.Hash
+}
+
+// PendingInclusionResult is the result of StepPendingInclusion once it completes: the
+// certificate that first includes the bridge and the LER transition it produced
+type PendingInclusionResult struct {
+	CertificateID common.Hash  `json:"certificate_id"`
+	NewLER        common.Hash  `json:"new_ler"`
+	PreviousLER   *common.Hash `json:"previous_ler,omitempty"`
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 )
 
 // ErrStepPending is returned by StepResolver.Resolve, or wrapped by a more specific sentinel
@@ -18,38 +19,13 @@ import (
 // progress while they wait instead of only once it settles
 var ErrStepPending = errors.New("step not ready")
 
-// BridgeFacts is the driven port of the step derivation: the facts of one bridge, resolved on
-// demand. Step resolvers are only queried for the facts the bridge has reached — see
-// ResolveSteps. Every method takes the bridge it is about explicitly, same as the engine's own
-// driven ports (GERSource, LERSource, CertificateSource, ClaimSource): implementations are
-// stateless, nothing here is bound to one particular bridge ahead of time
-type BridgeFacts interface {
-	// OriginGER returns the GER update on the origin network that covers bridge, or nil if it
-	// is not covered by any GER update yet. Only queried for L1-originated bridges
-	OriginGER(ctx context.Context, bridge *BridgeInfo) (*types.GERData, error)
-
-	// OriginLER returns the LER update on the origin L2 network that covers bridge, or nil if
-	// it is not covered yet. Only queried for L2-originated bridges
-	OriginLER(ctx context.Context, bridge *BridgeInfo) (*types.LERUpdateResult, error)
-
-	// Certificate returns the agglayer certificate that includes bridge, or nil if it is not
-	// part of any certificate yet. Only queried for L2-originated bridges
-	Certificate(ctx context.Context, bridge *BridgeInfo) (*types.CertificateData, error)
-
-	// InjectedGER returns the GER injected on the destination network that covers bridge, or
-	// nil if no covering GER has been injected yet. Only queried when the destination is an L2
-	InjectedGER(ctx context.Context, bridge *BridgeInfo) (*types.GERData, error)
-
-	// ClaimFor returns the claim transaction of bridge on the destination network, or nil if
-	// it has not been claimed yet
-	ClaimFor(ctx context.Context, bridge *BridgeInfo) (*types.ClaimResult, error)
-}
-
 // StepResolver resolves whether a resolved bridge's current step has met its milestone. Every
 // step resolver shares this exact shape — one per resolve_step_<name>.go file — so ResolveSteps
-// can drive whichever one applies uniformly, regardless of which fact it checks. Resolvers take
-// facts as a parameter rather than storing it, keeping every implementation trivially stateless
-// and shareable as a package-level singleton (see resolvers)
+// can drive whichever one applies uniformly, regardless of which fact it checks. Each resolver
+// holds the one driven port it actually needs (see its own NewXxxResolver), rather than taking
+// it as a parameter here: unlike the fact itself, that dependency never varies between calls, so
+// there is nothing gained by threading it through Resolve, and every resolver stays a small,
+// independently constructible unit instead of all of them sharing one do-everything port
 type StepResolver interface {
 	// Resolve resolves the step at idx (tracking.AllSteps()[idx], always the bridge's current
 	// one — see ResolveSteps). A nil error means the milestone is met: result becomes its
@@ -58,7 +34,9 @@ type StepResolver interface {
 	// but the milestone has not happened yet; result may still be non-nil (see
 	// ErrCertificateNotSettled), attached even though the step stays InProgress. Any other
 	// error means the check itself failed
-	Resolve(ctx context.Context, facts BridgeFacts, tracking *TrackingData, idx int) (result any, err error)
+	Resolve(
+		logger aggkitcommon.Logger, ctx context.Context, tracking *TrackingData, idx int,
+	) (result any, err error)
 }
 
 // ResolveSteps walks a resolved bridge (BridgeTx().IsDone(), AllSteps already seeded — see
@@ -70,7 +48,10 @@ type StepResolver interface {
 // marked, via UpdateStep's stepErr, incrementing its retry count instead of discarding the
 // in-tick progress
 func ResolveSteps(
-	ctx context.Context, facts BridgeFacts, tracking *TrackingData, now time.Time,
+	ctx context.Context,
+	logger aggkitcommon.Logger,
+	resolvers map[types.BridgeStep]StepResolver,
+	tracking *TrackingData, now time.Time,
 ) (*TrackingData, error) {
 	for {
 		idx := currentStepIndex(tracking.AllSteps())
@@ -82,7 +63,7 @@ func ResolveSteps(
 			return tracking, nil
 		}
 
-		result, err := resolver.Resolve(ctx, facts, tracking, idx)
+		result, err := resolver.Resolve(logger, ctx, tracking, idx)
 		switch {
 		case errors.Is(err, ErrStepPending):
 			return UpdateStep(tracking, idx, result, false, nil, now), nil
@@ -91,20 +72,6 @@ func ResolveSteps(
 		}
 		tracking = UpdateStep(tracking, idx, result, true, nil, now)
 	}
-}
-
-// resolvers wires every BridgeStep that needs a fact check to its StepResolver, shared as
-// package-level singletons: every implementation is stateless (see StepResolver), so
-// ResolveSteps never needs a fresh instance per call, only a read-only lookup. StepClaimed is
-// absent on purpose: UpdateStep always completes it the instant its predecessor
-// (StepWaitingClaim) does, since it never has a fact check of its own
-var resolvers = map[types.BridgeStep]StepResolver{
-	types.StepWaitingGERUpdate:    WaitingGERUpdateResolver{},
-	types.StepWaitingLERUpdate:    WaitingLERUpdateResolver{},
-	types.StepPendingInclusion:    PendingInclusionResolver{},
-	types.StepCertificatePending:  CertificatePendingResolver{},
-	types.StepWaitingGERInjection: WaitingGERInjectionResolver{},
-	types.StepWaitingClaim:        WaitingClaimResolver{},
 }
 
 // currentStepIndex returns the index of the first step not yet Done — the one that needs

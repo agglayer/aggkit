@@ -22,6 +22,7 @@ func TestBridgeStepString(t *testing.T) {
 	require.Equal(t, "WaitingLERUpdate", StepWaitingLERUpdate.String())
 	require.Equal(t, "PendingInclusion", StepPendingInclusion.String())
 	require.Equal(t, "CertificatePending", StepCertificatePending.String())
+	require.Equal(t, "WaitL1SettledGER", StepWaitL1SettledGER.String())
 	require.Equal(t, "WaitingGERInjection", StepWaitingGERInjection.String())
 	require.Equal(t, "WaitingClaim", StepWaitingClaim.String())
 	require.Equal(t, "Claimed", StepClaimed.String())
@@ -148,14 +149,44 @@ func TestBridgeStepPathResultMarshalJSON(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "GER update result",
-			result:   &GERUpdateResult{GER: common.HexToHash("0x0a"), BlockNumber: 100},
-			expected: `{"ger":"0x000000000000000000000000000000000000000000000000000000000000000a","block_number":100}`,
+			name:   "GER update result",
+			result: &GERUpdateResult{GER: common.HexToHash("0x0a"), BlockNumber: 100},
+			expected: `{
+				"l1_info_tree_index":0,
+				"ger":"0x000000000000000000000000000000000000000000000000000000000000000a",
+				"mer":"0x0000000000000000000000000000000000000000000000000000000000000000",
+				"rer":"0x0000000000000000000000000000000000000000000000000000000000000000",
+				"block_number":100,
+				"block_timestamp":0,
+				"log_index":0
+			}`,
 		},
 		{
 			name:     "LER update result",
 			result:   &LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0b"), BlockNumber: 200},
 			expected: `{"network_id":1,"ler":"0x000000000000000000000000000000000000000000000000000000000000000b","block_number":200}`,
+		},
+		{
+			name: "pending inclusion result",
+			result: &PendingInclusionResult{
+				CertificateID: common.HexToHash("0x0f"), NewLER: common.HexToHash("0x10"),
+			},
+			expected: `{
+				"certificate_id":"0x000000000000000000000000000000000000000000000000000000000000000f",
+				"new_ler":"0x0000000000000000000000000000000000000000000000000000000000000010"
+			}`,
+		},
+		{
+			name: "pending inclusion result with previous LER",
+			result: &PendingInclusionResult{
+				CertificateID: common.HexToHash("0x0f"), NewLER: common.HexToHash("0x10"),
+				PreviousLER: func() *common.Hash { h := common.HexToHash("0x11"); return &h }(),
+			},
+			expected: `{
+				"certificate_id":"0x000000000000000000000000000000000000000000000000000000000000000f",
+				"new_ler":"0x0000000000000000000000000000000000000000000000000000000000000010",
+				"previous_ler":"0x0000000000000000000000000000000000000000000000000000000000000011"
+			}`,
 		},
 		{
 			name: "certificate data result",
@@ -169,6 +200,21 @@ func TestBridgeStepPathResultMarshalJSON(t *testing.T) {
 			name:     "claim result",
 			result:   &ClaimResult{ClaimTx: common.HexToHash("0x0c"), BlockNumber: 300},
 			expected: `{"claim_tx":"0x000000000000000000000000000000000000000000000000000000000000000c","block_number":300}`,
+		},
+		{
+			name: "L1 settled GER result",
+			result: &L1SettledGERResult{
+				TxHash: common.HexToHash("0x0d"), BlockNumber: 400, GER: common.HexToHash("0x0e"),
+				HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
+			},
+			expected: `{
+				"tx_hash":"0x000000000000000000000000000000000000000000000000000000000000000d",
+				"block_number":400,
+				"ger":"0x000000000000000000000000000000000000000000000000000000000000000e",
+				"has_verify_batches_trusted_aggregator":true,
+				"has_update_l1_info_tree":true,
+				"has_update_l1_info_tree_v2":false
+			}`,
 		},
 		{
 			name:     "no result",

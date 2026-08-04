@@ -1,6 +1,8 @@
 package bridgetracker
 
 import (
+	"time"
+
 	"github.com/agglayer/aggkit/agglayer"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
@@ -12,6 +14,13 @@ import (
 // DefaultEngineRetentionPeriod for the semantics; both must stay in sync with the [Tracker]
 // section of the proxy's default config)
 var DefaultRetentionPeriod = types.Duration{Duration: DefaultEngineRetentionPeriod}
+
+// defaultRegisterResolveTimeoutDuration is the time.Duration backing DefaultRegisterResolveTimeout
+const defaultRegisterResolveTimeoutDuration = 3 * time.Second
+
+// DefaultRegisterResolveTimeout is the default Config.RegisterResolveTimeout (must stay in
+// sync with the [Tracker] section of the proxy's default config)
+var DefaultRegisterResolveTimeout = types.Duration{Duration: defaultRegisterResolveTimeoutDuration}
 
 // DefaultL1BlockFinality is the default Config.L1BlockFinality: an L1 bridge's creating tx is
 // only accepted once its receipt reaches this finality, so a reorg cannot leave the tracker
@@ -38,6 +47,14 @@ type Config struct {
 	// the tracker gave up on
 	RetentionPeriod types.Duration `mapstructure:"RetentionPeriod"`
 
+	// RegisterResolveTimeout is how long the GetTxStatus endpoint waits, the first time a tx is
+	// registered, for the tracking engine's immediate resolution attempt (triggered right away
+	// instead of on the next poll tick, see Registry.GetAndAwait) to produce an update before
+	// answering. A value <= 0 disables the wait: the first response is always the bare
+	// Registered snapshot, exactly as before this field existed. Looking up an already-registered
+	// tx never waits, regardless of this setting.
+	RegisterResolveTimeout types.Duration `mapstructure:"RegisterResolveTimeout"`
+
 	// L1BlockFinality is the finality level a bridge's creating tx receipt must reach on L1
 	// (network 0) before the tracker accepts it (see sources.BridgeEventSource): accepting
 	// a receipt from a block that later gets reorged out would otherwise leave the tracker
@@ -54,6 +71,9 @@ type Config struct {
 	// bridge (see sources.BridgeEventSource). A network absent from this map (the default,
 	// empty map) still matches logs on the event signature alone.
 	BridgeAddrs map[uint32]common.Address `mapstructure:"BridgeAddrs"`
+
+	// L1GlobalExitRootAddress is the L1 GlobalExitRoot contract address (see sources.GERSource)
+	L1GlobalExitRootAddress common.Address `mapstructure:"L1GlobalExitRootAddress"`
 
 	// MaxTrackedBridges bounds how many distinct bridges the in-memory registry (see Registry)
 	// accepts at once; a request that would exceed it fails instead of registering the bridge.

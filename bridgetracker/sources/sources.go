@@ -171,6 +171,6 @@ type NotImplementedCertificateSource struct{}
 // CertificateFor implements bridgetracker.CertificateSource
 func (NotImplementedCertificateSource) CertificateFor(
 	_ context.Context, _ *bridgetracker.BridgeInfo,
-) (*types.CertificateData, error) {
+) (*types.CertificateInclusionData, error) {
 	return nil, errors.New("certificate source not implemented yet (L2-originated bridges are not supported)")
 }

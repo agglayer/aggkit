@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
@@ -33,10 +34,18 @@ type API struct {
 	wsHandler      *wsHandler
 }
 
-// NewAPI returns the tracker HTTP service serving the given supervised registry
-func NewAPI(logger aggkitcommon.Logger, configSHA1 string, supervised domain.SupervisedRegistry) *API {
+// NewAPI returns the tracker HTTP service serving the given supervised registry.
+// registerResolveTimeout is how long GetTxStatus waits, the first time a tx is registered, for
+// the tracking engine's immediate resolution attempt to produce an update before answering (see
+// getTxStatusCommand); <= 0 disables the wait
+func NewAPI(
+	logger aggkitcommon.Logger,
+	configSHA1 string,
+	supervised domain.SupervisedRegistry,
+	registerResolveTimeout time.Duration,
+) *API {
 	return &API{
-		getTxStatusCmd: &getTxStatusCommand{supervised: supervised},
+		getTxStatusCmd: &getTxStatusCommand{supervised: supervised, resolveTimeout: registerResolveTimeout},
 		healthCmd: &healthCommand{
 			// instanceID is a UUID generated at startup, exposed by the health endpoint to
 			// tell instances (and restarts of the same instance) apart

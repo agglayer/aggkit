@@ -10,7 +10,8 @@
 #   - each subsequent "# HTTP RPC" port is an L2 execution client, in the same
 #     order its "# REST API" (aggkit bridge) port appears
 #   - the "# gRPC RPC" port is the agglayer gRPC endpoint
-# The RollupManagerAddr is read from the first network's aggkit-config.toml.
+# The RollupManagerAddr and L1GlobalExitRootAddress are read from the first
+# network's aggkit-config.toml.
 set -euo pipefail
 
 GREEN='\033[0;32m'
@@ -34,8 +35,9 @@ Creates tmp/proxy-e2e-<env>.toml based on a local docker-compose e2e
 environment (test/e2e/envs/<env>/docker-compose.yml).
 
 The generated config points [L1RPC] at the environment's L1 node, sets
-[BridgeServiceFinder].RollupManagerAddr from the first network's aggkit
-config, and fills static [BridgeServiceFinder.BridgeURLs] /
+[BridgeServiceFinder].RollupManagerAddr and [Tracker].L1GlobalExitRootAddress
+from the first network's aggkit config, and fills static
+[BridgeServiceFinder.BridgeURLs] /
 [BridgeServiceFinder.RPCURLs] overrides for every L2 network in the
 environment, plus network 0 (L1): its RPC is the environment's L1 node and
 its bridge service is the first aggkit instance (all of them sync the L1
@@ -44,10 +46,17 @@ side). The static overrides are required because the on-chain URLs
 hostnames that are not reachable from the host. It also sets
 [Tracker.AgglayerClient.GRPC].URL from the environment's agglayer service.
 
+If neither --env nor --file is given, the script tries to auto-detect a
+running e2e environment via 'docker compose ls' (matching a running
+project's compose file against test/e2e/envs/<env>/docker-compose.yml).
+If none or more than one are running, it falls back to the default (op-pp).
+
 Options:
-  -e, --env       ENV         e2e environment name under test/e2e/envs (default: op-pp)
-  -f, --file      PATH        Path to a docker-compose.yml (overrides --env)
-  -o, --output    PATH        Output path relative to project root (default: tmp/proxy-e2e-<env>.toml)
+  -e, --env       ENV         e2e environment name under test/e2e/envs (default: op-pp,
+                               or the auto-detected running environment)
+  -f, --file      PATH        Path to a docker-compose.yml (overrides --env and auto-detection)
+  -o, --output    PATH        Output path relative to project root (default: tmp/proxy-e2e-op-pp.toml,
+                               regardless of --env/auto-detected environment)
   -l, --list                  List available e2e environments and exit
   -h, --help                  Show this help
 
@@ -68,7 +77,9 @@ EOF
 }
 
 ENV_NAME="op-pp"
+ENV_EXPLICIT=false
 COMPOSE_FILE=""
+FILE_EXPLICIT=false
 OUTPUT_FILE="${OUTPUT_FILE:-}"
 BLOCK_FINALITY="${BLOCK_FINALITY:-LatestBlock}"
 POLL_INTERVAL="${POLL_INTERVAL:-10s}"
@@ -82,6 +93,58 @@ list_envs() {
     exit 0
 }
 
+# Auto-detects a running e2e environment via 'docker compose ls', matching each
+# running project's compose file against test/e2e/envs/<env>/docker-compose.yml.
+# Sets ENV_NAME when exactly one match is found; otherwise leaves it untouched
+# (default or explicitly-provided value) and logs why.
+detect_running_env() {
+    if ! command -v docker &>/dev/null; then
+        return
+    fi
+
+    local compose_json
+    compose_json=$(docker compose ls --format json 2>/dev/null) || return
+    [[ -z "$compose_json" || "$compose_json" == "[]" ]] && return
+
+    local configs
+    if command -v jq &>/dev/null; then
+        configs=$(echo "$compose_json" | jq -r '.[].ConfigFiles')
+    elif command -v python3 &>/dev/null; then
+        configs=$(echo "$compose_json" | python3 -c '
+import json, sys
+for p in json.load(sys.stdin):
+    print(p.get("ConfigFiles", ""))
+')
+    else
+        log_warn "Neither jq nor python3 found — skipping e2e environment auto-detection"
+        return
+    fi
+
+    local detected=() cfg path env
+    while IFS= read -r cfg; do
+        [[ -z "$cfg" ]] && continue
+        # ConfigFiles can be a comma-separated list of paths (multiple -f flags)
+        IFS=',' read -ra paths <<< "$cfg"
+        for path in "${paths[@]}"; do
+            if [[ "$path" == "$ENVS_DIR"/*/docker-compose.yml ]]; then
+                env="${path#"$ENVS_DIR"/}"
+                env="${env%/docker-compose.yml}"
+                detected+=("$env")
+            fi
+        done
+    done <<< "$configs"
+
+    [[ ${#detected[@]} -eq 0 ]] && return
+    mapfile -t detected < <(printf '%s\n' "${detected[@]}" | sort -u)
+
+    if [[ ${#detected[@]} -eq 1 ]]; then
+        ENV_NAME="${detected[0]}"
+        log_info "Auto-detected running e2e environment: $ENV_NAME"
+    else
+        log_warn "Multiple running e2e environments detected (${detected[*]}) — pass --env to disambiguate, defaulting to '$ENV_NAME'"
+    fi
+}
+
 # Parse flags
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -89,10 +152,10 @@ while [[ $# -gt 0 ]]; do
         -l|--list) list_envs ;;
         -e|--env)
             [[ $# -lt 2 ]] && { log_error "--env requires a value"; usage; }
-            ENV_NAME="$2"; shift 2 ;;
+            ENV_NAME="$2"; ENV_EXPLICIT=true; shift 2 ;;
         -f|--file)
             [[ $# -lt 2 ]] && { log_error "--file requires a value"; usage; }
-            COMPOSE_FILE="$2"; shift 2 ;;
+            COMPOSE_FILE="$2"; FILE_EXPLICIT=true; shift 2 ;;
         -o|--output)
             [[ $# -lt 2 ]] && { log_error "--output requires a value"; usage; }
             OUTPUT_FILE="$2"; shift 2 ;;
@@ -101,9 +164,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [[ "$ENV_EXPLICIT" == false && "$FILE_EXPLICIT" == false ]]; then
+    detect_running_env
+fi
+
 ENV_DIR="$ENVS_DIR/$ENV_NAME"
 [[ -z "$COMPOSE_FILE" ]] && COMPOSE_FILE="$ENV_DIR/docker-compose.yml"
-[[ -z "$OUTPUT_FILE" ]] && OUTPUT_FILE="tmp/proxy-e2e-${ENV_NAME}.toml"
+[[ -z "$OUTPUT_FILE" ]] && OUTPUT_FILE="tmp/proxy-e2e-op-pp.toml"
 OUTPUT_PATH="$PROJECT_ROOT/$OUTPUT_FILE"
 
 if [[ ! -f "$COMPOSE_FILE" ]]; then
@@ -131,6 +198,17 @@ get_rollup_manager_addr() {
         | head -1 | tr -d '[:space:]' | cut -f2 -d'=' | tr -d '"')
     if [[ -z "$addr" ]]; then
         log_error "polygonRollupManagerAddress not found in $config_file"
+        exit 1
+    fi
+    echo "$addr"
+}
+
+get_l1_ger_addr() {
+    local config_file="$1" addr
+    addr=$(grep -E '^\s*polygonZkEVMGlobalExitRootAddress\s*=' "$config_file" \
+        | head -1 | tr -d '[:space:]' | cut -f2 -d'=' | tr -d '"')
+    if [[ -z "$addr" ]]; then
+        log_error "polygonZkEVMGlobalExitRootAddress not found in $config_file"
         exit 1
     fi
     echo "$addr"
@@ -181,6 +259,11 @@ if [[ -z "$FIRST_NETWORK_DIR" ]]; then
 fi
 ROLLUP_MANAGER_ADDR=$(get_rollup_manager_addr "$FIRST_NETWORK_DIR/aggkit-config.toml")
 log_info "RollupManagerAddr: $ROLLUP_MANAGER_ADDR"
+
+# L1GlobalExitRootAddress: same source as RollupManagerAddr, read from the first network's
+# aggkit config (the GlobalExitRoot contract is shared by every network in the environment)
+L1_GER_ADDR=$(get_l1_ger_addr "$FIRST_NETWORK_DIR/aggkit-config.toml")
+log_info "L1GlobalExitRootAddress: $L1_GER_ADDR"
 
 # ---------------------------------------------------------------------------
 # Per-network static overrides (BridgeURLs / RPCURLs)
@@ -250,6 +333,9 @@ BlockChunkSize = 10000
 HealthCheckPath = "$HEALTH_CHECK_PATH"
 HealthCheckTimeout = "5s"
 RequireAllHealthyOnStart = false
+
+[Tracker]
+L1GlobalExitRootAddress = "$L1_GER_ADDR"
 EOF
 
 if [[ -n "$BRIDGE_URLS_BLOCK" ]]; then
@@ -274,7 +360,7 @@ log_info "Configuration written to: $OUTPUT_PATH"
 
 update_vscode_launch() {
     local launch_file="$PROJECT_ROOT/.vscode/launch.json"
-    local entry_name="proxy e2e-${ENV_NAME}"
+    local entry_name="proxy e2e-op-pp"
 
     if [[ ! -f "$launch_file" ]]; then
         log_info "No .vscode/launch.json found — skipping VS Code launch config"

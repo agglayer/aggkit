@@ -33,7 +33,7 @@ func New(cfg *Config) *BridgeTracker {
 	return &BridgeTracker{
 		logger:     cfg.Logger,
 		supervised: supervised,
-		api:        api.NewAPI(cfg.Logger, cfg.ConfigSHA1, supervised),
+		api:        api.NewAPI(cfg.Logger, cfg.ConfigSHA1, supervised, cfg.RegisterResolveTimeout.Duration),
 	}
 }
 

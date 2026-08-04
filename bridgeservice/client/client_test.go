@@ -592,6 +592,50 @@ func TestGetInjectedL1InfoLeaf(t *testing.T) {
 	})
 }
 
+func TestGetL1InfoTreeLeafByGER(t *testing.T) {
+	ger := "0xc3a24b0501bd2c13a7e57f2db4369ec4c223447539fc0724a9d55ac4a06ebd4d"
+
+	t.Run("successful request", func(t *testing.T) {
+		expectedResp := &types.L1InfoTreeLeafResponse{
+			L1InfoTreeIndex: 5,
+			BlockNumber:     100,
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "GET", r.Method)
+			require.Equal(t, "/bridge/v1/l1-info-tree-leaf-by-ger", r.URL.Path)
+			require.Equal(t, "0", r.URL.Query().Get("network_id"))
+			require.Equal(t, ger, r.URL.Query().Get("global_exit_root"))
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		client := New(Config{BaseURL: server.URL})
+		resp, err := client.GetL1InfoTreeLeafByGER(context.Background(), ger)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, uint32(5), resp.L1InfoTreeIndex)
+		require.Equal(t, uint64(100), resp.BlockNumber)
+	})
+
+	t.Run("returns ErrNotFound when GER is not part of the L1 info tree yet (404)", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
+		}))
+		defer server.Close()
+
+		client := New(Config{BaseURL: server.URL})
+		resp, err := client.GetL1InfoTreeLeafByGER(context.Background(), ger)
+
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Nil(t, resp)
+	})
+}
+
 func TestGetClaimProof(t *testing.T) {
 	t.Run("successful request", func(t *testing.T) {
 		var localProof types.Proof
