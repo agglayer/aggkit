@@ -12,16 +12,124 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/contracts/mintableerc20"
 	"github.com/agglayer/aggkit/test/e2e/envs"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 // bridgeMineWait bounds how long a bridge helper waits for its bridge tx to be mined before giving
 // up. Used by BridgeL2ToL2NoClaim; mirrors the (unnamed) 30s literal already used for the same
 // purpose in the other *NoClaim helpers in this file.
 const bridgeMineWait = 30 * time.Second
+
+// l1MineDiagnosticsWait bounds how long waitMinedL1WithDiagnostics waits for an L1 tx to be mined.
+// Normal L1 mining takes ~4s; 4 minutes is far above that while still failing fast enough to leave
+// budget for teardown log capture if the tx never lands.
+const l1MineDiagnosticsWait = 4 * time.Minute
+
+// l1DiagnosticsLogInterval controls how often waitMinedL1WithDiagnostics logs an L1 liveness snapshot.
+const l1DiagnosticsLogInterval = 15 * time.Second
+
+// l1DiagnosticsPollInterval controls how often waitMinedL1WithDiagnostics polls for the tx receipt.
+const l1DiagnosticsPollInterval = 2 * time.Second
+
+// waitMinedL1WithDiagnostics waits until tx is mined on the given L1 client, bounded by timeout.
+// While waiting it periodically logs L1 liveness (chain head, base fee, txpool status, and whether
+// the node still knows about the tx) so a hung tx can be attributed to stalled L1 block production
+// vs. a dropped/never-included transaction -- the removeger e2e jobs saw txs accepted but unmined
+// for ~19min with no way to tell which.
+func waitMinedL1WithDiagnostics(
+	ctx context.Context, l1Client *ethclient.Client, tx *ethtypes.Transaction, timeout time.Duration,
+) (*ethtypes.Receipt, error) {
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	startHead, err := l1Client.BlockNumber(waitCtx)
+	if err != nil {
+		log.Warnf("waitMinedL1WithDiagnostics: initial BlockNumber failed: %v", err)
+	}
+	lastHead := startHead
+
+	pollTicker := time.NewTicker(l1DiagnosticsPollInterval)
+	defer pollTicker.Stop()
+	logTicker := time.NewTicker(l1DiagnosticsLogInterval)
+	defer logTicker.Stop()
+
+	for {
+		receipt, err := l1Client.TransactionReceipt(waitCtx, tx.Hash())
+		if err == nil {
+			return receipt, nil
+		}
+		if !errors.Is(err, ethereum.NotFound) {
+			log.Debugf("waitMinedL1WithDiagnostics: TransactionReceipt(%s) error, will keep polling: %v",
+				tx.Hash().Hex(), err)
+		}
+
+		select {
+		case <-waitCtx.Done():
+			return nil, fmt.Errorf(
+				"waitMinedL1WithDiagnostics: timed out after %s waiting for tx=%s to be mined (L1 head %d -> %d): %w",
+				timeout, tx.Hash().Hex(), startHead, lastHead, waitCtx.Err(),
+			)
+		case <-logTicker.C:
+			lastHead = logL1Diagnostics(waitCtx, l1Client, tx, startHead)
+		case <-pollTicker.C:
+		}
+	}
+}
+
+// logL1Diagnostics logs a snapshot of L1 liveness -- chain head, latest base fee, whether tx is
+// still known to the node, and txpool status if available -- to help distinguish a stalled L1 head
+// from a dropped/never-included transaction. Returns the current head so the caller can report
+// whether it advanced over the course of the wait.
+func logL1Diagnostics(
+	ctx context.Context, l1Client *ethclient.Client, tx *ethtypes.Transaction, startHead uint64,
+) uint64 {
+	head, err := l1Client.BlockNumber(ctx)
+	if err != nil {
+		log.Warnf("waitMinedL1WithDiagnostics: BlockNumber failed: %v", err)
+	}
+
+	baseFeeStr := "n/a"
+	if header, err := l1Client.HeaderByNumber(ctx, nil); err != nil {
+		log.Warnf("waitMinedL1WithDiagnostics: HeaderByNumber failed: %v", err)
+	} else if header.BaseFee != nil {
+		baseFeeStr = header.BaseFee.String()
+	}
+
+	var txStatus string
+	if _, isPending, err := l1Client.TransactionByHash(ctx, tx.Hash()); err != nil {
+		if errors.Is(err, ethereum.NotFound) {
+			txStatus = "not-known"
+		} else {
+			txStatus = fmt.Sprintf("error(%v)", err)
+		}
+	} else if isPending {
+		txStatus = "pending"
+	} else {
+		txStatus = "mined?"
+	}
+
+	var poolStatus struct {
+		Pending string `json:"pending"`
+		Queued  string `json:"queued"`
+	}
+	var txpoolStatus string
+	if err := l1Client.Client().CallContext(ctx, &poolStatus, "txpool_status"); err != nil {
+		txpoolStatus = fmt.Sprintf("unavailable(%v)", err)
+	} else {
+		txpoolStatus = fmt.Sprintf("pending=%s queued=%s", poolStatus.Pending, poolStatus.Queued)
+	}
+
+	log.Infof(
+		"waitMinedL1WithDiagnostics: tx=%s head=%d (started at %d) baseFee=%s tx_status=%s txpool_status=%s",
+		tx.Hash().Hex(), head, startHead, baseFeeStr, txStatus, txpoolStatus,
+	)
+	return head
+}
 
 // BridgeL1ToL2 runs the L1 -> L2 bridge flow using the given environment and transactors.
 // Performs the full deposit and claim flows. Returns error for any non-successful operation.
@@ -49,7 +157,7 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 		return fmt.Errorf("failed to send bridge transaction: %w", err)
 	}
 	log.Debugf("L1->L2 bridge tx submitted, waiting for mining: tx=%s", tx.Hash().Hex())
-	receipt, err := bind.WaitMined(ctx, env.Clients.L1, tx)
+	receipt, err := waitMinedL1WithDiagnostics(ctx, env.Clients.L1, tx, l1MineDiagnosticsWait)
 	if err != nil {
 		return fmt.Errorf("failed to wait for bridge tx: %w", err)
 	}
@@ -662,7 +770,7 @@ func BridgeL2ToL1(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 		return fmt.Errorf("failed to send L2->L1 claim transaction: %w", err)
 	}
 	log.Debugf("L1 claim tx submitted, waiting for mining: tx=%s", claimTx.Hash().Hex())
-	claimReceipt, err := bind.WaitMined(ctx, env.Clients.L1, claimTx)
+	claimReceipt, err := waitMinedL1WithDiagnostics(ctx, env.Clients.L1, claimTx, l1MineDiagnosticsWait)
 	if err != nil {
 		return fmt.Errorf("failed to wait for L2->L1 claim tx: %w", err)
 	}

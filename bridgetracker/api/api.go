@@ -1,15 +1,32 @@
+// @title Bridge Tracker API
+// @version 1.0
+// @description API documentation for the bridge tracker service
+
+// @contact.name API Support
+// @contact.url https://polygon.technology/
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @BasePath /tracker/v1
+
 package api
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
+	"time"
 
+	_ "github.com/agglayer/aggkit/bridgetracker/api/docs"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	swaggerfiles "github.com/swaggo/files"
+	ginswagger "github.com/swaggo/gin-swagger"
 )
 
 const (
@@ -33,10 +50,18 @@ type API struct {
 	wsHandler      *wsHandler
 }
 
-// NewAPI returns the tracker HTTP service serving the given supervised registry
-func NewAPI(logger aggkitcommon.Logger, configSHA1 string, supervised domain.SupervisedRegistry) *API {
+// NewAPI returns the tracker HTTP service serving the given supervised registry.
+// registerResolveTimeout is how long GetTxStatus waits, the first time a tx is registered, for
+// the tracking engine's immediate resolution attempt to produce an update before answering (see
+// getTxStatusCommand); <= 0 disables the wait
+func NewAPI(
+	logger aggkitcommon.Logger,
+	configSHA1 string,
+	supervised domain.SupervisedRegistry,
+	registerResolveTimeout time.Duration,
+) *API {
 	return &API{
-		getTxStatusCmd: &getTxStatusCommand{supervised: supervised},
+		getTxStatusCmd: &getTxStatusCommand{supervised: supervised, resolveTimeout: registerResolveTimeout},
 		healthCmd: &healthCommand{
 			// instanceID is a UUID generated at startup, exposed by the health endpoint to
 			// tell instances (and restarts of the same instance) apart
@@ -47,36 +72,10 @@ func NewAPI(logger aggkitcommon.Logger, configSHA1 string, supervised domain.Sup
 	}
 }
 
-// RegisterRoutes registers all bridge tracker routes on router
-//
-// GetTxStatusHandler returns the status of the bridge originated by the given transaction
-// hash, registering the bridge in the supervised list if it was not already being tracked.
-//
-// @Summary Get bridge status by transaction hash
-// @Description Returns the current step of the bridge and the full path it is expected to
-// @Description follow. Calling this endpoint adds the bridge to the list of supervised
-// @Description bridges. The response is always a TrackingData: its bridge_status field is
-// @Description null until the tracker resolves the bridge, so the client keeps polling (or
-// @Description subscribes over the WebSocket) until it is populated
-// @Tags bridge-tracker
-// @Produce json
-// @Param network_id path uint32 true "Network where the bridge transaction was sent (0 -> Mainnet)"
-// @Param tx_hash path string true "Hash of the transaction that created the bridge (bridgeAsset or bridgeMessage)"
-// @Success 200 {object} TrackingData "Bridge registered; bridge_status/error fill in once resolved"
-// @Failure 400 {object} types.ErrorData "Invalid transaction hash or network id"
-// @Router /network/{network_id}/tx/{tx_hash} [get]
-//
-// HealthHandler is the health-check endpoint: no parameters and no side effects (it does
-// not register anything in the supervised list).
-//
-// @Summary Health check
-// @Description Returns the health status, instance identity and build information of the
-// @Description running instance. Useful as liveness/readiness probe and to check which
-// @Description build/configuration runs on each instance behind the proxy
-// @Tags bridge-tracker
-// @Produce json
-// @Success 200 {object} types.HealthResponse "Health status and version information"
-// @Router /health [get]
+// RegisterRoutes registers all bridge tracker routes on router. Route-level documentation
+// (see swagger.json/swagger.yaml, generated via `make generate-swagger-docs`) lives on the
+// actual handler each route dispatches to: getTxStatusCommand.Execute, healthCommand.Execute
+// and wsHandler.TxStatusWSHandler
 func (a *API) RegisterRoutes(router gin.IRouter) {
 	trackerGroup := router.Group(TrackerV1Prefix)
 	{
@@ -84,6 +83,14 @@ func (a *API) RegisterRoutes(router gin.IRouter) {
 		trackerGroup.GET("/network/:"+networkIDParam+"/tx/:"+txHashParam,
 			func(c *gin.Context) { runCommand(c, a.getTxStatusCmd) })
 		trackerGroup.GET("/network/:"+networkIDParam+"/tx/:"+txHashParam+"/ws", a.wsHandler.TxStatusWSHandler)
+
+		// Swagger docs endpoint
+		trackerGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
+
+		// Redirect to the Swagger UI
+		trackerGroup.GET("/swagger", func(ctx *gin.Context) {
+			ctx.Redirect(http.StatusFound, TrackerV1Prefix+"/swagger/index.html")
+		})
 	}
 }
 

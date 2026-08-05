@@ -60,40 +60,17 @@ func (cfg EngineConfig) withDefaults() EngineConfig {
 	return cfg
 }
 
-// EngineSources groups the driven ports the engine resolves bridge facts through. It
-// implements domain.BridgeFacts directly (see the methods below): every fact method already
-// takes the bridge it is about, so there is nothing left for a dedicated adapter to bind
+// EngineSources groups the driven ports the engine resolves bridge facts through. Each is
+// handed directly to the one or two step resolvers that need it (see createResolvers) rather
+// than adapted into one do-everything port
 type EngineSources struct {
-	Bridges      BridgeEventSource
-	Certificates CertificateSource
-	GERs         GERSource
-	LERs         LERSource
-	Claims       ClaimSource
-}
-
-// OriginGER implements domain.BridgeFacts
-func (s EngineSources) OriginGER(ctx context.Context, bridge *BridgeInfo) (*types.GERData, error) {
-	return s.GERs.OriginGER(ctx, bridge)
-}
-
-// OriginLER implements domain.BridgeFacts
-func (s EngineSources) OriginLER(ctx context.Context, bridge *BridgeInfo) (*types.LERUpdateResult, error) {
-	return s.LERs.OriginLER(ctx, bridge)
-}
-
-// Certificate implements domain.BridgeFacts
-func (s EngineSources) Certificate(ctx context.Context, bridge *BridgeInfo) (*types.CertificateData, error) {
-	return s.Certificates.CertificateFor(ctx, bridge)
-}
-
-// InjectedGER implements domain.BridgeFacts
-func (s EngineSources) InjectedGER(ctx context.Context, bridge *BridgeInfo) (*types.GERData, error) {
-	return s.GERs.InjectedGER(ctx, bridge)
-}
-
-// ClaimFor implements domain.BridgeFacts
-func (s EngineSources) ClaimFor(ctx context.Context, bridge *BridgeInfo) (*types.ClaimResult, error) {
-	return s.Claims.ClaimFor(ctx, bridge)
+	Bridges                BridgeEventSource
+	Certificates           CertificateSource
+	GERs                   GERSource
+	WaitingGERUpdateSource domain.WaitingGERUpdateSource
+	LERs                   LERSource
+	Claims                 ClaimSource
+	Settlement             SettlementSource
 }
 
 // Engine is the tracking engine: it watches the supervised list, resolves the status of
@@ -107,7 +84,8 @@ type Engine struct {
 	store   SupervisedStore
 	sources EngineSources
 	// now is the clock, injectable for tests
-	now func() time.Time
+	now       func() time.Time
+	resolvers map[types.BridgeStep]domain.StepResolver
 }
 
 // NewEngine returns a tracking engine over the given store and fact sources
@@ -130,19 +108,43 @@ func NewEngine(
 		return nil, errors.New("engine requires a LERSource")
 	case sources.Claims == nil:
 		return nil, errors.New("engine requires a ClaimSource")
+	case sources.Settlement == nil:
+		return nil, errors.New("engine requires a SettlementSource")
 	}
+	resolvers := createResolvers(logger, sources)
 
 	return &Engine{
-		logger:  logger,
-		cfg:     cfg.withDefaults(),
-		store:   store,
-		sources: sources,
-		now:     time.Now,
+		logger:    logger,
+		cfg:       cfg.withDefaults(),
+		store:     store,
+		sources:   sources,
+		now:       time.Now,
+		resolvers: resolvers,
 	}, nil
 }
 
-// Start launches the resolution loop; it stops when ctx is cancelled
+func createResolvers(logger aggkitcommon.Logger, sources EngineSources) map[types.BridgeStep]domain.StepResolver {
+	return map[types.BridgeStep]domain.StepResolver{
+		types.StepWaitingGERUpdate:    domain.NewWaitingGERUpdateResolver(logger, sources.WaitingGERUpdateSource),
+		types.StepWaitingLERUpdate:    domain.NewWaitingLERUpdateResolver(sources.LERs),
+		types.StepPendingInclusion:    domain.NewPendingInclusionResolver(sources.Certificates),
+		types.StepCertificatePending:  domain.NewCertificatePendingResolver(sources.Certificates),
+		types.StepWaitL1SettledGER:    domain.NewWaitL1SettledGERResolver(sources.Settlement, sources.GERs),
+		types.StepWaitingGERInjection: domain.NewWaitingGERInjectionResolver(sources.GERs),
+		types.StepWaitingClaim:        domain.NewWaitingClaimResolver(sources.Claims),
+	}
+}
+
+// Start launches the resolution loop; it stops when ctx is cancelled. Besides the regular
+// poll cadence, it also watches the store's Triggerable channel (if implemented) to resolve a
+// freshly registered bridge right away instead of leaving it for the next tick — see
+// resolveTriggered and SupervisedStore.GetAndAwait, which is what a caller actually waits on
 func (e *Engine) Start(ctx context.Context) {
+	var triggers <-chan domain.TrackingID
+	if triggerable, ok := e.store.(domain.Triggerable); ok {
+		triggers = triggerable.Triggers()
+	}
+
 	go func() {
 		ticker := time.NewTicker(e.cfg.PollInterval)
 		defer ticker.Stop()
@@ -154,9 +156,25 @@ func (e *Engine) Start(ctx context.Context) {
 				return
 			case <-ticker.C:
 				e.tick(ctx)
+			case id := <-triggers:
+				e.resolveTriggered(ctx, id)
 			}
 		}
 	}()
+}
+
+// resolveTriggered resolves a single freshly registered bridge immediately, outside of the
+// regular poll cadence, so a caller blocked in GetAndAwait does not have to wait out a full
+// PollInterval for its first real update. Errors are handled the same way as tick's per-bridge
+// resolution: logged/persisted inside resolveBridgeStep, never fatal to the loop. A miss (the
+// bridge was pruned, or the signal is stale) is silently ignored: the regular tick already
+// covers anything still worth tracking
+func (e *Engine) resolveTriggered(ctx context.Context, id domain.TrackingID) {
+	tracking, err := e.store.Get(id, false)
+	if err != nil {
+		return
+	}
+	_ = e.resolveBridgeStep(ctx, tracking)
 }
 
 // tick runs one resolution round over the supervised list, then forgets the terminal
@@ -256,9 +274,9 @@ func (e *Engine) resolveBridgeTx(
 }
 
 // persistStepError logs and persists a step-level failure: stepped already carries it (see
-// domain.MarkStepError, applied by ResolveSteps on error) — the accumulated retry count and
-// description, and the failed step's Status turned Error. A later successful resolution clears
-// it automatically: UpdateStep never carries a step's Error forward
+// domain.UpdateStep's stepErr, applied by ResolveSteps on error) — the accumulated retry count
+// and description, and the failed step's Status turned Error. A later successful resolution
+// clears it automatically: UpdateStep never carries a step's Error forward
 func (e *Engine) persistStepError(id TrackingID, causeErr error, stepped *domain.TrackingData) {
 	e.logger.Warnf("failed to resolve a step of bridge %s: %v", id, causeErr)
 	_ = e.persist(id, stepped.BridgeTx(), stepped.AllSteps())
@@ -268,7 +286,7 @@ func (e *Engine) persistStepError(id TrackingID, causeErr error, stepped *domain
 // notifies) as a single commit, so subscribers see one consistent, fully-merged snapshot
 // instead of one partial notification per field. Failures are logged here; the returned
 // error lets callers abort the tick for this bridge
-func (e *Engine) persist(id TrackingID, tx domain.TrackingBridgeTx, allSteps []types.BridgeStepPath) error {
+func (e *Engine) persist(id TrackingID, tx domain.TrackingBridgeTx, allSteps []BridgeStepPath) error {
 	for i, step := range allSteps {
 		if err := e.store.UpdateTrackingStep(id, uint(i), step); err != nil {
 			e.logger.Warnf("failed to persist step %d of bridge %s: %v", i, id, err)
@@ -311,5 +329,5 @@ func (e *Engine) persistResolveFailure(id TrackingID, tx domain.TrackingBridgeTx
 func (e *Engine) computeAllSteps(
 	ctx context.Context, tracking *domain.TrackingData,
 ) (*domain.TrackingData, error) {
-	return domain.ResolveSteps(ctx, e.sources, tracking, e.now())
+	return domain.ResolveSteps(ctx, e.logger, e.resolvers, tracking, e.now())
 }

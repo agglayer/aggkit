@@ -33,7 +33,7 @@ func New(cfg *Config) *BridgeTracker {
 	return &BridgeTracker{
 		logger:     cfg.Logger,
 		supervised: supervised,
-		api:        api.NewAPI(cfg.Logger, cfg.ConfigSHA1, supervised),
+		api:        api.NewAPI(cfg.Logger, cfg.ConfigSHA1, supervised, cfg.RegisterResolveTimeout.Duration),
 	}
 }
 
@@ -48,7 +48,7 @@ func (b *BridgeTracker) API() *api.API {
 // "status" message); TrackingStatus and step index are derived from allSteps (see
 // TrackingData), and the public BridgeStatus is derived from info (see api.BridgeStatus). It
 // is a no-op if the bridge is not in the supervised list
-func (b *BridgeTracker) Publish(id TrackingID, info *BridgeInfo, allSteps []types.BridgeStepPath) {
+func (b *BridgeTracker) Publish(id TrackingID, info *BridgeInfo, allSteps []BridgeStepPath) {
 	if err := publishStatus(b.supervised, id, info, allSteps); err != nil {
 		b.logger.Warnf("failed to publish status of bridge %s: %v", id, err)
 	}
@@ -70,7 +70,7 @@ func (b *BridgeTracker) PublishError(id TrackingID, errStep *types.ErrorStep) {
 // fully-merged snapshot instead of one partial notification per step. It is a no-op
 // (ErrTrackingNotFound) if the bridge is not in the supervised list
 func publishStatus(
-	store SupervisedStore, id TrackingID, info *BridgeInfo, allSteps []types.BridgeStepPath,
+	store SupervisedStore, id TrackingID, info *BridgeInfo, allSteps []BridgeStepPath,
 ) error {
 	tracking, err := store.Get(id, false)
 	if err != nil {

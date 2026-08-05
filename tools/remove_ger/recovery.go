@@ -18,20 +18,31 @@ const (
 	removeGEREventLimit = 10
 )
 
+// RecoveryResult reports observable outcomes of a recovery run that callers
+// (e.g. e2e assertions) need to reason about. RemovalBlock is the L2 block
+// number of the removeGlobalExitRoots transaction, or 0 when the diagnosis
+// required no GER removal.
+type RecoveryResult struct {
+	RemovalBlock uint64
+}
+
 // ExecuteRecovery runs the recovery flow for the given diagnosis. All steps execute on L2.
 // On any error, returns immediately; the bridge may remain in emergency state for manual intervention.
-func ExecuteRecovery(ctx context.Context, cfg *Config, env *Env, diagnosis *DiagnosisResult) error {
+// On success it returns a RecoveryResult describing observable outcomes (e.g. the removeGlobalExitRoots
+// block number), which is never nil.
+func ExecuteRecovery(ctx context.Context, cfg *Config, env *Env, diagnosis *DiagnosisResult) (*RecoveryResult, error) {
+	result := &RecoveryResult{}
 	if !diagnosis.hasRecoveryActions() {
-		return nil
+		return result, nil
 	}
 
 	l2ChainID, err := env.L2.ChainID(ctx)
 	if err != nil {
-		return fmt.Errorf("get L2 chain ID: %w", err)
+		return nil, fmt.Errorf("get L2 chain ID: %w", err)
 	}
 	auth, err := buildSovereignAdminTransactor(ctx, cfg, l2ChainID)
 	if err != nil {
-		return fmt.Errorf("sovereign admin transactor: %w", err)
+		return nil, fmt.Errorf("sovereign admin transactor: %w", err)
 	}
 
 	callOpts := &bind.CallOpts{Context: ctx}
@@ -39,85 +50,93 @@ func ExecuteRecovery(ctx context.Context, cfg *Config, env *Env, diagnosis *Diag
 	switch diagnosis.Scenario {
 	case ScenarioNoClaims:
 		if err := stepFreezeBridge(ctx, env, auth, callOpts); err != nil {
-			return err
+			return nil, err
 		}
 		if diagnosis.needsGERRemoval() {
-			if err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER); err != nil {
-				return err
+			removalBlock, err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER)
+			if err != nil {
+				return nil, err
 			}
+			result.RemovalBlock = removalBlock
 		}
 		if err := stepRestoreBridge(ctx, env, auth, callOpts); err != nil {
-			return err
+			return nil, err
 		}
-		return nil
+		return result, nil
 
 	case ScenarioCategoryA:
 		if err := stepFreezeBridge(ctx, env, auth, callOpts); err != nil {
-			return err
+			return nil, err
 		}
 		if diagnosis.needsGERRemoval() {
-			if err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER); err != nil {
-				return err
+			removalBlock, err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER)
+			if err != nil {
+				return nil, err
 			}
+			result.RemovalBlock = removalBlock
 		}
 		if err := stepUnsetClaims(ctx, env, auth, callOpts, diagnosis.Claims); err != nil {
-			return err
+			return nil, err
 		}
 		if err := stepRestoreBridge(ctx, env, auth, callOpts); err != nil {
-			return err
+			return nil, err
 		}
-		return nil
+		return result, nil
 
 	case ScenarioCategoryB1:
 		if err := stepFreezeBridge(ctx, env, auth, callOpts); err != nil {
-			return err
+			return nil, err
 		}
 		if diagnosis.needsGERRemoval() {
-			if err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER); err != nil {
-				return err
+			removalBlock, err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER)
+			if err != nil {
+				return nil, err
 			}
+			result.RemovalBlock = removalBlock
 		}
 		if err := stepForceEmitDetailedClaimEvents(ctx, cfg, env, auth, diagnosis.Claims); err != nil {
-			return err
+			return nil, err
 		}
 		if err := stepRestoreBridge(ctx, env, auth, callOpts); err != nil {
-			return err
+			return nil, err
 		}
-		return nil
+		return result, nil
 
 	case ScenarioCategoryB2:
 		if err := stepFreezeBridge(ctx, env, auth, callOpts); err != nil {
-			return err
+			return nil, err
 		}
 		if diagnosis.needsGERRemoval() {
-			if err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER); err != nil {
-				return err
+			removalBlock, err := stepRemoveGERs(ctx, env, auth, callOpts, diagnosis.InvalidGER)
+			if err != nil {
+				return nil, err
 			}
+			result.RemovalBlock = removalBlock
 		}
 		if err := stepUnsetClaims(ctx, env, auth, callOpts, diagnosis.Claims); err != nil {
-			return err
+			return nil, err
 		}
 		correctIndexes := make([]*big.Int, 0, len(diagnosis.Claims))
 		for _, cd := range diagnosis.Claims {
 			if cd.CorrectBridge == nil {
-				return fmt.Errorf("B.2 claim missing CorrectBridge")
+				return nil, fmt.Errorf("B.2 claim missing CorrectBridge")
 			}
 			correctIndexes = append(correctIndexes,
 				bridgesync.GenerateGlobalIndexForNetworkID(cd.CorrectBridge.OriginNetwork, cd.CorrectBridge.DepositCount))
 		}
 		if err := stepSetClaims(ctx, env, auth, callOpts, diagnosis.Claims, correctIndexes); err != nil {
-			return err
+			return nil, err
 		}
 		if err := stepForceEmitDetailedClaimEvents(ctx, cfg, env, auth, diagnosis.Claims); err != nil {
-			return err
+			return nil, err
 		}
 		if err := stepRestoreBridge(ctx, env, auth, callOpts); err != nil {
-			return err
+			return nil, err
 		}
-		return nil
+		return result, nil
 
 	default:
-		return fmt.Errorf("unsupported scenario: %s", diagnosis.Scenario)
+		return nil, fmt.Errorf("unsupported scenario: %s", diagnosis.Scenario)
 	}
 }
 
@@ -155,31 +174,34 @@ func stepFreezeBridge(ctx context.Context, env *Env, auth *bind.TransactOpts, ca
 	return nil
 }
 
+// stepRemoveGERs removes the given GER on L2 and returns the block number of the
+// removeGlobalExitRoots transaction (the exact block l2gersync must process to observe the removal).
 func stepRemoveGERs(
 	ctx context.Context, env *Env, auth *bind.TransactOpts, callOpts *bind.CallOpts, ger common.Hash,
-) error {
+) (uint64, error) {
 	fmt.Printf("Step: Remove GER %s (removeGlobalExitRoots)\n", ger.Hex())
 	gersToRemove := [][32]byte{ger}
 	tx, err := env.L2GERManager.RemoveGlobalExitRoots(auth, gersToRemove)
 	if err != nil {
-		return fmt.Errorf("removeGlobalExitRoots: %w (bridge may remain in emergency state)", err)
+		return 0, fmt.Errorf("removeGlobalExitRoots: %w (bridge may remain in emergency state)", err)
 	}
 	fmt.Printf("  Tx hash: %s\n", tx.Hash().Hex())
 	receipt, err := env.waitReceipt(ctx, tx)
 	if err != nil {
-		return fmt.Errorf("wait for removeGlobalExitRoots receipt: %w", err)
+		return 0, fmt.Errorf("wait for removeGlobalExitRoots receipt: %w", err)
 	}
 	if receipt.Status != 1 {
-		return fmt.Errorf("removeGlobalExitRoots tx failed (status %d)", receipt.Status)
+		return 0, fmt.Errorf("removeGlobalExitRoots tx failed (status %d)", receipt.Status)
 	}
 	ts, err := env.L2GERManager.GlobalExitRootMap(callOpts, ger)
 	if err != nil {
-		return fmt.Errorf("verify GlobalExitRootMap: %w", err)
+		return 0, fmt.Errorf("verify GlobalExitRootMap: %w", err)
 	}
 	if ts != nil && ts.Sign() > 0 {
-		return fmt.Errorf("GER still present on L2 after removal (timestamp %s)", ts.String())
+		return 0, fmt.Errorf("GER still present on L2 after removal (timestamp %s)", ts.String())
 	}
-	fmt.Println("  Verified: GER removed from L2")
+	removalBlock := receipt.BlockNumber.Uint64()
+	fmt.Printf("  Verified: GER removed from L2 (block %d)\n", removalBlock)
 	if env.BridgeService != nil {
 		gerHex := ger.Hex()
 		err = pollBridgeService(ctx, env.BridgeService, func() (bool, error) {
@@ -198,7 +220,7 @@ func stepRemoveGERs(
 			fmt.Println("  Bridge service: remove GER event indexed")
 		}
 	}
-	return nil
+	return removalBlock, nil
 }
 
 func stepRestoreBridge(ctx context.Context, env *Env, auth *bind.TransactOpts, callOpts *bind.CallOpts) error {

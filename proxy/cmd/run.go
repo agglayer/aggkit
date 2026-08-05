@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/agglayer/aggkit"
+	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
 	"github.com/agglayer/aggkit/bridgetracker/sources"
@@ -160,25 +161,40 @@ func runTracker(
 	trackerCfg.Registry = registry
 	tracker := bridgetracker.New(&trackerCfg)
 
+	if err := trackerCfg.AgglayerClient.Validate(); err != nil {
+		log.Fatalf("invalid agglayer client config: %v", err)
+	}
+	agglayerClient, err := agglayer.NewAgglayerClient(
+		trackerCfg.AgglayerClient, log.WithFields("module", "bridgetracker-agglayerclient"))
+	if err != nil {
+		log.Fatalf("failed to create agglayer client: %v", err)
+	}
+
 	// Per-network JSON-RPC clients resolve through the finder; L1 (network 0) is pinned to
 	// the proxy's own L1 client, which carries the configured retry policy
 	rpcClients := sources.NewFinderClients(
 		log.WithFields("module", "bridgetracker-rpcclients"), finder, sources.StaticClients{0: l1Client})
-	bridgeEvents, err := sources.NewBridgeEventSource(rpcClients, trackerCfg.BlockFinality, trackerCfg.BridgeAddrs)
+	bridgeEvents, err := sources.NewBridgeEventSource(
+		rpcClients, trackerCfg.L1BlockFinality, trackerCfg.L2BlockFinality, trackerCfg.BridgeAddrs)
 	if err != nil {
 		log.Fatalf("failed to create bridge event source: %v", err)
 	}
+	gerSource := sources.NewGERSource(finder, rpcClients, trackerCfg.L1GlobalExitRootAddress,
+		trackerCfg.L1BlockFinality, log.WithFields("module", "bridgetracker-gersource"))
 
 	engine, err := bridgetracker.NewEngine(
 		bridgetracker.EngineConfig{RetentionPeriod: trackerCfg.RetentionPeriod.Duration},
 		log.WithFields("module", "bridgetracker-engine"),
 		registry,
 		bridgetracker.EngineSources{
-			Bridges:      bridgeEvents,
-			Certificates: sources.NotImplementedCertificateSource{},
-			GERs:         sources.NewGERSource(finder),
-			LERs:         sources.NewLERSource(rpcClients),
-			Claims:       sources.NewClaimSource(finder),
+			Bridges: bridgeEvents,
+			Certificates: sources.NewCertificateSource(
+				agglayerClient, finder, log.WithFields("module", "bridgetracker-certificatesource")),
+			GERs:                   gerSource,
+			WaitingGERUpdateSource: gerSource,
+			LERs:                   sources.NewLERSource(rpcClients),
+			Claims:                 sources.NewClaimSource(finder),
+			Settlement:             sources.NewSettlementSource(rpcClients, trackerCfg.L1BlockFinality),
 		},
 	)
 	if err != nil {

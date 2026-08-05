@@ -7,6 +7,7 @@
 - [Aggsender Validator](./aggsender_validator.md)
 - [Auto Claim Service](./autoclaim.md)
 - [Bridge service](./bridge_service.md)
+- [Bridge Tracker](./bridgetracker.md)
 - [EthTxManager](./ethtxmanager.md)
 - [Etherman](./etherman.md)
 - [Release lifecycle](./release_lifecycle.md)

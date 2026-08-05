@@ -29,6 +29,15 @@ type SupervisedStore interface {
 	// which case it creates a fresh entry (Registered, with a nil BridgeStatus) and returns it
 	Get(id TrackingID, createIfNotExists bool) (*TrackingData, error)
 
+	// GetAndAwait behaves exactly like Get(id, true) on an already-registered id: no trigger,
+	// no wait, immediate return. On a newly created id, it additionally wakes the tracking
+	// engine to resolve it right away (see Triggerable) instead of leaving it for the next poll
+	// tick, and waits up to timeout for that first resulting update before returning — so a
+	// first-time caller gets a head start on real progress instead of the bare Registered
+	// snapshot it would otherwise have to poll for. timeout <= 0 skips the wait entirely. If
+	// timeout elapses with no update, it returns the entry's snapshot as-is
+	GetAndAwait(id TrackingID, timeout time.Duration) (*TrackingData, error)
+
 	// UpdateTrackingBridgeTx overwrites the tx-level facts of a supervised bridge (Error,
 	// Info, StartDate, Timeout) and notifies subscribers with the resulting snapshot;
 	// AllSteps is untouched by this call (see UpdateTrackingStep) and TrackingStatus needs no
@@ -43,7 +52,7 @@ type SupervisedStore interface {
 	// UpdateTrackingBridgeTx call so a batch of step changes surfaces as one consistent
 	// snapshot instead of one partial notification per step. Returns ErrTrackingNotFound if
 	// the bridge is not in the supervised list
-	UpdateTrackingStep(id TrackingID, stepIndex uint, step types.BridgeStepPath) error
+	UpdateTrackingStep(id TrackingID, stepIndex uint, step BridgeStepPath) error
 
 	// GetTrackerActives returns the snapshots of the supervised bridges that still need
 	// tracking (never failed to resolve and not yet Finished), optionally filtered to a
@@ -90,4 +99,15 @@ type StatusNotifier interface {
 type SupervisedRegistry interface {
 	SupervisedStore
 	StatusNotifier
+}
+
+// Triggerable is an optional capability of a SupervisedStore: it exposes the ids of bridges
+// that were just registered, so the tracking engine can resolve them immediately instead of
+// waiting for its next poll tick (see GetAndAwait and Engine.Start). A store that has no such
+// fast path simply does not implement it; the engine falls back to plain polling
+type Triggerable interface {
+	// Triggers returns the channel of freshly registered ids the engine should resolve right
+	// away. A send may be dropped if the channel is full — that id is not lost, it is simply
+	// left for the next regular poll tick like before
+	Triggers() <-chan TrackingID
 }

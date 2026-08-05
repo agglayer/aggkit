@@ -299,6 +299,24 @@ func (c *Client) GetInjectedL1InfoLeaf(
 	return &resp, nil
 }
 
+// GetL1InfoTreeLeafByGER retrieves the L1 info tree leaf for the given Global Exit Root. The L1
+// info tree only exists on L1, so this must always be called against the L1 bridge service
+// (networkID 0).
+//
+// Uses doRequestAllowNotFound: a GER not yet part of the L1 info tree (e.g. still propagating)
+// answers HTTP 404, surfaced here as ErrNotFound so callers can treat it as "retry later".
+func (c *Client) GetL1InfoTreeLeafByGER(ctx context.Context, ger string) (*types.L1InfoTreeLeafResponse, error) {
+	query := url.Values{}
+	query.Set("network_id", strconv.Itoa(0))
+	query.Set("global_exit_root", ger)
+
+	var resp types.L1InfoTreeLeafResponse
+	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/l1-info-tree-leaf-by-ger?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // GetClaimProof retrieves Merkle proofs for claim verification
 func (c *Client) GetClaimProof(
 	ctx context.Context, networkID, leafIndex, depositCount uint32,
@@ -357,6 +375,24 @@ func (c *Client) GetClaimCandidates(
 
 	var resp types.ClaimCandidatesResult
 	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/claim-candidates?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GetRootByLER resolves ler to the position (deposit-count index) it had in networkID's local
+// exit tree when it was computed, letting a caller order two LERs (or compare a known deposit
+// count against one) without walking or syncing the whole tree itself.
+//
+// Uses doRequestAllowNotFound: an unresolved ler (not synced yet by networkID's bridge service)
+// results in ErrNotFound, which callers should treat as "retry later" rather than a hard error.
+func (c *Client) GetRootByLER(ctx context.Context, networkID uint32, ler string) (*types.RootByLERResponse, error) {
+	query := url.Values{}
+	query.Set("network_id", strconv.FormatUint(uint64(networkID), 10))
+	query.Set("ler", ler)
+
+	var resp types.RootByLERResponse
+	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/root-by-ler?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
