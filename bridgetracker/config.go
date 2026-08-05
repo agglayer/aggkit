@@ -36,6 +36,10 @@ var DefaultL2BlockFinality = aggkittypes.LatestBlock
 // the in-memory registry accepts before refusing new ones (see registry.go's memoryRegistry).
 const DefaultMaxTrackedBridges = 100_000
 
+// DefaultIdleTimeout is the default Config.IdleTimeout (see DefaultEngineIdleTimeout for the
+// semantics; both must stay in sync with the [Tracker] section of the proxy's default config)
+var DefaultIdleTimeout = types.Duration{Duration: DefaultEngineIdleTimeout}
+
 // Config holds the configuration of the bridge tracker service. Only the mapstructure-tagged
 // fields come from the configuration file; the rest are wired programmatically by the binary
 // (see proxy/cmd)
@@ -46,6 +50,13 @@ type Config struct {
 	// same tx re-registers it and tracking restarts from scratch — the retry path for a tx
 	// the tracker gave up on
 	RetentionPeriod types.Duration `mapstructure:"RetentionPeriod"`
+
+	// IdleTimeout is how long a bridge — terminal or still active — stays in the registry once
+	// nobody has read it (no Get/GetAndAwait) and it has no active WebSocket subscriber. Unlike
+	// RetentionPeriod, this applies regardless of TrackingStatus: a bridge that never resolves
+	// and that nobody is polling or subscribed to would otherwise stay supervised (and in
+	// memory) forever. A value <= 0 falls back to DefaultIdleTimeout
+	IdleTimeout types.Duration `mapstructure:"IdleTimeout"`
 
 	// RegisterResolveTimeout is how long the GetTxStatus endpoint waits, the first time a tx is
 	// registered, for the tracking engine's immediate resolution attempt (triggered right away
@@ -76,9 +87,11 @@ type Config struct {
 	L1GlobalExitRootAddress common.Address `mapstructure:"L1GlobalExitRootAddress"`
 
 	// MaxTrackedBridges bounds how many distinct bridges the in-memory registry (see Registry)
-	// accepts at once; a request that would exceed it fails instead of registering the bridge.
-	// A value <= 0 falls back to DefaultMaxTrackedBridges. Only applies to the default in-memory
-	// adapter — ignored when Registry is set to a custom implementation.
+	// accepts at once; a request that would exceed it fails instead of registering the bridge —
+	// reaching the cap never evicts an existing entry to make room, so RetentionPeriod and
+	// IdleTimeout are what keep the registry under it during normal operation. A value <= 0
+	// falls back to DefaultMaxTrackedBridges. Only applies to the default in-memory adapter —
+	// ignored when Registry is set to a custom implementation.
 	MaxTrackedBridges int `mapstructure:"MaxTrackedBridges"`
 
 	// AgglayerClient configures the client used to query the agglayer for a bridge's covering

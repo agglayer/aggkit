@@ -303,6 +303,62 @@ func (_c *SupervisedStore_GetTrackerActives_Call) RunAndReturn(run func(*uint32)
 	return _c
 }
 
+// PruneIdle provides a mock function with given fields: olderThan
+func (_m *SupervisedStore) PruneIdle(olderThan time.Time) (int, error) {
+	ret := _m.Called(olderThan)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PruneIdle")
+	}
+
+	var r0 int
+	var r1 error
+	if rf, ok := ret.Get(0).(func(time.Time) (int, error)); ok {
+		return rf(olderThan)
+	}
+	if rf, ok := ret.Get(0).(func(time.Time) int); ok {
+		r0 = rf(olderThan)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+
+	if rf, ok := ret.Get(1).(func(time.Time) error); ok {
+		r1 = rf(olderThan)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SupervisedStore_PruneIdle_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PruneIdle'
+type SupervisedStore_PruneIdle_Call struct {
+	*mock.Call
+}
+
+// PruneIdle is a helper method to define mock.On call
+//   - olderThan time.Time
+func (_e *SupervisedStore_Expecter) PruneIdle(olderThan interface{}) *SupervisedStore_PruneIdle_Call {
+	return &SupervisedStore_PruneIdle_Call{Call: _e.mock.On("PruneIdle", olderThan)}
+}
+
+func (_c *SupervisedStore_PruneIdle_Call) Run(run func(olderThan time.Time)) *SupervisedStore_PruneIdle_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(time.Time))
+	})
+	return _c
+}
+
+func (_c *SupervisedStore_PruneIdle_Call) Return(_a0 int, _a1 error) *SupervisedStore_PruneIdle_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *SupervisedStore_PruneIdle_Call) RunAndReturn(run func(time.Time) (int, error)) *SupervisedStore_PruneIdle_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // PruneTerminal provides a mock function with given fields: olderThan
 func (_m *SupervisedStore) PruneTerminal(olderThan time.Time) (int, error) {
 	ret := _m.Called(olderThan)
