@@ -145,6 +145,70 @@ func TestRegistryPruneTerminal(t *testing.T) {
 	require.Nil(t, tracking.Error())
 }
 
+// TestRegistryPruneIdle pins the idle-eviction semantics: an entry with no active subscriber
+// last accessed before the deadline is forgotten regardless of its tracking status (terminal or
+// still active), while a subscribed entry is never a candidate however stale its lastAccess is
+func TestRegistryPruneIdle(t *testing.T) {
+	r := newMemoryRegistry(0)
+	clock := time.Date(2026, 7, 22, 10, 0, 0, 0, time.UTC)
+	r.now = func() time.Time { return clock }
+
+	idleActive := TrackingID{NetworkID: 1, TxHash: testHash}
+	idleFinished := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x05")}
+	subscribed := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x06")}
+	for _, id := range []TrackingID{idleActive, idleFinished, subscribed} {
+		_, err := r.Get(id, true)
+		require.NoError(t, err)
+	}
+	require.NoError(t, publishStatus(r, idleFinished, testBridgeInfo(), testAllSteps(true)))
+	_, unsubscribe, err := r.Subscribe(subscribed)
+	require.NoError(t, err)
+	defer unsubscribe()
+
+	// nothing was accessed before the deadline yet: everything is kept
+	pruned, err := r.PruneIdle(clock.Add(-time.Minute))
+	require.NoError(t, err)
+	require.Zero(t, pruned)
+	require.Equal(t, 3, r.GetNumTracker())
+
+	// past the deadline, both unsubscribed entries are forgotten — active or terminal makes no
+	// difference — but the subscribed one survives regardless of how stale its lastAccess is
+	pruned, err = r.PruneIdle(clock.Add(time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, 2, pruned)
+	require.Equal(t, 1, r.GetNumTracker())
+	_, err = r.Get(idleActive, false)
+	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
+	_, err = r.Get(idleFinished, false)
+	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
+	_, err = r.Get(subscribed, false)
+	require.NoError(t, err)
+}
+
+// TestRegistryPruneIdleSkipsRecentlyAccessedEntry pins that a plain Get (no subscription) counts
+// as access and extends the idle window: a bridge a client keeps polling is never idle-evicted
+// out from under it
+func TestRegistryPruneIdleSkipsRecentlyAccessedEntry(t *testing.T) {
+	r := newMemoryRegistry(0)
+	clock := time.Date(2026, 7, 22, 10, 0, 0, 0, time.UTC)
+	r.now = func() time.Time { return clock }
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	_, err := r.Get(id, true)
+	require.NoError(t, err)
+
+	// a later read at T+1min bumps lastAccess, so a deadline that would otherwise have caught
+	// the original (T+0) access no longer does
+	clock = clock.Add(time.Minute)
+	_, err = r.Get(id, false)
+	require.NoError(t, err)
+
+	pruned, err := r.PruneIdle(clock.Add(-30 * time.Second))
+	require.NoError(t, err)
+	require.Zero(t, pruned)
+	require.Equal(t, 1, r.GetNumTracker())
+}
+
 // TestRegistryUpdateTrackingBridgeTxUnregisteredReturnsNotFound pins that, unlike Get,
 // UpdateTrackingBridgeTx never creates the entry on its own: the bridge must already be in
 // the supervised list (via Get(id, true) or Subscribe)
@@ -424,6 +488,28 @@ func TestRegistryGetRefusesNewEntryPastCapacity(t *testing.T) {
 	require.NoError(t, err)
 	_, err = r.Get(TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}, false)
 	require.NoError(t, err)
+}
+
+// TestRegistryGetAndAwaitBumpsLastAccess pins that GetAndAwait counts as access too, on both
+// the newly-created and the already-registered path — not just plain Get
+func TestRegistryGetAndAwaitBumpsLastAccess(t *testing.T) {
+	r := newMemoryRegistry(0)
+	clock := time.Date(2026, 7, 22, 10, 0, 0, 0, time.UTC)
+	r.now = func() time.Time { return clock }
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	_, err := r.GetAndAwait(id, 0)
+	require.NoError(t, err)
+
+	clock = clock.Add(time.Minute)
+	_, err = r.GetAndAwait(id, 0)
+	require.NoError(t, err)
+
+	// a deadline that would have caught the original (T+0) access no longer does: the second
+	// GetAndAwait call bumped lastAccess to T+1min
+	pruned, err := r.PruneIdle(clock.Add(-30 * time.Second))
+	require.NoError(t, err)
+	require.Zero(t, pruned)
 }
 
 // TestRegistryGetAndAwaitExistingEntryReturnsImmediately pins that GetAndAwait on an

@@ -26,6 +26,13 @@ const (
 	// for the same tx re-registers it and tracking restarts from scratch — the retry path for
 	// a tx the tracker gave up on
 	DefaultEngineRetentionPeriod = 10 * time.Minute
+	// DefaultEngineIdleTimeout is the default time a bridge — terminal or still active — is
+	// kept once nobody has read it (no Get/GetAndAwait) and it has no active WebSocket
+	// subscriber. It bounds the memory an abandoned tracker holds onto regardless of whether it
+	// ever resolves, on top of RetentionPeriod's grace period for the ones that do. Set well
+	// above PollInterval and a plausible client poll cadence so a caller polling at a normal
+	// pace never sees its bridge evicted between two of its own requests
+	DefaultEngineIdleTimeout = 30 * time.Minute
 )
 
 // EngineConfig holds the tracking engine tunables. Zero values take the defaults above
@@ -41,6 +48,9 @@ type EngineConfig struct {
 	// RetentionPeriod is how long a terminal bridge stays queryable before being forgotten
 	// (see DefaultEngineRetentionPeriod)
 	RetentionPeriod time.Duration
+	// IdleTimeout is how long an unaccessed, unsubscribed bridge — terminal or still active —
+	// is kept before being forgotten (see DefaultEngineIdleTimeout)
+	IdleTimeout time.Duration
 }
 
 // withDefaults returns cfg with every zero-value tunable replaced by its default
@@ -56,6 +66,9 @@ func (cfg EngineConfig) withDefaults() EngineConfig {
 	}
 	if cfg.RetentionPeriod <= 0 {
 		cfg.RetentionPeriod = DefaultEngineRetentionPeriod
+	}
+	if cfg.IdleTimeout <= 0 {
+		cfg.IdleTimeout = DefaultEngineIdleTimeout
 	}
 	return cfg
 }
@@ -177,8 +190,9 @@ func (e *Engine) resolveTriggered(ctx context.Context, id domain.TrackingID) {
 	_ = e.resolveBridgeStep(ctx, tracking)
 }
 
-// tick runs one resolution round over the supervised list, then forgets the terminal
-// entries whose retention has elapsed (see EngineConfig.RetentionPeriod)
+// tick runs one resolution round over the supervised list, then forgets the terminal entries
+// whose retention has elapsed (see EngineConfig.RetentionPeriod) and the unaccessed,
+// unsubscribed entries whose idle timeout has elapsed (see EngineConfig.IdleTimeout)
 func (e *Engine) tick(ctx context.Context) {
 	active, err := e.store.GetTrackerActives(nil)
 	if err != nil {
@@ -203,6 +217,15 @@ func (e *Engine) tick(ctx context.Context) {
 	}
 	if pruned > 0 {
 		e.logger.Infof("forgot %d terminal bridges past the %s retention", pruned, e.cfg.RetentionPeriod)
+	}
+
+	prunedIdle, err := e.store.PruneIdle(e.now().Add(-e.cfg.IdleTimeout))
+	if err != nil {
+		e.logger.Warnf("failed to prune idle bridges: %v", err)
+		return
+	}
+	if prunedIdle > 0 {
+		e.logger.Infof("forgot %d idle bridges past the %s idle timeout", prunedIdle, e.cfg.IdleTimeout)
 	}
 }
 
