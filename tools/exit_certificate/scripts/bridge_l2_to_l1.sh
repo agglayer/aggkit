@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Bridges ETH (or an ERC-20) from L2 to L1 by calling bridgeAsset on the L2 bridge
 # contract. Connection info is taken entirely from the environment — this script
-# never talks to Kurtosis. Populate the variables first with:
+# never talks to Kurtosis or docker-compose. Populate the variables first with:
 #   source <(tools/exit_certificate/scripts/export_kurtosis_env.sh 1)
+#   source <(tools/exit_certificate/scripts/export_e2e_env.sh 1)
 # Requires: cast (Foundry).
 #
 # Required environment variables:
@@ -26,7 +27,7 @@ Usage: $0 [OPTIONS] [L2_NETWORK_INDEX]
 
 Bridges ETH from L2 to L1 by calling bridgeAsset on the L2 bridge contract.
 The destination network is L1 (network 0). Connection info comes from the
-environment (see export_kurtosis_env.sh).
+environment (see export_kurtosis_env.sh / export_e2e_env.sh).
 
 Arguments:
   L2_NETWORK_INDEX   Source L2 network index (default: 1). Used as the source
@@ -45,14 +46,18 @@ Required environment variables:
   BRIDGE_ADDR                 Bridge contract address (same on L1 and L2)
   L1_RPC_URL                  L1 JSON-RPC URL (only required with --wait)
   Tip: source <(tools/exit_certificate/scripts/export_kurtosis_env.sh L2_NETWORK_INDEX)
+  Tip: source <(tools/exit_certificate/scripts/export_e2e_env.sh L2_NETWORK_INDEX)
 
 Optional environment variables (override defaults):
   PRIVATE_KEY                 Sender private key
   DEST_ADDRESS                Destination address on L1
   TOKEN_ADDRESS               ERC-20 token address (0x0 for ETH)
+  GAS_PRICE_WEI                Max fee per gas for the submitted txs (default: 5000000000)
+  PRIORITY_GAS_PRICE_WEI       Max priority fee per gas for the submitted txs (default: 5000000000)
 
 Examples:
   source <(tools/exit_certificate/scripts/export_kurtosis_env.sh 1)
+  source <(tools/exit_certificate/scripts/export_e2e_env.sh 1)
   $0                              # Bridge 0.01 ETH from L2 network 1 to L1
   $0 2                            # Bridge from L2 network 2 to L1
   $0 --amount 1000000000000000000 # Bridge 1 ETH
@@ -78,13 +83,21 @@ BRIDGE_AMOUNT="1234567890"
 # address(0) = native ETH
 TOKEN_ADDRESS="${TOKEN_ADDRESS:-0x0000000000000000000000000000000000000000}"
 
+# Fixed gas price for the submitted txs, in wei. A freshly started local node's gas price
+# oracle answers near-zero values until it has seen a few blocks (e.g. 15 wei); a tx built
+# with that estimate can end up permanently stuck below the node's real inclusion floor,
+# later failing every retry with "already known" since it never leaves the mempool.
+# Override with GAS_PRICE_WEI / PRIORITY_GAS_PRICE_WEI for environments with a real fee market.
+GAS_PRICE_WEI="${GAS_PRICE_WEI:-5000000000}"
+PRIORITY_GAS_PRICE_WEI="${PRIORITY_GAS_PRICE_WEI:-5000000000}"
+
 DEST_ADDRESS="${DEST_ADDRESS:-}"
 L2_NETWORK_INDEX=1
 # bridgeAsset destinationNetwork: L1 is always network 0.
 DEST_NETWORK=0
 WAIT_FOR_CLAIM=false
 
-# Connection info: provided by the environment (e.g. via export_kurtosis_env.sh).
+# Connection info: provided by the environment (e.g. via export_kurtosis_env.sh / export_e2e_env.sh).
 L1_RPC_URL="${L1_RPC_URL:-}"
 L2_RPC_URL="${L2_RPC_URL:-}"
 BRIDGE_ADDR="${BRIDGE_ADDR:-}"
@@ -137,6 +150,7 @@ check_env() {
     if [[ ${#missing[@]} -gt 0 ]]; then
         log_error "Missing required environment variables: ${missing[*]}"
         log_error "Populate them with: source <(tools/exit_certificate/scripts/export_kurtosis_env.sh $L2_NETWORK_INDEX)"
+        log_error "                or: source <(tools/exit_certificate/scripts/export_e2e_env.sh $L2_NETWORK_INDEX)"
         exit 1
     fi
 }
@@ -320,6 +334,8 @@ if [[ "$IS_ETH_BRIDGE" != "true" ]]; then
     APPROVE_TX=$(cast send \
         --rpc-url "$L2_RPC_URL" \
         --private-key "$PRIVATE_KEY" \
+        --gas-price "$GAS_PRICE_WEI" \
+        --priority-gas-price "$PRIORITY_GAS_PRICE_WEI" \
         "$TOKEN_ADDRESS" \
         "approve(address,uint256)" \
         "$BRIDGE_ADDR" \
@@ -347,6 +363,8 @@ if [[ "$IS_ETH_BRIDGE" == "true" ]]; then
     TX_HASH=$(cast send \
         --rpc-url "$L2_RPC_URL" \
         --private-key "$PRIVATE_KEY" \
+        --gas-price "$GAS_PRICE_WEI" \
+        --priority-gas-price "$PRIORITY_GAS_PRICE_WEI" \
         --value "$BRIDGE_AMOUNT" \
         --json \
         "$BRIDGE_ADDR" \
@@ -361,6 +379,8 @@ else
     TX_HASH=$(cast send \
         --rpc-url "$L2_RPC_URL" \
         --private-key "$PRIVATE_KEY" \
+        --gas-price "$GAS_PRICE_WEI" \
+        --priority-gas-price "$PRIORITY_GAS_PRICE_WEI" \
         --json \
         "$BRIDGE_ADDR" \
         "bridgeAsset(uint32,address,uint256,address,bool,bytes)" \
@@ -396,6 +416,7 @@ fi
 log_info "Bridge from L2 network $L2_NETWORK_INDEX to L1 submitted successfully."
 log_info "  Sender:       $SENDER_ADDR"
 log_info "  Destination:  $DEST_ADDRESS (network $DEST_NETWORK)"
+log_info "  L2 block:     $TX_BLOCK"
 log_info "  Amount:       $BRIDGE_AMOUNT wei"
 log_info "  Token:        $TOKEN_ADDRESS"
 log_info "  Bridge:       $BRIDGE_ADDR"

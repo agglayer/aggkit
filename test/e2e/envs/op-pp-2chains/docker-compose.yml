@@ -371,6 +371,36 @@ services:
     environment:
       - RUST_BACKTRACE=1
 
+
+  aggkit-proxy-001:
+      image: aggkit:local
+      container_name: aggkit-proxy-2chains-20260630-151013-aggkit-001
+      hostname: aggkit-proxy-001
+      entrypoint: ["/usr/local/bin/aggkit-proxy"]
+      command:
+        - "run"
+        - "--cfg=/etc/aggkit/config.toml"
+      volumes:
+        - ./config/aggkit-proxy/aggkit-proxy.toml:/etc/aggkit/config.toml:ro
+      ports:
+        - "12601:8080"    # REST
+      depends_on:
+        geth:
+          condition: service_healthy
+        op-reth-001:
+          condition: service_healthy
+        op-node-001:
+          condition: service_healthy
+        agglayer:
+          condition: service_healthy
+        aggkit-001:
+          condition: service_started
+        aggkit-002:
+          condition: service_started
+      restart: unless-stopped
+      environment:
+        - RUST_BACKTRACE=1
+
 volumes:
   l2-shared-001:
   l2-shared-002:

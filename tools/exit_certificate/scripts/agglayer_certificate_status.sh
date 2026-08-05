@@ -4,9 +4,10 @@
 # when the agglayer node's gRPC reflection is incomplete). With --wait it polls until
 # the latest certificate settles.
 #
-# Connection info is taken from the environment — this script never talks to Kurtosis.
-# Populate the variables first with:
+# Connection info is taken from the environment — this script never talks to Kurtosis
+# or docker-compose. Populate the variables first with:
 #   source <(tools/exit_certificate/scripts/export_kurtosis_env.sh 1)
+#   source <(tools/exit_certificate/scripts/export_e2e_env.sh 1)
 # Requires: go (the helper is run via `go run`).
 #
 # Required environment variables:
@@ -44,9 +45,11 @@ DURATION accepts Go duration syntax (e.g. 5s, 1m, 10m, 1h).
 Required environment variables:
   AGGLAYER_GRPC_URL            agglayer gRPC endpoint (e.g. http://localhost:PORT)
   Tip: source <(tools/exit_certificate/scripts/export_kurtosis_env.sh NETWORK_ID)
+  Tip: source <(tools/exit_certificate/scripts/export_e2e_env.sh NETWORK_ID)
 
 Examples:
   source <(tools/exit_certificate/scripts/export_kurtosis_env.sh 1)
+  source <(tools/exit_certificate/scripts/export_e2e_env.sh 1)
   $0                       # Show latest certificate status + height for network 1
   $0 -n 2                  # Network 2
   $0 --wait                # Wait until the latest certificate settles
@@ -102,6 +105,7 @@ fi
 if [[ -z "${AGGLAYER_GRPC_URL:-}" ]]; then
     log_error "Missing required environment variable: AGGLAYER_GRPC_URL"
     log_error "Populate it with: source <(tools/exit_certificate/scripts/export_kurtosis_env.sh $NETWORK_ID)"
+    log_error "            or: source <(tools/exit_certificate/scripts/export_e2e_env.sh $NETWORK_ID)"
     exit 1
 fi
 

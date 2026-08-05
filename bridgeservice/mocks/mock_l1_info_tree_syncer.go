@@ -317,6 +317,64 @@ func (_c *L1InfoTreeSyncer_GetFirstVerifiedBatchesAfterBlock_Call) RunAndReturn(
 	return _c
 }
 
+// GetInfoByGlobalExitRoot provides a mock function with given fields: ger
+func (_m *L1InfoTreeSyncer) GetInfoByGlobalExitRoot(ger common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error) {
+	ret := _m.Called(ger)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetInfoByGlobalExitRoot")
+	}
+
+	var r0 *l1infotreesync.L1InfoTreeLeaf
+	var r1 error
+	if rf, ok := ret.Get(0).(func(common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)); ok {
+		return rf(ger)
+	}
+	if rf, ok := ret.Get(0).(func(common.Hash) *l1infotreesync.L1InfoTreeLeaf); ok {
+		r0 = rf(ger)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*l1infotreesync.L1InfoTreeLeaf)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(common.Hash) error); ok {
+		r1 = rf(ger)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L1InfoTreeSyncer_GetInfoByGlobalExitRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetInfoByGlobalExitRoot'
+type L1InfoTreeSyncer_GetInfoByGlobalExitRoot_Call struct {
+	*mock.Call
+}
+
+// GetInfoByGlobalExitRoot is a helper method to define mock.On call
+//   - ger common.Hash
+func (_e *L1InfoTreeSyncer_Expecter) GetInfoByGlobalExitRoot(ger interface{}) *L1InfoTreeSyncer_GetInfoByGlobalExitRoot_Call {
+	return &L1InfoTreeSyncer_GetInfoByGlobalExitRoot_Call{Call: _e.mock.On("GetInfoByGlobalExitRoot", ger)}
+}
+
+func (_c *L1InfoTreeSyncer_GetInfoByGlobalExitRoot_Call) Run(run func(ger common.Hash)) *L1InfoTreeSyncer_GetInfoByGlobalExitRoot_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(common.Hash))
+	})
+	return _c
+}
+
+func (_c *L1InfoTreeSyncer_GetInfoByGlobalExitRoot_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreeSyncer_GetInfoByGlobalExitRoot_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L1InfoTreeSyncer_GetInfoByGlobalExitRoot_Call) RunAndReturn(run func(common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeSyncer_GetInfoByGlobalExitRoot_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetInfoByIndex provides a mock function with given fields: ctx, index
 func (_m *L1InfoTreeSyncer) GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error) {
 	ret := _m.Called(ctx, index)

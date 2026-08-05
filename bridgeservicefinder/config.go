@@ -22,7 +22,8 @@ const (
 	// DefaultBlockChunkSize is the default number of blocks scanned per FilterLogs request.
 	DefaultBlockChunkSize = uint64(10_000)
 	// DefaultHealthCheckPath is the default HTTP path probed to assert a bridge service is alive.
-	DefaultHealthCheckPath = "/health"
+	// The bridge service only registers its health check handler at the root path.
+	DefaultHealthCheckPath = "/"
 	// DefaultRequireAllHealthyOnStart controls whether Start fails if any resolved service is
 	// unreachable during initial cache construction. Default is false: record the unhealthy state
 	// but keep the entry so live updates can heal it.

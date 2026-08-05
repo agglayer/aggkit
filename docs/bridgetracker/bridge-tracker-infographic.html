@@ -431,7 +431,7 @@
             <span class="step-name">CertificatePending</span>
             <span class="routes"><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
           </div>
-          <p class="step-desc">The bridge is included in a certificate that has been sent to the Agglayer and is awaiting progress.</p>
+          <p class="step-desc">The bridge is included in a certificate sent to the Agglayer, and stays here while it walks the Agglayer states (<code>Proven</code>, <code>Candidate</code>…) — only the certificate data shown alongside changes, not the step. An <code>InError</code> certificate surfaces right here as a step-level error — see <a href="#errorstep"><code>ErrorStep</code></a> — instead of moving the bridge elsewhere. Settling is the only transition that moves it on.</p>
         </div>
       </div>
 
@@ -439,10 +439,10 @@
         <div class="step-num">4</div>
         <div class="step-body">
           <div class="step-title-row">
-            <span class="step-name">CertificateProcessing</span>
+            <span class="step-name">WaitL1SettledGER</span>
             <span class="routes"><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
           </div>
-          <p class="step-desc">The certificate is walking the Agglayer states (<code>Proven</code>, <code>Candidate</code>…). An <code>InError</code> certificate surfaces right here as a step-level error — see <a href="#errorstep"><code>ErrorStep</code></a> — instead of moving the bridge elsewhere. The step loops on every certificate state change until settlement.</p>
+          <p class="step-desc">The certificate has settled, but its settlement tx has not been confirmed on L1 yet: the tracker waits for that tx to reach the configured L1 finality and its receipt to carry both <code>VerifyBatchesTrustedAggregator</code> and <code>UpdateL1InfoTree</code> (<code>UpdateL1InfoTreeV2</code> is captured too, if present, but is not required). The step also resolves the GER to a concrete L1 info tree leaf index — straight from <code>UpdateL1InfoTreeV2</code>'s <code>LeafCount</code> when it fired, otherwise with one extra GER→leaf lookup — before handing off to <code>WaitingGERInjection</code>.</p>
         </div>
       </div>
 
@@ -527,13 +527,13 @@
         <div class="path">
           <span class="node">1 · WaitingLERUpdate</span><span class="arrow">→</span>
           <span class="node">2 · PendingInclusion</span><span class="arrow">→</span>
-          <span class="node">3 · CertificatePending</span><span class="arrow">→</span>
-          <span class="node">4 · CertProcessing ⟳</span><span class="arrow">→</span>
+          <span class="node">3 · CertificatePending ⟳</span><span class="arrow">→</span>
+          <span class="node">4 · WaitL1SettledGER</span><span class="arrow">→</span>
           <span class="node ghost">5 · injection</span><span class="arrow">→</span>
           <span class="node">6 · WaitingClaim</span><span class="arrow">→</span>
           <span class="node">7 · Claimed</span>
         </div>
-        <p class="route-note"><b>Settled by Agglayer (L2→L1):</b> the certificate walks the Agglayer states inside <span class="mono">CertificateProcessing</span> — a failed certificate (<span class="mono">InError</span>) surfaces there as a step-level error. Settlement happens on L1, which is also the destination: the GER is already there, so the bridge becomes claimable the moment it settles.</p>
+        <p class="route-note"><b>Settled by Agglayer (L2→L1):</b> the certificate walks the Agglayer states inside <span class="mono">CertificatePending</span> — a failed certificate (<span class="mono">InError</span>) surfaces there as a step-level error. Settlement happens on L1, which is also the destination — but the claim still waits one more step, <span class="mono">WaitL1SettledGER</span>, for the settlement tx itself to be confirmed there.</p>
       </div>
 
       <div class="route-card l2l2">
@@ -544,13 +544,13 @@
         <div class="path">
           <span class="node">1 · WaitingLERUpdate</span><span class="arrow">→</span>
           <span class="node">2 · PendingInclusion</span><span class="arrow">→</span>
-          <span class="node">3 · CertificatePending</span><span class="arrow">→</span>
-          <span class="node">4 · CertProcessing ⟳</span><span class="arrow">→</span>
+          <span class="node">3 · CertificatePending ⟳</span><span class="arrow">→</span>
+          <span class="node">4 · WaitL1SettledGER</span><span class="arrow">→</span>
           <span class="node">5 · WaitingGERInjection</span><span class="arrow">→</span>
           <span class="node">6 · WaitingClaim</span><span class="arrow">→</span>
           <span class="node">7 · Claimed</span>
         </div>
-        <p class="route-note"><b>Settled by Agglayer (L2→L2):</b> after settlement on L1, the Aggoracle still has to inject the new GER into the destination L2′ before the claim can happen. Two exit-root updates are involved — each reported in the <span class="mono">result</span> of its own step.</p>
+        <p class="route-note"><b>Settled by Agglayer (L2→L2):</b> after the settlement tx is confirmed on L1 (<span class="mono">WaitL1SettledGER</span>), the Aggoracle still has to inject the new GER into the destination L2′ before the claim can happen. Two exit-root updates are involved — each reported in the <span class="mono">result</span> of its own step.</p>
       </div>
     </div>
   </section>
@@ -585,15 +585,16 @@
     <script>
       (function () {
         const STEPS = {0:"WaitingGERUpdate",1:"WaitingLERUpdate",2:"PendingInclusion",
-                       3:"CertificatePending",4:"CertificateProcessing",
+                       3:"CertificatePending",4:"WaitL1SettledGER",
                        5:"WaitingGERInjection",6:"WaitingClaim",7:"Claimed"};
-        const DUR = {0:"30s",1:"30s",2:"1m0s",3:"2m0s",4:"5m0s",5:"2m0s",6:null,7:null};
+        const DUR = {0:"30s",1:"30s",2:"1m0s",3:"5m0s",4:"1m0s",5:"2m0s",6:null,7:null};
         const GER_L1  = {net:0, ger:"0x9f2c…", ler:"Mainnet"};
         const GER_L2  = {net:3, ger:"0x9f2c…", ler:"Local"};
         const GER_L2P = {net:5, ger:"0x6b81…", ler:"Local"};
         const CERT_PEND    = {id:"0x41ab…", st:"Pending",  settle:null};
         const CERT_PROVEN  = {id:"0x41ab…", st:"Proven",   settle:null};
         const CERT_SETTLED = {id:"0x41ab…", st:"Settled",  settle:"0x77de…"};
+        const L1_SETTLED   = {tx:"0x77de…", block:9345001, ger:"0x6b81…", idx:42, vb:true, ul1:true, ul1v2:false};
 
         const ROUTES = {
           l1l2: { type:0, typeStr:"L1->L2", netId:0, txHash:"0x71c4a2…", blockNumber:8123456, logIndex:2, path:[0,5,6,7], frames:[
@@ -613,10 +614,12 @@
              cap:"LER updated on L2 — waiting for the Aggsender to include the bridge in a certificate."},
             {cur:3, ger1:GER_L2, ger2:null, cert:CERT_PEND, chg:["cur","cert"],
              cap:"Certificate sent to the Agglayer — waiting for it to start moving."},
-            {cur:4, ger1:GER_L2, ger2:null, cert:CERT_PROVEN, chg:["cur","cert"],
-             cap:"Certificate processing on the Agglayer (Proven, Candidate… an InError certificate surfaces right here as a step-level error, without leaving this step)."},
-            {cur:6, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur","cert"],
-             cap:"Certificate settled on L1 — the destination is L1 itself, so no injection is needed: claimable right away."},
+            {cur:3, ger1:GER_L2, ger2:null, cert:CERT_PROVEN, chg:["cert"],
+             cap:"Certificate still processing on the Agglayer (Proven, Candidate… an InError certificate surfaces right here as a step-level error, without leaving this step)."},
+            {cur:4, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur","cert"],
+             cap:"Certificate settled on L1 — waiting for the settlement tx to reach L1 finality and emit VerifyBatchesTrustedAggregator + UpdateL1InfoTree."},
+            {cur:6, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
+             cap:"Settlement tx confirmed on L1 — the destination is L1 itself, so no injection is needed: claimable right away."},
             {cur:7, done:true, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
              cap:"claimAsset() executed on L1 — asset delivered. Final status pushed, connection closed."}
           ]},
@@ -627,10 +630,12 @@
              cap:"LER updated on L2 — waiting for the Aggsender to include the bridge in a certificate."},
             {cur:3, ger1:GER_L2, ger2:null, cert:CERT_PEND, chg:["cur","cert"],
              cap:"Certificate sent to the Agglayer — waiting for it to start moving."},
-            {cur:4, ger1:GER_L2, ger2:null, cert:CERT_PROVEN, chg:["cur","cert"],
-             cap:"Certificate processing on the Agglayer (Proven, Candidate… an InError certificate surfaces right here as a step-level error, without leaving this step)."},
-            {cur:5, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur","cert"],
-             cap:"Certificate settled on L1 — now the Aggoracle must inject the new GER into the destination L2′."},
+            {cur:3, ger1:GER_L2, ger2:null, cert:CERT_PROVEN, chg:["cert"],
+             cap:"Certificate still processing on the Agglayer (Proven, Candidate… an InError certificate surfaces right here as a step-level error, without leaving this step)."},
+            {cur:4, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur","cert"],
+             cap:"Certificate settled on L1 — waiting for the settlement tx to reach L1 finality and emit VerifyBatchesTrustedAggregator + UpdateL1InfoTree."},
+            {cur:5, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
+             cap:"Settlement tx confirmed on L1 — now the Aggoracle must inject the new GER into the destination L2′."},
             {cur:6, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur","ger2"],
              cap:"GER injected on L2′ — the bridge is ready to claim."},
             {cur:7, done:true, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur"],
@@ -641,15 +646,22 @@
         const K = k => '<span class="k">"' + k + '"</span>';
         const S = v => '<span class="s">"' + v + '"</span>';
         const N = v => '<span class="n">' + v + '</span>';
+        const B = v => '<span class="n">' + v + '</span>';
         const NUL = '<span class="z">null</span>';
         const kv = (k, v) => K(k) + ': ' + v;
         const certStr = c => c ? '{ ' + kv("certificate_id", S(c.id)) + ', ' + kv("status_string", S(c.st))
                                 + ', ' + kv("settlement_tx_hash", c.settle ? S(c.settle) : NUL) + ' }' : NUL;
+        const l1SettledStr = r => r ? '{ ' + kv("tx_hash", S(r.tx)) + ', ' + kv("block_number", N(r.block))
+                                + ', ' + kv("ger", S(r.ger)) + ', ' + kv("l1_info_tree_index", N(r.idx))
+                                + ', ' + kv("has_verify_batches_trusted_aggregator", B(r.vb))
+                                + ', ' + kv("has_update_l1_info_tree", B(r.ul1))
+                                + ', ' + kv("has_update_l1_info_tree_v2", B(r.ul1v2)) + ' }' : NUL;
         // step-specific `result`, present once the step is done (see StepResult in API.md)
         const RES = {
           0: () => '{ ' + kv("ger", S("0x9f2c…")) + ', ' + kv("block_number", N(8123456)) + ' }',
           1: () => '{ ' + kv("network_id", N(3)) + ', ' + kv("ler", S("0x2c41…")) + ', ' + kv("block_number", N(5012345)) + ' }',
-          4: () => certStr(CERT_SETTLED),
+          3: () => certStr(CERT_SETTLED),
+          4: () => l1SettledStr(L1_SETTLED),
           6: () => '{ ' + kv("claim_tx", S("0x55aa…")) + ', ' + kv("block_number", N(9345678)) + ' }'
         };
 
@@ -962,7 +974,8 @@
         <p>Step outcomes live inside each step, not at the top level: the GER
         (<span class="mono">WaitingGERUpdate</span>) or LER (<span class="mono">WaitingLERUpdate</span>)
         produced with its block number, the certificate data — id, status, settlement tx —
-        (<span class="mono">CertificateProcessing</span>), and the claim tx
+        (<span class="mono">CertificatePending</span>), the settlement tx's confirmed events
+        (<span class="mono">WaitL1SettledGER</span>), and the claim tx
         (<span class="mono">WaitingClaim</span>). <span class="mono">null</span> until the step completes,
         and for steps without a result.</p>
       </div>
@@ -998,7 +1011,7 @@
     <p class="sec-intro" style="margin:-8px 0 22px;">…until the tracker resolves the bridge. From then on every
     response keeps the same envelope, with <span class="mono">tracking_status</span> mirroring the bridge's
     lifecycle and <span class="mono">bridge_status</span>/<span class="mono">step_index</span>/<span class="mono">all_steps</span>
-    filled in — here, a certificate has hit an error:</p>
+    filled in — here, the certificate settled fine but confirming its settlement tx on L1 has hit an error:</p>
 
     <div class="code-block"><pre>{
   <span class="k">"tracking_status"</span>: <span class="n">2</span>, <span class="k">"tracking_status_string"</span>: <span class="s">"error"</span>,
@@ -1015,11 +1028,11 @@
       <span class="k">"result"</span>: { <span class="k">"network_id"</span>: <span class="n">3</span>, <span class="k">"ler"</span>: <span class="s">"0x2c41…"</span>, <span class="k">"block_number"</span>: <span class="n">5012345</span> } },
     { <span class="k">"step"</span>: <span class="n">2</span>, <span class="k">"step_string"</span>: <span class="s">"PendingInclusion"</span>, <span class="k">"status"</span>: <span class="n">2</span>, <span class="k">"status_string"</span>: <span class="s">"done"</span> },
     { <span class="k">"step"</span>: <span class="n">3</span>, <span class="k">"step_string"</span>: <span class="s">"CertificatePending"</span>, <span class="k">"status"</span>: <span class="n">2</span>, <span class="k">"status_string"</span>: <span class="s">"done"</span> },
-    { <span class="k">"step"</span>: <span class="n">4</span>, <span class="k">"step_string"</span>: <span class="s">"CertificateProcessing"</span>, <span class="k">"status"</span>: <span class="n">3</span>, <span class="k">"status_string"</span>: <span class="s">"error"</span>,
-      <span class="k">"expected_duration"</span>: <span class="s">"5m0s"</span>, <span class="k">"result"</span>: <span class="z">null</span>,
+    { <span class="k">"step"</span>: <span class="n">4</span>, <span class="k">"step_string"</span>: <span class="s">"WaitL1SettledGER"</span>, <span class="k">"status"</span>: <span class="n">3</span>, <span class="k">"status_string"</span>: <span class="s">"error"</span>,
+      <span class="k">"expected_duration"</span>: <span class="s">"1m0s"</span>, <span class="k">"result"</span>: <span class="z">null</span>,
       <span class="k">"error"</span>: { <span class="k">"error_type"</span>: <span class="n">0</span>, <span class="k">"error_type_string"</span>: <span class="s">"transient"</span>,
         <span class="k">"retry_count"</span>: <span class="n">2</span>,
-        <span class="k">"description"</span>: [<span class="s">"agglayer grpc: context deadline exceeded"</span>] } },
+        <span class="k">"description"</span>: [<span class="s">"fetching settlement tx receipt: context deadline exceeded"</span>] } },
     <span class="c">… WaitingGERInjection, WaitingClaim, Claimed (pending) …</span>
   ],
   <span class="k">"error"</span>: <span class="z">null</span>

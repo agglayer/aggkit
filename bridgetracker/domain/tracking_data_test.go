@@ -19,7 +19,7 @@ func TestTrackingStatusDerivation(t *testing.T) {
 	testCases := []struct {
 		name     string
 		bridgeTx TrackingBridgeTx
-		allSteps []types.BridgeStepPath
+		allSteps []BridgeStepPath
 		expected types.TrackingStatus
 	}{
 		{
@@ -55,7 +55,7 @@ func TestTrackingStatusDerivation(t *testing.T) {
 		{
 			name:     "steps rule once present: in progress -> Running",
 			bridgeTx: TrackingBridgeTx{Info: info},
-			allSteps: []types.BridgeStepPath{
+			allSteps: []BridgeStepPath{
 				{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress},
 			},
 			expected: types.TrackingStatusRunning,
@@ -63,7 +63,7 @@ func TestTrackingStatusDerivation(t *testing.T) {
 		{
 			name:     "steps rule once present: claimed -> Finished",
 			bridgeTx: TrackingBridgeTx{Info: info},
-			allSteps: []types.BridgeStepPath{
+			allSteps: []BridgeStepPath{
 				{Step: types.StepClaimed, Status: types.StepStatusDone},
 			},
 			expected: types.TrackingStatusFinished,
@@ -71,7 +71,7 @@ func TestTrackingStatusDerivation(t *testing.T) {
 		{
 			name:     "steps rule once present: step in error -> Error",
 			bridgeTx: TrackingBridgeTx{Info: info},
-			allSteps: []types.BridgeStepPath{
+			allSteps: []BridgeStepPath{
 				{Step: types.StepWaitingClaim, Status: types.StepStatusError},
 			},
 			expected: types.TrackingStatusError,

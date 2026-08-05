@@ -1,0 +1,388 @@
+basePath: /tracker/v1
+definitions:
+  api.BridgeEventData:
+    properties:
+      amount:
+        description: |-
+          Amount is the amount of the asset being bridged, as a decimal string — a plain JSON
+          number would risk losing precision on wei-scale amounts in clients that decode numbers
+          as float64 (e.g. JavaScript)
+        type: string
+      deposit_count:
+        description: DepositCount is the index of the bridge leaf in the origin exit
+          tree
+        type: integer
+      destination_address:
+        description: DestinationAddress is the address that receives the asset on
+          the destination network
+        items:
+          type: integer
+        type: array
+      destination_network:
+        description: DestinationNetwork is the network the bridge exits to (0 -> Mainnet)
+        type: integer
+      leaf_type:
+        description: LeafType is the string representation of the kind of leaf the
+          bridge created (asset or message)
+        type: string
+      origin_address:
+        description: OriginAddress is the address of the asset on the origin network
+        items:
+          type: integer
+        type: array
+      origin_network:
+        description: OriginNetwork is the network where the bridged asset originates
+          from
+        type: integer
+    type: object
+  api.BridgeStatus:
+    properties:
+      block_number:
+        description: BlockNumber is the block, on the origin network, where the BridgeEvent
+          was emitted
+        type: integer
+      block_timestamp:
+        description: BlockTimestamp is the timestamp of the block, on the origin network,
+          where the BridgeEvent was emitted
+        type: integer
+      bridge_type:
+        description: BridgeType is the string representation of the bridge's direction
+          (e.g. "L1->L2")
+        type: string
+      event:
+        allOf:
+        - $ref: '#/definitions/api.BridgeEventData'
+        description: Event holds the facts unpacked directly from the on-chain BridgeEvent
+          log
+      log_index:
+        description: LogIndex is the position of the BridgeEvent log within BlockNumber
+        type: integer
+    type: object
+  api.BridgeStepPath:
+    properties:
+      end_date:
+        type: string
+      error:
+        allOf:
+        - $ref: '#/definitions/types.ErrorStep'
+        description: Error carries the error details when Status is types.StepStatusError,
+          nil otherwise
+      expected_duration:
+        $ref: '#/definitions/github_com_agglayer_aggkit_bridgetracker_types.Duration'
+      result:
+        description: |-
+          Result is the data the step has produced so far; its shape depends on Step:
+          *types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult
+          (StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),
+          *types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData
+          (StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER) or
+          *types.ClaimResult (StepWaitingClaim). nil until
+          the step produces one, and for steps that never do. Most steps only set this once Done,
+          but StepCertificatePending (Status still InProgress) may already carry the certificate's
+          current, not yet settled, status — see domain.ErrCertificateNotSettled
+      start_date:
+        type: string
+      status:
+        description: Status is the string representation of the step's status (e.g.
+          "done")
+        type: string
+      step_index:
+        description: StepIndex is this step's position within the parent TrackingData.AllSteps
+          list
+        type: integer
+      step_name:
+        description: StepName is the string representation of the bridge step (e.g.
+          "PendingInclusion")
+        type: string
+    type: object
+  api.TrackingData:
+    properties:
+      all_steps:
+        description: |-
+          AllSteps holds all expected steps of the bridge's route; GER/LER, certificate and
+          claim data are reported per step in each entry's Result. nil while BridgeStatus is nil
+        items:
+          $ref: '#/definitions/api.BridgeStepPath'
+        type: array
+      bridge_status:
+        allOf:
+        - $ref: '#/definitions/api.BridgeStatus'
+        description: |-
+          BridgeStatus is nil until the tracker resolves the bridge; from then on it carries
+          the full BridgeStatus. Marshaled explicitly as null while unresolved (no omitempty)
+          so clients can poll on its presence without an extra field to check
+      error:
+        allOf:
+        - $ref: '#/definitions/types.ErrorStep'
+        description: |-
+          Error mirrors whatever currently explains the bridge not progressing, if anything: a
+          terminal give-up to even resolve it (e.g. the tx does not exist on the network or is
+          not a bridge transaction — TrackingStatus is Error and BridgeStatus/StepIndex/AllSteps
+          stay nil forever), a transient FindBridge failure still being retried (TrackingStatus
+          is unaffected), or the same error already nested in AllSteps[StepIndex].Error once the
+          bridge is otherwise resolved. nil while nothing has failed
+      network_id:
+        description: NetworkID is the network of the request (0 -> Mainnet)
+        type: integer
+      step_index:
+        description: |-
+          StepIndex is the index into AllSteps of the step that explains TrackingStatus: the
+          step currently in progress when Running, the step in error when Error, or the last
+          step (Claimed) when Finished. nil while BridgeStatus/AllSteps are nil
+        type: integer
+      tracking_status:
+        description: TrackingStatus is the string representation of the bridge's lifecycle
+          status
+        type: string
+      tx_hash:
+        description: TxHash is the transaction hash of the request
+        items:
+          type: integer
+        type: array
+    type: object
+  github_com_agglayer_aggkit_bridgetracker_types.Duration:
+    properties:
+      time.Duration:
+        enum:
+        - -9223372036854775808
+        - 9223372036854775807
+        - 1
+        - 1000
+        - 1000000
+        - 1000000000
+        - 60000000000
+        - 3600000000000
+        - -9223372036854775808
+        - 9223372036854775807
+        - 1
+        - 1000
+        - 1000000
+        - 1000000000
+        - 60000000000
+        - 3600000000000
+        - -9223372036854775808
+        - 9223372036854775807
+        - 1
+        - 1000
+        - 1000000
+        - 1000000000
+        - 60000000000
+        - 3600000000000
+        - 1
+        - 1000
+        - 1000000
+        - 1000000000
+        - 60000000000
+        - 3600000000000
+        format: int64
+        type: integer
+        x-enum-varnames:
+        - minDuration
+        - maxDuration
+        - Nanosecond
+        - Microsecond
+        - Millisecond
+        - Second
+        - Minute
+        - Hour
+        - minDuration
+        - maxDuration
+        - Nanosecond
+        - Microsecond
+        - Millisecond
+        - Second
+        - Minute
+        - Hour
+        - minDuration
+        - maxDuration
+        - Nanosecond
+        - Microsecond
+        - Millisecond
+        - Second
+        - Minute
+        - Hour
+        - Nanosecond
+        - Microsecond
+        - Millisecond
+        - Second
+        - Minute
+        - Hour
+    type: object
+  types.ErrorData:
+    properties:
+      code:
+        description: Code is an HTTP-like error code (e.g. 400 invalid params, 404
+          bridge tx not found)
+        type: integer
+      message:
+        description: Message is a human-readable description of the error
+        type: string
+    type: object
+  types.ErrorStep:
+    properties:
+      description:
+        description: Description holds the human-readable description of the error;
+          one entry per occurrence
+        items:
+          type: string
+        type: array
+      error_type:
+        $ref: '#/definitions/types.StepErrorType'
+      error_type_string:
+        description: ErrorTypeString is the string representation of ErrorType, auto-populated
+          on JSON marshaling
+        type: string
+      retry_count:
+        description: RetryCount is the number of retries attempted so far for this
+          step
+        type: integer
+    type: object
+  types.HealthResponse:
+    properties:
+      config_sha1:
+        description: |-
+          ConfigSHA1 is the sha1sum (hex) of the configuration the instance was started with;
+          it allows checking that all instances behind a proxy run the same configuration
+        type: string
+      instance_id:
+        description: |-
+          InstanceID is a UUID generated at startup; it changes on every execution, so two
+          responses with different InstanceID come from different instances (or the same
+          instance after a restart)
+        type: string
+      status:
+        description: Status is always "ok"
+        type: string
+      version:
+        allOf:
+        - $ref: '#/definitions/types.VersionInfo'
+        description: Version is the build/version information of the running instance
+    type: object
+  types.StepErrorType:
+    enum:
+    - 0
+    - 1
+    - 2
+    type: integer
+    x-enum-varnames:
+    - StepErrorTransient
+    - StepErrorPermanent
+    - StepErrorExhausted
+  types.VersionInfo:
+    properties:
+      arch:
+        description: Arch is the target architecture (e.g. "amd64")
+        type: string
+      build_date:
+        description: BuildDate is the build timestamp
+        type: string
+      git_branch:
+        description: GitBranch is the git branch the binary was built from
+        type: string
+      git_rev:
+        description: GitRev is the git revision the binary was built from
+        type: string
+      go_version:
+        description: GoVersion is the Go runtime version (e.g. "go1.24.0")
+        type: string
+      os:
+        description: OS is the target operating system (e.g. "linux")
+        type: string
+      version:
+        description: Version is the semantic version (e.g. "v0.1.0")
+        type: string
+    type: object
+info:
+  contact:
+    name: API Support
+    url: https://polygon.technology/
+  description: API documentation for the bridge tracker service
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: Bridge Tracker API
+  version: "1.0"
+paths:
+  /health:
+    get:
+      description: |-
+        Returns the health status, instance identity and build information of the
+        running instance. Useful as liveness/readiness probe and to check which
+        build/configuration runs on each instance behind the proxy
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Health status and version information
+          schema:
+            $ref: '#/definitions/types.HealthResponse'
+      summary: Health check
+      tags:
+      - bridge-tracker
+  /network/{network_id}/tx/{tx_hash}:
+    get:
+      description: |-
+        Returns the current step of the bridge and the full path it is expected to
+        follow. Calling this endpoint adds the bridge to the list of supervised
+        bridges. The response is always a TrackingData: its bridge_status field is
+        null until the tracker resolves the bridge, so the client keeps polling (or
+        subscribes over the WebSocket) until it is populated
+      parameters:
+      - description: Network where the bridge transaction was sent (0 -> Mainnet)
+        format: int32
+        in: path
+        name: network_id
+        required: true
+        type: integer
+      - description: Hash of the transaction that created the bridge (bridgeAsset
+          or bridgeMessage)
+        in: path
+        name: tx_hash
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Bridge registered; bridge_status/error fill in once resolved
+          schema:
+            $ref: '#/definitions/api.TrackingData'
+        "400":
+          description: Invalid transaction hash or network id
+          schema:
+            $ref: '#/definitions/types.ErrorData'
+        "503":
+          description: Supervised registry is at capacity
+          schema:
+            $ref: '#/definitions/types.ErrorData'
+      summary: Get bridge status by transaction hash
+      tags:
+      - bridge-tracker
+  /network/{network_id}/tx/{tx_hash}/ws:
+    get:
+      description: |-
+        Upgrades the request to a WebSocket connection that receives the bridge
+        status as it changes, instead of polling the REST endpoint. Connecting adds
+        the bridge to the list of supervised bridges
+      parameters:
+      - description: Network where the bridge transaction was sent (0 -> Mainnet)
+        format: int32
+        in: path
+        name: network_id
+        required: true
+        type: integer
+      - description: Hash of the transaction that created the bridge (bridgeAsset
+          or bridgeMessage)
+        in: path
+        name: tx_hash
+        required: true
+        type: string
+      responses:
+        "101":
+          description: Switching Protocols
+          schema:
+            type: string
+      summary: Subscribe to bridge status updates by transaction hash
+      tags:
+      - bridge-tracker
+swagger: "2.0"

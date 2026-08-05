@@ -53,10 +53,12 @@ type L2GERSyncer interface {
 	GetRemoveGEREvents(
 		ctx context.Context, globalExitRoot *common.Hash, limit uint32,
 	) ([]*l2gersync.RemoveGEREvent, error)
+	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 }
 
 type L1InfoTreeSyncer interface {
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
+	GetInfoByGlobalExitRoot(ger common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetRollupExitTreeMerkleProof(ctx context.Context, networkID uint32, root common.Hash) (tree.Proof, error)
 	GetLocalExitRoot(ctx context.Context, networkID uint32, rollupExitRoot common.Hash) (common.Hash, error)
 	GetLastInfo() (*l1infotreesync.L1InfoTreeLeaf, error)

@@ -21,7 +21,10 @@ func (a APIRateLimitConfig) String() string {
 }
 
 type ClientConfig struct {
-	GRPC               *aggkitgrpc.ClientConfig
+	GRPC *aggkitgrpc.ClientConfig
+	// Cached is the master switch for the response cache/policy wrapper (see CacheConfig):
+	// false ignores every per-method policy in ConfigurationCache and calls the underlying
+	// agglayer client directly for all methods, exactly as if none were configured.
 	Cached             bool
 	ConfigurationCache *CacheConfig
 	// APIRateLimits defines rate limiting configuration for specific API methods

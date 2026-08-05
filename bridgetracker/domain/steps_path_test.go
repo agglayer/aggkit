@@ -33,7 +33,7 @@ func TestPendingPath(t *testing.T) {
 	}
 }
 
-func stepsOf(paths []types.BridgeStepPath) []types.BridgeStep {
+func stepsOf(paths []BridgeStepPath) []types.BridgeStep {
 	steps := make([]types.BridgeStep, len(paths))
 	for i, p := range paths {
 		steps[i] = p.Step
