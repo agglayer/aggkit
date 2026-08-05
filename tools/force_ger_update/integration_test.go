@@ -350,3 +350,49 @@ func testForceGERUpdateScenarios(t *testing.T, useWS bool) {
 	}, integrationQuietWindow, integrationEventuallyTick,
 		"the externally-triggered event must have reset the tool's timer, keeping it quiet")
 }
+
+// TestBootWithRecentEvent_NoUnnecessarySend covers the flip side of TestForceGERUpdate's scenario
+// 1: booting when the GER was genuinely updated (by unrelated bridge activity) moments before the
+// tool started must NOT force a spurious update. This exercises the real Monitor.LastGERUpdate
+// boot scan and the real runLoop end-to-end (nothing here is a hand-injected/synthetic
+// lastGERUpdate) against a simulated L1 that already has one on-chain UpdateL1InfoTree event
+// before the tool ever runs — i.e. a normal restart while the GER is actually fine, as opposed to
+// TestForceGERUpdate's cold-start (never-updated) case.
+func TestBootWithRecentEvent_NoUnnecessarySend(t *testing.T) {
+	env := newIntegrationEnv(t)
+	cfg := env.config(false)
+
+	// Simulate: the GER was genuinely updated (by unrelated bridge activity) moments before this
+	// process starts.
+	env.sendExternalForcedBridgeAsset(t)
+	require.Len(t, env.gerUpdateLogs(t), 1, "expected exactly one pre-existing on-chain event before boot")
+
+	monitor := env.newMonitor(t, cfg)
+	sender := env.newSender(t, cfg)
+
+	// Real boot scan: must find the pre-existing event and NOT report the GER as stale.
+	lastGERUpdate, err := monitor.LastGERUpdate()
+	require.NoError(t, err)
+	require.False(t, lastGERUpdate.IsZero(), "boot scan must find the pre-existing event, not treat the GER as stale")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	loopDone := make(chan error, 1)
+	go func() {
+		loopDone <- runLoop(ctx, monitor, sender, lastGERUpdate,
+			cfg.CheckInterval.Duration, cfg.MaxTimeWithoutGERUpdate.Duration)
+	}()
+	defer func() {
+		cancel()
+		select {
+		case err := <-loopDone:
+			require.NoError(t, err)
+		case <-time.After(integrationEventuallyTimeout):
+			t.Fatal("runLoop did not return promptly after ctx cancellation")
+		}
+	}()
+
+	require.Never(t, func() bool {
+		return len(env.gerUpdateLogs(t)) > 1
+	}, integrationQuietWindow, integrationEventuallyTick,
+		"booting with a genuinely fresh GER must not force an unnecessary update")
+}
