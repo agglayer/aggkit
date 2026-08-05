@@ -27,7 +27,7 @@ func TestLoadFilesDefaults(t *testing.T) {
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.BridgeServiceFinder.BlockFinality)
 	require.Equal(t, 30*time.Second, cfg.BridgeServiceFinder.PollInterval.Duration)
 	require.Equal(t, uint64(10000), cfg.BridgeServiceFinder.BlockChunkSize)
-	require.Equal(t, "/health", cfg.BridgeServiceFinder.HealthCheckPath)
+	require.Equal(t, "/", cfg.BridgeServiceFinder.HealthCheckPath)
 	require.Equal(t, 5*time.Second, cfg.BridgeServiceFinder.HealthCheckTimeout.Duration)
 	require.False(t, cfg.BridgeServiceFinder.RequireAllHealthyOnStart)
 
@@ -72,7 +72,7 @@ RetentionPeriod = "1h"
 	// not overridden fields keep the default value
 	require.Equal(t, []string{"stderr"}, cfg.Log.Outputs)
 	require.Equal(t, ethermanconfig.RPCModeBasic, cfg.L1RPC.Mode)
-	require.Equal(t, "/health", cfg.BridgeServiceFinder.HealthCheckPath)
+	require.Equal(t, "/", cfg.BridgeServiceFinder.HealthCheckPath)
 }
 
 func TestValidateComponents(t *testing.T) {

@@ -18,7 +18,7 @@ RollupManagerAddr = "0x0000000000000000000000000000000000000000"
 BlockFinality = "FinalizedBlock"
 PollInterval = "30s"
 BlockChunkSize = 10000
-HealthCheckPath = "/health"
+HealthCheckPath = "/"
 HealthCheckTimeout = "5s"
 RequireAllHealthyOnStart = false
 
