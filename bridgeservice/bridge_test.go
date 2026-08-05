@@ -3133,6 +3133,11 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				Return(nil, int(tc.l2BridgeCount), nil).
 				Once()
 
+			// l2gersync status check
+			b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
+				Return(uint64(0), nil).
+				Once()
+
 			// Add expectations for block information when not synced
 			if !tc.l1IsSynced {
 				b.bridgeL1.EXPECT().GetLastProcessedBlock(mock.Anything).
@@ -3331,6 +3336,9 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 					Return(nil, 200, nil).
 					Once()
+				b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(uint64(0), nil).
+					Once()
 				return b
 			},
 			expectedStatusCode: http.StatusOK,
@@ -3352,6 +3360,9 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				b.bridgeL2.EXPECT().IsActive(mock.Anything).
 					Return(false).
 					Once()
+				b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(uint64(0), nil).
+					Once()
 				return b
 			},
 			expectedStatusCode: http.StatusOK,
@@ -3366,6 +3377,9 @@ func TestGetSyncStatusHandler(t *testing.T) {
 					Once()
 				b.bridgeL2.EXPECT().IsActive(mock.Anything).
 					Return(false).
+					Once()
+				b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(uint64(0), nil).
 					Once()
 				return b
 			},
@@ -3447,6 +3461,96 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGetSyncStatusHandler_L2GERInfo dedicatedly covers the l2gersync section of
+// GetSyncStatusHandler added on top of TestGetSyncStatusHandler: the l2gersync-present
+// (both zero and non-zero last processed block), l2gersync-nil, and processor-error branches.
+func TestGetSyncStatusHandler_L2GERInfo(t *testing.T) {
+	// l2gersync present: both the "not yet advanced" (N==0) and "advanced" (N>0)
+	// cases are legitimate IsActive:true responses.
+	presentTestCases := []struct {
+		description        string
+		lastProcessedBlock uint64
+	}{
+		{description: "last processed block is nonzero", lastProcessedBlock: 555},
+		{description: "last processed block is zero (active but not yet advanced)", lastProcessedBlock: 0},
+	}
+	for _, tc := range presentTestCases {
+		t.Run("l2gersync present - "+tc.description, func(t *testing.T) {
+			b := newBridgeWithMocks(t, l2NetworkID)
+			b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(false).Once()
+			b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(false).Once()
+			b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
+				Return(tc.lastProcessedBlock, nil).
+				Once()
+
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			b.bridge.GetSyncStatusHandler(c)
+
+			require.Equal(t, http.StatusOK, w.Code)
+
+			var response bridgetypes.SyncStatus
+			err := json.Unmarshal(w.Body.Bytes(), &response)
+			require.NoError(t, err)
+
+			require.NotNil(t, response.L2GERInfo)
+			require.True(t, response.L2GERInfo.IsActive)
+			require.Equal(t, tc.lastProcessedBlock, response.L2GERInfo.LastProcessedBlock)
+		})
+	}
+
+	t.Run("l2gersync nil - inactive and syncer not invoked", func(t *testing.T) {
+		b := newBridgeWithMocks(t, l2NetworkID)
+		// newBridgeWithMocks always wires a non-nil injectedGERs mock; force the
+		// nil-syncer branch by clearing the field directly (same pattern used by
+		// "GetRemoveGEREvents with nil injectedGERs" above).
+		b.bridge.injectedGERs = nil
+		b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(false).Once()
+		b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(false).Once()
+		// Deliberately no b.injectedGERs.EXPECT(...) call set up: since b.injectedGERs
+		// is a mockery mock bound to t (mocks.NewL2GERSyncer(t)), any unexpected call to
+		// GetLastProcessedBlock would fail the test immediately, and t.Cleanup runs
+		// AssertExpectations - so this also proves the mock is never invoked.
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+
+		b.bridge.GetSyncStatusHandler(c)
+
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.SyncStatus
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.NotNil(t, response.L2GERInfo)
+		require.False(t, response.L2GERInfo.IsActive)
+		require.Equal(t, uint64(0), response.L2GERInfo.LastProcessedBlock)
+	})
+
+	t.Run("l2gersync present - processor error", func(t *testing.T) {
+		b := newBridgeWithMocks(t, l2NetworkID)
+		b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(false).Once()
+		b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(false).Once()
+		b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
+			Return(uint64(0), errors.New("db error")).
+			Once()
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+
+		b.bridge.GetSyncStatusHandler(c)
+
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+
+		var response gin.H
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Contains(t, response["error"], "failed to get last processed block for l2gersync")
+	})
 }
 
 func TestHealthCheckHandler(t *testing.T) {

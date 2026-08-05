@@ -537,13 +537,12 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 			attempts := 0
 			for {
 				err := appenderFn(latestBlock, l)
-				if err != nil {
-					attempts++
-					d.log.Error("error trying to append log: ", err)
-					d.rh.Handle(ctx, "appendLogs", attempts)
-					continue
+				if err == nil {
+					break
 				}
-				break
+				attempts++
+				d.log.Error("error trying to append log: ", err)
+				d.rh.Handle(ctx, "appendLogs", attempts)
 			}
 		}
 
