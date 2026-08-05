@@ -231,3 +231,43 @@ func TestGetEpochConfigurationCachedGlobally(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, clockCfg, got)
 }
+
+// TestCachedPtrNilResultIsNeverCached pins that a (nil, nil) result -- the legitimate
+// "nothing to report" answer GetLatestPendingCertificateHeader gives when there is no pending
+// certificate for the network, not an error -- is passed through as-is without panicking, and
+// is never cached: every subsequent call for that key reaches the underlying client again
+// until a real, non-nil result appears
+func TestCachedPtrNilResultIsNeverCached(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	mockAgglayerClient := mocks.NewAgglayerClientMock(t)
+	cfg := cachedConfig(time.Minute, 10)
+	cfg.GetLatestPendingCertificateHeader = MethodPolicyCached
+	cache := NewAgglayerClientCache(mockAgglayerClient, cfg)
+
+	// no pending certificate for this network: the real client behavior being regression-tested
+	mockAgglayerClient.EXPECT().GetLatestPendingCertificateHeader(ctx, uint32(1)).Return(nil, nil).Twice()
+
+	got, err := cache.GetLatestPendingCertificateHeader(ctx, 1)
+	require.NoError(t, err)
+	require.Nil(t, got)
+
+	// a second call is NOT a cache hit (the .Twice() above would fail otherwise): nil is never
+	// cached, so this reaches the underlying client again instead of dereferencing a nil pointer
+	got, err = cache.GetLatestPendingCertificateHeader(ctx, 1)
+	require.NoError(t, err)
+	require.Nil(t, got)
+
+	// once a real pending certificate shows up, it is cached normally
+	header := &agglayertypes.CertificateHeader{NetworkID: 1}
+	mockAgglayerClient.EXPECT().GetLatestPendingCertificateHeader(ctx, uint32(1)).Return(header, nil).Once()
+
+	got, err = cache.GetLatestPendingCertificateHeader(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, header, got)
+
+	got, err = cache.GetLatestPendingCertificateHeader(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, header, got)
+}

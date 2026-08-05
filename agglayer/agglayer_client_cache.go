@@ -194,7 +194,12 @@ func forbiddenErr(method string) error {
 
 // cachedPtr resolves a *V through cache keyed by key: a hit returns a copy of the cached value,
 // a miss calls fetch, stores its dereferenced result (propagating a fetch error as-is, without
-// caching it) and returns it. Shared by every AgglayerClientCache method returning a pointer
+// caching it) and returns it. Shared by every AgglayerClientCache method returning a pointer.
+// A (nil, nil) result -- a legitimate "nothing to report" answer for e.g.
+// GetLatestPendingCertificateHeader when there is no pending certificate, not an error -- is
+// passed through as-is and never cached: caching it would need a sentinel to tell "no result" apart
+// from V's own zero value, and every miss just falls through to fetch again, exactly as if this
+// method were MethodPolicyPassthrough for that key until a real result appears
 func cachedPtr[K comparable, V any](cache *ttlcache.Cache[K, V], key K, fetch func() (*V, error)) (*V, error) {
 	cache.DeleteExpired()
 	if item := cache.Get(key); item != nil {
@@ -203,8 +208,8 @@ func cachedPtr[K comparable, V any](cache *ttlcache.Cache[K, V], key K, fetch fu
 	}
 
 	v, err := fetch()
-	if err != nil {
-		return nil, err
+	if err != nil || v == nil {
+		return v, err
 	}
 	cache.Set(key, *v, ttlcache.DefaultTTL)
 	return v, nil
