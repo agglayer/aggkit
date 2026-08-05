@@ -17,6 +17,7 @@ Request (BridgeRequest):
 Calling this endpoint **adds the bridge to the list of supervised bridges** (if it was not already being tracked). It always returns:
 
 - `200 OK` — the body is a [TrackingData](#trackingdata). `tracking_status` is `registered` and `bridge_status`/`step_index`/`all_steps` are `null` until the tracker resolves the bridge; from then on `tracking_status` mirrors the bridge's lifecycle (`running`/`error`/`finished`) and those fields carry the full picture (see [BridgeStatus](#bridgestatus)). If the tracker instead gives up trying to resolve the bridge at all — the transaction **does not exist on the network or is not a bridge transaction** (no `BridgeEvent`) — `tracking_status` becomes `error`, `bridge_status`/`step_index`/`all_steps` stay `null` forever, and `error` carries why (see [ErrorStep](#errorstep)). That determination is asynchronous, so a tx may answer with `tracking_status: registered` on the first few polls and `error` only once the tracking engine gives up. When polling, the client keeps calling the endpoint until `tracking_status` moves off `registered`. Over the [WebSocket](#websocket) no polling is needed: every `status` message carries the same `TrackingData`, and the client just watches it evolve.
+  - **First-registration head start**: the very first time a tx is registered, the tracker wakes its resolution engine immediately instead of waiting for the next poll round, and this request waits up to `RegisterResolveTimeout` (default `3s`, configurable, `0` disables the wait) for that attempt to land. So the very first response has a real chance of already carrying real progress instead of the bare `registered` state — though it may still come back `registered` if resolution takes longer than the timeout. A lookup of an already-registered tx never waits, regardless of this setting.
 - `400 Bad Request` — invalid path parameters (`network_id` not a uint32, `tx_hash` not a valid hash): the body is an [ErrorData](#errordata). Nothing is registered.
 
 ## Response types
@@ -58,7 +59,7 @@ Body of every REST response (always `200 OK`) and of every WebSocket `status` me
 ## BridgeStepPath
 | field | type | desc |
 | ------|------|------|
-| step | BridgeStep (int) | 0->WaitingGERUpdate, 1->WaitingLERUpdate, 2->PendingInclusion, 3->CertificatePending, 4->WaitingGERInjection, 5->WaitingClaim, 6->Claimed |
+| step | BridgeStep (int) | 0->WaitingGERUpdate, 1->WaitingLERUpdate, 2->PendingInclusion, 3->CertificatePending, 4->WaitL1SettledGER, 5->WaitingGERInjection, 6->WaitingClaim, 7->Claimed |
 | step_string | string | string representation of step (e.g. "WaitingGERUpdate") |
 | status | StepStatus (int) | 0->pending, 1->inProgress, 2->done, 3->error
 | status_string | string | string representation of status (e.g. "inProgress") |
@@ -70,14 +71,15 @@ Body of every REST response (always `200 OK`) and of every WebSocket `status` me
 
 ## StepResult
 
-Carried in the `result` field of a [BridgeStepPath](#bridgesteppath). Its shape depends on the step that produced it — a JSON object for most, a bare value for PendingInclusion:
+Carried in the `result` field of a [BridgeStepPath](#bridgesteppath). Its shape depends on the step that produced it:
 
 | step | result fields | desc |
 | --- | --- | --- |
-| WaitingGERUpdate | `ger` (Hash), `block_number` (uint64) | GER resulting from the update on L1 and the block where it was updated |
+| WaitingGERUpdate | `l1_info_tree_index` (uint32), `ger` (Hash), `mer` (Hash), `rer` (Hash), `block_number` (uint64), `block_timestamp` (uint64), `log_index` (uint) | GER resulting from the update on L1, the L1 info tree leaf index it landed at, and the block where it was updated |
 | WaitingLERUpdate | `network_id` (uint32), `ler` (Hash), `block_number` (uint64) | LER resulting from the update on the origin L2 and the block where it was updated |
-| PendingInclusion | Hash | the ID of the certificate that includes the bridge, set as soon as one exists |
+| PendingInclusion | `certificate_id` (Hash), `new_ler` (Hash), `previous_ler` (*Hash) | the certificate that first includes the bridge and the LER transition it produced; `previous_ler` is nil for a network's first certificate |
 | CertificatePending | [CertificateData](#certificatedata) | the certificate's current data; set as soon as a certificate exists, updated as its status changes (Pending, Proven, Candidate, InError), and reflects the final settled data once `status` is `done` |
+| WaitL1SettledGER | `tx_hash` (Hash), `block_number` (uint64), `ger` (Hash), `l1_info_tree_index` (*uint32), `has_verify_batches_trusted_aggregator` (bool), `has_update_l1_info_tree` (bool), `has_update_l1_info_tree_v2` (bool) | evidence, read off the certificate's settlement tx receipt once it reaches L1 finality, that the settlement propagated to the L1 Global Exit Root; `ger` is computed from `UpdateL1InfoTree`'s mainnet/rollup exit roots. `l1_info_tree_index` is the leaf `ger` landed at — populated straight from `UpdateL1InfoTreeV2`'s `LeafCount` when that (optional) event fires, otherwise resolved with one extra GER->leaf lookup before the step can complete; it is never `null` once the step is `done`. The two `has_*` booleans besides `has_update_l1_info_tree_v2` are required for the step to complete, that third one is informational only |
 | WaitingGERInjection | `ger` (Hash) | GER injected on the destination network that covers the bridge; no block number, the injection source does not expose it |
 | WaitingClaim | `claim_tx` (Hash), `block_number` (uint64) | claim transaction on the destination network and its block |
 | any other step | — | no result: always `nil` |

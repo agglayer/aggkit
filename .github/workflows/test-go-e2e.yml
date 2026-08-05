@@ -98,7 +98,7 @@ jobs:
             run: TestRemoveGER_CategoryB2
           - env: op-pp-2chains
             group: default
-            run: TestBridgeL2ToL2|TestAutoClaimL2ToL2AllowAll
+            run: TestBridgeL2ToL2|TestAutoClaimL2ToL2AllowAll|TestBridgeTrackerL1ToL2
     steps:
       - name: Checkout code
         uses: actions/checkout@v5

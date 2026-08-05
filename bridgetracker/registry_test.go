@@ -384,7 +384,7 @@ func TestRegistryUpdateTrackingStepGrowsAllSteps(t *testing.T) {
 	_, err := r.Get(id, true)
 	require.NoError(t, err)
 
-	step := types.BridgeStepPath{Step: types.StepClaimed, Status: types.StepStatusDone}
+	step := BridgeStepPath{Step: types.StepClaimed, Status: types.StepStatusDone}
 	require.NoError(t, r.UpdateTrackingStep(id, 2, step))
 
 	tracking, err := r.Get(id, false)
@@ -399,7 +399,7 @@ func TestRegistryUpdateTrackingStepGrowsAllSteps(t *testing.T) {
 func TestRegistryUpdateTrackingStepUnregisteredReturnsNotFound(t *testing.T) {
 	r := newMemoryRegistry(0)
 
-	err := r.UpdateTrackingStep(TrackingID{NetworkID: 1, TxHash: testHash}, 0, types.BridgeStepPath{})
+	err := r.UpdateTrackingStep(TrackingID{NetworkID: 1, TxHash: testHash}, 0, BridgeStepPath{})
 	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
 }
 
@@ -424,6 +424,100 @@ func TestRegistryGetRefusesNewEntryPastCapacity(t *testing.T) {
 	require.NoError(t, err)
 	_, err = r.Get(TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}, false)
 	require.NoError(t, err)
+}
+
+// TestRegistryGetAndAwaitExistingEntryReturnsImmediately pins that GetAndAwait on an
+// already-registered id behaves exactly like Get(id, true): no trigger signal, no wait, even
+// with a generous timeout
+func TestRegistryGetAndAwaitExistingEntryReturnsImmediately(t *testing.T) {
+	r := newMemoryRegistry(0)
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+	_, err := r.Get(id, true)
+	require.NoError(t, err)
+	<-r.trigger // drain the signal from the Get(id, true) registration above
+
+	start := time.Now()
+	tracking, err := r.GetAndAwait(id, time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
+	require.Less(t, time.Since(start), time.Second, "an already-registered id must never wait")
+
+	select {
+	case unexpected := <-r.trigger:
+		t.Fatalf("unexpected trigger signal for an already-registered id: %+v", unexpected)
+	default:
+	}
+}
+
+// TestRegistryGetAndAwaitZeroTimeoutSkipsWait pins that timeout <= 0 disables the wait on a
+// newly created entry: it still registers (and still signals the trigger) but returns
+// immediately with the bare Registered snapshot
+func TestRegistryGetAndAwaitZeroTimeoutSkipsWait(t *testing.T) {
+	r := newMemoryRegistry(0)
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	tracking, err := r.GetAndAwait(id, 0)
+	require.NoError(t, err)
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
+
+	select {
+	case signaled := <-r.trigger:
+		require.Equal(t, id, signaled)
+	default:
+		t.Fatal("expected a trigger signal for the newly created entry")
+	}
+}
+
+// TestRegistryGetAndAwaitNewEntryWaitsForUpdate pins the core behavior: a newly created entry
+// wakes the engine (via the trigger channel) and GetAndAwait blocks until that resolution
+// publishes an update, well before the timeout elapses
+func TestRegistryGetAndAwaitNewEntryWaitsForUpdate(t *testing.T) {
+	r := newMemoryRegistry(0)
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	published := testBridgeInfo()
+	publishedSteps := testAllSteps(false)
+	go func() {
+		signaled := <-r.trigger
+		require.Equal(t, id, signaled)
+		require.NoError(t, publishStatus(r, id, published, publishedSteps))
+	}()
+
+	tracking, err := r.GetAndAwait(id, time.Second)
+	require.NoError(t, err)
+	require.Equal(t, types.TrackingStatusRunning, tracking.TrackingStatus())
+	require.Same(t, published, tracking.Info())
+}
+
+// TestRegistryGetAndAwaitTimeoutFallsBackToSnapshot pins that, if nothing resolves the bridge
+// in time, GetAndAwait gives up after timeout and returns the entry's current (still
+// Registered) snapshot instead of blocking forever
+func TestRegistryGetAndAwaitTimeoutFallsBackToSnapshot(t *testing.T) {
+	r := newMemoryRegistry(0)
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	start := time.Now()
+	tracking, err := r.GetAndAwait(id, 20*time.Millisecond)
+	require.NoError(t, err)
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
+	require.GreaterOrEqual(t, time.Since(start), 20*time.Millisecond)
+
+	// the subscription used internally to wait must be cleaned up once the timeout fires
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	require.Empty(t, r.bridges[id].subscribers)
+}
+
+// TestRegistryGetAndAwaitRefusesNewEntryPastCapacity mirrors the Get capacity guard for
+// GetAndAwait
+func TestRegistryGetAndAwaitRefusesNewEntryPastCapacity(t *testing.T) {
+	r := newMemoryRegistry(1)
+	_, err := r.Get(TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}, true)
+	require.NoError(t, err)
+
+	tracking, err := r.GetAndAwait(TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x02")}, time.Second)
+	require.ErrorIs(t, err, domain.ErrRegistryFull)
+	require.Nil(t, tracking)
 }
 
 // TestRegistrySubscribeRefusesNewEntryPastCapacity mirrors the Get case for the WebSocket

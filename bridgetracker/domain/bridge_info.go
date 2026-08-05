@@ -1,7 +1,10 @@
 package domain
 
 import (
+	"math/big"
+
 	"github.com/agglayer/aggkit/bridgetracker/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // BridgeInfo holds the immutable facts of a bridge, resolved once from its creation tx
@@ -18,6 +21,16 @@ type BridgeInfo struct {
 	BlockNumber uint64
 	// LogIndex is the position of the BridgeEvent log within BlockNumber
 	LogIndex uint32
+	// OriginNetwork is the network where the bridged asset originates from
+	OriginNetwork uint32
+	// OriginAddress is the address of the asset on the origin network
+	OriginAddress common.Address
+	// DestinationAddress is the address that receives the asset on the destination network
+	DestinationAddress common.Address
+	// Amount is the amount of the asset being bridged
+	Amount *big.Int
+	// BlockTimestamp is the timestamp of the block, on the origin network, where the BridgeEvent was emitted
+	BlockTimestamp uint64
 }
 
 // BridgeType derives the direction of the bridge from its origin and destination networks
