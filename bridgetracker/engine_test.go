@@ -314,6 +314,54 @@ func TestEngineRetentionAndRetry(t *testing.T) {
 	require.Equal(t, types.StepWaitingLERUpdate, currentStep(t, store))
 }
 
+// TestEngineIdleTimeout pins that the tick janitor forgets a bridge nobody has accessed since
+// registration, even if it never reaches a terminal state: RetentionPeriod alone would keep an
+// active-but-abandoned bridge supervised forever, since it is never Failed nor Finished
+func TestEngineIdleTimeout(t *testing.T) {
+	f := &fakeSources{bridge: l2ToL2Bridge()}
+	engine, store, clock := newTestEngine(t, f)
+	engine.cfg.IdleTimeout = 5 * time.Minute
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	mustRegister(t, store, id)
+	engine.tick(t.Context())
+	require.Equal(t, 1, store.GetNumTracker())
+
+	// within the idle window (lastAccess still the registration above), the bridge stays
+	// supervised however many ticks run — it never resolves to a terminal state on its own
+	*clock = clock.Add(engine.cfg.IdleTimeout / 2)
+	engine.tick(t.Context())
+	require.Equal(t, 1, store.GetNumTracker())
+
+	// past the window, with nobody having read it since registration, the tick janitor forgets
+	// it — even though it never reached a terminal state
+	*clock = clock.Add(engine.cfg.IdleTimeout)
+	engine.tick(t.Context())
+	require.Zero(t, store.GetNumTracker())
+}
+
+// TestEngineIdleTimeoutExtendedByAccess pins that reading the bridge resets the idle window, so
+// a client that keeps polling never sees its own bridge idle-evicted out from under it
+func TestEngineIdleTimeoutExtendedByAccess(t *testing.T) {
+	f := &fakeSources{bridge: l2ToL2Bridge()}
+	engine, store, clock := newTestEngine(t, f)
+	engine.cfg.IdleTimeout = 5 * time.Minute
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	mustRegister(t, store, id)
+	engine.tick(t.Context())
+
+	*clock = clock.Add(engine.cfg.IdleTimeout / 2)
+	mustGet(t, store, id) // the client polls: this bumps lastAccess to the current clock
+	engine.tick(t.Context())
+	require.Equal(t, 1, store.GetNumTracker())
+
+	// another half window elapses: still short of a full IdleTimeout since the poll above
+	*clock = clock.Add(engine.cfg.IdleTimeout / 2)
+	engine.tick(t.Context())
+	require.Equal(t, 1, store.GetNumTracker(), "the poll above should have reset the idle window")
+}
+
 // TestEngineNotABridge pins that a tx which exists but is not a bridge transaction (reverted,
 // or emitted no BridgeEvent) is marked as terminally failed immediately, with no retries: the
 // receipt is already final, so waiting cannot change the outcome

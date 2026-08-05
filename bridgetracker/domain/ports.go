@@ -74,6 +74,16 @@ type SupervisedStore interface {
 	// until they are pruned, so clients observe the final TrackingStatus during the whole
 	// retention window
 	PruneTerminal(olderThan time.Time) (int, error)
+
+	// PruneIdle forgets the supervised bridges — terminal or still active — that have neither
+	// been accessed (Get/GetAndAwait) nor had an active WebSocket subscription since before
+	// olderThan, returning how many were forgotten. A bridge with at least one active
+	// subscription is never pruned this way, no matter how stale olderThan is: an open
+	// WebSocket connection is itself ongoing interest in the bridge. This bounds the memory an
+	// abandoned-but-still-active tracker (nobody polling, no subscriber, but not yet resolved)
+	// would otherwise hold onto indefinitely, complementing PruneTerminal's grace period for
+	// bridges that did resolve
+	PruneIdle(olderThan time.Time) (int, error)
 }
 
 // StatusNotifier is the driven port push consumers (the WebSocket handler) use to follow a

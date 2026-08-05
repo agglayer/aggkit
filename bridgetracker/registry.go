@@ -19,6 +19,9 @@ type bridgeEntry struct {
 	// terminalSince is when the snapshot first became terminal (see isTerminal); zero while
 	// it is not. It anchors the retention window PruneTerminal evicts by
 	terminalSince time.Time
+	// lastAccess is when this entry was last read (Get/GetAndAwait) or gained a new
+	// subscriber; it anchors the idle window PruneIdle evicts by
+	lastAccess time.Time
 }
 
 // triggerBufferSize bounds the backlog of newly registered ids awaiting the engine's
@@ -33,7 +36,7 @@ const triggerBufferSize = 256
 type memoryRegistry struct {
 	mu      sync.RWMutex
 	bridges map[TrackingID]*bridgeEntry
-	// now is the clock terminalSince is stamped with, injectable for tests
+	// now is the clock terminalSince and lastAccess are stamped with, injectable for tests
 	now func() time.Time
 	// maxEntries bounds how many distinct bridges can be registered at once (see create): an
 	// unauthenticated caller registering an unbounded number of distinct (network, tx hash)
@@ -104,6 +107,7 @@ func (r *memoryRegistry) Get(id TrackingID, createIfNotExists bool) (*domain.Tra
 			return nil, err
 		}
 	}
+	entry.lastAccess = r.now()
 	return entry.tracking, nil
 }
 
@@ -123,6 +127,7 @@ func (r *memoryRegistry) GetAndAwait(id TrackingID, timeout time.Duration) (*dom
 			return nil, err
 		}
 	}
+	entry.lastAccess = r.now()
 
 	if existed || timeout <= 0 {
 		tracking := entry.tracking
@@ -166,6 +171,7 @@ func (r *memoryRegistry) Subscribe(id TrackingID) (<-chan *domain.TrackingData, 
 			return nil, nil, err
 		}
 	}
+	entry.lastAccess = r.now()
 	ch := make(chan *domain.TrackingData, 1)
 	entry.subscribers[ch] = struct{}{}
 
@@ -270,6 +276,26 @@ func (r *memoryRegistry) PruneTerminal(olderThan time.Time) (int, error) {
 	return pruned, nil
 }
 
+// PruneIdle implements SupervisedStore: it forgets every entry — terminal or still active —
+// that has no active subscriber and was last accessed (Get/GetAndAwait, or gaining a
+// subscriber) before olderThan. An entry with at least one active subscriber is never a
+// candidate, regardless of how stale olderThan is: an open WebSocket connection is itself
+// ongoing interest in the bridge, distinct from — and not extended by — plain polling. A
+// pruned entry is gone as if never requested, same as PruneTerminal
+func (r *memoryRegistry) PruneIdle(olderThan time.Time) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	pruned := 0
+	for id, entry := range r.bridges {
+		if len(entry.subscribers) == 0 && entry.lastAccess.Before(olderThan) {
+			delete(r.bridges, id)
+			pruned++
+		}
+	}
+	return pruned, nil
+}
+
 // GetNetworks implements SupervisedStore: the networks with at least one supervised bridge,
 // optionally filtered to those with at least one bridge in the given TrackingStatus
 func (r *memoryRegistry) GetNetworks(status *types.TrackingStatus) ([]uint32, error) {
@@ -301,8 +327,12 @@ func (r *memoryRegistry) GetNumTracker() int {
 }
 
 // create adds a fresh (Registered, nil BridgeStatus) entry for id, or domain.ErrRegistryFull if
-// the registry is already at maxEntries. It also wakes the tracking engine to resolve id right
-// away (see signalTrigger) instead of leaving it for the next poll tick. Callers must hold r.mu
+// the registry is already at maxEntries. Reaching the cap never evicts an existing entry to make
+// room, whether that entry is idle or actively watched: PruneTerminal and PruneIdle are what keep
+// the registry under the cap during normal operation (see their docs), and a request that would
+// exceed it is simply rejected — this is a deliberate, unconditional safety net, not a policy
+// gap. It also wakes the tracking engine to resolve id right away (see signalTrigger) instead of
+// leaving it for the next poll tick. Callers must hold r.mu
 func (r *memoryRegistry) create(id TrackingID) (*bridgeEntry, error) {
 	if len(r.bridges) >= r.maxEntries {
 		return nil, domain.ErrRegistryFull
@@ -311,6 +341,7 @@ func (r *memoryRegistry) create(id TrackingID) (*bridgeEntry, error) {
 	entry := &bridgeEntry{
 		tracking:    domain.NewTrackingData(id, domain.TrackingBridgeTx{}, nil),
 		subscribers: make(map[chan *domain.TrackingData]struct{}),
+		lastAccess:  r.now(),
 	}
 	r.bridges[id] = entry
 	r.signalTrigger(id)

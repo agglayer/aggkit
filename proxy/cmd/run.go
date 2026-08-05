@@ -183,7 +183,10 @@ func runTracker(
 		trackerCfg.L1BlockFinality, log.WithFields("module", "bridgetracker-gersource"))
 
 	engine, err := bridgetracker.NewEngine(
-		bridgetracker.EngineConfig{RetentionPeriod: trackerCfg.RetentionPeriod.Duration},
+		bridgetracker.EngineConfig{
+			RetentionPeriod: trackerCfg.RetentionPeriod.Duration,
+			IdleTimeout:     trackerCfg.IdleTimeout.Duration,
+		},
 		log.WithFields("module", "bridgetracker-engine"),
 		registry,
 		bridgetracker.EngineSources{

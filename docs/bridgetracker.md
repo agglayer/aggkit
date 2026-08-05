@@ -68,6 +68,7 @@ section:
 ```toml
 [Tracker]
 RetentionPeriod = "10m"
+IdleTimeout = "30m"
 RegisterResolveTimeout = "3s"
 L1BlockFinality = "LatestBlock"
 L2BlockFinality = "LatestBlock"
@@ -90,6 +91,10 @@ UseTLS = false
 
 - `RetentionPeriod`: how long a terminal bridge (finished, or failed to ever resolve) stays
   queryable before the tracker forgets it and a later request re-registers it from scratch.
+- `IdleTimeout`: how long a bridge — terminal or still active — stays supervised once nobody has
+  read it (REST poll) and it has no active WebSocket subscriber. Unlike `RetentionPeriod`, this
+  applies regardless of status: a bridge that never resolves and that nobody is watching would
+  otherwise stay in memory forever.
 - `RegisterResolveTimeout`: how long the first request for a freshly registered tx waits for the
   engine's immediate resolution attempt before answering, so it has a shot at real progress
   instead of the bare `registered` state; a lookup of an already-registered tx never waits.
@@ -97,7 +102,8 @@ UseTLS = false
   before the tracker accepts it, so a later reorg cannot leave it permanently following an
   orphaned deposit (a resolved bridge is never re-checked).
 - `MaxTrackedBridges`: caps the in-memory supervised list; a request beyond it fails instead of
-  registering the bridge.
+  registering the bridge — reaching the cap never evicts an existing entry to make room, so
+  `RetentionPeriod` and `IdleTimeout` are what keep the registry under it during normal operation.
 - `AgglayerClient`: the client used to resolve an L2-originated bridge's covering certificate and
   its status (`PendingInclusion`/`CertificatePending`/`WaitL1SettledGER`). `Cached` is the master
   switch for `ConfigurationCache`'s per-method policy (`false` ignores it entirely). Each method
