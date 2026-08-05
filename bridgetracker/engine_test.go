@@ -17,36 +17,63 @@ import (
 // errSourceDown is the canned transient failure tests inject on a fact source
 var errSourceDown = errors.New("source down")
 
+// settlementTxHash is the canned certificate settlement tx hash tests use to drive
+// StepWaitL1SettledGER
+var settlementTxHash = common.HexToHash("0x09")
+
 // fakeSources implements the five engine fact ports with mutable canned answers, so each
 // test drives the bridge lifecycle by changing the facts between ticks
 type fakeSources struct {
 	bridge    *BridgeInfo
 	bridgeErr error
 
-	originGER    *types.GERData
-	originErr    error
-	originLER    *types.LERUpdateResult
-	originLERErr error
-	injectedGER  *types.GERData
-	injectedErr  error
+	originGER             *types.GERData
+	originErr             error
+	originLER             *types.LERUpdateResult
+	originLERErr          error
+	injectedGER           *types.GERData
+	injectedErr           error
+	injectedGERAtIndex    *types.GERData
+	injectedGERAtIndexErr error
+	l1InfoTreeIndex       *uint32
+	l1InfoTreeIndexErr    error
 
-	cert    *types.CertificateData
+	cert    *types.CertificateInclusionData
 	certErr error
 
 	claim    *types.ClaimResult
 	claimErr error
+
+	settlement    *types.L1SettledGERResult
+	settlementErr error
 }
 
 func (f *fakeSources) FindBridge(_ context.Context, _ TrackingID) (*BridgeInfo, error) {
 	return f.bridge, f.bridgeErr
 }
 
-func (f *fakeSources) CertificateFor(_ context.Context, _ *BridgeInfo) (*types.CertificateData, error) {
+func (f *fakeSources) CertificateFor(_ context.Context, _ *BridgeInfo) (*types.CertificateInclusionData, error) {
 	return f.cert, f.certErr
 }
 
 func (f *fakeSources) OriginGER(_ context.Context, _ *BridgeInfo) (*types.GERData, error) {
 	return f.originGER, f.originErr
+}
+
+// FindFirstL1InfoTreeAfterBlock implements domain.WaitingGERUpdateSource, translating the canned
+// originGER/originErr fixtures (kept shaped like OriginGER, for minimal test churn) into the
+// port's own result type
+func (f *fakeSources) FindFirstL1InfoTreeAfterBlock(
+	_ context.Context, _ uint64, _ uint32,
+) (*domain.ResultFindFirstL1InfoTreeAfterBlock, error) {
+	if f.originErr != nil || f.originGER == nil {
+		return nil, f.originErr
+	}
+	return &domain.ResultFindFirstL1InfoTreeAfterBlock{
+		// LeafCount is the contract's 1-based deposit count: 1 here means the update landed at
+		// leaf index 0, matching the zero-value types.GERUpdateResult.L1InfoTreeIndex tests expect
+		LeafCount: 1, GER: *f.originGER.GER, BlockNumber: *f.originGER.BlockNumber,
+	}, nil
 }
 
 func (f *fakeSources) OriginLER(_ context.Context, _ *BridgeInfo) (*types.LERUpdateResult, error) {
@@ -57,12 +84,33 @@ func (f *fakeSources) InjectedGER(_ context.Context, _ *BridgeInfo) (*types.GERD
 	return f.injectedGER, f.injectedErr
 }
 
+func (f *fakeSources) InjectedGERAtIndex(
+	_ context.Context, _ *BridgeInfo, _ uint32,
+) (*types.GERData, error) {
+	return f.injectedGERAtIndex, f.injectedGERAtIndexErr
+}
+
+func (f *fakeSources) L1InfoTreeIndexForGER(
+	_ context.Context, _ *BridgeInfo, _ common.Hash,
+) (*uint32, error) {
+	return f.l1InfoTreeIndex, f.l1InfoTreeIndexErr
+}
+
 func (f *fakeSources) ClaimFor(_ context.Context, _ *BridgeInfo) (*types.ClaimResult, error) {
 	return f.claim, f.claimErr
 }
 
+func (f *fakeSources) SettlementGERUpdate(
+	_ context.Context, _ *BridgeInfo, _ common.Hash,
+) (*types.L1SettledGERResult, error) {
+	return f.settlement, f.settlementErr
+}
+
 func (f *fakeSources) engineSources() EngineSources {
-	return EngineSources{Bridges: f, Certificates: f, GERs: f, LERs: f, Claims: f}
+	return EngineSources{
+		Bridges: f, Certificates: f, GERs: f, LERs: f, Claims: f, Settlement: f,
+		WaitingGERUpdateSource: f,
+	}
 }
 
 // newTestEngine wires an engine over a fresh in-memory registry, a fake clock and the fakes
@@ -142,6 +190,57 @@ func TestEngineNewValidation(t *testing.T) {
 	sources.Claims = nil
 	_, err = NewEngine(EngineConfig{}, logger, newMemoryRegistry(0), sources)
 	require.ErrorContains(t, err, "ClaimSource")
+
+	sources = f.engineSources()
+	sources.Settlement = nil
+	_, err = NewEngine(EngineConfig{}, logger, newMemoryRegistry(0), sources)
+	require.ErrorContains(t, err, "SettlementSource")
+}
+
+// TestEngineResolveTriggeredResolvesImmediately pins that resolveTriggered (the handler for a
+// signal off the store's trigger channel, see Engine.Start) resolves the given bridge right
+// away, the same way one iteration of tick would, without needing a poll round over the whole
+// active list
+func TestEngineResolveTriggeredResolvesImmediately(t *testing.T) {
+	f := &fakeSources{bridge: l2ToL2Bridge()}
+	engine, store, _ := newTestEngine(t, f)
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+	mustRegister(t, store, id)
+
+	engine.resolveTriggered(t.Context(), id)
+
+	tracking := mustGet(t, store, id)
+	require.NotNil(t, tracking.Info(), "resolveTriggered must resolve the bridge, not just be a no-op")
+}
+
+// TestEngineResolveTriggeredIgnoresUnknownID pins that a signal for an id no longer in the
+// supervised list (e.g. pruned in the meantime) is silently ignored, never panics
+func TestEngineResolveTriggeredIgnoresUnknownID(t *testing.T) {
+	f := &fakeSources{bridge: l2ToL2Bridge()}
+	engine, _, _ := newTestEngine(t, f)
+
+	require.NotPanics(t, func() {
+		engine.resolveTriggered(t.Context(), TrackingID{NetworkID: 1, TxHash: testHash})
+	})
+}
+
+// TestEngineStartResolvesTriggeredBridgeBeforeNextPoll pins the end-to-end wiring Engine.Start
+// sets up over a Triggerable store: PollInterval is set far in the future, so if the trigger
+// channel were not being watched the bridge would still read as bare Registered by the time
+// GetAndAwait's own timeout elapses
+func TestEngineStartResolvesTriggeredBridgeBeforeNextPoll(t *testing.T) {
+	f := &fakeSources{bridge: l2ToL2Bridge()}
+	engine, store, _ := newTestEngine(t, f)
+	engine.cfg.PollInterval = time.Hour
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	engine.Start(ctx)
+
+	tracking, err := store.GetAndAwait(TrackingID{NetworkID: 1, TxHash: testHash}, time.Second)
+	require.NoError(t, err)
+	require.NotNil(t, tracking.Info(),
+		"the engine must resolve a freshly registered bridge via the trigger channel, not wait out PollInterval")
 }
 
 // TestEngineNotFound pins the give-up policy: the tx gets UnresolvedTimeout to show up (it
@@ -213,6 +312,54 @@ func TestEngineRetentionAndRetry(t *testing.T) {
 	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
 	engine.tick(t.Context())
 	require.Equal(t, types.StepWaitingLERUpdate, currentStep(t, store))
+}
+
+// TestEngineIdleTimeout pins that the tick janitor forgets a bridge nobody has accessed since
+// registration, even if it never reaches a terminal state: RetentionPeriod alone would keep an
+// active-but-abandoned bridge supervised forever, since it is never Failed nor Finished
+func TestEngineIdleTimeout(t *testing.T) {
+	f := &fakeSources{bridge: l2ToL2Bridge()}
+	engine, store, clock := newTestEngine(t, f)
+	engine.cfg.IdleTimeout = 5 * time.Minute
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	mustRegister(t, store, id)
+	engine.tick(t.Context())
+	require.Equal(t, 1, store.GetNumTracker())
+
+	// within the idle window (lastAccess still the registration above), the bridge stays
+	// supervised however many ticks run — it never resolves to a terminal state on its own
+	*clock = clock.Add(engine.cfg.IdleTimeout / 2)
+	engine.tick(t.Context())
+	require.Equal(t, 1, store.GetNumTracker())
+
+	// past the window, with nobody having read it since registration, the tick janitor forgets
+	// it — even though it never reached a terminal state
+	*clock = clock.Add(engine.cfg.IdleTimeout)
+	engine.tick(t.Context())
+	require.Zero(t, store.GetNumTracker())
+}
+
+// TestEngineIdleTimeoutExtendedByAccess pins that reading the bridge resets the idle window, so
+// a client that keeps polling never sees its own bridge idle-evicted out from under it
+func TestEngineIdleTimeoutExtendedByAccess(t *testing.T) {
+	f := &fakeSources{bridge: l2ToL2Bridge()}
+	engine, store, clock := newTestEngine(t, f)
+	engine.cfg.IdleTimeout = 5 * time.Minute
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	mustRegister(t, store, id)
+	engine.tick(t.Context())
+
+	*clock = clock.Add(engine.cfg.IdleTimeout / 2)
+	mustGet(t, store, id) // the client polls: this bumps lastAccess to the current clock
+	engine.tick(t.Context())
+	require.Equal(t, 1, store.GetNumTracker())
+
+	// another half window elapses: still short of a full IdleTimeout since the poll above
+	*clock = clock.Add(engine.cfg.IdleTimeout / 2)
+	engine.tick(t.Context())
+	require.Equal(t, 1, store.GetNumTracker(), "the poll above should have reset the idle window")
 }
 
 // TestEngineNotABridge pins that a tx which exists but is not a bridge transaction (reverted,
@@ -356,42 +503,68 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	engine.tick(t.Context())
 	require.Equal(t, types.StepPendingInclusion, currentStep(t, store))
 
-	f.cert = &types.CertificateData{CertificateID: common.HexToHash("0x01"), Status: agglayertypes.Pending}
+	f.cert = &types.CertificateInclusionData{
+		CertificateData: types.CertificateData{CertificateID: common.HexToHash("0x01"), Status: agglayertypes.Pending},
+	}
 	engine.tick(t.Context())
 	require.Equal(t, types.StepCertificatePending, currentStep(t, store))
 
-	f.cert = &types.CertificateData{CertificateID: common.HexToHash("0x01"), Status: agglayertypes.InError}
+	f.cert = &types.CertificateInclusionData{
+		CertificateData: types.CertificateData{CertificateID: common.HexToHash("0x01"), Status: agglayertypes.InError},
+	}
 	engine.tick(t.Context())
 	require.Equal(t, types.StepCertificatePending, currentStep(t, store),
 		"an unsettled certificate status change stays at CertificatePending, it does not move the step")
 	inError := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
-	require.Equal(t, f.cert, inError.AllSteps()[*inError.StepIndex()].Result,
+	require.Equal(t, &f.cert.CertificateData, inError.AllSteps()[*inError.StepIndex()].Result(),
 		"the certificate's current, not yet settled, status is visible while waiting")
 
-	f.cert = &types.CertificateData{CertificateID: common.HexToHash("0x02"), Status: agglayertypes.Settled}
+	f.cert = &types.CertificateInclusionData{
+		CertificateData: types.CertificateData{
+			CertificateID: common.HexToHash("0x02"), Status: agglayertypes.Settled,
+			SettlementTxHash: &settlementTxHash,
+		},
+	}
 	engine.tick(t.Context())
 	tracking := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
 	require.False(t, tracking.Failed())
 	info, allSteps := tracking.Info(), tracking.AllSteps()
-	require.Equal(t, types.StepWaitingGERInjection, allSteps[*tracking.StepIndex()].Step)
+	require.Equal(t, types.StepWaitL1SettledGER, allSteps[*tracking.StepIndex()].Step,
+		"settled but the settlement tx is not confirmed on L1 yet")
 	require.Equal(t, uint64(1000), info.BlockNumber, "the creating BridgeEvent's block/log position is carried through")
 	require.Equal(t, uint32(2), info.LogIndex)
 	// the certificate step reports the settled certificate as its result once it completes
 	for _, sp := range allSteps {
 		if sp.Step == types.StepCertificatePending {
-			require.Equal(t, f.cert, sp.Result)
+			require.Equal(t, &f.cert.CertificateData, sp.Result())
+		}
+	}
+
+	settlementLeafIndex := uint32(7)
+	f.settlement = &types.L1SettledGERResult{
+		TxHash: settlementTxHash, BlockNumber: 2000, GER: common.HexToHash("0x0b"),
+		L1InfoTreeIndex:                   &settlementLeafIndex,
+		HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
+	}
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	allSteps = tracking.AllSteps()
+	require.Equal(t, types.StepWaitingGERInjection, allSteps[*tracking.StepIndex()].Step)
+	for _, sp := range allSteps {
+		if sp.Step == types.StepWaitL1SettledGER {
+			require.Equal(t, f.settlement, sp.Result())
 		}
 	}
 
 	injectedGER := common.HexToHash("0x04")
-	f.injectedGER = &types.GERData{NetworkID: 2, GER: &injectedGER, LERType: types.LERTypeLocal}
+	f.injectedGERAtIndex = &types.GERData{NetworkID: 2, GER: &injectedGER, LERType: types.LERTypeLocal}
 	engine.tick(t.Context())
 	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
 	allSteps = tracking.AllSteps()
 	require.Equal(t, types.StepWaitingClaim, currentStep(t, store))
 	for _, sp := range allSteps {
 		if sp.Step == types.StepWaitingGERInjection {
-			require.Equal(t, &types.InjectedGERResult{GER: injectedGER}, sp.Result)
+			require.Equal(t, &types.InjectedGERResult{GER: injectedGER}, sp.Result())
 		}
 	}
 
@@ -407,7 +580,7 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 
 	for _, sp := range allSteps {
 		if sp.Step == types.StepWaitingClaim {
-			require.Equal(t, f.claim, sp.Result)
+			require.Equal(t, f.claim, sp.Result())
 		}
 	}
 
@@ -427,9 +600,19 @@ func TestEngineIncrementalResolution(t *testing.T) {
 
 	// walk the bridge up to WaitingClaim: every milestone but the claim is done
 	f.originLER = &types.LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0a"), BlockNumber: 10}
-	f.cert = &types.CertificateData{CertificateID: common.HexToHash("0x01"), Status: agglayertypes.Settled}
+	f.cert = &types.CertificateInclusionData{
+		CertificateData: types.CertificateData{
+			CertificateID: common.HexToHash("0x01"), Status: agglayertypes.Settled,
+			SettlementTxHash: &settlementTxHash,
+		},
+	}
+	settlementLeafIndex := uint32(7)
+	f.settlement = &types.L1SettledGERResult{
+		TxHash: settlementTxHash, GER: common.HexToHash("0x0b"), L1InfoTreeIndex: &settlementLeafIndex,
+		HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
+	}
 	injectedGER := common.HexToHash("0x04")
-	f.injectedGER = &types.GERData{NetworkID: 2, GER: &injectedGER, LERType: types.LERTypeLocal}
+	f.injectedGERAtIndex = &types.GERData{NetworkID: 2, GER: &injectedGER, LERType: types.LERTypeLocal}
 	engine.tick(t.Context())
 	require.Equal(t, types.StepWaitingClaim, currentStep(t, store))
 
@@ -441,8 +624,10 @@ func TestEngineIncrementalResolution(t *testing.T) {
 	f.originLER = nil
 	f.certErr = errSourceDown
 	f.cert = nil
-	f.injectedErr = errSourceDown
-	f.injectedGER = nil
+	f.settlementErr = errSourceDown
+	f.settlement = nil
+	f.injectedGERAtIndexErr = errSourceDown
+	f.injectedGERAtIndex = nil
 
 	engine.tick(t.Context())
 	tracking := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
@@ -485,8 +670,9 @@ func TestEngineL1ToL2Path(t *testing.T) {
 		require.NotEqual(t, types.StepWaitingLERUpdate, sp.Step)
 		require.NotEqual(t, types.StepPendingInclusion, sp.Step)
 		require.NotEqual(t, types.StepCertificatePending, sp.Step)
+		require.NotEqual(t, types.StepWaitL1SettledGER, sp.Step)
 		if sp.Step == types.StepWaitingGERUpdate {
-			require.Equal(t, &types.GERUpdateResult{GER: ger, BlockNumber: blockNumber}, sp.Result)
+			require.Equal(t, &types.GERUpdateResult{GER: ger, BlockNumber: blockNumber}, sp.Result())
 		}
 	}
 }

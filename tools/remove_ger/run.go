@@ -128,7 +128,7 @@ func Run(c *cli.Context) error {
 	recoveryCtx, recoveryCancel := context.WithTimeout(c.Context, recoveryTimeout)
 	defer recoveryCancel()
 
-	if err := ExecuteRecovery(recoveryCtx, cfg, env, diagnosis); err != nil {
+	if _, err := ExecuteRecovery(recoveryCtx, cfg, env, diagnosis); err != nil {
 		return fmt.Errorf("recovery failed: %w (bridge may remain in emergency state)", err)
 	}
 

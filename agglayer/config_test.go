@@ -26,8 +26,9 @@ var (
 		},
 		Cached: true,
 		ConfigurationCache: &CacheConfig{
-			TTL:      types.Duration{Duration: time.Second},
-			Capacity: 100,
+			TTL:                  types.Duration{Duration: time.Second},
+			Capacity:             100,
+			GetCertificateHeader: MethodPolicyCached,
 		},
 	}
 	testValidConfigWithRateLimits = ClientConfig{
@@ -88,6 +89,45 @@ func TestClientConfigValidate(t *testing.T) {
 			config:      &testValidConfigWithRateLimits,
 			expectedErr: "",
 		},
+		{
+			name: "invalid config - unknown method policy",
+			config: &ClientConfig{
+				GRPC:   testValidConfigExampleNoCache.GRPC,
+				Cached: true,
+				ConfigurationCache: &CacheConfig{
+					TTL:                  types.Duration{Duration: time.Second},
+					Capacity:             100,
+					GetCertificateHeader: MethodPolicy("bogus"),
+				},
+			},
+			expectedErr: "invalid method policy",
+		},
+		{
+			name: "invalid config - SendCertificate cannot be cached",
+			config: &ClientConfig{
+				GRPC:   testValidConfigExampleNoCache.GRPC,
+				Cached: true,
+				ConfigurationCache: &CacheConfig{
+					TTL:             types.Duration{Duration: time.Second},
+					Capacity:        100,
+					SendCertificate: MethodPolicyCached,
+				},
+			},
+			expectedErr: "SendCertificate cannot use",
+		},
+		{
+			name: "valid config - SendCertificate forbidden, unlisted methods default to passthrough",
+			config: &ClientConfig{
+				GRPC:   testValidConfigExampleNoCache.GRPC,
+				Cached: true,
+				ConfigurationCache: &CacheConfig{
+					TTL:             types.Duration{Duration: time.Second},
+					Capacity:        100,
+					SendCertificate: MethodPolicyForbidden,
+				},
+			},
+			expectedErr: "",
+		},
 	}
 
 	for _, tt := range tests {
@@ -101,4 +141,17 @@ func TestClientConfigValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestMethodPolicyEffectiveDefaultsUnsetToPassthrough pins that the zero value MethodPolicy ("")
+// is valid and resolves to MethodPolicyPassthrough -- a method simply left out of configuration
+func TestMethodPolicyEffectiveDefaultsUnsetToPassthrough(t *testing.T) {
+	var unset MethodPolicy
+	require.NoError(t, unset.Validate())
+	require.Equal(t, MethodPolicyPassthrough, unset.effective())
+
+	require.NoError(t, MethodPolicyCached.Validate())
+	require.NoError(t, MethodPolicyPassthrough.Validate())
+	require.NoError(t, MethodPolicyForbidden.Validate())
+	require.ErrorContains(t, MethodPolicy("bogus").Validate(), "invalid method policy")
 }

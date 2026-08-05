@@ -1,0 +1,43 @@
+[Log]
+Environment = "development"
+Level = "info"
+Outputs = ["stderr"]
+
+[L1RPC]
+URL = "http://geth:8545"
+Mode = "basic"
+RetryMode = "backoff"
+MaxRetries = 5
+InitialBackoff = "2s"
+MaxBackoff = "10s"
+BackoffMultiplier = 2.0
+
+[BridgeServiceFinder]
+RollupManagerAddr = "0x6c6c009cC348976dB4A908c92B24433d4F6edA43"
+BlockFinality = "LatestBlock"
+PollInterval = "10s"
+BlockChunkSize = 10000
+# The aggkit bridge REST service serves its health check at the root path
+HealthCheckPath = "/"
+HealthCheckTimeout = "5s"
+RequireAllHealthyOnStart = false
+
+[Tracker]
+L1GlobalExitRootAddress = "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674"
+
+# Static overrides: the proxy runs as its own container on the same docker-compose network as
+# the other services, so it reaches them via their internal hostnames/ports (see summary.json's
+# "internal" URLs) — not the host-published localhost ports, which only work from outside the
+# compose network.
+[BridgeServiceFinder.BridgeURLs]
+0 = "http://aggkit-001:5577"
+1 = "http://aggkit-001:5577"
+2 = "http://aggkit-002:5577"
+
+[BridgeServiceFinder.RPCURLs]
+0 = "http://geth:8545"
+1 = "http://op-reth-001:8545"
+2 = "http://op-reth-002:8545"
+
+[Tracker.AgglayerClient.GRPC]
+URL = "http://agglayer:4443"

@@ -43,10 +43,12 @@ Environment variables (override defaults):
   L1_SERVICE                        Kurtosis L1 execution service (default: el-1-geth-lighthouse)
   L2_SERVICE_PREFIX                 Kurtosis L2 execution service prefix (default: op-el-1-op-geth-op-node)
   AGGLAYER_SERVICE                  Kurtosis agglayer service name (default: agglayer)
+  AGGKIT_BRIDGE_SERVICE_PREFIX      Aggkit bridge service prefix; service name is
+                                     <prefix>-<suffix>-bridge (default: aggkit)
 
 Exported variables:
   KURTOSIS_ENCLAVE   NETWORK_INDEX   L1_RPC_URL   L2_RPC_URL   BRIDGE_ADDR
-  AGGLAYER_ADMIN_URL   AGGLAYER_GRPC_URL
+  AGGLAYER_ADMIN_URL   AGGLAYER_GRPC_URL   BRIDGE_SERVICE_URL
 
 Examples:
   source <($0)                # Network 1, enclave "aggkit"
@@ -62,6 +64,7 @@ KURTOSIS_ARTIFACT_AGGKIT_CONFIG="${KURTOSIS_ARTIFACT_AGGKIT_CONFIG:-aggkit-confi
 L1_SERVICE="${L1_SERVICE:-el-1-geth-lighthouse}"
 L2_SERVICE_PREFIX="${L2_SERVICE_PREFIX:-op-el-1-op-geth-op-node}"
 AGGLAYER_SERVICE="${AGGLAYER_SERVICE:-agglayer}"
+AGGKIT_BRIDGE_SERVICE_PREFIX="${AGGKIT_BRIDGE_SERVICE_PREFIX:-aggkit}"
 NETWORK_INDEX=1
 
 # Parse flags and positional args
@@ -138,6 +141,16 @@ get_agglayer_grpc_url() {
     echo "http://localhost:${port}"
 }
 
+# Aggkit bridge REST endpoint of this L2 network (service <prefix>-<suffix>-bridge, port "rest").
+get_bridge_service_url() {
+    local raw
+    local service="${AGGKIT_BRIDGE_SERVICE_PREFIX}-${NETWORK_SUFFIX}-bridge"
+    if ! raw=$(kurtosis port print "$KURTOSIS_ENCLAVE" "$service" rest 2>/dev/null); then
+        return 1
+    fi
+    port_to_localhost_url "$raw"
+}
+
 get_bridge_address() {
     local tmp_dir
     tmp_dir=$(mktemp -d)
@@ -190,6 +203,14 @@ log_info "Getting bridge address from aggkit config artifact..."
 BRIDGE_ADDR=$(get_bridge_address)
 log_info "Bridge address: $BRIDGE_ADDR"
 
+log_info "Getting bridge service URL..."
+BRIDGE_SERVICE_URL=""
+if BRIDGE_SERVICE_URL=$(get_bridge_service_url); then
+    log_info "Bridge service URL: $BRIDGE_SERVICE_URL"
+else
+    log_warn "Service '${AGGKIT_BRIDGE_SERVICE_PREFIX}-${NETWORK_SUFFIX}-bridge' (rest) not found — BRIDGE_SERVICE_URL will be empty"
+fi
+
 log_info "Getting agglayer URLs..."
 AGGLAYER_ADMIN_URL=""
 if AGGLAYER_ADMIN_URL=$(get_agglayer_admin_url); then
@@ -214,6 +235,7 @@ export NETWORK_INDEX="$NETWORK_INDEX"
 export L1_RPC_URL="$L1_RPC_URL"
 export L2_RPC_URL="$L2_RPC_URL"
 export BRIDGE_ADDR="$BRIDGE_ADDR"
+export BRIDGE_SERVICE_URL="$BRIDGE_SERVICE_URL"
 export AGGLAYER_ADMIN_URL="$AGGLAYER_ADMIN_URL"
 export AGGLAYER_GRPC_URL="$AGGLAYER_GRPC_URL"
 EOF

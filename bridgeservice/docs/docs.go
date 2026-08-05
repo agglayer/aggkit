@@ -868,7 +868,7 @@ const docTemplate = `{
         },
         "/sync-status": {
             "get": {
-                "description": "Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.\nShows if bridge syncers are active and whether they're keeping up with on-chain events.",
+                "description": "Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.\nShows if bridge syncers are active and whether they're keeping up with on-chain events.\nAlso reports the l2gersync (injected-GER) sync status when available.",
                 "produces": [
                     "application/json"
                 ],
@@ -1437,6 +1437,20 @@ const docTemplate = `{
                 }
             }
         },
+        "types.L2GERSyncInfo": {
+            "description": "l2gersync (injected-GER) synchronization status",
+            "type": "object",
+            "properties": {
+                "is_active": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "last_processed_block": {
+                    "type": "integer",
+                    "example": 12345678
+                }
+            }
+        },
         "types.LegacyTokenMigrationResponse": {
             "description": "Details of a legacy token migration event",
             "type": "object",
@@ -1630,6 +1644,9 @@ const docTemplate = `{
             "properties": {
                 "l1_info": {
                     "$ref": "#/definitions/types.NetworkSyncInfo"
+                },
+                "l2_ger_info": {
+                    "$ref": "#/definitions/types.L2GERSyncInfo"
                 },
                 "l2_info": {
                     "$ref": "#/definitions/types.NetworkSyncInfo"

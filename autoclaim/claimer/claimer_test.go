@@ -506,6 +506,122 @@ func TestProofWithoutL1InfoTreeLeafLeavesRequestQueuedWithoutSending(t *testing.
 	require.Equal(t, 0, sender.submitCalls)
 }
 
+// TestProofReadyForRequestL2OriginUsesVerifyBlockNum is a direct, table-driven test of the readiness
+// gate at the heart of the L2->L2/L2->Lx autoclaim "stuck forever" bug: proofReadyForRequest compared
+// proof.L1InfoTreeLeaf.BlockNumber (an L1 block number) against request.Bridge.BlockNum, but for an
+// L2-origin (rollup source) request, Bridge.BlockNum is the source rollup's own L2 block number, not
+// an L1 block number. On a devnet where the source L2's height exceeds L1's height, that comparison
+// can never be satisfied and the request is stuck "queued"/"detected" forever even once the proof is
+// otherwise fully ready. The fix must compare against request.VerifyBlockNum (the L1 block at which
+// the source network's LER was verified) for L2-origin requests instead.
+func TestProofReadyForRequestL2OriginUsesVerifyBlockNum(t *testing.T) {
+	validExitRoots := autoclaimtypes.ClaimProof{
+		MainnetExitRoot: common.HexToHash("0x100"),
+		GlobalExitRoot:  common.HexToHash("0x102"),
+	}
+
+	testCases := []struct {
+		name           string
+		proof          autoclaimtypes.ClaimProof
+		bridge         autoclaimtypes.BridgeExit
+		verifyBlockNum uint64
+		wantReady      bool
+	}{
+		{
+			// Regression case: this is the exact shape of the bug observed on the devnet. The source
+			// L2's block height (Bridge.BlockNum) vastly exceeds any L1 block number, but the L1
+			// quantity that actually matters (VerifyBlockNum) is already covered by the leaf.
+			name:           "l2 origin ready when leaf covers VerifyBlockNum despite L2 block number exceeding leaf L1 block",
+			proof:          withLeaf(validExitRoots, 100),
+			bridge:         autoclaimtypes.BridgeExit{SourceNetwork: 3, BlockNum: 5_000_000},
+			verifyBlockNum: 50,
+			wantReady:      true,
+		},
+		{
+			name:           "l2 origin not ready when leaf is before VerifyBlockNum",
+			proof:          withLeaf(validExitRoots, 40),
+			bridge:         autoclaimtypes.BridgeExit{SourceNetwork: 3, BlockNum: 5_000_000},
+			verifyBlockNum: 50,
+			wantReady:      false,
+		},
+		{
+			name:           "l2 origin ready when VerifyBlockNum is zero (no L1 lower bound recorded)",
+			proof:          withLeaf(validExitRoots, 40),
+			bridge:         autoclaimtypes.BridgeExit{SourceNetwork: 3, BlockNum: 5_000_000},
+			verifyBlockNum: 0,
+			wantReady:      true,
+		},
+		{
+			// L1-origin behavior must be unchanged: Bridge.BlockNum IS an L1 block number there.
+			name:           "l1 origin not ready when leaf precedes bridge block",
+			proof:          withLeaf(validExitRoots, 100),
+			bridge:         autoclaimtypes.BridgeExit{SourceNetwork: autoclaimtypes.L1OriginNetwork, BlockNum: 101},
+			verifyBlockNum: 0,
+			wantReady:      false,
+		},
+		{
+			name:           "l1 origin ready when leaf at or after bridge block",
+			proof:          withLeaf(validExitRoots, 101),
+			bridge:         autoclaimtypes.BridgeExit{SourceNetwork: autoclaimtypes.L1OriginNetwork, BlockNum: 101},
+			verifyBlockNum: 0,
+			wantReady:      true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			request := autoclaimtypes.AutoClaimRequest{
+				Bridge:         tc.bridge,
+				VerifyBlockNum: tc.verifyBlockNum,
+			}
+			require.Equal(t, tc.wantReady, proofReadyForRequest(tc.proof, request))
+		})
+	}
+}
+
+func withLeaf(proof autoclaimtypes.ClaimProof, blockNumber uint64) autoclaimtypes.ClaimProof {
+	proof.L1InfoTreeLeaf = &l1infotreesync.L1InfoTreeLeaf{BlockNumber: blockNumber}
+	return proof
+}
+
+// TestL2OriginProofReadyDespiteL2BlockNumberExceedingL1Leaf exercises the fix end-to-end through the
+// claimer's send pipeline (as opposed to calling proofReadyForRequest directly): an L2-origin request
+// whose source rollup's L2 block number is far larger than any L1 block number must still be claimed
+// once its proof's L1 info tree leaf covers the request's VerifyBlockNum (the true L1-side bound).
+func TestL2OriginProofReadyDespiteL2BlockNumberExceedingL1Leaf(t *testing.T) {
+	ctx := context.Background()
+	storage := newMemoryStorage()
+	sender := &fakeSender{storage: storage, finalStatus: autoclaimtypes.RequestStatusConfirmed}
+	proof := autoclaimtypes.ClaimProof{
+		L1InfoTreeIndex: 1,
+		L1InfoTreeLeaf:  &l1infotreesync.L1InfoTreeLeaf{BlockNumber: 100},
+		MainnetExitRoot: common.HexToHash("0x100"),
+		GlobalExitRoot:  common.HexToHash("0x102"),
+		PreparedAt:      testNow,
+	}
+	claimer := newTestClaimer(t, storage, approvedPolicy(), fakeProofPreparer{proof: &proof}, sender)
+
+	bridge := makeBridge(60, 10)
+	bridge.SourceNetwork = 3    // L2-origin (rollup) bridge
+	bridge.BlockNum = 5_000_000 // source rollup's own L2 block number, deliberately far above any L1 block
+	request := autoclaimtypes.NewRequestFromBridgeExit(bridge, testNow)
+	request.MaxRetries = 2
+	request.VerifyBlockNum = 50 // L1 block the source LER was verified at; comfortably below the leaf's block
+
+	_, inserted, err := storage.EnqueueRequest(ctx, request)
+	require.NoError(t, err)
+	require.True(t, inserted)
+
+	require.NoError(t, claimer.Advance(ctx, request.Key))
+
+	stored, err := storage.GetRequest(ctx, request.Key)
+	require.NoError(t, err)
+	require.Equal(t, autoclaimtypes.RequestStatusConfirmed, stored.Status,
+		"an L2-origin request whose L1 leaf covers VerifyBlockNum must be claimable even though the "+
+			"source rollup's L2 block number exceeds the leaf's L1 block number")
+	require.Equal(t, 1, sender.submitCalls)
+}
+
 func TestRetryExhaustionFailsRequest(t *testing.T) {
 	ctx := context.Background()
 	storage := newMemoryStorage()

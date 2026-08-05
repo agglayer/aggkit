@@ -27,13 +27,17 @@ func TestLoadFilesDefaults(t *testing.T) {
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.BridgeServiceFinder.BlockFinality)
 	require.Equal(t, 30*time.Second, cfg.BridgeServiceFinder.PollInterval.Duration)
 	require.Equal(t, uint64(10000), cfg.BridgeServiceFinder.BlockChunkSize)
-	require.Equal(t, "/health", cfg.BridgeServiceFinder.HealthCheckPath)
+	require.Equal(t, "/", cfg.BridgeServiceFinder.HealthCheckPath)
 	require.Equal(t, 5*time.Second, cfg.BridgeServiceFinder.HealthCheckTimeout.Duration)
 	require.False(t, cfg.BridgeServiceFinder.RequireAllHealthyOnStart)
 
 	require.Equal(t, 10*time.Minute, cfg.Tracker.RetentionPeriod.Duration)
-	require.Equal(t, aggkittypes.FinalizedBlock, cfg.Tracker.BlockFinality)
+	require.Equal(t, aggkittypes.LatestBlock, cfg.Tracker.L1BlockFinality)
+	require.Equal(t, aggkittypes.LatestBlock, cfg.Tracker.L2BlockFinality)
 	require.Equal(t, 100000, cfg.Tracker.MaxTrackedBridges)
+	// URL is left unset by default: it must be supplied per-environment (see proxy/scripts)
+	require.Empty(t, cfg.Tracker.AgglayerClient.GRPC.URL)
+	require.True(t, cfg.Tracker.AgglayerClient.Cached)
 }
 
 func TestLoadFilesOverridesDefaults(t *testing.T) {
@@ -68,7 +72,7 @@ RetentionPeriod = "1h"
 	// not overridden fields keep the default value
 	require.Equal(t, []string{"stderr"}, cfg.Log.Outputs)
 	require.Equal(t, ethermanconfig.RPCModeBasic, cfg.L1RPC.Mode)
-	require.Equal(t, "/health", cfg.BridgeServiceFinder.HealthCheckPath)
+	require.Equal(t, "/", cfg.BridgeServiceFinder.HealthCheckPath)
 }
 
 func TestValidateComponents(t *testing.T) {

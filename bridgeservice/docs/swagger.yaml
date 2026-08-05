@@ -325,6 +325,16 @@ definitions:
         example: 1684500000
         type: integer
     type: object
+  types.L2GERSyncInfo:
+    description: l2gersync (injected-GER) synchronization status
+    properties:
+      is_active:
+        example: true
+        type: boolean
+      last_processed_block:
+        example: 12345678
+        type: integer
+    type: object
   types.LegacyTokenMigrationResponse:
     description: Details of a legacy token migration event
     properties:
@@ -473,6 +483,8 @@ definitions:
     properties:
       l1_info:
         $ref: '#/definitions/types.NetworkSyncInfo'
+      l2_ger_info:
+        $ref: '#/definitions/types.L2GERSyncInfo'
       l2_info:
         $ref: '#/definitions/types.NetworkSyncInfo'
     type: object
@@ -1177,6 +1189,7 @@ paths:
       description: |-
         Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.
         Shows if bridge syncers are active and whether they're keeping up with on-chain events.
+        Also reports the l2gersync (injected-GER) sync status when available.
       produces:
       - application/json
       responses:

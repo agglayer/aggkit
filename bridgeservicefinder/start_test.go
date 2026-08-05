@@ -453,7 +453,7 @@ func TestStart_AllHealthy_RequireAllHealthyOnStartTrue(t *testing.T) {
 
 	cfg := baseTestConfig(mgrAddr)
 	cfg.RequireAllHealthyOnStart = true
-	cfg.HealthCheckPath = "" // default path is "/health"; the handler ignores the exact path anyway
+	cfg.HealthCheckPath = "" // default path is "/"; the handler ignores the exact path anyway
 
 	f, err := New(cfg, Options{
 		EthClient: newTestEthClient(backend),
