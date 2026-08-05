@@ -260,8 +260,7 @@ func TestBuildAppender(t *testing.T) {
 	ethClient := mocks.NewEthClienter(t)
 	// txReceipt To is not bridgeAddr, so must call debugTrace
 	mockClientCallGetTransactionByHash(t, ethClient,
-		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
-		testAddress, "0x0000000000000000000000000000000000000000000")
+		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
 
 	ethClient.EXPECT().
 		Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).

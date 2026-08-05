@@ -15,6 +15,37 @@ import (
 
 var testEnv *envs.Env
 
+// containerLogServices lists the docker compose services whose logs are dumped to
+// test/e2e/<service>.log when a test run fails, so the CI artifact-upload step (which globs
+// test/e2e/*.log) actually captures something to debug the failure with.
+var containerLogServices = []string{
+	"geth", "beacon", "validator", "op-geth-001", "op-node-001", "aggkit-001", "agglayer",
+}
+
+// dumpContainerLogs writes "docker compose logs" output for each service in containerLogServices to
+// test/e2e/<service>.log, relative to the test binary's working directory (test/e2e when run via
+// `go test ./test/e2e/...`, matching the CI artifact glob). Services absent from the loaded env
+// (e.g. an env without op-node-001) simply error and are skipped; failures here are logged, not
+// fatal, since this only runs to aid debugging an already-failed run.
+func dumpContainerLogs(env *envs.Env) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	for _, service := range containerLogServices {
+		out, err := env.DockerComposeLogs(ctx, "--no-log-prefix", service)
+		if err != nil {
+			log.Infof("[TEARDOWN] failed to fetch logs for service %q: %v", service, err)
+			continue
+		}
+		logPath := service + ".log"
+		if err := os.WriteFile(logPath, out, 0o644); err != nil {
+			log.Infof("[TEARDOWN] failed to write %s: %v", logPath, err)
+			continue
+		}
+		log.Infof("[TEARDOWN] wrote container logs: %s", logPath)
+	}
+}
+
 func TestMain(m *testing.M) {
 	short := false
 	for _, arg := range os.Args {
@@ -28,9 +59,16 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 
-	env, err := envs.LoadEnv(ctx, envs.EnvOpPP)
+	// Select which env to load via AGGKIT_E2E_ENV (used by CI to run the 2-chain matrix);
+	// defaults to the single-chain op-pp env.
+	envName := envs.ENVName(os.Getenv("AGGKIT_E2E_ENV"))
+	if envName == "" {
+		envName = envs.EnvOpPP
+	}
+
+	env, err := envs.LoadEnv(ctx, envName)
 	if err != nil {
 		cancel()
 		log.Fatalf("failed to load env: %v", err)
@@ -118,6 +156,11 @@ func TestMain(m *testing.M) {
 			Note that test env will not be cleaned for further debugging`, bridgeL1L2Err, bridgeL2L1Err)
 		}
 		log.Infof("[POSTTEST] Bridge flows post-test check succeeded.")
+	}
+
+	if code != 0 {
+		log.Infof("[TEARDOWN] test run failed (code=%d): dumping container logs for diagnostics...", code)
+		dumpContainerLogs(env)
 	}
 
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)

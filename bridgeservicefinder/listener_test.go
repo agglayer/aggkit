@@ -69,7 +69,7 @@ func TestLiveDiscovery_NewRollupResolvedImmediately(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		got, err := f.GetURL(newNetworkID)
-		return err == nil && got == metadataURL
+		return err == nil && got.BridgeURL == metadataURL
 	}, testEventuallyWait, testEventuallyTick, "expected newly attached rollup to be discovered live")
 
 	entry, ok := f.cache.get(newNetworkID)
@@ -119,12 +119,14 @@ func TestLiveDiscovery_NewRollupNoSourceThenHealedByEvent(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		got, err := f.GetURL(newNetworkID)
-		return err == nil && got != ""
+		return err == nil && got.BridgeURL != ""
 	}, testEventuallyWait, testEventuallyTick, "expected discovered rollup to be healed by a later URL event")
 
 	got, err := f.GetURL(newNetworkID)
 	require.NoError(t, err)
-	require.Contains(t, got, fmt.Sprintf(":%d", DefaultBridgeServicePort))
+	require.Contains(t, got.BridgeURL, fmt.Sprintf(":%d", DefaultBridgeServicePort))
+	require.Equal(t, "https://seq.example.com:8545", got.JSONRPCURL,
+		"the healing SetTrustedSequencerURL event must also install the json-rpc endpoint")
 }
 
 // TestLiveUpdate_SequencerThenMetadataUpgrades covers matrix item #4a: a sequencer-sourced network
@@ -147,7 +149,7 @@ func TestLiveUpdate_SequencerThenMetadataUpgrades(t *testing.T) {
 
 	initial, err := f.GetURL(networkID)
 	require.NoError(t, err)
-	require.Contains(t, initial, fmt.Sprintf(":%d", DefaultBridgeServicePort))
+	require.Contains(t, initial.BridgeURL, fmt.Sprintf(":%d", DefaultBridgeServicePort))
 
 	sleepPastSeedTick(testPollInterval)
 
@@ -158,7 +160,7 @@ func TestLiveUpdate_SequencerThenMetadataUpgrades(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		got, err := f.GetURL(networkID)
-		return err == nil && got == metadataURL
+		return err == nil && got.BridgeURL == metadataURL
 	}, testEventuallyWait, testEventuallyTick, "expected cache to upgrade to metadata-sourced URL")
 
 	entry, ok := f.cache.get(networkID)
@@ -187,21 +189,81 @@ func TestLiveUpdate_MetadataThenSequencerRejected(t *testing.T) {
 
 	got, err := f.GetURL(networkID)
 	require.NoError(t, err)
-	require.Equal(t, metadataURL, got)
+	require.Equal(t, metadataURL, got.BridgeURL)
 
 	sleepPastSeedTick(testPollInterval)
 
-	_, err = rollups[0].contract.SetTrustedSequencerURL(auth, "https://seq.example.com:8545")
+	const newSeqURL = "https://seq.example.com:8545"
+	_, err = rollups[0].contract.SetTrustedSequencerURL(auth, newSeqURL)
 	require.NoError(t, err)
 	backend.Commit()
 
-	// Generous wait past when the event should have been scanned; the URL must remain unchanged.
-	sleepPastSeedTick(testPollInterval)
-	sleepPastSeedTick(testPollInterval)
+	// The json-rpc endpoint IS refreshed by the (bridge-wise rejected) sequencer event; waiting on it
+	// also guarantees the event was scanned before the bridge-URL immutability assertion below.
+	require.Eventually(t, func() bool {
+		got, err := f.GetURL(networkID)
+		return err == nil && got.JSONRPCURL == newSeqURL
+	}, testEventuallyWait, testEventuallyTick,
+		"SetTrustedSequencerURL must refresh the json-rpc endpoint of a metadata-sourced entry")
 
 	got, err = f.GetURL(networkID)
 	require.NoError(t, err)
-	require.Equal(t, metadataURL, got, "lower-priority sequencer event must not downgrade a metadata-sourced entry")
+	require.Equal(t, metadataURL, got.BridgeURL,
+		"lower-priority sequencer event must not downgrade a metadata-sourced entry")
+}
+
+// TestLiveUpdate_MetadataClearedFallsBackToSequencer covers the fix for the finder getting stuck
+// once an operator clears the on-chain BRIDGE_SERVICE_URL metadata: since metadata outranks a
+// sequencer-derived URL, the empty AggchainMetadataSet event alone carries no usable candidate, but
+// it must not be silently dropped either — the entry has to be re-resolved from scratch so a
+// still-configured trustedSequencerURL can now take over.
+func TestLiveUpdate_MetadataClearedFallsBackToSequencer(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, rollups := deployRollupManagerWithRollups(t, backend, auth, 1)
+	const networkID = uint32(1)
+
+	const seqURL = "https://seq.example.com:8545"
+	_, err := rollups[0].contract.SetTrustedSequencerURL(auth, seqURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	const metadataURL = "https://metadata.example.com:5577"
+	_, err = rollups[0].contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, metadataURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	cfg := baseTestConfig(mgrAddr)
+
+	f := startFinder(t, cfg, Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: newMapHealthChecker(nil),
+	})
+
+	got, err := f.GetURL(networkID)
+	require.NoError(t, err)
+	require.Equal(t, metadataURL, got.BridgeURL)
+
+	sleepPastSeedTick(testPollInterval)
+
+	// Clear the metadata: emit AggchainMetadataSet again with an empty value.
+	_, err = rollups[0].contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, "")
+	require.NoError(t, err)
+	backend.Commit()
+
+	require.Eventually(t, func() bool {
+		got, err := f.GetURL(networkID)
+		return err == nil && got.BridgeURL != metadataURL
+	}, testEventuallyWait, testEventuallyTick,
+		"expected the entry to fall back to the sequencer-derived url once metadata was cleared")
+
+	got, err = f.GetURL(networkID)
+	require.NoError(t, err)
+	require.Contains(t, got.BridgeURL, "seq.example.com")
+	require.Contains(t, got.BridgeURL, fmt.Sprintf(":%d", DefaultBridgeServicePort))
+
+	entry, ok := f.cache.get(networkID)
+	require.True(t, ok)
+	require.Equal(t, SourceSequencerURL, entry.source)
 }
 
 // TestLiveUpdate_FirstInstallViaEventOnNoSourceNetwork covers matrix item #7: a network that had
@@ -231,12 +293,13 @@ func TestLiveUpdate_FirstInstallViaEventOnNoSourceNetwork(t *testing.T) {
 
 		require.Eventually(t, func() bool {
 			got, err := f.GetURL(networkID)
-			return err == nil && got != ""
+			return err == nil && got.BridgeURL != ""
 		}, testEventuallyWait, testEventuallyTick, "expected first-ever install via SetTrustedSequencerURL")
 
 		got, err := f.GetURL(networkID)
 		require.NoError(t, err)
-		require.Contains(t, got, fmt.Sprintf(":%d", DefaultBridgeServicePort))
+		require.Contains(t, got.BridgeURL, fmt.Sprintf(":%d", DefaultBridgeServicePort))
+		require.Equal(t, "https://seq.example.com:8545", got.JSONRPCURL)
 	})
 
 	t.Run("via AggchainMetadataSet", func(t *testing.T) {
@@ -263,9 +326,45 @@ func TestLiveUpdate_FirstInstallViaEventOnNoSourceNetwork(t *testing.T) {
 
 		require.Eventually(t, func() bool {
 			got, err := f.GetURL(networkID)
-			return err == nil && got == metadataURL
+			return err == nil && got.BridgeURL == metadataURL
 		}, testEventuallyWait, testEventuallyTick, "expected first-ever install via AggchainMetadataSet")
 	})
+}
+
+// TestLiveUpdate_EventEmittedRightAfterStartIsNotMissed guards against the bug where the listener
+// seeded lastScannedBlock to its own first-tick upper bound without scanning anything, permanently
+// skipping any event emitted between Start's initial on-chain reads and that first tick (up to a
+// whole pollInterval later). Seeding now happens inside Start (see newListener), anchored to the
+// upper bound resolved right then, so an event committed immediately after Start returns — well
+// before sleepPastSeedTick's window, unlike every other live-update test in this file — must still
+// be picked up by the very first tick.
+func TestLiveUpdate_EventEmittedRightAfterStartIsNotMissed(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, rollups := deployRollupManagerWithRollups(t, backend, auth, 1)
+	const networkID = uint32(1)
+
+	cfg := baseTestConfig(mgrAddr)
+
+	f := startFinder(t, cfg, Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: newMapHealthChecker(nil),
+	})
+
+	_, err := f.GetURL(networkID)
+	require.ErrorIs(t, err, ErrURLNotFound)
+
+	// Deliberately no sleepPastSeedTick here: the event is committed right away, before the first
+	// tick would naturally fire pollInterval later.
+	const seqURL = "https://seq.example.com:8545"
+	_, err = rollups[0].contract.SetTrustedSequencerURL(auth, seqURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	require.Eventually(t, func() bool {
+		got, err := f.GetURL(networkID)
+		return err == nil && got.BridgeURL != ""
+	}, testEventuallyWait, testEventuallyTick,
+		"event emitted right after Start must be picked up by the first tick, not silently skipped")
 }
 
 // TestLiveUpdate_SameURLSameSourceIsNoop covers matrix item #9: emitting the identical
@@ -333,7 +432,7 @@ func TestLiveUpdate_CrossTierRejectionIsUnconditional(t *testing.T) {
 
 	got, err := f.GetURL(networkID)
 	require.NoError(t, err)
-	require.Equal(t, deadMetadataURL, got)
+	require.Equal(t, deadMetadataURL, got.BridgeURL)
 
 	entry, ok := f.cache.get(networkID)
 	require.True(t, ok)
@@ -351,6 +450,6 @@ func TestLiveUpdate_CrossTierRejectionIsUnconditional(t *testing.T) {
 
 	got, err = f.GetURL(networkID)
 	require.NoError(t, err)
-	require.Equal(t, deadMetadataURL, got,
+	require.Equal(t, deadMetadataURL, got.BridgeURL,
 		"lower-priority sequencer event must be rejected outright even though it is healthy and current is unhealthy")
 }

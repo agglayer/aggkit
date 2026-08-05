@@ -34,7 +34,6 @@ type L1InfoTreeQuerier interface {
 	GetLastL1InfoTreeRoot(ctx context.Context) (treetypes.Root, error)
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetInfoByGlobalExitRoot(ger common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
-	IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error)
 }
 
 // L2GERSync is responsible for managing GER synchronization.

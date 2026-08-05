@@ -154,7 +154,7 @@ func (c *Claimer) IsClaimed(ctx context.Context, bridge autoclaimtypes.BridgeExi
 	}
 	globalIndex := bridge.GlobalIndex
 	if globalIndex == nil {
-		globalIndex = autoclaimtypes.DeriveL1GlobalIndex(bridge.DepositCount)
+		globalIndex = autoclaimtypes.DeriveGlobalIndexForSource(bridge.SourceNetwork, bridge.DepositCount)
 	}
 	claimed, err := c.targetClaimReader.IsClaimed(ctx, globalIndex)
 	if err != nil {
@@ -533,19 +533,41 @@ func (c *Claimer) failIfRetriesExhausted(
 	return false, nil
 }
 
+// proofReadyForRequest reports whether proof is ready to submit a claim for request. Besides the
+// exit-root sanity checks, it verifies that the proof's L1 info tree leaf is recent enough to prove
+// request's bridge.
+//
+// The extra recency bound compares two quantities that must both be expressed in L1 blocks:
+// proof.L1InfoTreeLeaf.BlockNumber (always an L1 block number) against a "required L1 block" derived
+// from request. For an L1-origin bridge (request.Bridge.SourceNetwork == L1OriginNetwork, i.e. an
+// L1ToL2 Auto Claim request), request.Bridge.BlockNum IS the L1 block the bridge transaction landed
+// in, so it can be compared directly. For an L2-origin bridge (an L2ToLx Auto Claim request),
+// request.Bridge.BlockNum is instead the source rollup's own L2 block number: an incomparable unit
+// that happened to be checked against an L1 quantity, which on a devnet where the source L2's height
+// exceeds L1's height, never opens the gate (the request stays "detected"/"queued" forever). The
+// correct L1-side bound for an L2-origin bridge is request.VerifyBlockNum, the L1 block at which the
+// source network's local exit root (which the leaf's rollup exit root must already cover) was
+// verified; it is populated by the L2ToLx bridge detector and is also the quantity the rollup proof
+// preparer itself selects the leaf against (see RollupPreparer.firstCoveringLeafIndex).
 func proofReadyForRequest(
 	proof autoclaimtypes.ClaimProof,
 	request autoclaimtypes.AutoClaimRequest,
 ) bool {
-	if request.Bridge.BlockNum == 0 {
-		return proof.MainnetExitRoot != (common.Hash{}) && proof.GlobalExitRoot != (common.Hash{})
+	if proof.MainnetExitRoot == (common.Hash{}) || proof.GlobalExitRoot == (common.Hash{}) {
+		return false
+	}
+
+	requiredL1Block := request.Bridge.BlockNum
+	if request.Bridge.SourceNetwork != autoclaimtypes.L1OriginNetwork {
+		requiredL1Block = request.VerifyBlockNum
+	}
+	if requiredL1Block == 0 {
+		return true
 	}
 	if proof.L1InfoTreeLeaf == nil {
 		return false
 	}
-	return proof.MainnetExitRoot != (common.Hash{}) &&
-		proof.GlobalExitRoot != (common.Hash{}) &&
-		proof.L1InfoTreeLeaf.BlockNumber >= request.Bridge.BlockNum
+	return proof.L1InfoTreeLeaf.BlockNumber >= requiredL1Block
 }
 
 func (c *Claimer) transition(

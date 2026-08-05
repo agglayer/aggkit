@@ -65,10 +65,16 @@ func NewEthTxManMock(
 					return
 				}
 			}).
-		Return(common.Hash{}, nil)
+		Return(common.Hash{}, nil).
+		Maybe()
 	ethTxMock.EXPECT().
 		Result(mock.Anything, mock.Anything).
-		Return(ethtxtypes.MonitoredTxResult{Status: ethtxtypes.MonitoredTxStatusMined}, nil)
+		Return(ethtxtypes.MonitoredTxResult{Status: ethtxtypes.MonitoredTxStatusMined}, nil).
+		Maybe()
+	ethTxMock.EXPECT().
+		Remove(mock.Anything, mock.Anything).
+		Return(nil).
+		Maybe()
 	ethTxMock.EXPECT().From().Return(auth.From)
 
 	return ethTxMock

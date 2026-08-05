@@ -18,6 +18,9 @@ type Bridger interface {
 	GetLastRoot(ctx context.Context) (*tree.Root, error)
 	GetBridgesPaged(ctx context.Context, pageNumber, pageSize uint32,
 		depositCount *uint64, networkIDs []uint32, fromAddress string) ([]*bridgesync.Bridge, int, error)
+	GetBridgesInDepositRange(ctx context.Context, pageNumber, pageSize uint32,
+		fromDepositCount *uint64, toDepositCount uint64,
+		destinationNetworkIDs []uint32) ([]*bridgesync.Bridge, int, error)
 	GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32,
 		originTokenAddress string) ([]*bridgesync.TokenMapping, int, error)
 	GetLegacyTokenMigrations(ctx context.Context,
@@ -50,10 +53,12 @@ type L2GERSyncer interface {
 	GetRemoveGEREvents(
 		ctx context.Context, globalExitRoot *common.Hash, limit uint32,
 	) ([]*l2gersync.RemoveGEREvent, error)
+	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 }
 
 type L1InfoTreeSyncer interface {
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
+	GetInfoByGlobalExitRoot(ger common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetRollupExitTreeMerkleProof(ctx context.Context, networkID uint32, root common.Hash) (tree.Proof, error)
 	GetLocalExitRoot(ctx context.Context, networkID uint32, rollupExitRoot common.Hash) (common.Hash, error)
 	GetLastInfo() (*l1infotreesync.L1InfoTreeLeaf, error)

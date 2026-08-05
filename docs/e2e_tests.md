@@ -49,6 +49,65 @@ go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove)' -timeout 30m ./test/e
 The e2e environment must be able to start the docker compose stack, which requires enough host resources. If the host
 kills `docker compose up` (`signal: killed`) before the tests start, rerun the command on a host with more memory.
 
+### Remove GER (invalid-GER recovery)
+
+Exercises the [remove-GER runbook](./remove_ger_runbook.md) end to end against the `op-pp` env: inject an invalid
+GER on L2, confirm l2gersync blocks on it, run the `remove_ger` tool's recovery flow
+(`freeze bridge -> removeGlobalExitRoots -> category-specific claim correction -> restore bridge`), and confirm
+l2gersync recovers automatically and resumes normal processing. Implemented in `test/e2e/removeger_test.go`:
+
+```bash
+go test -v -run 'TestRemoveGER_(NoProblematicClaims|CategoryA|CategoryB1|CategoryB2)|TestGenerateInvalidGER' -timeout 60m ./test/e2e
+```
+
+- `TestRemoveGER_NoProblematicClaims` — invalid GER with no problematic claims; recovery is just
+  freeze/remove/restore.
+- `TestRemoveGER_CategoryA` — invalid GER used by a claim that would under-collateralize the bridge;
+  recovery adds an `unsetMultipleClaims` step.
+- `TestRemoveGER_CategoryB1` — invalid GER used by a claim with correct bridge content and index but a
+  wrong GER; recovery adds a `forceEmitDetailedClaimEvent` step.
+- `TestRemoveGER_CategoryB2` — invalid GER used by a claim with correct bridge content but a wrong index;
+  recovery adds unset + set claims + force-emit steps.
+- `TestGenerateInvalidGER` — exercises the `remove_ger` tool's `generate` subcommand (which crafts and
+  injects a synthetic invalid GER via `cast`) as a standalone check of the generation path. This test
+  drives `cast send`/`cast call` from the **host** (outside Docker) against the L2 RPC port published by
+  the `op-pp` compose env; on a dev machine whose local foundry `cast` cannot open outbound connections to
+  that Docker-published port (while the Go `ethclient` used elsewhere in the harness reaches it fine — a
+  machine-local `cast` networking quirk, not an aggkit or test defect), the test detects this via a
+  preflight probe and cleanly `t.Skip`s rather than failing. CI installs `cast` fresh and reaches the
+  compose network normally, so the test runs in full there.
+
+Each of the four `TestRemoveGER_*` scenarios asserts, via `GET /bridge/v1/sync-status`'s `l2_ger_info`
+(see [Bridge service component](./bridge_service.md#sync-status)):
+
+1. l2gersync is genuinely **stalled** on the invalid GER's insert block while the L2 chain head keeps
+   advancing (`assertL2GERSyncStalledAt`);
+2. after the recovery tool's `removeGlobalExitRoots` call, l2gersync's `last_processed_block` **catches up
+   past the actual removal transaction's block** (`waitForL2GERSyncCaughtUp`, targeting the block number
+   returned by `remove_ger.ExecuteRecovery`'s `RecoveryResult.RemovalBlock`, not a post-hoc chain-head
+   read — an earlier iteration of this assertion targeted an overshot, post-hoc head read and could time
+   out a few blocks short of a real, successful recovery);
+3. l2gersync is genuinely alive afterwards, via a fresh, valid L1->L2 bridge and claim
+   (`assertL2GERSyncStillAlive`).
+
+Complementary log-based detection (`detectInvalidGERFromAggkitLogs`) is kept alongside the `/sync-status`
+assertions.
+
+#### CI matrix
+
+`.github/workflows/test-go-e2e.yml` runs the remove-GER tests on `op-pp` in three dedicated matrix groups,
+each under the 20-minute per-job budget (measured passing-path wall-clock is well under 6 minutes for all
+five tests combined, run back-to-back in a single env), so the `op-pp / default` group's regex explicitly
+excludes them (Go's `-run` has no negation syntax, so the default group is enumerated as a positive,
+anchored regex instead):
+
+| Matrix group (`env` / `group`) | Tests |
+| --- | --- |
+| `op-pp` / `removeger-fast` | `TestRemoveGER_NoProblematicClaims`, `TestRemoveGER_CategoryA`, `TestGenerateInvalidGER` |
+| `op-pp` / `removeger-b1` | `TestRemoveGER_CategoryB1` |
+| `op-pp` / `removeger-b2` | `TestRemoveGER_CategoryB2` |
+| `op-pp` / `default` | Everything else on `op-pp` (positive-regex list, remove-GER tests excluded) |
+
 ## Two L2 networks
 
 It involves two L2 networks (and single L1 network), that are attached to the same agglayer.

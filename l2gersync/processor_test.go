@@ -162,6 +162,47 @@ func TestProcessBlock(t *testing.T) {
 	}
 }
 
+// TestProcessBlock_RemoveEventForSkippedInsert covers plan S4 intent 3: the recovery mechanism in
+// evm_downloader_sovereign.go skips the stale insert appender call for a GER later confirmed removed on
+// L2, so no imported_global_exit_root_v2 row is ever written for it (plan S2 §2). When the syncer later
+// reaches the corresponding removal-event block, the processor must still handle it gracefully: the
+// DELETE matches zero rows (a genuine no-op, no error), and the remove_ger_events row is written all the
+// same. This asserts exactly that, without any prior insert event for the GER.
+func TestProcessBlock_RemoveEventForSkippedInsert(t *testing.T) {
+	t.Parallel()
+
+	testDir := path.Join(t.TempDir(), "l2gersync_Test_ProcessBlock_RemoveEventForSkippedInsert.sqlite")
+	p, err := newProcessor(testDir)
+	require.NoError(t, err)
+
+	skippedGER := common.HexToHash("0xdeadbeef")
+	ctx := context.Background()
+
+	// No insert event was ever processed for skippedGER (its insert was skipped by the downloader),
+	// so only the removal event reaches the processor.
+	err = p.ProcessBlock(ctx, sync.Block{
+		Num: 10,
+		Events: []any{
+			&Event{
+				GERInfo:   newGlobalExitRootInfo(skippedGER, 0, 10, 0),
+				EventType: GEREventTypeRemove,
+			},
+		},
+	})
+	require.NoError(t, err, "removing a never-inserted GER must be a no-op, not an error")
+
+	// imported_global_exit_root_v2 has no row for skippedGER (or any other GER).
+	_, err = p.getLatestL1InfoTreeIndex()
+	require.ErrorIs(t, err, db.ErrNotFound)
+
+	// The remove_ger_events row is still written.
+	events, err := p.GetRemoveGEREvents(ctx, &skippedGER, 10)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, skippedGER, events[0].GlobalExitRoot)
+	require.Equal(t, uint64(10), events[0].BlockNum)
+}
+
 func TestReorg(t *testing.T) {
 	testDir := path.Join(t.TempDir(), "l2gersync_TestReorg.sqlite")
 	processor, err := newProcessor(testDir)

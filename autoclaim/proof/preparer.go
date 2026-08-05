@@ -11,7 +11,6 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -35,13 +34,16 @@ type L1InfoTreeSyncer interface {
 	GetFirstInfoAfterBlock(blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
 }
 
-// L2GERSyncer exposes the destination-L2 GER injection state needed to gate proof readiness.
-// It is satisfied by the per-claimer l2gersync.L2GERSync instance, which correctly tracks injected
-// GERs on both legacy (GlobalExitRootMap polling) and sovereign (event-based) L2 GER managers.
+// ErrGERNotInjected signals that no injected GER on the destination network covers the requested
+// L1-info-tree index yet. The gate maps it to "not ready" (retry next cycle), never a hard error.
+var ErrGERNotInjected = errors.New("autoclaim proof: no injected GER covers the requested index yet")
+
+// L2GERSyncer gates proof readiness on the destination network's injected-GER state. It returns the
+// L1-info-tree index of the first injected GER at or after atOrAfterL1InfoTreeIndex, or
+// ErrGERNotInjected when none covers it yet. It is satisfied by BridgeServiceGERGate, which queries
+// the destination network's bridge service GET /bridge/v1/injected-l1-info-leaf endpoint.
 type L2GERSyncer interface {
-	GetFirstGERAfterL1InfoTreeIndex(
-		ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
-	) (l2gersync.GlobalExitRootInfo, error)
+	GetFirstGERAfterL1InfoTreeIndex(ctx context.Context, atOrAfterL1InfoTreeIndex uint32) (uint32, error)
 }
 
 // Preparer prepares bridge claim proof inputs for Auto Claim.
@@ -187,8 +189,8 @@ func (p *Preparer) selectL1InfoTreeIndex(
 		return bridgeL1InfoTreeIndex, true, nil
 	}
 
-	gerInfo, err := p.gerSyncer.GetFirstGERAfterL1InfoTreeIndex(ctx, bridgeL1InfoTreeIndex)
-	if errors.Is(err, db.ErrNotFound) {
+	gerIndex, err := p.gerSyncer.GetFirstGERAfterL1InfoTreeIndex(ctx, bridgeL1InfoTreeIndex)
+	if errors.Is(err, ErrGERNotInjected) {
 		// No injected GER on the target L2 covers this bridge yet — not ready.
 		log.Debugf("autoclaim proof: deposit=%d: gerSyncer has no GER with l1InfoTreeIndex>=%d yet",
 			bridge.DepositCount, bridgeL1InfoTreeIndex)
@@ -198,7 +200,7 @@ func (p *Preparer) selectL1InfoTreeIndex(
 		return 0, false, fmt.Errorf("get first injected GER after index %d: %w", bridgeL1InfoTreeIndex, err)
 	}
 
-	return gerInfo.L1InfoTreeIndex, true, nil
+	return gerIndex, true, nil
 }
 
 func (p *Preparer) firstL1InfoTreeIndexForL1Bridge(

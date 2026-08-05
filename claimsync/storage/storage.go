@@ -17,6 +17,7 @@ import (
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	aggsync "github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum/common"
+	sqlite "github.com/mattn/go-sqlite3"
 	"github.com/russross/meddler"
 )
 
@@ -147,10 +148,30 @@ func (s *claimStorage) getQuerier(tx dbtypes.Querier) dbtypes.Querier {
 }
 
 // InsertBlock inserts a block row using meddler.
+// It is idempotent: if the block already exists (PRIMARY KEY / UNIQUE constraint
+// violation on block.num) with the same hash, the insert is treated as a successful
+// no-op. This guards against the startup race where the L2ClaimSyncer auto-start
+// goroutine and the aggsender's SetClaimSyncerNextRequiredBlock loop both bootstrap
+// the same block. A hash mismatch is not a benign duplicate and is returned as an error.
 func (s *claimStorage) InsertBlock(
 	_ context.Context, tx dbtypes.Querier, blockNum uint64, blockHash common.Hash,
 ) error {
-	if err := meddler.Insert(s.getQuerier(tx), "block", &blockRecord{Num: blockNum, Hash: blockHash.Hex()}); err != nil {
+	querier := s.getQuerier(tx)
+	if err := meddler.Insert(querier, "block", &blockRecord{Num: blockNum, Hash: blockHash.Hex()}); err != nil {
+		if sqliteErr, ok := db.SQLiteErr(err); ok && sqliteErr.Code == sqlite.ErrConstraint {
+			// Block already inserted by a concurrent bootstrap; make sure it is the same block.
+			existing := &blockRecord{}
+			if getErr := meddler.QueryRow(
+				querier, existing, `SELECT num, hash FROM block WHERE num = $1;`, blockNum,
+			); getErr != nil {
+				return fmt.Errorf("InsertBlock %d: get existing block after constraint violation: %w", blockNum, getErr)
+			}
+			if existing.Hash != blockHash.Hex() {
+				return fmt.Errorf("InsertBlock %d: block already exists with different hash (existing: %s, new: %s)",
+					blockNum, existing.Hash, blockHash.Hex())
+			}
+			return nil
+		}
 		return fmt.Errorf("InsertBlock %d: %w", blockNum, err)
 	}
 	return nil

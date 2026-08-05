@@ -48,17 +48,22 @@ const (
 	// BridgeV1Prefix is the url prefix for the bridge service
 	BridgeV1Prefix = "/bridge/v1"
 
-	networkIDParam       = "network_id"
-	networkIDsParam      = "network_ids"
-	pageNumberParam      = "page_number"
-	pageSizeParam        = "page_size"
-	depositCountParam    = "deposit_count"
-	fromAddressParam     = "from_address"
-	originTokenAddrParam = "origin_token_address"
-	leafIndexParam       = "leaf_index"
-	includeAllFields     = "include_all_fields"
-	globalIndexParam     = "global_index"
-	limitParam           = "limit"
+	networkIDParam             = "network_id"
+	networkIDsParam            = "network_ids"
+	pageNumberParam            = "page_number"
+	pageSizeParam              = "page_size"
+	depositCountParam          = "deposit_count"
+	fromAddressParam           = "from_address"
+	originTokenAddrParam       = "origin_token_address"
+	leafIndexParam             = "leaf_index"
+	includeAllFields           = "include_all_fields"
+	globalIndexParam           = "global_index"
+	limitParam                 = "limit"
+	destinationNetworkIDsParam = "destination_network_ids"
+	toLERParam                 = "to_ler"
+	fromLERParam               = "from_ler"
+	lerParam                   = "ler"
+	globalExitRootParam        = "global_exit_root"
 	// DefaultRemoveGERLimit is the default number of remove GER events to return when no limit is specified
 	DefaultRemoveGERLimit = uint32(50)
 
@@ -155,6 +160,7 @@ func (b *BridgeService) RegisterRoutes(router gin.IRouter) {
 		bridgeGroup.GET("/legacy-token-migrations", b.GetLegacyTokenMigrationsHandler)
 		bridgeGroup.GET("/l1-info-tree-index", b.L1InfoTreeIndexForBridgeHandler)
 		bridgeGroup.GET("/injected-l1-info-leaf", b.InjectedL1InfoLeafHandler)
+		bridgeGroup.GET("/l1-info-tree-leaf-by-ger", b.L1InfoTreeLeafByGERHandler)
 		bridgeGroup.GET("/claim-proof", b.ClaimProofHandler)
 		bridgeGroup.GET("/last-reorg-event", b.GetLastReorgEventHandler)
 		bridgeGroup.GET("/sync-status", b.GetSyncStatusHandler)
@@ -162,6 +168,8 @@ func (b *BridgeService) RegisterRoutes(router gin.IRouter) {
 		bridgeGroup.GET("/claims-by-ger", b.GetClaimsByGERHandler)
 		bridgeGroup.GET("/bridge-by-deposit-count", b.GetBridgeByDepositCountHandler)
 		bridgeGroup.GET("/bridges-by-content", b.GetBridgesByContentHandler)
+		bridgeGroup.GET("/claim-candidates", b.GetClaimCandidatesHandler)
+		bridgeGroup.GET("/root-by-ler", b.RootByLERHandler)
 
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -840,6 +848,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} types.L1InfoTreeLeafResponse
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 404 {object} types.ErrorResponse "Not Found - global exit root not injected yet"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /injected-l1-info-leaf [get]
 func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
@@ -879,6 +888,14 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	case b.networkID:
 		e, err := b.injectedGERs.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
 		if err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				b.logger.Debugf("no injected global exit root at or after leaf index=%d yet (not injected)", l1InfoTreeIndex)
+				statusCode = http.StatusNotFound
+				c.JSON(statusCode,
+					gin.H{"error": fmt.Sprintf(
+						"no injected global exit root at or after leaf index %d yet (not injected)", l1InfoTreeIndex)})
+				return
+			}
 			b.logger.Errorf("failed to get injected global exit root for leaf index=%d: %v", l1InfoTreeIndex, err)
 			statusCode = http.StatusInternalServerError
 			c.JSON(statusCode,
@@ -909,6 +926,73 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 		c.JSON(statusCode,
 			gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf (network id=%d, leaf index=%d), error: %s",
 				networkID, l1InfoTreeIndex, err)})
+		return
+	}
+
+	c.JSON(statusCode, NewL1InfoTreeLeafResponse(l1InfoLeaf))
+}
+
+// @Summary Get L1 info tree leaf by Global Exit Root
+// @Description Returns the L1 info tree leaf (index, exit roots, block info) for the given
+// @Description Global Exit Root. The L1 info tree only exists on L1, so network_id must be 0.
+// @Tags l1-info-tree-leaf
+// @Param network_id query int true "Network ID (must be 0, mainnet)"
+// @Param global_exit_root query string true "Global Exit Root"
+// @Produce json
+// @Success 200 {object} types.L1InfoTreeLeafResponse
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 404 {object} types.ErrorResponse "Not Found - GER not part of the L1 info tree (yet)"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Router /l1-info-tree-leaf-by-ger [get]
+func (b *BridgeService) L1InfoTreeLeafByGERHandler(c *gin.Context) {
+	b.logger.Debugf("L1InfoTreeLeafByGER request received (network id=%s, global_exit_root=%s)",
+		c.Query(networkIDParam), c.Query(globalExitRootParam))
+
+	statusCode := http.StatusOK
+	startTime := time.Now()
+	defer func() {
+		reportMetrics(metrics.GetL1InfoTreeLeafByGERReq, statusCode, startTime)
+	}()
+
+	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
+	if err != nil {
+		b.logger.Warnf(errNetworkID, err)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+	if networkID != mainnetNetworkID {
+		b.logger.Warnf(errNetworkID, networkID)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "the L1 info tree only exists on network 0 (mainnet)"})
+		return
+	}
+
+	gerStr := c.Query(globalExitRootParam)
+	if gerStr == "" {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "global_exit_root is mandatory"})
+		return
+	}
+	if !isValidHexHash(gerStr) {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": "invalid global_exit_root parameter, must be a valid hex hash"})
+		return
+	}
+
+	l1InfoLeaf, err := b.l1InfoTree.GetInfoByGlobalExitRoot(common.HexToHash(gerStr))
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			b.logger.Debugf("global exit root %s not found in the L1 info tree yet", gerStr)
+			statusCode = http.StatusNotFound
+			c.JSON(statusCode,
+				gin.H{"error": fmt.Sprintf("global exit root %s not found in the L1 info tree yet", gerStr)})
+			return
+		}
+		b.logger.Errorf("failed to get L1 info tree leaf by GER %s: %v", gerStr, err)
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode,
+			gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf by GER %s, error: %s", gerStr, err)})
 		return
 	}
 
@@ -1248,11 +1332,13 @@ func (b *BridgeService) populateNetworkSyncInfo(
 	return statusCode
 }
 
-// GetSyncStatusHandler returns the bridge synchronization status for L1 and L2 networks.
+// GetSyncStatusHandler returns the bridge synchronization status for L1 and L2 networks,
+// as well as the l2gersync (injected-GER) synchronization status.
 //
 // @Summary Get bridge synchronization status
 // @Description Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.
 // @Description Shows if bridge syncers are active and whether they're keeping up with on-chain events.
+// @Description Also reports the l2gersync (injected-GER) sync status when available.
 // @Tags sync
 // @Produce json
 // @Success 200 {object} types.SyncStatus "Bridge synchronization status for L1 and L2 networks"
@@ -1308,6 +1394,26 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 		}
 	} else {
 		syncStatus.L2Info = &types.NetworkSyncInfo{
+			IsActive: false,
+		}
+	}
+
+	// Check l2gersync (injected-GER) sync status
+	if b.injectedGERs != nil {
+		syncStatus.L2GERInfo = &types.L2GERSyncInfo{
+			IsActive: true,
+		}
+
+		lastProcessedBlock, err := b.injectedGERs.GetLastProcessedBlock(ctx)
+		if err != nil {
+			b.logger.Errorf("failed to get last processed block for l2gersync: %s", err)
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get last processed block for l2gersync: %s", err)})
+			return
+		}
+		syncStatus.L2GERInfo.LastProcessedBlock = lastProcessedBlock
+	} else {
+		syncStatus.L2GERInfo = &types.L2GERSyncInfo{
 			IsActive: false,
 		}
 	}
@@ -1963,6 +2069,239 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 	c.JSON(statusCode, types.BridgesByContentResult{
 		Bridges: bridgeResponses,
 		Count:   len(bridgeResponses),
+	})
+}
+
+// GetClaimCandidatesHandler retrieves the bridges originated on this network (the "source"
+// network of this bridge service instance) that are candidates for claiming. The to_ler/from_ler
+// local exit roots define the deposit-count range; the caller fetches the (GER-sensitive) leaf
+// proofs separately at claim time.
+//
+// @Summary Get claim candidates
+// @Description Returns bridges originated on this network with deposit_count in
+// @Description (from_ler's index, to_ler's index] whose destination network is one of
+// @Description destination_network_ids. to_ler/from_ler define the deposit-count range only.
+// @Tags bridges
+// @Param destination_network_ids query []uint32 true "Destination network IDs to filter by (maximum 5)"
+// @Param to_ler query string true "Local exit root, upper bound of the deposit-count range (0x-prefixed 32-byte hex)"
+// @Param from_ler query string false "Exclusive lower-bound local exit root; omitted means full history"
+// @Param page_number query uint32 false "Page number (default 1)"
+// @Param page_size query uint32 false "Page size (default 100)"
+// @Produce json
+// @Success 200 {object} types.ClaimCandidatesResult
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 404 {object} types.ErrorResponse "Not Found - to_ler or from_ler not synced yet"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable"
+// @Router /claim-candidates [get]
+func (b *BridgeService) GetClaimCandidatesHandler(c *gin.Context) {
+	b.logger.Debugf(
+		"GetClaimCandidates request received (destination_network_ids=%v, to_ler=%s, from_ler=%s, "+
+			"page number=%s, page size=%s)",
+		c.QueryArray(destinationNetworkIDsParam), c.Query(toLERParam), c.Query(fromLERParam),
+		c.Query(pageNumberParam), c.Query(pageSizeParam))
+
+	statusCode := http.StatusOK
+	startTime := time.Now()
+	defer func() {
+		reportMetrics(metrics.GetClaimCandidatesReq, statusCode, startTime)
+	}()
+
+	if b.bridgeL2 == nil {
+		statusCode = http.StatusServiceUnavailable
+		c.JSON(statusCode, gin.H{"error": "L2 bridge syncer is not available"})
+		return
+	}
+
+	destinationNetworkIDs, err := parseNetworkIDSliceParam(c, destinationNetworkIDsParam)
+	if err != nil {
+		b.logger.Warnf("invalid destination network IDs parameter: %v", err)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("invalid %s parameter: %s", destinationNetworkIDsParam, err)})
+		return
+	}
+	if len(destinationNetworkIDs) == 0 {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("%s is mandatory", destinationNetworkIDsParam)})
+		return
+	}
+
+	toLERStr := c.Query(toLERParam)
+	if toLERStr == "" {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("%s is mandatory", toLERParam)})
+		return
+	}
+	if !isValidHexHash(toLERStr) {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errInvalidParam, toLERParam)})
+		return
+	}
+	toLER := common.HexToHash(toLERStr)
+
+	var fromLER *common.Hash
+	if fromLERStr := c.Query(fromLERParam); fromLERStr != "" {
+		if !isValidHexHash(fromLERStr) {
+			statusCode = http.StatusBadRequest
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errInvalidParam, fromLERParam)})
+			return
+		}
+		h := common.HexToHash(fromLERStr)
+		fromLER = &h
+	}
+
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
+	if err != nil {
+		b.logger.Warnf(errSetupRequest, err)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+	defer cancel()
+
+	toRoot, err := b.bridgeL2.GetRootByLER(ctx, toLER)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			statusCode = http.StatusNotFound
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("%s %s not found (not synced yet)", toLERParam, toLERStr)})
+			return
+		}
+		b.logger.Errorf("failed to resolve %s %s: %v", toLERParam, toLERStr, err)
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to resolve %s: %s", toLERParam, err)})
+		return
+	}
+
+	var fromDepositCount *uint64
+	if fromLER != nil {
+		fromRoot, ferr := b.bridgeL2.GetRootByLER(ctx, *fromLER)
+		if ferr != nil {
+			if errors.Is(ferr, db.ErrNotFound) {
+				statusCode = http.StatusNotFound
+				c.JSON(statusCode,
+					gin.H{"error": fmt.Sprintf("%s %s not found (not synced yet)", fromLERParam, c.Query(fromLERParam))})
+				return
+			}
+			b.logger.Errorf("failed to resolve %s %s: %v", fromLERParam, c.Query(fromLERParam), ferr)
+			statusCode = http.StatusInternalServerError
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to resolve %s: %s", fromLERParam, ferr)})
+			return
+		}
+		fromDepositCountVal := uint64(fromRoot.Index)
+		fromDepositCount = &fromDepositCountVal
+	}
+
+	bridges, count, err := b.bridgeL2.GetBridgesInDepositRange(
+		ctx, pageNumber, pageSize, fromDepositCount, uint64(toRoot.Index), destinationNetworkIDs)
+	if err != nil {
+		b.logger.Errorf("failed to get bridges in deposit range: %v", err)
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to get bridges in deposit range: %s", err)})
+		return
+	}
+
+	etrogUpgradeL1Block := b.agglayerManagerUpgradeQuery.GetUpgradeBlock(ctx, etrogVersionID)
+
+	claimCandidates := make([]*types.ClaimCandidateResponse, 0, len(bridges))
+	for _, bridge := range bridges {
+		claimCandidates = append(claimCandidates, &types.ClaimCandidateResponse{
+			Bridge: NewBridgeResponse(bridge, b.networkID, etrogUpgradeL1Block),
+		})
+	}
+
+	c.JSON(statusCode, types.ClaimCandidatesResult{
+		ClaimCandidates: claimCandidates,
+		Count:           count,
+	})
+}
+
+// RootByLERHandler resolves ler to the position (deposit-count index) it had in network_id's
+// local exit tree when it was computed. This lets a caller order two LERs (e.g. a bridge's own
+// LER against a certificate's NewLocalExitRoot) by comparing their Index, instead of walking or
+// syncing the whole tree itself.
+//
+// @Summary Get the deposit-count index of a local exit root
+// @Description Resolves ler to the position (deposit-count index) it had in network_id's local
+// @Description exit tree when it was computed.
+// @Tags bridges
+// @Param network_id query int true "Network ID (0 for L1, L2 network ID otherwise)"
+// @Param ler query string true "Local exit root (0x-prefixed 32-byte hex)"
+// @Produce json
+// @Success 200 {object} types.RootByLERResponse
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 404 {object} types.ErrorResponse "Not Found - ler not synced yet"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable"
+// @Router /root-by-ler [get]
+func (b *BridgeService) RootByLERHandler(c *gin.Context) {
+	b.logger.Debugf("RootByLER request received (network id=%s, ler=%s)",
+		c.Query(networkIDParam), c.Query(lerParam))
+
+	statusCode := http.StatusOK
+	startTime := time.Now()
+	defer func() {
+		reportMetrics(metrics.GetRootByLERReq, statusCode, startTime)
+	}()
+
+	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
+	if err != nil {
+		b.logger.Warnf(errNetworkID, err)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+
+	lerStr := c.Query(lerParam)
+	if lerStr == "" {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("%s is mandatory", lerParam)})
+		return
+	}
+	if !isValidHexHash(lerStr) {
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errInvalidParam, lerParam)})
+		return
+	}
+	ler := common.HexToHash(lerStr)
+
+	var bridger Bridger
+	switch networkID {
+	case mainnetNetworkID:
+		bridger = b.bridgeL1
+	case b.networkID:
+		bridger = b.bridgeL2
+	default:
+		b.logger.Warnf(errNetworkID, networkID)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
+		return
+	}
+	if bridger == nil {
+		statusCode = http.StatusServiceUnavailable
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("bridge syncer for network %d is not available", networkID)})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	root, err := bridger.GetRootByLER(ctx, ler)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			statusCode = http.StatusNotFound
+			c.JSON(statusCode, gin.H{"error": fmt.Sprintf("%s %s not found (not synced yet)", lerParam, lerStr)})
+			return
+		}
+		b.logger.Errorf("failed to resolve %s %s for network %d: %v", lerParam, lerStr, networkID, err)
+		statusCode = http.StatusInternalServerError
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("failed to resolve %s: %s", lerParam, err)})
+		return
+	}
+
+	c.JSON(statusCode, types.RootByLERResponse{
+		Index:         root.Index,
+		BlockNum:      root.BlockNum,
+		BlockPosition: root.BlockPosition,
 	})
 }
 

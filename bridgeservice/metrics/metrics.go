@@ -30,6 +30,9 @@ const (
 	GetClaimsByGERReq            = "get_claims_by_ger"
 	GetBridgeByDepositCountReq   = "get_bridge_by_deposit_count"
 	GetBridgesByContentReq       = "get_bridges_by_content"
+	GetClaimCandidatesReq        = "get_claim_candidates"
+	GetRootByLERReq              = "get_root_by_ler"
+	GetL1InfoTreeLeafByGERReq    = "get_l1_info_tree_leaf_by_ger"
 )
 
 func Register() {

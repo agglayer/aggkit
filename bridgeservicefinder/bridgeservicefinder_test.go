@@ -23,8 +23,9 @@ func TestNew_ErrNilRollupManagerQuerier(t *testing.T) {
 // TestNew_AcceptsInjectedRollupManagerWithoutEthClient verifies a fully injected RollupManager
 // (with a LogFilterer also supplied so no listener defaulting is needed) allows New to succeed and
 // Start to run without any EthClient. With RollupCount=0 the listener only watches the rollup
-// manager address (to discover future rollups); the test's ctx is cancelled before the first poll
-// tick, so the LogFilterer is never touched.
+// manager address (to discover future rollups); Start seeds the listener's scan position via the
+// LogFilterer as soon as the initial cache is built, so it is stubbed even though the test's ctx is
+// cancelled before the first poll tick.
 func TestNew_AcceptsInjectedRollupManagerWithoutEthClient(t *testing.T) {
 	rm := mocks.NewRollupManagerQuerier(t)
 	reader := mocks.NewRollupContractReader(t)
@@ -32,6 +33,8 @@ func TestNew_AcceptsInjectedRollupManagerWithoutEthClient(t *testing.T) {
 	hc := mocks.NewHealthChecker(t)
 
 	rm.EXPECT().RollupCount(mock.Anything).Return(uint32(0), nil)
+	lf.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).
+		Return(&aggkittypes.BlockHeader{Number: 100}, nil)
 
 	f, err := New(Config{}, Options{
 		RollupManager: rm,
@@ -61,13 +64,17 @@ func TestStart_RequireAllHealthyOnStart_MockedBranching(t *testing.T) {
 		rm.EXPECT().RollupCount(mock.Anything).Return(uint32(0), nil)
 		hc.EXPECT().IsHealthy(mock.Anything, "https://dead.example.com").Return(false)
 
+		lf := mocks.NewLogFilterer(t)
+		lf.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).
+			Return(&aggkittypes.BlockHeader{Number: 100}, nil)
+
 		f, err := New(Config{
-			URLs:                     map[uint32]string{1: "https://dead.example.com"},
+			BridgeURLs:               map[uint32]string{1: "https://dead.example.com"},
 			RequireAllHealthyOnStart: false,
 		}, Options{
 			RollupManager: rm,
 			HealthChecker: hc,
-			LogFilterer:   mocks.NewLogFilterer(t),
+			LogFilterer:   lf,
 			Logger:        testLogger(),
 		})
 		require.NoError(t, err)
@@ -78,7 +85,7 @@ func TestStart_RequireAllHealthyOnStart_MockedBranching(t *testing.T) {
 
 		got, err := f.GetURL(1)
 		require.NoError(t, err)
-		require.Equal(t, "https://dead.example.com", got)
+		require.Equal(t, "https://dead.example.com", got.BridgeURL)
 	})
 
 	t.Run("unhealthy config-sourced network with RequireAllHealthyOnStart=true: Start fails", func(t *testing.T) {
@@ -89,7 +96,7 @@ func TestStart_RequireAllHealthyOnStart_MockedBranching(t *testing.T) {
 		hc.EXPECT().IsHealthy(mock.Anything, "https://dead.example.com").Return(false)
 
 		f, err := New(Config{
-			URLs:                     map[uint32]string{1: "https://dead.example.com"},
+			BridgeURLs:               map[uint32]string{1: "https://dead.example.com"},
 			RequireAllHealthyOnStart: true,
 		}, Options{
 			RollupManager: rm,
@@ -110,12 +117,17 @@ func TestStart_RequireAllHealthyOnStart_MockedBranching(t *testing.T) {
 		rm.EXPECT().RollupCount(mock.Anything).Return(uint32(0), nil)
 		hc.EXPECT().IsHealthy(mock.Anything, "https://alive.example.com").Return(true)
 
+		lf := mocks.NewLogFilterer(t)
+		lf.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).
+			Return(&aggkittypes.BlockHeader{Number: 100}, nil)
+
 		f, err := New(Config{
-			URLs:                     map[uint32]string{1: "https://alive.example.com"},
+			BridgeURLs:               map[uint32]string{1: "https://alive.example.com"},
 			RequireAllHealthyOnStart: true,
 		}, Options{
 			RollupManager: rm,
 			HealthChecker: hc,
+			LogFilterer:   lf,
 			Logger:        testLogger(),
 		})
 		require.NoError(t, err)
@@ -197,10 +209,15 @@ func TestBuildInitialCache_NoSourceSkipsNetworkButContinues(t *testing.T) {
 	noSourceReader.EXPECT().TrustedSequencerURL(mock.Anything).Return("", ErrSourceNotAvailable)
 
 	resolvedReader := mocks.NewRollupContractReader(t)
+	resolvedReader.EXPECT().TrustedSequencerURL(mock.Anything).Return("", ErrSourceNotAvailable)
 	resolvedReader.EXPECT().AggchainMetadata(mock.Anything, MetadataBridgeServiceURLKey).
 		Return("https://metadata.example.com:5577", nil)
 
 	hc.EXPECT().IsHealthy(mock.Anything, "https://metadata.example.com:5577").Return(true)
+
+	lf := mocks.NewLogFilterer(t)
+	lf.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).
+		Return(&aggkittypes.BlockHeader{Number: 100}, nil)
 
 	f, err := New(Config{}, Options{
 		RollupManager: rm,
@@ -212,7 +229,7 @@ func TestBuildInitialCache_NoSourceSkipsNetworkButContinues(t *testing.T) {
 			return resolvedReader, nil
 		},
 		HealthChecker: hc,
-		LogFilterer:   mocks.NewLogFilterer(t),
+		LogFilterer:   lf,
 		Logger:        testLogger(),
 	})
 	require.NoError(t, err)
@@ -226,5 +243,6 @@ func TestBuildInitialCache_NoSourceSkipsNetworkButContinues(t *testing.T) {
 
 	got, err := f.GetURL(2)
 	require.NoError(t, err)
-	require.Equal(t, "https://metadata.example.com:5577", got)
+	require.Equal(t, "https://metadata.example.com:5577", got.BridgeURL)
+	require.Empty(t, got.JSONRPCURL, "no sequencer url available, so no json-rpc endpoint")
 }

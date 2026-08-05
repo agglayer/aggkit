@@ -76,11 +76,20 @@ generate-code-from-proto: check-protoc ## Generate Go code from proto files in-p
 	buf generate
 
 .PHONY: build ## Builds the binaries locally into ./target
-build: build-aggkit build-tools
+build: build-aggkit build-aggkit-proxy build-tools
 
 .PHONY: build-aggkit
 build-aggkit: ## Builds aggkit binary
 	GIN_MODE=release $(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
+
+.PHONY: build-aggkit-proxy
+build-aggkit-proxy: ## Builds aggkit-proxy binary
+	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/aggkit-proxy ./proxy/cmd
+
+ARGS ?= run
+.PHONY: run-proxy
+run-proxy: build-aggkit-proxy ## Runs aggkit-proxy (pass args with ARGS, e.g. make run-proxy ARGS="run --cfg proxy.toml")
+	$(GOBIN)/aggkit-proxy $(ARGS)
 
 .PHONY: build-tools
 build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger $(GOBIN)/exit_certificate $(GOBIN)/exit_certificate_claimer $(GOBIN)/force_ger_update ## Builds the tools
@@ -142,9 +151,13 @@ build-docker-debug: ## Builds a debug docker image (dlv headless on :40000, no o
 test-unit: ## Runs the unit tests
 	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out -timeout 15m ./...
 
+TEST_RUN ?=
 .PHONY: test-e2e
 test-e2e: ## Runs the e2e tests
-	go test -v -timeout 30m ./test/e2e/...
+	# 60m: covers the CI matrix's remove-GER groups (test-go-e2e.yml), whose combined per-test context
+	# budgets can exceed the previous 45m; kept in step with job timeout-minutes: 60 there. Provisional
+	# -- S8/S9 tighten per-test timeouts and may lower this once real durations are measured.
+	go test -v -timeout 60m $(if $(TEST_RUN),-run "$(TEST_RUN)") ./test/e2e/...
 
 .PHONY: test-e2e-force_ger_update
 test-e2e-force_ger_update: ## Runs the isolated force_ger_update e2e test (dedicated CI job/runner only)
@@ -157,14 +170,18 @@ lint: ## Runs the linter
 .PHONY: generate-swagger-docs
 generate-swagger-docs: ## Generates the swagger docs
 	@echo "Generating swagger docs"
-	@$(SWAG) init -g bridgeservice/bridge.go -o bridgeservice/docs --exclude autoclaim/api
-	@$(SWAG) init -g api.go -d autoclaim/api,autoclaim/apitypes -o autoclaim/api/docs --instanceName autoclaim
+	@$(SWAG) init -g bridgeservice/bridge.go -o bridgeservice/docs --exclude autoclaim/api,bridgetracker
+	@$(SWAG) init -g admin.go -d autoclaim/api,autoclaim/apitypes -o autoclaim/api/docs --instanceName autoclaim
+	@$(SWAG) init -g api.go -d bridgetracker/api,bridgetracker/types -o bridgetracker/api/docs --parseDependency
 	@mkdir -p docs/assets/swagger/bridge_service
 	@cp bridgeservice/docs/swagger.json docs/assets/swagger/bridge_service/swagger.json
 	@echo "Copied swagger.json to docs/assets/swagger/bridge_service/"
 	@mkdir -p docs/assets/swagger/autoclaim
 	@cp autoclaim/api/docs/autoclaim_swagger.json docs/assets/swagger/autoclaim/swagger.json
 	@echo "Copied autoclaim_swagger.json to docs/assets/swagger/autoclaim/"
+	@mkdir -p docs/assets/swagger/bridge_tracker
+	@cp bridgetracker/api/docs/swagger.json docs/assets/swagger/bridge_tracker/swagger.json
+	@echo "Copied swagger.json to docs/assets/swagger/bridge_tracker/"
 
 .PHONY: vulncheck
 vulncheck: ## Runs the vulnerability checker tool

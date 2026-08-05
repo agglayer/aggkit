@@ -86,6 +86,13 @@ sequenceDiagram
 
 3. If `forceUpdateGlobalExitRoot` is set to false in a bridge transaction, the GER will not be updated with that transaction. The user must wait until the GER is updated by another bridge transaction before claiming. This is done to save gas costs while bridging.
 
+4. Over the REST API, `bridge_injectedInfoAfterIndex` is served by `GET /bridge/v1/injected-l1-info-leaf`, which now
+   responds `404 Not Found` (not `500`) when no injected global exit root covers the requested L1 info tree index
+   yet — callers should treat `404` as "not ready yet, retry later" rather than a hard failure. The Go client
+   (`bridgeservice/client.Client.GetInjectedL1InfoLeaf`) surfaces this as the `client.ErrNotFound` sentinel. This
+   endpoint also backs the Auto Claim destination-readiness gate for L2-destination claimers — see
+   [Auto Claim Service](./autoclaim.md#architecture) for how it is used to decide when a bridge is ready to claim.
+
 ### Bridge flow L2 -> L1
 
 The diagram below describes the basic L2 -> L1 bridge workflow.
@@ -174,6 +181,109 @@ It interacts with the L2 or L1 execution layer (via RPC) in order to:
 - Build the local exit tree
 - Generate merkle proofs
 
+## Claim candidates endpoint
+
+`GET /bridge/v1/claim-candidates` lists bridges originated on the network that this bridge
+service instance itself syncs (its own `bridgesync`) that are candidates for claiming against a
+requested local exit root. It is intended for a remote consumer (e.g. a node running Auto Claim
+for a different network) that needs to discover claimable bridges from a source network it does
+not sync locally.
+
+The response does **not** include a Merkle proof for each bridge. A consumer that needs the
+leaf-to-local-exit-root proof for a specific bridge fetches it separately, at claim time, from
+`GET /bridge/v1/claim-proof` (see the Auto Claim `RollupPreparer`, which always fetches this proof
+fresh when preparing a claim rather than caching one derived at discovery time).
+
+There is no `network_id` selector: the endpoint always answers for the bridge service's own
+source network. If that instance has no L2/source `bridgesync` configured, it returns `503`.
+
+| Param | Required | Meaning |
+| --- | --- | --- |
+| `destination_network_ids` | yes | Destination network IDs to filter by, sent as a **repeated** query parameter (`?destination_network_ids=1&destination_network_ids=2`), not comma-separated. Maximum 5. |
+| `to_ler` | yes | Local exit root (0x-prefixed 32-byte hex hash) the proofs are built against. Must resolve to a root this bridge service has synced. |
+| `from_ler` | no | Exclusive lower-bound local exit root (hex hash). When omitted, the full history is considered. |
+| `page_number` | no | Page number (default `1`). |
+| `page_size` | no | Page size (default `100`). |
+
+Bridges are matched by `deposit_count ∈ (index(from_ler), index(to_ler)]` and
+`destination_network ∈ destination_network_ids`. If `to_ler` (or `from_ler`, when provided) has
+not been synced yet, the endpoint responds `404` with a body of the form
+`{"error": "to_ler 0x... not found (not synced yet)"}` (same pattern for `from_ler`) — callers
+should treat this as "not ready yet, retry later" rather than a hard failure.
+
+Response shape:
+
+```json
+{
+  "claim_candidates": [
+    {
+      "bridge": { "...": "a BridgeResponse, see /bridges" }
+    }
+  ],
+  "count": 1
+}
+```
+
+The `bridge` field is the only content per candidate — there is no per-bridge proof or local exit
+root field. `to_ler` (and `from_ler`, when provided) still define the deposit-count range the
+candidates are drawn from; they are request parameters, not part of each candidate.
+
+Example request:
+
+```
+GET /bridge/v1/claim-candidates?destination_network_ids=0&destination_network_ids=2&to_ler=0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757
+```
+
+The Go client exposes this as `client.GetClaimCandidates(ctx, client.GetClaimCandidatesParams{...})`
+(`bridgeservice/client/client.go`), which returns `client.ErrNotFound` when `to_ler`/`from_ler`
+is not synced yet.
+
+## Sync status
+
+`GET /bridge/v1/sync-status` reports the synchronization status of the L1 and L2 bridge indexers, plus
+(when applicable) the l2gersync (injected-GER) syncer. Response shape (`types.SyncStatus`):
+
+```json
+{
+  "l1_info": {
+    "contract_deposit_count": 100,
+    "synchronized_deposit_count": 100,
+    "is_synced": true,
+    "is_active": true,
+    "last_processed_block": 1234,
+    "network_block": 2555
+  },
+  "l2_info": {
+    "contract_deposit_count": 200,
+    "synchronized_deposit_count": 200,
+    "is_synced": true,
+    "is_active": true,
+    "last_processed_block": 5678,
+    "network_block": 5680
+  },
+  "l2_ger_info": {
+    "is_active": true,
+    "last_processed_block": 12345678
+  }
+}
+```
+
+`l1_info` / `l2_info` (`NetworkSyncInfo`) compare on-chain bridge deposit counts against the local
+`bridgesync` database counts, per network.
+
+`l2_ger_info` (`L2GERSyncInfo`) reports the l2gersync (injected-GER) syncer's own progress, independent of
+`l2_info`:
+
+- `is_active` — `true` when this bridgeservice instance has an l2gersync syncer wired in. It is always
+  `false` on an **L1 bridgeservice** (l2gersync only runs against an L2 sovereign chain), and `false` when
+  running against an L2 that isn't configured with l2gersync.
+- `last_processed_block` — the last L2 block l2gersync has processed. Compare this against the L2 chain
+  head (`l2_info.network_block`) to tell whether l2gersync is keeping up. A value that stays pinned below
+  a known block while the chain head keeps advancing indicates l2gersync is stuck — most commonly because
+  an invalid GER was injected and not yet removed on-chain; see the
+  [remove-GER runbook](./remove_ger_runbook.md#blocking-and-automatic-recovery) for the blocking/automatic
+  recovery behavior and how to use this field to confirm recovery.
+
 ## Bridging custom ERC20 token
 
 When a non-native ERC20 token, not yet mapped on a destination network, is bridged, its representation is deployed on the destination network using the `CREATE2` opcode. The mapping process emits the `NewWrappedToken` [event](https://github.com/0xPolygonHermez/zkevm-contracts/blob/21d3fd6ec0881731de49f1a6133fb97ed863a7ab/contracts/v2/PolygonZkEVMBridgeV2.sol#L561-L566) on the destination network.
@@ -233,6 +343,7 @@ Each handler is described with a unique handler id and these are the values, dep
 - `l1_info_tree_index_for_bridge`,
 - `injected_info_after_index`,
 - `claim_proof`,
+- `get_claim_candidates`,
 - `last_reorg_event`,
 - `get_sync_status`,
 - `health_check`,

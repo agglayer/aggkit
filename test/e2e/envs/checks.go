@@ -6,7 +6,9 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 // CheckEnv validates that the environment is correctly configured and all services are accessible.
@@ -30,6 +32,19 @@ func (e *Env) CheckEnv(ctx context.Context) error {
 	if err := e.checkL2Contracts(ctx); err != nil {
 		return fmt.Errorf("VerifyL2Contracts: %w", err)
 	}
+
+	// For multi-chain envs, also validate the secondary L2 network (L2B).
+	if e.L2B != nil {
+		if err := checkL2ConnectivityFor(ctx, e.L2B, e.L2B.Client); err != nil {
+			return fmt.Errorf("VerifyL2BConnectivity: %w", err)
+		}
+		if err := checkBridgeServiceConnectivityFor(ctx, e.L2B.BridgeService); err != nil {
+			return fmt.Errorf("VerifyL2BBridgeServiceConnectivity: %w", err)
+		}
+		if err := checkL2ContractsFor(ctx, e.L2B); err != nil {
+			return fmt.Errorf("VerifyL2BContracts: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -51,20 +66,20 @@ func (e *Env) checkConfiguration() error {
 		return fmt.Errorf("L1 Transactor is nil")
 	}
 
-	if e.L2.ChainID == nil {
-		return fmt.Errorf("L2 ChainID is nil")
+	// Expected L2A chain ID depends on the env: op-pp uses 2151908, op-pp-2chains uses 20201.
+	wantL2AChainID := "2151908"
+	if e.envName == EnvOpPP2Chains {
+		wantL2AChainID = "20201"
 	}
-	if e.L2.ChainID.String() != "2151908" {
-		return fmt.Errorf("L2 ChainID: got %s, want 2151908", e.L2.ChainID)
+	if err := checkL2Configured(e.L2, wantL2AChainID, "L2"); err != nil {
+		return err
 	}
-	if e.L2.Contracts.L2Bridge == nil {
-		return fmt.Errorf("L2Bridge contract is nil")
-	}
-	if e.L2.Contracts.GlobalExitRoot == nil {
-		return fmt.Errorf("GlobalExitRoot contract is nil")
-	}
-	if e.L2.Transactor == nil {
-		return fmt.Errorf("L2 Transactor is nil")
+
+	// For multi-chain envs, validate the secondary L2 (L2B) configuration.
+	if e.L2B != nil {
+		if err := checkL2Configured(*e.L2B, "20202", "L2B"); err != nil {
+			return err
+		}
 	}
 
 	if e.Clients.L1 == nil {
@@ -75,6 +90,27 @@ func (e *Env) checkConfiguration() error {
 	}
 	if e.Clients.BridgeService == nil {
 		return fmt.Errorf("BridgeService client is nil")
+	}
+	return nil
+}
+
+// checkL2Configured verifies a single L2Config is populated with the expected chain ID and
+// non-nil contracts/transactor. label is used in error messages (e.g. "L2" or "L2B").
+func checkL2Configured(l2 L2Config, wantChainID, label string) error {
+	if l2.ChainID == nil {
+		return fmt.Errorf("%s ChainID is nil", label)
+	}
+	if l2.ChainID.String() != wantChainID {
+		return fmt.Errorf("%s ChainID: got %s, want %s", label, l2.ChainID, wantChainID)
+	}
+	if l2.Contracts.L2Bridge == nil {
+		return fmt.Errorf("%s L2Bridge contract is nil", label)
+	}
+	if l2.Contracts.GlobalExitRoot == nil {
+		return fmt.Errorf("%s GlobalExitRoot contract is nil", label)
+	}
+	if l2.Transactor == nil {
+		return fmt.Errorf("%s Transactor is nil", label)
 	}
 	return nil
 }
@@ -107,18 +143,24 @@ func (e *Env) checkL1Connectivity(ctx context.Context) error {
 }
 
 func (e *Env) checkL2Connectivity(ctx context.Context) error {
-	l2ChainID, err := e.Clients.L2.ChainID(ctx)
+	return checkL2ConnectivityFor(ctx, &e.L2, e.Clients.L2)
+}
+
+// checkL2ConnectivityFor validates RPC connectivity, chain ID, block production and account
+// balance for a single L2 network using the provided client.
+func checkL2ConnectivityFor(ctx context.Context, l2 *L2Config, l2Client *ethclient.Client) error {
+	l2ChainID, err := l2Client.ChainID(ctx)
 	if err != nil {
 		return fmt.Errorf("fetch chain ID: %w", err)
 	}
-	if l2ChainID.Cmp(e.L2.ChainID) != 0 {
-		return fmt.Errorf("chain ID mismatch: got %s, want %s", l2ChainID, e.L2.ChainID)
+	if l2ChainID.Cmp(l2.ChainID) != 0 {
+		return fmt.Errorf("chain ID mismatch: got %s, want %s", l2ChainID, l2.ChainID)
 	}
 
 	const allowedRetries = 5
 	success := false
 	for range allowedRetries {
-		l2BlockNumber, err := e.Clients.L2.BlockNumber(ctx)
+		l2BlockNumber, err := l2Client.BlockNumber(ctx)
 		if err != nil {
 			return fmt.Errorf("fetch block number: %w", err)
 		}
@@ -132,7 +174,7 @@ func (e *Env) checkL2Connectivity(ctx context.Context) error {
 		return fmt.Errorf("L2 block number did not exceed 0 after %d retries", allowedRetries)
 	}
 
-	balance, err := e.Clients.L2.BalanceAt(ctx, e.L2.Transactor.From, nil)
+	balance, err := l2Client.BalanceAt(ctx, l2.Transactor.From, nil)
 	if err != nil {
 		return fmt.Errorf("fetch balance: %w", err)
 	}
@@ -143,7 +185,13 @@ func (e *Env) checkL2Connectivity(ctx context.Context) error {
 }
 
 func (e *Env) checkBridgeServiceConnectivity(ctx context.Context) error {
-	healthResp, err := e.Clients.BridgeService.HealthCheck(ctx)
+	return checkBridgeServiceConnectivityFor(ctx, e.Clients.BridgeService)
+}
+
+// checkBridgeServiceConnectivityFor validates a bridge-service client responds to health and
+// sync-status calls.
+func checkBridgeServiceConnectivityFor(ctx context.Context, bridgeService *client.Client) error {
+	healthResp, err := bridgeService.HealthCheck(ctx)
 	if err != nil {
 		return fmt.Errorf("health check: %w", err)
 	}
@@ -151,7 +199,7 @@ func (e *Env) checkBridgeServiceConnectivity(ctx context.Context) error {
 		return fmt.Errorf("health check response is nil")
 	}
 
-	syncStatus, err := e.Clients.BridgeService.GetSyncStatus(ctx)
+	syncStatus, err := bridgeService.GetSyncStatus(ctx)
 	if err != nil {
 		return fmt.Errorf("get sync status: %w", err)
 	}
@@ -170,11 +218,17 @@ func (e *Env) checkL1Contracts(ctx context.Context) error {
 }
 
 func (e *Env) checkL2Contracts(ctx context.Context) error {
+	return checkL2ContractsFor(ctx, &e.L2)
+}
+
+// checkL2ContractsFor exercises read calls against a single L2 network's bridge and
+// global-exit-root contracts.
+func checkL2ContractsFor(ctx context.Context, l2 *L2Config) error {
 	callOpts := &bind.CallOpts{Context: ctx}
-	if _, err := e.L2.Contracts.L2Bridge.NetworkID(callOpts); err != nil {
+	if _, err := l2.Contracts.L2Bridge.NetworkID(callOpts); err != nil {
 		return fmt.Errorf("call L2Bridge.NetworkID: %w", err)
 	}
-	if _, err := e.L2.Contracts.GlobalExitRoot.LastRollupExitRoot(callOpts); err != nil {
+	if _, err := l2.Contracts.GlobalExitRoot.LastRollupExitRoot(callOpts); err != nil {
 		return fmt.Errorf("call GlobalExitRoot.LastRollupExitRoot: %w", err)
 	}
 	return nil

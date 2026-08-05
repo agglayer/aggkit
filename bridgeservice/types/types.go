@@ -352,8 +352,9 @@ type L1InfoTreeLeafResponse struct {
 // "is_synced":true,"is_active":true},"l2_info":{"contract_deposit_count":200,
 // "synchronized_deposit_count":200,"is_synced":true,"is_active":true}}
 type SyncStatus struct {
-	L1Info *NetworkSyncInfo `json:"l1_info" description:"L1 network bridge sync status"`
-	L2Info *NetworkSyncInfo `json:"l2_info" description:"L2 network bridge sync status"`
+	L1Info    *NetworkSyncInfo `json:"l1_info" description:"L1 network bridge sync status"`
+	L2Info    *NetworkSyncInfo `json:"l2_info" description:"L2 network bridge sync status"`
+	L2GERInfo *L2GERSyncInfo   `json:"l2_ger_info,omitempty" description:"l2gersync (injected-GER) sync status"`
 }
 
 // NetworkSyncInfo represents the bridge synchronization status of a single network (L1 or L2)
@@ -367,6 +368,14 @@ type NetworkSyncInfo struct {
 	IsActive                 bool   `json:"is_active" example:"true" description:"True if bridge syncer is running"`
 	LastProcessedBlock       uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last block processed"` //nolint:lll
 	NetworkBlock             uint64 `json:"network_block,omitempty" example:"12350000" description:"Current latest block"`
+}
+
+// L2GERSyncInfo represents the l2gersync (injected-GER) synchronization status.
+// @Description l2gersync (injected-GER) synchronization status
+// @example {"is_active":true,"last_processed_block":12345678}
+type L2GERSyncInfo struct {
+	IsActive           bool   `json:"is_active" example:"true" description:"True if the l2gersync syncer is available"`                     //nolint:lll
+	LastProcessedBlock uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last L2 block processed by l2gersync"` //nolint:lll
 }
 
 // HealthCheckResponse represents the JSON returned by HealthCheckHandler.
@@ -464,4 +473,39 @@ type SetClaimsResult struct {
 
 	// Total number of set claim events
 	Count int `json:"count" example:"20"`
+}
+
+// ClaimCandidateResponse represents a single claim candidate: a bridge originated on this
+// network whose deposit count falls within the requested local-exit-root range. The leaf-to-LER
+// proof is fetched separately at claim time, so it is no longer part of this response.
+// @Description A bridge event that is a candidate for claiming
+type ClaimCandidateResponse struct {
+	// The bridge event that is a candidate for claiming
+	Bridge *BridgeResponse `json:"bridge"`
+}
+
+// ClaimCandidatesResult contains the claim candidates matching the query and their total count
+// @Description Paginated response of claim candidates (bridge events)
+type ClaimCandidatesResult struct {
+	// List of claim candidates
+	ClaimCandidates []*ClaimCandidateResponse `json:"claim_candidates"`
+
+	// Total number of matching claim candidates
+	Count int `json:"count" example:"5"`
+}
+
+// RootByLERResponse locates a local exit root (LER) in its network's local exit tree: the
+// deposit-count position it had when it was computed. Resolving two LERs to their Index lets
+// a caller order them (or compare a known deposit count against one) without walking the tree
+// itself.
+// @Description The deposit-count position of a local exit root in its network's local exit tree
+type RootByLERResponse struct {
+	// Index is the deposit count at which this root became the local exit root (0-based)
+	Index uint32 `json:"index" example:"42"`
+
+	// BlockNum is the block in which the leaf that produced this root was added
+	BlockNum uint64 `json:"block_num" example:"123456"`
+
+	// BlockPosition orders same-block roots (multiple deposits in one block)
+	BlockPosition uint64 `json:"block_position" example:"0"`
 }

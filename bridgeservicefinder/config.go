@@ -22,7 +22,8 @@ const (
 	// DefaultBlockChunkSize is the default number of blocks scanned per FilterLogs request.
 	DefaultBlockChunkSize = uint64(10_000)
 	// DefaultHealthCheckPath is the default HTTP path probed to assert a bridge service is alive.
-	DefaultHealthCheckPath = "/health"
+	// The bridge service only registers its health check handler at the root path.
+	DefaultHealthCheckPath = "/"
 	// DefaultRequireAllHealthyOnStart controls whether Start fails if any resolved service is
 	// unreachable during initial cache construction. Default is false: record the unhealthy state
 	// but keep the entry so live updates can heal it.
@@ -45,10 +46,17 @@ type Config struct {
 	// the set of attached networks (rollups 1..RollupCount) is enumerated.
 	RollupManagerAddr common.Address `mapstructure:"RollupManagerAddr"`
 
-	// URLs is the highest-priority (SourceConfig) static override map from networkID to bridge service
-	// URL. Any networkID present here is served verbatim and is never overwritten by on-chain events.
-	// This is also the only way to provide a URL for network 0 (L1), which is not enumerated on-chain.
-	URLs map[uint32]string `mapstructure:"URLs"`
+	// BridgeURLs is the highest-priority (SourceConfig) static override map from networkID to bridge
+	// service URL. Any networkID present here is served verbatim and is never overwritten by on-chain
+	// events. This is also the only way to provide a bridge URL for network 0 (L1), which is not
+	// enumerated on-chain.
+	BridgeURLs map[uint32]string `mapstructure:"BridgeURLs"`
+
+	// RPCURLs is the static override map from networkID to the network's JSON-RPC endpoint, with the
+	// same semantics as BridgeURLs: any networkID present here is served verbatim and is never
+	// overwritten by on-chain events (a live SetTrustedSequencerURL no longer refreshes it). Networks
+	// absent from this map get their JSON-RPC endpoint from the rollup's trustedSequencerURL.
+	RPCURLs map[uint32]string `mapstructure:"RPCURLs"`
 
 	// BlockFinality is the finality level used to bound the upper block of each event scan, so the
 	// finder does not react to logs that may still be reorged away. See aggkittypes.BlockNumberFinality.

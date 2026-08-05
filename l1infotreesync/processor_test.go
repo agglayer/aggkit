@@ -391,7 +391,8 @@ func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
 }
 
 func TestProcessBlockUpdateL1InfoTreeV2DontMatchTree(t *testing.T) {
-	sut, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTestProcessBlockUpdateL1InfoTreeV2DontMatchTree.sqlite"))
+	sut, err := newProcessor(
+		path.Join(t.TempDir(), "l1infotreesyncTestProcessBlockUpdateL1InfoTreeV2DontMatchTree.sqlite"))
 	require.NoError(t, err)
 	block := aggkitsync.Block{
 		Num: 10,

@@ -14,6 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// invalidUintValue is a non-numeric placeholder used across parser error test cases below.
+const invalidUintValue = "abc"
+
 func ctxWithQuery(t *testing.T, query url.Values) *gin.Context {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -25,6 +28,7 @@ func ctxWithQuery(t *testing.T, query url.Values) *gin.Context {
 
 func TestParseRequestFilterValid(t *testing.T) {
 	query := url.Values{}
+	query.Set("source_network", "1")
 	query.Set("origin_network", "0")
 	query.Set("destination_network", "10")
 	query.Set("status", autoclaimtypes.RequestStatusDryRun.String())
@@ -38,6 +42,8 @@ func TestParseRequestFilterValid(t *testing.T) {
 
 	filter, err := ParseRequestFilter(ctxWithQuery(t, query))
 	require.NoError(t, err)
+	require.NotNil(t, filter.SourceNetwork)
+	require.Equal(t, uint32(1), *filter.SourceNetwork)
 	require.NotNil(t, filter.OriginNetwork)
 	require.Equal(t, uint32(10), *filter.DestinationNetwork)
 	require.Equal(t, autoclaimtypes.RequestStatusDryRun, *filter.Status)
@@ -56,13 +62,14 @@ func TestParseRequestFilterErrors(t *testing.T) {
 		key   string
 		value string
 	}{
-		{"origin", "origin_network", "abc"},
+		{"source", "source_network", invalidUintValue},
+		{"origin", "origin_network", invalidUintValue},
 		{"destination", "destination_network", "-1"},
 		{"status", "status", "bogus"},
 		{"policy", "policy_status", "bogus"},
 		{"bridge hash", "bridge_tx_hash", "0x123"},
-		{"from block", "from_block", "abc"},
-		{"page number", "page_number", "abc"},
+		{"from block", "from_block", invalidUintValue},
+		{"page number", "page_number", invalidUintValue},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			query := url.Values{}
@@ -94,6 +101,7 @@ func TestNewRequestResponseMapsDecisions(t *testing.T) {
 		GlobalIndex: big.NewInt(42),
 		ClaimTxHash: &claimTx,
 		Bridge: autoclaimtypes.BridgeExit{
+			SourceNetwork:      0,
 			OriginNetwork:      0,
 			DestinationNetwork: 10,
 			DepositCount:       5,
@@ -123,6 +131,8 @@ func TestNewRequestResponseMapsDecisions(t *testing.T) {
 	response := NewRequestResponse(request)
 	require.Equal(t, "0:10:5", response.ID)
 	require.Equal(t, autoclaimtypes.RequestStatusConfirmed.String(), response.Status)
+	require.Equal(t, uint32(0), response.SourceNetwork)
+	require.Empty(t, response.LER)
 	require.Equal(t, "42", response.GlobalIndex)
 	require.Equal(t, "0x01", response.Metadata)
 	require.NotNil(t, response.ClaimTxHash)
@@ -131,4 +141,33 @@ func TestNewRequestResponseMapsDecisions(t *testing.T) {
 	require.NotNil(t, response.PolicyDecision)
 	require.NotNil(t, response.ManualDecision)
 	require.Equal(t, "ok", response.ManualDecision.Reason)
+}
+
+// TestNewRequestResponseMapsSourceNetworkAndLER exercises a rollup-origin request (S06/S07) whose
+// SourceNetwork differs from the bridged token's OriginNetwork, and whose LER is set — the two new
+// fields this step (S11) surfaces on RequestResponse.
+func TestNewRequestResponseMapsSourceNetworkAndLER(t *testing.T) {
+	request := autoclaimtypes.AutoClaimRequest{
+		Key:    autoclaimtypes.RequestKey("1:0:7"),
+		Status: autoclaimtypes.RequestStatusDetected,
+		Bridge: autoclaimtypes.BridgeExit{
+			SourceNetwork:      1,
+			OriginNetwork:      5,
+			DestinationNetwork: 0,
+			DepositCount:       7,
+			TxHash:             common.HexToHash("0x1"),
+			OriginAddress:      common.HexToAddress("0x2"),
+			DestinationAddress: common.HexToAddress("0x3"),
+			ToAddress:          common.HexToAddress("0x4"),
+			TxnSender:          common.HexToAddress("0x5"),
+			Amount:             big.NewInt(100),
+		},
+		LER: common.HexToHash("0xdeadbeef"),
+	}
+
+	response := NewRequestResponse(request)
+	require.Equal(t, "1:0:7", response.ID)
+	require.Equal(t, uint32(1), response.SourceNetwork)
+	require.Equal(t, uint32(5), response.OriginNetwork)
+	require.Equal(t, common.HexToHash("0xdeadbeef").Hex(), response.LER)
 }

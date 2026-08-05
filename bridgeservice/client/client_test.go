@@ -576,6 +576,64 @@ func TestGetInjectedL1InfoLeaf(t *testing.T) {
 		require.Equal(t, uint32(5), resp.L1InfoTreeIndex)
 		require.Equal(t, uint64(100), resp.BlockNumber)
 	})
+
+	t.Run("returns ErrNotFound when GER not injected yet (404)", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "not injected yet"})
+		}))
+		defer server.Close()
+
+		client := New(Config{BaseURL: server.URL})
+		resp, err := client.GetInjectedL1InfoLeaf(context.Background(), 2, 5)
+
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Nil(t, resp)
+	})
+}
+
+func TestGetL1InfoTreeLeafByGER(t *testing.T) {
+	ger := "0xc3a24b0501bd2c13a7e57f2db4369ec4c223447539fc0724a9d55ac4a06ebd4d"
+
+	t.Run("successful request", func(t *testing.T) {
+		expectedResp := &types.L1InfoTreeLeafResponse{
+			L1InfoTreeIndex: 5,
+			BlockNumber:     100,
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "GET", r.Method)
+			require.Equal(t, "/bridge/v1/l1-info-tree-leaf-by-ger", r.URL.Path)
+			require.Equal(t, "0", r.URL.Query().Get("network_id"))
+			require.Equal(t, ger, r.URL.Query().Get("global_exit_root"))
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		client := New(Config{BaseURL: server.URL})
+		resp, err := client.GetL1InfoTreeLeafByGER(context.Background(), ger)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, uint32(5), resp.L1InfoTreeIndex)
+		require.Equal(t, uint64(100), resp.BlockNumber)
+	})
+
+	t.Run("returns ErrNotFound when GER is not part of the L1 info tree yet (404)", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "not found"})
+		}))
+		defer server.Close()
+
+		client := New(Config{BaseURL: server.URL})
+		resp, err := client.GetL1InfoTreeLeafByGER(context.Background(), ger)
+
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Nil(t, resp)
+	})
 }
 
 func TestGetClaimProof(t *testing.T) {
@@ -611,7 +669,9 @@ func TestGetClaimProof(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.Equal(t, types.Hash("0x1234567890123456789012345678901234567890123456789012345678901234"), resp.ProofLocalExitRoot[0])
+		require.Equal(t,
+			types.Hash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+			resp.ProofLocalExitRoot[0])
 		require.Equal(t, uint32(10), resp.L1InfoTreeLeaf.L1InfoTreeIndex)
 	})
 }
@@ -659,6 +719,10 @@ func TestGetSyncStatus(t *testing.T) {
 				IsSynced:                 true,
 				IsActive:                 true,
 			},
+			L2GERInfo: &types.L2GERSyncInfo{
+				IsActive:           true,
+				LastProcessedBlock: 12345678,
+			},
 		}
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -681,6 +745,40 @@ func TestGetSyncStatus(t *testing.T) {
 		require.Equal(t, uint32(50), resp.L2Info.ContractDepositCount)
 		require.False(t, resp.L1Info.IsSynced)
 		require.True(t, resp.L2Info.IsSynced)
+
+		// The new l2gersync section must decode correctly via the existing
+		// Client.GetSyncStatus - no new client method is introduced for it.
+		require.NotNil(t, resp.L2GERInfo)
+		require.True(t, resp.L2GERInfo.IsActive)
+		require.Equal(t, uint64(12345678), resp.L2GERInfo.LastProcessedBlock)
+	})
+
+	t.Run("l2gersync inactive - nil syncer on the server side", func(t *testing.T) {
+		expectedResp := &types.SyncStatus{
+			L1Info: &types.NetworkSyncInfo{IsActive: true},
+			L2Info: &types.NetworkSyncInfo{IsActive: true},
+			L2GERInfo: &types.L2GERSyncInfo{
+				IsActive: false,
+			},
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "GET", r.Method)
+			require.Equal(t, "/bridge/v1/sync-status", r.URL.Path)
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		client := New(Config{BaseURL: server.URL})
+		resp, err := client.GetSyncStatus(context.Background())
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.NotNil(t, resp.L2GERInfo)
+		require.False(t, resp.L2GERInfo.IsActive)
+		require.Equal(t, uint64(0), resp.L2GERInfo.LastProcessedBlock)
 	})
 }
 
@@ -996,6 +1094,117 @@ func TestGetBridgesByContent(t *testing.T) {
 
 		require.Error(t, err)
 		require.Nil(t, resp)
+	})
+}
+
+func TestGetClaimCandidates(t *testing.T) {
+	const testToLER = "0xtoler"
+
+	t.Run("successful request with minimal params", func(t *testing.T) {
+		expectedResp := &types.ClaimCandidatesResult{
+			ClaimCandidates: []*types.ClaimCandidateResponse{
+				{
+					Bridge: &types.BridgeResponse{DepositCount: 3},
+				},
+			},
+			Count: 1,
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "GET", r.Method)
+			require.Equal(t, "/bridge/v1/claim-candidates", r.URL.Path)
+			require.Equal(t, []string{"1"}, r.URL.Query()["destination_network_ids"])
+			require.Equal(t, testToLER, r.URL.Query().Get("to_ler"))
+			require.Empty(t, r.URL.Query().Get("from_ler"))
+			require.Empty(t, r.URL.Query().Get("page_number"))
+			require.Empty(t, r.URL.Query().Get("page_size"))
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimCandidates(context.Background(), GetClaimCandidatesParams{
+			DestinationNetworkIDs: []uint32{1},
+			ToLER:                 testToLER,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, 1, resp.Count)
+		require.Len(t, resp.ClaimCandidates, 1)
+		require.Equal(t, uint32(3), resp.ClaimCandidates[0].Bridge.DepositCount)
+	})
+
+	t.Run("sends destination_network_ids as repeated query param and all optional params", func(t *testing.T) {
+		fromLER := "0xfromler"
+		pageNum := uint32(2)
+		pageSize := uint32(25)
+
+		expectedResp := &types.ClaimCandidatesResult{
+			ClaimCandidates: []*types.ClaimCandidateResponse{},
+			Count:           0,
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, []string{"1", "2", "3"}, r.URL.Query()["destination_network_ids"])
+			require.Equal(t, testToLER, r.URL.Query().Get("to_ler"))
+			require.Equal(t, fromLER, r.URL.Query().Get("from_ler"))
+			require.Equal(t, "2", r.URL.Query().Get("page_number"))
+			require.Equal(t, "25", r.URL.Query().Get("page_size"))
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimCandidates(context.Background(), GetClaimCandidatesParams{
+			DestinationNetworkIDs: []uint32{1, 2, 3},
+			ToLER:                 testToLER,
+			FromLER:               &fromLER,
+			PageNumber:            &pageNum,
+			PageSize:              &pageSize,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+	})
+
+	t.Run("returns ErrNotFound when to_ler is not synced yet", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"to_ler 0xtoler not found (not synced yet)"}`))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimCandidates(context.Background(), GetClaimCandidatesParams{
+			DestinationNetworkIDs: []uint32{1},
+			ToLER:                 testToLER,
+		})
+
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Nil(t, resp)
+	})
+
+	t.Run("handles server error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("internal error"))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimCandidates(context.Background(), GetClaimCandidatesParams{
+			DestinationNetworkIDs: []uint32{1},
+			ToLER:                 testToLER,
+		})
+
+		require.Error(t, err)
+		require.Nil(t, resp)
+		require.NotErrorIs(t, err, ErrNotFound)
 	})
 }
 

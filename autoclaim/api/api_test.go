@@ -235,7 +235,7 @@ func makeRequest(
 	}
 
 	return autoclaimtypes.AutoClaimRequest{
-		Key:         autoclaimtypes.DeriveRequestKey(bridge.OriginNetwork, bridge.DestinationNetwork, depositCount),
+		Key:         autoclaimtypes.DeriveRequestKey(bridge.SourceNetwork, bridge.DestinationNetwork, depositCount),
 		Status:      status,
 		Bridge:      bridge,
 		GlobalIndex: new(big.Int).Set(bridge.GlobalIndex),
@@ -339,7 +339,9 @@ func (c *fakeClaimer) Advance(_ context.Context, key autoclaimtypes.RequestKey) 
 // fakeRegistryWithError always returns an error from ClaimerForDestination.
 type fakeRegistryWithError struct{ err error }
 
-func (r *fakeRegistryWithError) ClaimerForDestination(_ context.Context, _ uint32) (autoclaimtypes.Claimer, bool, error) {
+func (r *fakeRegistryWithError) ClaimerForDestination(
+	_ context.Context, _ uint32,
+) (autoclaimtypes.Claimer, bool, error) {
 	return nil, false, r.err
 }
 
@@ -365,7 +367,9 @@ func (c *errClaimer) Advance(_ context.Context, _ autoclaimtypes.RequestKey) err
 // fakeRegistryWithAdvanceError wraps an errClaimer that returns an error from Advance.
 type fakeRegistryWithAdvanceError struct{ claimer *errClaimer }
 
-func (r *fakeRegistryWithAdvanceError) ClaimerForDestination(_ context.Context, destinationNetwork uint32) (autoclaimtypes.Claimer, bool, error) {
+func (r *fakeRegistryWithAdvanceError) ClaimerForDestination(
+	_ context.Context, destinationNetwork uint32,
+) (autoclaimtypes.Claimer, bool, error) {
 	if r.claimer.target.DestinationNetwork == destinationNetwork {
 		return r.claimer, true, nil
 	}
@@ -400,7 +404,8 @@ func TestManualDecisionInvalidJSONBody(t *testing.T) {
 	request := makeManualRequest(20, 10)
 	enqueueRequest(t, ctx, storage, request)
 
-	response := performRawRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", []byte("not-json"))
+	response := performRawRequest(t, api, http.MethodPost,
+		Prefix+"/bridges/"+string(request.Key)+"/approve", []byte("not-json"))
 	require.Equal(t, http.StatusBadRequest, response.Code)
 	require.Contains(t, response.Body.String(), "decode manual decision request")
 }
