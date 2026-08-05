@@ -118,7 +118,10 @@ func (s *Sender) SendForcedGERUpdate(ctx context.Context) error {
 
 // waitForResult polls the ethtxmanager for id's status until a terminal state is reached:
 // Mined/Safe/Finalized succeed, Failed returns an error, and Evicted is logged and returns nil
-// (mirrors aggoracle/chaingersender/evm.go's submitTransaction monitoring loop).
+// (mirrors aggoracle/chaingersender/evm.go's submitTransaction monitoring loop). Every terminal
+// state also forgets id (see forgetTerminalTx) so the next SendForcedGERUpdate call — which packs
+// byte-for-byte identical calldata — is free to submit a genuinely new transaction instead of
+// perpetually re-observing this one.
 func (s *Sender) waitForResult(ctx context.Context, id common.Hash) error {
 	ticker := time.NewTicker(s.pollInterval)
 	defer ticker.Stop()
@@ -140,18 +143,41 @@ func (s *Sender) waitForResult(ctx context.Context, id common.Hash) error {
 				ethtxtypes.MonitoredTxStatusSent:
 				continue
 			case ethtxtypes.MonitoredTxStatusFailed:
+				s.forgetTerminalTx(ctx, id)
 				return fmt.Errorf("forced GER update tx %s failed", id.Hex())
 			case ethtxtypes.MonitoredTxStatusEvicted:
 				log.Infof("forced GER update tx %s was evicted", id.Hex())
+				s.forgetTerminalTx(ctx, id)
 				return nil
 			case ethtxtypes.MonitoredTxStatusMined,
 				ethtxtypes.MonitoredTxStatusSafe,
 				ethtxtypes.MonitoredTxStatusFinalized:
 				log.Infof("forced GER update tx %s was successfully mined at block %d", id.Hex(), res.MinedAtBlockNumber)
+				s.forgetTerminalTx(ctx, id)
 				return nil
 			default:
 				log.Errorf("unexpected forced GER update tx status: %s", res.Status)
 			}
 		}
+	}
+}
+
+// forgetTerminalTx removes id from the ethtxmanager's monitoring DB once it has reached a
+// terminal status (Mined/Safe/Finalized/Failed/Evicted).
+//
+// ethtxmanager.Add derives id deterministically from (to, value, data) alone — it never looks at
+// nonce or gas price — and every SendForcedGERUpdate call packs the exact same calldata (same
+// destination network/address, forceUpdateGlobalExitRoot=true, empty metadata). Without this
+// cleanup the very first forced-update tx would occupy that id forever: every later call, whether
+// triggered by the next elapsed-time tick or by a fresh process after a restart, would collide on
+// Add with ErrAlreadyExists and just re-observe that same (already-terminal) tx instead of ever
+// broadcasting a new one — the GER would stay stale and every restart would appear to "retrigger"
+// a send that is really a no-op.
+//
+// Best-effort: a failure to remove only risks repeating that same no-op on the next call, so it is
+// logged rather than propagated as an error of the (already terminal) send itself.
+func (s *Sender) forgetTerminalTx(ctx context.Context, id common.Hash) {
+	if err := s.ethTxManager.Remove(ctx, id); err != nil {
+		log.Warnf("force_ger_update: remove completed tx %s from monitoring DB: %v", id.Hex(), err)
 	}
 }

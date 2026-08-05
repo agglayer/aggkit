@@ -69,6 +69,10 @@ func NewEthTxManMock(
 	ethTxMock.EXPECT().
 		Result(mock.Anything, mock.Anything).
 		Return(ethtxtypes.MonitoredTxResult{Status: ethtxtypes.MonitoredTxStatusMined}, nil)
+	ethTxMock.EXPECT().
+		Remove(mock.Anything, mock.Anything).
+		Return(nil).
+		Maybe()
 	ethTxMock.EXPECT().From().Return(auth.From)
 
 	return ethTxMock
