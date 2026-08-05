@@ -62,6 +62,12 @@ Cached = true
 [Tracker.AgglayerClient.ConfigurationCache]
 TTL = "1s"
 Capacity = 100
+# The tracker only ever reads agglayer state -- it must never be able to submit a certificate.
+SendCertificate = "forbidden"
+GetCertificateHeader = "cached"
+GetEpochConfiguration = "cached"
+GetLatestPendingCertificateHeader = "cached"
+GetNetworkInfo = "cached"
 [Tracker.AgglayerClient.GRPC]
 #URL = "https://agglayer-dev.polygon.technology"
 UseTLS = false
