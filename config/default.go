@@ -385,7 +385,12 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 	[Validator.AgglayerClient.ConfigurationCache]
 		TTL = "5m"
 		Capacity = 100
+		SendCertificate = "passthrough"
 		GetCertificateHeader = "cached"
+		GetEpochConfiguration = "passthrough"
+		GetLatestSettledCertificateHeader = "passthrough"
+		GetLatestPendingCertificateHeader = "passthrough"
+		GetNetworkInfo = "passthrough"
 	[Validator.AgglayerClient.GRPC]
 		URL = "{{AggSender.AgglayerClient.GRPC.URL}}"
 		MinConnectTimeout = "{{AggSender.AgglayerClient.GRPC.MinConnectTimeout}}"
