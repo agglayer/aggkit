@@ -25,13 +25,17 @@ var mig003 string
 //go:embed l1infotreesync0004.sql
 var mig004 string
 
+//go:embed l1infotreesync0005.sql
+var mig005 string
+
 func RunMigrations(dbPath string) error {
-	migrations := make([]types.Migration, 0, 4+2*len(treeMigrations.Migrations)) //nolint:mnd
+	migrations := make([]types.Migration, 0, 5+2*len(treeMigrations.Migrations)) //nolint:mnd
 	migrations = append(migrations,
 		types.Migration{ID: "l1infotreesync0001", SQL: mig001},
 		types.Migration{ID: "l1infotreesync0002", SQL: mig002},
 		types.Migration{ID: "l1infotreesync0003", SQL: mig003},
 		types.Migration{ID: "l1infotreesync0004", SQL: mig004},
+		types.Migration{ID: "l1infotreesync0005", SQL: mig005},
 	)
 	for _, tm := range treeMigrations.Migrations {
 		migrations = append(migrations, types.Migration{
