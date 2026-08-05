@@ -19,7 +19,16 @@ type bridgeEntry struct {
 	// terminalSince is when the snapshot first became terminal (see isTerminal); zero while
 	// it is not. It anchors the retention window PruneTerminal evicts by
 	terminalSince time.Time
+	// lastAccess is when this entry was last read (Get/GetAndAwait) or gained a new
+	// subscriber; it anchors the idle window PruneIdle evicts by
+	lastAccess time.Time
 }
+
+// triggerBufferSize bounds the backlog of newly registered ids awaiting the engine's
+// immediate attention (see memoryRegistry.trigger). A full buffer never blocks registration
+// or loses the entry itself — a dropped signal just leaves that one bridge for the next
+// regular poll tick, exactly as if GetAndAwait had not signaled it at all
+const triggerBufferSize = 256
 
 // memoryRegistry is the in-memory adapter of the SupervisedRegistry port: the supervised
 // list and its subscriptions live in this instance's memory, so it serves a single-instance
@@ -27,13 +36,16 @@ type bridgeEntry struct {
 type memoryRegistry struct {
 	mu      sync.RWMutex
 	bridges map[TrackingID]*bridgeEntry
-	// now is the clock terminalSince is stamped with, injectable for tests
+	// now is the clock terminalSince and lastAccess are stamped with, injectable for tests
 	now func() time.Time
 	// maxEntries bounds how many distinct bridges can be registered at once (see create): an
 	// unauthenticated caller registering an unbounded number of distinct (network, tx hash)
 	// pairs would otherwise grow the registry (and the engine's active work queue) without
 	// limit until each entry's unresolved/retention timeout elapses
 	maxEntries int
+	// trigger carries the ids of freshly created entries out to the tracking engine (see
+	// Triggers), which resolves them immediately instead of waiting for its next poll tick
+	trigger chan TrackingID
 }
 
 // isTerminal reports whether the snapshot will never change again: the bridge finished, or
@@ -71,7 +83,12 @@ func newMemoryRegistry(maxEntries int) *memoryRegistry {
 	if maxEntries <= 0 {
 		maxEntries = DefaultMaxTrackedBridges
 	}
-	return &memoryRegistry{bridges: make(map[TrackingID]*bridgeEntry), now: time.Now, maxEntries: maxEntries}
+	return &memoryRegistry{
+		bridges:    make(map[TrackingID]*bridgeEntry),
+		now:        time.Now,
+		maxEntries: maxEntries,
+		trigger:    make(chan TrackingID, triggerBufferSize),
+	}
 }
 
 // Get implements SupervisedStore
@@ -90,7 +107,54 @@ func (r *memoryRegistry) Get(id TrackingID, createIfNotExists bool) (*domain.Tra
 			return nil, err
 		}
 	}
+	entry.lastAccess = r.now()
 	return entry.tracking, nil
+}
+
+// GetAndAwait implements SupervisedStore. On an already-registered id it behaves exactly like
+// Get(id, true): no trigger, no wait. On a newly created id it subscribes before releasing the
+// lock — so the update the trigger provokes (see create) cannot be missed between creation and
+// the wait below — then blocks up to timeout for that first update, falling back to the
+// entry's current snapshot if timeout elapses first
+func (r *memoryRegistry) GetAndAwait(id TrackingID, timeout time.Duration) (*domain.TrackingData, error) {
+	r.mu.Lock()
+	entry, existed := r.bridges[id]
+	if !existed {
+		var err error
+		entry, err = r.create(id)
+		if err != nil {
+			r.mu.Unlock()
+			return nil, err
+		}
+	}
+	entry.lastAccess = r.now()
+
+	if existed || timeout <= 0 {
+		tracking := entry.tracking
+		r.mu.Unlock()
+		return tracking, nil
+	}
+
+	ch := make(chan *domain.TrackingData, 1)
+	entry.subscribers[ch] = struct{}{}
+	r.mu.Unlock()
+
+	defer func() {
+		r.mu.Lock()
+		delete(entry.subscribers, ch)
+		r.mu.Unlock()
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case updated := <-ch:
+		return updated, nil
+	case <-timer.C:
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		return entry.tracking, nil
+	}
 }
 
 // Subscribe implements StatusNotifier. The channel has a buffer of one and updates are
@@ -107,6 +171,7 @@ func (r *memoryRegistry) Subscribe(id TrackingID) (<-chan *domain.TrackingData, 
 			return nil, nil, err
 		}
 	}
+	entry.lastAccess = r.now()
 	ch := make(chan *domain.TrackingData, 1)
 	entry.subscribers[ch] = struct{}{}
 
@@ -150,7 +215,7 @@ func (r *memoryRegistry) UpdateTrackingBridgeTx(id TrackingID, tx domain.Trackin
 // opens the next) would otherwise surface as one partial snapshot per call. Callers that
 // change one or more steps must follow up with an UpdateTrackingBridgeTx call — even a
 // no-op one — so subscribers see exactly one consistent, fully-merged snapshot per batch
-func (r *memoryRegistry) UpdateTrackingStep(id TrackingID, stepIndex uint, step types.BridgeStepPath) error {
+func (r *memoryRegistry) UpdateTrackingStep(id TrackingID, stepIndex uint, step BridgeStepPath) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -164,7 +229,7 @@ func (r *memoryRegistry) UpdateTrackingStep(id TrackingID, stepIndex uint, step 
 	}
 
 	prevSteps := entry.tracking.AllSteps()
-	allSteps := make([]types.BridgeStepPath, max(len(prevSteps), int(stepIndex)+1))
+	allSteps := make([]BridgeStepPath, max(len(prevSteps), int(stepIndex)+1))
 	copy(allSteps, prevSteps)
 	allSteps[stepIndex] = step
 
@@ -211,6 +276,26 @@ func (r *memoryRegistry) PruneTerminal(olderThan time.Time) (int, error) {
 	return pruned, nil
 }
 
+// PruneIdle implements SupervisedStore: it forgets every entry — terminal or still active —
+// that has no active subscriber and was last accessed (Get/GetAndAwait, or gaining a
+// subscriber) before olderThan. An entry with at least one active subscriber is never a
+// candidate, regardless of how stale olderThan is: an open WebSocket connection is itself
+// ongoing interest in the bridge, distinct from — and not extended by — plain polling. A
+// pruned entry is gone as if never requested, same as PruneTerminal
+func (r *memoryRegistry) PruneIdle(olderThan time.Time) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	pruned := 0
+	for id, entry := range r.bridges {
+		if len(entry.subscribers) == 0 && entry.lastAccess.Before(olderThan) {
+			delete(r.bridges, id)
+			pruned++
+		}
+	}
+	return pruned, nil
+}
+
 // GetNetworks implements SupervisedStore: the networks with at least one supervised bridge,
 // optionally filtered to those with at least one bridge in the given TrackingStatus
 func (r *memoryRegistry) GetNetworks(status *types.TrackingStatus) ([]uint32, error) {
@@ -242,7 +327,12 @@ func (r *memoryRegistry) GetNumTracker() int {
 }
 
 // create adds a fresh (Registered, nil BridgeStatus) entry for id, or domain.ErrRegistryFull if
-// the registry is already at maxEntries. Callers must hold r.mu
+// the registry is already at maxEntries. Reaching the cap never evicts an existing entry to make
+// room, whether that entry is idle or actively watched: PruneTerminal and PruneIdle are what keep
+// the registry under the cap during normal operation (see their docs), and a request that would
+// exceed it is simply rejected — this is a deliberate, unconditional safety net, not a policy
+// gap. It also wakes the tracking engine to resolve id right away (see signalTrigger) instead of
+// leaving it for the next poll tick. Callers must hold r.mu
 func (r *memoryRegistry) create(id TrackingID) (*bridgeEntry, error) {
 	if len(r.bridges) >= r.maxEntries {
 		return nil, domain.ErrRegistryFull
@@ -251,9 +341,26 @@ func (r *memoryRegistry) create(id TrackingID) (*bridgeEntry, error) {
 	entry := &bridgeEntry{
 		tracking:    domain.NewTrackingData(id, domain.TrackingBridgeTx{}, nil),
 		subscribers: make(map[chan *domain.TrackingData]struct{}),
+		lastAccess:  r.now(),
 	}
 	r.bridges[id] = entry
+	r.signalTrigger(id)
 	return entry, nil
+}
+
+// signalTrigger notifies the tracking engine that id was just registered. It never blocks: a
+// full buffer just means this particular id waits for the next regular poll tick like before.
+// Callers must hold r.mu
+func (r *memoryRegistry) signalTrigger(id TrackingID) {
+	select {
+	case r.trigger <- id:
+	default:
+	}
+}
+
+// Triggers implements domain.Triggerable
+func (r *memoryRegistry) Triggers() <-chan TrackingID {
+	return r.trigger
 }
 
 // notify delivers the update to every subscriber with latest-value semantics:

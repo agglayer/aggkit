@@ -154,7 +154,10 @@ test-unit: ## Runs the unit tests
 TEST_RUN ?=
 .PHONY: test-e2e
 test-e2e: ## Runs the e2e tests
-	go test -v -timeout 45m $(if $(TEST_RUN),-run "$(TEST_RUN)") ./test/e2e/...
+	# 60m: covers the CI matrix's remove-GER groups (test-go-e2e.yml), whose combined per-test context
+	# budgets can exceed the previous 45m; kept in step with job timeout-minutes: 60 there. Provisional
+	# -- S8/S9 tighten per-test timeouts and may lower this once real durations are measured.
+	go test -v -timeout 60m $(if $(TEST_RUN),-run "$(TEST_RUN)") ./test/e2e/...
 
 .PHONY: test-e2e-force_ger_update
 test-e2e-force_ger_update: ## Runs the isolated force_ger_update e2e test (dedicated CI job/runner only)
@@ -167,14 +170,18 @@ lint: ## Runs the linter
 .PHONY: generate-swagger-docs
 generate-swagger-docs: ## Generates the swagger docs
 	@echo "Generating swagger docs"
-	@$(SWAG) init -g bridgeservice/bridge.go -o bridgeservice/docs --exclude autoclaim/api
+	@$(SWAG) init -g bridgeservice/bridge.go -o bridgeservice/docs --exclude autoclaim/api,bridgetracker
 	@$(SWAG) init -g admin.go -d autoclaim/api,autoclaim/apitypes -o autoclaim/api/docs --instanceName autoclaim
+	@$(SWAG) init -g api.go -d bridgetracker/api,bridgetracker/types -o bridgetracker/api/docs --parseDependency
 	@mkdir -p docs/assets/swagger/bridge_service
 	@cp bridgeservice/docs/swagger.json docs/assets/swagger/bridge_service/swagger.json
 	@echo "Copied swagger.json to docs/assets/swagger/bridge_service/"
 	@mkdir -p docs/assets/swagger/autoclaim
 	@cp autoclaim/api/docs/autoclaim_swagger.json docs/assets/swagger/autoclaim/swagger.json
 	@echo "Copied autoclaim_swagger.json to docs/assets/swagger/autoclaim/"
+	@mkdir -p docs/assets/swagger/bridge_tracker
+	@cp bridgetracker/api/docs/swagger.json docs/assets/swagger/bridge_tracker/swagger.json
+	@echo "Copied swagger.json to docs/assets/swagger/bridge_tracker/"
 
 .PHONY: vulncheck
 vulncheck: ## Runs the vulnerability checker tool

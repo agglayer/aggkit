@@ -22,6 +22,7 @@ func TestBridgeStepString(t *testing.T) {
 	require.Equal(t, "WaitingLERUpdate", StepWaitingLERUpdate.String())
 	require.Equal(t, "PendingInclusion", StepPendingInclusion.String())
 	require.Equal(t, "CertificatePending", StepCertificatePending.String())
+	require.Equal(t, "WaitL1SettledGER", StepWaitL1SettledGER.String())
 	require.Equal(t, "WaitingGERInjection", StepWaitingGERInjection.String())
 	require.Equal(t, "WaitingClaim", StepWaitingClaim.String())
 	require.Equal(t, "Claimed", StepClaimed.String())
@@ -85,114 +86,6 @@ func TestDurationJSONRoundTrip(t *testing.T) {
 
 	require.Error(t, json.Unmarshal([]byte(`"not-a-duration"`), &decoded))
 	require.Error(t, json.Unmarshal([]byte(`123`), &decoded))
-}
-
-func TestBridgeStepPathMarshalJSON(t *testing.T) {
-	// the *_string fields are intentionally left empty: MarshalJSON must auto-populate them
-	path := BridgeStepPath{
-		Step:             StepCertificatePending,
-		Status:           StepStatusInProgress,
-		ExpectedDuration: NewDuration(10 * time.Minute),
-	}
-	data, err := json.Marshal(path)
-	require.NoError(t, err)
-
-	require.JSONEq(t, `{
-		"step": 3,
-		"step_string": "CertificatePending",
-		"status": 1,
-		"status_string": "inProgress",
-		"expected_duration": "10m0s"
-	}`, string(data))
-
-	var decoded BridgeStepPath
-	require.NoError(t, json.Unmarshal(data, &decoded))
-	expected := path
-	expected.StepString = path.Step.String()
-	expected.StatusString = path.Status.String()
-	require.Equal(t, expected, decoded)
-}
-
-func TestBridgeStepPathErrorMarshalJSON(t *testing.T) {
-	path := BridgeStepPath{
-		Step:   StepWaitingGERUpdate,
-		Status: StepStatusError,
-		Error: &ErrorStep{
-			ErrorType:   StepErrorPermanent,
-			RetryCount:  3,
-			Description: []string{"rpc unreachable"},
-		},
-	}
-	data, err := json.Marshal(path)
-	require.NoError(t, err)
-
-	var raw map[string]any
-	require.NoError(t, json.Unmarshal(data, &raw))
-	require.EqualValues(t, 3, raw["status"])
-	require.Equal(t, "error", raw["status_string"])
-	require.NotNil(t, raw["error"])
-
-	var decoded BridgeStepPath
-	require.NoError(t, json.Unmarshal(data, &decoded))
-	expected := path
-	expected.StepString = path.Step.String()
-	expected.StatusString = path.Status.String()
-	expected.Error.ErrorTypeString = path.Error.ErrorType.String()
-	require.Equal(t, expected, decoded)
-}
-
-func TestBridgeStepPathResultMarshalJSON(t *testing.T) {
-	testCases := []struct {
-		name     string
-		result   any
-		expected string
-	}{
-		{
-			name:     "GER update result",
-			result:   &GERUpdateResult{GER: common.HexToHash("0x0a"), BlockNumber: 100},
-			expected: `{"ger":"0x000000000000000000000000000000000000000000000000000000000000000a","block_number":100}`,
-		},
-		{
-			name:     "LER update result",
-			result:   &LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0b"), BlockNumber: 200},
-			expected: `{"network_id":1,"ler":"0x000000000000000000000000000000000000000000000000000000000000000b","block_number":200}`,
-		},
-		{
-			name: "certificate data result",
-			result: &CertificateData{
-				CertificateID: common.HexToHash("0x01"),
-				Status:        agglayertypes.Settled,
-			},
-			expected: `{"certificate_id":"0x0000000000000000000000000000000000000000000000000000000000000001","status":4,"status_string":"Settled"}`,
-		},
-		{
-			name:     "claim result",
-			result:   &ClaimResult{ClaimTx: common.HexToHash("0x0c"), BlockNumber: 300},
-			expected: `{"claim_tx":"0x000000000000000000000000000000000000000000000000000000000000000c","block_number":300}`,
-		},
-		{
-			name:     "no result",
-			result:   nil,
-			expected: `{}`,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			path := BridgeStepPath{Step: StepWaitingClaim, Status: StepStatusDone, Result: tc.result}
-			data, err := json.Marshal(path)
-			require.NoError(t, err)
-
-			var raw map[string]json.RawMessage
-			require.NoError(t, json.Unmarshal(data, &raw))
-			result, ok := raw["result"]
-			if tc.result == nil {
-				require.False(t, ok)
-				return
-			}
-			require.JSONEq(t, tc.expected, string(result))
-		})
-	}
 }
 
 func TestGERDataMarshalJSON(t *testing.T) {

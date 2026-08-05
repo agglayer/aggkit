@@ -83,6 +83,65 @@ func (_c *SupervisedRegistry_Get_Call) RunAndReturn(run func(domain.TrackingID, 
 	return _c
 }
 
+// GetAndAwait provides a mock function with given fields: id, timeout
+func (_m *SupervisedRegistry) GetAndAwait(id domain.TrackingID, timeout time.Duration) (*domain.TrackingData, error) {
+	ret := _m.Called(id, timeout)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetAndAwait")
+	}
+
+	var r0 *domain.TrackingData
+	var r1 error
+	if rf, ok := ret.Get(0).(func(domain.TrackingID, time.Duration) (*domain.TrackingData, error)); ok {
+		return rf(id, timeout)
+	}
+	if rf, ok := ret.Get(0).(func(domain.TrackingID, time.Duration) *domain.TrackingData); ok {
+		r0 = rf(id, timeout)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.TrackingData)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(domain.TrackingID, time.Duration) error); ok {
+		r1 = rf(id, timeout)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SupervisedRegistry_GetAndAwait_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAndAwait'
+type SupervisedRegistry_GetAndAwait_Call struct {
+	*mock.Call
+}
+
+// GetAndAwait is a helper method to define mock.On call
+//   - id domain.TrackingID
+//   - timeout time.Duration
+func (_e *SupervisedRegistry_Expecter) GetAndAwait(id interface{}, timeout interface{}) *SupervisedRegistry_GetAndAwait_Call {
+	return &SupervisedRegistry_GetAndAwait_Call{Call: _e.mock.On("GetAndAwait", id, timeout)}
+}
+
+func (_c *SupervisedRegistry_GetAndAwait_Call) Run(run func(id domain.TrackingID, timeout time.Duration)) *SupervisedRegistry_GetAndAwait_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(domain.TrackingID), args[1].(time.Duration))
+	})
+	return _c
+}
+
+func (_c *SupervisedRegistry_GetAndAwait_Call) Return(_a0 *domain.TrackingData, _a1 error) *SupervisedRegistry_GetAndAwait_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *SupervisedRegistry_GetAndAwait_Call) RunAndReturn(run func(domain.TrackingID, time.Duration) (*domain.TrackingData, error)) *SupervisedRegistry_GetAndAwait_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetNetworks provides a mock function with given fields: status
 func (_m *SupervisedRegistry) GetNetworks(status *types.TrackingStatus) ([]uint32, error) {
 	ret := _m.Called(status)
@@ -240,6 +299,62 @@ func (_c *SupervisedRegistry_GetTrackerActives_Call) Return(_a0 []*domain.Tracki
 }
 
 func (_c *SupervisedRegistry_GetTrackerActives_Call) RunAndReturn(run func(*uint32) ([]*domain.TrackingData, error)) *SupervisedRegistry_GetTrackerActives_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PruneIdle provides a mock function with given fields: olderThan
+func (_m *SupervisedRegistry) PruneIdle(olderThan time.Time) (int, error) {
+	ret := _m.Called(olderThan)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PruneIdle")
+	}
+
+	var r0 int
+	var r1 error
+	if rf, ok := ret.Get(0).(func(time.Time) (int, error)); ok {
+		return rf(olderThan)
+	}
+	if rf, ok := ret.Get(0).(func(time.Time) int); ok {
+		r0 = rf(olderThan)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+
+	if rf, ok := ret.Get(1).(func(time.Time) error); ok {
+		r1 = rf(olderThan)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// SupervisedRegistry_PruneIdle_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PruneIdle'
+type SupervisedRegistry_PruneIdle_Call struct {
+	*mock.Call
+}
+
+// PruneIdle is a helper method to define mock.On call
+//   - olderThan time.Time
+func (_e *SupervisedRegistry_Expecter) PruneIdle(olderThan interface{}) *SupervisedRegistry_PruneIdle_Call {
+	return &SupervisedRegistry_PruneIdle_Call{Call: _e.mock.On("PruneIdle", olderThan)}
+}
+
+func (_c *SupervisedRegistry_PruneIdle_Call) Run(run func(olderThan time.Time)) *SupervisedRegistry_PruneIdle_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(time.Time))
+	})
+	return _c
+}
+
+func (_c *SupervisedRegistry_PruneIdle_Call) Return(_a0 int, _a1 error) *SupervisedRegistry_PruneIdle_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *SupervisedRegistry_PruneIdle_Call) RunAndReturn(run func(time.Time) (int, error)) *SupervisedRegistry_PruneIdle_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -415,7 +530,7 @@ func (_c *SupervisedRegistry_UpdateTrackingBridgeTx_Call) RunAndReturn(run func(
 }
 
 // UpdateTrackingStep provides a mock function with given fields: id, stepIndex, step
-func (_m *SupervisedRegistry) UpdateTrackingStep(id domain.TrackingID, stepIndex uint, step types.BridgeStepPath) error {
+func (_m *SupervisedRegistry) UpdateTrackingStep(id domain.TrackingID, stepIndex uint, step domain.BridgeStepPath) error {
 	ret := _m.Called(id, stepIndex, step)
 
 	if len(ret) == 0 {
@@ -423,7 +538,7 @@ func (_m *SupervisedRegistry) UpdateTrackingStep(id domain.TrackingID, stepIndex
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(domain.TrackingID, uint, types.BridgeStepPath) error); ok {
+	if rf, ok := ret.Get(0).(func(domain.TrackingID, uint, domain.BridgeStepPath) error); ok {
 		r0 = rf(id, stepIndex, step)
 	} else {
 		r0 = ret.Error(0)
@@ -440,14 +555,14 @@ type SupervisedRegistry_UpdateTrackingStep_Call struct {
 // UpdateTrackingStep is a helper method to define mock.On call
 //   - id domain.TrackingID
 //   - stepIndex uint
-//   - step types.BridgeStepPath
+//   - step domain.BridgeStepPath
 func (_e *SupervisedRegistry_Expecter) UpdateTrackingStep(id interface{}, stepIndex interface{}, step interface{}) *SupervisedRegistry_UpdateTrackingStep_Call {
 	return &SupervisedRegistry_UpdateTrackingStep_Call{Call: _e.mock.On("UpdateTrackingStep", id, stepIndex, step)}
 }
 
-func (_c *SupervisedRegistry_UpdateTrackingStep_Call) Run(run func(id domain.TrackingID, stepIndex uint, step types.BridgeStepPath)) *SupervisedRegistry_UpdateTrackingStep_Call {
+func (_c *SupervisedRegistry_UpdateTrackingStep_Call) Run(run func(id domain.TrackingID, stepIndex uint, step domain.BridgeStepPath)) *SupervisedRegistry_UpdateTrackingStep_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(domain.TrackingID), args[1].(uint), args[2].(types.BridgeStepPath))
+		run(args[0].(domain.TrackingID), args[1].(uint), args[2].(domain.BridgeStepPath))
 	})
 	return _c
 }
@@ -457,7 +572,7 @@ func (_c *SupervisedRegistry_UpdateTrackingStep_Call) Return(_a0 error) *Supervi
 	return _c
 }
 
-func (_c *SupervisedRegistry_UpdateTrackingStep_Call) RunAndReturn(run func(domain.TrackingID, uint, types.BridgeStepPath) error) *SupervisedRegistry_UpdateTrackingStep_Call {
+func (_c *SupervisedRegistry_UpdateTrackingStep_Call) RunAndReturn(run func(domain.TrackingID, uint, domain.BridgeStepPath) error) *SupervisedRegistry_UpdateTrackingStep_Call {
 	_c.Call.Return(run)
 	return _c
 }

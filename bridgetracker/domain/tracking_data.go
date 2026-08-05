@@ -23,14 +23,14 @@ func (id TrackingID) String() string {
 type TrackingData struct {
 	id               TrackingID
 	trackingBridgeTx TrackingBridgeTx
-	allSteps         []types.BridgeStepPath
+	allSteps         []BridgeStepPath
 }
 
 // NewTrackingData builds the snapshot of a supervised bridge from its identity, tracked tx
 // facts and its expected path (nil while the tracker has not resolved the bridge yet).
 // TrackingStatus is not stored: it is fully derived from those two (see TrackingStatus)
 func NewTrackingData(
-	id TrackingID, bridgeTx TrackingBridgeTx, allSteps []types.BridgeStepPath,
+	id TrackingID, bridgeTx TrackingBridgeTx, allSteps []BridgeStepPath,
 ) *TrackingData {
 	return &TrackingData{id: id, trackingBridgeTx: bridgeTx, allSteps: allSteps}
 }
@@ -71,7 +71,7 @@ func (t *TrackingData) TrackingBridgeTx() TrackingBridgeTx {
 	return t.trackingBridgeTx
 }
 
-func (t *TrackingData) AllSteps() []types.BridgeStepPath {
+func (t *TrackingData) AllSteps() []BridgeStepPath {
 	if t == nil {
 		return nil
 	}

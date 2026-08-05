@@ -185,12 +185,27 @@ func (e *L2EVMGERReader) GetRemovedGERsForRange(ctx context.Context,
 // fetchRemovedGERs performs the actual event filtering for removed GERs
 func (e *L2EVMGERReader) fetchRemovedGERs(ctx context.Context,
 	fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error) {
-	removalIterator, err := e.l2GERManager.FilterUpdateRemovalHashChainValue(
+	return filterRemovedGERs(ctx, e.l2GERManager, fromBlock, &toBlock, nil)
+}
+
+// filterRemovedGERs scans UpdateRemovalHashChainValue events emitted by the L2 GER manager contract in
+// [fromBlock, toBlock] (toBlock == nil resolves to the chain head, i.e. "latest"), optionally restricted
+// to the given GERs (nil or empty scans all removals). It is factored out so L2EVMGERReader and the
+// sovereign downloader's stuck-GER recovery path (evm_downloader_sovereign.go) share the same scan logic
+// and never diverge.
+func filterRemovedGERs(
+	ctx context.Context,
+	l2GERManager types.L2GERManagerContract,
+	fromBlock uint64,
+	toBlock *uint64,
+	gers [][common.HashLength]byte,
+) ([]*agglayertypes.RemovedGER, error) {
+	removalIterator, err := l2GERManager.FilterUpdateRemovalHashChainValue(
 		&bind.FilterOpts{
 			Context: ctx,
 			Start:   fromBlock,
-			End:     &toBlock,
-		}, nil, nil)
+			End:     toBlock,
+		}, gers, nil)
 	if err != nil {
 		log.Errorf("failed to create RemoveGlobalExitRoot event iterator: %v", err)
 		return nil, err

@@ -76,15 +76,15 @@ func TestWSTrackingThenStatusUpdates(t *testing.T) {
 	require.Equal(t, types.WSTypeStatus, msg.Type)
 
 	var tracking struct {
-		TrackingStatusString string          `json:"tracking_status_string"`
-		NetworkID            uint32          `json:"network_id"`
-		TxHash               string          `json:"tx_hash"`
-		BridgeStatus         json.RawMessage `json:"bridge_status"`
-		StepIndex            int             `json:"step_index"`
-		AllSteps             json.RawMessage `json:"all_steps"`
+		TrackingStatus string          `json:"tracking_status"`
+		NetworkID      uint32          `json:"network_id"`
+		TxHash         string          `json:"tx_hash"`
+		BridgeStatus   json.RawMessage `json:"bridge_status"`
+		StepIndex      int             `json:"step_index"`
+		AllSteps       json.RawMessage `json:"all_steps"`
 	}
 	require.NoError(t, json.Unmarshal(msg.Data, &tracking))
-	require.Equal(t, "registered", tracking.TrackingStatusString)
+	require.Equal(t, "registered", tracking.TrackingStatus)
 	require.Equal(t, uint32(1), tracking.NetworkID)
 	require.Equal(t, testTxHash, tracking.TxHash)
 	require.Equal(t, "null", string(tracking.BridgeStatus))
@@ -94,22 +94,22 @@ func TestWSTrackingThenStatusUpdates(t *testing.T) {
 	msg = readEnvelope(t, conn)
 	require.Equal(t, types.WSTypeStatus, msg.Type)
 	require.NoError(t, json.Unmarshal(msg.Data, &tracking))
-	require.Equal(t, "running", tracking.TrackingStatusString)
+	require.Equal(t, "running", tracking.TrackingStatus)
 
 	var allSteps []struct {
-		StepString string `json:"step_string"`
+		StepName string `json:"step_name"`
 	}
 	require.NoError(t, json.Unmarshal(tracking.AllSteps, &allSteps))
-	require.Equal(t, "PendingInclusion", allSteps[tracking.StepIndex].StepString)
+	require.Equal(t, "PendingInclusion", allSteps[tracking.StepIndex].StepName)
 
 	// terminal state -> final status followed by a normal closure (1000)
 	tracker.Publish(TrackingID{NetworkID: 1, TxHash: common.HexToHash(testTxHash)}, testBridgeInfo(), testAllSteps(true))
 	msg = readEnvelope(t, conn)
 	require.Equal(t, types.WSTypeStatus, msg.Type)
 	require.NoError(t, json.Unmarshal(msg.Data, &tracking))
-	require.Equal(t, "finished", tracking.TrackingStatusString)
+	require.Equal(t, "finished", tracking.TrackingStatus)
 	require.NoError(t, json.Unmarshal(tracking.AllSteps, &allSteps))
-	require.Equal(t, "Claimed", allSteps[tracking.StepIndex].StepString)
+	require.Equal(t, "Claimed", allSteps[tracking.StepIndex].StepName)
 
 	require.Equal(t, websocket.CloseNormalClosure, expectClose(t, conn))
 }
@@ -154,15 +154,15 @@ func TestWSTerminalError(t *testing.T) {
 	require.Equal(t, types.WSTypeStatus, msg.Type)
 
 	var tracking struct {
-		TrackingStatusString string          `json:"tracking_status_string"`
-		BridgeStatus         json.RawMessage `json:"bridge_status"`
-		Error                struct {
+		TrackingStatus string          `json:"tracking_status"`
+		BridgeStatus   json.RawMessage `json:"bridge_status"`
+		Error          struct {
 			ErrorTypeString string `json:"error_type_string"`
 			RetryCount      int    `json:"retry_count"`
 		} `json:"error"`
 	}
 	require.NoError(t, json.Unmarshal(msg.Data, &tracking))
-	require.Equal(t, "error", tracking.TrackingStatusString)
+	require.Equal(t, "error", tracking.TrackingStatus)
 	require.Equal(t, "null", string(tracking.BridgeStatus))
 	require.Equal(t, "exhausted", tracking.Error.ErrorTypeString)
 	require.Equal(t, 3, tracking.Error.RetryCount)

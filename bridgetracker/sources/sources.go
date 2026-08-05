@@ -1,15 +1,11 @@
 // Package sources implements the driven fact ports of the bridge tracker engine
-// (bridgetracker.BridgeEventSource, GERSource, LERSource, ClaimSource) over the real backends:
-// the per-network JSON-RPC endpoints and the aggkit bridge service REST API, both resolved per
-// network through the bridgeservicefinder.
+// (bridgetracker.BridgeEventSource, GERSource, LERSource, ClaimSource, CertificateSource) over
+// the real backends: the per-network JSON-RPC endpoints and the aggkit bridge service REST API,
+// both resolved per network through the bridgeservicefinder.
 //
-// Current coverage: L1 -> L2 bridges, plus the LER half of L2-originated ones. The
-// CertificateSource (also needed by L2-originated bridges) is partially implemented: see
-// certificate.go — fetching a known certificate's header is wired to the agglayer, but
-// matching a bridge to its covering certificate (CertificateSource.certificateIDFor) is still a
-// stub, so L2-origin bridges still fail their resolution (and are retried) once they reach the
-// certificate steps, until that lands. NotImplementedCertificateSource is kept as the simpler
-// stub for callers that have not wired an agglayer client yet.
+// Current coverage: L1 -> L2 bridges, plus L2-originated ones (see certificate.go for how
+// CertificateSource matches a bridge to its covering certificate). NotImplementedCertificateSource
+// is kept as the simpler stub for callers that have not wired an agglayer client yet.
 package sources
 
 import (
@@ -27,6 +23,7 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // NetworkURLResolver is the slice of the bridgeservicefinder.Finder the sources need: the
@@ -156,6 +153,18 @@ func (b *bridgeServiceClients) aggkitBridgeClientFor(networkID uint32) (*client.
 	return c, nil
 }
 
+// blockTimestamp resolves a block's timestamp off its hash: logs only carry BlockNumber, not
+// the block's own timestamp
+func blockTimestamp(
+	ctx context.Context, client aggkittypes.BaseEthereumClienter, blockHash common.Hash,
+) (uint64, error) {
+	header, err := client.HeaderByHash(ctx, blockHash)
+	if err != nil {
+		return 0, fmt.Errorf("fetching header of block %s: %w", blockHash, err)
+	}
+	return header.Time, nil
+}
+
 // isNotFound reports whether a bridge service error means "the resource does not exist
 // (yet)" as opposed to a transient failure. Besides the typed client.ErrNotFound (HTTP 404),
 // the l1-info-tree-index and injected-l1-info-leaf endpoints currently answer 500 with a
@@ -175,6 +184,6 @@ type NotImplementedCertificateSource struct{}
 // CertificateFor implements bridgetracker.CertificateSource
 func (NotImplementedCertificateSource) CertificateFor(
 	_ context.Context, _ *bridgetracker.BridgeInfo,
-) (*types.CertificateData, error) {
+) (*types.CertificateInclusionData, error) {
 	return nil, errors.New("certificate source not implemented yet (L2-originated bridges are not supported)")
 }

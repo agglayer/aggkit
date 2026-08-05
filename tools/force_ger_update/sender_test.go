@@ -2,6 +2,7 @@ package force_ger_update
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -84,6 +85,11 @@ func TestSendForcedGERUpdate_Success(t *testing.T) {
 		Return(ethtxtypes.MonitoredTxResult{Status: ethtxtypes.MonitoredTxStatusMined, MinedAtBlockNumber: nil}, nil).
 		Once()
 
+	ethTxMan.EXPECT().
+		Remove(mock.Anything, txID).
+		Return(nil).
+		Once()
+
 	sender, err := NewSender(cfg, ethTxMan, WithPollInterval(testPollInterval))
 	require.NoError(t, err)
 
@@ -118,6 +124,11 @@ func TestSendForcedGERUpdate_Failed(t *testing.T) {
 		Return(ethtxtypes.MonitoredTxResult{Status: ethtxtypes.MonitoredTxStatusFailed}, nil).
 		Once()
 
+	ethTxMan.EXPECT().
+		Remove(mock.Anything, txID).
+		Return(nil).
+		Once()
+
 	sender, err := NewSender(cfg, ethTxMan, WithPollInterval(testPollInterval))
 	require.NoError(t, err)
 
@@ -127,6 +138,36 @@ func TestSendForcedGERUpdate_Failed(t *testing.T) {
 	err = sender.SendForcedGERUpdate(ctx)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), txID.Hex())
+}
+
+func TestSendForcedGERUpdate_Evicted(t *testing.T) {
+	ethTxMan := aggoraclemocks.NewEthTxManager(t)
+	cfg := testConfig()
+
+	txID := common.HexToHash("0xdddd")
+
+	ethTxMan.EXPECT().
+		Add(mock.Anything, &testBridgeAddr, common.Big0, mock.Anything, uint64(0), (*types.BlobTxSidecar)(nil)).
+		Return(txID, nil).
+		Once()
+
+	ethTxMan.EXPECT().
+		Result(mock.Anything, txID).
+		Return(ethtxtypes.MonitoredTxResult{Status: ethtxtypes.MonitoredTxStatusEvicted}, nil).
+		Once()
+
+	ethTxMan.EXPECT().
+		Remove(mock.Anything, txID).
+		Return(nil).
+		Once()
+
+	sender, err := NewSender(cfg, ethTxMan, WithPollInterval(testPollInterval))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	require.NoError(t, sender.SendForcedGERUpdate(ctx))
 }
 
 func TestSendForcedGERUpdate_AlreadyExists(t *testing.T) {
@@ -145,12 +186,69 @@ func TestSendForcedGERUpdate_AlreadyExists(t *testing.T) {
 		Return(ethtxtypes.MonitoredTxResult{Status: ethtxtypes.MonitoredTxStatusMined}, nil).
 		Once()
 
+	ethTxMan.EXPECT().
+		Remove(mock.Anything, txID).
+		Return(nil).
+		Once()
+
 	sender, err := NewSender(cfg, ethTxMan, WithPollInterval(testPollInterval))
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	require.NoError(t, sender.SendForcedGERUpdate(ctx))
+}
+
+// TestSendForcedGERUpdate_RepeatedCallsResubmitAfterCompletion is the regression test for the
+// bug this fix addresses: every SendForcedGERUpdate call packs byte-for-byte identical calldata,
+// so ethtxmanager.Add would deterministically derive the same id every time. Before this fix, a
+// completed tx's record lingered forever in the ethtxmanager's monitoring DB, so every later call
+// collided on Add with ErrAlreadyExists and just re-observed the first (already-terminal) tx
+// forever — no new transaction was ever actually broadcast again, which looked like the tool
+// "hanging" between sends and re-triggering a no-op send on every restart. This test drives two
+// full SendForcedGERUpdate calls back-to-back and asserts the second one gets a fresh Add (no
+// ErrAlreadyExists) with its own distinct id, proving the first tx's record was forgotten.
+func TestSendForcedGERUpdate_RepeatedCallsResubmitAfterCompletion(t *testing.T) {
+	ethTxMan := aggoraclemocks.NewEthTxManager(t)
+	cfg := testConfig()
+
+	firstID := common.HexToHash("0xeeee")
+	secondID := common.HexToHash("0xffff")
+
+	ethTxMan.EXPECT().
+		Add(mock.Anything, &testBridgeAddr, common.Big0, mock.Anything, uint64(0), (*types.BlobTxSidecar)(nil)).
+		Return(firstID, nil).
+		Once()
+	ethTxMan.EXPECT().
+		Result(mock.Anything, firstID).
+		Return(ethtxtypes.MonitoredTxResult{Status: ethtxtypes.MonitoredTxStatusMined}, nil).
+		Once()
+	ethTxMan.EXPECT().
+		Remove(mock.Anything, firstID).
+		Return(nil).
+		Once()
+
+	ethTxMan.EXPECT().
+		Add(mock.Anything, &testBridgeAddr, common.Big0, mock.Anything, uint64(0), (*types.BlobTxSidecar)(nil)).
+		Return(secondID, nil).
+		Once()
+	ethTxMan.EXPECT().
+		Result(mock.Anything, secondID).
+		Return(ethtxtypes.MonitoredTxResult{Status: ethtxtypes.MonitoredTxStatusMined}, nil).
+		Once()
+	ethTxMan.EXPECT().
+		Remove(mock.Anything, secondID).
+		Return(nil).
+		Once()
+
+	sender, err := NewSender(cfg, ethTxMan, WithPollInterval(testPollInterval))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	require.NoError(t, sender.SendForcedGERUpdate(ctx))
 	require.NoError(t, sender.SendForcedGERUpdate(ctx))
 }
 
@@ -170,6 +268,34 @@ func TestSendForcedGERUpdate_DryRun(t *testing.T) {
 	ethTxMan.AssertNotCalled(t, "Add",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	ethTxMan.AssertNotCalled(t, "Result", mock.Anything, mock.Anything)
+}
+
+func TestSendForcedGERUpdate_RemoveFailureDoesNotFailSend(t *testing.T) {
+	ethTxMan := aggoraclemocks.NewEthTxManager(t)
+	cfg := testConfig()
+
+	txID := common.HexToHash("0x1234")
+
+	ethTxMan.EXPECT().
+		Add(mock.Anything, &testBridgeAddr, common.Big0, mock.Anything, uint64(0), (*types.BlobTxSidecar)(nil)).
+		Return(txID, nil).
+		Once()
+	ethTxMan.EXPECT().
+		Result(mock.Anything, txID).
+		Return(ethtxtypes.MonitoredTxResult{Status: ethtxtypes.MonitoredTxStatusMined}, nil).
+		Once()
+	ethTxMan.EXPECT().
+		Remove(mock.Anything, txID).
+		Return(errors.New("db locked")).
+		Once()
+
+	sender, err := NewSender(cfg, ethTxMan, WithPollInterval(testPollInterval))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	require.NoError(t, sender.SendForcedGERUpdate(ctx))
 }
 
 func TestNewSender_DefaultsDestinationAddressToSenderFrom(t *testing.T) {

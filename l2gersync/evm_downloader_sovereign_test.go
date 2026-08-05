@@ -122,81 +122,6 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 	mockL1InfoTreeSync.AssertExpectations(t)
 }
 
-func TestIsL1InfoTreeQuerierUpToDate(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name             string
-		isUpToDateResult bool
-		isUpToDateError  error
-		expectedResult   bool
-		expectedError    bool
-	}{
-		{
-			name:             "L1InfoTreeSync IsUpToDate returns true",
-			isUpToDateResult: true,
-			isUpToDateError:  nil,
-			expectedResult:   true,
-			expectedError:    false,
-		},
-		{
-			name:             "L1InfoTreeSync IsUpToDate returns false",
-			isUpToDateResult: false,
-			isUpToDateError:  nil,
-			expectedResult:   false,
-			expectedError:    false,
-		},
-		{
-			name:             "L1InfoTreeSync IsUpToDate returns error",
-			isUpToDateResult: false,
-			isUpToDateError:  fmt.Errorf("test error"),
-			expectedResult:   false,
-			expectedError:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
-			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
-			mockL1InfoTreeSync := l2gersyncmocks.NewL1InfoTreeQuerier(t)
-
-			// Set up the mock expectation for IsUpToDate
-			mockL1InfoTreeSync.EXPECT().IsUpToDate(mock.Anything, mock.Anything).Return(tt.isUpToDateResult, tt.isUpToDateError).Maybe()
-
-			rh := &sync.RetryHandler{
-				MaxRetryAttemptsAfterError: 5,
-				RetryAfterErrorPeriod:      time.Millisecond,
-			}
-
-			downloader, err := newDownloaderSovereign(
-				mockL2Client,
-				common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-				mockL1InfoTreeSync,
-				mockL1Client,
-				common.HexToAddress("0x0000000000000000000000000000000000000001"), // l1GERAddr
-				rh,
-				aggkittypes.LatestBlock,
-				time.Millisecond*10,
-				10,
-			)
-			require.NoError(t, err)
-
-			ctx := context.Background()
-			result, err := downloader.l1InfoTreeSync.IsUpToDate(ctx, mockL1Client)
-
-			if tt.expectedError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expectedResult, result)
-			}
-		})
-	}
-}
-
 func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *testing.T) {
 	t.Parallel()
 
@@ -232,72 +157,73 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 	}
 
 	tests := []struct {
-		name                 string
-		getInfoByGERError    error
-		isUpToDateResult     bool
-		isUpToDateError      error
-		l1ContractTimestamp  *big.Int
-		l1ContractError      error
+		name                string
+		getInfoByGERError   error
+		l1ContractTimestamp *big.Int
+		l1ContractError     error
+		// removalLogFound simulates the (S-log) UpdateRemovalHashChainValue scan finding (or not
+		// finding) a matching removal event for the GER. It is a necessary (but not sufficient)
+		// condition for the appender to skip the stale insert: see isGERRemovedFromL2's AND of
+		// S-log and S-map (evm_downloader_sovereign.go).
+		removalLogFound      bool
 		l2ContractTimestamp  *big.Int
 		l2ContractError      error
 		expectError          bool
 		expectedErrorMessage string
 	}{
 		{
-			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_returns_error",
+			// With no removal event on L2 (S-log empty), the appender stays blocked.
+			name:                 "no_removal_event_stays_blocked",
 			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
-			isUpToDateResult:     false,
-			isUpToDateError:      fmt.Errorf("L1InfoTreeSync check failed"),
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
 		},
 		{
-			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_returns_false",
+			// The L1 contract read is informational only (does not gate the skip decision); with
+			// no removal event on L2, the appender stays blocked even though the GER "exists" on
+			// L1.
+			name:                 "l1_contract_ger_exists_no_removal_event_stays_blocked",
 			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
-			isUpToDateResult:     false,
-			isUpToDateError:      nil,
-			expectError:          true,
-			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
-		},
-		{
-			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_true_L1Contract_GER_exists",
-			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
-			isUpToDateResult:     true,
-			isUpToDateError:      nil,
 			l1ContractTimestamp:  big.NewInt(1234567890), // timestamp > 0 means GER exists
-			l1ContractError:      nil,
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
 		},
 		{
-			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_true_L1Contract_timestamp_zero_L2Contract_timestamp_zero",
+			// Both S-log (removal event found) and S-map (L2 map reads 0) agree: removed. The
+			// appender skips the stale insert.
+			name:                 "removal_event_and_zero_l2_map_unsticks",
 			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
-			isUpToDateResult:     true,
-			isUpToDateError:      nil,
-			l1ContractTimestamp:  big.NewInt(0), // timestamp = 0 means GER not found
-			l1ContractError:      nil,
-			l2ContractTimestamp:  big.NewInt(0), // timestamp = 0 means GER removed from L2
-			l2ContractError:      nil,
-			expectError:          false, // Should return nil when GER is removed from L2
+			l1ContractTimestamp:  big.NewInt(0), // timestamp = 0 means GER not found (informational)
+			removalLogFound:      true,
+			l2ContractTimestamp:  big.NewInt(0), // timestamp = 0 means GER removed from L2 (S-map)
+			expectError:          false,         // Should return nil when GER is removed from L2
 			expectedErrorMessage: "",
 		},
 		{
-			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_true_L1Contract_timestamp_zero_L2Contract_timestamp_nonzero",
+			// S-log finds a removal event, but S-map still reads a non-zero L2 timestamp (e.g. the
+			// GER was re-injected after removal): the AND fails, so the appender stays blocked.
+			name:                 "removal_event_but_nonzero_l2_map_stays_blocked",
 			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
-			isUpToDateResult:     true,
-			isUpToDateError:      nil,
-			l1ContractTimestamp:  big.NewInt(0), // timestamp = 0 means GER not found
-			l1ContractError:      nil,
+			l1ContractTimestamp:  big.NewInt(0), // timestamp = 0 means GER not found (informational)
+			removalLogFound:      true,
 			l2ContractTimestamp:  big.NewInt(1234567890), // timestamp > 0 means GER exists on L2
-			l2ContractError:      nil,
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
 		},
 		{
-			name:                 "GetInfoByGlobalExitRoot_fails_IsUpToDate_false_skips_L1Contract_call",
+			// S2 §3 reorg scenario: the insert block reorgs out with NO actual
+			// removeGlobalExitRoots event ever emitted (S-log stays empty, since none was ever
+			// emitted for this GER). A bare reorg-out must NOT falsely unstick the syncer:
+			// isGERRemovedFromL2 short-circuits on the empty S-log scan and never even calls
+			// S-map (GlobalExitRootMap) -- so it does not matter what S-map would have reported,
+			// the appender must keep returning the blocking error. l2ContractTimestamp is
+			// deliberately left unset: the harness only mocks CallContract on the L2 client when
+			// removalLogFound is true, so if isGERRemovedFromL2 ever called the L2 map here, the
+			// unmocked call would panic and fail this test.
+			name:                 "reorg_insert_block_reorged_out_no_removal_event_never_unsticks",
 			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
-			isUpToDateResult:     false, // Set to false to avoid L1 contract call path
-			isUpToDateError:      nil,
+			l1ContractTimestamp:  big.NewInt(0),
+			removalLogFound:      false,
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
 		},
@@ -328,33 +254,47 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
 
 			mockL1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(testGER).Return(nil, tt.getInfoByGERError).Maybe()
-			mockL1InfoTreeSync.EXPECT().IsUpToDate(mock.Anything, mock.Anything).Return(tt.isUpToDateResult, tt.isUpToDateError).Maybe()
 
-			// Mock L1 client contract calls for test cases where isUpToDate is true
-			if tt.isUpToDateResult {
-				if tt.l1ContractTimestamp != nil || tt.l1ContractError != nil {
-					callResult := make([]byte, 32)
-					if tt.l1ContractTimestamp != nil {
-						tt.l1ContractTimestamp.FillBytes(callResult)
-					}
-					// Even on error, return a valid byte array so contract binding can decode it
-					mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(callResult, tt.l1ContractError).Maybe()
-				}
+			// The L1 contract read is now unconditional (informational only, does not gate the
+			// skip decision), so it must always be mocked.
+			l1CallResult := make([]byte, 32)
+			if tt.l1ContractTimestamp != nil {
+				tt.l1ContractTimestamp.FillBytes(l1CallResult)
+			}
+			// Even on error, return a valid byte array so contract binding can decode it
+			mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).
+				Return(l1CallResult, tt.l1ContractError).Maybe()
 
-				// Mock L2 client contract calls when L1 returns timestamp = 0
-				if tt.l1ContractTimestamp != nil && tt.l1ContractTimestamp.Cmp(big.NewInt(0)) == 0 && tt.l1ContractError == nil {
-					if tt.l2ContractTimestamp != nil || tt.l2ContractError != nil {
-						var l2CallResult []byte
-						if tt.l2ContractTimestamp != nil {
-							l2CallResult = make([]byte, 32)
-							tt.l2ContractTimestamp.FillBytes(l2CallResult)
-						}
-						mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(l2CallResult, tt.l2ContractError).Maybe()
-					}
+			// (S-log) the removal-event scan (FilterUpdateRemovalHashChainValue) always runs; return
+			// a matching removal log only for the rows that simulate a found removal event.
+			removalLogs := []ethtypes.Log{}
+			if tt.removalLogFound {
+				removalLogs = []ethtypes.Log{
+					{
+						Address:     l2GERAddr,
+						Topics:      []common.Hash{removeGEREventSignature, testGER, testHashChainValue},
+						Data:        []byte{},
+						BlockNumber: fromBlock,
+						TxHash:      common.HexToHash("0x222"),
+						TxIndex:     0,
+						BlockHash:   testBlockHash,
+						Index:       1,
+					},
 				}
 			}
+			mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(removalLogs, nil).Maybe()
 
-			mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(testLogs, nil).Maybe()
+			// (S-map) the L2 GlobalExitRootMap read is only reached once S-log has found a removal
+			// event (isGERRemovedFromL2 short-circuits otherwise), so only mock it for those rows.
+			if tt.removalLogFound {
+				var l2CallResult []byte
+				if tt.l2ContractTimestamp != nil {
+					l2CallResult = make([]byte, 32)
+					tt.l2ContractTimestamp.FillBytes(l2CallResult)
+				}
+				mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).
+					Return(l2CallResult, tt.l2ContractError).Maybe()
+			}
 
 			downloader, err := newDownloaderSovereign(
 				mockL2Client,
@@ -388,6 +328,10 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			} else {
 				require.NoError(t, err, "Expected no error when GER is removed from L2")
 			}
+			// Whether blocked (error) or genuinely skipped (nil), the stale insert must never be
+			// recorded as an event (plan S4 intent 2: the insert event is skipped, not just the error
+			// suppressed).
+			require.Empty(t, block.Events, "insert event must never be appended for an unresolved GER")
 
 			mockL2Client.AssertExpectations(t)
 			mockL1Client.AssertExpectations(t)

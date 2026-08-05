@@ -238,6 +238,52 @@ The Go client exposes this as `client.GetClaimCandidates(ctx, client.GetClaimCan
 (`bridgeservice/client/client.go`), which returns `client.ErrNotFound` when `to_ler`/`from_ler`
 is not synced yet.
 
+## Sync status
+
+`GET /bridge/v1/sync-status` reports the synchronization status of the L1 and L2 bridge indexers, plus
+(when applicable) the l2gersync (injected-GER) syncer. Response shape (`types.SyncStatus`):
+
+```json
+{
+  "l1_info": {
+    "contract_deposit_count": 100,
+    "synchronized_deposit_count": 100,
+    "is_synced": true,
+    "is_active": true,
+    "last_processed_block": 1234,
+    "network_block": 2555
+  },
+  "l2_info": {
+    "contract_deposit_count": 200,
+    "synchronized_deposit_count": 200,
+    "is_synced": true,
+    "is_active": true,
+    "last_processed_block": 5678,
+    "network_block": 5680
+  },
+  "l2_ger_info": {
+    "is_active": true,
+    "last_processed_block": 12345678
+  }
+}
+```
+
+`l1_info` / `l2_info` (`NetworkSyncInfo`) compare on-chain bridge deposit counts against the local
+`bridgesync` database counts, per network.
+
+`l2_ger_info` (`L2GERSyncInfo`) reports the l2gersync (injected-GER) syncer's own progress, independent of
+`l2_info`:
+
+- `is_active` — `true` when this bridgeservice instance has an l2gersync syncer wired in. It is always
+  `false` on an **L1 bridgeservice** (l2gersync only runs against an L2 sovereign chain), and `false` when
+  running against an L2 that isn't configured with l2gersync.
+- `last_processed_block` — the last L2 block l2gersync has processed. Compare this against the L2 chain
+  head (`l2_info.network_block`) to tell whether l2gersync is keeping up. A value that stays pinned below
+  a known block while the chain head keeps advancing indicates l2gersync is stuck — most commonly because
+  an invalid GER was injected and not yet removed on-chain; see the
+  [remove-GER runbook](./remove_ger_runbook.md#blocking-and-automatic-recovery) for the blocking/automatic
+  recovery behavior and how to use this field to confirm recovery.
+
 ## Bridging custom ERC20 token
 
 When a non-native ERC20 token, not yet mapped on a destination network, is bridged, its representation is deployed on the destination network using the `CREATE2` opcode. The mapping process emits the `NewWrappedToken` [event](https://github.com/0xPolygonHermez/zkevm-contracts/blob/21d3fd6ec0881731de49f1a6133fb97ed863a7ab/contracts/v2/PolygonZkEVMBridgeV2.sol#L561-L566) on the destination network.

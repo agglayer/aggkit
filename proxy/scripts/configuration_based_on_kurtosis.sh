@@ -28,7 +28,8 @@ instance (all of them sync the L1 side). The static overrides are required
 when running the proxy from the host: the URLs the finder resolves on-chain
 (trustedSequencerURL / aggchainMetadata) point at Kurtosis-internal hostnames
 that are not reachable outside the enclave — and network 0 is not enumerated
-on-chain at all, so the override is the only way to serve it.
+on-chain at all, so the override is the only way to serve it. It also sets
+[Tracker.AgglayerClient.GRPC].URL from the enclave's agglayer service.
 
 Options:
   -e, --enclave   ENCLAVE    Kurtosis enclave name (default: \$KURTOSIS_ENCLAVE or "aggkit")
@@ -42,6 +43,7 @@ Environment variables (override defaults):
   L2_SERVICE_PREFIX                Kurtosis L2 execution client service prefix (default: op-el-1-op-geth-op-node)
   AGGKIT_BRIDGE_SERVICE_PREFIX     Aggkit bridge service prefix; service name is
                                    <prefix>-<suffix>-bridge (default: aggkit)
+  AGGLAYER_SERVICE                 Kurtosis agglayer service name (default: agglayer)
   MAX_NETWORKS                     Upper bound for the network auto-discovery loop (default: 20)
   BLOCK_FINALITY                   BridgeServiceFinder.BlockFinality (default: LatestBlock —
                                    FinalizedBlock lags too much on a local devnet)
@@ -67,6 +69,7 @@ KURTOSIS_ARTIFACT_AGGKIT_CONFIG="${KURTOSIS_ARTIFACT_AGGKIT_CONFIG:-aggkit-confi
 L1_SERVICE="${L1_SERVICE:-el-1-geth-lighthouse}"
 L2_SERVICE_PREFIX="${L2_SERVICE_PREFIX:-op-el-1-op-geth-op-node}"
 AGGKIT_BRIDGE_SERVICE_PREFIX="${AGGKIT_BRIDGE_SERVICE_PREFIX:-aggkit}"
+AGGLAYER_SERVICE="${AGGLAYER_SERVICE:-agglayer}"
 MAX_NETWORKS="${MAX_NETWORKS:-20}"
 BLOCK_FINALITY="${BLOCK_FINALITY:-LatestBlock}"
 POLL_INTERVAL="${POLL_INTERVAL:-10s}"
@@ -131,6 +134,17 @@ get_l2_rpc_url() {
     port_to_localhost_url "$raw"
 }
 
+# Agglayer gRPC endpoint (service "agglayer", port "aglr-grpc").
+get_agglayer_grpc_url() {
+    local raw port
+    if ! raw=$(kurtosis port print "$KURTOSIS_ENCLAVE" "$AGGLAYER_SERVICE" aglr-grpc 2>/dev/null); then
+        return 1
+    fi
+    # kurtosis returns grpc://host:PORT — rebuild as http://localhost:PORT (insecure gRPC)
+    port=$(echo "$raw" | sed -E 's|^[a-zA-Z]+://||' | cut -f2 -d':')
+    echo "http://localhost:${port}"
+}
+
 # ---------------------------------------------------------------------------
 # Aggkit config artifact — source of the RollupManager address
 # ---------------------------------------------------------------------------
@@ -182,6 +196,14 @@ log_info "Output:         $OUTPUT_PATH"
 log_info "Getting L1 RPC URL..."
 L1_RPC_URL=$(get_l1_rpc_url)
 log_info "L1 RPC URL: $L1_RPC_URL"
+
+log_info "Getting agglayer gRPC URL..."
+if AGGLAYER_GRPC_URL=$(get_agglayer_grpc_url); then
+    log_info "Agglayer gRPC URL: $AGGLAYER_GRPC_URL"
+else
+    log_warn "Service '$AGGLAYER_SERVICE' (port 'aglr-grpc') not found — Tracker.AgglayerClient.GRPC.URL override omitted"
+    AGGLAYER_GRPC_URL=""
+fi
 
 log_info "Downloading aggkit config artifact..."
 download_aggkit_config
@@ -281,6 +303,10 @@ fi
 
 if [[ -n "$RPC_URLS_BLOCK" ]]; then
     printf '\n[BridgeServiceFinder.RPCURLs]\n%s' "$RPC_URLS_BLOCK" >> "$OUTPUT_PATH"
+fi
+
+if [[ -n "$AGGLAYER_GRPC_URL" ]]; then
+    printf '\n[Tracker.AgglayerClient.GRPC]\nURL = "%s"\n' "$AGGLAYER_GRPC_URL" >> "$OUTPUT_PATH"
 fi
 
 log_info "Configuration written to: $OUTPUT_PATH"

@@ -18,6 +18,15 @@ type healthCommand struct {
 }
 
 // Execute implements command
+//
+// @Summary Health check
+// @Description Returns the health status, instance identity and build information of the
+// @Description running instance. Useful as liveness/readiness probe and to check which
+// @Description build/configuration runs on each instance behind the proxy
+// @Tags bridge-tracker
+// @Produce json
+// @Success 200 {object} types.HealthResponse "Health status and version information"
+// @Router /health [get]
 func (cmd *healthCommand) Execute(_ *gin.Context) (int, any, *types.ErrorData) {
 	return http.StatusOK, types.HealthResponse{
 		Status:     types.HealthStatusOK,

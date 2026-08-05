@@ -12,7 +12,7 @@ import (
 
 func TestTrackingDataMarshalJSONUnresolved(t *testing.T) {
 	data := TrackingData{
-		TrackingStatus: types.TrackingStatusRegistered,
+		TrackingStatus: types.TrackingStatusRegistered.String(),
 		NetworkID:      1,
 		TxHash:         common.HexToHash("0x01"),
 	}
@@ -21,8 +21,7 @@ func TestTrackingDataMarshalJSONUnresolved(t *testing.T) {
 	require.NoError(t, err)
 
 	require.JSONEq(t, `{
-		"tracking_status": 0,
-		"tracking_status_string": "registered",
+		"tracking_status": "registered",
 		"network_id": 1,
 		"tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
 		"bridge_status": null,
@@ -34,7 +33,7 @@ func TestTrackingDataMarshalJSONUnresolved(t *testing.T) {
 
 func TestTrackingDataMarshalJSONError(t *testing.T) {
 	data := TrackingData{
-		TrackingStatus: types.TrackingStatusError,
+		TrackingStatus: types.TrackingStatusError.String(),
 		NetworkID:      1,
 		TxHash:         common.HexToHash("0x01"),
 		Error: &types.ErrorStep{
@@ -49,7 +48,7 @@ func TestTrackingDataMarshalJSONError(t *testing.T) {
 
 	var raw map[string]any
 	require.NoError(t, json.Unmarshal(out, &raw))
-	require.Equal(t, "error", raw["tracking_status_string"])
+	require.Equal(t, "error", raw["tracking_status"])
 	require.Nil(t, raw["bridge_status"], "the tracker never resolved the bridge at all")
 	require.Nil(t, raw["step_index"])
 	require.Nil(t, raw["all_steps"])
@@ -74,7 +73,8 @@ func TestTrackingDataFromExposesTransientError(t *testing.T) {
 	}, nil)
 
 	data := trackingDataFrom(tracking)
-	require.Equal(t, types.TrackingStatusRegistered, data.TrackingStatus, "a transient error must not fail the bridge")
+	require.Equal(t, types.TrackingStatusRegistered.String(), data.TrackingStatus,
+		"a transient error must not fail the bridge")
 	require.NotNil(t, data.Error)
 	require.Equal(t, types.StepErrorTransient, data.Error.ErrorType)
 	require.Equal(t, 2, data.Error.RetryCount)
@@ -93,15 +93,17 @@ func TestTrackingDataFromNoErrorIsNil(t *testing.T) {
 func TestTrackingDataMarshalJSONResolved(t *testing.T) {
 	stepIndex := 0
 	data := TrackingData{
-		TrackingStatus: types.TrackingStatusFinished,
+		TrackingStatus: types.TrackingStatusFinished.String(),
 		NetworkID:      1,
 		TxHash:         common.HexToHash("0x01"),
 		BridgeStatus: &BridgeStatus{
-			BridgeType:     types.BridgeTypeL2ToL1,
-			BridgeLeafType: types.BridgeLeafTypeAsset,
+			BridgeType: types.BridgeTypeL2ToL1.String(),
+			Event:      BridgeEventData{LeafType: types.BridgeLeafTypeAsset.String()},
 		},
 		StepIndex: &stepIndex,
-		AllSteps:  []types.BridgeStepPath{{Step: types.StepClaimed, Status: types.StepStatusDone}},
+		AllSteps: []BridgeStepPath{
+			{StepName: types.StepClaimed.String(), Status: types.StepStatusDone.String()},
+		},
 	}
 
 	out, err := json.Marshal(data)
@@ -109,8 +111,7 @@ func TestTrackingDataMarshalJSONResolved(t *testing.T) {
 
 	var raw map[string]any
 	require.NoError(t, json.Unmarshal(out, &raw))
-	require.EqualValues(t, 3, raw["tracking_status"])
-	require.Equal(t, "finished", raw["tracking_status_string"])
+	require.Equal(t, "finished", raw["tracking_status"])
 	require.NotNil(t, raw["bridge_status"])
 	require.EqualValues(t, 0, raw["step_index"])
 	allSteps, ok := raw["all_steps"].([]any)
