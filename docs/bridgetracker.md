@@ -78,6 +78,11 @@ Cached = true
 [Tracker.AgglayerClient.ConfigurationCache]
 TTL = "1s"
 Capacity = 100
+SendCertificate = "forbidden"
+GetCertificateHeader = "cached"
+GetEpochConfiguration = "cached"
+GetLatestPendingCertificateHeader = "cached"
+GetNetworkInfo = "cached"
 [Tracker.AgglayerClient.GRPC]
 URL = "https://agglayer-dev.polygon.technology"
 UseTLS = false
@@ -94,7 +99,13 @@ UseTLS = false
 - `MaxTrackedBridges`: caps the in-memory supervised list; a request beyond it fails instead of
   registering the bridge.
 - `AgglayerClient`: the client used to resolve an L2-originated bridge's covering certificate and
-  its status (`PendingInclusion`/`CertificatePending`/`WaitL1SettledGER`).
+  its status (`PendingInclusion`/`CertificatePending`/`WaitL1SettledGER`). `Cached` is the master
+  switch for `ConfigurationCache`'s per-method policy (`false` ignores it entirely). Each method
+  is `cached` (served from its own TTL cache), `passthrough` (always calls the agglayer directly,
+  the default for a method left unset), or `forbidden` (refused without ever reaching the
+  agglayer — the tracker only ever reads agglayer state, so `SendCertificate` is forbidden here).
+  `GetLatestSettledCertificateHeader` is intentionally left unset (passthrough): its "latest"
+  answer must always be fresh.
 
 ## API Documentation
 
