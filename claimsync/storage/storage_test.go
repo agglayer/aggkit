@@ -1137,3 +1137,301 @@ func TestGetClaimsPaged(t *testing.T) {
 		})
 	}
 }
+
+// TestGetClaimsPaged_Compact exercises GetClaimsPaged's compaction logic when a duplicated
+// global_index spans multiple pages. gi=100 has 3 raw instances at blocks 1 (oldest), 3 (middle)
+// and 5 (newest), interleaved with 6 unique-gi claims at blocks 2, 4, 6, 7, 8, 9 (gi=1, 2, 3, 4, 5, 6
+// respectively). With pageSize=3, the raw claim table (9 rows, DESC by block_num) is windowed as:
+//
+//	page1 (offset 0): b9(gi6), b8(gi5), b7(gi4)
+//	page2 (offset 3): b6(gi3), b5(gi100 newest), b4(gi2)
+//	page3 (offset 6): b3(gi100 middle), b2(gi1), b1(gi100 oldest)
+//
+// page2 contains the globally newest gi=100 instance (Case 2: compacted). page3 contains only
+// older gi=100 instances (Case 3: excluded). After inserting an unset_claim for gi=100, all
+// instances are returned uncompacted on whichever page they fall on (Case 1).
+func TestGetClaimsPaged_Compact(t *testing.T) {
+	t.Parallel()
+
+	makeProof := func(h common.Hash) treetypes.Proof {
+		var p treetypes.Proof
+		p[0] = h
+		return p
+	}
+
+	// buildClaims returns 9 claims: claims[0], claims[2], claims[4] share gi=100
+	// (oldest/middle/newest respectively); the rest have unique global indexes.
+	buildClaims := func() []claimsynctypes.Claim {
+		return []claimsynctypes.Claim{
+			{ // claims[0]: block=1, gi=100 (oldest)
+				BlockNum:            1,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x01"),
+				GlobalIndex:         big.NewInt(100),
+				OriginNetwork:       9,
+				Metadata:            []byte("oldest_meta"),
+				ProofLocalExitRoot:  makeProof(common.HexToHash("0xa1")),
+				ProofRollupExitRoot: makeProof(common.HexToHash("0xa2")),
+				MainnetExitRoot:     common.HexToHash("0xa3"),
+				RollupExitRoot:      common.HexToHash("0xa4"),
+				GlobalExitRoot:      common.HexToHash("0xa5"),
+				DestinationNetwork:  50,
+				Amount:              big.NewInt(1),
+				Type:                claimsynctypes.ClaimEvent,
+			},
+			{ // claims[1]: block=2, gi=1
+				BlockNum:      2,
+				BlockPos:      0,
+				TxHash:        common.HexToHash("0x02"),
+				GlobalIndex:   big.NewInt(1),
+				OriginNetwork: 1,
+				Amount:        big.NewInt(2),
+				Type:          claimsynctypes.ClaimEvent,
+			},
+			{ // claims[2]: block=3, gi=100 (middle)
+				BlockNum:            3,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x03"),
+				GlobalIndex:         big.NewInt(100),
+				OriginNetwork:       9,
+				Metadata:            []byte("middle_meta"),
+				ProofLocalExitRoot:  makeProof(common.HexToHash("0xb1")),
+				ProofRollupExitRoot: makeProof(common.HexToHash("0xb2")),
+				MainnetExitRoot:     common.HexToHash("0xb3"),
+				RollupExitRoot:      common.HexToHash("0xb4"),
+				GlobalExitRoot:      common.HexToHash("0xb5"),
+				DestinationNetwork:  50,
+				Amount:              big.NewInt(3),
+				Type:                claimsynctypes.ClaimEvent,
+			},
+			{ // claims[3]: block=4, gi=2
+				BlockNum:      4,
+				BlockPos:      0,
+				TxHash:        common.HexToHash("0x04"),
+				GlobalIndex:   big.NewInt(2),
+				OriginNetwork: 1,
+				Amount:        big.NewInt(4),
+				Type:          claimsynctypes.ClaimEvent,
+			},
+			{ // claims[4]: block=5, gi=100 (newest)
+				BlockNum:            5,
+				BlockPos:            0,
+				TxHash:              common.HexToHash("0x05"),
+				GlobalIndex:         big.NewInt(100),
+				OriginNetwork:       9,
+				Metadata:            []byte("newest_meta"),
+				ProofLocalExitRoot:  makeProof(common.HexToHash("0xc1")),
+				ProofRollupExitRoot: makeProof(common.HexToHash("0xc2")),
+				MainnetExitRoot:     common.HexToHash("0xc3"),
+				RollupExitRoot:      common.HexToHash("0xc4"),
+				GlobalExitRoot:      common.HexToHash("0xc5"),
+				DestinationNetwork:  50,
+				Amount:              big.NewInt(5),
+				Type:                claimsynctypes.DetailedClaimEvent,
+			},
+			{ // claims[5]: block=6, gi=3
+				BlockNum:      6,
+				BlockPos:      0,
+				TxHash:        common.HexToHash("0x06"),
+				GlobalIndex:   big.NewInt(3),
+				OriginNetwork: 2,
+				Amount:        big.NewInt(6),
+				Type:          claimsynctypes.ClaimEvent,
+			},
+			{ // claims[6]: block=7, gi=4
+				BlockNum:      7,
+				BlockPos:      0,
+				TxHash:        common.HexToHash("0x07"),
+				GlobalIndex:   big.NewInt(4),
+				OriginNetwork: 2,
+				Amount:        big.NewInt(7),
+				Type:          claimsynctypes.ClaimEvent,
+			},
+			{ // claims[7]: block=8, gi=5
+				BlockNum:      8,
+				BlockPos:      0,
+				TxHash:        common.HexToHash("0x08"),
+				GlobalIndex:   big.NewInt(5),
+				OriginNetwork: 3,
+				Amount:        big.NewInt(8),
+				Type:          claimsynctypes.ClaimEvent,
+			},
+			{ // claims[8]: block=9, gi=6
+				BlockNum:      9,
+				BlockPos:      0,
+				TxHash:        common.HexToHash("0x09"),
+				GlobalIndex:   big.NewInt(6),
+				OriginNetwork: 3,
+				Amount:        big.NewInt(9),
+				Type:          claimsynctypes.ClaimEvent,
+			},
+		}
+	}
+
+	insertClaims := func(t *testing.T, ctx context.Context, s claimsynctypes.ClaimStorager, toInsert []claimsynctypes.Claim) {
+		t.Helper()
+		insertedBlocks := map[uint64]bool{}
+		for _, c := range toInsert {
+			if !insertedBlocks[c.BlockNum] {
+				require.NoError(t, s.InsertBlock(ctx, nil, c.BlockNum, common.Hash{}))
+				insertedBlocks[c.BlockNum] = true
+			}
+			require.NoError(t, s.InsertClaim(ctx, nil, c))
+		}
+	}
+
+	t.Run("case 2 and case 3: paging without unset_claim", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newTestStorage(t)
+		ctx := context.Background()
+		claims := buildClaims()
+		insertClaims(t, ctx, s, claims)
+
+		const pageSize = 3
+
+		// page1: b9(gi6), b8(gi5), b7(gi4) -- no gi=100 instance on this page.
+		got, count, err := s.GetClaimsPaged(ctx, 1, pageSize, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 7, count) // 7 distinct global indexes: 100,1,2,3,4,5,6
+		require.Len(t, got, 3)
+		require.Equal(t, 0, big.NewInt(6).Cmp(got[0].GlobalIndex))
+		require.Equal(t, 0, big.NewInt(5).Cmp(got[1].GlobalIndex))
+		require.Equal(t, 0, big.NewInt(4).Cmp(got[2].GlobalIndex))
+
+		// page2: b6(gi3), b5(gi100 newest), b4(gi2) -- Case 2: newest instance is on this page,
+		// so a single compacted gi=100 claim is returned (oldest metadata + newest proofs).
+		// Sorted DESC by displayed block_num: gi3(6), gi2(4), gi100 compacted(1, oldest's block_num).
+		got, count, err = s.GetClaimsPaged(ctx, 2, pageSize, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 7, count)
+		require.Len(t, got, 3)
+		require.Equal(t, 0, big.NewInt(3).Cmp(got[0].GlobalIndex))
+		require.Equal(t, 0, big.NewInt(2).Cmp(got[1].GlobalIndex))
+		require.Equal(t, 0, big.NewInt(100).Cmp(got[2].GlobalIndex))
+
+		compacted := got[2]
+		// Oldest instance's metadata/tx_hash/block fields (claims[0], block=1).
+		require.Equal(t, claims[0].BlockNum, compacted.BlockNum)
+		require.Equal(t, claims[0].BlockPos, compacted.BlockPos)
+		require.Equal(t, claims[0].TxHash, compacted.TxHash)
+		require.Equal(t, claims[0].Metadata, compacted.Metadata)
+		require.Equal(t, claims[0].Amount, compacted.Amount)
+		require.Equal(t, claims[0].Type, compacted.Type)
+		require.Equal(t, claims[0].DestinationNetwork, compacted.DestinationNetwork)
+		// Newest instance's proofs/exit roots (claims[4], block=5).
+		require.Equal(t, claims[4].ProofLocalExitRoot, compacted.ProofLocalExitRoot)
+		require.Equal(t, claims[4].ProofRollupExitRoot, compacted.ProofRollupExitRoot)
+		require.Equal(t, claims[4].MainnetExitRoot, compacted.MainnetExitRoot)
+		require.Equal(t, claims[4].RollupExitRoot, compacted.RollupExitRoot)
+		require.Equal(t, claims[4].GlobalExitRoot, compacted.GlobalExitRoot)
+
+		// page3: b3(gi100 middle), b2(gi1), b1(gi100 oldest) -- Case 3: the globally newest
+		// instance (b5) is NOT on this page, so gi=100 is excluded entirely. Only gi=1 remains.
+		got, count, err = s.GetClaimsPaged(ctx, 3, pageSize, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 7, count)
+		require.Len(t, got, 1)
+		require.Equal(t, 0, big.NewInt(1).Cmp(got[0].GlobalIndex))
+	})
+
+	t.Run("case 1: unset_claim present returns every gi=100 instance uncompacted", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newTestStorage(t)
+		ctx := context.Background()
+		claims := buildClaims()
+		insertClaims(t, ctx, s, claims)
+
+		require.NoError(t, s.InsertBlock(ctx, nil, 10, common.Hash{}))
+		require.NoError(t, s.InsertUnsetClaim(ctx, nil, claimsynctypes.UnsetClaim{
+			BlockNum:    10,
+			BlockPos:    0,
+			TxHash:      common.HexToHash("0xaa"),
+			GlobalIndex: big.NewInt(100),
+		}))
+
+		const pageSize = 3
+		// count = 3 (all gi=100 raw instances, uncompacted) + 6 (distinct other gis) = 9.
+		const expectedCount = 9
+
+		// page1: b9(gi6), b8(gi5), b7(gi4) -- unaffected, no gi=100 instance here.
+		got, count, err := s.GetClaimsPaged(ctx, 1, pageSize, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, expectedCount, count)
+		require.Len(t, got, 3)
+		require.Equal(t, 0, big.NewInt(6).Cmp(got[0].GlobalIndex))
+		require.Equal(t, 0, big.NewInt(5).Cmp(got[1].GlobalIndex))
+		require.Equal(t, 0, big.NewInt(4).Cmp(got[2].GlobalIndex))
+
+		// page2: b6(gi3), b5(gi100 newest), b4(gi2) -- gi=100 instance returned uncompacted,
+		// keeping its own original block/metadata (block=5, "newest_meta"), not merged with oldest.
+		// Sorted DESC by its own (unmodified) block_num: gi3(6), gi100 raw(5), gi2(4).
+		got, count, err = s.GetClaimsPaged(ctx, 2, pageSize, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, expectedCount, count)
+		require.Len(t, got, 3)
+		require.Equal(t, 0, big.NewInt(3).Cmp(got[0].GlobalIndex))
+		require.Equal(t, 0, big.NewInt(100).Cmp(got[1].GlobalIndex))
+		require.Equal(t, 0, big.NewInt(2).Cmp(got[2].GlobalIndex))
+
+		uncompactedNewest := got[1]
+		require.Equal(t, claims[4].BlockNum, uncompactedNewest.BlockNum)
+		require.Equal(t, claims[4].Metadata, uncompactedNewest.Metadata)
+		require.Equal(t, claims[4].ProofLocalExitRoot, uncompactedNewest.ProofLocalExitRoot)
+		require.Equal(t, claims[4].ProofRollupExitRoot, uncompactedNewest.ProofRollupExitRoot)
+
+		// page3: b3(gi100 middle), b2(gi1), b1(gi100 oldest) -- both gi=100 instances on this
+		// page are returned uncompacted, each keeping its own original metadata.
+		got, count, err = s.GetClaimsPaged(ctx, 3, pageSize, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, expectedCount, count)
+		require.Len(t, got, 3)
+		require.Equal(t, 0, big.NewInt(100).Cmp(got[0].GlobalIndex))
+		require.Equal(t, 0, big.NewInt(1).Cmp(got[1].GlobalIndex))
+		require.Equal(t, 0, big.NewInt(100).Cmp(got[2].GlobalIndex))
+
+		uncompactedMiddle := got[0]
+		require.Equal(t, claims[2].BlockNum, uncompactedMiddle.BlockNum)
+		require.Equal(t, claims[2].Metadata, uncompactedMiddle.Metadata)
+		require.Equal(t, claims[2].ProofLocalExitRoot, uncompactedMiddle.ProofLocalExitRoot)
+
+		uncompactedOldest := got[2]
+		require.Equal(t, claims[0].BlockNum, uncompactedOldest.BlockNum)
+		require.Equal(t, claims[0].Metadata, uncompactedOldest.Metadata)
+		require.Equal(t, claims[0].ProofLocalExitRoot, uncompactedOldest.ProofLocalExitRoot)
+	})
+
+	t.Run("networkIDs filter composes with the page restriction", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newTestStorage(t)
+		ctx := context.Background()
+		claims := buildClaims()
+		insertClaims(t, ctx, s, claims)
+
+		// Filter to networks {9, 2}: matches gi=100 (net 9) and gi=3, gi=4 (net 2).
+		// Filtered raw DESC order: b7(gi4), b6(gi3), b5(gi100 newest), b3(gi100 middle), b1(gi100 oldest).
+		networkIDs := []uint32{9, 2}
+		const pageSize = 2
+
+		// page1 (offset 0): b7(gi4), b6(gi3) -- no gi=100 instance.
+		got, count, err := s.GetClaimsPaged(ctx, 1, pageSize, networkIDs, nil)
+		require.NoError(t, err)
+		require.Equal(t, 3, count) // 3 distinct filtered gis: 100, 3, 4
+		require.Len(t, got, 2)
+		require.Equal(t, 0, big.NewInt(4).Cmp(got[0].GlobalIndex))
+		require.Equal(t, 0, big.NewInt(3).Cmp(got[1].GlobalIndex))
+
+		// page2 (offset 2): b5(gi100 newest), b3(gi100 middle) -- newest instance is on this
+		// page, so gi=100 is compacted (oldest metadata + newest proofs), even though the oldest
+		// instance (b1) is not itself on this page.
+		got, count, err = s.GetClaimsPaged(ctx, 2, pageSize, networkIDs, nil)
+		require.NoError(t, err)
+		require.Equal(t, 3, count)
+		require.Len(t, got, 1)
+		require.Equal(t, 0, big.NewInt(100).Cmp(got[0].GlobalIndex))
+		require.Equal(t, claims[0].Metadata, got[0].Metadata)
+		require.Equal(t, claims[4].ProofLocalExitRoot, got[0].ProofLocalExitRoot)
+	})
+}

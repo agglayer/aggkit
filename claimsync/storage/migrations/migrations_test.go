@@ -194,6 +194,20 @@ func TestMigration0001_IndexExists(t *testing.T) {
 	require.Equal(t, "idx_claim_type_block", name)
 }
 
+func TestMigration0002_IndexesExist(t *testing.T) {
+	database := setupTestDB(t)
+	ctx := context.Background()
+
+	for _, indexName := range []string{"idx_claim_global_index", "idx_unset_claim_global_index"} {
+		var name string
+		err := database.QueryRowContext(ctx,
+			`SELECT name FROM sqlite_master WHERE type='index' AND name=?`, indexName,
+		).Scan(&name)
+		require.NoError(t, err)
+		require.Equal(t, indexName, name)
+	}
+}
+
 func TestMigration0001_ClaimDefaultType(t *testing.T) {
 	database := setupTestDB(t)
 	ctx := context.Background()
