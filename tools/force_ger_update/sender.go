@@ -84,8 +84,9 @@ func NewSender(cfg ForceGERUpdateConfig, ethTxManager EthTxManager, opts ...Opti
 }
 
 // SendForcedGERUpdate submits (or, in DryRun mode, only logs) a bridgeMessage transaction with
-// forceUpdateGlobalExitRoot = true, and waits for it to be mined before returning.
-func (s *Sender) SendForcedGERUpdate(ctx context.Context) error {
+// forceUpdateGlobalExitRoot = true, and waits for it to reach a terminal status before returning.
+// See ForcedUpdateSender for what confirmedAt means in each case.
+func (s *Sender) SendForcedGERUpdate(ctx context.Context) (time.Time, error) {
 	data, err := s.bridgeAbi.Pack(
 		bridgeMessageFuncName,
 		s.destinationNetwork,
@@ -94,20 +95,20 @@ func (s *Sender) SendForcedGERUpdate(ctx context.Context) error {
 		[]byte{},
 	)
 	if err != nil {
-		return fmt.Errorf("pack %s call: %w", bridgeMessageFuncName, err)
+		return time.Time{}, fmt.Errorf("pack %s call: %w", bridgeMessageFuncName, err)
 	}
 
 	if s.dryRun {
 		log.Infof("force_ger_update dry-run: would send bridgeMessage tx to %s, calldata=0x%x",
 			s.bridgeAddr, data)
-		return nil
+		return time.Time{}, nil
 	}
 
 	id, err := s.ethTxManager.Add(ctx, &s.bridgeAddr, common.Big0, data, 0, nil)
 	if err == nil {
 		log.Infof("forced GER update transaction submitted with ID: %s", id.Hex())
 	} else if !errors.Is(err, ethtxmanager.ErrAlreadyExists) {
-		return fmt.Errorf("add forced GER update transaction: %w", err)
+		return time.Time{}, fmt.Errorf("add forced GER update transaction: %w", err)
 	}
 	if err != nil {
 		log.Infof("forced GER update transaction already exists in monitoring DB with ID: %s", id.Hex())
@@ -117,12 +118,13 @@ func (s *Sender) SendForcedGERUpdate(ctx context.Context) error {
 }
 
 // waitForResult polls the ethtxmanager for id's status until a terminal state is reached:
-// Mined/Safe/Finalized succeed, Failed returns an error, and Evicted is logged and returns nil
-// (mirrors aggoracle/chaingersender/evm.go's submitTransaction monitoring loop). Every terminal
-// state also forgets id (see forgetTerminalTx) so the next SendForcedGERUpdate call — which packs
+// Mined/Safe/Finalized succeed (returning the local time the confirmation was observed), Failed
+// returns an error, and Evicted is logged and returns a zero confirmedAt with no error (mirrors
+// aggoracle/chaingersender/evm.go's submitTransaction monitoring loop). Every terminal state also
+// forgets id (see forgetTerminalTx) so the next SendForcedGERUpdate call — which packs
 // byte-for-byte identical calldata — is free to submit a genuinely new transaction instead of
 // perpetually re-observing this one.
-func (s *Sender) waitForResult(ctx context.Context, id common.Hash) error {
+func (s *Sender) waitForResult(ctx context.Context, id common.Hash) (time.Time, error) {
 	ticker := time.NewTicker(s.pollInterval)
 	defer ticker.Stop()
 
@@ -130,12 +132,12 @@ func (s *Sender) waitForResult(ctx context.Context, id common.Hash) error {
 		select {
 		case <-ctx.Done():
 			log.Infof("context cancelled while waiting for forced GER update tx %s", id.Hex())
-			return nil
+			return time.Time{}, nil
 
 		case <-ticker.C:
 			res, err := s.ethTxManager.Result(ctx, id)
 			if err != nil {
-				return fmt.Errorf("check forced GER update transaction %s status: %w", id.Hex(), err)
+				return time.Time{}, fmt.Errorf("check forced GER update transaction %s status: %w", id.Hex(), err)
 			}
 
 			switch res.Status {
@@ -144,17 +146,17 @@ func (s *Sender) waitForResult(ctx context.Context, id common.Hash) error {
 				continue
 			case ethtxtypes.MonitoredTxStatusFailed:
 				s.forgetTerminalTx(ctx, id)
-				return fmt.Errorf("forced GER update tx %s failed", id.Hex())
+				return time.Time{}, fmt.Errorf("forced GER update tx %s failed", id.Hex())
 			case ethtxtypes.MonitoredTxStatusEvicted:
 				log.Infof("forced GER update tx %s was evicted", id.Hex())
 				s.forgetTerminalTx(ctx, id)
-				return nil
+				return time.Time{}, nil
 			case ethtxtypes.MonitoredTxStatusMined,
 				ethtxtypes.MonitoredTxStatusSafe,
 				ethtxtypes.MonitoredTxStatusFinalized:
 				log.Infof("forced GER update tx %s was successfully mined at block %d", id.Hex(), res.MinedAtBlockNumber)
 				s.forgetTerminalTx(ctx, id)
-				return nil
+				return time.Now(), nil
 			default:
 				log.Errorf("unexpected forced GER update tx status: %s", res.Status)
 			}

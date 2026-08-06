@@ -37,21 +37,14 @@ const (
 	// long enough that the negative ("stays quiet") assertions below have comfortable margin
 	// against the monitor's own detection latency (at most one EventPollInterval in polling mode).
 	//
-	// The tool has an inherent, PLAN.md-acknowledged race in polling mode: the in-flight guard is
-	// released when the send is *confirmed mined*, and if that happens before the monitor's poll
-	// loop has observed the resulting UpdateL1InfoTree event and reset lastGERUpdate, the next
-	// CheckInterval tick still sees the stale (pre-reset) timestamp and legitimately fires a second,
-	// "redundant (harmless)" send. Real deployments never hit this because a transaction takes far
-	// longer to *mine* than the monitor takes to *detect* an event. This test must encode that same
-	// invariant, and robustly (CI runners starve goroutines unpredictably), so what matters is the
-	// RATIO, not absolute values:
-	//   - integrationSenderPoll (how long the send stays "in flight" — the mock mines instantly, so
-	//     the send is confirmed only on the sender's first Result poll, i.e. after one senderPoll) is
-	//     kept MUCH larger than integrationEventPollInterval (how often the monitor re-scans). With a
-	//     ~30x ratio, the monitor observes the event and resets the timer many poll cycles before the
-	//     guard releases, even under heavy, proportional scheduler starvation — so no second send.
-	//   - integrationEventPollInterval is also < integrationCheckInterval so detection generally beats
-	//     the next elapsed-time evaluation regardless.
+	// runLoop's own confirmed send resets lastGERUpdate the moment SendForcedGERUpdate reports a
+	// genuine on-chain confirmation — it does not wait for (or depend on) the monitor independently
+	// observing the resulting UpdateL1InfoTree event, precisely to avoid a redundant second send in
+	// the gap between "ethtxmanager reports Mined" and "the monitor's poll/watch cycle has scanned
+	// that block" (see runLoop's doc comment). This suite still keeps integrationSenderPoll much
+	// larger than integrationEventPollInterval, and integrationEventPollInterval below
+	// integrationCheckInterval, purely as generous scheduling margin for a constrained/starved CI
+	// runner — not because a race would otherwise cause a spurious second send.
 	// (The two subtests also run sequentially rather than in parallel — see TestForceGERUpdate — so a
 	// constrained CI runner isn't driving two simulated backends + monitor/sender loops at once.)
 	integrationMaxTimeWithoutGER = 2 * time.Second
