@@ -37,8 +37,13 @@ type GERMonitor interface {
 // (forceUpdateGlobalExitRoot = true) through the ethtxmanager.
 type ForcedUpdateSender interface {
 	// SendForcedGERUpdate submits (or, in DryRun mode, only logs) a bridgeMessage transaction with
-	// forceUpdateGlobalExitRoot = true, and waits for it to be mined before returning.
-	SendForcedGERUpdate(ctx context.Context) error
+	// forceUpdateGlobalExitRoot = true, and waits for it to reach a terminal status before
+	// returning. When the tx is genuinely confirmed on L1 (Mined/Safe/Finalized), confirmedAt is the
+	// (local wall-clock) time that was observed and err is nil; the caller uses confirmedAt to reset
+	// its own "time since last GER update" timer immediately, without waiting for the GERMonitor to
+	// independently detect the resulting event — see runLoop's doc comment for why that matters.
+	// confirmedAt is the zero time.Time in every other case (DryRun, Evicted, or an error).
+	SendForcedGERUpdate(ctx context.Context) (confirmedAt time.Time, err error)
 }
 
 // EthTxManager is the narrow ethtxmanager interface (Add/Result/From/...) used to submit and track

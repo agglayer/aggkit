@@ -111,25 +111,40 @@ func dialL1(ctx context.Context, url string) (aggkittypes.BaseEthereumClienter, 
 // ethtxmanager, or clients involved).
 //
 // It starts monitor.Start(ctx) to observe UpdateL1InfoTree events (each one resets lastGERUpdate to
-// the event's block timestamp — the single source of truth for "when was the GER last updated");
-// every checkInterval it computes elapsed = time.Now() - lastGERUpdate and, when elapsed is at
-// least maxTimeWithoutGERUpdate and no forced update is currently in flight, triggers
-// sender.SendForcedGERUpdate in a background goroutine. Because lastGERUpdate starts at the
-// zero time.Time when the boot scan found nothing (see GERMonitor.LastGERUpdate), elapsed is
-// enormous in that case, so the very first tick fires a send without any special-casing.
+// the event's block timestamp — one of the two ways "when was the GER last updated" gets reset, the
+// other being our own confirmed send, see below); every checkInterval it computes
+// elapsed = time.Now() - lastGERUpdate and, when elapsed is at least maxTimeWithoutGERUpdate and no
+// forced update is currently in flight, triggers sender.SendForcedGERUpdate in a background
+// goroutine. Because lastGERUpdate starts at the zero time.Time when the boot scan found nothing
+// (see GERMonitor.LastGERUpdate), elapsed is enormous in that case, so the very first tick fires a
+// send without any special-casing.
 //
 // SendForcedGERUpdate blocks until the transaction reaches a terminal status (or ctx is
-// cancelled), so the in-flight guard here is what prevents a second send from being started while
-// one is still pending; the timer itself is only ever reset by an observed monitor event, never by
-// the send completing.
+// cancelled); the goroutine reports its outcome on sendDone rather than clearing the in-flight
+// guard itself. The main select loop below is the only place that ever clears it — and it always
+// does so in the same iteration where it applies a genuine confirmation's confirmedAt to
+// lastGERUpdate, never before. That ordering (reset timer, THEN clear the guard, both in one
+// single-threaded step) is what makes this race-free: a later ticker tick can only ever observe
+// inFlight == false after lastGERUpdate has already been advanced, so it can never fire a
+// redundant second send off a stale timer. This replaced an earlier version where the goroutine
+// cleared the guard itself immediately after SendForcedGERUpdate returned, relying solely on the
+// GERMonitor to independently observe the resulting UpdateL1InfoTree event to reset the timer:
+// the guard could drop as soon as the ethtxmanager reported Mined, which can happen before the
+// monitor's own poll/watch cycle has scanned the block containing that event, so a checkInterval
+// tick landing in that gap still saw the old (pre-reset) lastGERUpdate and legitimately fired a
+// second, redundant send — observed in production as occasional back-to-back bridgeMessage
+// transactions. A later monitor event for the same tx is still consumed as usual; it just
+// re-confirms a lastGERUpdate that was already reset (neither reset path below ever moves the
+// timer backwards).
 //
-// Timer semantics / clock skew: lastGERUpdate is an L1 *block* timestamp (chain clock) while
-// elapsed is measured against the tool's local wall clock (time.Since). In practice L1 block
-// timestamps track real time closely, so the small skew between the two clocks is immaterial next
-// to a MaxTimeWithoutGERUpdate that is realistically minutes-to-hours. The skew is also safe in
-// both directions: if a block timestamp is slightly ahead of the local clock, time.Since is
-// negative, elapsed stays below the threshold, and the tool simply waits a little longer before
-// forcing an update (it never over-fires from skew, and a negative duration never panics).
+// Timer semantics / clock skew: lastGERUpdate is either an L1 *block* timestamp (chain clock, from a
+// monitor event) or a local wall-clock time (from a confirmed send), while elapsed is always
+// measured against the tool's local wall clock (time.Since). In practice L1 block timestamps track
+// real time closely, so the small skew between the two clocks is immaterial next to a
+// MaxTimeWithoutGERUpdate that is realistically minutes-to-hours. The skew is also safe in both
+// directions: if a block timestamp is slightly ahead of the local clock, time.Since is negative,
+// elapsed stays below the threshold, and the tool simply waits a little longer before forcing an
+// update (it never over-fires from skew, and a negative duration never panics).
 //
 // runLoop returns nil once ctx is cancelled, after every goroutine it started has finished.
 func runLoop(
@@ -154,9 +169,15 @@ func runLoop(
 	)
 	defer wg.Wait()
 
+	// sendDone carries the outcome of our own sends to the select loop below. Buffered 1: the
+	// in-flight guard ensures at most one send is ever outstanding, so the goroutine can never
+	// block trying to deliver here.
+	sendDone := make(chan sendOutcome, 1)
+
 	triggerSend := func() {
 		// CompareAndSwap(false, true) atomically checks-and-sets: exactly one caller can win this
 		// race per in-flight window, so concurrent/rapid ticks can never launch two sends at once.
+		// Only the main loop's sendDone case (below) ever clears inFlight back to false.
 		if !inFlight.CompareAndSwap(false, true) {
 			log.Debugf("force_ger_update: forced update already in flight, skipping")
 			return
@@ -165,12 +186,13 @@ func runLoop(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			defer inFlight.Store(false)
 
 			log.Infof("force_ger_update: elapsed time since last GER update exceeded threshold, " +
 				"sending forced GER update")
-			if err := sender.SendForcedGERUpdate(ctx); err != nil {
-				log.Errorf("force_ger_update: forced GER update failed: %v", err)
+			confirmedAt, err := sender.SendForcedGERUpdate(ctx)
+			select {
+			case sendDone <- sendOutcome{confirmedAt: confirmedAt, err: err}:
+			case <-ctx.Done():
 			}
 		}()
 	}
@@ -190,7 +212,22 @@ func runLoop(
 			}
 			log.Infof("force_ger_update: observed UpdateL1InfoTree at block %d (timestamp %s), "+
 				"resetting timer", ev.BlockNumber, ev.BlockTimestamp)
-			lastGERUpdate = ev.BlockTimestamp
+			if ev.BlockTimestamp.After(lastGERUpdate) {
+				lastGERUpdate = ev.BlockTimestamp
+			}
+
+		case res := <-sendDone:
+			if res.err != nil {
+				log.Errorf("force_ger_update: forced GER update failed: %v", res.err)
+			} else if !res.confirmedAt.IsZero() {
+				log.Infof("force_ger_update: forced GER update confirmed at %s, resetting timer", res.confirmedAt)
+				if res.confirmedAt.After(lastGERUpdate) {
+					lastGERUpdate = res.confirmedAt
+				}
+			}
+			// Clearing the guard here, after the (possible) reset above, is what closes the race:
+			// see this function's doc comment.
+			inFlight.Store(false)
 
 		case <-ticker.C:
 			elapsed := time.Since(lastGERUpdate)
@@ -199,6 +236,13 @@ func runLoop(
 			}
 		}
 	}
+}
+
+// sendOutcome carries a completed SendForcedGERUpdate call's result from the goroutine that ran it
+// back to runLoop's single-threaded select loop.
+type sendOutcome struct {
+	confirmedAt time.Time
+	err         error
 }
 
 // logStartupSummary logs a config summary (no secrets), the sender address, and the boot-derived

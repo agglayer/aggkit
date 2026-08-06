@@ -96,7 +96,9 @@ func TestSendForcedGERUpdate_Success(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	require.NoError(t, sender.SendForcedGERUpdate(ctx))
+	confirmedAt, err := sender.SendForcedGERUpdate(ctx)
+	require.NoError(t, err)
+	require.False(t, confirmedAt.IsZero(), "a genuinely mined tx must report a non-zero confirmation time")
 
 	require.NotNil(t, capturedData)
 	require.Equal(t, "240ff378", common.Bytes2Hex(capturedData[:4]))
@@ -135,9 +137,10 @@ func TestSendForcedGERUpdate_Failed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err = sender.SendForcedGERUpdate(ctx)
+	confirmedAt, err := sender.SendForcedGERUpdate(ctx)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), txID.Hex())
+	require.True(t, confirmedAt.IsZero())
 }
 
 func TestSendForcedGERUpdate_Evicted(t *testing.T) {
@@ -167,7 +170,9 @@ func TestSendForcedGERUpdate_Evicted(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	require.NoError(t, sender.SendForcedGERUpdate(ctx))
+	confirmedAt, err := sender.SendForcedGERUpdate(ctx)
+	require.NoError(t, err)
+	require.True(t, confirmedAt.IsZero(), "an evicted tx never actually updated the GER, so it must not reset the caller's timer")
 }
 
 func TestSendForcedGERUpdate_AlreadyExists(t *testing.T) {
@@ -197,7 +202,9 @@ func TestSendForcedGERUpdate_AlreadyExists(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	require.NoError(t, sender.SendForcedGERUpdate(ctx))
+	confirmedAt, err := sender.SendForcedGERUpdate(ctx)
+	require.NoError(t, err)
+	require.False(t, confirmedAt.IsZero())
 }
 
 // TestSendForcedGERUpdate_RepeatedCallsResubmitAfterCompletion is the regression test for the
@@ -248,8 +255,13 @@ func TestSendForcedGERUpdate_RepeatedCallsResubmitAfterCompletion(t *testing.T) 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	require.NoError(t, sender.SendForcedGERUpdate(ctx))
-	require.NoError(t, sender.SendForcedGERUpdate(ctx))
+	firstConfirmedAt, err := sender.SendForcedGERUpdate(ctx)
+	require.NoError(t, err)
+	require.False(t, firstConfirmedAt.IsZero())
+
+	secondConfirmedAt, err := sender.SendForcedGERUpdate(ctx)
+	require.NoError(t, err)
+	require.False(t, secondConfirmedAt.IsZero())
 }
 
 func TestSendForcedGERUpdate_DryRun(t *testing.T) {
@@ -263,7 +275,9 @@ func TestSendForcedGERUpdate_DryRun(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	require.NoError(t, sender.SendForcedGERUpdate(ctx))
+	confirmedAt, err := sender.SendForcedGERUpdate(ctx)
+	require.NoError(t, err)
+	require.True(t, confirmedAt.IsZero(), "dry-run never actually sends anything, so it must not reset the caller's timer")
 
 	ethTxMan.AssertNotCalled(t, "Add",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -295,7 +309,9 @@ func TestSendForcedGERUpdate_RemoveFailureDoesNotFailSend(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	require.NoError(t, sender.SendForcedGERUpdate(ctx))
+	confirmedAt, err := sender.SendForcedGERUpdate(ctx)
+	require.NoError(t, err)
+	require.False(t, confirmedAt.IsZero(), "a Remove failure is best-effort and must not suppress the mined confirmation")
 }
 
 func TestNewSender_DefaultsDestinationAddressToSenderFrom(t *testing.T) {

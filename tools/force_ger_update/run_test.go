@@ -33,10 +33,10 @@ var _ GERMonitor = (*fakeMonitor)(nil)
 // SendForcedGERUpdate call.
 type fakeSender struct {
 	calls atomic.Int32
-	send  func(ctx context.Context) error
+	send  func(ctx context.Context) (time.Time, error)
 }
 
-func (s *fakeSender) SendForcedGERUpdate(ctx context.Context) error {
+func (s *fakeSender) SendForcedGERUpdate(ctx context.Context) (time.Time, error) {
 	s.calls.Add(1)
 	return s.send(ctx)
 }
@@ -44,19 +44,32 @@ func (s *fakeSender) SendForcedGERUpdate(ctx context.Context) error {
 var _ ForcedUpdateSender = (*fakeSender)(nil)
 
 // blockingSender returns a fakeSender whose SendForcedGERUpdate blocks on block (or ctx.Done(),
-// per the real Sender's documented contract) before returning nil — simulating a send that stays
-// "in flight" until the test releases it. A nil block returns immediately.
+// per the real Sender's documented contract) before returning a zero confirmedAt — simulating a
+// send that stays "in flight" until the test releases it, without itself ever resetting the timer
+// (deliberately: these tests are about the in-flight guard, not the confirmed-send reset path — see
+// confirmingSender for that). A nil block returns immediately.
 func blockingSender(block <-chan struct{}) *fakeSender {
 	return &fakeSender{
-		send: func(ctx context.Context) error {
+		send: func(ctx context.Context) (time.Time, error) {
 			if block == nil {
-				return nil
+				return time.Time{}, nil
 			}
 			select {
 			case <-block:
 			case <-ctx.Done():
 			}
-			return nil
+			return time.Time{}, nil
+		},
+	}
+}
+
+// confirmingSender returns a fakeSender whose SendForcedGERUpdate returns immediately with
+// confirmedAt = time.Now() and no error — simulating a send that ethtxmanager has just confirmed
+// Mined, without blocking (unlike blockingSender).
+func confirmingSender() *fakeSender {
+	return &fakeSender{
+		send: func(context.Context) (time.Time, error) {
+			return time.Now(), nil
 		},
 	}
 }
@@ -171,6 +184,57 @@ func TestRunLoop_InFlightGuard_NoDoubleSend(t *testing.T) {
 	err := runLoop(ctx, monitor, sender, time.Time{}, 5*time.Millisecond, 500*time.Millisecond)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), sender.calls.Load(), "expected exactly one send across the whole in-flight window")
+}
+
+// TestRunLoop_ConfirmedSendResetsTimer_NoRedundantSecondSend is the regression test for a
+// production bug: two forced-update transactions were occasionally observed back to back. The
+// in-flight guard used to be released by the sending goroutine itself immediately after
+// SendForcedGERUpdate returned, and the timer was reset only when the GERMonitor independently
+// observed the resulting UpdateL1InfoTree event. Those two things can race: the guard can drop as
+// soon as ethtxmanager reports Mined, which is often before the monitor's own poll/watch cycle has
+// scanned the block containing that event, so a checkInterval tick landing in that gap still saw
+// the stale timer and fired a legitimate-looking but redundant second send.
+//
+// This test isolates that scenario at the extreme: the monitor never delivers an event at all
+// (worst case for the old design), while the sender confirms every send immediately. Many
+// checkInterval ticks fire in the following window — under the old design every single one would
+// have re-triggered a send, since nothing but the (never-arriving) monitor event reset the timer.
+func TestRunLoop_ConfirmedSendResetsTimer_NoRedundantSecondSend(t *testing.T) {
+	t.Parallel()
+
+	const (
+		checkInterval = 2 * time.Millisecond
+		maxWithoutGER = 200 * time.Millisecond
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	monitor := &fakeMonitor{events: make(chan GERUpdateEvent)} // never written to: the monitor never observes anything
+	sender := confirmingSender()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runLoop(ctx, monitor, sender, time.Time{}, checkInterval, maxWithoutGER)
+	}()
+
+	// Booting stale fires exactly one send almost immediately.
+	require.Eventually(t, func() bool { return sender.calls.Load() == 1 }, time.Second, time.Millisecond,
+		"stale boot must trigger the first forced-update send")
+
+	// Many checkInterval ticks (every 2ms) fire over the next window, far sooner than maxWithoutGER
+	// (200ms) could legitimately trip again from the reset the confirmed send itself must have
+	// applied.
+	require.Never(t, func() bool { return sender.calls.Load() > 1 }, 100*time.Millisecond, time.Millisecond,
+		"a confirmed send must reset the timer itself, without depending on the monitor observing the resulting event")
+
+	cancel()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("runLoop did not return promptly after ctx cancellation")
+	}
 }
 
 // TestRunLoop_ContextCancelled_ReturnsPromptly proves the loop, and any in-flight send, unwind
