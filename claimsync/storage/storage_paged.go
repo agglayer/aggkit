@@ -157,6 +157,8 @@ func (p *claimStorage) GetClaimsPaged(
 	// - Ranks all claims globally by global_index to find oldest and newest
 	// - For claims with unset_claim: returns all instances on the page uncompacted
 	// - For claims without unset_claim: only returns compacted version if newest is on page
+	// - Ranking is restricted to global indexes present on the requested page, so the window
+	//   functions don't scan the whole claim table
 	//nolint:gosec
 	query := fmt.Sprintf(`
 		WITH page_claims AS (
@@ -171,8 +173,8 @@ func (p *claimStorage) GetClaimsPaged(
 				*,
 				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
 				ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
-			FROM claim
-			%s
+			FROM (SELECT * FROM claim %s) filtered_claims
+			WHERE global_index IN (SELECT global_index FROM page_claims)
 		),
 		claims_with_unset_on_page AS (
 			-- Case 1: Return all claims on page if unset_claim exists (no compaction)
