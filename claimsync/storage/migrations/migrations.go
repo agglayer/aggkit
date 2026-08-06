@@ -13,11 +13,18 @@ import (
 //go:embed claimsync0001.sql
 var claimSync0001 string
 
+//go:embed claimsync0002.sql
+var claimSync0002 string
+
 func GetClaimSyncMigrations() []types.Migration {
 	return []types.Migration{
 		{
 			ID:  "claimsync0001",
 			SQL: claimSync0001,
+		},
+		{
+			ID:  "claimsync0002",
+			SQL: claimSync0002,
 		},
 	}
 }
