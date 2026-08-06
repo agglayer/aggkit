@@ -419,13 +419,17 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) (*Bri
 }
 
 type processor struct {
-	syncerID         string
-	db               *sql.DB
-	exitTree         types.FullTreer
-	log              *log.Logger
-	mu               mutex.RWMutex
-	halted           bool
-	haltedReason     string
+	syncerID     string
+	db           *sql.DB
+	exitTree     types.FullTreer
+	log          *log.Logger
+	mu           mutex.RWMutex
+	halted       bool
+	haltedReason string
+	// haltGuardHits counts consecutive isHalted() short-circuits in ProcessBlock, so the
+	// "processor is halted" log can be throttled instead of firing on every call. Reset on
+	// unhalt.
+	haltGuardHits    int
 	dbQueryTimeout   time.Duration
 	bridgeSubscriber aggkitcommon.PubSub[uint64]
 	initialLER       common.Hash
@@ -1015,7 +1019,7 @@ func loadReorgedDepositCounts(tx dbtypes.Txer, fromBlock uint64) (map[uint32]str
 // and updates the last processed block (can be called without events for that purpose)
 func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	if p.isHalted() {
-		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
+		p.logHaltGuardHit()
 		return sync.ErrInconsistentState
 	}
 
@@ -1780,7 +1784,24 @@ func (p *processor) halt(reason string) {
 
 	p.halted = true
 	p.haltedReason = reason
+	p.haltGuardHits = 0
 	p.log.Errorf("processor is halted due to the following reason: %s", reason)
+}
+
+// logHaltGuardHit logs (at a throttled rate) that a call was rejected because the processor is
+// halted. See aggkitcommon.ShouldLogRetryAtError.
+func (p *processor) logHaltGuardHit() {
+	p.mu.Lock()
+	p.haltGuardHits++
+	hits := p.haltGuardHits
+	reason := p.haltedReason
+	p.mu.Unlock()
+
+	if aggkitcommon.ShouldLogRetryAtError(hits) {
+		p.log.Errorf("processor is halted due to: %s (rejected call #%d while halted)", reason, hits)
+	} else {
+		p.log.Debugf("processor is halted due to: %s (rejected call #%d while halted)", reason, hits)
+	}
 }
 
 // unhalt sets the processor to a non-halted state, allowing it to process blocks again
@@ -1790,6 +1811,7 @@ func (p *processor) unhalt() {
 
 	p.halted = false
 	p.haltedReason = ""
+	p.haltGuardHits = 0
 	p.log.Info("processor unhalted")
 }
 

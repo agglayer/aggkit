@@ -318,6 +318,11 @@ func TestGetEventsByBlockRange(t *testing.T) {
 				clientMock.EXPECT().FilterLogs(cancelledCtx, query).Return(tc.inputLogs, nil)
 			} else {
 				clientMock.EXPECT().FilterLogs(mock.Anything, query).Return(tc.inputLogs, nil)
+				// GetEventsByBlockRange now fetches the last finalized block once, up front, to
+				// scope the eth_getLogs completeness check to the unfinalized zone. Report the
+				// whole range as finalized so the check's verify window is empty and no extra
+				// HeaderByNumber/FilterLogs calls are needed for these pre-existing test cases.
+				clientMock.EXPECT().BlockNumber(mock.Anything, mock.Anything).Return(tc.toBlock, nil)
 			}
 
 			// Setup custom mocks if provided
@@ -1041,6 +1046,9 @@ func TestEVMDownloaderImplementation_SetLogsHook_HookInvokedInGetEventsByBlockRa
 	rawLog := types.Log{BlockNumber: 10, Topics: []common.Hash{eventSignature}, Address: contractAddr}
 	// FilterLogs returns one log; the hook filters it out.
 	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]types.Log{rawLog}, nil).Once()
+	// GetEventsByBlockRange fetches the last finalized block up front for the completeness check;
+	// report the whole range as finalized so its verify window is empty here.
+	mockEthClient.EXPECT().BlockNumber(mock.Anything, mock.Anything).Return(uint64(20), nil).Once()
 
 	var hookCalledFrom, hookCalledTo uint64
 	sut.SetLogsHook(func(_ context.Context, from, to uint64, logs []types.Log) []types.Log {

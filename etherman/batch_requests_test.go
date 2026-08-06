@@ -10,12 +10,47 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mockaggkittypes "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBlockRawEth_ToBlockHeader(t *testing.T) {
+	t.Run("populates logs bloom when present", func(t *testing.T) {
+		var bloom ethtypes.Bloom
+		bloom.Add(common.HexToAddress("0xaaaa").Bytes())
+		raw := &blockRawEth{
+			Number:     "0x1",
+			Hash:       "0xabc",
+			Timestamp:  "0x123",
+			ParentHash: "0xdef",
+			LogsBloom:  "0x" + common.Bytes2Hex(bloom.Bytes()),
+		}
+
+		header, err := raw.ToBlockHeader()
+
+		require.NoError(t, err)
+		require.NotNil(t, header.LogsBloom)
+		require.Equal(t, bloom, *header.LogsBloom)
+	})
+
+	t.Run("leaves logs bloom nil when absent", func(t *testing.T) {
+		raw := &blockRawEth{
+			Number:     "0x1",
+			Hash:       "0xabc",
+			Timestamp:  "0x123",
+			ParentHash: "0xdef",
+		}
+
+		header, err := raw.ToBlockHeader()
+
+		require.NoError(t, err)
+		require.Nil(t, header.LogsBloom)
+	})
+}
 
 func TestRetrieveBlockHeadersBatchExploratory(t *testing.T) {
 	t.Skip("This test is for exploratory purposes to check the behavior of batch requests" +

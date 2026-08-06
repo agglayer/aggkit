@@ -34,7 +34,26 @@ type processor struct {
 	mu             mutex.RWMutex
 	halted         bool
 	haltedReason   string
-	log            *log.Logger
+	// haltedBlock is the block number that caused the current halt, when known (set by
+	// haltAtBlock). It's used to detect that a Reorg recovery attempt is being retried at the
+	// same block with no progress, so it can be escalated. nil for halts raised through the
+	// legacy halt(reason) entry point, which carry no block context.
+	haltedBlock *uint64
+	// lastReorgRecoveryBlock remembers the haltedBlock of the most recent Reorg call that was
+	// invoked while the processor was halted. It intentionally survives unhalt/halt cycles: if
+	// the next halt happens at the very same block, the corresponding Reorg call is the second
+	// consecutive recovery attempt for that block, meaning the previous purge made no progress,
+	// and the reorg must be escalated (see Reorg).
+	lastReorgRecoveryBlock *uint64
+	// haltGuardHits counts consecutive isHalted() short-circuits in ProcessBlocks/ProcessBlock,
+	// so the "processor is halted" log can be throttled instead of firing on every call. Reset
+	// on unhalt.
+	haltGuardHits int
+	// initialBlock is the syncer's configured starting block (Config.InitialBlock). It's used as
+	// the fallback escalation target when a Reorg recovery must deepen but no verified checkpoint
+	// has ever been recorded (e.g. a fresh or pre-upgrade DB).
+	initialBlock uint64
+	log          *log.Logger
 }
 
 // UpdateL1InfoTree representation of the UpdateL1InfoTree event
@@ -319,9 +338,25 @@ func (p *processor) GetProcessedBlockUntil(ctx context.Context, blockNum uint64)
 }
 
 // Reorg triggers a purge and reset process on the processor to leaf it on a state
-// as if the last block processed was firstReorgedBlock-1
+// as if the last block processed was firstReorgedBlock-1.
+//
+// Escalation: if this call is recovering from a halt (the processor is currently halted) and the
+// previous Reorg-based recovery attempt was also triggered by a halt at the very same block, then
+// the previous purge made no progress (the processor halted again at the exact same place). This
+// means the actual divergence lies in already-committed data, at or before that block, and
+// firstReorgedBlock (typically the start of the in-memory batch that just failed) can never reach
+// it. In that case the purge is deepened to the last verified checkpoint block (the most recent
+// block whose UpdateL1InfoTreeV2 sanity check passed), or to the syncer's configured initial block
+// if no checkpoint has ever been recorded. This converts a permanent stuck-halt loop into an
+// automatic (if occasionally expensive) self-heal. See haltAtBlock/lastReorgRecoveryBlock.
 func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
-	p.log.Infof("reorging to block %d", firstReorgedBlock)
+	p.mu.Lock()
+	wasHalted := p.halted
+	haltedBlock := p.haltedBlock
+	lastRecoveryBlock := p.lastReorgRecoveryBlock
+	p.mu.Unlock()
+
+	escalate := wasHalted && haltedBlock != nil && lastRecoveryBlock != nil && *lastRecoveryBlock == *haltedBlock
 
 	tx, err := db.NewTx(ctx, p.db)
 	if err != nil {
@@ -337,17 +372,35 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		}
 	}()
 
-	res, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
+	targetBlock := firstReorgedBlock
+	if escalate {
+		targetBlock, err = p.escalatedReorgTarget(tx, firstReorgedBlock, *haltedBlock)
+		if err != nil {
+			return fmt.Errorf("computing escalated reorg target: %w", err)
+		}
+	}
+
+	p.log.Infof("reorging to block %d", targetBlock)
+
+	res, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, targetBlock)
 	if err != nil {
 		return err
 	}
 
-	if err = p.l1InfoTree.Reorg(tx, firstReorgedBlock); err != nil {
+	if err = p.l1InfoTree.Reorg(tx, targetBlock); err != nil {
 		return err
 	}
 
-	if err = p.rollupExitTree.Reorg(tx, firstReorgedBlock); err != nil {
+	if err = p.rollupExitTree.Reorg(tx, targetBlock); err != nil {
 		return err
+	}
+
+	// The checkpoint vouches for the data at (and before) its own block: if that block is being
+	// purged, the checkpoint no longer holds and must be cleared, so a future escalation falls
+	// back to an earlier (or, absent any other checkpoint, the initial) block instead of trusting
+	// a checkpoint whose block no longer exists.
+	if err := clearCheckpointBlockAtOrAfterWithTx(tx, targetBlock); err != nil {
+		return fmt.Errorf("clearing stale checkpoint: %w", err)
 	}
 
 	rowsAffected, err := res.RowsAffected()
@@ -359,9 +412,15 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		return err
 	}
 
-	p.log.Infof("reorged to block %d, %d rows affected", firstReorgedBlock, rowsAffected)
+	p.log.Infof("reorged to block %d, %d rows affected", targetBlock, rowsAffected)
 
 	shouldRollback = false
+
+	if wasHalted && haltedBlock != nil {
+		p.mu.Lock()
+		p.lastReorgRecoveryBlock = haltedBlock
+		p.mu.Unlock()
+	}
 
 	// Unhalt unconditionally: a successfully committed purge leaves the DB at a valid
 	// consolidation point even when it deleted nothing (rowsAffected == 0), because a halt
@@ -370,12 +429,38 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	p.unhalt()
 	return nil
 }
+
+// escalatedReorgTarget computes the deepened purge target for an escalated Reorg: the last
+// verified checkpoint block, or the syncer's initial block if no checkpoint has ever been
+// recorded. It never purges shallower than firstReorgedBlock (see Reorg).
+func (p *processor) escalatedReorgTarget(tx dbtypes.Querier, firstReorgedBlock, haltedBlock uint64) (uint64, error) {
+	checkpointBlock, hasCheckpoint, err := getCheckpointBlockWithTx(tx)
+	if err != nil {
+		return 0, fmt.Errorf("reading last verified checkpoint: %w", err)
+	}
+
+	if hasCheckpoint {
+		target := min(firstReorgedBlock, checkpointBlock)
+		p.log.Warnf("escalating reorg recovery: processor halted again at block %d after a previous "+
+			"recovery attempt made no progress; deepening purge from %d to the last verified checkpoint "+
+			"block %d (the most recent block known to be consistent with L1)",
+			haltedBlock, firstReorgedBlock, target)
+		return target, nil
+	}
+
+	target := min(firstReorgedBlock, p.initialBlock)
+	p.log.Warnf("escalating reorg recovery: processor halted again at block %d after a previous "+
+		"recovery attempt made no progress, and no verified checkpoint has ever been recorded; "+
+		"deepening purge from %d to the syncer's initial block %d — this forces a full resync of l1infotreesync",
+		haltedBlock, firstReorgedBlock, target)
+	return target, nil
+}
 func (p *processor) ProcessBlocks(ctx context.Context, blocks *mdrsynctypes.DownloadResult) error {
 	if blocks == nil || len(blocks.Data) == 0 {
 		return nil
 	}
 	if p.isHalted() {
-		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
+		p.logHaltGuardHit()
 		return sync.ErrInconsistentState
 	}
 	return p.processBlocksSameTx(ctx, blocks)
@@ -428,7 +513,7 @@ func (p *processor) processBlocksSameTx(ctx context.Context, blocks *mdrsynctype
 // and updates the last processed block (can be called without events for that purpose)
 func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	if p.isHalted() {
-		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
+		p.logHaltGuardHit()
 		return sync.ErrInconsistentState
 	}
 
@@ -538,8 +623,15 @@ func (p *processor) processBlock(tx dbtypes.Txer, block sync.Block) error {
 					root.Index, event.UpdateL1InfoTreeV2.LeafCount,
 					block.Num,
 				)
-				p.halt(errStr)
+				blockNum := block.Num
+				p.haltAtBlock(errStr, &blockNum)
 				return sync.ErrInconsistentState
+			}
+			// The sanity check passed: the local l1-info-tree root matches L1 as of this event, so
+			// block.Num is a verified checkpoint. Persist it in the same tx as the batch so a later
+			// escalated Reorg can safely purge back to (and re-verify) this exact block. See Reorg.
+			if err := setCheckpointBlockWithTx(tx, block.Num); err != nil {
+				return fmt.Errorf("persisting last verified checkpoint at block %d: %w", block.Num, err)
 			}
 		}
 		if event.VerifyBatches != nil {
@@ -573,6 +665,41 @@ func (p *processor) getLastIndex(tx dbtypes.Querier) (uint32, error) {
 		return 0, db.ErrNotFound
 	}
 	return lastProcessedIndex, err
+}
+
+// getCheckpointBlockWithTx returns the last verified checkpoint block (the most recent block
+// whose UpdateL1InfoTreeV2 sanity check passed). found is false if no checkpoint has been
+// recorded yet.
+func getCheckpointBlockWithTx(tx dbtypes.Querier) (blockNum uint64, found bool, err error) {
+	row := tx.QueryRow("SELECT block_num FROM l1info_checkpoint WHERE single_row_id = 1;")
+	err = row.Scan(&blockNum)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return blockNum, true, nil
+}
+
+// setCheckpointBlockWithTx records blockNum as the last verified checkpoint. It must be called
+// within the same tx that commits the batch containing the passing UpdateL1InfoTreeV2 event, so
+// the checkpoint is atomic with the data it vouches for.
+func setCheckpointBlockWithTx(tx dbtypes.Txer, blockNum uint64) error {
+	_, err := tx.Exec(`
+		INSERT INTO l1info_checkpoint (single_row_id, block_num) VALUES (1, $1)
+		ON CONFLICT(single_row_id) DO UPDATE SET block_num = $1;
+	`, blockNum)
+	return err
+}
+
+// clearCheckpointBlockAtOrAfterWithTx deletes the stored checkpoint if its block is being purged
+// by a Reorg down to purgeFromBlock (i.e. the checkpoint's own block is >= purgeFromBlock), since
+// the checkpoint no longer vouches for data that no longer exists. It's a no-op if there is no
+// checkpoint, or if the checkpoint predates purgeFromBlock.
+func clearCheckpointBlockAtOrAfterWithTx(tx dbtypes.Txer, purgeFromBlock uint64) error {
+	_, err := tx.Exec(`DELETE FROM l1info_checkpoint WHERE block_num >= $1;`, purgeFromBlock)
+	return err
 }
 
 func (p *processor) GetFirstL1InfoWithRollupExitRoot(rollupExitRoot common.Hash) (*L1InfoTreeLeaf, error) {
@@ -651,6 +778,13 @@ func (p *processor) isHalted() bool {
 
 // halt sets the processor to a halted state with a reason
 func (p *processor) halt(reason string) {
+	p.haltAtBlock(reason, nil)
+}
+
+// haltAtBlock is like halt, but additionally records the block number that caused the halt, so
+// Reorg can detect that a recovery attempt is being retried at the same block with no progress
+// and escalate accordingly (see Reorg).
+func (p *processor) haltAtBlock(reason string, blockNum *uint64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -660,7 +794,27 @@ func (p *processor) halt(reason string) {
 
 	p.halted = true
 	p.haltedReason = reason
+	p.haltedBlock = blockNum
+	p.haltGuardHits = 0
 	p.log.Errorf("processor is halted, due to the following reason: %s", reason)
+}
+
+// logHaltGuardHit logs (at a throttled rate) that a call was rejected because the processor is
+// halted. Production incidents have shown this guard can be hit tens of thousands of times while
+// a halt is being (unsuccessfully) recovered from, so logging it at error level unconditionally
+// floods the logs; see aggkitcommon.ShouldLogRetryAtError.
+func (p *processor) logHaltGuardHit() {
+	p.mu.Lock()
+	p.haltGuardHits++
+	hits := p.haltGuardHits
+	reason := p.haltedReason
+	p.mu.Unlock()
+
+	if aggkitcommon.ShouldLogRetryAtError(hits) {
+		p.log.Errorf("processor is halted due to: %s (rejected call #%d while halted)", reason, hits)
+	} else {
+		p.log.Debugf("processor is halted due to: %s (rejected call #%d while halted)", reason, hits)
+	}
 }
 
 // unhalt sets the processor to an unhalted state
@@ -675,5 +829,7 @@ func (p *processor) unhalt() {
 
 	p.halted = false
 	p.haltedReason = ""
+	p.haltedBlock = nil
+	p.haltGuardHits = 0
 	p.log.Info("processor is unhalted")
 }

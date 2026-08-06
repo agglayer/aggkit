@@ -30,6 +30,11 @@ type EVMDriver struct {
 	// can be nil is there are no information yet
 	// 0 -> 0%, 100, -> 100%
 	completionPercentage *float64
+	// recoveryFirstBlock/recoveryAttempts track consecutive processBlocks poisoned-batch recovery
+	// attempts (see processBlocks) for the same in-memory batch, so the recovery log can be
+	// throttled instead of firing on every retry of an unrecoverable batch.
+	recoveryFirstBlock *uint64
+	recoveryAttempts   int
 }
 
 func NewEVMDriver(
@@ -143,9 +148,21 @@ func (d *EVMDriver) processBlocks(ctx context.Context, data *mdrsynctypes.Downlo
 		// last committed block (a zero-row purge that unhalts it), then propagate the error so the
 		// Sync loop backs off and re-downloads the range from the last committed block.
 		firstBlock := data.Data[0].Num
-		d.logger.Errorf("processor halted while processing in-memory batch [%d..%d], most likely built from "+
-			"an undetected L1 tip reorg: %v. Discarding the batch and resetting the processor to its last "+
-			"committed block; the range will be re-downloaded", firstBlock, data.Data.LastBlock().Num, err)
+		if d.recoveryFirstBlock != nil && *d.recoveryFirstBlock == firstBlock {
+			d.recoveryAttempts++
+		} else {
+			d.recoveryFirstBlock = &firstBlock
+			d.recoveryAttempts = 1
+		}
+		msg := fmt.Sprintf("processor halted while processing in-memory batch [%d..%d] (consecutive recovery "+
+			"attempt %d for this batch), most likely built from an undetected L1 tip reorg: %v. Discarding the "+
+			"batch and resetting the processor to its last committed block; the range will be re-downloaded",
+			firstBlock, data.Data.LastBlock().Num, d.recoveryAttempts, err)
+		if aggkitcommon.ShouldLogRetryAtError(d.recoveryAttempts) {
+			d.logger.Error(msg)
+		} else {
+			d.logger.Debug(msg)
+		}
 		if reorgErr := d.processor.Reorg(ctx, firstBlock); reorgErr != nil {
 			return fmt.Errorf("recovering from inconsistent state: processor.Reorg(%d) failed: %w "+
 				"(original error: %v)", firstBlock, reorgErr, err)
@@ -184,7 +201,11 @@ func (d *EVMDriver) withRetry(ctx context.Context, opName string, fn func() erro
 					return err
 				}
 				attempts++
-				d.logger.Errorf("error during %s (attempt %d): %v", opName, attempts, err)
+				if aggkitcommon.ShouldLogRetryAtError(attempts) {
+					d.logger.Errorf("error during %s (attempt %d): %v", opName, attempts, err)
+				} else {
+					d.logger.Debugf("error during %s (attempt %d): %v", opName, attempts, err)
+				}
 				d.rh.Handle(ctx, opName, attempts)
 			} else {
 				return nil

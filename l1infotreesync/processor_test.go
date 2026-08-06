@@ -688,3 +688,260 @@ func TestProcessBlocksWorksAfterUnhaltingReorg(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), info.BlockNumber)
 }
+
+// commitPassingCheckpoint processes a leaf-adding block at leafBlock, fills every block in
+// between with an empty block (so block numbers stay contiguous for callers that also process
+// surrounding blocks), and finally a block at checkpointBlock whose UpdateL1InfoTreeV2 event
+// matches the resulting root exactly. The V2 sanity check therefore passes and checkpointBlock is
+// persisted as the last verified checkpoint.
+func commitPassingCheckpoint(t *testing.T, p *processor, leafBlock, checkpointBlock uint64) {
+	t.Helper()
+	ctx := context.Background()
+
+	err := p.ProcessBlock(ctx, aggkitsync.Block{
+		Num: leafBlock,
+		Events: []any{
+			Event{UpdateL1InfoTree: &UpdateL1InfoTree{
+				MainnetExitRoot: common.HexToHash(fmt.Sprintf("%x", leafBlock)),
+				RollupExitRoot:  common.HexToHash("5ca1e"),
+				ParentHash:      common.HexToHash("1010101"),
+				Timestamp:       420,
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	for n := leafBlock + 1; n < checkpointBlock; n++ {
+		require.NoError(t, p.ProcessBlock(ctx, aggkitsync.Block{Num: n}))
+	}
+
+	root, err := p.l1InfoTree.GetLastRoot(p.db)
+	require.NoError(t, err)
+
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
+		Num: checkpointBlock,
+		Events: []any{
+			Event{UpdateL1InfoTreeV2: &UpdateL1InfoTreeV2{
+				CurrentL1InfoRoot: root.Hash,
+				LeafCount:         root.Index + 1,
+			}},
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, p.isHalted())
+}
+
+// TestProcessorPersistsCheckpointOnPassingV2Check covers the write side of the self-healing fix:
+// when the UpdateL1InfoTreeV2 sanity check passes, the block that carried it must be recorded as
+// the last verified checkpoint.
+func TestProcessorPersistsCheckpointOnPassingV2Check(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestProcessorPersistsCheckpointOnPassingV2Check.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	checkpointBlock, found, err := getCheckpointBlockWithTx(p.db)
+	require.NoError(t, err)
+	require.False(t, found, "no checkpoint should exist before any block is processed")
+	require.Zero(t, checkpointBlock)
+
+	commitPassingCheckpoint(t, p, 1, 2)
+
+	checkpointBlock, found, err = getCheckpointBlockWithTx(p.db)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, uint64(2), checkpointBlock)
+}
+
+// TestProcessorCheckpointAtomicWithBatch verifies that persisting the checkpoint is atomic with
+// the rest of the batch: if the same block's tx later fails and rolls back (here, via a
+// verify_batches primary-key collision), the checkpoint set earlier in that same tx must not be
+// persisted either.
+func TestProcessorCheckpointAtomicWithBatch(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestProcessorCheckpointAtomicWithBatch.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
+		Num: 1,
+		Events: []any{
+			Event{UpdateL1InfoTree: &UpdateL1InfoTree{
+				MainnetExitRoot: common.HexToHash("beef"),
+				RollupExitRoot:  common.HexToHash("5ca1e"),
+				ParentHash:      common.HexToHash("1010101"),
+				Timestamp:       420,
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	root, err := p.l1InfoTree.GetLastRoot(p.db)
+	require.NoError(t, err)
+
+	// Block 2: the V2 checkpoint passes first, then two VerifyBatches events collide on the same
+	// (block_num, block_pos) primary key, forcing the whole block's tx to roll back.
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
+		Num: 2,
+		Events: []any{
+			Event{UpdateL1InfoTreeV2: &UpdateL1InfoTreeV2{
+				CurrentL1InfoRoot: root.Hash,
+				LeafCount:         root.Index + 1,
+			}},
+			Event{VerifyBatches: &VerifyBatches{
+				BlockPosition: 0,
+				RollupID:      1,
+				NumBatch:      1,
+				StateRoot:     common.HexToHash("aaaa"),
+				ExitRoot:      common.HexToHash("bbbb"),
+			}},
+			Event{VerifyBatches: &VerifyBatches{
+				BlockPosition: 0, // duplicate block_pos -> PRIMARY KEY collision on insert
+				RollupID:      2,
+				NumBatch:      1,
+				StateRoot:     common.HexToHash("cccc"),
+				ExitRoot:      common.HexToHash("dddd"),
+			}},
+		},
+	})
+	require.Error(t, err)
+
+	_, found, err := getCheckpointBlockWithTx(p.db)
+	require.NoError(t, err)
+	require.False(t, found, "checkpoint must not survive a rolled-back batch")
+}
+
+// TestReorgClearsCheckpointWhenPurgingAtOrPastIt verifies that a Reorg purging blocks at or after
+// the checkpoint's own block clears the stored checkpoint, since it no longer vouches for data
+// that no longer exists.
+func TestReorgClearsCheckpointWhenPurgingAtOrPastIt(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestReorgClearsCheckpointWhenPurgingAtOrPastIt.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	commitPassingCheckpoint(t, p, 1, 5)
+
+	require.NoError(t, p.Reorg(ctx, 3))
+
+	_, found, err := getCheckpointBlockWithTx(p.db)
+	require.NoError(t, err)
+	require.False(t, found, "checkpoint at block 5 must be cleared by a reorg purging from block 3")
+}
+
+// TestReorgKeepsCheckpointWhenPurgingAfterIt verifies that a Reorg purging blocks strictly after
+// the checkpoint's own block leaves the checkpoint untouched.
+func TestReorgKeepsCheckpointWhenPurgingAfterIt(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestReorgKeepsCheckpointWhenPurgingAfterIt.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	commitPassingCheckpoint(t, p, 1, 5)
+
+	require.NoError(t, p.Reorg(ctx, 10))
+
+	checkpointBlock, found, err := getCheckpointBlockWithTx(p.db)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, uint64(5), checkpointBlock)
+}
+
+// TestReorgFirstAttemptDoesNotEscalate verifies that the first Reorg recovering from a halt at
+// block B purges exactly at the requested block, with no escalation.
+func TestReorgFirstAttemptDoesNotEscalate(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestReorgFirstAttemptDoesNotEscalate.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	for n := uint64(1); n <= 10; n++ {
+		require.NoError(t, p.ProcessBlock(ctx, aggkitsync.Block{Num: n}))
+	}
+
+	haltedBlock := uint64(50)
+	p.haltAtBlock("test: first halt at block 50", &haltedBlock)
+	require.True(t, p.isHalted())
+
+	require.NoError(t, p.Reorg(ctx, 8))
+	require.False(t, p.isHalted())
+
+	lastProcessed, _, err := p.GetLastProcessedBlock(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), lastProcessed, "first recovery attempt must purge exactly from the requested block")
+
+	require.NotNil(t, p.lastReorgRecoveryBlock)
+	require.Equal(t, haltedBlock, *p.lastReorgRecoveryBlock)
+}
+
+// TestReorgEscalatesOnSecondConsecutiveHaltAtSameBlock is the core regression test for the
+// bokuto incident (2026-08-05): a v0.11.0-rc2 processor kept halting at the exact same block
+// because the true divergence was in already-committed data. The second consecutive Reorg
+// recovery for that same halted block must escalate the purge back to the last verified
+// checkpoint, deep enough to actually reach the divergence.
+func TestReorgEscalatesOnSecondConsecutiveHaltAtSameBlock(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestReorgEscalatesOnSecondConsecutiveHaltAtSameBlock.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	// A verified checkpoint at block 5 (the divergence, by construction, is at or before it).
+	commitPassingCheckpoint(t, p, 1, 5)
+	for n := uint64(6); n <= 10; n++ {
+		require.NoError(t, p.ProcessBlock(ctx, aggkitsync.Block{Num: n}))
+	}
+
+	haltedBlock := uint64(50)
+
+	// First halt+recovery attempt at block 50: shallow purge, no progress made (the driver
+	// re-downloads and hits the exact same failure at block 50 again).
+	p.haltAtBlock("test: halt #1 at block 50", &haltedBlock)
+	require.NoError(t, p.Reorg(ctx, 50))
+	require.False(t, p.isHalted())
+
+	// Second consecutive halt at the very same block: escalate.
+	p.haltAtBlock("test: halt #2 at block 50 (no progress)", &haltedBlock)
+	require.NoError(t, p.Reorg(ctx, 50))
+	require.False(t, p.isHalted())
+
+	lastProcessed, _, err := p.GetLastProcessedBlock(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), lastProcessed,
+		"escalated recovery must purge back to (and including) the checkpoint block, so it is re-verified")
+
+	_, found, err := getCheckpointBlockWithTx(p.db)
+	require.NoError(t, err)
+	require.False(t, found, "the checkpoint's own block was purged, so the checkpoint must be cleared")
+}
+
+// TestReorgEscalationFallsBackToInitialBlockWhenNoCheckpoint verifies that, absent any verified
+// checkpoint (fresh DB, or one created before this upgrade), escalation falls back to the
+// syncer's configured initial block, i.e. a full resync.
+func TestReorgEscalationFallsBackToInitialBlockWhenNoCheckpoint(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestReorgEscalationFallsBackToInitialBlockWhenNoCheckpoint.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+	p.initialBlock = 3
+	ctx := context.Background()
+
+	for n := uint64(1); n <= 10; n++ {
+		require.NoError(t, p.ProcessBlock(ctx, aggkitsync.Block{Num: n}))
+	}
+
+	_, found, err := getCheckpointBlockWithTx(p.db)
+	require.NoError(t, err)
+	require.False(t, found, "fixture broken: no checkpoint should have been recorded")
+
+	haltedBlock := uint64(100)
+	p.haltAtBlock("test: halt #1 at block 100", &haltedBlock)
+	require.NoError(t, p.Reorg(ctx, 100))
+	require.False(t, p.isHalted())
+
+	p.haltAtBlock("test: halt #2 at block 100 (no progress)", &haltedBlock)
+	require.NoError(t, p.Reorg(ctx, 100))
+	require.False(t, p.isHalted())
+
+	lastProcessed, _, err := p.GetLastProcessedBlock(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), lastProcessed,
+		"escalation without a checkpoint must fall back to the syncer's initial block")
+}
