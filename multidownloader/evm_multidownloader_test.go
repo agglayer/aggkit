@@ -351,6 +351,10 @@ func TestEVMMultidownloader_StepSafe(t *testing.T) {
 	testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.FinalizedBlock).
 		Return(uint64(150), nil).Maybe()
 	testData.mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Maybe()
+	// StepSafe fetches headers for the whole queried range (not only blocks with logs) to run the
+	// eth_getLogs completeness check; an empty result means no bloom is positive, so no suspicion.
+	testData.mockEthClient.EXPECT().RetrieveBlockHeaders(mock.Anything, mock.Anything, mock.Anything).
+		Return(aggkittypes.NewBlockHeadersResult(), nil).Maybe()
 	err = testData.mdr.Initialize(t.Context())
 	require.NoError(t, err)
 
@@ -384,11 +388,14 @@ func TestEVMMultidownloader_StepSafe_TotalHeaderFailure(t *testing.T) {
 	data.mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).
 		Return([]ethtypes.Log{testLog}, nil).Once()
 
-	// All headers fail — no partial success
+	// Headers are now fetched for the whole queried range, not just the blocks with logs, to run
+	// the eth_getLogs completeness check. Block 120 (the only block with a log) fails to retrieve
+	// — no partial success for the event blocks — while the rest of the range is absent from the
+	// result too, which is treated as skipped verification, not an error.
 	rpcResult := aggkittypes.NewBlockHeadersResult()
 	rpcResult.AddError(120, fmt.Errorf("rpc error"))
 	data.mockEthClient.EXPECT().
-		RetrieveBlockHeaders(mock.Anything, []uint64{120}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).
+		RetrieveBlockHeaders(mock.Anything, mock.Anything, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).
 		Return(rpcResult, nil).Once()
 
 	_, err = data.mdr.StepSafe(t.Context())

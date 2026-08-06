@@ -44,6 +44,23 @@ func TestNewBlockHeaderFromEthHeader(t *testing.T) {
 		header := NewBlockHeaderFromEthHeader(nil)
 		require.Nil(t, header)
 	})
+
+	t.Run("copies the logs bloom", func(t *testing.T) {
+		var bloom types.Bloom
+		bloom.Add(common.HexToAddress("0xaaaa").Bytes())
+		ethHeader := &types.Header{
+			Number:     big.NewInt(456),
+			Time:       1640995300,
+			ParentHash: common.HexToHash("0xfedcba0987654321"),
+			Bloom:      bloom,
+		}
+
+		header := NewBlockHeaderFromEthHeader(ethHeader)
+
+		require.NotNil(t, header)
+		require.NotNil(t, header.LogsBloom)
+		require.Equal(t, bloom, *header.LogsBloom)
+	})
 }
 
 func TestBlockHeader_String(t *testing.T) {
@@ -123,5 +140,46 @@ func TestBlockHeader_Empty(t *testing.T) {
 
 		result := header.Empty()
 		require.False(t, result)
+	})
+}
+
+func TestBlockHeader_BloomMightContainAddresses(t *testing.T) {
+	addrA := common.HexToAddress("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	addrB := common.HexToAddress("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+
+	t.Run("nil bloom returns false", func(t *testing.T) {
+		header := &BlockHeader{}
+
+		require.False(t, header.BloomMightContainAddresses([]common.Address{addrA}))
+	})
+
+	t.Run("bloom containing address A matches [A] and [B, A]", func(t *testing.T) {
+		var bloom types.Bloom
+		bloom.Add(addrA.Bytes())
+		header := &BlockHeader{LogsBloom: &bloom}
+
+		require.True(t, header.BloomMightContainAddresses([]common.Address{addrA}))
+		require.True(t, header.BloomMightContainAddresses([]common.Address{addrB, addrA}))
+	})
+
+	t.Run("bloom containing address A does not match [B]", func(t *testing.T) {
+		var bloom types.Bloom
+		bloom.Add(addrA.Bytes())
+		header := &BlockHeader{LogsBloom: &bloom}
+
+		require.False(t, header.BloomMightContainAddresses([]common.Address{addrB}))
+	})
+
+	t.Run("empty (zero) bloom returns false", func(t *testing.T) {
+		var bloom types.Bloom
+		header := &BlockHeader{LogsBloom: &bloom}
+
+		require.False(t, header.BloomMightContainAddresses([]common.Address{addrA}))
+	})
+
+	t.Run("nil receiver returns false", func(t *testing.T) {
+		var header *BlockHeader
+
+		require.False(t, header.BloomMightContainAddresses([]common.Address{addrA}))
 	})
 }

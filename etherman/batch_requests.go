@@ -8,6 +8,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"golang.org/x/sync/errgroup"
 )
@@ -18,11 +19,12 @@ type blockRawEth struct {
 	Hash       string `json:"hash"`
 	Timestamp  string `json:"timestamp"` // hex string
 	ParentHash string `json:"parentHash"`
+	LogsBloom  string `json:"logsBloom"` // hex string, empty if not provided
 }
 
 func (b *blockRawEth) String() string {
-	return fmt.Sprintf("{Number=%s, Hash=%s, Timestamp=%s, ParentHash=%s}",
-		b.Number, b.Hash, b.Timestamp, b.ParentHash)
+	return fmt.Sprintf("{Number=%s, Hash=%s, Timestamp=%s, ParentHash=%s, LogsBloom=%s}",
+		b.Number, b.Hash, b.Timestamp, b.ParentHash, b.LogsBloom)
 }
 
 func (b *blockRawEth) ToBlockHeader() (*aggkittypes.BlockHeader, error) {
@@ -40,11 +42,18 @@ func (b *blockRawEth) ToBlockHeader() (*aggkittypes.BlockHeader, error) {
 	hash := common.HexToHash(b.Hash)
 	parentHash := common.HexToHash(b.ParentHash)
 
+	var logsBloom *ethtypes.Bloom
+	if b.LogsBloom != "" {
+		bloom := ethtypes.BytesToBloom(common.FromHex(b.LogsBloom))
+		logsBloom = &bloom
+	}
+
 	return &aggkittypes.BlockHeader{
 		Number:     number,
 		Hash:       hash,
 		Time:       timeStamp,
 		ParentHash: &parentHash,
+		LogsBloom:  logsBloom,
 	}, nil
 }
 

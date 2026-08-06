@@ -470,7 +470,31 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 }
 
 func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context, fromBlock, toBlock uint64) EVMBlocks {
-	return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, 0)
+	select {
+	case <-ctx.Done():
+		return nil
+	default:
+	}
+
+	// lastFinalizedBlock scopes the eth_getLogs completeness check (see checkLogsCompleteness) to
+	// blocks strictly above it, i.e. the unfinalized zone near the chain tip where a flaky/mixed
+	// RPC view can silently omit a log while header hashes stay canonical -- invisible to
+	// header-hash reorg detection by construction. Verifying a block costs one HeaderByNumber call
+	// (this package has no batch machinery), which is prohibitive across large finalized catch-up
+	// ranges, so the finalized zone is intentionally left unchecked here. Completeness of the
+	// finalized zone for legacy syncers (bridgesync, claimsync, l2gersync) is therefore a known
+	// gap; their long-term fix is migrating to the multidownloader, which verifies both zones.
+	// It is fetched once per invocation (not per retry below) to keep that cost bounded.
+	lastFinalizedBlock, err := d.GetLastFinalizedBlock(ctx)
+	if err != nil {
+		d.log.Warnf(
+			"logs completeness check: error getting last finalized block, skipping check for range [%d,%d]: %v",
+			fromBlock, toBlock, err,
+		)
+		lastFinalizedBlock = toBlock
+	}
+
+	return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, 0, lastFinalizedBlock)
 }
 
 func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
@@ -480,13 +504,24 @@ func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, to
 
 func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 	ctx context.Context,
-	fromBlock, toBlock uint64, retryCount int,
+	fromBlock, toBlock uint64, hashRetryCount int, lastFinalizedBlock uint64,
 ) EVMBlocks {
-	select {
-	case <-ctx.Done():
-		return nil
-	default:
-		logs := d.GetLogs(ctx, fromBlock, toBlock)
+	omissionAttempts := 0
+retry:
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		// getUnfilteredLogs/filterLogs are used directly here (instead of GetLogs) so the
+		// unfiltered, address-only-filtered logs are available to checkLogsCompleteness below:
+		// bloom-positive for an address only asserts that *some* unfiltered log exists for that
+		// block, not that a log matching the queried topics exists (a contract emitting only a
+		// non-queried event would otherwise be flagged as a false omission).
+		unfilteredLogs := d.getUnfilteredLogs(ctx, fromBlock, toBlock)
+		logs := d.filterLogs(unfilteredLogs)
 		if d.logsHook != nil {
 			originalCount := len(logs)
 			logs = d.logsHook(ctx, fromBlock, toBlock, logs)
@@ -508,9 +543,9 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 					d.log.Infof(
 						"there has been a block hash change between the event query and the block query "+
 							"for block %d: %s vs (logs)%s. Retrying attempt %d/%d.",
-						l.BlockNumber, b.Hash, l.BlockHash, retryCount, MaxRetryCountBlockHashMismatch,
+						l.BlockNumber, b.Hash, l.BlockHash, hashRetryCount, MaxRetryCountBlockHashMismatch,
 					)
-					if retryCount >= MaxRetryCountBlockHashMismatch {
+					if hashRetryCount >= MaxRetryCountBlockHashMismatch {
 						// Log an error and return nil if the maximum retry count is reached.
 						d.log.Errorf(
 							"max retry attempts %d reached for block hash mismatch on block %d, returning nil",
@@ -518,8 +553,11 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 						)
 						return nil
 					}
-					// Retry the operation with an incremented retry count.
-					return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, retryCount+1)
+					// Retry with an incremented retry count. hashRetryCount is kept separate from
+					// omissionAttempts below: a hash mismatch is a distinct, already-bounded
+					// failure mode and must not share (or reset) the omission-retry budget.
+					hashRetryCount++
+					continue retry
 				}
 				latestBlock = &EVMBlock{
 					EVMBlockHeader: EVMBlockHeader{
@@ -548,6 +586,34 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 				}
 				d.rh.Handle(ctx, "appendLogs", attempts)
 			}
+		}
+
+		// Block header logs blooms have no false negatives, so a bloom-positive, zero-log block is
+		// only ever *suspicious* -- never a direct failure -- because a bloom false positive is
+		// deterministic per (block, address) and would otherwise wedge the syncer forever.
+		// checkLogsCompleteness arbitrates every suspicion with a single-block re-query before
+		// reporting a confirmed omission.
+		if d.checkLogsCompleteness(ctx, fromBlock, toBlock, lastFinalizedBlock, unfilteredLogs) {
+			omissionAttempts++
+			// A confirmed omission must NOT be treated like an exhausted hash-mismatch retry
+			// (which returns nil above): returning nil here would make the Download loop treat the
+			// range as legitimately empty and advance past it, permanently losing the omitted log
+			// (a missing deposit / wrong exit tree, with no error surfaced anywhere). Retry
+			// indefinitely instead, with bounded/throttled logging, so a persistently-omitting RPC
+			// produces a loud but bounded log stream rather than silent data loss.
+			if aggkitcommon.ShouldLogRetryAtError(omissionAttempts) {
+				d.log.Errorf(
+					"confirmed eth_getLogs omission for range [%d,%d] (attempt %d), retrying range download",
+					fromBlock, toBlock, omissionAttempts,
+				)
+			} else {
+				d.log.Debugf(
+					"confirmed eth_getLogs omission for range [%d,%d] (attempt %d), retrying range download",
+					fromBlock, toBlock, omissionAttempts,
+				)
+			}
+			d.rh.Handle(ctx, "logsCompletenessOmission", omissionAttempts)
+			continue retry
 		}
 
 		return blocks

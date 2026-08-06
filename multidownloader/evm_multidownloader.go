@@ -595,6 +595,25 @@ func getContracts(logQueries []mdrtypes.LogQuery) []common.Address {
 	return addresses
 }
 
+// subsetBlockHeadersResult builds a BlockHeadersResult restricted to blockNumbers out of a wider
+// result. Block numbers with neither a header nor a recorded error in full are reported as missing.
+func subsetBlockHeadersResult(
+	full *aggkittypes.BlockHeadersResult, blockNumbers []uint64) *aggkittypes.BlockHeadersResult {
+	subset := aggkittypes.NewBlockHeadersResult()
+	for _, bn := range blockNumbers {
+		if hdr, ok := full.Headers[bn]; ok {
+			subset.AddHeader(bn, hdr)
+			continue
+		}
+		if blockErr, ok := full.Errors[bn]; ok {
+			subset.AddError(bn, blockErr)
+			continue
+		}
+		subset.AddError(bn, fmt.Errorf("block header not present in retrieval result"))
+	}
+	return subset
+}
+
 func (dh *EVMMultidownloader) checkIntegrityNewLogsBlockHeaders(logs []types.Log,
 	blockHeaders aggkittypes.ListBlockHeaders) error {
 	blockMap := blockHeaders.ToMap()
@@ -649,6 +668,15 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	if err = dh.checkIntegrityNewLogsBlockHeaders(logs, blockHeaders); err != nil {
 		return false, err
 	}
+	// Verify that the logs response is not missing any log for a block whose bloom is positive for
+	// its queried addresses (see logs_completeness.go). Suspicions are arbitrated before ever
+	// producing an error, so a bloom false positive never wedges the syncer in a retry loop.
+	addrsByBlock := dh.getAddrsForBlockNumbers(blocks)
+	if err = dh.verifyLogsCompleteness(ctx, blockHeaders, logs, func(bn uint64) []common.Address {
+		return addrsByBlock[bn]
+	}); err != nil {
+		return false, fmt.Errorf("Unsafe/Step: %w", err)
+	}
 	newState, err := dh.newStateAftersLogQueries(logQueries)
 	if err != nil {
 		return false, fmt.Errorf("Unsafe/Step: failed to create new state: %w", err)
@@ -696,25 +724,70 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	dh.log.Debugf("Safe/Step: logs (%d) for blockRange=%s, addrs=%v", len(logs),
 		logQueryData.BlockRange.String(), logQueryData.Addrs)
 	blocks := getBlockNumbers(logs)
-	dh.log.Debugf("Safe/Step: querying blockHeaders for %d blocks", len(blocks))
+
+	// Headers are fetched for every block number in the queried range, not only the ones that have
+	// logs: the eth_getLogs completeness check below needs the bloom of every block in range to
+	// detect a silently omitted log. Storage volume is intentionally unchanged -- blockHeaders
+	// (used by storeData) is still derived below from only the blocks that have logs.
+	allBlockNumbers := logQueryData.BlockRange.ListBlockNumbers()
+	dh.log.Debugf("Safe/Step: querying blockHeaders for %d blocks in range (verification) / %d blocks with logs (storage)",
+		len(allBlockNumbers), len(blocks))
+	fullRangeHeaders := aggkittypes.NewBlockHeadersResult()
+	if len(allBlockNumbers) > 0 {
+		fullRangeHeaders, err = dh.ethClient.RetrieveBlockHeaders(
+			ctx, allBlockNumbers, dh.cfg.MaxParallelBlockHeaderRetrieval)
+		if err != nil {
+			return false, fmt.Errorf("Safe/Step: failed to retrieve %d block headers: %w", len(allBlockNumbers), err)
+		}
+	}
+
+	// blockHeaders (persisted to storage) only needs the headers of blocks that have logs; the
+	// retrieval-success requirements below apply to those blocks only so that a failure to fetch a
+	// verification-only header (one with no logs) never regresses availability.
 	var blockHeaders []*aggkittypes.BlockHeader
 	if len(blocks) > 0 {
-		blockHeadersResult, err := dh.ethClient.RetrieveBlockHeaders(ctx, blocks, dh.cfg.MaxParallelBlockHeaderRetrieval)
-		if err != nil {
-			return false, fmt.Errorf("Safe/Step: failed to retrieve %d block headers: %w", len(blocks), err)
-		}
+		eventBlocksResult := subsetBlockHeadersResult(fullRangeHeaders, blocks)
 		// Check for partial failures
-		if !blockHeadersResult.Success() {
-			for blockNum, blockErr := range blockHeadersResult.Errors {
+		if !eventBlocksResult.Success() {
+			for blockNum, blockErr := range eventBlocksResult.Errors {
 				dh.log.Errorf("Safe/Step: failed to retrieve block %d: %v", blockNum, blockErr)
 			}
-			if !blockHeadersResult.PartialSuccess() {
+			if !eventBlocksResult.PartialSuccess() {
 				return false, fmt.Errorf("Safe/Step: failed to retrieve any block headers")
 			}
 			dh.log.Warnf("Safe/Step: partial success retrieving block headers: %d/%d succeeded",
-				len(blockHeadersResult.Headers), len(blocks))
+				len(eventBlocksResult.Headers), len(blocks))
 		}
-		blockHeaders = blockHeadersResult.GetOrderedHeaders(blocks)
+		blockHeaders = eventBlocksResult.GetOrderedHeaders(blocks)
+	}
+
+	// Blocks in the queried range whose header could not be retrieved are simply excluded from the
+	// completeness check below (nothing to verify without a header); log how many were skipped.
+	eventBlockSet := make(map[uint64]struct{}, len(blocks))
+	for _, bn := range blocks {
+		eventBlockSet[bn] = struct{}{}
+	}
+	missingVerificationHeaders := 0
+	for _, bn := range allBlockNumbers {
+		if _, ok := fullRangeHeaders.Headers[bn]; ok {
+			continue
+		}
+		if _, isEventBlock := eventBlockSet[bn]; isEventBlock {
+			continue // already logged above via eventBlocksResult
+		}
+		missingVerificationHeaders++
+	}
+	if missingVerificationHeaders > 0 {
+		dh.log.Warnf("Safe/Step: skipping eth_getLogs completeness check for %d block(s) in range %s: "+
+			"header retrieval failed", missingVerificationHeaders, logQueryData.BlockRange.String())
+	}
+
+	// Verify that the logs response is not missing any log for a block whose bloom is positive for
+	// the queried addresses (see logs_completeness.go). Suspicions are arbitrated before ever
+	// producing an error, so a bloom false positive never wedges the syncer in a retry loop.
+	if err = dh.verifyLogsCompleteness(ctx, fullRangeHeaders.GetOrderedHeaders(allBlockNumbers), logs,
+		uniformAddrsForBlock(logQueryData.Addrs)); err != nil {
+		return false, fmt.Errorf("Safe/Step: %w", err)
 	}
 
 	// Calculate new state (not set in memory until commit is successful)
