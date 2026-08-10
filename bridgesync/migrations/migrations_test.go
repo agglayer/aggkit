@@ -752,6 +752,25 @@ func TestMigration0015(t *testing.T) {
 	require.False(t, tableExists("unset_claim"), "unset_claim table should be dropped by migration 0015")
 }
 
+func TestMigration0016_IndexesExist(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgesyncTest0016.sqlite")
+	err := RunMigrations(dbPath)
+	require.NoError(t, err)
+
+	database, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	defer database.Close()
+
+	for _, indexName := range []string{"idx_bridge_from_address_upper", "idx_bridge_destination_network"} {
+		var name string
+		err := database.QueryRow(
+			`SELECT name FROM sqlite_master WHERE type='index' AND name=?`, indexName,
+		).Scan(&name)
+		require.NoError(t, err, "index %s should exist", indexName)
+		require.Equal(t, indexName, name)
+	}
+}
+
 func TestMigrationsDown(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "bridgesyncTestDown.sqlite")
 	err := RunMigrations(dbPath)
