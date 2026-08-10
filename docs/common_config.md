@@ -134,6 +134,29 @@ Example:
 
 When rate limiting is enabled, if the number of requests exceeds `NumRequests` within the specified `Interval`, the system will wait until the next interval before allowing more requests. This helps prevent overwhelming the system with too many requests in a short period.
 
+## RESTConfig
+
+`RESTConfig` configures a shared Gin-based HTTP server. It backs the REST sections in the config: `[PublicREST]`,
+`[AdminREST]`, and the proxy's `[REST]`.
+
+| Field Name | Type | Description |
+| --- | --- | --- |
+| Host | string | Hostname or IP address the REST service listens on |
+| Port | int | Port number the REST service is accessible on |
+| ReadTimeout | types.Duration | HTTP server read timeout |
+| WriteTimeout | types.Duration | HTTP server write timeout |
+| MaxRequestsPerIPAndSecond | float64 | Unused; kept for config compatibility. See below |
+
+`MaxRequestsPerIPAndSecond` is not enforced: aggkit does not rate-limit requests in-process. Its default is `0`
+(unlimited). If you need per-IP request throttling, apply it at the fronting reverse proxy / API gateway / ingress —
+that is also where it is most effective, since a service sitting behind a proxy typically sees every client as the
+proxy's single IP, making in-process per-IP limiting ineffective anyway.
+
+Note that the `[RPC]` section is **not** a `RESTConfig`: it is the JSON-RPC server config from
+`github.com/0xPolygon/cdk-rpc`, whose `MaxRequestsPerIPAndSecond` **is** enforced (via tollbooth). There, `0` does
+not mean unlimited — `tollbooth.NewLimiter(0, ...)` produces a limiter with a burst of 1 and no refill, i.e. one
+request per IP ever. Its default stays `10`.
+
 ## RPCClientConfig
 
 `RPCClientConfig` configures the JSON-RPC client used to connect to Ethereum nodes. It is used in multiple places, notably `[L1NetworkConfig.RPC]` (L1 node) and `[Common.L2RPC]` (L2 node).

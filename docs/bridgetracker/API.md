@@ -24,9 +24,19 @@ Calling this endpoint **adds the bridge to the list of supervised bridges** (if 
 
 Implemented in `aggkit/bridgetracker/types/` (`status.go`, `tracking.go`, `health.go`, `websocket.go`), except `TrackingData` itself, which lives in `aggkit/bridgetracker/api/tracking_data.go` — it's the only place that constructs it.
 
-All the enums are serialized as numeric values, and each enum field has a companion
-`<field>_string` field with its string representation. The companion fields are regular
-struct fields, auto-populated from the numeric value when the structure is marshaled to JSON.
+Most enum fields are serialized as a **bare string** (`tracking_status`, `bridge_type`,
+`event.leaf_type`, `step_name`, `status`), with the exact value set given per field below. Only
+two fields follow a different, numeric convention: `error_type` (in [ErrorStep](#errorstep)) and
+`status` (in [CertificateData](#certificatedata)) are serialized as their numeric value **plus** a
+companion `<field>_string` field carrying the string representation — that companion is a regular
+struct field, auto-populated from the numeric value when the structure is marshaled to JSON.
+There is no general rule: check the field's type in the tables below.
+
+Optional fields that use Go's `omitempty` tag (e.g. `start_date`, `end_date`, `result`, `error` on
+a step, or `settlement_tx_hash`/`error` on `CertificateData`) are **omitted from the JSON
+altogether** when not applicable, not serialized as `null`. `TrackingData.bridge_status`/
+`step_index`/`all_steps`/`error` are the exception: those are always present in the response,
+explicitly `null` while not applicable, precisely so clients can poll on their presence.
 
 All JSON field names use `snake_case` (they are listed below exactly as they appear on the wire).
 
@@ -36,8 +46,7 @@ Body of every REST response (always `200 OK`) and of every WebSocket `status` me
 
 | field | type | desc |
 | ------|------|------|
-| tracking_status | TrackingStatus (int) | 0->registered (added to the supervised list, `bridge_status`/`step_index`/`all_steps`/`error` still `nil`), 1->running (resolved, alive), 2->error (either a step reached an error on an otherwise-resolved bridge, or the tracker gave up resolving the bridge at all — see `error`), 3->finished (resolved, reached `Claimed`) |
-| tracking_status_string | string | string representation of tracking_status (e.g. "running") |
+| tracking_status | string | bare string, one of `"registered"` (added to the supervised list, `bridge_status`/`step_index`/`all_steps`/`error` still `null`), `"running"` (resolved, alive), `"error"` (either a step reached an error on an otherwise-resolved bridge, or the tracker gave up resolving the bridge at all — see `error`), `"finished"` (resolved, reached `Claimed`) |
 | network_id | uint32 | network of the request |
 | tx_hash | Hash | transaction hash of the request |
 | bridge_status | *BridgeStatus | `null` while tracking_status is `registered`, and forever `null` if the tracker gives up resolving the bridge (`error` is set instead); see [BridgeStatus](#bridgestatus) |
@@ -45,29 +54,151 @@ Body of every REST response (always `200 OK`) and of every WebSocket `status` me
 | all_steps | BridgeStepPath [] | `null` under the same conditions as `bridge_status`; from then on, all expected steps of the bridge's route — GER/LER, certificate and claim data are reported per step in each entry's `result` (see [StepResult](#stepresult)) |
 | error | *ErrorStep | `null` unless the tracker gave up trying to resolve the bridge at all (e.g. the tx does not exist on the network or is not a bridge transaction); see [ErrorStep](#errorstep). Unrelated to per-step errors, which live in `all_steps[i].error` instead |
 
-## BridgeStatus 
+Example (unresolved, just registered):
+
+```json
+{
+  "tracking_status": "registered",
+  "network_id": 1,
+  "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+  "bridge_status": null,
+  "step_index": null,
+  "all_steps": null,
+  "error": null
+}
+```
+
+Example (resolved, one step in progress — trimmed to two `all_steps` entries for brevity; a real
+response carries every step of the bridge's route):
+
+```json
+{
+  "tracking_status": "running",
+  "network_id": 1,
+  "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+  "bridge_status": {
+    "bridge_type": "L2->L1",
+    "block_number": 1000,
+    "log_index": 2,
+    "block_timestamp": 1700000000,
+    "event": {
+      "leaf_type": "Asset",
+      "origin_network": 1,
+      "origin_address": "0x0000000000000000000000000000000000000020",
+      "destination_network": 0,
+      "destination_address": "0x0000000000000000000000000000000000000030",
+      "amount": "100",
+      "deposit_count": 7
+    }
+  },
+  "step_index": 1,
+  "all_steps": [
+    {
+      "step_index": 0,
+      "step_name": "WaitingLERUpdate",
+      "status": "done",
+      "start_date": "2026-08-10T10:00:00Z",
+      "end_date": "2026-08-10T10:00:05Z",
+      "result": {
+        "network_id": 1,
+        "ler": "0x000000000000000000000000000000000000000000000000000000000000000b",
+        "block_number": 998
+      }
+    },
+    {
+      "step_index": 1,
+      "step_name": "PendingInclusion",
+      "status": "inProgress",
+      "start_date": "2026-08-10T10:00:05Z"
+    }
+  ],
+  "error": null
+}
+```
+
+## BridgeStatus
+
+`BridgeStatus` is not flat: the facts taken directly off the on-chain `BridgeEvent` log
+(leaf type, origin/destination, amount, deposit count) nest under an `event` object
+([BridgeEventData](#bridgeeventdata)); `bridge_status` itself only carries the direction and the
+block-level context (block number/index/timestamp) around that event.
 
 | field | type | desc |
 | ------|------|------|
-| bridge_type | BridgeType (int) | 0-> L1->L2, 1->L2->L1, 2->L2->L2 |
-| bridge_type_string | string | string representation of bridge_type (e.g. "L2->L2") |
-| bridge_leaf_type | BridgeLeafType (int) | 0->Asset (bridgeAsset), 1->Message (bridgeMessage) |
-| bridge_leaf_type_string | string | string representation of bridge_leaf_type (e.g. "Asset") |
+| bridge_type | string | bare string, one of `"L1->L2"`, `"L2->L1"`, `"L2->L2"` |
 | block_number | uint64 | block, on the origin network, where the `BridgeEvent` (`bridgeAsset`/`bridgeMessage`) was emitted |
 | log_index | uint32 | position of the `BridgeEvent` log within `block_number` |
+| block_timestamp | uint64 | timestamp of the block, on the origin network, where the `BridgeEvent` was emitted |
+| event | BridgeEventData | facts unpacked directly from the on-chain `BridgeEvent` log, see [BridgeEventData](#bridgeeventdata) |
+
+### BridgeEventData
+
+| field | type | desc |
+| ------|------|------|
+| leaf_type | string | bare string, one of `"Asset"` (`bridgeAsset`), `"Message"` (`bridgeMessage`) |
+| origin_network | uint32 | network where the bridged asset originates from |
+| origin_address | Address | address of the asset on the origin network |
+| destination_network | uint32 | network the bridge exits to (0 -> Mainnet) |
+| destination_address | Address | address that receives the asset on the destination network |
+| amount | string | amount of the asset being bridged, as a **decimal string** (not a JSON number) — avoids precision loss on wei-scale amounts in clients that decode numbers as `float64` (e.g. JavaScript) |
+| deposit_count | uint32 | index of the bridge leaf in the origin exit tree |
+
+Example (`TrackingData.bridge_status` once resolved):
+
+```json
+{
+  "bridge_type": "L2->L1",
+  "block_number": 1000,
+  "log_index": 2,
+  "block_timestamp": 1700000000,
+  "event": {
+    "leaf_type": "Asset",
+    "origin_network": 1,
+    "origin_address": "0x0000000000000000000000000000000000000020",
+    "destination_network": 0,
+    "destination_address": "0x0000000000000000000000000000000000000030",
+    "amount": "100",
+    "deposit_count": 7
+  }
+}
+```
 
 ## BridgeStepPath
 | field | type | desc |
 | ------|------|------|
-| step | BridgeStep (int) | 0->WaitingGERUpdate, 1->WaitingLERUpdate, 2->PendingInclusion, 3->CertificatePending, 4->WaitL1SettledGER, 5->WaitingGERInjection, 6->WaitingClaim, 7->Claimed |
-| step_string | string | string representation of step (e.g. "WaitingGERUpdate") |
-| status | StepStatus (int) | 0->pending, 1->inProgress, 2->done, 3->error
-| status_string | string | string representation of status (e.g. "inProgress") |
-| start_date | *time.Time | can be nil
-| end_date | *time.Time | can be nil
-| expected_duration | *Duration | serialized as human-readable string (e.g. "5m0s")
-| result | *StepResult | data produced by the step once it completes; its shape depends on `step` (see [StepResult](#stepresult)). `nil` until the step produces it, and for steps without a result |
-| error | *ErrorStep | error details, only set when `status` is `error` (see [ErrorStep](#errorstep)) |
+| step_index | int | this step's position within the parent `TrackingData.all_steps` list |
+| step_name | string | bare string, one of `"WaitingGERUpdate"`, `"WaitingLERUpdate"`, `"PendingInclusion"`, `"CertificatePending"`, `"WaitL1SettledGER"`, `"WaitingGERInjection"`, `"WaitingClaim"`, `"Claimed"` |
+| status | string | bare string, one of `"pending"`, `"inProgress"`, `"done"`, `"error"` |
+| start_date | *time.Time | **omitted** (no key) while `nil`, not serialized as `null` |
+| end_date | *time.Time | **omitted** (no key) while `nil`, not serialized as `null` |
+| expected_duration | *Duration | reserved for a future per-step protocol duration estimate; serializes as a human-readable string (e.g. `"5m0s"`) when set, **omitted** otherwise — no resolver currently populates it, so it never appears on the wire today; do not rely on it |
+| result | *StepResult | data produced by the step once it completes; its shape depends on `step_name` (see [StepResult](#stepresult)). **Omitted** (no key) until the step produces it, and for steps without a result |
+| error | *ErrorStep | error details, only set when `status` is `"error"` (see [ErrorStep](#errorstep)). **Omitted** (no key) otherwise |
+
+Example (an in-progress step, and a completed one with a result):
+
+```json
+{
+  "step_index": 0,
+  "step_name": "WaitingGERUpdate",
+  "status": "inProgress",
+  "start_date": "2026-08-10T10:00:00Z"
+}
+```
+
+```json
+{
+  "step_index": 2,
+  "step_name": "PendingInclusion",
+  "status": "done",
+  "start_date": "2026-08-10T10:00:05Z",
+  "end_date": "2026-08-10T10:02:00Z",
+  "result": {
+    "certificate_id": "0x000000000000000000000000000000000000000000000000000000000000000f",
+    "new_ler": "0x0000000000000000000000000000000000000000000000000000000000000010"
+  }
+}
+```
 
 ## StepResult
 
@@ -88,7 +219,7 @@ Carried in the `result` field of a [BridgeStepPath](#bridgesteppath). Its shape 
 
 The same structure carries two different kinds of error, depending on where it appears:
 
-- in the `error` field of a [BridgeStepPath](#bridgesteppath), when that step's `status` is `error` (3) — a step of an otherwise-resolved bridge failed;
+- in the `error` field of a [BridgeStepPath](#bridgesteppath), when that step's `status` is `"error"` — a step of an otherwise-resolved bridge failed;
 - in the `error` field of [TrackingData](#trackingdata) — the tracker gave up trying to resolve the bridge at all (e.g. `bridgeAsset`/`bridgeMessage` tx not found, or the tx exists but emitted no `BridgeEvent`). In that case `retry_count` counts the not-found polls before giving up.
 
 | field | type | desc |
@@ -99,6 +230,13 @@ The same structure carries two different kinds of error, depending on where it a
 | description | string [] | human-readable description(s) of the error, one entry per occurrence |
 
 ## GERData
+
+**Not part of any tracker response.** `GERData` (`bridgetracker/types/status.go`) is the domain
+layer's internal currency to decide GER coverage (`GERSource.OriginGER`/`InjectedGER`); it is
+never embedded in `TrackingData`, `BridgeStatus` or `BridgeStepPath`. It has JSON tags and its own
+`MarshalJSON` (documented here for completeness in case it is ever exposed or logged), but no
+tracker endpoint or WebSocket message currently serializes it.
+
 | field | type | desc |
 | ------|------|------|
 | network_id | uint32 | Network (0->Mainnet)
@@ -110,13 +248,29 @@ The same structure carries two different kinds of error, depending on where it a
 | ler_type_string | string | string representation of ler_type (e.g. "Mainnet")
 
 ## CertificateData
+
+This is one of the two response fields that **does** follow the numeric+`_string` convention
+(the other is [ErrorStep.error_type](#errorstep)) — everything else in the tracker response is a
+bare string, see the note at the top of [Response types](#response-types).
+
 | field | type | desc |
 | ------|------|------|
 | certificate_id | Hash |
 | status | CertificateStatus (int) | Mapped from proto in [agglayer_grpc_client.go:559](aggkit/agglayer/grpc/agglayer_grpc_client.go#L559): 0->`Pending`, 1->`Proven`, 2->`Candidate`, 3->`InError`, 4->`Settled`
 | status_string | string | string representation of status (e.g. "Settled")
-| error | string | Only set if the proto carries `Error.Message` (relevant for `InError` certs)
-| settlement_tx_hash | *Hash |
+| error | string | Only set if the proto carries `Error.Message` (relevant for `InError` certs); **omitted** (no key) otherwise |
+| settlement_tx_hash | *Hash | Set once the certificate has a settlement tx (normally only from `Settled` onward); **omitted** (no key), not `null`, before that |
+
+Example (settled certificate, as it appears in `all_steps[i].result` for `CertificatePending`):
+
+```json
+{
+  "certificate_id": "0x0000000000000000000000000000000000000000000000000000000000000001",
+  "status": 4,
+  "status_string": "Settled",
+  "settlement_tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000002"
+}
+```
 
 ## ErrorData
 
@@ -197,7 +351,7 @@ All messages are JSON text frames with an envelope:
 - Connecting adds the bridge to the list of supervised bridges, same as the REST endpoint.
 - On connect, the server immediately sends a `status` message with the current [TrackingData](#trackingdata) — `bridge_status`/`step_index`/`all_steps` are `null` if the tracker has no information yet, or populated if it does.
 - After that, a new `status` message is pushed every time something changes: `tracking_status` moves, `bridge_status`/`step_index`/`all_steps` go from `null` to populated, `step_index` moves, a step status/date in `all_steps` changes, or the certificate status changes. Each message carries the full `TrackingData`, not a delta.
-- When the bridge reaches a terminal state — `Claimed` (`tracking_status_string == "finished"`), or the tracker giving up trying to resolve it at all (`tracking_status_string == "error"` with `bridge_status: null` and `error` set) — the server sends the final `status` message and closes the connection with code `1000` (normal closure). A step-level error on an otherwise-resolved bridge (`tracking_status_string == "error"` with `bridge_status` populated) is **not** terminal: the connection stays open and the engine keeps polling in case it clears.
+- When the bridge reaches a terminal state — `Claimed` (`tracking_status == "finished"`), or the tracker giving up trying to resolve it at all (`tracking_status == "error"` with `bridge_status: null` and `error` set) — the server sends the final `status` message and closes the connection with code `1000` (normal closure). A step-level error on an otherwise-resolved bridge (`tracking_status == "error"` with `bridge_status` populated) is **not** terminal: the connection stays open and the engine keeps polling in case it clears.
 
 ### Errors
 

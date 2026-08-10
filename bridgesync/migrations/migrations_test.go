@@ -761,14 +761,19 @@ func TestMigration0016_IndexesExist(t *testing.T) {
 	require.NoError(t, err)
 	defer database.Close()
 
-	for _, indexName := range []string{"idx_bridge_from_address_upper", "idx_bridge_destination_network"} {
-		var name string
-		err := database.QueryRow(
-			`SELECT name FROM sqlite_master WHERE type='index' AND name=?`, indexName,
-		).Scan(&name)
-		require.NoError(t, err, "index %s should exist", indexName)
-		require.Equal(t, indexName, name)
-	}
+	var name string
+	err = database.QueryRow(
+		`SELECT name FROM sqlite_master WHERE type='index' AND name=?`, "idx_bridge_from_address_upper",
+	).Scan(&name)
+	require.NoError(t, err, "index idx_bridge_from_address_upper should exist")
+	require.Equal(t, "idx_bridge_from_address_upper", name)
+
+	// Without ANALYZE stats, an index on destination_network hijacks the query planner away
+	// from idx_bridge_deposit_count_desc and idx_bridge_from_address_upper, so it must not exist.
+	err = database.QueryRow(
+		`SELECT name FROM sqlite_master WHERE type='index' AND name=?`, "idx_bridge_destination_network",
+	).Scan(&name)
+	require.ErrorIs(t, err, sql.ErrNoRows, "index idx_bridge_destination_network must not exist")
 }
 
 func TestMigrationsDown(t *testing.T) {

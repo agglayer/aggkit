@@ -23,7 +23,9 @@ type RESTConfig struct {
 	WriteTimeout types.Duration `mapstructure:"WriteTimeout"`
 
 	// MaxRequestsPerIPAndSecond defines how many requests a single IP can
-	// send within a single second
+	// send within a single second. 0 (the default) means unlimited: aggkit
+	// does not enforce request rate limiting in-process. Apply rate limiting
+	// at the fronting reverse proxy / API gateway / ingress if needed.
 	MaxRequestsPerIPAndSecond float64 `mapstructure:"MaxRequestsPerIPAndSecond"`
 }
 

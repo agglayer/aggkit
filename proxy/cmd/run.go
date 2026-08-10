@@ -155,6 +155,9 @@ func runTracker(
 	restServer *proxy.RESTServer,
 ) {
 	trackerCfg := cfg.Tracker
+	if err := trackerCfg.Validate(); err != nil {
+		log.Fatalf("invalid tracker config: %v", err)
+	}
 	registry := bridgetracker.NewMemoryRegistry(trackerCfg.MaxTrackedBridges)
 	trackerCfg.Logger = log.WithFields("module", "bridgetracker")
 	trackerCfg.ConfigSHA1 = configSHA1

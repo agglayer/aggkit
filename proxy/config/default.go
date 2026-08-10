@@ -27,7 +27,7 @@ Host = "0.0.0.0"
 Port = 8080
 ReadTimeout = "5m"
 WriteTimeout = "5m"
-MaxRequestsPerIPAndSecond = 10
+MaxRequestsPerIPAndSecond = 0
 
 [Tracker]
 # RetentionPeriod: how long a terminal bridge (finished, or failed to ever resolve) stays
