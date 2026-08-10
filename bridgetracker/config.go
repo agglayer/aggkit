@@ -1,6 +1,7 @@
 package bridgetracker
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/agglayer/aggkit/agglayer"
@@ -109,4 +110,13 @@ type Config struct {
 	// adapter (single instance); inject a shared-store implementation so several tracker
 	// instances behind a proxy answer for any registered tx
 	Registry SupervisedRegistry `mapstructure:"-"`
+}
+
+// Validate checks if the configuration is valid
+func (c *Config) Validate() error {
+	if c.L1GlobalExitRootAddress == (common.Address{}) {
+		return fmt.Errorf("[Tracker].L1GlobalExitRootAddress is not set (zero address): " +
+			"the L1 GlobalExitRoot contract address is required for L1->L2 bridge tracking to work")
+	}
+	return nil
 }

@@ -20,8 +20,9 @@ Usage: $0 [OPTIONS]
 Creates tmp/proxy-kurtosis.toml based on a running Kurtosis enclave.
 
 The generated config points [L1RPC] at the enclave's L1 node, sets
-[BridgeServiceFinder].RollupManagerAddr from the aggkit config artifact, and
-fills static [BridgeServiceFinder.BridgeURLs] / [BridgeServiceFinder.RPCURLs]
+[BridgeServiceFinder].RollupManagerAddr and [Tracker].L1GlobalExitRootAddress
+from the aggkit config artifact, and fills static
+[BridgeServiceFinder.BridgeURLs] / [BridgeServiceFinder.RPCURLs]
 overrides for every L2 network found in the enclave, plus network 0 (L1):
 its RPC is the enclave's L1 node and its bridge service is the first aggkit
 instance (all of them sync the L1 side). The static overrides are required
@@ -185,6 +186,17 @@ get_rollup_manager_addr() {
     echo "$addr"
 }
 
+get_l1_ger_addr() {
+    local addr
+    addr=$(grep -E '^\s*polygonZkEVMGlobalExitRootAddress\s*=' "$AGGKIT_CONFIG_DIR/config.toml" \
+        | head -1 | tr -d '[:space:]' | cut -f2 -d'=' | tr -d '"')
+    if [[ -z "$addr" ]]; then
+        log_error "polygonZkEVMGlobalExitRootAddress not found in config.toml"
+        exit 1
+    fi
+    echo "$addr"
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -212,6 +224,12 @@ trap cleanup_aggkit_config EXIT
 log_info "Getting RollupManager address from aggkit config artifact..."
 ROLLUP_MANAGER_ADDR=$(get_rollup_manager_addr)
 log_info "RollupManagerAddr: $ROLLUP_MANAGER_ADDR"
+
+# L1GlobalExitRootAddress: same source as RollupManagerAddr, read from the aggkit config
+# artifact (the GlobalExitRoot contract is shared by every network in the enclave)
+log_info "Getting L1 GlobalExitRoot address from aggkit config artifact..."
+L1_GER_ADDR=$(get_l1_ger_addr)
+log_info "L1GlobalExitRootAddress: $L1_GER_ADDR"
 
 # ---------------------------------------------------------------------------
 # Per-network static overrides (BridgeURLs / RPCURLs)
@@ -293,6 +311,9 @@ BlockChunkSize = 10000
 HealthCheckPath = "$HEALTH_CHECK_PATH"
 HealthCheckTimeout = "5s"
 RequireAllHealthyOnStart = false
+
+[Tracker]
+L1GlobalExitRootAddress = "$L1_GER_ADDR"
 EOF
 
 if [[ -n "$BRIDGE_URLS_BLOCK" ]]; then
