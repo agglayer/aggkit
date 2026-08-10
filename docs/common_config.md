@@ -136,8 +136,8 @@ When rate limiting is enabled, if the number of requests exceeds `NumRequests` w
 
 ## RESTConfig
 
-`RESTConfig` configures a shared Gin-based HTTP server. It backs every REST section in the config, such as `[RPC]`,
-`[PublicREST]`, `[AdminREST]`, and the proxy's `[REST]`.
+`RESTConfig` configures a shared Gin-based HTTP server. It backs the REST sections in the config: `[PublicREST]`,
+`[AdminREST]`, and the proxy's `[REST]`.
 
 | Field Name | Type | Description |
 | --- | --- | --- |
@@ -151,6 +151,11 @@ When rate limiting is enabled, if the number of requests exceeds `NumRequests` w
 (unlimited). If you need per-IP request throttling, apply it at the fronting reverse proxy / API gateway / ingress —
 that is also where it is most effective, since a service sitting behind a proxy typically sees every client as the
 proxy's single IP, making in-process per-IP limiting ineffective anyway.
+
+Note that the `[RPC]` section is **not** a `RESTConfig`: it is the JSON-RPC server config from
+`github.com/0xPolygon/cdk-rpc`, whose `MaxRequestsPerIPAndSecond` **is** enforced (via tollbooth). There, `0` does
+not mean unlimited — `tollbooth.NewLimiter(0, ...)` produces a limiter with a burst of 1 and no refill, i.e. one
+request per IP ever. Its default stays `10`.
 
 ## RPCClientConfig
 

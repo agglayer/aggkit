@@ -149,7 +149,8 @@ Host = "0.0.0.0"
 Port = 5576
 ReadTimeout = "2s"
 WriteTimeout = "2s"
-MaxRequestsPerIPAndSecond = 0
+# Enforced (tollbooth in cdk-rpc); 0 does NOT mean unlimited here, it means burst-of-1 then 429 forever.
+MaxRequestsPerIPAndSecond = 10
 
 [PublicREST]
 Host = "0.0.0.0"
