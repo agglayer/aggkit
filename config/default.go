@@ -149,21 +149,21 @@ Host = "0.0.0.0"
 Port = 5576
 ReadTimeout = "2s"
 WriteTimeout = "2s"
-MaxRequestsPerIPAndSecond = 10
+MaxRequestsPerIPAndSecond = 0
 
 [PublicREST]
 Host = "0.0.0.0"
 Port = 5577
 ReadTimeout = "5m"
 WriteTimeout = "5m"
-MaxRequestsPerIPAndSecond = 10
+MaxRequestsPerIPAndSecond = 0
 
 [AdminREST]
 Host = "0.0.0.0"
 Port = 5579
 ReadTimeout = "5m"
 WriteTimeout = "5m"
-MaxRequestsPerIPAndSecond = 10
+MaxRequestsPerIPAndSecond = 0
 
 [BridgeL1Sync]
 DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
