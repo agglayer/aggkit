@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"math/rand"
 	"path"
 	"strings"
@@ -182,6 +183,76 @@ func TestGetLatestL1InfoLeafUntilBlock(t *testing.T) {
 			require.ErrorIs(t, err, tt.expectedErr)
 		})
 	}
+}
+
+// TestGetLatestL1InfoLeafUntilBlockClamp exercises the success path of the clamp against real rows.
+// The sibling table test above only covers the three error sentinels, so nothing pinned the actual
+// "most recent leaf at or before blockNum" semantics that the bridge service's l1-info-tree-index
+// fallback now depends on (INC-129).
+//
+// The L1 block numbers are kept orders of magnitude larger than the L1 info tree indexes on purpose:
+// the bug being guarded against was feeding a value from one index space into the other, and equal
+// or adjacent values let exactly that confusion pass unnoticed.
+func TestGetLatestL1InfoLeafUntilBlockClamp(t *testing.T) {
+	ctx := t.Context()
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestGetLatestL1InfoLeafUntilBlockClamp.sqlite")
+	sut, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	// One leaf per block, at widely spaced L1 blocks. Leaf N lands on L1 info tree index N.
+	leafBlocks := []uint64{1_000, 5_000, 9_000}
+	for i, blockNum := range leafBlocks {
+		err = sut.ProcessBlock(ctx, aggkitsync.Block{
+			Num: blockNum,
+			Events: []any{
+				Event{UpdateL1InfoTree: &UpdateL1InfoTree{
+					MainnetExitRoot: common.BigToHash(big.NewInt(int64(blockNum))),
+					RollupExitRoot:  common.HexToHash("5ca1e"),
+					ParentHash:      common.BigToHash(big.NewInt(int64(i))),
+					Timestamp:       uint64(i),
+				}},
+			},
+		})
+		require.NoError(t, err)
+	}
+	// Advance the processed height past the newest leaf so queries above 9_000 are not
+	// rejected with ErrBlockNotProcessed.
+	require.NoError(t, sut.ProcessBlock(ctx, aggkitsync.Block{Num: 9_500}))
+
+	tests := []struct {
+		name          string
+		blockNum      uint64
+		expectedIndex uint32
+		expectedBlock uint64
+	}{
+		{name: "exactly on the newest leaf's block", blockNum: 9_000, expectedIndex: 2, expectedBlock: 9_000},
+		{name: "above every leaf clamps to the newest", blockNum: 9_500, expectedIndex: 2, expectedBlock: 9_000},
+		{name: "between leaves clamps back", blockNum: 7_000, expectedIndex: 1, expectedBlock: 5_000},
+		{name: "exactly on a middle leaf's block", blockNum: 5_000, expectedIndex: 1, expectedBlock: 5_000},
+		{name: "one block after a leaf clamps to it", blockNum: 5_001, expectedIndex: 1, expectedBlock: 5_000},
+		{name: "one block before a leaf clamps to the previous", blockNum: 4_999, expectedIndex: 0, expectedBlock: 1_000},
+		{name: "exactly on the oldest leaf's block", blockNum: 1_000, expectedIndex: 0, expectedBlock: 1_000},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			blockNum := tt.blockNum
+			leaf, err := sut.GetLatestL1InfoLeafUntilBlock(ctx, &blockNum)
+			require.NoError(t, err)
+			require.NotNil(t, leaf)
+			require.Equal(t, tt.expectedIndex, leaf.L1InfoTreeIndex,
+				"must return the L1 info tree index of the newest leaf at or before the block")
+			require.Equal(t, tt.expectedBlock, leaf.BlockNumber,
+				"the returned leaf must not come from a block after the requested one")
+			require.LessOrEqual(t, leaf.BlockNumber, tt.blockNum, "the clamp must never look ahead")
+		})
+	}
+
+	t.Run("below every leaf is not found", func(t *testing.T) {
+		blockNum := uint64(999)
+		_, err := sut.GetLatestL1InfoLeafUntilBlock(ctx, &blockNum)
+		require.ErrorIs(t, err, db.ErrNotFound)
+	})
 }
 
 func TestProcessor_Reorg(t *testing.T) {
