@@ -34,6 +34,7 @@ import (
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	aggkitsync "github.com/agglayer/aggkit/sync"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
@@ -75,6 +76,8 @@ const (
 	errSetupRequest      = "failed to setup request: %v"
 	errDepositCountParam = "invalid deposit count parameter: %v"
 	errInvalidParam      = "invalid %s parameter"
+	// errSyncerInconsistent is the response body used when a syncer is halted resolving a reorg
+	errSyncerInconsistent = "a syncer is temporarily inconsistent (reorg being resolved), retry later: %s"
 
 	// etrogVersionID is the version ID of AgglayerManager after Etrog upgrade
 	etrogVersionID = 2
@@ -778,7 +781,9 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} uint32
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 404 {object} types.ErrorResponse "Not Found - not indexed by the syncers yet, retry later"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable - a syncer is resolving a reorg, retry later"
 // @Router /l1-info-tree-index [get]
 func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	b.logger.Debugf("L1InfoTreeIndexForBridge request received (network id=%s, deposit count=%s)",
@@ -823,16 +828,11 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	}
 
 	if err != nil {
-		b.logger.Debugf(
-			"failed to get L1 info tree index (network id=%d, deposit count=%d): %v",
-			networkID,
-			depositCount,
-			err,
-		)
-		statusCode = http.StatusInternalServerError
-		c.JSON(statusCode,
-			gin.H{"error": fmt.Sprintf("failed to get l1 info tree index for network id %d and deposit count %d, error: %s",
-				networkID, depositCount, err)})
+		statusCode = b.respondSyncerError(c, err,
+			fmt.Sprintf("l1 info tree index for network id %d and deposit count %d is not available yet, retry later: %s",
+				networkID, depositCount, err),
+			fmt.Sprintf("failed to get l1 info tree index for network id %d and deposit count %d, error: %s",
+				networkID, depositCount, err))
 		return
 	}
 
@@ -848,8 +848,9 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} types.L1InfoTreeLeafResponse
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
-// @Failure 404 {object} types.ErrorResponse "Not Found - global exit root not injected yet"
+// @Failure 404 {object} types.ErrorResponse "Not Found - global exit root not injected or leaf not indexed yet"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable - a syncer is resolving a reorg, retry later"
 // @Router /injected-l1-info-leaf [get]
 func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	b.logger.Debugf("InjectedInfoAfterIndex request received (network id=%s, leaf index=%s)",
@@ -906,11 +907,11 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 
 		l1InfoLeaf, err = b.l1InfoTree.GetInfoByIndex(ctx, e.L1InfoTreeIndex)
 		if err != nil {
-			b.logger.Errorf("failed to get L1 info tree leaf (leaf index=%d): %v", e.L1InfoTreeIndex, err)
-			statusCode = http.StatusInternalServerError
-			c.JSON(statusCode,
-				gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf (leaf index=%d), error: %s",
-					e.L1InfoTreeIndex, err)})
+			statusCode = b.respondSyncerError(c, err,
+				fmt.Sprintf("l1infotreesync has not indexed l1 info tree leaf index %d yet "+
+					"(already injected on L2 per l2gersync), retry later", e.L1InfoTreeIndex),
+				fmt.Sprintf("failed to get L1 info tree leaf (leaf index=%d), error: %s",
+					e.L1InfoTreeIndex, err))
 			return
 		}
 	default:
@@ -921,11 +922,10 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	}
 
 	if err != nil {
-		b.logger.Debugf("failed to get L1 info tree leaf (network id=%d, leaf index=%d): %v", networkID, l1InfoTreeIndex, err)
-		statusCode = http.StatusInternalServerError
-		c.JSON(statusCode,
-			gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf (network id=%d, leaf index=%d), error: %s",
-				networkID, l1InfoTreeIndex, err)})
+		statusCode = b.respondSyncerError(c, err,
+			fmt.Sprintf("l1infotreesync has not indexed l1 info tree leaf index %d yet, retry later", l1InfoTreeIndex),
+			fmt.Sprintf("failed to get L1 info tree leaf (network id=%d, leaf index=%d), error: %s",
+				networkID, l1InfoTreeIndex, err))
 		return
 	}
 
@@ -1011,7 +1011,9 @@ func (b *BridgeService) L1InfoTreeLeafByGERHandler(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} types.ClaimProof "Merkle proofs and L1 info tree leaf"
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 404 {object} types.ErrorResponse "Not Found - not indexed by the syncers yet, retry later"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable - syncer not available or resolving a reorg"
 // @Router /claim-proof [get]
 func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	b.logger.Debugf("ClaimProof request received (network id=%s, l1 info tree index=%s, deposit count=%s)",
@@ -1029,29 +1031,32 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
 		b.logger.Warnf(errNetworkID, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
 	l1InfoTreeIndex, err := parseUintQuery(c, leafIndexParam, true, uint32(0))
 	if err != nil {
 		b.logger.Warnf("invalid L1 info tree index parameter: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
 	depositCount, err := parseUintQuery(c, depositCountParam, true, uint32(0))
 	if err != nil {
 		b.logger.Warnf(errDepositCountParam, err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
 		return
 	}
 
 	info, err := b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
 	if err != nil {
-		b.logger.Errorf("failed to get L1 info tree leaf for index %d: %v", l1InfoTreeIndex, err)
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to get l1 info tree leaf for index %d: %s", l1InfoTreeIndex, err)})
+		statusCode = b.respondSyncerError(c, err,
+			fmt.Sprintf("l1infotreesync has not indexed l1 info tree leaf index %d yet, retry later", l1InfoTreeIndex),
+			fmt.Sprintf("failed to get l1 info tree leaf for index %d: %s", l1InfoTreeIndex, err))
 		return
 	}
 
@@ -1059,60 +1064,63 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	switch networkID {
 	case mainnetNetworkID:
 		if b.bridgeL1 == nil {
-			c.JSON(http.StatusServiceUnavailable,
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode,
 				gin.H{"error": "L1 bridge syncer is not available"})
 			return
 		}
 		proofLocalExitRoot, err = b.bridgeL1.GetProof(ctx, depositCount, info.MainnetExitRoot)
 		if err != nil {
-			b.logger.Errorf("failed to get local exit proof for L1: %v", err)
-			c.JSON(http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to get local exit proof, error: %s", err)})
+			statusCode = b.respondSyncerError(c, err,
+				fmt.Sprintf("bridgesync L1 has not indexed deposit count %d yet, retry later", depositCount),
+				fmt.Sprintf("failed to get local exit proof, error: %s", err))
 			return
 		}
 
 	case b.networkID:
 		localExitRoot, err := b.l1InfoTree.GetLocalExitRoot(ctx, networkID, info.RollupExitRoot)
 		if err != nil {
-			b.logger.Errorf("failed to get local exit root from rollup exit tree: %v", err)
-			c.JSON(http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to get local exit root from rollup exit tree, error: %s", err)})
+			statusCode = b.respondSyncerError(c, err,
+				fmt.Sprintf("l1infotreesync has not indexed the local exit root of network id %d for rollup exit root %s "+
+					"yet, retry later", networkID, info.RollupExitRoot),
+				fmt.Sprintf("failed to get local exit root from rollup exit tree, error: %s", err))
 			return
 		}
 		if b.bridgeL2 == nil {
-			c.JSON(http.StatusServiceUnavailable,
+			statusCode = http.StatusServiceUnavailable
+			c.JSON(statusCode,
 				gin.H{"error": "L2 bridge syncer is not available"})
 			return
 		}
 		proofLocalExitRoot, err = b.bridgeL2.GetProof(ctx, depositCount, localExitRoot)
 		if err != nil {
-			b.logger.Errorf("failed to get local exit proof for L2: %v", err)
-			c.JSON(http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to get local exit proof, error: %s", err)})
+			statusCode = b.respondSyncerError(c, err,
+				fmt.Sprintf("bridgesync L2 has not indexed deposit count %d yet, retry later", depositCount),
+				fmt.Sprintf("failed to get local exit proof, error: %s", err))
 			return
 		}
 
 	default:
 		b.logger.Warnf("unsupported network id for claim proof: %d", networkID)
-		c.JSON(http.StatusBadRequest,
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode,
 			gin.H{"error": fmt.Sprintf("failed to get claim proof, unsupported network %d", networkID)})
 		return
 	}
 
 	proofRollupExitRoot, err := b.l1InfoTree.GetRollupExitTreeMerkleProof(ctx, networkID, info.RollupExitRoot)
 	if err != nil {
-		b.logger.Errorf("failed to get rollup exit proof (network id=%d, leaf index=%d, deposit count=%d): %v",
-			networkID, l1InfoTreeIndex, depositCount, err)
-		c.JSON(http.StatusInternalServerError,
-			gin.H{
-				"error": fmt.Sprintf("failed to get rollup exit proof (network id=%d, leaf index=%d, deposit count=%d), error: %s",
-					networkID, l1InfoTreeIndex, depositCount, err)})
+		statusCode = b.respondSyncerError(c, err,
+			fmt.Sprintf("l1infotreesync has not indexed the rollup exit tree for network id %d and rollup exit root %s "+
+				"yet, retry later", networkID, info.RollupExitRoot),
+			fmt.Sprintf("failed to get rollup exit proof (network id=%d, leaf index=%d, deposit count=%d), error: %s",
+				networkID, l1InfoTreeIndex, depositCount, err))
 		return
 	}
 
 	infoResponse := NewL1InfoTreeLeafResponse(info)
 
-	c.JSON(http.StatusOK, types.ClaimProof{
+	c.JSON(statusCode, types.ClaimProof{
 		ProofLocalExitRoot:  types.ConvertToProofResponse(proofLocalExitRoot),
 		ProofRollupExitRoot: types.ConvertToProofResponse(proofRollupExitRoot),
 		L1InfoTreeLeaf:      *infoResponse,
@@ -1442,9 +1450,17 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, 
 		if err != nil {
 			return 0, fmt.Errorf("failed to get last root for L1: %w", err)
 		}
-		lastInfo, err = b.l1InfoTree.GetInfoByIndex(ctx, root.Index)
+		if root.BlockNum == 0 {
+			return 0, fmt.Errorf("bridgesync L1 has not indexed any block yet: %w", ErrNotOnL1Info)
+		}
+		// root.Index is a position in the L1 bridge exit tree (i.e. a deposit count), not an L1 info
+		// tree index, so it must never be fed into an l1infotreesync leaf lookup. Clamp by the last
+		// L1 block indexed by bridgesync L1 instead, which is the same index space for both syncers.
+		lastInfo, err = b.l1InfoTree.GetLatestL1InfoLeafUntilBlock(ctx, root.BlockNum)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get last info for L1: %w", err)
+			return 0, fmt.Errorf(
+				"l1infotreesync has no L1 info tree leaf at or before L1 block %d "+
+					"(last block indexed by bridgesync L1): %w", root.BlockNum, err)
 		}
 	}
 	if root.Index < depositCount {
@@ -1733,6 +1749,55 @@ func (b *BridgeService) parseGlobalIndexAndSetupRequest(
 func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
 	metrics.IncTotalRequestCounter(handlerID, strconv.Itoa(statusCode))
 	metrics.ObserveRequestLatencyHistogram(handlerID, startTime)
+}
+
+// httpStatusForSyncerError maps an error returned by one of the syncers this service reads from to
+// the HTTP status the API should answer with:
+//
+//	404 - a syncer has not indexed the requested data (yet); callers should retry later
+//	503 - a syncer is halted on an inconsistent state (reorg being resolved); retryable
+//	500 - a genuine fault
+//
+// Both not-found sentinels must be handled: reads routed through l1infotreesync's translateError
+// (e.g. GetLatestL1InfoLeafUntilBlock) surface l1infotreesync.ErrNotFound, while every sibling read
+// surfaces db.ErrNotFound raw.
+func httpStatusForSyncerError(err error) int {
+	switch {
+	case errors.Is(err, aggkitsync.ErrInconsistentState):
+		return http.StatusServiceUnavailable
+	case errors.Is(err, db.ErrNotFound),
+		errors.Is(err, l1infotreesync.ErrNotFound),
+		errors.Is(err, l1infotreesync.ErrBlockNotProcessed),
+		errors.Is(err, l1infotreesync.ErrNoBlock0),
+		errors.Is(err, ErrNotOnL1Info):
+		return http.StatusNotFound
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// respondSyncerError classifies err with httpStatusForSyncerError, logs it at a level matching the
+// resulting status (debug for 404, warn for 503, error for 500) and writes the error response.
+// notFoundMsg is the 404 body, internalMsg the 500 body and the 503 body is fixed. It returns the
+// status code so the caller can propagate it to the request metrics.
+func (b *BridgeService) respondSyncerError(c *gin.Context, err error, notFoundMsg, internalMsg string) int {
+	statusCode := httpStatusForSyncerError(err)
+	msg := internalMsg
+	switch statusCode {
+	case http.StatusNotFound:
+		msg = notFoundMsg
+		b.logger.Debug(msg)
+	case http.StatusServiceUnavailable:
+		// the response body stays generic, but the log keeps the context of the failing call
+		b.logger.Warn(internalMsg)
+		msg = fmt.Sprintf(errSyncerInconsistent, err)
+	default:
+		b.logger.Error(msg)
+	}
+
+	c.JSON(statusCode, gin.H{"error": msg})
+
+	return statusCode
 }
 
 // GetClaimsByGERHandler retrieves all DetailedClaimEvent claims that used the given global exit root.

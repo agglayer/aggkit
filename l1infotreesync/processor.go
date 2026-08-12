@@ -261,10 +261,10 @@ func (p *processor) GetInfoByIndex(ctx context.Context, index uint32) (*L1InfoTr
 
 func (p *processor) getInfoByIndexWithTx(tx dbtypes.DBer, index uint32) (*L1InfoTreeLeaf, error) {
 	info := &L1InfoTreeLeaf{}
-	return info, meddler.QueryRow(
+	return info, db.ReturnErrNotFound(meddler.QueryRow(
 		tx, info,
 		`SELECT * FROM l1info_leaf WHERE position = $1;`, index,
-	)
+	))
 }
 
 // GetLastProcessedBlock returns the last processed block.
