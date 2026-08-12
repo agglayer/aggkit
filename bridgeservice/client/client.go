@@ -268,13 +268,17 @@ func (c *Client) GetLegacyTokenMigrations(
 }
 
 // GetL1InfoTreeIndex retrieves the L1 Info Tree index for a bridge
+//
+// Uses doRequestAllowNotFound: when the deposit has not yet been indexed by the relevant
+// syncers, the endpoint returns HTTP 404, surfaced here as ErrNotFound so callers can treat it
+// as "retry later" rather than a hard error.
 func (c *Client) GetL1InfoTreeIndex(ctx context.Context, networkID, depositCount int) (uint32, error) {
 	query := url.Values{}
 	query.Set("network_id", strconv.Itoa(networkID))
 	query.Set("deposit_count", strconv.Itoa(depositCount))
 
 	var index uint32
-	if err := c.doRequest(ctx, "/bridge/v1/l1-info-tree-index?"+query.Encode(), &index); err != nil {
+	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/l1-info-tree-index?"+query.Encode(), &index); err != nil {
 		return 0, err
 	}
 	return index, nil
@@ -318,6 +322,10 @@ func (c *Client) GetL1InfoTreeLeafByGER(ctx context.Context, ger string) (*types
 }
 
 // GetClaimProof retrieves Merkle proofs for claim verification
+//
+// Uses doRequestAllowNotFound: when the underlying syncers have not yet indexed the data needed
+// to build the proof, the endpoint returns HTTP 404, surfaced here as ErrNotFound so callers can
+// treat it as "retry later" rather than a hard error.
 func (c *Client) GetClaimProof(
 	ctx context.Context, networkID, leafIndex, depositCount uint32,
 ) (*types.ClaimProof, error) {
@@ -327,7 +335,7 @@ func (c *Client) GetClaimProof(
 	query.Set("deposit_count", strconv.FormatUint(uint64(depositCount), 10))
 
 	var resp types.ClaimProof
-	if err := c.doRequest(ctx, "/bridge/v1/claim-proof?"+query.Encode(), &resp); err != nil {
+	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/claim-proof?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
