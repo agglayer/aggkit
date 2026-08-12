@@ -93,6 +93,30 @@ sequenceDiagram
    endpoint also backs the Auto Claim destination-readiness gate for L2-destination claimers — see
    [Auto Claim Service](./autoclaim.md#architecture) for how it is used to decide when a bridge is ready to claim.
 
+5. The same `404`-for-not-ready contract from note 4 now also applies to `GET /bridge/v1/l1-info-tree-index`
+   (`bridge_l1InfoTreeIndexForBridge`) and `GET /bridge/v1/claim-proof`: both previously returned `500` whenever
+   the L1 info tree syncer or a bridge syncer had simply not caught up yet to the requested deposit/leaf, and now
+   return `404` for that condition, reserving `500` for genuine faults. The Go client surfaces this as
+   `client.ErrNotFound` on `Client.GetL1InfoTreeIndex` and `Client.GetClaimProof`. In addition, the `404`
+   semantics described in note 4 for `/injected-l1-info-leaf` now cover its **L1** path (`network_id=0`) as well
+   as its L2 path — previously the L1 path fell through to `500` when `l1infotreesync` had not yet indexed the
+   requested leaf; it now answers `404` there too.
+
+6. `/l1-info-tree-index`, `/claim-proof`, and `/injected-l1-info-leaf` can also respond `503 Service Unavailable`
+   when a syncer they read from is halted or in an inconsistent state (e.g. resolving a reorg). `503` is a second
+   retry-later code, but it does **not** mean the same thing as `404`: `404` means the syncer is healthy and
+   simply hasn't indexed the requested data yet, while `503` means a syncer is in an operational fault state.
+   Retrying is appropriate for both, but operators and client authors should not conflate them — persistent `503`s
+   warrant investigating the syncer, whereas persistent `404`s only indicate lag.
+
+7. The fallback inside `getFirstL1InfoTreeIndexForL1Bridge`, which backs `bridge_l1InfoTreeIndexForBridge` in the
+   flow diagrams above, was corrected. When the primary `GetRootByLER` lookup misses because the L1 bridge syncer
+   has not yet caught up to the tip of the L1 info tree, the fallback now clamps to the most recent L1 info tree
+   leaf at or before the last block the L1 bridge syncer has indexed. It previously reused a position from the L1
+   bridge **exit** tree (a deposit count) as if it were an L1 **info** tree index — two different counters in two
+   different trees — which could surface as a `500` `sql: no rows in result set` error for a deposit that was
+   already settled. The flow itself is unchanged; only the correctness of this internal fallback lookup was fixed.
+
 ### Bridge flow L2 -> L1
 
 The diagram below describes the basic L2 -> L1 bridge workflow.

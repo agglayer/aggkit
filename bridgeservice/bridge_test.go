@@ -10,9 +10,11 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	stdsync "sync"
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/bridgeservice/metrics"
 	mocks "github.com/agglayer/aggkit/bridgeservice/mocks"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -22,10 +24,13 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
+	aggkitprometheus "github.com/agglayer/aggkit/prometheus"
+	aggkitsync "github.com/agglayer/aggkit/sync"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -3829,6 +3834,18 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 	}
 }
 
+// L1 block numbers used by the GetRootByLER fallback fixtures. tree.Root.Index is a position in the
+// L1 bridge exit tree (a deposit count) while tree.Root.BlockNum is an L1 block number: two
+// different counters that happen to share the same Go type. The fixtures below keep them orders of
+// magnitude apart on purpose, so that a future index/block mix-up cannot silently satisfy a mock
+// expectation the way it did in INC-129.
+const (
+	fallbackBlockNum           = uint64(900_000)
+	fallbackBlockNumLowIndex   = uint64(910_000)
+	fallbackBlockNumHighIndex  = uint64(920_000)
+	fallbackBlockNumClampFails = uint64(930_000)
+)
+
 func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 	ctx := context.Background()
 	networkID := uint32(1)
@@ -3847,7 +3864,9 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 	}
 
 	depositCount := uint32(500)
-	expectedIndex := uint32(500)
+	// deliberately unrelated to depositCount and to any block number used below: the returned value
+	// is an L1 info tree index, a third index space that must not be confused with the other two
+	expectedIndex := uint32(4242)
 
 	t.Run("GetRootByLER fails but GetLastRoot succeeds", func(t *testing.T) {
 		// Setup mocks for the fallback scenario
@@ -3860,23 +3879,26 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 			Return(nil, errors.New("LER not found")).
 			Once()
 
-		// Fallback to GetLastRoot succeeds
+		// Fallback to GetLastRoot succeeds. Index is a position in the L1 bridge exit tree (a
+		// deposit count) while BlockNum is an L1 block number: two different index spaces, so the
+		// fixture keeps them orders of magnitude apart to make any mix-up fail loudly.
 		fallbackRoot := &tree.Root{
 			Index:    depositCount,
-			BlockNum: uint64(depositCount),
+			BlockNum: fallbackBlockNum,
 		}
 		b.bridgeL1.EXPECT().GetLastRoot(ctx).
 			Return(fallbackRoot, nil).
 			Once()
 
-		// After GetLastRoot succeeds, GetInfoByIndex is called with the root's index
-		updatedLastInfo := &l1infotreesync.L1InfoTreeLeaf{
-			BlockNumber:     uint64(depositCount),
-			MainnetExitRoot: common.HexToHash("0x123"),
-			L1InfoTreeIndex: depositCount,
+		// After GetLastRoot succeeds the fallback clamps by the last L1 block bridgesync L1
+		// indexed (root.BlockNum), never by root.Index.
+		clampedLastInfo := &l1infotreesync.L1InfoTreeLeaf{
+			BlockNumber:     fallbackBlockNum - 20_000,
+			MainnetExitRoot: common.HexToHash("0x456"),
+			L1InfoTreeIndex: 3_120,
 		}
-		b.l1InfoTree.EXPECT().GetInfoByIndex(ctx, depositCount).
-			Return(updatedLastInfo, nil).
+		b.l1InfoTree.EXPECT().GetLatestL1InfoLeafUntilBlock(ctx, fallbackBlockNum).
+			Return(clampedLastInfo, nil).
 			Once()
 
 		// Continue with normal flow
@@ -3884,13 +3906,16 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 			Return(firstInfo, nil).
 			Once()
 
-		// Mock the binary search calls
+		// Mock the binary search calls. The probed block proves the binary search upper limit
+		// inherited the clamp from the reassigned lastInfo (it is derived from
+		// clampedLastInfo.BlockNumber, not from the unclamped lastInfo.BlockNumber).
 		targetInfo := &l1infotreesync.L1InfoTreeLeaf{
-			BlockNumber:     uint64(expectedIndex),
+			BlockNumber:     300_000,
 			MainnetExitRoot: common.HexToHash("0x123"),
 			L1InfoTreeIndex: expectedIndex,
 		}
-		b.l1InfoTree.EXPECT().GetFirstInfoAfterBlock(mock.Anything).
+		b.l1InfoTree.EXPECT().
+			GetFirstInfoAfterBlock(midpointBlock(firstInfo.BlockNumber, clampedLastInfo.BlockNumber)).
 			Return(targetInfo, nil).
 			Once()
 
@@ -3951,23 +3976,23 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 			Return(nil, errors.New("LER not found")).
 			Once()
 
-		// Fallback to GetLastRoot succeeds but returns low index
+		// Fallback to GetLastRoot succeeds but returns low index (BlockNum stays orders of
+		// magnitude away from Index, they are different index spaces)
 		fallbackRoot := &tree.Root{
 			Index:    depositCount - 100, // Lower than depositCount
-			BlockNum: uint64(depositCount - 100),
+			BlockNum: fallbackBlockNumLowIndex,
 		}
 		b.bridgeL1.EXPECT().GetLastRoot(ctx).
 			Return(fallbackRoot, nil).
 			Once()
 
-		// After GetLastRoot succeeds, GetInfoByIndex is called with the root's index
-		updatedLastInfo := &l1infotreesync.L1InfoTreeLeaf{
-			BlockNumber:     uint64(depositCount - 100),
-			MainnetExitRoot: common.HexToHash("0x123"),
-			L1InfoTreeIndex: depositCount - 100,
-		}
-		b.l1InfoTree.EXPECT().GetInfoByIndex(ctx, depositCount-100).
-			Return(updatedLastInfo, nil).
+		// The clamp happens before the index check, so it is still exercised here
+		b.l1InfoTree.EXPECT().GetLatestL1InfoLeafUntilBlock(ctx, fallbackBlockNumLowIndex).
+			Return(&l1infotreesync.L1InfoTreeLeaf{
+				BlockNumber:     fallbackBlockNumLowIndex - 5_000,
+				MainnetExitRoot: common.HexToHash("0x456"),
+				L1InfoTreeIndex: 3_150,
+			}, nil).
 			Once()
 
 		// Execute the function
@@ -3977,6 +4002,9 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 		require.Error(t, err)
 		require.Equal(t, uint32(0), actualIndex)
 		require.Equal(t, ErrNotOnL1Info, err)
+		require.ErrorIs(t, err, ErrNotOnL1Info)
+		// and the handler must answer 404 for it, not 500
+		require.Equal(t, http.StatusNotFound, httpStatusForSyncerError(err))
 
 		// Verify all mocks were called as expected
 		b.l1InfoTree.AssertExpectations(t)
@@ -3994,23 +4022,24 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 			Return(nil, errors.New("LER not found")).
 			Once()
 
-		// Fallback to GetLastRoot succeeds with higher index
+		// Fallback to GetLastRoot succeeds with higher index (BlockNum remains orders of magnitude
+		// away from Index, they are different index spaces)
 		fallbackRoot := &tree.Root{
 			Index:    depositCount + 50, // Higher than depositCount
-			BlockNum: uint64(depositCount + 50),
+			BlockNum: fallbackBlockNumHighIndex,
 		}
 		b.bridgeL1.EXPECT().GetLastRoot(ctx).
 			Return(fallbackRoot, nil).
 			Once()
 
-		// After GetLastRoot succeeds, GetInfoByIndex is called with the root's index
-		updatedLastInfo := &l1infotreesync.L1InfoTreeLeaf{
-			BlockNumber:     uint64(depositCount + 50),
-			MainnetExitRoot: common.HexToHash("0x123"),
-			L1InfoTreeIndex: depositCount + 50,
+		// After GetLastRoot succeeds the fallback clamps by root.BlockNum, never by root.Index
+		clampedLastInfo := &l1infotreesync.L1InfoTreeLeaf{
+			BlockNumber:     fallbackBlockNumHighIndex - 2_000,
+			MainnetExitRoot: common.HexToHash("0x456"),
+			L1InfoTreeIndex: 3_180,
 		}
-		b.l1InfoTree.EXPECT().GetInfoByIndex(ctx, depositCount+50).
-			Return(updatedLastInfo, nil).
+		b.l1InfoTree.EXPECT().GetLatestL1InfoLeafUntilBlock(ctx, fallbackBlockNumHighIndex).
+			Return(clampedLastInfo, nil).
 			Once()
 
 		// Continue with normal flow
@@ -4018,13 +4047,14 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 			Return(firstInfo, nil).
 			Once()
 
-		// Mock the binary search calls
+		// Mock the binary search calls; the probed block pins the inherited clamp
 		targetInfo := &l1infotreesync.L1InfoTreeLeaf{
-			BlockNumber:     uint64(expectedIndex),
+			BlockNumber:     310_000,
 			MainnetExitRoot: common.HexToHash("0x123"),
 			L1InfoTreeIndex: expectedIndex,
 		}
-		b.l1InfoTree.EXPECT().GetFirstInfoAfterBlock(mock.Anything).
+		b.l1InfoTree.EXPECT().
+			GetFirstInfoAfterBlock(midpointBlock(firstInfo.BlockNumber, clampedLastInfo.BlockNumber)).
 			Return(targetInfo, nil).
 			Once()
 
@@ -4045,43 +4075,969 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 		b.bridgeL1.AssertExpectations(t)
 	})
 
-	t.Run("GetRootByLER fails, GetLastRoot succeeds but GetInfoByIndex fails", func(t *testing.T) {
-		// Setup mocks for the fallback scenario where GetInfoByIndex fails
+	// Rewritten from "GetRootByLER fails, GetLastRoot succeeds but GetInfoByIndex fails", which used
+	// to pin the INC-129 bug by asserting the "failed to get last info for L1" wrapper produced by
+	// the (wrong) GetInfoByIndex(root.Index) lookup. The fallback now clamps with
+	// GetLatestL1InfoLeafUntilBlock(root.BlockNum), so this asserts the new wrapper instead and,
+	// crucially, that the not-found sentinel survives it so the handler can answer 404.
+	t.Run("GetRootByLER fails, GetLastRoot succeeds but GetLatestL1InfoLeafUntilBlock fails",
+		func(t *testing.T) {
+			b.l1InfoTree.EXPECT().GetLastInfo().
+				Return(lastInfo, nil).
+				Once()
+
+			// First call to GetRootByLER fails
+			b.bridgeL1.EXPECT().GetRootByLER(ctx, lastInfo.MainnetExitRoot).
+				Return(nil, errors.New("LER not found")).
+				Once()
+
+			// Fallback to GetLastRoot succeeds
+			fallbackRoot := &tree.Root{
+				Index:    depositCount,
+				BlockNum: fallbackBlockNumClampFails,
+			}
+			b.bridgeL1.EXPECT().GetLastRoot(ctx).
+				Return(fallbackRoot, nil).
+				Once()
+
+			// l1infotreesync has nothing at or before that L1 block: the reverse skew
+			b.l1InfoTree.EXPECT().GetLatestL1InfoLeafUntilBlock(ctx, fallbackBlockNumClampFails).
+				Return(nil, l1infotreesync.ErrNotFound).
+				Once()
+
+			actualIndex, err := b.bridge.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
+
+			require.Error(t, err)
+			require.Equal(t, uint32(0), actualIndex)
+			// the sentinel survives the wrap, which is what lets the handler answer 404
+			require.ErrorIs(t, err, l1infotreesync.ErrNotFound)
+			require.Equal(t, http.StatusNotFound, httpStatusForSyncerError(err))
+			require.Contains(t, err.Error(),
+				fmt.Sprintf("l1infotreesync has no L1 info tree leaf at or before L1 block %d",
+					fallbackBlockNumClampFails))
+			// the old, index-space-confused error message must be gone for good
+			require.NotContains(t, err.Error(), "failed to get last info for L1")
+
+			b.l1InfoTree.AssertExpectations(t)
+			b.bridgeL1.AssertExpectations(t)
+		})
+
+	t.Run("GetRootByLER fails and GetLastRoot returns block 0", func(t *testing.T) {
 		b.l1InfoTree.EXPECT().GetLastInfo().
 			Return(lastInfo, nil).
 			Once()
 
-		// First call to GetRootByLER fails
 		b.bridgeL1.EXPECT().GetRootByLER(ctx, lastInfo.MainnetExitRoot).
 			Return(nil, errors.New("LER not found")).
 			Once()
 
-		// Fallback to GetLastRoot succeeds
-		fallbackRoot := &tree.Root{
-			Index:    depositCount,
-			BlockNum: uint64(depositCount),
-		}
+		// bridgesync L1 has not indexed any block yet; the guard must short-circuit before the
+		// clamp so l1infotreesync is never asked for a leaf at or before block 0
 		b.bridgeL1.EXPECT().GetLastRoot(ctx).
-			Return(fallbackRoot, nil).
+			Return(&tree.Root{Index: depositCount, BlockNum: 0}, nil).
 			Once()
 
-		// GetInfoByIndex fails after GetLastRoot succeeds
-		b.l1InfoTree.EXPECT().GetInfoByIndex(ctx, depositCount).
-			Return(nil, errors.New("failed to get info by index")).
-			Once()
-
-		// Execute the function
 		actualIndex, err := b.bridge.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
 
-		// Verify results - should return error from GetInfoByIndex
 		require.Error(t, err)
 		require.Equal(t, uint32(0), actualIndex)
-		require.Contains(t, err.Error(), "failed to get last info for L1")
+		require.ErrorIs(t, err, ErrNotOnL1Info)
+		require.Equal(t, http.StatusNotFound, httpStatusForSyncerError(err))
+		require.Contains(t, err.Error(), "bridgesync L1 has not indexed any block yet")
 
-		// Verify all mocks were called as expected
 		b.l1InfoTree.AssertExpectations(t)
 		b.bridgeL1.AssertExpectations(t)
 	})
+}
+
+// midpointBlock reproduces the binary search probe of getFirstL1InfoTreeIndexForL1Bridge so that a
+// test can assert the exact block the search probes, which pins the search bounds (and therefore
+// that the fallback clamp was inherited by upperLimit).
+func midpointBlock(lowerLimit, upperLimit uint64) uint64 {
+	return lowerLimit + ((upperLimit - lowerLimit) / binarySearchDivider)
+}
+
+// INC-129 regression: the L1 bridge syncer trails the L1 info tree syncer, so GetRootByLER cannot
+// resolve the MER of the newest info tree leaf and the fallback fires. The old fallback fed
+// GetLastRoot's Index -- a position in the L1 bridge exit tree, i.e. a deposit count of ~1.1M --
+// into l1InfoTree.GetInfoByIndex, which expects an L1 info tree index. No such row could exist, so
+// the endpoint answered HTTP 500 "sql: no rows in result set".
+//
+// The fixtures below keep the two index spaces orders of magnitude apart (Index 1_146_035 vs
+// BlockNum 8_412, a factor of ~136) so that a future mix-up cannot accidentally satisfy a mock
+// expectation. On develop this test fails: nothing sets up GetInfoByIndex, so the mock reports an
+// unexpected call.
+func TestGetFirstL1InfoTreeIndexForL1Bridge_KinexysIndexSpaceSkew(t *testing.T) {
+	const (
+		// deposit count the caller asks about, and the deposit count bridgesync L1 has settled
+		depositCount     = uint32(1_146_000)
+		lastRootIndex    = uint32(1_146_035)
+		lastRootBlockNum = uint64(8_412)
+		// the L1 info tree syncer is ahead: its newest leaf sits at a later L1 block
+		tipInfoBlockNum     = uint64(8_501)
+		clampedInfoBlockNum = uint64(8_400)
+		firstInfoBlockNum   = uint64(4_000)
+		expectedIndex       = uint32(74_099)
+	)
+
+	// guard the fixture itself: if the two index spaces ever converge, this test stops proving
+	// anything, because a block number would also be a plausible L1 info tree index
+	require.Greater(t, uint64(lastRootIndex), lastRootBlockNum*100,
+		"the deposit count and the L1 block number must stay orders of magnitude apart")
+
+	tipInfo := &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:     tipInfoBlockNum,
+		MainnetExitRoot: common.HexToHash("0xdead"),
+		L1InfoTreeIndex: 74_390,
+	}
+	clampedInfo := &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:     clampedInfoBlockNum,
+		MainnetExitRoot: common.HexToHash("0xcafe"),
+		L1InfoTreeIndex: 74_301,
+	}
+	firstInfo := &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:     firstInfoBlockNum,
+		MainnetExitRoot: common.HexToHash("0xfeed"),
+		L1InfoTreeIndex: 1,
+	}
+	targetInfo := &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:     6_250,
+		MainnetExitRoot: common.HexToHash("0xbeef"),
+		L1InfoTreeIndex: expectedIndex,
+	}
+
+	setupSkewedMocks := func(b bridgeWithMocks) {
+		// l1infotreesync is ahead of bridgesync L1
+		b.l1InfoTree.EXPECT().GetLastInfo().Return(tipInfo, nil).Once()
+		// ... so bridgesync L1 has never seen the MER of that leaf
+		b.bridgeL1.EXPECT().GetRootByLER(mock.Anything, tipInfo.MainnetExitRoot).
+			Return(nil, db.ErrNotFound).Once()
+		// the fallback fires: the last root bridgesync L1 knows about carries a deposit count in
+		// Index and an L1 block number in BlockNum
+		b.bridgeL1.EXPECT().GetLastRoot(mock.Anything).
+			Return(&tree.Root{Index: lastRootIndex, BlockNum: lastRootBlockNum}, nil).Once()
+		// the clamp must be by L1 block number, never by the deposit count
+		b.l1InfoTree.EXPECT().GetLatestL1InfoLeafUntilBlock(mock.Anything, lastRootBlockNum).
+			Return(clampedInfo, nil).Once()
+
+		b.l1InfoTree.EXPECT().GetFirstInfo().Return(firstInfo, nil).Once()
+		// the probed block proves upperLimit inherited the clamp (clampedInfo, not tipInfo)
+		b.l1InfoTree.EXPECT().
+			GetFirstInfoAfterBlock(midpointBlock(firstInfoBlockNum, clampedInfoBlockNum)).
+			Return(targetInfo, nil).Once()
+		b.bridgeL1.EXPECT().GetRootByLER(mock.Anything, targetInfo.MainnetExitRoot).
+			Return(&tree.Root{Index: depositCount, BlockNum: 6_260}, nil).Once()
+	}
+
+	t.Run("returns a valid l1 info tree index instead of an error", func(t *testing.T) {
+		b := newBridgeWithMocks(t, l2NetworkID)
+		setupSkewedMocks(b)
+
+		actualIndex, err := b.bridge.getFirstL1InfoTreeIndexForL1Bridge(context.Background(), depositCount)
+
+		require.NoError(t, err)
+		require.Equal(t, expectedIndex, actualIndex)
+
+		b.l1InfoTree.AssertExpectations(t)
+		b.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("endpoint answers 200 while the L1 bridge syncer trails", func(t *testing.T) {
+		b := newBridgeWithMocks(t, l2NetworkID)
+		setupSkewedMocks(b)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
+		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+		before := requestMetricCount(t, metrics.GetL1InfoTreeIndexReq, http.StatusOK)
+		w := performRequest(t, b.router,
+			fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response uint32
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, expectedIndex, response)
+		require.Equal(t, before+1, requestMetricCount(t, metrics.GetL1InfoTreeIndexReq, http.StatusOK))
+
+		b.l1InfoTree.AssertExpectations(t)
+		b.bridgeL1.AssertExpectations(t)
+	})
+}
+
+// bridgeRequestsMetric is the name bridgeservice/metrics registers its request counter under. Tests
+// read it back to assert the status code a handler propagated to reportMetrics, which the HTTP
+// response alone cannot prove: ClaimProofHandler used to answer 4xx/5xx while reporting 200.
+const bridgeRequestsMetric = "total_requests"
+
+var registerBridgeMetricsOnce stdsync.Once
+
+// requestMetricCount returns the current value of the bridge request counter for a handler id and
+// status code, registering the collectors on first use.
+func requestMetricCount(t *testing.T, handlerID string, statusCode int) float64 {
+	t.Helper()
+
+	registerBridgeMetricsOnce.Do(func() {
+		aggkitprometheus.Init()
+		metrics.Register()
+	})
+
+	counter, exists := aggkitprometheus.CounterVec(bridgeRequestsMetric)
+	require.True(t, exists, "bridge request counter is not registered")
+
+	return promtestutil.ToFloat64(counter.WithLabelValues(handlerID, strconv.Itoa(statusCode)))
+}
+
+// TestHTTPStatusForSyncerError covers the shared sentinel -> status mapping directly, independently
+// of any HTTP plumbing. Every sentinel is asserted both bare and wrapped, because the handlers only
+// ever see it through a fmt.Errorf("...: %w", err) chain.
+func TestHTTPStatusForSyncerError(t *testing.T) {
+	testCases := []struct {
+		description    string
+		err            error
+		expectedStatus int
+	}{
+		{
+			description:    "sync.ErrInconsistentState is a halted syncer, retryable",
+			err:            aggkitsync.ErrInconsistentState,
+			expectedStatus: http.StatusServiceUnavailable,
+		},
+		{
+			description:    "sync.ErrInconsistentState survives wrapping",
+			err:            fmt.Errorf("clamp by block 8412 failed: %w", aggkitsync.ErrInconsistentState),
+			expectedStatus: http.StatusServiceUnavailable,
+		},
+		{
+			description:    "db.ErrNotFound, the sentinel every sibling l1infotreesync read returns",
+			err:            db.ErrNotFound,
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			description:    "db.ErrNotFound survives wrapping",
+			err:            fmt.Errorf("failed to get last info for L1: %w", db.ErrNotFound),
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			description:    "l1infotreesync.ErrNotFound, the sentinel the new fallback clamp returns",
+			err:            l1infotreesync.ErrNotFound,
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			description: "l1infotreesync.ErrNotFound survives wrapping",
+			err: fmt.Errorf("l1infotreesync has no L1 info tree leaf at or before L1 block 8412: %w",
+				l1infotreesync.ErrNotFound),
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			description:    "l1infotreesync.ErrBlockNotProcessed is the reverse skew",
+			err:            l1infotreesync.ErrBlockNotProcessed,
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			description:    "l1infotreesync.ErrBlockNotProcessed survives wrapping",
+			err:            fmt.Errorf("clamp by block 8412 failed: %w", l1infotreesync.ErrBlockNotProcessed),
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			description:    "l1infotreesync.ErrNoBlock0 means nothing is indexed yet",
+			err:            l1infotreesync.ErrNoBlock0,
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			description:    "l1infotreesync.ErrNoBlock0 survives wrapping",
+			err:            fmt.Errorf("clamp by block 0 failed: %w", l1infotreesync.ErrNoBlock0),
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			description:    "ErrNotOnL1Info means no l1 info tree leaf covers the deposit yet",
+			err:            ErrNotOnL1Info,
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			description:    "ErrNotOnL1Info survives wrapping",
+			err:            fmt.Errorf("bridgesync L1 has not indexed any block yet: %w", ErrNotOnL1Info),
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			description:    "a sentinel-free error is a genuine fault",
+			err:            errors.New(fooErrMsg),
+			expectedStatus: http.StatusInternalServerError,
+		},
+		{
+			description:    "a wrapped sentinel-free error is still a genuine fault",
+			err:            fmt.Errorf("failed to get l1 info tree index: %w", errors.New(barErrMsg)),
+			expectedStatus: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			require.Equal(t, tc.expectedStatus, httpStatusForSyncerError(tc.err))
+		})
+	}
+}
+
+// TestRespondSyncerError covers the status respondSyncerError *returns* (which the handlers assign
+// to statusCode and therefore report to reportMetrics), alongside the body it writes.
+func TestRespondSyncerError(t *testing.T) {
+	const (
+		notFoundMsg = "l1infotreesync has not indexed l1 info tree leaf index 7 yet, retry later"
+		internalMsg = "failed to get l1 info tree leaf for index 7: boom"
+	)
+
+	testCases := []struct {
+		description    string
+		err            error
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			description:    "404 answers with the not-found message",
+			err:            fmt.Errorf("wrapped: %w", db.ErrNotFound),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   notFoundMsg,
+		},
+		{
+			description:    "404 for the sentinel the new fallback clamp returns",
+			err:            fmt.Errorf("wrapped: %w", l1infotreesync.ErrNotFound),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   notFoundMsg,
+		},
+		{
+			description:    "503 answers with the generic inconsistent-state message",
+			err:            fmt.Errorf("wrapped: %w", aggkitsync.ErrInconsistentState),
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedBody:   "a syncer is temporarily inconsistent (reorg being resolved), retry later",
+		},
+		{
+			description:    "500 answers with the internal message",
+			err:            errors.New(fooErrMsg),
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   internalMsg,
+		},
+	}
+
+	b := newBridgeWithMocks(t, l2NetworkID)
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			statusCode := b.bridge.respondSyncerError(c, tc.err, notFoundMsg, internalMsg)
+
+			// the returned value is what the handler assigns to statusCode and reports to metrics
+			require.Equal(t, tc.expectedStatus, statusCode)
+			require.Equal(t, tc.expectedStatus, w.Code)
+
+			var response gin.H
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+			require.Contains(t, response["error"], tc.expectedBody)
+		})
+	}
+}
+
+// TestL1InfoTreeIndexForBridgeHandlerSyncerErrorStatuses asserts the HTTP status /l1-info-tree-index
+// answers for each sentinel a syncer can return, and that the same status reaches reportMetrics.
+func TestL1InfoTreeIndexForBridgeHandlerSyncerErrorStatuses(t *testing.T) {
+	const (
+		depositCount     = uint32(1_146_000)
+		lastRootBlockNum = uint64(8_412)
+	)
+
+	tipInfo := &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:     8_501,
+		MainnetExitRoot: common.HexToHash("0xdead"),
+		L1InfoTreeIndex: 74_390,
+	}
+
+	// injects the sentinel on the very first syncer read of the L1 path
+	viaGetLastInfo := func(err error) func(bridgeWithMocks) {
+		return func(b bridgeWithMocks) {
+			b.l1InfoTree.EXPECT().GetLastInfo().Return(nil, err).Once()
+		}
+	}
+
+	// injects the sentinel on the new fallback clamp, i.e. the exact INC-129 code path
+	viaFallbackClamp := func(err error) func(bridgeWithMocks) {
+		return func(b bridgeWithMocks) {
+			b.l1InfoTree.EXPECT().GetLastInfo().Return(tipInfo, nil).Once()
+			b.bridgeL1.EXPECT().GetRootByLER(mock.Anything, tipInfo.MainnetExitRoot).
+				Return(nil, db.ErrNotFound).Once()
+			b.bridgeL1.EXPECT().GetLastRoot(mock.Anything).
+				Return(&tree.Root{Index: 1_146_035, BlockNum: lastRootBlockNum}, nil).Once()
+			b.l1InfoTree.EXPECT().GetLatestL1InfoLeafUntilBlock(mock.Anything, lastRootBlockNum).
+				Return(nil, err).Once()
+		}
+	}
+
+	testCases := []struct {
+		description    string
+		setupMocks     func(bridgeWithMocks)
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			description:    "sync.ErrInconsistentState is 503",
+			setupMocks:     viaGetLastInfo(aggkitsync.ErrInconsistentState),
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedBody:   "a syncer is temporarily inconsistent (reorg being resolved), retry later",
+		},
+		{
+			description:    "db.ErrNotFound is 404",
+			setupMocks:     viaGetLastInfo(db.ErrNotFound),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "is not available yet, retry later",
+		},
+		{
+			description:    "l1infotreesync.ErrNotFound is 404",
+			setupMocks:     viaGetLastInfo(l1infotreesync.ErrNotFound),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "is not available yet, retry later",
+		},
+		{
+			description:    "l1infotreesync.ErrBlockNotProcessed is 404",
+			setupMocks:     viaGetLastInfo(l1infotreesync.ErrBlockNotProcessed),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "is not available yet, retry later",
+		},
+		{
+			description:    "l1infotreesync.ErrNoBlock0 is 404",
+			setupMocks:     viaGetLastInfo(l1infotreesync.ErrNoBlock0),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "is not available yet, retry later",
+		},
+		{
+			description:    "a generic error is still 500",
+			setupMocks:     viaGetLastInfo(errors.New(fooErrMsg)),
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed to get l1 info tree index for network id 0",
+		},
+		{
+			description:    "the fallback clamp returning l1infotreesync.ErrNotFound is 404, not 500",
+			setupMocks:     viaFallbackClamp(l1infotreesync.ErrNotFound),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "is not available yet, retry later",
+		},
+		{
+			description:    "the fallback clamp returning ErrBlockNotProcessed is 404",
+			setupMocks:     viaFallbackClamp(l1infotreesync.ErrBlockNotProcessed),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "is not available yet, retry later",
+		},
+		{
+			description:    "the fallback clamp returning ErrInconsistentState is 503",
+			setupMocks:     viaFallbackClamp(aggkitsync.ErrInconsistentState),
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedBody:   "a syncer is temporarily inconsistent (reorg being resolved), retry later",
+		},
+		{
+			description: "ErrNotOnL1Info from the block 0 guard is 404",
+			setupMocks: func(b bridgeWithMocks) {
+				b.l1InfoTree.EXPECT().GetLastInfo().Return(tipInfo, nil).Once()
+				b.bridgeL1.EXPECT().GetRootByLER(mock.Anything, tipInfo.MainnetExitRoot).
+					Return(nil, db.ErrNotFound).Once()
+				b.bridgeL1.EXPECT().GetLastRoot(mock.Anything).
+					Return(&tree.Root{Index: 1_146_035, BlockNum: 0}, nil).Once()
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "is not available yet, retry later",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			b := newBridgeWithMocks(t, l2NetworkID)
+			tc.setupMocks(b)
+
+			queryParams := url.Values{}
+			queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
+			queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+			assertHandlerStatus(t, b, metrics.GetL1InfoTreeIndexReq,
+				fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()),
+				tc.expectedStatus, tc.expectedBody)
+		})
+	}
+}
+
+// TestInjectedL1InfoLeafHandlerSyncerErrorStatuses covers both the L1 lookup and the L2 post-lookup
+// of /injected-l1-info-leaf. The L1 path used to fall through to an unconditional 500.
+func TestInjectedL1InfoLeafHandlerSyncerErrorStatuses(t *testing.T) {
+	const leafIndex = uint32(7)
+
+	viaL1Lookup := func(err error) func(bridgeWithMocks) {
+		return func(b bridgeWithMocks) {
+			b.l1InfoTree.EXPECT().GetInfoByIndex(mock.Anything, leafIndex).Return(nil, err).Once()
+		}
+	}
+
+	// l2gersync already has the GER injected on L2 but l1infotreesync has no leaf at that index:
+	// the cross-syncer skew, with l1infotreesync trailing l2gersync
+	viaL2PostLookup := func(err error) func(bridgeWithMocks) {
+		return func(b bridgeWithMocks) {
+			b.injectedGERs.EXPECT().GetFirstGERAfterL1InfoTreeIndex(mock.Anything, leafIndex).
+				Return(l2gersync.GlobalExitRootInfo{
+					GlobalExitRoot:  common.HexToHash("0xger"),
+					L1InfoTreeIndex: leafIndex,
+				}, nil).Once()
+			b.l1InfoTree.EXPECT().GetInfoByIndex(mock.Anything, leafIndex).Return(nil, err).Once()
+		}
+	}
+
+	testCases := []struct {
+		description    string
+		networkID      uint32
+		setupMocks     func(bridgeWithMocks)
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			description:    "L1 path: db.ErrNotFound is 404, not 500",
+			networkID:      mainnetNetworkID,
+			setupMocks:     viaL1Lookup(db.ErrNotFound),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "l1infotreesync has not indexed l1 info tree leaf index 7 yet, retry later",
+		},
+		{
+			description:    "L1 path: l1infotreesync.ErrNotFound is 404",
+			networkID:      mainnetNetworkID,
+			setupMocks:     viaL1Lookup(l1infotreesync.ErrNotFound),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "l1infotreesync has not indexed l1 info tree leaf index 7 yet, retry later",
+		},
+		{
+			description:    "L1 path: ErrBlockNotProcessed is 404",
+			networkID:      mainnetNetworkID,
+			setupMocks:     viaL1Lookup(l1infotreesync.ErrBlockNotProcessed),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "l1infotreesync has not indexed l1 info tree leaf index 7 yet, retry later",
+		},
+		{
+			description:    "L1 path: ErrNoBlock0 is 404",
+			networkID:      mainnetNetworkID,
+			setupMocks:     viaL1Lookup(l1infotreesync.ErrNoBlock0),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "l1infotreesync has not indexed l1 info tree leaf index 7 yet, retry later",
+		},
+		{
+			description:    "L1 path: sync.ErrInconsistentState is 503",
+			networkID:      mainnetNetworkID,
+			setupMocks:     viaL1Lookup(aggkitsync.ErrInconsistentState),
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedBody:   "a syncer is temporarily inconsistent (reorg being resolved), retry later",
+		},
+		{
+			description:    "L1 path: a generic error is still 500",
+			networkID:      mainnetNetworkID,
+			setupMocks:     viaL1Lookup(errors.New(fooErrMsg)),
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed to get L1 info tree leaf (network id=0, leaf index=7)",
+		},
+		{
+			description:    "L2 post-lookup: db.ErrNotFound is 404 and names both syncers",
+			networkID:      l2NetworkID,
+			setupMocks:     viaL2PostLookup(db.ErrNotFound),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "already injected on L2 per l2gersync",
+		},
+		{
+			description:    "L2 post-lookup: l1infotreesync.ErrNotFound is 404",
+			networkID:      l2NetworkID,
+			setupMocks:     viaL2PostLookup(l1infotreesync.ErrNotFound),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "already injected on L2 per l2gersync",
+		},
+		{
+			description:    "L2 post-lookup: ErrBlockNotProcessed is 404",
+			networkID:      l2NetworkID,
+			setupMocks:     viaL2PostLookup(l1infotreesync.ErrBlockNotProcessed),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "already injected on L2 per l2gersync",
+		},
+		{
+			description:    "L2 post-lookup: ErrNoBlock0 is 404",
+			networkID:      l2NetworkID,
+			setupMocks:     viaL2PostLookup(l1infotreesync.ErrNoBlock0),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "already injected on L2 per l2gersync",
+		},
+		{
+			description:    "L2 post-lookup: sync.ErrInconsistentState is 503",
+			networkID:      l2NetworkID,
+			setupMocks:     viaL2PostLookup(aggkitsync.ErrInconsistentState),
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedBody:   "a syncer is temporarily inconsistent (reorg being resolved), retry later",
+		},
+		{
+			description:    "L2 post-lookup: a generic error is still 500",
+			networkID:      l2NetworkID,
+			setupMocks:     viaL2PostLookup(errors.New(fooErrMsg)),
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed to get L1 info tree leaf (leaf index=7)",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			b := newBridgeWithMocks(t, l2NetworkID)
+			tc.setupMocks(b)
+
+			queryParams := url.Values{}
+			queryParams.Set(networkIDParam, fmt.Sprintf("%d", tc.networkID))
+			queryParams.Set(leafIndexParam, fmt.Sprintf("%d", leafIndex))
+
+			assertHandlerStatus(t, b, metrics.GetInjectedInfoAfterIndexReq,
+				fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()),
+				tc.expectedStatus, tc.expectedBody)
+		})
+	}
+}
+
+// TestClaimProofHandlerStatusPropagation walks every status-bearing exit of ClaimProofHandler and
+// asserts that the status reaching reportMetrics matches the HTTP response. Before this change the
+// handler never reassigned statusCode, so every failure was reported to the metrics as a 200.
+func TestClaimProofHandlerStatusPropagation(t *testing.T) {
+	const (
+		leafIndex    = uint32(1)
+		depositCount = uint32(1)
+	)
+
+	infoLeaf := &l1infotreesync.L1InfoTreeLeaf{
+		MainnetExitRoot: common.HexToHash("0x1"),
+		RollupExitRoot:  common.HexToHash("0x2"),
+	}
+
+	infoOK := func(b bridgeWithMocks) {
+		b.l1InfoTree.EXPECT().GetInfoByIndex(mock.Anything, leafIndex).Return(infoLeaf, nil).Once()
+	}
+
+	testCases := []struct {
+		description    string
+		networkID      string
+		leafIndex      string
+		depositCount   string
+		nilBridgeL1    bool
+		nilBridgeL2    bool
+		setupMocks     func(bridgeWithMocks)
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			description:    "unparseable network_id is 400",
+			networkID:      "not-a-number",
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   fmt.Sprintf("invalid %s parameter", networkIDParam),
+		},
+		{
+			description:    "unparseable leaf_index is 400",
+			leafIndex:      "not-a-number",
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   fmt.Sprintf("invalid %s parameter", leafIndexParam),
+		},
+		{
+			description:    "unparseable deposit_count is 400",
+			depositCount:   "not-a-number",
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   fmt.Sprintf("invalid %s parameter", depositCountParam),
+		},
+		{
+			description: "GetInfoByIndex db.ErrNotFound is 404",
+			setupMocks: func(b bridgeWithMocks) {
+				b.l1InfoTree.EXPECT().GetInfoByIndex(mock.Anything, leafIndex).
+					Return(nil, db.ErrNotFound).Once()
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "l1infotreesync has not indexed l1 info tree leaf index 1 yet, retry later",
+		},
+		{
+			description: "GetInfoByIndex l1infotreesync.ErrNotFound is 404",
+			setupMocks: func(b bridgeWithMocks) {
+				b.l1InfoTree.EXPECT().GetInfoByIndex(mock.Anything, leafIndex).
+					Return(nil, l1infotreesync.ErrNotFound).Once()
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "l1infotreesync has not indexed l1 info tree leaf index 1 yet, retry later",
+		},
+		{
+			description: "GetInfoByIndex l1infotreesync.ErrBlockNotProcessed is 404",
+			setupMocks: func(b bridgeWithMocks) {
+				b.l1InfoTree.EXPECT().GetInfoByIndex(mock.Anything, leafIndex).
+					Return(nil, l1infotreesync.ErrBlockNotProcessed).Once()
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "l1infotreesync has not indexed l1 info tree leaf index 1 yet, retry later",
+		},
+		{
+			description: "GetInfoByIndex l1infotreesync.ErrNoBlock0 is 404",
+			setupMocks: func(b bridgeWithMocks) {
+				b.l1InfoTree.EXPECT().GetInfoByIndex(mock.Anything, leafIndex).
+					Return(nil, l1infotreesync.ErrNoBlock0).Once()
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "l1infotreesync has not indexed l1 info tree leaf index 1 yet, retry later",
+		},
+		{
+			description: "GetInfoByIndex sync.ErrInconsistentState is 503",
+			setupMocks: func(b bridgeWithMocks) {
+				b.l1InfoTree.EXPECT().GetInfoByIndex(mock.Anything, leafIndex).
+					Return(nil, aggkitsync.ErrInconsistentState).Once()
+			},
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedBody:   "a syncer is temporarily inconsistent (reorg being resolved), retry later",
+		},
+		{
+			description: "GetInfoByIndex generic error is 500",
+			setupMocks: func(b bridgeWithMocks) {
+				b.l1InfoTree.EXPECT().GetInfoByIndex(mock.Anything, leafIndex).
+					Return(nil, errors.New(fooErrMsg)).Once()
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed to get l1 info tree leaf for index 1",
+		},
+		{
+			description:    "a nil L1 bridge syncer is 503",
+			nilBridgeL1:    true,
+			setupMocks:     infoOK,
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedBody:   "L1 bridge syncer is not available",
+		},
+		{
+			// defensive: tree.Tree.GetProof swallows not-found today, so this is injected through
+			// the mock to prove the branch maps to 404 rather than 500 if that ever changes
+			description: "L1 GetProof db.ErrNotFound is 404",
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.bridgeL1.EXPECT().GetProof(mock.Anything, depositCount, infoLeaf.MainnetExitRoot).
+					Return(tree.Proof{}, db.ErrNotFound).Once()
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "bridgesync L1 has not indexed deposit count 1 yet, retry later",
+		},
+		{
+			description: "L1 GetProof sync.ErrInconsistentState is 503",
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.bridgeL1.EXPECT().GetProof(mock.Anything, depositCount, infoLeaf.MainnetExitRoot).
+					Return(tree.Proof{}, aggkitsync.ErrInconsistentState).Once()
+			},
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedBody:   "a syncer is temporarily inconsistent (reorg being resolved), retry later",
+		},
+		{
+			description: "L1 GetProof generic error is 500",
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.bridgeL1.EXPECT().GetProof(mock.Anything, depositCount, infoLeaf.MainnetExitRoot).
+					Return(tree.Proof{}, errors.New(fooErrMsg)).Once()
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed to get local exit proof",
+		},
+		{
+			description: "GetRollupExitTreeMerkleProof l1infotreesync.ErrNotFound is 404",
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.bridgeL1.EXPECT().GetProof(mock.Anything, depositCount, infoLeaf.MainnetExitRoot).
+					Return(tree.Proof{}, nil).Once()
+				b.l1InfoTree.EXPECT().
+					GetRollupExitTreeMerkleProof(mock.Anything, uint32(mainnetNetworkID), infoLeaf.RollupExitRoot).
+					Return(tree.Proof{}, l1infotreesync.ErrNotFound).Once()
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "l1infotreesync has not indexed the rollup exit tree for network id 0",
+		},
+		{
+			description: "GetRollupExitTreeMerkleProof sync.ErrInconsistentState is 503",
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.bridgeL1.EXPECT().GetProof(mock.Anything, depositCount, infoLeaf.MainnetExitRoot).
+					Return(tree.Proof{}, nil).Once()
+				b.l1InfoTree.EXPECT().
+					GetRollupExitTreeMerkleProof(mock.Anything, uint32(mainnetNetworkID), infoLeaf.RollupExitRoot).
+					Return(tree.Proof{}, aggkitsync.ErrInconsistentState).Once()
+			},
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedBody:   "a syncer is temporarily inconsistent (reorg being resolved), retry later",
+		},
+		{
+			description: "GetRollupExitTreeMerkleProof generic error is 500",
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.bridgeL1.EXPECT().GetProof(mock.Anything, depositCount, infoLeaf.MainnetExitRoot).
+					Return(tree.Proof{}, nil).Once()
+				b.l1InfoTree.EXPECT().
+					GetRollupExitTreeMerkleProof(mock.Anything, uint32(mainnetNetworkID), infoLeaf.RollupExitRoot).
+					Return(tree.Proof{}, errors.New(fooErrMsg)).Once()
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed to get rollup exit proof",
+		},
+		{
+			description: "L1 success is 200",
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.bridgeL1.EXPECT().GetProof(mock.Anything, depositCount, infoLeaf.MainnetExitRoot).
+					Return(tree.Proof{}, nil).Once()
+				b.l1InfoTree.EXPECT().
+					GetRollupExitTreeMerkleProof(mock.Anything, uint32(mainnetNetworkID), infoLeaf.RollupExitRoot).
+					Return(tree.Proof{}, nil).Once()
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   "proof_local_exit_root",
+		},
+		{
+			description: "L2 GetLocalExitRoot db.ErrNotFound is 404",
+			networkID:   fmt.Sprintf("%d", l2NetworkID),
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.l1InfoTree.EXPECT().GetLocalExitRoot(mock.Anything, l2NetworkID, infoLeaf.RollupExitRoot).
+					Return(common.Hash{}, db.ErrNotFound).Once()
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "l1infotreesync has not indexed the local exit root of network id 10",
+		},
+		{
+			description: "L2 GetLocalExitRoot sync.ErrInconsistentState is 503",
+			networkID:   fmt.Sprintf("%d", l2NetworkID),
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.l1InfoTree.EXPECT().GetLocalExitRoot(mock.Anything, l2NetworkID, infoLeaf.RollupExitRoot).
+					Return(common.Hash{}, aggkitsync.ErrInconsistentState).Once()
+			},
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedBody:   "a syncer is temporarily inconsistent (reorg being resolved), retry later",
+		},
+		{
+			description: "L2 GetLocalExitRoot generic error is 500",
+			networkID:   fmt.Sprintf("%d", l2NetworkID),
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.l1InfoTree.EXPECT().GetLocalExitRoot(mock.Anything, l2NetworkID, infoLeaf.RollupExitRoot).
+					Return(common.Hash{}, errors.New(fooErrMsg)).Once()
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed to get local exit root from rollup exit tree",
+		},
+		{
+			description: "a nil L2 bridge syncer is 503",
+			networkID:   fmt.Sprintf("%d", l2NetworkID),
+			nilBridgeL2: true,
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.l1InfoTree.EXPECT().GetLocalExitRoot(mock.Anything, l2NetworkID, infoLeaf.RollupExitRoot).
+					Return(common.HexToHash("0x3"), nil).Once()
+			},
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedBody:   "L2 bridge syncer is not available",
+		},
+		{
+			// defensive, same reasoning as the L1 GetProof 404 case above
+			description: "L2 GetProof db.ErrNotFound is 404",
+			networkID:   fmt.Sprintf("%d", l2NetworkID),
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.l1InfoTree.EXPECT().GetLocalExitRoot(mock.Anything, l2NetworkID, infoLeaf.RollupExitRoot).
+					Return(common.HexToHash("0x3"), nil).Once()
+				b.bridgeL2.EXPECT().GetProof(mock.Anything, depositCount, common.HexToHash("0x3")).
+					Return(tree.Proof{}, db.ErrNotFound).Once()
+			},
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "bridgesync L2 has not indexed deposit count 1 yet, retry later",
+		},
+		{
+			description: "L2 GetProof sync.ErrInconsistentState is 503",
+			networkID:   fmt.Sprintf("%d", l2NetworkID),
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.l1InfoTree.EXPECT().GetLocalExitRoot(mock.Anything, l2NetworkID, infoLeaf.RollupExitRoot).
+					Return(common.HexToHash("0x3"), nil).Once()
+				b.bridgeL2.EXPECT().GetProof(mock.Anything, depositCount, common.HexToHash("0x3")).
+					Return(tree.Proof{}, aggkitsync.ErrInconsistentState).Once()
+			},
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedBody:   "a syncer is temporarily inconsistent (reorg being resolved), retry later",
+		},
+		{
+			description: "L2 GetProof generic error is 500",
+			networkID:   fmt.Sprintf("%d", l2NetworkID),
+			setupMocks: func(b bridgeWithMocks) {
+				infoOK(b)
+				b.l1InfoTree.EXPECT().GetLocalExitRoot(mock.Anything, l2NetworkID, infoLeaf.RollupExitRoot).
+					Return(common.HexToHash("0x3"), nil).Once()
+				b.bridgeL2.EXPECT().GetProof(mock.Anything, depositCount, common.HexToHash("0x3")).
+					Return(tree.Proof{}, errors.New(fooErrMsg)).Once()
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed to get local exit proof",
+		},
+		{
+			description:    "an unsupported network id is 400",
+			networkID:      "999",
+			setupMocks:     infoOK,
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "failed to get claim proof, unsupported network 999",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			b := newBridgeWithMocks(t, l2NetworkID)
+			if tc.nilBridgeL1 {
+				b.bridge.bridgeL1 = nil
+			}
+			if tc.nilBridgeL2 {
+				b.bridge.bridgeL2 = nil
+			}
+			if tc.setupMocks != nil {
+				tc.setupMocks(b)
+			}
+
+			queryParams := url.Values{}
+			queryParams.Set(networkIDParam, valueOrDefault(tc.networkID, strconv.Itoa(mainnetNetworkID)))
+			queryParams.Set(leafIndexParam, valueOrDefault(tc.leafIndex, fmt.Sprintf("%d", leafIndex)))
+			queryParams.Set(depositCountParam, valueOrDefault(tc.depositCount, fmt.Sprintf("%d", depositCount)))
+
+			assertHandlerStatus(t, b, metrics.GetClaimProofReq,
+				fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()),
+				tc.expectedStatus, tc.expectedBody)
+		})
+	}
+}
+
+func valueOrDefault(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+// assertHandlerStatus performs the request and asserts the HTTP status, the response body and -- via
+// the request counter -- the status code the handler propagated to reportMetrics. It also asserts
+// that a failing request did not report a 200, which is the defect this plan fixes.
+func assertHandlerStatus(
+	t *testing.T, b bridgeWithMocks, handlerID, path string, expectedStatus int, expectedBody string,
+) {
+	t.Helper()
+
+	before := requestMetricCount(t, handlerID, expectedStatus)
+	beforeOK := requestMetricCount(t, handlerID, http.StatusOK)
+
+	w := performRequest(t, b.router, path)
+
+	require.Equal(t, expectedStatus, w.Code)
+	require.Contains(t, w.Body.String(), expectedBody)
+	require.Equal(t, before+1, requestMetricCount(t, handlerID, expectedStatus),
+		"the status code reported to reportMetrics must match the HTTP response")
+	if expectedStatus != http.StatusOK {
+		require.Equal(t, beforeOK, requestMetricCount(t, handlerID, http.StatusOK),
+			"a failing request must not be reported to reportMetrics as a 200")
+	}
+
+	b.l1InfoTree.AssertExpectations(t)
+	b.bridgeL1.AssertExpectations(t)
+	b.bridgeL2.AssertExpectations(t)
+	b.injectedGERs.AssertExpectations(t)
 }
 
 func TestGetClaimsByGERHandler(t *testing.T) {

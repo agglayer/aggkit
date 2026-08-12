@@ -64,6 +64,7 @@ type L1InfoTreeSyncer interface {
 	GetLastInfo() (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetFirstInfo() (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetFirstInfoAfterBlock(blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
+	GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetLastVerifiedBatches(rollupID uint32) (*l1infotreesync.VerifyBatches, error)
 	GetFirstVerifiedBatches(rollupID uint32) (*l1infotreesync.VerifyBatches, error)
 	GetFirstVerifiedBatchesAfterBlock(rollupID uint32, blockNum uint64) (*l1infotreesync.VerifyBatches, error)
