@@ -535,7 +535,7 @@ func TestGetL1InfoTreeIndex(t *testing.T) {
 		require.Equal(t, expectedIndex, index)
 	})
 
-	t.Run("handles error", func(t *testing.T) {
+	t.Run("returns ErrNotFound on 404", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte("not found"))
@@ -546,6 +546,40 @@ func TestGetL1InfoTreeIndex(t *testing.T) {
 		index, err := client.GetL1InfoTreeIndex(context.Background(), 1, 999)
 
 		require.Error(t, err)
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Equal(t, uint32(0), index)
+	})
+
+	t.Run("handles server error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("error"))
+		}))
+		defer server.Close()
+
+		client := New(Config{BaseURL: server.URL})
+		index, err := client.GetL1InfoTreeIndex(context.Background(), 1, 10)
+
+		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrNotFound)
+		require.Equal(t, uint32(0), index)
+	})
+
+	// a halted syncer (503) must not be mistaken for "not indexed yet" (404): callers such as
+	// autoclaim retry silently on ErrNotFound, but a 503 signals an operational fault
+	t.Run("surfaces a halted syncer 503 as a plain error, not ErrNotFound", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"a syncer is temporarily inconsistent (reorg being resolved), retry later"}`))
+		}))
+		defer server.Close()
+
+		client := New(Config{BaseURL: server.URL})
+		index, err := client.GetL1InfoTreeIndex(context.Background(), 1, 10)
+
+		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrNotFound)
+		require.Contains(t, err.Error(), "503")
 		require.Equal(t, uint32(0), index)
 	})
 }
@@ -673,6 +707,53 @@ func TestGetClaimProof(t *testing.T) {
 			types.Hash("0x1234567890123456789012345678901234567890123456789012345678901234"),
 			resp.ProofLocalExitRoot[0])
 		require.Equal(t, uint32(10), resp.L1InfoTreeLeaf.L1InfoTreeIndex)
+	})
+
+	t.Run("returns ErrNotFound on 404", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(
+				`{"error":"l1infotreesync has not indexed l1 info tree leaf index 10 yet, retry later"}`))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimProof(context.Background(), 1, 10, 5)
+
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Nil(t, resp)
+	})
+
+	t.Run("handles server error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("error"))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimProof(context.Background(), 1, 10, 5)
+
+		require.Error(t, err)
+		require.Nil(t, resp)
+		require.NotErrorIs(t, err, ErrNotFound)
+	})
+
+	// a halted syncer (503) must not be mistaken for "not indexed yet" (404)
+	t.Run("surfaces a halted syncer 503 as a plain error, not ErrNotFound", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"a syncer is temporarily inconsistent (reorg being resolved), retry later"}`))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimProof(context.Background(), 1, 10, 5)
+
+		require.Error(t, err)
+		require.Nil(t, resp)
+		require.NotErrorIs(t, err, ErrNotFound)
+		require.Contains(t, err.Error(), "503")
 	})
 }
 
