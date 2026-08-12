@@ -228,6 +228,11 @@ func (p *Preparer) firstL1InfoTreeIndexForL1Bridge(
 		if root == nil {
 			return 0, fmt.Errorf("failed to get last root for L1: empty result")
 		}
+		// TODO(#1795): root.Index is a position in the L1 bridge exit tree (a deposit count),
+		// but GetInfoByIndex expects an L1 info tree index. The two counters are unrelated, so
+		// this lookup fails whenever the L1 bridge syncer trails the L1 info tree syncer. The
+		// same bug was fixed in bridgeservice/bridge.go by clamping on root.BlockNum via
+		// GetLatestL1InfoLeafUntilBlock; this call site still needs the equivalent fix.
 		lastInfo, err = p.l1InfoTree.GetInfoByIndex(ctx, root.Index)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get last info for L1: %w", err)
