@@ -28,6 +28,7 @@ type L1BridgeSyncer interface {
 // L1InfoTreeSyncer exposes the L1 info tree methods needed to prepare L1-origin claim proofs.
 type L1InfoTreeSyncer interface {
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
+	GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetRollupExitTreeMerkleProof(ctx context.Context, networkID uint32, root common.Hash) (treetypes.Proof, error)
 	GetLastInfo() (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetFirstInfo() (*l1infotreesync.L1InfoTreeLeaf, error)
@@ -228,14 +229,17 @@ func (p *Preparer) firstL1InfoTreeIndexForL1Bridge(
 		if root == nil {
 			return 0, fmt.Errorf("failed to get last root for L1: empty result")
 		}
-		// TODO(#1795): root.Index is a position in the L1 bridge exit tree (a deposit count),
-		// but GetInfoByIndex expects an L1 info tree index. The two counters are unrelated, so
-		// this lookup fails whenever the L1 bridge syncer trails the L1 info tree syncer. The
-		// same bug was fixed in bridgeservice/bridge.go by clamping on root.BlockNum via
-		// GetLatestL1InfoLeafUntilBlock; this call site still needs the equivalent fix.
-		lastInfo, err = p.l1InfoTree.GetInfoByIndex(ctx, root.Index)
+		if root.BlockNum == 0 {
+			return 0, fmt.Errorf("bridgesync L1 has not indexed any block yet: %w", bridgeservice.ErrNotOnL1Info)
+		}
+		// root.Index is a position in the L1 bridge exit tree (i.e. a deposit count), not an L1 info
+		// tree index, so it must never be fed into an l1infotreesync leaf lookup. Clamp by the last
+		// L1 block indexed by bridgesync L1 instead, which is the same index space for both syncers.
+		lastInfo, err = p.l1InfoTree.GetLatestL1InfoLeafUntilBlock(ctx, root.BlockNum)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get last info for L1: %w", err)
+			return 0, fmt.Errorf(
+				"l1infotreesync has no L1 info tree leaf at or before L1 block %d "+
+					"(last block indexed by bridgesync L1): %w", root.BlockNum, err)
 		}
 		if lastInfo == nil {
 			return 0, fmt.Errorf("failed to get last info for L1: empty result")

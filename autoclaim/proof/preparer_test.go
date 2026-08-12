@@ -564,14 +564,17 @@ func (f *fakeL1BridgeSyncer) GetLastRoot(_ context.Context) (*treetypes.Root, er
 }
 
 type fakeL1InfoTreeSyncer struct {
-	infoByIndex      map[uint32]*l1infotreesync.L1InfoTreeLeaf
-	infoByIndexErr   error
-	rollupProof      treetypes.Proof
-	rollupProofErr   error
-	lastInfo         *l1infotreesync.L1InfoTreeLeaf
-	firstInfo        *l1infotreesync.L1InfoTreeLeaf
-	infoAfterBlock   map[uint64]*l1infotreesync.L1InfoTreeLeaf
-	rollupProofCalls []rollupProofCall
+	infoByIndex          map[uint32]*l1infotreesync.L1InfoTreeLeaf
+	infoByIndexErr       error
+	latestInfoUntilBlock *l1infotreesync.L1InfoTreeLeaf
+	latestInfoUntilErr   error
+	latestInfoUntilCalls []uint64
+	rollupProof          treetypes.Proof
+	rollupProofErr       error
+	lastInfo             *l1infotreesync.L1InfoTreeLeaf
+	firstInfo            *l1infotreesync.L1InfoTreeLeaf
+	infoAfterBlock       map[uint64]*l1infotreesync.L1InfoTreeLeaf
+	rollupProofCalls     []rollupProofCall
 }
 
 func (f *fakeL1InfoTreeSyncer) GetInfoByIndex(
@@ -586,6 +589,17 @@ func (f *fakeL1InfoTreeSyncer) GetInfoByIndex(
 		return nil, errors.New("info not found")
 	}
 	return info, nil
+}
+
+func (f *fakeL1InfoTreeSyncer) GetLatestL1InfoLeafUntilBlock(
+	_ context.Context,
+	blockNum uint64,
+) (*l1infotreesync.L1InfoTreeLeaf, error) {
+	f.latestInfoUntilCalls = append(f.latestInfoUntilCalls, blockNum)
+	if f.latestInfoUntilErr != nil {
+		return nil, f.latestInfoUntilErr
+	}
+	return f.latestInfoUntilBlock, nil
 }
 
 func (f *fakeL1InfoTreeSyncer) GetRollupExitTreeMerkleProof(
@@ -615,6 +629,12 @@ func (f *fakeL1InfoTreeSyncer) GetFirstInfoAfterBlock(blockNum uint64) (*l1infot
 	}
 	return info, nil
 }
+
+// Compile-time assertion: fakeL1InfoTreeSyncer implements L1InfoTreeSyncer.
+var _ L1InfoTreeSyncer = (*fakeL1InfoTreeSyncer)(nil)
+
+// Compile-time assertion: fakeL1BridgeSyncer implements L1BridgeSyncer.
+var _ L1BridgeSyncer = (*fakeL1BridgeSyncer)(nil)
 
 type getProofCall struct {
 	depositCount  uint32
@@ -738,4 +758,128 @@ func TestBinarySearchLowerAndUpperLimitBranches(t *testing.T) {
 	require.NotNil(t, result)
 	require.True(t, result.Ready)
 	require.Equal(t, uint32(50), result.Proof.L1InfoTreeIndex)
+}
+
+// INC-129 regression fixtures shared by the skew tests below. bridgesync L1 trails l1infotreesync,
+// so GetRootByLER cannot resolve the MER of the newest info tree leaf and the fallback fires. The
+// old fallback fed GetLastRoot's Index -- a position in the L1 bridge exit tree, i.e. a deposit
+// count of ~1.1M -- into l1InfoTree.GetInfoByIndex, which expects an L1 info tree index. No such
+// row could exist, so the preparer failed with "sql: no rows in result set".
+const (
+	// the deposit count the caller asks about, and the deposit count bridgesync L1 has settled
+	skewDepositCount     = uint32(1_146_000)
+	skewLastRootIndex    = uint32(1_146_035)
+	skewLastRootBlockNum = uint64(8_412)
+	// the L1 info tree syncer is ahead: its newest leaf sits at a later L1 block
+	skewTipInfoBlockNum     = uint64(8_501)
+	skewClampedInfoBlockNum = uint64(8_400)
+	skewFirstInfoBlockNum   = uint64(4_000)
+	// midpoint of [skewFirstInfoBlockNum, skewClampedInfoBlockNum]; with the unclamped tip block as
+	// the upper limit the binary search would probe 6_250 instead and find no fixture
+	skewProbedBlock   = uint64(6_200)
+	skewExpectedIndex = uint32(74_099)
+)
+
+// newSkewedFakes builds a bridgesync-L1-trails-l1infotreesync pair of fakes. lastRootBlockNum is
+// the BlockNum carried by the root returned from the GetLastRoot fallback.
+func newSkewedFakes(lastRootBlockNum uint64) (*fakeL1BridgeSyncer, *fakeL1InfoTreeSyncer) {
+	tipInfo := testL1InfoTreeLeaf(skewTipInfoBlockNum, 74_390, "0xdead")
+	clampedInfo := testL1InfoTreeLeaf(skewClampedInfoBlockNum, 74_301, "0xcafe")
+	firstInfo := testL1InfoTreeLeaf(skewFirstInfoBlockNum, 1, "0xfeed")
+	targetInfo := testL1InfoTreeLeaf(6_250, skewExpectedIndex, "0xbeef")
+
+	bridge := &fakeL1BridgeSyncer{
+		// tipInfo.MainnetExitRoot is deliberately absent: bridgesync L1 has never seen that MER,
+		// which is what pushes the code into the GetLastRoot fallback.
+		rootsByLER: map[common.Hash]*treetypes.Root{
+			targetInfo.MainnetExitRoot: {Index: skewDepositCount, BlockNum: 6_260},
+		},
+		lastRoot: &treetypes.Root{Index: skewLastRootIndex, BlockNum: lastRootBlockNum},
+		proof:    testProof("0xaa"),
+	}
+	l1InfoTree := &fakeL1InfoTreeSyncer{
+		lastInfo:  tipInfo,
+		firstInfo: firstInfo,
+		// the clamp must be by L1 block number, never by the deposit count
+		latestInfoUntilBlock: clampedInfo,
+		infoAfterBlock: map[uint64]*l1infotreesync.L1InfoTreeLeaf{
+			skewProbedBlock: targetInfo,
+		},
+		infoByIndex: map[uint32]*l1infotreesync.L1InfoTreeLeaf{
+			skewExpectedIndex: targetInfo,
+		},
+		rollupProof: testProof("0xbb"),
+	}
+	return bridge, l1InfoTree
+}
+
+func TestFirstL1InfoTreeIndexForL1BridgeIndexSpaceSkew(t *testing.T) {
+	// guard the fixture itself: if the two index spaces ever converge, this test stops proving
+	// anything, because a block number would also be a plausible L1 info tree index
+	require.Greater(t, uint64(skewLastRootIndex), skewLastRootBlockNum*100,
+		"the deposit count and the L1 block number must stay orders of magnitude apart")
+
+	ctx := context.Background()
+
+	t.Run("returns a valid l1 info tree index instead of an error", func(t *testing.T) {
+		bridge, l1InfoTree := newSkewedFakes(skewLastRootBlockNum)
+		preparer := NewPreparer(bridge, l1InfoTree, nil)
+
+		index, err := preparer.firstL1InfoTreeIndexForL1Bridge(ctx, skewDepositCount, 20)
+		require.NoError(t, err)
+		require.Equal(t, skewExpectedIndex, index)
+		// the fallback clamped on the bridge syncer's block, not on its deposit count
+		require.Equal(t, []uint64{skewLastRootBlockNum}, l1InfoTree.latestInfoUntilCalls)
+	})
+
+	t.Run("prepares a proof while the L1 bridge syncer trails", func(t *testing.T) {
+		bridge, l1InfoTree := newSkewedFakes(skewLastRootBlockNum)
+		preparer := NewPreparer(bridge, l1InfoTree, nil)
+
+		result, err := preparer.Prepare(ctx, testRequest(skewDepositCount))
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.True(t, result.Ready)
+		require.Equal(t, skewExpectedIndex, result.Proof.L1InfoTreeIndex)
+		require.Equal(t, []uint64{skewLastRootBlockNum}, l1InfoTree.latestInfoUntilCalls)
+	})
+}
+
+func TestFirstL1InfoTreeIndexForL1BridgeLastRootBlockZero(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("reports not-on-l1-info instead of clamping by block 0", func(t *testing.T) {
+		bridge, l1InfoTree := newSkewedFakes(0)
+		preparer := NewPreparer(bridge, l1InfoTree, nil)
+
+		_, err := preparer.firstL1InfoTreeIndexForL1Bridge(ctx, skewDepositCount, 20)
+		require.ErrorIs(t, err, bridgeservice.ErrNotOnL1Info)
+		require.ErrorContains(t, err, "bridgesync L1 has not indexed any block yet")
+		require.Empty(t, l1InfoTree.latestInfoUntilCalls)
+	})
+
+	t.Run("keeps the request pending", func(t *testing.T) {
+		bridge, l1InfoTree := newSkewedFakes(0)
+		preparer := NewPreparer(bridge, l1InfoTree, nil)
+
+		result, err := preparer.Prepare(ctx, testRequest(skewDepositCount))
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.False(t, result.Ready)
+		require.Nil(t, result.Proof)
+		require.Empty(t, l1InfoTree.latestInfoUntilCalls)
+	})
+}
+
+func TestFirstL1InfoTreeIndexForL1BridgeClampLookupError(t *testing.T) {
+	ctx := context.Background()
+	clampErr := errors.New("sql: no rows in result set")
+
+	bridge, l1InfoTree := newSkewedFakes(skewLastRootBlockNum)
+	l1InfoTree.latestInfoUntilErr = clampErr
+	preparer := NewPreparer(bridge, l1InfoTree, nil)
+
+	_, err := preparer.firstL1InfoTreeIndexForL1Bridge(ctx, skewDepositCount, 20)
+	require.ErrorIs(t, err, clampErr)
+	require.ErrorContains(t, err, "l1infotreesync has no L1 info tree leaf at or before L1 block 8412")
 }
