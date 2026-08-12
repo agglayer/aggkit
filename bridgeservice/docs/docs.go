@@ -415,8 +415,20 @@ const docTemplate = `{
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
+                    "404": {
+                        "description": "Not Found - not indexed by the syncers yet, retry later",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable - syncer not available or resolving a reorg",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -599,13 +611,19 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "Not Found - global exit root not injected yet",
+                        "description": "Not Found - global exit root not injected or leaf not indexed yet",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable - a syncer is resolving a reorg, retry later",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -649,6 +667,72 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found - not indexed by the syncers yet, retry later",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable - a syncer is resolving a reorg, retry later",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/l1-info-tree-leaf-by-ger": {
+            "get": {
+                "description": "Returns the L1 info tree leaf (index, exit roots, block info) for the given\nGlobal Exit Root. The L1 info tree only exists on L1, so network_id must be 0.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "l1-info-tree-leaf"
+                ],
+                "summary": "Get L1 info tree leaf by Global Exit Root",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Network ID (must be 0, mainnet)",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Global Exit Root",
+                        "name": "global_exit_root",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.L1InfoTreeLeafResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found - GER not part of the L1 info tree (yet)",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -789,6 +873,66 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/root-by-ler": {
+            "get": {
+                "description": "Resolves ler to the position (deposit-count index) it had in network_id's local\nexit tree when it was computed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bridges"
+                ],
+                "summary": "Get the deposit-count index of a local exit root",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Network ID (0 for L1, L2 network ID otherwise)",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Local exit root (0x-prefixed 32-byte hex)",
+                        "name": "ler",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.RootByLERResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found - ler not synced yet",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -1586,6 +1730,27 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/types.RemoveGEREventResponse"
                     }
+                }
+            }
+        },
+        "types.RootByLERResponse": {
+            "description": "The deposit-count position of a local exit root in its network's local exit tree",
+            "type": "object",
+            "properties": {
+                "block_num": {
+                    "description": "BlockNum is the block in which the leaf that produced this root was added",
+                    "type": "integer",
+                    "example": 123456
+                },
+                "block_position": {
+                    "description": "BlockPosition orders same-block roots (multiple deposits in one block)",
+                    "type": "integer",
+                    "example": 0
+                },
+                "index": {
+                    "description": "Index is the deposit count at which this root became the local exit root (0-based)",
+                    "type": "integer",
+                    "example": 42
                 }
             }
         },
