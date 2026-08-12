@@ -789,7 +789,9 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	b.logger.Debugf("L1InfoTreeIndexForBridge request received (network id=%s, deposit count=%s)",
 		c.Query(networkIDParam), c.Query(depositCountParam))
 
-	statusCode := http.StatusOK
+	// Pessimistic default: an exit path that forgets to set statusCode reports a fault to
+	// reportMetrics rather than silently reporting success. The success path sets it explicitly.
+	statusCode := http.StatusInternalServerError
 	startTime := time.Now()
 	defer func() {
 		reportMetrics(metrics.GetL1InfoTreeIndexReq, statusCode, startTime)
@@ -836,6 +838,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 		return
 	}
 
+	statusCode = http.StatusOK
 	c.JSON(statusCode, l1InfoTreeIndex)
 }
 
@@ -856,7 +859,9 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	b.logger.Debugf("InjectedInfoAfterIndex request received (network id=%s, leaf index=%s)",
 		c.Query(networkIDParam), c.Query(leafIndexParam))
 
-	statusCode := http.StatusOK
+	// Pessimistic default: an exit path that forgets to set statusCode reports a fault to
+	// reportMetrics rather than silently reporting success. The success path sets it explicitly.
+	statusCode := http.StatusInternalServerError
 	startTime := time.Now()
 	defer func() {
 		reportMetrics(metrics.GetInjectedInfoAfterIndexReq, statusCode, startTime)
@@ -929,6 +934,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 		return
 	}
 
+	statusCode = http.StatusOK
 	c.JSON(statusCode, NewL1InfoTreeLeafResponse(l1InfoLeaf))
 }
 
@@ -1019,7 +1025,10 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	b.logger.Debugf("ClaimProof request received (network id=%s, l1 info tree index=%s, deposit count=%s)",
 		c.Query(networkIDParam), c.Query(leafIndexParam), c.Query(depositCountParam))
 
-	statusCode := http.StatusOK
+	// Pessimistic default: an exit path that forgets to set statusCode reports a fault to
+	// reportMetrics rather than silently reporting success. The success path sets it explicitly.
+	// This handler previously reported 200 for every one of its failure paths.
+	statusCode := http.StatusInternalServerError
 	startTime := time.Now()
 	defer func() {
 		reportMetrics(metrics.GetClaimProofReq, statusCode, startTime)
@@ -1120,6 +1129,7 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 
 	infoResponse := NewL1InfoTreeLeafResponse(info)
 
+	statusCode = http.StatusOK
 	c.JSON(statusCode, types.ClaimProof{
 		ProofLocalExitRoot:  types.ConvertToProofResponse(proofLocalExitRoot),
 		ProofRollupExitRoot: types.ConvertToProofResponse(proofRollupExitRoot),
