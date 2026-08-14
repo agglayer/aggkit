@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/cors"
 )
 
 const httpServerShutdownTimeout = 5 * time.Second
@@ -60,8 +61,13 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 		return fmt.Errorf("httpserver: failed to listen on %s: %w", s.cfg.Address(), err)
 	}
 
+	var handler http.Handler = s.engine
+	if s.cfg.CORS.Enabled {
+		handler = corsHandler(s.cfg.CORS).Handler(handler)
+	}
+
 	srv := &http.Server{
-		Handler:      s.engine,
+		Handler:      handler,
 		ReadTimeout:  s.cfg.ReadTimeout.Duration,
 		WriteTimeout: s.cfg.WriteTimeout.Duration,
 	}
@@ -82,6 +88,19 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+// corsHandler builds a CORS handler from cfg. AllowCredentials with a
+// wildcard origin is invalid per the CORS spec, so rs/cors reflects the
+// request's Origin back instead of sending "*" whenever it's set.
+func corsHandler(cfg CORSConfig) *cors.Cors {
+	return cors.New(cors.Options{
+		AllowedOrigins:   cfg.AllowedOrigins,
+		AllowedMethods:   cfg.AllowedMethods,
+		AllowedHeaders:   cfg.AllowedHeaders,
+		AllowCredentials: cfg.AllowCredentials,
+		MaxAge:           int(cfg.MaxAge.Duration.Seconds()),
+	})
 }
 
 // HTTPLoggerHandler returns a Gin middleware that logs HTTP requests using logger at DEBUG level.

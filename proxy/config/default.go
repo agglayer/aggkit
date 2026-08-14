@@ -29,6 +29,16 @@ ReadTimeout = "5m"
 WriteTimeout = "5m"
 MaxRequestsPerIPAndSecond = 0
 
+[REST.CORS]
+# Disabled by default: enable it if a browser-based frontend on a different
+# origin needs to call this REST server directly.
+Enabled = false
+AllowedOrigins = []
+AllowedMethods = ["GET", "POST", "OPTIONS"]
+AllowedHeaders = ["Content-Type", "Authorization"]
+AllowCredentials = false
+MaxAge = "12h"
+
 [Tracker]
 # RetentionPeriod: how long a terminal bridge (finished, or failed to ever resolve) stays
 # queryable before the tracker forgets it; a later request for the same tx re-registers it and

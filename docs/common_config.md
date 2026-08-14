@@ -146,11 +146,38 @@ When rate limiting is enabled, if the number of requests exceeds `NumRequests` w
 | ReadTimeout | types.Duration | HTTP server read timeout |
 | WriteTimeout | types.Duration | HTTP server write timeout |
 | MaxRequestsPerIPAndSecond | float64 | Unused; kept for config compatibility. See below |
+| CORS | CORSConfig | Cross-Origin Resource Sharing settings for this REST service. See below |
 
 `MaxRequestsPerIPAndSecond` is not enforced: aggkit does not rate-limit requests in-process. Its default is `0`
 (unlimited). If you need per-IP request throttling, apply it at the fronting reverse proxy / API gateway / ingress —
 that is also where it is most effective, since a service sitting behind a proxy typically sees every client as the
 proxy's single IP, making in-process per-IP limiting ineffective anyway.
+
+### CORSConfig
+
+`CORSConfig` configures Cross-Origin Resource Sharing headers, so the REST service can be called from a
+browser-based client hosted on a different origin. Disabled by default, which preserves the current behavior (no
+CORS headers, so browsers block cross-origin requests).
+
+| Field Name | Type | Description |
+| --- | --- | --- |
+| Enabled | bool | Turns on CORS header handling |
+| AllowedOrigins | []string | Origins allowed to make cross-origin requests. `"*"` allows any origin |
+| AllowedMethods | []string | HTTP methods allowed for cross-origin requests |
+| AllowedHeaders | []string | Request headers allowed for cross-origin requests |
+| AllowCredentials | bool | Allows cookies / HTTP auth on cross-origin requests. When true, the request's `Origin` is reflected back instead of `*`, since the CORS spec forbids combining credentials with a wildcard origin |
+| MaxAge | types.Duration | How long browsers may cache a preflight (`OPTIONS`) response. `0` (default) omits the header |
+
+Example, enabling CORS for the proxy's `[REST]` section for a frontend hosted at `https://example.com`:
+```
+[REST.CORS]
+Enabled = true
+AllowedOrigins = ["https://example.com"]
+AllowedMethods = ["GET", "POST", "OPTIONS"]
+AllowedHeaders = ["Content-Type", "Authorization"]
+AllowCredentials = false
+MaxAge = "12h"
+```
 
 Note that the `[RPC]` section is **not** a `RESTConfig`: it is the JSON-RPC server config from
 `github.com/0xPolygon/cdk-rpc`, whose `MaxRequestsPerIPAndSecond` **is** enforced (via tollbooth). There, `0` does
