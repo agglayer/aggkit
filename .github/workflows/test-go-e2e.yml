@@ -75,9 +75,7 @@ jobs:
   test-go-e2e:
     name: Run Go E2E Tests (${{ matrix.env }} / ${{ matrix.group }})
     runs-on: ubuntu-latest
-    # The anvil-2chains TestMain-only run measured 35.58s median locally (A3).
-    # 15 minutes leaves real CI setup/image-load headroom without inheriting 60m.
-    timeout-minutes: 15
+    timeout-minutes: 60
     needs: [build-docker-image, pull-docker-images]
     strategy:
       fail-fast: false
@@ -106,11 +104,6 @@ jobs:
           - env: op-pp-2chains
             group: default
             run: TestBridgeL2ToL2|TestAutoClaimL2ToL2AllowAll|TestBridgeTrackerL1ToL2
-          # TestMain-only smoke check: the intentionally non-matching regex runs
-          # environment startup and the post-test bridge health-check without tests.
-          - env: anvil-2chains
-            group: default
-            run: ^TestZZZNoSuchTest$
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -154,6 +147,59 @@ jobs:
           # Include matrix.group: multiple matrix entries now share the same env (op-pp), and
           # actions/upload-artifact@v4 requires unique artifact names within a workflow run.
           name: e2e-test-results-${{ matrix.env }}-${{ matrix.group }}
+          path: |
+            test/e2e/*.log
+            test/e2e/envs/**/logs/
+          if-no-files-found: ignore
+
+  test-go-e2e-anvil-2chains:
+    name: Run Go E2E Tests (anvil-2chains / default)
+    runs-on: ubuntu-latest
+    # The TestMain-only run measured 35.58s median locally (A3); 15 minutes
+    # provides CI setup and image-load headroom without constraining the shared matrix.
+    timeout-minutes: 15
+    needs: [build-docker-image, pull-docker-images]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.7
+
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+
+      - name: Download aggkit Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: aggkit-docker-image
+          path: /tmp
+
+      - name: Download pulled Docker images
+        uses: actions/download-artifact@v4
+        with:
+          name: pulled-docker-images
+          path: /tmp
+
+      - name: Load Docker images
+        run: |
+          docker load -i /tmp/aggkit-image.tar
+          docker load -i /tmp/docker-images.tar
+
+      - name: Run E2E tests
+        env:
+          AGGKIT_E2E_ENV: anvil-2chains
+        run: make test-e2e TEST_RUN="^TestZZZNoSuchTest$"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results-anvil-2chains-default
           path: |
             test/e2e/*.log
             test/e2e/envs/**/logs/
