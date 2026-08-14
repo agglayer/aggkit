@@ -66,9 +66,11 @@ func (e *Env) checkConfiguration() error {
 		return fmt.Errorf("L1 Transactor is nil")
 	}
 
-	// Expected L2A chain ID depends on the env: op-pp uses 2151908, op-pp-2chains uses 20201.
+	// Expected L2A chain ID depends on the env: op-pp uses 2151908, op-pp-2chains and
+	// anvil-2chains both use 20201. Not derived from summary.json: this check exists to catch a
+	// stale/wrong summary, so comparing a parsed value against itself would be circular.
 	wantL2AChainID := "2151908"
-	if e.envName == EnvOpPP2Chains {
+	if e.envName == EnvOpPP2Chains || e.envName == EnvAnvil2Chains {
 		wantL2AChainID = "20201"
 	}
 	if err := checkL2Configured(e.L2, wantL2AChainID, "L2"); err != nil {

@@ -257,24 +257,45 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 		}
 		time.Sleep(time.Second)
 	}
-	log.Debugf("sending claim transaction on L2")
-	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
-		l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
-		bridge.GlobalIndex, mainnetExitRoot, rollupExitRoot,
-		bridge.OriginNetwork, originTokenAddress, bridge.DestinationNetwork,
-		destinationAddress, bridgeAmount, metadata,
-	)
+	// Some envs (e.g. anvil-2chains) run AutoClaim's L1ToL2BridgeDetector on this destination
+	// network, which may claim the deposit before this helper gets to it -- a real race, not a
+	// bug, since AutoClaim polls independently of this test. Check IsClaimed first (same check
+	// autoclaim_test.go already uses) so a legitimately-already-claimed deposit is treated as
+	// success instead of failing on the bridge contract's AlreadyClaimed revert.
+	alreadyClaimed, err := env.L2.Contracts.L2Bridge.IsClaimed(callOpts, depositCount, bridge.OriginNetwork)
 	if err != nil {
-		return fmt.Errorf("failed to send claim transaction: %w", err)
+		return fmt.Errorf("failed to check IsClaimed: %w", err)
 	}
-	log.Debugf("L2 claim tx submitted, waiting for mining: tx=%s", claimTx.Hash().Hex())
-	claimReceipt, err := bind.WaitMined(ctx, env.Clients.L2, claimTx)
-	if err != nil {
-		return fmt.Errorf("failed to wait for claim tx: %w", err)
-	}
-	log.Debugf("L2 claim tx mined: tx=%s block=%d", claimTx.Hash().Hex(), claimReceipt.BlockNumber.Uint64())
-	if claimReceipt.Status != ethtypes.ReceiptStatusSuccessful {
-		return errors.New("claim transaction failed")
+	if alreadyClaimed {
+		log.Debugf("deposit already claimed (likely by AutoClaim): deposit_count=%d", depositCount)
+	} else {
+		log.Debugf("sending claim transaction on L2")
+		claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
+			l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
+			bridge.GlobalIndex, mainnetExitRoot, rollupExitRoot,
+			bridge.OriginNetwork, originTokenAddress, bridge.DestinationNetwork,
+			destinationAddress, bridgeAmount, metadata,
+		)
+		if err != nil {
+			// AutoClaim may have won the race between our IsClaimed check above and this send
+			// (its own poll loop runs concurrently and independently). Re-check before failing.
+			if reClaimed, reErr := env.L2.Contracts.L2Bridge.IsClaimed(
+				callOpts, depositCount, bridge.OriginNetwork); reErr == nil && reClaimed {
+				log.Debugf("claim transaction lost the race to AutoClaim: deposit_count=%d", depositCount)
+			} else {
+				return fmt.Errorf("failed to send claim transaction: %w", err)
+			}
+		} else {
+			log.Debugf("L2 claim tx submitted, waiting for mining: tx=%s", claimTx.Hash().Hex())
+			claimReceipt, err := bind.WaitMined(ctx, env.Clients.L2, claimTx)
+			if err != nil {
+				return fmt.Errorf("failed to wait for claim tx: %w", err)
+			}
+			log.Debugf("L2 claim tx mined: tx=%s block=%d", claimTx.Hash().Hex(), claimReceipt.BlockNumber.Uint64())
+			if claimReceipt.Status != ethtypes.ReceiptStatusSuccessful {
+				return errors.New("claim transaction failed")
+			}
+		}
 	}
 	finalL2Balance, err := env.Clients.L2.BalanceAt(ctx, destinationAddress, nil)
 	if err != nil {

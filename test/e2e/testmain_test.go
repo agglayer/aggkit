@@ -15,23 +15,25 @@ import (
 
 var testEnv *envs.Env
 
-// containerLogServices lists the docker compose services whose logs are dumped to
-// test/e2e/<service>.log when a test run fails, so the CI artifact-upload step (which globs
-// test/e2e/*.log) actually captures something to debug the failure with.
-var containerLogServices = []string{
-	"geth", "beacon", "validator", "op-geth-001", "op-node-001", "aggkit-001", "agglayer",
-}
-
-// dumpContainerLogs writes "docker compose logs" output for each service in containerLogServices to
-// test/e2e/<service>.log, relative to the test binary's working directory (test/e2e when run via
-// `go test ./test/e2e/...`, matching the CI artifact glob). Services absent from the loaded env
-// (e.g. an env without op-node-001) simply error and are skipped; failures here are logged, not
-// fatal, since this only runs to aid debugging an already-failed run.
+// dumpContainerLogs writes "docker compose logs" output for every service in the loaded env's
+// docker-compose.yml (discovered via Env.ComposeServices, i.e. "docker compose config --services")
+// to test/e2e/<service>.log, relative to the test binary's working directory (test/e2e when run
+// via `go test ./test/e2e/...`, matching the CI artifact glob). This covers every service in any
+// env, present or future, with zero per-env code -- summary.json's schema has no key for services
+// like beacon/validator/op-node, so a hardcoded list (or a summary.json-derived one) would always
+// under-cover. Failures here are logged, not fatal, since this only runs to aid debugging an
+// already-failed run.
 func dumpContainerLogs(env *envs.Env) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	for _, service := range containerLogServices {
+	services, err := env.ComposeServices(ctx)
+	if err != nil {
+		log.Infof("[TEARDOWN] failed to list compose services: %v", err)
+		return
+	}
+
+	for _, service := range services {
 		out, err := env.DockerComposeLogs(ctx, "--no-log-prefix", service)
 		if err != nil {
 			log.Infof("[TEARDOWN] failed to fetch logs for service %q: %v", service, err)

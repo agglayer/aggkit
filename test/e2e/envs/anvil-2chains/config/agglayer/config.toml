@@ -1,0 +1,130 @@
+debug-mode = true
+
+
+# Only supported by fork 12+
+mock-verifier = true
+
+
+[full-node-rpcs]
+# OP Stack RPC (also used by the anvil L2, whose op_el_rpc_url is aliased to it)
+1 = "http://l2-anvil-001:8545"
+2 = "http://l2-anvil-002:8545"
+
+[proof-signers]
+1 = "0x5b06837A43bdC3dD9F114558DAf4B26ed49842Ed"
+2 = "0x5b06837A43bdC3dD9F114558DAf4B26ed49842Ed"
+[prover.mock-prover]
+proving-timeout = "5m"
+proving-request-timeout = "300s"
+
+[rpc]
+grpc-port = 4443
+readrpc-port = 4444
+admin-port = 4446
+host = "0.0.0.0"
+request-timeout = 180
+# size is define in bytes e.g. 100 * 1024 * 1024
+# same for `max_response_body_size`
+# default value is equal to 10MB
+max-request-body-size = 104857600
+
+[grpc]
+# size is define in bytes e.g. 100 * 1024 * 1024
+# same for `max-encoding-message-size`
+# default value is equal to 4MB
+max-decoding-message-size = 104857600
+
+# [outbound.rpc.settle] used to live here. It has had no effect on settlement
+# since agglayer PR #1393 introduced the agglayer-settlement-service --
+# OutboundConfig is explicitly documented upstream as deprecated, and at
+# v0.6.0-rc.7+ the binary itself warns on startup if this section is present
+# (OutboundConfig::ignored_config_warning()). The real settlement-tx knobs
+# live under [settlement.pessimistic-proof-tx-config] below.
+[settlement.pessimistic-proof-tx-config]
+# Number of L1 block confirmations required before a settlement tx's receipt
+# is considered resolved. Upstream default is 12 (default_confirmations(),
+# crates/agglayer-config/src/settlement_service.rs); this devnet had
+# effectively been stuck at that default the whole time the dead
+# [outbound.rpc.settle] confirmations=1 above was silently ignored. Lower
+# values settle certificates faster at the cost of reorg safety -- fine on a
+# throwaway anvil L1, not a production recommendation.
+confirmations = 1
+# Finality level required for a settlement tx to be considered settled.
+# Upstream enum is LatestBlock/SafeBlock/FinalizedBlock (SafeBlock is the
+# upstream default); the latest->safe->finalized lag on an anvil L1 is
+# l1_anvil_block_time * l1_anvil_slots_in_epoch seconds per step. The
+# agglayer_settlement_policy input arg uses the lowercase
+# latest/safe/finalized tokens; they're translated to the upstream wire
+# enum names here since agglayer's SettlementPolicy has no
+# #[serde(rename_all = "kebab-case")] (confirmed against
+# crates/agglayer-config/tests/fixtures/settlement/*.toml at v0.6.0-rc.8,
+# which all use the PascalCase variant names verbatim).
+settlement-policy = "SafeBlock"
+# retry-on-transient-failure / retry-on-not-included-on-l1 and
+# gas-limit-multiplier-factor are intentionally left unset here (upstream
+# defaults apply): the old [outbound.rpc.settle] max-retries/retry-interval
+# had no 1:1 mapping onto the new schema's two separate retry-policy tables,
+# and settlement-timeout = 1200 has no equivalent anywhere in the new schema
+# at all (grepped SettlementTransactionConfig/SettlementServiceConfig at
+# v0.6.0-rc.8 -- no timeout field exists upstream; that intent has no home).
+
+[log]
+# level = "info"
+level = "debug" # we want debug visibility for now
+outputs = ["stderr"]
+format = "pretty"
+
+[auth.local]
+private-keys = [
+    # First entry = pp-settlement signer (certificate/PP settlement).
+    { path = "/etc/agglayer/aggregator.keystore", password = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m" },
+]
+
+[l1]
+chain-id = 271828
+node-url = "http://anvil-001:8545"
+ws-node-url = "ws://anvil-001:8545"
+rollup-manager-contract = "0x6c6c009cC348976dB4A908c92B24433d4F6edA43"
+polygon-zkevm-global-exit-root-v2-contract = "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674"
+rpc-timeout = 45
+
+[l2]
+rpc-timeout = 45
+
+[telemetry]
+prometheus-addr = "0.0.0.0:9092"
+
+# https://github.com/orgs/agglayer/discussions/213
+
+[rate-limiting]
+send-tx = "unlimited"
+# [rate-limiting.send-tx]
+# max-per-interval = 1
+# time-interval = "15m"
+
+[rate-limiting.network]
+
+# Bookkeeping-only from v0.6.0-rc.2 onward: per-epoch certificate rate
+# limiting was deleted in commit 41d7a17e (PR #1615). epoch-duration still
+# parses and drives epoch bookkeeping/storage indexing, but it moves neither
+# settlement nor submission timing under trigger_cert_mode: ASAP (this
+# package's default) -- do not treat it as a latency knob.
+[epoch.block-clock]
+epoch-duration = 15
+genesis-block = 60
+
+[shutdown]
+runtime-timeout = 5
+
+[certificate-orchestrator]
+input-backpressure-buffer-size = 1000
+
+[certificate-orchestrator.prover.sp1-local]
+
+[storage]
+db-path = "/etc/agglayer/storage"
+
+[storage.backup]
+path = "/etc/agglayer/backups"
+state-max-backup-count = 100
+pending-max-backup-count = 100

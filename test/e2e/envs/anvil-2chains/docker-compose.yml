@@ -1,0 +1,199 @@
+# anvil-2chains E2E environment
+#
+# Source: a kurtosis-cdk anvil devnet snapshot (flavor "anvil-aggkit", kurtosis-cdk commit
+# fc160450b55e64332436f11c091c61130c64030f) -- see README.md in this directory for full
+# provenance (image tags/digests, params files, regenerate procedure).
+#
+# Topology: one anvil L1 (anvil-001) + two independent anvil L2 sovereign chains
+# (l2-anvil-001 / l2-anvil-002), each with its own aggkit instance (merged
+# aggsender+aggoracle+bridge+autoclaim, no separate "-bridge" sidecar), settling through a
+# single agglayer in PessimisticProof mode, fronted by a shared aggkit-proxy.
+#
+# Images: anvil-001/l2-anvil-001/l2-anvil-002/agglayer are the digest-pinned kurtosis-cdk
+# snapshot images (state + captured devnet config baked in, but agglayer's config is
+# overridden below via bind mount so it can be tuned locally). aggkit-001/aggkit-002/
+# aggkit-proxy-001 run this repo's own locally built image (`make build-docker`), NOT the
+# snapshot's baked aggkit image, so the binary under test is always the one checked out here.
+#
+# Healthcheck note (do not simplify away): agglayer's healthcheck below is a genuine
+# TCP-connect probe against its own gRPC port (bash's /dev/tcp builtin -- no curl/wget/nc
+# needed, confirmed present in the bare agglayer image). aggkit-00X and aggkit-proxy-001 gate
+# on `condition: service_healthy` against agglayer using that probe, and themselves carry NO
+# healthcheck (their image is genuinely distroless -- no shell at all). A merely
+# "process started" agglayer dependency (`condition: service_started`) loses a real race
+# against aggkit's own claim-syncer autostart and permanently wedges aggsender at
+# "starting_claim_syncer_stage" ("cannot set next required block to 0, it must be >= the
+# first block in DB") -- reproduced 3/3 in this plan's own K5/K5c evidence. Do not revert to
+# aggkit's own op-pp-2chains precedent here (`test -f /proc/1/cmdline`): that check passes
+# within milliseconds, before agglayer's gRPC listener actually binds, and does not close the
+# race.
+
+services:
+  anvil-001:
+    image: ghcr.io/0xpolygon/kurtosis-cdk-snapshot-anvil-001@sha256:006932fc49ce501c8d6f8c3f4ac3b5873ec14b59b101b4f4e9db02b169e6c0c9
+    hostname: anvil-001
+    ports:
+      - "13545:8545"   # L1 JSON-RPC
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/snapshot/healthcheck.sh"]
+      interval: 3s
+      timeout: 10s
+      retries: 40
+      start_period: 5s
+
+  l2-anvil-001:
+    image: ghcr.io/0xpolygon/kurtosis-cdk-snapshot-l2-anvil-001@sha256:e9bbeb7f9a76a4ea725f194059c6b23d49c65e89a8a00241d6df3b687c8ccbb8
+    hostname: l2-anvil-001
+    ports:
+      - "14545:8545"   # L2-001 (chain 20201) JSON-RPC
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/snapshot/healthcheck.sh"]
+      interval: 3s
+      timeout: 10s
+      retries: 40
+      start_period: 5s
+
+  l2-anvil-002:
+    image: ghcr.io/0xpolygon/kurtosis-cdk-snapshot-l2-anvil-002@sha256:3555d50518f6f72d5811edd759293ba205ac192c04192695afc046c2cb595ef0
+    hostname: l2-anvil-002
+    ports:
+      - "15545:8545"   # L2-002 (chain 20202) JSON-RPC
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/snapshot/healthcheck.sh"]
+      interval: 3s
+      timeout: 10s
+      retries: 40
+      start_period: 5s
+
+  agglayer:
+    image: ghcr.io/0xpolygon/kurtosis-cdk-snapshot-agglayer@sha256:5a47d3778657ba618ff7dfc99dfd55a3863097d5fff4f960a0740d4d0ae80073
+    hostname: agglayer
+    entrypoint: ["/usr/local/bin/agglayer"]
+    command: ["run", "--cfg", "/etc/agglayer/config.toml"]
+    environment:
+      - RUST_BACKTRACE=1
+    volumes:
+      - ./config/agglayer/config.toml:/etc/agglayer/config.toml:ro
+      - ./config/agglayer/aggregator.keystore:/etc/agglayer/aggregator.keystore:ro
+    ports:
+      - "13443:4443"   # gRPC
+      - "13444:4444"   # read RPC
+      - "13446:4446"   # admin API
+      - "13092:9092"   # prometheus
+    depends_on:
+      anvil-001:
+        condition: service_healthy
+      l2-anvil-001:
+        condition: service_healthy
+      l2-anvil-002:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      # Genuine TCP-connect probe against agglayer's own gRPC port -- see the file header
+      # comment for why this matters (aggkit-00X's aggsender races agglayer's async
+      # gRPC-listener bind against its own local claim-syncer autostart on startup).
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/4443"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  aggkit-001:
+    image: aggkit:local
+    hostname: aggkit-001
+    # Matches op-pp/docker-compose.yml's aggkit-001: since /tmp is bind-mounted to the host
+    # below (for GetAggsenderDBPath()/GetAggkitDataDir()), run as the host UID/GID (injected by
+    # newDockerComposeCmd) so files the container writes to /tmp stay host-writable/removable
+    # instead of landing owned by the container's own root (which cleanAggkitDataDir then can't
+    # remove on the next run under non-rootless Docker).
+    user: "${UID:-1000}:${GID:-1000}"
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender,aggoracle,bridge,autoclaim"
+    volumes:
+      - ./config/001/aggkit-config.toml:/etc/aggkit/config.toml:ro
+      - ./config/001/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
+      - ./config/001/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
+      - ./config/001/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
+      - ./aggkit-001-data:/tmp
+    ports:
+      - "14576:5576"   # JSON-RPC (debug)
+      - "14577:5577"   # bridge REST API
+    depends_on:
+      anvil-001:
+        condition: service_healthy
+      l2-anvil-001:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+    # aggkit-001 carries NO healthcheck of its own -- its image is genuinely distroless
+    # (no shell at all). Its own depends_on above on agglayer is `service_healthy` (see the
+    # file header comment); dependents of aggkit-001 (aggkit-proxy-001, below) still use
+    # `condition: service_started`, since aggkit-001 has no healthcheck to gate on.
+
+  aggkit-002:
+    image: aggkit:local
+    hostname: aggkit-002
+    entrypoint: ["/usr/local/bin/aggkit"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit/config.toml"
+      - "--components=aggsender,aggoracle,bridge,autoclaim"
+    volumes:
+      - ./config/002/aggkit-config.toml:/etc/aggkit/config.toml:ro
+      - ./config/002/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
+      - ./config/002/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
+      - ./config/002/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
+    ports:
+      - "15576:5576"   # JSON-RPC (debug)
+      - "15577:5577"   # bridge REST API
+    depends_on:
+      anvil-001:
+        condition: service_healthy
+      l2-anvil-002:
+        condition: service_healthy
+      agglayer:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+    # Same "no healthcheck, distroless image" note as aggkit-001 above.
+
+  aggkit-proxy-001:
+    image: aggkit:local
+    hostname: aggkit-proxy-001
+    entrypoint: ["/usr/local/bin/aggkit-proxy"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit-proxy/config.toml"
+      - "--components=proxy,tracker"
+    volumes:
+      - ./config/aggkit-proxy/aggkit-proxy.toml:/etc/aggkit-proxy/config.toml:ro
+    ports:
+      - "15601:8080"   # bridge + tracker REST
+    depends_on:
+      agglayer:
+        condition: service_healthy
+      aggkit-001:
+        condition: service_started
+      aggkit-002:
+        condition: service_started
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+    # Same "no healthcheck, distroless image" note as aggkit-00X above. Its own depends_on
+    # on agglayer is `service_healthy`; its depends_on on aggkit-00X stays `service_started`
+    # since aggkit-00X has no healthcheck of its own.
+
+# Anvil family (anvil-001/l2-anvil-001/l2-anvil-002) keeps its baked state -- no bind mounts,
+# never overridden: swapping config there would lose the captured devnet state. agglayer/
+# aggkit-00X/aggkit-proxy-001 all bind-mount their config from ./config/ (read-only) so A3 can
+# tune them without rebuilding an image.
