@@ -60,13 +60,24 @@ confirmations = 1
 # crates/agglayer-config/tests/fixtures/settlement/*.toml at v0.6.0-rc.8,
 # which all use the PascalCase variant names verbatim).
 settlement-policy = "SafeBlock"
-# retry-on-transient-failure / retry-on-not-included-on-l1 and
-# gas-limit-multiplier-factor are intentionally left unset here (upstream
-# defaults apply): the old [outbound.rpc.settle] max-retries/retry-interval
-# had no 1:1 mapping onto the new schema's two separate retry-policy tables,
-# and settlement-timeout = 1200 has no equivalent anywhere in the new schema
-# at all (grepped SettlementTransactionConfig/SettlementServiceConfig at
-# v0.6.0-rc.8 -- no timeout field exists upstream; that intent has no home).
+# retry-on-transient-failure and gas-limit-multiplier-factor are
+# intentionally left unset here (upstream defaults apply): the old
+# [outbound.rpc.settle] max-retries/retry-interval had no 1:1 mapping onto
+# the new schema's two separate retry-policy tables, and settlement-timeout
+# = 1200 has no equivalent anywhere in the new schema at all (grepped
+# SettlementTransactionConfig/SettlementServiceConfig at v0.6.0-rc.8 -- no
+# timeout field exists upstream; that intent has no home).
+#
+# A3 measurement (plans/snapshot-v2-aggkit-e2e/A3-evidence/): the first
+# receipt check for a settlement tx fires immediately after broadcast (0
+# confirmations elapsed yet), returns NotIncludedYet, and upstream's default
+# retry-on-not-included-on-l1.initial-interval (1m, unset here previously)
+# gates the *next* attempt -- confirmed via the agglayer container log
+# ("Transient error while executing retryable callback, error:
+# NotIncludedYet, retry_attempt: 1, sleep_duration: 61.936s") on this exact
+# env. Lowered here since the anvil L1 reaches 1 confirmation within ~1s.
+[settlement.pessimistic-proof-tx-config.retry-on-not-included-on-l1]
+initial-interval = "5s"
 
 [log]
 # level = "info"

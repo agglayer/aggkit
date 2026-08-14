@@ -333,8 +333,18 @@ MaxAttempts = 20
 
 # ------------------------------------------------------------------------------
 # Duration expressed in units: [ns, us, ms, s, m, h, d]"
+# A3 measurement (plans/snapshot-v2-aggkit-e2e/A3-evidence/): this poll
+# period is the single largest lever found for this env's measured
+# TestMain post-test bridge check. At the prior 10s value (which matches
+# this repo's own config/default.go template default -- not a regression,
+# just conservative), the L1->L2 GER-injection wait showed a bimodal
+# ~36s/~43s split across otherwise-identical runs depending on poll-cycle
+# alignment; at 1s it collapsed to a tight ~35-37s cluster (5 consecutive
+# runs, spread <2s). Lowering only changes how often AggOracle checks L1
+# for a new GER to inject -- it does not touch any finality/reorg-safety
+# knob, so this is not a raciness trade-off.
 # ------------------------------------------------------------------------------
-WaitPeriodNextGER = "10s"
+WaitPeriodNextGER = "1s"
 
 # ------------------------------------------------------------------------------
 #
@@ -359,8 +369,15 @@ GlobalExitRootL2 = "0xa40d5f56745a118d0906a34e69aec8c0db1cb8fa"
 
 # ------------------------------------------------------------------------------
 # Duration expressed in units: [ns, us, ms, s, m, h, d]"
+# A3 measurement: restores this repo's own config/default.go template
+# default (1s) -- the prior 10s value here was 10x slower than upstream's
+# own default, not an intentional devnet choice. Measured with
+# WaitPeriodNextGER alone at 1s (WaitPeriodMonitorTx still 10s) this did
+# NOT collapse the bimodal split on its own (median stayed ~43s); it is
+# kept at the default anyway since it costs nothing and is the correct
+# baseline value.
 # ------------------------------------------------------------------------------
-WaitPeriodMonitorTx = "10s"
+WaitPeriodMonitorTx = "1s"
 
 # ------------------------------------------------------------------------------
 #
