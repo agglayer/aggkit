@@ -53,12 +53,14 @@ type API struct {
 // NewAPI returns the tracker HTTP service serving the given supervised registry.
 // registerResolveTimeout is how long GetTxStatus waits, the first time a tx is registered, for
 // the tracking engine's immediate resolution attempt to produce an update before answering (see
-// getTxStatusCommand); <= 0 disables the wait
+// getTxStatusCommand); <= 0 disables the wait. cors governs which origins may open the
+// WebSocket endpoint (see wsHandler)
 func NewAPI(
 	logger aggkitcommon.Logger,
 	configSHA1 string,
 	supervised domain.SupervisedRegistry,
 	registerResolveTimeout time.Duration,
+	cors aggkitcommon.CORSConfig,
 ) *API {
 	return &API{
 		getTxStatusCmd: &getTxStatusCommand{supervised: supervised, resolveTimeout: registerResolveTimeout},
@@ -68,7 +70,7 @@ func NewAPI(
 			instanceID: uuid.NewString(),
 			configSHA1: configSHA1,
 		},
-		wsHandler: &wsHandler{logger: logger, supervised: supervised},
+		wsHandler: newWSHandler(logger, supervised, cors),
 	}
 }
 

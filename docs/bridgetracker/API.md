@@ -361,6 +361,14 @@ An `error` message ([ErrorData](#errordata)) is sent, followed by the closure of
 
 The server sends WebSocket `ping` frames periodically; the client must answer with `pong` (handled automatically by most WebSocket libraries). Connections that miss pongs are closed by the server.
 
+### Cross-origin access
+
+Browsers don't apply CORS to the WebSocket `Upgrade` request (no preflight, no `Access-Control-*`
+headers), so the REST server's `[REST.CORS]` config (see `docs/common_config.md`) can't restrict this
+endpoint the same way it restricts REST responses. Instead, the handshake itself is rejected (`403`)
+for a disallowed origin, based on the same `[REST.CORS].AllowedOrigins` list. With CORS disabled (the
+default), any origin can connect, same as before `[REST.CORS]` existed.
+
 
 
 ## Notes

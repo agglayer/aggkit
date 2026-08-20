@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/agglayer/aggkit/config/types"
 )
@@ -60,12 +61,45 @@ type CORSConfig struct {
 
 	// AllowCredentials allows cross-origin requests to include cookies / HTTP
 	// auth. Per the CORS spec this cannot be combined with AllowedOrigins
-	// containing "*": the reflected origin is sent back instead of "*"
-	// whenever this is true.
+	// containing "*": when both are set, the caller's origin is reflected
+	// back instead of "*" so browsers still accept the credentialed response.
 	AllowCredentials bool `mapstructure:"AllowCredentials"`
 
 	// MaxAge is how long browsers may cache a preflight (OPTIONS) response.
 	// 0 (the default) omits the Access-Control-Max-Age header, so browsers
 	// fall back to their own default (5s per spec).
 	MaxAge types.Duration `mapstructure:"MaxAge"`
+}
+
+// OriginAllowed reports whether origin may access an endpoint under this CORS policy, for
+// callers that can't rely on the Access-Control-* response headers rs/cors sets (e.g. a
+// WebSocket upgrade: browsers never CORS-preflight or gate the Upgrade request on those
+// headers, so restricting origins there means rejecting the handshake outright instead).
+//
+// When CORS is disabled this returns true unconditionally, preserving the pre-CORS-config
+// behavior of unrestricted cross-origin access. Once enabled, matching mirrors rs/cors:
+// case-insensitive, "*" allows any origin, and an AllowedOrigins entry may contain a single
+// "*" wildcard segment (e.g. "https://*.example.com").
+func (c CORSConfig) OriginAllowed(origin string) bool {
+	if !c.Enabled {
+		return true
+	}
+
+	origin = strings.ToLower(origin)
+	for _, allowed := range c.AllowedOrigins {
+		allowed = strings.ToLower(allowed)
+		if allowed == "*" {
+			return true
+		}
+		if prefix, suffix, found := strings.Cut(allowed, "*"); found {
+			if strings.HasPrefix(origin, prefix) && strings.HasSuffix(origin, suffix) {
+				return true
+			}
+			continue
+		}
+		if allowed == origin {
+			return true
+		}
+	}
+	return false
 }

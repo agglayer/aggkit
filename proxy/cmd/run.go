@@ -162,6 +162,10 @@ func runTracker(
 	trackerCfg.Logger = log.WithFields("module", "bridgetracker")
 	trackerCfg.ConfigSHA1 = configSHA1
 	trackerCfg.Registry = registry
+	// The tracker's WebSocket endpoint enforces the same origin policy as the REST server it's
+	// served alongside (see aggkitcommon.CORSConfig.OriginAllowed for why it can't just reuse
+	// the REST CORS headers).
+	trackerCfg.CORS = cfg.REST.CORS
 	tracker := bridgetracker.New(&trackerCfg)
 
 	if err := trackerCfg.AgglayerClient.Validate(); err != nil {

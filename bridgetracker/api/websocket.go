@@ -20,17 +20,31 @@ const (
 	wsPingPeriod = (wsPongWait * 9) / 10 //nolint:mnd // conventional 90% of the pong wait
 )
 
-// wsUpgrader upgrades tracker HTTP requests to WebSocket connections. The tracker is a
-// public read-only API served to arbitrary web clients, so cross-origin upgrades are allowed
-var wsUpgrader = websocket.Upgrader{
-	CheckOrigin: func(*http.Request) bool { return true },
-}
-
 // wsHandler serves the WebSocket bridge-status subscription endpoint. Built once at API
 // construction time with the supervised registry and logger it needs.
 type wsHandler struct {
 	logger     aggkitcommon.Logger
 	supervised domain.SupervisedRegistry
+	upgrader   websocket.Upgrader
+}
+
+// newWSHandler builds a wsHandler. Its upgrader enforces cors on the WebSocket handshake:
+// browsers never CORS-preflight or gate the Upgrade request on Access-Control-* headers, so
+// this is the only point at which cross-origin access to this endpoint can be restricted (see
+// aggkitcommon.CORSConfig.OriginAllowed). Disabled CORS (the default) keeps the tracker's
+// original behavior: a public read-only API served to arbitrary web clients.
+func newWSHandler(
+	logger aggkitcommon.Logger, supervised domain.SupervisedRegistry, cors aggkitcommon.CORSConfig,
+) *wsHandler {
+	return &wsHandler{
+		logger:     logger,
+		supervised: supervised,
+		upgrader: websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool {
+				return cors.OriginAllowed(r.Header.Get("Origin"))
+			},
+		},
+	}
 }
 
 // TxStatusWSHandler upgrades the request to a WebSocket connection subscribed to the bridge
@@ -57,7 +71,7 @@ type wsHandler struct {
 // @Success 101 {string} string "Switching Protocols"
 // @Router /network/{network_id}/tx/{tx_hash}/ws [get]
 func (w *wsHandler) TxStatusWSHandler(c *gin.Context) {
-	conn, err := wsUpgrader.Upgrade(c.Writer, c.Request, nil)
+	conn, err := w.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		// Upgrade already replied to the client with an HTTP error
 		w.logger.Debugf("websocket upgrade failed: %v", err)

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -90,17 +91,27 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 	return nil
 }
 
-// corsHandler builds a CORS handler from cfg. AllowCredentials with a
-// wildcard origin is invalid per the CORS spec, so rs/cors reflects the
-// request's Origin back instead of sending "*" whenever it's set.
+// corsHandler builds a CORS handler from cfg.
 func corsHandler(cfg CORSConfig) *cors.Cors {
-	return cors.New(cors.Options{
+	opts := cors.Options{
 		AllowedOrigins:   cfg.AllowedOrigins,
 		AllowedMethods:   cfg.AllowedMethods,
 		AllowedHeaders:   cfg.AllowedHeaders,
 		AllowCredentials: cfg.AllowCredentials,
-		MaxAge:           int(cfg.MaxAge.Duration.Seconds()),
-	})
+		MaxAge:           int(cfg.MaxAge.Seconds()),
+	}
+
+	// rs/cors always answers with the literal "*" when AllowedOrigins contains
+	// "*", even with AllowCredentials set. Per the Fetch spec, browsers refuse
+	// to expose a credentialed response when Access-Control-Allow-Origin is
+	// "*", so that combination would silently break every credentialed
+	// cross-origin request. Route through AllowOriginFunc instead, which
+	// rs/cors always answers by reflecting the caller's Origin, never "*".
+	if cfg.AllowCredentials && slices.Contains(cfg.AllowedOrigins, "*") {
+		opts.AllowOriginFunc = func(_ string) bool { return true }
+	}
+
+	return cors.New(opts)
 }
 
 // HTTPLoggerHandler returns a Gin middleware that logs HTTP requests using logger at DEBUG level.
