@@ -101,13 +101,23 @@ func corsHandler(cfg CORSConfig) *cors.Cors {
 		MaxAge:           int(cfg.MaxAge.Seconds()),
 	}
 
-	// rs/cors always answers with the literal "*" when AllowedOrigins contains
-	// "*", even with AllowCredentials set. Per the Fetch spec, browsers refuse
-	// to expose a credentialed response when Access-Control-Allow-Origin is
-	// "*", so that combination would silently break every credentialed
-	// cross-origin request. Route through AllowOriginFunc instead, which
-	// rs/cors always answers by reflecting the caller's Origin, never "*".
-	if cfg.AllowCredentials && slices.Contains(cfg.AllowedOrigins, "*") {
+	switch {
+	case len(cfg.AllowedOrigins) == 0:
+		// rs/cors treats an empty AllowedOrigins as "allow every origin" — its
+		// own zero-value default — the opposite of what CORSConfig documents
+		// and of OriginAllowed's fail-closed behavior for the WebSocket
+		// handshake. Force deny-all instead, so an operator who enables CORS
+		// without filling in AllowedOrigins doesn't accidentally open it to
+		// every origin.
+		opts.AllowOriginFunc = func(_ string) bool { return false }
+	case cfg.AllowCredentials && slices.Contains(cfg.AllowedOrigins, "*"):
+		// rs/cors always answers with the literal "*" when AllowedOrigins
+		// contains "*", even with AllowCredentials set. Per the Fetch spec,
+		// browsers refuse to expose a credentialed response when
+		// Access-Control-Allow-Origin is "*", so that combination would
+		// silently break every credentialed cross-origin request. Route
+		// through AllowOriginFunc instead, which rs/cors always answers by
+		// reflecting the caller's Origin, never "*".
 		opts.AllowOriginFunc = func(_ string) bool { return true }
 	}
 

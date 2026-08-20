@@ -258,6 +258,36 @@ func TestHTTPServerStartCORSAllowCredentialsReflectsOriginInsteadOfWildcard(t *t
 	require.Equal(t, "true", resp.Header.Get("Access-Control-Allow-Credentials"))
 }
 
+func TestHTTPServerStartCORSEnabledWithEmptyAllowedOriginsDeniesAll(t *testing.T) {
+	t.Setenv("GIN_MODE", gin.TestMode)
+	cfg := testRESTConfig(t)
+	cfg.CORS = CORSConfig{
+		Enabled:        true,
+		AllowedOrigins: []string{},
+		AllowedMethods: []string{http.MethodGet},
+	}
+	srv := NewHTTPServer(cfg, nil)
+	srv.Engine().GET("/health", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, srv.Start(ctx))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+cfg.Address()+"/health", nil)
+	require.NoError(t, err)
+	req.Header.Set("Origin", "https://example.com")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	// rs/cors treats an empty AllowedOrigins as its own "allow every origin"
+	// default; corsHandler must override that so an operator who enables CORS
+	// without filling in AllowedOrigins doesn't accidentally open it to every
+	// origin (matching CORSConfig.OriginAllowed's fail-closed behavior).
+	require.Empty(t, resp.Header.Get("Access-Control-Allow-Origin"))
+}
+
 func TestCorsHandlerMapsConfig(t *testing.T) {
 	cfg := CORSConfig{
 		AllowedOrigins:   []string{"https://example.com"},

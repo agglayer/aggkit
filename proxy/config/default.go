@@ -33,9 +33,10 @@ MaxRequestsPerIPAndSecond = 0
 # Disabled by default: enable it if a browser-based frontend on a different
 # origin needs to call this REST server directly.
 Enabled = false
+# Empty denies every origin once Enabled is true; use ["*"] to allow any origin.
 AllowedOrigins = []
-AllowedMethods = ["GET", "POST", "OPTIONS"]
-AllowedHeaders = ["Content-Type", "Authorization"]
+AllowedMethods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
+AllowedHeaders = ["*"]
 AllowCredentials = false
 MaxAge = "12h"
 

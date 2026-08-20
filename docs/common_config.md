@@ -162,7 +162,7 @@ CORS headers, so browsers block cross-origin requests).
 | Field Name | Type | Description |
 | --- | --- | --- |
 | Enabled | bool | Turns on CORS header handling |
-| AllowedOrigins | []string | Origins allowed to make cross-origin requests. `"*"` allows any origin |
+| AllowedOrigins | []string | Origins allowed to make cross-origin requests. `"*"` allows any origin; empty denies every origin once `Enabled` is true |
 | AllowedMethods | []string | HTTP methods allowed for cross-origin requests |
 | AllowedHeaders | []string | Request headers allowed for cross-origin requests |
 | AllowCredentials | bool | Allows cookies / HTTP auth on cross-origin requests. When true, the request's `Origin` is reflected back instead of `*`, since the CORS spec forbids combining credentials with a wildcard origin |
