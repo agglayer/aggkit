@@ -110,6 +110,12 @@ type Config struct {
 	// adapter (single instance); inject a shared-store implementation so several tracker
 	// instances behind a proxy answer for any registered tx
 	Registry SupervisedRegistry `mapstructure:"-"`
+
+	// CORS mirrors the proxy's REST.CORS: it governs which origins may open a WebSocket
+	// connection to this tracker's endpoints (see aggkitcommon.CORSConfig.OriginAllowed for
+	// why WebSocket needs its own check instead of reusing the REST CORS headers). Wired
+	// programmatically from REST.CORS by the binary, not read directly from [Tracker].
+	CORS aggkitcommon.CORSConfig `mapstructure:"-"`
 }
 
 // Validate checks if the configuration is valid

@@ -10,7 +10,10 @@ import (
 
 	"github.com/agglayer/aggkit/bridgetracker/api"
 	"github.com/agglayer/aggkit/bridgetracker/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 )
@@ -22,6 +25,22 @@ const wsTestTimeout = 5 * time.Second
 type wsEnvelope struct {
 	Type string          `json:"type"`
 	Data json.RawMessage `json:"data"`
+}
+
+// newTestTrackerWithCORS is like newTestTracker but with a custom CORS policy, for tests that
+// exercise the WebSocket endpoint's origin check.
+func newTestTrackerWithCORS(t *testing.T, cors aggkitcommon.CORSConfig) (*BridgeTracker, *gin.Engine) {
+	t.Helper()
+
+	gin.SetMode(gin.TestMode)
+	tracker := New(&Config{
+		Logger:     log.WithFields("module", "bridgetracker_test"),
+		ConfigSHA1: testConfigSHA1,
+		CORS:       cors,
+	})
+	router := gin.New()
+	tracker.API().RegisterRoutes(router)
+	return tracker, router
 }
 
 // dialWS spins up the tracker on a test server and opens a WebSocket connection to the
@@ -184,4 +203,63 @@ func TestWSInvalidParams(t *testing.T) {
 	require.Contains(t, errData.Message, "tx_hash")
 
 	require.Equal(t, websocket.ClosePolicyViolation, expectClose(t, conn))
+}
+
+// TestWSCORSOriginCheck pins that the WebSocket handshake enforces the tracker's CORS policy
+// instead of Access-Control-* response headers (browsers never CORS-preflight or gate the
+// Upgrade request on those): disabled CORS (the default) accepts any origin, matching the
+// tracker's pre-CORS-config behavior; enabled with a restricted AllowedOrigins rejects the
+// handshake outright (403) for an origin not on the list, and accepts one that is.
+func TestWSCORSOriginCheck(t *testing.T) {
+	tests := []struct {
+		name       string
+		cors       aggkitcommon.CORSConfig
+		origin     string
+		wantForbid bool
+	}{
+		{
+			name:   "CORS disabled allows any origin",
+			cors:   aggkitcommon.CORSConfig{Enabled: false},
+			origin: "https://not-in-the-list.com",
+		},
+		{
+			name:   "CORS enabled allows a listed origin",
+			cors:   aggkitcommon.CORSConfig{Enabled: true, AllowedOrigins: []string{"https://allowed.com"}},
+			origin: "https://allowed.com",
+		},
+		{
+			name:       "CORS enabled rejects an origin not on the list",
+			cors:       aggkitcommon.CORSConfig{Enabled: true, AllowedOrigins: []string{"https://allowed.com"}},
+			origin:     "https://not-allowed.com",
+			wantForbid: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, router := newTestTrackerWithCORS(t, tt.cors)
+			server := httptest.NewServer(router)
+			t.Cleanup(server.Close)
+
+			wsURL := "ws" + strings.TrimPrefix(server.URL, "http") +
+				api.TrackerV1Prefix + "/network/1/tx/" + testTxHash + "/ws"
+			header := http.Header{"Origin": []string{tt.origin}}
+			conn, resp, err := websocket.DefaultDialer.Dial(wsURL, header)
+			if resp != nil && resp.Body != nil {
+				defer resp.Body.Close()
+			}
+
+			if tt.wantForbid {
+				require.Error(t, err)
+				require.NotNil(t, resp)
+				require.Equal(t, http.StatusForbidden, resp.StatusCode)
+				return
+			}
+
+			require.NoError(t, err)
+			t.Cleanup(func() { conn.Close() })
+			msg := readEnvelope(t, conn)
+			require.Equal(t, types.WSTypeStatus, msg.Type)
+		})
+	}
 }

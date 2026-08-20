@@ -7,9 +7,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/cors"
 )
 
 const httpServerShutdownTimeout = 5 * time.Second
@@ -60,8 +62,13 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 		return fmt.Errorf("httpserver: failed to listen on %s: %w", s.cfg.Address(), err)
 	}
 
+	var handler http.Handler = s.engine
+	if s.cfg.CORS.Enabled {
+		handler = corsHandler(s.cfg.CORS).Handler(handler)
+	}
+
 	srv := &http.Server{
-		Handler:      s.engine,
+		Handler:      handler,
 		ReadTimeout:  s.cfg.ReadTimeout.Duration,
 		WriteTimeout: s.cfg.WriteTimeout.Duration,
 	}
@@ -82,6 +89,39 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+// corsHandler builds a CORS handler from cfg.
+func corsHandler(cfg CORSConfig) *cors.Cors {
+	opts := cors.Options{
+		AllowedOrigins:   cfg.AllowedOrigins,
+		AllowedMethods:   cfg.AllowedMethods,
+		AllowedHeaders:   cfg.AllowedHeaders,
+		AllowCredentials: cfg.AllowCredentials,
+		MaxAge:           int(cfg.MaxAge.Seconds()),
+	}
+
+	switch {
+	case len(cfg.AllowedOrigins) == 0:
+		// rs/cors treats an empty AllowedOrigins as "allow every origin" — its
+		// own zero-value default — the opposite of what CORSConfig documents
+		// and of OriginAllowed's fail-closed behavior for the WebSocket
+		// handshake. Force deny-all instead, so an operator who enables CORS
+		// without filling in AllowedOrigins doesn't accidentally open it to
+		// every origin.
+		opts.AllowOriginFunc = func(_ string) bool { return false }
+	case cfg.AllowCredentials && slices.Contains(cfg.AllowedOrigins, "*"):
+		// rs/cors always answers with the literal "*" when AllowedOrigins
+		// contains "*", even with AllowCredentials set. Per the Fetch spec,
+		// browsers refuse to expose a credentialed response when
+		// Access-Control-Allow-Origin is "*", so that combination would
+		// silently break every credentialed cross-origin request. Route
+		// through AllowOriginFunc instead, which rs/cors always answers by
+		// reflecting the caller's Origin, never "*".
+		opts.AllowOriginFunc = func(_ string) bool { return true }
+	}
+
+	return cors.New(opts)
 }
 
 // HTTPLoggerHandler returns a Gin middleware that logs HTTP requests using logger at DEBUG level.
