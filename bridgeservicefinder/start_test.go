@@ -534,6 +534,74 @@ func TestStart_IgnoreNetworkIDs_SkipsEnumeration(t *testing.T) {
 		"an ignored network's contract must never be registered in the routing table")
 }
 
+// trackingHealthChecker wraps a mapHealthChecker and records every baseURL probed, so a test can
+// assert a specific URL was (or was not) probed at all, not just what the probe returned.
+type trackingHealthChecker struct {
+	*mapHealthChecker
+	probed map[string]bool
+}
+
+func newTrackingHealthChecker(healthy map[string]bool) *trackingHealthChecker {
+	return &trackingHealthChecker{mapHealthChecker: newMapHealthChecker(healthy), probed: map[string]bool{}}
+}
+
+func (t *trackingHealthChecker) IsHealthy(ctx context.Context, baseURL string) bool {
+	t.probed[baseURL] = true
+	return t.mapHealthChecker.IsHealthy(ctx, baseURL)
+}
+
+// TestStart_IgnoreNetworkIDs_SkipsHealthProbe verifies that a networkID listed in
+// Config.IgnoreNetworkIDs is exempt from probeAll's /health probe even when it has a cache entry
+// installed by a Config.BridgeURLs override (config-seeding runs independently of the enumeration
+// loop the ignore list otherwise affects). It also proves this holds under
+// RequireAllHealthyOnStart=true: Start must succeed even though the ignored network's config URL is
+// unreachable, since it is never probed and therefore never counted as unhealthy.
+func TestStart_IgnoreNetworkIDs_SkipsHealthProbe(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, _ := deployRollupManagerWithRollups(t, backend, auth, 1)
+
+	const (
+		ignoredNetwork = uint32(1)
+		normalNetwork  = uint32(2) // never enumerated (RollupCount=1); served from config only
+	)
+
+	deadURL := closedServerURL(t) // guaranteed unreachable, would fail RequireAllHealthyOnStart if probed
+	const normalURL = "https://normal.example.com:5577"
+
+	cfg := baseTestConfig(mgrAddr)
+	cfg.BridgeURLs = map[uint32]string{ignoredNetwork: deadURL, normalNetwork: normalURL}
+	cfg.IgnoreNetworkIDs = []uint32{ignoredNetwork}
+	cfg.RequireAllHealthyOnStart = true
+
+	hc := newTrackingHealthChecker(map[string]bool{normalURL: true})
+
+	f, err := New(cfg, Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: hc,
+		Logger:        testLogger(),
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	// Start must succeed: the only unreachable entry is the ignored one, which is never probed.
+	require.NoError(t, f.Start(ctx))
+
+	require.False(t, hc.probed[deadURL], "an ignored network's config-sourced url must never be health-probed")
+	require.True(t, hc.probed[normalURL], "sanity check: a non-ignored config-sourced url is still probed")
+
+	got, err := f.GetURL(ignoredNetwork)
+	require.NoError(t, err)
+	require.Equal(t, deadURL, got.BridgeURL, "the ignored network's config override must still be served")
+
+	concrete, ok := f.(*finder)
+	require.True(t, ok)
+	entry, ok := concrete.cache.get(ignoredNetwork)
+	require.True(t, ok)
+	require.False(t, entry.healthy, "an unprobed entry must default to healthy=false")
+}
+
 // TestStart_NetworkZero covers matrix item #11: network 0 / L1 is never enumerated on-chain; it is
 // only served if provided via Config.URLs.
 func TestStart_NetworkZero(t *testing.T) {

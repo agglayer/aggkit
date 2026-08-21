@@ -172,8 +172,12 @@
 //
 // The ignore list only ever skips on-chain inspection; it never suppresses a static override. A
 // networkID present in both Config.IgnoreNetworkIDs and Config.BridgeURLs is still served from
-// config, exactly as if it were not ignored (the config-seeding step in buildInitialCache runs
-// before, and independently of, the enumeration loop the ignore list affects).
+// config (the config-seeding step in buildInitialCache runs before, and independently of, the
+// enumeration loop the ignore list affects), but unlike an ordinary config-sourced entry it is also
+// exempted from the Start-time /health probe (see probeAll): probing a known-dead network would
+// defeat the point of ignoring it, incurring the health-check timeout and, under
+// RequireAllHealthyOnStart, possibly failing startup outright. Its cache entry is served with
+// healthy defaulting to false (never probed).
 //
 // # Error handling at Start (fail loudly vs graceful skip)
 //

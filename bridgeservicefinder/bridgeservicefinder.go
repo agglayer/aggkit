@@ -334,12 +334,21 @@ func (f *finder) resolveNetwork(ctx context.Context, rollupID uint32) error {
 }
 
 // probeAll runs a /health probe against every cached entry, updating each entry's healthy flag, and
-// returns the number of entries that were unreachable.
+// returns the number of entries that were unreachable. A networkID in Config.IgnoreNetworkIDs is
+// skipped even if it has a cache entry (installed by the config-seeding step for a network that is
+// both ignored and config-overridden): probing it would defeat the point of ignoring a known-dead
+// network (the health-check timeout, and a possible ErrServicesUnhealthyOnStart under
+// RequireAllHealthyOnStart, are exactly what IgnoreNetworkIDs is meant to avoid). Its entry is still
+// served by GetURL with healthy defaulting to false (never probed).
 func (f *finder) probeAll(ctx context.Context) int {
 	unhealthy := 0
 
 	f.cache.mu.Lock()
 	for networkID, entry := range f.cache.entries {
+		if _, ignored := f.ignoreNetworkIDs[networkID]; ignored {
+			continue
+		}
+
 		healthy := f.healthChecker.IsHealthy(ctx, entry.url)
 		entry.healthy = healthy
 		f.cache.entries[networkID] = entry
