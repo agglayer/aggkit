@@ -467,6 +467,73 @@ func TestStart_AllHealthy_RequireAllHealthyOnStartTrue(t *testing.T) {
 	require.NoError(t, f.Start(ctx))
 }
 
+// TestStart_IgnoreNetworkIDs_SkipsEnumeration verifies that a networkID listed in
+// Config.IgnoreNetworkIDs is skipped entirely during buildInitialCache's enumeration, even though it
+// exposes a perfectly resolvable on-chain source: no cache entry is installed for it, while sibling
+// networks are still resolved normally. It also verifies a config override for the SAME networkID is
+// still served, since the ignore only skips on-chain inspection, never a static override.
+func TestStart_IgnoreNetworkIDs_SkipsEnumeration(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, rollups := deployRollupManagerWithRollups(t, backend, auth, 3)
+
+	const (
+		ignoredNetwork     = uint32(1)
+		ignoredWithConfig  = uint32(2)
+		normalNetwork      = uint32(3)
+		ignoredConfigURL   = "https://ignored-config.example.com:5577"
+		ignoredMetadataURL = "https://ignored-metadata.example.com:5577" // must never surface
+		normalMetadataURL  = "https://normal-metadata.example.com:5577"
+	)
+
+	// Give the purely-ignored network a perfectly good on-chain source: it must still be skipped.
+	_, err := rollups[ignoredNetwork-1].contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, ignoredMetadataURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	// The ignored-but-config-overridden network also has an on-chain source; it must never surface,
+	// only the config URL should.
+	_, err = rollups[ignoredWithConfig-1].contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, ignoredMetadataURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	_, err = rollups[normalNetwork-1].contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, normalMetadataURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	cfg := baseTestConfig(mgrAddr)
+	cfg.BridgeURLs = map[uint32]string{ignoredWithConfig: ignoredConfigURL}
+	cfg.IgnoreNetworkIDs = []uint32{ignoredNetwork, ignoredWithConfig}
+
+	f, err := New(cfg, Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: newMapHealthChecker(nil),
+		Logger:        testLogger(),
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	require.NoError(t, f.Start(ctx))
+
+	_, err = f.GetURL(ignoredNetwork)
+	require.ErrorIs(t, err, ErrURLNotFound, "ignored network must not be resolved despite exposing a valid on-chain source")
+
+	gotConfig, err := f.GetURL(ignoredWithConfig)
+	require.NoError(t, err)
+	require.Equal(t, ignoredConfigURL, gotConfig.BridgeURL, "config override must still be served for an ignored network")
+	require.Empty(t, gotConfig.JSONRPCURL, "on-chain enrichment must not happen for an ignored network")
+
+	gotNormal, err := f.GetURL(normalNetwork)
+	require.NoError(t, err)
+	require.Equal(t, normalMetadataURL, gotNormal.BridgeURL, "sibling network must resolve normally")
+
+	concrete, ok := f.(*finder)
+	require.True(t, ok)
+	require.NotContains(t, concrete.addrToNetworkID, rollups[ignoredNetwork-1].addr,
+		"an ignored network's contract must never be registered in the routing table")
+}
+
 // TestStart_NetworkZero covers matrix item #11: network 0 / L1 is never enumerated on-chain; it is
 // only served if provided via Config.URLs.
 func TestStart_NetworkZero(t *testing.T) {
