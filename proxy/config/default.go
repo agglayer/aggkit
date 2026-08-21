@@ -21,6 +21,7 @@ BlockChunkSize = 10000
 HealthCheckPath = "/"
 HealthCheckTimeout = "5s"
 RequireAllHealthyOnStart = false
+IgnoreNetworkIDs = []
 
 [REST]
 Host = "0.0.0.0"
