@@ -424,9 +424,17 @@ PollInterval = "3s"
 
 [AutoClaim.BridgeServiceFinder]
 RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
+BlockFinality = "FinalizedBlock"
 PollInterval = "30s"
+BlockChunkSize = 10000
+HealthCheckPath = "/"
+HealthCheckTimeout = "5s"
+RequireAllHealthyOnStart = false
+IgnoreNetworkIDs = []
 
 [AutoClaim.BridgeServiceFinder.BridgeURLs]
+
+[AutoClaim.BridgeServiceFinder.RPCURLs]
 
 [L1Multidownloader]
 	Enabled = true
