@@ -10,7 +10,10 @@
     "#schemas": "./src/index.ts"
   },
   "scripts": {
-    "generate": "node scripts/generate-spec.ts",
+    "generate": "pnpm run generate:spec && pnpm run generate:client",
+    "generate:spec": "node scripts/generate-spec.ts",
+    "generate:client": "openapi-ts -f openapi-ts.config.ts",
+    "demo": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -21,7 +24,19 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@aggkit/bridge-apispec": "link:.",
+    "@hey-api/openapi-ts": "^0.97.3",
+    "@polygonlabs/zod-to-openapi-heyapi": "^2.0.3",
     "@types/node": "^24.0.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^3.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "exports": {
+    ".": "./src/index.ts"
   }
 }
