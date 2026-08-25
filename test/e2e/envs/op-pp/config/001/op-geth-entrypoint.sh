@@ -44,33 +44,10 @@ echo "=== Patching L2 genesis timestamp ==="
 # Copy genesis to writable location
 cp /genesis-ro/l2-genesis.json /tmp/genesis.json
 
-# Anchor the L2 genesis timestamp to L1's current head instead of wall-clock time. L1's chain
-# data is baked into its image at build time and never advances past that snapshot, so using
-# date +%s here would make the L2 genesis drift further from its L1 origin every day that
-# passes since the image was built -- once that drift exceeds rollup.json's
-# max_sequencer_drift, op-node's sequencer can never find a valid L1 origin for the first
-# post-genesis block and the L2 chain stalls forever.
-echo "Fetching L1 head timestamp to anchor L2 genesis..."
-L1_TS_HEX=""
-RETRIES=0
-while [ -z "$L1_TS_HEX" ] && [ $RETRIES -lt 30 ]; do
-    RESP=$(wget -qO- --header="Content-Type: application/json" \
-        --post-data='{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["latest",false],"id":1}' \
-        http://geth:8545 2>/dev/null || true)
-    L1_TS_HEX=$(echo "$RESP" | jq -r '.result.timestamp // empty')
-    if [ -z "$L1_TS_HEX" ]; then
-        RETRIES=$((RETRIES + 1))
-        sleep 1
-    fi
-done
-if [ -z "$L1_TS_HEX" ]; then
-    echo "ERROR: could not fetch L1 head timestamp to anchor L2 genesis"
-    exit 1
-fi
-
-NOW=$((L1_TS_HEX))
+# Patch timestamp to current time (hex)
+NOW=$(date +%s)
 NOW_HEX=$(printf '0x%x' "$NOW")
-echo "Patching L2 genesis timestamp to L1 head time $NOW ($NOW_HEX)"
+echo "Patching L2 genesis timestamp to $NOW ($NOW_HEX)"
 
 jq --arg ts "$NOW_HEX" '.timestamp = $ts' /tmp/genesis.json > /tmp/genesis-patched.json
 mv /tmp/genesis-patched.json /tmp/genesis.json
