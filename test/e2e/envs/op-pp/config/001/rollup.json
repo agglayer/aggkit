@@ -21,7 +21,7 @@
     }
   },
   "block_time": 1,
-  "max_sequencer_drift": 604800,
+  "max_sequencer_drift": 600,
   "seq_window_size": 3600,
   "channel_timeout": 300,
   "l1_chain_id": 271828,
