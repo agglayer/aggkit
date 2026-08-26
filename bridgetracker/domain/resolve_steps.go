@@ -89,12 +89,15 @@ func currentStepIndex(steps []BridgeStepPath) int {
 // the current step still in progress (StartDate stamped if not already) otherwise — either way
 // result becomes its Result, so a resolver can surface data before its milestone is fully met
 // (see ErrCertificateNotSettled). If stepErr is non-nil, the step is instead marked
-// StepStatusError, accumulating stepErr onto its retry count and description rather than
-// discarding the history of a transient source failure — the step-level counterpart of the
-// tx-level error handling in ResolveBridgeTx; complete is meaningless in that case (a step
-// cannot both fail and complete) and idx+1 is left untouched. With stepErr nil, any previous
-// Error is cleared instead: a successful fact check, even an inconclusive one, clears a previous
-// transient failure, evidence the retry is working, not just that a milestone was met.
+// StepStatusError — the step-level counterpart of the tx-level error handling in
+// ResolveBridgeTx. A resolver marks stepErr as unrecoverable the same way a BridgeEventSource
+// does (see Permanent/IsPermanent): IsPermanent(stepErr) makes the step StepErrorPermanent with
+// just this failure, no point accumulating a retry history nothing will retry. Any other stepErr
+// is StepErrorTransient, accumulating onto the step's retry count and description instead of
+// discarding the history of a transient source failure. Either way complete is meaningless here
+// (a step cannot both fail and complete) and idx+1 is left untouched. With stepErr nil, any
+// previous Error is cleared instead: a successful fact check, even an inconclusive one, clears a
+// previous transient failure, evidence the retry is working, not just that a milestone was met.
 // Completing idx opens idx+1 as the new current step (InProgress), completing it immediately,
 // terminal, if it is StepClaimed — a step that never has a fact check of its own. Returns
 // tracking unchanged only when there is truly nothing new to record: not complete, no stepErr,
@@ -118,12 +121,20 @@ func UpdateStep(
 	current.SetResult(result)
 	switch {
 	case stepErr != nil:
+		current.Status = types.StepStatusError
+		if IsPermanent(stepErr) {
+			// unrecoverable: no retry history to accumulate, nothing will retry this step
+			current.Error = &types.ErrorStep{
+				ErrorType:   types.StepErrorPermanent,
+				Description: []string{stepErr.Error()},
+			}
+			break
+		}
 		retryCount, description := 1, []string{stepErr.Error()}
 		if current.Error != nil {
 			retryCount = current.Error.RetryCount + 1
 			description = append(append([]string{}, current.Error.Description...), stepErr.Error())
 		}
-		current.Status = types.StepStatusError
 		current.Error = &types.ErrorStep{
 			ErrorType:   types.StepErrorTransient,
 			RetryCount:  retryCount,

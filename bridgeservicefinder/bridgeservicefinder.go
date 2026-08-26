@@ -187,7 +187,11 @@ func (f *finder) Start(ctx context.Context) error {
 	if err := f.buildInitialCache(ctx); err != nil {
 		return err
 	}
-
+	listNetworksStr := ""
+	for networkID := range f.cache.entries {
+		listNetworksStr += fmt.Sprintf("%d, ", networkID)
+	}
+	f.logger.Info("Resolved network entries: " + listNetworksStr)
 	unhealthy := f.probeAll(ctx)
 	if unhealthy > 0 && f.cfg.RequireAllHealthyOnStart {
 		return fmt.Errorf("%w: %d unreachable", ErrServicesUnhealthyOnStart, unhealthy)

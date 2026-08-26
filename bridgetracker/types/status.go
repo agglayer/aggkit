@@ -289,17 +289,27 @@ type ClaimResult struct {
 // L1SettledGERResult is the result of StepWaitL1SettledGER once it completes: the evidence,
 // read off the certificate's settlement tx receipt on L1, that the settlement propagated to
 // the L1 Global Exit Root. HasVerifyBatchesTrustedAggregator and HasUpdateL1InfoTree are both
-// required for the step to complete; HasUpdateL1InfoTreeV2 is only informational. GER is the
-// Global Exit Root produced by the settlement (computed from UpdateL1InfoTree's mainnet/rollup
-// exit roots), used by StepWaitingGERInjection to check whether it has reached the destination.
-// L1InfoTreeIndex is the leaf index GER landed at: populated straight from UpdateL1InfoTreeV2's
-// LeafCount when that (optional) event fires, otherwise resolved by the step itself with one
-// extra lookup (GER -> leaf) before it can complete — either way, by the time this step is
-// Done, L1InfoTreeIndex is never nil
+// required for the step to complete; HasUpdateL1InfoTreeV2 is only informational.
+// SettlementBlockNumber/SettlementLogIndex locate the settlement tx's own
+// VerifyBatchesTrustedAggregator log — the event that confirms this tx is a genuine
+// certificate settlement. GER is the Global Exit Root produced by the settlement (computed
+// from UpdateL1InfoTree's mainnet/rollup exit roots), used by StepWaitingGERInjection to check
+// whether it has reached the destination. GERBlockNumber/GERLogIndex locate the
+// UpdateL1InfoTree event GER was computed from: normally the same block as the settlement
+// (HasUpdateL1InfoTree true), but when the settlement tx's own receipt does not carry the
+// event (the settlement did not move the GER itself), they instead point to the closest
+// earlier one on L1 (see sources.SettlementSource.findEventUpdateL1InfoTreeBackwards), whose
+// GER is still the one this settlement propagated. L1InfoTreeIndex is the leaf index GER
+// landed at: populated straight from UpdateL1InfoTreeV2's LeafCount when that (optional) event
+// fires, otherwise resolved by the step itself with one extra lookup (GER -> leaf) before it
+// can complete — either way, by the time this step is Done, L1InfoTreeIndex is never nil
 type L1SettledGERResult struct {
 	TxHash                            common.Hash `json:"tx_hash"`
-	BlockNumber                       uint64      `json:"block_number"`
+	SettlementBlockNumber             uint64      `json:"settlement_block_number"`
+	SettlementLogIndex                uint        `json:"settlement_log_index"`
 	GER                               common.Hash `json:"ger"`
+	GERBlockNumber                    uint64      `json:"ger_block_number"`
+	GERLogIndex                       uint        `json:"ger_log_index"`
 	L1InfoTreeIndex                   *uint32     `json:"l1_info_tree_index,omitempty"`
 	HasVerifyBatchesTrustedAggregator bool        `json:"has_verify_batches_trusted_aggregator"`
 	HasUpdateL1InfoTree               bool        `json:"has_update_l1_info_tree"`

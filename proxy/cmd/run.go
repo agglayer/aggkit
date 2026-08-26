@@ -204,7 +204,8 @@ func runTracker(
 			WaitingGERUpdateSource: gerSource,
 			LERs:                   sources.NewLERSource(rpcClients),
 			Claims:                 sources.NewClaimSource(finder),
-			Settlement:             sources.NewSettlementSource(rpcClients, trackerCfg.L1BlockFinality),
+			Settlement: sources.NewSettlementSource(
+				rpcClients, trackerCfg.L1BlockFinality, trackerCfg.L1GlobalExitRootAddress),
 		},
 	)
 	if err != nil {

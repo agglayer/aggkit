@@ -142,13 +142,17 @@ func TestBridgeStepPathResultMarshalJSON(t *testing.T) {
 		{
 			name: "L1 settled GER result",
 			result: &types.L1SettledGERResult{
-				TxHash: common.HexToHash("0x0d"), BlockNumber: 400, GER: common.HexToHash("0x0e"),
+				TxHash: common.HexToHash("0x0d"), SettlementBlockNumber: 400, SettlementLogIndex: 1,
+				GER: common.HexToHash("0x0e"), GERBlockNumber: 400, GERLogIndex: 2,
 				HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
 			},
 			expected: `{
 				"tx_hash":"0x000000000000000000000000000000000000000000000000000000000000000d",
-				"block_number":400,
+				"settlement_block_number":400,
+				"settlement_log_index":1,
 				"ger":"0x000000000000000000000000000000000000000000000000000000000000000e",
+				"ger_block_number":400,
+				"ger_log_index":2,
 				"has_verify_batches_trusted_aggregator":true,
 				"has_update_l1_info_tree":true,
 				"has_update_l1_info_tree_v2":false

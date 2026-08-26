@@ -4,14 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 
 	"github.com/agglayer/aggkit/bridgetracker"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	trackertypes "github.com/agglayer/aggkit/bridgetracker/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
+
+// l1InfoTreeBackwardsSearchChunkSize bounds how many blocks each FilterLogs call in
+// findEventUpdateL1InfoTreeBackwards covers: most RPC providers cap how wide a single
+// eth_getLogs range can be, so a search spanning the chain's whole history has to walk
+// backwards one chunk at a time instead of in a single call. Same chunk size aggkit already
+// uses elsewhere for bounded log queries (e.g. bridgeservicefinder.DefaultBlockChunkSize)
+const l1InfoTreeBackwardsSearchChunkSize = 10_000
 
 var (
 	// updateL1InfoTreeSignature is the topic0 of the GlobalExitRoot contract's UpdateL1InfoTree
@@ -39,12 +48,24 @@ type SettlementSource struct {
 	// never re-checked (TrackingBridgeTx.IsDone), so accepting a receipt that later gets
 	// reorged out would otherwise be permanent
 	l1Finality aggkittypes.BlockNumberFinality
+	// contractGlobalExitRootAddress is the L1 GlobalExitRoot contract address
+	// findEventUpdateL1InfoTreeBackwards reads UpdateL1InfoTree logs from, for a settlement tx
+	// whose own receipt does not carry the event
+	contractGlobalExitRootAddress common.Address
 }
 
 // NewSettlementSource returns a SettlementSource resolving the L1 (network 0) JSON-RPC client
-// through clients, accepting a settlement tx's receipt only once it reaches l1Finality
-func NewSettlementSource(clients EthClientResolver, l1Finality aggkittypes.BlockNumberFinality) *SettlementSource {
-	return &SettlementSource{clients: clients, l1Finality: l1Finality}
+// through clients, accepting a settlement tx's receipt only once it reaches l1Finality.
+// contractGlobalExitRootAddress is the L1 GlobalExitRoot contract findEventUpdateL1InfoTreeBackwards
+// searches when a settlement tx's own receipt does not carry an UpdateL1InfoTree event
+func NewSettlementSource(
+	clients EthClientResolver, l1Finality aggkittypes.BlockNumberFinality, contractGlobalExitRootAddress common.Address,
+) *SettlementSource {
+	return &SettlementSource{
+		clients:                       clients,
+		l1Finality:                    l1Finality,
+		contractGlobalExitRootAddress: contractGlobalExitRootAddress,
+	}
 }
 
 // SettlementGERUpdate implements bridgetracker.SettlementSource: it fetches settlementTxHash's
@@ -76,7 +97,10 @@ func (s *SettlementSource) SettlementGERUpdate(
 		return nil, nil // mined, but not yet at the required finality
 	}
 
-	result := &trackertypes.L1SettledGERResult{TxHash: settlementTxHash, BlockNumber: receipt.BlockNumber.Uint64()}
+	result := &trackertypes.L1SettledGERResult{
+		TxHash:                settlementTxHash,
+		SettlementBlockNumber: receipt.BlockNumber.Uint64(),
+	}
 	for _, l := range receipt.Logs {
 		if len(l.Topics) == 0 {
 			continue
@@ -84,6 +108,7 @@ func (s *SettlementSource) SettlementGERUpdate(
 		switch l.Topics[0] {
 		case verifyBatchesTrustedAggregatorSignature:
 			result.HasVerifyBatchesTrustedAggregator = true
+			result.SettlementLogIndex = l.Index
 		case updateL1InfoTreeSignature:
 			// both mainnetExitRoot and rollupExitRoot are indexed bytes32 params, so they sit
 			// directly in the topics (fixed-size indexed values are not hashed, unlike dynamic
@@ -94,6 +119,8 @@ func (s *SettlementSource) SettlementGERUpdate(
 			mainnetExitRoot, rollupExitRoot := l.Topics[1], l.Topics[2]
 			result.HasUpdateL1InfoTree = true
 			result.GER = crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
+			result.GERBlockNumber = receipt.BlockNumber.Uint64()
+			result.GERLogIndex = l.Index
 		case updateL1InfoTreeV2Signature:
 			result.HasUpdateL1InfoTreeV2 = true
 			// leafCount is the only indexed param, so it sits directly in Topics[1] (a uint32
@@ -110,8 +137,82 @@ func (s *SettlementSource) SettlementGERUpdate(
 		}
 	}
 
-	if !result.HasVerifyBatchesTrustedAggregator || !result.HasUpdateL1InfoTree {
-		return nil, nil // mandatory evidence not there yet
+	if !result.HasVerifyBatchesTrustedAggregator {
+		return nil, fmt.Errorf("settlement tx %s receipt does not carry VerifyBatchesTrustedAggregator: %w",
+			settlementTxHash, domain.ErrBadSettlementTx)
 	}
+	// This cert's settlement did not move the GER itself (no UpdateL1InfoTree in its own
+	// receipt): the value it propagated is whichever one an earlier settlement already
+	// established, so look backwards on L1 for that event
+	if !result.HasUpdateL1InfoTree {
+		event, err := s.findEventUpdateL1InfoTreeBackwards(ctx, client, receipt.BlockNumber.Uint64())
+		if err != nil {
+			return nil, err
+		}
+		result.GER = event.GER
+		result.GERBlockNumber = event.BlockNumber
+		result.GERLogIndex = event.LogIndex
+	}
+
 	return result, nil
+}
+
+// updateL1InfoTreeEvent is the GER-relevant evidence of a single UpdateL1InfoTree event: the
+// GER it produced and where on L1 it landed
+type updateL1InfoTreeEvent struct {
+	GER         common.Hash
+	BlockNumber uint64
+	LogIndex    uint
+}
+
+// findEventUpdateL1InfoTreeBackwards looks for the most recent UpdateL1InfoTree event on the
+// GlobalExitRoot contract at or before fromBlock, walking backwards in
+// l1InfoTreeBackwardsSearchChunkSize chunks until one is found or block 0 is reached. Only
+// called when the settlement tx's own receipt does not carry the event (see
+// SettlementGERUpdate): the L1 Global Exit Root is never unset, so some earlier update always
+// exists, unless the settlement tx is not what it claims to be, in which case this returns
+// domain.ErrBadSettlementTx (Permanent — see the sentinel's own doc)
+func (s *SettlementSource) findEventUpdateL1InfoTreeBackwards(
+	ctx context.Context, client aggkittypes.BaseEthereumClienter, fromBlock uint64,
+) (*updateL1InfoTreeEvent, error) {
+	toBlock := fromBlock
+	for {
+		fromBlockChunk := uint64(0)
+		if toBlock > l1InfoTreeBackwardsSearchChunkSize {
+			fromBlockChunk = toBlock - l1InfoTreeBackwardsSearchChunkSize
+		}
+
+		logs, err := client.FilterLogs(ctx, ethereum.FilterQuery{
+			FromBlock: new(big.Int).SetUint64(fromBlockChunk),
+			ToBlock:   new(big.Int).SetUint64(toBlock),
+			Addresses: []common.Address{s.contractGlobalExitRootAddress},
+			Topics:    [][]common.Hash{{updateL1InfoTreeSignature}},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("fetching UpdateL1InfoTree logs from block %d to %d: %w",
+				fromBlockChunk, toBlock, err)
+		}
+
+		if len(logs) > 0 {
+			// FilterLogs returns logs in ascending block/log-index order, so the last one is the
+			// most recent event in this chunk — the closest one at or before fromBlock
+			last := logs[len(logs)-1]
+			if len(last.Topics) < 3 { //nolint:mnd
+				return nil, fmt.Errorf("UpdateL1InfoTree log at block %d missing its exit root topics: %w",
+					last.BlockNumber, domain.ErrBadSettlementTx)
+			}
+			mainnetExitRoot, rollupExitRoot := last.Topics[1], last.Topics[2]
+			return &updateL1InfoTreeEvent{
+				GER:         crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:]),
+				BlockNumber: last.BlockNumber,
+				LogIndex:    last.Index,
+			}, nil
+		}
+
+		if fromBlockChunk == 0 {
+			return nil, fmt.Errorf("no UpdateL1InfoTree event found at or before block %d: %w",
+				fromBlock, domain.ErrBadSettlementTx)
+		}
+		toBlock = fromBlockChunk - 1
+	}
 }

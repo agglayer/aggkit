@@ -145,7 +145,7 @@ func TestResolveSteps(t *testing.T) {
 	settledCert := &types.CertificateInclusionData{CertificateData: settledCertData}
 	settlementLeafIndex := uint32(7)
 	settlementResult := &types.L1SettledGERResult{
-		TxHash: settlementTxHash, BlockNumber: 400, L1InfoTreeIndex: &settlementLeafIndex,
+		TxHash: settlementTxHash, SettlementBlockNumber: 400, L1InfoTreeIndex: &settlementLeafIndex,
 		HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
 	}
 	claim := &types.ClaimResult{ClaimTx: common.Hash{3}, BlockNumber: 300}
@@ -301,7 +301,7 @@ func TestResolveSteps(t *testing.T) {
 				originLER:   originLER,
 				certificate: settledCert,
 				settlement: &types.L1SettledGERResult{
-					TxHash: settlementTxHash, BlockNumber: 400,
+					TxHash: settlementTxHash, SettlementBlockNumber: 400,
 					HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
 				},
 			},
@@ -311,7 +311,7 @@ func TestResolveSteps(t *testing.T) {
 			},
 			resultOf: types.StepWaitL1SettledGER,
 			result: &types.L1SettledGERResult{
-				TxHash: settlementTxHash, BlockNumber: 400,
+				TxHash: settlementTxHash, SettlementBlockNumber: 400,
 				HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
 			},
 		},
@@ -324,7 +324,7 @@ func TestResolveSteps(t *testing.T) {
 				originLER:   originLER,
 				certificate: settledCert,
 				settlement: &types.L1SettledGERResult{
-					TxHash: settlementTxHash, BlockNumber: 400,
+					TxHash: settlementTxHash, SettlementBlockNumber: 400,
 					HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
 				},
 				l1InfoTreeIndex: &settlementLeafIndex,
@@ -336,7 +336,7 @@ func TestResolveSteps(t *testing.T) {
 			},
 			resultOf: types.StepWaitL1SettledGER,
 			result: &types.L1SettledGERResult{
-				TxHash: settlementTxHash, BlockNumber: 400, L1InfoTreeIndex: &settlementLeafIndex,
+				TxHash: settlementTxHash, SettlementBlockNumber: 400, L1InfoTreeIndex: &settlementLeafIndex,
 				HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
 			},
 		},
@@ -704,6 +704,50 @@ func TestUpdateStep(t *testing.T) {
 		sp := advanced.AllSteps()[0]
 		require.Equal(t, 2, sp.Error.RetryCount)
 		require.Equal(t, []string{errFakeUpdateStep.Error(), errFakeUpdateStep.Error()}, sp.Error.Description)
+	})
+
+	t.Run("a stepErr wrapped as Permanent marks the step StepErrorPermanent with no retry count", func(t *testing.T) {
+		t.Parallel()
+
+		tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
+			{Step: types.StepWaitingGERUpdate, Status: types.StepStatusInProgress, StartDate: &t1},
+			{Step: types.StepWaitingGERInjection, Status: types.StepStatusPending},
+			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+			{Step: types.StepClaimed, Status: types.StepStatusPending},
+		}, t1)
+
+		advanced := UpdateStep(tracking, 0, nil, false, Permanent(errFakeUpdateStep), t2)
+
+		sp := advanced.AllSteps()[0]
+		require.Equal(t, types.StepStatusError, sp.Status)
+		require.NotNil(t, sp.Error)
+		require.Equal(t, types.StepErrorPermanent, sp.Error.ErrorType)
+		require.Equal(t, 0, sp.Error.RetryCount)
+		require.Equal(t, []string{errFakeUpdateStep.Error()}, sp.Error.Description)
+	})
+
+	t.Run("a repeated Permanent stepErr does not accumulate onto a previous transient history", func(t *testing.T) {
+		t.Parallel()
+
+		tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
+			{
+				Step: types.StepWaitingGERUpdate, Status: types.StepStatusError, StartDate: &t1,
+				Error: &types.ErrorStep{
+					ErrorType: types.StepErrorTransient, RetryCount: 3,
+					Description: []string{errFakeUpdateStep.Error(), errFakeUpdateStep.Error(), errFakeUpdateStep.Error()},
+				},
+			},
+			{Step: types.StepWaitingGERInjection, Status: types.StepStatusPending},
+			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+			{Step: types.StepClaimed, Status: types.StepStatusPending},
+		}, t1)
+
+		advanced := UpdateStep(tracking, 0, nil, false, Permanent(errFakeUpdateStep), t2)
+
+		sp := advanced.AllSteps()[0]
+		require.Equal(t, types.StepErrorPermanent, sp.Error.ErrorType)
+		require.Equal(t, 0, sp.Error.RetryCount, "nothing will retry a permanent step, so the count resets")
+		require.Equal(t, []string{errFakeUpdateStep.Error()}, sp.Error.Description)
 	})
 }
 

@@ -542,7 +542,7 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 
 	settlementLeafIndex := uint32(7)
 	f.settlement = &types.L1SettledGERResult{
-		TxHash: settlementTxHash, BlockNumber: 2000, GER: common.HexToHash("0x0b"),
+		TxHash: settlementTxHash, SettlementBlockNumber: 2000, GER: common.HexToHash("0x0b"),
 		L1InfoTreeIndex:                   &settlementLeafIndex,
 		HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
 	}
