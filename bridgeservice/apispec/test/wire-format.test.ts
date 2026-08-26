@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, inject, it } from 'vitest';
-import type { ZodError, ZodIssue } from 'zod';
+import type { ZodIssue } from 'zod';
 
 import { SpecFirstPrefix } from './constants.ts';
 
-import { getBridges, isWrapperError } from '../generated/client/index.js';
+import { getBridges, isResponseValidationError } from '../generated/client/index.js';
 
 /**
  * The generated client is the consumer half of the pipeline. It validates every
@@ -32,19 +32,21 @@ const L1_ORIGIN_GLOBAL_INDEX = 18446744073709551621n;
 /** 10^18 -- the amount on that row, also past the 2^53 double-safe range. */
 const L1_ORIGIN_AMOUNT = 1000000000000000000n;
 
-const issuesOf = (error: unknown): ZodIssue[] => {
-  const cause: unknown = (error as { cause?: unknown }).cause;
-  return (cause as ZodError | undefined)?.issues ?? [];
-};
-
 describe('the endpoint the service serves today', () => {
   it('is rejected by the generated client, at global_index', async () => {
     const { data, error } = await getBridges({ baseUrl, query: { network_id: 0 } });
 
     expect(data).equal(undefined);
-    expect(isWrapperError(error)).equal(true);
+    // zod-to-openapi-heyapi >= 2.0.4 classifies a 2xx body that fails response
+    // validation as a ResponseValidationError (earlier versions misreported it
+    // as a TransportError, which this very demo helped surface). The guard is
+    // a type predicate, so `cause` (the ZodError) and `body` (the offending
+    // post-JSON.parse payload) need no casts.
+    if (!isResponseValidationError(error)) {
+      throw new Error(`expected ResponseValidationError, got ${String(error)}`);
+    }
 
-    const issues = issuesOf(error);
+    const issues: ZodIssue[] = error.cause.issues;
     const globalIndexIssue = issues.find((issue) => issue.path.at(-1) === 'global_index');
 
     expect(globalIndexIssue).property('code', 'invalid_type');
@@ -57,6 +59,11 @@ describe('the endpoint the service serves today', () => {
     // string wrapper, which is what makes global_index an oversight rather
     // than a design choice.
     expect(issues.some((issue) => issue.path.at(-1) === 'amount')).equal(false);
+
+    // The rejected body rides on the error for diagnosis -- and it carries the
+    // silently-rounded double, which is exactly the corruption being refused.
+    const body = error.body as { bridges: Array<{ global_index: unknown }> };
+    expect(typeof body.bridges[0]?.global_index).equal('number');
   });
 });
 

@@ -12,11 +12,11 @@ importers:
         specifier: ^8.4.1
         version: 8.5.0(zod@4.4.3)
       '@polygonlabs/openapi-registry':
-        specifier: ^2.1.3
-        version: 2.1.3(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(zod@4.4.3)
+        specifier: ^3.0.0
+        version: 3.0.0(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(zod@4.4.3)
       '@polygonlabs/zod-codecs':
-        specifier: ^1.1.2
-        version: 1.1.2(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(zod@4.4.3)
+        specifier: ^1.2.0
+        version: 1.2.0(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(zod@4.4.3)
       yaml:
         specifier: ^2.6.0
         version: 2.9.0
@@ -31,8 +31,8 @@ importers:
         specifier: ^0.97.3
         version: 0.97.3(typescript@5.9.3)
       '@polygonlabs/zod-to-openapi-heyapi':
-        specifier: ^2.0.3
-        version: 2.0.3(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(@hey-api/openapi-ts@0.97.3(typescript@5.9.3))(zod@4.4.3)
+        specifier: ^2.0.4
+        version: 2.0.4(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(@hey-api/openapi-ts@0.97.3(typescript@5.9.3))(zod@4.4.3)
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.3
@@ -248,14 +248,14 @@ packages:
     os: [linux]
     libc: [glibc]
 
-  '@polygonlabs/openapi-registry@2.1.3':
-    resolution: {integrity: sha512-1S3Ea893uJZ8g8B2xf7wfhJxLyl6f6nVMJ6HtJyChKqDCXP1Pd3d0KnabsrwTj9To+shdjSx0beZRkYcoXRzuQ==}
+  '@polygonlabs/openapi-registry@3.0.0':
+    resolution: {integrity: sha512-6lMZ/2CKnFo5NZQ/U1q5WQG9Ky7/KJYI+XyIqc/iMBMiINleO5l3eBFBu4S5D0xni2UjLkPHcHGh2vENeYLr9A==}
     peerDependencies:
       '@asteasolutions/zod-to-openapi': ^8.0.0
       zod: ^4.0.0
 
-  '@polygonlabs/zod-codecs@1.1.2':
-    resolution: {integrity: sha512-7oCBZ6x/LtC48IV7niadeQ6OY43FalU54WTcAxyW2UPiEG3WDff/P6KNS3rnxoGelhqzNlrYJiFwa02YjDB6kA==}
+  '@polygonlabs/zod-codecs@1.2.0':
+    resolution: {integrity: sha512-VFoNcHxOdkjMaD+Ubg+Mr7mDnMjJ64/rZKTLKN0o/+n6XjIs0A8S1QxShvBmiB362uEA7j1bTtT6KaKp6h5/6A==}
     peerDependencies:
       '@asteasolutions/zod-to-openapi': ^8.0.0
       zod: ^4.0.0
@@ -263,8 +263,8 @@ packages:
       '@asteasolutions/zod-to-openapi':
         optional: true
 
-  '@polygonlabs/zod-to-openapi-heyapi@2.0.3':
-    resolution: {integrity: sha512-C+7PewNRClP+wIZ8d+GK1VrBWZ/CSHfXKpb67pBZuj9T0WH97svS9ZgTXeuTZ8u2x0BvWdBvUduhugYvWugvzg==}
+  '@polygonlabs/zod-to-openapi-heyapi@2.0.4':
+    resolution: {integrity: sha512-NxJ6pqKrFow4VfQRZLBNWNaoe/rl3I91u5+tQ+Q7OoobwevUUKDFEIGPmNzMu+LfQg6a+96He07sJZwFU0pm6A==}
     peerDependencies:
       '@asteasolutions/zod-to-openapi': ^8.0.0
       '@hey-api/openapi-ts': '>=0.97.3'
@@ -989,18 +989,18 @@ snapshots:
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
 
-  '@polygonlabs/openapi-registry@2.1.3(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(zod@4.4.3)':
+  '@polygonlabs/openapi-registry@3.0.0(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(zod@4.4.3)':
     dependencies:
       '@asteasolutions/zod-to-openapi': 8.5.0(zod@4.4.3)
       zod: 4.4.3
 
-  '@polygonlabs/zod-codecs@1.1.2(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(zod@4.4.3)':
+  '@polygonlabs/zod-codecs@1.2.0(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(zod@4.4.3)':
     dependencies:
       zod: 4.4.3
     optionalDependencies:
       '@asteasolutions/zod-to-openapi': 8.5.0(zod@4.4.3)
 
-  '@polygonlabs/zod-to-openapi-heyapi@2.0.3(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(@hey-api/openapi-ts@0.97.3(typescript@5.9.3))(zod@4.4.3)':
+  '@polygonlabs/zod-to-openapi-heyapi@2.0.4(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(@hey-api/openapi-ts@0.97.3(typescript@5.9.3))(zod@4.4.3)':
     dependencies:
       '@asteasolutions/zod-to-openapi': 8.5.0(zod@4.4.3)
       '@hey-api/openapi-ts': 0.97.3(typescript@5.9.3)
