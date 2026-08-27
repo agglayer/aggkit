@@ -82,6 +82,52 @@ string, runtime value a `bigint` — so the client validates every response
 against the same code that defined the contract and hands the caller exact
 values with no double in the path.
 
+## What the generated client gives you
+
+The client is not a fetch wrapper — it is the contract, executable on the
+consumer's side. Concretely:
+
+**Errors arrive classified, not as prose to fingerprint.** Every operation's
+result narrows into three categories via generated type-predicate guards, with
+no casts anywhere:
+
+- `TransportError` — the request never produced an HTTP response (DNS, abort,
+  connection reset). `cause` carries the native fetch error.
+- `ResponseValidationError` — the server responded, but the body does not
+  match the contract: a 2xx body failing the response schema, or an error
+  body matching no registered error schema. `cause` is the `ZodError` with
+  the exact issue paths; `body` is the offending payload. This is how
+  contract drift becomes *undeliverable*: the money test below points this
+  client at today's live endpoint, and the bare-number `global_index` is
+  refused on the first row — carrying the silently-rounded double on `.body`
+  as evidence — instead of flowing into the application as a wrong value.
+- Typed `${Op}Error` — the body matched a registered error schema for that
+  status, decoded through its codecs, fully typed.
+
+Compare that with what consuming this API by hand requires today: matching
+substrings of freeform error messages that have already changed between two
+release candidates.
+
+**Codecs run in both directions, so the wire format and the runtime type are
+different things — honestly.** `global_index` and `amount` are declared once
+as `BigIntegerCodec` (wire: decimal string; runtime: `bigint`). Every response
+runs `parseAsync` through the *actual schema objects* the spec was generated
+from — not a reconstruction — so the caller receives exact `bigint`s, `Date`s
+from ISO strings, and so on, and the TypeScript types agree with the runtime
+values by construction. Request-side inputs are encoded back to wire format
+the same way: pass a `bigint`, the wire carries the string.
+
+**React integration is one flag away.** The same plugin emits codec-aware
+TanStack Query factories (`queryOptions`, query keys, hooks-ready) per
+operation when `tanstackReactQuery: true` is set — this demo keeps it off to
+stay minimal, but a frontend consuming this API gets typed, codec-decoding
+React hooks from the same one-line config, with no additional authoring.
+
+**One canonical import surface.** The generated barrel exports the client
+singleton, every operation wrapper, the error classes and guards, and the
+schema-derived types — a consumer imports from one place and cannot
+accidentally reach a wire-shaped variant of a type.
+
 ## Running it
 
 Prerequisites: Go (per `go.mod`), Node 24, pnpm.
