@@ -24,9 +24,8 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@aggkit/bridge-apispec": "link:.",
     "@hey-api/openapi-ts": "^0.97.3",
-    "@polygonlabs/zod-to-openapi-heyapi": "^2.0.4",
+    "@polygonlabs/zod-to-openapi-heyapi": "^2.1.0",
     "@types/node": "^24.0.0",
     "typescript": "^5.5.0",
     "vitest": "^3.0.0"
@@ -35,8 +34,5 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
-  },
-  "exports": {
-    ".": "./src/index.ts"
   }
 }

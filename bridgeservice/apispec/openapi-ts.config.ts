@@ -2,7 +2,7 @@ import type { UserConfig } from '@hey-api/openapi-ts';
 
 import { defineRegistryClientConfig } from '@polygonlabs/zod-to-openapi-heyapi';
 
-import { buildRegistry } from '@aggkit/bridge-apispec';
+import { buildRegistry } from '#schemas';
 
 // `defineRegistryClientConfig` locks in the plugin order and flags this
 // pipeline depends on -- in particular the registry plugin ahead of
@@ -22,7 +22,7 @@ import { buildRegistry } from '@aggkit/bridge-apispec';
 // violating the contract is rejected by the same code that wrote it.
 const config: UserConfig = await defineRegistryClientConfig({
   registry: buildRegistry(),
-  schemasFrom: '@aggkit/bridge-apispec',
+  schemasFrom: '#schemas',
   input: './generated/openapi.yaml',
   output: { path: './generated/client', clean: true }
 });

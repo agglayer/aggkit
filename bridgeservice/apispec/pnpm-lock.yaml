@@ -24,15 +24,12 @@ importers:
         specifier: ^4.3.6
         version: 4.4.3
     devDependencies:
-      '@aggkit/bridge-apispec':
-        specifier: link:.
-        version: 'link:'
       '@hey-api/openapi-ts':
         specifier: ^0.97.3
         version: 0.97.3(typescript@5.9.3)
       '@polygonlabs/zod-to-openapi-heyapi':
-        specifier: ^2.0.4
-        version: 2.0.4(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(@hey-api/openapi-ts@0.97.3(typescript@5.9.3))(zod@4.4.3)
+        specifier: ^2.1.0
+        version: 2.1.0(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(@hey-api/openapi-ts@0.97.3(typescript@5.9.3))(zod@4.4.3)
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.3
@@ -263,8 +260,8 @@ packages:
       '@asteasolutions/zod-to-openapi':
         optional: true
 
-  '@polygonlabs/zod-to-openapi-heyapi@2.0.4':
-    resolution: {integrity: sha512-NxJ6pqKrFow4VfQRZLBNWNaoe/rl3I91u5+tQ+Q7OoobwevUUKDFEIGPmNzMu+LfQg6a+96He07sJZwFU0pm6A==}
+  '@polygonlabs/zod-to-openapi-heyapi@2.1.0':
+    resolution: {integrity: sha512-eFsGwIhfRccTOhucWVFYbSyyCa36ZbXJstoHvoJOdM9b4st54kaqdOk7vOoPd+UY2E42BKsRNTCHGEj4yt/p0A==}
     peerDependencies:
       '@asteasolutions/zod-to-openapi': ^8.0.0
       '@hey-api/openapi-ts': '>=0.97.3'
@@ -1000,7 +997,7 @@ snapshots:
     optionalDependencies:
       '@asteasolutions/zod-to-openapi': 8.5.0(zod@4.4.3)
 
-  '@polygonlabs/zod-to-openapi-heyapi@2.0.4(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(@hey-api/openapi-ts@0.97.3(typescript@5.9.3))(zod@4.4.3)':
+  '@polygonlabs/zod-to-openapi-heyapi@2.1.0(@asteasolutions/zod-to-openapi@8.5.0(zod@4.4.3))(@hey-api/openapi-ts@0.97.3(typescript@5.9.3))(zod@4.4.3)':
     dependencies:
       '@asteasolutions/zod-to-openapi': 8.5.0(zod@4.4.3)
       '@hey-api/openapi-ts': 0.97.3(typescript@5.9.3)
