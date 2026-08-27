@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -79,10 +80,14 @@ func (f *fakeActivityBridgeService) start(t *testing.T) string {
 }
 
 // fakeNetworkLister is a fixed NetworkLister for tests: every networkID resolves to the same
-// bridge service base URL
+// bridge service base URL. bridgeAddrs backs BridgeAddress; a networkID absent from it errors
+// (bridgeAddrErr if set, a generic "not configured" error otherwise), mirroring
+// bridgeservicefinder's own behaviour when neither an override nor the on-chain default applies.
 type fakeNetworkLister struct {
-	networkIDs []uint32
-	url        string
+	networkIDs    []uint32
+	url           string
+	bridgeAddrs   map[uint32]common.Address
+	bridgeAddrErr error
 }
 
 func (f fakeNetworkLister) GetURL(uint32) (bridgeservicefinder.NetworkURLs, error) {
@@ -90,6 +95,16 @@ func (f fakeNetworkLister) GetURL(uint32) (bridgeservicefinder.NetworkURLs, erro
 }
 
 func (f fakeNetworkLister) NetworkIDs() []uint32 { return f.networkIDs }
+
+func (f fakeNetworkLister) BridgeAddress(_ context.Context, networkID uint32) (common.Address, error) {
+	if addr, ok := f.bridgeAddrs[networkID]; ok {
+		return addr, nil
+	}
+	if f.bridgeAddrErr != nil {
+		return common.Address{}, f.bridgeAddrErr
+	}
+	return common.Address{}, fmt.Errorf("no bridge contract address configured for network %d", networkID)
+}
 
 func bridgeResponse(networkID, destNetwork, depositCount uint32, from string, globalIndex int64) *bridgeservicetypes.BridgeResponse {
 	fromAddr := bridgeservicetypes.Address(from)
@@ -124,9 +139,9 @@ func TestActivitySource_BridgesFrom_PaginatesAndScansEveryNetwork(t *testing.T) 
 	url := svc.start(t)
 	lister := fakeNetworkLister{networkIDs: []uint32{1, 2}, url: url}
 
-	source := NewActivitySource(lister, nil, nil)
+	source := NewActivitySource(lister, nil)
 
-	items, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress))
+	items, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
 	require.NoError(t, err)
 	require.Len(t, items, 4)
 
@@ -137,9 +152,9 @@ func TestActivitySource_BridgesFrom_PaginatesAndScansEveryNetwork(t *testing.T) 
 	require.ElementsMatch(t, []int64{1, 2, 3, 5}, globalIndexes)
 }
 
-// TestFetchAllBridgesFrom_Pagination exercises the pagination loop directly with a small page
+// TestFetchNewBridgesFrom_Pagination exercises the pagination loop directly with a small page
 // size, so a short page (fewer results than requested) stops the loop.
-func TestFetchAllBridgesFrom_Pagination(t *testing.T) {
+func TestFetchNewBridgesFrom_Pagination(t *testing.T) {
 	svc := &fakeActivityBridgeService{
 		bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
 			1: {
@@ -151,19 +166,47 @@ func TestFetchAllBridgesFrom_Pagination(t *testing.T) {
 	}
 	url := svc.start(t)
 	lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
-	source := NewActivitySource(lister, nil, nil)
+	source := NewActivitySource(lister, nil)
 	client, err := source.services.aggkitBridgeClientFor(1)
 	require.NoError(t, err)
 
-	items, err := fetchAllBridgesFrom(t.Context(), client, 1, testFromAddress, 2)
+	items, err := fetchNewBridgesFrom(t.Context(), client, 1, testFromAddress, 2, nil)
 	require.NoError(t, err)
 	require.Len(t, items, 3)
+}
+
+// TestFetchNewBridgesFrom_StopsAtFirstKnownBridge verifies pagination stops as soon as an
+// already-known bridge is reached, without walking further pages, and returns only the bridges
+// found before it (the newer ones, per the server's newest-first order).
+func TestFetchNewBridgesFrom_StopsAtFirstKnownBridge(t *testing.T) {
+	// bridgesByNetwork is given newest-first (global index 3, then 2, then 1), matching the real
+	// bridge service's own deposit_count DESC order
+	svc := &fakeActivityBridgeService{
+		bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
+			1: {
+				bridgeResponse(1, 2, 2, testFromAddress, 3),
+				bridgeResponse(1, 2, 1, testFromAddress, 2), // already known: pagination stops here
+				bridgeResponse(1, 2, 0, testFromAddress, 1), // must never be fetched
+			},
+		},
+	}
+	url := svc.start(t)
+	lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
+	source := NewActivitySource(lister, nil)
+	client, err := source.services.aggkitBridgeClientFor(1)
+	require.NoError(t, err)
+
+	known := map[string]struct{}{"2": {}}
+	items, err := fetchNewBridgesFrom(t.Context(), client, 1, testFromAddress, 1, known)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, int64(3), items[0].GlobalIndex.Int64())
 }
 
 // TestActivitySource_IsClaimed_NoBridgeAddrConfigured verifies IsClaimed errors clearly when
 // the destination network has no bridge contract address configured.
 func TestActivitySource_IsClaimed_NoBridgeAddrConfigured(t *testing.T) {
-	source := NewActivitySource(fakeNetworkLister{}, StaticClients{}, map[uint32]common.Address{})
+	source := NewActivitySource(fakeNetworkLister{}, StaticClients{})
 
 	bridge := bridgeResponse(1, 2, 3, testFromAddress, 1)
 	_, err := source.IsClaimed(t.Context(), bridge)
@@ -179,7 +222,8 @@ func TestActivitySource_IsClaimed_CallsContractWithDepositCountAndOriginNetwork(
 
 	stub := &stubClaimChecker{claimed: true}
 	buildCalls := 0
-	source := NewActivitySource(fakeNetworkLister{}, client, map[uint32]common.Address{2: destAddr})
+	lister := fakeNetworkLister{bridgeAddrs: map[uint32]common.Address{2: destAddr}}
+	source := NewActivitySource(lister, client)
 	source.newContract = func(addr common.Address, _ aggkittypes.BaseEthereumClienter) (claimChecker, error) {
 		buildCalls++
 		require.Equal(t, destAddr, addr)
@@ -222,7 +266,7 @@ func TestActivitySource_ClaimInfo(t *testing.T) {
 	}
 	url := svc.start(t)
 	lister := fakeNetworkLister{networkIDs: []uint32{2}, url: url}
-	source := NewActivitySource(lister, nil, nil)
+	source := NewActivitySource(lister, nil)
 
 	found := bridgeResponse(1, 2, 0, testFromAddress, 1)
 	got, err := source.ClaimInfo(t.Context(), found)

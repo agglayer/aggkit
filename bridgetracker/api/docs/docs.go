@@ -24,7 +24,7 @@ const docTemplate = `{
     "paths": {
         "/activity/from/{from_address}": {
             "get": {
-                "description": "Scans every bridge service the tracker knows about for bridges sent by\nfrom_address and reports each one's claim state, exactly as the bridge service\nreported it. Results are cached: a bridge already known to be claimed, with its\nclaim record already fetched, is not rechecked on a later call. Passing\nincludeTracking=true additionally registers every still-unclaimed bridge with\nthe bridge tracker and includes its current tracking snapshot.",
+                "description": "Scans every bridge service the tracker knows about for bridges sent by\nfrom_address and reports each one's claim state, exactly as the bridge service\nreported it. Results are cached: a bridge already known to be claimed, with its\nclaim record already fetched, is not rechecked on a later call. Passing\nincludeTracking=true additionally registers every still-unclaimed bridge with\nthe bridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / errored while checking).",
                 "produces": [
                     "application/json"
                 ],
@@ -45,6 +45,19 @@ const docTemplate = `{
                         "description": "Register still-unclaimed bridges with the tracker",
                         "name": "includeTracking",
                         "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "all",
+                            "claimed",
+                            "pending",
+                            "error"
+                        ],
+                        "type": "string",
+                        "default": "all",
+                        "description": "Which bridges to return",
+                        "name": "filterBridges",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -55,7 +68,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid from_address",
+                        "description": "Invalid from_address or filterBridges",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorData"
                         }
@@ -204,6 +217,13 @@ const docTemplate = `{
                 "claimed": {
                     "description": "Claimed is the tri-state result of the destination bridge contract's isClaimed() call\nthe last time it was checked: \"false\" (confirmed unclaimed), \"true\" (claimed), or\n\"error\" if the check itself failed (e.g. no bridge contract address configured for the\ndestination network) — callers must not read \"error\" as \"false\"",
                     "type": "string"
+                },
+                "errors": {
+                    "description": "Errors holds the message of whatever check failed the last time this item was refreshed,\nkeyed by which check it was — currently only \"claim\", present when Claimed is \"error\"",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "tracking": {
                     "description": "Tracking is the bridge tracker's current status for this bridge; only present when the\nrequest set includeTracking=true and the bridge is still unclaimed",
@@ -401,17 +421,38 @@ const docTemplate = `{
                         1000000000,
                         60000000000,
                         3600000000000,
+                        -9223372036854775808,
+                        9223372036854775807,
                         1,
                         1000,
                         1000000,
                         1000000000,
                         60000000000,
                         3600000000000,
+                        -9223372036854775808,
+                        9223372036854775807,
                         1,
                         1000,
                         1000000,
                         1000000000,
-                        60000000000
+                        60000000000,
+                        3600000000000,
+                        -9223372036854775808,
+                        9223372036854775807,
+                        1,
+                        1000,
+                        1000000,
+                        1000000000,
+                        60000000000,
+                        3600000000000,
+                        -9223372036854775808,
+                        9223372036854775807,
+                        1,
+                        1000,
+                        1000000,
+                        1000000000,
+                        60000000000,
+                        3600000000000
                     ],
                     "x-enum-varnames": [
                         "minDuration",
@@ -422,17 +463,38 @@ const docTemplate = `{
                         "Second",
                         "Minute",
                         "Hour",
+                        "minDuration",
+                        "maxDuration",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",
                         "Second",
                         "Minute",
                         "Hour",
+                        "minDuration",
+                        "maxDuration",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",
                         "Second",
-                        "Minute"
+                        "Minute",
+                        "Hour",
+                        "minDuration",
+                        "maxDuration",
+                        "Nanosecond",
+                        "Microsecond",
+                        "Millisecond",
+                        "Second",
+                        "Minute",
+                        "Hour",
+                        "minDuration",
+                        "maxDuration",
+                        "Nanosecond",
+                        "Microsecond",
+                        "Millisecond",
+                        "Second",
+                        "Minute",
+                        "Hour"
                     ]
                 }
             }

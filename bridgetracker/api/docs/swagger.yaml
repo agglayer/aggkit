@@ -30,6 +30,13 @@ definitions:
           "error" if the check itself failed (e.g. no bridge contract address configured for the
           destination network) — callers must not read "error" as "false"
         type: string
+      errors:
+        additionalProperties:
+          type: string
+        description: |-
+          Errors holds the message of whatever check failed the last time this item was refreshed,
+          keyed by which check it was — currently only "claim", present when Claimed is "error"
+        type: object
       tracking:
         allOf:
         - $ref: '#/definitions/api.TrackingData'
@@ -203,17 +210,38 @@ definitions:
         - 1000000000
         - 60000000000
         - 3600000000000
+        - -9223372036854775808
+        - 9223372036854775807
         - 1
         - 1000
         - 1000000
         - 1000000000
         - 60000000000
         - 3600000000000
+        - -9223372036854775808
+        - 9223372036854775807
         - 1
         - 1000
         - 1000000
         - 1000000000
         - 60000000000
+        - 3600000000000
+        - -9223372036854775808
+        - 9223372036854775807
+        - 1
+        - 1000
+        - 1000000
+        - 1000000000
+        - 60000000000
+        - 3600000000000
+        - -9223372036854775808
+        - 9223372036854775807
+        - 1
+        - 1000
+        - 1000000
+        - 1000000000
+        - 60000000000
+        - 3600000000000
         format: int64
         type: integer
         x-enum-varnames:
@@ -225,17 +253,38 @@ definitions:
         - Second
         - Minute
         - Hour
+        - minDuration
+        - maxDuration
         - Nanosecond
         - Microsecond
         - Millisecond
         - Second
         - Minute
         - Hour
+        - minDuration
+        - maxDuration
         - Nanosecond
         - Microsecond
         - Millisecond
         - Second
         - Minute
+        - Hour
+        - minDuration
+        - maxDuration
+        - Nanosecond
+        - Microsecond
+        - Millisecond
+        - Second
+        - Minute
+        - Hour
+        - minDuration
+        - maxDuration
+        - Nanosecond
+        - Microsecond
+        - Millisecond
+        - Second
+        - Minute
+        - Hour
     type: object
   types.BridgeResponse:
     description: Detailed information about a bridge event
@@ -499,7 +548,9 @@ paths:
         reported it. Results are cached: a bridge already known to be claimed, with its
         claim record already fetched, is not rechecked on a later call. Passing
         includeTracking=true additionally registers every still-unclaimed bridge with
-        the bridge tracker and includes its current tracking snapshot.
+        the bridge tracker and includes its current tracking snapshot. filterBridges
+        restricts the result to bridges with only that claim state (claimed / still
+        pending / errored while checking).
       parameters:
       - description: Address that sent the bridges to look up
         in: path
@@ -510,6 +561,16 @@ paths:
         in: query
         name: includeTracking
         type: boolean
+      - default: all
+        description: Which bridges to return
+        enum:
+        - all
+        - claimed
+        - pending
+        - error
+        in: query
+        name: filterBridges
+        type: string
       produces:
       - application/json
       responses:
@@ -518,7 +579,7 @@ paths:
           schema:
             $ref: '#/definitions/api.ActivityResponse'
         "400":
-          description: Invalid from_address
+          description: Invalid from_address or filterBridges
           schema:
             $ref: '#/definitions/types.ErrorData'
         "500":

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -74,6 +75,13 @@ type finder struct {
 	// skipped entirely during enumeration (see buildInitialCache) and live discovery (see listener's
 	// discoverRollup).
 	ignoreNetworkIDs map[uint32]struct{}
+
+	// bridgeAddrMu guards defaultBridgeAddr
+	bridgeAddrMu sync.Mutex
+	// defaultBridgeAddr caches the rollup manager's own BridgeAddress() once resolved (see
+	// BridgeAddress): nil until the first call needs it. It is an immutable constructor parameter of
+	// the rollup manager, so once resolved it is cached forever — never re-read or invalidated.
+	defaultBridgeAddr *common.Address
 }
 
 // buildIgnoreSet turns Config.IgnoreNetworkIDs into a set for O(1) membership checks.
@@ -384,4 +392,41 @@ func (f *finder) GetURL(networkID uint32) (NetworkURLs, error) {
 // GetURL would presently succeed for).
 func (f *finder) NetworkIDs() []uint32 {
 	return f.cache.networkIDs()
+}
+
+// BridgeAddress returns the bridge contract address for networkID, in priority order:
+//  1. Config.BridgeAddress[networkID], if set.
+//  2. Config.BridgeAddress[0], if set — network 0's override doubles as the default for every
+//     other network that has none of its own, since it is typically the shared L1 bridge address.
+//  3. The rollup manager's own on-chain BridgeAddress(), resolved once and cached forever (see
+//     defaultBridgeAddress) — only reached when neither override above is configured.
+func (f *finder) BridgeAddress(ctx context.Context, networkID uint32) (common.Address, error) {
+	if addr, ok := f.cfg.BridgeAddress[networkID]; ok {
+		return addr, nil
+	}
+	if addr, ok := f.cfg.BridgeAddress[0]; ok {
+		return addr, nil
+	}
+	return f.defaultBridgeAddress(ctx)
+}
+
+// defaultBridgeAddress returns the rollup manager's own BridgeAddress(), resolving it on chain the
+// first time it is needed and caching it forever after: it is an immutable constructor parameter
+// of the rollup manager, so it can never change once deployed. A transient failure (e.g. a
+// transport error) is not cached, so the next call retries the on-chain read.
+func (f *finder) defaultBridgeAddress(ctx context.Context) (common.Address, error) {
+	f.bridgeAddrMu.Lock()
+	defer f.bridgeAddrMu.Unlock()
+
+	if f.defaultBridgeAddr != nil {
+		return *f.defaultBridgeAddr, nil
+	}
+
+	addr, err := f.rollupManager.BridgeAddress(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return common.Address{}, fmt.Errorf("reading rollup manager's bridge address: %w", err)
+	}
+
+	f.defaultBridgeAddr = &addr
+	return addr, nil
 }

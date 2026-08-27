@@ -124,6 +124,13 @@ type Config struct {
 	// both); leaving either nil leaves the endpoint unregistered entirely.
 	ActivityScanner ActivityBridgeScanner `mapstructure:"-"`
 	ActivityClaims  ActivityClaimChecker  `mapstructure:"-"`
+
+	// ActivityIdleTimeout is how long a from_address's activity cache (see ActivityCache) stays
+	// in memory with no GET /activity/from/{from_address} call for it, before being forgotten
+	// entirely (bridges, claim state, everything cached for it). Same semantics as IdleTimeout,
+	// a separate knob because it governs a different cache. A value <= 0 falls back to
+	// DefaultIdleTimeout.
+	ActivityIdleTimeout types.Duration `mapstructure:"ActivityIdleTimeout"`
 }
 
 // Validate checks if the configuration is valid

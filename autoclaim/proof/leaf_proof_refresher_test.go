@@ -44,6 +44,10 @@ func (f *fakeURLResolver) NetworkIDs() []uint32 {
 	return ids
 }
 
+func (f *fakeURLResolver) BridgeAddress(context.Context, uint32) (common.Address, error) {
+	return common.Address{}, nil
+}
+
 // fakeClaimProofClient implements claimProofClient for tests, keyed by base URL.
 type fakeClaimProofClient struct {
 	baseURL string

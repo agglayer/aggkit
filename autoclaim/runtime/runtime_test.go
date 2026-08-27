@@ -292,6 +292,10 @@ func (fakeBridgeServiceFinder) GetURL(uint32) (bridgeservicefinder.NetworkURLs, 
 
 func (fakeBridgeServiceFinder) NetworkIDs() []uint32 { return nil }
 
+func (fakeBridgeServiceFinder) BridgeAddress(context.Context, uint32) (common.Address, error) {
+	return common.Address{}, nil
+}
+
 func withL2ToLxEnabled(cfg autoclaimcfg.Config) autoclaimcfg.Config {
 	cfg.L2ToLxBridgeDetector = autoclaimcfg.L2ToLxBridgeDetector{
 		Enabled:      true,

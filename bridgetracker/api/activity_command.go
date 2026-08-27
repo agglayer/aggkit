@@ -44,6 +44,9 @@ type ActivityItem struct {
 	// Tracking is the bridge tracker's current status for this bridge; only present when the
 	// request set includeTracking=true and the bridge is still unclaimed
 	Tracking *TrackingData `json:"tracking,omitempty"`
+	// Errors holds the message of whatever check failed the last time this item was refreshed,
+	// keyed by which check it was — currently only "claim", present when Claimed is "error"
+	Errors map[string]string `json:"errors,omitempty"`
 }
 
 // ActivityResponse is the body of GET /activity/from/{from_address}
@@ -58,8 +61,11 @@ type ActivityResponse struct {
 // from_address path parameter, and reports each one's claim state. Passing
 // ?includeTracking=true additionally registers every still-unclaimed bridge found with the
 // bridge tracker (same effect as calling GetTxStatus for it) and includes its current tracking
-// snapshot.
-// 200 OK unless: invalid from_address (ErrorData/400), or the scan itself failed (ErrorData/500)
+// snapshot. ?filterBridges=claimed|pending|error restricts the result to only bridges with that
+// claim state (default "all"); a claimed bridge excluded by "pending"/"error" never has its
+// claim record fetched, so switching back to "all"/"claimed" later fetches it then.
+// 200 OK unless: invalid from_address/filterBridges (ErrorData/400), or the scan itself failed
+// (ErrorData/500)
 //
 // @Summary Get bridge activity by sender address
 // @Description Scans every bridge service the tracker knows about for bridges sent by
@@ -67,13 +73,16 @@ type ActivityResponse struct {
 // @Description reported it. Results are cached: a bridge already known to be claimed, with its
 // @Description claim record already fetched, is not rechecked on a later call. Passing
 // @Description includeTracking=true additionally registers every still-unclaimed bridge with
-// @Description the bridge tracker and includes its current tracking snapshot.
+// @Description the bridge tracker and includes its current tracking snapshot. filterBridges
+// @Description restricts the result to bridges with only that claim state (claimed / still
+// @Description pending / errored while checking).
 // @Tags bridge-tracker
 // @Produce json
 // @Param from_address path string true "Address that sent the bridges to look up"
 // @Param includeTracking query bool false "Register still-unclaimed bridges with the tracker"
+// @Param filterBridges query string false "Which bridges to return" Enums(all, claimed, pending, error) default(all)
 // @Success 200 {object} ActivityResponse
-// @Failure 400 {object} types.ErrorData "Invalid from_address"
+// @Failure 400 {object} types.ErrorData "Invalid from_address or filterBridges"
 // @Failure 500 {object} types.ErrorData "Scanning the configured bridge services failed"
 // @Router /activity/from/{from_address} [get]
 func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData) {
@@ -84,7 +93,12 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 	fromAddress := common.HexToAddress(addrStr)
 	includeTracking := c.Query(includeTrackingQueryParam) == "true"
 
-	entries, err := cmd.querier.GetActivity(c.Request.Context(), fromAddress, includeTracking)
+	filter, err := types.ParseActivityFilter(c.Query(filterBridgesQueryParam))
+	if err != nil {
+		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: err.Error()}
+	}
+
+	entries, err := cmd.querier.GetActivity(c.Request.Context(), fromAddress, includeTracking, filter)
 	if err != nil {
 		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()}
 	}
@@ -100,6 +114,7 @@ func newActivityItems(entries []*domain.ActivityEntry) []ActivityItem {
 			Bridge:          e.Bridge,
 			BridgeNetworkID: e.Bridge.OriginNetwork,
 			Claimed:         e.ClaimStatus.String(),
+			Errors:          e.Errors,
 		}
 		if e.Claim != nil {
 			item.Claim = e.Claim

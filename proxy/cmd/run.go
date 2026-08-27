@@ -190,8 +190,9 @@ func runTracker(
 
 	// GET /activity/from/{from_address} scans every network the finder knows about (via
 	// finder.NetworkIDs) for bridges sent by an address, and resolves their claim state through
-	// the same per-network JSON-RPC clients and BridgeAddrs used above
-	activitySource := sources.NewActivitySource(finder, rpcClients, trackerCfg.BridgeAddrs)
+	// the same per-network JSON-RPC clients plus the finder's own BridgeAddress resolution
+	// (see BridgeServiceFinder.BridgeAddress, distinct from Tracker.BridgeAddrs above)
+	activitySource := sources.NewActivitySource(finder, rpcClients)
 	trackerCfg.ActivityScanner = activitySource
 	trackerCfg.ActivityClaims = activitySource
 

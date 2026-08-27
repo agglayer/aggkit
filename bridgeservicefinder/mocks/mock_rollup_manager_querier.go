@@ -6,6 +6,8 @@ import (
 	agglayermanager "github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
 
+	common "github.com/ethereum/go-ethereum/common"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -20,6 +22,64 @@ type RollupManagerQuerier_Expecter struct {
 
 func (_m *RollupManagerQuerier) EXPECT() *RollupManagerQuerier_Expecter {
 	return &RollupManagerQuerier_Expecter{mock: &_m.Mock}
+}
+
+// BridgeAddress provides a mock function with given fields: opts
+func (_m *RollupManagerQuerier) BridgeAddress(opts *bind.CallOpts) (common.Address, error) {
+	ret := _m.Called(opts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BridgeAddress")
+	}
+
+	var r0 common.Address
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) (common.Address, error)); ok {
+		return rf(opts)
+	}
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) common.Address); ok {
+		r0 = rf(opts)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(common.Address)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(*bind.CallOpts) error); ok {
+		r1 = rf(opts)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// RollupManagerQuerier_BridgeAddress_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BridgeAddress'
+type RollupManagerQuerier_BridgeAddress_Call struct {
+	*mock.Call
+}
+
+// BridgeAddress is a helper method to define mock.On call
+//   - opts *bind.CallOpts
+func (_e *RollupManagerQuerier_Expecter) BridgeAddress(opts interface{}) *RollupManagerQuerier_BridgeAddress_Call {
+	return &RollupManagerQuerier_BridgeAddress_Call{Call: _e.mock.On("BridgeAddress", opts)}
+}
+
+func (_c *RollupManagerQuerier_BridgeAddress_Call) Run(run func(opts *bind.CallOpts)) *RollupManagerQuerier_BridgeAddress_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*bind.CallOpts))
+	})
+	return _c
+}
+
+func (_c *RollupManagerQuerier_BridgeAddress_Call) Return(_a0 common.Address, _a1 error) *RollupManagerQuerier_BridgeAddress_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *RollupManagerQuerier_BridgeAddress_Call) RunAndReturn(run func(*bind.CallOpts) (common.Address, error)) *RollupManagerQuerier_BridgeAddress_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // RollupCount provides a mock function with given fields: opts

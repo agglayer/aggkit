@@ -27,6 +27,8 @@ IgnoreNetworkIDs = []
 
 [BridgeServiceFinder.RPCURLs]
 
+[BridgeServiceFinder.BridgeAddress]
+
 [REST]
 Host = "0.0.0.0"
 Port = 8080
@@ -56,6 +58,11 @@ RetentionPeriod = "10m"
 # applies regardless of status, so a bridge that never resolves and that nobody is watching does
 # not stay in memory forever.
 IdleTimeout = "30m"
+
+# ActivityIdleTimeout: how long a from_address's activity cache (GET /activity/from/{address})
+# stays in memory with no request for it, before being forgotten entirely -- same idea as
+# IdleTimeout, a separate knob because it governs a different cache.
+ActivityIdleTimeout = "30m"
 
 # RegisterResolveTimeout: how long the first request for a freshly registered tx waits for the
 # engine's immediate resolution attempt before answering, so it has a shot at real progress

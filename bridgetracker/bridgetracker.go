@@ -34,7 +34,8 @@ func New(cfg *Config) *BridgeTracker {
 	// Config.ActivityScanner/ActivityClaims); a nil ActivityQuerier tells api.NewAPI to skip it
 	var activity ActivityQuerier
 	if cfg.ActivityScanner != nil && cfg.ActivityClaims != nil {
-		activity = NewActivityCache(cfg.ActivityScanner, cfg.ActivityClaims, supervised, cfg.Logger)
+		activity = NewActivityCache(
+			cfg.ActivityScanner, cfg.ActivityClaims, supervised, cfg.Logger, cfg.ActivityIdleTimeout.Duration)
 	}
 
 	return &BridgeTracker{

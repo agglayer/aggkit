@@ -538,6 +538,12 @@ func (noopBridgeServiceFinder) GetURL(networkID uint32) (bridgeservicefinder.Net
 
 func (noopBridgeServiceFinder) NetworkIDs() []uint32 { return nil }
 
+func (noopBridgeServiceFinder) BridgeAddress(_ context.Context, networkID uint32) (common.Address, error) {
+	return common.Address{}, fmt.Errorf(
+		"autoclaim bridge service finder is not configured (AutoClaim.L2ToLxBridgeDetector.Enabled=false): network %d",
+		networkID)
+}
+
 // startRuntimeComponents launches the goroutines for tx managers, claimers, and the bridge detector.
 func startRuntimeComponents(
 	ctx context.Context,

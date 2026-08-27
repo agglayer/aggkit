@@ -42,6 +42,10 @@ const (
 	// activityCommand.Execute)
 	includeTrackingQueryParam = "includeTracking"
 
+	// filterBridgesQueryParam selects which bridges the activity endpoint returns: "all"
+	// (default), "claimed" or "pending" (see types.ActivityFilter)
+	filterBridgesQueryParam = "filterBridges"
+
 	decimalBase   = 10
 	uint32BitSize = 32
 )

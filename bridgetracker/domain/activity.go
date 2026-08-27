@@ -26,15 +26,26 @@ type ActivityEntry struct {
 	// Tracking is the bridge tracker's current snapshot of this bridge, only populated while
 	// it is still unclaimed and the caller asked for it (includeTracking); nil otherwise
 	Tracking *TrackingData
+	// Errors holds the message of whatever check failed the last time this entry was
+	// refreshed, keyed by which check it was — currently only "claim", set when ClaimStatus is
+	// Error (the isClaimed() check itself failed). nil while nothing has failed
+	Errors map[string]string
 }
 
 // ActivityBridgeScanner is the driven port to the raw bridge-service data behind the
 // GET /activity/from/{from_address} endpoint: it scans every bridge service the tracker knows
 // about for bridges sent by fromAddress
 type ActivityBridgeScanner interface {
-	// BridgesFrom returns every bridge whose sender is fromAddress, across every configured
-	// bridge service, exactly as each network's own bridge service reports it
-	BridgesFrom(ctx context.Context, fromAddress common.Address) ([]*bridgeservicetypes.BridgeResponse, error)
+	// BridgesFrom returns every bridge whose sender is fromAddress and whose GlobalIndex (as a
+	// decimal string) is not already in known, across every configured bridge service. known is
+	// the caller's full set of already-cached global indexes for fromAddress (any network — a
+	// GlobalIndex is unique across the whole system); implementations may use it to stop
+	// scanning a network as soon as an already-known bridge is reached, since each network's
+	// own bridge service reports bridges newest-first and is append-only, so anything after the
+	// first known bridge is guaranteed already known too (see sources.ActivitySource)
+	BridgesFrom(
+		ctx context.Context, fromAddress common.Address, known map[string]struct{},
+	) ([]*bridgeservicetypes.BridgeResponse, error)
 }
 
 // ActivityClaimChecker is the driven port to a bridge's claim state on its destination
@@ -51,8 +62,11 @@ type ActivityClaimChecker interface {
 // ActivityQuerier is the driven port the GET /activity/from/{from_address} HTTP command
 // depends on
 type ActivityQuerier interface {
-	// GetActivity returns every bridge sent by fromAddress across every configured bridge
-	// service, enriched with its claim state; includeTracking additionally feeds every
-	// still-unclaimed bridge to the bridge tracker (see ActivityEntry.Tracking)
-	GetActivity(ctx context.Context, fromAddress common.Address, includeTracking bool) ([]*ActivityEntry, error)
+	// GetActivity returns the bridges sent by fromAddress across every configured bridge
+	// service, enriched with their claim state and filtered per filter (see
+	// types.ActivityFilter); includeTracking additionally feeds every still-unclaimed bridge in
+	// the result to the bridge tracker (see ActivityEntry.Tracking)
+	GetActivity(
+		ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
+	) ([]*ActivityEntry, error)
 }

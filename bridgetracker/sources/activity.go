@@ -17,14 +17,18 @@ import (
 // while scanning for a given from_address (see ActivitySource.BridgesFrom)
 const activityPageSize = uint32(100)
 
-// NetworkLister widens NetworkURLResolver with network enumeration: it is the slice of
-// bridgeservicefinder.Finder ActivitySource needs on top of the per-network URL lookup every
-// other source already uses, so it knows which bridge services to scan for a given address
-// without a fixed config list. bridgeservicefinder.Finder satisfies it.
+// NetworkLister widens NetworkURLResolver with network enumeration and bridge contract address
+// resolution: it is the slice of bridgeservicefinder.Finder ActivitySource needs on top of the
+// per-network URL lookup every other source already uses, so it knows which bridge services to
+// scan for a given address (without a fixed config list) and which contract to check
+// isClaimed() against. bridgeservicefinder.Finder satisfies it.
 type NetworkLister interface {
 	NetworkURLResolver
 	// NetworkIDs returns the networkIDs of every network currently resolved
 	NetworkIDs() []uint32
+	// BridgeAddress returns the bridge contract address for networkID (see
+	// bridgeservicefinder.Finder.BridgeAddress for the resolution/override rules)
+	BridgeAddress(ctx context.Context, networkID uint32) (common.Address, error)
 }
 
 // claimChecker is the minimal bridge contract surface ActivitySource needs to check a bridge's
@@ -39,10 +43,9 @@ type claimChecker interface {
 // destination network — isClaimed() on the destination bridge contract as the source of truth,
 // then the destination bridge service's own claim record once claimed.
 type ActivitySource struct {
-	services    *bridgeServiceClients
-	finder      NetworkLister
-	ethClients  EthClientResolver
-	bridgeAddrs map[uint32]common.Address
+	services   *bridgeServiceClients
+	finder     NetworkLister
+	ethClients EthClientResolver
 	// newContract builds the claim-checking contract binding for a destination network,
 	// injectable for tests. Defaults to agglayerbridgel2.NewAgglayerbridgel2
 	newContract func(addr common.Address, c aggkittypes.BaseEthereumClienter) (claimChecker, error)
@@ -51,18 +54,15 @@ type ActivitySource struct {
 	contracts map[uint32]claimChecker // destination networkID -> bound contract, built lazily
 }
 
-// NewActivitySource returns an ActivitySource resolving bridge services and JSON-RPC clients
-// through finder/ethClients, and destination bridge contract addresses through bridgeAddrs (see
-// Config.BridgeAddrs) — a destination network absent from bridgeAddrs cannot be claim-checked
-// (IsClaimed errors for it, see claimCheckerFor)
-func NewActivitySource(
-	finder NetworkLister, ethClients EthClientResolver, bridgeAddrs map[uint32]common.Address,
-) *ActivitySource {
+// NewActivitySource returns an ActivitySource resolving bridge services, JSON-RPC clients and
+// destination bridge contract addresses through finder/ethClients (see
+// bridgeservicefinder.Finder.BridgeAddress for how a destination network's contract address is
+// resolved and overridden)
+func NewActivitySource(finder NetworkLister, ethClients EthClientResolver) *ActivitySource {
 	return &ActivitySource{
-		services:    newBridgeServiceClients(finder),
-		finder:      finder,
-		ethClients:  ethClients,
-		bridgeAddrs: bridgeAddrs,
+		services:   newBridgeServiceClients(finder),
+		finder:     finder,
+		ethClients: ethClients,
 		newContract: func(addr common.Address, c aggkittypes.BaseEthereumClienter) (claimChecker, error) {
 			return agglayerbridgel2.NewAgglayerbridgel2(addr, c)
 		},
@@ -71,11 +71,13 @@ func NewActivitySource(
 }
 
 // BridgesFrom implements bridgetracker.ActivityBridgeScanner: it queries every network's own
-// bridge service GET /bridge/v1/bridges filtered by from_address, paging until a short page. A
-// network that cannot be reached is logged and skipped rather than failing the whole scan, so
-// one misbehaving bridge service does not hide every other network's activity.
+// bridge service GET /bridge/v1/bridges filtered by from_address, paging until either a short
+// page or an already-known bridge is reached (see fetchNewBridgesFrom — this relies on the
+// bridge service reporting bridges newest-first). A network that cannot be reached is logged and
+// skipped rather than failing the whole scan, so one misbehaving bridge service does not hide
+// every other network's activity.
 func (s *ActivitySource) BridgesFrom(
-	ctx context.Context, fromAddress common.Address,
+	ctx context.Context, fromAddress common.Address, known map[string]struct{},
 ) ([]*bridgeservicetypes.BridgeResponse, error) {
 	addr := fromAddress.Hex()
 
@@ -86,7 +88,7 @@ func (s *ActivitySource) BridgesFrom(
 			return nil, fmt.Errorf("resolving bridge service client for network %d: %w", networkID, err)
 		}
 
-		items, err := fetchAllBridgesFrom(ctx, svc, networkID, addr, activityPageSize)
+		items, err := fetchNewBridgesFrom(ctx, svc, networkID, addr, activityPageSize, known)
 		if err != nil {
 			return nil, fmt.Errorf("fetching bridges from %s on network %d: %w", fromAddress, networkID, err)
 		}
@@ -95,10 +97,15 @@ func (s *ActivitySource) BridgesFrom(
 	return all, nil
 }
 
-// fetchAllBridgesFrom pages through networkID's GET /bridge/v1/bridges filtered by fromAddress
-// until a page shorter than pageSize is returned
-func fetchAllBridgesFrom(
+// fetchNewBridgesFrom pages through networkID's GET /bridge/v1/bridges filtered by fromAddress,
+// newest bridge first (the bridge service's own order, by descending deposit_count), stopping as
+// soon as either a page shorter than pageSize is returned (no more data) or a bridge already in
+// known is reached. The latter is safe because the feed is append-only and strictly ordered:
+// once a known bridge is seen, every bridge after it (same page or later pages) is guaranteed
+// already known too, so nothing new is missed by stopping there.
+func fetchNewBridgesFrom(
 	ctx context.Context, svc *client.Client, networkID uint32, fromAddress string, pageSize uint32,
+	known map[string]struct{},
 ) ([]*bridgeservicetypes.BridgeResponse, error) {
 	var out []*bridgeservicetypes.BridgeResponse
 	for page := uint32(1); ; page++ {
@@ -111,7 +118,12 @@ func fetchAllBridgesFrom(
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, res.Bridges...)
+		for _, b := range res.Bridges {
+			if _, ok := known[b.GlobalIndex.String()]; ok {
+				return out, nil
+			}
+			out = append(out, b)
+		}
 		if uint32(len(res.Bridges)) < pageSize {
 			return out, nil
 		}
@@ -165,10 +177,9 @@ func (s *ActivitySource) claimCheckerFor(ctx context.Context, networkID uint32) 
 		return c, nil
 	}
 
-	addr, ok := s.bridgeAddrs[networkID]
-	if !ok {
-		return nil, fmt.Errorf("no bridge contract address configured for network %d (see [Tracker].BridgeAddrs)",
-			networkID)
+	addr, err := s.finder.BridgeAddress(ctx, networkID)
+	if err != nil {
+		return nil, fmt.Errorf("resolving bridge contract address for network %d: %w", networkID, err)
 	}
 	rpcClient, err := s.ethClients.RPCClientFor(ctx, networkID)
 	if err != nil {
