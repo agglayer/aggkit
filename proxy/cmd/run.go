@@ -166,7 +166,6 @@ func runTracker(
 	// served alongside (see aggkitcommon.CORSConfig.OriginAllowed for why it can't just reuse
 	// the REST CORS headers).
 	trackerCfg.CORS = cfg.REST.CORS
-	tracker := bridgetracker.New(&trackerCfg)
 
 	if err := trackerCfg.AgglayerClient.Validate(); err != nil {
 		log.Fatalf("invalid agglayer client config: %v", err)
@@ -188,6 +187,15 @@ func runTracker(
 	}
 	gerSource := sources.NewGERSource(finder, rpcClients, trackerCfg.L1GlobalExitRootAddress,
 		trackerCfg.L1BlockFinality, log.WithFields("module", "bridgetracker-gersource"))
+
+	// GET /activity/from/{from_address} scans every network the finder knows about (via
+	// finder.NetworkIDs) for bridges sent by an address, and resolves their claim state through
+	// the same per-network JSON-RPC clients and BridgeAddrs used above
+	activitySource := sources.NewActivitySource(finder, rpcClients, trackerCfg.BridgeAddrs)
+	trackerCfg.ActivityScanner = activitySource
+	trackerCfg.ActivityClaims = activitySource
+
+	tracker := bridgetracker.New(&trackerCfg)
 
 	engine, err := bridgetracker.NewEngine(
 		bridgetracker.EngineConfig{

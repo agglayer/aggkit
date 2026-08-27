@@ -109,6 +109,20 @@ type ClaimSource interface {
 	ClaimFor(ctx context.Context, bridge *BridgeInfo) (*types.ClaimResult, error)
 }
 
+// ActivityEntry is one bridge found for a from_address by the GET /activity/from/{from_address}
+// endpoint, enriched with its claim/tracking state; see domain.ActivityEntry
+type ActivityEntry = domain.ActivityEntry
+
+// ActivityBridgeScanner is the driven port to the raw bridge-service data behind the activity
+// endpoint: every bridge sent by a given address, across every configured bridge service
+type ActivityBridgeScanner = domain.ActivityBridgeScanner
+
+// ActivityClaimChecker is the driven port to a bridge's claim state on its destination network
+type ActivityClaimChecker = domain.ActivityClaimChecker
+
+// ActivityQuerier is the driven port the activity endpoint depends on
+type ActivityQuerier = domain.ActivityQuerier
+
 // SettlementSource is the driven port to the L1 evidence a certificate's settlement produces:
 // the RollupManager/GlobalExitRoot events (VerifyBatchesTrustedAggregator, UpdateL1InfoTree[V2])
 // emitted by the settlement tx itself

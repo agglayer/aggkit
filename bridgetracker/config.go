@@ -116,6 +116,14 @@ type Config struct {
 	// why WebSocket needs its own check instead of reusing the REST CORS headers). Wired
 	// programmatically from REST.CORS by the binary, not read directly from [Tracker].
 	CORS aggkitcommon.CORSConfig `mapstructure:"-"`
+
+	// ActivityScanner and ActivityClaims wire the optional GET /activity/from/{from_address}
+	// endpoint (see ActivityCache): ActivityScanner scans every configured bridge service for
+	// bridges sent by an address, ActivityClaims resolves each one's claim state. Both are
+	// wired programmatically by the binary (see sources.ActivitySource, which implements
+	// both); leaving either nil leaves the endpoint unregistered entirely.
+	ActivityScanner ActivityBridgeScanner `mapstructure:"-"`
+	ActivityClaims  ActivityClaimChecker  `mapstructure:"-"`
 }
 
 // Validate checks if the configuration is valid

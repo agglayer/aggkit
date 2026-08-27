@@ -1,5 +1,56 @@
 basePath: /tracker/v1
 definitions:
+  api.ActivityItem:
+    properties:
+      bridge:
+        allOf:
+        - $ref: '#/definitions/types.BridgeResponse'
+        description: |-
+          Bridge is the raw bridge event, exactly as returned by the origin network's bridge
+          service, unmodified
+      bridge_network_id:
+        description: BridgeNetworkID is the network whose bridge service reported
+          Bridge (its origin network)
+        type: integer
+      claim:
+        allOf:
+        - $ref: '#/definitions/types.ClaimResponse'
+        description: |-
+          Claim is the raw claim record, exactly as returned by the destination network's bridge
+          service, unmodified, once Claimed is true and the indexer has recorded it
+      claim_network_id:
+        description: |-
+          ClaimNetworkID is the network whose bridge service reported Claim (the bridge's
+          destination network); only present alongside Claim
+        type: integer
+      claimed:
+        description: |-
+          Claimed is the tri-state result of the destination bridge contract's isClaimed() call
+          the last time it was checked: "false" (confirmed unclaimed), "true" (claimed), or
+          "error" if the check itself failed (e.g. no bridge contract address configured for the
+          destination network) — callers must not read "error" as "false"
+        type: string
+      tracking:
+        allOf:
+        - $ref: '#/definitions/api.TrackingData'
+        description: |-
+          Tracking is the bridge tracker's current status for this bridge; only present when the
+          request set includeTracking=true and the bridge is still unclaimed
+    type: object
+  api.ActivityResponse:
+    properties:
+      bridges:
+        description: Bridges holds every bridge found for FromAddress across every
+          configured bridge service
+        items:
+          $ref: '#/definitions/api.ActivityItem'
+        type: array
+      from_address:
+        description: FromAddress is the address requested
+        items:
+          type: integer
+        type: array
+    type: object
   api.BridgeEventData:
     properties:
       amount:
@@ -152,16 +203,6 @@ definitions:
         - 1000000000
         - 60000000000
         - 3600000000000
-        - -9223372036854775808
-        - 9223372036854775807
-        - 1
-        - 1000
-        - 1000000
-        - 1000000000
-        - 60000000000
-        - 3600000000000
-        - -9223372036854775808
-        - 9223372036854775807
         - 1
         - 1000
         - 1000000
@@ -173,7 +214,6 @@ definitions:
         - 1000000
         - 1000000000
         - 60000000000
-        - 3600000000000
         format: int64
         type: integer
         x-enum-varnames:
@@ -185,16 +225,6 @@ definitions:
         - Second
         - Minute
         - Hour
-        - minDuration
-        - maxDuration
-        - Nanosecond
-        - Microsecond
-        - Millisecond
-        - Second
-        - Minute
-        - Hour
-        - minDuration
-        - maxDuration
         - Nanosecond
         - Microsecond
         - Millisecond
@@ -206,7 +236,165 @@ definitions:
         - Millisecond
         - Second
         - Minute
-        - Hour
+    type: object
+  types.BridgeResponse:
+    description: Detailed information about a bridge event
+    properties:
+      amount:
+        description: Amount of tokens being bridged
+        example: "1000000000000000000"
+        type: string
+      block_num:
+        description: Block number where the bridge event was recorded
+        example: 1234
+        type: integer
+      block_pos:
+        description: Position of the bridge event within the block
+        example: 1
+        type: integer
+      block_timestamp:
+        description: Timestamp of the block containing the bridge event
+        example: 1684500000
+        type: integer
+      bridge_hash:
+        description: Unique hash representing the bridge event, often used as an identifier
+        example: 0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd
+        type: string
+      deposit_count:
+        description: Count of total deposits processed so far for the given token/address
+        example: 10
+        type: integer
+      destination_address:
+        description: Address of the token receiver on the destination network
+        example: 0xdef4567890abcdef1234567890abcdef12345678
+        type: string
+      destination_network:
+        description: ID of the network where the bridge transaction is destined
+        example: 42161
+        type: integer
+      from_address:
+        description: |-
+          Address that initiated the transaction on bridge contract. It can be intermediary contract or EOA.
+          May be null if bridge was synced with SyncFromInBridges=false
+        example: 0xabc1234567890abcdef1234567890abcdef1234
+        type: string
+      global_index:
+        description: Global index of the bridge event (consisted of mainnet flag,
+          rollup id and deposit count)
+        example: "4294967296"
+        type: string
+      leaf_type:
+        description: Type of leaf (bridge event type) used in the tree structure
+        example: 1
+        type: integer
+      metadata:
+        description: Optional metadata attached to the bridge event
+        example: "0xdeadbeef"
+        type: string
+      origin_address:
+        description: Address of the token sender on the origin network
+        example: 0xabc1234567890abcdef1234567890abcdef1234
+        type: string
+      origin_network:
+        description: ID of the network where the bridge transaction originated
+        example: 10
+        type: integer
+      to_address:
+        description: Address of the contract that was the recipient of the transaction.
+          This may differ from the bridge contract address.
+        example: 0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0
+        type: string
+      tx_hash:
+        description: Hash of the transaction that included the bridge event
+        example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        type: string
+      txn_sender:
+        description: Address of the transaction sender who initiated the bridge transaction
+        example: 0xabc1234567890abcdef1234567890abcdef12345
+        type: string
+    type: object
+  types.ClaimResponse:
+    description: Detailed information about a claim event
+    properties:
+      amount:
+        description: Amount claimed
+        example: "1000000000000000000"
+        type: string
+      block_num:
+        description: Block number where the claim was processed
+        example: 1234
+        type: integer
+      block_timestamp:
+        description: Timestamp of the block containing the claim
+        example: 1684500000
+        type: integer
+      destination_address:
+        description: Address receiving the claim on the destination network
+        example: 0xdef4567890abcdef1234567890abcdef12345678
+        type: string
+      destination_network:
+        description: Destination network ID where the claim was processed
+        example: 42161
+        type: integer
+      from_address:
+        description: Address from which the claim originated
+        example: 0xabc1234567890abcdef1234567890abcdef1234
+        type: string
+      global_exit_root:
+        description: Global exit root associated with the claim
+        example: 0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757
+        type: string
+      global_index:
+        description: Global index of the claim
+        example: "1000000000000000000"
+        type: string
+      is_message:
+        description: IsMessage indicates whether this is a message claim (leaf type
+          1) rather than an asset claim (leaf type 0)
+        example: false
+        type: boolean
+      mainnet_exit_root:
+        description: Mainnet exit root associated with the claim
+        example: 0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757
+        type: string
+      metadata:
+        description: Metadata associated with the claim
+        example: "0xdeadbeef"
+        type: string
+      origin_address:
+        description: Address initiating the claim on the origin network
+        example: 0xabc1234567890abcdef1234567890abcdef1234
+        type: string
+      origin_network:
+        description: Origin network ID where the claim was initiated
+        example: 10
+        type: integer
+      proof_local_exit_root:
+        description: Proof local exit root associated with the claim (optional)
+        example:
+        - '[0x1'
+        - ' 0x2'
+        - ' 0x3...]'
+        items:
+          type: string
+        type: array
+      proof_rollup_exit_root:
+        description: Proof rollup exit root associated with the claim (optional)
+        example:
+        - '[0x4'
+        - ' 0x5'
+        - ' 0x6...]'
+        items:
+          type: string
+        type: array
+      rollup_exit_root:
+        description: Rollup exit root associated with the claim
+        example: 0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757
+        type: string
+      tx_hash:
+        description: Transaction hash associated with the claim
+        example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        type: string
     type: object
   types.ErrorData:
     properties:
@@ -303,6 +491,43 @@ info:
   title: Bridge Tracker API
   version: "1.0"
 paths:
+  /activity/from/{from_address}:
+    get:
+      description: |-
+        Scans every bridge service the tracker knows about for bridges sent by
+        from_address and reports each one's claim state, exactly as the bridge service
+        reported it. Results are cached: a bridge already known to be claimed, with its
+        claim record already fetched, is not rechecked on a later call. Passing
+        includeTracking=true additionally registers every still-unclaimed bridge with
+        the bridge tracker and includes its current tracking snapshot.
+      parameters:
+      - description: Address that sent the bridges to look up
+        in: path
+        name: from_address
+        required: true
+        type: string
+      - description: Register still-unclaimed bridges with the tracker
+        in: query
+        name: includeTracking
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ActivityResponse'
+        "400":
+          description: Invalid from_address
+          schema:
+            $ref: '#/definitions/types.ErrorData'
+        "500":
+          description: Scanning the configured bridge services failed
+          schema:
+            $ref: '#/definitions/types.ErrorData'
+      summary: Get bridge activity by sender address
+      tags:
+      - bridge-tracker
   /health:
     get:
       description: |-

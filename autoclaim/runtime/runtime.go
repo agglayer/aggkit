@@ -536,6 +536,8 @@ func (noopBridgeServiceFinder) GetURL(networkID uint32) (bridgeservicefinder.Net
 		networkID)
 }
 
+func (noopBridgeServiceFinder) NetworkIDs() []uint32 { return nil }
+
 // startRuntimeComponents launches the goroutines for tx managers, claimers, and the bridge detector.
 func startRuntimeComponents(
 	ctx context.Context,

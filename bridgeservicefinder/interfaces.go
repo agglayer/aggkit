@@ -68,6 +68,11 @@ type Finder interface {
 	// ErrURLNotFound if nothing is cached. networkID follows the mapping documented in doc.go
 	// (networkID == rollupID; network 0 is L1 and is only served if provided via Config.BridgeURLs).
 	GetURL(networkID uint32) (NetworkURLs, error)
+	// NetworkIDs returns the networkIDs of every network currently resolved — i.e. every network
+	// GetURL would presently succeed for. Used by callers that need to enumerate every configured
+	// bridge service rather than query one network at a time (e.g. the bridge tracker's activity
+	// scanner). Order is unspecified.
+	NetworkIDs() []uint32
 }
 
 // RollupManagerQuerier enumerates the rollups attached to a rollup manager and reads their data.

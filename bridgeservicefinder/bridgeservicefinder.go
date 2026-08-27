@@ -379,3 +379,9 @@ func (f *finder) GetURL(networkID uint32) (NetworkURLs, error) {
 
 	return NetworkURLs{BridgeURL: entry.url, JSONRPCURL: entry.jsonRPCURL}, nil
 }
+
+// NetworkIDs returns the networkIDs of every network currently resolved (i.e. every network
+// GetURL would presently succeed for).
+func (f *finder) NetworkIDs() []uint32 {
+	return f.cache.networkIDs()
+}

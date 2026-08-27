@@ -22,6 +22,53 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/activity/from/{from_address}": {
+            "get": {
+                "description": "Scans every bridge service the tracker knows about for bridges sent by\nfrom_address and reports each one's claim state, exactly as the bridge service\nreported it. Results are cached: a bridge already known to be claimed, with its\nclaim record already fetched, is not rechecked on a later call. Passing\nincludeTracking=true additionally registers every still-unclaimed bridge with\nthe bridge tracker and includes its current tracking snapshot.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bridge-tracker"
+                ],
+                "summary": "Get bridge activity by sender address",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Address that sent the bridges to look up",
+                        "name": "from_address",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Register still-unclaimed bridges with the tracker",
+                        "name": "includeTracking",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.ActivityResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid from_address",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorData"
+                        }
+                    },
+                    "500": {
+                        "description": "Scanning the configured bridge services failed",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorData"
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Returns the health status, instance identity and build information of the\nrunning instance. Useful as liveness/readiness probe and to check which\nbuild/configuration runs on each instance behind the proxy",
@@ -127,6 +174,66 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "api.ActivityItem": {
+            "type": "object",
+            "properties": {
+                "bridge": {
+                    "description": "Bridge is the raw bridge event, exactly as returned by the origin network's bridge\nservice, unmodified",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/types.BridgeResponse"
+                        }
+                    ]
+                },
+                "bridge_network_id": {
+                    "description": "BridgeNetworkID is the network whose bridge service reported Bridge (its origin network)",
+                    "type": "integer"
+                },
+                "claim": {
+                    "description": "Claim is the raw claim record, exactly as returned by the destination network's bridge\nservice, unmodified, once Claimed is true and the indexer has recorded it",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/types.ClaimResponse"
+                        }
+                    ]
+                },
+                "claim_network_id": {
+                    "description": "ClaimNetworkID is the network whose bridge service reported Claim (the bridge's\ndestination network); only present alongside Claim",
+                    "type": "integer"
+                },
+                "claimed": {
+                    "description": "Claimed is the tri-state result of the destination bridge contract's isClaimed() call\nthe last time it was checked: \"false\" (confirmed unclaimed), \"true\" (claimed), or\n\"error\" if the check itself failed (e.g. no bridge contract address configured for the\ndestination network) — callers must not read \"error\" as \"false\"",
+                    "type": "string"
+                },
+                "tracking": {
+                    "description": "Tracking is the bridge tracker's current status for this bridge; only present when the\nrequest set includeTracking=true and the bridge is still unclaimed",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/api.TrackingData"
+                        }
+                    ]
+                }
+            }
+        },
+        "api.ActivityResponse": {
+            "type": "object",
+            "properties": {
+                "bridges": {
+                    "description": "Bridges holds every bridge found for FromAddress across every configured bridge service",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.ActivityItem"
+                    }
+                },
+                "from_address": {
+                    "description": "FromAddress is the address requested",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
         "api.BridgeEventData": {
             "type": "object",
             "properties": {
@@ -294,16 +401,6 @@ const docTemplate = `{
                         1000000000,
                         60000000000,
                         3600000000000,
-                        -9223372036854775808,
-                        9223372036854775807,
-                        1,
-                        1000,
-                        1000000,
-                        1000000000,
-                        60000000000,
-                        3600000000000,
-                        -9223372036854775808,
-                        9223372036854775807,
                         1,
                         1000,
                         1000000,
@@ -314,8 +411,7 @@ const docTemplate = `{
                         1000,
                         1000000,
                         1000000000,
-                        60000000000,
-                        3600000000000
+                        60000000000
                     ],
                     "x-enum-varnames": [
                         "minDuration",
@@ -326,16 +422,6 @@ const docTemplate = `{
                         "Second",
                         "Minute",
                         "Hour",
-                        "minDuration",
-                        "maxDuration",
-                        "Nanosecond",
-                        "Microsecond",
-                        "Millisecond",
-                        "Second",
-                        "Minute",
-                        "Hour",
-                        "minDuration",
-                        "maxDuration",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",
@@ -346,9 +432,204 @@ const docTemplate = `{
                         "Microsecond",
                         "Millisecond",
                         "Second",
-                        "Minute",
-                        "Hour"
+                        "Minute"
                     ]
+                }
+            }
+        },
+        "types.BridgeResponse": {
+            "description": "Detailed information about a bridge event",
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "description": "Amount of tokens being bridged",
+                    "type": "string",
+                    "example": "1000000000000000000"
+                },
+                "block_num": {
+                    "description": "Block number where the bridge event was recorded",
+                    "type": "integer",
+                    "example": 1234
+                },
+                "block_pos": {
+                    "description": "Position of the bridge event within the block",
+                    "type": "integer",
+                    "example": 1
+                },
+                "block_timestamp": {
+                    "description": "Timestamp of the block containing the bridge event",
+                    "type": "integer",
+                    "example": 1684500000
+                },
+                "bridge_hash": {
+                    "description": "Unique hash representing the bridge event, often used as an identifier",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"
+                },
+                "deposit_count": {
+                    "description": "Count of total deposits processed so far for the given token/address",
+                    "type": "integer",
+                    "example": 10
+                },
+                "destination_address": {
+                    "description": "Address of the token receiver on the destination network",
+                    "type": "string",
+                    "example": "0xdef4567890abcdef1234567890abcdef12345678"
+                },
+                "destination_network": {
+                    "description": "ID of the network where the bridge transaction is destined",
+                    "type": "integer",
+                    "example": 42161
+                },
+                "from_address": {
+                    "description": "Address that initiated the transaction on bridge contract. It can be intermediary contract or EOA.\nMay be null if bridge was synced with SyncFromInBridges=false",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
+                },
+                "global_index": {
+                    "description": "Global index of the bridge event (consisted of mainnet flag, rollup id and deposit count)",
+                    "type": "string",
+                    "example": "4294967296"
+                },
+                "leaf_type": {
+                    "description": "Type of leaf (bridge event type) used in the tree structure",
+                    "type": "integer",
+                    "example": 1
+                },
+                "metadata": {
+                    "description": "Optional metadata attached to the bridge event",
+                    "type": "string",
+                    "example": "0xdeadbeef"
+                },
+                "origin_address": {
+                    "description": "Address of the token sender on the origin network",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
+                },
+                "origin_network": {
+                    "description": "ID of the network where the bridge transaction originated",
+                    "type": "integer",
+                    "example": 10
+                },
+                "to_address": {
+                    "description": "Address of the contract that was the recipient of the transaction. This may differ from the bridge contract address.",
+                    "type": "string",
+                    "example": "0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0"
+                },
+                "tx_hash": {
+                    "description": "Hash of the transaction that included the bridge event",
+                    "type": "string",
+                    "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                },
+                "txn_sender": {
+                    "description": "Address of the transaction sender who initiated the bridge transaction",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef12345"
+                }
+            }
+        },
+        "types.ClaimResponse": {
+            "description": "Detailed information about a claim event",
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "description": "Amount claimed",
+                    "type": "string",
+                    "example": "1000000000000000000"
+                },
+                "block_num": {
+                    "description": "Block number where the claim was processed",
+                    "type": "integer",
+                    "example": 1234
+                },
+                "block_timestamp": {
+                    "description": "Timestamp of the block containing the claim",
+                    "type": "integer",
+                    "example": 1684500000
+                },
+                "destination_address": {
+                    "description": "Address receiving the claim on the destination network",
+                    "type": "string",
+                    "example": "0xdef4567890abcdef1234567890abcdef12345678"
+                },
+                "destination_network": {
+                    "description": "Destination network ID where the claim was processed",
+                    "type": "integer",
+                    "example": 42161
+                },
+                "from_address": {
+                    "description": "Address from which the claim originated",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
+                },
+                "global_exit_root": {
+                    "description": "Global exit root associated with the claim",
+                    "type": "string",
+                    "example": "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
+                },
+                "global_index": {
+                    "description": "Global index of the claim",
+                    "type": "string",
+                    "example": "1000000000000000000"
+                },
+                "is_message": {
+                    "description": "IsMessage indicates whether this is a message claim (leaf type 1) rather than an asset claim (leaf type 0)",
+                    "type": "boolean",
+                    "example": false
+                },
+                "mainnet_exit_root": {
+                    "description": "Mainnet exit root associated with the claim",
+                    "type": "string",
+                    "example": "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
+                },
+                "metadata": {
+                    "description": "Metadata associated with the claim",
+                    "type": "string",
+                    "example": "0xdeadbeef"
+                },
+                "origin_address": {
+                    "description": "Address initiating the claim on the origin network",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
+                },
+                "origin_network": {
+                    "description": "Origin network ID where the claim was initiated",
+                    "type": "integer",
+                    "example": 10
+                },
+                "proof_local_exit_root": {
+                    "description": "Proof local exit root associated with the claim (optional)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[0x1",
+                        " 0x2",
+                        " 0x3...]"
+                    ]
+                },
+                "proof_rollup_exit_root": {
+                    "description": "Proof rollup exit root associated with the claim (optional)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[0x4",
+                        " 0x5",
+                        " 0x6...]"
+                    ]
+                },
+                "rollup_exit_root": {
+                    "description": "Rollup exit root associated with the claim",
+                    "type": "string",
+                    "example": "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
+                },
+                "tx_hash": {
+                    "description": "Transaction hash associated with the claim",
+                    "type": "string",
+                    "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
                 }
             }
         },

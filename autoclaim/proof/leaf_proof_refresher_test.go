@@ -36,6 +36,14 @@ func (f *fakeURLResolver) GetURL(networkID uint32) (bridgeservicefinder.NetworkU
 	return bridgeservicefinder.NetworkURLs{BridgeURL: f.urls[networkID]}, nil
 }
 
+func (f *fakeURLResolver) NetworkIDs() []uint32 {
+	ids := make([]uint32, 0, len(f.urls))
+	for id := range f.urls {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // fakeClaimProofClient implements claimProofClient for tests, keyed by base URL.
 type fakeClaimProofClient struct {
 	baseURL string

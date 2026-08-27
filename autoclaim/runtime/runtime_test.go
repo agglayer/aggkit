@@ -290,6 +290,8 @@ func (fakeBridgeServiceFinder) GetURL(uint32) (bridgeservicefinder.NetworkURLs, 
 	return bridgeservicefinder.NetworkURLs{BridgeURL: "http://fake-source"}, nil
 }
 
+func (fakeBridgeServiceFinder) NetworkIDs() []uint32 { return nil }
+
 func withL2ToLxEnabled(cfg autoclaimcfg.Config) autoclaimcfg.Config {
 	cfg.L2ToLxBridgeDetector = autoclaimcfg.L2ToLxBridgeDetector{
 		Enabled:      true,
