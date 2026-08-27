@@ -128,6 +128,20 @@ singleton, every operation wrapper, the error classes and guards, and the
 schema-derived types — a consumer imports from one place and cannot
 accidentally reach a wire-shaped variant of a type.
 
+**It redraws the SDK boundary correctly.** Today's `@agglayer/sdk` spends
+over a thousand lines hand-maintaining a typed client, raw-text parsing, and
+fixture-derived types — a shadow copy of facts this repo already owns, which
+must be re-verified against every aggkit release. With the client generated
+*here*, that entire layer disappears from the SDK, which keeps only what is
+genuinely SDK-shaped: multi-network aggregation, claim orchestration,
+on-chain reads. Two more things fall out for free: any consumer who just
+wants to call one aggkit instance can depend on the thin generated client
+alone, without pulling the full SDK — and because the client is generated
+and published from this repo, **its release cadence is the server's**: a
+contract change ships as a client version bump in the same release, so
+breaking changes arrive as semver signals instead of surprises discovered
+downstream.
+
 ## Running it
 
 Prerequisites: Go (per `go.mod`), Node 24, pnpm.
