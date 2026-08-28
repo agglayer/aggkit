@@ -265,10 +265,11 @@ type GERUpdateResult struct {
 }
 
 // InjectedGERResult is the result of StepWaitingGERInjection once it completes: the GER
-// injected on the destination network that covers the bridge. The injection source does not
-// expose the block it was injected in, unlike GERUpdateResult
+// injected on the destination network that covers the bridge, and that injection's block
 type InjectedGERResult struct {
-	GER common.Hash `json:"ger"`
+	GER            common.Hash `json:"ger"`
+	BlockNumber    uint64      `json:"block_number"`
+	BlockTimestamp uint64      `json:"block_timestamp"`
 }
 
 // LERUpdateResult is the result of StepWaitingLERUpdate once it completes: the LER produced
@@ -279,11 +280,12 @@ type LERUpdateResult struct {
 	BlockNumber uint64      `json:"block_number"`
 }
 
-// ClaimResult is the result of StepWaitingClaim once it completes: the claim transaction on
+// ClaimResult is the result of StepClaimed once it completes: the claim transaction on
 // the destination network and the block it was mined in
 type ClaimResult struct {
-	ClaimTx     common.Hash `json:"claim_tx"`
-	BlockNumber uint64      `json:"block_number"`
+	ClaimTx        common.Hash `json:"claim_tx"`
+	BlockNumber    uint64      `json:"block_number"`
+	BlockTimestamp uint64      `json:"block_timestamp"`
 }
 
 // L1SettledGERResult is the result of StepWaitL1SettledGER once it completes: the evidence,
@@ -332,10 +334,15 @@ type GERData struct {
 	LERType LERType `json:"ler_type"`
 	// LERTypeString is the string representation of LERType, auto-populated on JSON marshaling
 	LERTypeString string `json:"ler_type_string"`
-	// BlockNumber is the block where the GER update happened. Only populated when resolving
-	// the origin GER of an L1-originated bridge. Internal only: GERData is not serialized on
-	// any tracker response, it is the domain layer's currency to decide GER coverage
+	// BlockNumber is the block where the GER update happened. Populated when resolving the
+	// origin GER of an L1-originated bridge, and the GER injected on a bridge's destination
+	// network (see StepWaitingGERInjection's InjectedGERResult, which carries it on the wire).
+	// Internal only otherwise: GERData is not serialized on any tracker response, it is the
+	// domain layer's currency to decide GER coverage
 	BlockNumber *uint64 `json:"-"`
+	// BlockTimestamp is BlockNumber's block timestamp. Populated (and carried on the wire) under
+	// the same conditions as BlockNumber
+	BlockTimestamp *uint64 `json:"-"`
 }
 
 // MarshalJSON is the implementation of the json.Marshaler interface.

@@ -102,10 +102,18 @@ type LERSource interface {
 	OriginLER(ctx context.Context, bridge *BridgeInfo) (*types.LERUpdateResult, error)
 }
 
-// ClaimSource is the driven port to the claim state of a bridge on its destination network
+// ClaimChecker is the driven port to whether a bridge has been claimed on its destination
+// network, per isClaimed() on the destination bridge contract — the on-chain source of truth
+// StepWaitingClaim resolves against
+type ClaimChecker interface {
+	// IsClaimed reports whether bridge has already been claimed on its destination network
+	IsClaimed(ctx context.Context, bridge *BridgeInfo) (bool, error)
+}
+
+// ClaimSource is the driven port to the claim record of a bridge on its destination network
 type ClaimSource interface {
 	// ClaimFor returns the claim transaction of the bridge on the destination network, or
-	// nil if it has not been claimed yet
+	// nil if the destination network's bridge service has not indexed it yet
 	ClaimFor(ctx context.Context, bridge *BridgeInfo) (*types.ClaimResult, error)
 }
 
@@ -122,6 +130,10 @@ type ActivityClaimChecker = domain.ActivityClaimChecker
 
 // ActivityQuerier is the driven port the activity endpoint depends on
 type ActivityQuerier = domain.ActivityQuerier
+
+// BridgeAddressResolver is the driven port the bridge-address endpoint depends on: it resolves
+// the bridge contract address for one network, or enumerates every network currently known
+type BridgeAddressResolver = domain.BridgeAddressResolver
 
 // SettlementSource is the driven port to the L1 evidence a certificate's settlement produces:
 // the RollupManager/GlobalExitRoot events (VerifyBatchesTrustedAggregator, UpdateL1InfoTree[V2])

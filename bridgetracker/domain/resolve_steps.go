@@ -98,12 +98,12 @@ func currentStepIndex(steps []BridgeStepPath) int {
 // (a step cannot both fail and complete) and idx+1 is left untouched. With stepErr nil, any
 // previous Error is cleared instead: a successful fact check, even an inconclusive one, clears a
 // previous transient failure, evidence the retry is working, not just that a milestone was met.
-// Completing idx opens idx+1 as the new current step (InProgress), completing it immediately,
-// terminal, if it is StepClaimed — a step that never has a fact check of its own. Returns
-// tracking unchanged only when there is truly nothing new to record: not complete, no stepErr,
-// no Error to clear, and result unchanged from what is already stored. ResolveSteps calls this
-// once per loop iteration, so completing one step (e.g. PendingInclusionResolver, see its doc)
-// simply has the next resolver asked in turn
+// Completing idx opens idx+1 as the new current step (InProgress) — including StepClaimed, which
+// gets its own resolver call (ClaimedResolver) like any other step, ResolveSteps simply asks it
+// in the same loop iteration. Returns tracking unchanged only when there is truly nothing new to
+// record: not complete, no stepErr, no Error to clear, and result unchanged from what is already
+// stored. ResolveSteps calls this once per loop iteration, so completing one step (e.g.
+// PendingInclusionResolver, see its doc) simply has the next resolver asked in turn
 func UpdateStep(
 	tracking *TrackingData, idx int, result any, complete bool, stepErr error, now time.Time,
 ) *TrackingData {
@@ -161,11 +161,6 @@ func UpdateStep(
 		next.Error = nil
 		startDate := now
 		next.StartDate = &startDate
-		if next.Step == types.StepClaimed {
-			next.Status = types.StepStatusDone
-			endDate := now
-			next.EndDate = &endDate
-		}
 		newSteps[idx+1] = next
 	}
 

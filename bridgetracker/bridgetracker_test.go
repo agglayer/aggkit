@@ -13,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit"
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgetracker/api"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
@@ -369,7 +370,7 @@ func TestActivityHandlerHappyPath(t *testing.T) {
 		Logger:     log.WithFields("module", "bridgetracker_test"),
 		ConfigSHA1: testConfigSHA1,
 		ActivityScanner: &fakeActivityScanner{
-			bridges: []*bridgeservicetypes.BridgeResponse{bridge},
+			bridges: []*domain.ScannedBridge{scannedBridge(bridge, testScannedNetworkID)},
 		},
 		ActivityClaims: &fakeActivityClaims{
 			isClaimed: []bool{true},
@@ -387,7 +388,7 @@ func TestActivityHandlerHappyPath(t *testing.T) {
 	require.Equal(t, testFromAddress, body.FromAddress)
 	require.Len(t, body.Bridges, 1)
 	require.Equal(t, "true", body.Bridges[0].Claimed)
-	require.Equal(t, bridge.OriginNetwork, body.Bridges[0].BridgeNetworkID)
+	require.Equal(t, testScannedNetworkID, body.Bridges[0].BridgeNetworkID)
 	require.Equal(t, claim.TxHash, body.Bridges[0].Claim.TxHash)
 	require.Equal(t, bridge.DestinationNetwork, body.Bridges[0].ClaimNetworkID)
 	require.NotZero(t, body.Bridges[0].CreationTimestamp)
@@ -406,7 +407,7 @@ func TestActivityHandlerIsClaimedFailureReportsErrorStatusAndMessage(t *testing.
 		Logger:     log.WithFields("module", "bridgetracker_test"),
 		ConfigSHA1: testConfigSHA1,
 		ActivityScanner: &fakeActivityScanner{
-			bridges: []*bridgeservicetypes.BridgeResponse{bridge},
+			bridges: []*domain.ScannedBridge{scannedBridge(bridge, testScannedNetworkID)},
 		},
 		ActivityClaims: &fakeActivityClaims{
 			isClaimed:     []bool{false},
@@ -456,7 +457,10 @@ func TestActivityHandlerFilterBridgesPendingExcludesClaimed(t *testing.T) {
 		Logger:     log.WithFields("module", "bridgetracker_test"),
 		ConfigSHA1: testConfigSHA1,
 		ActivityScanner: &fakeActivityScanner{
-			bridges: []*bridgeservicetypes.BridgeResponse{claimedBridge, pendingBridge},
+			bridges: []*domain.ScannedBridge{
+				scannedBridge(claimedBridge, testScannedNetworkID),
+				scannedBridge(pendingBridge, testScannedNetworkID),
+			},
 		},
 		ActivityClaims: &fakeActivityClaims{isClaimed: []bool{true, false}},
 	})

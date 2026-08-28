@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -97,7 +96,8 @@ func (a *ActivityCache) GetActivity(
 	a.mu.Unlock()
 
 	for _, entry := range cached {
-		a.upsert(ctx, addrCache, entry.Bridge, includeTracking, filter)
+		scanned := &domain.ScannedBridge{Bridge: entry.Bridge, NetworkID: entry.BridgeNetworkID}
+		a.upsert(ctx, addrCache, scanned, includeTracking, filter)
 	}
 
 	newItems, err := a.scanner.BridgesFrom(ctx, fromAddress, known)
@@ -124,10 +124,10 @@ func (a *ActivityCache) GetActivity(
 // sure is genuinely new (e.g. a defensive re-check, or a pagination-boundary duplicate): settled
 // entries are never redundantly refreshed regardless of where item came from
 func (a *ActivityCache) upsert(
-	ctx context.Context, addrCache *activityAddrCache, item *bridgeservicetypes.BridgeResponse,
+	ctx context.Context, addrCache *activityAddrCache, item *domain.ScannedBridge,
 	includeTracking bool, filter types.ActivityFilter,
 ) {
-	key := item.GlobalIndex.String()
+	key := item.Bridge.GlobalIndex.String()
 
 	a.mu.Lock()
 	existing := addrCache.entries[key]
@@ -223,10 +223,10 @@ func settled(entry *domain.ActivityEntry) bool {
 // failure at any step is logged and left for the next call to retry; it never fails the whole
 // GetActivity call, since one bad network should not hide every other bridge found
 func (a *ActivityCache) refresh(
-	ctx context.Context, item *bridgeservicetypes.BridgeResponse, existing *domain.ActivityEntry,
+	ctx context.Context, item *domain.ScannedBridge, existing *domain.ActivityEntry,
 	includeTracking bool, filter types.ActivityFilter,
 ) *domain.ActivityEntry {
-	entry := &domain.ActivityEntry{Bridge: item}
+	entry := &domain.ActivityEntry{Bridge: item.Bridge, BridgeNetworkID: item.NetworkID}
 	if existing != nil {
 		entry.CreatedAt = existing.CreatedAt
 	} else {
@@ -239,8 +239,8 @@ func (a *ActivityCache) refresh(
 	} else {
 		claimed, err := a.claims.IsClaimed(ctx, item)
 		if err != nil {
-			a.logger.Warnf("activity: checking claim state of bridge tx=%s (origin network=%d, deposit=%d): %v",
-				item.TxHash, item.OriginNetwork, item.DepositCount, err)
+			a.logger.Warnf("activity: checking claim state of bridge tx=%s (network=%d, deposit=%d): %v",
+				item.Bridge.TxHash, item.NetworkID, item.Bridge.DepositCount, err)
 			entry.ClaimStatus = types.ClaimStatusError
 			entry.Errors = map[string]string{"claim": err.Error()}
 			return entry
@@ -258,17 +258,17 @@ func (a *ActivityCache) refresh(
 		}
 		claim, err := a.claims.ClaimInfo(ctx, item)
 		if err != nil {
-			a.logger.Warnf("activity: fetching claim record of bridge tx=%s: %v", item.TxHash, err)
+			a.logger.Warnf("activity: fetching claim record of bridge tx=%s: %v", item.Bridge.TxHash, err)
 		}
 		entry.Claim = claim
 		return entry
 	}
 
 	if includeTracking {
-		id := domain.TrackingID{NetworkID: item.OriginNetwork, TxHash: common.HexToHash(string(item.TxHash))}
+		id := domain.TrackingID{NetworkID: item.NetworkID, TxHash: common.HexToHash(string(item.Bridge.TxHash))}
 		tracking, err := a.supervised.Get(id, true)
 		if err != nil {
-			a.logger.Warnf("activity: registering bridge tx=%s with the tracker: %v", item.TxHash, err)
+			a.logger.Warnf("activity: registering bridge tx=%s with the tracker: %v", item.Bridge.TxHash, err)
 		} else {
 			entry.Tracking = tracking
 		}

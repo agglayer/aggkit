@@ -61,6 +61,10 @@ type API struct {
 	// activityCmd serves GET /activity/from/{from_address}; nil (when NewAPI is given a nil
 	// activity) leaves the route unregistered entirely — see RegisterRoutes
 	activityCmd *activityCommand
+	// bridgeAddressCmd serves GET /bridge-address and GET /bridge-address/{network_id}; nil
+	// (when NewAPI is given a nil bridgeAddressResolver) leaves both routes unregistered
+	// entirely — see RegisterRoutes
+	bridgeAddressCmd *bridgeAddressCommand
 }
 
 // NewAPI returns the tracker HTTP service serving the given supervised registry.
@@ -68,12 +72,15 @@ type API struct {
 // the tracking engine's immediate resolution attempt to produce an update before answering (see
 // getTxStatusCommand); <= 0 disables the wait. cors governs which origins may open the
 // WebSocket endpoint (see wsHandler). activity may be nil, in which case the
-// GET /activity/from/{from_address} endpoint is not registered at all (see RegisterRoutes)
+// GET /activity/from/{from_address} endpoint is not registered at all (see RegisterRoutes).
+// bridgeAddressResolver may be nil, in which case neither GET /bridge-address nor
+// GET /bridge-address/{network_id} is registered at all (see RegisterRoutes)
 func NewAPI(
 	logger aggkitcommon.Logger,
 	configSHA1 string,
 	supervised domain.SupervisedRegistry,
 	activity domain.ActivityQuerier,
+	bridgeAddressResolver domain.BridgeAddressResolver,
 	registerResolveTimeout time.Duration,
 	cors aggkitcommon.CORSConfig,
 ) *API {
@@ -89,6 +96,9 @@ func NewAPI(
 	}
 	if activity != nil {
 		api.activityCmd = &activityCommand{querier: activity}
+	}
+	if bridgeAddressResolver != nil {
+		api.bridgeAddressCmd = &bridgeAddressCommand{resolver: bridgeAddressResolver}
 	}
 	return api
 }
@@ -107,6 +117,12 @@ func (a *API) RegisterRoutes(router gin.IRouter) {
 		if a.activityCmd != nil {
 			trackerGroup.GET("/activity/from/:"+fromAddressParam,
 				func(c *gin.Context) { runCommand(c, a.activityCmd) })
+		}
+		if a.bridgeAddressCmd != nil {
+			trackerGroup.GET("/bridge-address",
+				func(c *gin.Context) { runCommand(c, a.bridgeAddressCmd) })
+			trackerGroup.GET("/bridge-address/:"+networkIDParam,
+				func(c *gin.Context) { runCommand(c, a.bridgeAddressCmd) })
 		}
 
 		// Swagger docs endpoint

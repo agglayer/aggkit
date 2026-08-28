@@ -3,13 +3,10 @@ package sources
 import (
 	"context"
 	"fmt"
-	"sync"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
-	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -31,27 +28,18 @@ type NetworkLister interface {
 	BridgeAddress(ctx context.Context, networkID uint32) (common.Address, error)
 }
 
-// claimChecker is the minimal bridge contract surface ActivitySource needs to check a bridge's
-// on-chain claim state; *agglayerbridgel2.Agglayerbridgel2 satisfies it
-type claimChecker interface {
-	IsClaimed(opts *bind.CallOpts, leafIndex uint32, sourceBridgeNetwork uint32) (bool, error)
-}
-
 // ActivitySource implements bridgetracker.ActivityBridgeScanner and ActivityClaimChecker: it
 // scans every network the finder currently knows about for bridges sent by a given address
 // (via each network's own bridge service), and resolves a bridge's claim state on its
 // destination network — isClaimed() on the destination bridge contract as the source of truth,
 // then the destination bridge service's own claim record once claimed.
 type ActivitySource struct {
-	services   *bridgeServiceClients
-	finder     NetworkLister
-	ethClients EthClientResolver
-	// newContract builds the claim-checking contract binding for a destination network,
-	// injectable for tests. Defaults to agglayerbridgel2.NewAgglayerbridgel2
-	newContract func(addr common.Address, c aggkittypes.BaseEthereumClienter) (claimChecker, error)
-
-	mu        sync.Mutex
-	contracts map[uint32]claimChecker // destination networkID -> bound contract, built lazily
+	services *bridgeServiceClients
+	finder   NetworkLister
+	// contractClaimCheckers resolves/caches the on-chain isClaimed() binding per destination
+	// network; embedded so tests can still reach newContract directly (see claim_checker.go,
+	// shared with ClaimChecker so the binding/cache logic isn't duplicated between them)
+	*contractClaimCheckers
 }
 
 // NewActivitySource returns an ActivitySource resolving bridge services, JSON-RPC clients and
@@ -60,13 +48,9 @@ type ActivitySource struct {
 // resolved and overridden)
 func NewActivitySource(finder NetworkLister, ethClients EthClientResolver) *ActivitySource {
 	return &ActivitySource{
-		services:   newBridgeServiceClients(finder),
-		finder:     finder,
-		ethClients: ethClients,
-		newContract: func(addr common.Address, c aggkittypes.BaseEthereumClienter) (claimChecker, error) {
-			return agglayerbridgel2.NewAgglayerbridgel2(addr, c)
-		},
-		contracts: make(map[uint32]claimChecker),
+		services:              newBridgeServiceClients(finder),
+		finder:                finder,
+		contractClaimCheckers: newContractClaimCheckers(finder, ethClients),
 	}
 }
 
@@ -78,10 +62,10 @@ func NewActivitySource(finder NetworkLister, ethClients EthClientResolver) *Acti
 // every other network's activity.
 func (s *ActivitySource) BridgesFrom(
 	ctx context.Context, fromAddress common.Address, known map[string]struct{},
-) ([]*bridgeservicetypes.BridgeResponse, error) {
+) ([]*domain.ScannedBridge, error) {
 	addr := fromAddress.Hex()
 
-	var all []*bridgeservicetypes.BridgeResponse
+	var all []*domain.ScannedBridge
 	for _, networkID := range s.finder.NetworkIDs() {
 		svc, err := s.services.aggkitBridgeClientFor(networkID)
 		if err != nil {
@@ -102,12 +86,14 @@ func (s *ActivitySource) BridgesFrom(
 // soon as either a page shorter than pageSize is returned (no more data) or a bridge already in
 // known is reached. The latter is safe because the feed is append-only and strictly ordered:
 // once a known bridge is seen, every bridge after it (same page or later pages) is guaranteed
-// already known too, so nothing new is missed by stopping there.
+// already known too, so nothing new is missed by stopping there. Each returned bridge is paired
+// with networkID — the network whose bridge service reported it — via domain.ScannedBridge,
+// since that is NOT always the same as the bridge's own OriginNetwork field (see ScannedBridge).
 func fetchNewBridgesFrom(
 	ctx context.Context, svc *client.Client, networkID uint32, fromAddress string, pageSize uint32,
 	known map[string]struct{},
-) ([]*bridgeservicetypes.BridgeResponse, error) {
-	var out []*bridgeservicetypes.BridgeResponse
+) ([]*domain.ScannedBridge, error) {
+	var out []*domain.ScannedBridge
 	for page := uint32(1); ; page++ {
 		res, err := svc.GetBridges(ctx, client.GetBridgesParams{
 			NetworkID:   networkID,
@@ -122,7 +108,7 @@ func fetchNewBridgesFrom(
 			if _, ok := known[b.GlobalIndex.String()]; ok {
 				return out, nil
 			}
-			out = append(out, b)
+			out = append(out, &domain.ScannedBridge{Bridge: b, NetworkID: networkID})
 		}
 		if uint32(len(res.Bridges)) < pageSize {
 			return out, nil
@@ -131,65 +117,36 @@ func fetchNewBridgesFrom(
 }
 
 // IsClaimed implements bridgetracker.ActivityClaimChecker: it calls isClaimed() on bridge's
-// destination bridge contract
-func (s *ActivitySource) IsClaimed(ctx context.Context, bridge *bridgeservicetypes.BridgeResponse) (bool, error) {
-	contract, err := s.claimCheckerFor(ctx, bridge.DestinationNetwork)
-	if err != nil {
-		return false, err
-	}
-	return contract.IsClaimed(&bind.CallOpts{Context: ctx}, bridge.DepositCount, bridge.OriginNetwork)
+// destination bridge contract. The on-chain sourceBridgeNetwork argument is bridge.NetworkID —
+// the network the bridge-creating tx was actually sent to — never bridge.Bridge.OriginNetwork,
+// which can differ for a re-bridged asset (see domain.ScannedBridge)
+func (s *ActivitySource) IsClaimed(ctx context.Context, bridge *domain.ScannedBridge) (bool, error) {
+	return s.isClaimed(ctx, bridge.Bridge.DestinationNetwork, bridge.Bridge.DepositCount, bridge.NetworkID)
 }
 
 // ClaimInfo implements bridgetracker.ActivityClaimChecker: it asks bridge's destination
 // network's bridge service for the claim record matching bridge's global index
 func (s *ActivitySource) ClaimInfo(
-	ctx context.Context, bridge *bridgeservicetypes.BridgeResponse,
+	ctx context.Context, bridge *domain.ScannedBridge,
 ) (*bridgeservicetypes.ClaimResponse, error) {
-	svc, err := s.services.aggkitBridgeClientFor(bridge.DestinationNetwork)
+	svc, err := s.services.aggkitBridgeClientFor(bridge.Bridge.DestinationNetwork)
 	if err != nil {
 		return nil, err
 	}
 
 	res, err := svc.GetClaims(ctx, client.GetClaimsParams{
-		NetworkID:   bridge.DestinationNetwork,
-		GlobalIndex: bridge.GlobalIndex,
+		NetworkID:   bridge.Bridge.DestinationNetwork,
+		GlobalIndex: bridge.Bridge.GlobalIndex,
 	})
 	if isNotFound(err) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("fetching claim of global index %s on network %d: %w",
-			bridge.GlobalIndex, bridge.DestinationNetwork, err)
+			bridge.Bridge.GlobalIndex, bridge.Bridge.DestinationNetwork, err)
 	}
 	if res.Count == 0 || len(res.Claims) == 0 {
 		return nil, nil
 	}
 	return res.Claims[0], nil
-}
-
-// claimCheckerFor returns (building and caching if necessary) the claim-checking contract
-// binding for the given destination network
-func (s *ActivitySource) claimCheckerFor(ctx context.Context, networkID uint32) (claimChecker, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if c, ok := s.contracts[networkID]; ok {
-		return c, nil
-	}
-
-	addr, err := s.finder.BridgeAddress(ctx, networkID)
-	if err != nil {
-		return nil, fmt.Errorf("resolving bridge contract address for network %d: %w", networkID, err)
-	}
-	rpcClient, err := s.ethClients.RPCClientFor(ctx, networkID)
-	if err != nil {
-		return nil, fmt.Errorf("resolving JSON-RPC client for network %d: %w", networkID, err)
-	}
-	contract, err := s.newContract(addr, rpcClient)
-	if err != nil {
-		return nil, fmt.Errorf("binding bridge contract %s on network %d: %w", addr, networkID, err)
-	}
-
-	s.contracts[networkID] = contract
-	return contract, nil
 }

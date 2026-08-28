@@ -131,6 +131,12 @@ type Config struct {
 	// a separate knob because it governs a different cache. A value <= 0 falls back to
 	// DefaultIdleTimeout.
 	ActivityIdleTimeout types.Duration `mapstructure:"ActivityIdleTimeout"`
+
+	// BridgeAddressResolver wires the optional GET /bridge-address[/{network_id}] endpoint: it
+	// resolves the bridge contract address for one network, or every network it currently
+	// knows about. Wired programmatically by the binary (bridgeservicefinder.Finder satisfies
+	// this port directly); leaving it nil leaves the endpoint unregistered entirely.
+	BridgeAddressResolver BridgeAddressResolver `mapstructure:"-"`
 }
 
 // Validate checks if the configuration is valid

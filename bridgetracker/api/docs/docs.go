@@ -82,6 +82,78 @@ const docTemplate = `{
                 }
             }
         },
+        "/bridge-address": {
+            "get": {
+                "description": "With no network_id, reports the bridge contract address of every network the\ntracker currently knows about (via the bridge service finder). With network_id,\nreports only that network's.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bridge-tracker"
+                ],
+                "summary": "Get the bridge contract address of one network, or every network",
+                "responses": {
+                    "200": {
+                        "description": "Body when network_id is set",
+                        "schema": {
+                            "$ref": "#/definitions/api.BridgeAddressItem"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid network_id",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorData"
+                        }
+                    },
+                    "500": {
+                        "description": "Resolving the bridge contract address failed",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorData"
+                        }
+                    }
+                }
+            }
+        },
+        "/bridge-address/{network_id}": {
+            "get": {
+                "description": "With no network_id, reports the bridge contract address of every network the\ntracker currently knows about (via the bridge service finder). With network_id,\nreports only that network's.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bridge-tracker"
+                ],
+                "summary": "Get the bridge contract address of one network, or every network",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Network to look up; omit to get every network",
+                        "name": "network_id",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Body when network_id is set",
+                        "schema": {
+                            "$ref": "#/definitions/api.BridgeAddressItem"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid network_id",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorData"
+                        }
+                    },
+                    "500": {
+                        "description": "Resolving the bridge contract address failed",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorData"
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
                 "description": "Returns the health status, instance identity and build information of the\nrunning instance. Useful as liveness/readiness probe and to check which\nbuild/configuration runs on each instance behind the proxy",
@@ -199,7 +271,7 @@ const docTemplate = `{
                     ]
                 },
                 "bridge_network_id": {
-                    "description": "BridgeNetworkID is the network whose bridge service reported Bridge (its origin network)",
+                    "description": "BridgeNetworkID is the network whose bridge service reported Bridge — not necessarily\nBridge.OriginNetwork, which is the origin network of the bridged asset and can differ for\na re-bridged asset (see domain.ScannedBridge)",
                     "type": "integer"
                 },
                 "claim": {
@@ -258,6 +330,34 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "type": "integer"
+                    }
+                }
+            }
+        },
+        "api.BridgeAddressItem": {
+            "type": "object",
+            "properties": {
+                "bridge_address": {
+                    "description": "BridgeAddress is the bridge contract address on NetworkID",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "network_id": {
+                    "description": "NetworkID is the network BridgeAddress belongs to",
+                    "type": "integer"
+                }
+            }
+        },
+        "api.BridgeAddressResponse": {
+            "type": "object",
+            "properties": {
+                "bridges": {
+                    "description": "Bridges holds the bridge contract address of every network currently known",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.BridgeAddressItem"
                     }
                 }
             }
@@ -348,7 +448,7 @@ const docTemplate = `{
                     "$ref": "#/definitions/github_com_agglayer_aggkit_bridgetracker_types.Duration"
                 },
                 "result": {
-                    "description": "Result is the data the step has produced so far; its shape depends on Step:\n*types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult\n(StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),\n*types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData\n(StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER) or\n*types.ClaimResult (StepWaitingClaim). nil until\nthe step produces one, and for steps that never do. Most steps only set this once Done,\nbut StepCertificatePending (Status still InProgress) may already carry the certificate's\ncurrent, not yet settled, status — see domain.ErrCertificateNotSettled"
+                    "description": "Result is the data the step has produced so far; its shape depends on Step:\n*types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult\n(StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),\n*types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData\n(StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER) or\n*types.ClaimResult (StepClaimed). nil until\nthe step produces one, and for steps that never do. Most steps only set this once Done,\nbut StepCertificatePending (Status still InProgress) may already carry the certificate's\ncurrent, not yet settled, status — see domain.ErrCertificateNotSettled"
                 },
                 "start_date": {
                     "type": "string"
@@ -445,16 +545,12 @@ const docTemplate = `{
                         1000000000,
                         60000000000,
                         3600000000000,
-                        -9223372036854775808,
-                        9223372036854775807,
                         1,
                         1000,
                         1000000,
                         1000000000,
                         60000000000,
                         3600000000000,
-                        -9223372036854775808,
-                        9223372036854775807,
                         1,
                         1000,
                         1000000,
@@ -487,16 +583,12 @@ const docTemplate = `{
                         "Second",
                         "Minute",
                         "Hour",
-                        "minDuration",
-                        "maxDuration",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",
                         "Second",
                         "Minute",
                         "Hour",
-                        "minDuration",
-                        "maxDuration",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",

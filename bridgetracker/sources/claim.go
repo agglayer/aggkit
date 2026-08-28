@@ -50,7 +50,8 @@ func (s *ClaimSource) ClaimFor(
 		return nil, nil
 	}
 	return &trackertypes.ClaimResult{
-		ClaimTx:     common.HexToHash(string(claims.Claims[0].TxHash)),
-		BlockNumber: claims.Claims[0].BlockNum,
+		ClaimTx:        common.HexToHash(string(claims.Claims[0].TxHash)),
+		BlockNumber:    claims.Claims[0].BlockNum,
+		BlockTimestamp: claims.Claims[0].BlockTimestamp,
 	}, nil
 }

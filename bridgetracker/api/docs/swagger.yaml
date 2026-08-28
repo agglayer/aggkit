@@ -9,8 +9,10 @@ definitions:
           Bridge is the raw bridge event, exactly as returned by the origin network's bridge
           service, unmodified
       bridge_network_id:
-        description: BridgeNetworkID is the network whose bridge service reported
-          Bridge (its origin network)
+        description: |-
+          BridgeNetworkID is the network whose bridge service reported Bridge — not necessarily
+          Bridge.OriginNetwork, which is the origin network of the bridged asset and can differ for
+          a re-bridged asset (see domain.ScannedBridge)
         type: integer
       claim:
         allOf:
@@ -67,6 +69,26 @@ definitions:
         description: FromAddress is the address requested
         items:
           type: integer
+        type: array
+    type: object
+  api.BridgeAddressItem:
+    properties:
+      bridge_address:
+        description: BridgeAddress is the bridge contract address on NetworkID
+        items:
+          type: integer
+        type: array
+      network_id:
+        description: NetworkID is the network BridgeAddress belongs to
+        type: integer
+    type: object
+  api.BridgeAddressResponse:
+    properties:
+      bridges:
+        description: Bridges holds the bridge contract address of every network currently
+          known
+        items:
+          $ref: '#/definitions/api.BridgeAddressItem'
         type: array
     type: object
   api.BridgeEventData:
@@ -145,7 +167,7 @@ definitions:
           (StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),
           *types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData
           (StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER) or
-          *types.ClaimResult (StepWaitingClaim). nil until
+          *types.ClaimResult (StepClaimed). nil until
           the step produces one, and for steps that never do. Most steps only set this once Done,
           but StepCertificatePending (Status still InProgress) may already carry the certificate's
           current, not yet settled, status — see domain.ErrCertificateNotSettled
@@ -237,16 +259,12 @@ definitions:
         - 1000000000
         - 60000000000
         - 3600000000000
-        - -9223372036854775808
-        - 9223372036854775807
         - 1
         - 1000
         - 1000000
         - 1000000000
         - 60000000000
         - 3600000000000
-        - -9223372036854775808
-        - 9223372036854775807
         - 1
         - 1000
         - 1000000
@@ -280,16 +298,12 @@ definitions:
         - Second
         - Minute
         - Hour
-        - minDuration
-        - maxDuration
         - Nanosecond
         - Microsecond
         - Millisecond
         - Second
         - Minute
         - Hour
-        - minDuration
-        - maxDuration
         - Nanosecond
         - Microsecond
         - Millisecond
@@ -598,6 +612,59 @@ paths:
           schema:
             $ref: '#/definitions/types.ErrorData'
       summary: Get bridge activity by sender address
+      tags:
+      - bridge-tracker
+  /bridge-address:
+    get:
+      description: |-
+        With no network_id, reports the bridge contract address of every network the
+        tracker currently knows about (via the bridge service finder). With network_id,
+        reports only that network's.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Body when network_id is set
+          schema:
+            $ref: '#/definitions/api.BridgeAddressItem'
+        "400":
+          description: Invalid network_id
+          schema:
+            $ref: '#/definitions/types.ErrorData'
+        "500":
+          description: Resolving the bridge contract address failed
+          schema:
+            $ref: '#/definitions/types.ErrorData'
+      summary: Get the bridge contract address of one network, or every network
+      tags:
+      - bridge-tracker
+  /bridge-address/{network_id}:
+    get:
+      description: |-
+        With no network_id, reports the bridge contract address of every network the
+        tracker currently knows about (via the bridge service finder). With network_id,
+        reports only that network's.
+      parameters:
+      - description: Network to look up; omit to get every network
+        in: path
+        name: network_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Body when network_id is set
+          schema:
+            $ref: '#/definitions/api.BridgeAddressItem'
+        "400":
+          description: Invalid network_id
+          schema:
+            $ref: '#/definitions/types.ErrorData'
+        "500":
+          description: Resolving the bridge contract address failed
+          schema:
+            $ref: '#/definitions/types.ErrorData'
+      summary: Get the bridge contract address of one network, or every network
       tags:
       - bridge-tracker
   /health:

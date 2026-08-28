@@ -28,7 +28,9 @@ type ActivityItem struct {
 	// Bridge is the raw bridge event, exactly as returned by the origin network's bridge
 	// service, unmodified
 	Bridge *bridgeservicetypes.BridgeResponse `json:"bridge"`
-	// BridgeNetworkID is the network whose bridge service reported Bridge (its origin network)
+	// BridgeNetworkID is the network whose bridge service reported Bridge — not necessarily
+	// Bridge.OriginNetwork, which is the origin network of the bridged asset and can differ for
+	// a re-bridged asset (see domain.ScannedBridge)
 	BridgeNetworkID uint32 `json:"bridge_network_id"`
 	// Claimed is the tri-state result of the destination bridge contract's isClaimed() call
 	// the last time it was checked: "false" (confirmed unclaimed), "true" (claimed), or
@@ -119,7 +121,7 @@ func newActivityItems(entries []*domain.ActivityEntry) []ActivityItem {
 	for _, e := range entries {
 		item := ActivityItem{
 			Bridge:               e.Bridge,
-			BridgeNetworkID:      e.Bridge.OriginNetwork,
+			BridgeNetworkID:      e.BridgeNetworkID,
 			Claimed:              e.ClaimStatus.String(),
 			Errors:               e.Errors,
 			CreationTimestamp:    uint64(e.CreatedAt.Unix()),

@@ -55,7 +55,14 @@ func (r *WaitingGERInjectionResolver) Resolve(
 		return nil, ErrStepPending
 	}
 
-	return &types.InjectedGERResult{GER: *injected.GER}, nil
+	result := &types.InjectedGERResult{GER: *injected.GER}
+	if injected.BlockNumber != nil {
+		result.BlockNumber = *injected.BlockNumber
+	}
+	if injected.BlockTimestamp != nil {
+		result.BlockTimestamp = *injected.BlockTimestamp
+	}
+	return result, nil
 }
 
 func (r *WaitingGERInjectionResolver) getLeafIndexFromPreviousStep(

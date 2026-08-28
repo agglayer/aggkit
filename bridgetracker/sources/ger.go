@@ -274,12 +274,16 @@ func (s *GERSource) InjectedGERAtIndex(
 	ger := common.HexToHash(string(leaf.GlobalExitRoot))
 	mer := common.HexToHash(string(leaf.MainnetExitRoot))
 	rer := common.HexToHash(string(leaf.RollupExitRoot))
+	blockNumber := leaf.BlockNumber
+	timestamp := leaf.Timestamp
 	return &trackertypes.GERData{
-		NetworkID: bridge.DestinationNetwork,
-		GER:       &ger,
-		MER:       &mer,
-		RER:       &rer,
-		LERType:   trackertypes.LERTypeNA,
+		NetworkID:      bridge.DestinationNetwork,
+		GER:            &ger,
+		MER:            &mer,
+		RER:            &rer,
+		LERType:        trackertypes.LERTypeNA,
+		BlockNumber:    &blockNumber,
+		BlockTimestamp: &timestamp,
 	}, nil
 }
 

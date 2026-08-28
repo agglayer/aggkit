@@ -9,6 +9,21 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// ScannedBridge pairs a raw bridge event with the network whose bridge service actually
+// returned it — i.e. the network the bridge-creating tx was sent to. This is deliberately NOT
+// the same thing as Bridge.OriginNetwork, which is the origin network of the bridged ASSET: the
+// two coincide for a first-time bridge of a native asset, but differ when re-bridging an asset
+// that itself originated on a third network (e.g. an asset native to L1, already bridged to L2
+// A, now bridged again from L2 A to L2 B — that bridge is reported by L2 A's own bridge service,
+// yet its OriginNetwork still reads L1). Anything keyed by "which network created this deposit"
+// — isClaimed()'s sourceBridgeNetwork, the GlobalIndex encoding, the tracker's TrackingID — must
+// use NetworkID here, never Bridge.OriginNetwork (see bridgeservice/utils.go's NewBridgeResponse,
+// which threads the requested network — not Bridge.OriginNetwork — into GlobalIndexForBridge).
+type ScannedBridge struct {
+	Bridge    *bridgeservicetypes.BridgeResponse
+	NetworkID uint32
+}
+
 // ActivityEntry is one bridge found for a from_address, as of the last time it was (re)checked
 // (see ActivityQuerier). Bridge and Claim are stored exactly as the bridge service returned
 // them — this feature is a cache over that data, not a reinterpretation of it (see
@@ -16,6 +31,9 @@ import (
 type ActivityEntry struct {
 	// Bridge is the raw bridge event, as returned by the origin network's bridge service
 	Bridge *bridgeservicetypes.BridgeResponse
+	// BridgeNetworkID is the network whose bridge service reported Bridge (see ScannedBridge) —
+	// NOT necessarily Bridge.OriginNetwork
+	BridgeNetworkID uint32
 	// ClaimStatus is the tri-state result of the destination bridge contract's isClaimed()
 	// call the last time it was checked: Unclaimed, Claimed, or Error if the check itself
 	// failed (e.g. no bridge contract address configured for the destination network) — a
@@ -53,7 +71,7 @@ type ActivityBridgeScanner interface {
 	// first known bridge is guaranteed already known too (see sources.ActivitySource)
 	BridgesFrom(
 		ctx context.Context, fromAddress common.Address, known map[string]struct{},
-	) ([]*bridgeservicetypes.BridgeResponse, error)
+	) ([]*ScannedBridge, error)
 }
 
 // ActivityClaimChecker is the driven port to a bridge's claim state on its destination
@@ -61,10 +79,10 @@ type ActivityBridgeScanner interface {
 // destination network's bridge service indexed for it once claimed
 type ActivityClaimChecker interface {
 	// IsClaimed calls the destination bridge contract's isClaimed() for bridge
-	IsClaimed(ctx context.Context, bridge *bridgeservicetypes.BridgeResponse) (bool, error)
+	IsClaimed(ctx context.Context, bridge *ScannedBridge) (bool, error)
 	// ClaimInfo returns the raw claim record for bridge from its destination network's
 	// bridge service, or nil if the indexer has not recorded it yet
-	ClaimInfo(ctx context.Context, bridge *bridgeservicetypes.BridgeResponse) (*bridgeservicetypes.ClaimResponse, error)
+	ClaimInfo(ctx context.Context, bridge *ScannedBridge) (*bridgeservicetypes.ClaimResponse, error)
 }
 
 // ActivityQuerier is the driven port the GET /activity/from/{from_address} HTTP command

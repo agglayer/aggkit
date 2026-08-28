@@ -22,6 +22,7 @@ type fakeFacts struct {
 	injectedGER        *types.GERData
 	injectedGERAtIndex *types.GERData
 	l1InfoTreeIndex    *uint32
+	claimed            bool
 	claim              *types.ClaimResult
 	settlement         *types.L1SettledGERResult
 
@@ -31,6 +32,7 @@ type fakeFacts struct {
 	injectedGERErr        error
 	injectedGERAtIndexErr error
 	l1InfoTreeIndexErr    error
+	claimedErr            error
 	claimErr              error
 	settlementErr         error
 
@@ -88,6 +90,11 @@ func (f *fakeFacts) L1InfoTreeIndexForGER(
 	return f.l1InfoTreeIndex, f.l1InfoTreeIndexErr
 }
 
+func (f *fakeFacts) IsClaimed(_ context.Context, _ *BridgeInfo) (bool, error) {
+	f.queried = append(f.queried, "isClaimed")
+	return f.claimed, f.claimedErr
+}
+
 func (f *fakeFacts) ClaimFor(_ context.Context, _ *BridgeInfo) (*types.ClaimResult, error) {
 	f.queried = append(f.queried, "claimFor")
 	return f.claim, f.claimErr
@@ -115,6 +122,7 @@ func testResolvers(f *fakeFacts) map[types.BridgeStep]StepResolver {
 		types.StepWaitL1SettledGER:    NewWaitL1SettledGERResolver(f, f),
 		types.StepWaitingGERInjection: NewWaitingGERInjectionResolver(f),
 		types.StepWaitingClaim:        NewWaitingClaimResolver(f),
+		types.StepClaimed:             NewClaimedResolver(f),
 	}
 }
 
@@ -258,7 +266,7 @@ func TestResolveSteps(t *testing.T) {
 			},
 			expectedStep: types.StepWaitingClaim,
 			expectedQueried: []string{
-				"originLER", "certificate", "certificate", "settlementGERUpdate", "claimFor",
+				"originLER", "certificate", "certificate", "settlementGERUpdate", "isClaimed",
 			},
 			resultOf: types.StepWaitL1SettledGER,
 			result:   settlementResult,
@@ -282,14 +290,15 @@ func TestResolveSteps(t *testing.T) {
 				certificate:        settledCert,
 				settlement:         settlementResult,
 				injectedGERAtIndex: injectedGER,
+				claimed:            true,
 				claim:              claim,
 			},
 			expectedStep: types.StepClaimed,
 			expectedQueried: []string{
 				"originLER", "certificate", "certificate", "settlementGERUpdate",
-				"injectedGERAtIndex", "claimFor",
+				"injectedGERAtIndex", "isClaimed", "claimFor",
 			},
-			resultOf: types.StepWaitingClaim,
+			resultOf: types.StepClaimed,
 			result:   claim,
 		},
 		{
@@ -341,11 +350,13 @@ func TestResolveSteps(t *testing.T) {
 			},
 		},
 		{
-			name:            "L1->L2 claimed",
-			bridgeType:      types.BridgeTypeL1ToL2,
-			facts:           fakeFacts{originGER: originGER, injectedGERAtIndex: injectedGER, claim: claim},
+			name:       "L1->L2 claimed",
+			bridgeType: types.BridgeTypeL1ToL2,
+			facts: fakeFacts{
+				originGER: originGER, injectedGERAtIndex: injectedGER, claimed: true, claim: claim,
+			},
 			expectedStep:    types.StepClaimed,
-			expectedQueried: []string{"originGER", "injectedGERAtIndex", "claimFor"},
+			expectedQueried: []string{"originGER", "injectedGERAtIndex", "isClaimed", "claimFor"},
 		},
 		{
 			name:       "L1->L2 with GER update already done skips OriginGER",
@@ -366,9 +377,9 @@ func TestResolveSteps(t *testing.T) {
 			expectedQueried: []string{"injectedGERAtIndex"},
 		},
 		{
-			name:       "L2->L2 with every milestone done but the claim only queries the claim",
+			name:       "L2->L2 with every milestone done but the claim only queries isClaimed and claimFor",
 			bridgeType: types.BridgeTypeL2ToL2,
-			facts:      fakeFacts{claim: claim},
+			facts:      fakeFacts{claimed: true, claim: claim},
 			prevSteps: []BridgeStepPath{
 				{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone},
 				{Step: types.StepPendingInclusion, Status: types.StepStatusDone},
@@ -378,8 +389,8 @@ func TestResolveSteps(t *testing.T) {
 				{Step: types.StepClaimed, Status: types.StepStatusPending},
 			},
 			expectedStep:    types.StepClaimed,
-			expectedQueried: []string{"claimFor"},
-			resultOf:        types.StepWaitingClaim,
+			expectedQueried: []string{"isClaimed", "claimFor"},
+			resultOf:        types.StepClaimed,
 			result:          claim,
 		},
 		{
@@ -504,10 +515,23 @@ func TestResolveStepsErrors(t *testing.T) {
 				originLER:   originLER,
 				certificate: settledCert,
 				settlement:  settlementResult,
-				claimErr:    factsErr,
+				claimedErr:  factsErr,
 			},
 			expectedErr:  "claim status",
 			expectedStep: types.StepWaitingClaim,
+		},
+		{
+			name:       "claim info error",
+			bridgeType: types.BridgeTypeL2ToL1,
+			facts: fakeFacts{
+				originLER:   originLER,
+				certificate: settledCert,
+				settlement:  settlementResult,
+				claimed:     true,
+				claimErr:    factsErr,
+			},
+			expectedErr:  "claim info",
+			expectedStep: types.StepClaimed,
 		},
 	}
 
@@ -582,7 +606,7 @@ func TestUpdateStep(t *testing.T) {
 		}, steps)
 	})
 
-	t.Run("terminal step completes the moment it is reached", func(t *testing.T) {
+	t.Run("completing WaitingClaim opens Claimed as InProgress, not auto-completed", func(t *testing.T) {
 		t.Parallel()
 
 		tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
@@ -592,14 +616,13 @@ func TestUpdateStep(t *testing.T) {
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
 		}, t1)
 
-		claim := &types.ClaimResult{ClaimTx: common.Hash{2}, BlockNumber: 200}
-		advanced := UpdateStep(tracking, 2, claim, true, nil, t2)
+		advanced := UpdateStep(tracking, 2, nil, true, nil, t2)
 
 		last := advanced.AllSteps()[len(advanced.AllSteps())-1]
 		require.Equal(t, types.StepClaimed, last.Step)
-		require.Equal(t, types.StepStatusDone, last.Status)
+		require.Equal(t, types.StepStatusInProgress, last.Status, "Claimed now needs its own resolver call to complete")
 		require.Equal(t, &t2, last.StartDate)
-		require.Equal(t, &t2, last.EndDate)
+		require.Nil(t, last.EndDate)
 	})
 
 	t.Run("a successful check clears a previous transient error even without progress", func(t *testing.T) {
@@ -777,7 +800,7 @@ func TestCertificateResolverSkipsWaypoints(t *testing.T) {
 
 	result, err := ResolveSteps(context.Background(), log.NewLoggerNil(), testResolvers(facts), tracking, t2)
 	require.NoError(t, err)
-	require.Equal(t, []string{"certificate", "certificate", "claimFor"}, facts.queried)
+	require.Equal(t, []string{"certificate", "certificate", "isClaimed"}, facts.queried)
 
 	steps := result.AllSteps()
 	require.Equal(t, types.StepStatusDone, steps[1].Status, "PendingInclusion skipped straight through")

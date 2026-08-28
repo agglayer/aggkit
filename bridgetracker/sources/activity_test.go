@@ -12,6 +12,7 @@ import (
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -147,7 +148,7 @@ func TestActivitySource_BridgesFrom_PaginatesAndScansEveryNetwork(t *testing.T) 
 
 	globalIndexes := make([]int64, 0, len(items))
 	for _, item := range items {
-		globalIndexes = append(globalIndexes, item.GlobalIndex.Int64())
+		globalIndexes = append(globalIndexes, item.Bridge.GlobalIndex.Int64())
 	}
 	require.ElementsMatch(t, []int64{1, 2, 3, 5}, globalIndexes)
 }
@@ -200,7 +201,7 @@ func TestFetchNewBridgesFrom_StopsAtFirstKnownBridge(t *testing.T) {
 	items, err := fetchNewBridgesFrom(t.Context(), client, 1, testFromAddress, 1, known)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	require.Equal(t, int64(3), items[0].GlobalIndex.Int64())
+	require.Equal(t, int64(3), items[0].Bridge.GlobalIndex.Int64())
 }
 
 // TestActivitySource_IsClaimed_NoBridgeAddrConfigured verifies IsClaimed errors clearly when
@@ -208,15 +209,17 @@ func TestFetchNewBridgesFrom_StopsAtFirstKnownBridge(t *testing.T) {
 func TestActivitySource_IsClaimed_NoBridgeAddrConfigured(t *testing.T) {
 	source := NewActivitySource(fakeNetworkLister{}, StaticClients{})
 
-	bridge := bridgeResponse(1, 2, 3, testFromAddress, 1)
+	bridge := &domain.ScannedBridge{Bridge: bridgeResponse(1, 2, 3, testFromAddress, 1), NetworkID: 1}
 	_, err := source.IsClaimed(t.Context(), bridge)
 	require.ErrorContains(t, err, "no bridge contract address configured for network 2")
 }
 
-// TestActivitySource_IsClaimed_CallsContractWithDepositCountAndOriginNetwork verifies IsClaimed
-// binds the destination network's contract and calls isClaimed(depositCount, originNetwork), and
-// that the binding is cached across calls.
-func TestActivitySource_IsClaimed_CallsContractWithDepositCountAndOriginNetwork(t *testing.T) {
+// TestActivitySource_IsClaimed_UsesScannedNetworkNotBridgeOriginNetwork verifies IsClaimed binds
+// the destination network's contract and calls isClaimed(depositCount, scannedNetworkID) using
+// ScannedBridge.NetworkID — never Bridge.OriginNetwork, which is set here to a deliberately
+// different value to prove the two are not confused (see domain.ScannedBridge) — and that the
+// binding is cached across calls.
+func TestActivitySource_IsClaimed_UsesScannedNetworkNotBridgeOriginNetwork(t *testing.T) {
 	destAddr := common.HexToAddress("0xdead")
 	client := StaticClients{2: nil}
 
@@ -230,12 +233,15 @@ func TestActivitySource_IsClaimed_CallsContractWithDepositCountAndOriginNetwork(
 		return stub, nil
 	}
 
-	bridge := bridgeResponse(5, 2, 9, testFromAddress, 1)
+	// OriginNetwork (99) is the asset-origin decoy: isClaimed must use NetworkID (5, the network
+	// the deposit tx was actually sent to) instead
+	const scannedNetworkID = uint32(5)
+	bridge := &domain.ScannedBridge{Bridge: bridgeResponse(99, 2, 9, testFromAddress, 1), NetworkID: scannedNetworkID}
 	claimed, err := source.IsClaimed(t.Context(), bridge)
 	require.NoError(t, err)
 	require.True(t, claimed)
 	require.Equal(t, uint32(9), stub.lastLeafIndex)
-	require.Equal(t, uint32(5), stub.lastSourceNetwork)
+	require.Equal(t, scannedNetworkID, stub.lastSourceNetwork)
 
 	// A second call for the same destination network reuses the cached binding
 	_, err = source.IsClaimed(t.Context(), bridge)
@@ -268,12 +274,12 @@ func TestActivitySource_ClaimInfo(t *testing.T) {
 	lister := fakeNetworkLister{networkIDs: []uint32{2}, url: url}
 	source := NewActivitySource(lister, nil)
 
-	found := bridgeResponse(1, 2, 0, testFromAddress, 1)
+	found := &domain.ScannedBridge{Bridge: bridgeResponse(1, 2, 0, testFromAddress, 1), NetworkID: 1}
 	got, err := source.ClaimInfo(t.Context(), found)
 	require.NoError(t, err)
 	require.Equal(t, claim, got)
 
-	notIndexedYet := bridgeResponse(1, 2, 0, testFromAddress, 999)
+	notIndexedYet := &domain.ScannedBridge{Bridge: bridgeResponse(1, 2, 0, testFromAddress, 999), NetworkID: 1}
 	got, err = source.ClaimInfo(t.Context(), notIndexedYet)
 	require.NoError(t, err)
 	require.Nil(t, got)

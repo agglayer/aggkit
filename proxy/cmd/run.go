@@ -196,6 +196,11 @@ func runTracker(
 	trackerCfg.ActivityScanner = activitySource
 	trackerCfg.ActivityClaims = activitySource
 
+	// GET /bridge-address[/{network_id}] resolves the bridge contract address of one network,
+	// or every network the finder currently knows about; finder satisfies
+	// bridgetracker.BridgeAddressResolver directly (NetworkIDs/BridgeAddress)
+	trackerCfg.BridgeAddressResolver = finder
+
 	tracker := bridgetracker.New(&trackerCfg)
 
 	engine, err := bridgetracker.NewEngine(
@@ -212,6 +217,7 @@ func runTracker(
 			GERs:                   gerSource,
 			WaitingGERUpdateSource: gerSource,
 			LERs:                   sources.NewLERSource(rpcClients),
+			ClaimChecker:           sources.NewClaimChecker(finder, rpcClients),
 			Claims:                 sources.NewClaimSource(finder),
 			Settlement: sources.NewSettlementSource(
 				rpcClients, trackerCfg.L1BlockFinality, trackerCfg.L1GlobalExitRootAddress),

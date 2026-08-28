@@ -4,27 +4,27 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 )
 
-// ClaimSource is the driven port to the claim state of a bridge on its destination network
-type ClaimSource interface {
-	// ClaimFor returns the claim transaction of bridge on the destination network, or nil if
-	// it has not been claimed yet
-	ClaimFor(ctx context.Context, bridge *BridgeInfo) (*types.ClaimResult, error)
+// ClaimChecker is the driven port to whether a bridge has been claimed on its destination
+// network: the on-chain isClaimed() call, the same source of truth ActivityClaimChecker uses for
+// the activity endpoint (see domain.ActivityClaimChecker)
+type ClaimChecker interface {
+	// IsClaimed reports whether bridge has already been claimed on its destination network
+	IsClaimed(ctx context.Context, bridge *BridgeInfo) (bool, error)
 }
 
 // WaitingClaimResolver resolves StepWaitingClaim: whether the bridge has been claimed on its
-// destination network. Completing it also completes StepClaimed in the same call (see
-// UpdateStep): Claimed never has a fact check of its own, it is reached the instant the claim
-// is found
+// destination network, per the destination bridge contract's own isClaimed() — fast and
+// authoritative, but it carries no claim transaction/block details of its own (see
+// ClaimedResolver, which resolves those once this step completes)
 type WaitingClaimResolver struct {
-	port ClaimSource
+	port ClaimChecker
 }
 
-// NewWaitingClaimResolver returns a WaitingClaimResolver reading claims through port
-func NewWaitingClaimResolver(port ClaimSource) *WaitingClaimResolver {
+// NewWaitingClaimResolver returns a WaitingClaimResolver checking claims through port
+func NewWaitingClaimResolver(port ClaimChecker) *WaitingClaimResolver {
 	return &WaitingClaimResolver{port: port}
 }
 
@@ -32,13 +32,13 @@ func NewWaitingClaimResolver(port ClaimSource) *WaitingClaimResolver {
 func (r *WaitingClaimResolver) Resolve(
 	logger aggkitcommon.Logger, ctx context.Context, tracking *TrackingData, _ int,
 ) (any, error) {
-	claim, err := r.port.ClaimFor(ctx, tracking.Info())
+	claimed, err := r.port.IsClaimed(ctx, tracking.Info())
 	if err != nil {
 		return nil, fmt.Errorf("claim status: %w", err)
 	}
-	if claim == nil {
+	if !claimed {
 		return nil, ErrStepPending
 	}
 
-	return claim, nil
+	return nil, nil
 }

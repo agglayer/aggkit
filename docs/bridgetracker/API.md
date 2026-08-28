@@ -2,6 +2,8 @@
 The API is going to be an API REST: 
 GET /tracker/v1/network/{network_id}/tx/{tx_hash}
 GET /tracker/v1/activity/from/{from_address}
+GET /tracker/v1/bridge-address
+GET /tracker/v1/bridge-address/{network_id}
 GET /tracker/v1/health
 
 In addition to the REST endpoint, a WebSocket endpoint is provided to receive bridge status updates as they happen (see [WebSocket](#websocket)).
@@ -212,8 +214,8 @@ Carried in the `result` field of a [BridgeStepPath](#bridgesteppath). Its shape 
 | PendingInclusion | `certificate_id` (Hash), `new_ler` (Hash), `previous_ler` (*Hash) | the certificate that first includes the bridge and the LER transition it produced; `previous_ler` is nil for a network's first certificate |
 | CertificatePending | [CertificateData](#certificatedata) | the certificate's current data; set as soon as a certificate exists, updated as its status changes (Pending, Proven, Candidate, InError), and reflects the final settled data once `status` is `done` |
 | WaitL1SettledGER | `tx_hash` (Hash), `block_number` (uint64), `ger` (Hash), `l1_info_tree_index` (*uint32), `has_verify_batches_trusted_aggregator` (bool), `has_update_l1_info_tree` (bool), `has_update_l1_info_tree_v2` (bool) | evidence, read off the certificate's settlement tx receipt once it reaches L1 finality, that the settlement propagated to the L1 Global Exit Root; `ger` is computed from `UpdateL1InfoTree`'s mainnet/rollup exit roots. `l1_info_tree_index` is the leaf `ger` landed at — populated straight from `UpdateL1InfoTreeV2`'s `LeafCount` when that (optional) event fires, otherwise resolved with one extra GER->leaf lookup before the step can complete; it is never `null` once the step is `done`. The two `has_*` booleans besides `has_update_l1_info_tree_v2` are required for the step to complete, that third one is informational only |
-| WaitingGERInjection | `ger` (Hash) | GER injected on the destination network that covers the bridge; no block number, the injection source does not expose it |
-| WaitingClaim | `claim_tx` (Hash), `block_number` (uint64) | claim transaction on the destination network and its block |
+| WaitingGERInjection | `ger` (Hash), `block_number` (uint64), `block_timestamp` (uint64) | GER injected on the destination network that covers the bridge, and that injection's block |
+| Claimed | `claim_tx` (Hash), `block_number` (uint64), `block_timestamp` (uint64) | claim transaction on the destination network, its block and that block's timestamp |
 | any other step | — | no result: always `nil` |
 
 ## ErrorStep
@@ -373,8 +375,8 @@ sit alongside them (not nested inside) so the caller knows which bridge service 
 
 | field | type | desc |
 | ------|------|------|
-| bridge | BridgeResponse | raw bridge event, exactly as returned by the origin network's bridge service |
-| bridge_network_id | uint32 | network whose bridge service reported `bridge` (its origin network) |
+| bridge | BridgeResponse | raw bridge event, exactly as returned by the bridge service that reported it |
+| bridge_network_id | uint32 | the network whose bridge service returned `bridge` — i.e. the network the bridge-creating tx was actually sent to. **Not** the same as `bridge.origin_network`, which is the origin network of the bridged *asset* and can differ when re-bridging an asset that itself originated on a third network |
 | claimed | string | bare string, tri-state result of the destination bridge contract's `isClaimed()` call the last time it was checked: `"false"` (confirmed unclaimed), `"true"` (claimed), or `"error"` if the check itself failed (e.g. no bridge contract address configured for the destination network) — callers must **not** read `"error"` as `"false"` |
 | claim_network_id | uint32 | network whose bridge service reported `claim` (the bridge's destination network); **omitted** (no key) until `claim` is present |
 | claim | ClaimResponse | raw claim record, exactly as returned by the destination network's bridge service, once `claimed` is `"true"` and the indexer has recorded it; **omitted** (no key) until then |
@@ -521,6 +523,63 @@ Example (one claimed bridge, one still-pending bridge with `?includeTracking=tru
 - **Opt-in and always-on caching**: the endpoint only exists when configured (see [Behavior](#behavior-1) above); when it does, results for a given `from_address` are cached in memory across calls: a bridge already confirmed claimed, with its claim record already fetched, is never re-verified again. Every other bridge (new, still unclaimed, claimed but not yet indexed, or errored) is rechecked on every call — without re-walking already-scanned pages of the underlying bridge services, since each network's scan stops as soon as it reaches a bridge already in the cache.
 - **Idle eviction**: a `from_address` nobody has asked about in `Tracker.ActivityIdleTimeout` (default 30 minutes, same idea as the main endpoint's `IdleTimeout`) is forgotten entirely on the next request for it — everything cached for it (bridges, claim state) is freed, and it starts fresh exactly as if it were being queried for the first time.
 - **`includeTracking=true` registers, it does not wait**: unlike the main tracker endpoint, this does not wait for the tracking engine's first resolution attempt — it registers the bridge (if not already registered) and reports whatever `TrackingData` snapshot is available right away, which may still be the bare `"registered"` state.
+
+## Bridge Address
+
+GET /tracker/v1/bridge-address
+
+GET /tracker/v1/bridge-address/{network_id}
+
+Reports the bridge contract address of one network, or of **every network the tracker currently
+knows about** (via the bridge service finder), without needing a fixed config list. With no
+`network_id` the body is a [BridgeAddressResponse](#bridgeaddressresponse); with `network_id` the
+body is a single [BridgeAddressItem](#bridgeaddressitem).
+
+Request:
+
+| param | location | type | mandatory | desc |
+| ------|----------|------|-----------|------|
+| network_id | path | uint32 | no | network to look up; omit to get every network |
+
+### Behavior
+
+- `200 OK` — the body is a [BridgeAddressResponse](#bridgeaddressresponse) (no `network_id`) or a [BridgeAddressItem](#bridgeaddressitem) (`network_id` given).
+- `400 Bad Request` — `network_id` is not a uint32: the body is an [ErrorData](#errordata).
+- `500 Internal Server Error` — resolving the bridge contract address failed (e.g. the on-chain rollup manager lookup failed): the body is an [ErrorData](#errordata).
+- **This endpoint is opt-in**: it only exists if the binary is configured with a bridge address resolver (`Config.BridgeAddressResolver`); otherwise both routes are not registered at all (plain `404`).
+
+### BridgeAddressResponse
+
+| field | type | desc |
+| ------|------|------|
+| bridges | BridgeAddressItem [] | the bridge contract address of every network the tracker currently knows about |
+
+### BridgeAddressItem
+
+| field | type | desc |
+| ------|------|------|
+| network_id | uint32 | the network `bridge_address` belongs to |
+| bridge_address | Address | the bridge contract address on `network_id` |
+
+Example, `GET /bridge-address`:
+
+```json
+{
+  "bridges": [
+    { "network_id": 0, "bridge_address": "0x1111111111111111111111111111111111111111" },
+    { "network_id": 1, "bridge_address": "0x2222222222222222222222222222222222222222" }
+  ]
+}
+```
+
+Example, `GET /bridge-address/1`:
+
+```json
+{
+  "network_id": 1,
+  "bridge_address": "0x2222222222222222222222222222222222222222"
+}
+```
 
 ## WebSocket
 

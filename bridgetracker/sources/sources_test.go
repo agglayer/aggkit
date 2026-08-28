@@ -209,9 +209,11 @@ type fakeBridgeService struct {
 	injectedLeaf map[string]any
 	// claimsCount is served by /bridge/v1/claims
 	claimsCount int
-	// claimTxHash and claimBlockNum populate the single claim served when claimsCount > 0
-	claimTxHash   string
-	claimBlockNum uint64
+	// claimTxHash, claimBlockNum and claimBlockTimestamp populate the single claim served when
+	// claimsCount > 0
+	claimTxHash         string
+	claimBlockNum       uint64
+	claimBlockTimestamp uint64
 
 	// lastLeafIndexQuery records the leaf_index of the last injected-l1-info-leaf request
 	lastLeafIndexQuery string
@@ -249,8 +251,8 @@ func (f *fakeBridgeService) start(t *testing.T) NetworkURLResolver {
 			fmt.Fprint(w, `{"claims":[],"count":0}`)
 			return
 		}
-		fmt.Fprintf(w, `{"claims":[{"tx_hash":"%s","block_num":%d}],"count":%d}`,
-			f.claimTxHash, f.claimBlockNum, f.claimsCount)
+		fmt.Fprintf(w, `{"claims":[{"tx_hash":"%s","block_num":%d,"block_timestamp":%d}],"count":%d}`,
+			f.claimTxHash, f.claimBlockNum, f.claimBlockTimestamp, f.claimsCount)
 	})
 
 	server := httptest.NewServer(mux)
@@ -361,12 +363,14 @@ func TestGERSourceInjectedGER(t *testing.T) {
 	require.Nil(t, injected)
 	require.Equal(t, "42", fake.lastLeafIndexQuery, "must ask for the covering leaf index")
 
-	// injected -> GERData with the leaf roots
+	// injected -> GERData with the leaf roots and the injection's block number/timestamp
 	fake.injectedLeaf = map[string]any{
 		"l1_info_tree_index": 42,
 		"global_exit_root":   "0x0a",
 		"mainnet_exit_root":  "0x0b",
 		"rollup_exit_root":   "0x0c",
+		"block_num":          200,
+		"timestamp":          1700000000,
 	}
 	injected, err = source.InjectedGER(t.Context(), l1ToL2Bridge())
 	require.NoError(t, err)
@@ -375,6 +379,8 @@ func TestGERSourceInjectedGER(t *testing.T) {
 	require.Equal(t, common.HexToHash("0x0a"), *injected.GER)
 	require.Equal(t, common.HexToHash("0x0b"), *injected.MER)
 	require.Equal(t, common.HexToHash("0x0c"), *injected.RER)
+	require.Equal(t, uint64(200), *injected.BlockNumber)
+	require.Equal(t, uint64(1700000000), *injected.BlockTimestamp)
 }
 
 func TestClaimSourceClaimFor(t *testing.T) {
@@ -393,11 +399,13 @@ func TestClaimSourceClaimFor(t *testing.T) {
 	fake.claimsCount = 1
 	fake.claimTxHash = "0x0d"
 	fake.claimBlockNum = 50
+	fake.claimBlockTimestamp = 1700000000
 	claim, err = source.ClaimFor(t.Context(), l1ToL2Bridge())
 	require.NoError(t, err)
 	require.NotNil(t, claim)
 	require.Equal(t, common.HexToHash("0x0d"), claim.ClaimTx)
 	require.Equal(t, uint64(50), claim.BlockNumber)
+	require.Equal(t, uint64(1700000000), claim.BlockTimestamp)
 }
 
 // rootCallOutput ABI-encodes the bridge contract's getRoot() return value, like a JSON-RPC
