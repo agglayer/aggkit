@@ -211,12 +211,20 @@
                     "description": "Claimed is the tri-state result of the destination bridge contract's isClaimed() call\nthe last time it was checked: \"false\" (confirmed unclaimed), \"true\" (claimed), or\n\"error\" if the check itself failed (e.g. no bridge contract address configured for the\ndestination network) — callers must not read \"error\" as \"false\"",
                     "type": "string"
                 },
+                "creation_timestamp": {
+                    "description": "CreationTimestamp is when this bridge was first cached by the activity endpoint (unix\nseconds); it never changes after that",
+                    "type": "integer"
+                },
                 "errors": {
                     "description": "Errors holds the message of whatever check failed the last time this item was refreshed,\nkeyed by which check it was — currently only \"claim\", present when Claimed is \"error\"",
                     "type": "object",
                     "additionalProperties": {
                         "type": "string"
                     }
+                },
+                "last_updated_timestamp": {
+                    "description": "LastUpdatedTimestamp is when this item's claim/tracking state was last (re)checked (unix\nseconds), whether or not anything about it actually changed. Stops advancing once the\nbridge is claimed with its claim record fetched — nothing left to recheck",
+                    "type": "integer"
                 },
                 "tracking": {
                     "description": "Tracking is the bridge tracker's current status for this bridge; only present when the\nrequest set includeTracking=true and the bridge is still unclaimed",

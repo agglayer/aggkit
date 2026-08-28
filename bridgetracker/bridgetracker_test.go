@@ -390,6 +390,8 @@ func TestActivityHandlerHappyPath(t *testing.T) {
 	require.Equal(t, bridge.OriginNetwork, body.Bridges[0].BridgeNetworkID)
 	require.Equal(t, claim.TxHash, body.Bridges[0].Claim.TxHash)
 	require.Equal(t, bridge.DestinationNetwork, body.Bridges[0].ClaimNetworkID)
+	require.NotZero(t, body.Bridges[0].CreationTimestamp)
+	require.NotZero(t, body.Bridges[0].LastUpdatedTimestamp)
 }
 
 // TestActivityHandlerIsClaimedFailureReportsErrorStatusAndMessage verifies a failed isClaimed()

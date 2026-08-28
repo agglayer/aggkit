@@ -386,3 +386,52 @@ func TestActivityCache_IdleAddressIsForgotten(t *testing.T) {
 	require.Equal(t, claim, entries[0].Claim)
 	require.Equal(t, 2, claims.isClaimedCalls, "the address was forgotten, so isClaimed is asked again from scratch")
 }
+
+// TestActivityCache_TimestampsTrackCreationAndLastUpdate verifies CreatedAt is stamped once and
+// never changes, while UpdatedAt advances on every recheck of a still-unsettled entry.
+func TestActivityCache_TimestampsTrackCreationAndLastUpdate(t *testing.T) {
+	bridge := testBridge(1)
+	scanner := &fakeActivityScanner{bridges: []*bridgeservicetypes.BridgeResponse{bridge}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
+
+	cache := newTestActivityCache(scanner, claims)
+	t1 := time.Now()
+	cache.now = func() time.Time { return t1 }
+
+	entries, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.True(t, entries[0].CreatedAt.Equal(t1))
+	require.True(t, entries[0].UpdatedAt.Equal(t1))
+
+	t2 := t1.Add(time.Minute)
+	cache.now = func() time.Time { return t2 }
+
+	entries, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.True(t, entries[0].CreatedAt.Equal(t1), "creation time must not change")
+	require.True(t, entries[0].UpdatedAt.Equal(t2), "update time must advance on every recheck")
+}
+
+// TestActivityCache_TimestampsFreezeOnceSettled verifies UpdatedAt stops advancing once a bridge
+// settles (claimed with its claim record fetched), since a settled entry is never refreshed again.
+func TestActivityCache_TimestampsFreezeOnceSettled(t *testing.T) {
+	bridge := testBridge(1)
+	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
+	scanner := &fakeActivityScanner{bridges: []*bridgeservicetypes.BridgeResponse{bridge}}
+	// a single isClaimed/claimInfo entry: a second consultation would panic on out-of-range
+	claims := &fakeActivityClaims{isClaimed: []bool{true}, claimInfo: []*bridgeservicetypes.ClaimResponse{claim}}
+
+	cache := newTestActivityCache(scanner, claims)
+	t1 := time.Now()
+	cache.now = func() time.Time { return t1 }
+
+	entries, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.True(t, entries[0].UpdatedAt.Equal(t1))
+
+	cache.now = func() time.Time { return t1.Add(time.Minute) }
+
+	entries, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.True(t, entries[0].UpdatedAt.Equal(t1), "a settled entry is never refreshed again")
+}

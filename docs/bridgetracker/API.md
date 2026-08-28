@@ -1,6 +1,7 @@
 # API
 The API is going to be an API REST: 
 GET /tracker/v1/network/{network_id}/tx/{tx_hash}
+GET /tracker/v1/activity/from/{from_address}
 GET /tracker/v1/health
 
 In addition to the REST endpoint, a WebSocket endpoint is provided to receive bridge status updates as they happen (see [WebSocket](#websocket)).
@@ -330,6 +331,196 @@ Example:
   }
 }
 ```
+
+## Activity
+
+GET /tracker/v1/activity/from/{from_address}
+
+Answers "what bridges has this address sent, and what is their claim state" across **every
+bridge service the tracker currently knows about** (via the bridge service finder), instead of
+one network/tx at a time like the main endpoint. Results are cached per `from_address` (see
+[Caching and eviction](#caching-and-eviction) below).
+
+Request:
+
+| param | location | type | mandatory | desc |
+| ------|----------|------|-----------|------|
+| from_address | path | Address | yes | address that sent the bridges to look up |
+| includeTracking | query | bool | no | `true` additionally registers every still-unclaimed bridge in the result with the bridge tracker (same effect as calling the main endpoint for it) and includes its current [TrackingData](#trackingdata) snapshot. Default `false` |
+| filterBridges | query | string | no | one of `"all"` (default), `"claimed"`, `"pending"`, `"error"` — restricts the result to bridges with only that `claimed` state |
+
+### Behavior
+
+- `200 OK` — the body is an [ActivityResponse](#activityresponse).
+- `400 Bad Request` — invalid `from_address`, or an unrecognized `filterBridges` value: the body is an [ErrorData](#errordata).
+- `500 Internal Server Error` — scanning the configured bridge services failed: the body is an [ErrorData](#errordata).
+- **This endpoint is opt-in**: it only exists if the binary is configured with both an activity bridge scanner and claim checker (`Config.ActivityScanner`/`ActivityClaims`); otherwise the route is not registered at all (plain `404`).
+- Requesting `filterBridges=pending` or `filterBridges=error` **skips fetching the claim record** of a bridge found to be claimed, since it would be filtered out of that result anyway — its cache entry simply has no `claim` yet, and is fetched normally the next time `filterBridges=all`/`claimed` is used for that address.
+
+### ActivityResponse
+
+| field | type | desc |
+| ------|------|------|
+| from_address | Address | the address requested |
+| bridges | ActivityItem [] | every bridge found for `from_address`, across every configured bridge service, matching `filterBridges` |
+
+### ActivityItem
+
+`bridge` and `claim` are the bridge service's own response shapes, reported **exactly as-is**
+(see [BridgeResponse](#bridgeresponse) / [ClaimResponse](#claimresponse) below) — this endpoint
+is a cache over that data, not a reinterpretation of it. `bridge_network_id`/`claim_network_id`
+sit alongside them (not nested inside) so the caller knows which bridge service produced each one.
+
+| field | type | desc |
+| ------|------|------|
+| bridge | BridgeResponse | raw bridge event, exactly as returned by the origin network's bridge service |
+| bridge_network_id | uint32 | network whose bridge service reported `bridge` (its origin network) |
+| claimed | string | bare string, tri-state result of the destination bridge contract's `isClaimed()` call the last time it was checked: `"false"` (confirmed unclaimed), `"true"` (claimed), or `"error"` if the check itself failed (e.g. no bridge contract address configured for the destination network) — callers must **not** read `"error"` as `"false"` |
+| claim_network_id | uint32 | network whose bridge service reported `claim` (the bridge's destination network); **omitted** (no key) until `claim` is present |
+| claim | ClaimResponse | raw claim record, exactly as returned by the destination network's bridge service, once `claimed` is `"true"` and the indexer has recorded it; **omitted** (no key) until then |
+| creation_timestamp | uint64 | unix seconds; when this bridge was first cached by this endpoint — never changes after that |
+| last_updated_timestamp | uint64 | unix seconds; when this item's claim/tracking state was last (re)checked, whether or not anything about it actually changed. Stops advancing once the bridge is claimed with its claim record fetched, since it is never rechecked again from that point on |
+| tracking | TrackingData | the bridge tracker's current status for this bridge (see [TrackingData](#trackingdata)); **omitted** (no key) unless the request set `includeTracking=true` and the bridge is still unclaimed |
+| errors | map[string]string | message of whatever check failed the last time this item was refreshed, keyed by which check it was — currently only `"claim"`, present only when `claimed` is `"error"`. **Omitted** (no key) while nothing has failed |
+
+### BridgeResponse
+
+Exactly as returned by the origin network's own bridge service (`GET /bridge/v1/bridges`); not reinterpreted.
+
+| field | type | desc |
+| ------|------|------|
+| block_num | uint64 | block number where the bridge event was recorded |
+| block_pos | uint64 | position of the bridge event within the block |
+| from_address | Address | address that initiated the transaction on the bridge contract; may be absent |
+| tx_hash | Hash | hash of the transaction that included the bridge event |
+| global_index | string | global index of the bridge event (mainnet flag + rollup id + deposit count), serialized as a decimal string |
+| block_timestamp | uint64 | timestamp of the block containing the bridge event |
+| leaf_type | uint8 | 0 -> asset, 1 -> message |
+| origin_network | uint32 | network where the bridge transaction originated |
+| origin_address | Address | address of the token/sender on the origin network |
+| destination_network | uint32 | network the bridge transaction is destined to |
+| destination_address | Address | address of the receiver on the destination network |
+| amount | string | amount being bridged, as a decimal string |
+| metadata | string | optional metadata attached to the bridge event |
+| deposit_count | uint32 | deposit index in the origin exit tree |
+| bridge_hash | Hash | unique hash identifying the bridge event |
+| txn_sender | Address | address that sent the transaction |
+| to_address | Address | recipient contract of the transaction (may differ from the bridge contract) |
+
+### ClaimResponse
+
+Exactly as returned by the destination network's own bridge service (`GET /bridge/v1/claims`); not reinterpreted.
+
+| field | type | desc |
+| ------|------|------|
+| block_num | uint64 | block number where the claim was processed |
+| block_timestamp | uint64 | timestamp of the block containing the claim |
+| tx_hash | Hash | transaction hash of the claim |
+| global_index | string | global index of the claim, as a decimal string |
+| origin_address | Address | address initiating the claim on the origin network |
+| origin_network | uint32 | origin network id |
+| destination_address | Address | address receiving the claim on the destination network |
+| destination_network | uint32 | destination network id |
+| amount | string | amount claimed, as a decimal string |
+| from_address | Address | address the claim originated from |
+| mainnet_exit_root | Hash | mainnet exit root associated with the claim |
+| rollup_exit_root | Hash | rollup exit root associated with the claim |
+| global_exit_root | Hash | global exit root associated with the claim |
+| proof_local_exit_root | Proof | local exit root proof; **omitted** (no key) unless the bridge service was asked to include proofs |
+| proof_rollup_exit_root | Proof | rollup exit root proof; **omitted** (no key) unless the bridge service was asked to include proofs |
+| metadata | string | metadata associated with the claim |
+| is_message | bool | `true` for a message claim (leaf type 1), `false` for an asset claim |
+
+Example (one claimed bridge, one still-pending bridge with `?includeTracking=true`):
+
+```json
+{
+  "from_address": "0x1111111111111111111111111111111111111111",
+  "bridges": [
+    {
+      "bridge": {
+        "block_num": 1000,
+        "block_pos": 0,
+        "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+        "global_index": "4294967296",
+        "block_timestamp": 1700000000,
+        "leaf_type": 0,
+        "origin_network": 1,
+        "origin_address": "0x0000000000000000000000000000000000000020",
+        "destination_network": 2,
+        "destination_address": "0x0000000000000000000000000000000000000030",
+        "amount": "100",
+        "metadata": "0x",
+        "deposit_count": 7,
+        "bridge_hash": "0x0000000000000000000000000000000000000000000000000000000000000abc",
+        "txn_sender": "0x1111111111111111111111111111111111111111",
+        "to_address": "0x0000000000000000000000000000000000000030"
+      },
+      "bridge_network_id": 1,
+      "claimed": "true",
+      "claim_network_id": 2,
+      "claim": {
+        "block_num": 1050,
+        "block_timestamp": 1700003600,
+        "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000002",
+        "global_index": "4294967296",
+        "origin_address": "0x0000000000000000000000000000000000000020",
+        "origin_network": 1,
+        "destination_address": "0x0000000000000000000000000000000000000030",
+        "destination_network": 2,
+        "amount": "100",
+        "from_address": "0x1111111111111111111111111111111111111111",
+        "mainnet_exit_root": "0x0000000000000000000000000000000000000000000000000000000000000010",
+        "rollup_exit_root": "0x0000000000000000000000000000000000000000000000000000000000000011",
+        "global_exit_root": "0x0000000000000000000000000000000000000000000000000000000000000012",
+        "metadata": "0x",
+        "is_message": false
+      },
+      "creation_timestamp": 1700000100,
+      "last_updated_timestamp": 1700003700
+    },
+    {
+      "bridge": {
+        "block_num": 1200,
+        "block_pos": 1,
+        "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000003",
+        "global_index": "4294967297",
+        "block_timestamp": 1700010000,
+        "leaf_type": 0,
+        "origin_network": 1,
+        "origin_address": "0x0000000000000000000000000000000000000020",
+        "destination_network": 2,
+        "destination_address": "0x0000000000000000000000000000000000000030",
+        "amount": "50",
+        "metadata": "0x",
+        "deposit_count": 8,
+        "bridge_hash": "0x0000000000000000000000000000000000000000000000000000000000000def",
+        "txn_sender": "0x1111111111111111111111111111111111111111",
+        "to_address": "0x0000000000000000000000000000000000000030"
+      },
+      "bridge_network_id": 1,
+      "claimed": "false",
+      "creation_timestamp": 1700010100,
+      "last_updated_timestamp": 1700010100,
+      "tracking": {
+        "tracking_status": "running",
+        "network_id": 1,
+        "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000003",
+        "bridge_status": null,
+        "step_index": null,
+        "all_steps": null,
+        "error": null
+      }
+    }
+  ]
+}
+```
+
+### Caching and eviction
+
+- **Opt-in and always-on caching**: the endpoint only exists when configured (see [Behavior](#behavior-1) above); when it does, results for a given `from_address` are cached in memory across calls: a bridge already confirmed claimed, with its claim record already fetched, is never re-verified again. Every other bridge (new, still unclaimed, claimed but not yet indexed, or errored) is rechecked on every call — without re-walking already-scanned pages of the underlying bridge services, since each network's scan stops as soon as it reaches a bridge already in the cache.
+- **Idle eviction**: a `from_address` nobody has asked about in `Tracker.ActivityIdleTimeout` (default 30 minutes, same idea as the main endpoint's `IdleTimeout`) is forgotten entirely on the next request for it — everything cached for it (bridges, claim state) is freed, and it starts fresh exactly as if it were being queried for the first time.
+- **`includeTracking=true` registers, it does not wait**: unlike the main tracker endpoint, this does not wait for the tracking engine's first resolution attempt — it registers the bridge (if not already registered) and reports whatever `TrackingData` snapshot is available right away, which may still be the bare `"registered"` state.
 
 ## WebSocket
 

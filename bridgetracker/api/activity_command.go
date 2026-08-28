@@ -41,6 +41,13 @@ type ActivityItem struct {
 	// Claim is the raw claim record, exactly as returned by the destination network's bridge
 	// service, unmodified, once Claimed is true and the indexer has recorded it
 	Claim *bridgeservicetypes.ClaimResponse `json:"claim,omitempty"`
+	// CreationTimestamp is when this bridge was first cached by the activity endpoint (unix
+	// seconds); it never changes after that
+	CreationTimestamp uint64 `json:"creation_timestamp"`
+	// LastUpdatedTimestamp is when this item's claim/tracking state was last (re)checked (unix
+	// seconds), whether or not anything about it actually changed. Stops advancing once the
+	// bridge is claimed with its claim record fetched — nothing left to recheck
+	LastUpdatedTimestamp uint64 `json:"last_updated_timestamp"`
 	// Tracking is the bridge tracker's current status for this bridge; only present when the
 	// request set includeTracking=true and the bridge is still unclaimed
 	Tracking *TrackingData `json:"tracking,omitempty"`
@@ -111,10 +118,12 @@ func newActivityItems(entries []*domain.ActivityEntry) []ActivityItem {
 	items := make([]ActivityItem, 0, len(entries))
 	for _, e := range entries {
 		item := ActivityItem{
-			Bridge:          e.Bridge,
-			BridgeNetworkID: e.Bridge.OriginNetwork,
-			Claimed:         e.ClaimStatus.String(),
-			Errors:          e.Errors,
+			Bridge:               e.Bridge,
+			BridgeNetworkID:      e.Bridge.OriginNetwork,
+			Claimed:              e.ClaimStatus.String(),
+			Errors:               e.Errors,
+			CreationTimestamp:    uint64(e.CreatedAt.Unix()),
+			LastUpdatedTimestamp: uint64(e.UpdatedAt.Unix()),
 		}
 		if e.Claim != nil {
 			item.Claim = e.Claim

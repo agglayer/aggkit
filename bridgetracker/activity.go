@@ -206,8 +206,11 @@ func settled(entry *domain.ActivityEntry) bool {
 	return entry.ClaimStatus == types.ClaimStatusClaimed && entry.Claim != nil
 }
 
-// refresh (re)computes the claim/tracking state of a single bridge item. existing is the
-// previously cached entry for this same bridge, or nil if it has never been seen before:
+// refresh (re)computes the claim/tracking state of a single bridge item, stamping
+// ActivityEntry.CreatedAt (carried forward from existing, or now if this is the first time) and
+// UpdatedAt (always now — every call to refresh counts as an update, whether or not anything
+// about the entry actually changed). existing is the previously cached entry for this same
+// bridge, or nil if it has never been seen before:
 //   - if existing is already confirmed claimed, isClaimed() is not asked again — that result
 //     never reverts — and refresh goes straight to the claim-record step;
 //   - otherwise the on-chain isClaimed() call runs as usual (unclaimed and error states must
@@ -224,6 +227,12 @@ func (a *ActivityCache) refresh(
 	includeTracking bool, filter types.ActivityFilter,
 ) *domain.ActivityEntry {
 	entry := &domain.ActivityEntry{Bridge: item}
+	if existing != nil {
+		entry.CreatedAt = existing.CreatedAt
+	} else {
+		entry.CreatedAt = a.now()
+	}
+	entry.UpdatedAt = a.now()
 
 	if existing != nil && existing.ClaimStatus == types.ClaimStatusClaimed {
 		entry.ClaimStatus = types.ClaimStatusClaimed

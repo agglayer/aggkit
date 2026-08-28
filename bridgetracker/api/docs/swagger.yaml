@@ -30,6 +30,11 @@ definitions:
           "error" if the check itself failed (e.g. no bridge contract address configured for the
           destination network) — callers must not read "error" as "false"
         type: string
+      creation_timestamp:
+        description: |-
+          CreationTimestamp is when this bridge was first cached by the activity endpoint (unix
+          seconds); it never changes after that
+        type: integer
       errors:
         additionalProperties:
           type: string
@@ -37,6 +42,12 @@ definitions:
           Errors holds the message of whatever check failed the last time this item was refreshed,
           keyed by which check it was — currently only "claim", present when Claimed is "error"
         type: object
+      last_updated_timestamp:
+        description: |-
+          LastUpdatedTimestamp is when this item's claim/tracking state was last (re)checked (unix
+          seconds), whether or not anything about it actually changed. Stops advancing once the
+          bridge is claimed with its claim record fetched — nothing left to recheck
+        type: integer
       tracking:
         allOf:
         - $ref: '#/definitions/api.TrackingData'

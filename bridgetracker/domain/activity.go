@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgetracker/types"
@@ -30,6 +31,13 @@ type ActivityEntry struct {
 	// refreshed, keyed by which check it was — currently only "claim", set when ClaimStatus is
 	// Error (the isClaimed() check itself failed). nil while nothing has failed
 	Errors map[string]string
+	// CreatedAt is when this bridge was first cached (its first successful refresh); it never
+	// changes after that
+	CreatedAt time.Time
+	// UpdatedAt is when this entry's claim/tracking state was last (re)computed — the last time
+	// refresh ran for it, whether or not anything about it actually changed. Frozen once the
+	// entry settles (see ActivityCache's settled), since a settled entry is never refreshed again
+	UpdatedAt time.Time
 }
 
 // ActivityBridgeScanner is the driven port to the raw bridge-service data behind the
