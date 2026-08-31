@@ -124,6 +124,7 @@ services:
     ports:
       - "14576:5576"   # JSON-RPC (debug)
       - "14577:5577"   # bridge REST API
+      - "14579:5579"   # admin REST API
     depends_on:
       anvil-001:
         condition: service_healthy
@@ -155,6 +156,7 @@ services:
     ports:
       - "15576:5576"   # JSON-RPC (debug)
       - "15577:5577"   # bridge REST API
+      - "15579:5579"   # admin REST API
     depends_on:
       anvil-001:
         condition: service_healthy

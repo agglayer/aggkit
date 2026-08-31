@@ -63,11 +63,10 @@ func TestMain(m *testing.M) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 
-	// Select which env to load via AGGKIT_E2E_ENV (used by CI to run the 2-chain matrix);
-	// defaults to the single-chain op-pp env.
+	// Select which env to load via AGGKIT_E2E_ENV; default to the two-chain Anvil env.
 	envName := envs.ENVName(os.Getenv("AGGKIT_E2E_ENV"))
 	if envName == "" {
-		envName = envs.EnvOpPP
+		envName = envs.EnvAnvil2Chains
 	}
 
 	env, err := envs.LoadEnv(ctx, envName)

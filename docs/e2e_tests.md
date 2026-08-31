@@ -51,7 +51,7 @@ kills `docker compose up` (`signal: killed`) before the tests start, rerun the c
 
 ### Remove GER (invalid-GER recovery)
 
-Exercises the [remove-GER runbook](./remove_ger_runbook.md) end to end against the `op-pp` env: inject an invalid
+Exercises the [remove-GER runbook](./remove_ger_runbook.md) end to end against the `anvil-2chains` env: inject an invalid
 GER on L2, confirm l2gersync blocks on it, run the `remove_ger` tool's recovery flow
 (`freeze bridge -> removeGlobalExitRoots -> category-specific claim correction -> restore bridge`), and confirm
 l2gersync recovers automatically and resumes normal processing. Implemented in `test/e2e/removeger_test.go`:
@@ -71,7 +71,7 @@ go test -v -run 'TestRemoveGER_(NoProblematicClaims|CategoryA|CategoryB1|Categor
 - `TestGenerateInvalidGER` — exercises the `remove_ger` tool's `generate` subcommand (which crafts and
   injects a synthetic invalid GER via `cast`) as a standalone check of the generation path. This test
   drives `cast send`/`cast call` from the **host** (outside Docker) against the L2 RPC port published by
-  the `op-pp` compose env; on a dev machine whose local foundry `cast` cannot open outbound connections to
+  the Anvil compose env; on a dev machine whose local foundry `cast` cannot open outbound connections to
   that Docker-published port (while the Go `ethclient` used elsewhere in the harness reaches it fine — a
   machine-local `cast` networking quirk, not an aggkit or test defect), the test detects this via a
   preflight probe and cleanly `t.Skip`s rather than failing. CI installs `cast` fresh and reaches the
@@ -95,18 +95,17 @@ assertions.
 
 #### CI matrix
 
-`.github/workflows/test-go-e2e.yml` runs the remove-GER tests on `op-pp` in three dedicated matrix groups,
-each under the 20-minute per-job budget (measured passing-path wall-clock is well under 6 minutes for all
-five tests combined, run back-to-back in a single env), so the `op-pp / default` group's regex explicitly
-excludes them (Go's `-run` has no negation syntax, so the default group is enumerated as a positive,
-anchored regex instead):
+`.github/workflows/test-go-e2e.yml` runs the remove-GER tests on `anvil-2chains` in three dedicated matrix groups,
+so each group gets an isolated compose stack and cannot leak mutated chain state into the default group. The
+`anvil-2chains / default` group's regex explicitly excludes them (Go's `-run` has no negation syntax, so the
+default group is enumerated as a positive, anchored regex instead):
 
 | Matrix group (`env` / `group`) | Tests |
 | --- | --- |
-| `op-pp` / `removeger-fast` | `TestRemoveGER_NoProblematicClaims`, `TestRemoveGER_CategoryA`, `TestGenerateInvalidGER` |
-| `op-pp` / `removeger-b1` | `TestRemoveGER_CategoryB1` |
-| `op-pp` / `removeger-b2` | `TestRemoveGER_CategoryB2` |
-| `op-pp` / `default` | Everything else on `op-pp` (positive-regex list, remove-GER tests excluded) |
+| `anvil-2chains` / `removeger-fast` | `TestRemoveGER_NoProblematicClaims`, `TestRemoveGER_CategoryA`, `TestGenerateInvalidGER` |
+| `anvil-2chains` / `removeger-b1` | `TestRemoveGER_CategoryB1` |
+| `anvil-2chains` / `removeger-b2` | `TestRemoveGER_CategoryB2` |
+| `anvil-2chains` / `default` | Everything else (positive-regex list, remove-GER tests excluded) |
 
 ## Two L2 networks
 

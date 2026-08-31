@@ -16,7 +16,7 @@ import (
 // MintableERC20 is an L2A-native token, so it bypasses the Local Balance Tree underflow check
 // that would block bridging native ETH before any L1->L2 bridge has been performed.
 //
-// It requires the multi-chain env (EnvOpPP2Chains): when run against a single-chain env
+// It requires a multi-chain env: when run against a single-chain env
 // (testEnv.L2B == nil) the test is skipped. Bridge-service or on-chain failures fail loudly.
 func TestBridgeL2ToL2(t *testing.T) {
 	if testing.Short() {
@@ -24,7 +24,7 @@ func TestBridgeL2ToL2(t *testing.T) {
 	}
 	require.NotNil(t, testEnv, "testEnv must be set by TestMain")
 	if testEnv.L2B == nil {
-		t.Skip("L2->L2 bridge test requires EnvOpPP2Chains (L2B must be non-nil)")
+		t.Skip("L2->L2 bridge test requires a multi-chain env (L2B must be non-nil)")
 	}
 
 	// GER propagation L2A -> L1 -> L2B is the slow path; allow a generous budget.

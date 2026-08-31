@@ -43,26 +43,15 @@ jobs:
 
       - name: Pull Docker images from compose files
         run: |
-          # op-pp env
-          cd test/e2e/envs/op-pp
-          docker compose pull geth beacon validator agglayer op-geth-001 op-node-001
-          cd ../op-pp-2chains
-          # kurtosis-cdk snapshot branch: feat/op-pp-2chains-snapshot @ 627340aa
-          # This commit generated the op-pp-2chains env snapshot
-          docker compose pull geth beacon validator agglayer \
-            op-reth-001 op-node-001 op-reth-002 op-node-002
-          cd ../anvil-2chains
+          cd test/e2e/envs/anvil-2chains
           # Digest-pinned kurtosis-cdk anvil snapshot images. The aggkit services
           # deliberately use the locally built aggkit:local image and are excluded.
           docker compose pull anvil-001 l2-anvil-001 l2-anvil-002 agglayer
 
       - name: Save pulled Docker images
         run: |
-          mapfile -t imgs < <(
-            for d in op-pp op-pp-2chains anvil-2chains; do
-              (cd test/e2e/envs/$d && docker compose config --images | grep -v 'aggkit:local')
-            done | sort -u
-          )
+          mapfile -t imgs < <(cd test/e2e/envs/anvil-2chains && \
+            docker compose config --images | grep -v 'aggkit:local' | sort -u)
           docker save "${imgs[@]}" -o /tmp/docker-images.tar
 
       - name: Upload Docker images artifact
@@ -81,29 +70,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Default op-pp group: everything except the remove-GER tests, which run in their own
+          # Default Anvil group: everything except the remove-GER tests, which run in their own
           # groups below (each matrix entry is a separate `go test` invocation, so listing a test in
           # more than one entry's regex would run it twice). Enumerated as an explicit positive,
           # anchored regex because Go's -run has no negation syntax.
-          - env: op-pp
+          - env: anvil-2chains
             group: default
-            run: "^(TestJustBridge|TestAutoClaimL1ToL2AllowAll|TestAutoClaimL1ToL2APIApprove|TestAutoClaimL1ToL2BasicFilter|TestAutoClaimL2ToL1AllowAll|TestAutoClaimL2ToL2AllowAll|TestBridgeL2ToL2|TestBackwardForwardLET_NoDivergence|TestBackwardForwardLET_Case1|TestBackwardForwardLET_Case2|TestBackwardForwardLET_Case3|TestBackwardForwardLET_Case4|TestBackwardForwardLET_AggsenderAPIFallback)$"
-          # Remove-GER groups (op-pp): split across 3 CI matrix entries under the 20-min-per-group
-          # budget. Measured passing-path wall-clock (S8/S9 reports) is well under this budget for
-          # every group (all five tests combined finish in under 6 minutes single-run), so no further
-          # regrouping is needed.
-          - env: op-pp
+            run: "^(TestJustBridge|TestAutoClaimL1ToL2AllowAll|TestAutoClaimL1ToL2APIApprove|TestAutoClaimL1ToL2BasicFilter|TestAutoClaimL2ToL1AllowAll|TestAutoClaimL2ToL2AllowAll|TestBridgeL2ToL2|TestBridgeTrackerL1ToL2|TestBackwardForwardLET_NoDivergence|TestBackwardForwardLET_Case1|TestBackwardForwardLET_Case2|TestBackwardForwardLET_Case3|TestBackwardForwardLET_Case4|TestBackwardForwardLET_AggsenderAPIFallback)$"
+          # Remove-GER tests mutate shared chain state, so keep them in three isolated Anvil jobs.
+          - env: anvil-2chains
             group: removeger-fast
             run: TestRemoveGER_NoProblematicClaims|TestRemoveGER_CategoryA|TestGenerateInvalidGER
-          - env: op-pp
+          - env: anvil-2chains
             group: removeger-b1
             run: TestRemoveGER_CategoryB1
-          - env: op-pp
+          - env: anvil-2chains
             group: removeger-b2
             run: TestRemoveGER_CategoryB2
-          - env: op-pp-2chains
-            group: default
-            run: TestBridgeL2ToL2|TestAutoClaimL2ToL2AllowAll|TestBridgeTrackerL1ToL2
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -144,62 +127,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          # Include matrix.group: multiple matrix entries now share the same env (op-pp), and
+          # Include matrix.group because multiple matrix entries share the same Anvil env, and
           # actions/upload-artifact@v4 requires unique artifact names within a workflow run.
           name: e2e-test-results-${{ matrix.env }}-${{ matrix.group }}
-          path: |
-            test/e2e/*.log
-            test/e2e/envs/**/logs/
-          if-no-files-found: ignore
-
-  test-go-e2e-anvil-2chains:
-    name: Run Go E2E Tests (anvil-2chains / default)
-    runs-on: ubuntu-latest
-    # The TestMain-only run measured 35.58s median locally (A3); 15 minutes
-    # provides CI setup and image-load headroom without constraining the shared matrix.
-    timeout-minutes: 15
-    needs: [build-docker-image, pull-docker-images]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: 1.25.7
-
-      - name: Install Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-
-      - name: Download aggkit Docker image
-        uses: actions/download-artifact@v4
-        with:
-          name: aggkit-docker-image
-          path: /tmp
-
-      - name: Download pulled Docker images
-        uses: actions/download-artifact@v4
-        with:
-          name: pulled-docker-images
-          path: /tmp
-
-      - name: Load Docker images
-        run: |
-          docker load -i /tmp/aggkit-image.tar
-          docker load -i /tmp/docker-images.tar
-
-      - name: Run E2E tests
-        env:
-          AGGKIT_E2E_ENV: anvil-2chains
-        run: make test-e2e TEST_RUN="^TestZZZNoSuchTest$"
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-test-results-anvil-2chains-default
           path: |
             test/e2e/*.log
             test/e2e/envs/**/logs/
@@ -242,6 +172,8 @@ jobs:
           docker load -i /tmp/docker-images.tar
 
       - name: Run force_ger_update E2E test
+        env:
+          AGGKIT_E2E_ENV: anvil-2chains
         run: make test-e2e-force_ger_update
 
       - name: Upload test results

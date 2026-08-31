@@ -154,14 +154,13 @@ test-unit: ## Runs the unit tests
 TEST_RUN ?=
 .PHONY: test-e2e
 test-e2e: ## Runs the e2e tests
-	# 60m: covers the CI matrix's remove-GER groups (test-go-e2e.yml), whose combined per-test context
-	# budgets can exceed the previous 45m; kept in step with job timeout-minutes: 60 there. Provisional
-	# -- S8/S9 tighten per-test timeouts and may lower this once real durations are measured.
+	# Keep this aligned with test-go-e2e.yml's job timeout; remove-GER scenarios have long retry budgets.
 	go test -v -timeout 60m $(if $(TEST_RUN),-run "$(TEST_RUN)") ./test/e2e/...
 
 .PHONY: test-e2e-force_ger_update
 test-e2e-force_ger_update: ## Runs the isolated force_ger_update e2e test (dedicated CI job/runner only)
-	RUN_FORCE_GER_UPDATE_E2E=true E2E_SKIP_POSTTEST_BRIDGE_CHECK=true go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...
+	AGGKIT_E2E_ENV=anvil-2chains RUN_FORCE_GER_UPDATE_E2E=true E2E_SKIP_POSTTEST_BRIDGE_CHECK=true \
+		go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...
 
 .PHONY: lint
 lint: ## Runs the linter

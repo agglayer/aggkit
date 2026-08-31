@@ -35,16 +35,14 @@ import (
 )
 
 const (
-	opPPEnvName      = "op-pp"
 	keystorePassword = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"
 	backoffInitial   = 500 * time.Millisecond
 	backoffMax       = 10 * time.Second
 
 	// l2GERStallObserveWindow bounds how long assertL2GERSyncStalledAt watches /sync-status to
-	// confirm l2gersync has stopped advancing while the invalid GER is present. The op-pp env's L2
-	// (op-stack) produces a block every second (test/e2e/envs/op-pp/config/001/rollup.json
-	// "block_time": 1), so this window comfortably covers many L2 blocks, giving a clear signal that
-	// the chain moves while l2gersync does not.
+	// confirm l2gersync has stopped advancing while the invalid GER is present. The Anvil L2
+	// produces blocks frequently, so this window comfortably covers many L2 blocks and gives a clear
+	// signal that the chain moves while l2gersync does not.
 	l2GERStallObserveWindow = 20 * time.Second
 	// l2GERCatchUpTimeout bounds how long waitForL2GERSyncCaughtUp waits for l2gersync to resume and
 	// process past the removal block after ExecuteRecovery removes the invalid GER on-chain.
@@ -670,6 +668,7 @@ type summaryForToolConfig struct {
 			Services struct {
 				Geth struct {
 					HTTPRpc struct {
+						Internal string `json:"internal"`
 						External string `json:"external"`
 					} `json:"http_rpc"`
 				} `json:"geth"`
@@ -688,6 +687,7 @@ type summaryForToolConfig struct {
 				} `json:"aggkit"`
 				OpGeth struct {
 					HTTPRpc struct {
+						Internal string `json:"internal"`
 						External string `json:"external"`
 					} `json:"http_rpc"`
 				} `json:"op-geth"`
@@ -714,15 +714,17 @@ func prepareToolConfig(t *testing.T, configDir string) string {
 	bridgeServiceURL := l2Network.Services.Aggkit.BridgeService.External
 	l1URL := summary.Networks.L1.Services.Geth.HTTPRpc.External
 	l2URL := l2Network.Services.OpGeth.HTTPRpc.External
+	require.NotEmpty(t, summary.Networks.L1.Services.Geth.HTTPRpc.Internal, "L1 internal RPC URL must be present")
+	require.NotEmpty(t, l2Network.Services.OpGeth.HTTPRpc.Internal, "L2 internal RPC URL must be present")
 	sovereignAdminKeyPath := filepath.Join(testEnv.EnvDir, "config", "001", "sovereignadmin.keystore")
 
 	originalCfg := filepath.Join(testEnv.EnvDir, "config", "001", "aggkit-config.toml")
 	content, err := os.ReadFile(originalCfg)
 	require.NoError(t, err)
 
-	// Patch internal URLs so the tool (running on host) can reach L1/L2.
-	content = []byte(strings.ReplaceAll(string(content), "http://geth:8545", l1URL))
-	content = []byte(strings.ReplaceAll(string(content), "http://op-geth-001:8545", l2URL))
+	// Patch the environment's internal URLs so the tool (running on the host) can reach L1/L2.
+	content = []byte(strings.ReplaceAll(string(content), summary.Networks.L1.Services.Geth.HTTPRpc.Internal, l1URL))
+	content = []byte(strings.ReplaceAll(string(content), l2Network.Services.OpGeth.HTTPRpc.Internal, l2URL))
 
 	appendSection := fmt.Sprintf(`
 
@@ -871,7 +873,7 @@ func testRemoveGER_NoProblematicClaims(t *testing.T) {
 
 	// removalBlock is the exact block of the removeGlobalExitRoots tx (from ExecuteRecovery's receipt).
 	// l2gersync only needs to process this fixed past block to observe the removal and unstick; targeting
-	// the live L2 head instead would chase a moving target several blocks ahead (op-pp mines ~1 block/s).
+	// the live L2 head instead would chase a moving target several blocks ahead.
 	removalBlock := recovery.RemovalBlock
 	require.NotZero(t, removalBlock, "recovery must report the removeGlobalExitRoots block")
 	waitForL2GERSyncCaughtUp(ctx, t, env, removalBlock, l2GERCatchUpTimeout)
@@ -921,7 +923,7 @@ func testRemoveGER_CategoryA(t *testing.T) {
 	// Crafted like agglayer/e2e latest-n-injected-ger.bats: fixed GER (batsGER1), exit roots that hash to it,
 	// hardcoded local merkle proof (batsLocalExitRootProof), and all-zero rollup proof. The claim is sent with
 	// AggOracle key to match the bats test. If ClaimAsset reverts, the bats proof may be for a different
-	// CDK/bridge deployment (e.g. Kurtosis env) and may need to be regenerated for this op-pp snapshot.
+	// CDK/bridge deployment and may need to be regenerated for a newer snapshot.
 	injectedGER := batsGER1
 	require.Equal(t, injectedGER, l1infotreesync.CalculateGER(mainnetExitRootBats, rollupExitRootBats),
 		"bats GER must equal keccak256(mainnetExitRootBats, rollupExitRootBats)")
@@ -976,7 +978,7 @@ func testRemoveGER_CategoryA(t *testing.T) {
 
 	// removalBlock is the exact block of the removeGlobalExitRoots tx (from ExecuteRecovery's receipt).
 	// l2gersync only needs to process this fixed past block to observe the removal and unstick; targeting
-	// the live L2 head instead would chase a moving target several blocks ahead (op-pp mines ~1 block/s).
+	// the live L2 head instead would chase a moving target several blocks ahead.
 	removalBlock := recovery.RemovalBlock
 	require.NotZero(t, removalBlock, "recovery must report the removeGlobalExitRoots block")
 	waitForL2GERSyncCaughtUp(ctx, t, env, removalBlock, l2GERCatchUpTimeout)
@@ -1086,7 +1088,7 @@ func testRemoveGER_CategoryB1(t *testing.T) {
 
 	// removalBlock is the exact block of the removeGlobalExitRoots tx (from ExecuteRecovery's receipt).
 	// l2gersync only needs to process this fixed past block to observe the removal and unstick; targeting
-	// the live L2 head instead would chase a moving target several blocks ahead (op-pp mines ~1 block/s).
+	// the live L2 head instead would chase a moving target several blocks ahead.
 	removalBlock := recovery.RemovalBlock
 	require.NotZero(t, removalBlock, "recovery must report the removeGlobalExitRoots block")
 	waitForL2GERSyncCaughtUp(ctx, t, env, removalBlock, l2GERCatchUpTimeout)
@@ -1238,7 +1240,7 @@ func testRemoveGER_CategoryB2(t *testing.T) {
 
 	// removalBlock is the exact block of the removeGlobalExitRoots tx (from ExecuteRecovery's receipt).
 	// l2gersync only needs to process this fixed past block to observe the removal and unstick; targeting
-	// the live L2 head instead would chase a moving target several blocks ahead (op-pp mines ~1 block/s).
+	// the live L2 head instead would chase a moving target several blocks ahead.
 	removalBlock := recovery.RemovalBlock
 	require.NotZero(t, removalBlock, "recovery must report the removeGlobalExitRoots block")
 	waitForL2GERSyncCaughtUp(ctx, t, env, removalBlock, l2GERCatchUpTimeout)
