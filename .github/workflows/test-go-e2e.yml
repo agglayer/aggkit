@@ -110,8 +110,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y docker-compose
 
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@c7450ba673e133f5ee30098b3b54f444d3a2ca2d # v1
+      - name: Install cast
+        if: matrix.group == 'removeger-fast'
+        env:
+          FOUNDRY_VERSION: v1.8.1
+        run: |
+          archive="foundry_${FOUNDRY_VERSION}_linux_amd64.tar.gz"
+          install_dir="${RUNNER_TEMP}/foundry/bin"
+          mkdir -p "${install_dir}"
+          curl -fsSLO "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/${archive}"
+          curl -fsSLO "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/${archive%.tar.gz}.sha256"
+          sha256sum --check "${archive%.tar.gz}.sha256"
+          tar -xzf "${archive}" -C "${install_dir}" cast
+          "${install_dir}/cast" --version
+          echo "${install_dir}" >> "${GITHUB_PATH}"
 
       - name: Download aggkit Docker image
         uses: actions/download-artifact@v4
