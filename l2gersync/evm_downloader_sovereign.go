@@ -24,6 +24,10 @@ var (
 	removeGEREventSignature = crypto.Keccak256Hash([]byte("UpdateRemovalHashChainValue(bytes32,bytes32)"))
 )
 
+// maxRemovalScanRange caps isGERRemovedFromL2's lookback window so its eth_getLogs call never
+// exceeds the L2 RPC's own block-range limit (observed as 100000 blocks on this deployment).
+const maxRemovalScanRange = 99_999
+
 type downloaderSovereign struct {
 	*sync.EVMDownloaderImplementation
 	l2GERManager       *agglayergerl2.Agglayergerl2
@@ -189,7 +193,9 @@ func (d *downloaderSovereign) buildAppender(
 // both pinned to the current L2 head, are required (AND):
 //
 //   - (S-log) a durable UpdateRemovalHashChainValue event for ger exists anywhere from fromBlock (the
-//     insert block, so an unrelated older removal can never be mistaken for this one) to latest;
+//     insert block, so an unrelated older removal can never be mistaken for this one) up to
+//     fromBlock+maxRemovalScanRange (capped rather than scanning to latest, to stay within the L2 RPC's
+//     own eth_getLogs block-range limit — a removal further out than that window is not detected here);
 //   - (S-map) the L2 globalExitRootMap entry for ger currently reads 0.
 //
 // Requiring both defends against the two false-unstick vectors: a transient/stale zero map read with no
@@ -197,7 +203,8 @@ func (d *downloaderSovereign) buildAppender(
 // non-zero). Any read/scan error is treated as "not removed" (never dereferences a nil value), so the
 // caller keeps retrying rather than skipping a stale insert incorrectly.
 func (d *downloaderSovereign) isGERRemovedFromL2(ctx context.Context, fromBlock uint64, ger common.Hash) bool {
-	removedEvents, err := filterRemovedGERs(ctx, d.l2GERManager, fromBlock, nil, [][common.HashLength]byte{ger})
+	toBlock := fromBlock + maxRemovalScanRange
+	removedEvents, err := filterRemovedGERs(ctx, d.l2GERManager, fromBlock, &toBlock, [][common.HashLength]byte{ger})
 	if err != nil {
 		log.Errorf("failed to scan for GER %s removal events from block %d: %v", ger.Hex(), fromBlock, err)
 		return false
