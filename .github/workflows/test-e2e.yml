@@ -273,7 +273,7 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
+    uses: ./.github/workflows/test-e2e-multi-chains.yml
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
@@ -301,7 +301,7 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
+    uses: ./.github/workflows/test-e2e-multi-chains.yml
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
