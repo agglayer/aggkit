@@ -108,14 +108,14 @@ jobs:
       # runners, causing every retry to fail before the Bats tests start.
       - name: Install Foundry
         env:
-          FOUNDRY_VERSION: v1.8.1
+          FOUNDRY_VERSION: v1.7.0
+          FOUNDRY_SHA256: 88501301c43e2cb3231009e68bd76af17cc0f7e9981f9d37ceabc6b857febb2f
         run: |
           archive="foundry_${FOUNDRY_VERSION}_linux_amd64.tar.gz"
           install_dir="${RUNNER_TEMP}/foundry/bin"
           mkdir -p "${install_dir}"
           curl -fsSLO "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/${archive}"
-          curl -fsSLO "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/${archive%.tar.gz}.sha256"
-          sha256sum --check "${archive%.tar.gz}.sha256"
+          echo "${FOUNDRY_SHA256}  ${archive}" | sha256sum --check
           tar -xzf "${archive}" -C "${install_dir}"
           "${install_dir}/cast" --version
           echo "${install_dir}" >> "${GITHUB_PATH}"
