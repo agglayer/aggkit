@@ -693,10 +693,9 @@ UseTLS = false
 # aggkit_autoclaim_destinations (see input_parser.star). It configures a
 # SINGLE claimer targeting this instance's own destination network -- never
 # network 0 (L1); deposits destined to L1 must stay manual-claim-only for the
-# bridge UI. Both bridge detectors are enabled (L1ToL2 for L1->L2, L2ToLx for
-# L2->L2 and L2->L1 discovery), but only an L2-destination claimer is ever
-# configured here, so L2->L1 exits are discovered (claim-proof works) without
-# ever being auto-claimed.
+# bridge UI. E2E tests enable the required detectors and claimer explicitly;
+# keeping them disabled in the baseline prevents unrelated stateful scenarios
+# from racing AutoClaim.
 # Requires "autoclaim" to also be listed in aggkit_components (see
 # _log_autoclaim_warning in aggkit.star).
 # ------------------------------------------------------------------------------
@@ -708,13 +707,13 @@ StoragePath = "/tmp/autoclaim.sqlite"
 Enabled = false
 
 [AutoClaim.L1ToL2BridgeDetector]
-Enabled = true
+Enabled = false
 StartBlock = 0
 PollInterval = "3s"
 EtrogL1UpgradeBlock = 0
 
 [AutoClaim.L2ToLxBridgeDetector]
-Enabled = true
+Enabled = false
 StartL1Block = 0
 PollInterval = "3s"
 
@@ -727,7 +726,7 @@ PollInterval = "3s"
 2 = "http://aggkit-002:5577"
 
 [[AutoClaim.Claimers]]
-Enabled = true
+Enabled = false
 ID = "autoclaim-002"
 NetworkType = "EVM"
 NetworkID = 2
