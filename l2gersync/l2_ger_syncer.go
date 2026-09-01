@@ -44,6 +44,10 @@ type L2GERSync struct {
 	// l2Client is only used to lazily backfill the timestamp of rows written before
 	// GlobalExitRootInfo persisted it (see GetFirstGERAfterL1InfoTreeIndex)
 	l2Client aggkittypes.BaseEthereumClienter
+	// syncMode gates that same backfill: in Legacy mode BlockNum is the polling head rather than
+	// the real injection block (see evm_downloader_legacy.go), so resolving a timestamp from it
+	// would be no more accurate than not persisting one at all
+	syncMode SyncMode
 }
 
 // New initializes and returns a new instance of L2GERSync
@@ -114,6 +118,7 @@ func New(
 		processor: processor,
 		cfg:       cfg,
 		l2Client:  l2Client,
+		syncMode:  syncMode,
 	}, nil
 }
 
@@ -163,6 +168,12 @@ func (s *L2GERSync) GetFirstGERAfterL1InfoTreeIndex(
 	info, err := s.processor.GetFirstGERAfterL1InfoTreeIndex(ctx, atOrAfterL1InfoTreeIndex)
 	if err != nil || info.Timestamp != nil {
 		return info, err
+	}
+	if s.syncMode == Legacy {
+		// info.BlockNum is the polling head at insertion time, not the real injection block (see
+		// evm_downloader_legacy.go), so resolving a "timestamp" from it would just be a
+		// differently-shaped version of the same inaccuracy. Leave it nil rather than backfill.
+		return info, nil
 	}
 	if s.l2Client == nil {
 		// Only expected in tests that build L2GERSync directly instead of through New; every

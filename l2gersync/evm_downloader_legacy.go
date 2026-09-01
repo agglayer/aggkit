@@ -170,8 +170,15 @@ func (d *downloaderLegacy) Download(
 		}
 
 		if gerInfo != nil {
-			timestamp := header.Timestamp
-			gerInfo.Timestamp = &timestamp
+			// Intentionally leave Timestamp (and BlockNum/BlockPosition, set in getGERsFromIndex)
+			// unset here: in Legacy mode the GER is detected by polling GlobalExitRootMap, so
+			// fromBlock is the current polling head, not necessarily the block the GER was
+			// actually injected in (e.g. after a restart/catch-up, WaitForNewBlocks can jump
+			// fromBlock straight to the finalized head). Persisting header.Timestamp would look
+			// like an accurate injection time to API consumers (injected_l2_block_timestamp) when
+			// it can in fact be substantially later. Leaving it nil keeps that limitation honest
+			// instead of fabricating precision; GetFirstGERAfterL1InfoTreeIndex also skips its RPC
+			// backfill for Legacy-mode syncers for the same reason.
 			block.Events = []any{newEvent(gerInfo, GEREventTypeInsert)}
 
 			// Update nextIndex based on the last injected GER info

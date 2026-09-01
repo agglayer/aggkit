@@ -221,6 +221,13 @@ resolves it from the L2 RPC on the very next read of that row and backfills the 
 `injected_l2_block_timestamp` only comes back absent if that RPC call itself fails (transient — it
 resolves on a later request).
 
+`injected_l2_block_timestamp` is always absent for L2 chains synced by `l2gersync` in `Legacy` mode
+(pre-sovereign GER manager contract): that mode detects an injected GER by polling contract state
+rather than reading an event log, so the only "block" it can associate with a GER is its current
+polling head, not necessarily the block that actually performed the injection — deriving a
+timestamp from it would look precise without being accurate. `injected_l2_block_num` carries that
+same caveat and should be treated as approximate for `Legacy`-mode chains.
+
 ### Errors
 
 - `400` — invalid parameter, or a `network_id` that is neither `0` nor the served L2.

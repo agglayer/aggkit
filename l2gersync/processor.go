@@ -33,7 +33,9 @@ type GlobalExitRootInfo struct {
 	// Timestamp of the L2 block where the GER was injected. Nullable: rows written before this
 	// column existed have it NULL, and GetFirstGERAfterL1InfoTreeIndex backfills it lazily from
 	// the L2 RPC (see L2GERSync.GetFirstGERAfterL1InfoTreeIndex) rather than eagerly migrating
-	// every historical row
+	// every historical row. Always NULL for chains synced in Legacy mode: BlockNum there is the
+	// polling head rather than the real injection block, so no accurate timestamp can be derived
+	// (see evm_downloader_legacy.go).
 	Timestamp *uint64 `meddler:"block_timestamp"`
 	Removed   bool    `meddler:"-"`
 }

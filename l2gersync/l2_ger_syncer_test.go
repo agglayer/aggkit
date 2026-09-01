@@ -130,4 +130,17 @@ func TestGetFirstGERAfterL1InfoTreeIndex_BackfillsTimestamp(t *testing.T) {
 		require.NoError(t, err)
 		require.Nil(t, ger.Timestamp)
 	})
+
+	t.Run("Legacy sync mode: skips backfill even with an l2Client configured", func(t *testing.T) {
+		// In Legacy mode BlockNum is the polling head, not the real injection block, so resolving
+		// a timestamp from it would be no more accurate than leaving it nil (see
+		// evm_downloader_legacy.go). The RPC must never be called for this path.
+		l2GERSync := newSyncerWithGER(t)
+		l2GERSync.syncMode = Legacy
+		l2GERSync.l2Client = aggkittypesmocks.NewBaseEthereumClienter(t) // no expectations set: any call fails the test
+
+		ger, err := l2GERSync.GetFirstGERAfterL1InfoTreeIndex(ctx, 1)
+		require.NoError(t, err)
+		require.Nil(t, ger.Timestamp)
+	})
 }
