@@ -73,9 +73,9 @@ func New(client aggkittypes.BaseEthereumClienter, cfg Config, network Network) (
 }
 
 // Start starts the reorg detector
-func (rd *ReorgDetector) Start(ctx context.Context) (err error) {
+func (rd *ReorgDetector) Start(ctx context.Context) error {
 	// Load tracked blocks from the DB
-	if err = rd.loadTrackedHeaders(); err != nil {
+	if err := rd.loadTrackedHeaders(); err != nil {
 		return fmt.Errorf("failed to load tracked headers: %w", err)
 	}
 
@@ -88,7 +88,10 @@ func (rd *ReorgDetector) Start(ctx context.Context) (err error) {
 				ticker.Stop()
 				return
 			case <-ticker.C:
-				if err = rd.detectReorgInTrackedList(ctx); err != nil {
+				// err is scoped to this iteration: a named return shared with the caller here
+				// would let this goroutine (which keeps running after Start returns) race with
+				// the caller's own final write to it on the "return nil" below.
+				if err := rd.detectReorgInTrackedList(ctx); err != nil {
 					log.Errorf("failed to detect reorg in tracked list: %v", err)
 				}
 			}
