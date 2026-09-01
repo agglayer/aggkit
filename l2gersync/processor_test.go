@@ -438,3 +438,32 @@ func TestRemoveGEREvents(t *testing.T) {
 		require.Len(t, noEvents, 0)
 	})
 }
+
+func TestProcessor_UpdateTimestamp(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	testDir := path.Join(t.TempDir(), "l2gersync_TestProcessor_UpdateTimestamp.sqlite")
+	processor, err := newProcessor(testDir)
+	require.NoError(t, err)
+
+	ger := common.HexToHash("0xabc")
+	err = processor.ProcessBlock(ctx, sync.Block{
+		Num:    10,
+		Events: []any{newEvent(newGlobalExitRootInfo(ger, 1, 10, 0), GEREventTypeInsert)},
+	})
+	require.NoError(t, err)
+
+	// no timestamp was persisted at insert time, matching a row written before this column existed
+	info, err := processor.GetFirstGERAfterL1InfoTreeIndex(ctx, 1)
+	require.NoError(t, err)
+	require.Nil(t, info.Timestamp)
+
+	const backfilledTimestamp = uint64(1700000000)
+	require.NoError(t, processor.UpdateTimestamp(ctx, info.BlockNum, info.BlockPosition, backfilledTimestamp))
+
+	info, err = processor.GetFirstGERAfterL1InfoTreeIndex(ctx, 1)
+	require.NoError(t, err)
+	require.NotNil(t, info.Timestamp)
+	require.Equal(t, backfilledTimestamp, *info.Timestamp)
+}

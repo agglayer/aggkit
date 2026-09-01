@@ -181,13 +181,15 @@ func (d *downloaderSovereign) buildAppender(
 				gerHash.Hex(), err)
 		}
 
-		b.Events = append(b.Events, newEvent(
-			newGlobalExitRootInfo(
-				insertGEREvent.NewGlobalExitRoot,
-				l1InfoTreeLeaf.L1InfoTreeIndex,
-				b.Num,
-				uint64(l.Index)),
-			GEREventTypeInsert))
+		gerInfo := newGlobalExitRootInfo(
+			insertGEREvent.NewGlobalExitRoot,
+			l1InfoTreeLeaf.L1InfoTreeIndex,
+			b.Num,
+			uint64(l.Index))
+		timestamp := b.Timestamp
+		gerInfo.Timestamp = &timestamp
+
+		b.Events = append(b.Events, newEvent(gerInfo, GEREventTypeInsert))
 		return nil
 	}
 

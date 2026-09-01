@@ -22,6 +22,9 @@ var mig004 string
 //go:embed l2gersync0005.sql
 var mig005 string
 
+//go:embed l2gersync0006.sql
+var mig006 string
+
 var migrationsL2gersync []types.Migration = []types.Migration{
 	{
 		ID:  "l2gersync0001",
@@ -42,6 +45,10 @@ var migrationsL2gersync []types.Migration = []types.Migration{
 	{
 		ID:  "l2gersync0005",
 		SQL: mig005,
+	},
+	{
+		ID:  "l2gersync0006",
+		SQL: mig006,
 	},
 }
 

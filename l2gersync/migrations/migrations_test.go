@@ -151,6 +151,93 @@ func TestMigration0005(t *testing.T) {
 	require.Equal(t, uint32(2), importedGERV1.L1InfoTreeIndex)
 }
 
+func TestMigration0006(t *testing.T) {
+	migrationsTo5 := migrationsL2gersync[:5] // migration to 'l2gersync0005' (previous to 0006)
+	dbPath := path.Join(t.TempDir(), "l2gersyncTest0006.sqlite")
+
+	err := RunMigrationsWithList(dbPath, migrationsTo5)
+	require.NoError(t, err)
+	testDB, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	tx, err := testDB.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	// A row written before this migration exists, so it never had a timestamp to begin with
+	_, err = tx.Exec(`
+		INSERT INTO block (num) VALUES (1);
+
+		INSERT INTO imported_global_exit_root_v2 (
+			block_num,
+			block_pos,
+			global_exit_root,
+			l1_info_tree_index
+		) VALUES (1, 0, '0x1', 2);
+	`)
+	require.NoError(t, err)
+	err = tx.Commit()
+	require.NoError(t, err)
+	testDB.Close()
+
+	// Now execute migration 6
+	migrationsTo6 := migrationsL2gersync[:6]
+	err = RunMigrationsWithList(dbPath, migrationsTo6)
+	require.NoError(t, err)
+	testDB, err = db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+
+	var preExisting struct {
+		BlockNum  uint64  `meddler:"block_num"`
+		Timestamp *uint64 `meddler:"block_timestamp"`
+	}
+	err = meddler.QueryRow(testDB, &preExisting, `SELECT * FROM imported_global_exit_root_v2 WHERE block_num = 1`)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), preExisting.BlockNum)
+	require.Nil(t, preExisting.Timestamp, "pre-existing row must have a NULL timestamp, not fail the migration")
+
+	// A row written after this migration carries its timestamp from the start
+	_, err = testDB.Exec(`
+		INSERT INTO block (num) VALUES (2);
+
+		INSERT INTO imported_global_exit_root_v2 (
+			block_num,
+			block_pos,
+			global_exit_root,
+			l1_info_tree_index,
+			block_timestamp
+		) VALUES (2, 0, '0x2', 3, 1700000000);
+	`)
+	require.NoError(t, err)
+
+	var withTimestamp struct {
+		BlockNum  uint64  `meddler:"block_num"`
+		Timestamp *uint64 `meddler:"block_timestamp"`
+	}
+	err = meddler.QueryRow(testDB, &withTimestamp, `SELECT * FROM imported_global_exit_root_v2 WHERE block_num = 2`)
+	require.NoError(t, err)
+	require.NotNil(t, withTimestamp.Timestamp)
+	require.Equal(t, uint64(1700000000), *withTimestamp.Timestamp)
+	testDB.Close()
+
+	// Now execute migration down to 5: the column must go away without touching the rest of the row
+	err = RunMigrationsDown(dbPath, migrationsTo6, 1)
+	require.NoError(t, err)
+	testDB, err = db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	defer testDB.Close()
+
+	var afterDown struct {
+		BlockNum        uint64 `meddler:"block_num"`
+		GlobalExitRoot  string `meddler:"global_exit_root"`
+		L1InfoTreeIndex uint32 `meddler:"l1_info_tree_index"`
+	}
+	err = meddler.QueryRow(testDB, &afterDown, `SELECT * FROM imported_global_exit_root_v2 WHERE block_num = 1`)
+	require.NoError(t, err)
+	require.Equal(t, "0x1", afterDown.GlobalExitRoot)
+	require.Equal(t, uint32(2), afterDown.L1InfoTreeIndex)
+}
+
 func TestMigrations_UpDown(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 

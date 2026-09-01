@@ -192,17 +192,41 @@ In other words, for L2 it answers: *"give me the first L1 Info Tree leaf, at or 
 
 ```json
 {
-  "block_num": 123456,            // L1 block where the leaf was recorded
-  "block_pos": 5,                 // position of the event within the block
-  "l1_info_tree_index": 42,       // index of the returned leaf (may be > leaf_index in the L2 case)
+  "block_num": 123456,              // L1 block where the leaf was recorded
+  "block_pos": 5,                   // position of the event within the block
+  "l1_info_tree_index": 42,         // index of the returned leaf (may be > leaf_index in the L2 case)
   "previous_block_hash": "0x...",
-  "timestamp": 1684500000,        // L1 block timestamp (seconds since Unix epoch)
-  "mainnet_exit_root": "0x...",   // MER at this leaf
-  "rollup_exit_root": "0x...",    // RER at this leaf
-  "global_exit_root": "0x...",    // GER = hash(MER, RER)
-  "hash": "0x..."                 // unique hash of the leaf
+  "timestamp": 1684500000,          // L1 block timestamp (seconds since Unix epoch)
+  "mainnet_exit_root": "0x...",     // MER at this leaf
+  "rollup_exit_root": "0x...",      // RER at this leaf
+  "global_exit_root": "0x...",      // GER = hash(MER, RER)
+  "hash": "0x...",                  // unique hash of the leaf
+  "injected_l2_block_num": 654321,  // L2 case only: the L2 block where this GER was actually
+                                     // injected (from l2gersync); omitted for network_id=0
+  "injected_l2_block_timestamp": 1684500123 // L2 case only: timestamp of that L2 block
 }
 ```
+
+`block_num`/`timestamp` above always describe the **L1** event that produced the leaf, even in
+the `network_id=<L2>` case — they are not the block where the GER got injected on the L2.
+`injected_l2_block_num`/`injected_l2_block_timestamp` fill that gap: they come from `l2gersync`'s own
+`block_num`/`block_timestamp` columns for the matched `imported_global_exit_root_v2` row (see
+[processor.go:229](aggkit/l2gersync/processor.go#L229)), set only on the L2 branch.
+
+`timestamp` is a nullable column (added in
+[l2gersync0006.sql](aggkit/l2gersync/migrations/l2gersync0006.sql) to ease migrating existing
+rows): a row written before it existed has it `NULL` in the DB. When that happens,
+`L2GERSync.GetFirstGERAfterL1InfoTreeIndex` ([l2_ger_syncer.go](aggkit/l2gersync/l2_ger_syncer.go))
+resolves it from the L2 RPC on the very next read of that row and backfills the DB, so
+`injected_l2_block_timestamp` only comes back absent if that RPC call itself fails (transient — it
+resolves on a later request).
+
+`injected_l2_block_timestamp` is always absent for L2 chains synced by `l2gersync` in `Legacy` mode
+(pre-sovereign GER manager contract): that mode detects an injected GER by polling contract state
+rather than reading an event log, so the only "block" it can associate with a GER is its current
+polling head, not necessarily the block that actually performed the injection — deriving a
+timestamp from it would look precise without being accurate. `injected_l2_block_num` carries that
+same caveat and should be treated as approximate for `Legacy`-mode chains.
 
 ### Errors
 

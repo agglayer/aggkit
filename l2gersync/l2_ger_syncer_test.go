@@ -2,12 +2,16 @@ package l2gersync
 
 import (
 	"context"
+	"errors"
 	"path"
 	"testing"
 
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/sync"
+	aggkittypes "github.com/agglayer/aggkit/types"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -61,5 +65,82 @@ func TestGetFirstGERAfterL1InfoTreeIndex(t *testing.T) {
 		require.ErrorIs(t, err, db.ErrNotFound, "expected ErrNotFound")
 		require.Equal(t, common.HexToHash("0x0"), ger.GlobalExitRoot, "unexpected GlobalExitRoot when not found")
 		require.Equal(t, uint32(0), ger.L1InfoTreeIndex, "unexpected L1InfoTreeIndex when not found")
+	})
+}
+
+func TestGetFirstGERAfterL1InfoTreeIndex_BackfillsTimestamp(t *testing.T) {
+	ctx := context.Background()
+
+	newSyncerWithGER := func(t *testing.T) *L2GERSync {
+		t.Helper()
+		testDir := path.Join(t.TempDir(), "l2gersync_TestGetFirstGERAfterL1InfoTreeIndex_BackfillsTimestamp.sqlite")
+		processor, err := newProcessor(testDir)
+		require.NoError(t, err)
+
+		// no timestamp persisted at insert time, matching a row written before the column existed
+		err = processor.ProcessBlock(ctx, sync.Block{
+			Num:    7,
+			Events: []any{newEvent(newGlobalExitRootInfo(common.HexToHash("0x1"), 1, 7, 0), GEREventTypeInsert)},
+		})
+		require.NoError(t, err)
+
+		return &L2GERSync{processor: processor}
+	}
+
+	t.Run("resolves timestamp from the RPC and persists it", func(t *testing.T) {
+		l2GERSync := newSyncerWithGER(t)
+		const backfilledTimestamp = uint64(1700000000)
+		mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+		mockL2Client.EXPECT().
+			CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(uint64(7))).
+			Return(&aggkittypes.BlockHeader{Number: 7, Time: backfilledTimestamp}, nil).Once()
+		l2GERSync.l2Client = mockL2Client
+
+		ger, err := l2GERSync.GetFirstGERAfterL1InfoTreeIndex(ctx, 1)
+		require.NoError(t, err)
+		require.NotNil(t, ger.Timestamp)
+		require.Equal(t, backfilledTimestamp, *ger.Timestamp)
+
+		// persisted, so a later read does not need the RPC again
+		mockL2Client.AssertExpectations(t)
+		ger, err = l2GERSync.GetFirstGERAfterL1InfoTreeIndex(ctx, 1)
+		require.NoError(t, err)
+		require.NotNil(t, ger.Timestamp)
+		require.Equal(t, backfilledTimestamp, *ger.Timestamp)
+	})
+
+	t.Run("RPC failure is best-effort: other fields still returned, timestamp stays nil", func(t *testing.T) {
+		l2GERSync := newSyncerWithGER(t)
+		mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+		mockL2Client.EXPECT().
+			CustomHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(uint64(7))).
+			Return(nil, errors.New("rpc unavailable")).Once()
+		l2GERSync.l2Client = mockL2Client
+
+		ger, err := l2GERSync.GetFirstGERAfterL1InfoTreeIndex(ctx, 1)
+		require.NoError(t, err)
+		require.Nil(t, ger.Timestamp)
+		require.Equal(t, common.HexToHash("0x1"), ger.GlobalExitRoot)
+	})
+
+	t.Run("no l2Client configured (e.g. L2GERSync built directly, not via New): skips backfill", func(t *testing.T) {
+		l2GERSync := newSyncerWithGER(t)
+
+		ger, err := l2GERSync.GetFirstGERAfterL1InfoTreeIndex(ctx, 1)
+		require.NoError(t, err)
+		require.Nil(t, ger.Timestamp)
+	})
+
+	t.Run("Legacy sync mode: skips backfill even with an l2Client configured", func(t *testing.T) {
+		// In Legacy mode BlockNum is the polling head, not the real injection block, so resolving
+		// a timestamp from it would be no more accurate than leaving it nil (see
+		// evm_downloader_legacy.go). The RPC must never be called for this path.
+		l2GERSync := newSyncerWithGER(t)
+		l2GERSync.syncMode = Legacy
+		l2GERSync.l2Client = aggkittypesmocks.NewBaseEthereumClienter(t) // no expectations set: any call fails the test
+
+		ger, err := l2GERSync.GetFirstGERAfterL1InfoTreeIndex(ctx, 1)
+		require.NoError(t, err)
+		require.Nil(t, ger.Timestamp)
 	})
 }

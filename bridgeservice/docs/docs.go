@@ -573,7 +573,7 @@ const docTemplate = `{
         },
         "/injected-l1-info-leaf": {
             "get": {
-                "description": "Returns the L1 info tree leaf either at the given index (for L1)\nor the first injected global exit root after the given index (for L2).",
+                "description": "Returns the L1 info tree leaf either at the given index (for L1)\nor the first injected global exit root after the given index (for L2). For L2,\ninjected_l2_block_num/injected_l2_block_timestamp additionally carry the destination\nnetwork's own block, and when, the Global Exit Root got injected.",
                 "produces": [
                     "application/json"
                 ],
@@ -1553,6 +1553,16 @@ const docTemplate = `{
                     "description": "Unique hash identifying this leaf node",
                     "type": "string",
                     "example": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                },
+                "injected_l2_block_num": {
+                    "description": "Block number on the destination (L2) network where this Global Exit Root was injected.\nOnly set by the injected-l1-info-leaf endpoint when network_id is the L2's own; nil for an\nL1 (network_id=0) lookup, where BlockNumber above already is the relevant block.\nApproximate (the current polling head, not necessarily the real injection block) for L2\nchains synced by l2gersync in Legacy mode",
+                    "type": "integer",
+                    "example": 654321
+                },
+                "injected_l2_block_timestamp": {
+                    "description": "Timestamp of the L2 block above, in seconds since the Unix epoch. Only set alongside\nInjectedL2BlockNumber; may briefly be nil for a row written before l2gersync persisted\ntimestamps if backfilling it from the L2 RPC failed (transient), in which case it resolves\non a later request. Always nil for L2 chains synced by l2gersync in Legacy mode, where\nInjectedL2BlockNumber is only approximate and no accurate timestamp can be derived from it",
+                    "type": "integer",
+                    "example": 1684500123
                 },
                 "l1_info_tree_index": {
                     "description": "Index of this leaf in the L1 info tree",
