@@ -304,6 +304,13 @@ definitions:
         description: Unique hash identifying this leaf node
         example: 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
         type: string
+      injected_l2_block_num:
+        description: |-
+          Block number on the destination (L2) network where this Global Exit Root was injected.
+          Only set by the injected-l1-info-leaf endpoint when network_id is the L2's own; nil for an
+          L1 (network_id=0) lookup, where BlockNumber above already is the relevant block
+        example: 654321
+        type: integer
       l1_info_tree_index:
         description: Index of this leaf in the L1 info tree
         example: 42
@@ -1008,7 +1015,9 @@ paths:
     get:
       description: |-
         Returns the L1 info tree leaf either at the given index (for L1)
-        or the first injected global exit root after the given index (for L2).
+        or the first injected global exit root after the given index (for L2). For L2,
+        injected_l2_block_num additionally carries the destination network's own block
+        where the Global Exit Root got injected.
       parameters:
       - description: Network ID
         in: query

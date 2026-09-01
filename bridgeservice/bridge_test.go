@@ -2509,16 +2509,23 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		err := json.Unmarshal(response.Body.Bytes(), &result)
 		require.NoError(t, err)
 		require.Equal(t, *l1InfoTreeLeaf, result)
+
+		// the L1 lookup never resolves an L2 injection block, so it must stay absent
+		var raw map[string]any
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &raw))
+		require.NotContains(t, raw, "injected_l2_block_num")
 	})
 
 	t.Run("Retrieve for L2 network", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
+		const l2InjectionBlockNum = uint64(999)
 		bridgeMocks.injectedGERs.EXPECT().
 			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
 			Return(l2gersync.GlobalExitRootInfo{
 				GlobalExitRoot:  l1InfoTreeLeaf.GlobalExitRoot,
 				L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
+				BlockNum:        l2InjectionBlockNum,
 			}, nil)
 
 		bridgeMocks.l1InfoTree.EXPECT().
@@ -2536,6 +2543,13 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		err := json.Unmarshal(response.Body.Bytes(), &result)
 		require.NoError(t, err)
 		require.Equal(t, *l1InfoTreeLeaf, result)
+
+		// block_num/timestamp above are the L1 event's; injected_l2_block_num is the extra field
+		// carrying the L2 block where the GER actually got injected (per l2gersync)
+		var withL2Block bridgetypes.L1InfoTreeLeafResponse
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &withL2Block))
+		require.NotNil(t, withL2Block.InjectedL2BlockNumber)
+		require.Equal(t, l2InjectionBlockNum, *withL2Block.InjectedL2BlockNumber)
 	})
 
 	t.Run("Unsupported network", func(t *testing.T) {

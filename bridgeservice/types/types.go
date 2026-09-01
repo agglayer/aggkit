@@ -344,6 +344,11 @@ type L1InfoTreeLeafResponse struct {
 
 	// Unique hash identifying this leaf node
 	Hash Hash `json:"hash" example:"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
+
+	// Block number on the destination (L2) network where this Global Exit Root was injected.
+	// Only set by the injected-l1-info-leaf endpoint when network_id is the L2's own; nil for an
+	// L1 (network_id=0) lookup, where BlockNumber above already is the relevant block
+	InjectedL2BlockNumber *uint64 `json:"injected_l2_block_num,omitempty" example:"654321"`
 }
 
 // SyncStatus represents the bridge synchronization status for both L1 and L2 networks

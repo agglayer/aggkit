@@ -844,7 +844,9 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 
 // @Summary Get injected L1 info tree leaf after a given L1 info tree index
 // @Description Returns the L1 info tree leaf either at the given index (for L1)
-// @Description or the first injected global exit root after the given index (for L2).
+// @Description or the first injected global exit root after the given index (for L2). For L2,
+// @Description injected_l2_block_num additionally carries the destination network's own block
+// @Description where the Global Exit Root got injected.
 // @Tags l1-info-tree-leaf
 // @Param network_id query int true "Network ID"
 // @Param leaf_index query int true "L1 Info Tree Index"
@@ -887,6 +889,9 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	defer cancel()
 
 	var l1InfoLeaf *l1infotreesync.L1InfoTreeLeaf
+	// injectedL2BlockNumber is only resolved on the L2 branch below (the actual block on the
+	// destination network where the GER got injected), left nil for the L1 (network_id=0) case
+	var injectedL2BlockNumber *uint64
 
 	switch networkID {
 	case mainnetNetworkID:
@@ -919,6 +924,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 					e.L1InfoTreeIndex, err))
 			return
 		}
+		injectedL2BlockNumber = &e.BlockNum
 	default:
 		b.logger.Warnf(errNetworkID, networkID)
 		statusCode = http.StatusBadRequest
@@ -934,8 +940,11 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 		return
 	}
 
+	resp := NewL1InfoTreeLeafResponse(l1InfoLeaf)
+	resp.InjectedL2BlockNumber = injectedL2BlockNumber
+
 	statusCode = http.StatusOK
-	c.JSON(statusCode, NewL1InfoTreeLeafResponse(l1InfoLeaf))
+	c.JSON(statusCode, resp)
 }
 
 // @Summary Get L1 info tree leaf by Global Exit Root

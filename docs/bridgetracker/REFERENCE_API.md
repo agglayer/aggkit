@@ -200,9 +200,18 @@ In other words, for L2 it answers: *"give me the first L1 Info Tree leaf, at or 
   "mainnet_exit_root": "0x...",   // MER at this leaf
   "rollup_exit_root": "0x...",    // RER at this leaf
   "global_exit_root": "0x...",    // GER = hash(MER, RER)
-  "hash": "0x..."                 // unique hash of the leaf
+  "hash": "0x...",                // unique hash of the leaf
+  "injected_l2_block_num": 654321 // L2 case only: the L2 block where this GER was actually
+                                   // injected (from l2gersync); omitted for network_id=0
 }
 ```
+
+`block_num`/`timestamp` above always describe the **L1** event that produced the leaf, even in
+the `network_id=<L2>` case — they are not the block where the GER got injected on the L2.
+`injected_l2_block_num` fills that gap: it is `l2gersync`'s own `block_num` for the matched
+`imported_global_exit_root_v2` row (see [processor.go:229](aggkit/l2gersync/processor.go#L229)),
+set only on the L2 branch. There is no equivalent L2 timestamp yet — `l2gersync` does not persist
+one (see [evm_downloader_sovereign.go](aggkit/l2gersync/evm_downloader_sovereign.go)).
 
 ### Errors
 

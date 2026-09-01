@@ -573,7 +573,7 @@ const docTemplate = `{
         },
         "/injected-l1-info-leaf": {
             "get": {
-                "description": "Returns the L1 info tree leaf either at the given index (for L1)\nor the first injected global exit root after the given index (for L2).",
+                "description": "Returns the L1 info tree leaf either at the given index (for L1)\nor the first injected global exit root after the given index (for L2). For L2,\ninjected_l2_block_num additionally carries the destination network's own block\nwhere the Global Exit Root got injected.",
                 "produces": [
                     "application/json"
                 ],
@@ -1553,6 +1553,11 @@ const docTemplate = `{
                     "description": "Unique hash identifying this leaf node",
                     "type": "string",
                     "example": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                },
+                "injected_l2_block_num": {
+                    "description": "Block number on the destination (L2) network where this Global Exit Root was injected.\nOnly set by the injected-l1-info-leaf endpoint when network_id is the L2's own; nil for an\nL1 (network_id=0) lookup, where BlockNumber above already is the relevant block",
+                    "type": "integer",
+                    "example": 654321
                 },
                 "l1_info_tree_index": {
                     "description": "Index of this leaf in the L1 info tree",
