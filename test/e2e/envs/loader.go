@@ -37,6 +37,10 @@ const (
 	// EnvOpPP2Chains is a testing env that has two OP-PP L2 networks deployed (L2A + L2B)
 	EnvOpPP2Chains ENVName = "op-pp-2chains"
 
+	// EnvAnvil2Chains is a testing env that has two anvil-backed L2 networks deployed (L2A + L2B),
+	// settling against an anvil L1, sourced from a kurtosis-cdk anvil snapshot bundle.
+	EnvAnvil2Chains ENVName = "anvil-2chains"
+
 	// l2NetworkKeyA is the summary.json key of the primary L2 network (L2A).
 	l2NetworkKeyA = "001"
 	// l2NetworkKeyB is the summary.json key of the secondary L2 network (L2B), present
@@ -310,9 +314,11 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		return nil, fmt.Errorf("load L2 network %s: %w", l2NetworkKeyA, err)
 	}
 
-	// Load secondary L2 network (L2B, key "002") only for multi-chain envs.
+	// Load secondary L2 network (L2B, key "002") only for multi-chain envs, detected by the
+	// presence of the "002" key in summary.json rather than by env name. This generalizes to any
+	// multi-chain env (present and future) without adding a name to a list.
 	var l2B *L2Config
-	if envName == EnvOpPP2Chains {
+	if _, ok := summary.Networks.L2Networks[l2NetworkKeyB]; ok {
 		l2B, err = loadL2Config(ctx, summary, l2NetworkKeyB)
 		if err != nil {
 			return nil, fmt.Errorf("load L2 network %s: %w", l2NetworkKeyB, err)
@@ -691,6 +697,27 @@ func (e *Env) DockerComposeLogs(ctx context.Context, args ...string) ([]byte, er
 		return nil, fmt.Errorf("docker compose logs: %w\nOutput:\n%s", err, string(out))
 	}
 	return out, nil
+}
+
+// ComposeServices returns every service name defined in this environment's docker-compose.yml, by
+// shelling out to "docker compose config --services". This is used instead of a hardcoded per-env
+// service list (which cannot stay in sync across envs, and summary.json's schema has no key for
+// services like beacon/validator/op-node) so log collection covers every service in any env,
+// present or future, with zero per-env code.
+func (e *Env) ComposeServices(ctx context.Context) ([]string, error) {
+	cmd := newDockerComposeCmd(ctx, e.EnvDir, "config", "--services")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("docker compose config --services: %w\nOutput:\n%s", err, string(out))
+	}
+	var services []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			services = append(services, line)
+		}
+	}
+	return services, nil
 }
 
 // cleanAggkitDataDir removes the aggkit data directory and recreates it with /tmp-like

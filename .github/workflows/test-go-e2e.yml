@@ -43,22 +43,16 @@ jobs:
 
       - name: Pull Docker images from compose files
         run: |
-          # op-pp env
-          cd test/e2e/envs/op-pp
-          docker compose pull geth beacon validator agglayer op-geth-001 op-node-001
-          cd ../op-pp-2chains
-          # kurtosis-cdk snapshot branch: feat/op-pp-2chains-snapshot @ 627340aa
-          # This commit generated the op-pp-2chains env snapshot
-          docker compose pull geth beacon validator agglayer \
-            op-reth-001 op-node-001 op-reth-002 op-node-002
+          cd test/e2e/envs/anvil-2chains
+          # Digest-pinned kurtosis-cdk anvil snapshot images. The aggkit services
+          # deliberately use the locally built aggkit:local image and are excluded.
+          docker compose pull anvil-001 l2-anvil-001 l2-anvil-002 agglayer
 
       - name: Save pulled Docker images
         run: |
-          imgs=""
-          for d in op-pp op-pp-2chains; do
-            imgs="$imgs $(cd test/e2e/envs/$d && docker compose config --images | grep -v 'aggkit:local')"
-          done
-          docker save $(echo "$imgs" | tr ' ' '\n' | sort -u) -o /tmp/docker-images.tar
+          mapfile -t imgs < <(cd test/e2e/envs/anvil-2chains && \
+            docker compose config --images | grep -v 'aggkit:local' | sort -u)
+          docker save "${imgs[@]}" -o /tmp/docker-images.tar
 
       - name: Upload Docker images artifact
         uses: actions/upload-artifact@v4
@@ -76,29 +70,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Default op-pp group: everything except the remove-GER tests, which run in their own
-          # groups below (each matrix entry is a separate `go test` invocation, so listing a test in
-          # more than one entry's regex would run it twice). Enumerated as an explicit positive,
-          # anchored regex because Go's -run has no negation syntax.
-          - env: op-pp
-            group: default
-            run: "^(TestJustBridge|TestAutoClaimL1ToL2AllowAll|TestAutoClaimL1ToL2APIApprove|TestAutoClaimL1ToL2BasicFilter|TestAutoClaimL2ToL1AllowAll|TestAutoClaimL2ToL2AllowAll|TestBridgeL2ToL2|TestBackwardForwardLET_NoDivergence|TestBackwardForwardLET_Case1|TestBackwardForwardLET_Case2|TestBackwardForwardLET_Case3|TestBackwardForwardLET_Case4|TestBackwardForwardLET_AggsenderAPIFallback)$"
-          # Remove-GER groups (op-pp): split across 3 CI matrix entries under the 20-min-per-group
-          # budget. Measured passing-path wall-clock (S8/S9 reports) is well under this budget for
-          # every group (all five tests combined finish in under 6 minutes single-run), so no further
-          # regrouping is needed.
-          - env: op-pp
+          # Keep stateful suites in separate stacks. The AutoClaim and backward/forward LET tests
+          # restart services and mutate chain/AggLayer state, so sharing one go-test process makes
+          # a primary failure cascade into otherwise unrelated bridge tests.
+          - env: anvil-2chains
+            group: autoclaim
+            run: "^(TestAutoClaimL1ToL2AllowAll|TestAutoClaimL1ToL2APIApprove|TestAutoClaimL1ToL2BasicFilter|TestAutoClaimL2ToL1AllowAll|TestAutoClaimL2ToL2AllowAll)$"
+          - env: anvil-2chains
+            group: bridge
+            run: "^(TestJustBridge|TestBridgeL2ToL2|TestBridgeTrackerL1ToL2)$"
+          - env: anvil-2chains
+            group: backward-forward-let
+            run: "^(TestBackwardForwardLET_NoDivergence|TestBackwardForwardLET_Case1|TestBackwardForwardLET_Case2|TestBackwardForwardLET_Case3|TestBackwardForwardLET_Case4|TestBackwardForwardLET_AggsenderAPIFallback)$"
+          # Remove-GER scenarios mutate claim bitmaps and emergency state. Category A has a fixed
+          # deposit-count-2 proof and must not share a snapshot with a preceding bridge test.
+          - env: anvil-2chains
             group: removeger-fast
-            run: TestRemoveGER_NoProblematicClaims|TestRemoveGER_CategoryA|TestGenerateInvalidGER
-          - env: op-pp
+            run: "^(TestRemoveGER_NoProblematicClaims|TestGenerateInvalidGER)$"
+          - env: anvil-2chains
+            group: removeger-category-a
+            run: "^TestRemoveGER_CategoryA$"
+          - env: anvil-2chains
             group: removeger-b1
             run: TestRemoveGER_CategoryB1
-          - env: op-pp
+          - env: anvil-2chains
             group: removeger-b2
             run: TestRemoveGER_CategoryB2
-          - env: op-pp-2chains
-            group: default
-            run: TestBridgeL2ToL2|TestAutoClaimL2ToL2AllowAll|TestBridgeTrackerL1ToL2
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -112,6 +109,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y docker-compose
+
+      - name: Install cast
+        if: matrix.group == 'removeger-fast'
+        env:
+          FOUNDRY_VERSION: v1.8.1
+        run: |
+          archive="foundry_${FOUNDRY_VERSION}_linux_amd64.tar.gz"
+          install_dir="${RUNNER_TEMP}/foundry/bin"
+          mkdir -p "${install_dir}"
+          curl -fsSLO "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/${archive}"
+          curl -fsSLO "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/${archive%.tar.gz}.sha256"
+          sha256sum --check "${archive%.tar.gz}.sha256"
+          tar -xzf "${archive}" -C "${install_dir}" cast
+          "${install_dir}/cast" --version
+          echo "${install_dir}" >> "${GITHUB_PATH}"
 
       - name: Download aggkit Docker image
         uses: actions/download-artifact@v4
@@ -139,7 +151,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          # Include matrix.group: multiple matrix entries now share the same env (op-pp), and
+          # Include matrix.group because multiple matrix entries share the same Anvil env, and
           # actions/upload-artifact@v4 requires unique artifact names within a workflow run.
           name: e2e-test-results-${{ matrix.env }}-${{ matrix.group }}
           path: |
@@ -184,6 +196,8 @@ jobs:
           docker load -i /tmp/docker-images.tar
 
       - name: Run force_ger_update E2E test
+        env:
+          AGGKIT_E2E_ENV: anvil-2chains
         run: make test-e2e-force_ger_update
 
       - name: Upload test results

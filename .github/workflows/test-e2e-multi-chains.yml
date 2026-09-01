@@ -1,0 +1,240 @@
+name: Aggkit E2E - Multi Chain
+
+on:
+  workflow_call:
+    inputs:
+      aggsender-find-imported-bridge-artifact:
+        description: "Artifact containing the aggsender imported-bridge helper"
+        required: true
+        type: string
+      kurtosis-cdk-ref:
+        description: "The kurtosis-cdk revision to test"
+        required: true
+        type: string
+      agglayer-e2e-ref:
+        description: "The agglayer/e2e revision containing the Bats tests"
+        required: true
+        type: string
+      kurtosis-cdk-args-1:
+        description: "Kurtosis arguments for the first chain"
+        required: true
+        type: string
+      kurtosis-cdk-args-2:
+        description: "Kurtosis arguments for the second chain"
+        required: true
+        type: string
+      kurtosis-cdk-args-3:
+        description: "Kurtosis arguments for the optional third chain"
+        required: false
+        type: string
+        default: "{}"
+      kurtosis-cdk-enclave-name:
+        description: "Kurtosis enclave name"
+        required: true
+        type: string
+      docker-image-override:
+        description: "Kurtosis image key to override"
+        required: false
+        type: string
+        default: ""
+      docker-tag:
+        description: "Local Docker tag used by Kurtosis"
+        required: false
+        type: string
+        default: "local"
+      docker-artifact-name:
+        description: "Artifact containing the Docker image"
+        required: false
+        type: string
+        default: "aggkit"
+      number-of-chains:
+        description: "Number of chains to deploy"
+        required: false
+        type: number
+        default: 2
+      aggkit-config-artifact:
+        description: "Artifact containing aggkit-owned Kurtosis config templates"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  test-multi-aggkit-e2e:
+    name: Multi chains E2E test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout agglayer-e2e
+        uses: actions/checkout@v6
+        with:
+          repository: agglayer/e2e
+          ref: ${{ inputs.agglayer-e2e-ref }}
+          path: agglayer-e2e
+
+      - name: Checkout kurtosis-cdk
+        uses: actions/checkout@v6
+        with:
+          repository: 0xPolygon/kurtosis-cdk
+          ref: ${{ inputs.kurtosis-cdk-ref }}
+          path: kurtosis-cdk
+
+      - name: Download binary
+        if: inputs.aggsender-find-imported-bridge-artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.aggsender-find-imported-bridge-artifact }}
+          path: /tmp
+
+      - name: Download artifact
+        if: inputs.docker-artifact-name != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.docker-artifact-name }}
+          path: /tmp
+
+      - name: Load image
+        run: |
+          if [[ -e /tmp/${{ inputs.docker-artifact-name }}.tar ]]; then
+            docker load --input /tmp/${{ inputs.docker-artifact-name }}.tar
+            docker images
+          fi
+
+      # foundry-toolchain downloads foundryup from foundry.paradigm.xyz. The
+      # endpoint intermittently returns a non-shell executable on hosted
+      # runners, causing every retry to fail before the Bats tests start.
+      - name: Install Foundry
+        env:
+          FOUNDRY_VERSION: v1.7.0
+          FOUNDRY_SHA256: 88501301c43e2cb3231009e68bd76af17cc0f7e9981f9d37ceabc6b857febb2f
+        run: |
+          archive="foundry_${FOUNDRY_VERSION}_linux_amd64.tar.gz"
+          install_dir="${RUNNER_TEMP}/foundry/bin"
+          mkdir -p "${install_dir}"
+          curl -fsSLO "https://github.com/foundry-rs/foundry/releases/download/${FOUNDRY_VERSION}/${archive}"
+          echo "${FOUNDRY_SHA256}  ${archive}" | sha256sum --check
+          tar -xzf "${archive}" -C "${install_dir}"
+          "${install_dir}/cast" --version
+          echo "${install_dir}" >> "${GITHUB_PATH}"
+
+      - name: Install bats
+        uses: bats-core/bats-action@3.0.0
+
+      - name: Install kurtosis cli and jq
+        run: |
+          echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
+          sudo apt update
+          sudo apt install -y kurtosis-cli jq
+          kurtosis analytics disable
+
+      - name: Write args input to a file
+        run: |
+          if [[ '${{ inputs.kurtosis-cdk-args-3 }}' == '{}' && ${{ inputs.number-of-chains }} -eq 3 ]]; then
+            echo "Error: kurtosis-cdk-args-3 is empty but number-of-chains is set to 3"
+            exit 1
+          fi
+          docker_tag='${{ inputs.docker-tag }}'
+          if [[ "${docker_tag}" == "" ]]; then
+            echo '${{ inputs.kurtosis-cdk-args-1 }}' | tee /tmp/kurtosis-args-1.json
+            echo '${{ inputs.kurtosis-cdk-args-2 }}' | tee /tmp/kurtosis-args-2.json
+            if [[ ${{ inputs.number-of-chains }} -eq 3 ]]; then
+              echo '${{ inputs.kurtosis-cdk-args-3 }}' | tee /tmp/kurtosis-args-3.json
+            fi
+            exit
+          fi
+          echo '${{ inputs.kurtosis-cdk-args-1 }}' | jq --arg img '${{ inputs.docker-image-override }}' \
+            --arg tag '${{ inputs.docker-tag }}' '.args[$img] = $tag' | tee /tmp/kurtosis-args-1.json
+          echo '${{ inputs.kurtosis-cdk-args-2 }}' | jq --arg img '${{ inputs.docker-image-override }}' \
+            --arg tag '${{ inputs.docker-tag }}' '.args[$img] = $tag' | tee /tmp/kurtosis-args-2.json
+          if [[ ${{ inputs.number-of-chains }} -eq 3 ]]; then
+            echo '${{ inputs.kurtosis-cdk-args-3 }}' | jq --arg img '${{ inputs.docker-image-override }}' \
+              --arg tag '${{ inputs.docker-tag }}' '.args[$img] = $tag' | tee /tmp/kurtosis-args-3.json
+          fi
+
+      - name: Download aggkit config override
+        if: inputs.aggkit-config-artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.aggkit-config-artifact }}
+          path: /tmp/aggkit-config
+
+      - name: Apply aggkit config override
+        if: inputs.aggkit-config-artifact != ''
+        run: |
+          set -eo pipefail
+          dst=kurtosis-cdk/static_files/chain/shared/aggkit
+          cp /tmp/aggkit-config/aggkit-config.template.toml "${dst}/config.toml"
+          if [[ -f /tmp/aggkit-config/aggkit-cdk-config.template.toml ]]; then
+            cp /tmp/aggkit-config/aggkit-cdk-config.template.toml "${dst}/cdk-config.toml"
+          fi
+          echo "Applied aggkit-owned config templates over kurtosis-cdk static_files:"
+          ls -l "${dst}"
+
+      - name: Startup the kurtosis-cdk package
+        run: |
+          pushd kurtosis-cdk || exit 1
+          kurtosis run --enclave '${{ inputs.kurtosis-cdk-enclave-name }}' --args-file /tmp/kurtosis-args-1.json .
+          kurtosis run --enclave '${{ inputs.kurtosis-cdk-enclave-name }}' --args-file /tmp/kurtosis-args-2.json .
+          if [[ ${{ inputs.number-of-chains }} -eq 3 ]]; then
+            kurtosis run --enclave '${{ inputs.kurtosis-cdk-enclave-name }}' --args-file /tmp/kurtosis-args-3.json .
+          fi
+          popd
+
+      - name: Run e2e tests
+        run: |
+          pushd agglayer-e2e || exit 1
+          set -a
+          source ./tests/.env
+          set +a
+          export BATS_LIB_PATH="${PWD}/core/helpers/lib"
+          export PROJECT_ROOT="${PWD}"
+          export ENCLAVE_NAME='${{ inputs.kurtosis-cdk-enclave-name }}'
+          chmod +x "/tmp/${{ inputs.aggsender-find-imported-bridge-artifact }}"
+          export AGGSENDER_IMPORTED_BRIDGE_PATH="/tmp/${{ inputs.aggsender-find-imported-bridge-artifact }}"
+          if [[ ${{ inputs.number-of-chains }} -eq 3 ]]; then
+            bats ./tests/aggkit/bridge-e2e-3-chains.bats
+          else
+            bats ./tests/aggkit/bridge-e2e-2-chains.bats
+          fi
+          popd
+
+      - name: Dump enclave logs
+        if: ${{ failure() }}
+        run: kurtosis dump ./dump
+
+      - name: Generate archive name
+        if: ${{ failure() }}
+        run: |
+          archive_name="dump_run_with_args_${{ inputs.number-of-chains }}_${{ github.run_id }}"
+          echo "ARCHIVE_NAME=${archive_name}" >> "${GITHUB_ENV}"
+          echo "Generated archive name: ${archive_name}"
+
+      - name: Upload logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: ./dump
+
+      - name: Clean up kurtosis-cdk enclave
+        if: ${{ always() }}
+        run: |
+          kurtosis enclave stop '${{ inputs.kurtosis-cdk-enclave-name }}'
+          kurtosis clean
+
+      - name: Record test run in Datadog
+        if: always()
+        continue-on-error: true
+        uses: agglayer/gha-record-e2e-test-run@v1
+        with:
+          enable_ai_analysis: "true"
+          host: github-actions-runners
+          status: ${{ job.status }}
+          ref_kurtosis: ${{ inputs.kurtosis-cdk-ref }}
+          ref_e2e: ${{ inputs.agglayer-e2e-ref }}
+        env:
+          DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

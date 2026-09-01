@@ -20,10 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// proxyTrackerBaseURL is the external (host) URL of the aggkit-proxy REST API, which serves the
-// bridge tracker. It only exists in the 2-chain env (test/e2e/envs/op-pp-2chains/docker-compose.yml,
-// service aggkit-proxy-001, port 12601 -> 8080); the single-chain env (op-pp) has no proxy at all.
-const proxyTrackerBaseURL = "http://127.0.0.1:12601"
+// proxyTrackerBaseURL is the external (host) URL of the Anvil env's aggkit-proxy REST API.
+const proxyTrackerBaseURL = "http://127.0.0.1:15601"
 
 // trackerBridgeEventData mirrors api.BridgeEventData (bridgetracker/api/bridge_status.go): the
 // facts taken directly from the on-chain BridgeEvent log.
@@ -190,15 +188,14 @@ func claimL1ToL2(ctx context.Context, env *envs.Env, l2Opts *bind.TransactOpts, 
 // (the tracker only reports status, it never builds/sends claim transactions itself) and asserts
 // the tracker follows it through to its terminal Claimed/finished state.
 //
-// It requires the multi-chain env (EnvOpPP2Chains): aggkit-proxy is only wired there (see
-// docker-compose.yml). When run against the single-chain env (testEnv.L2B == nil) it is skipped.
+// It requires a multi-chain env with aggkit-proxy configured.
 func TestBridgeTrackerL1ToL2(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
 	require.NotNil(t, testEnv, "testEnv must be set by TestMain")
 	if testEnv.L2B == nil {
-		t.Skip("bridge tracker test requires EnvOpPP2Chains (aggkit-proxy is only wired there)")
+		t.Skip("bridge tracker test requires a multi-chain env (L2B must be non-nil)")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)

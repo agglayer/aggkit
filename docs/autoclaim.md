@@ -700,8 +700,8 @@ make lint
 make test-unit
 ```
 
-The focused end-to-end tests run against the dockerized e2e environment (see [End-to-end tests](./e2e_tests.md)).
-L1-to-L2 and L2-to-L1 run against the single-chain `op-pp` environment (the default):
+The focused end-to-end tests run against the two-chain `anvil-2chains` environment by default (see
+[End-to-end tests](./e2e_tests.md)):
 
 ```bash
 go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove|BasicFilter)|TestAutoClaimL2ToL1AllowAll' -timeout 30m ./test/e2e
@@ -713,10 +713,10 @@ go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove|BasicFilter)|TestAutoCl
 `TestAutoClaimL2ToL1AllowAll` exercises the fully automatic L2-to-L1 flow (L2-to-Lx detector, `RollupPreparer`, an
 `NetworkID = 0` claimer).
 
-L2-to-L2 requires the two-rollup `op-pp-2chains` environment, selected via `AGGKIT_E2E_ENV`:
+L2-to-L2 uses the same default environment:
 
 ```bash
-AGGKIT_E2E_ENV=op-pp-2chains go test -v -run 'TestAutoClaimL2ToL2AllowAll' -timeout 30m ./test/e2e
+go test -v -run 'TestAutoClaimL2ToL2AllowAll' -timeout 30m ./test/e2e
 ```
 
 `TestAutoClaimL2ToL2AllowAll` exercises the fully automatic L2-to-L2 flow end to end: the L2-to-Lx detector and

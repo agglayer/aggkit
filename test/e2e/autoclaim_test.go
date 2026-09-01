@@ -30,43 +30,41 @@ import (
 )
 
 const (
-	autoClaimAPIBaseURL      = "http://127.0.0.1:11579"
-	bridgeServiceBaseURL     = "http://127.0.0.1:11577"
+	autoClaimAPIBaseURL      = "http://127.0.0.1:14579"
+	bridgeServiceBaseURL     = "http://127.0.0.1:14577"
 	autoClaimKeystorePass    = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"
 	autoClaimBridgeAddr      = "0xC8cbEBf950B9Df44d987c8619f092beA980fF038"
-	autoClaimL2RPC           = "http://op-geth-001:8545"
-	autoClaimL2ChainID       = 2151908
+	autoClaimL2RPC           = "http://l2-anvil-001:8545"
+	autoClaimL2ChainID       = 20201
 	autoClaimRequestWait     = 8 * time.Minute
 	autoClaimRestartWait     = 2 * time.Minute
 	autoClaimRestoreWait     = 2 * time.Minute
 	autoClaimBridgeAmountWei = 100000000000000
 
-	// autoClaimL1BridgeAddr is the op-pp env's L1 bridge contract address (from
-	// test/e2e/envs/op-pp/summary.json: networks.l1.contracts.bridge). It happens to equal
+	// autoClaimL1BridgeAddr is the Anvil env's L1 bridge contract address. It equals
 	// autoClaimBridgeAddr (the L2 bridge address) because this env deploys the bridge at the same
 	// deterministic address on every network; kept as a separate constant for clarity at L2ToLx
 	// claimer call sites.
 	autoClaimL1BridgeAddr = autoClaimBridgeAddr
-	// autoClaimL1RPC is the in-network URL of the op-pp env's L1 geth node (docker-compose.yml's
-	// "geth" service, summary.json: networks.l1.services.geth.http_rpc.internal).
-	autoClaimL1RPC = "http://geth:8545"
-	// autoClaimL1ChainID is the op-pp env's L1 chain ID (summary.json: networks.l1.chain_id).
+	// autoClaimL1RPC is the in-network URL of the Anvil env's L1 node.
+	autoClaimL1RPC = "http://anvil-001:8545"
+	// autoClaimL1ChainID is the Anvil env's L1 chain ID.
 	autoClaimL1ChainID = 271828
-	// autoClaimSourceBridgeServiceURL is the in-network URL of the op-pp env's (only) L2 bridge
+	// autoClaimSourceBridgeServiceURL is the in-network URL of the Anvil env's primary L2 bridge
 	// service, used as a static AutoClaim.BridgeServiceFinder.BridgeURLs override for the L2ToLx detector.
 	// The on-chain fallback (trusted sequencer URL + port 5577) would resolve to the wrong host in
 	// this docker-compose env, so a static override is required.
 	autoClaimSourceBridgeServiceURL = "http://aggkit-001:5577"
 
-	// The following constants describe the 2-chain env (EnvOpPP2Chains) used by
+	// The following constants describe the two-chain Anvil env used by
 	// TestAutoClaimL2ToL2AllowAll. In that env Auto Claim runs on the aggkit-002 (network 2 / L2B)
 	// node: it detects the L2-001 -> L2-002 bridge via the L2ToLx detector, resolves the source
 	// (network 1) bridge service statically, and claims on network 2 through a claimer with its own
 	// l2gersync.
 
 	// autoClaimL2BRPC is the in-network RPC URL of the 2-chain env's second L2 execution client
-	// (op-reth-002). It backs the network-2 claimer's tx sender and its l2gersync.
-	autoClaimL2BRPC = "http://op-reth-002:8545"
+	// (l2-anvil-002). It backs the network-2 claimer's tx sender and its l2gersync.
+	autoClaimL2BRPC = "http://l2-anvil-002:8545"
 	// autoClaimL2BChainID is the 2-chain env's second L2 chain ID (summary.json: l2_networks.002.chain_id).
 	autoClaimL2BChainID = 20202
 	// autoClaimNet1BridgeServiceURL / autoClaimNet2BridgeServiceURL are the in-network URLs of the two
@@ -80,7 +78,7 @@ const (
 	autoClaimL1RollupManagerAddr = "0x6c6c009cC348976dB4A908c92B24433d4F6edA43"
 	// autoClaimL2BBridgeServiceBaseURL is the external (host) URL of the network-2 bridge service,
 	// which also serves the public Auto Claim request-status API (/autoclaim/v1/bridges/<key>).
-	autoClaimL2BBridgeServiceBaseURL = "http://127.0.0.1:12577"
+	autoClaimL2BBridgeServiceBaseURL = "http://127.0.0.1:15577"
 	// l2NetworkKeyB mirrors envs.l2NetworkKeyB (unexported): the summary.json key / config dir of the
 	// secondary L2 network (L2B) whose aggkit node runs Auto Claim in the L2->L2 test.
 	l2NetworkKeyB = "002"
@@ -139,7 +137,7 @@ func testAutoClaimL1ToL2(t *testing.T, policyName string, approveThroughAPI bool
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
-	env := loadAutoClaimTestEnv(t, ctx)
+	env := loadAutoClaimTestEnv(t)
 	enableAutoClaimForTest(t, ctx, env, policyName, nil)
 	waitForBridgeServiceSynced(ctx, t)
 
@@ -186,7 +184,7 @@ func TestAutoClaimL2ToL1AllowAll(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 28*time.Minute)
 	defer cancel()
 
-	env := loadAutoClaimTestEnv(t, ctx)
+	env := loadAutoClaimTestEnv(t)
 
 	// The L1-destination claimer's EthTxManager needs a funded L1 signer; checked out here (before
 	// enabling Auto Claim) because newAutoClaimL2ToLxConfig needs the key to provision the claimer's
@@ -206,8 +204,8 @@ func TestAutoClaimL2ToL1AllowAll(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { env.Keys.L2Keys.Return(l2Key) })
 
-	// This op-pp docker-compose env runs an OP-stack sequencer with NO op-batcher/op-proposer, so the
-	// L2 chain's safe/finalized heads never advance past genesis. The aggsender only certifies L2
+	// The local snapshot env may not advance the L2 chain's safe/finalized heads. The aggsender only
+	// certifies L2
 	// blocks up to min(lastBridgeBlock, lastClaimBlock) (aggsender/query/bridge_query.go), and its L2
 	// claim syncer -- whose reorg-safe boundary is the (stuck-at-0) finalized head -- only advances
 	// when it observes an L2 claim event. A pure L2->L1 bridge produces no L2 claim, so without
@@ -361,8 +359,8 @@ func assertClaimedOnL1(ctx context.Context, t *testing.T, env *envs.Env, deposit
 	)
 }
 
-// TestAutoClaimL2ToL2AllowAll proves the L2->L2 Auto Claim direction end to end on the 2-chain env
-// (EnvOpPP2Chains, selected via AGGKIT_E2E_ENV=op-pp-2chains). Auto Claim runs on the network-2
+// TestAutoClaimL2ToL2AllowAll proves the L2->L2 Auto Claim direction end to end on the two-chain
+// Anvil env. Auto Claim runs on the network-2
 // (L2B) node: the L2ToLx detector observes network 1's local exit root settle to L1, fetches the
 // L2-001 -> L2-002 bridge from network 1's bridge service (static finder URL), and a network-2
 // claimer with its own l2gersync waits for the GER covering that LER to be injected on network 2
@@ -512,14 +510,14 @@ func assertClaimedOnL2B(ctx context.Context, t *testing.T, env *envs.Env, deposi
 }
 
 // loadAutoClaimL2ToL2TestEnv returns the shared env loaded once by TestMain (selected via
-// AGGKIT_E2E_ENV), skipping the test when it isn't the 2-chain env (EnvOpPP2Chains). Mirrors
+// AGGKIT_E2E_ENV), skipping the test when it isn't a two-chain env. Mirrors
 // TestBridgeL2ToL2's pattern: a second, independent docker-compose stack must not be brought up
 // alongside the singleton env TestMain already started, since both envs bind the same host ports.
 func loadAutoClaimL2ToL2TestEnv(t *testing.T) *envs.Env {
 	t.Helper()
 	require.NotNil(t, testEnv, "testEnv must be set by TestMain")
 	if testEnv.L2B == nil {
-		t.Skip("L2->L2 Auto Claim test requires EnvOpPP2Chains (L2B must be non-nil)")
+		t.Skip("L2->L2 Auto Claim test requires a multi-chain env (L2B must be non-nil)")
 	}
 	return testEnv
 }
@@ -638,19 +636,10 @@ HTTPHeaders = {}
 	)
 }
 
-func loadAutoClaimTestEnv(t *testing.T, ctx context.Context) *envs.Env {
+func loadAutoClaimTestEnv(t *testing.T) *envs.Env {
 	t.Helper()
-	loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer loadCancel()
-	env, err := envs.LoadEnv(loadCtx, envs.EnvOpPP)
-	require.NoError(t, err)
-
-	checkCtx, checkCancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer checkCancel()
-	require.NoError(t, env.CheckEnv(checkCtx))
-
-	testEnv = env
-	return env
+	require.NotNil(t, testEnv, "testEnv must be set by TestMain")
+	return testEnv
 }
 
 // enableAutoClaimForTest restarts aggkit with a patched Auto Claim config for the given policy.

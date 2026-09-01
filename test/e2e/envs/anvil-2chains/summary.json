@@ -1,0 +1,269 @@
+{
+  "snapshot_name": "anvil-2chains (kurtosis-cdk fc160450, K8 publish run 31787941750)",
+  "enclave": "cdk",
+  "created_at": "2026-08-14T09:33:46Z",
+  "networks": {
+    "l1": {
+      "chain_id": "271828",
+      "contracts": {
+        "rollup_manager": "0x6c6c009cC348976dB4A908c92B24433d4F6edA43",
+        "global_exit_root_v2": "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674",
+        "bridge": "0xC8cbEBf950B9Df44d987c8619f092beA980fF038",
+        "pol_token": "0xEdE9cf798E0fE25D35469493f43E88FeA4a5da0E"
+      },
+      "services": {
+        "geth": {
+          "http_rpc": {
+            "internal": "http://anvil-001:8545",
+            "external": "http://localhost:13545"
+          }
+        }
+      },
+      "accounts": [
+        {
+          "address": "0x8943545177806ED17B9F23F0a21ee5948eCaa776",
+          "private_key": "0xbcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31",
+          "description": "L1 pre-funded account"
+        },
+        {
+          "address": "0xE25583099BA105D9ec0A67f5Ae86D90e50036425",
+          "private_key": "0x39725efee3fb28614de3bacaffe4cc4bd8c436257e2c8bb887c4b5c4be45e76d",
+          "description": "L1 pre-funded account"
+        },
+        {
+          "address": "0x614561D2d143621E126e87831AEF287678B442b8",
+          "private_key": "0x53321db7c1e331d93a11a41d16f004d7ff63972ec8ec7c25db329728ceeb1710",
+          "description": "L1 pre-funded account"
+        },
+        {
+          "address": "0xf93Ee4Cf8c6c40b329b0c0626F28333c132CF241",
+          "private_key": "0xab63b23eb7941c1251757e24b3d2350d2bc05c3c388d06f8fe6feafefb1e8c70",
+          "description": "L1 pre-funded account"
+        },
+        {
+          "address": "0x802dCbE1B1A97554B4F50DB5119E37E8e7336417",
+          "private_key": "0x5d2344259f42259f82d2c140aa66102ba89b57b4883ee441a8b312622bd42491",
+          "description": "L1 pre-funded account"
+        },
+        {
+          "address": "0xAe95d8DA9244C37CaC0a3e16BA966a8e852Bb6D6",
+          "private_key": "0x27515f805127bebad2fb9b183508bdacb8c763da16f54e0678b16e8f28ef3fff",
+          "description": "L1 pre-funded account"
+        },
+        {
+          "address": "0x2c57d1CFC6d5f8E4182a56b4cf75421472eBAEa4",
+          "private_key": "0x7ff1a4c1d57e5e784d327c4c7651e952350bc271f156afb3d00d20f5ef924856",
+          "description": "L1 pre-funded account"
+        },
+        {
+          "address": "0x741bFE4802cE1C4b5b00F9Df2F5f179A1C89171A",
+          "private_key": "0x3a91003acaf4c21b3953d94fa4a6db694fa69e5242b2e37be05dd82761058899",
+          "description": "L1 pre-funded account"
+        },
+        {
+          "address": "0xc3913d4D8bAb4914328651C2EAE817C8b78E1f4c",
+          "private_key": "0xbb1d0f125b4fb2bb173c318cdead45468474ca71474e2247776b2b4c0fa2d3f5",
+          "description": "L1 pre-funded account"
+        },
+        {
+          "address": "0x65D08a056c17Ae13370565B04cF77D2AfA1cB9FA",
+          "private_key": "0x850643a0224065ecce3882673c21f56bcf6eef86274cc21cadff15930b59fc8c",
+          "description": "L1 pre-funded account"
+        }
+      ]
+    },
+    "agglayer": {
+      "services": {
+        "grpc_rpc": {
+          "internal": "http://agglayer:4443",
+          "external": "http://localhost:13443"
+        },
+        "read_rpc": {
+          "internal": "http://agglayer:4444",
+          "external": "http://localhost:13444"
+        },
+        "admin_api": {
+          "internal": "http://agglayer:4446",
+          "external": "http://localhost:13446"
+        },
+        "metrics": {
+          "internal": "http://agglayer:9092/metrics",
+          "external": "http://localhost:13092/metrics"
+        }
+      }
+    },
+    "l2_networks": {
+      "001": {
+        "chain_id": "20201",
+        "contracts": {
+          "l1_bridge": "0xC8cbEBf950B9Df44d987c8619f092beA980fF038",
+          "l2_bridge": "0xC8cbEBf950B9Df44d987c8619f092beA980fF038",
+          "rollup_manager": "0x6c6c009cC348976dB4A908c92B24433d4F6edA43",
+          "global_exit_root": "0xa40d5f56745a118d0906a34e69aec8c0db1cb8fa",
+          "sovereign_rollup_l1": "0x414e9E227e4b589aF92200508aF5399576530E4e"
+        },
+        "services": {
+          "op-geth": {
+            "http_rpc": {
+              "internal": "http://l2-anvil-001:8545",
+              "external": "http://localhost:14545"
+            }
+          },
+          "aggkit": {
+            "rpc": {
+              "internal": "http://aggkit-001:5576",
+              "external": "http://localhost:14576"
+            },
+            "rest_api": {
+              "internal": "http://aggkit-001:5577",
+              "external": "http://localhost:14577"
+            }
+          }
+        },
+        "accounts": [
+          {
+            "address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "private_key": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+            "description": "L2 network 001 pre-funded account"
+          },
+          {
+            "address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+            "private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+            "description": "L2 network 001 pre-funded account"
+          },
+          {
+            "address": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+            "private_key": "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+            "description": "L2 network 001 pre-funded account"
+          },
+          {
+            "address": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+            "private_key": "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
+            "description": "L2 network 001 pre-funded account"
+          },
+          {
+            "address": "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65",
+            "private_key": "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a",
+            "description": "L2 network 001 pre-funded account"
+          },
+          {
+            "address": "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc",
+            "private_key": "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba",
+            "description": "L2 network 001 pre-funded account"
+          },
+          {
+            "address": "0x976EA74026E726554dB657fA54763abd0C3a0aa9",
+            "private_key": "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e",
+            "description": "L2 network 001 pre-funded account"
+          },
+          {
+            "address": "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955",
+            "private_key": "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356",
+            "description": "L2 network 001 pre-funded account"
+          },
+          {
+            "address": "0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f",
+            "private_key": "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+            "description": "L2 network 001 pre-funded account"
+          },
+          {
+            "address": "0xa0Ee7A142d267C1f36714E4a8F75612F20a79720",
+            "private_key": "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6",
+            "description": "L2 network 001 pre-funded account"
+          }
+        ]
+      },
+      "002": {
+        "chain_id": "20202",
+        "contracts": {
+          "l1_bridge": "0xC8cbEBf950B9Df44d987c8619f092beA980fF038",
+          "l2_bridge": "0xC8cbEBf950B9Df44d987c8619f092beA980fF038",
+          "rollup_manager": "0x6c6c009cC348976dB4A908c92B24433d4F6edA43",
+          "global_exit_root": "0xa40d5f56745a118d0906a34e69aec8c0db1cb8fa",
+          "sovereign_rollup_l1": "0x5D1A491A416feEbf8C123A558ec28A239960bd0E"
+        },
+        "services": {
+          "op-geth": {
+            "http_rpc": {
+              "internal": "http://l2-anvil-002:8545",
+              "external": "http://localhost:15545"
+            }
+          },
+          "aggkit": {
+            "rpc": {
+              "internal": "http://aggkit-002:5576",
+              "external": "http://localhost:15576"
+            },
+            "rest_api": {
+              "internal": "http://aggkit-002:5577",
+              "external": "http://localhost:15577"
+            }
+          }
+        },
+        "accounts": [
+          {
+            "address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "private_key": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+            "description": "L2 network 002 pre-funded account"
+          },
+          {
+            "address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+            "private_key": "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+            "description": "L2 network 002 pre-funded account"
+          },
+          {
+            "address": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+            "private_key": "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+            "description": "L2 network 002 pre-funded account"
+          },
+          {
+            "address": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+            "private_key": "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
+            "description": "L2 network 002 pre-funded account"
+          },
+          {
+            "address": "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65",
+            "private_key": "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a",
+            "description": "L2 network 002 pre-funded account"
+          },
+          {
+            "address": "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc",
+            "private_key": "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba",
+            "description": "L2 network 002 pre-funded account"
+          },
+          {
+            "address": "0x976EA74026E726554dB657fA54763abd0C3a0aa9",
+            "private_key": "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e",
+            "description": "L2 network 002 pre-funded account"
+          },
+          {
+            "address": "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955",
+            "private_key": "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356",
+            "description": "L2 network 002 pre-funded account"
+          },
+          {
+            "address": "0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f",
+            "private_key": "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+            "description": "L2 network 002 pre-funded account"
+          },
+          {
+            "address": "0xa0Ee7A142d267C1f36714E4a8F75612F20a79720",
+            "private_key": "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6",
+            "description": "L2 network 002 pre-funded account"
+          }
+        ]
+      }
+    }
+  },
+  "test_accounts": {
+    "l1_mnemonic": "giant issue aisle success illegal bike spike question tent bar rely arctic volcano long crawl hungry vocal artwork sniff fantasy very lucky have athlete",
+    "l2_mnemonic": "test test test test test test test test test test test junk",
+    "note": "Pre-funded test accounts are derived from these mnemonics -- byte-identical to op-pp-2chains's own mnemonics, so every contract address above matches op-pp-2chains's address-for-address. Use with cast: cast wallet address --mnemonic \"<mnemonic>\" --mnemonic-index <0-N>"
+  },
+  "notes": {
+    "json_labels": "The 'geth' (L1) and 'op-geth' (L2) service labels above are aggkit's schema field names, not the running service technology: every execution client in this env is anvil (Foundry v1.5.1), not go-ethereum. aggkit's summaryJSON struct offers no third label, so these names are reused verbatim -- see README.md.",
+    "accounts": "Only mnemonic-derived pre-funded accounts with a private_key are included (10 per network, funded_on-filtered from the kurtosis-cdk bundle's accounts.funded list). Precompile/predeploy addresses are excluded.",
+    "services": "Internal URLs are for use within the Docker network (docker-compose service DNS names). External URLs are for access from the host machine.",
+    "provenance": "Full provenance (kurtosis-cdk commit, params files, image tags/digests, regenerate procedure) is recorded in this directory's README.md, not here -- this file only carries what test/e2e/envs/loader.go and checks.go actually read."
+  }
+}

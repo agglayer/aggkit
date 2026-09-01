@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/agglayer/aggkit/bridgeservice/client"
@@ -24,6 +25,14 @@ import (
 // up. Used by BridgeL2ToL2NoClaim; mirrors the (unnamed) 30s literal already used for the same
 // purpose in the other *NoClaim helpers in this file.
 const bridgeMineWait = 30 * time.Second
+
+// l1BridgeGasLimit avoids an Anvil estimate/mine race in TestMain's parallel health check. The
+// concurrent L2->L1 flow can update the L1 info tree after BridgeAsset estimates gas but before its
+// transaction is mined, making the original estimate too low for the now-larger tree update.
+const l1BridgeGasLimit uint64 = 500_000
+
+// alreadyClaimedErrorSelector is the selector for the bridge contract's AlreadyClaimed() error.
+const alreadyClaimedErrorSelector = "0x646cf558"
 
 // l1MineDiagnosticsWait bounds how long waitMinedL1WithDiagnostics waits for an L1 tx to be mined.
 // Normal L1 mining takes ~4s; 4 minutes is far above that while still failing fast enough to leave
@@ -148,7 +157,12 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 		return fmt.Errorf("failed to get initial L2 balance: %w", err)
 	}
 	l1Opts.Value = bridgeAmount
-	defer func() { l1Opts.Value = nil }()
+	originalGasLimit := l1Opts.GasLimit
+	l1Opts.GasLimit = l1BridgeGasLimit
+	defer func() {
+		l1Opts.Value = nil
+		l1Opts.GasLimit = originalGasLimit
+	}()
 	tx, err := env.L1.Contracts.Bridge.BridgeAsset(
 		l1Opts, l2NetworkID, destinationAddress, bridgeAmount,
 		common.Address{}, forceUpdateGlobalExitRoot, nil,
@@ -257,24 +271,62 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 		}
 		time.Sleep(time.Second)
 	}
-	log.Debugf("sending claim transaction on L2")
-	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
-		l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
-		bridge.GlobalIndex, mainnetExitRoot, rollupExitRoot,
-		bridge.OriginNetwork, originTokenAddress, bridge.DestinationNetwork,
-		destinationAddress, bridgeAmount, metadata,
-	)
+	// Some envs (e.g. anvil-2chains) run AutoClaim's L1ToL2BridgeDetector on this destination
+	// network, which may claim the deposit before this helper gets to it -- a real race, not a
+	// bug, since AutoClaim polls independently of this test. Check IsClaimed first (same check
+	// autoclaim_test.go already uses) so a legitimately-already-claimed deposit is treated as
+	// success instead of failing on the bridge contract's AlreadyClaimed revert.
+	alreadyClaimed, err := env.L2.Contracts.L2Bridge.IsClaimed(callOpts, depositCount, bridge.OriginNetwork)
 	if err != nil {
-		return fmt.Errorf("failed to send claim transaction: %w", err)
+		return fmt.Errorf("failed to check IsClaimed: %w", err)
 	}
-	log.Debugf("L2 claim tx submitted, waiting for mining: tx=%s", claimTx.Hash().Hex())
-	claimReceipt, err := bind.WaitMined(ctx, env.Clients.L2, claimTx)
-	if err != nil {
-		return fmt.Errorf("failed to wait for claim tx: %w", err)
-	}
-	log.Debugf("L2 claim tx mined: tx=%s block=%d", claimTx.Hash().Hex(), claimReceipt.BlockNumber.Uint64())
-	if claimReceipt.Status != ethtypes.ReceiptStatusSuccessful {
-		return errors.New("claim transaction failed")
+	if alreadyClaimed {
+		log.Debugf("deposit already claimed (likely by AutoClaim): deposit_count=%d", depositCount)
+	} else {
+		log.Debugf("sending claim transaction on L2")
+		claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
+			l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
+			bridge.GlobalIndex, mainnetExitRoot, rollupExitRoot,
+			bridge.OriginNetwork, originTokenAddress, bridge.DestinationNetwork,
+			destinationAddress, bridgeAmount, metadata,
+		)
+		if err != nil {
+			// AutoClaim may have won the race between our IsClaimed check above and this send
+			// (its own poll loop runs concurrently and independently). Anvil's gas estimation sees
+			// pending transactions, while the default IsClaimed call reads latest state, so wait for
+			// that pending AutoClaim transaction to be mined before deciding whether this is fatal.
+			if !strings.Contains(err.Error(), alreadyClaimedErrorSelector) {
+				return fmt.Errorf("failed to send claim transaction: %w", err)
+			}
+			claimedByAutoClaim := false
+			for i := 0; i < 30; i++ {
+				reClaimed, reErr := env.L2.Contracts.L2Bridge.IsClaimed(
+					callOpts, depositCount, bridge.OriginNetwork)
+				if reErr == nil && reClaimed {
+					claimedByAutoClaim = true
+					break
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(time.Second):
+				}
+			}
+			if !claimedByAutoClaim {
+				return fmt.Errorf("failed to confirm competing AutoClaim transaction: %w", err)
+			}
+			log.Debugf("claim transaction lost the race to AutoClaim: deposit_count=%d", depositCount)
+		} else {
+			log.Debugf("L2 claim tx submitted, waiting for mining: tx=%s", claimTx.Hash().Hex())
+			claimReceipt, err := bind.WaitMined(ctx, env.Clients.L2, claimTx)
+			if err != nil {
+				return fmt.Errorf("failed to wait for claim tx: %w", err)
+			}
+			log.Debugf("L2 claim tx mined: tx=%s block=%d", claimTx.Hash().Hex(), claimReceipt.BlockNumber.Uint64())
+			if claimReceipt.Status != ethtypes.ReceiptStatusSuccessful {
+				return errors.New("claim transaction failed")
+			}
+		}
 	}
 	finalL2Balance, err := env.Clients.L2.BalanceAt(ctx, destinationAddress, nil)
 	if err != nil {
@@ -882,7 +934,7 @@ func BridgeL2ToL2NoClaim(
 	log.Infof("[%s] L2->L2 bridge found in origin bridge service, deposit_count=%d", label, bridge.DepositCount)
 
 	// Wait for the origin bridge to be included in the L1 Info Tree (its exit root has settled to L1).
-	// In the batcher-less op-pp env this only happens once the origin aggsender certifies past the
+	// In a local snapshot env this only happens once the origin aggsender certifies past the
 	// bridge block, which the test drives via background L1->L2 claim priming on L2A.
 	log.Debugf("[%s] waiting for L2->L2 bridge inclusion in L1 Info Tree: deposit_count=%d", label, depositCount)
 	var l1InfoTreeIndex uint32

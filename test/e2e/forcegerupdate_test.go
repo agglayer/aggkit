@@ -1,5 +1,5 @@
 // Package e2e — TestForceGERUpdateE2E exercises the force_ger_update CLI tool (tools/force_ger_update)
-// as a real subprocess against the docker-compose op-pp environment.
+// as a real subprocess against the docker-compose Anvil environment.
 //
 // Run with (docker-compose env brought up automatically by TestMain/envs.LoadEnv):
 //
@@ -305,7 +305,7 @@ func buildForceGERUpdateBinary(ctx context.Context, t *testing.T) string {
 	return binaryPath
 }
 
-// TestForceGERUpdateE2E runs the force_ger_update tool as a real subprocess against the op-pp
+// TestForceGERUpdateE2E runs the force_ger_update tool as a real subprocess against the Anvil
 // docker-compose env and proves it forces an on-chain L1 GER update when none happens organically
 // within MaxTimeWithoutGERUpdate.
 //
@@ -313,7 +313,7 @@ func buildForceGERUpdateBinary(ctx context.Context, t *testing.T) string {
 //
 //	go test -v -timeout 30m -run TestForceGERUpdateE2E ./test/e2e/...
 func TestForceGERUpdateE2E(t *testing.T) {
-	// Like the remove_ger e2e tests, forcing a GER update perturbs the shared op-pp env's post-test
+	// Like the remove_ger e2e tests, forcing a GER update perturbs the shared Anvil env's post-test
 	// L1<->L2 bridge health check that TestMain runs (see testmain_test.go), which can then time out
 	// even though this test's own assertions pass. Rather than skipping unconditionally, this test
 	// only runs when explicitly opted into via RUN_FORCE_GER_UPDATE_E2E=true — the dedicated CI job

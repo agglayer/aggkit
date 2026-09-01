@@ -61,6 +61,7 @@ type summaryForBFLToolConfig struct {
 			Services struct {
 				Geth struct {
 					HTTPRpc struct {
+						Internal string `json:"internal"`
 						External string `json:"external"`
 					} `json:"http_rpc"`
 				} `json:"geth"`
@@ -69,6 +70,7 @@ type summaryForBFLToolConfig struct {
 		Agglayer struct {
 			Services struct {
 				GrpcRPC struct {
+					Internal string `json:"internal"`
 					External string `json:"external"`
 				} `json:"grpc_rpc"`
 				AdminAPI struct {
@@ -85,6 +87,7 @@ type summaryForBFLToolConfig struct {
 				} `json:"aggkit"`
 				OpGeth struct {
 					HTTPRpc struct {
+						Internal string `json:"internal"`
 						External string `json:"external"`
 					} `json:"http_rpc"`
 				} `json:"op-geth"`
@@ -1200,6 +1203,15 @@ func buildBFLToolConfig(t *testing.T, aggsenderRPCURL, certExitsFile string) *bf
 	l2URL := l2Network.Services.OpGeth.HTTPRpc.External
 	agglayerGRPCURL := summary.Networks.Agglayer.Services.GrpcRPC.External
 	bridgeServiceURL := l2Network.Services.Aggkit.BridgeService.External
+	l1InternalURL := summary.Networks.L1.Services.Geth.HTTPRpc.Internal
+	l2InternalURL := l2Network.Services.OpGeth.HTTPRpc.Internal
+	agglayerInternalGRPCURL := summary.Networks.Agglayer.Services.GrpcRPC.Internal
+	require.NotEmpty(t, l1InternalURL, "L1 internal RPC URL missing from summary.json")
+	require.NotEmpty(t, l2InternalURL, "L2 internal RPC URL missing from summary.json")
+	require.NotEmpty(t, agglayerInternalGRPCURL, "Agglayer internal gRPC URL missing from summary.json")
+	require.NotEmpty(t, l1URL, "L1 external RPC URL missing from summary.json")
+	require.NotEmpty(t, l2URL, "L2 external RPC URL missing from summary.json")
+	require.NotEmpty(t, agglayerGRPCURL, "Agglayer external gRPC URL missing from summary.json")
 
 	sovereignAdminKeyPath := filepath.Join(testEnv.EnvDir, "config", "001", "sovereignadmin.keystore")
 
@@ -1208,11 +1220,13 @@ func buildBFLToolConfig(t *testing.T, aggsenderRPCURL, certExitsFile string) *bf
 	content, err := os.ReadFile(originalCfgPath)
 	require.NoError(t, err)
 
-	// Patch internal docker container URLs with external host-accessible URLs.
+	// Patch the internal Docker URLs from summary.json with their external,
+	// host-accessible counterparts. Do not key this on service names: snapshot
+	// environments use different execution clients and Docker DNS aliases.
 	patched := string(content)
-	patched = strings.ReplaceAll(patched, "http://geth:8545", l1URL)
-	patched = strings.ReplaceAll(patched, "http://op-geth-001:8545", l2URL)
-	patched = strings.ReplaceAll(patched, "http://agglayer:4443", agglayerGRPCURL)
+	patched = strings.ReplaceAll(patched, l1InternalURL, l1URL)
+	patched = strings.ReplaceAll(patched, l2InternalURL, l2URL)
+	patched = strings.ReplaceAll(patched, agglayerInternalGRPCURL, agglayerGRPCURL)
 
 	// Optional override file line.
 	certExitsFileLine := ""
