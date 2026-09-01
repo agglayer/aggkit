@@ -129,6 +129,47 @@ func TestLiveDiscovery_NewRollupNoSourceThenHealedByEvent(t *testing.T) {
 		"the healing SetTrustedSequencerURL event must also install the json-rpc endpoint")
 }
 
+// TestLiveDiscovery_IgnoredNetworkIsNeverRegistered verifies that a CreateNewRollup event announcing
+// a networkID listed in Config.IgnoreNetworkIDs is a no-op: no cache entry is installed and the
+// rollup's contract address is never added to the routing table or the watched-address set, even
+// though it exposes a perfectly resolvable on-chain source.
+func TestLiveDiscovery_IgnoredNetworkIsNeverRegistered(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, _ := deployRollupManagerWithRollups(t, backend, auth, 1)
+
+	const ignoredNetworkID = uint32(2)
+
+	cfg := baseTestConfig(mgrAddr)
+	cfg.IgnoreNetworkIDs = []uint32{ignoredNetworkID}
+
+	f := startFinder(t, cfg, Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: newMapHealthChecker(nil),
+	})
+
+	sleepPastSeedTick(testPollInterval)
+
+	newRollup := deployStandaloneRollup(t, backend, auth, ignoredNetworkID)
+	const metadataURL = "https://ignored-new-rollup.example.com:5577"
+	_, err := newRollup.contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, metadataURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	mgr := newRollupManagerContract(t, backend, mgrAddr)
+	_, err = mgr.EmitCreateNewRollup(auth, ignoredNetworkID, newRollup.addr)
+	require.NoError(t, err)
+	backend.Commit()
+
+	// Give the listener several ticks to (not) act on the event.
+	sleepPastSeedTick(testPollInterval)
+	sleepPastSeedTick(testPollInterval)
+
+	_, err = f.GetURL(ignoredNetworkID)
+	require.ErrorIs(t, err, ErrURLNotFound, "an ignored network must never be discovered live")
+	require.NotContains(t, f.addrToNetworkID, newRollup.addr,
+		"an ignored network's contract must never be registered in the routing table")
+}
+
 // TestLiveUpdate_SequencerThenMetadataUpgrades covers matrix item #4a: a sequencer-sourced network
 // is upgraded to metadata (higher priority) via a live AggchainMetadataSet event.
 func TestLiveUpdate_SequencerThenMetadataUpgrades(t *testing.T) {

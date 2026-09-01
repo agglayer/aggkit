@@ -21,6 +21,11 @@ BlockChunkSize = 10000
 HealthCheckPath = "/"
 HealthCheckTimeout = "5s"
 RequireAllHealthyOnStart = false
+IgnoreNetworkIDs = []
+
+[BridgeServiceFinder.BridgeURLs]
+
+[BridgeServiceFinder.RPCURLs]
 
 [REST]
 Host = "0.0.0.0"

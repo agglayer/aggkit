@@ -519,6 +519,7 @@ it has no GER-injection gate at all, since the GER already exists on L1 by const
 | `AutoClaim.BridgeServiceFinder.HealthCheckPath` | `/health` | No | HTTP path probed to assert a resolved bridge service is alive. Empty inherits the default. |
 | `AutoClaim.BridgeServiceFinder.HealthCheckTimeout` | `5s` | No | Timeout applied to each health-check HTTP request. `0` inherits the default. |
 | `AutoClaim.BridgeServiceFinder.RequireAllHealthyOnStart` | `false` | No | When `true`, finder startup fails if any resolved bridge service is unreachable; when `false`, unreachable services are cached as unhealthy and may heal from a later on-chain update. |
+| `AutoClaim.BridgeServiceFinder.IgnoreNetworkIDs` | `[]` | No | Network IDs to exclude entirely from on-chain resolution (e.g. `[5, 12]`): no `RollupIDToRollupData` call, no contract reads, no health probe during enumeration, and rollup-manager lifecycle events announcing them are ignored by live discovery too. Intended for known-dead networks whose unreachable on-chain reads/health checks would otherwise slow down startup and event processing. A network listed here is still served if also present in `BridgeURLs`. |
 
 The `BlockFinality`, `BlockChunkSize`, `HealthCheckPath`, `HealthCheckTimeout`, and `RequireAllHealthyOnStart` values
 above are the finder's built-in defaults applied whenever the corresponding field is left unset (zero value); the
