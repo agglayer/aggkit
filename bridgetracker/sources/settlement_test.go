@@ -53,22 +53,40 @@ var (
 	}
 )
 
+// testBackwardsBlockHash/testBackwardsBlockTimestamp stub the block hash/timestamp of the
+// earlier UpdateL1InfoTree event findEventUpdateL1InfoTreeBackwards finds, in tests where it
+// lands in a different block than the settlement tx itself (testBlockHash/testBlockTimestamp,
+// from sources_test.go, stand for the settlement tx's own block)
+var (
+	testBackwardsBlockHash      = common.HexToHash("0xba0000000000000000000000000000000000000000000000000000000000ba")
+	testBackwardsBlockTimestamp = uint64(1690000000)
+)
+
+// expectBackwardsBlockTimestamp stubs client's HeaderByHash for testBackwardsBlockHash to
+// report testBackwardsBlockTimestamp
+func expectBackwardsBlockTimestamp(client *mocks.BaseEthereumClienter) {
+	client.EXPECT().HeaderByHash(mock.Anything, testBackwardsBlockHash).
+		Return(&gethtypes.Header{Time: testBackwardsBlockTimestamp}, nil)
+}
+
 func TestSettlementSourceBothMandatoryEventsPresent(t *testing.T) {
 	client := mocks.NewBaseEthereumClienter(t)
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
-		BlockNumber: big.NewInt(12345),
+		BlockNumber: big.NewInt(12345), BlockHash: testBlockHash,
 		Logs: []*gethtypes.Log{
 			{Topics: []common.Hash{verifyBatchesTrustedAggregatorSignature}},
 			updateL1InfoTree,
 		},
 	}, nil)
 	expectFinalized(client, 12345)
+	expectBlockTimestamp(client)
 
 	result, err := newSettlementSource(client).SettlementGERUpdate(
 		t.Context(), &bridgetracker.BridgeInfo{}, testTxHash)
 	require.NoError(t, err)
 	require.Equal(t, &trackertypes.L1SettledGERResult{
-		TxHash: testTxHash, SettlementBlockNumber: 12345, GER: wantGER, GERBlockNumber: 12345,
+		TxHash: testTxHash, SettlementBlockNumber: 12345, SettlementBlockTimestamp: testBlockTimestamp,
+		GER: wantGER, GERBlockNumber: 12345, GERBlockTimestamp: testBlockTimestamp,
 		HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
 	}, result)
 }
@@ -80,7 +98,7 @@ func TestSettlementSourceOptionalV2Captured(t *testing.T) {
 	leafCount := uint64(8)
 	client := mocks.NewBaseEthereumClienter(t)
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
-		BlockNumber: big.NewInt(12345),
+		BlockNumber: big.NewInt(12345), BlockHash: testBlockHash,
 		Logs: []*gethtypes.Log{
 			{Topics: []common.Hash{verifyBatchesTrustedAggregatorSignature}},
 			updateL1InfoTree,
@@ -90,6 +108,7 @@ func TestSettlementSourceOptionalV2Captured(t *testing.T) {
 		},
 	}, nil)
 	expectFinalized(client, 12345)
+	expectBlockTimestamp(client)
 
 	result, err := newSettlementSource(client).SettlementGERUpdate(
 		t.Context(), &bridgetracker.BridgeInfo{}, testTxHash)
@@ -105,7 +124,7 @@ func TestSettlementSourceOptionalV2Captured(t *testing.T) {
 func TestSettlementSourceMalformedUpdateL1InfoTreeV2Log(t *testing.T) {
 	client := mocks.NewBaseEthereumClienter(t)
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
-		BlockNumber: big.NewInt(12345),
+		BlockNumber: big.NewInt(12345), BlockHash: testBlockHash,
 		Logs: []*gethtypes.Log{
 			{Topics: []common.Hash{verifyBatchesTrustedAggregatorSignature}},
 			updateL1InfoTree,
@@ -113,6 +132,7 @@ func TestSettlementSourceMalformedUpdateL1InfoTreeV2Log(t *testing.T) {
 		},
 	}, nil)
 	expectFinalized(client, 12345)
+	expectBlockTimestamp(client)
 
 	result, err := newSettlementSource(client).SettlementGERUpdate(
 		t.Context(), &bridgetracker.BridgeInfo{}, testTxHash)
@@ -128,24 +148,26 @@ func TestSettlementSourceMalformedUpdateL1InfoTreeV2Log(t *testing.T) {
 func TestSettlementSourceMalformedUpdateL1InfoTreeLog(t *testing.T) {
 	client := mocks.NewBaseEthereumClienter(t)
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
-		BlockNumber: big.NewInt(12345),
+		BlockNumber: big.NewInt(12345), BlockHash: testBlockHash,
 		Logs: []*gethtypes.Log{
 			{Topics: []common.Hash{verifyBatchesTrustedAggregatorSignature}},
 			{Topics: []common.Hash{updateL1InfoTreeSignature}},
 		},
 	}, nil)
 	expectFinalized(client, 12345)
+	expectBlockTimestamp(client)
 	expectBackwardsUpdateL1InfoTreeLog(client, 12345, gethtypes.Log{
-		BlockNumber: 12000, Index: 3,
+		BlockNumber: 12000, Index: 3, BlockHash: testBackwardsBlockHash,
 		Topics: []common.Hash{updateL1InfoTreeSignature, mainnetExitRoot, rollupExitRoot},
 	})
+	expectBackwardsBlockTimestamp(client)
 
 	result, err := newSettlementSource(client).SettlementGERUpdate(
 		t.Context(), &bridgetracker.BridgeInfo{}, testTxHash)
 	require.NoError(t, err)
 	require.Equal(t, &trackertypes.L1SettledGERResult{
-		TxHash: testTxHash, SettlementBlockNumber: 12345, GER: wantGER,
-		GERBlockNumber: 12000, GERLogIndex: 3,
+		TxHash: testTxHash, SettlementBlockNumber: 12345, SettlementBlockTimestamp: testBlockTimestamp,
+		GER: wantGER, GERBlockNumber: 12000, GERBlockTimestamp: testBackwardsBlockTimestamp, GERLogIndex: 3,
 		HasVerifyBatchesTrustedAggregator: true,
 	}, result)
 }
@@ -171,9 +193,10 @@ func TestSettlementSourceMissingVerifyBatchesTrustedAggregator(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			client := mocks.NewBaseEthereumClienter(t)
 			client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
-				BlockNumber: big.NewInt(12345), Logs: tc.logs,
+				BlockNumber: big.NewInt(12345), BlockHash: testBlockHash, Logs: tc.logs,
 			}, nil)
 			expectFinalized(client, 12345)
+			expectBlockTimestamp(client)
 
 			result, err := newSettlementSource(client).SettlementGERUpdate(
 				t.Context(), &bridgetracker.BridgeInfo{}, testTxHash)
@@ -190,23 +213,25 @@ func TestSettlementSourceMissingVerifyBatchesTrustedAggregator(t *testing.T) {
 func TestSettlementSourceMissingUpdateL1InfoTreeFallsBackToEarlierEvent(t *testing.T) {
 	client := mocks.NewBaseEthereumClienter(t)
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
-		BlockNumber: big.NewInt(12345),
+		BlockNumber: big.NewInt(12345), BlockHash: testBlockHash,
 		Logs: []*gethtypes.Log{
 			{Topics: []common.Hash{verifyBatchesTrustedAggregatorSignature}},
 		},
 	}, nil)
 	expectFinalized(client, 12345)
+	expectBlockTimestamp(client)
 	expectBackwardsUpdateL1InfoTreeLog(client, 12345, gethtypes.Log{
-		BlockNumber: 12000, Index: 3,
+		BlockNumber: 12000, Index: 3, BlockHash: testBackwardsBlockHash,
 		Topics: []common.Hash{updateL1InfoTreeSignature, mainnetExitRoot, rollupExitRoot},
 	})
+	expectBackwardsBlockTimestamp(client)
 
 	result, err := newSettlementSource(client).SettlementGERUpdate(
 		t.Context(), &bridgetracker.BridgeInfo{}, testTxHash)
 	require.NoError(t, err)
 	require.Equal(t, &trackertypes.L1SettledGERResult{
-		TxHash: testTxHash, SettlementBlockNumber: 12345, GER: wantGER,
-		GERBlockNumber: 12000, GERLogIndex: 3,
+		TxHash: testTxHash, SettlementBlockNumber: 12345, SettlementBlockTimestamp: testBlockTimestamp,
+		GER: wantGER, GERBlockNumber: 12000, GERBlockTimestamp: testBackwardsBlockTimestamp, GERLogIndex: 3,
 		HasVerifyBatchesTrustedAggregator: true,
 	}, result)
 }
@@ -217,12 +242,13 @@ func TestSettlementSourceMissingUpdateL1InfoTreeFallsBackToEarlierEvent(t *testi
 func TestSettlementSourceMissingUpdateL1InfoTreeAndNoEarlierEvent(t *testing.T) {
 	client := mocks.NewBaseEthereumClienter(t)
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
-		BlockNumber: big.NewInt(5000),
+		BlockNumber: big.NewInt(5000), BlockHash: testBlockHash,
 		Logs: []*gethtypes.Log{
 			{Topics: []common.Hash{verifyBatchesTrustedAggregatorSignature}},
 		},
 	}, nil)
 	expectFinalized(client, 5000)
+	expectBlockTimestamp(client)
 	client.EXPECT().FilterLogs(mock.Anything, ethereum.FilterQuery{
 		FromBlock: big.NewInt(0), ToBlock: big.NewInt(5000),
 		Addresses: []common.Address{testGERAddress},
@@ -250,12 +276,18 @@ func TestFindEventUpdateL1InfoTreeBackwardsPaginates(t *testing.T) {
 		Addresses: []common.Address{testGERAddress},
 		Topics:    [][]common.Hash{{updateL1InfoTreeSignature}},
 	}).Return([]gethtypes.Log{
-		{BlockNumber: 10000, Index: 2, Topics: []common.Hash{updateL1InfoTreeSignature, mainnetExitRoot, rollupExitRoot}},
+		{
+			BlockNumber: 10000, Index: 2, BlockHash: testBackwardsBlockHash,
+			Topics: []common.Hash{updateL1InfoTreeSignature, mainnetExitRoot, rollupExitRoot},
+		},
 	}, nil)
+	expectBackwardsBlockTimestamp(client)
 
 	event, err := newSettlementSource(client).findEventUpdateL1InfoTreeBackwards(t.Context(), client, 25000)
 	require.NoError(t, err)
-	require.Equal(t, &updateL1InfoTreeEvent{GER: wantGER, BlockNumber: 10000, LogIndex: 2}, event)
+	require.Equal(t, &updateL1InfoTreeEvent{
+		GER: wantGER, BlockNumber: 10000, BlockTimestamp: testBackwardsBlockTimestamp, LogIndex: 2,
+	}, event)
 }
 
 // TestFindEventUpdateL1InfoTreeBackwardsNotFound pins that reaching block 0 without a match is

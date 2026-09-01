@@ -97,9 +97,15 @@ func (s *SettlementSource) SettlementGERUpdate(
 		return nil, nil // mined, but not yet at the required finality
 	}
 
+	settlementBlockTimestamp, err := blockTimestamp(ctx, client, receipt.BlockHash)
+	if err != nil {
+		return nil, err
+	}
+
 	result := &trackertypes.L1SettledGERResult{
-		TxHash:                settlementTxHash,
-		SettlementBlockNumber: receipt.BlockNumber.Uint64(),
+		TxHash:                   settlementTxHash,
+		SettlementBlockNumber:    receipt.BlockNumber.Uint64(),
+		SettlementBlockTimestamp: settlementBlockTimestamp,
 	}
 	for _, l := range receipt.Logs {
 		if len(l.Topics) == 0 {
@@ -120,6 +126,8 @@ func (s *SettlementSource) SettlementGERUpdate(
 			result.HasUpdateL1InfoTree = true
 			result.GER = crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
 			result.GERBlockNumber = receipt.BlockNumber.Uint64()
+			// same block as the settlement tx itself, so its timestamp is already known
+			result.GERBlockTimestamp = settlementBlockTimestamp
 			result.GERLogIndex = l.Index
 		case updateL1InfoTreeV2Signature:
 			result.HasUpdateL1InfoTreeV2 = true
@@ -151,6 +159,7 @@ func (s *SettlementSource) SettlementGERUpdate(
 		}
 		result.GER = event.GER
 		result.GERBlockNumber = event.BlockNumber
+		result.GERBlockTimestamp = event.BlockTimestamp
 		result.GERLogIndex = event.LogIndex
 	}
 
@@ -160,9 +169,10 @@ func (s *SettlementSource) SettlementGERUpdate(
 // updateL1InfoTreeEvent is the GER-relevant evidence of a single UpdateL1InfoTree event: the
 // GER it produced and where on L1 it landed
 type updateL1InfoTreeEvent struct {
-	GER         common.Hash
-	BlockNumber uint64
-	LogIndex    uint
+	GER            common.Hash
+	BlockNumber    uint64
+	BlockTimestamp uint64
+	LogIndex       uint
 }
 
 // findEventUpdateL1InfoTreeBackwards looks for the most recent UpdateL1InfoTree event on the
@@ -202,10 +212,15 @@ func (s *SettlementSource) findEventUpdateL1InfoTreeBackwards(
 					last.BlockNumber, domain.ErrBadSettlementTx)
 			}
 			mainnetExitRoot, rollupExitRoot := last.Topics[1], last.Topics[2]
+			timestamp, err := blockTimestamp(ctx, client, last.BlockHash)
+			if err != nil {
+				return nil, err
+			}
 			return &updateL1InfoTreeEvent{
-				GER:         crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:]),
-				BlockNumber: last.BlockNumber,
-				LogIndex:    last.Index,
+				GER:            crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:]),
+				BlockNumber:    last.BlockNumber,
+				BlockTimestamp: timestamp,
+				LogIndex:       last.Index,
 			}, nil
 		}
 

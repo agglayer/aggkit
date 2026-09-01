@@ -212,8 +212,8 @@ Carried in the `result` field of a [BridgeStepPath](#bridgesteppath). Its shape 
 | WaitingGERUpdate | `l1_info_tree_index` (uint32), `ger` (Hash), `mer` (Hash), `rer` (Hash), `block_number` (uint64), `block_timestamp` (uint64), `log_index` (uint) | GER resulting from the update on L1, the L1 info tree leaf index it landed at, and the block where it was updated |
 | WaitingLERUpdate | `network_id` (uint32), `ler` (Hash), `block_number` (uint64) | LER resulting from the update on the origin L2 and the block where it was updated |
 | PendingInclusion | `certificate_id` (Hash), `new_ler` (Hash), `previous_ler` (*Hash) | the certificate that first includes the bridge and the LER transition it produced; `previous_ler` is nil for a network's first certificate |
-| CertificatePending | [CertificateData](#certificatedata) | the certificate's current data; set as soon as a certificate exists, updated as its status changes (Pending, Proven, Candidate, InError), and reflects the final settled data once `status` is `done` |
-| WaitL1SettledGER | `tx_hash` (Hash), `block_number` (uint64), `ger` (Hash), `l1_info_tree_index` (*uint32), `has_verify_batches_trusted_aggregator` (bool), `has_update_l1_info_tree` (bool), `has_update_l1_info_tree_v2` (bool) | evidence, read off the certificate's settlement tx receipt once it reaches L1 finality, that the settlement propagated to the L1 Global Exit Root; `ger` is computed from `UpdateL1InfoTree`'s mainnet/rollup exit roots. `l1_info_tree_index` is the leaf `ger` landed at — populated straight from `UpdateL1InfoTreeV2`'s `LeafCount` when that (optional) event fires, otherwise resolved with one extra GER->leaf lookup before the step can complete; it is never `null` once the step is `done`. The two `has_*` booleans besides `has_update_l1_info_tree_v2` are required for the step to complete, that third one is informational only |
+| CertificatePending | [CertificateData](#certificatedata) | the certificate's current data; set as soon as a certificate exists, updated as its status changes (Pending, Proven, Candidate, InError), and reflects the final settled data — including `block_number`/`block_timestamp` — once `status` is `done` |
+| WaitL1SettledGER | `tx_hash` (Hash), `settlement_block_number` (uint64), `settlement_block_timestamp` (uint64), `settlement_log_index` (uint), `ger` (Hash), `ger_block_number` (uint64), `ger_block_timestamp` (uint64), `ger_log_index` (uint), `l1_info_tree_index` (*uint32), `has_verify_batches_trusted_aggregator` (bool), `has_update_l1_info_tree` (bool), `has_update_l1_info_tree_v2` (bool) | evidence, read off the certificate's settlement tx receipt once it reaches L1 finality, that the settlement propagated to the L1 Global Exit Root; `ger` is computed from `UpdateL1InfoTree`'s mainnet/rollup exit roots, and `ger_block_number`/`ger_block_timestamp`/`ger_log_index` locate the event it was computed from — normally the same block as the settlement, but the closest earlier one on L1 when the settlement tx's own receipt didn't move the GER itself. `l1_info_tree_index` is the leaf `ger` landed at — populated straight from `UpdateL1InfoTreeV2`'s `LeafCount` when that (optional) event fires, otherwise resolved with one extra GER->leaf lookup before the step can complete; it is never `null` once the step is `done`. The two `has_*` booleans besides `has_update_l1_info_tree_v2` are required for the step to complete, that third one is informational only |
 | WaitingGERInjection | `ger` (Hash), `block_number` (uint64), `block_timestamp` (uint64) | GER injected on the destination network that covers the bridge, and that injection's block |
 | Claimed | `claim_tx` (Hash), `block_number` (uint64), `block_timestamp` (uint64) | claim transaction on the destination network, its block and that block's timestamp |
 | any other step | — | no result: always `nil` |
@@ -263,6 +263,8 @@ bare string, see the note at the top of [Response types](#response-types).
 | status_string | string | string representation of status (e.g. "Settled")
 | error | string | Only set if the proto carries `Error.Message` (relevant for `InError` certs); **omitted** (no key) otherwise |
 | settlement_tx_hash | *Hash | Set once the certificate has a settlement tx (normally only from `Settled` onward); **omitted** (no key), not `null`, before that |
+| block_number | *uint64 | The L1 block `settlement_tx_hash` was mined in; **omitted** (no key), not `null`, until it is visible there — which can lag a tick behind `status` turning `Settled` |
+| block_timestamp | *uint64 | `block_number`'s timestamp; same omit/lag rules as `block_number` |
 
 Example (settled certificate, as it appears in `all_steps[i].result` for `CertificatePending`):
 
@@ -271,7 +273,9 @@ Example (settled certificate, as it appears in `all_steps[i].result` for `Certif
   "certificate_id": "0x0000000000000000000000000000000000000000000000000000000000000001",
   "status": 4,
   "status_string": "Settled",
-  "settlement_tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000002"
+  "settlement_tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000002",
+  "block_number": 400,
+  "block_timestamp": 1700000400
 }
 ```
 

@@ -135,6 +135,22 @@ func TestBridgeStepPathResultMarshalJSON(t *testing.T) {
 			expected: `{"certificate_id":"0x0000000000000000000000000000000000000000000000000000000000000001","status":4,"status_string":"Settled"}`,
 		},
 		{
+			name: "certificate data result, settled with its L1 block known",
+			result: &types.CertificateData{
+				CertificateID:  common.HexToHash("0x01"),
+				Status:         agglayertypes.Settled,
+				BlockNumber:    func() *uint64 { n := uint64(400); return &n }(),
+				BlockTimestamp: func() *uint64 { ts := uint64(1700000400); return &ts }(),
+			},
+			expected: `{
+				"certificate_id":"0x0000000000000000000000000000000000000000000000000000000000000001",
+				"status":4,
+				"status_string":"Settled",
+				"block_number":400,
+				"block_timestamp":1700000400
+			}`,
+		},
+		{
 			name: "claim result",
 			result: &types.ClaimResult{
 				ClaimTx: common.HexToHash("0x0c"), BlockNumber: 300, BlockTimestamp: 1700000000,
@@ -145,16 +161,20 @@ func TestBridgeStepPathResultMarshalJSON(t *testing.T) {
 		{
 			name: "L1 settled GER result",
 			result: &types.L1SettledGERResult{
-				TxHash: common.HexToHash("0x0d"), SettlementBlockNumber: 400, SettlementLogIndex: 1,
-				GER: common.HexToHash("0x0e"), GERBlockNumber: 400, GERLogIndex: 2,
+				TxHash: common.HexToHash("0x0d"), SettlementBlockNumber: 400,
+				SettlementBlockTimestamp: 1700000000, SettlementLogIndex: 1,
+				GER: common.HexToHash("0x0e"), GERBlockNumber: 400,
+				GERBlockTimestamp: 1700000000, GERLogIndex: 2,
 				HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
 			},
 			expected: `{
 				"tx_hash":"0x000000000000000000000000000000000000000000000000000000000000000d",
 				"settlement_block_number":400,
+				"settlement_block_timestamp":1700000000,
 				"settlement_log_index":1,
 				"ger":"0x000000000000000000000000000000000000000000000000000000000000000e",
 				"ger_block_number":400,
+				"ger_block_timestamp":1700000000,
 				"ger_log_index":2,
 				"has_verify_batches_trusted_aggregator":true,
 				"has_update_l1_info_tree":true,

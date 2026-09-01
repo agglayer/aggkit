@@ -292,12 +292,12 @@ type ClaimResult struct {
 // read off the certificate's settlement tx receipt on L1, that the settlement propagated to
 // the L1 Global Exit Root. HasVerifyBatchesTrustedAggregator and HasUpdateL1InfoTree are both
 // required for the step to complete; HasUpdateL1InfoTreeV2 is only informational.
-// SettlementBlockNumber/SettlementLogIndex locate the settlement tx's own
-// VerifyBatchesTrustedAggregator log — the event that confirms this tx is a genuine
+// SettlementBlockNumber/SettlementBlockTimestamp/SettlementLogIndex locate the settlement tx's
+// own VerifyBatchesTrustedAggregator log — the event that confirms this tx is a genuine
 // certificate settlement. GER is the Global Exit Root produced by the settlement (computed
 // from UpdateL1InfoTree's mainnet/rollup exit roots), used by StepWaitingGERInjection to check
-// whether it has reached the destination. GERBlockNumber/GERLogIndex locate the
-// UpdateL1InfoTree event GER was computed from: normally the same block as the settlement
+// whether it has reached the destination. GERBlockNumber/GERBlockTimestamp/GERLogIndex locate
+// the UpdateL1InfoTree event GER was computed from: normally the same block as the settlement
 // (HasUpdateL1InfoTree true), but when the settlement tx's own receipt does not carry the
 // event (the settlement did not move the GER itself), they instead point to the closest
 // earlier one on L1 (see sources.SettlementSource.findEventUpdateL1InfoTreeBackwards), whose
@@ -308,9 +308,11 @@ type ClaimResult struct {
 type L1SettledGERResult struct {
 	TxHash                            common.Hash `json:"tx_hash"`
 	SettlementBlockNumber             uint64      `json:"settlement_block_number"`
+	SettlementBlockTimestamp          uint64      `json:"settlement_block_timestamp"`
 	SettlementLogIndex                uint        `json:"settlement_log_index"`
 	GER                               common.Hash `json:"ger"`
 	GERBlockNumber                    uint64      `json:"ger_block_number"`
+	GERBlockTimestamp                 uint64      `json:"ger_block_timestamp"`
 	GERLogIndex                       uint        `json:"ger_log_index"`
 	L1InfoTreeIndex                   *uint32     `json:"l1_info_tree_index,omitempty"`
 	HasVerifyBatchesTrustedAggregator bool        `json:"has_verify_batches_trusted_aggregator"`
@@ -362,6 +364,12 @@ type CertificateData struct {
 	// Error is only set if the certificate carries an error message (relevant for InError certs)
 	Error            string       `json:"error,omitempty"`
 	SettlementTxHash *common.Hash `json:"settlement_tx_hash,omitempty"`
+	// BlockNumber/BlockTimestamp locate SettlementTxHash on L1, once its receipt is visible
+	// there. Only ever set once Status.IsSettled(): even then, both stay nil for a transient
+	// tick (the settlement tx's own receipt can lag a step behind the certificate turning
+	// Settled — see CertificatePendingResolver), so nil is not necessarily permanent
+	BlockNumber    *uint64 `json:"block_number,omitempty"`
+	BlockTimestamp *uint64 `json:"block_timestamp,omitempty"`
 }
 
 // MarshalJSON is the implementation of the json.Marshaler interface.

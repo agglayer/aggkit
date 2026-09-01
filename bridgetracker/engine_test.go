@@ -530,10 +530,13 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	require.Equal(t, &f.cert.CertificateData, inError.AllSteps()[*inError.StepIndex()].Result(),
 		"the certificate's current, not yet settled, status is visible while waiting")
 
+	settledBlockNumber := uint64(1500)
+	settledBlockTimestamp := uint64(1700001500)
 	f.cert = &types.CertificateInclusionData{
 		CertificateData: types.CertificateData{
 			CertificateID: common.HexToHash("0x02"), Status: agglayertypes.Settled,
 			SettlementTxHash: &settlementTxHash,
+			BlockNumber:      &settledBlockNumber, BlockTimestamp: &settledBlockTimestamp,
 		},
 	}
 	engine.tick(t.Context())
@@ -619,10 +622,13 @@ func TestEngineIncrementalResolution(t *testing.T) {
 
 	// walk the bridge up to WaitingClaim: every milestone but the claim is done
 	f.originLER = &types.LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0a"), BlockNumber: 10}
+	settledBlockNumber := uint64(1500)
+	settledBlockTimestamp := uint64(1700001500)
 	f.cert = &types.CertificateInclusionData{
 		CertificateData: types.CertificateData{
 			CertificateID: common.HexToHash("0x01"), Status: agglayertypes.Settled,
 			SettlementTxHash: &settlementTxHash,
+			BlockNumber:      &settledBlockNumber, BlockTimestamp: &settledBlockTimestamp,
 		},
 	}
 	settlementLeafIndex := uint32(7)

@@ -213,7 +213,7 @@ func runTracker(
 		bridgetracker.EngineSources{
 			Bridges: bridgeEvents,
 			Certificates: sources.NewCertificateSource(
-				agglayerClient, finder, log.WithFields("module", "bridgetracker-certificatesource")),
+				agglayerClient, finder, rpcClients, log.WithFields("module", "bridgetracker-certificatesource")),
 			GERs:                   gerSource,
 			WaitingGERUpdateSource: gerSource,
 			LERs:                   sources.NewLERSource(rpcClients),

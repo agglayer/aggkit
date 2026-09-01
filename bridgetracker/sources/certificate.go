@@ -2,12 +2,14 @@ package sources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgetracker"
 	trackertypes "github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -28,16 +30,21 @@ type CertificateSource struct {
 	// services resolves bridge.NetworkID's own aggkit bridge service, used to translate a
 	// certificate's NewLocalExitRoot into a deposit-count position (see rootIndexFor)
 	services *bridgeServiceClients
-	logger   aggkitcommon.Logger
+	// clients resolves L1's JSON-RPC client, used to locate a settled certificate's settlement
+	// tx once it is visible there (see settlementBlockInfo)
+	clients EthClientResolver
+	logger  aggkitcommon.Logger
 }
 
 // NewCertificateSource returns a CertificateSource fetching certificate headers through client,
-// and resolving local exit root positions through the per-network bridge service clients finder
-// resolves
+// resolving local exit root positions through the per-network bridge service clients finder
+// resolves, and locating settlement txs on L1 through clients
 func NewCertificateSource(
-	client CertificateHeaderClient, finder NetworkURLResolver, logger aggkitcommon.Logger,
+	client CertificateHeaderClient, finder NetworkURLResolver, clients EthClientResolver, logger aggkitcommon.Logger,
 ) *CertificateSource {
-	return &CertificateSource{client: client, services: newBridgeServiceClients(finder), logger: logger}
+	return &CertificateSource{
+		client: client, services: newBridgeServiceClients(finder), clients: clients, logger: logger,
+	}
 }
 
 // CertificateFor implements bridgetracker.CertificateSource: it resolves the certificate that
@@ -125,7 +132,9 @@ func (s *CertificateSource) rootIndexFor(ctx context.Context, networkID uint32, 
 }
 
 // certificateHeaderFor fetches certificateID's current header from the agglayer and maps it
-// into the tracker's trackertypes.CertificateInclusionData
+// into the tracker's trackertypes.CertificateInclusionData. Once the certificate is settled,
+// also resolves its settlement tx's block on L1 (see settlementBlockInfo) — nil/nil while that
+// tx is not visible there yet, which CertificatePendingResolver treats as still pending
 func (s *CertificateSource) certificateHeaderFor(
 	ctx context.Context, certificateID common.Hash,
 ) (*trackertypes.CertificateInclusionData, error) {
@@ -138,6 +147,15 @@ func (s *CertificateSource) certificateHeaderFor(
 	if header.Error != nil {
 		errMsg = header.Error.Error()
 	}
+
+	var blockNumber, blockTimestamp *uint64
+	if header.Status.IsSettled() && header.SettlementTxHash != nil {
+		blockNumber, blockTimestamp, err = s.settlementBlockInfo(ctx, *header.SettlementTxHash)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	s.logger.Debugf("certificate %s status: %s (settlementTxHash=%s, error=%q)",
 		certificateID, header.Status, header.SettlementTxHash, errMsg)
 	return &trackertypes.CertificateInclusionData{
@@ -146,8 +164,41 @@ func (s *CertificateSource) certificateHeaderFor(
 			Status:           header.Status,
 			Error:            errMsg,
 			SettlementTxHash: header.SettlementTxHash,
+			BlockNumber:      blockNumber,
+			BlockTimestamp:   blockTimestamp,
 		},
 		PreviousLocalExitRoot: header.PreviousLocalExitRoot,
 		NewLocalExitRoot:      header.NewLocalExitRoot,
 	}, nil
+}
+
+// settlementBlockInfo resolves settlementTxHash's block number and timestamp on L1, or nil/nil
+// if its receipt is not visible there yet: unlike SettlementSource (StepWaitL1SettledGER), this
+// is not gated by L1 finality — it only needs to know where the tx landed, not to validate what
+// it did there
+func (s *CertificateSource) settlementBlockInfo(
+	ctx context.Context, settlementTxHash common.Hash,
+) (*uint64, *uint64, error) {
+	client, err := s.clients.RPCClientFor(ctx, 0) // a certificate always settles on L1
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolving L1 JSON-RPC client: %w", err)
+	}
+
+	receipt, err := client.TransactionReceipt(ctx, settlementTxHash)
+	if errors.Is(err, ethereum.NotFound) {
+		return nil, nil, nil // not mined/visible on L1 yet
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetching settlement tx receipt %s: %w", settlementTxHash, err)
+	}
+	if receipt.BlockNumber == nil {
+		return nil, nil, nil // defensive: a mined receipt always carries one, but just in case
+	}
+
+	timestamp, err := blockTimestamp(ctx, client, receipt.BlockHash)
+	if err != nil {
+		return nil, nil, err
+	}
+	number := receipt.BlockNumber.Uint64()
+	return &number, &timestamp, nil
 }

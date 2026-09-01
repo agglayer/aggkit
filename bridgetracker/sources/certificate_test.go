@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,7 +12,11 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/types/mocks"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -85,7 +90,12 @@ func TestCertificateSourceCertificateHeaderFor(t *testing.T) {
 		PreviousLocalExitRoot: &previousLER,
 		NewLocalExitRoot:      newLER,
 	}}
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), testLogger)
+	client := mocks.NewBaseEthereumClienter(t)
+	client.EXPECT().TransactionReceipt(mock.Anything, settlementTx).Return(&gethtypes.Receipt{
+		BlockNumber: big.NewInt(12345), BlockHash: testBlockHash,
+	}, nil)
+	expectBlockTimestamp(client)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), StaticClients{0: client}, testLogger)
 
 	cert, err := source.certificateHeaderFor(t.Context(), certID)
 	require.NoError(t, err)
@@ -95,11 +105,35 @@ func TestCertificateSourceCertificateHeaderFor(t *testing.T) {
 	require.Empty(t, cert.Error)
 	require.Equal(t, &previousLER, cert.PreviousLocalExitRoot)
 	require.Equal(t, newLER, cert.NewLocalExitRoot)
+	require.NotNil(t, cert.BlockNumber)
+	require.Equal(t, uint64(12345), *cert.BlockNumber)
+	require.NotNil(t, cert.BlockTimestamp)
+	require.Equal(t, testBlockTimestamp, *cert.BlockTimestamp)
+}
+
+// TestCertificateSourceCertificateHeaderForSettlementTxNotMinedYet pins that a settled
+// certificate whose settlement tx is not visible on L1 yet resolves with BlockNumber/
+// BlockTimestamp left nil, rather than erroring: CertificatePendingResolver treats that as
+// still pending (see ErrCertificateNotSettled)
+func TestCertificateSourceCertificateHeaderForSettlementTxNotMinedYet(t *testing.T) {
+	certID := common.HexToHash("0x0f")
+	settlementTx := common.HexToHash("0x10")
+	fake := &fakeCertificateHeaderClient{header: &agglayertypes.CertificateHeader{
+		CertificateID: certID, Status: agglayertypes.Settled, SettlementTxHash: &settlementTx,
+	}}
+	client := mocks.NewBaseEthereumClienter(t)
+	client.EXPECT().TransactionReceipt(mock.Anything, settlementTx).Return(nil, ethereum.NotFound)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), StaticClients{0: client}, testLogger)
+
+	cert, err := source.certificateHeaderFor(t.Context(), certID)
+	require.NoError(t, err)
+	require.Nil(t, cert.BlockNumber)
+	require.Nil(t, cert.BlockTimestamp)
 }
 
 func TestCertificateSourceCertificateHeaderForTransientError(t *testing.T) {
 	fake := &fakeCertificateHeaderClient{err: errFakeCertificateHeaderClient}
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testLogger)
 
 	_, err := source.certificateHeaderFor(t.Context(), common.HexToHash("0x0f"))
 	require.ErrorIs(t, err, errFakeCertificateHeaderClient)
@@ -113,7 +147,7 @@ func TestCertificateIDForSettledCovers(t *testing.T) {
 	fake := &fakeCertificateHeaderClient{
 		settled: &agglayertypes.CertificateHeader{CertificateID: certID, NewLocalExitRoot: ler},
 	}
-	source := NewCertificateSource(fake, fakeRootIndexes{ler.Hex(): 7}.start(t), testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{ler.Hex(): 7}.start(t), nil, testLogger)
 
 	got, err := source.certificateIDFor(t.Context(), bridge)
 	require.NoError(t, err)
@@ -132,7 +166,7 @@ func TestCertificateIDForSettledNotCoveredButPendingSurfaced(t *testing.T) {
 	}
 	// pending's root deliberately does not cover bridge (index 3 < DepositCount 7) either: it
 	// must still be surfaced (see certificateIDFor's doc) since it is not settled/terminal
-	source := NewCertificateSource(fake, fakeRootIndexes{settledLER.Hex(): 5, pendingLER.Hex(): 3}.start(t), testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{settledLER.Hex(): 5, pendingLER.Hex(): 3}.start(t), nil, testLogger)
 
 	got, err := source.certificateIDFor(t.Context(), bridge)
 	require.NoError(t, err)
@@ -148,7 +182,7 @@ func TestCertificateIDForSettledNotCoveredNoPending(t *testing.T) {
 	}
 	// A settled-but-non-covering certificate must never be returned: CertificatePendingResolver
 	// treats Settled as "done", so this would make the tracker think the step completed early
-	source := NewCertificateSource(fake, fakeRootIndexes{settledLER.Hex(): 5}.start(t), testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{settledLER.Hex(): 5}.start(t), nil, testLogger)
 
 	got, err := source.certificateIDFor(t.Context(), bridge)
 	require.NoError(t, err)
@@ -158,7 +192,7 @@ func TestCertificateIDForSettledNotCoveredNoPending(t *testing.T) {
 func TestCertificateIDForNoSettledNoPending(t *testing.T) {
 	bridge := l2ToL1Bridge()
 	fake := &fakeCertificateHeaderClient{}
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testLogger)
 
 	got, err := source.certificateIDFor(t.Context(), bridge)
 	require.NoError(t, err)
@@ -173,7 +207,7 @@ func TestCertificateIDForNoSettledPendingSurfaced(t *testing.T) {
 	fake := &fakeCertificateHeaderClient{
 		pending: &agglayertypes.CertificateHeader{CertificateID: pendingCertID, NewLocalExitRoot: pendingLER},
 	}
-	source := NewCertificateSource(fake, fakeRootIndexes{pendingLER.Hex(): 7}.start(t), testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{pendingLER.Hex(): 7}.start(t), nil, testLogger)
 
 	got, err := source.certificateIDFor(t.Context(), bridge)
 	require.NoError(t, err)
@@ -183,7 +217,7 @@ func TestCertificateIDForNoSettledPendingSurfaced(t *testing.T) {
 func TestCertificateIDForSettledErrorPropagates(t *testing.T) {
 	bridge := l2ToL1Bridge()
 	fake := &fakeCertificateHeaderClient{settledErr: errFakeCertificateHeaderClient}
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testLogger)
 
 	_, err := source.certificateIDFor(t.Context(), bridge)
 	require.ErrorIs(t, err, errFakeCertificateHeaderClient)
@@ -192,7 +226,7 @@ func TestCertificateIDForSettledErrorPropagates(t *testing.T) {
 func TestCertificateIDForPendingErrorPropagates(t *testing.T) {
 	bridge := l2ToL1Bridge()
 	fake := &fakeCertificateHeaderClient{pendingErr: errFakeCertificateHeaderClient}
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testLogger)
 
 	_, err := source.certificateIDFor(t.Context(), bridge)
 	require.ErrorIs(t, err, errFakeCertificateHeaderClient)
@@ -207,7 +241,7 @@ func TestCertificateIDForRootNotSyncedYetIsTransient(t *testing.T) {
 	}
 	// the bridge service on bridge.NetworkID has not synced settledLER yet: retried by the
 	// engine, not treated as "not covered"
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testLogger)
 
 	_, err := source.certificateIDFor(t.Context(), bridge)
 	require.Error(t, err)
@@ -216,7 +250,7 @@ func TestCertificateIDForRootNotSyncedYetIsTransient(t *testing.T) {
 func TestCertificateForNotCovered(t *testing.T) {
 	bridge := l2ToL1Bridge()
 	fake := &fakeCertificateHeaderClient{}
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testLogger)
 
 	cert, err := source.CertificateFor(t.Context(), bridge)
 	require.NoError(t, err)
@@ -237,7 +271,12 @@ func TestCertificateForCovered(t *testing.T) {
 			SettlementTxHash: &settlementTx,
 		},
 	}
-	source := NewCertificateSource(fake, fakeRootIndexes{ler.Hex(): 7}.start(t), testLogger)
+	client := mocks.NewBaseEthereumClienter(t)
+	client.EXPECT().TransactionReceipt(mock.Anything, settlementTx).Return(&gethtypes.Receipt{
+		BlockNumber: big.NewInt(12345), BlockHash: testBlockHash,
+	}, nil)
+	expectBlockTimestamp(client)
+	source := NewCertificateSource(fake, fakeRootIndexes{ler.Hex(): 7}.start(t), StaticClients{0: client}, testLogger)
 
 	cert, err := source.CertificateFor(t.Context(), bridge)
 	require.NoError(t, err)

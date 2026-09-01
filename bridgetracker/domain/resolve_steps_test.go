@@ -149,7 +149,12 @@ func TestResolveSteps(t *testing.T) {
 	originLER := &types.LERUpdateResult{NetworkID: 1, LER: common.Hash{2}, BlockNumber: 200}
 	injectedGER := &types.GERData{NetworkID: 2, GER: &common.Hash{1}}
 	settlementTxHash := common.Hash{4}
-	settledCertData := types.CertificateData{Status: agglayertypes.Settled, SettlementTxHash: &settlementTxHash}
+	settledCertBlockNumber := uint64(400)
+	settledCertBlockTimestamp := uint64(1700000400)
+	settledCertData := types.CertificateData{
+		Status: agglayertypes.Settled, SettlementTxHash: &settlementTxHash,
+		BlockNumber: &settledCertBlockNumber, BlockTimestamp: &settledCertBlockTimestamp,
+	}
 	settledCert := &types.CertificateInclusionData{CertificateData: settledCertData}
 	settlementLeafIndex := uint32(7)
 	settlementResult := &types.L1SettledGERResult{
@@ -449,8 +454,13 @@ func TestResolveStepsErrors(t *testing.T) {
 	now := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
 	originLER := &types.LERUpdateResult{NetworkID: 1, LER: common.Hash{2}, BlockNumber: 200}
 	settlementTxHash := common.Hash{4}
+	settledCertBlockNumber := uint64(400)
+	settledCertBlockTimestamp := uint64(1700000400)
 	settledCert := &types.CertificateInclusionData{
-		CertificateData: types.CertificateData{Status: agglayertypes.Settled, SettlementTxHash: &settlementTxHash},
+		CertificateData: types.CertificateData{
+			Status: agglayertypes.Settled, SettlementTxHash: &settlementTxHash,
+			BlockNumber: &settledCertBlockNumber, BlockTimestamp: &settledCertBlockTimestamp,
+		},
 	}
 	settlementLeafIndex := uint32(7)
 	settlementResult := &types.L1SettledGERResult{
@@ -793,8 +803,13 @@ func TestCertificateResolverSkipsWaypoints(t *testing.T) {
 		{Step: types.StepClaimed, Status: types.StepStatusPending},
 	}, t1)
 
+	settledBlockNumber := uint64(400)
+	settledBlockTimestamp := uint64(1700000400)
 	cert := &types.CertificateInclusionData{
-		CertificateData: types.CertificateData{CertificateID: common.Hash{9}, Status: agglayertypes.Settled},
+		CertificateData: types.CertificateData{
+			CertificateID: common.Hash{9}, Status: agglayertypes.Settled,
+			BlockNumber: &settledBlockNumber, BlockTimestamp: &settledBlockTimestamp,
+		},
 	}
 	facts := &fakeFacts{certificate: cert}
 
