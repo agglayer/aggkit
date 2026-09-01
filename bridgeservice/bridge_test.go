@@ -2514,7 +2514,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		var raw map[string]any
 		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &raw))
 		require.NotContains(t, raw, "injected_l2_block_num")
-		require.NotContains(t, raw, "injected_l2_timestamp")
+		require.NotContains(t, raw, "injected_l2_block_timestamp")
 	})
 
 	t.Run("Retrieve for L2 network", func(t *testing.T) {
@@ -2547,15 +2547,15 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, *l1InfoTreeLeaf, result)
 
-		// block_num/timestamp above are the L1 event's; injected_l2_block_num/injected_l2_timestamp
-		// are the extra fields carrying the L2 block (and when) the GER actually got injected
-		// (per l2gersync)
+		// block_num/timestamp above are the L1 event's; injected_l2_block_num/
+		// injected_l2_block_timestamp are the extra fields carrying the L2 block (and when) the
+		// GER actually got injected (per l2gersync)
 		var withL2Block bridgetypes.L1InfoTreeLeafResponse
 		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &withL2Block))
 		require.NotNil(t, withL2Block.InjectedL2BlockNumber)
 		require.Equal(t, l2InjectionBlockNum, *withL2Block.InjectedL2BlockNumber)
-		require.NotNil(t, withL2Block.InjectedL2Timestamp)
-		require.Equal(t, l2InjectionTimestamp, *withL2Block.InjectedL2Timestamp)
+		require.NotNil(t, withL2Block.InjectedL2BlockTimestamp)
+		require.Equal(t, l2InjectionTimestamp, *withL2Block.InjectedL2BlockTimestamp)
 	})
 
 	t.Run("Unsupported network", func(t *testing.T) {

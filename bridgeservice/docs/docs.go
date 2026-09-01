@@ -573,7 +573,7 @@ const docTemplate = `{
         },
         "/injected-l1-info-leaf": {
             "get": {
-                "description": "Returns the L1 info tree leaf either at the given index (for L1)\nor the first injected global exit root after the given index (for L2). For L2,\ninjected_l2_block_num/injected_l2_timestamp additionally carry the destination\nnetwork's own block, and when, the Global Exit Root got injected.",
+                "description": "Returns the L1 info tree leaf either at the given index (for L1)\nor the first injected global exit root after the given index (for L2). For L2,\ninjected_l2_block_num/injected_l2_block_timestamp additionally carry the destination\nnetwork's own block, and when, the Global Exit Root got injected.",
                 "produces": [
                     "application/json"
                 ],
@@ -1559,7 +1559,7 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 654321
                 },
-                "injected_l2_timestamp": {
+                "injected_l2_block_timestamp": {
                     "description": "Timestamp of the L2 block above, in seconds since the Unix epoch. Only set alongside\nInjectedL2BlockNumber; may briefly be nil for a row written before l2gersync persisted\ntimestamps if backfilling it from the L2 RPC failed (transient), in which case it resolves\non a later request",
                     "type": "integer",
                     "example": 1684500123

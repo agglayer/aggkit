@@ -845,7 +845,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Summary Get injected L1 info tree leaf after a given L1 info tree index
 // @Description Returns the L1 info tree leaf either at the given index (for L1)
 // @Description or the first injected global exit root after the given index (for L2). For L2,
-// @Description injected_l2_block_num/injected_l2_timestamp additionally carry the destination
+// @Description injected_l2_block_num/injected_l2_block_timestamp additionally carry the destination
 // @Description network's own block, and when, the Global Exit Root got injected.
 // @Tags l1-info-tree-leaf
 // @Param network_id query int true "Network ID"
@@ -944,7 +944,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 
 	resp := NewL1InfoTreeLeafResponse(l1InfoLeaf)
 	resp.InjectedL2BlockNumber = injectedL2BlockNumber
-	resp.InjectedL2Timestamp = injectedL2Timestamp
+	resp.InjectedL2BlockTimestamp = injectedL2Timestamp
 
 	statusCode = http.StatusOK
 	c.JSON(statusCode, resp)

@@ -354,7 +354,7 @@ type L1InfoTreeLeafResponse struct {
 	// InjectedL2BlockNumber; may briefly be nil for a row written before l2gersync persisted
 	// timestamps if backfilling it from the L2 RPC failed (transient), in which case it resolves
 	// on a later request
-	InjectedL2Timestamp *uint64 `json:"injected_l2_timestamp,omitempty" example:"1684500123"`
+	InjectedL2BlockTimestamp *uint64 `json:"injected_l2_block_timestamp,omitempty" example:"1684500123"`
 }
 
 // SyncStatus represents the bridge synchronization status for both L1 and L2 networks
