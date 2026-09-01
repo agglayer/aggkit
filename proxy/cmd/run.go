@@ -186,7 +186,8 @@ func runTracker(
 		log.Fatalf("failed to create bridge event source: %v", err)
 	}
 	gerSource := sources.NewGERSource(finder, rpcClients, trackerCfg.L1GlobalExitRootAddress,
-		trackerCfg.L1BlockFinality, log.WithFields("module", "bridgetracker-gersource"))
+		trackerCfg.L1BlockFinality, trackerCfg.L2GlobalExitRootAddress, trackerCfg.L2InjectionLookbackBlocks,
+		log.WithFields("module", "bridgetracker-gersource"))
 
 	// GET /activity/from/{from_address} scans every network the finder knows about (via
 	// finder.NetworkIDs) for bridges sent by an address, and resolves their claim state through

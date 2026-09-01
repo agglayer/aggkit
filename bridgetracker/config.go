@@ -41,6 +41,10 @@ const DefaultMaxTrackedBridges = 100_000
 // semantics; both must stay in sync with the [Tracker] section of the proxy's default config)
 var DefaultIdleTimeout = types.Duration{Duration: DefaultEngineIdleTimeout}
 
+// DefaultL2InjectionLookbackBlocks is the default Config.L2InjectionLookbackBlocks (must stay in
+// sync with the [Tracker] section of the proxy's default config)
+const DefaultL2InjectionLookbackBlocks = 1_000
+
 // Config holds the configuration of the bridge tracker service. Only the mapstructure-tagged
 // fields come from the configuration file; the rest are wired programmatically by the binary
 // (see proxy/cmd)
@@ -86,6 +90,24 @@ type Config struct {
 
 	// L1GlobalExitRootAddress is the L1 GlobalExitRoot contract address (see sources.GERSource)
 	L1GlobalExitRootAddress common.Address `mapstructure:"L1GlobalExitRootAddress"`
+
+	// L2GlobalExitRootAddress is the static networkID -> GlobalExitRootManagerL2 contract address
+	// map used as a fallback when a destination network's bridge-service instance does not
+	// report the L2 block a covering GER was actually injected at (see sources.GERSource,
+	// WaitingGERInjection's InjectedGERResult.L2InjectedGER): for a network present here, the
+	// tracker scans that network's own L2 for the UpdateHashChainValue event instead of leaving
+	// L2InjectedGER absent. A network absent from this map (the default, empty map) never gets
+	// this fallback attempted — no different from before it existed
+	L2GlobalExitRootAddress map[uint32]common.Address `mapstructure:"L2GlobalExitRootAddress"`
+
+	// L2InjectionLookbackBlocks bounds how many blocks the L2GlobalExitRootAddress fallback (see
+	// sources.GERSource.findL2InjectionBlockBackwards) scans backwards from the destination
+	// network's head before giving up, instead of continuing all the way back to genesis: on a
+	// network whose fallback never finds the event (e.g. a wrong L2GlobalExitRootAddress entry,
+	// or a GER injected before the contract even existed there), an unbounded scan would walk the
+	// entire chain history in bridgeservicefinder.DefaultBlockChunkSize-sized eth_getLogs calls
+	// every time. A value <= 0 falls back to DefaultL2InjectionLookbackBlocks.
+	L2InjectionLookbackBlocks uint64 `mapstructure:"L2InjectionLookbackBlocks"`
 
 	// MaxTrackedBridges bounds how many distinct bridges the in-memory registry (see Registry)
 	// accepts at once; a request that would exceed it fails instead of registering the bridge —

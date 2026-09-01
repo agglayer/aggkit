@@ -73,10 +73,11 @@ RegisterResolveTimeout = "3s"
 L1BlockFinality = "LatestBlock"
 L2BlockFinality = "LatestBlock"
 MaxTrackedBridges = 100000
+L2InjectionLookbackBlocks = 1000
 
 # Workaround only: uncomment for a destination network whose bridge-service instance does not
 # report the L2 block a covering GER was injected at.
-# [Tracker.L2GlobalExitRootAddrs]
+# [Tracker.L2GlobalExitRootAddress]
 # 1 = "0x..."
 
 [Tracker.AgglayerClient]
@@ -109,12 +110,15 @@ UseTLS = false
 - `MaxTrackedBridges`: caps the in-memory supervised list; a request beyond it fails instead of
   registering the bridge — reaching the cap never evicts an existing entry to make room, so
   `RetentionPeriod` and `IdleTimeout` are what keep the registry under it during normal operation.
-- `L2GlobalExitRootAddrs`: **workaround only** — a networkID → `GlobalExitRootManagerL2` contract
+- `L2GlobalExitRootAddress`: **workaround only** — a networkID → `GlobalExitRootManagerL2` contract
   address map, used solely as a fallback for a destination network whose bridge-service instance
   does not report the L2 block a covering GER was actually injected at. For a network present
   here, the tracker scans that network's own L2 for the `UpdateHashChainValue` event instead of
   leaving it absent. A network absent from this map (the default, empty map) never gets this
   fallback attempted; it should not be set otherwise.
+- `L2InjectionLookbackBlocks`: bounds how many blocks that same fallback scans backwards from the
+  destination network's head before giving up, instead of continuing all the way back to genesis.
+  Defaults to 1,000 blocks when unset or `<= 0`.
 - `AgglayerClient`: the client used to resolve an L2-originated bridge's covering certificate and
   its status (`PendingInclusion`/`CertificatePending`/`WaitL1SettledGER`). `Cached` is the master
   switch for `ConfigurationCache`'s per-method policy (`false` ignores it entirely). Each method

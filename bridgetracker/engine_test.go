@@ -573,9 +573,12 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	injectedGER := common.HexToHash("0x04")
 	injectedGERBlockNumber := uint64(200)
 	injectedGERTimestamp := uint64(1700000000)
+	injectedGERL2BlockNumber := uint64(300)
+	injectedGERL2Timestamp := uint64(1700000300)
 	f.injectedGERAtIndex = &types.GERData{
 		NetworkID: 2, GER: &injectedGER, LERType: types.LERTypeLocal,
 		BlockNumber: &injectedGERBlockNumber, BlockTimestamp: &injectedGERTimestamp,
+		L2BlockNumber: &injectedGERL2BlockNumber, L2BlockTimestamp: &injectedGERL2Timestamp,
 	}
 	engine.tick(t.Context())
 	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
@@ -584,7 +587,12 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	for _, sp := range allSteps {
 		if sp.Step == types.StepWaitingGERInjection {
 			require.Equal(t, &types.InjectedGERResult{
-				GER: injectedGER, BlockNumber: injectedGERBlockNumber, BlockTimestamp: injectedGERTimestamp,
+				L1InfoTreeLeaf: types.InjectedGERL1Leaf{
+					GER: injectedGER, BlockNumber: injectedGERBlockNumber, BlockTimestamp: injectedGERTimestamp,
+				},
+				L2InjectedGER: &types.InjectedL2GERBlock{
+					BlockNumber: injectedGERL2BlockNumber, BlockTimestamp: &injectedGERL2Timestamp,
+				},
 			}, sp.Result())
 		}
 	}

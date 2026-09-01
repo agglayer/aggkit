@@ -214,7 +214,7 @@ Carried in the `result` field of a [BridgeStepPath](#bridgesteppath). Its shape 
 | PendingInclusion | `certificate_id` (Hash), `new_ler` (Hash), `previous_ler` (*Hash) | the certificate that first includes the bridge and the LER transition it produced; `previous_ler` is nil for a network's first certificate |
 | CertificatePending | [CertificateData](#certificatedata) | the certificate's current data; set as soon as a certificate exists, updated as its status changes (Pending, Proven, Candidate, InError), and reflects the final settled data — including `block_number`/`block_timestamp` — once `status` is `done` |
 | WaitL1SettledGER | `tx_hash` (Hash), `settlement_block_number` (uint64), `settlement_block_timestamp` (uint64), `settlement_log_index` (uint), `ger` (Hash), `ger_block_number` (uint64), `ger_block_timestamp` (uint64), `ger_log_index` (uint), `l1_info_tree_index` (*uint32), `has_verify_batches_trusted_aggregator` (bool), `has_update_l1_info_tree` (bool), `has_update_l1_info_tree_v2` (bool) | evidence, read off the certificate's settlement tx receipt once it reaches L1 finality, that the settlement propagated to the L1 Global Exit Root; `ger` is computed from `UpdateL1InfoTree`'s mainnet/rollup exit roots, and `ger_block_number`/`ger_block_timestamp`/`ger_log_index` locate the event it was computed from — normally the same block as the settlement, but the closest earlier one on L1 when the settlement tx's own receipt didn't move the GER itself. `l1_info_tree_index` is the leaf `ger` landed at — populated straight from `UpdateL1InfoTreeV2`'s `LeafCount` when that (optional) event fires, otherwise resolved with one extra GER->leaf lookup before the step can complete; it is never `null` once the step is `done`. The two `has_*` booleans besides `has_update_l1_info_tree_v2` are required for the step to complete, that third one is informational only |
-| WaitingGERInjection | `ger` (Hash), `block_number` (uint64), `block_timestamp` (uint64) | GER injected on the destination network that covers the bridge, and that injection's block |
+| WaitingGERInjection | [InjectedGERResult](#injectedgerresult) | GER covering the bridge: the L1 Info Tree leaf it resolves to, and — once known — the actual L2 block/timestamp it was injected at |
 | Claimed | `claim_tx` (Hash), `block_number` (uint64), `block_timestamp` (uint64) | claim transaction on the destination network, its block and that block's timestamp |
 | any other step | — | no result: always `nil` |
 
@@ -249,6 +249,68 @@ tracker endpoint or WebSocket message currently serializes it.
 | ler | *Hash | Local Exit Root
 | ler_type | LERType (int) | 0->NA, 1->Mainnet , 2-> Local
 | ler_type_string | string | string representation of ler_type (e.g. "Mainnet")
+
+## InjectedGERResult
+
+The result of `WaitingGERInjection` once it completes: the GER covering the bridge, split into
+where it comes from on each side. `l1_info_tree_leaf`'s `block_number`/`block_timestamp` are
+always the **L1** `UpdateL1InfoTree`/`UpdateL1InfoTreeV2` event that produced the leaf — never the
+block it was actually injected at on the destination network. `l2_injected_ger` carries that
+separately, and is the fix for a bug where the L1 block was returned in its place (making the
+result useless for calculating L2-side injection timing).
+
+`l2_injected_ger` is resolved two ways, in order:
+
+1. Straight from the destination's bridge-service instance (`injected_l2_block_num`/
+   `injected_l2_block_timestamp` on `GET /bridge/v1/injected-l1-info-leaf`, see
+   [REFERENCE_API.md](REFERENCE_API.md)) — the common case.
+2. If that instance predates those fields, and the destination network's
+   `GlobalExitRootManagerL2` contract address is configured (`Tracker.L2GlobalExitRootAddress`,
+   `bridgetracker/config.go`), the tracker falls back to scanning that network's own
+   `UpdateHashChainValue` logs backwards from latest until it finds the one that injected this
+   GER (`GERSource.findL2InjectionBlockBackwards`, `bridgetracker/sources/ger.go`).
+
+`l2_injected_ger` is **omitted** (no key), not `null`, when neither resolves it — the bridge-service
+doesn't report it and either no `L2GlobalExitRootAddress` entry is configured for the network or the
+backward scan itself failed or found nothing (logged as a warning, never fails the step).
+
+| field | type | desc |
+| ------|------|------|
+| l1_info_tree_leaf.ger | Hash | Global Exit Root covering the bridge |
+| l1_info_tree_leaf.block_number | uint64 | L1 block of the event that produced the leaf |
+| l1_info_tree_leaf.block_timestamp | uint64 | that L1 block's timestamp |
+| l2_injected_ger | *object | **omitted** (no key) while neither resolution path above produces a value |
+| l2_injected_ger.block_number | uint64 | L2 block where the GER was actually injected on the destination network |
+| l2_injected_ger.block_timestamp | *uint64 | that L2 block's timestamp; **omitted** (no key) — separately from `l2_injected_ger` itself — if it could not yet be resolved (e.g. the bridge-service's own RPC backfill, see [REFERENCE_API.md](REFERENCE_API.md), hasn't succeeded yet), resolving on a later request |
+
+Example (fully resolved):
+
+```json
+{
+  "l1_info_tree_leaf": {
+    "ger": "0x330d1f1546dc784aa465fdf83fb9d88e0a3778064d74e182c1dfb803ef155c1",
+    "block_number": 11606405,
+    "block_timestamp": 1788188124
+  },
+  "l2_injected_ger": {
+    "block_number": 11606512,
+    "block_timestamp": 1788188250
+  }
+}
+```
+
+Example (destination bridge-service instance not yet upgraded, or `l2_injected_ger.block_timestamp`
+still resolving):
+
+```json
+{
+  "l1_info_tree_leaf": {
+    "ger": "0x330d1f1546dc784aa465fdf83fb9d88e0a3778064d74e182c1dfb803ef155c1",
+    "block_number": 11606405,
+    "block_timestamp": 1788188124
+  }
+}
+```
 
 ## CertificateData
 

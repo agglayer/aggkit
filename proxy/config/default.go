@@ -80,6 +80,11 @@ L2BlockFinality = "LatestBlock"
 # RetentionPeriod and IdleTimeout are what keep the registry under it during normal operation.
 MaxTrackedBridges = 100000
 
+# L2InjectionLookbackBlocks: how many blocks the L2GlobalExitRootAddress fallback scans backwards
+# from the destination network's head before giving up, instead of continuing all the way back
+# to genesis.
+L2InjectionLookbackBlocks = 1000
+
 [Tracker.AgglayerClient]
 Cached = true
 [Tracker.AgglayerClient.ConfigurationCache]

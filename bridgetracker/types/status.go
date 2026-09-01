@@ -264,12 +264,35 @@ type GERUpdateResult struct {
 	LogIndex        uint        `json:"log_index"`
 }
 
-// InjectedGERResult is the result of StepWaitingGERInjection once it completes: the GER
-// injected on the destination network that covers the bridge, and that injection's block
+// InjectedGERResult is the result of StepWaitingGERInjection once it completes: the GER covering
+// the bridge, resolved to its L1 Info Tree leaf (L1InfoTreeLeaf, always known once the step
+// completes) and, once actually injected on the destination network, that injection's own L2
+// block/timestamp (L2InjectedGER). L2InjectedGER is nil when the destination's bridge-service
+// instance does not report it yet (predates injected_l2_block_num/injected_l2_block_timestamp on
+// GET /bridge/v1/injected-l1-info-leaf, see bridgeservice/types.L1InfoTreeLeafResponse) — in that
+// case L1InfoTreeLeaf's own BlockNumber/BlockTimestamp are the L1 event that produced the leaf,
+// not the L2 injection block, and must not be mistaken for it (this conflation was #1818)
 type InjectedGERResult struct {
+	L1InfoTreeLeaf InjectedGERL1Leaf   `json:"l1_info_tree_leaf"`
+	L2InjectedGER  *InjectedL2GERBlock `json:"l2_injected_ger,omitempty"`
+}
+
+// InjectedGERL1Leaf is the L1 Info Tree leaf covering the bridge: its GER and the L1 block/
+// timestamp of the UpdateL1InfoTree/UpdateL1InfoTreeV2 event that produced it
+type InjectedGERL1Leaf struct {
 	GER            common.Hash `json:"ger"`
 	BlockNumber    uint64      `json:"block_number"`
 	BlockTimestamp uint64      `json:"block_timestamp"`
+}
+
+// InjectedL2GERBlock is the L2 block the GER was actually injected at on the destination
+// network. BlockTimestamp is only known once resolved from the destination's L2 RPC (see
+// l2gersync.L2GERSync.GetFirstGERAfterL1InfoTreeIndex), so it may briefly be absent right after
+// upgrading a bridge-service instance that only just started reporting BlockNumber, resolving on
+// a later request
+type InjectedL2GERBlock struct {
+	BlockNumber    uint64  `json:"block_number"`
+	BlockTimestamp *uint64 `json:"block_timestamp,omitempty"`
 }
 
 // LERUpdateResult is the result of StepWaitingLERUpdate once it completes: the LER produced
@@ -345,6 +368,16 @@ type GERData struct {
 	// BlockTimestamp is BlockNumber's block timestamp. Populated (and carried on the wire) under
 	// the same conditions as BlockNumber
 	BlockTimestamp *uint64 `json:"-"`
+	// L2BlockNumber/L2BlockTimestamp are the actual L2 block/timestamp the GER was injected at on
+	// the destination network. Only set by InjectedGERAtIndex, and only when the destination's
+	// bridge-service instance reports it (see bridgeservice/types.L1InfoTreeLeafResponse's
+	// InjectedL2BlockNumber/InjectedL2BlockTimestamp). Unlike BlockNumber/BlockTimestamp above —
+	// always the L1 event, even here — these stay nil while unknown instead of being backfilled
+	// with the L1 block, which is exactly the #1818 bug this pair exists to avoid repeating
+	L2BlockNumber *uint64 `json:"-"`
+	// L2BlockTimestamp is L2BlockNumber's timestamp; may lag L2BlockNumber briefly if resolving
+	// it from the L2 RPC failed (see l2gersync.L2GERSync.GetFirstGERAfterL1InfoTreeIndex)
+	L2BlockTimestamp *uint64 `json:"-"`
 }
 
 // MarshalJSON is the implementation of the json.Marshaler interface.

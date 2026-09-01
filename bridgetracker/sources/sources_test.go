@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -320,7 +321,7 @@ func TestFinderClients(t *testing.T) {
 
 func TestGERSourceOriginGER(t *testing.T) {
 	fake := &fakeBridgeService{}
-	source := NewGERSource(fake.start(t), nil, common.Address{}, aggkittypes.FinalizedBlock, nil)
+	source := NewGERSource(fake.start(t), nil, common.Address{}, aggkittypes.FinalizedBlock, nil, 0, nil)
 
 	// not covered yet -> nil, nil
 	ger, err := source.OriginGER(t.Context(), l1ToL2Bridge())
@@ -348,7 +349,8 @@ func TestGERSourceOriginGER(t *testing.T) {
 
 func TestGERSourceInjectedGER(t *testing.T) {
 	fake := &fakeBridgeService{}
-	source := NewGERSource(fake.start(t), nil, common.Address{}, aggkittypes.FinalizedBlock, nil)
+	source := NewGERSource(fake.start(t), nil, common.Address{}, aggkittypes.FinalizedBlock, nil, 0,
+		log.WithFields("module", "sources_test"))
 
 	// not even covered on origin -> nil
 	injected, err := source.InjectedGER(t.Context(), l1ToL2Bridge())
@@ -381,6 +383,228 @@ func TestGERSourceInjectedGER(t *testing.T) {
 	require.Equal(t, common.HexToHash("0x0c"), *injected.RER)
 	require.Equal(t, uint64(200), *injected.BlockNumber)
 	require.Equal(t, uint64(1700000000), *injected.BlockTimestamp)
+	// no L2BlockNumber/L2BlockTimestamp yet: this bridge-service instance predates them, so
+	// WaitingGERInjectionResolver must not mistake the L1 block above for the L2 injection one
+	// (that conflation was #1818)
+	require.Nil(t, injected.L2BlockNumber)
+	require.Nil(t, injected.L2BlockTimestamp)
+
+	// once the bridge-service reports the real L2 injection block/timestamp, they land on their
+	// own fields — block_num/timestamp above stay the L1 event's, per InjectedL1InfoLeafHandler
+	fake.injectedLeaf["injected_l2_block_num"] = 999
+	fake.injectedLeaf["injected_l2_block_timestamp"] = 1800000000
+	injected, err = source.InjectedGER(t.Context(), l1ToL2Bridge())
+	require.NoError(t, err)
+	require.NotNil(t, injected)
+	require.Equal(t, uint64(200), *injected.BlockNumber, "the L1 block must stay untouched")
+	require.Equal(t, uint64(1700000000), *injected.BlockTimestamp, "the L1 timestamp must stay untouched")
+	require.Equal(t, uint64(999), *injected.L2BlockNumber)
+	require.Equal(t, uint64(1800000000), *injected.L2BlockTimestamp)
+}
+
+// TestGERSourceInjectedGER_FallsBackToL2Scan covers the #1818 fallback: when the destination's
+// bridge-service instance does not report injected_l2_block_num at all, and its
+// GlobalExitRootManagerL2 address is configured (l2GERAddrs), InjectedGER finds the injection
+// itself by scanning the destination network's own UpdateHashChainValue logs.
+func TestGERSourceInjectedGER_FallsBackToL2Scan(t *testing.T) {
+	fake := &fakeBridgeService{}
+	idx := uint32(42)
+	fake.l1InfoTreeIndex = &idx
+	fake.injectedLeaf = map[string]any{
+		"l1_info_tree_index": 42,
+		"global_exit_root":   "0x0a",
+		"mainnet_exit_root":  "0x0b",
+		"rollup_exit_root":   "0x0c",
+		"block_num":          200,
+		"timestamp":          1700000000,
+		// no injected_l2_block_num/injected_l2_block_timestamp: an old bridge-service instance
+	}
+
+	l2GERAddr := common.HexToAddress("0x1234")
+	destNetwork := l1ToL2Bridge().DestinationNetwork
+
+	mockL2Client := mocks.NewBaseEthereumClienter(t)
+	source := NewGERSource(fake.start(t), StaticClients{destNetwork: mockL2Client}, common.Address{},
+		aggkittypes.FinalizedBlock, map[uint32]common.Address{destNetwork: l2GERAddr}, 0, nil)
+
+	head := uint64(5000) // within a single chunk (DefaultBlockChunkSize=10_000): no backward paging
+	mockL2Client.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
+		Return(&aggkittypes.BlockHeader{Number: head}, nil)
+
+	targetGER := common.HexToHash("0x0a") // must match fake.injectedLeaf's global_exit_root
+	otherGER := common.HexToHash("0x0b")
+	blockHash := common.HexToHash("0xblockhash")
+	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]gethtypes.Log{
+		{ // an unrelated GER's injection must not be mistaken for the one being searched
+			Topics:      []common.Hash{updateHashChainValueSignature, otherGER, {}},
+			BlockNumber: 111,
+			BlockHash:   common.HexToHash("0xother"),
+		},
+		{
+			Topics:      []common.Hash{updateHashChainValueSignature, targetGER, {}},
+			BlockNumber: 4321,
+			BlockHash:   blockHash,
+		},
+	}, nil).Once()
+	mockL2Client.EXPECT().HeaderByHash(mock.Anything, blockHash).
+		Return(&gethtypes.Header{Time: 1800000000}, nil)
+
+	injected, err := source.InjectedGER(t.Context(), l1ToL2Bridge())
+	require.NoError(t, err)
+	require.NotNil(t, injected)
+	require.Equal(t, uint64(200), *injected.BlockNumber, "the L1 block must stay untouched")
+	require.NotNil(t, injected.L2BlockNumber)
+	require.Equal(t, uint64(4321), *injected.L2BlockNumber)
+	require.NotNil(t, injected.L2BlockTimestamp)
+	require.Equal(t, uint64(1800000000), *injected.L2BlockTimestamp)
+}
+
+// TestFindL2InjectionBlockBackwards exercises GERSource.findL2InjectionBlockBackwards directly:
+// the paginated backward scan, its termination conditions, and how it degrades (never an error
+// InjectedGERAtIndex must propagate) when the fallback simply isn't configured for the network.
+func TestFindL2InjectionBlockBackwards(t *testing.T) {
+	ger := common.HexToHash("0x0a")
+	l2GERAddr := common.HexToAddress("0x1234")
+	networkID := uint32(1)
+
+	t.Run("network not in l2GERAddrs: no RPC call, nil result", func(t *testing.T) {
+		source := NewGERSource(nil, nil, common.Address{}, aggkittypes.FinalizedBlock, nil, 0, nil)
+
+		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		require.NoError(t, err)
+		require.Nil(t, blockNumber)
+		require.Nil(t, timestamp)
+	})
+
+	t.Run("found on the very first (most recent) chunk", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		source := NewGERSource(nil, StaticClients{networkID: mockClient}, common.Address{},
+			aggkittypes.FinalizedBlock, map[uint32]common.Address{networkID: l2GERAddr}, 0, nil)
+
+		mockClient.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
+			Return(&aggkittypes.BlockHeader{Number: 500}, nil)
+		blockHash := common.HexToHash("0xblockhash")
+		mockClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]gethtypes.Log{
+			{Topics: []common.Hash{updateHashChainValueSignature, ger, {}},
+				BlockNumber: 400, BlockHash: blockHash},
+		}, nil).Once()
+		mockClient.EXPECT().HeaderByHash(mock.Anything, blockHash).
+			Return(&gethtypes.Header{Time: 1700000000}, nil)
+
+		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		require.NoError(t, err)
+		require.Equal(t, uint64(400), *blockNumber)
+		require.Equal(t, uint64(1700000000), *timestamp)
+	})
+
+	t.Run("found only after paginating backwards past an empty chunk", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		// an explicit lookback well past head, so the pagination isn't cut short by
+		// DefaultL2InjectionLookbackBlocks (1_000)
+		source := NewGERSource(nil, StaticClients{networkID: mockClient}, common.Address{},
+			aggkittypes.FinalizedBlock, map[uint32]common.Address{networkID: l2GERAddr}, 20_000, nil)
+
+		// head is past one full DefaultBlockChunkSize (10_000), so the first chunk covers
+		// [5_000, 15_000] (empty) before the second one, [0, 4_999], finds the log
+		mockClient.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
+			Return(&aggkittypes.BlockHeader{Number: 15_000}, nil)
+		mockClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]gethtypes.Log{}, nil).Once()
+		blockHash := common.HexToHash("0xblockhash")
+		mockClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]gethtypes.Log{
+			{Topics: []common.Hash{updateHashChainValueSignature, ger, {}},
+				BlockNumber: 123, BlockHash: blockHash},
+		}, nil).Once()
+		mockClient.EXPECT().HeaderByHash(mock.Anything, blockHash).
+			Return(&gethtypes.Header{Time: 1600000000}, nil)
+
+		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		require.NoError(t, err)
+		require.Equal(t, uint64(123), *blockNumber)
+		require.Equal(t, uint64(1600000000), *timestamp)
+	})
+
+	t.Run("never found: scans back to genesis, returns nil without error", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		source := NewGERSource(nil, StaticClients{networkID: mockClient}, common.Address{},
+			aggkittypes.FinalizedBlock, map[uint32]common.Address{networkID: l2GERAddr}, 0, nil)
+
+		mockClient.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
+			Return(&aggkittypes.BlockHeader{Number: 500}, nil)
+		mockClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]gethtypes.Log{}, nil).Once()
+
+		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		require.NoError(t, err)
+		require.Nil(t, blockNumber)
+		require.Nil(t, timestamp)
+	})
+
+	t.Run("respects a configured lookback: never scans below the floor", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		source := NewGERSource(nil, StaticClients{networkID: mockClient}, common.Address{},
+			aggkittypes.FinalizedBlock, map[uint32]common.Address{networkID: l2GERAddr}, 5_000, nil)
+
+		// floor = head (15_000) - lookback (5_000) = 10_000: the single chunk [10_000, 15_000]
+		// already covers the whole allowed window, so exactly one FilterLogs call is made and the
+		// scan gives up there instead of continuing down towards genesis (a second, unexpected
+		// FilterLogs call would fail this test: mockClient has no expectation registered for it)
+		mockClient.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
+			Return(&aggkittypes.BlockHeader{Number: 15_000}, nil)
+		mockClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]gethtypes.Log{}, nil).Once()
+
+		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		require.NoError(t, err)
+		require.Nil(t, blockNumber)
+		require.Nil(t, timestamp)
+	})
+
+	t.Run("lookback <= 0 falls back to DefaultL2InjectionLookbackBlocks: scans back to genesis", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		source := NewGERSource(nil, StaticClients{networkID: mockClient}, common.Address{},
+			aggkittypes.FinalizedBlock, map[uint32]common.Address{networkID: l2GERAddr}, 0, nil)
+
+		// head (500) is well within DefaultL2InjectionLookbackBlocks, so the floor is genesis (0)
+		// exactly as if no lookback had been configured at all
+		mockClient.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
+			Return(&aggkittypes.BlockHeader{Number: 500}, nil)
+		mockClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]gethtypes.Log{}, nil).Once()
+
+		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		require.NoError(t, err)
+		require.Nil(t, blockNumber)
+		require.Nil(t, timestamp)
+	})
+
+	t.Run("head lookup fails: propagates the error", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		source := NewGERSource(nil, StaticClients{networkID: mockClient}, common.Address{},
+			aggkittypes.FinalizedBlock, map[uint32]common.Address{networkID: l2GERAddr}, 0, nil)
+
+		mockClient.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
+			Return(nil, errors.New("boom"))
+
+		_, _, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		require.ErrorContains(t, err, "boom")
+	})
+
+	t.Run("found, but resolving the block's timestamp fails: block number still returned", func(t *testing.T) {
+		mockClient := mocks.NewBaseEthereumClienter(t)
+		source := NewGERSource(nil, StaticClients{networkID: mockClient}, common.Address{},
+			aggkittypes.FinalizedBlock, map[uint32]common.Address{networkID: l2GERAddr}, 0, nil)
+
+		mockClient.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
+			Return(&aggkittypes.BlockHeader{Number: 500}, nil)
+		blockHash := common.HexToHash("0xblockhash")
+		mockClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]gethtypes.Log{
+			{Topics: []common.Hash{updateHashChainValueSignature, ger, {}},
+				BlockNumber: 400, BlockHash: blockHash},
+		}, nil).Once()
+		mockClient.EXPECT().HeaderByHash(mock.Anything, blockHash).Return(nil, errors.New("boom"))
+
+		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		require.ErrorContains(t, err, "boom")
+		require.Equal(t, uint64(400), *blockNumber)
+		require.Nil(t, timestamp)
+	})
 }
 
 func TestClaimSourceClaimFor(t *testing.T) {
@@ -463,7 +687,7 @@ func TestLERSourceBridgeEventLogNotFound(t *testing.T) {
 
 func TestSourcesUnresolvedNetworkIsTransient(t *testing.T) {
 	resolver := staticURLs{} // no networks resolved
-	gerSource := NewGERSource(resolver, nil, common.Address{}, aggkittypes.FinalizedBlock, nil)
+	gerSource := NewGERSource(resolver, nil, common.Address{}, aggkittypes.FinalizedBlock, nil, 0, nil)
 	claimSource := NewClaimSource(resolver)
 	lerSource := NewLERSource(StaticClients{})
 

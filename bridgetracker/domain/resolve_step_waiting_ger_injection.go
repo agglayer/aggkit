@@ -55,12 +55,20 @@ func (r *WaitingGERInjectionResolver) Resolve(
 		return nil, ErrStepPending
 	}
 
-	result := &types.InjectedGERResult{GER: *injected.GER}
+	result := &types.InjectedGERResult{
+		L1InfoTreeLeaf: types.InjectedGERL1Leaf{GER: *injected.GER},
+	}
 	if injected.BlockNumber != nil {
-		result.BlockNumber = *injected.BlockNumber
+		result.L1InfoTreeLeaf.BlockNumber = *injected.BlockNumber
 	}
 	if injected.BlockTimestamp != nil {
-		result.BlockTimestamp = *injected.BlockTimestamp
+		result.L1InfoTreeLeaf.BlockTimestamp = *injected.BlockTimestamp
+	}
+	// L2InjectedGER stays nil (see InjectedGERResult's doc comment) when the destination's
+	// bridge-service instance does not report the actual L2 injection block yet
+	if injected.L2BlockNumber != nil {
+		result.L2InjectedGER = &types.InjectedL2GERBlock{BlockNumber: *injected.L2BlockNumber}
+		result.L2InjectedGER.BlockTimestamp = injected.L2BlockTimestamp
 	}
 	return result, nil
 }

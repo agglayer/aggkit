@@ -7,18 +7,28 @@ import (
 	"math/big"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	trackertypes "github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
 const MainnetNetworkID = 0
+
+// updateHashChainValueSignature is the topic0 of AgglayerGERL2's UpdateHashChainValue event —
+// event UpdateHashChainValue(bytes32 indexed newGlobalExitRoot, bytes32 indexed
+// newHashChainValue) — the event findL2InjectionBlockBackwards scans for. Not referenced by the
+// filtering itself (l2GERManager.FilterUpdateHashChainValue's ABI binding computes it), only
+// documented here for the same reason l2gersync names it (insertGEREventSignature)
+var updateHashChainValueSignature = crypto.Keccak256Hash([]byte("UpdateHashChainValue(bytes32,bytes32)"))
 
 // errNotCoveredYet marks a bridge not covered by any L1 info tree leaf yet, as opposed to a
 // transient failure (URL resolution, network). It never escapes this package
@@ -33,15 +43,33 @@ type GERSource struct {
 	clients                       EthClientResolver
 	ContractGlobalExitRootAddress common.Address
 	L1BlockFinality               aggkittypes.BlockNumberFinality
+	// l2GERAddrs is the static networkID -> GlobalExitRootManagerL2 contract address map used by
+	// findL2InjectionBlockBackwards, the fallback that scans a destination network's own L2 for
+	// the UpdateHashChainValue event when its bridge-service instance does not report the
+	// injection block itself (see InjectedGERAtIndex). A network absent from this map (the
+	// default, empty map) simply never gets that fallback attempted — L2InjectedGER just stays
+	// nil for it, exactly as before this existed
+	l2GERAddrs map[uint32]common.Address
+	// l2InjectionLookbackBlocks bounds how many blocks findL2InjectionBlockBackwards scans
+	// backwards from the destination network's head before giving up, instead of continuing all
+	// the way back to genesis (see bridgetracker.Config.L2InjectionLookbackBlocks). A value <= 0
+	// falls back to bridgetracker.DefaultL2InjectionLookbackBlocks
+	l2InjectionLookbackBlocks uint64
 }
 
 // NewGERSource returns a GERSource resolving per-network bridge service clients through finder,
 // and the L1 (network 0) JSON-RPC client used by FindFirstL1InfoTreeAfterBlock through clients.
 // contractGlobalExitRootAddress is the L1 GlobalExitRoot contract FindFirstL1InfoTreeAfterBlock
-// reads UpdateL1InfoTree/UpdateL1InfoTreeV2 logs and state from; l1Finality caps its search range
+// reads UpdateL1InfoTree/UpdateL1InfoTreeV2 logs and state from; l1Finality caps its search range.
+// l2GERAddrs is the per-network GlobalExitRootManagerL2 contract address map backing
+// findL2InjectionBlockBackwards (see GERSource.l2GERAddrs); nil/empty simply disables that
+// fallback for every network. l2InjectionLookbackBlocks bounds how far back that same fallback
+// scans (see GERSource.l2InjectionLookbackBlocks); a value <= 0 falls back to
+// bridgetracker.DefaultL2InjectionLookbackBlocks
 func NewGERSource(
 	finder NetworkURLResolver, clients EthClientResolver, contractGlobalExitRootAddress common.Address,
-	l1Finality aggkittypes.BlockNumberFinality, logger aggkitcommon.Logger,
+	l1Finality aggkittypes.BlockNumberFinality, l2GERAddrs map[uint32]common.Address,
+	l2InjectionLookbackBlocks uint64, logger aggkitcommon.Logger,
 ) *GERSource {
 	return &GERSource{
 		logger:                        logger,
@@ -49,6 +77,8 @@ func NewGERSource(
 		clients:                       clients,
 		ContractGlobalExitRootAddress: contractGlobalExitRootAddress,
 		L1BlockFinality:               l1Finality,
+		l2GERAddrs:                    l2GERAddrs,
+		l2InjectionLookbackBlocks:     l2InjectionLookbackBlocks,
 	}
 }
 
@@ -274,9 +304,17 @@ func (s *GERSource) InjectedGERAtIndex(
 	ger := common.HexToHash(string(leaf.GlobalExitRoot))
 	mer := common.HexToHash(string(leaf.MainnetExitRoot))
 	rer := common.HexToHash(string(leaf.RollupExitRoot))
+
+	// leaf.BlockNumber/Timestamp are always the L1 event that produced the leaf, even for this L2
+	// lookup (see InjectedL1InfoLeafHandler) — they never describe the L2 injection block, and
+	// must not be presented as if they did (that conflation was #1818). The actual L2 injection
+	// block/timestamp, when the destination's bridge-service instance reports them, go on the
+	// separate L2BlockNumber/L2BlockTimestamp fields instead — left nil otherwise, rather than
+	// falling back to the L1 block, so WaitingGERInjectionResolver can honestly report
+	// InjectedGERResult.L2InjectedGER as absent instead of a wrong value
 	blockNumber := leaf.BlockNumber
 	timestamp := leaf.Timestamp
-	return &trackertypes.GERData{
+	gerData := &trackertypes.GERData{
 		NetworkID:      bridge.DestinationNetwork,
 		GER:            &ger,
 		MER:            &mer,
@@ -284,7 +322,122 @@ func (s *GERSource) InjectedGERAtIndex(
 		LERType:        trackertypes.LERTypeNA,
 		BlockNumber:    &blockNumber,
 		BlockTimestamp: &timestamp,
-	}, nil
+	}
+	if leaf.InjectedL2BlockNumber != nil {
+		l2BlockNumber := *leaf.InjectedL2BlockNumber
+		gerData.L2BlockNumber = &l2BlockNumber
+		if leaf.InjectedL2BlockTimestamp != nil {
+			l2Timestamp := *leaf.InjectedL2BlockTimestamp
+			gerData.L2BlockTimestamp = &l2Timestamp
+		}
+		return gerData, nil
+	}
+
+	// The destination's bridge-service instance predates injected_l2_block_num (see #1818): fall
+	// back to finding the injection ourselves, straight off the destination network's own L2, if
+	// its GlobalExitRootManagerL2 address is configured (l2GERAddrs). Best effort — any failure
+	// here just leaves L2BlockNumber/L2BlockTimestamp nil, same as when the fallback isn't
+	// configured at all; it must never fail InjectedGERAtIndex itself over this
+	l2BlockNumber, l2Timestamp, err := s.findL2InjectionBlockBackwards(ctx, bridge.DestinationNetwork, ger)
+	if err != nil {
+		s.logger.Warnf("finding L2 injection block for GER %s on network %d: %v",
+			ger.Hex(), bridge.DestinationNetwork, err)
+		return gerData, nil
+	}
+	gerData.L2BlockNumber = l2BlockNumber
+	gerData.L2BlockTimestamp = l2Timestamp
+	return gerData, nil
+}
+
+// findL2InjectionBlockBackwards scans backward, in fixed-size chunks (mirroring
+// SettlementSource.findEventUpdateL1InfoTreeBackwards), for the UpdateHashChainValue event that
+// injected ger into the GlobalExitRootManagerL2 contract on networkID — used only as a fallback
+// when that network's bridge-service instance does not report the injection block itself (see
+// InjectedGERAtIndex). Returns (nil, nil, nil) — not an error — when networkID has no configured
+// l2GERAddrs entry (the fallback is simply not available for it) or the scan reaches genesis, or
+// s.l2InjectionLookbackBlocks (see GERSource.l2InjectionLookbackBlocks), without finding the
+// event; the timestamp alone can be (non-nil, nil) if resolving it off the found block's hash
+// fails, since the block number is already a genuine, useful answer on its own
+func (s *GERSource) findL2InjectionBlockBackwards(
+	ctx context.Context, networkID uint32, ger common.Hash,
+) (blockNumber, timestamp *uint64, err error) {
+	addr, ok := s.l2GERAddrs[networkID]
+	if !ok {
+		return nil, nil, nil // fallback not configured for this network, not an error (see doc comment)
+	}
+	client, err := s.clients.RPCClientFor(ctx, networkID)
+	if err != nil {
+		return nil, nil, err
+	}
+	l2GERManager, err := agglayergerl2.NewAgglayergerl2(addr, client)
+	if err != nil {
+		return nil, nil, fmt.Errorf("binding GlobalExitRootManagerL2 contract at %s: %w", addr, err)
+	}
+	head, err := client.CustomHeaderByNumber(ctx, &aggkittypes.LatestBlock)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetching latest block of network %d: %w", networkID, err)
+	}
+
+	lookback := s.l2InjectionLookbackBlocks
+	if lookback == 0 {
+		lookback = bridgetracker.DefaultL2InjectionLookbackBlocks
+	}
+	// floor is the lowest block the scan will look at: head.Number - lookback, or genesis (0)
+	// if the network's chain is shorter than that
+	floor := uint64(0)
+	if head.Number > lookback {
+		floor = head.Number - lookback
+	}
+
+	toBlock := head.Number
+	for {
+		fromBlock := floor
+		if toBlock-floor > bridgeservicefinder.DefaultBlockChunkSize {
+			fromBlock = toBlock - bridgeservicefinder.DefaultBlockChunkSize
+		}
+
+		end := toBlock
+		found, filterErr := s.filterUpdateHashChainValue(ctx, l2GERManager, fromBlock, end, ger)
+		if filterErr != nil {
+			return nil, nil, fmt.Errorf("filtering UpdateHashChainValue logs [%d,%d] on network %d: %w",
+				fromBlock, end, networkID, filterErr)
+		}
+		if found != nil {
+			block := found.BlockNumber
+			ts, tsErr := blockTimestamp(ctx, client, found.BlockHash)
+			if tsErr != nil {
+				return &block, nil, fmt.Errorf("resolving timestamp of block %d: %w", block, tsErr)
+			}
+			return &block, &ts, nil
+		}
+		if fromBlock == floor {
+			// scanned back to genesis or the configured lookback limit, the injection event
+			// genuinely isn't there (within that window)
+			return nil, nil, nil
+		}
+		toBlock = fromBlock - 1
+	}
+}
+
+// filterUpdateHashChainValue returns the most recent UpdateHashChainValue log for ger within
+// [fromBlock, toBlock] on l2GERManager, or nil if none. The event's first indexed topic is the
+// GER itself, so the topic filter alone does the matching — no need to decode every log in range
+func (s *GERSource) filterUpdateHashChainValue(
+	ctx context.Context, l2GERManager *agglayergerl2.Agglayergerl2, fromBlock, toBlock uint64, ger common.Hash,
+) (*gethtypes.Log, error) {
+	iter, err := l2GERManager.FilterUpdateHashChainValue(
+		&bind.FilterOpts{Start: fromBlock, End: &toBlock, Context: ctx}, [][32]byte{ger}, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	var found *gethtypes.Log
+	for iter.Next() {
+		raw := iter.Event.Raw
+		found = &raw
+	}
+	return found, iter.Error()
 }
 
 // coveringLeafIndex resolves the L1 info tree index whose leaf covers the bridge, asking
