@@ -349,6 +349,12 @@ type L1InfoTreeLeafResponse struct {
 	// Only set by the injected-l1-info-leaf endpoint when network_id is the L2's own; nil for an
 	// L1 (network_id=0) lookup, where BlockNumber above already is the relevant block
 	InjectedL2BlockNumber *uint64 `json:"injected_l2_block_num,omitempty" example:"654321"`
+
+	// Timestamp of the L2 block above, in seconds since the Unix epoch. Only set alongside
+	// InjectedL2BlockNumber; may briefly be nil for a row written before l2gersync persisted
+	// timestamps if backfilling it from the L2 RPC failed (transient), in which case it resolves
+	// on a later request
+	InjectedL2Timestamp *uint64 `json:"injected_l2_timestamp,omitempty" example:"1684500123"`
 }
 
 // SyncStatus represents the bridge synchronization status for both L1 and L2 networks

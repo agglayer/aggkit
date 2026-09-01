@@ -170,6 +170,8 @@ func (d *downloaderLegacy) Download(
 		}
 
 		if gerInfo != nil {
+			timestamp := header.Timestamp
+			gerInfo.Timestamp = &timestamp
 			block.Events = []any{newEvent(gerInfo, GEREventTypeInsert)}
 
 			// Update nextIndex based on the last injected GER info

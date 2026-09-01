@@ -30,7 +30,12 @@ type GlobalExitRootInfo struct {
 	L1InfoTreeIndex uint32         `meddler:"l1_info_tree_index"`
 	BlockNum        uint64         `meddler:"block_num"`
 	BlockPosition   uint64         `meddler:"block_pos"`
-	Removed         bool           `meddler:"-"`
+	// Timestamp of the L2 block where the GER was injected. Nullable: rows written before this
+	// column existed have it NULL, and GetFirstGERAfterL1InfoTreeIndex backfills it lazily from
+	// the L2 RPC (see L2GERSync.GetFirstGERAfterL1InfoTreeIndex) rather than eagerly migrating
+	// every historical row
+	Timestamp *uint64 `meddler:"block_timestamp"`
+	Removed   bool    `meddler:"-"`
 }
 
 // RemoveGEREvent represents a remove GER event stored in the database
@@ -230,7 +235,7 @@ func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
 	ctx context.Context, l1InfoTreeIndex uint32) (GlobalExitRootInfo, error) {
 	e := GlobalExitRootInfo{}
 	err := meddler.QueryRow(p.database, &e, `
-		SELECT l1_info_tree_index, block_num, global_exit_root, block_pos
+		SELECT l1_info_tree_index, block_num, global_exit_root, block_pos, block_timestamp
 		FROM imported_global_exit_root_v2
 		WHERE l1_info_tree_index >= $1
 		ORDER BY l1_info_tree_index ASC LIMIT 1;
@@ -245,6 +250,21 @@ func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
 	return e, nil
 }
 
+// UpdateTimestamp backfills the timestamp column of an already-inserted injected GER row,
+// identified by its (block_num, block_pos) primary key. Used when a row predates timestamp
+// persistence (nullable column, see l2gersync0006.sql) — see
+// L2GERSync.GetFirstGERAfterL1InfoTreeIndex, which resolves the missing value from the L2 RPC and
+// calls this to persist it so the RPC lookup is not repeated on every future read of that row.
+func (p *processor) UpdateTimestamp(ctx context.Context, blockNum, blockPosition, timestamp uint64) error {
+	_, err := p.database.ExecContext(ctx,
+		`UPDATE imported_global_exit_root_v2 SET block_timestamp = $1 WHERE block_num = $2 AND block_pos = $3;`,
+		timestamp, blockNum, blockPosition)
+	if err != nil {
+		return fmt.Errorf("failed to backfill timestamp for block=%d, pos=%d: %w", blockNum, blockPosition, err)
+	}
+	return nil
+}
+
 // GetInjectedGERsForRange retrieves all injected global exit roots within a specified block range.
 // It returns a map where the keys are the global exit root hashes and the values are the
 // corresponding GlobalExitRootInfo containing the L1 info tree index and block number.
@@ -257,7 +277,7 @@ func (p *processor) GetInjectedGERsForRange(
 	var results []*GlobalExitRootInfo
 
 	err := meddler.QueryAll(p.database, &results, `
-		SELECT global_exit_root, l1_info_tree_index, block_num, block_pos
+		SELECT global_exit_root, l1_info_tree_index, block_num, block_pos, block_timestamp
 		FROM imported_global_exit_root_v2
 		WHERE block_num >= $1 AND block_num <= $2;
 	`, fromBlock, toBlock)

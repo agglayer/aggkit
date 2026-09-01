@@ -41,6 +41,9 @@ type L2GERSync struct {
 	driver    *sync.EVMDriver
 	processor *processor
 	cfg       Config
+	// l2Client is only used to lazily backfill the timestamp of rows written before
+	// GlobalExitRootInfo persisted it (see GetFirstGERAfterL1InfoTreeIndex)
+	l2Client aggkittypes.BaseEthereumClienter
 }
 
 // New initializes and returns a new instance of L2GERSync
@@ -110,6 +113,7 @@ func New(
 		driver:    driver,
 		processor: processor,
 		cfg:       cfg,
+		l2Client:  l2Client,
 	}, nil
 }
 
@@ -148,11 +152,38 @@ func (s *L2GERSync) Start(ctx context.Context) {
 	s.driver.Sync(ctx, &s.cfg.InitialBlockNum)
 }
 
-// GetFirstGERAfterL1InfoTreeIndex returns the first GER after a specified L1 info tree index
+// GetFirstGERAfterL1InfoTreeIndex returns the first GER after a specified L1 info tree index. If
+// the resolved row predates timestamp persistence (nullable column, see l2gersync0006.sql), its
+// timestamp is resolved from the L2 RPC and backfilled into the row before returning, so callers
+// (e.g. bridgeservice.InjectedL1InfoLeafHandler) get it transparently on the very first request
+// that hits a legacy row, without knowing about the gap themselves.
 func (s *L2GERSync) GetFirstGERAfterL1InfoTreeIndex(
 	ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
 ) (GlobalExitRootInfo, error) {
-	return s.processor.GetFirstGERAfterL1InfoTreeIndex(ctx, atOrAfterL1InfoTreeIndex)
+	info, err := s.processor.GetFirstGERAfterL1InfoTreeIndex(ctx, atOrAfterL1InfoTreeIndex)
+	if err != nil || info.Timestamp != nil {
+		return info, err
+	}
+	if s.l2Client == nil {
+		// Only expected in tests that build L2GERSync directly instead of through New; every
+		// production instance always has one
+		log.Warnf("no L2 client configured, skipping timestamp backfill for injected GER at block %d", info.BlockNum)
+		return info, nil
+	}
+
+	header, err := s.l2Client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(info.BlockNum))
+	if err != nil {
+		// Best effort: the row still lacks a timestamp, but every other field resolved fine, so
+		// let the caller have those rather than failing the whole lookup over this
+		log.Warnf("failed to backfill timestamp for injected GER at block %d: %v", info.BlockNum, err)
+		return info, nil
+	}
+
+	if err := s.processor.UpdateTimestamp(ctx, info.BlockNum, info.BlockPosition, header.Time); err != nil {
+		log.Warnf("failed to persist backfilled timestamp for injected GER at block %d: %v", info.BlockNum, err)
+	}
+	info.Timestamp = &header.Time
+	return info, nil
 }
 
 // GetInjectedGERsForRange retrieves all injected global exit roots within a specified block range.
