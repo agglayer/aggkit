@@ -7,6 +7,8 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -32,6 +34,13 @@ type downloaderSovereign struct {
 	l1GERManager       *agglayerger.Agglayerger
 	rh                 *sync.RetryHandler
 	syncBlockChunkSize uint64
+
+	// removalScanMaxRange caches the eth_getLogs block-range cap learned from an RPC "query exceeds max
+	// block range" error (see scanRemovedGERs). Zero means "not learned yet". Once learned, subsequent
+	// removal scans go straight to the chunked query instead of repeating the unbounded call, which
+	// would otherwise fail (and log an ERROR) again with the exact same error on every retry. Only
+	// touched from the single Download() goroutine, so a plain field is safe.
+	removalScanMaxRange uint64
 }
 
 func newDownloaderSovereign(
@@ -197,7 +206,7 @@ func (d *downloaderSovereign) buildAppender(
 // non-zero). Any read/scan error is treated as "not removed" (never dereferences a nil value), so the
 // caller keeps retrying rather than skipping a stale insert incorrectly.
 func (d *downloaderSovereign) isGERRemovedFromL2(ctx context.Context, fromBlock uint64, ger common.Hash) bool {
-	removedEvents, err := filterRemovedGERs(ctx, d.l2GERManager, fromBlock, nil, [][common.HashLength]byte{ger})
+	removedEvents, err := d.scanRemovedGERs(ctx, fromBlock, ger)
 	if err != nil {
 		log.Errorf("failed to scan for GER %s removal events from block %d: %v", ger.Hex(), fromBlock, err)
 		return false
@@ -213,4 +222,87 @@ func (d *downloaderSovereign) isGERRemovedFromL2(ctx context.Context, fromBlock 
 	}
 
 	return timestampL2.Cmp(common.Big0) == 0
+}
+
+// scanRemovedGERs scans for UpdateRemovalHashChainValue events matching ger from fromBlock to the
+// current head. The scan is open-ended (toBlock == nil, i.e. "latest") because the insert block can be
+// arbitrarily far behind the head. It adapts to the RPC provider's eth_getLogs block-range cap purely by
+// parsing the "query exceeds max block range" error via aggkitcommon.ParseMaxRangeFromError - no config
+// parameter involved - the same pattern used by L2EVMGERReader.GetRemovedGERsForRange and
+// AgglayerBridgeL2Reader.fetchUnsetClaimsWithFallbackChunking/getUnsetClaimsInChunks.
+//
+// The one deviation from those siblings: this is invoked on every appender retry while a GER stays
+// unresolved, and fromBlock keeps being just as far behind an ever-growing head on every retry, so their
+// "always try the full range first, chunk on error" approach would repeat the doomed unbounded call -
+// and its ERROR log - forever. d.removalScanMaxRange caches the learned cap across calls so that, once
+// learned, later calls skip straight to the chunked path in fetchRemovedGERsChunk below.
+func (d *downloaderSovereign) scanRemovedGERs(
+	ctx context.Context, fromBlock uint64, ger common.Hash,
+) ([]*agglayertypes.RemovedGER, error) {
+	gers := [][common.HashLength]byte{ger}
+
+	if d.removalScanMaxRange == 0 {
+		removedEvents, err := filterRemovedGERs(ctx, d.l2GERManager, fromBlock, nil, gers)
+		if err == nil {
+			return removedEvents, nil
+		}
+
+		maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
+		if !isMaxRangeErr {
+			return nil, err
+		}
+		d.removalScanMaxRange = maxRange
+	}
+
+	toBlock, headErr := d.GetLastFinalizedBlock(ctx)
+	if headErr != nil {
+		return nil, fmt.Errorf("failed to resolve chain head for chunked removal scan: %w", headErr)
+	}
+	if fromBlock > toBlock {
+		// fromBlock (the insert block) is already ahead of the resolved head; nothing to scan yet.
+		return nil, nil
+	}
+
+	log.Debugf("scanning for GER %s removal in chunks of max %d blocks over range [%d, %d]",
+		ger.Hex(), d.removalScanMaxRange, fromBlock, toBlock)
+
+	return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, d.removalScanMaxRange,
+		func(ctx context.Context, from, to uint64) ([]*agglayertypes.RemovedGER, error) {
+			return d.fetchRemovedGERsChunk(ctx, from, to, gers)
+		},
+		func(all, chunk []*agglayertypes.RemovedGER) []*agglayertypes.RemovedGER {
+			return append(all, chunk...)
+		},
+		[]*agglayertypes.RemovedGER{},
+	)
+}
+
+// fetchRemovedGERsChunk fetches one [fromBlock, toBlock] chunk directly and, on a "range too large"
+// error, re-learns the cap and recurses through ChunkedRangeQuery - mirroring
+// AgglayerBridgeL2Reader.fetchUnsetClaimsWithFallbackChunking/getUnsetClaimsInChunks - so a chunk that is
+// itself still too large (e.g. the provider's cap shrank since it was first learned) keeps adapting
+// instead of failing the whole scan outright.
+func (d *downloaderSovereign) fetchRemovedGERsChunk(
+	ctx context.Context, fromBlock, toBlock uint64, gers [][common.HashLength]byte,
+) ([]*agglayertypes.RemovedGER, error) {
+	removedEvents, err := filterRemovedGERs(ctx, d.l2GERManager, fromBlock, &toBlock, gers)
+	if err == nil {
+		return removedEvents, nil
+	}
+
+	maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
+	if !isMaxRangeErr {
+		return nil, err
+	}
+	d.removalScanMaxRange = maxRange
+
+	return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
+		func(ctx context.Context, from, to uint64) ([]*agglayertypes.RemovedGER, error) {
+			return d.fetchRemovedGERsChunk(ctx, from, to, gers)
+		},
+		func(all, chunk []*agglayertypes.RemovedGER) []*agglayertypes.RemovedGER {
+			return append(all, chunk...)
+		},
+		[]*agglayertypes.RemovedGER{},
+	)
 }

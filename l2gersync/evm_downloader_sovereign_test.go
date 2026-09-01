@@ -339,3 +339,144 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 		})
 	}
 }
+
+// TestDownloaderSovereign_IsGERRemovedFromL2_RecoversFromMaxBlockRangeError is a regression test for a
+// production incident: isGERRemovedFromL2 scans for the (S-log) removal event from fromBlock (the
+// insert block, which can be arbitrarily far behind the head) to "latest" (bind.FilterOpts.End == nil).
+// Some RPC providers cap eth_getLogs to a maximum block range and reject that open-ended query with e.g.
+// "query exceeds max block range 100000" once fromBlock is more than that many blocks behind the head.
+// Before the fix, this error was just logged and treated as "not removed" forever, so the recovery path
+// could never unstick a stale insert once the chain had advanced past the provider's range cap. The fix
+// (scanRemovedGERs) detects that specific error, resolves the current head, and retries chunked -
+// mirroring L2EVMGERReader.GetRemovedGERsForRange.
+func TestDownloaderSovereign_IsGERRemovedFromL2_RecoversFromMaxBlockRangeError(t *testing.T) {
+	t.Parallel()
+
+	fromBlock := uint64(5)
+	latestBlock := uint64(250)
+	l2GERAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+	testGER := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+	testHashChainValue := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+
+	mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+	mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+	mockL1InfoTreeSync := l2gersyncmocks.NewL1InfoTreeQuerier(t)
+	rh := &sync.RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      time.Millisecond,
+	}
+
+	// 1st attempt: the open-ended (fromBlock -> latest) scan is rejected by the provider.
+	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).
+		Return(nil, fmt.Errorf("query exceeds max block range 100")).Once()
+
+	// The current head is resolved so the scan can be retried with an explicit, chunkable toBlock.
+	mockL2Client.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
+		Return(&aggkittypes.BlockHeader{Number: latestBlock}, nil).Once()
+
+	// Chunk 1 [5,104]: no removal event.
+	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Once()
+	// Chunk 2 [105,204]: the removal event lives here, proving results across chunks are combined
+	// rather than only the first or last chunk being considered.
+	removalLog := ethtypes.Log{
+		Address:     l2GERAddr,
+		Topics:      []common.Hash{removeGEREventSignature, testGER, testHashChainValue},
+		Data:        []byte{},
+		BlockNumber: 150,
+		TxHash:      common.HexToHash("0x222"),
+		TxIndex:     0,
+		BlockHash:   common.HexToHash("0xdef456"),
+		Index:       1,
+	}
+	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]ethtypes.Log{removalLog}, nil).Once()
+	// Chunk 3 [205,250]: no removal event.
+	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Once()
+
+	// (S-map) L2 globalExitRootMap reads 0, so the AND of S-log and S-map confirms the GER is removed.
+	mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).
+		Return(make([]byte, 32), nil).Once()
+
+	downloader, err := newDownloaderSovereign(
+		mockL2Client,
+		l2GERAddr,
+		mockL1InfoTreeSync,
+		mockL1Client,
+		common.HexToAddress("0x0000000000000000000000000000000000000001"), // l1GERAddr
+		rh,
+		aggkittypes.LatestBlock,
+		time.Millisecond*10,
+		uint64(10), // syncBlockChunkSize (unrelated to the removal-scan chunking under test)
+	)
+	require.NoError(t, err)
+
+	removed := downloader.isGERRemovedFromL2(context.Background(), fromBlock, testGER)
+	require.True(t, removed, "GER must be reported removed once the chunked scan finds the removal event")
+
+	mockL2Client.AssertExpectations(t)
+	mockL1Client.AssertExpectations(t)
+	mockL1InfoTreeSync.AssertExpectations(t)
+}
+
+// TestDownloaderSovereign_IsGERRemovedFromL2_CachesLearnedMaxRangeAcrossCalls proves the fix for the
+// noisy follow-up to the max-range bug: isGERRemovedFromL2 runs on every appender retry while a GER stays
+// unresolved, so without caching the learned range cap, the doomed open-ended scan (and its ERROR log)
+// would repeat on every single retry forever, even though the recovery path itself already works. Once
+// the cap is learned from a first "query exceeds max block range" error, a second call (any ger/fromBlock)
+// must skip straight to the chunked scan: only mocking the head lookup + one chunked FilterLogs call
+// (and no error-returning "wide open" call, which is not even stubbed here) proves it never retries the
+// doomed unbounded query again.
+func TestDownloaderSovereign_IsGERRemovedFromL2_CachesLearnedMaxRangeAcrossCalls(t *testing.T) {
+	t.Parallel()
+
+	l2GERAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+	firstGER := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+	secondGER := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef12345678ab")
+
+	mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+	mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+	mockL1InfoTreeSync := l2gersyncmocks.NewL1InfoTreeQuerier(t)
+	rh := &sync.RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      time.Millisecond,
+	}
+
+	// --- 1st call: learns the range cap the same way as the recovery test above. ---
+	firstLatestBlock := uint64(150)
+	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).
+		Return(nil, fmt.Errorf("query exceeds max block range 1000")).Once()
+	mockL2Client.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
+		Return(&aggkittypes.BlockHeader{Number: firstLatestBlock}, nil).Once()
+	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Once()
+
+	downloader, err := newDownloaderSovereign(
+		mockL2Client,
+		l2GERAddr,
+		mockL1InfoTreeSync,
+		mockL1Client,
+		common.HexToAddress("0x0000000000000000000000000000000000000001"), // l1GERAddr
+		rh,
+		aggkittypes.LatestBlock,
+		time.Millisecond*10, // waitForNewBlocksPeriod
+		uint64(10),          // syncBlockChunkSize (unrelated to the removal-scan chunking under test)
+	)
+	require.NoError(t, err)
+
+	removed := downloader.isGERRemovedFromL2(context.Background(), uint64(5), firstGER)
+	require.False(t, removed, "no removal event found on the (single, cap-fitting) chunk")
+	require.Equal(t, uint64(1000), downloader.removalScanMaxRange, "the learned cap must be cached")
+
+	// --- 2nd call (different GER/block): must go straight to the chunked path. Only the head lookup and
+	// one chunked FilterLogs call are stubbed; if the code repeated the unbounded call first, testify
+	// would panic on an unexpected FilterLogs invocation instead of matching one of these. ---
+	secondLatestBlock := uint64(300)
+	mockL2Client.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
+		Return(&aggkittypes.BlockHeader{Number: secondLatestBlock}, nil).Once()
+	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Once()
+
+	removed = downloader.isGERRemovedFromL2(context.Background(), uint64(20), secondGER)
+	require.False(t, removed, "no removal event found on the (single, cap-fitting) chunk")
+
+	mockL2Client.AssertExpectations(t)
+	mockL1Client.AssertExpectations(t)
+	mockL1InfoTreeSync.AssertExpectations(t)
+}
