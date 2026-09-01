@@ -160,6 +160,25 @@
 // The rollup manager address is always part of the watched-address filter (even when the initial
 // enumeration found zero rollups), so the very first rollups can be discovered this way.
 //
+// # Ignoring known-dead networks (Config.IgnoreNetworkIDs)
+//
+// A networkID listed in Config.IgnoreNetworkIDs is skipped entirely from on-chain resolution: it is
+// excluded from buildInitialCache's enumeration loop (no RollupIDToRollupData call, no contract
+// reader, no health probe) and from the listener's discoverRollup (a CreateNewRollup /
+// CreateNewAggchain / AddExistingRollup event announcing it is a no-op, and its contract address is
+// never added to the watched set). This exists to avoid known-dead networks - decommissioned or
+// permanently unreachable test rollups - from slowing down startup and event processing with RPC
+// calls and health-check timeouts that can never succeed.
+//
+// The ignore list only ever skips on-chain inspection; it never suppresses a static override. A
+// networkID present in both Config.IgnoreNetworkIDs and Config.BridgeURLs is still served from
+// config (the config-seeding step in buildInitialCache runs before, and independently of, the
+// enumeration loop the ignore list affects), but unlike an ordinary config-sourced entry it is also
+// exempted from the Start-time /health probe (see probeAll): probing a known-dead network would
+// defeat the point of ignoring it, incurring the health-check timeout and, under
+// RequireAllHealthyOnStart, possibly failing startup outright. Its cache entry is served with
+// healthy defaulting to false (never probed).
+//
 // # Error handling at Start (fail loudly vs graceful skip)
 //
 // During the initial cache build a per-network outcome is classified as either a hard failure or a

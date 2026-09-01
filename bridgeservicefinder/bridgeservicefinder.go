@@ -69,6 +69,21 @@ type finder struct {
 	// Start from the enumeration and is the routing table the (S4) event listener will use to apply
 	// an incoming log to the correct cache entry.
 	addrToNetworkID map[common.Address]uint32
+
+	// ignoreNetworkIDs is the set built from Config.IgnoreNetworkIDs. Networks in this set are
+	// skipped entirely during enumeration (see buildInitialCache) and live discovery (see listener's
+	// discoverRollup).
+	ignoreNetworkIDs map[uint32]struct{}
+}
+
+// buildIgnoreSet turns Config.IgnoreNetworkIDs into a set for O(1) membership checks.
+func buildIgnoreSet(ids []uint32) map[uint32]struct{} {
+	set := make(map[uint32]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+
+	return set
 }
 
 // New constructs a bridge service finder from cfg and the injectable dependencies in opts. Any
@@ -114,16 +129,17 @@ func New(cfg Config, opts Options) (Finder, error) {
 	}
 
 	return &finder{
-		cfg:             cfg,
-		logger:          logger,
-		rollupManager:   rollupManager,
-		readerFactory:   readerFactory,
-		healthChecker:   healthChecker,
-		logFilterer:     logFilterer,
-		ethClient:       opts.EthClient,
-		resolver:        newResolver(cfg.BridgeURLs, cfg.RPCURLs, DefaultBridgeServicePort),
-		cache:           newCache(),
-		addrToNetworkID: make(map[common.Address]uint32),
+		cfg:              cfg,
+		logger:           logger,
+		rollupManager:    rollupManager,
+		readerFactory:    readerFactory,
+		healthChecker:    healthChecker,
+		logFilterer:      logFilterer,
+		ethClient:        opts.EthClient,
+		resolver:         newResolver(cfg.BridgeURLs, cfg.RPCURLs, DefaultBridgeServicePort),
+		cache:            newCache(),
+		addrToNetworkID:  make(map[common.Address]uint32),
+		ignoreNetworkIDs: buildIgnoreSet(cfg.IgnoreNetworkIDs),
 	}, nil
 }
 
@@ -197,7 +213,9 @@ func (f *finder) Start(ctx context.Context) error {
 // buildInitialCache enumerates rollups 1..RollupCount(), resolves each network's URLs and installs
 // a cache entry (source-tagged, healthy defaults to false and is set by probeAll). Config-only
 // networks (e.g. network 0 / L1) present in Config.BridgeURLs are also installed, together with
-// their Config.RPCURLs override if any. Networks with no source are skipped.
+// their Config.RPCURLs override if any. Networks with no source are skipped. Networks listed in
+// Config.IgnoreNetworkIDs are skipped entirely (no on-chain read at all), though a config override
+// for them, if any, was already installed by the seeding step above.
 func (f *finder) buildInitialCache(ctx context.Context) error {
 	// Seed config-only entries first (including network 0 / L1) so they are served even if they are
 	// not among the enumerated rollups. Enumeration re-installs an enumerated network's entry with
@@ -221,6 +239,11 @@ func (f *finder) buildInitialCache(ctx context.Context) error {
 	for rollupID := uint32(1); rollupID <= count; rollupID++ {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+
+		if _, ignored := f.ignoreNetworkIDs[rollupID]; ignored {
+			f.logger.Infof("network %d is in IgnoreNetworkIDs, skipping on-chain resolution", rollupID)
+			continue
 		}
 
 		if err := f.resolveNetwork(ctx, rollupID); err != nil {
@@ -311,12 +334,21 @@ func (f *finder) resolveNetwork(ctx context.Context, rollupID uint32) error {
 }
 
 // probeAll runs a /health probe against every cached entry, updating each entry's healthy flag, and
-// returns the number of entries that were unreachable.
+// returns the number of entries that were unreachable. A networkID in Config.IgnoreNetworkIDs is
+// skipped even if it has a cache entry (installed by the config-seeding step for a network that is
+// both ignored and config-overridden): probing it would defeat the point of ignoring a known-dead
+// network (the health-check timeout, and a possible ErrServicesUnhealthyOnStart under
+// RequireAllHealthyOnStart, are exactly what IgnoreNetworkIDs is meant to avoid). Its entry is still
+// served by GetURL with healthy defaulting to false (never probed).
 func (f *finder) probeAll(ctx context.Context) int {
 	unhealthy := 0
 
 	f.cache.mu.Lock()
 	for networkID, entry := range f.cache.entries {
+		if _, ignored := f.ignoreNetworkIDs[networkID]; ignored {
+			continue
+		}
+
 		healthy := f.healthChecker.IsHealthy(ctx, entry.url)
 		entry.healthy = healthy
 		f.cache.entries[networkID] = entry

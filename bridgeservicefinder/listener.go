@@ -63,6 +63,11 @@ type listener struct {
 	// addrToNetworkID, is only mutated on the listener goroutine.
 	watchedAddresses []common.Address
 
+	// ignoreNetworkIDs is the set built from Config.IgnoreNetworkIDs. A rollup-manager lifecycle
+	// event announcing one of these networkIDs is skipped by discoverRollup: no on-chain reads, no
+	// cache entry, and its contract is never added to watchedAddresses.
+	ignoreNetworkIDs map[uint32]struct{}
+
 	blockFinality  aggkittypes.BlockNumberFinality
 	pollInterval   time.Duration
 	blockChunkSize uint64
@@ -170,6 +175,7 @@ func newListener(
 		ethClient:              ethClient,
 		addrToNetworkID:        addrToNetworkID,
 		watchedAddresses:       watched,
+		ignoreNetworkIDs:       buildIgnoreSet(cfg.IgnoreNetworkIDs),
 		blockFinality:          cfg.BlockFinality,
 		pollInterval:           cfg.PollInterval.Duration,
 		blockChunkSize:         cfg.BlockChunkSize,
@@ -431,13 +437,20 @@ func (l *listener) processRollupManagerLog(ctx context.Context, lg types.Log) {
 // discoverRollup registers a rollup that was attached to the rollup manager after Start. It resolves
 // the rollup's bridge service URL (same priority rules as the initial cache build), installs a cache
 // entry and adds the rollup contract to the watched set so its later URL-changing events are picked
-// up. It is a no-op if the rollup contract is already watched.
+// up. It is a no-op if the rollup contract is already watched, or if rollupID is listed in
+// Config.IgnoreNetworkIDs (in which case it is never added to the watched set either, so its later
+// events are not observed).
 //
 // Unlike the initial cache build (which aborts Start on a hard error), discovery runs on the polling
 // goroutine and must not tear it down, so failures are logged rather than propagated. The address is
 // still registered on failure so a subsequent URL event can populate the entry.
 func (l *listener) discoverRollup(ctx context.Context, rollupID uint32, addr common.Address) {
 	if _, known := l.addrToNetworkID[addr]; known {
+		return
+	}
+
+	if _, ignored := l.ignoreNetworkIDs[rollupID]; ignored {
+		l.logger.Debugf("network %d (%s) is in IgnoreNetworkIDs, skipping live discovery", rollupID, addr)
 		return
 	}
 
