@@ -17,7 +17,7 @@
     "paths": {
         "/activity/from/{from_address}": {
             "get": {
-                "description": "Scans every bridge service the tracker knows about for bridges sent by\nfrom_address and reports each one's claim state, exactly as the bridge service\nreported it. Results are cached: a bridge already known to be claimed, with its\nclaim record already fetched, is not rechecked on a later call. Passing\nincludeTracking=true additionally registers every still-unclaimed bridge with\nthe bridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / errored while checking).",
+                "description": "Scans every bridge service the tracker knows about for bridges sent by\nfrom_address and reports each one's claim state, exactly as the bridge service\nreported it. Results are cached: a bridge already known to be claimed, with its\nclaim record already fetched, is not rechecked on a later call. Passing\nincludeTracking=true additionally registers every still-unclaimed bridge with\nthe bridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / errored while checking). A network whose bridge service could not be\nscanned is skipped and reported in the \"warnings\" field instead of failing the\nwhole request.",
                 "produces": [
                     "application/json"
                 ],
@@ -324,6 +324,26 @@
                     "items": {
                         "type": "integer"
                     }
+                },
+                "warnings": {
+                    "description": "Warnings lists every network whose bridge service could not be scanned this call; absent\nwhen every configured network was scanned successfully. Bridges may be incomplete for the\nnetworks listed here, but is still valid for every other network",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.ActivityWarningItem"
+                    }
+                }
+            }
+        },
+        "api.ActivityWarningItem": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "Message is the error encountered while scanning NetworkID",
+                    "type": "string"
+                },
+                "network_id": {
+                    "description": "NetworkID is the network whose bridge service could not be scanned",
+                    "type": "integer"
                 }
             }
         },
@@ -530,20 +550,6 @@
                         1000000000,
                         60000000000,
                         3600000000000,
-                        -9223372036854775808,
-                        9223372036854775807,
-                        1,
-                        1000,
-                        1000000,
-                        1000000000,
-                        60000000000,
-                        3600000000000,
-                        1,
-                        1000,
-                        1000000,
-                        1000000000,
-                        60000000000,
-                        3600000000000,
                         1,
                         1000,
                         1000000,
@@ -562,20 +568,6 @@
                         "Hour",
                         "minDuration",
                         "maxDuration",
-                        "Nanosecond",
-                        "Microsecond",
-                        "Millisecond",
-                        "Second",
-                        "Minute",
-                        "Hour",
-                        "minDuration",
-                        "maxDuration",
-                        "Nanosecond",
-                        "Microsecond",
-                        "Millisecond",
-                        "Second",
-                        "Minute",
-                        "Hour",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",

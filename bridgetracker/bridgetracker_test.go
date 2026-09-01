@@ -395,6 +395,36 @@ func TestActivityHandlerHappyPath(t *testing.T) {
 	require.NotZero(t, body.Bridges[0].LastUpdatedTimestamp)
 }
 
+// TestActivityHandlerScannerWarningsSurfaceInResponse verifies a network the scanner could not
+// reach never fails the request: the bridges found on every other network are still returned,
+// and the unreachable network is reported in the ActivityResponse's "warnings" field.
+func TestActivityHandlerScannerWarningsSurfaceInResponse(t *testing.T) {
+	bridge := testBridge(1)
+
+	gin.SetMode(gin.TestMode)
+	tracker := New(&Config{
+		Logger:     log.WithFields("module", "bridgetracker_test"),
+		ConfigSHA1: testConfigSHA1,
+		ActivityScanner: &fakeActivityScanner{
+			bridges:  []*domain.ScannedBridge{scannedBridge(bridge, testScannedNetworkID)},
+			warnings: []domain.ActivityWarning{{NetworkID: 7, Message: "bridge service unreachable"}},
+		},
+		ActivityClaims: &fakeActivityClaims{isClaimed: []bool{false}},
+	})
+	router := gin.New()
+	tracker.API().RegisterRoutes(router)
+
+	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex())
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	var body api.ActivityResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	require.Len(t, body.Bridges, 1)
+	require.Len(t, body.Warnings, 1)
+	require.Equal(t, uint32(7), body.Warnings[0].NetworkID)
+	require.Equal(t, "bridge service unreachable", body.Warnings[0].Message)
+}
+
 // TestActivityHandlerIsClaimedFailureReportsErrorStatusAndMessage verifies a failed isClaimed()
 // check surfaces as claimed="error" plus the failure message under errors["claim"], instead of
 // being silently reported as unclaimed.

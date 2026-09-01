@@ -5,6 +5,7 @@ package mocks
 import (
 	context "context"
 
+	domain "github.com/agglayer/aggkit/bridgetracker/domain"
 	mock "github.com/stretchr/testify/mock"
 
 	types "github.com/agglayer/aggkit/bridgeservice/types"
@@ -24,7 +25,7 @@ func (_m *ActivityClaimChecker) EXPECT() *ActivityClaimChecker_Expecter {
 }
 
 // ClaimInfo provides a mock function with given fields: ctx, bridge
-func (_m *ActivityClaimChecker) ClaimInfo(ctx context.Context, bridge *types.BridgeResponse) (*types.ClaimResponse, error) {
+func (_m *ActivityClaimChecker) ClaimInfo(ctx context.Context, bridge *domain.ScannedBridge) (*types.ClaimResponse, error) {
 	ret := _m.Called(ctx, bridge)
 
 	if len(ret) == 0 {
@@ -33,10 +34,10 @@ func (_m *ActivityClaimChecker) ClaimInfo(ctx context.Context, bridge *types.Bri
 
 	var r0 *types.ClaimResponse
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *types.BridgeResponse) (*types.ClaimResponse, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *domain.ScannedBridge) (*types.ClaimResponse, error)); ok {
 		return rf(ctx, bridge)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *types.BridgeResponse) *types.ClaimResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *domain.ScannedBridge) *types.ClaimResponse); ok {
 		r0 = rf(ctx, bridge)
 	} else {
 		if ret.Get(0) != nil {
@@ -44,7 +45,7 @@ func (_m *ActivityClaimChecker) ClaimInfo(ctx context.Context, bridge *types.Bri
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *types.BridgeResponse) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *domain.ScannedBridge) error); ok {
 		r1 = rf(ctx, bridge)
 	} else {
 		r1 = ret.Error(1)
@@ -60,14 +61,14 @@ type ActivityClaimChecker_ClaimInfo_Call struct {
 
 // ClaimInfo is a helper method to define mock.On call
 //   - ctx context.Context
-//   - bridge *types.BridgeResponse
+//   - bridge *domain.ScannedBridge
 func (_e *ActivityClaimChecker_Expecter) ClaimInfo(ctx interface{}, bridge interface{}) *ActivityClaimChecker_ClaimInfo_Call {
 	return &ActivityClaimChecker_ClaimInfo_Call{Call: _e.mock.On("ClaimInfo", ctx, bridge)}
 }
 
-func (_c *ActivityClaimChecker_ClaimInfo_Call) Run(run func(ctx context.Context, bridge *types.BridgeResponse)) *ActivityClaimChecker_ClaimInfo_Call {
+func (_c *ActivityClaimChecker_ClaimInfo_Call) Run(run func(ctx context.Context, bridge *domain.ScannedBridge)) *ActivityClaimChecker_ClaimInfo_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*types.BridgeResponse))
+		run(args[0].(context.Context), args[1].(*domain.ScannedBridge))
 	})
 	return _c
 }
@@ -77,13 +78,13 @@ func (_c *ActivityClaimChecker_ClaimInfo_Call) Return(_a0 *types.ClaimResponse, 
 	return _c
 }
 
-func (_c *ActivityClaimChecker_ClaimInfo_Call) RunAndReturn(run func(context.Context, *types.BridgeResponse) (*types.ClaimResponse, error)) *ActivityClaimChecker_ClaimInfo_Call {
+func (_c *ActivityClaimChecker_ClaimInfo_Call) RunAndReturn(run func(context.Context, *domain.ScannedBridge) (*types.ClaimResponse, error)) *ActivityClaimChecker_ClaimInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // IsClaimed provides a mock function with given fields: ctx, bridge
-func (_m *ActivityClaimChecker) IsClaimed(ctx context.Context, bridge *types.BridgeResponse) (bool, error) {
+func (_m *ActivityClaimChecker) IsClaimed(ctx context.Context, bridge *domain.ScannedBridge) (bool, error) {
 	ret := _m.Called(ctx, bridge)
 
 	if len(ret) == 0 {
@@ -92,16 +93,16 @@ func (_m *ActivityClaimChecker) IsClaimed(ctx context.Context, bridge *types.Bri
 
 	var r0 bool
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *types.BridgeResponse) (bool, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *domain.ScannedBridge) (bool, error)); ok {
 		return rf(ctx, bridge)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *types.BridgeResponse) bool); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *domain.ScannedBridge) bool); ok {
 		r0 = rf(ctx, bridge)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *types.BridgeResponse) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *domain.ScannedBridge) error); ok {
 		r1 = rf(ctx, bridge)
 	} else {
 		r1 = ret.Error(1)
@@ -117,14 +118,14 @@ type ActivityClaimChecker_IsClaimed_Call struct {
 
 // IsClaimed is a helper method to define mock.On call
 //   - ctx context.Context
-//   - bridge *types.BridgeResponse
+//   - bridge *domain.ScannedBridge
 func (_e *ActivityClaimChecker_Expecter) IsClaimed(ctx interface{}, bridge interface{}) *ActivityClaimChecker_IsClaimed_Call {
 	return &ActivityClaimChecker_IsClaimed_Call{Call: _e.mock.On("IsClaimed", ctx, bridge)}
 }
 
-func (_c *ActivityClaimChecker_IsClaimed_Call) Run(run func(ctx context.Context, bridge *types.BridgeResponse)) *ActivityClaimChecker_IsClaimed_Call {
+func (_c *ActivityClaimChecker_IsClaimed_Call) Run(run func(ctx context.Context, bridge *domain.ScannedBridge)) *ActivityClaimChecker_IsClaimed_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*types.BridgeResponse))
+		run(args[0].(context.Context), args[1].(*domain.ScannedBridge))
 	})
 	return _c
 }
@@ -134,7 +135,7 @@ func (_c *ActivityClaimChecker_IsClaimed_Call) Return(_a0 bool, _a1 error) *Acti
 	return _c
 }
 
-func (_c *ActivityClaimChecker_IsClaimed_Call) RunAndReturn(run func(context.Context, *types.BridgeResponse) (bool, error)) *ActivityClaimChecker_IsClaimed_Call {
+func (_c *ActivityClaimChecker_IsClaimed_Call) RunAndReturn(run func(context.Context, *domain.ScannedBridge) (bool, error)) *ActivityClaimChecker_IsClaimed_Call {
 	_c.Call.Return(run)
 	return _c
 }

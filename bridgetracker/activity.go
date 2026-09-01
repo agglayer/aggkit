@@ -80,10 +80,12 @@ func NewActivityCache(
 // fromAddress that is not yet settled (see settled — their raw bridge data is already cached, so
 // this needs no bridge-service call), then scans for bridges not seen before (see
 // ActivityBridgeScanner.BridgesFrom), and returns everything cached for fromAddress that matches
-// filter
+// filter. The returned []domain.ActivityWarning is whatever the scan reported for networks it
+// could not reach this call (see ActivityBridgeScanner.BridgesFrom) — it never fails the call by
+// itself, since the result is still valid for every other network.
 func (a *ActivityCache) GetActivity(
 	ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
-) ([]*domain.ActivityEntry, error) {
+) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
 	addrCache := a.addrCache(fromAddress)
 
 	a.mu.Lock()
@@ -100,9 +102,9 @@ func (a *ActivityCache) GetActivity(
 		a.upsert(ctx, addrCache, scanned, includeTracking, filter)
 	}
 
-	newItems, err := a.scanner.BridgesFrom(ctx, fromAddress, known)
+	newItems, warnings, err := a.scanner.BridgesFrom(ctx, fromAddress, known)
 	if err != nil {
-		return nil, fmt.Errorf("scanning bridges from %s: %w", fromAddress, err)
+		return nil, nil, fmt.Errorf("scanning bridges from %s: %w", fromAddress, err)
 	}
 	for _, item := range newItems {
 		a.upsert(ctx, addrCache, item, includeTracking, filter)
@@ -116,7 +118,7 @@ func (a *ActivityCache) GetActivity(
 			out = append(out, entry)
 		}
 	}
-	return out, nil
+	return out, warnings, nil
 }
 
 // upsert (re)computes item's entry via refresh and stores it, unless it is already cached and

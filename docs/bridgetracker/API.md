@@ -362,6 +362,7 @@ Request:
 - `500 Internal Server Error` — scanning the configured bridge services failed: the body is an [ErrorData](#errordata).
 - **This endpoint is opt-in**: it only exists if the binary is configured with both an activity bridge scanner and claim checker (`Config.ActivityScanner`/`ActivityClaims`); otherwise the route is not registered at all (plain `404`).
 - Requesting `filterBridges=pending` or `filterBridges=error` **skips fetching the claim record** of a bridge found to be claimed, since it would be filtered out of that result anyway — its cache entry simply has no `claim` yet, and is fetched normally the next time `filterBridges=all`/`claimed` is used for that address.
+- A network whose bridge service could not be scanned **never fails the request**: it is skipped and reported in `warnings` instead, so `bridges` is still whatever every other network reported (possibly incomplete for the networks listed in `warnings`).
 
 ### ActivityResponse
 
@@ -369,6 +370,14 @@ Request:
 | ------|------|------|
 | from_address | Address | the address requested |
 | bridges | ActivityItem [] | every bridge found for `from_address`, across every configured bridge service, matching `filterBridges` |
+| warnings | ActivityWarningItem [] | every network whose bridge service could not be scanned this call; **omitted** (no key) when every configured network was scanned successfully |
+
+### ActivityWarningItem
+
+| field | type | desc |
+| ------|------|------|
+| network_id | uint32 | the network whose bridge service could not be scanned |
+| message | string | the error encountered while scanning `network_id` |
 
 ### ActivityItem
 

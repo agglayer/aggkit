@@ -70,6 +70,23 @@ definitions:
         items:
           type: integer
         type: array
+      warnings:
+        description: |-
+          Warnings lists every network whose bridge service could not be scanned this call; absent
+          when every configured network was scanned successfully. Bridges may be incomplete for the
+          networks listed here, but is still valid for every other network
+        items:
+          $ref: '#/definitions/api.ActivityWarningItem'
+        type: array
+    type: object
+  api.ActivityWarningItem:
+    properties:
+      message:
+        description: Message is the error encountered while scanning NetworkID
+        type: string
+      network_id:
+        description: NetworkID is the network whose bridge service could not be scanned
+        type: integer
     type: object
   api.BridgeAddressItem:
     properties:
@@ -251,20 +268,6 @@ definitions:
         - 1000000000
         - 60000000000
         - 3600000000000
-        - -9223372036854775808
-        - 9223372036854775807
-        - 1
-        - 1000
-        - 1000000
-        - 1000000000
-        - 60000000000
-        - 3600000000000
-        - 1
-        - 1000
-        - 1000000
-        - 1000000000
-        - 60000000000
-        - 3600000000000
         - 1
         - 1000
         - 1000000
@@ -284,20 +287,6 @@ definitions:
         - Hour
         - minDuration
         - maxDuration
-        - Nanosecond
-        - Microsecond
-        - Millisecond
-        - Second
-        - Minute
-        - Hour
-        - minDuration
-        - maxDuration
-        - Nanosecond
-        - Microsecond
-        - Millisecond
-        - Second
-        - Minute
-        - Hour
         - Nanosecond
         - Microsecond
         - Millisecond
@@ -575,7 +564,9 @@ paths:
         includeTracking=true additionally registers every still-unclaimed bridge with
         the bridge tracker and includes its current tracking snapshot. filterBridges
         restricts the result to bridges with only that claim state (claimed / still
-        pending / errored while checking).
+        pending / errored while checking). A network whose bridge service could not be
+        scanned is skipped and reported in the "warnings" field instead of failing the
+        whole request.
       parameters:
       - description: Address that sent the bridges to look up
         in: path

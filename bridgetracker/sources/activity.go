@@ -7,6 +7,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -34,6 +35,7 @@ type NetworkLister interface {
 // destination network — isClaimed() on the destination bridge contract as the source of truth,
 // then the destination bridge service's own claim record once claimed.
 type ActivitySource struct {
+	logger   aggkitcommon.Logger
 	services *bridgeServiceClients
 	finder   NetworkLister
 	// contractClaimCheckers resolves/caches the on-chain isClaimed() binding per destination
@@ -46,8 +48,9 @@ type ActivitySource struct {
 // destination bridge contract addresses through finder/ethClients (see
 // bridgeservicefinder.Finder.BridgeAddress for how a destination network's contract address is
 // resolved and overridden)
-func NewActivitySource(finder NetworkLister, ethClients EthClientResolver) *ActivitySource {
+func NewActivitySource(finder NetworkLister, ethClients EthClientResolver, logger aggkitcommon.Logger) *ActivitySource {
 	return &ActivitySource{
+		logger:                logger,
 		services:              newBridgeServiceClients(finder),
 		finder:                finder,
 		contractClaimCheckers: newContractClaimCheckers(finder, ethClients),
@@ -58,27 +61,40 @@ func NewActivitySource(finder NetworkLister, ethClients EthClientResolver) *Acti
 // bridge service GET /bridge/v1/bridges filtered by from_address, paging until either a short
 // page or an already-known bridge is reached (see fetchNewBridgesFrom — this relies on the
 // bridge service reporting bridges newest-first). A network that cannot be reached is logged and
-// skipped rather than failing the whole scan, so one misbehaving bridge service does not hide
-// every other network's activity.
+// skipped, reported back as a domain.ActivityWarning, rather than failing the whole scan, so one
+// misbehaving bridge service does not hide every other network's activity.
 func (s *ActivitySource) BridgesFrom(
 	ctx context.Context, fromAddress common.Address, known map[string]struct{},
-) ([]*domain.ScannedBridge, error) {
+) ([]*domain.ScannedBridge, []domain.ActivityWarning, error) {
 	addr := fromAddress.Hex()
 
 	var all []*domain.ScannedBridge
+	var warnings []domain.ActivityWarning
 	for _, networkID := range s.finder.NetworkIDs() {
 		svc, err := s.services.aggkitBridgeClientFor(networkID)
 		if err != nil {
-			return nil, fmt.Errorf("resolving bridge service client for network %d: %w", networkID, err)
+			warnings = append(warnings, s.warnf(networkID,
+				"resolving bridge service client for network %d: %v", networkID, err))
+			continue
 		}
 
 		items, err := fetchNewBridgesFrom(ctx, svc, networkID, addr, activityPageSize, known)
 		if err != nil {
-			return nil, fmt.Errorf("fetching bridges from %s on network %d: %w", fromAddress, networkID, err)
+			warnings = append(warnings, s.warnf(networkID,
+				"fetching bridges from %s on network %d: %v", fromAddress, networkID, err))
+			continue
 		}
 		all = append(all, items...)
 	}
-	return all, nil
+	return all, warnings, nil
+}
+
+// warnf logs msg (formatted per fmt.Sprintf's rules on format/args) and turns it into the
+// domain.ActivityWarning BridgesFrom reports back for networkID
+func (s *ActivitySource) warnf(networkID uint32, format string, args ...any) domain.ActivityWarning {
+	message := fmt.Sprintf(format, args...)
+	s.logger.Warnf("activity: %s", message)
+	return domain.ActivityWarning{NetworkID: networkID, Message: message}
 }
 
 // fetchNewBridgesFrom pages through networkID's GET /bridge/v1/bridges filtered by fromAddress,

@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -140,10 +141,11 @@ func TestActivitySource_BridgesFrom_PaginatesAndScansEveryNetwork(t *testing.T) 
 	url := svc.start(t)
 	lister := fakeNetworkLister{networkIDs: []uint32{1, 2}, url: url}
 
-	source := NewActivitySource(lister, nil)
+	source := NewActivitySource(lister, nil, testLogger)
 
-	items, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
+	items, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
 	require.NoError(t, err)
+	require.Empty(t, warnings)
 	require.Len(t, items, 4)
 
 	globalIndexes := make([]int64, 0, len(items))
@@ -151,6 +153,52 @@ func TestActivitySource_BridgesFrom_PaginatesAndScansEveryNetwork(t *testing.T) 
 		globalIndexes = append(globalIndexes, item.Bridge.GlobalIndex.Int64())
 	}
 	require.ElementsMatch(t, []int64{1, 2, 3, 5}, globalIndexes)
+}
+
+// TestActivitySource_BridgesFrom_SkipsUnreachableNetworkAndWarns verifies a network whose bridge
+// service cannot be resolved is skipped rather than failing the whole scan, and is reported back
+// as an ActivityWarning — every other network's bridges are still returned.
+func TestActivitySource_BridgesFrom_SkipsUnreachableNetworkAndWarns(t *testing.T) {
+	svc := &fakeActivityBridgeService{
+		bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
+			1: {bridgeResponse(1, 2, 0, testFromAddress, 1)},
+		},
+	}
+	url := svc.start(t)
+	// networkID 2 resolves to an empty bridge service URL, which aggkitBridgeClientFor rejects
+	lister := fakeMixedNetworkLister{
+		networkIDs: []uint32{1, 2},
+		urls:       map[uint32]string{1: url},
+	}
+
+	source := NewActivitySource(lister, nil, testLogger)
+
+	items, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, int64(1), items[0].Bridge.GlobalIndex.Int64())
+
+	require.Len(t, warnings, 1)
+	require.Equal(t, uint32(2), warnings[0].NetworkID)
+	require.Contains(t, warnings[0].Message, "network 2")
+}
+
+// fakeMixedNetworkLister is a NetworkLister whose GetURL result varies per network, unlike
+// fakeNetworkLister's single fixed URL — used to simulate one network being unreachable while
+// others resolve fine.
+type fakeMixedNetworkLister struct {
+	networkIDs []uint32
+	urls       map[uint32]string
+}
+
+func (f fakeMixedNetworkLister) GetURL(networkID uint32) (bridgeservicefinder.NetworkURLs, error) {
+	return bridgeservicefinder.NetworkURLs{BridgeURL: f.urls[networkID]}, nil
+}
+
+func (f fakeMixedNetworkLister) NetworkIDs() []uint32 { return f.networkIDs }
+
+func (f fakeMixedNetworkLister) BridgeAddress(context.Context, uint32) (common.Address, error) {
+	return common.Address{}, errors.New("not implemented")
 }
 
 // TestFetchNewBridgesFrom_Pagination exercises the pagination loop directly with a small page
@@ -167,7 +215,7 @@ func TestFetchNewBridgesFrom_Pagination(t *testing.T) {
 	}
 	url := svc.start(t)
 	lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
-	source := NewActivitySource(lister, nil)
+	source := NewActivitySource(lister, nil, testLogger)
 	client, err := source.services.aggkitBridgeClientFor(1)
 	require.NoError(t, err)
 
@@ -193,7 +241,7 @@ func TestFetchNewBridgesFrom_StopsAtFirstKnownBridge(t *testing.T) {
 	}
 	url := svc.start(t)
 	lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
-	source := NewActivitySource(lister, nil)
+	source := NewActivitySource(lister, nil, testLogger)
 	client, err := source.services.aggkitBridgeClientFor(1)
 	require.NoError(t, err)
 
@@ -207,7 +255,7 @@ func TestFetchNewBridgesFrom_StopsAtFirstKnownBridge(t *testing.T) {
 // TestActivitySource_IsClaimed_NoBridgeAddrConfigured verifies IsClaimed errors clearly when
 // the destination network has no bridge contract address configured.
 func TestActivitySource_IsClaimed_NoBridgeAddrConfigured(t *testing.T) {
-	source := NewActivitySource(fakeNetworkLister{}, StaticClients{})
+	source := NewActivitySource(fakeNetworkLister{}, StaticClients{}, testLogger)
 
 	bridge := &domain.ScannedBridge{Bridge: bridgeResponse(1, 2, 3, testFromAddress, 1), NetworkID: 1}
 	_, err := source.IsClaimed(t.Context(), bridge)
@@ -226,7 +274,7 @@ func TestActivitySource_IsClaimed_UsesScannedNetworkNotBridgeOriginNetwork(t *te
 	stub := &stubClaimChecker{claimed: true}
 	buildCalls := 0
 	lister := fakeNetworkLister{bridgeAddrs: map[uint32]common.Address{2: destAddr}}
-	source := NewActivitySource(lister, client)
+	source := NewActivitySource(lister, client, testLogger)
 	source.newContract = func(addr common.Address, _ aggkittypes.BaseEthereumClienter) (claimChecker, error) {
 		buildCalls++
 		require.Equal(t, destAddr, addr)
@@ -272,7 +320,7 @@ func TestActivitySource_ClaimInfo(t *testing.T) {
 	}
 	url := svc.start(t)
 	lister := fakeNetworkLister{networkIDs: []uint32{2}, url: url}
-	source := NewActivitySource(lister, nil)
+	source := NewActivitySource(lister, nil, testLogger)
 
 	found := &domain.ScannedBridge{Bridge: bridgeResponse(1, 2, 0, testFromAddress, 1), NetworkID: 1}
 	got, err := source.ClaimInfo(t.Context(), found)

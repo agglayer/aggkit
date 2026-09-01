@@ -58,6 +58,17 @@ type ActivityEntry struct {
 	UpdatedAt time.Time
 }
 
+// ActivityWarning reports one network's bridge service that could not be scanned/reached while
+// serving a request that spans every configured network (see ActivityBridgeScanner.BridgesFrom,
+// ActivityQuerier.GetActivity) — the scan still succeeds with whatever every other network
+// reported, but the caller must be told this network's activity may be incomplete
+type ActivityWarning struct {
+	// NetworkID is the network whose bridge service could not be scanned
+	NetworkID uint32
+	// Message is the error encountered while scanning NetworkID
+	Message string
+}
+
 // ActivityBridgeScanner is the driven port to the raw bridge-service data behind the
 // GET /activity/from/{from_address} endpoint: it scans every bridge service the tracker knows
 // about for bridges sent by fromAddress
@@ -68,10 +79,14 @@ type ActivityBridgeScanner interface {
 	// GlobalIndex is unique across the whole system); implementations may use it to stop
 	// scanning a network as soon as an already-known bridge is reached, since each network's
 	// own bridge service reports bridges newest-first and is append-only, so anything after the
-	// first known bridge is guaranteed already known too (see sources.ActivitySource)
+	// first known bridge is guaranteed already known too (see sources.ActivitySource).
+	//
+	// A network whose bridge service cannot be scanned does not fail the call: it is skipped and
+	// reported back as an ActivityWarning instead, so one misbehaving network never hides every
+	// other network's activity.
 	BridgesFrom(
 		ctx context.Context, fromAddress common.Address, known map[string]struct{},
-	) ([]*ScannedBridge, error)
+	) ([]*ScannedBridge, []ActivityWarning, error)
 }
 
 // ActivityClaimChecker is the driven port to a bridge's claim state on its destination
@@ -91,8 +106,11 @@ type ActivityQuerier interface {
 	// GetActivity returns the bridges sent by fromAddress across every configured bridge
 	// service, enriched with their claim state and filtered per filter (see
 	// types.ActivityFilter); includeTracking additionally feeds every still-unclaimed bridge in
-	// the result to the bridge tracker (see ActivityEntry.Tracking)
+	// the result to the bridge tracker (see ActivityEntry.Tracking). The returned
+	// []ActivityWarning lists every network whose bridge service could not be scanned this call
+	// (see ActivityBridgeScanner.BridgesFrom) — the result is still whatever every other network
+	// reported, just possibly incomplete for the networks listed
 	GetActivity(
 		ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
-	) ([]*ActivityEntry, error)
+	) ([]*ActivityEntry, []ActivityWarning, error)
 }

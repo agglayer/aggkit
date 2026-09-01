@@ -58,12 +58,26 @@ type ActivityItem struct {
 	Errors map[string]string `json:"errors,omitempty"`
 }
 
+// ActivityWarningItem reports one network's bridge service that could not be scanned while
+// building this response — Bridges is still whatever every other network reported, just
+// possibly incomplete for the networks listed here
+type ActivityWarningItem struct {
+	// NetworkID is the network whose bridge service could not be scanned
+	NetworkID uint32 `json:"network_id"`
+	// Message is the error encountered while scanning NetworkID
+	Message string `json:"message"`
+}
+
 // ActivityResponse is the body of GET /activity/from/{from_address}
 type ActivityResponse struct {
 	// FromAddress is the address requested
 	FromAddress common.Address `json:"from_address"`
 	// Bridges holds every bridge found for FromAddress across every configured bridge service
 	Bridges []ActivityItem `json:"bridges"`
+	// Warnings lists every network whose bridge service could not be scanned this call; absent
+	// when every configured network was scanned successfully. Bridges may be incomplete for the
+	// networks listed here, but is still valid for every other network
+	Warnings []ActivityWarningItem `json:"warnings,omitempty"`
 }
 
 // Execute implements command: it scans every configured bridge service for bridges sent by the
@@ -72,7 +86,9 @@ type ActivityResponse struct {
 // bridge tracker (same effect as calling GetTxStatus for it) and includes its current tracking
 // snapshot. ?filterBridges=claimed|pending|error restricts the result to only bridges with that
 // claim state (default "all"); a claimed bridge excluded by "pending"/"error" never has its
-// claim record fetched, so switching back to "all"/"claimed" later fetches it then.
+// claim record fetched, so switching back to "all"/"claimed" later fetches it then. A network
+// whose bridge service could not be scanned never fails the request: it is skipped and reported
+// in the "warnings" field instead, so Bridges is still whatever every other network reported.
 // 200 OK unless: invalid from_address/filterBridges (ErrorData/400), or the scan itself failed
 // (ErrorData/500)
 //
@@ -84,7 +100,9 @@ type ActivityResponse struct {
 // @Description includeTracking=true additionally registers every still-unclaimed bridge with
 // @Description the bridge tracker and includes its current tracking snapshot. filterBridges
 // @Description restricts the result to bridges with only that claim state (claimed / still
-// @Description pending / errored while checking).
+// @Description pending / errored while checking). A network whose bridge service could not be
+// @Description scanned is skipped and reported in the "warnings" field instead of failing the
+// @Description whole request.
 // @Tags bridge-tracker
 // @Produce json
 // @Param from_address path string true "Address that sent the bridges to look up"
@@ -107,12 +125,16 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: err.Error()}
 	}
 
-	entries, err := cmd.querier.GetActivity(c.Request.Context(), fromAddress, includeTracking, filter)
+	entries, warnings, err := cmd.querier.GetActivity(c.Request.Context(), fromAddress, includeTracking, filter)
 	if err != nil {
 		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()}
 	}
 
-	return http.StatusOK, ActivityResponse{FromAddress: fromAddress, Bridges: newActivityItems(entries)}, nil
+	return http.StatusOK, ActivityResponse{
+		FromAddress: fromAddress,
+		Bridges:     newActivityItems(entries),
+		Warnings:    newActivityWarningItems(warnings),
+	}, nil
 }
 
 // newActivityItems builds the wire ActivityItems from the resolved activity entries
@@ -136,6 +158,19 @@ func newActivityItems(entries []*domain.ActivityEntry) []ActivityItem {
 			item.Tracking = &tracking
 		}
 		items = append(items, item)
+	}
+	return items
+}
+
+// newActivityWarningItems builds the wire ActivityWarningItems from the scan's warnings; nil in
+// (every network scanned fine) yields nil out, so Warnings is omitted from the response entirely
+func newActivityWarningItems(warnings []domain.ActivityWarning) []ActivityWarningItem {
+	if len(warnings) == 0 {
+		return nil
+	}
+	items := make([]ActivityWarningItem, 0, len(warnings))
+	for _, w := range warnings {
+		items = append(items, ActivityWarningItem{NetworkID: w.NetworkID, Message: w.Message})
 	}
 	return items
 }
