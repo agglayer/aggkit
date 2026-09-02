@@ -153,7 +153,8 @@ func (s *SettlementSource) SettlementGERUpdate(
 	// receipt): the value it propagated is whichever one an earlier settlement already
 	// established, so look backwards on L1 for that event
 	if !result.HasUpdateL1InfoTree {
-		event, err := s.findEventUpdateL1InfoTreeBackwards(ctx, client, receipt.BlockNumber.Uint64())
+		event, err := s.findEventUpdateL1InfoTreeBackwards(
+			ctx, client, receipt.BlockNumber.Uint64(), result.SettlementLogIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -176,14 +177,18 @@ type updateL1InfoTreeEvent struct {
 }
 
 // findEventUpdateL1InfoTreeBackwards looks for the most recent UpdateL1InfoTree event on the
-// GlobalExitRoot contract at or before fromBlock, walking backwards in
-// l1InfoTreeBackwardsSearchChunkSize chunks until one is found or block 0 is reached. Only
-// called when the settlement tx's own receipt does not carry the event (see
-// SettlementGERUpdate): the L1 Global Exit Root is never unset, so some earlier update always
-// exists, unless the settlement tx is not what it claims to be, in which case this returns
-// domain.ErrBadSettlementTx (Permanent — see the sentinel's own doc)
+// GlobalExitRoot contract at or before (fromBlock, settlementLogIndex) — the settlement tx's own
+// position — walking backwards in l1InfoTreeBackwardsSearchChunkSize chunks until one is found
+// or block 0 is reached. settlementLogIndex excludes any log that shares fromBlock with the
+// settlement but sits at or after it: such a log comes from a later transaction in the same
+// block, so the GER it produced did not exist yet when the settlement executed (mirrors the
+// position filtering FindFirstL1InfoTreeAfterBlock already does in ger.go, just looking
+// backwards instead of forwards). Only called when the settlement tx's own receipt does not
+// carry the event (see SettlementGERUpdate): the L1 Global Exit Root is never unset, so some
+// earlier update always exists, unless the settlement tx is not what it claims to be, in which
+// case this returns domain.ErrBadSettlementTx (Permanent — see the sentinel's own doc)
 func (s *SettlementSource) findEventUpdateL1InfoTreeBackwards(
-	ctx context.Context, client aggkittypes.BaseEthereumClienter, fromBlock uint64,
+	ctx context.Context, client aggkittypes.BaseEthereumClienter, fromBlock uint64, settlementLogIndex uint,
 ) (*updateL1InfoTreeEvent, error) {
 	toBlock := fromBlock
 	for {
@@ -206,6 +211,18 @@ func (s *SettlementSource) findEventUpdateL1InfoTreeBackwards(
 			return nil, fmt.Errorf("fetching UpdateL1InfoTree logs from block %d to %d: %w",
 				fromBlockChunk, toBlock, err)
 		}
+
+		// Only the settlement's own block (fromBlock) can carry a log at or after
+		// settlementLogIndex — every other block queried here is strictly earlier — so this
+		// only ever trims the first chunk
+		filtered := logs[:0]
+		for _, l := range logs {
+			if l.BlockNumber == fromBlock && l.Index >= settlementLogIndex {
+				continue
+			}
+			filtered = append(filtered, l)
+		}
+		logs = filtered
 
 		if len(logs) > 0 {
 			// FilterLogs returns logs in ascending block/log-index order, so the last one is the

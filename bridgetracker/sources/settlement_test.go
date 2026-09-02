@@ -283,10 +283,41 @@ func TestFindEventUpdateL1InfoTreeBackwardsPaginates(t *testing.T) {
 	}, nil)
 	expectBackwardsBlockTimestamp(client)
 
-	event, err := newSettlementSource(client).findEventUpdateL1InfoTreeBackwards(t.Context(), client, 25000)
+	event, err := newSettlementSource(client).findEventUpdateL1InfoTreeBackwards(t.Context(), client, 25000, 0)
 	require.NoError(t, err)
 	require.Equal(t, &updateL1InfoTreeEvent{
 		GER: wantGER, BlockNumber: 10000, BlockTimestamp: testBackwardsBlockTimestamp, LogIndex: 2,
+	}, event)
+}
+
+// TestFindEventUpdateL1InfoTreeBackwardsExcludesLaterLogInSettlementBlock pins that a match in
+// the settlement's own block (fromBlock) is only accepted at or before settlementLogIndex: a log
+// there from a later transaction produced a GER that did not exist yet when the settlement
+// executed, so it must be skipped in favor of an earlier chunk's match
+func TestFindEventUpdateL1InfoTreeBackwardsExcludesLaterLogInSettlementBlock(t *testing.T) {
+	client := mocks.NewBaseEthereumClienter(t)
+	client.EXPECT().FilterLogs(mock.Anything, ethereum.FilterQuery{
+		FromBlock: big.NewInt(0), ToBlock: big.NewInt(5000),
+		Addresses: []common.Address{testGERAddress},
+		Topics:    [][]common.Hash{{updateL1InfoTreeSignature}},
+	}).Return([]gethtypes.Log{
+		{
+			BlockNumber: 4000, Index: 2, BlockHash: testBackwardsBlockHash,
+			Topics: []common.Hash{updateL1InfoTreeSignature, mainnetExitRoot, rollupExitRoot},
+		},
+		{
+			// same block as the settlement (fromBlock=5000), but at/after its log index (3): a
+			// later transaction's GER update, not yet in effect when the settlement executed
+			BlockNumber: 5000, Index: 3,
+			Topics: []common.Hash{updateL1InfoTreeSignature, mainnetExitRoot, rollupExitRoot},
+		},
+	}, nil)
+	expectBackwardsBlockTimestamp(client)
+
+	event, err := newSettlementSource(client).findEventUpdateL1InfoTreeBackwards(t.Context(), client, 5000, 3)
+	require.NoError(t, err)
+	require.Equal(t, &updateL1InfoTreeEvent{
+		GER: wantGER, BlockNumber: 4000, BlockTimestamp: testBackwardsBlockTimestamp, LogIndex: 2,
 	}, event)
 }
 
@@ -301,7 +332,7 @@ func TestFindEventUpdateL1InfoTreeBackwardsNotFound(t *testing.T) {
 		Topics:    [][]common.Hash{{updateL1InfoTreeSignature}},
 	}).Return(nil, nil)
 
-	_, err := newSettlementSource(client).findEventUpdateL1InfoTreeBackwards(t.Context(), client, 5000)
+	_, err := newSettlementSource(client).findEventUpdateL1InfoTreeBackwards(t.Context(), client, 5000, 0)
 	require.ErrorIs(t, err, domain.ErrBadSettlementTx)
 }
 
@@ -315,7 +346,7 @@ func TestFindEventUpdateL1InfoTreeBackwardsMalformedLog(t *testing.T) {
 		{BlockNumber: 4000, Topics: []common.Hash{updateL1InfoTreeSignature}},
 	}, nil)
 
-	_, err := newSettlementSource(client).findEventUpdateL1InfoTreeBackwards(t.Context(), client, 5000)
+	_, err := newSettlementSource(client).findEventUpdateL1InfoTreeBackwards(t.Context(), client, 5000, 0)
 	require.ErrorIs(t, err, domain.ErrBadSettlementTx)
 }
 
@@ -325,7 +356,7 @@ func TestFindEventUpdateL1InfoTreeBackwardsFetchError(t *testing.T) {
 	client := mocks.NewBaseEthereumClienter(t)
 	client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, errors.New("rpc down"))
 
-	_, err := newSettlementSource(client).findEventUpdateL1InfoTreeBackwards(t.Context(), client, 5000)
+	_, err := newSettlementSource(client).findEventUpdateL1InfoTreeBackwards(t.Context(), client, 5000, 0)
 	require.ErrorContains(t, err, "rpc down")
 }
 
