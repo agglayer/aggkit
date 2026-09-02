@@ -28,11 +28,11 @@ func newSettlementSource(client *mocks.BaseEthereumClienter) *SettlementSource {
 
 // expectBackwardsUpdateL1InfoTreeLog stubs client's FilterLogs to answer
 // findEventUpdateL1InfoTreeBackwards' very first chunk (fromBlock down to fromBlock minus
-// l1InfoTreeBackwardsSearchChunkSize, or 0) with a single matching log
+// l1InfoTreeBackwardsSearchChunkSize plus one, or 0) with a single matching log
 func expectBackwardsUpdateL1InfoTreeLog(client *mocks.BaseEthereumClienter, fromBlock uint64, log gethtypes.Log) {
 	fromChunk := uint64(0)
-	if fromBlock > l1InfoTreeBackwardsSearchChunkSize {
-		fromChunk = fromBlock - l1InfoTreeBackwardsSearchChunkSize
+	if fromBlock >= l1InfoTreeBackwardsSearchChunkSize {
+		fromChunk = fromBlock - l1InfoTreeBackwardsSearchChunkSize + 1
 	}
 	client.EXPECT().FilterLogs(mock.Anything, ethereum.FilterQuery{
 		FromBlock: new(big.Int).SetUint64(fromChunk),
@@ -267,12 +267,12 @@ func TestSettlementSourceMissingUpdateL1InfoTreeAndNoEarlierEvent(t *testing.T) 
 func TestFindEventUpdateL1InfoTreeBackwardsPaginates(t *testing.T) {
 	client := mocks.NewBaseEthereumClienter(t)
 	client.EXPECT().FilterLogs(mock.Anything, ethereum.FilterQuery{
-		FromBlock: big.NewInt(15000), ToBlock: big.NewInt(25000),
+		FromBlock: big.NewInt(15001), ToBlock: big.NewInt(25000),
 		Addresses: []common.Address{testGERAddress},
 		Topics:    [][]common.Hash{{updateL1InfoTreeSignature}},
 	}).Return(nil, nil)
 	client.EXPECT().FilterLogs(mock.Anything, ethereum.FilterQuery{
-		FromBlock: big.NewInt(4999), ToBlock: big.NewInt(14999),
+		FromBlock: big.NewInt(5001), ToBlock: big.NewInt(15000),
 		Addresses: []common.Address{testGERAddress},
 		Topics:    [][]common.Hash{{updateL1InfoTreeSignature}},
 	}).Return([]gethtypes.Log{

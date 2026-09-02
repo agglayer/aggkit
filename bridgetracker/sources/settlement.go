@@ -188,8 +188,12 @@ func (s *SettlementSource) findEventUpdateL1InfoTreeBackwards(
 	toBlock := fromBlock
 	for {
 		fromBlockChunk := uint64(0)
-		if toBlock > l1InfoTreeBackwardsSearchChunkSize {
-			fromBlockChunk = toBlock - l1InfoTreeBackwardsSearchChunkSize
+		if toBlock >= l1InfoTreeBackwardsSearchChunkSize {
+			// FromBlock/ToBlock are both inclusive, so the naive toBlock-chunkSize would span
+			// chunkSize+1 blocks (e.g. [15000,25000] for a 10_000 chunk) — the +1 keeps each
+			// query at exactly chunkSize blocks, which matters for providers that reject an
+			// eth_getLogs range wider than that
+			fromBlockChunk = toBlock - l1InfoTreeBackwardsSearchChunkSize + 1
 		}
 
 		logs, err := client.FilterLogs(ctx, ethereum.FilterQuery{
