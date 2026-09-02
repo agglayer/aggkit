@@ -49,3 +49,17 @@ func (c *cache) set(networkID uint32, entry cacheEntry) {
 
 	c.entries[networkID] = entry
 }
+
+// networkIDs returns the networkIDs of every network currently cached. It takes a read lock so
+// it is safe to call concurrently with set.
+func (c *cache) networkIDs() []uint32 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	ids := make([]uint32, 0, len(c.entries))
+	for id := range c.entries {
+		ids = append(ids, id)
+	}
+
+	return ids
+}

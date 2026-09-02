@@ -35,6 +35,7 @@ func TestLoadFilesDefaults(t *testing.T) {
 	require.Equal(t, aggkittypes.LatestBlock, cfg.Tracker.L1BlockFinality)
 	require.Equal(t, aggkittypes.LatestBlock, cfg.Tracker.L2BlockFinality)
 	require.Equal(t, 100000, cfg.Tracker.MaxTrackedBridges)
+	require.Equal(t, uint64(1000), cfg.Tracker.L2InjectionLookbackBlocks)
 	// URL is left unset by default: it must be supplied per-environment (see proxy/scripts)
 	require.Empty(t, cfg.Tracker.AgglayerClient.GRPC.URL)
 	require.True(t, cfg.Tracker.AgglayerClient.Cached)

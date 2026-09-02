@@ -30,10 +30,20 @@ func New(cfg *Config) *BridgeTracker {
 		supervised = NewMemoryRegistry(cfg.MaxTrackedBridges)
 	}
 
+	// The activity endpoint is only registered when both driven ports are wired (see
+	// Config.ActivityScanner/ActivityClaims); a nil ActivityQuerier tells api.NewAPI to skip it
+	var activity ActivityQuerier
+	if cfg.ActivityScanner != nil && cfg.ActivityClaims != nil {
+		activity = NewActivityCache(
+			cfg.ActivityScanner, cfg.ActivityClaims, supervised, cfg.Logger, cfg.ActivityIdleTimeout.Duration)
+	}
+
 	return &BridgeTracker{
 		logger:     cfg.Logger,
 		supervised: supervised,
-		api:        api.NewAPI(cfg.Logger, cfg.ConfigSHA1, supervised, cfg.RegisterResolveTimeout.Duration, cfg.CORS),
+		api: api.NewAPI(
+			cfg.Logger, cfg.ConfigSHA1, supervised, activity, cfg.BridgeAddressResolver,
+			cfg.RegisterResolveTimeout.Duration, cfg.CORS),
 	}
 }
 

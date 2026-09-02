@@ -33,8 +33,18 @@ const (
 	// TrackerV1Prefix is the url prefix for the bridge tracker service
 	TrackerV1Prefix = "/tracker/v1"
 
-	txHashParam    = "tx_hash"
-	networkIDParam = "network_id"
+	txHashParam      = "tx_hash"
+	networkIDParam   = "network_id"
+	fromAddressParam = "from_address"
+
+	// includeTrackingQueryParam, when set to "true", makes the activity endpoint additionally
+	// register every still-unclaimed bridge it finds with the bridge tracker (see
+	// activityCommand.Execute)
+	includeTrackingQueryParam = "includeTracking"
+
+	// filterBridgesQueryParam selects which bridges the activity endpoint returns: "all"
+	// (default), "claimed" or "pending" (see types.ActivityFilter)
+	filterBridgesQueryParam = "filterBridges"
 
 	decimalBase   = 10
 	uint32BitSize = 32
@@ -48,21 +58,33 @@ type API struct {
 	getTxStatusCmd *getTxStatusCommand
 	healthCmd      *healthCommand
 	wsHandler      *wsHandler
+	// activityCmd serves GET /activity/from/{from_address}; nil (when NewAPI is given a nil
+	// activity) leaves the route unregistered entirely — see RegisterRoutes
+	activityCmd *activityCommand
+	// bridgeAddressCmd serves GET /bridge-address and GET /bridge-address/{network_id}; nil
+	// (when NewAPI is given a nil bridgeAddressResolver) leaves both routes unregistered
+	// entirely — see RegisterRoutes
+	bridgeAddressCmd *bridgeAddressCommand
 }
 
 // NewAPI returns the tracker HTTP service serving the given supervised registry.
 // registerResolveTimeout is how long GetTxStatus waits, the first time a tx is registered, for
 // the tracking engine's immediate resolution attempt to produce an update before answering (see
 // getTxStatusCommand); <= 0 disables the wait. cors governs which origins may open the
-// WebSocket endpoint (see wsHandler)
+// WebSocket endpoint (see wsHandler). activity may be nil, in which case the
+// GET /activity/from/{from_address} endpoint is not registered at all (see RegisterRoutes).
+// bridgeAddressResolver may be nil, in which case neither GET /bridge-address nor
+// GET /bridge-address/{network_id} is registered at all (see RegisterRoutes)
 func NewAPI(
 	logger aggkitcommon.Logger,
 	configSHA1 string,
 	supervised domain.SupervisedRegistry,
+	activity domain.ActivityQuerier,
+	bridgeAddressResolver domain.BridgeAddressResolver,
 	registerResolveTimeout time.Duration,
 	cors aggkitcommon.CORSConfig,
 ) *API {
-	return &API{
+	api := &API{
 		getTxStatusCmd: &getTxStatusCommand{supervised: supervised, resolveTimeout: registerResolveTimeout},
 		healthCmd: &healthCommand{
 			// instanceID is a UUID generated at startup, exposed by the health endpoint to
@@ -72,6 +94,13 @@ func NewAPI(
 		},
 		wsHandler: newWSHandler(logger, supervised, cors),
 	}
+	if activity != nil {
+		api.activityCmd = &activityCommand{querier: activity}
+	}
+	if bridgeAddressResolver != nil {
+		api.bridgeAddressCmd = &bridgeAddressCommand{resolver: bridgeAddressResolver}
+	}
+	return api
 }
 
 // RegisterRoutes registers all bridge tracker routes on router. Route-level documentation
@@ -85,6 +114,16 @@ func (a *API) RegisterRoutes(router gin.IRouter) {
 		trackerGroup.GET("/network/:"+networkIDParam+"/tx/:"+txHashParam,
 			func(c *gin.Context) { runCommand(c, a.getTxStatusCmd) })
 		trackerGroup.GET("/network/:"+networkIDParam+"/tx/:"+txHashParam+"/ws", a.wsHandler.TxStatusWSHandler)
+		if a.activityCmd != nil {
+			trackerGroup.GET("/activity/from/:"+fromAddressParam,
+				func(c *gin.Context) { runCommand(c, a.activityCmd) })
+		}
+		if a.bridgeAddressCmd != nil {
+			trackerGroup.GET("/bridge-address",
+				func(c *gin.Context) { runCommand(c, a.bridgeAddressCmd) })
+			trackerGroup.GET("/bridge-address/:"+networkIDParam,
+				func(c *gin.Context) { runCommand(c, a.bridgeAddressCmd) })
+		}
 
 		// Swagger docs endpoint
 		trackerGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))

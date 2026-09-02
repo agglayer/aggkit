@@ -264,11 +264,35 @@ type GERUpdateResult struct {
 	LogIndex        uint        `json:"log_index"`
 }
 
-// InjectedGERResult is the result of StepWaitingGERInjection once it completes: the GER
-// injected on the destination network that covers the bridge. The injection source does not
-// expose the block it was injected in, unlike GERUpdateResult
+// InjectedGERResult is the result of StepWaitingGERInjection once it completes: the GER covering
+// the bridge, resolved to its L1 Info Tree leaf (L1InfoTreeLeaf, always known once the step
+// completes) and, once actually injected on the destination network, that injection's own L2
+// block/timestamp (L2InjectedGER). L2InjectedGER is nil when the destination's bridge-service
+// instance does not report it yet (predates injected_l2_block_num/injected_l2_block_timestamp on
+// GET /bridge/v1/injected-l1-info-leaf, see bridgeservice/types.L1InfoTreeLeafResponse) — in that
+// case L1InfoTreeLeaf's own BlockNumber/BlockTimestamp are the L1 event that produced the leaf,
+// not the L2 injection block, and must not be mistaken for it (this conflation was #1818)
 type InjectedGERResult struct {
-	GER common.Hash `json:"ger"`
+	L1InfoTreeLeaf InjectedGERL1Leaf   `json:"l1_info_tree_leaf"`
+	L2InjectedGER  *InjectedL2GERBlock `json:"l2_injected_ger,omitempty"`
+}
+
+// InjectedGERL1Leaf is the L1 Info Tree leaf covering the bridge: its GER and the L1 block/
+// timestamp of the UpdateL1InfoTree/UpdateL1InfoTreeV2 event that produced it
+type InjectedGERL1Leaf struct {
+	GER            common.Hash `json:"ger"`
+	BlockNumber    uint64      `json:"block_number"`
+	BlockTimestamp uint64      `json:"block_timestamp"`
+}
+
+// InjectedL2GERBlock is the L2 block the GER was actually injected at on the destination
+// network. BlockTimestamp is only known once resolved from the destination's L2 RPC (see
+// l2gersync.L2GERSync.GetFirstGERAfterL1InfoTreeIndex), so it may briefly be absent right after
+// upgrading a bridge-service instance that only just started reporting BlockNumber, resolving on
+// a later request
+type InjectedL2GERBlock struct {
+	BlockNumber    uint64  `json:"block_number"`
+	BlockTimestamp *uint64 `json:"block_timestamp,omitempty"`
 }
 
 // LERUpdateResult is the result of StepWaitingLERUpdate once it completes: the LER produced
@@ -279,27 +303,40 @@ type LERUpdateResult struct {
 	BlockNumber uint64      `json:"block_number"`
 }
 
-// ClaimResult is the result of StepWaitingClaim once it completes: the claim transaction on
+// ClaimResult is the result of StepClaimed once it completes: the claim transaction on
 // the destination network and the block it was mined in
 type ClaimResult struct {
-	ClaimTx     common.Hash `json:"claim_tx"`
-	BlockNumber uint64      `json:"block_number"`
+	ClaimTx        common.Hash `json:"claim_tx"`
+	BlockNumber    uint64      `json:"block_number"`
+	BlockTimestamp uint64      `json:"block_timestamp"`
 }
 
 // L1SettledGERResult is the result of StepWaitL1SettledGER once it completes: the evidence,
 // read off the certificate's settlement tx receipt on L1, that the settlement propagated to
 // the L1 Global Exit Root. HasVerifyBatchesTrustedAggregator and HasUpdateL1InfoTree are both
-// required for the step to complete; HasUpdateL1InfoTreeV2 is only informational. GER is the
-// Global Exit Root produced by the settlement (computed from UpdateL1InfoTree's mainnet/rollup
-// exit roots), used by StepWaitingGERInjection to check whether it has reached the destination.
-// L1InfoTreeIndex is the leaf index GER landed at: populated straight from UpdateL1InfoTreeV2's
-// LeafCount when that (optional) event fires, otherwise resolved by the step itself with one
-// extra lookup (GER -> leaf) before it can complete — either way, by the time this step is
-// Done, L1InfoTreeIndex is never nil
+// required for the step to complete; HasUpdateL1InfoTreeV2 is only informational.
+// SettlementBlockNumber/SettlementBlockTimestamp/SettlementLogIndex locate the settlement tx's
+// own VerifyBatchesTrustedAggregator log — the event that confirms this tx is a genuine
+// certificate settlement. GER is the Global Exit Root produced by the settlement (computed
+// from UpdateL1InfoTree's mainnet/rollup exit roots), used by StepWaitingGERInjection to check
+// whether it has reached the destination. GERBlockNumber/GERBlockTimestamp/GERLogIndex locate
+// the UpdateL1InfoTree event GER was computed from: normally the same block as the settlement
+// (HasUpdateL1InfoTree true), but when the settlement tx's own receipt does not carry the
+// event (the settlement did not move the GER itself), they instead point to the closest
+// earlier one on L1 (see sources.SettlementSource.findEventUpdateL1InfoTreeBackwards), whose
+// GER is still the one this settlement propagated. L1InfoTreeIndex is the leaf index GER
+// landed at: populated straight from UpdateL1InfoTreeV2's LeafCount when that (optional) event
+// fires, otherwise resolved by the step itself with one extra lookup (GER -> leaf) before it
+// can complete — either way, by the time this step is Done, L1InfoTreeIndex is never nil
 type L1SettledGERResult struct {
 	TxHash                            common.Hash `json:"tx_hash"`
-	BlockNumber                       uint64      `json:"block_number"`
+	SettlementBlockNumber             uint64      `json:"settlement_block_number"`
+	SettlementBlockTimestamp          uint64      `json:"settlement_block_timestamp"`
+	SettlementLogIndex                uint        `json:"settlement_log_index"`
 	GER                               common.Hash `json:"ger"`
+	GERBlockNumber                    uint64      `json:"ger_block_number"`
+	GERBlockTimestamp                 uint64      `json:"ger_block_timestamp"`
+	GERLogIndex                       uint        `json:"ger_log_index"`
 	L1InfoTreeIndex                   *uint32     `json:"l1_info_tree_index,omitempty"`
 	HasVerifyBatchesTrustedAggregator bool        `json:"has_verify_batches_trusted_aggregator"`
 	HasUpdateL1InfoTree               bool        `json:"has_update_l1_info_tree"`
@@ -322,10 +359,25 @@ type GERData struct {
 	LERType LERType `json:"ler_type"`
 	// LERTypeString is the string representation of LERType, auto-populated on JSON marshaling
 	LERTypeString string `json:"ler_type_string"`
-	// BlockNumber is the block where the GER update happened. Only populated when resolving
-	// the origin GER of an L1-originated bridge. Internal only: GERData is not serialized on
-	// any tracker response, it is the domain layer's currency to decide GER coverage
+	// BlockNumber is the block where the GER update happened. Populated when resolving the
+	// origin GER of an L1-originated bridge, and the GER injected on a bridge's destination
+	// network (see StepWaitingGERInjection's InjectedGERResult, which carries it on the wire).
+	// Internal only otherwise: GERData is not serialized on any tracker response, it is the
+	// domain layer's currency to decide GER coverage
 	BlockNumber *uint64 `json:"-"`
+	// BlockTimestamp is BlockNumber's block timestamp. Populated (and carried on the wire) under
+	// the same conditions as BlockNumber
+	BlockTimestamp *uint64 `json:"-"`
+	// L2BlockNumber/L2BlockTimestamp are the actual L2 block/timestamp the GER was injected at on
+	// the destination network. Only set by InjectedGERAtIndex, and only when the destination's
+	// bridge-service instance reports it (see bridgeservice/types.L1InfoTreeLeafResponse's
+	// InjectedL2BlockNumber/InjectedL2BlockTimestamp). Unlike BlockNumber/BlockTimestamp above —
+	// always the L1 event, even here — these stay nil while unknown instead of being backfilled
+	// with the L1 block, which is exactly the #1818 bug this pair exists to avoid repeating
+	L2BlockNumber *uint64 `json:"-"`
+	// L2BlockTimestamp is L2BlockNumber's timestamp; may lag L2BlockNumber briefly if resolving
+	// it from the L2 RPC failed (see l2gersync.L2GERSync.GetFirstGERAfterL1InfoTreeIndex)
+	L2BlockTimestamp *uint64 `json:"-"`
 }
 
 // MarshalJSON is the implementation of the json.Marshaler interface.
@@ -345,6 +397,12 @@ type CertificateData struct {
 	// Error is only set if the certificate carries an error message (relevant for InError certs)
 	Error            string       `json:"error,omitempty"`
 	SettlementTxHash *common.Hash `json:"settlement_tx_hash,omitempty"`
+	// BlockNumber/BlockTimestamp locate SettlementTxHash on L1, once its receipt is visible
+	// there. Only ever set once Status.IsSettled(): even then, both stay nil for a transient
+	// tick (the settlement tx's own receipt can lag a step behind the certificate turning
+	// Settled — see CertificatePendingResolver), so nil is not necessarily permanent
+	BlockNumber    *uint64 `json:"block_number,omitempty"`
+	BlockTimestamp *uint64 `json:"block_timestamp,omitempty"`
 }
 
 // MarshalJSON is the implementation of the json.Marshaler interface.

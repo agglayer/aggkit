@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
@@ -9,11 +10,15 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// ErrLeafIndexNotResolved means the settlement tx is confirmed but its GER has not been
-// resolved to an L1 info tree leaf index yet (only reached when UpdateL1InfoTreeV2 did not fire
-// — see WaitL1SettledGERResolver): the same "not ready" family as ErrStepPending (errors.Is
-// matches both), but carries the settlement evidence gathered so far as its Result
-var ErrLeafIndexNotResolved = fmt.Errorf("settlement GER not resolved to a leaf index yet: %w", ErrStepPending)
+var (
+	// ErrLeafIndexNotResolved means the settlement tx is confirmed but its GER has not been
+	// resolved to an L1 info tree leaf index yet (only reached when UpdateL1InfoTreeV2 did not fire
+	// — see WaitL1SettledGERResolver): the same "not ready" family as ErrStepPending (errors.Is
+	// matches both), but carries the settlement evidence gathered so far as its Result
+	ErrLeafIndexNotResolved = fmt.Errorf("settlement GER not resolved to a leaf index yet: %w", ErrStepPending)
+
+	ErrBadSettlementTx = Permanent(errors.New("settlement tx receipt does not carry required events"))
+)
 
 // SettlementSource is the driven port to the L1 evidence a certificate's settlement produces
 type SettlementSource interface {

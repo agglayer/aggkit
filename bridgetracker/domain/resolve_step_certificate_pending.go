@@ -9,7 +9,9 @@ import (
 )
 
 // ErrCertificateNotSettled means the bridge already has a certificate but it has not settled
-// yet: the same "not ready" family as ErrStepPending (errors.Is matches both), but carries the
+// yet — or it has, but its settlement tx is not visible on L1 yet (see CertificateSource.
+// settlementBlockInfo, which can lag a tick behind the certificate itself turning Settled): the
+// same "not ready" family as ErrStepPending (errors.Is matches both), but carries the
 // certificate's current status as its Result so clients can see it progress while they wait,
 // instead of only once it settles
 var ErrCertificateNotSettled = fmt.Errorf("certificate not settled yet: %w", ErrStepPending)
@@ -25,7 +27,8 @@ type CertificateSource interface {
 
 // CertificatePendingResolver resolves StepCertificatePending: covers every status the
 // certificate goes through — Pending, Proven, Candidate or InError all park here, only its
-// Result changes — until it settles, the only transition that moves the bridge on
+// Result changes — until it settles AND its settlement tx's block is visible on L1
+// (CertificateData.BlockNumber/BlockTimestamp), the transition that moves the bridge on
 type CertificatePendingResolver struct {
 	port CertificateSource
 }
@@ -47,8 +50,8 @@ func (r *CertificatePendingResolver) Resolve(
 		return nil, ErrStepPending
 	}
 
-	if cert.Status.IsSettled() {
+	if cert.Status.IsSettled() && cert.BlockNumber != nil {
 		return &cert.CertificateData, nil
 	}
-	return &cert.CertificateData, ErrCertificateNotSettled // still awaiting settlement
+	return &cert.CertificateData, ErrCertificateNotSettled // still awaiting settlement, or its L1 block
 }

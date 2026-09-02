@@ -58,6 +58,13 @@ type Config struct {
 	// absent from this map get their JSON-RPC endpoint from the rollup's trustedSequencerURL.
 	RPCURLs map[uint32]string `mapstructure:"RPCURLs"`
 
+	// BridgeAddress is the static override map from networkID to bridge contract address, consulted
+	// by Finder.BridgeAddress in priority order: BridgeAddress[networkID], then BridgeAddress[0]
+	// (which doubles as the default for every network without its own entry — typically the shared
+	// L1 bridge address), then finally the rollup manager's own on-chain BridgeAddress() if neither
+	// is set. Only networks whose bridge contract differs from that default need their own entry.
+	BridgeAddress map[uint32]common.Address `mapstructure:"BridgeAddress"`
+
 	// BlockFinality is the finality level used to bound the upper block of each event scan, so the
 	// finder does not react to logs that may still be reorged away. See aggkittypes.BlockNumberFinality.
 	BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=PendingBlock,enum=LatestBlock,enum=SafeBlock,enum=FinalizedBlock,enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll

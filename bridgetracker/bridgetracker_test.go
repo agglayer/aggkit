@@ -3,6 +3,7 @@ package bridgetracker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,7 +11,9 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit"
+	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgetracker/api"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
@@ -328,4 +331,178 @@ func TestHealthHandlerNoSideEffects(t *testing.T) {
 	reg.mu.RLock()
 	defer reg.mu.RUnlock()
 	require.Empty(t, reg.bridges)
+}
+
+// TestActivityHandlerNotRegisteredWithoutSources verifies the activity endpoint is absent
+// (404) when Config.ActivityScanner/ActivityClaims are left nil, exactly like every tracker
+// built before this endpoint existed
+func TestActivityHandlerNotRegisteredWithoutSources(t *testing.T) {
+	_, router := newTestTracker(t)
+
+	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex())
+	require.Equal(t, http.StatusNotFound, resp.Code)
+}
+
+// TestActivityHandlerInvalidAddress verifies an invalid from_address is rejected with 400
+func TestActivityHandlerInvalidAddress(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tracker := New(&Config{
+		Logger:          log.WithFields("module", "bridgetracker_test"),
+		ConfigSHA1:      testConfigSHA1,
+		ActivityScanner: &fakeActivityScanner{},
+		ActivityClaims:  &fakeActivityClaims{},
+	})
+	router := gin.New()
+	tracker.API().RegisterRoutes(router)
+
+	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/activity/from/not-an-address")
+	require.Equal(t, http.StatusBadRequest, resp.Code)
+}
+
+// TestActivityHandlerHappyPath verifies the activity endpoint reports the bridges found by the
+// wired sources, in the ActivityResponse wire shape
+func TestActivityHandlerHappyPath(t *testing.T) {
+	bridge := testBridge(1)
+	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
+
+	gin.SetMode(gin.TestMode)
+	tracker := New(&Config{
+		Logger:     log.WithFields("module", "bridgetracker_test"),
+		ConfigSHA1: testConfigSHA1,
+		ActivityScanner: &fakeActivityScanner{
+			bridges: []*domain.ScannedBridge{scannedBridge(bridge, testScannedNetworkID)},
+		},
+		ActivityClaims: &fakeActivityClaims{
+			isClaimed: []bool{true},
+			claimInfo: []*bridgeservicetypes.ClaimResponse{claim},
+		},
+	})
+	router := gin.New()
+	tracker.API().RegisterRoutes(router)
+
+	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex())
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	var body api.ActivityResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	require.Equal(t, testFromAddress, body.FromAddress)
+	require.Len(t, body.Bridges, 1)
+	require.Equal(t, "true", body.Bridges[0].Claimed)
+	require.Equal(t, testScannedNetworkID, body.Bridges[0].BridgeNetworkID)
+	require.Equal(t, claim.TxHash, body.Bridges[0].Claim.TxHash)
+	require.Equal(t, bridge.DestinationNetwork, body.Bridges[0].ClaimNetworkID)
+	require.NotZero(t, body.Bridges[0].CreationTimestamp)
+	require.NotZero(t, body.Bridges[0].LastUpdatedTimestamp)
+}
+
+// TestActivityHandlerScannerWarningsSurfaceInResponse verifies a network the scanner could not
+// reach never fails the request: the bridges found on every other network are still returned,
+// and the unreachable network is reported in the ActivityResponse's "warnings" field.
+func TestActivityHandlerScannerWarningsSurfaceInResponse(t *testing.T) {
+	bridge := testBridge(1)
+
+	gin.SetMode(gin.TestMode)
+	tracker := New(&Config{
+		Logger:     log.WithFields("module", "bridgetracker_test"),
+		ConfigSHA1: testConfigSHA1,
+		ActivityScanner: &fakeActivityScanner{
+			bridges:  []*domain.ScannedBridge{scannedBridge(bridge, testScannedNetworkID)},
+			warnings: []domain.ActivityWarning{{NetworkID: 7, Message: "bridge service unreachable"}},
+		},
+		ActivityClaims: &fakeActivityClaims{isClaimed: []bool{false}},
+	})
+	router := gin.New()
+	tracker.API().RegisterRoutes(router)
+
+	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex())
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	var body api.ActivityResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	require.Len(t, body.Bridges, 1)
+	require.Len(t, body.Warnings, 1)
+	require.Equal(t, uint32(7), body.Warnings[0].NetworkID)
+	require.Equal(t, "bridge service unreachable", body.Warnings[0].Message)
+}
+
+// TestActivityHandlerIsClaimedFailureReportsErrorStatusAndMessage verifies a failed isClaimed()
+// check surfaces as claimed="error" plus the failure message under errors["claim"], instead of
+// being silently reported as unclaimed.
+func TestActivityHandlerIsClaimedFailureReportsErrorStatusAndMessage(t *testing.T) {
+	bridge := testBridge(1)
+	wantErrMsg := "no bridge contract address configured for network 2"
+
+	gin.SetMode(gin.TestMode)
+	tracker := New(&Config{
+		Logger:     log.WithFields("module", "bridgetracker_test"),
+		ConfigSHA1: testConfigSHA1,
+		ActivityScanner: &fakeActivityScanner{
+			bridges: []*domain.ScannedBridge{scannedBridge(bridge, testScannedNetworkID)},
+		},
+		ActivityClaims: &fakeActivityClaims{
+			isClaimed:     []bool{false},
+			isClaimedErrs: []error{errors.New(wantErrMsg)},
+		},
+	})
+	router := gin.New()
+	tracker.API().RegisterRoutes(router)
+
+	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex())
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	var body api.ActivityResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	require.Len(t, body.Bridges, 1)
+	require.Equal(t, "error", body.Bridges[0].Claimed)
+	require.Nil(t, body.Bridges[0].Claim)
+	require.Equal(t, wantErrMsg, body.Bridges[0].Errors["claim"])
+}
+
+// TestActivityHandlerInvalidFilterBridges verifies an unrecognized filterBridges value is
+// rejected with 400
+func TestActivityHandlerInvalidFilterBridges(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tracker := New(&Config{
+		Logger:          log.WithFields("module", "bridgetracker_test"),
+		ConfigSHA1:      testConfigSHA1,
+		ActivityScanner: &fakeActivityScanner{},
+		ActivityClaims:  &fakeActivityClaims{},
+	})
+	router := gin.New()
+	tracker.API().RegisterRoutes(router)
+
+	resp := performRequest(t, router, http.MethodGet,
+		api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex()+"?filterBridges=bogus")
+	require.Equal(t, http.StatusBadRequest, resp.Code)
+}
+
+// TestActivityHandlerFilterBridgesPendingExcludesClaimed verifies ?filterBridges=pending
+// excludes an already-claimed bridge from the response
+func TestActivityHandlerFilterBridgesPendingExcludesClaimed(t *testing.T) {
+	claimedBridge := testBridge(1)
+	pendingBridge := testBridge(2)
+
+	gin.SetMode(gin.TestMode)
+	tracker := New(&Config{
+		Logger:     log.WithFields("module", "bridgetracker_test"),
+		ConfigSHA1: testConfigSHA1,
+		ActivityScanner: &fakeActivityScanner{
+			bridges: []*domain.ScannedBridge{
+				scannedBridge(claimedBridge, testScannedNetworkID),
+				scannedBridge(pendingBridge, testScannedNetworkID),
+			},
+		},
+		ActivityClaims: &fakeActivityClaims{isClaimed: []bool{true, false}},
+	})
+	router := gin.New()
+	tracker.API().RegisterRoutes(router)
+
+	resp := performRequest(t, router, http.MethodGet,
+		api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex()+"?filterBridges=pending")
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	var body api.ActivityResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	require.Len(t, body.Bridges, 1)
+	require.Equal(t, "false", body.Bridges[0].Claimed)
 }

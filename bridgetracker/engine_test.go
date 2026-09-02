@@ -41,8 +41,10 @@ type fakeSources struct {
 	cert    *types.CertificateInclusionData
 	certErr error
 
-	claim    *types.ClaimResult
-	claimErr error
+	claimed    bool
+	claimedErr error
+	claim      *types.ClaimResult
+	claimErr   error
 
 	settlement    *types.L1SettledGERResult
 	settlementErr error
@@ -96,6 +98,10 @@ func (f *fakeSources) L1InfoTreeIndexForGER(
 	return f.l1InfoTreeIndex, f.l1InfoTreeIndexErr
 }
 
+func (f *fakeSources) IsClaimed(_ context.Context, _ *BridgeInfo) (bool, error) {
+	return f.claimed, f.claimedErr
+}
+
 func (f *fakeSources) ClaimFor(_ context.Context, _ *BridgeInfo) (*types.ClaimResult, error) {
 	return f.claim, f.claimErr
 }
@@ -108,7 +114,7 @@ func (f *fakeSources) SettlementGERUpdate(
 
 func (f *fakeSources) engineSources() EngineSources {
 	return EngineSources{
-		Bridges: f, Certificates: f, GERs: f, LERs: f, Claims: f, Settlement: f,
+		Bridges: f, Certificates: f, GERs: f, LERs: f, ClaimChecker: f, Claims: f, Settlement: f,
 		WaitingGERUpdateSource: f,
 	}
 }
@@ -185,6 +191,11 @@ func TestEngineNewValidation(t *testing.T) {
 	sources.LERs = nil
 	_, err = NewEngine(EngineConfig{}, logger, newMemoryRegistry(0), sources)
 	require.ErrorContains(t, err, "LERSource")
+
+	sources = f.engineSources()
+	sources.ClaimChecker = nil
+	_, err = NewEngine(EngineConfig{}, logger, newMemoryRegistry(0), sources)
+	require.ErrorContains(t, err, "ClaimChecker")
 
 	sources = f.engineSources()
 	sources.Claims = nil
@@ -519,10 +530,13 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	require.Equal(t, &f.cert.CertificateData, inError.AllSteps()[*inError.StepIndex()].Result(),
 		"the certificate's current, not yet settled, status is visible while waiting")
 
+	settledBlockNumber := uint64(1500)
+	settledBlockTimestamp := uint64(1700001500)
 	f.cert = &types.CertificateInclusionData{
 		CertificateData: types.CertificateData{
 			CertificateID: common.HexToHash("0x02"), Status: agglayertypes.Settled,
 			SettlementTxHash: &settlementTxHash,
+			BlockNumber:      &settledBlockNumber, BlockTimestamp: &settledBlockTimestamp,
 		},
 	}
 	engine.tick(t.Context())
@@ -542,7 +556,7 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 
 	settlementLeafIndex := uint32(7)
 	f.settlement = &types.L1SettledGERResult{
-		TxHash: settlementTxHash, BlockNumber: 2000, GER: common.HexToHash("0x0b"),
+		TxHash: settlementTxHash, SettlementBlockNumber: 2000, GER: common.HexToHash("0x0b"),
 		L1InfoTreeIndex:                   &settlementLeafIndex,
 		HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
 	}
@@ -557,14 +571,49 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	}
 
 	injectedGER := common.HexToHash("0x04")
-	f.injectedGERAtIndex = &types.GERData{NetworkID: 2, GER: &injectedGER, LERType: types.LERTypeLocal}
+	injectedGERBlockNumber := uint64(200)
+	injectedGERTimestamp := uint64(1700000000)
+	injectedGERL2BlockNumber := uint64(300)
+	injectedGERL2Timestamp := uint64(1700000300)
+	f.injectedGERAtIndex = &types.GERData{
+		NetworkID: 2, GER: &injectedGER, LERType: types.LERTypeLocal,
+		BlockNumber: &injectedGERBlockNumber, BlockTimestamp: &injectedGERTimestamp,
+		L2BlockNumber: &injectedGERL2BlockNumber, L2BlockTimestamp: &injectedGERL2Timestamp,
+	}
 	engine.tick(t.Context())
 	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
 	allSteps = tracking.AllSteps()
 	require.Equal(t, types.StepWaitingClaim, currentStep(t, store))
 	for _, sp := range allSteps {
 		if sp.Step == types.StepWaitingGERInjection {
-			require.Equal(t, &types.InjectedGERResult{GER: injectedGER}, sp.Result())
+			require.Equal(t, &types.InjectedGERResult{
+				L1InfoTreeLeaf: types.InjectedGERL1Leaf{
+					GER: injectedGER, BlockNumber: injectedGERBlockNumber, BlockTimestamp: injectedGERTimestamp,
+				},
+				L2InjectedGER: &types.InjectedL2GERBlock{
+					BlockNumber: injectedGERL2BlockNumber, BlockTimestamp: &injectedGERL2Timestamp,
+				},
+			}, sp.Result())
+		}
+	}
+
+	// isClaimed() goes true on-chain a tick before the bridge service has indexed the claim tx:
+	// StepWaitingClaim completes on its own, but StepClaimed stays the current step rather than
+	// being auto-completed alongside it
+	f.claimed = true
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.False(t, tracking.Failed())
+	allSteps = tracking.AllSteps()
+	require.Equal(t, types.StepClaimed, allSteps[*tracking.StepIndex()].Step,
+		"on-chain isClaimed() completed WaitingClaim, but Claimed still needs its own ClaimFor fact")
+	for _, sp := range allSteps {
+		switch sp.Step {
+		case types.StepWaitingClaim:
+			require.Equal(t, types.StepStatusDone, sp.Status, "on-chain isClaimed() is authoritative on its own")
+		case types.StepClaimed:
+			require.Equal(t, types.StepStatusInProgress, sp.Status)
+			require.Nil(t, sp.Result(), "no claim tx indexed yet")
 		}
 	}
 
@@ -576,10 +625,10 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	require.Equal(t, types.StepClaimed, allSteps[*tracking.StepIndex()].Step)
 	final := allSteps[len(allSteps)-1]
 	require.Equal(t, types.StepClaimed, final.Step)
-	require.Equal(t, types.StepStatusDone, final.Status, "Claimed is terminal: done, not inProgress")
+	require.Equal(t, types.StepStatusDone, final.Status, "Claimed is done once the bridge service confirms the claim")
 
 	for _, sp := range allSteps {
-		if sp.Step == types.StepWaitingClaim {
+		if sp.Step == types.StepClaimed {
 			require.Equal(t, f.claim, sp.Result())
 		}
 	}
@@ -600,10 +649,13 @@ func TestEngineIncrementalResolution(t *testing.T) {
 
 	// walk the bridge up to WaitingClaim: every milestone but the claim is done
 	f.originLER = &types.LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0a"), BlockNumber: 10}
+	settledBlockNumber := uint64(1500)
+	settledBlockTimestamp := uint64(1700001500)
 	f.cert = &types.CertificateInclusionData{
 		CertificateData: types.CertificateData{
 			CertificateID: common.HexToHash("0x01"), Status: agglayertypes.Settled,
 			SettlementTxHash: &settlementTxHash,
+			BlockNumber:      &settledBlockNumber, BlockTimestamp: &settledBlockTimestamp,
 		},
 	}
 	settlementLeafIndex := uint32(7)
@@ -634,7 +686,8 @@ func TestEngineIncrementalResolution(t *testing.T) {
 	require.Nil(t, tracking.Error(), "done milestones must not be re-queried")
 	require.Equal(t, types.StepWaitingClaim, currentStep(t, store))
 
-	// the bridge still finishes through the only remaining fact, the claim
+	// the bridge still finishes through the only remaining facts, the claim status and its record
+	f.claimed = true
 	f.claim = &types.ClaimResult{ClaimTx: common.HexToHash("0x03"), BlockNumber: 30}
 	engine.tick(t.Context())
 	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})

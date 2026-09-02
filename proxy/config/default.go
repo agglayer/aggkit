@@ -27,6 +27,8 @@ IgnoreNetworkIDs = []
 
 [BridgeServiceFinder.RPCURLs]
 
+[BridgeServiceFinder.BridgeAddress]
+
 [REST]
 Host = "0.0.0.0"
 Port = 8080
@@ -57,6 +59,11 @@ RetentionPeriod = "10m"
 # not stay in memory forever.
 IdleTimeout = "30m"
 
+# ActivityIdleTimeout: how long a from_address's activity cache (GET /activity/from/{address})
+# stays in memory with no request for it, before being forgotten entirely -- same idea as
+# IdleTimeout, a separate knob because it governs a different cache.
+ActivityIdleTimeout = "30m"
+
 # RegisterResolveTimeout: how long the first request for a freshly registered tx waits for the
 # engine's immediate resolution attempt before answering, so it has a shot at real progress
 # instead of the bare "registered" state; a lookup of an already-registered tx never waits.
@@ -72,6 +79,11 @@ L2BlockFinality = "LatestBlock"
 # registering the bridge -- reaching the cap never evicts an existing entry to make room, so
 # RetentionPeriod and IdleTimeout are what keep the registry under it during normal operation.
 MaxTrackedBridges = 100000
+
+# L2InjectionLookbackBlocks: how many blocks the L2GlobalExitRootAddress fallback scans backwards
+# from the destination network's head before giving up, instead of continuing all the way back
+# to genesis.
+L2InjectionLookbackBlocks = 1000
 
 [Tracker.AgglayerClient]
 Cached = true

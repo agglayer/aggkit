@@ -82,6 +82,7 @@ type EngineSources struct {
 	GERs                   GERSource
 	WaitingGERUpdateSource domain.WaitingGERUpdateSource
 	LERs                   LERSource
+	ClaimChecker           ClaimChecker
 	Claims                 ClaimSource
 	Settlement             SettlementSource
 }
@@ -119,6 +120,8 @@ func NewEngine(
 		return nil, errors.New("engine requires a GERSource")
 	case sources.LERs == nil:
 		return nil, errors.New("engine requires a LERSource")
+	case sources.ClaimChecker == nil:
+		return nil, errors.New("engine requires a ClaimChecker")
 	case sources.Claims == nil:
 		return nil, errors.New("engine requires a ClaimSource")
 	case sources.Settlement == nil:
@@ -144,7 +147,8 @@ func createResolvers(logger aggkitcommon.Logger, sources EngineSources) map[type
 		types.StepCertificatePending:  domain.NewCertificatePendingResolver(sources.Certificates),
 		types.StepWaitL1SettledGER:    domain.NewWaitL1SettledGERResolver(sources.Settlement, sources.GERs),
 		types.StepWaitingGERInjection: domain.NewWaitingGERInjectionResolver(sources.GERs),
-		types.StepWaitingClaim:        domain.NewWaitingClaimResolver(sources.Claims),
+		types.StepWaitingClaim:        domain.NewWaitingClaimResolver(sources.ClaimChecker),
+		types.StepClaimed:             domain.NewClaimedResolver(sources.Claims),
 	}
 }
 

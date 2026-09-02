@@ -68,6 +68,21 @@ type Finder interface {
 	// ErrURLNotFound if nothing is cached. networkID follows the mapping documented in doc.go
 	// (networkID == rollupID; network 0 is L1 and is only served if provided via Config.BridgeURLs).
 	GetURL(networkID uint32) (NetworkURLs, error)
+	// NetworkIDs returns the networkIDs of every network currently resolved — i.e. every network
+	// GetURL would presently succeed for. Used by callers that need to enumerate every configured
+	// bridge service rather than query one network at a time (e.g. the bridge tracker's activity
+	// scanner). Order is unspecified.
+	NetworkIDs() []uint32
+	// BridgeAddress returns the bridge contract address for networkID, in priority order:
+	// Config.BridgeAddress[networkID] if set; else Config.BridgeAddress[0] if set (network 0's
+	// override doubles as the default for every network without its own, since it is typically the
+	// shared L1 bridge address); else the rollup manager's own on-chain BridgeAddress() — resolved
+	// once and cached forever, since it is an immutable constructor parameter of the rollup manager.
+	// A network whose bridge contract differs from that default needs its own
+	// Config.BridgeAddress override. Returns an error only when no override applies and the
+	// on-chain default could not be resolved (e.g. a transport failure) — such a failure is not
+	// cached, so the next call retries.
+	BridgeAddress(ctx context.Context, networkID uint32) (common.Address, error)
 }
 
 // RollupManagerQuerier enumerates the rollups attached to a rollup manager and reads their data.
@@ -83,6 +98,9 @@ type RollupManagerQuerier interface {
 	// aggchain-type rollups. ChainID is the rollup's L2 chain id.
 	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (
 		agglayermanager.AgglayerManagerRollupDataReturn, error)
+	// BridgeAddress returns the bridge contract address the rollup manager was constructed with: an
+	// immutable constructor parameter, so the same value for the lifetime of the contract.
+	BridgeAddress(opts *bind.CallOpts) (common.Address, error)
 }
 
 // RollupContractReader reads the two on-chain sources (metadata and trusted-sequencer URL) from a

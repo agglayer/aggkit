@@ -166,7 +166,6 @@ func runTracker(
 	// served alongside (see aggkitcommon.CORSConfig.OriginAllowed for why it can't just reuse
 	// the REST CORS headers).
 	trackerCfg.CORS = cfg.REST.CORS
-	tracker := bridgetracker.New(&trackerCfg)
 
 	if err := trackerCfg.AgglayerClient.Validate(); err != nil {
 		log.Fatalf("invalid agglayer client config: %v", err)
@@ -187,7 +186,24 @@ func runTracker(
 		log.Fatalf("failed to create bridge event source: %v", err)
 	}
 	gerSource := sources.NewGERSource(finder, rpcClients, trackerCfg.L1GlobalExitRootAddress,
-		trackerCfg.L1BlockFinality, log.WithFields("module", "bridgetracker-gersource"))
+		trackerCfg.L1BlockFinality, trackerCfg.L2GlobalExitRootAddress, trackerCfg.L2InjectionLookbackBlocks,
+		log.WithFields("module", "bridgetracker-gersource"))
+
+	// GET /activity/from/{from_address} scans every network the finder knows about (via
+	// finder.NetworkIDs) for bridges sent by an address, and resolves their claim state through
+	// the same per-network JSON-RPC clients plus the finder's own BridgeAddress resolution
+	// (see BridgeServiceFinder.BridgeAddress, distinct from Tracker.BridgeAddrs above)
+	activitySource := sources.NewActivitySource(
+		finder, rpcClients, log.WithFields("module", "bridgetracker-activitysource"))
+	trackerCfg.ActivityScanner = activitySource
+	trackerCfg.ActivityClaims = activitySource
+
+	// GET /bridge-address[/{network_id}] resolves the bridge contract address of one network,
+	// or every network the finder currently knows about; finder satisfies
+	// bridgetracker.BridgeAddressResolver directly (NetworkIDs/BridgeAddress)
+	trackerCfg.BridgeAddressResolver = finder
+
+	tracker := bridgetracker.New(&trackerCfg)
 
 	engine, err := bridgetracker.NewEngine(
 		bridgetracker.EngineConfig{
@@ -199,12 +215,14 @@ func runTracker(
 		bridgetracker.EngineSources{
 			Bridges: bridgeEvents,
 			Certificates: sources.NewCertificateSource(
-				agglayerClient, finder, log.WithFields("module", "bridgetracker-certificatesource")),
+				agglayerClient, finder, rpcClients, log.WithFields("module", "bridgetracker-certificatesource")),
 			GERs:                   gerSource,
 			WaitingGERUpdateSource: gerSource,
 			LERs:                   sources.NewLERSource(rpcClients),
+			ClaimChecker:           sources.NewClaimChecker(finder, rpcClients),
 			Claims:                 sources.NewClaimSource(finder),
-			Settlement:             sources.NewSettlementSource(rpcClients, trackerCfg.L1BlockFinality),
+			Settlement: sources.NewSettlementSource(
+				rpcClients, trackerCfg.L1BlockFinality, trackerCfg.L1GlobalExitRootAddress),
 		},
 	)
 	if err != nil {
