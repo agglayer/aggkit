@@ -597,7 +597,26 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 		}
 	}
 
+	// isClaimed() goes true on-chain a tick before the bridge service has indexed the claim tx:
+	// StepWaitingClaim completes on its own, but StepClaimed stays the current step rather than
+	// being auto-completed alongside it
 	f.claimed = true
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.False(t, tracking.Failed())
+	allSteps = tracking.AllSteps()
+	require.Equal(t, types.StepClaimed, allSteps[*tracking.StepIndex()].Step,
+		"on-chain isClaimed() completed WaitingClaim, but Claimed still needs its own ClaimFor fact")
+	for _, sp := range allSteps {
+		switch sp.Step {
+		case types.StepWaitingClaim:
+			require.Equal(t, types.StepStatusDone, sp.Status, "on-chain isClaimed() is authoritative on its own")
+		case types.StepClaimed:
+			require.Equal(t, types.StepStatusInProgress, sp.Status)
+			require.Nil(t, sp.Result(), "no claim tx indexed yet")
+		}
+	}
+
 	f.claim = &types.ClaimResult{ClaimTx: common.HexToHash("0x03"), BlockNumber: 30}
 	engine.tick(t.Context())
 	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})

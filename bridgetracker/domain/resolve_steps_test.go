@@ -448,6 +448,43 @@ func TestResolveSteps(t *testing.T) {
 	}
 }
 
+// TestResolveStepsClaimedNotIndexedYet pins the window between isClaimed() going true on-chain
+// and the destination bridge service indexing the claim tx: StepWaitingClaim completes in this
+// same call — its on-chain check needs nothing else — but StepClaimed, which still needs its own
+// ClaimFor fact (nil here, i.e. not indexed yet), stays the current step instead of being
+// auto-completed alongside it (see UpdateStep's doc, "including StepClaimed, which gets its own
+// resolver call")
+func TestResolveStepsClaimedNotIndexedYet(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
+	tracking := newTracking(types.BridgeTypeL2ToL2, []BridgeStepPath{
+		{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone},
+		{Step: types.StepPendingInclusion, Status: types.StepStatusDone},
+		{Step: types.StepCertificatePending, Status: types.StepStatusDone},
+		{Step: types.StepWaitingGERInjection, Status: types.StepStatusDone},
+		{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress},
+		{Step: types.StepClaimed, Status: types.StepStatusPending},
+	}, now)
+	facts := fakeFacts{claimed: true} // isClaimed() -> true; ClaimFor (claim) left nil: not indexed yet
+
+	result, err := ResolveSteps(context.Background(), log.NewLoggerNil(), testResolvers(&facts), tracking, now)
+	require.NoError(t, err)
+	require.Equal(t, []string{"isClaimed", "claimFor"}, facts.queried)
+
+	steps := result.AllSteps()
+	waitingClaim := steps[indexOfStep(steps, types.StepWaitingClaim)]
+	require.Equal(t, types.StepStatusDone, waitingClaim.Status, "on-chain isClaimed() is authoritative on its own")
+
+	claimed := steps[indexOfStep(steps, types.StepClaimed)]
+	require.Equal(t, types.StepStatusInProgress, claimed.Status, "still waiting on its own ClaimFor fact")
+	require.Nil(t, claimed.Result(), "no claim tx indexed yet")
+
+	idx := result.StepIndex()
+	require.NotNil(t, idx)
+	require.Equal(t, types.StepClaimed, steps[*idx].Step)
+}
+
 func TestResolveStepsErrors(t *testing.T) {
 	t.Parallel()
 
