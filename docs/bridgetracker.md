@@ -21,14 +21,15 @@ advancing once it is met:
 | `PendingInclusion` | The bridge is not yet part of any certificate sent to the agglayer. |
 | `CertificatePending` | Included in a certificate; waiting for it to settle (covers Pending/Proven/Candidate/InError). |
 | `WaitL1SettledGER` | L2-originated only: the certificate settled, waiting for its settlement tx to confirm on L1. |
+| `WaitingL1InfoLeafAvailable` | L2 → L1 only: the settlement tx is confirmed on L1, waiting for the destination network's own bridge-service instance to index the resulting L1 info tree leaf (see [#1823](https://github.com/agglayer/aggkit/issues/1823)). |
 | `WaitingGERInjection` | Waiting for the covering Global Exit Root to be injected on the destination network. |
-| `WaitingClaim` | The bridge is claimable: the covering GER has been injected. |
+| `WaitingClaim` | The bridge is claimable: the covering GER has been injected (or, for L2 → L1, its leaf is indexed by the destination). |
 | `Claimed` | Terminal: the bridge has been claimed on the destination network. |
 
 Which steps apply, and in which order, depends on the bridge's direction:
 
 - **L1 → L2**: `WaitingGERUpdate` → `WaitingGERInjection` → `WaitingClaim` → `Claimed`
-- **L2 → L1**: `WaitingLERUpdate` → `PendingInclusion` → `CertificatePending` → `WaitL1SettledGER` → `WaitingClaim` → `Claimed`
+- **L2 → L1**: `WaitingLERUpdate` → `PendingInclusion` → `CertificatePending` → `WaitL1SettledGER` → `WaitingL1InfoLeafAvailable` → `WaitingClaim` → `Claimed`
 - **L2 → L2**: `WaitingLERUpdate` → `PendingInclusion` → `CertificatePending` → `WaitL1SettledGER` → `WaitingGERInjection` → `WaitingClaim` → `Claimed`
 
 The whole route is published the moment the creating tx resolves, so a client sees every step it

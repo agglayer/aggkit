@@ -115,14 +115,15 @@ var errFakeUpdateStep = errors.New("fake update step error")
 // bridgetracker.createResolvers but backed by the single canned fakeFacts double
 func testResolvers(f *fakeFacts) map[types.BridgeStep]StepResolver {
 	return map[types.BridgeStep]StepResolver{
-		types.StepWaitingGERUpdate:    NewWaitingGERUpdateResolver(log.NewLoggerNil(), f),
-		types.StepWaitingLERUpdate:    NewWaitingLERUpdateResolver(f),
-		types.StepPendingInclusion:    NewPendingInclusionResolver(f),
-		types.StepCertificatePending:  NewCertificatePendingResolver(f),
-		types.StepWaitL1SettledGER:    NewWaitL1SettledGERResolver(f, f),
-		types.StepWaitingGERInjection: NewWaitingGERInjectionResolver(f),
-		types.StepWaitingClaim:        NewWaitingClaimResolver(f),
-		types.StepClaimed:             NewClaimedResolver(f),
+		types.StepWaitingGERUpdate:           NewWaitingGERUpdateResolver(log.NewLoggerNil(), f),
+		types.StepWaitingLERUpdate:           NewWaitingLERUpdateResolver(f),
+		types.StepPendingInclusion:           NewPendingInclusionResolver(f),
+		types.StepCertificatePending:         NewCertificatePendingResolver(f),
+		types.StepWaitL1SettledGER:           NewWaitL1SettledGERResolver(f, f),
+		types.StepWaitingL1InfoLeafAvailable: NewWaitingL1InfoLeafAvailableResolver(f),
+		types.StepWaitingGERInjection:        NewWaitingGERInjectionResolver(f),
+		types.StepWaitingClaim:               NewWaitingClaimResolver(f),
+		types.StepClaimed:                    NewClaimedResolver(f),
 	}
 }
 
@@ -264,17 +265,34 @@ func TestResolveSteps(t *testing.T) {
 			result:   &settledCertData,
 		},
 		{
-			name:       "L2->L1 settlement confirmed on L1 skips injection and is claimable",
+			// L2->L1 skips StepWaitingGERInjection (mainnet needs no injection), but still has to
+			// wait for the destination's own bridge-service instance to index the settled leaf
+			// (StepWaitingL1InfoLeafAvailable, see #1823) before it is claimable
+			name:       "L2->L1 settlement confirmed on L1, leaf not yet indexed by destination",
 			bridgeType: types.BridgeTypeL2ToL1,
 			facts: fakeFacts{
 				originLER: originLER, certificate: settledCert, settlement: settlementResult,
 			},
-			expectedStep: types.StepWaitingClaim,
+			expectedStep: types.StepWaitingL1InfoLeafAvailable,
 			expectedQueried: []string{
-				"originLER", "certificate", "certificate", "settlementGERUpdate", "isClaimed",
+				"originLER", "certificate", "certificate", "settlementGERUpdate", "injectedGERAtIndex",
 			},
 			resultOf: types.StepWaitL1SettledGER,
 			result:   settlementResult,
+		},
+		{
+			name:       "L2->L1 leaf indexed by destination -> claimable",
+			bridgeType: types.BridgeTypeL2ToL1,
+			facts: fakeFacts{
+				originLER: originLER, certificate: settledCert, settlement: settlementResult,
+				injectedGERAtIndex: injectedGER,
+			},
+			expectedStep: types.StepWaitingClaim,
+			expectedQueried: []string{
+				"originLER", "certificate", "certificate", "settlementGERUpdate", "injectedGERAtIndex", "isClaimed",
+			},
+			resultOf: types.StepWaitingL1InfoLeafAvailable,
+			result:   &types.InjectedGERL1Leaf{GER: *injectedGER.GER},
 		},
 		{
 			name:       "L2->L2 settlement confirmed, without injected GER -> WaitingGERInjection",
@@ -559,10 +577,11 @@ func TestResolveStepsErrors(t *testing.T) {
 			name:       "claim status error",
 			bridgeType: types.BridgeTypeL2ToL1,
 			facts: fakeFacts{
-				originLER:   originLER,
-				certificate: settledCert,
-				settlement:  settlementResult,
-				claimedErr:  factsErr,
+				originLER:          originLER,
+				certificate:        settledCert,
+				settlement:         settlementResult,
+				injectedGERAtIndex: &types.GERData{GER: &common.Hash{1}},
+				claimedErr:         factsErr,
 			},
 			expectedErr:  "claim status",
 			expectedStep: types.StepWaitingClaim,
@@ -571,11 +590,12 @@ func TestResolveStepsErrors(t *testing.T) {
 			name:       "claim info error",
 			bridgeType: types.BridgeTypeL2ToL1,
 			facts: fakeFacts{
-				originLER:   originLER,
-				certificate: settledCert,
-				settlement:  settlementResult,
-				claimed:     true,
-				claimErr:    factsErr,
+				originLER:          originLER,
+				certificate:        settledCert,
+				settlement:         settlementResult,
+				injectedGERAtIndex: &types.GERData{GER: &common.Hash{1}},
+				claimed:            true,
+				claimErr:           factsErr,
 			},
 			expectedErr:  "claim info",
 			expectedStep: types.StepClaimed,

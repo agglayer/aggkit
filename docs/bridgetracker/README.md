@@ -10,7 +10,8 @@ A bridge (deposit) goes through the following states, from its creation with `br
 | Pending to be included in certificate | The bridge has been created (`BridgeEvent` emitted) but is not yet part of any certificate. |
 | Certificate: Pending | The bridge is included in a certificate sent to the Agglayer. Covers every status the certificate goes through (Pending, Proven, Candidate, InError) — none of them move the bridge to a different state, they only change the certificate data shown alongside this one, until it settles. |
 | WaitL1SettledGER | The certificate has settled, but its settlement tx has not been confirmed on L1 yet: waits for that tx to reach L1 finality and its receipt to carry both `VerifyBatchesTrustedAggregator` and `UpdateL1InfoTree` (`UpdateL1InfoTreeV2` is captured too, if present, but not required). Only visited by L2-originated bridges (L2->L1, L2->L2). |
-| WaitingClaim | The Global Exit Root that includes the bridge has been injected on the destination network, so the bridge is ready to be claimed. |
+| WaitingL1InfoLeafAvailable | L2->L1 only: the settlement tx is confirmed on L1, but the destination network's own bridge-service instance has not indexed the resulting L1 info tree leaf yet — its own L1 info tree sync can lag behind the finality this tracker uses for `WaitL1SettledGER` (e.g. it waits for the block to be finalized). See #1823. |
+| WaitingClaim | The Global Exit Root that includes the bridge has been injected on the destination network (L1->L2, L2->L2), or its L1 info tree leaf is indexed by the destination's own bridge-service instance (L2->L1), so the bridge is ready to be claimed. |
 | Claimed | The bridge has been claimed on the destination network. |
 
 ```mermaid
@@ -20,6 +21,7 @@ stateDiagram-v2
     state "Pending to be included in certificate" as PendingInclusion
     state "Certificate: Pending" as CertPending
     state "Wait L1 settled GER" as WaitL1SettledGER
+    state "Waiting L1 Info Leaf Available" as WaitingL1InfoLeafAvailable
     state " Waiting GER Injection" as  WaitingGERInjection
     state "WaitingClaim" as WaitingClaim
 
@@ -31,7 +33,8 @@ stateDiagram-v2
     CertPending --> CertPending: certificate status change (still not settled)
     CertPending --> WaitL1SettledGER: settled by Agglayer (L2->L1, L2->L2)
     WaitL1SettledGER --> WaitingGERInjection: settlement tx confirmed on L1 (L2->L2)
-    WaitL1SettledGER --> WaitingClaim: settlement tx confirmed on L1 (L2->L1)
+    WaitL1SettledGER --> WaitingL1InfoLeafAvailable: settlement tx confirmed on L1 (L2->L1)
+    WaitingL1InfoLeafAvailable --> WaitingClaim: L1 info tree leaf indexed by destination (L2->L1)
      WaitingGERInjection --> WaitingClaim: GER injected on destination network
     WaitingClaim --> Claimed: claim on destination network
     Claimed --> [*]

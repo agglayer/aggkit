@@ -20,6 +20,7 @@ func ExpectedPath(bridgeType types.BridgeType) []types.BridgeStep {
 			types.StepPendingInclusion,
 			types.StepCertificatePending,
 			types.StepWaitL1SettledGER,
+			types.StepWaitingL1InfoLeafAvailable,
 			types.StepWaitingClaim,
 			types.StepClaimed,
 		}

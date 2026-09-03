@@ -468,7 +468,7 @@ const docTemplate = `{
                     "$ref": "#/definitions/github_com_agglayer_aggkit_bridgetracker_types.Duration"
                 },
                 "result": {
-                    "description": "Result is the data the step has produced so far; its shape depends on Step:\n*types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult\n(StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),\n*types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData\n(StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER) or\n*types.ClaimResult (StepClaimed). nil until\nthe step produces one, and for steps that never do. Most steps only set this once Done,\nbut StepCertificatePending (Status still InProgress) may already carry the certificate's\ncurrent, not yet settled, status — see domain.ErrCertificateNotSettled"
+                    "description": "Result is the data the step has produced so far; its shape depends on Step:\n*types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult\n(StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),\n*types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData\n(StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER),\n*types.InjectedGERL1Leaf (StepWaitingL1InfoLeafAvailable) or *types.ClaimResult\n(StepClaimed). nil until\nthe step produces one, and for steps that never do. Most steps only set this once Done,\nbut StepCertificatePending (Status still InProgress) may already carry the certificate's\ncurrent, not yet settled, status — see domain.ErrCertificateNotSettled"
                 },
                 "start_date": {
                     "type": "string"
@@ -557,6 +557,14 @@ const docTemplate = `{
                         1000000000,
                         60000000000,
                         3600000000000,
+                        -9223372036854775808,
+                        9223372036854775807,
+                        1,
+                        1000,
+                        1000000,
+                        1000000000,
+                        60000000000,
+                        3600000000000,
                         1,
                         1000,
                         1000000,
@@ -565,6 +573,14 @@ const docTemplate = `{
                         3600000000000
                     ],
                     "x-enum-varnames": [
+                        "minDuration",
+                        "maxDuration",
+                        "Nanosecond",
+                        "Microsecond",
+                        "Millisecond",
+                        "Second",
+                        "Minute",
+                        "Hour",
                         "minDuration",
                         "maxDuration",
                         "Nanosecond",

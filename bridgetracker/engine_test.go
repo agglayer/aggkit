@@ -171,6 +171,17 @@ func l2ToL2Bridge() *BridgeInfo {
 	}
 }
 
+func l2ToL1Bridge() *BridgeInfo {
+	return &BridgeInfo{
+		NetworkID:          1,
+		LeafType:           types.BridgeLeafTypeAsset,
+		DestinationNetwork: 0,
+		DepositCount:       7,
+		BlockNumber:        1000,
+		LogIndex:           2,
+	}
+}
+
 func currentStep(t *testing.T, store *memoryRegistry) types.BridgeStep {
 	t.Helper()
 
@@ -636,6 +647,76 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 	// claimed bridges leave the active list on the next round
 	engine.tick(t.Context())
 	require.Empty(t, mustGetTrackerActives(t, store))
+}
+
+// TestEngineLifecycleL2ToL1 pins the fix for #1823: an L2->L1 bridge must wait for the
+// destination's own bridge-service instance to index the settled L1 info tree leaf
+// (StepWaitingL1InfoLeafAvailable) before it is considered claimable — settling on L1 alone is
+// not enough, since that instance's own L1 info tree sync can lag behind the finality this
+// tracker uses for StepWaitL1SettledGER
+func TestEngineLifecycleL2ToL1(t *testing.T) {
+	f := &fakeSources{bridge: l2ToL1Bridge()}
+	engine, store, _ := newTestEngine(t, f)
+
+	mustRegister(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+
+	f.originLER = &types.LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0a"), BlockNumber: 10}
+	settledBlockNumber := uint64(1500)
+	settledBlockTimestamp := uint64(1700001500)
+	f.cert = &types.CertificateInclusionData{
+		CertificateData: types.CertificateData{
+			CertificateID: common.HexToHash("0x01"), Status: agglayertypes.Settled,
+			SettlementTxHash: &settlementTxHash,
+			BlockNumber:      &settledBlockNumber, BlockTimestamp: &settledBlockTimestamp,
+		},
+	}
+	settlementLeafIndex := uint32(7)
+	f.settlement = &types.L1SettledGERResult{
+		TxHash: settlementTxHash, SettlementBlockNumber: 2000, GER: common.HexToHash("0x0b"),
+		L1InfoTreeIndex:                   &settlementLeafIndex,
+		HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
+	}
+	engine.tick(t.Context())
+	tracking := mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.False(t, tracking.Failed())
+	allSteps := tracking.AllSteps()
+	require.Equal(t, types.StepWaitingL1InfoLeafAvailable, allSteps[*tracking.StepIndex()].Step,
+		"settlement confirmed on L1, but the destination bridge-service instance has not indexed the leaf yet")
+	for _, sp := range allSteps {
+		if sp.Step == types.StepWaitL1SettledGER {
+			require.Equal(t, f.settlement, sp.Result())
+		}
+	}
+
+	// the destination's bridge-service instance (mainnet) has not caught up yet: ticking again
+	// must not move the bridge, and must not touch isClaimed()
+	engine.tick(t.Context())
+	require.Equal(t, types.StepWaitingL1InfoLeafAvailable, currentStep(t, store))
+
+	leafGER := common.HexToHash("0x0b")
+	leafBlockNumber := uint64(2000)
+	leafTimestamp := uint64(1700002000)
+	f.injectedGERAtIndex = &types.GERData{
+		NetworkID: 0, GER: &leafGER, LERType: types.LERTypeNA,
+		BlockNumber: &leafBlockNumber, BlockTimestamp: &leafTimestamp,
+	}
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	allSteps = tracking.AllSteps()
+	require.Equal(t, types.StepWaitingClaim, allSteps[*tracking.StepIndex()].Step)
+	for _, sp := range allSteps {
+		if sp.Step == types.StepWaitingL1InfoLeafAvailable {
+			require.Equal(t, &types.InjectedGERL1Leaf{
+				GER: leafGER, BlockNumber: leafBlockNumber, BlockTimestamp: leafTimestamp,
+			}, sp.Result())
+		}
+	}
+
+	f.claimed = true
+	f.claim = &types.ClaimResult{ClaimTx: common.HexToHash("0x03"), BlockNumber: 30}
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, TrackingID{NetworkID: 1, TxHash: testHash})
+	require.Equal(t, types.TrackingStatusFinished, tracking.TrackingStatus())
 }
 
 // TestEngineIncrementalResolution pins that resolution is incremental: once the bridge tx and

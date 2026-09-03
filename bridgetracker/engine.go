@@ -141,14 +141,15 @@ func NewEngine(
 
 func createResolvers(logger aggkitcommon.Logger, sources EngineSources) map[types.BridgeStep]domain.StepResolver {
 	return map[types.BridgeStep]domain.StepResolver{
-		types.StepWaitingGERUpdate:    domain.NewWaitingGERUpdateResolver(logger, sources.WaitingGERUpdateSource),
-		types.StepWaitingLERUpdate:    domain.NewWaitingLERUpdateResolver(sources.LERs),
-		types.StepPendingInclusion:    domain.NewPendingInclusionResolver(sources.Certificates),
-		types.StepCertificatePending:  domain.NewCertificatePendingResolver(sources.Certificates),
-		types.StepWaitL1SettledGER:    domain.NewWaitL1SettledGERResolver(sources.Settlement, sources.GERs),
-		types.StepWaitingGERInjection: domain.NewWaitingGERInjectionResolver(sources.GERs),
-		types.StepWaitingClaim:        domain.NewWaitingClaimResolver(sources.ClaimChecker),
-		types.StepClaimed:             domain.NewClaimedResolver(sources.Claims),
+		types.StepWaitingGERUpdate:           domain.NewWaitingGERUpdateResolver(logger, sources.WaitingGERUpdateSource),
+		types.StepWaitingLERUpdate:           domain.NewWaitingLERUpdateResolver(sources.LERs),
+		types.StepPendingInclusion:           domain.NewPendingInclusionResolver(sources.Certificates),
+		types.StepCertificatePending:         domain.NewCertificatePendingResolver(sources.Certificates),
+		types.StepWaitL1SettledGER:           domain.NewWaitL1SettledGERResolver(sources.Settlement, sources.GERs),
+		types.StepWaitingL1InfoLeafAvailable: domain.NewWaitingL1InfoLeafAvailableResolver(sources.GERs),
+		types.StepWaitingGERInjection:        domain.NewWaitingGERInjectionResolver(sources.GERs),
+		types.StepWaitingClaim:               domain.NewWaitingClaimResolver(sources.ClaimChecker),
+		types.StepClaimed:                    domain.NewClaimedResolver(sources.Claims),
 	}
 }
 

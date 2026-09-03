@@ -371,7 +371,7 @@
       network, and answers a single question: <strong>where is my bridge right now?</strong>
     </p>
     <div class="meta-chips">
-      <span class="meta-chip"><span class="dot"></span><b>8</b>&nbsp;lifecycle states</span>
+      <span class="meta-chip"><span class="dot"></span><b>9</b>&nbsp;lifecycle states</span>
       <span class="meta-chip"><span class="dot"></span><b>3</b>&nbsp;bridge routes</span>
       <span class="meta-chip"><span class="dot"></span>REST&nbsp;<b>+</b>&nbsp;WebSocket</span>
       <span class="meta-chip"><span class="dot"></span>full status on every update</span>
@@ -442,12 +442,23 @@
             <span class="step-name">WaitL1SettledGER</span>
             <span class="routes"><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
           </div>
-          <p class="step-desc">The certificate has settled, but its settlement tx has not been confirmed on L1 yet: the tracker waits for that tx to reach the configured L1 finality and its receipt to carry both <code>VerifyBatchesTrustedAggregator</code> and <code>UpdateL1InfoTree</code> (<code>UpdateL1InfoTreeV2</code> is captured too, if present, but is not required). The step also resolves the GER to a concrete L1 info tree leaf index — straight from <code>UpdateL1InfoTreeV2</code>'s <code>LeafCount</code> when it fired, otherwise with one extra GER→leaf lookup — before handing off to <code>WaitingGERInjection</code>.</p>
+          <p class="step-desc">The certificate has settled, but its settlement tx has not been confirmed on L1 yet: the tracker waits for that tx to reach the configured L1 finality and its receipt to carry both <code>VerifyBatchesTrustedAggregator</code> and <code>UpdateL1InfoTree</code> (<code>UpdateL1InfoTreeV2</code> is captured too, if present, but is not required). The step also resolves the GER to a concrete L1 info tree leaf index — straight from <code>UpdateL1InfoTreeV2</code>'s <code>LeafCount</code> when it fired, otherwise with one extra GER→leaf lookup — before handing off to <code>WaitingL1InfoLeafAvailable</code> (L2→L1) or <code>WaitingGERInjection</code> (L2→L2).</p>
         </div>
       </div>
 
       <div class="step">
         <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title-row">
+            <span class="step-name">WaitingL1InfoLeafAvailable</span>
+            <span class="routes"><span class="route-tag tag-l2l1">L2→L1</span></span>
+          </div>
+          <p class="step-desc">The settlement tx is confirmed on L1, but the destination network's own bridge-service instance has not indexed the resulting L1 info tree leaf yet — its own L1 info tree sync can lag behind the finality this tracker uses for <code>WaitL1SettledGER</code> (e.g. it waits for the block to be finalized). Only visited by L2→L1 bridges: for any other destination (an L2), <code>WaitingGERInjection</code> already covers this through its own, real GER-injection event. See <a href="https://github.com/agglayer/aggkit/issues/1823">#1823</a>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">6</div>
         <div class="step-body">
           <div class="step-title-row">
             <span class="step-name">WaitingGERInjection</span>
@@ -458,18 +469,18 @@
       </div>
 
       <div class="step">
-        <div class="step-num">6</div>
+        <div class="step-num">7</div>
         <div class="step-body">
           <div class="step-title-row">
             <span class="step-name">WaitingClaim</span>
             <span class="routes"><span class="route-tag tag-l1l2">L1→L2</span><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
           </div>
-          <p class="step-desc">The GER that includes the bridge is available on the destination network. The bridge is ready to be claimed with <code>claimAsset()</code> / <code>claimMessage()</code>.</p>
+          <p class="step-desc">The GER that includes the bridge is available on the destination network — injected there, or, for L2→L1, indexed by the destination's own bridge-service instance. The bridge is ready to be claimed with <code>claimAsset()</code> / <code>claimMessage()</code>.</p>
         </div>
       </div>
 
       <div class="step">
-        <div class="step-num terminal">7</div>
+        <div class="step-num terminal">8</div>
         <div class="step-body">
           <div class="step-title-row">
             <span class="step-name">Claimed</span>
@@ -511,10 +522,10 @@
         </div>
         <div class="path">
           <span class="node">0 · WaitingGERUpdate</span><span class="arrow">→</span>
-          <span class="node ghost">1–4 · certificate</span><span class="arrow">→</span>
-          <span class="node">5 · WaitingGERInjection</span><span class="arrow">→</span>
-          <span class="node">6 · WaitingClaim</span><span class="arrow">→</span>
-          <span class="node">7 · Claimed</span>
+          <span class="node ghost">1–5 · certificate</span><span class="arrow">→</span>
+          <span class="node">6 · WaitingGERInjection</span><span class="arrow">→</span>
+          <span class="node">7 · WaitingClaim</span><span class="arrow">→</span>
+          <span class="node">8 · Claimed</span>
         </div>
         <p class="route-note"><b>GER update (L1→L2):</b> the deposit updates the GER directly on L1, so it jumps straight to waiting for the Aggoracle to inject that GER into the destination L2. No certificate is involved.</p>
       </div>
@@ -522,18 +533,18 @@
       <div class="route-card l2l1">
         <div class="route-head">
           <span class="route-name">L2 → L1</span>
-          <span class="route-sub">certificate, but no injection needed</span>
+          <span class="route-sub">certificate, no GER injection — but still a leaf-availability wait</span>
         </div>
         <div class="path">
           <span class="node">1 · WaitingLERUpdate</span><span class="arrow">→</span>
           <span class="node">2 · PendingInclusion</span><span class="arrow">→</span>
           <span class="node">3 · CertificatePending ⟳</span><span class="arrow">→</span>
           <span class="node">4 · WaitL1SettledGER</span><span class="arrow">→</span>
-          <span class="node ghost">5 · injection</span><span class="arrow">→</span>
-          <span class="node">6 · WaitingClaim</span><span class="arrow">→</span>
-          <span class="node">7 · Claimed</span>
+          <span class="node">5 · WaitingL1InfoLeafAvailable</span><span class="arrow">→</span>
+          <span class="node">7 · WaitingClaim</span><span class="arrow">→</span>
+          <span class="node">8 · Claimed</span>
         </div>
-        <p class="route-note"><b>Settled by Agglayer (L2→L1):</b> the certificate walks the Agglayer states inside <span class="mono">CertificatePending</span> — a failed certificate (<span class="mono">InError</span>) surfaces there as a step-level error. Settlement happens on L1, which is also the destination — but the claim still waits one more step, <span class="mono">WaitL1SettledGER</span>, for the settlement tx itself to be confirmed there.</p>
+        <p class="route-note"><b>Settled by Agglayer (L2→L1):</b> the certificate walks the Agglayer states inside <span class="mono">CertificatePending</span> — a failed certificate (<span class="mono">InError</span>) surfaces there as a step-level error. Settlement happens on L1, which is also the destination, so no GER injection is needed — but the destination's own bridge-service instance still has to index the settled leaf itself (<span class="mono">WaitingL1InfoLeafAvailable</span>): its own L1 info tree sync can lag behind the finality this tracker uses for <span class="mono">WaitL1SettledGER</span> (<a href="https://github.com/agglayer/aggkit/issues/1823">#1823</a>).</p>
       </div>
 
       <div class="route-card l2l2">
@@ -546,9 +557,9 @@
           <span class="node">2 · PendingInclusion</span><span class="arrow">→</span>
           <span class="node">3 · CertificatePending ⟳</span><span class="arrow">→</span>
           <span class="node">4 · WaitL1SettledGER</span><span class="arrow">→</span>
-          <span class="node">5 · WaitingGERInjection</span><span class="arrow">→</span>
-          <span class="node">6 · WaitingClaim</span><span class="arrow">→</span>
-          <span class="node">7 · Claimed</span>
+          <span class="node">6 · WaitingGERInjection</span><span class="arrow">→</span>
+          <span class="node">7 · WaitingClaim</span><span class="arrow">→</span>
+          <span class="node">8 · Claimed</span>
         </div>
         <p class="route-note"><b>Settled by Agglayer (L2→L2):</b> after the settlement tx is confirmed on L1 (<span class="mono">WaitL1SettledGER</span>), the Aggoracle still has to inject the new GER into the destination L2′ before the claim can happen. Two exit-root updates are involved — each reported in the <span class="mono">result</span> of its own step.</p>
       </div>
@@ -586,8 +597,9 @@
       (function () {
         const STEPS = {0:"WaitingGERUpdate",1:"WaitingLERUpdate",2:"PendingInclusion",
                        3:"CertificatePending",4:"WaitL1SettledGER",
-                       5:"WaitingGERInjection",6:"WaitingClaim",7:"Claimed"};
-        const DUR = {0:"30s",1:"30s",2:"1m0s",3:"5m0s",4:"1m0s",5:"2m0s",6:null,7:null};
+                       5:"WaitingL1InfoLeafAvailable",6:"WaitingGERInjection",
+                       7:"WaitingClaim",8:"Claimed"};
+        const DUR = {0:"30s",1:"30s",2:"1m0s",3:"5m0s",4:"1m0s",5:"1m0s",6:"2m0s",7:null,8:null};
         const GER_L1  = {net:0, ger:"0x9f2c…", ler:"Mainnet"};
         const GER_L2  = {net:3, ger:"0x9f2c…", ler:"Local"};
         const GER_L2P = {net:5, ger:"0x6b81…", ler:"Local"};
@@ -597,33 +609,17 @@
         const L1_SETTLED   = {tx:"0x77de…", block:9345001, ger:"0x6b81…", idx:42, vb:true, ul1:true, ul1v2:false};
 
         const ROUTES = {
-          l1l2: { type:0, typeStr:"L1->L2", netId:0, txHash:"0x71c4a2…", blockNumber:8123456, logIndex:2, path:[0,5,6,7], frames:[
+          l1l2: { type:0, typeStr:"L1->L2", netId:0, txHash:"0x71c4a2…", blockNumber:8123456, logIndex:2, path:[0,6,7,8], frames:[
             {cur:0, ger1:null,   ger2:null, cert:null, chg:["cur"],
              cap:"bridgeAsset() sent on L1 — BridgeEvent emitted, waiting for the GER update."},
-            {cur:5, ger1:GER_L1, ger2:null, cert:null, chg:["cur","ger1"],
+            {cur:6, ger1:GER_L1, ger2:null, cert:null, chg:["cur","ger1"],
              cap:"GER updated on L1 (no certificate needed) — waiting for the Aggoracle to inject it into the destination L2."},
-            {cur:6, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
+            {cur:7, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
              cap:"Aggoracle injected the GER on L2 — the bridge is ready to claim."},
-            {cur:7, done:true, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
+            {cur:8, done:true, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
              cap:"claimAsset() executed — asset delivered. The WebSocket sends this final status and closes (code 1000)."}
           ]},
-          l2l1: { type:1, typeStr:"L2->L1", netId:3, txHash:"0x5e9ab7…", blockNumber:5012301, logIndex:0, path:[1,2,3,4,6,7], frames:[
-            {cur:1, ger1:null,   ger2:null, cert:null, chg:["cur"],
-             cap:"bridgeAsset() sent on L2 — BridgeEvent emitted, waiting for the LER update."},
-            {cur:2, ger1:GER_L2, ger2:null, cert:null, chg:["cur","ger1"],
-             cap:"LER updated on L2 — waiting for the Aggsender to include the bridge in a certificate."},
-            {cur:3, ger1:GER_L2, ger2:null, cert:CERT_PEND, chg:["cur","cert"],
-             cap:"Certificate sent to the Agglayer — waiting for it to start moving."},
-            {cur:3, ger1:GER_L2, ger2:null, cert:CERT_PROVEN, chg:["cert"],
-             cap:"Certificate still processing on the Agglayer (Proven, Candidate… an InError certificate surfaces right here as a step-level error, without leaving this step)."},
-            {cur:4, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur","cert"],
-             cap:"Certificate settled on L1 — waiting for the settlement tx to reach L1 finality and emit VerifyBatchesTrustedAggregator + UpdateL1InfoTree."},
-            {cur:6, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
-             cap:"Settlement tx confirmed on L1 — the destination is L1 itself, so no injection is needed: claimable right away."},
-            {cur:7, done:true, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
-             cap:"claimAsset() executed on L1 — asset delivered. Final status pushed, connection closed."}
-          ]},
-          l2l2: { type:2, typeStr:"L2->L2", netId:3, txHash:"0x2b6fd1…", blockNumber:5012301, logIndex:1, path:[1,2,3,4,5,6,7], frames:[
+          l2l1: { type:1, typeStr:"L2->L1", netId:3, txHash:"0x5e9ab7…", blockNumber:5012301, logIndex:0, path:[1,2,3,4,5,7,8], frames:[
             {cur:1, ger1:null,   ger2:null, cert:null, chg:["cur"],
              cap:"bridgeAsset() sent on L2 — BridgeEvent emitted, waiting for the LER update."},
             {cur:2, ger1:GER_L2, ger2:null, cert:null, chg:["cur","ger1"],
@@ -635,10 +631,28 @@
             {cur:4, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur","cert"],
              cap:"Certificate settled on L1 — waiting for the settlement tx to reach L1 finality and emit VerifyBatchesTrustedAggregator + UpdateL1InfoTree."},
             {cur:5, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
+             cap:"Settlement tx confirmed on L1 — the destination is L1 itself, so no injection is needed, but its own bridge-service instance still has to index the settled leaf (its L1 sync can lag behind this tracker's own finality, see #1823)."},
+            {cur:7, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
+             cap:"L1 info tree leaf indexed by the destination's bridge-service instance — claimable."},
+            {cur:8, done:true, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
+             cap:"claimAsset() executed on L1 — asset delivered. Final status pushed, connection closed."}
+          ]},
+          l2l2: { type:2, typeStr:"L2->L2", netId:3, txHash:"0x2b6fd1…", blockNumber:5012301, logIndex:1, path:[1,2,3,4,6,7,8], frames:[
+            {cur:1, ger1:null,   ger2:null, cert:null, chg:["cur"],
+             cap:"bridgeAsset() sent on L2 — BridgeEvent emitted, waiting for the LER update."},
+            {cur:2, ger1:GER_L2, ger2:null, cert:null, chg:["cur","ger1"],
+             cap:"LER updated on L2 — waiting for the Aggsender to include the bridge in a certificate."},
+            {cur:3, ger1:GER_L2, ger2:null, cert:CERT_PEND, chg:["cur","cert"],
+             cap:"Certificate sent to the Agglayer — waiting for it to start moving."},
+            {cur:3, ger1:GER_L2, ger2:null, cert:CERT_PROVEN, chg:["cert"],
+             cap:"Certificate still processing on the Agglayer (Proven, Candidate… an InError certificate surfaces right here as a step-level error, without leaving this step)."},
+            {cur:4, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur","cert"],
+             cap:"Certificate settled on L1 — waiting for the settlement tx to reach L1 finality and emit VerifyBatchesTrustedAggregator + UpdateL1InfoTree."},
+            {cur:6, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
              cap:"Settlement tx confirmed on L1 — now the Aggoracle must inject the new GER into the destination L2′."},
-            {cur:6, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur","ger2"],
+            {cur:7, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur","ger2"],
              cap:"GER injected on L2′ — the bridge is ready to claim."},
-            {cur:7, done:true, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur"],
+            {cur:8, done:true, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur"],
              cap:"claimAsset() executed on L2′ — asset delivered. Final status pushed, connection closed."}
           ]}
         };
@@ -662,7 +676,9 @@
           1: () => '{ ' + kv("network_id", N(3)) + ', ' + kv("ler", S("0x2c41…")) + ', ' + kv("block_number", N(5012345)) + ' }',
           3: () => certStr(CERT_SETTLED),
           4: () => l1SettledStr(L1_SETTLED),
-          6: () => '{ ' + kv("claim_tx", S("0x55aa…")) + ', ' + kv("block_number", N(9345678)) + ' }'
+          5: () => '{ ' + kv("ger", S(L1_SETTLED.ger)) + ', ' + kv("block_number", N(L1_SETTLED.block))
+                  + ', ' + kv("block_timestamp", N(1734400000)) + ' }',
+          7: () => '{ ' + kv("claim_tx", S("0x55aa…")) + ', ' + kv("block_number", N(9345678)) + ' }'
         };
 
         const simEl = document.getElementById("sim");

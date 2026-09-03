@@ -22,8 +22,9 @@ type BridgeStepPath struct {
 	// *types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult
 	// (StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),
 	// *types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData
-	// (StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER) or
-	// *types.ClaimResult (StepClaimed). nil until
+	// (StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER),
+	// *types.InjectedGERL1Leaf (StepWaitingL1InfoLeafAvailable) or *types.ClaimResult
+	// (StepClaimed). nil until
 	// the step produces one, and for steps that never do. Most steps only set this once Done,
 	// but StepCertificatePending (Status still InProgress) may already carry the certificate's
 	// current, not yet settled, status — see domain.ErrCertificateNotSettled
