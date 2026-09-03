@@ -285,6 +285,24 @@ definitions:
         example: Error message
         type: string
     type: object
+  types.L1ContractsConfig:
+    description: L1 smart contract addresses
+    properties:
+      BridgeAddr:
+        description: BridgeAddr is the address of the bridge smart contract on L1
+        example: 0xabcdef1234567890abcdef1234567890abcdef12
+        type: string
+      GlobalExitRootAddr:
+        description: GlobalExitRootAddr is the address of the GlobalExitRoot manager
+          contract on L1
+        example: 0xabcdef1234567890abcdef1234567890abcdef12
+        type: string
+      RollupManagerAddr:
+        description: RollupManagerAddr is the address of the RollupManager/AgglayerManager
+          contract
+        example: 0xabcdef1234567890abcdef1234567890abcdef12
+        type: string
+    type: object
   types.L1InfoTreeLeafResponse:
     properties:
       block_num:
@@ -342,6 +360,19 @@ definitions:
         description: Timestamp of the block in seconds since the Unix epoch
         example: 1684500000
         type: integer
+    type: object
+  types.L2ContractsConfig:
+    description: L2 smart contract addresses
+    properties:
+      BridgeAddr:
+        description: BridgeAddr is the address of the bridge smart contract on L2
+        example: 0xabcdef1234567890abcdef1234567890abcdef12
+        type: string
+      GlobalExitRootAddr:
+        description: GlobalExitRootAddr is the address of the GER smart contract on
+          L2
+        example: 0xabcdef1234567890abcdef1234567890abcdef12
+        type: string
     type: object
   types.L2GERSyncInfo:
     description: l2gersync (injected-GER) synchronization status
@@ -424,6 +455,40 @@ definitions:
       synchronized_deposit_count:
         example: 676797
         type: integer
+    type: object
+  types.PublicComponentsConfig:
+    description: Public configuration of the syncer components backing the bridge
+      service
+    properties:
+      BridgeL1Sync:
+        $ref: '#/definitions/types.SyncComponentConfig'
+      BridgeL2Sync:
+        $ref: '#/definitions/types.SyncComponentConfig'
+      L1InfoTreeSync:
+        $ref: '#/definitions/types.SyncComponentConfig'
+      L2GERSync:
+        $ref: '#/definitions/types.SyncComponentConfig'
+    type: object
+  types.PublicConfigResponse:
+    description: Public, non-sensitive configuration of the bridge service
+    properties:
+      components:
+        allOf:
+        - $ref: '#/definitions/types.PublicComponentsConfig'
+        description: Components holds the public parameters of each syncer component
+      contracts:
+        allOf:
+        - $ref: '#/definitions/types.PublicContractsConfig'
+        description: Contracts holds the smart contract addresses used by this instance,
+          deduplicated by network
+    type: object
+  types.PublicContractsConfig:
+    description: Smart contract addresses used by this instance, split by network
+    properties:
+      L1:
+        $ref: '#/definitions/types.L1ContractsConfig'
+      L2:
+        $ref: '#/definitions/types.L2ContractsConfig'
     type: object
   types.RemoveGEREventResponse:
     description: Information about a GER removal event
@@ -514,6 +579,24 @@ definitions:
         items:
           $ref: '#/definitions/types.SetClaimResponse'
         type: array
+    type: object
+  types.SyncComponentConfig:
+    description: Public configuration of a single syncer component
+    properties:
+      block_finality:
+        description: BlockFinality is the block finality used by this syncer when
+          querying the chain
+        example: FinalizedBlock
+        type: string
+      initial_block:
+        description: InitialBlock is the first block that was queried when starting
+          the sync from scratch
+        example: 12345
+        type: integer
+      sync_block_chunk_size:
+        description: SyncBlockChunkSize is the amount of blocks queried per request
+        example: 100
+        type: integer
     type: object
   types.SyncStatus:
     description: Bridge sync status comparing on-chain deposit counts with local database
@@ -1022,6 +1105,22 @@ paths:
       summary: Get claims by global exit root
       tags:
       - claims
+  /config:
+    get:
+      description: |-
+        Returns a sanitized view of the bridge service configuration: component sync
+        parameters and contract addresses, deduplicated by network. Never exposes RPC
+        URLs, DB paths, private keys or any other internal/sensitive configuration value.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Public bridge service configuration
+          schema:
+            $ref: '#/definitions/types.PublicConfigResponse'
+      summary: Get public configuration
+      tags:
+      - config
   /injected-l1-info-leaf:
     get:
       description: |-

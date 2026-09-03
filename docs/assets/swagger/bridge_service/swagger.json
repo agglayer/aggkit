@@ -564,6 +564,26 @@
                 }
             }
         },
+        "/config": {
+            "get": {
+                "description": "Returns a sanitized view of the bridge service configuration: component sync\nparameters and contract addresses, deduplicated by network. Never exposes RPC\nURLs, DB paths, private keys or any other internal/sensitive configuration value.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "config"
+                ],
+                "summary": "Get public configuration",
+                "responses": {
+                    "200": {
+                        "description": "Public bridge service configuration",
+                        "schema": {
+                            "$ref": "#/definitions/types.PublicConfigResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/injected-l1-info-leaf": {
             "get": {
                 "description": "Returns the L1 info tree leaf either at the given index (for L1)\nor the first injected global exit root after the given index (for L2). For L2,\ninjected_l2_block_num/injected_l2_block_timestamp additionally carry the destination\nnetwork's own block, and when, the Global Exit Root got injected.",
@@ -1525,6 +1545,27 @@
                 }
             }
         },
+        "types.L1ContractsConfig": {
+            "description": "L1 smart contract addresses",
+            "type": "object",
+            "properties": {
+                "BridgeAddr": {
+                    "description": "BridgeAddr is the address of the bridge smart contract on L1",
+                    "type": "string",
+                    "example": "0xabcdef1234567890abcdef1234567890abcdef12"
+                },
+                "GlobalExitRootAddr": {
+                    "description": "GlobalExitRootAddr is the address of the GlobalExitRoot manager contract on L1",
+                    "type": "string",
+                    "example": "0xabcdef1234567890abcdef1234567890abcdef12"
+                },
+                "RollupManagerAddr": {
+                    "description": "RollupManagerAddr is the address of the RollupManager/AgglayerManager contract",
+                    "type": "string",
+                    "example": "0xabcdef1234567890abcdef1234567890abcdef12"
+                }
+            }
+        },
         "types.L1InfoTreeLeafResponse": {
             "type": "object",
             "properties": {
@@ -1581,6 +1622,22 @@
                     "description": "Timestamp of the block in seconds since the Unix epoch",
                     "type": "integer",
                     "example": 1684500000
+                }
+            }
+        },
+        "types.L2ContractsConfig": {
+            "description": "L2 smart contract addresses",
+            "type": "object",
+            "properties": {
+                "BridgeAddr": {
+                    "description": "BridgeAddr is the address of the bridge smart contract on L2",
+                    "type": "string",
+                    "example": "0xabcdef1234567890abcdef1234567890abcdef12"
+                },
+                "GlobalExitRootAddr": {
+                    "description": "GlobalExitRootAddr is the address of the GER smart contract on L2",
+                    "type": "string",
+                    "example": "0xabcdef1234567890abcdef1234567890abcdef12"
                 }
             }
         },
@@ -1689,6 +1746,58 @@
                 "synchronized_deposit_count": {
                     "type": "integer",
                     "example": 676797
+                }
+            }
+        },
+        "types.PublicComponentsConfig": {
+            "description": "Public configuration of the syncer components backing the bridge service",
+            "type": "object",
+            "properties": {
+                "BridgeL1Sync": {
+                    "$ref": "#/definitions/types.SyncComponentConfig"
+                },
+                "BridgeL2Sync": {
+                    "$ref": "#/definitions/types.SyncComponentConfig"
+                },
+                "L1InfoTreeSync": {
+                    "$ref": "#/definitions/types.SyncComponentConfig"
+                },
+                "L2GERSync": {
+                    "$ref": "#/definitions/types.SyncComponentConfig"
+                }
+            }
+        },
+        "types.PublicConfigResponse": {
+            "description": "Public, non-sensitive configuration of the bridge service",
+            "type": "object",
+            "properties": {
+                "components": {
+                    "description": "Components holds the public parameters of each syncer component",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/types.PublicComponentsConfig"
+                        }
+                    ]
+                },
+                "contracts": {
+                    "description": "Contracts holds the smart contract addresses used by this instance, deduplicated by network",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/types.PublicContractsConfig"
+                        }
+                    ]
+                }
+            }
+        },
+        "types.PublicContractsConfig": {
+            "description": "Smart contract addresses used by this instance, split by network",
+            "type": "object",
+            "properties": {
+                "L1": {
+                    "$ref": "#/definitions/types.L1ContractsConfig"
+                },
+                "L2": {
+                    "$ref": "#/definitions/types.L2ContractsConfig"
                 }
             }
         },
@@ -1803,6 +1912,27 @@
                     "items": {
                         "$ref": "#/definitions/types.SetClaimResponse"
                     }
+                }
+            }
+        },
+        "types.SyncComponentConfig": {
+            "description": "Public configuration of a single syncer component",
+            "type": "object",
+            "properties": {
+                "block_finality": {
+                    "description": "BlockFinality is the block finality used by this syncer when querying the chain",
+                    "type": "string",
+                    "example": "FinalizedBlock"
+                },
+                "initial_block": {
+                    "description": "InitialBlock is the first block that was queried when starting the sync from scratch",
+                    "type": "integer",
+                    "example": 12345
+                },
+                "sync_block_chunk_size": {
+                    "description": "SyncBlockChunkSize is the amount of blocks queried per request",
+                    "type": "integer",
+                    "example": 100
                 }
             }
         },

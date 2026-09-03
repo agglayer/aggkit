@@ -98,6 +98,8 @@ type Config struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	NetworkID    uint32
+	// PublicConfig is the sanitized configuration served on the public config endpoint
+	PublicConfig types.PublicConfigResponse
 }
 
 // BridgeService contains implementations for the bridge service endpoints
@@ -106,6 +108,7 @@ type BridgeService struct {
 	readTimeout                 time.Duration
 	writeTimeout                time.Duration
 	networkID                   uint32
+	publicConfig                types.PublicConfigResponse
 	agglayerManagerUpgradeQuery AgglayerManagerUpgradeQuerier
 	l1InfoTree                  L1InfoTreeSyncer
 	injectedGERs                L2GERSyncer
@@ -133,6 +136,7 @@ func New(
 		readTimeout:                 cfg.ReadTimeout,
 		writeTimeout:                cfg.WriteTimeout,
 		networkID:                   cfg.NetworkID,
+		publicConfig:                cfg.PublicConfig,
 		agglayerManagerUpgradeQuery: upgradeQuerier,
 		l1InfoTree:                  l1InfoTree,
 		injectedGERs:                injectedGERs,
@@ -173,6 +177,7 @@ func (b *BridgeService) RegisterRoutes(router gin.IRouter) {
 		bridgeGroup.GET("/bridges-by-content", b.GetBridgesByContentHandler)
 		bridgeGroup.GET("/claim-candidates", b.GetClaimCandidatesHandler)
 		bridgeGroup.GET("/root-by-ler", b.RootByLERHandler)
+		bridgeGroup.GET("/config", b.GetPublicConfigHandler)
 
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -204,6 +209,22 @@ func (b *BridgeService) HealthCheckHandler(c *gin.Context) {
 		})
 
 	reportMetrics(metrics.GetHealthCheckReq, http.StatusOK, time)
+}
+
+// GetPublicConfigHandler returns the public, non-sensitive configuration of the bridge service.
+//
+// @Summary Get public configuration
+// @Description Returns a sanitized view of the bridge service configuration: component sync
+// @Description parameters and contract addresses, deduplicated by network. Never exposes RPC
+// @Description URLs, DB paths, private keys or any other internal/sensitive configuration value.
+// @Tags config
+// @Produce json
+// @Success 200 {object} types.PublicConfigResponse "Public bridge service configuration"
+// @Router /config [get]
+func (b *BridgeService) GetPublicConfigHandler(c *gin.Context) {
+	startTime := time.Now()
+	c.JSON(http.StatusOK, b.publicConfig)
+	reportMetrics(metrics.GetConfigReq, http.StatusOK, startTime)
 }
 
 // GetBridgesHandler retrieves paginated bridge data for the specified network.

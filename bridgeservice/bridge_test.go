@@ -3713,6 +3713,63 @@ func TestHealthCheckHandler(t *testing.T) {
 	require.NotEmpty(t, response.Version)
 }
 
+func TestGetPublicConfigHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	expected := bridgetypes.PublicConfigResponse{
+		Components: bridgetypes.PublicComponentsConfig{
+			L1InfoTreeSync: &bridgetypes.SyncComponentConfig{
+				BlockFinality: "FinalizedBlock", InitialBlock: 100, SyncBlockChunkSize: 50,
+			},
+			BridgeL1Sync: &bridgetypes.SyncComponentConfig{
+				BlockFinality: "LatestBlock", InitialBlock: 0, SyncBlockChunkSize: 100,
+			},
+			BridgeL2Sync: &bridgetypes.SyncComponentConfig{
+				BlockFinality: "LatestBlock", InitialBlock: 0, SyncBlockChunkSize: 100,
+			},
+			L2GERSync: &bridgetypes.SyncComponentConfig{
+				BlockFinality: "LatestBlock", InitialBlock: 0, SyncBlockChunkSize: 100,
+			},
+		},
+		Contracts: bridgetypes.PublicContractsConfig{
+			L1: bridgetypes.L1ContractsConfig{
+				GlobalExitRootAddr: bridgetypes.Address("0x1111111111111111111111111111111111111111"),
+				RollupManagerAddr:  bridgetypes.Address("0x2222222222222222222222222222222222222222"),
+				BridgeAddr:         bridgetypes.Address("0x3333333333333333333333333333333333333333"),
+			},
+			L2: bridgetypes.L2ContractsConfig{
+				GlobalExitRootAddr: bridgetypes.Address("0x4444444444444444444444444444444444444444"),
+				BridgeAddr:         bridgetypes.Address("0x5555555555555555555555555555555555555555"),
+			},
+		},
+	}
+
+	cfg := &Config{
+		Logger:       log.WithFields("module", "test bridge service"),
+		NetworkID:    l2NetworkID,
+		PublicConfig: expected,
+	}
+	b := New(cfg,
+		mocks.NewAgglayerManagerUpgradeQuerier(t),
+		mocks.NewL1InfoTreeSyncer(t),
+		mocks.NewL2GERSyncer(t),
+		mocks.NewBridger(t),
+		mocks.NewClaimer(t),
+		mocks.NewBridger(t),
+		mocks.NewClaimer(t),
+	)
+	router := gin.New()
+	b.RegisterRoutes(router)
+
+	w := performRequest(t, router, "/bridge/v1/config")
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var response bridgetypes.PublicConfigResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	require.Equal(t, expected, response)
+}
+
 func TestPopulateNetworkSyncInfo(t *testing.T) {
 	b := newBridgeWithMocks(t, l2NetworkID)
 

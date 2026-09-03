@@ -32,6 +32,7 @@ import (
 	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
+	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
 	claimsyncstorage "github.com/agglayer/aggkit/claimsync/storage"
@@ -209,7 +210,7 @@ func start(cliCtx *cli.Context) error {
 
 	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
 		b := createBridgeService(
-			cfg.PublicREST,
+			cfg,
 			rollupDataQuerier.RollupID,
 			rollupDataQuerier,
 			l1InfoTreeSync,
@@ -1113,7 +1114,7 @@ func runAggsenderMultisigCommitteeIfNeeded(
 }
 
 func createBridgeService(
-	cfg aggkitcommon.RESTConfig,
+	cfg *config.Config,
 	l2NetworkID uint32,
 	upgradeQuery bridgeservice.AgglayerManagerUpgradeQuerier,
 	l1InfoTree bridgeservice.L1InfoTreeSyncer,
@@ -1127,9 +1128,10 @@ func createBridgeService(
 
 	bridgeCfg := &bridgeservice.Config{
 		Logger:       logger,
-		ReadTimeout:  cfg.ReadTimeout.Duration,
-		WriteTimeout: cfg.WriteTimeout.Duration,
+		ReadTimeout:  cfg.PublicREST.ReadTimeout.Duration,
+		WriteTimeout: cfg.PublicREST.WriteTimeout.Duration,
 		NetworkID:    l2NetworkID,
+		PublicConfig: buildPublicConfig(cfg),
 	}
 
 	return bridgeservice.New(
@@ -1142,6 +1144,49 @@ func createBridgeService(
 		bridgeL2,
 		claimL2,
 	)
+}
+
+// buildPublicConfig builds the sanitized view of the configuration served on the bridge
+// service's public config endpoint (GET /bridge/v1/config): only the parameters a client needs
+// to configure itself against this instance, with contract addresses deduplicated by network
+// instead of repeated across every component config that uses them. It never includes RPC URLs,
+// DB paths, private keys or any other internal/sensitive configuration value.
+func buildPublicConfig(cfg *config.Config) bridgetypes.PublicConfigResponse {
+	return bridgetypes.PublicConfigResponse{
+		Components: bridgetypes.PublicComponentsConfig{
+			L1InfoTreeSync: &bridgetypes.SyncComponentConfig{
+				BlockFinality:      cfg.L1InfoTreeSync.BlockFinality.String(),
+				InitialBlock:       cfg.L1InfoTreeSync.InitialBlock,
+				SyncBlockChunkSize: cfg.L1InfoTreeSync.SyncBlockChunkSize,
+			},
+			BridgeL1Sync: &bridgetypes.SyncComponentConfig{
+				BlockFinality:      cfg.BridgeL1Sync.BlockFinality.String(),
+				InitialBlock:       cfg.BridgeL1Sync.InitialBlockNum,
+				SyncBlockChunkSize: cfg.BridgeL1Sync.SyncBlockChunkSize,
+			},
+			BridgeL2Sync: &bridgetypes.SyncComponentConfig{
+				BlockFinality:      cfg.BridgeL2Sync.BlockFinality.String(),
+				InitialBlock:       cfg.BridgeL2Sync.InitialBlockNum,
+				SyncBlockChunkSize: cfg.BridgeL2Sync.SyncBlockChunkSize,
+			},
+			L2GERSync: &bridgetypes.SyncComponentConfig{
+				BlockFinality:      cfg.L2GERSync.BlockFinality.String(),
+				InitialBlock:       cfg.L2GERSync.InitialBlockNum,
+				SyncBlockChunkSize: cfg.L2GERSync.SyncBlockChunkSize,
+			},
+		},
+		Contracts: bridgetypes.PublicContractsConfig{
+			L1: bridgetypes.L1ContractsConfig{
+				GlobalExitRootAddr: bridgetypes.Address(cfg.L1NetworkConfig.GlobalExitRootManagerAddr.Hex()),
+				RollupManagerAddr:  bridgetypes.Address(cfg.L1NetworkConfig.RollupManagerAddr.Hex()),
+				BridgeAddr:         bridgetypes.Address(cfg.BridgeL1Sync.BridgeAddr.Hex()),
+			},
+			L2: bridgetypes.L2ContractsConfig{
+				GlobalExitRootAddr: bridgetypes.Address(cfg.L2GERSync.GlobalExitRootL2Addr.Hex()),
+				BridgeAddr:         bridgetypes.Address(cfg.BridgeL2Sync.BridgeAddr.Hex()),
+			},
+		},
+	}
 }
 
 func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {

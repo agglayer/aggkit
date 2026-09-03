@@ -523,3 +523,68 @@ type RootByLERResponse struct {
 	// BlockPosition orders same-block roots (multiple deposits in one block)
 	BlockPosition uint64 `json:"block_position" example:"0"`
 }
+
+// PublicConfigResponse is a sanitized view of the bridge service configuration: only the
+// parameters a client needs to configure itself against this instance (e.g. a proxy), with
+// contract addresses deduplicated into a single section instead of repeated across the
+// components that use them. It never exposes RPC URLs, DB paths, private keys or any other
+// internal/sensitive configuration value.
+// @Description Public, non-sensitive configuration of the bridge service
+type PublicConfigResponse struct {
+	// Components holds the public parameters of each syncer component
+	Components PublicComponentsConfig `json:"components"`
+	// Contracts holds the smart contract addresses used by this instance, deduplicated by network
+	Contracts PublicContractsConfig `json:"contracts"`
+}
+
+// PublicComponentsConfig groups the public configuration of every syncer component that backs
+// the bridge service. A component is nil when it is not running on this instance.
+// @Description Public configuration of the syncer components backing the bridge service
+type PublicComponentsConfig struct {
+	L1InfoTreeSync *SyncComponentConfig `json:"L1InfoTreeSync,omitempty"`
+	BridgeL1Sync   *SyncComponentConfig `json:"BridgeL1Sync,omitempty"`
+	BridgeL2Sync   *SyncComponentConfig `json:"BridgeL2Sync,omitempty"`
+	L2GERSync      *SyncComponentConfig `json:"L2GERSync,omitempty"`
+}
+
+// SyncComponentConfig is the public subset of a syncer's configuration: enough for a client to
+// understand how the syncer is set up, without internal details such as DB paths or retry timers.
+// @Description Public configuration of a single syncer component
+// @example {"block_finality":"FinalizedBlock","initial_block":12345,"sync_block_chunk_size":100}
+type SyncComponentConfig struct {
+	// BlockFinality is the block finality used by this syncer when querying the chain
+	BlockFinality string `json:"block_finality" example:"FinalizedBlock"`
+	// InitialBlock is the first block that was queried when starting the sync from scratch
+	InitialBlock uint64 `json:"initial_block" example:"12345"`
+	// SyncBlockChunkSize is the amount of blocks queried per request
+	SyncBlockChunkSize uint64 `json:"sync_block_chunk_size" example:"100"`
+}
+
+// PublicContractsConfig holds the smart contract addresses used by this instance, split by
+// network, so they are reported once instead of repeated across every component config that uses
+// them.
+// @Description Smart contract addresses used by this instance, split by network
+type PublicContractsConfig struct {
+	L1 L1ContractsConfig `json:"L1"`
+	L2 L2ContractsConfig `json:"L2"`
+}
+
+// L1ContractsConfig holds the L1 smart contract addresses used by this instance.
+// @Description L1 smart contract addresses
+type L1ContractsConfig struct {
+	// GlobalExitRootAddr is the address of the GlobalExitRoot manager contract on L1
+	GlobalExitRootAddr Address `json:"GlobalExitRootAddr" example:"0xabcdef1234567890abcdef1234567890abcdef12"`
+	// RollupManagerAddr is the address of the RollupManager/AgglayerManager contract
+	RollupManagerAddr Address `json:"RollupManagerAddr" example:"0xabcdef1234567890abcdef1234567890abcdef12"`
+	// BridgeAddr is the address of the bridge smart contract on L1
+	BridgeAddr Address `json:"BridgeAddr" example:"0xabcdef1234567890abcdef1234567890abcdef12"`
+}
+
+// L2ContractsConfig holds the L2 smart contract addresses used by this instance.
+// @Description L2 smart contract addresses
+type L2ContractsConfig struct {
+	// GlobalExitRootAddr is the address of the GER smart contract on L2
+	GlobalExitRootAddr Address `json:"GlobalExitRootAddr" example:"0xabcdef1234567890abcdef1234567890abcdef12"`
+	// BridgeAddr is the address of the bridge smart contract on L2
+	BridgeAddr Address `json:"BridgeAddr" example:"0xabcdef1234567890abcdef1234567890abcdef12"`
+}

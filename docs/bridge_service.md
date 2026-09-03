@@ -308,6 +308,55 @@ is not synced yet.
   [remove-GER runbook](./remove_ger_runbook.md#blocking-and-automatic-recovery) for the blocking/automatic
   recovery behavior and how to use this field to confirm recovery.
 
+## Public configuration
+
+`GET /bridge/v1/config` returns a sanitized view of this instance's configuration, useful e.g. to
+configure a proxy in front of the bridge service without duplicating its contract addresses.
+It never exposes RPC URLs, DB paths, private keys, or any other internal/sensitive configuration
+value. Response shape (`types.PublicConfigResponse`):
+
+```json
+{
+  "components": {
+    "L1InfoTreeSync": {
+      "block_finality": "FinalizedBlock",
+      "initial_block": 0,
+      "sync_block_chunk_size": 100
+    },
+    "BridgeL1Sync": {
+      "block_finality": "LatestBlock",
+      "initial_block": 0,
+      "sync_block_chunk_size": 100
+    },
+    "BridgeL2Sync": {
+      "block_finality": "LatestBlock",
+      "initial_block": 0,
+      "sync_block_chunk_size": 100
+    },
+    "L2GERSync": {
+      "block_finality": "LatestBlock",
+      "initial_block": 0,
+      "sync_block_chunk_size": 100
+    }
+  },
+  "contracts": {
+    "L1": {
+      "GlobalExitRootAddr": "0x0000000000000000000000000000000000000000",
+      "RollupManagerAddr": "0x0000000000000000000000000000000000000000",
+      "BridgeAddr": "0x0000000000000000000000000000000000000000"
+    },
+    "L2": {
+      "GlobalExitRootAddr": "0x0000000000000000000000000000000000000000",
+      "BridgeAddr": "0x0000000000000000000000000000000000000000"
+    }
+  }
+}
+```
+
+`components` mirrors the public subset of each syncer's own configuration (`SyncComponentConfig`);
+`contracts` deduplicates the smart contract addresses used by this instance instead of repeating
+them once per component (as they appear in the raw aggkit configuration).
+
 ## Bridging custom ERC20 token
 
 When a non-native ERC20 token, not yet mapped on a destination network, is bridged, its representation is deployed on the destination network using the `CREATE2` opcode. The mapping process emits the `NewWrappedToken` [event](https://github.com/0xPolygonHermez/zkevm-contracts/blob/21d3fd6ec0881731de49f1a6133fb97ed863a7ab/contracts/v2/PolygonZkEVMBridgeV2.sol#L561-L566) on the destination network.
