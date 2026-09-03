@@ -1136,7 +1136,7 @@ func createBridgeService(
 ) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
 
-	publicConfig, err := buildPublicConfig(cfg, l2GERSyncMode)
+	publicConfig, err := buildPublicConfig(cfg, l2NetworkID, l2GERSyncMode)
 	if err != nil {
 		log.Fatalf("failed to build bridge service public config: %v", err)
 	}
@@ -1167,17 +1167,23 @@ func createBridgeService(
 // instead of repeated across every component config that uses them. It never includes RPC URLs,
 // DB paths, private keys or any other internal/sensitive configuration value.
 //
+// l2NetworkID is the rollup/network ID this bridge service instance's bridge/claim syncers are
+// listening on.
+//
 // l2GERSyncMode is the l2gersync.SyncMode ("Legacy"/"SovereignChain") resolved for this instance
 // at startup, or empty when the L2GERSync component isn't running on it. It's not configuration
 // (it's auto-detected by probing the L2 GER contract) but useful operational information, so it's
 // reported alongside the L2GERSync component's config.
-func buildPublicConfig(cfg *config.Config, l2GERSyncMode string) (bridgetypes.PublicConfigResponse, error) {
+func buildPublicConfig(
+	cfg *config.Config, l2NetworkID uint32, l2GERSyncMode string,
+) (bridgetypes.PublicConfigResponse, error) {
 	configSha1Sum, err := cfg.Sha1Sum()
 	if err != nil {
 		return bridgetypes.PublicConfigResponse{}, fmt.Errorf("failed to compute configuration checksum: %w", err)
 	}
 
 	return bridgetypes.PublicConfigResponse{
+		NetworkID:     l2NetworkID,
 		ConfigSha1Sum: configSha1Sum,
 		Components: bridgetypes.PublicComponentsConfig{
 			L1InfoTreeSync: &bridgetypes.SyncComponentConfig{

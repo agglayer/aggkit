@@ -531,6 +531,9 @@ type RootByLERResponse struct {
 // internal/sensitive configuration value.
 // @Description Public, non-sensitive configuration of the bridge service
 type PublicConfigResponse struct {
+	// NetworkID is the rollup/network ID this bridge service instance's bridge/claim syncers are
+	// listening on (the destination network for L2, mainnet=0 for L1).
+	NetworkID uint32 `json:"network_id" example:"10"`
 	// Components holds the public parameters of each syncer component
 	Components PublicComponentsConfig `json:"components"`
 	// Contracts holds the smart contract addresses used by this instance, deduplicated by network

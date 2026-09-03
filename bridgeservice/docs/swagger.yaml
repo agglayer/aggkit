@@ -514,6 +514,12 @@ definitions:
         - $ref: '#/definitions/types.PublicContractsConfig'
         description: Contracts holds the smart contract addresses used by this instance,
           deduplicated by network
+      network_id:
+        description: |-
+          NetworkID is the rollup/network ID this bridge service instance's bridge/claim syncers are
+          listening on (the destination network for L2, mainnet=0 for L1).
+        example: 10
+        type: integer
     type: object
   types.PublicContractsConfig:
     description: Smart contract addresses used by this instance, split by network

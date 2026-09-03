@@ -1824,6 +1824,11 @@ const docTemplate = `{
                             "$ref": "#/definitions/types.PublicContractsConfig"
                         }
                     ]
+                },
+                "network_id": {
+                    "description": "NetworkID is the rollup/network ID this bridge service instance's bridge/claim syncers are\nlistening on (the destination network for L2, mainnet=0 for L1).",
+                    "type": "integer",
+                    "example": 10
                 }
             }
         },

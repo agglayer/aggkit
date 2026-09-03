@@ -3717,6 +3717,7 @@ func TestGetPublicConfigHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	expected := bridgetypes.PublicConfigResponse{
+		NetworkID:     l2NetworkID,
 		ConfigSha1Sum: "356a192b7913b04c54574d18c28d46e6395428ab",
 		Components: bridgetypes.PublicComponentsConfig{
 			L1InfoTreeSync: &bridgetypes.SyncComponentConfig{

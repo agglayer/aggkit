@@ -317,6 +317,7 @@ value. Response shape (`types.PublicConfigResponse`):
 
 ```json
 {
+  "network_id": 10,
   "config_sha1sum": "356a192b7913b04c54574d18c28d46e6395428ab",
   "components": {
     "L1InfoTreeSync": {
@@ -355,9 +356,11 @@ value. Response shape (`types.PublicConfigResponse`):
 }
 ```
 
-`components` mirrors the public subset of each syncer's own configuration (`SyncComponentConfig`);
-`contracts` deduplicates the smart contract addresses used by this instance instead of repeating
-them once per component (as they appear in the raw aggkit configuration).
+`network_id` is the rollup/network ID this bridge service instance's bridge/claim syncers are
+listening on (the destination network for L2, `0` for L1). `components` mirrors the public subset
+of each syncer's own configuration (`SyncComponentConfig`); `contracts` deduplicates the smart
+contract addresses used by this instance instead of repeating them once per component (as they
+appear in the raw aggkit configuration).
 
 `components.L2GERSync.sync_mode` is not configuration — it's the GER manager mode (`Legacy` or
 `SovereignChain`) l2gersync auto-detected by probing the L2 GER contract at startup (see
