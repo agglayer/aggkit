@@ -535,6 +535,10 @@ type PublicConfigResponse struct {
 	Components PublicComponentsConfig `json:"components"`
 	// Contracts holds the smart contract addresses used by this instance, deduplicated by network
 	Contracts PublicContractsConfig `json:"contracts"`
+	// ConfigSha1Sum is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved
+	// configuration. Lets a caller (e.g. a proxy) detect when the running configuration differs
+	// from what it last saw, without comparing full (and potentially sensitive) config contents.
+	ConfigSha1Sum string `json:"config_sha1sum" example:"356a192b7913b04c54574d18c28d46e6395428ab"`
 }
 
 // PublicComponentsConfig groups the public configuration of every syncer component that backs

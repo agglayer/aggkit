@@ -525,3 +525,23 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, aggsenderEpochPercentageHint)
 	require.ErrorContains(t, err, restSectionDeprecatedHint)
 }
+
+func TestConfigSha1Sum(t *testing.T) {
+	cfgA := &Config{}
+	cfgB := &Config{}
+	cfgB.BridgeL1Sync.SyncBlockChunkSize = 42
+
+	sumA1, err := cfgA.Sha1Sum()
+	require.NoError(t, err)
+	require.NotEmpty(t, sumA1)
+
+	// Deterministic: same config -> same checksum
+	sumA2, err := cfgA.Sha1Sum()
+	require.NoError(t, err)
+	require.Equal(t, sumA1, sumA2)
+
+	// Different config -> different checksum
+	sumB, err := cfgB.Sha1Sum()
+	require.NoError(t, err)
+	require.NotEqual(t, sumA1, sumB)
+}

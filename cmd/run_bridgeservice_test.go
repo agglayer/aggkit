@@ -56,9 +56,15 @@ func TestBuildPublicConfig(t *testing.T) {
 		},
 	}
 
-	got := buildPublicConfig(cfg, string(l2gersync.SovereignChain))
+	got, err := buildPublicConfig(cfg, string(l2gersync.SovereignChain))
+	require.NoError(t, err)
+
+	expectedSha1Sum, err := cfg.Sha1Sum()
+	require.NoError(t, err)
+	require.NotEmpty(t, expectedSha1Sum)
 
 	expected := bridgetypes.PublicConfigResponse{
+		ConfigSha1Sum: expectedSha1Sum,
 		Components: bridgetypes.PublicComponentsConfig{
 			L1InfoTreeSync: &bridgetypes.SyncComponentConfig{
 				BlockFinality: "FinalizedBlock", InitialBlock: 100, SyncBlockChunkSize: 50,
@@ -95,7 +101,27 @@ func TestBuildPublicConfig(t *testing.T) {
 func TestBuildPublicConfig_L2GERSyncModeEmptyWhenNotRunning(t *testing.T) {
 	cfg := &config.Config{}
 
-	got := buildPublicConfig(cfg, "")
+	got, err := buildPublicConfig(cfg, "")
+	require.NoError(t, err)
 
 	require.Empty(t, got.Components.L2GERSync.SyncMode)
+}
+
+func TestBuildPublicConfig_ChecksumChangesWithConfig(t *testing.T) {
+	cfgA := &config.Config{}
+	cfgB := &config.Config{}
+	cfgB.BridgeL1Sync.SyncBlockChunkSize = 42
+
+	gotA, err := buildPublicConfig(cfgA, "")
+	require.NoError(t, err)
+	gotB, err := buildPublicConfig(cfgB, "")
+	require.NoError(t, err)
+
+	// Same config -> same checksum, deterministically
+	gotAAgain, err := buildPublicConfig(cfgA, "")
+	require.NoError(t, err)
+	require.Equal(t, gotA.ConfigSha1Sum, gotAAgain.ConfigSha1Sum)
+
+	// Different config -> different checksum
+	require.NotEqual(t, gotA.ConfigSha1Sum, gotB.ConfigSha1Sum)
 }

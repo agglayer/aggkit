@@ -317,6 +317,7 @@ value. Response shape (`types.PublicConfigResponse`):
 
 ```json
 {
+  "config_sha1sum": "356a192b7913b04c54574d18c28d46e6395428ab",
   "components": {
     "L1InfoTreeSync": {
       "block_finality": "FinalizedBlock",
@@ -363,6 +364,10 @@ them once per component (as they appear in the raw aggkit configuration).
 [l2_ger_syncer.go](../l2gersync/l2_ger_syncer.go)) — but useful operational information, so it's
 reported alongside that component's config. It's omitted when this instance isn't running the
 L2GERSync component.
+
+`config_sha1sum` is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved
+configuration. It lets a caller (e.g. a proxy) detect when the running configuration differs from
+what it last saw, without comparing full (and potentially sensitive) config contents.
 
 ## Bridging custom ERC20 token
 

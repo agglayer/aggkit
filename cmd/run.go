@@ -1136,12 +1136,17 @@ func createBridgeService(
 ) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
 
+	publicConfig, err := buildPublicConfig(cfg, l2GERSyncMode)
+	if err != nil {
+		log.Fatalf("failed to build bridge service public config: %v", err)
+	}
+
 	bridgeCfg := &bridgeservice.Config{
 		Logger:       logger,
 		ReadTimeout:  cfg.PublicREST.ReadTimeout.Duration,
 		WriteTimeout: cfg.PublicREST.WriteTimeout.Duration,
 		NetworkID:    l2NetworkID,
-		PublicConfig: buildPublicConfig(cfg, l2GERSyncMode),
+		PublicConfig: publicConfig,
 	}
 
 	return bridgeservice.New(
@@ -1166,8 +1171,14 @@ func createBridgeService(
 // at startup, or empty when the L2GERSync component isn't running on it. It's not configuration
 // (it's auto-detected by probing the L2 GER contract) but useful operational information, so it's
 // reported alongside the L2GERSync component's config.
-func buildPublicConfig(cfg *config.Config, l2GERSyncMode string) bridgetypes.PublicConfigResponse {
+func buildPublicConfig(cfg *config.Config, l2GERSyncMode string) (bridgetypes.PublicConfigResponse, error) {
+	configSha1Sum, err := cfg.Sha1Sum()
+	if err != nil {
+		return bridgetypes.PublicConfigResponse{}, fmt.Errorf("failed to compute configuration checksum: %w", err)
+	}
+
 	return bridgetypes.PublicConfigResponse{
+		ConfigSha1Sum: configSha1Sum,
 		Components: bridgetypes.PublicComponentsConfig{
 			L1InfoTreeSync: &bridgetypes.SyncComponentConfig{
 				BlockFinality:      cfg.L1InfoTreeSync.BlockFinality.String(),
@@ -1204,7 +1215,7 @@ func buildPublicConfig(cfg *config.Config, l2GERSyncMode string) bridgetypes.Pub
 				BridgeAddr:         bridgetypes.Address(cfg.BridgeL2Sync.BridgeAddr.Hex()),
 			},
 		},
-	}
+	}, nil
 }
 
 func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {

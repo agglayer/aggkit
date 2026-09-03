@@ -1812,6 +1812,11 @@ const docTemplate = `{
                         }
                     ]
                 },
+                "config_sha1sum": {
+                    "description": "ConfigSha1Sum is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved\nconfiguration. Lets a caller (e.g. a proxy) detect when the running configuration differs\nfrom what it last saw, without comparing full (and potentially sensitive) config contents.",
+                    "type": "string",
+                    "example": "356a192b7913b04c54574d18c28d46e6395428ab"
+                },
                 "contracts": {
                     "description": "Contracts holds the smart contract addresses used by this instance, deduplicated by network",
                     "allOf": [

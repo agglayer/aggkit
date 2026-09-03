@@ -2,6 +2,8 @@ package config
 
 import (
 	"bytes"
+	"crypto/sha1" //nolint:gosec // not used for cryptographic purposes, just a config fingerprint
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -374,6 +376,20 @@ func LoadFileFromString(configFileData string, configType string) (*Config, erro
 		return cfg, err
 	}
 	return cfg, nil
+}
+
+// Sha1Sum returns the SHA-1 checksum (hex-encoded) of the fully-resolved configuration,
+// marshaled to TOML the same way it's written to disk by SaveConfigToFile. It lets a caller
+// (e.g. a proxy consuming the bridge service's public config endpoint) detect when the running
+// configuration differs from what it last saw, without comparing full (and potentially
+// sensitive) config contents.
+func (cfg *Config) Sha1Sum() (string, error) {
+	marshaled, err := toml.Marshal(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal config for checksum: %w", err)
+	}
+	sum := sha1.Sum(marshaled) //nolint:gosec // not used for cryptographic purposes, just a config fingerprint
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func SaveConfigToFile(cfg *Config, saveConfigPath string) error {

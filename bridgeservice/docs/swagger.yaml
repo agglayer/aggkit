@@ -502,6 +502,13 @@ definitions:
         allOf:
         - $ref: '#/definitions/types.PublicComponentsConfig'
         description: Components holds the public parameters of each syncer component
+      config_sha1sum:
+        description: |-
+          ConfigSha1Sum is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved
+          configuration. Lets a caller (e.g. a proxy) detect when the running configuration differs
+          from what it last saw, without comparing full (and potentially sensitive) config contents.
+        example: 356a192b7913b04c54574d18c28d46e6395428ab
+        type: string
       contracts:
         allOf:
         - $ref: '#/definitions/types.PublicContractsConfig'
