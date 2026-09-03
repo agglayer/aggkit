@@ -541,10 +541,10 @@ type PublicConfigResponse struct {
 // the bridge service. A component is nil when it is not running on this instance.
 // @Description Public configuration of the syncer components backing the bridge service
 type PublicComponentsConfig struct {
-	L1InfoTreeSync *SyncComponentConfig `json:"L1InfoTreeSync,omitempty"`
-	BridgeL1Sync   *SyncComponentConfig `json:"BridgeL1Sync,omitempty"`
-	BridgeL2Sync   *SyncComponentConfig `json:"BridgeL2Sync,omitempty"`
-	L2GERSync      *SyncComponentConfig `json:"L2GERSync,omitempty"`
+	L1InfoTreeSync *SyncComponentConfig      `json:"L1InfoTreeSync,omitempty"`
+	BridgeL1Sync   *SyncComponentConfig      `json:"BridgeL1Sync,omitempty"`
+	BridgeL2Sync   *SyncComponentConfig      `json:"BridgeL2Sync,omitempty"`
+	L2GERSync      *L2GERSyncComponentConfig `json:"L2GERSync,omitempty"`
 }
 
 // SyncComponentConfig is the public subset of a syncer's configuration: enough for a client to
@@ -558,6 +558,21 @@ type SyncComponentConfig struct {
 	InitialBlock uint64 `json:"initial_block" example:"12345"`
 	// SyncBlockChunkSize is the amount of blocks queried per request
 	SyncBlockChunkSize uint64 `json:"sync_block_chunk_size" example:"100"`
+}
+
+// L2GERSyncComponentConfig is the public configuration of the L2GERSync component, plus the sync
+// mode it detected at startup. SyncMode is not user configuration — it's auto-detected by probing
+// the L2 GER manager contract — but useful operational information: whether this instance talks
+// to a legacy GER manager contract ("Legacy") or a sovereign-chain one ("SovereignChain").
+// @Description Public configuration of the L2GERSync component, plus its detected sync mode
+// @example {"block_finality":"LatestBlock","initial_block":0,"sync_block_chunk_size":100,
+// "sync_mode":"SovereignChain"}
+type L2GERSyncComponentConfig struct {
+	SyncComponentConfig
+	// SyncMode is the GER manager mode detected on L2 at startup: "Legacy" or "SovereignChain".
+	// Not configuration — auto-detected by probing the L2 GER contract — but useful operational
+	// information. Empty when this instance isn't running the L2GERSync component.
+	SyncMode string `json:"sync_mode,omitempty" example:"SovereignChain"`
 }
 
 // PublicContractsConfig holds the smart contract addresses used by this instance, split by

@@ -336,7 +336,8 @@ value. Response shape (`types.PublicConfigResponse`):
     "L2GERSync": {
       "block_finality": "LatestBlock",
       "initial_block": 0,
-      "sync_block_chunk_size": 100
+      "sync_block_chunk_size": 100,
+      "sync_mode": "SovereignChain"
     }
   },
   "contracts": {
@@ -356,6 +357,12 @@ value. Response shape (`types.PublicConfigResponse`):
 `components` mirrors the public subset of each syncer's own configuration (`SyncComponentConfig`);
 `contracts` deduplicates the smart contract addresses used by this instance instead of repeating
 them once per component (as they appear in the raw aggkit configuration).
+
+`components.L2GERSync.sync_mode` is not configuration — it's the GER manager mode (`Legacy` or
+`SovereignChain`) l2gersync auto-detected by probing the L2 GER contract at startup (see
+[l2_ger_syncer.go](../l2gersync/l2_ger_syncer.go)) — but useful operational information, so it's
+reported alongside that component's config. It's omitted when this instance isn't running the
+L2GERSync component.
 
 ## Bridging custom ERC20 token
 

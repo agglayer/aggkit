@@ -56,7 +56,7 @@ func TestBuildPublicConfig(t *testing.T) {
 		},
 	}
 
-	got := buildPublicConfig(cfg)
+	got := buildPublicConfig(cfg, string(l2gersync.SovereignChain))
 
 	expected := bridgetypes.PublicConfigResponse{
 		Components: bridgetypes.PublicComponentsConfig{
@@ -69,8 +69,11 @@ func TestBuildPublicConfig(t *testing.T) {
 			BridgeL2Sync: &bridgetypes.SyncComponentConfig{
 				BlockFinality: "LatestBlock", InitialBlock: 0, SyncBlockChunkSize: 100,
 			},
-			L2GERSync: &bridgetypes.SyncComponentConfig{
-				BlockFinality: "LatestBlock", InitialBlock: 0, SyncBlockChunkSize: 100,
+			L2GERSync: &bridgetypes.L2GERSyncComponentConfig{
+				SyncComponentConfig: bridgetypes.SyncComponentConfig{
+					BlockFinality: "LatestBlock", InitialBlock: 0, SyncBlockChunkSize: 100,
+				},
+				SyncMode: "SovereignChain",
 			},
 		},
 		Contracts: bridgetypes.PublicContractsConfig{
@@ -87,4 +90,12 @@ func TestBuildPublicConfig(t *testing.T) {
 	}
 
 	require.Equal(t, expected, got)
+}
+
+func TestBuildPublicConfig_L2GERSyncModeEmptyWhenNotRunning(t *testing.T) {
+	cfg := &config.Config{}
+
+	got := buildPublicConfig(cfg, "")
+
+	require.Empty(t, got.Components.L2GERSync.SyncMode)
 }

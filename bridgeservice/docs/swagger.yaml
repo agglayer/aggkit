@@ -374,6 +374,32 @@ definitions:
         example: 0xabcdef1234567890abcdef1234567890abcdef12
         type: string
     type: object
+  types.L2GERSyncComponentConfig:
+    description: Public configuration of the L2GERSync component, plus its detected
+      sync mode
+    properties:
+      block_finality:
+        description: BlockFinality is the block finality used by this syncer when
+          querying the chain
+        example: FinalizedBlock
+        type: string
+      initial_block:
+        description: InitialBlock is the first block that was queried when starting
+          the sync from scratch
+        example: 12345
+        type: integer
+      sync_block_chunk_size:
+        description: SyncBlockChunkSize is the amount of blocks queried per request
+        example: 100
+        type: integer
+      sync_mode:
+        description: |-
+          SyncMode is the GER manager mode detected on L2 at startup: "Legacy" or "SovereignChain".
+          Not configuration — auto-detected by probing the L2 GER contract — but useful operational
+          information. Empty when this instance isn't running the L2GERSync component.
+        example: SovereignChain
+        type: string
+    type: object
   types.L2GERSyncInfo:
     description: l2gersync (injected-GER) synchronization status
     properties:
@@ -467,7 +493,7 @@ definitions:
       L1InfoTreeSync:
         $ref: '#/definitions/types.SyncComponentConfig'
       L2GERSync:
-        $ref: '#/definitions/types.SyncComponentConfig'
+        $ref: '#/definitions/types.L2GERSyncComponentConfig'
     type: object
   types.PublicConfigResponse:
     description: Public, non-sensitive configuration of the bridge service

@@ -209,8 +209,17 @@ func start(cliCtx *cli.Context) error {
 	var publicHasRoutes, adminHasRoutes bool
 
 	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
+		// Resolved from the concrete pointer (not the L2GERSyncer interface passed below) so a nil
+		// l2GERSync (component not running on this instance) can't be mistaken for a non-nil
+		// interface wrapping a nil pointer.
+		var l2GERSyncMode string
+		if l2GERSync != nil {
+			l2GERSyncMode = string(l2GERSync.SyncMode())
+		}
+
 		b := createBridgeService(
 			cfg,
+			l2GERSyncMode,
 			rollupDataQuerier.RollupID,
 			rollupDataQuerier,
 			l1InfoTreeSync,
@@ -1115,6 +1124,7 @@ func runAggsenderMultisigCommitteeIfNeeded(
 
 func createBridgeService(
 	cfg *config.Config,
+	l2GERSyncMode string,
 	l2NetworkID uint32,
 	upgradeQuery bridgeservice.AgglayerManagerUpgradeQuerier,
 	l1InfoTree bridgeservice.L1InfoTreeSyncer,
@@ -1131,7 +1141,7 @@ func createBridgeService(
 		ReadTimeout:  cfg.PublicREST.ReadTimeout.Duration,
 		WriteTimeout: cfg.PublicREST.WriteTimeout.Duration,
 		NetworkID:    l2NetworkID,
-		PublicConfig: buildPublicConfig(cfg),
+		PublicConfig: buildPublicConfig(cfg, l2GERSyncMode),
 	}
 
 	return bridgeservice.New(
@@ -1151,7 +1161,12 @@ func createBridgeService(
 // to configure itself against this instance, with contract addresses deduplicated by network
 // instead of repeated across every component config that uses them. It never includes RPC URLs,
 // DB paths, private keys or any other internal/sensitive configuration value.
-func buildPublicConfig(cfg *config.Config) bridgetypes.PublicConfigResponse {
+//
+// l2GERSyncMode is the l2gersync.SyncMode ("Legacy"/"SovereignChain") resolved for this instance
+// at startup, or empty when the L2GERSync component isn't running on it. It's not configuration
+// (it's auto-detected by probing the L2 GER contract) but useful operational information, so it's
+// reported alongside the L2GERSync component's config.
+func buildPublicConfig(cfg *config.Config, l2GERSyncMode string) bridgetypes.PublicConfigResponse {
 	return bridgetypes.PublicConfigResponse{
 		Components: bridgetypes.PublicComponentsConfig{
 			L1InfoTreeSync: &bridgetypes.SyncComponentConfig{
@@ -1169,10 +1184,13 @@ func buildPublicConfig(cfg *config.Config) bridgetypes.PublicConfigResponse {
 				InitialBlock:       cfg.BridgeL2Sync.InitialBlockNum,
 				SyncBlockChunkSize: cfg.BridgeL2Sync.SyncBlockChunkSize,
 			},
-			L2GERSync: &bridgetypes.SyncComponentConfig{
-				BlockFinality:      cfg.L2GERSync.BlockFinality.String(),
-				InitialBlock:       cfg.L2GERSync.InitialBlockNum,
-				SyncBlockChunkSize: cfg.L2GERSync.SyncBlockChunkSize,
+			L2GERSync: &bridgetypes.L2GERSyncComponentConfig{
+				SyncComponentConfig: bridgetypes.SyncComponentConfig{
+					BlockFinality:      cfg.L2GERSync.BlockFinality.String(),
+					InitialBlock:       cfg.L2GERSync.InitialBlockNum,
+					SyncBlockChunkSize: cfg.L2GERSync.SyncBlockChunkSize,
+				},
+				SyncMode: l2GERSyncMode,
 			},
 		},
 		Contracts: bridgetypes.PublicContractsConfig{

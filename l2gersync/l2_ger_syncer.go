@@ -157,6 +157,14 @@ func (s *L2GERSync) Start(ctx context.Context) {
 	s.driver.Sync(ctx, &s.cfg.InitialBlockNum)
 }
 
+// SyncMode returns the sync mode (Legacy or SovereignChain) resolved for the deployed L2 GER
+// manager contract when this syncer was created (see resolveSyncMode). This is not user
+// configuration: it's auto-detected by probing the contract, and reported here purely as
+// operational information (e.g. for the bridge service's public config endpoint).
+func (s *L2GERSync) SyncMode() SyncMode {
+	return s.syncMode
+}
+
 // GetFirstGERAfterL1InfoTreeIndex returns the first GER after a specified L1 info tree index. If
 // the resolved row predates timestamp persistence (nullable column, see l2gersync0006.sql), its
 // timestamp is resolved from the L2 RPC and backfilled into the row before returning, so callers

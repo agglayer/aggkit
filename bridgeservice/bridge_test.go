@@ -3727,8 +3727,11 @@ func TestGetPublicConfigHandler(t *testing.T) {
 			BridgeL2Sync: &bridgetypes.SyncComponentConfig{
 				BlockFinality: "LatestBlock", InitialBlock: 0, SyncBlockChunkSize: 100,
 			},
-			L2GERSync: &bridgetypes.SyncComponentConfig{
-				BlockFinality: "LatestBlock", InitialBlock: 0, SyncBlockChunkSize: 100,
+			L2GERSync: &bridgetypes.L2GERSyncComponentConfig{
+				SyncComponentConfig: bridgetypes.SyncComponentConfig{
+					BlockFinality: "LatestBlock", InitialBlock: 0, SyncBlockChunkSize: 100,
+				},
+				SyncMode: "SovereignChain",
 			},
 		},
 		Contracts: bridgetypes.PublicContractsConfig{

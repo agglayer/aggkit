@@ -1641,6 +1641,32 @@
                 }
             }
         },
+        "types.L2GERSyncComponentConfig": {
+            "description": "Public configuration of the L2GERSync component, plus its detected sync mode",
+            "type": "object",
+            "properties": {
+                "block_finality": {
+                    "description": "BlockFinality is the block finality used by this syncer when querying the chain",
+                    "type": "string",
+                    "example": "FinalizedBlock"
+                },
+                "initial_block": {
+                    "description": "InitialBlock is the first block that was queried when starting the sync from scratch",
+                    "type": "integer",
+                    "example": 12345
+                },
+                "sync_block_chunk_size": {
+                    "description": "SyncBlockChunkSize is the amount of blocks queried per request",
+                    "type": "integer",
+                    "example": 100
+                },
+                "sync_mode": {
+                    "description": "SyncMode is the GER manager mode detected on L2 at startup: \"Legacy\" or \"SovereignChain\".\nNot configuration — auto-detected by probing the L2 GER contract — but useful operational\ninformation. Empty when this instance isn't running the L2GERSync component.",
+                    "type": "string",
+                    "example": "SovereignChain"
+                }
+            }
+        },
         "types.L2GERSyncInfo": {
             "description": "l2gersync (injected-GER) synchronization status",
             "type": "object",
@@ -1763,7 +1789,7 @@
                     "$ref": "#/definitions/types.SyncComponentConfig"
                 },
                 "L2GERSync": {
-                    "$ref": "#/definitions/types.SyncComponentConfig"
+                    "$ref": "#/definitions/types.L2GERSyncComponentConfig"
                 }
             }
         },
