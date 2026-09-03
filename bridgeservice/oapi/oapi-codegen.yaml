@@ -1,0 +1,17 @@
+# oapi-codegen v2.8.0 configuration for the spec-first demo slice.
+#
+# Input is bridgeservice/apispec/generated/openapi.yaml, which is itself
+# generated from the Zod registry. Nothing in this file describes the API --
+# it only says how the contract should be rendered into Go.
+#
+# strict-server is the point of the exercise: it generates an interface whose
+# method signatures carry the typed request and response objects, so a handler
+# that returns the wrong shape fails to compile. The non-strict server hands
+# you a *gin.Context and trusts you to write the right JSON, which is exactly
+# the freedom that let global_index drift away from its documented type.
+package: oapi
+output: oapi.gen.go
+generate:
+  models: true
+  gin-server: true
+  strict-server: true

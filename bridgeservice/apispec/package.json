@@ -1,0 +1,38 @@
+{
+  "name": "@aggkit/bridge-apispec",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spec-first demo slice for the aggkit bridge REST API: Zod registry -> OpenAPI -> Go server types + TS codec client",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@10.30.3",
+  "imports": {
+    "#schemas": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "pnpm run generate:spec && pnpm run generate:client",
+    "generate:spec": "node scripts/generate-spec.ts",
+    "generate:client": "openapi-ts -f openapi-ts.config.ts",
+    "demo": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^8.4.1",
+    "@polygonlabs/openapi-registry": "^3.0.0",
+    "@polygonlabs/zod-codecs": "^1.2.0",
+    "yaml": "^2.6.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.97.3",
+    "@polygonlabs/zod-to-openapi-heyapi": "^2.1.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^3.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

@@ -1,0 +1,169 @@
+openapi: 3.0.3
+info:
+  title: aggkit bridge service (spec-first demo slice)
+  version: 0.0.0
+  description: Contract-first description of GET /bridge/v1/bridges. Generated
+    from Zod schemas; consumed by oapi-codegen (Go server) and
+    @hey-api/openapi-ts (TypeScript client).
+servers:
+  - url: /
+components:
+  schemas:
+    BridgesResult:
+      type: object
+      properties:
+        bridges:
+          type: array
+          items:
+            $ref: "#/components/schemas/BridgeResponse"
+        count:
+          type: integer
+          minimum: 0
+      required:
+        - bridges
+        - count
+      description: Paginated response of bridge events
+    BridgeResponse:
+      type: object
+      properties:
+        block_num:
+          type: integer
+          minimum: 0
+        block_pos:
+          type: integer
+          minimum: 0
+        from_address:
+          type: string
+        tx_hash:
+          type: string
+        global_index:
+          type: string
+          pattern: ^-?\d+$
+          description: Global index of the bridge event (mainnet flag, rollup id and
+            deposit count packed into a 72-bit integer). Exceeds 2^53 for every
+            L1-origin bridge, so it is carried as a decimal string.
+          x-go-type: types.BigIntString
+          x-go-type-import:
+            path: github.com/agglayer/aggkit/bridgeservice/types
+        block_timestamp:
+          type: integer
+          minimum: 0
+        leaf_type:
+          type: integer
+          minimum: 0
+          maximum: 255
+        origin_network:
+          type: integer
+          minimum: 0
+        origin_address:
+          type: string
+        destination_network:
+          type: integer
+          minimum: 0
+        destination_address:
+          type: string
+        amount:
+          type: string
+          pattern: ^-?\d+$
+          description: Amount of tokens bridged, in the smallest unit of the token.
+          x-go-type: types.BigIntString
+          x-go-type-import:
+            path: github.com/agglayer/aggkit/bridgeservice/types
+        metadata:
+          type: string
+        deposit_count:
+          type: integer
+          minimum: 0
+        bridge_hash:
+          type: string
+        txn_sender:
+          type: string
+        to_address:
+          type: string
+      required:
+        - block_num
+        - block_pos
+        - tx_hash
+        - global_index
+        - block_timestamp
+        - leaf_type
+        - origin_network
+        - origin_address
+        - destination_network
+        - destination_address
+        - amount
+        - metadata
+        - deposit_count
+        - bridge_hash
+        - txn_sender
+        - to_address
+      description: Detailed information about a bridge event
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+      description: Generic error response structure
+  parameters: {}
+paths:
+  /bridge/v1/bridges:
+    get:
+      operationId: getBridges
+      summary: Get bridges
+      description: Returns a paginated list of bridge events for the specified network.
+      tags:
+        - bridges
+      parameters:
+        - schema:
+            type: integer
+            minimum: 0
+          required: true
+          name: network_id
+          in: query
+        - schema:
+            type: integer
+            minimum: 0
+            exclusiveMinimum: true
+          required: false
+          name: page_number
+          in: query
+        - schema:
+            type: integer
+            minimum: 0
+            exclusiveMinimum: true
+            maximum: 1000
+          required: false
+          name: page_size
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: from_address
+          in: query
+        - schema:
+            type: integer
+            minimum: 0
+          required: false
+          name: deposit_count
+          in: query
+      responses:
+        "200":
+          description: Paginated bridge events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BridgesResult"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
