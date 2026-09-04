@@ -318,7 +318,6 @@ value. Response shape (`types.PublicConfigResponse`):
 ```json
 {
   "network_id": 10,
-  "config_sha1sum": "356a192b7913b04c54574d18c28d46e6395428ab",
   "components": {
     "L1InfoTreeSync": {
       "block_finality": "FinalizedBlock",
@@ -352,25 +351,35 @@ value. Response shape (`types.PublicConfigResponse`):
       "GlobalExitRootAddr": "0x0000000000000000000000000000000000000000",
       "BridgeAddr": "0x0000000000000000000000000000000000000000"
     }
-  }
+  },
+  "internal_config_checksum": "1f6d1a8b3c2e9f04",
+  "public_config_checksum": "af63bd4c8601b7df"
 }
 ```
 
 `network_id` is the rollup/network ID this bridge service instance's bridge/claim syncers are
 listening on (the destination network for L2, `0` for L1). `components` mirrors the public subset
-of each syncer's own configuration (`SyncComponentConfig`); `contracts` deduplicates the smart
-contract addresses used by this instance instead of repeating them once per component (as they
-appear in the raw aggkit configuration).
+of each syncer's own configuration (`SyncComponentConfig`) for every syncer actually running on
+this instance — a component is omitted entirely (not just left empty) when it isn't running, so a
+client can't be misled into configuring itself against a component that isn't backing this
+instance. `contracts` deduplicates the smart contract addresses used by this instance instead of
+repeating them once per component (as they appear in the raw aggkit configuration).
 
 `components.L2GERSync.sync_mode` is not configuration — it's the GER manager mode (`Legacy` or
 `SovereignChain`) l2gersync auto-detected by probing the L2 GER contract at startup (see
 [l2_ger_syncer.go](../l2gersync/l2_ger_syncer.go)) — but useful operational information, so it's
-reported alongside that component's config. It's omitted when this instance isn't running the
-L2GERSync component.
+reported alongside that component's config.
 
-`config_sha1sum` is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved
-configuration. It lets a caller (e.g. a proxy) detect when the running configuration differs from
-what it last saw, without comparing full (and potentially sensitive) config contents.
+`internal_config_checksum` and `public_config_checksum` are hex-encoded FNV-1a checksums (not
+cryptographically secure — they're not meant to be, just fast fingerprints for detecting
+incidental change):
+- `internal_config_checksum` covers this instance's entire fully-resolved configuration (public
+  and private alike), so it changes on any config change, even one that isn't exposed on this
+  endpoint.
+- `public_config_checksum` covers only what's actually published in this response (`network_id`,
+  `components`, `contracts`), so a caller (e.g. a proxy) can detect when the public-facing
+  configuration it depends on has changed, without reacting to unrelated internal-only config
+  changes that also move `internal_config_checksum`.
 
 ## Bridging custom ERC20 token
 
