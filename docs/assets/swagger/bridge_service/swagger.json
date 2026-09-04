@@ -1805,11 +1805,6 @@
                         }
                     ]
                 },
-                "config_sha1sum": {
-                    "description": "ConfigSha1Sum is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved\nconfiguration. Lets a caller (e.g. a proxy) detect when the running configuration differs\nfrom what it last saw, without comparing full (and potentially sensitive) config contents.",
-                    "type": "string",
-                    "example": "356a192b7913b04c54574d18c28d46e6395428ab"
-                },
                 "contracts": {
                     "description": "Contracts holds the smart contract addresses used by this instance, deduplicated by network",
                     "allOf": [
@@ -1818,10 +1813,20 @@
                         }
                     ]
                 },
+                "internal_config_sha1sum": {
+                    "description": "InternalConfigSha1Sum is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved\nconfiguration (public and private). It changes whenever any configuration value changes,\neven one that isn't exposed on this endpoint.",
+                    "type": "string",
+                    "example": "356a192b7913b04c54574d18c28d46e6395428ab"
+                },
                 "network_id": {
                     "description": "NetworkID is the rollup/network ID this bridge service instance's bridge/claim syncers are\nlistening on (the destination network for L2, mainnet=0 for L1).",
                     "type": "integer",
                     "example": 10
+                },
+                "public_config_sha1sum": {
+                    "description": "PublicConfigSha1Sum is the SHA-1 checksum (hex-encoded) of only the fields published in this\nresponse (NetworkID, Components, Contracts). Lets a caller (e.g. a proxy) detect when the\npublic-facing configuration it depends on has changed, without reacting to unrelated internal\nconfiguration changes that also move InternalConfigSha1Sum.",
+                    "type": "string",
+                    "example": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
                 }
             }
         },

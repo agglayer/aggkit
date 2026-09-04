@@ -502,24 +502,32 @@ definitions:
         allOf:
         - $ref: '#/definitions/types.PublicComponentsConfig'
         description: Components holds the public parameters of each syncer component
-      config_sha1sum:
-        description: |-
-          ConfigSha1Sum is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved
-          configuration. Lets a caller (e.g. a proxy) detect when the running configuration differs
-          from what it last saw, without comparing full (and potentially sensitive) config contents.
-        example: 356a192b7913b04c54574d18c28d46e6395428ab
-        type: string
       contracts:
         allOf:
         - $ref: '#/definitions/types.PublicContractsConfig'
         description: Contracts holds the smart contract addresses used by this instance,
           deduplicated by network
+      internal_config_sha1sum:
+        description: |-
+          InternalConfigSha1Sum is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved
+          configuration (public and private). It changes whenever any configuration value changes,
+          even one that isn't exposed on this endpoint.
+        example: 356a192b7913b04c54574d18c28d46e6395428ab
+        type: string
       network_id:
         description: |-
           NetworkID is the rollup/network ID this bridge service instance's bridge/claim syncers are
           listening on (the destination network for L2, mainnet=0 for L1).
         example: 10
         type: integer
+      public_config_sha1sum:
+        description: |-
+          PublicConfigSha1Sum is the SHA-1 checksum (hex-encoded) of only the fields published in this
+          response (NetworkID, Components, Contracts). Lets a caller (e.g. a proxy) detect when the
+          public-facing configuration it depends on has changed, without reacting to unrelated internal
+          configuration changes that also move InternalConfigSha1Sum.
+        example: da39a3ee5e6b4b0d3255bfef95601890afd80709
+        type: string
     type: object
   types.PublicContractsConfig:
     description: Smart contract addresses used by this instance, split by network

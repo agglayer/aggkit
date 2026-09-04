@@ -3717,8 +3717,9 @@ func TestGetPublicConfigHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	expected := bridgetypes.PublicConfigResponse{
-		NetworkID:     l2NetworkID,
-		ConfigSha1Sum: "356a192b7913b04c54574d18c28d46e6395428ab",
+		NetworkID:             l2NetworkID,
+		InternalConfigSha1Sum: "356a192b7913b04c54574d18c28d46e6395428ab",
+		PublicConfigSha1Sum:   "da39a3ee5e6b4b0d3255bfef95601890afd80709",
 		Components: bridgetypes.PublicComponentsConfig{
 			L1InfoTreeSync: &bridgetypes.SyncComponentConfig{
 				BlockFinality: "FinalizedBlock", InitialBlock: 100, SyncBlockChunkSize: 50,

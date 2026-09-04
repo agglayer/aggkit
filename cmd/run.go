@@ -1199,7 +1199,7 @@ type runningBridgeComponents struct {
 func buildPublicConfig(
 	cfg *config.Config, l2NetworkID uint32, l2GERSyncMode string, runningComponents runningBridgeComponents,
 ) (bridgetypes.PublicConfigResponse, error) {
-	configSha1Sum, err := cfg.Sha1Sum()
+	internalConfigSha1Sum, err := cfg.Sha1Sum()
 	if err != nil {
 		return bridgetypes.PublicConfigResponse{}, fmt.Errorf("failed to compute configuration checksum: %w", err)
 	}
@@ -1237,10 +1237,9 @@ func buildPublicConfig(
 		}
 	}
 
-	return bridgetypes.PublicConfigResponse{
-		NetworkID:     l2NetworkID,
-		ConfigSha1Sum: configSha1Sum,
-		Components:    components,
+	publicConfig := bridgetypes.PublicConfigResponse{
+		NetworkID:  l2NetworkID,
+		Components: components,
 		Contracts: bridgetypes.PublicContractsConfig{
 			L1: bridgetypes.L1ContractsConfig{
 				GlobalExitRootAddr: bridgetypes.Address(cfg.L1NetworkConfig.GlobalExitRootManagerAddr.Hex()),
@@ -1252,7 +1251,17 @@ func buildPublicConfig(
 				BridgeAddr:         bridgetypes.Address(cfg.BridgeL2Sync.BridgeAddr.Hex()),
 			},
 		},
-	}, nil
+	}
+
+	publicConfigSha1Sum, err := publicConfig.PublicSha1Sum()
+	if err != nil {
+		return bridgetypes.PublicConfigResponse{}, fmt.Errorf("failed to compute public configuration checksum: %w", err)
+	}
+
+	publicConfig.InternalConfigSha1Sum = internalConfigSha1Sum
+	publicConfig.PublicConfigSha1Sum = publicConfigSha1Sum
+
+	return publicConfig, nil
 }
 
 func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {

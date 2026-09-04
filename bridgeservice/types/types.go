@@ -1,6 +1,10 @@
 package types
 
 import (
+	"crypto/sha1" //nolint:gosec // not used for cryptographic purposes, just a config fingerprint
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -538,10 +542,38 @@ type PublicConfigResponse struct {
 	Components PublicComponentsConfig `json:"components"`
 	// Contracts holds the smart contract addresses used by this instance, deduplicated by network
 	Contracts PublicContractsConfig `json:"contracts"`
-	// ConfigSha1Sum is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved
-	// configuration. Lets a caller (e.g. a proxy) detect when the running configuration differs
-	// from what it last saw, without comparing full (and potentially sensitive) config contents.
-	ConfigSha1Sum string `json:"config_sha1sum" example:"356a192b7913b04c54574d18c28d46e6395428ab"`
+	// InternalConfigSha1Sum is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved
+	// configuration (public and private). It changes whenever any configuration value changes,
+	// even one that isn't exposed on this endpoint.
+	InternalConfigSha1Sum string `json:"internal_config_sha1sum" example:"356a192b7913b04c54574d18c28d46e6395428ab"`
+	// PublicConfigSha1Sum is the SHA-1 checksum (hex-encoded) of only the fields published in this
+	// response (NetworkID, Components, Contracts). Lets a caller (e.g. a proxy) detect when the
+	// public-facing configuration it depends on has changed, without reacting to unrelated internal
+	// configuration changes that also move InternalConfigSha1Sum.
+	PublicConfigSha1Sum string `json:"public_config_sha1sum" example:"da39a3ee5e6b4b0d3255bfef95601890afd80709"`
+}
+
+// PublicSha1Sum returns the SHA-1 checksum (hex-encoded) of the parts of this response that are
+// actually published to clients: NetworkID, Components and Contracts. It deliberately excludes
+// InternalConfigSha1Sum and PublicConfigSha1Sum itself, so the checksum only reflects the
+// public-facing configuration and is stable regardless of when it's computed.
+func (r PublicConfigResponse) PublicSha1Sum() (string, error) {
+	payload := struct {
+		NetworkID  uint32                 `json:"network_id"`
+		Components PublicComponentsConfig `json:"components"`
+		Contracts  PublicContractsConfig  `json:"contracts"`
+	}{
+		NetworkID:  r.NetworkID,
+		Components: r.Components,
+		Contracts:  r.Contracts,
+	}
+
+	marshaled, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal public config for checksum: %w", err)
+	}
+	sum := sha1.Sum(marshaled) //nolint:gosec // not used for cryptographic purposes, just a config fingerprint
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // PublicComponentsConfig groups the public configuration of every syncer component that backs

@@ -68,13 +68,13 @@ func TestBuildPublicConfig(t *testing.T) {
 	got, err := buildPublicConfig(cfg, testNetworkID, string(l2gersync.SovereignChain), allRunning)
 	require.NoError(t, err)
 
-	expectedSha1Sum, err := cfg.Sha1Sum()
+	expectedInternalSha1Sum, err := cfg.Sha1Sum()
 	require.NoError(t, err)
-	require.NotEmpty(t, expectedSha1Sum)
+	require.NotEmpty(t, expectedInternalSha1Sum)
 
 	expected := bridgetypes.PublicConfigResponse{
-		NetworkID:     testNetworkID,
-		ConfigSha1Sum: expectedSha1Sum,
+		NetworkID:             testNetworkID,
+		InternalConfigSha1Sum: expectedInternalSha1Sum,
 		Components: bridgetypes.PublicComponentsConfig{
 			L1InfoTreeSync: &bridgetypes.SyncComponentConfig{
 				BlockFinality: "FinalizedBlock", InitialBlock: 100, SyncBlockChunkSize: 50,
@@ -104,6 +104,11 @@ func TestBuildPublicConfig(t *testing.T) {
 			},
 		},
 	}
+
+	expectedPublicSha1Sum, err := expected.PublicSha1Sum()
+	require.NoError(t, err)
+	require.NotEmpty(t, expectedPublicSha1Sum)
+	expected.PublicConfigSha1Sum = expectedPublicSha1Sum
 
 	require.Equal(t, expected, got)
 }
@@ -151,7 +156,7 @@ func TestBuildPublicConfig_OnlyRunningComponentsPopulated(t *testing.T) {
 	require.NotNil(t, got.Components.L2GERSync)
 }
 
-func TestBuildPublicConfig_ChecksumChangesWithConfig(t *testing.T) {
+func TestBuildPublicConfig_InternalChecksumChangesWithConfig(t *testing.T) {
 	cfgA := &config.Config{}
 	cfgB := &config.Config{}
 	cfgB.BridgeL1Sync.SyncBlockChunkSize = 42
@@ -164,8 +169,40 @@ func TestBuildPublicConfig_ChecksumChangesWithConfig(t *testing.T) {
 	// Same config -> same checksum, deterministically
 	gotAAgain, err := buildPublicConfig(cfgA, testNetworkID, "", runningBridgeComponents{})
 	require.NoError(t, err)
-	require.Equal(t, gotA.ConfigSha1Sum, gotAAgain.ConfigSha1Sum)
+	require.Equal(t, gotA.InternalConfigSha1Sum, gotAAgain.InternalConfigSha1Sum)
 
-	// Different config -> different checksum
-	require.NotEqual(t, gotA.ConfigSha1Sum, gotB.ConfigSha1Sum)
+	// Different config -> different checksum, even though BridgeL1Sync isn't running (and thus
+	// isn't part of the public config): the internal checksum covers the entire configuration.
+	require.NotEqual(t, gotA.InternalConfigSha1Sum, gotB.InternalConfigSha1Sum)
+}
+
+func TestBuildPublicConfig_PublicChecksumChangesWithPublicConfig(t *testing.T) {
+	cfgA := &config.Config{}
+	cfgB := &config.Config{}
+	cfgB.BridgeL1Sync.SyncBlockChunkSize = 42
+	running := runningBridgeComponents{BridgeL1Sync: true}
+
+	gotA, err := buildPublicConfig(cfgA, testNetworkID, "", running)
+	require.NoError(t, err)
+	gotB, err := buildPublicConfig(cfgB, testNetworkID, "", running)
+	require.NoError(t, err)
+
+	require.NotEqual(t, gotA.PublicConfigSha1Sum, gotB.PublicConfigSha1Sum)
+	require.NotEqual(t, gotA.InternalConfigSha1Sum, gotB.InternalConfigSha1Sum)
+}
+
+func TestBuildPublicConfig_PublicChecksumStableWhenOnlyInternalConfigChanges(t *testing.T) {
+	cfgA := &config.Config{}
+	cfgB := &config.Config{}
+	// DBPath isn't exposed in the public config, so it must not affect PublicConfigSha1Sum.
+	cfgB.BridgeL1Sync.DBPath = "/some/other/path"
+	running := runningBridgeComponents{BridgeL1Sync: true}
+
+	gotA, err := buildPublicConfig(cfgA, testNetworkID, "", running)
+	require.NoError(t, err)
+	gotB, err := buildPublicConfig(cfgB, testNetworkID, "", running)
+	require.NoError(t, err)
+
+	require.Equal(t, gotA.PublicConfigSha1Sum, gotB.PublicConfigSha1Sum)
+	require.NotEqual(t, gotA.InternalConfigSha1Sum, gotB.InternalConfigSha1Sum)
 }

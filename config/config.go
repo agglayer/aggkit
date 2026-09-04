@@ -378,11 +378,12 @@ func LoadFileFromString(configFileData string, configType string) (*Config, erro
 	return cfg, nil
 }
 
-// Sha1Sum returns the SHA-1 checksum (hex-encoded) of the fully-resolved configuration,
-// marshaled to TOML the same way it's written to disk by SaveConfigToFile. It lets a caller
-// (e.g. a proxy consuming the bridge service's public config endpoint) detect when the running
-// configuration differs from what it last saw, without comparing full (and potentially
-// sensitive) config contents.
+// Sha1Sum returns the SHA-1 checksum (hex-encoded) of the fully-resolved configuration (public
+// and private alike), marshaled to TOML the same way it's written to disk by SaveConfigToFile.
+// It's reported as InternalConfigSha1Sum on the bridge service's public config endpoint, where it
+// lets an operator with access to the full config detect any change to it, even one that isn't
+// exposed on that endpoint. To detect changes limited to the fields actually exposed there, see
+// bridgeservice/types.PublicConfigResponse.PublicSha1Sum instead.
 func (cfg *Config) Sha1Sum() (string, error) {
 	marshaled, err := toml.Marshal(cfg)
 	if err != nil {
