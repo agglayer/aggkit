@@ -56,6 +56,7 @@ type trackerBridgeStepPath struct {
 // trackerTrackingData mirrors api.TrackingData, the body of GET /tracker/v1/network/{id}/tx/{hash}.
 type trackerTrackingData struct {
 	TrackingStatus string                  `json:"tracking_status"`
+	ClaimStatus    string                  `json:"claim_status"`
 	BridgeStatus   *trackerBridgeStatus    `json:"bridge_status"`
 	StepIndex      *int                    `json:"step_index"`
 	AllSteps       []trackerBridgeStepPath `json:"all_steps"`
@@ -215,9 +216,10 @@ func TestBridgeTrackerL1ToL2(t *testing.T) {
 	t.Logf("bridge tx: %s deposit_count=%d", txHash.Hex(), result.DepositCount)
 
 	// The tracker resolves the creating tx and walks WaitingGERUpdate -> WaitingGERInjection ->
-	// WaitingClaim on its own, independently of the bridge-service polling BridgeL1NoClaim already
-	// did above; since the bridge is already fully indexed/injected by now, the tracker should
-	// reach WaitingClaim once it resolves rather than showing every intermediate step live.
+	// WaitingL1InfoLeafAvailable -> WaitingClaim on its own, independently of the bridge-service
+	// polling BridgeL1NoClaim already did above; since the bridge is already fully
+	// indexed/injected by now, the tracker should reach WaitingClaim once it resolves rather
+	// than showing every intermediate step live.
 	var tracking *trackerTrackingData
 	err = pollWithBackoff(ctx, 3*time.Minute, backoffInitial, backoffMax, "tracker reaches WaitingClaim",
 		func() (bool, error) {
@@ -243,9 +245,10 @@ func TestBridgeTrackerL1ToL2(t *testing.T) {
 	require.Equal(t, result.DestinationAddr, tracking.BridgeStatus.Event.DestinationAddress)
 	require.Equal(t, bridgeAmount.String(), tracking.BridgeStatus.Event.Amount)
 	require.Equal(t,
-		[]string{"WaitingGERUpdate", "WaitingGERInjection", "WaitingClaim", "Claimed"},
+		[]string{"WaitingGERUpdate", "WaitingGERInjection", "WaitingL1InfoLeafAvailable", "WaitingClaim", "Claimed"},
 		stepNames(tracking.AllSteps),
 		"L1->L2 path must match domain.ExpectedPath")
+	require.Equal(t, "readyToClaim", tracking.ClaimStatus)
 
 	claimTxHash, err := claimL1ToL2(ctx, testEnv, &l2Opts, result)
 	require.NoError(t, err, "manual L1->L2 claim failed")
@@ -263,6 +266,7 @@ func TestBridgeTrackerL1ToL2(t *testing.T) {
 	require.NoError(t, err, "tracker never reached finished")
 
 	require.Nil(t, tracking.Error, "a successfully claimed bridge must carry no error")
+	require.Equal(t, "claimed", tracking.ClaimStatus)
 	require.NotEmpty(t, tracking.AllSteps)
 	last := tracking.AllSteps[len(tracking.AllSteps)-1]
 	require.Equal(t, "Claimed", last.StepName)
