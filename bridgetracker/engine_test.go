@@ -606,6 +606,14 @@ func TestEngineLifecycleL2ToL2(t *testing.T) {
 				},
 			}, sp.Result())
 		}
+		// StepWaitingL1InfoLeafAvailable is never skipped, even right after
+		// StepWaitingGERInjection just proved the same leaf covered — see #1823
+		if sp.Step == types.StepWaitingL1InfoLeafAvailable {
+			require.Equal(t, types.StepStatusDone, sp.Status)
+			require.Equal(t, &types.InjectedGERL1Leaf{
+				GER: injectedGER, BlockNumber: injectedGERBlockNumber, BlockTimestamp: injectedGERTimestamp,
+			}, sp.Result())
+		}
 	}
 
 	// isClaimed() goes true on-chain a tick before the bridge service has indexed the claim tx:
@@ -809,6 +817,59 @@ func TestEngineL1ToL2Path(t *testing.T) {
 			require.Equal(t, &types.GERUpdateResult{GER: ger, BlockNumber: blockNumber}, sp.Result())
 		}
 	}
+}
+
+// TestEngineLifecycleL1ToL2 pins the fix for #1823 on the L1->L2 route too: even though
+// StepWaitingGERInjection already confirms the GER's injection tx landed on the destination
+// L2, StepWaitingL1InfoLeafAvailable still has to run its own check — the destination's own
+// bridge-service instance may not have its L1 info tree sync caught up yet, which is what it
+// actually needs to produce a claim proof
+func TestEngineLifecycleL1ToL2(t *testing.T) {
+	id := TrackingID{NetworkID: 0, TxHash: testHash}
+	f := &fakeSources{bridge: &BridgeInfo{
+		NetworkID:          0,
+		LeafType:           types.BridgeLeafTypeAsset,
+		DestinationNetwork: 1,
+		BlockNumber:        500,
+		LogIndex:           1,
+	}}
+	engine, store, _ := newTestEngine(t, f)
+
+	mustRegister(t, store, id)
+	ger := common.HexToHash("0x0a")
+	blockNumber := uint64(10)
+	f.originGER = &types.GERData{NetworkID: 0, GER: &ger, BlockNumber: &blockNumber, LERType: types.LERTypeMainnet}
+	engine.tick(t.Context())
+	tracking := mustGet(t, store, id)
+	require.Equal(t, types.StepWaitingGERInjection, tracking.AllSteps()[*tracking.StepIndex()].Step)
+
+	injectedGER := common.HexToHash("0x0b")
+	injectedGERBlockNumber := uint64(600)
+	injectedGERTimestamp := uint64(1700000600)
+	f.injectedGERAtIndex = &types.GERData{
+		NetworkID: 1, GER: &injectedGER, LERType: types.LERTypeNA,
+		BlockNumber: &injectedGERBlockNumber, BlockTimestamp: &injectedGERTimestamp,
+	}
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, id)
+	allSteps := tracking.AllSteps()
+	require.Equal(t, types.StepWaitingClaim, allSteps[*tracking.StepIndex()].Step,
+		"StepWaitingL1InfoLeafAvailable resolves in the same tick, off the same fact "+
+			"StepWaitingGERInjection just used — it is never skipped, but it isn't a separate wait either")
+	for _, sp := range allSteps {
+		if sp.Step == types.StepWaitingL1InfoLeafAvailable {
+			require.Equal(t, types.StepStatusDone, sp.Status)
+			require.Equal(t, &types.InjectedGERL1Leaf{
+				GER: injectedGER, BlockNumber: injectedGERBlockNumber, BlockTimestamp: injectedGERTimestamp,
+			}, sp.Result())
+		}
+	}
+
+	f.claimed = true
+	f.claim = &types.ClaimResult{ClaimTx: common.HexToHash("0x0c"), BlockNumber: 700}
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, id)
+	require.Equal(t, types.TrackingStatusFinished, tracking.TrackingStatus())
 }
 
 // TestEngineNoChangeNoRepublish pins the change detection: identical facts across rounds

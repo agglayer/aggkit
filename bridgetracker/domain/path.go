@@ -11,6 +11,7 @@ func ExpectedPath(bridgeType types.BridgeType) []types.BridgeStep {
 		return []types.BridgeStep{
 			types.StepWaitingGERUpdate,
 			types.StepWaitingGERInjection,
+			types.StepWaitingL1InfoLeafAvailable,
 			types.StepWaitingClaim,
 			types.StepClaimed,
 		}
@@ -31,6 +32,7 @@ func ExpectedPath(bridgeType types.BridgeType) []types.BridgeStep {
 			types.StepCertificatePending,
 			types.StepWaitL1SettledGER,
 			types.StepWaitingGERInjection,
+			types.StepWaitingL1InfoLeafAvailable,
 			types.StepWaitingClaim,
 			types.StepClaimed,
 		}

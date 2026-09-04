@@ -319,7 +319,9 @@ func TestResolveSteps(t *testing.T) {
 			expectedStep: types.StepClaimed,
 			expectedQueried: []string{
 				"originLER", "certificate", "certificate", "settlementGERUpdate",
-				"injectedGERAtIndex", "isClaimed", "claimFor",
+				// once for StepWaitingGERInjection, once more for StepWaitingL1InfoLeafAvailable
+				// right after it — the latter is never skipped, even when injection just proved it
+				"injectedGERAtIndex", "injectedGERAtIndex", "isClaimed", "claimFor",
 			},
 			resultOf: types.StepClaimed,
 			result:   claim,
@@ -378,8 +380,10 @@ func TestResolveSteps(t *testing.T) {
 			facts: fakeFacts{
 				originGER: originGER, injectedGERAtIndex: injectedGER, claimed: true, claim: claim,
 			},
-			expectedStep:    types.StepClaimed,
-			expectedQueried: []string{"originGER", "injectedGERAtIndex", "isClaimed", "claimFor"},
+			expectedStep: types.StepClaimed,
+			expectedQueried: []string{
+				"originGER", "injectedGERAtIndex", "injectedGERAtIndex", "isClaimed", "claimFor",
+			},
 		},
 		{
 			name:       "L1->L2 with GER update already done skips OriginGER",
@@ -393,6 +397,7 @@ func TestResolveSteps(t *testing.T) {
 					},
 				},
 				{Step: types.StepWaitingGERInjection, Status: types.StepStatusInProgress},
+				{Step: types.StepWaitingL1InfoLeafAvailable, Status: types.StepStatusPending},
 				{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
 				{Step: types.StepClaimed, Status: types.StepStatusPending},
 			},
@@ -408,6 +413,7 @@ func TestResolveSteps(t *testing.T) {
 				{Step: types.StepPendingInclusion, Status: types.StepStatusDone},
 				{Step: types.StepCertificatePending, Status: types.StepStatusDone},
 				{Step: types.StepWaitingGERInjection, Status: types.StepStatusDone},
+				{Step: types.StepWaitingL1InfoLeafAvailable, Status: types.StepStatusDone},
 				{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress},
 				{Step: types.StepClaimed, Status: types.StepStatusPending},
 			},
@@ -668,6 +674,7 @@ func TestUpdateStep(t *testing.T) {
 				StartDate: &t1, EndDate: &t2, ResultGerUpdate: gerUpdate,
 			},
 			{Step: types.StepWaitingGERInjection, Status: types.StepStatusInProgress, StartDate: &t2},
+			{Step: types.StepWaitingL1InfoLeafAvailable, Status: types.StepStatusPending},
 			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
 		}, steps)

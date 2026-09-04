@@ -91,19 +91,22 @@ const (
 	// (UpdateL1InfoTreeV2 is captured too, if present, but is not required). Only reached by
 	// L2-originated bridges (L2->L1 and L2->L2), right after StepCertificatePending
 	StepWaitL1SettledGER
-	// StepWaitingL1InfoLeafAvailable the certificate's settlement is confirmed on L1, but the
-	// destination network's own bridge-service instance has not indexed the resulting L1 info
-	// tree leaf yet — its L1 info tree sync may lag behind the finality this tracker itself uses
-	// for StepWaitL1SettledGER (e.g. it waits for the block to be finalized). Only reached by
-	// L2->L1 bridges, right after StepWaitL1SettledGER: for any other destination (an L2),
-	// StepWaitingGERInjection already covers this (see #1823)
-	StepWaitingL1InfoLeafAvailable
 	// StepWaitingGERInjection the certificate is settled but the Global Exit Root has
-	// not been injected on the destination network yet
+	// not been injected on the destination network yet. Skipped for an L2->L1 bridge: mainnet
+	// needs no injection, its own settlement already is the L1 Global Exit Root update
 	StepWaitingGERInjection
-	// StepWaitingClaim the bridge is ready to be claimed: the Global Exit Root that covers it is
-	// visible on the destination network, either injected there (StepWaitingGERInjection) or, for
-	// an L2->L1 bridge, indexed by the destination's own bridge-service instance
+	// StepWaitingL1InfoLeafAvailable the covering L1 info tree leaf exists — via
+	// StepWaitL1SettledGER's settlement, or, once injected, StepWaitingGERInjection's own GER
+	// update — but the destination network's own bridge-service instance has not indexed it
+	// yet: unlike StepWaitingGERInjection (an L2-side fact — whether the GER's injection tx
+	// landed on that network's own contract), this checks whether that instance's L1 info tree
+	// sync has caught up too, which it needs to produce a claim proof. That sync can lag behind
+	// the finality this tracker itself uses for StepWaitL1SettledGER (e.g. it waits for the
+	// block to be finalized), so this is always checked, on every route, right before
+	// StepWaitingClaim — never skipped, never inferred from a sibling step (see #1823)
+	StepWaitingL1InfoLeafAvailable
+	// StepWaitingClaim the bridge is ready to be claimed: the destination network's own
+	// bridge-service instance has the covering L1 info tree leaf indexed
 	// (StepWaitingL1InfoLeafAvailable)
 	StepWaitingClaim
 	// StepClaimed the bridge has been claimed on the destination network
