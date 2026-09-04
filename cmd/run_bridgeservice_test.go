@@ -68,13 +68,13 @@ func TestBuildPublicConfig(t *testing.T) {
 	got, err := buildPublicConfig(cfg, testNetworkID, string(l2gersync.SovereignChain), allRunning)
 	require.NoError(t, err)
 
-	expectedInternalSha1Sum, err := cfg.Sha1Sum()
+	expectedInternalChecksum, err := cfg.Checksum()
 	require.NoError(t, err)
-	require.NotEmpty(t, expectedInternalSha1Sum)
+	require.NotEmpty(t, expectedInternalChecksum)
 
 	expected := bridgetypes.PublicConfigResponse{
-		NetworkID:             testNetworkID,
-		InternalConfigSha1Sum: expectedInternalSha1Sum,
+		NetworkID:              testNetworkID,
+		InternalConfigChecksum: expectedInternalChecksum,
 		Components: bridgetypes.PublicComponentsConfig{
 			L1InfoTreeSync: &bridgetypes.SyncComponentConfig{
 				BlockFinality: "FinalizedBlock", InitialBlock: 100, SyncBlockChunkSize: 50,
@@ -105,10 +105,10 @@ func TestBuildPublicConfig(t *testing.T) {
 		},
 	}
 
-	expectedPublicSha1Sum, err := expected.PublicSha1Sum()
+	expectedPublicChecksum, err := expected.PublicChecksum()
 	require.NoError(t, err)
-	require.NotEmpty(t, expectedPublicSha1Sum)
-	expected.PublicConfigSha1Sum = expectedPublicSha1Sum
+	require.NotEmpty(t, expectedPublicChecksum)
+	expected.PublicConfigChecksum = expectedPublicChecksum
 
 	require.Equal(t, expected, got)
 }
@@ -169,11 +169,11 @@ func TestBuildPublicConfig_InternalChecksumChangesWithConfig(t *testing.T) {
 	// Same config -> same checksum, deterministically
 	gotAAgain, err := buildPublicConfig(cfgA, testNetworkID, "", runningBridgeComponents{})
 	require.NoError(t, err)
-	require.Equal(t, gotA.InternalConfigSha1Sum, gotAAgain.InternalConfigSha1Sum)
+	require.Equal(t, gotA.InternalConfigChecksum, gotAAgain.InternalConfigChecksum)
 
 	// Different config -> different checksum, even though BridgeL1Sync isn't running (and thus
 	// isn't part of the public config): the internal checksum covers the entire configuration.
-	require.NotEqual(t, gotA.InternalConfigSha1Sum, gotB.InternalConfigSha1Sum)
+	require.NotEqual(t, gotA.InternalConfigChecksum, gotB.InternalConfigChecksum)
 }
 
 func TestBuildPublicConfig_PublicChecksumChangesWithPublicConfig(t *testing.T) {
@@ -187,14 +187,14 @@ func TestBuildPublicConfig_PublicChecksumChangesWithPublicConfig(t *testing.T) {
 	gotB, err := buildPublicConfig(cfgB, testNetworkID, "", running)
 	require.NoError(t, err)
 
-	require.NotEqual(t, gotA.PublicConfigSha1Sum, gotB.PublicConfigSha1Sum)
-	require.NotEqual(t, gotA.InternalConfigSha1Sum, gotB.InternalConfigSha1Sum)
+	require.NotEqual(t, gotA.PublicConfigChecksum, gotB.PublicConfigChecksum)
+	require.NotEqual(t, gotA.InternalConfigChecksum, gotB.InternalConfigChecksum)
 }
 
 func TestBuildPublicConfig_PublicChecksumStableWhenOnlyInternalConfigChanges(t *testing.T) {
 	cfgA := &config.Config{}
 	cfgB := &config.Config{}
-	// DBPath isn't exposed in the public config, so it must not affect PublicConfigSha1Sum.
+	// DBPath isn't exposed in the public config, so it must not affect PublicConfigChecksum.
 	cfgB.BridgeL1Sync.DBPath = "/some/other/path"
 	running := runningBridgeComponents{BridgeL1Sync: true}
 
@@ -203,6 +203,6 @@ func TestBuildPublicConfig_PublicChecksumStableWhenOnlyInternalConfigChanges(t *
 	gotB, err := buildPublicConfig(cfgB, testNetworkID, "", running)
 	require.NoError(t, err)
 
-	require.Equal(t, gotA.PublicConfigSha1Sum, gotB.PublicConfigSha1Sum)
-	require.NotEqual(t, gotA.InternalConfigSha1Sum, gotB.InternalConfigSha1Sum)
+	require.Equal(t, gotA.PublicConfigChecksum, gotB.PublicConfigChecksum)
+	require.NotEqual(t, gotA.InternalConfigChecksum, gotB.InternalConfigChecksum)
 }

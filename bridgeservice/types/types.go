@@ -1,10 +1,9 @@
 package types
 
 import (
-	"crypto/sha1" //nolint:gosec // not used for cryptographic purposes, just a config fingerprint
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"math/big"
 	"time"
 
@@ -542,22 +541,23 @@ type PublicConfigResponse struct {
 	Components PublicComponentsConfig `json:"components"`
 	// Contracts holds the smart contract addresses used by this instance, deduplicated by network
 	Contracts PublicContractsConfig `json:"contracts"`
-	// InternalConfigSha1Sum is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved
+	// InternalConfigChecksum is a hex-encoded FNV-1a checksum of this instance's fully-resolved
 	// configuration (public and private). It changes whenever any configuration value changes,
-	// even one that isn't exposed on this endpoint.
-	InternalConfigSha1Sum string `json:"internal_config_sha1sum" example:"356a192b7913b04c54574d18c28d46e6395428ab"`
-	// PublicConfigSha1Sum is the SHA-1 checksum (hex-encoded) of only the fields published in this
+	// even one that isn't exposed on this endpoint. Not cryptographically secure — just a fast
+	// fingerprint to detect incidental change, never to detect tampering.
+	InternalConfigChecksum string `json:"internal_config_checksum" example:"af63bd4c8601b7df"`
+	// PublicConfigChecksum is a hex-encoded FNV-1a checksum of only the fields published in this
 	// response (NetworkID, Components, Contracts). Lets a caller (e.g. a proxy) detect when the
 	// public-facing configuration it depends on has changed, without reacting to unrelated internal
-	// configuration changes that also move InternalConfigSha1Sum.
-	PublicConfigSha1Sum string `json:"public_config_sha1sum" example:"da39a3ee5e6b4b0d3255bfef95601890afd80709"`
+	// configuration changes that also move InternalConfigChecksum.
+	PublicConfigChecksum string `json:"public_config_checksum" example:"af63bd4c8601b7df"`
 }
 
-// PublicSha1Sum returns the SHA-1 checksum (hex-encoded) of the parts of this response that are
+// PublicChecksum returns a hex-encoded FNV-1a checksum of the parts of this response that are
 // actually published to clients: NetworkID, Components and Contracts. It deliberately excludes
-// InternalConfigSha1Sum and PublicConfigSha1Sum itself, so the checksum only reflects the
+// InternalConfigChecksum and PublicConfigChecksum itself, so the checksum only reflects the
 // public-facing configuration and is stable regardless of when it's computed.
-func (r PublicConfigResponse) PublicSha1Sum() (string, error) {
+func (r PublicConfigResponse) PublicChecksum() (string, error) {
 	payload := struct {
 		NetworkID  uint32                 `json:"network_id"`
 		Components PublicComponentsConfig `json:"components"`
@@ -572,8 +572,9 @@ func (r PublicConfigResponse) PublicSha1Sum() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal public config for checksum: %w", err)
 	}
-	sum := sha1.Sum(marshaled) //nolint:gosec // not used for cryptographic purposes, just a config fingerprint
-	return hex.EncodeToString(sum[:]), nil
+	h := fnv.New64a()
+	h.Write(marshaled) // hash.Hash.Write never returns an error
+	return fmt.Sprintf("%016x", h.Sum64()), nil
 }
 
 // PublicComponentsConfig groups the public configuration of every syncer component that backs

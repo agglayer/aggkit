@@ -1199,7 +1199,7 @@ type runningBridgeComponents struct {
 func buildPublicConfig(
 	cfg *config.Config, l2NetworkID uint32, l2GERSyncMode string, runningComponents runningBridgeComponents,
 ) (bridgetypes.PublicConfigResponse, error) {
-	internalConfigSha1Sum, err := cfg.Sha1Sum()
+	internalConfigChecksum, err := cfg.Checksum()
 	if err != nil {
 		return bridgetypes.PublicConfigResponse{}, fmt.Errorf("failed to compute configuration checksum: %w", err)
 	}
@@ -1253,13 +1253,13 @@ func buildPublicConfig(
 		},
 	}
 
-	publicConfigSha1Sum, err := publicConfig.PublicSha1Sum()
+	publicConfigChecksum, err := publicConfig.PublicChecksum()
 	if err != nil {
 		return bridgetypes.PublicConfigResponse{}, fmt.Errorf("failed to compute public configuration checksum: %w", err)
 	}
 
-	publicConfig.InternalConfigSha1Sum = internalConfigSha1Sum
-	publicConfig.PublicConfigSha1Sum = publicConfigSha1Sum
+	publicConfig.InternalConfigChecksum = internalConfigChecksum
+	publicConfig.PublicConfigChecksum = publicConfigChecksum
 
 	return publicConfig, nil
 }

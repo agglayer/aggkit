@@ -507,12 +507,13 @@ definitions:
         - $ref: '#/definitions/types.PublicContractsConfig'
         description: Contracts holds the smart contract addresses used by this instance,
           deduplicated by network
-      internal_config_sha1sum:
+      internal_config_checksum:
         description: |-
-          InternalConfigSha1Sum is the SHA-1 checksum (hex-encoded) of this instance's fully-resolved
+          InternalConfigChecksum is a hex-encoded FNV-1a checksum of this instance's fully-resolved
           configuration (public and private). It changes whenever any configuration value changes,
-          even one that isn't exposed on this endpoint.
-        example: 356a192b7913b04c54574d18c28d46e6395428ab
+          even one that isn't exposed on this endpoint. Not cryptographically secure — just a fast
+          fingerprint to detect incidental change, never to detect tampering.
+        example: af63bd4c8601b7df
         type: string
       network_id:
         description: |-
@@ -520,13 +521,13 @@ definitions:
           listening on (the destination network for L2, mainnet=0 for L1).
         example: 10
         type: integer
-      public_config_sha1sum:
+      public_config_checksum:
         description: |-
-          PublicConfigSha1Sum is the SHA-1 checksum (hex-encoded) of only the fields published in this
+          PublicConfigChecksum is a hex-encoded FNV-1a checksum of only the fields published in this
           response (NetworkID, Components, Contracts). Lets a caller (e.g. a proxy) detect when the
           public-facing configuration it depends on has changed, without reacting to unrelated internal
-          configuration changes that also move InternalConfigSha1Sum.
-        example: da39a3ee5e6b4b0d3255bfef95601890afd80709
+          configuration changes that also move InternalConfigChecksum.
+        example: af63bd4c8601b7df
         type: string
     type: object
   types.PublicContractsConfig:
