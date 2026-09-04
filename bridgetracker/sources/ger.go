@@ -466,15 +466,24 @@ func (s *GERSource) coveringLeafIndex(
 // index covering bridge's own origin deposit, per GET /bridge/v1/l1-info-tree-index queried
 // against the bridge-service instance that will actually build the claim proof for it — the
 // origin network's own instance (see docs/bridge_service.md's L2->L2 flow: this same endpoint,
-// queried on the origin, is what bridge_getProof is later called against there too). Unlike
-// coveringLeafIndex, which asks the destination and is only valid when bridge.NetworkID is
-// mainnet, this asks the origin's own instance with its own network ID — the one combination
-// the endpoint always accepts (see l1-info-tree-index's own network_id validation). Returns nil
-// while that instance's own L1 info tree sync has not caught up to this deposit yet
+// queried on the origin, is what bridge_getProof is later called against there too). The
+// endpoint only ever accepts network_id == mainnet or network_id == the queried instance's own
+// network (see l1-info-tree-index's own network_id validation), and mainnet has no
+// bridge-service deployment of its own — bridgeservicefinder.GetURL(0) fails unless a network-0
+// URL was explicitly configured (see bridgeservicefinder/doc.go). So when the origin is
+// mainnet, the request is instead sent to the destination's own instance (a real rollup,
+// resolvable), which still answers for network_id=0 since mainnet's own bridgesync is embedded
+// in every instance — exactly what coveringLeafIndex/OriginGER already rely on for that case.
+// Returns nil while the queried instance's own L1 info tree sync has not caught up to this
+// deposit yet
 func (s *GERSource) L1InfoTreeIndexForBridge(
 	ctx context.Context, bridge *bridgetracker.BridgeInfo,
 ) (*uint32, error) {
-	svc, err := s.services.aggkitBridgeClientFor(bridge.NetworkID)
+	queryNetwork := bridge.NetworkID
+	if queryNetwork == MainnetNetworkID {
+		queryNetwork = bridge.DestinationNetwork
+	}
+	svc, err := s.services.aggkitBridgeClientFor(queryNetwork)
 	if err != nil {
 		return nil, err // transient: URL resolution failure, retried by the engine
 	}

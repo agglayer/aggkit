@@ -95,9 +95,10 @@ type GERSource interface {
 
 	// L1InfoTreeIndexForBridge returns the L1 info tree leaf index covering bridge's origin
 	// deposit — GET /bridge/v1/l1-info-tree-index, queried against the bridge-service instance
-	// that will build the claim proof for it (the origin network's own instance) — or nil if
-	// that instance's own L1 info tree sync has not caught up to this deposit yet. Only queried
-	// by StepWaitingL1InfoLeafAvailable
+	// that will build the claim proof for it: the origin network's own instance, or, when the
+	// origin is mainnet (which has no bridge-service deployment of its own), the destination's
+	// — or nil if that instance's own L1 info tree sync has not caught up to this deposit yet.
+	// Only queried by StepWaitingL1InfoLeafAvailable
 	L1InfoTreeIndexForBridge(ctx context.Context, bridge *BridgeInfo) (*uint32, error)
 }
 

@@ -14,10 +14,11 @@ import (
 type L1InfoLeafAvailableSource interface {
 	// L1InfoTreeIndexForBridge returns the L1 info tree leaf index covering bridge's origin
 	// deposit — GET /bridge/v1/l1-info-tree-index, queried against the proof-building
-	// instance (the origin network's own bridge-service instance; see
+	// instance: the origin network's own bridge-service instance (see
 	// docs/bridge_service.md's L2->L2 flow, where this same endpoint on the origin is what
-	// bridge_getProof is later called against) — or nil if that instance's own L1 info tree
-	// sync has not caught up to this deposit yet. Only queried by
+	// bridge_getProof is later called against), or, when the origin is mainnet — which has no
+	// bridge-service deployment of its own — the destination's instead — or nil if that
+	// instance's own L1 info tree sync has not caught up to this deposit yet. Only queried by
 	// StepWaitingL1InfoLeafAvailable
 	L1InfoTreeIndexForBridge(ctx context.Context, bridge *BridgeInfo) (*uint32, error)
 }

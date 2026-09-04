@@ -96,8 +96,10 @@ const (
 	// needs no injection, its own settlement already is the L1 Global Exit Root update
 	StepWaitingGERInjection
 	// StepWaitingL1InfoLeafAvailable the bridge-service instance that will build the claim
-	// proof — the origin network's own instance — has not caught its own L1 info tree sync up
-	// to this bridge's deposit yet (GET /bridge/v1/l1-info-tree-index). That sync can lag
+	// proof — the origin network's own instance, or the destination's when the origin is
+	// mainnet (which has no bridge-service deployment of its own) — has not caught its own L1
+	// info tree sync up to this bridge's deposit yet (GET /bridge/v1/l1-info-tree-index). That
+	// sync can lag
 	// behind whatever this tracker itself uses elsewhere: StepWaitL1SettledGER's own L1 RPC
 	// scan, or StepWaitingGERInjection's destination-side injection check (an L2-side fact —
 	// whether the GER's injection tx landed on that network's own contract, unrelated to
@@ -300,8 +302,8 @@ type InjectedGERL1Leaf struct {
 // L1InfoLeafAvailableResult is the result of StepWaitingL1InfoLeafAvailable once it completes:
 // the L1 info tree leaf index covering the bridge's origin deposit, as resolved by the
 // bridge-service instance that will build the claim proof for it (GET
-// /bridge/v1/l1-info-tree-index, queried against the origin network's own instance — see
-// #1823)
+// /bridge/v1/l1-info-tree-index, queried against the origin network's own instance, or the
+// destination's when the origin is mainnet — see #1823)
 type L1InfoLeafAvailableResult struct {
 	L1InfoTreeIndex uint32 `json:"l1_info_tree_index"`
 }

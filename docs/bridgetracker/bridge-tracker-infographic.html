@@ -464,7 +464,7 @@
             <span class="step-name">WaitingL1InfoLeafAvailable</span>
             <span class="routes"><span class="route-tag tag-l1l2">L1→L2</span><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
           </div>
-          <p class="step-desc">Always right before <code>WaitingClaim</code>, on every route: the bridge-service instance that will build the claim proof — the origin network's own instance — has not caught its own L1 info tree sync up to this deposit yet (<code>GET /bridge/v1/l1-info-tree-index</code>). Unlike <code>WaitingGERInjection</code>, this is never skipped or inferred from a sibling step: a GER injection tx landing on the destination is not the same fact as the proof-building instance's own sync having caught up. See <a href="https://github.com/agglayer/aggkit/issues/1823">#1823</a>.</p>
+          <p class="step-desc">Always right before <code>WaitingClaim</code>, on every route: the bridge-service instance that will build the claim proof — the origin network's own instance, or the destination's when the origin is mainnet (which has no bridge-service deployment of its own) — has not caught its own L1 info tree sync up to this deposit yet (<code>GET /bridge/v1/l1-info-tree-index</code>). Unlike <code>WaitingGERInjection</code>, this is never skipped or inferred from a sibling step: a GER injection tx landing on the destination is not the same fact as the proof-building instance's own sync having caught up. See <a href="https://github.com/agglayer/aggkit/issues/1823">#1823</a>.</p>
         </div>
       </div>
 
@@ -528,7 +528,7 @@
           <span class="node">7 · WaitingClaim</span><span class="arrow">→</span>
           <span class="node">8 · Claimed</span>
         </div>
-        <p class="route-note"><b>GER update (L1→L2):</b> the deposit updates the GER directly on L1, so it jumps straight to waiting for the Aggoracle to inject that GER into the destination L2. No certificate is involved — but the proof-building instance (here, mainnet's own) still needs its own separate check (<span class="mono">WaitingL1InfoLeafAvailable</span>) before it's claimable.</p>
+        <p class="route-note"><b>GER update (L1→L2):</b> the deposit updates the GER directly on L1, so it jumps straight to waiting for the Aggoracle to inject that GER into the destination L2. No certificate is involved — but the proof-building instance (mainnet has none of its own, so this is the destination's) still needs its own separate check (<span class="mono">WaitingL1InfoLeafAvailable</span>) before it's claimable.</p>
       </div>
 
       <div class="route-card l2l1">
@@ -617,7 +617,7 @@
             {cur:5, ger1:GER_L1, ger2:null, cert:null, chg:["cur","ger1"],
              cap:"GER updated on L1 (no certificate needed) — waiting for the Aggoracle to inject it into the destination L2."},
             {cur:6, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
-             cap:"Aggoracle injected the GER on L2 — but the proof-building instance (mainnet's own) still has to catch its own L1 info tree sync up to this deposit, see #1823."},
+             cap:"Aggoracle injected the GER on L2 — but the proof-building instance (mainnet has none of its own, so this is the destination's) still has to catch its own L1 info tree sync up to this deposit, see #1823."},
             {cur:7, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
              cap:"L1 info tree index resolved by the proof-building instance — claimable."},
             {cur:8, done:true, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
