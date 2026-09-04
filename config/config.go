@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -374,6 +375,25 @@ func LoadFileFromString(configFileData string, configType string) (*Config, erro
 		return cfg, err
 	}
 	return cfg, nil
+}
+
+// Checksum returns a hex-encoded FNV-1a checksum of the fully-resolved configuration (public and
+// private alike), marshaled to TOML the same way it's written to disk by SaveConfigToFile. It's
+// not cryptographically secure — it's not meant to be, just a fast, dependency-free fingerprint —
+// so it must never be used to detect tampering, only incidental change.
+//
+// It's reported as InternalConfigChecksum on the bridge service's public config endpoint, where it
+// lets an operator with access to the full config detect any change to it, even one that isn't
+// exposed on that endpoint. To detect changes limited to the fields actually exposed there, see
+// bridgeservice/types.PublicConfigResponse.PublicChecksum instead.
+func (cfg *Config) Checksum() (string, error) {
+	marshaled, err := toml.Marshal(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal config for checksum: %w", err)
+	}
+	h := fnv.New64a()
+	h.Write(marshaled) // hash.Hash.Write never returns an error
+	return fmt.Sprintf("%016x", h.Sum64()), nil
 }
 
 func SaveConfigToFile(cfg *Config, saveConfigPath string) error {

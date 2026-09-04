@@ -31,7 +31,6 @@ import (
 	autoclaimruntime "github.com/agglayer/aggkit/autoclaim/runtime"
 	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
-	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
 	claimsyncstorage "github.com/agglayer/aggkit/claimsync/storage"
@@ -208,9 +207,25 @@ func start(cliCtx *cli.Context) error {
 	var publicHasRoutes, adminHasRoutes bool
 
 	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
+		// Resolved from the concrete pointers (not the interfaces passed below) so a component
+		// that isn't running on this instance can't be mistaken for a non-nil interface wrapping
+		// a nil pointer.
+		var l2GERSyncMode string
+		if l2GERSync != nil {
+			l2GERSyncMode = string(l2GERSync.SyncMode())
+		}
+		runningComponents := runningBridgeComponents{
+			L1InfoTreeSync: l1InfoTreeSync != nil,
+			BridgeL1Sync:   l1BridgeSync != nil,
+			BridgeL2Sync:   l2BridgeSync != nil,
+			L2GERSync:      l2GERSync != nil,
+		}
+
 		b := createBridgeService(
-			cfg.PublicREST,
+			cfg,
+			l2GERSyncMode,
 			rollupDataQuerier.RollupID,
+			runningComponents,
 			rollupDataQuerier,
 			l1InfoTreeSync,
 			l2GERSync,
@@ -1110,38 +1125,6 @@ func runAggsenderMultisigCommitteeIfNeeded(
 	}
 
 	return committeeQuerier
-}
-
-func createBridgeService(
-	cfg aggkitcommon.RESTConfig,
-	l2NetworkID uint32,
-	upgradeQuery bridgeservice.AgglayerManagerUpgradeQuerier,
-	l1InfoTree bridgeservice.L1InfoTreeSyncer,
-	injectedGERs bridgeservice.L2GERSyncer,
-	bridgeL1 bridgeservice.Bridger,
-	bridgeL2 bridgeservice.Bridger,
-	claimL1 bridgeservice.Claimer,
-	claimL2 bridgeservice.Claimer,
-) *bridgeservice.BridgeService {
-	logger := log.WithFields("module", aggkitcommon.BRIDGE)
-
-	bridgeCfg := &bridgeservice.Config{
-		Logger:       logger,
-		ReadTimeout:  cfg.ReadTimeout.Duration,
-		WriteTimeout: cfg.WriteTimeout.Duration,
-		NetworkID:    l2NetworkID,
-	}
-
-	return bridgeservice.New(
-		bridgeCfg,
-		upgradeQuery,
-		l1InfoTree,
-		injectedGERs,
-		bridgeL1,
-		claimL1,
-		bridgeL2,
-		claimL2,
-	)
 }
 
 func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {

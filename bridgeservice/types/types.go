@@ -1,6 +1,9 @@
 package types
 
 import (
+	"encoding/json"
+	"fmt"
+	"hash/fnv"
 	"math/big"
 	"time"
 
@@ -522,4 +525,121 @@ type RootByLERResponse struct {
 
 	// BlockPosition orders same-block roots (multiple deposits in one block)
 	BlockPosition uint64 `json:"block_position" example:"0"`
+}
+
+// PublicConfigResponse is a sanitized view of the bridge service configuration: only the
+// parameters a client needs to configure itself against this instance (e.g. a proxy), with
+// contract addresses deduplicated into a single section instead of repeated across the
+// components that use them. It never exposes RPC URLs, DB paths, private keys or any other
+// internal/sensitive configuration value.
+// @Description Public, non-sensitive configuration of the bridge service
+type PublicConfigResponse struct {
+	// NetworkID is the rollup/network ID this bridge service instance's bridge/claim syncers are
+	// listening on (the destination network for L2, mainnet=0 for L1).
+	NetworkID uint32 `json:"network_id" example:"10"`
+	// Components holds the public parameters of each syncer component
+	Components PublicComponentsConfig `json:"components"`
+	// Contracts holds the smart contract addresses used by this instance, deduplicated by network
+	Contracts PublicContractsConfig `json:"contracts"`
+	// InternalConfigChecksum is a hex-encoded FNV-1a checksum of this instance's fully-resolved
+	// configuration (public and private). It changes whenever any configuration value changes,
+	// even one that isn't exposed on this endpoint. Not cryptographically secure — just a fast
+	// fingerprint to detect incidental change, never to detect tampering.
+	InternalConfigChecksum string `json:"internal_config_checksum" example:"af63bd4c8601b7df"`
+	// PublicConfigChecksum is a hex-encoded FNV-1a checksum of only the fields published in this
+	// response (NetworkID, Components, Contracts). Lets a caller (e.g. a proxy) detect when the
+	// public-facing configuration it depends on has changed, without reacting to unrelated internal
+	// configuration changes that also move InternalConfigChecksum.
+	PublicConfigChecksum string `json:"public_config_checksum" example:"af63bd4c8601b7df"`
+}
+
+// PublicChecksum returns a hex-encoded FNV-1a checksum of the parts of this response that are
+// actually published to clients: NetworkID, Components and Contracts. It deliberately excludes
+// InternalConfigChecksum and PublicConfigChecksum itself, so the checksum only reflects the
+// public-facing configuration and is stable regardless of when it's computed.
+func (r PublicConfigResponse) PublicChecksum() (string, error) {
+	payload := struct {
+		NetworkID  uint32                 `json:"network_id"`
+		Components PublicComponentsConfig `json:"components"`
+		Contracts  PublicContractsConfig  `json:"contracts"`
+	}{
+		NetworkID:  r.NetworkID,
+		Components: r.Components,
+		Contracts:  r.Contracts,
+	}
+
+	marshaled, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal public config for checksum: %w", err)
+	}
+	h := fnv.New64a()
+	h.Write(marshaled) // hash.Hash.Write never returns an error
+	return fmt.Sprintf("%016x", h.Sum64()), nil
+}
+
+// PublicComponentsConfig groups the public configuration of every syncer component that backs
+// the bridge service. A component is nil when it is not running on this instance.
+// @Description Public configuration of the syncer components backing the bridge service
+type PublicComponentsConfig struct {
+	L1InfoTreeSync *SyncComponentConfig      `json:"L1InfoTreeSync,omitempty"`
+	BridgeL1Sync   *SyncComponentConfig      `json:"BridgeL1Sync,omitempty"`
+	BridgeL2Sync   *SyncComponentConfig      `json:"BridgeL2Sync,omitempty"`
+	L2GERSync      *L2GERSyncComponentConfig `json:"L2GERSync,omitempty"`
+}
+
+// SyncComponentConfig is the public subset of a syncer's configuration: enough for a client to
+// understand how the syncer is set up, without internal details such as DB paths or retry timers.
+// @Description Public configuration of a single syncer component
+// @example {"block_finality":"FinalizedBlock","initial_block":12345,"sync_block_chunk_size":100}
+type SyncComponentConfig struct {
+	// BlockFinality is the block finality used by this syncer when querying the chain
+	BlockFinality string `json:"block_finality" example:"FinalizedBlock"`
+	// InitialBlock is the first block that was queried when starting the sync from scratch
+	InitialBlock uint64 `json:"initial_block" example:"12345"`
+	// SyncBlockChunkSize is the amount of blocks queried per request
+	SyncBlockChunkSize uint64 `json:"sync_block_chunk_size" example:"100"`
+}
+
+// L2GERSyncComponentConfig is the public configuration of the L2GERSync component, plus the sync
+// mode it detected at startup. SyncMode is not user configuration — it's auto-detected by probing
+// the L2 GER manager contract — but useful operational information: whether this instance talks
+// to a legacy GER manager contract ("Legacy") or a sovereign-chain one ("SovereignChain").
+// @Description Public configuration of the L2GERSync component, plus its detected sync mode
+// @example {"block_finality":"LatestBlock","initial_block":0,"sync_block_chunk_size":100,
+// "sync_mode":"SovereignChain"}
+type L2GERSyncComponentConfig struct {
+	SyncComponentConfig
+	// SyncMode is the GER manager mode detected on L2 at startup: "Legacy" or "SovereignChain".
+	// Not configuration — auto-detected by probing the L2 GER contract — but useful operational
+	// information. Empty when this instance isn't running the L2GERSync component.
+	SyncMode string `json:"sync_mode,omitempty" example:"SovereignChain"`
+}
+
+// PublicContractsConfig holds the smart contract addresses used by this instance, split by
+// network, so they are reported once instead of repeated across every component config that uses
+// them.
+// @Description Smart contract addresses used by this instance, split by network
+type PublicContractsConfig struct {
+	L1 L1ContractsConfig `json:"L1"`
+	L2 L2ContractsConfig `json:"L2"`
+}
+
+// L1ContractsConfig holds the L1 smart contract addresses used by this instance.
+// @Description L1 smart contract addresses
+type L1ContractsConfig struct {
+	// GlobalExitRootAddr is the address of the GlobalExitRoot manager contract on L1
+	GlobalExitRootAddr Address `json:"GlobalExitRootAddr" example:"0xabcdef1234567890abcdef1234567890abcdef12"`
+	// RollupManagerAddr is the address of the RollupManager/AgglayerManager contract
+	RollupManagerAddr Address `json:"RollupManagerAddr" example:"0xabcdef1234567890abcdef1234567890abcdef12"`
+	// BridgeAddr is the address of the bridge smart contract on L1
+	BridgeAddr Address `json:"BridgeAddr" example:"0xabcdef1234567890abcdef1234567890abcdef12"`
+}
+
+// L2ContractsConfig holds the L2 smart contract addresses used by this instance.
+// @Description L2 smart contract addresses
+type L2ContractsConfig struct {
+	// GlobalExitRootAddr is the address of the GER smart contract on L2
+	GlobalExitRootAddr Address `json:"GlobalExitRootAddr" example:"0xabcdef1234567890abcdef1234567890abcdef12"`
+	// BridgeAddr is the address of the bridge smart contract on L2
+	BridgeAddr Address `json:"BridgeAddr" example:"0xabcdef1234567890abcdef1234567890abcdef12"`
 }
