@@ -29,9 +29,10 @@ type healthCommand struct {
 // @Router /health [get]
 func (cmd *healthCommand) Execute(_ *gin.Context) (int, any, *types.ErrorData) {
 	return http.StatusOK, types.HealthResponse{
-		Status:     types.HealthStatusOK,
-		InstanceID: cmd.instanceID,
-		ConfigSHA1: cmd.configSHA1,
-		Version:    types.NewVersionInfo(),
+		Status:      types.HealthStatusOK,
+		APIRevision: types.CurrentAPIRevision,
+		InstanceID:  cmd.instanceID,
+		ConfigSHA1:  cmd.configSHA1,
+		Version:     types.NewVersionInfo(),
 	}, nil
 }

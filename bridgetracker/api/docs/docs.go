@@ -568,7 +568,19 @@ const docTemplate = `{
                         1000000,
                         1000000000,
                         60000000000,
-                        3600000000000
+                        3600000000000,
+                        -9223372036854775808,
+                        9223372036854775807,
+                        1,
+                        1000,
+                        1000000,
+                        1000000000,
+                        60000000000,
+                        3600000000000,
+                        1,
+                        1000,
+                        1000000,
+                        1000000000
                     ],
                     "x-enum-varnames": [
                         "minDuration",
@@ -594,7 +606,19 @@ const docTemplate = `{
                         "Millisecond",
                         "Second",
                         "Minute",
-                        "Hour"
+                        "Hour",
+                        "minDuration",
+                        "maxDuration",
+                        "Nanosecond",
+                        "Microsecond",
+                        "Millisecond",
+                        "Second",
+                        "Minute",
+                        "Hour",
+                        "Nanosecond",
+                        "Microsecond",
+                        "Millisecond",
+                        "Second"
                     ]
                 }
             }
@@ -834,6 +858,10 @@ const docTemplate = `{
         "types.HealthResponse": {
             "type": "object",
             "properties": {
+                "api_revision": {
+                    "description": "APIRevision is the tracker's wire API contract version (see CurrentAPIRevision) —\nbumped whenever the wire contract changes, so a client can detect which shape the\nresponding instance speaks",
+                    "type": "integer"
+                },
                 "config_sha1": {
                     "description": "ConfigSHA1 is the sha1sum (hex) of the configuration the instance was started with;\nit allows checking that all instances behind a proxy run the same configuration",
                     "type": "string"

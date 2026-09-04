@@ -367,6 +367,7 @@ Always returns `200 OK` with a `HealthResponse` body:
 | field | type | desc |
 | ------|------|------|
 | status | string | always `"ok"` |
+| api_revision | int | the tracker's wire API contract version — bumped by one whenever a change could break an existing client (a field added/removed/renamed, an enum's value set changed, a new step inserted into a bridge's expected path, and the like), so a client can tell which contract shape the responding instance speaks. Purely informational: the tracker never rejects or alters behavior based on it |
 | instance_id | string | UUID generated at startup; changes on every execution. Two responses with different `instance_id` come from different instances (or the same instance after a restart) |
 | config_sha1 | string | sha1sum (hex) of the configuration the instance was started with; allows checking that all instances run the same configuration. The binary accepts several `--cfg` files, so the hash is computed over the **concatenation of the config files in the order they were passed** |
 | version | VersionInfo | build/version information of the running instance |
@@ -390,6 +391,7 @@ Example:
 ```json
 {
   "status": "ok",
+  "api_revision": 1,
   "instance_id": "3f1c9a2e-8b4d-4f6a-9c0e-5d7b2a1e4c8f",
   "config_sha1": "2ef7bde608ce5404e97d5f042f95f89f1c232871",
   "version": {

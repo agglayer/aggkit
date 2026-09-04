@@ -285,6 +285,18 @@ definitions:
         - 1000000000
         - 60000000000
         - 3600000000000
+        - -9223372036854775808
+        - 9223372036854775807
+        - 1
+        - 1000
+        - 1000000
+        - 1000000000
+        - 60000000000
+        - 3600000000000
+        - 1
+        - 1000
+        - 1000000
+        - 1000000000
         format: int64
         type: integer
         x-enum-varnames:
@@ -312,6 +324,18 @@ definitions:
         - Second
         - Minute
         - Hour
+        - minDuration
+        - maxDuration
+        - Nanosecond
+        - Microsecond
+        - Millisecond
+        - Second
+        - Minute
+        - Hour
+        - Nanosecond
+        - Microsecond
+        - Millisecond
+        - Second
     type: object
   types.BridgeResponse:
     description: Detailed information about a bridge event
@@ -503,6 +527,12 @@ definitions:
     type: object
   types.HealthResponse:
     properties:
+      api_revision:
+        description: |-
+          APIRevision is the tracker's wire API contract version (see CurrentAPIRevision) —
+          bumped whenever the wire contract changes, so a client can detect which shape the
+          responding instance speaks
+        type: integer
       config_sha1:
         description: |-
           ConfigSHA1 is the sha1sum (hex) of the configuration the instance was started with;
