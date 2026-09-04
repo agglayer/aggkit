@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"testing"
 
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
@@ -58,7 +59,13 @@ func TestBuildPublicConfig(t *testing.T) {
 		},
 	}
 
-	got, err := buildPublicConfig(cfg, testNetworkID, string(l2gersync.SovereignChain))
+	allRunning := runningBridgeComponents{
+		L1InfoTreeSync: true,
+		BridgeL1Sync:   true,
+		BridgeL2Sync:   true,
+		L2GERSync:      true,
+	}
+	got, err := buildPublicConfig(cfg, testNetworkID, string(l2gersync.SovereignChain), allRunning)
 	require.NoError(t, err)
 
 	expectedSha1Sum, err := cfg.Sha1Sum()
@@ -101,13 +108,47 @@ func TestBuildPublicConfig(t *testing.T) {
 	require.Equal(t, expected, got)
 }
 
-func TestBuildPublicConfig_L2GERSyncModeEmptyWhenNotRunning(t *testing.T) {
+func TestBuildPublicConfig_L2GERSyncModeEmptyWhenRunningWithoutMode(t *testing.T) {
 	cfg := &config.Config{}
 
-	got, err := buildPublicConfig(cfg, testNetworkID, "")
+	got, err := buildPublicConfig(cfg, testNetworkID, "", runningBridgeComponents{L2GERSync: true})
 	require.NoError(t, err)
 
+	require.NotNil(t, got.Components.L2GERSync)
 	require.Empty(t, got.Components.L2GERSync.SyncMode)
+}
+
+func TestBuildPublicConfig_ComponentsOmittedWhenNotRunning(t *testing.T) {
+	cfg := &config.Config{}
+
+	// None of the components are running: all of them must be omitted from the response,
+	// including from its JSON encoding (relies on the omitempty tags in PublicComponentsConfig).
+	got, err := buildPublicConfig(cfg, testNetworkID, "", runningBridgeComponents{})
+	require.NoError(t, err)
+
+	require.Nil(t, got.Components.L1InfoTreeSync)
+	require.Nil(t, got.Components.BridgeL1Sync)
+	require.Nil(t, got.Components.BridgeL2Sync)
+	require.Nil(t, got.Components.L2GERSync)
+
+	marshaled, err := json.Marshal(got.Components)
+	require.NoError(t, err)
+	require.JSONEq(t, "{}", string(marshaled))
+}
+
+func TestBuildPublicConfig_OnlyRunningComponentsPopulated(t *testing.T) {
+	cfg := &config.Config{}
+
+	got, err := buildPublicConfig(cfg, testNetworkID, "", runningBridgeComponents{
+		BridgeL1Sync: true,
+		L2GERSync:    true,
+	})
+	require.NoError(t, err)
+
+	require.Nil(t, got.Components.L1InfoTreeSync)
+	require.NotNil(t, got.Components.BridgeL1Sync)
+	require.Nil(t, got.Components.BridgeL2Sync)
+	require.NotNil(t, got.Components.L2GERSync)
 }
 
 func TestBuildPublicConfig_ChecksumChangesWithConfig(t *testing.T) {
@@ -115,13 +156,13 @@ func TestBuildPublicConfig_ChecksumChangesWithConfig(t *testing.T) {
 	cfgB := &config.Config{}
 	cfgB.BridgeL1Sync.SyncBlockChunkSize = 42
 
-	gotA, err := buildPublicConfig(cfgA, testNetworkID, "")
+	gotA, err := buildPublicConfig(cfgA, testNetworkID, "", runningBridgeComponents{})
 	require.NoError(t, err)
-	gotB, err := buildPublicConfig(cfgB, testNetworkID, "")
+	gotB, err := buildPublicConfig(cfgB, testNetworkID, "", runningBridgeComponents{})
 	require.NoError(t, err)
 
 	// Same config -> same checksum, deterministically
-	gotAAgain, err := buildPublicConfig(cfgA, testNetworkID, "")
+	gotAAgain, err := buildPublicConfig(cfgA, testNetworkID, "", runningBridgeComponents{})
 	require.NoError(t, err)
 	require.Equal(t, gotA.ConfigSha1Sum, gotAAgain.ConfigSha1Sum)
 

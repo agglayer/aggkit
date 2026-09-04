@@ -209,18 +209,25 @@ func start(cliCtx *cli.Context) error {
 	var publicHasRoutes, adminHasRoutes bool
 
 	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
-		// Resolved from the concrete pointer (not the L2GERSyncer interface passed below) so a nil
-		// l2GERSync (component not running on this instance) can't be mistaken for a non-nil
-		// interface wrapping a nil pointer.
+		// Resolved from the concrete pointers (not the interfaces passed below) so a component
+		// that isn't running on this instance can't be mistaken for a non-nil interface wrapping
+		// a nil pointer.
 		var l2GERSyncMode string
 		if l2GERSync != nil {
 			l2GERSyncMode = string(l2GERSync.SyncMode())
+		}
+		runningComponents := runningBridgeComponents{
+			L1InfoTreeSync: l1InfoTreeSync != nil,
+			BridgeL1Sync:   l1BridgeSync != nil,
+			BridgeL2Sync:   l2BridgeSync != nil,
+			L2GERSync:      l2GERSync != nil,
 		}
 
 		b := createBridgeService(
 			cfg,
 			l2GERSyncMode,
 			rollupDataQuerier.RollupID,
+			runningComponents,
 			rollupDataQuerier,
 			l1InfoTreeSync,
 			l2GERSync,
@@ -1126,6 +1133,7 @@ func createBridgeService(
 	cfg *config.Config,
 	l2GERSyncMode string,
 	l2NetworkID uint32,
+	runningComponents runningBridgeComponents,
 	upgradeQuery bridgeservice.AgglayerManagerUpgradeQuerier,
 	l1InfoTree bridgeservice.L1InfoTreeSyncer,
 	injectedGERs bridgeservice.L2GERSyncer,
@@ -1136,7 +1144,7 @@ func createBridgeService(
 ) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
 
-	publicConfig, err := buildPublicConfig(cfg, l2NetworkID, l2GERSyncMode)
+	publicConfig, err := buildPublicConfig(cfg, l2NetworkID, l2GERSyncMode, runningComponents)
 	if err != nil {
 		log.Fatalf("failed to build bridge service public config: %v", err)
 	}
@@ -1161,6 +1169,16 @@ func createBridgeService(
 	)
 }
 
+// runningBridgeComponents flags which syncer components are actually running on this bridge
+// service instance, so buildPublicConfig only reports the configuration of components that are
+// really up instead of advertising all of them unconditionally.
+type runningBridgeComponents struct {
+	L1InfoTreeSync bool
+	BridgeL1Sync   bool
+	BridgeL2Sync   bool
+	L2GERSync      bool
+}
+
 // buildPublicConfig builds the sanitized view of the configuration served on the bridge
 // service's public config endpoint (GET /bridge/v1/config): only the parameters a client needs
 // to configure itself against this instance, with contract addresses deduplicated by network
@@ -1174,42 +1192,55 @@ func createBridgeService(
 // at startup, or empty when the L2GERSync component isn't running on it. It's not configuration
 // (it's auto-detected by probing the L2 GER contract) but useful operational information, so it's
 // reported alongside the L2GERSync component's config.
+//
+// runningComponents flags which syncer components are actually running on this instance: only
+// those are populated in the response, so a client can't be misled into configuring itself
+// against a component that isn't backing this instance.
 func buildPublicConfig(
-	cfg *config.Config, l2NetworkID uint32, l2GERSyncMode string,
+	cfg *config.Config, l2NetworkID uint32, l2GERSyncMode string, runningComponents runningBridgeComponents,
 ) (bridgetypes.PublicConfigResponse, error) {
 	configSha1Sum, err := cfg.Sha1Sum()
 	if err != nil {
 		return bridgetypes.PublicConfigResponse{}, fmt.Errorf("failed to compute configuration checksum: %w", err)
 	}
 
+	var components bridgetypes.PublicComponentsConfig
+	if runningComponents.L1InfoTreeSync {
+		components.L1InfoTreeSync = &bridgetypes.SyncComponentConfig{
+			BlockFinality:      cfg.L1InfoTreeSync.BlockFinality.String(),
+			InitialBlock:       cfg.L1InfoTreeSync.InitialBlock,
+			SyncBlockChunkSize: cfg.L1InfoTreeSync.SyncBlockChunkSize,
+		}
+	}
+	if runningComponents.BridgeL1Sync {
+		components.BridgeL1Sync = &bridgetypes.SyncComponentConfig{
+			BlockFinality:      cfg.BridgeL1Sync.BlockFinality.String(),
+			InitialBlock:       cfg.BridgeL1Sync.InitialBlockNum,
+			SyncBlockChunkSize: cfg.BridgeL1Sync.SyncBlockChunkSize,
+		}
+	}
+	if runningComponents.BridgeL2Sync {
+		components.BridgeL2Sync = &bridgetypes.SyncComponentConfig{
+			BlockFinality:      cfg.BridgeL2Sync.BlockFinality.String(),
+			InitialBlock:       cfg.BridgeL2Sync.InitialBlockNum,
+			SyncBlockChunkSize: cfg.BridgeL2Sync.SyncBlockChunkSize,
+		}
+	}
+	if runningComponents.L2GERSync {
+		components.L2GERSync = &bridgetypes.L2GERSyncComponentConfig{
+			SyncComponentConfig: bridgetypes.SyncComponentConfig{
+				BlockFinality:      cfg.L2GERSync.BlockFinality.String(),
+				InitialBlock:       cfg.L2GERSync.InitialBlockNum,
+				SyncBlockChunkSize: cfg.L2GERSync.SyncBlockChunkSize,
+			},
+			SyncMode: l2GERSyncMode,
+		}
+	}
+
 	return bridgetypes.PublicConfigResponse{
 		NetworkID:     l2NetworkID,
 		ConfigSha1Sum: configSha1Sum,
-		Components: bridgetypes.PublicComponentsConfig{
-			L1InfoTreeSync: &bridgetypes.SyncComponentConfig{
-				BlockFinality:      cfg.L1InfoTreeSync.BlockFinality.String(),
-				InitialBlock:       cfg.L1InfoTreeSync.InitialBlock,
-				SyncBlockChunkSize: cfg.L1InfoTreeSync.SyncBlockChunkSize,
-			},
-			BridgeL1Sync: &bridgetypes.SyncComponentConfig{
-				BlockFinality:      cfg.BridgeL1Sync.BlockFinality.String(),
-				InitialBlock:       cfg.BridgeL1Sync.InitialBlockNum,
-				SyncBlockChunkSize: cfg.BridgeL1Sync.SyncBlockChunkSize,
-			},
-			BridgeL2Sync: &bridgetypes.SyncComponentConfig{
-				BlockFinality:      cfg.BridgeL2Sync.BlockFinality.String(),
-				InitialBlock:       cfg.BridgeL2Sync.InitialBlockNum,
-				SyncBlockChunkSize: cfg.BridgeL2Sync.SyncBlockChunkSize,
-			},
-			L2GERSync: &bridgetypes.L2GERSyncComponentConfig{
-				SyncComponentConfig: bridgetypes.SyncComponentConfig{
-					BlockFinality:      cfg.L2GERSync.BlockFinality.String(),
-					InitialBlock:       cfg.L2GERSync.InitialBlockNum,
-					SyncBlockChunkSize: cfg.L2GERSync.SyncBlockChunkSize,
-				},
-				SyncMode: l2GERSyncMode,
-			},
-		},
+		Components:    components,
 		Contracts: bridgetypes.PublicContractsConfig{
 			L1: bridgetypes.L1ContractsConfig{
 				GlobalExitRootAddr: bridgetypes.Address(cfg.L1NetworkConfig.GlobalExitRootManagerAddr.Hex()),
