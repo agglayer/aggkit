@@ -16,25 +16,27 @@ import (
 // fakeFacts is a canned BridgeFacts that records which facts were queried, to assert
 // ResolveSteps stops at the first unmet milestone and skips facts for already-Done steps
 type fakeFacts struct {
-	originGER          *types.GERData
-	originLER          *types.LERUpdateResult
-	certificate        *types.CertificateInclusionData
-	injectedGER        *types.GERData
-	injectedGERAtIndex *types.GERData
-	l1InfoTreeIndex    *uint32
-	claimed            bool
-	claim              *types.ClaimResult
-	settlement         *types.L1SettledGERResult
+	originGER                *types.GERData
+	originLER                *types.LERUpdateResult
+	certificate              *types.CertificateInclusionData
+	injectedGER              *types.GERData
+	injectedGERAtIndex       *types.GERData
+	l1InfoTreeIndex          *uint32
+	l1InfoTreeIndexForBridge *uint32
+	claimed                  bool
+	claim                    *types.ClaimResult
+	settlement               *types.L1SettledGERResult
 
-	originGERErr          error
-	originLERErr          error
-	certificateErr        error
-	injectedGERErr        error
-	injectedGERAtIndexErr error
-	l1InfoTreeIndexErr    error
-	claimedErr            error
-	claimErr              error
-	settlementErr         error
+	originGERErr                error
+	originLERErr                error
+	certificateErr              error
+	injectedGERErr              error
+	injectedGERAtIndexErr       error
+	l1InfoTreeIndexErr          error
+	l1InfoTreeIndexForBridgeErr error
+	claimedErr                  error
+	claimErr                    error
+	settlementErr               error
 
 	queried []string
 }
@@ -88,6 +90,11 @@ func (f *fakeFacts) L1InfoTreeIndexForGER(
 ) (*uint32, error) {
 	f.queried = append(f.queried, "l1InfoTreeIndexForGER")
 	return f.l1InfoTreeIndex, f.l1InfoTreeIndexErr
+}
+
+func (f *fakeFacts) L1InfoTreeIndexForBridge(_ context.Context, _ *BridgeInfo) (*uint32, error) {
+	f.queried = append(f.queried, "l1InfoTreeIndexForBridge")
+	return f.l1InfoTreeIndexForBridge, f.l1InfoTreeIndexForBridgeErr
 }
 
 func (f *fakeFacts) IsClaimed(_ context.Context, _ *BridgeInfo) (bool, error) {
@@ -163,6 +170,7 @@ func TestResolveSteps(t *testing.T) {
 		HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
 	}
 	claim := &types.ClaimResult{ClaimTx: common.Hash{3}, BlockNumber: 300}
+	bridgeL1InfoTreeIndex := uint32(9)
 
 	testCases := []struct {
 		name            string
@@ -275,24 +283,24 @@ func TestResolveSteps(t *testing.T) {
 			},
 			expectedStep: types.StepWaitingL1InfoLeafAvailable,
 			expectedQueried: []string{
-				"originLER", "certificate", "certificate", "settlementGERUpdate", "injectedGERAtIndex",
+				"originLER", "certificate", "certificate", "settlementGERUpdate", "l1InfoTreeIndexForBridge",
 			},
 			resultOf: types.StepWaitL1SettledGER,
 			result:   settlementResult,
 		},
 		{
-			name:       "L2->L1 leaf indexed by destination -> claimable",
+			name:       "L2->L1 leaf indexed by the proof-building instance -> claimable",
 			bridgeType: types.BridgeTypeL2ToL1,
 			facts: fakeFacts{
 				originLER: originLER, certificate: settledCert, settlement: settlementResult,
-				injectedGERAtIndex: injectedGER,
+				l1InfoTreeIndexForBridge: &bridgeL1InfoTreeIndex,
 			},
 			expectedStep: types.StepWaitingClaim,
 			expectedQueried: []string{
-				"originLER", "certificate", "certificate", "settlementGERUpdate", "injectedGERAtIndex", "isClaimed",
+				"originLER", "certificate", "certificate", "settlementGERUpdate", "l1InfoTreeIndexForBridge", "isClaimed",
 			},
 			resultOf: types.StepWaitingL1InfoLeafAvailable,
-			result:   &types.InjectedGERL1Leaf{GER: *injectedGER.GER},
+			result:   &types.L1InfoLeafAvailableResult{L1InfoTreeIndex: bridgeL1InfoTreeIndex},
 		},
 		{
 			name:       "L2->L2 settlement confirmed, without injected GER -> WaitingGERInjection",
@@ -309,19 +317,21 @@ func TestResolveSteps(t *testing.T) {
 			name:       "L2->L2 claimed -> Claimed, terminal, with Claim result",
 			bridgeType: types.BridgeTypeL2ToL2,
 			facts: fakeFacts{
-				originLER:          originLER,
-				certificate:        settledCert,
-				settlement:         settlementResult,
-				injectedGERAtIndex: injectedGER,
-				claimed:            true,
-				claim:              claim,
+				originLER:                originLER,
+				certificate:              settledCert,
+				settlement:               settlementResult,
+				injectedGERAtIndex:       injectedGER,
+				l1InfoTreeIndexForBridge: &bridgeL1InfoTreeIndex,
+				claimed:                  true,
+				claim:                    claim,
 			},
 			expectedStep: types.StepClaimed,
 			expectedQueried: []string{
 				"originLER", "certificate", "certificate", "settlementGERUpdate",
-				// once for StepWaitingGERInjection, once more for StepWaitingL1InfoLeafAvailable
-				// right after it — the latter is never skipped, even when injection just proved it
-				"injectedGERAtIndex", "injectedGERAtIndex", "isClaimed", "claimFor",
+				// StepWaitingGERInjection checks the L2-side injection; StepWaitingL1InfoLeafAvailable
+				// right after it is a completely different check (the proof-building instance's own
+				// L1 info tree sync) and is never skipped, even though GER injection just succeeded
+				"injectedGERAtIndex", "l1InfoTreeIndexForBridge", "isClaimed", "claimFor",
 			},
 			resultOf: types.StepClaimed,
 			result:   claim,
@@ -378,11 +388,13 @@ func TestResolveSteps(t *testing.T) {
 			name:       "L1->L2 claimed",
 			bridgeType: types.BridgeTypeL1ToL2,
 			facts: fakeFacts{
-				originGER: originGER, injectedGERAtIndex: injectedGER, claimed: true, claim: claim,
+				originGER: originGER, injectedGERAtIndex: injectedGER,
+				l1InfoTreeIndexForBridge: &bridgeL1InfoTreeIndex,
+				claimed:                  true, claim: claim,
 			},
 			expectedStep: types.StepClaimed,
 			expectedQueried: []string{
-				"originGER", "injectedGERAtIndex", "injectedGERAtIndex", "isClaimed", "claimFor",
+				"originGER", "injectedGERAtIndex", "l1InfoTreeIndexForBridge", "isClaimed", "claimFor",
 			},
 		},
 		{
@@ -529,6 +541,7 @@ func TestResolveStepsErrors(t *testing.T) {
 		HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
 	}
 	factsErr := errors.New("source down")
+	bridgeL1InfoTreeIndex := uint32(9)
 
 	testCases := []struct {
 		name         string
@@ -583,11 +596,11 @@ func TestResolveStepsErrors(t *testing.T) {
 			name:       "claim status error",
 			bridgeType: types.BridgeTypeL2ToL1,
 			facts: fakeFacts{
-				originLER:          originLER,
-				certificate:        settledCert,
-				settlement:         settlementResult,
-				injectedGERAtIndex: &types.GERData{GER: &common.Hash{1}},
-				claimedErr:         factsErr,
+				originLER:                originLER,
+				certificate:              settledCert,
+				settlement:               settlementResult,
+				l1InfoTreeIndexForBridge: &bridgeL1InfoTreeIndex,
+				claimedErr:               factsErr,
 			},
 			expectedErr:  "claim status",
 			expectedStep: types.StepWaitingClaim,
@@ -596,12 +609,12 @@ func TestResolveStepsErrors(t *testing.T) {
 			name:       "claim info error",
 			bridgeType: types.BridgeTypeL2ToL1,
 			facts: fakeFacts{
-				originLER:          originLER,
-				certificate:        settledCert,
-				settlement:         settlementResult,
-				injectedGERAtIndex: &types.GERData{GER: &common.Hash{1}},
-				claimed:            true,
-				claimErr:           factsErr,
+				originLER:                originLER,
+				certificate:              settledCert,
+				settlement:               settlementResult,
+				l1InfoTreeIndexForBridge: &bridgeL1InfoTreeIndex,
+				claimed:                  true,
+				claimErr:                 factsErr,
 			},
 			expectedErr:  "claim info",
 			expectedStep: types.StepClaimed,

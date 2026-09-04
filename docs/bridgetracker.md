@@ -22,8 +22,8 @@ advancing once it is met:
 | `CertificatePending` | Included in a certificate; waiting for it to settle (covers Pending/Proven/Candidate/InError). |
 | `WaitL1SettledGER` | L2-originated only: the certificate settled, waiting for its settlement tx to confirm on L1. |
 | `WaitingGERInjection` | L1 → L2 and L2 → L2 only: waiting for the covering Global Exit Root's injection tx to land on the destination network — an L2-side fact; skipped for L2 → L1, since mainnet needs no injection. |
-| `WaitingL1InfoLeafAvailable` | Always right before `WaitingClaim`, on every route: waiting for the destination network's own bridge-service instance to have its L1 info tree sync caught up to the covering leaf, so it can produce a claim proof. Unlike `WaitingGERInjection`, this is never skipped or inferred from a sibling step — that sync can lag behind the finality this tracker uses elsewhere (see [#1823](https://github.com/agglayer/aggkit/issues/1823)). |
-| `WaitingClaim` | The bridge is claimable: the destination network's own bridge-service instance has the covering leaf indexed. |
+| `WaitingL1InfoLeafAvailable` | Always right before `WaitingClaim`, on every route: waiting for the bridge-service instance that will build the claim proof — the origin network's own instance — to have its L1 info tree sync caught up to this deposit (`GET /bridge/v1/l1-info-tree-index`). Unlike `WaitingGERInjection`, this is never skipped or inferred from a sibling step: injecting a GER on the destination is not the same fact as the proof-building instance having caught up, and that sync can lag behind the finality this tracker uses elsewhere (see [#1823](https://github.com/agglayer/aggkit/issues/1823)). |
+| `WaitingClaim` | The bridge is claimable: the proof-building instance has the bridge's L1 info tree index. |
 | `Claimed` | Terminal: the bridge has been claimed on the destination network. |
 
 Which steps apply, and in which order, depends on the bridge's direction:

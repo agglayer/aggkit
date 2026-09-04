@@ -8,32 +8,35 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 )
 
-// L1InfoLeafAvailableSource is the driven port to the L1 info tree leaf availability on a
-// bridge's destination network, per that network's own bridge-service instance
+// L1InfoLeafAvailableSource is the driven port to the L1 info tree index for a bridge's own
+// origin deposit, as resolved by the bridge-service instance that will build the claim proof
+// for it
 type L1InfoLeafAvailableSource interface {
-	// InjectedGERAtIndex returns the GER at leafIndex as seen by bridge's destination network,
-	// or nil if that network's own bridge-service instance has not indexed it yet. Queried on
-	// every route, right before StepWaitingClaim (see WaitingL1InfoLeafAvailableResolver)
-	InjectedGERAtIndex(ctx context.Context, bridge *BridgeInfo, leafIndex uint32) (*types.GERData, error)
+	// L1InfoTreeIndexForBridge returns the L1 info tree leaf index covering bridge's origin
+	// deposit — GET /bridge/v1/l1-info-tree-index, queried against the proof-building
+	// instance (the origin network's own bridge-service instance; see
+	// docs/bridge_service.md's L2->L2 flow, where this same endpoint on the origin is what
+	// bridge_getProof is later called against) — or nil if that instance's own L1 info tree
+	// sync has not caught up to this deposit yet. Only queried by
+	// StepWaitingL1InfoLeafAvailable
+	L1InfoTreeIndexForBridge(ctx context.Context, bridge *BridgeInfo) (*uint32, error)
 }
 
 // WaitingL1InfoLeafAvailableResolver resolves StepWaitingL1InfoLeafAvailable: whether the
-// covering L1 info tree leaf is already indexed by the destination network's own
-// bridge-service instance. Always the current step right before StepWaitingClaim, on every
-// route: unlike StepWaitingGERInjection, which only checks the L2-side fact that a GER
-// injection tx landed (and is skipped entirely for an L2->L1 bridge, where mainnet needs no
-// injection), this checks the destination's own L1 info tree sync — the thing that actually
-// has to have caught up for that instance to produce a claim proof. That sync can lag behind
-// the finality this tracker itself uses for StepWaitL1SettledGER, so a bridge can look
-// claimable per this tracker's own settlement/injection checks yet still fail to claim because
-// the destination cannot produce a proof for it yet — this is why it is never skipped or
-// inferred from a sibling step, on any route (#1823)
+// bridge-service instance that will actually build the claim proof — the origin network's own
+// instance — has its own L1 info tree sync caught up to this bridge's deposit yet, per GET
+// /bridge/v1/l1-info-tree-index. Always the current step right before StepWaitingClaim, on
+// every route: that sync can lag behind whatever this tracker itself uses elsewhere
+// (StepWaitL1SettledGER's own L1 RPC scan, StepWaitingGERInjection's destination-side injection
+// check), so a bridge can look claimable per those checks yet still fail to claim because the
+// proof-building instance cannot produce a proof for it yet — this is why it is never skipped
+// or inferred from a sibling step, on any route (#1823)
 type WaitingL1InfoLeafAvailableResolver struct {
 	port L1InfoLeafAvailableSource
 }
 
 // NewWaitingL1InfoLeafAvailableResolver returns a WaitingL1InfoLeafAvailableResolver checking
-// leaf availability through port
+// the proof-building instance's L1 info tree index through port
 func NewWaitingL1InfoLeafAvailableResolver(port L1InfoLeafAvailableSource) *WaitingL1InfoLeafAvailableResolver {
 	return &WaitingL1InfoLeafAvailableResolver{port: port}
 }
@@ -42,54 +45,13 @@ func NewWaitingL1InfoLeafAvailableResolver(port L1InfoLeafAvailableSource) *Wait
 func (r *WaitingL1InfoLeafAvailableResolver) Resolve(
 	logger aggkitcommon.Logger, ctx context.Context, tracking *TrackingData, _ int,
 ) (any, error) {
-	leafIndex, err := r.resolvedLeafIndex(tracking)
+	logger.Infof("WaitingL1InfoLeafAvailableResolver: checking the proof-building instance's L1 info tree index")
+	index, err := r.port.L1InfoTreeIndexForBridge(ctx, tracking.Info())
 	if err != nil {
-		return nil, fmt.Errorf("resolved leaf index: %w", err)
+		return nil, fmt.Errorf("l1 info tree index for bridge: %w", err)
 	}
-
-	logger.Infof("WaitingL1InfoLeafAvailableResolver: checking L1 info tree leaf %d availability", leafIndex)
-	leaf, err := r.port.InjectedGERAtIndex(ctx, tracking.Info(), leafIndex)
-	if err != nil {
-		return nil, fmt.Errorf("l1 info tree leaf availability: %w", err)
-	}
-	if leaf == nil {
+	if index == nil {
 		return nil, ErrStepPending
 	}
-
-	result := &types.InjectedGERL1Leaf{GER: *leaf.GER}
-	if leaf.BlockNumber != nil {
-		result.BlockNumber = *leaf.BlockNumber
-	}
-	if leaf.BlockTimestamp != nil {
-		result.BlockTimestamp = *leaf.BlockTimestamp
-	}
-	return result, nil
-}
-
-// resolvedLeafIndex reads the L1 info tree leaf index this step must check off whichever
-// earlier step resolved it — StepWaitL1SettledGER for an L2-originated bridge (L2->L1, L2->L2),
-// or StepWaitingGERUpdate for an L1-originated one (L1->L2). It is looked up by step type
-// rather than assumed to sit right before this one (see indexOfStep), since StepWaitingGERInjection
-// sits in between on the routes that have it (L1->L2, L2->L2)
-func (r *WaitingL1InfoLeafAvailableResolver) resolvedLeafIndex(tracking *TrackingData) (uint32, error) {
-	steps := tracking.AllSteps()
-	if idx := indexOfStep(steps, types.StepWaitL1SettledGER); idx >= 0 {
-		settlement := steps[idx].ResultL1SettledGer
-		if settlement == nil || settlement.L1InfoTreeIndex == nil {
-			// StepWaitL1SettledGER never completes without a resolved leaf index (straight from
-			// UpdateL1InfoTreeV2, or resolved by that step itself otherwise — see
-			// WaitL1SettledGERResolver), so this only guards against an inconsistent read
-			return 0, ErrStepPending
-		}
-		return *settlement.L1InfoTreeIndex, nil
-	}
-	if idx := indexOfStep(steps, types.StepWaitingGERUpdate); idx >= 0 {
-		update := steps[idx].ResultGerUpdate
-		if update == nil {
-			// same guard as above, for StepWaitingGERUpdate's own leaf index
-			return 0, ErrStepPending
-		}
-		return update.L1InfoTreeIndex, nil
-	}
-	return 0, fmt.Errorf("neither StepWaitL1SettledGER nor StepWaitingGERUpdate found in AllSteps")
+	return &types.L1InfoLeafAvailableResult{L1InfoTreeIndex: *index}, nil
 }

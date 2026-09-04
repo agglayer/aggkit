@@ -184,7 +184,7 @@ definitions:
           (StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),
           *types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData
           (StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER),
-          *types.InjectedGERL1Leaf (StepWaitingL1InfoLeafAvailable) or *types.ClaimResult
+          *types.L1InfoLeafAvailableResult (StepWaitingL1InfoLeafAvailable) or *types.ClaimResult
           (StepClaimed). nil until
           the step produces one, and for steps that never do. Most steps only set this once Done,
           but StepCertificatePending (Status still InProgress) may already carry the certificate's
@@ -269,16 +269,10 @@ definitions:
         - 1000000000
         - 60000000000
         - 3600000000000
-        - -9223372036854775808
-        - 9223372036854775807
         - 1
         - 1000
         - 1000000
         - 1000000000
-        - 60000000000
-        - 3600000000000
-        - -9223372036854775808
-        - 9223372036854775807
         - 1
         - 1000
         - 1000000
@@ -296,16 +290,10 @@ definitions:
         - Second
         - Minute
         - Hour
-        - minDuration
-        - maxDuration
         - Nanosecond
         - Microsecond
         - Millisecond
         - Second
-        - Minute
-        - Hour
-        - minDuration
-        - maxDuration
         - Nanosecond
         - Microsecond
         - Millisecond

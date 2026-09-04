@@ -464,7 +464,7 @@
             <span class="step-name">WaitingL1InfoLeafAvailable</span>
             <span class="routes"><span class="route-tag tag-l1l2">L1→L2</span><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
           </div>
-          <p class="step-desc">Always right before <code>WaitingClaim</code>, on every route: the covering L1 info tree leaf exists, but the destination network's own bridge-service instance has not indexed it yet — its own L1 info tree sync can lag behind the finality this tracker uses for <code>WaitL1SettledGER</code> (e.g. it waits for the block to be finalized). Unlike <code>WaitingGERInjection</code>, this is never skipped or inferred from a sibling step: a GER injection tx landing on L2 is not the same fact as the destination's L1 info tree sync having caught up. See <a href="https://github.com/agglayer/aggkit/issues/1823">#1823</a>.</p>
+          <p class="step-desc">Always right before <code>WaitingClaim</code>, on every route: the bridge-service instance that will build the claim proof — the origin network's own instance — has not caught its own L1 info tree sync up to this deposit yet (<code>GET /bridge/v1/l1-info-tree-index</code>). Unlike <code>WaitingGERInjection</code>, this is never skipped or inferred from a sibling step: a GER injection tx landing on the destination is not the same fact as the proof-building instance's own sync having caught up. See <a href="https://github.com/agglayer/aggkit/issues/1823">#1823</a>.</p>
         </div>
       </div>
 
@@ -528,7 +528,7 @@
           <span class="node">7 · WaitingClaim</span><span class="arrow">→</span>
           <span class="node">8 · Claimed</span>
         </div>
-        <p class="route-note"><b>GER update (L1→L2):</b> the deposit updates the GER directly on L1, so it jumps straight to waiting for the Aggoracle to inject that GER into the destination L2. No certificate is involved — but the destination's own bridge-service instance still needs its own separate check (<span class="mono">WaitingL1InfoLeafAvailable</span>) before it's claimable.</p>
+        <p class="route-note"><b>GER update (L1→L2):</b> the deposit updates the GER directly on L1, so it jumps straight to waiting for the Aggoracle to inject that GER into the destination L2. No certificate is involved — but the proof-building instance (here, mainnet's own) still needs its own separate check (<span class="mono">WaitingL1InfoLeafAvailable</span>) before it's claimable.</p>
       </div>
 
       <div class="route-card l2l1">
@@ -545,7 +545,7 @@
           <span class="node">7 · WaitingClaim</span><span class="arrow">→</span>
           <span class="node">8 · Claimed</span>
         </div>
-        <p class="route-note"><b>Settled by Agglayer (L2→L1):</b> the certificate walks the Agglayer states inside <span class="mono">CertificatePending</span> — a failed certificate (<span class="mono">InError</span>) surfaces there as a step-level error. Settlement happens on L1, which is also the destination, so no GER injection is needed — but the destination's own bridge-service instance still has to index the settled leaf itself (<span class="mono">WaitingL1InfoLeafAvailable</span>): its own L1 info tree sync can lag behind the finality this tracker uses for <span class="mono">WaitL1SettledGER</span> (<a href="https://github.com/agglayer/aggkit/issues/1823">#1823</a>).</p>
+        <p class="route-note"><b>Settled by Agglayer (L2→L1):</b> the certificate walks the Agglayer states inside <span class="mono">CertificatePending</span> — a failed certificate (<span class="mono">InError</span>) surfaces there as a step-level error. Settlement happens on L1, which is also the destination, so no GER injection is needed — but the origin's own bridge-service instance (the one that will build the claim proof) still has to catch its own L1 info tree sync up to this deposit (<span class="mono">WaitingL1InfoLeafAvailable</span>), which can lag behind the finality this tracker uses for <span class="mono">WaitL1SettledGER</span> (<a href="https://github.com/agglayer/aggkit/issues/1823">#1823</a>).</p>
       </div>
 
       <div class="route-card l2l2">
@@ -563,7 +563,7 @@
           <span class="node">7 · WaitingClaim</span><span class="arrow">→</span>
           <span class="node">8 · Claimed</span>
         </div>
-        <p class="route-note"><b>Settled by Agglayer (L2→L2):</b> after the settlement tx is confirmed on L1 (<span class="mono">WaitL1SettledGER</span>), the Aggoracle still has to inject the new GER into the destination L2′ — an L2-side fact — and then the destination's own bridge-service instance still needs its own separate check (<span class="mono">WaitingL1InfoLeafAvailable</span>) before the claim can happen. Two exit-root updates are involved — each reported in the <span class="mono">result</span> of its own step.</p>
+        <p class="route-note"><b>Settled by Agglayer (L2→L2):</b> after the settlement tx is confirmed on L1 (<span class="mono">WaitL1SettledGER</span>), the Aggoracle still has to inject the new GER into the destination L2′ — an L2-side fact — and then the origin's own bridge-service instance (the one that will build the claim proof) still needs its own separate check (<span class="mono">WaitingL1InfoLeafAvailable</span>) before the claim can happen. Two exit-root updates are involved — each reported in the <span class="mono">result</span> of its own step.</p>
       </div>
     </div>
   </section>
@@ -617,9 +617,9 @@
             {cur:5, ger1:GER_L1, ger2:null, cert:null, chg:["cur","ger1"],
              cap:"GER updated on L1 (no certificate needed) — waiting for the Aggoracle to inject it into the destination L2."},
             {cur:6, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
-             cap:"Aggoracle injected the GER on L2 — but the destination's own bridge-service instance still has to index the leaf: its own L1 info tree sync can lag behind, see #1823."},
+             cap:"Aggoracle injected the GER on L2 — but the proof-building instance (mainnet's own) still has to catch its own L1 info tree sync up to this deposit, see #1823."},
             {cur:7, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
-             cap:"L1 info tree leaf indexed by the destination's bridge-service instance — claimable."},
+             cap:"L1 info tree index resolved by the proof-building instance — claimable."},
             {cur:8, done:true, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
              cap:"claimAsset() executed — asset delivered. The WebSocket sends this final status and closes (code 1000)."}
           ]},
@@ -635,9 +635,9 @@
             {cur:4, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur","cert"],
              cap:"Certificate settled on L1 — waiting for the settlement tx to reach L1 finality and emit VerifyBatchesTrustedAggregator + UpdateL1InfoTree."},
             {cur:6, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
-             cap:"Settlement tx confirmed on L1 — the destination is L1 itself, so no injection is needed, but its own bridge-service instance still has to index the settled leaf (its L1 sync can lag behind this tracker's own finality, see #1823)."},
+             cap:"Settlement tx confirmed on L1 — the destination is L1 itself, so no injection is needed, but the origin's own bridge-service instance (the one that will build the claim proof) still has to catch its own L1 info tree sync up to this deposit (its sync can lag behind this tracker's own finality, see #1823)."},
             {cur:7, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
-             cap:"L1 info tree leaf indexed by the destination's bridge-service instance — claimable."},
+             cap:"L1 info tree index resolved by the proof-building instance — claimable."},
             {cur:8, done:true, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
              cap:"claimAsset() executed on L1 — asset delivered. Final status pushed, connection closed."}
           ]},
@@ -655,9 +655,9 @@
             {cur:5, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
              cap:"Settlement tx confirmed on L1 — now the Aggoracle must inject the new GER into the destination L2′."},
             {cur:6, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur","ger2"],
-             cap:"GER injected on L2′ — but the destination's own bridge-service instance still has to index the leaf: its own L1 info tree sync can lag behind, see #1823."},
+             cap:"GER injected on L2′ — but the origin's own bridge-service instance (the one that will build the claim proof) still has to catch its own L1 info tree sync up to this deposit, see #1823."},
             {cur:7, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur"],
-             cap:"L1 info tree leaf indexed by the destination's bridge-service instance — claimable."},
+             cap:"L1 info tree index resolved by the proof-building instance — claimable."},
             {cur:8, done:true, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur"],
              cap:"claimAsset() executed on L2′ — asset delivered. Final status pushed, connection closed."}
           ]}
@@ -682,8 +682,7 @@
           1: () => '{ ' + kv("network_id", N(3)) + ', ' + kv("ler", S("0x2c41…")) + ', ' + kv("block_number", N(5012345)) + ' }',
           3: () => certStr(CERT_SETTLED),
           4: () => l1SettledStr(L1_SETTLED),
-          6: () => '{ ' + kv("ger", S(L1_SETTLED.ger)) + ', ' + kv("block_number", N(L1_SETTLED.block))
-                  + ', ' + kv("block_timestamp", N(1734400000)) + ' }',
+          6: () => '{ ' + kv("l1_info_tree_index", N(L1_SETTLED.idx)) + ' }',
           7: () => '{ ' + kv("claim_tx", S("0x55aa…")) + ', ' + kv("block_number", N(9345678)) + ' }'
         };
 

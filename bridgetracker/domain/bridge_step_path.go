@@ -23,7 +23,7 @@ type BridgeStepPath struct {
 	// (StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),
 	// *types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData
 	// (StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER),
-	// *types.InjectedGERL1Leaf (StepWaitingL1InfoLeafAvailable) or *types.ClaimResult
+	// *types.L1InfoLeafAvailableResult (StepWaitingL1InfoLeafAvailable) or *types.ClaimResult
 	// (StepClaimed). nil until the step produces one, and for steps
 	// that never do. Most steps only set this once Done, but StepCertificatePending (Status
 	// still InProgress) may already carry the certificate's current, not yet settled, status —
@@ -34,7 +34,7 @@ type BridgeStepPath struct {
 	ResultPendingInclusion    *types.PendingInclusionResult
 	ResultCertificateData     *types.CertificateData
 	ResultL1SettledGer        *types.L1SettledGERResult
-	ResultL1InfoLeafAvailable *types.InjectedGERL1Leaf
+	ResultL1InfoLeafAvailable *types.L1InfoLeafAvailableResult
 	ResultClaim               *types.ClaimResult
 	// Error carries the error details when Status is types.StepStatusError, nil otherwise
 	Error *types.ErrorStep
@@ -67,7 +67,7 @@ func (b *BridgeStepPath) SetResult(result any) {
 		b.ResultCertificateData = r
 	case *types.L1SettledGERResult:
 		b.ResultL1SettledGer = r
-	case *types.InjectedGERL1Leaf:
+	case *types.L1InfoLeafAvailableResult:
 		b.ResultL1InfoLeafAvailable = r
 	case *types.ClaimResult:
 		b.ResultClaim = r
