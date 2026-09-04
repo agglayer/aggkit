@@ -12,6 +12,12 @@ import (
 type TrackingData struct {
 	// TrackingStatus is the string representation of the bridge's lifecycle status
 	TrackingStatus string `json:"tracking_status"`
+	// ClaimStatus is a simplified claim-readiness summary, one of "pending",
+	// "readyToClaim", "claimed" or "error" — see domain.TrackingData.ClaimStatus for exactly
+	// how it is derived from TrackingStatus and the current step. For most clients this is all
+	// that is needed to know whether the bridge can be claimed; TrackingStatus/AllSteps remain
+	// for anything that needs the full detail
+	ClaimStatus string `json:"claim_status"`
 	// NetworkID is the network of the request (0 -> Mainnet)
 	NetworkID uint32 `json:"network_id"`
 	// TxHash is the transaction hash of the request
@@ -41,6 +47,7 @@ func trackingDataFrom(t *domain.TrackingData) TrackingData {
 	id := t.ID()
 	return TrackingData{
 		TrackingStatus: t.TrackingStatus().String(),
+		ClaimStatus:    t.ClaimStatus().String(),
 		NetworkID:      id.NetworkID,
 		TxHash:         id.TxHash,
 		BridgeStatus:   newBridgeStatus(t.Info()),

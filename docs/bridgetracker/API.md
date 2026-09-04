@@ -50,6 +50,7 @@ Body of every REST response (always `200 OK`) and of every WebSocket `status` me
 | field | type | desc |
 | ------|------|------|
 | tracking_status | string | bare string, one of `"registered"` (added to the supervised list, `bridge_status`/`step_index`/`all_steps`/`error` still `null`), `"running"` (resolved, alive), `"error"` (either a step reached an error on an otherwise-resolved bridge, or the tracker gave up resolving the bridge at all — see `error`), `"finished"` (resolved, reached `Claimed`) |
+| claim_status | string | bare string, one of `"pending"`, `"readyToClaim"`, `"claimed"`, `"error"` — a simplified claim-readiness summary, computed the same moment as the rest of the response: `"error"` whenever `tracking_status` is `"error"` (this takes priority over everything else); otherwise `"readyToClaim"` if the current step (per `step_index`) is `WaitingClaim`, `"claimed"` if it is `Claimed`; `"pending"` for every other step, including while `tracking_status` is still `"registered"`. For most clients this is all that's needed to know whether the bridge can be claimed — `tracking_status`/`all_steps` remain for anything that needs the full detail |
 | network_id | uint32 | network of the request |
 | tx_hash | Hash | transaction hash of the request |
 | bridge_status | *BridgeStatus | `null` while tracking_status is `registered`, and forever `null` if the tracker gives up resolving the bridge (`error` is set instead); see [BridgeStatus](#bridgestatus) |
@@ -62,6 +63,7 @@ Example (unresolved, just registered):
 ```json
 {
   "tracking_status": "registered",
+  "claim_status": "pending",
   "network_id": 1,
   "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
   "bridge_status": null,
@@ -77,6 +79,7 @@ response carries every step of the bridge's route):
 ```json
 {
   "tracking_status": "running",
+  "claim_status": "pending",
   "network_id": 1,
   "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
   "bridge_status": {
@@ -582,6 +585,7 @@ Example (one claimed bridge, one still-pending bridge with `?includeTracking=tru
       "last_updated_timestamp": 1700010100,
       "tracking": {
         "tracking_status": "running",
+        "claim_status": "pending",
         "network_id": 1,
         "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000003",
         "bridge_status": null,

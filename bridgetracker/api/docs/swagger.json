@@ -498,6 +498,10 @@
                         }
                     ]
                 },
+                "claim_status": {
+                    "description": "ClaimStatus is a simplified claim-readiness summary, one of \"pending\",\n\"readyToClaim\", \"claimed\" or \"error\" — see domain.TrackingData.ClaimStatus for exactly\nhow it is derived from TrackingStatus and the current step. For most clients this is all\nthat is needed to know whether the bridge can be claimed; TrackingStatus/AllSteps remain\nfor anything that needs the full detail",
+                    "type": "string"
+                },
                 "error": {
                     "description": "Error mirrors whatever currently explains the bridge not progressing, if anything: a\nterminal give-up to even resolve it (e.g. the tx does not exist on the network or is\nnot a bridge transaction — TrackingStatus is Error and BridgeStatus/StepIndex/AllSteps\nstay nil forever), a transient FindBridge failure still being retried (TrackingStatus\nis unaffected), or the same error already nested in AllSteps[StepIndex].Error once the\nbridge is otherwise resolved. nil while nothing has failed",
                     "allOf": [
@@ -550,20 +554,15 @@
                         1000000000,
                         60000000000,
                         3600000000000,
-                        -9223372036854775808,
-                        9223372036854775807,
                         1,
                         1000,
                         1000000,
                         1000000000,
                         60000000000,
-                        3600000000000,
                         1,
                         1000,
                         1000000,
-                        1000000000,
-                        60000000000,
-                        3600000000000
+                        1000000000
                     ],
                     "x-enum-varnames": [
                         "minDuration",
@@ -582,20 +581,15 @@
                         "Second",
                         "Minute",
                         "Hour",
-                        "minDuration",
-                        "maxDuration",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",
                         "Second",
                         "Minute",
-                        "Hour",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",
-                        "Second",
-                        "Minute",
-                        "Hour"
+                        "Second"
                     ]
                 }
             }

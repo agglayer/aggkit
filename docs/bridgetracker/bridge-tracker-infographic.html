@@ -723,9 +723,11 @@
           }).join('\n');
 
           const lcStatus = f.done ? "finished" : "running";
+          const claimStatus = f.cur === 8 ? "claimed" : (f.cur === 7 ? "readyToClaim" : "pending");
           jsonEl.innerHTML = [
             '{',
             '  ' + hl("cur", kv("tracking_status", N(f.done ? 3 : 1)) + ', ' + kv("tracking_status_string", S(lcStatus)) + ','),
+            '  ' + hl("cur", kv("claim_status", S(claimStatus)) + ','),
             '  ' + kv("network_id", N(r.netId)) + ', ' + kv("tx_hash", S(r.txHash)) + ',',
             '  ' + kv("bridge_status", '{'),
             '    ' + kv("bridge_type", N(r.type)) + ', ' + kv("bridge_type_string", S(r.typeStr)) + ',',
@@ -959,6 +961,18 @@
         (reached <span class="mono">Claimed</span>). One field replaces what used to be two.</p>
       </div>
       <div class="fg">
+        <h4>claim_status</h4>
+        <p>A simplified claim-readiness summary, computed the same moment as the rest of the response:
+        <span class="mono">"error"</span> whenever <span class="mono">tracking_status</span> is
+        <span class="mono">error</span> (this wins over everything else); otherwise
+        <span class="mono">"readyToClaim"</span> if the current step is <span class="mono">WaitingClaim</span>,
+        <span class="mono">"claimed"</span> if it's <span class="mono">Claimed</span>, and
+        <span class="mono">"pending"</span> for every other step — including while
+        <span class="mono">tracking_status</span> is still <span class="mono">registered</span>. For most
+        clients this is all that's needed; <span class="mono">tracking_status</span>/<span class="mono">all_steps</span>
+        remain for anything that needs the full detail.</p>
+      </div>
+      <div class="fg">
         <h4>bridge_type · bridge_leaf_type</h4>
         <p>What kind of bridge (<span class="mono">L1→L2</span>, <span class="mono">L2→L1</span>,
         <span class="mono">L2→L2</span>) and whether it carries an asset or a message
@@ -1018,6 +1032,7 @@
 
     <div class="code-block"><pre>{
   <span class="k">"tracking_status"</span>: <span class="n">0</span>, <span class="k">"tracking_status_string"</span>: <span class="s">"registered"</span>,
+  <span class="k">"claim_status"</span>: <span class="s">"pending"</span>,
   <span class="k">"network_id"</span>: <span class="n">5</span>, <span class="k">"tx_hash"</span>: <span class="s">"0x9ac1e4…"</span>,
   <span class="k">"bridge_status"</span>: <span class="z">null</span>,
   <span class="k">"step_index"</span>: <span class="z">null</span>,
@@ -1031,6 +1046,7 @@
 
     <div class="code-block"><pre>{
   <span class="k">"tracking_status"</span>: <span class="n">2</span>, <span class="k">"tracking_status_string"</span>: <span class="s">"error"</span>,
+  <span class="k">"claim_status"</span>: <span class="s">"error"</span>,
   <span class="k">"network_id"</span>: <span class="n">5</span>, <span class="k">"tx_hash"</span>: <span class="s">"0x9ac1e4…"</span>,
   <span class="k">"bridge_status"</span>: {
     <span class="k">"bridge_type"</span>: <span class="n">2</span>,  <span class="k">"bridge_type_string"</span>: <span class="s">"L2-&gt;L2"</span>,
@@ -1079,6 +1095,7 @@
 
     <div class="code-block"><pre>{
   <span class="k">"tracking_status"</span>: <span class="n">2</span>, <span class="k">"tracking_status_string"</span>: <span class="s">"error"</span>,
+  <span class="k">"claim_status"</span>: <span class="s">"error"</span>,
   <span class="k">"network_id"</span>: <span class="n">5</span>, <span class="k">"tx_hash"</span>: <span class="s">"0x7b3f2a…"</span>,
   <span class="k">"bridge_status"</span>: <span class="z">null</span>,
   <span class="k">"step_index"</span>: <span class="z">null</span>,

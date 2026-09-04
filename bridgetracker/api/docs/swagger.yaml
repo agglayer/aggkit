@@ -220,6 +220,14 @@ definitions:
           BridgeStatus is nil until the tracker resolves the bridge; from then on it carries
           the full BridgeStatus. Marshaled explicitly as null while unresolved (no omitempty)
           so clients can poll on its presence without an extra field to check
+      claim_status:
+        description: |-
+          ClaimStatus is a simplified claim-readiness summary, one of "pending",
+          "readyToClaim", "claimed" or "error" — see domain.TrackingData.ClaimStatus for exactly
+          how it is derived from TrackingStatus and the current step. For most clients this is all
+          that is needed to know whether the bridge can be claimed; TrackingStatus/AllSteps remain
+          for anything that needs the full detail
+        type: string
       error:
         allOf:
         - $ref: '#/definitions/types.ErrorStep'
@@ -269,20 +277,15 @@ definitions:
         - 1000000000
         - 60000000000
         - 3600000000000
-        - -9223372036854775808
-        - 9223372036854775807
         - 1
         - 1000
         - 1000000
         - 1000000000
         - 60000000000
-        - 3600000000000
         - 1
         - 1000
         - 1000000
         - 1000000000
-        - 60000000000
-        - 3600000000000
         format: int64
         type: integer
         x-enum-varnames:
@@ -302,20 +305,15 @@ definitions:
         - Second
         - Minute
         - Hour
-        - minDuration
-        - maxDuration
         - Nanosecond
         - Microsecond
         - Millisecond
         - Second
         - Minute
-        - Hour
         - Nanosecond
         - Microsecond
         - Millisecond
         - Second
-        - Minute
-        - Hour
     type: object
   types.BridgeResponse:
     description: Detailed information about a bridge event
