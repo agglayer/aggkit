@@ -441,7 +441,9 @@ func (s *GERSource) filterUpdateHashChainValue(
 }
 
 // coveringLeafIndex resolves the L1 info tree index whose leaf covers the bridge, asking
-// the destination network's bridge service (which syncs the L1 info tree)
+// the destination network's bridge service (which syncs the L1 info tree). Only ever called
+// with bridge.NetworkID == 0 (mainnet), since mainnet's bridgesync is embedded in every
+// instance — see OriginGER, its only caller with a non-nil result in practice
 func (s *GERSource) coveringLeafIndex(
 	ctx context.Context, bridge *bridgetracker.BridgeInfo,
 ) (uint32, error) {
@@ -458,4 +460,40 @@ func (s *GERSource) coveringLeafIndex(
 			bridge.NetworkID, bridge.DepositCount, err)
 	}
 	return index, nil
+}
+
+// L1InfoTreeIndexForBridge implements bridgetracker.GERSource: resolves the L1 info tree leaf
+// index covering bridge's own origin deposit, per GET /bridge/v1/l1-info-tree-index queried
+// against the bridge-service instance that will actually build the claim proof for it — the
+// origin network's own instance (see docs/bridge_service.md's L2->L2 flow: this same endpoint,
+// queried on the origin, is what bridge_getProof is later called against there too). The
+// endpoint only ever accepts network_id == mainnet or network_id == the queried instance's own
+// network (see l1-info-tree-index's own network_id validation), and mainnet has no
+// bridge-service deployment of its own — bridgeservicefinder.GetURL(0) fails unless a network-0
+// URL was explicitly configured (see bridgeservicefinder/doc.go). So when the origin is
+// mainnet, the request is instead sent to the destination's own instance (a real rollup,
+// resolvable), which still answers for network_id=0 since mainnet's own bridgesync is embedded
+// in every instance — exactly what coveringLeafIndex/OriginGER already rely on for that case.
+// Returns nil while the queried instance's own L1 info tree sync has not caught up to this
+// deposit yet
+func (s *GERSource) L1InfoTreeIndexForBridge(
+	ctx context.Context, bridge *bridgetracker.BridgeInfo,
+) (*uint32, error) {
+	queryNetwork := bridge.NetworkID
+	if queryNetwork == MainnetNetworkID {
+		queryNetwork = bridge.DestinationNetwork
+	}
+	svc, err := s.services.aggkitBridgeClientFor(queryNetwork)
+	if err != nil {
+		return nil, err // transient: URL resolution failure, retried by the engine
+	}
+	index, err := svc.GetL1InfoTreeIndex(ctx, int(bridge.NetworkID), int(bridge.DepositCount))
+	if isNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fetching L1 info tree index for network %d deposit %d: %w",
+			bridge.NetworkID, bridge.DepositCount, err)
+	}
+	return &index, nil
 }

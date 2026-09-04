@@ -22,18 +22,20 @@ type BridgeStepPath struct {
 	// *types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult
 	// (StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),
 	// *types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData
-	// (StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER) or
-	// *types.ClaimResult (StepClaimed). nil until the step produces one, and for steps
+	// (StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER),
+	// *types.L1InfoLeafAvailableResult (StepWaitingL1InfoLeafAvailable) or *types.ClaimResult
+	// (StepClaimed). nil until the step produces one, and for steps
 	// that never do. Most steps only set this once Done, but StepCertificatePending (Status
 	// still InProgress) may already carry the certificate's current, not yet settled, status —
 	// see ErrCertificateNotSettled
-	ResultGerUpdate        *types.GERUpdateResult
-	ResultInjectedGer      *types.InjectedGERResult
-	ResultLerUpdate        *types.LERUpdateResult
-	ResultPendingInclusion *types.PendingInclusionResult
-	ResultCertificateData  *types.CertificateData
-	ResultL1SettledGer     *types.L1SettledGERResult
-	ResultClaim            *types.ClaimResult
+	ResultGerUpdate           *types.GERUpdateResult
+	ResultInjectedGer         *types.InjectedGERResult
+	ResultLerUpdate           *types.LERUpdateResult
+	ResultPendingInclusion    *types.PendingInclusionResult
+	ResultCertificateData     *types.CertificateData
+	ResultL1SettledGer        *types.L1SettledGERResult
+	ResultL1InfoLeafAvailable *types.L1InfoLeafAvailableResult
+	ResultClaim               *types.ClaimResult
 	// Error carries the error details when Status is types.StepStatusError, nil otherwise
 	Error *types.ErrorStep
 }
@@ -48,6 +50,7 @@ func (b *BridgeStepPath) SetResult(result any) {
 	b.ResultPendingInclusion = nil
 	b.ResultCertificateData = nil
 	b.ResultL1SettledGer = nil
+	b.ResultL1InfoLeafAvailable = nil
 	b.ResultClaim = nil
 
 	switch r := result.(type) {
@@ -64,6 +67,8 @@ func (b *BridgeStepPath) SetResult(result any) {
 		b.ResultCertificateData = r
 	case *types.L1SettledGERResult:
 		b.ResultL1SettledGer = r
+	case *types.L1InfoLeafAvailableResult:
+		b.ResultL1InfoLeafAvailable = r
 	case *types.ClaimResult:
 		b.ResultClaim = r
 	default:
@@ -86,6 +91,8 @@ func (b *BridgeStepPath) Result() any {
 		return b.ResultCertificateData
 	case b.ResultL1SettledGer != nil:
 		return b.ResultL1SettledGer
+	case b.ResultL1InfoLeafAvailable != nil:
+		return b.ResultL1InfoLeafAvailable
 	case b.ResultClaim != nil:
 		return b.ResultClaim
 	default:

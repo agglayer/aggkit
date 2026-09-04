@@ -21,6 +21,7 @@ func TestExpectedPath(t *testing.T) {
 			expected: []types.BridgeStep{
 				types.StepWaitingGERUpdate,
 				types.StepWaitingGERInjection,
+				types.StepWaitingL1InfoLeafAvailable,
 				types.StepWaitingClaim,
 				types.StepClaimed,
 			},
@@ -33,6 +34,7 @@ func TestExpectedPath(t *testing.T) {
 				types.StepPendingInclusion,
 				types.StepCertificatePending,
 				types.StepWaitL1SettledGER,
+				types.StepWaitingL1InfoLeafAvailable,
 				types.StepWaitingClaim,
 				types.StepClaimed,
 			},
@@ -46,6 +48,7 @@ func TestExpectedPath(t *testing.T) {
 				types.StepCertificatePending,
 				types.StepWaitL1SettledGER,
 				types.StepWaitingGERInjection,
+				types.StepWaitingL1InfoLeafAvailable,
 				types.StepWaitingClaim,
 				types.StepClaimed,
 			},

@@ -23,6 +23,7 @@ func TestBridgeStepString(t *testing.T) {
 	require.Equal(t, "PendingInclusion", StepPendingInclusion.String())
 	require.Equal(t, "CertificatePending", StepCertificatePending.String())
 	require.Equal(t, "WaitL1SettledGER", StepWaitL1SettledGER.String())
+	require.Equal(t, "WaitingL1InfoLeafAvailable", StepWaitingL1InfoLeafAvailable.String())
 	require.Equal(t, "WaitingGERInjection", StepWaitingGERInjection.String())
 	require.Equal(t, "WaitingClaim", StepWaitingClaim.String())
 	require.Equal(t, "Claimed", StepClaimed.String())

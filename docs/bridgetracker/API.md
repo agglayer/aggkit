@@ -50,6 +50,7 @@ Body of every REST response (always `200 OK`) and of every WebSocket `status` me
 | field | type | desc |
 | ------|------|------|
 | tracking_status | string | bare string, one of `"registered"` (added to the supervised list, `bridge_status`/`step_index`/`all_steps`/`error` still `null`), `"running"` (resolved, alive), `"error"` (either a step reached an error on an otherwise-resolved bridge, or the tracker gave up resolving the bridge at all — see `error`), `"finished"` (resolved, reached `Claimed`) |
+| claim_status | string | bare string, one of `"pending"`, `"readyToClaim"`, `"claimed"`, `"error"` — a simplified claim-readiness summary, computed the same moment as the rest of the response: `"error"` whenever `tracking_status` is `"error"` (this takes priority over everything else); otherwise `"readyToClaim"` if the current step (per `step_index`) is `WaitingClaim`, `"claimed"` if it is `Claimed`; `"pending"` for every other step, including while `tracking_status` is still `"registered"`. For most clients this is all that's needed to know whether the bridge can be claimed — `tracking_status`/`all_steps` remain for anything that needs the full detail |
 | network_id | uint32 | network of the request |
 | tx_hash | Hash | transaction hash of the request |
 | bridge_status | *BridgeStatus | `null` while tracking_status is `registered`, and forever `null` if the tracker gives up resolving the bridge (`error` is set instead); see [BridgeStatus](#bridgestatus) |
@@ -62,6 +63,7 @@ Example (unresolved, just registered):
 ```json
 {
   "tracking_status": "registered",
+  "claim_status": "pending",
   "network_id": 1,
   "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
   "bridge_status": null,
@@ -77,6 +79,7 @@ response carries every step of the bridge's route):
 ```json
 {
   "tracking_status": "running",
+  "claim_status": "pending",
   "network_id": 1,
   "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
   "bridge_status": {
@@ -170,7 +173,7 @@ Example (`TrackingData.bridge_status` once resolved):
 | field | type | desc |
 | ------|------|------|
 | step_index | int | this step's position within the parent `TrackingData.all_steps` list |
-| step_name | string | bare string, one of `"WaitingGERUpdate"`, `"WaitingLERUpdate"`, `"PendingInclusion"`, `"CertificatePending"`, `"WaitL1SettledGER"`, `"WaitingGERInjection"`, `"WaitingClaim"`, `"Claimed"` |
+| step_name | string | bare string, one of `"WaitingGERUpdate"`, `"WaitingLERUpdate"`, `"PendingInclusion"`, `"CertificatePending"`, `"WaitL1SettledGER"`, `"WaitingL1InfoLeafAvailable"`, `"WaitingGERInjection"`, `"WaitingClaim"`, `"Claimed"` |
 | status | string | bare string, one of `"pending"`, `"inProgress"`, `"done"`, `"error"` |
 | start_date | *time.Time | **omitted** (no key) while `nil`, not serialized as `null` |
 | end_date | *time.Time | **omitted** (no key) while `nil`, not serialized as `null` |
@@ -214,6 +217,7 @@ Carried in the `result` field of a [BridgeStepPath](#bridgesteppath). Its shape 
 | PendingInclusion | `certificate_id` (Hash), `new_ler` (Hash), `previous_ler` (*Hash) | the certificate that first includes the bridge and the LER transition it produced; `previous_ler` is nil for a network's first certificate |
 | CertificatePending | [CertificateData](#certificatedata) | the certificate's current data; set as soon as a certificate exists, updated as its status changes (Pending, Proven, Candidate, InError), and reflects the final settled data — including `block_number`/`block_timestamp` — once `status` is `done` |
 | WaitL1SettledGER | `tx_hash` (Hash), `settlement_block_number` (uint64), `settlement_block_timestamp` (uint64), `settlement_log_index` (uint), `ger` (Hash), `ger_block_number` (uint64), `ger_block_timestamp` (uint64), `ger_log_index` (uint), `l1_info_tree_index` (*uint32), `has_verify_batches_trusted_aggregator` (bool), `has_update_l1_info_tree` (bool), `has_update_l1_info_tree_v2` (bool) | evidence, read off the certificate's settlement tx receipt once it reaches L1 finality, that the settlement propagated to the L1 Global Exit Root; `ger` is computed from `UpdateL1InfoTree`'s mainnet/rollup exit roots, and `ger_block_number`/`ger_block_timestamp`/`ger_log_index` locate the event it was computed from — normally the same block as the settlement, but the closest earlier one on L1 when the settlement tx's own receipt didn't move the GER itself. `l1_info_tree_index` is the leaf `ger` landed at — populated straight from `UpdateL1InfoTreeV2`'s `LeafCount` when that (optional) event fires, otherwise resolved with one extra GER->leaf lookup before the step can complete; it is never `null` once the step is `done`. The two `has_*` booleans besides `has_update_l1_info_tree_v2` are required for the step to complete, that third one is informational only |
+| WaitingL1InfoLeafAvailable | `l1_info_tree_index` (uint32) | Always right before `WaitingClaim`, on every route (see [#1823](https://github.com/agglayer/aggkit/issues/1823)): the L1 info tree leaf index covering the bridge's origin deposit, as resolved by `GET /bridge/v1/l1-info-tree-index` on the bridge-service instance that will build the claim proof for it — the origin network's own instance, or the destination's when the origin is mainnet (which has no bridge-service deployment of its own) |
 | WaitingGERInjection | [InjectedGERResult](#injectedgerresult) | GER covering the bridge: the L1 Info Tree leaf it resolves to, and — once known — the actual L2 block/timestamp it was injected at |
 | Claimed | `claim_tx` (Hash), `block_number` (uint64), `block_timestamp` (uint64) | claim transaction on the destination network, its block and that block's timestamp |
 | any other step | — | no result: always `nil` |
@@ -363,6 +367,7 @@ Always returns `200 OK` with a `HealthResponse` body:
 | field | type | desc |
 | ------|------|------|
 | status | string | always `"ok"` |
+| api_revision | int | the tracker's wire API contract version — bumped by one whenever a change could break an existing client (a field added/removed/renamed, an enum's value set changed, a new step inserted into a bridge's expected path, and the like), so a client can tell which contract shape the responding instance speaks. Purely informational: the tracker never rejects or alters behavior based on it |
 | instance_id | string | UUID generated at startup; changes on every execution. Two responses with different `instance_id` come from different instances (or the same instance after a restart) |
 | config_sha1 | string | sha1sum (hex) of the configuration the instance was started with; allows checking that all instances run the same configuration. The binary accepts several `--cfg` files, so the hash is computed over the **concatenation of the config files in the order they were passed** |
 | version | VersionInfo | build/version information of the running instance |
@@ -386,6 +391,7 @@ Example:
 ```json
 {
   "status": "ok",
+  "api_revision": 1,
   "instance_id": "3f1c9a2e-8b4d-4f6a-9c0e-5d7b2a1e4c8f",
   "config_sha1": "2ef7bde608ce5404e97d5f042f95f89f1c232871",
   "version": {
@@ -581,6 +587,7 @@ Example (one claimed bridge, one still-pending bridge with `?includeTracking=tru
       "last_updated_timestamp": 1700010100,
       "tracking": {
         "tracking_status": "running",
+        "claim_status": "pending",
         "network_id": 1,
         "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000003",
         "bridge_status": null,

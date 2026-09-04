@@ -371,7 +371,7 @@
       network, and answers a single question: <strong>where is my bridge right now?</strong>
     </p>
     <div class="meta-chips">
-      <span class="meta-chip"><span class="dot"></span><b>8</b>&nbsp;lifecycle states</span>
+      <span class="meta-chip"><span class="dot"></span><b>9</b>&nbsp;lifecycle states</span>
       <span class="meta-chip"><span class="dot"></span><b>3</b>&nbsp;bridge routes</span>
       <span class="meta-chip"><span class="dot"></span>REST&nbsp;<b>+</b>&nbsp;WebSocket</span>
       <span class="meta-chip"><span class="dot"></span>full status on every update</span>
@@ -442,7 +442,7 @@
             <span class="step-name">WaitL1SettledGER</span>
             <span class="routes"><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
           </div>
-          <p class="step-desc">The certificate has settled, but its settlement tx has not been confirmed on L1 yet: the tracker waits for that tx to reach the configured L1 finality and its receipt to carry both <code>VerifyBatchesTrustedAggregator</code> and <code>UpdateL1InfoTree</code> (<code>UpdateL1InfoTreeV2</code> is captured too, if present, but is not required). The step also resolves the GER to a concrete L1 info tree leaf index — straight from <code>UpdateL1InfoTreeV2</code>'s <code>LeafCount</code> when it fired, otherwise with one extra GER→leaf lookup — before handing off to <code>WaitingGERInjection</code>.</p>
+          <p class="step-desc">The certificate has settled, but its settlement tx has not been confirmed on L1 yet: the tracker waits for that tx to reach the configured L1 finality and its receipt to carry both <code>VerifyBatchesTrustedAggregator</code> and <code>UpdateL1InfoTree</code> (<code>UpdateL1InfoTreeV2</code> is captured too, if present, but is not required). The step also resolves the GER to a concrete L1 info tree leaf index — straight from <code>UpdateL1InfoTreeV2</code>'s <code>LeafCount</code> when it fired, otherwise with one extra GER→leaf lookup — before handing off to <code>WaitingGERInjection</code> (L2→L2) or straight to <code>WaitingL1InfoLeafAvailable</code> (L2→L1).</p>
         </div>
       </div>
 
@@ -453,7 +453,7 @@
             <span class="step-name">WaitingGERInjection</span>
             <span class="routes"><span class="route-tag tag-l1l2">L1→L2</span><span class="route-tag tag-l2l2">L2→L2</span></span>
           </div>
-          <p class="step-desc">The GER that covers the bridge exists on L1, but the Aggoracle has not injected it into the destination L2 yet.</p>
+          <p class="step-desc">The GER that covers the bridge exists on L1, but its injection tx has not landed on the destination L2 yet — an L2-side fact. Skipped for L2→L1: mainnet needs no injection, its own settlement already is the L1 GER update.</p>
         </div>
       </div>
 
@@ -461,15 +461,26 @@
         <div class="step-num">6</div>
         <div class="step-body">
           <div class="step-title-row">
-            <span class="step-name">WaitingClaim</span>
+            <span class="step-name">WaitingL1InfoLeafAvailable</span>
             <span class="routes"><span class="route-tag tag-l1l2">L1→L2</span><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
           </div>
-          <p class="step-desc">The GER that includes the bridge is available on the destination network. The bridge is ready to be claimed with <code>claimAsset()</code> / <code>claimMessage()</code>.</p>
+          <p class="step-desc">Always right before <code>WaitingClaim</code>, on every route: the bridge-service instance that will build the claim proof — the origin network's own instance, or the destination's when the origin is mainnet (which has no bridge-service deployment of its own) — has not caught its own L1 info tree sync up to this deposit yet (<code>GET /bridge/v1/l1-info-tree-index</code>). Unlike <code>WaitingGERInjection</code>, this is never skipped or inferred from a sibling step: a GER injection tx landing on the destination is not the same fact as the proof-building instance's own sync having caught up. See <a href="https://github.com/agglayer/aggkit/issues/1823">#1823</a>.</p>
         </div>
       </div>
 
       <div class="step">
-        <div class="step-num terminal">7</div>
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <div class="step-title-row">
+            <span class="step-name">WaitingClaim</span>
+            <span class="routes"><span class="route-tag tag-l1l2">L1→L2</span><span class="route-tag tag-l2l1">L2→L1</span><span class="route-tag tag-l2l2">L2→L2</span></span>
+          </div>
+          <p class="step-desc">The destination network's own bridge-service instance has the covering L1 info tree leaf indexed. The bridge is ready to be claimed with <code>claimAsset()</code> / <code>claimMessage()</code>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num terminal">8</div>
         <div class="step-body">
           <div class="step-title-row">
             <span class="step-name">Claimed</span>
@@ -482,7 +493,7 @@
 
     <p class="enum-note">
       These values are the <span class="mono">BridgeStep</span> enum, carried in every
-      <span class="mono">all_steps[].step</span> entry: <span class="mono">0→WaitingGERUpdate … 7→Claimed</span>.
+      <span class="mono">all_steps[].step</span> entry: <span class="mono">0→WaitingGERUpdate … 8→Claimed</span>.
       The envelope doesn't repeat it at the top — instead it carries
       <span class="mono">step_index</span> (the position within <span class="mono">all_steps</span> of the
       step that explains the bridge's status), while
@@ -513,27 +524,28 @@
           <span class="node">0 · WaitingGERUpdate</span><span class="arrow">→</span>
           <span class="node ghost">1–4 · certificate</span><span class="arrow">→</span>
           <span class="node">5 · WaitingGERInjection</span><span class="arrow">→</span>
-          <span class="node">6 · WaitingClaim</span><span class="arrow">→</span>
-          <span class="node">7 · Claimed</span>
+          <span class="node">6 · WaitingL1InfoLeafAvailable</span><span class="arrow">→</span>
+          <span class="node">7 · WaitingClaim</span><span class="arrow">→</span>
+          <span class="node">8 · Claimed</span>
         </div>
-        <p class="route-note"><b>GER update (L1→L2):</b> the deposit updates the GER directly on L1, so it jumps straight to waiting for the Aggoracle to inject that GER into the destination L2. No certificate is involved.</p>
+        <p class="route-note"><b>GER update (L1→L2):</b> the deposit updates the GER directly on L1, so it jumps straight to waiting for the Aggoracle to inject that GER into the destination L2. No certificate is involved — but the proof-building instance (mainnet has none of its own, so this is the destination's) still needs its own separate check (<span class="mono">WaitingL1InfoLeafAvailable</span>) before it's claimable.</p>
       </div>
 
       <div class="route-card l2l1">
         <div class="route-head">
           <span class="route-name">L2 → L1</span>
-          <span class="route-sub">certificate, but no injection needed</span>
+          <span class="route-sub">certificate, no GER injection — but still a leaf-availability wait</span>
         </div>
         <div class="path">
           <span class="node">1 · WaitingLERUpdate</span><span class="arrow">→</span>
           <span class="node">2 · PendingInclusion</span><span class="arrow">→</span>
           <span class="node">3 · CertificatePending ⟳</span><span class="arrow">→</span>
           <span class="node">4 · WaitL1SettledGER</span><span class="arrow">→</span>
-          <span class="node ghost">5 · injection</span><span class="arrow">→</span>
-          <span class="node">6 · WaitingClaim</span><span class="arrow">→</span>
-          <span class="node">7 · Claimed</span>
+          <span class="node">6 · WaitingL1InfoLeafAvailable</span><span class="arrow">→</span>
+          <span class="node">7 · WaitingClaim</span><span class="arrow">→</span>
+          <span class="node">8 · Claimed</span>
         </div>
-        <p class="route-note"><b>Settled by Agglayer (L2→L1):</b> the certificate walks the Agglayer states inside <span class="mono">CertificatePending</span> — a failed certificate (<span class="mono">InError</span>) surfaces there as a step-level error. Settlement happens on L1, which is also the destination — but the claim still waits one more step, <span class="mono">WaitL1SettledGER</span>, for the settlement tx itself to be confirmed there.</p>
+        <p class="route-note"><b>Settled by Agglayer (L2→L1):</b> the certificate walks the Agglayer states inside <span class="mono">CertificatePending</span> — a failed certificate (<span class="mono">InError</span>) surfaces there as a step-level error. Settlement happens on L1, which is also the destination, so no GER injection is needed — but the origin's own bridge-service instance (the one that will build the claim proof) still has to catch its own L1 info tree sync up to this deposit (<span class="mono">WaitingL1InfoLeafAvailable</span>), which can lag behind the finality this tracker uses for <span class="mono">WaitL1SettledGER</span> (<a href="https://github.com/agglayer/aggkit/issues/1823">#1823</a>).</p>
       </div>
 
       <div class="route-card l2l2">
@@ -547,10 +559,11 @@
           <span class="node">3 · CertificatePending ⟳</span><span class="arrow">→</span>
           <span class="node">4 · WaitL1SettledGER</span><span class="arrow">→</span>
           <span class="node">5 · WaitingGERInjection</span><span class="arrow">→</span>
-          <span class="node">6 · WaitingClaim</span><span class="arrow">→</span>
-          <span class="node">7 · Claimed</span>
+          <span class="node">6 · WaitingL1InfoLeafAvailable</span><span class="arrow">→</span>
+          <span class="node">7 · WaitingClaim</span><span class="arrow">→</span>
+          <span class="node">8 · Claimed</span>
         </div>
-        <p class="route-note"><b>Settled by Agglayer (L2→L2):</b> after the settlement tx is confirmed on L1 (<span class="mono">WaitL1SettledGER</span>), the Aggoracle still has to inject the new GER into the destination L2′ before the claim can happen. Two exit-root updates are involved — each reported in the <span class="mono">result</span> of its own step.</p>
+        <p class="route-note"><b>Settled by Agglayer (L2→L2):</b> after the settlement tx is confirmed on L1 (<span class="mono">WaitL1SettledGER</span>), the Aggoracle still has to inject the new GER into the destination L2′ — an L2-side fact — and then the origin's own bridge-service instance (the one that will build the claim proof) still needs its own separate check (<span class="mono">WaitingL1InfoLeafAvailable</span>) before the claim can happen. Two exit-root updates are involved — each reported in the <span class="mono">result</span> of its own step.</p>
       </div>
     </div>
   </section>
@@ -586,8 +599,9 @@
       (function () {
         const STEPS = {0:"WaitingGERUpdate",1:"WaitingLERUpdate",2:"PendingInclusion",
                        3:"CertificatePending",4:"WaitL1SettledGER",
-                       5:"WaitingGERInjection",6:"WaitingClaim",7:"Claimed"};
-        const DUR = {0:"30s",1:"30s",2:"1m0s",3:"5m0s",4:"1m0s",5:"2m0s",6:null,7:null};
+                       5:"WaitingGERInjection",6:"WaitingL1InfoLeafAvailable",
+                       7:"WaitingClaim",8:"Claimed"};
+        const DUR = {0:"30s",1:"30s",2:"1m0s",3:"5m0s",4:"1m0s",5:"2m0s",6:"1m0s",7:null,8:null};
         const GER_L1  = {net:0, ger:"0x9f2c…", ler:"Mainnet"};
         const GER_L2  = {net:3, ger:"0x9f2c…", ler:"Local"};
         const GER_L2P = {net:5, ger:"0x6b81…", ler:"Local"};
@@ -597,17 +611,19 @@
         const L1_SETTLED   = {tx:"0x77de…", block:9345001, ger:"0x6b81…", idx:42, vb:true, ul1:true, ul1v2:false};
 
         const ROUTES = {
-          l1l2: { type:0, typeStr:"L1->L2", netId:0, txHash:"0x71c4a2…", blockNumber:8123456, logIndex:2, path:[0,5,6,7], frames:[
+          l1l2: { type:0, typeStr:"L1->L2", netId:0, txHash:"0x71c4a2…", blockNumber:8123456, logIndex:2, path:[0,5,6,7,8], frames:[
             {cur:0, ger1:null,   ger2:null, cert:null, chg:["cur"],
              cap:"bridgeAsset() sent on L1 — BridgeEvent emitted, waiting for the GER update."},
             {cur:5, ger1:GER_L1, ger2:null, cert:null, chg:["cur","ger1"],
              cap:"GER updated on L1 (no certificate needed) — waiting for the Aggoracle to inject it into the destination L2."},
             {cur:6, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
-             cap:"Aggoracle injected the GER on L2 — the bridge is ready to claim."},
-            {cur:7, done:true, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
+             cap:"Aggoracle injected the GER on L2 — but the proof-building instance (mainnet has none of its own, so this is the destination's) still has to catch its own L1 info tree sync up to this deposit, see #1823."},
+            {cur:7, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
+             cap:"L1 info tree index resolved by the proof-building instance — claimable."},
+            {cur:8, done:true, ger1:GER_L1, ger2:null, cert:null, chg:["cur"],
              cap:"claimAsset() executed — asset delivered. The WebSocket sends this final status and closes (code 1000)."}
           ]},
-          l2l1: { type:1, typeStr:"L2->L1", netId:3, txHash:"0x5e9ab7…", blockNumber:5012301, logIndex:0, path:[1,2,3,4,6,7], frames:[
+          l2l1: { type:1, typeStr:"L2->L1", netId:3, txHash:"0x5e9ab7…", blockNumber:5012301, logIndex:0, path:[1,2,3,4,6,7,8], frames:[
             {cur:1, ger1:null,   ger2:null, cert:null, chg:["cur"],
              cap:"bridgeAsset() sent on L2 — BridgeEvent emitted, waiting for the LER update."},
             {cur:2, ger1:GER_L2, ger2:null, cert:null, chg:["cur","ger1"],
@@ -619,11 +635,13 @@
             {cur:4, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur","cert"],
              cap:"Certificate settled on L1 — waiting for the settlement tx to reach L1 finality and emit VerifyBatchesTrustedAggregator + UpdateL1InfoTree."},
             {cur:6, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
-             cap:"Settlement tx confirmed on L1 — the destination is L1 itself, so no injection is needed: claimable right away."},
-            {cur:7, done:true, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
+             cap:"Settlement tx confirmed on L1 — the destination is L1 itself, so no injection is needed, but the origin's own bridge-service instance (the one that will build the claim proof) still has to catch its own L1 info tree sync up to this deposit (its sync can lag behind this tracker's own finality, see #1823)."},
+            {cur:7, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
+             cap:"L1 info tree index resolved by the proof-building instance — claimable."},
+            {cur:8, done:true, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
              cap:"claimAsset() executed on L1 — asset delivered. Final status pushed, connection closed."}
           ]},
-          l2l2: { type:2, typeStr:"L2->L2", netId:3, txHash:"0x2b6fd1…", blockNumber:5012301, logIndex:1, path:[1,2,3,4,5,6,7], frames:[
+          l2l2: { type:2, typeStr:"L2->L2", netId:3, txHash:"0x2b6fd1…", blockNumber:5012301, logIndex:1, path:[1,2,3,4,5,6,7,8], frames:[
             {cur:1, ger1:null,   ger2:null, cert:null, chg:["cur"],
              cap:"bridgeAsset() sent on L2 — BridgeEvent emitted, waiting for the LER update."},
             {cur:2, ger1:GER_L2, ger2:null, cert:null, chg:["cur","ger1"],
@@ -637,8 +655,10 @@
             {cur:5, ger1:GER_L2, ger2:null, cert:CERT_SETTLED, chg:["cur"],
              cap:"Settlement tx confirmed on L1 — now the Aggoracle must inject the new GER into the destination L2′."},
             {cur:6, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur","ger2"],
-             cap:"GER injected on L2′ — the bridge is ready to claim."},
-            {cur:7, done:true, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur"],
+             cap:"GER injected on L2′ — but the origin's own bridge-service instance (the one that will build the claim proof) still has to catch its own L1 info tree sync up to this deposit, see #1823."},
+            {cur:7, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur"],
+             cap:"L1 info tree index resolved by the proof-building instance — claimable."},
+            {cur:8, done:true, ger1:GER_L2, ger2:GER_L2P, cert:CERT_SETTLED, chg:["cur"],
              cap:"claimAsset() executed on L2′ — asset delivered. Final status pushed, connection closed."}
           ]}
         };
@@ -662,7 +682,8 @@
           1: () => '{ ' + kv("network_id", N(3)) + ', ' + kv("ler", S("0x2c41…")) + ', ' + kv("block_number", N(5012345)) + ' }',
           3: () => certStr(CERT_SETTLED),
           4: () => l1SettledStr(L1_SETTLED),
-          6: () => '{ ' + kv("claim_tx", S("0x55aa…")) + ', ' + kv("block_number", N(9345678)) + ' }'
+          6: () => '{ ' + kv("l1_info_tree_index", N(L1_SETTLED.idx)) + ' }',
+          7: () => '{ ' + kv("claim_tx", S("0x55aa…")) + ', ' + kv("block_number", N(9345678)) + ' }'
         };
 
         const simEl = document.getElementById("sim");
@@ -707,9 +728,11 @@
           }).join('\n');
 
           const lcStatus = f.done ? "finished" : "running";
+          const claimStatus = f.cur === 8 ? "claimed" : (f.cur === 7 ? "readyToClaim" : "pending");
           jsonEl.innerHTML = [
             '{',
             '  ' + hl("cur", kv("tracking_status", N(f.done ? 3 : 1)) + ', ' + kv("tracking_status_string", S(lcStatus)) + ','),
+            '  ' + hl("cur", kv("claim_status", S(claimStatus)) + ','),
             '  ' + kv("network_id", N(r.netId)) + ', ' + kv("tx_hash", S(r.txHash)) + ',',
             '  ' + kv("bridge_status", '{'),
             '    ' + kv("bridge_type", N(r.type)) + ', ' + kv("bridge_type_string", S(r.typeStr)) + ',',
@@ -943,6 +966,18 @@
         (reached <span class="mono">Claimed</span>). One field replaces what used to be two.</p>
       </div>
       <div class="fg">
+        <h4>claim_status</h4>
+        <p>A simplified claim-readiness summary, computed the same moment as the rest of the response:
+        <span class="mono">"error"</span> whenever <span class="mono">tracking_status</span> is
+        <span class="mono">error</span> (this wins over everything else); otherwise
+        <span class="mono">"readyToClaim"</span> if the current step is <span class="mono">WaitingClaim</span>,
+        <span class="mono">"claimed"</span> if it's <span class="mono">Claimed</span>, and
+        <span class="mono">"pending"</span> for every other step — including while
+        <span class="mono">tracking_status</span> is still <span class="mono">registered</span>. For most
+        clients this is all that's needed; <span class="mono">tracking_status</span>/<span class="mono">all_steps</span>
+        remain for anything that needs the full detail.</p>
+      </div>
+      <div class="fg">
         <h4>bridge_type · bridge_leaf_type</h4>
         <p>What kind of bridge (<span class="mono">L1→L2</span>, <span class="mono">L2→L1</span>,
         <span class="mono">L2→L2</span>) and whether it carries an asset or a message
@@ -1002,6 +1037,7 @@
 
     <div class="code-block"><pre>{
   <span class="k">"tracking_status"</span>: <span class="n">0</span>, <span class="k">"tracking_status_string"</span>: <span class="s">"registered"</span>,
+  <span class="k">"claim_status"</span>: <span class="s">"pending"</span>,
   <span class="k">"network_id"</span>: <span class="n">5</span>, <span class="k">"tx_hash"</span>: <span class="s">"0x9ac1e4…"</span>,
   <span class="k">"bridge_status"</span>: <span class="z">null</span>,
   <span class="k">"step_index"</span>: <span class="z">null</span>,
@@ -1015,6 +1051,7 @@
 
     <div class="code-block"><pre>{
   <span class="k">"tracking_status"</span>: <span class="n">2</span>, <span class="k">"tracking_status_string"</span>: <span class="s">"error"</span>,
+  <span class="k">"claim_status"</span>: <span class="s">"error"</span>,
   <span class="k">"network_id"</span>: <span class="n">5</span>, <span class="k">"tx_hash"</span>: <span class="s">"0x9ac1e4…"</span>,
   <span class="k">"bridge_status"</span>: {
     <span class="k">"bridge_type"</span>: <span class="n">2</span>,  <span class="k">"bridge_type_string"</span>: <span class="s">"L2-&gt;L2"</span>,
@@ -1063,6 +1100,7 @@
 
     <div class="code-block"><pre>{
   <span class="k">"tracking_status"</span>: <span class="n">2</span>, <span class="k">"tracking_status_string"</span>: <span class="s">"error"</span>,
+  <span class="k">"claim_status"</span>: <span class="s">"error"</span>,
   <span class="k">"network_id"</span>: <span class="n">5</span>, <span class="k">"tx_hash"</span>: <span class="s">"0x7b3f2a…"</span>,
   <span class="k">"bridge_status"</span>: <span class="z">null</span>,
   <span class="k">"step_index"</span>: <span class="z">null</span>,
