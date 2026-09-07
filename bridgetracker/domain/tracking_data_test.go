@@ -94,3 +94,99 @@ func TestTrackingStatusDerivation(t *testing.T) {
 		require.Equal(t, types.TrackingStatusError, tracking.TrackingStatus())
 	})
 }
+
+// TestClaimStatusDerivation pins the full derivation table of ClaimStatus: TrackingStatusError
+// always wins (whatever produced it), otherwise it follows the current step — Pending unless
+// that step is StepWaitingClaim (ReadyToClaim) or StepClaimed (Claimed)
+func TestClaimStatusDerivation(t *testing.T) {
+	t.Parallel()
+
+	id := TrackingID{NetworkID: 1}
+	info := &BridgeInfo{NetworkID: 1}
+
+	testCases := []struct {
+		name     string
+		bridgeTx TrackingBridgeTx
+		allSteps []BridgeStepPath
+		expected types.TrackerClaimStatus
+	}{
+		{
+			name:     "fresh entry -> Pending",
+			expected: types.TrackerClaimStatusPending,
+		},
+		{
+			name: "transient tx error still being retried -> Pending",
+			bridgeTx: TrackingBridgeTx{
+				Error: &types.ErrorStep{ErrorType: types.StepErrorTransient},
+			},
+			expected: types.TrackerClaimStatusPending,
+		},
+		{
+			name: "exhausted tx error -> Error (the tracker gave up)",
+			bridgeTx: TrackingBridgeTx{
+				Error: &types.ErrorStep{ErrorType: types.StepErrorExhausted},
+			},
+			expected: types.TrackerClaimStatusError,
+		},
+		{
+			name: "permanent tx error -> Error (not a bridge tx)",
+			bridgeTx: TrackingBridgeTx{
+				Error: &types.ErrorStep{ErrorType: types.StepErrorPermanent},
+			},
+			expected: types.TrackerClaimStatusError,
+		},
+		{
+			name:     "resolved bridge without steps yet -> Pending",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			expected: types.TrackerClaimStatusPending,
+		},
+		{
+			name:     "in progress on an earlier step -> Pending",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{Step: types.StepWaitingLERUpdate, Status: types.StepStatusInProgress},
+			},
+			expected: types.TrackerClaimStatusPending,
+		},
+		{
+			name:     "in progress on WaitingClaim -> ReadyToClaim",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress},
+			},
+			expected: types.TrackerClaimStatusReadyToClaim,
+		},
+		{
+			name:     "claimed -> Claimed",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{Step: types.StepClaimed, Status: types.StepStatusDone},
+			},
+			expected: types.TrackerClaimStatusClaimed,
+		},
+		{
+			name:     "step in error -> Error, even if that step is WaitingClaim",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{Step: types.StepWaitingClaim, Status: types.StepStatusError},
+			},
+			expected: types.TrackerClaimStatusError,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tracking := NewTrackingData(id, tc.bridgeTx, tc.allSteps)
+			require.Equal(t, tc.expected, tracking.ClaimStatus())
+		})
+	}
+
+	t.Run("nil snapshot -> Error", func(t *testing.T) {
+		t.Parallel()
+
+		var tracking *TrackingData
+		require.Equal(t, types.TrackerClaimStatusError, tracking.ClaimStatus())
+	})
+}

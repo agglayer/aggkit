@@ -6,10 +6,22 @@ import "github.com/agglayer/aggkit"
 // returns 200, so the status is always "ok"
 const HealthStatusOK = "ok"
 
+// CurrentAPIRevision is the tracker's wire API contract version, returned by GET /health as
+// APIRevision. Bump it by one whenever a change could break an existing client parsing the
+// tracker's responses — a field added/removed/renamed, an enum's value set changed, a new step
+// inserted into a bridge's expected path, and the like — so a client can tell which contract
+// shape an instance speaks without diffing full response bodies against its own expectations.
+// Purely informational: the tracker itself never rejects or alters behavior based on it
+const CurrentAPIRevision = 1
+
 // HealthResponse is the body of GET /tracker/v1/health
 type HealthResponse struct {
 	// Status is always "ok"
 	Status string `json:"status"`
+	// APIRevision is the tracker's wire API contract version (see CurrentAPIRevision) —
+	// bumped whenever the wire contract changes, so a client can detect which shape the
+	// responding instance speaks
+	APIRevision int `json:"api_revision"`
 	// InstanceID is a UUID generated at startup; it changes on every execution, so two
 	// responses with different InstanceID come from different instances (or the same
 	// instance after a restart)

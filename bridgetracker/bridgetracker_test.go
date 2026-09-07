@@ -290,6 +290,7 @@ func TestHealthHandler(t *testing.T) {
 	var health types.HealthResponse
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &health))
 	require.Equal(t, types.HealthStatusOK, health.Status)
+	require.Equal(t, types.CurrentAPIRevision, health.APIRevision)
 	require.Equal(t, testConfigSHA1, health.ConfigSHA1)
 	_, err := uuid.Parse(health.InstanceID)
 	require.NoError(t, err, "instance_id must be a valid UUID")

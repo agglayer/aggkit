@@ -92,24 +92,38 @@ const (
 	// L2-originated bridges (L2->L1 and L2->L2), right after StepCertificatePending
 	StepWaitL1SettledGER
 	// StepWaitingGERInjection the certificate is settled but the Global Exit Root has
-	// not been injected on the destination network yet
+	// not been injected on the destination network yet. Skipped for an L2->L1 bridge: mainnet
+	// needs no injection, its own settlement already is the L1 Global Exit Root update
 	StepWaitingGERInjection
-	// StepWaitingClaim the Global Exit Root that includes the bridge has been injected
-	// on the destination network, so the bridge is ready to be claimed
+	// StepWaitingL1InfoLeafAvailable the bridge-service instance that will build the claim
+	// proof — the origin network's own instance, or the destination's when the origin is
+	// mainnet (which has no bridge-service deployment of its own) — has not caught its own L1
+	// info tree sync up to this bridge's deposit yet (GET /bridge/v1/l1-info-tree-index). That
+	// sync can lag
+	// behind whatever this tracker itself uses elsewhere: StepWaitL1SettledGER's own L1 RPC
+	// scan, or StepWaitingGERInjection's destination-side injection check (an L2-side fact —
+	// whether the GER's injection tx landed on that network's own contract, unrelated to
+	// whether the origin's own proof-building instance has caught up). So this is always
+	// checked, on every route, right before StepWaitingClaim — never skipped, never inferred
+	// from a sibling step (see #1823)
+	StepWaitingL1InfoLeafAvailable
+	// StepWaitingClaim the bridge is ready to be claimed: the proof-building instance has the
+	// bridge's L1 info tree index (StepWaitingL1InfoLeafAvailable)
 	StepWaitingClaim
 	// StepClaimed the bridge has been claimed on the destination network
 	StepClaimed
 )
 
 var bridgeStepNames = map[BridgeStep]string{
-	StepWaitingGERUpdate:    "WaitingGERUpdate",
-	StepWaitingLERUpdate:    "WaitingLERUpdate",
-	StepPendingInclusion:    "PendingInclusion",
-	StepCertificatePending:  "CertificatePending",
-	StepWaitL1SettledGER:    "WaitL1SettledGER",
-	StepWaitingGERInjection: "WaitingGERInjection",
-	StepWaitingClaim:        "WaitingClaim",
-	StepClaimed:             "Claimed",
+	StepWaitingGERUpdate:           "WaitingGERUpdate",
+	StepWaitingLERUpdate:           "WaitingLERUpdate",
+	StepPendingInclusion:           "PendingInclusion",
+	StepCertificatePending:         "CertificatePending",
+	StepWaitL1SettledGER:           "WaitL1SettledGER",
+	StepWaitingL1InfoLeafAvailable: "WaitingL1InfoLeafAvailable",
+	StepWaitingGERInjection:        "WaitingGERInjection",
+	StepWaitingClaim:               "WaitingClaim",
+	StepClaimed:                    "Claimed",
 }
 
 // String representation of the enum
@@ -283,6 +297,15 @@ type InjectedGERL1Leaf struct {
 	GER            common.Hash `json:"ger"`
 	BlockNumber    uint64      `json:"block_number"`
 	BlockTimestamp uint64      `json:"block_timestamp"`
+}
+
+// L1InfoLeafAvailableResult is the result of StepWaitingL1InfoLeafAvailable once it completes:
+// the L1 info tree leaf index covering the bridge's origin deposit, as resolved by the
+// bridge-service instance that will build the claim proof for it (GET
+// /bridge/v1/l1-info-tree-index, queried against the origin network's own instance, or the
+// destination's when the origin is mainnet — see #1823)
+type L1InfoLeafAvailableResult struct {
+	L1InfoTreeIndex uint32 `json:"l1_info_tree_index"`
 }
 
 // InjectedL2GERBlock is the L2 block the GER was actually injected at on the destination

@@ -92,6 +92,14 @@ type GERSource interface {
 	// network, or nil if it has not been injected yet. Only queried for L2-originated bridges
 	// arriving at an L2, right after StepWaitL1SettledGER
 	InjectedGERAtIndex(ctx context.Context, bridge *BridgeInfo, leafIndex uint32) (*types.GERData, error)
+
+	// L1InfoTreeIndexForBridge returns the L1 info tree leaf index covering bridge's origin
+	// deposit — GET /bridge/v1/l1-info-tree-index, queried against the bridge-service instance
+	// that will build the claim proof for it: the origin network's own instance, or, when the
+	// origin is mainnet (which has no bridge-service deployment of its own), the destination's
+	// — or nil if that instance's own L1 info tree sync has not caught up to this deposit yet.
+	// Only queried by StepWaitingL1InfoLeafAvailable
+	L1InfoTreeIndexForBridge(ctx context.Context, bridge *BridgeInfo) (*uint32, error)
 }
 
 // LERSource is the driven port to the Local Exit Root state on an L2-originated bridge's

@@ -461,7 +461,7 @@
                     "$ref": "#/definitions/github_com_agglayer_aggkit_bridgetracker_types.Duration"
                 },
                 "result": {
-                    "description": "Result is the data the step has produced so far; its shape depends on Step:\n*types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult\n(StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),\n*types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData\n(StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER) or\n*types.ClaimResult (StepClaimed). nil until\nthe step produces one, and for steps that never do. Most steps only set this once Done,\nbut StepCertificatePending (Status still InProgress) may already carry the certificate's\ncurrent, not yet settled, status — see domain.ErrCertificateNotSettled"
+                    "description": "Result is the data the step has produced so far; its shape depends on Step:\n*types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult\n(StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),\n*types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData\n(StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER),\n*types.L1InfoLeafAvailableResult (StepWaitingL1InfoLeafAvailable) or *types.ClaimResult\n(StepClaimed). nil until\nthe step produces one, and for steps that never do. Most steps only set this once Done,\nbut StepCertificatePending (Status still InProgress) may already carry the certificate's\ncurrent, not yet settled, status — see domain.ErrCertificateNotSettled"
                 },
                 "start_date": {
                     "type": "string"
@@ -497,6 +497,10 @@
                             "$ref": "#/definitions/api.BridgeStatus"
                         }
                     ]
+                },
+                "claim_status": {
+                    "description": "ClaimStatus is a simplified claim-readiness summary, one of \"pending\",\n\"readyToClaim\", \"claimed\" or \"error\" — see domain.TrackingData.ClaimStatus for exactly\nhow it is derived from TrackingStatus and the current step. For most clients this is all\nthat is needed to know whether the bridge can be claimed; TrackingStatus/AllSteps remain\nfor anything that needs the full detail",
+                    "type": "string"
                 },
                 "error": {
                     "description": "Error mirrors whatever currently explains the bridge not progressing, if anything: a\nterminal give-up to even resolve it (e.g. the tx does not exist on the network or is\nnot a bridge transaction — TrackingStatus is Error and BridgeStatus/StepIndex/AllSteps\nstay nil forever), a transient FindBridge failure still being retried (TrackingStatus\nis unaffected), or the same error already nested in AllSteps[StepIndex].Error once the\nbridge is otherwise resolved. nil while nothing has failed",
@@ -550,12 +554,26 @@
                         1000000000,
                         60000000000,
                         3600000000000,
+                        -9223372036854775808,
+                        9223372036854775807,
                         1,
                         1000,
                         1000000,
                         1000000000,
                         60000000000,
-                        3600000000000
+                        3600000000000,
+                        -9223372036854775808,
+                        9223372036854775807,
+                        1,
+                        1000,
+                        1000000,
+                        1000000000,
+                        60000000000,
+                        3600000000000,
+                        1,
+                        1000,
+                        1000000,
+                        1000000000
                     ],
                     "x-enum-varnames": [
                         "minDuration",
@@ -574,12 +592,26 @@
                         "Second",
                         "Minute",
                         "Hour",
+                        "minDuration",
+                        "maxDuration",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",
                         "Second",
                         "Minute",
-                        "Hour"
+                        "Hour",
+                        "minDuration",
+                        "maxDuration",
+                        "Nanosecond",
+                        "Microsecond",
+                        "Millisecond",
+                        "Second",
+                        "Minute",
+                        "Hour",
+                        "Nanosecond",
+                        "Microsecond",
+                        "Millisecond",
+                        "Second"
                     ]
                 }
             }
@@ -819,6 +851,10 @@
         "types.HealthResponse": {
             "type": "object",
             "properties": {
+                "api_revision": {
+                    "description": "APIRevision is the tracker's wire API contract version (see CurrentAPIRevision) —\nbumped whenever the wire contract changes, so a client can detect which shape the\nresponding instance speaks",
+                    "type": "integer"
+                },
                 "config_sha1": {
                     "description": "ConfigSHA1 is the sha1sum (hex) of the configuration the instance was started with;\nit allows checking that all instances behind a proxy run the same configuration",
                     "type": "string"

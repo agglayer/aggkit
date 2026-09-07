@@ -13,6 +13,7 @@ import (
 func TestTrackingDataMarshalJSONUnresolved(t *testing.T) {
 	data := TrackingData{
 		TrackingStatus: types.TrackingStatusRegistered.String(),
+		ClaimStatus:    types.TrackerClaimStatusPending.String(),
 		NetworkID:      1,
 		TxHash:         common.HexToHash("0x01"),
 	}
@@ -22,6 +23,7 @@ func TestTrackingDataMarshalJSONUnresolved(t *testing.T) {
 
 	require.JSONEq(t, `{
 		"tracking_status": "registered",
+		"claim_status": "pending",
 		"network_id": 1,
 		"tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
 		"bridge_status": null,
@@ -34,6 +36,7 @@ func TestTrackingDataMarshalJSONUnresolved(t *testing.T) {
 func TestTrackingDataMarshalJSONError(t *testing.T) {
 	data := TrackingData{
 		TrackingStatus: types.TrackingStatusError.String(),
+		ClaimStatus:    types.TrackerClaimStatusError.String(),
 		NetworkID:      1,
 		TxHash:         common.HexToHash("0x01"),
 		Error: &types.ErrorStep{
@@ -49,6 +52,7 @@ func TestTrackingDataMarshalJSONError(t *testing.T) {
 	var raw map[string]any
 	require.NoError(t, json.Unmarshal(out, &raw))
 	require.Equal(t, "error", raw["tracking_status"])
+	require.Equal(t, "error", raw["claim_status"])
 	require.Nil(t, raw["bridge_status"], "the tracker never resolved the bridge at all")
 	require.Nil(t, raw["step_index"])
 	require.Nil(t, raw["all_steps"])
@@ -90,10 +94,58 @@ func TestTrackingDataFromNoErrorIsNil(t *testing.T) {
 	require.Nil(t, data.Error)
 }
 
+// TestTrackingDataFromClaimStatus pins that trackingDataFrom carries over
+// domain.TrackingData.ClaimStatus as its string representation
+func TestTrackingDataFromClaimStatus(t *testing.T) {
+	id := domain.TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}
+	info := &domain.BridgeInfo{NetworkID: 1}
+
+	testCases := []struct {
+		name     string
+		allSteps []domain.BridgeStepPath
+		expected string
+	}{
+		{
+			name:     "resolved bridge without steps yet -> PENDING",
+			expected: types.TrackerClaimStatusPending.String(),
+		},
+		{
+			name: "current step WaitingClaim -> READY_TO_CLAIM",
+			allSteps: []domain.BridgeStepPath{
+				{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress},
+			},
+			expected: types.TrackerClaimStatusReadyToClaim.String(),
+		},
+		{
+			name: "current step Claimed -> CLAIMED",
+			allSteps: []domain.BridgeStepPath{
+				{Step: types.StepClaimed, Status: types.StepStatusDone},
+			},
+			expected: types.TrackerClaimStatusClaimed.String(),
+		},
+		{
+			name: "step in error -> ERROR",
+			allSteps: []domain.BridgeStepPath{
+				{Step: types.StepWaitingClaim, Status: types.StepStatusError},
+			},
+			expected: types.TrackerClaimStatusError.String(),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tracking := domain.NewTrackingData(id, domain.TrackingBridgeTx{Info: info}, tc.allSteps)
+			data := trackingDataFrom(tracking)
+			require.Equal(t, tc.expected, data.ClaimStatus)
+		})
+	}
+}
+
 func TestTrackingDataMarshalJSONResolved(t *testing.T) {
 	stepIndex := 0
 	data := TrackingData{
 		TrackingStatus: types.TrackingStatusFinished.String(),
+		ClaimStatus:    types.TrackerClaimStatusClaimed.String(),
 		NetworkID:      1,
 		TxHash:         common.HexToHash("0x01"),
 		BridgeStatus: &BridgeStatus{
@@ -112,6 +164,7 @@ func TestTrackingDataMarshalJSONResolved(t *testing.T) {
 	var raw map[string]any
 	require.NoError(t, json.Unmarshal(out, &raw))
 	require.Equal(t, "finished", raw["tracking_status"])
+	require.Equal(t, "claimed", raw["claim_status"])
 	require.NotNil(t, raw["bridge_status"])
 	require.EqualValues(t, 0, raw["step_index"])
 	allSteps, ok := raw["all_steps"].([]any)

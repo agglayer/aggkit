@@ -122,6 +122,28 @@ func (t *TrackingData) TrackingStatus() types.TrackingStatus {
 	return types.TrackingStatusRegistered
 }
 
+// ClaimStatus derives a simplified claim-readiness summary from the snapshot, for clients
+// that only care about "is this claimable" without walking AllSteps themselves:
+// TrackingStatusError takes priority (types.TrackerClaimStatusError, whether the tracker gave
+// up resolving the bridge at all or one of its steps reached an error); otherwise the current
+// step decides — types.TrackerClaimStatusClaimed for StepClaimed, types.
+// TrackerClaimStatusReadyToClaim for StepWaitingClaim, and types.TrackerClaimStatusPending for
+// every other step, including before the bridge resolves (StepIndex nil)
+func (t *TrackingData) ClaimStatus() types.TrackerClaimStatus {
+	if t.TrackingStatus() == types.TrackingStatusError {
+		return types.TrackerClaimStatusError
+	}
+	if idx := t.StepIndex(); idx != nil {
+		switch t.allSteps[*idx].Step {
+		case types.StepClaimed:
+			return types.TrackerClaimStatusClaimed
+		case types.StepWaitingClaim:
+			return types.TrackerClaimStatusReadyToClaim
+		}
+	}
+	return types.TrackerClaimStatusPending
+}
+
 func (t *TrackingData) ID() TrackingID {
 	if t == nil {
 		// TODO:think about this? must be a fatal?
