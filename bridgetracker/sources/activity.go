@@ -166,3 +166,40 @@ func (s *ActivitySource) ClaimInfo(
 	}
 	return res.Claims[0], nil
 }
+
+// IsReadyToClaim implements bridgetracker.ActivityClaimChecker: it resolves the L1 info tree
+// leaf covering bridge's own origin deposit (GET /bridge/v1/l1-info-tree-index, queried per
+// bridgeServiceClients.l1InfoTreeIndexClientFor's routing rule — the same one
+// GERSource.L1InfoTreeIndexForBridge uses to build the claim proof), then whether that leaf has
+// already been injected on the destination (GET /bridge/v1/injected-l1-info-leaf, always asked
+// of the destination's own instance). Both must resolve for the bridge to be ready to claim;
+// either one still pending (a 404) reports false, not an error
+func (s *ActivitySource) IsReadyToClaim(ctx context.Context, bridge *domain.ScannedBridge) (bool, error) {
+	originSvc, err := s.services.l1InfoTreeIndexClientFor(bridge.NetworkID, bridge.Bridge.DestinationNetwork)
+	if err != nil {
+		return false, err
+	}
+
+	leafIndex, err := originSvc.GetL1InfoTreeIndex(ctx, int(bridge.NetworkID), int(bridge.Bridge.DepositCount))
+	if isNotFound(err) {
+		return false, nil // not covered by any L1 info tree leaf yet
+	}
+	if err != nil {
+		return false, fmt.Errorf("fetching l1 info tree index for network %d deposit %d: %w",
+			bridge.NetworkID, bridge.Bridge.DepositCount, err)
+	}
+
+	destSvc, err := s.services.aggkitBridgeClientFor(bridge.Bridge.DestinationNetwork)
+	if err != nil {
+		return false, err
+	}
+	_, err = destSvc.GetInjectedL1InfoLeaf(ctx, int(bridge.Bridge.DestinationNetwork), int(leafIndex))
+	if isNotFound(err) {
+		return false, nil // covering leaf not injected on the destination yet
+	}
+	if err != nil {
+		return false, fmt.Errorf("fetching injected l1 info leaf %d on network %d: %w",
+			leafIndex, bridge.Bridge.DestinationNetwork, err)
+	}
+	return true, nil
+}

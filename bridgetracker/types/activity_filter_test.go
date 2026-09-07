@@ -10,6 +10,7 @@ func TestActivityFilterString(t *testing.T) {
 	require.Equal(t, "all", ActivityFilterAll.String())
 	require.Equal(t, "claimed", ActivityFilterClaimed.String())
 	require.Equal(t, "pending", ActivityFilterPending.String())
+	require.Equal(t, "readyToClaim", ActivityFilterReadyToClaim.String())
 	require.Equal(t, "error", ActivityFilterError.String())
 	require.Equal(t, "Unknown(99)", ActivityFilter(99).String())
 }
@@ -24,6 +25,7 @@ func TestParseActivityFilter(t *testing.T) {
 		{input: "all", want: ActivityFilterAll},
 		{input: "claimed", want: ActivityFilterClaimed},
 		{input: "pending", want: ActivityFilterPending},
+		{input: "readyToClaim", want: ActivityFilterReadyToClaim},
 		{input: "error", want: ActivityFilterError},
 		{input: "bogus", wantErr: true},
 	}

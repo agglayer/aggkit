@@ -43,7 +43,7 @@ const (
 	includeTrackingQueryParam = "includeTracking"
 
 	// filterBridgesQueryParam selects which bridges the activity endpoint returns: "all"
-	// (default), "claimed" or "pending" (see types.ActivityFilter)
+	// (default), "claimed", "pending", "readyToClaim" or "error" (see types.ActivityFilter)
 	filterBridgesQueryParam = "filterBridges"
 
 	decimalBase   = 10

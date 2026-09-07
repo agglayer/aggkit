@@ -147,16 +147,21 @@ func (a *ActivityCache) upsert(
 }
 
 // matchesFilter reports whether entry belongs in a GetActivity result under filter:
-// ActivityFilterAll always matches; the other filters match exactly one ClaimStatus each — see
-// ActivityFilter's doc for what each one means
+// ActivityFilterAll always matches; the other filters match exactly one TrackerClaimStatus each
+// — see ActivityFilter's doc for what each one means. TrackerClaimStatus (rather than the
+// coarser ClaimStatus) is what distinguishes ActivityFilterPending from
+// ActivityFilterReadyToClaim; it mirrors ClaimStatus directly for the claimed/error cases (see
+// domain.ActivityEntry.TrackerClaimStatus)
 func matchesFilter(entry *domain.ActivityEntry, filter types.ActivityFilter) bool {
 	switch filter {
 	case types.ActivityFilterClaimed:
-		return entry.ClaimStatus == types.ClaimStatusClaimed
+		return entry.TrackerClaimStatus == types.TrackerClaimStatusClaimed
 	case types.ActivityFilterPending:
-		return entry.ClaimStatus == types.ClaimStatusUnclaimed
+		return entry.TrackerClaimStatus == types.TrackerClaimStatusPending
+	case types.ActivityFilterReadyToClaim:
+		return entry.TrackerClaimStatus == types.TrackerClaimStatusReadyToClaim
 	case types.ActivityFilterError:
-		return entry.ClaimStatus == types.ClaimStatusError
+		return entry.TrackerClaimStatus == types.TrackerClaimStatusError
 	case types.ActivityFilterAll:
 		return true
 	default:
@@ -167,7 +172,9 @@ func matchesFilter(entry *domain.ActivityEntry, filter types.ActivityFilter) boo
 // skipsClaimInfo reports whether filter excludes a claimed bridge from its result, making the
 // destination bridge service's claim record unnecessary to fetch right now (see refresh)
 func skipsClaimInfo(filter types.ActivityFilter) bool {
-	return filter == types.ActivityFilterPending || filter == types.ActivityFilterError
+	return filter == types.ActivityFilterPending ||
+		filter == types.ActivityFilterReadyToClaim ||
+		filter == types.ActivityFilterError
 }
 
 // addrCache returns (creating if necessary) the per-address cache for fromAddress, stamping its
@@ -244,6 +251,7 @@ func (a *ActivityCache) refresh(
 			a.logger.Warnf("activity: checking claim state of bridge tx=%s (network=%d, deposit=%d): %v",
 				item.Bridge.TxHash, item.NetworkID, item.Bridge.DepositCount, err)
 			entry.ClaimStatus = types.ClaimStatusError
+			entry.TrackerClaimStatus = types.TrackerClaimStatusError
 			entry.Errors = map[string]string{"claim": err.Error()}
 			return entry
 		}
@@ -255,6 +263,7 @@ func (a *ActivityCache) refresh(
 	}
 
 	if entry.ClaimStatus == types.ClaimStatusClaimed {
+		entry.TrackerClaimStatus = types.TrackerClaimStatusClaimed
 		if skipsClaimInfo(filter) {
 			return entry
 		}
@@ -266,6 +275,10 @@ func (a *ActivityCache) refresh(
 		return entry
 	}
 
+	// Unclaimed: conservatively "pending" until proven otherwise, either by the tracker's own
+	// snapshot (includeTracking) or the direct readiness check below
+	entry.TrackerClaimStatus = types.TrackerClaimStatusPending
+
 	if includeTracking {
 		id := domain.TrackingID{NetworkID: item.NetworkID, TxHash: common.HexToHash(string(item.Bridge.TxHash))}
 		tracking, err := a.supervised.Get(id, true)
@@ -273,7 +286,25 @@ func (a *ActivityCache) refresh(
 			a.logger.Warnf("activity: registering bridge tx=%s with the tracker: %v", item.Bridge.TxHash, err)
 		} else {
 			entry.Tracking = tracking
+			entry.TrackerClaimStatus = tracking.ClaimStatus()
+			return entry
 		}
+	}
+
+	// includeTracking was not requested, or registering with the tracker failed: fall back to
+	// asking the bridge-service endpoints directly whether the bridge is already ready to claim
+	// (see ActivityClaimChecker.IsReadyToClaim), without the cost of registering it with the
+	// tracker
+	ready, err := a.claims.IsReadyToClaim(ctx, item)
+	if err != nil {
+		a.logger.Warnf("activity: checking claim readiness of bridge tx=%s (network=%d, deposit=%d): %v",
+			item.Bridge.TxHash, item.NetworkID, item.Bridge.DepositCount, err)
+		if entry.Errors == nil {
+			entry.Errors = make(map[string]string)
+		}
+		entry.Errors["readiness"] = err.Error()
+	} else if ready {
+		entry.TrackerClaimStatus = types.TrackerClaimStatusReadyToClaim
 	}
 	return entry
 }

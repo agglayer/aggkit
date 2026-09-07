@@ -17,7 +17,7 @@
     "paths": {
         "/activity/from/{from_address}": {
             "get": {
-                "description": "Scans every bridge service the tracker knows about for bridges sent by\nfrom_address and reports each one's claim state, exactly as the bridge service\nreported it. Results are cached: a bridge already known to be claimed, with its\nclaim record already fetched, is not rechecked on a later call. Passing\nincludeTracking=true additionally registers every still-unclaimed bridge with\nthe bridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / errored while checking). A network whose bridge service could not be\nscanned is skipped and reported in the \"warnings\" field instead of failing the\nwhole request.",
+                "description": "Scans every bridge service the tracker knows about for bridges sent by\nfrom_address and reports each one's claim state, exactly as the bridge service\nreported it. Results are cached: a bridge already known to be claimed, with its\nclaim record already fetched, is not rechecked on a later call. Passing\nincludeTracking=true additionally registers every still-unclaimed bridge with\nthe bridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). A network whose bridge\nservice could not be scanned is skipped and reported in the \"warnings\" field\ninstead of failing the whole request.",
                 "produces": [
                     "application/json"
                 ],
@@ -44,11 +44,12 @@
                             "all",
                             "claimed",
                             "pending",
+                            "readyToClaim",
                             "error"
                         ],
                         "type": "string",
                         "default": "all",
-                        "description": "Which bridges to return",
+                        "description": "Claim filter",
                         "name": "filterBridges",
                         "in": "query"
                     }
@@ -268,7 +269,7 @@
                     "type": "integer"
                 },
                 "claim": {
-                    "description": "Claim is the raw claim record, exactly as returned by the destination network's bridge\nservice, unmodified, once Claimed is true and the indexer has recorded it",
+                    "description": "Claim is the raw claim record, exactly as returned by the destination network's bridge\nservice, unmodified, once ClaimStatus is \"claimed\" and the indexer has recorded it",
                     "allOf": [
                         {
                             "$ref": "#/definitions/types.ClaimResponse"
@@ -279,8 +280,8 @@
                     "description": "ClaimNetworkID is the network whose bridge service reported Claim (the bridge's\ndestination network); only present alongside Claim",
                     "type": "integer"
                 },
-                "claimed": {
-                    "description": "Claimed is the tri-state result of the destination bridge contract's isClaimed() call\nthe last time it was checked: \"false\" (confirmed unclaimed), \"true\" (claimed), or\n\"error\" if the check itself failed (e.g. no bridge contract address configured for the\ndestination network) — callers must not read \"error\" as \"false\"",
+                "claim_status": {
+                    "description": "ClaimStatus is a simplified claim-readiness summary, one of \"pending\", \"readyToClaim\",\n\"claimed\" or \"error\" — the same vocabulary and field name as TrackingData.ClaimStatus (see\ndomain.TrackingData.ClaimStatus for exactly how it is derived). \"error\" reports the\ndestination bridge contract's isClaimed() call itself failing (e.g. no bridge contract\naddress configured for the destination network) — callers must not read it as \"pending\".\nWhile unclaimed, \"readyToClaim\" vs \"pending\" is resolved from the tracker's own snapshot\nwhen Tracking is present, or directly against the bridge-service endpoints otherwise (see\ndomain.ActivityClaimChecker.IsReadyToClaim)",
                     "type": "string"
                 },
                 "creation_timestamp": {
@@ -288,7 +289,7 @@
                     "type": "integer"
                 },
                 "errors": {
-                    "description": "Errors holds the message of whatever check failed the last time this item was refreshed,\nkeyed by which check it was — currently only \"claim\", present when Claimed is \"error\"",
+                    "description": "Errors holds the message of whatever check failed the last time this item was refreshed,\nkeyed by which check it was — currently only \"claim\", present when ClaimStatus is \"error\"",
                     "type": "object",
                     "additionalProperties": {
                         "type": "string"
@@ -569,11 +570,7 @@
                         1000000,
                         1000000000,
                         60000000000,
-                        3600000000000,
-                        1,
-                        1000,
-                        1000000,
-                        1000000000
+                        3600000000000
                     ],
                     "x-enum-varnames": [
                         "minDuration",
@@ -607,11 +604,7 @@
                         "Millisecond",
                         "Second",
                         "Minute",
-                        "Hour",
-                        "Nanosecond",
-                        "Microsecond",
-                        "Millisecond",
-                        "Second"
+                        "Hour"
                     ]
                 }
             }

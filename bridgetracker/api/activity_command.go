@@ -32,16 +32,20 @@ type ActivityItem struct {
 	// Bridge.OriginNetwork, which is the origin network of the bridged asset and can differ for
 	// a re-bridged asset (see domain.ScannedBridge)
 	BridgeNetworkID uint32 `json:"bridge_network_id"`
-	// Claimed is the tri-state result of the destination bridge contract's isClaimed() call
-	// the last time it was checked: "false" (confirmed unclaimed), "true" (claimed), or
-	// "error" if the check itself failed (e.g. no bridge contract address configured for the
-	// destination network) — callers must not read "error" as "false"
-	Claimed string `json:"claimed"`
+	// ClaimStatus is a simplified claim-readiness summary, one of "pending", "readyToClaim",
+	// "claimed" or "error" — the same vocabulary and field name as TrackingData.ClaimStatus (see
+	// domain.TrackingData.ClaimStatus for exactly how it is derived). "error" reports the
+	// destination bridge contract's isClaimed() call itself failing (e.g. no bridge contract
+	// address configured for the destination network) — callers must not read it as "pending".
+	// While unclaimed, "readyToClaim" vs "pending" is resolved from the tracker's own snapshot
+	// when Tracking is present, or directly against the bridge-service endpoints otherwise (see
+	// domain.ActivityClaimChecker.IsReadyToClaim)
+	ClaimStatus string `json:"claim_status"`
 	// ClaimNetworkID is the network whose bridge service reported Claim (the bridge's
 	// destination network); only present alongside Claim
 	ClaimNetworkID uint32 `json:"claim_network_id,omitempty"`
 	// Claim is the raw claim record, exactly as returned by the destination network's bridge
-	// service, unmodified, once Claimed is true and the indexer has recorded it
+	// service, unmodified, once ClaimStatus is "claimed" and the indexer has recorded it
 	Claim *bridgeservicetypes.ClaimResponse `json:"claim,omitempty"`
 	// CreationTimestamp is when this bridge was first cached by the activity endpoint (unix
 	// seconds); it never changes after that
@@ -54,7 +58,7 @@ type ActivityItem struct {
 	// request set includeTracking=true and the bridge is still unclaimed
 	Tracking *TrackingData `json:"tracking,omitempty"`
 	// Errors holds the message of whatever check failed the last time this item was refreshed,
-	// keyed by which check it was — currently only "claim", present when Claimed is "error"
+	// keyed by which check it was — currently only "claim", present when ClaimStatus is "error"
 	Errors map[string]string `json:"errors,omitempty"`
 }
 
@@ -84,13 +88,13 @@ type ActivityResponse struct {
 // from_address path parameter, and reports each one's claim state. Passing
 // ?includeTracking=true additionally registers every still-unclaimed bridge found with the
 // bridge tracker (same effect as calling GetTxStatus for it) and includes its current tracking
-// snapshot. ?filterBridges=claimed|pending|error restricts the result to only bridges with that
-// claim state (default "all"); a claimed bridge excluded by "pending"/"error" never has its
-// claim record fetched, so switching back to "all"/"claimed" later fetches it then. A network
-// whose bridge service could not be scanned never fails the request: it is skipped and reported
-// in the "warnings" field instead, so Bridges is still whatever every other network reported.
-// 200 OK unless: invalid from_address/filterBridges (ErrorData/400), or the scan itself failed
-// (ErrorData/500)
+// snapshot. ?filterBridges=claimed|pending|readyToClaim|error restricts the result to only
+// bridges with that claim state (default "all"); a claimed bridge excluded by
+// "pending"/"readyToClaim"/"error" never has its claim record fetched, so switching back to
+// "all"/"claimed" later fetches it then. A network whose bridge service could not be scanned
+// never fails the request: it is skipped and reported in the "warnings" field instead, so
+// Bridges is still whatever every other network reported. 200 OK unless: invalid
+// from_address/filterBridges (ErrorData/400), or the scan itself failed (ErrorData/500)
 //
 // @Summary Get bridge activity by sender address
 // @Description Scans every bridge service the tracker knows about for bridges sent by
@@ -100,14 +104,14 @@ type ActivityResponse struct {
 // @Description includeTracking=true additionally registers every still-unclaimed bridge with
 // @Description the bridge tracker and includes its current tracking snapshot. filterBridges
 // @Description restricts the result to bridges with only that claim state (claimed / still
-// @Description pending / errored while checking). A network whose bridge service could not be
-// @Description scanned is skipped and reported in the "warnings" field instead of failing the
-// @Description whole request.
+// @Description pending / ready to claim / errored while checking). A network whose bridge
+// @Description service could not be scanned is skipped and reported in the "warnings" field
+// @Description instead of failing the whole request.
 // @Tags bridge-tracker
 // @Produce json
 // @Param from_address path string true "Address that sent the bridges to look up"
 // @Param includeTracking query bool false "Register still-unclaimed bridges with the tracker"
-// @Param filterBridges query string false "Which bridges to return" Enums(all, claimed, pending, error) default(all)
+// @Param filterBridges query string false "Claim filter" Enums(all, claimed, pending, readyToClaim, error) default(all)
 // @Success 200 {object} ActivityResponse
 // @Failure 400 {object} types.ErrorData "Invalid from_address or filterBridges"
 // @Failure 500 {object} types.ErrorData "Scanning the configured bridge services failed"
@@ -144,7 +148,7 @@ func newActivityItems(entries []*domain.ActivityEntry) []ActivityItem {
 		item := ActivityItem{
 			Bridge:               e.Bridge,
 			BridgeNetworkID:      e.BridgeNetworkID,
-			Claimed:              e.ClaimStatus.String(),
+			ClaimStatus:          e.TrackerClaimStatus.String(),
 			Errors:               e.Errors,
 			CreationTimestamp:    uint64(e.CreatedAt.Unix()),
 			LastUpdatedTimestamp: uint64(e.UpdatedAt.Unix()),

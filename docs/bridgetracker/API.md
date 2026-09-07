@@ -391,7 +391,7 @@ Example:
 ```json
 {
   "status": "ok",
-  "api_revision": 1,
+  "api_revision": 2,
   "instance_id": "3f1c9a2e-8b4d-4f6a-9c0e-5d7b2a1e4c8f",
   "config_sha1": "2ef7bde608ce5404e97d5f042f95f89f1c232871",
   "version": {
@@ -421,7 +421,7 @@ Request:
 | ------|----------|------|-----------|------|
 | from_address | path | Address | yes | address that sent the bridges to look up |
 | includeTracking | query | bool | no | `true` additionally registers every still-unclaimed bridge in the result with the bridge tracker (same effect as calling the main endpoint for it) and includes its current [TrackingData](#trackingdata) snapshot. Default `false` |
-| filterBridges | query | string | no | one of `"all"` (default), `"claimed"`, `"pending"`, `"error"` — restricts the result to bridges with only that `claimed` state |
+| filterBridges | query | string | no | one of `"all"` (default), `"claimed"`, `"pending"`, `"readyToClaim"`, `"error"` — restricts the result to bridges with only that `claim_status` |
 
 ### Behavior
 
@@ -429,7 +429,7 @@ Request:
 - `400 Bad Request` — invalid `from_address`, or an unrecognized `filterBridges` value: the body is an [ErrorData](#errordata).
 - `500 Internal Server Error` — scanning the configured bridge services failed: the body is an [ErrorData](#errordata).
 - **This endpoint is opt-in**: it only exists if the binary is configured with both an activity bridge scanner and claim checker (`Config.ActivityScanner`/`ActivityClaims`); otherwise the route is not registered at all (plain `404`).
-- Requesting `filterBridges=pending` or `filterBridges=error` **skips fetching the claim record** of a bridge found to be claimed, since it would be filtered out of that result anyway — its cache entry simply has no `claim` yet, and is fetched normally the next time `filterBridges=all`/`claimed` is used for that address.
+- Requesting `filterBridges=pending`, `filterBridges=readyToClaim` or `filterBridges=error` **skips fetching the claim record** of a bridge found to be claimed, since it would be filtered out of that result anyway — its cache entry simply has no `claim` yet, and is fetched normally the next time `filterBridges=all`/`claimed` is used for that address.
 - A network whose bridge service could not be scanned **never fails the request**: it is skipped and reported in `warnings` instead, so `bridges` is still whatever every other network reported (possibly incomplete for the networks listed in `warnings`).
 
 ### ActivityResponse
@@ -458,13 +458,13 @@ sit alongside them (not nested inside) so the caller knows which bridge service 
 | ------|------|------|
 | bridge | BridgeResponse | raw bridge event, exactly as returned by the bridge service that reported it |
 | bridge_network_id | uint32 | the network whose bridge service returned `bridge` — i.e. the network the bridge-creating tx was actually sent to. **Not** the same as `bridge.origin_network`, which is the origin network of the bridged *asset* and can differ when re-bridging an asset that itself originated on a third network |
-| claimed | string | bare string, tri-state result of the destination bridge contract's `isClaimed()` call the last time it was checked: `"false"` (confirmed unclaimed), `"true"` (claimed), or `"error"` if the check itself failed (e.g. no bridge contract address configured for the destination network) — callers must **not** read `"error"` as `"false"` |
+| claim_status | string | bare string, one of `"pending"`, `"readyToClaim"`, `"claimed"`, `"error"` — the same vocabulary and field name as `claim_status` on [TrackingData](#trackingdata). `"claimed"`/`"error"` are derived straight from the destination bridge contract's `isClaimed()` call the last time it was checked — `"error"` if the check itself failed (e.g. no bridge contract address configured for the destination network), callers must **not** read it as `"pending"`. While unclaimed, `"readyToClaim"` vs `"pending"` is copied from the tracker's own snapshot when `tracking` is present, or resolved directly against `l1-info-tree-index`/`injected-l1-info-leaf` otherwise |
 | claim_network_id | uint32 | network whose bridge service reported `claim` (the bridge's destination network); **omitted** (no key) until `claim` is present |
-| claim | ClaimResponse | raw claim record, exactly as returned by the destination network's bridge service, once `claimed` is `"true"` and the indexer has recorded it; **omitted** (no key) until then |
+| claim | ClaimResponse | raw claim record, exactly as returned by the destination network's bridge service, once `claim_status` is `"claimed"` and the indexer has recorded it; **omitted** (no key) until then |
 | creation_timestamp | uint64 | unix seconds; when this bridge was first cached by this endpoint — never changes after that |
 | last_updated_timestamp | uint64 | unix seconds; when this item's claim/tracking state was last (re)checked, whether or not anything about it actually changed. Stops advancing once the bridge is claimed with its claim record fetched, since it is never rechecked again from that point on |
 | tracking | TrackingData | the bridge tracker's current status for this bridge (see [TrackingData](#trackingdata)); **omitted** (no key) unless the request set `includeTracking=true` and the bridge is still unclaimed |
-| errors | map[string]string | message of whatever check failed the last time this item was refreshed, keyed by which check it was — currently only `"claim"`, present only when `claimed` is `"error"`. **Omitted** (no key) while nothing has failed |
+| errors | map[string]string | message of whatever check failed the last time this item was refreshed, keyed by which check it was — `"claim"` when the `isClaimed()` check itself failed, `"readiness"` when resolving `"readyToClaim"` vs `"pending"` itself failed (`claim_status` then conservatively stays `"pending"`). **Omitted** (no key) while nothing has failed |
 
 ### BridgeResponse
 
@@ -540,7 +540,7 @@ Example (one claimed bridge, one still-pending bridge with `?includeTracking=tru
         "to_address": "0x0000000000000000000000000000000000000030"
       },
       "bridge_network_id": 1,
-      "claimed": "true",
+      "claim_status": "claimed",
       "claim_network_id": 2,
       "claim": {
         "block_num": 1050,
@@ -582,7 +582,7 @@ Example (one claimed bridge, one still-pending bridge with `?includeTracking=tru
         "to_address": "0x0000000000000000000000000000000000000030"
       },
       "bridge_network_id": 1,
-      "claimed": "false",
+      "claim_status": "pending",
       "creation_timestamp": 1700010100,
       "last_updated_timestamp": 1700010100,
       "tracking": {

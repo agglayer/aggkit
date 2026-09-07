@@ -76,7 +76,11 @@ func (f *fakeActivityScanner) BridgesFrom(
 // test can assert exactly how many times each was called (and fail loudly if called more).
 // isClaimedErrs, if non-nil, is consulted alongside isClaimed: a non-nil entry makes that call
 // fail instead of returning the paired isClaimed value. lastIsClaimedNetworkID records the
-// NetworkID of the last ScannedBridge IsClaimed was called with.
+// NetworkID of the last ScannedBridge IsClaimed was called with. readyToClaim/readyToClaimErr
+// configure IsReadyToClaim's own (single, reused) result, defaulting to "not ready, no error"
+// for tests that don't care about it; readyToClaims/readyToClaimErrs, if non-nil, are consulted
+// in FIFO order instead — one entry per expected IsReadyToClaim invocation — for tests that need
+// a mix of pending/ready-to-claim bridges in the same call.
 type fakeActivityClaims struct {
 	isClaimed              []bool
 	isClaimedErrs          []error
@@ -84,6 +88,11 @@ type fakeActivityClaims struct {
 	lastIsClaimedNetworkID uint32
 	claimInfo              []*bridgeservicetypes.ClaimResponse
 	claimInfoCalls         int
+	readyToClaim           bool
+	readyToClaimErr        error
+	readyToClaims          []bool
+	readyToClaimErrs       []error
+	readyToClaimCalls      int
 }
 
 func (f *fakeActivityClaims) IsClaimed(_ context.Context, bridge *domain.ScannedBridge) (bool, error) {
@@ -102,6 +111,21 @@ func (f *fakeActivityClaims) ClaimInfo(
 	claim := f.claimInfo[f.claimInfoCalls]
 	f.claimInfoCalls++
 	return claim, nil
+}
+
+func (f *fakeActivityClaims) IsReadyToClaim(context.Context, *domain.ScannedBridge) (bool, error) {
+	i := f.readyToClaimCalls
+	f.readyToClaimCalls++
+	if i < len(f.readyToClaimErrs) && f.readyToClaimErrs[i] != nil {
+		return false, f.readyToClaimErrs[i]
+	}
+	if i < len(f.readyToClaims) {
+		return f.readyToClaims[i], nil
+	}
+	if f.readyToClaimErr != nil {
+		return false, f.readyToClaimErr
+	}
+	return f.readyToClaim, nil
 }
 
 // newTestActivityCache builds an ActivityCache with a one-hour idle timeout, long enough that
@@ -150,6 +174,97 @@ func TestActivityCache_IncludeTrackingRegistersUnclaimedBridge(t *testing.T) {
 
 	wantID := domain.TrackingID{NetworkID: testScannedNetworkID, TxHash: common.HexToHash(string(bridge.TxHash))}
 	require.Equal(t, wantID, entries[0].Tracking.ID())
+}
+
+// TestActivityCache_TrackerClaimStatusMirrorsClaimState pins how ActivityEntry.TrackerClaimStatus
+// is derived for every combination the wire "Claimed" field can report: TrackerClaimStatusClaimed/
+// Error mirror ClaimStatus directly; while unclaimed, includeTracking=true copies the tracker's
+// own snapshot (a fresh, unresolved snapshot reads TrackerClaimStatusPending, per
+// domain.TrackingData.ClaimStatus), and never falls back to IsReadyToClaim, while
+// includeTracking=false resolves it directly through IsReadyToClaim instead.
+func TestActivityCache_TrackerClaimStatusMirrorsClaimState(t *testing.T) {
+	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
+
+	testCases := []struct {
+		name            string
+		isClaimed       bool
+		isClaimedErr    error
+		includeTracking bool
+		readyToClaim    bool
+		want            types.TrackerClaimStatus
+		wantReadyCalls  int
+	}{
+		{
+			name:      "claimed -> TrackerClaimStatusClaimed",
+			isClaimed: true,
+			want:      types.TrackerClaimStatusClaimed,
+		},
+		{
+			name:         "isClaimed() failure -> TrackerClaimStatusError",
+			isClaimedErr: errors.New("boom"),
+			want:         types.TrackerClaimStatusError,
+		},
+		{
+			name:            "unclaimed, includeTracking=true -> copied from the tracker's own snapshot",
+			isClaimed:       false,
+			includeTracking: true,
+			readyToClaim:    true, // must be ignored: tracking short-circuits IsReadyToClaim
+			want:            types.TrackerClaimStatusPending,
+			wantReadyCalls:  0,
+		},
+		{
+			name:            "unclaimed, includeTracking=false, not yet ready -> TrackerClaimStatusPending",
+			isClaimed:       false,
+			includeTracking: false,
+			readyToClaim:    false,
+			want:            types.TrackerClaimStatusPending,
+			wantReadyCalls:  1,
+		},
+		{
+			name:            "unclaimed, includeTracking=false, ready -> TrackerClaimStatusReadyToClaim",
+			isClaimed:       false,
+			includeTracking: false,
+			readyToClaim:    true,
+			want:            types.TrackerClaimStatusReadyToClaim,
+			wantReadyCalls:  1,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
+			claims := &fakeActivityClaims{
+				isClaimed:     []bool{tc.isClaimed},
+				isClaimedErrs: []error{tc.isClaimedErr},
+				claimInfo:     []*bridgeservicetypes.ClaimResponse{claim},
+				readyToClaim:  tc.readyToClaim,
+			}
+			cache := newTestActivityCache(scanner, claims)
+
+			entries, _, err := cache.GetActivity(t.Context(), testFromAddress, tc.includeTracking, types.ActivityFilterAll)
+			require.NoError(t, err)
+			require.Len(t, entries, 1)
+			require.Equal(t, tc.want, entries[0].TrackerClaimStatus)
+			require.Equal(t, tc.wantReadyCalls, claims.readyToClaimCalls)
+		})
+	}
+}
+
+// TestActivityCache_ReadyToClaimFailureLeavesPendingAndReportsError verifies a failed
+// IsReadyToClaim check does not fail the whole entry: TrackerClaimStatus conservatively stays
+// TrackerClaimStatusPending, and the failure is reported under Errors["readiness"].
+func TestActivityCache_ReadyToClaimFailureLeavesPendingAndReportsError(t *testing.T) {
+	wantErr := errors.New("l1 info tree index unavailable")
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false}, readyToClaimErr: wantErr}
+
+	cache := newTestActivityCache(scanner, claims)
+
+	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, types.TrackerClaimStatusPending, entries[0].TrackerClaimStatus)
+	require.Equal(t, wantErr.Error(), entries[0].Errors["readiness"])
 }
 
 // TestActivityCache_ClaimedAndIndexedBridgeIsNeverRechecked verifies a bridge that is claimed
@@ -243,17 +358,20 @@ func TestActivityCache_IsClaimedFailureReportsErrorStatus(t *testing.T) {
 }
 
 // TestActivityCache_FilterPendingExcludesClaimedAndErroredAndSkipsClaimInfo verifies
-// ActivityFilterPending returns only confirmed-unclaimed bridges — excluding both claimed ones
-// and ones whose isClaimed() check errored — and never fetches a claimed bridge's claim record
-// (only IsClaimed is consulted, never ClaimInfo).
+// ActivityFilterPending returns only bridges still unclaimed and not yet ready to claim —
+// excluding claimed, ready-to-claim, and errored ones — and never fetches a claimed bridge's
+// claim record (only IsClaimed is consulted, never ClaimInfo).
 func TestActivityCache_FilterPendingExcludesClaimedAndErroredAndSkipsClaimInfo(t *testing.T) {
 	pendingBridge := testScannedBridge(2)
 	scanner := &fakeActivityScanner{
-		bridges: []*domain.ScannedBridge{testScannedBridge(1), pendingBridge, testScannedBridge(3)},
+		bridges: []*domain.ScannedBridge{
+			testScannedBridge(1), pendingBridge, testScannedBridge(3), testScannedBridge(4),
+		},
 	}
 	claims := &fakeActivityClaims{
-		isClaimed:     []bool{true, false, false}, // no claimInfo entries: ClaimInfo must not be called
-		isClaimedErrs: []error{nil, nil, errors.New("boom")},
+		isClaimed:     []bool{true, false, false, false}, // no claimInfo entries: ClaimInfo must not be called
+		isClaimedErrs: []error{nil, nil, errors.New("boom"), nil},
+		readyToClaims: []bool{false, true}, // pendingBridge (not ready), then testScannedBridge(4) (ready)
 	}
 
 	cache := newTestActivityCache(scanner, claims)
@@ -263,6 +381,35 @@ func TestActivityCache_FilterPendingExcludesClaimedAndErroredAndSkipsClaimInfo(t
 	require.Len(t, entries, 1)
 	require.Equal(t, pendingBridge.Bridge, entries[0].Bridge)
 	require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
+	require.Equal(t, types.TrackerClaimStatusPending, entries[0].TrackerClaimStatus)
+	require.Equal(t, 0, claims.claimInfoCalls)
+}
+
+// TestActivityCache_FilterReadyToClaimReturnsOnlyReadyAndSkipsClaimInfo verifies
+// ActivityFilterReadyToClaim returns only bridges still unclaimed and ready to claim — excluding
+// claimed, still-pending, and errored ones — and never fetches a claimed bridge's claim record
+// for this filter either (only IsClaimed is consulted, never ClaimInfo).
+func TestActivityCache_FilterReadyToClaimReturnsOnlyReadyAndSkipsClaimInfo(t *testing.T) {
+	readyBridge := testScannedBridge(3)
+	scanner := &fakeActivityScanner{
+		bridges: []*domain.ScannedBridge{
+			testScannedBridge(1), testScannedBridge(2), readyBridge, testScannedBridge(4),
+		},
+	}
+	claims := &fakeActivityClaims{
+		isClaimed:     []bool{true, false, false, false}, // no claimInfo entries: ClaimInfo must not be called
+		isClaimedErrs: []error{nil, errors.New("boom"), nil, nil},
+		readyToClaims: []bool{true, false}, // readyBridge (ready), then testScannedBridge(4) (not ready)
+	}
+
+	cache := newTestActivityCache(scanner, claims)
+
+	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterReadyToClaim)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, readyBridge.Bridge, entries[0].Bridge)
+	require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
+	require.Equal(t, types.TrackerClaimStatusReadyToClaim, entries[0].TrackerClaimStatus)
 	require.Equal(t, 0, claims.claimInfoCalls)
 }
 
