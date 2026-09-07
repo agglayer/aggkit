@@ -32,20 +32,20 @@ type ActivityItem struct {
 	// Bridge.OriginNetwork, which is the origin network of the bridged asset and can differ for
 	// a re-bridged asset (see domain.ScannedBridge)
 	BridgeNetworkID uint32 `json:"bridge_network_id"`
-	// Claimed is a simplified claim-readiness summary, one of "pending", "readyToClaim",
-	// "claimed" or "error" — the same vocabulary as TrackingData.ClaimStatus (see
+	// ClaimStatus is a simplified claim-readiness summary, one of "pending", "readyToClaim",
+	// "claimed" or "error" — the same vocabulary and field name as TrackingData.ClaimStatus (see
 	// domain.TrackingData.ClaimStatus for exactly how it is derived). "error" reports the
 	// destination bridge contract's isClaimed() call itself failing (e.g. no bridge contract
 	// address configured for the destination network) — callers must not read it as "pending".
 	// While unclaimed, "readyToClaim" vs "pending" is resolved from the tracker's own snapshot
 	// when Tracking is present, or directly against the bridge-service endpoints otherwise (see
 	// domain.ActivityClaimChecker.IsReadyToClaim)
-	Claimed string `json:"claimed"`
+	ClaimStatus string `json:"claim_status"`
 	// ClaimNetworkID is the network whose bridge service reported Claim (the bridge's
 	// destination network); only present alongside Claim
 	ClaimNetworkID uint32 `json:"claim_network_id,omitempty"`
 	// Claim is the raw claim record, exactly as returned by the destination network's bridge
-	// service, unmodified, once Claimed is true and the indexer has recorded it
+	// service, unmodified, once ClaimStatus is "claimed" and the indexer has recorded it
 	Claim *bridgeservicetypes.ClaimResponse `json:"claim,omitempty"`
 	// CreationTimestamp is when this bridge was first cached by the activity endpoint (unix
 	// seconds); it never changes after that
@@ -58,7 +58,7 @@ type ActivityItem struct {
 	// request set includeTracking=true and the bridge is still unclaimed
 	Tracking *TrackingData `json:"tracking,omitempty"`
 	// Errors holds the message of whatever check failed the last time this item was refreshed,
-	// keyed by which check it was — currently only "claim", present when Claimed is "error"
+	// keyed by which check it was — currently only "claim", present when ClaimStatus is "error"
 	Errors map[string]string `json:"errors,omitempty"`
 }
 
@@ -148,7 +148,7 @@ func newActivityItems(entries []*domain.ActivityEntry) []ActivityItem {
 		item := ActivityItem{
 			Bridge:               e.Bridge,
 			BridgeNetworkID:      e.BridgeNetworkID,
-			Claimed:              e.TrackerClaimStatus.String(),
+			ClaimStatus:          e.TrackerClaimStatus.String(),
 			Errors:               e.Errors,
 			CreationTimestamp:    uint64(e.CreatedAt.Unix()),
 			LastUpdatedTimestamp: uint64(e.UpdatedAt.Unix()),

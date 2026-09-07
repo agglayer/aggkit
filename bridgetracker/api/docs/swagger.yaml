@@ -19,16 +19,16 @@ definitions:
         - $ref: '#/definitions/types.ClaimResponse'
         description: |-
           Claim is the raw claim record, exactly as returned by the destination network's bridge
-          service, unmodified, once Claimed is true and the indexer has recorded it
+          service, unmodified, once ClaimStatus is "claimed" and the indexer has recorded it
       claim_network_id:
         description: |-
           ClaimNetworkID is the network whose bridge service reported Claim (the bridge's
           destination network); only present alongside Claim
         type: integer
-      claimed:
+      claim_status:
         description: |-
-          Claimed is a simplified claim-readiness summary, one of "pending", "readyToClaim",
-          "claimed" or "error" — the same vocabulary as TrackingData.ClaimStatus (see
+          ClaimStatus is a simplified claim-readiness summary, one of "pending", "readyToClaim",
+          "claimed" or "error" — the same vocabulary and field name as TrackingData.ClaimStatus (see
           domain.TrackingData.ClaimStatus for exactly how it is derived). "error" reports the
           destination bridge contract's isClaimed() call itself failing (e.g. no bridge contract
           address configured for the destination network) — callers must not read it as "pending".
@@ -46,7 +46,7 @@ definitions:
           type: string
         description: |-
           Errors holds the message of whatever check failed the last time this item was refreshed,
-          keyed by which check it was — currently only "claim", present when Claimed is "error"
+          keyed by which check it was — currently only "claim", present when ClaimStatus is "error"
         type: object
       last_updated_timestamp:
         description: |-
@@ -289,25 +289,9 @@ definitions:
         - 1000000000
         - 60000000000
         - 3600000000000
-        - -9223372036854775808
-        - 9223372036854775807
-        - 1
-        - 1000
-        - 1000000
-        - 1000000000
-        - 60000000000
-        - 3600000000000
         format: int64
         type: integer
         x-enum-varnames:
-        - minDuration
-        - maxDuration
-        - Nanosecond
-        - Microsecond
-        - Millisecond
-        - Second
-        - Minute
-        - Hour
         - minDuration
         - maxDuration
         - Nanosecond

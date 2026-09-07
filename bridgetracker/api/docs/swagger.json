@@ -268,7 +268,7 @@
                     "type": "integer"
                 },
                 "claim": {
-                    "description": "Claim is the raw claim record, exactly as returned by the destination network's bridge\nservice, unmodified, once Claimed is true and the indexer has recorded it",
+                    "description": "Claim is the raw claim record, exactly as returned by the destination network's bridge\nservice, unmodified, once ClaimStatus is \"claimed\" and the indexer has recorded it",
                     "allOf": [
                         {
                             "$ref": "#/definitions/types.ClaimResponse"
@@ -279,8 +279,8 @@
                     "description": "ClaimNetworkID is the network whose bridge service reported Claim (the bridge's\ndestination network); only present alongside Claim",
                     "type": "integer"
                 },
-                "claimed": {
-                    "description": "Claimed is a simplified claim-readiness summary, one of \"pending\", \"readyToClaim\",\n\"claimed\" or \"error\" — the same vocabulary as TrackingData.ClaimStatus (see\ndomain.TrackingData.ClaimStatus for exactly how it is derived). \"error\" reports the\ndestination bridge contract's isClaimed() call itself failing (e.g. no bridge contract\naddress configured for the destination network) — callers must not read it as \"pending\".\nWhile unclaimed, \"readyToClaim\" vs \"pending\" is resolved from the tracker's own snapshot\nwhen Tracking is present, or directly against the bridge-service endpoints otherwise (see\ndomain.ActivityClaimChecker.IsReadyToClaim)",
+                "claim_status": {
+                    "description": "ClaimStatus is a simplified claim-readiness summary, one of \"pending\", \"readyToClaim\",\n\"claimed\" or \"error\" — the same vocabulary and field name as TrackingData.ClaimStatus (see\ndomain.TrackingData.ClaimStatus for exactly how it is derived). \"error\" reports the\ndestination bridge contract's isClaimed() call itself failing (e.g. no bridge contract\naddress configured for the destination network) — callers must not read it as \"pending\".\nWhile unclaimed, \"readyToClaim\" vs \"pending\" is resolved from the tracker's own snapshot\nwhen Tracking is present, or directly against the bridge-service endpoints otherwise (see\ndomain.ActivityClaimChecker.IsReadyToClaim)",
                     "type": "string"
                 },
                 "creation_timestamp": {
@@ -288,7 +288,7 @@
                     "type": "integer"
                 },
                 "errors": {
-                    "description": "Errors holds the message of whatever check failed the last time this item was refreshed,\nkeyed by which check it was — currently only \"claim\", present when Claimed is \"error\"",
+                    "description": "Errors holds the message of whatever check failed the last time this item was refreshed,\nkeyed by which check it was — currently only \"claim\", present when ClaimStatus is \"error\"",
                     "type": "object",
                     "additionalProperties": {
                         "type": "string"
@@ -561,25 +561,9 @@
                         1000000,
                         1000000000,
                         60000000000,
-                        3600000000000,
-                        -9223372036854775808,
-                        9223372036854775807,
-                        1,
-                        1000,
-                        1000000,
-                        1000000000,
-                        60000000000,
                         3600000000000
                     ],
                     "x-enum-varnames": [
-                        "minDuration",
-                        "maxDuration",
-                        "Nanosecond",
-                        "Microsecond",
-                        "Millisecond",
-                        "Second",
-                        "Minute",
-                        "Hour",
                         "minDuration",
                         "maxDuration",
                         "Nanosecond",
