@@ -1,0 +1,16 @@
+# Example configuration for bridge loop tester
+# This is a placeholder configuration file.
+# Fill in actual values for your test scenario.
+
+[bridge]
+# REST API endpoint for aggkit proxy
+proxy_url = "http://localhost:8080"
+
+# JSON-RPC endpoints for monitored networks
+[networks]
+l1_rpc = "http://localhost:8545"
+l2_rpc = "http://localhost:8546"
+
+[routes]
+# Define circular routes here
+# Each route specifies the hops and claim strategies
