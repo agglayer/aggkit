@@ -216,6 +216,8 @@ type DeployTokenResult struct {
 	Symbol      string         `json:"symbol"`
 	// Owner is the account the token was deployed and minted from.
 	Owner common.Address `json:"owner"`
+	// DeployTxHash is the deployment transaction, for traceability.
+	DeployTxHash common.Hash `json:"deploy_tx_hash"`
 	// Minted is how much was minted to Owner, and Balance its resulting balance.
 	Minted  *big.Int `json:"minted,omitempty"`
 	Balance *big.Int `json:"balance,omitempty"`
@@ -242,19 +244,20 @@ func (o *Orchestrator) DeployToken(
 		symbol = tokenSymbol
 	}
 
-	token, err := o.deployToken(ctx, network.Client, name, symbol)
+	token, deployTxHash, err := o.deployToken(ctx, network.Client, name, symbol)
 	if err != nil {
 		return nil, fmt.Errorf("deploy token on network %d (%s): %w", req.NetworkID, network.Config.Name, err)
 	}
 
 	owner := network.Client.From()
 	result := &DeployTokenResult{
-		NetworkID:   req.NetworkID,
-		NetworkName: network.Config.Name,
-		Address:     token.Address(),
-		Name:        name,
-		Symbol:      symbol,
-		Owner:       owner,
+		NetworkID:    req.NetworkID,
+		NetworkName:  network.Config.Name,
+		Address:      token.Address(),
+		Name:         name,
+		Symbol:       symbol,
+		Owner:        owner,
+		DeployTxHash: deployTxHash,
 	}
 
 	if req.Mint != nil && req.Mint.Sign() > 0 {
@@ -275,6 +278,7 @@ func (o *Orchestrator) DeployToken(
 			Address:       token.Address(),
 			Name:          name,
 			Symbol:        symbol,
+			DeployTxHash:  deployTxHash,
 			DeployedAt:    o.now().UTC(),
 		}
 		record.AddMinted(result.Minted)

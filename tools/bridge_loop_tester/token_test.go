@@ -79,9 +79,10 @@ func TestDeployTokenGoesThroughTheSerializedSender(t *testing.T) {
 			}, nil
 		}).Once()
 
-	token, err := bridgelooptester.DeployToken(context.Background(), client, "Bridge Loop Token", "BLT")
+	token, deployTxHash, err := bridgelooptester.DeployToken(context.Background(), client, "Bridge Loop Token", "BLT")
 	require.NoError(t, err)
 	require.Equal(t, deployed, token.Address())
+	require.Equal(t, common.HexToHash("0xfeed"), deployTxHash)
 
 	require.Equal(t, "deploy mintableerc20", sent.Label)
 	require.Nil(t, sent.To, "a deployment must have no recipient")
@@ -107,10 +108,10 @@ func TestDeployTokenWithoutContractAddress(t *testing.T) {
 			TxHash: common.HexToHash("0xfeed"),
 		}, nil).Once()
 
-	_, err := bridgelooptester.DeployToken(context.Background(), client, "T", "T")
+	_, _, err := bridgelooptester.DeployToken(context.Background(), client, "T", "T")
 	require.ErrorContains(t, err, "was mined without a contract address")
 
-	_, err = bridgelooptester.DeployToken(context.Background(), nil, "T", "T")
+	_, _, err = bridgelooptester.DeployToken(context.Background(), nil, "T", "T")
 	require.ErrorContains(t, err, "deploy token: network client is required")
 }
 

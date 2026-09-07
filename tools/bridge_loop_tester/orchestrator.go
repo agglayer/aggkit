@@ -60,7 +60,7 @@ type OrchestratorDeps struct {
 	// NewTokenFn binds an ERC20. Nil means NewToken.
 	NewTokenFn func(client NetworkClient, address common.Address) (Token, error)
 	// DeployTokenFn deploys the test ERC20. Nil means DeployToken.
-	DeployTokenFn func(ctx context.Context, client NetworkClient, name, symbol string) (Token, error)
+	DeployTokenFn func(ctx context.Context, client NetworkClient, name, symbol string) (Token, common.Hash, error)
 	// NewHopRunnerFn builds the HopRunner for one loop. Nil means a *HopEngine over the pooled
 	// networks, wired to persist that loop's checkpoints. It is per loop because a checkpoint
 	// carries no loop identity, so the persistence closure must supply it.
@@ -275,7 +275,7 @@ type Orchestrator struct {
 
 	newHopRunner func(loopName string) (HopRunner, error)
 	newToken     func(client NetworkClient, address common.Address) (Token, error)
-	deployToken  func(ctx context.Context, client NetworkClient, name, symbol string) (Token, error)
+	deployToken  func(ctx context.Context, client NetworkClient, name, symbol string) (Token, common.Hash, error)
 
 	// stateMu guards state: every loop goroutine reads and writes it, and every write is followed
 	// by an atomic Save so the on-disk snapshot never trails the chain by more than one state.
@@ -1085,7 +1085,7 @@ func (o *Orchestrator) ensureToken(ctx context.Context, loop Loop) (*TokenState,
 	}
 
 	name := tokenNamePrefix + loop.Name
-	token, err := o.deployToken(ctx, origin.Client, name, tokenSymbol)
+	token, deployTxHash, err := o.deployToken(ctx, origin.Client, name, tokenSymbol)
 	if err != nil {
 		return nil, fmt.Errorf("loop %q: deploy the ERC20 on network %d (%s): %w",
 			loop.Name, originID, origin.Config.Name, err)
@@ -1097,6 +1097,7 @@ func (o *Orchestrator) ensureToken(ctx context.Context, loop Loop) (*TokenState,
 		Address:       token.Address(),
 		Name:          name,
 		Symbol:        tokenSymbol,
+		DeployTxHash:  deployTxHash,
 		DeployedAt:    o.now().UTC(),
 	}
 	o.setTokenRecord(record)

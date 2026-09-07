@@ -1219,6 +1219,32 @@ func TestRunHopResumeFromClaimed(t *testing.T) {
 		require.ErrorContains(t, err, "reports false")
 		require.ErrorContains(t, err, "reset the checkpoint")
 	})
+
+	// A checkpoint with no recorded baseline (a legacy on-disk format, or an operator-edited
+	// state file used with --resume-halted) cannot get the exact-delta check: there is nothing to
+	// subtract from. verifyWithoutBaseline is the degraded check for exactly this case.
+	t.Run("with no recorded baseline falls back to the degraded check", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHopHarness(t, hopDestinationNetwork)
+		checkpoint := h.resumeCheckpoint(bridgelooptester.HopStateClaimed)
+		checkpoint.ClaimTxHash = hopClaimTxHash
+		checkpoint.DestinationBalanceBefore = ""
+
+		h.expectBridgeRecovery()
+		h.setClaimed()
+		h.expectIsClaimed()
+		h.expectClaimRecord(hopDestinationAccount, hopClaimTxHash)
+
+		req := h.request(bridgelooptester.ClaimManual)
+		req.Resume = checkpoint
+
+		result, err := h.engine().RunHop(context.Background(), req)
+		require.NoError(t, err)
+		require.True(t, result.BalanceVerified)
+		require.False(t, result.BalanceExact)
+		require.Contains(t, result.BalanceNote, "no pre-hop destination balance was available")
+	})
 }
 
 // TestRunHopResumeFromBridgingWithReceiptContinuesTheHop is resume scenario 1 of 3: the bridge

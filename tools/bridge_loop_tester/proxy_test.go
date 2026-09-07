@@ -405,6 +405,41 @@ func TestTrackBridge(t *testing.T) {
 	})
 }
 
+func TestBridgeByDepositCount(t *testing.T) {
+	t.Run("successful request", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "/bridge/v1/bridge-by-deposit-count", r.URL.Path)
+			require.Equal(t, "1", r.URL.Query().Get("network_id"))
+			require.Equal(t, "5", r.URL.Query().Get("deposit_count"))
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(bridgeservicetypes.BridgeResponse{DepositCount: 5, OriginNetwork: 1})
+		}))
+		defer server.Close()
+
+		p := newProxyClient(t, server)
+		bridge, err := p.BridgeByDepositCount(context.Background(), 1, 5)
+
+		require.NoError(t, err)
+		require.Equal(t, uint32(5), bridge.DepositCount)
+	})
+
+	t.Run("404 is plain ErrNotFound, with no retry", func(t *testing.T) {
+		var calls atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"not indexed"}`))
+		}))
+		defer server.Close()
+
+		p := newProxyClient(t, server)
+		_, err := p.BridgeByDepositCount(context.Background(), 1, 9)
+
+		require.ErrorIs(t, err, bridgeserviceclient.ErrNotFound)
+		require.Equal(t, int32(1), calls.Load(), "BridgeByDepositCount is a single call, not a Wait* retry loop")
+	})
+}
+
 func TestProxyClientHealth(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/tracker/v1/health", r.URL.Path)
@@ -471,5 +506,21 @@ func TestNewProxyClient(t *testing.T) {
 	t.Run("requires a ProxyURL", func(t *testing.T) {
 		_, err := bridgelooptester.NewProxyClient(bridgelooptester.Global{})
 		require.Error(t, err)
+	})
+
+	t.Run("WithHTTPTimeout bounds every HTTP round trip", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(100 * time.Millisecond)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		}))
+		defer server.Close()
+
+		client, err := bridgelooptester.NewProxyClient(bridgelooptester.Global{ProxyURL: server.URL},
+			bridgelooptester.WithHTTPTimeout(10*time.Millisecond))
+		require.NoError(t, err)
+
+		_, err = client.Health(context.Background())
+		require.Error(t, err, "a round trip slower than WithHTTPTimeout must fail rather than hang")
 	})
 }

@@ -214,10 +214,10 @@ func TestEnsureTokenDeploysMintsAndReusesAcrossRestarts(t *testing.T) {
 	}
 	deps.DeployTokenFn = func(
 		context.Context, bridgelooptester.NetworkClient, string, string,
-	) (bridgelooptester.Token, error) {
+	) (bridgelooptester.Token, common.Hash, error) {
 		deploys++
 
-		return token, nil
+		return token, common.HexToHash("0xd001"), nil
 	}
 
 	orchestrator, err := bridgelooptester.NewOrchestrator(context.Background(), h.cfg, deps)
@@ -234,6 +234,7 @@ func TestEnsureTokenDeploysMintsAndReusesAcrossRestarts(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, tokenAddress, persisted.Token("erc20-ring").Address)
 	require.Equal(t, big.NewInt(50_000), persisted.Token("erc20-ring").MintedAmount())
+	require.Equal(t, common.HexToHash("0xd001"), persisted.Token("erc20-ring").DeployTxHash)
 
 	// Second run over the same state file: the recorded token has code, so it is reused and no
 	// second contract is deployed. It already holds enough, so nothing is minted either.
@@ -284,10 +285,10 @@ func TestEnsureTokenRedeploysWhenTheRecordedAddressHasNoCode(t *testing.T) {
 	}
 	deps.DeployTokenFn = func(
 		context.Context, bridgelooptester.NetworkClient, string, string,
-	) (bridgelooptester.Token, error) {
+	) (bridgelooptester.Token, common.Hash, error) {
 		deploys++
 
-		return token, nil
+		return token, common.HexToHash("0xd002"), nil
 	}
 
 	orchestrator, err := bridgelooptester.NewOrchestrator(context.Background(), h.cfg, deps)
@@ -317,11 +318,11 @@ func TestDeployTokenRecordsTheAddressForALoop(t *testing.T) {
 	deps := h.deps(&fakeHopRunner{}, store)
 	deps.DeployTokenFn = func(
 		_ context.Context, _ bridgelooptester.NetworkClient, name, symbol string,
-	) (bridgelooptester.Token, error) {
+	) (bridgelooptester.Token, common.Hash, error) {
 		require.Equal(t, "MyToken", name)
 		require.Equal(t, "MTK", symbol)
 
-		return token, nil
+		return token, common.HexToHash("0xd003"), nil
 	}
 
 	orchestrator, err := bridgelooptester.NewOrchestrator(context.Background(), h.cfg, deps)
@@ -341,11 +342,13 @@ func TestDeployTokenRecordsTheAddressForALoop(t *testing.T) {
 	require.Equal(t, signerAddressOf(1), result.Owner)
 	require.Equal(t, big.NewInt(1_234), result.Minted)
 	require.Equal(t, "erc20-ring", result.RecordedForLoop)
+	require.Equal(t, common.HexToHash("0xd003"), result.DeployTxHash)
 
 	persisted, err := store.Load(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, tokenAddress, persisted.Token("erc20-ring").Address)
 	require.Equal(t, big.NewInt(1_234), persisted.Token("erc20-ring").MintedAmount())
+	require.Equal(t, common.HexToHash("0xd003"), persisted.Token("erc20-ring").DeployTxHash)
 }
 
 func TestDeployTokenRejectsAnUnconfiguredNetwork(t *testing.T) {

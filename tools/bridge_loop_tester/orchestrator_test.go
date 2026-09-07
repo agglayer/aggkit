@@ -1009,3 +1009,178 @@ func TestFailureClassFatal(t *testing.T) {
 	require.True(t, bridgelooptester.FailureClass("something-new").Fatal(),
 		"an unknown class must be treated as fatal rather than retried blindly")
 }
+
+// TestOrchestratorDefaultHopRunnerWiresRealHopEngine exercises the production HopRunner wiring
+// that every other orchestrator test bypasses with a fakeHopRunner: NewOrchestrator's default
+// newHopRunner (Orchestrator.newHopEngine), which renders the client pool through hopNetworks and
+// builds a real *HopEngine backed by Orchestrator.persistCheckpoint. A wiring bug here (wrong
+// network map, wrong loop threaded into the persistence closure, wrong timings) would only ever
+// surface once something drives the tool against a live network - this is the cheap place to
+// catch it.
+func TestOrchestratorDefaultHopRunnerWiresRealHopEngine(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.cfg.Global.Iterations = 1
+
+	// Hop 0 (network 0 -> 1) never succeeds; a plain error classifies as transient, so it is
+	// retried defaultHopAttempts times and then abandons the cycle without halting the loop -
+	// exercising the real engine's HopStateBridging checkpoint (persisted before signing) without
+	// needing to mock a whole transaction lifecycle.
+	bridgeErr := errors.New("boom: rpc rejected the bridge submission")
+	h.bridges[0].EXPECT().BridgeAssetNative(mock.Anything, mock.Anything).Return(nil, bridgeErr)
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	store, err := bridgelooptester.NewFileStateStore(statePath)
+	require.NoError(t, err)
+
+	deps := bridgelooptester.OrchestratorDeps{
+		Logger: log.GetDefaultLogger(),
+		Proxy:  h.proxy,
+		Store:  store,
+		NewNetworkClientFn: func(
+			_ context.Context, cfg bridgelooptester.Network, _ aggkitcommon.Logger,
+		) (bridgelooptester.NetworkClient, error) {
+			return h.clients[cfg.NetworkID], nil
+		},
+		NewBridgeFn: func(
+			client bridgelooptester.NetworkClient, _ common.Address,
+		) (bridgelooptester.Bridge, error) {
+			return h.bridges[client.NetworkID()], nil
+		},
+		// NewHopRunnerFn is deliberately left nil: this test's whole point is to drive
+		// Orchestrator.newHopEngine, not a test double.
+	}
+
+	orchestrator, err := bridgelooptester.NewOrchestrator(context.Background(), h.cfg, deps)
+	require.NoError(t, err)
+	defer orchestrator.Close()
+
+	report, err := orchestrator.Run(context.Background())
+	require.NoError(t, err, "a transient hop failure must never halt the loop or surface as a run error")
+	require.False(t, report.Loops[0].Halted)
+	require.Equal(t, 3, report.Totals.HopsAttempted, "the real engine must have been retried hopAttempts times")
+	require.Equal(t, 3, report.Totals.HopsFailed)
+
+	// The checkpoint observed through the exported State() snapshot was written by the real
+	// HopEngine calling Orchestrator.persistCheckpoint, proving hopNetworks/newHopEngine/
+	// persistCheckpoint/State are wired together correctly, not just the fakeHopRunner path every
+	// other test in this file exercises.
+	state := orchestrator.State()
+	require.NotNil(t, state)
+	inFlight := state.Loop("eth-ring").InFlight
+	require.NotNil(t, inFlight, "the real hop engine must have checkpointed its bridging attempt")
+	require.Equal(t, bridgelooptester.HopStateBridging, inFlight.State)
+	require.Equal(t, common.Hash{}, inFlight.BridgeTxHash,
+		"the mocked Bridge never reached signing, so the checkpoint must still show the pre-signing hash")
+}
+
+// TestOrchestratorHaltsLoopWhenHopRunnerCannotBeBuilt covers runLoop's other halt path (the loop's
+// HopRunner factory itself fails) and Orchestrator.haltLoop, neither of which any other test in
+// this file reaches - every other halt scenario is a hop failing after the runner was built.
+func TestOrchestratorHaltsLoopWhenHopRunnerCannotBeBuilt(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.cfg.Global.Iterations = 1
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	store, err := bridgelooptester.NewFileStateStore(statePath)
+	require.NoError(t, err)
+
+	buildErr := errors.New("boom: could not construct the hop engine")
+	deps := h.deps(&fakeHopRunner{}, store)
+	deps.NewHopRunnerFn = func(string) (bridgelooptester.HopRunner, error) { return nil, buildErr }
+
+	orchestrator, err := bridgelooptester.NewOrchestrator(context.Background(), h.cfg, deps)
+	require.NoError(t, err)
+	defer orchestrator.Close()
+
+	report, err := orchestrator.Run(context.Background())
+	require.Error(t, err)
+	require.True(t, report.Loops[0].Halted)
+	require.Equal(t, bridgelooptester.FailureConfiguration, report.Loops[0].HaltClass)
+	require.Contains(t, report.Loops[0].Err, "boom: could not construct the hop engine")
+
+	persisted, err := store.Load(context.Background())
+	require.NoError(t, err)
+	require.True(t, persisted.Loop("eth-ring").Halted)
+	require.Equal(t, bridgelooptester.FailureConfiguration, persisted.Loop("eth-ring").HaltClass)
+}
+
+// TestRunDryRunReportsAnERC20Plan covers the ERC20 half of DryRun planning (planERC20Hop,
+// resolveTokenOn): TestRunDryRunSubmitsNothingAndReportsAPlan only exercises the ETH branch of
+// planHop, leaving the token-resolution path untested at the orchestrator level (the hop *engine*
+// covers ERC20 balance handling separately, in hop_test.go).
+func TestRunDryRunReportsAnERC20Plan(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.cfg.Global.DryRun = true
+	h.cfg.Global.Iterations = 1
+
+	originNetwork := uint32(0)
+	tokenAddr := common.HexToAddress("0x9000000000000000000000000000000000000e")
+	wrappedAddr := common.HexToAddress("0x9000000000000000000000000000000000000f")
+	h.cfg.Loops = []bridgelooptester.Loop{{
+		Name:               "erc20-ring",
+		Asset:              bridgelooptester.AssetERC20,
+		Amount:             bridgelooptester.NewWeiAmount(500),
+		Enabled:            true,
+		TokenOriginNetwork: &originNetwork,
+		Hops: []bridgelooptester.Hop{
+			{Source: 0, Destination: 1, Claim: bridgelooptester.ClaimAuto},
+			{Source: 1, Destination: 0, Claim: bridgelooptester.ClaimManual},
+		},
+	}}
+
+	// Network 1 is not the token's origin, so resolveTokenOn asks its bridge for the wrapped
+	// representation - both when network 1 is the hop's destination (hop 0) and when it is the
+	// hop's source (hop 1).
+	h.bridges[1].EXPECT().GetTokenWrappedAddress(mock.Anything, originNetwork, tokenAddr).
+		Return(wrappedAddr, nil)
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	store, err := bridgelooptester.NewFileStateStore(statePath)
+	require.NoError(t, err)
+	seeded := bridgelooptester.NewState()
+	seeded.SetToken(&bridgelooptester.TokenState{
+		LoopName:      "erc20-ring",
+		OriginNetwork: originNetwork,
+		Address:       tokenAddr,
+	})
+	require.NoError(t, store.Save(context.Background(), seeded))
+
+	tokenMocks := map[uint32]*mocks.Token{}
+	deps := h.deps(&fakeHopRunner{}, store)
+	deps.NewTokenFn = func(client bridgelooptester.NetworkClient, _ common.Address) (bridgelooptester.Token, error) {
+		tok, ok := tokenMocks[client.NetworkID()]
+		if !ok {
+			tok = mocks.NewToken(t)
+			tok.EXPECT().BalanceOf(mock.Anything, mock.Anything).Return(big.NewInt(1_000), nil)
+			tokenMocks[client.NetworkID()] = tok
+		}
+
+		return tok, nil
+	}
+
+	orchestrator, err := bridgelooptester.NewOrchestrator(context.Background(), h.cfg, deps)
+	require.NoError(t, err)
+	defer orchestrator.Close()
+
+	report, err := orchestrator.Run(context.Background())
+	require.NoError(t, err)
+	require.Len(t, report.Loops, 1)
+	require.Len(t, report.Loops[0].Plan, 2)
+
+	hop0 := report.Loops[0].Plan[0]
+	require.Equal(t, tokenAddr, hop0.SourceTokenAddress, "network 0 is the token's origin")
+	require.Equal(t, wrappedAddr, hop0.DestinationTokenAddress, "network 1 holds the wrapped token")
+	require.True(t, hop0.Fundable)
+	require.Empty(t, hop0.Note)
+
+	hop1 := report.Loops[0].Plan[1]
+	require.Equal(t, wrappedAddr, hop1.SourceTokenAddress, "hop 1 originates from the wrapped side")
+	require.Equal(t, tokenAddr, hop1.DestinationTokenAddress, "network 0 is the token's origin")
+	require.True(t, hop1.Fundable)
+}

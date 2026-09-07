@@ -71,35 +71,42 @@ func NewToken(client NetworkClient, address common.Address) (Token, error) {
 }
 
 // DeployToken deploys the mintableerc20 test ERC20 on client's network and returns a Token bound to
-// it. The deployment goes through NetworkClient.SendTx, so it shares the serialized nonce sequence
-// with everything else this signer sends.
-func DeployToken(ctx context.Context, client NetworkClient, name, symbol string) (Token, error) {
+// it, plus the deployment transaction's hash (for TokenState.DeployTxHash's traceability, see
+// (*Orchestrator).DeployToken and ensureTokens). The deployment goes through NetworkClient.SendTx,
+// so it shares the serialized nonce sequence with everything else this signer sends.
+func DeployToken(ctx context.Context, client NetworkClient, name, symbol string) (Token, common.Hash, error) {
 	if client == nil {
-		return nil, fmt.Errorf("deploy token: network client is required")
+		return nil, common.Hash{}, fmt.Errorf("deploy token: network client is required")
 	}
 
 	parsed, err := mintableerc20.Mintableerc20MetaData.GetAbi()
 	if err != nil {
-		return nil, fmt.Errorf("deploy token on %s: parse ERC20 ABI: %w", client.Name(), err)
+		return nil, common.Hash{}, fmt.Errorf("deploy token on %s: parse ERC20 ABI: %w", client.Name(), err)
 	}
 
 	args, err := parsed.Pack("", name, symbol)
 	if err != nil {
-		return nil, fmt.Errorf("deploy token on %s: pack constructor arguments: %w", client.Name(), err)
+		return nil, common.Hash{}, fmt.Errorf("deploy token on %s: pack constructor arguments: %w",
+			client.Name(), err)
 	}
 
 	creation := append(common.FromHex(mintableerc20.Mintableerc20MetaData.Bin), args...)
 
 	receipt, err := client.SendTx(ctx, TxRequest{Label: "deploy mintableerc20", Data: creation})
 	if err != nil {
-		return nil, err
+		return nil, common.Hash{}, err
 	}
 	if receipt.ContractAddress == (common.Address{}) {
-		return nil, fmt.Errorf("deploy token on %s: tx %s was mined without a contract address",
+		return nil, common.Hash{}, fmt.Errorf("deploy token on %s: tx %s was mined without a contract address",
 			client.Name(), receipt.TxHash)
 	}
 
-	return NewToken(client, receipt.ContractAddress)
+	token, err := NewToken(client, receipt.ContractAddress)
+	if err != nil {
+		return nil, common.Hash{}, err
+	}
+
+	return token, receipt.TxHash, nil
 }
 
 // Address returns the token contract's address on this network.
