@@ -1,16 +1,125 @@
-# Example configuration for bridge loop tester
-# This is a placeholder configuration file.
-# Fill in actual values for your test scenario.
+# Example configuration for bridge_loop_tester.
+#
+# This is a documentation fixture, not a deployable config: RPC URLs, bridge addresses and signer
+# paths below are obvious placeholders. It targets a hypothetical 3-network env shaped like
+# test/e2e/envs/anvil-2chains (see tools/bridge_loop_tester/DESIGN.md): network 0 is L1, networks 1
+# and 2 are L2s, and the aggkit-proxy REST API fronts /bridge/v1 + /tracker/v1 for all three.
+#
+# Every [[Loops]] route below is a closed ring: NetworkID 0 -> 1 -> 2 -> 0, so it covers all three
+# bridge directions (L1->L2, L2->L2, L2->L1) and each mixes "auto" and "manual" claim hops.
 
-[bridge]
-# REST API endpoint for aggkit proxy
-proxy_url = "http://localhost:8080"
+[Global]
+# Base URL of the aggkit-proxy REST API (must expose /bridge/v1 and /tracker/v1).
+ProxyURL = "http://127.0.0.1:15601"
+# LogLevel: debug, info, warn, error, dpanic, panic, fatal. Defaults to "info" if omitted.
+LogLevel = "info"
+# Iterations: number of cycles to run per enabled loop. 0 means run forever (the soak-test mode).
+Iterations = 0
+# LoopDelay: sleep between successive cycles of a loop. Defaults to "5s" if omitted.
+LoopDelay = "5s"
+# HopTimeout: max time a single hop's state machine may take before being reported as stuck.
+# Defaults to "10m" if omitted.
+HopTimeout = "10m"
+# PollInterval: how often /bridge/v1/* readiness endpoints are re-polled. Defaults to "5s".
+PollInterval = "5s"
+# ManualGracePeriod: grace window before a "manual" hop self-claims, and the deadline by which an
+# "auto" hop must have been claimed by the autoclaim service. Defaults to "2m".
+ManualGracePeriod = "2m"
+# StatePath: optional file used to persist/resume hop state across restarts. Empty disables it.
+StatePath = ""
+# MetricsAddr: optional "host:port" to serve aggkit/prometheus metrics on. Empty disables it.
+MetricsAddr = "127.0.0.1:9090"
+# DryRun: log actions instead of submitting on-chain transactions.
+DryRun = false
 
-# JSON-RPC endpoints for monitored networks
-[networks]
-l1_rpc = "http://localhost:8545"
-l2_rpc = "http://localhost:8546"
+# --- Networks -----------------------------------------------------------------------------------
 
-[routes]
-# Define circular routes here
-# Each route specifies the hops and claim strategies
+[[Networks]]
+NetworkID = 0
+Name = "L1"
+RPCURL = "http://127.0.0.1:13545"
+BridgeAddr = "0x0000000000000000000000000000000000000B01"
+# ChainID omitted on purpose: the tool resolves it live via eth_chainId at startup instead of
+# trusting a possibly-stale configured value (see DESIGN.md §6/G3).
+MinNativeReserve = "1000000000000000000" # 1 ETH kept in reserve for gas, wei-scale decimal string
+GasOffset = "0"
+
+[Networks.Signer]
+Method = "local"
+Path = "/path/to/keystores/l1-loop-tester.keystore"
+Password = "changeme"
+
+[[Networks]]
+NetworkID = 1
+Name = "L2A"
+RPCURL = "http://127.0.0.1:14545"
+BridgeAddr = "0x0000000000000000000000000000000000000B02"
+MinNativeReserve = "1000000000000000000"
+GasOffset = "0"
+
+[Networks.Signer]
+Method = "local"
+Path = "/path/to/keystores/l2a-loop-tester.keystore"
+Password = "changeme"
+
+[[Networks]]
+NetworkID = 2
+Name = "L2B"
+RPCURL = "http://127.0.0.1:15545"
+BridgeAddr = "0x0000000000000000000000000000000000000B03"
+MinNativeReserve = "1000000000000000000"
+GasOffset = "0"
+
+[Networks.Signer]
+Method = "local"
+Path = "/path/to/keystores/l2b-loop-tester.keystore"
+Password = "changeme"
+
+# --- Loops ---------------------------------------------------------------------------------------
+
+# ETH ring: 0 (L1) -> 1 (L2A) -> 2 (L2B) -> 0 (L1), mixing auto and manual claims.
+[[Loops]]
+Name = "eth-ring"
+Asset = "eth"
+Amount = "1000000000000000" # 0.001 ETH per cycle, wei-scale decimal string
+Enabled = true
+# TokenOriginNetwork is left unset: it only applies to "erc20" loops.
+
+[[Loops.Hops]]
+Source = 0
+Destination = 1
+Claim = "auto"
+
+[[Loops.Hops]]
+Source = 1
+Destination = 2
+Claim = "manual"
+
+[[Loops.Hops]]
+Source = 2
+Destination = 0
+Claim = "auto"
+
+# ERC20 ring: token deployed on network 1 (L2A, via CmdDeployToken), then bridged around
+# 1 (L2A) -> 2 (L2B) -> 0 (L1) -> 1 (L2A), also mixing auto and manual claims.
+[[Loops]]
+Name = "erc20-ring"
+Asset = "erc20"
+Amount = "500000000000000000" # 0.5 token per cycle, wei-scale decimal string (18 decimals assumed)
+Enabled = true
+TokenOriginNetwork = 1
+
+[[Loops.Hops]]
+Source = 1
+Destination = 2
+Claim = "manual"
+
+[[Loops.Hops]]
+Source = 2
+Destination = 0
+Claim = "auto"
+
+[[Loops.Hops]]
+Source = 0
+Destination = 1
+Claim = "manual"
