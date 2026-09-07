@@ -153,6 +153,25 @@ func (b *bridgeServiceClients) aggkitBridgeClientFor(networkID uint32) (*client.
 	return c, nil
 }
 
+// l1InfoTreeIndexClientFor returns the bridge-service client that must be queried for GET
+// /bridge/v1/l1-info-tree-index for a bridge originated on originNetwork and destined for
+// destinationNetwork (see bridgeservice.L1InfoTreeIndexForBridgeHandler): the endpoint only ever
+// accepts network_id == mainnet or network_id == the queried instance's own network, and mainnet
+// has no bridge-service deployment of its own — bridgeservicefinder.GetURL(0) fails unless a
+// network-0 URL was explicitly configured. So a mainnet-originated bridge (originNetwork ==
+// MainnetNetworkID) is queried on destinationNetwork's own (resolvable) instance instead, which
+// still answers for network_id=0 since every instance embeds mainnet's own bridgesync; any other
+// bridge is queried on its own origin's instance, self-queried with network_id == originNetwork
+func (b *bridgeServiceClients) l1InfoTreeIndexClientFor(
+	originNetwork, destinationNetwork uint32,
+) (*client.Client, error) {
+	queryNetwork := originNetwork
+	if queryNetwork == MainnetNetworkID {
+		queryNetwork = destinationNetwork
+	}
+	return b.aggkitBridgeClientFor(queryNetwork)
+}
+
 // blockTimestamp resolves a block's timestamp off its hash: logs only carry BlockNumber, not
 // the block's own timestamp
 func blockTimestamp(

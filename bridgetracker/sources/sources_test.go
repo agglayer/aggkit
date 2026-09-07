@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -224,7 +225,15 @@ type fakeBridgeService struct {
 	lastGlobalIndexQuery string
 }
 
-func (f *fakeBridgeService) start(t *testing.T) NetworkURLResolver {
+func (f *fakeBridgeService) start(t *testing.T) staticURLs {
+	t.Helper()
+	return f.startAt(t, 1)
+}
+
+// startAt is like start, but serves as networkID instead of the hardcoded 1 — for tests that
+// need two fakeBridgeService instances resolvable under distinct networks (e.g. an origin and a
+// destination queried separately, merged with staticURLs' own union of two maps)
+func (f *fakeBridgeService) startAt(t *testing.T, networkID uint32) staticURLs {
 	t.Helper()
 
 	mux := http.NewServeMux()
@@ -258,7 +267,7 @@ func (f *fakeBridgeService) start(t *testing.T) NetworkURLResolver {
 
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
-	return staticURLs{1: bridgeservicefinder.NetworkURLs{BridgeURL: server.URL}}
+	return staticURLs{networkID: bridgeservicefinder.NetworkURLs{BridgeURL: server.URL}}
 }
 
 // staticURLs is a fixed NetworkURLResolver for tests
@@ -270,6 +279,15 @@ func (s staticURLs) GetURL(networkID uint32) (bridgeservicefinder.NetworkURLs, e
 		return bridgeservicefinder.NetworkURLs{}, bridgeservicefinder.ErrURLNotFound
 	}
 	return urls, nil
+}
+
+// merge returns the union of s and other, for tests combining two fakeBridgeService.startAt
+// results (e.g. an origin and a destination resolvable under distinct networks)
+func (s staticURLs) merge(other staticURLs) staticURLs {
+	merged := make(staticURLs, len(s)+len(other))
+	maps.Copy(merged, s)
+	maps.Copy(merged, other)
+	return merged
 }
 
 // TestFinderClients pins the finder-backed EthClientResolver: overrides win without asking

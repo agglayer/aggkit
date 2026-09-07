@@ -325,35 +325,40 @@ func (listerFromResolver) BridgeAddress(context.Context, uint32) (common.Address
 }
 
 // TestActivitySource_IsReadyToClaim verifies IsReadyToClaim resolves the covering L1 info tree
-// leaf (GET /bridge/v1/l1-info-tree-index) and whether it has been injected on the destination
-// (GET /bridge/v1/injected-l1-info-leaf), both queried against the destination network's own
-// bridge-service instance — reporting true only once both resolve, and false (never an error)
-// while either is still pending.
+// leaf (GET /bridge/v1/l1-info-tree-index) against the origin network's own bridge-service
+// instance — per bridgeServiceClients.l1InfoTreeIndexClientFor's routing rule, the only instance
+// the real l1-info-tree-index endpoint accepts a non-mainnet network_id from — then whether that
+// leaf has been injected on the destination (GET /bridge/v1/injected-l1-info-leaf, always asked
+// of the destination's own instance). Reports true only once both resolve, and false (never an
+// error) while either is still pending. Origin and destination are deliberately different
+// networks with separate fake servers, so a regression back to querying the destination for
+// l1-info-tree-index (#1831 review finding) fails these tests instead of just misbehaving in
+// production against the real endpoint's network_id validation.
 func TestActivitySource_IsReadyToClaim(t *testing.T) {
 	// bridge is scanned from network 2 (NetworkID, the deposit's own network) with destination
-	// network 1 — fakeBridgeService.start hardcodes its server under key 1, matching the
-	// destination instance IsReadyToClaim must query
+	// network 1
 	bridge := &domain.ScannedBridge{Bridge: bridgeResponse(2, 1, 5, testFromAddress, 1), NetworkID: 2}
 
 	t.Run("covering leaf resolved and injected -> ready", func(t *testing.T) {
 		leafIndex := uint32(7)
-		svc := &fakeBridgeService{
-			l1InfoTreeIndex: &leafIndex,
-			injectedLeaf:    map[string]any{"global_exit_root": "0xger"},
-		}
-		lister := listerFromResolver{svc.start(t)}
+		originSvc := &fakeBridgeService{l1InfoTreeIndex: &leafIndex}
+		destSvc := &fakeBridgeService{injectedLeaf: map[string]any{"global_exit_root": "0xger"}}
+		urls := originSvc.startAt(t, 2).merge(destSvc.startAt(t, 1))
+		lister := listerFromResolver{urls}
 		source := NewActivitySource(lister, nil, testLogger)
 
 		ready, err := source.IsReadyToClaim(t.Context(), bridge)
 		require.NoError(t, err)
 		require.True(t, ready)
-		require.Equal(t, "7", svc.lastLeafIndexQuery)
-		require.Equal(t, "1", svc.lastNetworkIDQuery, "queried against the destination network")
+		require.Equal(t, "7", destSvc.lastLeafIndexQuery)
+		require.Equal(t, "1", destSvc.lastNetworkIDQuery, "queried against the destination network")
 	})
 
 	t.Run("not covered by any L1 info tree leaf yet -> not ready, no error", func(t *testing.T) {
-		svc := &fakeBridgeService{} // l1InfoTreeIndex nil -> not covered yet
-		lister := listerFromResolver{svc.start(t)}
+		originSvc := &fakeBridgeService{} // l1InfoTreeIndex nil -> not covered yet
+		destSvc := &fakeBridgeService{}
+		urls := originSvc.startAt(t, 2).merge(destSvc.startAt(t, 1))
+		lister := listerFromResolver{urls}
 		source := NewActivitySource(lister, nil, testLogger)
 
 		ready, err := source.IsReadyToClaim(t.Context(), bridge)
@@ -363,8 +368,10 @@ func TestActivitySource_IsReadyToClaim(t *testing.T) {
 
 	t.Run("covered but not injected on the destination yet -> not ready, no error", func(t *testing.T) {
 		leafIndex := uint32(7)
-		svc := &fakeBridgeService{l1InfoTreeIndex: &leafIndex} // injectedLeaf nil -> not injected yet
-		lister := listerFromResolver{svc.start(t)}
+		originSvc := &fakeBridgeService{l1InfoTreeIndex: &leafIndex}
+		destSvc := &fakeBridgeService{} // injectedLeaf nil -> not injected yet
+		urls := originSvc.startAt(t, 2).merge(destSvc.startAt(t, 1))
+		lister := listerFromResolver{urls}
 		source := NewActivitySource(lister, nil, testLogger)
 
 		ready, err := source.IsReadyToClaim(t.Context(), bridge)
@@ -372,8 +379,22 @@ func TestActivitySource_IsReadyToClaim(t *testing.T) {
 		require.False(t, ready)
 	})
 
-	t.Run("URL resolution failure is a genuine error", func(t *testing.T) {
-		source := NewActivitySource(fakeNetworkLister{}, nil, testLogger)
+	t.Run("origin network unresolvable -> genuine error, destination never queried", func(t *testing.T) {
+		destSvc := &fakeBridgeService{}
+		urls := destSvc.startAt(t, 1) // network 2 (the origin) deliberately absent
+		lister := listerFromResolver{urls}
+		source := NewActivitySource(lister, nil, testLogger)
+
+		_, err := source.IsReadyToClaim(t.Context(), bridge)
+		require.Error(t, err)
+	})
+
+	t.Run("destination network unresolvable -> genuine error", func(t *testing.T) {
+		leafIndex := uint32(7)
+		originSvc := &fakeBridgeService{l1InfoTreeIndex: &leafIndex}
+		urls := originSvc.startAt(t, 2) // network 1 (the destination) deliberately absent
+		lister := listerFromResolver{urls}
+		source := NewActivitySource(lister, nil, testLogger)
 
 		_, err := source.IsReadyToClaim(t.Context(), bridge)
 		require.Error(t, err)

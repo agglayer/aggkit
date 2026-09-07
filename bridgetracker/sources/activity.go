@@ -167,20 +167,20 @@ func (s *ActivitySource) ClaimInfo(
 	return res.Claims[0], nil
 }
 
-// IsReadyToClaim implements bridgetracker.ActivityClaimChecker: it asks bridge's destination
-// network's own bridge-service instance — which embeds the L1 info tree sync regardless of
-// which network it otherwise serves, the same assumption GERSource.coveringLeafIndex relies on
-// — for the L1 info tree leaf covering bridge's own origin deposit (GET
-// /bridge/v1/l1-info-tree-index), then whether that leaf has already been injected there (GET
-// /bridge/v1/injected-l1-info-leaf). Both must resolve for the bridge to be ready to claim;
+// IsReadyToClaim implements bridgetracker.ActivityClaimChecker: it resolves the L1 info tree
+// leaf covering bridge's own origin deposit (GET /bridge/v1/l1-info-tree-index, queried per
+// bridgeServiceClients.l1InfoTreeIndexClientFor's routing rule — the same one
+// GERSource.L1InfoTreeIndexForBridge uses to build the claim proof), then whether that leaf has
+// already been injected on the destination (GET /bridge/v1/injected-l1-info-leaf, always asked
+// of the destination's own instance). Both must resolve for the bridge to be ready to claim;
 // either one still pending (a 404) reports false, not an error
 func (s *ActivitySource) IsReadyToClaim(ctx context.Context, bridge *domain.ScannedBridge) (bool, error) {
-	svc, err := s.services.aggkitBridgeClientFor(bridge.Bridge.DestinationNetwork)
+	originSvc, err := s.services.l1InfoTreeIndexClientFor(bridge.NetworkID, bridge.Bridge.DestinationNetwork)
 	if err != nil {
 		return false, err
 	}
 
-	leafIndex, err := svc.GetL1InfoTreeIndex(ctx, int(bridge.NetworkID), int(bridge.Bridge.DepositCount))
+	leafIndex, err := originSvc.GetL1InfoTreeIndex(ctx, int(bridge.NetworkID), int(bridge.Bridge.DepositCount))
 	if isNotFound(err) {
 		return false, nil // not covered by any L1 info tree leaf yet
 	}
@@ -189,7 +189,11 @@ func (s *ActivitySource) IsReadyToClaim(ctx context.Context, bridge *domain.Scan
 			bridge.NetworkID, bridge.Bridge.DepositCount, err)
 	}
 
-	_, err = svc.GetInjectedL1InfoLeaf(ctx, int(bridge.Bridge.DestinationNetwork), int(leafIndex))
+	destSvc, err := s.services.aggkitBridgeClientFor(bridge.Bridge.DestinationNetwork)
+	if err != nil {
+		return false, err
+	}
+	_, err = destSvc.GetInjectedL1InfoLeaf(ctx, int(bridge.Bridge.DestinationNetwork), int(leafIndex))
 	if isNotFound(err) {
 		return false, nil // covering leaf not injected on the destination yet
 	}
