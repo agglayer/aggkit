@@ -527,7 +527,7 @@ func TestValidateRequestTimeout(t *testing.T) {
 	}
 }
 
-func TestVersionHeaderInterceptor(t *testing.T) {
+func TestHeaderInterceptor(t *testing.T) {
 	testMethod := "/test.Service/TestMethod"
 
 	t.Run("AddsVersionAndClientTypeHeadersToContext", func(t *testing.T) {
@@ -539,7 +539,7 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 		}
 
 		// Create the interceptor
-		interceptor := VersionHeaderInterceptor()
+		interceptor := HeaderInterceptor(mergeHeaders(nil))
 
 		// Create a test context
 		ctx := context.Background()
@@ -579,7 +579,7 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 		}
 
 		// Create the interceptor
-		interceptor := VersionHeaderInterceptor()
+		interceptor := HeaderInterceptor(mergeHeaders(nil))
 
 		// Create a test context with existing metadata
 		existingMD := metadata.New(map[string]string{
@@ -631,7 +631,7 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 		}
 
 		// Create the interceptor
-		interceptor := VersionHeaderInterceptor()
+		interceptor := HeaderInterceptor(mergeHeaders(nil))
 
 		// Create a test context
 		ctx := context.Background()
@@ -655,7 +655,7 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 		}
 
 		// Create the interceptor
-		interceptor := VersionHeaderInterceptor()
+		interceptor := HeaderInterceptor(mergeHeaders(nil))
 
 		// Create a test context
 		ctx := context.Background()
@@ -692,7 +692,7 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 		}
 
 		// Create the interceptor
-		interceptor := VersionHeaderInterceptor()
+		interceptor := HeaderInterceptor(mergeHeaders(nil))
 
 		// Create a test context
 		ctx := context.Background()
@@ -720,5 +720,103 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 		clientTypeValues := md.Get(ClientTypeMetadataKey)
 		require.Len(t, clientTypeValues, 1, "Should have exactly one client type header")
 		require.Equal(t, ClientTypeMetadataValue, clientTypeValues[0], "Client type should match ClientTypeMetadataValue")
+	})
+
+	t.Run("AppliesOverriddenHeaderExactlyOnce", func(t *testing.T) {
+		var capturedCtx context.Context
+		mockInvoker := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+			capturedCtx = ctx
+			return nil
+		}
+
+		interceptor := HeaderInterceptor(mergeHeaders(map[string]string{ClientTypeMetadataKey: "aggkit-aggsender"}))
+
+		var req, reply interface{}
+		var cc *grpc.ClientConn
+		err := interceptor(context.Background(), testMethod, req, reply, cc, mockInvoker)
+		require.NoError(t, err)
+
+		md, ok := metadata.FromOutgoingContext(capturedCtx)
+		require.True(t, ok, "Context should contain outgoing metadata")
+
+		clientTypeValues := md.Get(ClientTypeMetadataKey)
+		require.Len(t, clientTypeValues, 1, "Overridden header must appear exactly once, not duplicated")
+		require.Equal(t, "aggkit-aggsender", clientTypeValues[0])
+
+		// The non-overridden default must remain intact.
+		require.Equal(t, []string{aggkit.Version}, md.Get(ClientVersionMetadataKey))
+	})
+
+	t.Run("AppliesArbitraryConfiguredHeader", func(t *testing.T) {
+		var capturedCtx context.Context
+		mockInvoker := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+			capturedCtx = ctx
+			return nil
+		}
+
+		interceptor := HeaderInterceptor(mergeHeaders(map[string]string{"x-trace-source": "obs"}))
+
+		var req, reply interface{}
+		var cc *grpc.ClientConn
+		err := interceptor(context.Background(), testMethod, req, reply, cc, mockInvoker)
+		require.NoError(t, err)
+
+		md, ok := metadata.FromOutgoingContext(capturedCtx)
+		require.True(t, ok, "Context should contain outgoing metadata")
+
+		traceValues := md.Get("x-trace-source")
+		require.Len(t, traceValues, 1, "Should have exactly one custom header")
+		require.Equal(t, "obs", traceValues[0])
+
+		// Defaults still present alongside the custom header.
+		require.Equal(t, []string{aggkit.Version}, md.Get(ClientVersionMetadataKey))
+		require.Equal(t, []string{ClientTypeMetadataValue}, md.Get(ClientTypeMetadataKey))
+	})
+}
+
+func TestMergeHeaders(t *testing.T) {
+	t.Run("NilReturnsDefaults", func(t *testing.T) {
+		got := mergeHeaders(nil)
+		require.Len(t, got, 2)
+		require.Equal(t, aggkit.Version, got[ClientVersionMetadataKey])
+		require.Equal(t, ClientTypeMetadataValue, got[ClientTypeMetadataKey])
+	})
+
+	t.Run("EmptyReturnsDefaults", func(t *testing.T) {
+		got := mergeHeaders(map[string]string{})
+		require.Len(t, got, 2)
+		require.Equal(t, aggkit.Version, got[ClientVersionMetadataKey])
+		require.Equal(t, ClientTypeMetadataValue, got[ClientTypeMetadataKey])
+	})
+
+	t.Run("OverridesClientTypeOnly", func(t *testing.T) {
+		got := mergeHeaders(map[string]string{ClientTypeMetadataKey: "aggkit-aggsender"})
+		require.Len(t, got, 2)
+		require.Equal(t, "aggkit-aggsender", got[ClientTypeMetadataKey])
+		require.Equal(t, aggkit.Version, got[ClientVersionMetadataKey], "version should keep its default")
+	})
+
+	t.Run("OverridesBothDefaults", func(t *testing.T) {
+		got := mergeHeaders(map[string]string{
+			ClientTypeMetadataKey:    "custom-type",
+			ClientVersionMetadataKey: "v9.9.9",
+		})
+		require.Len(t, got, 2)
+		require.Equal(t, "custom-type", got[ClientTypeMetadataKey])
+		require.Equal(t, "v9.9.9", got[ClientVersionMetadataKey])
+	})
+
+	t.Run("AddsArbitraryHeaderAlongsideDefaults", func(t *testing.T) {
+		got := mergeHeaders(map[string]string{"x-trace-source": "obs"})
+		require.Len(t, got, 3)
+		require.Equal(t, "obs", got["x-trace-source"])
+		require.Equal(t, aggkit.Version, got[ClientVersionMetadataKey])
+		require.Equal(t, ClientTypeMetadataValue, got[ClientTypeMetadataKey])
+	})
+
+	t.Run("NormalizesKeyCaseForOverride", func(t *testing.T) {
+		got := mergeHeaders(map[string]string{"X-Client-Type": "cased"})
+		require.Len(t, got, 2, "mixed-case override must not create a duplicate entry")
+		require.Equal(t, "cased", got[ClientTypeMetadataKey])
 	})
 }
