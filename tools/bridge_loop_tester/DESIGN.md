@@ -174,6 +174,16 @@ re-enters at whichever of S1/S2/S3/S4 its polls land on; S4's `IsClaimed` read m
 mid-grace-period or even mid-S5submit (tx sent but process died before observing the receipt) is
 safe: re-check `IsClaimed` first, do not blindly resubmit.
 
+The one window that is *not* covered by "the known tx hash" is the bridge submission itself -- a
+crash between signing and learning the hash would leave nothing to re-derive from. A signed
+transaction's hash is fixed by its signature, so the network layer hands it (and the nonce it
+consumes) to the caller before broadcasting (`TxRequest.OnSigned`), and the hop engine checkpoints
+both there. A restart in that window then decides from three reads: a receipt for the hash means
+the deposit is real; no receipt with the nonce neither mined nor queued means the node never saw it
+and it is safe to re-submit; no receipt with the nonce already consumed means a deposit may exist
+under a hash the tool never learned, which is the only case still refused (`AmbiguousResumeError`)
+rather than guessed.
+
 ## 5. `BridgeEvent` -> `depositCount` (no polling needed to locate the bridge)
 
 The bridge tx's own receipt contains a `BridgeEvent` log emitted by the bridge contract itself.

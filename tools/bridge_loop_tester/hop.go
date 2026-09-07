@@ -9,6 +9,7 @@ import (
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 )
@@ -22,7 +23,14 @@ const (
 	gateClaimProof        = "claim-proof"
 	gateClaimed           = "claimed"
 	gateManualGracePeriod = "manual-grace-period"
+	gateBridgeReceipt     = "bridge-receipt"
 )
+
+// defaultBridgeResumeReceiptWait is how long a hop resumed from HopStateBridging waits for the
+// receipt of a signed-but-unreceipted bridge transaction whose nonce is no longer free, before
+// giving up and refusing (see resolveInterruptedBridge). It is capped by the hop budget still
+// remaining, and overridable with HopTimings.BridgeResumeReceiptWait.
+const defaultBridgeResumeReceiptWait = 2 * time.Minute
 
 // Bridge leaf types, as recorded in a BridgeEvent: an asset deposit is claimed with claimAsset, a
 // message deposit with claimMessage.
@@ -92,6 +100,11 @@ type HopTimings struct {
 	// ManualGracePeriod is a manual hop's negative-assertion window (nothing may claim the deposit
 	// during it) and an auto hop's budget for the autoclaim service to claim it.
 	ManualGracePeriod time.Duration
+	// BridgeResumeReceiptWait bounds the receipt wait of a hop resumed from HopStateBridging whose
+	// bridge transaction has no receipt yet but whose nonce is no longer free - the one case where
+	// the transaction may still be sitting in the node's pool about to mine. Zero means
+	// defaultBridgeResumeReceiptWait; the hop budget still remaining always caps it.
+	BridgeResumeReceiptWait time.Duration
 }
 
 // HopTimingsFromGlobal reads the hop engine's timings out of a loaded Global config section.
@@ -240,6 +253,9 @@ func NewHopEngine(deps HopDeps) (*HopEngine, error) {
 	if deps.Now != nil {
 		engine.now = deps.Now
 	}
+	if engine.timings.BridgeResumeReceiptWait <= 0 {
+		engine.timings.BridgeResumeReceiptWait = defaultBridgeResumeReceiptWait
+	}
 
 	return engine, nil
 }
@@ -307,6 +323,9 @@ type hopRun struct {
 	event *BridgeEvent
 	// proof is the claim proof fetched for InjectedLeafIndex.
 	proof *bridgeservicetypes.ClaimProof
+	// probedReceipt is the bridge receipt resolveInterruptedBridge already read, so recoverBridge
+	// does not read it a second time. Nil unless the hop resumed from HopStateBridging.
+	probedReceipt *ethtypes.Receipt
 	// srcToken/dstToken cache the bound ERC20s, nil for a native hop.
 	srcToken Token
 	dstToken Token
@@ -440,6 +459,14 @@ func (r *hopRun) execute(ctx context.Context) error {
 		return err
 	}
 
+	// A hop interrupted mid-submission is neither "already bridged" nor "nothing happened" until
+	// the chain is asked; resolveInterruptedBridge asks, and answers with one of the two.
+	if resumeFrom == HopStateBridging {
+		if resumeFrom, err = r.resolveInterruptedBridge(ctx); err != nil {
+			return err
+		}
+	}
+
 	if stateHasBridge(resumeFrom) {
 		if err := r.recoverBridge(ctx); err != nil {
 			return err
@@ -494,9 +521,9 @@ func stateHasBridge(state HopState) bool {
 }
 
 // prepareResume folds a resume checkpoint into the result and decides which state to re-enter at.
-// It performs no I/O: every state's actual on-chain position is re-derived later by the idempotent
-// reads execute makes. It is also where the one unobservable state is refused - see
-// AmbiguousResumeError.
+// It performs no I/O: every state's actual on-chain position is re-derived later by the reads
+// execute makes - including HopStateBridging, which it returns verbatim for
+// resolveInterruptedBridge to settle.
 func (r *hopRun) prepareResume() (HopState, error) {
 	if r.req.Resume == nil {
 		return HopStatePending, nil
@@ -511,6 +538,7 @@ func (r *hopRun) prepareResume() (HopState, error) {
 	r.result.Resumed = true
 	r.result.ResumedFrom = state
 	r.result.BridgeTxHash = checkpoint.BridgeTxHash
+	r.result.BridgeTxNonce = checkpoint.BridgeTxNonce
 	r.result.ClaimTxHash = checkpoint.ClaimTxHash
 	r.result.SourceTokenAddress = checkpoint.SourceTokenAddress
 	r.result.DestinationTokenAddress = checkpoint.DestinationTokenAddress
@@ -524,13 +552,8 @@ func (r *hopRun) prepareResume() (HopState, error) {
 		// Nothing irreversible happened, or only an idempotent approve did: start over.
 		return HopStatePending, nil
 	case HopStateBridging:
-		return "", &AmbiguousResumeError{
-			State:       state,
-			Source:      r.req.Hop.Source,
-			Destination: r.req.Hop.Destination,
-			Account:     r.src.Client.From(),
-			Amount:      r.req.Amount,
-		}
+		// Decidable, but only with I/O: execute resolves it through resolveInterruptedBridge.
+		return HopStateBridging, nil
 	case HopStateBridged, HopStateWaitingOriginIndex, HopStateWaitingGERInjection,
 		HopStateFetchingClaimProof, HopStateAwaitingClaim, HopStateSubmittingClaim, HopStateClaimed:
 		if checkpoint.BridgeTxHash == (common.Hash{}) {
@@ -570,16 +593,26 @@ func (r *hopRun) replayTerminal(state HopState) error {
 // chain. A persistence failure fails the hop: silently continuing would give up resumability.
 func (r *hopRun) enterState(ctx context.Context, state HopState) error {
 	r.result.States = append(r.result.States, state)
+
+	return r.persistCheckpoint(ctx, state)
+}
+
+// persistCheckpoint records, logs and persists the hop's position in state, without claiming a new
+// entry in the state trail. It is what enterState is built on, and it is also called on its own to
+// re-persist a state whose observable position has improved - the one case being HopStateBridging,
+// which is checkpointed again from the network layer's pre-broadcast hook once the bridge
+// transaction's hash and nonce are known (see onBridgeSigned).
+func (r *hopRun) persistCheckpoint(ctx context.Context, state HopState) error {
 	r.result.FinalState = state
 	r.result.Checkpoint = r.checkpoint(state)
 
 	r.engine.logger.Infof("bridge_loop_tester: hop transition loop=%q iteration=%d hop=%d route=%d->%d "+
-		"asset=%s claim=%s state=%s bridge_tx=%s deposit_count=%d global_index=%s leaf_index=%d "+
-		"injected_leaf_index=%d claimed_by=%s elapsed=%s",
+		"asset=%s claim=%s state=%s bridge_tx=%s bridge_tx_nonce=%d deposit_count=%d global_index=%s "+
+		"leaf_index=%d injected_leaf_index=%d claimed_by=%s elapsed=%s",
 		r.req.LoopName, r.req.Iteration, r.req.HopIndex, r.req.Hop.Source, r.req.Hop.Destination,
-		r.req.Asset, r.req.Hop.Claim, state, r.result.BridgeTxHash, r.result.DepositCount,
-		globalIndexString(r.result.GlobalIndex), r.result.L1InfoTreeIndex, r.result.InjectedLeafIndex,
-		r.result.ClaimedBy, r.engine.now().Sub(r.result.StartedAt))
+		r.req.Asset, r.req.Hop.Claim, state, r.result.BridgeTxHash, r.result.BridgeTxNonce,
+		r.result.DepositCount, globalIndexString(r.result.GlobalIndex), r.result.L1InfoTreeIndex,
+		r.result.InjectedLeafIndex, r.result.ClaimedBy, r.engine.now().Sub(r.result.StartedAt))
 
 	if r.engine.persist == nil {
 		return nil
@@ -596,6 +629,7 @@ func (r *hopRun) checkpoint(state HopState) HopCheckpoint {
 	checkpoint := HopCheckpoint{
 		State:                   state,
 		BridgeTxHash:            r.result.BridgeTxHash,
+		BridgeTxNonce:           r.result.BridgeTxNonce,
 		ClaimTxHash:             r.result.ClaimTxHash,
 		DepositCount:            r.result.DepositCount,
 		L1InfoTreeIndex:         r.result.L1InfoTreeIndex,
@@ -883,8 +917,9 @@ func (r *hopRun) approveIfNeeded(ctx context.Context) error {
 // submitBridge is DESIGN.md §4's S0: submit bridgeAsset on the source and decode the BridgeEvent
 // the receipt carries, which yields the deposit count without polling any list endpoint (§5).
 func (r *hopRun) submitBridge(ctx context.Context) error {
-	// HopStateBridging is checkpointed before the submission precisely because its outcome is the
-	// one thing a restart cannot observe - see AmbiguousResumeError.
+	// HopStateBridging is checkpointed before the submission, and again by onBridgeSigned once the
+	// transaction is signed - which is before it can be broadcast, and therefore before its
+	// outcome becomes unobservable. See HopState's HopStateBridging row.
 	if err := r.enterState(ctx, HopStateBridging); err != nil {
 		return err
 	}
@@ -897,6 +932,7 @@ func (r *hopRun) submitBridge(ctx context.Context) error {
 		DestinationAddress:        r.result.DestinationAddress,
 		Amount:                    r.req.Amount,
 		ForceUpdateGlobalExitRoot: true,
+		OnSigned:                  r.onBridgeSigned,
 	}
 
 	var (
@@ -922,6 +958,239 @@ func (r *hopRun) submitBridge(ctx context.Context) error {
 	return nil
 }
 
+// onBridgeSigned is the network layer's pre-broadcast hook (TxRequest.OnSigned) for the bridge
+// deposit: it runs after the transaction is signed and before the node can possibly have seen it,
+// and it re-persists the HopStateBridging checkpoint with the transaction's now-known hash and
+// nonce. That is what makes the submission window resumable - resolveInterruptedBridge can only
+// decide anything because these two values reached disk before the broadcast.
+//
+// It is called synchronously from inside NetworkClient.SendTx's nonce-serialization critical
+// section, so it does exactly one bounded thing (persist), never calls back into the client, and
+// honours the context it is given. Returning an error aborts the submission with nothing
+// broadcast, which is why a persistence failure here is safe: the checkpoint on disk still names a
+// transaction that was never sent, and its nonce is still free, so the next resume re-submits.
+func (r *hopRun) onBridgeSigned(ctx context.Context, pending PendingTx) error {
+	r.result.BridgeTxHash = pending.Hash
+	r.result.BridgeTxNonce = pending.Nonce
+
+	return r.persistCheckpoint(ctx, HopStateBridging)
+}
+
+// resolveInterruptedBridge settles a hop resumed from HopStateBridging into one of the two states
+// the rest of the machine understands: HopStateBridged (a deposit exists, continue from it) or
+// HopStatePending (nothing was submitted, start the hop over). It refuses only when neither can be
+// established - see AmbiguousResumeError.
+//
+// # Why this is decidable at all
+//
+// A transaction's hash is fixed by its signature, so the network layer hands it to the engine
+// before the broadcast (TxRequest.OnSigned -> onBridgeSigned), together with the nonce it will
+// consume. The submission window therefore leaves two facts on disk, and they are enough:
+//
+//   - No hash in the checkpoint. The crash preceded the signature, so nothing existed to broadcast.
+//     Restart the hop; a double deposit is impossible.
+//   - A hash with a receipt. The deposit is real: continue exactly as a resume from
+//     HopStateBridged does, re-deriving depositCount and friends from the receipt's BridgeEvent.
+//
+// # The nonce comparison, which is the subtle part
+//
+// With a hash but no receipt, the account's *mined* nonce (EthBackend.NonceAt, not PendingNonceAt)
+// against the transaction's own nonce N decides it:
+//
+//   - mined nonce == N, and the pending nonce == N too: nonce N has neither been mined nor queued,
+//     so this node has never seen the transaction and no transaction has taken its place. Nothing
+//     was broadcast, and re-submitting deposits exactly once. Safe.
+//   - mined nonce > N: nonce N has been *consumed* by a mined transaction. Since our hash has no
+//     receipt, the transaction that consumed it was a different one - which may perfectly well
+//     have been this same bridge under another hash (a fee-bumped replacement of it), in which
+//     case a deposit exists that the tool cannot name. Re-submitting would then deposit twice.
+//     Not safe: refuse.
+//   - mined nonce == N but pending nonce > N: nonce N is queued, not yet mined. The queued
+//     transaction may be ours, about to land. Re-submitting is not safe (SendTx would reserve a
+//     *later* nonce, so both could mine), but waiting is: poll for our own receipt for
+//     BridgeResumeReceiptWait, capped by the hop budget left, and continue if it appears.
+//
+// The nonces are read *before* the receipt on purpose. Read that way, "mined nonce > N and no
+// receipt for our hash" is a stable conclusion: nonce N was already consumed at the block the nonce
+// was read at, and the receipt read that followed - at that block or a later one - still did not
+// find our transaction, so it can never appear. Reading them the other way round would let a block
+// land in between and turn a transaction that had just been mined into a false refusal.
+//
+// One reassuring property of the re-submit case: because the pending nonce is still N, the
+// re-submission reserves N again (NetworkClient.SendTx re-reads it), so even if the original had
+// in fact reached some node this tool cannot see - an RPC endpoint behind a load balancer, say -
+// the two transactions compete for the same nonce and at most one of them can ever mine. The
+// safety of that path therefore does not rest on this node's mempool view being complete.
+//
+// What is deliberately *not* attempted anywhere here: inferring "no deposit exists" from the
+// absence of a matching bridge in the proxy's indexed state. An indexer that simply trails the
+// chain would make that inference say "safe to re-submit" for a deposit that is merely not indexed
+// yet, which is precisely the double-bridge this whole path exists to prevent. The indexed state is
+// where an *operator* settles the residual case, not where the engine decides it.
+func (r *hopRun) resolveInterruptedBridge(ctx context.Context) (HopState, error) {
+	r.startPhase(PhaseBridge)
+	defer r.endPhase()
+
+	txHash := r.result.BridgeTxHash
+	if txHash == (common.Hash{}) {
+		r.engine.logger.Infof("bridge_loop_tester: %s: resume: checkpoint state %q carries no bridge "+
+			"transaction hash, so the deposit was never signed and nothing can have been broadcast; "+
+			"restarting the hop", r.hopLabel(), HopStateBridging)
+
+		return HopStatePending, nil
+	}
+
+	txNonce := r.result.BridgeTxNonce
+	account := r.src.Client.From()
+
+	minedNonce, pendingNonce, err := r.readResumeNonces(ctx, account)
+	if err != nil {
+		return "", err
+	}
+
+	receipt, err := r.probeBridgeReceipt(ctx, txHash)
+	if err != nil {
+		return "", err
+	}
+	if receipt != nil {
+		r.probedReceipt = receipt
+		r.engine.logger.Infof("bridge_loop_tester: %s: resume: bridge tx %s (nonce %d) is mined on %s, "+
+			"continuing the hop from state %q", r.hopLabel(), txHash, txNonce, r.src.Config.Name,
+			HopStateBridged)
+
+		return HopStateBridged, nil
+	}
+
+	if minedNonce == txNonce && pendingNonce == txNonce {
+		r.engine.logger.Infof("bridge_loop_tester: %s: resume: bridge tx %s has no receipt on %s and its "+
+			"nonce %d is still free (mined nonce %d, pending nonce %d), so %s never saw it; re-submitting "+
+			"the deposit", r.hopLabel(), txHash, r.src.Config.Name, txNonce, minedNonce, pendingNonce,
+			r.src.Config.Name)
+		r.result.BridgeTxHash = common.Hash{}
+		r.result.BridgeTxNonce = 0
+
+		return HopStatePending, nil
+	}
+
+	return r.settleUnreceiptedBridge(ctx, txHash, txNonce, minedNonce, pendingNonce)
+}
+
+// settleUnreceiptedBridge handles the hard sub-case of resolveInterruptedBridge: the bridge
+// transaction has no receipt and its nonce is no longer free. When the nonce is merely queued the
+// transaction may still be ours and about to mine, so its receipt is waited out; when the nonce has
+// already been mined by something else our transaction can never appear and waiting is pointless.
+// Either way, re-submitting is never an option here.
+func (r *hopRun) settleUnreceiptedBridge(
+	ctx context.Context, txHash common.Hash, txNonce, minedNonce, pendingNonce uint64,
+) (HopState, error) {
+	var waited time.Duration
+	if minedNonce == txNonce {
+		receipt, wait, err := r.waitResumeReceipt(ctx, txHash, txNonce)
+		if err != nil {
+			return "", err
+		}
+		waited = wait
+		if receipt != nil {
+			r.probedReceipt = receipt
+
+			return HopStateBridged, nil
+		}
+	}
+
+	return "", &AmbiguousResumeError{
+		State:         HopStateBridging,
+		Source:        r.req.Hop.Source,
+		Destination:   r.req.Hop.Destination,
+		Account:       r.src.Client.From(),
+		Amount:        r.req.Amount,
+		BridgeTxHash:  txHash,
+		BridgeTxNonce: txNonce,
+		AccountNonce:  minedNonce,
+		PendingNonce:  pendingNonce,
+		ReceiptWait:   waited,
+	}
+}
+
+// readResumeNonces reads the signing account's mined and pending nonces, in that order, for the
+// comparison resolveInterruptedBridge documents.
+func (r *hopRun) readResumeNonces(ctx context.Context, account common.Address) (uint64, uint64, error) {
+	backend := r.src.Client.Backend()
+
+	minedNonce, err := backend.NonceAt(ctx, account, nil)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%s: resume: read the mined nonce of %s on %s: %w",
+			r.hopLabel(), account, r.src.Config.Name, err)
+	}
+
+	pendingNonce, err := backend.PendingNonceAt(ctx, account)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%s: resume: read the pending nonce of %s on %s: %w",
+			r.hopLabel(), account, r.src.Config.Name, err)
+	}
+
+	return minedNonce, pendingNonce, nil
+}
+
+// probeBridgeReceipt reads the receipt of txHash, returning a nil receipt and a nil error when the
+// transaction is simply not mined. Unlike recoverBridge it does not treat "no receipt" as a
+// failure: whether that is fatal is exactly what the caller is deciding.
+func (r *hopRun) probeBridgeReceipt(ctx context.Context, txHash common.Hash) (*ethtypes.Receipt, error) {
+	receipt, err := r.src.Client.Backend().TransactionReceipt(ctx, txHash)
+	switch {
+	case err == nil:
+		return receipt, nil
+	case errors.Is(err, ethereum.NotFound):
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("%s: resume: look up the receipt of bridge tx %s on %s: %w",
+			r.hopLabel(), txHash, r.src.Config.Name, err)
+	}
+}
+
+// waitResumeReceipt polls for the receipt of a queued bridge transaction, for the shorter of
+// HopTimings.BridgeResumeReceiptWait and the hop budget still remaining. It returns the receipt or
+// nil, along with how long it actually waited (which the refusal message quotes).
+func (r *hopRun) waitResumeReceipt(
+	ctx context.Context, txHash common.Hash, txNonce uint64,
+) (*ethtypes.Receipt, time.Duration, error) {
+	detail := fmt.Sprintf("network_id=%d bridge_tx=%s nonce=%d", r.req.Hop.Source, txHash, txNonce)
+	window, _, err := r.claimWindow(r.engine.timings.BridgeResumeReceiptWait, gateBridgeReceipt, detail)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	r.engine.logger.Infof("bridge_loop_tester: %s: resume: bridge tx %s has no receipt on %s but its nonce "+
+		"%d is queued, so it may still be about to mine; waiting up to %s for its receipt before deciding",
+		r.hopLabel(), txHash, r.src.Config.Name, txNonce, window)
+
+	windowCtx, cancel := context.WithTimeout(ctx, window)
+	defer cancel()
+
+	ticker := time.NewTicker(r.engine.timings.PollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-windowCtx.Done():
+			if ctx.Err() != nil {
+				return nil, window, fmt.Errorf("%s: resume: waiting for the receipt of bridge tx %s on %s: %w",
+					r.hopLabel(), txHash, r.src.Config.Name, ctx.Err())
+			}
+
+			return nil, window, nil
+		case <-ticker.C:
+		}
+
+		receipt, err := r.probeBridgeReceipt(ctx, txHash)
+		if err != nil {
+			return nil, window, err
+		}
+		if receipt != nil {
+			return receipt, window, nil
+		}
+	}
+}
+
 // recoverBridge re-derives a resumed hop's deposit from the checkpointed bridge transaction hash,
 // which is the whole basis of resumability: the receipt's BridgeEvent gives back the deposit count,
 // leaf type, amount and metadata without trusting anything remembered in memory (DESIGN.md §4/§5).
@@ -930,10 +1199,13 @@ func (r *hopRun) recoverBridge(ctx context.Context) error {
 	defer r.endPhase()
 
 	txHash := r.result.BridgeTxHash
-	receipt, err := r.src.Client.Backend().TransactionReceipt(ctx, txHash)
-	if err != nil {
-		return fmt.Errorf("%s: resume: re-read the receipt of bridge tx %s on %s: %w",
-			r.hopLabel(), txHash, r.src.Config.Name, err)
+	receipt := r.probedReceipt
+	if receipt == nil {
+		var err error
+		if receipt, err = r.src.Client.Backend().TransactionReceipt(ctx, txHash); err != nil {
+			return fmt.Errorf("%s: resume: re-read the receipt of bridge tx %s on %s: %w",
+				r.hopLabel(), txHash, r.src.Config.Name, err)
+		}
 	}
 	if receipt.Status != ethtypes.ReceiptStatusSuccessful {
 		return fmt.Errorf("%s: resume: bridge tx %s on %s was mined with a failed status, so the hop never "+

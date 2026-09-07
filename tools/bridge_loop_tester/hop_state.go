@@ -23,13 +23,24 @@ import (
 //	                       |                           | Re-read allowance(from, bridge) and approve
 //	                       |                           | again only if it is still short: approve is
 //	                       |                           | idempotent, so this is always safe.
-//	HopStateBridging       | before submitting bridge  | AMBIGUOUS: the bridge transaction may have
-//	                       |                           | been accepted by the node without its hash
-//	                       |                           | reaching the checkpoint. Continuing would
-//	                       |                           | risk bridging Amount twice, so RunHop
-//	                       |                           | refuses with *AmbiguousResumeError instead
-//	                       |                           | of guessing. See that type for the manual
-//	                       |                           | recovery procedure.
+//	HopStateBridging       | twice: before signing the | Decided from the checkpoint's BridgeTxHash
+//	                       | bridge transaction, and   | and BridgeTxNonce, which the network layer
+//	                       | again from the layer's    | hands the engine after signing and *before*
+//	                       | pre-broadcast hook, with  | the broadcast (TxRequest.OnSigned):
+//	                       | the hash and nonce, still |   - no hash: the crash was before the
+//	                       | before the broadcast      |     signature, so nothing can have been
+//	                       |                           |     broadcast. Restart from scratch.
+//	                       |                           |   - a receipt exists: parse its BridgeEvent
+//	                       |                           |     and continue as HopStateBridged.
+//	                       |                           |   - no receipt, nonce untouched (mined ==
+//	                       |                           |     pending == tx nonce): the node never
+//	                       |                           |     saw it. Re-submit.
+//	                       |                           |   - no receipt, nonce claimed: wait out the
+//	                       |                           |     receipt, then refuse rather than risk a
+//	                       |                           |     second deposit. See
+//	                       |                           |     *AmbiguousResumeError, and
+//	                       |                           |     HopEngine.resolveInterruptedBridge for
+//	                       |                           |     the full reasoning.
 //	HopStateBridged        | after the bridge receipt  | Re-fetch the receipt of BridgeTxHash on the
 //	                       |                           | source and re-parse its BridgeEvent
 //	                       |                           | (DESIGN.md §5) to recover depositCount, leaf
@@ -82,8 +93,10 @@ const (
 	// HopStateApproving means an ERC20 approve for the source bridge is about to be, or has been,
 	// submitted. Entered only when the current allowance is short of the hop's amount.
 	HopStateApproving HopState = "approving"
-	// HopStateBridging means the bridgeAsset transaction is about to be submitted. It is the one
-	// state whose outcome a restart cannot observe - see HopState's table and AmbiguousResumeError.
+	// HopStateBridging means the bridgeAsset transaction is being submitted. It is checkpointed
+	// twice - once before signing and once from the network layer's pre-broadcast hook, with the
+	// signed hash and nonce - so a restart in the submission window is decidable rather than
+	// ambiguous. See HopState's table.
 	HopStateBridging HopState = "bridging"
 	// HopStateBridged means the bridgeAsset transaction is mined and its BridgeEvent decoded, so
 	// the hop's deposit count and global index are known (DESIGN.md §4, S0 -> S1).
@@ -173,13 +186,26 @@ type HopPhaseTiming struct {
 // *before* the state's side effect (the approve, the bridge, the claim) is attempted, so a
 // checkpoint on disk is never behind the chain.
 type HopCheckpoint struct {
-	// State is the state the hop had reached. Advisory for everything except the two ambiguous
+	// State is the state the hop had reached. Advisory for everything except the two
 	// pre-submission states (HopStateBridging, HopStateSubmittingClaim), whose resume semantics
 	// depend on it - see HopState.
+	//
+	// Resuming safely assumes the caller persists a checkpoint *atomically* (S7 writes the state
+	// file with a temp-file rename): the engine treats "state bridging with no BridgeTxHash" as
+	// proof that the bridge transaction was never signed, which a torn write could otherwise
+	// fake.
 	State HopState `json:"state"`
 	// BridgeTxHash is the hash of the hop's bridgeAsset transaction, the anchor everything else is
-	// re-derived from (DESIGN.md §4). Zero until the bridge is mined.
+	// re-derived from (DESIGN.md §4). It is recorded from the network layer's pre-broadcast hook,
+	// so in state HopStateBridging it is already set for a transaction that may not have been
+	// broadcast at all; a zero value there means the crash happened before the signature.
 	BridgeTxHash common.Hash `json:"bridge_tx_hash,omitempty"`
+	// BridgeTxNonce is the account nonce BridgeTxHash consumes, recorded alongside it before the
+	// broadcast. It is meaningful only when BridgeTxHash is non-zero (nonce 0 is a legitimate
+	// value, so presence is carried by the hash, not by this field). Comparing it against the
+	// signing account's mined nonce is what tells a resumed hop whether an unreceipted submission
+	// ever reached the node - see HopState's HopStateBridging row.
+	BridgeTxNonce uint64 `json:"bridge_tx_nonce,omitempty"`
 	// ClaimTxHash is the hash of the tool's own claim transaction, when it submitted one.
 	ClaimTxHash common.Hash `json:"claim_tx_hash,omitempty"`
 	// DepositCount is the deposit count decoded from the bridge receipt. Advisory: a resume

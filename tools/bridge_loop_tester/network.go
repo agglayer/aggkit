@@ -24,6 +24,11 @@ const (
 	defaultReceiptPollInterval = 2 * time.Second
 )
 
+// defaultPreBroadcastTimeout bounds how long a TxRequest.OnSigned hook may take. It runs inside
+// SendTx's nonce-serialization critical section, so a hook that never returns would stall every
+// other submission from the same account - see notifySigned.
+const defaultPreBroadcastTimeout = 30 * time.Second
+
 // baseFeeMultiplier is how many times the latest block's base fee a dynamic-fee transaction is
 // willing to pay, on top of the suggested tip. Bridge and claim transactions in a soak run must not
 // get stuck behind a base-fee spike, and any unused headroom is refunded by the protocol.
@@ -41,6 +46,12 @@ type EthBackend interface {
 	BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error)
 	// TransactionReceipt returns the receipt of txHash, or ethereum.NotFound while it is unmined.
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*ethtypes.Receipt, error)
+	// NonceAt returns the number of transactions account has *mined*; a nil blockNumber means
+	// latest. It is deliberately distinct from bind.ContractTransactor's PendingNonceAt (which
+	// also counts what is sitting in the node's transaction pool): telling "this nonce has been
+	// mined" from "this nonce is only queued" is what makes an interrupted submission decidable
+	// - see HopState's HopStateBridging resume contract.
+	NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
 }
 
 // TxSigner signs transactions for one network. It is deliberately narrower than
@@ -51,6 +62,30 @@ type TxSigner interface {
 	PublicAddress() common.Address
 	// SignTx returns tx signed for the network the signer was built for.
 	SignTx(ctx context.Context, tx *ethtypes.Transaction) (*ethtypes.Transaction, error)
+}
+
+// PendingTx is the pre-broadcast view of a signed transaction: everything a crash-resumable caller
+// must know about a submission *before* the node can possibly have accepted it.
+//
+// A transaction's hash is fixed by its signature, so it is known before the broadcast. That is what
+// closes the otherwise unobservable window between "the node accepted this transaction" and "the
+// caller learned its hash": a caller that persists Hash and Nonce from a TxRequest.OnSigned hook
+// can always decide, after a restart, whether the submission happened (a receipt exists, or the
+// nonce was consumed) or never left the process (the nonce is untouched).
+type PendingTx struct {
+	// Label is the originating TxRequest's Label, for log lines and error messages.
+	Label string
+	// Hash is the hash the transaction will have on-chain, already final: it is derived from the
+	// signature, not from the broadcast.
+	Hash common.Hash
+	// Nonce is the account nonce this transaction consumes. Compared against the account's mined
+	// nonce, it is what distinguishes "this submission landed or was replaced" from "this
+	// submission never reached the node".
+	Nonce uint64
+	// From is the account the transaction is signed for.
+	From common.Address
+	// Network is the aggkit network ID the transaction is being submitted to.
+	Network uint32
 }
 
 // TxRequest describes one transaction NetworkClient.SendTx should submit. The nonce, fee fields and
@@ -70,6 +105,27 @@ type TxRequest struct {
 	// GasOffset is applied. Use it to work around nodes whose estimate races the state the
 	// transaction will actually execute against (see test/e2e/bridge_utils.go's l1BridgeGasLimit).
 	GasLimit uint64
+	// OnSigned, when non-nil, is called once with the signed transaction's identity after it has
+	// been signed and strictly *before* it is broadcast. It exists so a caller can durably record
+	// the hash and nonce of a submission it is about to make, and therefore resume across a crash
+	// in the broadcast window (see PendingTx and HopState's HopStateBridging contract).
+	//
+	// Contract, all of which matters because the hook runs inside SendTx's nonce-serialization
+	// critical section:
+	//   - Returning a non-nil error aborts the submission: nothing is broadcast, the reserved
+	//     nonce stays unconsumed, and SendTx returns that error wrapped. This is the safe
+	//     direction - a caller that cannot record the hash should not let the transaction out.
+	//   - The hook MUST NOT call back into this NetworkClient (SendTx is not reentrant: it holds
+	//     a plain mutex and would deadlock). It should do one bounded thing - persist the hash.
+	//   - It is called with a context derived from SendTx's, bounded by the client's
+	//     pre-broadcast timeout (WithPreBroadcastTimeout, 30s by default). A hook that honours
+	//     that context therefore cannot stall the critical section; one that ignores it and
+	//     blocks anyway will hold up every other submission from this account, which is the
+	//     deliberate trade-off: broadcasting a transaction whose hash was never recorded is worse
+	//     than a visible stall.
+	//   - A panic inside the hook is recovered and turned into that same aborting error, so a
+	//     buggy hook cannot take the process down or leave sendMu locked forever.
+	OnSigned func(ctx context.Context, pending PendingTx) error
 }
 
 // NetworkClient is the per-network on-chain layer: JSON-RPC access, chain identity, the signing
@@ -125,6 +181,16 @@ func WithReceiptPollInterval(interval time.Duration) NetworkOption {
 	}
 }
 
+// WithPreBroadcastTimeout bounds how long a TxRequest.OnSigned hook may take before its submission
+// is abandoned unsent. Values that are not strictly positive are ignored.
+func WithPreBroadcastTimeout(timeout time.Duration) NetworkOption {
+	return func(c *networkClient) {
+		if timeout > 0 {
+			c.preBroadcastTimeout = timeout
+		}
+	}
+}
+
 // networkClient is the NetworkClient implementation. Its zero value is not usable; build one with
 // NewNetworkClient or NewNetworkClientWithBackend.
 type networkClient struct {
@@ -141,6 +207,7 @@ type networkClient struct {
 
 	receiptTimeout      time.Duration
 	receiptPollInterval time.Duration
+	preBroadcastTimeout time.Duration
 
 	// sendMu serializes the nonce-reservation/estimate/sign/submit critical section of SendTx. It
 	// is deliberately NOT held across the receipt wait, so several transactions from this EOA can
@@ -271,6 +338,7 @@ func newNetworkClient(
 		closeFn:             func() {},
 		receiptTimeout:      defaultReceiptTimeout,
 		receiptPollInterval: defaultReceiptPollInterval,
+		preBroadcastTimeout: defaultPreBroadcastTimeout,
 	}
 	for _, opt := range opts {
 		opt(client)
@@ -382,6 +450,13 @@ func (c *networkClient) signAndSubmit(ctx context.Context, req TxRequest) (*etht
 		return nil, fmt.Errorf("%s on %s: sign transaction (nonce %d): %w", labelOf(req), c.name, nonce, err)
 	}
 
+	// The hash is final as of the signature, so hand it to the caller before the node can possibly
+	// have seen the transaction. A hook that fails aborts the submission with the nonce still
+	// unconsumed, which is the safe direction: nothing is on-chain and the next SendTx reuses it.
+	if err := c.notifySigned(ctx, req, signed, nonce); err != nil {
+		return nil, err
+	}
+
 	if err := c.backend.SendTransaction(ctx, signed); err != nil {
 		// The reserved nonce was never consumed: force a re-read on the next submission so a
 		// rejected transaction cannot leave a permanent hole in this EOA's nonce sequence.
@@ -394,6 +469,62 @@ func (c *networkClient) signAndSubmit(ctx context.Context, req TxRequest) (*etht
 	c.nonceValid = true
 
 	return signed, nil
+}
+
+// notifySigned hands req.OnSigned the signed transaction's identity, between the signature and the
+// broadcast. Callers must hold sendMu, which is exactly why this function is defensive:
+//
+//   - the hook is called synchronously, so nothing it writes can race with the caller's own use of
+//     SendTx's result: it has either finished or failed by the time the broadcast is attempted, and
+//     nothing of it is left running afterwards;
+//   - its context is bounded by preBroadcastTimeout, so a hook that honours cancellation cannot
+//     hold the critical section for longer than that;
+//   - a hook that ignores its context and blocks anyway *does* hold sendMu, stalling every other
+//     submission from this account. That is the deliberate choice: letting a transaction out
+//     without its hash recorded would recreate the unobservable window this hook exists to close.
+//     The symptom is loud - the hop never leaves its bridge phase - and the fix belongs in the
+//     hook;
+//   - a panic in the hook is recovered here and reported as a failure to submit, so a buggy hook
+//     cannot unwind through the locked mutex and wedge the client permanently.
+func (c *networkClient) notifySigned(
+	ctx context.Context, req TxRequest, signed *ethtypes.Transaction, nonce uint64,
+) error {
+	if req.OnSigned == nil {
+		return nil
+	}
+
+	pending := PendingTx{
+		Label:   labelOf(req),
+		Hash:    signed.Hash(),
+		Nonce:   nonce,
+		From:    c.from,
+		Network: c.networkID,
+	}
+
+	hookCtx, cancel := context.WithTimeout(ctx, c.preBroadcastTimeout)
+	defer cancel()
+
+	err := callOnSigned(hookCtx, req.OnSigned, pending)
+	if err == nil {
+		return nil
+	}
+
+	return fmt.Errorf("%s on %s: the pre-broadcast hook for tx %s (nonce %d) failed, so it was NOT "+
+		"submitted: %w", pending.Label, c.name, pending.Hash, nonce, err)
+}
+
+// callOnSigned invokes hook, converting a panic into an error so it cannot escape through
+// signAndSubmit's held mutex.
+func callOnSigned(
+	ctx context.Context, hook func(context.Context, PendingTx) error, pending PendingTx,
+) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("pre-broadcast hook panicked: %v", recovered)
+		}
+	}()
+
+	return hook(ctx, pending)
 }
 
 // reserveNonce returns the nonce to use for the next submission. Callers must hold sendMu.

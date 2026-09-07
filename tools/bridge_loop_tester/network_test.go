@@ -486,3 +486,181 @@ func TestNetworkClientAccessors(t *testing.T) {
 
 	client.Close() // no-op for an injected backend
 }
+
+// TestSendTxHandsTheSignedHashToThePreBroadcastHook is the mechanism the resumable bridge
+// submission rests on: the hook sees the transaction's real hash and nonce, and it sees them
+// *before* the node does. The test asserts the ordering directly - the broadcast records what the
+// hook had already observed.
+func TestSendTxHandsTheSignedHashToThePreBroadcastHook(t *testing.T) {
+	t.Parallel()
+
+	const baseNonce = uint64(4)
+
+	backend := mocks.NewEthBackend(t)
+	client, signer := newTestClient(t, backend, testNetworkConfig())
+
+	backend.EXPECT().PendingNonceAt(mock.Anything, signer.PublicAddress()).Return(baseNonce, nil).Once()
+	backend.EXPECT().EstimateGas(mock.Anything, mock.Anything).Return(uint64(21_000), nil)
+	expectFees(backend)
+
+	var (
+		observed  bridgelooptester.PendingTx
+		hookCalls int
+		broadcast common.Hash
+	)
+	backend.EXPECT().
+		SendTransaction(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, tx *ethtypes.Transaction) error {
+			require.Equal(t, 1, hookCalls, "the hook must run before the broadcast")
+			broadcast = tx.Hash()
+
+			return nil
+		}).Once()
+	backend.EXPECT().
+		TransactionReceipt(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, txHash common.Hash) (*ethtypes.Receipt, error) {
+			return successReceipt(txHash), nil
+		}).Once()
+
+	to := common.HexToAddress("0x2222222222222222222222222222222222222222")
+	receipt, err := client.SendTx(context.Background(), bridgelooptester.TxRequest{
+		Label: "bridgeAsset",
+		To:    &to,
+		OnSigned: func(ctx context.Context, pending bridgelooptester.PendingTx) error {
+			hookCalls++
+			observed = pending
+			require.NoError(t, ctx.Err(), "the hook's context must still be live")
+
+			return nil
+		},
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, 1, hookCalls)
+	require.Equal(t, broadcast, observed.Hash, "the hook's hash is the hash that was broadcast")
+	require.Equal(t, receipt.TxHash, observed.Hash)
+	require.Equal(t, baseNonce, observed.Nonce)
+	require.Equal(t, signer.PublicAddress(), observed.From)
+	require.Equal(t, uint32(1), observed.Network)
+	require.Equal(t, "bridgeAsset", observed.Label)
+}
+
+// TestSendTxAbortsWhenThePreBroadcastHookFails covers the safe direction: a caller that cannot
+// record the hash stops the transaction from going out at all, and the nonce it reserved is still
+// free for the next submission.
+func TestSendTxAbortsWhenThePreBroadcastHookFails(t *testing.T) {
+	t.Parallel()
+
+	const baseNonce = uint64(9)
+
+	backend := mocks.NewEthBackend(t)
+	client, signer := newTestClient(t, backend, testNetworkConfig())
+
+	// Twice: an aborted submission never consumed its nonce, and it does not cache one either, so
+	// the next submission re-reads the pending nonce and gets the very same value back.
+	backend.EXPECT().PendingNonceAt(mock.Anything, signer.PublicAddress()).Return(baseNonce, nil).Twice()
+	backend.EXPECT().EstimateGas(mock.Anything, mock.Anything).Return(uint64(21_000), nil)
+	expectFees(backend)
+
+	var sent []uint64
+	backend.EXPECT().
+		SendTransaction(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, tx *ethtypes.Transaction) error {
+			sent = append(sent, tx.Nonce())
+
+			return nil
+		}).Once()
+	backend.EXPECT().
+		TransactionReceipt(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, txHash common.Hash) (*ethtypes.Receipt, error) {
+			return successReceipt(txHash), nil
+		}).Once()
+
+	to := common.HexToAddress("0x2222222222222222222222222222222222222222")
+
+	_, err := client.SendTx(context.Background(), bridgelooptester.TxRequest{
+		Label: "bridgeAsset",
+		To:    &to,
+		OnSigned: func(context.Context, bridgelooptester.PendingTx) error {
+			return errors.New("disk full")
+		},
+	})
+	require.ErrorContains(t, err, "the pre-broadcast hook for tx")
+	require.ErrorContains(t, err, "was NOT submitted")
+	require.ErrorContains(t, err, "disk full")
+	require.Empty(t, sent, "nothing may reach the node when the hook refuses")
+
+	// The reserved nonce was never consumed, so the next submission gets it again.
+	_, err = client.SendTx(context.Background(), bridgelooptester.TxRequest{Label: "second", To: &to})
+	require.NoError(t, err)
+	require.Equal(t, []uint64{baseNonce}, sent)
+}
+
+// TestSendTxSurvivesAPanickingPreBroadcastHook checks that a buggy hook cannot take the process
+// down, cannot unwind through the sender's held mutex, and cannot let the transaction out: the
+// panic becomes an ordinary aborting error and the client keeps working.
+func TestSendTxSurvivesAPanickingPreBroadcastHook(t *testing.T) {
+	t.Parallel()
+
+	backend := mocks.NewEthBackend(t)
+	client, signer := newTestClient(t, backend, testNetworkConfig())
+
+	backend.EXPECT().PendingNonceAt(mock.Anything, signer.PublicAddress()).Return(uint64(1), nil).Twice()
+	backend.EXPECT().EstimateGas(mock.Anything, mock.Anything).Return(uint64(21_000), nil)
+	expectFees(backend)
+	backend.EXPECT().SendTransaction(mock.Anything, mock.Anything).Return(nil).Once()
+	backend.EXPECT().
+		TransactionReceipt(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, txHash common.Hash) (*ethtypes.Receipt, error) {
+			return successReceipt(txHash), nil
+		}).Once()
+
+	to := common.HexToAddress("0x2222222222222222222222222222222222222222")
+
+	_, err := client.SendTx(context.Background(), bridgelooptester.TxRequest{
+		Label: "bridgeAsset",
+		To:    &to,
+		OnSigned: func(context.Context, bridgelooptester.PendingTx) error {
+			panic("checkpoint writer is broken")
+		},
+	})
+	require.ErrorContains(t, err, "pre-broadcast hook panicked: checkpoint writer is broken")
+	require.ErrorContains(t, err, "was NOT submitted")
+
+	// The mutex was released, so the client is still usable.
+	_, err = client.SendTx(context.Background(), bridgelooptester.TxRequest{Label: "second", To: &to})
+	require.NoError(t, err)
+}
+
+// TestSendTxPreBroadcastHookTimeout checks that a slow hook cannot stall the nonce-serialization
+// critical section indefinitely: it is given a bounded context, and a hook that honours it aborts
+// the submission instead of holding the mutex forever.
+func TestSendTxPreBroadcastHookTimeout(t *testing.T) {
+	t.Parallel()
+
+	backend := mocks.NewEthBackend(t)
+	client, signer := newTestClient(t, backend, testNetworkConfig(),
+		bridgelooptester.WithPreBroadcastTimeout(30*time.Millisecond))
+
+	backend.EXPECT().PendingNonceAt(mock.Anything, signer.PublicAddress()).Return(uint64(2), nil).Once()
+	backend.EXPECT().EstimateGas(mock.Anything, mock.Anything).Return(uint64(21_000), nil)
+	expectFees(backend)
+
+	to := common.HexToAddress("0x2222222222222222222222222222222222222222")
+
+	start := time.Now()
+	_, err := client.SendTx(context.Background(), bridgelooptester.TxRequest{
+		Label: "bridgeAsset",
+		To:    &to,
+		OnSigned: func(ctx context.Context, _ bridgelooptester.PendingTx) error {
+			<-ctx.Done()
+
+			return ctx.Err()
+		},
+	})
+	require.ErrorContains(t, err, "was NOT submitted")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Less(t, time.Since(start), time.Second, "the hook must not hold the sender open")
+	// No SendTransaction expectation is registered: mocks.EthBackend fails the test if the
+	// transaction was broadcast anyway.
+}

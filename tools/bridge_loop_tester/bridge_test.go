@@ -257,17 +257,21 @@ func TestBridgeAssetNativeSubmitsWithMsgValue(t *testing.T) {
 			return receipt, nil
 		}).Once()
 
+	onSigned := func(context.Context, bridgelooptester.PendingTx) error { return nil }
 	result, err := bridge.BridgeAssetNative(context.Background(), bridgelooptester.BridgeAssetRequest{
 		DestinationNetwork:        2,
 		DestinationAddress:        testDestAddr,
 		Amount:                    amount,
 		ForceUpdateGlobalExitRoot: true,
+		OnSigned:                  onSigned,
 	})
 	require.NoError(t, err)
 	require.Equal(t, common.HexToHash("0xfeed"), result.TxHash)
 	require.Equal(t, uint32(42), result.Event.DepositCount)
 
 	require.Equal(t, "bridgeAsset(native)", sent.Label)
+	require.NotNil(t, sent.OnSigned,
+		"the deposit's pre-broadcast hook must reach the sender, or the bridge submission is not resumable")
 	require.Equal(t, &testBridgeAddr, sent.To)
 	require.Equal(t, amount, sent.Value, "the native path must attach msg.value")
 

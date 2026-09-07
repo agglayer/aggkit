@@ -15,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	bridgelooptester "github.com/agglayer/aggkit/tools/bridge_loop_tester"
 	"github.com/agglayer/aggkit/tools/bridge_loop_tester/mocks"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
@@ -30,6 +31,9 @@ const (
 	hopDepositCount       uint32 = 42
 	hopLeafIndex          uint32 = 7
 	hopInjectedLeafIndex  uint32 = 9
+	// hopBridgeTxNonce is the nonce the bridge transaction consumes, handed to the engine by the
+	// network layer's pre-broadcast hook and compared against the account nonce on a resume.
+	hopBridgeTxNonce uint64 = 11
 )
 
 var (
@@ -189,16 +193,39 @@ func (h *hopHarness) states() []bridgelooptester.HopState {
 	return states
 }
 
-// expectBridge makes the source bridge accept a native bridgeAsset and return a deposit.
+// expectBridge makes the source bridge accept a native bridgeAsset and return a deposit. It calls
+// the request's OnSigned hook first, exactly as the real network layer does between signing and
+// broadcasting, so every test that bridges also exercises the pre-broadcast checkpoint.
 func (h *hopHarness) expectBridge() {
+	h.expectBridgeWith(func(bridgelooptester.BridgeAssetRequest) error { return nil })
+}
+
+// expectBridgeWith is expectBridge with a hook of the caller's own, run after the engine's OnSigned
+// hook, so a test can fail the submission at a chosen point.
+func (h *hopHarness) expectBridgeWith(after func(bridgelooptester.BridgeAssetRequest) error) {
 	h.srcBridge.EXPECT().BridgeAssetNative(mock.Anything, mock.Anything).
 		RunAndReturn(func(
-			_ context.Context, req bridgelooptester.BridgeAssetRequest,
+			ctx context.Context, req bridgelooptester.BridgeAssetRequest,
 		) (*bridgelooptester.BridgeResult, error) {
 			require.Equal(h.t, h.destination, req.DestinationNetwork)
 			require.Equal(h.t, hopDestinationAccount, req.DestinationAddress)
 			require.Equal(h.t, hopAmount, req.Amount)
 			require.True(h.t, req.ForceUpdateGlobalExitRoot)
+			require.NotNil(h.t, req.OnSigned,
+				"the engine must ask for the signed hash before the deposit is broadcast")
+
+			if err := req.OnSigned(ctx, bridgelooptester.PendingTx{
+				Label:   "bridgeAsset(native)",
+				Hash:    hopBridgeTxHash,
+				Nonce:   hopBridgeTxNonce,
+				From:    hopSourceAccount,
+				Network: hopSourceNetwork,
+			}); err != nil {
+				return nil, err
+			}
+			if err := after(req); err != nil {
+				return nil, err
+			}
 
 			return &bridgelooptester.BridgeResult{
 				TxHash:  hopBridgeTxHash,
@@ -206,6 +233,27 @@ func (h *hopHarness) expectBridge() {
 				Event:   hopBridgeEvent(h.destination, common.Address{}),
 			}, nil
 		}).Once()
+}
+
+// expectResumeNonces answers the two nonce reads a resume from HopStateBridging makes.
+func (h *hopHarness) expectResumeNonces(mined, pending uint64) {
+	h.backend.EXPECT().NonceAt(mock.Anything, hopSourceAccount, (*big.Int)(nil)).Return(mined, nil).Once()
+	h.backend.EXPECT().PendingNonceAt(mock.Anything, hopSourceAccount).Return(pending, nil).Once()
+}
+
+// bridgingCheckpoint builds the checkpoint the engine's pre-broadcast hook writes: state
+// "bridging", with the signed transaction's hash and nonce, before it was broadcast.
+func (h *hopHarness) bridgingCheckpoint() *bridgelooptester.HopCheckpoint {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	return &bridgelooptester.HopCheckpoint{
+		State:                    bridgelooptester.HopStateBridging,
+		BridgeTxHash:             hopBridgeTxHash,
+		BridgeTxNonce:            hopBridgeTxNonce,
+		DestinationBalanceBefore: new(big.Int).Set(h.dstNative).String(),
+		StartedAt:                time.Now().Add(-time.Minute),
+	}
 }
 
 // expectGates makes the three readiness gates succeed, and asserts the claim proof is fetched for
@@ -441,7 +489,11 @@ func TestRunHopAutoClaimHappyPath(t *testing.T) {
 	require.Empty(t, result.StalledGate)
 	require.Positive(t, len(result.Phases))
 
+	// "bridging" is persisted twice on purpose: once before the transaction is signed and once
+	// from the pre-broadcast hook, which is what adds its hash and nonce to the checkpoint while
+	// the transaction still cannot have been broadcast.
 	require.Equal(t, []bridgelooptester.HopState{
+		bridgelooptester.HopStateBridging,
 		bridgelooptester.HopStateBridging,
 		bridgelooptester.HopStateBridged,
 		bridgelooptester.HopStateWaitingOriginIndex,
@@ -451,6 +503,17 @@ func TestRunHopAutoClaimHappyPath(t *testing.T) {
 		bridgelooptester.HopStateClaimed,
 		bridgelooptester.HopStateVerified,
 	}, h.states())
+	require.Equal(t, []bridgelooptester.HopState{
+		bridgelooptester.HopStateBridging,
+		bridgelooptester.HopStateBridged,
+		bridgelooptester.HopStateWaitingOriginIndex,
+		bridgelooptester.HopStateWaitingGERInjection,
+		bridgelooptester.HopStateFetchingClaimProof,
+		bridgelooptester.HopStateAwaitingClaim,
+		bridgelooptester.HopStateClaimed,
+		bridgelooptester.HopStateVerified,
+	}, result.States, "the state trail itself records each state once")
+	require.Equal(t, hopBridgeTxNonce, result.BridgeTxNonce)
 }
 
 // TestRunHopManualClaimHappyPath is the manual-claim happy path: nothing claims the deposit during
@@ -968,6 +1031,7 @@ func (h *hopHarness) resumeCheckpoint(state bridgelooptester.HopState) *bridgelo
 	return &bridgelooptester.HopCheckpoint{
 		State:                    state,
 		BridgeTxHash:             hopBridgeTxHash,
+		BridgeTxNonce:            hopBridgeTxNonce,
 		DepositCount:             hopDepositCount,
 		L1InfoTreeIndex:          hopLeafIndex,
 		InjectedLeafIndex:        hopInjectedLeafIndex,
@@ -1157,16 +1221,84 @@ func TestRunHopResumeFromClaimed(t *testing.T) {
 	})
 }
 
-// TestRunHopResumeFromBridgingIsRefused covers the one state whose outcome a restart cannot
-// observe: continuing would risk bridging the amount twice, so the engine refuses loudly and
-// explains how to recover by hand rather than guessing.
-func TestRunHopResumeFromBridgingIsRefused(t *testing.T) {
+// TestRunHopResumeFromBridgingWithReceiptContinuesTheHop is resume scenario 1 of 3: the bridge
+// transaction the pre-broadcast hook checkpointed does have a receipt, so the deposit is real and
+// the hop continues from it without bridging again.
+func TestRunHopResumeFromBridgingWithReceiptContinuesTheHop(t *testing.T) {
 	t.Parallel()
 
 	h := newHopHarness(t, hopDestinationNetwork)
+	// The nonces are read before the receipt, and their values do not matter once a receipt is
+	// found: a mined deposit is a mined deposit.
+	h.expectResumeNonces(hopBridgeTxNonce+1, hopBridgeTxNonce+1)
+	h.expectBridgeRecovery()
+	h.expectGates()
+	h.expectIsClaimed()
+	h.expectToolClaim()
+	h.expectNoClaimRecord()
 
 	req := h.request(bridgelooptester.ClaimManual)
-	req.Resume = &bridgelooptester.HopCheckpoint{State: bridgelooptester.HopStateBridging}
+	req.Resume = h.bridgingCheckpoint()
+
+	result, err := h.engine().RunHop(context.Background(), req)
+	require.NoError(t, err)
+
+	require.True(t, result.Resumed)
+	require.Equal(t, bridgelooptester.HopStateBridging, result.ResumedFrom)
+	require.Equal(t, hopBridgeTxHash, result.BridgeTxHash)
+	require.Equal(t, hopDepositCount, result.DepositCount)
+	require.Equal(t, bridgelooptester.HopStateVerified, result.FinalState)
+	require.NotContains(t, h.states(), bridgelooptester.HopStateBridging,
+		"a deposit that is already mined must not be bridged again")
+	// mocks.Bridge would fail the test if BridgeAssetNative had been called: no expectation for it
+	// was registered on it.
+}
+
+// TestRunHopResumeFromBridgingWithoutReceiptAndNonceUnusedResubmits is resume scenario 2 of 3: no
+// receipt, and the transaction's nonce is neither mined nor queued, which proves the node never saw
+// it - so the deposit is submitted for real this time.
+func TestRunHopResumeFromBridgingWithoutReceiptAndNonceUnusedResubmits(t *testing.T) {
+	t.Parallel()
+
+	h := newHopHarness(t, hopDestinationNetwork)
+	h.expectResumeNonces(hopBridgeTxNonce, hopBridgeTxNonce)
+	h.backend.EXPECT().TransactionReceipt(mock.Anything, hopBridgeTxHash).
+		Return(nil, ethereum.NotFound).Once()
+	h.expectBridge()
+	h.expectGates()
+	h.expectIsClaimed()
+	h.expectToolClaim()
+	h.expectNoClaimRecord()
+
+	req := h.request(bridgelooptester.ClaimManual)
+	req.Resume = h.bridgingCheckpoint()
+
+	result, err := h.engine().RunHop(context.Background(), req)
+	require.NoError(t, err)
+
+	require.True(t, result.Resumed)
+	require.Equal(t, bridgelooptester.HopStateBridging, result.ResumedFrom)
+	require.Equal(t, bridgelooptester.HopStateVerified, result.FinalState)
+	require.Contains(t, h.states(), bridgelooptester.HopStateBridging,
+		"a deposit the node never saw is re-submitted")
+	require.Equal(t, hopBridgeTxHash, result.BridgeTxHash)
+	require.Equal(t, hopBridgeTxNonce, result.BridgeTxNonce)
+}
+
+// TestRunHopResumeFromBridgingWithoutReceiptButNonceConsumedRefuses is resume scenario 3 of 3: no
+// receipt, but the account's mined nonce has moved past the transaction's, so that nonce was
+// consumed by something else - possibly a replacement of this very deposit. Re-submitting could
+// deposit twice, so the engine refuses and says which checks it made.
+func TestRunHopResumeFromBridgingWithoutReceiptButNonceConsumedRefuses(t *testing.T) {
+	t.Parallel()
+
+	h := newHopHarness(t, hopDestinationNetwork)
+	h.expectResumeNonces(hopBridgeTxNonce+1, hopBridgeTxNonce+3)
+	h.backend.EXPECT().TransactionReceipt(mock.Anything, hopBridgeTxHash).
+		Return(nil, ethereum.NotFound).Once()
+
+	req := h.request(bridgelooptester.ClaimManual)
+	req.Resume = h.bridgingCheckpoint()
 
 	result, err := h.engine().RunHop(context.Background(), req)
 	require.ErrorIs(t, err, bridgelooptester.ErrAmbiguousResume)
@@ -1175,10 +1307,150 @@ func TestRunHopResumeFromBridgingIsRefused(t *testing.T) {
 	require.ErrorAs(t, err, &ambiguous)
 	require.Equal(t, bridgelooptester.HopStateBridging, ambiguous.State)
 	require.Equal(t, hopSourceAccount, ambiguous.Account)
-	require.Contains(t, err.Error(), "risk bridging twice")
+	require.Equal(t, hopBridgeTxHash, ambiguous.BridgeTxHash)
+	require.Equal(t, hopBridgeTxNonce, ambiguous.BridgeTxNonce)
+	require.Equal(t, hopBridgeTxNonce+1, ambiguous.AccountNonce)
+	require.Equal(t, hopBridgeTxNonce+3, ambiguous.PendingNonce)
+	require.Zero(t, ambiguous.ReceiptWait, "a mined nonce makes waiting for the receipt pointless")
+
+	// The message must name every check, and the one place that settles it.
+	require.Contains(t, err.Error(), "has no receipt on network 1")
+	require.Contains(t, err.Error(), "the account's mined nonce is 12 and its pending nonce is 14")
+	require.Contains(t, err.Error(), "waiting for the receipt was pointless")
+	require.Contains(t, err.Error(), "risk a second deposit")
 	require.Contains(t, err.Error(), "/bridge/v1/bridges?network_id=1")
 	require.Equal(t, bridgelooptester.HopOutcomeFailed, result.Outcome)
-	require.Empty(t, h.states())
+	// mocks.Bridge asserts no bridge was submitted: no BridgeAssetNative expectation exists.
+}
+
+// TestRunHopResumeFromBridgingWithoutASignedTxRestartsCleanly covers the checkpoint written before
+// the transaction was even signed: it carries no hash, so nothing can have been broadcast and the
+// hop simply starts over. No chain read is needed to know that.
+func TestRunHopResumeFromBridgingWithoutASignedTxRestartsCleanly(t *testing.T) {
+	t.Parallel()
+
+	h := newHopHarness(t, hopDestinationNetwork)
+	h.expectBridge()
+	h.expectGates()
+	h.expectIsClaimed()
+	h.expectToolClaim()
+	h.expectNoClaimRecord()
+
+	req := h.request(bridgelooptester.ClaimManual)
+	req.Resume = &bridgelooptester.HopCheckpoint{State: bridgelooptester.HopStateBridging}
+
+	result, err := h.engine().RunHop(context.Background(), req)
+	require.NoError(t, err)
+	require.Equal(t, bridgelooptester.HopStateVerified, result.FinalState)
+	require.Contains(t, h.states(), bridgelooptester.HopStateBridging)
+}
+
+// TestRunHopResumeFromBridgingWaitsOutAQueuedNonce covers the middle ground: the nonce is queued
+// but not yet mined, so the transaction may be ours and about to land. The engine waits for its
+// receipt instead of either re-submitting or refusing.
+func TestRunHopResumeFromBridgingWaitsOutAQueuedNonce(t *testing.T) {
+	t.Parallel()
+
+	t.Run("receipt arrives and the hop continues", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHopHarness(t, hopDestinationNetwork)
+		h.expectResumeNonces(hopBridgeTxNonce, hopBridgeTxNonce+1)
+		// Not mined on the first look, mined on the next poll.
+		h.backend.EXPECT().TransactionReceipt(mock.Anything, hopBridgeTxHash).
+			Return(nil, ethereum.NotFound).Once()
+		h.backend.EXPECT().TransactionReceipt(mock.Anything, hopBridgeTxHash).
+			Return(hopBridgeReceipt(), nil).Once()
+		event := hopBridgeEvent(h.destination, common.Address{})
+		h.srcBridge.EXPECT().BridgeEventFromReceipt(mock.Anything).Return(&event, nil).Once()
+		h.expectGates()
+		h.expectIsClaimed()
+		h.expectToolClaim()
+		h.expectNoClaimRecord()
+
+		req := h.request(bridgelooptester.ClaimManual)
+		req.Resume = h.bridgingCheckpoint()
+
+		result, err := h.engine().RunHop(context.Background(), req)
+		require.NoError(t, err)
+		require.Equal(t, bridgelooptester.HopStateVerified, result.FinalState)
+		require.Equal(t, hopDepositCount, result.DepositCount)
+		require.NotContains(t, h.states(), bridgelooptester.HopStateBridging)
+	})
+
+	t.Run("receipt never arrives and the hop refuses", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHopHarness(t, hopDestinationNetwork)
+		h.deps.Timings.BridgeResumeReceiptWait = 20 * time.Millisecond
+		h.expectResumeNonces(hopBridgeTxNonce, hopBridgeTxNonce+1)
+		h.backend.EXPECT().TransactionReceipt(mock.Anything, hopBridgeTxHash).
+			Return(nil, ethereum.NotFound)
+
+		req := h.request(bridgelooptester.ClaimManual)
+		req.Resume = h.bridgingCheckpoint()
+
+		_, err := h.engine().RunHop(context.Background(), req)
+		require.ErrorIs(t, err, bridgelooptester.ErrAmbiguousResume)
+
+		var ambiguous *bridgelooptester.AmbiguousResumeError
+		require.ErrorAs(t, err, &ambiguous)
+		require.Equal(t, 20*time.Millisecond, ambiguous.ReceiptWait)
+		require.Contains(t, err.Error(), "waiting 20ms for the receipt produced none")
+	})
+}
+
+// TestRunHopCheckpointsTheBridgeHashBeforeBroadcasting pins the mechanism the whole
+// HopStateBridging resume contract rests on: the hash and nonce reach the checkpoint from inside
+// the submission, before the transaction can have been broadcast. A submission that then fails
+// leaves a checkpoint that names it, which is what makes the next resume decidable.
+func TestRunHopCheckpointsTheBridgeHashBeforeBroadcasting(t *testing.T) {
+	t.Parallel()
+
+	h := newHopHarness(t, hopDestinationNetwork)
+	// Fail the submission immediately after the pre-broadcast hook ran, standing in for a process
+	// that died in the broadcast window.
+	h.expectBridgeWith(func(bridgelooptester.BridgeAssetRequest) error {
+		return errors.New("node connection lost")
+	})
+
+	result, err := h.engine().RunHop(context.Background(), h.request(bridgelooptester.ClaimManual))
+	require.ErrorContains(t, err, "node connection lost")
+
+	require.Equal(t, hopBridgeTxHash, result.BridgeTxHash)
+	require.Equal(t, hopBridgeTxNonce, result.BridgeTxNonce)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	last := h.checkpoints[len(h.checkpoints)-1]
+	require.Equal(t, bridgelooptester.HopStateBridging, last.State)
+	require.Equal(t, hopBridgeTxHash, last.BridgeTxHash,
+		"the persisted checkpoint must name the transaction that may have been broadcast")
+	require.Equal(t, hopBridgeTxNonce, last.BridgeTxNonce)
+}
+
+// TestRunHopPreBroadcastCheckpointFailureAbortsTheSubmission covers the safe direction of the
+// pre-broadcast hook: if the hash cannot be persisted, the hop fails and (in the real network
+// layer) nothing is broadcast, rather than a transaction going out unrecorded.
+func TestRunHopPreBroadcastCheckpointFailureAbortsTheSubmission(t *testing.T) {
+	t.Parallel()
+
+	h := newHopHarness(t, hopDestinationNetwork)
+	calls := 0
+	h.deps.PersistCheckpoint = func(_ context.Context, checkpoint bridgelooptester.HopCheckpoint) error {
+		calls++
+		if checkpoint.BridgeTxHash != (common.Hash{}) {
+			return errors.New("disk full")
+		}
+
+		return nil
+	}
+	h.expectBridge()
+
+	_, err := h.engine().RunHop(context.Background(), h.request(bridgelooptester.ClaimManual))
+	require.ErrorContains(t, err, "persist checkpoint for state \"bridging\"")
+	require.ErrorContains(t, err, "disk full")
+	require.Equal(t, 2, calls, "the pre-broadcast checkpoint is the second write of state bridging")
 }
 
 // TestRunHopResumeFromPendingAndApprovingRestartCleanly covers the two states whose side effects

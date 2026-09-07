@@ -106,8 +106,13 @@ type HopResult struct {
 	// SourceNativeBalanceBefore is the source network's native balance before bridging, always
 	// read (it is what MinNativeReserve is checked against). Nil when it was never read.
 	SourceNativeBalanceBefore *big.Int `json:"source_native_balance_before,omitempty"`
-	// BridgeTxHash is the bridgeAsset transaction's hash, zero when nothing was submitted.
+	// BridgeTxHash is the bridgeAsset transaction's hash, zero when nothing was signed. It is set
+	// from the network layer's pre-broadcast hook, so it is populated even for a submission that
+	// failed before or during the broadcast.
 	BridgeTxHash common.Hash `json:"bridge_tx_hash,omitempty"`
+	// BridgeTxNonce is the account nonce the bridge transaction consumes, meaningful only when
+	// BridgeTxHash is non-zero.
+	BridgeTxNonce uint64 `json:"bridge_tx_nonce,omitempty"`
 	// BridgeBlockNumber is the block the bridge transaction was mined in.
 	BridgeBlockNumber uint64 `json:"bridge_block_number,omitempty"`
 	// BridgeGasUsed is the gas the bridge transaction consumed.
@@ -415,19 +420,29 @@ func (e *BalanceMismatchError) Is(target error) bool {
 // Unwrap returns ErrBalanceMismatch so errors.Is reaches the sentinel through wrapping too.
 func (e *BalanceMismatchError) Unwrap() error { return ErrBalanceMismatch }
 
-// ErrAmbiguousResume is the sentinel every *AmbiguousResumeError wraps: the checkpoint stopped in a
-// state whose on-chain outcome cannot be observed, so continuing automatically could double-spend.
+// ErrAmbiguousResume is the sentinel every *AmbiguousResumeError wraps: every check the engine can
+// make on an interrupted bridge submission was made and they still do not add up to a safe answer,
+// so continuing automatically could produce a second deposit.
 var ErrAmbiguousResume = errors.New("bridge_loop_tester: hop cannot be resumed unambiguously")
 
-// AmbiguousResumeError reports that a hop was interrupted in HopStateBridging: the bridge
-// transaction was about to be submitted, and the process died before its hash was checkpointed, so
-// the node may or may not have accepted it. Re-driving the hop would bridge Amount a second time,
-// and skipping it would abandon a claimable deposit, so the engine refuses to guess.
+// AmbiguousResumeError is the residual refusal of the HopStateBridging resume path, and the only
+// case in that path that still needs a human.
 //
-// Recovery is a human decision, and the message says exactly how to make it: list the source
-// network's recent deposits for the signing account (GET /bridge/v1/bridges?network_id=<source>)
-// and either resume with a HopCheckpoint naming the bridge transaction that is there, or reset the
-// checkpoint to HopStatePending if none is.
+// It is reached only when *all* of the following hold, in this order:
+//
+//  1. the checkpoint names a bridge transaction (so it was signed, and the hash is known);
+//  2. that transaction has no receipt on the source network;
+//  3. its nonce is no longer available - the signing account's mined nonce has moved past it, or
+//     the node holds a queued transaction at it - so the engine cannot claim "the node never saw
+//     this";
+//  4. waiting ReceiptWait for the receipt to show up produced nothing.
+//
+// What is left is genuinely undecidable from outside: the nonce may have been consumed by this very
+// bridge under a hash the tool never learned (a fee-bumped replacement), in which case a deposit
+// exists, or by something unrelated, in which case no deposit exists. Re-submitting risks two
+// deposits of Amount; skipping abandons one. The engine therefore refuses, and the message names
+// every check it made plus the one place that can settle it - the bridge's own indexed deposits for
+// this account on the source network.
 type AmbiguousResumeError struct {
 	// State is the checkpoint state that could not be resumed (always HopStateBridging today).
 	State HopState
@@ -439,17 +454,48 @@ type AmbiguousResumeError struct {
 	Account common.Address
 	// Amount is the amount the interrupted bridge would have moved.
 	Amount *big.Int
+	// BridgeTxHash is the signed-but-unreceipted bridge transaction from the checkpoint.
+	BridgeTxHash common.Hash
+	// BridgeTxNonce is the nonce that transaction consumes.
+	BridgeTxNonce uint64
+	// AccountNonce is the account's mined nonce, as read during the resume.
+	AccountNonce uint64
+	// PendingNonce is the account's pending nonce (mined plus queued), as read during the resume.
+	PendingNonce uint64
+	// ReceiptWait is how long the engine waited for the receipt before giving up. Zero when the
+	// mined nonce had already moved past the transaction, which makes waiting pointless.
+	ReceiptWait time.Duration
 }
 
-// Error renders the ambiguity together with the manual recovery procedure.
+// Error renders every check that was made, what it showed, and how an operator settles it.
 func (e *AmbiguousResumeError) Error() string {
-	return fmt.Sprintf("%v: checkpoint state %q for hop %d->%d (account %s, amount %s) was written "+
-		"immediately before the bridge transaction was submitted, so the node may or may not have accepted "+
-		"it and no transaction hash was recorded; resuming would risk bridging twice. "+
-		"Inspect GET /bridge/v1/bridges?network_id=%d for a deposit from %s of %s, then either resume with "+
-		"a checkpoint naming that transaction (state %q) or reset the checkpoint to state %q if there is none",
+	return fmt.Sprintf("%v: checkpoint state %q for hop %d->%d (account %s, amount %s) names bridge "+
+		"transaction %s at nonce %d, and every check the engine can make was inconclusive: "+
+		"(1) the transaction has no receipt on network %d; "+
+		"(2) the account's mined nonce is %d and its pending nonce is %d, both at or past %d, so that nonce "+
+		"is no longer free and the transaction cannot be treated as never broadcast; "+
+		"(3) %s. "+
+		"The nonce may therefore have been consumed by this deposit under a hash the tool never saw, or by an "+
+		"unrelated transaction, and re-submitting would risk a second deposit of %s. "+
+		"Reconcile it by hand against the bridge's indexed state: GET /bridge/v1/bridges?network_id=%d and "+
+		"look for a deposit from %s of %s around that nonce. If one is there, resume with a checkpoint naming "+
+		"its transaction hash in state %q; if none is, reset the checkpoint to state %q",
 		ErrAmbiguousResume, e.State, e.Source, e.Destination, e.Account, bigIntString(e.Amount),
+		e.BridgeTxHash, e.BridgeTxNonce, e.Source,
+		e.AccountNonce, e.PendingNonce, e.BridgeTxNonce,
+		e.receiptCheck(), bigIntString(e.Amount),
 		e.Source, e.Account, bigIntString(e.Amount), HopStateBridged, HopStatePending)
+}
+
+// receiptCheck renders the third check: either the wait that produced nothing, or why waiting would
+// have been pointless.
+func (e *AmbiguousResumeError) receiptCheck() string {
+	if e.ReceiptWait <= 0 {
+		return fmt.Sprintf("waiting for the receipt was pointless, because nonce %d has already been mined "+
+			"by a different transaction, so this one can never appear", e.BridgeTxNonce)
+	}
+
+	return fmt.Sprintf("waiting %s for the receipt produced none", e.ReceiptWait)
 }
 
 // Is reports whether target is ErrAmbiguousResume.

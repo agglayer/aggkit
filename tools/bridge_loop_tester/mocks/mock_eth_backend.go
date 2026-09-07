@@ -442,6 +442,64 @@ func (_c *EthBackend_HeaderByNumber_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
+// NonceAt provides a mock function with given fields: ctx, account, blockNumber
+func (_m *EthBackend) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
+	ret := _m.Called(ctx, account, blockNumber)
+
+	if len(ret) == 0 {
+		panic("no return value specified for NonceAt")
+	}
+
+	var r0 uint64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, common.Address, *big.Int) (uint64, error)); ok {
+		return rf(ctx, account, blockNumber)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, common.Address, *big.Int) uint64); ok {
+		r0 = rf(ctx, account, blockNumber)
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, common.Address, *big.Int) error); ok {
+		r1 = rf(ctx, account, blockNumber)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// EthBackend_NonceAt_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'NonceAt'
+type EthBackend_NonceAt_Call struct {
+	*mock.Call
+}
+
+// NonceAt is a helper method to define mock.On call
+//   - ctx context.Context
+//   - account common.Address
+//   - blockNumber *big.Int
+func (_e *EthBackend_Expecter) NonceAt(ctx interface{}, account interface{}, blockNumber interface{}) *EthBackend_NonceAt_Call {
+	return &EthBackend_NonceAt_Call{Call: _e.mock.On("NonceAt", ctx, account, blockNumber)}
+}
+
+func (_c *EthBackend_NonceAt_Call) Run(run func(ctx context.Context, account common.Address, blockNumber *big.Int)) *EthBackend_NonceAt_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(common.Address), args[2].(*big.Int))
+	})
+	return _c
+}
+
+func (_c *EthBackend_NonceAt_Call) Return(_a0 uint64, _a1 error) *EthBackend_NonceAt_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *EthBackend_NonceAt_Call) RunAndReturn(run func(context.Context, common.Address, *big.Int) (uint64, error)) *EthBackend_NonceAt_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // PendingCodeAt provides a mock function with given fields: ctx, account
 func (_m *EthBackend) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
 	ret := _m.Called(ctx, account)

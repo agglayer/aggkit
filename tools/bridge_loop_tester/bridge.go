@@ -79,6 +79,11 @@ type BridgeAssetRequest struct {
 	PermitData []byte
 	// GasLimit, when non-zero, overrides gas estimation for this deposit (see TxRequest.GasLimit).
 	GasLimit uint64
+	// OnSigned, when non-nil, is passed straight through to TxRequest.OnSigned: it is called with
+	// the deposit transaction's hash and nonce after signing and before the broadcast, so a caller
+	// can record them and stay resumable across a crash in that window. See TxRequest.OnSigned for
+	// the full contract (it runs inside the sender's nonce-serialization critical section).
+	OnSigned func(ctx context.Context, pending PendingTx) error
 }
 
 // BridgeResult is the outcome of a successful bridgeAsset submission.
@@ -331,6 +336,7 @@ func (b *bridgeContract) bridgeAsset(
 		Data:     data,
 		Value:    value,
 		GasLimit: req.GasLimit,
+		OnSigned: req.OnSigned,
 	})
 	if err != nil {
 		return nil, err
