@@ -375,6 +375,13 @@ func (c *Config) validateLoops(networksByID map[uint32]Network) []error {
 	var errs []error
 	seenDirections := map[string]bool{}
 
+	if len(c.EnabledLoops()) == 0 {
+		errs = append(errs, fmt.Errorf("loops: no loop is enabled, so a run would do nothing and exit "+
+			"successfully - the worst possible outcome for a soak test. Enabled has no implicit true-default, "+
+			"so set Enabled = true explicitly on every loop that should run (configured loops: %s)",
+			loopNameList(c.Loops)))
+	}
+
 	for i, loop := range c.Loops {
 		label := loop.Name
 		if label == "" {
@@ -517,4 +524,48 @@ func hopDirection(source, destination uint32) string {
 // Validate has been called at least once, and is reset on every call to Validate.
 func (c *Config) Warnings() []string {
 	return c.warnings
+}
+
+// EnabledLoops returns the loops with Enabled == true, in configuration order: exactly the set
+// Run drives. Enabled has no implicit true-default (see Loop.Enabled), so a loop that omits it is
+// absent from this slice - which is why Validate refuses a Config whose EnabledLoops is empty.
+func (c *Config) EnabledLoops() []Loop {
+	enabled := make([]Loop, 0, len(c.Loops))
+	for _, loop := range c.Loops {
+		if loop.Enabled {
+			enabled = append(enabled, loop)
+		}
+	}
+
+	return enabled
+}
+
+// NetworksByID indexes Networks by NetworkID. Validate rejects duplicate IDs, so on a valid
+// Config the result has exactly one entry per configured network.
+func (c *Config) NetworksByID() map[uint32]Network {
+	byID := make(map[uint32]Network, len(c.Networks))
+	for _, network := range c.Networks {
+		byID[network.NetworkID] = network
+	}
+
+	return byID
+}
+
+// loopNameList renders every configured loop with its Enabled flag, so the "no loop is enabled"
+// error names what was found instead of only what is missing.
+func loopNameList(loops []Loop) string {
+	if len(loops) == 0 {
+		return "none configured"
+	}
+
+	parts := make([]string, 0, len(loops))
+	for i, loop := range loops {
+		name := loop.Name
+		if name == "" {
+			name = fmt.Sprintf("#%d", i)
+		}
+		parts = append(parts, fmt.Sprintf("%s (Enabled=%t)", name, loop.Enabled))
+	}
+
+	return strings.Join(parts, ", ")
 }

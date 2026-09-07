@@ -270,6 +270,23 @@ type Proxy interface {
 	// cheap first step before a run starts driving any hop.
 	Health(ctx context.Context) (*trackertypes.HealthResponse, error)
 
+	// BridgeByDepositCount calls GET /bridge/v1/bridge-by-deposit-count?network_id=<networkID>&
+	// deposit_count=<depositCount> once and returns the indexed BridgeEvent record for that
+	// deposit: leaf type, origin network/address, destination network/address, amount and
+	// metadata - everything claimAsset/claimMessage needs that is not in the claim proof.
+	//
+	// The hop engine never needs this (it decodes the same fields from the bridge transaction's
+	// own receipt, DESIGN.md §5). It exists for the one-off recovery claim of a deposit this
+	// process did not make, where only (source network, deposit count) is known and no
+	// transaction hash is at hand - see (*Orchestrator).Claim.
+	//
+	// A 404 is reported as plain bridgeserviceclient.ErrNotFound and means "that network's
+	// bridge syncer has not indexed that deposit count (yet, or ever)". There is no retry loop:
+	// the caller decides.
+	BridgeByDepositCount(
+		ctx context.Context, networkID, depositCount uint32,
+	) (*bridgeservicetypes.BridgeResponse, error)
+
 	// BridgeAddresses calls GET /bridge/v1/config?network_id=<networkID> to preflight-check that
 	// networkID's bridge service is reachable through the proxy, and returns its public
 	// configuration (contract addresses per network - DESIGN.md §1: for networkID == 0, this is
@@ -417,6 +434,19 @@ func (p *ProxyClient) WaitClaimed(
 
 			return result.Claims[0], nil
 		})
+}
+
+// BridgeByDepositCount implements Proxy.
+func (p *ProxyClient) BridgeByDepositCount(
+	ctx context.Context, networkID, depositCount uint32,
+) (*bridgeservicetypes.BridgeResponse, error) {
+	bridge, err := p.bridge.GetBridgeByDepositCount(ctx, networkID, depositCount)
+	if err != nil {
+		return nil, fmt.Errorf("bridge_loop_tester: read the bridge with network_id=%d deposit_count=%d: %w",
+			networkID, depositCount, err)
+	}
+
+	return bridge, nil
 }
 
 // TrackBridge implements Proxy.

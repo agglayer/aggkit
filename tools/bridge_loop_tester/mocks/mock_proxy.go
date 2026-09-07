@@ -92,6 +92,66 @@ func (_c *Proxy_BridgeAddresses_Call) RunAndReturn(run func(context.Context, uin
 	return _c
 }
 
+// BridgeByDepositCount provides a mock function with given fields: ctx, networkID, depositCount
+func (_m *Proxy) BridgeByDepositCount(ctx context.Context, networkID uint32, depositCount uint32) (*types.BridgeResponse, error) {
+	ret := _m.Called(ctx, networkID, depositCount)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BridgeByDepositCount")
+	}
+
+	var r0 *types.BridgeResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) (*types.BridgeResponse, error)); ok {
+		return rf(ctx, networkID, depositCount)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) *types.BridgeResponse); ok {
+		r0 = rf(ctx, networkID, depositCount)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.BridgeResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32) error); ok {
+		r1 = rf(ctx, networkID, depositCount)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Proxy_BridgeByDepositCount_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BridgeByDepositCount'
+type Proxy_BridgeByDepositCount_Call struct {
+	*mock.Call
+}
+
+// BridgeByDepositCount is a helper method to define mock.On call
+//   - ctx context.Context
+//   - networkID uint32
+//   - depositCount uint32
+func (_e *Proxy_Expecter) BridgeByDepositCount(ctx interface{}, networkID interface{}, depositCount interface{}) *Proxy_BridgeByDepositCount_Call {
+	return &Proxy_BridgeByDepositCount_Call{Call: _e.mock.On("BridgeByDepositCount", ctx, networkID, depositCount)}
+}
+
+func (_c *Proxy_BridgeByDepositCount_Call) Run(run func(ctx context.Context, networkID uint32, depositCount uint32)) *Proxy_BridgeByDepositCount_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32))
+	})
+	return _c
+}
+
+func (_c *Proxy_BridgeByDepositCount_Call) Return(_a0 *types.BridgeResponse, _a1 error) *Proxy_BridgeByDepositCount_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Proxy_BridgeByDepositCount_Call) RunAndReturn(run func(context.Context, uint32, uint32) (*types.BridgeResponse, error)) *Proxy_BridgeByDepositCount_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Health provides a mock function with given fields: ctx
 func (_m *Proxy) Health(ctx context.Context) (*bridgetrackertypes.HealthResponse, error) {
 	ret := _m.Called(ctx)

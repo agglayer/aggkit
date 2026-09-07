@@ -218,6 +218,16 @@ func TestConfig_Validate_TableDriven(t *testing.T) {
 			mutate:    func(cfg *Config) { cfg.Loops[0].Name = "" },
 			wantError: "loops[#0]: Name is required",
 		},
+		{
+			name:      "no loop is enabled",
+			mutate:    func(cfg *Config) { cfg.Loops[0].Enabled = false },
+			wantError: "no loop is enabled",
+		},
+		{
+			name:      "no loops at all",
+			mutate:    func(cfg *Config) { cfg.Loops = nil },
+			wantError: "no loop is enabled",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -394,4 +404,28 @@ Claim = "manual"
 	require.Equal(t, defaultManualGracePeriod, cfg.Global.ManualGracePeriod.Duration)
 
 	require.NoError(t, cfg.Validate())
+}
+
+// TestConfig_EnabledLoops pins that Enabled has no implicit true-default: only loops that set it
+// explicitly are driven, which is exactly why Validate refuses a config where none of them do.
+func TestConfig_EnabledLoops(t *testing.T) {
+	cfg := validConfig()
+	cfg.Loops = append(cfg.Loops, Loop{
+		Name:    "off",
+		Asset:   AssetETH,
+		Amount:  NewWeiAmount(1),
+		Enabled: false,
+		Hops: []Hop{
+			{Source: 0, Destination: 1, Claim: ClaimAuto},
+			{Source: 1, Destination: 0, Claim: ClaimAuto},
+		},
+	})
+
+	enabled := cfg.EnabledLoops()
+	require.Len(t, enabled, 1)
+	require.Equal(t, "ring", enabled[0].Name)
+
+	byID := cfg.NetworksByID()
+	require.Len(t, byID, 3)
+	require.Equal(t, "L2B", byID[2].Name)
 }
