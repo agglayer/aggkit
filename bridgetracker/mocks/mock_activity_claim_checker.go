@@ -140,6 +140,63 @@ func (_c *ActivityClaimChecker_IsClaimed_Call) RunAndReturn(run func(context.Con
 	return _c
 }
 
+// IsReadyToClaim provides a mock function with given fields: ctx, bridge
+func (_m *ActivityClaimChecker) IsReadyToClaim(ctx context.Context, bridge *domain.ScannedBridge) (bool, error) {
+	ret := _m.Called(ctx, bridge)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsReadyToClaim")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *domain.ScannedBridge) (bool, error)); ok {
+		return rf(ctx, bridge)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *domain.ScannedBridge) bool); ok {
+		r0 = rf(ctx, bridge)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *domain.ScannedBridge) error); ok {
+		r1 = rf(ctx, bridge)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ActivityClaimChecker_IsReadyToClaim_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsReadyToClaim'
+type ActivityClaimChecker_IsReadyToClaim_Call struct {
+	*mock.Call
+}
+
+// IsReadyToClaim is a helper method to define mock.On call
+//   - ctx context.Context
+//   - bridge *domain.ScannedBridge
+func (_e *ActivityClaimChecker_Expecter) IsReadyToClaim(ctx interface{}, bridge interface{}) *ActivityClaimChecker_IsReadyToClaim_Call {
+	return &ActivityClaimChecker_IsReadyToClaim_Call{Call: _e.mock.On("IsReadyToClaim", ctx, bridge)}
+}
+
+func (_c *ActivityClaimChecker_IsReadyToClaim_Call) Run(run func(ctx context.Context, bridge *domain.ScannedBridge)) *ActivityClaimChecker_IsReadyToClaim_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*domain.ScannedBridge))
+	})
+	return _c
+}
+
+func (_c *ActivityClaimChecker_IsReadyToClaim_Call) Return(_a0 bool, _a1 error) *ActivityClaimChecker_IsReadyToClaim_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ActivityClaimChecker_IsReadyToClaim_Call) RunAndReturn(run func(context.Context, *domain.ScannedBridge) (bool, error)) *ActivityClaimChecker_IsReadyToClaim_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewActivityClaimChecker creates a new instance of ActivityClaimChecker. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewActivityClaimChecker(t interface {

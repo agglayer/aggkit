@@ -145,6 +145,65 @@ func (_c *GERSource_InjectedGERAtIndex_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
+// L1InfoTreeIndexForBridge provides a mock function with given fields: ctx, bridge
+func (_m *GERSource) L1InfoTreeIndexForBridge(ctx context.Context, bridge *bridgetracker.BridgeInfo) (*uint32, error) {
+	ret := _m.Called(ctx, bridge)
+
+	if len(ret) == 0 {
+		panic("no return value specified for L1InfoTreeIndexForBridge")
+	}
+
+	var r0 *uint32
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *bridgetracker.BridgeInfo) (*uint32, error)); ok {
+		return rf(ctx, bridge)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *bridgetracker.BridgeInfo) *uint32); ok {
+		r0 = rf(ctx, bridge)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*uint32)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *bridgetracker.BridgeInfo) error); ok {
+		r1 = rf(ctx, bridge)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GERSource_L1InfoTreeIndexForBridge_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'L1InfoTreeIndexForBridge'
+type GERSource_L1InfoTreeIndexForBridge_Call struct {
+	*mock.Call
+}
+
+// L1InfoTreeIndexForBridge is a helper method to define mock.On call
+//   - ctx context.Context
+//   - bridge *bridgetracker.BridgeInfo
+func (_e *GERSource_Expecter) L1InfoTreeIndexForBridge(ctx interface{}, bridge interface{}) *GERSource_L1InfoTreeIndexForBridge_Call {
+	return &GERSource_L1InfoTreeIndexForBridge_Call{Call: _e.mock.On("L1InfoTreeIndexForBridge", ctx, bridge)}
+}
+
+func (_c *GERSource_L1InfoTreeIndexForBridge_Call) Run(run func(ctx context.Context, bridge *bridgetracker.BridgeInfo)) *GERSource_L1InfoTreeIndexForBridge_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*bridgetracker.BridgeInfo))
+	})
+	return _c
+}
+
+func (_c *GERSource_L1InfoTreeIndexForBridge_Call) Return(_a0 *uint32, _a1 error) *GERSource_L1InfoTreeIndexForBridge_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *GERSource_L1InfoTreeIndexForBridge_Call) RunAndReturn(run func(context.Context, *bridgetracker.BridgeInfo) (*uint32, error)) *GERSource_L1InfoTreeIndexForBridge_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // L1InfoTreeIndexForGER provides a mock function with given fields: ctx, bridge, ger
 func (_m *GERSource) L1InfoTreeIndexForGER(ctx context.Context, bridge *bridgetracker.BridgeInfo, ger common.Hash) (*uint32, error) {
 	ret := _m.Called(ctx, bridge, ger)

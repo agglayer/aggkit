@@ -388,7 +388,7 @@ func TestActivityHandlerHappyPath(t *testing.T) {
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
 	require.Equal(t, testFromAddress, body.FromAddress)
 	require.Len(t, body.Bridges, 1)
-	require.Equal(t, "true", body.Bridges[0].Claimed)
+	require.Equal(t, "claimed", body.Bridges[0].Claimed)
 	require.Equal(t, testScannedNetworkID, body.Bridges[0].BridgeNetworkID)
 	require.Equal(t, claim.TxHash, body.Bridges[0].Claim.TxHash)
 	require.Equal(t, bridge.DestinationNetwork, body.Bridges[0].ClaimNetworkID)
@@ -505,5 +505,5 @@ func TestActivityHandlerFilterBridgesPendingExcludesClaimed(t *testing.T) {
 	var body api.ActivityResponse
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
 	require.Len(t, body.Bridges, 1)
-	require.Equal(t, "false", body.Bridges[0].Claimed)
+	require.Equal(t, "pending", body.Bridges[0].Claimed)
 }

@@ -280,7 +280,7 @@
                     "type": "integer"
                 },
                 "claimed": {
-                    "description": "Claimed is the tri-state result of the destination bridge contract's isClaimed() call\nthe last time it was checked: \"false\" (confirmed unclaimed), \"true\" (claimed), or\n\"error\" if the check itself failed (e.g. no bridge contract address configured for the\ndestination network) — callers must not read \"error\" as \"false\"",
+                    "description": "Claimed is a simplified claim-readiness summary, one of \"pending\", \"readyToClaim\",\n\"claimed\" or \"error\" — the same vocabulary as TrackingData.ClaimStatus (see\ndomain.TrackingData.ClaimStatus for exactly how it is derived). \"error\" reports the\ndestination bridge contract's isClaimed() call itself failing (e.g. no bridge contract\naddress configured for the destination network) — callers must not read it as \"pending\".\nWhile unclaimed, \"readyToClaim\" vs \"pending\" is resolved from the tracker's own snapshot\nwhen Tracking is present, or directly against the bridge-service endpoints otherwise (see\ndomain.ActivityClaimChecker.IsReadyToClaim)",
                     "type": "string"
                 },
                 "creation_timestamp": {
@@ -569,11 +569,7 @@
                         1000000,
                         1000000000,
                         60000000000,
-                        3600000000000,
-                        1,
-                        1000,
-                        1000000,
-                        1000000000
+                        3600000000000
                     ],
                     "x-enum-varnames": [
                         "minDuration",
@@ -607,11 +603,7 @@
                         "Millisecond",
                         "Second",
                         "Minute",
-                        "Hour",
-                        "Nanosecond",
-                        "Microsecond",
-                        "Millisecond",
-                        "Second"
+                        "Hour"
                     ]
                 }
             }

@@ -32,10 +32,14 @@ type ActivityItem struct {
 	// Bridge.OriginNetwork, which is the origin network of the bridged asset and can differ for
 	// a re-bridged asset (see domain.ScannedBridge)
 	BridgeNetworkID uint32 `json:"bridge_network_id"`
-	// Claimed is the tri-state result of the destination bridge contract's isClaimed() call
-	// the last time it was checked: "false" (confirmed unclaimed), "true" (claimed), or
-	// "error" if the check itself failed (e.g. no bridge contract address configured for the
-	// destination network) — callers must not read "error" as "false"
+	// Claimed is a simplified claim-readiness summary, one of "pending", "readyToClaim",
+	// "claimed" or "error" — the same vocabulary as TrackingData.ClaimStatus (see
+	// domain.TrackingData.ClaimStatus for exactly how it is derived). "error" reports the
+	// destination bridge contract's isClaimed() call itself failing (e.g. no bridge contract
+	// address configured for the destination network) — callers must not read it as "pending".
+	// While unclaimed, "readyToClaim" vs "pending" is resolved from the tracker's own snapshot
+	// when Tracking is present, or directly against the bridge-service endpoints otherwise (see
+	// domain.ActivityClaimChecker.IsReadyToClaim)
 	Claimed string `json:"claimed"`
 	// ClaimNetworkID is the network whose bridge service reported Claim (the bridge's
 	// destination network); only present alongside Claim
@@ -144,7 +148,7 @@ func newActivityItems(entries []*domain.ActivityEntry) []ActivityItem {
 		item := ActivityItem{
 			Bridge:               e.Bridge,
 			BridgeNetworkID:      e.BridgeNetworkID,
-			Claimed:              e.ClaimStatus.String(),
+			Claimed:              e.TrackerClaimStatus.String(),
 			Errors:               e.Errors,
 			CreationTimestamp:    uint64(e.CreatedAt.Unix()),
 			LastUpdatedTimestamp: uint64(e.UpdatedAt.Unix()),

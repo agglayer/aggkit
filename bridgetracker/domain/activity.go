@@ -45,9 +45,19 @@ type ActivityEntry struct {
 	// Tracking is the bridge tracker's current snapshot of this bridge, only populated while
 	// it is still unclaimed and the caller asked for it (includeTracking); nil otherwise
 	Tracking *TrackingData
+	// TrackerClaimStatus mirrors the bridge tracker's own simplified claim-readiness summary
+	// (see TrackingData.ClaimStatus) so the activity endpoint reports the same vocabulary —
+	// "pending"/"readyToClaim"/"claimed"/"error" — instead of ClaimStatus's plain tri-state.
+	// Derived from ClaimStatus: TrackerClaimStatusClaimed/Error mirror ClaimStatus directly;
+	// while ClaimStatus is Unclaimed, it is copied straight from Tracking.ClaimStatus() when
+	// Tracking is populated, or otherwise resolved directly against the bridge-service
+	// endpoints (see ActivityClaimChecker.IsReadyToClaim) without registering the bridge with
+	// the tracker
+	TrackerClaimStatus types.TrackerClaimStatus
 	// Errors holds the message of whatever check failed the last time this entry was
-	// refreshed, keyed by which check it was — currently only "claim", set when ClaimStatus is
-	// Error (the isClaimed() check itself failed). nil while nothing has failed
+	// refreshed, keyed by which check it was — "claim" when ClaimStatus is Error (the
+	// isClaimed() check itself failed), "readiness" when IsReadyToClaim itself failed (Claimed
+	// then conservatively stays "pending"). nil while nothing has failed
 	Errors map[string]string
 	// CreatedAt is when this bridge was first cached (its first successful refresh); it never
 	// changes after that
@@ -98,6 +108,17 @@ type ActivityClaimChecker interface {
 	// ClaimInfo returns the raw claim record for bridge from its destination network's
 	// bridge service, or nil if the indexer has not recorded it yet
 	ClaimInfo(ctx context.Context, bridge *ScannedBridge) (*bridgeservicetypes.ClaimResponse, error)
+	// IsReadyToClaim reports whether bridge's covering L1 info tree leaf has already been
+	// injected on its destination network: GET /bridge/v1/l1-info-tree-index resolves the leaf
+	// covering bridge's own origin deposit, then GET /bridge/v1/injected-l1-info-leaf checks
+	// whether that leaf (or a later one) has reached the destination — the same pair of
+	// bridge-service endpoints the tracker's own StepWaitingL1InfoLeafAvailable/
+	// StepWaitingGERInjection steps rely on, queried directly instead of through the full
+	// tracker. Only meaningful (and only ever called) once IsClaimed has reported bridge
+	// unclaimed, to tell ActivityEntry.TrackerClaimStatus's "pending" from "readyToClaim"
+	// without registering the bridge with the tracker (see ActivityEntry.Tracking, populated
+	// instead when the caller asked for includeTracking)
+	IsReadyToClaim(ctx context.Context, bridge *ScannedBridge) (bool, error)
 }
 
 // ActivityQuerier is the driven port the GET /activity/from/{from_address} HTTP command

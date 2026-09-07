@@ -244,6 +244,7 @@ func (a *ActivityCache) refresh(
 			a.logger.Warnf("activity: checking claim state of bridge tx=%s (network=%d, deposit=%d): %v",
 				item.Bridge.TxHash, item.NetworkID, item.Bridge.DepositCount, err)
 			entry.ClaimStatus = types.ClaimStatusError
+			entry.TrackerClaimStatus = types.TrackerClaimStatusError
 			entry.Errors = map[string]string{"claim": err.Error()}
 			return entry
 		}
@@ -255,6 +256,7 @@ func (a *ActivityCache) refresh(
 	}
 
 	if entry.ClaimStatus == types.ClaimStatusClaimed {
+		entry.TrackerClaimStatus = types.TrackerClaimStatusClaimed
 		if skipsClaimInfo(filter) {
 			return entry
 		}
@@ -266,6 +268,10 @@ func (a *ActivityCache) refresh(
 		return entry
 	}
 
+	// Unclaimed: conservatively "pending" until proven otherwise, either by the tracker's own
+	// snapshot (includeTracking) or the direct readiness check below
+	entry.TrackerClaimStatus = types.TrackerClaimStatusPending
+
 	if includeTracking {
 		id := domain.TrackingID{NetworkID: item.NetworkID, TxHash: common.HexToHash(string(item.Bridge.TxHash))}
 		tracking, err := a.supervised.Get(id, true)
@@ -273,7 +279,25 @@ func (a *ActivityCache) refresh(
 			a.logger.Warnf("activity: registering bridge tx=%s with the tracker: %v", item.Bridge.TxHash, err)
 		} else {
 			entry.Tracking = tracking
+			entry.TrackerClaimStatus = tracking.ClaimStatus()
+			return entry
 		}
+	}
+
+	// includeTracking was not requested, or registering with the tracker failed: fall back to
+	// asking the bridge-service endpoints directly whether the bridge is already ready to claim
+	// (see ActivityClaimChecker.IsReadyToClaim), without the cost of registering it with the
+	// tracker
+	ready, err := a.claims.IsReadyToClaim(ctx, item)
+	if err != nil {
+		a.logger.Warnf("activity: checking claim readiness of bridge tx=%s (network=%d, deposit=%d): %v",
+			item.Bridge.TxHash, item.NetworkID, item.Bridge.DepositCount, err)
+		if entry.Errors == nil {
+			entry.Errors = make(map[string]string)
+		}
+		entry.Errors["readiness"] = err.Error()
+	} else if ready {
+		entry.TrackerClaimStatus = types.TrackerClaimStatusReadyToClaim
 	}
 	return entry
 }

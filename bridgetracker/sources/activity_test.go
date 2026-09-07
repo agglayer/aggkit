@@ -311,6 +311,75 @@ func (s *stubClaimChecker) IsClaimed(_ *bind.CallOpts, leafIndex, sourceBridgeNe
 	return s.claimed, s.err
 }
 
+// listerFromResolver adapts a plain NetworkURLResolver (e.g. fakeBridgeService.start's result,
+// see sources_test.go) into a NetworkLister for tests that only exercise IsReadyToClaim, which
+// never calls NetworkIDs/BridgeAddress
+type listerFromResolver struct {
+	NetworkURLResolver
+}
+
+func (listerFromResolver) NetworkIDs() []uint32 { return nil }
+
+func (listerFromResolver) BridgeAddress(context.Context, uint32) (common.Address, error) {
+	return common.Address{}, nil
+}
+
+// TestActivitySource_IsReadyToClaim verifies IsReadyToClaim resolves the covering L1 info tree
+// leaf (GET /bridge/v1/l1-info-tree-index) and whether it has been injected on the destination
+// (GET /bridge/v1/injected-l1-info-leaf), both queried against the destination network's own
+// bridge-service instance — reporting true only once both resolve, and false (never an error)
+// while either is still pending.
+func TestActivitySource_IsReadyToClaim(t *testing.T) {
+	// bridge is scanned from network 2 (NetworkID, the deposit's own network) with destination
+	// network 1 — fakeBridgeService.start hardcodes its server under key 1, matching the
+	// destination instance IsReadyToClaim must query
+	bridge := &domain.ScannedBridge{Bridge: bridgeResponse(2, 1, 5, testFromAddress, 1), NetworkID: 2}
+
+	t.Run("covering leaf resolved and injected -> ready", func(t *testing.T) {
+		leafIndex := uint32(7)
+		svc := &fakeBridgeService{
+			l1InfoTreeIndex: &leafIndex,
+			injectedLeaf:    map[string]any{"global_exit_root": "0xger"},
+		}
+		lister := listerFromResolver{svc.start(t)}
+		source := NewActivitySource(lister, nil, testLogger)
+
+		ready, err := source.IsReadyToClaim(t.Context(), bridge)
+		require.NoError(t, err)
+		require.True(t, ready)
+		require.Equal(t, "7", svc.lastLeafIndexQuery)
+		require.Equal(t, "1", svc.lastNetworkIDQuery, "queried against the destination network")
+	})
+
+	t.Run("not covered by any L1 info tree leaf yet -> not ready, no error", func(t *testing.T) {
+		svc := &fakeBridgeService{} // l1InfoTreeIndex nil -> not covered yet
+		lister := listerFromResolver{svc.start(t)}
+		source := NewActivitySource(lister, nil, testLogger)
+
+		ready, err := source.IsReadyToClaim(t.Context(), bridge)
+		require.NoError(t, err)
+		require.False(t, ready)
+	})
+
+	t.Run("covered but not injected on the destination yet -> not ready, no error", func(t *testing.T) {
+		leafIndex := uint32(7)
+		svc := &fakeBridgeService{l1InfoTreeIndex: &leafIndex} // injectedLeaf nil -> not injected yet
+		lister := listerFromResolver{svc.start(t)}
+		source := NewActivitySource(lister, nil, testLogger)
+
+		ready, err := source.IsReadyToClaim(t.Context(), bridge)
+		require.NoError(t, err)
+		require.False(t, ready)
+	})
+
+	t.Run("URL resolution failure is a genuine error", func(t *testing.T) {
+		source := NewActivitySource(fakeNetworkLister{}, nil, testLogger)
+
+		_, err := source.IsReadyToClaim(t.Context(), bridge)
+		require.Error(t, err)
+	})
+}
+
 // TestActivitySource_ClaimInfo verifies ClaimInfo fetches the raw claim record by global index,
 // and returns nil (not an error) when the destination bridge service has not indexed it yet.
 func TestActivitySource_ClaimInfo(t *testing.T) {
