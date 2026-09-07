@@ -566,8 +566,8 @@ func TestGetL1InfoTreeIndex(t *testing.T) {
 	})
 
 	// a halted syncer (503) must not be mistaken for "not indexed yet" (404): callers such as
-	// autoclaim retry silently on ErrNotFound, but a 503 signals an operational fault
-	t.Run("surfaces a halted syncer 503 as a plain error, not ErrNotFound", func(t *testing.T) {
+	// autoclaim retry silently on ErrNotFound, but a 503 signals a distinct, transient condition
+	t.Run("surfaces a halted syncer 503 as ErrServiceUnavailable, not ErrNotFound", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"error":"a syncer is temporarily inconsistent (reorg being resolved), retry later"}`))
@@ -578,8 +578,8 @@ func TestGetL1InfoTreeIndex(t *testing.T) {
 		index, err := client.GetL1InfoTreeIndex(context.Background(), 1, 10)
 
 		require.Error(t, err)
+		require.ErrorIs(t, err, ErrServiceUnavailable)
 		require.NotErrorIs(t, err, ErrNotFound)
-		require.Contains(t, err.Error(), "503")
 		require.Equal(t, uint32(0), index)
 	})
 }
@@ -740,7 +740,7 @@ func TestGetClaimProof(t *testing.T) {
 	})
 
 	// a halted syncer (503) must not be mistaken for "not indexed yet" (404)
-	t.Run("surfaces a halted syncer 503 as a plain error, not ErrNotFound", func(t *testing.T) {
+	t.Run("surfaces a halted syncer 503 as ErrServiceUnavailable, not ErrNotFound", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"error":"a syncer is temporarily inconsistent (reorg being resolved), retry later"}`))
@@ -752,8 +752,8 @@ func TestGetClaimProof(t *testing.T) {
 
 		require.Error(t, err)
 		require.Nil(t, resp)
+		require.ErrorIs(t, err, ErrServiceUnavailable)
 		require.NotErrorIs(t, err, ErrNotFound)
-		require.Contains(t, err.Error(), "503")
 	})
 }
 
@@ -961,7 +961,7 @@ func TestDoRequest_Errors(t *testing.T) {
 
 		require.Error(t, err)
 		require.Nil(t, resp)
-		require.Contains(t, err.Error(), "503")
+		require.ErrorIs(t, err, ErrServiceUnavailable)
 	})
 }
 
@@ -1305,6 +1305,21 @@ func TestDoRequestAllowNotFound(t *testing.T) {
 		require.Nil(t, resp)
 	})
 
+	t.Run("returns ErrServiceUnavailable for 503 status", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("service unavailable"))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgeByDepositCount(context.Background(), 1, 0)
+
+		require.ErrorIs(t, err, ErrServiceUnavailable)
+		require.NotErrorIs(t, err, ErrNotFound)
+		require.Nil(t, resp)
+	})
+
 	t.Run("returns error for other non-200 status", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -1316,6 +1331,7 @@ func TestDoRequestAllowNotFound(t *testing.T) {
 		resp, err := c.GetBridgeByDepositCount(context.Background(), 1, 0)
 
 		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrServiceUnavailable)
 		require.Nil(t, resp)
 		require.NotErrorIs(t, err, ErrNotFound)
 		require.Contains(t, err.Error(), "500")

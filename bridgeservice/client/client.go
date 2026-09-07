@@ -21,6 +21,15 @@ import (
 // ErrNotFound is returned when a resource is not found (HTTP 404)
 var ErrNotFound = errors.New("not found")
 
+// ErrServiceUnavailable is returned when the bridge service answers HTTP 503, most commonly
+// emitted while a syncer is resolving a chain reorg (bridgeservice's respondSyncerError). It is
+// distinct from ErrNotFound: the endpoint is transiently unable to answer at all right now (retry
+// without assuming anything about whether the requested resource exists), rather than "this
+// specific resource is not indexed yet" the way ErrNotFound means. Callers that retry on
+// ErrNotFound should generally retry on ErrServiceUnavailable too, but the two are surfaced
+// separately so a caller that cares about the distinction can tell them apart.
+var ErrServiceUnavailable = errors.New("service unavailable")
+
 const (
 	// DefaultTimeout is the default HTTP client timeout
 	DefaultTimeout = 30 * time.Second
@@ -537,6 +546,10 @@ func (c *Client) doRequest(ctx context.Context, path string, result interface{})
 		return fmt.Errorf("read response body: %w", err)
 	}
 
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		return ErrServiceUnavailable
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(respBody))
 	}
@@ -551,7 +564,8 @@ func (c *Client) doRequest(ctx context.Context, path string, result interface{})
 }
 
 // doRequestAllowNotFound performs an HTTP GET request and decodes the response.
-// Returns ErrNotFound for HTTP 404 responses instead of an error with status code.
+// Returns ErrNotFound for HTTP 404 responses and ErrServiceUnavailable for HTTP 503 responses,
+// instead of an error with status code.
 func (c *Client) doRequestAllowNotFound(ctx context.Context, path string, result interface{}) error {
 	reqURL := c.baseURL + path
 
@@ -576,6 +590,10 @@ func (c *Client) doRequestAllowNotFound(ctx context.Context, path string, result
 
 	if resp.StatusCode == http.StatusNotFound {
 		return ErrNotFound
+	}
+
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		return ErrServiceUnavailable
 	}
 
 	if resp.StatusCode != http.StatusOK {
