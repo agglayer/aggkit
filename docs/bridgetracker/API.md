@@ -391,7 +391,7 @@ Example:
 ```json
 {
   "status": "ok",
-  "api_revision": 1,
+  "api_revision": 2,
   "instance_id": "3f1c9a2e-8b4d-4f6a-9c0e-5d7b2a1e4c8f",
   "config_sha1": "2ef7bde608ce5404e97d5f042f95f89f1c232871",
   "version": {
@@ -421,7 +421,7 @@ Request:
 | ------|----------|------|-----------|------|
 | from_address | path | Address | yes | address that sent the bridges to look up |
 | includeTracking | query | bool | no | `true` additionally registers every still-unclaimed bridge in the result with the bridge tracker (same effect as calling the main endpoint for it) and includes its current [TrackingData](#trackingdata) snapshot. Default `false` |
-| filterBridges | query | string | no | one of `"all"` (default), `"claimed"`, `"pending"`, `"error"` — restricts the result to bridges with only that `claimed` state |
+| filterBridges | query | string | no | one of `"all"` (default), `"claimed"`, `"pending"`, `"readyToClaim"`, `"error"` — restricts the result to bridges with only that `claim_status` |
 
 ### Behavior
 
@@ -429,7 +429,7 @@ Request:
 - `400 Bad Request` — invalid `from_address`, or an unrecognized `filterBridges` value: the body is an [ErrorData](#errordata).
 - `500 Internal Server Error` — scanning the configured bridge services failed: the body is an [ErrorData](#errordata).
 - **This endpoint is opt-in**: it only exists if the binary is configured with both an activity bridge scanner and claim checker (`Config.ActivityScanner`/`ActivityClaims`); otherwise the route is not registered at all (plain `404`).
-- Requesting `filterBridges=pending` or `filterBridges=error` **skips fetching the claim record** of a bridge found to be claimed, since it would be filtered out of that result anyway — its cache entry simply has no `claim` yet, and is fetched normally the next time `filterBridges=all`/`claimed` is used for that address.
+- Requesting `filterBridges=pending`, `filterBridges=readyToClaim` or `filterBridges=error` **skips fetching the claim record** of a bridge found to be claimed, since it would be filtered out of that result anyway — its cache entry simply has no `claim` yet, and is fetched normally the next time `filterBridges=all`/`claimed` is used for that address.
 - A network whose bridge service could not be scanned **never fails the request**: it is skipped and reported in `warnings` instead, so `bridges` is still whatever every other network reported (possibly incomplete for the networks listed in `warnings`).
 
 ### ActivityResponse

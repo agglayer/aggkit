@@ -88,13 +88,13 @@ type ActivityResponse struct {
 // from_address path parameter, and reports each one's claim state. Passing
 // ?includeTracking=true additionally registers every still-unclaimed bridge found with the
 // bridge tracker (same effect as calling GetTxStatus for it) and includes its current tracking
-// snapshot. ?filterBridges=claimed|pending|error restricts the result to only bridges with that
-// claim state (default "all"); a claimed bridge excluded by "pending"/"error" never has its
-// claim record fetched, so switching back to "all"/"claimed" later fetches it then. A network
-// whose bridge service could not be scanned never fails the request: it is skipped and reported
-// in the "warnings" field instead, so Bridges is still whatever every other network reported.
-// 200 OK unless: invalid from_address/filterBridges (ErrorData/400), or the scan itself failed
-// (ErrorData/500)
+// snapshot. ?filterBridges=claimed|pending|readyToClaim|error restricts the result to only
+// bridges with that claim state (default "all"); a claimed bridge excluded by
+// "pending"/"readyToClaim"/"error" never has its claim record fetched, so switching back to
+// "all"/"claimed" later fetches it then. A network whose bridge service could not be scanned
+// never fails the request: it is skipped and reported in the "warnings" field instead, so
+// Bridges is still whatever every other network reported. 200 OK unless: invalid
+// from_address/filterBridges (ErrorData/400), or the scan itself failed (ErrorData/500)
 //
 // @Summary Get bridge activity by sender address
 // @Description Scans every bridge service the tracker knows about for bridges sent by
@@ -104,14 +104,14 @@ type ActivityResponse struct {
 // @Description includeTracking=true additionally registers every still-unclaimed bridge with
 // @Description the bridge tracker and includes its current tracking snapshot. filterBridges
 // @Description restricts the result to bridges with only that claim state (claimed / still
-// @Description pending / errored while checking). A network whose bridge service could not be
-// @Description scanned is skipped and reported in the "warnings" field instead of failing the
-// @Description whole request.
+// @Description pending / ready to claim / errored while checking). A network whose bridge
+// @Description service could not be scanned is skipped and reported in the "warnings" field
+// @Description instead of failing the whole request.
 // @Tags bridge-tracker
 // @Produce json
 // @Param from_address path string true "Address that sent the bridges to look up"
 // @Param includeTracking query bool false "Register still-unclaimed bridges with the tracker"
-// @Param filterBridges query string false "Which bridges to return" Enums(all, claimed, pending, error) default(all)
+// @Param filterBridges query string false "Claim filter" Enums(all, claimed, pending, readyToClaim, error) default(all)
 // @Success 200 {object} ActivityResponse
 // @Failure 400 {object} types.ErrorData "Invalid from_address or filterBridges"
 // @Failure 500 {object} types.ErrorData "Scanning the configured bridge services failed"

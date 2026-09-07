@@ -507,3 +507,38 @@ func TestActivityHandlerFilterBridgesPendingExcludesClaimed(t *testing.T) {
 	require.Len(t, body.Bridges, 1)
 	require.Equal(t, "pending", body.Bridges[0].ClaimStatus)
 }
+
+// TestActivityHandlerFilterBridgesReadyToClaimExcludesPending verifies
+// ?filterBridges=readyToClaim excludes a still-pending bridge from the response, returning only
+// the one ready to be claimed
+func TestActivityHandlerFilterBridgesReadyToClaimExcludesPending(t *testing.T) {
+	pendingBridge := testBridge(1)
+	readyBridge := testBridge(2)
+
+	gin.SetMode(gin.TestMode)
+	tracker := New(&Config{
+		Logger:     log.WithFields("module", "bridgetracker_test"),
+		ConfigSHA1: testConfigSHA1,
+		ActivityScanner: &fakeActivityScanner{
+			bridges: []*domain.ScannedBridge{
+				scannedBridge(pendingBridge, testScannedNetworkID),
+				scannedBridge(readyBridge, testScannedNetworkID),
+			},
+		},
+		ActivityClaims: &fakeActivityClaims{
+			isClaimed:     []bool{false, false},
+			readyToClaims: []bool{false, true},
+		},
+	})
+	router := gin.New()
+	tracker.API().RegisterRoutes(router)
+
+	resp := performRequest(t, router, http.MethodGet,
+		api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex()+"?filterBridges=readyToClaim")
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	var body api.ActivityResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	require.Len(t, body.Bridges, 1)
+	require.Equal(t, "readyToClaim", body.Bridges[0].ClaimStatus)
+}

@@ -12,7 +12,14 @@ const HealthStatusOK = "ok"
 // inserted into a bridge's expected path, and the like — so a client can tell which contract
 // shape an instance speaks without diffing full response bodies against its own expectations.
 // Purely informational: the tracker itself never rejects or alters behavior based on it
-const CurrentAPIRevision = 1
+//
+// Revision history:
+//   - 2: GET /activity/from/{from_address}'s ActivityItem.claimed field — a tri-state
+//     "false"/"true"/"error" mirroring the destination bridge contract's isClaimed() call —
+//     was renamed to claim_status and revalued to the same "pending"/"readyToClaim"/
+//     "claimed"/"error" vocabulary as TrackingData.claim_status; ?filterBridges= gained a new
+//     "readyToClaim" value to match
+const CurrentAPIRevision = 2
 
 // HealthResponse is the body of GET /tracker/v1/health
 type HealthResponse struct {

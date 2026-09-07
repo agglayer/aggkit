@@ -147,16 +147,21 @@ func (a *ActivityCache) upsert(
 }
 
 // matchesFilter reports whether entry belongs in a GetActivity result under filter:
-// ActivityFilterAll always matches; the other filters match exactly one ClaimStatus each — see
-// ActivityFilter's doc for what each one means
+// ActivityFilterAll always matches; the other filters match exactly one TrackerClaimStatus each
+// — see ActivityFilter's doc for what each one means. TrackerClaimStatus (rather than the
+// coarser ClaimStatus) is what distinguishes ActivityFilterPending from
+// ActivityFilterReadyToClaim; it mirrors ClaimStatus directly for the claimed/error cases (see
+// domain.ActivityEntry.TrackerClaimStatus)
 func matchesFilter(entry *domain.ActivityEntry, filter types.ActivityFilter) bool {
 	switch filter {
 	case types.ActivityFilterClaimed:
-		return entry.ClaimStatus == types.ClaimStatusClaimed
+		return entry.TrackerClaimStatus == types.TrackerClaimStatusClaimed
 	case types.ActivityFilterPending:
-		return entry.ClaimStatus == types.ClaimStatusUnclaimed
+		return entry.TrackerClaimStatus == types.TrackerClaimStatusPending
+	case types.ActivityFilterReadyToClaim:
+		return entry.TrackerClaimStatus == types.TrackerClaimStatusReadyToClaim
 	case types.ActivityFilterError:
-		return entry.ClaimStatus == types.ClaimStatusError
+		return entry.TrackerClaimStatus == types.TrackerClaimStatusError
 	case types.ActivityFilterAll:
 		return true
 	default:
@@ -167,7 +172,9 @@ func matchesFilter(entry *domain.ActivityEntry, filter types.ActivityFilter) boo
 // skipsClaimInfo reports whether filter excludes a claimed bridge from its result, making the
 // destination bridge service's claim record unnecessary to fetch right now (see refresh)
 func skipsClaimInfo(filter types.ActivityFilter) bool {
-	return filter == types.ActivityFilterPending || filter == types.ActivityFilterError
+	return filter == types.ActivityFilterPending ||
+		filter == types.ActivityFilterReadyToClaim ||
+		filter == types.ActivityFilterError
 }
 
 // addrCache returns (creating if necessary) the per-address cache for fromAddress, stamping its
