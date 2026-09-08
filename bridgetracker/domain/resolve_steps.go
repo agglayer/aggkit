@@ -10,6 +10,25 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 )
 
+// maxErrorDescriptions caps how many entries an ErrorStep.Description accumulates across
+// retries of the same transient failure — kept low so a step (or the tx-level error in
+// ResolveBridgeTx, which shares this same accumulate-on-retry shape) stuck retrying for a long
+// time does not grow its stored/serialized error without bound. RetryCount itself is unaffected,
+// it keeps counting every retry; only the description history is trimmed, to its most recent
+// entries — the oldest ones are the least useful for diagnosing why it is still failing now
+const maxErrorDescriptions = 10
+
+// appendErrorDescription appends desc to descriptions (copying first, same as the call sites
+// already did, so the previous ErrorStep.Description slice is never mutated), keeping only the
+// most recent maxErrorDescriptions entries
+func appendErrorDescription(descriptions []string, desc string) []string {
+	descriptions = append(append([]string{}, descriptions...), desc)
+	if len(descriptions) > maxErrorDescriptions {
+		descriptions = descriptions[len(descriptions)-maxErrorDescriptions:]
+	}
+	return descriptions
+}
+
 // ErrStepPending is returned by StepResolver.Resolve, or wrapped by a more specific sentinel
 // (see ErrCertificateNotSettled), when the fact check succeeded but the milestone has not
 // happened yet — not a failure, so ResolveSteps neither retries it as one (see UpdateStep's
@@ -94,7 +113,9 @@ func currentStepIndex(steps []BridgeStepPath) int {
 // does (see Permanent/IsPermanent): IsPermanent(stepErr) makes the step StepErrorPermanent with
 // just this failure, no point accumulating a retry history nothing will retry. Any other stepErr
 // is StepErrorTransient, accumulating onto the step's retry count and description instead of
-// discarding the history of a transient source failure. Either way complete is meaningless here
+// discarding the history of a transient source failure — description is capped to its most
+// recent maxErrorDescriptions entries (see appendErrorDescription), retry count is not. Either
+// way complete is meaningless here
 // (a step cannot both fail and complete) and idx+1 is left untouched. With stepErr nil, any
 // previous Error is cleared instead: a successful fact check, even an inconclusive one, clears a
 // previous transient failure, evidence the retry is working, not just that a milestone was met.
@@ -133,7 +154,7 @@ func UpdateStep(
 		retryCount, description := 1, []string{stepErr.Error()}
 		if current.Error != nil {
 			retryCount = current.Error.RetryCount + 1
-			description = append(append([]string{}, current.Error.Description...), stepErr.Error())
+			description = appendErrorDescription(current.Error.Description, stepErr.Error())
 		}
 		current.Error = &types.ErrorStep{
 			ErrorType:   types.StepErrorTransient,

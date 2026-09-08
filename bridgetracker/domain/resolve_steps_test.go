@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -814,6 +815,37 @@ func TestUpdateStep(t *testing.T) {
 		sp := advanced.AllSteps()[0]
 		require.Equal(t, 2, sp.Error.RetryCount)
 		require.Equal(t, []string{errFakeUpdateStep.Error(), errFakeUpdateStep.Error()}, sp.Error.Description)
+	})
+
+	t.Run("a repeated stepErr caps Description to the most recent maxErrorDescriptions, RetryCount keeps counting", func(t *testing.T) {
+		t.Parallel()
+
+		existing := make([]string, maxErrorDescriptions)
+		for i := range existing {
+			existing[i] = fmt.Sprintf("attempt %d", i)
+		}
+		tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
+			{
+				Step: types.StepWaitingGERUpdate, Status: types.StepStatusError, StartDate: &t1,
+				Error: &types.ErrorStep{
+					ErrorType: types.StepErrorTransient, RetryCount: maxErrorDescriptions,
+					Description: existing,
+				},
+			},
+			{Step: types.StepWaitingGERInjection, Status: types.StepStatusPending},
+			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+			{Step: types.StepClaimed, Status: types.StepStatusPending},
+		}, t1)
+
+		advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStep, t2)
+
+		sp := advanced.AllSteps()[0]
+		require.Equal(t, maxErrorDescriptions+1, sp.Error.RetryCount, "RetryCount is never trimmed")
+		require.Len(t, sp.Error.Description, maxErrorDescriptions, "Description is trimmed to the most recent entries")
+		require.Equal(t, existing[1:], sp.Error.Description[:maxErrorDescriptions-1],
+			"the oldest entry is dropped, the rest shift down")
+		require.Equal(t, errFakeUpdateStep.Error(), sp.Error.Description[maxErrorDescriptions-1],
+			"the newest entry is kept last")
 	})
 
 	t.Run("a stepErr wrapped as Permanent marks the step StepErrorPermanent with no retry count", func(t *testing.T) {
