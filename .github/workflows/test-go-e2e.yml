@@ -86,6 +86,14 @@ jobs:
           - env: anvil-2chains
             group: bridge-loop
             run: "^TestBridgeLoopFullCycle$"
+          # The claim-mode-violation test induces the negative result the tool exists to detect: it
+          # enables Auto Claim on aggkit-002 and then declares the hop into network 2 "manual", so
+          # the run halts mid-ring with the value stranded. That leaves more behind than the
+          # full-cycle test does (a restarted node, an unclaimed-by-the-tool deposit and extra claim
+          # traffic on network 2), so it gets its own stack rather than sharing one go-test process.
+          - env: anvil-2chains
+            group: bridge-loop-violation
+            run: "^TestBridgeLoopClaimModeViolation$"
           - env: anvil-2chains
             group: backward-forward-let
             run: "^(TestBackwardForwardLET_NoDivergence|TestBackwardForwardLET_Case1|TestBackwardForwardLET_Case2|TestBackwardForwardLET_Case3|TestBackwardForwardLET_Case4|TestBackwardForwardLET_AggsenderAPIFallback)$"

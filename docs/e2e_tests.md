@@ -162,6 +162,51 @@ same environment precondition `TestAutoClaimL2ToL1AllowAll` and `TestAutoClaimL2
 gets an isolated compose stack: it restarts `aggkit-002` to enable Auto Claim, exactly the kind of state mutation
 the `autoclaim` group is separated for.
 
+### Bridge loop tester claim-mode violation
+
+The negative counterpart of the full-cycle test: it induces a real claim-mode violation and asserts the tool
+detects it. Implemented in `test/e2e/bridgeloop_violation_test.go`:
+
+```bash
+go test -v -run TestBridgeLoopClaimModeViolation -timeout 60m ./test/e2e
+```
+
+Detecting that a bridge on a `manual`-mode route got claimed by something else — i.e. that an autoclaim service is
+active on a route configured to have none — is the tool's central diagnostic claim, and the full-cycle test only
+ever observes that assertion *holding*. Here it is broken on purpose: Auto Claim is enabled on `aggkit-002` exactly
+as `TestAutoClaimL2ToL2AllowAll` and `TestBridgeLoopFullCycle` enable it, and the same ring `0 -> 1 -> 2 -> 0` then
+declares its `1 -> 2` hop `Claim = "manual"` — the hop the full-cycle test declares `"auto"`. Nothing else about the
+topology changes, so the only difference between a pass there and a violation here is the expectation the config
+states.
+
+The assertions are that the run fails and the loop halts with `halt_class = claim-mode-violation`; that the
+violating hop was attempted **exactly once** even though `HopAttempts = 3` (a violation is a test result, never a
+transient to retry); that the ring is reported as not closed with the value stranded in flight and the halt
+persisted in the state file, so a restart cannot paper over it; and that the hop's error, the loop's error and the
+error the run returns all carry the same diagnosis — the bridge transaction whose deposit was claimed, plus the
+claim transaction and the claimant address the tool recovered from that transaction's signature.
+
+That last part is asserted **when the tool could resolve it, and that it says so plainly when it could not**. The
+claimant is recovered from the claim transaction, whose hash comes from the destination's
+`GET /bridge/v1/claims` record (the proxy never populates `from_address`, so there is no other source), and on
+`anvil-2chains` that record is usually served within a poll or two but in roughly one run in four is never served at
+all — verified live with the tool's lookup budget raised to five minutes. The violation itself does not depend on it:
+it rests on the destination bridge's own `isClaimed` read, so the tool degrades the attribution to
+`ClaimActorUnknown` (`claim tx unknown, from none`) rather than failing the hop. `TestBridgeLoopFullCycle`'s
+`ClaimedExternally` assertion has the same exposure and is the one flake seen in this area.
+
+What checks that the test puts the env back is `TestMain`'s post-test bridge health-check (below), which runs in the
+same process once the suite passes. That ring declares **every** hop `manual`, including `1 -> 2`, so a leaked Auto
+Claim service on `aggkit-002` makes it report a claim-mode violation and `log.Fatalf`. The full-cycle test would not
+catch that: its only hop into network 2 is the `auto` one, and it enables Auto Claim itself anyway.
+
+#### CI matrix
+
+The violation test gets its own `anvil-2chains` / `bridge-loop-violation` matrix group rather than sharing the
+`bridge-loop` group. It halts mid-ring by design, so it leaves more behind than the full-cycle test does — a
+restarted `aggkit-002`, a deposit the tool never claimed, and extra claim traffic on network 2 — and
+`test-go-e2e.yml` keeps state-mutating suites in separate stacks for exactly that reason.
+
 ## Post-test bridge health-check
 
 After every Go e2e suite run that passed, `TestMain` moves value once around a **closed bridge ring** as a
