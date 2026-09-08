@@ -331,13 +331,13 @@ func TestSendTxSurfacesRevertReasonFromEstimateGas(t *testing.T) {
 	require.False(t, bridgelooptester.IsAlreadyClaimed(err))
 }
 
-// TestSendTxAppliesGasOffsetAndHonoursExplicitGasLimit pins both gas paths: an estimate gets the
-// network's GasOffset added, an explicit TxRequest.GasLimit skips estimation entirely.
-func TestSendTxAppliesGasOffsetAndHonoursExplicitGasLimit(t *testing.T) {
+// TestSendTxAppliesGasLimitOffsetAndHonoursExplicitGasLimit pins both gas paths: an estimate gets
+// the network's GasLimitOffset added, an explicit TxRequest.GasLimit skips estimation entirely.
+func TestSendTxAppliesGasLimitOffsetAndHonoursExplicitGasLimit(t *testing.T) {
 	t.Parallel()
 
 	cfg := testNetworkConfig()
-	cfg.GasOffset = bridgelooptester.NewWeiAmount(50_000)
+	cfg.GasLimitOffset = 50_000
 
 	backend := mocks.NewEthBackend(t)
 	client, signer := newTestClient(t, backend, cfg)
@@ -440,17 +440,6 @@ func TestNewNetworkClientWithBackendValidation(t *testing.T) {
 		_, err := bridgelooptester.NewNetworkClientWithBackend(
 			context.Background(), cfg, backend, newKeySigner(t, big.NewInt(1)), logger)
 		require.ErrorContains(t, err, "configured ChainID 20201 does not match the chain id 999")
-	})
-
-	t.Run("gas offset overflow", func(t *testing.T) {
-		t.Parallel()
-		overflowing := cfg
-		overflowing.GasOffset.SetString("100000000000000000000", 10)
-		backend := mocks.NewEthBackend(t)
-		backend.EXPECT().ChainID(mock.Anything).Return(big.NewInt(testChainID), nil).Once()
-		_, err := bridgelooptester.NewNetworkClientWithBackend(
-			context.Background(), overflowing, backend, newKeySigner(t, big.NewInt(1)), logger)
-		require.ErrorContains(t, err, "does not fit in a uint64 gas limit")
 	})
 }
 

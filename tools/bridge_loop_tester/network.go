@@ -102,7 +102,7 @@ type TxRequest struct {
 	// Value is the native-currency value to attach. A nil Value means zero.
 	Value *big.Int
 	// GasLimit, when non-zero, is used verbatim: neither eth_estimateGas nor the network's
-	// GasOffset is applied. Use it to work around nodes whose estimate races the state the
+	// GasLimitOffset is applied. Use it to work around nodes whose estimate races the state the
 	// transaction will actually execute against (see test/e2e/bridge_utils.go's l1BridgeGasLimit).
 	GasLimit uint64
 	// OnSigned, when non-nil, is called once with the signed transaction's identity after it has
@@ -194,11 +194,11 @@ func WithPreBroadcastTimeout(timeout time.Duration) NetworkOption {
 // networkClient is the NetworkClient implementation. Its zero value is not usable; build one with
 // NewNetworkClient or NewNetworkClientWithBackend.
 type networkClient struct {
-	networkID uint32
-	name      string
-	chainID   *big.Int
-	from      common.Address
-	gasOffset uint64
+	networkID      uint32
+	name           string
+	chainID        *big.Int
+	from           common.Address
+	gasLimitOffset uint64
 
 	backend EthBackend
 	signer  TxSigner
@@ -255,11 +255,7 @@ func NewNetworkClient(
 		return nil, fmt.Errorf("new network client %q: initialize signer: %w", cfg.Name, err)
 	}
 
-	client, err := newNetworkClient(cfg, chainID, rpcClient, txSigner, logger, opts...)
-	if err != nil {
-		rpcClient.Close()
-		return nil, err
-	}
+	client := newNetworkClient(cfg, chainID, rpcClient, txSigner, logger, opts...)
 	client.closeFn = rpcClient.Close
 
 	return client, nil
@@ -292,7 +288,7 @@ func NewNetworkClientWithBackend(
 		return nil, err
 	}
 
-	return newNetworkClient(cfg, chainID, backend, txSigner, logger, opts...)
+	return newNetworkClient(cfg, chainID, backend, txSigner, logger, opts...), nil
 }
 
 // resolveChainID reads the chain ID from the node and, when cfg.ChainID is set, checks it matches.
@@ -320,18 +316,13 @@ func newNetworkClient(
 	txSigner TxSigner,
 	logger aggkitcommon.Logger,
 	opts ...NetworkOption,
-) (*networkClient, error) {
-	gasOffset, err := gasOffsetOf(cfg)
-	if err != nil {
-		return nil, err
-	}
-
+) *networkClient {
 	client := &networkClient{
 		networkID:           cfg.NetworkID,
 		name:                cfg.Name,
 		chainID:             new(big.Int).Set(chainID),
 		from:                txSigner.PublicAddress(),
-		gasOffset:           gasOffset,
+		gasLimitOffset:      cfg.GasLimitOffset,
 		backend:             backend,
 		signer:              txSigner,
 		logger:              logger,
@@ -344,19 +335,7 @@ func newNetworkClient(
 		opt(client)
 	}
 
-	return client, nil
-}
-
-// gasOffsetOf converts cfg.GasOffset (a wei-typed config value that is in fact a gas-unit margin)
-// into the uint64 the transaction's Gas field needs, refusing values that do not fit.
-func gasOffsetOf(cfg Network) (uint64, error) {
-	offset := cfg.GasOffset.BigInt()
-	if !offset.IsUint64() {
-		return 0, fmt.Errorf("new network client %q: GasOffset %s does not fit in a uint64 gas limit",
-			cfg.Name, offset)
-	}
-
-	return offset.Uint64(), nil
+	return client
 }
 
 // NetworkID returns the configured aggkit network ID (0 for L1).
@@ -541,9 +520,9 @@ func (c *networkClient) reserveNonce(ctx context.Context) (uint64, error) {
 	return nonce, nil
 }
 
-// estimateGas runs eth_estimateGas for req and adds the network's GasOffset margin. Callers must
-// hold sendMu, so the estimate is made against the same pending state the transaction is queued
-// behind.
+// estimateGas runs eth_estimateGas for req and adds the network's GasLimitOffset margin. Callers
+// must hold sendMu, so the estimate is made against the same pending state the transaction is
+// queued behind.
 func (c *networkClient) estimateGas(ctx context.Context, req TxRequest, value *big.Int) (uint64, error) {
 	gas, err := c.backend.EstimateGas(ctx, ethereum.CallMsg{
 		From:  c.from,
@@ -555,7 +534,7 @@ func (c *networkClient) estimateGas(ctx context.Context, req TxRequest, value *b
 		return 0, fmt.Errorf("%s on %s: estimate gas: %w", labelOf(req), c.name, decorateRevert(err))
 	}
 
-	return gas + c.gasOffset, nil
+	return gas + c.gasLimitOffset, nil
 }
 
 // buildTxData prices the transaction, preferring an EIP-1559 dynamic-fee transaction and falling

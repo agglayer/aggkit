@@ -38,6 +38,7 @@ func validConfig() *Config {
 			HopTimeout:        cfgtypes.NewDuration(10 * time.Minute),
 			PollInterval:      cfgtypes.NewDuration(5 * time.Second),
 			ManualGracePeriod: cfgtypes.NewDuration(2 * time.Minute),
+			HopAttempts:       3,
 		},
 		Networks: []Network{
 			validNetwork(0, "L1"),
@@ -149,6 +150,11 @@ func TestConfig_Validate_TableDriven(t *testing.T) {
 			name:      "Global.ManualGracePeriod not positive",
 			mutate:    func(cfg *Config) { cfg.Global.ManualGracePeriod = cfgtypes.NewDuration(0) },
 			wantError: "Global.ManualGracePeriod must be greater than 0",
+		},
+		{
+			name:      "Global.HopAttempts not positive",
+			mutate:    func(cfg *Config) { cfg.Global.HopAttempts = 0 },
+			wantError: "Global.HopAttempts must be greater than 0",
 		},
 		{
 			name:      "invalid claim mode",
@@ -402,7 +408,64 @@ Claim = "manual"
 	require.Equal(t, defaultHopTimeout, cfg.Global.HopTimeout.Duration)
 	require.Equal(t, defaultPollInterval, cfg.Global.PollInterval.Duration)
 	require.Equal(t, defaultManualGracePeriod, cfg.Global.ManualGracePeriod.Duration)
+	require.EqualValues(t, defaultHopAttempts, cfg.Global.HopAttempts)
 
+	require.NoError(t, cfg.Validate())
+}
+
+// TestLoadConfig_HopAttemptsOverride pins that Global.HopAttempts is settable from TOML (not just
+// defaulted), and that Validate rejects a configured value of 0.
+func TestLoadConfig_HopAttemptsOverride(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/hopattempts.toml"
+	content := `
+[Global]
+ProxyURL = "http://127.0.0.1:15601"
+HopAttempts = 7
+
+[[Networks]]
+NetworkID = 0
+Name = "L1"
+RPCURL = "http://127.0.0.1:13545"
+BridgeAddr = "0x0000000000000000000000000000000000000001"
+
+[Networks.Signer]
+Method = "local"
+Path = "/keystore"
+Password = "changeme"
+
+[[Networks]]
+NetworkID = 1
+Name = "L2A"
+RPCURL = "http://127.0.0.1:14545"
+BridgeAddr = "0x0000000000000000000000000000000000000002"
+
+[Networks.Signer]
+Method = "local"
+Path = "/keystore"
+Password = "changeme"
+
+[[Loops]]
+Name = "ring"
+Asset = "eth"
+Amount = "1000"
+Enabled = true
+
+[[Loops.Hops]]
+Source = 0
+Destination = 1
+Claim = "auto"
+
+[[Loops.Hops]]
+Source = 1
+Destination = 0
+Claim = "manual"
+`
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.EqualValues(t, 7, cfg.Global.HopAttempts)
 	require.NoError(t, cfg.Validate())
 }
 

@@ -25,6 +25,10 @@ PollInterval = "5s"
 # ManualGracePeriod: grace window before a "manual" hop self-claims, and the deadline by which an
 # "auto" hop must have been claimed by the autoclaim service. Defaults to "2m".
 ManualGracePeriod = "2m"
+# HopAttempts: how many times a single hop is retried in place after a transient failure (gate
+# deadline, RPC/proxy error, balance mismatch) before its loop's cycle is abandoned at that hop
+# without halting the loop. Must be > 0. Defaults to 3 if omitted.
+HopAttempts = 3
 # StatePath: optional file used to persist/resume hop state across restarts. Empty disables it.
 StatePath = ""
 # MetricsAddr: optional "host:port" to serve aggkit/prometheus metrics on. Empty disables it.
@@ -42,11 +46,9 @@ BridgeAddr = "0x0000000000000000000000000000000000000B01"
 # ChainID omitted on purpose: the tool resolves it live via eth_chainId at startup instead of
 # trusting a possibly-stale configured value (see DESIGN.md §6/G3).
 MinNativeReserve = "1000000000000000000" # 1 ETH kept in reserve for gas, wei-scale decimal string
-# GasOffset: extra gas UNITS added to every eth_estimateGas result on this network, as a safety
-# margin. Despite the WeiAmount type (a quoted decimal string, chosen to avoid float/int64
-# precision loss), this is NOT a wei amount - it is added directly to the transaction's gas limit.
-# 0 disables the margin.
-GasOffset = "0"
+# GasLimitOffset: extra gas UNITS (a plain integer, not a wei amount) added to every
+# eth_estimateGas result on this network, as a safety margin. 0 disables the margin.
+GasLimitOffset = 0
 
 [Networks.Signer]
 Method = "local"
@@ -59,7 +61,7 @@ Name = "L2A"
 RPCURL = "http://127.0.0.1:14545"
 BridgeAddr = "0x0000000000000000000000000000000000000B02"
 MinNativeReserve = "1000000000000000000"
-GasOffset = "0"
+GasLimitOffset = 0
 
 [Networks.Signer]
 Method = "local"
@@ -72,7 +74,7 @@ Name = "L2B"
 RPCURL = "http://127.0.0.1:15545"
 BridgeAddr = "0x0000000000000000000000000000000000000B03"
 MinNativeReserve = "1000000000000000000"
-GasOffset = "0"
+GasLimitOffset = 0
 
 [Networks.Signer]
 Method = "local"

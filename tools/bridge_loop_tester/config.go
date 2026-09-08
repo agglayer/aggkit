@@ -127,6 +127,11 @@ type Global struct {
 	// tool waits for the autoclaim service to claim it before treating it as a policy violation.
 	// Defaults to 2m.
 	ManualGracePeriod cfgtypes.Duration `mapstructure:"ManualGracePeriod"`
+	// HopAttempts is how many times a single hop is retried in place after a transient failure
+	// (gate deadline, RPC/proxy error, balance mismatch - see the orchestrator's failure policy)
+	// before its loop's cycle is abandoned at that hop without halting the loop. Required to be > 0;
+	// defaults to 3.
+	HopAttempts uint64 `mapstructure:"HopAttempts"`
 	// StatePath is an optional file path used to persist/resume hop state across restarts. Empty
 	// (the default) disables persistence.
 	StatePath string `mapstructure:"StatePath"`
@@ -156,9 +161,11 @@ type Network struct {
 	// MinNativeReserve is the minimum native-currency balance (wei) the signer on this network must
 	// keep in reserve for gas; the tool refuses to spend below it. Defaults to 0 (no reserve).
 	MinNativeReserve WeiAmount `mapstructure:"MinNativeReserve"`
-	// GasOffset is added to every gas estimate made against this network's RPC before submitting a
-	// transaction, as a safety margin. Defaults to 0 (no offset).
-	GasOffset WeiAmount `mapstructure:"GasOffset"`
+	// GasLimitOffset is a plain gas-unit margin - NOT wei - added to every eth_estimateGas result
+	// made against this network's RPC before submitting a transaction, as a safety margin against a
+	// node whose estimate races the state the transaction will actually execute against. Defaults
+	// to 0 (no offset).
+	GasLimitOffset uint64 `mapstructure:"GasLimitOffset"`
 	// Signer is the key used to sign transactions submitted on this network (local keystore, AWS
 	// KMS, or GCP KMS - see github.com/agglayer/go_signer/signer/types). Required.
 	Signer signertypes.SignerConfig `mapstructure:"Signer"`
@@ -229,6 +236,11 @@ const (
 	defaultHopTimeout        = 10 * time.Minute
 	defaultPollInterval      = 5 * time.Second
 	defaultManualGracePeriod = 2 * time.Minute
+	// defaultHopAttempts is how many times a hop is retried in place after a transient failure
+	// before its loop's cycle is abandoned at that hop (see the orchestrator's failure policy).
+	// Also the fallback the orchestrator uses if, exceptionally, it is built with a Config that
+	// bypassed Validate (which otherwise guarantees Global.HopAttempts > 0).
+	defaultHopAttempts = 3
 )
 
 // mainnetNetworkID is the aggkit network ID reserved for L1 (see DESIGN.md §1/§6).
@@ -285,6 +297,7 @@ func applyDefaults(v *viper.Viper) {
 	v.SetDefault("Global.HopTimeout", defaultHopTimeout.String())
 	v.SetDefault("Global.PollInterval", defaultPollInterval.String())
 	v.SetDefault("Global.ManualGracePeriod", defaultManualGracePeriod.String())
+	v.SetDefault("Global.HopAttempts", defaultHopAttempts)
 }
 
 // Validate checks every field and cross-field invariant of Config, aggregating every problem it
@@ -333,6 +346,10 @@ func (c *Config) validateGlobal() []error {
 		if nd.d <= 0 {
 			errs = append(errs, fmt.Errorf("%s must be greater than 0, got %s", nd.name, nd.d))
 		}
+	}
+
+	if c.Global.HopAttempts == 0 {
+		errs = append(errs, fmt.Errorf("Global.HopAttempts must be greater than 0, got %d", c.Global.HopAttempts))
 	}
 
 	return errs

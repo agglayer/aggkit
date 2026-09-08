@@ -135,6 +135,7 @@ amounts.
 | `HopTimeout` | duration | yes (>0) | `10m` | Total budget for one hop's whole state machine; every individual readiness gate's deadline is whatever remains of this budget. |
 | `PollInterval` | duration | yes (>0) | `5s` | How often the `/bridge/v1/*` readiness endpoints are re-polled. |
 | `ManualGracePeriod` | duration | yes (>0) | `2m` | For a `manual` hop: how long to wait and assert nothing else claims it before self-claiming. For an `auto` hop: how long to wait for the autoclaim service before declaring a violation. |
+| `HopAttempts` | uint64 | yes (>0) | `3` | How many times a single hop is retried in place after a transient failure (see [Failure policy](#failure-policy)) before its loop's cycle is abandoned at that hop without halting the loop. |
 | `StatePath` | string | no | `""` (disabled) | File used to persist/resume hop state across restarts. See [The state file](#the-state-file). |
 | `MetricsAddr` | string | no | `""` (disabled) | `host:port` to serve Prometheus metrics on. See [Metrics](#metrics). |
 | `DryRun` | bool | no | `false` | See [`DryRun` semantics](#dryrun-semantics). Overridable with `run --dry-run`. |
@@ -149,7 +150,7 @@ amounts.
 | `BridgeAddr` | address | **yes**, non-zero | — | `PolygonZkEVMBridgeV2` contract address on this network. |
 | `ChainID` | uint64 | no | `0` | `0` means resolve live via `eth_chainId` at startup rather than trust a possibly-stale configured value. If set, it is cross-checked against the live value. |
 | `MinNativeReserve` | `WeiAmount` (wei) | no | `0` | Floor native balance the signer must keep; the tool refuses to spend below it. See [Gas drain](#gas-drain-funding-and-minnativereserve). |
-| `GasOffset` | `WeiAmount`, but a **gas-unit** margin, not wei | no | `0` | Added to every `eth_estimateGas` result before submitting, as a safety margin. **Note the type is `WeiAmount` for decoding convenience (quoted-decimal-string, no float precision loss) but the value is interpreted as a raw gas-unit addend, not wei** — a config author reading only the type name could reasonably expect wei semantics; see the caveat in [Known limitations](#known-limitations). |
+| `GasLimitOffset` | uint64 (gas units, **not wei**) | no | `0` | Added to every `eth_estimateGas` result before submitting, as a safety margin against a node whose estimate races the state the transaction will actually execute against. |
 | `[Networks.Signer]` | `signertypes.SignerConfig` | **yes** (`Method` non-empty) | — | Local keystore, AWS KMS, or GCP KMS — see `github.com/agglayer/go_signer/signer/types`. |
 
 ### `[[Loops]]`
@@ -349,7 +350,7 @@ typed sentinels, never on message text), and each class has a single, fixed resp
 
 | Class | What triggers it | Response |
 |---|---|---|
-| `transient` | A readiness gate's `*DeadlineExceededError`, an RPC/proxy error, a destination balance that did not reconcile, or anything unclassified. | **Retried in place**, up to `HopAttempts` times (3 by default — a library-only knob, not yet a config field; see [Known limitations](#known-limitations)), `Global.LoopDelay` apart, each retry resuming from the checkpoint the previous attempt reached. If every attempt still fails, the cycle stops there and the loop's hop cursor **stays on that hop** — the next cycle resumes the ring at it. The loop itself is **never** halted for a transient. |
+| `transient` | A readiness gate's `*DeadlineExceededError`, an RPC/proxy error, a destination balance that did not reconcile, or anything unclassified. | **Retried in place**, up to `Global.HopAttempts` times (default `3`), `Global.LoopDelay` apart, each retry resuming from the checkpoint the previous attempt reached. If every attempt still fails, the cycle stops there and the loop's hop cursor **stays on that hop** — the next cycle resumes the ring at it. The loop itself is **never** halted for a transient. |
 | `claim-mode-violation` | An `auto` hop nobody claimed, or a `manual` hop something else claimed (`*ClaimModeViolationError`). | **Fatal to that loop, never retried.** Logged at ERROR with the full evidence. Persisted as `halted`, so a plain restart does not paper over a real test failure — only `run --resume-halted` re-drives it, deliberately. |
 | `ambiguous-resume` | A signed bridge transaction with no receipt, whose nonce a *different* mined transaction consumed (`*AmbiguousResumeError`). | **Fatal to that loop, halted loudly**, with the full decision evidence (bridge tx hash + nonce, account's mined/pending nonces, how long the receipt was waited for). Neither skipped (would abandon value mid-ring) nor re-driven (could double-bridge) — reconcile the bridge's indexed state by hand. |
 | `insufficient-balance` | The signer cannot fund the hop without breaching `MinNativeReserve`, or holds too little of the asset (`*InsufficientBalanceError`). | **Fatal to that loop.** A soak run cannot top itself up; retrying for days would only repeat one log line. The report shows the value stranded, not in flight. |
@@ -517,15 +518,6 @@ Loop "eth-ring" (eth, 1000000000000000)
   A network whose bridge reports a non-zero `gasTokenAddress()` needs the WETH path for its native
   asset, which this tool does not implement; `validate`/`run` refuse an `"eth"` loop that touches
   such a network rather than failing confusingly mid-run (`ErrNativeAssetUnsupported`).
-- **`GasOffset`'s type is misleading.** It decodes as a `WeiAmount` (quoted decimal string) for the
-  same overflow-safety reason every wei-scale field does, but the value is used as a raw **gas-unit**
-  addend to `eth_estimateGas`'s result, not as wei. This is a genuine documentation-revealed
-  inconsistency worth fixing at the type level in a future pass (e.g. a distinct `GasAmount` type or
-  a field rename) — flagged here rather than fixed, per this step's scope.
-- **`HopAttempts` (the transient-retry count, default 3) is not yet a config field or a CLI flag** —
-  only `OrchestratorDeps.HopAttempts`, reachable from library callers (like a future e2e test), not
-  from a TOML config or the CLI. Worth adding as `Global.HopAttempts` in a later pass if operators
-  need to tune it.
 - **The deferred dry-dock/bali work is out of scope here.** This tool has no bali-specific
   configuration, and none is documented — see the plan's "out of scope" section. The example configs
   below are deliberately generic, placeholder-only.

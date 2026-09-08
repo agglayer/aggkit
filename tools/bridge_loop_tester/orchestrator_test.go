@@ -78,6 +78,7 @@ func newHarness(t *testing.T) *harness {
 			HopTimeout:        cfgtypes.NewDuration(10 * time.Minute),
 			PollInterval:      cfgtypes.NewDuration(time.Second),
 			ManualGracePeriod: cfgtypes.NewDuration(time.Minute),
+			HopAttempts:       3,
 		},
 		Networks: []bridgelooptester.Network{
 			testNetwork(0, "L1"),
@@ -535,6 +536,45 @@ func TestRunAbandonsCycleAfterExhaustingRetriesAndResumesRingNextCycle(t *testin
 	require.Len(t, report.Loops[0].Cycles[1].Hops, 2)
 	require.Equal(t, uint64(1), report.Loops[0].CyclesCompleted)
 	require.Equal(t, uint64(2), report.Loops[0].CyclesAttempted)
+}
+
+// TestRunHonoursConfiguredHopAttempts pins that the orchestrator reads Global.HopAttempts from the
+// config rather than always retrying the hard-coded default of 3: a config that sets it to 5 must
+// retry a persistently-transient hop 5 times (not 3) before abandoning the cycle.
+func TestRunHonoursConfiguredHopAttempts(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.cfg.Global.Iterations = 1
+	h.cfg.Global.HopAttempts = 5
+	transient := fmt.Errorf("the destination RPC refused the connection")
+
+	runner := &fakeHopRunner{}
+	runner.respond = func(
+		req bridgelooptester.HopRequest, _ int,
+	) (*bridgelooptester.HopResult, error) {
+		if req.HopIndex == 1 {
+			return failedResult(req, bridgelooptester.HopStateBridged, transient), transient
+		}
+
+		return successResult(req), nil
+	}
+
+	store := bridgelooptester.NoopStateStore{}
+	orchestrator, err := bridgelooptester.NewOrchestrator(context.Background(), h.cfg, h.deps(runner, store))
+	require.NoError(t, err)
+	defer orchestrator.Close()
+
+	report, err := orchestrator.Run(context.Background())
+	require.NoError(t, err, "a transient failure must never halt the loop")
+
+	require.Len(t, report.Loops[0].Cycles, 1)
+	// hop 0 succeeded once, hop 1 was attempted Global.HopAttempts (5) times, all failing.
+	require.Len(t, report.Loops[0].Cycles[0].Hops, 6)
+	require.Equal(t, 6, report.Totals.HopsAttempted)
+	require.Equal(t, 1, report.Totals.HopsSucceeded)
+	require.Equal(t, 5, report.Totals.HopsFailed)
+	require.Equal(t, 4, report.Totals.HopsRetried)
 }
 
 func TestRunHaltsLoopOnClaimModeViolation(t *testing.T) {

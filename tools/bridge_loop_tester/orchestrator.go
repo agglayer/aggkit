@@ -19,10 +19,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// defaultHopAttempts is how many times a hop is attempted before its cycle is abandoned to the
-// next one. Overridable with OrchestratorDeps.HopAttempts.
-const defaultHopAttempts = 3
-
 // mintCycles is how many cycles' worth of an ERC20 loop's Amount the tool mints when it first
 // deploys the loop's token. A circular route returns the value to its origin every cycle, so one
 // cycle's worth would in principle be enough; minting a margin means a hop that strands value
@@ -69,7 +65,9 @@ type OrchestratorDeps struct {
 	// Global.MetricsAddr is set, and no metrics at all otherwise.
 	Metrics *Metrics
 	// HopAttempts is how many times a hop is attempted before its cycle is abandoned (see the
-	// failure policy on Orchestrator). Zero or negative means defaultHopAttempts.
+	// failure policy on Orchestrator). Zero or negative means cfg.Global.HopAttempts is used
+	// instead (which Validate guarantees is > 0), falling back to defaultHopAttempts only if that
+	// is exceptionally also unset. Set this to override the configured value, e.g. in a test.
 	HopAttempts int
 	// ResumeHalted, when true, clears the Halted flag of every loop in the loaded state, so a run
 	// re-drives loops a previous run halted for a non-retryable reason. Off by default: a halted
@@ -309,6 +307,9 @@ func NewOrchestrator(ctx context.Context, cfg *Config, deps OrchestratorDeps) (*
 	}
 	if o.now == nil {
 		o.now = time.Now
+	}
+	if o.hopAttempts <= 0 {
+		o.hopAttempts = int(cfg.Global.HopAttempts)
 	}
 	if o.hopAttempts <= 0 {
 		o.hopAttempts = defaultHopAttempts
