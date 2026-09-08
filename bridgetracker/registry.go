@@ -16,8 +16,8 @@ type bridgeEntry struct {
 	tracking *domain.TrackingData
 	// subscribers holds one channel per active subscription (WebSocket connection)
 	subscribers map[chan *domain.TrackingData]struct{}
-	// terminalSince is when the snapshot first became terminal (see isTerminal); zero while
-	// it is not. It anchors the retention window PruneTerminal evicts by
+	// terminalSince is when the snapshot first became terminal (see domain.TrackingData.
+	// IsTerminal); zero while it is not. It anchors the retention window PruneTerminal evicts by
 	terminalSince time.Time
 	// lastAccess is when this entry was last read (Get/GetAndAwait) or gained a new
 	// subscriber; it anchors the idle window PruneIdle evicts by
@@ -48,28 +48,8 @@ type memoryRegistry struct {
 	trigger chan TrackingID
 }
 
-// isTerminal reports whether the snapshot will never change again: the bridge finished, or
-// the tracker gave up resolving it. It is exactly the predicate GetTrackerActives excludes
-// by — an entry out of the active list is never updated again, so it is safe to forget once
-// its retention elapses
-func isTerminal(tracking *domain.TrackingData) bool {
-	return tracking.Failed() || tracking.TrackingStatus() == types.TrackingStatusFinished
-}
-
 // compile-time check: the in-memory adapter fulfils the full port
 var _ SupervisedRegistry = (*memoryRegistry)(nil)
-
-// terminallyFailed reports whether the tracker gave up resolving the bridge's tx at all: a
-// tx-level terminal Error recorded while Info was still nil. Deliberately not
-// domain.TrackingData.Failed(): TrackingStatus prioritizes AllSteps once it is non-nil, so a
-// step-level error persisted in the same batch that also carries the bridge's first-ever Info —
-// still nil in the store until the batch's UpdateTrackingBridgeTx call lands, see Engine.persist —
-// would read as Failed() too, permanently blocking that same batch's remaining step writes.
-// Checking the tx fields directly is immune to that write-order dependency
-func terminallyFailed(tracking *domain.TrackingData) bool {
-	tx := tracking.BridgeTx()
-	return tx.Info == nil && tx.IsInTerminalError()
-}
 
 // NewMemoryRegistry returns an in-memory SupervisedRegistry that refuses to register more than
 // maxEntries distinct bridges at once (see memoryRegistry.maxEntries); maxEntries <= 0 falls
@@ -203,7 +183,7 @@ func (r *memoryRegistry) UpdateTrackingBridgeTx(id TrackingID, tx domain.Trackin
 	}
 	// every batch of changes ends in this call (see UpdateTrackingStep), so this is the single
 	// place where an entry can be seen turning terminal, whichever field did it
-	if entry.terminalSince.IsZero() && isTerminal(entry.tracking) {
+	if entry.terminalSince.IsZero() && entry.tracking.IsTerminal() {
 		entry.terminalSince = r.now()
 	}
 	entry.notify(entry.tracking)
@@ -223,7 +203,7 @@ func (r *memoryRegistry) UpdateTrackingStep(id TrackingID, stepIndex uint, step 
 	if !ok {
 		return domain.ErrTrackingNotFound
 	}
-	if terminallyFailed(entry.tracking) {
+	if entry.tracking.TerminallyFailed() {
 		// terminal failure is final: nothing may resurrect the bridge afterwards
 		return nil
 	}
@@ -248,7 +228,7 @@ func (r *memoryRegistry) GetTrackerActives(networkID *uint32) ([]*domain.Trackin
 		if networkID != nil && id.NetworkID != *networkID {
 			continue
 		}
-		if isTerminal(entry.tracking) {
+		if entry.tracking.IsTerminal() {
 			continue
 		}
 		active = append(active, entry.tracking)

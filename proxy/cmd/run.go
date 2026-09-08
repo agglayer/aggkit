@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
+	bridgetrackerdb "github.com/agglayer/aggkit/bridgetracker/db"
 	"github.com/agglayer/aggkit/bridgetracker/sources"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
@@ -143,6 +144,22 @@ func runProxy(
 	log.Info("proxy component started")
 }
 
+// newTrackerRegistry builds the supervised-bridges registry runTracker wires everything else
+// over: SQLite-backed (see bridgetracker.NewSQLiteRegistry) when cfg.DBPath is set, so already-
+// resolved bridges survive a restart instead of being re-resolved — and every bridge-service/
+// agglayer call behind that re-issued — from scratch; the in-memory adapter otherwise, exactly
+// as before DBPath existed.
+func newTrackerRegistry(cfg bridgetracker.Config) bridgetracker.SupervisedRegistry {
+	if cfg.DBPath == "" {
+		return bridgetracker.NewMemoryRegistry(cfg.MaxTrackedBridges)
+	}
+	registry, err := bridgetrackerdb.NewSQLiteRegistry(cfg.DBPath, cfg.MaxTrackedBridges, cfg.Logger)
+	if err != nil {
+		log.Fatalf("failed to create sqlite-backed tracker registry at %s: %v", cfg.DBPath, err)
+	}
+	return registry
+}
+
 // runTracker starts the bridge tracker component: the supervised-bridges registry shared by
 // the REST/WS handlers and the tracking engine resolving bridge statuses through the
 // per-network sources.
@@ -158,9 +175,9 @@ func runTracker(
 	if err := trackerCfg.Validate(); err != nil {
 		log.Fatalf("invalid tracker config: %v", err)
 	}
-	registry := bridgetracker.NewMemoryRegistry(trackerCfg.MaxTrackedBridges)
 	trackerCfg.Logger = log.WithFields("module", "bridgetracker")
 	trackerCfg.ConfigSHA1 = configSHA1
+	registry := newTrackerRegistry(trackerCfg)
 	trackerCfg.Registry = registry
 	// The tracker's WebSocket endpoint enforces the same origin policy as the REST server it's
 	// served alongside (see aggkitcommon.CORSConfig.OriginAllowed for why it can't just reuse
@@ -197,6 +214,18 @@ func runTracker(
 		finder, rpcClients, log.WithFields("module", "bridgetracker-activitysource"))
 	trackerCfg.ActivityScanner = activitySource
 	trackerCfg.ActivityClaims = activitySource
+	// Same DBPath switch as newTrackerRegistry: a SQLite-backed activity store survives a
+	// restart instead of re-scanning/re-checking every bridge's claim state from scratch. It
+	// shares registry as its supervised store (see bridgetrackerdb.NewSQLiteActivityStore).
+	if trackerCfg.DBPath != "" {
+		activity, err := bridgetrackerdb.NewSQLiteActivityStore(
+			trackerCfg.DBPath, activitySource, activitySource, registry, trackerCfg.Logger,
+			trackerCfg.ActivityIdleTimeout.Duration)
+		if err != nil {
+			log.Fatalf("failed to create sqlite-backed activity store at %s: %v", trackerCfg.DBPath, err)
+		}
+		trackerCfg.Activity = activity
+	}
 
 	// GET /bridge-address[/{network_id}] resolves the bridge contract address of one network,
 	// or every network the finder currently knows about; finder satisfies

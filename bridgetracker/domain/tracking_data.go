@@ -177,6 +177,26 @@ func (t *TrackingData) Failed() bool {
 	return t.TrackingStatus() == types.TrackingStatusError && t.Info() == nil
 }
 
+// IsTerminal reports whether the snapshot will never change again: the bridge finished, or the
+// tracker gave up resolving it. It is exactly the predicate a SupervisedStore's active-list
+// query (GetTrackerActives) excludes by — an entry out of the active list is never updated
+// again, so a store is free to forget it once its own retention window elapses
+func (t *TrackingData) IsTerminal() bool {
+	return t.Failed() || t.TrackingStatus() == types.TrackingStatusFinished
+}
+
+// TerminallyFailed reports whether the tracker gave up resolving the bridge's tx at all: a
+// tx-level terminal Error recorded while Info was still nil. Deliberately not Failed(): Failed
+// derives from TrackingStatus, which prioritizes AllSteps once it is non-nil — so a step-level
+// error persisted in the same batch that also carries the bridge's first-ever Info (still nil
+// in a store until its tx-level write lands) would read as Failed() too, which would wrongly
+// block that same batch's remaining step writes if used for that check instead. Checking the tx
+// fields directly is immune to that write-order dependency
+func (t *TrackingData) TerminallyFailed() bool {
+	tx := t.BridgeTx()
+	return tx.Info == nil && tx.IsInTerminalError()
+}
+
 func convertStepStatusToTrackingStatus(stepStatus types.StepStatus) types.TrackingStatus {
 	switch stepStatus {
 	case types.StepStatusPending:

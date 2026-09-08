@@ -19,6 +19,11 @@ type BridgeInfo struct {
 	DepositCount uint32
 	// BlockNumber is the block, on the origin network, where the BridgeEvent was emitted
 	BlockNumber uint64
+	// BlockHash is the hash of BlockNumber at the moment the BridgeEvent was captured. A
+	// persisted store (see bridgetracker.sqliteRegistry) can compare it against the origin
+	// chain's current hash at BlockNumber to tell whether this Info was resolved on a block
+	// since reorged out, and must be discarded and re-resolved
+	BlockHash common.Hash
 	// LogIndex is the position of the BridgeEvent log within BlockNumber
 	LogIndex uint32
 	// OriginNetwork is the network where the bridged asset originates from

@@ -117,6 +117,15 @@ type Config struct {
 	// ignored when Registry is set to a custom implementation.
 	MaxTrackedBridges int `mapstructure:"MaxTrackedBridges"`
 
+	// DBPath is the SQLite file the supervised-bridges registry persists to (see
+	// bridgetracker/db.NewSQLiteRegistry). Empty (the default) keeps the in-memory adapter
+	// (NewMemoryRegistry): state does not survive a restart, exactly as before this field
+	// existed. Setting it makes the binary construct a SQLite-backed registry instead, so
+	// already-resolved bridges don't need re-resolving — and every bridge-service/agglayer call
+	// behind that — after a restart. Only meaningful to the binary wiring Registry from it;
+	// ignored once Registry is set.
+	DBPath string `mapstructure:"DBPath"`
+
 	// AgglayerClient configures the client used to query the agglayer for a bridge's covering
 	// certificate and that certificate's current status (see sources.CertificateSource)
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
@@ -146,6 +155,14 @@ type Config struct {
 	// both); leaving either nil leaves the endpoint unregistered entirely.
 	ActivityScanner ActivityBridgeScanner `mapstructure:"-"`
 	ActivityClaims  ActivityClaimChecker  `mapstructure:"-"`
+
+	// Activity, when set, is used as the activity endpoint's ActivityQuerier as-is instead of
+	// building an in-memory ActivityCache from ActivityScanner/ActivityClaims — the same
+	// override pattern as Registry, so a caller can plug in a persisted implementation (see
+	// bridgetracker/db.NewSQLiteActivityStore, which itself still needs ActivityScanner/
+	// ActivityClaims — it takes them directly as constructor arguments, not through this
+	// Config). ActivityScanner/ActivityClaims/ActivityIdleTimeout are ignored once this is set.
+	Activity ActivityQuerier `mapstructure:"-"`
 
 	// ActivityIdleTimeout is how long a from_address's activity cache (see ActivityCache) stays
 	// in memory with no GET /activity/from/{from_address} call for it, before being forgotten
