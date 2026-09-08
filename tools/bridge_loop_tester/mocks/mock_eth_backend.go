@@ -839,6 +839,72 @@ func (_c *EthBackend_SuggestGasTipCap_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
+// TransactionByHash provides a mock function with given fields: ctx, txHash
+func (_m *EthBackend) TransactionByHash(ctx context.Context, txHash common.Hash) (*types.Transaction, bool, error) {
+	ret := _m.Called(ctx, txHash)
+
+	if len(ret) == 0 {
+		panic("no return value specified for TransactionByHash")
+	}
+
+	var r0 *types.Transaction
+	var r1 bool
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) (*types.Transaction, bool, error)); ok {
+		return rf(ctx, txHash)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) *types.Transaction); ok {
+		r0 = rf(ctx, txHash)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.Transaction)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, common.Hash) bool); ok {
+		r1 = rf(ctx, txHash)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, common.Hash) error); ok {
+		r2 = rf(ctx, txHash)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// EthBackend_TransactionByHash_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'TransactionByHash'
+type EthBackend_TransactionByHash_Call struct {
+	*mock.Call
+}
+
+// TransactionByHash is a helper method to define mock.On call
+//   - ctx context.Context
+//   - txHash common.Hash
+func (_e *EthBackend_Expecter) TransactionByHash(ctx interface{}, txHash interface{}) *EthBackend_TransactionByHash_Call {
+	return &EthBackend_TransactionByHash_Call{Call: _e.mock.On("TransactionByHash", ctx, txHash)}
+}
+
+func (_c *EthBackend_TransactionByHash_Call) Run(run func(ctx context.Context, txHash common.Hash)) *EthBackend_TransactionByHash_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(common.Hash))
+	})
+	return _c
+}
+
+func (_c *EthBackend_TransactionByHash_Call) Return(_a0 *types.Transaction, _a1 bool, _a2 error) *EthBackend_TransactionByHash_Call {
+	_c.Call.Return(_a0, _a1, _a2)
+	return _c
+}
+
+func (_c *EthBackend_TransactionByHash_Call) RunAndReturn(run func(context.Context, common.Hash) (*types.Transaction, bool, error)) *EthBackend_TransactionByHash_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // TransactionReceipt provides a mock function with given fields: ctx, txHash
 func (_m *EthBackend) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
 	ret := _m.Called(ctx, txHash)

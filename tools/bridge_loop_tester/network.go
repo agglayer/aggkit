@@ -52,6 +52,10 @@ type EthBackend interface {
 	// mined" from "this nonce is only queued" is what makes an interrupted submission decidable
 	// - see HopState's HopStateBridging resume contract.
 	NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
+	// TransactionByHash returns the transaction with the given hash and whether it is still
+	// pending, or ethereum.NotFound when the node does not know it. It is what makes the sender
+	// of a transaction the tool did not submit itself recoverable - see TransactionSender.
+	TransactionByHash(ctx context.Context, txHash common.Hash) (*ethtypes.Transaction, bool, error)
 }
 
 // TxSigner signs transactions for one network. It is deliberately narrower than
@@ -364,6 +368,36 @@ func (c *networkClient) NativeBalance(ctx context.Context, account common.Addres
 	}
 
 	return balance, nil
+}
+
+// TransactionSender recovers the account that signed txHash on client's network, by reading the
+// transaction back and recovering the sender from its signature against the network's chain ID.
+//
+// It exists because the proxy cannot answer this question: /bridge/v1/claims serialises a
+// ClaimResponse whose from_address field is never populated (claimsync's Claim record has no such
+// column at all), so a claim the tool did not submit itself arrives with an empty claimant. The
+// signature, though, is on-chain and self-describing, so the claim transaction's own sender is
+// always recoverable from the destination network's JSON-RPC - which is where the hop engine gets
+// it from when it has to name whoever claimed an "auto" hop.
+func TransactionSender(
+	ctx context.Context, client NetworkClient, txHash common.Hash,
+) (common.Address, error) {
+	tx, _, err := client.Backend().TransactionByHash(ctx, txHash)
+	if err != nil {
+		return common.Address{}, fmt.Errorf("read transaction %s on %s: %w", txHash, client.Name(), err)
+	}
+	if tx == nil {
+		return common.Address{}, fmt.Errorf("read transaction %s on %s: the node returned no transaction",
+			txHash, client.Name())
+	}
+
+	sender, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(client.ChainID()), tx)
+	if err != nil {
+		return common.Address{}, fmt.Errorf("recover the sender of transaction %s on %s: %w",
+			txHash, client.Name(), err)
+	}
+
+	return sender, nil
 }
 
 // SendTx submits req from this network's signing account and waits for its receipt.

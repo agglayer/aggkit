@@ -47,11 +47,18 @@ const claimProofHeight = 32
 const uint256Bits = 256
 
 // claimRecordLookupBudget bounds the best-effort GET /bridge/v1/claims cross-check the engine makes
-// once a claim is observed on-chain. It is deliberately short: the record only enriches the hop's
-// diagnostics (which account submitted the claim, in which transaction) and the claim syncer is
-// routinely a few seconds behind the on-chain isClaimed read that already decided the hop, so this
-// lookup must never hold a hop up.
-const claimRecordLookupBudget = 2 * time.Second
+// once a claim is observed on-chain. The record is what names the claim's transaction, and that
+// transaction is in turn what names its sender (see resolveClaimantFromChain), so for a hop the
+// tool did not claim itself this lookup is the whole basis of the hop's ClaimActor attribution -
+// which for an "auto" hop is the result the tool exists to report.
+//
+// It is still a poll of a syncer that trails the on-chain isClaimed read that already decided the
+// hop, so the wait must stay bounded and is additionally capped by whatever is left of the hop's
+// own budget. 30s is what that trade-off settles on: measured against the anvil-2chains env the
+// claim syncer indexes a fresh claim within a few seconds, so the typical cost is a couple of
+// polls, while the previous 2s was short enough to routinely miss the record altogether and leave
+// every externally-claimed hop attributed to ClaimActorUnknown.
+const claimRecordLookupBudget = 30 * time.Second
 
 // defaultNativeGasSlackWei is DefaultNativeGasSlack's value: 1e15 wei, i.e. 0.001 ETH.
 const defaultNativeGasSlackWei uint64 = 1_000_000_000_000_000
@@ -1724,6 +1731,41 @@ func (r *hopRun) lookupClaimRecord(ctx context.Context) {
 
 	r.result.ExternalClaimTxHash = common.HexToHash(string(claim.TxHash))
 	r.result.ExternalClaimFromAddress = common.HexToAddress(string(claim.FromAddress))
+	r.resolveClaimantFromChain(ctx)
+}
+
+// resolveClaimantFromChain names the claimant from the destination network's JSON-RPC when the
+// proxy could not.
+//
+// The proxy never can, in practice: /bridge/v1/claims serialises a ClaimResponse whose
+// from_address field is left unset by bridgeservice.NewClaimResponse, because claimsync's Claim
+// record has no such column to fill it from. So the claim record reliably names the claim's
+// *transaction* and just as reliably does not name its sender, and without a second signal every
+// claim the tool did not submit itself would be attributed to ClaimActorUnknown - which is exactly
+// the attribution an "auto" hop exists to make. The transaction's signature is on-chain, so its
+// sender is recoverable; that is the second signal.
+//
+// Best-effort, like the claim record itself: attribution is a diagnostic that the on-chain
+// isClaimed read has already made unnecessary for correctness, so a node that cannot answer leaves
+// the claimant unknown rather than failing the hop.
+func (r *hopRun) resolveClaimantFromChain(ctx context.Context) {
+	if r.result.ExternalClaimFromAddress != (common.Address{}) {
+		return
+	}
+	if r.result.ExternalClaimTxHash == (common.Hash{}) {
+		return
+	}
+
+	sender, err := TransactionSender(ctx, r.dst.Client, r.result.ExternalClaimTxHash)
+	if err != nil {
+		r.engine.logger.Debugf("bridge_loop_tester: %s: the claim record for global_index=%s on network %d "+
+			"named no from_address and the sender of claim tx %s could not be recovered either "+
+			"(diagnostics only): %v", r.hopLabel(), globalIndexString(r.result.GlobalIndex),
+			r.req.Hop.Destination, r.result.ExternalClaimTxHash, err)
+
+		return
+	}
+	r.result.ExternalClaimFromAddress = sender
 }
 
 // attributeClaim decides who claimed a deposit the tool has just found claimed.

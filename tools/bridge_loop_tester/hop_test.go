@@ -2,6 +2,7 @@ package bridgelooptester_test
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"math/big"
@@ -18,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -34,6 +36,9 @@ const (
 	// hopBridgeTxNonce is the nonce the bridge transaction consumes, handed to the engine by the
 	// network layer's pre-broadcast hook and compared against the account nonce on a resume.
 	hopBridgeTxNonce uint64 = 11
+	// hopDestChainID is the destination network's EVM chain ID, needed to recover the sender of a
+	// claim transaction the tool did not submit itself.
+	hopDestChainID int64 = 20202
 )
 
 var (
@@ -62,7 +67,10 @@ type hopHarness struct {
 	srcBridge *mocks.Bridge
 	dstBridge *mocks.Bridge
 	backend   *mocks.EthBackend
-	proxy     *mocks.Proxy
+	// dstBackend is the destination network's JSON-RPC backend. It exists so the claimant-recovery
+	// path (which reads the claim transaction back on the destination network) can be driven.
+	dstBackend *mocks.EthBackend
+	proxy      *mocks.Proxy
 
 	tokens map[common.Address]*mocks.Token
 
@@ -89,6 +97,7 @@ func newHopHarness(t *testing.T, destination uint32) *hopHarness {
 		srcBridge:   mocks.NewBridge(t),
 		dstBridge:   mocks.NewBridge(t),
 		backend:     mocks.NewEthBackend(t),
+		dstBackend:  mocks.NewEthBackend(t),
 		proxy:       mocks.NewProxy(t),
 		tokens:      map[common.Address]*mocks.Token{},
 		dstNative:   big.NewInt(500_000),
@@ -101,6 +110,9 @@ func newHopHarness(t *testing.T, destination uint32) *hopHarness {
 	h.srcClient.EXPECT().Backend().Return(h.backend).Maybe()
 	h.dstClient.EXPECT().NetworkID().Return(destination).Maybe()
 	h.dstClient.EXPECT().From().Return(hopDestinationAccount).Maybe()
+	h.dstClient.EXPECT().Name().Return("destination").Maybe()
+	h.dstClient.EXPECT().Backend().Return(h.dstBackend).Maybe()
+	h.dstClient.EXPECT().ChainID().Return(big.NewInt(hopDestChainID)).Maybe()
 	h.srcBridge.EXPECT().Address().Return(hopSourceBridgeAddr).Maybe()
 	h.dstBridge.EXPECT().Address().Return(hopDestBridgeAddr).Maybe()
 
@@ -335,6 +347,41 @@ func (h *hopHarness) expectClaimRecord(from common.Address, txHash common.Hash) 
 		}, nil).Maybe()
 }
 
+// expectClaimRecordWithoutSender makes /bridge/v1/claims name the claim's transaction but not its
+// sender, which is what the real endpoint always does: bridgeservice.NewClaimResponse never sets
+// from_address (claimsync's Claim record has no such field), so the engine has to recover the
+// claimant from the transaction itself. signer is the key the claim transaction is signed with,
+// i.e. the account the engine must end up attributing the claim to.
+func (h *hopHarness) expectClaimRecordWithoutSender(txHash common.Hash, signer *ecdsa.PrivateKey) {
+	h.proxy.EXPECT().WaitClaimed(mock.Anything, h.destination, mock.Anything, mock.Anything, mock.Anything).
+		Return(&bridgeservicetypes.ClaimResponse{
+			TxHash:      bridgeservicetypes.Hash(txHash.Hex()),
+			FromAddress: "",
+		}, nil).Maybe()
+
+	tx, err := ethtypes.SignNewTx(signer, ethtypes.LatestSignerForChainID(big.NewInt(hopDestChainID)),
+		&ethtypes.DynamicFeeTx{
+			ChainID:   big.NewInt(hopDestChainID),
+			Nonce:     3,
+			Gas:       100_000,
+			GasFeeCap: big.NewInt(1),
+			GasTipCap: big.NewInt(1),
+			To:        &hopDestBridgeAddr,
+		})
+	require.NoError(h.t, err)
+
+	h.dstBackend.EXPECT().TransactionByHash(mock.Anything, txHash).Return(tx, false, nil).Maybe()
+}
+
+// expectUnreadableClaimTx makes the claim record name a transaction the destination node cannot
+// return, so the claimant stays unknown.
+func (h *hopHarness) expectUnreadableClaimTx(txHash common.Hash) {
+	h.proxy.EXPECT().WaitClaimed(mock.Anything, h.destination, mock.Anything, mock.Anything, mock.Anything).
+		Return(&bridgeservicetypes.ClaimResponse{TxHash: bridgeservicetypes.Hash(txHash.Hex())}, nil).Maybe()
+	h.dstBackend.EXPECT().TransactionByHash(mock.Anything, txHash).
+		Return(nil, false, errors.New("not found")).Maybe()
+}
+
 // expectNoClaimRecord makes the proxy unable to name the claimer, the common real-world case in
 // which the claim syncer trails the on-chain isClaimed read.
 func (h *hopHarness) expectNoClaimRecord() {
@@ -456,6 +503,61 @@ func TestNewHopEngineValidation(t *testing.T) {
 		_, err := bridgelooptester.NewHopEngine(deps)
 		require.ErrorContains(t, err, "proxy is required")
 	})
+}
+
+// TestRunHopAutoClaimAttributesClaimantFromChain covers the attribution path the real proxy forces
+// the engine down: /bridge/v1/claims names the claim's transaction but never its sender (its
+// ClaimResponse.from_address is left unset by bridgeservice.NewClaimResponse, and claimsync's Claim
+// record has no such column to fill it from - confirmed live against the anvil-2chains env, where
+// every claim comes back with "from_address": ""). The engine must therefore recover the claimant
+// from the claim transaction's own signature, and still report ClaimActorExternal rather than
+// degrading every externally-claimed hop to ClaimActorUnknown.
+func TestRunHopAutoClaimAttributesClaimantFromChain(t *testing.T) {
+	t.Parallel()
+
+	claimerKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	claimer := crypto.PubkeyToAddress(claimerKey.PublicKey)
+
+	h := newHopHarness(t, hopDestinationNetwork)
+	h.expectBridge()
+	h.expectGates()
+	h.claimAfter(2)
+	h.expectClaimRecordWithoutSender(hopForeignClaimTx, claimerKey)
+
+	result, err := h.engine().RunHop(context.Background(), h.request(bridgelooptester.ClaimAuto))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.Equal(t, bridgelooptester.HopOutcomeSuccess, result.Outcome)
+	require.Equal(t, bridgelooptester.ClaimActorExternal, result.ClaimedBy)
+	require.Equal(t, claimer, result.ExternalClaimFromAddress,
+		"the claimant must be recovered from the claim transaction's signature")
+	require.Equal(t, hopForeignClaimTx, result.ExternalClaimTxHash)
+	require.Equal(t, common.Hash{}, result.ClaimTxHash, "an auto hop must never submit a claim itself")
+}
+
+// TestRunHopAutoClaimClaimantUnresolvable is the honest degradation of the path above: the claim
+// record names a transaction the destination node cannot return, so the engine cannot name the
+// claimant. The hop still succeeds - the on-chain isClaimed read already decided it - and the
+// claimant is reported as unknown rather than guessed.
+func TestRunHopAutoClaimClaimantUnresolvable(t *testing.T) {
+	t.Parallel()
+
+	h := newHopHarness(t, hopDestinationNetwork)
+	h.expectBridge()
+	h.expectGates()
+	h.claimAfter(2)
+	h.expectUnreadableClaimTx(hopForeignClaimTx)
+
+	result, err := h.engine().RunHop(context.Background(), h.request(bridgelooptester.ClaimAuto))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.Equal(t, bridgelooptester.HopOutcomeSuccess, result.Outcome)
+	require.Equal(t, bridgelooptester.ClaimActorUnknown, result.ClaimedBy)
+	require.Equal(t, common.Address{}, result.ExternalClaimFromAddress)
+	require.Equal(t, hopForeignClaimTx, result.ExternalClaimTxHash)
 }
 
 // TestRunHopAutoClaimHappyPath is the auto-claim happy path: the tool bridges, waits, and an
