@@ -39,6 +39,11 @@ const (
 	// hopDestChainID is the destination network's EVM chain ID, needed to recover the sender of a
 	// claim transaction the tool did not submit itself.
 	hopDestChainID int64 = 20202
+	// hopDestHeadBlock is the destination network's head block when a hop starts, i.e. the block
+	// the engine anchors its ClaimEvent scan at.
+	hopDestHeadBlock int64 = 900
+	// hopClaimBlock is the destination block a claim the tool did not submit was mined in.
+	hopClaimBlock uint64 = 911
 )
 
 var (
@@ -74,7 +79,11 @@ type hopHarness struct {
 
 	tokens map[common.Address]*mocks.Token
 
-	mu          sync.Mutex
+	mu sync.Mutex
+	// claimEvent is what the destination bridge's ClaimEvent scan returns; nil means the scan
+	// finds nothing, which is the default so that every test written before the scan existed keeps
+	// exercising the proxy-record fallback.
+	claimEvent  *bridgelooptester.ClaimEventLog
 	claimed     bool
 	credited    bool
 	dstNative   *big.Int
@@ -128,6 +137,31 @@ func newHopHarness(t *testing.T, destination uint32) *hopHarness {
 
 	h.proxy.EXPECT().TrackBridge(mock.Anything, hopSourceNetwork, mock.Anything).
 		Return(&trackerapi.TrackingData{TrackingStatus: "Registered"}, nil).Maybe()
+
+	// The destination's head block, read once per hop to anchor the ClaimEvent scan.
+	h.dstBackend.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).
+		Return(&ethtypes.Header{Number: big.NewInt(hopDestHeadBlock)}, nil).Maybe()
+
+	// The ClaimEvent scan itself. It asserts the engine scans from the anchored head rather than
+	// from an arbitrary block, since a scan that started later than the claim would silently miss
+	// it and a scan that started at zero is what a real node refuses.
+	h.dstBridge.EXPECT().FindClaimEvent(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(
+			_ context.Context, globalIndex *big.Int, fromBlock uint64,
+		) (*bridgelooptester.ClaimEventLog, error) {
+			require.Equal(t, uint64(hopDestHeadBlock), fromBlock,
+				"the ClaimEvent scan must start at the destination head the hop anchored")
+			require.NotNil(t, globalIndex)
+
+			h.mu.Lock()
+			defer h.mu.Unlock()
+
+			if h.claimEvent == nil || h.claimEvent.GlobalIndex.Cmp(globalIndex) != 0 {
+				return nil, fmt.Errorf("scan from %d: %w", fromBlock, bridgelooptester.ErrClaimEventNotFound)
+			}
+
+			return h.claimEvent, nil
+		}).Maybe()
 
 	h.deps = bridgelooptester.HopDeps{
 		Networks: map[uint32]bridgelooptester.HopNetwork{
@@ -359,6 +393,39 @@ func (h *hopHarness) expectClaimRecordWithoutSender(txHash common.Hash, signer *
 			FromAddress: "",
 		}, nil).Maybe()
 
+	h.dstBackend.EXPECT().TransactionByHash(mock.Anything, txHash).
+		Return(h.signedClaimTx(signer), false, nil).Maybe()
+}
+
+// expectChainClaimEvent makes the destination bridge's own ClaimEvent log name txHash as the claim
+// of this hop's deposit, and makes that transaction readable back on the destination network so
+// signer's address is recoverable from it.
+//
+// This is the path the engine prefers, and it registers no WaitClaimed expectation on purpose: a
+// test that drives a claim through it proves the attribution needs the proxy's /bridge/v1/claims
+// endpoint not at all, which is the whole point of reading the log (that endpoint was measured
+// never serving a record for 2 of 9 genuinely claimed deposits).
+func (h *hopHarness) expectChainClaimEvent(txHash common.Hash, signer *ecdsa.PrivateKey) {
+	h.mu.Lock()
+	h.claimEvent = &bridgelooptester.ClaimEventLog{
+		Event:              "ClaimEvent",
+		GlobalIndex:        bridgelooptester.GlobalIndex(hopSourceNetwork, hopDepositCount),
+		DestinationAddress: hopDestinationAccount,
+		Amount:             hopAmount,
+		TxHash:             txHash,
+		BlockNumber:        hopClaimBlock,
+	}
+	h.mu.Unlock()
+
+	h.dstBackend.EXPECT().TransactionByHash(mock.Anything, txHash).
+		Return(h.signedClaimTx(signer), false, nil).Maybe()
+}
+
+// signedClaimTx builds a claim transaction signed by signer, so the engine's sender recovery has a
+// real signature to recover from.
+func (h *hopHarness) signedClaimTx(signer *ecdsa.PrivateKey) *ethtypes.Transaction {
+	h.t.Helper()
+
 	tx, err := ethtypes.SignNewTx(signer, ethtypes.LatestSignerForChainID(big.NewInt(hopDestChainID)),
 		&ethtypes.DynamicFeeTx{
 			ChainID:   big.NewInt(hopDestChainID),
@@ -370,7 +437,7 @@ func (h *hopHarness) expectClaimRecordWithoutSender(txHash common.Hash, signer *
 		})
 	require.NoError(h.t, err)
 
-	h.dstBackend.EXPECT().TransactionByHash(mock.Anything, txHash).Return(tx, false, nil).Maybe()
+	return tx
 }
 
 // expectUnreadableClaimTx makes the claim record name a transaction the destination node cannot
@@ -505,14 +572,84 @@ func TestNewHopEngineValidation(t *testing.T) {
 	})
 }
 
-// TestRunHopAutoClaimAttributesClaimantFromChain covers the attribution path the real proxy forces
-// the engine down: /bridge/v1/claims names the claim's transaction but never its sender (its
-// ClaimResponse.from_address is left unset by bridgeservice.NewClaimResponse, and claimsync's Claim
-// record has no such column to fill it from - confirmed live against the anvil-2chains env, where
-// every claim comes back with "from_address": ""). The engine must therefore recover the claimant
-// from the claim transaction's own signature, and still report ClaimActorExternal rather than
-// degrading every externally-claimed hop to ClaimActorUnknown.
-func TestRunHopAutoClaimAttributesClaimantFromChain(t *testing.T) {
+// TestRunHopAutoClaimAttributesClaimantFromTheClaimEventLog is the attribution path the engine
+// prefers, and the whole reason it exists: the destination bridge's own ClaimEvent log names the
+// claim transaction, and that transaction's signature names the claimant - with the proxy's
+// /bridge/v1/claims endpoint out of the picture entirely. The harness registers no WaitClaimed
+// expectation here, so a single call to that endpoint would fail this test.
+//
+// That independence is the point. The claim record was measured absent for 2 of 9 genuinely claimed
+// deposits, and still absent after a five-minute budget, which made an auto hop's
+// ClaimActorExternal verdict - the result the tool exists to report - a coin flip on a healthy
+// network. The log is written in the very block that flips isClaimed, so it cannot lag it.
+func TestRunHopAutoClaimAttributesClaimantFromTheClaimEventLog(t *testing.T) {
+	t.Parallel()
+
+	claimerKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	claimer := crypto.PubkeyToAddress(claimerKey.PublicKey)
+
+	h := newHopHarness(t, hopDestinationNetwork)
+	h.expectBridge()
+	h.expectGates()
+	h.claimAfter(2)
+	h.expectChainClaimEvent(hopForeignClaimTx, claimerKey)
+
+	result, err := h.engine().RunHop(context.Background(), h.request(bridgelooptester.ClaimAuto))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.Equal(t, bridgelooptester.HopOutcomeSuccess, result.Outcome)
+	require.Equal(t, bridgelooptester.ClaimActorExternal, result.ClaimedBy)
+	require.Equal(t, bridgelooptester.ClaimAttributionChain, result.ClaimAttribution,
+		"the destination's own ClaimEvent log must be what named this claim")
+	require.Equal(t, claimer, result.ExternalClaimFromAddress,
+		"the claimant must be recovered from the claim transaction's signature")
+	require.Equal(t, hopForeignClaimTx, result.ExternalClaimTxHash)
+	require.Equal(t, common.Hash{}, result.ClaimTxHash, "an auto hop must never submit a claim itself")
+}
+
+// TestRunHopManualClaimViolationAttributedFromTheClaimEventLog is the same primitive on the path
+// that matters most: a manual hop claimed by somebody else. The violation itself never depended on
+// naming the culprit (it rests on the destination bridge's isClaimed read), but the diagnosis is
+// only actionable if it says which transaction and which account did it - and that must not depend
+// on the proxy's claim record either. No WaitClaimed expectation is registered.
+func TestRunHopManualClaimViolationAttributedFromTheClaimEventLog(t *testing.T) {
+	t.Parallel()
+
+	claimerKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	claimer := crypto.PubkeyToAddress(claimerKey.PublicKey)
+
+	h := newHopHarness(t, hopDestinationNetwork)
+	h.expectBridge()
+	h.expectGates()
+	h.claimAfter(1)
+	h.expectChainClaimEvent(hopForeignClaimTx, claimerKey)
+
+	result, err := h.engine().RunHop(context.Background(), h.request(bridgelooptester.ClaimManual))
+	require.Error(t, err)
+	require.ErrorIs(t, err, bridgelooptester.ErrClaimModeViolation)
+	require.NotNil(t, result)
+	require.True(t, result.ClaimModeViolated)
+	require.Equal(t, bridgelooptester.ClaimActorExternal, result.ClaimedBy)
+	require.Equal(t, bridgelooptester.ClaimAttributionChain, result.ClaimAttribution)
+
+	var violation *bridgelooptester.ClaimModeViolationError
+	require.ErrorAs(t, err, &violation)
+	require.Equal(t, hopForeignClaimTx, violation.ClaimTxHash, "the violation must name the claim tx")
+	require.Equal(t, claimer, violation.ClaimFromAddress, "the violation must name the claimant")
+	require.Contains(t, err.Error(), claimer.String())
+}
+
+// TestRunHopAutoClaimAttributesClaimantFromTheProxyRecord covers the fallback: the destination's
+// ClaimEvent log could not be located (a resumed hop, whose claim predates the scanned window, or a
+// node that refused the log query), so the proxy's /bridge/v1/claims record has to name the claim's
+// transaction instead. Its from_address is never populated - bridgeservice.NewClaimResponse leaves
+// it unset and claimsync's Claim record has no such column, confirmed live against anvil-2chains
+// where every claim comes back with "from_address": "" - so the claimant still has to come from the
+// transaction's own signature.
+func TestRunHopAutoClaimAttributesClaimantFromTheProxyRecord(t *testing.T) {
 	t.Parallel()
 
 	claimerKey, err := crypto.GenerateKey()
@@ -534,6 +671,8 @@ func TestRunHopAutoClaimAttributesClaimantFromChain(t *testing.T) {
 	require.Equal(t, claimer, result.ExternalClaimFromAddress,
 		"the claimant must be recovered from the claim transaction's signature")
 	require.Equal(t, hopForeignClaimTx, result.ExternalClaimTxHash)
+	require.Equal(t, bridgelooptester.ClaimAttributionProxy, result.ClaimAttribution,
+		"with no ClaimEvent log in the window, the claim record must be what named this claim")
 	require.Equal(t, common.Hash{}, result.ClaimTxHash, "an auto hop must never submit a claim itself")
 }
 

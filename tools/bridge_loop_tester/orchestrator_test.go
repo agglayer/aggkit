@@ -19,6 +19,7 @@ import (
 	"github.com/agglayer/aggkit/tools/bridge_loop_tester/mocks"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -147,6 +148,11 @@ func (h *harness) setupNetwork(networkID uint32) {
 		h.closes[networkID]++
 		h.mu.Unlock()
 	}).Maybe()
+
+	// The head block every hop reads once on its destination network, to anchor the block range its
+	// ClaimEvent scan covers.
+	backend.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).
+		Return(&ethtypes.Header{Number: big.NewInt(int64(networkID) + 100)}, nil).Maybe()
 
 	bridge.EXPECT().Address().Return(bridgeAddressOf(networkID)).Maybe()
 	bridge.EXPECT().NetworkID(mock.Anything).Return(networkID, nil).Maybe()

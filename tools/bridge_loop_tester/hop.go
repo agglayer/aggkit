@@ -345,6 +345,13 @@ type hopRun struct {
 	// srcToken/dstToken cache the bound ERC20s, nil for a native hop.
 	srcToken Token
 	dstToken Token
+	// claimSearchFrom is the destination block the ClaimEvent scan starts at: the destination's
+	// head when the hop started. A claim of a deposit this hop is about to make cannot be older
+	// than that, so the window is guaranteed to contain it while staying bounded by the hop's own
+	// duration. claimSearchAnchored is false when the head could not be read, in which case the
+	// scan is skipped rather than run over an open-ended range.
+	claimSearchFrom     uint64
+	claimSearchAnchored bool
 
 	phase      HopPhase
 	phaseStart time.Time
@@ -470,6 +477,8 @@ func (r *hopRun) execute(ctx context.Context) error {
 	if resumeFrom.IsTerminal() {
 		return r.replayTerminal(resumeFrom)
 	}
+
+	r.anchorClaimSearch(ctx)
 
 	if err := r.resolveAsset(ctx); err != nil {
 		return err
@@ -1428,8 +1437,7 @@ func (r *hopRun) reconfirmResumedClaim(ctx context.Context) error {
 	}
 
 	r.result.ClaimObservedAt = r.engine.now()
-	r.lookupClaimRecord(ctx, claimRecordLookupBudget)
-	r.result.ClaimedBy = r.attributeClaim(r.result.ClaimTxHash != (common.Hash{}))
+	r.identifyClaim(ctx, r.result.ClaimTxHash != (common.Hash{}))
 	r.adoptRecordedClaimTxHash()
 
 	return r.enterState(ctx, HopStateClaimed)
@@ -1441,8 +1449,7 @@ func (r *hopRun) reconfirmResumedClaim(ctx context.Context) error {
 // HopStateSubmittingClaim - the state that is checkpointed before the tool submits anything.
 func (r *hopRun) settlePreexistingClaim(ctx context.Context, toolMayHaveClaimed bool) error {
 	r.result.ClaimObservedAt = r.engine.now()
-	r.lookupClaimRecord(ctx, claimRecordLookupBudget)
-	r.result.ClaimedBy = r.attributeClaim(toolMayHaveClaimed)
+	r.identifyClaim(ctx, toolMayHaveClaimed)
 	r.adoptRecordedClaimTxHash()
 
 	if r.req.Hop.Claim == ClaimManual && r.result.ClaimedBy != ClaimActorTool {
@@ -1487,8 +1494,7 @@ func (r *hopRun) awaitAutoClaim(ctx context.Context) error {
 	}
 
 	r.result.ClaimObservedAt = r.engine.now()
-	r.lookupClaimRecord(ctx, claimRecordLookupBudget)
-	r.result.ClaimedBy = r.attributeClaim(false)
+	r.identifyClaim(ctx, false)
 
 	return r.enterState(ctx, HopStateClaimed)
 }
@@ -1526,8 +1532,7 @@ func (r *hopRun) awaitGracePeriodThenClaim(ctx context.Context) error {
 	}
 	if claimed {
 		r.result.ClaimObservedAt = r.engine.now()
-		r.lookupClaimRecord(ctx, claimRecordLookupBudget)
-		r.result.ClaimedBy = r.attributeClaim(false)
+		r.identifyClaim(ctx, false)
 
 		return r.claimModeViolation(r.result.ClaimedBy)
 	}
@@ -1632,6 +1637,7 @@ func (r *hopRun) submitClaim(ctx context.Context) error {
 		r.result.ClaimBlockNumber = receipt.BlockNumber.Uint64()
 	}
 	r.result.ClaimedBy = ClaimActorTool
+	r.result.ClaimAttribution = ClaimAttributionSelf
 	r.result.ClaimObservedAt = r.engine.now()
 
 	// Confirm the claim through the same isClaimed query the state machine resumes on. A successful
@@ -1677,8 +1683,7 @@ func (r *hopRun) reconcileFailedClaim(ctx context.Context, submitErr error) erro
 	}
 
 	r.result.ClaimObservedAt = r.engine.now()
-	r.lookupClaimRecord(ctx, claimRecordLookupBudget)
-	r.result.ClaimedBy = r.attributeClaim(false)
+	r.identifyClaim(ctx, false)
 	r.engine.logger.Warnf("bridge_loop_tester: %s: the claim submission lost a race and reverted with "+
 		"AlreadyClaimed; the deposit is claimed by %s", r.hopLabel(), r.result.ClaimedBy)
 
@@ -1717,10 +1722,88 @@ func (r *hopRun) claimRequest() (ClaimRequest, error) {
 	}, nil
 }
 
+// anchorClaimSearch records the destination's head block, which is where identifyClaim's
+// ClaimEvent scan begins. It runs once per hop, before anything is submitted, so the window it
+// opens is guaranteed to contain any claim of this hop's deposit while still being no wider than
+// the hop itself.
+//
+// A head that cannot be read is not a hop failure: the scan is simply skipped for this hop and
+// attribution falls back on the proxy's claim record, exactly as it did before the scan existed.
+// The alternative - scanning from block zero - would turn one cheap query into one a real node
+// would refuse.
+func (r *hopRun) anchorClaimSearch(ctx context.Context) {
+	head, err := HeadBlockNumber(ctx, r.dst.Client)
+	if err != nil {
+		r.engine.logger.Debugf("bridge_loop_tester: %s: could not read %s's head block, so a claim this hop "+
+			"does not submit itself will be attributed from the proxy's claim record instead of from the "+
+			"destination's own ClaimEvent log (diagnostics only): %v",
+			r.hopLabel(), r.dst.Config.Name, err)
+
+		return
+	}
+
+	r.claimSearchFrom, r.claimSearchAnchored = head, true
+}
+
+// identifyClaim names the claim of this hop's deposit and attributes it.
+//
+// Chain first, proxy second, and that order is the whole point. The destination bridge's own
+// ClaimEvent log is written in the block that flips isClaimed, so by the time the hop observes the
+// claim the log is already there - no indexer, no REST service, nothing that can lag or lose it.
+// The proxy's GET /bridge/v1/claims record was measured doing exactly that: for 2 of 9 externally
+// claimed deposits it never appeared, and a five-minute budget did not help (one hop spent 5m23s
+// still being told "not found" for a deposit the bridge itself reported claimed). Attribution used
+// to rest on that record alone, which made an "auto" hop's ClaimActorExternal verdict - the result
+// the tool exists to report - a coin flip on a healthy network.
+//
+// The proxy record stays as the fallback for the one case the log cannot cover: a claim made before
+// this process anchored its search window, i.e. a resumed hop.
+//
+// toolMayHaveClaimed is passed straight to attributeClaim; see there for what it means.
+func (r *hopRun) identifyClaim(ctx context.Context, toolMayHaveClaimed bool) {
+	if !r.identifyClaimFromChain(ctx) {
+		r.lookupClaimRecord(ctx, claimRecordLookupBudget)
+	}
+
+	r.result.ClaimedBy = r.attributeClaim(toolMayHaveClaimed)
+}
+
+// identifyClaimFromChain names the claim transaction from the destination bridge's own ClaimEvent
+// log, and through it the claimant. It reports whether the log answered, which is the caller's cue
+// that the proxy's claim record has nothing left to add: the record's only unique contribution is
+// the transaction hash (its from_address is never populated - see resolveClaimantFromChain), so
+// once the log has named that transaction, a record lookup could only repeat it more slowly.
+func (r *hopRun) identifyClaimFromChain(ctx context.Context) bool {
+	if !r.claimSearchAnchored {
+		return false
+	}
+
+	event, err := r.dst.Bridge.FindClaimEvent(ctx, r.result.GlobalIndex, r.claimSearchFrom)
+	if err != nil {
+		r.engine.logger.Debugf("bridge_loop_tester: %s: no %s log for global_index=%s in %s's blocks from %d "+
+			"onwards, so the proxy's claim record has to name the claim instead (diagnostics only): %v",
+			r.hopLabel(), eventClaim, globalIndexString(r.result.GlobalIndex), r.dst.Config.Name,
+			r.claimSearchFrom, err)
+
+		return false
+	}
+
+	r.result.ExternalClaimTxHash = event.TxHash
+	r.result.ClaimAttribution = ClaimAttributionChain
+	r.engine.logger.Debugf("bridge_loop_tester: %s: %s named the claim of global_index=%s on %s: tx %s in "+
+		"block %d", r.hopLabel(), event.Event, globalIndexString(event.GlobalIndex), r.dst.Config.Name,
+		event.TxHash, event.BlockNumber)
+	r.resolveClaimantFromChain(ctx)
+
+	return true
+}
+
 // lookupClaimRecord enriches the result with the proxy's own view of the claim (which account
 // submitted it, in which transaction). Best-effort and tightly bounded: the record is a diagnostic
 // that the on-chain isClaimed read has already made unnecessary for correctness, and the claim
-// syncer routinely trails it by a few seconds.
+// syncer routinely trails it by a few seconds - or, as S12B measured, never catches up at all.
+// identifyClaim therefore reaches it only when the destination's own ClaimEvent log could not be
+// located.
 func (r *hopRun) lookupClaimRecord(ctx context.Context, budget time.Duration) {
 	if remaining := r.deadline.Sub(r.engine.now()); remaining <= 0 {
 		return
@@ -1739,19 +1822,22 @@ func (r *hopRun) lookupClaimRecord(ctx context.Context, budget time.Duration) {
 
 	r.result.ExternalClaimTxHash = common.HexToHash(string(claim.TxHash))
 	r.result.ExternalClaimFromAddress = common.HexToAddress(string(claim.FromAddress))
+	if r.result.ExternalClaimTxHash != (common.Hash{}) && r.result.ClaimAttribution == ClaimAttributionNone {
+		r.result.ClaimAttribution = ClaimAttributionProxy
+	}
 	r.resolveClaimantFromChain(ctx)
 }
 
-// resolveClaimantFromChain names the claimant from the destination network's JSON-RPC when the
-// proxy could not.
+// resolveClaimantFromChain turns a known claim transaction into a known claimant, by recovering
+// the transaction's sender from its signature on the destination network.
 //
-// The proxy never can, in practice: /bridge/v1/claims serialises a ClaimResponse whose
-// from_address field is left unset by bridgeservice.NewClaimResponse, because claimsync's Claim
-// record has no such column to fill it from. So the claim record reliably names the claim's
-// *transaction* and just as reliably does not name its sender, and without a second signal every
-// claim the tool did not submit itself would be attributed to ClaimActorUnknown - which is exactly
-// the attribution an "auto" hop exists to make. The transaction's signature is on-chain, so its
-// sender is recoverable; that is the second signal.
+// Neither of the two things that can name a claim transaction also names its sender: the
+// destination's ClaimEvent log does not carry msg.sender, and the proxy's /bridge/v1/claims
+// serialises a ClaimResponse whose from_address field is left unset by
+// bridgeservice.NewClaimResponse (claimsync's Claim record has no such column to fill it from).
+// Without this second read every claim the tool did not submit itself would be attributed to
+// ClaimActorUnknown - which is exactly the attribution an "auto" hop exists to make. The
+// transaction's signature is on-chain, so its sender is always recoverable.
 //
 // Best-effort, like the claim record itself: attribution is a diagnostic that the on-chain
 // isClaimed read has already made unnecessary for correctness, so a node that cannot answer leaves
@@ -1766,10 +1852,10 @@ func (r *hopRun) resolveClaimantFromChain(ctx context.Context) {
 
 	sender, err := TransactionSender(ctx, r.dst.Client, r.result.ExternalClaimTxHash)
 	if err != nil {
-		r.engine.logger.Debugf("bridge_loop_tester: %s: the claim record for global_index=%s on network %d "+
-			"named no from_address and the sender of claim tx %s could not be recovered either "+
-			"(diagnostics only): %v", r.hopLabel(), globalIndexString(r.result.GlobalIndex),
-			r.req.Hop.Destination, r.result.ExternalClaimTxHash, err)
+		r.engine.logger.Debugf("bridge_loop_tester: %s: claim tx %s claimed global_index=%s on network %d, "+
+			"but its sender could not be recovered, so the claimant stays unnamed "+
+			"(diagnostics only): %v", r.hopLabel(), r.result.ExternalClaimTxHash,
+			globalIndexString(r.result.GlobalIndex), r.req.Hop.Destination, err)
 
 		return
 	}
@@ -1799,7 +1885,8 @@ func (r *hopRun) attributeClaim(toolMayHaveClaimed bool) ClaimActor {
 	}
 
 	if claimant == (common.Address{}) {
-		// Claimed on-chain, but the proxy could not say by whom. The tool provably did not do it.
+		// Claimed on-chain, but nothing could name the claim transaction, so its sender could not
+		// be recovered. The tool provably did not claim it; who did stays unattributed.
 		return ClaimActorUnknown
 	}
 	if claimant == self {
@@ -2009,12 +2096,13 @@ func (r *hopRun) finish(err error) {
 	if err == nil {
 		r.result.Outcome = HopOutcomeSuccess
 		r.engine.logger.Infof("bridge_loop_tester: hop completed loop=%q iteration=%d hop=%d route=%d->%d "+
-			"asset=%s claim=%s claimed_by=%s deposit_count=%d global_index=%s leaf_index=%d "+
-			"injected_leaf_index=%d bridge_tx=%s claim_tx=%s duration=%s",
+			"asset=%s claim=%s claimed_by=%s claim_attribution=%q deposit_count=%d global_index=%s "+
+			"leaf_index=%d injected_leaf_index=%d bridge_tx=%s claim_tx=%s claim_from=%s duration=%s",
 			r.req.LoopName, r.req.Iteration, r.req.HopIndex, r.req.Hop.Source, r.req.Hop.Destination,
-			r.req.Asset, r.req.Hop.Claim, r.result.ClaimedBy, r.result.DepositCount,
+			r.req.Asset, r.req.Hop.Claim, r.result.ClaimedBy, r.result.ClaimAttribution, r.result.DepositCount,
 			globalIndexString(r.result.GlobalIndex), r.result.L1InfoTreeIndex, r.result.InjectedLeafIndex,
-			r.result.BridgeTxHash, hashString(r.result.ClaimTxHash), r.result.Duration)
+			r.result.BridgeTxHash, hashString(r.claimTxHashForReport()),
+			addressString(r.result.ExternalClaimFromAddress), r.result.Duration)
 
 		return
 	}

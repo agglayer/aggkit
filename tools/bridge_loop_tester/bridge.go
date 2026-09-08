@@ -9,6 +9,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -24,6 +25,14 @@ const (
 	methodClaimMessage = "claimMessage"
 )
 
+// Bridge event names, as declared by the agglayerbridgel2 ABI. A successful claim emits exactly one
+// of the two: DetailedClaimEvent on a bridge new enough to carry the proof in its log, ClaimEvent
+// otherwise. Both name the deposit's global index, which is all FindClaimEvent matches on.
+const (
+	eventClaim         = "ClaimEvent"
+	eventDetailedClaim = "DetailedClaimEvent"
+)
+
 // ErrNativeAssetUnsupported is returned by Bridge.BridgeAssetNative on a network whose gas token is
 // not ether. Bridging ETH there requires the network's own WETH representation (bridgeAsset on
 // WETHToken(), or bridgeMessageWETH) which this tool deliberately does not implement - see
@@ -35,6 +44,42 @@ var ErrNativeAssetUnsupported = errors.New(
 // ErrBridgeEventNotFound is returned by Bridge.BridgeEventFromReceipt when a receipt carries no
 // decodable BridgeEvent log, which means the transaction was not a bridge deposit at all.
 var ErrBridgeEventNotFound = errors.New("no BridgeEvent log found in the transaction receipt")
+
+// ErrClaimEventNotFound is returned by Bridge.FindClaimEvent when the scanned block range holds no
+// ClaimEvent (or DetailedClaimEvent) for the requested global index. It means "not in this window",
+// not "not claimed": isClaimed is the authority on whether a deposit is claimed at all.
+var ErrClaimEventNotFound = errors.New("no ClaimEvent log found for the global index")
+
+// ClaimEventLog is a decoded ClaimEvent (or DetailedClaimEvent) log: the destination chain's own
+// record of a claim, and the only account-independent way to name the transaction that made
+// isClaimed(depositCount, sourceNetwork) true.
+//
+// It exists because the proxy's GET /bridge/v1/claims record - the other way to name that
+// transaction - comes from a syncer that trails the chain, and was observed never to appear at all
+// for some genuinely claimed deposits (2 of 9 observations, unchanged with a five-minute budget).
+// The log is written in the very block that flips isClaimed, so it is available the instant the
+// tool observes the claim.
+type ClaimEventLog struct {
+	// Event is the emitting event's name, eventClaim or eventDetailedClaim.
+	Event string
+	// GlobalIndex is the claimed deposit's bridge global index.
+	GlobalIndex *big.Int
+	// OriginNetwork is the network the claimed token originates from.
+	OriginNetwork uint32
+	// OriginAddress is the token address on OriginNetwork (zero for the native asset).
+	OriginAddress common.Address
+	// DestinationAddress is the account the claim credited.
+	DestinationAddress common.Address
+	// Amount is the claimed amount.
+	Amount *big.Int
+	// TxHash is the claim transaction's hash - what makes its sender recoverable, see
+	// TransactionSender.
+	TxHash common.Hash
+	// BlockNumber is the block the claim was mined in.
+	BlockNumber uint64
+	// LogIndex is the log's index within that block.
+	LogIndex uint
+}
 
 // BridgeEvent is the decoded BridgeEvent log a bridge deposit emits. DepositCount is the value the
 // whole readiness/claim sequence keys off, and it comes from this log rather than from any REST
@@ -163,6 +208,13 @@ type Bridge interface {
 	// BridgeEventFromReceipt decodes the BridgeEvent log out of a bridge transaction's receipt.
 	// It returns ErrBridgeEventNotFound when there is none.
 	BridgeEventFromReceipt(receipt *ethtypes.Receipt) (*BridgeEvent, error)
+	// FindClaimEvent scans this network's own logs, from fromBlock to the chain head, for the
+	// ClaimEvent/DetailedClaimEvent that claimed globalIndex, and returns ErrClaimEventNotFound
+	// when the window holds none. It reads the chain directly - no indexer, no REST service - so
+	// it can name a claim's transaction (and through it its sender) as soon as isClaimed reports
+	// the claim. fromBlock must not be later than the claim's block: the caller anchors it, and
+	// the hop engine anchors it at the destination's head when the hop starts.
+	FindClaimEvent(ctx context.Context, globalIndex *big.Int, fromBlock uint64) (*ClaimEventLog, error)
 }
 
 // GlobalIndex returns the bridge global index of a deposit, delegating the mainnet-flag/rollup-index
@@ -179,6 +231,10 @@ type bridgeContract struct {
 	address  common.Address
 	abi      *abi.ABI
 	contract *agglayerbridgel2.Agglayerbridgel2
+
+	// claimTopics are the topic-0 values of the two claim events, resolved from the ABI once so
+	// FindClaimEvent never compares against a zero hash it silently derived from a missing entry.
+	claimTopics [2]common.Hash
 
 	// gasTokenMu guards the one-shot cache of the immutable gasTokenAddress() result.
 	gasTokenMu     sync.Mutex
@@ -207,7 +263,19 @@ func NewBridge(client NetworkClient, address common.Address) (Bridge, error) {
 		return nil, fmt.Errorf("new bridge on %s: bind AgglayerBridgeL2 at %s: %w", client.Name(), address, err)
 	}
 
-	return &bridgeContract{client: client, address: address, abi: parsed, contract: contract}, nil
+	var claimTopics [2]common.Hash
+	for i, name := range [2]string{eventClaim, eventDetailedClaim} {
+		event, ok := parsed.Events[name]
+		if !ok {
+			return nil, fmt.Errorf("new bridge on %s: the AgglayerBridgeL2 ABI declares no %s event",
+				client.Name(), name)
+		}
+		claimTopics[i] = event.ID
+	}
+
+	return &bridgeContract{
+		client: client, address: address, abi: parsed, contract: contract, claimTopics: claimTopics,
+	}, nil
 }
 
 // Address returns the bridge contract's address on this network.
@@ -445,6 +513,91 @@ func (b *bridgeContract) scanLogs(receipt *ethtypes.Receipt, onlyOwnAddress bool
 	}
 
 	return nil, false
+}
+
+// FindClaimEvent scans [fromBlock, head] of this network's bridge logs for the claim of
+// globalIndex. Newest first, because the claim being looked for is the most recent thing to have
+// happened; a window with no match yields ErrClaimEventNotFound.
+//
+// The range is bounded by the caller's anchor rather than open-ended precisely so this stays a
+// single cheap eth_getLogs on a real network. A node that refuses the range returns its own error,
+// which the hop engine treats as "could not attribute from the chain" and falls back on.
+func (b *bridgeContract) FindClaimEvent(
+	ctx context.Context, globalIndex *big.Int, fromBlock uint64,
+) (*ClaimEventLog, error) {
+	if globalIndex == nil {
+		return nil, fmt.Errorf("find the claim event on %s: a global index is required", b.client.Name())
+	}
+
+	logs, err := b.client.Backend().FilterLogs(ctx, ethereum.FilterQuery{
+		FromBlock: new(big.Int).SetUint64(fromBlock),
+		Addresses: []common.Address{b.address},
+		Topics:    [][]common.Hash{{b.claimTopics[0], b.claimTopics[1]}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("filter the bridge's %s/%s logs on %s from block %d: %w",
+			eventClaim, eventDetailedClaim, b.client.Name(), fromBlock, err)
+	}
+
+	for i := len(logs) - 1; i >= 0; i-- {
+		event, ok := b.parseClaimEvent(logs[i])
+		if !ok || event.GlobalIndex.Cmp(globalIndex) != 0 {
+			continue
+		}
+
+		return event, nil
+	}
+
+	return nil, fmt.Errorf("scan %d bridge claim logs on %s from block %d for global_index=%s: %w",
+		len(logs), b.client.Name(), fromBlock, globalIndex, ErrClaimEventNotFound)
+}
+
+// parseClaimEvent decodes one bridge log as whichever claim event it is. A log that does not decode
+// is skipped rather than fatal: an outdated DetailedClaimEvent shape from an intermediate bridge
+// release would otherwise abort a scan whose remaining logs may hold the answer.
+func (b *bridgeContract) parseClaimEvent(entry ethtypes.Log) (*ClaimEventLog, bool) {
+	if len(entry.Topics) == 0 {
+		return nil, false
+	}
+
+	switch entry.Topics[0] {
+	case b.claimTopics[0]:
+		parsed, err := b.contract.ParseClaimEvent(entry)
+		if err != nil || parsed.GlobalIndex == nil {
+			return nil, false
+		}
+
+		return &ClaimEventLog{
+			Event:              eventClaim,
+			GlobalIndex:        parsed.GlobalIndex,
+			OriginNetwork:      parsed.OriginNetwork,
+			OriginAddress:      parsed.OriginAddress,
+			DestinationAddress: parsed.DestinationAddress,
+			Amount:             parsed.Amount,
+			TxHash:             entry.TxHash,
+			BlockNumber:        entry.BlockNumber,
+			LogIndex:           entry.Index,
+		}, true
+	case b.claimTopics[1]:
+		parsed, err := b.contract.ParseDetailedClaimEvent(entry)
+		if err != nil || parsed.GlobalIndex == nil {
+			return nil, false
+		}
+
+		return &ClaimEventLog{
+			Event:              eventDetailedClaim,
+			GlobalIndex:        parsed.GlobalIndex,
+			OriginNetwork:      parsed.OriginNetwork,
+			OriginAddress:      parsed.OriginTokenAddress,
+			DestinationAddress: parsed.DestinationAddress,
+			Amount:             parsed.Amount,
+			TxHash:             entry.TxHash,
+			BlockNumber:        entry.BlockNumber,
+			LogIndex:           entry.Index,
+		}, true
+	default:
+		return nil, false
+	}
 }
 
 // amountOf returns amount, or zero when it is nil, so a nil amount never panics inside abi.Pack.

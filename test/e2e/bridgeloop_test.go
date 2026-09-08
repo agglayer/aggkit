@@ -60,6 +60,23 @@ const (
 	// bridgeLoopERC20Amount is what the ERC20 loop moves on every hop: 1 token (18 decimals).
 	bridgeLoopERC20Amount = 1_000_000_000_000_000_000 // 1e18
 
+	// bridgeLoopNativeGasSlack overrides the hop engine's DefaultNativeGasSlack (1e15 wei) for this
+	// test, because this test runs the two loops concurrently over one signing key per network.
+	//
+	// A native hop verifies that its destination credit arrived by reading that account's balance
+	// before and after, and tolerates a shortfall of its own gas plus this slack. But the account
+	// is shared: while the ETH loop's 0 -> 1 hop waits out its 3-minute grace period and its
+	// settlement gates on network 1, the ERC20 loop is claiming, approving and bridging on network
+	// 1 with the same key. One live run failed here for exactly that reason - a 1.354e15 wei
+	// shortfall against a 1.1295e15 tolerance, the excess being a sibling loop's claim gas - while
+	// the run before it passed only because the ETH loop happened to finish that hop first.
+	//
+	// 1e16 covers a sibling loop's whole per-cycle native spend on one network (a claim is ~2.5e14,
+	// an approve ~1e14, a bridge ~5e14) with an order of magnitude of margin, and is still 1% of
+	// bridgeLoopETHAmount - so a credit that never arrived is short by a hundred times the slack
+	// and still fails the check.
+	bridgeLoopNativeGasSlack = 10_000_000_000_000_000 // 1e16
+
 	// bridgeLoopGracePeriod is Global.ManualGracePeriod: for the two manual hops it is the window
 	// during which nothing may claim the deposit (the tool's core negative assertion), and for the
 	// auto hop it is how long the network-2 Auto Claim service has to claim it once the claim
@@ -176,6 +193,9 @@ func TestBridgeLoopFullCycle(t *testing.T) {
 		// One attempt per hop: a retry would hide a real stall behind a second 22-minute budget,
 		// and this test wants the first failure, not the third.
 		HopAttempts: 1,
+		// See bridgeLoopNativeGasSlack: the two loops share one signing key per network, so a
+		// hop's native balance delta includes whatever its sibling loop spent on gas there.
+		NativeGasSlack: big.NewInt(bridgeLoopNativeGasSlack),
 	})
 	require.NoError(t, err, "build the bridge_loop_tester orchestrator")
 	t.Cleanup(orchestrator.Close)
@@ -190,6 +210,7 @@ func TestBridgeLoopFullCycle(t *testing.T) {
 	assertBridgeLoopPreflight(t, report)
 	assertBridgeLoopTotals(t, report)
 	assertBridgeLoopHops(t, report)
+	logBridgeLoopClaimAttribution(t, report)
 	assertBridgeLoopRingClosure(ctx, t, env, keys, report, l1BalanceBefore)
 	assertBridgeLoopState(t, cfg, orchestrator, report)
 	assertBridgeLoopResume(ctx, t, primeEngineL2B, report)
@@ -572,6 +593,8 @@ func assertBridgeLoopHop(
 			"%s: a manual hop must record the configured grace period it sat out", label)
 		require.Equal(t, bridgelooptester.ClaimActorTool, hop.ClaimedBy,
 			"%s: a manual hop must be claimed by the tool itself", label)
+		require.Equal(t, bridgelooptester.ClaimAttributionSelf, hop.ClaimAttribution,
+			"%s: the tool submitted this claim, so its own receipt must be what names it", label)
 		require.NotEqual(t, common.Hash{}, hop.ClaimTxHash, "%s: the tool's claim tx hash", label)
 		require.Positive(t, hop.ClaimBlockNumber, "%s: claim block number", label)
 		require.Positive(t, hop.ClaimGasUsed, "%s: claim gas used", label)
@@ -580,10 +603,21 @@ func assertBridgeLoopHop(
 		require.Equal(t, bridgelooptester.ClaimActorExternal, hop.ClaimedBy,
 			"%s: an auto hop must be attributed to the external claimer that actually claimed it "+
 				"(ClaimActorUnknown here means the tool could not identify the claimant at all)", label)
+		// The attribution must come from the destination chain's own ClaimEvent log, not from the
+		// proxy's /bridge/v1/claims record. That record is served by a syncer trailing the chain,
+		// and was measured never serving one at all for 2 of 9 genuinely claimed deposits (still
+		// absent with a five-minute budget), which is exactly what made this assertion flaky
+		// before. The log is written in the block that flips isClaimed, so it cannot lag it.
+		require.Equal(t, bridgelooptester.ClaimAttributionChain, hop.ClaimAttribution,
+			"%s: an auto hop's claimant must be identified from the destination's ClaimEvent log, "+
+				"not from the proxy's best-effort claim record", label)
 		require.NotEqual(t, common.Address{}, hop.ExternalClaimFromAddress,
 			"%s: the external claimant's address must be resolvable", label)
 		require.NotEqual(t, common.Hash{}, hop.ExternalClaimTxHash,
 			"%s: the external claim's tx hash must be known", label)
+		require.NotEqual(t, hop.DestinationAddress, hop.ExternalClaimFromAddress,
+			"%s: the claimant must be a genuinely different account from the tool's own on the "+
+				"destination network, or 'claimed externally' means nothing", label)
 		require.Zero(t, hop.ClaimGasUsed, "%s: the tool submitted no claim for an auto hop", label)
 	default:
 		t.Fatalf("%s: unexpected claim mode %q", label, hop.ClaimMode)
@@ -856,6 +890,29 @@ func logBridgeLoopReport(t *testing.T, report *bridgelooptester.Report) {
 		return
 	}
 	t.Logf("bridge_loop_tester report:\n%s", encoded)
+}
+
+// logBridgeLoopClaimAttribution prints one line per hop naming who claimed it, where that
+// attribution came from, and the transaction and account it names. It is the readable form of the
+// claim-attribution assertions above: a manual hop must read "tool ... via self" and an auto hop
+// "external ... via chain", i.e. the destination bridge's own ClaimEvent log rather than the
+// proxy's best-effort claim record.
+func logBridgeLoopClaimAttribution(t *testing.T, report *bridgelooptester.Report) {
+	t.Helper()
+
+	for i := range report.Loops {
+		loop := &report.Loops[i]
+		for _, hop := range loop.AllHops() {
+			claimTx := hop.ClaimTxHash
+			if claimTx == (common.Hash{}) {
+				claimTx = hop.ExternalClaimTxHash
+			}
+			t.Logf("[CLAIM-ATTRIBUTION] loop=%s hop %d (%s) claim=%s claimed_by=%s via=%s "+
+				"claim_tx=%s claim_from=%s tool_account=%s",
+				loop.Name, hop.HopIndex, hop.Route(), hop.ClaimMode, hop.ClaimedBy, hop.ClaimAttribution,
+				claimTx, hop.ExternalClaimFromAddress, hop.DestinationAddress)
+		}
+	}
 }
 
 // startBridgeLoopPriming drives background L1->L2 bridge-and-claim activity on both L2 networks

@@ -25,9 +25,35 @@ const (
 	// manual hop's failure).
 	ClaimActorExternal ClaimActor = "external"
 	// ClaimActorUnknown means the deposit is claimed on-chain but the claimer could not be
-	// attributed, because the tool did not submit the claim in this process's lifetime and the
-	// proxy's /bridge/v1/claims record was not readable. Only reachable on a resumed hop.
+	// attributed: the tool did not submit the claim in this process's lifetime, and neither the
+	// destination chain's own ClaimEvent log nor the proxy's /bridge/v1/claims record named the
+	// claim transaction whose signature would identify the claimer. On a hop this process drove
+	// end to end the log is always in the window it scans, so this is in practice reachable only
+	// on a resumed hop (whose claim predates the window) or against a node that will not serve
+	// logs at all.
 	ClaimActorUnknown ClaimActor = "unknown"
+)
+
+// ClaimAttributionSource records where a claim's identity - its transaction, and through that
+// transaction's signature its sender - was read from. It is a diagnostic, but a load-bearing one:
+// it is what distinguishes an attribution the destination chain itself vouches for from one that
+// depended on an indexer, and therefore what makes a run's ClaimedBy values auditable.
+type ClaimAttributionSource string
+
+const (
+	// ClaimAttributionNone means nothing named the claim transaction.
+	ClaimAttributionNone ClaimAttributionSource = ""
+	// ClaimAttributionSelf means the tool submitted the claim and took the transaction from its own
+	// receipt.
+	ClaimAttributionSelf ClaimAttributionSource = "self"
+	// ClaimAttributionChain means the destination bridge's own ClaimEvent/DetailedClaimEvent log
+	// named the claim transaction. Authoritative and available in the same block that flips
+	// isClaimed, with no indexer in the path.
+	ClaimAttributionChain ClaimAttributionSource = "chain"
+	// ClaimAttributionProxy means the proxy's GET /bridge/v1/claims record named the claim
+	// transaction, the fallback used when the chain's log could not be located (a resumed hop, or a
+	// node that refused the log query).
+	ClaimAttributionProxy ClaimAttributionSource = "proxy"
 )
 
 // HopOutcome is a hop's verdict, the field a report or a metric buckets on.
@@ -161,6 +187,11 @@ type HopResult struct {
 	// ClaimedBy attributes the claim (see ClaimActor). This is the field a claim-mode assertion is
 	// made on: ClaimActorExternal is expected for ClaimAuto, ClaimActorTool for ClaimManual.
 	ClaimedBy ClaimActor `json:"claimed_by"`
+	// ClaimAttribution says where the claim's identity came from (see ClaimAttributionSource). It
+	// is the audit trail behind ClaimedBy: ClaimAttributionChain means the destination chain's own
+	// ClaimEvent log named the claim transaction, ClaimAttributionProxy means only the proxy's
+	// claim record could, and ClaimAttributionNone means neither could.
+	ClaimAttribution ClaimAttributionSource `json:"claim_attribution,omitempty"`
 	// ClaimTxHash is the tool's own claim transaction hash, zero when the tool did not claim.
 	ClaimTxHash common.Hash `json:"claim_tx_hash,omitempty"`
 	// ClaimBlockNumber is the block the tool's claim transaction was mined in.

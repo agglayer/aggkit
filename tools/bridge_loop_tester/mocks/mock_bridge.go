@@ -3,6 +3,8 @@
 package mocks
 
 import (
+	big "math/big"
+
 	bridgelooptester "github.com/agglayer/aggkit/tools/bridge_loop_tester"
 	common "github.com/ethereum/go-ethereum/common"
 
@@ -364,6 +366,66 @@ func (_c *Bridge_ClaimMessage_Call) Return(_a0 *types.Receipt, _a1 error) *Bridg
 }
 
 func (_c *Bridge_ClaimMessage_Call) RunAndReturn(run func(context.Context, bridgelooptester.ClaimRequest) (*types.Receipt, error)) *Bridge_ClaimMessage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// FindClaimEvent provides a mock function with given fields: ctx, globalIndex, fromBlock
+func (_m *Bridge) FindClaimEvent(ctx context.Context, globalIndex *big.Int, fromBlock uint64) (*bridgelooptester.ClaimEventLog, error) {
+	ret := _m.Called(ctx, globalIndex, fromBlock)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FindClaimEvent")
+	}
+
+	var r0 *bridgelooptester.ClaimEventLog
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *big.Int, uint64) (*bridgelooptester.ClaimEventLog, error)); ok {
+		return rf(ctx, globalIndex, fromBlock)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *big.Int, uint64) *bridgelooptester.ClaimEventLog); ok {
+		r0 = rf(ctx, globalIndex, fromBlock)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*bridgelooptester.ClaimEventLog)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *big.Int, uint64) error); ok {
+		r1 = rf(ctx, globalIndex, fromBlock)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Bridge_FindClaimEvent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindClaimEvent'
+type Bridge_FindClaimEvent_Call struct {
+	*mock.Call
+}
+
+// FindClaimEvent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - globalIndex *big.Int
+//   - fromBlock uint64
+func (_e *Bridge_Expecter) FindClaimEvent(ctx interface{}, globalIndex interface{}, fromBlock interface{}) *Bridge_FindClaimEvent_Call {
+	return &Bridge_FindClaimEvent_Call{Call: _e.mock.On("FindClaimEvent", ctx, globalIndex, fromBlock)}
+}
+
+func (_c *Bridge_FindClaimEvent_Call) Run(run func(ctx context.Context, globalIndex *big.Int, fromBlock uint64)) *Bridge_FindClaimEvent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*big.Int), args[2].(uint64))
+	})
+	return _c
+}
+
+func (_c *Bridge_FindClaimEvent_Call) Return(_a0 *bridgelooptester.ClaimEventLog, _a1 error) *Bridge_FindClaimEvent_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Bridge_FindClaimEvent_Call) RunAndReturn(run func(context.Context, *big.Int, uint64) (*bridgelooptester.ClaimEventLog, error)) *Bridge_FindClaimEvent_Call {
 	_c.Call.Return(run)
 	return _c
 }

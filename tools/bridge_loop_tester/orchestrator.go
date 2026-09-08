@@ -64,6 +64,18 @@ type OrchestratorDeps struct {
 	// Metrics is the metrics recorder. Nil means Run registers NewMetrics() when
 	// Global.MetricsAddr is set, and no metrics at all otherwise.
 	Metrics *Metrics
+	// NativeGasSlack overrides DefaultNativeGasSlack for every loop's hop engine: the extra
+	// native-currency shortfall a native hop's destination balance check tolerates on top of the
+	// gas the hop itself provably spent (see HopDeps.NativeGasSlack). Nil means the default.
+	//
+	// It belongs here rather than in the config because it is a property of how many loops share
+	// one signing account, not of the network: all loops on a network sign with the same key, so
+	// while one loop's hop waits on its destination credit, another loop's approve, bridge or claim
+	// on that same network debits the very account the credit is being measured on. The default
+	// 0.001 ETH covers roughly one such transaction; a run with several concurrent loops on one
+	// network needs more, or a hop's balance check will intermittently report a shortfall that is
+	// really a sibling loop's gas.
+	NativeGasSlack *big.Int
 	// HopAttempts is how many times a hop is attempted in total (the first attempt plus any
 	// retries) before its cycle is abandoned (see the failure policy on Orchestrator). Zero or
 	// negative means cfg.Global.HopAttempts is used instead (which Validate guarantees is > 0),
@@ -271,6 +283,9 @@ type Orchestrator struct {
 	metrics     *Metrics
 	now         func() time.Time
 	hopAttempts int
+	// gasSlack is OrchestratorDeps.NativeGasSlack, passed through to every loop's hop engine. Nil
+	// leaves the engine on DefaultNativeGasSlack.
+	gasSlack *big.Int
 
 	newHopRunner func(loopName string) (HopRunner, error)
 	newToken     func(client NetworkClient, address common.Address) (Token, error)
@@ -300,6 +315,7 @@ func NewOrchestrator(ctx context.Context, cfg *Config, deps OrchestratorDeps) (*
 		metrics:     deps.Metrics,
 		now:         deps.Now,
 		hopAttempts: deps.HopAttempts,
+		gasSlack:    deps.NativeGasSlack,
 		newToken:    deps.NewTokenFn,
 		deployToken: deps.DeployTokenFn,
 	}
@@ -409,12 +425,13 @@ func (o *Orchestrator) State() *State {
 // whose checkpoints are persisted into that loop's record in the state file.
 func (o *Orchestrator) newHopEngine(loopName string) (HopRunner, error) {
 	return NewHopEngine(HopDeps{
-		Networks:   o.pool.hopNetworks(),
-		Proxy:      o.proxy,
-		Logger:     o.logger,
-		Timings:    HopTimingsFromGlobal(o.cfg.Global),
-		NewTokenFn: o.newToken,
-		Now:        o.now,
+		Networks:       o.pool.hopNetworks(),
+		Proxy:          o.proxy,
+		Logger:         o.logger,
+		Timings:        HopTimingsFromGlobal(o.cfg.Global),
+		NativeGasSlack: o.gasSlack,
+		NewTokenFn:     o.newToken,
+		Now:            o.now,
 		PersistCheckpoint: func(ctx context.Context, checkpoint HopCheckpoint) error {
 			return o.persistCheckpoint(ctx, loopName, checkpoint)
 		},

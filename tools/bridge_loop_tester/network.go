@@ -370,6 +370,23 @@ func (c *networkClient) NativeBalance(ctx context.Context, account common.Addres
 	return balance, nil
 }
 
+// HeadBlockNumber returns the number of client's current head block.
+//
+// The hop engine uses it to anchor the block range Bridge.FindClaimEvent scans: a claim of a
+// deposit the hop is about to make cannot be older than the destination's head at the moment the
+// hop starts, so that head is the earliest block the scan needs to cover.
+func HeadBlockNumber(ctx context.Context, client NetworkClient) (uint64, error) {
+	header, err := client.Backend().HeaderByNumber(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("read the head block of %s: %w", client.Name(), err)
+	}
+	if header == nil || header.Number == nil {
+		return 0, fmt.Errorf("read the head block of %s: the node returned no block number", client.Name())
+	}
+
+	return header.Number.Uint64(), nil
+}
+
 // TransactionSender recovers the account that signed txHash on client's network, by reading the
 // transaction back and recovering the sender from its signature against the network's chain ID.
 //

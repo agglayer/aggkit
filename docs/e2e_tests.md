@@ -186,14 +186,21 @@ persisted in the state file, so a restart cannot paper over it; and that the hop
 error the run returns all carry the same diagnosis — the bridge transaction whose deposit was claimed, plus the
 claim transaction and the claimant address the tool recovered from that transaction's signature.
 
-That last part is asserted **when the tool could resolve it, and that it says so plainly when it could not**. The
-claimant is recovered from the claim transaction, whose hash comes from the destination's
-`GET /bridge/v1/claims` record (the proxy never populates `from_address`, so there is no other source), and on
-`anvil-2chains` that record is usually served within a poll or two but in roughly one run in four is never served at
-all — verified live with the tool's lookup budget raised to five minutes. The violation itself does not depend on it:
-it rests on the destination bridge's own `isClaimed` read, so the tool degrades the attribution to
-`ClaimActorUnknown` (`claim tx unknown, from none`) rather than failing the hop. `TestBridgeLoopFullCycle`'s
-`ClaimedExternally` assertion has the same exposure and is the one flake seen in this area.
+That last part is asserted **when the tool could resolve it, and that it says so plainly when it could not**, which
+in practice means always: the claimant is recovered from the claim transaction's signature, and the claim
+transaction is named by the destination bridge's own `ClaimEvent`/`DetailedClaimEvent` log, read over the
+destination's JSON-RPC. That log is written in the very block that makes `isClaimed` true, so it is there the instant
+the tool observes the claim.
+
+The tool used to name that transaction from the proxy's `GET /bridge/v1/claims` record instead (the proxy never
+populates `from_address`, so the record's only unique contribution was the hash). On `anvil-2chains` that record was
+usually served within a poll or two, but in roughly one run in four was never served at all — verified live with the
+tool's lookup budget raised to five minutes, which did not help. That was the one flake seen in this area, and it also
+exposed `TestBridgeLoopFullCycle`'s `ClaimedExternally` assertion. The record is now only a fallback, for the case the
+log cannot cover (a resumed hop, whose claim predates the block window the hop scans). Either way the violation
+itself never depended on it: it rests on the destination bridge's own `isClaimed` read, and if neither source names
+the claim the tool degrades the attribution to `ClaimActorUnknown` (`claim tx unknown, from none`) rather than
+failing the hop.
 
 What checks that the test puts the env back is `TestMain`'s post-test bridge health-check (below), which runs in the
 same process once the suite passes. That ring declares **every** hop `manual`, including `1 -> 2`, so a leaked Auto

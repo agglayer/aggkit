@@ -2,6 +2,7 @@ package bridgelooptester_test
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"testing"
 
@@ -464,4 +465,175 @@ func unpackCalldata(t *testing.T, parsed *abi.ABI, method string, data []byte) [
 	require.NoError(t, err)
 
 	return args
+}
+
+// claimEventLog builds a synthetic ClaimEvent log, the log a bridge emits when a claim succeeds.
+// Every ClaimEvent argument is non-indexed, so the log carries only the event id as a topic.
+func claimEventLog(
+	t *testing.T, emitter common.Address, globalIndex *big.Int, txHash common.Hash, blockNumber uint64,
+) ethtypes.Log {
+	t.Helper()
+
+	parsed := bridgeABI(t)
+	event, ok := parsed.Events["ClaimEvent"]
+	require.True(t, ok)
+
+	data, err := event.Inputs.Pack(globalIndex, uint32(0), common.Address{}, testDestAddr, big.NewInt(1_000_000))
+	require.NoError(t, err)
+
+	return ethtypes.Log{
+		Address:     emitter,
+		Topics:      []common.Hash{event.ID},
+		Data:        data,
+		TxHash:      txHash,
+		BlockNumber: blockNumber,
+		Index:       3,
+	}
+}
+
+// detailedClaimEventLog builds a synthetic DetailedClaimEvent log, which a bridge new enough to
+// carry the claim's proof in its log emits instead of ClaimEvent. Its globalIndex and
+// destinationAddress are indexed, so they live in topics rather than in the data.
+func detailedClaimEventLog(
+	t *testing.T, emitter common.Address, globalIndex *big.Int, txHash common.Hash, blockNumber uint64,
+) ethtypes.Log {
+	t.Helper()
+
+	parsed := bridgeABI(t)
+	event, ok := parsed.Events["DetailedClaimEvent"]
+	require.True(t, ok)
+
+	var proof [32][32]byte
+	data, err := event.Inputs.NonIndexed().Pack(
+		proof,
+		proof,
+		[32]byte{0x01},
+		[32]byte{0x02},
+		uint8(0),
+		uint32(0),
+		common.Address{},
+		uint32(2),
+		big.NewInt(1_000_000),
+		[]byte{0xaa},
+	)
+	require.NoError(t, err)
+
+	return ethtypes.Log{
+		Address: emitter,
+		Topics: []common.Hash{
+			event.ID,
+			common.BigToHash(globalIndex),
+			common.BytesToHash(testDestAddr.Bytes()),
+		},
+		Data:        data,
+		TxHash:      txHash,
+		BlockNumber: blockNumber,
+		Index:       1,
+	}
+}
+
+// TestFindClaimEventNamesTheClaimTransaction is the S12C attribution primitive: the destination
+// chain's own log, not an indexer, names the transaction that claimed a global index. The scan must
+// start at the requested block, ask only this bridge for only the two claim events, and pick the log
+// whose decoded global index matches - not merely the last claim the bridge emitted.
+func TestFindClaimEventNamesTheClaimTransaction(t *testing.T) {
+	t.Parallel()
+
+	bridge, _, backend := newMockedBridge(t)
+	wanted := bridgesync.GenerateGlobalIndexForNetworkID(1, 42)
+	claimTx := common.HexToHash("0xc1a1")
+
+	backend.EXPECT().FilterLogs(mock.Anything, mock.MatchedBy(func(query ethereum.FilterQuery) bool {
+		return query.FromBlock != nil && query.FromBlock.Uint64() == 900 &&
+			query.ToBlock == nil && // nil means "up to the head"
+			len(query.Addresses) == 1 && query.Addresses[0] == testBridgeAddr &&
+			len(query.Topics) == 1 && len(query.Topics[0]) == 2
+	})).Return([]ethtypes.Log{
+		claimEventLog(t, testBridgeAddr, big.NewInt(7), common.HexToHash("0xdead"), 901),
+		claimEventLog(t, testBridgeAddr, wanted, claimTx, 910),
+		// A later claim of a different deposit, to prove the scan matches on the global index
+		// rather than simply taking the newest claim log in the window.
+		claimEventLog(t, testBridgeAddr, big.NewInt(9), common.HexToHash("0xbeef"), 912),
+	}, nil)
+
+	event, err := bridge.FindClaimEvent(context.Background(), wanted, 900)
+	require.NoError(t, err)
+	require.NotNil(t, event)
+	require.Equal(t, "ClaimEvent", event.Event)
+	require.Equal(t, claimTx, event.TxHash)
+	require.Equal(t, uint64(910), event.BlockNumber)
+	require.Zero(t, event.GlobalIndex.Cmp(wanted))
+	require.Equal(t, testDestAddr, event.DestinationAddress)
+	require.Equal(t, big.NewInt(1_000_000), event.Amount)
+}
+
+// TestFindClaimEventDecodesDetailedClaimEvent covers the other event shape a bridge can emit, whose
+// global index arrives as an indexed topic instead of in the log data.
+func TestFindClaimEventDecodesDetailedClaimEvent(t *testing.T) {
+	t.Parallel()
+
+	bridge, _, backend := newMockedBridge(t)
+	wanted := bridgesync.GenerateGlobalIndexForNetworkID(0, 5)
+	claimTx := common.HexToHash("0xc2a2")
+
+	backend.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]ethtypes.Log{
+		detailedClaimEventLog(t, testBridgeAddr, wanted, claimTx, 42),
+	}, nil)
+
+	event, err := bridge.FindClaimEvent(context.Background(), wanted, 1)
+	require.NoError(t, err)
+	require.Equal(t, "DetailedClaimEvent", event.Event)
+	require.Equal(t, claimTx, event.TxHash)
+	require.Equal(t, uint64(42), event.BlockNumber)
+	require.Zero(t, event.GlobalIndex.Cmp(wanted))
+}
+
+// TestFindClaimEventNotFound covers the window holding no claim of the requested deposit: that is
+// ErrClaimEventNotFound, a "look elsewhere" signal the hop engine falls back on, never a claim of
+// having proved the deposit unclaimed (isClaimed is the authority on that).
+func TestFindClaimEventNotFound(t *testing.T) {
+	t.Parallel()
+
+	bridge, _, backend := newMockedBridge(t)
+	wanted := bridgesync.GenerateGlobalIndexForNetworkID(1, 42)
+
+	backend.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]ethtypes.Log{
+		claimEventLog(t, testBridgeAddr, big.NewInt(7), common.HexToHash("0xdead"), 901),
+		// A log with no topics at all, and one whose topic is not a claim event: both must be
+		// skipped rather than panic or be mistaken for a match.
+		{Address: testBridgeAddr},
+		*bridgeEventLog(t, testBridgeAddr, 3),
+	}, nil)
+
+	event, err := bridge.FindClaimEvent(context.Background(), wanted, 900)
+	require.Nil(t, event)
+	require.ErrorIs(t, err, bridgelooptester.ErrClaimEventNotFound)
+	require.ErrorContains(t, err, "from block 900")
+}
+
+// TestFindClaimEventPropagatesFilterErrors covers a node that refuses the log query (a range limit,
+// say): the error is returned as-is so the caller can fall back, and is not silently turned into
+// "no claim event".
+func TestFindClaimEventPropagatesFilterErrors(t *testing.T) {
+	t.Parallel()
+
+	bridge, _, backend := newMockedBridge(t)
+	backend.EXPECT().FilterLogs(mock.Anything, mock.Anything).
+		Return(nil, errors.New("query returned more than 10000 results"))
+
+	event, err := bridge.FindClaimEvent(context.Background(), big.NewInt(1), 0)
+	require.Nil(t, event)
+	require.ErrorContains(t, err, "more than 10000 results")
+	require.NotErrorIs(t, err, bridgelooptester.ErrClaimEventNotFound)
+}
+
+// TestFindClaimEventRequiresGlobalIndex rejects the programming error rather than scanning for a
+// nil index and reporting "not found".
+func TestFindClaimEventRequiresGlobalIndex(t *testing.T) {
+	t.Parallel()
+
+	bridge, _, _ := newMockedBridge(t)
+
+	_, err := bridge.FindClaimEvent(context.Background(), nil, 0)
+	require.ErrorContains(t, err, "a global index is required")
 }

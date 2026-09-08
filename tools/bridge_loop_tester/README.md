@@ -22,6 +22,7 @@ for days — how to tell a healthy ring from a stranded one and what to do about
 - [What it does](#what-it-does)
 - [The circular-route model](#the-circular-route-model)
 - [The claim-mode contract: `auto` vs `manual`](#the-claim-mode-contract-auto-vs-manual)
+- [How a claim is attributed](#how-a-claim-is-attributed)
 - [Quick start](#quick-start)
 - [Config reference](#config-reference)
 - [Commands](#commands)
@@ -86,12 +87,34 @@ the two modes fail in ways that mean opposite things:
   enabled somewhere it should not be, or another actor entirely is racing the tool's own claims.
 
 Both are reported identically as `FailureClaimMode` / `*ClaimModeViolationError`, carrying the
-expected mode, the observed `ClaimActor` (`none`, `tool`, `external`, or `unknown` — attribution is
-only possible when the tool itself submitted the claim in-process, or the proxy's
-`/bridge/v1/claims` record names a `from_address`), the deposit's identity (`Source`, `Destination`,
-`DepositCount`, `GlobalIndex`), the grace period used, and both transaction hashes when known. This
+expected mode, the observed `ClaimActor` (`none`, `tool`, `external`, or `unknown`), the deposit's
+identity (`Source`, `Destination`, `DepositCount`, `GlobalIndex`), the grace period used, and both
+transaction hashes when known. This
 violation is **never retried** — see [Failure policy](#failure-policy) — because retrying would turn
 a real autoclaim-policy defect into an invisible delay instead of a reported test failure.
+
+## How a claim is attributed
+
+Whether a hop passes or fails is decided by the destination bridge's own `isClaimed(depositCount,
+sourceNetwork)` read — nothing else. *Who* claimed it is a separate question, answered afterwards,
+and reported as `ClaimedBy` (a `ClaimActor`) plus `ClaimAttribution` (where that answer came from):
+
+| `ClaimAttribution` | What named the claim transaction |
+|---|---|
+| `self` | The tool submitted the claim; the hash is from its own receipt. |
+| `chain` | The destination bridge's own `ClaimEvent`/`DetailedClaimEvent` log, found by scanning the destination's blocks from the hop's start block. The claimant is then recovered from that transaction's signature (`eth_getTransactionByHash`). |
+| `proxy` | The proxy's `GET /bridge/v1/claims` record, used only when the log could not be located — a hop resumed across a restart, whose claim predates the scanned window, or a node that refuses the log query. The claimant is still recovered from the transaction's signature: the record never populates `from_address`. |
+| *(empty)* | Nothing named it. `ClaimedBy` is then `unknown`. |
+
+The chain is preferred because the log is written in the very block that makes `isClaimed` true, so
+it cannot lag the decision the hop has already observed. The proxy's record is served by a claim
+syncer that trails the chain, and was measured never serving a record at all for 2 of 9 genuinely
+claimed deposits on a healthy network (raising the lookup budget to five minutes did not help).
+
+Attribution is a diagnostic, so all of it is best-effort: a node that will not serve the log **and**
+a proxy that will not serve the record leaves `ClaimedBy = unknown` rather than failing a hop whose
+on-chain outcome is already settled. What it never does is guess — `external` and `tool` are only
+reported when a transaction was actually identified, or when the tool submitted the claim itself.
 
 ## Quick start
 
