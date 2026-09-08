@@ -542,6 +542,11 @@ func TestStatusReportsAStrandedRingOffline(t *testing.T) {
 	require.Contains(t, loop.ValueLocation.Detail, "STRANDED in flight")
 	require.Contains(t, loop.ValueLocation.Detail, "L2B", "the detail names the network the deposit is "+
 		"claimable on, so an operator knows where to look")
+	// This loop halted on a claim-mode violation, i.e. something else claimed the deposit. status
+	// reads no chain, so the detail must leave both outcomes open rather than assert the deposit is
+	// still unclaimed.
+	require.NotContains(t, loop.ValueLocation.Detail, "was not claimed")
+	require.Contains(t, loop.ValueLocation.Detail, "or was claimed by something else")
 }
 
 func TestStatusReportsAHealthyRingAtRest(t *testing.T) {

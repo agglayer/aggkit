@@ -628,8 +628,13 @@ func describeValueLocation(loop Loop, record *LoopState, names map[uint32]Networ
 		HopIndex:    record.HopIndex,
 	}
 	if bridged {
-		location.Detail = fmt.Sprintf("STRANDED in flight: hop %d (%d->%d) bridged in %s but was not "+
-			"claimed on network %d (%s)", record.HopIndex, hop.Source, hop.Destination,
+		// Same caveat as (*Orchestrator).valueLocation: the record says how far this tool got, not
+		// whether the destination bridge has the deposit marked claimed - and a loop halted on a
+		// claim-mode violation stops here *because* something else claimed it. status reads no RPC,
+		// so it must not assert either way.
+		location.Detail = fmt.Sprintf("STRANDED in flight: hop %d (%d->%d) bridged in %s; this tool had "+
+			"not claimed it on network %d (%s), so the deposit is either still unclaimed on the bridge "+
+			"or was claimed by something else", record.HopIndex, hop.Source, hop.Destination,
 			record.InFlight.BridgeTxHash, hop.Destination, nameOf(hop.Destination))
 
 		return location

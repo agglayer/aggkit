@@ -1013,9 +1013,14 @@ func (o *Orchestrator) valueLocation(loop Loop) ValueLocation {
 		HopIndex:    hopIndex,
 	}
 	if bridged {
-		location.Detail = fmt.Sprintf("STRANDED in flight: hop %d (%d->%d) bridged in %s but was not "+
-			"claimed on network %d (%s); the deposit exists on the bridge and the next cycle resumes at "+
-			"its claim gate",
+		// Deliberately does not claim the deposit is unclaimed: the state file records where this
+		// tool got to, not what the destination bridge says. A hop halted on a claim-mode violation
+		// stops here precisely *because* something else claimed it, so asserting "was not claimed"
+		// would contradict the violation the tool just reported.
+		location.Detail = fmt.Sprintf("STRANDED in flight: hop %d (%d->%d) bridged in %s; this tool had "+
+			"not claimed it on network %d (%s) when the cycle stopped, so the deposit is either still "+
+			"unclaimed on the bridge or was claimed by something else; the next cycle resumes at its "+
+			"claim gate and reports which",
 			hopIndex, hop.Source, hop.Destination, inFlight.BridgeTxHash, hop.Destination,
 			o.networkName(hop.Destination))
 
