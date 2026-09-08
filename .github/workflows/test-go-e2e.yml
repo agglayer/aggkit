@@ -76,16 +76,16 @@ jobs:
           - env: anvil-2chains
             group: autoclaim
             run: "^(TestAutoClaimL1ToL2AllowAll|TestAutoClaimL1ToL2APIApprove|TestAutoClaimL1ToL2BasicFilter|TestAutoClaimL2ToL1AllowAll|TestAutoClaimL2ToL2AllowAll)$"
+          # TestBridgeLoopFullCycle (the bridge_loop_tester full-cycle test) shares this group
+          # rather than getting a stack of its own: measured over five recent workflow runs this
+          # was consistently the shortest anvil-2chains job (324s average, and the shortest of all
+          # of them in four of the five runs), so it is where an extra long test costs the matrix
+          # the least. It does restart aggkit-002 to enable Auto Claim for its single "auto" hop,
+          # but it restores the node's config on cleanup and the tests here were verified to pass
+          # together in one go-test process.
           - env: anvil-2chains
             group: bridge
-            run: "^(TestJustBridge|TestBridgeL2ToL2|TestBridgeTrackerL1ToL2)$"
-          # The bridge_loop_tester full-cycle test drives its own tool-built ring
-          # 0 -> 1 -> 2 -> 0 and enables Auto Claim on the network-2 node for its single "auto"
-          # hop, so it restarts aggkit-002 and needs its own stack for the same reason the
-          # autoclaim group does.
-          - env: anvil-2chains
-            group: bridge-loop
-            run: "^TestBridgeLoopFullCycle$"
+            run: "^(TestJustBridge|TestBridgeL2ToL2|TestBridgeTrackerL1ToL2|TestBridgeLoopFullCycle)$"
           # The claim-mode-violation test induces the negative result the tool exists to detect: it
           # enables Auto Claim on aggkit-002 and then declares the hop into network 2 "manual", so
           # the run halts mid-ring with the value stranded. That leaves more behind than the

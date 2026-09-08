@@ -158,9 +158,14 @@ same environment precondition `TestAutoClaimL2ToL1AllowAll` and `TestAutoClaimL2
 
 #### CI matrix
 
-`.github/workflows/test-go-e2e.yml` runs this test in its own `anvil-2chains` / `bridge-loop` matrix group, so it
-gets an isolated compose stack: it restarts `aggkit-002` to enable Auto Claim, exactly the kind of state mutation
-the `autoclaim` group is separated for.
+`.github/workflows/test-go-e2e.yml` runs this test in the `anvil-2chains` / `bridge` matrix group, alongside
+`TestJustBridge`, `TestBridgeL2ToL2` and `TestBridgeTrackerL1ToL2`. It is by far the longest test in that group, so
+it was put where an extra long test costs the matrix the least: over five recent workflow runs `bridge` was the
+shortest `anvil-2chains` job (324s average; the shortest of all of them in four of the five runs).
+
+It does restart `aggkit-002` to enable Auto Claim for its single `auto` hop — the kind of state mutation the
+`autoclaim` group is separated for — but it restores the node's configuration on cleanup, and the four tests were
+verified to pass together in one `go test` process before being merged into one group.
 
 ### Bridge loop tester claim-mode violation
 
@@ -213,10 +218,11 @@ affect.
 
 #### CI matrix
 
-The violation test gets its own `anvil-2chains` / `bridge-loop-violation` matrix group rather than sharing the
-`bridge-loop` group. It halts mid-ring by design, so it leaves more behind than the full-cycle test does — a
+The violation test keeps its own `anvil-2chains` / `bridge-loop-violation` matrix group rather than sharing a group
+with the full-cycle test. It halts mid-ring by design, so it leaves more behind than the full-cycle test does — a
 restarted `aggkit-002`, a deposit the tool never claimed, and extra claim traffic on network 2 — and
-`test-go-e2e.yml` keeps state-mutating suites in separate stacks for exactly that reason.
+`test-go-e2e.yml` keeps state-mutating suites in separate stacks for exactly that reason. That is not a theoretical
+concern here: sharing one stack was tried and destabilised the full-cycle test.
 
 ## Post-test bridge health-check
 
