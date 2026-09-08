@@ -517,6 +517,12 @@ func (o *Orchestrator) Run(ctx context.Context) (*Report, error) {
 	report.Cancelled = ctx.Err() != nil
 	report.Err = aggregateLoopErrors(report.Loops)
 	report.computeTotals()
+	// Stamp the run's end before logging it, not only in the deferred stamp above: logFinish reads
+	// Report.Duration through Summary, and the defer has not run yet, so without this the closing
+	// "run finished" line of every completed run reports duration=0s. The defer still refreshes
+	// both fields afterwards, so the returned Report carries the later, more accurate value.
+	report.FinishedAt = o.now().UTC()
+	report.Duration = report.FinishedAt.Sub(report.StartedAt)
 	o.logFinish(report)
 
 	if report.Err != "" {
