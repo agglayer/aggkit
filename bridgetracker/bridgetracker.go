@@ -31,9 +31,11 @@ func New(cfg *Config) *BridgeTracker {
 	}
 
 	// The activity endpoint is only registered when both driven ports are wired (see
-	// Config.ActivityScanner/ActivityClaims); a nil ActivityQuerier tells api.NewAPI to skip it
-	var activity ActivityQuerier
-	if cfg.ActivityScanner != nil && cfg.ActivityClaims != nil {
+	// Config.ActivityScanner/ActivityClaims); a nil ActivityQuerier tells api.NewAPI to skip it.
+	// cfg.Activity, when set, is used as-is instead — the same override pattern as Registry, so
+	// a caller can plug in a persisted implementation (see bridgetracker/db.NewSQLiteActivityStore)
+	activity := cfg.Activity
+	if activity == nil && cfg.ActivityScanner != nil && cfg.ActivityClaims != nil {
 		activity = NewActivityCache(
 			cfg.ActivityScanner, cfg.ActivityClaims, supervised, cfg.Logger, cfg.ActivityIdleTimeout.Duration)
 	}

@@ -129,6 +129,7 @@ func (s *BridgeEventSource) FindBridge(
 			DestinationNetwork: event.DestinationNetwork,
 			DepositCount:       event.DepositCount,
 			BlockNumber:        l.BlockNumber,
+			BlockHash:          l.BlockHash,
 			LogIndex:           uint32(l.Index),
 			OriginNetwork:      event.OriginNetwork,
 			OriginAddress:      event.OriginAddress,

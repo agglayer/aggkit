@@ -48,6 +48,7 @@ func l1ToL2Bridge() *bridgetracker.BridgeInfo {
 		DestinationNetwork: 1,
 		DepositCount:       7,
 		BlockNumber:        12345,
+		BlockHash:          testBlockHash,
 		LogIndex:           3,
 		OriginNetwork:      0,
 		OriginAddress:      common.HexToAddress("0x20"),
