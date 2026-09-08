@@ -1,11 +1,14 @@
 package bridgeservice
 
 import (
+	"encoding/json"
 	"math/big"
 	"net/http"
 	"net/url"
 	"testing"
 
+	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -118,4 +121,37 @@ func TestParseBigIntQuery(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestNewBridgeResponse_GlobalIndexMarshalsAsQuotedString verifies that NewBridgeResponse
+// produces a BridgeResponse whose global_index marshals as a quoted JSON string, even for an
+// L1-origin deposit whose global index (networkID==0, depositCount==0 encodes to 2^64) exceeds
+// JavaScript's Number.MAX_SAFE_INTEGER. Before this fix, GlobalIndex was *big.Int, whose
+// MarshalJSON emits bare decimal digits despite the swagger declaring global_index as a string,
+// silently corrupting the value for any JSON.parse consumer. Both the presence of the quoted
+// form and the absence of the unquoted form are asserted, since asserting only the former would
+// still pass if the bare-number form were also present.
+func TestNewBridgeResponse_GlobalIndexMarshalsAsQuotedString(t *testing.T) {
+	bridge := &bridgesync.Bridge{
+		OriginNetwork:      0,
+		DestinationNetwork: 1,
+		OriginAddress:      common.HexToAddress("0x1"),
+		DestinationAddress: common.HexToAddress("0x2"),
+		Amount:             common.Big0,
+		DepositCount:       0,
+		TxnSender:          common.HexToAddress("0x3"),
+		ToAddress:          common.HexToAddress("0x4"),
+	}
+
+	// networkID=0 (mainnet) and etrogL1UpgradeBlock=0 (disabled) with bridge.DepositCount=0
+	// yields bridgesync.GenerateGlobalIndexForNetworkID(0, 0) == 2^64 == 18446744073709551616.
+	response := NewBridgeResponse(bridge, 0, 0)
+
+	data, err := json.Marshal(response)
+	require.NoError(t, err)
+
+	require.Contains(t, string(data), `"global_index":"18446744073709551616"`,
+		"global_index must marshal as a quoted string")
+	require.NotContains(t, string(data), `"global_index":18446744073709551616`,
+		"global_index must never marshal as a bare JSON number")
 }

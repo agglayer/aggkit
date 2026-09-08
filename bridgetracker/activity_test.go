@@ -27,7 +27,7 @@ func testBridge(globalIndex int64) *bridgeservicetypes.BridgeResponse {
 		OriginNetwork:      1,
 		DestinationNetwork: 2,
 		DepositCount:       uint32(globalIndex),
-		GlobalIndex:        big.NewInt(globalIndex),
+		GlobalIndex:        bridgeservicetypes.BigIntString(big.NewInt(globalIndex).String()),
 		TxHash:             bridgeservicetypes.Hash("0xtx"),
 	}
 }
@@ -63,7 +63,7 @@ func (f *fakeActivityScanner) BridgesFrom(
 	}
 	out := make([]*domain.ScannedBridge, 0, len(f.bridges))
 	for _, b := range f.bridges {
-		if _, ok := known[b.Bridge.GlobalIndex.String()]; ok {
+		if _, ok := known[string(b.Bridge.GlobalIndex)]; ok {
 			continue
 		}
 		out = append(out, b)
@@ -508,7 +508,7 @@ func TestActivityCache_ScannerReceivesGrowingKnownSet(t *testing.T) {
 
 	_, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
-	require.Contains(t, scanner.lastKnown, bridge.Bridge.GlobalIndex.String())
+	require.Contains(t, scanner.lastKnown, string(bridge.Bridge.GlobalIndex))
 }
 
 // TestActivityCache_IdleAddressIsForgotten verifies an address untouched for longer than
