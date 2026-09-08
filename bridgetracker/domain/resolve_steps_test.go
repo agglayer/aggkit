@@ -891,6 +891,42 @@ func TestUpdateStep(t *testing.T) {
 		require.Equal(t, 0, sp.Error.RetryCount, "nothing will retry a permanent step, so the count resets")
 		require.Equal(t, []string{errFakeUpdateStep.Error()}, sp.Error.Description)
 	})
+
+	t.Run(
+		"a plain stepErr on an already-permanently-failed step does not downgrade it to transient",
+		func(t *testing.T) {
+			t.Parallel()
+
+			// nothing stops ResolveSteps from calling this step's resolver again once it already
+			// failed permanently (currentStepIndex only checks Done, not Error) — a later poll
+			// returning a plain, non-Permanent-wrapped error (e.g. a transient RPC hiccup while
+			// re-checking an already-doomed fact) must not resurrect the step as merely
+			// StepErrorTransient: TrackingStatus/ClaimStatus would then misreport it as
+			// Running/Pending even though the step will never complete
+			tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
+				{
+					Step: types.StepWaitingGERUpdate, Status: types.StepStatusError, StartDate: &t1,
+					Error: &types.ErrorStep{
+						ErrorType:   types.StepErrorPermanent,
+						Description: []string{"settlement tx receipt does not carry required events"},
+					},
+				},
+				{Step: types.StepWaitingGERInjection, Status: types.StepStatusPending},
+				{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+				{Step: types.StepClaimed, Status: types.StepStatusPending},
+			}, t1)
+
+			advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStep, t2)
+
+			sp := advanced.AllSteps()[0]
+			require.Equal(t, types.StepStatusError, sp.Status)
+			require.Equal(t, types.StepErrorPermanent, sp.Error.ErrorType, "the terminal ErrorType is preserved")
+			require.Equal(t, 1, sp.Error.RetryCount, "the occurrence is still counted")
+			require.Equal(t, []string{
+				"settlement tx receipt does not carry required events", errFakeUpdateStep.Error(),
+			}, sp.Error.Description, "the occurrence is still recorded onto the existing history")
+		},
+	)
 }
 
 // TestCertificateResolverSkipsWaypoints pins that a certificate observed already Settled, with

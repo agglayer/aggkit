@@ -111,11 +111,15 @@ func currentStepIndex(steps []BridgeStepPath) int {
 // StepStatusError — the step-level counterpart of the tx-level error handling in
 // ResolveBridgeTx. A resolver marks stepErr as unrecoverable the same way a BridgeEventSource
 // does (see Permanent/IsPermanent): IsPermanent(stepErr) makes the step StepErrorPermanent with
-// just this failure, no point accumulating a retry history nothing will retry. Any other stepErr
-// is StepErrorTransient, accumulating onto the step's retry count and description instead of
-// discarding the history of a transient source failure — description is capped to its most
-// recent maxErrorDescriptions entries (see appendErrorDescription), retry count is not. Either
-// way complete is meaningless here
+// just this failure, no point accumulating a retry history nothing will retry. Otherwise, if the
+// step was already terminally failed going into this call (isTerminalStepError — nothing stops
+// ResolveSteps from calling a failed step's resolver again, since currentStepIndex only checks
+// Done, not Error), that terminal ErrorType is kept as-is and only its history extended: a plain
+// stepErr from a later poll must never resurrect a terminal failure as merely StepErrorTransient.
+// Any other stepErr is StepErrorTransient, accumulating onto the step's retry count and
+// description instead of discarding the history of a transient source failure — description is
+// capped to its most recent maxErrorDescriptions entries (see appendErrorDescription), retry
+// count is not. Either way complete is meaningless here
 // (a step cannot both fail and complete) and idx+1 is left untouched. With stepErr nil, any
 // previous Error is cleared instead: a successful fact check, even an inconclusive one, clears a
 // previous transient failure, evidence the retry is working, not just that a milestone was met.
@@ -142,24 +146,42 @@ func UpdateStep(
 	current.SetResult(result)
 	switch {
 	case stepErr != nil:
+		// captured before current.Status/Error are touched below: whether this step was
+		// already terminally failed (nothing will resolve it further — see isTerminalStepError)
+		// going into this call
+		wasTerminal := isTerminalStepError(current)
 		current.Status = types.StepStatusError
-		if IsPermanent(stepErr) {
+		switch {
+		case IsPermanent(stepErr):
 			// unrecoverable: no retry history to accumulate, nothing will retry this step
 			current.Error = &types.ErrorStep{
 				ErrorType:   types.StepErrorPermanent,
 				Description: []string{stepErr.Error()},
 			}
-			break
-		}
-		retryCount, description := 1, []string{stepErr.Error()}
-		if current.Error != nil {
-			retryCount = current.Error.RetryCount + 1
-			description = appendErrorDescription(current.Error.Description, stepErr.Error())
-		}
-		current.Error = &types.ErrorStep{
-			ErrorType:   types.StepErrorTransient,
-			RetryCount:  retryCount,
-			Description: description,
+		case wasTerminal:
+			// nothing stops ResolveSteps from calling this step's resolver again once it has
+			// already failed terminally (currentStepIndex only checks Done, not Error) — a
+			// resolver call that then happens to return a plain, non-Permanent-wrapped error
+			// (e.g. a transient hiccup while re-checking an already-doomed fact) must not
+			// resurrect a terminal failure as merely StepErrorTransient: that would misreport
+			// TrackingStatus/ClaimStatus back to Running/Pending for a step that will never
+			// complete. Keep the existing terminal ErrorType, only extend its history
+			current.Error = &types.ErrorStep{
+				ErrorType:   current.Error.ErrorType,
+				RetryCount:  current.Error.RetryCount + 1,
+				Description: appendErrorDescription(current.Error.Description, stepErr.Error()),
+			}
+		default:
+			retryCount, description := 1, []string{stepErr.Error()}
+			if current.Error != nil {
+				retryCount = current.Error.RetryCount + 1
+				description = appendErrorDescription(current.Error.Description, stepErr.Error())
+			}
+			current.Error = &types.ErrorStep{
+				ErrorType:   types.StepErrorTransient,
+				RetryCount:  retryCount,
+				Description: description,
+			}
 		}
 	case complete:
 		current.Error = nil
