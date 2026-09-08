@@ -161,3 +161,33 @@ same environment precondition `TestAutoClaimL2ToL1AllowAll` and `TestAutoClaimL2
 `.github/workflows/test-go-e2e.yml` runs this test in its own `anvil-2chains` / `bridge-loop` matrix group, so it
 gets an isolated compose stack: it restarts `aggkit-002` to enable Auto Claim, exactly the kind of state mutation
 the `autoclaim` group is separated for.
+
+## Post-test bridge health-check
+
+After every Go e2e suite run that passed, `TestMain` moves value once around a **closed bridge ring** as a
+network-health probe, and `log.Fatalf`s if the value does not come home — deliberately leaving the env standing so
+the failure can be debugged against the live network. Set `E2E_SKIP_POSTTEST_BRIDGE_CHECK=true` to opt out (the
+`RUN_FORCE_GER_UPDATE_E2E=true` job does, since GER-manipulating tests legitimately leave this signal unhealthy).
+
+The check is driven through `tools/bridge_loop_tester`'s library API, so the tool the repo ships is the probe the
+repo uses. The ring is derived from the loaded env's topology:
+
+| Env shape | Ring | Directions covered |
+| --- | --- | --- |
+| `env.L2B == nil` | `0 -> 1 -> 0` | L1->L2, L2->L1 |
+| `env.L2B != nil` | `0 -> 1 -> 2 -> 0` | L1->L2, L2->L2, L2->L1 |
+
+Networks, chain IDs, RPC URLs, bridge addresses and signing keys all come off the loaded env; nothing is
+hardcoded. The loop is deliberately **ETH-only and one cycle**, with one hop attempt: an ERC20 loop would need a
+token deploy and a mint on every suite run, and a retry would double the worst case of something that runs after
+every suite. `TestBridgeLoopFullCycle` (above) is where the ERC20 ring, the `auto` claim mode and the full
+assertion surface live.
+
+Every hop uses `Claim = "manual"`, i.e. the tool submits every claim itself. Whether an autoclaim service is
+running on a given aggkit node here depends on which tests just ran (`autoclaim_test.go` enables autoclaim and
+restores the node's config on cleanup), so an `auto` hop would fail whenever the suite left autoclaim off — a
+property of the preceding test, not of the network's health.
+
+Envs that run no `aggkit-proxy` (`op-pp`) fall back to the hand-rolled parallel `BridgeL1ToL2` / `BridgeL2ToL1`
+check: the tool observes everything through the proxy's `/bridge/v1` + `/tracker/v1` surface, and the
+`/tracker/v1` half exists only in the `aggkit-proxy` binary.
