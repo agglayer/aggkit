@@ -121,7 +121,7 @@ func fetchNewBridgesFrom(
 			return nil, err
 		}
 		for _, b := range res.Bridges {
-			if _, ok := known[b.GlobalIndex.String()]; ok {
+			if _, ok := known[string(b.GlobalIndex)]; ok {
 				return out, nil
 			}
 			out = append(out, &domain.ScannedBridge{Bridge: b, NetworkID: networkID})
@@ -152,7 +152,7 @@ func (s *ActivitySource) ClaimInfo(
 
 	res, err := svc.GetClaims(ctx, client.GetClaimsParams{
 		NetworkID:   bridge.Bridge.DestinationNetwork,
-		GlobalIndex: bridge.Bridge.GlobalIndex,
+		GlobalIndex: bridge.Bridge.GlobalIndex.ToBigInt(),
 	})
 	if isNotFound(err) {
 		return nil, nil

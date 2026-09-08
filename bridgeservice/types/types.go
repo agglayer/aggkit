@@ -110,7 +110,7 @@ type BridgeResponse struct {
 	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
 
 	// Global index of the bridge event (consisted of mainnet flag, rollup id and deposit count)
-	GlobalIndex *big.Int `json:"global_index" example:"4294967296" swaggertype:"string"`
+	GlobalIndex BigIntString `json:"global_index" example:"4294967296"`
 
 	// Timestamp of the block containing the bridge event
 	BlockTimestamp uint64 `json:"block_timestamp" example:"1684500000"`

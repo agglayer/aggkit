@@ -167,7 +167,7 @@ func claimL1ToL2(ctx context.Context, env *envs.Env, l2Opts *bind.TransactOpts, 
 
 	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
 		l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
-		result.Bridge.GlobalIndex, mainnetExitRoot, rollupExitRoot,
+		result.Bridge.GlobalIndex.ToBigInt(), mainnetExitRoot, rollupExitRoot,
 		result.Bridge.OriginNetwork, originTokenAddress, result.Bridge.DestinationNetwork,
 		result.DestinationAddr, result.BridgeAmount, metadata,
 	)
