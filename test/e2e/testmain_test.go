@@ -274,9 +274,11 @@ func postTestBridgeCheckViaTool(ctx context.Context, env *envs.Env) error {
 // The ring is deliberately two hops on *every* env, including the two-L2 envs whose topology could
 // express `0 -> 1 -> 2 -> 0`. This check runs after every passing e2e suite, and the third hop is
 // not free: measured on anvil-2chains, the three-hop ring cost 59.6s and 67.6s on two runs against
-// 17.0s for the hand-rolled L1<->L2 pair it replaced. Two hops give exactly the directional
-// coverage that hand-rolled check had (L1->L2 and L2->L1) at roughly a third of the extra cost,
-// which is the trade the repo owner asked for. L2->L2 has not been dropped from the repo's
+// 17.0s for the hand-rolled L1<->L2 pair it replaced, and the two-hop ring costs 36.1s and 44.1s on
+// two runs. Two hops give exactly the directional coverage that hand-rolled check had (L1->L2 and
+// L2->L1) at roughly half the extra cost, which is the trade the repo owner asked for. What remains
+// of the gap to 17.0s is that a ring is sequential where the hand-rolled pair ran its two flows in
+// parallel -- a property of being a ring, not overhead. L2->L2 has not been dropped from the repo's
 // coverage: TestBridgeLoopFullCycle walks the full `0 -> 1 -> 2 -> 0` ring, with both an ETH and an
 // ERC20 loop, and it is the test to extend if the ring itself needs more coverage.
 //
