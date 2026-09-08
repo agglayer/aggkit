@@ -48,7 +48,14 @@ BridgeAddr = "0x0000000000000000000000000000000000000B01"
 MinNativeReserve = "1000000000000000000" # 1 ETH kept in reserve for gas, wei-scale decimal string
 # GasLimitOffset: extra gas UNITS (a plain integer, not a wei amount) added to every
 # eth_estimateGas result on this network, as a safety margin. 0 disables the margin.
-GasLimitOffset = 0
+#
+# Do not leave this at 0 on a network that will see concurrent bridges. Every bridgeAsset the
+# tool sends also updates the global exit root (forceUpdateGlobalExitRoot = true), and when two
+# bridges land in the same block the second one costs materially more than its own estimate
+# predicted - the first already warmed the storage the estimate was priced against - so it
+# reverts OutOfGas inside updateExitRoot. Observed on the anvil-2chains e2e env with two loops
+# plus background activity on one L1. 300000 gas of margin is enough there.
+GasLimitOffset = 300000
 
 [Networks.Signer]
 Method = "local"
@@ -61,7 +68,7 @@ Name = "L2A"
 RPCURL = "http://127.0.0.1:14545"
 BridgeAddr = "0x0000000000000000000000000000000000000B02"
 MinNativeReserve = "1000000000000000000"
-GasLimitOffset = 0
+GasLimitOffset = 300000
 
 [Networks.Signer]
 Method = "local"
@@ -74,7 +81,7 @@ Name = "L2B"
 RPCURL = "http://127.0.0.1:15545"
 BridgeAddr = "0x0000000000000000000000000000000000000B03"
 MinNativeReserve = "1000000000000000000"
-GasLimitOffset = 0
+GasLimitOffset = 300000
 
 [Networks.Signer]
 Method = "local"

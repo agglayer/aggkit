@@ -150,7 +150,7 @@ amounts.
 | `BridgeAddr` | address | **yes**, non-zero | — | `PolygonZkEVMBridgeV2` contract address on this network. |
 | `ChainID` | uint64 | no | `0` | `0` means resolve live via `eth_chainId` at startup rather than trust a possibly-stale configured value. If set, it is cross-checked against the live value. |
 | `MinNativeReserve` | `WeiAmount` (wei) | no | `0` | Floor native balance the signer must keep; the tool refuses to spend below it. See [Gas drain](#gas-drain-funding-and-minnativereserve). |
-| `GasLimitOffset` | uint64 (gas units, **not wei**) | no | `0` | Added to every `eth_estimateGas` result before submitting, as a safety margin against a node whose estimate races the state the transaction will actually execute against. |
+| `GasLimitOffset` | uint64 (gas units, **not wei**) | no | `0` | Added to every `eth_estimateGas` result before submitting, as a safety margin against a node whose estimate races the state the transaction will actually execute against. **Set it** (300000 is a good starting point) on any network that will see concurrent bridges: `bridgeAsset` is sent with `forceUpdateGlobalExitRoot = true`, so two bridges in the same block make the second one cost more than its own estimate predicted and revert `OutOfGas` inside `updateExitRoot`. |
 | `[Networks.Signer]` | `signertypes.SignerConfig` | **yes** (`Method` non-empty) | — | Local keystore, AWS KMS, or GCP KMS — see `github.com/agglayer/go_signer/signer/types`. |
 
 ### `[[Loops]]`
