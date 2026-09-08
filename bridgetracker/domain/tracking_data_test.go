@@ -76,6 +76,59 @@ func TestTrackingStatusDerivation(t *testing.T) {
 			},
 			expected: types.TrackingStatusError,
 		},
+		{
+			name:     "steps rule once present: step in transient error -> Running (still retrying)",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{
+					Step:   types.StepWaitingClaim,
+					Status: types.StepStatusError,
+					Error:  &types.ErrorStep{ErrorType: types.StepErrorTransient},
+				},
+			},
+			expected: types.TrackingStatusRunning,
+		},
+		{
+			name:     "steps rule once present: step in exhausted error -> Error (gave up retrying)",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{
+					Step:   types.StepWaitingClaim,
+					Status: types.StepStatusError,
+					Error:  &types.ErrorStep{ErrorType: types.StepErrorExhausted},
+				},
+			},
+			expected: types.TrackingStatusError,
+		},
+		{
+			name:     "steps rule once present: step in permanent error -> Error",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{
+					Step:   types.StepWaitingClaim,
+					Status: types.StepStatusError,
+					Error:  &types.ErrorStep{ErrorType: types.StepErrorPermanent},
+				},
+			},
+			expected: types.TrackingStatusError,
+		},
+		{
+			name:     "an earlier step's transient error does not hide a later terminal one -> Error",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{
+					Step:   types.StepWaitingGERUpdate,
+					Status: types.StepStatusError,
+					Error:  &types.ErrorStep{ErrorType: types.StepErrorTransient},
+				},
+				{
+					Step:   types.StepWaitingClaim,
+					Status: types.StepStatusError,
+					Error:  &types.ErrorStep{ErrorType: types.StepErrorPermanent},
+				},
+			},
+			expected: types.TrackingStatusError,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -169,6 +222,42 @@ func TestClaimStatusDerivation(t *testing.T) {
 			bridgeTx: TrackingBridgeTx{Info: info},
 			allSteps: []BridgeStepPath{
 				{Step: types.StepWaitingClaim, Status: types.StepStatusError},
+			},
+			expected: types.TrackerClaimStatusError,
+		},
+		{
+			name:     "transient error on WaitingClaim -> ReadyToClaim (still retrying)",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{
+					Step:   types.StepWaitingClaim,
+					Status: types.StepStatusError,
+					Error:  &types.ErrorStep{ErrorType: types.StepErrorTransient},
+				},
+			},
+			expected: types.TrackerClaimStatusReadyToClaim,
+		},
+		{
+			name:     "transient error on an earlier step -> Pending (still retrying)",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{
+					Step:   types.StepWaitingLERUpdate,
+					Status: types.StepStatusError,
+					Error:  &types.ErrorStep{ErrorType: types.StepErrorTransient},
+				},
+			},
+			expected: types.TrackerClaimStatusPending,
+		},
+		{
+			name:     "exhausted error on WaitingClaim -> Error (gave up retrying)",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{
+					Step:   types.StepWaitingClaim,
+					Status: types.StepStatusError,
+					Error:  &types.ErrorStep{ErrorType: types.StepErrorExhausted},
+				},
 			},
 			expected: types.TrackerClaimStatusError,
 		},

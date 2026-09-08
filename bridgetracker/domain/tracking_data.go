@@ -79,20 +79,22 @@ func (t *TrackingData) AllSteps() []BridgeStepPath {
 }
 
 // StepIndex returns the index into AllSteps of the step that explains TrackingStatus: the
-// first step in error if any step failed, the step currently in progress if the bridge is
-// still running, or the last step (Claimed, always the tail of every path) once it is
-// finished. nil while AllSteps is nil
+// first step in a terminal error (permanent, or transient turned exhausted) if any step failed
+// that way, the step currently in progress — a step whose error is still transient counts as
+// in progress here too, mirroring TrackingBridgeTx.IsInTerminalError (see
+// isTerminalStepError) — if the bridge is still running, or the last step (Claimed, always the
+// tail of every path) once it is finished. nil while AllSteps is nil
 func (t *TrackingData) StepIndex() *int {
 	if t == nil || t.allSteps == nil {
 		return nil
 	}
 	for i, step := range t.allSteps {
-		if step.Status == types.StepStatusError {
+		if isTerminalStepError(step) {
 			return &i
 		}
 	}
 	for i, step := range t.allSteps {
-		if step.Status == types.StepStatusInProgress {
+		if step.Status == types.StepStatusInProgress || isTransientStepError(step) {
 			return &i
 		}
 	}
@@ -100,18 +102,37 @@ func (t *TrackingData) StepIndex() *int {
 	return &lastIdx
 }
 
+// isTransientStepError reports whether step is StepStatusError with a still-retryable cause
+// (types.StepErrorTransient) — the step-level counterpart of a transient tx-level Error, which
+// TrackingStatus/ClaimStatus already treat as not-yet-failed (see
+// TrackingBridgeTx.IsInTerminalError). A step in error whose Error is nil is not transient: with
+// no ErrorType to read, it cannot be told apart from a permanent one, so it stays an error
+func isTransientStepError(step BridgeStepPath) bool {
+	return step.Status == types.StepStatusError &&
+		step.Error != nil && step.Error.ErrorType == types.StepErrorTransient
+}
+
+// isTerminalStepError reports whether step is in error for a reason retrying will not fix:
+// permanent, or transient retries exhausted. The mirror image of isTransientStepError
+func isTerminalStepError(step BridgeStepPath) bool {
+	return step.Status == types.StepStatusError && !isTransientStepError(step)
+}
+
 // TrackingStatus derives the bridge's lifecycle status from the snapshot, nothing is stored:
 // once AllSteps is resolved it reflects the step that explains it (see StepIndex); until
 // then, the tx-level facts say it all — a terminal Error (the tracker gave up resolving the
 // tx: exhausted or permanent) reads as Error, a resolved tx (IsDone) as Running, and
-// anything else (including a transient failure still being retried) as Registered
+// anything else (including a transient failure still being retried) as Registered. A step in
+// StepStatusError follows the same rule as the tx-level one: only a terminal cause
+// (permanent, or exhausted) reads as Error, a still-retryable transient one reads as Running,
+// same as an in-progress step (see isTransientStepError)
 func (t *TrackingData) TrackingStatus() types.TrackingStatus {
 	if t == nil {
 		return types.TrackingStatusError
 	}
 	stepIndex := t.StepIndex()
 	if stepIndex != nil {
-		return convertStepStatusToTrackingStatus(t.allSteps[*stepIndex].Status)
+		return convertStepStatusToTrackingStatus(t.allSteps[*stepIndex])
 	}
 	if t.trackingBridgeTx.IsInTerminalError() {
 		return types.TrackingStatusError
@@ -177,8 +198,12 @@ func (t *TrackingData) Failed() bool {
 	return t.TrackingStatus() == types.TrackingStatusError && t.Info() == nil
 }
 
-func convertStepStatusToTrackingStatus(stepStatus types.StepStatus) types.TrackingStatus {
-	switch stepStatus {
+// convertStepStatusToTrackingStatus derives TrackingStatus from a single step — the one
+// StepIndex already picked out as current. A transient step error reads as Running, same as
+// an in-progress step (see isTransientStepError); only a terminal one (permanent, or
+// exhausted) reads as Error
+func convertStepStatusToTrackingStatus(step BridgeStepPath) types.TrackingStatus {
+	switch step.Status {
 	case types.StepStatusPending:
 		return types.TrackingStatusRunning
 	case types.StepStatusInProgress:
@@ -186,6 +211,9 @@ func convertStepStatusToTrackingStatus(stepStatus types.StepStatus) types.Tracki
 	case types.StepStatusDone:
 		return types.TrackingStatusFinished
 	case types.StepStatusError:
+		if isTransientStepError(step) {
+			return types.TrackingStatusRunning
+		}
 		return types.TrackingStatusError
 	default:
 		return types.TrackingStatusError
