@@ -3,6 +3,7 @@ package bridgeservicefinder
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -33,6 +34,13 @@ const (
 var (
 	// ErrURLNotFound is returned by GetURL when no bridge service URL is cached for the network.
 	ErrURLNotFound = errors.New("bridge service url not found for network")
+	// ErrNetworkDisabled is returned by GetURL when networkID is listed in Config.IgnoreNetworkIDs.
+	// An ignored network is excluded from resolution entirely: GetURL never returns cached
+	// information for it, even when a config override (BridgeURLs/RPCURLs) is set for that
+	// networkID — the ignore list now takes precedence over a static override, unlike a plain
+	// unresolved network. It wraps ErrURLNotFound so existing callers that classify "not found" as
+	// e.g. an HTTP 404 keep doing so for disabled networks too.
+	ErrNetworkDisabled = fmt.Errorf("%w: network is disabled (listed in IgnoreNetworkIDs)", ErrURLNotFound)
 	// ErrNoSourceAvailable is returned by the resolver when none of the three sources yields a URL.
 	ErrNoSourceAvailable = errors.New("no bridge service url source available for network")
 	// ErrSourceNotAvailable is returned by a RollupContractReader method when the underlying contract
@@ -65,13 +73,15 @@ type Finder interface {
 	// service is unreachable at startup.
 	Start(ctx context.Context) error
 	// GetURL returns the currently cached URLs (bridge service + JSON-RPC) for the given networkID, or
-	// ErrURLNotFound if nothing is cached. networkID follows the mapping documented in doc.go
-	// (networkID == rollupID; network 0 is L1 and is only served if provided via Config.BridgeURLs).
+	// ErrURLNotFound if nothing is cached, or ErrNetworkDisabled if networkID is listed in
+	// Config.IgnoreNetworkIDs (never any cached information for it, even a config override).
+	// networkID follows the mapping documented in doc.go (networkID == rollupID; network 0 is L1 and
+	// is only served if provided via Config.BridgeURLs).
 	GetURL(networkID uint32) (NetworkURLs, error)
 	// NetworkIDs returns the networkIDs of every network currently resolved — i.e. every network
-	// GetURL would presently succeed for. Used by callers that need to enumerate every configured
-	// bridge service rather than query one network at a time (e.g. the bridge tracker's activity
-	// scanner). Order is unspecified.
+	// GetURL would presently succeed for. A networkID listed in Config.IgnoreNetworkIDs is never
+	// included. Used by callers that need to enumerate every configured bridge service rather than
+	// query one network at a time (e.g. the bridge tracker's activity scanner). Order is unspecified.
 	NetworkIDs() []uint32
 	// BridgeAddress returns the bridge contract address for networkID, in priority order:
 	// Config.BridgeAddress[networkID] if set; else Config.BridgeAddress[0] if set (network 0's

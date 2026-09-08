@@ -226,14 +226,19 @@ func (f *finder) Start(ctx context.Context) error {
 // a cache entry (source-tagged, healthy defaults to false and is set by probeAll). Config-only
 // networks (e.g. network 0 / L1) present in Config.BridgeURLs are also installed, together with
 // their Config.RPCURLs override if any. Networks with no source are skipped. Networks listed in
-// Config.IgnoreNetworkIDs are skipped entirely (no on-chain read at all), though a config override
-// for them, if any, was already installed by the seeding step above.
+// Config.IgnoreNetworkIDs are excluded entirely: no on-chain read is attempted for them and no
+// cache entry is installed even if a config override is present, so GetURL later reports
+// ErrNetworkDisabled for them instead of any information (see GetURL).
 func (f *finder) buildInitialCache(ctx context.Context) error {
 	// Seed config-only entries first (including network 0 / L1) so they are served even if they are
 	// not among the enumerated rollups. Enumeration re-installs an enumerated network's entry with
 	// the same config bridge URL enriched with its JSON-RPC endpoint, so ordering is harmless.
 	for networkID, url := range f.cfg.BridgeURLs {
 		if url == "" {
+			continue
+		}
+
+		if _, ignored := f.ignoreNetworkIDs[networkID]; ignored {
 			continue
 		}
 
@@ -346,12 +351,9 @@ func (f *finder) resolveNetwork(ctx context.Context, rollupID uint32) error {
 }
 
 // probeAll runs a /health probe against every cached entry, updating each entry's healthy flag, and
-// returns the number of entries that were unreachable. A networkID in Config.IgnoreNetworkIDs is
-// skipped even if it has a cache entry (installed by the config-seeding step for a network that is
-// both ignored and config-overridden): probing it would defeat the point of ignoring a known-dead
-// network (the health-check timeout, and a possible ErrServicesUnhealthyOnStart under
-// RequireAllHealthyOnStart, are exactly what IgnoreNetworkIDs is meant to avoid). Its entry is still
-// served by GetURL with healthy defaulting to false (never probed).
+// returns the number of entries that were unreachable. A networkID in Config.IgnoreNetworkIDs never
+// has a cache entry (buildInitialCache excludes it entirely, including from config-seeding), so this
+// ignore check is a defensive no-op kept in case that invariant ever changes.
 func (f *finder) probeAll(ctx context.Context) int {
 	unhealthy := 0
 
@@ -376,10 +378,16 @@ func (f *finder) probeAll(ctx context.Context) int {
 }
 
 // GetURL returns the currently cached URLs (bridge service + JSON-RPC endpoint) for networkID, or
-// ErrURLNotFound if nothing is cached. The JSONRPCURL field may be empty when that source is
-// unavailable (see NetworkURLs). It reads under the cache read lock so it is safe to call
-// concurrently.
+// ErrNetworkDisabled if networkID is listed in Config.IgnoreNetworkIDs, or ErrURLNotFound if
+// nothing is cached. A disabled network is rejected before the cache is even consulted, so no
+// information is ever returned for it — not even a config override (see buildInitialCache). The
+// JSONRPCURL field may be empty when that source is unavailable (see NetworkURLs). It reads under
+// the cache read lock so it is safe to call concurrently.
 func (f *finder) GetURL(networkID uint32) (NetworkURLs, error) {
+	if _, ignored := f.ignoreNetworkIDs[networkID]; ignored {
+		return NetworkURLs{}, fmt.Errorf("%w: network %d", ErrNetworkDisabled, networkID)
+	}
+
 	entry, ok := f.cache.get(networkID)
 	if !ok {
 		return NetworkURLs{}, fmt.Errorf("%w: network %d", ErrURLNotFound, networkID)
@@ -389,9 +397,24 @@ func (f *finder) GetURL(networkID uint32) (NetworkURLs, error) {
 }
 
 // NetworkIDs returns the networkIDs of every network currently resolved (i.e. every network
-// GetURL would presently succeed for).
+// GetURL would presently succeed for). A networkID listed in Config.IgnoreNetworkIDs is filtered
+// out even if it somehow still had a cache entry, since GetURL would reject it anyway.
 func (f *finder) NetworkIDs() []uint32 {
-	return f.cache.networkIDs()
+	ids := f.cache.networkIDs()
+	if len(f.ignoreNetworkIDs) == 0 {
+		return ids
+	}
+
+	filtered := make([]uint32, 0, len(ids))
+	for _, id := range ids {
+		if _, ignored := f.ignoreNetworkIDs[id]; ignored {
+			continue
+		}
+
+		filtered = append(filtered, id)
+	}
+
+	return filtered
 }
 
 // BridgeAddress returns the bridge contract address for networkID, in priority order:
