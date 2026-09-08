@@ -127,10 +127,10 @@ type Global struct {
 	// tool waits for the autoclaim service to claim it before treating it as a policy violation.
 	// Defaults to 2m.
 	ManualGracePeriod cfgtypes.Duration `mapstructure:"ManualGracePeriod"`
-	// HopAttempts is how many times a single hop is retried in place after a transient failure
-	// (gate deadline, RPC/proxy error, balance mismatch - see the orchestrator's failure policy)
-	// before its loop's cycle is abandoned at that hop without halting the loop. Required to be > 0;
-	// defaults to 3.
+	// HopAttempts is how many times a hop is attempted in total (the first try plus any
+	// retries) after a transient failure (gate deadline, RPC/proxy error, balance mismatch - see
+	// the orchestrator's failure policy) before its loop's cycle is abandoned at that hop
+	// without halting the loop. Required to be > 0; defaults to 3.
 	HopAttempts uint64 `mapstructure:"HopAttempts"`
 	// StatePath is an optional file path used to persist/resume hop state across restarts. Empty
 	// (the default) disables persistence.
@@ -236,10 +236,11 @@ const (
 	defaultHopTimeout        = 10 * time.Minute
 	defaultPollInterval      = 5 * time.Second
 	defaultManualGracePeriod = 2 * time.Minute
-	// defaultHopAttempts is how many times a hop is retried in place after a transient failure
-	// before its loop's cycle is abandoned at that hop (see the orchestrator's failure policy).
-	// Also the fallback the orchestrator uses if, exceptionally, it is built with a Config that
-	// bypassed Validate (which otherwise guarantees Global.HopAttempts > 0).
+	// defaultHopAttempts is how many times a hop is attempted in total (the first try plus any
+	// retries) after a transient failure before its loop's cycle is abandoned at that hop (see
+	// the orchestrator's failure policy). Also the fallback the orchestrator uses if,
+	// exceptionally, it is built with a Config that bypassed Validate (which otherwise
+	// guarantees Global.HopAttempts > 0).
 	defaultHopAttempts = 3
 )
 

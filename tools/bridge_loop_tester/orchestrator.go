@@ -64,10 +64,11 @@ type OrchestratorDeps struct {
 	// Metrics is the metrics recorder. Nil means Run registers NewMetrics() when
 	// Global.MetricsAddr is set, and no metrics at all otherwise.
 	Metrics *Metrics
-	// HopAttempts is how many times a hop is attempted before its cycle is abandoned (see the
-	// failure policy on Orchestrator). Zero or negative means cfg.Global.HopAttempts is used
-	// instead (which Validate guarantees is > 0), falling back to defaultHopAttempts only if that
-	// is exceptionally also unset. Set this to override the configured value, e.g. in a test.
+	// HopAttempts is how many times a hop is attempted in total (the first attempt plus any
+	// retries) before its cycle is abandoned (see the failure policy on Orchestrator). Zero or
+	// negative means cfg.Global.HopAttempts is used instead (which Validate guarantees is > 0),
+	// falling back to defaultHopAttempts only if that is exceptionally also unset. Set this to
+	// override the configured value, e.g. in a test.
 	HopAttempts int
 	// ResumeHalted, when true, clears the Halted flag of every loop in the loaded state, so a run
 	// re-drives loops a previous run halted for a non-retryable reason. Off by default: a halted
@@ -230,7 +231,7 @@ func signerFingerprint(cfg signertypes.SignerConfig) string {
 // has exactly one response:
 //
 //   - FailureTransient (a readiness gate that timed out, an RPC or proxy error, a destination
-//     balance that did not reconcile): the *same hop* is retried in place, up to HopAttempts
+//     balance that did not reconcile): the *same hop* is attempted in total up to HopAttempts
 //     times (Global.LoopDelay apart), resuming from the checkpoint the failed attempt reached - so
 //     a hop that already bridged continues at its claim gate instead of bridging again. If it
 //     still fails, the cycle
@@ -689,8 +690,9 @@ func (o *Orchestrator) runCycle(
 	return cycle
 }
 
-// runHopWithRetries runs one hop, retrying a transient failure in place up to HopAttempts times.
-// Each retry resumes from the checkpoint the failed attempt reached, so a hop that already bridged
+// runHopWithRetries runs one hop up to HopAttempts times in total (the first attempt plus any
+// retries) when a transient failure occurs. Each attempt after the first (i.e. each retry)
+// resumes from the checkpoint the failed attempt reached, so a hop that already bridged
 // continues at its claim gate rather than bridging a second time. It returns every attempt's
 // result, and the error of the last one.
 func (o *Orchestrator) runHopWithRetries(

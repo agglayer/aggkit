@@ -25,9 +25,9 @@ PollInterval = "5s"
 # ManualGracePeriod: grace window before a "manual" hop self-claims, and the deadline by which an
 # "auto" hop must have been claimed by the autoclaim service. Defaults to "2m".
 ManualGracePeriod = "2m"
-# HopAttempts: how many times a single hop is retried in place after a transient failure (gate
-# deadline, RPC/proxy error, balance mismatch) before its loop's cycle is abandoned at that hop
-# without halting the loop. Must be > 0. Defaults to 3 if omitted.
+# HopAttempts: how many times a hop is attempted in total (the first attempt plus any retries)
+# after a transient failure (gate deadline, RPC/proxy error, balance mismatch) before its loop's
+# cycle is abandoned at that hop without halting the loop. Must be > 0. Defaults to 3 if omitted.
 HopAttempts = 3
 # StatePath: optional file used to persist/resume hop state across restarts. Empty disables it.
 StatePath = ""
