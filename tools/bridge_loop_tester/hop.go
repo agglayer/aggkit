@@ -60,6 +60,15 @@ const uint256Bits = 256
 // every externally-claimed hop attributed to ClaimActorUnknown.
 const claimRecordLookupBudget = 30 * time.Second
 
+// claimRecordConfirmBudget bounds the same lookup on the one path where it cannot change anything:
+// immediately after the tool's own claimAsset/claimMessage receipt came back successful and
+// isClaimed confirmed it. There ClaimedBy is already ClaimActorTool and ClaimTxHash already comes
+// from that receipt, so the record is a cross-check against the syncer's view and nothing more --
+// spending claimRecordLookupBudget on it would add up to 30s to every manual hop, on a diagnostic
+// that provably has no verdict to influence. It is deliberately short rather than skipped so the
+// cross-check still happens whenever the syncer is already caught up.
+const claimRecordConfirmBudget = 2 * time.Second
+
 // defaultNativeGasSlackWei is DefaultNativeGasSlack's value: 1e15 wei, i.e. 0.001 ETH.
 const defaultNativeGasSlackWei uint64 = 1_000_000_000_000_000
 
@@ -1419,7 +1428,7 @@ func (r *hopRun) reconfirmResumedClaim(ctx context.Context) error {
 	}
 
 	r.result.ClaimObservedAt = r.engine.now()
-	r.lookupClaimRecord(ctx)
+	r.lookupClaimRecord(ctx, claimRecordLookupBudget)
 	r.result.ClaimedBy = r.attributeClaim(r.result.ClaimTxHash != (common.Hash{}))
 	r.adoptRecordedClaimTxHash()
 
@@ -1432,7 +1441,7 @@ func (r *hopRun) reconfirmResumedClaim(ctx context.Context) error {
 // HopStateSubmittingClaim - the state that is checkpointed before the tool submits anything.
 func (r *hopRun) settlePreexistingClaim(ctx context.Context, toolMayHaveClaimed bool) error {
 	r.result.ClaimObservedAt = r.engine.now()
-	r.lookupClaimRecord(ctx)
+	r.lookupClaimRecord(ctx, claimRecordLookupBudget)
 	r.result.ClaimedBy = r.attributeClaim(toolMayHaveClaimed)
 	r.adoptRecordedClaimTxHash()
 
@@ -1478,7 +1487,7 @@ func (r *hopRun) awaitAutoClaim(ctx context.Context) error {
 	}
 
 	r.result.ClaimObservedAt = r.engine.now()
-	r.lookupClaimRecord(ctx)
+	r.lookupClaimRecord(ctx, claimRecordLookupBudget)
 	r.result.ClaimedBy = r.attributeClaim(false)
 
 	return r.enterState(ctx, HopStateClaimed)
@@ -1517,7 +1526,7 @@ func (r *hopRun) awaitGracePeriodThenClaim(ctx context.Context) error {
 	}
 	if claimed {
 		r.result.ClaimObservedAt = r.engine.now()
-		r.lookupClaimRecord(ctx)
+		r.lookupClaimRecord(ctx, claimRecordLookupBudget)
 		r.result.ClaimedBy = r.attributeClaim(false)
 
 		return r.claimModeViolation(r.result.ClaimedBy)
@@ -1642,7 +1651,7 @@ func (r *hopRun) submitClaim(ctx context.Context) error {
 	if err := r.enterState(ctx, HopStateClaimed); err != nil {
 		return err
 	}
-	r.lookupClaimRecord(ctx)
+	r.lookupClaimRecord(ctx, claimRecordConfirmBudget)
 
 	return nil
 }
@@ -1668,7 +1677,7 @@ func (r *hopRun) reconcileFailedClaim(ctx context.Context, submitErr error) erro
 	}
 
 	r.result.ClaimObservedAt = r.engine.now()
-	r.lookupClaimRecord(ctx)
+	r.lookupClaimRecord(ctx, claimRecordLookupBudget)
 	r.result.ClaimedBy = r.attributeClaim(false)
 	r.engine.logger.Warnf("bridge_loop_tester: %s: the claim submission lost a race and reverted with "+
 		"AlreadyClaimed; the deposit is claimed by %s", r.hopLabel(), r.result.ClaimedBy)
@@ -1712,8 +1721,7 @@ func (r *hopRun) claimRequest() (ClaimRequest, error) {
 // submitted it, in which transaction). Best-effort and tightly bounded: the record is a diagnostic
 // that the on-chain isClaimed read has already made unnecessary for correctness, and the claim
 // syncer routinely trails it by a few seconds.
-func (r *hopRun) lookupClaimRecord(ctx context.Context) {
-	budget := claimRecordLookupBudget
+func (r *hopRun) lookupClaimRecord(ctx context.Context, budget time.Duration) {
 	if remaining := r.deadline.Sub(r.engine.now()); remaining <= 0 {
 		return
 	} else if remaining < budget {

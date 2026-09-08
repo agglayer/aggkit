@@ -1767,3 +1767,39 @@ func TestRunHopContextCancellation(t *testing.T) {
 	require.False(t, result.ClaimModeViolated)
 	require.Equal(t, bridgelooptester.HopOutcomeFailed, result.Outcome)
 }
+
+// TestRunHopManualClaimRecordConfirmBudgetIsShort pins the budget the claim-record cross-check gets
+// on the one path where it has nothing left to decide: right after the tool's own claim receipt came
+// back successful and isClaimed confirmed it. ClaimedBy is already ClaimActorTool and ClaimTxHash
+// already comes from that receipt, so waiting out a trailing claim syncer there would add tens of
+// seconds to every manual hop for a diagnostic that cannot change the hop's verdict. The lookup must
+// still happen (so the cross-check lands whenever the syncer is caught up) but must stay far below
+// the attribution path's budget, which the hop's own 20s test budget still leaves room for.
+func TestRunHopManualClaimRecordConfirmBudgetIsShort(t *testing.T) {
+	t.Parallel()
+
+	h := newHopHarness(t, hopDestinationNetwork)
+	h.expectBridge()
+	h.expectGates()
+	h.expectIsClaimed()
+	h.expectToolClaim()
+
+	var deadlines []time.Duration
+	h.proxy.EXPECT().WaitClaimed(mock.Anything, h.destination, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(
+			_ context.Context, _ uint32, _ *big.Int, _, deadline time.Duration,
+		) (*bridgeservicetypes.ClaimResponse, error) {
+			deadlines = append(deadlines, deadline)
+
+			return nil, bridgeserviceclient.ErrNotFound
+		}).Maybe()
+
+	result, err := h.engine().RunHop(context.Background(), h.request(bridgelooptester.ClaimManual))
+	require.NoError(t, err)
+	require.Equal(t, bridgelooptester.ClaimActorTool, result.ClaimedBy)
+
+	require.Len(t, deadlines, 1, "a manual hop the tool claims itself looks the claim record up exactly once")
+	require.Positive(t, deadlines[0], "the cross-check must still be attempted")
+	require.Less(t, deadlines[0], 5*time.Second,
+		"the confirmatory lookup must not wait out the claim syncer: it cannot change the verdict")
+}
