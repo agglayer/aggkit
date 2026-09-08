@@ -79,6 +79,13 @@ jobs:
           - env: anvil-2chains
             group: bridge
             run: "^(TestJustBridge|TestBridgeL2ToL2|TestBridgeTrackerL1ToL2)$"
+          # The bridge_loop_tester full-cycle test drives its own tool-built ring
+          # 0 -> 1 -> 2 -> 0 and enables Auto Claim on the network-2 node for its single "auto"
+          # hop, so it restarts aggkit-002 and needs its own stack for the same reason the
+          # autoclaim group does.
+          - env: anvil-2chains
+            group: bridge-loop
+            run: "^TestBridgeLoopFullCycle$"
           - env: anvil-2chains
             group: backward-forward-let
             run: "^(TestBackwardForwardLET_NoDivergence|TestBackwardForwardLET_Case1|TestBackwardForwardLET_Case2|TestBackwardForwardLET_Case3|TestBackwardForwardLET_Case4|TestBackwardForwardLET_AggsenderAPIFallback)$"

@@ -114,3 +114,50 @@ It involves two L2 networks (and single L1 network), that are attached to the sa
 ### Test L2 to L2 bridge
 
 It bridges native tokens from L1 to both L2 networks and claims them. Afterwards, it bridges from L2 (PP2) to L2 (PP1) network and claims it on the destination network.
+
+### Bridge loop tester full cycle
+
+Drives [`tools/bridge_loop_tester`](../tools/bridge_loop_tester/README.md)'s library API through one full circular
+cycle of the ring `0 -> 1 -> 2 -> 0` on the `anvil-2chains` env, so a single cycle covers all three bridge
+directions (L1->L2, L2->L2, L2->L1). Implemented in `test/e2e/bridgeloop_test.go`:
+
+```bash
+go test -v -run TestBridgeLoopFullCycle -timeout 60m ./test/e2e
+```
+
+The test builds the tool's `Config` programmatically from the loaded env (network IDs, RPC URLs, bridge addresses
+and pre-funded keys all come from `envs.LoadEnv`/`summary.json`, nothing is hardcoded) and runs two loops
+concurrently over the same ring: one moving ETH and one moving an ERC20 the tool deploys and mints itself on L1.
+Both loops share the orchestrator's own client pool — one `NetworkClient` per (network, signing key) pair — so the
+run also exercises the per-instance nonce serialization concurrent loops on one account depend on.
+
+The ring mixes both claim modes, and the topology is what makes that meaningful:
+
+| Hop | Direction | `Claim` | Who claims |
+| --- | --- | --- | --- |
+| `0 -> 1` | L1 -> L2A | `manual` | the tool, after asserting nothing else claimed it for the whole grace period |
+| `1 -> 2` | L2A -> L2B | `auto` | the network-2 Auto Claim service, enabled for this test only |
+| `2 -> 0` | L2B -> L1 | `manual` | the tool, again after the negative assertion |
+
+Auto Claim is enabled on the `aggkit-002` node alone (L2ToLx detector plus a single network-2 claimer, using the
+same harness machinery as `TestAutoClaimL2ToL2AllowAll`), so no claimer exists for the two manual hops'
+destinations. The assertions are made on the `Report` the tool returns — per-hop readiness gates, the injected leaf
+index actually used for the claim proof, who claimed each hop, exact ERC20 and tolerant native balance deltas,
+per-phase timings, ring closure (the ERC20 balance on L1 is back to exactly its pre-cycle value, and the L1 native
+balance is back to its pre-cycle value minus gas), and the persisted state file (one completed cycle per loop, the
+resume cursor back at hop 0, nothing left in flight). Finally it feeds the last hop's own `HopCheckpoint` back into
+a hop engine as `HopRequest.Resume`, so the checkpoint the run produced is proved to round-trip through the resume
+path; the resume states that re-drive real on-chain work are covered by the hop engine's unit tests instead, since
+re-driving them against a closed ring would move value the ring no longer has.
+
+Because the two-chain Anvil env runs no batcher or proposer, neither L2's finalized head advances on its own and an
+aggsender only certifies up to `min(lastBridgeSyncBlock, lastClaimSyncBlock)`. A hop whose source is an L2
+therefore needs an unrelated claim to land on that L2 *after* its bridge, or the bridge's local exit root never
+settles to L1. The test drives that background L1->L2 bridge-and-claim activity on both L2s with its own keys, the
+same environment precondition `TestAutoClaimL2ToL1AllowAll` and `TestAutoClaimL2ToL2AllowAll` already establish.
+
+#### CI matrix
+
+`.github/workflows/test-go-e2e.yml` runs this test in its own `anvil-2chains` / `bridge-loop` matrix group, so it
+gets an isolated compose stack: it restarts `aggkit-002` to enable Auto Claim, exactly the kind of state mutation
+the `autoclaim` group is separated for.
