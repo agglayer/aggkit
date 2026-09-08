@@ -151,8 +151,8 @@ const (
 	// deposited into it).
 	postTestRingAmount = 100_000_000_000_000_000 // 1e17
 
-	// postTestHopTimeout is the total budget of one hop, chosen so that all hops of the largest
-	// ring (three, on a two-L2 env) fit inside postTestBridgeCheckTimeout with headroom. A hop
+	// postTestHopTimeout is the total budget of one hop, chosen so that both hops of the ring fit
+	// inside postTestBridgeCheckTimeout with a wide margin (the ring is two hops on every env). A hop
 	// that exhausts it fails with the tool's own diagnosis (which readiness gate was not
 	// satisfied) rather than with a bare context deadline, which is the whole point of bounding
 	// the hop rather than only the check.
@@ -190,10 +190,10 @@ const (
 	postTestL1NetworkID uint32 = 0
 )
 
-// postTestBridgeCheck is the suite's post-test network-health probe: it moves value once around a
-// closed bridge ring derived from the loaded env and fails the whole run if the value does not come
-// home. It runs only when the suite itself passed (a failing suite has already reported a problem,
-// and its failure may well be why the network is unhappy).
+// postTestBridgeCheck is the suite's post-test network-health probe: it moves value once around the
+// closed two-hop ring `0 -> 1 -> 0` (L1 -> the env's first L2 -> L1) and fails the whole run if the
+// value does not come home. It runs only when the suite itself passed (a failing suite has already
+// reported a problem, and its failure may well be why the network is unhappy).
 //
 // On envs that run an aggkit-proxy it drives tools/bridge_loop_tester, so the tool the repo ships
 // is the probe the repo uses. On envs without one (EnvOpPP -- the tool observes everything through
@@ -225,7 +225,8 @@ func runPostTestBridgeCheck(env *envs.Env) error {
 		return postTestBridgeCheckLegacy(ctx, env)
 	}
 
-	log.Info("Running one bridge_loop_tester cycle around a closed ring to check network health post-test...")
+	log.Info("Running one bridge_loop_tester cycle around the closed ring 0 -> 1 -> 0 to check " +
+		"network health post-test...")
 
 	return postTestBridgeCheckViaTool(ctx, env)
 }
@@ -266,15 +267,18 @@ func postTestBridgeCheckViaTool(ctx context.Context, env *envs.Env) error {
 }
 
 // postTestBridgeLoopConfig builds the tool's Config for the post-test ring entirely from the loaded
-// env: one Network per network the env has (IDs, chain IDs, RPC URLs and bridge addresses all read
-// off the env, never hardcoded) and one ETH loop walking the closed ring those networks form.
+// env: one Network for L1 and one for the env's first L2 (IDs, chain IDs, RPC URLs and bridge
+// addresses all read off the env, never hardcoded) and one ETH loop walking the closed ring
+// `0 -> 1 -> 0` those two networks form -- L1->L2 then L2->L1.
 //
-// The ring is derived from the env's topology, so the check covers every bridge direction the env
-// can express and still works on a single-L2 env:
-//
-//	env.L2B == nil:  0 -> 1 -> 0       (L1->L2, L2->L1)          -- the two directions the
-//	                                                                hand-rolled check covered
-//	env.L2B != nil:  0 -> 1 -> 2 -> 0  (L1->L2, L2->L2, L2->L1)
+// The ring is deliberately two hops on *every* env, including the two-L2 envs whose topology could
+// express `0 -> 1 -> 2 -> 0`. This check runs after every passing e2e suite, and the third hop is
+// not free: measured on anvil-2chains, the three-hop ring cost 59.6s and 67.6s on two runs against
+// 17.0s for the hand-rolled L1<->L2 pair it replaced. Two hops give exactly the directional
+// coverage that hand-rolled check had (L1->L2 and L2->L1) at roughly a third of the extra cost,
+// which is the trade the repo owner asked for. L2->L2 has not been dropped from the repo's
+// coverage: TestBridgeLoopFullCycle walks the full `0 -> 1 -> 2 -> 0` ring, with both an ETH and an
+// ERC20 loop, and it is the test to extend if the ring itself needs more coverage.
 //
 // Because the ring is closed, the ETH it moves returns to the L1 account it started from and the
 // check leaves the env's balances where it found them, bar gas.
@@ -291,14 +295,6 @@ func postTestBridgeCheckViaTool(ctx context.Context, env *envs.Env) error {
 // autoclaim off -- a property of the preceding test, not of the network's health. Manual claims
 // make the check self-sufficient: it needs no service beyond the bridge itself and the proxy.
 func postTestBridgeLoopConfig(env *envs.Env, keystoreDir string) (*bridgelooptester.Config, error) {
-	l2s := []*envs.L2Config{&env.L2}
-	if env.L2B != nil {
-		l2s = append(l2s, env.L2B)
-	}
-
-	networks := make([]bridgelooptester.Network, 0, len(l2s)+1)
-	hops := make([]bridgelooptester.Hop, 0, len(l2s)+1)
-
 	_, l1Key, err := env.Keys.L1Keys.Checkout()
 	if err != nil {
 		return nil, fmt.Errorf("check out an L1 key for the post-test ring: %w", err)
@@ -307,45 +303,42 @@ func postTestBridgeLoopConfig(env *envs.Env, keystoreDir string) (*bridgelooptes
 	if err != nil {
 		return nil, err
 	}
-	networks = append(networks, bridgelooptester.Network{
-		NetworkID:      postTestL1NetworkID,
-		Name:           "l1",
-		RPCURL:         env.L1.RPCURL,
-		BridgeAddr:     env.L1.Contracts.BridgeAddress,
-		ChainID:        env.L1.ChainID.Uint64(),
-		GasLimitOffset: postTestGasLimitOffset,
-		Signer:         l1Signer,
-	})
 
-	source := postTestL1NetworkID
-	for _, l2 := range l2s {
-		name := fmt.Sprintf("l2-%d", l2.NetworkID)
-		_, l2Key, err := l2.Keys.Checkout()
-		if err != nil {
-			return nil, fmt.Errorf("check out a %s key for the post-test ring: %w", name, err)
-		}
-		l2Signer, err := postTestSignerConfig(keystoreDir, name, l2Key)
-		if err != nil {
-			return nil, err
-		}
-		networks = append(networks, bridgelooptester.Network{
-			NetworkID:      l2.NetworkID,
-			Name:           name,
-			RPCURL:         l2.RPCURL,
-			BridgeAddr:     l2.Contracts.L2BridgeAddress,
-			ChainID:        l2.ChainID.Uint64(),
+	l2Name := fmt.Sprintf("l2-%d", env.L2.NetworkID)
+	_, l2Key, err := env.L2.Keys.Checkout()
+	if err != nil {
+		return nil, fmt.Errorf("check out a %s key for the post-test ring: %w", l2Name, err)
+	}
+	l2Signer, err := postTestSignerConfig(keystoreDir, l2Name, l2Key)
+	if err != nil {
+		return nil, err
+	}
+
+	networks := []bridgelooptester.Network{
+		{
+			NetworkID:      postTestL1NetworkID,
+			Name:           "l1",
+			RPCURL:         env.L1.RPCURL,
+			BridgeAddr:     env.L1.Contracts.BridgeAddress,
+			ChainID:        env.L1.ChainID.Uint64(),
+			GasLimitOffset: postTestGasLimitOffset,
+			Signer:         l1Signer,
+		},
+		{
+			NetworkID:      env.L2.NetworkID,
+			Name:           l2Name,
+			RPCURL:         env.L2.RPCURL,
+			BridgeAddr:     env.L2.Contracts.L2BridgeAddress,
+			ChainID:        env.L2.ChainID.Uint64(),
 			GasLimitOffset: postTestGasLimitOffset,
 			Signer:         l2Signer,
-		})
-		hops = append(hops, bridgelooptester.Hop{
-			Source: source, Destination: l2.NetworkID, Claim: bridgelooptester.ClaimManual,
-		})
-		source = l2.NetworkID
+		},
 	}
-	// Close the ring back onto L1.
-	hops = append(hops, bridgelooptester.Hop{
-		Source: source, Destination: postTestL1NetworkID, Claim: bridgelooptester.ClaimManual,
-	})
+	hops := []bridgelooptester.Hop{
+		{Source: postTestL1NetworkID, Destination: env.L2.NetworkID, Claim: bridgelooptester.ClaimManual},
+		// Close the ring back onto L1.
+		{Source: env.L2.NetworkID, Destination: postTestL1NetworkID, Claim: bridgelooptester.ClaimManual},
+	}
 
 	return &bridgelooptester.Config{
 		Global: bridgelooptester.Global{

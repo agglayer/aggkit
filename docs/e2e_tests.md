@@ -202,10 +202,14 @@ itself never depended on it: it rests on the destination bridge's own `isClaimed
 the claim the tool degrades the attribution to `ClaimActorUnknown` (`claim tx unknown, from none`) rather than
 failing the hop.
 
-What checks that the test puts the env back is `TestMain`'s post-test bridge health-check (below), which runs in the
-same process once the suite passes. That ring declares **every** hop `manual`, including `1 -> 2`, so a leaked Auto
-Claim service on `aggkit-002` makes it report a claim-mode violation and `log.Fatalf`. The full-cycle test would not
-catch that: its only hop into network 2 is the `auto` one, and it enables Auto Claim itself anyway.
+What puts the env back is a `t.Cleanup` that rewrites `aggkit-002`'s configuration and restarts the node, and it
+logs rather than fails if that does not work. It used to be independently checked by `TestMain`'s post-test bridge
+health-check, whose ring then declared **every** hop `manual`, including `1 -> 2`, so a leaked Auto Claim service on
+`aggkit-002` made it report a claim-mode violation and `log.Fatalf`. That ring is now two hops (`0 -> 1 -> 0`, see
+below) and never touches network 2, so **a leaked Auto Claim service on `aggkit-002` is no longer caught by the
+post-test check** — the trade made when the check was shortened. It matters less than it reads: this test runs alone
+in its own matrix group and the stack is torn down after it, so there is nothing downstream in CI for a leak to
+affect.
 
 #### CI matrix
 
@@ -216,18 +220,23 @@ restarted `aggkit-002`, a deposit the tool never claimed, and extra claim traffi
 
 ## Post-test bridge health-check
 
-After every Go e2e suite run that passed, `TestMain` moves value once around a **closed bridge ring** as a
-network-health probe, and `log.Fatalf`s if the value does not come home — deliberately leaving the env standing so
-the failure can be debugged against the live network. Set `E2E_SKIP_POSTTEST_BRIDGE_CHECK=true` to opt out (the
-`RUN_FORCE_GER_UPDATE_E2E=true` job does, since GER-manipulating tests legitimately leave this signal unhealthy).
+After every Go e2e suite run that passed, `TestMain` moves value once around the **closed two-hop ring**
+`0 -> 1 -> 0` (L1 -> the env's first L2 -> L1) as a network-health probe, and `log.Fatalf`s if the value does not
+come home — deliberately leaving the env standing so the failure can be debugged against the live network. Set
+`E2E_SKIP_POSTTEST_BRIDGE_CHECK=true` to opt out (the `RUN_FORCE_GER_UPDATE_E2E=true` job does, since
+GER-manipulating tests legitimately leave this signal unhealthy).
 
 The check is driven through `tools/bridge_loop_tester`'s library API, so the tool the repo ships is the probe the
-repo uses. The ring is derived from the loaded env's topology:
+repo uses. The ring covers L1->L2 and L2->L1, the two directions the hand-rolled `BridgeL1ToL2` / `BridgeL2ToL1`
+pair it replaced covered — and, because the ring is closed, it additionally asserts the value comes home, which
+that pair structurally could not.
 
-| Env shape | Ring | Directions covered |
-| --- | --- | --- |
-| `env.L2B == nil` | `0 -> 1 -> 0` | L1->L2, L2->L1 |
-| `env.L2B != nil` | `0 -> 1 -> 2 -> 0` | L1->L2, L2->L2, L2->L1 |
+The ring is two hops on **every** env, including the two-L2 envs whose topology could express `0 -> 1 -> 2 -> 0`.
+The third hop is not free, and this runs after every passing suite: measured on `anvil-2chains`, the three-hop ring
+cost 59.6s and 67.6s on two runs, the two-hop one 36.1s and 44.1s, against 17.0s for the hand-rolled pair (which was
+cheaper than any ring because it ran its two flows in parallel, which a ring by definition cannot). L2->L2
+is not lost from the repo's coverage — `TestBridgeLoopFullCycle` (above) walks the full `0 -> 1 -> 2 -> 0` ring with
+both an ETH and an ERC20 loop, and it is the test to extend if the ring itself needs more coverage.
 
 Networks, chain IDs, RPC URLs, bridge addresses and signing keys all come off the loaded env; nothing is
 hardcoded. The loop is deliberately **ETH-only and one cycle**, with one hop attempt: an ERC20 loop would need a
