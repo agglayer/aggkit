@@ -42,6 +42,10 @@ BridgeAddr = "0x0000000000000000000000000000000000000B01"
 # ChainID omitted on purpose: the tool resolves it live via eth_chainId at startup instead of
 # trusting a possibly-stale configured value (see DESIGN.md §6/G3).
 MinNativeReserve = "1000000000000000000" # 1 ETH kept in reserve for gas, wei-scale decimal string
+# GasOffset: extra gas UNITS added to every eth_estimateGas result on this network, as a safety
+# margin. Despite the WeiAmount type (a quoted decimal string, chosen to avoid float/int64
+# precision loss), this is NOT a wei amount - it is added directly to the transaction's gas limit.
+# 0 disables the margin.
 GasOffset = "0"
 
 [Networks.Signer]
