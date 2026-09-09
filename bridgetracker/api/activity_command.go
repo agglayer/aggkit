@@ -91,10 +91,12 @@ type ActivityResponse struct {
 // snapshot. ?filterBridges=claimed|pending|readyToClaim|error restricts the result to only
 // bridges with that claim state (default "all"); a claimed bridge excluded by
 // "pending"/"readyToClaim"/"error" never has its claim record fetched, so switching back to
-// "all"/"claimed" later fetches it then. A network whose bridge service could not be scanned
-// never fails the request: it is skipped and reported in the "warnings" field instead, so
-// Bridges is still whatever every other network reported. 200 OK unless: invalid
-// from_address/filterBridges (ErrorData/400), or the scan itself failed (ErrorData/500)
+// "all"/"claimed" later fetches it then. ?flush_cache=true discards whatever is already cached
+// for from_address before scanning, forcing every bridge found for it to be freshly rechecked
+// instead of reusing cached state. A network whose bridge service could not be scanned never
+// fails the request: it is skipped and reported in the "warnings" field instead, so Bridges is
+// still whatever every other network reported. 200 OK unless: invalid from_address/filterBridges
+// (ErrorData/400), or the scan itself failed (ErrorData/500)
 //
 // @Summary Get bridge activity by sender address
 // @Description Scans every bridge service the tracker knows about for bridges sent by
@@ -104,14 +106,16 @@ type ActivityResponse struct {
 // @Description includeTracking=true additionally registers every still-unclaimed bridge with
 // @Description the bridge tracker and includes its current tracking snapshot. filterBridges
 // @Description restricts the result to bridges with only that claim state (claimed / still
-// @Description pending / ready to claim / errored while checking). A network whose bridge
-// @Description service could not be scanned is skipped and reported in the "warnings" field
-// @Description instead of failing the whole request.
+// @Description pending / ready to claim / errored while checking). flush_cache=true discards
+// @Description whatever is already cached for from_address first, forcing a fresh recheck. A
+// @Description network whose bridge service could not be scanned is skipped and reported in the
+// @Description "warnings" field instead of failing the whole request.
 // @Tags bridge-tracker
 // @Produce json
 // @Param from_address path string true "Address that sent the bridges to look up"
 // @Param includeTracking query bool false "Register still-unclaimed bridges with the tracker"
 // @Param filterBridges query string false "Claim filter" Enums(all, claimed, pending, readyToClaim, error) default(all)
+// @Param flush_cache query bool false "Discard cached activity for from_address before answering"
 // @Success 200 {object} ActivityResponse
 // @Failure 400 {object} types.ErrorData "Invalid from_address or filterBridges"
 // @Failure 500 {object} types.ErrorData "Scanning the configured bridge services failed"
@@ -122,7 +126,11 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: "invalid from_address parameter"}
 	}
 	fromAddress := common.HexToAddress(addrStr)
-	includeTracking := c.Query(includeTrackingQueryParam) == "true"
+	includeTracking := c.Query(includeTrackingQueryParam) == queryValueTrue
+
+	if c.Query(flushCacheQueryParam) == queryValueTrue {
+		cmd.querier.FlushActivity(fromAddress)
+	}
 
 	filter, err := types.ParseActivityFilter(c.Query(filterBridgesQueryParam))
 	if err != nil {

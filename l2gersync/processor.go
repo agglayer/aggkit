@@ -252,6 +252,25 @@ func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
 	return e, nil
 }
 
+// GetLastGER retrieves the most recently injected global exit root, i.e. the row with the
+// highest L1 info tree index. Returns db.ErrNotFound if no GER has been injected yet.
+func (p *processor) GetLastGER(ctx context.Context) (GlobalExitRootInfo, error) {
+	e := GlobalExitRootInfo{}
+	err := meddler.QueryRow(p.database, &e, `
+		SELECT l1_info_tree_index, block_num, global_exit_root, block_pos, block_timestamp
+		FROM imported_global_exit_root_v2
+		ORDER BY l1_info_tree_index DESC LIMIT 1;
+	`)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return e, db.ErrNotFound
+		}
+		return e, fmt.Errorf("failed to get last injected GER: %w", err)
+	}
+
+	return e, nil
+}
+
 // UpdateTimestamp backfills the timestamp column of an already-inserted injected GER row,
 // identified by its (block_num, block_pos) primary key. Used when a row predates timestamp
 // persistence (nullable column, see l2gersync0006.sql) — see

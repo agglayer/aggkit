@@ -134,4 +134,11 @@ type ActivityQuerier interface {
 	GetActivity(
 		ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
 	) ([]*ActivityEntry, []ActivityWarning, error)
+
+	// FlushActivity discards whatever is cached for fromAddress, forcing every bridge found for
+	// it to be freshly rechecked (claim state re-verified, tracker re-consulted) on the next
+	// GetActivity call, instead of reusing anything cached so far. Safe to call for an address
+	// with nothing cached (no-op). The activity endpoint's ?flush_cache=true parameter uses it
+	// to force a fresh recheck
+	FlushActivity(fromAddress common.Address)
 }

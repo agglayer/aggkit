@@ -158,6 +158,41 @@ func TestWSInitialStatusWhenKnown(t *testing.T) {
 	require.Equal(t, types.WSTypeStatus, msg.Type)
 }
 
+// TestWSFlushCacheResetsTracking verifies ?flush_cache=true on the WebSocket endpoint discards
+// the tracker's existing entry for the tx before subscribing, so a bridge already resolved to
+// "running" is pushed as freshly "registered" (bridge_status null) again on connect, exactly as
+// if it had never been requested before
+func TestWSFlushCacheResetsTracking(t *testing.T) {
+	tracker, router := newTestTracker(t)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	// register + resolve before connecting
+	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/network/1/tx/"+testTxHash)
+	require.Equal(t, http.StatusOK, resp.Code)
+	tracker.Publish(TrackingID{NetworkID: 1, TxHash: common.HexToHash(testTxHash)}, testBridgeInfo(), testAllSteps(false))
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") +
+		api.TrackerV1Prefix + "/network/1/tx/" + testTxHash + "/ws?flush_cache=true"
+	conn, dialResp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.NoError(t, err)
+	if dialResp != nil && dialResp.Body != nil {
+		dialResp.Body.Close()
+	}
+	t.Cleanup(func() { conn.Close() })
+
+	msg := readEnvelope(t, conn)
+	require.Equal(t, types.WSTypeStatus, msg.Type)
+
+	var tracking struct {
+		TrackingStatus string          `json:"tracking_status"`
+		BridgeStatus   json.RawMessage `json:"bridge_status"`
+	}
+	require.NoError(t, json.Unmarshal(msg.Data, &tracking))
+	require.Equal(t, "registered", tracking.TrackingStatus, "flushed: starts over as freshly registered")
+	require.Equal(t, "null", string(tracking.BridgeStatus))
+}
+
 // TestWSTerminalError pins that giving up trying to resolve a bridge is pushed as a normal
 // "status" message (tracking_status: error, TrackingData.Error set) followed by a normal
 // closure — not a distinct "error" message, which is reserved for invalid request parameters

@@ -49,7 +49,8 @@ type BridgeEventSource interface {
 //     no retries.
 //   - Transient failure (ErrBridgeTxNotFound, or anything else FindBridge returns): the
 //     tx-level Error accumulates a retry, turning Exhausted once Timeout has elapsed since
-//     StartDate (the moment the bridge was first seen unresolved).
+//     StartDate (the moment the bridge was first seen unresolved). Description is capped to its
+//     most recent maxErrorDescriptions entries (see appendErrorDescription), RetryCount is not.
 func ResolveBridgeTx(
 	ctx context.Context, source BridgeEventSource, tracking *TrackingData,
 	unresolvedTimeout time.Duration, now time.Time,
@@ -96,7 +97,7 @@ func ResolveBridgeTx(
 	retryCount, descriptions := 1, []string{description}
 	if tx.Error != nil {
 		retryCount = tx.Error.RetryCount + 1
-		descriptions = append(append([]string{}, tx.Error.Description...), description)
+		descriptions = appendErrorDescription(tx.Error.Description, description)
 	}
 	errorType := types.StepErrorTransient
 	if tx.IsOutdated(now) {

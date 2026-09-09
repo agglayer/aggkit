@@ -10,6 +10,25 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 )
 
+// maxErrorDescriptions caps how many entries an ErrorStep.Description accumulates across
+// retries of the same transient failure — kept low so a step (or the tx-level error in
+// ResolveBridgeTx, which shares this same accumulate-on-retry shape) stuck retrying for a long
+// time does not grow its stored/serialized error without bound. RetryCount itself is unaffected,
+// it keeps counting every retry; only the description history is trimmed, to its most recent
+// entries — the oldest ones are the least useful for diagnosing why it is still failing now
+const maxErrorDescriptions = 10
+
+// appendErrorDescription appends desc to descriptions (copying first, same as the call sites
+// already did, so the previous ErrorStep.Description slice is never mutated), keeping only the
+// most recent maxErrorDescriptions entries
+func appendErrorDescription(descriptions []string, desc string) []string {
+	descriptions = append(append([]string{}, descriptions...), desc)
+	if len(descriptions) > maxErrorDescriptions {
+		descriptions = descriptions[len(descriptions)-maxErrorDescriptions:]
+	}
+	return descriptions
+}
+
 // ErrStepPending is returned by StepResolver.Resolve, or wrapped by a more specific sentinel
 // (see ErrCertificateNotSettled), when the fact check succeeded but the milestone has not
 // happened yet — not a failure, so ResolveSteps neither retries it as one (see UpdateStep's
@@ -43,10 +62,11 @@ type StepResolver interface {
 // domain.ResolveBridgeTx/domain.PendingPath) through as much of its expected path as its
 // current facts allow: it resolves the current step (the first not yet Done) via UpdateStep,
 // and if that completed it, whichever step it lands on next, and so on, stopping at the first
-// milestone still unmet (ErrStepPending) or the first real error. On a real error, every step
-// completed earlier this same call stays Done — only the step whose resolver just failed is
-// marked, via UpdateStep's stepErr, incrementing its retry count instead of discarding the
-// in-tick progress
+// milestone still unmet (ErrStepPending), the first real error, or a step that already failed
+// for a reason retrying cannot fix (currentStepIndex returns -1 for that case too, without
+// calling its resolver again — see isTerminalStepError). On a real error, every step completed
+// earlier this same call stays Done — only the step whose resolver just failed is marked, via
+// UpdateStep's stepErr, incrementing its retry count instead of discarding the in-tick progress
 func ResolveSteps(
 	ctx context.Context,
 	logger aggkitcommon.Logger,
@@ -75,10 +95,18 @@ func ResolveSteps(
 }
 
 // currentStepIndex returns the index of the first step not yet Done — the one that needs
-// resolving next — or -1 once the whole path (through StepClaimed) is Done
+// resolving next — or -1 once the whole path (through StepClaimed) is Done, or once that first
+// not-yet-Done step already failed for a reason retrying cannot fix (isTerminalStepError):
+// steps only ever advance strictly in order (see UpdateStep), so a terminally failed one is, by
+// construction, the last one ever reached — nothing stops ResolveSteps from asking its resolver
+// again forever otherwise, which is exactly how a later plain error could downgrade a permanent
+// failure back to transient before UpdateStep started guarding against it
 func currentStepIndex(steps []BridgeStepPath) int {
 	for i, sp := range steps {
 		if sp.Status != types.StepStatusDone {
+			if isTerminalStepError(sp) {
+				return -1
+			}
 			return i
 		}
 	}
@@ -92,9 +120,15 @@ func currentStepIndex(steps []BridgeStepPath) int {
 // StepStatusError — the step-level counterpart of the tx-level error handling in
 // ResolveBridgeTx. A resolver marks stepErr as unrecoverable the same way a BridgeEventSource
 // does (see Permanent/IsPermanent): IsPermanent(stepErr) makes the step StepErrorPermanent with
-// just this failure, no point accumulating a retry history nothing will retry. Any other stepErr
-// is StepErrorTransient, accumulating onto the step's retry count and description instead of
-// discarding the history of a transient source failure. Either way complete is meaningless here
+// just this failure, no point accumulating a retry history nothing will retry. Otherwise, if the
+// step was already terminally failed going into this call (isTerminalStepError — nothing stops
+// ResolveSteps from calling a failed step's resolver again, since currentStepIndex only checks
+// Done, not Error), that terminal ErrorType is kept as-is and only its history extended: a plain
+// stepErr from a later poll must never resurrect a terminal failure as merely StepErrorTransient.
+// Any other stepErr is StepErrorTransient, accumulating onto the step's retry count and
+// description instead of discarding the history of a transient source failure — description is
+// capped to its most recent maxErrorDescriptions entries (see appendErrorDescription), retry
+// count is not. Either way complete is meaningless here
 // (a step cannot both fail and complete) and idx+1 is left untouched. With stepErr nil, any
 // previous Error is cleared instead: a successful fact check, even an inconclusive one, clears a
 // previous transient failure, evidence the retry is working, not just that a milestone was met.
@@ -121,24 +155,42 @@ func UpdateStep(
 	current.SetResult(result)
 	switch {
 	case stepErr != nil:
+		// captured before current.Status/Error are touched below: whether this step was
+		// already terminally failed (nothing will resolve it further — see isTerminalStepError)
+		// going into this call
+		wasTerminal := isTerminalStepError(current)
 		current.Status = types.StepStatusError
-		if IsPermanent(stepErr) {
+		switch {
+		case IsPermanent(stepErr):
 			// unrecoverable: no retry history to accumulate, nothing will retry this step
 			current.Error = &types.ErrorStep{
 				ErrorType:   types.StepErrorPermanent,
 				Description: []string{stepErr.Error()},
 			}
-			break
-		}
-		retryCount, description := 1, []string{stepErr.Error()}
-		if current.Error != nil {
-			retryCount = current.Error.RetryCount + 1
-			description = append(append([]string{}, current.Error.Description...), stepErr.Error())
-		}
-		current.Error = &types.ErrorStep{
-			ErrorType:   types.StepErrorTransient,
-			RetryCount:  retryCount,
-			Description: description,
+		case wasTerminal:
+			// nothing stops ResolveSteps from calling this step's resolver again once it has
+			// already failed terminally (currentStepIndex only checks Done, not Error) — a
+			// resolver call that then happens to return a plain, non-Permanent-wrapped error
+			// (e.g. a transient hiccup while re-checking an already-doomed fact) must not
+			// resurrect a terminal failure as merely StepErrorTransient: that would misreport
+			// TrackingStatus/ClaimStatus back to Running/Pending for a step that will never
+			// complete. Keep the existing terminal ErrorType, only extend its history
+			current.Error = &types.ErrorStep{
+				ErrorType:   current.Error.ErrorType,
+				RetryCount:  current.Error.RetryCount + 1,
+				Description: appendErrorDescription(current.Error.Description, stepErr.Error()),
+			}
+		default:
+			retryCount, description := 1, []string{stepErr.Error()}
+			if current.Error != nil {
+				retryCount = current.Error.RetryCount + 1
+				description = appendErrorDescription(current.Error.Description, stepErr.Error())
+			}
+			current.Error = &types.ErrorStep{
+				ErrorType:   types.StepErrorTransient,
+				RetryCount:  retryCount,
+				Description: description,
+			}
 		}
 	case complete:
 		current.Error = nil

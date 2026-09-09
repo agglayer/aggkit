@@ -86,13 +86,13 @@ type Config struct {
 	// with healthy=false and may be healed by a later on-chain update per the health-gating rule.
 	RequireAllHealthyOnStart bool `mapstructure:"RequireAllHealthyOnStart"`
 
-	// IgnoreNetworkIDs lists networkIDs (rollupIDs) that are entirely excluded from on-chain
-	// resolution: buildInitialCache skips them during enumeration (no RollupIDToRollupData call, no
-	// contract reads, no health probe) and the live listener skips them when a rollup-manager
-	// lifecycle event announces them. This is meant for known "dead" networks (e.g. decommissioned
-	// or unreachable test rollups) whose on-chain reads and health-check timeouts would otherwise
-	// slow down startup and event processing for no benefit. A networkID present in Config.BridgeURLs
-	// is still served from config even if it is also listed here: the ignore only skips on-chain
-	// inspection, never a static override.
+	// IgnoreNetworkIDs lists networkIDs (rollupIDs) that are entirely excluded from resolution:
+	// buildInitialCache skips them during enumeration (no RollupIDToRollupData call, no contract
+	// reads, no health probe) and never installs a cache entry for them even if a Config.BridgeURLs /
+	// Config.RPCURLs override is set, and the live listener skips them when a rollup-manager
+	// lifecycle event announces them. GetURL returns ErrNetworkDisabled for a networkID listed here,
+	// never any cached or config-overridden information. This is meant for known "dead" networks
+	// (e.g. decommissioned or unreachable test rollups) whose on-chain reads and health-check
+	// timeouts would otherwise slow down startup and event processing for no benefit.
 	IgnoreNetworkIDs []uint32 `mapstructure:"IgnoreNetworkIDs"`
 }

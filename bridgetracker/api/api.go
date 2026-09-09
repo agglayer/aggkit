@@ -46,6 +46,18 @@ const (
 	// (default), "claimed", "pending", "readyToClaim" or "error" (see types.ActivityFilter)
 	filterBridgesQueryParam = "filterBridges"
 
+	// flushCacheQueryParam, when set to "true", discards whatever is already cached for this
+	// request's key before answering it — the activity endpoint's per-from_address cache (see
+	// domain.ActivityQuerier.FlushActivity), or the tracker's supervised entry for this
+	// network_id/tx_hash (see domain.SupervisedStore.Forget) — forcing a fresh recheck instead
+	// of reusing cached state. Supported by the tracker's REST endpoint, its WebSocket
+	// endpoint, and the activity endpoint
+	flushCacheQueryParam = "flush_cache"
+
+	// queryValueTrue is the only value that turns on a boolean query flag (includeTracking,
+	// flush_cache): anything else, including its absence, is treated as false
+	queryValueTrue = "true"
+
 	decimalBase   = 10
 	uint32BitSize = 32
 )

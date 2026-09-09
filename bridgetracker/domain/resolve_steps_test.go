@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -521,6 +522,45 @@ func TestResolveStepsClaimedNotIndexedYet(t *testing.T) {
 	require.Equal(t, types.StepClaimed, steps[*idx].Step)
 }
 
+// TestResolveStepsStopsOnTerminalStepError pins that ResolveSteps never calls a step's
+// resolver again once it already failed for a reason retrying cannot fix (StepErrorPermanent):
+// currentStepIndex reports -1 for it, same as a fully Done path, so the loop returns
+// immediately, the snapshot comes back unchanged, and — unlike TestResolveStepsErrors, which
+// pins the same short-circuit for a milestone still unmet (ErrStepPending) — no fact is ever
+// queried at all
+func TestResolveStepsStopsOnTerminalStepError(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
+	permanentlyFailed := BridgeStepPath{
+		Step: types.StepWaitL1SettledGER, Status: types.StepStatusError,
+		Error: &types.ErrorStep{
+			ErrorType:   types.StepErrorPermanent,
+			Description: []string{ErrBadSettlementTx.Error()},
+		},
+	}
+	tracking := newTracking(types.BridgeTypeL2ToL1, []BridgeStepPath{
+		{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone},
+		{Step: types.StepPendingInclusion, Status: types.StepStatusDone},
+		{Step: types.StepCertificatePending, Status: types.StepStatusDone},
+		permanentlyFailed,
+		{Step: types.StepWaitingL1InfoLeafAvailable, Status: types.StepStatusPending},
+		{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+		{Step: types.StepClaimed, Status: types.StepStatusPending},
+	}, now)
+	// facts that would let every remaining step succeed if queried, proving they are not
+	facts := fakeFacts{
+		l1InfoTreeIndexForBridge: new(uint32),
+		claimed:                  true,
+		claim:                    &types.ClaimResult{ClaimTx: common.Hash{9}},
+	}
+
+	result, err := ResolveSteps(context.Background(), log.NewLoggerNil(), testResolvers(&facts), tracking, now)
+	require.NoError(t, err)
+	require.Empty(t, facts.queried, "no resolver may be called once the path is stuck on a terminal step error")
+	require.Equal(t, tracking.AllSteps(), result.AllSteps(), "the snapshot is returned unchanged")
+}
+
 func TestResolveStepsErrors(t *testing.T) {
 	t.Parallel()
 
@@ -816,6 +856,37 @@ func TestUpdateStep(t *testing.T) {
 		require.Equal(t, []string{errFakeUpdateStep.Error(), errFakeUpdateStep.Error()}, sp.Error.Description)
 	})
 
+	t.Run("a repeated stepErr caps Description to the most recent maxErrorDescriptions, RetryCount keeps counting", func(t *testing.T) {
+		t.Parallel()
+
+		existing := make([]string, maxErrorDescriptions)
+		for i := range existing {
+			existing[i] = fmt.Sprintf("attempt %d", i)
+		}
+		tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
+			{
+				Step: types.StepWaitingGERUpdate, Status: types.StepStatusError, StartDate: &t1,
+				Error: &types.ErrorStep{
+					ErrorType: types.StepErrorTransient, RetryCount: maxErrorDescriptions,
+					Description: existing,
+				},
+			},
+			{Step: types.StepWaitingGERInjection, Status: types.StepStatusPending},
+			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+			{Step: types.StepClaimed, Status: types.StepStatusPending},
+		}, t1)
+
+		advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStep, t2)
+
+		sp := advanced.AllSteps()[0]
+		require.Equal(t, maxErrorDescriptions+1, sp.Error.RetryCount, "RetryCount is never trimmed")
+		require.Len(t, sp.Error.Description, maxErrorDescriptions, "Description is trimmed to the most recent entries")
+		require.Equal(t, existing[1:], sp.Error.Description[:maxErrorDescriptions-1],
+			"the oldest entry is dropped, the rest shift down")
+		require.Equal(t, errFakeUpdateStep.Error(), sp.Error.Description[maxErrorDescriptions-1],
+			"the newest entry is kept last")
+	})
+
 	t.Run("a stepErr wrapped as Permanent marks the step StepErrorPermanent with no retry count", func(t *testing.T) {
 		t.Parallel()
 
@@ -859,6 +930,42 @@ func TestUpdateStep(t *testing.T) {
 		require.Equal(t, 0, sp.Error.RetryCount, "nothing will retry a permanent step, so the count resets")
 		require.Equal(t, []string{errFakeUpdateStep.Error()}, sp.Error.Description)
 	})
+
+	t.Run(
+		"a plain stepErr on an already-permanently-failed step does not downgrade it to transient",
+		func(t *testing.T) {
+			t.Parallel()
+
+			// nothing stops ResolveSteps from calling this step's resolver again once it already
+			// failed permanently (currentStepIndex only checks Done, not Error) — a later poll
+			// returning a plain, non-Permanent-wrapped error (e.g. a transient RPC hiccup while
+			// re-checking an already-doomed fact) must not resurrect the step as merely
+			// StepErrorTransient: TrackingStatus/ClaimStatus would then misreport it as
+			// Running/Pending even though the step will never complete
+			tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
+				{
+					Step: types.StepWaitingGERUpdate, Status: types.StepStatusError, StartDate: &t1,
+					Error: &types.ErrorStep{
+						ErrorType:   types.StepErrorPermanent,
+						Description: []string{"settlement tx receipt does not carry required events"},
+					},
+				},
+				{Step: types.StepWaitingGERInjection, Status: types.StepStatusPending},
+				{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+				{Step: types.StepClaimed, Status: types.StepStatusPending},
+			}, t1)
+
+			advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStep, t2)
+
+			sp := advanced.AllSteps()[0]
+			require.Equal(t, types.StepStatusError, sp.Status)
+			require.Equal(t, types.StepErrorPermanent, sp.Error.ErrorType, "the terminal ErrorType is preserved")
+			require.Equal(t, 1, sp.Error.RetryCount, "the occurrence is still counted")
+			require.Equal(t, []string{
+				"settlement tx receipt does not carry required events", errFakeUpdateStep.Error(),
+			}, sp.Error.Description, "the occurrence is still recorded onto the existing history")
+		},
+	)
 }
 
 // TestCertificateResolverSkipsWaypoints pins that a certificate observed already Settled, with
