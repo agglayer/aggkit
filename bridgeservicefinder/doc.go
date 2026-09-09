@@ -162,22 +162,17 @@
 //
 // # Ignoring known-dead networks (Config.IgnoreNetworkIDs)
 //
-// A networkID listed in Config.IgnoreNetworkIDs is skipped entirely from on-chain resolution: it is
-// excluded from buildInitialCache's enumeration loop (no RollupIDToRollupData call, no contract
-// reader, no health probe) and from the listener's discoverRollup (a CreateNewRollup /
-// CreateNewAggchain / AddExistingRollup event announcing it is a no-op, and its contract address is
-// never added to the watched set). This exists to avoid known-dead networks - decommissioned or
-// permanently unreachable test rollups - from slowing down startup and event processing with RPC
-// calls and health-check timeouts that can never succeed.
-//
-// The ignore list only ever skips on-chain inspection; it never suppresses a static override. A
-// networkID present in both Config.IgnoreNetworkIDs and Config.BridgeURLs is still served from
-// config (the config-seeding step in buildInitialCache runs before, and independently of, the
-// enumeration loop the ignore list affects), but unlike an ordinary config-sourced entry it is also
-// exempted from the Start-time /health probe (see probeAll): probing a known-dead network would
-// defeat the point of ignoring it, incurring the health-check timeout and, under
-// RequireAllHealthyOnStart, possibly failing startup outright. Its cache entry is served with
-// healthy defaulting to false (never probed).
+// A networkID listed in Config.IgnoreNetworkIDs is excluded entirely from resolution: it is skipped
+// by buildInitialCache's config-seeding step (no cache entry is installed even if
+// Config.BridgeURLs / Config.RPCURLs has an override for it) and its enumeration loop (no
+// RollupIDToRollupData call, no contract reader, no health probe), and skipped by the listener's
+// discoverRollup (a CreateNewRollup / CreateNewAggchain / AddExistingRollup event announcing it is a
+// no-op, and its contract address is never added to the watched set). GetURL rejects it up front
+// with ErrNetworkDisabled, before even consulting the cache, and NetworkIDs never lists it. This
+// exists to avoid known-dead networks - decommissioned or permanently unreachable test rollups -
+// from slowing down startup and event processing with RPC calls and health-check timeouts that can
+// never succeed, and to guarantee that disabling a network actually stops it from being served,
+// static override included.
 //
 // # Error handling at Start (fail loudly vs graceful skip)
 //

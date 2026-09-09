@@ -64,10 +64,13 @@ func newWSHandler(
 // @Summary Subscribe to bridge status updates by transaction hash
 // @Description Upgrades the request to a WebSocket connection that receives the bridge
 // @Description status as it changes, instead of polling the REST endpoint. Connecting adds
-// @Description the bridge to the list of supervised bridges
+// @Description the bridge to the list of supervised bridges. flush_cache=true discards
+// @Description whatever is already cached for this tx first, forcing it to be re-registered and
+// @Description resolved from scratch
 // @Tags bridge-tracker
 // @Param network_id path uint32 true "Network where the bridge transaction was sent (0 -> Mainnet)"
 // @Param tx_hash path string true "Hash of the transaction that created the bridge (bridgeAsset or bridgeMessage)"
+// @Param flush_cache query bool false "Discard the tracker's cached state for this tx before answering"
 // @Success 101 {string} string "Switching Protocols"
 // @Router /network/{network_id}/tx/{tx_hash}/ws [get]
 func (w *wsHandler) TxStatusWSHandler(c *gin.Context) {
@@ -86,6 +89,9 @@ func (w *wsHandler) TxStatusWSHandler(c *gin.Context) {
 	}
 
 	id := domain.TrackingID{NetworkID: req.NetworkID, TxHash: req.TxHash}
+	if c.Query(flushCacheQueryParam) == queryValueTrue {
+		w.supervised.Forget(id)
+	}
 
 	// Subscribe before reading the snapshot so no update published in between is missed;
 	// the latest-value channel semantics collapse any duplicate with the initial message
@@ -164,13 +170,13 @@ func (w *wsHandler) wsSendTracking(conn *websocket.Conn, tracking *domain.Tracki
 
 // wsTerminalReason reports whether the given snapshot is a terminal state the connection
 // should close normally after, and the reason to close with: the bridge reached Claimed, or
-// the tracker gave up trying to resolve it at all (domain.TrackingData.Failed — a step-level
-// error on an otherwise-resolved bridge is not terminal, the engine keeps polling it)
+// its tx or a step failed terminally. Transient errors remain open while the engine retries,
+// matching the registry's terminal-state predicate.
 func wsTerminalReason(tracking *domain.TrackingData) (reason string, done bool) {
-	switch {
-	case tracking.TrackingStatus() == types.TrackingStatusFinished:
+	switch tracking.TrackingStatus() {
+	case types.TrackingStatusFinished:
 		return "bridge claimed", true
-	case tracking.Failed():
+	case types.TrackingStatusError:
 		return "tracker gave up resolving the bridge", true
 	default:
 		return "", false

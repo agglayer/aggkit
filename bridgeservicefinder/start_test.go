@@ -471,7 +471,8 @@ func TestStart_AllHealthy_RequireAllHealthyOnStartTrue(t *testing.T) {
 // Config.IgnoreNetworkIDs is skipped entirely during buildInitialCache's enumeration, even though it
 // exposes a perfectly resolvable on-chain source: no cache entry is installed for it, while sibling
 // networks are still resolved normally. It also verifies a config override for the SAME networkID is
-// still served, since the ignore only skips on-chain inspection, never a static override.
+// NOT served: the ignore list takes precedence over a static override, and GetURL rejects it with
+// ErrNetworkDisabled.
 func TestStart_IgnoreNetworkIDs_SkipsEnumeration(t *testing.T) {
 	backend, auth := newTestBackend(t)
 	mgrAddr, rollups := deployRollupManagerWithRollups(t, backend, auth, 3)
@@ -517,12 +518,11 @@ func TestStart_IgnoreNetworkIDs_SkipsEnumeration(t *testing.T) {
 	require.NoError(t, f.Start(ctx))
 
 	_, err = f.GetURL(ignoredNetwork)
-	require.ErrorIs(t, err, ErrURLNotFound, "ignored network must not be resolved despite exposing a valid on-chain source")
+	require.ErrorIs(t, err, ErrNetworkDisabled, "ignored network must not be resolved despite exposing a valid on-chain source")
+	require.ErrorIs(t, err, ErrURLNotFound, "ErrNetworkDisabled must still classify as ErrURLNotFound for existing callers")
 
-	gotConfig, err := f.GetURL(ignoredWithConfig)
-	require.NoError(t, err)
-	require.Equal(t, ignoredConfigURL, gotConfig.BridgeURL, "config override must still be served for an ignored network")
-	require.Empty(t, gotConfig.JSONRPCURL, "on-chain enrichment must not happen for an ignored network")
+	_, err = f.GetURL(ignoredWithConfig)
+	require.ErrorIs(t, err, ErrNetworkDisabled, "a config override must NOT be served for an ignored network")
 
 	gotNormal, err := f.GetURL(normalNetwork)
 	require.NoError(t, err)
@@ -532,6 +532,12 @@ func TestStart_IgnoreNetworkIDs_SkipsEnumeration(t *testing.T) {
 	require.True(t, ok)
 	require.NotContains(t, concrete.addrToNetworkID, rollups[ignoredNetwork-1].addr,
 		"an ignored network's contract must never be registered in the routing table")
+	_, ok = concrete.cache.get(ignoredWithConfig)
+	require.False(t, ok, "an ignored network's config override must never even be seeded into the cache")
+
+	require.NotContains(t, f.NetworkIDs(), ignoredNetwork, "NetworkIDs must never list an ignored network")
+	require.NotContains(t, f.NetworkIDs(), ignoredWithConfig, "NetworkIDs must never list an ignored network")
+	require.Contains(t, f.NetworkIDs(), normalNetwork, "sibling network must still be listed")
 }
 
 // trackingHealthChecker wraps a mapHealthChecker and records every baseURL probed, so a test can
@@ -551,9 +557,9 @@ func (t *trackingHealthChecker) IsHealthy(ctx context.Context, baseURL string) b
 }
 
 // TestStart_IgnoreNetworkIDs_SkipsHealthProbe verifies that a networkID listed in
-// Config.IgnoreNetworkIDs is exempt from probeAll's /health probe even when it has a cache entry
-// installed by a Config.BridgeURLs override (config-seeding runs independently of the enumeration
-// loop the ignore list otherwise affects). It also proves this holds under
+// Config.IgnoreNetworkIDs never even gets a cache entry, despite a Config.BridgeURLs override being
+// set for it (buildInitialCache's config-seeding step excludes ignored networks), and so is
+// naturally exempt from probeAll's /health probe. It also proves this holds under
 // RequireAllHealthyOnStart=true: Start must succeed even though the ignored network's config URL is
 // unreachable, since it is never probed and therefore never counted as unhealthy.
 func TestStart_IgnoreNetworkIDs_SkipsHealthProbe(t *testing.T) {
@@ -591,15 +597,13 @@ func TestStart_IgnoreNetworkIDs_SkipsHealthProbe(t *testing.T) {
 	require.False(t, hc.probed[deadURL], "an ignored network's config-sourced url must never be health-probed")
 	require.True(t, hc.probed[normalURL], "sanity check: a non-ignored config-sourced url is still probed")
 
-	got, err := f.GetURL(ignoredNetwork)
-	require.NoError(t, err)
-	require.Equal(t, deadURL, got.BridgeURL, "the ignored network's config override must still be served")
+	_, err = f.GetURL(ignoredNetwork)
+	require.ErrorIs(t, err, ErrNetworkDisabled, "the ignored network's config override must NOT be served")
 
 	concrete, ok := f.(*finder)
 	require.True(t, ok)
-	entry, ok := concrete.cache.get(ignoredNetwork)
-	require.True(t, ok)
-	require.False(t, entry.healthy, "an unprobed entry must default to healthy=false")
+	_, ok = concrete.cache.get(ignoredNetwork)
+	require.False(t, ok, "an ignored network's config override must never even be seeded into the cache")
 }
 
 // TestStart_NetworkZero covers matrix item #11: network 0 / L1 is never enumerated on-chain; it is

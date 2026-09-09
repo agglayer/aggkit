@@ -281,16 +281,12 @@ definitions:
         - 1000000000
         - 60000000000
         - 3600000000000
-        - -9223372036854775808
-        - 9223372036854775807
         - 1
         - 1000
         - 1000000
         - 1000000000
         - 60000000000
         - 3600000000000
-        - -9223372036854775808
-        - 9223372036854775807
         - 1
         - 1000
         - 1000000
@@ -316,16 +312,12 @@ definitions:
         - Second
         - Minute
         - Hour
-        - minDuration
-        - maxDuration
         - Nanosecond
         - Microsecond
         - Millisecond
         - Second
         - Minute
         - Hour
-        - minDuration
-        - maxDuration
         - Nanosecond
         - Microsecond
         - Millisecond
@@ -603,9 +595,10 @@ paths:
         includeTracking=true additionally registers every still-unclaimed bridge with
         the bridge tracker and includes its current tracking snapshot. filterBridges
         restricts the result to bridges with only that claim state (claimed / still
-        pending / ready to claim / errored while checking). A network whose bridge
-        service could not be scanned is skipped and reported in the "warnings" field
-        instead of failing the whole request.
+        pending / ready to claim / errored while checking). flush_cache=true discards
+        whatever is already cached for from_address first, forcing a fresh recheck. A
+        network whose bridge service could not be scanned is skipped and reported in the
+        "warnings" field instead of failing the whole request.
       parameters:
       - description: Address that sent the bridges to look up
         in: path
@@ -627,6 +620,10 @@ paths:
         in: query
         name: filterBridges
         type: string
+      - description: Discard cached activity for from_address before answering
+        in: query
+        name: flush_cache
+        type: boolean
       produces:
       - application/json
       responses:
@@ -721,7 +718,9 @@ paths:
         follow. Calling this endpoint adds the bridge to the list of supervised
         bridges. The response is always a TrackingData: its bridge_status field is
         null until the tracker resolves the bridge, so the client keeps polling (or
-        subscribes over the WebSocket) until it is populated
+        subscribes over the WebSocket) until it is populated. flush_cache=true discards
+        whatever is already cached for this tx first, forcing it to be re-registered and
+        resolved from scratch
       parameters:
       - description: Network where the bridge transaction was sent (0 -> Mainnet)
         format: int32
@@ -735,6 +734,10 @@ paths:
         name: tx_hash
         required: true
         type: string
+      - description: Discard the tracker's cached state for this tx before answering
+        in: query
+        name: flush_cache
+        type: boolean
       produces:
       - application/json
       responses:
@@ -758,7 +761,9 @@ paths:
       description: |-
         Upgrades the request to a WebSocket connection that receives the bridge
         status as it changes, instead of polling the REST endpoint. Connecting adds
-        the bridge to the list of supervised bridges
+        the bridge to the list of supervised bridges. flush_cache=true discards
+        whatever is already cached for this tx first, forcing it to be re-registered and
+        resolved from scratch
       parameters:
       - description: Network where the bridge transaction was sent (0 -> Mainnet)
         format: int32
@@ -772,6 +777,10 @@ paths:
         name: tx_hash
         required: true
         type: string
+      - description: Discard the tracker's cached state for this tx before answering
+        in: query
+        name: flush_cache
+        type: boolean
       responses:
         "101":
           description: Switching Protocols

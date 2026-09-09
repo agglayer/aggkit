@@ -82,6 +82,62 @@ func (_c *L2GERSyncer_GetFirstGERAfterL1InfoTreeIndex_Call) RunAndReturn(run fun
 	return _c
 }
 
+// GetLastGER provides a mock function with given fields: ctx
+func (_m *L2GERSyncer) GetLastGER(ctx context.Context) (l2gersync.GlobalExitRootInfo, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLastGER")
+	}
+
+	var r0 l2gersync.GlobalExitRootInfo
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (l2gersync.GlobalExitRootInfo, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) l2gersync.GlobalExitRootInfo); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(l2gersync.GlobalExitRootInfo)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L2GERSyncer_GetLastGER_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastGER'
+type L2GERSyncer_GetLastGER_Call struct {
+	*mock.Call
+}
+
+// GetLastGER is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *L2GERSyncer_Expecter) GetLastGER(ctx interface{}) *L2GERSyncer_GetLastGER_Call {
+	return &L2GERSyncer_GetLastGER_Call{Call: _e.mock.On("GetLastGER", ctx)}
+}
+
+func (_c *L2GERSyncer_GetLastGER_Call) Run(run func(ctx context.Context)) *L2GERSyncer_GetLastGER_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *L2GERSyncer_GetLastGER_Call) Return(_a0 l2gersync.GlobalExitRootInfo, _a1 error) *L2GERSyncer_GetLastGER_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L2GERSyncer_GetLastGER_Call) RunAndReturn(run func(context.Context) (l2gersync.GlobalExitRootInfo, error)) *L2GERSyncer_GetLastGER_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetLastProcessedBlock provides a mock function with given fields: ctx
 func (_m *L2GERSyncer) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	ret := _m.Called(ctx)

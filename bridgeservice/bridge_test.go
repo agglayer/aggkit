@@ -2613,6 +2613,9 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		bridgeMocks.injectedGERs.EXPECT().
 			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
 			Return(l2gersync.GlobalExitRootInfo{}, db.ErrNotFound)
+		bridgeMocks.injectedGERs.EXPECT().
+			GetLastGER(mock.Anything).
+			Return(l2gersync.GlobalExitRootInfo{}, db.ErrNotFound)
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
@@ -2622,6 +2625,56 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, response.Code)
 		require.Contains(t, response.Body.String(),
 			fmt.Sprintf("no injected global exit root at or after leaf index %d yet (not injected)", l1InfoTreeLeaf.L1InfoTreeIndex))
+		require.Contains(t, response.Body.String(), "no global exit root has been injected on this network yet")
+	})
+
+	t.Run("L2 network - GER not injected yet returns 404, reporting the last injected leaf", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.injectedGERs.EXPECT().
+			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(l2gersync.GlobalExitRootInfo{}, db.ErrNotFound)
+		lastTimestamp := uint64(123456)
+		bridgeMocks.injectedGERs.EXPECT().
+			GetLastGER(mock.Anything).
+			Return(l2gersync.GlobalExitRootInfo{
+				L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex - 1,
+				BlockNum:        42,
+				Timestamp:       &lastTimestamp,
+			}, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
+
+		response := performRequest(t, bridgeMocks.router, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusNotFound, response.Code)
+		require.Contains(t, response.Body.String(),
+			fmt.Sprintf("no injected global exit root at or after leaf index %d yet (not injected)", l1InfoTreeLeaf.L1InfoTreeIndex))
+		require.Contains(t, response.Body.String(),
+			fmt.Sprintf("last injected leaf index=%d at L2 block %d, timestamp=%d",
+				l1InfoTreeLeaf.L1InfoTreeIndex-1, 42, lastTimestamp))
+	})
+
+	t.Run("L2 network - GER not injected yet returns 404, GetLastGER failing falls back to the base message", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.injectedGERs.EXPECT().
+			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(l2gersync.GlobalExitRootInfo{}, db.ErrNotFound)
+		bridgeMocks.injectedGERs.EXPECT().
+			GetLastGER(mock.Anything).
+			Return(l2gersync.GlobalExitRootInfo{}, errors.New(barErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
+
+		response := performRequest(t, bridgeMocks.router, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusNotFound, response.Code)
+		require.Contains(t, response.Body.String(),
+			fmt.Sprintf("no injected global exit root at or after leaf index %d yet (not injected)", l1InfoTreeLeaf.L1InfoTreeIndex))
+		require.NotContains(t, response.Body.String(), "last injected leaf index")
 	})
 
 	t.Run("L2 network - GetInfoByIndex error", func(t *testing.T) {

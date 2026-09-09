@@ -121,6 +121,17 @@ func (a *ActivityCache) GetActivity(
 	return out, warnings, nil
 }
 
+// FlushActivity implements domain.ActivityQuerier: it discards fromAddress's whole per-address
+// cache, if any — every cached bridge (settled or not) is forgotten, so the next GetActivity
+// call for fromAddress rescans and rechecks everything from scratch, exactly as if it had never
+// been requested before. Safe to call for an address with nothing cached (no-op)
+func (a *ActivityCache) FlushActivity(fromAddress common.Address) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	delete(a.byAddr, fromAddress)
+}
+
 // upsert (re)computes item's entry via refresh and stores it, unless it is already cached and
 // settled — in which case it is left untouched. Safe to call with an item the caller cannot be
 // sure is genuinely new (e.g. a defensive re-check, or a pagination-boundary duplicate): settled

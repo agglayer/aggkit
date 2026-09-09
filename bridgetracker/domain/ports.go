@@ -84,6 +84,14 @@ type SupervisedStore interface {
 	// would otherwise hold onto indefinitely, complementing PruneTerminal's grace period for
 	// bridges that did resolve
 	PruneIdle(olderThan time.Time) (int, error)
+
+	// Forget discards id's cached tracking state, if any, as if it had never been requested. A
+	// later Get/GetAndAwait/Subscribe re-registers it from scratch and tracking starts over.
+	// Safe to call for an id that is not currently registered (no-op). Unlike
+	// PruneTerminal/PruneIdle, this is not a passive time-window sweep: it is an explicit,
+	// immediate reset of one id regardless of its terminal/idle state or active subscribers —
+	// the tracker endpoints' ?flush_cache=true parameter uses it to force a fresh recheck
+	Forget(id TrackingID)
 }
 
 // StatusNotifier is the driven port push consumers (the WebSocket handler) use to follow a

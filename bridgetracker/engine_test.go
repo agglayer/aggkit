@@ -727,6 +727,53 @@ func TestEngineLifecycleL2ToL1(t *testing.T) {
 	require.Equal(t, types.TrackingStatusFinished, tracking.TrackingStatus())
 }
 
+// TestEngineStepPermanentErrorStopsRetryingAndLeavesActiveList pins the end-to-end fix for a
+// step-level terminal error (domain.ErrBadSettlementTx, Permanent-wrapped): once
+// SettlementGERUpdate reports it, the engine must never call it again for this bridge, and the
+// bridge must leave the active list — same as a bridge the tracker never resolved at all —
+// instead of being retried on every tick forever
+func TestEngineStepPermanentErrorStopsRetryingAndLeavesActiveList(t *testing.T) {
+	f := &fakeSources{bridge: l2ToL1Bridge()}
+	engine, store, _ := newTestEngine(t, f)
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+
+	mustRegister(t, store, id)
+
+	f.originLER = &types.LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0a"), BlockNumber: 10}
+	settledBlockNumber := uint64(1500)
+	settledBlockTimestamp := uint64(1700001500)
+	f.cert = &types.CertificateInclusionData{
+		CertificateData: types.CertificateData{
+			CertificateID: common.HexToHash("0x01"), Status: agglayertypes.Settled,
+			SettlementTxHash: &settlementTxHash,
+			BlockNumber:      &settledBlockNumber, BlockTimestamp: &settledBlockTimestamp,
+		},
+	}
+	f.settlementErr = domain.ErrBadSettlementTx
+
+	engine.tick(t.Context())
+	tracking := mustGet(t, store, id)
+	require.Equal(t, types.TrackingStatusError, tracking.TrackingStatus())
+	require.Equal(t, types.TrackerClaimStatusError, tracking.ClaimStatus())
+	errStep := tracking.AllSteps()[*tracking.StepIndex()]
+	require.Equal(t, types.StepWaitL1SettledGER, errStep.Step)
+	require.Equal(t, types.StepErrorPermanent, errStep.Error.ErrorType)
+	require.Empty(t, mustGetTrackerActives(t, store), "a permanent step error must leave the active list")
+
+	// the settlement source recovers, but nothing may notice: the bridge already left the
+	// active list, so the engine never ticks it again to find out
+	f.settlementErr = nil
+	settlementLeafIndex := uint32(7)
+	f.settlement = &types.L1SettledGERResult{
+		TxHash: settlementTxHash, SettlementBlockNumber: 2000, GER: common.HexToHash("0x0b"),
+		L1InfoTreeIndex: &settlementLeafIndex, HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
+	}
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, id)
+	errStep = tracking.AllSteps()[*tracking.StepIndex()]
+	require.Equal(t, types.StepErrorPermanent, errStep.Error.ErrorType, "the terminal error must not be resurrected")
+}
+
 // TestEngineIncrementalResolution pins that resolution is incremental: once the bridge tx and
 // a milestone step are resolved and persisted, later ticks skip their sources entirely — the
 // engine only queries the facts the bridge is still waiting on

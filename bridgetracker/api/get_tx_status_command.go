@@ -29,19 +29,24 @@ type getTxStatusCommand struct {
 // first time a tx is registered, it waits up to resolveTimeout for the tracking engine's
 // immediate resolution attempt to land, so this first response has a shot at real progress
 // instead of the bare Registered state; a lookup of an already-registered tx never waits.
-// 200 OK unless: invalid path parameters (ErrorData/400), or the registry is at capacity and
-// this tx is not already registered (ErrorData/503, see domain.ErrRegistryFull)
+// ?flush_cache=true discards whatever the tracker already has for this tx first, so it is
+// registered and resolved from scratch instead of reusing its previous snapshot. 200 OK unless:
+// invalid path parameters (ErrorData/400), or the registry is at capacity and this tx is not
+// already registered (ErrorData/503, see domain.ErrRegistryFull)
 //
 // @Summary Get bridge status by transaction hash
 // @Description Returns the current step of the bridge and the full path it is expected to
 // @Description follow. Calling this endpoint adds the bridge to the list of supervised
 // @Description bridges. The response is always a TrackingData: its bridge_status field is
 // @Description null until the tracker resolves the bridge, so the client keeps polling (or
-// @Description subscribes over the WebSocket) until it is populated
+// @Description subscribes over the WebSocket) until it is populated. flush_cache=true discards
+// @Description whatever is already cached for this tx first, forcing it to be re-registered and
+// @Description resolved from scratch
 // @Tags bridge-tracker
 // @Produce json
 // @Param network_id path uint32 true "Network where the bridge transaction was sent (0 -> Mainnet)"
 // @Param tx_hash path string true "Hash of the transaction that created the bridge (bridgeAsset or bridgeMessage)"
+// @Param flush_cache query bool false "Discard the tracker's cached state for this tx before answering"
 // @Success 200 {object} TrackingData "Bridge registered; bridge_status/error fill in once resolved"
 // @Failure 400 {object} types.ErrorData "Invalid transaction hash or network id"
 // @Failure 503 {object} types.ErrorData "Supervised registry is at capacity"
@@ -53,6 +58,10 @@ func (cmd *getTxStatusCommand) Execute(c *gin.Context) (int, any, *types.ErrorDa
 	}
 
 	id := domain.TrackingID{NetworkID: req.NetworkID, TxHash: req.TxHash}
+	if c.Query(flushCacheQueryParam) == queryValueTrue {
+		cmd.supervised.Forget(id)
+	}
+
 	tracking, err := cmd.supervised.GetAndAwait(id, cmd.resolveTimeout)
 	if err != nil {
 		code := http.StatusInternalServerError

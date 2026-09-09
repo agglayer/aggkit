@@ -17,7 +17,7 @@
     "paths": {
         "/activity/from/{from_address}": {
             "get": {
-                "description": "Scans every bridge service the tracker knows about for bridges sent by\nfrom_address and reports each one's claim state, exactly as the bridge service\nreported it. Results are cached: a bridge already known to be claimed, with its\nclaim record already fetched, is not rechecked on a later call. Passing\nincludeTracking=true additionally registers every still-unclaimed bridge with\nthe bridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). A network whose bridge\nservice could not be scanned is skipped and reported in the \"warnings\" field\ninstead of failing the whole request.",
+                "description": "Scans every bridge service the tracker knows about for bridges sent by\nfrom_address and reports each one's claim state, exactly as the bridge service\nreported it. Results are cached: a bridge already known to be claimed, with its\nclaim record already fetched, is not rechecked on a later call. Passing\nincludeTracking=true additionally registers every still-unclaimed bridge with\nthe bridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). flush_cache=true discards\nwhatever is already cached for from_address first, forcing a fresh recheck. A\nnetwork whose bridge service could not be scanned is skipped and reported in the\n\"warnings\" field instead of failing the whole request.",
                 "produces": [
                     "application/json"
                 ],
@@ -51,6 +51,12 @@
                         "default": "all",
                         "description": "Claim filter",
                         "name": "filterBridges",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Discard cached activity for from_address before answering",
+                        "name": "flush_cache",
                         "in": "query"
                     }
                 ],
@@ -170,7 +176,7 @@
         },
         "/network/{network_id}/tx/{tx_hash}": {
             "get": {
-                "description": "Returns the current step of the bridge and the full path it is expected to\nfollow. Calling this endpoint adds the bridge to the list of supervised\nbridges. The response is always a TrackingData: its bridge_status field is\nnull until the tracker resolves the bridge, so the client keeps polling (or\nsubscribes over the WebSocket) until it is populated",
+                "description": "Returns the current step of the bridge and the full path it is expected to\nfollow. Calling this endpoint adds the bridge to the list of supervised\nbridges. The response is always a TrackingData: its bridge_status field is\nnull until the tracker resolves the bridge, so the client keeps polling (or\nsubscribes over the WebSocket) until it is populated. flush_cache=true discards\nwhatever is already cached for this tx first, forcing it to be re-registered and\nresolved from scratch",
                 "produces": [
                     "application/json"
                 ],
@@ -193,6 +199,12 @@
                         "name": "tx_hash",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Discard the tracker's cached state for this tx before answering",
+                        "name": "flush_cache",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -219,7 +231,7 @@
         },
         "/network/{network_id}/tx/{tx_hash}/ws": {
             "get": {
-                "description": "Upgrades the request to a WebSocket connection that receives the bridge\nstatus as it changes, instead of polling the REST endpoint. Connecting adds\nthe bridge to the list of supervised bridges",
+                "description": "Upgrades the request to a WebSocket connection that receives the bridge\nstatus as it changes, instead of polling the REST endpoint. Connecting adds\nthe bridge to the list of supervised bridges. flush_cache=true discards\nwhatever is already cached for this tx first, forcing it to be re-registered and\nresolved from scratch",
                 "tags": [
                     "bridge-tracker"
                 ],
@@ -239,6 +251,12 @@
                         "name": "tx_hash",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Discard the tracker's cached state for this tx before answering",
+                        "name": "flush_cache",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -555,16 +573,12 @@
                         1000000000,
                         60000000000,
                         3600000000000,
-                        -9223372036854775808,
-                        9223372036854775807,
                         1,
                         1000,
                         1000000,
                         1000000000,
                         60000000000,
                         3600000000000,
-                        -9223372036854775808,
-                        9223372036854775807,
                         1,
                         1000,
                         1000000,
@@ -589,16 +603,12 @@
                         "Second",
                         "Minute",
                         "Hour",
-                        "minDuration",
-                        "maxDuration",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",
                         "Second",
                         "Minute",
                         "Hour",
-                        "minDuration",
-                        "maxDuration",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",

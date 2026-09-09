@@ -924,9 +924,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 			if errors.Is(err, db.ErrNotFound) {
 				b.logger.Debugf("no injected global exit root at or after leaf index=%d yet (not injected)", l1InfoTreeIndex)
 				statusCode = http.StatusNotFound
-				c.JSON(statusCode,
-					gin.H{"error": fmt.Sprintf(
-						"no injected global exit root at or after leaf index %d yet (not injected)", l1InfoTreeIndex)})
+				c.JSON(statusCode, gin.H{"error": b.notInjectedYetError(ctx, l1InfoTreeIndex)})
 				return
 			}
 			b.logger.Errorf("failed to get injected global exit root for leaf index=%d: %v", l1InfoTreeIndex, err)
@@ -1841,6 +1839,30 @@ func (b *BridgeService) respondSyncerError(c *gin.Context, err error, notFoundMs
 	c.JSON(statusCode, gin.H{"error": msg})
 
 	return statusCode
+}
+
+// notInjectedYetError builds the 404 message for InjectedL1InfoLeafHandler when the requested
+// leaf index hasn't been injected on the L2 network yet. It appends how far injection has
+// actually progressed (the last GER that was injected, if any) so callers can tell "not injected
+// yet, but close" from "injection is stuck/far behind" without an extra round trip of their own.
+func (b *BridgeService) notInjectedYetError(ctx context.Context, l1InfoTreeIndex uint32) string {
+	baseMsg := fmt.Sprintf("no injected global exit root at or after leaf index %d yet (not injected)", l1InfoTreeIndex)
+
+	lastGER, err := b.injectedGERs.GetLastGER(ctx)
+	switch {
+	case err == nil:
+		tsSuffix := ""
+		if lastGER.Timestamp != nil {
+			tsSuffix = fmt.Sprintf(", timestamp=%d", *lastGER.Timestamp)
+		}
+		return fmt.Sprintf("%s; last injected leaf index=%d at L2 block %d%s",
+			baseMsg, lastGER.L1InfoTreeIndex, lastGER.BlockNum, tsSuffix)
+	case errors.Is(err, db.ErrNotFound):
+		return fmt.Sprintf("%s; no global exit root has been injected on this network yet", baseMsg)
+	default:
+		b.logger.Warnf("failed to get last injected GER for diagnostic message: %v", err)
+		return baseMsg
+	}
 }
 
 // GetClaimsByGERHandler retrieves all DetailedClaimEvent claims that used the given global exit root.

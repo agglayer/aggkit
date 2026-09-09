@@ -185,6 +185,34 @@ func TestRegistryPruneIdle(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestRegistryForget pins Forget's semantics: unlike PruneTerminal/PruneIdle, it discards a
+// single id unconditionally and immediately, regardless of tracking status, lastAccess or
+// active subscribers, and is a no-op for an id not currently registered
+func TestRegistryForget(t *testing.T) {
+	r := newMemoryRegistry(0)
+
+	// a live, freshly-touched entry is forgotten just the same
+	live := TrackingID{NetworkID: 1, TxHash: testHash}
+	_, err := r.Get(live, true)
+	require.NoError(t, err)
+	require.NoError(t, publishStatus(r, live, testBridgeInfo(), testAllSteps(false)))
+
+	r.Forget(live)
+	require.Equal(t, 0, r.GetNumTracker())
+	_, err = r.Get(live, false)
+	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
+
+	// a forgotten tx re-registers as new, with no trace of the previous run
+	tracking, err := r.Get(live, true)
+	require.NoError(t, err)
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
+	require.Nil(t, tracking.Info())
+
+	// forgetting an id that was never registered is a harmless no-op
+	unknown := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x09")}
+	require.NotPanics(t, func() { r.Forget(unknown) })
+}
+
 // TestRegistryPruneIdleSkipsRecentlyAccessedEntry pins that a plain Get (no subscription) counts
 // as access and extends the idle window: a bridge a client keeps polling is never idle-evicted
 // out from under it
@@ -375,9 +403,10 @@ func TestRegistryGetTrackerActivesFiltersByNetwork(t *testing.T) {
 }
 
 // TestRegistryGetTrackerActivesKeepsStepLevelErrors pins that a bridge resolved with a
-// step-level error (e.g. a certificate stuck InError) stays active: the engine must keep
-// polling it in case the error clears, unlike a bridge the tracker never managed to resolve
-// at all
+// still-retryable (transient) step-level error stays active: the engine must keep polling it
+// in case the error clears, unlike a bridge the tracker never managed to resolve at all, or one
+// whose step failed for a reason retrying cannot fix (see
+// TestRegistryGetTrackerActivesExcludesPermanentStepErrors)
 func TestRegistryGetTrackerActivesKeepsStepLevelErrors(t *testing.T) {
 	r := newMemoryRegistry(0)
 	erroring := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x04")}
@@ -390,6 +419,24 @@ func TestRegistryGetTrackerActivesKeepsStepLevelErrors(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, active, 1)
 	require.Equal(t, erroring, active[0].ID())
+}
+
+// TestRegistryGetTrackerActivesExcludesPermanentStepErrors pins that a bridge whose current
+// step failed for a reason retrying cannot fix (types.StepErrorPermanent) leaves the active
+// list, same as a bridge the tracker never managed to resolve at all: nothing further will ever
+// happen to it (see domain's currentStepIndex, which likewise stops asking that step's resolver
+// once it reaches this same state), so polling it forever would be pure waste
+func TestRegistryGetTrackerActivesExcludesPermanentStepErrors(t *testing.T) {
+	r := newMemoryRegistry(0)
+	failed := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x05")}
+
+	_, err := r.Get(failed, true)
+	require.NoError(t, err)
+	require.NoError(t, publishStatus(r, failed, testBridgeInfo(), testAllStepsWithPermanentError()))
+
+	active, err := r.GetTrackerActives(nil)
+	require.NoError(t, err)
+	require.Empty(t, active)
 }
 
 func TestRegistryUnsubscribeStopsUpdates(t *testing.T) {
