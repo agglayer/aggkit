@@ -20,7 +20,7 @@ var _ ActivityQuerier = (*ActivityCache)(nil)
 // every GetActivity call and is what the idle sweep evicts by — the same lastAccess/PruneIdle
 // idea memoryRegistry uses for tracking, see registry.go's bridgeEntry)
 type activityAddrCache struct {
-	entries map[string]*domain.ActivityEntry // key: bridge.GlobalIndex.String()
+	entries map[string]*domain.ActivityEntry // key: string(bridge.GlobalIndex)
 	// lastAccess is when this address was last requested; addresses idle past idleTimeout are
 	// forgotten (see ActivityCache.addrCache)
 	lastAccess time.Time
@@ -140,7 +140,7 @@ func (a *ActivityCache) upsert(
 	ctx context.Context, addrCache *activityAddrCache, item *domain.ScannedBridge,
 	includeTracking bool, filter types.ActivityFilter,
 ) {
-	key := item.Bridge.GlobalIndex.String()
+	key := string(item.Bridge.GlobalIndex)
 
 	a.mu.Lock()
 	existing := addrCache.entries[key]

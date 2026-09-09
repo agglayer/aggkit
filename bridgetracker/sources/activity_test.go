@@ -115,7 +115,7 @@ func bridgeResponse(networkID, destNetwork, depositCount uint32, from string, gl
 		DestinationNetwork: destNetwork,
 		DepositCount:       depositCount,
 		FromAddress:        &fromAddr,
-		GlobalIndex:        big.NewInt(globalIndex),
+		GlobalIndex:        bridgeservicetypes.BigIntString(big.NewInt(globalIndex).String()),
 		TxHash:             bridgeservicetypes.Hash(fmt.Sprintf("0x%d", globalIndex)),
 	}
 }
@@ -150,7 +150,7 @@ func TestActivitySource_BridgesFrom_PaginatesAndScansEveryNetwork(t *testing.T) 
 
 	globalIndexes := make([]int64, 0, len(items))
 	for _, item := range items {
-		globalIndexes = append(globalIndexes, item.Bridge.GlobalIndex.Int64())
+		globalIndexes = append(globalIndexes, item.Bridge.GlobalIndex.ToBigInt().Int64())
 	}
 	require.ElementsMatch(t, []int64{1, 2, 3, 5}, globalIndexes)
 }
@@ -176,7 +176,7 @@ func TestActivitySource_BridgesFrom_SkipsUnreachableNetworkAndWarns(t *testing.T
 	items, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	require.Equal(t, int64(1), items[0].Bridge.GlobalIndex.Int64())
+	require.Equal(t, int64(1), items[0].Bridge.GlobalIndex.ToBigInt().Int64())
 
 	require.Len(t, warnings, 1)
 	require.Equal(t, uint32(2), warnings[0].NetworkID)
@@ -249,7 +249,7 @@ func TestFetchNewBridgesFrom_StopsAtFirstKnownBridge(t *testing.T) {
 	items, err := fetchNewBridgesFrom(t.Context(), client, 1, testFromAddress, 1, known)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	require.Equal(t, int64(3), items[0].Bridge.GlobalIndex.Int64())
+	require.Equal(t, int64(3), items[0].Bridge.GlobalIndex.ToBigInt().Int64())
 }
 
 // TestActivitySource_IsClaimed_NoBridgeAddrConfigured verifies IsClaimed errors clearly when

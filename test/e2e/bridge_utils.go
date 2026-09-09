@@ -286,7 +286,7 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 		log.Debugf("sending claim transaction on L2")
 		claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
 			l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
-			bridge.GlobalIndex, mainnetExitRoot, rollupExitRoot,
+			bridge.GlobalIndex.ToBigInt(), mainnetExitRoot, rollupExitRoot,
 			bridge.OriginNetwork, originTokenAddress, bridge.DestinationNetwork,
 			destinationAddress, bridgeAmount, metadata,
 		)
@@ -472,7 +472,7 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 	log.Debugf("sending claim transaction on L2")
 	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
 		l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
-		bridge.GlobalIndex, mainnetExitRoot, rollupExitRoot,
+		bridge.GlobalIndex.ToBigInt(), mainnetExitRoot, rollupExitRoot,
 		bridge.OriginNetwork, originTokenAddress, bridge.DestinationNetwork,
 		destinationAddress, bridgeAmount, metadata,
 	)
@@ -493,7 +493,7 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 		DepositCount:    depositCount,
 		L1InfoTreeIndex: l1InfoTreeIndex,
 		ClaimTxHash:     claimTx.Hash(),
-		GlobalIndex:     bridge.GlobalIndex,
+		GlobalIndex:     bridge.GlobalIndex.ToBigInt(),
 		DestinationAddr: destinationAddress,
 		BridgeAmount:    bridgeAmount,
 	}, nil
@@ -596,7 +596,7 @@ func BridgeL1NoClaim(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Tr
 		DepositCount:    uint32(depositCount),
 		L1InfoTreeIndex: l1InfoTreeIndex,
 		ClaimTxHash:     common.Hash{},
-		GlobalIndex:     bridge.GlobalIndex,
+		GlobalIndex:     bridge.GlobalIndex.ToBigInt(),
 		DestinationAddr: destinationAddress,
 		BridgeAmount:    bridgeAmount,
 	}, nil
@@ -711,7 +711,7 @@ func BridgeL2ToL1NoClaim(
 		DepositCount:    depositCount,
 		L1InfoTreeIndex: l1InfoTreeIndex,
 		ClaimTxHash:     common.Hash{},
-		GlobalIndex:     bridge.GlobalIndex,
+		GlobalIndex:     bridge.GlobalIndex.ToBigInt(),
 		DestinationAddr: destinationAddress,
 		BridgeAmount:    bridgeAmount,
 	}, nil
@@ -814,7 +814,7 @@ func BridgeL2ToL1(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	metadata := common.FromHex(bridge.Metadata)
 	log.Debugf("sending L2->L1 claim transaction on L1")
 	claimTx, err := env.L1.Contracts.Bridge.ClaimAsset(
-		l1Opts, smtProofLocalExitRoot, smtProofRollupExitRoot, bridge.GlobalIndex,
+		l1Opts, smtProofLocalExitRoot, smtProofRollupExitRoot, bridge.GlobalIndex.ToBigInt(),
 		mainnetExitRoot, rollupExitRoot, bridge.OriginNetwork, originTokenAddress,
 		bridge.DestinationNetwork, destinationAddress, bridgeAmount, metadata,
 	)
@@ -959,7 +959,7 @@ func BridgeL2ToL2NoClaim(
 		DepositCount:    depositCount,
 		L1InfoTreeIndex: l1InfoTreeIndex,
 		ClaimTxHash:     common.Hash{},
-		GlobalIndex:     bridge.GlobalIndex,
+		GlobalIndex:     bridge.GlobalIndex.ToBigInt(),
 		DestinationAddr: destinationAddress,
 		BridgeAmount:    bridgeAmount,
 	}, nil
@@ -1125,7 +1125,7 @@ func BridgeL2ToL2(
 	// 7. Execute the claim on L2B.
 	log.Debugf("sending L2->L2 claim transaction on L2B")
 	claimTx, err := env.L2B.Contracts.L2Bridge.ClaimAsset(
-		destOpts, smtProofLocalExitRoot, smtProofRollupExitRoot, bridge.GlobalIndex,
+		destOpts, smtProofLocalExitRoot, smtProofRollupExitRoot, bridge.GlobalIndex.ToBigInt(),
 		mainnetExitRoot, rollupExitRoot, bridge.OriginNetwork, originTokenAddress,
 		bridge.DestinationNetwork, destinationAddress, bridgeAmount, metadata,
 	)
