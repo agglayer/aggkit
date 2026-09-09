@@ -205,6 +205,16 @@ func (s *L2GERSync) GetFirstGERAfterL1InfoTreeIndex(
 	return info, nil
 }
 
+// GetLastGER returns the most recently injected global exit root (the one with the highest L1
+// info tree index), or db.ErrNotFound if none has been injected yet. This is diagnostic-only —
+// e.g. bridgeservice.InjectedL1InfoLeafHandler uses it to report how far injection has actually
+// progressed when the requested leaf index hasn't been reached yet — so, unlike
+// GetFirstGERAfterL1InfoTreeIndex, it does not backfill a missing timestamp from the L2 RPC: an
+// extra RPC round trip isn't worth paying on an error path just to fill in an optional field.
+func (s *L2GERSync) GetLastGER(ctx context.Context) (GlobalExitRootInfo, error) {
+	return s.processor.GetLastGER(ctx)
+}
+
 // GetInjectedGERsForRange retrieves all injected global exit roots within a specified block range.
 // It returns a map where the keys are the global exit root hashes and the values are the
 // corresponding GlobalExitRootInfo containing the L1 info tree index, global exit root and block number.

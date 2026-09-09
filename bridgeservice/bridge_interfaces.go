@@ -54,6 +54,7 @@ type L2GERSyncer interface {
 		ctx context.Context, globalExitRoot *common.Hash, limit uint32,
 	) ([]*l2gersync.RemoveGEREvent, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
+	GetLastGER(ctx context.Context) (l2gersync.GlobalExitRootInfo, error)
 }
 
 type L1InfoTreeSyncer interface {
