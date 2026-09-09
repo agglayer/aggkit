@@ -31,6 +31,32 @@ func (b BigIntString) ToBigInt() *big.Int {
 	return result
 }
 
+// UnmarshalJSON accepts both a JSON string and a bare JSON number. aggkit
+// releases before this change emitted global_index as a bare number, and the
+// bridge services a proxy fans out to are deployed and upgraded independently,
+// so a decoder built from this version must still read them. json.Number keeps
+// the literal exactly -- decoding through float64/int64 would corrupt or reject
+// the >=2^64 values this type exists to carry. Marshaling is unaffected: this
+// type has no MarshalJSON, so it always writes back out as a quoted string.
+func (b *BigIntString) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return nil
+	}
+
+	var asString string
+	if err := json.Unmarshal(data, &asString); err == nil {
+		*b = BigIntString(asString)
+		return nil
+	}
+
+	var asNumber json.Number
+	if err := json.Unmarshal(data, &asNumber); err != nil {
+		return fmt.Errorf("BigIntString: cannot unmarshal %s as a string or a number: %w", data, err)
+	}
+	*b = BigIntString(asNumber.String())
+	return nil
+}
+
 // ErrorResponse defines a generic error structure.
 // @Description Generic error response structure
 type ErrorResponse struct {
