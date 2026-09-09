@@ -185,6 +185,34 @@ func TestRegistryPruneIdle(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestRegistryForget pins Forget's semantics: unlike PruneTerminal/PruneIdle, it discards a
+// single id unconditionally and immediately, regardless of tracking status, lastAccess or
+// active subscribers, and is a no-op for an id not currently registered
+func TestRegistryForget(t *testing.T) {
+	r := newMemoryRegistry(0)
+
+	// a live, freshly-touched entry is forgotten just the same
+	live := TrackingID{NetworkID: 1, TxHash: testHash}
+	_, err := r.Get(live, true)
+	require.NoError(t, err)
+	require.NoError(t, publishStatus(r, live, testBridgeInfo(), testAllSteps(false)))
+
+	r.Forget(live)
+	require.Equal(t, 0, r.GetNumTracker())
+	_, err = r.Get(live, false)
+	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
+
+	// a forgotten tx re-registers as new, with no trace of the previous run
+	tracking, err := r.Get(live, true)
+	require.NoError(t, err)
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
+	require.Nil(t, tracking.Info())
+
+	// forgetting an id that was never registered is a harmless no-op
+	unknown := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x09")}
+	require.NotPanics(t, func() { r.Forget(unknown) })
+}
+
 // TestRegistryPruneIdleSkipsRecentlyAccessedEntry pins that a plain Get (no subscription) counts
 // as access and extends the idle window: a bridge a client keeps polling is never idle-evicted
 // out from under it

@@ -289,6 +289,39 @@ func TestGetTxStatusHandlerTerminalError(t *testing.T) {
 	require.Equal(t, []string{"bridge tx not found"}, tracking.Error.Description)
 }
 
+// TestGetTxStatusHandlerFlushCacheResetsTracking verifies ?flush_cache=true discards the
+// tracker's existing entry for the tx before answering, so a bridge already resolved to
+// "running" reads back as freshly "registered" (bridge_status null) again, exactly as if it had
+// never been requested before; a plain call right after still sees that same fresh entry
+func TestGetTxStatusHandlerFlushCacheResetsTracking(t *testing.T) {
+	tracker, router := newTestTracker(t)
+
+	path := api.TrackerV1Prefix + "/network/1/tx/" + testTxHash
+	resp := performRequest(t, router, http.MethodGet, path)
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	tracker.Publish(TrackingID{NetworkID: 1, TxHash: common.HexToHash(testTxHash)}, testBridgeInfo(), testAllSteps(false))
+
+	var tracking struct {
+		TrackingStatus string          `json:"tracking_status"`
+		BridgeStatus   json.RawMessage `json:"bridge_status"`
+	}
+	resp = performRequest(t, router, http.MethodGet, path)
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &tracking))
+	require.Equal(t, "running", tracking.TrackingStatus, "resolved before flushing")
+
+	resp = performRequest(t, router, http.MethodGet, path+"?flush_cache=true")
+	require.Equal(t, http.StatusOK, resp.Code)
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &tracking))
+	require.Equal(t, "registered", tracking.TrackingStatus, "flushed: starts over as freshly registered")
+	require.Equal(t, "null", string(tracking.BridgeStatus))
+
+	// a plain call right after still sees the freshly re-registered entry, not the old one
+	resp = performRequest(t, router, http.MethodGet, path)
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &tracking))
+	require.Equal(t, "registered", tracking.TrackingStatus)
+}
+
 // TestGetTxStatusHandlerUnprefixedTxHash pins the tx-hash validation behaviour inherited from
 // common.IsHexHash: the 0x prefix is optional, so a bare 64-char hex hash is accepted and is
 // registered in the supervised list (200) instead of failing validation
@@ -476,6 +509,48 @@ func TestActivityHandlerIsClaimedFailureReportsErrorStatusAndMessage(t *testing.
 	require.Equal(t, "error", body.Bridges[0].ClaimStatus)
 	require.Nil(t, body.Bridges[0].Claim)
 	require.Equal(t, wantErrMsg, body.Bridges[0].Errors["claim"])
+}
+
+// TestActivityHandlerFlushCacheForcesRecheck verifies ?flush_cache=true discards whatever the
+// activity endpoint already cached for from_address before scanning, so a bridge already
+// settled (claimed + indexed, normally never rechecked) is fetched again instead of being
+// reused untouched
+func TestActivityHandlerFlushCacheForcesRecheck(t *testing.T) {
+	bridge := testBridge(1)
+	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
+
+	gin.SetMode(gin.TestMode)
+	tracker := New(&Config{
+		Logger:     log.WithFields("module", "bridgetracker_test"),
+		ConfigSHA1: testConfigSHA1,
+		ActivityScanner: &fakeActivityScanner{
+			bridges: []*domain.ScannedBridge{scannedBridge(bridge, testScannedNetworkID)},
+		},
+		// two isClaimed/claimInfo entries: a third would panic on out-of-range, proving
+		// flush_cache causes exactly one extra recheck
+		ActivityClaims: &fakeActivityClaims{
+			isClaimed: []bool{true, true},
+			claimInfo: []*bridgeservicetypes.ClaimResponse{claim, claim},
+		},
+	})
+	router := gin.New()
+	tracker.API().RegisterRoutes(router)
+
+	path := api.TrackerV1Prefix + "/activity/from/" + testFromAddress.Hex()
+	resp := performRequest(t, router, http.MethodGet, path)
+	require.Equal(t, http.StatusOK, resp.Code)
+	var body api.ActivityResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	require.Equal(t, "claimed", body.Bridges[0].ClaimStatus)
+
+	// without flush_cache the settled entry would be reused untouched (see
+	// TestActivityHandlerHappyPath's isClaimed/claimInfo being consulted only once); flushing
+	// forces the second, otherwise-out-of-range consultation configured above
+	resp = performRequest(t, router, http.MethodGet, path+"?flush_cache=true")
+	require.Equal(t, http.StatusOK, resp.Code)
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	require.Equal(t, "claimed", body.Bridges[0].ClaimStatus)
+	require.Equal(t, claim.TxHash, body.Bridges[0].Claim.TxHash)
 }
 
 // TestActivityHandlerInvalidFilterBridges verifies an unrecognized filterBridges value is

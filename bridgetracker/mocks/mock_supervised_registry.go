@@ -24,6 +24,39 @@ func (_m *SupervisedRegistry) EXPECT() *SupervisedRegistry_Expecter {
 	return &SupervisedRegistry_Expecter{mock: &_m.Mock}
 }
 
+// Forget provides a mock function with given fields: id
+func (_m *SupervisedRegistry) Forget(id domain.TrackingID) {
+	_m.Called(id)
+}
+
+// SupervisedRegistry_Forget_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Forget'
+type SupervisedRegistry_Forget_Call struct {
+	*mock.Call
+}
+
+// Forget is a helper method to define mock.On call
+//   - id domain.TrackingID
+func (_e *SupervisedRegistry_Expecter) Forget(id interface{}) *SupervisedRegistry_Forget_Call {
+	return &SupervisedRegistry_Forget_Call{Call: _e.mock.On("Forget", id)}
+}
+
+func (_c *SupervisedRegistry_Forget_Call) Run(run func(id domain.TrackingID)) *SupervisedRegistry_Forget_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(domain.TrackingID))
+	})
+	return _c
+}
+
+func (_c *SupervisedRegistry_Forget_Call) Return() *SupervisedRegistry_Forget_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *SupervisedRegistry_Forget_Call) RunAndReturn(run func(domain.TrackingID)) *SupervisedRegistry_Forget_Call {
+	_c.Run(run)
+	return _c
+}
+
 // Get provides a mock function with given fields: id, createIfNotExists
 func (_m *SupervisedRegistry) Get(id domain.TrackingID, createIfNotExists bool) (*domain.TrackingData, error) {
 	ret := _m.Called(id, createIfNotExists)

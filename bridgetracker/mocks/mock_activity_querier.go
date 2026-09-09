@@ -27,6 +27,39 @@ func (_m *ActivityQuerier) EXPECT() *ActivityQuerier_Expecter {
 	return &ActivityQuerier_Expecter{mock: &_m.Mock}
 }
 
+// FlushActivity provides a mock function with given fields: fromAddress
+func (_m *ActivityQuerier) FlushActivity(fromAddress common.Address) {
+	_m.Called(fromAddress)
+}
+
+// ActivityQuerier_FlushActivity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FlushActivity'
+type ActivityQuerier_FlushActivity_Call struct {
+	*mock.Call
+}
+
+// FlushActivity is a helper method to define mock.On call
+//   - fromAddress common.Address
+func (_e *ActivityQuerier_Expecter) FlushActivity(fromAddress interface{}) *ActivityQuerier_FlushActivity_Call {
+	return &ActivityQuerier_FlushActivity_Call{Call: _e.mock.On("FlushActivity", fromAddress)}
+}
+
+func (_c *ActivityQuerier_FlushActivity_Call) Run(run func(fromAddress common.Address)) *ActivityQuerier_FlushActivity_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(common.Address))
+	})
+	return _c
+}
+
+func (_c *ActivityQuerier_FlushActivity_Call) Return() *ActivityQuerier_FlushActivity_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ActivityQuerier_FlushActivity_Call) RunAndReturn(run func(common.Address)) *ActivityQuerier_FlushActivity_Call {
+	_c.Run(run)
+	return _c
+}
+
 // GetActivity provides a mock function with given fields: ctx, fromAddress, includeTracking, filter
 func (_m *ActivityQuerier) GetActivity(ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
 	ret := _m.Called(ctx, fromAddress, includeTracking, filter)

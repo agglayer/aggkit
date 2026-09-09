@@ -24,6 +24,39 @@ func (_m *SupervisedStore) EXPECT() *SupervisedStore_Expecter {
 	return &SupervisedStore_Expecter{mock: &_m.Mock}
 }
 
+// Forget provides a mock function with given fields: id
+func (_m *SupervisedStore) Forget(id domain.TrackingID) {
+	_m.Called(id)
+}
+
+// SupervisedStore_Forget_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Forget'
+type SupervisedStore_Forget_Call struct {
+	*mock.Call
+}
+
+// Forget is a helper method to define mock.On call
+//   - id domain.TrackingID
+func (_e *SupervisedStore_Expecter) Forget(id interface{}) *SupervisedStore_Forget_Call {
+	return &SupervisedStore_Forget_Call{Call: _e.mock.On("Forget", id)}
+}
+
+func (_c *SupervisedStore_Forget_Call) Run(run func(id domain.TrackingID)) *SupervisedStore_Forget_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(domain.TrackingID))
+	})
+	return _c
+}
+
+func (_c *SupervisedStore_Forget_Call) Return() *SupervisedStore_Forget_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *SupervisedStore_Forget_Call) RunAndReturn(run func(domain.TrackingID)) *SupervisedStore_Forget_Call {
+	_c.Run(run)
+	return _c
+}
+
 // Get provides a mock function with given fields: id, createIfNotExists
 func (_m *SupervisedStore) Get(id domain.TrackingID, createIfNotExists bool) (*domain.TrackingData, error) {
 	ret := _m.Called(id, createIfNotExists)

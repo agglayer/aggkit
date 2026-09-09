@@ -305,6 +305,19 @@ func (r *memoryRegistry) PruneIdle(olderThan time.Time) (int, error) {
 	return pruned, nil
 }
 
+// Forget implements SupervisedStore: unlike PruneTerminal/PruneIdle, this is not a passive
+// time-window sweep — it discards id's entry unconditionally and immediately, regardless of its
+// terminal/idle state. Any subscriber currently attached to it is left holding an orphaned
+// channel, exactly as PruneTerminal's doc describes: its unsubscribe still runs harmlessly, it
+// just operates on a record no longer in r.bridges. A later Get/GetAndAwait/Subscribe re-creates
+// id from scratch, same as a bridge that was never requested before
+func (r *memoryRegistry) Forget(id TrackingID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.bridges, id)
+}
+
 // GetNetworks implements SupervisedStore: the networks with at least one supervised bridge,
 // optionally filtered to those with at least one bridge in the given TrackingStatus
 func (r *memoryRegistry) GetNetworks(status *types.TrackingStatus) ([]uint32, error) {

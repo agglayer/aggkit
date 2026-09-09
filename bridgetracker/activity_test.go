@@ -290,6 +290,39 @@ func TestActivityCache_ClaimedAndIndexedBridgeIsNeverRechecked(t *testing.T) {
 	require.Equal(t, 2, scanner.calls) // BridgesFrom is still called every time to find new bridges
 }
 
+// TestActivityCache_FlushActivityForcesRecheck verifies that, unlike a plain GetActivity call,
+// FlushActivity discards a settled (claimed + indexed) entry entirely, so the next GetActivity
+// call re-verifies it from scratch instead of reusing it untouched (see settled)
+func TestActivityCache_FlushActivityForcesRecheck(t *testing.T) {
+	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
+	// two isClaimed/claimInfo entries: a third consultation would panic on out-of-range, proving
+	// FlushActivity causes exactly one extra recheck, not unbounded rechecks
+	claims := &fakeActivityClaims{
+		isClaimed: []bool{true, true},
+		claimInfo: []*bridgeservicetypes.ClaimResponse{claim, claim},
+	}
+
+	cache := newTestActivityCache(scanner, claims)
+
+	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Equal(t, types.ClaimStatusClaimed, entries[0].ClaimStatus)
+
+	// a plain call would leave the settled entry untouched (see
+	// TestActivityCache_ClaimedAndIndexedBridgeIsNeverRechecked) -- flushing forces a recheck
+	cache.FlushActivity(testFromAddress)
+	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Equal(t, types.ClaimStatusClaimed, entries[0].ClaimStatus)
+	require.Equal(t, claim, entries[0].Claim)
+	require.Equal(t, 2, claims.isClaimedCalls)
+	require.Equal(t, 2, claims.claimInfoCalls)
+
+	// flushing an address with nothing cached is a harmless no-op
+	require.NotPanics(t, func() { cache.FlushActivity(common.HexToAddress("0x02")) })
+}
+
 // TestActivityCache_ClaimedButNotYetIndexedBridgeIsRetried verifies a bridge reported as claimed
 // on-chain, but whose claim record the destination bridge service has not indexed yet (ClaimInfo
 // returns nil), has its claim record retried on the next call — without asking isClaimed() again,
