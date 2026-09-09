@@ -522,6 +522,45 @@ func TestResolveStepsClaimedNotIndexedYet(t *testing.T) {
 	require.Equal(t, types.StepClaimed, steps[*idx].Step)
 }
 
+// TestResolveStepsStopsOnTerminalStepError pins that ResolveSteps never calls a step's
+// resolver again once it already failed for a reason retrying cannot fix (StepErrorPermanent):
+// currentStepIndex reports -1 for it, same as a fully Done path, so the loop returns
+// immediately, the snapshot comes back unchanged, and — unlike TestResolveStepsErrors, which
+// pins the same short-circuit for a milestone still unmet (ErrStepPending) — no fact is ever
+// queried at all
+func TestResolveStepsStopsOnTerminalStepError(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
+	permanentlyFailed := BridgeStepPath{
+		Step: types.StepWaitL1SettledGER, Status: types.StepStatusError,
+		Error: &types.ErrorStep{
+			ErrorType:   types.StepErrorPermanent,
+			Description: []string{ErrBadSettlementTx.Error()},
+		},
+	}
+	tracking := newTracking(types.BridgeTypeL2ToL1, []BridgeStepPath{
+		{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone},
+		{Step: types.StepPendingInclusion, Status: types.StepStatusDone},
+		{Step: types.StepCertificatePending, Status: types.StepStatusDone},
+		permanentlyFailed,
+		{Step: types.StepWaitingL1InfoLeafAvailable, Status: types.StepStatusPending},
+		{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+		{Step: types.StepClaimed, Status: types.StepStatusPending},
+	}, now)
+	// facts that would let every remaining step succeed if queried, proving they are not
+	facts := fakeFacts{
+		l1InfoTreeIndexForBridge: new(uint32),
+		claimed:                  true,
+		claim:                    &types.ClaimResult{ClaimTx: common.Hash{9}},
+	}
+
+	result, err := ResolveSteps(context.Background(), log.NewLoggerNil(), testResolvers(&facts), tracking, now)
+	require.NoError(t, err)
+	require.Empty(t, facts.queried, "no resolver may be called once the path is stuck on a terminal step error")
+	require.Equal(t, tracking.AllSteps(), result.AllSteps(), "the snapshot is returned unchanged")
+}
+
 func TestResolveStepsErrors(t *testing.T) {
 	t.Parallel()
 

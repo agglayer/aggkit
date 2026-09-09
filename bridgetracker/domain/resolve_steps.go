@@ -62,10 +62,11 @@ type StepResolver interface {
 // domain.ResolveBridgeTx/domain.PendingPath) through as much of its expected path as its
 // current facts allow: it resolves the current step (the first not yet Done) via UpdateStep,
 // and if that completed it, whichever step it lands on next, and so on, stopping at the first
-// milestone still unmet (ErrStepPending) or the first real error. On a real error, every step
-// completed earlier this same call stays Done — only the step whose resolver just failed is
-// marked, via UpdateStep's stepErr, incrementing its retry count instead of discarding the
-// in-tick progress
+// milestone still unmet (ErrStepPending), the first real error, or a step that already failed
+// for a reason retrying cannot fix (currentStepIndex returns -1 for that case too, without
+// calling its resolver again — see isTerminalStepError). On a real error, every step completed
+// earlier this same call stays Done — only the step whose resolver just failed is marked, via
+// UpdateStep's stepErr, incrementing its retry count instead of discarding the in-tick progress
 func ResolveSteps(
 	ctx context.Context,
 	logger aggkitcommon.Logger,
@@ -94,10 +95,18 @@ func ResolveSteps(
 }
 
 // currentStepIndex returns the index of the first step not yet Done — the one that needs
-// resolving next — or -1 once the whole path (through StepClaimed) is Done
+// resolving next — or -1 once the whole path (through StepClaimed) is Done, or once that first
+// not-yet-Done step already failed for a reason retrying cannot fix (isTerminalStepError):
+// steps only ever advance strictly in order (see UpdateStep), so a terminally failed one is, by
+// construction, the last one ever reached — nothing stops ResolveSteps from asking its resolver
+// again forever otherwise, which is exactly how a later plain error could downgrade a permanent
+// failure back to transient before UpdateStep started guarding against it
 func currentStepIndex(steps []BridgeStepPath) int {
 	for i, sp := range steps {
 		if sp.Status != types.StepStatusDone {
+			if isTerminalStepError(sp) {
+				return -1
+			}
 			return i
 		}
 	}

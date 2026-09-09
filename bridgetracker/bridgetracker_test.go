@@ -72,11 +72,30 @@ func testAllSteps(claimed bool) []BridgeStepPath {
 	return []BridgeStepPath{{Step: step, Status: stepStatus}}
 }
 
-// testAllStepsWithError returns an expected-path snapshot with its in-progress step failed,
-// for tests exercising a step-level error (as opposed to a terminal resolution failure)
+// testAllStepsWithError returns an expected-path snapshot with its in-progress step still
+// retrying a transient error, for tests exercising a step-level error the tracker keeps
+// retrying (as opposed to a terminal resolution failure — see testAllStepsWithPermanentError)
 func testAllStepsWithError() []BridgeStepPath {
 	return []BridgeStepPath{{
-		Step: types.StepPendingInclusion, Status: types.StepStatusError, Error: testErrorStep(),
+		Step: types.StepPendingInclusion, Status: types.StepStatusError,
+		Error: &types.ErrorStep{
+			ErrorType:   types.StepErrorTransient,
+			RetryCount:  1,
+			Description: []string{"source temporarily unavailable"},
+		},
+	}}
+}
+
+// testAllStepsWithPermanentError returns an expected-path snapshot with its in-progress step
+// failed for a reason retrying cannot fix, for tests exercising a step-level terminal failure
+// (as opposed to testAllStepsWithError's still-retryable transient one)
+func testAllStepsWithPermanentError() []BridgeStepPath {
+	return []BridgeStepPath{{
+		Step: types.StepPendingInclusion, Status: types.StepStatusError,
+		Error: &types.ErrorStep{
+			ErrorType:   types.StepErrorPermanent,
+			Description: []string{"unrecoverable step failure"},
+		},
 	}}
 }
 

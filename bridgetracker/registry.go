@@ -48,12 +48,21 @@ type memoryRegistry struct {
 	trigger chan TrackingID
 }
 
-// isTerminal reports whether the snapshot will never change again: the bridge finished, or
-// the tracker gave up resolving it. It is exactly the predicate GetTrackerActives excludes
-// by — an entry out of the active list is never updated again, so it is safe to forget once
-// its retention elapses
+// isTerminal reports whether the snapshot will never change again: the bridge finished, the
+// tracker gave up resolving its tx at all (domain.TrackingData.Failed — a strict subset of the
+// TrackingStatusError case below, kept only as the doc anchor for that half of it), or its
+// current step failed for a reason retrying cannot fix. TrackingStatus already folds all of
+// that into TrackingStatusError once AllSteps exists (see domain.TrackingData.TrackingStatus):
+// a step-level error still reads as Running/Pending there while it is merely
+// types.StepErrorTransient — the tracker is still retrying it and it may well recover — so
+// checking TrackingStatus directly, rather than Failed alone, is what correctly also excludes a
+// bridge stuck on a step that will never resolve (see currentStepIndex, which likewise stops
+// asking that step's resolver once it reaches this same state). It is exactly the predicate
+// GetTrackerActives excludes by — an entry out of the active list is never updated again, so it
+// is safe to forget once its retention elapses
 func isTerminal(tracking *domain.TrackingData) bool {
-	return tracking.Failed() || tracking.TrackingStatus() == types.TrackingStatusFinished
+	status := tracking.TrackingStatus()
+	return status == types.TrackingStatusError || status == types.TrackingStatusFinished
 }
 
 // compile-time check: the in-memory adapter fulfils the full port
