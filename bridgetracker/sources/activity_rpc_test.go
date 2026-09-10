@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
@@ -112,6 +113,7 @@ func TestActivityRPCScanner_BridgesFrom_MatchingBridge(t *testing.T) {
 	require.Equal(t, uint32(1), items[0].Bridge.DestinationNetwork)
 	require.Equal(t, uint32(7), items[0].Bridge.DepositCount)
 	require.Equal(t, testFromAddress, string(*items[0].Bridge.FromAddress))
+	require.Equal(t, domain.ActivitySourceRPC, items[0].Source)
 }
 
 // TestActivityRPCScanner_BridgesFrom_FiltersOtherSenders verifies a BridgeEvent log sent by a

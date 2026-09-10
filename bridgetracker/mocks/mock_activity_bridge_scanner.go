@@ -26,7 +26,7 @@ func (_m *ActivityBridgeScanner) EXPECT() *ActivityBridgeScanner_Expecter {
 }
 
 // BridgesFrom provides a mock function with given fields: ctx, fromAddress, known
-func (_m *ActivityBridgeScanner) BridgesFrom(ctx context.Context, fromAddress common.Address, known map[string]struct{}) ([]*domain.ScannedBridge, []domain.ActivityWarning, error) {
+func (_m *ActivityBridgeScanner) BridgesFrom(ctx context.Context, fromAddress common.Address, known map[string]domain.KnownBridge) ([]*domain.ScannedBridge, []domain.ActivityWarning, error) {
 	ret := _m.Called(ctx, fromAddress, known)
 
 	if len(ret) == 0 {
@@ -36,10 +36,10 @@ func (_m *ActivityBridgeScanner) BridgesFrom(ctx context.Context, fromAddress co
 	var r0 []*domain.ScannedBridge
 	var r1 []domain.ActivityWarning
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, common.Address, map[string]struct{}) ([]*domain.ScannedBridge, []domain.ActivityWarning, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, common.Address, map[string]domain.KnownBridge) ([]*domain.ScannedBridge, []domain.ActivityWarning, error)); ok {
 		return rf(ctx, fromAddress, known)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, common.Address, map[string]struct{}) []*domain.ScannedBridge); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, common.Address, map[string]domain.KnownBridge) []*domain.ScannedBridge); ok {
 		r0 = rf(ctx, fromAddress, known)
 	} else {
 		if ret.Get(0) != nil {
@@ -47,7 +47,7 @@ func (_m *ActivityBridgeScanner) BridgesFrom(ctx context.Context, fromAddress co
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, common.Address, map[string]struct{}) []domain.ActivityWarning); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, common.Address, map[string]domain.KnownBridge) []domain.ActivityWarning); ok {
 		r1 = rf(ctx, fromAddress, known)
 	} else {
 		if ret.Get(1) != nil {
@@ -55,7 +55,7 @@ func (_m *ActivityBridgeScanner) BridgesFrom(ctx context.Context, fromAddress co
 		}
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, common.Address, map[string]struct{}) error); ok {
+	if rf, ok := ret.Get(2).(func(context.Context, common.Address, map[string]domain.KnownBridge) error); ok {
 		r2 = rf(ctx, fromAddress, known)
 	} else {
 		r2 = ret.Error(2)
@@ -72,14 +72,14 @@ type ActivityBridgeScanner_BridgesFrom_Call struct {
 // BridgesFrom is a helper method to define mock.On call
 //   - ctx context.Context
 //   - fromAddress common.Address
-//   - known map[string]struct{}
+//   - known map[string]domain.KnownBridge
 func (_e *ActivityBridgeScanner_Expecter) BridgesFrom(ctx interface{}, fromAddress interface{}, known interface{}) *ActivityBridgeScanner_BridgesFrom_Call {
 	return &ActivityBridgeScanner_BridgesFrom_Call{Call: _e.mock.On("BridgesFrom", ctx, fromAddress, known)}
 }
 
-func (_c *ActivityBridgeScanner_BridgesFrom_Call) Run(run func(ctx context.Context, fromAddress common.Address, known map[string]struct{})) *ActivityBridgeScanner_BridgesFrom_Call {
+func (_c *ActivityBridgeScanner_BridgesFrom_Call) Run(run func(ctx context.Context, fromAddress common.Address, known map[string]domain.KnownBridge)) *ActivityBridgeScanner_BridgesFrom_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(common.Address), args[2].(map[string]struct{}))
+		run(args[0].(context.Context), args[1].(common.Address), args[2].(map[string]domain.KnownBridge))
 	})
 	return _c
 }
@@ -89,7 +89,7 @@ func (_c *ActivityBridgeScanner_BridgesFrom_Call) Return(_a0 []*domain.ScannedBr
 	return _c
 }
 
-func (_c *ActivityBridgeScanner_BridgesFrom_Call) RunAndReturn(run func(context.Context, common.Address, map[string]struct{}) ([]*domain.ScannedBridge, []domain.ActivityWarning, error)) *ActivityBridgeScanner_BridgesFrom_Call {
+func (_c *ActivityBridgeScanner_BridgesFrom_Call) RunAndReturn(run func(context.Context, common.Address, map[string]domain.KnownBridge) ([]*domain.ScannedBridge, []domain.ActivityWarning, error)) *ActivityBridgeScanner_BridgesFrom_Call {
 	_c.Call.Return(run)
 	return _c
 }

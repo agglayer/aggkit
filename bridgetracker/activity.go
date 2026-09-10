@@ -89,16 +89,21 @@ func (a *ActivityCache) GetActivity(
 	addrCache := a.addrCache(fromAddress)
 
 	a.mu.Lock()
-	known := make(map[string]struct{}, len(addrCache.entries))
+	known := make(map[string]domain.KnownBridge, len(addrCache.entries))
 	cached := make([]*domain.ActivityEntry, 0, len(addrCache.entries))
 	for key, entry := range addrCache.entries {
-		known[key] = struct{}{}
+		known[key] = domain.KnownBridge{
+			TxHash: entry.Bridge.TxHash, BlockNum: entry.Bridge.BlockNum, Source: entry.Source,
+		}
 		cached = append(cached, entry)
 	}
 	a.mu.Unlock()
 
 	for _, entry := range cached {
-		scanned := &domain.ScannedBridge{Bridge: entry.Bridge, NetworkID: entry.BridgeNetworkID}
+		// Source is carried forward from the cached entry, not rediscovered — this is a claim/
+		// tracking recheck of data already cached, not a new scan result, so it must not reset an
+		// entry's Source back to its zero value
+		scanned := &domain.ScannedBridge{Bridge: entry.Bridge, NetworkID: entry.BridgeNetworkID, Source: entry.Source}
 		a.upsert(ctx, addrCache, scanned, includeTracking, filter)
 	}
 
@@ -246,7 +251,7 @@ func (a *ActivityCache) refresh(
 	ctx context.Context, item *domain.ScannedBridge, existing *domain.ActivityEntry,
 	includeTracking bool, filter types.ActivityFilter,
 ) *domain.ActivityEntry {
-	entry := &domain.ActivityEntry{Bridge: item.Bridge, BridgeNetworkID: item.NetworkID}
+	entry := &domain.ActivityEntry{Bridge: item.Bridge, BridgeNetworkID: item.NetworkID, Source: item.Source}
 	if existing != nil {
 		entry.CreatedAt = existing.CreatedAt
 	} else {

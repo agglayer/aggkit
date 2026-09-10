@@ -163,6 +163,7 @@ func (r *activityRPCScanner) BridgesFrom(
 		out = append(out, &domain.ScannedBridge{
 			Bridge:    bridgeservice.NewBridgeResponse(bridge, networkID, 0),
 			NetworkID: networkID,
+			Source:    domain.ActivitySourceRPC,
 		})
 	}
 	return out, nil

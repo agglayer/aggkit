@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 
 	"github.com/agglayer/aggkit/bridgeservice/client"
@@ -124,7 +125,8 @@ type networkScanResult struct {
 // concurrently (see BridgesFrom) — the acceptance criterion behind agglayer/aggkit#1837 that the
 // two sources are queried in parallel.
 func (s *ActivitySource) scanNetwork(
-	ctx context.Context, networkID uint32, addr string, fromAddress common.Address, known map[string]struct{},
+	ctx context.Context, networkID uint32, addr string, fromAddress common.Address,
+	known map[string]domain.KnownBridge,
 ) networkScanResult {
 	var res networkScanResult
 	var wg sync.WaitGroup
@@ -174,18 +176,24 @@ func isNetworkSynced(networkID uint32, status *bridgeservicetypes.SyncStatus) bo
 	return status.L2Info != nil && status.L2Info.IsSynced
 }
 
-// appendNewBridges appends to all every bridge in candidates whose GlobalIndex is not already in
-// known, reporting whether anything was actually appended. Shared by BridgesFrom's two merge
-// paths (bridge-service reachable and bridge-service unreachable) so an RPC-only bridge is never
-// re-added — and so never re-triggers its claim/readiness checks — regardless of which path
-// found it.
-func appendNewBridges(
-	all []*domain.ScannedBridge, candidates []*domain.ScannedBridge, known map[string]struct{},
+// appendChangedBridges appends to all every bridge in candidates that is either not yet in known
+// (genuinely new) or whose on-chain location no longer matches what known has cached for its
+// GlobalIndex (see domain.KnownBridge) — i.e. a reorg has since re-included the same deposit at a
+// different block/tx — reporting whether anything was actually appended. Shared by BridgesFrom's
+// two merge paths (bridge-service reachable and bridge-service unreachable) so a bridge that is
+// both already known AND unchanged is never re-added — and so never re-triggers its
+// claim/readiness checks — regardless of which path found it, while one a reorg has actually
+// moved still gets through so ActivityCache.upsert can correct the stale cached data instead of
+// leaving it wrong forever (see agglayer/aggkit#1837's reorg-risk discussion — this is what makes
+// scanning a recent, not-necessarily-finalized RPC window safe to cache permanently).
+func appendChangedBridges(
+	all []*domain.ScannedBridge, candidates []*domain.ScannedBridge, known map[string]domain.KnownBridge,
 ) ([]*domain.ScannedBridge, bool) {
 	var addedAny bool
 	for _, b := range candidates {
-		if _, dup := known[string(b.Bridge.GlobalIndex)]; dup {
-			continue
+		if prev, ok := known[string(b.Bridge.GlobalIndex)]; ok &&
+			prev.TxHash == b.Bridge.TxHash && prev.BlockNum == b.Bridge.BlockNum {
+			continue // already cached at this exact location, nothing changed
 		}
 		all = append(all, b)
 		addedAny = true
@@ -203,20 +211,23 @@ func appendNewBridges(
 //   - the bridge service failing entirely falls back to the RPC result alone (if the fallback is
 //     enabled and it itself succeeded), with a warning that historical activity may not be
 //     available for that network;
-//   - the bridge service succeeding keeps its own result, plus whatever new bridge the RPC
-//     fallback found that it did not already report (deduplicated by GlobalIndex, same as
-//     known); a warning is added only when doing so and networkID's own bridge service is not
-//     fully caught up with its network (see isNetworkSynced) — a fully synced bridge service
-//     silently absorbs the RPC-only bridges, since finding any there at all would then be
-//     unexpected rather than simply "not indexed yet";
-//   - the RPC fallback failing, finding nothing new, or being disabled entirely never changes or
-//     degrades the bridge-service result.
+//   - the bridge service succeeding keeps its own result, plus whatever bridge the RPC fallback
+//     found that is new, or that it already knew about but at a different on-chain location than
+//     cached (see appendChangedBridges, domain.KnownBridge) — the latter reconciles a bridge a
+//     reorg has since moved to a different block/tx, since this fallback's own recent RPC scan
+//     is not itself reorg-protected the way the bridge service's indexed data is. A warning is
+//     added only when doing so and networkID's own bridge service is not fully caught up with
+//     its network (see isNetworkSynced) — a fully synced bridge service silently absorbs
+//     whatever the RPC fallback added or corrected, since that would then be expected (recent or
+//     reorg-affected) rather than a sign the bridge service itself is behind;
+//   - the RPC fallback failing, finding nothing new or changed, or being disabled entirely never
+//     changes or degrades the bridge-service result.
 //
 // A network whose bridge service cannot be reached at all, and whose RPC fallback cannot help
 // either, is skipped and reported back as a domain.ActivityWarning instead of failing the whole
 // scan, so one misbehaving network never hides every other network's activity.
 func (s *ActivitySource) BridgesFrom(
-	ctx context.Context, fromAddress common.Address, known map[string]struct{},
+	ctx context.Context, fromAddress common.Address, known map[string]domain.KnownBridge,
 ) ([]*domain.ScannedBridge, []domain.ActivityWarning, error) {
 	addr := fromAddress.Hex()
 
@@ -227,7 +238,7 @@ func (s *ActivitySource) BridgesFrom(
 
 		if res.restErr != nil {
 			if s.rpc != nil && res.rpcErr == nil {
-				all, _ = appendNewBridges(all, res.rpcBridges, known)
+				all, _ = appendChangedBridges(all, res.rpcBridges, known)
 				warnings = append(warnings, s.warnf(networkID,
 					"bridge service unavailable for network %d, historical activity may not be "+
 						"available: %v", networkID, res.restErr))
@@ -243,17 +254,18 @@ func (s *ActivitySource) BridgesFrom(
 			continue
 		}
 		// res.restBridges was not yet known to the RPC scan (they ran concurrently), so it must
-		// be folded into the dedup set here before deciding what the RPC scan actually adds
-		localKnown := make(map[string]struct{}, len(known)+len(res.restBridges))
-		for k := range known {
-			localKnown[k] = struct{}{}
-		}
+		// be folded into the comparison set here — with its own fresh TxHash/BlockNum, which is
+		// at least as current as known's — before deciding what the RPC scan actually adds/changes
+		localKnown := make(map[string]domain.KnownBridge, len(known)+len(res.restBridges))
+		maps.Copy(localKnown, known)
 		for _, b := range res.restBridges {
-			localKnown[string(b.Bridge.GlobalIndex)] = struct{}{}
+			localKnown[string(b.Bridge.GlobalIndex)] = domain.KnownBridge{
+				TxHash: b.Bridge.TxHash, BlockNum: b.Bridge.BlockNum,
+			}
 		}
 
 		var addedAny bool
-		all, addedAny = appendNewBridges(all, res.rpcBridges, localKnown)
+		all, addedAny = appendChangedBridges(all, res.rpcBridges, localKnown)
 		if addedAny && !isNetworkSynced(networkID, res.syncStatus) {
 			warnings = append(warnings, s.warnf(networkID,
 				"bridge service for network %d is not fully synchronized, some bridges may "+
@@ -273,15 +285,23 @@ func (s *ActivitySource) warnf(networkID uint32, format string, args ...any) dom
 
 // fetchNewBridgesFrom pages through networkID's GET /bridge/v1/bridges filtered by fromAddress,
 // newest bridge first (the bridge service's own order, by descending deposit_count), stopping as
-// soon as either a page shorter than pageSize is returned (no more data) or a bridge already in
-// known is reached. The latter is safe because the feed is append-only and strictly ordered:
-// once a known bridge is seen, every bridge after it (same page or later pages) is guaranteed
-// already known too, so nothing new is missed by stopping there. Each returned bridge is paired
-// with networkID — the network whose bridge service reported it — via domain.ScannedBridge,
-// since that is NOT always the same as the bridge's own OriginNetwork field (see ScannedBridge).
+// soon as either a page shorter than pageSize is returned (no more data) or a bridge already
+// known to the bridge service (known[...].Source == domain.ActivitySourceBridgeService) is
+// reached. The latter is safe because the feed is append-only and strictly ordered: once such a
+// bridge is seen, every bridge after it (same page or later pages) is guaranteed to already be in
+// the very same state, so nothing is missed by stopping there.
+//
+// A bridge that is known but was last cached from the RPC fallback (Source ==
+// domain.ActivitySourceRPC — the bridge service had not indexed it yet, or was unreachable, the
+// last time it was scanned) is different: it is still returned, relabeled
+// domain.ActivitySourceBridgeService, so the cache is upgraded to reflect that the bridge service
+// is now the source of record for it — then pagination stops right there anyway, same as above.
+// Each returned bridge is paired with networkID — the network whose bridge service reported it —
+// via domain.ScannedBridge, since that is NOT always the same as the bridge's own OriginNetwork
+// field (see ScannedBridge).
 func fetchNewBridgesFrom(
 	ctx context.Context, svc *client.Client, networkID uint32, fromAddress string, pageSize uint32,
-	known map[string]struct{},
+	known map[string]domain.KnownBridge,
 ) ([]*domain.ScannedBridge, error) {
 	var out []*domain.ScannedBridge
 	for page := uint32(1); ; page++ {
@@ -295,10 +315,21 @@ func fetchNewBridgesFrom(
 			return nil, err
 		}
 		for _, b := range res.Bridges {
-			if _, ok := known[string(b.GlobalIndex)]; ok {
+			prev, ok := known[string(b.GlobalIndex)]
+			if ok && prev.Source == domain.ActivitySourceBridgeService {
+				// already known, and already correctly sourced: per the append-only, newest-first
+				// order, everything older is guaranteed to be in the same state already
 				return out, nil
 			}
-			out = append(out, &domain.ScannedBridge{Bridge: b, NetworkID: networkID})
+			// either genuinely new, or known but still labeled from the RPC fallback: emit it
+			// (re-labeled domain.ActivitySourceBridgeService either way) so the cache is
+			// upgraded once the bridge service becomes the source of record for it
+			out = append(out, &domain.ScannedBridge{
+				Bridge: b, NetworkID: networkID, Source: domain.ActivitySourceBridgeService,
+			})
+			if ok {
+				return out, nil
+			}
 		}
 		if uint32(len(res.Bridges)) < pageSize {
 			return out, nil
