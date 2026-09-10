@@ -201,3 +201,15 @@ packages:
       LERCursorStore:
       RequestEnqueuer:
       CursorStore:
+  github.com/agglayer/aggkit/tools/bridge_loop_tester:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: false
+    interfaces:
+      EthBackend:
+      TxSigner:
+      NetworkClient:
+      Bridge:
+      Token:
+      Proxy:
+      HopRunner:

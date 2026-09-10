@@ -114,3 +114,147 @@ It involves two L2 networks (and single L1 network), that are attached to the sa
 ### Test L2 to L2 bridge
 
 It bridges native tokens from L1 to both L2 networks and claims them. Afterwards, it bridges from L2 (PP2) to L2 (PP1) network and claims it on the destination network.
+
+### Bridge loop tester full cycle
+
+Drives [`tools/bridge_loop_tester`](../tools/bridge_loop_tester/README.md)'s library API through one full circular
+cycle of the ring `0 -> 1 -> 2 -> 0` on the `anvil-2chains` env, so a single cycle covers all three bridge
+directions (L1->L2, L2->L2, L2->L1). Implemented in `test/e2e/bridgeloop_test.go`:
+
+```bash
+go test -v -run TestBridgeLoopFullCycle -timeout 60m ./test/e2e
+```
+
+The test builds the tool's `Config` programmatically from the loaded env (network IDs, RPC URLs, bridge addresses
+and pre-funded keys all come from `envs.LoadEnv`/`summary.json`, nothing is hardcoded) and runs two loops
+concurrently over the same ring: one moving ETH and one moving an ERC20 the tool deploys and mints itself on L1.
+Both loops share the orchestrator's own client pool — one `NetworkClient` per (network, signing key) pair — so the
+run also exercises the per-instance nonce serialization concurrent loops on one account depend on.
+
+The ring mixes both claim modes, and the topology is what makes that meaningful:
+
+| Hop | Direction | `Claim` | Who claims |
+| --- | --- | --- | --- |
+| `0 -> 1` | L1 -> L2A | `manual` | the tool, after asserting nothing else claimed it for the whole grace period |
+| `1 -> 2` | L2A -> L2B | `auto` | the network-2 Auto Claim service, enabled for this test only |
+| `2 -> 0` | L2B -> L1 | `manual` | the tool, again after the negative assertion |
+
+Auto Claim is enabled on the `aggkit-002` node alone (L2ToLx detector plus a single network-2 claimer, using the
+same harness machinery as `TestAutoClaimL2ToL2AllowAll`), so no claimer exists for the two manual hops'
+destinations. The assertions are made on the `Report` the tool returns — per-hop readiness gates, the injected leaf
+index actually used for the claim proof, who claimed each hop, exact ERC20 and tolerant native balance deltas,
+per-phase timings, ring closure (the ERC20 balance on L1 is back to exactly its pre-cycle value, and the L1 native
+balance is back to its pre-cycle value minus gas), and the persisted state file (one completed cycle per loop, the
+resume cursor back at hop 0, nothing left in flight). Finally it feeds the last hop's own `HopCheckpoint` back into
+a hop engine as `HopRequest.Resume`, so the checkpoint the run produced is proved to round-trip through the resume
+path; the resume states that re-drive real on-chain work are covered by the hop engine's unit tests instead, since
+re-driving them against a closed ring would move value the ring no longer has.
+
+Because the two-chain Anvil env runs no batcher or proposer, neither L2's finalized head advances on its own and an
+aggsender only certifies up to `min(lastBridgeSyncBlock, lastClaimSyncBlock)`. A hop whose source is an L2
+therefore needs an unrelated claim to land on that L2 *after* its bridge, or the bridge's local exit root never
+settles to L1. The test drives that background L1->L2 bridge-and-claim activity on both L2s with its own keys, the
+same environment precondition `TestAutoClaimL2ToL1AllowAll` and `TestAutoClaimL2ToL2AllowAll` already establish.
+
+#### CI matrix
+
+`.github/workflows/test-go-e2e.yml` runs this test in the `anvil-2chains` / `bridge` matrix group, alongside
+`TestJustBridge`, `TestBridgeL2ToL2` and `TestBridgeTrackerL1ToL2`. It is by far the longest test in that group, so
+it was put where an extra long test costs the matrix the least: over five recent workflow runs `bridge` was the
+shortest `anvil-2chains` job (324s average; the shortest of all of them in four of the five runs).
+
+It does restart `aggkit-002` to enable Auto Claim for its single `auto` hop — the kind of state mutation the
+`autoclaim` group is separated for — but it restores the node's configuration on cleanup, and the four tests were
+verified to pass together in one `go test` process before being merged into one group.
+
+### Bridge loop tester claim-mode violation
+
+The negative counterpart of the full-cycle test: it induces a real claim-mode violation and asserts the tool
+detects it. Implemented in `test/e2e/bridgeloop_violation_test.go`:
+
+```bash
+go test -v -run TestBridgeLoopClaimModeViolation -timeout 60m ./test/e2e
+```
+
+Detecting that a bridge on a `manual`-mode route got claimed by something else — i.e. that an autoclaim service is
+active on a route configured to have none — is the tool's central diagnostic claim, and the full-cycle test only
+ever observes that assertion *holding*. Here it is broken on purpose: Auto Claim is enabled on `aggkit-002` exactly
+as `TestAutoClaimL2ToL2AllowAll` and `TestBridgeLoopFullCycle` enable it, and the same ring `0 -> 1 -> 2 -> 0` then
+declares its `1 -> 2` hop `Claim = "manual"` — the hop the full-cycle test declares `"auto"`. Nothing else about the
+topology changes, so the only difference between a pass there and a violation here is the expectation the config
+states.
+
+The assertions are that the run fails and the loop halts with `halt_class = claim-mode-violation`; that the
+violating hop was attempted **exactly once** even though `HopAttempts = 3` (a violation is a test result, never a
+transient to retry); that the ring is reported as not closed with the value stranded in flight and the halt
+persisted in the state file, so a restart cannot paper over it; and that the hop's error, the loop's error and the
+error the run returns all carry the same diagnosis — the bridge transaction whose deposit was claimed, plus the
+claim transaction and the claimant address the tool recovered from that transaction's signature.
+
+That last part is asserted **when the tool could resolve it, and that it says so plainly when it could not**, which
+in practice means always: the claimant is recovered from the claim transaction's signature, and the claim
+transaction is named by the destination bridge's own `ClaimEvent`/`DetailedClaimEvent` log, read over the
+destination's JSON-RPC. That log is written in the very block that makes `isClaimed` true, so it is there the instant
+the tool observes the claim.
+
+The tool used to name that transaction from the proxy's `GET /bridge/v1/claims` record instead (the proxy never
+populates `from_address`, so the record's only unique contribution was the hash). On `anvil-2chains` that record was
+usually served within a poll or two, but in roughly one run in four was never served at all — verified live with the
+tool's lookup budget raised to five minutes, which did not help. That was the one flake seen in this area, and it also
+exposed `TestBridgeLoopFullCycle`'s `ClaimedExternally` assertion. The record is now only a fallback, for the case the
+log cannot cover (a resumed hop, whose claim predates the block window the hop scans). Either way the violation
+itself never depended on it: it rests on the destination bridge's own `isClaimed` read, and if neither source names
+the claim the tool degrades the attribution to `ClaimActorUnknown` (`claim tx unknown, from none`) rather than
+failing the hop.
+
+What puts the env back is a `t.Cleanup` that rewrites `aggkit-002`'s configuration and restarts the node, and it
+logs rather than fails if that does not work. It used to be independently checked by `TestMain`'s post-test bridge
+health-check, whose ring then declared **every** hop `manual`, including `1 -> 2`, so a leaked Auto Claim service on
+`aggkit-002` made it report a claim-mode violation and `log.Fatalf`. That ring is now two hops (`0 -> 1 -> 0`, see
+below) and never touches network 2, so **a leaked Auto Claim service on `aggkit-002` is no longer caught by the
+post-test check** — the trade made when the check was shortened. It matters less than it reads: this test runs alone
+in its own matrix group and the stack is torn down after it, so there is nothing downstream in CI for a leak to
+affect.
+
+#### CI matrix
+
+The violation test keeps its own `anvil-2chains` / `bridge-loop-violation` matrix group rather than sharing a group
+with the full-cycle test. It halts mid-ring by design, so it leaves more behind than the full-cycle test does — a
+restarted `aggkit-002`, a deposit the tool never claimed, and extra claim traffic on network 2 — and
+`test-go-e2e.yml` keeps state-mutating suites in separate stacks for exactly that reason. That is not a theoretical
+concern here: sharing one stack was tried and destabilised the full-cycle test.
+
+## Post-test bridge health-check
+
+After every Go e2e suite run that passed, `TestMain` moves value once around the **closed two-hop ring**
+`0 -> 1 -> 0` (L1 -> the env's first L2 -> L1) as a network-health probe, and `log.Fatalf`s if the value does not
+come home — deliberately leaving the env standing so the failure can be debugged against the live network. Set
+`E2E_SKIP_POSTTEST_BRIDGE_CHECK=true` to opt out (the `RUN_FORCE_GER_UPDATE_E2E=true` job does, since
+GER-manipulating tests legitimately leave this signal unhealthy).
+
+The check is driven through `tools/bridge_loop_tester`'s library API, so the tool the repo ships is the probe the
+repo uses. The ring covers L1->L2 and L2->L1, the two directions the hand-rolled `BridgeL1ToL2` / `BridgeL2ToL1`
+pair it replaced covered — and, because the ring is closed, it additionally asserts the value comes home, which
+that pair structurally could not.
+
+The ring is two hops on **every** env, including the two-L2 envs whose topology could express `0 -> 1 -> 2 -> 0`.
+The third hop is not free, and this runs after every passing suite: measured on `anvil-2chains`, the three-hop ring
+cost 59.6s and 67.6s on two runs, the two-hop one 36.1s and 44.1s, against 17.0s for the hand-rolled pair (which was
+cheaper than any ring because it ran its two flows in parallel, which a ring by definition cannot). L2->L2
+is not lost from the repo's coverage — `TestBridgeLoopFullCycle` (above) walks the full `0 -> 1 -> 2 -> 0` ring with
+both an ETH and an ERC20 loop, and it is the test to extend if the ring itself needs more coverage.
+
+Networks, chain IDs, RPC URLs, bridge addresses and signing keys all come off the loaded env; nothing is
+hardcoded. The loop is deliberately **ETH-only and one cycle**, with one hop attempt: an ERC20 loop would need a
+token deploy and a mint on every suite run, and a retry would double the worst case of something that runs after
+every suite. `TestBridgeLoopFullCycle` (above) is where the ERC20 ring, the `auto` claim mode and the full
+assertion surface live.
+
+Every hop uses `Claim = "manual"`, i.e. the tool submits every claim itself. Whether an autoclaim service is
+running on a given aggkit node here depends on which tests just ran (`autoclaim_test.go` enables autoclaim and
+restores the node's config on cleanup), so an `auto` hop would fail whenever the suite left autoclaim off — a
+property of the preceding test, not of the network's health.
+
+Envs that run no `aggkit-proxy` (`op-pp`) fall back to the hand-rolled parallel `BridgeL1ToL2` / `BridgeL2ToL1`
+check: the tool observes everything through the proxy's `/bridge/v1` + `/tracker/v1` surface, and the
+`/tracker/v1` half exists only in the `aggkit-proxy` binary.

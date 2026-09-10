@@ -54,17 +54,32 @@ const (
 	serviceCheckInterval = 2 * time.Second
 )
 
+// proxyRESTURLs is the external base URL of each env's aggkit-proxy REST API (the shared
+// /bridge/v1 + /tracker/v1 surface). It is a per-env table rather than a summary.json field
+// because the aggkit-proxy is defined only by the env's own docker-compose.yml (it is not part of
+// the kurtosis-cdk snapshot summary, which describes the snapshot's services only). An env that
+// runs no aggkit-proxy is deliberately absent, so Env.ProxyRESTURL is "" for it -- EnvOpPP is
+// such an env, and the /tracker/v1 half of this surface exists only in the aggkit-proxy binary.
+var proxyRESTURLs = map[ENVName]string{
+	EnvAnvil2Chains: "http://127.0.0.1:15601",
+	EnvOpPP2Chains:  "http://127.0.0.1:12601",
+}
+
 // Env represents a loaded E2E test environment
 type Env struct {
 	L1 L1Config
 	L2 L2Config
 	// L2B is the secondary L2 network (L2B). It is nil for single-chain envs (EnvOpPP)
 	// and populated for multi-chain envs (EnvOpPP2Chains).
-	L2B              *L2Config
-	Clients          ClientsConfig
-	Keys             KeysConfig
-	EnvDir           string
-	AggsenderRPCURL  string // External URL of the aggsender JSON-RPC endpoint
+	L2B             *L2Config
+	Clients         ClientsConfig
+	Keys            KeysConfig
+	EnvDir          string
+	AggsenderRPCURL string // External URL of the aggsender JSON-RPC endpoint
+	// ProxyRESTURL is the external base URL of this env's aggkit-proxy REST API, serving both
+	// /bridge/v1 (the per-network bridge service, selected by the network_id query parameter)
+	// and /tracker/v1. It is "" for envs that run no aggkit-proxy (see proxyRESTURLs).
+	ProxyRESTURL     string
 	envName          ENVName
 	bridgeServiceURL string // Used by StartAggkit to wait for bridge readiness
 	aggkitDataDir    string // Host path of the aggkit container's /tmp bind-mount
@@ -88,7 +103,11 @@ type KeyPool struct {
 
 // L1Config contains L1 network configuration
 type L1Config struct {
-	ChainID    *big.Int
+	ChainID *big.Int
+	// RPCURL is the external HTTP JSON-RPC URL of the L1 execution client, i.e. the URL
+	// Clients.L1 is dialed against. Exposed for tests that dial L1 themselves (or hand the URL
+	// to a tool that does) rather than reusing the env's client.
+	RPCURL     string
 	Contracts  L1Contracts
 	Transactor *bind.TransactOpts
 }
@@ -97,12 +116,19 @@ type L1Config struct {
 type L1Contracts struct {
 	RollupManager *agglayermanager.Agglayermanager
 	Bridge        *agglayerbridge.Agglayerbridge
+	// BridgeAddress is the address Bridge is bound to, the L1 counterpart of
+	// L2Contracts.L2BridgeAddress. Exposed so callers that need the address itself (e.g. to
+	// configure a tool with it) do not have to re-read the env's summary.json.
+	BridgeAddress common.Address
 }
 
 // L2Config contains L2 network configuration
 type L2Config struct {
-	ChainID    *big.Int
-	NetworkID  uint32
+	ChainID   *big.Int
+	NetworkID uint32
+	// RPCURL is the external HTTP JSON-RPC URL of this L2's execution client (op-geth or
+	// op-reth), i.e. the URL Client is dialed against.
+	RPCURL     string
 	Contracts  L2Contracts
 	Transactor *bind.TransactOpts
 	// Client is the ethclient dialed against this L2's op-geth RPC. For the primary
@@ -365,9 +391,11 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 	return &Env{
 		L1: L1Config{
 			ChainID: l1ChainID,
+			RPCURL:  summary.Networks.L1.Services.Geth.HTTPRpc.External,
 			Contracts: L1Contracts{
 				RollupManager: rollupManager,
 				Bridge:        bridgeContract,
+				BridgeAddress: bridgeAddr,
 			},
 			Transactor: l1Transactor,
 		},
@@ -386,6 +414,7 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		},
 		EnvDir:           envDir,
 		AggsenderRPCURL:  l2A.AggsenderRPCURL,
+		ProxyRESTURL:     proxyRESTURLs[envName],
 		envName:          envName,
 		bridgeServiceURL: l2A.BridgeServiceURL,
 		aggkitDataDir:    aggkit001DataDir(envDir),
@@ -495,6 +524,7 @@ func loadL2Config(ctx context.Context, summary summaryJSON, networkKey string) (
 	return &L2Config{
 		ChainID:   l2ChainID,
 		NetworkID: l2NetworkID,
+		RPCURL:    l2Network.l2RPCExternal(),
 		Contracts: L2Contracts{
 			L2Bridge:             l2Bridge,
 			L2BridgeAddress:      l2BridgeAddr,
