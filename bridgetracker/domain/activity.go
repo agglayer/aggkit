@@ -123,6 +123,11 @@ type KnownBridge struct {
 	// ActivitySourceBridgeService and stay that way, even though nothing about the bridge's
 	// on-chain location changed (see sources.fetchNewBridgesFrom).
 	Source ActivitySourceKind
+	// NetworkID is the network whose bridge service reported it last time (see
+	// ScannedBridge.NetworkID) — lets an implementation scanning one network at a time tell
+	// which known entries are its own, e.g. to decide whether one of them has gone missing from
+	// its own recent scan window (see ActivityBridgeScanner.BridgesFrom's invalidated return).
+	NetworkID uint32
 }
 
 // ActivityBridgeScanner is the driven port to the raw bridge-service data behind the
@@ -146,12 +151,23 @@ type ActivityBridgeScanner interface {
 	// so anything after the first known bridge is guaranteed already known too (see
 	// sources.ActivitySource).
 	//
+	// invalidated lists the GlobalIndex (as a decimal string, same encoding as known's keys) of
+	// every entry in known that should be forgotten instead of trusted: known.Source ==
+	// ActivitySourceRPC, its BlockNum still falls inside the range this call actually scanned via
+	// RPC for its own network (see KnownBridge.NetworkID), yet the bridge no longer shows up
+	// there at all — the deposit was reorged out and nothing has re-included it (yet). A caller
+	// must remove these from its cache rather than keep serving their last known (now unverified)
+	// data; if the bridge is re-included later, at the same or a different block, it is
+	// discovered again as new. A bridge cached from the bridge service (Source ==
+	// ActivitySourceBridgeService) is never invalidated this way — that data is presumed
+	// reorg-safe already (the bridge service's own sync pipeline is responsible for that).
+	//
 	// A network whose bridge service cannot be scanned does not fail the call: it is skipped and
 	// reported back as an ActivityWarning instead, so one misbehaving network never hides every
 	// other network's activity.
 	BridgesFrom(
 		ctx context.Context, fromAddress common.Address, known map[string]KnownBridge,
-	) ([]*ScannedBridge, []ActivityWarning, error)
+	) (found []*ScannedBridge, invalidated []string, warnings []ActivityWarning, err error)
 }
 
 // ActivityClaimChecker is the driven port to a bridge's claim state on its destination

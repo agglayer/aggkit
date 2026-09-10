@@ -30,6 +30,12 @@ type bridgeAddressResolver interface {
 // a given address — a safety net for a bridge that network's own bridge-service instance has not
 // indexed yet. ActivitySource.BridgesFrom runs this in parallel with, and merges its result into,
 // the existing bridge-service-backed scan (see fetchNewBridgesFrom).
+//
+// Known limitation: it never calls debug_traceTransaction, so an Asset bridge routed through an
+// intermediate contract (not sent directly to the bridge contract) can't have its real sender
+// resolved here and is dropped from this fallback's results — it still surfaces once the
+// bridge-service indexer (which does trace) catches up. This keeps the fallback cheap for the
+// common case and lets it run against RPC providers that don't expose the debug namespace.
 type activityRPCScanner struct {
 	ethClients EthClientResolver
 	finder     bridgeAddressResolver
@@ -58,35 +64,49 @@ func newActivityRPCScanner(
 	}, nil
 }
 
+// activityRPCScanResult is what activityRPCScanner.BridgesFrom returns for one network: the
+// bridges it found, plus the [FromBlock, ToBlock] window it actually resolved and scanned this
+// call. The caller needs the window bounds to tell a previously RPC-reported bridge that has
+// simply aged out of the window (its BlockNum is now below FromBlock — expected, not a problem)
+// apart from one still inside it that should have been found again but was not (see
+// ActivitySource.BridgesFrom's invalidation check).
+type activityRPCScanResult struct {
+	Bridges            []*domain.ScannedBridge
+	FromBlock, ToBlock uint64
+}
+
 // BridgesFrom scans networkID's own bridge contract via RPC for BridgeEvent logs sent by
 // fromAddress within [fromBlock, toBlock], converting each match into a domain.ScannedBridge via
 // the same bridgeservice.NewBridgeResponse converter the bridge-service instance itself uses, so
 // an RPC-discovered bridge is byte-for-byte comparable (same GlobalIndex, same BridgeHash) to
-// whatever that instance would eventually report for it. Returns an empty, nil-error result for
-// an empty (fromBlock > toBlock) window — that is not itself a failure.
+// whatever that instance would eventually report for it. Returns an empty Bridges slice, nil
+// error, for an empty (fromBlock > toBlock) window — that is not itself a failure; FromBlock/
+// ToBlock are only meaningfully populated once both resolve, so a caller must check the error
+// first.
 func (r *activityRPCScanner) BridgesFrom(
 	ctx context.Context, networkID uint32, fromAddress common.Address,
-) ([]*domain.ScannedBridge, error) {
+) (activityRPCScanResult, error) {
 	client, err := r.ethClients.RPCClientFor(ctx, networkID)
 	if err != nil {
-		return nil, fmt.Errorf("resolving JSON-RPC client for network %d: %w", networkID, err)
+		return activityRPCScanResult{}, fmt.Errorf("resolving JSON-RPC client for network %d: %w", networkID, err)
 	}
 
 	bridgeAddr, err := r.finder.BridgeAddress(ctx, networkID)
 	if err != nil {
-		return nil, fmt.Errorf("resolving bridge contract address for network %d: %w", networkID, err)
+		return activityRPCScanResult{}, fmt.Errorf("resolving bridge contract address for network %d: %w", networkID, err)
 	}
 
 	from, err := r.fromBlock.BlockNumber(ctx, client)
 	if err != nil {
-		return nil, fmt.Errorf("resolving %s for network %d: %w", r.fromBlock.String(), networkID, err)
+		return activityRPCScanResult{}, fmt.Errorf("resolving %s for network %d: %w", r.fromBlock.String(), networkID, err)
 	}
 	to, err := r.toBlock.BlockNumber(ctx, client)
 	if err != nil {
-		return nil, fmt.Errorf("resolving %s for network %d: %w", r.toBlock.String(), networkID, err)
+		return activityRPCScanResult{}, fmt.Errorf("resolving %s for network %d: %w", r.toBlock.String(), networkID, err)
 	}
+	window := activityRPCScanResult{FromBlock: from, ToBlock: to}
 	if from > to {
-		return nil, nil
+		return window, nil
 	}
 
 	logs, err := client.FilterLogs(ctx, ethereum.FilterQuery{
@@ -96,12 +116,12 @@ func (r *activityRPCScanner) BridgesFrom(
 		Topics:    [][]common.Hash{{bridgeEventSignature}},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("filtering BridgeEvent logs for network %d [%d, %d]: %w", networkID, from, to, err)
+		return window, fmt.Errorf("filtering BridgeEvent logs for network %d [%d, %d]: %w", networkID, from, to, err)
 	}
 
 	// ethClient/txLogger are only needed once there is at least one log to process — resolved
-	// lazily so an empty window never fails on a client that happens not to support the extended
-	// RPC calls (debug_traceTransaction) ExtractTxnAddresses may need.
+	// lazily so an empty window never fails on a client that happens not to support the
+	// eth_getTransactionByHash call ExtractTxnAddresses needs.
 	var ethClient aggkittypes.EthClienter
 	var txLogger *aggkitlog.Logger
 
@@ -111,8 +131,8 @@ func (r *activityRPCScanner) BridgesFrom(
 			var ok bool
 			ethClient, ok = client.(aggkittypes.EthClienter)
 			if !ok {
-				return nil, fmt.Errorf("JSON-RPC client for network %d does not support the extended RPC "+
-					"calls (debug_traceTransaction) needed to resolve a bridge's sender", networkID)
+				return window, fmt.Errorf("JSON-RPC client for network %d does not support the extended RPC "+
+					"calls needed to resolve a bridge's sender", networkID)
 			}
 			if txLogger, ok = r.logger.(*aggkitlog.Logger); !ok {
 				txLogger = aggkitlog.GetDefaultLogger()
@@ -121,24 +141,29 @@ func (r *activityRPCScanner) BridgesFrom(
 
 		event, err := r.parser.ParseBridgeEvent(l)
 		if err != nil {
-			return nil, fmt.Errorf("parsing BridgeEvent log of %s on network %d: %w", l.TxHash, networkID, err)
+			return window, fmt.Errorf("parsing BridgeEvent log of %s on network %d: %w", l.TxHash, networkID, err)
 		}
 
-		// syncFromInBridges=true: the recent window this source scans is small, so paying for
-		// debug_traceTransaction on the rare indirect Asset bridge is cheap here, unlike a full
-		// historical sync (see ExtractTxnAddresses)
+		// syncFromInBridges=false: unlike the bridge-service indexer's own historical sync, this
+		// fallback never pays for debug_traceTransaction. An Asset bridge routed through an
+		// intermediate contract (the tx wasn't sent directly to the bridge) then comes back with
+		// a nil depositorAddr and is silently dropped just below — that same bridge still surfaces
+		// once the bridge-service indexer (which does trace) catches up, so this stays cheap and
+		// keeps working against RPC providers that don't expose the debug namespace at all.
 		txnSender, depositorAddr, toAddr, err := bridgesync.ExtractTxnAddresses(
-			ctx, ethClient, bridgeAddr, l.TxHash, event, txLogger, true)
+			ctx, ethClient, bridgeAddr, l.TxHash, event, txLogger, false)
 		if err != nil {
-			return nil, fmt.Errorf("extracting sender of %s on network %d: %w", l.TxHash, networkID, err)
+			return window, fmt.Errorf("extracting sender of %s on network %d: %w", l.TxHash, networkID, err)
 		}
 		if depositorAddr == nil || *depositorAddr != fromAddress {
-			continue // not a bridge sent by fromAddress
+			// not a bridge sent by fromAddress — or an indirect Asset bridge whose sender this
+			// fallback can't resolve without tracing (see syncFromInBridges note above)
+			continue
 		}
 
 		timestamp, err := blockTimestamp(ctx, client, l.BlockHash)
 		if err != nil {
-			return nil, fmt.Errorf("fetching timestamp of block %s on network %d: %w", l.BlockHash, networkID, err)
+			return window, fmt.Errorf("fetching timestamp of block %s on network %d: %w", l.BlockHash, networkID, err)
 		}
 
 		bridge := &bridgesync.Bridge{
@@ -166,5 +191,6 @@ func (r *activityRPCScanner) BridgesFrom(
 			Source:    domain.ActivitySourceRPC,
 		})
 	}
-	return out, nil
+	window.Bridges = out
+	return window, nil
 }

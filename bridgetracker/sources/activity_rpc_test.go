@@ -86,9 +86,11 @@ func TestActivityRPCScanner_BridgesFrom_EmptyWindow(t *testing.T) {
 	expectRange(client, 200, 100) // from (200) > to (100)
 	scanner := newActivityRPCScannerForTest(t, client)
 
-	items, err := scanner.BridgesFrom(t.Context(), activityRPCTestNetworkID, common.HexToAddress(testFromAddress))
+	result, err := scanner.BridgesFrom(t.Context(), activityRPCTestNetworkID, common.HexToAddress(testFromAddress))
 	require.NoError(t, err)
-	require.Empty(t, items)
+	require.Empty(t, result.Bridges)
+	require.Equal(t, uint64(200), result.FromBlock)
+	require.Equal(t, uint64(100), result.ToBlock)
 }
 
 // TestActivityRPCScanner_BridgesFrom_MatchingBridge verifies a BridgeEvent log sent directly to
@@ -106,9 +108,10 @@ func TestActivityRPCScanner_BridgesFrom_MatchingBridge(t *testing.T) {
 		Return(&gethtypes.Header{Time: testBlockTimestamp}, nil)
 
 	scanner := newActivityRPCScannerForTest(t, client)
-	items, err := scanner.BridgesFrom(t.Context(), activityRPCTestNetworkID, common.HexToAddress(testFromAddress))
+	result, err := scanner.BridgesFrom(t.Context(), activityRPCTestNetworkID, common.HexToAddress(testFromAddress))
 	require.NoError(t, err)
-	require.Len(t, items, 1)
+	require.Len(t, result.Bridges, 1)
+	items := result.Bridges
 	require.Equal(t, activityRPCTestNetworkID, items[0].NetworkID)
 	require.Equal(t, uint32(1), items[0].Bridge.DestinationNetwork)
 	require.Equal(t, uint32(7), items[0].Bridge.DepositCount)
@@ -128,9 +131,9 @@ func TestActivityRPCScanner_BridgesFrom_FiltersOtherSenders(t *testing.T) {
 	expectTxSender(t, client, common.HexToAddress("0x2222222222222222222222222222222222222222"))
 
 	scanner := newActivityRPCScannerForTest(t, client)
-	items, err := scanner.BridgesFrom(t.Context(), activityRPCTestNetworkID, common.HexToAddress(testFromAddress))
+	result, err := scanner.BridgesFrom(t.Context(), activityRPCTestNetworkID, common.HexToAddress(testFromAddress))
 	require.NoError(t, err)
-	require.Empty(t, items)
+	require.Empty(t, result.Bridges)
 }
 
 // TestActivityRPCScanner_BridgesFrom_FilterLogsError verifies an eth_getLogs failure is bubbled

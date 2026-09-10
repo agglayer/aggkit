@@ -43,23 +43,26 @@ func scannedBridge(bridge *bridgeservicetypes.BridgeResponse, networkID uint32) 
 }
 
 // fakeActivityScanner is a hand-rolled ActivityBridgeScanner for tests: it returns whichever of
-// bridges is not in known, mirroring ActivitySource.BridgesFrom's real contract. calls records
-// how many times it was invoked, lastKnown the known argument it was last called with.
+// bridges is not in known, mirroring ActivitySource.BridgesFrom's real contract, plus whatever
+// invalidated is configured (see domain.ActivityBridgeScanner.BridgesFrom's invalidated return).
+// calls records how many times it was invoked, lastKnown the known argument it was last called
+// with.
 type fakeActivityScanner struct {
-	bridges   []*domain.ScannedBridge
-	err       error
-	warnings  []domain.ActivityWarning
-	calls     int
-	lastKnown map[string]domain.KnownBridge
+	bridges     []*domain.ScannedBridge
+	err         error
+	warnings    []domain.ActivityWarning
+	invalidated []string
+	calls       int
+	lastKnown   map[string]domain.KnownBridge
 }
 
 func (f *fakeActivityScanner) BridgesFrom(
 	_ context.Context, _ common.Address, known map[string]domain.KnownBridge,
-) ([]*domain.ScannedBridge, []domain.ActivityWarning, error) {
+) ([]*domain.ScannedBridge, []string, []domain.ActivityWarning, error) {
 	f.calls++
 	f.lastKnown = known
 	if f.err != nil {
-		return nil, nil, f.err
+		return nil, nil, nil, f.err
 	}
 	out := make([]*domain.ScannedBridge, 0, len(f.bridges))
 	for _, b := range f.bridges {
@@ -68,7 +71,7 @@ func (f *fakeActivityScanner) BridgesFrom(
 		}
 		out = append(out, b)
 	}
-	return out, f.warnings, nil
+	return out, f.invalidated, f.warnings, nil
 }
 
 // fakeActivityClaims is a hand-rolled ActivityClaimChecker for tests: isClaimed/claimInfo are
@@ -569,6 +572,30 @@ func TestActivityCache_SourceIsCarriedForwardAcrossRechecks(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, domain.ActivitySourceRPC, entries[0].Source, "Source must survive the recheck, not reset to empty")
+}
+
+// TestActivityCache_ForgetsInvalidatedBridges verifies a bridge the scanner reports as
+// invalidated (see domain.ActivityBridgeScanner.BridgesFrom's invalidated return — a bridge an
+// RPC-based source once reported that a reorg has since removed, with nothing yet re-including
+// it) is forgotten: removed from the cache and absent from the result, even though it was cached
+// and unclaimed just before this call.
+func TestActivityCache_ForgetsInvalidatedBridges(t *testing.T) {
+	bridge := testScannedBridge(1)
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{bridge}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
+	cache := newTestActivityCache(scanner, claims)
+
+	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	// second call: the scanner no longer finds it at all, and reports it invalidated instead
+	scanner.bridges = nil
+	scanner.invalidated = []string{string(bridge.Bridge.GlobalIndex)}
+
+	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Empty(t, entries, "an invalidated bridge must be forgotten, not served with stale data")
 }
 
 // TestActivityCache_IdleAddressIsForgotten verifies an address untouched for longer than

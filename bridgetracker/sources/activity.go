@@ -33,7 +33,7 @@ type NetworkLister interface {
 // activity_test.go) instead of a full RPC mock — activity_rpc_test.go already covers
 // *activityRPCScanner's own scanning logic directly.
 type activityBridgeRPCScanner interface {
-	BridgesFrom(ctx context.Context, networkID uint32, fromAddress common.Address) ([]*domain.ScannedBridge, error)
+	BridgesFrom(ctx context.Context, networkID uint32, fromAddress common.Address) (activityRPCScanResult, error)
 }
 
 // ActivitySource implements bridgetracker.ActivityBridgeScanner and ActivityClaimChecker: it
@@ -118,7 +118,12 @@ type networkScanResult struct {
 	// best-effort right after restBridges (nil on any failure — see isNetworkSynced)
 	syncStatus *bridgeservicetypes.SyncStatus
 	rpcBridges []*domain.ScannedBridge
-	rpcErr     error
+	// rpcFromBlock/rpcToBlock are the block range the RPC fallback actually resolved and scanned
+	// this call (see activityRPCScanResult) — only meaningful when rpcErr is nil; used to decide
+	// which known bridges should have shown up in rpcBridges again but did not (see
+	// invalidatedBridges)
+	rpcFromBlock, rpcToBlock uint64
+	rpcErr                   error
 }
 
 // scanNetwork runs the bridge-service fetch and the RPC-based fallback scan for networkID
@@ -155,7 +160,9 @@ func (s *ActivitySource) scanNetwork(
 		if s.rpc == nil {
 			return
 		}
-		res.rpcBridges, res.rpcErr = s.rpc.BridgesFrom(ctx, networkID, fromAddress)
+		var result activityRPCScanResult
+		result, res.rpcErr = s.rpc.BridgesFrom(ctx, networkID, fromAddress)
+		res.rpcBridges, res.rpcFromBlock, res.rpcToBlock = result.Bridges, result.FromBlock, result.ToBlock
 	}()
 	wg.Wait()
 	return res
@@ -201,6 +208,31 @@ func appendChangedBridges(
 	return all, addedAny
 }
 
+// invalidatedBridges returns the GlobalIndex (decimal string, see domain.KnownBridge) of every
+// entry in known that: belongs to networkID (see KnownBridge.NetworkID), was last cached from
+// the RPC fallback (Source == domain.ActivitySourceRPC — a bridge-service-sourced entry is
+// presumed reorg-safe already and never considered here), has a BlockNum still inside
+// [rpcFromBlock, the window's own upper bound] — i.e. it has not simply aged out of the range
+// this call scanned, which would explain its absence with nothing wrong — yet is not among
+// foundThisCall, this call's full set of bridges actually found (by any source) for networkID.
+// That combination means a reorg has dropped it and nothing has re-included it (yet); see
+// domain.ActivityBridgeScanner.BridgesFrom's invalidated return for what a caller must do with
+// the result.
+func invalidatedBridges(
+	networkID uint32, known map[string]domain.KnownBridge, rpcFromBlock uint64, foundThisCall map[string]struct{},
+) []string {
+	var invalidated []string
+	for key, k := range known {
+		if k.NetworkID != networkID || k.Source != domain.ActivitySourceRPC || k.BlockNum < rpcFromBlock {
+			continue
+		}
+		if _, ok := foundThisCall[key]; !ok {
+			invalidated = append(invalidated, key)
+		}
+	}
+	return invalidated
+}
+
 // BridgesFrom implements bridgetracker.ActivityBridgeScanner: for every network the finder
 // currently knows about, it queries that network's own bridge service GET /bridge/v1/bridges
 // filtered by from_address (paging until either a short page or an already-known bridge is
@@ -223,18 +255,38 @@ func appendChangedBridges(
 //   - the RPC fallback failing, finding nothing new or changed, or being disabled entirely never
 //     changes or degrades the bridge-service result.
 //
+// Independent of the above, whenever the RPC fallback itself succeeds, any bridge it previously
+// reported (Source == domain.ActivitySourceRPC in known) whose BlockNum is still within the
+// window just scanned but that no longer shows up there at all is reported back via invalidated
+// (see invalidatedBridges) — the caller must forget it rather than keep trusting stale data a
+// reorg has since invalidated.
+//
 // A network whose bridge service cannot be reached at all, and whose RPC fallback cannot help
 // either, is skipped and reported back as a domain.ActivityWarning instead of failing the whole
 // scan, so one misbehaving network never hides every other network's activity.
 func (s *ActivitySource) BridgesFrom(
 	ctx context.Context, fromAddress common.Address, known map[string]domain.KnownBridge,
-) ([]*domain.ScannedBridge, []domain.ActivityWarning, error) {
+) ([]*domain.ScannedBridge, []string, []domain.ActivityWarning, error) {
 	addr := fromAddress.Hex()
 
 	var all []*domain.ScannedBridge
+	var invalidated []string
 	var warnings []domain.ActivityWarning
 	for _, networkID := range s.finder.NetworkIDs() {
 		res := s.scanNetwork(ctx, networkID, addr, fromAddress, known)
+
+		if res.rpcErr == nil && s.rpc != nil {
+			foundThisCall := make(map[string]struct{}, len(res.restBridges)+len(res.rpcBridges))
+			if res.restErr == nil {
+				for _, b := range res.restBridges {
+					foundThisCall[string(b.Bridge.GlobalIndex)] = struct{}{}
+				}
+			}
+			for _, b := range res.rpcBridges {
+				foundThisCall[string(b.Bridge.GlobalIndex)] = struct{}{}
+			}
+			invalidated = append(invalidated, invalidatedBridges(networkID, known, res.rpcFromBlock, foundThisCall)...)
+		}
 
 		if res.restErr != nil {
 			if s.rpc != nil && res.rpcErr == nil {
@@ -272,7 +324,7 @@ func (s *ActivitySource) BridgesFrom(
 					"still be missing", networkID))
 		}
 	}
-	return all, warnings, nil
+	return all, invalidated, warnings, nil
 }
 
 // warnf logs msg (formatted per fmt.Sprintf's rules on format/args) and turns it into the
