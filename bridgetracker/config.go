@@ -45,6 +45,20 @@ var DefaultIdleTimeout = types.Duration{Duration: DefaultEngineIdleTimeout}
 // sync with the [Tracker] section of the proxy's default config)
 const DefaultL2InjectionLookbackBlocks = 1_000
 
+// DefaultActivitySourceBridgeServicePageSize is the default
+// Config.ActivitySourceBridgeService.PageSize: the page size used while paging through a
+// network's own GET /bridge/v1/bridges scanning for a from_address (see
+// sources.ActivitySource.BridgesFrom).
+const DefaultActivitySourceBridgeServicePageSize = uint32(100)
+
+// DefaultActivitySourceRPCRangeFromBlock is the default Config.ActivitySourceRPC.RangeFromBlock:
+// how far back the RPC-based activity fallback (see sources.activityRPCScanner,
+// agglayer/aggkit#1837) scans on each network, relative to that network's own latest block.
+var DefaultActivitySourceRPCRangeFromBlock = aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: -90}
+
+// DefaultActivitySourceRPCRangeToBlock is the default Config.ActivitySourceRPC.RangeToBlock.
+var DefaultActivitySourceRPCRangeToBlock = aggkittypes.LatestBlock
+
 // Config holds the configuration of the bridge tracker service. Only the mapstructure-tagged
 // fields come from the configuration file; the rest are wired programmatically by the binary
 // (see proxy/cmd)
@@ -159,6 +173,58 @@ type Config struct {
 	// knows about. Wired programmatically by the binary (bridgeservicefinder.Finder satisfies
 	// this port directly); leaving it nil leaves the endpoint unregistered entirely.
 	BridgeAddressResolver BridgeAddressResolver `mapstructure:"-"`
+
+	// ActivitySourceBridgeService configures the bridge-service-backed ActivityBridgeScanner —
+	// the existing GET /bridge/v1/bridges-based source behind GET /activity/from/{from_address}
+	// (see sources.ActivitySource.BridgesFrom's REST path).
+	ActivitySourceBridgeService ActivitySourceBridgeServiceConfig `mapstructure:"ActivitySourceBridgeService"`
+
+	// ActivitySourceRPC configures the RPC-based fallback ActivityBridgeScanner (see
+	// sources.activityRPCScanner, agglayer/aggkit#1837): a safety net that scans each network's
+	// own bridge contract directly via RPC, in parallel with ActivitySourceBridgeService, for
+	// bridges that service has not indexed yet.
+	ActivitySourceRPC ActivitySourceRPCConfig `mapstructure:"ActivitySourceRPC"`
+}
+
+// ActivitySourceBridgeServiceConfig is [Tracker.ActivitySourceBridgeService].
+type ActivitySourceBridgeServiceConfig struct {
+	// PageSize is the page size used while paging through a network's own
+	// GET /bridge/v1/bridges scanning for a from_address (see fetchNewBridgesFrom). A value <= 0
+	// falls back to DefaultActivitySourceBridgeServicePageSize.
+	PageSize uint32 `mapstructure:"PageSize"`
+}
+
+// ActivitySourceRPCConfig is [Tracker.ActivitySourceRPC].
+type ActivitySourceRPCConfig struct {
+	// Enabled turns the RPC-based fallback on: GET /activity/from/{from_address} additionally
+	// scans each network's own bridge contract directly via RPC over
+	// [RangeFromBlock, RangeToBlock], in parallel with ActivitySourceBridgeService, merging in
+	// whatever bridges that bridge service has not indexed yet. false keeps today's
+	// bridge-service-only behavior.
+	Enabled bool `mapstructure:"Enabled"`
+
+	// RangeFromBlock is the lower bound of the RPC scan window, e.g. "LatestBlock/-90" (last 90
+	// blocks) or "FinalizedBlock". A value <= 0/empty falls back to
+	// DefaultActivitySourceRPCRangeFromBlock. Ignored when Enabled is false.
+	RangeFromBlock aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock,enum=SafeBlock,enum=FinalizedBlock,enum=PendingBlock" mapstructure:"RangeFromBlock"` //nolint:lll
+
+	// RangeToBlock is the upper bound of the RPC scan window, typically "LatestBlock". Ignored
+	// when Enabled is false.
+	RangeToBlock aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock,enum=SafeBlock,enum=FinalizedBlock,enum=PendingBlock" mapstructure:"RangeToBlock"` //nolint:lll
+}
+
+// Validate checks if the ActivitySourceRPCConfig is valid
+func (c *ActivitySourceRPCConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if err := c.RangeFromBlock.Validate(); err != nil {
+		return fmt.Errorf("[Tracker.ActivitySourceRPC].RangeFromBlock: %w", err)
+	}
+	if err := c.RangeToBlock.Validate(); err != nil {
+		return fmt.Errorf("[Tracker.ActivitySourceRPC].RangeToBlock: %w", err)
+	}
+	return nil
 }
 
 // Validate checks if the configuration is valid
@@ -166,6 +232,9 @@ func (c *Config) Validate() error {
 	if c.L1GlobalExitRootAddress == (common.Address{}) {
 		return fmt.Errorf("[Tracker].L1GlobalExitRootAddress is not set (zero address): " +
 			"the L1 GlobalExitRoot contract address is required for L1->L2 bridge tracking to work")
+	}
+	if err := c.ActivitySourceRPC.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
