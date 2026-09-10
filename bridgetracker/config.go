@@ -182,7 +182,12 @@ type Config struct {
 	// ActivitySourceRPC configures the RPC-based fallback ActivityBridgeScanner (see
 	// sources.activityRPCScanner, agglayer/aggkit#1837): a safety net that scans each network's
 	// own bridge contract directly via RPC, in parallel with ActivitySourceBridgeService, for
-	// bridges that service has not indexed yet.
+	// bridges that service has not indexed yet. It never calls debug_traceTransaction, so it
+	// works against any standard JSON-RPC endpoint (the debug namespace is not required); the
+	// trade-off is that an Asset bridge routed through an intermediate contract (not sent
+	// directly to the bridge contract) is not resolved by this fallback and is silently skipped —
+	// it still shows up once ActivitySourceBridgeService's own indexer (which does trace) catches
+	// up with it.
 	ActivitySourceRPC ActivitySourceRPCConfig `mapstructure:"ActivitySourceRPC"`
 }
 
