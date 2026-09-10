@@ -32,6 +32,11 @@ type ActivityItem struct {
 	// Bridge.OriginNetwork, which is the origin network of the bridged asset and can differ for
 	// a re-bridged asset (see domain.ScannedBridge)
 	BridgeNetworkID uint32 `json:"bridge_network_id"`
+	// Source is which system supplied Bridge as of the last time it was (re)scanned: "bridge"
+	// (the network's own bridge service — the default, and the source of record whenever it is
+	// available) or "rpc" (the RPC-based fallback, only ever used while the bridge service had
+	// not indexed this bridge yet, or could not be reached — see domain.ActivitySourceKind)
+	Source string `json:"source"`
 	// ClaimStatus is a simplified claim-readiness summary, one of "pending", "readyToClaim",
 	// "claimed" or "error" — the same vocabulary and field name as TrackingData.ClaimStatus (see
 	// domain.TrackingData.ClaimStatus for exactly how it is derived). "error" reports the
@@ -156,6 +161,7 @@ func newActivityItems(entries []*domain.ActivityEntry) []ActivityItem {
 		item := ActivityItem{
 			Bridge:               e.Bridge,
 			BridgeNetworkID:      e.BridgeNetworkID,
+			Source:               string(e.Source),
 			ClaimStatus:          e.TrackerClaimStatus.String(),
 			Errors:               e.Errors,
 			CreationTimestamp:    uint64(e.CreatedAt.Unix()),

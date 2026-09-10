@@ -9,6 +9,24 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// ActivitySourceKind identifies which system supplied a ScannedBridge/ActivityEntry's current
+// data: the network's own bridge service (ActivitySourceBridgeService — the source of record) or
+// this package's RPC-based fallback (ActivitySourceRPC, see sources.activityRPCScanner,
+// agglayer/aggkit#1837), used only while the bridge service has not indexed it yet (or is
+// unreachable). Whenever both report the very same bridge in one scan, the bridge service always
+// wins (see ActivitySource.BridgesFrom's merge — a bridge the bridge service reports is never
+// left labeled ActivitySourceRPC just because the RPC fallback also happened to find it).
+type ActivitySourceKind string
+
+const (
+	// ActivitySourceBridgeService: the bridge came from the network's own bridge service
+	// GET /bridge/v1/bridges — the default, and the source of record whenever it is available.
+	ActivitySourceBridgeService ActivitySourceKind = "bridge"
+	// ActivitySourceRPC: the bridge service had not indexed this bridge (or could not be
+	// reached), and it was only discovered by scanning the network directly via RPC.
+	ActivitySourceRPC ActivitySourceKind = "rpc"
+)
+
 // ScannedBridge pairs a raw bridge event with the network whose bridge service actually
 // returned it — i.e. the network the bridge-creating tx was sent to. This is deliberately NOT
 // the same thing as Bridge.OriginNetwork, which is the origin network of the bridged ASSET: the
@@ -22,6 +40,9 @@ import (
 type ScannedBridge struct {
 	Bridge    *bridgeservicetypes.BridgeResponse
 	NetworkID uint32
+	// Source is which system supplied Bridge — the bridge service or the RPC fallback (see
+	// ActivitySourceKind); ActivityQuerier.GetActivity carries it into ActivityEntry.Source
+	Source ActivitySourceKind
 }
 
 // ActivityEntry is one bridge found for a from_address, as of the last time it was (re)checked
@@ -34,6 +55,9 @@ type ActivityEntry struct {
 	// BridgeNetworkID is the network whose bridge service reported Bridge (see ScannedBridge) —
 	// NOT necessarily Bridge.OriginNetwork
 	BridgeNetworkID uint32
+	// Source is which system supplied Bridge as of the last time this entry was (re)scanned —
+	// the bridge service or the RPC fallback (see ActivitySourceKind, ScannedBridge.Source)
+	Source ActivitySourceKind
 	// ClaimStatus is the tri-state result of the destination bridge contract's isClaimed()
 	// call the last time it was checked: Unclaimed, Claimed, or Error if the check itself
 	// failed (e.g. no bridge contract address configured for the destination network) — a
@@ -79,24 +103,71 @@ type ActivityWarning struct {
 	Message string
 }
 
+// KnownBridge is the on-chain location (TxHash/BlockNum) the caller last cached a bridge's data
+// at, keyed by its GlobalIndex in the known map ActivityBridgeScanner.BridgesFrom takes. A
+// source whose own data is not otherwise reorg-protected (see sources.activityRPCScanner, which
+// reads a recent, possibly-unfinalized block range directly via RPC) can compare this against
+// what it currently observes on-chain for the same GlobalIndex: an unchanged location means
+// nothing to do, but a different one means the deposit has since been re-included in a different
+// block (or, more rarely, the same deposit count reused by a different bridge) — either way the
+// caller's cached data is now stale and must be corrected, not silently trusted forever just
+// because the GlobalIndex was seen before.
+type KnownBridge struct {
+	// TxHash is the transaction hash the bridge was last reported at.
+	TxHash bridgeservicetypes.Hash
+	// BlockNum is the block number the bridge was last reported at.
+	BlockNum uint64
+	// Source is which system supplied it the last time it was cached (see ActivitySourceKind).
+	// A bridge-service scanner uses this to upgrade an entry it once had to report via the RPC
+	// fallback: once the bridge service itself reports the same bridge, Source should become
+	// ActivitySourceBridgeService and stay that way, even though nothing about the bridge's
+	// on-chain location changed (see sources.fetchNewBridgesFrom).
+	Source ActivitySourceKind
+	// NetworkID is the network whose bridge service reported it last time (see
+	// ScannedBridge.NetworkID) — lets an implementation scanning one network at a time tell
+	// which known entries are its own, e.g. to decide whether one of them has gone missing from
+	// its own recent scan window (see ActivityBridgeScanner.BridgesFrom's invalidated return).
+	NetworkID uint32
+}
+
 // ActivityBridgeScanner is the driven port to the raw bridge-service data behind the
 // GET /activity/from/{from_address} endpoint: it scans every bridge service the tracker knows
 // about for bridges sent by fromAddress
 type ActivityBridgeScanner interface {
-	// BridgesFrom returns every bridge whose sender is fromAddress and whose GlobalIndex (as a
-	// decimal string) is not already in known, across every configured bridge service. known is
-	// the caller's full set of already-cached global indexes for fromAddress (any network — a
-	// GlobalIndex is unique across the whole system); implementations may use it to stop
-	// scanning a network as soon as an already-known bridge is reached, since each network's
-	// own bridge service reports bridges newest-first and is append-only, so anything after the
-	// first known bridge is guaranteed already known too (see sources.ActivitySource).
+	// BridgesFrom returns every bridge whose sender is fromAddress, across every configured
+	// bridge service: every bridge not yet in known (a genuinely new one), plus any bridge that
+	// is in known but whose on-chain location no longer matches what known has cached for it
+	// (see KnownBridge) — a source scanning only finalized/indexed data (the bridge-service REST
+	// scan) never has the latter case, since its data cannot un-happen once indexed; a source
+	// reading a recent, possibly-unfinalized block range directly via RPC (see
+	// sources.activityRPCScanner) can, whenever a reorg re-included the same deposit at a
+	// different block.
+	//
+	// known is the caller's full set of already-cached bridges for fromAddress, keyed by
+	// GlobalIndex as a decimal string (any network — a GlobalIndex is unique across the whole
+	// system); implementations may use plain existence in known (ignoring the cached
+	// TxHash/BlockNum) to stop scanning a network as soon as an already-known bridge is reached,
+	// since each network's own bridge service reports bridges newest-first and is append-only,
+	// so anything after the first known bridge is guaranteed already known too (see
+	// sources.ActivitySource).
+	//
+	// invalidated lists the GlobalIndex (as a decimal string, same encoding as known's keys) of
+	// every entry in known that should be forgotten instead of trusted: known.Source ==
+	// ActivitySourceRPC, its BlockNum still falls inside the range this call actually scanned via
+	// RPC for its own network (see KnownBridge.NetworkID), yet the bridge no longer shows up
+	// there at all — the deposit was reorged out and nothing has re-included it (yet). A caller
+	// must remove these from its cache rather than keep serving their last known (now unverified)
+	// data; if the bridge is re-included later, at the same or a different block, it is
+	// discovered again as new. A bridge cached from the bridge service (Source ==
+	// ActivitySourceBridgeService) is never invalidated this way — that data is presumed
+	// reorg-safe already (the bridge service's own sync pipeline is responsible for that).
 	//
 	// A network whose bridge service cannot be scanned does not fail the call: it is skipped and
 	// reported back as an ActivityWarning instead, so one misbehaving network never hides every
 	// other network's activity.
 	BridgesFrom(
-		ctx context.Context, fromAddress common.Address, known map[string]struct{},
-	) ([]*ScannedBridge, []ActivityWarning, error)
+		ctx context.Context, fromAddress common.Address, known map[string]KnownBridge,
+	) (found []*ScannedBridge, invalidated []string, warnings []ActivityWarning, err error)
 }
 
 // ActivityClaimChecker is the driven port to a bridge's claim state on its destination

@@ -431,6 +431,7 @@ Request:
 - **This endpoint is opt-in**: it only exists if the binary is configured with both an activity bridge scanner and claim checker (`Config.ActivityScanner`/`ActivityClaims`); otherwise the route is not registered at all (plain `404`).
 - Requesting `filterBridges=pending`, `filterBridges=readyToClaim` or `filterBridges=error` **skips fetching the claim record** of a bridge found to be claimed, since it would be filtered out of that result anyway — its cache entry simply has no `claim` yet, and is fetched normally the next time `filterBridges=all`/`claimed` is used for that address.
 - A network whose bridge service could not be scanned **never fails the request**: it is skipped and reported in `warnings` instead, so `bridges` is still whatever every other network reported (possibly incomplete for the networks listed in `warnings`).
+- When the RPC-based fallback (`Tracker.ActivitySourceRPC`) is enabled, it never calls `debug_traceTransaction` — so it works against any standard JSON-RPC endpoint — but as a result it cannot resolve the sender of an Asset bridge routed through an intermediate contract (i.e. the transaction was not sent directly to the bridge contract); such a bridge is silently skipped by the fallback and only appears once the network's own bridge-service indexer (which does trace) has caught up with it.
 
 ### ActivityResponse
 

@@ -85,6 +85,29 @@ MaxTrackedBridges = 100000
 # to genesis.
 L2InjectionLookbackBlocks = 1000
 
+[Tracker.ActivitySourceBridgeService]
+# PageSize: page size used while paging through a network's own GET /bridge/v1/bridges scanning
+# for a given from_address.
+PageSize = 100
+
+[Tracker.ActivitySourceRPC]
+# Enabled: when true, GET /activity/from/{address} additionally scans each network's own bridge
+# contract directly via RPC over [RangeFromBlock, RangeToBlock], in parallel with
+# ActivitySourceBridgeService, and merges in whatever bridges that bridge service has not indexed
+# yet -- a safety net for a bridge just submitted while the bridge service is lagging or
+# resyncing (agglayer/aggkit#1837). false disables the fallback entirely (bridge-service-only,
+# today's behavior).
+Enabled = true
+
+# RangeFromBlock / RangeToBlock: the block-range window this source scans on each network,
+# expressed as a block finality with an optional offset (see L1BlockFinality above).
+# "LatestBlock/-90" means "90 blocks behind that network's own latest block" -- wide enough to
+# cover a bridge submitted a few minutes ago, narrow enough that the eth_getLogs call stays cheap
+# on every poll. Widen the offset for slower-blocktime networks, narrow it for high-throughput
+# ones.
+RangeFromBlock = "LatestBlock/-90"
+RangeToBlock = "LatestBlock"
+
 [Tracker.AgglayerClient]
 Cached = true
 [Tracker.AgglayerClient.ConfigurationCache]

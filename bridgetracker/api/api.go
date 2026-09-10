@@ -18,7 +18,7 @@ import (
 	"strconv"
 	"time"
 
-	_ "github.com/agglayer/aggkit/bridgetracker/api/docs"
+	"github.com/agglayer/aggkit/bridgetracker/api/docs"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -137,8 +137,16 @@ func (a *API) RegisterRoutes(router gin.IRouter) {
 				func(c *gin.Context) { runCommand(c, a.bridgeAddressCmd) })
 		}
 
-		// Swagger docs endpoint
-		trackerGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
+		// Swagger docs endpoint. InstanceName must match the docs package's own
+		// SwaggerInfobridgetracker.InstanceName() (see bridgetracker/api/docs/bridgetracker_docs.go,
+		// generated with `make generate-swagger-docs`'s --instanceName bridgetracker) — the
+		// default ("swagger") collides with bridgeservice/docs' own swag.Register call once both
+		// packages are linked into the same binary (as they are here), which panics at process
+		// start.
+		trackerGroup.GET("/swagger/*any", ginswagger.WrapHandler(
+			swaggerfiles.Handler,
+			ginswagger.InstanceName(docs.SwaggerInfobridgetracker.InstanceName()),
+		))
 
 		// Redirect to the Swagger UI
 		trackerGroup.GET("/swagger", func(ctx *gin.Context) {

@@ -79,32 +79,52 @@ func NewActivityCache(
 // GetActivity implements domain.ActivityQuerier: it rechecks every bridge already cached for
 // fromAddress that is not yet settled (see settled — their raw bridge data is already cached, so
 // this needs no bridge-service call), then scans for bridges not seen before (see
-// ActivityBridgeScanner.BridgesFrom), and returns everything cached for fromAddress that matches
-// filter. The returned []domain.ActivityWarning is whatever the scan reported for networks it
-// could not reach this call (see ActivityBridgeScanner.BridgesFrom) — it never fails the call by
-// itself, since the result is still valid for every other network.
+// ActivityBridgeScanner.BridgesFrom), forgets whatever the scan reports as invalidated (see
+// BridgesFrom's own doc — a bridge an RPC-based source once reported that has since been
+// reorged out of existence, with nothing yet re-including it), and returns everything still
+// cached for fromAddress that matches filter. The returned []domain.ActivityWarning is whatever
+// the scan reported for networks it could not reach this call (see ActivityBridgeScanner.
+// BridgesFrom) — it never fails the call by itself, since the result is still valid for every
+// other network.
 func (a *ActivityCache) GetActivity(
 	ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
 ) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
 	addrCache := a.addrCache(fromAddress)
 
 	a.mu.Lock()
-	known := make(map[string]struct{}, len(addrCache.entries))
+	known := make(map[string]domain.KnownBridge, len(addrCache.entries))
 	cached := make([]*domain.ActivityEntry, 0, len(addrCache.entries))
 	for key, entry := range addrCache.entries {
-		known[key] = struct{}{}
+		known[key] = domain.KnownBridge{
+			TxHash: entry.Bridge.TxHash, BlockNum: entry.Bridge.BlockNum,
+			Source: entry.Source, NetworkID: entry.BridgeNetworkID,
+		}
 		cached = append(cached, entry)
 	}
 	a.mu.Unlock()
 
 	for _, entry := range cached {
-		scanned := &domain.ScannedBridge{Bridge: entry.Bridge, NetworkID: entry.BridgeNetworkID}
+		// Source is carried forward from the cached entry, not rediscovered — this is a claim/
+		// tracking recheck of data already cached, not a new scan result, so it must not reset an
+		// entry's Source back to its zero value
+		scanned := &domain.ScannedBridge{Bridge: entry.Bridge, NetworkID: entry.BridgeNetworkID, Source: entry.Source}
 		a.upsert(ctx, addrCache, scanned, includeTracking, filter)
 	}
 
-	newItems, warnings, err := a.scanner.BridgesFrom(ctx, fromAddress, known)
+	newItems, invalidated, warnings, err := a.scanner.BridgesFrom(ctx, fromAddress, known)
 	if err != nil {
 		return nil, nil, fmt.Errorf("scanning bridges from %s: %w", fromAddress, err)
+	}
+	if len(invalidated) > 0 {
+		// forget these before upserting newItems (not after): a GlobalIndex the scanner reports
+		// as both found and invalidated in the very same call (it should never, but this way a
+		// bug in that regard fails toward losing a stale entry rather than a fresh one) must end
+		// up cached, not forgotten
+		a.mu.Lock()
+		for _, key := range invalidated {
+			delete(addrCache.entries, key)
+		}
+		a.mu.Unlock()
 	}
 	for _, item := range newItems {
 		a.upsert(ctx, addrCache, item, includeTracking, filter)
@@ -246,7 +266,7 @@ func (a *ActivityCache) refresh(
 	ctx context.Context, item *domain.ScannedBridge, existing *domain.ActivityEntry,
 	includeTracking bool, filter types.ActivityFilter,
 ) *domain.ActivityEntry {
-	entry := &domain.ActivityEntry{Bridge: item.Bridge, BridgeNetworkID: item.NetworkID}
+	entry := &domain.ActivityEntry{Bridge: item.Bridge, BridgeNetworkID: item.NetworkID, Source: item.Source}
 	if existing != nil {
 		entry.CreatedAt = existing.CreatedAt
 	} else {

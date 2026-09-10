@@ -3,17 +3,16 @@ package sources
 import (
 	"context"
 	"fmt"
+	"maps"
+	"sync"
 
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
+	"github.com/agglayer/aggkit/bridgetracker"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 )
-
-// activityPageSize is the page size used to page through a network's GET /bridge/v1/bridges
-// while scanning for a given from_address (see ActivitySource.BridgesFrom)
-const activityPageSize = uint32(100)
 
 // NetworkLister widens NetworkURLResolver with network enumeration and bridge contract address
 // resolution: it is the slice of bridgeservicefinder.Finder ActivitySource needs on top of the
@@ -29,15 +28,33 @@ type NetworkLister interface {
 	BridgeAddress(ctx context.Context, networkID uint32) (common.Address, error)
 }
 
+// activityBridgeRPCScanner is the RPC-based fallback surface ActivitySource.BridgesFrom needs;
+// *activityRPCScanner satisfies it. Interface only so tests can inject a stub (see
+// activity_test.go) instead of a full RPC mock — activity_rpc_test.go already covers
+// *activityRPCScanner's own scanning logic directly.
+type activityBridgeRPCScanner interface {
+	BridgesFrom(ctx context.Context, networkID uint32, fromAddress common.Address) (activityRPCScanResult, error)
+}
+
 // ActivitySource implements bridgetracker.ActivityBridgeScanner and ActivityClaimChecker: it
-// scans every network the finder currently knows about for bridges sent by a given address
-// (via each network's own bridge service), and resolves a bridge's claim state on its
-// destination network — isClaimed() on the destination bridge contract as the source of truth,
-// then the destination bridge service's own claim record once claimed.
+// scans every network the finder currently knows about for bridges sent by a given address (via
+// each network's own bridge service, plus an optional RPC-based fallback for bridges that
+// service has not indexed yet — see rpc, agglayer/aggkit#1837), and resolves a bridge's claim
+// state on its destination network — isClaimed() on the destination bridge contract as the
+// source of truth, then the destination bridge service's own claim record once claimed.
 type ActivitySource struct {
 	logger   aggkitcommon.Logger
 	services *bridgeServiceClients
 	finder   NetworkLister
+	// pageSize is the page size used to page through a network's GET /bridge/v1/bridges (see
+	// fetchNewBridgesFrom)
+	pageSize uint32
+	// rpc is the RPC-based fallback scanner (see agglayer/aggkit#1837); nil when
+	// bridgetracker.ActivitySourceRPCConfig.Enabled is false, in which case BridgesFrom behaves
+	// exactly as it did before this fallback existed. Interface (*activityRPCScanner satisfies
+	// it) so tests can exercise BridgesFrom's merge logic with a stub instead of a full RPC mock
+	// (see activity_test.go)
+	rpc activityBridgeRPCScanner
 	// contractClaimCheckers resolves/caches the on-chain isClaimed() binding per destination
 	// network; embedded so tests can still reach newContract directly (see claim_checker.go,
 	// shared with ClaimChecker so the binding/cache logic isn't duplicated between them)
@@ -47,46 +64,267 @@ type ActivitySource struct {
 // NewActivitySource returns an ActivitySource resolving bridge services, JSON-RPC clients and
 // destination bridge contract addresses through finder/ethClients (see
 // bridgeservicefinder.Finder.BridgeAddress for how a destination network's contract address is
-// resolved and overridden)
-func NewActivitySource(finder NetworkLister, ethClients EthClientResolver, logger aggkitcommon.Logger) *ActivitySource {
+// resolved and overridden). bridgeServiceCfg/rpcCfg configure the two ActivityBridgeScanner
+// sources BridgesFrom queries in parallel — the existing bridge-service-backed one and the
+// RPC-based fallback (see bridgetracker.Config.ActivitySourceBridgeService/ActivitySourceRPC);
+// rpcCfg.Enabled false disables the RPC-based fallback entirely, leaving BridgesFrom's behavior
+// unchanged from before it existed.
+func NewActivitySource(
+	finder NetworkLister, ethClients EthClientResolver, logger aggkitcommon.Logger,
+	bridgeServiceCfg bridgetracker.ActivitySourceBridgeServiceConfig,
+	rpcCfg bridgetracker.ActivitySourceRPCConfig,
+) (*ActivitySource, error) {
+	pageSize := bridgeServiceCfg.PageSize
+	if pageSize == 0 {
+		pageSize = bridgetracker.DefaultActivitySourceBridgeServicePageSize
+	}
+
+	// rpc is declared as the activityBridgeRPCScanner interface, not *activityRPCScanner, and
+	// left completely unassigned (a true nil interface, not a nil pointer wrapped in a non-nil
+	// interface) when the fallback is disabled — the "s.rpc == nil" checks in scanNetwork rely
+	// on that.
+	var rpc activityBridgeRPCScanner
+	if rpcCfg.Enabled {
+		fromBlock, toBlock := rpcCfg.RangeFromBlock, rpcCfg.RangeToBlock
+		if fromBlock.IsEmpty() {
+			fromBlock = bridgetracker.DefaultActivitySourceRPCRangeFromBlock
+		}
+		if toBlock.IsEmpty() {
+			toBlock = bridgetracker.DefaultActivitySourceRPCRangeToBlock
+		}
+		concreteRPC, err := newActivityRPCScanner(ethClients, finder, fromBlock, toBlock, logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating RPC-based activity fallback scanner: %w", err)
+		}
+		rpc = concreteRPC
+	}
+
 	return &ActivitySource{
 		logger:                logger,
 		services:              newBridgeServiceClients(finder),
 		finder:                finder,
+		pageSize:              pageSize,
+		rpc:                   rpc,
 		contractClaimCheckers: newContractClaimCheckers(finder, ethClients),
-	}
+	}, nil
 }
 
-// BridgesFrom implements bridgetracker.ActivityBridgeScanner: it queries every network's own
-// bridge service GET /bridge/v1/bridges filtered by from_address, paging until either a short
-// page or an already-known bridge is reached (see fetchNewBridgesFrom — this relies on the
-// bridge service reporting bridges newest-first). A network that cannot be reached is logged and
-// skipped, reported back as a domain.ActivityWarning, rather than failing the whole scan, so one
-// misbehaving bridge service does not hide every other network's activity.
+// networkScanResult holds one network's concurrently-fetched bridge-service and RPC-fallback
+// results (see ActivitySource.scanNetwork/BridgesFrom)
+type networkScanResult struct {
+	restBridges []*domain.ScannedBridge
+	restErr     error
+	// syncStatus is networkID's own bridge service's GET /bridge/v1/sync-status result, fetched
+	// best-effort right after restBridges (nil on any failure — see isNetworkSynced)
+	syncStatus *bridgeservicetypes.SyncStatus
+	rpcBridges []*domain.ScannedBridge
+	// rpcFromBlock/rpcToBlock are the block range the RPC fallback actually resolved and scanned
+	// this call (see activityRPCScanResult) — only meaningful when rpcErr is nil; used to decide
+	// which known bridges should have shown up in rpcBridges again but did not (see
+	// invalidatedBridges)
+	rpcFromBlock, rpcToBlock uint64
+	rpcErr                   error
+}
+
+// scanNetwork runs the bridge-service fetch and the RPC-based fallback scan for networkID
+// concurrently (see BridgesFrom) — the acceptance criterion behind agglayer/aggkit#1837 that the
+// two sources are queried in parallel.
+func (s *ActivitySource) scanNetwork(
+	ctx context.Context, networkID uint32, addr string, fromAddress common.Address,
+	known map[string]domain.KnownBridge,
+) networkScanResult {
+	var res networkScanResult
+	var wg sync.WaitGroup
+	wg.Add(2) //nolint:mnd // two concurrent fetches: the bridge-service call and the RPC fallback
+	go func() {
+		defer wg.Done()
+		svc, err := s.services.aggkitBridgeClientFor(networkID)
+		if err != nil {
+			res.restErr = err
+			return
+		}
+		res.restBridges, res.restErr = fetchNewBridgesFrom(ctx, svc, networkID, addr, s.pageSize, known)
+		if res.restErr == nil && s.rpc != nil {
+			// only needed to decide the "not fully synchronized" warning below, which only ever
+			// applies when the RPC fallback is actually enabled — skipped entirely otherwise, so
+			// a disabled fallback never adds this extra round trip (and never waits on it) on top
+			// of every activity request.
+			//
+			// best-effort: a failure here just skips that warning, it never turns a successful
+			// bridge fetch into an error
+			res.syncStatus, _ = svc.GetSyncStatus(ctx)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if s.rpc == nil {
+			return
+		}
+		var result activityRPCScanResult
+		result, res.rpcErr = s.rpc.BridgesFrom(ctx, networkID, fromAddress)
+		res.rpcBridges, res.rpcFromBlock, res.rpcToBlock = result.Bridges, result.FromBlock, result.ToBlock
+	}()
+	wg.Wait()
+	return res
+}
+
+// isNetworkSynced reports whether networkID's own bridge service is fully caught up with its
+// network, per GET /bridge/v1/sync-status: network 0 (mainnet) reads L1Info, any other network
+// reads L2Info — each instance's own side of that pair (see GetSyncStatusHandler). A nil status
+// (the best-effort GetSyncStatus call in scanNetwork failed, or never ran) is conservatively
+// treated as "not synced": a missing status is as much a reason to warn as a stale one.
+func isNetworkSynced(networkID uint32, status *bridgeservicetypes.SyncStatus) bool {
+	if status == nil {
+		return false
+	}
+	if networkID == MainnetNetworkID {
+		return status.L1Info != nil && status.L1Info.IsSynced
+	}
+	return status.L2Info != nil && status.L2Info.IsSynced
+}
+
+// appendChangedBridges appends to all every bridge in candidates that is either not yet in known
+// (genuinely new) or whose on-chain location no longer matches what known has cached for its
+// GlobalIndex (see domain.KnownBridge) — i.e. a reorg has since re-included the same deposit at a
+// different block/tx — reporting whether anything was actually appended. Shared by BridgesFrom's
+// two merge paths (bridge-service reachable and bridge-service unreachable) so a bridge that is
+// both already known AND unchanged is never re-added — and so never re-triggers its
+// claim/readiness checks — regardless of which path found it, while one a reorg has actually
+// moved still gets through so ActivityCache.upsert can correct the stale cached data instead of
+// leaving it wrong forever (see agglayer/aggkit#1837's reorg-risk discussion — this is what makes
+// scanning a recent, not-necessarily-finalized RPC window safe to cache permanently).
+func appendChangedBridges(
+	all []*domain.ScannedBridge, candidates []*domain.ScannedBridge, known map[string]domain.KnownBridge,
+) ([]*domain.ScannedBridge, bool) {
+	var addedAny bool
+	for _, b := range candidates {
+		if prev, ok := known[string(b.Bridge.GlobalIndex)]; ok &&
+			prev.TxHash == b.Bridge.TxHash && prev.BlockNum == b.Bridge.BlockNum {
+			continue // already cached at this exact location, nothing changed
+		}
+		all = append(all, b)
+		addedAny = true
+	}
+	return all, addedAny
+}
+
+// invalidatedBridges returns the GlobalIndex (decimal string, see domain.KnownBridge) of every
+// entry in known that: belongs to networkID (see KnownBridge.NetworkID), was last cached from
+// the RPC fallback (Source == domain.ActivitySourceRPC — a bridge-service-sourced entry is
+// presumed reorg-safe already and never considered here), has a BlockNum still inside
+// [rpcFromBlock, the window's own upper bound] — i.e. it has not simply aged out of the range
+// this call scanned, which would explain its absence with nothing wrong — yet is not among
+// foundThisCall, this call's full set of bridges actually found (by any source) for networkID.
+// That combination means a reorg has dropped it and nothing has re-included it (yet); see
+// domain.ActivityBridgeScanner.BridgesFrom's invalidated return for what a caller must do with
+// the result.
+func invalidatedBridges(
+	networkID uint32, known map[string]domain.KnownBridge, rpcFromBlock uint64, foundThisCall map[string]struct{},
+) []string {
+	var invalidated []string
+	for key, k := range known {
+		if k.NetworkID != networkID || k.Source != domain.ActivitySourceRPC || k.BlockNum < rpcFromBlock {
+			continue
+		}
+		if _, ok := foundThisCall[key]; !ok {
+			invalidated = append(invalidated, key)
+		}
+	}
+	return invalidated
+}
+
+// BridgesFrom implements bridgetracker.ActivityBridgeScanner: for every network the finder
+// currently knows about, it queries that network's own bridge service GET /bridge/v1/bridges
+// filtered by from_address (paging until either a short page or an already-known bridge is
+// reached — see fetchNewBridgesFrom, this relies on the bridge service reporting bridges
+// newest-first) concurrently with the RPC-based fallback scan (see rpc, agglayer/aggkit#1837)
+// over a small, recent block window on that network's own bridge contract — a safety net for a
+// bridge that bridge service has not indexed yet. The two results are merged per network:
+//   - the bridge service failing entirely falls back to the RPC result alone (if the fallback is
+//     enabled and it itself succeeded), with a warning that historical activity may not be
+//     available for that network;
+//   - the bridge service succeeding keeps its own result, plus whatever bridge the RPC fallback
+//     found that is new, or that it already knew about but at a different on-chain location than
+//     cached (see appendChangedBridges, domain.KnownBridge) — the latter reconciles a bridge a
+//     reorg has since moved to a different block/tx, since this fallback's own recent RPC scan
+//     is not itself reorg-protected the way the bridge service's indexed data is. A warning is
+//     added only when doing so and networkID's own bridge service is not fully caught up with
+//     its network (see isNetworkSynced) — a fully synced bridge service silently absorbs
+//     whatever the RPC fallback added or corrected, since that would then be expected (recent or
+//     reorg-affected) rather than a sign the bridge service itself is behind;
+//   - the RPC fallback failing, finding nothing new or changed, or being disabled entirely never
+//     changes or degrades the bridge-service result.
+//
+// Independent of the above, whenever the RPC fallback itself succeeds, any bridge it previously
+// reported (Source == domain.ActivitySourceRPC in known) whose BlockNum is still within the
+// window just scanned but that no longer shows up there at all is reported back via invalidated
+// (see invalidatedBridges) — the caller must forget it rather than keep trusting stale data a
+// reorg has since invalidated.
+//
+// A network whose bridge service cannot be reached at all, and whose RPC fallback cannot help
+// either, is skipped and reported back as a domain.ActivityWarning instead of failing the whole
+// scan, so one misbehaving network never hides every other network's activity.
 func (s *ActivitySource) BridgesFrom(
-	ctx context.Context, fromAddress common.Address, known map[string]struct{},
-) ([]*domain.ScannedBridge, []domain.ActivityWarning, error) {
+	ctx context.Context, fromAddress common.Address, known map[string]domain.KnownBridge,
+) ([]*domain.ScannedBridge, []string, []domain.ActivityWarning, error) {
 	addr := fromAddress.Hex()
 
 	var all []*domain.ScannedBridge
+	var invalidated []string
 	var warnings []domain.ActivityWarning
 	for _, networkID := range s.finder.NetworkIDs() {
-		svc, err := s.services.aggkitBridgeClientFor(networkID)
-		if err != nil {
-			warnings = append(warnings, s.warnf(networkID,
-				"resolving bridge service client for network %d: %v", networkID, err))
-			continue
+		res := s.scanNetwork(ctx, networkID, addr, fromAddress, known)
+
+		if res.rpcErr == nil && s.rpc != nil {
+			foundThisCall := make(map[string]struct{}, len(res.restBridges)+len(res.rpcBridges))
+			if res.restErr == nil {
+				for _, b := range res.restBridges {
+					foundThisCall[string(b.Bridge.GlobalIndex)] = struct{}{}
+				}
+			}
+			for _, b := range res.rpcBridges {
+				foundThisCall[string(b.Bridge.GlobalIndex)] = struct{}{}
+			}
+			invalidated = append(invalidated, invalidatedBridges(networkID, known, res.rpcFromBlock, foundThisCall)...)
 		}
 
-		items, err := fetchNewBridgesFrom(ctx, svc, networkID, addr, activityPageSize, known)
-		if err != nil {
-			warnings = append(warnings, s.warnf(networkID,
-				"fetching bridges from %s on network %d: %v", fromAddress, networkID, err))
+		if res.restErr != nil {
+			if s.rpc != nil && res.rpcErr == nil {
+				all, _ = appendChangedBridges(all, res.rpcBridges, known)
+				warnings = append(warnings, s.warnf(networkID,
+					"bridge service unavailable for network %d, historical activity may not be "+
+						"available: %v", networkID, res.restErr))
+			} else {
+				warnings = append(warnings, s.warnf(networkID,
+					"fetching bridges from %s on network %d: %v", fromAddress, networkID, res.restErr))
+			}
 			continue
 		}
-		all = append(all, items...)
+		all = append(all, res.restBridges...)
+
+		if res.rpcErr != nil || len(res.rpcBridges) == 0 {
+			continue
+		}
+		// res.restBridges was not yet known to the RPC scan (they ran concurrently), so it must
+		// be folded into the comparison set here — with its own fresh TxHash/BlockNum, which is
+		// at least as current as known's — before deciding what the RPC scan actually adds/changes
+		localKnown := make(map[string]domain.KnownBridge, len(known)+len(res.restBridges))
+		maps.Copy(localKnown, known)
+		for _, b := range res.restBridges {
+			localKnown[string(b.Bridge.GlobalIndex)] = domain.KnownBridge{
+				TxHash: b.Bridge.TxHash, BlockNum: b.Bridge.BlockNum,
+			}
+		}
+
+		var addedAny bool
+		all, addedAny = appendChangedBridges(all, res.rpcBridges, localKnown)
+		if addedAny && !isNetworkSynced(networkID, res.syncStatus) {
+			warnings = append(warnings, s.warnf(networkID,
+				"bridge service for network %d is not fully synchronized, some bridges may "+
+					"still be missing", networkID))
+		}
 	}
-	return all, warnings, nil
+	return all, invalidated, warnings, nil
 }
 
 // warnf logs msg (formatted per fmt.Sprintf's rules on format/args) and turns it into the
@@ -99,15 +337,23 @@ func (s *ActivitySource) warnf(networkID uint32, format string, args ...any) dom
 
 // fetchNewBridgesFrom pages through networkID's GET /bridge/v1/bridges filtered by fromAddress,
 // newest bridge first (the bridge service's own order, by descending deposit_count), stopping as
-// soon as either a page shorter than pageSize is returned (no more data) or a bridge already in
-// known is reached. The latter is safe because the feed is append-only and strictly ordered:
-// once a known bridge is seen, every bridge after it (same page or later pages) is guaranteed
-// already known too, so nothing new is missed by stopping there. Each returned bridge is paired
-// with networkID — the network whose bridge service reported it — via domain.ScannedBridge,
-// since that is NOT always the same as the bridge's own OriginNetwork field (see ScannedBridge).
+// soon as either a page shorter than pageSize is returned (no more data) or a bridge already
+// known to the bridge service (known[...].Source == domain.ActivitySourceBridgeService) is
+// reached. The latter is safe because the feed is append-only and strictly ordered: once such a
+// bridge is seen, every bridge after it (same page or later pages) is guaranteed to already be in
+// the very same state, so nothing is missed by stopping there.
+//
+// A bridge that is known but was last cached from the RPC fallback (Source ==
+// domain.ActivitySourceRPC — the bridge service had not indexed it yet, or was unreachable, the
+// last time it was scanned) is different: it is still returned, relabeled
+// domain.ActivitySourceBridgeService, so the cache is upgraded to reflect that the bridge service
+// is now the source of record for it — then pagination stops right there anyway, same as above.
+// Each returned bridge is paired with networkID — the network whose bridge service reported it —
+// via domain.ScannedBridge, since that is NOT always the same as the bridge's own OriginNetwork
+// field (see ScannedBridge).
 func fetchNewBridgesFrom(
 	ctx context.Context, svc *client.Client, networkID uint32, fromAddress string, pageSize uint32,
-	known map[string]struct{},
+	known map[string]domain.KnownBridge,
 ) ([]*domain.ScannedBridge, error) {
 	var out []*domain.ScannedBridge
 	for page := uint32(1); ; page++ {
@@ -121,10 +367,21 @@ func fetchNewBridgesFrom(
 			return nil, err
 		}
 		for _, b := range res.Bridges {
-			if _, ok := known[string(b.GlobalIndex)]; ok {
+			prev, ok := known[string(b.GlobalIndex)]
+			if ok && prev.Source == domain.ActivitySourceBridgeService {
+				// already known, and already correctly sourced: per the append-only, newest-first
+				// order, everything older is guaranteed to be in the same state already
 				return out, nil
 			}
-			out = append(out, &domain.ScannedBridge{Bridge: b, NetworkID: networkID})
+			// either genuinely new, or known but still labeled from the RPC fallback: emit it
+			// (re-labeled domain.ActivitySourceBridgeService either way) so the cache is
+			// upgraded once the bridge service becomes the source of record for it
+			out = append(out, &domain.ScannedBridge{
+				Bridge: b, NetworkID: networkID, Source: domain.ActivitySourceBridgeService,
+			})
+			if ok {
+				return out, nil
+			}
 		}
 		if uint32(len(res.Bridges)) < pageSize {
 			return out, nil

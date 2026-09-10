@@ -9,11 +9,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync/atomic"
 	"testing"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
+	"github.com/agglayer/aggkit/bridgetracker"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -21,6 +24,20 @@ import (
 )
 
 const testFromAddress = "0x1111111111111111111111111111111111111111"
+
+// mustNewActivitySource builds an ActivitySource for tests with the RPC-based fallback disabled
+// (zero-value config, matching ActivitySource's behavior before that fallback existed), failing
+// the test immediately if construction errors — it never should for this fixed, RPC-disabled
+// configuration. See activity_rpc_test.go for the RPC-fallback-enabled test cases.
+func mustNewActivitySource(
+	t *testing.T, finder NetworkLister, ethClients EthClientResolver, logger aggkitcommon.Logger,
+) *ActivitySource {
+	t.Helper()
+	source, err := NewActivitySource(finder, ethClients, logger,
+		bridgetracker.ActivitySourceBridgeServiceConfig{}, bridgetracker.ActivitySourceRPCConfig{})
+	require.NoError(t, err)
+	return source
+}
 
 // fakeActivityBridgeService emulates the bridge-service endpoints ActivitySource consumes:
 // GET /bridge/v1/bridges (paginated, filtered by network_id/from_address) and
@@ -30,6 +47,12 @@ type fakeActivityBridgeService struct {
 	bridgesByNetwork map[uint32][]*bridgeservicetypes.BridgeResponse
 	// claimsByGlobalIndex holds the claim served for a given global index (decimal string), if any
 	claimsByGlobalIndex map[string]*bridgeservicetypes.ClaimResponse
+	// syncStatus is served as-is for GET /bridge/v1/sync-status; a nil value (the default) serves
+	// an empty (all zero-value) status, which isNetworkSynced reads as "not synced"
+	syncStatus *bridgeservicetypes.SyncStatus
+	// syncStatusCalls counts GET /bridge/v1/sync-status requests received, so tests can assert it
+	// is (not) called (see scanNetwork's "skip when the RPC fallback is disabled" behavior)
+	syncStatusCalls atomic.Int32
 }
 
 func (f *fakeActivityBridgeService) start(t *testing.T) string {
@@ -63,6 +86,14 @@ func (f *fakeActivityBridgeService) start(t *testing.T) string {
 		require.NoError(t, json.NewEncoder(w).Encode(bridgeservicetypes.BridgesResult{
 			Bridges: page, Count: len(matching),
 		}))
+	})
+	mux.HandleFunc("/bridge/v1/sync-status", func(w http.ResponseWriter, r *http.Request) {
+		f.syncStatusCalls.Add(1)
+		status := f.syncStatus
+		if status == nil {
+			status = &bridgeservicetypes.SyncStatus{}
+		}
+		require.NoError(t, json.NewEncoder(w).Encode(status))
 	})
 	mux.HandleFunc("/bridge/v1/claims", func(w http.ResponseWriter, r *http.Request) {
 		globalIndex := r.URL.Query().Get("global_index")
@@ -141,9 +172,9 @@ func TestActivitySource_BridgesFrom_PaginatesAndScansEveryNetwork(t *testing.T) 
 	url := svc.start(t)
 	lister := fakeNetworkLister{networkIDs: []uint32{1, 2}, url: url}
 
-	source := NewActivitySource(lister, nil, testLogger)
+	source := mustNewActivitySource(t, lister, nil, testLogger)
 
-	items, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
+	items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
 	require.NoError(t, err)
 	require.Empty(t, warnings)
 	require.Len(t, items, 4)
@@ -151,8 +182,31 @@ func TestActivitySource_BridgesFrom_PaginatesAndScansEveryNetwork(t *testing.T) 
 	globalIndexes := make([]int64, 0, len(items))
 	for _, item := range items {
 		globalIndexes = append(globalIndexes, item.Bridge.GlobalIndex.ToBigInt().Int64())
+		require.Equal(t, domain.ActivitySourceBridgeService, item.Source, "every bridge came from the REST scan")
 	}
 	require.ElementsMatch(t, []int64{1, 2, 3, 5}, globalIndexes)
+}
+
+// TestActivitySource_BridgesFrom_SkipsSyncStatusWhenRPCDisabled verifies GET /bridge/v1/sync-status
+// is never called when the RPC-based fallback is disabled (mustNewActivitySource's default): that
+// call only ever informs the "not fully synchronized" warning, which cannot fire without the RPC
+// fallback enabled, so making it unconditionally would add a needless round trip (and a needless
+// dependency on the endpoint existing) to every activity request for deployments that never
+// opted into the fallback.
+func TestActivitySource_BridgesFrom_SkipsSyncStatusWhenRPCDisabled(t *testing.T) {
+	svc := &fakeActivityBridgeService{
+		bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
+			1: {bridgeResponse(1, 2, 0, testFromAddress, 1)},
+		},
+	}
+	url := svc.start(t)
+	lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
+	source := mustNewActivitySource(t, lister, nil, testLogger)
+
+	_, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
+	require.NoError(t, err)
+	require.Empty(t, warnings)
+	require.Equal(t, int32(0), svc.syncStatusCalls.Load())
 }
 
 // TestActivitySource_BridgesFrom_SkipsUnreachableNetworkAndWarns verifies a network whose bridge
@@ -171,9 +225,9 @@ func TestActivitySource_BridgesFrom_SkipsUnreachableNetworkAndWarns(t *testing.T
 		urls:       map[uint32]string{1: url},
 	}
 
-	source := NewActivitySource(lister, nil, testLogger)
+	source := mustNewActivitySource(t, lister, nil, testLogger)
 
-	items, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
+	items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	require.Equal(t, int64(1), items[0].Bridge.GlobalIndex.ToBigInt().Int64())
@@ -215,7 +269,7 @@ func TestFetchNewBridgesFrom_Pagination(t *testing.T) {
 	}
 	url := svc.start(t)
 	lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
-	source := NewActivitySource(lister, nil, testLogger)
+	source := mustNewActivitySource(t, lister, nil, testLogger)
 	client, err := source.services.aggkitBridgeClientFor(1)
 	require.NoError(t, err)
 
@@ -241,21 +295,69 @@ func TestFetchNewBridgesFrom_StopsAtFirstKnownBridge(t *testing.T) {
 	}
 	url := svc.start(t)
 	lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
-	source := NewActivitySource(lister, nil, testLogger)
+	source := mustNewActivitySource(t, lister, nil, testLogger)
 	client, err := source.services.aggkitBridgeClientFor(1)
 	require.NoError(t, err)
 
-	known := map[string]struct{}{"2": {}}
+	known := map[string]domain.KnownBridge{"2": {Source: domain.ActivitySourceBridgeService}}
 	items, err := fetchNewBridgesFrom(t.Context(), client, 1, testFromAddress, 1, known)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	require.Equal(t, int64(3), items[0].Bridge.GlobalIndex.ToBigInt().Int64())
 }
 
+// TestFetchNewBridgesFrom_UpgradesSourceOnceBridgeServiceCatchesUp verifies a bridge known only
+// from the RPC fallback (Source: domain.ActivitySourceRPC — the bridge service had not indexed
+// it yet) is re-emitted, relabeled domain.ActivitySourceBridgeService, once the bridge service
+// itself reports it — so the cache is upgraded to reflect it is now the source of record —
+// while pagination still stops right there, exactly as for an already bridge-sourced bridge.
+func TestFetchNewBridgesFrom_UpgradesSourceOnceBridgeServiceCatchesUp(t *testing.T) {
+	svc := &fakeActivityBridgeService{
+		bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
+			1: {
+				bridgeResponse(1, 2, 1, testFromAddress, 2), // known, but only via the RPC fallback so far
+				bridgeResponse(1, 2, 0, testFromAddress, 1), // must never be fetched
+			},
+		},
+	}
+	url := svc.start(t)
+	lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
+	source := mustNewActivitySource(t, lister, nil, testLogger)
+	client, err := source.services.aggkitBridgeClientFor(1)
+	require.NoError(t, err)
+
+	known := map[string]domain.KnownBridge{"2": {Source: domain.ActivitySourceRPC}}
+	items, err := fetchNewBridgesFrom(t.Context(), client, 1, testFromAddress, 1, known)
+	require.NoError(t, err)
+	require.Len(t, items, 1, "the older, already bridge-sourced bridge (index 1) is never fetched")
+	require.Equal(t, int64(2), items[0].Bridge.GlobalIndex.ToBigInt().Int64())
+	require.Equal(t, domain.ActivitySourceBridgeService, items[0].Source)
+}
+
+// TestInvalidatedBridges verifies invalidatedBridges reports exactly the known entries that:
+// belong to the network being checked, were last cached from the RPC fallback, have a BlockNum
+// still inside the just-scanned window, and are absent from foundThisCall — leaving alone any
+// entry from a different network, sourced from the bridge service (presumed reorg-safe already),
+// or that has simply aged out of the window (BlockNum below the window's own FromBlock, which
+// just means it is no longer being watched, not that anything is wrong).
+func TestInvalidatedBridges(t *testing.T) {
+	known := map[string]domain.KnownBridge{
+		"1": {NetworkID: 1, Source: domain.ActivitySourceRPC, BlockNum: 150},           // in window, missing -> invalidated
+		"2": {NetworkID: 1, Source: domain.ActivitySourceRPC, BlockNum: 150},           // in window, found -> kept
+		"3": {NetworkID: 1, Source: domain.ActivitySourceRPC, BlockNum: 50},            // aged out of window -> kept
+		"4": {NetworkID: 1, Source: domain.ActivitySourceBridgeService, BlockNum: 150}, // bridge-sourced -> never invalidated
+		"5": {NetworkID: 2, Source: domain.ActivitySourceRPC, BlockNum: 150},           // different network -> kept
+	}
+	foundThisCall := map[string]struct{}{"2": {}}
+
+	invalidated := invalidatedBridges(1, known, 100, foundThisCall)
+	require.ElementsMatch(t, []string{"1"}, invalidated)
+}
+
 // TestActivitySource_IsClaimed_NoBridgeAddrConfigured verifies IsClaimed errors clearly when
 // the destination network has no bridge contract address configured.
 func TestActivitySource_IsClaimed_NoBridgeAddrConfigured(t *testing.T) {
-	source := NewActivitySource(fakeNetworkLister{}, StaticClients{}, testLogger)
+	source := mustNewActivitySource(t, fakeNetworkLister{}, StaticClients{}, testLogger)
 
 	bridge := &domain.ScannedBridge{Bridge: bridgeResponse(1, 2, 3, testFromAddress, 1), NetworkID: 1}
 	_, err := source.IsClaimed(t.Context(), bridge)
@@ -274,7 +376,7 @@ func TestActivitySource_IsClaimed_UsesScannedNetworkNotBridgeOriginNetwork(t *te
 	stub := &stubClaimChecker{claimed: true}
 	buildCalls := 0
 	lister := fakeNetworkLister{bridgeAddrs: map[uint32]common.Address{2: destAddr}}
-	source := NewActivitySource(lister, client, testLogger)
+	source := mustNewActivitySource(t, lister, client, testLogger)
 	source.newContract = func(addr common.Address, _ aggkittypes.BaseEthereumClienter) (claimChecker, error) {
 		buildCalls++
 		require.Equal(t, destAddr, addr)
@@ -345,7 +447,7 @@ func TestActivitySource_IsReadyToClaim(t *testing.T) {
 		destSvc := &fakeBridgeService{injectedLeaf: map[string]any{"global_exit_root": "0xger"}}
 		urls := originSvc.startAt(t, 2).merge(destSvc.startAt(t, 1))
 		lister := listerFromResolver{urls}
-		source := NewActivitySource(lister, nil, testLogger)
+		source := mustNewActivitySource(t, lister, nil, testLogger)
 
 		ready, err := source.IsReadyToClaim(t.Context(), bridge)
 		require.NoError(t, err)
@@ -359,7 +461,7 @@ func TestActivitySource_IsReadyToClaim(t *testing.T) {
 		destSvc := &fakeBridgeService{}
 		urls := originSvc.startAt(t, 2).merge(destSvc.startAt(t, 1))
 		lister := listerFromResolver{urls}
-		source := NewActivitySource(lister, nil, testLogger)
+		source := mustNewActivitySource(t, lister, nil, testLogger)
 
 		ready, err := source.IsReadyToClaim(t.Context(), bridge)
 		require.NoError(t, err)
@@ -372,7 +474,7 @@ func TestActivitySource_IsReadyToClaim(t *testing.T) {
 		destSvc := &fakeBridgeService{} // injectedLeaf nil -> not injected yet
 		urls := originSvc.startAt(t, 2).merge(destSvc.startAt(t, 1))
 		lister := listerFromResolver{urls}
-		source := NewActivitySource(lister, nil, testLogger)
+		source := mustNewActivitySource(t, lister, nil, testLogger)
 
 		ready, err := source.IsReadyToClaim(t.Context(), bridge)
 		require.NoError(t, err)
@@ -383,7 +485,7 @@ func TestActivitySource_IsReadyToClaim(t *testing.T) {
 		destSvc := &fakeBridgeService{}
 		urls := destSvc.startAt(t, 1) // network 2 (the origin) deliberately absent
 		lister := listerFromResolver{urls}
-		source := NewActivitySource(lister, nil, testLogger)
+		source := mustNewActivitySource(t, lister, nil, testLogger)
 
 		_, err := source.IsReadyToClaim(t.Context(), bridge)
 		require.Error(t, err)
@@ -394,7 +496,7 @@ func TestActivitySource_IsReadyToClaim(t *testing.T) {
 		originSvc := &fakeBridgeService{l1InfoTreeIndex: &leafIndex}
 		urls := originSvc.startAt(t, 2) // network 1 (the destination) deliberately absent
 		lister := listerFromResolver{urls}
-		source := NewActivitySource(lister, nil, testLogger)
+		source := mustNewActivitySource(t, lister, nil, testLogger)
 
 		_, err := source.IsReadyToClaim(t.Context(), bridge)
 		require.Error(t, err)
@@ -410,7 +512,7 @@ func TestActivitySource_ClaimInfo(t *testing.T) {
 	}
 	url := svc.start(t)
 	lister := fakeNetworkLister{networkIDs: []uint32{2}, url: url}
-	source := NewActivitySource(lister, nil, testLogger)
+	source := mustNewActivitySource(t, lister, nil, testLogger)
 
 	found := &domain.ScannedBridge{Bridge: bridgeResponse(1, 2, 0, testFromAddress, 1), NetworkID: 1}
 	got, err := source.ClaimInfo(t.Context(), found)
@@ -421,4 +523,292 @@ func TestActivitySource_ClaimInfo(t *testing.T) {
 	got, err = source.ClaimInfo(t.Context(), notIndexedYet)
 	require.NoError(t, err)
 	require.Nil(t, got)
+}
+
+// stubRPCScanner is an injectable activityBridgeRPCScanner for tests: it returns bridges[networkID]
+// (nil if the network is absent) or err, never both. fromBlock is the window's own FromBlock this
+// stub reports (see activityRPCScanResult) — relevant only to invalidation tests, defaults to 0.
+type stubRPCScanner struct {
+	bridges   map[uint32][]*domain.ScannedBridge
+	err       error
+	fromBlock uint64
+}
+
+func (s stubRPCScanner) BridgesFrom(
+	_ context.Context, networkID uint32, _ common.Address,
+) (activityRPCScanResult, error) {
+	if s.err != nil {
+		return activityRPCScanResult{}, s.err
+	}
+	return activityRPCScanResult{Bridges: s.bridges[networkID], FromBlock: s.fromBlock}, nil
+}
+
+// activitySourceWithRPC builds an ActivitySource exactly like mustNewActivitySource, except its
+// rpc field is rpc instead of nil — used to exercise BridgesFrom's REST/RPC merge logic (see
+// scanNetwork) without a full RPC mock (activity_rpc_test.go already covers *activityRPCScanner's
+// own scanning logic directly).
+func activitySourceWithRPC(finder NetworkLister, rpc activityBridgeRPCScanner) *ActivitySource {
+	return &ActivitySource{
+		logger:                testLogger,
+		services:              newBridgeServiceClients(finder),
+		finder:                finder,
+		pageSize:              bridgetracker.DefaultActivitySourceBridgeServicePageSize,
+		rpc:                   rpc,
+		contractClaimCheckers: newContractClaimCheckers(finder, nil),
+	}
+}
+
+// TestActivitySource_BridgesFrom_RPCMerge covers agglayer/aggkit#1837's merge/warning matrix
+// between the bridge-service (REST) scan and the RPC-based fallback for one network.
+func TestActivitySource_BridgesFrom_RPCMerge(t *testing.T) {
+	other := "0x2222222222222222222222222222222222222222"
+
+	t.Run("REST ok, synced, RPC finds an extra bridge -> merged silently, no warning", func(t *testing.T) {
+		svc := &fakeActivityBridgeService{
+			bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
+				1: {bridgeResponse(1, 2, 0, testFromAddress, 1)},
+			},
+			syncStatus: &bridgeservicetypes.SyncStatus{L2Info: &bridgeservicetypes.NetworkSyncInfo{IsSynced: true}},
+		}
+		url := svc.start(t)
+		lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
+		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{
+			1: {
+				// duplicate of the REST result: found by both in the very same call
+				{Bridge: bridgeResponse(1, 2, 0, testFromAddress, 1), NetworkID: 1, Source: domain.ActivitySourceRPC},
+				{Bridge: bridgeResponse(1, 2, 1, testFromAddress, 2), NetworkID: 1, Source: domain.ActivitySourceRPC}, // new
+			},
+		}}
+		source := activitySourceWithRPC(lister, rpc)
+
+		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
+		require.NoError(t, err)
+		require.Empty(t, warnings)
+		sourceByGlobalIndex := make(map[int64]domain.ActivitySourceKind, len(items))
+		for _, item := range items {
+			sourceByGlobalIndex[item.Bridge.GlobalIndex.ToBigInt().Int64()] = item.Source
+		}
+		require.Equal(t, map[int64]domain.ActivitySourceKind{
+			1: domain.ActivitySourceBridgeService, // both reported it: the bridge service wins
+			2: domain.ActivitySourceRPC,           // only the RPC fallback reported it
+		}, sourceByGlobalIndex)
+	})
+
+	t.Run("REST ok, not synced, RPC finds an extra bridge -> merged with a warning", func(t *testing.T) {
+		svc := &fakeActivityBridgeService{
+			bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
+				1: {bridgeResponse(1, 2, 0, testFromAddress, 1)},
+			},
+			syncStatus: &bridgeservicetypes.SyncStatus{L2Info: &bridgeservicetypes.NetworkSyncInfo{IsSynced: false}},
+		}
+		url := svc.start(t)
+		lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
+		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{
+			1: {{Bridge: bridgeResponse(1, 2, 1, testFromAddress, 2), NetworkID: 1, Source: domain.ActivitySourceRPC}},
+		}}
+		source := activitySourceWithRPC(lister, rpc)
+
+		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
+		require.NoError(t, err)
+		require.Len(t, items, 2)
+		require.Len(t, warnings, 1)
+		require.Equal(t, uint32(1), warnings[0].NetworkID)
+		require.Contains(t, warnings[0].Message, "not fully synchronized")
+	})
+
+	t.Run("REST ok, RPC finds nothing new -> no warning even when not synced", func(t *testing.T) {
+		svc := &fakeActivityBridgeService{
+			bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
+				1: {bridgeResponse(1, 2, 0, testFromAddress, 1)},
+			},
+			syncStatus: &bridgeservicetypes.SyncStatus{L2Info: &bridgeservicetypes.NetworkSyncInfo{IsSynced: false}},
+		}
+		url := svc.start(t)
+		lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
+		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{
+			// duplicate only
+			1: {{Bridge: bridgeResponse(1, 2, 0, testFromAddress, 1), NetworkID: 1, Source: domain.ActivitySourceRPC}},
+		}}
+		source := activitySourceWithRPC(lister, rpc)
+
+		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+		require.Empty(t, warnings)
+	})
+
+	t.Run("bridge service catches up on a bridge only known via the RPC fallback -> Source upgrades to bridge", func(t *testing.T) {
+		svc := &fakeActivityBridgeService{
+			bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
+				1: {bridgeResponse(1, 2, 0, testFromAddress, 1)}, // now indexed by the bridge service too
+			},
+			syncStatus: &bridgeservicetypes.SyncStatus{L2Info: &bridgeservicetypes.NetworkSyncInfo{IsSynced: true}},
+		}
+		url := svc.start(t)
+		lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
+		source := activitySourceWithRPC(lister, stubRPCScanner{}) // RPC finds nothing new this time
+		known := map[string]domain.KnownBridge{"1": {Source: domain.ActivitySourceRPC}}
+
+		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
+		require.NoError(t, err)
+		require.Empty(t, warnings)
+		require.Len(t, items, 1)
+		require.Equal(t, domain.ActivitySourceBridgeService, items[0].Source)
+	})
+
+	t.Run("REST ok (unrelated network), RPC bridge already known but at a different block (reorg) -> re-surfaced", func(t *testing.T) {
+		svc := &fakeActivityBridgeService{
+			bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
+				1: {bridgeResponse(1, 2, 0, testFromAddress, 1)},
+			},
+			syncStatus: &bridgeservicetypes.SyncStatus{L2Info: &bridgeservicetypes.NetworkSyncInfo{IsSynced: true}},
+		}
+		url := svc.start(t)
+		lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
+		moved := bridgeResponse(1, 2, 1, testFromAddress, 2)
+		moved.BlockNum = 200
+		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{
+			1: {{Bridge: moved, NetworkID: 1, Source: domain.ActivitySourceRPC}},
+		}}
+		source := activitySourceWithRPC(lister, rpc)
+		// caller's cache has global index 2 (not reported by REST this call) at its original,
+		// now reorged-out block
+		known := map[string]domain.KnownBridge{"2": {TxHash: moved.TxHash, BlockNum: 100}}
+
+		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
+		require.NoError(t, err)
+		require.Len(t, items, 2) // the REST bridge (index 1) plus the reconciled, moved one (index 2)
+		var reconciled *domain.ScannedBridge
+		for _, item := range items {
+			if item.Bridge.GlobalIndex.ToBigInt().Int64() == 2 {
+				reconciled = item
+			}
+		}
+		require.NotNil(t, reconciled, "the moved bridge must be re-surfaced so ActivityCache overwrites the stale cached BlockNum")
+		require.Equal(t, uint64(200), reconciled.Bridge.BlockNum)
+		require.Equal(t, domain.ActivitySourceRPC, reconciled.Source)
+		require.Empty(t, warnings, "a fully synced bridge service absorbs the reconciled bridge silently")
+	})
+
+	t.Run("REST unreachable, RPC ok -> RPC-only results, warns that historical activity may be unavailable", func(t *testing.T) {
+		// networkID 2 resolves to an empty bridge service URL, which aggkitBridgeClientFor rejects
+		lister := fakeMixedNetworkLister{networkIDs: []uint32{2}, urls: map[uint32]string{}}
+		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{
+			2: {{Bridge: bridgeResponse(2, 1, 0, testFromAddress, 3), NetworkID: 2, Source: domain.ActivitySourceRPC}},
+		}}
+		source := activitySourceWithRPC(lister, rpc)
+
+		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+		require.Equal(t, int64(3), items[0].Bridge.GlobalIndex.ToBigInt().Int64())
+		require.Equal(t, domain.ActivitySourceRPC, items[0].Source)
+		require.Len(t, warnings, 1)
+		require.Contains(t, warnings[0].Message, "historical activity may not be available")
+	})
+
+	t.Run("REST unreachable, RPC ok, RPC bridge already in known at the same location -> filtered out, not re-added", func(t *testing.T) {
+		lister := fakeMixedNetworkLister{networkIDs: []uint32{2}, urls: map[uint32]string{}}
+		unchanged := bridgeResponse(2, 1, 0, testFromAddress, 3)
+		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{
+			2: {
+				// already known, unchanged
+				{Bridge: unchanged, NetworkID: 2, Source: domain.ActivitySourceRPC},
+				{Bridge: bridgeResponse(2, 1, 1, testFromAddress, 4), NetworkID: 2, Source: domain.ActivitySourceRPC}, // new
+			},
+		}}
+		source := activitySourceWithRPC(lister, rpc)
+		// caller's cache has global index 3 at exactly the same TxHash/BlockNum the RPC scan
+		// still reports it at
+		known := map[string]domain.KnownBridge{
+			"3": {TxHash: unchanged.TxHash, BlockNum: unchanged.BlockNum},
+		}
+
+		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+		require.Equal(t, int64(4), items[0].Bridge.GlobalIndex.ToBigInt().Int64())
+		require.Len(t, warnings, 1)
+	})
+
+	t.Run("REST unreachable, RPC ok, RPC bridge already known but at a different block (reorg) -> re-surfaced so the cache is corrected", func(t *testing.T) {
+		lister := fakeMixedNetworkLister{networkIDs: []uint32{2}, urls: map[uint32]string{}}
+		moved := bridgeResponse(2, 1, 0, testFromAddress, 3)
+		moved.BlockNum = 200 // the RPC scan now finds global index 3 re-included at a later block
+		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{
+			2: {{Bridge: moved, NetworkID: 2, Source: domain.ActivitySourceRPC}},
+		}}
+		source := activitySourceWithRPC(lister, rpc)
+		// caller's cache still has global index 3 at its original (now reorged-out) block
+		known := map[string]domain.KnownBridge{
+			"3": {TxHash: moved.TxHash, BlockNum: 100},
+		}
+
+		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
+		require.NoError(t, err)
+		require.Len(t, items, 1, "the moved bridge must be re-surfaced so ActivityCache overwrites the stale cached BlockNum")
+		require.Equal(t, uint64(200), items[0].Bridge.BlockNum)
+		require.Len(t, warnings, 1)
+	})
+
+	t.Run("REST unreachable, RPC also fails -> unchanged legacy behavior: skipped, warns about the REST error", func(t *testing.T) {
+		lister := fakeMixedNetworkLister{networkIDs: []uint32{2}, urls: map[uint32]string{}}
+		rpc := stubRPCScanner{err: errors.New("rpc down")}
+		source := activitySourceWithRPC(lister, rpc)
+
+		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
+		require.NoError(t, err)
+		require.Empty(t, items)
+		require.Len(t, warnings, 1)
+		require.Contains(t, warnings[0].Message, "fetching bridges from")
+		require.NotContains(t, warnings[0].Message, "historical activity may not be available")
+	})
+
+	t.Run("REST ok, RPC fails -> REST results returned untouched, no warning", func(t *testing.T) {
+		svc := &fakeActivityBridgeService{
+			bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
+				1: {bridgeResponse(1, 2, 0, testFromAddress, 1), bridgeResponse(1, 2, 3, other, 4)},
+			},
+		}
+		url := svc.start(t)
+		lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
+		rpc := stubRPCScanner{err: errors.New("rpc down")}
+		source := activitySourceWithRPC(lister, rpc)
+
+		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
+		require.NoError(t, err)
+		require.Len(t, items, 1) // other's bridge was already filtered server-side by from_address
+		require.Empty(t, warnings)
+	})
+
+	t.Run("RPC bridge previously known within the scanned window has disappeared -> reported invalidated", func(t *testing.T) {
+		// networkID 2 resolves to an empty bridge service URL; REST being unreachable is
+		// irrelevant here, invalidation only depends on the RPC scan's own result
+		lister := fakeMixedNetworkLister{networkIDs: []uint32{2}, urls: map[uint32]string{}}
+		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{}, fromBlock: 100} // scans from 100, finds nothing
+		source := activitySourceWithRPC(lister, rpc)
+		known := map[string]domain.KnownBridge{
+			// still within [100, ...) but no longer found there: reorged out, nothing has
+			// re-included it (yet)
+			"9": {NetworkID: 2, Source: domain.ActivitySourceRPC, BlockNum: 150},
+		}
+
+		items, invalidated, _, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
+		require.NoError(t, err)
+		require.Empty(t, items)
+		require.Equal(t, []string{"9"}, invalidated)
+	})
+
+	t.Run("RPC bridge previously known has aged out of the scanned window -> not invalidated", func(t *testing.T) {
+		lister := fakeMixedNetworkLister{networkIDs: []uint32{2}, urls: map[uint32]string{}}
+		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{}, fromBlock: 200} // window moved past block 150
+		source := activitySourceWithRPC(lister, rpc)
+		known := map[string]domain.KnownBridge{
+			"9": {NetworkID: 2, Source: domain.ActivitySourceRPC, BlockNum: 150}, // below the window's FromBlock now
+		}
+
+		_, invalidated, _, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
+		require.NoError(t, err)
+		require.Empty(t, invalidated, "aging out of the window is expected, not a sign the bridge was reorged away")
+	})
 }
