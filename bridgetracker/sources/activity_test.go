@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync/atomic"
 	"testing"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
@@ -49,6 +50,9 @@ type fakeActivityBridgeService struct {
 	// syncStatus is served as-is for GET /bridge/v1/sync-status; a nil value (the default) serves
 	// an empty (all zero-value) status, which isNetworkSynced reads as "not synced"
 	syncStatus *bridgeservicetypes.SyncStatus
+	// syncStatusCalls counts GET /bridge/v1/sync-status requests received, so tests can assert it
+	// is (not) called (see scanNetwork's "skip when the RPC fallback is disabled" behavior)
+	syncStatusCalls atomic.Int32
 }
 
 func (f *fakeActivityBridgeService) start(t *testing.T) string {
@@ -84,6 +88,7 @@ func (f *fakeActivityBridgeService) start(t *testing.T) string {
 		}))
 	})
 	mux.HandleFunc("/bridge/v1/sync-status", func(w http.ResponseWriter, r *http.Request) {
+		f.syncStatusCalls.Add(1)
 		status := f.syncStatus
 		if status == nil {
 			status = &bridgeservicetypes.SyncStatus{}
@@ -179,6 +184,28 @@ func TestActivitySource_BridgesFrom_PaginatesAndScansEveryNetwork(t *testing.T) 
 		globalIndexes = append(globalIndexes, item.Bridge.GlobalIndex.ToBigInt().Int64())
 	}
 	require.ElementsMatch(t, []int64{1, 2, 3, 5}, globalIndexes)
+}
+
+// TestActivitySource_BridgesFrom_SkipsSyncStatusWhenRPCDisabled verifies GET /bridge/v1/sync-status
+// is never called when the RPC-based fallback is disabled (mustNewActivitySource's default): that
+// call only ever informs the "not fully synchronized" warning, which cannot fire without the RPC
+// fallback enabled, so making it unconditionally would add a needless round trip (and a needless
+// dependency on the endpoint existing) to every activity request for deployments that never
+// opted into the fallback.
+func TestActivitySource_BridgesFrom_SkipsSyncStatusWhenRPCDisabled(t *testing.T) {
+	svc := &fakeActivityBridgeService{
+		bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
+			1: {bridgeResponse(1, 2, 0, testFromAddress, 1)},
+		},
+	}
+	url := svc.start(t)
+	lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
+	source := mustNewActivitySource(t, lister, nil, testLogger)
+
+	_, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), nil)
+	require.NoError(t, err)
+	require.Empty(t, warnings)
+	require.Equal(t, int32(0), svc.syncStatusCalls.Load())
 }
 
 // TestActivitySource_BridgesFrom_SkipsUnreachableNetworkAndWarns verifies a network whose bridge
@@ -568,6 +595,24 @@ func TestActivitySource_BridgesFrom_RPCMerge(t *testing.T) {
 		require.Equal(t, int64(3), items[0].Bridge.GlobalIndex.ToBigInt().Int64())
 		require.Len(t, warnings, 1)
 		require.Contains(t, warnings[0].Message, "historical activity may not be available")
+	})
+
+	t.Run("REST unreachable, RPC ok, RPC bridge already in known -> filtered out, not re-added", func(t *testing.T) {
+		lister := fakeMixedNetworkLister{networkIDs: []uint32{2}, urls: map[uint32]string{}}
+		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{
+			2: {
+				{Bridge: bridgeResponse(2, 1, 0, testFromAddress, 3), NetworkID: 2}, // already known
+				{Bridge: bridgeResponse(2, 1, 1, testFromAddress, 4), NetworkID: 2}, // new
+			},
+		}}
+		source := activitySourceWithRPC(lister, rpc)
+		known := map[string]struct{}{"3": {}} // caller already has global index 3 cached
+
+		items, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+		require.Equal(t, int64(4), items[0].Bridge.GlobalIndex.ToBigInt().Int64())
+		require.Len(t, warnings, 1)
 	})
 
 	t.Run("REST unreachable, RPC also fails -> unchanged legacy behavior: skipped, warns about the REST error", func(t *testing.T) {

@@ -137,9 +137,14 @@ func (s *ActivitySource) scanNetwork(
 			return
 		}
 		res.restBridges, res.restErr = fetchNewBridgesFrom(ctx, svc, networkID, addr, s.pageSize, known)
-		if res.restErr == nil {
-			// best-effort: a failure here just skips the "not fully synchronized" warning below,
-			// it never turns a successful bridge fetch into an error
+		if res.restErr == nil && s.rpc != nil {
+			// only needed to decide the "not fully synchronized" warning below, which only ever
+			// applies when the RPC fallback is actually enabled — skipped entirely otherwise, so
+			// a disabled fallback never adds this extra round trip (and never waits on it) on top
+			// of every activity request.
+			//
+			// best-effort: a failure here just skips that warning, it never turns a successful
+			// bridge fetch into an error
 			res.syncStatus, _ = svc.GetSyncStatus(ctx)
 		}
 	}()
@@ -167,6 +172,25 @@ func isNetworkSynced(networkID uint32, status *bridgeservicetypes.SyncStatus) bo
 		return status.L1Info != nil && status.L1Info.IsSynced
 	}
 	return status.L2Info != nil && status.L2Info.IsSynced
+}
+
+// appendNewBridges appends to all every bridge in candidates whose GlobalIndex is not already in
+// known, reporting whether anything was actually appended. Shared by BridgesFrom's two merge
+// paths (bridge-service reachable and bridge-service unreachable) so an RPC-only bridge is never
+// re-added — and so never re-triggers its claim/readiness checks — regardless of which path
+// found it.
+func appendNewBridges(
+	all []*domain.ScannedBridge, candidates []*domain.ScannedBridge, known map[string]struct{},
+) ([]*domain.ScannedBridge, bool) {
+	var addedAny bool
+	for _, b := range candidates {
+		if _, dup := known[string(b.Bridge.GlobalIndex)]; dup {
+			continue
+		}
+		all = append(all, b)
+		addedAny = true
+	}
+	return all, addedAny
 }
 
 // BridgesFrom implements bridgetracker.ActivityBridgeScanner: for every network the finder
@@ -203,7 +227,7 @@ func (s *ActivitySource) BridgesFrom(
 
 		if res.restErr != nil {
 			if s.rpc != nil && res.rpcErr == nil {
-				all = append(all, res.rpcBridges...)
+				all, _ = appendNewBridges(all, res.rpcBridges, known)
 				warnings = append(warnings, s.warnf(networkID,
 					"bridge service unavailable for network %d, historical activity may not be "+
 						"available: %v", networkID, res.restErr))
@@ -229,13 +253,7 @@ func (s *ActivitySource) BridgesFrom(
 		}
 
 		var addedAny bool
-		for _, b := range res.rpcBridges {
-			if _, dup := localKnown[string(b.Bridge.GlobalIndex)]; dup {
-				continue
-			}
-			all = append(all, b)
-			addedAny = true
-		}
+		all, addedAny = appendNewBridges(all, res.rpcBridges, localKnown)
 		if addedAny && !isNetworkSynced(networkID, res.syncStatus) {
 			warnings = append(warnings, s.warnf(networkID,
 				"bridge service for network %d is not fully synchronized, some bridges may "+
