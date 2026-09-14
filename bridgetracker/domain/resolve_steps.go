@@ -62,23 +62,27 @@ type StepResolver interface {
 // domain.ResolveBridgeTx/domain.PendingPath) through as much of its expected path as its
 // current facts allow: it resolves the current step (the first not yet Done or Skipped) via
 // UpdateStep, and if that completed it, whichever step it lands on next, and so on, stopping at
-// the first milestone still unmet (ErrStepPending), the first real error the claimed-bridge
-// fallback below could not explain away, or a step that already failed for a reason retrying
-// cannot fix (currentStepIndex returns -1 for that case too, without calling its resolver again
-// — see isTerminalStepError). On a real error, every step completed earlier this same call stays
-// Done — only the step whose resolver just failed is marked, via UpdateStep's stepErr,
-// incrementing its retry count instead of discarding the in-tick progress.
+// the first milestone still unmet (ErrStepPending), or the first real error the claimed-bridge
+// fallback below could not explain away. On a real error, every step completed earlier this same
+// call stays Done — only the step whose resolver just failed is marked, via UpdateStep's
+// stepErr, incrementing its retry count instead of discarding the in-tick progress.
 //
-// Whenever the failing step is not StepClaimed itself, this real error is given one more
-// chance before being recorded: claimChecker.IsClaimed asks the destination network directly,
-// on-chain, independently of whatever historical fact this step could not verify. If it reports
-// the bridge already claimed, every not-yet-Done step from the failing one up to (but excluding)
-// StepClaimed is marked StepStatusSkipped instead (see skipToClaimed) — the tracker gives up on
-// verifying them specifically, not on the bridge — and StepClaimed itself is opened as the new
-// current step, resolved through its own resolver like normal right after (its own ClaimFor fact
-// is never skipped: it is the one step this fallback exists to still finalize genuinely). If
-// IsClaimed reports the bridge not (yet) claimed, or the check itself fails, nothing changes:
-// the real error is recorded exactly as it would be without this fallback
+// Whenever the current step is not StepClaimed itself, a real error — freshly returned by its
+// resolver this call, or one it already failed with for a reason retrying cannot fix
+// (isTerminalStepError, from this same call or an earlier one: unlike a step merely
+// StepStatusInProgress or transient, its resolver is never asked again, see UpdateStep's
+// wasTerminal guard) — is given one more chance before being left as-is: claimChecker.IsClaimed
+// asks the destination network directly, on-chain, independently of whatever historical fact
+// this step could not verify. If it reports the bridge already claimed, every not-yet-Done step
+// from the failing one up to (but excluding) StepClaimed is marked StepStatusSkipped instead
+// (see skipToClaimed) — the tracker gives up on verifying them specifically, not on the bridge —
+// and StepClaimed itself is opened as the new current step, resolved through its own resolver
+// like normal right after (its own ClaimFor fact is never skipped: it is the one step this
+// fallback exists to still finalize genuinely). If IsClaimed reports the bridge not (yet)
+// claimed, or the check itself fails, nothing changes: a fresh error is recorded exactly as it
+// would be without this fallback, and an already-terminal one is left exactly as found — this
+// same claim check simply runs again the next time ResolveSteps is asked about this bridge,
+// instead of the tracker ever giving up on asking altogether
 func ResolveSteps(
 	ctx context.Context,
 	logger aggkitcommon.Logger,
@@ -92,6 +96,18 @@ func ResolveSteps(
 			return tracking, nil
 		}
 		step := tracking.AllSteps()[idx]
+
+		if isTerminalStepError(step) {
+			if step.Step == types.StepClaimed {
+				return tracking, nil
+			}
+			if skipped, ok := trySkipToClaimed(ctx, claimChecker, tracking, idx, lastDescription(step.Error), now); ok {
+				tracking = skipped
+				continue
+			}
+			return tracking, nil
+		}
+
 		resolver, ok := resolvers[step.Step]
 		if !ok {
 			return tracking, nil
@@ -103,7 +119,7 @@ func ResolveSteps(
 			return UpdateStep(tracking, idx, result, false, nil, now), nil
 		case err != nil:
 			if step.Step != types.StepClaimed {
-				if skipped, ok := trySkipToClaimed(ctx, claimChecker, tracking, idx, err, now); ok {
+				if skipped, ok := trySkipToClaimed(ctx, claimChecker, tracking, idx, err.Error(), now); ok {
 					tracking = skipped
 					continue
 				}
@@ -114,41 +130,53 @@ func ResolveSteps(
 	}
 }
 
+// lastDescription returns the most recent entry of e's Description — the reason a terminal step
+// last failed by, used as the Skipped reason when the claimed-bridge fallback rescues a step
+// that already failed in an earlier call rather than this one. e is never nil here in practice
+// (a step reaching StepStatusError always carries one, see UpdateStep), but a defensive fallback
+// message is returned rather than risk a nil dereference over something this cosmetic
+func lastDescription(e *types.ErrorStep) string {
+	if e == nil || len(e.Description) == 0 {
+		return "step failed for a reason retrying cannot fix"
+	}
+	return e.Description[len(e.Description)-1]
+}
+
 // trySkipToClaimed reports whether tracking's bridge is already claimed on its destination
-// network (per claimChecker.IsClaimed, independent of causeErr's cause), and if so returns
+// network (per claimChecker.IsClaimed, independent of reason's cause), and if so returns
 // tracking with every step from idx up to (excluding) StepClaimed marked skipped (see
 // skipToClaimed). ok is false — tracking returned unchanged — whenever IsClaimed reports the
 // bridge not claimed, or the check itself errors: either way there is nothing to explain away,
-// the caller records causeErr exactly as it would without this fallback
+// the caller leaves reason's cause recorded exactly as it would without this fallback
 func trySkipToClaimed(
-	ctx context.Context, claimChecker ClaimChecker, tracking *TrackingData, idx int, causeErr error, now time.Time,
+	ctx context.Context, claimChecker ClaimChecker, tracking *TrackingData, idx int, reason string, now time.Time,
 ) (*TrackingData, bool) {
 	claimed, err := claimChecker.IsClaimed(ctx, tracking.Info())
 	if err != nil || !claimed {
 		return tracking, false
 	}
-	return skipToClaimed(tracking, idx, causeErr, now), true
+	return skipToClaimed(tracking, idx, reason, now), true
 }
 
 // skipToClaimed marks every step from idx up to (excluding) StepClaimed as StepStatusSkipped —
-// idx itself carries causeErr as its reason (the failure that triggered the fallback); any step
-// after idx that had not even been attempted yet gets a generic reason instead, since there is
-// no failure of its own to report. StepClaimed is then opened as StepStatusInProgress, same as
+// idx itself carries reason as its own (the failure that triggered the fallback); any step after
+// idx that had not even been attempted yet gets a generic reason instead, since there is no
+// failure of its own to report. StepClaimed is then opened as StepStatusInProgress, same as
 // UpdateStep does for whichever step follows one it just completed, so the next loop iteration
 // resolves it for real through its own resolver — this fallback never skips StepClaimed itself
-func skipToClaimed(tracking *TrackingData, idx int, causeErr error, now time.Time) *TrackingData {
+func skipToClaimed(tracking *TrackingData, idx int, reason string, now time.Time) *TrackingData {
 	steps := tracking.AllSteps()
 	claimedIdx := indexOfStep(steps, types.StepClaimed)
 	newSteps := append([]BridgeStepPath(nil), steps...)
 
 	for i := idx; i < claimedIdx; i++ {
-		reason := "bridge already claimed on destination network; step left unverified"
+		stepReason := "bridge already claimed on destination network; step left unverified"
 		if i == idx {
-			reason = causeErr.Error()
+			stepReason = reason
 		}
 		sp := newSteps[i]
 		sp.Status = types.StepStatusSkipped
-		sp.Error = &types.ErrorStep{ErrorType: types.StepErrorSkipped, Description: []string{reason}}
+		sp.Error = &types.ErrorStep{ErrorType: types.StepErrorSkipped, Description: []string{stepReason}}
 		endDate := now
 		sp.EndDate = &endDate
 		newSteps[i] = sp
@@ -167,20 +195,17 @@ func skipToClaimed(tracking *TrackingData, idx int, causeErr error, now time.Tim
 }
 
 // currentStepIndex returns the index of the first step not yet Done or Skipped — the one that
-// needs resolving next — or -1 once the whole path (through StepClaimed) is Done/Skipped, or
-// once that first not-yet-settled step already failed for a reason retrying cannot fix
-// (isTerminalStepError): steps only ever advance strictly in order (see UpdateStep), so a
-// terminally failed one is, by construction, the last one ever reached — nothing stops
-// ResolveSteps from asking its resolver again forever otherwise, which is exactly how a later
-// plain error could downgrade a permanent failure back to transient before UpdateStep started
-// guarding against it. Skipped is treated exactly like Done here: skipToClaimed already decided
-// nothing more will ever verify that step, so there is nothing left for this loop to retry
+// needs attention next — or -1 once the whole path (through StepClaimed) is Done/Skipped. A step
+// already failed for a reason retrying cannot fix (isTerminalStepError) is still returned here,
+// deliberately: unlike a step merely InProgress or transiently erroring, ResolveSteps never asks
+// its resolver again for it (see UpdateStep's wasTerminal guard), but it is not otherwise treated
+// as settled — ResolveSteps itself still runs the claimed-bridge fallback over it every call, on
+// the chance the destination network has confirmed the claim since (see its own doc). Skipped,
+// unlike a terminal error, is treated exactly like Done: skipToClaimed already decided nothing
+// more will ever verify that step, there is truly nothing left for anything to retry
 func currentStepIndex(steps []BridgeStepPath) int {
 	for i, sp := range steps {
 		if sp.Status != types.StepStatusDone && sp.Status != types.StepStatusSkipped {
-			if isTerminalStepError(sp) {
-				return -1
-			}
 			return i
 		}
 	}
@@ -195,10 +220,11 @@ func currentStepIndex(steps []BridgeStepPath) int {
 // ResolveBridgeTx. A resolver marks stepErr as unrecoverable the same way a BridgeEventSource
 // does (see Permanent/IsPermanent): IsPermanent(stepErr) makes the step StepErrorPermanent with
 // just this failure, no point accumulating a retry history nothing will retry. Otherwise, if the
-// step was already terminally failed going into this call (isTerminalStepError — nothing stops
-// ResolveSteps from calling a failed step's resolver again, since currentStepIndex only checks
-// Done, not Error), that terminal ErrorType is kept as-is and only its history extended: a plain
-// stepErr from a later poll must never resurrect a terminal failure as merely StepErrorTransient.
+// step was already terminally failed going into this call (isTerminalStepError), that terminal
+// ErrorType is kept as-is and only its history extended: a plain stepErr from a later poll must
+// never resurrect a terminal failure as merely StepErrorTransient — ResolveSteps itself never
+// asks a terminal step's resolver again (see its own doc), so this only guards UpdateStep's own
+// invariant as a standalone function against any other caller doing so.
 // Any other stepErr is StepErrorTransient, accumulating onto the step's retry count and
 // description instead of discarding the history of a transient source failure — description is
 // capped to its most recent maxErrorDescriptions entries (see appendErrorDescription), retry
@@ -242,13 +268,13 @@ func UpdateStep(
 				Description: []string{stepErr.Error()},
 			}
 		case wasTerminal:
-			// nothing stops ResolveSteps from calling this step's resolver again once it has
-			// already failed terminally (currentStepIndex only checks Done, not Error) — a
-			// resolver call that then happens to return a plain, non-Permanent-wrapped error
-			// (e.g. a transient hiccup while re-checking an already-doomed fact) must not
-			// resurrect a terminal failure as merely StepErrorTransient: that would misreport
-			// TrackingStatus/ClaimStatus back to Running/Pending for a step that will never
-			// complete. Keep the existing terminal ErrorType, only extend its history
+			// ResolveSteps itself never asks a terminal step's resolver again (it routes
+			// through trySkipToClaimed instead — see its own doc), so stepErr reaching here for
+			// an already-terminal step only happens if some other caller invokes UpdateStep
+			// directly. Guard it anyway: resurrecting a terminal failure as merely
+			// StepErrorTransient would misreport TrackingStatus/ClaimStatus back to
+			// Running/Pending for a step that will never complete. Keep the existing terminal
+			// ErrorType, only extend its history
 			current.Error = &types.ErrorStep{
 				ErrorType:   current.Error.ErrorType,
 				RetryCount:  current.Error.RetryCount + 1,

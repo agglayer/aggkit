@@ -524,16 +524,11 @@ func TestResolveStepsClaimedNotIndexedYet(t *testing.T) {
 	require.Equal(t, types.StepClaimed, steps[*idx].Step)
 }
 
-// TestResolveStepsStopsOnTerminalStepError pins that ResolveSteps never calls a step's
-// resolver again once it already failed for a reason retrying cannot fix (StepErrorPermanent):
-// currentStepIndex reports -1 for it, same as a fully Done path, so the loop returns
-// immediately, the snapshot comes back unchanged, and — unlike TestResolveStepsErrors, which
-// pins the same short-circuit for a milestone still unmet (ErrStepPending) — no fact is ever
-// queried at all
-func TestResolveStepsStopsOnTerminalStepError(t *testing.T) {
-	t.Parallel()
-
-	now := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
+// terminallyFailedTracking returns a tracking snapshot stuck with StepWaitL1SettledGER already
+// StepErrorPermanent, shared by the two TestResolveStepsOnTerminalStepError* tests below: one
+// pins that its resolver is never called again regardless, the other that the claimed-bridge
+// fallback can still rescue it (agglayer/aggkit#1836)
+func terminallyFailedTracking(now time.Time) *TrackingData {
 	permanentlyFailed := BridgeStepPath{
 		Step: types.StepWaitL1SettledGER, Status: types.StepStatusError,
 		Error: &types.ErrorStep{
@@ -541,7 +536,7 @@ func TestResolveStepsStopsOnTerminalStepError(t *testing.T) {
 			Description: []string{ErrBadSettlementTx.Error()},
 		},
 	}
-	tracking := newTracking(types.BridgeTypeL2ToL1, []BridgeStepPath{
+	return newTracking(types.BridgeTypeL2ToL1, []BridgeStepPath{
 		{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone},
 		{Step: types.StepPendingInclusion, Status: types.StepStatusDone},
 		{Step: types.StepCertificatePending, Status: types.StepStatusDone},
@@ -550,17 +545,67 @@ func TestResolveStepsStopsOnTerminalStepError(t *testing.T) {
 		{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
 		{Step: types.StepClaimed, Status: types.StepStatusPending},
 	}, now)
-	// facts that would let every remaining step succeed if queried, proving they are not
-	facts := fakeFacts{
-		l1InfoTreeIndexForBridge: new(uint32),
-		claimed:                  true,
-		claim:                    &types.ClaimResult{ClaimTx: common.Hash{9}},
-	}
+}
+
+// TestResolveStepsOnTerminalStepErrorNeverRetriesItsResolver pins that ResolveSteps never calls
+// a step's resolver again once it already failed for a reason retrying cannot fix
+// (StepErrorPermanent): only the claimed-bridge fallback's IsClaimed check runs against it (see
+// TestResolveStepsOnTerminalStepErrorIsRescuedWhenClaimed for when that succeeds); here it
+// reports the bridge not claimed, so the snapshot comes back unchanged and no fact besides
+// IsClaimed is ever queried — unlike TestResolveStepsErrors, which pins the same short-circuit
+// for a milestone still unmet (ErrStepPending)
+func TestResolveStepsOnTerminalStepErrorNeverRetriesItsResolver(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
+	tracking := terminallyFailedTracking(now)
+	// facts that would let every remaining step succeed if its resolver were ever called,
+	// proving it is not — only claimed stays false, so the fallback itself does not rescue it
+	facts := fakeFacts{l1InfoTreeIndexForBridge: new(uint32), claim: &types.ClaimResult{ClaimTx: common.Hash{9}}}
 
 	result, err := ResolveSteps(context.Background(), log.NewLoggerNil(), testResolvers(&facts), &facts, tracking, now)
 	require.NoError(t, err)
-	require.Empty(t, facts.queried, "no resolver may be called once the path is stuck on a terminal step error")
+	require.Equal(t, []string{"isClaimed"}, facts.queried,
+		"only the claimed-bridge fallback's own check runs; no step resolver is ever called again")
 	require.Equal(t, tracking.AllSteps(), result.AllSteps(), "the snapshot is returned unchanged")
+}
+
+// TestResolveStepsOnTerminalStepErrorIsRescuedWhenClaimed pins the other half of #1836: once the
+// destination network confirms the claim, a step already stuck in StepErrorPermanent from an
+// earlier call — not just one failing fresh this call — is still rescued by the claimed-bridge
+// fallback, cascading the skip through every step still pending up to StepClaimed, which then
+// resolves for real
+func TestResolveStepsOnTerminalStepErrorIsRescuedWhenClaimed(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
+	tracking := terminallyFailedTracking(now)
+	claim := &types.ClaimResult{ClaimTx: common.Hash{9}}
+	facts := fakeFacts{l1InfoTreeIndexForBridge: new(uint32), claimed: true, claim: claim}
+
+	result, err := ResolveSteps(context.Background(), log.NewLoggerNil(), testResolvers(&facts), &facts, tracking, now)
+	require.NoError(t, err)
+	require.Equal(t, []string{"isClaimed", "claimFor"}, facts.queried,
+		"WaitingClaim's own resolver is skipped over too, never called: it falls inside the skipped range")
+
+	steps := result.AllSteps()
+	for _, stepID := range []types.BridgeStep{
+		types.StepWaitL1SettledGER, types.StepWaitingL1InfoLeafAvailable, types.StepWaitingClaim,
+	} {
+		sp := steps[indexOfStep(steps, stepID)]
+		require.Equal(t, types.StepStatusSkipped, sp.Status, "%s", stepID)
+		require.Equal(t, types.StepErrorSkipped, sp.Error.ErrorType)
+	}
+	settledGERStep := steps[indexOfStep(steps, types.StepWaitL1SettledGER)]
+	require.Contains(t, settledGERStep.Error.Description[0], ErrBadSettlementTx.Error(),
+		"the reason recorded when it originally failed, not a generic one")
+
+	claimedStep := steps[indexOfStep(steps, types.StepClaimed)]
+	require.Equal(t, types.StepStatusDone, claimedStep.Status)
+	require.Equal(t, claim, claimedStep.Result())
+
+	require.Equal(t, types.TrackingStatusFinished, result.TrackingStatus())
+	require.Equal(t, types.TrackerClaimStatusClaimed, result.ClaimStatus())
 }
 
 // TestResolveStepsSkipsOnAlreadyClaimed pins the fallback that lets a bridge finalize even when
