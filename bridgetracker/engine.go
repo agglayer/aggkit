@@ -357,5 +357,5 @@ func (e *Engine) persistResolveFailure(id TrackingID, tx domain.TrackingBridgeTx
 func (e *Engine) computeAllSteps(
 	ctx context.Context, tracking *domain.TrackingData,
 ) (*domain.TrackingData, error) {
-	return domain.ResolveSteps(ctx, e.logger, e.resolvers, tracking, e.now())
+	return domain.ResolveSteps(ctx, e.logger, e.resolvers, e.sources.ClaimChecker, tracking, e.now())
 }

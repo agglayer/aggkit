@@ -146,6 +146,13 @@ const (
 	StepStatusDone
 	// StepStatusError the step failed; details are carried in BridgeStepPath.Error
 	StepStatusError
+	// StepStatusSkipped the step could not be verified (its resolver kept failing), but the
+	// bridge's destination network already confirmed the claim independently (see
+	// ClaimChecker.IsClaimed), so the tracker gave up trying to populate this step specifically
+	// and moved on instead of leaving the whole bridge stuck in StepStatusError. The reason it
+	// was skipped, when available, is carried in BridgeStepPath.Error the same way a real error
+	// would be, just under StepErrorSkipped instead of Transient/Permanent
+	StepStatusSkipped
 )
 
 var stepStatusNames = map[StepStatus]string{
@@ -153,6 +160,7 @@ var stepStatusNames = map[StepStatus]string{
 	StepStatusInProgress: "inProgress",
 	StepStatusDone:       "done",
 	StepStatusError:      "error",
+	StepStatusSkipped:    "skipped",
 }
 
 // String representation of the enum
@@ -229,12 +237,19 @@ const (
 	StepErrorPermanent
 	// StepErrorExhausted the error was transient but retries have been given up on
 	StepErrorExhausted
+	// StepErrorSkipped the step was never successfully verified, but the bridge's destination
+	// network already confirmed the claim independently, so the tracker skipped it instead of
+	// leaving it (or the whole bridge) stuck — see StepStatusSkipped. Unlike the other
+	// StepErrorType values, this does not mean the tracker gave up on the bridge, only on this
+	// one step
+	StepErrorSkipped
 )
 
 var stepErrorTypeNames = map[StepErrorType]string{
 	StepErrorTransient: "transient",
 	StepErrorPermanent: "permanent",
 	StepErrorExhausted: "exhausted",
+	StepErrorSkipped:   "skipped",
 }
 
 // String representation of the enum
