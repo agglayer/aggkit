@@ -38,6 +38,7 @@ type fakeFacts struct {
 	claimedErr                  error
 	claimErr                    error
 	settlementErr               error
+	originGERWaitForContext     bool
 
 	queried []string
 }
@@ -51,9 +52,13 @@ const originGERLeafCount = 6
 // originGER fixture (kept shaped like BridgeFacts.OriginGER used to be, for minimal test churn)
 // into the port's own result type
 func (f *fakeFacts) FindFirstL1InfoTreeAfterBlock(
-	_ context.Context, _ uint64, _ uint32,
+	ctx context.Context, _ uint64, _ uint32,
 ) (*ResultFindFirstL1InfoTreeAfterBlock, error) {
 	f.queried = append(f.queried, "originGER")
+	if f.originGERWaitForContext {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	if f.originGERErr != nil || f.originGER == nil {
 		return nil, f.originGERErr
 	}
@@ -98,8 +103,11 @@ func (f *fakeFacts) L1InfoTreeIndexForBridge(_ context.Context, _ *BridgeInfo) (
 	return f.l1InfoTreeIndexForBridge, f.l1InfoTreeIndexForBridgeErr
 }
 
-func (f *fakeFacts) IsClaimed(_ context.Context, _ *BridgeInfo) (bool, error) {
+func (f *fakeFacts) IsClaimed(ctx context.Context, _ *BridgeInfo) (bool, error) {
 	f.queried = append(f.queried, "isClaimed")
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	return f.claimed, f.claimedErr
 }
 
@@ -650,6 +658,34 @@ func TestResolveStepsSkipsOnAlreadyClaimed(t *testing.T) {
 
 	require.Equal(t, types.TrackingStatusFinished, result.TrackingStatus())
 	require.Equal(t, types.TrackerClaimStatusClaimed, result.ClaimStatus())
+}
+
+func TestResolveStepsRecoversAfterResolverTimeout(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	tracking := newTracking(types.BridgeTypeL1ToL2, nil, now)
+	claim := &types.ClaimResult{ClaimTx: common.Hash{9}}
+	facts := fakeFacts{originGERWaitForContext: true, claimed: true, claim: claim}
+	resolvers := testResolvers(&facts)
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+	defer cancel()
+	failed, err := ResolveSteps(ctx, log.NewLoggerNil(), resolvers, &facts, tracking, now)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Equal(t, types.StepErrorTransient, failed.Error().ErrorType)
+	require.Equal(t, []string{"originGER", "isClaimed"}, facts.queried)
+
+	facts.queried = nil
+	retryCtx, retryCancel := context.WithTimeout(t.Context(), time.Second)
+	defer retryCancel()
+	recovered, err := ResolveSteps(retryCtx, log.NewLoggerNil(), resolvers, &facts, failed, now)
+	require.NoError(t, err)
+	require.Equal(t, []string{"isClaimed", "claimFor"}, facts.queried)
+	require.Equal(t, types.StepStatusSkipped, recovered.AllSteps()[0].Status)
+	require.Contains(t, recovered.AllSteps()[0].Error.Description[0], context.DeadlineExceeded.Error())
+	require.Equal(t, types.TrackingStatusFinished, recovered.TrackingStatus())
+	require.Equal(t, claim, recovered.AllSteps()[len(recovered.AllSteps())-1].Result())
 }
 
 // TestResolveStepsSkipDoesNotApplyWhenNotClaimed pins that the fallback changes nothing when the

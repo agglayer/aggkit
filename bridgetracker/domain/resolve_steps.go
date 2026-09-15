@@ -68,10 +68,10 @@ type StepResolver interface {
 // stepErr, incrementing its retry count instead of discarding the in-tick progress.
 //
 // Whenever the current step is not StepClaimed itself, a real error — freshly returned by its
-// resolver this call, or one it already failed with for a reason retrying cannot fix
-// (isTerminalStepError, from this same call or an earlier one: unlike a step merely
-// StepStatusInProgress or transient, its resolver is never asked again, see UpdateStep's
-// wasTerminal guard) — is given one more chance before being left as-is: claimChecker.IsClaimed
+// resolver this call, or recorded from an earlier call — is given one more chance before
+// being left as-is. For an existing error, the claim check runs before retrying the resolver,
+// so a resolver that exhausts the context cannot starve the fallback on every tick. A terminal
+// step's resolver is never retried (see isTerminalStepError). claimChecker.IsClaimed
 // asks the destination network directly, on-chain, independently of whatever historical fact
 // this step could not verify. If it reports the bridge already claimed, every not-yet-Done step
 // from the failing one up to (but excluding) StepClaimed is marked StepStatusSkipped instead
@@ -97,14 +97,14 @@ func ResolveSteps(
 		}
 		step := tracking.AllSteps()[idx]
 
-		if isTerminalStepError(step) {
-			if step.Step == types.StepClaimed {
-				return tracking, nil
-			}
+		claimChecked := step.Status == types.StepStatusError && step.Step != types.StepClaimed
+		if claimChecked {
 			if skipped, ok := trySkipToClaimed(ctx, claimChecker, tracking, idx, lastDescription(step.Error), now); ok {
 				tracking = skipped
 				continue
 			}
+		}
+		if isTerminalStepError(step) {
 			return tracking, nil
 		}
 
@@ -118,7 +118,7 @@ func ResolveSteps(
 		case errors.Is(err, ErrStepPending):
 			return UpdateStep(tracking, idx, result, false, nil, now), nil
 		case err != nil:
-			if step.Step != types.StepClaimed {
+			if step.Step != types.StepClaimed && !claimChecked {
 				if skipped, ok := trySkipToClaimed(ctx, claimChecker, tracking, idx, err.Error(), now); ok {
 					tracking = skipped
 					continue
@@ -130,7 +130,7 @@ func ResolveSteps(
 	}
 }
 
-// lastDescription returns the most recent entry of e's Description — the reason a terminal step
+// lastDescription returns the most recent entry of e's Description — the reason a step
 // last failed by, used as the Skipped reason when the claimed-bridge fallback rescues a step
 // that already failed in an earlier call rather than this one. e is never nil here in practice
 // (a step reaching StepStatusError always carries one, see UpdateStep), but a defensive fallback
