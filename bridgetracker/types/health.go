@@ -19,7 +19,12 @@ const HealthStatusOK = "ok"
 //     was renamed to claim_status and revalued to the same "pending"/"readyToClaim"/
 //     "claimed"/"error" vocabulary as TrackingData.claim_status; ?filterBridges= gained a new
 //     "readyToClaim" value to match
-const CurrentAPIRevision = 2
+//   - 3: a bridge step's status gained a new "skipped" value (types.StepStatusSkipped) and its
+//     error, when present, a new "skipped" error_type (types.StepErrorSkipped) — the tracker
+//     falls back to it for a step whose historical fact it can never verify once the
+//     destination network's own claim status proves the bridge finished anyway (see
+//     agglayer/aggkit#1836)
+const CurrentAPIRevision = 3
 
 // HealthResponse is the body of GET /tracker/v1/health
 type HealthResponse struct {

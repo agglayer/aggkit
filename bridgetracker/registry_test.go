@@ -404,9 +404,11 @@ func TestRegistryGetTrackerActivesFiltersByNetwork(t *testing.T) {
 
 // TestRegistryGetTrackerActivesKeepsStepLevelErrors pins that a bridge resolved with a
 // still-retryable (transient) step-level error stays active: the engine must keep polling it
-// in case the error clears, unlike a bridge the tracker never managed to resolve at all, or one
-// whose step failed for a reason retrying cannot fix (see
-// TestRegistryGetTrackerActivesExcludesPermanentStepErrors)
+// in case the error clears, unlike a bridge the tracker never managed to resolve at all (Info
+// nil — see TestRegistryGetTrackerActives' "failed" case). A step-level error that instead fails
+// for a reason retrying cannot fix stays active too (see
+// TestRegistryGetTrackerActivesKeepsPermanentStepErrors) — only Info nil, or the bridge actually
+// reaching StepClaimed, ever excludes an entry
 func TestRegistryGetTrackerActivesKeepsStepLevelErrors(t *testing.T) {
 	r := newMemoryRegistry(0)
 	erroring := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x04")}
@@ -421,12 +423,17 @@ func TestRegistryGetTrackerActivesKeepsStepLevelErrors(t *testing.T) {
 	require.Equal(t, erroring, active[0].ID())
 }
 
-// TestRegistryGetTrackerActivesExcludesPermanentStepErrors pins that a bridge whose current
-// step failed for a reason retrying cannot fix (types.StepErrorPermanent) leaves the active
-// list, same as a bridge the tracker never managed to resolve at all: nothing further will ever
-// happen to it (see domain's currentStepIndex, which likewise stops asking that step's resolver
-// once it reaches this same state), so polling it forever would be pure waste
-func TestRegistryGetTrackerActivesExcludesPermanentStepErrors(t *testing.T) {
+// TestRegistryGetTrackerActivesKeepsPermanentStepErrors pins that a bridge whose current step
+// failed for a reason retrying cannot fix (types.StepErrorPermanent) still stays in the active
+// list, same as one merely StepErrorTransient (see TestRegistryGetTrackerActivesKeepsStepLevelErrors)
+// and unlike a bridge the tracker never managed to resolve at all (Info nil — see
+// TestRegistryGetTrackerActives' "failed" case): its own resolver is never asked again
+// (see domain's isTerminalStepError), but the engine still needs the chance to ask
+// ClaimChecker.IsClaimed for it on every tick — a single cheap on-chain check, independent of
+// whatever historical fact the step itself could not verify — since the destination network may
+// confirm the claim later even though this step never will resolve on its own
+// (agglayer/aggkit#1836)
+func TestRegistryGetTrackerActivesKeepsPermanentStepErrors(t *testing.T) {
 	r := newMemoryRegistry(0)
 	failed := TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x05")}
 
@@ -436,7 +443,8 @@ func TestRegistryGetTrackerActivesExcludesPermanentStepErrors(t *testing.T) {
 
 	active, err := r.GetTrackerActives(nil)
 	require.NoError(t, err)
-	require.Empty(t, active)
+	require.Len(t, active, 1)
+	require.Equal(t, failed, active[0].ID())
 }
 
 func TestRegistryUnsubscribeStopsUpdates(t *testing.T) {

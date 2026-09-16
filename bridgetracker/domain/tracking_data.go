@@ -201,14 +201,17 @@ func (t *TrackingData) Failed() bool {
 // convertStepStatusToTrackingStatus derives TrackingStatus from a single step — the one
 // StepIndex already picked out as current. A transient step error reads as Running, same as
 // an in-progress step (see isTransientStepError); only a terminal one (permanent, or
-// exhausted) reads as Error
+// exhausted) reads as Error. Skipped reads as Finished, same as Done: StepIndex/currentStepIndex
+// only ever leave a Skipped step selected as current when it is the last one in AllSteps (see
+// skipToClaimed, which never skips StepClaimed itself), so reaching it here means the whole path
+// is as settled as it will ever get
 func convertStepStatusToTrackingStatus(step BridgeStepPath) types.TrackingStatus {
 	switch step.Status {
 	case types.StepStatusPending:
 		return types.TrackingStatusRunning
 	case types.StepStatusInProgress:
 		return types.TrackingStatusRunning
-	case types.StepStatusDone:
+	case types.StepStatusDone, types.StepStatusSkipped:
 		return types.TrackingStatusFinished
 	case types.StepStatusError:
 		if isTransientStepError(step) {

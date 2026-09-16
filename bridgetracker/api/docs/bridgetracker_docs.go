@@ -480,7 +480,7 @@ const docTemplatebridgetracker = `{
                     "type": "string"
                 },
                 "error": {
-                    "description": "Error carries the error details when Status is types.StepStatusError, nil otherwise",
+                    "description": "Error carries the error details when Status is types.StepStatusError or\ntypes.StepStatusSkipped (the reason it was skipped, if any — see\ntypes.StepErrorSkipped), nil otherwise",
                     "allOf": [
                         {
                             "$ref": "#/definitions/types.ErrorStep"
@@ -904,12 +904,14 @@ const docTemplatebridgetracker = `{
             "enum": [
                 0,
                 1,
-                2
+                2,
+                3
             ],
             "x-enum-varnames": [
                 "StepErrorTransient",
                 "StepErrorPermanent",
-                "StepErrorExhausted"
+                "StepErrorExhausted",
+                "StepErrorSkipped"
             ]
         },
         "types.VersionInfo": {

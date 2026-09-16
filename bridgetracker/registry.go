@@ -48,21 +48,27 @@ type memoryRegistry struct {
 	trigger chan TrackingID
 }
 
-// isTerminal reports whether the snapshot will never change again: the bridge finished, the
-// tracker gave up resolving its tx at all (domain.TrackingData.Failed — a strict subset of the
-// TrackingStatusError case below, kept only as the doc anchor for that half of it), or its
-// current step failed for a reason retrying cannot fix. TrackingStatus already folds all of
-// that into TrackingStatusError once AllSteps exists (see domain.TrackingData.TrackingStatus):
-// a step-level error still reads as Running/Pending there while it is merely
-// types.StepErrorTransient — the tracker is still retrying it and it may well recover — so
-// checking TrackingStatus directly, rather than Failed alone, is what correctly also excludes a
-// bridge stuck on a step that will never resolve (see currentStepIndex, which likewise stops
-// asking that step's resolver once it reaches this same state). It is exactly the predicate
+// isTerminal reports whether the snapshot will never change again: the bridge finished
+// (TrackingStatusFinished), or the tracker gave up resolving its tx at all
+// (domain.TrackingData.Failed: a terminal tx-level error, Info still nil — nothing further to
+// ever check, there is not even a destination network to ask). It is exactly the predicate
 // GetTrackerActives excludes by — an entry out of the active list is never updated again, so it
-// is safe to forget once its retention elapses
+// is safe to forget once its retention elapses.
+//
+// A bridge whose current step failed for a reason retrying cannot fix (TrackingStatusError with
+// Info populated) is deliberately NOT terminal here, unlike a step merely StepErrorTransient
+// (still being retried and may well recover) or a step-less tx-level failure: ResolveSteps never
+// asks that step's resolver again (see isTerminalStepError), but it does keep asking
+// claimChecker.IsClaimed for it on every call (see ResolveSteps' own doc) — a single cheap
+// on-chain check, independent of whatever historical fact the step itself could not verify — so
+// the bridge must stay in GetTrackerActives' list for the engine to keep giving it that chance
+// (agglayer/aggkit#1836): excluding it here would silently cut that off, leaving it to rely on a
+// client re-registering the same tx from scratch after PruneTerminal forgets it, only to hit the
+// exact same unresolvable historical fact again on the very next attempt. Nothing here reverts to
+// terminal instead being pruned once idle: PruneIdle already forgets it if left unaccessed and
+// unsubscribed for IdleTimeout, same safety net as any other still-active entry
 func isTerminal(tracking *domain.TrackingData) bool {
-	status := tracking.TrackingStatus()
-	return status == types.TrackingStatusError || status == types.TrackingStatusFinished
+	return tracking.TrackingStatus() == types.TrackingStatusFinished || tracking.Failed()
 }
 
 // compile-time check: the in-memory adapter fulfils the full port
