@@ -65,11 +65,13 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 
 	injectedGERs, err := e.fetchInjectedGERs(ctx, fromBlock, toBlock)
 	if err != nil {
-		// Check if error is due to block range being too large
-		maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
-		if isMaxRangeErr {
-			log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
-			return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
+		// Check if the error is a recognised eth_getLogs size/range problem (either an explicit
+		// max-range cap or a "too many results" style response); aggkitcommon.NextEthGetLogsWindow
+		// is the single shared decision point every aggkit downloader uses for this.
+		newWindow, shrinkable := aggkitcommon.NextEthGetLogsWindow(err, toBlock-fromBlock+1)
+		if shrinkable {
+			log.Debugf("eth_getLogs size/range error, splitting into chunks of max %d blocks: %v", newWindow, err)
+			return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, newWindow,
 				e.fetchInjectedGERs,
 				func(all map[common.Hash]GlobalExitRootInfo,
 					chunk map[common.Hash]GlobalExitRootInfo,
@@ -164,11 +166,13 @@ func (e *L2EVMGERReader) GetRemovedGERsForRange(ctx context.Context,
 
 	removedGERs, err := e.fetchRemovedGERs(ctx, fromBlock, toBlock)
 	if err != nil {
-		// Check if error is due to block range being too large
-		maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
-		if isMaxRangeErr {
-			log.Debugf("block range too large, splitting into chunks of max %d blocks", maxRange)
-			return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
+		// Check if the error is a recognised eth_getLogs size/range problem (either an explicit
+		// max-range cap or a "too many results" style response); aggkitcommon.NextEthGetLogsWindow
+		// is the single shared decision point every aggkit downloader uses for this.
+		newWindow, shrinkable := aggkitcommon.NextEthGetLogsWindow(err, toBlock-fromBlock+1)
+		if shrinkable {
+			log.Debugf("eth_getLogs size/range error, splitting into chunks of max %d blocks: %v", newWindow, err)
+			return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, newWindow,
 				e.fetchRemovedGERs,
 				func(all, chunk []*agglayertypes.RemovedGER) []*agglayertypes.RemovedGER {
 					return append(all, chunk...)

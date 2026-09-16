@@ -210,6 +210,45 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 		mockL2GERManager.AssertExpectations(t)
 	})
 
+	t.Run("too many results (no explicit cap) also triggers chunking", func(t *testing.T) {
+		t.Parallel()
+
+		mockL2GERManager := aggoraclemocks.NewL2GERManagerContract(t)
+		// First call: "too many results" with no explicit cap -> window (2001) halves to 1000.
+		mockL2GERManager.EXPECT().
+			FilterUpdateRemovalHashChainValue(mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, errors.New("Query returned more than 20000 results.")).Once()
+		// Second call (first chunk): return a different error to prove chunking was triggered.
+		mockL2GERManager.EXPECT().
+			FilterUpdateRemovalHashChainValue(mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, errors.New("mock iterator error for removal (too many results)")).Once()
+
+		gerReader := &L2EVMGERReader{l2GERManager: mockL2GERManager}
+
+		_, err := gerReader.GetRemovedGERsForRange(ctx, 0, 2000)
+		require.ErrorContains(t, err, "mock iterator error for removal (too many results)")
+
+		mockL2GERManager.AssertExpectations(t)
+	})
+
+	t.Run("too many results on a single-block range cannot shrink further", func(t *testing.T) {
+		t.Parallel()
+
+		mockL2GERManager := aggoraclemocks.NewL2GERManagerContract(t)
+		// A single-block range has no smaller window to try: the original error must propagate
+		// unchanged instead of attempting to chunk, and no further FilterLogs calls must be made.
+		mockL2GERManager.EXPECT().
+			FilterUpdateRemovalHashChainValue(mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, errors.New("Query returned more than 20000 results.")).Once()
+
+		gerReader := &L2EVMGERReader{l2GERManager: mockL2GERManager}
+
+		_, err := gerReader.GetRemovedGERsForRange(ctx, 5, 5)
+		require.ErrorContains(t, err, "Query returned more than 20000 results")
+
+		mockL2GERManager.AssertExpectations(t)
+	})
+
 	t.Run("non-parseable error returns original error", func(t *testing.T) {
 		t.Parallel()
 

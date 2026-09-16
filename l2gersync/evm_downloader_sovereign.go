@@ -228,10 +228,17 @@ func (d *downloaderSovereign) isGERRemovedFromL2(ctx context.Context, fromBlock 
 
 // scanRemovedGERs scans for UpdateRemovalHashChainValue events matching ger from fromBlock to the
 // current head. The scan is open-ended (toBlock == nil, i.e. "latest") because the insert block can be
-// arbitrarily far behind the head. It adapts to the RPC provider's eth_getLogs block-range cap purely by
-// parsing the "query exceeds max block range" error via aggkitcommon.ParseMaxRangeFromError - no config
-// parameter involved - the same pattern used by L2EVMGERReader.GetRemovedGERsForRange and
+// arbitrarily far behind the head. It adapts to the RPC provider's eth_getLogs size/range errors --
+// either an explicit max-range cap (aggkitcommon.ParseMaxRangeFromError) or a "too many results" style
+// response with no explicit cap, both classified by the shared aggkitcommon.NextEthGetLogsWindow -- no
+// config parameter involved - the same pattern used by L2EVMGERReader.GetRemovedGERsForRange and
 // AgglayerBridgeL2Reader.fetchUnsetClaimsWithFallbackChunking/getUnsetClaimsInChunks.
+//
+// An explicit cap directly gives the window size to learn. A "too many results" response reports no
+// such value, and NextEthGetLogsWindow needs a *current* window to reduce -- which an open-ended
+// (toBlock == nil) query does not have -- so that family is only resolved by additionally resolving
+// the chain head (paying that extra RPC call only on this error path, never on the common/happy path
+// where the unbounded call succeeds directly).
 //
 // The one deviation from those siblings: this is invoked on every appender retry while a GER stays
 // unresolved, and fromBlock keeps being just as far behind an ever-growing head on every retry, so their
@@ -249,17 +256,45 @@ func (d *downloaderSovereign) scanRemovedGERs(
 			return removedEvents, nil
 		}
 
-		maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
-		if !isMaxRangeErr {
+		if maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error()); isMaxRangeErr {
+			d.removalScanMaxRange = maxRange
+		} else if aggkitcommon.IsTooManyResultsError(err.Error()) {
+			head, headErr := d.GetLastFinalizedBlock(ctx)
+			if headErr != nil {
+				return nil, fmt.Errorf("failed to resolve chain head after a too-many-results error: %w", headErr)
+			}
+			if head < fromBlock {
+				// fromBlock (the insert block) is already ahead of the resolved head; nothing to
+				// scan yet, and there is no window to learn from this head.
+				return nil, nil
+			}
+			newWindow, ok := aggkitcommon.NextEthGetLogsWindow(err, head-fromBlock+1)
+			if !ok {
+				return nil, err
+			}
+			d.removalScanMaxRange = newWindow
+			// The chunked scan below needs the same head; reuse it instead of resolving it again.
+			return d.chunkedRemovalScan(ctx, fromBlock, head, ger, gers)
+		} else {
 			return nil, err
 		}
-		d.removalScanMaxRange = maxRange
 	}
 
 	toBlock, headErr := d.GetLastFinalizedBlock(ctx)
 	if headErr != nil {
 		return nil, fmt.Errorf("failed to resolve chain head for chunked removal scan: %w", headErr)
 	}
+	return d.chunkedRemovalScan(ctx, fromBlock, toBlock, ger, gers)
+}
+
+// chunkedRemovalScan runs the chunked (window-bounded) UpdateRemovalHashChainValue scan over
+// [fromBlock, toBlock] once d.removalScanMaxRange has been learned, factored out of
+// scanRemovedGERs so the two paths that learn it (an explicit cap and a resolved-head "too many
+// results" heuristic) can each reuse the head they already resolved instead of calling
+// GetLastFinalizedBlock a second time.
+func (d *downloaderSovereign) chunkedRemovalScan(
+	ctx context.Context, fromBlock, toBlock uint64, ger common.Hash, gers [][common.HashLength]byte,
+) ([]*agglayertypes.RemovedGER, error) {
 	if fromBlock > toBlock {
 		// fromBlock (the insert block) is already ahead of the resolved head; nothing to scan yet.
 		return nil, nil
@@ -279,8 +314,9 @@ func (d *downloaderSovereign) scanRemovedGERs(
 	)
 }
 
-// fetchRemovedGERsChunk fetches one [fromBlock, toBlock] chunk directly and, on a "range too large"
-// error, re-learns the cap and recurses through ChunkedRangeQuery - mirroring
+// fetchRemovedGERsChunk fetches one [fromBlock, toBlock] chunk directly and, on a recognised
+// eth_getLogs size/range error (see aggkitcommon.NextEthGetLogsWindow), re-learns the window and
+// recurses through ChunkedRangeQuery - mirroring
 // AgglayerBridgeL2Reader.fetchUnsetClaimsWithFallbackChunking/getUnsetClaimsInChunks - so a chunk that is
 // itself still too large (e.g. the provider's cap shrank since it was first learned) keeps adapting
 // instead of failing the whole scan outright.
@@ -292,13 +328,13 @@ func (d *downloaderSovereign) fetchRemovedGERsChunk(
 		return removedEvents, nil
 	}
 
-	maxRange, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
-	if !isMaxRangeErr {
+	newWindow, shrinkable := aggkitcommon.NextEthGetLogsWindow(err, toBlock-fromBlock+1)
+	if !shrinkable {
 		return nil, err
 	}
-	d.removalScanMaxRange = maxRange
+	d.removalScanMaxRange = newWindow
 
-	return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, maxRange,
+	return aggkitcommon.ChunkedRangeQuery(ctx, fromBlock, toBlock, newWindow,
 		func(ctx context.Context, from, to uint64) ([]*agglayertypes.RemovedGER, error) {
 			return d.fetchRemovedGERsChunk(ctx, from, to, gers)
 		},

@@ -788,6 +788,145 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 	assert.Equal(t, expected, result)
 }
 
+// TestGetUnfilteredLogs_RangeCapErrorShrinksAndSucceeds is the red/green regression test for
+// issue #1842 finding F1: sync/evmdownloader.go must shrink its query window on an explicit
+// "block range too large, max range: N" style error, exactly as it already does for a "too many
+// results" style error. Before the fix, this error family was not recognised at all, so
+// getUnfilteredLogs never shrank the window and retried the identical oversized range on every
+// attempt until d.rh.Handle's MaxRetryAttemptsAfterError was exhausted (in production
+// MaxRetryAttemptsAfterError is -1, i.e. infinite, so it would retry forever with no progress).
+func TestGetUnfilteredLogs_RangeCapErrorShrinksAndSucceeds(t *testing.T) {
+	origLogFatalf := LogFatalf
+	defer func() { LogFatalf = origLogFatalf }()
+	LogFatalf = func(format string, args ...any) {
+		panic(fmt.Sprintf(format, args...))
+	}
+
+	const maxRange = uint64(100)
+
+	mockEthClient := aggkittypesmocks.NewMultiDownloader(t)
+	sut := EVMDownloaderImplementation{
+		ethClient:        mockEthClient,
+		addressesToQuery: []common.Address{contractAddr},
+		log:              log.WithFields("test", "EVMDownloaderImplementation"),
+		rh: &RetryHandler{
+			RetryAfterErrorPeriod: time.Millisecond,
+			// Small and finite purely so a still-buggy implementation fails this test with a
+			// bounded, assertable panic instead of hanging forever, standing in for production's
+			// MaxRetryAttemptsAfterError = -1 (infinite retry).
+			MaxRetryAttemptsAfterError: 3,
+		},
+	}
+
+	ctx := context.Background()
+	fromBlock := uint64(0)
+	toBlock := uint64(999)
+
+	var queriedWidths []uint64
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
+			width := q.ToBlock.Uint64() - q.FromBlock.Uint64() + 1
+			queriedWidths = append(queriedWidths, width)
+			if width > maxRange {
+				return nil, fmt.Errorf("block range too large, max range: %d", maxRange)
+			}
+			return []types.Log{}, nil
+		},
+	)
+
+	result := sut.getUnfilteredLogs(ctx, fromBlock, toBlock)
+
+	require.Empty(t, result)
+	// The very first call is the full, unshrunk [0,999] range; every call after the shrink must be
+	// bounded by maxRange. If the window never shrank, every entry would equal 1000 and the retry
+	// loop would instead have panicked via LogFatalf before reaching this assertion.
+	require.NotEmpty(t, queriedWidths)
+	require.Equal(t, uint64(1000), queriedWidths[0], "first attempt must be the full requested range")
+	for _, w := range queriedWidths[1:] {
+		require.LessOrEqual(t, w, maxRange, "every call after the shrink must respect the reported max range")
+	}
+	require.Greater(t, len(queriedWidths), 1, "the window must have shrunk into more than one call")
+}
+
+// TestGetUnfilteredLogs_UnrelatedErrorPropagatesUnchanged verifies that an error which is not a
+// recognised size/range problem never triggers a window shrink: it must keep going through the
+// generic attempts-based retry handler with the window untouched, exactly like before this change.
+func TestGetUnfilteredLogs_UnrelatedErrorPropagatesUnchanged(t *testing.T) {
+	mockEthClient := aggkittypesmocks.NewMultiDownloader(t)
+	sut := EVMDownloaderImplementation{
+		ethClient:        mockEthClient,
+		addressesToQuery: []common.Address{contractAddr},
+		log:              log.WithFields("test", "EVMDownloaderImplementation"),
+		rh: &RetryHandler{
+			RetryAfterErrorPeriod:      time.Millisecond,
+			MaxRetryAttemptsAfterError: -1,
+		},
+	}
+
+	ctx := context.Background()
+	fromBlock := uint64(0)
+	toBlock := uint64(99)
+
+	unrelatedErr := errors.New("connection refused")
+	var queriedWidths []uint64
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
+			width := q.ToBlock.Uint64() - q.FromBlock.Uint64() + 1
+			queriedWidths = append(queriedWidths, width)
+			if len(queriedWidths) < 3 {
+				return nil, unrelatedErr
+			}
+			return []types.Log{}, nil
+		},
+	)
+
+	result := sut.getUnfilteredLogs(ctx, fromBlock, toBlock)
+
+	require.Empty(t, result)
+	require.Len(t, queriedWidths, 3)
+	for _, w := range queriedWidths {
+		require.Equal(t, uint64(100), w, "an unrelated error must never change the query window")
+	}
+}
+
+// TestGetUnfilteredLogs_LoopTerminatesAtMinimumWindow verifies that repeated size/range errors
+// shrink the window down to exactly 1 block and then give up (returning nil) instead of retrying
+// forever once no smaller window is possible.
+func TestGetUnfilteredLogs_LoopTerminatesAtMinimumWindow(t *testing.T) {
+	mockEthClient := aggkittypesmocks.NewMultiDownloader(t)
+	sut := EVMDownloaderImplementation{
+		ethClient:        mockEthClient,
+		addressesToQuery: []common.Address{contractAddr},
+		log:              log.WithFields("test", "EVMDownloaderImplementation"),
+		rh: &RetryHandler{
+			RetryAfterErrorPeriod:      time.Millisecond,
+			MaxRetryAttemptsAfterError: -1,
+		},
+	}
+
+	ctx := context.Background()
+	fromBlock := uint64(0)
+	toBlock := uint64(3)
+
+	var queriedWidths []uint64
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
+			width := q.ToBlock.Uint64() - q.FromBlock.Uint64() + 1
+			queriedWidths = append(queriedWidths, width)
+			return nil, errors.New("Query returned more than 20000 results.")
+		},
+	)
+
+	result := sut.getUnfilteredLogs(ctx, fromBlock, toBlock)
+
+	require.Nil(t, result, "must give up (nil) once the window can no longer shrink")
+	require.NotEmpty(t, queriedWidths)
+	require.Equal(t, uint64(1), queriedWidths[len(queriedWidths)-1], "must reach the minimum window of 1 before giving up")
+	for i := 1; i < len(queriedWidths); i++ {
+		require.Less(t, queriedWidths[i], queriedWidths[i-1], "the window must strictly shrink on every attempt")
+	}
+}
+
 func TestGetLastFinalizedBlock(t *testing.T) {
 	ctx := context.Background()
 

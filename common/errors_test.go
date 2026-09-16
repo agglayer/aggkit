@@ -168,3 +168,131 @@ func TestParseMaxRangeFromError_WrappedErrors(t *testing.T) {
 		require.Equal(t, uint64(2500), result)
 	})
 }
+
+func TestIsTooManyResultsError(t *testing.T) {
+	tests := []struct {
+		name     string
+		errMsg   string
+		expected bool
+	}{
+		{
+			name:     "geth too many results",
+			errMsg:   "Query returned more than 20000 results. Try with this block range [0x1, 0x2].",
+			expected: true,
+		},
+		{
+			name:     "response size exceeded",
+			errMsg:   "Response size exceeded, please narrow your request",
+			expected: true,
+		},
+		{
+			name:     "unrelated error",
+			errMsg:   "connection refused",
+			expected: false,
+		},
+		{
+			name:     "explicit range cap is not a too-many-results error",
+			errMsg:   "block range too large, max range: 1000",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, IsTooManyResultsError(tt.errMsg))
+		})
+	}
+}
+
+func TestIsSizeOrRangeError(t *testing.T) {
+	tests := []struct {
+		name     string
+		errMsg   string
+		expected bool
+	}{
+		{
+			name:     "explicit range cap",
+			errMsg:   "block range too large, max range: 1000",
+			expected: true,
+		},
+		{
+			name:     "too many results",
+			errMsg:   "Query returned more than 20000 results.",
+			expected: true,
+		},
+		{
+			name:     "unrelated error",
+			errMsg:   "context deadline exceeded",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, IsSizeOrRangeError(tt.errMsg))
+		})
+	}
+}
+
+func TestNextEthGetLogsWindow(t *testing.T) {
+	t.Run("nil error is not retryable", func(t *testing.T) {
+		newWindow, ok := NextEthGetLogsWindow(nil, 1000)
+		require.False(t, ok)
+		require.Zero(t, newWindow)
+	})
+
+	t.Run("unrelated error propagates unchanged", func(t *testing.T) {
+		newWindow, ok := NextEthGetLogsWindow(errors.New("connection refused"), 1000)
+		require.False(t, ok)
+		require.Zero(t, newWindow)
+	})
+
+	t.Run("explicit range cap smaller than current window shrinks to the reported cap", func(t *testing.T) {
+		newWindow, ok := NextEthGetLogsWindow(errors.New("block range too large, max range: 250"), 1000)
+		require.True(t, ok)
+		require.Equal(t, uint64(250), newWindow)
+	})
+
+	t.Run("explicit range cap not smaller than current window is not retryable", func(t *testing.T) {
+		newWindow, ok := NextEthGetLogsWindow(errors.New("block range too large, max range: 1000"), 1000)
+		require.False(t, ok)
+		require.Zero(t, newWindow)
+
+		newWindow, ok = NextEthGetLogsWindow(errors.New("block range too large, max range: 5000"), 1000)
+		require.False(t, ok)
+		require.Zero(t, newWindow)
+	})
+
+	t.Run("too many results shrinks heuristically by half", func(t *testing.T) {
+		newWindow, ok := NextEthGetLogsWindow(errors.New("Query returned more than 20000 results."), 1000)
+		require.True(t, ok)
+		require.Equal(t, uint64(500), newWindow)
+	})
+
+	t.Run("window already at the floor is not retryable, regardless of error family", func(t *testing.T) {
+		newWindow, ok := NextEthGetLogsWindow(errors.New("Query returned more than 20000 results."), 1)
+		require.False(t, ok)
+		require.Zero(t, newWindow)
+
+		newWindow, ok = NextEthGetLogsWindow(errors.New("block range too large, max range: 1"), 1)
+		require.False(t, ok)
+		require.Zero(t, newWindow)
+	})
+
+	t.Run("returned window is always strictly smaller and never zero, terminating the loop", func(t *testing.T) {
+		window := uint64(1000)
+		iterations := 0
+		for {
+			newWindow, ok := NextEthGetLogsWindow(errors.New("Query returned more than 20000 results."), window)
+			if !ok {
+				break
+			}
+			require.Less(t, newWindow, window)
+			require.NotZero(t, newWindow)
+			window = newWindow
+			iterations++
+			require.Less(t, iterations, 100, "loop did not terminate")
+		}
+		require.Equal(t, uint64(1), window)
+	})
+}

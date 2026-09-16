@@ -480,3 +480,101 @@ func TestDownloaderSovereign_IsGERRemovedFromL2_CachesLearnedMaxRangeAcrossCalls
 	mockL1Client.AssertExpectations(t)
 	mockL1InfoTreeSync.AssertExpectations(t)
 }
+
+// TestDownloaderSovereign_IsGERRemovedFromL2_RecoversFromTooManyResultsError mirrors
+// TestDownloaderSovereign_IsGERRemovedFromL2_RecoversFromMaxBlockRangeError but for the other
+// eth_getLogs size/range family: a "too many results" response with no explicit cap. Unlike the
+// explicit-cap case, no window size can be read off the error message, so the fix must resolve the
+// chain head first (to get a concrete window to halve) before it can compute a chunk size via the
+// shared aggkitcommon.NextEthGetLogsWindow.
+func TestDownloaderSovereign_IsGERRemovedFromL2_RecoversFromTooManyResultsError(t *testing.T) {
+	t.Parallel()
+
+	fromBlock := uint64(1)
+	latestBlock := uint64(201)
+	l2GERAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+	testGER := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+
+	mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+	mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+	mockL1InfoTreeSync := l2gersyncmocks.NewL1InfoTreeQuerier(t)
+	rh := &sync.RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      time.Millisecond,
+	}
+
+	// 1st attempt: the open-ended (fromBlock -> latest) scan is rejected as "too many results",
+	// with no explicit cap reported.
+	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).
+		Return(nil, fmt.Errorf("Query returned more than 20000 results.")).Once()
+
+	// The head is resolved (latestBlock=201) to get a concrete window (1..201 = 201 blocks) that
+	// NextEthGetLogsWindow can halve to 100.
+	mockL2Client.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
+		Return(&aggkittypes.BlockHeader{Number: latestBlock}, nil).Once()
+
+	// Chunks of 100 over [1,201]: [1,100], [101,200], [201,201] -- three calls, none finding a match.
+	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]ethtypes.Log{}, nil).Times(3)
+
+	downloader, err := newDownloaderSovereign(
+		mockL2Client,
+		l2GERAddr,
+		mockL1InfoTreeSync,
+		mockL1Client,
+		common.HexToAddress("0x0000000000000000000000000000000000000001"), // l1GERAddr
+		rh,
+		aggkittypes.LatestBlock,
+		time.Millisecond*10,
+		uint64(10), // syncBlockChunkSize (unrelated to the removal-scan chunking under test)
+	)
+	require.NoError(t, err)
+
+	removed := downloader.isGERRemovedFromL2(context.Background(), fromBlock, testGER)
+	require.False(t, removed, "no removal event found across the chunked scan")
+	require.Equal(t, uint64(100), downloader.removalScanMaxRange,
+		"the heuristically halved window must be cached the same way a learned cap is")
+
+	mockL2Client.AssertExpectations(t)
+	mockL1Client.AssertExpectations(t)
+	mockL1InfoTreeSync.AssertExpectations(t)
+}
+
+// TestDownloaderSovereign_FetchRemovedGERsChunk_LoopTerminatesAtMinimumWindow verifies that
+// fetchRemovedGERsChunk's self-recursion through ChunkedRangeQuery on repeated "too many results"
+// errors shrinks the window down to 1 block and then gives up (propagating the error) instead of
+// retrying forever once no smaller window is possible.
+func TestDownloaderSovereign_FetchRemovedGERsChunk_LoopTerminatesAtMinimumWindow(t *testing.T) {
+	t.Parallel()
+
+	l2GERAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+	testGER := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+
+	mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+	mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+	mockL1InfoTreeSync := l2gersyncmocks.NewL1InfoTreeQuerier(t)
+	rh := &sync.RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      time.Millisecond,
+	}
+
+	tooManyResultsErr := fmt.Errorf("Query returned more than 20000 results.")
+	// Every call fails the same way, regardless of the (shrinking) range queried, so the window
+	// must reach 1 and give up rather than loop forever.
+	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, tooManyResultsErr)
+
+	downloader, err := newDownloaderSovereign(
+		mockL2Client,
+		l2GERAddr,
+		mockL1InfoTreeSync,
+		mockL1Client,
+		common.HexToAddress("0x0000000000000000000000000000000000000001"), // l1GERAddr
+		rh,
+		aggkittypes.LatestBlock,
+		time.Millisecond*10,
+		uint64(10), // syncBlockChunkSize (unrelated to the removal-scan chunking under test)
+	)
+	require.NoError(t, err)
+
+	_, fetchErr := downloader.fetchRemovedGERsChunk(context.Background(), 0, 3, [][common.HashLength]byte{testGER})
+	require.ErrorContains(t, fetchErr, "Query returned more than 20000 results")
+}

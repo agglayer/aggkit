@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"slices"
 	"sort"
-	"strings"
 	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -661,14 +660,26 @@ func (d *EVMDownloaderImplementation) getUnfilteredLogs(ctx context.Context, fro
 				return nil
 			}
 
-			if strings.Contains(err.Error(), "Query returned more than") {
+			if aggkitcommon.IsSizeOrRangeError(err.Error()) {
 				if batchSize == 1 {
-					d.log.Errorf("too many logs even in single block %d", start)
+					d.log.Errorf("size/range error even in single block %d: %v", start, err)
 					return nil
 				}
 
-				batchSize /= 2
-				d.log.Warnf("too many logs in range [%d,%d], reducing batch size to %d", start, end, batchSize)
+				newBatchSize, ok := aggkitcommon.NextEthGetLogsWindow(err, batchSize)
+				if !ok {
+					// A recognised size/range error, but no smaller window could be computed for
+					// it (e.g. a reported max range that is not actually smaller than the current
+					// batch size) -- further shrink attempts would not converge, so give up the
+					// same way as the batchSize == 1 case above instead of retrying forever.
+					d.log.Errorf("size/range error for range [%d,%d] with no smaller window available: %v",
+						start, end, err)
+					return nil
+				}
+
+				batchSize = newBatchSize
+				d.log.Warnf("size/range error in range [%d,%d], reducing batch size to %d: %v",
+					start, end, batchSize, err)
 				end = start + batchSize - 1
 				if end > toBlock {
 					end = toBlock
