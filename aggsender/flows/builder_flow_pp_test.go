@@ -268,6 +268,11 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
+	// Provable claim shared by the trimming case's mocks and expected params.
+	rer1 := common.HexToHash("0x1")
+	mer1 := common.HexToHash("0x2")
+	ger1 := l1infotreesync.CalculateGER(mer1, rer1)
+
 	testCases := []struct {
 		name               string
 		mockFn             func(*mocks.AggSenderStorage, *mocks.BridgeQuerier, *mocks.L1InfoTreeDataQuerier)
@@ -367,16 +372,13 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			expectedError:  "error adjusting block range: error checking if GER 0x0000000000000000000000000000000000000000000000000000000000000001 exists on L1: some error",
 		},
 		{
-			name:               "GER exists on L1 but is not provable against selected root",
+			name:               "claim whose GER is not yet under the selected root trims the certificate",
 			forceOneBridgeExit: false,
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), true, nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
-				rer1 := common.HexToHash("0x1")
-				mer1 := common.HexToHash("0x2")
-				ger1 := l1infotreesync.CalculateGER(mer1, rer1)
 				rer2 := common.HexToHash("0x3")
 				mer2 := common.HexToHash("0x4")
 				ger2 := l1infotreesync.CalculateGER(mer2, rer2)
@@ -401,9 +403,27 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(ctx, ger2, common.HexToHash("0x123")).
 					Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
 				mockL1InfoTreeQuerier.EXPECT().DoesGERExistsOnL1(ger2).Return(true, nil).Once()
+				mockL1InfoTreeQuerier.EXPECT().IsGERFinalized(ger2, uint32(1)).Return(false, nil).Once()
 			},
-			expectedParams: nil,
-			expectedError:  "error adjusting block range: GER",
+			expectedParams: &types.CertificateBuildParams{
+				FromBlock:           6,
+				ToBlock:             9,
+				RetryCount:          0,
+				L1InfoTreeLeafCount: 1,
+				CertificateType:     types.CertificateTypePP,
+				LastSentCertificate: &types.CertificateHeader{ToBlock: 5},
+				Bridges:             []bridgesync.Bridge{},
+				Claims: []claimsynctypes.Claim{
+					{
+						BlockNum:        9,
+						GlobalExitRoot:  ger1,
+						RollupExitRoot:  rer1,
+						MainnetExitRoot: mer1,
+					}},
+				Unclaims:                       []claimsynctypes.Unclaim{},
+				CreatedAt:                      timeNowUTCForTest(),
+				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
+			},
 		},
 		{
 			name:               "no bridges when forceOneBridgeExit is false, but has claims",
