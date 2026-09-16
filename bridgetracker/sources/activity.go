@@ -55,6 +55,9 @@ type ActivitySource struct {
 	// it) so tests can exercise BridgesFrom's merge logic with a stub instead of a full RPC mock
 	// (see activity_test.go)
 	rpc activityBridgeRPCScanner
+	// maxConcurrentNetworkScans bounds how many networks BridgesFrom scans at once (see
+	// bridgetracker.ActivitySourceBridgeServiceConfig.MaxConcurrentNetworkScans)
+	maxConcurrentNetworkScans int
 	// contractClaimCheckers resolves/caches the on-chain isClaimed() binding per destination
 	// network; embedded so tests can still reach newContract directly (see claim_checker.go,
 	// shared with ClaimChecker so the binding/cache logic isn't duplicated between them)
@@ -82,6 +85,10 @@ func NewActivitySource(
 	if timeout <= 0 {
 		timeout = bridgetracker.DefaultActivitySourceBridgeServiceTimeout.Duration
 	}
+	maxConcurrentNetworkScans := bridgeServiceCfg.MaxConcurrentNetworkScans
+	if maxConcurrentNetworkScans <= 0 {
+		maxConcurrentNetworkScans = bridgetracker.DefaultActivitySourceBridgeServiceMaxConcurrentNetworkScans
+	}
 
 	// rpc is declared as the activityBridgeRPCScanner interface, not *activityRPCScanner, and
 	// left completely unassigned (a true nil interface, not a nil pointer wrapped in a non-nil
@@ -104,12 +111,13 @@ func NewActivitySource(
 	}
 
 	return &ActivitySource{
-		logger:                logger,
-		services:              newBridgeServiceClients(finder, timeout),
-		finder:                finder,
-		pageSize:              pageSize,
-		rpc:                   rpc,
-		contractClaimCheckers: newContractClaimCheckers(finder, ethClients),
+		logger:                    logger,
+		services:                  newBridgeServiceClients(finder, timeout),
+		finder:                    finder,
+		pageSize:                  pageSize,
+		rpc:                       rpc,
+		maxConcurrentNetworkScans: maxConcurrentNetworkScans,
+		contractClaimCheckers:     newContractClaimCheckers(finder, ethClients),
 	}, nil
 }
 
@@ -238,13 +246,16 @@ func invalidatedBridges(
 }
 
 // BridgesFrom implements bridgetracker.ActivityBridgeScanner: it scans every network the finder
-// currently knows about concurrently — one goroutine per network, each running scanNetwork,
-// which itself queries that network's own bridge service GET /bridge/v1/bridges filtered by
-// from_address (paging until either a short page or an already-known bridge is reached — see
-// fetchNewBridgesFrom, this relies on the bridge service reporting bridges newest-first)
-// concurrently with the RPC-based fallback scan (see rpc, agglayer/aggkit#1837) over a small,
-// recent block window on that network's own bridge contract — a safety net for a bridge that
-// bridge service has not indexed yet. Once every network's scan has returned, results are merged
+// currently knows about concurrently — up to maxConcurrentNetworkScans of them at once (see
+// bridgetracker.ActivitySourceBridgeServiceConfig.MaxConcurrentNetworkScans), so however many
+// networks the finder reports, the number of networks in flight together — and so the number of
+// simultaneous outbound calls scanNetwork itself fans out to below — stays bounded. Each network
+// runs scanNetwork, which queries that network's own bridge service GET /bridge/v1/bridges
+// filtered by from_address (paging until either a short page or an already-known bridge is
+// reached — see fetchNewBridgesFrom, this relies on the bridge service reporting bridges
+// newest-first) concurrently with the RPC-based fallback scan (see rpc, agglayer/aggkit#1837)
+// over a small, recent block window on that network's own bridge contract — a safety net for a
+// bridge that bridge service has not indexed yet. Once every network's scan has returned, results are merged
 // sequentially (fast, in-memory only — no further I/O) in a second pass, in the same order
 // s.finder.NetworkIDs() returned them, so the outcome does not depend on which network happened
 // to answer first. The two results are merged per network:
@@ -279,11 +290,18 @@ func (s *ActivitySource) BridgesFrom(
 
 	networkIDs := s.finder.NetworkIDs()
 	results := make([]networkScanResult, len(networkIDs))
+	maxConcurrentNetworkScans := s.maxConcurrentNetworkScans
+	if maxConcurrentNetworkScans <= 0 {
+		maxConcurrentNetworkScans = bridgetracker.DefaultActivitySourceBridgeServiceMaxConcurrentNetworkScans
+	}
+	sem := make(chan struct{}, maxConcurrentNetworkScans)
 	var wg sync.WaitGroup
 	wg.Add(len(networkIDs))
 	for i, networkID := range networkIDs {
+		sem <- struct{}{}
 		go func(i int, networkID uint32) {
 			defer wg.Done()
+			defer func() { <-sem }()
 			results[i] = s.scanNetwork(ctx, networkID, addr, fromAddress, known)
 		}(i, networkID)
 	}

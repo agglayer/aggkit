@@ -41,6 +41,11 @@ const DefaultMaxTrackedBridges = 100_000
 // semantics; both must stay in sync with the [Tracker] section of the proxy's default config)
 var DefaultIdleTimeout = types.Duration{Duration: DefaultEngineIdleTimeout}
 
+// DefaultMaxConcurrentResolutions is the default Config.MaxConcurrentResolutions (see
+// DefaultEngineMaxConcurrentResolutions for the semantics; both must stay in sync with the
+// [Tracker] section of the proxy's default config)
+const DefaultMaxConcurrentResolutions = DefaultEngineMaxConcurrentResolutions
+
 // DefaultL2InjectionLookbackBlocks is the default Config.L2InjectionLookbackBlocks (must stay in
 // sync with the [Tracker] section of the proxy's default config)
 const DefaultL2InjectionLookbackBlocks = 1_000
@@ -62,6 +67,11 @@ const defaultActivitySourceBridgeServiceTimeoutDuration = 30 * time.Second
 var DefaultActivitySourceBridgeServiceTimeout = types.Duration{
 	Duration: defaultActivitySourceBridgeServiceTimeoutDuration,
 }
+
+// DefaultActivitySourceBridgeServiceMaxConcurrentNetworkScans is the default
+// Config.ActivitySourceBridgeService.MaxConcurrentNetworkScans: how many of the networks
+// sources.ActivitySource.BridgesFrom knows about it scans at once.
+const DefaultActivitySourceBridgeServiceMaxConcurrentNetworkScans = 10
 
 // DefaultActivitySourceRPCRangeFromBlock is the default Config.ActivitySourceRPC.RangeFromBlock:
 // how far back the RPC-based activity fallback (see sources.activityRPCScanner,
@@ -143,6 +153,12 @@ type Config struct {
 	// ignored when Registry is set to a custom implementation.
 	MaxTrackedBridges int `mapstructure:"MaxTrackedBridges"`
 
+	// MaxConcurrentResolutions bounds how many active bridges the engine's poll tick resolves at
+	// once (see EngineConfig.MaxConcurrentResolutions) — independent of MaxTrackedBridges, which
+	// bounds the registry's size, not how much of it is in flight during a single tick. A value
+	// <= 0 falls back to DefaultMaxConcurrentResolutions.
+	MaxConcurrentResolutions int `mapstructure:"MaxConcurrentResolutions"`
+
 	// AgglayerClient configures the client used to query the agglayer for a bridge's covering
 	// certificate and that certificate's current status (see sources.CertificateSource)
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
@@ -217,6 +233,14 @@ type ActivitySourceBridgeServiceConfig struct {
 	// bridge (see fetchNewBridgesFrom, ActivityCache.refresh). A value <= 0 falls back to
 	// DefaultActivitySourceBridgeServiceTimeout.
 	Timeout types.Duration `mapstructure:"Timeout"`
+
+	// MaxConcurrentNetworkScans bounds how many networks sources.ActivitySource.BridgesFrom
+	// scans at once — each one, in turn, queries this bridge-service source and the RPC
+	// fallback (see ActivitySourceRPC) concurrently, so the actual number of in-flight calls is
+	// up to twice this. Networks beyond the limit simply wait their turn instead of every
+	// configured network being dialed at once, regardless of how many there are. A value <= 0
+	// falls back to DefaultActivitySourceBridgeServiceMaxConcurrentNetworkScans.
+	MaxConcurrentNetworkScans int `mapstructure:"MaxConcurrentNetworkScans"`
 }
 
 // ActivitySourceRPCConfig is [Tracker.ActivitySourceRPC].

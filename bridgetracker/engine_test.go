@@ -3,6 +3,8 @@ package bridgetracker
 import (
 	"context"
 	"errors"
+	"math/big"
+	"sync"
 	"testing"
 	"time"
 
@@ -50,9 +52,16 @@ type fakeSources struct {
 
 	settlement    *types.L1SettledGERResult
 	settlementErr error
+
+	// findBridgeHook, when set, runs synchronously inside FindBridge before it returns — tests
+	// use it to observe/gate concurrent resolutions (see TestEngineTickBoundsConcurrentResolutions)
+	findBridgeHook func()
 }
 
 func (f *fakeSources) FindBridge(_ context.Context, _ TrackingID) (*BridgeInfo, error) {
+	if f.findBridgeHook != nil {
+		f.findBridgeHook()
+	}
 	return f.bridge, f.bridgeErr
 }
 
@@ -1132,4 +1141,75 @@ func TestEngineFirstResolutionCommitsInfoAndStepsTogether(t *testing.T) {
 	tracking := mustGet(t, store.memoryRegistry, id)
 	require.NotNil(t, tracking.Info(), "the single commit must already carry the resolved bridge info")
 	require.NotNil(t, tracking.AllSteps(), "the single commit must already carry the seeded/computed steps")
+}
+
+// TestEngineTickBoundsConcurrentResolutions pins that tick never has more than
+// EngineConfig.MaxConcurrentResolutions bridges resolving at once, regardless of how many are
+// active: unbounded per-tick concurrency could otherwise spawn as many outbound source calls as
+// the supervised list has entries, all at once. findBridgeHook gates every FindBridge call on a
+// shared counter/channel pair, so the resolutions of every active bridge but
+// MaxConcurrentResolutions of them stay parked until the test releases them.
+func TestEngineTickBoundsConcurrentResolutions(t *testing.T) {
+	t.Parallel()
+
+	const (
+		maxConcurrent = 2
+		activeCount   = 5
+	)
+
+	var (
+		mu          sync.Mutex
+		inFlight    int
+		maxObserved int
+	)
+	release := make(chan struct{})
+	f := &fakeSources{
+		bridge: l2ToL2Bridge(),
+		findBridgeHook: func() {
+			mu.Lock()
+			inFlight++
+			if inFlight > maxObserved {
+				maxObserved = inFlight
+			}
+			mu.Unlock()
+
+			<-release
+
+			mu.Lock()
+			inFlight--
+			mu.Unlock()
+		},
+	}
+
+	store := newMemoryRegistry(0)
+	engine, err := NewEngine(
+		EngineConfig{MaxConcurrentResolutions: maxConcurrent, ResolveTimeout: time.Minute},
+		log.WithFields("module", "engine_test"), store, f.engineSources())
+	require.NoError(t, err)
+
+	for i := range activeCount {
+		mustRegister(t, store, TrackingID{NetworkID: 1, TxHash: common.BigToHash(big.NewInt(int64(i + 1)))})
+	}
+
+	done := make(chan struct{})
+	go func() {
+		engine.tick(t.Context())
+		close(done)
+	}()
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return inFlight == maxConcurrent
+	}, time.Second, time.Millisecond, "exactly maxConcurrent resolutions should be in flight, the rest parked")
+
+	// give any bound violation a chance to show up before asserting on maxObserved
+	time.Sleep(20 * time.Millisecond)
+	mu.Lock()
+	observed := maxObserved
+	mu.Unlock()
+	require.Equal(t, maxConcurrent, observed, "no more than MaxConcurrentResolutions bridges resolve at once")
+
+	close(release)
+	<-done
 }

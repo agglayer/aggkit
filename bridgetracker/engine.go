@@ -34,6 +34,9 @@ const (
 	// above PollInterval and a plausible client poll cadence so a caller polling at a normal
 	// pace never sees its bridge evicted between two of its own requests
 	DefaultEngineIdleTimeout = 30 * time.Minute
+	// DefaultEngineMaxConcurrentResolutions is the default EngineConfig.MaxConcurrentResolutions:
+	// how many active bridges tick resolves at once
+	DefaultEngineMaxConcurrentResolutions = 50
 )
 
 // EngineConfig holds the tracking engine tunables. Zero values take the defaults above
@@ -52,6 +55,13 @@ type EngineConfig struct {
 	// IdleTimeout is how long an unaccessed, unsubscribed bridge — terminal or still active —
 	// is kept before being forgotten (see DefaultEngineIdleTimeout)
 	IdleTimeout time.Duration
+	// MaxConcurrentResolutions bounds how many active bridges tick resolves at once: the
+	// supervised list can hold as many entries as Config.MaxTrackedBridges allows (registration
+	// is externally driven), so resolving it with one goroutine per entry and no cap could spawn
+	// as many outbound source calls at once, exhausting memory/sockets/RPC capacity well before
+	// that many bridges are ever actually active. A value <= 0 falls back to
+	// DefaultEngineMaxConcurrentResolutions
+	MaxConcurrentResolutions int
 }
 
 // withDefaults returns cfg with every zero-value tunable replaced by its default
@@ -70,6 +80,9 @@ func (cfg EngineConfig) withDefaults() EngineConfig {
 	}
 	if cfg.IdleTimeout <= 0 {
 		cfg.IdleTimeout = DefaultEngineIdleTimeout
+	}
+	if cfg.MaxConcurrentResolutions <= 0 {
+		cfg.MaxConcurrentResolutions = DefaultEngineMaxConcurrentResolutions
 	}
 	return cfg
 }
@@ -197,11 +210,13 @@ func (e *Engine) resolveTriggered(ctx context.Context, id domain.TrackingID) {
 }
 
 // tick runs one resolution round over the supervised list — every active bridge resolved
-// concurrently, since each is independent and may hit a different network/service — then
-// forgets the terminal entries whose retention has elapsed (see EngineConfig.RetentionPeriod)
-// and the unaccessed, unsubscribed entries whose idle timeout has elapsed (see
-// EngineConfig.IdleTimeout). SupervisedStore's own methods are safe for concurrent use (see
-// memoryRegistry.mu), which is what makes resolving the whole active list in parallel safe here
+// concurrently, since each is independent and may hit a different network/service, up to
+// EngineConfig.MaxConcurrentResolutions at once so the list's size (not itself bounded, see
+// Config.MaxTrackedBridges) never dictates how many outbound source calls run simultaneously —
+// then forgets the terminal entries whose retention has elapsed (see
+// EngineConfig.RetentionPeriod) and the unaccessed, unsubscribed entries whose idle timeout has
+// elapsed (see EngineConfig.IdleTimeout). SupervisedStore's own methods are safe for concurrent
+// use (see memoryRegistry.mu), which is what makes resolving the active list in parallel safe here
 func (e *Engine) tick(ctx context.Context) {
 	active, err := e.store.GetTrackerActives(nil)
 	if err != nil {
@@ -209,11 +224,14 @@ func (e *Engine) tick(ctx context.Context) {
 		return
 	}
 
+	sem := make(chan struct{}, e.cfg.MaxConcurrentResolutions)
 	var wg sync.WaitGroup
 	wg.Add(len(active))
 	for _, tracking := range active {
+		sem <- struct{}{}
 		go func(tracking *domain.TrackingData) {
 			defer wg.Done()
+			defer func() { <-sem }()
 			if ctx.Err() != nil {
 				return
 			}

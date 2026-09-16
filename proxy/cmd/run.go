@@ -211,8 +211,9 @@ func runTracker(
 
 	engine, err := bridgetracker.NewEngine(
 		bridgetracker.EngineConfig{
-			RetentionPeriod: trackerCfg.RetentionPeriod.Duration,
-			IdleTimeout:     trackerCfg.IdleTimeout.Duration,
+			RetentionPeriod:          trackerCfg.RetentionPeriod.Duration,
+			IdleTimeout:              trackerCfg.IdleTimeout.Duration,
+			MaxConcurrentResolutions: trackerCfg.MaxConcurrentResolutions,
 		},
 		log.WithFields("module", "bridgetracker-engine"),
 		registry,
