@@ -791,7 +791,8 @@ func TestEngineStepPermanentErrorStaysActiveAndIsRescuedOnceClaimed(t *testing.T
 		switch sp.Step {
 		case types.StepWaitL1SettledGER:
 			require.Equal(t, types.StepStatusSkipped, sp.Status)
-			require.Equal(t, types.StepErrorSkipped, sp.Error.ErrorType)
+			require.Equal(t, types.StepErrorPermanent, sp.Error.ErrorType,
+				"the step that actually failed keeps its own real error type, not StepErrorSkipped")
 			require.Contains(t, sp.Error.Description[0], domain.ErrBadSettlementTx.Error())
 		case types.StepClaimed:
 			require.Equal(t, types.StepStatusDone, sp.Status, "StepClaimed is resolved for real, never skipped")

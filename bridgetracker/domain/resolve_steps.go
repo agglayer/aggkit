@@ -99,7 +99,15 @@ func ResolveSteps(
 
 		claimChecked := step.Status == types.StepStatusError && step.Step != types.StepClaimed
 		if claimChecked {
-			if skipped, ok := trySkipToClaimed(ctx, claimChecker, tracking, idx, lastDescription(step.Error), now); ok {
+			idxError := &types.ErrorStep{
+				ErrorType:   types.StepErrorTransient,
+				Description: []string{lastDescription(step.Error)},
+			}
+			if step.Error != nil {
+				idxError.ErrorType = step.Error.ErrorType
+				idxError.RetryCount = step.Error.RetryCount
+			}
+			if skipped, ok := trySkipToClaimed(ctx, claimChecker, tracking, idx, idxError, now); ok {
 				tracking = skipped
 				continue
 			}
@@ -119,7 +127,12 @@ func ResolveSteps(
 			return UpdateStep(tracking, idx, result, false, nil, now), nil
 		case err != nil:
 			if step.Step != types.StepClaimed && !claimChecked {
-				if skipped, ok := trySkipToClaimed(ctx, claimChecker, tracking, idx, err.Error(), now); ok {
+				errType := types.StepErrorTransient
+				if IsPermanent(err) {
+					errType = types.StepErrorPermanent
+				}
+				idxError := &types.ErrorStep{ErrorType: errType, RetryCount: 1, Description: []string{err.Error()}}
+				if skipped, ok := trySkipToClaimed(ctx, claimChecker, tracking, idx, idxError, now); ok {
 					tracking = skipped
 					continue
 				}
@@ -143,40 +156,47 @@ func lastDescription(e *types.ErrorStep) string {
 }
 
 // trySkipToClaimed reports whether tracking's bridge is already claimed on its destination
-// network (per claimChecker.IsClaimed, independent of reason's cause), and if so returns
+// network (per claimChecker.IsClaimed, independent of idxError's cause), and if so returns
 // tracking with every step from idx up to (excluding) StepClaimed marked skipped (see
 // skipToClaimed). ok is false — tracking returned unchanged — whenever IsClaimed reports the
 // bridge not claimed, or the check itself errors: either way there is nothing to explain away,
-// the caller leaves reason's cause recorded exactly as it would without this fallback
+// the caller leaves idxError's cause recorded exactly as it would without this fallback
 func trySkipToClaimed(
-	ctx context.Context, claimChecker ClaimChecker, tracking *TrackingData, idx int, reason string, now time.Time,
+	ctx context.Context, claimChecker ClaimChecker, tracking *TrackingData, idx int,
+	idxError *types.ErrorStep, now time.Time,
 ) (*TrackingData, bool) {
 	claimed, err := claimChecker.IsClaimed(ctx, tracking.Info())
 	if err != nil || !claimed {
 		return tracking, false
 	}
-	return skipToClaimed(tracking, idx, reason, now), true
+	return skipToClaimed(tracking, idx, idxError, now), true
 }
 
 // skipToClaimed marks every step from idx up to (excluding) StepClaimed as StepStatusSkipped —
-// idx itself carries reason as its own (the failure that triggered the fallback); any step after
-// idx that had not even been attempted yet gets a generic reason instead, since there is no
-// failure of its own to report. StepClaimed is then opened as StepStatusInProgress, same as
-// UpdateStep does for whichever step follows one it just completed, so the next loop iteration
-// resolves it for real through its own resolver — this fallback never skips StepClaimed itself
-func skipToClaimed(tracking *TrackingData, idx int, reason string, now time.Time) *TrackingData {
+// idx itself carries idxError as its own (the failure that triggered the fallback), ErrorType
+// included, so a genuine Transient/Permanent error is not relabeled as StepErrorSkipped just
+// because the tracker gave up chasing it: the two remain distinguishable on the wire. Any step
+// after idx that had not even been attempted yet gets a generic StepErrorSkipped reason instead,
+// since there is no failure of its own to report. StepClaimed is then opened as
+// StepStatusInProgress, same as UpdateStep does for whichever step follows one it just
+// completed, so the next loop iteration resolves it for real through its own resolver — this
+// fallback never skips StepClaimed itself
+func skipToClaimed(tracking *TrackingData, idx int, idxError *types.ErrorStep, now time.Time) *TrackingData {
 	steps := tracking.AllSteps()
 	claimedIdx := indexOfStep(steps, types.StepClaimed)
 	newSteps := append([]BridgeStepPath(nil), steps...)
 
 	for i := idx; i < claimedIdx; i++ {
-		stepReason := "bridge already claimed on destination network; step left unverified"
-		if i == idx {
-			stepReason = reason
-		}
 		sp := newSteps[i]
 		sp.Status = types.StepStatusSkipped
-		sp.Error = &types.ErrorStep{ErrorType: types.StepErrorSkipped, Description: []string{stepReason}}
+		if i == idx {
+			sp.Error = idxError
+		} else {
+			sp.Error = &types.ErrorStep{
+				ErrorType:   types.StepErrorSkipped,
+				Description: []string{"bridge already claimed on destination network; step left unverified"},
+			}
+		}
 		endDate := now
 		sp.EndDate = &endDate
 		newSteps[i] = sp
