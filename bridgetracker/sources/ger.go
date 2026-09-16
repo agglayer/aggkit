@@ -73,7 +73,7 @@ func NewGERSource(
 ) *GERSource {
 	return &GERSource{
 		logger:                        logger,
-		services:                      newBridgeServiceClients(finder),
+		services:                      newBridgeServiceClients(finder, 0),
 		clients:                       clients,
 		ContractGlobalExitRootAddress: contractGlobalExitRootAddress,
 		L1BlockFinality:               l1Finality,

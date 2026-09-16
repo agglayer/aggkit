@@ -78,6 +78,10 @@ func NewActivitySource(
 	if pageSize == 0 {
 		pageSize = bridgetracker.DefaultActivitySourceBridgeServicePageSize
 	}
+	timeout := bridgeServiceCfg.Timeout.Duration
+	if timeout <= 0 {
+		timeout = bridgetracker.DefaultActivitySourceBridgeServiceTimeout.Duration
+	}
 
 	// rpc is declared as the activityBridgeRPCScanner interface, not *activityRPCScanner, and
 	// left completely unassigned (a true nil interface, not a nil pointer wrapped in a non-nil
@@ -101,7 +105,7 @@ func NewActivitySource(
 
 	return &ActivitySource{
 		logger:                logger,
-		services:              newBridgeServiceClients(finder),
+		services:              newBridgeServiceClients(finder, timeout),
 		finder:                finder,
 		pageSize:              pageSize,
 		rpc:                   rpc,
@@ -233,13 +237,17 @@ func invalidatedBridges(
 	return invalidated
 }
 
-// BridgesFrom implements bridgetracker.ActivityBridgeScanner: for every network the finder
-// currently knows about, it queries that network's own bridge service GET /bridge/v1/bridges
-// filtered by from_address (paging until either a short page or an already-known bridge is
-// reached — see fetchNewBridgesFrom, this relies on the bridge service reporting bridges
-// newest-first) concurrently with the RPC-based fallback scan (see rpc, agglayer/aggkit#1837)
-// over a small, recent block window on that network's own bridge contract — a safety net for a
-// bridge that bridge service has not indexed yet. The two results are merged per network:
+// BridgesFrom implements bridgetracker.ActivityBridgeScanner: it scans every network the finder
+// currently knows about concurrently — one goroutine per network, each running scanNetwork,
+// which itself queries that network's own bridge service GET /bridge/v1/bridges filtered by
+// from_address (paging until either a short page or an already-known bridge is reached — see
+// fetchNewBridgesFrom, this relies on the bridge service reporting bridges newest-first)
+// concurrently with the RPC-based fallback scan (see rpc, agglayer/aggkit#1837) over a small,
+// recent block window on that network's own bridge contract — a safety net for a bridge that
+// bridge service has not indexed yet. Once every network's scan has returned, results are merged
+// sequentially (fast, in-memory only — no further I/O) in a second pass, in the same order
+// s.finder.NetworkIDs() returned them, so the outcome does not depend on which network happened
+// to answer first. The two results are merged per network:
 //   - the bridge service failing entirely falls back to the RPC result alone (if the fallback is
 //     enabled and it itself succeeded), with a warning that historical activity may not be
 //     available for that network;
@@ -269,11 +277,23 @@ func (s *ActivitySource) BridgesFrom(
 ) ([]*domain.ScannedBridge, []string, []domain.ActivityWarning, error) {
 	addr := fromAddress.Hex()
 
+	networkIDs := s.finder.NetworkIDs()
+	results := make([]networkScanResult, len(networkIDs))
+	var wg sync.WaitGroup
+	wg.Add(len(networkIDs))
+	for i, networkID := range networkIDs {
+		go func(i int, networkID uint32) {
+			defer wg.Done()
+			results[i] = s.scanNetwork(ctx, networkID, addr, fromAddress, known)
+		}(i, networkID)
+	}
+	wg.Wait()
+
 	var all []*domain.ScannedBridge
 	var invalidated []string
 	var warnings []domain.ActivityWarning
-	for _, networkID := range s.finder.NetworkIDs() {
-		res := s.scanNetwork(ctx, networkID, addr, fromAddress, known)
+	for i, networkID := range networkIDs {
+		res := results[i]
 
 		if res.rpcErr == nil && s.rpc != nil {
 			foundThisCall := make(map[string]struct{}, len(res.restBridges)+len(res.rpcBridges))

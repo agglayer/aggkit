@@ -550,7 +550,7 @@ func (s stubRPCScanner) BridgesFrom(
 func activitySourceWithRPC(finder NetworkLister, rpc activityBridgeRPCScanner) *ActivitySource {
 	return &ActivitySource{
 		logger:                testLogger,
-		services:              newBridgeServiceClients(finder),
+		services:              newBridgeServiceClients(finder, 0),
 		finder:                finder,
 		pageSize:              bridgetracker.DefaultActivitySourceBridgeServicePageSize,
 		rpc:                   rpc,

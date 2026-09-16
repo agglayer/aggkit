@@ -51,6 +51,18 @@ const DefaultL2InjectionLookbackBlocks = 1_000
 // sources.ActivitySource.BridgesFrom).
 const DefaultActivitySourceBridgeServicePageSize = uint32(100)
 
+// defaultActivitySourceBridgeServiceTimeoutDuration is the time.Duration backing
+// DefaultActivitySourceBridgeServiceTimeout; mirrors bridgeservice/client.DefaultTimeout, the
+// hardcoded timeout every aggkit bridge service HTTP client used to fall back to before this
+// field existed.
+const defaultActivitySourceBridgeServiceTimeoutDuration = 30 * time.Second
+
+// DefaultActivitySourceBridgeServiceTimeout is the default
+// Config.ActivitySourceBridgeService.Timeout.
+var DefaultActivitySourceBridgeServiceTimeout = types.Duration{
+	Duration: defaultActivitySourceBridgeServiceTimeoutDuration,
+}
+
 // DefaultActivitySourceRPCRangeFromBlock is the default Config.ActivitySourceRPC.RangeFromBlock:
 // how far back the RPC-based activity fallback (see sources.activityRPCScanner,
 // agglayer/aggkit#1837) scans on each network, relative to that network's own latest block.
@@ -197,6 +209,14 @@ type ActivitySourceBridgeServiceConfig struct {
 	// GET /bridge/v1/bridges scanning for a from_address (see fetchNewBridgesFrom). A value <= 0
 	// falls back to DefaultActivitySourceBridgeServicePageSize.
 	PageSize uint32 `mapstructure:"PageSize"`
+
+	// Timeout bounds every individual HTTP call this source makes to a network's aggkit bridge
+	// service (GetBridges, GetClaims, GetSyncStatus, GetL1InfoTreeIndex,
+	// GetInjectedL1InfoLeaf — see bridgeservice/client.Client) — not the overall GET
+	// /activity/from/{from_address} request itself, which can still issue several such calls per
+	// bridge (see fetchNewBridgesFrom, ActivityCache.refresh). A value <= 0 falls back to
+	// DefaultActivitySourceBridgeServiceTimeout.
+	Timeout types.Duration `mapstructure:"Timeout"`
 }
 
 // ActivitySourceRPCConfig is [Tracker.ActivitySourceRPC].

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/domain"
@@ -195,9 +196,12 @@ func (e *Engine) resolveTriggered(ctx context.Context, id domain.TrackingID) {
 	_ = e.resolveBridgeStep(ctx, tracking)
 }
 
-// tick runs one resolution round over the supervised list, then forgets the terminal entries
-// whose retention has elapsed (see EngineConfig.RetentionPeriod) and the unaccessed,
-// unsubscribed entries whose idle timeout has elapsed (see EngineConfig.IdleTimeout)
+// tick runs one resolution round over the supervised list — every active bridge resolved
+// concurrently, since each is independent and may hit a different network/service — then
+// forgets the terminal entries whose retention has elapsed (see EngineConfig.RetentionPeriod)
+// and the unaccessed, unsubscribed entries whose idle timeout has elapsed (see
+// EngineConfig.IdleTimeout). SupervisedStore's own methods are safe for concurrent use (see
+// memoryRegistry.mu), which is what makes resolving the whole active list in parallel safe here
 func (e *Engine) tick(ctx context.Context) {
 	active, err := e.store.GetTrackerActives(nil)
 	if err != nil {
@@ -205,14 +209,22 @@ func (e *Engine) tick(ctx context.Context) {
 		return
 	}
 
+	var wg sync.WaitGroup
+	wg.Add(len(active))
 	for _, tracking := range active {
-		// TODO: In the future it must be done in parallel
-		if ctx.Err() != nil {
-			return
-		}
-		// errors are already logged/persisted inside resolveBridgeStep; one bridge failing to
-		// resolve must not stop the tick for the rest of the active list
-		_ = e.resolveBridgeStep(ctx, tracking)
+		go func(tracking *domain.TrackingData) {
+			defer wg.Done()
+			if ctx.Err() != nil {
+				return
+			}
+			// errors are already logged/persisted inside resolveBridgeStep; one bridge failing to
+			// resolve must not stop the rest of the active list
+			_ = e.resolveBridgeStep(ctx, tracking)
+		}(tracking)
+	}
+	wg.Wait()
+	if ctx.Err() != nil {
+		return
 	}
 
 	pruned, err := e.store.PruneTerminal(e.now().Add(-e.cfg.RetentionPeriod))
