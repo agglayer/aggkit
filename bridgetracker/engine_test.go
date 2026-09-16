@@ -727,12 +727,13 @@ func TestEngineLifecycleL2ToL1(t *testing.T) {
 	require.Equal(t, types.TrackingStatusFinished, tracking.TrackingStatus())
 }
 
-// TestEngineStepPermanentErrorStopsRetryingAndLeavesActiveList pins the end-to-end fix for a
-// step-level terminal error (domain.ErrBadSettlementTx, Permanent-wrapped): once
-// SettlementGERUpdate reports it, the engine must never call it again for this bridge, and the
-// bridge must leave the active list — same as a bridge the tracker never resolved at all —
-// instead of being retried on every tick forever
-func TestEngineStepPermanentErrorStopsRetryingAndLeavesActiveList(t *testing.T) {
+// TestEngineStepPermanentErrorStaysActiveAndIsRescuedOnceClaimed pins the end-to-end fix for a
+// step-level terminal error (domain.ErrBadSettlementTx, Permanent-wrapped, agglayer/aggkit#1836):
+// once SettlementGERUpdate reports it, the engine must never call it again for this bridge, but
+// the bridge must stay in the active list — unlike one the tracker never resolved at all — so it
+// keeps getting a chance to ask the destination network's own claim status directly. Once that
+// confirms the claim, the bridge finalizes instead of sitting in TrackingStatusError forever
+func TestEngineStepPermanentErrorStaysActiveAndIsRescuedOnceClaimed(t *testing.T) {
 	f := &fakeSources{bridge: l2ToL1Bridge()}
 	engine, store, _ := newTestEngine(t, f)
 	id := TrackingID{NetworkID: 1, TxHash: testHash}
@@ -758,10 +759,12 @@ func TestEngineStepPermanentErrorStopsRetryingAndLeavesActiveList(t *testing.T) 
 	errStep := tracking.AllSteps()[*tracking.StepIndex()]
 	require.Equal(t, types.StepWaitL1SettledGER, errStep.Step)
 	require.Equal(t, types.StepErrorPermanent, errStep.Error.ErrorType)
-	require.Empty(t, mustGetTrackerActives(t, store), "a permanent step error must leave the active list")
+	require.Len(t, mustGetTrackerActives(t, store), 1,
+		"a permanent step error must not leave the active list: the claimed-bridge fallback (#1836) still needs a chance to rescue it")
 
-	// the settlement source recovers, but nothing may notice: the bridge already left the
-	// active list, so the engine never ticks it again to find out
+	// the settlement source recovers, but the step's own resolver is never asked again once
+	// terminal — only the claimed-bridge fallback gets to decide anything from here, and the
+	// destination network does not confirm the claim yet
 	f.settlementErr = nil
 	settlementLeafIndex := uint32(7)
 	f.settlement = &types.L1SettledGERResult{
@@ -772,6 +775,28 @@ func TestEngineStepPermanentErrorStopsRetryingAndLeavesActiveList(t *testing.T) 
 	tracking = mustGet(t, store, id)
 	errStep = tracking.AllSteps()[*tracking.StepIndex()]
 	require.Equal(t, types.StepErrorPermanent, errStep.Error.ErrorType, "the terminal error must not be resurrected")
+
+	// the destination network now confirms the claim: the claimed-bridge fallback rescues the
+	// permanently failed step (and the ones after it still pending) as Skipped, and the bridge
+	// finalizes for real once StepClaimed resolves its own ClaimFor fact
+	f.claimed = true
+	f.l1InfoTreeIndexForBridge = new(uint32)
+	f.claim = &types.ClaimResult{ClaimTx: common.HexToHash("0x0c"), BlockNumber: 3000}
+	engine.tick(t.Context())
+	tracking = mustGet(t, store, id)
+	require.Equal(t, types.TrackingStatusFinished, tracking.TrackingStatus())
+	require.Equal(t, types.TrackerClaimStatusClaimed, tracking.ClaimStatus())
+
+	for _, sp := range tracking.AllSteps() {
+		switch sp.Step {
+		case types.StepWaitL1SettledGER:
+			require.Equal(t, types.StepStatusSkipped, sp.Status)
+			require.Equal(t, types.StepErrorSkipped, sp.Error.ErrorType)
+			require.Contains(t, sp.Error.Description[0], domain.ErrBadSettlementTx.Error())
+		case types.StepClaimed:
+			require.Equal(t, types.StepStatusDone, sp.Status, "StepClaimed is resolved for real, never skipped")
+		}
+	}
 }
 
 // TestEngineIncrementalResolution pins that resolution is incremental: once the bridge tx and
