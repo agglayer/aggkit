@@ -175,12 +175,13 @@ func trySkipToClaimed(
 // skipToClaimed marks every step from idx up to (excluding) StepClaimed as StepStatusSkipped —
 // idx itself carries idxError as its own (the failure that triggered the fallback), ErrorType
 // included, so a genuine Transient/Permanent error is not relabeled as StepErrorSkipped just
-// because the tracker gave up chasing it: the two remain distinguishable on the wire. Any step
-// after idx that had not even been attempted yet gets no Error at all: there is no failure of
-// its own to report, so leaving it nil (rather than a placeholder) is what tells that case apart
-// from idx's. StepClaimed is then opened as StepStatusInProgress, same as UpdateStep does for
-// whichever step follows one it just completed, so the next loop iteration resolves it for real
-// through its own resolver — this fallback never skips StepClaimed itself
+// because the tracker gave up chasing it: the two remain distinguishable on the wire; its
+// EndDate is stamped now, since it did run and this is when the tracker gave up on it. Any step
+// after idx that had not even been attempted yet gets neither an Error nor an EndDate — its
+// StartDate stays nil too, untouched — since it never ran at all, there is nothing of its own to
+// report or timestamp. StepClaimed is then opened as StepStatusInProgress, same as UpdateStep
+// does for whichever step follows one it just completed, so the next loop iteration resolves it
+// for real through its own resolver — this fallback never skips StepClaimed itself
 func skipToClaimed(tracking *TrackingData, idx int, idxError *types.ErrorStep, now time.Time) *TrackingData {
 	steps := tracking.AllSteps()
 	claimedIdx := indexOfStep(steps, types.StepClaimed)
@@ -192,9 +193,9 @@ func skipToClaimed(tracking *TrackingData, idx int, idxError *types.ErrorStep, n
 		sp.Error = nil
 		if i == idx {
 			sp.Error = idxError
+			endDate := now
+			sp.EndDate = &endDate
 		}
-		endDate := now
-		sp.EndDate = &endDate
 		newSteps[i] = sp
 	}
 
