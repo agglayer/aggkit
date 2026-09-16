@@ -176,11 +176,11 @@ func trySkipToClaimed(
 // idx itself carries idxError as its own (the failure that triggered the fallback), ErrorType
 // included, so a genuine Transient/Permanent error is not relabeled as StepErrorSkipped just
 // because the tracker gave up chasing it: the two remain distinguishable on the wire. Any step
-// after idx that had not even been attempted yet gets a generic StepErrorSkipped reason instead,
-// since there is no failure of its own to report. StepClaimed is then opened as
-// StepStatusInProgress, same as UpdateStep does for whichever step follows one it just
-// completed, so the next loop iteration resolves it for real through its own resolver — this
-// fallback never skips StepClaimed itself
+// after idx that had not even been attempted yet gets no Error at all: there is no failure of
+// its own to report, so leaving it nil (rather than a placeholder) is what tells that case apart
+// from idx's. StepClaimed is then opened as StepStatusInProgress, same as UpdateStep does for
+// whichever step follows one it just completed, so the next loop iteration resolves it for real
+// through its own resolver — this fallback never skips StepClaimed itself
 func skipToClaimed(tracking *TrackingData, idx int, idxError *types.ErrorStep, now time.Time) *TrackingData {
 	steps := tracking.AllSteps()
 	claimedIdx := indexOfStep(steps, types.StepClaimed)
@@ -189,13 +189,9 @@ func skipToClaimed(tracking *TrackingData, idx int, idxError *types.ErrorStep, n
 	for i := idx; i < claimedIdx; i++ {
 		sp := newSteps[i]
 		sp.Status = types.StepStatusSkipped
+		sp.Error = nil
 		if i == idx {
 			sp.Error = idxError
-		} else {
-			sp.Error = &types.ErrorStep{
-				ErrorType:   types.StepErrorSkipped,
-				Description: []string{"bridge already claimed on destination network; step left unverified"},
-			}
 		}
 		endDate := now
 		sp.EndDate = &endDate

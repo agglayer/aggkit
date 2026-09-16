@@ -153,7 +153,7 @@ const (
 	// failure triggered the fallback keeps its own real BridgeStepPath.Error.ErrorType
 	// (Transient/Permanent) and description, so a genuine unresolved error stays distinguishable
 	// from a step that was simply never attempted; any other step skipped alongside it (never
-	// itself attempted) carries StepErrorSkipped instead, since it has no real error to report
+	// itself attempted) carries no Error at all, since it has no real error to report
 	StepStatusSkipped
 )
 
@@ -239,20 +239,12 @@ const (
 	StepErrorPermanent
 	// StepErrorExhausted the error was transient but retries have been given up on
 	StepErrorExhausted
-	// StepErrorSkipped marks a step skipped alongside another one's failure (see
-	// StepStatusSkipped) that was never itself attempted, so there is no real error to report for
-	// it — the step whose failure actually triggered the fallback keeps its own real ErrorType
-	// (Transient/Permanent) instead, this value never appears alongside a genuine error
-	// description. Unlike the other StepErrorType values, StepErrorSkipped does not mean the
-	// tracker gave up on the bridge, only that it gave up verifying this one step
-	StepErrorSkipped
 )
 
 var stepErrorTypeNames = map[StepErrorType]string{
 	StepErrorTransient: "transient",
 	StepErrorPermanent: "permanent",
 	StepErrorExhausted: "exhausted",
-	StepErrorSkipped:   "skipped",
 }
 
 // String representation of the enum

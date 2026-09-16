@@ -24,7 +24,13 @@ const HealthStatusOK = "ok"
 //     falls back to it for a step whose historical fact it can never verify once the
 //     destination network's own claim status proves the bridge finished anyway (see
 //     agglayer/aggkit#1836)
-const CurrentAPIRevision = 3
+//   - 4: a "skipped" step's error field no longer always carries the "skipped" error_type from
+//     revision 3 (now removed): the step whose real error actually triggered the
+//     claimed-bridge fallback keeps its own genuine error_type (transient/permanent) and
+//     description instead, so it stays distinguishable from a real, still-unresolved error;
+//     any other step skipped alongside it, never itself attempted, now omits error entirely
+//     instead of carrying a placeholder
+const CurrentAPIRevision = 4
 
 // HealthResponse is the body of GET /tracker/v1/health
 type HealthResponse struct {

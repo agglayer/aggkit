@@ -185,9 +185,10 @@ definitions:
         allOf:
         - $ref: '#/definitions/types.ErrorStep'
         description: |-
-          Error carries the error details when Status is types.StepStatusError or
-          types.StepStatusSkipped (the reason it was skipped, if any — see
-          types.StepErrorSkipped), nil otherwise
+          Error carries the error details when Status is types.StepStatusError, or
+          types.StepStatusSkipped for the step whose real error triggered the claimed-bridge
+          fallback — its own ErrorType/description are kept as-is. nil for every other step
+          skipped alongside it, never itself attempted, and for every other status
       expected_duration:
         $ref: '#/definitions/github_com_agglayer_aggkit_bridgetracker_types.Duration'
       result:
@@ -562,13 +563,11 @@ definitions:
     - 0
     - 1
     - 2
-    - 3
     type: integer
     x-enum-varnames:
     - StepErrorTransient
     - StepErrorPermanent
     - StepErrorExhausted
-    - StepErrorSkipped
   types.VersionInfo:
     properties:
       arch:

@@ -36,9 +36,10 @@ type BridgeStepPath struct {
 	ResultL1SettledGer        *types.L1SettledGERResult
 	ResultL1InfoLeafAvailable *types.L1InfoLeafAvailableResult
 	ResultClaim               *types.ClaimResult
-	// Error carries the error details when Status is types.StepStatusError or
-	// types.StepStatusSkipped (the reason it was skipped, if any — see types.StepErrorSkipped
-	// and skipToClaimed), nil otherwise
+	// Error carries the error details when Status is types.StepStatusError, or
+	// types.StepStatusSkipped for the step whose real error triggered the claimed-bridge fallback
+	// (see skipToClaimed) — its own ErrorType/description are kept as-is, not relabeled. nil for
+	// every other step skipped alongside it, never itself attempted, and for every other status
 	Error *types.ErrorStep
 }
 

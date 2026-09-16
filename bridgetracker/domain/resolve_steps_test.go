@@ -609,7 +609,7 @@ func TestResolveStepsOnTerminalStepErrorIsRescuedWhenClaimed(t *testing.T) {
 
 	for _, stepID := range []types.BridgeStep{types.StepWaitingL1InfoLeafAvailable, types.StepWaitingClaim} {
 		sp := steps[indexOfStep(steps, stepID)]
-		require.Equal(t, types.StepErrorSkipped, sp.Error.ErrorType, "%s: never attempted, so no real error of its own", stepID)
+		require.Nil(t, sp.Error, "%s: never attempted, so no real error of its own to report", stepID)
 	}
 
 	claimedStep := steps[indexOfStep(steps, types.StepClaimed)]
@@ -653,8 +653,7 @@ func TestResolveStepsSkipsOnAlreadyClaimed(t *testing.T) {
 	for _, stepID := range []types.BridgeStep{types.StepWaitingGERInjection, types.StepWaitingL1InfoLeafAvailable, types.StepWaitingClaim} {
 		sp := steps[indexOfStep(steps, stepID)]
 		require.Equal(t, types.StepStatusSkipped, sp.Status, "%s: never attempted, skipped alongside the failing step", stepID)
-		require.Equal(t, types.StepErrorSkipped, sp.Error.ErrorType)
-		require.Equal(t, []string{"bridge already claimed on destination network; step left unverified"}, sp.Error.Description)
+		require.Nil(t, sp.Error, "%s: never attempted, so no real error of its own to report", stepID)
 	}
 
 	claimed := steps[indexOfStep(steps, types.StepClaimed)]
