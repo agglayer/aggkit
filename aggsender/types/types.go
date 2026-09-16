@@ -420,11 +420,36 @@ func (s SettledBlocks) String() string {
 	)
 }
 
-// EarliestBlock returns the smallest block number among the settled sources.
+// EarliestBlock returns the smallest block number among the settled sources that are
+// actually present.
+//   - LastBridgeExitBlock is excluded when it is 0. getBlockNumFromLER returns 0 with no
+//     error when the local exit root is still the initial LER, i.e. "no bridge exits have
+//     settled yet" -- not "settled at block 0" (a bridge exit can never live in block 0,
+//     so the sentinel is unambiguous). Without this guard, any chain that has not bridged
+//     out yet would have this source unconditionally pin the minimum to 0, discarding a
+//     tighter, genuinely settled IBE/FEP reference and forcing an unnecessary full backfill
+//     from InitialBlockNum.
 //   - LastImportedBridgeExitBlock is excluded when SettledImportedBridgeExit is nil,
 //     because in that case the field is 0 with no error (no IBE was settled), and
 //     including it would incorrectly pull the minimum down to 0.
 //   - LastSettledL2BlockNum is excluded when it is 0 (PP networks or no FEP data yet).
+//
+// One combination worth calling out explicitly: LastBridgeExitBlock == 0 (no bridge exits
+// settled), SettledImportedBridgeExit == nil (no IBE settled), and LastSettledL2BlockNum != 0.
+// Here only LastSettledL2BlockNum is included, so EarliestBlock returns it directly -- for a FEP
+// network whose aggchain contract has not settled any L2 block yet, that value is
+// AggchainFEPRollupQuerier.StartL2Block() (see getLastSettledFEPBlock in certificate_query.go).
+// This is safe: LatestBlock() (used to bound certificate ranges) already floors at that same
+// value in this combination, so the claim syncer starting there cannot skip a claim that would
+// ever have been included in a certificate.
+//
+// When every source above is excluded, nothing has settled from any tier, so there is no
+// known safe reference block at all; EarliestBlock then returns 0. This preserves the
+// safety invariant relied upon by its sole caller (the claim syncer must start at or before
+// the true settled IBE block, when one exists): 0 is <= any real block number. The caller
+// (SetInitialBlockToClaimSyncer) additionally caps the returned value up to the claim
+// syncer's InitialBlockNum, so in practice "nothing settled" still means "start from
+// InitialBlockNum", exactly as it did before this guard was added.
 func (s SettledBlocks) EarliestBlock() (uint64, error) {
 	if s.LastBridgeExitBlockErr != nil {
 		return 0, s.LastBridgeExitBlockErr
@@ -436,16 +461,36 @@ func (s SettledBlocks) EarliestBlock() (uint64, error) {
 		return 0, s.LastSettledL2BlockNumErr
 	}
 
-	result := s.LastBridgeExitBlock
+	var result uint64
+	var included bool
+	// LastBridgeExitBlock == 0 means "no bridge exits settled yet" (initial LER), not
+	// "settled at block 0", so only include it in the minimum when non-zero.
+	if s.LastBridgeExitBlock != 0 {
+		result = s.LastBridgeExitBlock
+		included = true
+	}
 	// Only include the imported-bridge-exit block when there was an actual settled IBE;
 	// otherwise the field is 0 (no IBE present) and would incorrectly dominate the minimum.
 	if s.SettledImportedBridgeExit != nil {
-		result = min(result, s.LastImportedBridgeExitBlock)
+		if included {
+			result = min(result, s.LastImportedBridgeExitBlock)
+		} else {
+			result = s.LastImportedBridgeExitBlock
+			included = true
+		}
 	}
 	// LastSettledL2BlockNum == 0 means "not found" (PP networks or no FEP data yet),
 	// so only include it in the minimum when a real block number was resolved.
 	if s.LastSettledL2BlockNum != 0 {
-		result = min(result, s.LastSettledL2BlockNum)
+		if included {
+			result = min(result, s.LastSettledL2BlockNum)
+		} else {
+			result = s.LastSettledL2BlockNum
+			included = true
+		}
+	}
+	if !included {
+		return 0, nil
 	}
 	return result, nil
 }

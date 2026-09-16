@@ -161,6 +161,7 @@ func newAggsender(
 		aggLayerClient,
 		l2OriginNetwork,
 		logger,
+		query.WithSettledIBELowerBounder(query.NewStorageIBELowerBounder(storage)),
 	)
 
 	flowManager, err := flows.NewBuilderFlow(

@@ -46,6 +46,155 @@ sequenceDiagram
     Aggsender Proposer->>Agglayer: Send certificate
 ```
 
+### Claim syncer starting block
+
+When the L2 claim syncer's local DB is empty at startup (e.g. after a fresh volume or a DB wipe), `AggSender`
+cannot derive its starting block from local claim history, so `SetInitialBlockToClaimSyncer` derives it instead
+from the AggLayer's latest **settled** certificate, via `SettledBlocks.EarliestBlock()`
+(`aggsender/types/types.go`), which is the **minimum of the settled references that are actually present** —
+not an unconditional `min(LastBridgeExitBlock, LastImportedBridgeExitBlock, LastSettledL2BlockNum)`. Each of the
+three sources reports `0` to mean "no data from this source", not "settled at block 0" (a bridge exit or IBE can
+never genuinely live in block 0), so a `0` source is excluded from the minimum instead of being allowed to pull it
+down:
+
+- `LastBridgeExitBlock` is excluded when it is `0` — the local exit root is still the initial LER, i.e. this chain
+  has not settled any outbound bridge exit yet.
+- `LastImportedBridgeExitBlock` is excluded when `SettledImportedBridgeExit` is `nil` — no IBE has settled yet.
+- `LastSettledL2BlockNum` is excluded when it is `0` (PP networks, or no FEP data yet).
+
+`EarliestBlock()` only returns `0` when **every** source is excluded, i.e. nothing has settled from any tier; the
+claim syncer then starts from its configured `InitialBlockNum` (see source 4 below), exactly as if nothing had
+settled at all. This means a chain that has settled an IBE but never bridged out (`LastBridgeExitBlock == 0`) still
+gets a tight, non-zero starting block from the IBE reference, instead of being pulled down to `0` — this guard was
+added to fix issue #1842's residual defect where such chains always backfilled from `InitialBlockNum` regardless of
+how precisely the IBE resolved.
+
+The same exclusion logic also applies when there is no IBE at all: a chain with `LastBridgeExitBlock == 0` and no
+settled `SettledImportedBridgeExit` (nothing has ever bridged out or settled an IBE) but a non-zero
+`LastSettledL2BlockNum` now starts the claim syncer at `LastSettledL2BlockNum` instead of `0`. For a FEP network
+whose aggchain contract hasn't settled any L2 block yet, `LastSettledL2BlockNum` is the FEP's configured
+`StartL2Block()`, so the claim syncer starts exactly where certification starts — it never had a reason to sync
+claims below that point anyway, since `NextCertificateBlockRange` (via `SettledBlocks.LatestBlock()`, which already
+floors at the same `StartL2Block()`) would never include them in a certificate.
+
+Resolving `LastImportedBridgeExitBlock` (the settled imported bridge exit, or IBE) is attempted through the
+following sources, in order, until one succeeds:
+
+| # | Source | Precision | Backfill impact |
+| --- | --- | --- | --- |
+| 1 | Local claim DB (`ClaimSync.GetClaimsByGlobalIndex`) | Exact | None |
+| 2 | RPC backward log scan, always chunked, up to the latest block (`ClaimSync.GetLatestBlockNumByGlobalIndexFromRPC`) | Exact | None |
+| 3 | Provable lower bound from AggSender's own certificate storage (proposer only — see below) | Lower bound | Small (re-processes claims back to the certificate's `FromBlock`) |
+| 4 | `0`, capped by the claim syncer to its configured `InitialBlockNum` (`ClaimSync.SetNextRequiredBlock`) | Lower bound | Full history |
+
+Each step is only tried after the previous one fails to produce an exact match. The resolved starting block **must
+always be `<=` the true IBE block**: after startup, `GetLastSettledCertificateToBlock`
+(`aggsender/query/certificate_query.go`) resolves the settled IBE block again from the **local claim DB only** (no
+RPC fallback), and is relied upon by `aggsender/flows/flow_base.go`, `aggsender/statuschecker/cert_status_checker.go`
+and `aggsender/validator/validate_certificate.go`. If the claim syncer's starting block were ever set *above* the
+real IBE block, the claim syncer would skip over that claim, `GetLastSettledCertificateToBlock` would never resolve
+it, and `AggSender` would get stuck downstream instead of at startup. This is why sources 3 and 4 are only ever
+lower bounds (never a guess that could land above the true block): starting earlier only means redundantly
+re-processing already-claimed events, which is harmless.
+
+Source 2 (the RPC fallback) is retried by `SetClaimSyncerNextRequiredBlock`'s retry loop whenever the scan itself
+cannot complete (e.g. a transient RPC error). The constant `maxIBERPCLookupFailures` (currently `5`, in
+`aggsender/query/initial_block_to_claimsync_setter.go`) is the upper bound on how many **consecutive** such
+failures are tolerated before giving up on the RPC fallback and moving to source 3/4 — this is what prevents the
+infinite-retry hang from issue #1842. A scan that *completes* but finds no matching log (rather than failing to
+complete) is treated as non-transient and falls back immediately, without consuming this budget.
+
+The RPC fallback path (source 2, and the source 3/4 fallback it can trigger) is only entered while the other two
+`SettledBlocks` sources are healthy (`LastBridgeExitBlockErr == nil && LastSettledL2BlockNumErr == nil`). If either
+of those is erroring, `EarliestBlock()` cannot succeed regardless of what the IBE resolves to, so re-running a full
+chunked RPC scan (and re-emitting its WARN/metric) on every retry attempt would be pure waste; the caller's retry
+loop keeps retrying those two sources on their own until they recover, and the IBE fallback only starts being
+attempted once they do. This keeps the WARN/metric emission effectively one-per-resolution rather than
+one-per-attempt.
+
+The consecutive-failure budget actually enforced for a given call is not always the full
+`maxIBERPCLookupFailures`: `SetClaimSyncerNextRequiredBlock` derives it as
+`min(maxIBERPCLookupFailures, the number of attempts the caller's own retryHandler allows)` (see
+`computeIBERPCLookupBudget` in `aggsender/query/initial_block_to_claimsync_setter.go`). This matters because the
+AggSender **validator** (`cmd/run.go`'s `createAggSenderValidator`, via `AggsenderValidator.Start`) gives its
+initial check a small, fixed retry budget and `Panicf`s once it is exhausted — with a fixed
+`maxIBERPCLookupFailures` threshold, a caller with a smaller budget than that could exhaust its own retries (and,
+for the validator, panic) before ever reaching the `ibe_rpc_lookup_exhausted` fallback, making it unreachable dead
+weight for exactly the caller most likely to need it. Deriving the budget from the caller's actual retryHandler
+instead means the fallback is always reachable within whatever attempts the caller gives it, with no special-casing
+required on the validator's side. The proposer (`aggsender/aggsender.go`) passes a `nil` retry handler, which
+`SetClaimSyncerNextRequiredBlock` defaults to an infinite-retry handler, so its effective budget is still capped at
+the full `maxIBERPCLookupFailures`, unaffected by this adjustment.
+
+When a fallback happens, `AggSender` logs a WARN with the following exact text and increments a metric operators
+should alert on:
+
+```
+falling back claim syncer start block for settled imported bridge exit: <reason>. Using block <N> (<source>) as the lower bound. settled blocks: <settled blocks>
+```
+
+- Metric: `aggsender_claim_syncer_start_block_fallback_total` (a `Counter`, labeled by `reason`)
+- Label values: `ibe_not_found_on_rpc` (the RPC scan completed but found no matching claim) and
+  `ibe_rpc_lookup_exhausted` (the RPC scan failed consecutively as many times as the effective
+  budget described above allows)
+
+**Operator hint:** if this metric fires, check whether the L2 RPC node used for the claim syncer can still serve the
+claim event log for the affected global index — this typically means the node is pruned, is the wrong node, or is
+missing history the claim syncer needs.
+
+**Known limitation:** if the L2 RPC can never return the claim log (pruned node, wrong node), no starting-block
+strategy can fix that — `AggSender` will start, backfill from the lower bound, and then fail downstream with the
+pre-existing `"no claim found for bridge exit hash ..."` error. What this change fixes is *visibility*: that failure
+now surfaces as a WARN log plus the `aggsender_claim_syncer_start_block_fallback_total` metric, instead of an opaque
+startup spin with no forward progress.
+
+Note that errors resolving the other two `SettledBlocks` sources (`LastBridgeExitBlockErr`,
+`LastSettledL2BlockNumErr`) are **not** given a fallback and keep retrying forever exactly as before: a production
+incident showed `LastBridgeExitBlock` failing 33 times before succeeding on a transient bridgesync lag, so adding a
+fallback there would risk masking real, recoverable lag rather than a genuinely unresolvable lookup.
+
+Source 3, the provable lower bound, is only wired for the **proposer** (`aggsender/aggsender.go`'s `newAggsender`,
+via `query.WithSettledIBELowerBounder(query.NewStorageIBELowerBounder(storage))`); the AggSender **validator**
+(`cmd/run.go`'s `createAggSenderValidator`) has no certificate storage of its own and therefore has no bounder
+configured, so it skips straight from source 2 to source 4.
+
+#### RPC log scan chunking
+
+The RPC fallback (`ClaimSync.GetLatestBlockNumByGlobalIndexFromRPC`) always scans backwards from the latest block in
+chunks of at most `SyncBlockChunkSize` blocks each — it never issues an *unbounded* call spanning the whole
+`[0, latest]` range, since on a long-lived chain that range can be millions of blocks (a short chain whose whole
+range fits in one chunk is still covered by exactly one bounded call). The chunk size is `SyncBlockChunkSize` from
+the claim syncer's config
+(`[ClaimL2Sync]` / `[ClaimL1Sync]`) when set, or `10000` otherwise. `SyncBlockChunkSize`'s default was raised from
+`100` to `10000` for `[L1InfoTreeSync]`, `[BridgeL1Sync]`, `[BridgeL2Sync]` and `[L2GERSync]` in `config/default.go`
+(`[ClaimL1Sync]` / `[ClaimL2Sync]` continue to inherit it from `[BridgeL1Sync]` / `[BridgeL2Sync]` via config
+templating) — this is a default-value change only, no config keys were added or renamed.
+
+If the RPC rejects a chunk as too large — or a call otherwise fails with a "too many results" style response with
+no explicit cap — the scan shrinks its window and retries. This decision (is this error a retryable size/range
+problem, and if so what window size to retry with) is made by a single shared helper,
+`aggkitcommon.NextEthGetLogsWindow` (`common/errors.go`), that **every** aggkit syncer's `eth_getLogs`/`FilterLogs`
+call path uses — not just this claimsync RPC scan. In particular it is wired into `sync/evmdownloader.go`, the
+downloader shared by `BridgeL1Sync`, `BridgeL2Sync`, `L1InfoTreeSync` (legacy path) and the claimsync/L2GERSync
+main sync loops, as well as into `L2GERSync`'s own GER-removal scan. This closes a gap where, before this change,
+only the claimsync scan and `l2gersync`'s dedicated GER readers adapted to an explicit range-cap error, while
+`sync/evmdownloader.go` only shrank on a "too many results" response and retried an explicit range-cap error
+forever (bounded only by `MaxRetryAttemptsAfterError`, which defaults to unlimited).
+
+The claimsync scan logs the shrink as:
+
+```
+claimsync: RPC rejected chunk [<from>, <to>] for globalIndex <idx> as too large (configured/current chunk size <n>); shrinking chunk size to <m> and retrying -- if this warning persists, lower SyncBlockChunkSize in config to avoid repeated retries
+```
+
+Other syncers log an analogous WARN/DEBUG line from their own downloader when they shrink their window.
+
+**Operator remedy:** if this WARN persists for a given syncer, lower that syncer's `SyncBlockChunkSize` in config so
+the RPC stops rejecting chunks in the first place. (This section documents the behaviour from the claimsync/aggsender
+angle; since the underlying mechanism is now shared by every syncer, a syncer-wide doc — e.g. alongside
+`sync/evmdownloader.go` — would be a better long-term home for the general description, with this section trimmed
+to the claimsync-specific parts.)
+
 ### PessimisticProof Mode
 
 `Aggsender` will wait until the epoch event is triggered and ask the `L2BridgeSyncer` if there are new bridges and claims to be sent to `Agglayer`. Once we reach the moment in epoch when we need to send a certificate, the `Aggsender` will poll all the bridges and claims from the bridge syncer, based on the last sent L2 block to the `Agglayer`, until the block that the syncer has.
@@ -342,6 +491,7 @@ If enabled in the configuration, Aggsender exposes the following Prometheus metr
 | `aggsender_prover_time`                       | Histogram                                  | Time taken by the prover (seconds)                        |
 | `aggsender_certificate_settlement_time`       | Histogram                                  | Time taken to settle a certificate (seconds)              |
 | `aggsender_certificate_build_time`            | Histogram                                  | Time taken to build a certificate (seconds)               |
+| `aggsender_claim_syncer_start_block_fallback_total` | Counter (labeled by `reason`)        | Number of times the claim syncer start block fell back to a lower bound instead of the exact settled IBE block. See [Claim syncer starting block](#claim-syncer-starting-block) |
 
 ### Configuration Example
 

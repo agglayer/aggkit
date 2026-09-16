@@ -107,6 +107,35 @@ default group is enumerated as a positive, anchored regex instead):
 | `anvil-2chains` / `removeger-b2` | `TestRemoveGER_CategoryB2` |
 | `anvil-2chains` / `default` | Everything else (positive-regex list, remove-GER tests excluded) |
 
+### Claim syncer recovery after DB wipe
+
+Reproduces the issue #1842 production scenario (namespace `bali-82-op`): wipes the L2 claim syncer's local SQLite
+DB (simulating data loss / a fresh volume) and restarts `aggkit` against the `anvil-2chains` env, exercising
+`SetInitialBlockToClaimSyncer`'s AggLayer-derived starting-block resolution end to end — including the hardened
+RPC log-scan fallback (`ClaimSync.GetLatestBlockNumByGlobalIndexFromRPC`), since the local claim DB is empty. See
+[Claim syncer starting block](./aggsender.md#claim-syncer-starting-block) for the resolution order being exercised.
+
+It bridges and claims L1->L2, waits for that claim to settle on the AggLayer, wipes the claim syncer's DB, restarts
+`aggkit`, and asserts:
+1. `Aggsender` is not stuck: the retry loop converges (few `"fails execution of Setting next required block..."`
+   lines, bounded by `claimSyncerMaxRetryFailures`) and reaches a `"Set next required block for claim syncer to N"`
+   log line;
+2. `N` is derived from the settled certificate rather than from `InitialBlockNum`: `0 < N <=` the already-settled
+   claim's own L2 block;
+3. no fallback WARN appears, proving the RPC lookup found the claim directly instead of falling back;
+4. `Aggsender` keeps functioning afterwards — a fresh bridge + claim settles at a higher AggLayer height than
+   before the wipe.
+
+Implemented in `test/e2e/claimsync_recovery_test.go`:
+
+```bash
+go test -v -run 'TestAggsenderClaimSyncerRecoveryAfterDBWipe' -timeout 30m ./test/e2e
+```
+
+It runs against `anvil-2chains` in its own isolated CI matrix group (`claimsync-recovery` in
+`.github/workflows/test-go-e2e.yml`), since wiping the claim syncer's DB and restarting `aggkit` mutates
+process/service state that must not leak into other tests sharing the same stack.
+
 ## Two L2 networks
 
 It involves two L2 networks (and single L1 network), that are attached to the same agglayer.

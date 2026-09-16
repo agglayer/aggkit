@@ -498,6 +498,36 @@ func TestSettledBlocks_EarliestBlock(t *testing.T) {
 			expectedBlock: 10,
 		},
 		{
+			name: "LastBridgeExitBlock is 0 (initial LER, no bridge exits) — IBE wins, not 0",
+			input: SettledBlocks{
+				LastBridgeExitBlock:         0,
+				LastImportedBridgeExitBlock: 175,
+				LastSettledL2BlockNum:       0,
+				SettledImportedBridgeExit:   &agglayertypes.SettledImportedBridgeExit{},
+			},
+			expectedBlock: 175,
+		},
+		{
+			name: "no bridge exit, no IBE — LastSettledL2BlockNum wins (e.g. FEP StartL2Block)",
+			input: SettledBlocks{
+				LastBridgeExitBlock:         0,
+				LastImportedBridgeExitBlock: 0,
+				LastSettledL2BlockNum:       300,
+				SettledImportedBridgeExit:   nil,
+			},
+			expectedBlock: 300,
+		},
+		{
+			name: "all sources excluded (zero/absent) — returns 0",
+			input: SettledBlocks{
+				LastBridgeExitBlock:         0,
+				LastImportedBridgeExitBlock: 0,
+				LastSettledL2BlockNum:       0,
+				SettledImportedBridgeExit:   nil,
+			},
+			expectedBlock: 0,
+		},
+		{
 			name: "bridge exit block error — propagated",
 			input: SettledBlocks{
 				LastBridgeExitBlockErr: errors.New("bridge error"),

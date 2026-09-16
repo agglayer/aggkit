@@ -322,22 +322,22 @@ value. Response shape (`types.PublicConfigResponse`):
     "L1InfoTreeSync": {
       "block_finality": "FinalizedBlock",
       "initial_block": 0,
-      "sync_block_chunk_size": 100
+      "sync_block_chunk_size": 10000
     },
     "BridgeL1Sync": {
       "block_finality": "LatestBlock",
       "initial_block": 0,
-      "sync_block_chunk_size": 100
+      "sync_block_chunk_size": 10000
     },
     "BridgeL2Sync": {
       "block_finality": "LatestBlock",
       "initial_block": 0,
-      "sync_block_chunk_size": 100
+      "sync_block_chunk_size": 10000
     },
     "L2GERSync": {
       "block_finality": "LatestBlock",
       "initial_block": 0,
-      "sync_block_chunk_size": 100,
+      "sync_block_chunk_size": 10000,
       "sync_mode": "SovereignChain"
     }
   },

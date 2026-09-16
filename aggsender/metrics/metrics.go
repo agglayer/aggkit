@@ -8,19 +8,30 @@ import (
 )
 
 const (
-	namespace                   = "aggsender"
-	aggsenderValidatorLabel     = "aggsender_validator"
-	numberOfCertificatesSent    = "number_of_certificates_sent"
-	numberOfCertificatesInError = "number_of_certificates_in_error"
-	numberOfCertificatesSettled = "number_of_certificates_settled"
-	certificateBuildTime        = "certificate_build_time"
-	proverTime                  = "prover_time"
-	numberOfProverErrors        = "number_of_prover_errors"
-	validatorErrorNumber        = "validator_errors_total"
-	validatorInvalidSignature   = "validator_invalid_signature_total"
-	validateTime                = "validate_time"
-	multiSigThresholdNotReached = "multisig_threshold_not_reached"
-	certificateSettlementTime   = "certificate_settlement_time"
+	namespace                     = "aggsender"
+	aggsenderValidatorLabel       = "aggsender_validator"
+	claimSyncerFallbackReason     = "reason"
+	numberOfCertificatesSent      = "number_of_certificates_sent"
+	numberOfCertificatesInError   = "number_of_certificates_in_error"
+	numberOfCertificatesSettled   = "number_of_certificates_settled"
+	certificateBuildTime          = "certificate_build_time"
+	proverTime                    = "prover_time"
+	numberOfProverErrors          = "number_of_prover_errors"
+	validatorErrorNumber          = "validator_errors_total"
+	validatorInvalidSignature     = "validator_invalid_signature_total"
+	validateTime                  = "validate_time"
+	multiSigThresholdNotReached   = "multisig_threshold_not_reached"
+	certificateSettlementTime     = "certificate_settlement_time"
+	claimSyncerStartBlockFallback = "claim_syncer_start_block_fallback_total"
+)
+
+const (
+	// ReasonIBENotFoundOnRPC is the ClaimSyncerStartBlockFallback reason used when the RPC log scan
+	// completed over its whole range but found no claim matching the settled IBE's global index.
+	ReasonIBENotFoundOnRPC = "ibe_not_found_on_rpc"
+	// ReasonIBERPCLookupExhausted is the ClaimSyncerStartBlockFallback reason used when consecutive
+	// RPC log scan errors (the scan itself could not complete) reached the configured limit.
+	ReasonIBERPCLookupExhausted = "ibe_rpc_lookup_exhausted"
 )
 
 // Register the metrics for the aggsender package
@@ -70,6 +81,15 @@ func Register() {
 				Help:      "Number of times a validator returned an invalid signature",
 			},
 			Labels: []string{aggsenderValidatorLabel},
+		},
+		{
+			CounterOpts: prometheusClient.CounterOpts{
+				Namespace: namespace,
+				Name:      claimSyncerStartBlockFallback,
+				Help: "Number of times the claim syncer start block calculation fell back to a " +
+					"lower bound instead of the exact settled imported bridge exit block, by reason",
+			},
+			Labels: []string{claimSyncerFallbackReason},
 		},
 	}
 	prometheus.RegisterCounterVecs(counterVecs...)
@@ -161,4 +181,12 @@ func ValidateTime(value float64) {
 // the multisig threshold was not reached
 func MultiSigThresholdNotReached() {
 	prometheus.CounterInc(multiSigThresholdNotReached)
+}
+
+// ClaimSyncerStartBlockFallback increments the counter for the number of times the claim syncer
+// start block calculation fell back to a lower bound instead of the exact settled imported bridge
+// exit block, labeled by the reason for the fallback (see ReasonIBENotFoundOnRPC and
+// ReasonIBERPCLookupExhausted).
+func ClaimSyncerStartBlockFallback(reason string) {
+	prometheus.CounterVecInc(claimSyncerStartBlockFallback, reason)
 }

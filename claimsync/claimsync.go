@@ -24,6 +24,14 @@ import (
 const (
 	downloadBufferSize = 1000
 	defaultDBTimeout   = 30 * time.Second
+
+	// defaultRPCScanBlockChunkSize is the chunk size used by GetLatestBlockNumByGlobalIndexFromRPC
+	// when cfg.SyncBlockChunkSize is unset (zero). The scan never issues an *unbounded* call
+	// spanning the whole [0, toBlockNum] range -- each call spans at most the configured chunk
+	// size -- since on a long-lived chain that range can be millions of blocks and would make the
+	// scan take tens of minutes. A short chain whose whole range fits within one chunk is still
+	// covered by exactly one bounded call, which is not the same thing as an unbounded probe.
+	defaultRPCScanBlockChunkSize = 10000
 )
 
 // ClaimSync is the standalone implementation that independently processes claim events.
@@ -228,14 +236,29 @@ func (c *ClaimSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big
 
 // GetLatestBlockNumByGlobalIndexFromRPC scans claim event logs on-chain backwards from toBlock to 0
 // and returns the block number of the most recent log whose GlobalIndex matches.
-// If toBlock is nil, the finality from the configuration (cfg.BlockFinality) is used.
-// The scan is split into chunks if the RPC reports a max-range limit; the chunk size is taken
-// from the error message the first time a full-range call fails.
-// The bool return value is false when no matching log is found (no error in that case).
+// If toBlock is nil, it defaults to LatestBlock. The result of this function is only ever used as a
+// starting point for a syncer; reorg safety is the syncer's own job, so scanning up to the chain's
+// latest block (rather than defaulting to cfg.BlockFinality, a finality tag) is safe here. Defaulting
+// to a finality tag would instead make a settled-but-not-yet-L2-finalized claim incorrectly report as
+// "not found", since OP-stack finality lags L1 by 13+ minutes.
+// The scan never issues an unbounded [0, toBlockNum] call; each call spans at most the chunk size:
+// cfg.SyncBlockChunkSize is used as the chunk size when it is greater than zero, otherwise
+// defaultRPCScanBlockChunkSize is used. A short range that fits within one chunk is still covered by
+// exactly one such bounded call. If a chunk fails with a recognised eth_getLogs size/range error --
+// either an explicit max-range limit or a "too many results" style response, both classified by
+// aggkitcommon.NextEthGetLogsWindow, the single shared decision point every aggkit downloader uses
+// for this -- the chunk size is shrunk accordingly, a WARN is logged so operators know to lower
+// SyncBlockChunkSize in config, and that same window is retried before continuing the backwards
+// scan. Any other chunk failure aborts the scan and returns an error that carries the failing
+// chunk's range and size.
+// Each underlying FilterLogs call is bounded by sync.DefaultFilterLogsTimeout so a hung RPC cannot
+// block the caller forever.
+// The bool return value is false when no matching log is found within the scanned range (no error in
+// that case); an error is returned only when the scan itself could not complete.
 func (c *ClaimSync) GetLatestBlockNumByGlobalIndexFromRPC(
 	ctx context.Context, globalIndex *big.Int, toBlock *aggkittypes.BlockNumberFinality) (uint64, bool, error) {
 	if toBlock == nil {
-		toBlock = &c.cfg.BlockFinality
+		toBlock = &aggkittypes.LatestBlock
 	}
 	toBlockNum, err := toBlock.BlockNumber(ctx, c.ethClient)
 	if err != nil {
@@ -256,8 +279,11 @@ func (c *ClaimSync) GetLatestBlockNumByGlobalIndexFromRPC(
 	}
 
 	// scanRange fetches logs for [from, to] and returns the block number of the matching log,
-	// or 0/false when no match is found in that range.
+	// or 0/false when no match is found in that range. A per-call timeout is applied so a hung
+	// RPC cannot block the retry loop that calls this function forever.
 	scanRange := func(from, to uint64) (uint64, bool, error) {
+		scanCtx, cancel := context.WithTimeout(ctx, sync.DefaultFilterLogsTimeout)
+		defer cancel()
 		query := ethereum.FilterQuery{
 			FromBlock: new(big.Int).SetUint64(from),
 			ToBlock:   new(big.Int).SetUint64(to),
@@ -268,7 +294,7 @@ func (c *ClaimSync) GetLatestBlockNumByGlobalIndexFromRPC(
 				detailedClaimEventSignature,
 			}},
 		}
-		logs, err := c.ethClient.FilterLogs(ctx, query)
+		logs, err := c.ethClient.FilterLogs(scanCtx, query)
 		if err != nil {
 			return 0, false, err
 		}
@@ -311,19 +337,22 @@ func (c *ClaimSync) GetLatestBlockNumByGlobalIndexFromRPC(
 		return 0, false, nil
 	}
 
-	// Probe the full range to either get the result directly or discover the RPC chunk limit.
-	blockNum, found, err := scanRange(0, toBlockNum)
-	if err == nil {
-		return blockNum, found, nil
+	// chunkSize is the window size for the backwards scan. When SyncBlockChunkSize is configured
+	// (> 0) it is used as-is; otherwise defaultRPCScanBlockChunkSize is used, so an unset config
+	// never causes an unbounded scan of the whole [0, toBlockNum] range -- it is always bounded to
+	// at most chunkSize per call, even though a short range (toBlockNum <= chunkSize) still ends
+	// up covered by exactly one such bounded call.
+	chunkSize := c.cfg.SyncBlockChunkSize
+	if chunkSize == 0 {
+		chunkSize = defaultRPCScanBlockChunkSize
 	}
 
-	chunkSize, isMaxRangeErr := aggkitcommon.ParseMaxRangeFromError(err.Error())
-	if !isMaxRangeErr {
-		return 0, false, fmt.Errorf("claimsync: FilterLogs error for globalIndex %s [0, %d]: %w",
-			globalIndex.String(), toBlockNum, err)
-	}
+	c.logger.Infof("claimsync: scanning RPC logs for globalIndex %s in range [0, %d] with chunk size %d",
+		globalIndex.String(), toBlockNum, chunkSize)
 
-	// Scan backwards in chunks of chunkSize, returning on the first match found.
+	// Scan backwards in chunks of chunkSize, returning on the first match found. If a chunk
+	// fails with a recognised max-range error, shrink chunkSize to the reported value and retry
+	// the same window (current is left unchanged) before continuing the backwards scan.
 	current := toBlockNum
 	for {
 		chunkFrom := uint64(0)
@@ -336,8 +365,18 @@ func (c *ClaimSync) GetLatestBlockNumByGlobalIndexFromRPC(
 
 		blockNum, found, err := scanRange(chunkFrom, current)
 		if err != nil {
-			return 0, false, fmt.Errorf("claimsync: FilterLogs error for globalIndex %s [%d, %d]: %w",
-				globalIndex.String(), chunkFrom, current, err)
+			newChunkSize, shrinkable := aggkitcommon.NextEthGetLogsWindow(err, chunkSize)
+			if shrinkable {
+				c.logger.Warnf("claimsync: RPC rejected chunk [%d, %d] for globalIndex %s as too large "+
+					"(configured/current chunk size %d); shrinking chunk size to %d and retrying -- if "+
+					"this warning persists, lower SyncBlockChunkSize in config to avoid repeated retries: %v",
+					chunkFrom, current, globalIndex.String(), chunkSize, newChunkSize, err)
+				chunkSize = newChunkSize
+				continue
+			}
+			return 0, false, fmt.Errorf(
+				"claimsync: FilterLogs error for globalIndex %s in chunk [%d, %d] (chunk size %d): %w",
+				globalIndex.String(), chunkFrom, current, chunkSize, err)
 		}
 		if found {
 			return blockNum, true, nil

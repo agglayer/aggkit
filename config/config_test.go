@@ -51,6 +51,16 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.RetriesToBuildAndSendCertificate.String(),
 		"RetryPolicyConfig{Mode: delays, Config: RetryDelaysConfig{Delays: [1m0s 1m0s 2m0s 5m0s 5m0s 8m0s], MaxRetries: 6}}")
 	require.Equal(t, cfg.L1InfoTreeSync.RequireStorageContentCompatibility, true)
+	// SyncBlockChunkSize default: raised from 100 to 10000 so a not-found RPC scan (claimsync's
+	// GetLatestBlockNumByGlobalIndexFromRPC) doesn't need tens of thousands of eth_getLogs calls on
+	// a multi-million-block chain. ClaimL1Sync/ClaimL2Sync inherit it via TOML templating from
+	// BridgeL1Sync/BridgeL2Sync respectively.
+	require.Equal(t, uint64(10000), cfg.L1InfoTreeSync.SyncBlockChunkSize)
+	require.Equal(t, uint64(10000), cfg.BridgeL1Sync.SyncBlockChunkSize)
+	require.Equal(t, uint64(10000), cfg.BridgeL2Sync.SyncBlockChunkSize)
+	require.Equal(t, uint64(10000), cfg.L2GERSync.SyncBlockChunkSize)
+	require.Equal(t, uint64(10000), cfg.ClaimL1Sync.SyncBlockChunkSize)
+	require.Equal(t, uint64(10000), cfg.ClaimL2Sync.SyncBlockChunkSize)
 	require.Equal(t, ethermanconfig.RPCClientConfig{
 		URL: "http://localhost:8123",
 		RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{

@@ -96,6 +96,11 @@ jobs:
           - env: anvil-2chains
             group: removeger-b2
             run: TestRemoveGER_CategoryB2
+          # Claim syncer recovery test wipes the SQLite DB and restarts aggkit, so it
+          # needs its own isolated stack to avoid cascading into unrelated tests.
+          - env: anvil-2chains
+            group: claimsync-recovery
+            run: "^TestAggsenderClaimSyncerRecoveryAfterDBWipe$"
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
