@@ -40,6 +40,11 @@ func Test_NewL1InfoTreeDataQuerier_WrongFinality(t *testing.T) {
 			l1InfoTreeSyncerFinality:  aggkittypes.LatestBlock,
 			blockFinalityForAggsender: aggkittypes.FinalizedBlock,
 		},
+		{
+			name:                      "aggsender and l1InfoTreeSyncer share the same negative Latest offset",
+			l1InfoTreeSyncerFinality:  aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: -12},
+			blockFinalityForAggsender: aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: -12},
+		},
 	}
 
 	for _, tc := range testCases {
