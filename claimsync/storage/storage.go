@@ -178,27 +178,143 @@ func (s *claimStorage) InsertBlock(
 }
 
 // InsertClaim persists a claim. The referenced block must already exist.
+// It is idempotent: if a claim already exists at the same (block_num, block_pos) primary key
+// with the same tx_hash, global_index and type, the insert is treated as a successful no-op. This
+// guards against the same startup race documented on InsertBlock above: by the time this insert
+// runs, InsertBlock has already confirmed (in the same transaction) that the containing block is
+// identical, so a duplicate at this key can only be the same on-chain log decoded twice by the two
+// concurrent bootstrap paths, not silent corruption. tx_hash + global_index + type (rather than
+// every column, or just the primary key) is the deliberate identity check here: they are exactly
+// the fields that pin the claim to one specific on-chain event and to the decoding path that
+// produced it (ClaimEvent vs. DetailedClaimEvent), so a match on all three is proof this is a
+// re-decode of that same event by the same kind of decoder; comparing every column would add no
+// further protection against the race this guards against (both writers decode the same log
+// deterministically) while requiring a deep comparison of byte slices and proof arrays. A mismatch
+// is not a benign duplicate and is returned as an error.
 func (s *claimStorage) InsertClaim(_ context.Context, tx dbtypes.Querier, claim claimsynctypes.Claim) error {
-	if err := meddler.Insert(s.getQuerier(tx), "claim", &claim); err != nil {
+	querier := s.getQuerier(tx)
+	if err := meddler.Insert(querier, "claim", &claim); err != nil {
+		if sqliteErr, ok := db.SQLiteErr(err); ok && sqliteErr.Code == sqlite.ErrConstraint {
+			// Claim already inserted by a concurrent bootstrap; make sure it is the same claim.
+			existing := &claimsynctypes.Claim{}
+			if getErr := meddler.QueryRow(
+				querier, existing,
+				`SELECT `+claimColumnsSQL+` FROM claim WHERE block_num = $1 AND block_pos = $2;`,
+				claim.BlockNum, claim.BlockPos,
+			); getErr != nil {
+				return fmt.Errorf("InsertClaim (block %d, pos %d): get existing claim after constraint violation: %w",
+					claim.BlockNum, claim.BlockPos, getErr)
+			}
+			if existing.TxHash != claim.TxHash || bigIntCmp(existing.GlobalIndex, claim.GlobalIndex) != 0 ||
+				existing.Type != claim.Type {
+				return fmt.Errorf(
+					"InsertClaim (block %d, pos %d): claim already exists with different content "+
+						"(existing tx_hash: %s, global_index: %s, type: %s; new tx_hash: %s, global_index: %s, type: %s)",
+					claim.BlockNum, claim.BlockPos, existing.TxHash.Hex(), bigIntStr(existing.GlobalIndex), existing.Type,
+					claim.TxHash.Hex(), bigIntStr(claim.GlobalIndex), claim.Type)
+			}
+			return nil
+		}
 		return fmt.Errorf("InsertClaim (block %d, pos %d): %w", claim.BlockNum, claim.BlockPos, err)
 	}
 	return nil
 }
 
 // InsertUnsetClaim persists an unset claim. The referenced block must already exist.
+// It is idempotent on the same (block_num, block_pos) startup race InsertClaim guards against
+// above: a duplicate is tolerated only if tx_hash, global_index and unset_global_index_hash_chain
+// (the full deterministic payload of the decoded log) all match. created_at is deliberately
+// excluded from the comparison: it is populated from the DB's own clock at insert time
+// (`strftime('%s', 'now')`, see claimsync0001.sql), so it is expected to differ between the two
+// bootstrap attempts even for the same underlying event, and comparing it would turn every benign
+// duplicate into a false conflict.
 func (s *claimStorage) InsertUnsetClaim(_ context.Context, tx dbtypes.Querier, u claimsynctypes.UnsetClaim) error {
-	if err := meddler.Insert(s.getQuerier(tx), "unset_claim", &u); err != nil {
+	querier := s.getQuerier(tx)
+	if err := meddler.Insert(querier, "unset_claim", &u); err != nil {
+		if sqliteErr, ok := db.SQLiteErr(err); ok && sqliteErr.Code == sqlite.ErrConstraint {
+			existing := &claimsynctypes.UnsetClaim{}
+			if getErr := meddler.QueryRow(
+				querier, existing,
+				`SELECT block_num, block_pos, tx_hash, global_index, unset_global_index_hash_chain, created_at `+
+					`FROM unset_claim WHERE block_num = $1 AND block_pos = $2;`,
+				u.BlockNum, u.BlockPos,
+			); getErr != nil {
+				return fmt.Errorf(
+					"InsertUnsetClaim (block %d, pos %d): get existing unset_claim after constraint violation: %w",
+					u.BlockNum, u.BlockPos, getErr)
+			}
+			if existing.TxHash != u.TxHash || bigIntCmp(existing.GlobalIndex, u.GlobalIndex) != 0 ||
+				existing.UnsetGlobalIndexHashChain != u.UnsetGlobalIndexHashChain {
+				return fmt.Errorf(
+					"InsertUnsetClaim (block %d, pos %d): unset_claim already exists with different content "+
+						"(existing tx_hash: %s, global_index: %s, hash_chain: %s; "+
+						"new tx_hash: %s, global_index: %s, hash_chain: %s)",
+					u.BlockNum, u.BlockPos,
+					existing.TxHash.Hex(), bigIntStr(existing.GlobalIndex), existing.UnsetGlobalIndexHashChain.Hex(),
+					u.TxHash.Hex(), bigIntStr(u.GlobalIndex), u.UnsetGlobalIndexHashChain.Hex())
+			}
+			return nil
+		}
 		return fmt.Errorf("InsertUnsetClaim (block %d, pos %d): %w", u.BlockNum, u.BlockPos, err)
 	}
 	return nil
 }
 
 // InsertSetClaim persists a set claim. The referenced block must already exist.
+// It is idempotent on the same (block_num, block_pos) startup race InsertClaim guards against
+// above: a duplicate is tolerated only if tx_hash and global_index match. created_at is excluded
+// from the comparison for the same reason as InsertUnsetClaim: it is a DB-clock default, not part
+// of the decoded event, so it is expected to differ between the two bootstrap attempts.
 func (s *claimStorage) InsertSetClaim(_ context.Context, tx dbtypes.Querier, sc claimsynctypes.SetClaim) error {
-	if err := meddler.Insert(s.getQuerier(tx), "set_claim", &sc); err != nil {
+	querier := s.getQuerier(tx)
+	if err := meddler.Insert(querier, "set_claim", &sc); err != nil {
+		if sqliteErr, ok := db.SQLiteErr(err); ok && sqliteErr.Code == sqlite.ErrConstraint {
+			existing := &claimsynctypes.SetClaim{}
+			if getErr := meddler.QueryRow(
+				querier, existing,
+				`SELECT block_num, block_pos, tx_hash, global_index, created_at `+
+					`FROM set_claim WHERE block_num = $1 AND block_pos = $2;`,
+				sc.BlockNum, sc.BlockPos,
+			); getErr != nil {
+				return fmt.Errorf(
+					"InsertSetClaim (block %d, pos %d): get existing set_claim after constraint violation: %w",
+					sc.BlockNum, sc.BlockPos, getErr)
+			}
+			if existing.TxHash != sc.TxHash || bigIntCmp(existing.GlobalIndex, sc.GlobalIndex) != 0 {
+				return fmt.Errorf(
+					"InsertSetClaim (block %d, pos %d): set_claim already exists with different content "+
+						"(existing tx_hash: %s, global_index: %s; new tx_hash: %s, global_index: %s)",
+					sc.BlockNum, sc.BlockPos, existing.TxHash.Hex(), bigIntStr(existing.GlobalIndex),
+					sc.TxHash.Hex(), bigIntStr(sc.GlobalIndex))
+			}
+			return nil
+		}
 		return fmt.Errorf("InsertSetClaim (block %d, pos %d): %w", sc.BlockNum, sc.BlockPos, err)
 	}
 	return nil
+}
+
+// bigIntCmp compares two possibly-nil big.Int values. Two nils are equal; a nil and a non-nil are
+// not.
+func bigIntCmp(a, b *big.Int) int {
+	switch {
+	case a == nil && b == nil:
+		return 0
+	case a == nil:
+		return -1
+	case b == nil:
+		return 1
+	default:
+		return a.Cmp(b)
+	}
+}
+
+// bigIntStr renders a possibly-nil big.Int for error messages.
+func bigIntStr(v *big.Int) string {
+	if v == nil {
+		return "nil"
+	}
+	return v.String()
 }
 
 // GetClaims returns claims in [fromBlock, toBlock] using compaction logic:

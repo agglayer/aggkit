@@ -45,6 +45,7 @@ var (
 				BlockPos:    0,
 				TxHash:      common.HexToHash("0xa1"),
 				GlobalIndex: big.NewInt(10),
+				Amount:      big.NewInt(1000),
 			}},
 			Event{UnsetClaim: &UnsetClaim{
 				BlockNum:                  1,
@@ -219,6 +220,30 @@ func TestProcessor(t *testing.T) {
 		t.Logf("%s: %s", a.method(), a.desc())
 		a.execute(t)
 	}
+}
+
+// TestProcessBlock_DuplicateBootstrap_Idempotent reproduces the startup race described in
+// issue #1842's follow-up analysis: the L2ClaimSyncer AutoStart goroutine and the aggsender's
+// SetClaimSyncerNextRequiredBlock loop can both bootstrap the same claim-bearing block. Before
+// storage.go's InsertClaim/InsertUnsetClaim/InsertSetClaim were made idempotent, re-processing a
+// block carrying a claim event (procBlock1 has a Claim at pos 0 and an UnsetClaim at pos 1) a
+// second time failed with "UNIQUE constraint failed: claim.block_num, claim.block_pos" and, in
+// production, that error was retried forever by sync/evmdriver.go's withRetry, live-locking the
+// claim syncer. Processing the same block twice must now succeed both times and leave exactly one
+// row per event.
+func TestProcessBlock_DuplicateBootstrap_Idempotent(t *testing.T) {
+	p := newTestProcessor(t)
+	ctx := t.Context()
+
+	require.NoError(t, p.ProcessBlock(ctx, procBlock1))
+	// Second bootstrap of the very same block, with no reorg in between (this is what the two
+	// concurrent writers do): must NOT error.
+	require.NoError(t, p.ProcessBlock(ctx, procBlock1))
+
+	claims, err := p.storage.GetClaims(ctx, nil, 1, 1)
+	require.NoError(t, err)
+	require.Len(t, claims, 1)
+	require.Equal(t, big.NewInt(10), claims[0].GlobalIndex)
 }
 
 // --- ProcessBlock error paths (mocks) ---

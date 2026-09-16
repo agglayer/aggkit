@@ -598,6 +598,137 @@ func TestInsertBlockIdempotent(t *testing.T) {
 	require.NoError(t, tx.Commit())
 }
 
+func TestInsertClaimIdempotent(t *testing.T) {
+	s, _ := newTestStorage(t)
+	ctx := context.Background()
+
+	claim := claimsynctypes.Claim{
+		BlockNum:    1,
+		BlockPos:    0,
+		TxHash:      common.HexToHash("0xabc"),
+		GlobalIndex: new(big.Int).SetUint64(1093),
+		Amount:      big.NewInt(100),
+		Type:        claimsynctypes.ClaimEvent,
+	}
+
+	tx, err := s.NewTx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.InsertBlock(ctx, tx, claim.BlockNum, common.Hash{}))
+	require.NoError(t, s.InsertClaim(ctx, tx, claim))
+	require.NoError(t, tx.Commit())
+
+	// Duplicate insert with the same (block_num, block_pos, tx_hash, global_index)
+	// must be treated as a no-op (no error), and must leave exactly one row.
+	tx, err = s.NewTx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.InsertBlock(ctx, tx, claim.BlockNum, common.Hash{}))
+	require.NoError(t, s.InsertClaim(ctx, tx, claim))
+	require.NoError(t, tx.Commit())
+
+	got, err := s.GetClaims(ctx, nil, 1, 1)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+
+	// A conflicting row at the same (block_num, block_pos) but with different tx_hash /
+	// global_index must be surfaced as an error, not silently swallowed.
+	conflicting := claim
+	conflicting.TxHash = common.HexToHash("0xdead")
+	conflicting.GlobalIndex = new(big.Int).SetUint64(9999)
+	tx, err = s.NewTx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.InsertBlock(ctx, tx, claim.BlockNum, common.Hash{}))
+	err = s.InsertClaim(ctx, tx, conflicting)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "different content")
+	require.NoError(t, tx.Rollback())
+
+	// The conflicting insert must not have created an extra row.
+	got, err = s.GetClaims(ctx, nil, 1, 1)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+}
+
+func TestInsertUnsetClaimIdempotent(t *testing.T) {
+	s, _ := newTestStorage(t)
+	ctx := context.Background()
+
+	u := claimsynctypes.UnsetClaim{
+		BlockNum:                  1,
+		BlockPos:                  0,
+		TxHash:                    common.HexToHash("0xabc"),
+		GlobalIndex:               new(big.Int).SetUint64(42),
+		UnsetGlobalIndexHashChain: common.HexToHash("0x1111"),
+	}
+
+	tx, err := s.NewTx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.InsertBlock(ctx, tx, u.BlockNum, common.Hash{}))
+	require.NoError(t, s.InsertUnsetClaim(ctx, tx, u))
+	require.NoError(t, tx.Commit())
+
+	// Duplicate insert of the same event must be a no-op.
+	tx, err = s.NewTx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.InsertBlock(ctx, tx, u.BlockNum, common.Hash{}))
+	require.NoError(t, s.InsertUnsetClaim(ctx, tx, u))
+	require.NoError(t, tx.Commit())
+
+	_, count, err := s.GetUnsetClaimsPaged(ctx, 1, 10, u.GlobalIndex)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	// A materially different row at the same key must still error.
+	conflicting := u
+	conflicting.UnsetGlobalIndexHashChain = common.HexToHash("0x2222")
+	tx, err = s.NewTx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.InsertBlock(ctx, tx, u.BlockNum, common.Hash{}))
+	err = s.InsertUnsetClaim(ctx, tx, conflicting)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "different content")
+	require.NoError(t, tx.Rollback())
+}
+
+func TestInsertSetClaimIdempotent(t *testing.T) {
+	s, _ := newTestStorage(t)
+	ctx := context.Background()
+
+	sc := claimsynctypes.SetClaim{
+		BlockNum:    1,
+		BlockPos:    0,
+		TxHash:      common.HexToHash("0xabc"),
+		GlobalIndex: new(big.Int).SetUint64(42),
+	}
+
+	tx, err := s.NewTx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.InsertBlock(ctx, tx, sc.BlockNum, common.Hash{}))
+	require.NoError(t, s.InsertSetClaim(ctx, tx, sc))
+	require.NoError(t, tx.Commit())
+
+	// Duplicate insert of the same event must be a no-op.
+	tx, err = s.NewTx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.InsertBlock(ctx, tx, sc.BlockNum, common.Hash{}))
+	require.NoError(t, s.InsertSetClaim(ctx, tx, sc))
+	require.NoError(t, tx.Commit())
+
+	_, count, err := s.GetSetClaimsPaged(ctx, 1, 10, sc.GlobalIndex)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	// A materially different row at the same key must still error.
+	conflicting := sc
+	conflicting.GlobalIndex = new(big.Int).SetUint64(43)
+	tx, err = s.NewTx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.InsertBlock(ctx, tx, sc.BlockNum, common.Hash{}))
+	err = s.InsertSetClaim(ctx, tx, conflicting)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "different content")
+	require.NoError(t, tx.Rollback())
+}
+
 func TestClaimColumnsSQL_ReflectionCheck(t *testing.T) {
 	t.Parallel()
 
