@@ -43,15 +43,10 @@ type DriverInterface interface {
 	GetCompletionPercentage() *float64
 }
 
-type DownloaderInterface interface {
-	Finality() aggkittypes.BlockNumberFinality
-}
-
 type L1InfoTreeSync struct {
-	processor  *processor
-	driver     DriverInterface
-	downloader DownloaderInterface
-	cfg        Config
+	processor *processor
+	driver    DriverInterface
+	cfg       Config
 }
 
 type RuntimeData = mdrsync.RuntimeData
@@ -142,10 +137,9 @@ func NewMultidownloadBased(
 		return nil, err
 	}
 	return &L1InfoTreeSync{
-		processor:  processor,
-		driver:     driver,
-		downloader: downloader,
-		cfg:        cfg,
+		processor: processor,
+		driver:    driver,
+		cfg:       cfg,
 	}, nil
 }
 
@@ -221,16 +215,17 @@ func NewLegacy(
 	}
 
 	return &L1InfoTreeSync{
-		processor:  processor,
-		driver:     driver,
-		downloader: downloader,
-		cfg:        cfg,
+		processor: processor,
+		driver:    driver,
+		cfg:       cfg,
 	}, nil
 }
 
-// Finality returns the block finality of the downloader
+// Finality returns the block finality this syncer syncs up to (its own BlockFinality config).
+// It is intentionally independent of the reorg-safety finality of the L1 multidownloader it may
+// run on. A read-only instance (NewReadOnly) has no config and returns the zero value.
 func (d *L1InfoTreeSync) Finality() aggkittypes.BlockNumberFinality {
-	return d.downloader.Finality()
+	return d.cfg.BlockFinality
 }
 
 func (d *L1InfoTreeSync) GetCompletionPercentage() *float64 {

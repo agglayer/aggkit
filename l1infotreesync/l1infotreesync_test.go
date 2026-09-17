@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"path"
 	"testing"
-	"time"
 
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -299,25 +298,20 @@ func TestIsUpToDate(t *testing.T) {
 }
 
 func TestFinality(t *testing.T) {
-	downloader, err := sync.NewEVMDownloader(
-		"test-downloader",
-		nil, // l1Client
-		0,   // syncBlockChunkSize
-		aggkittypes.LatestBlock,
-		time.Second,
-		nil,                // logAppender
-		[]common.Address{}, // monitoredContracts
-		nil,                // RetryHandler
-		aggkittypes.LatestBlock,
-		nil, // reorgDetector,
-		"reorg-id",
-	)
-	require.NoError(t, err)
-
-	s := L1InfoTreeSync{
-		downloader: downloader,
-	}
+	s := L1InfoTreeSync{cfg: Config{BlockFinality: aggkittypes.LatestBlock}}
 	require.Equal(t, aggkittypes.LatestBlock, s.Finality())
+}
+
+func TestFinality_MultidownloaderModeReturnsOwnBlockFinality(t *testing.T) {
+	want := aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: -12}
+
+	s := L1InfoTreeSync{cfg: Config{BlockFinality: want}}
+	require.Equal(t, want, s.Finality())
+}
+
+func TestFinality_ReadOnlyReturnsZeroValue(t *testing.T) {
+	s := L1InfoTreeSync{}
+	require.Equal(t, aggkittypes.BlockNumberFinality{}, s.Finality())
 }
 
 func TestL1InfoTreeSync_GetCompletionPercentage(t *testing.T) {

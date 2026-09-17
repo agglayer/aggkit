@@ -105,7 +105,31 @@ default group is enumerated as a positive, anchored regex instead):
 | `anvil-2chains` / `removeger-fast` | `TestRemoveGER_NoProblematicClaims`, `TestRemoveGER_CategoryA`, `TestGenerateInvalidGER` |
 | `anvil-2chains` / `removeger-b1` | `TestRemoveGER_CategoryB1` |
 | `anvil-2chains` / `removeger-b2` | `TestRemoveGER_CategoryB2` |
+| `anvil-2chains` / `finality-knobs` | `TestAggsenderIndependentL1FinalityKnobs` |
 | `anvil-2chains` / `default` | Everything else (positive-regex list, remove-GER tests excluded) |
+
+### Independent L1 finality knobs
+
+`TestAggsenderIndependentL1FinalityKnobs` (`test/e2e/finality_knobs_test.go`) covers aggkit#1846/#1847 on
+`anvil-2chains`. It restarts `aggkit-001` with `[L1InfoTreeSync] BlockFinality = "LatestBlock"` and
+`[AggSender] BlockFinalityForL1InfoTree = "LatestBlock/-N"` while `[L1Multidownloader]` stays at its
+`FinalizedBlock` default, bridges and claims L1 -> L2 twice inside the resulting window, and asserts on the
+`aggkit-001` logs and the aggsender RPC that:
+
+- `block finality misconfiguration` is **absent** (the aggsender accepts the asymmetric knobs and starts);
+- `is not yet under the selected L1 info root` is **present** (a claim whose GER is not yet under the selected
+  root trims the certificate instead of failing);
+- `exists on L1 but cannot be proved against selected root` is **absent** (no hard error on that claim);
+- a certificate whose `ToBlock` covers the claims reaches `Settled`
+  (`aggsender_getCertificateHeaderPerHeight`).
+
+`N` and the per-phase timeouts are derived at runtime from the L1 `latest`-to-`finalized` lag and block
+time (`N = 3*lag + ceil(120s / blockTime)`), so the test does not hardcode anvil timing. The original config
+is restored (and the service restarted) in `t.Cleanup`.
+
+```bash
+AGGKIT_E2E_ENV=anvil-2chains make test-e2e TEST_RUN='^TestAggsenderIndependentL1FinalityKnobs$'
+```
 
 ## Two L2 networks
 
