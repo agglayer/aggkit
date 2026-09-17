@@ -96,6 +96,11 @@ jobs:
           - env: anvil-2chains
             group: removeger-b2
             run: TestRemoveGER_CategoryB2
+          # Restarts aggkit-001 with asymmetric L1 finality knobs (aggkit#1846/#1847); keep it in its
+          # own stack because it mutates the aggkit config and restarts the service.
+          - env: anvil-2chains
+            group: finality-knobs
+            run: "^TestAggsenderIndependentL1FinalityKnobs$"
     steps:
       - name: Checkout code
         uses: actions/checkout@v5

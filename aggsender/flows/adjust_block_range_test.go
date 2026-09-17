@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -900,17 +901,18 @@ func Test_baseFlow_validateRootToProveIsFinalized_Success(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_FailsForExistingGERNotProvableAgainstRoot(t *testing.T) {
+func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_TrimsClaimNotYetUnderRoot(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	finalizedRoot := common.HexToHash("0x123")
-	gerProvable := common.HexToHash("0x1")
+	ger := common.HexToHash("0x1")
 
 	mockQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-	mockQuerier.EXPECT().GetProofForGER(ctx, gerProvable, finalizedRoot).
+	mockQuerier.EXPECT().GetProofForGER(ctx, ger, finalizedRoot).
 		Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
-	mockQuerier.EXPECT().DoesGERExistsOnL1(gerProvable).Return(true, nil).Once()
+	mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(true, nil).Once()
+	mockQuerier.EXPECT().IsGERFinalized(ger, uint32(11)).Return(false, nil).Once()
 
 	f := &baseFlow{
 		l1InfoTreeDataQuerier: mockQuerier,
@@ -920,14 +922,237 @@ func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_FailsForExistingGERNotProv
 		FromBlock:                      5,
 		ToBlock:                        12,
 		L1InfoTreeRootFromWhichToProve: finalizedRoot,
+		L1InfoTreeLeafCount:            11,
 		Claims: []claimsynctypes.Claim{
-			{BlockNum: 9, GlobalExitRoot: gerProvable},
+			{BlockNum: 9, GlobalExitRoot: ger},
+		},
+	}
+	cache := newGERValidationCache()
+
+	result, err := f.adjustClaimsNotProvableAgainstRoot(ctx, buildParams, cache)
+
+	require.NoError(t, err)
+	require.NotSame(t, buildParams, result)
+	require.Equal(t, uint64(5), result.FromBlock)
+	require.Equal(t, uint64(8), result.ToBlock)
+	require.Empty(t, result.Claims)
+	require.True(t, cache.existsOnL1[ger])
+}
+
+func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_TrimsAtMinimumBlockWithSeveralClaims(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	finalizedRoot := common.HexToHash("0x123")
+	gerA := common.HexToHash("0xa")
+	gerB := common.HexToHash("0xb")
+	gerC := common.HexToHash("0xc")
+
+	mockQuerier := mocks.NewL1InfoTreeDataQuerier(t)
+	for _, g := range []common.Hash{gerA, gerB} {
+		mockQuerier.EXPECT().GetProofForGER(ctx, g, finalizedRoot).
+			Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
+		mockQuerier.EXPECT().DoesGERExistsOnL1(g).Return(true, nil).Once()
+		mockQuerier.EXPECT().IsGERFinalized(g, uint32(11)).Return(false, nil).Once()
+	}
+	mockQuerier.EXPECT().GetProofForGER(ctx, gerC, finalizedRoot).
+		Return(&l1infotreesync.L1InfoTreeLeaf{}, treetypes.Proof{}, nil).Once()
+
+	f := &baseFlow{
+		l1InfoTreeDataQuerier: mockQuerier,
+		log:                   log.WithFields("test", t.Name()),
+	}
+	// Deliberately out of order: the trim must use the minimum offending block, not the first one seen.
+	buildParams := &types.CertificateBuildParams{
+		FromBlock:                      5,
+		ToBlock:                        12,
+		L1InfoTreeRootFromWhichToProve: finalizedRoot,
+		L1InfoTreeLeafCount:            11,
+		Claims: []claimsynctypes.Claim{
+			{BlockNum: 11, GlobalExitRoot: gerA},
+			{BlockNum: 8, GlobalExitRoot: gerB},
+			{BlockNum: 10, GlobalExitRoot: gerC},
+		},
+	}
+	cache := newGERValidationCache()
+
+	result, err := f.adjustClaimsNotProvableAgainstRoot(ctx, buildParams, cache)
+
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), result.ToBlock)
+	require.Empty(t, result.Claims)
+	require.True(t, cache.existsOnL1[gerC])
+}
+
+func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_ReusesGERExistenceCacheAcrossClaims(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	finalizedRoot := common.HexToHash("0x123")
+	ger := common.HexToHash("0x1")
+
+	mockQuerier := mocks.NewL1InfoTreeDataQuerier(t)
+	mockQuerier.EXPECT().GetProofForGER(ctx, ger, finalizedRoot).
+		Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Twice()
+	// Second claim with the same GER must hit the existence cache.
+	mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(true, nil).Once()
+	mockQuerier.EXPECT().IsGERFinalized(ger, uint32(11)).Return(false, nil).Twice()
+
+	f := &baseFlow{
+		l1InfoTreeDataQuerier: mockQuerier,
+		log:                   log.WithFields("test", t.Name()),
+	}
+	buildParams := &types.CertificateBuildParams{
+		FromBlock:                      5,
+		ToBlock:                        12,
+		L1InfoTreeRootFromWhichToProve: finalizedRoot,
+		L1InfoTreeLeafCount:            11,
+		Claims: []claimsynctypes.Claim{
+			{BlockNum: 9, GlobalExitRoot: ger},
+			{BlockNum: 10, GlobalExitRoot: ger},
+		},
+	}
+
+	result, err := f.adjustClaimsNotProvableAgainstRoot(ctx, buildParams, newGERValidationCache())
+
+	require.NoError(t, err)
+	require.Equal(t, uint64(8), result.ToBlock)
+}
+
+func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_FailsWhenClaimNotYetUnderRootIsAtFromBlock(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	finalizedRoot := common.HexToHash("0x123")
+	ger := common.HexToHash("0x1")
+
+	mockQuerier := mocks.NewL1InfoTreeDataQuerier(t)
+	mockQuerier.EXPECT().GetProofForGER(ctx, ger, finalizedRoot).
+		Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
+	mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(true, nil).Once()
+	mockQuerier.EXPECT().IsGERFinalized(ger, uint32(11)).Return(false, nil).Once()
+
+	f := &baseFlow{
+		l1InfoTreeDataQuerier: mockQuerier,
+		log:                   log.WithFields("test", t.Name()),
+	}
+	buildParams := &types.CertificateBuildParams{
+		FromBlock:                      5,
+		ToBlock:                        12,
+		L1InfoTreeRootFromWhichToProve: finalizedRoot,
+		L1InfoTreeLeafCount:            11,
+		Claims: []claimsynctypes.Claim{
+			{BlockNum: 5, GlobalExitRoot: ger},
+		},
+	}
+
+	result, err := f.adjustClaimsNotProvableAgainstRoot(ctx, buildParams, newGERValidationCache())
+
+	require.ErrorContains(t, err, "cannot create certificate: claim at block 5 (start block 5)")
+	require.ErrorContains(t, err, "is not yet under the selected L1 info root")
+	require.Nil(t, result)
+}
+
+func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_FailsHardWhenGERUnderRootButUnprovable(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	finalizedRoot := common.HexToHash("0x123")
+	ger := common.HexToHash("0x1")
+
+	mockQuerier := mocks.NewL1InfoTreeDataQuerier(t)
+	mockQuerier.EXPECT().GetProofForGER(ctx, ger, finalizedRoot).
+		Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
+	mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(true, nil).Once()
+	mockQuerier.EXPECT().IsGERFinalized(ger, uint32(11)).Return(true, nil).Once()
+
+	f := &baseFlow{
+		l1InfoTreeDataQuerier: mockQuerier,
+		log:                   log.WithFields("test", t.Name()),
+	}
+	buildParams := &types.CertificateBuildParams{
+		FromBlock:                      5,
+		ToBlock:                        12,
+		L1InfoTreeRootFromWhichToProve: finalizedRoot,
+		L1InfoTreeLeafCount:            11,
+		Claims: []claimsynctypes.Claim{
+			{BlockNum: 9, GlobalExitRoot: ger},
 		},
 	}
 
 	result, err := f.adjustClaimsNotProvableAgainstRoot(ctx, buildParams, newGERValidationCache())
 
 	require.ErrorContains(t, err, "exists on L1 but cannot be proved against selected root")
+	require.ErrorIs(t, err, query.ErrGERNotProvableAgainstRoot)
+	require.Nil(t, result)
+}
+
+func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_FailsHardWhenLeafCountIsZero(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	finalizedRoot := common.HexToHash("0x123")
+	ger := common.HexToHash("0x1")
+
+	// No IsGERFinalized expectation: the mock proves the querier is never reached with a leaf count of 0.
+	mockQuerier := mocks.NewL1InfoTreeDataQuerier(t)
+	mockQuerier.EXPECT().GetProofForGER(ctx, ger, finalizedRoot).
+		Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
+	mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(true, nil).Once()
+
+	f := &baseFlow{
+		l1InfoTreeDataQuerier: mockQuerier,
+		log:                   log.WithFields("test", t.Name()),
+	}
+	buildParams := &types.CertificateBuildParams{
+		FromBlock:                      5,
+		ToBlock:                        12,
+		L1InfoTreeRootFromWhichToProve: finalizedRoot,
+		L1InfoTreeLeafCount:            0,
+		Claims: []claimsynctypes.Claim{
+			{BlockNum: 9, GlobalExitRoot: ger},
+		},
+	}
+
+	result, err := f.adjustClaimsNotProvableAgainstRoot(ctx, buildParams, newGERValidationCache())
+
+	require.ErrorContains(t, err, "L1InfoTreeLeafCount is 0")
+	require.ErrorContains(t, err, "exists on L1 but cannot be proved against selected root")
+	require.Nil(t, result)
+}
+
+func Test_baseFlow_adjustClaimsNotProvableAgainstRoot_FailsHardOnIsGERFinalizedError(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	finalizedRoot := common.HexToHash("0x123")
+	ger := common.HexToHash("0x1")
+
+	mockQuerier := mocks.NewL1InfoTreeDataQuerier(t)
+	mockQuerier.EXPECT().GetProofForGER(ctx, ger, finalizedRoot).
+		Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
+	mockQuerier.EXPECT().DoesGERExistsOnL1(ger).Return(true, nil).Once()
+	mockQuerier.EXPECT().IsGERFinalized(ger, uint32(11)).Return(false, errors.New("syncer unavailable")).Once()
+
+	f := &baseFlow{
+		l1InfoTreeDataQuerier: mockQuerier,
+		log:                   log.WithFields("test", t.Name()),
+	}
+	buildParams := &types.CertificateBuildParams{
+		FromBlock:                      5,
+		ToBlock:                        12,
+		L1InfoTreeRootFromWhichToProve: finalizedRoot,
+		L1InfoTreeLeafCount:            11,
+		Claims: []claimsynctypes.Claim{
+			{BlockNum: 9, GlobalExitRoot: ger},
+		},
+	}
+
+	result, err := f.adjustClaimsNotProvableAgainstRoot(ctx, buildParams, newGERValidationCache())
+
+	require.ErrorContains(t, err, "error checking if GER")
+	require.ErrorContains(t, err, "is under selected root")
+	require.ErrorContains(t, err, "syncer unavailable")
 	require.Nil(t, result)
 }
 

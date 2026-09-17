@@ -205,7 +205,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			},
 		},
 		{
-			name: "resend InError certificate - cached proof rejected when GER is not provable against selected root",
+			name: "resend InError certificate - retry range trimmed when GER is not yet under selected root, proof regenerated",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockAggchainProofQuerier *mocks.AggchainProofQuerier,
@@ -243,8 +243,42 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoDataQuery.EXPECT().GetProofForGER(ctx, ger, finalizedL1Root).
 					Return(nil, treetypes.Proof{}, query.ErrGERNotProvableAgainstRoot).Once()
 				mockL1InfoDataQuery.EXPECT().DoesGERExistsOnL1(ger).Return(true, nil).Once()
+				mockL1InfoDataQuery.EXPECT().IsGERFinalized(ger, uint32(11)).Return(false, nil).Once()
+				// The trimmed range [1,9] changes the retry range, so the cached proof is discarded and regenerated.
+				mockAggchainProofQuerier.EXPECT().
+					GenerateAggchainProof(context.Background(), uint64(0), uint64(9), mock.Anything).
+					Return(&types.AggchainProof{
+						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("fresh-proof")},
+						LastProvenBlock: 0,
+						EndBlock:        9,
+					}, nil).Once()
 			},
-			expectedError: "exists on L1 but cannot be proved against selected root",
+			expectedParams: &types.CertificateBuildParams{
+				FromBlock:  1,
+				ToBlock:    9,
+				RetryCount: 1,
+				Bridges:    []bridgesync.Bridge{{BlockNum: 1}},
+				Claims:     []claimsynctypes.Claim{},
+				Unclaims:   []claimsynctypes.Unclaim{},
+				LastSentCertificate: &types.CertificateHeader{
+					Height:                  0,
+					FromBlock:               1,
+					ToBlock:                 10,
+					Status:                  agglayertypes.InError,
+					FinalizedL1InfoTreeRoot: &finalizedL1Root,
+					CertificateID:           common.HexToHash("0x2"),
+					CertType:                types.CertificateTypeFEP,
+					L1InfoTreeLeafCount:     11,
+				},
+				CertificateType:                types.CertificateTypeFEP,
+				L1InfoTreeRootFromWhichToProve: finalizedL1Root,
+				L1InfoTreeLeafCount:            11,
+				AggchainProof: &types.AggchainProof{
+					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("fresh-proof")},
+					LastProvenBlock: 0,
+					EndBlock:        9,
+				},
+			},
 		},
 		{
 			name:           "resend InError certificate - cached proof rejected on EndBlock mismatch",

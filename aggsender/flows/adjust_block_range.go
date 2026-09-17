@@ -215,6 +215,9 @@ func (f *baseFlow) adjustClaimsNotProvableAgainstRoot(
 	buildParams *types.CertificateBuildParams,
 	cache *gerValidationCache,
 ) (*types.CertificateBuildParams, error) {
+	// Lowest-block claim whose GER exists on L1 but is not yet under L1InfoTreeRootFromWhichToProve.
+	var notUnderRootClaim *claimsynctypes.Claim
+
 	for _, claim := range buildParams.Claims {
 		_, _, err := f.l1InfoTreeDataQuerier.GetProofForGER(
 			ctx, claim.GlobalExitRoot, buildParams.L1InfoTreeRootFromWhichToProve,
@@ -235,15 +238,54 @@ func (f *baseFlow) adjustClaimsNotProvableAgainstRoot(
 		}
 
 		if errors.Is(err, query.ErrGERNotProvableAgainstRoot) {
-			return nil, fmt.Errorf("GER %s exists on L1 but cannot be proved against selected root %s: %w",
-				claim.GlobalExitRoot.Hex(), buildParams.L1InfoTreeRootFromWhichToProve.Hex(), err)
+			if buildParams.L1InfoTreeLeafCount == 0 {
+				return nil, fmt.Errorf("GER %s exists on L1 but cannot be proved against selected root %s "+
+					"and L1InfoTreeLeafCount is 0, cannot check whether the GER is under the root: %w",
+					claim.GlobalExitRoot.Hex(), buildParams.L1InfoTreeRootFromWhichToProve.Hex(), err)
+			}
+
+			underRoot, finalizedErr := f.l1InfoTreeDataQuerier.IsGERFinalized(
+				claim.GlobalExitRoot, buildParams.L1InfoTreeLeafCount)
+			if finalizedErr != nil {
+				return nil, fmt.Errorf("error checking if GER %s is under selected root %s (leaf count %d): %w",
+					claim.GlobalExitRoot.Hex(), buildParams.L1InfoTreeRootFromWhichToProve.Hex(),
+					buildParams.L1InfoTreeLeafCount, finalizedErr)
+			}
+
+			if underRoot {
+				return nil, fmt.Errorf("GER %s exists on L1 but cannot be proved against selected root %s: %w",
+					claim.GlobalExitRoot.Hex(), buildParams.L1InfoTreeRootFromWhichToProve.Hex(), err)
+			}
+
+			if notUnderRootClaim == nil || claim.BlockNum < notUnderRootClaim.BlockNum {
+				claimCopy := claim
+				notUnderRootClaim = &claimCopy
+			}
+			continue
 		}
 
 		return nil, fmt.Errorf("proof lookup failed for GER %s against root %s: %w",
 			claim.GlobalExitRoot.Hex(), buildParams.L1InfoTreeRootFromWhichToProve.Hex(), err)
 	}
 
-	return buildParams, nil
+	if notUnderRootClaim == nil {
+		return buildParams, nil
+	}
+
+	if notUnderRootClaim.BlockNum <= buildParams.FromBlock {
+		return nil, fmt.Errorf("cannot create certificate: claim at block %d (start block %d) uses GER %s that "+
+			"exists on L1 but is not yet under the selected L1 info root %s (leaf count %d); "+
+			"it will be retried once the root includes it",
+			notUnderRootClaim.BlockNum, buildParams.FromBlock, notUnderRootClaim.GlobalExitRoot.Hex(),
+			buildParams.L1InfoTreeRootFromWhichToProve.Hex(), buildParams.L1InfoTreeLeafCount)
+	}
+
+	f.log.Warnf("found a claim (%+v) that uses a GER (%s) that exists on L1 but is not yet under the selected "+
+		"L1 info root %s (leaf count %d). Trimming down block range [%d to %d] to block %d",
+		*notUnderRootClaim, notUnderRootClaim.GlobalExitRoot.Hex(), buildParams.L1InfoTreeRootFromWhichToProve.Hex(),
+		buildParams.L1InfoTreeLeafCount, buildParams.FromBlock, buildParams.ToBlock, notUnderRootClaim.BlockNum-1)
+
+	return trimCertificateToBlock(buildParams, notUnderRootClaim.BlockNum-1)
 }
 
 func (f *baseFlow) limitCertSize(buildParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {

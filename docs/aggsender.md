@@ -198,6 +198,121 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 |StorageRetainCertificatesPolicy| [StorageRetainCertificatesPolicy](#storageretaincertificatespolicy) | Configure the certificate retain policy
 | UnsetClaimsMaxLogBlockRange       | uint64                    | Proactive max block range for `eth_getLogs` queries when fetching unset claims. 0 means disabled (fallback to reactive chunking on error)
 
+## L1 finality knobs
+
+Three independent config knobs each pick a block-finality tag
+(`FinalizedBlock`/`SafeBlock`/`LatestBlock`/`PendingBlock`, optionally with an offset such as
+`LatestBlock/-12`), but each one governs a different part of the pipeline. They are **not**
+substitutes for one another, and changing one does not change the behaviour of the other two:
+
+|                  Knob                  |                                                                          Role                                                                           |                                                                  Does NOT affect                                                                  |
+| :------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------------------------------: |
+|   `L1Multidownloader.BlockFinality`    | Reorg-safety boundary shared by every syncer running on the multidownloader (how far behind L1 head the raw block/log data is considered safe to index) |                Which L1 info tree root the `L1InfoTreeSync` component targets, or which root the `AggSender` proves claims against                |
+|     `L1InfoTreeSync.BlockFinality`     |           The sync target (`SyncerConfig.ToBlock`) of the L1 info tree syncer — how far the syncer advances its own view of the L1 info tree            | The multidownloader's reorg-safety boundary (other syncers on the same multidownloader are unaffected); which root the `AggSender` proves against |
+| `AggSender.BlockFinalityForL1InfoTree` |                      Which L1 info tree root the `AggSender` selects and proves claims against (`L1InfoTreeRootFromWhichToProve`)                       |                        How far the `L1InfoTreeSync` syncer itself advances, or the multidownloader's reorg-safety boundary                        |
+
+### Recommended asymmetric configuration
+
+In ASAP trigger mode, keeping all three knobs at `FinalizedBlock` is safe but slow on the L1→L2
+path: the `L1InfoTreeSync` syncer only indexes a GER once its L1 block is finalized, and `AggOracle`
+injects the newest GER the syncer has indexed (`aggoracle/oracle.go` → `GetLatestL1InfoGER`), so
+every L1→L2 GER injection — and therefore claimability on L2 — is delayed by a full finality
+period. Certificate latency is *not* the cost: with a finalized syncer every GER claimed on L2 is
+already under the `AggSender`'s finalized root, so certificate builds never wait for it. The
+recommended configuration relaxes only the sync target, while keeping the reorg-safety boundary and
+the proving target conservative:
+
+```toml
+[L1Multidownloader]
+BlockFinality = "FinalizedBlock"
+
+[L1InfoTreeSync]
+# N must stay below the chain's latest-to-finalized lag, e.g. "LatestBlock/-12"
+BlockFinality = "LatestBlock/-N"
+
+[AggSender]
+BlockFinalityForL1InfoTree = "FinalizedBlock"
+```
+
+`L1InfoTreeSync` syncing ahead of the multidownloader's reorg boundary lets the syncer build up
+its view of the L1 info tree without waiting on the multidownloader's own finality, so GERs are
+injected on L2 without the finality delay; `AggSender` still only proves against a `FinalizedBlock`
+root, so settlement safety is unchanged. The price is a transient window in which the `AggSender`
+sees claims whose GER is not yet under its root — the trimming described below handles it.
+
+### Startup guard
+
+At startup, `NewL1InfoTreeDataQuerier` (`aggsender/query/l1info_tree_data_query.go:41-51`) checks
+that `AggSender.BlockFinalityForL1InfoTree` is not *less final* than `L1InfoTreeSync.BlockFinality`:
+the `L1InfoTreeSync` syncer must sync at least as far towards the chain head as the point the
+`AggSender` wants to prove against, or that target root would never be produced. If the check
+fails, aggsender refuses to start with:
+
+```
+block finality misconfiguration (<AggSender.BlockFinalityForL1InfoTree>): l1infotreeSyncer finality (<L1InfoTreeSync.BlockFinality>) is lower; will never be fulfilled
+```
+
+The comparison (`LessFinalThan`, `types/block_finality.go`) orders tags
+`Finalized < Safe < Latest < Pending`, with offsets compared only when the tags are equal; a tag
+later in this order is **less final** (closer to the chain head, less confirmed) than one earlier
+in it. Because `LatestBlock/-N` is less final than `FinalizedBlock`, the recommended configuration
+above is accepted, and as long as `N` stays below the chain's latest-to-finalized lag a syncer
+relaxed to `LatestBlock/-N` advances at least as far as the `FinalizedBlock` root the `AggSender`
+selects. If `N` exceeds that lag the guard still accepts the pairing (tag order wins; offsets are
+only compared between equal tags) and nothing breaks — the `AggSender` degrades gracefully by
+proving against the syncer's last processed block instead (`getTargetL1BlockNumber`) — but the
+proving root then trails finality by the excess, widening the trimming window described below, so
+keep `N` small. **A conservative `AggSender` tag paired with a more relaxed `L1InfoTreeSync` tag
+is always accepted and settlement-safe.**
+
+The guard rejects the opposite pairing — **a relaxed `AggSender` tag paired with a more
+conservative `L1InfoTreeSync` tag** — because the syncer would then never advance far enough to
+reach the root the `AggSender` wants. This is the exact misconfiguration this fix targets: with
+`L1InfoTreeSync.BlockFinality = FinalizedBlock` (the pre-fix behaviour of `L1InfoTreeSync.Finality()`
+in multidownloader mode, aggkit#1846) and `AggSender.BlockFinalityForL1InfoTree = LatestBlock/-127`,
+startup fails with:
+
+```
+block finality misconfiguration (LatestBlock/-127): l1infotreeSyncer finality (FinalizedBlock) is lower; will never be fulfilled
+```
+
+### Claim trimming when a GER is not yet under the selected root
+
+A claim's `GlobalExitRoot` (GER) can exist on L1 (it has already been injected) while still being
+newer than the L1 info tree root the `AggSender` selected to prove against
+(`L1InfoTreeRootFromWhichToProve`) — a transient window that widens whenever
+`L1InfoTreeSync.BlockFinality` is relaxed relative to `AggSender.BlockFinalityForL1InfoTree`.
+`adjustClaimsNotProvableAgainstRoot` (`aggsender/flows/adjust_block_range.go`) handles this case by
+trimming the certificate instead of failing: it finds the lowest-block claim whose GER is not yet
+under the selected root, logs a warning, and trims the certificate's `ToBlock` down to the block
+right before it, so the certificate can still be built and settled with the claims that are already
+provable. The offending claim (and anything after it) is retried on a later cycle, once the
+selected root has advanced past it. The warning is logged once per build:
+
+```
+found a claim (<claim>) that uses a GER (<ger>) that exists on L1 but is not yet under the selected L1 info root <root> (leaf count <count>). Trimming down block range [<from> to <to>] to block <trimmedTo>
+```
+
+Trimming does **not** happen, and the certificate build still hard-errors, in three cases:
+
+1. **The offending claim is at `FromBlock`** — nothing provable remains after trimming, so there is
+   no smaller range to fall back to. The build fails every cycle until the selected root advances
+   past the claim:
+   ```
+   cannot create certificate: claim at block <fromBlock> (start block <fromBlock>) uses GER <ger> that exists on L1 but is not yet under the selected L1 info root <root> (leaf count <count>); it will be retried once the root includes it
+   ```
+2. **The GER *is* under the selected root, but the proof still fails** — this means the local L1
+   info tree data is inconsistent with its own root, a real bug rather than a transient timing
+   window, so it must surface instead of being masked by a trim:
+   ```
+   GER <ger> exists on L1 but cannot be proved against selected root <root>: <underlying error>
+   ```
+3. **`L1InfoTreeLeafCount` is 0** — with no leaves there is no way to tell whether the GER is under
+   the root or not, so the call errors defensively rather than guessing:
+   ```
+   GER <ger> exists on L1 but cannot be proved against selected root <root> and L1InfoTreeLeafCount is 0, cannot check whether the GER is under the root: <underlying error>
+   ```
+
 ## StorageRetainCertificatesPolicy
 The `StorageRetainCertificatesPolicy` structure configures the certificate retain policy
 | Field Name                    | Type                | Description                                                                                                     |
