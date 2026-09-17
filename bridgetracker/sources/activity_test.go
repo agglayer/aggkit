@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
@@ -235,6 +237,84 @@ func TestActivitySource_BridgesFrom_SkipsUnreachableNetworkAndWarns(t *testing.T
 	require.Len(t, warnings, 1)
 	require.Equal(t, uint32(2), warnings[0].NetworkID)
 	require.Contains(t, warnings[0].Message, "network 2")
+}
+
+// TestActivitySource_BridgesFrom_BoundsConcurrentNetworkScans pins that BridgesFrom never scans
+// more than ActivitySourceBridgeServiceConfig.MaxConcurrentNetworkScans networks at once,
+// regardless of how many the finder reports: unbounded per-request concurrency could otherwise
+// fan out one goroutine (two outbound calls apiece, see scanNetwork) per configured network, all
+// at once. The fake bridge service gates every GET /bridge/v1/bridges request on a shared
+// counter/channel pair, so the scans of every network but MaxConcurrentNetworkScans of them stay
+// parked until the test releases them.
+func TestActivitySource_BridgesFrom_BoundsConcurrentNetworkScans(t *testing.T) {
+	t.Parallel()
+
+	const (
+		maxConcurrent = 2
+		networkCount  = 5
+	)
+
+	var (
+		mu          sync.Mutex
+		inFlight    int
+		maxObserved int
+	)
+	release := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/bridge/v1/bridges", func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		inFlight++
+		if inFlight > maxObserved {
+			maxObserved = inFlight
+		}
+		mu.Unlock()
+
+		<-release
+
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+
+		require.NoError(t, json.NewEncoder(w).Encode(bridgeservicetypes.BridgesResult{}))
+	})
+	mux.HandleFunc("/bridge/v1/sync-status", func(w http.ResponseWriter, _ *http.Request) {
+		require.NoError(t, json.NewEncoder(w).Encode(bridgeservicetypes.SyncStatus{}))
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	networkIDs := make([]uint32, networkCount)
+	for i := range networkIDs {
+		networkIDs[i] = uint32(i + 1)
+	}
+	lister := fakeNetworkLister{networkIDs: networkIDs, url: server.URL}
+
+	source, err := NewActivitySource(lister, nil, testLogger,
+		bridgetracker.ActivitySourceBridgeServiceConfig{MaxConcurrentNetworkScans: maxConcurrent},
+		bridgetracker.ActivitySourceRPCConfig{})
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		_, _, _, _ = source.BridgesFrom(context.Background(), common.HexToAddress(testFromAddress), nil)
+		close(done)
+	}()
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return inFlight == maxConcurrent
+	}, time.Second, time.Millisecond, "exactly maxConcurrent scans should be in flight, the rest parked")
+
+	// give any bound violation a chance to show up before asserting on maxObserved
+	time.Sleep(20 * time.Millisecond)
+	mu.Lock()
+	observed := maxObserved
+	mu.Unlock()
+	require.Equal(t, maxConcurrent, observed, "no more than MaxConcurrentNetworkScans networks scan at once")
+
+	close(release)
+	<-done
 }
 
 // fakeMixedNetworkLister is a NetworkLister whose GetURL result varies per network, unlike
@@ -550,7 +630,7 @@ func (s stubRPCScanner) BridgesFrom(
 func activitySourceWithRPC(finder NetworkLister, rpc activityBridgeRPCScanner) *ActivitySource {
 	return &ActivitySource{
 		logger:                testLogger,
-		services:              newBridgeServiceClients(finder),
+		services:              newBridgeServiceClients(finder, 0),
 		finder:                finder,
 		pageSize:              bridgetracker.DefaultActivitySourceBridgeServicePageSize,
 		rpc:                   rpc,

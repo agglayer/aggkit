@@ -29,9 +29,10 @@ type BridgeStepPath struct {
 	// but StepCertificatePending (Status still InProgress) may already carry the certificate's
 	// current, not yet settled, status — see domain.ErrCertificateNotSettled
 	Result any `json:"result,omitempty"`
-	// Error carries the error details when Status is types.StepStatusError or
-	// types.StepStatusSkipped (the reason it was skipped, if any — see
-	// types.StepErrorSkipped), nil otherwise
+	// Error carries the error details when Status is types.StepStatusError, or
+	// types.StepStatusSkipped for the step whose real error triggered the claimed-bridge
+	// fallback — its own ErrorType/description are kept as-is. nil for every other step skipped
+	// alongside it, never itself attempted, and for every other status
 	Error *types.ErrorStep `json:"error,omitempty"`
 }
 

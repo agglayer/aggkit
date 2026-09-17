@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
@@ -121,14 +122,19 @@ func (f *FinderClients) RPCClientFor(ctx context.Context, networkID uint32) (agg
 // the cache only avoids rebuilding http.Clients for a stable URL
 type bridgeServiceClients struct {
 	finder NetworkURLResolver
+	// timeout is the per-request timeout every built client.Client is given (see
+	// aggkitBridgeClientFor); <= 0 leaves it at client.Client's own hardcoded
+	// client.DefaultTimeout, exactly as before this field existed
+	timeout time.Duration
 
 	mu      sync.Mutex
 	clients map[string]*client.Client
 }
 
-func newBridgeServiceClients(finder NetworkURLResolver) *bridgeServiceClients {
+func newBridgeServiceClients(finder NetworkURLResolver, timeout time.Duration) *bridgeServiceClients {
 	return &bridgeServiceClients{
 		finder:  finder,
+		timeout: timeout,
 		clients: make(map[string]*client.Client),
 	}
 }
@@ -148,7 +154,7 @@ func (b *bridgeServiceClients) aggkitBridgeClientFor(networkID uint32) (*client.
 	if c, ok := b.clients[urls.BridgeURL]; ok {
 		return c, nil
 	}
-	c := client.New(client.Config{BaseURL: urls.BridgeURL})
+	c := client.New(client.Config{BaseURL: urls.BridgeURL, Timeout: b.timeout})
 	b.clients[urls.BridgeURL] = c
 	return c, nil
 }
