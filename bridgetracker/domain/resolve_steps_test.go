@@ -597,16 +597,23 @@ func TestResolveStepsOnTerminalStepErrorIsRescuedWhenClaimed(t *testing.T) {
 		"WaitingClaim's own resolver is skipped over too, never called: it falls inside the skipped range")
 
 	steps := result.AllSteps()
-	for _, stepID := range []types.BridgeStep{
-		types.StepWaitL1SettledGER, types.StepWaitingL1InfoLeafAvailable, types.StepWaitingClaim,
-	} {
+	for _, stepID := range []types.BridgeStep{types.StepWaitL1SettledGER, types.StepWaitingL1InfoLeafAvailable, types.StepWaitingClaim} {
 		sp := steps[indexOfStep(steps, stepID)]
 		require.Equal(t, types.StepStatusSkipped, sp.Status, "%s", stepID)
-		require.Equal(t, types.StepErrorSkipped, sp.Error.ErrorType)
 	}
 	settledGERStep := steps[indexOfStep(steps, types.StepWaitL1SettledGER)]
+	require.Equal(t, types.StepErrorPermanent, settledGERStep.Error.ErrorType,
+		"the step that actually failed keeps its own real error type, not StepErrorSkipped")
 	require.Contains(t, settledGERStep.Error.Description[0], ErrBadSettlementTx.Error(),
 		"the reason recorded when it originally failed, not a generic one")
+	require.NotNil(t, settledGERStep.EndDate, "it did run, and this is when the tracker gave up on it")
+
+	for _, stepID := range []types.BridgeStep{types.StepWaitingL1InfoLeafAvailable, types.StepWaitingClaim} {
+		sp := steps[indexOfStep(steps, stepID)]
+		require.Nil(t, sp.Error, "%s: never attempted, so no real error of its own to report", stepID)
+		require.Nil(t, sp.StartDate, "%s: never attempted, so it never started", stepID)
+		require.Nil(t, sp.EndDate, "%s: never attempted, so it never ended either", stepID)
+	}
 
 	claimedStep := steps[indexOfStep(steps, types.StepClaimed)]
 	require.Equal(t, types.StepStatusDone, claimedStep.Status)
@@ -642,14 +649,17 @@ func TestResolveStepsSkipsOnAlreadyClaimed(t *testing.T) {
 
 	gerUpdate := steps[indexOfStep(steps, types.StepWaitingGERUpdate)]
 	require.Equal(t, types.StepStatusSkipped, gerUpdate.Status, "the step that actually failed")
-	require.Equal(t, types.StepErrorSkipped, gerUpdate.Error.ErrorType)
+	require.Equal(t, types.StepErrorTransient, gerUpdate.Error.ErrorType,
+		"keeps its own real error type, not StepErrorSkipped, since factsErr is a genuine transient failure")
 	require.Contains(t, gerUpdate.Error.Description[0], factsErr.Error(), "keeps its own real failure as the reason")
+	require.NotNil(t, gerUpdate.EndDate, "it did run, and this is when the tracker gave up on it")
 
 	for _, stepID := range []types.BridgeStep{types.StepWaitingGERInjection, types.StepWaitingL1InfoLeafAvailable, types.StepWaitingClaim} {
 		sp := steps[indexOfStep(steps, stepID)]
 		require.Equal(t, types.StepStatusSkipped, sp.Status, "%s: never attempted, skipped alongside the failing step", stepID)
-		require.Equal(t, types.StepErrorSkipped, sp.Error.ErrorType)
-		require.Equal(t, []string{"bridge already claimed on destination network; step left unverified"}, sp.Error.Description)
+		require.Nil(t, sp.Error, "%s: never attempted, so no real error of its own to report", stepID)
+		require.Nil(t, sp.StartDate, "%s: never attempted, so it never started", stepID)
+		require.Nil(t, sp.EndDate, "%s: never attempted, so it never ended either", stepID)
 	}
 
 	claimed := steps[indexOfStep(steps, types.StepClaimed)]
@@ -683,6 +693,8 @@ func TestResolveStepsRecoversAfterResolverTimeout(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"isClaimed", "claimFor"}, facts.queried)
 	require.Equal(t, types.StepStatusSkipped, recovered.AllSteps()[0].Status)
+	require.Equal(t, types.StepErrorTransient, recovered.AllSteps()[0].Error.ErrorType,
+		"keeps its own real error type, not StepErrorSkipped")
 	require.Contains(t, recovered.AllSteps()[0].Error.Description[0], context.DeadlineExceeded.Error())
 	require.Equal(t, types.TrackingStatusFinished, recovered.TrackingStatus())
 	require.Equal(t, claim, recovered.AllSteps()[len(recovered.AllSteps())-1].Result())

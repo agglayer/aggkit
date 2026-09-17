@@ -85,10 +85,20 @@ MaxTrackedBridges = 100000
 # to genesis.
 L2InjectionLookbackBlocks = 1000
 
+# MaxConcurrentResolutions: how many active bridges the engine's poll tick resolves at once --
+# independent of MaxTrackedBridges, which bounds the registry's size, not how much of it is in
+# flight during a single tick.
+MaxConcurrentResolutions = 50
+
 [Tracker.ActivitySourceBridgeService]
 # PageSize: page size used while paging through a network's own GET /bridge/v1/bridges scanning
 # for a given from_address.
 PageSize = 100
+
+# MaxConcurrentNetworkScans: how many networks GET /activity/from/{address} scans at once --
+# each one, in turn, queries this bridge-service source and the RPC fallback concurrently, so the
+# actual number of in-flight calls is up to twice this.
+MaxConcurrentNetworkScans = 10
 
 [Tracker.ActivitySourceRPC]
 # Enabled: when true, GET /activity/from/{address} additionally scans each network's own bridge

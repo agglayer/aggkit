@@ -43,7 +43,7 @@ func NewCertificateSource(
 	client CertificateHeaderClient, finder NetworkURLResolver, clients EthClientResolver, logger aggkitcommon.Logger,
 ) *CertificateSource {
 	return &CertificateSource{
-		client: client, services: newBridgeServiceClients(finder), clients: clients, logger: logger,
+		client: client, services: newBridgeServiceClients(finder, 0), clients: clients, logger: logger,
 	}
 }
 

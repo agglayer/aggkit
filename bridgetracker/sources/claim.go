@@ -20,7 +20,7 @@ type ClaimSource struct {
 // NewClaimSource returns a ClaimSource resolving per-network bridge service clients through
 // the given finder
 func NewClaimSource(finder NetworkURLResolver) *ClaimSource {
-	return &ClaimSource{services: newBridgeServiceClients(finder)}
+	return &ClaimSource{services: newBridgeServiceClients(finder, 0)}
 }
 
 // ClaimFor implements bridgetracker.ClaimSource: the bridge is claimed once the
