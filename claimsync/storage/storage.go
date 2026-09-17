@@ -309,10 +309,12 @@ func bigIntCmp(a, b *big.Int) int {
 	}
 }
 
-// bigIntStr renders a possibly-nil big.Int for error messages.
+// bigIntStr renders a possibly-nil big.Int for error messages. A real claim's GlobalIndex should
+// never be nil, so the nil case is rendered as "nil (unexpected)" rather than plain "nil" to make
+// that anomaly stand out when it shows up in an error message.
 func bigIntStr(v *big.Int) string {
 	if v == nil {
-		return "nil"
+		return "nil (unexpected)"
 	}
 	return v.String()
 }

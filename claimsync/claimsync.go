@@ -32,6 +32,25 @@ const (
 	// scan take tens of minutes. A short chain whose whole range fits within one chunk is still
 	// covered by exactly one bounded call, which is not the same thing as an unbounded probe.
 	defaultRPCScanBlockChunkSize = 10000
+
+	// maxRPCScanDuration bounds the *total* wall-clock time GetLatestBlockNumByGlobalIndexFromRPC
+	// may spend scanning chunks backwards, on top of each individual FilterLogs call already being
+	// bounded by sync.DefaultFilterLogsTimeout (2 minutes). Without an overall bound, an unresolved
+	// range on a long-lived chain (millions of blocks at the default 10000-block chunk size can
+	// need hundreds to thousands of chunks) has no limit on the *number* of sequential chunk calls:
+	// one scan attempt could run for hours even though no single call ever hangs, which undermines
+	// the very "never spin forever" goal that the caller's bounded retry budget
+	// (maxIBERPCLookupFailures, in aggsender/query/initial_block_to_claimsync_setter.go) exists to
+	// guarantee.
+	//
+	// 5 minutes is a deliberate trade-off. It is generous enough that a scan spanning hundreds of
+	// chunks against a healthy RPC (each chunk typically resolving in well under a second) is never
+	// prematurely aborted, while still bounding the pathological case -- a slow/hanging RPC where
+	// every chunk approaches the 2-minute per-call timeout -- to only a couple of chunks per attempt
+	// instead of tens of hours. Combined with maxIBERPCLookupFailures (5), the worst-case additional
+	// startup delay before the setter gives up and falls back to its safe lower bound is 5 * 5m =
+	// 25 minutes: long enough to look pathological in logs/metrics, but never unbounded.
+	maxRPCScanDuration = 5 * time.Minute
 )
 
 // ClaimSync is the standalone implementation that independently processes claim events.
@@ -252,11 +271,26 @@ func (c *ClaimSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big
 // scan. Any other chunk failure aborts the scan and returns an error that carries the failing
 // chunk's range and size.
 // Each underlying FilterLogs call is bounded by sync.DefaultFilterLogsTimeout so a hung RPC cannot
-// block the caller forever.
+// block the caller forever. In addition, the *entire* backwards scan (all chunks together) is
+// bounded by maxRPCScanDuration, so a huge unresolved range cannot run for an unbounded amount of
+// wall-clock time even though no single chunk call hangs; expiry of that overall deadline is
+// reported as an error (see below), never as "not found".
 // The bool return value is false when no matching log is found within the scanned range (no error in
-// that case); an error is returned only when the scan itself could not complete.
+// that case); an error is returned only when the scan itself could not complete -- including when
+// the overall scan deadline is exceeded before the scan reaches block 0.
 func (c *ClaimSync) GetLatestBlockNumByGlobalIndexFromRPC(
 	ctx context.Context, globalIndex *big.Int, toBlock *aggkittypes.BlockNumberFinality) (uint64, bool, error) {
+	return c.getLatestBlockNumByGlobalIndexFromRPC(ctx, globalIndex, toBlock, maxRPCScanDuration)
+}
+
+// getLatestBlockNumByGlobalIndexFromRPC implements GetLatestBlockNumByGlobalIndexFromRPC.
+// scanDeadline is factored out as a parameter (rather than referencing the maxRPCScanDuration
+// constant directly) solely so unit tests can exercise overall-deadline expiry without waiting on
+// the real constant's value; production code always calls this via GetLatestBlockNumByGlobalIndexFromRPC,
+// which passes maxRPCScanDuration.
+func (c *ClaimSync) getLatestBlockNumByGlobalIndexFromRPC(
+	ctx context.Context, globalIndex *big.Int, toBlock *aggkittypes.BlockNumberFinality,
+	scanDeadline time.Duration) (uint64, bool, error) {
 	if toBlock == nil {
 		toBlock = &aggkittypes.LatestBlock
 	}
@@ -279,10 +313,11 @@ func (c *ClaimSync) GetLatestBlockNumByGlobalIndexFromRPC(
 	}
 
 	// scanRange fetches logs for [from, to] and returns the block number of the matching log,
-	// or 0/false when no match is found in that range. A per-call timeout is applied so a hung
-	// RPC cannot block the retry loop that calls this function forever.
-	scanRange := func(from, to uint64) (uint64, bool, error) {
-		scanCtx, cancel := context.WithTimeout(ctx, sync.DefaultFilterLogsTimeout)
+	// or 0/false when no match is found in that range. A per-call timeout is applied (derived from
+	// parentCtx, which is the overall-scan-bounded context, so it can only ever fire sooner than
+	// the overall deadline, never later) so a hung RPC cannot block the retry loop forever.
+	scanRange := func(parentCtx context.Context, from, to uint64) (uint64, bool, error) {
+		callCtx, cancel := context.WithTimeout(parentCtx, sync.DefaultFilterLogsTimeout)
 		defer cancel()
 		query := ethereum.FilterQuery{
 			FromBlock: new(big.Int).SetUint64(from),
@@ -294,7 +329,7 @@ func (c *ClaimSync) GetLatestBlockNumByGlobalIndexFromRPC(
 				detailedClaimEventSignature,
 			}},
 		}
-		logs, err := c.ethClient.FilterLogs(scanCtx, query)
+		logs, err := c.ethClient.FilterLogs(callCtx, query)
 		if err != nil {
 			return 0, false, err
 		}
@@ -347,14 +382,31 @@ func (c *ClaimSync) GetLatestBlockNumByGlobalIndexFromRPC(
 		chunkSize = defaultRPCScanBlockChunkSize
 	}
 
-	c.logger.Infof("claimsync: scanning RPC logs for globalIndex %s in range [0, %d] with chunk size %d",
-		globalIndex.String(), toBlockNum, chunkSize)
+	c.logger.Infof("claimsync: scanning RPC logs for globalIndex %s in range [0, %d] with chunk size %d "+
+		"(overall scan deadline %s)", globalIndex.String(), toBlockNum, chunkSize, scanDeadline)
+
+	// overallScanCtx bounds the *entire* backwards scan below (all chunks together), on top of the
+	// per-chunk timeout scanRange already applies. It is derived from ctx, so if ctx already carries
+	// an earlier deadline, that earlier deadline still wins -- context.WithTimeout/WithDeadline are
+	// specified to fire at whichever of the parent's and the new deadline comes first, so this never
+	// extends a deadline the caller already imposed.
+	overallScanCtx, cancel := context.WithTimeout(ctx, scanDeadline)
+	defer cancel()
 
 	// Scan backwards in chunks of chunkSize, returning on the first match found. If a chunk
 	// fails with a recognised max-range error, shrink chunkSize to the reported value and retry
 	// the same window (current is left unchanged) before continuing the backwards scan.
 	current := toBlockNum
 	for {
+		select {
+		case <-overallScanCtx.Done():
+			return 0, false, fmt.Errorf(
+				"claimsync: overall RPC scan deadline (%s) exceeded for globalIndex %s before scanning chunk "+
+					"ending at block %d (requested range [0, %d]): %w",
+				scanDeadline, globalIndex.String(), current, toBlockNum, overallScanCtx.Err())
+		default:
+		}
+
 		chunkFrom := uint64(0)
 		if current >= chunkSize {
 			chunkFrom = current - chunkSize + 1
@@ -363,8 +415,19 @@ func (c *ClaimSync) GetLatestBlockNumByGlobalIndexFromRPC(
 		c.logger.Debugf("claimsync: scanning RPC logs for globalIndex %s in chunk [%d, %d]",
 			globalIndex.String(), chunkFrom, current)
 
-		blockNum, found, err := scanRange(chunkFrom, current)
+		blockNum, found, err := scanRange(overallScanCtx, chunkFrom, current)
 		if err != nil {
+			if overallScanCtx.Err() != nil {
+				// Distinguish an overall-deadline expiry (counted by the caller as a scan failure
+				// that is retried, per the setter's contract: err != nil => transient, retried up to
+				// maxIBERPCLookupFailures before falling back) from an ordinary per-chunk error. This
+				// is deliberately checked before the shrinkable/NextEthGetLogsWindow branch below,
+				// since a chunk failing because its own context expired is not a "too large" signal.
+				return 0, false, fmt.Errorf(
+					"claimsync: overall RPC scan deadline (%s) exceeded for globalIndex %s while scanning "+
+						"chunk [%d, %d] (requested range [0, %d]): %w",
+					scanDeadline, globalIndex.String(), chunkFrom, current, toBlockNum, overallScanCtx.Err())
+			}
 			newChunkSize, shrinkable := aggkitcommon.NextEthGetLogsWindow(err, chunkSize)
 			if shrinkable {
 				c.logger.Warnf("claimsync: RPC rejected chunk [%d, %d] for globalIndex %s as too large "+

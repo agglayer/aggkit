@@ -130,7 +130,7 @@ When a fallback happens, `AggSender` logs a WARN with the following exact text a
 should alert on:
 
 ```
-falling back claim syncer start block for settled imported bridge exit: <reason>. Using block <N> (<source>) as the lower bound. settled blocks: <settled blocks>
+falling back claim syncer start block for settled imported bridge exit: <reason>. Using block <N> (<source>) as the lower bound. settled blocks: <settled blocks>. Action: check the L2 RPC for pruned/missing history around this claim -- it may be unable to serve logs far enough back for this global index
 ```
 
 - Metric: `aggsender_claim_syncer_start_block_fallback_total` (a `Counter`, labeled by `reason`)

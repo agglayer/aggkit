@@ -576,3 +576,61 @@ func TestGetLatestBlockNumByGlobalIndexFromRPC_HungRPC_RespectsTimeout(t *testin
 	require.False(t, observedDeadline.After(afterCall.Add(sync.DefaultFilterLogsTimeout)),
 		"observed deadline is later than afterCall+DefaultFilterLogsTimeout: %s", observedDeadline)
 }
+
+// TestGetLatestBlockNumByGlobalIndexFromRPC_OverallScanDeadline_ExceededDuringManyChunks verifies
+// that the *overall* scan deadline (maxRPCScanDuration in production, passed here as a short
+// scanDeadline via the unexported entry point so the test doesn't need to wait on the real 5-minute
+// constant) cuts a scan short and returns an error -- not a plain "not found" -- when the requested
+// range would need far more chunks than can be scanned within that deadline.
+//
+// chunkSize is configured to 1, so covering toBlock (100,000,000) backwards to 0 would need on the
+// order of 100 million chunks; each mocked FilterLogs call sleeps 5ms, so only a handful of chunks
+// can complete inside the 20ms scanDeadline, proving the scan is cut short long before reaching
+// block 0.
+func TestGetLatestBlockNumByGlobalIndexFromRPC_OverallScanDeadline_ExceededDuringManyChunks(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	ethClient := mocks.NewEthClienter(t)
+	c := newTestClaimSyncForRPC(t, ethClient)
+	c.cfg.SyncBlockChunkSize = 1
+	toBlock := aggkittypes.NewBlockNumber(100_000_000)
+
+	ethClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).
+		RunAndReturn(func(callCtx context.Context, _ ethereum.FilterQuery) ([]types.Log, error) {
+			time.Sleep(5 * time.Millisecond)
+			return nil, nil
+		})
+
+	_, found, err := c.getLatestBlockNumByGlobalIndexFromRPC(ctx, big.NewInt(1), toBlock, 20*time.Millisecond)
+	require.False(t, found)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "overall RPC scan deadline")
+	require.ErrorContains(t, err, "20ms")
+	require.ErrorContains(t, err, "100000000") // requested range is reported for diagnosability
+}
+
+// TestGetLatestBlockNumByGlobalIndexFromRPC_OverallScanDeadline_NormalScanUnaffected verifies that a
+// scan which comfortably completes within the overall scan deadline still returns its correct
+// result -- i.e. the new overall-deadline bookkeeping does not interfere with an ordinary,
+// fast-completing multi-chunk scan.
+func TestGetLatestBlockNumByGlobalIndexFromRPC_OverallScanDeadline_NormalScanUnaffected(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	ethClient := mocks.NewEthClienter(t)
+	c := newTestClaimSyncForRPC(t, ethClient)
+	c.cfg.SyncBlockChunkSize = 300
+	bridgeAddr := c.cfg.BridgeAddr
+
+	globalIndex := big.NewInt(5)
+	matchingLog := buildClaimEventLog(t, globalIndex, common.HexToHash("0x55"), 900)
+
+	ethClient.EXPECT().FilterLogs(mock.Anything, expectedFilterQuery(bridgeAddr, 701, 1000)).
+		Return([]types.Log{matchingLog}, nil).Once()
+
+	// A generous 1s scanDeadline that a handful of immediately-returning mock calls will never
+	// come close to exhausting.
+	blockNum, found, err := c.getLatestBlockNumByGlobalIndexFromRPC(ctx, globalIndex, nil, time.Second)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, uint64(900), blockNum)
+}

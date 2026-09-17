@@ -31,7 +31,25 @@ const (
 	// initial-check retry handler with a small, fixed attempt budget and panics once it is
 	// exhausted, so a fixed threshold larger than that budget would make this fallback dead code
 	// for the validator specifically.
+	//
+	// Why 5: the RPC scan this counts (ClaimSync.GetLatestBlockNumByGlobalIndexFromRPC) is always
+	// chunked and is itself bounded end-to-end by an overall scan deadline (claimsync's
+	// maxRPCScanDuration, currently 5 minutes) on top of each chunk's own per-call timeout, so a
+	// single failed attempt costs at most that overall deadline, not an unbounded probe. 5 is
+	// chosen to give a handful of retries to genuinely transient conditions (a brief RPC blip, a
+	// single slow chunk) without letting a persistently broken/absent RPC delay startup
+	// indefinitely: worst case, 5 consecutive failures cost 5 * maxRPCScanDuration = 25 minutes
+	// before this falls back to the safe lower bound -- long enough to look pathological in
+	// logs/metrics, but bounded.
 	maxIBERPCLookupFailures = 5
+
+	// defaultRetryPeriod is the delay between attempts used by the default retryHandler that
+	// SetClaimSyncerNextRequiredBlock builds when the caller passes a nil one (e.g. the AggSender
+	// proposer). One second matches the delay every other aggkit component uses for this same
+	// "poll until it becomes possible" bootstrap-retry pattern, and is short enough that a
+	// transient failure (e.g. agglayer or the RPC briefly unavailable at startup) is retried
+	// promptly without generating excessive log/metric noise.
+	defaultRetryPeriod = time.Second
 )
 
 // SettledIBELowerBounder derives a provable lower-bound L2 block number for a settled imported
@@ -121,7 +139,7 @@ func (n *SetInitialBlockToClaimSyncer) SetClaimSyncerNextRequiredBlock(
 	}
 	if retryHandler == nil {
 		retryHandler = aggkitcommon.NewRetryHandler(
-			[]configtypes.Duration{{Duration: time.Second}},
+			[]configtypes.Duration{{Duration: defaultRetryPeriod}},
 			aggkitcommon.MaxAttemptsInfinite,
 		)
 	}
@@ -299,7 +317,9 @@ func (n *SetInitialBlockToClaimSyncer) fallbackSettledIBEBlock(
 	blocks.LastImportedBridgeExitBlock = lowerBound
 	blocks.LastImportedBridgeExitBlockErr = nil
 	n.logger.Warnf("falling back claim syncer start block for settled imported bridge exit: %s. "+
-		"Using block %d (%s) as the lower bound. settled blocks: %s",
+		"Using block %d (%s) as the lower bound. settled blocks: %s. "+
+		"Action: check the L2 RPC for pruned/missing history around this claim -- it may be unable to "+
+		"serve logs far enough back for this global index",
 		reasonMsg, lowerBound, lowerBoundSource, blocks.String())
 	metrics.ClaimSyncerStartBlockFallback(metricReason)
 }
