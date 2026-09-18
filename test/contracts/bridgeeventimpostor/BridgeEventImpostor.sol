@@ -9,6 +9,10 @@ pragma solidity 0.8.18;
 // canonical bridge address BridgeEventSource.FindBridge resolves. It lets a test simulate "a tx
 // whose only BridgeEvent-shaped log comes from a non-bridge contract" without needing a second
 // deployment of the real (large) bridge contract.
+//
+// TEST-ONLY: this contract exists purely to be rejected by that check. It must never be
+// deployed to a production or public network -- it deliberately emits bridge-shaped logs it
+// has no authority to emit, and nothing here is part of the aggkit runtime.
 contract BridgeEventImpostor {
     event BridgeEvent(
         uint8 leafType,

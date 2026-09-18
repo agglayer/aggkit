@@ -313,10 +313,22 @@ should inspect `sync_status`/`details`, never the HTTP status code of this endpo
 The result is cached for `bridgeservice.DefaultHealthCheckCacheTTL` (2 seconds) so a burst of
 concurrent health probes within that window collapses into a single underlying computation instead of
 recomputing `sync_status` on every call; a stale-cache read and a fresh computation racing each other
-share the same in-flight result rather than duplicating work. **`HealthCheckCacheTTL` is a Go constant
-today, not a configuration field** — there is no `[BridgeService]` TOML section, and this value is not
-wired to any CLI flag or config key, so it cannot be overridden from `config.toml.example` or anywhere
-else; changing it requires a code change.
+share the same in-flight result rather than duplicating work.
+
+A single computation is additionally bounded by `Config.HealthCheckComputeTimeout` (default
+`bridgeservice.DefaultHealthCheckComputeTimeout`, 3 seconds), deliberately separate from
+`ReadTimeout`. `ReadTimeout` is request-scoped and can be as large as 5 minutes
+(`PublicREST.ReadTimeout`'s default), which is sized for large paginated response bodies, not for a
+liveness probe: without its own bound, a black-holed RPC endpoint would let `/` and `/health` hang for
+up to `ReadTimeout`, taking every concurrent caller waiting on the shared in-flight result with them.
+On expiry the endpoint still answers **200** with `sync_status: "error"`, never a hang. Raise it if
+your RPC endpoints are legitimately slower than the default.
+
+**Both `HealthCheckCacheTTL` and `HealthCheckComputeTimeout` are fields on `bridgeservice.Config`
+with the Go defaults above, but neither is wired to TOML today** — there is no `[BridgeService]`
+section, so they cannot be set from `config.toml.example` or a CLI flag. Code embedding the bridge
+service can set them; changing the effective default for a normal deployment currently requires a
+code change.
 
 ## Sync status
 

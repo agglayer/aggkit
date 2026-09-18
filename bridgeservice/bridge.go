@@ -136,6 +136,11 @@ type Config struct {
 	// into a single computeSyncStatus call. Zero (the field's default when unset -- there is no
 	// [BridgeService] TOML section today) falls back to DefaultHealthCheckCacheTTL.
 	HealthCheckCacheTTL cfgtypes.Duration
+	// HealthCheckComputeTimeout bounds a single health-check sync-status computation,
+	// independently of ReadTimeout (see DefaultHealthCheckComputeTimeout for why the two must not
+	// share a budget). Zero (the field's default when unset -- there is no [BridgeService] TOML
+	// section today) falls back to DefaultHealthCheckComputeTimeout.
+	HealthCheckComputeTimeout cfgtypes.Duration
 }
 
 // BridgeService contains implementations for the bridge service endpoints
@@ -155,6 +160,9 @@ type BridgeService struct {
 	// healthCache caches the sync-status derivation reused by HealthCheckHandler, see
 	// healthCheckCache's doc comment.
 	healthCache *healthCheckCache
+	// healthCheckComputeTimeout bounds one health-check computation, see Config's field of the
+	// same name.
+	healthCheckComputeTimeout time.Duration
 }
 
 // New returns instance of BridgeService
@@ -175,6 +183,11 @@ func New(
 		healthCheckCacheTTL = DefaultHealthCheckCacheTTL.Duration
 	}
 
+	healthCheckComputeTimeout := cfg.HealthCheckComputeTimeout.Duration
+	if healthCheckComputeTimeout <= 0 {
+		healthCheckComputeTimeout = DefaultHealthCheckComputeTimeout
+	}
+
 	b := &BridgeService{
 		logger:                      cfg.Logger,
 		readTimeout:                 cfg.ReadTimeout,
@@ -189,6 +202,7 @@ func New(
 		claimL1:                     claimL1,
 		claimL2:                     claimL2,
 		healthCache:                 newHealthCheckCache(healthCheckCacheTTL),
+		healthCheckComputeTimeout:   healthCheckComputeTimeout,
 	}
 
 	cfg.Logger.Info("bridge service initialized successfully")
@@ -258,11 +272,11 @@ func (b *BridgeService) HealthCheckHandler(c *gin.Context) {
 
 	syncStatus, details := b.healthCache.getOrCompute(func() (types.HealthSyncStatus, types.HealthCheckDetails) {
 		// Deliberately detached from c's request context and bounded by
-		// DefaultHealthCheckComputeTimeout rather than b.readTimeout: getOrCompute may share this
+		// b.healthCheckComputeTimeout rather than b.readTimeout: getOrCompute may share this
 		// single computation across many concurrent callers (single-flight), so it must not be
 		// tied to, or cut short by, any one caller's own lifecycle, and it must not inherit
 		// Config.ReadTimeout's request-sized budget (see DefaultHealthCheckComputeTimeout's doc).
-		ctx, cancel := context.WithTimeout(context.Background(), DefaultHealthCheckComputeTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), b.healthCheckComputeTimeout)
 		defer cancel()
 		return b.buildHealthCheckDetails(ctx)
 	})

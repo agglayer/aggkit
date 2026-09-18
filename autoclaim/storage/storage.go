@@ -343,7 +343,7 @@ func (s *Storage) SeedLERCursorsFromLegacy(
 	// are ON CONFLICT DO NOTHING against the same row the pre-check would have raced with anyway.
 	var probeExists int
 	switch probeErr := s.database.QueryRowContext(dbCtx,
-		"SELECT 1 FROM autoclaim_ler_cursor_legacy WHERE source_network = ?", sourceNetwork,
+		"SELECT 1 FROM autoclaim_ler_cursor_legacy WHERE source_network = ? LIMIT 1", sourceNetwork,
 	).Scan(&probeExists); {
 	case errors.Is(probeErr, sql.ErrNoRows):
 		return false, nil

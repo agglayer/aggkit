@@ -4135,6 +4135,54 @@ func TestHealthCheckHandler_ComputeTimeout(t *testing.T) {
 	require.Contains(t, response.Details.L1.Error, "context deadline exceeded")
 }
 
+// TestHealthCheckHandler_ComputeTimeoutIsConfigurable proves Config.HealthCheckComputeTimeout
+// overrides DefaultHealthCheckComputeTimeout, so an operator whose RPC endpoints are slower than
+// the 3s default can raise the bound (and a test can lower it) without patching a package var.
+// The default itself is deliberately left large here: if the configured value were ignored and
+// the default used instead, this call would take ~1s (ReadTimeout) or the full default, not ~30ms.
+func TestHealthCheckHandler_ComputeTimeoutIsConfigurable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	b := bridgeWithMocks{
+		upgradeQuerier: mocks.NewAgglayerManagerUpgradeQuerier(t),
+		l1InfoTree:     mocks.NewL1InfoTreeSyncer(t),
+		injectedGERs:   mocks.NewL2GERSyncer(t),
+		bridgeL1:       mocks.NewBridger(t),
+		claimL1:        mocks.NewClaimer(t),
+		bridgeL2:       mocks.NewBridger(t),
+		claimL2:        mocks.NewClaimer(t),
+	}
+	cfg := &Config{
+		Logger:                    log.WithFields("module", "test bridge service"),
+		ReadTimeout:               time.Second,
+		NetworkID:                 l2NetworkID,
+		HealthCheckCacheTTL:       cfgtypes.Duration{Duration: time.Hour},
+		HealthCheckComputeTimeout: cfgtypes.Duration{Duration: 30 * time.Millisecond},
+	}
+	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs,
+		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
+	b.router = gin.New()
+	b.bridge.RegisterRoutes(b.router)
+
+	b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+	b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+		RunAndReturn(func(ctx context.Context) (uint32, error) {
+			<-ctx.Done()
+			return 0, ctx.Err()
+		}).Once()
+
+	start := time.Now()
+	w := performRequest(t, b.router, "/health")
+	elapsed := time.Since(start)
+
+	require.Equal(t, http.StatusOK, w.Code, "health check must always answer 200, even on a compute timeout")
+	require.Less(t, elapsed, 500*time.Millisecond,
+		"handler must honour Config.HealthCheckComputeTimeout, not ReadTimeout or the package default")
+
+	var response bridgetypes.HealthCheckResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, bridgetypes.HealthSyncStatusError, response.SyncStatus)
+}
+
 // TestGetSyncStatusHandler_UnaffectedByHealthCheckRefactor proves /bridge/v1/sync-status's
 // response shape is unchanged (byte-compatible) after factoring its computation out into
 // computeSyncStatus for reuse by HealthCheckHandler: no sync_status/details leakage, and the
