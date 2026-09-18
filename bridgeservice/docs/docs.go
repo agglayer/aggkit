@@ -24,7 +24,7 @@ const docTemplate = `{
     "paths": {
         "/": {
             "get": {
-                "description": "Returns the health status and version information of the bridge service",
+                "description": "Returns the health status, version information and summary bridge sync status of\nthe bridge service. Always responds 200 -- see SyncStatus/Details for sync health.",
                 "produces": [
                     "application/json"
                 ],
@@ -34,15 +34,9 @@ const docTemplate = `{
                 "summary": "Get health status",
                 "responses": {
                     "200": {
-                        "description": "Health status and version information",
+                        "description": "Health status, version and sync status information",
                         "schema": {
                             "$ref": "#/definitions/github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
                         }
                     }
                 }
@@ -586,6 +580,26 @@ const docTemplate = `{
                         "description": "Public bridge service configuration",
                         "schema": {
                             "$ref": "#/definitions/types.PublicConfigResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "description": "Returns the health status, version information and summary bridge sync status of\nthe bridge service. Always responds 200 -- see SyncStatus/Details for sync health.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Get health status",
+                "responses": {
+                    "200": {
+                        "description": "Health status, version and sync status information",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse"
                         }
                     }
                 }
@@ -1231,8 +1245,24 @@ const docTemplate = `{
             "description": "Contains basic health‐check information for the bridge service",
             "type": "object",
             "properties": {
+                "details": {
+                    "description": "Details gives a compact per-component breakdown backing SyncStatus. It intentionally\ndoes not duplicate the full SyncStatus (deposit counts, block numbers) payload -- callers\nwanting that detail should use GET /bridge/v1/sync-status.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/types.HealthCheckDetails"
+                        }
+                    ]
+                },
                 "status": {
                     "type": "string"
+                },
+                "sync_status": {
+                    "description": "SyncStatus summarizes bridge synchronization health as one of \"done\", \"pending\" or\n\"error\". It never affects the HTTP status code of this endpoint (always 200) so that\nliveness/routing probes never evict a healthy-but-lagging instance -- see\nbridgeservicefinder/health.go and docs/bridge_service.md's health check section.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/types.HealthSyncStatus"
+                        }
+                    ]
                 },
                 "time": {
                     "type": "string"
@@ -1542,6 +1572,26 @@ const docTemplate = `{
                 }
             }
         },
+        "types.ComponentHealth": {
+            "description": "Minimal per-component health summary.",
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "Error is set (non-empty) only when this component is configured/active but its sync\nstatus could not be computed; its presence alone is what drives HealthSyncStatusError for\nthis component, independent of IsSynced.",
+                    "type": "string",
+                    "example": "failed to get deposit count from L1 bridge contract: dial tcp: timeout"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "is_synced": {
+                    "description": "IsSynced is omitted for a component with no meaningful notion of \"caught up\" today\n(e.g. l2gersync, which currently exposes no is_synced signal -- see docs/bridge_service.md).",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
         "types.ErrorResponse": {
             "description": "Generic error response structure",
             "type": "object",
@@ -1551,6 +1601,35 @@ const docTemplate = `{
                     "example": "Error message"
                 }
             }
+        },
+        "types.HealthCheckDetails": {
+            "description": "Per-component sync summary. A nil component (not configured on this instance, e.g. no L1 bridge syncer on an L2-only bridge service) is omitted entirely.",
+            "type": "object",
+            "properties": {
+                "l1": {
+                    "$ref": "#/definitions/types.ComponentHealth"
+                },
+                "l2": {
+                    "$ref": "#/definitions/types.ComponentHealth"
+                },
+                "l2_ger": {
+                    "$ref": "#/definitions/types.ComponentHealth"
+                }
+            }
+        },
+        "types.HealthSyncStatus": {
+            "description": "Coarse bridge sync health: \"done\" (fully caught up), \"pending\" (active and catching up, not an error) or \"error\" (a configured component is halted or its sync status could not be computed).",
+            "type": "string",
+            "enum": [
+                "done",
+                "pending",
+                "error"
+            ],
+            "x-enum-varnames": [
+                "HealthSyncStatusDone",
+                "HealthSyncStatusPending",
+                "HealthSyncStatusError"
+            ]
         },
         "types.L1ContractsConfig": {
             "description": "L1 smart contract addresses",
