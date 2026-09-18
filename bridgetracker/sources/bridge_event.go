@@ -34,28 +34,36 @@ type BridgeEventSource struct {
 	// l2Finality is the block finality an L2 (non-zero network) receipt must reach before it
 	// is accepted; see l1Finality for the reasoning
 	l2Finality aggkittypes.BlockNumberFinality
-	// bridgeAddrs is the per-network canonical bridge contract address a BridgeEvent log's
-	// emitter must match to be accepted (see FindBridge). A network absent from this map has
-	// no configured address yet, so its logs are still matched on the event signature alone.
+	// bridgeAddrs is the static networkID -> canonical bridge contract address override,
+	// consulted before resolver; see FindBridge.
 	bridgeAddrs map[uint32]common.Address
+	// resolver resolves the canonical bridge contract address for a network not present in
+	// bridgeAddrs. Required (fail closed): FindBridge never accepts a BridgeEvent log without
+	// either an override or a successful resolver call.
+	resolver bridgeAddressResolver
 }
 
 // NewBridgeEventSource returns a BridgeEventSource resolving per-network JSON-RPC clients
 // through the given resolver, accepting a tx's receipt only once it reaches l1Finality (for
 // network 0) or l2Finality (for any other network). bridgeAddrs is the static
-// networkID -> canonical bridge contract address map used to reject a BridgeEvent log emitted
-// by an unrelated or malicious contract; a network absent from it (or a nil map) keeps matching
-// logs on the event signature alone.
+// networkID -> canonical bridge contract address override used to reject a BridgeEvent log
+// emitted by an unrelated or malicious contract; a network absent from it falls back to
+// resolver, which is required (fail closed — there is no permissive fallback if neither knows
+// the network's bridge address).
 func NewBridgeEventSource(
 	clients EthClientResolver, l1Finality, l2Finality aggkittypes.BlockNumberFinality,
-	bridgeAddrs map[uint32]common.Address,
+	bridgeAddrs map[uint32]common.Address, resolver bridgeAddressResolver,
 ) (*BridgeEventSource, error) {
+	if resolver == nil {
+		return nil, fmt.Errorf("bridge address resolver is required")
+	}
 	parser, err := agglayerbridge.NewAgglayerbridge(common.Address{}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating bridge contract parser: %w", err)
 	}
 	return &BridgeEventSource{
-		clients: clients, parser: parser, l1Finality: l1Finality, l2Finality: l2Finality, bridgeAddrs: bridgeAddrs,
+		clients: clients, parser: parser, l1Finality: l1Finality, l2Finality: l2Finality,
+		bridgeAddrs: bridgeAddrs, resolver: resolver,
 	}, nil
 }
 
@@ -106,13 +114,20 @@ func (s *BridgeEventSource) FindBridge(
 		return nil, fmt.Errorf("%s reverted: %w", id, bridgetracker.ErrBridgeTxNotABridge)
 	}
 
-	wantAddr, checkAddr := s.bridgeAddrs[id.NetworkID]
+	wantAddr, ok := s.bridgeAddrs[id.NetworkID]
+	if !ok {
+		var err error
+		wantAddr, err = s.resolver.BridgeAddress(ctx, id.NetworkID)
+		if err != nil {
+			return nil, fmt.Errorf("resolving canonical bridge address for network %d: %w", id.NetworkID, err)
+		}
+	}
 
 	for _, l := range receipt.Logs {
 		if len(l.Topics) == 0 || l.Topics[0] != bridgeEventSignature {
 			continue
 		}
-		if checkAddr && l.Address != wantAddr {
+		if l.Address != wantAddr {
 			continue
 		}
 		event, err := s.parser.ParseBridgeEvent(*l)
