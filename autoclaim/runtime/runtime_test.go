@@ -809,12 +809,16 @@ func (*fakeStorage) SaveBridgeCursor(
 	return nil
 }
 
-func (*fakeStorage) GetLERCursor(context.Context, uint32) (*autoclaimtypes.LERCursor, bool, error) {
+func (*fakeStorage) GetLERCursor(context.Context, uint32, uint32) (*autoclaimtypes.LERCursor, bool, error) {
 	return nil, false, nil
 }
 
-func (*fakeStorage) SaveLERCursor(context.Context, uint32, autoclaimtypes.LERCursor, time.Time) error {
+func (*fakeStorage) SaveLERCursor(context.Context, uint32, uint32, autoclaimtypes.LERCursor, time.Time) error {
 	return nil
+}
+
+func (*fakeStorage) SeedLERCursorsFromLegacy(context.Context, uint32, []uint32, time.Time) (bool, error) {
+	return false, nil
 }
 
 func (*fakeStorage) ApproveManualRequest(

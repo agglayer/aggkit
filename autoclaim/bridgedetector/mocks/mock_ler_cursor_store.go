@@ -24,9 +24,9 @@ func (_m *LERCursorStore) EXPECT() *LERCursorStore_Expecter {
 	return &LERCursorStore_Expecter{mock: &_m.Mock}
 }
 
-// GetLERCursor provides a mock function with given fields: ctx, sourceNetwork
-func (_m *LERCursorStore) GetLERCursor(ctx context.Context, sourceNetwork uint32) (*types.LERCursor, bool, error) {
-	ret := _m.Called(ctx, sourceNetwork)
+// GetLERCursor provides a mock function with given fields: ctx, sourceNetwork, destinationNetwork
+func (_m *LERCursorStore) GetLERCursor(ctx context.Context, sourceNetwork uint32, destinationNetwork uint32) (*types.LERCursor, bool, error) {
+	ret := _m.Called(ctx, sourceNetwork, destinationNetwork)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetLERCursor")
@@ -35,25 +35,25 @@ func (_m *LERCursorStore) GetLERCursor(ctx context.Context, sourceNetwork uint32
 	var r0 *types.LERCursor
 	var r1 bool
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32) (*types.LERCursor, bool, error)); ok {
-		return rf(ctx, sourceNetwork)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) (*types.LERCursor, bool, error)); ok {
+		return rf(ctx, sourceNetwork, destinationNetwork)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32) *types.LERCursor); ok {
-		r0 = rf(ctx, sourceNetwork)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) *types.LERCursor); ok {
+		r0 = rf(ctx, sourceNetwork, destinationNetwork)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.LERCursor)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint32) bool); ok {
-		r1 = rf(ctx, sourceNetwork)
+	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32) bool); ok {
+		r1 = rf(ctx, sourceNetwork, destinationNetwork)
 	} else {
 		r1 = ret.Get(1).(bool)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, uint32) error); ok {
-		r2 = rf(ctx, sourceNetwork)
+	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32) error); ok {
+		r2 = rf(ctx, sourceNetwork, destinationNetwork)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -69,13 +69,14 @@ type LERCursorStore_GetLERCursor_Call struct {
 // GetLERCursor is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sourceNetwork uint32
-func (_e *LERCursorStore_Expecter) GetLERCursor(ctx interface{}, sourceNetwork interface{}) *LERCursorStore_GetLERCursor_Call {
-	return &LERCursorStore_GetLERCursor_Call{Call: _e.mock.On("GetLERCursor", ctx, sourceNetwork)}
+//   - destinationNetwork uint32
+func (_e *LERCursorStore_Expecter) GetLERCursor(ctx interface{}, sourceNetwork interface{}, destinationNetwork interface{}) *LERCursorStore_GetLERCursor_Call {
+	return &LERCursorStore_GetLERCursor_Call{Call: _e.mock.On("GetLERCursor", ctx, sourceNetwork, destinationNetwork)}
 }
 
-func (_c *LERCursorStore_GetLERCursor_Call) Run(run func(ctx context.Context, sourceNetwork uint32)) *LERCursorStore_GetLERCursor_Call {
+func (_c *LERCursorStore_GetLERCursor_Call) Run(run func(ctx context.Context, sourceNetwork uint32, destinationNetwork uint32)) *LERCursorStore_GetLERCursor_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint32))
+		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32))
 	})
 	return _c
 }
@@ -85,22 +86,22 @@ func (_c *LERCursorStore_GetLERCursor_Call) Return(_a0 *types.LERCursor, _a1 boo
 	return _c
 }
 
-func (_c *LERCursorStore_GetLERCursor_Call) RunAndReturn(run func(context.Context, uint32) (*types.LERCursor, bool, error)) *LERCursorStore_GetLERCursor_Call {
+func (_c *LERCursorStore_GetLERCursor_Call) RunAndReturn(run func(context.Context, uint32, uint32) (*types.LERCursor, bool, error)) *LERCursorStore_GetLERCursor_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// SaveLERCursor provides a mock function with given fields: ctx, sourceNetwork, cursor, now
-func (_m *LERCursorStore) SaveLERCursor(ctx context.Context, sourceNetwork uint32, cursor types.LERCursor, now time.Time) error {
-	ret := _m.Called(ctx, sourceNetwork, cursor, now)
+// SaveLERCursor provides a mock function with given fields: ctx, sourceNetwork, destinationNetwork, cursor, now
+func (_m *LERCursorStore) SaveLERCursor(ctx context.Context, sourceNetwork uint32, destinationNetwork uint32, cursor types.LERCursor, now time.Time) error {
+	ret := _m.Called(ctx, sourceNetwork, destinationNetwork, cursor, now)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SaveLERCursor")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, types.LERCursor, time.Time) error); ok {
-		r0 = rf(ctx, sourceNetwork, cursor, now)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, types.LERCursor, time.Time) error); ok {
+		r0 = rf(ctx, sourceNetwork, destinationNetwork, cursor, now)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -116,15 +117,16 @@ type LERCursorStore_SaveLERCursor_Call struct {
 // SaveLERCursor is a helper method to define mock.On call
 //   - ctx context.Context
 //   - sourceNetwork uint32
+//   - destinationNetwork uint32
 //   - cursor types.LERCursor
 //   - now time.Time
-func (_e *LERCursorStore_Expecter) SaveLERCursor(ctx interface{}, sourceNetwork interface{}, cursor interface{}, now interface{}) *LERCursorStore_SaveLERCursor_Call {
-	return &LERCursorStore_SaveLERCursor_Call{Call: _e.mock.On("SaveLERCursor", ctx, sourceNetwork, cursor, now)}
+func (_e *LERCursorStore_Expecter) SaveLERCursor(ctx interface{}, sourceNetwork interface{}, destinationNetwork interface{}, cursor interface{}, now interface{}) *LERCursorStore_SaveLERCursor_Call {
+	return &LERCursorStore_SaveLERCursor_Call{Call: _e.mock.On("SaveLERCursor", ctx, sourceNetwork, destinationNetwork, cursor, now)}
 }
 
-func (_c *LERCursorStore_SaveLERCursor_Call) Run(run func(ctx context.Context, sourceNetwork uint32, cursor types.LERCursor, now time.Time)) *LERCursorStore_SaveLERCursor_Call {
+func (_c *LERCursorStore_SaveLERCursor_Call) Run(run func(ctx context.Context, sourceNetwork uint32, destinationNetwork uint32, cursor types.LERCursor, now time.Time)) *LERCursorStore_SaveLERCursor_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint32), args[2].(types.LERCursor), args[3].(time.Time))
+		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32), args[3].(types.LERCursor), args[4].(time.Time))
 	})
 	return _c
 }
@@ -134,7 +136,66 @@ func (_c *LERCursorStore_SaveLERCursor_Call) Return(_a0 error) *LERCursorStore_S
 	return _c
 }
 
-func (_c *LERCursorStore_SaveLERCursor_Call) RunAndReturn(run func(context.Context, uint32, types.LERCursor, time.Time) error) *LERCursorStore_SaveLERCursor_Call {
+func (_c *LERCursorStore_SaveLERCursor_Call) RunAndReturn(run func(context.Context, uint32, uint32, types.LERCursor, time.Time) error) *LERCursorStore_SaveLERCursor_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SeedLERCursorsFromLegacy provides a mock function with given fields: ctx, sourceNetwork, destinationNetworks, now
+func (_m *LERCursorStore) SeedLERCursorsFromLegacy(ctx context.Context, sourceNetwork uint32, destinationNetworks []uint32, now time.Time) (bool, error) {
+	ret := _m.Called(ctx, sourceNetwork, destinationNetworks, now)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SeedLERCursorsFromLegacy")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, []uint32, time.Time) (bool, error)); ok {
+		return rf(ctx, sourceNetwork, destinationNetworks, now)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, []uint32, time.Time) bool); ok {
+		r0 = rf(ctx, sourceNetwork, destinationNetworks, now)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint32, []uint32, time.Time) error); ok {
+		r1 = rf(ctx, sourceNetwork, destinationNetworks, now)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// LERCursorStore_SeedLERCursorsFromLegacy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SeedLERCursorsFromLegacy'
+type LERCursorStore_SeedLERCursorsFromLegacy_Call struct {
+	*mock.Call
+}
+
+// SeedLERCursorsFromLegacy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sourceNetwork uint32
+//   - destinationNetworks []uint32
+//   - now time.Time
+func (_e *LERCursorStore_Expecter) SeedLERCursorsFromLegacy(ctx interface{}, sourceNetwork interface{}, destinationNetworks interface{}, now interface{}) *LERCursorStore_SeedLERCursorsFromLegacy_Call {
+	return &LERCursorStore_SeedLERCursorsFromLegacy_Call{Call: _e.mock.On("SeedLERCursorsFromLegacy", ctx, sourceNetwork, destinationNetworks, now)}
+}
+
+func (_c *LERCursorStore_SeedLERCursorsFromLegacy_Call) Run(run func(ctx context.Context, sourceNetwork uint32, destinationNetworks []uint32, now time.Time)) *LERCursorStore_SeedLERCursorsFromLegacy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint32), args[2].([]uint32), args[3].(time.Time))
+	})
+	return _c
+}
+
+func (_c *LERCursorStore_SeedLERCursorsFromLegacy_Call) Return(_a0 bool, _a1 error) *LERCursorStore_SeedLERCursorsFromLegacy_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *LERCursorStore_SeedLERCursorsFromLegacy_Call) RunAndReturn(run func(context.Context, uint32, []uint32, time.Time) (bool, error)) *LERCursorStore_SeedLERCursorsFromLegacy_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -81,6 +81,7 @@ type bridgeCursorRow struct {
 
 type lerCursorRow struct {
 	SourceNetwork      uint32    `meddler:"source_network"`
+	DestinationNetwork uint32    `meddler:"destination_network"`
 	LastLER            string    `meddler:"last_ler"`
 	LastVerifyBlockNum uint64    `meddler:"last_verify_block_num"`
 	UpdatedAt          time.Time `meddler:"updated_at"`
@@ -206,22 +207,23 @@ func (s *Storage) SaveBridgeCursor(
 	return nil
 }
 
-// GetLERCursor returns the durable local-exit-root discovery cursor for a source network.
+// GetLERCursor returns the durable local-exit-root discovery cursor for a (source, destination) pair.
 func (s *Storage) GetLERCursor(
 	ctx context.Context,
-	sourceNetwork uint32,
+	sourceNetwork, destinationNetwork uint32,
 ) (*autoclaimtypes.LERCursor, bool, error) {
 	dbCtx, cancel := s.withDatabaseTimeout(ctx)
 	defer cancel()
 
 	rows, err := s.database.QueryContext(dbCtx, `
-		SELECT source_network, last_ler, last_verify_block_num, updated_at
+		SELECT source_network, destination_network, last_ler, last_verify_block_num, updated_at
 		FROM autoclaim_ler_cursor
-		WHERE source_network = ?`,
-		sourceNetwork,
+		WHERE source_network = ? AND destination_network = ?`,
+		sourceNetwork, destinationNetwork,
 	)
 	if err != nil {
-		return nil, false, fmt.Errorf("get autoclaim ler cursor %d: %w", sourceNetwork, err)
+		return nil, false, fmt.Errorf(
+			"get autoclaim ler cursor %d->%d: %w", sourceNetwork, destinationNetwork, err)
 	}
 
 	row := &lerCursorRow{}
@@ -229,11 +231,13 @@ func (s *Storage) GetLERCursor(
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, false, nil
 		}
-		return nil, false, fmt.Errorf("get autoclaim ler cursor %d: %w", sourceNetwork, err)
+		return nil, false, fmt.Errorf(
+			"get autoclaim ler cursor %d->%d: %w", sourceNetwork, destinationNetwork, err)
 	}
 
 	cursor := autoclaimtypes.LERCursor{
 		SourceNetwork:      row.SourceNetwork,
+		DestinationNetwork: row.DestinationNetwork,
 		LastLER:            common.HexToHash(row.LastLER),
 		LastVerifyBlockNum: row.LastVerifyBlockNum,
 	}
@@ -241,10 +245,10 @@ func (s *Storage) GetLERCursor(
 	return &cursor, true, nil
 }
 
-// SaveLERCursor upserts the durable local-exit-root discovery cursor for a source network.
+// SaveLERCursor upserts the durable local-exit-root discovery cursor for a (source, destination) pair.
 func (s *Storage) SaveLERCursor(
 	ctx context.Context,
-	sourceNetwork uint32,
+	sourceNetwork, destinationNetwork uint32,
 	cursor autoclaimtypes.LERCursor,
 	now time.Time,
 ) error {
@@ -258,32 +262,181 @@ func (s *Storage) SaveLERCursor(
 	result, err := s.database.ExecContext(dbCtx, `
 		INSERT INTO autoclaim_ler_cursor (
 			source_network,
+			destination_network,
 			last_ler,
 			last_verify_block_num,
 			updated_at
-		) VALUES (?, ?, ?, ?)
-		ON CONFLICT(source_network) DO UPDATE SET
+		) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(source_network, destination_network) DO UPDATE SET
 			last_ler = excluded.last_ler,
 			last_verify_block_num = excluded.last_verify_block_num,
 			updated_at = excluded.updated_at`,
 		sourceNetwork,
+		destinationNetwork,
 		cursor.LastLER.Hex(),
 		cursor.LastVerifyBlockNum,
 		now,
 	)
 	if err != nil {
-		return fmt.Errorf("save autoclaim ler cursor %d: %w", sourceNetwork, err)
+		return fmt.Errorf("save autoclaim ler cursor %d->%d: %w", sourceNetwork, destinationNetwork, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("save autoclaim ler cursor %d rows affected: %w", sourceNetwork, err)
+		return fmt.Errorf(
+			"save autoclaim ler cursor %d->%d rows affected: %w", sourceNetwork, destinationNetwork, err)
 	}
 	if rowsAffected == 0 {
-		return fmt.Errorf("save autoclaim ler cursor %d: no rows affected", sourceNetwork)
+		return fmt.Errorf("save autoclaim ler cursor %d->%d: no rows affected", sourceNetwork, destinationNetwork)
 	}
 
 	return nil
+}
+
+// SeedLERCursorsFromLegacy fans a pre-autoclaim0003 per-source LER cursor, parked in
+// autoclaim_ler_cursor_legacy by the autoclaim0003 migration, out to the given destination networks.
+// It is transactional: if no legacy row exists for sourceNetwork, it commits a no-op and returns
+// (false, nil). Otherwise it inserts one autoclaim_ler_cursor row per destination (ON CONFLICT DO
+// NOTHING, so a pair already seeded or advanced by a concurrent/earlier attempt is never rolled
+// backwards), deletes the legacy row, and returns (true, nil). The delete happening in the same
+// transaction as the inserts is what makes the seed idempotent: a crash before commit leaves the legacy
+// row intact and the whole seed is retried; a crash after commit finds no legacy row and returns
+// (false, nil) on the next attempt.
+func (s *Storage) SeedLERCursorsFromLegacy(
+	ctx context.Context,
+	sourceNetwork uint32,
+	destinationNetworks []uint32,
+	now time.Time,
+) (seeded bool, err error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
+	// An empty destination set must never consume the legacy row: today processSource
+	// (l2_to_lx.go) never calls this with no destinations for sourceNetwork, but this is an
+	// exported method with no other guard against it, and doing so here would delete the source's
+	// only resumption point while seeding nothing to replace it -- an unrecoverable data loss with
+	// no caller-visible signal. Treat it the same as "nothing to seed" rather than opening a
+	// transaction at all.
+	if len(destinationNetworks) == 0 {
+		return false, nil
+	}
+
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	// Cheap, lock-free existence check before ever opening a write transaction. db.NewSQLiteDB sets
+	// _txlock=immediate, so every BeginTx below issues BEGIN IMMEDIATE and takes a write (RESERVED)
+	// lock -- including in the overwhelmingly common case (a fresh deployment, or any source that
+	// has already been seeded/never had a legacy row) where the transaction would only run one
+	// SELECT that finds nothing and commits a no-op. This is called once per source on every poll
+	// (see l2_to_lx.go's processSource), so avoiding that write-lock acquisition in the common case
+	// matters: it stops this from contending, every poll forever, with the write lock the claim
+	// pipeline itself needs on the same database.
+	//
+	// This does not weaken correctness under concurrency: if a legacy row exists here but is gone by
+	// the time the transaction below re-reads it, that re-read (already required, for atomicity with
+	// the delete) returns sql.ErrNoRows and the transaction commits as a no-op -- exactly the result
+	// this pre-check would have produced had it observed the row's absence a moment earlier. The
+	// converse (no row here, but one appears before the transaction starts) cannot cause a double
+	// seed or a lost row either: the write path is unchanged and still transactional, and its INSERTs
+	// are ON CONFLICT DO NOTHING against the same row the pre-check would have raced with anyway.
+	var probeExists int
+	switch probeErr := s.database.QueryRowContext(dbCtx,
+		"SELECT 1 FROM autoclaim_ler_cursor_legacy WHERE source_network = ?", sourceNetwork,
+	).Scan(&probeExists); {
+	case errors.Is(probeErr, sql.ErrNoRows):
+		return false, nil
+	case probeErr != nil:
+		return false, fmt.Errorf(
+			"seed autoclaim ler cursors from legacy for source %d: probe legacy row: %w",
+			sourceNetwork, probeErr)
+	}
+
+	tx, err := s.database.BeginTx(dbCtx, nil)
+	if err != nil {
+		return false, fmt.Errorf("seed autoclaim ler cursors from legacy for source %d: begin tx: %w",
+			sourceNetwork, err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			rollbackErr := tx.Rollback()
+			if rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+				err = errors.Join(
+					err,
+					fmt.Errorf("seed autoclaim ler cursors from legacy for source %d: rollback: %w",
+						sourceNetwork, rollbackErr),
+				)
+			}
+		}
+	}()
+
+	var legacyLER string
+	var legacyVerifyBlockNum uint64
+	row := tx.QueryRowContext(dbCtx, `
+		SELECT last_ler, last_verify_block_num
+		FROM autoclaim_ler_cursor_legacy
+		WHERE source_network = ?`,
+		sourceNetwork,
+	)
+	if err := row.Scan(&legacyLER, &legacyVerifyBlockNum); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			if commitErr := tx.Commit(); commitErr != nil {
+				return false, fmt.Errorf("seed autoclaim ler cursors from legacy for source %d: commit: %w",
+					sourceNetwork, commitErr)
+			}
+			committed = true
+			return false, nil
+		}
+		return false, fmt.Errorf("seed autoclaim ler cursors from legacy for source %d: read legacy row: %w",
+			sourceNetwork, err)
+	}
+
+	for _, destinationNetwork := range destinationNetworks {
+		if _, err := tx.ExecContext(dbCtx, `
+			INSERT INTO autoclaim_ler_cursor (
+				source_network,
+				destination_network,
+				last_ler,
+				last_verify_block_num,
+				updated_at
+			) VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(source_network, destination_network) DO NOTHING`,
+			sourceNetwork, destinationNetwork, legacyLER, legacyVerifyBlockNum, now,
+		); err != nil {
+			return false, fmt.Errorf(
+				"seed autoclaim ler cursors from legacy for source %d->%d: %w",
+				sourceNetwork, destinationNetwork, err)
+		}
+	}
+
+	if _, err := tx.ExecContext(dbCtx,
+		"DELETE FROM autoclaim_ler_cursor_legacy WHERE source_network = ?", sourceNetwork,
+	); err != nil {
+		return false, fmt.Errorf("seed autoclaim ler cursors from legacy for source %d: delete legacy row: %w",
+			sourceNetwork, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("seed autoclaim ler cursors from legacy for source %d: commit: %w",
+			sourceNetwork, err)
+	}
+	committed = true
+
+	// Visible-in-logs record of exactly which destinations inherited the legacy cursor: a claimer
+	// added in the same restart as the autoclaim0003 upgrade is indistinguishable, at seed time,
+	// from one that was already claiming from this source before the upgrade (see docs/autoclaim.md
+	// "Legacy upgrade seed") -- it silently will not backfill anything before this point. This log
+	// line is the only place that fact becomes diagnosable after the fact.
+	s.log.Warnf(
+		"seeded autoclaim LER cursor for source %d from legacy cursor (ler=%s, verify_block=%d) "+
+			"to destinations %v; any of these added in this same restart will not backfill "+
+			"history before this point (see docs/autoclaim.md 'Legacy upgrade seed')",
+		sourceNetwork, legacyLER, legacyVerifyBlockNum, destinationNetworks,
+	)
+
+	return true, nil
 }
 
 // EnqueueRequest inserts a request once per origin, destination, and deposit count.

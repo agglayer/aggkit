@@ -97,7 +97,10 @@ func WithLogger(log aggkitcommon.Logger) Option {
 	}
 }
 
-// PollResult summarizes one bridge detector poll.
+// PollResult summarizes one bridge detector poll. Since each destination now advances in its own
+// per-destination block window (issue #1651), FromBlock and ToBlock describe the union of every
+// window queried this poll: FromBlock is the lowest window's fromBlock and ToBlock is the highest
+// window's toBlock. CursorAdvanced is true when at least one window persisted its cursor.
 type PollResult struct {
 	FromBlock           uint64
 	ToBlock             uint64
@@ -127,13 +130,12 @@ type L1ToL2 struct {
 }
 
 type destinationCursorState struct {
-	claimer      autoclaimtypes.Claimer
-	cursorName   string
-	cursor       *autoclaimtypes.BridgeCursor
-	cursorFound  bool
-	fromBlock    uint64
-	nextCursor   autoclaimtypes.BridgeCursor
-	eligiblePoll bool
+	claimer     autoclaimtypes.Claimer
+	cursorName  string
+	cursor      *autoclaimtypes.BridgeCursor
+	cursorFound bool
+	fromBlock   uint64
+	nextCursor  autoclaimtypes.BridgeCursor
 }
 
 // NewL1ToL2 creates an L1-to-L2 Auto Claim bridge detector.
@@ -198,7 +200,14 @@ func (w *L1ToL2) Start(ctx context.Context) {
 	}
 }
 
-// PollOnce processes at most one bridge-sync block window.
+// PollOnce processes at most one bridge-sync block window per distinct per-destination fromBlock
+// (issue #1651). Destinations are grouped by their current fromBlock, and each group issues its own
+// GetBridges query and persists its own cursor(s) independently of every other group: a laggard
+// destination (e.g. a newly added claimer backfilling from its start block) never blocks an
+// already-caught-up destination from advancing in the same poll, and one group's failure to save its
+// cursor does not roll back or gate a different group's already-persisted cursor. A single map[RequestKey]
+// deduplication set spans the whole poll (not per group), which stays correct because every RequestKey
+// embeds its destination and each destination belongs to exactly one group.
 func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 	if !w.enabled {
 		return &PollResult{}, nil
@@ -221,52 +230,81 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 		return result, nil
 	}
 
-	fromBlock := lowestFromBlock(states)
-	result.FromBlock = fromBlock
-	if fromBlock > lastProcessedBlock {
-		return result, nil
-	}
-	toBlock := minUint64(lastProcessedBlock, fromBlock+w.blockWindow-1)
-	result.ToBlock = toBlock
-	for _, state := range states {
-		state.eligiblePoll = state.fromBlock <= toBlock
-		if !state.eligiblePoll {
+	groups := groupStatesByFromBlock(states)
+	seen := make(map[autoclaimtypes.RequestKey]struct{})
+
+	var firstErr error
+	firstWindow := true
+	for _, fromBlock := range orderedFromBlocks(groups) {
+		// A fromBlock beyond lastProcessedBlock means that group's destination(s) are already
+		// caught up (nextFromBlock returned lastProcessedBlock+1): no query, no cursor write, and
+		// no effect on any other group.
+		if fromBlock > lastProcessedBlock {
 			continue
 		}
-		state.nextCursor = autoclaimtypes.BridgeCursor{
-			FromBlock: state.fromBlock,
-			ToBlock:   toBlock,
-			BlockNum:  toBlock,
-			BlockPos:  0,
+		groupStates := groups[fromBlock]
+		toBlock := minUint64(lastProcessedBlock, fromBlock+w.blockWindow-1)
+		if firstWindow {
+			result.FromBlock = fromBlock
+			firstWindow = false
+		}
+		result.ToBlock = toBlock
+
+		for _, state := range groupStates {
+			state.nextCursor = autoclaimtypes.BridgeCursor{
+				FromBlock: state.fromBlock,
+				ToBlock:   toBlock,
+				BlockNum:  toBlock,
+				BlockPos:  0,
+			}
+		}
+
+		bridges, err := w.bridgeSource.GetBridges(ctx, fromBlock, toBlock)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("get l1 bridges from %d to %d: %w", fromBlock, toBlock, err)
+			}
+			continue
+		}
+		result.BridgeCount += len(bridges)
+
+		// Every bridge exit returned by l1bridgesync was initiated on L1, so there is no
+		// bridge-origin filter to apply here. The claim identity (and the request key) is keyed on
+		// the source network, which for this detector is always L1 (network 0), not
+		// exit.OriginNetwork (the bridged token's origin network, which can be any network for a
+		// wrapped token). A bridge whose destination is not part of this group (e.g. its window
+		// overlaps another group's) is ignored here and left for the group that owns it.
+		groupFailed := false
+		for _, bridge := range bridges {
+			exit := autoclaimtypes.NewBridgeExitFromSyncWithEtrog(bridge, w.etrogL1UpgradeBlock)
+			if err := w.processBridge(ctx, exit, groupStates, seen, result); err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				groupFailed = true
+				break
+			}
+		}
+		if groupFailed {
+			continue
+		}
+
+		if err := w.saveCursors(ctx, groupStates, result); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
 	}
 
-	bridges, err := w.bridgeSource.GetBridges(ctx, fromBlock, toBlock)
-	if err != nil {
-		return result, fmt.Errorf("get l1 bridges from %d to %d: %w", fromBlock, toBlock, err)
-	}
-	result.BridgeCount = len(bridges)
-
-	seen := make(map[autoclaimtypes.RequestKey]struct{}, len(bridges))
-	// Every bridge exit returned by l1bridgesync was initiated on L1, so there is no
-	// bridge-origin filter to apply here. The claim identity (and the request key) is keyed on the
-	// source network, which for this detector is always L1 (network 0), not exit.OriginNetwork
-	// (the bridged token's origin network, which can be any network for a wrapped token).
-	for _, bridge := range bridges {
-		exit := autoclaimtypes.NewBridgeExitFromSyncWithEtrog(bridge, w.etrogL1UpgradeBlock)
-		if err := w.processBridge(ctx, exit, states, seen, result); err != nil {
-			return result, err
-		}
-	}
-
-	if err := w.saveCursors(ctx, states, result); err != nil {
-		return result, err
-	}
-
-	return result, nil
+	return result, firstErr
 }
 
 // processBridge evaluates a single bridge exit and enqueues it for claiming when appropriate.
+// states holds only the destinations belonging to the window group currently being processed, so a
+// bridge whose destination is owned by a different group's window (e.g. two windows overlap) is
+// tallied via the same unknown-destination path as a truly unknown destination: it is ignored here
+// and left for the group that owns it to enqueue exactly once.
 // It updates result counters and the seen deduplication map in place.
 func (w *L1ToL2) processBridge(
 	ctx context.Context,
@@ -276,7 +314,7 @@ func (w *L1ToL2) processBridge(
 	result *PollResult,
 ) error {
 	state, ok := states[exit.DestinationNetwork]
-	if !ok || !state.eligiblePoll {
+	if !ok {
 		result.IgnoredBridgeCount++
 		return nil
 	}
@@ -329,16 +367,16 @@ func bridgeFilteredByPosition(exit autoclaimtypes.BridgeExit, state *destination
 	return false
 }
 
-// saveCursors persists the advanced cursor for every eligible destination state.
+// saveCursors persists the advanced cursor for every destination state in states, which is scoped to
+// a single window group by the caller. A destination whose cursor is saved here keeps that write even
+// if a save for a different group fails later in the same poll: persistence is per-group, never rolled
+// back or gated by another group's outcome.
 func (w *L1ToL2) saveCursors(
 	ctx context.Context,
 	states map[uint32]*destinationCursorState,
 	result *PollResult,
 ) error {
 	for _, state := range orderedStates(states) {
-		if !state.eligiblePoll {
-			continue
-		}
 		if err := w.cursorStore.SaveBridgeCursor(ctx, state.cursorName, state.nextCursor, w.now()); err != nil {
 			return fmt.Errorf("save autoclaim l1-to-l2 bridge detector cursor %s: %w", state.cursorName, err)
 		}
@@ -381,16 +419,35 @@ func (w *L1ToL2) cursorNameForDestination(destinationNetwork uint32) string {
 	return fmt.Sprintf("%s:%d", w.cursorName, destinationNetwork)
 }
 
-func lowestFromBlock(states map[uint32]*destinationCursorState) uint64 {
-	var lowest uint64
-	found := false
-	for _, state := range states {
-		if !found || state.fromBlock < lowest {
-			lowest = state.fromBlock
-			found = true
+// groupStatesByFromBlock partitions states into window groups keyed by their shared fromBlock, so
+// each group can be queried and persisted through its own GetBridges call independently of every
+// other group (issue #1651). In steady state, every destination shares one fromBlock and there is
+// exactly one group.
+func groupStatesByFromBlock(
+	states map[uint32]*destinationCursorState,
+) map[uint64]map[uint32]*destinationCursorState {
+	groups := make(map[uint64]map[uint32]*destinationCursorState)
+	for destination, state := range states {
+		group, ok := groups[state.fromBlock]
+		if !ok {
+			group = make(map[uint32]*destinationCursorState)
+			groups[state.fromBlock] = group
 		}
+		group[destination] = state
 	}
-	return lowest
+	return groups
+}
+
+// orderedFromBlocks returns groups' fromBlock keys in ascending order, for deterministic processing.
+func orderedFromBlocks(groups map[uint64]map[uint32]*destinationCursorState) []uint64 {
+	fromBlocks := make([]uint64, 0, len(groups))
+	for fromBlock := range groups {
+		fromBlocks = append(fromBlocks, fromBlock)
+	}
+	sort.Slice(fromBlocks, func(i, j int) bool {
+		return fromBlocks[i] < fromBlocks[j]
+	})
+	return fromBlocks
 }
 
 func orderedStates(states map[uint32]*destinationCursorState) []*destinationCursorState {
