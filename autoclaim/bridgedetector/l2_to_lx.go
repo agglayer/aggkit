@@ -43,10 +43,19 @@ type VerifiedBatchSource interface {
 	GetLocalExitRoot(ctx context.Context, networkID uint32, rollupExitRoot common.Hash) (common.Hash, error)
 }
 
-// LERCursorStore persists the durable per-source-network LER discovery cursor.
+// LERCursorStore persists the durable per-(source, destination) LER discovery cursor.
 type LERCursorStore interface {
-	GetLERCursor(ctx context.Context, sourceNetwork uint32) (*autoclaimtypes.LERCursor, bool, error)
-	SaveLERCursor(ctx context.Context, sourceNetwork uint32, cursor autoclaimtypes.LERCursor, now time.Time) error
+	GetLERCursor(
+		ctx context.Context, sourceNetwork, destinationNetwork uint32,
+	) (*autoclaimtypes.LERCursor, bool, error)
+	SaveLERCursor(
+		ctx context.Context, sourceNetwork, destinationNetwork uint32,
+		cursor autoclaimtypes.LERCursor, now time.Time,
+	) error
+	// SeedLERCursorsFromLegacy fans a pre-autoclaim0003 per-source cursor out to destinations.
+	SeedLERCursorsFromLegacy(
+		ctx context.Context, sourceNetwork uint32, destinationNetworks []uint32, now time.Time,
+	) (bool, error)
 }
 
 // RequestEnqueuer persists discovered Auto Claim requests idempotently.
@@ -170,20 +179,28 @@ func WithL2ToLxLogger(log aggkitcommon.Logger) L2ToLxOption {
 	}
 }
 
-// L2ToLxPollResult summarizes one L2-to-Lx bridge detector poll.
+// L2ToLxPollResult summarizes one L2-to-Lx bridge detector poll. Since the LER discovery cursor is
+// now keyed by (source, destination) (issue #1651), the per-source counters below aggregate over
+// every destination pair of that source: a source is "processed" only when every one of its pairs
+// advanced, and "skipped" when at least one of them must be retried.
 type L2ToLxPollResult struct {
 	FromBlock          uint64
 	ToBlock            uint64
 	LastProcessedBlock uint64
 	// SourceCount is the number of distinct source networks with a verify row in the window.
 	SourceCount int
-	// NewLERSourceCount is the number of sources whose newest LER differed from their cursor.
+	// NewLERSourceCount is the number of sources with at least one (source, destination) pair whose
+	// cursor differs from the source's newest LER, i.e. at least one pair with candidates to fetch.
 	NewLERSourceCount int
-	// ProcessedSourceCount is the number of sources fully processed (LER cursor advanced) this poll.
+	// ProcessedSourceCount is the number of sources fully processed this poll: every one of their
+	// (source, destination) pair cursors advanced to the source's newest LER.
 	ProcessedSourceCount int
-	// SkippedSourceCount is the number of sources skipped this poll (finder miss or not synced yet).
+	// SkippedSourceCount is the number of sources skipped this poll: nothing new for any pair, or at
+	// least one pair's fetch group must be retried (finder miss or not synced yet). A source whose
+	// groups partially succeeded counts as skipped, since its block-window position is held back.
 	SkippedSourceCount int
-	// CandidateCount is the total number of claim candidates fetched across all processed sources.
+	// CandidateCount is the total number of claim candidates fetched across every fetch group of
+	// every processed source.
 	CandidateCount int
 	// EnqueuedCount is the number of newly enqueued requests.
 	EnqueuedCount int
@@ -299,20 +316,43 @@ type sourceLER struct {
 	sourceID  uint32
 }
 
+// pendingDestination is one (source, destination) pair that has not yet processed the source's
+// newest LER, together with the exclusive lower-bound LER its candidates must be fetched from
+// (nil = full history).
+type pendingDestination struct {
+	destination uint32
+	fromLER     *common.Hash
+}
+
+// lerGroup is the set of a source's pending destinations that share one from_ler and can therefore
+// be fetched with a single claim-candidates query (the bridge service accepts exactly one from_ler
+// per request, but many destination network IDs).
+type lerGroup struct {
+	fromLER      *common.Hash
+	destinations []uint32
+}
+
 // sourceOutcome is the result of processing one source network within a poll.
 type sourceOutcome int
 
 const (
-	// sourceUpToDate means the source's newest LER already matches its cursor: nothing to do.
+	// sourceUpToDate means every (source, destination) pair's cursor already matches the source's
+	// newest LER, or the source has no destination pair at all: nothing to do.
 	sourceUpToDate sourceOutcome = iota
-	// sourceProcessed means the source's candidates were fetched and its LER cursor advanced.
+	// sourceProcessed means every fetch group's candidates were enqueued and every pair's LER cursor
+	// advanced.
 	sourceProcessed
-	// sourceRetryLater means the source was skipped for a transient reason (finder miss or source
-	// bridge service not synced yet) and must be retried on a later poll.
+	// sourceRetryLater means at least one of the source's fetch groups was skipped for a transient
+	// reason (finder miss or source bridge service not synced yet) and must be retried on a later
+	// poll. Groups that did succeed keep their persisted pair cursors.
 	sourceRetryLater
 )
 
-// PollOnce processes at most one L1 block window of verified-batch rows.
+// PollOnce processes at most one L1 block window of verified-batch rows. Each source found in the
+// window resolves an independent from_ler per destination claimer and issues one claim-candidates
+// query per distinct from_ler (issue #1651), so the number of fetcher calls per poll stays bounded by
+// the number of enabled claimers times the pages each of their queries needs, and collapses back to
+// today's single batched query set as soon as every destination of a source shares one cursor.
 func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 	if !w.enabled {
 		return &L2ToLxPollResult{}, nil
@@ -374,10 +414,11 @@ func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 	// The block-window cursor advances on every non-erroring poll, except that it never advances past
 	// the verify row of a source skipped for a transient reason: it is held just before that row, so
 	// the next poll re-observes it and retries the source even if it never publishes another LER.
-	// Sources skipped this round keep their per-source LER cursor at its previous value, so the retry
-	// fetch still uses from_ler = <old cursor>, which covers every candidate missed in between. A hard
-	// error above returns before this point, leaving the cursor unchanged so the whole window is
-	// retried.
+	// A (source, destination) pair skipped this round keeps its LER cursor at its previous value, so
+	// the retry fetch still uses from_ler = <old pair cursor>, which covers every candidate missed in
+	// between; a pair whose group did succeed keeps its advanced cursor and is simply not re-fetched.
+	// A hard error above returns before this point, leaving the cursor unchanged so the whole window
+	// is retried.
 	cursorToBlock := toBlock
 	if retryBlock > 0 {
 		if retryBlock <= fromBlock {
@@ -401,33 +442,48 @@ func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 	return result, nil
 }
 
-// processSource evaluates one source network's newest LER: it resolves the source bridge service,
-// fetches every claim-candidate page, routes each candidate to its destination claimer, and advances
-// the source's LER cursor only after all pages have been enqueued. It returns sourceUpToDate when the
-// source has nothing new, sourceRetryLater when it was skipped for a transient reason (finder miss or
-// not synced yet), and sourceProcessed when its LER cursor was advanced.
+// processSource evaluates one source network's newest LER against every destination the enabled
+// claimers cover. Each (source, destination) pair resolves its own from_ler from its own cursor, the
+// pending pairs are grouped by that from_ler, and every group is fetched, enqueued and persisted
+// independently (issue #1651): a destination added to a running deployment backfills from its own
+// baseline instead of inheriting an already-advanced cursor that would skip its history, and it does
+// not disturb the established destinations, which keep batching exactly as before.
+//
+// It returns sourceUpToDate when no pair has anything new (or the source has no destination pair at
+// all), sourceRetryLater when at least one group was skipped for a transient reason (finder miss or
+// not synced yet), and sourceProcessed when every group advanced its pairs' LER cursors.
 func (w *L2ToLx) processSource(
 	ctx context.Context,
 	source sourceLER,
 	destinationNetworks []uint32,
 	result *L2ToLxPollResult,
 ) (sourceOutcome, error) {
-	fromLER, hasNewLER, err := w.resolveFromLER(ctx, source)
+	destinationIDs := excludeNetwork(destinationNetworks, source.sourceID)
+	if len(destinationIDs) == 0 {
+		// No enabled destination claimer other than the source itself: there is no (source,
+		// destination) pair to track, so there is nothing to fetch and no cursor to write. The source
+		// is simply re-evaluated next poll, which costs nothing (not even a cursor read).
+		return sourceUpToDate, nil
+	}
+
+	// Fan a pre-autoclaim0003 per-source cursor out to the destinations configured right now, before
+	// any pair is resolved, so an upgraded deployment's established destinations resume where they
+	// were instead of re-scanning their whole history. It is a no-op once the source has been seeded.
+	_, err := w.lerCursors.SeedLERCursorsFromLegacy(ctx, source.sourceID, destinationIDs, w.now())
+	if err != nil {
+		return sourceUpToDate, fmt.Errorf("seed autoclaim ler cursors from legacy for source %d: %w",
+			source.sourceID, err)
+	}
+
+	pending, err := w.resolveFromLER(ctx, source, destinationIDs)
 	if err != nil {
 		return sourceUpToDate, err
 	}
-	if !hasNewLER {
-		// The source's newest LER already matches its cursor: nothing new to process.
+	if len(pending) == 0 {
+		// Every pair's cursor already holds the source's newest LER: nothing new to process.
 		return sourceUpToDate, nil
 	}
 	result.NewLERSourceCount++
-
-	destinationIDs := excludeNetwork(destinationNetworks, source.sourceID)
-	if len(destinationIDs) == 0 {
-		// No enabled destination claimer other than the source itself: nothing to claim, but the LER
-		// is genuinely processed, so advance the cursor to avoid re-evaluating it every poll.
-		return sourceProcessed, w.advanceLERCursor(ctx, source)
-	}
 
 	url, err := w.fetcher.GetURL(source.sourceID)
 	if err != nil {
@@ -435,47 +491,155 @@ func (w *L2ToLx) processSource(
 		return sourceRetryLater, nil
 	}
 
-	candidates, err := w.fetchAllCandidates(ctx, url, destinationIDs, fromLER, source.ler)
-	if err != nil {
-		if errors.Is(err, ErrCandidatesNotSynced) {
-			w.logInfof("autoclaim l2-to-lx bridge detector: skip source %d (not synced yet)", source.sourceID)
-			return sourceRetryLater, nil
+	return w.processLERGroups(ctx, source, url, groupPendingByFromLER(pending), result)
+}
+
+// processLERGroups fetches, enqueues and persists each from_ler group of one source in turn. A group
+// is fully independent: its pair cursors are written as soon as its own candidates are enqueued (never
+// before), and neither a later group's failure nor an earlier group's failure rolls that write back or
+// gates it. A group that failed leaves its pairs' cursors untouched, so the next poll re-fetches only
+// that group; the source itself still reports retry-later (or the hard error), which holds the
+// block-window cursor just before this source's verify row so the row is re-observed.
+func (w *L2ToLx) processLERGroups(
+	ctx context.Context,
+	source sourceLER,
+	url string,
+	groups []lerGroup,
+	result *L2ToLxPollResult,
+) (sourceOutcome, error) {
+	var (
+		firstErr   error
+		retryLater bool
+	)
+	for _, group := range groups {
+		candidates, err := w.fetchAllCandidates(ctx, url, group.destinations, group.fromLER, source.ler)
+		if err != nil {
+			if errors.Is(err, ErrCandidatesNotSynced) {
+				w.logInfof("autoclaim l2-to-lx bridge detector: skip source %d destinations %v (not synced yet)",
+					source.sourceID, group.destinations)
+				retryLater = true
+				continue
+			}
+			if firstErr == nil {
+				firstErr = fmt.Errorf("fetch claim candidates for source %d destinations %v: %w",
+					source.sourceID, group.destinations, err)
+			}
+			continue
 		}
-		return sourceUpToDate, fmt.Errorf("fetch claim candidates for source %d: %w", source.sourceID, err)
-	}
-	result.CandidateCount += len(candidates)
+		result.CandidateCount += len(candidates)
 
-	if err := w.enqueueCandidates(ctx, source, candidates, result); err != nil {
-		return sourceUpToDate, err
+		if err := w.enqueueCandidates(ctx, source, candidates, result); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+
+		if err := w.advanceLERCursors(ctx, source, group.destinations); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
 	}
 
-	if err := w.advanceLERCursor(ctx, source); err != nil {
-		return sourceUpToDate, err
+	if firstErr != nil {
+		return sourceUpToDate, firstErr
+	}
+	if retryLater {
+		return sourceRetryLater, nil
 	}
 	return sourceProcessed, nil
 }
 
-// resolveFromLER reports whether the source has a new LER (different from its cursor) and, if so, the
-// exclusive lower-bound LER to request candidates from (nil = full history). When the source has no
-// cursor yet, the lower bound is derived from the configured StartL1Block.
-func (w *L2ToLx) resolveFromLER(ctx context.Context, source sourceLER) (*common.Hash, bool, error) {
-	cursor, found, err := w.lerCursors.GetLERCursor(ctx, source.sourceID)
-	if err != nil {
-		return nil, false, fmt.Errorf("get autoclaim ler cursor for source %d: %w", source.sourceID, err)
-	}
-	if found {
-		if cursor.LastLER == source.ler {
-			return nil, false, nil
+// resolveFromLER returns, for every destination that has not yet processed the source's newest LER,
+// the exclusive lower-bound LER its candidates must be fetched from (nil = full history). A pair with
+// a cursor resolves to its own stored LER; a pair with no cursor — a destination added after the
+// source was already established, or a brand new deployment — resolves to the baseline derived from
+// the configured StartL1Block. Destinations whose cursor already holds source.ler are omitted, so an
+// empty result means the source is fully up to date. Destinations are visited in ascending order, so
+// the resulting query and batching order is deterministic.
+func (w *L2ToLx) resolveFromLER(
+	ctx context.Context,
+	source sourceLER,
+	destinationIDs []uint32,
+) ([]pendingDestination, error) {
+	// initialFromLER depends only on the source and StartL1Block, never on the destination, so it is
+	// derived at most once per source per poll and shared by every unseeded destination of it.
+	var (
+		initialLER      *common.Hash
+		initialResolved bool
+	)
+
+	pending := make([]pendingDestination, 0, len(destinationIDs))
+	for _, destination := range sortedNetworks(destinationIDs) {
+		cursor, found, err := w.lerCursors.GetLERCursor(ctx, source.sourceID, destination)
+		if err != nil {
+			return nil, fmt.Errorf("get autoclaim ler cursor for source %d destination %d: %w",
+				source.sourceID, destination, err)
 		}
-		fromLER := cursor.LastLER
-		return &fromLER, true, nil
+		if found {
+			if cursor.LastLER == source.ler {
+				// This pair has already processed the source's newest LER.
+				continue
+			}
+			fromLER := cursor.LastLER
+			pending = append(pending, pendingDestination{destination: destination, fromLER: &fromLER})
+			continue
+		}
+
+		if !initialResolved {
+			initialLER, err = w.initialFromLER(ctx, source.sourceID)
+			if err != nil {
+				return nil, err
+			}
+			initialResolved = true
+		}
+		pending = append(pending, pendingDestination{destination: destination, fromLER: initialLER})
 	}
 
-	fromLER, err := w.initialFromLER(ctx, source.sourceID)
-	if err != nil {
-		return nil, false, err
+	return pending, nil
+}
+
+// groupPendingByFromLER partitions pending destinations into fetch groups sharing one from_ler, so
+// each group can be queried with a single claim-candidates request (issue #1651). Groups keep the
+// order in which their first destination appears, which is ascending destination order, and in
+// steady state every pair shares the previous source LER and there is exactly one group.
+func groupPendingByFromLER(pending []pendingDestination) []lerGroup {
+	groups := make([]lerGroup, 0, len(pending))
+	indexByLER := make(map[string]int, len(pending))
+	for _, destination := range pending {
+		key := lerGroupKey(destination.fromLER)
+		if index, ok := indexByLER[key]; ok {
+			groups[index].destinations = append(groups[index].destinations, destination.destination)
+			continue
+		}
+		indexByLER[key] = len(groups)
+		groups = append(groups, lerGroup{
+			fromLER:      destination.fromLER,
+			destinations: []uint32{destination.destination},
+		})
 	}
-	return fromLER, true, nil
+	return groups
+}
+
+// lerGroupKey is the grouping key of a from_ler bound: the empty string for nil (full history),
+// otherwise the hash's hex representation.
+func lerGroupKey(fromLER *common.Hash) string {
+	if fromLER == nil {
+		return ""
+	}
+	return fromLER.Hex()
+}
+
+// sortedNetworks returns a copy of networks in ascending order.
+func sortedNetworks(networks []uint32) []uint32 {
+	sorted := make([]uint32, len(networks))
+	copy(sorted, networks)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i] < sorted[j]
+	})
+	return sorted
 }
 
 // initialFromLER derives the exclusive lower-bound LER the first time a source network is seen. When
@@ -611,14 +775,22 @@ func (w *L2ToLx) enqueueCandidates(
 	return nil
 }
 
-func (w *L2ToLx) advanceLERCursor(ctx context.Context, source sourceLER) error {
-	cursor := autoclaimtypes.LERCursor{
-		SourceNetwork:      source.sourceID,
-		LastLER:            source.ler,
-		LastVerifyBlockNum: source.verifyNum,
-	}
-	if err := w.lerCursors.SaveLERCursor(ctx, source.sourceID, cursor, w.now()); err != nil {
-		return fmt.Errorf("save autoclaim ler cursor for source %d: %w", source.sourceID, err)
+// advanceLERCursors records the source's newest LER as processed for each of the given destinations.
+// It is called once per fetch group and only after every candidate of that group has been enqueued,
+// so a pair's cursor never moves past candidates that were not persisted. Destinations whose group
+// did not complete are not passed in, which leaves their own cursors at their previous value.
+func (w *L2ToLx) advanceLERCursors(ctx context.Context, source sourceLER, destinations []uint32) error {
+	for _, destination := range destinations {
+		cursor := autoclaimtypes.LERCursor{
+			SourceNetwork:      source.sourceID,
+			DestinationNetwork: destination,
+			LastLER:            source.ler,
+			LastVerifyBlockNum: source.verifyNum,
+		}
+		if err := w.lerCursors.SaveLERCursor(ctx, source.sourceID, destination, cursor, w.now()); err != nil {
+			return fmt.Errorf("save autoclaim ler cursor for source %d destination %d: %w",
+				source.sourceID, destination, err)
+		}
 	}
 	return nil
 }

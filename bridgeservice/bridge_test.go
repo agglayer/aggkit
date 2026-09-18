@@ -20,6 +20,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
@@ -77,6 +78,58 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	b.router = gin.New()
 	b.bridge.RegisterRoutes(b.router)
 	return b
+}
+
+// newBridgeWithMocksAndHealthCacheTTL is newBridgeWithMocks with an explicit
+// Config.HealthCheckCacheTTL, for tests that exercise HealthCheckHandler's cache directly
+// (cache-hit collapsing concurrent/repeated calls into one computation, and cache expiry
+// triggering recomputation).
+func newBridgeWithMocksAndHealthCacheTTL(t *testing.T, networkID uint32, ttl time.Duration) bridgeWithMocks {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	b := bridgeWithMocks{
+		upgradeQuerier: mocks.NewAgglayerManagerUpgradeQuerier(t),
+		l1InfoTree:     mocks.NewL1InfoTreeSyncer(t),
+		injectedGERs:   mocks.NewL2GERSyncer(t),
+		bridgeL1:       mocks.NewBridger(t),
+		claimL1:        mocks.NewClaimer(t),
+		bridgeL2:       mocks.NewBridger(t),
+		claimL2:        mocks.NewClaimer(t),
+	}
+	logger := log.WithFields("module", "test bridge service")
+	cfg := &Config{
+		Logger:              logger,
+		ReadTimeout:         time.Second,
+		WriteTimeout:        0,
+		NetworkID:           networkID,
+		HealthCheckCacheTTL: cfgtypes.Duration{Duration: ttl},
+	}
+	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs,
+		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
+	b.router = gin.New()
+	b.bridge.RegisterRoutes(b.router)
+	return b
+}
+
+// expectFullySyncedBridgeService sets up mock expectations, on a bridgeWithMocks built by
+// newBridgeWithMocks or newBridgeWithMocksAndHealthCacheTTL, for a fully healthy instance: L1 and
+// L2 bridge syncers both active and caught up, and l2gersync active. times controls how many
+// times each underlying call is expected (Once() semantics multiplied by times), letting callers
+// share this setup between a single-call test and a cache repeated-calls test.
+func expectFullySyncedBridgeService(b bridgeWithMocks, times int) {
+	b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Times(times)
+	b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(100), nil).Times(times)
+	b.bridgeL1.EXPECT().
+		GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+		Return(nil, 100, nil).Times(times)
+
+	b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Times(times)
+	b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(200), nil).Times(times)
+	b.bridgeL2.EXPECT().
+		GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+		Return(nil, 200, nil).Times(times)
+
+	b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(555), nil).Times(times)
 }
 
 func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
@@ -3752,18 +3805,412 @@ func TestGetSyncStatusHandler_L2GERInfo(t *testing.T) {
 	})
 }
 
+// TestHealthCheckHandler covers the "done" case (everything active and caught up) on both routes
+// HealthCheckHandler is registered at ("/" and "/health", issue #1689's alias), asserting the
+// legacy status/time/version fields plus the new sync_status/details fields.
 func TestHealthCheckHandler(t *testing.T) {
-	b := newBridgeWithMocks(t, l2NetworkID)
-	w := performRequest(t, b.router, "/")
-	require.Equal(t, http.StatusOK, w.Code)
+	for _, path := range []string{"/", "/health"} {
+		t.Run(path, func(t *testing.T) {
+			b := newBridgeWithMocks(t, l2NetworkID)
+			expectFullySyncedBridgeService(b, 1)
+
+			w := performRequest(t, b.router, path)
+			require.Equal(t, http.StatusOK, w.Code)
+
+			var response bridgetypes.HealthCheckResponse
+			err := json.Unmarshal(w.Body.Bytes(), &response)
+			require.NoError(t, err)
+
+			require.Equal(t, "ok", response.Status)
+			require.NotEmpty(t, response.Time)
+			require.NotEmpty(t, response.Version)
+
+			require.Equal(t, bridgetypes.HealthSyncStatusDone, response.SyncStatus)
+			require.NotNil(t, response.Details.L1)
+			require.True(t, response.Details.L1.IsActive)
+			require.NotNil(t, response.Details.L1.IsSynced)
+			require.True(t, *response.Details.L1.IsSynced)
+			require.Empty(t, response.Details.L1.Error)
+
+			require.NotNil(t, response.Details.L2)
+			require.True(t, response.Details.L2.IsActive)
+			require.NotNil(t, response.Details.L2.IsSynced)
+			require.True(t, *response.Details.L2.IsSynced)
+			require.Empty(t, response.Details.L2.Error)
+
+			require.NotNil(t, response.Details.L2GER)
+			require.True(t, response.Details.L2GER.IsActive)
+			require.Nil(t, response.Details.L2GER.IsSynced)
+			require.Empty(t, response.Details.L2GER.Error)
+		})
+	}
+}
+
+// TestHealthCheckHandler_SyncStatusDerivation covers HealthCheckHandler's sync_status/details
+// derivation rule: pending (one syncer behind), error (a syncer's
+// contract call fails, and a configured-but-halted syncer), and inactive-by-configuration
+// (a nil syncer excluded from Details/aggregation entirely, not an error). Every case must
+// answer HTTP 200 -- this endpoint never fails the request itself, only reports SyncStatus.
+func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
+	t.Run("pending - L2 behind", func(t *testing.T) {
+		b := newBridgeWithMocks(t, l2NetworkID)
+		b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+		b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(100), nil).Once()
+		b.bridgeL1.EXPECT().
+			GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+			Return(nil, 100, nil).Once()
+
+		b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Once()
+		b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(200), nil).Once()
+		b.bridgeL2.EXPECT().
+			GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+			Return(nil, 150, nil).Once()
+		b.bridgeL2.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(1234), false, nil).Once()
+		b.bridgeL2.EXPECT().GetLatestNetworkBlock(mock.Anything).Return(uint64(2555), nil).Once()
+
+		b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(555), nil).Once()
+
+		w := performRequest(t, b.router, "/health")
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.HealthCheckResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+		require.Equal(t, bridgetypes.HealthSyncStatusPending, response.SyncStatus)
+		require.NotNil(t, response.Details.L1.IsSynced)
+		require.True(t, *response.Details.L1.IsSynced)
+		require.NotNil(t, response.Details.L2.IsSynced)
+		require.False(t, *response.Details.L2.IsSynced)
+	})
+
+	t.Run("error - L1 contract call fails", func(t *testing.T) {
+		b := newBridgeWithMocks(t, l2NetworkID)
+		b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+		b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+			Return(uint32(0), errors.New("L1 contract error")).Once()
+		// computeSyncStatus stops at the first error: L2/l2gersync are never reached this cycle
+		// (see computeSyncStatus's doc comment), so no expectations are set on b.bridgeL2 /
+		// b.injectedGERs -- were they called unexpectedly, these mockery mocks would fail the test.
+
+		w := performRequest(t, b.router, "/health")
+		require.Equal(t, http.StatusOK, w.Code, "health check must always answer 200, even on a computation error")
+
+		var response bridgetypes.HealthCheckResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+		require.Equal(t, bridgetypes.HealthSyncStatusError, response.SyncStatus)
+		require.NotNil(t, response.Details.L1)
+		require.True(t, response.Details.L1.IsActive)
+		require.Nil(t, response.Details.L1.IsSynced)
+		require.Contains(t, response.Details.L1.Error, "failed to get deposit count from L1 bridge contract")
+
+		// L2/L2GER were never reached this cycle: omitted, not mislabeled as an error.
+		require.Nil(t, response.Details.L2)
+		require.Nil(t, response.Details.L2GER)
+	})
+
+	t.Run("error - L1 syncer halted (configured but IsActive false)", func(t *testing.T) {
+		b := newBridgeWithMocks(t, l2NetworkID)
+		b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(false).Once()
+
+		b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Once()
+		b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(200), nil).Once()
+		b.bridgeL2.EXPECT().
+			GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+			Return(nil, 200, nil).Once()
+
+		b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(555), nil).Once()
+
+		w := performRequest(t, b.router, "/health")
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.HealthCheckResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+		require.Equal(t, bridgetypes.HealthSyncStatusError, response.SyncStatus)
+		require.NotNil(t, response.Details.L1)
+		require.False(t, response.Details.L1.IsActive)
+		require.Nil(t, response.Details.L1.IsSynced)
+		require.Empty(t, response.Details.L1.Error, "halted-but-configured is an operational fault, not a compute error")
+
+		require.NotNil(t, response.Details.L2)
+		require.True(t, response.Details.L2.IsActive)
+		require.NotNil(t, response.Details.L2.IsSynced)
+		require.True(t, *response.Details.L2.IsSynced)
+	})
+
+	t.Run("inactive-by-configuration - nil L1 bridge syncer excluded, not an error", func(t *testing.T) {
+		b := newBridgeWithMocks(t, l2NetworkID)
+		// An L2-only bridge service instance: no L1 bridge syncer wired at all. This must be
+		// excluded from Details/aggregation entirely, distinct from "configured but halted" above.
+		b.bridge.bridgeL1 = nil
+
+		b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Once()
+		b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(200), nil).Once()
+		b.bridgeL2.EXPECT().
+			GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+			Return(nil, 200, nil).Once()
+
+		b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(555), nil).Once()
+
+		w := performRequest(t, b.router, "/health")
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.HealthCheckResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+
+		require.Equal(t, bridgetypes.HealthSyncStatusDone, response.SyncStatus)
+		require.Nil(t, response.Details.L1, "nil-configured syncer must be omitted, not reported as inactive/error")
+		require.NotNil(t, response.Details.L2)
+		require.True(t, *response.Details.L2.IsSynced)
+
+		// Confirm the omission survives JSON encoding too (omitempty), not just the Go struct.
+		require.NotContains(t, w.Body.String(), `"l1"`)
+	})
+}
+
+// TestHealthCheckHandler_Cache proves the TTL cache collapses concurrent/repeated health probes
+// into a single underlying computation within the TTL window, and recomputes once it expires.
+// expectFullySyncedBridgeService's Times(n) expectations make mockery
+// itself the assertion: an extra or missing call fails the test.
+func TestHealthCheckHandler_Cache(t *testing.T) {
+	t.Run("cache hit within TTL - underlying Bridger called once for N requests", func(t *testing.T) {
+		b := newBridgeWithMocksAndHealthCacheTTL(t, l2NetworkID, time.Hour)
+		expectFullySyncedBridgeService(b, 1)
+
+		const requests = 5
+		for i := 0; i < requests; i++ {
+			w := performRequest(t, b.router, "/health")
+			require.Equal(t, http.StatusOK, w.Code)
+
+			var response bridgetypes.HealthCheckResponse
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+			require.Equal(t, bridgetypes.HealthSyncStatusDone, response.SyncStatus)
+		}
+		// Mock expectations are asserted via t.Cleanup (mocks.NewBridger(t) etc.): Times(1)
+		// would fail here if any of the 5 requests above triggered a second computation.
+	})
+
+	t.Run("cache expiry - recomputes after TTL elapses", func(t *testing.T) {
+		const ttl = 20 * time.Millisecond
+		b := newBridgeWithMocksAndHealthCacheTTL(t, l2NetworkID, ttl)
+		expectFullySyncedBridgeService(b, 2)
+
+		w1 := performRequest(t, b.router, "/health")
+		require.Equal(t, http.StatusOK, w1.Code)
+
+		time.Sleep(ttl + 30*time.Millisecond)
+
+		w2 := performRequest(t, b.router, "/health")
+		require.Equal(t, http.StatusOK, w2.Code)
+		// Times(2) above is satisfied only if both requests triggered their own computation.
+	})
+
+	t.Run("concurrent requests single-flight into one computation", func(t *testing.T) {
+		b := newBridgeWithMocksAndHealthCacheTTL(t, l2NetworkID, time.Hour)
+
+		// Block the first (and, if single-flight fails, only) GetContractDepositCount call so
+		// every concurrent request below genuinely races against one in-flight computation
+		// instead of running sequentially against separate ones.
+		release := make(chan struct{})
+		b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+		b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+			Run(func(context.Context) { <-release }).
+			Return(uint32(100), nil).Once()
+		b.bridgeL1.EXPECT().
+			GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+			Return(nil, 100, nil).Once()
+
+		expectL2AndL2GERSynced(b, 1)
+
+		const concurrentRequests = 10
+		var wg stdsync.WaitGroup
+		wg.Add(concurrentRequests)
+		codes := make([]int, concurrentRequests)
+		for i := 0; i < concurrentRequests; i++ {
+			go func(i int) {
+				defer wg.Done()
+				codes[i] = performRequest(t, b.router, "/health").Code
+			}(i)
+		}
+
+		// Give every goroutine a chance to reach the blocked call before releasing it.
+		time.Sleep(20 * time.Millisecond)
+		close(release)
+		wg.Wait()
+
+		for _, code := range codes {
+			require.Equal(t, http.StatusOK, code)
+		}
+		// The real assertion is implicit: every mocked call above is .Once(), which only holds
+		// if all concurrentRequests requests collapsed into a single computeSyncStatus call.
+	})
+}
+
+// expectL2AndL2GERSynced sets up mock expectations for a synced, active L2 bridge syncer and an
+// active l2gersync, shared by cache tests that only need to drive L1's computation directly.
+func expectL2AndL2GERSynced(b bridgeWithMocks, times int) {
+	b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Times(times)
+	b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(200), nil).Times(times)
+	b.bridgeL2.EXPECT().
+		GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+		Return(nil, 200, nil).Times(times)
+	b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(555), nil).Times(times)
+}
+
+// TestHealthCheckCache_PanicInComputeDoesNotWedgeCache proves that a panic inside compute (a)
+// still propagates out of getOrCompute (it is not swallowed here -- gin's Recovery middleware is
+// what turns it into a single 500 in production), and (b) does not leave h.inflight/the
+// single-flight channel permanently set, which would otherwise block every subsequent caller on
+// <-ch forever. Without the defer in getOrCompute, the second call below hangs; it is run on its
+// own goroutine with a timeout so that regression fails this test instead of hanging the suite.
+func TestHealthCheckCache_PanicInComputeDoesNotWedgeCache(t *testing.T) {
+	cache := newHealthCheckCache(time.Hour)
+
+	panicked := false
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				panicked = true
+			}
+		}()
+		cache.getOrCompute(func() (bridgetypes.HealthSyncStatus, bridgetypes.HealthCheckDetails) {
+			panic("boom")
+		})
+	}()
+	require.True(t, panicked, "a compute panic must propagate out of getOrCompute, not be swallowed")
+
+	done := make(chan bridgetypes.HealthSyncStatus, 1)
+	go func() {
+		status, _ := cache.getOrCompute(func() (bridgetypes.HealthSyncStatus, bridgetypes.HealthCheckDetails) {
+			return bridgetypes.HealthSyncStatusDone, bridgetypes.HealthCheckDetails{}
+		})
+		done <- status
+	}()
+
+	select {
+	case status := <-done:
+		require.Equal(t, bridgetypes.HealthSyncStatusDone, status)
+	case <-time.After(2 * time.Second):
+		t.Fatal("getOrCompute hung after a previous call's compute panicked: " +
+			"h.inflight/the single-flight channel were not cleared")
+	}
+}
+
+// TestHealthCheckHandler_ComputeTimeout proves HealthCheckHandler bounds its underlying
+// computation by DefaultHealthCheckComputeTimeout rather than by Config.ReadTimeout: an RPC call
+// that never returns must still yield an HTTP 200 with sync_status "error" well within the
+// (shrunk, for this test) compute timeout, not hang for up to ReadTimeout.
+func TestHealthCheckHandler_ComputeTimeout(t *testing.T) {
+	origTimeout := DefaultHealthCheckComputeTimeout
+	DefaultHealthCheckComputeTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { DefaultHealthCheckComputeTimeout = origTimeout })
+
+	b := newBridgeWithMocksAndHealthCacheTTL(t, l2NetworkID, time.Hour)
+	b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+	b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+		RunAndReturn(func(ctx context.Context) (uint32, error) {
+			<-ctx.Done()
+			return 0, ctx.Err()
+		}).Once()
+	// computeSyncStatus stops at the first error: L2/l2gersync are never reached this cycle, so
+	// no expectations are set on b.bridgeL2 / b.injectedGERs.
+
+	start := time.Now()
+	w := performRequest(t, b.router, "/health")
+	elapsed := time.Since(start)
+
+	require.Equal(t, http.StatusOK, w.Code, "health check must always answer 200, even on a compute timeout")
+	// newBridgeWithMocksAndHealthCacheTTL sets Config.ReadTimeout to 1s -- comfortably above the
+	// shrunk DefaultHealthCheckComputeTimeout (20ms) used here, but a useful discriminator: if the
+	// handler were still bounding its compute context by b.readTimeout instead of its own
+	// DefaultHealthCheckComputeTimeout, this call would take ~1s, not ~20ms.
+	require.Less(t, elapsed, 500*time.Millisecond,
+		"handler must be bounded by DefaultHealthCheckComputeTimeout, not Config.ReadTimeout")
 
 	var response bridgetypes.HealthCheckResponse
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, bridgetypes.HealthSyncStatusError, response.SyncStatus)
+	require.NotNil(t, response.Details.L1)
+	require.Contains(t, response.Details.L1.Error, "context deadline exceeded")
+}
 
-	require.Equal(t, "ok", response.Status)
-	require.NotEmpty(t, response.Time)
-	require.NotEmpty(t, response.Version)
+// TestHealthCheckHandler_ComputeTimeoutIsConfigurable proves Config.HealthCheckComputeTimeout
+// overrides DefaultHealthCheckComputeTimeout, so an operator whose RPC endpoints are slower than
+// the 3s default can raise the bound (and a test can lower it) without patching a package var.
+// The default itself is deliberately left large here: if the configured value were ignored and
+// the default used instead, this call would take ~1s (ReadTimeout) or the full default, not ~30ms.
+func TestHealthCheckHandler_ComputeTimeoutIsConfigurable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	b := bridgeWithMocks{
+		upgradeQuerier: mocks.NewAgglayerManagerUpgradeQuerier(t),
+		l1InfoTree:     mocks.NewL1InfoTreeSyncer(t),
+		injectedGERs:   mocks.NewL2GERSyncer(t),
+		bridgeL1:       mocks.NewBridger(t),
+		claimL1:        mocks.NewClaimer(t),
+		bridgeL2:       mocks.NewBridger(t),
+		claimL2:        mocks.NewClaimer(t),
+	}
+	cfg := &Config{
+		Logger:                    log.WithFields("module", "test bridge service"),
+		ReadTimeout:               time.Second,
+		NetworkID:                 l2NetworkID,
+		HealthCheckCacheTTL:       cfgtypes.Duration{Duration: time.Hour},
+		HealthCheckComputeTimeout: cfgtypes.Duration{Duration: 30 * time.Millisecond},
+	}
+	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs,
+		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
+	b.router = gin.New()
+	b.bridge.RegisterRoutes(b.router)
+
+	b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+	b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+		RunAndReturn(func(ctx context.Context) (uint32, error) {
+			<-ctx.Done()
+			return 0, ctx.Err()
+		}).Once()
+
+	start := time.Now()
+	w := performRequest(t, b.router, "/health")
+	elapsed := time.Since(start)
+
+	require.Equal(t, http.StatusOK, w.Code, "health check must always answer 200, even on a compute timeout")
+	require.Less(t, elapsed, 500*time.Millisecond,
+		"handler must honour Config.HealthCheckComputeTimeout, not ReadTimeout or the package default")
+
+	var response bridgetypes.HealthCheckResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Equal(t, bridgetypes.HealthSyncStatusError, response.SyncStatus)
+}
+
+// TestGetSyncStatusHandler_UnaffectedByHealthCheckRefactor proves /bridge/v1/sync-status's
+// response shape is unchanged (byte-compatible) after factoring its computation out into
+// computeSyncStatus for reuse by HealthCheckHandler: no sync_status/details leakage, and the
+// same three top-level keys as before.
+func TestGetSyncStatusHandler_UnaffectedByHealthCheckRefactor(t *testing.T) {
+	b := newBridgeWithMocks(t, l2NetworkID)
+	expectFullySyncedBridgeService(b, 1)
+
+	w := performRequest(t, b.router, BridgeV1Prefix+"/sync-status")
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var asMap map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &asMap))
+	require.ElementsMatch(t, []string{"l1_info", "l2_info", "l2_ger_info"}, mapKeys(asMap))
+
+	var response bridgetypes.SyncStatus
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.True(t, response.L1Info.IsSynced)
+	require.True(t, response.L2Info.IsSynced)
+	require.Equal(t, uint64(555), response.L2GERInfo.LastProcessedBlock)
+}
+
+func mapKeys(m map[string]json.RawMessage) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func TestGetPublicConfigHandler(t *testing.T) {
@@ -3888,17 +4335,14 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 					Once()
 			}
 
-			w := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(w)
 			ctx := context.Background()
 			networkInfo := &bridgetypes.NetworkSyncInfo{
 				IsActive: true,
 			}
 
-			result := b.bridge.populateNetworkSyncInfo(ctx, c, b.bridgeL1, networkInfo, "L1")
+			err := b.bridge.populateNetworkSyncInfo(ctx, b.bridgeL1, networkInfo, "L1")
 
-			require.Equal(t, http.StatusOK, result)
-			require.Equal(t, http.StatusOK, w.Code)
+			require.NoError(t, err)
 			require.Equal(t, tc.contractCount, networkInfo.ContractDepositCount)
 			require.Equal(t, tc.bridgeCount, networkInfo.SynchronizedDepositCount)
 			require.Equal(t, tc.expectedIsSynced, networkInfo.IsSynced)
@@ -3915,10 +4359,9 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 
 	// Test error cases
 	errorTestCases := []struct {
-		description        string
-		setupMocks         func()
-		expectedStatusCode int
-		expectedError      string
+		description   string
+		setupMocks    func()
+		expectedError string
 	}{
 		{
 			description: "error getting contract deposit count",
@@ -3927,8 +4370,7 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 					Return(uint32(0), errors.New("contract error")).
 					Once()
 			},
-			expectedStatusCode: http.StatusInternalServerError,
-			expectedError:      "failed to get deposit count from L1 bridge contract: contract error",
+			expectedError: "failed to get deposit count from L1 bridge contract: contract error",
 		},
 		{
 			description: "error getting bridges from database",
@@ -3940,8 +4382,7 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 					Return(nil, 0, errors.New("database error")).
 					Once()
 			},
-			expectedStatusCode: http.StatusInternalServerError,
-			expectedError:      "failed to get bridges from L1 database: database error",
+			expectedError: "failed to get bridges from L1 database: database error",
 		},
 	}
 
@@ -3949,23 +4390,16 @@ func TestPopulateNetworkSyncInfo(t *testing.T) {
 		t.Run(tc.description, func(t *testing.T) {
 			tc.setupMocks()
 
-			w := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(w)
 			ctx := context.Background()
 
 			networkInfo := &bridgetypes.NetworkSyncInfo{
 				IsActive: true,
 			}
 
-			result := b.bridge.populateNetworkSyncInfo(ctx, c, b.bridgeL1, networkInfo, "L1")
+			err := b.bridge.populateNetworkSyncInfo(ctx, b.bridgeL1, networkInfo, "L1")
 
-			require.Equal(t, tc.expectedStatusCode, result)
-			require.Equal(t, tc.expectedStatusCode, w.Code)
-
-			var response gin.H
-			err := json.Unmarshal(w.Body.Bytes(), &response)
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedError, response["error"])
+			require.Error(t, err)
+			require.Equal(t, tc.expectedError, err.Error())
 		})
 	}
 }

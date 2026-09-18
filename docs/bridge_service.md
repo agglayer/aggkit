@@ -262,6 +262,99 @@ The Go client exposes this as `client.GetClaimCandidates(ctx, client.GetClaimCan
 (`bridgeservice/client/client.go`), which returns `client.ErrNotFound` when `to_ler`/`from_ler`
 is not synced yet.
 
+## Health check
+
+`GET /` and `GET /health` (an explicit alias of the same handler, issue #1689) both return a
+`types.HealthCheckResponse` — service identity/version plus a summary bridge sync status:
+
+```json
+{
+  "status": "ok",
+  "time": "2025-06-05T07:30:00Z",
+  "version": "v0.11.0",
+  "sync_status": "pending",
+  "details": {
+    "l1": { "is_active": true, "is_synced": false },
+    "l2": { "is_active": true, "is_synced": true },
+    "l2_ger": { "is_active": true }
+  }
+}
+```
+
+`sync_status` (`types.HealthSyncStatus`) is one of:
+
+- `done` — every configured, active sync component is fully caught up.
+- `pending` — every configured, active sync component was computed successfully, but at least one has
+  not yet caught up (`is_synced == false`). Not an error: this is the expected transient state while a
+  node catches up after startup or a burst of activity.
+- `error` — a configured component is halted (`is_active == false`, e.g. resolving a reorg) or its sync
+  status could not be computed (an RPC/DB error while checking it); `details.<component>.error` carries
+  the message in that case.
+
+`details` is a per-component breakdown (`l1`, `l2`, `l2_ger`, each a `types.ComponentHealth` with
+`is_active`, an optional `is_synced`, and an optional `error`) derived from the exact same computation
+`GET /bridge/v1/sync-status` uses, so the two endpoints can never disagree. A component that is not
+configured on this instance at all (for example no L1 bridge syncer on an L2-only bridge service, or no
+l2gersync wired in) is **omitted from `details` entirely** and excluded from the `sync_status`
+aggregation — it is normal, expected topology for a large fraction of deployed instances, not a fault.
+l2gersync (`l2_ger`) never has a meaningful "caught up" signal today, so it never sets `is_synced` and
+never gates `pending`/`done`; it only ever contributes to the `error` bucket, when it is configured and
+its own last-processed-block read fails.
+
+**This endpoint always answers HTTP 200**, regardless of `sync_status` — including `error`. This is
+deliberate: it backs the liveness/routing probe a `bridgeservicefinder.Finder` instance uses to decide
+whether a resolved bridge service is healthy enough to route to (`bridgeservicefinder/health.go`'s
+health checker treats any 2xx response as healthy). A syncer that is merely lagging or hitting a
+transient error is not the same thing as this instance being unreachable or broken, and evicting it
+from routing over a `pending`/`error` `sync_status` would make an already-degraded topology worse by
+removing a node that could otherwise still serve requests. Callers that need to react to sync health
+should inspect `sync_status`/`details`, never the HTTP status code of this endpoint.
+
+There is deliberately no second endpoint that returns a non-2xx on `sync_status: "error"`. Adding one would
+recreate the hazard this design avoids: `bridgeservicefinder` gates routing on a 2xx at
+`DefaultHealthCheckPath` (`/`), so any probe path that can go non-2xx risks being pointed at by a finder or an
+ingress check and evicting an instance that is merely catching up. A consumer that genuinely wants to gate on
+sync state reads the body instead. For a Kubernetes readiness probe that means an `exec` probe, not `httpGet`
+with extra fields — the two are mutually exclusive in a single probe:
+
+```yaml
+readinessProbe:
+  exec:
+    command:
+      - /bin/sh
+      - -c
+      - 'curl -sf localhost:8080/health | jq -e ".sync_status != \"error\""'
+  periodSeconds: 10
+  failureThreshold: 3
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+```
+
+Keep `livenessProbe` on the plain `httpGet` above: liveness should restart a wedged process, not a lagging one,
+and `/health` answering 200 at all is exactly the "process is serving" signal it wants.
+
+The result is cached for `bridgeservice.DefaultHealthCheckCacheTTL` (2 seconds) so a burst of
+concurrent health probes within that window collapses into a single underlying computation instead of
+recomputing `sync_status` on every call; a stale-cache read and a fresh computation racing each other
+share the same in-flight result rather than duplicating work.
+
+A single computation is additionally bounded by `Config.HealthCheckComputeTimeout` (default
+`bridgeservice.DefaultHealthCheckComputeTimeout`, 3 seconds), deliberately separate from
+`ReadTimeout`. `ReadTimeout` is request-scoped and can be as large as 5 minutes
+(`PublicREST.ReadTimeout`'s default), which is sized for large paginated response bodies, not for a
+liveness probe: without its own bound, a black-holed RPC endpoint would let `/` and `/health` hang for
+up to `ReadTimeout`, taking every concurrent caller waiting on the shared in-flight result with them.
+On expiry the endpoint still answers **200** with `sync_status: "error"`, never a hang. Raise it if
+your RPC endpoints are legitimately slower than the default.
+
+**Both `HealthCheckCacheTTL` and `HealthCheckComputeTimeout` are fields on `bridgeservice.Config`
+with the Go defaults above, but neither is wired to TOML today** — there is no `[BridgeService]`
+section, so they cannot be set from `config.toml.example` or a CLI flag. Code embedding the bridge
+service can set them; changing the effective default for a normal deployment currently requires a
+code change.
+
 ## Sync status
 
 `GET /bridge/v1/sync-status` reports the synchronization status of the L1 and L2 bridge indexers, plus

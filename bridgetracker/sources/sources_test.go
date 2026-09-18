@@ -93,11 +93,45 @@ func bridgeEventLog(t *testing.T, destinationNetwork, depositCount uint32) *geth
 	}
 }
 
+// staticBridgeAddressResolver is a hand-written bridgeAddressResolver fake for tests (no
+// mockery mock exists for this narrow, package-private interface — see other fakes in this
+// package, e.g. activityRPCTestLister). A network absent from addrs returns err (defaulting to
+// a "not configured" error), mirroring how a real resolver failure surfaces.
+type staticBridgeAddressResolver struct {
+	addrs map[uint32]common.Address
+	err   error
+}
+
+func (r staticBridgeAddressResolver) BridgeAddress(_ context.Context, networkID uint32) (common.Address, error) {
+	if addr, ok := r.addrs[networkID]; ok {
+		return addr, nil
+	}
+	if r.err != nil {
+		return common.Address{}, r.err
+	}
+	return common.Address{}, fmt.Errorf("no bridge contract address configured for network %d", networkID)
+}
+
+// panicBridgeAddressResolver is a bridgeAddressResolver that fails the test if it is ever
+// consulted — used to prove a static Tracker.BridgeAddrs override is used as-is, without ever
+// falling through to the resolver.
+type panicBridgeAddressResolver struct{}
+
+func (panicBridgeAddressResolver) BridgeAddress(context.Context, uint32) (common.Address, error) {
+	panic("resolver must not be consulted when a static bridgeAddrs override is configured")
+}
+
+// testBridgeAddr is the network-0 canonical bridge address newBridgeEventSource's resolver
+// reports; matches the zero-value Address of the logs bridgeEventLog produces, so every test
+// relying on newBridgeEventSource's default log fixtures still gets accepted.
+var testBridgeAddr = common.Address{}
+
 func newBridgeEventSource(t *testing.T, client *mocks.BaseEthereumClienter) *BridgeEventSource {
 	t.Helper()
 
 	source, err := NewBridgeEventSource(
-		StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock, nil)
+		StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock, nil,
+		staticBridgeAddressResolver{addrs: map[uint32]common.Address{0: testBridgeAddr}})
 	require.NoError(t, err)
 	return source
 }
@@ -178,9 +212,11 @@ func TestBridgeEventSourceUnknownNetwork(t *testing.T) {
 }
 
 // TestBridgeEventSourceRejectsUnverifiedEmitter checks that, once a network has a configured
-// bridge address, a BridgeEvent log emitted by any other contract is ignored rather than
-// treated as a real bridge — this is what stops an unrelated or malicious contract from
-// spoofing the event.
+// static bridgeAddrs override, a BridgeEvent log emitted by any other contract is ignored
+// rather than treated as a real bridge — this is what stops an unrelated or malicious contract
+// from spoofing the event. It uses panicBridgeAddressResolver to additionally prove the
+// override wins over the resolver: if FindBridge ever fell through to the resolver instead of
+// using the override as-is, this test would panic.
 func TestBridgeEventSourceRejectsUnverifiedEmitter(t *testing.T) {
 	realBridgeAddr := common.HexToAddress("0xB41D9E")
 	spoofedLog := bridgeEventLog(t, 1, 7)
@@ -196,11 +232,150 @@ func TestBridgeEventSourceRejectsUnverifiedEmitter(t *testing.T) {
 
 	source, err := NewBridgeEventSource(
 		StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock,
-		map[uint32]common.Address{0: realBridgeAddr})
+		map[uint32]common.Address{0: realBridgeAddr}, panicBridgeAddressResolver{})
 	require.NoError(t, err)
 
 	_, err = source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})
 	require.ErrorIs(t, err, bridgetracker.ErrBridgeTxNotABridge)
+}
+
+// TestBridgeEventSourceOverrideAccepsCanonicalEmitter checks the accept-path complement of
+// TestBridgeEventSourceRejectsUnverifiedEmitter: a log emitted by the overridden address is
+// accepted, and the resolver (which would panic if consulted) is still never used.
+func TestBridgeEventSourceOverrideAcceptsCanonicalEmitter(t *testing.T) {
+	realBridgeAddr := common.HexToAddress("0xB41D9E")
+	realLog := bridgeEventLog(t, 1, 7)
+	realLog.Address = realBridgeAddr
+
+	client := mocks.NewBaseEthereumClienter(t)
+	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
+		Status:      gethtypes.ReceiptStatusSuccessful,
+		BlockNumber: big.NewInt(12345),
+		Logs:        []*gethtypes.Log{realLog},
+	}, nil)
+	expectFinalized(client, 12345)
+	expectBlockTimestamp(client)
+
+	source, err := NewBridgeEventSource(
+		StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock,
+		map[uint32]common.Address{0: realBridgeAddr}, panicBridgeAddressResolver{})
+	require.NoError(t, err)
+
+	info, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), info.DestinationNetwork)
+	require.Equal(t, uint32(7), info.DepositCount)
+}
+
+// TestBridgeEventSourceResolverRejectsUnverifiedEmitter is like
+// TestBridgeEventSourceRejectsUnverifiedEmitter, but for a network with no static bridgeAddrs
+// override: the canonical address is resolved through the resolver instead, and a log from any
+// other address is still the only candidate, so FindBridge reports ErrBridgeTxNotABridge
+// (permanent — the receipt's log set can never change on retry).
+func TestBridgeEventSourceResolverRejectsUnverifiedEmitter(t *testing.T) {
+	realBridgeAddr := common.HexToAddress("0xB41D9E")
+	spoofedLog := bridgeEventLog(t, 1, 7)
+	spoofedLog.Address = common.HexToAddress("0xBAD")
+
+	client := mocks.NewBaseEthereumClienter(t)
+	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
+		Status:      gethtypes.ReceiptStatusSuccessful,
+		BlockNumber: big.NewInt(12345),
+		Logs:        []*gethtypes.Log{spoofedLog},
+	}, nil)
+	expectFinalized(client, 12345)
+
+	source, err := NewBridgeEventSource(
+		StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock, nil,
+		staticBridgeAddressResolver{addrs: map[uint32]common.Address{0: realBridgeAddr}})
+	require.NoError(t, err)
+
+	_, err = source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})
+	require.ErrorIs(t, err, bridgetracker.ErrBridgeTxNotABridge)
+}
+
+// TestBridgeEventSourceResolverErrorIsTransient checks that a resolver failure (e.g. a
+// transient RPC error hitting the rollup manager) is reported as a plain (non-permanent, non-
+// not-found) error — the engine retries — and, crucially, that FindBridge never falls back to
+// matching on the event signature alone: the log is never even inspected once the resolver
+// fails, since no mock expectation is registered for HeaderByHash/ParseBridgeEvent-adjacent
+// calls beyond TransactionReceipt/CustomHeaderByNumber.
+func TestBridgeEventSourceResolverErrorIsTransient(t *testing.T) {
+	client := mocks.NewBaseEthereumClienter(t)
+	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
+		Status:      gethtypes.ReceiptStatusSuccessful,
+		BlockNumber: big.NewInt(12345),
+		Logs:        []*gethtypes.Log{bridgeEventLog(t, 1, 7)},
+	}, nil)
+	expectFinalized(client, 12345)
+
+	resolverErr := errors.New("rollup manager query failed")
+	source, err := NewBridgeEventSource(
+		StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock, nil,
+		staticBridgeAddressResolver{err: resolverErr})
+	require.NoError(t, err)
+
+	_, err = source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})
+	require.ErrorIs(t, err, resolverErr)
+	require.NotErrorIs(t, err, bridgetracker.ErrBridgeTxNotABridge,
+		"a resolver failure must never be treated as a permanent rejection")
+	require.NotErrorIs(t, err, bridgetracker.ErrBridgeTxNotFound)
+}
+
+// TestBridgeEventSourceMatchesCanonicalAmongMultipleLogs checks that, when a receipt carries
+// both an impostor BridgeEvent-shaped log and the real one, FindBridge resolves the real one
+// regardless of which order they appear in the receipt's log list.
+func TestBridgeEventSourceMatchesCanonicalAmongMultipleLogs(t *testing.T) {
+	realBridgeAddr := common.HexToAddress("0xB41D9E")
+
+	testCases := []struct {
+		name    string
+		reorder bool
+	}{
+		{name: "impostor log first"},
+		{name: "real log first", reorder: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			impostorLog := bridgeEventLog(t, 1, 7)
+			impostorLog.Address = common.HexToAddress("0xBAD")
+			realLog := bridgeEventLog(t, 2, 9)
+			realLog.Address = realBridgeAddr
+
+			logs := []*gethtypes.Log{impostorLog, realLog}
+			if tc.reorder {
+				logs = []*gethtypes.Log{realLog, impostorLog}
+			}
+
+			client := mocks.NewBaseEthereumClienter(t)
+			client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
+				Status:      gethtypes.ReceiptStatusSuccessful,
+				BlockNumber: big.NewInt(12345),
+				Logs:        logs,
+			}, nil)
+			expectFinalized(client, 12345)
+			expectBlockTimestamp(client)
+
+			source, err := NewBridgeEventSource(
+				StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock, nil,
+				staticBridgeAddressResolver{addrs: map[uint32]common.Address{0: realBridgeAddr}})
+			require.NoError(t, err)
+
+			info, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})
+			require.NoError(t, err)
+			require.Equal(t, uint32(2), info.DestinationNetwork)
+			require.Equal(t, uint32(9), info.DepositCount)
+		})
+	}
+}
+
+// TestNewBridgeEventSourceRequiresResolver checks the fail-closed construction-time guard: a
+// nil resolver is rejected outright, since it would leave FindBridge with no way to verify an
+// unconfigured network's emitter.
+func TestNewBridgeEventSourceRequiresResolver(t *testing.T) {
+	_, err := NewBridgeEventSource(
+		StaticClients{}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock, nil, nil)
+	require.Error(t, err)
 }
 
 // fakeBridgeService emulates the aggkit bridge service endpoints the sources consume
@@ -667,23 +842,16 @@ func TestLERSourceOriginLER(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x40")
 	root := common.HexToHash("0x0e")
 
-	// the matching log (same LogIndex as bridge) carries the bridge contract's address;
-	// an unrelated log at a different index must be ignored
-	matchingLog := bridgeEventLog(t, bridge.DestinationNetwork, bridge.DepositCount)
-	matchingLog.Address = bridgeAddr
-	otherLog := gethtypes.Log{Address: common.HexToAddress("0x99"), Index: uint(bridge.LogIndex) + 1}
-
 	client := mocks.NewBaseEthereumClienter(t)
-	client.EXPECT().FilterLogs(mock.Anything, ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(bridge.BlockNumber)),
-		ToBlock:   big.NewInt(int64(bridge.BlockNumber)),
-		Topics:    [][]common.Hash{{bridgeEventSignature}},
-	}).Return([]gethtypes.Log{otherLog, *matchingLog}, nil)
 	client.EXPECT().CallContract(mock.Anything, mock.MatchedBy(func(msg ethereum.CallMsg) bool {
 		return msg.To != nil && *msg.To == bridgeAddr
 	}), big.NewInt(int64(bridge.BlockNumber))).Return(rootCallOutput(t, root), nil)
 
-	source := NewLERSource(StaticClients{bridge.NetworkID: client})
+	source, err := NewLERSource(
+		StaticClients{bridge.NetworkID: client},
+		staticBridgeAddressResolver{addrs: map[uint32]common.Address{bridge.NetworkID: bridgeAddr}})
+	require.NoError(t, err)
+
 	result, err := source.OriginLER(t.Context(), bridge)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -692,24 +860,61 @@ func TestLERSourceOriginLER(t *testing.T) {
 	require.Equal(t, bridge.BlockNumber, result.BlockNumber)
 }
 
-func TestLERSourceBridgeEventLogNotFound(t *testing.T) {
+// TestLERSourceNeverTrustsLogDerivedAddress checks that OriginLER binds GetRoot() to the
+// resolver's answer only. bridge.LogIndex here does not correspond to any real log at all (no
+// FilterLogs expectation is registered on the mock client, so any attempt to fetch/inspect a
+// log would fail this test) — OriginLER must never re-derive the bridge contract's address from
+// the BridgeEvent log itself, only from the resolver.
+func TestLERSourceNeverTrustsLogDerivedAddress(t *testing.T) {
 	bridge := l2ToL1Bridge()
+	bridge.LogIndex = 99 // deliberately does not match any real log
+	bridgeAddr := common.HexToAddress("0x40")
+	root := common.HexToHash("0x0e")
 
 	client := mocks.NewBaseEthereumClienter(t)
-	client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, nil)
+	client.EXPECT().CallContract(mock.Anything, mock.MatchedBy(func(msg ethereum.CallMsg) bool {
+		return msg.To != nil && *msg.To == bridgeAddr
+	}), big.NewInt(int64(bridge.BlockNumber))).Return(rootCallOutput(t, root), nil)
 
-	source := NewLERSource(StaticClients{bridge.NetworkID: client})
-	_, err := source.OriginLER(t.Context(), bridge)
-	require.ErrorContains(t, err, "BridgeEvent log 3 not found")
+	source, err := NewLERSource(
+		StaticClients{bridge.NetworkID: client},
+		staticBridgeAddressResolver{addrs: map[uint32]common.Address{bridge.NetworkID: bridgeAddr}})
+	require.NoError(t, err)
+
+	result, err := source.OriginLER(t.Context(), bridge)
+	require.NoError(t, err)
+	require.Equal(t, root, result.LER)
+}
+
+// TestLERSourceResolverError checks that a resolver failure surfaces as an error and OriginLER
+// never falls back to any other way of locating the bridge contract.
+func TestLERSourceResolverError(t *testing.T) {
+	bridge := l2ToL1Bridge()
+	resolverErr := errors.New("resolving bridge address failed")
+
+	client := mocks.NewBaseEthereumClienter(t)
+	source, err := NewLERSource(StaticClients{bridge.NetworkID: client}, staticBridgeAddressResolver{err: resolverErr})
+	require.NoError(t, err)
+
+	_, err = source.OriginLER(t.Context(), bridge)
+	require.ErrorIs(t, err, resolverErr)
+}
+
+// TestNewLERSourceRequiresResolver checks the fail-closed construction-time guard: a nil
+// resolver is rejected outright.
+func TestNewLERSourceRequiresResolver(t *testing.T) {
+	_, err := NewLERSource(StaticClients{}, nil)
+	require.Error(t, err)
 }
 
 func TestSourcesUnresolvedNetworkIsTransient(t *testing.T) {
 	resolver := staticURLs{} // no networks resolved
 	gerSource := NewGERSource(resolver, nil, common.Address{}, aggkittypes.FinalizedBlock, nil, 0, nil)
 	claimSource := NewClaimSource(resolver)
-	lerSource := NewLERSource(StaticClients{})
+	lerSource, err := NewLERSource(StaticClients{}, staticBridgeAddressResolver{})
+	require.NoError(t, err)
 
-	_, err := gerSource.OriginGER(t.Context(), l1ToL2Bridge())
+	_, err = gerSource.OriginGER(t.Context(), l1ToL2Bridge())
 	require.Error(t, err)
 	_, err = claimSource.ClaimFor(t.Context(), l1ToL2Bridge())
 	require.Error(t, err)

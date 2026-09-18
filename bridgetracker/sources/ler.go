@@ -8,8 +8,6 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/bridgetracker"
 	trackertypes "github.com/agglayer/aggkit/bridgetracker/types"
-	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -23,18 +21,28 @@ import (
 // BridgeEventSource has resolved (and finality-checked) the bridge, its LER is already final too
 type LERSource struct {
 	clients EthClientResolver
+	// resolver resolves the canonical bridge contract address for the bridge's origin network.
+	// Required (fail closed): OriginLER never reads GetRoot() from an attacker-controlled
+	// address — it only ever binds to the resolver's answer, never to anything derived from the
+	// bridge's own (already-verified-by-BridgeEventSource) log.
+	resolver bridgeAddressResolver
 }
 
-// NewLERSource returns a LERSource resolving per-network JSON-RPC clients through the given
-// resolver
-func NewLERSource(clients EthClientResolver) *LERSource {
-	return &LERSource{clients: clients}
+// NewLERSource returns a LERSource resolving per-network JSON-RPC clients through clients and
+// the origin network's canonical bridge contract address through resolver. Returns an error if
+// resolver is nil (fail closed — there is no permissive fallback for locating the bridge
+// contract).
+func NewLERSource(clients EthClientResolver, resolver bridgeAddressResolver) (*LERSource, error) {
+	if resolver == nil {
+		return nil, fmt.Errorf("bridge address resolver is required")
+	}
+	return &LERSource{clients: clients, resolver: resolver}, nil
 }
 
 // OriginLER implements bridgetracker.LERSource. It never actually returns nil (see the type
 // doc): the origin network's local exit tree always covers its own deposit by the time the
-// BridgeEvent exists, so this locates the bridge contract from the BridgeEvent log itself and
-// reads GetRoot() at that exact block
+// BridgeEvent exists, so this resolves the bridge contract's canonical address and reads
+// GetRoot() at that exact block
 func (s *LERSource) OriginLER(
 	ctx context.Context, bridge *bridgetracker.BridgeInfo,
 ) (*trackertypes.LERUpdateResult, error) {
@@ -43,9 +51,9 @@ func (s *LERSource) OriginLER(
 		return nil, err // transient: URL resolution failure, retried by the engine
 	}
 
-	bridgeAddr, err := s.bridgeContractAddress(ctx, client, bridge)
+	bridgeAddr, err := s.resolver.BridgeAddress(ctx, bridge.NetworkID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolving canonical bridge address for network %d: %w", bridge.NetworkID, err)
 	}
 
 	contract, err := agglayerbridge.NewAgglayerbridgeCaller(bridgeAddr, client)
@@ -67,31 +75,4 @@ func (s *LERSource) OriginLER(
 		LER:         common.Hash(ler),
 		BlockNumber: bridge.BlockNumber,
 	}, nil
-}
-
-// bridgeContractAddress locates the bridge contract's address off the BridgeEvent log itself:
-// re-fetching the log at bridge.BlockNumber/LogIndex (both already resolved by
-// BridgeEventSource) and taking its emitting address avoids requiring a separate, per-network
-// bridge contract address configuration
-func (s *LERSource) bridgeContractAddress(
-	ctx context.Context, client aggkittypes.BaseEthereumClienter, bridge *bridgetracker.BridgeInfo,
-) (common.Address, error) {
-	blockNumber := new(big.Int).SetUint64(bridge.BlockNumber)
-	logs, err := client.FilterLogs(ctx, ethereum.FilterQuery{
-		FromBlock: blockNumber,
-		ToBlock:   blockNumber,
-		Topics:    [][]common.Hash{{bridgeEventSignature}},
-	})
-	if err != nil {
-		return common.Address{}, fmt.Errorf("fetching BridgeEvent logs of network %d at block %d: %w",
-			bridge.NetworkID, bridge.BlockNumber, err)
-	}
-
-	for _, l := range logs {
-		if uint32(l.Index) == bridge.LogIndex {
-			return l.Address, nil
-		}
-	}
-	return common.Address{}, fmt.Errorf("BridgeEvent log %d not found in network %d block %d",
-		bridge.LogIndex, bridge.NetworkID, bridge.BlockNumber)
 }

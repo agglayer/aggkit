@@ -131,6 +131,19 @@ is restored (and the service restarted) in `t.Cleanup`.
 AGGKIT_E2E_ENV=anvil-2chains make test-e2e TEST_RUN='^TestAggsenderIndependentL1FinalityKnobs$'
 ```
 
+### Bridge service health check
+
+`TestBridgeServiceHealthSyncStatus` (`test/e2e/health_test.go`) exercises issue #1689 on `anvil-2chains`: it polls
+`GET /` on `aggkit-001`'s bridge service until `sync_status` reaches `"done"`, asserting on every observed response
+that the HTTP status is always `200` (even while `sync_status` is still `"pending"`) and that `sync_status` is one
+of the three documented values (`"done"`/`"pending"`/`"error"`); once settled, it checks that `details` reports at
+least one configured component with no error, then confirms `GET /health` serves the identical handler (same
+always-`200` contract, same `sync_status`). See [Bridge service component](./bridge_service.md#health-check).
+
+```bash
+AGGKIT_E2E_ENV=anvil-2chains make test-e2e TEST_RUN='^TestBridgeServiceHealthSyncStatus$'
+```
+
 ## Two L2 networks
 
 It involves two L2 networks (and single L1 network), that are attached to the same agglayer.
@@ -138,3 +151,45 @@ It involves two L2 networks (and single L1 network), that are attached to the sa
 ### Test L2 to L2 bridge
 
 It bridges native tokens from L1 to both L2 networks and claims them. Afterwards, it bridges from L2 (PP2) to L2 (PP1) network and claims it on the destination network.
+
+### Auto Claim: claimer added after others
+
+`TestAutoClaimClaimerAddedAfterOthers` (`test/e2e/autoclaim_test.go`) proves the fix for issue #1651 end to end on
+the two-chain Anvil env. Auto Claim runs on `aggkit-001` with its L2-to-Lx bridge detector watching its own network
+as the source. An L1-destination claimer ("network A") is present from the first restart; an L2B-destination
+claimer ("network B") is added only on a **second, later** restart, after a bridge has already been sent to network
+B while no claimer for it existed yet. The test asserts:
+
+- the bridge sent to network B before its claimer existed is still discovered and claimed once the claimer is added
+  (pre-fix, a per-source — not per-(source, destination) — LER cursor would have already advanced past it via
+  network A's traffic, silently and permanently losing it with no backfill path); and
+- network A's claiming never stalled while network B backfilled: a fresh network-A bridge sent after network B's
+  claimer is added still claims within the normal wait window.
+
+See [Auto Claim's "Adding a claimer to a running deployment" / "Legacy upgrade seed"
+sections](./autoclaim.md#l2-to-lx-l2-to-l1-and-l2-to-l2) for the underlying model this test exercises, and the
+test's own doc comment for why the analogous L1-to-L2 failure mode is covered by the unit suite instead of here.
+
+```bash
+go test -v -run 'TestAutoClaimClaimerAddedAfterOthers' -timeout 40m ./test/e2e
+```
+
+### Bridge tracker: non-bridge emitter check
+
+`TestBridgeTrackerNotABridge` (`test/e2e/proxy_tracker_test.go`) exercises `BridgeEventSource`'s fail-closed
+emitter-address check (issue #1751) on a multi-chain env with `aggkit-proxy`'s tracker enabled: it sends a
+transaction to `test/contracts/bridgeeventimpostor` (`BridgeEventImpostor.sol`), a throwaway contract whose only
+purpose is to emit a log with the exact same `topic0` as the real bridge contract's `BridgeEvent`, but from a
+non-bridge address. The tracker resolves the real, canonical L1 bridge address through the bridge service finder
+(`BridgeServiceFinder`/`RollupManagerAddr`), so the impostor log's address never matches it; `FindBridge` finds no
+matching log and returns the permanent `ErrBridgeTxNotABridge`, which the tracker surfaces as a terminal
+`tracking_status: "error"` with `bridge_status` staying `null`. See `TestBridgeTrackerL1ToL2` for the happy-path
+counterpart in the same file, and [Bridge Tracker component](./bridgetracker.md#how-it-works) for the address-check
+rule this exercises.
+
+The impostor contract is compiled by `test/contracts/compile.sh` and bound into Go by `test/contracts/bind.sh`
+(`gen bridgeeventimpostor`) like every other test-only contract in `test/contracts/`.
+
+```bash
+go test -v -run 'TestBridgeTrackerNotABridge' -timeout 5m ./test/e2e
+```

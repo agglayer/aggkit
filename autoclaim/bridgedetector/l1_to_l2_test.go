@@ -183,11 +183,17 @@ func TestNewDestinationStartsFromConfiguredStartBlock(t *testing.T) {
 	result, err := detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), result.FromBlock)
-	require.Equal(t, uint64(14), result.ToBlock)
-	require.Equal(t, []blockRange{{from: 5, to: 14}}, source.ranges)
+	require.Equal(t, uint64(58), result.ToBlock)
+	require.Equal(t, []blockRange{{from: 5, to: 14}, {from: 49, to: 58}}, source.ranges)
 	require.Len(t, claimer11.enqueued, 1)
 	_, ok := store.cursors[detector.cursorNameForDestination(11)]
 	require.True(t, ok)
+
+	// Destination 10 (the established claimer, frozen at fromBlock 49 before the fix) now gets its
+	// own window and advances instead of being silently skipped by the new destination's backfill.
+	destination10Cursor, ok := store.cursors[detector.cursorNameForDestination(10)]
+	require.True(t, ok, "destination 10 must advance in its own window instead of being frozen")
+	require.Equal(t, uint64(58), destination10Cursor.ToBlock)
 }
 
 func TestEnqueueCallsGoToCorrectClaimer(t *testing.T) {
@@ -438,6 +444,218 @@ func TestL1ToL2DedupsByL1SourceNotTokenOrigin(t *testing.T) {
 	require.Len(t, claimer.enqueued, 1)
 }
 
+// TestL1ToL2_NewClaimerDoesNotStallEstablishedClaimers proves that adding a claimer for a brand-new
+// destination does not stop an already-caught-up destination from making progress in the same poll.
+// Before the per-destination-window fix (issue #1651), the whole poll collapsed to a single shared
+// block window anchored at the lowest fromBlock (the new destination's), leaving every established
+// destination ineligible and cursor-frozen for the duration of the new destination's backfill.
+func TestL1ToL2_NewClaimerDoesNotStallEstablishedClaimers(t *testing.T) {
+	ctx := context.Background()
+	established := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
+	newDestination := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer11ID, DestinationNetwork: 11}}
+	source := &fakeBridgeSource{lastProcessedBlock: 5_500, found: true}
+	store := newMemoryCursorStore()
+	detector := newTestDetector(
+		t,
+		source,
+		store,
+		newFakeRegistry(established, newDestination),
+		WithStartBlock(0),
+		WithBlockWindow(1000),
+	)
+	store.cursors[detector.cursorNameForDestination(10)] = autoclaimtypes.BridgeCursor{
+		FromBlock: 4_000,
+		ToBlock:   5_000,
+		BlockNum:  5_000,
+	}
+
+	result, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.True(t, result.CursorAdvanced)
+
+	establishedCursor, ok := store.cursors[detector.cursorNameForDestination(10)]
+	require.True(t, ok, "the established destination's cursor must not be dropped by the new destination's backfill")
+	require.Greater(
+		t,
+		establishedCursor.ToBlock,
+		uint64(5_000),
+		"the established destination must advance past its prior cursor in the same poll the "+
+			"new destination backfills from its start block",
+	)
+
+	newCursor, ok := store.cursors[detector.cursorNameForDestination(11)]
+	require.True(t, ok)
+	require.Greater(
+		t,
+		newCursor.ToBlock,
+		uint64(0),
+		"the new destination must make progress from its configured start block",
+	)
+}
+
+// TestL1ToL2_NewClaimerBackfillsFromStartBlock runs a bounded loop of polls and asserts that the new
+// destination eventually reaches the chain head while the established destination advances on the very
+// first poll (not only once the new destination's backfill catches up to it), never regresses, and never
+// skips a block between two consecutive persisted windows.
+func TestL1ToL2_NewClaimerBackfillsFromStartBlock(t *testing.T) {
+	ctx := context.Background()
+	const lastProcessedBlock = uint64(50_500)
+	const blockWindow = uint64(1000)
+	const initialEstablishedToBlock = uint64(50_000)
+
+	established := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
+	newDestination := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer11ID, DestinationNetwork: 11}}
+	source := &fakeBridgeSource{lastProcessedBlock: lastProcessedBlock, found: true}
+	store := newMemoryCursorStore()
+	detector := newTestDetector(
+		t,
+		source,
+		store,
+		newFakeRegistry(established, newDestination),
+		WithStartBlock(0),
+		WithBlockWindow(blockWindow),
+		WithOverlapBlocks(0),
+	)
+	establishedCursorName := detector.cursorNameForDestination(10)
+	newCursorName := detector.cursorNameForDestination(11)
+	store.cursors[establishedCursorName] = autoclaimtypes.BridgeCursor{
+		FromBlock: 49_001,
+		ToBlock:   initialEstablishedToBlock,
+		BlockNum:  initialEstablishedToBlock,
+	}
+
+	lastEstablishedToBlock := initialEstablishedToBlock
+	firstAdvancePoll := -1
+	reachedHead := false
+	for poll := 0; poll < 60 && !reachedHead; poll++ {
+		_, err := detector.PollOnce(ctx)
+		require.NoError(t, err)
+
+		if cursor, ok := store.cursors[establishedCursorName]; ok {
+			require.GreaterOrEqual(t, cursor.ToBlock, lastEstablishedToBlock, "established cursor must never regress")
+			if cursor.ToBlock != lastEstablishedToBlock {
+				if firstAdvancePoll == -1 {
+					firstAdvancePoll = poll
+				}
+				require.Equal(
+					t,
+					lastEstablishedToBlock+1,
+					cursor.FromBlock,
+					"established cursor must not skip any blocks between two persisted windows",
+				)
+				lastEstablishedToBlock = cursor.ToBlock
+			}
+		}
+
+		if cursor, ok := store.cursors[newCursorName]; ok && cursor.ToBlock >= lastProcessedBlock {
+			reachedHead = true
+		}
+	}
+
+	require.True(t, reachedHead, "the new destination must fully backfill to the head within the bounded loop")
+	require.Equal(
+		t,
+		0,
+		firstAdvancePoll,
+		"the established destination must advance on the first poll, not wait for the new "+
+			"destination's backfill to catch up to it",
+	)
+	require.Equal(t, lastProcessedBlock, lastEstablishedToBlock, "the established destination must reach the head")
+}
+
+// TestL1ToL2_PerDestinationCursorsAreIndependent proves that a SaveBridgeCursor failure for one
+// destination does not corrupt or skip the cursor of another destination whose block window is fully
+// independent. The established destination (which sorts first by destination network id) must keep its
+// correctly advanced cursor even though the newly added destination's save fails afterward.
+func TestL1ToL2_PerDestinationCursorsAreIndependent(t *testing.T) {
+	ctx := context.Background()
+	saveErr := errors.New("save cursor for destination 11 failed")
+
+	established := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
+	failing := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer11ID, DestinationNetwork: 11}}
+	source := &fakeBridgeSource{lastProcessedBlock: 5_500, found: true}
+	store := newFailingCursorStore()
+	detector := newTestDetector(
+		t,
+		source,
+		store,
+		newFakeRegistry(established, failing),
+		WithStartBlock(0),
+		WithBlockWindow(1000),
+	)
+	store.cursors[detector.cursorNameForDestination(10)] = autoclaimtypes.BridgeCursor{
+		FromBlock: 4_001,
+		ToBlock:   5_000,
+		BlockNum:  5_000,
+	}
+	store.failFor[detector.cursorNameForDestination(11)] = saveErr
+
+	_, err := detector.PollOnce(ctx)
+	require.ErrorIs(t, err, saveErr)
+
+	establishedCursor, ok := store.cursors[detector.cursorNameForDestination(10)]
+	require.True(t, ok, "an unrelated destination's cursor must not be skipped because another destination's save failed")
+	require.Equal(
+		t,
+		uint64(5_500),
+		establishedCursor.ToBlock,
+		"an unrelated destination's cursor must not be corrupted or left stale by another destination's save failure",
+	)
+
+	_, ok = store.cursors[detector.cursorNameForDestination(11)]
+	require.False(t, ok, "the failing destination's cursor must not be partially persisted")
+}
+
+// TestL1ToL2_IgnoresBridgeOutsideOwnWindowWithoutDoubleEnqueue guards against the double-enqueue hazard
+// called out by the per-destination-window design: when two destinations' block windows overlap, a
+// bridge fetched by a window that does not own its destination must be ignored by that window (exactly
+// like an unknown destination is ignored today) and must still be enqueued exactly once by the window
+// that does own it, never twice.
+func TestL1ToL2_IgnoresBridgeOutsideOwnWindowWithoutDoubleEnqueue(t *testing.T) {
+	ctx := context.Background()
+	// Destination A's window is [0,9] and destination B's window is [5,14]: they overlap on [5,9].
+	// A real bridgesync query would return this bridge for both overlapping ranges.
+	overlapping := makeSyncBridge(1, autoclaimtypes.L1OriginNetwork, 11, 7, 0)
+	source := &fakeBridgeSource{
+		lastProcessedBlock: 14,
+		found:              true,
+		bridgesByRange: map[blockRange][]bridgesync.Bridge{
+			{from: 0, to: 9}:  {overlapping},
+			{from: 5, to: 14}: {overlapping},
+		},
+	}
+	store := newMemoryCursorStore()
+	claimerA := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
+	claimerB := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer11ID, DestinationNetwork: 11}}
+	detector := newTestDetector(
+		t,
+		source,
+		store,
+		newFakeRegistry(claimerA, claimerB),
+		WithStartBlock(0),
+		WithBlockWindow(10),
+		WithOverlapBlocks(0),
+	)
+	store.cursors[detector.cursorNameForDestination(11)] = autoclaimtypes.BridgeCursor{
+		FromBlock: 0,
+		ToBlock:   4,
+		BlockNum:  4,
+	}
+
+	result, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.EnqueuedBridgeCount, "the overlapping bridge must be enqueued exactly once")
+	require.Equal(
+		t,
+		1,
+		result.IgnoredBridgeCount,
+		"a bridge fetched by a window that does not own its destination must be tallied as ignored, "+
+			"exactly like an unknown destination is today",
+	)
+	require.Empty(t, claimerA.enqueued, "the bridge does not belong to destination A's window")
+	require.Len(t, claimerB.enqueued, 1, "destination B must receive exactly one enqueue, not one per overlapping window")
+}
+
 func newTestDetector(
 	t *testing.T,
 	source autoclaimtypes.BridgeSource,
@@ -535,6 +753,32 @@ func (s *memoryCursorStore) SaveBridgeCursor(
 ) error {
 	s.cursors[name] = cursor
 	return nil
+}
+
+// failingCursorStore wraps memoryCursorStore and lets a test force SaveBridgeCursor to fail for a
+// specific cursor name, to prove that one destination's save failure does not affect another's.
+type failingCursorStore struct {
+	*memoryCursorStore
+	failFor map[string]error
+}
+
+func newFailingCursorStore() *failingCursorStore {
+	return &failingCursorStore{
+		memoryCursorStore: newMemoryCursorStore(),
+		failFor:           make(map[string]error),
+	}
+}
+
+func (s *failingCursorStore) SaveBridgeCursor(
+	ctx context.Context,
+	name string,
+	cursor autoclaimtypes.BridgeCursor,
+	now time.Time,
+) error {
+	if err, ok := s.failFor[name]; ok {
+		return err
+	}
+	return s.memoryCursorStore.SaveBridgeCursor(ctx, name, cursor, now)
 }
 
 type fakeRegistry struct {

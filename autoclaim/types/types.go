@@ -310,10 +310,12 @@ type BridgeCursor struct {
 	BlockPos  uint64
 }
 
-// LERCursor stores the durable per-source-network local-exit-root discovery cursor used by the
-// L2-to-Lx bridge detector to track the last processed LER of a source network.
+// LERCursor stores the durable per-(source, destination)-network local-exit-root discovery cursor used
+// by the L2-to-Lx bridge detector to track the last processed LER of a source network for one specific
+// destination network.
 type LERCursor struct {
 	SourceNetwork      uint32
+	DestinationNetwork uint32
 	LastLER            common.Hash
 	LastVerifyBlockNum uint64
 }

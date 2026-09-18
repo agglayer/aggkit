@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/test/contracts/bridgeeventimpostor"
 	"github.com/agglayer/aggkit/test/e2e/envs"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -53,6 +54,14 @@ type trackerBridgeStepPath struct {
 	Status    string `json:"status"`
 }
 
+// trackerErrorStep mirrors types.ErrorStep (bridgetracker/types/status.go); only the fields
+// this test asserts on are declared, the rest (retry_count/error_type) are simply ignored by
+// json.Unmarshal.
+type trackerErrorStep struct {
+	ErrorTypeString string   `json:"error_type_string"`
+	Description     []string `json:"description"`
+}
+
 // trackerTrackingData mirrors api.TrackingData, the body of GET /tracker/v1/network/{id}/tx/{hash}.
 type trackerTrackingData struct {
 	TrackingStatus string                  `json:"tracking_status"`
@@ -60,8 +69,8 @@ type trackerTrackingData struct {
 	BridgeStatus   *trackerBridgeStatus    `json:"bridge_status"`
 	StepIndex      *int                    `json:"step_index"`
 	AllSteps       []trackerBridgeStepPath `json:"all_steps"`
-	// Error is only checked for nil-ness, so an empty struct is enough to decode "not null".
-	Error *struct{} `json:"error"`
+	// Error is nil while nothing has failed; see trackerErrorStep for the fields this test reads.
+	Error *trackerErrorStep `json:"error"`
 }
 
 // fetchTrackingData calls the tracker's GET /tracker/v1/network/{networkID}/tx/{txHash}, which
@@ -189,6 +198,12 @@ func claimL1ToL2(ctx context.Context, env *envs.Env, l2Opts *bind.TransactOpts, 
 // (the tracker only reports status, it never builds/sends claim transactions itself) and asserts
 // the tracker follows it through to its terminal Claimed/finished state.
 //
+// This also doubles as the regression guard for BridgeEventSource's emitter/address check
+// (#1751): the bridge only resolves (BridgeStatus becomes non-nil below) once FindBridge finds a
+// BridgeEvent log whose emitting address matches the canonical bridge address it resolved via
+// BridgeServiceFinder/RollupManagerAddr -- see TestBridgeTrackerNotABridge for the fail-closed
+// counterpart, where a log with the right topic but the wrong address is rejected.
+//
 // It requires a multi-chain env with aggkit-proxy configured.
 func TestBridgeTrackerL1ToL2(t *testing.T) {
 	if testing.Short() {
@@ -271,4 +286,77 @@ func TestBridgeTrackerL1ToL2(t *testing.T) {
 	last := tracking.AllSteps[len(tracking.AllSteps)-1]
 	require.Equal(t, "Claimed", last.StepName)
 	require.Equal(t, "done", last.Status)
+}
+
+// TestBridgeTrackerNotABridge exercises BridgeEventSource's fail-closed emitter/address check
+// (#1751): it sends a tx to a throwaway contract (test/contracts/bridgeeventimpostor) whose only
+// log carries the exact same topic0 as the real bridge contract's BridgeEvent, but is emitted
+// from a non-bridge address. The tracker resolves the canonical L1 bridge address via
+// BridgeServiceFinder/RollupManagerAddr (see aggkit-proxy.toml), so this log's address never
+// matches it; FindBridge's address-filtered loop finds nothing and returns
+// "%s emitted no BridgeEvent: %w" wrapping the permanent ErrBridgeTxNotABridge, which the
+// tracker surfaces as a terminal TrackingStatus "error" with BridgeStatus staying nil forever
+// (see domain.TrackingData.Failed). The impostor field values below (leaf type, networks,
+// addresses, amount) are irrelevant: the address check discards the log before FindBridge ever
+// parses it into a BridgeInfo.
+//
+// See TestBridgeTrackerL1ToL2's doc comment for the happy-path counterpart of this same check.
+func TestBridgeTrackerNotABridge(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping E2E test in short mode")
+	}
+	require.NotNil(t, testEnv, "testEnv must be set by TestMain")
+	if testEnv.L2B == nil {
+		t.Skip("bridge tracker test requires a multi-chain env (L2B must be non-nil)")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	require.NoError(t, waitForTrackerReady(ctx), "tracker health check never succeeded")
+
+	l1Opts := *testEnv.L1.Transactor
+	impostorAddr, deployTx, impostor, err := bridgeeventimpostor.DeployBridgeeventimpostor(&l1Opts, testEnv.Clients.L1)
+	require.NoError(t, err, "deploy BridgeEventImpostor failed")
+	_, err = bind.WaitMined(ctx, testEnv.Clients.L1, deployTx)
+	require.NoError(t, err, "wait for BridgeEventImpostor deployment failed")
+	t.Logf("impostor contract: %s", impostorAddr.Hex())
+
+	emitTx, err := impostor.EmitFakeBridgeEvent(
+		&l1Opts,
+		0,                          // leafType (Asset) -- irrelevant, see doc comment
+		0,                          // originNetwork
+		common.Address{},           // originAddress
+		testEnv.L2.NetworkID,       // destinationNetwork
+		testEnv.L2.Transactor.From, // destinationAddress
+		big.NewInt(1),              // amount
+		[]byte{},                   // metadata
+		0,                          // depositCount
+	)
+	require.NoError(t, err, "emit fake BridgeEvent failed")
+	emitReceipt, err := bind.WaitMined(ctx, testEnv.Clients.L1, emitTx)
+	require.NoError(t, err, "wait for emit tx failed")
+	require.Equal(t, ethtypes.ReceiptStatusSuccessful, emitReceipt.Status)
+
+	const l1NetworkID = 0
+	txHash := emitTx.Hash()
+	t.Logf("impostor tx: %s", txHash.Hex())
+
+	var tracking *trackerTrackingData
+	err = pollWithBackoff(ctx, 2*time.Minute, backoffInitial, backoffMax, "tracker reaches error",
+		func() (bool, error) {
+			data, ferr := fetchTrackingData(ctx, l1NetworkID, txHash)
+			if ferr != nil {
+				return false, nil //nolint:nilerr // registration/resolution still in progress
+			}
+			tracking = data
+			return tracking.TrackingStatus == "error", nil
+		})
+	require.NoError(t, err, "tracker never reported the impostor tx as an error")
+
+	require.Equal(t, "error", tracking.ClaimStatus)
+	require.Nil(t, tracking.BridgeStatus, "an unresolvable tx must never carry a resolved BridgeStatus")
+	require.NotNil(t, tracking.Error, "a permanently unresolvable tx must carry an error")
+	require.Equal(t, "permanent", tracking.Error.ErrorTypeString)
+	require.Contains(t, strings.Join(tracking.Error.Description, " "), "not a bridge transaction")
 }

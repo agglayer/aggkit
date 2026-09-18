@@ -38,8 +38,23 @@ definitions:
   github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse:
     description: Contains basic health‐check information for the bridge service
     properties:
+      details:
+        allOf:
+        - $ref: '#/definitions/types.HealthCheckDetails'
+        description: |-
+          Details gives a compact per-component breakdown backing SyncStatus. It intentionally
+          does not duplicate the full SyncStatus (deposit counts, block numbers) payload -- callers
+          wanting that detail should use GET /bridge/v1/sync-status.
       status:
         type: string
+      sync_status:
+        allOf:
+        - $ref: '#/definitions/types.HealthSyncStatus'
+        description: |-
+          SyncStatus summarizes bridge synchronization health as one of "done", "pending" or
+          "error". It never affects the HTTP status code of this endpoint (always 200) so that
+          liveness/routing probes never evict a healthy-but-lagging instance -- see
+          bridgeservicefinder/health.go and docs/bridge_service.md's health check section.
       time:
         type: string
       version:
@@ -278,6 +293,26 @@ definitions:
         example: 42
         type: integer
     type: object
+  types.ComponentHealth:
+    description: Minimal per-component health summary.
+    properties:
+      error:
+        description: |-
+          Error is set (non-empty) only when this component is configured/active but its sync
+          status could not be computed; its presence alone is what drives HealthSyncStatusError for
+          this component, independent of IsSynced.
+        example: 'failed to get deposit count from L1 bridge contract: dial tcp: timeout'
+        type: string
+      is_active:
+        example: true
+        type: boolean
+      is_synced:
+        description: |-
+          IsSynced is omitted for a component with no meaningful notion of "caught up" today
+          (e.g. l2gersync, which currently exposes no is_synced signal -- see docs/bridge_service.md).
+        example: true
+        type: boolean
+    type: object
   types.ErrorResponse:
     description: Generic error response structure
     properties:
@@ -285,6 +320,31 @@ definitions:
         example: Error message
         type: string
     type: object
+  types.HealthCheckDetails:
+    description: Per-component sync summary. A nil component (not configured on this
+      instance, e.g. no L1 bridge syncer on an L2-only bridge service) is omitted
+      entirely.
+    properties:
+      l1:
+        $ref: '#/definitions/types.ComponentHealth'
+      l2:
+        $ref: '#/definitions/types.ComponentHealth'
+      l2_ger:
+        $ref: '#/definitions/types.ComponentHealth'
+    type: object
+  types.HealthSyncStatus:
+    description: 'Coarse bridge sync health: "done" (fully caught up), "pending" (active
+      and catching up, not an error) or "error" (a configured component is halted
+      or its sync status could not be computed).'
+    enum:
+    - done
+    - pending
+    - error
+    type: string
+    x-enum-varnames:
+    - HealthSyncStatusDone
+    - HealthSyncStatusPending
+    - HealthSyncStatusError
   types.L1ContractsConfig:
     description: L1 smart contract addresses
     properties:
@@ -770,19 +830,16 @@ info:
 paths:
   /:
     get:
-      description: Returns the health status and version information of the bridge
-        service
+      description: |-
+        Returns the health status, version information and summary bridge sync status of
+        the bridge service. Always responds 200 -- see SyncStatus/Details for sync health.
       produces:
       - application/json
       responses:
         "200":
-          description: Health status and version information
+          description: Health status, version and sync status information
           schema:
             $ref: '#/definitions/github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
       summary: Get health status
       tags:
       - health
@@ -1169,6 +1226,21 @@ paths:
       summary: Get public configuration
       tags:
       - config
+  /health:
+    get:
+      description: |-
+        Returns the health status, version information and summary bridge sync status of
+        the bridge service. Always responds 200 -- see SyncStatus/Details for sync health.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Health status, version and sync status information
+          schema:
+            $ref: '#/definitions/github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse'
+      summary: Get health status
+      tags:
+      - health
   /injected-l1-info-leaf:
     get:
       description: |-

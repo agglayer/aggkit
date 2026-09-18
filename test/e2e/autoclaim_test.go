@@ -1052,3 +1052,400 @@ HTTPHeaders = {}
 %s`, suffix, l2ToLxSection, networkID, autoClaimL2RPC, autoClaimBridgeAddr, policyName, autoClaimKeystorePass, suffix,
 		autoClaimL2RPC, autoClaimL2ChainID, l1ClaimerSection)
 }
+
+// TestAutoClaimClaimerAddedAfterOthers proves the fix for issue #1651 end to end: adding a new
+// claimer to a running Auto Claim deployment must neither stall the bridges already flowing to
+// established destinations, nor permanently lose bridges sent to itself before it existed.
+//
+// This test covers the L2ToLx detector's data-loss failure mode only (issue #1651): its LER cursor
+// was keyed by source network alone, so a newly added destination inherited a cursor already
+// advanced past its own history and its earlier bridges were silently dropped with no backfill
+// path. The analogous L1ToL2 failure (one shared block window collapsing to the new destination's
+// genesis cursor, stalling every established destination for the length of its backfill) is left to
+// the unit suite (TestNewDestinationStartsFromConfiguredStartBlock and the window-group tests in
+// l1_to_l2_test.go): reproducing it here would
+// require a second, concurrent L1-bridge-and-claim pipeline layered on top of this test's L2ToLx
+// setup and priming loop, which does not fit the e2e time budget for the marginal extra coverage
+// (the L1ToL2 fix's window-grouping logic has no interaction with the per-destination LER cursor
+// logic under test here).
+//
+// Setup: Auto Claim runs entirely on aggkit-001. Its L2ToLx bridge detector watches its own network
+// (network 1 / L2A) as the source -- a source watching itself is the normal shape for an L1- or
+// L2B-destination claimer hosted on the source's own node, see TestAutoClaimL2ToL1AllowAll -- plus
+// the standard L1ToL2 self-claimer, which is present only to prime the source's settlement to L1 (see
+// primeL2ClaimSyncer's doc comment) and is not otherwise exercised by this test.
+//
+// "Network A" is an L1-destination claimer (NetworkID=0), present from the very first restart.
+// "Network B" is an L2B-destination claimer (NetworkID=2, submitting through L2B's own RPC even
+// though it runs inside the aggkit-001 process), added only on a SECOND, LATER restart -- after the
+// first restart's binary has already observed and processed the source at least once. This ordering
+// matters even though this is a fresh env with no autoclaim0003 legacy row to seed (the seed is a
+// no-op (false, nil) here, see design doc §4.5's "Fresh" row): it reproduces the real operational
+// sequence the fix targets (a genuinely new, unseeded (source, destination) pair discovered on a
+// running deployment), as opposed to a destination that happens to be configured before the source is
+// first observed. The StoragePath is identical across both restarts so the L2ToLx per-pair cursors
+// and Auto Claim request rows persist across the "add claimer B" restart.
+func TestAutoClaimClaimerAddedAfterOthers(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping E2E test in short mode")
+	}
+	// Requires L2B (network B's claim is submitted through L2B's own RPC).
+	env := loadAutoClaimL2ToL2TestEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Minute)
+	defer cancel()
+
+	const policyName = "allow-all"
+	sourceNetworkID := env.L2.NetworkID
+
+	// Network A's (L1) claimer needs a funded L1 signer, provisioned into a fresh keystore file the
+	// same way TestAutoClaimL2ToL1AllowAll does.
+	_, l1Key, err := env.Keys.L1Keys.Checkout()
+	require.NoError(t, err)
+	t.Cleanup(func() { env.Keys.L1Keys.Return(l1Key) })
+	l1KeystorePath, err := writeAutoClaimL1Keystore(env, l1Key)
+	require.NoError(t, err, "provision network-A (L1) claimer keystore")
+	requireHostKeystoreVisible(t, env, "autoclaim-l1-keystore", "l1-autoclaim.keystore")
+
+	// Network B's (L2B) claimer needs a funded L2B signer; aggkit-001's own mounted keystores are not
+	// funded on L2B, so a fresh one is provisioned the same way, into aggkit-001's data dir (L2B's own
+	// container has no writable bind mount for a claimer running there instead).
+	_, l2bKey, err := env.L2B.Keys.Checkout()
+	require.NoError(t, err)
+	t.Cleanup(func() { env.L2B.Keys.Return(l2bKey) })
+	l2bKeystorePath, err := writeAutoClaimL2NetworkBKeystore(env, l2bKey)
+	require.NoError(t, err, "provision network-B (L2B) claimer keystore")
+	requireHostKeystoreVisible(t, env, "autoclaim-l2b-keystore", "l2b-autoclaim.keystore")
+
+	originalConfig, err := os.ReadFile(env.GetAggkitConfigPath())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		restoreCtx, restoreCancel := context.WithTimeout(context.Background(), autoClaimRestoreWait)
+		defer restoreCancel()
+		if err := env.RestartAggkitWithConfig(restoreCtx, func(configPath string) error {
+			return os.WriteFile(configPath, originalConfig, 0o600)
+		}); err != nil {
+			t.Logf("failed to restore aggkit-001 config after %s: %v", t.Name(), err)
+		}
+	})
+
+	// --- Phase 1: only network A (L1) has a claimer. ---
+	restartCtx1, restartCancel1 := context.WithTimeout(ctx, autoClaimRestartWait)
+	err = env.RestartAggkitWithConfig(restartCtx1, func(configPath string) error {
+		patched := patchAutoClaimConfig(
+			string(originalConfig),
+			autoClaimClaimerAddedAfterOthersConfig(policyName, sourceNetworkID, l1KeystorePath, false, 0, ""),
+		)
+		return os.WriteFile(configPath, []byte(patched), 0o600)
+	})
+	restartCancel1()
+	require.NoError(t, err, "restart aggkit-001 with Auto Claim network-A-only config")
+	waitForBridgeServiceSynced(ctx, t)
+
+	// Prime the source's (network 1) settlement to L1: an unrelated L1->L2 claim must land after each
+	// bridge under test so the aggsender's L2 claim syncer advances past it (see primeL2ClaimSyncer's
+	// doc comment on TestAutoClaimL2ToL1AllowAll for why this is required in this batcher-less env).
+	stopPrime := make(chan struct{})
+	primeDone := make(chan struct{})
+	go func() {
+		defer close(primeDone)
+		primeL2ClaimSyncer(ctx, t, env, stopPrime)
+	}()
+	t.Cleanup(func() {
+		close(stopPrime)
+		<-primeDone
+	})
+
+	bridgeAmount := big.NewInt(autoClaimBridgeAmountWei)
+	l2Opts, l2Key, err := env.Keys.L2Keys.Checkout()
+	require.NoError(t, err)
+	t.Cleanup(func() { env.Keys.L2Keys.Return(l2Key) })
+
+	// Bridge to A (L1) and wait for it to be claimed: A's cursor advances.
+	resultA1, err := BridgeL2ToL1NoClaim(ctx, env, l2Opts, bridgeAmount, "claimer-added-after-others-A1")
+	require.NoError(t, err)
+	require.Empty(t, resultA1.ClaimTxHash, "test helper must not manually claim on L1")
+	keyA1 := autoclaimtypes.DeriveRequestKey(sourceNetworkID, 0, resultA1.DepositCount)
+	confirmedA1 := waitForAutoClaimStatus(ctx, t, keyA1, autoclaimtypes.RequestStatusConfirmed)
+	require.NotNil(t, confirmedA1.ClaimTxHash, "network-A bridge should be confirmed before network B is added")
+	assertClaimedOnL1(ctx, t, env, resultA1.DepositCount, sourceNetworkID)
+
+	// --- Send the bridge to network B (L2B) while no claimer for B exists yet. Pre-#1651-fix, this is
+	// the bridge that gets permanently lost: once B's claimer is added, a per-source (not
+	// per-destination) LER cursor would already have advanced past this bridge's LER via the (source,
+	// A) pair's traffic, so B would silently and permanently skip it with no backfill path. ---
+	destOpts, destKey, err := env.L2B.Keys.Checkout()
+	require.NoError(t, err)
+	t.Cleanup(func() { env.L2B.Keys.Return(destKey) })
+
+	resultB, err := BridgeL2ToL2NoClaim(ctx, env, l2Opts, destOpts, bridgeAmount, "claimer-added-after-others-B")
+	require.NoError(t, err)
+	require.Empty(t, resultB.ClaimTxHash, "test helper must not manually claim on L2B")
+	keyB := autoclaimtypes.DeriveRequestKey(sourceNetworkID, env.L2B.NetworkID, resultB.DepositCount)
+
+	// --- Phase 2: restart adding network B's claimer, leaving A's claimer in place. ---
+	restartCtx2, restartCancel2 := context.WithTimeout(ctx, autoClaimRestartWait)
+	err = env.RestartAggkitWithConfig(restartCtx2, func(configPath string) error {
+		patched := patchAutoClaimConfig(
+			string(originalConfig),
+			autoClaimClaimerAddedAfterOthersConfig(
+				policyName, sourceNetworkID, l1KeystorePath, true, env.L2B.NetworkID, l2bKeystorePath,
+			),
+		)
+		return os.WriteFile(configPath, []byte(patched), 0o600)
+	})
+	restartCancel2()
+	require.NoError(t, err, "restart aggkit-001 adding Auto Claim network-B claimer")
+	waitForBridgeServiceSynced(ctx, t)
+
+	// Assert B: the bridge parked before B's claimer existed must be discovered and claimed now.
+	confirmedB := waitForAutoClaimStatus(ctx, t, keyB, autoclaimtypes.RequestStatusConfirmed)
+	require.NotNil(t, confirmedB.ClaimTxHash, "network-B bridge sent before its claimer existed must still be claimed")
+	require.Equal(t, string(resultB.Bridge.TxHash), confirmedB.BridgeTxHash)
+	assertClaimedOnL2B(ctx, t, env, resultB.DepositCount, sourceNetworkID)
+
+	// Assert A did not stall: a FRESH network-A bridge sent after B's claimer is added must still
+	// claim within the normal request-wait window (A never stalled while B backfilled).
+	resultA2, err := BridgeL2ToL1NoClaim(ctx, env, l2Opts, bridgeAmount, "claimer-added-after-others-A2")
+	require.NoError(t, err)
+	require.Empty(t, resultA2.ClaimTxHash, "test helper must not manually claim on L1")
+	keyA2 := autoclaimtypes.DeriveRequestKey(sourceNetworkID, 0, resultA2.DepositCount)
+	confirmedA2 := waitForAutoClaimStatus(ctx, t, keyA2, autoclaimtypes.RequestStatusConfirmed)
+	require.NotNil(t, confirmedA2.ClaimTxHash, "network-A must keep claiming normally after network B is added")
+	assertClaimedOnL1(ctx, t, env, resultA2.DepositCount, sourceNetworkID)
+}
+
+// writeAutoClaimL2NetworkBKeystore encrypts priv into a keystore file inside the aggkit-001
+// container's bind-mounted data directory (same mechanism as writeAutoClaimL1Keystore) and returns
+// its in-container path. Used by TestAutoClaimClaimerAddedAfterOthers to fund an L2B-destination
+// claimer that runs inside the aggkit-001 process: none of aggkit-001's own mounted keystores
+// (aggoracle, sequencer, sovereignadmin) are funded on L2B, and aggkit-002's container has no
+// writable bind mount to provision one there instead.
+func writeAutoClaimL2NetworkBKeystore(env *envs.Env, priv *ecdsa.PrivateKey) (string, error) {
+	key := &keystore.Key{
+		Id:         uuid.New(),
+		Address:    crypto.PubkeyToAddress(priv.PublicKey),
+		PrivateKey: priv,
+	}
+	keyJSON, err := keystore.EncryptKey(key, autoClaimKeystorePass, keystore.LightScryptN, keystore.LightScryptP)
+	if err != nil {
+		return "", fmt.Errorf("encrypt L2B Auto Claim key: %w", err)
+	}
+	hostDir := filepath.Join(env.GetAggkitDataDir(), "autoclaim-l2b-keystore")
+	if err := os.MkdirAll(hostDir, 0o755); err != nil {
+		return "", fmt.Errorf("create L2B Auto Claim keystore dir: %w", err)
+	}
+	const keystoreFileName = "l2b-autoclaim.keystore"
+	if err := os.WriteFile(filepath.Join(hostDir, keystoreFileName), keyJSON, 0o600); err != nil {
+		return "", fmt.Errorf("write L2B Auto Claim keystore: %w", err)
+	}
+	return "/tmp/autoclaim-l2b-keystore/" + keystoreFileName, nil
+}
+
+// requireHostKeystoreVisible fails the test immediately, with the exact host path, if a keystore file
+// just written by writeAutoClaimL1Keystore/writeAutoClaimL2NetworkBKeystore is not visible on the host
+// side of aggkit-001's bind-mounted data directory. Without this check, a broken keystore path only
+// surfaces as aggkit-001 crash-looping on a FATAL "no such file or directory" and the test instead
+// timing out on the subsequent restart/wait calls, which wastes the full restart timeout for no
+// diagnostic benefit.
+func requireHostKeystoreVisible(t *testing.T, env *envs.Env, subdir, fileName string) {
+	t.Helper()
+	hostPath := filepath.Join(env.GetAggkitDataDir(), subdir, fileName)
+	info, err := os.Stat(hostPath)
+	require.NoError(t, err, "keystore file must exist on host at %s (aggkit-001's bind-mounted /tmp)", hostPath)
+	require.Greater(t, info.Size(), int64(0), "keystore file at %s must be non-empty", hostPath)
+}
+
+// autoClaimClaimerAddedAfterOthersConfig renders the full [AutoClaim] section for aggkit-001 used by
+// TestAutoClaimClaimerAddedAfterOthers. It always carries: the standard L1ToL2 self-claimer
+// (destination = sourceNetworkID, needed only to prime source settlement, see primeL2ClaimSyncer);
+// the L2ToLx bridge detector enabled with sourceNetworkID as its (self-)source; and network A's
+// L1-destination claimer (NetworkID=0), funded from l1KeystorePath. When includeNetworkB is true it
+// additionally renders network B's L2B-destination claimer (NetworkID=l2bNetworkID, funded from
+// l2bKeystorePath) and extends BridgeServiceFinder.BridgeURLs with l2bNetworkID's bridge service URL,
+// which its GER-injection gate needs to resolve.
+func autoClaimClaimerAddedAfterOthersConfig(
+	policyName string,
+	sourceNetworkID uint32,
+	l1KeystorePath string,
+	includeNetworkB bool,
+	l2bNetworkID uint32,
+	l2bKeystorePath string,
+) string {
+	suffix := strings.ReplaceAll(policyName, "-", "_")
+
+	bridgeURLs := fmt.Sprintf("%d = %q\n", sourceNetworkID, autoClaimSourceBridgeServiceURL)
+	var networkBClaimerSection string
+	if includeNetworkB {
+		bridgeURLs += fmt.Sprintf("%d = %q\n", l2bNetworkID, autoClaimNet2BridgeServiceURL)
+		networkBClaimerSection = fmt.Sprintf(`
+[[AutoClaim.Claimers]]
+Enabled = true
+ID = "network-b-added-later-e2e"
+NetworkType = "EVM"
+NetworkID = %d
+URLRPC = %q
+BridgeAddr = %q
+PolicyName = %q
+GasOffset = 100000
+WaitPeriod = "1s"
+RetryAfter = "1s"
+MaxRetries = 180
+
+[AutoClaim.Claimers.Policy]
+AllowMessageClaims = false
+AllowedOrigins = [%d]
+AllowedTokens = []
+ManualFallback = false
+MaxGas = 500000
+
+[AutoClaim.Claimers.EthTxManager]
+FrequencyToMonitorTxs = "1s"
+WaitTxToBeMined = "2s"
+WaitReceiptMaxTime = "250ms"
+WaitReceiptCheckInterval = "1s"
+PrivateKeys = [
+	{Method = "local", Path = %q, Password = %q},
+]
+ForcedGas = 0
+GasPriceMarginFactor = 1
+MaxGasPriceLimit = 0
+StoragePath = "/tmp/ethtxmanager-autoclaim-network-b-e2e-%s.sqlite"
+ReadPendingL1Txs = false
+SafeStatusL1NumberOfBlocks = 0
+FinalizedStatusL1NumberOfBlocks = 0
+EstimateGasMaxRetries = 1
+
+[AutoClaim.Claimers.EthTxManager.Etherman]
+URL = %q
+MultiGasProvider = false
+L1ChainID = %d
+HTTPHeaders = {}
+`,
+			l2bNetworkID, autoClaimL2BRPC, autoClaimBridgeAddr, policyName,
+			sourceNetworkID,
+			l2bKeystorePath, autoClaimKeystorePass, suffix,
+			autoClaimL2BRPC, autoClaimL2BChainID,
+		)
+	}
+
+	return fmt.Sprintf(`
+[AutoClaim]
+StoragePath = "/tmp/autoclaim-claimer-added-after-others-e2e-%s.sqlite"
+
+[AutoClaim.API]
+Enabled = true
+
+[AutoClaim.L1ToL2BridgeDetector]
+Enabled = true
+PollInterval = "2s"
+EtrogL1UpgradeBlock = 0
+
+[AutoClaim.L2ToLxBridgeDetector]
+Enabled = true
+StartL1Block = 0
+PollInterval = "3s"
+
+[AutoClaim.BridgeServiceFinder]
+RollupManagerAddr = %q
+PollInterval = "3s"
+
+[AutoClaim.BridgeServiceFinder.BridgeURLs]
+%s
+[[AutoClaim.Claimers]]
+Enabled = true
+ID = "l2-autoclaim-self-e2e"
+NetworkType = "EVM"
+NetworkID = %d
+URLRPC = %q
+BridgeAddr = %q
+PolicyName = %q
+GasOffset = 100000
+WaitPeriod = "1s"
+RetryAfter = "1s"
+MaxRetries = 180
+
+[AutoClaim.Claimers.Policy]
+AllowMessageClaims = false
+AllowedOrigins = [0]
+AllowedTokens = []
+ManualFallback = false
+MaxGas = 500000
+
+[AutoClaim.Claimers.EthTxManager]
+FrequencyToMonitorTxs = "1s"
+WaitTxToBeMined = "2s"
+WaitReceiptMaxTime = "250ms"
+WaitReceiptCheckInterval = "1s"
+PrivateKeys = [
+	{Method = "local", Path = "/etc/aggkit/aggoracle.keystore", Password = %q},
+]
+ForcedGas = 0
+GasPriceMarginFactor = 1
+MaxGasPriceLimit = 0
+StoragePath = "/tmp/ethtxmanager-autoclaim-self-e2e-%s.sqlite"
+ReadPendingL1Txs = false
+SafeStatusL1NumberOfBlocks = 0
+FinalizedStatusL1NumberOfBlocks = 0
+EstimateGasMaxRetries = 1
+
+[AutoClaim.Claimers.EthTxManager.Etherman]
+URL = %q
+MultiGasProvider = false
+L1ChainID = %d
+HTTPHeaders = {}
+
+[[AutoClaim.Claimers]]
+Enabled = true
+ID = "network-a-e2e"
+NetworkType = "EVM"
+NetworkID = 0
+URLRPC = %q
+BridgeAddr = %q
+PolicyName = %q
+GasOffset = 100000
+WaitPeriod = "1s"
+RetryAfter = "1s"
+MaxRetries = 180
+
+[AutoClaim.Claimers.Policy]
+AllowMessageClaims = false
+AllowedOrigins = [%d]
+AllowedTokens = []
+ManualFallback = false
+MaxGas = 500000
+
+[AutoClaim.Claimers.EthTxManager]
+FrequencyToMonitorTxs = "1s"
+WaitTxToBeMined = "2s"
+WaitReceiptMaxTime = "250ms"
+WaitReceiptCheckInterval = "1s"
+PrivateKeys = [
+	{Method = "local", Path = %q, Password = %q},
+]
+ForcedGas = 0
+GasPriceMarginFactor = 1
+MaxGasPriceLimit = 0
+StoragePath = "/tmp/ethtxmanager-autoclaim-network-a-e2e-%s.sqlite"
+ReadPendingL1Txs = false
+SafeStatusL1NumberOfBlocks = 0
+FinalizedStatusL1NumberOfBlocks = 0
+EstimateGasMaxRetries = 1
+
+[AutoClaim.Claimers.EthTxManager.Etherman]
+URL = %q
+MultiGasProvider = false
+L1ChainID = %d
+HTTPHeaders = {}
+%s`,
+		suffix,
+		autoClaimL1RollupManagerAddr,
+		bridgeURLs,
+		sourceNetworkID, autoClaimL2RPC, autoClaimBridgeAddr, policyName, autoClaimKeystorePass, suffix,
+		autoClaimL2RPC, autoClaimL2ChainID,
+		autoClaimL1RPC, autoClaimL1BridgeAddr, policyName, sourceNetworkID,
+		l1KeystorePath, autoClaimKeystorePass, suffix,
+		autoClaimL1RPC, autoClaimL1ChainID,
+		networkBClaimerSection,
+	)
+}

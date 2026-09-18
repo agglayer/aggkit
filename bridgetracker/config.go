@@ -118,10 +118,12 @@ type Config struct {
 	// L2 (non-zero network) before the tracker accepts it; see L1BlockFinality for the reasoning
 	L2BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=PendingBlock,enum=LatestBlock,enum=SafeBlock,enum=FinalizedBlock,enum=EarliestBlock" mapstructure:"L2BlockFinality"` //nolint:lll
 
-	// BridgeAddrs is the static networkID -> canonical bridge contract address map used to
-	// reject a BridgeEvent log emitted by a contract other than the origin network's real
+	// BridgeAddrs is the static networkID -> canonical bridge contract address override used
+	// to reject a BridgeEvent log emitted by a contract other than the origin network's real
 	// bridge (see sources.BridgeEventSource). A network absent from this map (the default,
-	// empty map) still matches logs on the event signature alone.
+	// empty map) falls back to resolving its canonical bridge address through the bridge
+	// service finder — there is no permissive fallback that matches logs on the event
+	// signature alone.
 	BridgeAddrs map[uint32]common.Address `mapstructure:"BridgeAddrs"`
 
 	// L1GlobalExitRootAddress is the L1 GlobalExitRoot contract address (see sources.GERSource)

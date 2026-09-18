@@ -17,6 +17,9 @@ var autoClaim0001 string
 //go:embed autoclaim0002.sql
 var autoClaim0002 string
 
+//go:embed autoclaim0003.sql
+var autoClaim0003 string
+
 // GetAutoClaimMigrations returns Auto Claim storage migrations.
 func GetAutoClaimMigrations() []types.Migration {
 	return []types.Migration{
@@ -27,6 +30,10 @@ func GetAutoClaimMigrations() []types.Migration {
 		{
 			ID:  "autoclaim0002",
 			SQL: autoClaim0002,
+		},
+		{
+			ID:  "autoclaim0003",
+			SQL: autoClaim0003,
 		},
 	}
 }

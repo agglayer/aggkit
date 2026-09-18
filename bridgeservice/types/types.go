@@ -423,12 +423,67 @@ type L2GERSyncInfo struct {
 
 // HealthCheckResponse represents the JSON returned by HealthCheckHandler.
 // @Description Contains basic health‐check information for the bridge service
-// including service status, current time, and version.
-// @example {"status":"ok","time":"2025-06-05T07:30:00Z","version":"v0.4.0-beta9-tmp-bridge-6-g4d9b717"}
+// including service status, current time, version, and a summary sync status.
+// @example {"status":"ok","time":"2025-06-05T07:30:00Z","version":"v0.4.0-beta9",
+// "sync_status":"pending","details":{"l1":{"is_active":true,"is_synced":false},
+// "l2":{"is_active":true,"is_synced":true},"l2_ger":{"is_active":true}}}
 type HealthCheckResponse struct {
 	Status  string    `json:"status"`
 	Time    time.Time `json:"time"`
 	Version string    `json:"version"`
+
+	// SyncStatus summarizes bridge synchronization health as one of "done", "pending" or
+	// "error". It never affects the HTTP status code of this endpoint (always 200) so that
+	// liveness/routing probes never evict a healthy-but-lagging instance -- see
+	// bridgeservicefinder/health.go and docs/bridge_service.md's health check section.
+	SyncStatus HealthSyncStatus `json:"sync_status"`
+
+	// Details gives a compact per-component breakdown backing SyncStatus. It intentionally
+	// does not duplicate the full SyncStatus (deposit counts, block numbers) payload -- callers
+	// wanting that detail should use GET /bridge/v1/sync-status.
+	Details HealthCheckDetails `json:"details"`
+}
+
+// HealthSyncStatus is the coarse bridge-sync health summarized in HealthCheckResponse.SyncStatus.
+// @Description Coarse bridge sync health: "done" (fully caught up), "pending" (active and
+// @Description catching up, not an error) or "error" (a configured component is halted or its
+// @Description sync status could not be computed).
+type HealthSyncStatus string
+
+const (
+	// HealthSyncStatusDone means every configured, active sync component is fully caught up.
+	HealthSyncStatusDone HealthSyncStatus = "done"
+	// HealthSyncStatusPending means every configured, active sync component was computed
+	// successfully but at least one has not yet caught up.
+	HealthSyncStatusPending HealthSyncStatus = "pending"
+	// HealthSyncStatusError means a configured component is halted (e.g. resolving a reorg) or
+	// its sync status could not be computed (RPC/DB error).
+	HealthSyncStatusError HealthSyncStatus = "error"
+)
+
+// HealthCheckDetails is the compact, per-component breakdown backing HealthCheckResponse.SyncStatus.
+// @Description Per-component sync summary. A nil component (not configured on this instance,
+// @Description e.g. no L1 bridge syncer on an L2-only bridge service) is omitted entirely.
+type HealthCheckDetails struct {
+	L1    *ComponentHealth `json:"l1,omitempty"`
+	L2    *ComponentHealth `json:"l2,omitempty"`
+	L2GER *ComponentHealth `json:"l2_ger,omitempty"`
+}
+
+// ComponentHealth is the minimal is_active/is_synced summary for one sync component inside
+// HealthCheckDetails -- deliberately not the full NetworkSyncInfo/L2GERSyncInfo payload.
+// @Description Minimal per-component health summary.
+type ComponentHealth struct {
+	IsActive bool `json:"is_active" example:"true"`
+
+	// IsSynced is omitted for a component with no meaningful notion of "caught up" today
+	// (e.g. l2gersync, which currently exposes no is_synced signal -- see docs/bridge_service.md).
+	IsSynced *bool `json:"is_synced,omitempty" example:"true"`
+
+	// Error is set (non-empty) only when this component is configured/active but its sync
+	// status could not be computed; its presence alone is what drives HealthSyncStatusError for
+	// this component, independent of IsSynced.
+	Error string `json:"error,omitempty" example:"failed to get deposit count from L1 bridge contract: dial tcp: timeout"` //nolint:lll
 }
 
 // RemoveGEREventResponse represents a remove GER event response

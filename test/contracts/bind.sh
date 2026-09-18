@@ -13,6 +13,7 @@ gen claimmock
 gen claimmockcaller
 gen claimmocktest
 gen logemitter
+gen bridgeeventimpostor
 gen mintableerc20
 gen rollupmanagermock
 gen aggchainrollupmock

@@ -181,9 +181,13 @@ func runTracker(
 	rpcClients := sources.NewFinderClients(
 		log.WithFields("module", "bridgetracker-rpcclients"), finder, sources.StaticClients{0: l1Client})
 	bridgeEvents, err := sources.NewBridgeEventSource(
-		rpcClients, trackerCfg.L1BlockFinality, trackerCfg.L2BlockFinality, trackerCfg.BridgeAddrs)
+		rpcClients, trackerCfg.L1BlockFinality, trackerCfg.L2BlockFinality, trackerCfg.BridgeAddrs, finder)
 	if err != nil {
 		log.Fatalf("failed to create bridge event source: %v", err)
+	}
+	lerSource, err := sources.NewLERSource(rpcClients, finder)
+	if err != nil {
+		log.Fatalf("failed to create LER source: %v", err)
 	}
 	gerSource := sources.NewGERSource(finder, rpcClients, trackerCfg.L1GlobalExitRootAddress,
 		trackerCfg.L1BlockFinality, trackerCfg.L2GlobalExitRootAddress, trackerCfg.L2InjectionLookbackBlocks,
@@ -223,7 +227,7 @@ func runTracker(
 				agglayerClient, finder, rpcClients, log.WithFields("module", "bridgetracker-certificatesource")),
 			GERs:                   gerSource,
 			WaitingGERUpdateSource: gerSource,
-			LERs:                   sources.NewLERSource(rpcClients),
+			LERs:                   lerSource,
 			ClaimChecker:           sources.NewClaimChecker(finder, rpcClients),
 			Claims:                 sources.NewClaimSource(finder),
 			Settlement: sources.NewSettlementSource(
