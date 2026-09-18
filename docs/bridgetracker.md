@@ -14,6 +14,20 @@ transaction (`FindBridge`, over the origin network's JSON-RPC endpoint) and then
 its expected path, one milestone at a time, checking the fact behind the current step and
 advancing once it is met:
 
+`FindBridge` never trusts a `BridgeEvent`-shaped log on its topic alone: it always checks the log's
+emitting address against that network's canonical bridge contract address before parsing it. That
+check is mandatory and fail-closed — there is no signature-only fallback for a network `FindBridge`
+cannot determine a bridge address for. The address itself comes from `Tracker.BridgeAddrs` when the
+network has an entry there, and from the bridge service finder (the same `[BridgeServiceFinder]`
+instance — resolved on-chain through its `RollupManagerAddr` — the tracker already uses elsewhere)
+for every other network — `BridgeAddrs` is a static override for pinning or working around finder
+resolution, not the only source of truth. Resolving the address for a network
+neither source knows about yet is a transient condition (`"resolving canonical bridge address for
+network %d"`) that the engine retries, exactly like a not-yet-mined receipt; a log whose address
+does not match the resolved bridge — including the case where the *only* signature-matching logs in
+the receipt fail the address check — falls through to the same permanent `ErrBridgeTxNotABridge`
+outcome as a receipt with no matching log at all, since neither can ever change on retry.
+
 | Step | Meaning |
 | --- | --- |
 | `WaitingGERUpdate` | L1-originated bridge: the L1 Global Exit Root has not been updated with this deposit yet. |
@@ -108,6 +122,12 @@ UseTLS = false
 - `L1BlockFinality` / `L2BlockFinality`: the finality a bridge's creating tx receipt must reach
   before the tracker accepts it, so a later reorg cannot leave it permanently following an
   orphaned deposit (a resolved bridge is never re-checked).
+- `BridgeAddrs`: a static networkID → canonical bridge contract address **override**, checked before
+  falling back to the bridge service finder's on-chain resolution — it is not the only source of the
+  address `FindBridge` checks a `BridgeEvent` log's emitter against (see [How it
+  works](#how-it-works)). Use it to pin a network's address or work around a finder resolution
+  problem; a network absent from this map (the default, empty map) resolves through the finder
+  instead — there is no network for which this check can be skipped.
 - `MaxTrackedBridges`: caps the in-memory supervised list; a request beyond it fails instead of
   registering the bridge — reaching the cap never evicts an existing entry to make room, so
   `RetentionPeriod` and `IdleTimeout` are what keep the registry under it during normal operation.

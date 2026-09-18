@@ -96,7 +96,7 @@ Package layout (for contributors):
 | `autoclaim/sender` | Claim submission through `EthTxManager`, transaction attempt tracking, status mapping, retries. |
 | `autoclaim/claimtx` | ABI packing of `claimAsset` and `claimMessage` calldata (byte-identical for L1- and L2-destination bridges). |
 | `autoclaim/simulator` | `eth_estimateGas` claim simulation on the target chain, used by `basic-filter`. |
-| `autoclaim/storage` | SQLite repository and migrations for requests, attempts, and cursors (including the per-source LER cursor). |
+| `autoclaim/storage` | SQLite repository and migrations for requests, attempts, and cursors (including the per-(source, destination) LER cursor). |
 | `autoclaim/api` | Optional standalone admin REST handlers for manual approve/reject decisions, plus generated swagger docs. |
 | `autoclaim/apitypes` | Shared REST DTOs and query parsing used by the admin API and the bridge-service public endpoints. |
 | `autoclaim/types` | Request lifecycle state machine, domain records, and shared interfaces. |
@@ -173,6 +173,21 @@ locally. **This is a breaking operational requirement:** any claimer whose desti
 configured and that destination network's bridge service to be reachable — even for a pure L1-to-L2 setup with
 `[AutoClaim.L2ToLxBridgeDetector].Enabled = false`.
 
+**Adding a claimer to a running deployment.** Each destination network already keeps its own durable block-window
+cursor (`autoclaim_bridge_cursor`, name `l1-to-l2:<destination>`), so a brand-new destination simply has no cursor
+row yet and backfills from `AutoClaim.L1ToL2BridgeDetector.StartBlock` (default `0`, i.e. from L1 genesis) the first
+time it is polled, without disturbing any other destination's already-advanced cursor or requiring any migration.
+Every poll processes each distinct per-destination `fromBlock` as its own independent query and cursor write (issue
+#1651): a newly added destination backfilling from a low `StartBlock` no longer stalls an already-caught-up
+destination the way a single shared block window used to (the shared window collapsed to the lowest `fromBlock`
+across every destination, which meant every established destination's window shrank to the new destination's
+backfill pace until it caught up) — see the "Operational notes" section below. When adding a claimer against a
+destination with a long L1 history, set `StartBlock` to a recent block instead of leaving it at `0`, unless
+backfilling the destination's full history is actually wanted; `GetBridges` is still bounded by
+`AutoClaim.L1ToL2BridgeDetector.PollInterval`-paced windows of at most `blockWindow` blocks each (not configurable,
+1000 by default), so unlike the L2-to-Lx LER cursor below, a `StartBlock = 0` backfill here cannot request a single
+poll's worth of unbounded history — it just takes more polls to catch up.
+
 ### L2 to Lx (L2 to L1 and L2 to L2)
 
 ```mermaid
@@ -242,35 +257,73 @@ L1-to-L2 detector, durable cursor name `l2-to-lx`) for verified-batches rows —
 pessimistic/aggchain verifications — and keeps the newest local exit root (LER) per source rollup network observed
 in the window.
 
-For each source network whose newest LER differs from its stored **LER cursor** (`autoclaim_ler_cursor`, keyed by
-`source_network`):
+The LER discovery cursor is keyed per **(source, destination)** pair (`autoclaim_ler_cursor`, primary key
+`(source_network, destination_network)`), not per source alone (issue #1651). For a given source, every enabled
+destination claimer other than the source itself resolves its own cursor independently:
 
-1. It resolves the source's bridge service base URL through `bridgeservicefinder.Finder.GetURL(source)`. A finder
-   miss (unresolved or unhealthy URL) skips the source for this round without advancing its LER cursor — no LERs are
-   lost, they are simply retried on the next poll once the URL becomes available.
-2. It fetches every page of `GET /bridge/v1/claim-candidates` from that source's bridge service, requesting
-   `destination_network_ids` = every enabled claimer's destination network except the source itself,
-   `from_ler` = the source's previous LER cursor (or the value derived below the first time the source is seen),
-   and `to_ler` = the newly observed LER. A `404` response (the source has not synced the requested LER yet) is
-   treated as "not synced yet, retry later" and also skips the source without advancing its cursor.
+1. For each destination, the detector resolves that pair's `from_ler`: its own stored `autoclaim_ler_cursor` row if
+   one exists, otherwise the baseline derived from `AutoClaim.L2ToLxBridgeDetector.StartL1Block` (see below) — a
+   destination with no row is either a brand-new deployment or **a claimer added to a running deployment after the
+   source was already established**, and either way it must not inherit an already-advanced cursor that would skip
+   part of its own history. A pair whose stored cursor already equals the source's newest LER has nothing new and is
+   left out entirely.
+2. The remaining pairs are grouped by their shared `from_ler` (in steady state every established destination shares
+   the same value, so there is exactly one group), and each group issues its own `GET /bridge/v1/claim-candidates`
+   query — `destination_network_ids` = that group's destinations, `from_ler` = the group's bound, `to_ler` = the
+   newly observed LER — and pages through every result. A `404` response (the source has not synced the requested
+   LER yet) is treated as "not synced yet, retry later" for that group only; other groups of the same source are
+   unaffected.
 3. Each returned candidate is routed to the claimer owning its destination network. The detector asks that claimer
    whether the bridge is already claimed (keyed by `source_network` + `deposit_count`, not by token origin); already
    claimed candidates are skipped without being stored. The remaining candidates are enqueued as `detected` requests
    carrying `source_network`, the observed `ler`, and the L1 block the LER was verified at (`verify_block_num`).
    `claim-candidates` no longer returns a per-bridge Merkle proof, and the detector does not fetch or store one: the
    leaf-to-LER proof is always fetched fresh from the source's bridge service at claim time (see below).
-4. Only once every page for a source has been enqueued does the detector advance that source's LER cursor to the new
-   LER. Sources are processed independently — a finder miss or sync delay on one source never blocks others.
+4. Only once every candidate of a group has been enqueued does the detector advance that group's pair cursors to the
+   new LER. Groups — and sources — are processed independently: a finder miss, an unsynced source, or a newly added
+   destination's backfill never blocks or delays any other group's or source's already-caught-up pairs from
+   advancing in the same poll.
 
 Source rollup networks are **auto-discovered**: any rollup ID that appears in a verified-batches row is a source,
 and `bridgeservicefinder` resolves its URL from the on-chain rollup manager (or from a static override — see
 [Configuration](#configuration)) without any per-source configuration list.
 
-**Initial LER cursor.** The first time a source network is seen (no LER cursor row yet), the detector derives the
-initial `from_ler`: if `AutoClaim.L2ToLxBridgeDetector.StartL1Block` is `0`, `from_ler` is omitted (the full bridge
+**Initial LER cursor.** The first time a given (source, destination) pair is seen (no cursor row yet for it), the
+detector derives its initial `from_ler` the same way regardless of whether the source itself is new or already
+established: if `AutoClaim.L2ToLxBridgeDetector.StartL1Block` is `0`, `from_ler` is omitted (the full bridge
 history is requested). Otherwise it resolves `l1infotreesync.GetLatestL1InfoLeafUntilBlock(StartL1Block)`, then that
 leaf's `GetLocalExitRoot(source, leaf.RollupExitRoot)`; a zero LER (the source had not yet been verified at that
 block) also falls back to omitting `from_ler`.
+
+**Backfill-volume risk.** `StartL1Block = 0` (the default) means every unseeded pair's first poll requests the
+source's *entire* bridge history in one `from_ler`-omitted query, and the detector pages through however many
+candidates the source's bridge service reports with no upper bound on that count — on a mature source with a long
+history this can mean a very large number of candidate pages fetched (and, for matching destinations, requests
+enqueued) before that pair's cursor first advances. When adding a claimer for a destination against a source that
+already has significant bridge history, set `AutoClaim.L2ToLxBridgeDetector.StartL1Block` to a recent L1 block (e.g.
+close to the current tip) before starting the new claimer, rather than leaving it at `0`: this bounds the pair's
+initial `from_ler` to a small tail of recent history instead of the source's full history. This only affects a
+pair's *first* poll; every later poll always requests just the delta since that pair's cursor.
+
+**Legacy upgrade seed.** A deployment upgrading from a pre-#1651 build (autoclaim0002 and earlier, shipped in
+v0.11.0-rc3..rc10) has one `autoclaim_ler_cursor` row per source, not per pair. The `autoclaim0003` migration parks
+each such row in `autoclaim_ler_cursor_legacy` (see [Storage](#storage)); at runtime, the first time the L2-to-Lx
+detector observes a given source after the upgrade, it fans that source's parked row out to every destination
+claimer **currently configured** (`SeedLERCursorsFromLegacy`), seeding each of those (source, destination) pairs
+with the legacy LER and verify block, then deletes the parked row. This is transparent for a destination that was
+already claiming from that source before the upgrade: it resumes exactly where it left off, with no re-scan and no
+gap.
+
+**This has one unavoidable limitation for a claimer added in the *same* restart as the upgrade:** the seed fans the
+legacy row out to whichever destinations are in the claimer registry the moment the source is first observed post-
+upgrade. A claimer added in that same restart is already in the registry at that moment, so it is seeded with the
+parked legacy LER too — exactly as if it had been claiming from that source all along — and it will **not**
+backfill any bridges sent to it before it existed. This is unavoidable because the destination set the seed fans
+out to is a runtime fact (the enabled claimer registry), not something the migration can know about in advance.
+Operators adding a new destination claimer to an existing L2-to-Lx deployment should **upgrade first, let the
+running deployment observe each source at least once, and only then add the new claimer in a later restart** — see
+[`TestAutoClaimClaimerAddedAfterOthers`](./e2e_tests.md#auto-claim-claimer-added-after-others) for the scenario this guards, and its own doc comment for
+why the reverse ordering loses history with no recovery path other than a manual cursor edit.
 
 **Proof preparation** for a rollup-origin request (`autoclaim/proof.RollupPreparer`) mirrors the L1-to-L2 preparer
 but adds a source-network dimension:
@@ -509,7 +562,7 @@ it has no GER-injection gate at all, since the GER already exists on L1 by const
 | `AutoClaim.L1ToL2BridgeDetector.PollInterval` | `3s` | Yes | How often the bridge detector polls `l1bridgesync`. Must be greater than zero. |
 | `AutoClaim.L1ToL2BridgeDetector.EtrogL1UpgradeBlock` | `0` | No | L1 block where Etrog global-index encoding becomes active for legacy zkEVM destination network `1`; `0` treats bridges as post-Etrog. |
 | `AutoClaim.L2ToLxBridgeDetector.Enabled` | `false` | No | Enables rollup-origin (L2-to-L1, L2-to-L2) bridge discovery. Requires `AutoClaim.BridgeServiceFinder.RollupManagerAddr` to be set, and is itself required by any claimer with `NetworkID = 0`. |
-| `AutoClaim.L2ToLxBridgeDetector.StartL1Block` | `0` | No | L1 block used to derive a newly discovered source network's initial LER cursor (via the GER at that block); `0` means full history (`from_ler` omitted on first fetch). |
+| `AutoClaim.L2ToLxBridgeDetector.StartL1Block` | `0` | No | L1 block used to derive the initial LER cursor of a newly discovered (source, destination) pair — including a claimer added later against an already-established source (via the GER at that block); `0` means full history (`from_ler` omitted on first fetch), which can mean fetching a very large number of claim-candidate pages in that pair's first poll on a mature source (see [Backfill-volume risk](#l2-to-lx-l2-to-l1-and-l2-to-l2) above) — set it to a recent block instead when adding a claimer against a source with significant history. |
 | `AutoClaim.L2ToLxBridgeDetector.PollInterval` | `3s` | Yes, when the detector is enabled | How often the detector polls `l1infotreesync` for new verified-batches rows. Must be greater than zero. |
 | `AutoClaim.BridgeServiceFinder.RollupManagerAddr` | `{{L1NetworkConfig.RollupManagerAddr}}` | Yes, when `L2ToLxBridgeDetector.Enabled = true` or any enabled claimer has an L2 destination (`NetworkID != 0`) | Address of the rollup manager / agglayer manager contract on L1 used to enumerate attached rollups and resolve their bridge service URLs — both as claim-candidate/claim-proof sources and as GER-injection-gate destinations — and their bridge contracts. |
 | `AutoClaim.BridgeServiceFinder.BridgeURLs` | `{}` | No | Static override map from source network ID to bridge service base URL (e.g. `1 = "http://bridge-svc-1:5577"`). Highest-priority source; never overridden by on-chain events. The only way to resolve network 0 (L1), which is not enumerated on-chain. |
@@ -641,14 +694,14 @@ rendered documentation. Rerun it after changing API annotations in `autoclaim/ap
 ## Storage
 
 Auto Claim owns one SQLite database (`AutoClaim.StoragePath`) with four tables, created by migrations
-`autoclaim/storage/migrations/autoclaim0001.sql` and `autoclaim0002.sql`:
+`autoclaim/storage/migrations/autoclaim0001.sql`, `autoclaim0002.sql`, and `autoclaim0003.sql`:
 
 | Table | Key | Purpose |
 | --- | --- | --- |
 | `autoclaim_request` | `request_key`; `UNIQUE(source_network, destination_network, deposit_count)` | One row per tracked request: `source_network`, status, policy result, global index, L1 info tree index, `ler` and `verify_block_num` (rollup-origin requests only), retry counters, `last_error`, and JSON blobs for the bridge, proof, policy decision, and manual decision. The leaf-to-LER Merkle proof is never stored here — it is fetched fresh from the source's bridge service every time a claim is prepared (see the L2-to-Lx proof preparation steps above). |
 | `autoclaim_transaction_attempt` | `(request_key, attempt_number)` | One row per claim transaction attempt with transaction-manager ID, claim transaction hash, status, and timestamps. |
-| `autoclaim_bridge_cursor` | `cursor_name` | Durable per-detector block-window cursor (block window and position); one row for the L1-to-L2 detector and one (`l2-to-lx`) for the L2-to-Lx detector. |
-| `autoclaim_ler_cursor` | `source_network` | Durable per-source-network cursor tracking the last local exit root (LER) and L1 verify block the L2-to-Lx detector has fully processed for that source. |
+| `autoclaim_bridge_cursor` | `cursor_name` | Durable per-detector, per-destination block-window cursor (block window and position); one row per destination network for the L1-to-L2 detector (`cursor_name = "l1-to-l2:<destination>"`) and one (`"l2-to-lx"`) for the L2-to-Lx detector's shared block window. |
+| `autoclaim_ler_cursor` | `(source_network, destination_network)` | Durable per-(source, destination) cursor tracking the last local exit root (LER) and L1 verify block the L2-to-Lx detector has fully processed for that pair (issue #1651; re-keyed from a per-source-only cursor by `autoclaim0003`, see below). |
 
 `autoclaim0002` also re-keyed every pre-existing `autoclaim0001` row's `request_key` from
 `origin_network:destination_network:deposit_count` to `source_network:destination_network:deposit_count` (equivalent
@@ -656,6 +709,70 @@ for those rows, since every one is L1-origin, i.e. `source_network = 0`). `autoc
 change landed) no longer defines a `leaf_proof_json` column: it briefly held the detection-time leaf proof, which is
 now always fetched fresh at claim time instead of being persisted, so the column was dropped from the migration in
 place rather than removed by a follow-up migration.
+
+`autoclaim0003` re-keys `autoclaim_ler_cursor` from `source_network` alone to `(source_network, destination_network)`
+(see [L2 to Lx](#l2-to-lx-l2-to-l1-and-l2-to-l2) above). Because `autoclaim0002` shipped in v0.11.0-rc3..rc10, an
+upgrading deployment can have real per-source rows that carry processed history and cannot simply be discarded: the
+migration renames the old table to `autoclaim_ler_cursor_legacy` and creates the new, empty, per-pair
+`autoclaim_ler_cursor` table — the destination fan-out itself happens at runtime (`SeedLERCursorsFromLegacy`), not in
+the migration, since the current destination set is a runtime fact the migration cannot know. An
+`autoclaim_ler_cursor_legacy` row is deleted only once its source has been seeded; until every source has been
+observed at least once post-upgrade, both tables can be non-empty at the same time. No secondary index is added on
+the new table: the composite primary key is the only access path this detector uses, and a plain low-cardinality
+index would risk hijacking the query planner in a database that never runs `ANALYZE`.
+
+### Downgrading past autoclaim0003
+
+**Rolling back the binary alone (without also rolling back the `autoclaim0003` migration) is NOT
+supported and silently loses data.** A downgrade must run the `autoclaim0003` Down migration
+*before* the old binary is started against that database. If the old binary is started against an
+already-upgraded (post-`autoclaim0003`) schema:
+
+- The old binary's per-source query (`WHERE source_network = ?`, unaware of the new
+  `destination_network` column) now matches every one of that source's per-pair rows instead of
+  exactly one. SQLite/`meddler` returns the first matching row without error — there is no
+  "multiple rows" failure to alert on. Which row that is depends on physical row order, not on any
+  semantically meaningful ordering, so the old binary can silently adopt whichever pair happens to
+  come back first as if it were the source's only cursor, including a destination pair that is far
+  more advanced than others. Any destination whose true progress is behind that adopted cursor has
+  its unclaimed range between its own real cursor and the adopted one permanently skipped, with
+  nothing in the logs to indicate it.
+- Once the old binary tries to persist a cursor update, it hard-errors instead of silently
+  corrupting further: its `SaveLERCursor` upserts with `ON CONFLICT(source_network)`, targeting the
+  single-column primary key `autoclaim0003` removed. Against the new composite-key
+  `(source_network, destination_network)` table, SQLite rejects this with `ON CONFLICT clause does
+  not match any PRIMARY KEY or UNIQUE constraint`, and the detector error-loops on that source
+  forever (the block-window cursor is never advanced, so the same wrong `from_ler` is retried every
+  poll). The error loop is loud and easy to notice in logs, but by the time it starts, the silent
+  skip described above has already happened on that poll.
+
+**Correct procedure:**
+
+1. Stop the new (post-`autoclaim0003`) binary.
+2. Run the `autoclaim0003` Down migration against `AutoClaim.StoragePath` before starting the old
+   binary. Do **not** use `db.RunMigrationsDown(dbPath, migrations.GetFullMigrations(), nil, 1)` (or
+   the equivalent full-migration-list-plus-`maxMigrations`-1 shape) for this: migration IDs are
+   compared and picked lexicographically (`sql-migrate`'s `MemoryMigrationSource` sorts by ID
+   string, then rolls back from whichever applied ID sorts highest), and `"basedb0001"` sorts after
+   `"autoclaim0003"` (`'b' > 'a'`). That call rolls back `basedb0001` — the base schema migration,
+   not `autoclaim0003` — which is very likely not the intended rollback and can itself break the
+   database. Target `autoclaim0003` explicitly instead, the way
+   `TestAutoClaim0003MigratesExistingLERCursorRows`
+   (`autoclaim/storage/migrations/migrations_test.go`) does it: pass a migration slice containing
+   only `{ID: "autoclaim0003", SQL: autoClaim0003}` to `db.RunMigrationsDBExtended` with
+   `migrate.Down` and `maxMigrations = 1`, so there is no ambiguity about which migration is being
+   targeted.
+3. Verify the Down migration restored the single-column `autoclaim_ler_cursor` schema (primary key
+   `source_network` only, no `destination_network` column) and that `autoclaim_ler_cursor_legacy` no
+   longer exists, before starting the old binary.
+4. Only then start the old binary.
+
+The Down migration itself is correct when invoked this way: for each source it keeps the most
+conservative of its (now collapsed) per-destination pairs (lowest `last_verify_block_num`, then
+lowest `destination_network` as a tie-break) and folds any still-parked `autoclaim_ler_cursor_legacy`
+row back in, so the old binary re-fetches from an LER at or before every destination's true
+progress — conservative (it may re-observe some already-claimed history, which is idempotent) rather
+than skipping anything.
 
 Each claimer's `EthTxManager` keeps its own independent database at `Claimers.EthTxManager.StoragePath`. There is no
 per-claimer GER-syncer database: readiness for an L2-destination claimer is checked with an HTTP call to that
@@ -673,9 +790,15 @@ is created for GER tracking.
 - Use separate `StoragePath` values for Auto Claim storage and each claimer's `EthTxManager.StoragePath`.
 - Both bridge detectors advance their block-window cursor after each successfully processed poll window, even when
   nothing was enqueued. Bridges already claimed on the target bridge are skipped before enqueue; duplicate bridge
-  exits are deduplicated by the request key and enqueue is idempotent. The L2-to-Lx detector additionally advances a
-  per-source-network LER cursor, but only after every claim-candidate page for that source's new LER has been
-  enqueued — a finder miss or an unsynced source leaves that source's LER cursor untouched so nothing is missed.
+  exits are deduplicated by the request key and enqueue is idempotent. The L1-to-L2 detector's cursor is per
+  destination network, and a single poll processes every distinct per-destination `fromBlock` as its own
+  independent window/query/cursor-write group (issue #1651): a newly added destination backfilling from its own
+  `StartBlock` never slows down, stalls, or shares a query with an already-caught-up destination, and one group's
+  query or persistence failure never rolls back or gates a different group's already-persisted cursor in the same
+  poll. The L2-to-Lx detector's LER cursor is per (source, destination) pair for the same reason, grouped by shared
+  `from_ler` the same way; it advances a group's pair cursors only after every claim-candidate page of that group
+  has been enqueued — a finder miss or an unsynced source leaves the affected pairs' LER cursors untouched so
+  nothing is missed, while unaffected pairs and groups of the same source still advance normally.
 - GER readiness is checked per-claimer during proof preparation, not by either bridge detector, and the same
   mechanism applies to both directions. For an L2-destination claimer, readiness is gated by an HTTP call to that
   destination network's own aggkit bridge service (`GET /bridge/v1/injected-l1-info-leaf`, resolved through
