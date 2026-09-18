@@ -293,6 +293,45 @@ func (s *Storage) SaveLERCursor(
 	return nil
 }
 
+// PendingLegacyLERCursorSources returns the source networks that still have an un-seeded
+// pre-autoclaim0003 LER cursor parked in autoclaim_ler_cursor_legacy, in ascending order.
+//
+// A non-empty result means this process has not yet run a poll that consumed the legacy cursors,
+// i.e. the autoclaim0003 upgrade is still in flight. It is the one moment at which a destination
+// claimer added in this same restart is indistinguishable, at seed time, from one that was already
+// claiming before the upgrade -- the seed will hand the newcomer the parked cursor and it will never
+// backfill anything before that point. Callers use this at startup to warn about that window; see
+// SeedLERCursorsFromLegacy for the seed itself and docs/autoclaim.md "Legacy upgrade seed".
+//
+// An empty result is the steady state (fresh database, or every source already seeded), and is why
+// this is safe to call on every start: it is a single indexed scan of a table that is empty forever
+// after the first post-upgrade poll.
+func (s *Storage) PendingLegacyLERCursorSources(ctx context.Context) ([]uint32, error) {
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	rows, err := s.database.QueryContext(dbCtx,
+		"SELECT source_network FROM autoclaim_ler_cursor_legacy ORDER BY source_network ASC")
+	if err != nil {
+		return nil, fmt.Errorf("list pending legacy autoclaim ler cursor sources: %w", err)
+	}
+	defer rows.Close()
+
+	var sources []uint32
+	for rows.Next() {
+		var sourceNetwork uint32
+		if err := rows.Scan(&sourceNetwork); err != nil {
+			return nil, fmt.Errorf("list pending legacy autoclaim ler cursor sources: scan: %w", err)
+		}
+		sources = append(sources, sourceNetwork)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list pending legacy autoclaim ler cursor sources: %w", err)
+	}
+
+	return sources, nil
+}
+
 // SeedLERCursorsFromLegacy fans a pre-autoclaim0003 per-source LER cursor, parked in
 // autoclaim_ler_cursor_legacy by the autoclaim0003 migration, out to the given destination networks.
 // It is transactional: if no legacy row exists for sourceNetwork, it commits a no-op and returns

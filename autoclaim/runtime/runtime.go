@@ -380,8 +380,71 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 		runtime.AdminREST = apiServer
 	}
 
+	warnOnPendingLegacyLERCursors(ctx, cfg, storage, logger)
+
 	logger.Info("Auto Claim started")
 	return runtime, nil
+}
+
+// legacyLERCursorLister is the narrow storage capability warnOnPendingLegacyLERCursors needs. It is
+// satisfied by *storage.Storage; storage implementations predating autoclaim0003 simply do not
+// implement it, and the check is then skipped.
+type legacyLERCursorLister interface {
+	PendingLegacyLERCursorSources(ctx context.Context) ([]uint32, error)
+}
+
+// warnOnPendingLegacyLERCursors logs a prominent warning when the autoclaim0003 upgrade has not yet
+// been consumed by a poll, i.e. pre-upgrade per-source LER cursors are still parked in
+// autoclaim_ler_cursor_legacy.
+//
+// This is the one restart in which adding a destination claimer silently costs history: the seed on
+// the first poll hands every currently-configured destination the parked cursor, so a claimer added
+// in THIS restart is indistinguishable from one that was already claiming before the upgrade and
+// will never backfill anything before that point (see docs/autoclaim.md "Legacy upgrade seed").
+//
+// It is deliberately a warning and not a fatal: the detector genuinely cannot tell a newly added
+// destination from an established one here -- the set of destinations that were claiming before the
+// upgrade is a runtime fact that no pre-autoclaim0003 database records -- so failing closed would
+// block every legitimate upgrade, including the overwhelmingly common one where no claimer changed.
+// What it can do is name the exact window and the exact destinations, at the last moment before the
+// seed becomes irreversible.
+func warnOnPendingLegacyLERCursors(
+	ctx context.Context,
+	cfg autoclaimcfg.Config,
+	storage autoclaimtypes.Storage,
+	logger aggkitcommon.Logger,
+) {
+	lister, ok := storage.(legacyLERCursorLister)
+	if !ok {
+		return
+	}
+
+	sources, err := lister.PendingLegacyLERCursorSources(ctx)
+	if err != nil {
+		// Never block startup on a diagnostic.
+		logger.Warnf("could not check for pending pre-autoclaim0003 LER cursors: %v", err)
+		return
+	}
+	if len(sources) == 0 {
+		return
+	}
+
+	destinations := make([]uint32, 0, len(cfg.Claimers))
+	for _, claimer := range cfg.Claimers {
+		if claimer.Enabled {
+			destinations = append(destinations, claimer.NetworkID)
+		}
+	}
+
+	logger.Warnf(
+		"autoclaim0003 upgrade pending: source networks %v still hold a pre-upgrade LER cursor that "+
+			"the next poll will fan out to the currently enabled destination claimers %v. Any of "+
+			"those destinations added in THIS restart will inherit that cursor and will NOT backfill "+
+			"history before it -- which cannot be undone by restarting again. If you intended to add "+
+			"a claimer, stop now, run this upgrade with the previous claimer set, and add the new "+
+			"claimer in a later restart (see docs/autoclaim.md 'Legacy upgrade seed').",
+		sources, destinations,
+	)
 }
 
 // createAndRegisterClaimers builds all enabled claimers, registers them, and creates the bridge

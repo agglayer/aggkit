@@ -310,6 +310,31 @@ from routing over a `pending`/`error` `sync_status` would make an already-degrad
 removing a node that could otherwise still serve requests. Callers that need to react to sync health
 should inspect `sync_status`/`details`, never the HTTP status code of this endpoint.
 
+There is deliberately no second endpoint that returns a non-2xx on `sync_status: "error"`. Adding one would
+recreate the hazard this design avoids: `bridgeservicefinder` gates routing on a 2xx at
+`DefaultHealthCheckPath` (`/`), so any probe path that can go non-2xx risks being pointed at by a finder or an
+ingress check and evicting an instance that is merely catching up. A consumer that genuinely wants to gate on
+sync state reads the body instead. For a Kubernetes readiness probe that means an `exec` probe, not `httpGet`
+with extra fields — the two are mutually exclusive in a single probe:
+
+```yaml
+readinessProbe:
+  exec:
+    command:
+      - /bin/sh
+      - -c
+      - 'curl -sf localhost:8080/health | jq -e ".sync_status != \"error\""'
+  periodSeconds: 10
+  failureThreshold: 3
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+```
+
+Keep `livenessProbe` on the plain `httpGet` above: liveness should restart a wedged process, not a lagging one,
+and `/health` answering 200 at all is exactly the "process is serving" signal it wants.
+
 The result is cached for `bridgeservice.DefaultHealthCheckCacheTTL` (2 seconds) so a burst of
 concurrent health probes within that window collapses into a single underlying computation instead of
 recomputing `sync_status` on every call; a stale-cache read and a fresh computation racing each other

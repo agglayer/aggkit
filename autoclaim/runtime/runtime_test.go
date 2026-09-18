@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"sync"
 	"testing"
@@ -935,4 +936,83 @@ func (*fakeEthTxManager) Add(
 
 func (*fakeEthTxManager) From() common.Address {
 	return common.HexToAddress("0x2000000000000000000000000000000000000002")
+}
+
+// capturingLogger records Warnf output so a test can assert on a diagnostic without a real logger.
+type capturingLogger struct {
+	aggkitcommon.Logger
+	mu    sync.Mutex
+	warns []string
+}
+
+func (l *capturingLogger) Warnf(format string, args ...interface{}) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.warns = append(l.warns, fmt.Sprintf(format, args...))
+}
+
+func (l *capturingLogger) warnings() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.warns...)
+}
+
+// legacyListerStorage is a fakeStorage that also reports parked pre-autoclaim0003 LER cursors.
+type legacyListerStorage struct {
+	fakeStorage
+	sources []uint32
+	err     error
+}
+
+func (s *legacyListerStorage) PendingLegacyLERCursorSources(context.Context) ([]uint32, error) {
+	return s.sources, s.err
+}
+
+// TestWarnOnPendingLegacyLERCursors proves the autoclaim0003 upgrade window is announced at startup:
+// it warns, naming the parked sources and the destinations about to inherit their cursor, only while
+// legacy rows remain -- and stays silent in the steady state, so the warning keeps its meaning.
+func TestWarnOnPendingLegacyLERCursors(t *testing.T) {
+	ctx := context.Background()
+	cfg := autoclaimcfg.Config{
+		Claimers: []autoclaimcfg.ClaimerConfig{
+			{Enabled: true, NetworkID: 20},
+			{Enabled: false, NetworkID: 21},
+			{Enabled: true, NetworkID: 22},
+		},
+	}
+
+	t.Run("warns while legacy cursors are still parked", func(t *testing.T) {
+		logger := &capturingLogger{Logger: log.WithFields("test", "autoclaim")}
+		warnOnPendingLegacyLERCursors(ctx, cfg, &legacyListerStorage{sources: []uint32{3, 9}}, logger)
+
+		warns := logger.warnings()
+		require.Len(t, warns, 1, "the pending upgrade must produce exactly one startup warning")
+		require.Contains(t, warns[0], "autoclaim0003 upgrade pending")
+		require.Contains(t, warns[0], "[3 9]", "the warning must name the parked source networks")
+		require.Contains(t, warns[0], "[20 22]",
+			"the warning must name the enabled destinations about to inherit the cursor, and only those")
+		require.Contains(t, warns[0], "docs/autoclaim.md")
+	})
+
+	t.Run("silent once every legacy cursor has been seeded", func(t *testing.T) {
+		logger := &capturingLogger{Logger: log.WithFields("test", "autoclaim")}
+		warnOnPendingLegacyLERCursors(ctx, cfg, &legacyListerStorage{}, logger)
+		require.Empty(t, logger.warnings(), "the steady state must not warn")
+	})
+
+	t.Run("storage without the capability is skipped", func(t *testing.T) {
+		logger := &capturingLogger{Logger: log.WithFields("test", "autoclaim")}
+		warnOnPendingLegacyLERCursors(ctx, cfg, &fakeStorage{}, logger)
+		require.Empty(t, logger.warnings())
+	})
+
+	t.Run("a lookup failure warns but never blocks startup", func(t *testing.T) {
+		logger := &capturingLogger{Logger: log.WithFields("test", "autoclaim")}
+		warnOnPendingLegacyLERCursors(ctx, cfg,
+			&legacyListerStorage{err: errors.New("db is gone")}, logger)
+
+		warns := logger.warnings()
+		require.Len(t, warns, 1)
+		require.Contains(t, warns[0], "could not check for pending pre-autoclaim0003 LER cursors")
+	})
 }

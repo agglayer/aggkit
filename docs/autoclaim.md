@@ -325,6 +325,28 @@ running deployment observe each source at least once, and only then add the new 
 [`TestAutoClaimClaimerAddedAfterOthers`](./e2e_tests.md#auto-claim-claimer-added-after-others) for the scenario this guards, and its own doc comment for
 why the reverse ordering loses history with no recovery path other than a manual cursor edit.
 
+**Startup warning for that window.** Because the seed is irreversible once it runs, Auto Claim checks at startup
+whether any pre-upgrade cursor is still parked (`PendingLegacyLERCursorSources`) and, if so, logs a warning naming
+both the source networks holding a parked cursor and the destination claimers currently enabled — the exact set
+about to inherit it:
+
+```
+autoclaim0003 upgrade pending: source networks [3 9] still hold a pre-upgrade LER cursor that the next poll
+will fan out to the currently enabled destination claimers [20 22]. Any of those destinations added in THIS
+restart will inherit that cursor and will NOT backfill history before it -- which cannot be undone by
+restarting again. [...]
+```
+
+It fires only while legacy rows remain — that is, on the first start after upgrading, and never again once the
+first poll has consumed them — so seeing it is a reliable signal that you are inside the risky window. If the
+destination list it prints contains a claimer you just added, stop the process **before** the first poll, restart
+with the previous claimer set, and add the new claimer afterwards.
+
+This is a warning rather than a fatal on purpose: the detector cannot tell a newly added destination from an
+established one here (the pre-upgrade destination set is a runtime fact that no pre-`autoclaim0003` database
+records), so failing closed would block every legitimate upgrade, including the overwhelmingly common one in
+which no claimer changed at all.
+
 **Proof preparation** for a rollup-origin request (`autoclaim/proof.RollupPreparer`) mirrors the L1-to-L2 preparer
 but adds a source-network dimension:
 
@@ -569,7 +591,7 @@ it has no GER-injection gate at all, since the GER already exists on L1 by const
 | `AutoClaim.BridgeServiceFinder.PollInterval` | `30s` | No | Period between finder event-scan iterations that keep cached URLs fresh from on-chain events. |
 | `AutoClaim.BridgeServiceFinder.BlockFinality` | `FinalizedBlock` | No | Finality level bounding the upper block of each event scan. Empty inherits the default. |
 | `AutoClaim.BridgeServiceFinder.BlockChunkSize` | `10000` | No | Maximum number of blocks queried per `FilterLogs` request while scanning. `0` inherits the default. |
-| `AutoClaim.BridgeServiceFinder.HealthCheckPath` | `/health` | No | HTTP path probed to assert a resolved bridge service is alive. Empty inherits the default. |
+| `AutoClaim.BridgeServiceFinder.HealthCheckPath` | `/` | No | HTTP path probed to assert a resolved bridge service is alive. Empty inherits the default (`bridgeservicefinder.DefaultHealthCheckPath`, `/`). The bridge service serves the same always-200 health handler on both `/` and `/health`. |
 | `AutoClaim.BridgeServiceFinder.HealthCheckTimeout` | `5s` | No | Timeout applied to each health-check HTTP request. `0` inherits the default. |
 | `AutoClaim.BridgeServiceFinder.RequireAllHealthyOnStart` | `false` | No | When `true`, finder startup fails if any resolved bridge service is unreachable; when `false`, unreachable services are cached as unhealthy and may heal from a later on-chain update. |
 | `AutoClaim.BridgeServiceFinder.IgnoreNetworkIDs` | `[]` | No | Network IDs to exclude entirely from on-chain resolution (e.g. `[5, 12]`): no `RollupIDToRollupData` call, no contract reads, no health probe during enumeration, and rollup-manager lifecycle events announcing them are ignored by live discovery too. Intended for known-dead networks whose unreachable on-chain reads/health checks would otherwise slow down startup and event processing. A network listed here is still served if also present in `BridgeURLs`. |

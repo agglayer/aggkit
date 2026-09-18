@@ -223,6 +223,45 @@ func TestSaveLERCursorUpdatesExistingPair(t *testing.T) {
 // observed, the legacy row is then deleted, and a second seed attempt is a no-op (idempotent) --
 // while a destination added AFTER the seed already ran gets no legacy row to inherit and must start
 // from its own baseline (the actual issue #1651 fix).
+// TestPendingLegacyLERCursorSources proves the startup diagnostic behind the autoclaim0003 upgrade
+// warning reports exactly the sources whose pre-upgrade cursor has not been consumed yet: empty on a
+// database with nothing parked, ascending and complete while rows remain, and empty again once the
+// seed has deleted them.
+func TestPendingLegacyLERCursorSources(t *testing.T) {
+	storage, database := newTestStorage(t)
+	defer storage.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// Steady state: nothing parked, so the upgrade window is closed and nothing is reported.
+	sources, err := storage.PendingLegacyLERCursorSources(ctx)
+	require.NoError(t, err)
+	require.Empty(t, sources, "a database with no parked legacy cursor must report no pending sources")
+
+	// Simulate a pre-autoclaim0003 database, inserted out of order to pin the ascending guarantee.
+	for _, sourceNetwork := range []uint32{9, 3} {
+		_, execErr := database.Exec(`
+			INSERT INTO autoclaim_ler_cursor_legacy (source_network, last_ler, last_verify_block_num, updated_at)
+			VALUES (?, ?, ?, ?)`,
+			sourceNetwork, common.HexToHash("0xbeef").Hex(), uint64(100), now,
+		)
+		require.NoError(t, execErr)
+	}
+
+	sources, err = storage.PendingLegacyLERCursorSources(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []uint32{3, 9}, sources, "every un-seeded source must be reported, ascending")
+
+	// Seeding source 3 consumes its legacy row; only the still-parked source remains pending.
+	seeded, err := storage.SeedLERCursorsFromLegacy(ctx, 3, []uint32{20}, now)
+	require.NoError(t, err)
+	require.True(t, seeded)
+
+	sources, err = storage.PendingLegacyLERCursorSources(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []uint32{9}, sources, "a seeded source must no longer be reported as pending")
+}
+
 func TestSeedLERCursorsFromLegacy(t *testing.T) {
 	storage, database := newTestStorage(t)
 	defer storage.Close()
