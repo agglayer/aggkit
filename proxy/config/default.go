@@ -48,6 +48,11 @@ AllowCredentials = false
 MaxAge = "12h"
 
 [Tracker]
+# DBPath: SQLite file the supervised-bridges registry persists to. Set by default so the
+# registry survives a restart (an already-resolved bridge doesn't need re-resolving); empty
+# it out to fall back to the in-memory adapter instead.
+DBPath = "/tmp/bridgetracker.sqlite"
+
 # RetentionPeriod: how long a terminal bridge (finished, or failed to ever resolve) stays
 # queryable before the tracker forgets it; a later request for the same tx re-registers it and
 # tracking restarts from scratch.
