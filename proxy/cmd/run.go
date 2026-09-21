@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
+	bridgetrackerdb "github.com/agglayer/aggkit/bridgetracker/db"
 	"github.com/agglayer/aggkit/bridgetracker/sources"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
@@ -143,6 +145,68 @@ func runProxy(
 	log.Info("proxy component started")
 }
 
+// newTrackerRegistry builds the supervised-bridges registry runTracker wires everything else
+// over: SQLite-backed (see bridgetracker.NewSQLiteRegistry) when cfg.DBPath is set, so already-
+// resolved bridges survive a restart instead of being re-resolved — and every bridge-service/
+// agglayer call behind that re-issued — from scratch; the in-memory adapter otherwise, exactly
+// as before DBPath existed. verifier lets the SQLite adapter detect, on reload, a persisted
+// bridge whose origin block was since reorged out — see rpcClientsBlockHashVerifier
+func newTrackerRegistry(
+	cfg bridgetracker.Config, verifier bridgetrackerdb.BlockHashVerifier,
+) bridgetracker.SupervisedRegistry {
+	if cfg.DBPath == "" {
+		return bridgetracker.NewMemoryRegistry(cfg.MaxTrackedBridges)
+	}
+	registry, err := bridgetrackerdb.NewSQLiteRegistry(cfg.DBPath, cfg.MaxTrackedBridges, cfg.Logger, verifier)
+	if err != nil {
+		log.Fatalf("failed to create sqlite-backed tracker registry at %s: %v", cfg.DBPath, err)
+	}
+	return registry
+}
+
+// rpcClientsBlockHashVerifier adapts an sources.EthClientResolver into the
+// bridgetrackerdb.BlockHashVerifier the SQLite-backed registry needs (see newTrackerRegistry)
+type rpcClientsBlockHashVerifier struct {
+	clients sources.EthClientResolver
+}
+
+// CanonicalBlockHash implements bridgetrackerdb.BlockHashVerifier
+func (v rpcClientsBlockHashVerifier) CanonicalBlockHash(
+	ctx context.Context, networkID uint32, blockNumber uint64,
+) (common.Hash, error) {
+	client, err := v.clients.RPCClientFor(ctx, networkID)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	result, err := client.RetrieveBlockHeaders(ctx, []uint64{blockNumber}, 1)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	if header, ok := result.Headers[blockNumber]; ok {
+		return header.Hash, nil
+	}
+	if err, ok := result.Errors[blockNumber]; ok {
+		return common.Hash{}, err
+	}
+	return common.Hash{}, fmt.Errorf("no header or error reported for block %d on network %d", blockNumber, networkID)
+}
+
+// closeOnShutdown closes v once ctx is done, if v implements io.Closer — a no-op for the
+// in-memory adapters (bridgetracker.NewMemoryRegistry, a nil trackerCfg.Activity), and for the
+// closer's own zero value (a nil interface, e.g. trackerCfg.Activity when DBPath is unset)
+func closeOnShutdown(ctx context.Context, v any) {
+	closer, ok := v.(io.Closer)
+	if !ok {
+		return
+	}
+	go func() {
+		<-ctx.Done()
+		if err := closer.Close(); err != nil {
+			log.Warnf("bridgetracker: closing %T: %v", closer, err)
+		}
+	}()
+}
+
 // runTracker starts the bridge tracker component: the supervised-bridges registry shared by
 // the REST/WS handlers and the tracking engine resolving bridge statuses through the
 // per-network sources.
@@ -158,9 +222,17 @@ func runTracker(
 	if err := trackerCfg.Validate(); err != nil {
 		log.Fatalf("invalid tracker config: %v", err)
 	}
-	registry := bridgetracker.NewMemoryRegistry(trackerCfg.MaxTrackedBridges)
 	trackerCfg.Logger = log.WithFields("module", "bridgetracker")
 	trackerCfg.ConfigSHA1 = configSHA1
+
+	// Per-network JSON-RPC clients resolve through the finder; L1 (network 0) is pinned to
+	// the proxy's own L1 client, which carries the configured retry policy. Built before the
+	// registry so its SQLite adapter can use it to verify persisted rows on reload (see
+	// rpcClientsBlockHashVerifier)
+	rpcClients := sources.NewFinderClients(
+		log.WithFields("module", "bridgetracker-rpcclients"), finder, sources.StaticClients{0: l1Client})
+
+	registry := newTrackerRegistry(trackerCfg, rpcClientsBlockHashVerifier{clients: rpcClients})
 	trackerCfg.Registry = registry
 	// The tracker's WebSocket endpoint enforces the same origin policy as the REST server it's
 	// served alongside (see aggkitcommon.CORSConfig.OriginAllowed for why it can't just reuse
@@ -176,10 +248,6 @@ func runTracker(
 		log.Fatalf("failed to create agglayer client: %v", err)
 	}
 
-	// Per-network JSON-RPC clients resolve through the finder; L1 (network 0) is pinned to
-	// the proxy's own L1 client, which carries the configured retry policy
-	rpcClients := sources.NewFinderClients(
-		log.WithFields("module", "bridgetracker-rpcclients"), finder, sources.StaticClients{0: l1Client})
 	bridgeEvents, err := sources.NewBridgeEventSource(
 		rpcClients, trackerCfg.L1BlockFinality, trackerCfg.L2BlockFinality, trackerCfg.BridgeAddrs, finder)
 	if err != nil {
@@ -205,11 +273,29 @@ func runTracker(
 	}
 	trackerCfg.ActivityScanner = activitySource
 	trackerCfg.ActivityClaims = activitySource
+	// Same DBPath switch as newTrackerRegistry: a SQLite-backed activity store survives a
+	// restart instead of re-scanning/re-checking every bridge's claim state from scratch. It
+	// shares registry as its supervised store (see bridgetrackerdb.NewSQLiteActivityStore).
+	if trackerCfg.DBPath != "" {
+		activity, err := bridgetrackerdb.NewSQLiteActivityStore(
+			trackerCfg.DBPath, activitySource, activitySource, registry, trackerCfg.Logger)
+		if err != nil {
+			log.Fatalf("failed to create sqlite-backed activity store at %s: %v", trackerCfg.DBPath, err)
+		}
+		trackerCfg.Activity = activity
+	}
 
 	// GET /bridge-address[/{network_id}] resolves the bridge contract address of one network,
 	// or every network the finder currently knows about; finder satisfies
 	// bridgetracker.BridgeAddressResolver directly (NetworkIDs/BridgeAddress)
 	trackerCfg.BridgeAddressResolver = finder
+
+	// The SQLite-backed registry/activity store (see newTrackerRegistry) each hold their own
+	// *sql.DB and must be closed on shutdown to checkpoint WAL and release the file — neither
+	// bridgetracker.SupervisedRegistry nor domain.ActivityQuerier declares Close() itself (the
+	// in-memory adapters have nothing to close), so this only fires for the ones that do
+	closeOnShutdown(ctx, registry)
+	closeOnShutdown(ctx, trackerCfg.Activity)
 
 	tracker := bridgetracker.New(&trackerCfg)
 
@@ -238,6 +324,27 @@ func runTracker(
 		log.Fatalf("failed to create bridge tracker engine: %v", err)
 	}
 	engine.Start(ctx)
+
+	// GET /activity/from/{from_address} is backed by its own background engine, mirroring the
+	// tracker's own registry+engine pair: it periodically refreshes every supervised
+	// from_address instead of scanning inline inside the HTTP request (see ActivityCommand.
+	// Execute's RegisterAndAwait call). Only started when the activity endpoint is actually
+	// configured (see tracker.Activity()).
+	if activity := tracker.Activity(); activity != nil {
+		activityEngine, err := bridgetracker.NewActivityEngine(
+			bridgetracker.ActivityEngineConfig{
+				PollInterval:           trackerCfg.ActivityPollInterval.Duration,
+				MaxConcurrentRefreshes: trackerCfg.ActivityMaxConcurrentRefreshes,
+				IdleTimeout:            trackerCfg.ActivityIdleTimeout.Duration,
+			},
+			log.WithFields("module", "bridgetracker-activity-engine"),
+			activity,
+		)
+		if err != nil {
+			log.Fatalf("failed to create bridge tracker activity engine: %v", err)
+		}
+		activityEngine.Start(ctx)
+	}
 
 	restServer.Register(tracker.API())
 	log.Info("tracker component started")

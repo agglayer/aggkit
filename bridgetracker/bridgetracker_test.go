@@ -50,6 +50,22 @@ func performRequest(t *testing.T, router *gin.Engine, method, path string) *http
 	return recorder
 }
 
+// primeActivity registers addr and runs one refresh directly against the tracker's activity
+// subsystem, standing in for what ActivityEngine would otherwise do in the background (these
+// handler tests never start one — see runTracker/NewActivityEngine, which only production
+// wiring constructs). GET /activity/from/{addr} itself only ever registers and reads the cache
+// (see activityCommand.Execute); a test that wants a populated response must prime it first,
+// exactly like a real first request does once the engine's own background refresh catches up.
+func primeActivity(t *testing.T, tracker *BridgeTracker, addr common.Address) {
+	t.Helper()
+
+	activity := tracker.Activity()
+	require.NotNil(t, activity, "test must configure ActivityScanner/ActivityClaims")
+	_, err := activity.RegisterAndAwait(addr, false, 0)
+	require.NoError(t, err)
+	require.NoError(t, activity.RefreshAddress(t.Context(), addr))
+}
+
 // testBridgeInfo returns a BridgeInfo snapshot for tests (BridgeType derives to L2ToL1 since
 // DestinationNetwork is the zero value, Mainnet). The matching TrackingStatus (Running or
 // Finished), step index (always 0: the single entry testAllSteps returns) and steps
@@ -432,6 +448,7 @@ func TestActivityHandlerHappyPath(t *testing.T) {
 	})
 	router := gin.New()
 	tracker.API().RegisterRoutes(router)
+	primeActivity(t, tracker, testFromAddress)
 
 	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex())
 	require.Equal(t, http.StatusOK, resp.Code)
@@ -466,6 +483,7 @@ func TestActivityHandlerScannerWarningsSurfaceInResponse(t *testing.T) {
 	})
 	router := gin.New()
 	tracker.API().RegisterRoutes(router)
+	primeActivity(t, tracker, testFromAddress)
 
 	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex())
 	require.Equal(t, http.StatusOK, resp.Code)
@@ -499,6 +517,7 @@ func TestActivityHandlerIsClaimedFailureReportsErrorStatusAndMessage(t *testing.
 	})
 	router := gin.New()
 	tracker.API().RegisterRoutes(router)
+	primeActivity(t, tracker, testFromAddress)
 
 	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex())
 	require.Equal(t, http.StatusOK, resp.Code)
@@ -535,6 +554,7 @@ func TestActivityHandlerFlushCacheForcesRecheck(t *testing.T) {
 	})
 	router := gin.New()
 	tracker.API().RegisterRoutes(router)
+	primeActivity(t, tracker, testFromAddress)
 
 	path := api.TrackerV1Prefix + "/activity/from/" + testFromAddress.Hex()
 	resp := performRequest(t, router, http.MethodGet, path)
@@ -543,10 +563,21 @@ func TestActivityHandlerFlushCacheForcesRecheck(t *testing.T) {
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
 	require.Equal(t, "claimed", body.Bridges[0].ClaimStatus)
 
-	// without flush_cache the settled entry would be reused untouched (see
-	// TestActivityHandlerHappyPath's isClaimed/claimInfo being consulted only once); flushing
-	// forces the second, otherwise-out-of-range consultation configured above
+	// ?flush_cache=true itself only discards the cache and re-registers the address, resetting
+	// its readiness exactly like a never-before-seen address (see activityCommand.Execute) — the
+	// actual recheck is, like any other background refresh, the engine's job (see primeActivity's
+	// doc). With no engine running in this test and a zero resolveTimeout, this request answers
+	// 503 (not ready) with a Retry-After header instead of a stale/empty 200; simulate that
+	// engine pass directly, then a plain follow-up read observes the second, otherwise-
+	// out-of-range isClaimed/claimInfo consultation configured above, proving flush_cache forced
+	// a genuine recheck instead of reusing the settled entry untouched (see
+	// TestActivityHandlerHappyPath's isClaimed/claimInfo being consulted only once without it)
 	resp = performRequest(t, router, http.MethodGet, path+"?flush_cache=true")
+	require.Equal(t, http.StatusServiceUnavailable, resp.Code)
+	require.NotEmpty(t, resp.Header().Get("Retry-After"))
+
+	require.NoError(t, tracker.Activity().RefreshAddress(t.Context(), testFromAddress))
+	resp = performRequest(t, router, http.MethodGet, path)
 	require.Equal(t, http.StatusOK, resp.Code)
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
 	require.Equal(t, "claimed", body.Bridges[0].ClaimStatus)
@@ -576,6 +607,7 @@ func TestActivityHandlerInvalidFilterBridges(t *testing.T) {
 func TestActivityHandlerFilterBridgesPendingExcludesClaimed(t *testing.T) {
 	claimedBridge := testBridge(1)
 	pendingBridge := testBridge(2)
+	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
 
 	gin.SetMode(gin.TestMode)
 	tracker := New(&Config{
@@ -587,10 +619,14 @@ func TestActivityHandlerFilterBridgesPendingExcludesClaimed(t *testing.T) {
 				scannedBridge(pendingBridge, testScannedNetworkID),
 			},
 		},
-		ActivityClaims: &fakeActivityClaims{isClaimed: []bool{true, false}},
+		ActivityClaims: &fakeActivityClaims{
+			isClaimed: []bool{true, false},
+			claimInfo: []*bridgeservicetypes.ClaimResponse{claim},
+		},
 	})
 	router := gin.New()
 	tracker.API().RegisterRoutes(router)
+	primeActivity(t, tracker, testFromAddress)
 
 	resp := performRequest(t, router, http.MethodGet,
 		api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex()+"?filterBridges=pending")
@@ -626,6 +662,7 @@ func TestActivityHandlerFilterBridgesReadyToClaimExcludesPending(t *testing.T) {
 	})
 	router := gin.New()
 	tracker.API().RegisterRoutes(router)
+	primeActivity(t, tracker, testFromAddress)
 
 	resp := performRequest(t, router, http.MethodGet,
 		api.TrackerV1Prefix+"/activity/from/"+testFromAddress.Hex()+"?filterBridges=readyToClaim")

@@ -136,8 +136,24 @@ type ActivityBridgeScanner = domain.ActivityBridgeScanner
 // ActivityClaimChecker is the driven port to a bridge's claim state on its destination network
 type ActivityClaimChecker = domain.ActivityClaimChecker
 
-// ActivityQuerier is the driven port the activity endpoint depends on
+// ActivityQuerier is the driven port the activity endpoint depends on for reading
 type ActivityQuerier = domain.ActivityQuerier
+
+// ActivitySupervisedStore is the driven port to the supervised from_addresses list behind the
+// activity endpoint — the engine-facing counterpart of ActivityQuerier
+type ActivitySupervisedStore = domain.ActivitySupervisedStore
+
+// ActivityTriggerable is an optional capability of an ActivitySupervisedStore: it exposes
+// freshly registered from_addresses so ActivityEngine can refresh them immediately
+type ActivityTriggerable = domain.ActivityTriggerable
+
+// ActivityRegistry is the full activity subsystem: state plus reads, what the activity HTTP
+// command depends on
+type ActivityRegistry = domain.ActivityRegistry
+
+// ErrActivityRegistryFull is returned by ActivitySupervisedStore.RegisterAndAwait when
+// registering a new from_address would exceed the store's configured capacity
+var ErrActivityRegistryFull = domain.ErrActivityRegistryFull
 
 // BridgeAddressResolver is the driven port the bridge-address endpoint depends on: it resolves
 // the bridge contract address for one network, or enumerates every network currently known

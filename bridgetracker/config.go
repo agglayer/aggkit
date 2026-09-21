@@ -81,6 +81,24 @@ var DefaultActivitySourceRPCRangeFromBlock = aggkittypes.BlockNumberFinality{Blo
 // DefaultActivitySourceRPCRangeToBlock is the default Config.ActivitySourceRPC.RangeToBlock.
 var DefaultActivitySourceRPCRangeToBlock = aggkittypes.LatestBlock
 
+// DefaultActivityPollInterval is the default Config.ActivityPollInterval (see
+// DefaultActivityEnginePollInterval for the semantics; both must stay in sync with the
+// [Tracker] section of the proxy's default config)
+var DefaultActivityPollInterval = types.Duration{Duration: DefaultActivityEnginePollInterval}
+
+// defaultActivityRegisterResolveTimeoutDuration is the time.Duration backing
+// DefaultActivityRegisterResolveTimeout
+const defaultActivityRegisterResolveTimeoutDuration = 10 * time.Second
+
+// DefaultActivityRegisterResolveTimeout is the default Config.ActivityRegisterResolveTimeout
+// (must stay in sync with the [Tracker] section of the proxy's default config)
+var DefaultActivityRegisterResolveTimeout = types.Duration{Duration: defaultActivityRegisterResolveTimeoutDuration}
+
+// DefaultActivityMaxConcurrentRefreshes is the default Config.ActivityMaxConcurrentRefreshes
+// (see DefaultActivityEngineMaxConcurrentRefreshes for the semantics; both must stay in sync
+// with the [Tracker] section of the proxy's default config)
+const DefaultActivityMaxConcurrentRefreshes = DefaultActivityEngineMaxConcurrentRefreshes
+
 // Config holds the configuration of the bridge tracker service. Only the mapstructure-tagged
 // fields come from the configuration file; the rest are wired programmatically by the binary
 // (see proxy/cmd)
@@ -147,12 +165,14 @@ type Config struct {
 	// every time. A value <= 0 falls back to DefaultL2InjectionLookbackBlocks.
 	L2InjectionLookbackBlocks uint64 `mapstructure:"L2InjectionLookbackBlocks"`
 
-	// MaxTrackedBridges bounds how many distinct bridges the in-memory registry (see Registry)
-	// accepts at once; a request that would exceed it fails instead of registering the bridge —
-	// reaching the cap never evicts an existing entry to make room, so RetentionPeriod and
-	// IdleTimeout are what keep the registry under it during normal operation. A value <= 0
-	// falls back to DefaultMaxTrackedBridges. Only applies to the default in-memory adapter —
-	// ignored when Registry is set to a custom implementation.
+	// MaxTrackedBridges bounds how many distinct bridges the registry (see Registry) accepts at
+	// once; a request that would exceed it fails instead of registering the bridge — reaching
+	// the cap never evicts an existing entry to make room. On the default in-memory adapter,
+	// RetentionPeriod and IdleTimeout are what keep the registry under it during normal
+	// operation; the SQLite-backed adapter (see DBPath) does not evict anything yet, so once
+	// reached there the cap is effectively permanent until the process restarts. A value <= 0
+	// falls back to DefaultMaxTrackedBridges. Only meaningful to the binary wiring Registry
+	// from it — ignored when Registry is set to a custom implementation.
 	MaxTrackedBridges int `mapstructure:"MaxTrackedBridges"`
 
 	// MaxConcurrentResolutions bounds how many active bridges the engine's poll tick resolves at
@@ -160,6 +180,15 @@ type Config struct {
 	// bounds the registry's size, not how much of it is in flight during a single tick. A value
 	// <= 0 falls back to DefaultMaxConcurrentResolutions.
 	MaxConcurrentResolutions int `mapstructure:"MaxConcurrentResolutions"`
+
+	// DBPath is the SQLite file the supervised-bridges registry persists to (see
+	// bridgetracker/db.NewSQLiteRegistry). Empty (the default) keeps the in-memory adapter
+	// (NewMemoryRegistry): state does not survive a restart, exactly as before this field
+	// existed. Setting it makes the binary construct a SQLite-backed registry instead, so
+	// already-resolved bridges don't need re-resolving — and every bridge-service/agglayer call
+	// behind that — after a restart. Only meaningful to the binary wiring Registry from it;
+	// ignored once Registry is set.
+	DBPath string `mapstructure:"DBPath"`
 
 	// AgglayerClient configures the client used to query the agglayer for a bridge's covering
 	// certificate and that certificate's current status (see sources.CertificateSource)
@@ -191,12 +220,38 @@ type Config struct {
 	ActivityScanner ActivityBridgeScanner `mapstructure:"-"`
 	ActivityClaims  ActivityClaimChecker  `mapstructure:"-"`
 
-	// ActivityIdleTimeout is how long a from_address's activity cache (see ActivityCache) stays
-	// in memory with no GET /activity/from/{from_address} call for it, before being forgotten
-	// entirely (bridges, claim state, everything cached for it). Same semantics as IdleTimeout,
-	// a separate knob because it governs a different cache. A value <= 0 falls back to
-	// DefaultIdleTimeout.
+	// Activity, when set, is used as the activity endpoint's ActivityRegistry as-is instead of
+	// building an in-memory ActivityCache from ActivityScanner/ActivityClaims — the same
+	// override pattern as Registry, so a caller can plug in a persisted implementation (see
+	// bridgetracker/db.NewSQLiteActivityStore, which itself still needs ActivityScanner/
+	// ActivityClaims — it takes them directly as constructor arguments, not through this
+	// Config). ActivityScanner/ActivityClaims/ActivityIdleTimeout are ignored once this is set.
+	Activity ActivityRegistry `mapstructure:"-"`
+
+	// ActivityIdleTimeout is how long a from_address stays supervised (see ActivityCache,
+	// ActivityEngine.PruneIdle) with no GET /activity/from/{from_address} call for it, before
+	// being forgotten entirely (bridges, claim state, everything cached for it). Same semantics
+	// as IdleTimeout, a separate knob because it governs a different cache. A value <= 0 falls
+	// back to DefaultIdleTimeout.
 	ActivityIdleTimeout types.Duration `mapstructure:"ActivityIdleTimeout"`
+
+	// ActivityPollInterval is the period between the activity engine's background refresh
+	// rounds over every supervised from_address (see ActivityEngine, ActivityEngineConfig.
+	// PollInterval). A value <= 0 falls back to DefaultActivityPollInterval.
+	ActivityPollInterval types.Duration `mapstructure:"ActivityPollInterval"`
+
+	// ActivityRegisterResolveTimeout is how long the activity endpoint waits, the first time a
+	// from_address is registered, for the activity engine's immediate refresh attempt
+	// (triggered right away instead of on the next poll tick, see ActivitySupervisedStore.
+	// RegisterAndAwait) to complete before answering. A value <= 0 disables the wait: the first
+	// response is always whatever is cached so far (possibly empty). Looking up an
+	// already-registered address never waits, regardless of this setting.
+	ActivityRegisterResolveTimeout types.Duration `mapstructure:"ActivityRegisterResolveTimeout"`
+
+	// ActivityMaxConcurrentRefreshes bounds how many supervised addresses the activity engine's
+	// poll tick refreshes at once (see ActivityEngineConfig.MaxConcurrentRefreshes). A value
+	// <= 0 falls back to DefaultActivityMaxConcurrentRefreshes.
+	ActivityMaxConcurrentRefreshes int `mapstructure:"ActivityMaxConcurrentRefreshes"`
 
 	// BridgeAddressResolver wires the optional GET /bridge-address[/{network_id}] endpoint: it
 	// resolves the bridge contract address for one network, or every network it currently
