@@ -355,6 +355,33 @@ func TestSQLiteRegistryCapacity(t *testing.T) {
 	require.Equal(t, 1, r.GetNumTracker())
 }
 
+// TestSQLiteRegistryOverwritesStaleRowEvenAtCapacity pins that re-registering an id whose own
+// row is stale (see rowIsStale) succeeds even when the registry is at capacity, as long as that
+// id's stale row is the one being overwritten in place — the capacity gate must never reject an
+// overwrite that cannot itself grow the table
+func TestSQLiteRegistryOverwritesStaleRowEvenAtCapacity(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
+	registry, err := NewSQLiteRegistry(dbPath, 1, log.WithFields("module", "bridgetracker_test"), nil)
+	require.NoError(t, err)
+	r, ok := registry.(*sqliteRegistry)
+	require.True(t, ok)
+	t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+	id := domain.TrackingID{NetworkID: 1, TxHash: testHash}
+	_, err = r.Get(id, true)
+	require.NoError(t, err)
+	require.Equal(t, 1, r.GetNumTracker())
+
+	_, err = r.db.Exec("UPDATE tracked_bridge SET schema_version = ? WHERE network_id = ? AND tx_hash = ?",
+		trackedBridgeSchemaVersion+1, id.NetworkID, id.TxHash.Hex())
+	require.NoError(t, err)
+
+	tracking, err := r.Get(id, true)
+	require.NoError(t, err, "the only row occupying capacity is id's own stale row, so overwriting it must not report ErrRegistryFull")
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
+	require.Equal(t, 1, r.GetNumTracker(), "overwriting in place must not double-count the row")
+}
+
 // TestSQLiteRegistryPruneTerminalIsANoOp pins that PruneTerminal never deletes a persisted row:
 // pruning/retention stays an in-memory-only concern for now (see sqliteRegistry.PruneTerminal)
 func TestSQLiteRegistryPruneTerminalIsANoOp(t *testing.T) {
@@ -486,4 +513,83 @@ func TestSQLiteRegistryGetTrackerActives(t *testing.T) {
 	actives, err = r.GetTrackerActives(&networkTwo)
 	require.NoError(t, err)
 	require.Empty(t, actives)
+}
+
+// TestSQLiteRegistryCorruptRowIsSkippedAndSelfHeals pins that a row whose data no longer
+// decodes (e.g. corrupted by a partial write) is skipped — logged, not fatal to the whole call —
+// by GetTrackerActives/GetNetworks instead of wedging every other row's result, and that Get
+// self-heals it by discarding and re-registering fresh, exactly like a stale-schema row
+func TestSQLiteRegistryCorruptRowIsSkippedAndSelfHeals(t *testing.T) {
+	r := newTestSQLiteRegistry(t)
+	id := domain.TrackingID{NetworkID: 1, TxHash: testHash}
+	_, err := r.Get(id, true)
+	require.NoError(t, err)
+
+	_, err = r.db.Exec("UPDATE tracked_bridge SET data = ? WHERE network_id = ? AND tx_hash = ?",
+		[]byte("not json"), id.NetworkID, id.TxHash.Hex())
+	require.NoError(t, err)
+
+	actives, err := r.GetTrackerActives(nil)
+	require.NoError(t, err, "an undecodable row must not fail the whole call")
+	require.Empty(t, actives)
+
+	registered := types.TrackingStatusRegistered
+	networks, err := r.GetNetworks(&registered)
+	require.NoError(t, err, "an undecodable row must not fail the whole call")
+	require.Empty(t, networks)
+
+	tracking, err := r.Get(id, true)
+	require.NoError(t, err)
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus(),
+		"a corrupt row is discarded and re-registered from scratch, not decoded")
+	require.Equal(t, 1, r.GetNumTracker(), "self-healing must overwrite in place, not double-count")
+}
+
+// TestSQLiteRegistryUpdateTrackingBridgeTxDoesNotBumpLastAccess pins that an engine-driven write
+// leaves last_access untouched: it is the idle-eviction anchor, stamped only by an actual read
+// (Get/GetAndAwait/Subscribe), never by the tracking engine's own poll-tick writes — otherwise a
+// bridge the engine keeps re-resolving every tick could never age out once PruneIdle is
+// implemented on top of this column
+func TestSQLiteRegistryUpdateTrackingBridgeTxDoesNotBumpLastAccess(t *testing.T) {
+	r := newTestSQLiteRegistry(t)
+	id := domain.TrackingID{NetworkID: 1, TxHash: testHash}
+
+	fixedNow := time.Unix(1_000_000, 0)
+	r.now = func() time.Time { return fixedNow }
+	_, err := r.Get(id, true)
+	require.NoError(t, err)
+
+	row, err := r.selectRowIgnoringSchema(id)
+	require.NoError(t, err)
+	require.Equal(t, fixedNow.Unix(), row.LastAccess)
+
+	later := fixedNow.Add(time.Hour)
+	r.now = func() time.Time { return later }
+	require.NoError(t, r.UpdateTrackingBridgeTx(id, domain.TrackingBridgeTx{Info: testBridgeInfo()}))
+
+	row, err = r.selectRowIgnoringSchema(id)
+	require.NoError(t, err)
+	require.Equal(t, later.Unix(), row.UpdatedAt)
+	require.Equal(t, fixedNow.Unix(), row.LastAccess, "an engine-driven write must not bump last_access")
+}
+
+// TestSQLiteRegistryUpdateMethodsPropagateRealDBErrors pins that UpdateTrackingBridgeTx and
+// UpdateTrackingStep only translate a genuine "no such row" into domain.ErrTrackingNotFound: a
+// real DB failure (here, the connection already being closed) must propagate as-is, not get
+// laundered into the same not-found error a caller would otherwise read as "bridge not tracked"
+func TestSQLiteRegistryUpdateMethodsPropagateRealDBErrors(t *testing.T) {
+	r := newTestSQLiteRegistry(t)
+	id := domain.TrackingID{NetworkID: 1, TxHash: testHash}
+	_, err := r.Get(id, true)
+	require.NoError(t, err)
+
+	require.NoError(t, r.db.Close())
+
+	err = r.UpdateTrackingBridgeTx(id, domain.TrackingBridgeTx{})
+	require.Error(t, err)
+	require.NotErrorIs(t, err, domain.ErrTrackingNotFound)
+
+	err = r.UpdateTrackingStep(id, 0, domain.BridgeStepPath{Step: types.StepPendingInclusion})
+	require.Error(t, err)
+	require.NotErrorIs(t, err, domain.ErrTrackingNotFound)
 }

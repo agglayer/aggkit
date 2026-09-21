@@ -461,6 +461,27 @@ func TestSQLiteActivityStoreRecordsScanWarnings(t *testing.T) {
 	require.NotZero(t, scanState[7].LastErrorAt)
 }
 
+// TestSQLiteActivityStoreWarningSurvivesAcrossCalls verifies a network's persisted scan_state
+// error (see TestSQLiteActivityStoreRecordsScanWarnings) is reported back on a later GetActivity
+// call too, not only the one call that hit the failure — the whole point of persisting it instead
+// of only ever returning what the current scan happened to report
+func TestSQLiteActivityStoreWarningSurvivesAcrossCalls(t *testing.T) {
+	warning := domain.ActivityWarning{NetworkID: 7, Message: "bridge service unreachable"}
+	scanner := &fakeActivityScanner{warnings: []domain.ActivityWarning{warning}}
+	store := newTestSQLiteActivityStore(t, scanner, &fakeActivityClaims{})
+
+	_, warnings, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Equal(t, []domain.ActivityWarning{warning}, warnings)
+
+	// this call's own scan is fully successful (no warnings reported by the scanner), but the
+	// previous call's persisted failure for network 7 must still surface
+	scanner.warnings = nil
+	_, warnings, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Equal(t, []domain.ActivityWarning{warning}, warnings)
+}
+
 // TestSQLiteActivityStoreBridgeNetworkIDUsesScannedNetworkNotBridgeOriginNetwork verifies
 // ActivityEntry.BridgeNetworkID reflects the network the bridge was scanned from, not
 // Bridge.OriginNetwork

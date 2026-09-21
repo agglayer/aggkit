@@ -234,14 +234,20 @@ func (r *sqliteRegistry) selectFreshRow(id domain.TrackingID) (*trackedBridgeRow
 
 // rowIsStale reports whether row can no longer be trusted as-is and must be discarded in favor
 // of a fresh registration: either its schema is stale (see staleSchema, already filtered out of
-// row by selectRow but not by selectRowIgnoringSchema) or, once resolved and with a
-// BlockHashVerifier configured, its persisted origin block hash no longer matches the chain's
-// current canonical hash at origin_block_number — a bridge accepted on a block since reorged
-// out. A verifier error (e.g. the origin RPC briefly unreachable) is not itself evidence of a
-// reorg, so it is logged and row is trusted as fresh rather than discarding the whole cache
-// over a transient hiccup
+// row by selectRow but not by selectRowIgnoringSchema), its Data no longer decodes under the
+// current schema (a corrupted row left behind by e.g. a partial write or disk fault — treating
+// it as a cache miss self-heals it on the next registration instead of wedging every caller
+// that reads it forever), or, once resolved and with a BlockHashVerifier configured, its
+// persisted origin block hash no longer matches the chain's current canonical hash at
+// origin_block_number — a bridge accepted on a block since reorged out. A verifier error (e.g.
+// the origin RPC briefly unreachable) is not itself evidence of a reorg, so it is logged and row
+// is trusted as fresh rather than discarding the whole cache over a transient hiccup
 func (r *sqliteRegistry) rowIsStale(id domain.TrackingID, row *trackedBridgeRow) bool {
 	if row.staleSchema() {
+		return true
+	}
+	if _, _, err := row.decode(); err != nil {
+		r.logger.Warnf("bridgetracker: row for %s failed to decode, discarding: %v", id, err)
 		return true
 	}
 	if r.verifier == nil || row.OriginBlockNumber == 0 {
@@ -310,13 +316,29 @@ func (r *sqliteRegistry) getOrCreate(
 // maxEntries. Reaching the cap never evicts an existing entry to make room, whether idle or
 // actively watched — PruneTerminal/PruneIdle are what keep the registry under the cap during
 // normal operation, and a request that would exceed it is simply rejected. A stale row (see
-// rowIsStale: stale schema or reorged-out origin block) is overwritten in place instead of
-// inserted as a new one, so it never counts twice against maxEntries
+// rowIsStale: stale schema, corrupted data, or reorged-out origin block) is overwritten in place
+// instead of inserted as a new one, so it never counts twice against maxEntries — and, crucially,
+// this overwrite is checked for *before* the capacity gate below: id already has a row on disk
+// either way, so replacing it can never be the thing that pushes the registry over maxEntries,
+// and must not be blocked by a cap that is otherwise full of unrelated entries
 func (r *sqliteRegistry) create(id domain.TrackingID) (*trackedBridgeRow, error) {
 	now := r.now()
 	row, err := r.freshRow(id, now)
 	if err != nil {
 		return nil, err
+	}
+
+	if existing, selErr := r.selectRowIgnoringSchema(id); selErr == nil {
+		if !r.rowIsStale(id, existing) {
+			// a row already exists and is still trustworthy: nothing to create
+			return existing, nil
+		}
+		if err := r.overwriteStaleRow(id, row); err != nil {
+			return nil, err
+		}
+		return row, nil
+	} else if !errors.Is(selErr, aggkitdb.ErrNotFound) {
+		return nil, fmt.Errorf("checking for an existing tracked_bridge row for %s: %w", id, selErr)
 	}
 
 	r.countMu.Lock()
@@ -338,8 +360,7 @@ func (r *sqliteRegistry) create(id domain.TrackingID) (*trackedBridgeRow, error)
 	}
 	r.countMu.Unlock()
 
-	// Lost the race against a concurrent create for the same id, or overwriting a stale
-	// (schema or reorged-out) row: either way the row already exists at this point
+	// Lost the race against a concurrent create for the same id: the row already exists now
 	existing, selErr := r.selectRowIgnoringSchema(id)
 	if selErr != nil {
 		return nil, fmt.Errorf("creating tracked_bridge row for %s: %w", id, insertErr)
@@ -348,6 +369,15 @@ func (r *sqliteRegistry) create(id domain.TrackingID) (*trackedBridgeRow, error)
 		// a genuine concurrent creation beat this one: return its row, not a fresh one
 		return existing, nil
 	}
+	if err := r.overwriteStaleRow(id, row); err != nil {
+		return nil, err
+	}
+	return row, nil
+}
+
+// overwriteStaleRow replaces id's existing (stale, per rowIsStale) row in place with row, without
+// touching numEntries — the row already counted against maxEntries once, and continues to
+func (r *sqliteRegistry) overwriteStaleRow(id domain.TrackingID, row *trackedBridgeRow) error {
 	if _, err := r.db.Exec(
 		`UPDATE tracked_bridge SET
 			schema_version = ?, claim_status = ?, origin_block_number = 0, origin_block_hash = ?,
@@ -356,9 +386,9 @@ func (r *sqliteRegistry) create(id domain.TrackingID) (*trackedBridgeRow, error)
 		row.SchemaVersion, row.ClaimStatus, common.Hash{}.Hex(), row.UpdatedAt, row.LastAccess, row.Data,
 		id.NetworkID, id.TxHash.Hex(),
 	); err != nil {
-		return nil, fmt.Errorf("replacing stale tracked_bridge row for %s: %w", id, err)
+		return fmt.Errorf("replacing stale tracked_bridge row for %s: %w", id, err)
 	}
-	return row, nil
+	return nil
 }
 
 // selectRowIgnoringSchema is selectRow without the staleSchema check, used by create to tell a
@@ -526,7 +556,10 @@ func (r *sqliteRegistry) notify(id domain.TrackingID, update *domain.TrackingDat
 func (r *sqliteRegistry) UpdateTrackingBridgeTx(id domain.TrackingID, tx domain.TrackingBridgeTx) error {
 	row, err := r.selectRow(id)
 	if err != nil {
-		return domain.ErrTrackingNotFound
+		if errors.Is(err, aggkitdb.ErrNotFound) {
+			return domain.ErrTrackingNotFound
+		}
+		return fmt.Errorf("looking up tracked_bridge row for %s: %w", id, err)
 	}
 
 	_, steps, err := row.decode()
@@ -552,13 +585,18 @@ func (r *sqliteRegistry) UpdateTrackingBridgeTx(id domain.TrackingID, tx domain.
 		originBlockHash = tx.Info.BlockHash
 	}
 
+	// last_access is deliberately left untouched here: it is the idle-eviction anchor (see
+	// touchLastAccess), stamped only by a caller actually reading the row (Get/GetAndAwait/
+	// Subscribe). The engine's own tick writes every active bridge on every poll, so bumping it
+	// here would mean last_access could never age — defeating idle eviction entirely once it is
+	// implemented on top of this column (see PruneIdle)
 	if _, err := r.db.Exec(
 		`UPDATE tracked_bridge SET
 			claim_status = ?, origin_block_number = ?, origin_block_hash = ?,
-			updated_at = ?, last_access = ?, terminal_since = ?, data = ?
+			updated_at = ?, terminal_since = ?, data = ?
 		 WHERE network_id = ? AND tx_hash = ?`,
 		tracking.ClaimStatus().String(), originBlockNumber, originBlockHash.Hex(),
-		now.Unix(), now.Unix(), terminalSince, data,
+		now.Unix(), terminalSince, data,
 		id.NetworkID, id.TxHash.Hex(),
 	); err != nil {
 		return fmt.Errorf("updating tracked_bridge row for %s: %w", id, err)
@@ -575,7 +613,10 @@ func (r *sqliteRegistry) UpdateTrackingBridgeTx(id domain.TrackingID, tx domain.
 func (r *sqliteRegistry) UpdateTrackingStep(id domain.TrackingID, stepIndex uint, step domain.BridgeStepPath) error {
 	row, err := r.selectRow(id)
 	if err != nil {
-		return domain.ErrTrackingNotFound
+		if errors.Is(err, aggkitdb.ErrNotFound) {
+			return domain.ErrTrackingNotFound
+		}
+		return fmt.Errorf("looking up tracked_bridge row for %s: %w", id, err)
 	}
 
 	tx, prevSteps, err := row.decode()
@@ -607,7 +648,10 @@ func (r *sqliteRegistry) UpdateTrackingStep(id domain.TrackingID, stepIndex uint
 }
 
 // GetTrackerActives implements domain.SupervisedStore: snapshots of every row not yet terminal
-// (terminal_since = 0), optionally filtered to one network
+// (terminal_since = 0), optionally filtered to one network. A row that fails to decode (stale
+// schema, or corrupted data — see rowIsStale) is skipped and logged rather than failing the
+// whole call: the engine's poll tick calls this every tick, so one bad row must never wedge
+// resolution for every other bridge forever
 func (r *sqliteRegistry) GetTrackerActives(networkID *uint32) ([]*domain.TrackingData, error) {
 	var rows []*trackedBridgeRow
 	var err error
@@ -628,7 +672,8 @@ func (r *sqliteRegistry) GetTrackerActives(networkID *uint32) ([]*domain.Trackin
 		}
 		tracking, err := row.trackingData()
 		if err != nil {
-			return nil, err
+			r.logger.Warnf("bridgetracker: skipping undecodable tracked_bridge row for %s: %v", row.id(), err)
+			continue
 		}
 		active = append(active, tracking)
 	}
@@ -653,7 +698,8 @@ func (r *sqliteRegistry) GetNetworks(status *types.TrackingStatus) ([]uint32, er
 		if status != nil {
 			tracking, err := row.trackingData()
 			if err != nil {
-				return nil, err
+				r.logger.Warnf("bridgetracker: skipping undecodable tracked_bridge row for %s: %v", row.id(), err)
+				continue
 			}
 			if tracking.TrackingStatus() != *status {
 				continue

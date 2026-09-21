@@ -48,20 +48,29 @@ AllowCredentials = false
 MaxAge = "12h"
 
 [Tracker]
-# DBPath: SQLite file the supervised-bridges registry persists to. Set by default so the
-# registry survives a restart (an already-resolved bridge doesn't need re-resolving); empty
-# it out to fall back to the in-memory adapter instead.
-DBPath = "/tmp/bridgetracker.sqlite"
+# DBPath: SQLite file the supervised-bridges registry persists to, so an already-resolved
+# bridge survives a restart instead of being re-resolved from scratch. Empty (the default)
+# keeps the in-memory adapter, exactly as before this field existed.
+#
+# Opt in deliberately, not by pointing this at a shared/world-writable directory like /tmp: the
+# filename is fixed, so any other local user able to write there could pre-create or symlink it
+# before this binary starts. Point it at a path under this binary's own data directory instead.
+#
+# Pruning/retention (RetentionPeriod, IdleTimeout, MaxTrackedBridges below) is also currently a
+# no-op on the SQLite-backed adapter — see bridgetracker/db.sqliteRegistry.PruneTerminal/
+# PruneIdle — so tracked_bridge/activity_bridge grow unboundedly for as long as this is set,
+# until the DB-side retention policy is implemented (agglayer/aggkit#1822).
+DBPath = ""
 
 # RetentionPeriod: how long a terminal bridge (finished, or failed to ever resolve) stays
 # queryable before the tracker forgets it; a later request for the same tx re-registers it and
-# tracking restarts from scratch.
+# tracking restarts from scratch. Only enforced by the default in-memory adapter — see DBPath.
 RetentionPeriod = "10m"
 
 # IdleTimeout: how long a bridge -- terminal or still active -- stays supervised once nobody has
 # read it (REST poll) and it has no active WebSocket subscriber. Unlike RetentionPeriod, this
 # applies regardless of status, so a bridge that never resolves and that nobody is watching does
-# not stay in memory forever.
+# not stay in memory forever. Only enforced by the default in-memory adapter -- see DBPath.
 IdleTimeout = "30m"
 
 # ActivityIdleTimeout: how long a from_address's activity cache (GET /activity/from/{address})
@@ -80,9 +89,11 @@ RegisterResolveTimeout = "3s"
 L1BlockFinality = "LatestBlock"
 L2BlockFinality = "LatestBlock"
 
-# MaxTrackedBridges: caps the in-memory supervised list; a request beyond it fails instead of
-# registering the bridge -- reaching the cap never evicts an existing entry to make room, so
-# RetentionPeriod and IdleTimeout are what keep the registry under it during normal operation.
+# MaxTrackedBridges: caps the supervised list (in-memory or SQLite-backed, see DBPath); a
+# request beyond it fails instead of registering the bridge -- reaching the cap never evicts an
+# existing entry to make room. On the default in-memory adapter, RetentionPeriod and IdleTimeout
+# keep the registry under it during normal operation; the SQLite-backed adapter does not yet
+# evict anything (see DBPath), so the cap is effectively permanent there once reached.
 MaxTrackedBridges = 100000
 
 # L2InjectionLookbackBlocks: how many blocks the L2GlobalExitRootAddress fallback scans backwards

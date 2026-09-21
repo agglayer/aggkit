@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -184,7 +185,26 @@ func (v rpcClientsBlockHashVerifier) CanonicalBlockHash(
 	if header, ok := result.Headers[blockNumber]; ok {
 		return header.Hash, nil
 	}
-	return common.Hash{}, result.Errors[blockNumber]
+	if err, ok := result.Errors[blockNumber]; ok {
+		return common.Hash{}, err
+	}
+	return common.Hash{}, fmt.Errorf("no header or error reported for block %d on network %d", blockNumber, networkID)
+}
+
+// closeOnShutdown closes v once ctx is done, if v implements io.Closer — a no-op for the
+// in-memory adapters (bridgetracker.NewMemoryRegistry, a nil trackerCfg.Activity), and for the
+// closer's own zero value (a nil interface, e.g. trackerCfg.Activity when DBPath is unset)
+func closeOnShutdown(ctx context.Context, v any) {
+	closer, ok := v.(io.Closer)
+	if !ok {
+		return
+	}
+	go func() {
+		<-ctx.Done()
+		if err := closer.Close(); err != nil {
+			log.Warnf("bridgetracker: closing %T: %v", closer, err)
+		}
+	}()
 }
 
 // runTracker starts the bridge tracker component: the supervised-bridges registry shared by
@@ -270,6 +290,13 @@ func runTracker(
 	// or every network the finder currently knows about; finder satisfies
 	// bridgetracker.BridgeAddressResolver directly (NetworkIDs/BridgeAddress)
 	trackerCfg.BridgeAddressResolver = finder
+
+	// The SQLite-backed registry/activity store (see newTrackerRegistry) each hold their own
+	// *sql.DB and must be closed on shutdown to checkpoint WAL and release the file — neither
+	// bridgetracker.SupervisedRegistry nor domain.ActivityQuerier declares Close() itself (the
+	// in-memory adapters have nothing to close), so this only fires for the ones that do
+	closeOnShutdown(ctx, registry)
+	closeOnShutdown(ctx, trackerCfg.Activity)
 
 	tracker := bridgetracker.New(&trackerCfg)
 

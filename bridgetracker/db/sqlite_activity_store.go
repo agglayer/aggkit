@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
@@ -304,7 +305,12 @@ func (s *sqliteActivityStore) GetActivity(
 			out = append(out, entry)
 		}
 	}
-	return out, warnings, nil
+
+	persistedWarnings, err := s.persistedWarnings(addr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading persisted scan warnings for %s: %w", fromAddress, err)
+	}
+	return out, persistedWarnings, nil
 }
 
 // scannedBridge rebuilds the domain.ScannedBridge a row was cached from, for the re-check loop
@@ -423,6 +429,29 @@ func (s *sqliteActivityStore) recordScanWarnings(addr string, warnings []domain.
 		"UPDATE activity_address SET scan_state = ?, updated_at = ? WHERE from_address = ?",
 		data, now.Unix(), addr)
 	return err
+}
+
+// persistedWarnings loads addr's currently persisted scan_state (see recordScanWarnings) and
+// reports it as the []domain.ActivityWarning shape GetActivity returns — the last known scan
+// failure per network, surviving across calls until a later scan of that same network succeeds
+// and overwrites it (see networkScanState's doc on that staleness caveat). Without this, nothing
+// ever reads scan_state back: recordScanWarnings would be writing it for no caller to see.
+// Sorted by NetworkID for a deterministic result
+func (s *sqliteActivityStore) persistedWarnings(addr string) ([]domain.ActivityWarning, error) {
+	row, err := s.selectAddressRow(addr)
+	if err != nil {
+		return nil, err
+	}
+	scanState, err := decodeScanState(row.ScanState)
+	if err != nil {
+		return nil, err
+	}
+	warnings := make([]domain.ActivityWarning, 0, len(scanState))
+	for networkID, state := range scanState {
+		warnings = append(warnings, domain.ActivityWarning{NetworkID: networkID, Message: state.LastError})
+	}
+	sort.Slice(warnings, func(i, j int) bool { return warnings[i].NetworkID < warnings[j].NetworkID })
+	return warnings, nil
 }
 
 // upsert (re)computes item's entry via refresh and stores it, unless it is already cached and

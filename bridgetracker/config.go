@@ -147,12 +147,14 @@ type Config struct {
 	// every time. A value <= 0 falls back to DefaultL2InjectionLookbackBlocks.
 	L2InjectionLookbackBlocks uint64 `mapstructure:"L2InjectionLookbackBlocks"`
 
-	// MaxTrackedBridges bounds how many distinct bridges the in-memory registry (see Registry)
-	// accepts at once; a request that would exceed it fails instead of registering the bridge —
-	// reaching the cap never evicts an existing entry to make room, so RetentionPeriod and
-	// IdleTimeout are what keep the registry under it during normal operation. A value <= 0
-	// falls back to DefaultMaxTrackedBridges. Only applies to the default in-memory adapter —
-	// ignored when Registry is set to a custom implementation.
+	// MaxTrackedBridges bounds how many distinct bridges the registry (see Registry) accepts at
+	// once; a request that would exceed it fails instead of registering the bridge — reaching
+	// the cap never evicts an existing entry to make room. On the default in-memory adapter,
+	// RetentionPeriod and IdleTimeout are what keep the registry under it during normal
+	// operation; the SQLite-backed adapter (see DBPath) does not evict anything yet, so once
+	// reached there the cap is effectively permanent until the process restarts. A value <= 0
+	// falls back to DefaultMaxTrackedBridges. Only meaningful to the binary wiring Registry
+	// from it — ignored when Registry is set to a custom implementation.
 	MaxTrackedBridges int `mapstructure:"MaxTrackedBridges"`
 
 	// MaxConcurrentResolutions bounds how many active bridges the engine's poll tick resolves at
