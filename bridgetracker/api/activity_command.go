@@ -1,7 +1,9 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
@@ -13,11 +15,16 @@ import (
 // compile-time check: activityCommand fulfils the command interface
 var _ command = (*activityCommand)(nil)
 
-// activityCommand answers GET /activity/from/{from_address}: it scans every configured bridge
-// service for bridges sent by from_address and reports their claim (and, optionally, tracking)
-// state
+// activityCommand answers GET /activity/from/{from_address}: it registers from_address as
+// supervised (see domain.ActivitySupervisedStore.RegisterAndAwait), then reports whatever is
+// cached for it — claim state and, optionally, tracking state — same idea as
+// getTxStatusCommand, just over from_addresses instead of tracked tx IDs
 type activityCommand struct {
-	querier domain.ActivityQuerier
+	registry domain.ActivityRegistry
+	// resolveTimeout is how long Execute waits, the first time a from_address is registered,
+	// for the activity engine's immediate refresh attempt to complete before answering (see
+	// domain.ActivitySupervisedStore.RegisterAndAwait); <= 0 disables the wait
+	resolveTimeout time.Duration
 }
 
 // ActivityItem is one bridge found for the requested from_address. Bridge and Claim are the
@@ -89,32 +96,42 @@ type ActivityResponse struct {
 	Warnings []ActivityWarningItem `json:"warnings,omitempty"`
 }
 
-// Execute implements command: it scans every configured bridge service for bridges sent by the
-// from_address path parameter, and reports each one's claim state. Passing
-// ?includeTracking=true additionally registers every still-unclaimed bridge found with the
-// bridge tracker (same effect as calling GetTxStatus for it) and includes its current tracking
-// snapshot. ?filterBridges=claimed|pending|readyToClaim|error restricts the result to only
-// bridges with that claim state (default "all"); a claimed bridge excluded by
-// "pending"/"readyToClaim"/"error" never has its claim record fetched, so switching back to
-// "all"/"claimed" later fetches it then. ?flush_cache=true discards whatever is already cached
-// for from_address before scanning, forcing every bridge found for it to be freshly rechecked
-// instead of reusing cached state. A network whose bridge service could not be scanned never
-// fails the request: it is skipped and reported in the "warnings" field instead, so Bridges is
-// still whatever every other network reported. 200 OK unless: invalid from_address/filterBridges
-// (ErrorData/400), or the scan itself failed (ErrorData/500)
+// Execute implements command: it registers the from_address path parameter as supervised (see
+// domain.ActivitySupervisedStore.RegisterAndAwait) — on a first-time address, this waits up to
+// the configured resolveTimeout for the activity engine's background scan of every configured
+// bridge service to complete before answering, the same head-start idea getTxStatusCommand
+// gives a freshly registered tx — then reports whatever is currently cached for it. Passing
+// ?includeTracking=true additionally marks the address as wanting tracking enrichment: every
+// still-unclaimed bridge found for it is registered with the bridge tracker (same effect as
+// calling GetTxStatus for it) by a following background refresh, and its current tracking
+// snapshot included once that has happened. ?filterBridges=claimed|pending|readyToClaim|error
+// restricts the result to only bridges with that claim state (default "all"); the background
+// refresh always fetches a claimed bridge's claim record regardless of this filter, so switching
+// to "all"/"claimed" later never needs a fresh fetch for it. ?flush_cache=true discards whatever
+// is already cached for from_address, so the next background refresh rechecks everything from
+// scratch instead of reusing cached state — the response to the very same request that set it is
+// still whatever (if anything) is cached at that point, exactly like a first-time registration
+// waiting out resolveTimeout with nothing yet to show. A network whose bridge service could not
+// be scanned never fails the request: it is skipped and reported in the "warnings" field instead,
+// so Bridges is still whatever every other network reported. 200 OK unless: invalid
+// from_address/filterBridges (ErrorData/400), the address registry is at capacity
+// (ErrorData/503), or registering otherwise failed (ErrorData/500)
 //
 // @Summary Get bridge activity by sender address
-// @Description Scans every bridge service the tracker knows about for bridges sent by
-// @Description from_address and reports each one's claim state, exactly as the bridge service
-// @Description reported it. Results are cached: a bridge already known to be claimed, with its
-// @Description claim record already fetched, is not rechecked on a later call. Passing
-// @Description includeTracking=true additionally registers every still-unclaimed bridge with
-// @Description the bridge tracker and includes its current tracking snapshot. filterBridges
+// @Description Registers from_address as supervised and reports whatever the activity engine's
+// @Description background refresh has cached for it so far — on a first-time address, this
+// @Description request waits briefly for that first refresh before answering (see
+// @Description RegisterResolveTimeout-equivalent config). Results are cached: a bridge already
+// @Description known to be claimed, with its claim record already fetched, is not rechecked on a
+// @Description later refresh. Passing includeTracking=true additionally marks the address so a
+// @Description following background refresh registers every still-unclaimed bridge with the
+// @Description bridge tracker and includes its current tracking snapshot. filterBridges
 // @Description restricts the result to bridges with only that claim state (claimed / still
 // @Description pending / ready to claim / errored while checking). flush_cache=true discards
-// @Description whatever is already cached for from_address first, forcing a fresh recheck. A
-// @Description network whose bridge service could not be scanned is skipped and reported in the
-// @Description "warnings" field instead of failing the whole request.
+// @Description whatever is already cached for from_address, so the next background refresh
+// @Description rechecks everything from scratch. A network whose bridge service could not be
+// @Description scanned is skipped and reported in the "warnings" field instead of failing the
+// @Description whole request.
 // @Tags bridge-tracker
 // @Produce json
 // @Param from_address path string true "Address that sent the bridges to look up"
@@ -123,7 +140,8 @@ type ActivityResponse struct {
 // @Param flush_cache query bool false "Discard cached activity for from_address before answering"
 // @Success 200 {object} ActivityResponse
 // @Failure 400 {object} types.ErrorData "Invalid from_address or filterBridges"
-// @Failure 500 {object} types.ErrorData "Scanning the configured bridge services failed"
+// @Failure 500 {object} types.ErrorData "Registering from_address failed"
+// @Failure 503 {object} types.ErrorData "The supervised address registry is at capacity"
 // @Router /activity/from/{from_address} [get]
 func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData) {
 	addrStr := c.Param(fromAddressParam)
@@ -134,7 +152,7 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 	includeTracking := c.Query(includeTrackingQueryParam) == queryValueTrue
 
 	if c.Query(flushCacheQueryParam) == queryValueTrue {
-		cmd.querier.FlushActivity(fromAddress)
+		cmd.registry.FlushActivity(fromAddress)
 	}
 
 	filter, err := types.ParseActivityFilter(c.Query(filterBridgesQueryParam))
@@ -142,7 +160,14 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: err.Error()}
 	}
 
-	entries, warnings, err := cmd.querier.GetActivity(c.Request.Context(), fromAddress, includeTracking, filter)
+	if err := cmd.registry.RegisterAndAwait(fromAddress, cmd.resolveTimeout); err != nil {
+		if errors.Is(err, domain.ErrActivityRegistryFull) {
+			return 0, nil, &types.ErrorData{Code: http.StatusServiceUnavailable, Message: err.Error()}
+		}
+		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()}
+	}
+
+	entries, warnings, err := cmd.registry.GetActivity(c.Request.Context(), fromAddress, includeTracking, filter)
 	if err != nil {
 		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()}
 	}

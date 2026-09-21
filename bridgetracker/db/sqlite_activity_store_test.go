@@ -140,15 +140,42 @@ func newTestSQLiteActivityStore(t *testing.T, scanner domain.ActivityBridgeScann
 	return s
 }
 
+// refreshAndGet registers addr (a no-op if already registered), optionally primes its sticky
+// includeTracking flag (must happen before RefreshAddress, exactly like production:
+// activityCommand.Execute's RegisterAndAwait always runs before its own GetActivity call), then
+// runs one RefreshAddress + GetActivity round trip — collapsing what RegisterAndAwait/
+// ActivityEngine/GetActivity do across separate calls in production into one synchronous step
+// for tests that don't exercise the engine or timing directly.
+func refreshAndGet(
+	t *testing.T, store domain.ActivityRegistry, addr common.Address, includeTracking bool, filter types.ActivityFilter,
+) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
+	t.Helper()
+	ctx := t.Context()
+	if err := store.RegisterAndAwait(addr, 0); err != nil {
+		return nil, nil, err
+	}
+	if includeTracking {
+		if _, _, err := store.GetActivity(ctx, addr, true, filter); err != nil {
+			return nil, nil, err
+		}
+	}
+	if err := store.RefreshAddress(ctx, addr); err != nil {
+		return nil, nil, err
+	}
+	return store.GetActivity(ctx, addr, includeTracking, filter)
+}
+
 // TestSQLiteActivityStoreUnclaimedBridgeIsRecheckedEveryCall verifies an unclaimed bridge's
-// claim state is re-verified on every GetActivity call, and that includeTracking=false never
-// registers it with the tracker
+// claim state is re-verified on every refresh, and that includeTracking=false never registers
+// it with the tracker
 func TestSQLiteActivityStoreUnclaimedBridgeIsRecheckedEveryCall(t *testing.T) {
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
 	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
+	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
 
 	for range 2 {
+		require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 		entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 		require.NoError(t, err)
 		require.Len(t, entries, 1)
@@ -158,6 +185,28 @@ func TestSQLiteActivityStoreUnclaimedBridgeIsRecheckedEveryCall(t *testing.T) {
 	}
 	require.Equal(t, 2, claims.isClaimedCalls)
 	require.Equal(t, 0, claims.claimInfoCalls)
+}
+
+// TestSQLiteActivityStoreGetActivityIsCacheOnly verifies GetActivity never scans or consults
+// claims/the tracker itself: only RefreshAddress does.
+func TestSQLiteActivityStoreGetActivityIsCacheOnly(t *testing.T) {
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false}}
+	store := newTestSQLiteActivityStore(t, scanner, claims)
+	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
+
+	entries, _, err := store.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Empty(t, entries, "nothing has been refreshed yet")
+	require.Equal(t, 0, scanner.calls, "GetActivity must never scan")
+
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
+	require.Equal(t, 1, scanner.calls, "RefreshAddress is the one that scans")
+
+	entries, _, err = store.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, 1, scanner.calls, "a later GetActivity must still never scan")
 }
 
 // TestSQLiteActivityStoreIncludeTrackingRegistersUnclaimedBridge verifies includeTracking=true
@@ -171,7 +220,7 @@ func TestSQLiteActivityStoreIncludeTrackingRegistersUnclaimedBridge(t *testing.T
 	claims := &fakeActivityClaims{isClaimed: []bool{false}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
 
-	entries, _, err := store.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
+	entries, _, err := refreshAndGet(t, store, testFromAddress, true, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
@@ -182,31 +231,34 @@ func TestSQLiteActivityStoreIncludeTrackingRegistersUnclaimedBridge(t *testing.T
 }
 
 // TestSQLiteActivityStoreClaimedAndIndexedBridgeIsNeverRechecked verifies a bridge that is
-// claimed with its claim record already fetched is never rechecked on a later call — settled,
-// and persisted as such across calls
+// claimed with its claim record already fetched is never rechecked on a later refresh —
+// settled, and persisted as such across refreshes
 func TestSQLiteActivityStoreClaimedAndIndexedBridgeIsNeverRechecked(t *testing.T) {
 	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
 	// only one IsClaimed/ClaimInfo entry: a second consultation would panic on out-of-range
 	claims := &fakeActivityClaims{isClaimed: []bool{true}, claimInfo: []*bridgeservicetypes.ClaimResponse{claim}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
+	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
 
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusClaimed, entries[0].ClaimStatus)
 	require.Equal(t, claim, entries[0].Claim)
 
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Equal(t, claim, entries[0].Claim)
 	require.Equal(t, 1, claims.isClaimedCalls)
 	require.Equal(t, 1, claims.claimInfoCalls)
-	require.Equal(t, 2, scanner.calls) // BridgesFrom is still called every time to find new bridges
+	require.Equal(t, 2, scanner.calls) // BridgesFrom is still called every refresh to find new bridges
 }
 
 // TestSQLiteActivityStoreIsClaimedFailureReportsErrorStatus verifies a failed isClaimed() check
 // is reported as ClaimStatusError — never silently as ClaimStatusUnclaimed — and is retried on
-// the next call
+// the next refresh
 func TestSQLiteActivityStoreIsClaimedFailureReportsErrorStatus(t *testing.T) {
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
 	claims := &fakeActivityClaims{
@@ -214,12 +266,15 @@ func TestSQLiteActivityStoreIsClaimedFailureReportsErrorStatus(t *testing.T) {
 		isClaimedErrs: []error{errors.New("no bridge contract address configured for network 2"), nil},
 	}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
+	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
 
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusError, entries[0].ClaimStatus)
 	require.Equal(t, "no bridge contract address configured for network 2", entries[0].Errors["claim"])
 
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
@@ -228,9 +283,11 @@ func TestSQLiteActivityStoreIsClaimedFailureReportsErrorStatus(t *testing.T) {
 }
 
 // TestSQLiteActivityStoreFilterPendingExcludesClaimedAndErrored verifies ActivityFilterPending
-// returns only bridges still unclaimed and not yet ready to claim, and never fetches a claimed
-// bridge's claim record
+// returns only bridges still unclaimed and not yet ready to claim. The claimed bridge's claim
+// record is still fetched during the refresh regardless (a background refresh cannot know a
+// future request's filter), it is just excluded from this particular filtered result.
 func TestSQLiteActivityStoreFilterPendingExcludesClaimedAndErrored(t *testing.T) {
+	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
 	pendingBridge := testScannedBridge(2)
 	scanner := &fakeActivityScanner{
 		bridges: []*domain.ScannedBridge{
@@ -240,16 +297,17 @@ func TestSQLiteActivityStoreFilterPendingExcludesClaimedAndErrored(t *testing.T)
 	claims := &fakeActivityClaims{
 		isClaimed:     []bool{true, false, false, false},
 		isClaimedErrs: []error{nil, nil, errors.New("boom"), nil},
+		claimInfo:     []*bridgeservicetypes.ClaimResponse{claim},
 		readyToClaims: []bool{false, true},
 	}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
 
-	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterPending)
+	entries, _, err := refreshAndGet(t, store, testFromAddress, false, types.ActivityFilterPending)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, pendingBridge.Bridge, entries[0].Bridge)
 	require.Equal(t, types.TrackerClaimStatusPending, entries[0].TrackerClaimStatus)
-	require.Equal(t, 0, claims.claimInfoCalls)
+	require.Equal(t, 1, claims.claimInfoCalls, "the claimed bridge's record is still fetched during the refresh")
 }
 
 // TestSQLiteActivityStoreFilterClaimedExcludesPending verifies ActivityFilterClaimed returns
@@ -267,7 +325,7 @@ func TestSQLiteActivityStoreFilterClaimedExcludesPending(t *testing.T) {
 	}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
 
-	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterClaimed)
+	entries, _, err := refreshAndGet(t, store, testFromAddress, false, types.ActivityFilterClaimed)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, claimedBridge.Bridge, entries[0].Bridge)
@@ -275,31 +333,31 @@ func TestSQLiteActivityStoreFilterClaimedExcludesPending(t *testing.T) {
 }
 
 // TestSQLiteActivityStoreScannerReceivesGrowingKnownSet verifies the scanner is called with an
-// empty known set the first time, and with the previously found bridge's key once it has been
-// cached — persisted, not just held in memory for the call
+// empty known set the first refresh, and with the previously found bridge's key once it has
+// been cached — persisted, not just held in memory for the call
 func TestSQLiteActivityStoreScannerReceivesGrowingKnownSet(t *testing.T) {
 	bridge := testScannedBridge(1)
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{bridge}}
 	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
+	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
 
-	_, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
-	require.NoError(t, err)
-	require.Empty(t, scanner.lastKnown, "nothing cached yet on the first call")
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
+	require.Empty(t, scanner.lastKnown, "nothing cached yet on the first refresh")
 
-	_, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
-	require.NoError(t, err)
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	require.Contains(t, scanner.lastKnown, string(bridge.Bridge.GlobalIndex))
 }
 
-// TestSQLiteActivityStoreScannerErrorFailsTheCall verifies a scanner failure fails GetActivity
-// entirely
-func TestSQLiteActivityStoreScannerErrorFailsTheCall(t *testing.T) {
+// TestSQLiteActivityStoreScannerErrorFailsTheRefresh verifies a scanner failure fails
+// RefreshAddress entirely
+func TestSQLiteActivityStoreScannerErrorFailsTheRefresh(t *testing.T) {
 	wantErr := errors.New("bridge service unreachable")
 	scanner := &fakeActivityScanner{err: wantErr}
 	store := newTestSQLiteActivityStore(t, scanner, &fakeActivityClaims{})
+	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
 
-	_, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	err := store.RefreshAddress(t.Context(), testFromAddress)
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -309,9 +367,11 @@ func TestSQLiteActivityStoreTimestampsTrackCreationAndLastUpdate(t *testing.T) {
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
 	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
+	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
 
 	t1 := time.Now()
 	store.now = func() time.Time { return t1 }
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.True(t, entries[0].CreatedAt.Equal(t1))
@@ -319,51 +379,96 @@ func TestSQLiteActivityStoreTimestampsTrackCreationAndLastUpdate(t *testing.T) {
 
 	t2 := t1.Add(time.Minute)
 	store.now = func() time.Time { return t2 }
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.True(t, entries[0].CreatedAt.Equal(t1), "creation time must not change")
 	require.True(t, entries[0].UpdatedAt.Equal(t2), "update time must advance on every recheck")
 }
 
-// TestSQLiteActivityStoreIdleAddressIsNotForgotten verifies an address untouched for longer than
-// idleTimeout is NOT forgotten: unlike the in-memory adapter, this store never deletes a
-// persisted row on its own for now (see sqliteActivityStore.sweepIdle) — proven by a settled
-// bridge staying settled (isClaimed is not asked again) well past idleTimeout
-func TestSQLiteActivityStoreIdleAddressIsNotForgotten(t *testing.T) {
+// TestSQLiteActivityStorePruneIdleDeletesRowsAndCascades verifies PruneIdle deletes an idle
+// address's row and, via ON DELETE CASCADE, every activity_bridge row cached for it — the real
+// retention sweep that replaces the old sweepIdle no-op (see issue #1822) — and leaves a
+// recently accessed address untouched.
+func TestSQLiteActivityStorePruneIdleDeletesRowsAndCascades(t *testing.T) {
 	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
-	// a single isClaimed/claimInfo entry: a second consultation would panic on out-of-range,
-	// proving the settled entry survived past idleTimeout instead of being forgotten and re-scanned
 	claims := &fakeActivityClaims{isClaimed: []bool{true}, claimInfo: []*bridgeservicetypes.ClaimResponse{claim}}
-
-	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
-	logger := log.WithFields("module", "activity_test")
-	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
-	require.NoError(t, err)
-	storeIface, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Minute)
-	require.NoError(t, err)
-	store, ok := storeIface.(*sqliteActivityStore)
-	require.True(t, ok)
-	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	store := newTestSQLiteActivityStore(t, scanner, claims)
 
 	now := time.Now()
 	store.now = func() time.Time { return now }
 
+	entries, _, err := refreshAndGet(t, store, testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Equal(t, claim, entries[0].Claim)
+
+	pruned, err := store.PruneIdle(now.Add(-time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, 0, pruned, "just accessed, not idle yet")
+
+	future := now.Add(time.Hour)
+	pruned, err = store.PruneIdle(future)
+	require.NoError(t, err)
+	require.Equal(t, 1, pruned)
+
+	var addrCount, bridgeCount int
+	require.NoError(t, store.db.QueryRow("SELECT COUNT(*) FROM activity_address").Scan(&addrCount))
+	require.NoError(t, store.db.QueryRow("SELECT COUNT(*) FROM activity_bridge").Scan(&bridgeCount))
+	require.Equal(t, 0, addrCount)
+	require.Equal(t, 0, bridgeCount, "activity_bridge rows must cascade-delete with their address")
+}
+
+// TestSQLiteActivityStoreGetActiveAddresses verifies GetActiveAddresses reports every
+// registered address, and nothing once it has been pruned.
+func TestSQLiteActivityStoreGetActiveAddresses(t *testing.T) {
+	store := newTestSQLiteActivityStore(t, &fakeActivityScanner{}, &fakeActivityClaims{})
+	other := common.HexToAddress("0x2222222222222222222222222222222222222222")
+
+	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
+	require.NoError(t, store.RegisterAndAwait(other, 0))
+
+	addrs, err := store.GetActiveAddresses()
+	require.NoError(t, err)
+	require.ElementsMatch(t, []common.Address{testFromAddress, other}, addrs)
+
+	pruned, err := store.PruneIdle(time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, 2, pruned)
+
+	addrs, err = store.GetActiveAddresses()
+	require.NoError(t, err)
+	require.Empty(t, addrs)
+}
+
+// TestSQLiteActivityStoreRegisterAndAwaitWaitsForRefresh verifies RegisterAndAwait blocks a new
+// address's caller until RefreshAddress completes, when given a positive timeout.
+func TestSQLiteActivityStoreRegisterAndAwaitWaitsForRefresh(t *testing.T) {
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false}}
+	store := newTestSQLiteActivityStore(t, scanner, claims)
+
+	done := make(chan error, 1)
+	go func() { done <- store.RegisterAndAwait(testFromAddress, time.Second) }()
+
+	select {
+	case addr := <-store.Triggers():
+		require.Equal(t, testFromAddress, addr)
+		require.NoError(t, store.RefreshAddress(t.Context(), addr))
+	case <-time.After(time.Second):
+		t.Fatal("RegisterAndAwait never signaled the trigger")
+	}
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("RegisterAndAwait never returned after the refresh completed")
+	}
+
 	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
-	require.Equal(t, claim, entries[0].Claim)
-	require.Equal(t, 1, claims.isClaimedCalls, "settled after the first call")
-
-	now = now.Add(2 * time.Minute) // well past idleTimeout
-
-	entries, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
-	require.NoError(t, err)
-	require.Equal(t, claim, entries[0].Claim)
-	require.Equal(t, 1, claims.isClaimedCalls, "the row must still be there, so the settled entry is never rechecked")
-
-	var count int
-	require.NoError(t, store.db.QueryRow("SELECT COUNT(*) FROM activity_bridge").Scan(&count))
-	require.Equal(t, 1, count, "no row is deleted for now (pruning stays in-memory-only)")
+	require.Len(t, entries, 1)
 }
 
 // TestSQLiteActivityStorePersistsAcrossInstances pins the actual point of this adapter: a
@@ -380,7 +485,7 @@ func TestSQLiteActivityStorePersistsAcrossInstances(t *testing.T) {
 
 	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
 	require.NoError(t, err)
-	entries, _, err := first.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Equal(t, claim, entries[0].Claim)
 	firstSQLite, ok := first.(*sqliteActivityStore)
@@ -421,7 +526,7 @@ func TestSQLiteActivityStorePersistsSource(t *testing.T) {
 
 	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
 	require.NoError(t, err)
-	entries, _, err := first.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Equal(t, domain.ActivitySourceRPC, entries[0].Source)
 	firstSQLite, ok := first.(*sqliteActivityStore)
@@ -449,7 +554,7 @@ func TestSQLiteActivityStoreRecordsScanWarnings(t *testing.T) {
 	scanner := &fakeActivityScanner{warnings: []domain.ActivityWarning{warning}}
 	store := newTestSQLiteActivityStore(t, scanner, &fakeActivityClaims{})
 
-	_, warnings, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	_, warnings, err := refreshAndGet(t, store, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Equal(t, []domain.ActivityWarning{warning}, warnings)
 
@@ -461,25 +566,67 @@ func TestSQLiteActivityStoreRecordsScanWarnings(t *testing.T) {
 	require.NotZero(t, scanState[7].LastErrorAt)
 }
 
-// TestSQLiteActivityStoreWarningSurvivesAcrossCalls verifies a network's persisted scan_state
-// error (see TestSQLiteActivityStoreRecordsScanWarnings) is reported back on a later GetActivity
-// call too, not only the one call that hit the failure — the whole point of persisting it instead
-// of only ever returning what the current scan happened to report
-func TestSQLiteActivityStoreWarningSurvivesAcrossCalls(t *testing.T) {
+// TestSQLiteActivityStoreWarningsReflectLastRefresh verifies GetActivity reports whatever the
+// last RefreshAddress call persisted into last_warnings, whether or not GetActivity itself is the
+// caller that triggers it — it never scans inline any more (see RefreshAddress's doc)
+func TestSQLiteActivityStoreWarningsReflectLastRefresh(t *testing.T) {
 	warning := domain.ActivityWarning{NetworkID: 7, Message: "bridge service unreachable"}
 	scanner := &fakeActivityScanner{warnings: []domain.ActivityWarning{warning}}
 	store := newTestSQLiteActivityStore(t, scanner, &fakeActivityClaims{})
 
-	_, warnings, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	_, warnings, err := refreshAndGet(t, store, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Equal(t, []domain.ActivityWarning{warning}, warnings)
 
-	// this call's own scan is fully successful (no warnings reported by the scanner), but the
-	// previous call's persisted failure for network 7 must still surface
-	scanner.warnings = nil
+	// a later GetActivity call on its own (no refresh in between) still reports the same
+	// last-persisted warnings, since GetActivity is a cache-only read
 	_, warnings, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Equal(t, []domain.ActivityWarning{warning}, warnings)
+
+	// a subsequent clean refresh overwrites last_warnings with the new (empty) result
+	scanner.warnings = nil
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
+	_, warnings, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Empty(t, warnings)
+}
+
+// TestSQLiteActivityStoreIncludeTrackingPersistsAcrossRestart verifies the sticky
+// include_tracking flag survives reopening the same DB file: a second store, opened after the
+// first set the flag, still enriches tracking on its own next refresh.
+func TestSQLiteActivityStoreIncludeTrackingPersistsAcrossRestart(t *testing.T) {
+	bridge := testBridge(1)
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{activityScannedBridge(bridge, testScannedNetworkID)}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false}}
+
+	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
+	logger := log.WithFields("module", "activity_test")
+	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
+	require.NoError(t, err)
+
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
+	require.NoError(t, err)
+	require.NoError(t, first.RegisterAndAwait(testFromAddress, 0))
+	// prime the sticky flag without refreshing yet, exactly like activityCommand.Execute's
+	// RegisterAndAwait-then-GetActivity ordering
+	_, _, err = first.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
+	require.NoError(t, err)
+	firstSQLite, ok := first.(*sqliteActivityStore)
+	require.True(t, ok)
+	require.NoError(t, firstSQLite.Close())
+
+	second, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
+	require.NoError(t, err)
+	secondSQLite, ok := second.(*sqliteActivityStore)
+	require.True(t, ok)
+	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
+
+	require.NoError(t, second.RefreshAddress(t.Context(), testFromAddress))
+	entries, _, err := second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.NotNil(t, entries[0].Tracking, "include_tracking must survive the restart")
 }
 
 // TestSQLiteActivityStoreBridgeNetworkIDUsesScannedNetworkNotBridgeOriginNetwork verifies
@@ -493,7 +640,7 @@ func TestSQLiteActivityStoreBridgeNetworkIDUsesScannedNetworkNotBridgeOriginNetw
 	claims := &fakeActivityClaims{isClaimed: []bool{false}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
 
-	entries, _, err := store.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
+	entries, _, err := refreshAndGet(t, store, testFromAddress, true, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, scannedNetworkID, entries[0].BridgeNetworkID)
@@ -508,7 +655,9 @@ func TestSQLiteActivityStoreSchemaVersionMismatchIsAMiss(t *testing.T) {
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
 	claims := &fakeActivityClaims{isClaimed: []bool{true, false}, claimInfo: []*bridgeservicetypes.ClaimResponse{claim}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
+	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
 
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusClaimed, entries[0].ClaimStatus)
@@ -518,6 +667,7 @@ func TestSQLiteActivityStoreSchemaVersionMismatchIsAMiss(t *testing.T) {
 
 	// a settled (claimed) bridge whose row is now stale must be re-scanned/re-refreshed from
 	// scratch, not read back as claimed straight from the stale row
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)

@@ -12,21 +12,38 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// compile-time check: ActivityCache fulfils ActivityQuerier
-var _ ActivityQuerier = (*ActivityCache)(nil)
+// compile-time check: ActivityCache fulfils ActivityRegistry
+var _ ActivityRegistry = (*ActivityCache)(nil)
+
+// DefaultMaxActivityAddresses bounds how many distinct from_addresses ActivityCache accepts
+// before refusing new ones (see ActivityCache.register), mirroring DefaultMaxTrackedBridges'
+// DoS-protection reasoning for the tracker's own registry
+const DefaultMaxActivityAddresses = 100_000
 
 // activityAddrCache is the per-from_address state ActivityCache keeps: every bridge found for
-// it so far, and when it was last requested (see ActivityCache.addrCache, which stamps this on
-// every GetActivity call and is what the idle sweep evicts by — the same lastAccess/PruneIdle
-// idea memoryRegistry uses for tracking, see registry.go's bridgeEntry)
+// it so far, when it was last accessed, whether tracking enrichment has been requested for it,
+// the warnings from its last background refresh, and whoever is currently blocked in
+// RegisterAndAwait waiting for that refresh to complete.
 type activityAddrCache struct {
 	entries map[string]*domain.ActivityEntry // key: string(bridge.GlobalIndex)
-	// lastAccess is when this address was last requested; addresses idle past idleTimeout are
-	// forgotten (see ActivityCache.addrCache)
+	// lastAccess is when this address was last requested (RegisterAndAwait/GetActivity);
+	// addresses idle past idleTimeout are forgotten (see ActivityCache.PruneIdle, the same
+	// lastAccess/PruneIdle idea memoryRegistry uses for tracking, see registry.go's bridgeEntry)
 	lastAccess time.Time
+	// wantsTracking is set once any caller has asked for includeTracking; from then on every
+	// background refresh enriches still-unclaimed bridges with their tracker snapshot (see
+	// RefreshAddress) — the background cannot know a future request's own flag
+	wantsTracking bool
+	// warnings is whatever ActivityBridgeScanner.BridgesFrom reported on the last refresh;
+	// overwritten every call rather than accumulated, so a recovered network's warning clears
+	// promptly
+	warnings []domain.ActivityWarning
+	// waiters holds one channel per RegisterAndAwait call currently blocked on this address's
+	// next refresh; closed and cleared by RefreshAddress once it completes
+	waiters map[chan struct{}]struct{}
 }
 
-// ActivityCache implements domain.ActivityQuerier: for a given from_address it scans every
+// ActivityCache implements domain.ActivityRegistry: for a given from_address it scans every
 // configured bridge service (via ActivityBridgeScanner) for bridges it has not already cached,
 // and keeps a running per-address cache of the resulting bridges, so:
 //   - a bridge already known is never re-scanned from the bridge service again (see
@@ -35,8 +52,12 @@ type activityAddrCache struct {
 //     claim record has not been fetched yet;
 //   - once a bridge's claim record has been fetched, it is never asked for again;
 //   - an address nobody has asked about in idleTimeout is forgotten entirely, freeing everything
-//     cached for it (mirrors SupervisedStore.PruneIdle's idea, without a dedicated ticker: see
-//     addrCache).
+//     cached for it (see PruneIdle, mirroring SupervisedStore.PruneIdle, driven by
+//     ActivityEngine's poll tick instead of a sweep-on-every-request).
+//
+// None of the scanning/rechecking above happens inline inside GetActivity: it happens in
+// RefreshAddress, called only by ActivityEngine's poll tick or its trigger fast-path (see
+// RegisterAndAwait). GetActivity itself is a cache-only read.
 //
 // Safe for concurrent use.
 type ActivityCache struct {
@@ -52,12 +73,15 @@ type ActivityCache struct {
 
 	mu     sync.Mutex
 	byAddr map[common.Address]*activityAddrCache
+	// trigger carries the addresses of freshly registered entries out to ActivityEngine (see
+	// Triggers), which refreshes them immediately instead of waiting for its next poll tick
+	trigger chan common.Address
 }
 
 // NewActivityCache returns an ActivityCache resolving bridges through scanner, claim state
 // through claims, and (when asked) tracker registration through supervised. idleTimeout is how
-// long an address survives with no GetActivity call for it before being forgotten; <= 0 falls
-// back to DefaultIdleTimeout
+// long an address survives with no access before being forgotten by PruneIdle; <= 0 falls back
+// to DefaultIdleTimeout
 func NewActivityCache(
 	scanner ActivityBridgeScanner, claims ActivityClaimChecker, supervised SupervisedStore,
 	logger aggkitcommon.Logger, idleTimeout time.Duration,
@@ -73,28 +97,122 @@ func NewActivityCache(
 		idleTimeout: idleTimeout,
 		now:         time.Now,
 		byAddr:      make(map[common.Address]*activityAddrCache),
+		trigger:     make(chan common.Address, triggerBufferSize),
 	}
 }
 
-// GetActivity implements domain.ActivityQuerier: it rechecks every bridge already cached for
-// fromAddress that is not yet settled (see settled — their raw bridge data is already cached, so
-// this needs no bridge-service call), then scans for bridges not seen before (see
-// ActivityBridgeScanner.BridgesFrom), forgets whatever the scan reports as invalidated (see
-// BridgesFrom's own doc — a bridge an RPC-based source once reported that has since been
-// reorged out of existence, with nothing yet re-including it), and returns everything still
-// cached for fromAddress that matches filter. The returned []domain.ActivityWarning is whatever
-// the scan reported for networks it could not reach this call (see ActivityBridgeScanner.
-// BridgesFrom) — it never fails the call by itself, since the result is still valid for every
-// other network.
-func (a *ActivityCache) GetActivity(
-	ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
-) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
-	addrCache := a.addrCache(fromAddress)
-
+// RegisterAndAwait implements domain.ActivitySupervisedStore. On an already-registered address
+// it behaves like a plain touch: no trigger, no wait. On a newly registered address it wakes
+// ActivityEngine (see signalTrigger/Triggers) and waits up to timeout for that first refresh to
+// complete, falling back to whatever GetActivity finds cached (possibly nothing yet) if timeout
+// elapses first
+func (a *ActivityCache) RegisterAndAwait(fromAddress common.Address, timeout time.Duration) error {
 	a.mu.Lock()
-	known := make(map[string]domain.KnownBridge, len(addrCache.entries))
-	cached := make([]*domain.ActivityEntry, 0, len(addrCache.entries))
-	for key, entry := range addrCache.entries {
+	cache, existed := a.byAddr[fromAddress]
+	if !existed {
+		if len(a.byAddr) >= DefaultMaxActivityAddresses {
+			a.mu.Unlock()
+			return domain.ErrActivityRegistryFull
+		}
+		cache = &activityAddrCache{
+			entries: make(map[string]*domain.ActivityEntry),
+			waiters: make(map[chan struct{}]struct{}),
+		}
+		a.byAddr[fromAddress] = cache
+	}
+	cache.lastAccess = a.now()
+
+	if existed || timeout <= 0 {
+		a.mu.Unlock()
+		if !existed {
+			a.signalTrigger(fromAddress)
+		}
+		return nil
+	}
+
+	ch := make(chan struct{})
+	cache.waiters[ch] = struct{}{}
+	a.mu.Unlock()
+
+	a.signalTrigger(fromAddress)
+
+	defer func() {
+		a.mu.Lock()
+		delete(cache.waiters, ch)
+		a.mu.Unlock()
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-ch:
+	case <-timer.C:
+	}
+	return nil
+}
+
+// GetActiveAddresses implements domain.ActivitySupervisedStore: every currently supervised
+// from_address, for ActivityEngine's poll tick to iterate
+func (a *ActivityCache) GetActiveAddresses() ([]common.Address, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	addrs := make([]common.Address, 0, len(a.byAddr))
+	for addr := range a.byAddr {
+		addrs = append(addrs, addr)
+	}
+	return addrs, nil
+}
+
+// PruneIdle implements domain.ActivitySupervisedStore: it forgets every address with no
+// in-flight RegisterAndAwait call that was last accessed before olderThan, returning how many
+// were forgotten. Mirrors memoryRegistry.PruneIdle
+func (a *ActivityCache) PruneIdle(olderThan time.Time) (int, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	pruned := 0
+	for addr, cache := range a.byAddr {
+		if len(cache.waiters) == 0 && cache.lastAccess.Before(olderThan) {
+			delete(a.byAddr, addr)
+			pruned++
+		}
+	}
+	return pruned, nil
+}
+
+// signalTrigger notifies ActivityEngine that fromAddress was just registered. It never blocks:
+// a full buffer just means this address waits for the next regular poll tick like before
+func (a *ActivityCache) signalTrigger(fromAddress common.Address) {
+	select {
+	case a.trigger <- fromAddress:
+	default:
+	}
+}
+
+// Triggers implements domain.ActivityTriggerable
+func (a *ActivityCache) Triggers() <-chan common.Address {
+	return a.trigger
+}
+
+// RefreshAddress implements domain.ActivitySupervisedStore: it rechecks every bridge already
+// cached for fromAddress that is not yet settled (see settled), scans for bridges not seen
+// before (see ActivityBridgeScanner.BridgesFrom), forgets whatever the scan reports as
+// invalidated, records the scan's warnings, and finally wakes every RegisterAndAwait call
+// currently blocked on fromAddress. This is what used to run inline inside GetActivity; it is
+// now only ever called by ActivityEngine. A missing cache (address not currently registered) is
+// a silent no-op — the regular tick already only iterates GetActiveAddresses
+func (a *ActivityCache) RefreshAddress(ctx context.Context, fromAddress common.Address) error {
+	a.mu.Lock()
+	cache, ok := a.byAddr[fromAddress]
+	if !ok {
+		a.mu.Unlock()
+		return nil
+	}
+	includeTracking := cache.wantsTracking
+	known := make(map[string]domain.KnownBridge, len(cache.entries))
+	cached := make([]*domain.ActivityEntry, 0, len(cache.entries))
+	for key, entry := range cache.entries {
 		known[key] = domain.KnownBridge{
 			TxHash: entry.Bridge.TxHash, BlockNum: entry.Bridge.BlockNum,
 			Source: entry.Source, NetworkID: entry.BridgeNetworkID,
@@ -108,12 +226,13 @@ func (a *ActivityCache) GetActivity(
 		// tracking recheck of data already cached, not a new scan result, so it must not reset an
 		// entry's Source back to its zero value
 		scanned := &domain.ScannedBridge{Bridge: entry.Bridge, NetworkID: entry.BridgeNetworkID, Source: entry.Source}
-		a.upsert(ctx, addrCache, scanned, includeTracking, filter)
+		a.upsert(ctx, cache, scanned, includeTracking)
 	}
 
 	newItems, invalidated, warnings, err := a.scanner.BridgesFrom(ctx, fromAddress, known)
 	if err != nil {
-		return nil, nil, fmt.Errorf("scanning bridges from %s: %w", fromAddress, err)
+		a.finishRefresh(cache)
+		return fmt.Errorf("scanning bridges from %s: %w", fromAddress, err)
 	}
 	if len(invalidated) > 0 {
 		// forget these before upserting newItems (not after): a GlobalIndex the scanner reports
@@ -122,29 +241,68 @@ func (a *ActivityCache) GetActivity(
 		// up cached, not forgotten
 		a.mu.Lock()
 		for _, key := range invalidated {
-			delete(addrCache.entries, key)
+			delete(cache.entries, key)
 		}
 		a.mu.Unlock()
 	}
 	for _, item := range newItems {
-		a.upsert(ctx, addrCache, item, includeTracking, filter)
+		a.upsert(ctx, cache, item, includeTracking)
 	}
 
 	a.mu.Lock()
+	cache.warnings = warnings
+	a.mu.Unlock()
+
+	a.finishRefresh(cache)
+	return nil
+}
+
+// finishRefresh wakes every RegisterAndAwait call currently blocked on cache and clears the
+// waiter set; safe to call even when nobody is waiting
+func (a *ActivityCache) finishRefresh(cache *activityAddrCache) {
+	a.mu.Lock()
 	defer a.mu.Unlock()
-	out := make([]*domain.ActivityEntry, 0, len(addrCache.entries))
-	for _, entry := range addrCache.entries {
+
+	for ch := range cache.waiters {
+		close(ch)
+	}
+	cache.waiters = make(map[chan struct{}]struct{})
+}
+
+// GetActivity implements domain.ActivityQuerier: a cache-only read of whatever the last
+// background refresh (see RefreshAddress) computed for fromAddress, filtered per filter.
+// includeTracking additionally marks fromAddress as wanting tracking enrichment for future
+// refreshes (see activityAddrCache.wantsTracking) — it does not itself fetch anything. An
+// address with no cache yet (never registered, or registered but not refreshed even once)
+// returns an empty result, not an error
+func (a *ActivityCache) GetActivity(
+	_ context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
+) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	cache, ok := a.byAddr[fromAddress]
+	if !ok {
+		return nil, nil, nil
+	}
+	cache.lastAccess = a.now()
+	if includeTracking {
+		cache.wantsTracking = true
+	}
+
+	out := make([]*domain.ActivityEntry, 0, len(cache.entries))
+	for _, entry := range cache.entries {
 		if matchesFilter(entry, filter) {
 			out = append(out, entry)
 		}
 	}
-	return out, warnings, nil
+	return out, cache.warnings, nil
 }
 
 // FlushActivity implements domain.ActivityQuerier: it discards fromAddress's whole per-address
-// cache, if any — every cached bridge (settled or not) is forgotten, so the next GetActivity
-// call for fromAddress rescans and rechecks everything from scratch, exactly as if it had never
-// been requested before. Safe to call for an address with nothing cached (no-op)
+// cache, if any — every cached bridge (settled or not) is forgotten, so the next background
+// refresh for fromAddress rescans and rechecks everything from scratch, exactly as if it had
+// never been requested before. Safe to call for an address with nothing cached (no-op)
 func (a *ActivityCache) FlushActivity(fromAddress common.Address) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -157,8 +315,7 @@ func (a *ActivityCache) FlushActivity(fromAddress common.Address) {
 // sure is genuinely new (e.g. a defensive re-check, or a pagination-boundary duplicate): settled
 // entries are never redundantly refreshed regardless of where item came from
 func (a *ActivityCache) upsert(
-	ctx context.Context, addrCache *activityAddrCache, item *domain.ScannedBridge,
-	includeTracking bool, filter types.ActivityFilter,
+	ctx context.Context, addrCache *activityAddrCache, item *domain.ScannedBridge, includeTracking bool,
 ) {
 	key := string(item.Bridge.GlobalIndex)
 
@@ -170,7 +327,7 @@ func (a *ActivityCache) upsert(
 		return
 	}
 
-	entry := a.refresh(ctx, item, existing, includeTracking, filter)
+	entry := a.refresh(ctx, item, existing, includeTracking)
 
 	a.mu.Lock()
 	addrCache.entries[key] = entry
@@ -200,48 +357,10 @@ func matchesFilter(entry *domain.ActivityEntry, filter types.ActivityFilter) boo
 	}
 }
 
-// skipsClaimInfo reports whether filter excludes a claimed bridge from its result, making the
-// destination bridge service's claim record unnecessary to fetch right now (see refresh)
-func skipsClaimInfo(filter types.ActivityFilter) bool {
-	return filter == types.ActivityFilterPending ||
-		filter == types.ActivityFilterReadyToClaim ||
-		filter == types.ActivityFilterError
-}
-
-// addrCache returns (creating if necessary) the per-address cache for fromAddress, stamping its
-// lastAccess with now. Before that, it sweeps every address whose lastAccess is older than
-// idleTimeout out of byAddr — the idle-eviction sweep. There is no dedicated ticker/goroutine for
-// this (unlike SupervisedStore.PruneIdle, which the tracking engine drives on its own poll
-// ticker, see engine.go's tick): ActivityCache has no background loop of its own to piggyback
-// on, and sweeping on every real request is cheap for the expected number of distinct addresses.
-func (a *ActivityCache) addrCache(fromAddress common.Address) *activityAddrCache {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	now := a.now()
-	cutoff := now.Add(-a.idleTimeout)
-	for addr, cache := range a.byAddr {
-		// fromAddress itself is deliberately not exempted: if it was already idle-expired as of
-		// its last access, its stale state is forgotten and it starts fresh below, exactly as if
-		// this were its first request
-		if cache.lastAccess.Before(cutoff) {
-			delete(a.byAddr, addr)
-		}
-	}
-
-	addrCache, ok := a.byAddr[fromAddress]
-	if !ok {
-		addrCache = &activityAddrCache{entries: make(map[string]*domain.ActivityEntry)}
-		a.byAddr[fromAddress] = addrCache
-	}
-	addrCache.lastAccess = now
-	return addrCache
-}
-
 // settled reports whether entry is done being rechecked: claimed, with the claim record
 // already fetched. Anything else (unclaimed, the isClaimed() check itself having failed, or
 // claimed but the destination bridge service has not indexed the claim yet) is re-verified on
-// every GetActivity call
+// every background refresh
 func settled(entry *domain.ActivityEntry) bool {
 	return entry.ClaimStatus == types.ClaimStatusClaimed && entry.Claim != nil
 }
@@ -256,15 +375,15 @@ func settled(entry *domain.ActivityEntry) bool {
 //   - otherwise the on-chain isClaimed() call runs as usual (unclaimed and error states must
 //     keep being re-verified, since only a confirmed claim is permanent).
 //
-// Once claimed, the destination bridge service's claim record is fetched — skipped when filter
-// excludes claimed bridges anyway (see skipsClaimInfo); the entry then simply stays unsettled
-// and is fetched normally the next time a filter that needs it is used (see settled) — or, only
-// if includeTracking, the tracker's current snapshot is attached for the still-unclaimed tx. A
-// failure at any step is logged and left for the next call to retry; it never fails the whole
-// GetActivity call, since one bad network should not hide every other bridge found
+// Once claimed, the destination bridge service's claim record is always fetched: unlike before
+// RefreshAddress ran independently of any particular request's filter, there is no longer a
+// per-call filter to skip it for — a background refresh must fetch it eventually regardless of
+// which filter happens to be requested next (see settled) — or, only if includeTracking, the
+// tracker's current snapshot is attached for the still-unclaimed tx. A failure at any step is
+// logged and left for the next call to retry; it never fails the whole RefreshAddress call,
+// since one bad network should not hide every other bridge found
 func (a *ActivityCache) refresh(
-	ctx context.Context, item *domain.ScannedBridge, existing *domain.ActivityEntry,
-	includeTracking bool, filter types.ActivityFilter,
+	ctx context.Context, item *domain.ScannedBridge, existing *domain.ActivityEntry, includeTracking bool,
 ) *domain.ActivityEntry {
 	entry := &domain.ActivityEntry{Bridge: item.Bridge, BridgeNetworkID: item.NetworkID, Source: item.Source}
 	if existing != nil {
@@ -295,9 +414,6 @@ func (a *ActivityCache) refresh(
 
 	if entry.ClaimStatus == types.ClaimStatusClaimed {
 		entry.TrackerClaimStatus = types.TrackerClaimStatusClaimed
-		if skipsClaimInfo(filter) {
-			return entry
-		}
 		claim, err := a.claims.ClaimInfo(ctx, item)
 		if err != nil {
 			a.logger.Warnf("activity: fetching claim record of bridge tx=%s: %v", item.Bridge.TxHash, err)

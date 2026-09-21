@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
+	"sync"
 	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
@@ -24,6 +24,10 @@ import (
 // by hand since this package cannot import bridgetracker — see defaultMaxTrackedBridges
 const defaultActivityIdleTimeout = 30 * time.Minute
 
+// defaultMaxActivityAddresses mirrors bridgetracker.DefaultMaxActivityAddresses; kept in sync by
+// hand, same reasoning as defaultMaxTrackedBridges
+const defaultMaxActivityAddresses = 100_000
+
 // activitySchemaVersion is the version of the Go shapes serialized into activity_address.
 // scan_state and activity_bridge.data. Bumped whenever either shape changes in a way that
 // would break decoding an older row — see trackedBridgeSchemaVersion's doc for the same idea
@@ -32,25 +36,33 @@ const defaultActivityIdleTimeout = 30 * time.Minute
 const activitySchemaVersion = 1
 
 // networkScanState is one network's entry in activity_address.scan_state: the last scan error
-// for it, if any, so it survives across GetActivity calls without touching bridges already
-// cached from a previous successful scan of that same network (mirrors upsert's per-bridge
-// failure handling, just for a whole network's scan). It is only ever updated on a failure —
-// there is no reliable "this network just succeeded" signal from ActivityBridgeScanner.
-// BridgesFrom today (it reports failed networks via ActivityWarning, but not which of the rest
-// were actually attempted vs skipped), so LastErrorAt can go stale once a network recovers;
-// treat it as "last known failure", not "current health"
+// for it, if any, so it survives across refreshes without touching bridges already cached from
+// a previous successful scan of that same network (mirrors upsert's per-bridge failure
+// handling, just for a whole network's scan). It is only ever updated on a failure — there is
+// no reliable "this network just succeeded" signal from ActivityBridgeScanner.BridgesFrom today
+// (it reports failed networks via ActivityWarning, but not which of the rest were actually
+// attempted vs skipped), so LastErrorAt can go stale once a network recovers; treat it as "last
+// known failure", not "current health"
 type networkScanState struct {
 	LastError   string `json:"last_error"`
 	LastErrorAt int64  `json:"last_error_at"`
 }
 
-// activityAddressRow is the activity_address row shape (see migrations/bridgetracker0002.sql)
+// activityAddressRow is the activity_address row shape (see migrations/bridgetracker0002.sql,
+// bridgetracker0003.sql)
 type activityAddressRow struct {
 	FromAddress   string `meddler:"from_address"`
 	SchemaVersion int    `meddler:"schema_version"`
 	UpdatedAt     int64  `meddler:"updated_at"`
 	LastAccess    int64  `meddler:"last_access"`
 	ScanState     []byte `meddler:"scan_state"`
+	// IncludeTracking is the sticky includeTracking flag (see domain.ActivityQuerier.
+	// GetActivity's doc): once set, every background refresh enriches still-unclaimed bridges
+	// with their tracker snapshot
+	IncludeTracking bool `meddler:"include_tracking"`
+	// LastWarnings is the JSON-encoded []domain.ActivityWarning the last background refresh
+	// reported, or NULL if nothing has refreshed yet or the last refresh reported none
+	LastWarnings []byte `meddler:"last_warnings"`
 }
 
 func (row *activityAddressRow) staleSchema() bool {
@@ -67,6 +79,28 @@ func decodeScanState(raw []byte) (map[uint32]networkScanState, error) {
 		return nil, fmt.Errorf("decoding activity scan_state: %w", err)
 	}
 	return scanState, nil
+}
+
+// decodeWarnings unmarshals an activity_address row's last_warnings column
+func decodeWarnings(raw []byte) ([]domain.ActivityWarning, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var warnings []domain.ActivityWarning
+	if err := json.Unmarshal(raw, &warnings); err != nil {
+		return nil, fmt.Errorf("decoding activity last_warnings: %w", err)
+	}
+	return warnings, nil
+}
+
+// encodeWarnings marshals warnings for storage in last_warnings; an empty/nil slice encodes to
+// nil (NULL column) rather than the literal "[]", so an address that has never had a warning
+// and one whose warnings just cleared look identical
+func encodeWarnings(warnings []domain.ActivityWarning) ([]byte, error) {
+	if len(warnings) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(warnings)
 }
 
 // activityBridgeRow is the activity_bridge row shape (see migrations/bridgetracker0002.sql)
@@ -89,31 +123,38 @@ func (row *activityBridgeRow) staleSchema() bool {
 	return row.SchemaVersion != activitySchemaVersion
 }
 
+// activityTrackingSnapshot is the JSON shape of ActivityEntry.Tracking persisted inside
+// activityBridgeData.Tracking: TrackingData's own fields are private, so it is decomposed into
+// its tx/steps parts exactly like trackedBridgeData does for tracked_bridge, and rebuilt via
+// domain.NewTrackingData on read — TrackingData.ID() is not stored, since it is always the
+// bridge's own origin network/tx hash, already available as this row's OriginNetworkID/TxHash
+type activityTrackingSnapshot struct {
+	Tx    domain.TrackingBridgeTx
+	Steps []domain.BridgeStepPath
+}
+
 // activityBridgeData is what activityBridgeRow.Data holds, JSON-encoded: everything
-// domain.ActivityEntry needs besides its indexed columns and its Tracking (always sourced live
-// from tracked_bridge, never duplicated here — see sqliteActivityStore.refresh)
+// domain.ActivityEntry needs besides its indexed columns. Unlike before RefreshAddress and
+// GetActivity were split into separate calls, Tracking is now persisted here too (see
+// activityTrackingSnapshot) — it used to be sourced live from the in-memory result of the very
+// same call that computed it, which no longer exists by the time GetActivity runs
 type activityBridgeData struct {
-	Bridge *bridgeservicetypes.BridgeResponse
-	Claim  *bridgeservicetypes.ClaimResponse
-	Errors map[string]string
-	// Source is which system supplied Bridge as of the last time this entry was (re)scanned —
-	// see domain.ActivitySourceKind. Carried forward across recheck calls exactly like the
-	// in-memory ActivityCache does (see ActivityCache.GetActivity), so a bridge-service scanner
-	// can later upgrade a bridge once reported only via the RPC fallback
-	Source domain.ActivitySourceKind
+	Bridge   *bridgeservicetypes.BridgeResponse
+	Claim    *bridgeservicetypes.ClaimResponse
+	Errors   map[string]string
+	Source   domain.ActivitySourceKind
+	Tracking *activityTrackingSnapshot
 }
 
 // entry decodes row into the domain.ActivityEntry it represents, for use as upsert's existing
-// argument (the settled check, and refresh's own "already confirmed claimed" shortcut).
-// Tracking is always nil here: it is never persisted (see activityBridgeData) and refresh only
-// ever needs Tracking for a still-unclaimed entry, which is never settled and always refreshed
-// again this same call anyway — see GetActivity's doc for where a fresh Tracking comes from
+// argument (the settled check, and refresh's own "already confirmed claimed" shortcut) and as
+// GetActivity's result
 func (row *activityBridgeRow) entry() (*domain.ActivityEntry, error) {
 	var data activityBridgeData
 	if err := json.Unmarshal(row.Data, &data); err != nil {
 		return nil, fmt.Errorf("decoding activity_bridge row %s: %w", row.GlobalIndex, err)
 	}
-	return &domain.ActivityEntry{
+	entry := &domain.ActivityEntry{
 		Bridge:             data.Bridge,
 		BridgeNetworkID:    row.OriginNetworkID,
 		Source:             data.Source,
@@ -123,7 +164,12 @@ func (row *activityBridgeRow) entry() (*domain.ActivityEntry, error) {
 		Errors:             data.Errors,
 		CreatedAt:          time.Unix(0, row.CreatedAt).UTC(),
 		UpdatedAt:          time.Unix(0, row.UpdatedAt).UTC(),
-	}, nil
+	}
+	if data.Tracking != nil {
+		id := domain.TrackingID{NetworkID: row.OriginNetworkID, TxHash: common.HexToHash(row.TxHash)}
+		entry.Tracking = domain.NewTrackingData(id, data.Tracking.Tx, data.Tracking.Steps)
+	}
+	return entry, nil
 }
 
 // parseClaimStatus reverses types.ClaimStatus.String(); an unrecognized value (a row from a
@@ -154,11 +200,15 @@ func parseTrackerClaimStatus(s string) types.TrackerClaimStatus {
 	return types.TrackerClaimStatusError
 }
 
-// sqliteActivityStore is the SQLite-backed implementation of domain.ActivityQuerier: it mirrors
-// bridgetracker's in-memory ActivityCache (same scan/refresh logic against scanner/claims/
-// supervised) but persists the per-address scan state and per-bridge cache to SQLite instead of
-// in-process maps, so both survive a restart instead of re-scanning/re-checking every bridge's
-// claim state from scratch.
+// sqliteActivityStore is the SQLite-backed implementation of domain.ActivityRegistry: it
+// mirrors bridgetracker's in-memory ActivityCache (same scan/refresh logic against
+// scanner/claims/supervised) but persists the per-address scan state and per-bridge cache to
+// SQLite instead of in-process maps, so both survive a restart instead of re-scanning/
+// re-checking every bridge's claim state from scratch.
+//
+// The wait/trigger plumbing behind RegisterAndAwait (waiters, trigger) is, like sqliteRegistry's
+// own subscribers/trigger, inherently local to whichever instance holds the blocked
+// goroutine/channel: only the cached data itself is persisted.
 //
 // Safe for concurrent use (every mutation is a self-contained SQL statement; SQLite itself
 // serializes writers).
@@ -169,28 +219,42 @@ type sqliteActivityStore struct {
 	supervised domain.SupervisedStore
 	logger     aggkitcommon.Logger
 
-	// idleTimeout is currently unused: sweepIdle (the sweep it would drive) is a no-op for now
-	// (see its doc) — kept as a constructor argument so re-enabling it later needs no signature
-	// change
+	// idleTimeout is currently unused: PruneIdle's cutoff is now computed and passed in by
+	// ActivityEngine (see ActivityEngineConfig.IdleTimeout) instead of being read from here —
+	// kept as a constructor argument for backward compatibility with existing callers
 	idleTimeout time.Duration
 	// now is the clock updated_at/last_access is stamped with, injectable for tests
 	now func() time.Time
+
+	// countMu guards numAddresses, the in-memory mirror of activity_address's row count —
+	// mirrors sqliteRegistry.countMu/numEntries
+	countMu      sync.Mutex
+	numAddresses int
+
+	// trigger carries the from_addresses of freshly registered entries out to ActivityEngine
+	// (see Triggers), mirroring sqliteRegistry.trigger
+	trigger chan common.Address
+
+	// subMu guards waiters, and also serializes registerAddress's "insert row, then register
+	// the caller as a waiter, then signal the trigger" ordering in RegisterAndAwait — so a
+	// caller can never miss the notification its own registration provokes
+	subMu   sync.Mutex
+	waiters map[common.Address]map[chan struct{}]struct{}
 }
 
-// compile-time check: the SQLite adapter fulfils the port
-var _ domain.ActivityQuerier = (*sqliteActivityStore)(nil)
+// compile-time check: the SQLite adapter fulfils the full port
+var _ domain.ActivityRegistry = (*sqliteActivityStore)(nil)
 
-// NewSQLiteActivityStore returns a domain.ActivityQuerier backed by a SQLite database at
+// NewSQLiteActivityStore returns a domain.ActivityRegistry backed by a SQLite database at
 // dbPath, creating the file and running its migrations if it does not exist yet. dbPath may
 // (and typically does) point at the same file bridgetracker/db.NewSQLiteRegistry uses — every
 // migration in this package is always applied together, regardless of which store is
 // constructed first (see migrations.RunMigrations). idleTimeout <= 0 falls back to
-// defaultActivityIdleTimeout, exactly like bridgetracker.NewActivityCache — though, for now,
-// see sweepIdle's doc, it has no actual effect yet
+// defaultActivityIdleTimeout, exactly like bridgetracker.NewActivityCache
 func NewSQLiteActivityStore(
 	dbPath string, scanner domain.ActivityBridgeScanner, claims domain.ActivityClaimChecker,
 	supervised domain.SupervisedStore, logger aggkitcommon.Logger, idleTimeout time.Duration,
-) (domain.ActivityQuerier, error) {
+) (domain.ActivityRegistry, error) {
 	if idleTimeout <= 0 {
 		idleTimeout = defaultActivityIdleTimeout
 	}
@@ -202,119 +266,307 @@ func NewSQLiteActivityStore(
 		return nil, fmt.Errorf("opening bridgetracker db %s: %w", dbPath, err)
 	}
 
+	var numAddresses int
+	if err := sqlDB.QueryRow("SELECT COUNT(*) FROM activity_address").Scan(&numAddresses); err != nil {
+		return nil, fmt.Errorf("counting activity_address rows: %w", err)
+	}
+
 	return &sqliteActivityStore{
-		db:          sqlDB,
-		scanner:     scanner,
-		claims:      claims,
-		supervised:  supervised,
-		logger:      logger,
-		idleTimeout: idleTimeout,
-		now:         time.Now,
+		db:           sqlDB,
+		scanner:      scanner,
+		claims:       claims,
+		supervised:   supervised,
+		logger:       logger,
+		idleTimeout:  idleTimeout,
+		now:          time.Now,
+		numAddresses: numAddresses,
+		trigger:      make(chan common.Address, triggerBufferSize),
+		waiters:      make(map[common.Address]map[chan struct{}]struct{}),
 	}, nil
 }
 
-// Close releases the underlying DB connection. Not part of domain.ActivityQuerier: callers that
-// construct a sqliteActivityStore via NewSQLiteActivityStore own the returned value's lifetime
+// Close releases the underlying DB connection. Not part of domain.ActivityRegistry: callers
+// that construct a sqliteActivityStore via NewSQLiteActivityStore own the returned value's
+// lifetime
 func (s *sqliteActivityStore) Close() error {
 	return s.db.Close()
 }
 
-// GetActivity implements domain.ActivityQuerier, mirroring ActivityCache.GetActivity: it
-// rechecks every bridge already cached for fromAddress that is not yet settled, then scans for
-// bridges not seen before (see domain.ActivityBridgeScanner.BridgesFrom), and returns everything
-// cached for fromAddress that matches filter.
-//
-// Unlike a plain SELECT of what's now in activity_bridge, the result is built straight from
-// what upsert just (re)computed in this same call: entry.Tracking (populated by refresh, for a
-// still-unclaimed bridge with includeTracking) is deliberately never written to the row — it's
-// always sourced live from tracked_bridge, never duplicated — so a row decoded fresh from the DB
-// would come back with a nil Tracking even right after refreshing it. Reusing refresh's own
-// in-memory result avoids both that gap and a second, redundant supervised.Get call per bridge
-func (s *sqliteActivityStore) GetActivity(
-	ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
-) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
-	addr := fromAddress.Hex()
-	now := s.now()
+// selectAddressRow returns addr's row, or db.ErrNotFound if there is none
+func (s *sqliteActivityStore) selectAddressRow(addr string) (*activityAddressRow, error) {
+	var row activityAddressRow
+	err := meddler.QueryRow(s.db, &row, "SELECT * FROM activity_address WHERE from_address = ?", addr)
+	if err != nil {
+		return nil, aggkitdb.ReturnErrNotFound(err)
+	}
+	return &row, nil
+}
 
-	if err := s.sweepIdle(now); err != nil {
-		return nil, nil, fmt.Errorf("sweeping idle activity addresses: %w", err)
+// registerAddress ensures addr has a current-schema activity_address row, stamping last_access
+// with now: creates one if missing or stale-schema (subject to defaultMaxActivityAddresses,
+// only for a genuinely new address — a stale-schema row already counted), or otherwise just
+// touches last_access. created reports whether this call is the one that (re)registered it, so
+// RegisterAndAwait knows whether to wake ActivityEngine and wait for a refresh
+func (s *sqliteActivityStore) registerAddress(addr string, now time.Time) (created bool, err error) {
+	row, err := s.selectAddressRow(addr)
+	if err != nil && !errors.Is(err, aggkitdb.ErrNotFound) {
+		return false, err
 	}
-	if err := s.ensureAddress(addr, now); err != nil {
-		return nil, nil, fmt.Errorf("registering activity address %s: %w", fromAddress, err)
+	isNew := errors.Is(err, aggkitdb.ErrNotFound)
+	if !isNew && !row.staleSchema() {
+		_, err = s.db.Exec("UPDATE activity_address SET last_access = ? WHERE from_address = ?", now.Unix(), addr)
+		return false, err
 	}
+
+	if isNew {
+		s.countMu.Lock()
+		if s.numAddresses >= defaultMaxActivityAddresses {
+			s.countMu.Unlock()
+			return false, domain.ErrActivityRegistryFull
+		}
+		s.numAddresses++
+		s.countMu.Unlock()
+	}
+
+	emptyScanState, merr := json.Marshal(map[uint32]networkScanState{})
+	if merr != nil {
+		return false, merr
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO activity_address
+			(from_address, schema_version, updated_at, last_access, scan_state, include_tracking, last_warnings)
+		 VALUES (?, ?, ?, ?, ?, 0, NULL)
+		 ON CONFLICT (from_address) DO UPDATE SET
+			schema_version = excluded.schema_version, updated_at = excluded.updated_at,
+			last_access = excluded.last_access, scan_state = excluded.scan_state,
+			include_tracking = excluded.include_tracking, last_warnings = excluded.last_warnings`,
+		addr, activitySchemaVersion, now.Unix(), now.Unix(), emptyScanState,
+	)
+	if err != nil {
+		if isNew {
+			s.countMu.Lock()
+			s.numAddresses--
+			s.countMu.Unlock()
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// RegisterAndAwait implements domain.ActivitySupervisedStore. On an already-registered address
+// it behaves like a plain touch: no trigger, no wait. On a newly registered address it wakes
+// ActivityEngine (see signalTrigger/Triggers) and waits up to timeout for that first refresh to
+// complete, falling back to whatever GetActivity finds cached (possibly nothing yet) if timeout
+// elapses first
+func (s *sqliteActivityStore) RegisterAndAwait(fromAddress common.Address, timeout time.Duration) error {
+	addr := fromAddress.Hex()
+	created, err := s.registerAddress(addr, s.now())
+	if err != nil {
+		if errors.Is(err, domain.ErrActivityRegistryFull) {
+			return err
+		}
+		return fmt.Errorf("registering activity address %s: %w", fromAddress, err)
+	}
+	if !created {
+		return nil
+	}
+	if timeout <= 0 {
+		s.signalTrigger(fromAddress)
+		return nil
+	}
+
+	s.subMu.Lock()
+	ch := make(chan struct{})
+	s.addWaiterLocked(fromAddress, ch)
+	s.subMu.Unlock()
+	s.signalTrigger(fromAddress)
+
+	defer s.removeWaiter(fromAddress, ch)
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-ch:
+	case <-timer.C:
+	}
+	return nil
+}
+
+// addWaiterLocked registers ch as a waiter for fromAddress's next refresh. Callers must hold subMu
+func (s *sqliteActivityStore) addWaiterLocked(fromAddress common.Address, ch chan struct{}) {
+	waiters, ok := s.waiters[fromAddress]
+	if !ok {
+		waiters = make(map[chan struct{}]struct{})
+		s.waiters[fromAddress] = waiters
+	}
+	waiters[ch] = struct{}{}
+}
+
+// removeWaiter unregisters ch, dropping fromAddress's waiter set entirely once empty
+func (s *sqliteActivityStore) removeWaiter(fromAddress common.Address, ch chan struct{}) {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+
+	waiters, ok := s.waiters[fromAddress]
+	if !ok {
+		return
+	}
+	delete(waiters, ch)
+	if len(waiters) == 0 {
+		delete(s.waiters, fromAddress)
+	}
+}
+
+// notifyWaiters wakes every RegisterAndAwait call currently blocked on fromAddress
+func (s *sqliteActivityStore) notifyWaiters(fromAddress common.Address) {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+
+	for ch := range s.waiters[fromAddress] {
+		close(ch)
+	}
+	delete(s.waiters, fromAddress)
+}
+
+// signalTrigger notifies ActivityEngine that fromAddress was just registered. It never blocks:
+// a full buffer just means this address waits for the next regular poll tick like before
+func (s *sqliteActivityStore) signalTrigger(fromAddress common.Address) {
+	select {
+	case s.trigger <- fromAddress:
+	default:
+	}
+}
+
+// Triggers implements domain.ActivityTriggerable
+func (s *sqliteActivityStore) Triggers() <-chan common.Address {
+	return s.trigger
+}
+
+// GetActiveAddresses implements domain.ActivitySupervisedStore: every currently supervised
+// from_address, for ActivityEngine's poll tick to iterate
+func (s *sqliteActivityStore) GetActiveAddresses() ([]common.Address, error) {
+	rows, err := s.db.Query("SELECT from_address FROM activity_address")
+	if err != nil {
+		return nil, fmt.Errorf("listing active activity addresses: %w", err)
+	}
+	defer rows.Close()
+
+	var addrs []common.Address
+	for rows.Next() {
+		var addr string
+		if err := rows.Scan(&addr); err != nil {
+			return nil, fmt.Errorf("scanning activity_address row: %w", err)
+		}
+		addrs = append(addrs, common.HexToAddress(addr))
+	}
+	return addrs, rows.Err()
+}
+
+// PruneIdle implements domain.ActivitySupervisedStore: it deletes every activity_address (and,
+// via ON DELETE CASCADE, its activity_bridge rows) whose last_access is before olderThan,
+// returning how many addresses were forgotten. This is the real retention sweep that used to be
+// sweepIdle's no-op (see issue #1822) — now driven by ActivityEngine's own poll tick instead of
+// a sweep-on-every-request
+func (s *sqliteActivityStore) PruneIdle(olderThan time.Time) (int, error) {
+	res, err := s.db.Exec("DELETE FROM activity_address WHERE last_access < ?", olderThan.Unix())
+	if err != nil {
+		return 0, fmt.Errorf("pruning idle activity addresses: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("counting pruned activity addresses: %w", err)
+	}
+	if affected > 0 {
+		s.countMu.Lock()
+		s.numAddresses -= int(affected)
+		s.countMu.Unlock()
+	}
+	return int(affected), nil
+}
+
+// RefreshAddress implements domain.ActivitySupervisedStore, mirroring ActivityCache.
+// RefreshAddress: it rechecks every bridge already cached for fromAddress that is not yet
+// settled, scans for bridges not seen before (see domain.ActivityBridgeScanner.BridgesFrom),
+// forgets whatever the scan reports as invalidated, records the scan's warnings, and finally
+// wakes every RegisterAndAwait call currently blocked on fromAddress. This is what used to run
+// inline inside GetActivity; it is now only ever called by ActivityEngine. A missing address row
+// (not currently registered) is a silent no-op — the regular tick already only iterates
+// GetActiveAddresses
+func (s *sqliteActivityStore) RefreshAddress(ctx context.Context, fromAddress common.Address) error {
+	addr := fromAddress.Hex()
+	defer s.notifyWaiters(fromAddress)
+
+	addrRow, err := s.selectAddressRow(addr)
+	if err != nil {
+		if errors.Is(err, aggkitdb.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("loading activity address %s: %w", fromAddress, err)
+	}
+	includeTracking := addrRow.IncludeTracking
 
 	rows, err := s.bridgeRows(addr)
 	if err != nil {
-		return nil, nil, fmt.Errorf("listing cached bridges for %s: %w", fromAddress, err)
+		return fmt.Errorf("listing cached bridges for %s: %w", fromAddress, err)
 	}
 	// A stale-schema row is deliberately excluded from known too, not just from the recheck loop
 	// below: otherwise the scanner's own dedup (see domain.ActivityBridgeScanner.BridgesFrom)
 	// would treat it as already seen and never return it again, leaving it neither refreshed
 	// nor ever overwritten
 	known := make(map[string]domain.KnownBridge, len(rows))
-	entries := make(map[string]*domain.ActivityEntry, len(rows))
 	for _, row := range rows {
 		if row.staleSchema() {
 			continue
 		}
 		scanned, decodeErr := row.scannedBridge()
 		if decodeErr != nil {
-			return nil, nil, decodeErr
+			return decodeErr
 		}
 		known[row.GlobalIndex] = domain.KnownBridge{
 			TxHash: scanned.Bridge.TxHash, BlockNum: scanned.Bridge.BlockNum,
 			Source: scanned.Source, NetworkID: row.OriginNetworkID,
 		}
-		entry, err := s.upsert(ctx, addr, scanned, includeTracking, filter)
-		if err != nil {
-			return nil, nil, err
+		if err := s.upsert(ctx, addr, scanned, includeTracking); err != nil {
+			return err
 		}
-		entries[row.GlobalIndex] = entry
 	}
 
 	newItems, invalidated, warnings, err := s.scanner.BridgesFrom(ctx, fromAddress, known)
 	if err != nil {
-		return nil, nil, fmt.Errorf("scanning bridges from %s: %w", fromAddress, err)
+		return fmt.Errorf("scanning bridges from %s: %w", fromAddress, err)
 	}
-	if err := s.recordScanWarnings(addr, warnings, now); err != nil {
-		return nil, nil, fmt.Errorf("recording scan warnings for %s: %w", fromAddress, err)
+	if err := s.recordScanWarnings(addr, warnings, s.now()); err != nil {
+		return fmt.Errorf("recording scan warnings for %s: %w", fromAddress, err)
 	}
 	if len(invalidated) > 0 {
-		// forget these before upserting newItems (not after), mirroring ActivityCache.GetActivity:
-		// a GlobalIndex the scanner reports as both found and invalidated in the very same call
-		// (it should never, but this way a bug in that regard fails toward losing a stale entry
-		// rather than a fresh one) must end up cached, not forgotten
+		// forget these before upserting newItems (not after), mirroring ActivityCache.
+		// RefreshAddress: a GlobalIndex the scanner reports as both found and invalidated in the
+		// very same call (it should never, but this way a bug in that regard fails toward losing
+		// a stale entry rather than a fresh one) must end up cached, not forgotten
 		if err := s.forgetBridges(invalidated); err != nil {
-			return nil, nil, fmt.Errorf("forgetting invalidated bridges for %s: %w", fromAddress, err)
-		}
-		for _, key := range invalidated {
-			delete(entries, key)
+			return fmt.Errorf("forgetting invalidated bridges for %s: %w", fromAddress, err)
 		}
 	}
 	for _, item := range newItems {
-		entry, err := s.upsert(ctx, addr, item, includeTracking, filter)
-		if err != nil {
-			return nil, nil, err
-		}
-		entries[string(item.Bridge.GlobalIndex)] = entry
-	}
-
-	out := make([]*domain.ActivityEntry, 0, len(entries))
-	for _, entry := range entries {
-		if matchesFilter(entry, filter) {
-			out = append(out, entry)
+		if err := s.upsert(ctx, addr, item, includeTracking); err != nil {
+			return err
 		}
 	}
 
-	persistedWarnings, err := s.persistedWarnings(addr)
+	lastWarnings, err := encodeWarnings(warnings)
 	if err != nil {
-		return nil, nil, fmt.Errorf("loading persisted scan warnings for %s: %w", fromAddress, err)
+		return err
 	}
-	return out, persistedWarnings, nil
+	if _, err := s.db.Exec(
+		"UPDATE activity_address SET last_warnings = ? WHERE from_address = ?", lastWarnings, addr,
+	); err != nil {
+		return fmt.Errorf("recording last_warnings for %s: %w", fromAddress, err)
+	}
+	return nil
 }
 
 // scannedBridge rebuilds the domain.ScannedBridge a row was cached from, for the re-check loop
-// in GetActivity (mirrors ActivityCache re-wrapping its cached entries the same way)
+// in RefreshAddress (mirrors ActivityCache re-wrapping its cached entries the same way)
 func (row *activityBridgeRow) scannedBridge() (*domain.ScannedBridge, error) {
 	var data activityBridgeData
 	if err := json.Unmarshal(row.Data, &data); err != nil {
@@ -333,8 +585,8 @@ func (s *sqliteActivityStore) bridgeRows(addr string) ([]*activityBridgeRow, err
 }
 
 // forgetBridges deletes every activity_bridge row keyed by one of globalIndexes — the invalidated
-// bridges domain.ActivityBridgeScanner.BridgesFrom reports (see GetActivity), mirroring
-// ActivityCache.GetActivity's own delete-from-cache handling of the same list
+// bridges domain.ActivityBridgeScanner.BridgesFrom reports (see RefreshAddress), mirroring
+// ActivityCache's own delete-from-cache handling of the same list
 func (s *sqliteActivityStore) forgetBridges(globalIndexes []string) error {
 	for _, globalIndex := range globalIndexes {
 		if _, err := s.db.Exec("DELETE FROM activity_bridge WHERE global_index = ?", globalIndex); err != nil {
@@ -346,66 +598,28 @@ func (s *sqliteActivityStore) forgetBridges(globalIndexes []string) error {
 
 // FlushActivity implements domain.ActivityQuerier: deleting fromAddress's activity_address row
 // cascades to every activity_bridge row cached for it (see the table's ON DELETE CASCADE), so the
-// next GetActivity call rescans and rechecks everything from scratch, exactly as if fromAddress
+// next background refresh rescans and rechecks everything from scratch, exactly as if fromAddress
 // had never been requested before — mirrors ActivityCache.FlushActivity. Safe to call for an
 // address with nothing cached (no-op); a failure is logged, not propagated, same as
-// touchLastAccess/sqliteRegistry's own best-effort bookkeeping writes
+// registerAddress/sqliteRegistry's own best-effort bookkeeping writes
 func (s *sqliteActivityStore) FlushActivity(fromAddress common.Address) {
-	if _, err := s.db.Exec("DELETE FROM activity_address WHERE from_address = ?", fromAddress.Hex()); err != nil {
-		s.logger.Warnf("bridgetracker: flushing activity cache for %s: %v", fromAddress, err)
-	}
-}
-
-// sweepIdle would forget every activity_address (and, via ON DELETE CASCADE, its activity_bridge
-// rows) whose last_access is before now-idleTimeout — the same idle-eviction sweep-on-every-call
-// ActivityCache.addrCache does over its in-memory map. Deliberately a no-op for now: unlike the
-// in-memory adapter, this store never deletes a persisted row on its own — pruning/retention
-// stays an in-memory-only concern until a DB-side retention policy is decided (see issue #1822,
-// and sqliteRegistry.PruneTerminal/PruneIdle for the same call on the tracker side). Both tables
-// are left to grow unbounded for the time being; this is a conscious, temporary trade-off
-func (s *sqliteActivityStore) sweepIdle(time.Time) error {
-	return nil
-}
-
-// selectAddressRow returns addr's row, or db.ErrNotFound if there is none
-func (s *sqliteActivityStore) selectAddressRow(addr string) (*activityAddressRow, error) {
-	var row activityAddressRow
-	err := meddler.QueryRow(s.db, &row, "SELECT * FROM activity_address WHERE from_address = ?", addr)
+	res, err := s.db.Exec("DELETE FROM activity_address WHERE from_address = ?", fromAddress.Hex())
 	if err != nil {
-		return nil, aggkitdb.ReturnErrNotFound(err)
+		s.logger.Warnf("bridgetracker: flushing activity cache for %s: %v", fromAddress, err)
+		return
 	}
-	return &row, nil
+	affected, err := res.RowsAffected()
+	if err != nil || affected == 0 {
+		return
+	}
+	s.countMu.Lock()
+	s.numAddresses -= int(affected)
+	s.countMu.Unlock()
 }
 
-// ensureAddress makes sure addr has a current-schema row, stamping last_access with now: it
-// creates one if missing, or resets scan_state (see networkScanState) if the existing one is
-// stale — the same "discard rather than misinterpret" rule tracked_bridge follows
-func (s *sqliteActivityStore) ensureAddress(addr string, now time.Time) error {
-	row, err := s.selectAddressRow(addr)
-	if err != nil && !errors.Is(err, aggkitdb.ErrNotFound) {
-		return err
-	}
-	if err == nil && !row.staleSchema() {
-		_, err := s.db.Exec("UPDATE activity_address SET last_access = ? WHERE from_address = ?", now.Unix(), addr)
-		return err
-	}
-
-	empty, marshalErr := json.Marshal(map[uint32]networkScanState{})
-	if marshalErr != nil {
-		return marshalErr
-	}
-	_, err = s.db.Exec(
-		`INSERT INTO activity_address (from_address, schema_version, updated_at, last_access, scan_state)
-		 VALUES (?, ?, ?, ?, ?)
-		 ON CONFLICT (from_address) DO UPDATE SET
-			schema_version = excluded.schema_version, updated_at = excluded.updated_at,
-			last_access = excluded.last_access, scan_state = excluded.scan_state`,
-		addr, activitySchemaVersion, now.Unix(), now.Unix(), empty)
-	return err
-}
-
-// recordScanWarnings merges warnings into addr's scan_state (see networkScanState); a no-op
-// when warnings is empty, so a fully successful scan never rewrites scan_state
+// selectAddressRow's sibling for scan_state updates: recordScanWarnings merges warnings into
+// addr's scan_state (see networkScanState); a no-op when warnings is empty, so a fully
+// successful scan never rewrites scan_state
 func (s *sqliteActivityStore) recordScanWarnings(addr string, warnings []domain.ActivityWarning, now time.Time) error {
 	if len(warnings) == 0 {
 		return nil
@@ -431,56 +645,30 @@ func (s *sqliteActivityStore) recordScanWarnings(addr string, warnings []domain.
 	return err
 }
 
-// persistedWarnings loads addr's currently persisted scan_state (see recordScanWarnings) and
-// reports it as the []domain.ActivityWarning shape GetActivity returns — the last known scan
-// failure per network, surviving across calls until a later scan of that same network succeeds
-// and overwrites it (see networkScanState's doc on that staleness caveat). Without this, nothing
-// ever reads scan_state back: recordScanWarnings would be writing it for no caller to see.
-// Sorted by NetworkID for a deterministic result
-func (s *sqliteActivityStore) persistedWarnings(addr string) ([]domain.ActivityWarning, error) {
-	row, err := s.selectAddressRow(addr)
-	if err != nil {
-		return nil, err
-	}
-	scanState, err := decodeScanState(row.ScanState)
-	if err != nil {
-		return nil, err
-	}
-	warnings := make([]domain.ActivityWarning, 0, len(scanState))
-	for networkID, state := range scanState {
-		warnings = append(warnings, domain.ActivityWarning{NetworkID: networkID, Message: state.LastError})
-	}
-	sort.Slice(warnings, func(i, j int) bool { return warnings[i].NetworkID < warnings[j].NetworkID })
-	return warnings, nil
-}
-
 // upsert (re)computes item's entry via refresh and stores it, unless it is already cached and
-// settled — in which case existing is returned untouched. Mirrors ActivityCache.upsert
+// settled — in which case it is left untouched. Mirrors ActivityCache.upsert
 func (s *sqliteActivityStore) upsert(
-	ctx context.Context, addr string, item *domain.ScannedBridge, includeTracking bool, filter types.ActivityFilter,
-) (*domain.ActivityEntry, error) {
+	ctx context.Context, addr string, item *domain.ScannedBridge, includeTracking bool,
+) error {
 	key := string(item.Bridge.GlobalIndex)
 
 	existingRow, err := s.selectBridgeRow(key)
 	if err != nil && !errors.Is(err, aggkitdb.ErrNotFound) {
-		return nil, err
+		return err
 	}
 	var existing *domain.ActivityEntry
 	if err == nil && !existingRow.staleSchema() {
 		existing, err = existingRow.entry()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if settled(existing) {
-			return existing, nil
+			return nil
 		}
 	}
 
-	entry := s.refresh(ctx, item, existing, includeTracking, filter)
-	if err := s.saveBridgeRow(addr, item, entry); err != nil {
-		return nil, err
-	}
-	return entry, nil
+	entry := s.refresh(ctx, item, existing, includeTracking)
+	return s.saveBridgeRow(addr, item, entry)
 }
 
 // selectBridgeRow returns global_index's row, or db.ErrNotFound if there is none
@@ -505,8 +693,7 @@ func settled(entry *domain.ActivityEntry) bool {
 // entry) differs, which is why the two are not shared: sharing would need a storage interface
 // neither package's existing tests are written against yet
 func (s *sqliteActivityStore) refresh(
-	ctx context.Context, item *domain.ScannedBridge, existing *domain.ActivityEntry,
-	includeTracking bool, filter types.ActivityFilter,
+	ctx context.Context, item *domain.ScannedBridge, existing *domain.ActivityEntry, includeTracking bool,
 ) *domain.ActivityEntry {
 	entry := &domain.ActivityEntry{Bridge: item.Bridge, BridgeNetworkID: item.NetworkID, Source: item.Source}
 	if existing != nil {
@@ -537,9 +724,6 @@ func (s *sqliteActivityStore) refresh(
 
 	if entry.ClaimStatus == types.ClaimStatusClaimed {
 		entry.TrackerClaimStatus = types.TrackerClaimStatusClaimed
-		if skipsClaimInfo(filter) {
-			return entry
-		}
 		claim, err := s.claims.ClaimInfo(ctx, item)
 		if err != nil {
 			s.logger.Warnf("activity: fetching claim record of bridge tx=%s: %v", item.Bridge.TxHash, err)
@@ -581,21 +765,19 @@ func (s *sqliteActivityStore) refresh(
 	return entry
 }
 
-// skipsClaimInfo reports whether filter excludes a claimed bridge from its result, making the
-// destination bridge service's claim record unnecessary to fetch right now. Mirrors
-// ActivityCache's skipsClaimInfo
-func skipsClaimInfo(filter types.ActivityFilter) bool {
-	return filter == types.ActivityFilterPending ||
-		filter == types.ActivityFilterReadyToClaim ||
-		filter == types.ActivityFilterError
-}
-
 // saveBridgeRow upserts entry as addr's row for item's global index
 func (s *sqliteActivityStore) saveBridgeRow(
 	addr string, item *domain.ScannedBridge, entry *domain.ActivityEntry,
 ) error {
+	var trackingSnapshot *activityTrackingSnapshot
+	if entry.Tracking != nil {
+		trackingSnapshot = &activityTrackingSnapshot{
+			Tx: entry.Tracking.TrackingBridgeTx(), Steps: entry.Tracking.AllSteps(),
+		}
+	}
 	data, err := json.Marshal(activityBridgeData{
 		Bridge: entry.Bridge, Claim: entry.Claim, Errors: entry.Errors, Source: entry.Source,
+		Tracking: trackingSnapshot,
 	})
 	if err != nil {
 		return err
@@ -619,6 +801,63 @@ func (s *sqliteActivityStore) saveBridgeRow(
 		return fmt.Errorf("saving activity_bridge row %s: %w", item.Bridge.GlobalIndex, err)
 	}
 	return nil
+}
+
+// GetActivity implements domain.ActivityQuerier: a cache-only read of whatever the last
+// background refresh (see RefreshAddress) computed for fromAddress, filtered per filter.
+// includeTracking additionally sets the sticky include_tracking column for future refreshes —
+// it does not itself fetch anything. An address never registered returns an empty result, not
+// an error
+func (s *sqliteActivityStore) GetActivity(
+	_ context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
+) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
+	addr := fromAddress.Hex()
+
+	addrRow, err := s.selectAddressRow(addr)
+	if err != nil {
+		if errors.Is(err, aggkitdb.ErrNotFound) {
+			return nil, nil, nil
+		}
+		return nil, nil, fmt.Errorf("loading activity address %s: %w", fromAddress, err)
+	}
+
+	now := s.now()
+	if _, err := s.db.Exec(
+		"UPDATE activity_address SET last_access = ? WHERE from_address = ?", now.Unix(), addr,
+	); err != nil {
+		return nil, nil, fmt.Errorf("touching last_access for %s: %w", fromAddress, err)
+	}
+	if includeTracking && !addrRow.IncludeTracking {
+		if _, err := s.db.Exec(
+			"UPDATE activity_address SET include_tracking = 1 WHERE from_address = ?", addr,
+		); err != nil {
+			return nil, nil, fmt.Errorf("setting include_tracking for %s: %w", fromAddress, err)
+		}
+	}
+
+	warnings, err := decodeWarnings(addrRow.LastWarnings)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rows, err := s.bridgeRows(addr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("listing cached bridges for %s: %w", fromAddress, err)
+	}
+	out := make([]*domain.ActivityEntry, 0, len(rows))
+	for _, row := range rows {
+		if row.staleSchema() {
+			continue
+		}
+		entry, err := row.entry()
+		if err != nil {
+			return nil, nil, err
+		}
+		if matchesFilter(entry, filter) {
+			out = append(out, entry)
+		}
+	}
+	return out, warnings, nil
 }
 
 // matchesFilter reports whether entry belongs in a GetActivity result under filter. Mirrors
