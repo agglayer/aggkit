@@ -94,7 +94,7 @@ func (s *Service) ForwardHandler(c *gin.Context) {
 			status = http.StatusNotFound
 		}
 		s.logger.Warnf("no bridge service resolved for network %d: %v", networkID, err)
-		c.JSON(status, gin.H{"error": err.Error()})
+		c.JSON(status, gin.H{"error": aggkitcommon.RedactError(err)})
 		return
 	}
 

@@ -1,11 +1,13 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 )
@@ -67,6 +69,30 @@ type ActivityItem struct {
 	Errors map[string]string `json:"errors,omitempty"`
 }
 
+// MarshalJSON is the implementation of the json.Marshaler interface. It redacts any URL,
+// host:port, IP address or DNS name from every Errors value defensively — domain.ActivityEntry.
+// Errors is already redacted at construction (see ActivityCache.refresh), this is the last line
+// of defense for any caller that does not
+func (i ActivityItem) MarshalJSON() ([]byte, error) {
+	i.Errors = redactActivityErrors(i.Errors)
+	type activityItemAlias ActivityItem
+	return json.Marshal(activityItemAlias(i))
+}
+
+// redactActivityErrors returns a new map with aggkitcommon.RedactSensitive applied to every
+// value of errs, or nil when errs is nil (so ActivityItem.Errors stays omitted from the wire
+// response when there is nothing to report — see its "omitempty" tag). It never mutates errs.
+func redactActivityErrors(errs map[string]string) map[string]string {
+	if errs == nil {
+		return nil
+	}
+	redacted := make(map[string]string, len(errs))
+	for k, v := range errs {
+		redacted[k] = aggkitcommon.RedactSensitive(v)
+	}
+	return redacted
+}
+
 // ActivityWarningItem reports one network's bridge service that could not be scanned while
 // building this response — Bridges is still whatever every other network reported, just
 // possibly incomplete for the networks listed here
@@ -75,6 +101,16 @@ type ActivityWarningItem struct {
 	NetworkID uint32 `json:"network_id"`
 	// Message is the error encountered while scanning NetworkID
 	Message string `json:"message"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface. It redacts any URL,
+// host:port, IP address or DNS name from Message defensively — domain.ActivityWarning.Message is
+// already redacted at construction (see sources.ActivitySource.warnf), this is the last line of
+// defense for any caller that does not
+func (w ActivityWarningItem) MarshalJSON() ([]byte, error) {
+	w.Message = aggkitcommon.RedactSensitive(w.Message)
+	type activityWarningItemAlias ActivityWarningItem
+	return json.Marshal(activityWarningItemAlias(w))
 }
 
 // ActivityResponse is the body of GET /activity/from/{from_address}
@@ -139,12 +175,12 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 
 	filter, err := types.ParseActivityFilter(c.Query(filterBridgesQueryParam))
 	if err != nil {
-		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: err.Error()}
+		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: aggkitcommon.RedactError(err)}
 	}
 
 	entries, warnings, err := cmd.querier.GetActivity(c.Request.Context(), fromAddress, includeTracking, filter)
 	if err != nil {
-		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()}
+		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: aggkitcommon.RedactError(err)}
 	}
 
 	return http.StatusOK, ActivityResponse{

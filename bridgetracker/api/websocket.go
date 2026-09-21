@@ -84,7 +84,7 @@ func (w *wsHandler) TxStatusWSHandler(c *gin.Context) {
 
 	req, err := parseBridgeRequest(c)
 	if err != nil {
-		w.wsSendError(conn, &types.ErrorData{Code: http.StatusBadRequest, Message: err.Error()})
+		w.wsSendError(conn, &types.ErrorData{Code: http.StatusBadRequest, Message: aggkitcommon.RedactError(err)})
 		return
 	}
 
@@ -97,13 +97,13 @@ func (w *wsHandler) TxStatusWSHandler(c *gin.Context) {
 	// the latest-value channel semantics collapse any duplicate with the initial message
 	updates, unsubscribe, err := w.supervised.Subscribe(id)
 	if err != nil {
-		w.wsSendError(conn, &types.ErrorData{Code: http.StatusServiceUnavailable, Message: err.Error()})
+		w.wsSendError(conn, &types.ErrorData{Code: http.StatusServiceUnavailable, Message: aggkitcommon.RedactError(err)})
 		return
 	}
 	defer unsubscribe()
 	tracking, err := w.supervised.Get(id, true)
 	if err != nil {
-		w.wsSendError(conn, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()})
+		w.wsSendError(conn, &types.ErrorData{Code: http.StatusInternalServerError, Message: aggkitcommon.RedactError(err)})
 		return
 	}
 

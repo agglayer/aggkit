@@ -7,6 +7,7 @@ import (
 
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/gin-gonic/gin"
 )
 
@@ -54,7 +55,7 @@ type getTxStatusCommand struct {
 func (cmd *getTxStatusCommand) Execute(c *gin.Context) (int, any, *types.ErrorData) {
 	req, err := parseBridgeRequest(c)
 	if err != nil {
-		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: err.Error()}
+		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: aggkitcommon.RedactError(err)}
 	}
 
 	id := domain.TrackingID{NetworkID: req.NetworkID, TxHash: req.TxHash}
@@ -68,7 +69,7 @@ func (cmd *getTxStatusCommand) Execute(c *gin.Context) (int, any, *types.ErrorDa
 		if errors.Is(err, domain.ErrRegistryFull) {
 			code = http.StatusServiceUnavailable
 		}
-		return 0, nil, &types.ErrorData{Code: code, Message: err.Error()}
+		return 0, nil, &types.ErrorData{Code: code, Message: aggkitcommon.RedactError(err)}
 	}
 
 	return http.StatusOK, trackingDataFrom(tracking), nil

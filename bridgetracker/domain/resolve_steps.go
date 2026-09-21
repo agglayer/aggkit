@@ -131,7 +131,9 @@ func ResolveSteps(
 				if IsPermanent(err) {
 					errType = types.StepErrorPermanent
 				}
-				idxError := &types.ErrorStep{ErrorType: errType, RetryCount: 1, Description: []string{err.Error()}}
+				idxError := &types.ErrorStep{
+					ErrorType: errType, RetryCount: 1, Description: []string{aggkitcommon.RedactError(err)},
+				}
 				if skipped, ok := trySkipToClaimed(ctx, claimChecker, tracking, idx, idxError, now); ok {
 					tracking = skipped
 					continue
@@ -282,7 +284,7 @@ func UpdateStep(
 			// unrecoverable: no retry history to accumulate, nothing will retry this step
 			current.Error = &types.ErrorStep{
 				ErrorType:   types.StepErrorPermanent,
-				Description: []string{stepErr.Error()},
+				Description: []string{aggkitcommon.RedactError(stepErr)},
 			}
 		case wasTerminal:
 			// ResolveSteps itself never asks a terminal step's resolver again (it routes
@@ -295,13 +297,13 @@ func UpdateStep(
 			current.Error = &types.ErrorStep{
 				ErrorType:   current.Error.ErrorType,
 				RetryCount:  current.Error.RetryCount + 1,
-				Description: appendErrorDescription(current.Error.Description, stepErr.Error()),
+				Description: appendErrorDescription(current.Error.Description, aggkitcommon.RedactError(stepErr)),
 			}
 		default:
-			retryCount, description := 1, []string{stepErr.Error()}
+			retryCount, description := 1, []string{aggkitcommon.RedactError(stepErr)}
 			if current.Error != nil {
 				retryCount = current.Error.RetryCount + 1
-				description = appendErrorDescription(current.Error.Description, stepErr.Error())
+				description = appendErrorDescription(current.Error.Description, aggkitcommon.RedactError(stepErr))
 			}
 			current.Error = &types.ErrorStep{
 				ErrorType:   types.StepErrorTransient,

@@ -27,6 +27,17 @@ func (f fakeResolver) GetURL(networkID uint32) (bridgeservicefinder.NetworkURLs,
 	return bridgeservicefinder.NetworkURLs{BridgeURL: u}, nil
 }
 
+// fakeErrResolver is a NetworkURLResolver that always fails with a fixed error, for tests
+// exercising ForwardHandler's own redaction of GetURL's error (see S1-obs-7: ErrURLNotFound
+// itself never carries a URL today, but the choke point must redact defensively)
+type fakeErrResolver struct {
+	err error
+}
+
+func (f fakeErrResolver) GetURL(_ uint32) (bridgeservicefinder.NetworkURLs, error) {
+	return bridgeservicefinder.NetworkURLs{}, f.err
+}
+
 // newTestProxy starts an HTTP server running the proxy service and returns it together with
 // the service. A real server (instead of a bare ResponseRecorder) is required because
 // httputil.ReverseProxy needs a ResponseWriter with the full http.Server surface
@@ -132,6 +143,27 @@ func TestForwardHandlerUnknownNetwork(t *testing.T) {
 	status, body := doGet(t, server, "/bridge/v1/bridges?network_id=7")
 	require.Equal(t, http.StatusNotFound, status)
 	require.Contains(t, body, "bridge service url not found")
+}
+
+// TestForwardHandlerRedactsResolverErrorURL pins that a backend URL embedded in the finder's
+// GetURL error never reaches the proxy's own JSON error body, even though ErrURLNotFound itself
+// never carries one today (S1-obs-7) — this exercises the defensive redaction of the generic
+// finder error path
+func TestForwardHandlerRedactsResolverErrorURL(t *testing.T) {
+	rawErr := fmt.Errorf(
+		"resolving bridge service URL for network 2: %s",
+		`Post "http://1.2.3.4:8545": dial tcp 1.2.3.4:8545: connect: no route to host`,
+	)
+	server, _ := newTestProxy(t, fakeErrResolver{err: rawErr})
+
+	status, body := doGet(t, server, "/bridge/v1/bridges?network_id=2")
+	require.Equal(t, http.StatusBadGateway, status)
+	require.NotContains(t, body, "://")
+	require.NotContains(t, body, "1.2.3.4")
+	require.JSONEq(t,
+		`{"error":"resolving bridge service URL for network 2: `+
+			`Post <redacted-url>: dial tcp <redacted-host>: connect: no route to host"}`,
+		body)
 }
 
 func TestForwardHandlerBackendUnreachable(t *testing.T) {

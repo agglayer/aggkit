@@ -283,7 +283,7 @@ func (a *ActivityCache) refresh(
 				item.Bridge.TxHash, item.NetworkID, item.Bridge.DepositCount, err)
 			entry.ClaimStatus = types.ClaimStatusError
 			entry.TrackerClaimStatus = types.TrackerClaimStatusError
-			entry.Errors = map[string]string{"claim": err.Error()}
+			entry.Errors = map[string]string{"claim": aggkitcommon.RedactError(err)}
 			return entry
 		}
 		if claimed {
@@ -333,7 +333,7 @@ func (a *ActivityCache) refresh(
 		if entry.Errors == nil {
 			entry.Errors = make(map[string]string)
 		}
-		entry.Errors["readiness"] = err.Error()
+		entry.Errors["readiness"] = aggkitcommon.RedactError(err)
 	} else if ready {
 		entry.TrackerClaimStatus = types.TrackerClaimStatusReadyToClaim
 	}

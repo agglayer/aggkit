@@ -10,6 +10,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testRawURLError and testRedactedURLError are shared across the MarshalJSON redaction tests
+// below: a raw error message embedding a backend URL/host, and the string it must redact to
+// (see common.RedactSensitive, vector V1)
+const (
+	testRawURLError      = `Post "http://1.2.3.4:8545": dial tcp 1.2.3.4:8545: connect: no route to host`
+	testRedactedURLError = `Post <redacted-url>: dial tcp <redacted-host>: connect: no route to host`
+)
+
 func TestBridgeTypeString(t *testing.T) {
 	require.Equal(t, "L1->L2", BridgeTypeL1ToL2.String())
 	require.Equal(t, "L2->L1", BridgeTypeL2ToL1.String())
@@ -66,6 +74,52 @@ func TestErrorStepMarshalJSON(t *testing.T) {
 	expected := errStep
 	expected.ErrorTypeString = errStep.ErrorType.String()
 	require.Equal(t, expected, decoded)
+}
+
+// TestErrorStepMarshalJSONRedactsDescription is the defensive MarshalJSON layer (see
+// common.RedactSensitiveSlice): a raw backend URL in Description must never reach the wire,
+// even if some future caller builds an ErrorStep without going through an already-redacted
+// construction site
+func TestErrorStepMarshalJSONRedactsDescription(t *testing.T) {
+	errStep := ErrorStep{
+		ErrorType:   StepErrorTransient,
+		RetryCount:  1,
+		Description: []string{testRawURLError},
+	}
+
+	data, err := json.Marshal(errStep)
+	require.NoError(t, err)
+
+	require.NotContains(t, string(data), "://")
+	require.NotContains(t, string(data), "1.2.3.4")
+	require.JSONEq(t, `{
+		"error_type": 0,
+		"error_type_string": "transient",
+		"retry_count": 1,
+		"description": ["`+testRedactedURLError+`"]
+	}`, string(data))
+
+	// the input slice element must not be mutated by marshaling
+	require.Equal(t, testRawURLError, errStep.Description[0])
+}
+
+// TestErrorDataMarshalJSON pins ErrorData's defensive MarshalJSON: Message is redacted the same
+// way ErrorStep.Description is
+func TestErrorDataMarshalJSON(t *testing.T) {
+	errData := ErrorData{Code: 502, Message: testRawURLError}
+
+	data, err := json.Marshal(errData)
+	require.NoError(t, err)
+
+	require.NotContains(t, string(data), "://")
+	require.NotContains(t, string(data), "1.2.3.4")
+	require.JSONEq(t, `{
+		"code": 502,
+		"message": "`+testRedactedURLError+`"
+	}`, string(data))
+
+	// the input struct must not be mutated by marshaling (value receiver)
+	require.Equal(t, testRawURLError, errData.Message)
 }
 
 func TestLERTypeString(t *testing.T) {
@@ -135,4 +189,23 @@ func TestCertificateDataMarshalJSON(t *testing.T) {
 	expected := cert
 	expected.StatusString = cert.Status.String()
 	require.Equal(t, expected, decoded)
+}
+
+// TestCertificateDataMarshalJSONRedactsError pins the defensive redaction of CertificateData's
+// Error field (agglayer's own business-error text, which could still embed a URL)
+func TestCertificateDataMarshalJSONRedactsError(t *testing.T) {
+	cert := CertificateData{
+		CertificateID: common.HexToHash("0x01"),
+		Status:        agglayertypes.InError,
+		Error:         testRawURLError,
+	}
+
+	data, err := json.Marshal(cert)
+	require.NoError(t, err)
+
+	require.NotContains(t, string(data), "://")
+	require.NotContains(t, string(data), "1.2.3.4")
+
+	// the input struct must not be mutated by marshaling (value receiver)
+	require.Equal(t, testRawURLError, cert.Error)
 }

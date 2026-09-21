@@ -127,6 +127,15 @@ var resolveStepsTestID = TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01
 
 var errFakeUpdateStep = errors.New("fake update step error")
 
+// errFakeUpdateStepWithURL and its redacted counterpart are shared by every UpdateStep subtest,
+// and by TestResolveStepsRedactsErrorBeforeClaimedSkipFallback, that pins RedactError being
+// applied to an ErrorStep's Description entry (vector V1: a backend URL and a bare IP, both of
+// which RedactSensitive replaces).
+var (
+	errFakeUpdateStepWithURL  = errors.New(`post "http://1.2.3.4:8545": dial tcp 1.2.3.4:8545: connect: no route to host`)
+	redactedFakeUpdateStepURL = `post <redacted-url>: dial tcp <redacted-host>: connect: no route to host`
+)
+
 // testResolvers wires every step to a resolver reading through f, mirroring
 // bridgetracker.createResolvers but backed by the single canned fakeFacts double
 func testResolvers(f *fakeFacts) map[types.BridgeStep]StepResolver {
@@ -670,6 +679,31 @@ func TestResolveStepsSkipsOnAlreadyClaimed(t *testing.T) {
 	require.Equal(t, types.TrackerClaimStatusClaimed, result.ClaimStatus())
 }
 
+// TestResolveStepsRedactsErrorBeforeClaimedSkipFallback pins that the ErrorStep built directly
+// inside ResolveSteps' case err != nil branch (idxError, handed to trySkipToClaimed and, once
+// the destination network confirms the claim, persisted verbatim by skipToClaimed as the failing
+// step's own Error) has its Description redacted exactly like UpdateStep's own stepErr branches
+// do. Asserted on the in-memory domain value (steps[idx].Error.Description), not on marshalled
+// JSON, so the defensive ErrorStep.MarshalJSON layer cannot mask a regression here
+func TestResolveStepsRedactsErrorBeforeClaimedSkipFallback(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
+	claim := &types.ClaimResult{ClaimTx: common.Hash{9}, BlockNumber: 500}
+
+	tracking := newTracking(types.BridgeTypeL1ToL2, nil, now)
+	facts := fakeFacts{originGERErr: errFakeUpdateStepWithURL, claimed: true, claim: claim}
+
+	result, err := ResolveSteps(context.Background(), log.NewLoggerNil(), testResolvers(&facts), &facts, tracking, now)
+	require.NoError(t, err)
+
+	steps := result.AllSteps()
+	gerUpdate := steps[indexOfStep(steps, types.StepWaitingGERUpdate)]
+	require.Equal(t, types.StepStatusSkipped, gerUpdate.Status)
+	require.Equal(t, []string{"origin GER: " + redactedFakeUpdateStepURL}, gerUpdate.Error.Description,
+		"idxError's Description must already be redacted in memory, not just when later marshalled")
+}
+
 func TestResolveStepsRecoversAfterResolverTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -1051,6 +1085,33 @@ func TestUpdateStep(t *testing.T) {
 		require.Equal(t, []string{errFakeUpdateStep.Error(), errFakeUpdateStep.Error()}, sp.Error.Description)
 	})
 
+	t.Run("a stepErr embedding a backend URL is redacted before being stored in Description", func(t *testing.T) {
+		t.Parallel()
+
+		tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
+			{Step: types.StepWaitingGERUpdate, Status: types.StepStatusInProgress, StartDate: &t1},
+			{Step: types.StepWaitingGERInjection, Status: types.StepStatusPending},
+			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+			{Step: types.StepClaimed, Status: types.StepStatusPending},
+		}, t1)
+
+		advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStepWithURL, t2)
+
+		sp := advanced.AllSteps()[0]
+		require.Equal(t, 1, sp.Error.RetryCount)
+		require.Equal(t, []string{redactedFakeUpdateStepURL}, sp.Error.Description)
+
+		// a second failure appends a second redacted entry, RetryCount keeps counting
+		advancedAgain := UpdateStep(advanced, 0, nil, false, errFakeUpdateStepWithURL, t2)
+		spAgain := advancedAgain.AllSteps()[0]
+		require.Equal(t, 2, spAgain.Error.RetryCount)
+		require.Equal(t, []string{redactedFakeUpdateStepURL, redactedFakeUpdateStepURL}, spAgain.Error.Description)
+		for _, d := range spAgain.Error.Description {
+			require.NotContains(t, d, "://")
+			require.NotContains(t, d, "1.2.3.4")
+		}
+	})
+
 	t.Run("a repeated stepErr caps Description to the most recent maxErrorDescriptions, RetryCount keeps counting", func(t *testing.T) {
 		t.Parallel()
 
@@ -1100,6 +1161,27 @@ func TestUpdateStep(t *testing.T) {
 		require.Equal(t, types.StepErrorPermanent, sp.Error.ErrorType)
 		require.Equal(t, 0, sp.Error.RetryCount)
 		require.Equal(t, []string{errFakeUpdateStep.Error()}, sp.Error.Description)
+	})
+
+	t.Run("a Permanent stepErr embedding a backend URL is redacted before being stored in Description", func(t *testing.T) {
+		t.Parallel()
+
+		tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
+			{Step: types.StepWaitingGERUpdate, Status: types.StepStatusInProgress, StartDate: &t1},
+			{Step: types.StepWaitingGERInjection, Status: types.StepStatusPending},
+			{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+			{Step: types.StepClaimed, Status: types.StepStatusPending},
+		}, t1)
+
+		advanced := UpdateStep(tracking, 0, nil, false, Permanent(errFakeUpdateStepWithURL), t2)
+
+		sp := advanced.AllSteps()[0]
+		require.Equal(t, types.StepErrorPermanent, sp.Error.ErrorType)
+		require.Equal(t, []string{redactedFakeUpdateStepURL}, sp.Error.Description)
+		for _, d := range sp.Error.Description {
+			require.NotContains(t, d, "://")
+			require.NotContains(t, d, "1.2.3.4")
+		}
 	})
 
 	t.Run("a repeated Permanent stepErr does not accumulate onto a previous transient history", func(t *testing.T) {
@@ -1159,6 +1241,39 @@ func TestUpdateStep(t *testing.T) {
 			require.Equal(t, []string{
 				"settlement tx receipt does not carry required events", errFakeUpdateStep.Error(),
 			}, sp.Error.Description, "the occurrence is still recorded onto the existing history")
+		},
+	)
+
+	t.Run(
+		"a stepErr embedding a backend URL appended onto an already-terminal step is redacted",
+		func(t *testing.T) {
+			t.Parallel()
+
+			tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
+				{
+					Step: types.StepWaitingGERUpdate, Status: types.StepStatusError, StartDate: &t1,
+					Error: &types.ErrorStep{
+						ErrorType:   types.StepErrorPermanent,
+						Description: []string{"settlement tx receipt does not carry required events"},
+					},
+				},
+				{Step: types.StepWaitingGERInjection, Status: types.StepStatusPending},
+				{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+				{Step: types.StepClaimed, Status: types.StepStatusPending},
+			}, t1)
+
+			advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStepWithURL, t2)
+
+			sp := advanced.AllSteps()[0]
+			require.Equal(t, types.StepErrorPermanent, sp.Error.ErrorType, "the terminal ErrorType is preserved")
+			require.Equal(t, 1, sp.Error.RetryCount)
+			require.Equal(t, []string{
+				"settlement tx receipt does not carry required events", redactedFakeUpdateStepURL,
+			}, sp.Error.Description)
+			for _, d := range sp.Error.Description {
+				require.NotContains(t, d, "://")
+				require.NotContains(t, d, "1.2.3.4")
+			}
 		},
 	)
 }

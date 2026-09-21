@@ -6,6 +6,7 @@ import (
 
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 )
@@ -65,7 +66,7 @@ func (cmd *bridgeAddressCommand) Execute(c *gin.Context) (int, any, *types.Error
 
 	addr, err := cmd.resolver.BridgeAddress(c.Request.Context(), uint32(networkID))
 	if err != nil {
-		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()}
+		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: aggkitcommon.RedactError(err)}
 	}
 
 	return http.StatusOK, BridgeAddressItem{NetworkID: uint32(networkID), BridgeAddress: addr}, nil
@@ -79,7 +80,7 @@ func (cmd *bridgeAddressCommand) executeAll(c *gin.Context) (int, any, *types.Er
 	for _, networkID := range networkIDs {
 		addr, err := cmd.resolver.BridgeAddress(c.Request.Context(), networkID)
 		if err != nil {
-			return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()}
+			return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: aggkitcommon.RedactError(err)}
 		}
 		items = append(items, BridgeAddressItem{NetworkID: networkID, BridgeAddress: addr})
 	}

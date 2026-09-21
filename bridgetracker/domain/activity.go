@@ -81,7 +81,9 @@ type ActivityEntry struct {
 	// Errors holds the message of whatever check failed the last time this entry was
 	// refreshed, keyed by which check it was — "claim" when ClaimStatus is Error (the
 	// isClaimed() check itself failed), "readiness" when IsReadyToClaim itself failed (Claimed
-	// then conservatively stays "pending"). nil while nothing has failed
+	// then conservatively stays "pending"). nil while nothing has failed. Every value is
+	// already redacted (aggkitcommon.RedactError) since this map reaches API clients via
+	// GET /activity/from/{from_address}
 	Errors map[string]string
 	// CreatedAt is when this bridge was first cached (its first successful refresh); it never
 	// changes after that
@@ -99,7 +101,9 @@ type ActivityEntry struct {
 type ActivityWarning struct {
 	// NetworkID is the network whose bridge service could not be scanned
 	NetworkID uint32
-	// Message is the error encountered while scanning NetworkID
+	// Message is the error encountered while scanning NetworkID, already redacted
+	// (aggkitcommon.RedactSensitive) since this value reaches API clients - see
+	// ActivitySource.warnf
 	Message string
 }
 
