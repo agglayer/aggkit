@@ -19,6 +19,9 @@ var mig002 string
 //go:embed bridgetracker0003.sql
 var mig003 string
 
+//go:embed bridgetracker0004.sql
+var mig004 string
+
 // RunMigrations applies every bridgetracker migration to dbPath, creating the DB file first if
 // it does not exist yet. Shared by every store in this package (sqliteRegistry,
 // sqliteActivityStore): each may open its own connection to the same dbPath, but all migrations
@@ -37,6 +40,10 @@ func RunMigrations(dbPath string) error {
 		{
 			ID:  "bridgetracker0003",
 			SQL: mig003,
+		},
+		{
+			ID:  "bridgetracker0004",
+			SQL: mig004,
 		},
 	}
 	return db.RunMigrations(dbPath, migrations)

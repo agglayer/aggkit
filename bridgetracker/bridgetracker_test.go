@@ -61,7 +61,7 @@ func primeActivity(t *testing.T, tracker *BridgeTracker, addr common.Address) {
 
 	activity := tracker.Activity()
 	require.NotNil(t, activity, "test must configure ActivityScanner/ActivityClaims")
-	_, err := activity.RegisterAndAwait(addr, 0)
+	_, err := activity.RegisterAndAwait(addr, false, 0)
 	require.NoError(t, err)
 	require.NoError(t, activity.RefreshAddress(t.Context(), addr))
 }

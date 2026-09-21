@@ -33,30 +33,30 @@ func TestActivityEngineNewValidation(t *testing.T) {
 	require.ErrorContains(t, err, "ActivitySupervisedStore")
 }
 
-// TestActivityEngineResolveTriggeredResolvesImmediately pins that resolveTriggered (the handler
-// for a signal off the store's trigger channel, see ActivityEngine.Start) refreshes the given
-// address right away, the same way one iteration of tick would, without needing a poll round
-// over every supervised address
-func TestActivityEngineResolveTriggeredResolvesImmediately(t *testing.T) {
+// TestActivityEngineRefreshOneResolvesImmediately pins that refreshOne (the handler for a signal
+// off the store's trigger channel, see ActivityEngine.Start) refreshes the given address right
+// away, the same way one iteration of tick would, without needing a poll round over every
+// supervised address
+func TestActivityEngineRefreshOneResolvesImmediately(t *testing.T) {
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
 	claims := &fakeActivityClaims{isClaimed: []bool{false}}
 	engine, cache := newTestActivityEngine(t, ActivityEngineConfig{}, scanner, claims)
 	mustRegisterActivity(t, cache, testFromAddress, 0)
 
-	engine.resolveTriggered(t.Context(), testFromAddress)
+	engine.refreshOne(t.Context(), testFromAddress)
 
 	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
-	require.Len(t, entries, 1, "resolveTriggered must refresh the address, not just be a no-op")
+	require.Len(t, entries, 1, "refreshOne must refresh the address, not just be a no-op")
 }
 
-// TestActivityEngineResolveTriggeredIgnoresUnknownAddress pins that a signal for an address no
-// longer supervised (e.g. pruned in the meantime) is silently ignored, never panics
-func TestActivityEngineResolveTriggeredIgnoresUnknownAddress(t *testing.T) {
+// TestActivityEngineRefreshOneIgnoresUnknownAddress pins that a signal for an address no longer
+// supervised (e.g. pruned in the meantime) is silently ignored, never panics
+func TestActivityEngineRefreshOneIgnoresUnknownAddress(t *testing.T) {
 	engine, _ := newTestActivityEngine(t, ActivityEngineConfig{}, &fakeActivityScanner{}, &fakeActivityClaims{})
 
 	require.NotPanics(t, func() {
-		engine.resolveTriggered(t.Context(), testFromAddress)
+		engine.refreshOne(t.Context(), testFromAddress)
 	})
 }
 
@@ -215,4 +215,57 @@ func TestActivityEnginePruneIdleCalledEachTick(t *testing.T) {
 	addrs, err := cache.GetActiveAddresses()
 	require.NoError(t, err)
 	require.Empty(t, addrs, "the idle address must be forgotten by tick's own PruneIdle call")
+}
+
+// TestActivityEngineTriggerNotStarvedBySlowTick verifies a freshly registered address's trigger
+// is serviced — its own refresh actually started — while a slow tick over another address is
+// still stuck mid-scan, reproducing PR #1856 review comment 4060973063 ("the trigger fast-path
+// starves under load, and one request now schedules ~60 background scans"). Before decoupling
+// tick from Start's select loop (see startTick/refreshOne), a tick that outlives PollInterval
+// would starve the trigger channel for its whole duration, since tick ran inline in the very
+// same goroutine that reads triggers — so RegisterAndAwait would time out and Execute would
+// 503 for every new address until that one slow tick finally returned.
+func TestActivityEngineTriggerNotStarvedBySlowTick(t *testing.T) {
+	other := common.HexToAddress("0x3333333333333333333333333333333333333333")
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+	scanner := &fakeActivityScanner{hook: func(int) { entered <- struct{}{}; <-release }}
+	cache := newTestActivityCache(scanner, &fakeActivityClaims{})
+
+	// PollInterval far in the future: only Start's own immediate startTick call is in play
+	engine, err := NewActivityEngine(
+		ActivityEngineConfig{PollInterval: time.Hour}, log.WithFields("module", "activity_engine_test"), cache)
+	require.NoError(t, err)
+
+	// other is already supervised before Start, so the immediate tick picks it up and blocks
+	// inside the scanner hook for the rest of this test. Drain the trigger its own registration
+	// just signaled: Start hasn't run yet, so nothing consumed it, and otherwise Start's select
+	// loop would additionally refresh `other` via that leftover trigger concurrently with tick's
+	// own refresh of it — a benign but real race on this fake scanner's unsynchronized bookkeeping
+	// fields that has nothing to do with what this test is actually about
+	mustRegisterActivity(t, cache, other, 0)
+	<-cache.Triggers()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	engine.Start(ctx)
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("Start's initial tick never reached the scanner")
+	}
+
+	// testFromAddress's own trigger must still be read and its refresh started promptly — timeout
+	// <= 0 so RegisterAndAwait itself only signals the trigger and returns, without waiting on
+	// the refresh it caused (which, sharing the same hooked scanner, would also block on release)
+	require.False(t, mustRegisterActivity(t, cache, testFromAddress, 0))
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("testFromAddress's triggered refresh never reached the scanner — starved behind the slow tick")
+	}
+
+	close(release)
 }

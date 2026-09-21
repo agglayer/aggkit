@@ -243,6 +243,11 @@ type ActivitySupervisedStore interface {
 	// instead of leaving it for the next poll tick, and waits up to timeout for that first
 	// refresh to finish before returning. timeout <= 0 skips the wait entirely.
 	//
+	// includeTracking, when true, sets the sticky tracking-enrichment flag (see
+	// ActivityQuerier.GetActivity) immediately, before the trigger fires — not only on a later
+	// GetActivity call — so even the very first refresh a caller with timeout > 0 blocks on
+	// already enriches tracking, instead of requiring one more refresh after that to take effect.
+	//
 	// ready reports whether fromAddress has completed at least one refresh (successful or not)
 	// as of the moment this call returns — an already-registered address reports whatever its
 	// current state is (no wait either way), a newly registered one is false unless the wait
@@ -251,7 +256,7 @@ type ActivitySupervisedStore interface {
 	// answering with an empty result indistinguishable from "no activity at all" — see
 	// ActivityCommand.Execute. Returns ErrActivityRegistryFull if fromAddress is new and the
 	// store is at capacity
-	RegisterAndAwait(fromAddress common.Address, timeout time.Duration) (ready bool, err error)
+	RegisterAndAwait(fromAddress common.Address, includeTracking bool, timeout time.Duration) (ready bool, err error)
 
 	// GetActiveAddresses returns every currently supervised from_address, for
 	// ActivityEngine's poll tick to iterate (mirrors SupervisedStore.GetTrackerActives)

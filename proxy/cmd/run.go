@@ -278,8 +278,7 @@ func runTracker(
 	// shares registry as its supervised store (see bridgetrackerdb.NewSQLiteActivityStore).
 	if trackerCfg.DBPath != "" {
 		activity, err := bridgetrackerdb.NewSQLiteActivityStore(
-			trackerCfg.DBPath, activitySource, activitySource, registry, trackerCfg.Logger,
-			trackerCfg.ActivityIdleTimeout.Duration)
+			trackerCfg.DBPath, activitySource, activitySource, registry, trackerCfg.Logger)
 		if err != nil {
 			log.Fatalf("failed to create sqlite-backed activity store at %s: %v", trackerCfg.DBPath, err)
 		}

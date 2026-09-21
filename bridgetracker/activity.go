@@ -70,7 +70,6 @@ type ActivityCache struct {
 	supervised SupervisedStore
 	logger     aggkitcommon.Logger
 
-	idleTimeout time.Duration
 	// now is the clock lastAccess is stamped with and the idle sweep compares against,
 	// injectable for tests (mirrors memoryRegistry.now, registry.go)
 	now func() time.Time
@@ -83,25 +82,22 @@ type ActivityCache struct {
 }
 
 // NewActivityCache returns an ActivityCache resolving bridges through scanner, claim state
-// through claims, and (when asked) tracker registration through supervised. idleTimeout is how
-// long an address survives with no access before being forgotten by PruneIdle; <= 0 falls back
-// to DefaultIdleTimeout
+// through claims, and (when asked) tracker registration through supervised. Idle eviction is
+// entirely driven by whoever wires an ActivityEngine over the returned cache (see
+// ActivityEngineConfig.IdleTimeout, PruneIdle) — this constructor has no idleTimeout of its own
+// to fall back to
 func NewActivityCache(
 	scanner ActivityBridgeScanner, claims ActivityClaimChecker, supervised SupervisedStore,
-	logger aggkitcommon.Logger, idleTimeout time.Duration,
+	logger aggkitcommon.Logger,
 ) *ActivityCache {
-	if idleTimeout <= 0 {
-		idleTimeout = DefaultIdleTimeout.Duration
-	}
 	return &ActivityCache{
-		scanner:     scanner,
-		claims:      claims,
-		supervised:  supervised,
-		logger:      logger,
-		idleTimeout: idleTimeout,
-		now:         time.Now,
-		byAddr:      make(map[common.Address]*activityAddrCache),
-		trigger:     make(chan common.Address, triggerBufferSize),
+		scanner:    scanner,
+		claims:     claims,
+		supervised: supervised,
+		logger:     logger,
+		now:        time.Now,
+		byAddr:     make(map[common.Address]*activityAddrCache),
+		trigger:    make(chan common.Address, triggerBufferSize),
 	}
 }
 
@@ -109,8 +105,13 @@ func NewActivityCache(
 // it behaves like a plain touch: no trigger, no wait, ready reports its current refreshed
 // state. On a newly registered address it wakes ActivityEngine (see signalTrigger/Triggers) and
 // waits up to timeout for that first refresh to complete, reporting whether it actually did
-// (ready) or timeout elapsed first with nothing to show yet
-func (a *ActivityCache) RegisterAndAwait(fromAddress common.Address, timeout time.Duration) (bool, error) {
+// (ready) or timeout elapsed first with nothing to show yet. includeTracking, when true, sets
+// the sticky wantsTracking flag immediately — not just on a later GetActivity call — so even the
+// very first triggered refresh (the one a caller with timeout > 0 blocks on) already enriches
+// tracking, instead of the flag only taking effect on the refresh after that
+func (a *ActivityCache) RegisterAndAwait(
+	fromAddress common.Address, includeTracking bool, timeout time.Duration,
+) (bool, error) {
 	a.mu.Lock()
 	cache, existed := a.byAddr[fromAddress]
 	if !existed {
@@ -125,6 +126,9 @@ func (a *ActivityCache) RegisterAndAwait(fromAddress common.Address, timeout tim
 		a.byAddr[fromAddress] = cache
 	}
 	cache.lastAccess = a.now()
+	if includeTracking {
+		cache.wantsTracking = true
+	}
 
 	if existed || timeout <= 0 {
 		ready := cache.refreshed
@@ -268,7 +272,13 @@ func (a *ActivityCache) RefreshAddress(ctx context.Context, fromAddress common.A
 
 // finishRefresh marks cache as having completed at least one refresh (see activityAddrCache.
 // refreshed, RegisterAndAwait's ready return value) and wakes every RegisterAndAwait call
-// currently blocked on it, clearing the waiter set; safe to call even when nobody is waiting
+// currently blocked on it, clearing the waiter set; safe to call even when nobody is waiting.
+// cache is whatever *activityAddrCache RefreshAddress captured at the start of its run — a
+// flush_cache + re-register racing with a slow refresh replaces a.byAddr's entry with a brand
+// new struct, detaching this one, but that is harmless: cache.refreshed/cache.waiters live on
+// the struct itself, not the map slot, so this still only ever affects the registration it
+// actually belongs to; the new registration's own waiters were added to the new struct, and get
+// woken by its own, separate RefreshAddress call instead
 func (a *ActivityCache) finishRefresh(cache *activityAddrCache) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"sync"
 	"testing"
 	"time"
 
@@ -46,21 +47,55 @@ func scannedBridge(bridge *bridgeservicetypes.BridgeResponse, networkID uint32) 
 // bridges is not in known, mirroring ActivitySource.BridgesFrom's real contract, plus whatever
 // invalidated is configured (see domain.ActivityBridgeScanner.BridgesFrom's invalidated return).
 // calls records how many times it was invoked, lastKnown the known argument it was last called
-// with.
+// with — both guarded by mu, since ActivityEngine.tick refreshes every supervised address
+// concurrently and several can share one fakeActivityScanner (e.g.
+// TestActivityEngineTickRefreshesAllRegisteredAddresses). hook, if set, runs synchronously on
+// every call, before results/bridges is consulted, receiving this call's own 1-indexed call
+// number (captured atomically with the increment, so it stays correct even if another
+// goroutine's call increments the shared counter further before this one resumes past hook) —
+// lets a test pause one specific call to open a race window, e.g. a flush_cache + re-register
+// racing with an in-flight RefreshAddress (see
+// TestActivityCache_StaleRefreshDoesNotCorruptNewRegistrationAfterFlush). results, if set, is
+// consulted by call number instead of bridges/invalidated/warnings/err and the known-filtering
+// loop below, so a test can script exactly what each of several calls returns regardless of
+// what a live known map would otherwise filter out
 type fakeActivityScanner struct {
 	bridges     []*domain.ScannedBridge
 	err         error
 	warnings    []domain.ActivityWarning
 	invalidated []string
-	calls       int
-	lastKnown   map[string]domain.KnownBridge
+	hook        func(call int)
+	results     []activityScanResult
+
+	mu        sync.Mutex
+	calls     int
+	lastKnown map[string]domain.KnownBridge
+}
+
+// activityScanResult is one fakeActivityScanner.results entry — see its own doc
+type activityScanResult struct {
+	bridges     []*domain.ScannedBridge
+	invalidated []string
+	warnings    []domain.ActivityWarning
+	err         error
 }
 
 func (f *fakeActivityScanner) BridgesFrom(
 	_ context.Context, _ common.Address, known map[string]domain.KnownBridge,
 ) ([]*domain.ScannedBridge, []string, []domain.ActivityWarning, error) {
+	f.mu.Lock()
 	f.calls++
+	call := f.calls
 	f.lastKnown = known
+	f.mu.Unlock()
+
+	if f.hook != nil {
+		f.hook(call)
+	}
+	if f.results != nil {
+		r := f.results[call-1]
+		return r.bridges, r.invalidated, r.warnings, r.err
+	}
 	if f.err != nil {
 		return nil, nil, nil, f.err
 	}
@@ -83,22 +118,29 @@ func (f *fakeActivityScanner) BridgesFrom(
 // configure IsReadyToClaim's own (single, reused) result, defaulting to "not ready, no error"
 // for tests that don't care about it; readyToClaims/readyToClaimErrs, if non-nil, are consulted
 // in FIFO order instead — one entry per expected IsReadyToClaim invocation — for tests that need
-// a mix of pending/ready-to-claim bridges in the same call.
+// a mix of pending/ready-to-claim bridges in the same call. mu guards every call counter/index
+// below: ActivityEngine.tick refreshes every supervised address concurrently, and several can
+// share one fakeActivityClaims (e.g. TestActivityEngineTickRefreshesAllRegisteredAddresses)
 type fakeActivityClaims struct {
-	isClaimed              []bool
-	isClaimedErrs          []error
+	isClaimed        []bool
+	isClaimedErrs    []error
+	claimInfo        []*bridgeservicetypes.ClaimResponse
+	readyToClaim     bool
+	readyToClaimErr  error
+	readyToClaims    []bool
+	readyToClaimErrs []error
+
+	mu                     sync.Mutex
 	isClaimedCalls         int
 	lastIsClaimedNetworkID uint32
-	claimInfo              []*bridgeservicetypes.ClaimResponse
 	claimInfoCalls         int
-	readyToClaim           bool
-	readyToClaimErr        error
-	readyToClaims          []bool
-	readyToClaimErrs       []error
 	readyToClaimCalls      int
 }
 
 func (f *fakeActivityClaims) IsClaimed(_ context.Context, bridge *domain.ScannedBridge) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.lastIsClaimedNetworkID = bridge.NetworkID
 	i := f.isClaimedCalls
 	f.isClaimedCalls++
@@ -111,12 +153,18 @@ func (f *fakeActivityClaims) IsClaimed(_ context.Context, bridge *domain.Scanned
 func (f *fakeActivityClaims) ClaimInfo(
 	context.Context, *domain.ScannedBridge,
 ) (*bridgeservicetypes.ClaimResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	claim := f.claimInfo[f.claimInfoCalls]
 	f.claimInfoCalls++
 	return claim, nil
 }
 
 func (f *fakeActivityClaims) IsReadyToClaim(context.Context, *domain.ScannedBridge) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	i := f.readyToClaimCalls
 	f.readyToClaimCalls++
 	if i < len(f.readyToClaimErrs) && f.readyToClaimErrs[i] != nil {
@@ -131,45 +179,39 @@ func (f *fakeActivityClaims) IsReadyToClaim(context.Context, *domain.ScannedBrid
 	return f.readyToClaim, nil
 }
 
-// newTestActivityCache builds an ActivityCache with a one-hour idle timeout, long enough that
-// no test below evicts anything by accident; tests exercising eviction build their own directly.
+// newTestActivityCache builds an ActivityCache, backed by a fresh in-memory supervised registry.
+// Idle eviction is entirely owned by whichever ActivityEngine (if any) a test wires separately.
 func newTestActivityCache(scanner ActivityBridgeScanner, claims ActivityClaimChecker) *ActivityCache {
 	supervised := NewMemoryRegistry(10)
-	return NewActivityCache(scanner, claims, supervised, log.WithFields("module", "activity_test"), time.Hour)
+	return NewActivityCache(scanner, claims, supervised, log.WithFields("module", "activity_test"))
 }
 
-// mustRegisterActivity registers addr and fails the test on error, returning whether it is
-// ready (see domain.ActivitySupervisedStore.RegisterAndAwait) for the few tests that care;
-// callers that don't care simply ignore the return value
+// mustRegisterActivity registers addr (with includeTracking=false — no test using this helper
+// cares about tracking) and fails the test on error, returning whether it is ready (see
+// domain.ActivitySupervisedStore.RegisterAndAwait) for the few tests that care; callers that
+// don't care simply ignore the return value
 func mustRegisterActivity(
 	t *testing.T, registry ActivitySupervisedStore, addr common.Address, timeout time.Duration,
 ) bool {
 	t.Helper()
-	ready, err := registry.RegisterAndAwait(addr, timeout)
+	ready, err := registry.RegisterAndAwait(addr, false, timeout)
 	require.NoError(t, err)
 	return ready
 }
 
-// refreshAndGet registers addr (a no-op if already registered), optionally primes its sticky
-// includeTracking flag (see domain.ActivityQuerier.GetActivity's doc — the flag must already be
-// set before RefreshAddress runs for that refresh to enrich tracking, exactly like production:
-// activityCommand.Execute's RegisterAndAwait always runs before its own GetActivity call, so by
-// the time a request that asked for includeTracking can flip the flag, the entry it flips it on
-// already exists), then runs one RefreshAddress + GetActivity round trip — collapsing what
-// RegisterAndAwait/ActivityEngine/GetActivity do across separate calls in production into one
-// synchronous step for tests that don't exercise the engine or timing directly.
+// refreshAndGet registers addr (a no-op if already registered) with includeTracking passed
+// straight into RegisterAndAwait — so even this first refresh already enriches tracking, exactly
+// like activityCommand.Execute (see domain.ActivitySupervisedStore.RegisterAndAwait's doc) —
+// then runs one RefreshAddress + GetActivity round trip, collapsing what RegisterAndAwait/
+// ActivityEngine/GetActivity do across separate calls in production into one synchronous step
+// for tests that don't exercise the engine or timing directly.
 func refreshAndGet(
 	t *testing.T, registry ActivityRegistry, addr common.Address, includeTracking bool, filter types.ActivityFilter,
 ) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
 	t.Helper()
 	ctx := t.Context()
-	if _, err := registry.RegisterAndAwait(addr, 0); err != nil {
+	if _, err := registry.RegisterAndAwait(addr, includeTracking, 0); err != nil {
 		return nil, nil, err
-	}
-	if includeTracking {
-		if _, _, err := registry.GetActivity(ctx, addr, true, filter); err != nil {
-			return nil, nil, err
-		}
 	}
 	if err := registry.RefreshAddress(ctx, addr); err != nil {
 		return nil, nil, err
@@ -692,7 +734,7 @@ func TestActivityCache_PruneIdleForgetsUnaccessedAddresses(t *testing.T) {
 	}
 
 	supervised := NewMemoryRegistry(10)
-	cache := NewActivityCache(scanner, claims, supervised, log.WithFields("module", "activity_test"), time.Minute)
+	cache := NewActivityCache(scanner, claims, supervised, log.WithFields("module", "activity_test"))
 	now := time.Now()
 	cache.now = func() time.Time { return now }
 
@@ -730,7 +772,7 @@ func TestActivityCache_RegisterAndAwaitWaitsForRefresh(t *testing.T) {
 	}
 	done := make(chan registerResult, 1)
 	go func() {
-		ready, err := cache.RegisterAndAwait(testFromAddress, time.Second)
+		ready, err := cache.RegisterAndAwait(testFromAddress, false, time.Second)
 		done <- registerResult{ready: ready, err: err}
 	}()
 
@@ -779,7 +821,7 @@ func TestActivityCache_RegisterAndAwaitExistingAddressReturnsImmediately(t *test
 func TestActivityCache_RegisterAndAwaitTimeoutFallsBackToWhateverIsCached(t *testing.T) {
 	cache := newTestActivityCache(&fakeActivityScanner{}, &fakeActivityClaims{})
 
-	ready, err := cache.RegisterAndAwait(testFromAddress, 10*time.Millisecond)
+	ready, err := cache.RegisterAndAwait(testFromAddress, false, 10*time.Millisecond)
 	require.NoError(t, err)
 	require.False(t, ready, "timeout elapsed before any refresh completed")
 
@@ -886,4 +928,80 @@ func TestActivityCache_BridgeNetworkIDUsesScannedNetworkNotBridgeOriginNetwork(t
 	require.Equal(t, scannedNetworkID, entries[0].BridgeNetworkID)
 	require.Equal(t, scannedNetworkID, claims.lastIsClaimedNetworkID)
 	require.Equal(t, scannedNetworkID, entries[0].Tracking.ID().NetworkID)
+}
+
+// TestActivityCache_StaleRefreshDoesNotCorruptNewRegistrationAfterFlush verifies a RefreshAddress
+// call that started before a flush_cache=true + re-register races in, and only finishes after
+// the new registration has already completed its own (different) refresh, does not overwrite or
+// duplicate that new data with its own now-stale scan result — pinning down PR #1856 review
+// comment 4060973095's "a refresh can run to completion against a detached cache" scenario for
+// this implementation specifically. It is a no-op today because RefreshAddress/upsert/
+// finishRefresh close over the *activityAddrCache captured at the very start of the run and
+// write straight into that struct, never re-resolving fromAddress through a.byAddr again — a
+// flush_cache + re-register meanwhile only ever replaces the *map entry*, leaving the stale
+// refresh's captured pointer detached and harmless (its writes land on an orphaned struct
+// nothing else can reach). The comment's real, cross-implementation-relevant fix is
+// ActivityEngine no longer serializing a fresh registration's trigger behind an in-flight tick
+// (see activity_engine.go's refreshOne/startTick) — this test exists to keep that "detached
+// struct is inert" property from silently regressing under a future refactor (e.g. one that
+// re-resolves fromAddress through the map mid-run instead of writing through the captured
+// pointer, which would reintroduce exactly this hazard)
+func TestActivityCache_StaleRefreshDoesNotCorruptNewRegistrationAfterFlush(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	scanner := &fakeActivityScanner{
+		// call 1 (the stale refresh) returns bridge #1; call 2 (the new registration's own
+		// refresh) returns bridge #2 — scripted per-call so both are fully determined up front,
+		// regardless of when each call's goroutine actually resumes past the hook below
+		results: []activityScanResult{
+			{bridges: []*domain.ScannedBridge{testScannedBridge(1)}},
+			{bridges: []*domain.ScannedBridge{testScannedBridge(2)}},
+		},
+	}
+	// only call 1 (the stale refresh) blocks; call 2 (the new registration's own refresh) must
+	// run to completion synchronously below without waiting on release
+	scanner.hook = func(call int) {
+		if call == 1 {
+			entered <- struct{}{}
+			<-release
+		}
+	}
+	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
+	cache := newTestActivityCache(scanner, claims)
+	mustRegisterActivity(t, cache, testFromAddress, 0)
+
+	staleDone := make(chan error, 1)
+	go func() { staleDone <- cache.RefreshAddress(t.Context(), testFromAddress) }()
+
+	// wait until the stale refresh has captured its *activityAddrCache and reached the scanner
+	// call, where it now sits blocked on release
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("RefreshAddress never reached the scanner")
+	}
+
+	// a flush_cache=true request racing in: delete + re-register replaces the map entry with a
+	// brand-new *activityAddrCache, detaching the one the stale refresh is holding
+	cache.FlushActivity(testFromAddress)
+	mustRegisterActivity(t, cache, testFromAddress, 0)
+
+	// the new registration gets its own, independent refresh (call 2 above, bridge #2) — the
+	// stale refresh's eventual write (bridge #1) is trivially distinguishable from this one's
+	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
+
+	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, testScannedBridge(2).Bridge.GlobalIndex, entries[0].Bridge.GlobalIndex)
+
+	// only now let the stale refresh (bridge #1) resume and finish
+	close(release)
+	require.NoError(t, <-staleDone)
+
+	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "the stale refresh must not add bridge #1 back into the new registration's cache")
+	require.Equal(t, testScannedBridge(2).Bridge.GlobalIndex, entries[0].Bridge.GlobalIndex,
+		"the new registration's own data must survive the stale refresh finishing late")
 }

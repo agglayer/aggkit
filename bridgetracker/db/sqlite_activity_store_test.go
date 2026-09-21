@@ -44,21 +44,36 @@ func activityScannedBridge(bridge *bridgeservicetypes.BridgeResponse, networkID 
 
 // fakeActivityScanner is a hand-rolled ActivityBridgeScanner for tests: it returns whichever of
 // bridges is not in known, mirroring ActivitySource.BridgesFrom's real contract, plus whatever
-// invalidated is configured (see domain.ActivityBridgeScanner.BridgesFrom's invalidated return)
+// invalidated is configured (see domain.ActivityBridgeScanner.BridgesFrom's invalidated return).
+// calls/lastKnown are guarded by mu, in case a test ever drives concurrent calls into the same
+// scanner. hook, if set, runs synchronously on every call, before bridges is consulted,
+// receiving this call's own 1-indexed call number (captured atomically with the increment) —
+// lets a test pause a specific call to open a race window, e.g. a flush_cache + re-register
+// racing with an in-flight RefreshAddress
 type fakeActivityScanner struct {
 	bridges     []*domain.ScannedBridge
 	err         error
 	warnings    []domain.ActivityWarning
 	invalidated []string
-	calls       int
-	lastKnown   map[string]domain.KnownBridge
+	hook        func(call int)
+
+	mu        sync.Mutex
+	calls     int
+	lastKnown map[string]domain.KnownBridge
 }
 
 func (f *fakeActivityScanner) BridgesFrom(
 	_ context.Context, _ common.Address, known map[string]domain.KnownBridge,
 ) ([]*domain.ScannedBridge, []string, []domain.ActivityWarning, error) {
+	f.mu.Lock()
 	f.calls++
+	call := f.calls
 	f.lastKnown = known
+	f.mu.Unlock()
+
+	if f.hook != nil {
+		f.hook(call)
+	}
 	if f.err != nil {
 		return nil, nil, nil, f.err
 	}
@@ -121,10 +136,10 @@ func (f *fakeActivityClaims) IsReadyToClaim(context.Context, *domain.ScannedBrid
 	return f.readyToClaim, nil
 }
 
-// newTestSQLiteActivityStore builds a sqliteActivityStore with a one-hour idle timeout, long
-// enough that no test below evicts anything by accident, backed by a fresh temp-dir DB file
+// newTestSQLiteActivityStore builds a sqliteActivityStore backed by a fresh temp-dir DB file
 // (shared with a real sqliteRegistry as the supervised store, exactly as they'd share one file
-// in production — see NewSQLiteActivityStore's doc)
+// in production — see NewSQLiteActivityStore's doc). Idle eviction is owned by whichever
+// ActivityEngine (if any) a test wires separately
 func newTestSQLiteActivityStore(t *testing.T, scanner domain.ActivityBridgeScanner, claims domain.ActivityClaimChecker,
 ) *sqliteActivityStore {
 	t.Helper()
@@ -134,7 +149,7 @@ func newTestSQLiteActivityStore(t *testing.T, scanner domain.ActivityBridgeScann
 	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
-	store, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
+	store, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
 	require.NoError(t, err)
 	s, ok := store.(*sqliteActivityStore)
 	require.True(t, ok)
@@ -142,22 +157,23 @@ func newTestSQLiteActivityStore(t *testing.T, scanner domain.ActivityBridgeScann
 	return s
 }
 
-// mustRegisterActivity registers addr and fails the test on error, returning whether it is
-// ready (see domain.ActivitySupervisedStore.RegisterAndAwait) for the few tests that care;
-// callers that don't care simply ignore the return value
+// mustRegisterActivity registers addr (with includeTracking=false — no test using this helper
+// cares about tracking) and fails the test on error, returning whether it is ready (see
+// domain.ActivitySupervisedStore.RegisterAndAwait) for the few tests that care; callers that
+// don't care simply ignore the return value
 func mustRegisterActivity(
 	t *testing.T, registry domain.ActivitySupervisedStore, addr common.Address, timeout time.Duration,
 ) bool {
 	t.Helper()
-	ready, err := registry.RegisterAndAwait(addr, timeout)
+	ready, err := registry.RegisterAndAwait(addr, false, timeout)
 	require.NoError(t, err)
 	return ready
 }
 
-// refreshAndGet registers addr (a no-op if already registered), optionally primes its sticky
-// includeTracking flag (must happen before RefreshAddress, exactly like production:
-// activityCommand.Execute's RegisterAndAwait always runs before its own GetActivity call), then
-// runs one RefreshAddress + GetActivity round trip — collapsing what RegisterAndAwait/
+// refreshAndGet registers addr (a no-op if already registered) with includeTracking passed
+// straight into RegisterAndAwait — so even this first refresh already enriches tracking, exactly
+// like activityCommand.Execute (see domain.ActivitySupervisedStore.RegisterAndAwait's doc) —
+// then runs one RefreshAddress + GetActivity round trip, collapsing what RegisterAndAwait/
 // ActivityEngine/GetActivity do across separate calls in production into one synchronous step
 // for tests that don't exercise the engine or timing directly.
 func refreshAndGet(
@@ -165,13 +181,8 @@ func refreshAndGet(
 ) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
 	t.Helper()
 	ctx := t.Context()
-	if _, err := store.RegisterAndAwait(addr, 0); err != nil {
+	if _, err := store.RegisterAndAwait(addr, includeTracking, 0); err != nil {
 		return nil, nil, err
-	}
-	if includeTracking {
-		if _, _, err := store.GetActivity(ctx, addr, true, filter); err != nil {
-			return nil, nil, err
-		}
 	}
 	if err := store.RefreshAddress(ctx, addr); err != nil {
 		return nil, nil, err
@@ -502,7 +513,7 @@ func TestSQLiteActivityStoreRegisterAndAwaitWaitsForRefresh(t *testing.T) {
 	}
 	done := make(chan registerResult, 1)
 	go func() {
-		ready, err := store.RegisterAndAwait(testFromAddress, time.Second)
+		ready, err := store.RegisterAndAwait(testFromAddress, false, time.Second)
 		done <- registerResult{ready: ready, err: err}
 	}()
 
@@ -539,7 +550,7 @@ func TestSQLiteActivityStorePersistsAcrossInstances(t *testing.T) {
 	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
-	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
 	require.NoError(t, err)
 	entries, _, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
@@ -551,7 +562,7 @@ func TestSQLiteActivityStorePersistsAcrossInstances(t *testing.T) {
 	// second store, second scanner/claims that would panic if consulted again: proves the
 	// second instance served the result straight from the DB, without rescanning/rechecking
 	second, err := NewSQLiteActivityStore(
-		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger, time.Hour)
+		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
 	require.NoError(t, err)
 	secondSQLite, ok := second.(*sqliteActivityStore)
 	require.True(t, ok)
@@ -580,7 +591,7 @@ func TestSQLiteActivityStorePersistsSource(t *testing.T) {
 	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
-	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
 	require.NoError(t, err)
 	entries, _, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
@@ -591,7 +602,7 @@ func TestSQLiteActivityStorePersistsSource(t *testing.T) {
 
 	// second store, second scanner that would panic if consulted again: proves the second
 	// instance served the entry straight from the DB, Source included, without rescanning
-	second, err := NewSQLiteActivityStore(dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger, time.Hour)
+	second, err := NewSQLiteActivityStore(dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
 	require.NoError(t, err)
 	secondSQLite, ok := second.(*sqliteActivityStore)
 	require.True(t, ok)
@@ -661,7 +672,7 @@ func TestSQLiteActivityStoreIncludeTrackingPersistsAcrossRestart(t *testing.T) {
 	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
-	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
 	require.NoError(t, err)
 	mustRegisterActivity(t, first, testFromAddress, 0)
 	// prime the sticky flag without refreshing yet, exactly like activityCommand.Execute's
@@ -672,7 +683,7 @@ func TestSQLiteActivityStoreIncludeTrackingPersistsAcrossRestart(t *testing.T) {
 	require.True(t, ok)
 	require.NoError(t, firstSQLite.Close())
 
-	second, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
+	second, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
 	require.NoError(t, err)
 	secondSQLite, ok := second.(*sqliteActivityStore)
 	require.True(t, ok)
@@ -729,4 +740,105 @@ func TestSQLiteActivityStoreSchemaVersionMismatchIsAMiss(t *testing.T) {
 	require.Len(t, entries, 1)
 	require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
 	require.Equal(t, 2, claims.isClaimedCalls)
+}
+
+// TestSQLiteActivityStoreRefreshDoesNotMarkStaleGenerationReady verifies a RefreshAddress call
+// that started against one registration cannot mark a *later* registration of the same address
+// refreshed — reproducing PR #1856 review comment 4060973079 ("defer s.markRefreshed(addr) can
+// mark a *newer* registration ready, producing exactly the empty-200 the 503 path exists to
+// prevent"). A flush_cache=true + re-register racing in mid-refresh deletes and reinserts the
+// row (bumping its generation, see registerAddress); without gating markRefreshed by the
+// generation captured at the start of the run, the deferred UPDATE would stamp whatever row
+// currently exists for the address by the time the stale refresh finishes, regardless of which
+// registration it actually refreshed
+func TestSQLiteActivityStoreRefreshDoesNotMarkStaleGenerationReady(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	scanner := &fakeActivityScanner{}
+	scanner.hook = func(call int) {
+		if call == 1 {
+			entered <- struct{}{}
+			<-release
+		}
+	}
+	store := newTestSQLiteActivityStore(t, scanner, &fakeActivityClaims{})
+	mustRegisterActivity(t, store, testFromAddress, 0)
+
+	staleDone := make(chan error, 1)
+	go func() { staleDone <- store.RefreshAddress(t.Context(), testFromAddress) }()
+
+	// wait until the stale refresh has captured its row's generation and reached the scanner
+	// call, where it now sits blocked on release
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("RefreshAddress never reached the scanner")
+	}
+
+	// a flush_cache=true request racing in: delete + re-register bumps the row's generation
+	store.FlushActivity(testFromAddress)
+	mustRegisterActivity(t, store, testFromAddress, 0)
+
+	// only now let the stale refresh (still working off the OLD generation) resume and finish
+	close(release)
+	require.NoError(t, <-staleDone)
+
+	require.False(t, store.isRefreshed(testFromAddress.Hex()),
+		"a refresh started against the old registration must not mark the NEW registration's row as refreshed")
+}
+
+// TestSQLiteActivityStoreStaleSchemaResetReportsCreatedTrue verifies registerAddress reports
+// created=true for a stale-schema reset, not just a genuinely new address — reproducing PR #1856
+// review comment 4060973085. The stale-schema branch resets the row to a pristine state
+// (include_tracking, last_warnings, refreshed, generation) exactly like a fresh registration, so
+// RegisterAndAwait must treat it the same way: wake ActivityEngine's trigger and wait for the
+// resulting refresh, instead of reporting !created and skipping straight to isRefreshed on a row
+// it just zeroed out itself.
+func TestSQLiteActivityStoreStaleSchemaResetReportsCreatedTrue(t *testing.T) {
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false}}
+	store := newTestSQLiteActivityStore(t, scanner, claims)
+
+	mustRegisterActivity(t, store, testFromAddress, 0)
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
+	require.True(t, store.isRefreshed(testFromAddress.Hex()), "must be refreshed before the schema bump below")
+
+	_, err := store.db.Exec("UPDATE activity_address SET schema_version = ?", activitySchemaVersion+1)
+	require.NoError(t, err)
+
+	created, err := store.registerAddress(testFromAddress.Hex(), store.now())
+	require.NoError(t, err)
+	require.True(t, created, "a stale-schema reset is a genuine re-registration and must report created=true")
+	require.False(t, store.isRefreshed(testFromAddress.Hex()), "the reset must have zeroed refreshed")
+}
+
+// TestSQLiteActivityStorePruneIdleSkipsAddressWithWaiter verifies PruneIdle never deletes an
+// address that currently has a RegisterAndAwait call blocked on it, even if it is idle by
+// olderThan — reproducing PR #1856 review comment 4060973106 ("PruneIdle has no in-flight-waiter
+// guard, unlike its in-memory counterpart"). Without this guard, a request blocked waiting for
+// its first refresh could have its row deleted from under it by the very same tick that is about
+// to refresh it, forcing the caller to burn its full timeout and 503 instead of finding the
+// refresh it triggered.
+func TestSQLiteActivityStorePruneIdleSkipsAddressWithWaiter(t *testing.T) {
+	store := newTestSQLiteActivityStore(t, &fakeActivityScanner{}, &fakeActivityClaims{})
+	past := store.now().Add(-time.Hour)
+
+	// register directly at the DB layer (bypassing RegisterAndAwait) so last_access is already
+	// long past olderThan, then add a waiter by hand exactly like RegisterAndAwait would for an
+	// in-flight call with a positive timeout
+	_, err := store.registerAddress(testFromAddress.Hex(), past)
+	require.NoError(t, err)
+
+	ch := make(chan struct{})
+	store.subMu.Lock()
+	store.addWaiterLocked(testFromAddress, ch)
+	store.subMu.Unlock()
+	t.Cleanup(func() { store.removeWaiter(testFromAddress, ch) })
+
+	pruned, err := store.PruneIdle(store.now())
+	require.NoError(t, err)
+	require.Equal(t, 0, pruned, "an address with an in-flight waiter must never be pruned")
+
+	_, err = store.selectAddressRow(testFromAddress.Hex())
+	require.NoError(t, err, "the row must still exist")
 }

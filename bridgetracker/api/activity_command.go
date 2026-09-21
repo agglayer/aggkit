@@ -169,16 +169,27 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 	fromAddress := common.HexToAddress(addrStr)
 	includeTracking := c.Query(includeTrackingQueryParam) == queryValueTrue
 
-	if c.Query(flushCacheQueryParam) == queryValueTrue {
-		cmd.registry.FlushActivity(fromAddress)
-	}
-
+	// Validate before mutating anything: a bad filterBridges value must 400 without having
+	// already discarded the cache below (flush_cache=true&filterBridges=typo used to flush first
+	// and reject after, forcing the follow-up request through the same not-ready-yet path as a
+	// first-time registration just to fix a client-side typo)
 	filter, err := types.ParseActivityFilter(c.Query(filterBridgesQueryParam))
 	if err != nil {
 		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: err.Error()}
 	}
 
-	ready, err := cmd.registry.RegisterAndAwait(fromAddress, cmd.resolveTimeout)
+	if c.Query(flushCacheQueryParam) == queryValueTrue {
+		cmd.registry.FlushActivity(fromAddress)
+	}
+
+	// includeTracking is threaded into RegisterAndAwait itself, not only the GetActivity call
+	// below: RegisterAndAwait sets the sticky flag before signalling the engine's trigger, so
+	// even this very first refresh enriches tracking — see domain.ActivitySupervisedStore.
+	// RegisterAndAwait's doc. Without this, a client polling with both includeTracking=true and
+	// flush_cache=true (the natural "give me fresh data including tracking" call) could never
+	// observe Tracking: the flush above resets the flag, and GetActivity only sets it again after
+	// this refresh has already run with tracking disabled.
+	ready, err := cmd.registry.RegisterAndAwait(fromAddress, includeTracking, cmd.resolveTimeout)
 	if err != nil {
 		if errors.Is(err, domain.ErrActivityRegistryFull) {
 			return 0, nil, &types.ErrorData{Code: http.StatusServiceUnavailable, Message: err.Error()}

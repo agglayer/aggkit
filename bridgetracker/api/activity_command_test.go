@@ -35,11 +35,12 @@ type fakeActivityRegistry struct {
 	getActivityWarnings   []domain.ActivityWarning
 	getActivityErr        error
 
-	lastRegisterAddress common.Address
-	lastRegisterTimeout time.Duration
-	lastFlushAddress    common.Address
-	lastGetIncludeTrack bool
-	lastGetFilter       types.ActivityFilter
+	lastRegisterAddress         common.Address
+	lastRegisterIncludeTracking bool
+	lastRegisterTimeout         time.Duration
+	lastFlushAddress            common.Address
+	lastGetIncludeTrack         bool
+	lastGetFilter               types.ActivityFilter
 }
 
 // newFakeActivityRegistry returns a fakeActivityRegistry whose RegisterAndAwait reports ready,
@@ -48,9 +49,12 @@ func newFakeActivityRegistry() *fakeActivityRegistry {
 	return &fakeActivityRegistry{registerAndAwaitReady: true}
 }
 
-func (f *fakeActivityRegistry) RegisterAndAwait(fromAddress common.Address, timeout time.Duration) (bool, error) {
+func (f *fakeActivityRegistry) RegisterAndAwait(
+	fromAddress common.Address, includeTracking bool, timeout time.Duration,
+) (bool, error) {
 	f.calls = append(f.calls, "RegisterAndAwait")
 	f.lastRegisterAddress = fromAddress
+	f.lastRegisterIncludeTracking = includeTracking
 	f.lastRegisterTimeout = timeout
 	return f.registerAndAwaitReady, f.registerAndAwaitErr
 }
@@ -122,6 +126,40 @@ func TestActivityCommandExecute_FlushCacheRunsBeforeRegister(t *testing.T) {
 
 	require.Equal(t, []string{"FlushActivity", "RegisterAndAwait", "GetActivity"}, registry.calls)
 	require.Equal(t, testActivityFromAddress, registry.lastFlushAddress)
+}
+
+// TestActivityCommandExecute_InvalidFilterRejectedBeforeFlush verifies an invalid filterBridges
+// value 400s before FlushActivity runs: flush_cache=true must not discard the cache for a
+// request that is about to be rejected anyway (previously flush ran first and validation only
+// rejected the request afterward, so a client-side typo in filterBridges paid for a full cache
+// flush and re-registration for nothing).
+func TestActivityCommandExecute_InvalidFilterRejectedBeforeFlush(t *testing.T) {
+	registry := newFakeActivityRegistry()
+	cmd := &activityCommand{registry: registry}
+
+	code, obj, errData := cmd.Execute(newActivityTestContext("flush_cache=true&filterBridges=bogus"))
+	require.Zero(t, code)
+	require.Nil(t, obj)
+	require.NotNil(t, errData)
+	require.Equal(t, http.StatusBadRequest, errData.Code)
+	require.Empty(t, registry.calls, "an invalid filter must reject before touching the registry at all")
+}
+
+// TestActivityCommandExecute_IncludeTrackingPassedToRegisterAndAwait verifies includeTracking is
+// threaded into RegisterAndAwait itself, not only the later GetActivity call: the sticky flag
+// must be set before the engine's triggered refresh runs, or a client polling with both
+// includeTracking=true and flush_cache=true could never observe Tracking (the flush resets the
+// flag, and GetActivity would only re-set it after that refresh already ran without it).
+func TestActivityCommandExecute_IncludeTrackingPassedToRegisterAndAwait(t *testing.T) {
+	registry := newFakeActivityRegistry()
+	cmd := &activityCommand{registry: registry}
+
+	code, _, errData := cmd.Execute(newActivityTestContext("includeTracking=true"))
+	require.Nil(t, errData)
+	require.Equal(t, http.StatusOK, code)
+
+	require.True(t, registry.lastRegisterIncludeTracking,
+		"RegisterAndAwait must receive includeTracking=true, not just GetActivity")
 }
 
 // TestActivityCommandExecute_RegistryFullMapsTo503 verifies ErrActivityRegistryFull maps to a
