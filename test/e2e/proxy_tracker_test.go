@@ -47,11 +47,14 @@ type trackerBridgeStatus struct {
 
 // trackerBridgeStepPath mirrors api.BridgeStepPath (bridgetracker/api/bridge_step_path.go); only
 // the fields this test asserts on are declared, the rest (start_date/end_date/expected_duration/
-// result/error) are simply ignored by json.Unmarshal.
+// result) are simply ignored by json.Unmarshal.
 type trackerBridgeStepPath struct {
 	StepIndex int    `json:"step_index"`
 	StepName  string `json:"step_name"`
 	Status    string `json:"status"`
+	// Error is nil unless Status is "error"; used by TestProxyTrackerRedactsURLs
+	// (proxy_tracker_redaction_test.go) to assert every step-level error was redacted.
+	Error *trackerErrorStep `json:"error"`
 }
 
 // trackerErrorStep mirrors types.ErrorStep (bridgetracker/types/status.go); only the fields

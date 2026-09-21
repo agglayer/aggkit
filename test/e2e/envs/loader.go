@@ -837,6 +837,40 @@ func (e *Env) RestartAggkitServiceWithConfig(
 	return e.StartAggkitService(ctx, networkKey)
 }
 
+// aggkitProxyServiceName is the compose service of the aggkit-proxy that every env runs.
+const aggkitProxyServiceName = "aggkit-proxy-001"
+
+// GetAggkitProxyConfigPath returns the host path of the aggkit-proxy config file, bind-mounted
+// read-only into the aggkit-proxy container.
+func (e *Env) GetAggkitProxyConfigPath() string {
+	return filepath.Join(e.EnvDir, "config", "aggkit-proxy", "aggkit-proxy.toml")
+}
+
+// RestartService restarts a single compose service of this environment. It does not wait for the
+// service to become ready; the caller polls whatever readiness endpoint applies.
+func (e *Env) RestartService(ctx context.Context, service string) error {
+	cmd := newDockerComposeCmd(ctx, e.EnvDir, "restart", service)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker compose restart %s: %w\nOutput:\n%s", service, err, string(output))
+	}
+	if len(output) > 0 {
+		log.Debugf("docker compose restart %s output:\n%s\n", service, string(output))
+	}
+	return nil
+}
+
+// RestartAggkitProxyWithConfig rewrites the aggkit-proxy config with editFn and restarts the
+// aggkit-proxy service so it picks the change up. It does not wait for readiness: callers poll the
+// tracker health endpoint (see waitForTrackerReady in the e2e test package).
+func (e *Env) RestartAggkitProxyWithConfig(ctx context.Context, editFn func(configPath string) error) error {
+	configPath := e.GetAggkitProxyConfigPath()
+	if err := editFn(configPath); err != nil {
+		return fmt.Errorf("edit aggkit-proxy config %s: %w", configPath, err)
+	}
+	return e.RestartService(ctx, aggkitProxyServiceName)
+}
+
 // ensureDockerComposeRunning brings down any running containers, cleans the aggkit data
 // directory, then starts docker compose fresh. This guarantees a predictable initial state
 // on every test run.

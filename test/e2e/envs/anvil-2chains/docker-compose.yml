@@ -195,6 +195,37 @@ services:
     # on agglayer is `service_healthy`; its depends_on on aggkit-00X stays `service_started`
     # since aggkit-00X has no healthcheck of its own.
 
+  aggkit-proxy-002:
+    # Second aggkit-proxy instance, used only by TestProxyAutoRegisterNewNetworks (#1855,
+    # test/e2e/proxy_autoregister_test.go). Same image/command as aggkit-proxy-001, but bind-mounts
+    # aggkit-proxy-noautoreg.toml (AutoRegisterNewNetworks = false) instead, so the test can assert
+    # the gated-discovery / restart-activation behavior against a real second instance rather than
+    # editing aggkit-proxy-001's own config for it.
+    image: aggkit:local
+    hostname: aggkit-proxy-002
+    entrypoint: ["/usr/local/bin/aggkit-proxy"]
+    command:
+      - "run"
+      - "--cfg=/etc/aggkit-proxy/config.toml"
+      - "--components=proxy,tracker"
+    volumes:
+      - ./config/aggkit-proxy/aggkit-proxy-noautoreg.toml:/etc/aggkit-proxy/config.toml:ro
+    ports:
+      - "15602:8080"   # bridge + tracker REST
+    depends_on:
+      agglayer:
+        condition: service_healthy
+      aggkit-001:
+        condition: service_started
+      aggkit-002:
+        condition: service_started
+    restart: unless-stopped
+    environment:
+      - RUST_BACKTRACE=1
+    # Same "no healthcheck, distroless image" note as aggkit-00X above. Its own depends_on
+    # on agglayer is `service_healthy`; its depends_on on aggkit-00X stays `service_started`
+    # since aggkit-00X has no healthcheck of its own.
+
 # Anvil family (anvil-001/l2-anvil-001/l2-anvil-002) keeps its baked state -- no bind mounts,
 # never overridden: swapping config there would lose the captured devnet state. agglayer/
 # aggkit-00X/aggkit-proxy-001 all bind-mount their config from ./config/ (read-only) so A3 can
