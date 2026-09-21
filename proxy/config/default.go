@@ -86,7 +86,7 @@ ActivityPollInterval = "30s"
 # from_address waits for the activity engine's immediate refresh attempt before answering, so it
 # has a shot at real data instead of an empty result; a lookup of an already-registered address
 # never waits.
-ActivityRegisterResolveTimeout = "5s"
+ActivityRegisterResolveTimeout = "10s"
 
 # ActivityMaxConcurrentRefreshes: how many supervised addresses the activity engine's poll tick
 # refreshes at once -- each refresh is a full multi-network scan, so this is kept lower than

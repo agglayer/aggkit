@@ -88,7 +88,7 @@ var DefaultActivityPollInterval = types.Duration{Duration: DefaultActivityEngine
 
 // defaultActivityRegisterResolveTimeoutDuration is the time.Duration backing
 // DefaultActivityRegisterResolveTimeout
-const defaultActivityRegisterResolveTimeoutDuration = 5 * time.Second
+const defaultActivityRegisterResolveTimeoutDuration = 10 * time.Second
 
 // DefaultActivityRegisterResolveTimeout is the default Config.ActivityRegisterResolveTimeout
 // (must stay in sync with the [Tracker] section of the proxy's default config)
