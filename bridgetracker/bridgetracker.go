@@ -17,6 +17,11 @@ type BridgeTracker struct {
 	// wired over the same instance, the tracking engine
 	supervised SupervisedRegistry
 
+	// activity is the activity subsystem shared by the API endpoints and, when wired over the
+	// same instance, the activity engine (see Activity, NewActivityEngine). nil when the
+	// activity endpoint is not configured
+	activity ActivityRegistry
+
 	// api is the HTTP service serving the tracker REST/WS endpoints
 	api *api.API
 }
@@ -36,16 +41,23 @@ func New(cfg *Config) *BridgeTracker {
 	// a caller can plug in a persisted implementation (see bridgetracker/db.NewSQLiteActivityStore)
 	activity := cfg.Activity
 	if activity == nil && cfg.ActivityScanner != nil && cfg.ActivityClaims != nil {
-		activity = NewActivityCache(
-			cfg.ActivityScanner, cfg.ActivityClaims, supervised, cfg.Logger, cfg.ActivityIdleTimeout.Duration)
+		activity = NewActivityCache(cfg.ActivityScanner, cfg.ActivityClaims, supervised, cfg.Logger)
 	}
+
+	// The actual value ActivityEngine will poll at once started (see NewActivityEngine's own
+	// defaulting) — resolved here too so the activity endpoint can report it as a 503 response's
+	// Retry-After instead of a raw, possibly-zero config value (see activityCommand.Execute)
+	activityPollInterval := ActivityEngineConfig{
+		PollInterval: cfg.ActivityPollInterval.Duration,
+	}.withDefaults().PollInterval
 
 	return &BridgeTracker{
 		logger:     cfg.Logger,
 		supervised: supervised,
+		activity:   activity,
 		api: api.NewAPI(
 			cfg.Logger, cfg.ConfigSHA1, supervised, activity, cfg.BridgeAddressResolver,
-			cfg.RegisterResolveTimeout.Duration, cfg.CORS),
+			cfg.RegisterResolveTimeout.Duration, cfg.ActivityRegisterResolveTimeout.Duration, activityPollInterval, cfg.CORS),
 	}
 }
 
@@ -53,6 +65,12 @@ func New(cfg *Config) *BridgeTracker {
 // expose the tracker REST/WS endpoints
 func (b *BridgeTracker) API() *api.API {
 	return b.api
+}
+
+// Activity returns the activity subsystem, so its caller can start an ActivityEngine over it
+// (see NewActivityEngine); nil when the activity endpoint is not configured
+func (b *BridgeTracker) Activity() ActivityRegistry {
+	return b.activity
 }
 
 // Publish stores the resolved bridge facts and expected path of a supervised bridge and

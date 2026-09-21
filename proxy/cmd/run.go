@@ -278,8 +278,7 @@ func runTracker(
 	// shares registry as its supervised store (see bridgetrackerdb.NewSQLiteActivityStore).
 	if trackerCfg.DBPath != "" {
 		activity, err := bridgetrackerdb.NewSQLiteActivityStore(
-			trackerCfg.DBPath, activitySource, activitySource, registry, trackerCfg.Logger,
-			trackerCfg.ActivityIdleTimeout.Duration)
+			trackerCfg.DBPath, activitySource, activitySource, registry, trackerCfg.Logger)
 		if err != nil {
 			log.Fatalf("failed to create sqlite-backed activity store at %s: %v", trackerCfg.DBPath, err)
 		}
@@ -325,6 +324,27 @@ func runTracker(
 		log.Fatalf("failed to create bridge tracker engine: %v", err)
 	}
 	engine.Start(ctx)
+
+	// GET /activity/from/{from_address} is backed by its own background engine, mirroring the
+	// tracker's own registry+engine pair: it periodically refreshes every supervised
+	// from_address instead of scanning inline inside the HTTP request (see ActivityCommand.
+	// Execute's RegisterAndAwait call). Only started when the activity endpoint is actually
+	// configured (see tracker.Activity()).
+	if activity := tracker.Activity(); activity != nil {
+		activityEngine, err := bridgetracker.NewActivityEngine(
+			bridgetracker.ActivityEngineConfig{
+				PollInterval:           trackerCfg.ActivityPollInterval.Duration,
+				MaxConcurrentRefreshes: trackerCfg.ActivityMaxConcurrentRefreshes,
+				IdleTimeout:            trackerCfg.ActivityIdleTimeout.Duration,
+			},
+			log.WithFields("module", "bridgetracker-activity-engine"),
+			activity,
+		)
+		if err != nil {
+			log.Fatalf("failed to create bridge tracker activity engine: %v", err)
+		}
+		activityEngine.Start(ctx)
+	}
 
 	restServer.Register(tracker.API())
 	log.Info("tracker component started")

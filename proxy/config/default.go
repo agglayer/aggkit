@@ -74,9 +74,24 @@ RetentionPeriod = "10m"
 IdleTimeout = "30m"
 
 # ActivityIdleTimeout: how long a from_address's activity cache (GET /activity/from/{address})
-# stays in memory with no request for it, before being forgotten entirely -- same idea as
+# stays supervised with no request for it, before being forgotten entirely -- same idea as
 # IdleTimeout, a separate knob because it governs a different cache.
 ActivityIdleTimeout = "30m"
+
+# ActivityPollInterval: how often the activity engine refreshes every supervised from_address in
+# the background, independent of any incoming request.
+ActivityPollInterval = "30s"
+
+# ActivityRegisterResolveTimeout: how long the first request for a freshly registered
+# from_address waits for the activity engine's immediate refresh attempt before answering, so it
+# has a shot at real data instead of an empty result; a lookup of an already-registered address
+# never waits.
+ActivityRegisterResolveTimeout = "10s"
+
+# ActivityMaxConcurrentRefreshes: how many supervised addresses the activity engine's poll tick
+# refreshes at once -- each refresh is a full multi-network scan, so this is kept lower than
+# MaxConcurrentResolutions.
+ActivityMaxConcurrentRefreshes = 10
 
 # RegisterResolveTimeout: how long the first request for a freshly registered tx waits for the
 # engine's immediate resolution attempt before answering, so it has a shot at real progress
