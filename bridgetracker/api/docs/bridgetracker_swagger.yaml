@@ -634,17 +634,22 @@ paths:
   /activity/from/{from_address}:
     get:
       description: |-
-        Scans every bridge service the tracker knows about for bridges sent by
-        from_address and reports each one's claim state, exactly as the bridge service
-        reported it. Results are cached: a bridge already known to be claimed, with its
-        claim record already fetched, is not rechecked on a later call. Passing
-        includeTracking=true additionally registers every still-unclaimed bridge with
-        the bridge tracker and includes its current tracking snapshot. filterBridges
+        Registers from_address as supervised and reports whatever the activity engine's
+        background refresh has cached for it so far — on a first-time address, this
+        request waits briefly for that first refresh before answering, and answers 503
+        with a Retry-After header (the engine's poll interval) if it is still not ready
+        by then, instead of an empty 200 indistinguishable from "no activity" (see
+        RegisterResolveTimeout-equivalent config). Results are cached: a bridge already
+        known to be claimed, with its claim record already fetched, is not rechecked on a
+        later refresh. Passing includeTracking=true additionally marks the address so a
+        following background refresh registers every still-unclaimed bridge with the
+        bridge tracker and includes its current tracking snapshot. filterBridges
         restricts the result to bridges with only that claim state (claimed / still
         pending / ready to claim / errored while checking). flush_cache=true discards
-        whatever is already cached for from_address first, forcing a fresh recheck. A
-        network whose bridge service could not be scanned is skipped and reported in the
-        "warnings" field instead of failing the whole request.
+        whatever is already cached for from_address, so the next background refresh
+        rechecks everything from scratch. A network whose bridge service could not be
+        scanned is skipped and reported in the "warnings" field instead of failing the
+        whole request.
       parameters:
       - description: Address that sent the bridges to look up
         in: path
@@ -682,7 +687,11 @@ paths:
           schema:
             $ref: '#/definitions/types.ErrorData'
         "500":
-          description: Scanning the configured bridge services failed
+          description: Registering from_address failed
+          schema:
+            $ref: '#/definitions/types.ErrorData'
+        "503":
+          description: Registry at capacity, or from_address not ready yet (see Retry-After)
           schema:
             $ref: '#/definitions/types.ErrorData'
       summary: Get bridge activity by sender address

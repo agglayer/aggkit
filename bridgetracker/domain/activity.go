@@ -2,12 +2,21 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	"github.com/ethereum/go-ethereum/common"
 )
+
+// ErrActivityRegistryFull is returned by ActivitySupervisedStore.RegisterAndAwait when
+// registering a new from_address would exceed the store's configured capacity (see
+// ErrRegistryFull for the tracker's equivalent and the same DoS-protection reasoning: without
+// this bound, an unauthenticated caller could register an unbounded number of distinct
+// addresses, each staying supervised — and periodically rescanned by the ActivityEngine — until
+// its idle timeout elapses)
+var ErrActivityRegistryFull = errors.New("activity registry is full")
 
 // ActivitySourceKind identifies which system supplied a ScannedBridge/ActivityEntry's current
 // data: the network's own bridge service (ActivitySourceBridgeService — the source of record) or
@@ -197,23 +206,93 @@ type ActivityClaimChecker interface {
 }
 
 // ActivityQuerier is the driven port the GET /activity/from/{from_address} HTTP command
-// depends on
+// depends on for reading. Unlike before ActivitySupervisedStore existed, GetActivity is a
+// cache-only read: it never scans a bridge service or consults claims/the tracker itself — that
+// work is done in the background by whatever refreshes the address's cache (see
+// ActivitySupervisedStore.RefreshAddress, driven by ActivityEngine), the same way
+// SupervisedStore.Get never resolves a tracker bridge on the caller's behalf either
 type ActivityQuerier interface {
-	// GetActivity returns the bridges sent by fromAddress across every configured bridge
-	// service, enriched with their claim state and filtered per filter (see
-	// types.ActivityFilter); includeTracking additionally feeds every still-unclaimed bridge in
-	// the result to the bridge tracker (see ActivityEntry.Tracking). The returned
-	// []ActivityWarning lists every network whose bridge service could not be scanned this call
-	// (see ActivityBridgeScanner.BridgesFrom) — the result is still whatever every other network
-	// reported, just possibly incomplete for the networks listed
+	// GetActivity returns whatever is currently cached for fromAddress, filtered per filter (see
+	// types.ActivityFilter). includeTracking additionally marks fromAddress as wanting tracking
+	// enrichment (see ActivityEntry.Tracking) for future background refreshes — the very first
+	// response after this flag flips may still be missing Tracking for a given bridge until the
+	// next refresh populates it, the same "poll again" precedent the tracker itself established
+	// for a freshly registered bridge's BridgeStatus. The returned []ActivityWarning is whatever
+	// the last background refresh recorded for a network it could not scan — the result is still
+	// whatever every other network reported, just possibly incomplete for the networks listed.
+	// Returns an empty result, not an error, for an address that is not (yet) supervised — callers
+	// reach this port only after ActivitySupervisedStore.RegisterAndAwait
 	GetActivity(
 		ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
 	) ([]*ActivityEntry, []ActivityWarning, error)
 
 	// FlushActivity discards whatever is cached for fromAddress, forcing every bridge found for
 	// it to be freshly rechecked (claim state re-verified, tracker re-consulted) on the next
-	// GetActivity call, instead of reusing anything cached so far. Safe to call for an address
+	// background refresh, instead of reusing anything cached so far. Safe to call for an address
 	// with nothing cached (no-op). The activity endpoint's ?flush_cache=true parameter uses it
 	// to force a fresh recheck
 	FlushActivity(fromAddress common.Address)
+}
+
+// ActivitySupervisedStore is the driven port to the supervised from_addresses list behind
+// GET /activity/from/{from_address} — the engine-facing counterpart of ActivityQuerier,
+// mirroring SupervisedStore for tracked tx IDs (see SupervisedStore's doc for the same idea
+// applied there).
+//
+// Implementations must be safe for concurrent use.
+type ActivitySupervisedStore interface {
+	// RegisterAndAwait behaves like SupervisedStore.GetAndAwait: on an already-registered
+	// address, immediate return, no trigger, no wait. On a newly registered address, it
+	// additionally wakes the ActivityEngine to refresh it right away (see ActivityTriggerable)
+	// instead of leaving it for the next poll tick, and waits up to timeout for that first
+	// refresh to finish before returning. timeout <= 0 skips the wait entirely.
+	//
+	// includeTracking, when true, sets the sticky tracking-enrichment flag (see
+	// ActivityQuerier.GetActivity) immediately, before the trigger fires — not only on a later
+	// GetActivity call — so even the very first refresh a caller with timeout > 0 blocks on
+	// already enriches tracking, instead of requiring one more refresh after that to take effect.
+	//
+	// ready reports whether fromAddress has completed at least one refresh (successful or not)
+	// as of the moment this call returns — an already-registered address reports whatever its
+	// current state is (no wait either way), a newly registered one is false unless the wait
+	// above resolved before timeout. A caller getting back false has nothing meaningful to show
+	// yet and should tell the client to retry later (e.g. HTTP 503 + Retry-After) instead of
+	// answering with an empty result indistinguishable from "no activity at all" — see
+	// ActivityCommand.Execute. Returns ErrActivityRegistryFull if fromAddress is new and the
+	// store is at capacity
+	RegisterAndAwait(fromAddress common.Address, includeTracking bool, timeout time.Duration) (ready bool, err error)
+
+	// GetActiveAddresses returns every currently supervised from_address, for
+	// ActivityEngine's poll tick to iterate (mirrors SupervisedStore.GetTrackerActives)
+	GetActiveAddresses() ([]common.Address, error)
+
+	// RefreshAddress performs the actual scan (ActivityBridgeScanner.BridgesFrom) plus
+	// claim/tracking recheck for fromAddress — what GetActivity itself used to do inline — and
+	// notifies whoever is blocked in RegisterAndAwait for it. Only ever called by ActivityEngine,
+	// never directly by an HTTP handler
+	RefreshAddress(ctx context.Context, fromAddress common.Address) error
+
+	// PruneIdle forgets addresses whose cache has not been accessed (GetActivity/
+	// RegisterAndAwait) since before olderThan, returning how many were forgotten — mirrors
+	// SupervisedStore.PruneIdle, driven by ActivityEngine's own poll tick instead of a
+	// sweep-on-every-request
+	PruneIdle(olderThan time.Time) (int, error)
+}
+
+// ActivityTriggerable is an optional capability of an ActivitySupervisedStore: it exposes the
+// from_addresses that were just registered, so ActivityEngine can refresh them immediately
+// instead of waiting for its next poll tick (see RegisterAndAwait and ActivityEngine.Start).
+// Mirrors Triggerable for tracked tx IDs
+type ActivityTriggerable interface {
+	// Triggers returns the channel of freshly registered from_addresses ActivityEngine should
+	// refresh right away. A send may be dropped if the channel is full — that address is not
+	// lost, it is simply left for the next regular poll tick like before
+	Triggers() <-chan common.Address
+}
+
+// ActivityRegistry is the full activity subsystem: state (ActivitySupervisedStore) plus reads
+// (ActivityQuerier) — what the activity HTTP command depends on, mirroring SupervisedRegistry
+type ActivityRegistry interface {
+	ActivitySupervisedStore
+	ActivityQuerier
 }

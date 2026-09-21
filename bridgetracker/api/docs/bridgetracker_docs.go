@@ -24,7 +24,7 @@ const docTemplatebridgetracker = `{
     "paths": {
         "/activity/from/{from_address}": {
             "get": {
-                "description": "Scans every bridge service the tracker knows about for bridges sent by\nfrom_address and reports each one's claim state, exactly as the bridge service\nreported it. Results are cached: a bridge already known to be claimed, with its\nclaim record already fetched, is not rechecked on a later call. Passing\nincludeTracking=true additionally registers every still-unclaimed bridge with\nthe bridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). flush_cache=true discards\nwhatever is already cached for from_address first, forcing a fresh recheck. A\nnetwork whose bridge service could not be scanned is skipped and reported in the\n\"warnings\" field instead of failing the whole request.",
+                "description": "Registers from_address as supervised and reports whatever the activity engine's\nbackground refresh has cached for it so far — on a first-time address, this\nrequest waits briefly for that first refresh before answering, and answers 503\nwith a Retry-After header (the engine's poll interval) if it is still not ready\nby then, instead of an empty 200 indistinguishable from \"no activity\" (see\nRegisterResolveTimeout-equivalent config). Results are cached: a bridge already\nknown to be claimed, with its claim record already fetched, is not rechecked on a\nlater refresh. Passing includeTracking=true additionally marks the address so a\nfollowing background refresh registers every still-unclaimed bridge with the\nbridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). flush_cache=true discards\nwhatever is already cached for from_address, so the next background refresh\nrechecks everything from scratch. A network whose bridge service could not be\nscanned is skipped and reported in the \"warnings\" field instead of failing the\nwhole request.",
                 "produces": [
                     "application/json"
                 ],
@@ -81,7 +81,13 @@ const docTemplatebridgetracker = `{
                         }
                     },
                     "500": {
-                        "description": "Scanning the configured bridge services failed",
+                        "description": "Registering from_address failed",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorData"
+                        }
+                    },
+                    "503": {
+                        "description": "Registry at capacity, or from_address not ready yet (see Retry-After)",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorData"
                         }

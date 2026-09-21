@@ -1,13 +1,218 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
+	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
+	"github.com/agglayer/aggkit/bridgetracker/types"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+// fakeActivityRegistry is a hand-rolled domain.ActivityRegistry for tests: importing the
+// generated bridgetracker/mocks package here would create an import cycle (mocks -> bridgetracker
+// -> bridgetracker/api), so this package follows the same hand-rolled-fake convention the
+// bridgetracker package itself uses for its own driven ports (see e.g. fakeActivityScanner).
+// Every call is recorded in order into calls, so a test can assert relative call ordering
+// (e.g. FlushActivity before RegisterAndAwait) without needing a full mocking framework.
+type fakeActivityRegistry struct {
+	calls []string
+
+	// registerAndAwaitReady is RegisterAndAwait's ready return value; defaults to true (most
+	// tests exercise the already-ready path), set to false to exercise the not-ready-yet 503
+	registerAndAwaitReady bool
+	registerAndAwaitErr   error
+	getActivityEntries    []*domain.ActivityEntry
+	getActivityWarnings   []domain.ActivityWarning
+	getActivityErr        error
+
+	lastRegisterAddress         common.Address
+	lastRegisterIncludeTracking bool
+	lastRegisterTimeout         time.Duration
+	lastFlushAddress            common.Address
+	lastGetIncludeTrack         bool
+	lastGetFilter               types.ActivityFilter
+}
+
+// newFakeActivityRegistry returns a fakeActivityRegistry whose RegisterAndAwait reports ready,
+// so a test only needs to override the fields it actually cares about
+func newFakeActivityRegistry() *fakeActivityRegistry {
+	return &fakeActivityRegistry{registerAndAwaitReady: true}
+}
+
+func (f *fakeActivityRegistry) RegisterAndAwait(
+	fromAddress common.Address, includeTracking bool, timeout time.Duration,
+) (bool, error) {
+	f.calls = append(f.calls, "RegisterAndAwait")
+	f.lastRegisterAddress = fromAddress
+	f.lastRegisterIncludeTracking = includeTracking
+	f.lastRegisterTimeout = timeout
+	return f.registerAndAwaitReady, f.registerAndAwaitErr
+}
+
+func (f *fakeActivityRegistry) GetActiveAddresses() ([]common.Address, error) { return nil, nil }
+
+func (f *fakeActivityRegistry) RefreshAddress(context.Context, common.Address) error { return nil }
+
+func (f *fakeActivityRegistry) PruneIdle(time.Time) (int, error) { return 0, nil }
+
+func (f *fakeActivityRegistry) GetActivity(
+	_ context.Context, _ common.Address, includeTracking bool, filter types.ActivityFilter,
+) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
+	f.calls = append(f.calls, "GetActivity")
+	f.lastGetIncludeTrack = includeTracking
+	f.lastGetFilter = filter
+	return f.getActivityEntries, f.getActivityWarnings, f.getActivityErr
+}
+
+func (f *fakeActivityRegistry) FlushActivity(fromAddress common.Address) {
+	f.calls = append(f.calls, "FlushActivity")
+	f.lastFlushAddress = fromAddress
+}
+
+var testActivityFromAddress = common.HexToAddress("0x1111111111111111111111111111111111111111")
+
+// newActivityTestContext builds a *gin.Context for GET /activity/from/{from_address}, with
+// rawQuery as-is (e.g. "includeTracking=true&flush_cache=true"), backed by a real
+// httptest.ResponseRecorder so a test can inspect any response header Execute sets (e.g.
+// Retry-After) — gin.CreateTestContext(nil) would panic on the first c.Header call
+func newActivityTestContext(rawQuery string) *gin.Context {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = &http.Request{URL: &url.URL{RawQuery: rawQuery}}
+	c.Params = gin.Params{{Key: fromAddressParam, Value: testActivityFromAddress.Hex()}}
+	return c
+}
+
+// TestActivityCommandExecute_RegistersBeforeReading verifies Execute registers from_address
+// (see domain.ActivitySupervisedStore.RegisterAndAwait) before reading the cache (GetActivity),
+// mirroring getTxStatusCommand's GetAndAwait-then-read ordering, and that the configured
+// resolveTimeout is threaded through unchanged.
+func TestActivityCommandExecute_RegistersBeforeReading(t *testing.T) {
+	registry := newFakeActivityRegistry()
+	cmd := &activityCommand{registry: registry, resolveTimeout: 5 * time.Second}
+
+	code, obj, errData := cmd.Execute(newActivityTestContext(""))
+	require.Nil(t, errData)
+	require.Equal(t, http.StatusOK, code)
+	body, ok := obj.(ActivityResponse)
+	require.True(t, ok)
+	require.Equal(t, testActivityFromAddress, body.FromAddress)
+	require.Empty(t, body.Bridges)
+
+	require.Equal(t, []string{"RegisterAndAwait", "GetActivity"}, registry.calls)
+	require.Equal(t, testActivityFromAddress, registry.lastRegisterAddress)
+	require.Equal(t, 5*time.Second, registry.lastRegisterTimeout)
+}
+
+// TestActivityCommandExecute_FlushCacheRunsBeforeRegister verifies ?flush_cache=true calls
+// FlushActivity before RegisterAndAwait, mirroring getTxStatusCommand's flush-then-register
+// ordering for the tracker endpoint.
+func TestActivityCommandExecute_FlushCacheRunsBeforeRegister(t *testing.T) {
+	registry := newFakeActivityRegistry()
+	cmd := &activityCommand{registry: registry}
+
+	code, _, errData := cmd.Execute(newActivityTestContext("flush_cache=true"))
+	require.Nil(t, errData)
+	require.Equal(t, http.StatusOK, code)
+
+	require.Equal(t, []string{"FlushActivity", "RegisterAndAwait", "GetActivity"}, registry.calls)
+	require.Equal(t, testActivityFromAddress, registry.lastFlushAddress)
+}
+
+// TestActivityCommandExecute_InvalidFilterRejectedBeforeFlush verifies an invalid filterBridges
+// value 400s before FlushActivity runs: flush_cache=true must not discard the cache for a
+// request that is about to be rejected anyway (previously flush ran first and validation only
+// rejected the request afterward, so a client-side typo in filterBridges paid for a full cache
+// flush and re-registration for nothing).
+func TestActivityCommandExecute_InvalidFilterRejectedBeforeFlush(t *testing.T) {
+	registry := newFakeActivityRegistry()
+	cmd := &activityCommand{registry: registry}
+
+	code, obj, errData := cmd.Execute(newActivityTestContext("flush_cache=true&filterBridges=bogus"))
+	require.Zero(t, code)
+	require.Nil(t, obj)
+	require.NotNil(t, errData)
+	require.Equal(t, http.StatusBadRequest, errData.Code)
+	require.Empty(t, registry.calls, "an invalid filter must reject before touching the registry at all")
+}
+
+// TestActivityCommandExecute_IncludeTrackingPassedToRegisterAndAwait verifies includeTracking is
+// threaded into RegisterAndAwait itself, not only the later GetActivity call: the sticky flag
+// must be set before the engine's triggered refresh runs, or a client polling with both
+// includeTracking=true and flush_cache=true could never observe Tracking (the flush resets the
+// flag, and GetActivity would only re-set it after that refresh already ran without it).
+func TestActivityCommandExecute_IncludeTrackingPassedToRegisterAndAwait(t *testing.T) {
+	registry := newFakeActivityRegistry()
+	cmd := &activityCommand{registry: registry}
+
+	code, _, errData := cmd.Execute(newActivityTestContext("includeTracking=true"))
+	require.Nil(t, errData)
+	require.Equal(t, http.StatusOK, code)
+
+	require.True(t, registry.lastRegisterIncludeTracking,
+		"RegisterAndAwait must receive includeTracking=true, not just GetActivity")
+}
+
+// TestActivityCommandExecute_RegistryFullMapsTo503 verifies ErrActivityRegistryFull maps to a
+// 503 response instead of a generic 500, and never reaches GetActivity.
+func TestActivityCommandExecute_RegistryFullMapsTo503(t *testing.T) {
+	registry := &fakeActivityRegistry{registerAndAwaitErr: domain.ErrActivityRegistryFull}
+	cmd := &activityCommand{registry: registry}
+
+	code, obj, errData := cmd.Execute(newActivityTestContext(""))
+	require.Zero(t, code)
+	require.Nil(t, obj)
+	require.NotNil(t, errData)
+	require.Equal(t, http.StatusServiceUnavailable, errData.Code)
+	require.Equal(t, []string{"RegisterAndAwait"}, registry.calls, "GetActivity must not run after a failed registration")
+}
+
+// TestActivityCommandExecute_RegisterFailureMapsTo500 verifies a plain RegisterAndAwait failure
+// (anything other than ErrActivityRegistryFull) maps to a 500, and never reaches GetActivity.
+func TestActivityCommandExecute_RegisterFailureMapsTo500(t *testing.T) {
+	registry := &fakeActivityRegistry{registerAndAwaitErr: errBoom}
+	cmd := &activityCommand{registry: registry}
+
+	code, obj, errData := cmd.Execute(newActivityTestContext(""))
+	require.Zero(t, code)
+	require.Nil(t, obj)
+	require.NotNil(t, errData)
+	require.Equal(t, http.StatusInternalServerError, errData.Code)
+	require.Equal(t, []string{"RegisterAndAwait"}, registry.calls)
+}
+
+// TestActivityCommandExecute_NotReadyMapsTo503WithRetryAfter verifies that a from_address whose
+// first background refresh has not completed yet (RegisterAndAwait's ready=false) answers 503
+// with a Retry-After header set to the configured pollInterval, and never reaches GetActivity —
+// answering 200 with an empty result here would be indistinguishable from "no activity at all"
+func TestActivityCommandExecute_NotReadyMapsTo503WithRetryAfter(t *testing.T) {
+	registry := &fakeActivityRegistry{registerAndAwaitReady: false}
+	cmd := &activityCommand{registry: registry, pollInterval: 30 * time.Second}
+
+	c := newActivityTestContext("")
+	code, obj, errData := cmd.Execute(c)
+	require.Zero(t, code)
+	require.Nil(t, obj)
+	require.NotNil(t, errData)
+	require.Equal(t, http.StatusServiceUnavailable, errData.Code)
+	require.Equal(t, "30", c.Writer.Header().Get(retryAfterHeader))
+	require.Equal(t, []string{"RegisterAndAwait"}, registry.calls, "GetActivity must not run while not ready")
+}
+
+type boomError struct{}
+
+func (boomError) Error() string { return "boom" }
+
+var errBoom error = boomError{}
 
 // TestActivityItemMarshalJSON_EmbeddedBridgeGlobalIndexIsQuotedString verifies that
 // GET /activity/from/{from_address}'s payload -- which embeds the bridge service's own

@@ -82,8 +82,12 @@ type API struct {
 // NewAPI returns the tracker HTTP service serving the given supervised registry.
 // registerResolveTimeout is how long GetTxStatus waits, the first time a tx is registered, for
 // the tracking engine's immediate resolution attempt to produce an update before answering (see
-// getTxStatusCommand); <= 0 disables the wait. cors governs which origins may open the
-// WebSocket endpoint (see wsHandler). activity may be nil, in which case the
+// getTxStatusCommand); <= 0 disables the wait. activityRegisterResolveTimeout is the same idea
+// for the activity endpoint's first request for a freshly registered from_address (see
+// activityCommand); <= 0 disables that wait. activityPollInterval is the activity engine's own
+// background refresh cadence, reported as the Retry-After value of a 503 response when that
+// wait elapses with nothing ready yet. cors governs which origins may open the WebSocket
+// endpoint (see wsHandler). activity may be nil, in which case the
 // GET /activity/from/{from_address} endpoint is not registered at all (see RegisterRoutes).
 // bridgeAddressResolver may be nil, in which case neither GET /bridge-address nor
 // GET /bridge-address/{network_id} is registered at all (see RegisterRoutes). pendingLister may
@@ -92,9 +96,11 @@ func NewAPI(
 	logger aggkitcommon.Logger,
 	configSHA1 string,
 	supervised domain.SupervisedRegistry,
-	activity domain.ActivityQuerier,
+	activity domain.ActivityRegistry,
 	bridgeAddressResolver domain.BridgeAddressResolver,
 	registerResolveTimeout time.Duration,
+	activityRegisterResolveTimeout time.Duration,
+	activityPollInterval time.Duration,
 	cors aggkitcommon.CORSConfig,
 	pendingLister PendingNetworksLister,
 ) *API {
@@ -110,7 +116,9 @@ func NewAPI(
 		wsHandler: newWSHandler(logger, supervised, cors),
 	}
 	if activity != nil {
-		api.activityCmd = &activityCommand{querier: activity}
+		api.activityCmd = &activityCommand{
+			registry: activity, resolveTimeout: activityRegisterResolveTimeout, pollInterval: activityPollInterval,
+		}
 	}
 	if bridgeAddressResolver != nil {
 		api.bridgeAddressCmd = &bridgeAddressCommand{resolver: bridgeAddressResolver}
