@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -188,6 +190,45 @@ func TestActivityCommandExecute_RegisterFailureMapsTo500(t *testing.T) {
 	require.NotNil(t, errData)
 	require.Equal(t, http.StatusInternalServerError, errData.Code)
 	require.Equal(t, []string{"RegisterAndAwait"}, registry.calls)
+}
+
+// TestActivityCommandExecute_RegistryFullMapsTo503RedactsSensitiveTokens is the S21 regression
+// test for the ErrActivityRegistryFull branch of Execute: any URL/host/IP baked into the
+// underlying RegisterAndAwait error must be redacted before it is stored in errData.Message -- in
+// memory, asserted directly on the returned *types.ErrorData, not only once it is marshalled to
+// JSON (types.ErrorData.MarshalJSON is the defensive last line, this is the primary construction
+// site per the design's "in-memory is already clean" invariant).
+func TestActivityCommandExecute_RegistryFullMapsTo503RedactsSensitiveTokens(t *testing.T) {
+	wrapped := fmt.Errorf("%w: dial tcp 10.0.0.5:8545: connect: connection refused", domain.ErrActivityRegistryFull)
+	registry := &fakeActivityRegistry{registerAndAwaitErr: wrapped}
+	cmd := &activityCommand{registry: registry}
+
+	code, obj, errData := cmd.Execute(newActivityTestContext(""))
+	require.Zero(t, code)
+	require.Nil(t, obj)
+	require.NotNil(t, errData)
+	require.Equal(t, http.StatusServiceUnavailable, errData.Code)
+	require.Equal(t, "activity registry is full: dial tcp <redacted-host>: connect: connection refused", errData.Message)
+	require.NotContains(t, errData.Message, "10.0.0.5")
+	require.NotContains(t, errData.Message, "://")
+}
+
+// TestActivityCommandExecute_RegisterFailureMapsTo500RedactsSensitiveTokens is the sibling of
+// TestActivityCommandExecute_RegistryFullMapsTo503RedactsSensitiveTokens for Execute's generic
+// (non-ErrActivityRegistryFull) RegisterAndAwait failure branch.
+func TestActivityCommandExecute_RegisterFailureMapsTo500RedactsSensitiveTokens(t *testing.T) {
+	rawErr := errors.New(`registering bridge tx with the tracker: dial tcp 10.0.0.7:8546: i/o timeout`)
+	registry := &fakeActivityRegistry{registerAndAwaitErr: rawErr}
+	cmd := &activityCommand{registry: registry}
+
+	code, obj, errData := cmd.Execute(newActivityTestContext(""))
+	require.Zero(t, code)
+	require.Nil(t, obj)
+	require.NotNil(t, errData)
+	require.Equal(t, http.StatusInternalServerError, errData.Code)
+	require.Equal(t, "registering bridge tx with the tracker: dial tcp <redacted-host>: i/o timeout", errData.Message)
+	require.NotContains(t, errData.Message, "10.0.0.7")
+	require.NotContains(t, errData.Message, "://")
 }
 
 // TestActivityCommandExecute_NotReadyMapsTo503WithRetryAfter verifies that a from_address whose

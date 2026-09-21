@@ -228,9 +228,11 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 	ready, err := cmd.registry.RegisterAndAwait(fromAddress, includeTracking, cmd.resolveTimeout)
 	if err != nil {
 		if errors.Is(err, domain.ErrActivityRegistryFull) {
-			return 0, nil, &types.ErrorData{Code: http.StatusServiceUnavailable, Message: err.Error()}
+			return 0, nil, &types.ErrorData{
+				Code: http.StatusServiceUnavailable, Message: aggkitcommon.RedactError(err),
+			}
 		}
-		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()}
+		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: aggkitcommon.RedactError(err)}
 	}
 	if !ready {
 		// from_address was only just registered and its first background refresh has not

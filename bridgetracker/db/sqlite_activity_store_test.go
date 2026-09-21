@@ -307,6 +307,154 @@ func TestSQLiteActivityStoreIsClaimedFailureReportsErrorStatus(t *testing.T) {
 	require.Nil(t, entries[0].Errors, "a successful recheck must not carry over the previous failure")
 }
 
+// TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstances verifies refresh
+// (see sqliteActivityStore.refresh) redacts any URL/host/IP baked into an IsClaimed error before
+// it is stored in entry.Errors["claim"] — i.e. redaction happens at write time, not only when the
+// wire response is later marshalled (see bridgetracker/api/activity_command.go's defensive
+// ActivityItem.MarshalJSON). The row is read back by a second store instance, backed by a scanner/
+// claims that would panic if consulted, mirroring TestSQLiteActivityStorePersistsAcrossInstances —
+// proving the redacted value (not the raw one) is what actually persisted to sqlite and is served
+// back on the write->read round trip.
+func TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstances(t *testing.T) {
+	rawErr := `Post "http://1.2.3.4:8545": dial tcp 1.2.3.4:8545: connect: no route to host`
+	wantRedacted := "Post <redacted-url>: dial tcp <redacted-host>: connect: no route to host"
+
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false}, isClaimedErrs: []error{errors.New(rawErr)}}
+
+	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
+	logger := log.WithFields("module", "activity_test")
+	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
+	require.NoError(t, err)
+
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
+	require.NoError(t, err)
+	entries, _, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, wantRedacted, entries[0].Errors["claim"], "in-memory value from the writing store")
+	firstSQLite, ok := first.(*sqliteActivityStore)
+	require.True(t, ok)
+	require.NoError(t, firstSQLite.Close())
+
+	// second store, second scanner/claims that would panic if consulted again: proves the
+	// redacted string (not the raw one) is what was actually written to the DB
+	second, err := NewSQLiteActivityStore(
+		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
+	require.NoError(t, err)
+	secondSQLite, ok := second.(*sqliteActivityStore)
+	require.True(t, ok)
+	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
+
+	entries, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, wantRedacted, entries[0].Errors["claim"], "in-memory value read back from disk")
+	require.NotContains(t, entries[0].Errors["claim"], "1.2.3.4")
+	require.NotContains(t, entries[0].Errors["claim"], "://")
+}
+
+// TestSQLiteActivityStoreReadinessFailureRedactsSensitiveTokensAcrossInstances is the same
+// guarantee as TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstances, for
+// the sibling construction site: entry.Errors["readiness"], populated when IsReadyToClaim fails
+// (see sqliteActivityStore.refresh's fallback branch, reached with includeTracking=false)
+func TestSQLiteActivityStoreReadinessFailureRedactsSensitiveTokensAcrossInstances(t *testing.T) {
+	rawErr := `claim status: fetching claims of global index 123 on network 2: do request: ` +
+		`Get "http://10.0.0.5:5577/bridge/v1/claims?global_index=123&network_id=2": context deadline exceeded`
+	wantRedacted := "claim status: fetching claims of global index 123 on network 2: do request: " +
+		"Get <redacted-url>: context deadline exceeded"
+
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false}, readyToClaimErr: errors.New(rawErr)}
+
+	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
+	logger := log.WithFields("module", "activity_test")
+	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
+	require.NoError(t, err)
+
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
+	require.NoError(t, err)
+	entries, _, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, wantRedacted, entries[0].Errors["readiness"], "in-memory value from the writing store")
+	firstSQLite, ok := first.(*sqliteActivityStore)
+	require.True(t, ok)
+	require.NoError(t, firstSQLite.Close())
+
+	// second store, second scanner/claims that would panic if consulted again: proves the
+	// redacted string (not the raw one) is what was actually written to the DB
+	second, err := NewSQLiteActivityStore(
+		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
+	require.NoError(t, err)
+	secondSQLite, ok := second.(*sqliteActivityStore)
+	require.True(t, ok)
+	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
+
+	entries, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, wantRedacted, entries[0].Errors["readiness"], "in-memory value read back from disk")
+	require.NotContains(t, entries[0].Errors["readiness"], "10.0.0.5")
+	require.NotContains(t, entries[0].Errors["readiness"], "://")
+}
+
+// TestSQLiteActivityStoreLastWarningsRedactsSensitiveTokensAcrossInstances covers the third
+// site that can carry a client-facing error string into activity_address.last_warnings: a scan
+// warning reported by ActivityBridgeScanner.BridgesFrom (see domain.ActivityWarning.Message's
+// own doc: in production it is already redacted by ActivitySource.warnf before it ever reaches
+// the store). This test bypasses that upstream redaction the way a pre-fix build's row would
+// have (a raw, unredacted warning fed straight through fakeActivityScanner), to prove
+// decodeWarnings redacts again on read — see S23 finding L1 — rather than relying solely on the
+// wire layer's defensive ActivityWarningItem.MarshalJSON. Same shape as
+// TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstances: a second store
+// instance, backed by a scanner that would panic if consulted, reads the row back from disk.
+func TestSQLiteActivityStoreLastWarningsRedactsSensitiveTokensAcrossInstances(t *testing.T) {
+	rawWarning := `fetching bridges from 0xabc on network 2: do request: Get ` +
+		`"http://aggkit-002.internal:5577/bridge/v1/bridges?from_address=0xabc": ` +
+		`dial tcp 10.0.0.6:5577: connection refused`
+	wantRedacted := "fetching bridges from 0xabc on network 2: do request: Get " +
+		"<redacted-url>: dial tcp <redacted-host>: connection refused"
+
+	scanner := &fakeActivityScanner{
+		bridges:  []*domain.ScannedBridge{testScannedBridge(1)},
+		warnings: []domain.ActivityWarning{{NetworkID: 2, Message: rawWarning}},
+	}
+	claims := &fakeActivityClaims{isClaimed: []bool{false}}
+
+	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
+	logger := log.WithFields("module", "activity_test")
+	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
+	require.NoError(t, err)
+
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
+	require.NoError(t, err)
+	_, warnings, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, warnings, 1)
+	require.Equal(t, wantRedacted, warnings[0].Message, "in-memory value from the writing store")
+	firstSQLite, ok := first.(*sqliteActivityStore)
+	require.True(t, ok)
+	require.NoError(t, firstSQLite.Close())
+
+	// second store, second scanner/claims that would panic if consulted again: proves the
+	// redacted string (not the raw one) is what was actually written to the DB
+	second, err := NewSQLiteActivityStore(
+		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
+	require.NoError(t, err)
+	secondSQLite, ok := second.(*sqliteActivityStore)
+	require.True(t, ok)
+	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
+
+	_, warnings, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, warnings, 1)
+	require.Equal(t, wantRedacted, warnings[0].Message, "in-memory value read back from disk")
+	require.NotContains(t, warnings[0].Message, "10.0.0.6")
+	require.NotContains(t, warnings[0].Message, "aggkit-002.internal")
+	require.NotContains(t, warnings[0].Message, "://")
+}
+
 // TestSQLiteActivityStoreFilterPendingExcludesClaimedAndErrored verifies ActivityFilterPending
 // returns only bridges still unclaimed and not yet ready to claim. The claimed bridge's claim
 // record is still fetched during the refresh regardless (a background refresh cannot know a

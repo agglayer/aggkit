@@ -57,7 +57,10 @@ type activityAddressRow struct {
 	// with their tracker snapshot
 	IncludeTracking bool `meddler:"include_tracking"`
 	// LastWarnings is the JSON-encoded []domain.ActivityWarning the last background refresh
-	// reported, or NULL if nothing has refreshed yet or the last refresh reported none
+	// reported, or NULL if nothing has refreshed yet or the last refresh reported none. Messages
+	// are client-facing error strings, already redacted by the producer (ActivitySource.warnf)
+	// before they reach this column; decodeWarnings redacts again on read anyway, so a row
+	// written by a pre-fix build is served clean in memory too, not just on the wire
 	LastWarnings []byte `meddler:"last_warnings"`
 	// Refreshed is set once RefreshAddress has completed at least once for this address
 	// (successful or not) — RegisterAndAwait's ready return value
@@ -86,7 +89,11 @@ func decodeScanState(raw []byte) (map[uint32]networkScanState, error) {
 	return scanState, nil
 }
 
-// decodeWarnings unmarshals an activity_address row's last_warnings column
+// decodeWarnings unmarshals an activity_address row's last_warnings column. Messages are
+// redacted again here (aggkitcommon.RedactSensitive is idempotent) even though the only current
+// producer, ActivitySource.warnf, already redacts before the value reaches the store: this
+// covers a row written by a pre-fix build for free, on the read path rather than relying solely
+// on the wire layer's defensive ActivityWarningItem.MarshalJSON (see S23 finding L1)
 func decodeWarnings(raw []byte) ([]domain.ActivityWarning, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -94,6 +101,9 @@ func decodeWarnings(raw []byte) ([]domain.ActivityWarning, error) {
 	var warnings []domain.ActivityWarning
 	if err := json.Unmarshal(raw, &warnings); err != nil {
 		return nil, fmt.Errorf("decoding activity last_warnings: %w", err)
+	}
+	for i := range warnings {
+		warnings[i].Message = aggkitcommon.RedactSensitive(warnings[i].Message)
 	}
 	return warnings, nil
 }
@@ -153,11 +163,19 @@ type activityBridgeData struct {
 
 // entry decodes row into the domain.ActivityEntry it represents, for use as upsert's existing
 // argument (the settled check, and refresh's own "already confirmed claimed" shortcut) and as
-// GetActivity's result
+// GetActivity's result. data.Errors is redacted again here (aggkitcommon.RedactSensitive is
+// idempotent) even though refresh already redacts before writing (see the "claim"/"readiness"
+// sites): this covers a row written by a pre-fix build for free, on the read path rather than
+// relying solely on the wire layer's defensive ActivityItem.MarshalJSON (see S23 finding L1)
 func (row *activityBridgeRow) entry() (*domain.ActivityEntry, error) {
 	var data activityBridgeData
 	if err := json.Unmarshal(row.Data, &data); err != nil {
 		return nil, fmt.Errorf("decoding activity_bridge row %s: %w", row.GlobalIndex, err)
+	}
+	if data.Errors != nil {
+		for k, v := range data.Errors {
+			data.Errors[k] = aggkitcommon.RedactSensitive(v)
+		}
 	}
 	entry := &domain.ActivityEntry{
 		Bridge:             data.Bridge,
@@ -813,7 +831,7 @@ func (s *sqliteActivityStore) refresh(
 				item.Bridge.TxHash, item.NetworkID, item.Bridge.DepositCount, err)
 			entry.ClaimStatus = types.ClaimStatusError
 			entry.TrackerClaimStatus = types.TrackerClaimStatusError
-			entry.Errors = map[string]string{"claim": err.Error()}
+			entry.Errors = map[string]string{"claim": aggkitcommon.RedactError(err)}
 			return entry
 		}
 		if claimed {
@@ -859,7 +877,7 @@ func (s *sqliteActivityStore) refresh(
 		if entry.Errors == nil {
 			entry.Errors = make(map[string]string)
 		}
-		entry.Errors["readiness"] = err.Error()
+		entry.Errors["readiness"] = aggkitcommon.RedactError(err)
 	} else if ready {
 		entry.TrackerClaimStatus = types.TrackerClaimStatusReadyToClaim
 	}
