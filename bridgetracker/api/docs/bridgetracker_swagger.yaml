@@ -187,8 +187,8 @@ definitions:
         description: |-
           Error carries the error details when Status is types.StepStatusError, or
           types.StepStatusSkipped for the step whose real error triggered the claimed-bridge
-          fallback — its own ErrorType/description are kept as-is. nil for every other step
-          skipped alongside it, never itself attempted, and for every other status
+          fallback — its own ErrorType/description are kept as-is. nil for every other step skipped
+          alongside it, never itself attempted, and for every other status
       expected_duration:
         $ref: '#/definitions/github_com_agglayer_aggkit_bridgetracker_types.Duration'
       result:
@@ -550,6 +550,13 @@ definitions:
           responses with different InstanceID come from different instances (or the same
           instance after a restart)
         type: string
+      pending_networks:
+        description: |-
+          PendingNetworks lists the networks discovered after startup that were not activated
+          because AutoRegisterNewNetworks is disabled, sorted by network id. Omitted when empty
+        items:
+          $ref: '#/definitions/types.PendingNetwork'
+        type: array
       status:
         description: Status is always "ok"
         type: string
@@ -557,6 +564,27 @@ definitions:
         allOf:
         - $ref: '#/definitions/types.VersionInfo'
         description: Version is the build/version information of the running instance
+    type: object
+  types.PendingNetwork:
+    properties:
+      block_number:
+        description: |-
+          BlockNumber is the block of the first event that would have activated the network
+          (0 when the triggering event's block is not available)
+        type: integer
+      first_seen:
+        description: FirstSeen is when that first event was processed (RFC3339, UTC)
+        type: string
+      network_id:
+        description: NetworkID is the network (rollup) id that was not activated
+        type: integer
+      reason:
+        description: Reason describes which activation path was blocked
+        type: string
+      rollup_address:
+        description: RollupAddress is the hex address of the rollup contract that
+          triggered the event
+        type: string
     type: object
   types.StepErrorType:
     enum:

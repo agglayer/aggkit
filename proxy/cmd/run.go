@@ -166,6 +166,10 @@ func runTracker(
 	// served alongside (see aggkitcommon.CORSConfig.OriginAllowed for why it can't just reuse
 	// the REST CORS headers).
 	trackerCfg.CORS = cfg.REST.CORS
+	// The health endpoint exposes the networks the finder discovered after startup but did not
+	// activate (see BridgeServiceFinder.AutoRegisterNewNetworks); finder satisfies
+	// api.PendingNetworksLister directly (PendingNetworks)
+	trackerCfg.PendingNetworksLister = finder
 
 	if err := trackerCfg.AgglayerClient.Validate(); err != nil {
 		log.Fatalf("invalid agglayer client config: %v", err)

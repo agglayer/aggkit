@@ -1,6 +1,10 @@
 package types
 
-import "github.com/agglayer/aggkit"
+import (
+	"time"
+
+	"github.com/agglayer/aggkit"
+)
 
 // HealthStatusOK is the value of HealthResponse.Status: the endpoint always
 // returns 200, so the status is always "ok"
@@ -49,6 +53,27 @@ type HealthResponse struct {
 	ConfigSHA1 string `json:"config_sha1"`
 	// Version is the build/version information of the running instance
 	Version VersionInfo `json:"version"`
+	// PendingNetworks lists the networks discovered after startup that were not activated
+	// because AutoRegisterNewNetworks is disabled, sorted by network id. Omitted when empty
+	PendingNetworks []PendingNetwork `json:"pending_networks,omitempty"`
+}
+
+// PendingNetwork is a network the bridge service finder saw appear after startup but did not
+// activate because [BridgeServiceFinder] AutoRegisterNewNetworks is false. It is served read-only
+// by the health endpoint; activating it requires restarting the service (or adding the network to
+// BridgeURLs/RPCURLs).
+type PendingNetwork struct {
+	// NetworkID is the network (rollup) id that was not activated
+	NetworkID uint32 `json:"network_id"`
+	// RollupAddress is the hex address of the rollup contract that triggered the event
+	RollupAddress string `json:"rollup_address"`
+	// BlockNumber is the block of the first event that would have activated the network
+	// (0 when the triggering event's block is not available)
+	BlockNumber uint64 `json:"block_number"`
+	// FirstSeen is when that first event was processed (RFC3339, UTC)
+	FirstSeen time.Time `json:"first_seen"`
+	// Reason describes which activation path was blocked
+	Reason string `json:"reason"`
 }
 
 // VersionInfo is the build/version information of the running instance,

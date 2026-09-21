@@ -473,7 +473,7 @@
                     "type": "string"
                 },
                 "error": {
-                    "description": "Error carries the error details when Status is types.StepStatusError or\ntypes.StepStatusSkipped (the reason it was skipped, if any — see\ntypes.StepErrorSkipped), nil otherwise",
+                    "description": "Error carries the error details when Status is types.StepStatusError, or\ntypes.StepStatusSkipped for the step whose real error triggered the claimed-bridge\nfallback — its own ErrorType/description are kept as-is. nil for every other step skipped\nalongside it, never itself attempted, and for every other status",
                     "allOf": [
                         {
                             "$ref": "#/definitions/types.ErrorStep"
@@ -878,6 +878,13 @@
                     "description": "InstanceID is a UUID generated at startup; it changes on every execution, so two\nresponses with different InstanceID come from different instances (or the same\ninstance after a restart)",
                     "type": "string"
                 },
+                "pending_networks": {
+                    "description": "PendingNetworks lists the networks discovered after startup that were not activated\nbecause AutoRegisterNewNetworks is disabled, sorted by network id. Omitted when empty",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.PendingNetwork"
+                    }
+                },
                 "status": {
                     "description": "Status is always \"ok\"",
                     "type": "string"
@@ -892,19 +899,42 @@
                 }
             }
         },
+        "types.PendingNetwork": {
+            "type": "object",
+            "properties": {
+                "block_number": {
+                    "description": "BlockNumber is the block of the first event that would have activated the network\n(0 when the triggering event's block is not available)",
+                    "type": "integer"
+                },
+                "first_seen": {
+                    "description": "FirstSeen is when that first event was processed (RFC3339, UTC)",
+                    "type": "string"
+                },
+                "network_id": {
+                    "description": "NetworkID is the network (rollup) id that was not activated",
+                    "type": "integer"
+                },
+                "reason": {
+                    "description": "Reason describes which activation path was blocked",
+                    "type": "string"
+                },
+                "rollup_address": {
+                    "description": "RollupAddress is the hex address of the rollup contract that triggered the event",
+                    "type": "string"
+                }
+            }
+        },
         "types.StepErrorType": {
             "type": "integer",
             "enum": [
                 0,
                 1,
-                2,
-                3
+                2
             ],
             "x-enum-varnames": [
                 "StepErrorTransient",
                 "StepErrorPermanent",
-                "StepErrorExhausted",
-                "StepErrorSkipped"
+                "StepErrorExhausted"
             ]
         },
         "types.VersionInfo": {

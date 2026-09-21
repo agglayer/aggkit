@@ -86,7 +86,8 @@ type API struct {
 // WebSocket endpoint (see wsHandler). activity may be nil, in which case the
 // GET /activity/from/{from_address} endpoint is not registered at all (see RegisterRoutes).
 // bridgeAddressResolver may be nil, in which case neither GET /bridge-address nor
-// GET /bridge-address/{network_id} is registered at all (see RegisterRoutes)
+// GET /bridge-address/{network_id} is registered at all (see RegisterRoutes). pendingLister may
+// be nil, in which case the health endpoint simply omits pending_networks.
 func NewAPI(
 	logger aggkitcommon.Logger,
 	configSHA1 string,
@@ -95,14 +96,16 @@ func NewAPI(
 	bridgeAddressResolver domain.BridgeAddressResolver,
 	registerResolveTimeout time.Duration,
 	cors aggkitcommon.CORSConfig,
+	pendingLister PendingNetworksLister,
 ) *API {
 	api := &API{
 		getTxStatusCmd: &getTxStatusCommand{supervised: supervised, resolveTimeout: registerResolveTimeout},
 		healthCmd: &healthCommand{
 			// instanceID is a UUID generated at startup, exposed by the health endpoint to
 			// tell instances (and restarts of the same instance) apart
-			instanceID: uuid.NewString(),
-			configSHA1: configSHA1,
+			instanceID:    uuid.NewString(),
+			configSHA1:    configSHA1,
+			pendingLister: pendingLister,
 		},
 		wsHandler: newWSHandler(logger, supervised, cors),
 	}
