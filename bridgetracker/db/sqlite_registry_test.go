@@ -1,6 +1,8 @@
 package db
 
 import (
+	"context"
+	"errors"
 	"path"
 	"testing"
 	"time"
@@ -11,6 +13,23 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
+
+// fakeBlockHashVerifier is a BlockHashVerifier stub for tests: canonical maps a block number to
+// the hash CanonicalBlockHash reports for it, or err if set, forces every call to fail instead
+type fakeBlockHashVerifier struct {
+	canonical map[uint64]common.Hash
+	err       error
+}
+
+// CanonicalBlockHash implements BlockHashVerifier
+func (v *fakeBlockHashVerifier) CanonicalBlockHash(
+	_ context.Context, _ uint32, blockNumber uint64,
+) (common.Hash, error) {
+	if v.err != nil {
+		return common.Hash{}, v.err
+	}
+	return v.canonical[blockNumber], nil
+}
 
 const testTxHash = "0x1234567890123456789012345678901234567890123456789012345678901234"
 
@@ -83,7 +102,7 @@ func newTestSQLiteRegistry(t *testing.T) *sqliteRegistry {
 	t.Helper()
 
 	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
-	registry, err := NewSQLiteRegistry(dbPath, 0, log.WithFields("module", "bridgetracker_test"))
+	registry, err := NewSQLiteRegistry(dbPath, 0, log.WithFields("module", "bridgetracker_test"), nil)
 	require.NoError(t, err)
 	r, ok := registry.(*sqliteRegistry)
 	require.True(t, ok)
@@ -153,7 +172,7 @@ func TestSQLiteRegistryPersistsAcrossInstances(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
 	logger := log.WithFields("module", "bridgetracker_test")
 
-	first, err := NewSQLiteRegistry(dbPath, 0, logger)
+	first, err := NewSQLiteRegistry(dbPath, 0, logger, nil)
 	require.NoError(t, err)
 
 	id := domain.TrackingID{NetworkID: 1, TxHash: testHash}
@@ -166,7 +185,7 @@ func TestSQLiteRegistryPersistsAcrossInstances(t *testing.T) {
 	require.True(t, ok)
 	require.NoError(t, firstSQLite.Close())
 
-	second, err := NewSQLiteRegistry(dbPath, 0, logger)
+	second, err := NewSQLiteRegistry(dbPath, 0, logger, nil)
 	require.NoError(t, err)
 	secondSQLite, ok := second.(*sqliteRegistry)
 	require.True(t, ok)
@@ -178,6 +197,74 @@ func TestSQLiteRegistryPersistsAcrossInstances(t *testing.T) {
 	require.Equal(t, steps, tracking.AllSteps())
 	require.Equal(t, types.TrackingStatusFinished, tracking.TrackingStatus())
 	require.Equal(t, 1, second.GetNumTracker())
+}
+
+// TestSQLiteRegistryDiscardsReorgedRow pins the reorg check selectFreshRow adds on top of
+// staleSchema: a persisted, already-resolved row whose origin block hash no longer matches what
+// BlockHashVerifier reports for that block is discarded and re-registered fresh on reload,
+// instead of being served forever as if the deposit were still on the canonical chain
+func TestSQLiteRegistryDiscardsReorgedRow(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
+	logger := log.WithFields("module", "bridgetracker_test")
+	id := domain.TrackingID{NetworkID: 1, TxHash: testHash}
+
+	first, err := NewSQLiteRegistry(dbPath, 0, logger, nil)
+	require.NoError(t, err)
+	published := testBridgeInfo()
+	published.BlockNumber = 100
+	published.BlockHash = common.HexToHash("0xaaaa")
+	_, err = first.Get(id, true)
+	require.NoError(t, err)
+	require.NoError(t, publishStatus(first, id, published, testAllSteps(true)))
+	firstSQLite, ok := first.(*sqliteRegistry)
+	require.True(t, ok)
+	require.NoError(t, firstSQLite.Close())
+
+	// Reopen with a verifier reporting a different canonical hash at block 100: a reorg
+	verifier := &fakeBlockHashVerifier{canonical: map[uint64]common.Hash{100: common.HexToHash("0xbbbb")}}
+	second, err := NewSQLiteRegistry(dbPath, 0, logger, verifier)
+	require.NoError(t, err)
+	secondSQLite, ok := second.(*sqliteRegistry)
+	require.True(t, ok)
+	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
+
+	tracking, err := second.Get(id, true)
+	require.NoError(t, err)
+	require.Nil(t, tracking.Info(), "a reorged-out row must be discarded and re-resolved from scratch")
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
+}
+
+// TestSQLiteRegistryTrustsRowOnVerifierError pins that a BlockHashVerifier error (e.g. the
+// origin RPC briefly unreachable) is not itself evidence of a reorg: the persisted row is
+// trusted as-is instead of discarding the whole cache over a transient hiccup
+func TestSQLiteRegistryTrustsRowOnVerifierError(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
+	logger := log.WithFields("module", "bridgetracker_test")
+	id := domain.TrackingID{NetworkID: 1, TxHash: testHash}
+
+	first, err := NewSQLiteRegistry(dbPath, 0, logger, nil)
+	require.NoError(t, err)
+	published := testBridgeInfo()
+	published.BlockNumber = 100
+	published.BlockHash = common.HexToHash("0xaaaa")
+	_, err = first.Get(id, true)
+	require.NoError(t, err)
+	require.NoError(t, publishStatus(first, id, published, testAllSteps(true)))
+	firstSQLite, ok := first.(*sqliteRegistry)
+	require.True(t, ok)
+	require.NoError(t, firstSQLite.Close())
+
+	verifier := &fakeBlockHashVerifier{err: errors.New("rpc unavailable")}
+	second, err := NewSQLiteRegistry(dbPath, 0, logger, verifier)
+	require.NoError(t, err)
+	secondSQLite, ok := second.(*sqliteRegistry)
+	require.True(t, ok)
+	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
+
+	tracking, err := second.Get(id, false)
+	require.NoError(t, err)
+	require.NotNil(t, tracking.Info(), "a verifier error must not discard the persisted row")
+	require.Equal(t, published.BlockHash, tracking.Info().BlockHash)
 }
 
 // TestSQLiteRegistrySchemaVersionMismatchIsAMiss pins that a row written under a different
@@ -254,7 +341,7 @@ func TestSQLiteRegistryUpdateTrackingStepTerminallyFailedIsNoOp(t *testing.T) {
 // rejected outright, never evicting an existing entry to make room
 func TestSQLiteRegistryCapacity(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
-	registry, err := NewSQLiteRegistry(dbPath, 1, log.WithFields("module", "bridgetracker_test"))
+	registry, err := NewSQLiteRegistry(dbPath, 1, log.WithFields("module", "bridgetracker_test"), nil)
 	require.NoError(t, err)
 	r, ok := registry.(*sqliteRegistry)
 	require.True(t, ok)

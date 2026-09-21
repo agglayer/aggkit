@@ -565,7 +565,9 @@ func skipsClaimInfo(filter types.ActivityFilter) bool {
 func (s *sqliteActivityStore) saveBridgeRow(
 	addr string, item *domain.ScannedBridge, entry *domain.ActivityEntry,
 ) error {
-	data, err := json.Marshal(activityBridgeData{Bridge: entry.Bridge, Claim: entry.Claim, Errors: entry.Errors})
+	data, err := json.Marshal(activityBridgeData{
+		Bridge: entry.Bridge, Claim: entry.Claim, Errors: entry.Errors, Source: entry.Source,
+	})
 	if err != nil {
 		return err
 	}

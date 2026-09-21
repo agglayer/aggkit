@@ -129,7 +129,7 @@ func newTestSQLiteActivityStore(t *testing.T, scanner domain.ActivityBridgeScann
 
 	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
 	logger := log.WithFields("module", "activity_test")
-	supervised, err := NewSQLiteRegistry(dbPath, 10, logger)
+	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
 	store, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
@@ -338,7 +338,7 @@ func TestSQLiteActivityStoreIdleAddressIsNotForgotten(t *testing.T) {
 
 	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
 	logger := log.WithFields("module", "activity_test")
-	supervised, err := NewSQLiteRegistry(dbPath, 10, logger)
+	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 	storeIface, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Minute)
 	require.NoError(t, err)
@@ -375,7 +375,7 @@ func TestSQLiteActivityStorePersistsAcrossInstances(t *testing.T) {
 
 	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
 	logger := log.WithFields("module", "activity_test")
-	supervised, err := NewSQLiteRegistry(dbPath, 10, logger)
+	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
 	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
@@ -400,6 +400,46 @@ func TestSQLiteActivityStorePersistsAcrossInstances(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, claim, entries[0].Claim)
+}
+
+// TestSQLiteActivityStorePersistsSource pins that saveBridgeRow persists ScannedBridge.Source
+// alongside Bridge/Claim/Errors: a reload must still see which system (bridge-service or RPC)
+// supplied the cached entry, since fetchNewBridgesFrom/invalidatedBridges key off it to decide
+// whether a later scan can upgrade or must invalidate the cached entry
+func TestSQLiteActivityStorePersistsSource(t *testing.T) {
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{
+		{Bridge: testBridge(1), NetworkID: testScannedNetworkID, Source: domain.ActivitySourceRPC},
+	}}
+	claims := &fakeActivityClaims{isClaimed: []bool{true}, claimInfo: []*bridgeservicetypes.ClaimResponse{
+		{TxHash: "0xclaimtx"},
+	}}
+
+	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
+	logger := log.WithFields("module", "activity_test")
+	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
+	require.NoError(t, err)
+
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
+	require.NoError(t, err)
+	entries, _, err := first.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Equal(t, domain.ActivitySourceRPC, entries[0].Source)
+	firstSQLite, ok := first.(*sqliteActivityStore)
+	require.True(t, ok)
+	require.NoError(t, firstSQLite.Close())
+
+	// second store, second scanner that would panic if consulted again: proves the second
+	// instance served the entry straight from the DB, Source included, without rescanning
+	second, err := NewSQLiteActivityStore(dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger, time.Hour)
+	require.NoError(t, err)
+	secondSQLite, ok := second.(*sqliteActivityStore)
+	require.True(t, ok)
+	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
+
+	entries, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, domain.ActivitySourceRPC, entries[0].Source)
 }
 
 // TestSQLiteActivityStoreRecordsScanWarnings verifies a network's scan failure is persisted into

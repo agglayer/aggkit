@@ -6,6 +6,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -41,6 +42,22 @@ const triggerBufferSize = 256
 // rather than risking misinterpreting stale/incompatible JSON — this is a cache, not a source
 // of truth, so "discard and recompute" is always a safe fallback.
 const trackedBridgeSchemaVersion = 1
+
+// blockHashVerifyTimeout bounds how long selectFreshRow waits on BlockHashVerifier before giving
+// up and trusting the persisted row as-is, so a slow/unreachable origin RPC endpoint never blocks
+// a caller of the context-less SupervisedStore interface indefinitely
+const blockHashVerifyTimeout = 3 * time.Second
+
+// BlockHashVerifier reports the current canonical hash at blockNumber on networkID, used by
+// selectFreshRow to detect a persisted row whose origin block was since reorged out from under
+// it — see its doc. A nil BlockHashVerifier (see NewSQLiteRegistry) skips this check entirely:
+// the same trust-what's-on-disk behavior this adapter had before reorg validation existed, and
+// the same exposure the in-memory adapter already has for the far shorter window it stays alive
+// without a restart.
+type BlockHashVerifier interface {
+	// CanonicalBlockHash returns the block hash currently canonical at blockNumber on networkID
+	CanonicalBlockHash(ctx context.Context, networkID uint32, blockNumber uint64) (common.Hash, error)
+}
 
 // trackedBridgeRow is the tracked_bridge row shape (see migrations/bridgetracker0001.sql),
 // mapped through meddler like the rest of the repo's SQLite storage
@@ -109,6 +126,9 @@ type sqliteRegistry struct {
 	logger aggkitcommon.Logger
 	// now is the clock updated_at/last_access/terminal_since are stamped with, injectable for tests
 	now func() time.Time
+	// verifier checks a persisted row's origin block hash against the chain on reload — see
+	// BlockHashVerifier and selectFreshRow. nil skips the check
+	verifier BlockHashVerifier
 
 	// maxEntries bounds how many distinct bridges can be registered at once, mirroring
 	// bridgetracker's own in-memory registry
@@ -140,8 +160,11 @@ var _ domain.SupervisedRegistry = (*sqliteRegistry)(nil)
 
 // NewSQLiteRegistry returns a domain.SupervisedRegistry backed by a SQLite database at dbPath,
 // creating the file and running its migrations if it does not exist yet. maxEntries <= 0 falls
-// back to defaultMaxTrackedBridges, exactly like bridgetracker.NewMemoryRegistry
-func NewSQLiteRegistry(dbPath string, maxEntries int, logger aggkitcommon.Logger) (domain.SupervisedRegistry, error) {
+// back to defaultMaxTrackedBridges, exactly like bridgetracker.NewMemoryRegistry. verifier may be
+// nil, which skips reorg validation on reload entirely (see BlockHashVerifier)
+func NewSQLiteRegistry(
+	dbPath string, maxEntries int, logger aggkitcommon.Logger, verifier BlockHashVerifier,
+) (domain.SupervisedRegistry, error) {
 	if maxEntries <= 0 {
 		maxEntries = defaultMaxTrackedBridges
 	}
@@ -162,6 +185,7 @@ func NewSQLiteRegistry(dbPath string, maxEntries int, logger aggkitcommon.Logger
 		db:          sqlDB,
 		logger:      logger,
 		now:         time.Now,
+		verifier:    verifier,
 		maxEntries:  maxEntries,
 		numEntries:  numEntries,
 		trigger:     make(chan domain.TrackingID, triggerBufferSize),
@@ -192,6 +216,54 @@ func (r *sqliteRegistry) selectRow(id domain.TrackingID) (*trackedBridgeRow, err
 	return &row, nil
 }
 
+// selectFreshRow is selectRow plus a reorg check: a row whose persisted origin_block_hash no
+// longer matches the origin chain's current hash at origin_block_number was accepted on a block
+// since reorged out, and is reported as not-found exactly like a stale-schema row — so
+// getOrCreate re-registers and re-resolves it from scratch instead of serving status for an
+// orphaned deposit forever (see BlockHashVerifier and rowIsStale)
+func (r *sqliteRegistry) selectFreshRow(id domain.TrackingID) (*trackedBridgeRow, error) {
+	row, err := r.selectRow(id)
+	if err != nil {
+		return nil, err
+	}
+	if r.rowIsStale(id, row) {
+		return nil, aggkitdb.ErrNotFound
+	}
+	return row, nil
+}
+
+// rowIsStale reports whether row can no longer be trusted as-is and must be discarded in favor
+// of a fresh registration: either its schema is stale (see staleSchema, already filtered out of
+// row by selectRow but not by selectRowIgnoringSchema) or, once resolved and with a
+// BlockHashVerifier configured, its persisted origin block hash no longer matches the chain's
+// current canonical hash at origin_block_number — a bridge accepted on a block since reorged
+// out. A verifier error (e.g. the origin RPC briefly unreachable) is not itself evidence of a
+// reorg, so it is logged and row is trusted as fresh rather than discarding the whole cache
+// over a transient hiccup
+func (r *sqliteRegistry) rowIsStale(id domain.TrackingID, row *trackedBridgeRow) bool {
+	if row.staleSchema() {
+		return true
+	}
+	if r.verifier == nil || row.OriginBlockNumber == 0 {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), blockHashVerifyTimeout)
+	defer cancel()
+	current, err := r.verifier.CanonicalBlockHash(ctx, id.NetworkID, row.OriginBlockNumber)
+	if err != nil {
+		r.logger.Warnf("bridgetracker: verifying origin block %d of %s is still canonical: %v",
+			row.OriginBlockNumber, id, err)
+		return false
+	}
+	if current == row.OriginBlockHash {
+		return false
+	}
+	r.logger.Infof("bridgetracker: origin block %d of %s changed hash (%s -> %s), discarding stale row",
+		row.OriginBlockNumber, id, row.OriginBlockHash, current)
+	return true
+}
+
 // freshRow builds the (Registered, nil BridgeStatus) row a fresh registration starts as
 func (r *sqliteRegistry) freshRow(id domain.TrackingID, now time.Time) (*trackedBridgeRow, error) {
 	data, err := json.Marshal(trackedBridgeData{})
@@ -217,7 +289,7 @@ func (r *sqliteRegistry) freshRow(id domain.TrackingID, now time.Time) (*tracked
 func (r *sqliteRegistry) getOrCreate(
 	id domain.TrackingID, createIfNotExists bool,
 ) (row *trackedBridgeRow, created bool, err error) {
-	row, err = r.selectRow(id)
+	row, err = r.selectFreshRow(id)
 	if err == nil {
 		return row, false, nil
 	}
@@ -237,9 +309,9 @@ func (r *sqliteRegistry) getOrCreate(
 // create registers a fresh row for id, or domain.ErrRegistryFull if the registry is already at
 // maxEntries. Reaching the cap never evicts an existing entry to make room, whether idle or
 // actively watched — PruneTerminal/PruneIdle are what keep the registry under the cap during
-// normal operation, and a request that would exceed it is simply rejected. A stale row
-// (staleSchema) is overwritten in place instead of inserted as a new one, so it never counts
-// twice against maxEntries
+// normal operation, and a request that would exceed it is simply rejected. A stale row (see
+// rowIsStale: stale schema or reorged-out origin block) is overwritten in place instead of
+// inserted as a new one, so it never counts twice against maxEntries
 func (r *sqliteRegistry) create(id domain.TrackingID) (*trackedBridgeRow, error) {
 	now := r.now()
 	row, err := r.freshRow(id, now)
@@ -266,13 +338,13 @@ func (r *sqliteRegistry) create(id domain.TrackingID) (*trackedBridgeRow, error)
 	}
 	r.countMu.Unlock()
 
-	// Lost the race against a concurrent create for the same id, or overwriting a stale row:
-	// either way the row already exists at this point, just possibly with an outdated schema
+	// Lost the race against a concurrent create for the same id, or overwriting a stale
+	// (schema or reorged-out) row: either way the row already exists at this point
 	existing, selErr := r.selectRowIgnoringSchema(id)
 	if selErr != nil {
 		return nil, fmt.Errorf("creating tracked_bridge row for %s: %w", id, insertErr)
 	}
-	if !existing.staleSchema() {
+	if !r.rowIsStale(id, existing) {
 		// a genuine concurrent creation beat this one: return its row, not a fresh one
 		return existing, nil
 	}
