@@ -63,6 +63,9 @@ type activityAddressRow struct {
 	// LastWarnings is the JSON-encoded []domain.ActivityWarning the last background refresh
 	// reported, or NULL if nothing has refreshed yet or the last refresh reported none
 	LastWarnings []byte `meddler:"last_warnings"`
+	// Refreshed is set once RefreshAddress has completed at least once for this address
+	// (successful or not) — RegisterAndAwait's ready return value
+	Refreshed bool `meddler:"refreshed"`
 }
 
 func (row *activityAddressRow) staleSchema() bool {
@@ -334,12 +337,14 @@ func (s *sqliteActivityStore) registerAddress(addr string, now time.Time) (creat
 	}
 	_, err = s.db.Exec(
 		`INSERT INTO activity_address
-			(from_address, schema_version, updated_at, last_access, scan_state, include_tracking, last_warnings)
-		 VALUES (?, ?, ?, ?, ?, 0, NULL)
+			(from_address, schema_version, updated_at, last_access, scan_state, include_tracking,
+			 last_warnings, refreshed)
+		 VALUES (?, ?, ?, ?, ?, 0, NULL, 0)
 		 ON CONFLICT (from_address) DO UPDATE SET
 			schema_version = excluded.schema_version, updated_at = excluded.updated_at,
 			last_access = excluded.last_access, scan_state = excluded.scan_state,
-			include_tracking = excluded.include_tracking, last_warnings = excluded.last_warnings`,
+			include_tracking = excluded.include_tracking, last_warnings = excluded.last_warnings,
+			refreshed = excluded.refreshed`,
 		addr, activitySchemaVersion, now.Unix(), now.Unix(), emptyScanState,
 	)
 	if err != nil {
@@ -354,25 +359,25 @@ func (s *sqliteActivityStore) registerAddress(addr string, now time.Time) (creat
 }
 
 // RegisterAndAwait implements domain.ActivitySupervisedStore. On an already-registered address
-// it behaves like a plain touch: no trigger, no wait. On a newly registered address it wakes
-// ActivityEngine (see signalTrigger/Triggers) and waits up to timeout for that first refresh to
-// complete, falling back to whatever GetActivity finds cached (possibly nothing yet) if timeout
-// elapses first
-func (s *sqliteActivityStore) RegisterAndAwait(fromAddress common.Address, timeout time.Duration) error {
+// it behaves like a plain touch: no trigger, no wait, ready reports its current refreshed
+// column. On a newly registered address it wakes ActivityEngine (see signalTrigger/Triggers)
+// and waits up to timeout for that first refresh to complete, reporting whether it actually did
+// (ready) or timeout elapsed first with nothing to show yet
+func (s *sqliteActivityStore) RegisterAndAwait(fromAddress common.Address, timeout time.Duration) (bool, error) {
 	addr := fromAddress.Hex()
 	created, err := s.registerAddress(addr, s.now())
 	if err != nil {
 		if errors.Is(err, domain.ErrActivityRegistryFull) {
-			return err
+			return false, err
 		}
-		return fmt.Errorf("registering activity address %s: %w", fromAddress, err)
+		return false, fmt.Errorf("registering activity address %s: %w", fromAddress, err)
 	}
 	if !created {
-		return nil
+		return s.isRefreshed(addr), nil
 	}
 	if timeout <= 0 {
 		s.signalTrigger(fromAddress)
-		return nil
+		return false, nil
 	}
 
 	s.subMu.Lock()
@@ -389,7 +394,17 @@ func (s *sqliteActivityStore) RegisterAndAwait(fromAddress common.Address, timeo
 	case <-ch:
 	case <-timer.C:
 	}
-	return nil
+	return s.isRefreshed(addr), nil
+}
+
+// isRefreshed reports whether addr's row currently has its refreshed column set; false for a
+// missing row (defensive — should not happen given the caller always just registered it)
+func (s *sqliteActivityStore) isRefreshed(addr string) bool {
+	row, err := s.selectAddressRow(addr)
+	if err != nil {
+		return false
+	}
+	return row.Refreshed
 }
 
 // addWaiterLocked registers ch as a waiter for fromAddress's next refresh. Callers must hold subMu
@@ -426,6 +441,18 @@ func (s *sqliteActivityStore) notifyWaiters(fromAddress common.Address) {
 		close(ch)
 	}
 	delete(s.waiters, fromAddress)
+}
+
+// markRefreshed stamps addr's activity_address row as having completed at least one background
+// refresh (successful or not) — read back by RegisterAndAwait/isRefreshed to decide whether the
+// address is ready to answer, or the client should be told to retry later (see
+// activityCommand.Execute's 503 + Retry-After). A no-op if the row is missing (defensive: the
+// caller always registered it first); a write failure is logged, not propagated, same as
+// registerAddress's own best-effort bookkeeping writes
+func (s *sqliteActivityStore) markRefreshed(addr string) {
+	if _, err := s.db.Exec("UPDATE activity_address SET refreshed = 1 WHERE from_address = ?", addr); err != nil {
+		s.logger.Warnf("bridgetracker: marking activity address %s refreshed: %v", addr, err)
+	}
 }
 
 // signalTrigger notifies ActivityEngine that fromAddress was just registered. It never blocks:
@@ -495,6 +522,7 @@ func (s *sqliteActivityStore) PruneIdle(olderThan time.Time) (int, error) {
 func (s *sqliteActivityStore) RefreshAddress(ctx context.Context, fromAddress common.Address) error {
 	addr := fromAddress.Hex()
 	defer s.notifyWaiters(fromAddress)
+	defer s.markRefreshed(addr)
 
 	addrRow, err := s.selectAddressRow(addr)
 	if err != nil {

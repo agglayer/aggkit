@@ -293,21 +293,31 @@ func (_c *ActivityRegistry_RefreshAddress_Call) RunAndReturn(run func(context.Co
 }
 
 // RegisterAndAwait provides a mock function with given fields: fromAddress, timeout
-func (_m *ActivityRegistry) RegisterAndAwait(fromAddress common.Address, timeout time.Duration) error {
+func (_m *ActivityRegistry) RegisterAndAwait(fromAddress common.Address, timeout time.Duration) (bool, error) {
 	ret := _m.Called(fromAddress, timeout)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RegisterAndAwait")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(common.Address, time.Duration) error); ok {
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(common.Address, time.Duration) (bool, error)); ok {
+		return rf(fromAddress, timeout)
+	}
+	if rf, ok := ret.Get(0).(func(common.Address, time.Duration) bool); ok {
 		r0 = rf(fromAddress, timeout)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(bool)
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(common.Address, time.Duration) error); ok {
+		r1 = rf(fromAddress, timeout)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // ActivityRegistry_RegisterAndAwait_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RegisterAndAwait'
@@ -329,12 +339,12 @@ func (_c *ActivityRegistry_RegisterAndAwait_Call) Run(run func(fromAddress commo
 	return _c
 }
 
-func (_c *ActivityRegistry_RegisterAndAwait_Call) Return(_a0 error) *ActivityRegistry_RegisterAndAwait_Call {
-	_c.Call.Return(_a0)
+func (_c *ActivityRegistry_RegisterAndAwait_Call) Return(ready bool, err error) *ActivityRegistry_RegisterAndAwait_Call {
+	_c.Call.Return(ready, err)
 	return _c
 }
 
-func (_c *ActivityRegistry_RegisterAndAwait_Call) RunAndReturn(run func(common.Address, time.Duration) error) *ActivityRegistry_RegisterAndAwait_Call {
+func (_c *ActivityRegistry_RegisterAndAwait_Call) RunAndReturn(run func(common.Address, time.Duration) (bool, error)) *ActivityRegistry_RegisterAndAwait_Call {
 	_c.Call.Return(run)
 	return _c
 }

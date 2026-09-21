@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
@@ -26,10 +27,13 @@ import (
 type fakeActivityRegistry struct {
 	calls []string
 
-	registerAndAwaitErr error
-	getActivityEntries  []*domain.ActivityEntry
-	getActivityWarnings []domain.ActivityWarning
-	getActivityErr      error
+	// registerAndAwaitReady is RegisterAndAwait's ready return value; defaults to true (most
+	// tests exercise the already-ready path), set to false to exercise the not-ready-yet 503
+	registerAndAwaitReady bool
+	registerAndAwaitErr   error
+	getActivityEntries    []*domain.ActivityEntry
+	getActivityWarnings   []domain.ActivityWarning
+	getActivityErr        error
 
 	lastRegisterAddress common.Address
 	lastRegisterTimeout time.Duration
@@ -38,11 +42,17 @@ type fakeActivityRegistry struct {
 	lastGetFilter       types.ActivityFilter
 }
 
-func (f *fakeActivityRegistry) RegisterAndAwait(fromAddress common.Address, timeout time.Duration) error {
+// newFakeActivityRegistry returns a fakeActivityRegistry whose RegisterAndAwait reports ready,
+// so a test only needs to override the fields it actually cares about
+func newFakeActivityRegistry() *fakeActivityRegistry {
+	return &fakeActivityRegistry{registerAndAwaitReady: true}
+}
+
+func (f *fakeActivityRegistry) RegisterAndAwait(fromAddress common.Address, timeout time.Duration) (bool, error) {
 	f.calls = append(f.calls, "RegisterAndAwait")
 	f.lastRegisterAddress = fromAddress
 	f.lastRegisterTimeout = timeout
-	return f.registerAndAwaitErr
+	return f.registerAndAwaitReady, f.registerAndAwaitErr
 }
 
 func (f *fakeActivityRegistry) GetActiveAddresses() ([]common.Address, error) { return nil, nil }
@@ -68,9 +78,11 @@ func (f *fakeActivityRegistry) FlushActivity(fromAddress common.Address) {
 var testActivityFromAddress = common.HexToAddress("0x1111111111111111111111111111111111111111")
 
 // newActivityTestContext builds a *gin.Context for GET /activity/from/{from_address}, with
-// rawQuery as-is (e.g. "includeTracking=true&flush_cache=true")
+// rawQuery as-is (e.g. "includeTracking=true&flush_cache=true"), backed by a real
+// httptest.ResponseRecorder so a test can inspect any response header Execute sets (e.g.
+// Retry-After) — gin.CreateTestContext(nil) would panic on the first c.Header call
 func newActivityTestContext(rawQuery string) *gin.Context {
-	c, _ := gin.CreateTestContext(nil)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = &http.Request{URL: &url.URL{RawQuery: rawQuery}}
 	c.Params = gin.Params{{Key: fromAddressParam, Value: testActivityFromAddress.Hex()}}
 	return c
@@ -81,7 +93,7 @@ func newActivityTestContext(rawQuery string) *gin.Context {
 // mirroring getTxStatusCommand's GetAndAwait-then-read ordering, and that the configured
 // resolveTimeout is threaded through unchanged.
 func TestActivityCommandExecute_RegistersBeforeReading(t *testing.T) {
-	registry := &fakeActivityRegistry{}
+	registry := newFakeActivityRegistry()
 	cmd := &activityCommand{registry: registry, resolveTimeout: 5 * time.Second}
 
 	code, obj, errData := cmd.Execute(newActivityTestContext(""))
@@ -101,7 +113,7 @@ func TestActivityCommandExecute_RegistersBeforeReading(t *testing.T) {
 // FlushActivity before RegisterAndAwait, mirroring getTxStatusCommand's flush-then-register
 // ordering for the tracker endpoint.
 func TestActivityCommandExecute_FlushCacheRunsBeforeRegister(t *testing.T) {
-	registry := &fakeActivityRegistry{}
+	registry := newFakeActivityRegistry()
 	cmd := &activityCommand{registry: registry}
 
 	code, _, errData := cmd.Execute(newActivityTestContext("flush_cache=true"))
@@ -138,6 +150,24 @@ func TestActivityCommandExecute_RegisterFailureMapsTo500(t *testing.T) {
 	require.NotNil(t, errData)
 	require.Equal(t, http.StatusInternalServerError, errData.Code)
 	require.Equal(t, []string{"RegisterAndAwait"}, registry.calls)
+}
+
+// TestActivityCommandExecute_NotReadyMapsTo503WithRetryAfter verifies that a from_address whose
+// first background refresh has not completed yet (RegisterAndAwait's ready=false) answers 503
+// with a Retry-After header set to the configured pollInterval, and never reaches GetActivity —
+// answering 200 with an empty result here would be indistinguishable from "no activity at all"
+func TestActivityCommandExecute_NotReadyMapsTo503WithRetryAfter(t *testing.T) {
+	registry := &fakeActivityRegistry{registerAndAwaitReady: false}
+	cmd := &activityCommand{registry: registry, pollInterval: 30 * time.Second}
+
+	c := newActivityTestContext("")
+	code, obj, errData := cmd.Execute(c)
+	require.Zero(t, code)
+	require.Nil(t, obj)
+	require.NotNil(t, errData)
+	require.Equal(t, http.StatusServiceUnavailable, errData.Code)
+	require.Equal(t, "30", c.Writer.Header().Get(retryAfterHeader))
+	require.Equal(t, []string{"RegisterAndAwait"}, registry.calls, "GetActivity must not run while not ready")
 }
 
 type boomError struct{}

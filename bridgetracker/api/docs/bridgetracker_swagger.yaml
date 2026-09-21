@@ -299,9 +299,25 @@ definitions:
         - 1000000000
         - 60000000000
         - 3600000000000
+        - -9223372036854775808
+        - 9223372036854775807
+        - 1
+        - 1000
+        - 1000000
+        - 1000000000
+        - 60000000000
+        - 3600000000000
         format: int64
         type: integer
         x-enum-varnames:
+        - minDuration
+        - maxDuration
+        - Nanosecond
+        - Microsecond
+        - Millisecond
+        - Second
+        - Minute
+        - Hour
         - minDuration
         - maxDuration
         - Nanosecond
@@ -592,7 +608,9 @@ paths:
       description: |-
         Registers from_address as supervised and reports whatever the activity engine's
         background refresh has cached for it so far — on a first-time address, this
-        request waits briefly for that first refresh before answering (see
+        request waits briefly for that first refresh before answering, and answers 503
+        with a Retry-After header (the engine's poll interval) if it is still not ready
+        by then, instead of an empty 200 indistinguishable from "no activity" (see
         RegisterResolveTimeout-equivalent config). Results are cached: a bridge already
         known to be claimed, with its claim record already fetched, is not rechecked on a
         later refresh. Passing includeTracking=true additionally marks the address so a
@@ -645,7 +663,7 @@ paths:
           schema:
             $ref: '#/definitions/types.ErrorData'
         "503":
-          description: The supervised address registry is at capacity
+          description: Registry at capacity, or from_address not ready yet (see Retry-After)
           schema:
             $ref: '#/definitions/types.ErrorData'
       summary: Get bridge activity by sender address

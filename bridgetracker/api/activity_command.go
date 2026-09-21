@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
@@ -15,6 +16,10 @@ import (
 // compile-time check: activityCommand fulfils the command interface
 var _ command = (*activityCommand)(nil)
 
+// retryAfterHeader is the standard HTTP header telling the client how long to wait before
+// retrying a 503 response (RFC 9110 §10.2.3), expressed here in whole seconds
+const retryAfterHeader = "Retry-After"
+
 // activityCommand answers GET /activity/from/{from_address}: it registers from_address as
 // supervised (see domain.ActivitySupervisedStore.RegisterAndAwait), then reports whatever is
 // cached for it — claim state and, optionally, tracking state — same idea as
@@ -25,6 +30,11 @@ type activityCommand struct {
 	// for the activity engine's immediate refresh attempt to complete before answering (see
 	// domain.ActivitySupervisedStore.RegisterAndAwait); <= 0 disables the wait
 	resolveTimeout time.Duration
+	// pollInterval is the activity engine's own background refresh cadence (see
+	// bridgetracker.ActivityEngineConfig.PollInterval), reported as the Retry-After value of a
+	// 503 response for an address whose first refresh has not completed yet — the client's next
+	// request has a real chance of finding it ready by then, instead of retrying blindly
+	pollInterval time.Duration
 }
 
 // ActivityItem is one bridge found for the requested from_address. Bridge and Claim are the
@@ -100,27 +110,35 @@ type ActivityResponse struct {
 // domain.ActivitySupervisedStore.RegisterAndAwait) — on a first-time address, this waits up to
 // the configured resolveTimeout for the activity engine's background scan of every configured
 // bridge service to complete before answering, the same head-start idea getTxStatusCommand
-// gives a freshly registered tx — then reports whatever is currently cached for it. Passing
-// ?includeTracking=true additionally marks the address as wanting tracking enrichment: every
-// still-unclaimed bridge found for it is registered with the bridge tracker (same effect as
-// calling GetTxStatus for it) by a following background refresh, and its current tracking
-// snapshot included once that has happened. ?filterBridges=claimed|pending|readyToClaim|error
-// restricts the result to only bridges with that claim state (default "all"); the background
-// refresh always fetches a claimed bridge's claim record regardless of this filter, so switching
-// to "all"/"claimed" later never needs a fresh fetch for it. ?flush_cache=true discards whatever
-// is already cached for from_address, so the next background refresh rechecks everything from
-// scratch instead of reusing cached state — the response to the very same request that set it is
-// still whatever (if anything) is cached at that point, exactly like a first-time registration
-// waiting out resolveTimeout with nothing yet to show. A network whose bridge service could not
-// be scanned never fails the request: it is skipped and reported in the "warnings" field instead,
-// so Bridges is still whatever every other network reported. 200 OK unless: invalid
-// from_address/filterBridges (ErrorData/400), the address registry is at capacity
-// (ErrorData/503), or registering otherwise failed (ErrorData/500)
+// gives a freshly registered tx. If that first refresh has still not completed by the time the
+// wait ends (a slow scan, or the engine falling behind), Execute answers 503 with a Retry-After
+// header set to the engine's own poll interval, instead of a 200 with an empty result that would
+// be indistinguishable from "this address genuinely has no activity" — the client is expected to
+// retry after that interval, by which point the engine's regular cadence should have caught up
+// even if the initial wait did not. Once ready, it reports whatever is currently cached for
+// from_address. Passing ?includeTracking=true additionally marks the address as wanting tracking
+// enrichment: every still-unclaimed bridge found for it is registered with the bridge tracker
+// (same effect as calling GetTxStatus for it) by a following background refresh, and its current
+// tracking snapshot included once that has happened. ?filterBridges=claimed|pending|readyToClaim|
+// error restricts the result to only bridges with that claim state (default "all"); the
+// background refresh always fetches a claimed bridge's claim record regardless of this filter,
+// so switching to "all"/"claimed" later never needs a fresh fetch for it. ?flush_cache=true
+// discards whatever is already cached for from_address, so the next background refresh rechecks
+// everything from scratch instead of reusing cached state — the response to the very same
+// request that set it goes through the same not-ready-yet 503 path as a first-time registration,
+// since flushing resets from_address's readiness exactly like never having been requested
+// before. A network whose bridge service could not be scanned never fails the request: it is
+// skipped and reported in the "warnings" field instead, so Bridges is still whatever every other
+// network reported. 200 OK unless: invalid from_address/filterBridges (ErrorData/400), the
+// address registry is at capacity or from_address is not ready yet (ErrorData/503, the latter
+// with Retry-After), or registering otherwise failed (ErrorData/500)
 //
 // @Summary Get bridge activity by sender address
 // @Description Registers from_address as supervised and reports whatever the activity engine's
 // @Description background refresh has cached for it so far — on a first-time address, this
-// @Description request waits briefly for that first refresh before answering (see
+// @Description request waits briefly for that first refresh before answering, and answers 503
+// @Description with a Retry-After header (the engine's poll interval) if it is still not ready
+// @Description by then, instead of an empty 200 indistinguishable from "no activity" (see
 // @Description RegisterResolveTimeout-equivalent config). Results are cached: a bridge already
 // @Description known to be claimed, with its claim record already fetched, is not rechecked on a
 // @Description later refresh. Passing includeTracking=true additionally marks the address so a
@@ -141,7 +159,7 @@ type ActivityResponse struct {
 // @Success 200 {object} ActivityResponse
 // @Failure 400 {object} types.ErrorData "Invalid from_address or filterBridges"
 // @Failure 500 {object} types.ErrorData "Registering from_address failed"
-// @Failure 503 {object} types.ErrorData "The supervised address registry is at capacity"
+// @Failure 503 {object} types.ErrorData "Registry at capacity, or from_address not ready yet (see Retry-After)"
 // @Router /activity/from/{from_address} [get]
 func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData) {
 	addrStr := c.Param(fromAddressParam)
@@ -160,11 +178,24 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: err.Error()}
 	}
 
-	if err := cmd.registry.RegisterAndAwait(fromAddress, cmd.resolveTimeout); err != nil {
+	ready, err := cmd.registry.RegisterAndAwait(fromAddress, cmd.resolveTimeout)
+	if err != nil {
 		if errors.Is(err, domain.ErrActivityRegistryFull) {
 			return 0, nil, &types.ErrorData{Code: http.StatusServiceUnavailable, Message: err.Error()}
 		}
 		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()}
+	}
+	if !ready {
+		// from_address was only just registered and its first background refresh has not
+		// completed yet (see domain.ActivitySupervisedStore.RegisterAndAwait) — answering with
+		// an empty ActivityResponse here would be indistinguishable from "this address genuinely
+		// has no activity", so report 503 instead, with Retry-After set to the engine's own
+		// refresh cadence: the next request has a real chance of landing after that refresh
+		c.Header(retryAfterHeader, strconv.Itoa(int(cmd.pollInterval.Round(time.Second).Seconds())))
+		return 0, nil, &types.ErrorData{
+			Code:    http.StatusServiceUnavailable,
+			Message: "activity for this address is not ready yet, retry after " + cmd.pollInterval.String(),
+		}
 	}
 
 	entries, warnings, err := cmd.registry.GetActivity(c.Request.Context(), fromAddress, includeTracking, filter)

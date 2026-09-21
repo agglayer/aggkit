@@ -41,6 +41,10 @@ type activityAddrCache struct {
 	// waiters holds one channel per RegisterAndAwait call currently blocked on this address's
 	// next refresh; closed and cleared by RefreshAddress once it completes
 	waiters map[chan struct{}]struct{}
+	// refreshed is set once RefreshAddress has completed at least once for this address
+	// (successful or not) — RegisterAndAwait's ready return value, so a caller with nothing
+	// meaningful to show yet can be told apart from one whose address genuinely has no activity
+	refreshed bool
 }
 
 // ActivityCache implements domain.ActivityRegistry: for a given from_address it scans every
@@ -102,17 +106,17 @@ func NewActivityCache(
 }
 
 // RegisterAndAwait implements domain.ActivitySupervisedStore. On an already-registered address
-// it behaves like a plain touch: no trigger, no wait. On a newly registered address it wakes
-// ActivityEngine (see signalTrigger/Triggers) and waits up to timeout for that first refresh to
-// complete, falling back to whatever GetActivity finds cached (possibly nothing yet) if timeout
-// elapses first
-func (a *ActivityCache) RegisterAndAwait(fromAddress common.Address, timeout time.Duration) error {
+// it behaves like a plain touch: no trigger, no wait, ready reports its current refreshed
+// state. On a newly registered address it wakes ActivityEngine (see signalTrigger/Triggers) and
+// waits up to timeout for that first refresh to complete, reporting whether it actually did
+// (ready) or timeout elapsed first with nothing to show yet
+func (a *ActivityCache) RegisterAndAwait(fromAddress common.Address, timeout time.Duration) (bool, error) {
 	a.mu.Lock()
 	cache, existed := a.byAddr[fromAddress]
 	if !existed {
 		if len(a.byAddr) >= DefaultMaxActivityAddresses {
 			a.mu.Unlock()
-			return domain.ErrActivityRegistryFull
+			return false, domain.ErrActivityRegistryFull
 		}
 		cache = &activityAddrCache{
 			entries: make(map[string]*domain.ActivityEntry),
@@ -123,11 +127,12 @@ func (a *ActivityCache) RegisterAndAwait(fromAddress common.Address, timeout tim
 	cache.lastAccess = a.now()
 
 	if existed || timeout <= 0 {
+		ready := cache.refreshed
 		a.mu.Unlock()
 		if !existed {
 			a.signalTrigger(fromAddress)
 		}
-		return nil
+		return ready, nil
 	}
 
 	ch := make(chan struct{})
@@ -148,7 +153,11 @@ func (a *ActivityCache) RegisterAndAwait(fromAddress common.Address, timeout tim
 	case <-ch:
 	case <-timer.C:
 	}
-	return nil
+
+	a.mu.Lock()
+	ready := cache.refreshed
+	a.mu.Unlock()
+	return ready, nil
 }
 
 // GetActiveAddresses implements domain.ActivitySupervisedStore: every currently supervised
@@ -257,12 +266,14 @@ func (a *ActivityCache) RefreshAddress(ctx context.Context, fromAddress common.A
 	return nil
 }
 
-// finishRefresh wakes every RegisterAndAwait call currently blocked on cache and clears the
-// waiter set; safe to call even when nobody is waiting
+// finishRefresh marks cache as having completed at least one refresh (see activityAddrCache.
+// refreshed, RegisterAndAwait's ready return value) and wakes every RegisterAndAwait call
+// currently blocked on it, clearing the waiter set; safe to call even when nobody is waiting
 func (a *ActivityCache) finishRefresh(cache *activityAddrCache) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	cache.refreshed = true
 	for ch := range cache.waiters {
 		close(ch)
 	}

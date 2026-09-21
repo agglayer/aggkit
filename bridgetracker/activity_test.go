@@ -138,6 +138,18 @@ func newTestActivityCache(scanner ActivityBridgeScanner, claims ActivityClaimChe
 	return NewActivityCache(scanner, claims, supervised, log.WithFields("module", "activity_test"), time.Hour)
 }
 
+// mustRegisterActivity registers addr and fails the test on error, returning whether it is
+// ready (see domain.ActivitySupervisedStore.RegisterAndAwait) for the few tests that care;
+// callers that don't care simply ignore the return value
+func mustRegisterActivity(
+	t *testing.T, registry ActivitySupervisedStore, addr common.Address, timeout time.Duration,
+) bool {
+	t.Helper()
+	ready, err := registry.RegisterAndAwait(addr, timeout)
+	require.NoError(t, err)
+	return ready
+}
+
 // refreshAndGet registers addr (a no-op if already registered), optionally primes its sticky
 // includeTracking flag (see domain.ActivityQuerier.GetActivity's doc — the flag must already be
 // set before RefreshAddress runs for that refresh to enrich tracking, exactly like production:
@@ -151,7 +163,7 @@ func refreshAndGet(
 ) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
 	t.Helper()
 	ctx := t.Context()
-	if err := registry.RegisterAndAwait(addr, 0); err != nil {
+	if _, err := registry.RegisterAndAwait(addr, 0); err != nil {
 		return nil, nil, err
 	}
 	if includeTracking {
@@ -173,7 +185,7 @@ func TestActivityCache_UnclaimedBridgeIsRecheckedEveryCall(t *testing.T) {
 	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
 
 	cache := newTestActivityCache(scanner, claims)
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	for range 2 {
 		require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
@@ -196,7 +208,7 @@ func TestActivityCache_GetActivityIsCacheOnly(t *testing.T) {
 	claims := &fakeActivityClaims{isClaimed: []bool{false}}
 
 	cache := newTestActivityCache(scanner, claims)
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
 	require.NoError(t, err)
@@ -333,7 +345,7 @@ func TestActivityCache_ClaimedAndIndexedBridgeIsNeverRechecked(t *testing.T) {
 	claims := &fakeActivityClaims{isClaimed: []bool{true}, claimInfo: []*bridgeservicetypes.ClaimResponse{claim}}
 
 	cache := newTestActivityCache(scanner, claims)
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
@@ -398,7 +410,7 @@ func TestActivityCache_ClaimedButNotYetIndexedBridgeIsRetried(t *testing.T) {
 	}
 
 	cache := newTestActivityCache(scanner, claims)
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
@@ -421,7 +433,7 @@ func TestActivityCache_ScannerErrorFailsTheRefresh(t *testing.T) {
 	wantErr := errors.New("bridge service unreachable")
 	scanner := &fakeActivityScanner{err: wantErr}
 	cache := newTestActivityCache(scanner, &fakeActivityClaims{})
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	err := cache.RefreshAddress(t.Context(), testFromAddress)
 	require.ErrorIs(t, err, wantErr)
@@ -439,7 +451,7 @@ func TestActivityCache_IsClaimedFailureReportsErrorStatus(t *testing.T) {
 	}
 
 	cache := newTestActivityCache(scanner, claims)
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
@@ -577,7 +589,7 @@ func TestActivityCache_ClaimedBridgeExcludedFromPendingButVisibleUnderAll(t *tes
 	claims := &fakeActivityClaims{isClaimed: []bool{true}, claimInfo: []*bridgeservicetypes.ClaimResponse{claim}}
 
 	cache := newTestActivityCache(scanner, claims)
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
 
 	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterPending)
@@ -601,7 +613,7 @@ func TestActivityCache_ScannerReceivesGrowingKnownSet(t *testing.T) {
 	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
 
 	cache := newTestActivityCache(scanner, claims)
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
 	require.Empty(t, scanner.lastKnown, "nothing cached yet on the first refresh")
@@ -623,7 +635,7 @@ func TestActivityCache_SourceIsCarriedForwardAcrossRechecks(t *testing.T) {
 	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
 
 	cache := newTestActivityCache(scanner, claims)
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
@@ -650,7 +662,7 @@ func TestActivityCache_ForgetsInvalidatedBridges(t *testing.T) {
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{bridge}}
 	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
 	cache := newTestActivityCache(scanner, claims)
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
@@ -712,8 +724,15 @@ func TestActivityCache_RegisterAndAwaitWaitsForRefresh(t *testing.T) {
 	claims := &fakeActivityClaims{isClaimed: []bool{false}}
 	cache := newTestActivityCache(scanner, claims)
 
-	done := make(chan error, 1)
-	go func() { done <- cache.RegisterAndAwait(testFromAddress, time.Second) }()
+	type registerResult struct {
+		ready bool
+		err   error
+	}
+	done := make(chan registerResult, 1)
+	go func() {
+		ready, err := cache.RegisterAndAwait(testFromAddress, time.Second)
+		done <- registerResult{ready: ready, err: err}
+	}()
 
 	select {
 	case addr := <-cache.Triggers():
@@ -724,8 +743,9 @@ func TestActivityCache_RegisterAndAwaitWaitsForRefresh(t *testing.T) {
 	}
 
 	select {
-	case err := <-done:
-		require.NoError(t, err)
+	case res := <-done:
+		require.NoError(t, res.err)
+		require.True(t, res.ready, "ready must be true once the refresh completed before timeout")
 	case <-time.After(time.Second):
 		t.Fatal("RegisterAndAwait never returned after the refresh completed")
 	}
@@ -739,13 +759,13 @@ func TestActivityCache_RegisterAndAwaitWaitsForRefresh(t *testing.T) {
 // already-registered address never triggers or waits, regardless of timeout.
 func TestActivityCache_RegisterAndAwaitExistingAddressReturnsImmediately(t *testing.T) {
 	cache := newTestActivityCache(&fakeActivityScanner{}, &fakeActivityClaims{})
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	// drain the trigger the first registration signaled, so a second signal would prove a
 	// (wrong) re-trigger, not a leftover from before
 	<-cache.Triggers()
 
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, time.Hour))
+	mustRegisterActivity(t, cache, testFromAddress, time.Hour)
 	select {
 	case addr := <-cache.Triggers():
 		t.Fatalf("unexpected trigger for already-registered address %s", addr)
@@ -754,13 +774,14 @@ func TestActivityCache_RegisterAndAwaitExistingAddressReturnsImmediately(t *test
 }
 
 // TestActivityCache_RegisterAndAwaitTimeoutFallsBackToWhateverIsCached verifies that if timeout
-// elapses before RefreshAddress runs, RegisterAndAwait still returns (no error), and GetActivity
-// simply reports nothing cached yet.
+// elapses before RefreshAddress runs, RegisterAndAwait still returns (no error, ready=false —
+// nothing completed in time), and GetActivity simply reports nothing cached yet.
 func TestActivityCache_RegisterAndAwaitTimeoutFallsBackToWhateverIsCached(t *testing.T) {
 	cache := newTestActivityCache(&fakeActivityScanner{}, &fakeActivityClaims{})
 
-	err := cache.RegisterAndAwait(testFromAddress, 10*time.Millisecond)
+	ready, err := cache.RegisterAndAwait(testFromAddress, 10*time.Millisecond)
 	require.NoError(t, err)
+	require.False(t, ready, "timeout elapsed before any refresh completed")
 
 	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
@@ -773,8 +794,8 @@ func TestActivityCache_GetActiveAddresses(t *testing.T) {
 	cache := newTestActivityCache(&fakeActivityScanner{}, &fakeActivityClaims{})
 	other := common.HexToAddress("0x2222222222222222222222222222222222222222")
 
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
-	require.NoError(t, cache.RegisterAndAwait(other, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
+	mustRegisterActivity(t, cache, other, 0)
 
 	addrs, err := cache.GetActiveAddresses()
 	require.NoError(t, err)
@@ -796,7 +817,7 @@ func TestActivityCache_TimestampsTrackCreationAndLastUpdate(t *testing.T) {
 	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
 
 	cache := newTestActivityCache(scanner, claims)
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 	t1 := time.Now()
 	cache.now = func() time.Time { return t1 }
 
@@ -825,7 +846,7 @@ func TestActivityCache_TimestampsFreezeOnceSettled(t *testing.T) {
 	claims := &fakeActivityClaims{isClaimed: []bool{true}, claimInfo: []*bridgeservicetypes.ClaimResponse{claim}}
 
 	cache := newTestActivityCache(scanner, claims)
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 	t1 := time.Now()
 	cache.now = func() time.Time { return t1 }
 

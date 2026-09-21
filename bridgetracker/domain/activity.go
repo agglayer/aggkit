@@ -241,11 +241,17 @@ type ActivitySupervisedStore interface {
 	// address, immediate return, no trigger, no wait. On a newly registered address, it
 	// additionally wakes the ActivityEngine to refresh it right away (see ActivityTriggerable)
 	// instead of leaving it for the next poll tick, and waits up to timeout for that first
-	// refresh to finish before returning. timeout <= 0 skips the wait entirely. If timeout
-	// elapses with no refresh completed, it returns nil (the caller's subsequent GetActivity
-	// call simply returns whatever is cached so far, possibly nothing yet). Returns
-	// ErrActivityRegistryFull if fromAddress is new and the store is at capacity
-	RegisterAndAwait(fromAddress common.Address, timeout time.Duration) error
+	// refresh to finish before returning. timeout <= 0 skips the wait entirely.
+	//
+	// ready reports whether fromAddress has completed at least one refresh (successful or not)
+	// as of the moment this call returns — an already-registered address reports whatever its
+	// current state is (no wait either way), a newly registered one is false unless the wait
+	// above resolved before timeout. A caller getting back false has nothing meaningful to show
+	// yet and should tell the client to retry later (e.g. HTTP 503 + Retry-After) instead of
+	// answering with an empty result indistinguishable from "no activity at all" — see
+	// ActivityCommand.Execute. Returns ErrActivityRegistryFull if fromAddress is new and the
+	// store is at capacity
+	RegisterAndAwait(fromAddress common.Address, timeout time.Duration) (ready bool, err error)
 
 	// GetActiveAddresses returns every currently supervised from_address, for
 	// ActivityEngine's poll tick to iterate (mirrors SupervisedStore.GetTrackerActives)

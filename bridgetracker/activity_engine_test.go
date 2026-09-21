@@ -41,7 +41,7 @@ func TestActivityEngineResolveTriggeredResolvesImmediately(t *testing.T) {
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
 	claims := &fakeActivityClaims{isClaimed: []bool{false}}
 	engine, cache := newTestActivityEngine(t, ActivityEngineConfig{}, scanner, claims)
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	engine.resolveTriggered(t.Context(), testFromAddress)
 
@@ -76,7 +76,7 @@ func TestActivityEngineStartResolvesTriggeredAddressBeforeNextPoll(t *testing.T)
 	defer cancel()
 	engine.Start(ctx)
 
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, time.Second))
+	mustRegisterActivity(t, cache, testFromAddress, time.Second)
 	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Len(t, entries, 1,
@@ -91,8 +91,8 @@ func TestActivityEngineTickRefreshesAllRegisteredAddresses(t *testing.T) {
 	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
 	engine, cache := newTestActivityEngine(t, ActivityEngineConfig{}, scanner, claims)
 
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
-	require.NoError(t, cache.RegisterAndAwait(other, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
+	mustRegisterActivity(t, cache, other, 0)
 
 	engine.tick(t.Context())
 
@@ -157,7 +157,7 @@ func TestActivityEngineTickBoundsConcurrentRefreshes(t *testing.T) {
 	for i := range activeCount {
 		var addr common.Address
 		addr[19] = byte(i + 1)
-		require.NoError(t, cache.RegisterAndAwait(addr, 0))
+		mustRegisterActivity(t, cache, addr, 0)
 	}
 
 	done := make(chan struct{})
@@ -202,7 +202,7 @@ func TestActivityEnginePruneIdleCalledEachTick(t *testing.T) {
 	cache.now = func() time.Time { return now }
 	engine.now = func() time.Time { return now }
 
-	require.NoError(t, cache.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, cache, testFromAddress, 0)
 	engine.tick(t.Context())
 	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)

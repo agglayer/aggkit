@@ -140,6 +140,18 @@ func newTestSQLiteActivityStore(t *testing.T, scanner domain.ActivityBridgeScann
 	return s
 }
 
+// mustRegisterActivity registers addr and fails the test on error, returning whether it is
+// ready (see domain.ActivitySupervisedStore.RegisterAndAwait) for the few tests that care;
+// callers that don't care simply ignore the return value
+func mustRegisterActivity(
+	t *testing.T, registry domain.ActivitySupervisedStore, addr common.Address, timeout time.Duration,
+) bool {
+	t.Helper()
+	ready, err := registry.RegisterAndAwait(addr, timeout)
+	require.NoError(t, err)
+	return ready
+}
+
 // refreshAndGet registers addr (a no-op if already registered), optionally primes its sticky
 // includeTracking flag (must happen before RefreshAddress, exactly like production:
 // activityCommand.Execute's RegisterAndAwait always runs before its own GetActivity call), then
@@ -151,7 +163,7 @@ func refreshAndGet(
 ) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
 	t.Helper()
 	ctx := t.Context()
-	if err := store.RegisterAndAwait(addr, 0); err != nil {
+	if _, err := store.RegisterAndAwait(addr, 0); err != nil {
 		return nil, nil, err
 	}
 	if includeTracking {
@@ -172,7 +184,7 @@ func TestSQLiteActivityStoreUnclaimedBridgeIsRecheckedEveryCall(t *testing.T) {
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
 	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
-	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, store, testFromAddress, 0)
 
 	for range 2 {
 		require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
@@ -193,7 +205,7 @@ func TestSQLiteActivityStoreGetActivityIsCacheOnly(t *testing.T) {
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
 	claims := &fakeActivityClaims{isClaimed: []bool{false}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
-	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, store, testFromAddress, 0)
 
 	entries, _, err := store.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
 	require.NoError(t, err)
@@ -239,7 +251,7 @@ func TestSQLiteActivityStoreClaimedAndIndexedBridgeIsNeverRechecked(t *testing.T
 	// only one IsClaimed/ClaimInfo entry: a second consultation would panic on out-of-range
 	claims := &fakeActivityClaims{isClaimed: []bool{true}, claimInfo: []*bridgeservicetypes.ClaimResponse{claim}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
-	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, store, testFromAddress, 0)
 
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
@@ -266,7 +278,7 @@ func TestSQLiteActivityStoreIsClaimedFailureReportsErrorStatus(t *testing.T) {
 		isClaimedErrs: []error{errors.New("no bridge contract address configured for network 2"), nil},
 	}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
-	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, store, testFromAddress, 0)
 
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
@@ -340,7 +352,7 @@ func TestSQLiteActivityStoreScannerReceivesGrowingKnownSet(t *testing.T) {
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{bridge}}
 	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
-	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, store, testFromAddress, 0)
 
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	require.Empty(t, scanner.lastKnown, "nothing cached yet on the first refresh")
@@ -355,7 +367,7 @@ func TestSQLiteActivityStoreScannerErrorFailsTheRefresh(t *testing.T) {
 	wantErr := errors.New("bridge service unreachable")
 	scanner := &fakeActivityScanner{err: wantErr}
 	store := newTestSQLiteActivityStore(t, scanner, &fakeActivityClaims{})
-	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, store, testFromAddress, 0)
 
 	err := store.RefreshAddress(t.Context(), testFromAddress)
 	require.ErrorIs(t, err, wantErr)
@@ -367,7 +379,7 @@ func TestSQLiteActivityStoreTimestampsTrackCreationAndLastUpdate(t *testing.T) {
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
 	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
-	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, store, testFromAddress, 0)
 
 	t1 := time.Now()
 	store.now = func() time.Time { return t1 }
@@ -425,8 +437,8 @@ func TestSQLiteActivityStoreGetActiveAddresses(t *testing.T) {
 	store := newTestSQLiteActivityStore(t, &fakeActivityScanner{}, &fakeActivityClaims{})
 	other := common.HexToAddress("0x2222222222222222222222222222222222222222")
 
-	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
-	require.NoError(t, store.RegisterAndAwait(other, 0))
+	mustRegisterActivity(t, store, testFromAddress, 0)
+	mustRegisterActivity(t, store, other, 0)
 
 	addrs, err := store.GetActiveAddresses()
 	require.NoError(t, err)
@@ -448,8 +460,15 @@ func TestSQLiteActivityStoreRegisterAndAwaitWaitsForRefresh(t *testing.T) {
 	claims := &fakeActivityClaims{isClaimed: []bool{false}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
 
-	done := make(chan error, 1)
-	go func() { done <- store.RegisterAndAwait(testFromAddress, time.Second) }()
+	type registerResult struct {
+		ready bool
+		err   error
+	}
+	done := make(chan registerResult, 1)
+	go func() {
+		ready, err := store.RegisterAndAwait(testFromAddress, time.Second)
+		done <- registerResult{ready: ready, err: err}
+	}()
 
 	select {
 	case addr := <-store.Triggers():
@@ -460,8 +479,9 @@ func TestSQLiteActivityStoreRegisterAndAwaitWaitsForRefresh(t *testing.T) {
 	}
 
 	select {
-	case err := <-done:
-		require.NoError(t, err)
+	case res := <-done:
+		require.NoError(t, res.err)
+		require.True(t, res.ready, "ready must be true once the refresh completed before timeout")
 	case <-time.After(time.Second):
 		t.Fatal("RegisterAndAwait never returned after the refresh completed")
 	}
@@ -607,7 +627,7 @@ func TestSQLiteActivityStoreIncludeTrackingPersistsAcrossRestart(t *testing.T) {
 
 	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger, time.Hour)
 	require.NoError(t, err)
-	require.NoError(t, first.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, first, testFromAddress, 0)
 	// prime the sticky flag without refreshing yet, exactly like activityCommand.Execute's
 	// RegisterAndAwait-then-GetActivity ordering
 	_, _, err = first.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
@@ -655,7 +675,7 @@ func TestSQLiteActivityStoreSchemaVersionMismatchIsAMiss(t *testing.T) {
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
 	claims := &fakeActivityClaims{isClaimed: []bool{true, false}, claimInfo: []*bridgeservicetypes.ClaimResponse{claim}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
-	require.NoError(t, store.RegisterAndAwait(testFromAddress, 0))
+	mustRegisterActivity(t, store, testFromAddress, 0)
 
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)

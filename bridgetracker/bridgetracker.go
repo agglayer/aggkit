@@ -45,13 +45,20 @@ func New(cfg *Config) *BridgeTracker {
 			cfg.ActivityScanner, cfg.ActivityClaims, supervised, cfg.Logger, cfg.ActivityIdleTimeout.Duration)
 	}
 
+	// The actual value ActivityEngine will poll at once started (see NewActivityEngine's own
+	// defaulting) — resolved here too so the activity endpoint can report it as a 503 response's
+	// Retry-After instead of a raw, possibly-zero config value (see activityCommand.Execute)
+	activityPollInterval := ActivityEngineConfig{
+		PollInterval: cfg.ActivityPollInterval.Duration,
+	}.withDefaults().PollInterval
+
 	return &BridgeTracker{
 		logger:     cfg.Logger,
 		supervised: supervised,
 		activity:   activity,
 		api: api.NewAPI(
 			cfg.Logger, cfg.ConfigSHA1, supervised, activity, cfg.BridgeAddressResolver,
-			cfg.RegisterResolveTimeout.Duration, cfg.ActivityRegisterResolveTimeout.Duration, cfg.CORS),
+			cfg.RegisterResolveTimeout.Duration, cfg.ActivityRegisterResolveTimeout.Duration, activityPollInterval, cfg.CORS),
 	}
 }
 

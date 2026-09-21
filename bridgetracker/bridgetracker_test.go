@@ -61,7 +61,8 @@ func primeActivity(t *testing.T, tracker *BridgeTracker, addr common.Address) {
 
 	activity := tracker.Activity()
 	require.NotNil(t, activity, "test must configure ActivityScanner/ActivityClaims")
-	require.NoError(t, activity.RegisterAndAwait(addr, 0))
+	_, err := activity.RegisterAndAwait(addr, 0)
+	require.NoError(t, err)
 	require.NoError(t, activity.RefreshAddress(t.Context(), addr))
 }
 
@@ -562,17 +563,18 @@ func TestActivityHandlerFlushCacheForcesRecheck(t *testing.T) {
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
 	require.Equal(t, "claimed", body.Bridges[0].ClaimStatus)
 
-	// ?flush_cache=true itself only discards the cache and re-registers the address (see
-	// activityCommand.Execute) — the actual recheck is, like any other background refresh, the
-	// engine's job (see primeActivity's doc), so this request alone answers with an empty
-	// result; simulate that engine pass directly, then a plain follow-up read observes the
-	// second, otherwise-out-of-range isClaimed/claimInfo consultation configured above, proving
-	// flush_cache forced a genuine recheck instead of reusing the settled entry untouched (see
+	// ?flush_cache=true itself only discards the cache and re-registers the address, resetting
+	// its readiness exactly like a never-before-seen address (see activityCommand.Execute) — the
+	// actual recheck is, like any other background refresh, the engine's job (see primeActivity's
+	// doc). With no engine running in this test and a zero resolveTimeout, this request answers
+	// 503 (not ready) with a Retry-After header instead of a stale/empty 200; simulate that
+	// engine pass directly, then a plain follow-up read observes the second, otherwise-
+	// out-of-range isClaimed/claimInfo consultation configured above, proving flush_cache forced
+	// a genuine recheck instead of reusing the settled entry untouched (see
 	// TestActivityHandlerHappyPath's isClaimed/claimInfo being consulted only once without it)
 	resp = performRequest(t, router, http.MethodGet, path+"?flush_cache=true")
-	require.Equal(t, http.StatusOK, resp.Code)
-	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
-	require.Empty(t, body.Bridges, "flush_cache only clears; the recheck itself is the engine's job")
+	require.Equal(t, http.StatusServiceUnavailable, resp.Code)
+	require.NotEmpty(t, resp.Header().Get("Retry-After"))
 
 	require.NoError(t, tracker.Activity().RefreshAddress(t.Context(), testFromAddress))
 	resp = performRequest(t, router, http.MethodGet, path)
