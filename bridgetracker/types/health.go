@@ -34,7 +34,11 @@ const HealthStatusOK = "ok"
 //     description instead, so it stays distinguishable from a real, still-unresolved error;
 //     any other step skipped alongside it, never itself attempted, now omits error entirely
 //     instead of carrying a placeholder
-const CurrentAPIRevision = 4
+//   - 5: GET /tracker/v1/health gained a new optional pending_networks array
+//     (HealthResponse.PendingNetworks), listing networks the bridge service finder discovered
+//     after startup but did not activate because [BridgeServiceFinder] AutoRegisterNewNetworks
+//     is false; omitted when empty, so an existing client ignoring unknown fields is unaffected
+const CurrentAPIRevision = 5
 
 // HealthResponse is the body of GET /tracker/v1/health
 type HealthResponse struct {
