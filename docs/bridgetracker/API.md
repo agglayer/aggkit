@@ -234,7 +234,7 @@ The same structure carries two different kinds of error, depending on where it a
 | error_type | ErrorType (int) | 0->transient, 1->permanent, 2->exhausted (retries have been given up on) |
 | error_type_string | string | string representation of error_type (e.g. "transient") |
 | retry_count | int | number of retries attempted so far |
-| description | string [] | human-readable description(s) of the error, one entry per occurrence |
+| description | string [] | human-readable description(s) of the error, one entry per occurrence. Any URL, `host:port` or bare IP address is redacted (replaced with `<redacted-url>` / `<redacted-host>`); the rest of the message is kept |
 
 ## GERData
 
@@ -371,6 +371,22 @@ Always returns `200 OK` with a `HealthResponse` body:
 | instance_id | string | UUID generated at startup; changes on every execution. Two responses with different `instance_id` come from different instances (or the same instance after a restart) |
 | config_sha1 | string | sha1sum (hex) of the configuration the instance was started with; allows checking that all instances run the same configuration. The binary accepts several `--cfg` files, so the hash is computed over the **concatenation of the config files in the order they were passed** |
 | version | VersionInfo | build/version information of the running instance |
+| pending_networks | PendingNetwork [] | networks the bridge service finder discovered after startup but did not activate because `[BridgeServiceFinder] AutoRegisterNewNetworks` is `false`, sorted by ascending `network_id`. **Omitted** (no key) when nothing is pending — in particular whenever `AutoRegisterNewNetworks` is left at its default (`true`) |
+
+### PendingNetwork
+
+Read-only observation record; the finder never serves a pending network's URL. Activation requires
+restarting the process (the startup enumeration is the explicit operator step) or adding the
+network to `BridgeServiceFinder.BridgeURLs` / `BridgeServiceFinder.RPCURLs`. See [Bridge Tracker
+component](../bridgetracker.md#bridgeservicefinder-configuration).
+
+| field | type | desc |
+| ------|------|------|
+| network_id | uint32 | the network (rollup) id that was not activated |
+| rollup_address | string | hex address (`0x...`) of the rollup contract that triggered the event |
+| block_number | uint64 | block of the first event that would have activated the network; `0` when the triggering event's block is not available (the on-chain-refresh reason) |
+| first_seen | string (RFC3339, UTC) | when that first event was processed |
+| reason | string | which activation path was blocked |
 
 ### VersionInfo
 
@@ -446,7 +462,7 @@ Request:
 | field | type | desc |
 | ------|------|------|
 | network_id | uint32 | the network whose bridge service could not be scanned |
-| message | string | the error encountered while scanning `network_id` |
+| message | string | the error encountered while scanning `network_id`. Any URL, `host:port` or bare IP address is redacted (replaced with `<redacted-url>` / `<redacted-host>`); the rest of the message is kept |
 
 ### ActivityItem
 
@@ -465,7 +481,7 @@ sit alongside them (not nested inside) so the caller knows which bridge service 
 | creation_timestamp | uint64 | unix seconds; when this bridge was first cached by this endpoint — never changes after that |
 | last_updated_timestamp | uint64 | unix seconds; when this item's claim/tracking state was last (re)checked, whether or not anything about it actually changed. Stops advancing once the bridge is claimed with its claim record fetched, since it is never rechecked again from that point on |
 | tracking | TrackingData | the bridge tracker's current status for this bridge (see [TrackingData](#trackingdata)); **omitted** (no key) unless the request set `includeTracking=true` and the bridge is still unclaimed |
-| errors | map[string]string | message of whatever check failed the last time this item was refreshed, keyed by which check it was — `"claim"` when the `isClaimed()` check itself failed, `"readiness"` when resolving `"readyToClaim"` vs `"pending"` itself failed (`claim_status` then conservatively stays `"pending"`). **Omitted** (no key) while nothing has failed |
+| errors | map[string]string | message of whatever check failed the last time this item was refreshed, keyed by which check it was — `"claim"` when the `isClaimed()` check itself failed, `"readiness"` when resolving `"readyToClaim"` vs `"pending"` itself failed (`claim_status` then conservatively stays `"pending"`). **Omitted** (no key) while nothing has failed. Any URL, `host:port` or bare IP address in a value is redacted (replaced with `<redacted-url>` / `<redacted-host>`); the rest of the message is kept |
 
 ### BridgeResponse
 
