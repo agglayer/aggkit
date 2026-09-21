@@ -396,6 +396,14 @@ func (f *finder) GetURL(networkID uint32) (NetworkURLs, error) {
 	return NetworkURLs{BridgeURL: entry.url, JSONRPCURL: entry.jsonRPCURL}, nil
 }
 
+// PendingNetworks returns the networks discovered after Start that were not activated because
+// Config.AutoRegisterNewNetworks is false, sorted by ascending network id. The slice is a copy and
+// is nil when nothing is pending. It reads under the cache read lock, so it is safe to call
+// concurrently with the listener goroutine.
+func (f *finder) PendingNetworks() []PendingNetwork {
+	return f.cache.pendingList()
+}
+
 // NetworkIDs returns the networkIDs of every network currently resolved (i.e. every network
 // GetURL would presently succeed for). A networkID listed in Config.IgnoreNetworkIDs is filtered
 // out even if it somehow still had a cache entry, since GetURL would reject it anyway.

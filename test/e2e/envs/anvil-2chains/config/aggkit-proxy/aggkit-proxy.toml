@@ -44,6 +44,7 @@ BlockChunkSize = 10000
 HealthCheckPath = "/"
 HealthCheckTimeout = "5s"
 RequireAllHealthyOnStart = false
+AutoRegisterNewNetworks = true
 
 [BridgeServiceFinder.BridgeURLs]
 0 = "http://aggkit-001:5577"

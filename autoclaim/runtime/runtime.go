@@ -607,6 +607,8 @@ func (noopBridgeServiceFinder) BridgeAddress(_ context.Context, networkID uint32
 		networkID)
 }
 
+func (noopBridgeServiceFinder) PendingNetworks() []bridgeservicefinder.PendingNetwork { return nil }
+
 // startRuntimeComponents launches the goroutines for tx managers, claimers, and the bridge detector.
 func startRuntimeComponents(
 	ctx context.Context,

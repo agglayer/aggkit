@@ -68,6 +68,10 @@ type listener struct {
 	// cache entry, and its contract is never added to watchedAddresses.
 	ignoreNetworkIDs map[uint32]struct{}
 
+	// autoRegisterNewNetworks mirrors Config.AutoRegisterNewNetworks; when false the served set is
+	// frozen at Start and post-Start first installs are recorded as pending instead.
+	autoRegisterNewNetworks bool
+
 	blockFinality  aggkittypes.BlockNumberFinality
 	pollInterval   time.Duration
 	blockChunkSize uint64
@@ -165,27 +169,28 @@ func newListener(
 	}
 
 	l := &listener{
-		logger:                 logger,
-		logFilterer:            logFilterer,
-		healthChecker:          healthChecker,
-		resolver:               res,
-		cache:                  c,
-		rollupManagerAddr:      rollupManagerAddr,
-		readerFactory:          readerFactory,
-		ethClient:              ethClient,
-		addrToNetworkID:        addrToNetworkID,
-		watchedAddresses:       watched,
-		ignoreNetworkIDs:       buildIgnoreSet(cfg.IgnoreNetworkIDs),
-		blockFinality:          cfg.BlockFinality,
-		pollInterval:           cfg.PollInterval.Duration,
-		blockChunkSize:         cfg.BlockChunkSize,
-		topics:                 []common.Hash{metadataTopic, seqURLTopic, createNewRollupTopic, createNewAggchainTopic, addExistingRollupTopic}, //nolint:lll
-		createNewRollupTopic:   createNewRollupTopic,
-		createNewAggchainTopic: createNewAggchainTopic,
-		addExistingRollupTopic: addExistingRollupTopic,
-		aggchainFilterer:       aggchainFilterer,
-		rollupFilterer:         rollupFilterer,
-		mgrFilterer:            mgrFilterer,
+		logger:                  logger,
+		logFilterer:             logFilterer,
+		healthChecker:           healthChecker,
+		resolver:                res,
+		cache:                   c,
+		rollupManagerAddr:       rollupManagerAddr,
+		readerFactory:           readerFactory,
+		ethClient:               ethClient,
+		addrToNetworkID:         addrToNetworkID,
+		watchedAddresses:        watched,
+		ignoreNetworkIDs:        buildIgnoreSet(cfg.IgnoreNetworkIDs),
+		autoRegisterNewNetworks: cfg.AutoRegisterNewNetworks,
+		blockFinality:           cfg.BlockFinality,
+		pollInterval:            cfg.PollInterval.Duration,
+		blockChunkSize:          cfg.BlockChunkSize,
+		topics:                  []common.Hash{metadataTopic, seqURLTopic, createNewRollupTopic, createNewAggchainTopic, addExistingRollupTopic}, //nolint:lll
+		createNewRollupTopic:    createNewRollupTopic,
+		createNewAggchainTopic:  createNewAggchainTopic,
+		addExistingRollupTopic:  addExistingRollupTopic,
+		aggchainFilterer:        aggchainFilterer,
+		rollupFilterer:          rollupFilterer,
+		mgrFilterer:             mgrFilterer,
 	}
 
 	upper, err := l.finalizedUpperBound(ctx)
@@ -373,6 +378,20 @@ func (l *listener) refreshFromChain(ctx context.Context, networkID uint32, addr 
 	}
 
 	cur, exists := l.cache.get(networkID)
+
+	if !exists && !l.autoRegisterNewNetworks {
+		if l.cache.setPending(PendingNetwork{
+			NetworkID: networkID, RollupAddress: addr, BlockNumber: 0,
+			FirstSeen: time.Now().UTC(), Reason: PendingReasonChainRefresh,
+		}) {
+			l.logger.Warnf(
+				"network %d (%s) resolved a bridge service url on-chain but is pending: "+
+					"AutoRegisterNewNetworks is disabled; restart the service to serve it", networkID, addr)
+		}
+
+		return
+	}
+
 	if exists && cur.url == urls.BridgeURL && cur.source == source {
 		return
 	}
@@ -431,7 +450,7 @@ func (l *listener) processRollupManagerLog(ctx context.Context, lg types.Log) {
 		return
 	}
 
-	l.discoverRollup(ctx, rollupID, addr)
+	l.discoverRollup(ctx, rollupID, addr, lg.BlockNumber)
 }
 
 // discoverRollup registers a rollup that was attached to the rollup manager after Start. It resolves
@@ -439,18 +458,46 @@ func (l *listener) processRollupManagerLog(ctx context.Context, lg types.Log) {
 // entry and adds the rollup contract to the watched set so its later URL-changing events are picked
 // up. It is a no-op if the rollup contract is already watched, or if rollupID is listed in
 // Config.IgnoreNetworkIDs (in which case it is never added to the watched set either, so its later
-// events are not observed).
+// events are not observed) - the IgnoreNetworkIDs check runs first and always wins, regardless of
+// Config.AutoRegisterNewNetworks: an ignored network is a deliberate operator decision, not a
+// candidate for the pending set. Only once a rollup passes that check does the auto-register gate
+// apply: when Config.AutoRegisterNewNetworks is false the rollup is instead recorded as pending (see
+// Finder.PendingNetworks) and never watched.
 //
 // Unlike the initial cache build (which aborts Start on a hard error), discovery runs on the polling
 // goroutine and must not tear it down, so failures are logged rather than propagated. The address is
 // still registered on failure so a subsequent URL event can populate the entry.
-func (l *listener) discoverRollup(ctx context.Context, rollupID uint32, addr common.Address) {
+func (l *listener) discoverRollup(ctx context.Context, rollupID uint32, addr common.Address, blockNumber uint64) {
 	if _, known := l.addrToNetworkID[addr]; known {
 		return
 	}
 
 	if _, ignored := l.ignoreNetworkIDs[rollupID]; ignored {
 		l.logger.Debugf("network %d (%s) is in IgnoreNetworkIDs, skipping live discovery", rollupID, addr)
+		return
+	}
+
+	if !l.autoRegisterNewNetworks {
+		if _, served := l.cache.get(rollupID); served {
+			l.logger.Debugf(
+				"network %d (%s) attached at block %d is already served from a static override, "+
+					"not recording it as pending", rollupID, addr, blockNumber)
+			return
+		}
+
+		if l.cache.setPending(PendingNetwork{
+			NetworkID:     rollupID,
+			RollupAddress: addr,
+			BlockNumber:   blockNumber,
+			FirstSeen:     time.Now().UTC(),
+			Reason:        PendingReasonRollupAttached,
+		}) {
+			l.logger.Warnf(
+				"network %d (%s) attached at block %d is pending: AutoRegisterNewNetworks is disabled; "+
+					"restart the service (or add the network to BridgeURLs/RPCURLs) to serve it",
+				rollupID, addr, blockNumber)
+		}
+
 		return
 	}
 
@@ -569,6 +616,20 @@ func (l *listener) applyUpdate(
 	}
 
 	cur, exists := l.cache.get(networkID)
+
+	if !exists && !l.autoRegisterNewNetworks {
+		if l.cache.setPending(PendingNetwork{
+			NetworkID: networkID, RollupAddress: lg.Address, BlockNumber: lg.BlockNumber,
+			FirstSeen: time.Now().UTC(), Reason: PendingReasonFirstURLEvent,
+		}) {
+			l.logger.Warnf(
+				"network %d (%s) announced its first bridge service url at block %d but is pending: "+
+					"AutoRegisterNewNetworks is disabled; restart the service to serve it",
+				networkID, lg.Address, lg.BlockNumber)
+		}
+
+		return
+	}
 
 	if exists && jsonRPCURL != "" && cur.jsonRPCURL != jsonRPCURL {
 		cur.jsonRPCURL = jsonRPCURL

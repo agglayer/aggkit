@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -63,6 +64,37 @@ type NetworkURLs struct {
 	JSONRPCURL string
 }
 
+// PendingNetwork is a network the finder saw appear after Start but did not activate because
+// Config.AutoRegisterNewNetworks is false. It is a read-only observation record: the finder never
+// serves a pending network's URL. Activation requires a restart (the startup enumeration is the
+// explicit operator step) or adding the network to Config.BridgeURLs / Config.RPCURLs.
+type PendingNetwork struct {
+	// NetworkID is the rollupID of the network that was not activated.
+	NetworkID uint32
+	// RollupAddress is the rollup (consensus/aggchain) contract address that triggered the event.
+	RollupAddress common.Address
+	// BlockNumber is the block of the first event that would have activated the network. 0 when the
+	// triggering event's block is not available (see PendingReasonChainRefresh).
+	BlockNumber uint64
+	// FirstSeen is the UTC wall-clock time that first event was processed at.
+	FirstSeen time.Time
+	// Reason is one of the PendingReason* constants, describing which path was blocked.
+	Reason string
+}
+
+const (
+	// PendingReasonRollupAttached is the Reason of a network blocked in discoverRollup: a rollup
+	// was attached to the rollup manager after Start.
+	PendingReasonRollupAttached = "rollup attached after start"
+	// PendingReasonFirstURLEvent is the Reason of a network blocked in applyUpdate: a network
+	// enumerated at Start with no URL source announced its first URL after Start.
+	PendingReasonFirstURLEvent = "first bridge service url event after start"
+	// PendingReasonChainRefresh is the Reason of a network blocked in refreshFromChain: an
+	// on-chain re-resolve after a metadata clear produced a first URL for a network that was
+	// never served.
+	PendingReasonChainRefresh = "bridge service url resolved on-chain after start"
+)
+
 // Finder resolves and serves the bridge service URL and JSON-RPC endpoint for every network
 // attached to a rollup manager. It is the package's public type. See doc.go for the design.
 type Finder interface {
@@ -93,6 +125,10 @@ type Finder interface {
 	// on-chain default could not be resolved (e.g. a transport failure) — such a failure is not
 	// cached, so the next call retries.
 	BridgeAddress(ctx context.Context, networkID uint32) (common.Address, error)
+	// PendingNetworks returns the networks discovered after Start that were not activated because
+	// Config.AutoRegisterNewNetworks is false, sorted by ascending NetworkID. The returned slice is
+	// a fresh copy and is nil when nothing is pending.
+	PendingNetworks() []PendingNetwork
 }
 
 // RollupManagerQuerier enumerates the rollups attached to a rollup manager and reads their data.

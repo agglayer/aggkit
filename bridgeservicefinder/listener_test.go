@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -168,6 +170,52 @@ func TestLiveDiscovery_IgnoredNetworkIsNeverRegistered(t *testing.T) {
 	require.ErrorIs(t, err, ErrURLNotFound, "an ignored network must never be discovered live")
 	require.NotContains(t, f.addrToNetworkID, newRollup.addr,
 		"an ignored network's contract must never be registered in the routing table")
+}
+
+// TestLiveDiscovery_IgnoredNetworkNeverPendingEvenWithAutoRegisterDisabled verifies that the
+// Config.IgnoreNetworkIDs check in discoverRollup precedes the Config.AutoRegisterNewNetworks gate:
+// a CreateNewRollup event announcing a networkID that is both ignored AND would otherwise be
+// blocked by AutoRegisterNewNetworks=false must never be recorded as pending. An ignored network is
+// a deliberate operator decision, not a network "waiting to be activated", so it must not show up in
+// Finder.PendingNetworks() regardless of the flag's value.
+func TestLiveDiscovery_IgnoredNetworkNeverPendingEvenWithAutoRegisterDisabled(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, _ := deployRollupManagerWithRollups(t, backend, auth, 1)
+
+	const ignoredNetworkID = uint32(2)
+
+	cfg := baseTestConfig(mgrAddr)
+	cfg.IgnoreNetworkIDs = []uint32{ignoredNetworkID}
+	cfg.AutoRegisterNewNetworks = false
+
+	f := startFinder(t, cfg, Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: newMapHealthChecker(nil),
+	})
+
+	sleepPastSeedTick(testPollInterval)
+
+	newRollup := deployStandaloneRollup(t, backend, auth, ignoredNetworkID)
+	const metadataURL = "https://ignored-new-rollup.example.com:5577"
+	_, err := newRollup.contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, metadataURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	mgr := newRollupManagerContract(t, backend, mgrAddr)
+	_, err = mgr.EmitCreateNewRollup(auth, ignoredNetworkID, newRollup.addr)
+	require.NoError(t, err)
+	backend.Commit()
+
+	// Give the listener several ticks to (not) act on the event.
+	sleepPastSeedTick(testPollInterval)
+	sleepPastSeedTick(testPollInterval)
+
+	_, err = f.GetURL(ignoredNetworkID)
+	require.ErrorIs(t, err, ErrURLNotFound, "an ignored network must never be discovered live")
+	require.NotContains(t, f.addrToNetworkID, newRollup.addr,
+		"an ignored network's contract must never be registered in the routing table")
+	require.Empty(t, f.PendingNetworks(),
+		"an ignored network must never be recorded pending, even with AutoRegisterNewNetworks disabled")
 }
 
 // TestLiveUpdate_SequencerThenMetadataUpgrades covers matrix item #4a: a sequencer-sourced network
@@ -493,4 +541,311 @@ func TestLiveUpdate_CrossTierRejectionIsUnconditional(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, deadMetadataURL, got.BridgeURL,
 		"lower-priority sequencer event must be rejected outright even though it is healthy and current is unhealthy")
+}
+
+// --- S8: AutoRegisterNewNetworks=false gating tests -------------------------------------------
+
+// TestLiveDiscovery_NewRollupPendingWhenAutoRegisterDisabled covers plan item S8(a): with
+// Config.AutoRegisterNewNetworks disabled, a rollup attached to the manager after Start (announced
+// via CreateNewRollup) is never resolved or served, even though it exposes a perfectly resolvable
+// source. It is instead recorded pending exactly once (repeated lifecycle events for the same
+// address must not duplicate the record), addrToNetworkID/watchedAddresses are left untouched, and
+// a later SetTrustedSequencerURL from that (never-watched) address is silently ignored.
+func TestLiveDiscovery_NewRollupPendingWhenAutoRegisterDisabled(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, _ := deployRollupManagerWithRollups(t, backend, auth, 1)
+
+	cfg := baseTestConfig(mgrAddr)
+	cfg.AutoRegisterNewNetworks = false
+
+	f := startFinder(t, cfg, Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: newMapHealthChecker(nil),
+	})
+
+	const newNetworkID = uint32(2)
+
+	sleepPastSeedTick(testPollInterval)
+
+	newRollup := deployStandaloneRollup(t, backend, auth, newNetworkID)
+	const metadataURL = "https://pending-rollup.example.com:5577"
+	_, err := newRollup.contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, metadataURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	mgr := newRollupManagerContract(t, backend, mgrAddr)
+	_, err = mgr.EmitCreateNewRollup(auth, newNetworkID, newRollup.addr)
+	require.NoError(t, err)
+	backend.Commit()
+
+	require.Eventually(t, func() bool {
+		return len(f.PendingNetworks()) == 1
+	}, testEventuallyWait, testEventuallyTick, "expected the attached rollup to be recorded pending")
+
+	_, err = f.GetURL(newNetworkID)
+	require.ErrorIs(t, err, ErrURLNotFound,
+		"a network pending because AutoRegisterNewNetworks is disabled must never be served")
+
+	pending := f.PendingNetworks()
+	require.Len(t, pending, 1)
+	require.Equal(t, newNetworkID, pending[0].NetworkID)
+	require.Equal(t, newRollup.addr, pending[0].RollupAddress)
+	require.Equal(t, PendingReasonRollupAttached, pending[0].Reason)
+
+	require.NotContains(t, f.addrToNetworkID, newRollup.addr,
+		"a pending network's contract must never be registered in the routing table")
+
+	// Re-announce the SAME rollup a second time: PendingNetworks must still list it exactly once.
+	sleepPastSeedTick(testPollInterval)
+
+	_, err = mgr.EmitCreateNewRollup(auth, newNetworkID, newRollup.addr)
+	require.NoError(t, err)
+	backend.Commit()
+
+	sleepPastSeedTick(testPollInterval)
+	sleepPastSeedTick(testPollInterval)
+
+	require.Len(t, f.PendingNetworks(), 1,
+		"repeated lifecycle events for the same pending network must not duplicate the pending record")
+
+	// Because the address was never watched, a later SetTrustedSequencerURL from it must be ignored
+	// outright: the log never even reaches the listener's address filter.
+	_, err = newRollup.contract.SetTrustedSequencerURL(auth, "https://seq.example.com:8545")
+	require.NoError(t, err)
+	backend.Commit()
+
+	sleepPastSeedTick(testPollInterval)
+	sleepPastSeedTick(testPollInterval)
+
+	_, err = f.GetURL(newNetworkID)
+	require.ErrorIs(t, err, ErrURLNotFound,
+		"a SetTrustedSequencerURL from a pending (unwatched) network must be ignored")
+	require.Len(t, f.PendingNetworks(), 1)
+}
+
+// TestLiveDiscovery_AlreadyServedFromBridgeURLsNeverGoesPending covers the S18/M1 regression: a
+// network pre-provisioned in Config.BridgeURLs (the documented way to make a network servable
+// without AutoRegisterNewNetworks) must NOT be recorded as pending when it is later attached to
+// the rollup manager - discoverRollup's gate must consult the cache, not just addrToNetworkID,
+// before deciding a network is new.
+func TestLiveDiscovery_AlreadyServedFromBridgeURLsNeverGoesPending(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, _ := deployRollupManagerWithRollups(t, backend, auth, 0)
+
+	const preConfiguredNetworkID = uint32(5)
+	const preConfiguredURL = "http://cfg.example.com:5577"
+
+	cfg := baseTestConfig(mgrAddr)
+	cfg.AutoRegisterNewNetworks = false
+	cfg.BridgeURLs = map[uint32]string{preConfiguredNetworkID: preConfiguredURL}
+
+	f := startFinder(t, cfg, Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: newMapHealthChecker(nil),
+	})
+
+	// The static override is installed at Start regardless of the flag, before the rollup is ever
+	// attached on-chain.
+	urls, err := f.GetURL(preConfiguredNetworkID)
+	require.NoError(t, err)
+	require.Equal(t, preConfiguredURL, urls.BridgeURL)
+
+	sleepPastSeedTick(testPollInterval)
+
+	newRollup := deployStandaloneRollup(t, backend, auth, preConfiguredNetworkID)
+	mgr := newRollupManagerContract(t, backend, mgrAddr)
+	_, err = mgr.EmitCreateNewRollup(auth, preConfiguredNetworkID, newRollup.addr)
+	require.NoError(t, err)
+	backend.Commit()
+
+	sleepPastSeedTick(testPollInterval)
+	sleepPastSeedTick(testPollInterval)
+
+	require.Empty(t, f.PendingNetworks(),
+		"a network already served from a static BridgeURLs override must never be recorded pending")
+
+	urls, err = f.GetURL(preConfiguredNetworkID)
+	require.NoError(t, err)
+	require.Equal(t, preConfiguredURL, urls.BridgeURL,
+		"the static override must keep serving the network unaffected by the later on-chain attach")
+}
+
+// TestLiveUpdate_FirstInstallPendingWhenAutoRegisterDisabled covers plan item S8(b): a network
+// enumerated at Start with no source (ErrNoSourceAvailable, no cache entry) whose first-ever bridge
+// service URL arrives via a live event after Start is NOT installed when
+// Config.AutoRegisterNewNetworks is disabled - it is recorded pending instead, one test per event
+// type, mirroring TestLiveUpdate_FirstInstallViaEventOnNoSourceNetwork's structure.
+func TestLiveUpdate_FirstInstallPendingWhenAutoRegisterDisabled(t *testing.T) {
+	t.Run("via SetTrustedSequencerURL", func(t *testing.T) {
+		backend, auth := newTestBackend(t)
+		mgrAddr, rollups := deployRollupManagerWithRollups(t, backend, auth, 1)
+		const networkID = uint32(1)
+
+		cfg := baseTestConfig(mgrAddr)
+		cfg.AutoRegisterNewNetworks = false
+
+		f := startFinder(t, cfg, Options{
+			EthClient:     newTestEthClient(backend),
+			HealthChecker: newMapHealthChecker(nil),
+		})
+
+		_, err := f.GetURL(networkID)
+		require.ErrorIs(t, err, ErrURLNotFound)
+
+		sleepPastSeedTick(testPollInterval)
+
+		_, err = rollups[0].contract.SetTrustedSequencerURL(auth, "https://seq.example.com:8545")
+		require.NoError(t, err)
+		backend.Commit()
+
+		require.Eventually(t, func() bool {
+			return len(f.PendingNetworks()) == 1
+		}, testEventuallyWait, testEventuallyTick, "expected the first install to be recorded pending")
+
+		_, err = f.GetURL(networkID)
+		require.ErrorIs(t, err, ErrURLNotFound,
+			"a first install via SetTrustedSequencerURL must not be applied when AutoRegisterNewNetworks is disabled")
+
+		pending := f.PendingNetworks()
+		require.Len(t, pending, 1)
+		require.Equal(t, networkID, pending[0].NetworkID)
+		require.Equal(t, PendingReasonFirstURLEvent, pending[0].Reason)
+	})
+
+	t.Run("via AggchainMetadataSet", func(t *testing.T) {
+		backend, auth := newTestBackend(t)
+		mgrAddr, rollups := deployRollupManagerWithRollups(t, backend, auth, 1)
+		const networkID = uint32(1)
+
+		cfg := baseTestConfig(mgrAddr)
+		cfg.AutoRegisterNewNetworks = false
+
+		f := startFinder(t, cfg, Options{
+			EthClient:     newTestEthClient(backend),
+			HealthChecker: newMapHealthChecker(nil),
+		})
+
+		_, err := f.GetURL(networkID)
+		require.ErrorIs(t, err, ErrURLNotFound)
+
+		sleepPastSeedTick(testPollInterval)
+
+		const metadataURL = "https://metadata.example.com:5577"
+		_, err = rollups[0].contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, metadataURL)
+		require.NoError(t, err)
+		backend.Commit()
+
+		require.Eventually(t, func() bool {
+			return len(f.PendingNetworks()) == 1
+		}, testEventuallyWait, testEventuallyTick, "expected the first install to be recorded pending")
+
+		_, err = f.GetURL(networkID)
+		require.ErrorIs(t, err, ErrURLNotFound,
+			"a first install via AggchainMetadataSet must not be applied when AutoRegisterNewNetworks is disabled")
+
+		pending := f.PendingNetworks()
+		require.Len(t, pending, 1)
+		require.Equal(t, networkID, pending[0].NetworkID)
+		require.Equal(t, PendingReasonFirstURLEvent, pending[0].Reason)
+	})
+}
+
+// TestLiveUpdate_RefreshUnaffectedByAutoRegisterDisabled covers plan item S8(c): once a network has
+// been served (here, from Start's own enumeration, which the flag never gates), refreshes of that
+// already-served entry keep applying exactly as they do today, health gating included -
+// AutoRegisterNewNetworks only ever gates a FIRST install, never a refresh of an existing entry.
+func TestLiveUpdate_RefreshUnaffectedByAutoRegisterDisabled(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, rollups := deployRollupManagerWithRollups(t, backend, auth, 1)
+	const networkID = uint32(1)
+
+	healthySrv := newHealthServer(t, true)
+	_, err := rollups[0].contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, healthySrv.Server.URL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	cfg := baseTestConfig(mgrAddr)
+	cfg.AutoRegisterNewNetworks = false
+
+	f := startFinder(t, cfg, Options{
+		EthClient: newTestEthClient(backend),
+	})
+
+	got, err := f.GetURL(networkID)
+	require.NoError(t, err)
+	require.Equal(t, healthySrv.Server.URL, got.BridgeURL)
+
+	sleepPastSeedTick(testPollInterval)
+
+	// A healthy-to-healthy metadata refresh must still be applied.
+	healthySrv2 := newHealthServer(t, true)
+	_, err = rollups[0].contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, healthySrv2.Server.URL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	require.Eventually(t, func() bool {
+		got, err := f.GetURL(networkID)
+		return err == nil && got.BridgeURL == healthySrv2.Server.URL
+	}, testEventuallyWait, testEventuallyTick,
+		"refresh of an already-served network must apply even with AutoRegisterNewNetworks disabled")
+
+	sleepPastSeedTick(testPollInterval)
+
+	// Health gating for that same refresh path must also stay intact: a healthy current entry must
+	// still reject an unreachable candidate.
+	deadURL := closedServerURL(t)
+	_, err = rollups[0].contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, deadURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	sleepPastSeedTick(testPollInterval)
+	sleepPastSeedTick(testPollInterval)
+
+	got, err = f.GetURL(networkID)
+	require.NoError(t, err)
+	require.Equal(t, healthySrv2.Server.URL, got.BridgeURL,
+		"healthy current must still reject an unreachable candidate even with AutoRegisterNewNetworks disabled")
+
+	require.Empty(t, f.PendingNetworks(),
+		"a refresh of an already-served network must never be recorded pending")
+}
+
+// TestChainRefreshGating_NoPriorEntryPendingWhenAutoRegisterDisabled is a focused isolation test
+// (mirroring health_gating_test.go's TestHealthGating_NoPriorEntryInstallsRegardlessOfHealth
+// pattern) confirming refreshFromChain's own "!exists && !autoRegisterNewNetworks" gate directly:
+// a first-ever install produced by a metadata-clear re-resolve is recorded pending
+// (PendingReasonChainRefresh, BlockNumber 0 since refreshFromChain has no types.Log in scope)
+// instead of being installed, when AutoRegisterNewNetworks is disabled.
+func TestChainRefreshGating_NoPriorEntryPendingWhenAutoRegisterDisabled(t *testing.T) {
+	const networkID = uint32(200)
+	addr := common.HexToAddress("0x00000000000000000000000000000000000c0de")
+	const candidateURL = "https://config-resolved.example.com:5577"
+
+	c := newCache()
+	res := newResolver(map[uint32]string{networkID: candidateURL}, nil, DefaultBridgeServicePort)
+
+	lst := &listener{
+		logger:        testLogger(),
+		healthChecker: newMapHealthChecker(map[string]bool{candidateURL: true}),
+		resolver:      res,
+		cache:         c,
+		readerFactory: func(common.Address, aggkittypes.BaseEthereumClienter) (RollupContractReader, error) {
+			return nil, nil
+		},
+		autoRegisterNewNetworks: false,
+	}
+
+	lst.refreshFromChain(context.Background(), networkID, addr)
+
+	_, ok := c.get(networkID)
+	require.False(t, ok,
+		"a chain-refresh first install must not be applied when AutoRegisterNewNetworks is disabled")
+
+	pending := c.pendingList()
+	require.Len(t, pending, 1)
+	require.Equal(t, networkID, pending[0].NetworkID)
+	require.Equal(t, addr, pending[0].RollupAddress)
+	require.Equal(t, uint64(0), pending[0].BlockNumber,
+		"refreshFromChain has no types.Log in scope, so BlockNumber must be 0")
+	require.Equal(t, PendingReasonChainRefresh, pending[0].Reason)
 }

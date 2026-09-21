@@ -151,6 +151,7 @@ func baseTestConfig(rollupManagerAddr common.Address) Config {
 		BlockChunkSize:           testBlockChunkSize,
 		HealthCheckTimeout:       configtypes.Duration{Duration: testHealthTimeout},
 		RequireAllHealthyOnStart: false,
+		AutoRegisterNewNetworks:  true,
 	}
 }
 

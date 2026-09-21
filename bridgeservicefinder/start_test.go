@@ -658,3 +658,66 @@ func TestStart_NetworkZero(t *testing.T) {
 		require.ErrorIs(t, err, ErrURLNotFound)
 	})
 }
+
+// TestStart_PostStartRollupPendingUntilRestartWhenAutoRegisterDisabled covers the S8 simulated-
+// backend scenario: with Config.AutoRegisterNewNetworks disabled, a rollup attached to the manager
+// after Start is never served by the already-running finder - it is only recorded pending. A full
+// restart (a brand-new finder, built and Start-ed after the rollup manager's on-chain state already
+// reflects the new rollup) does serve it, because Start's own enumeration is never gated; only
+// post-Start installs are.
+func TestStart_PostStartRollupPendingUntilRestartWhenAutoRegisterDisabled(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, _ := deployRollupManagerWithRollups(t, backend, auth, 1)
+
+	cfg := baseTestConfig(mgrAddr)
+	cfg.AutoRegisterNewNetworks = false
+
+	f := startFinder(t, cfg, Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: newMapHealthChecker(nil),
+	})
+
+	const newNetworkID = uint32(2)
+
+	sleepPastSeedTick(testPollInterval)
+
+	newRollup := deployStandaloneRollup(t, backend, auth, newNetworkID)
+	const metadataURL = "https://restart-rollup.example.com:5577"
+	_, err := newRollup.contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, metadataURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	mgr := newRollupManagerContract(t, backend, mgrAddr)
+	_, err = mgr.EmitCreateNewRollup(auth, newNetworkID, newRollup.addr)
+	require.NoError(t, err)
+	backend.Commit()
+
+	// Give the running finder several ticks past the poll interval: it must never serve the newly
+	// attached network.
+	sleepPastSeedTick(testPollInterval)
+	sleepPastSeedTick(testPollInterval)
+
+	_, err = f.GetURL(newNetworkID)
+	require.ErrorIs(t, err, ErrURLNotFound,
+		"the running finder must never serve a post-Start rollup when AutoRegisterNewNetworks is disabled")
+
+	pending := f.PendingNetworks()
+	require.Len(t, pending, 1)
+	require.Equal(t, newNetworkID, pending[0].NetworkID)
+
+	// Simulate a restart: build and Start a brand-new finder against the same backend/manager. The
+	// rollup manager's on-chain rollupCount already reflects the new rollup (EmitCreateNewRollup grew
+	// it), so the new finder's Start-time enumeration - which the flag never gates - resolves and
+	// serves it immediately, with nothing left pending.
+	f2 := startFinder(t, cfg, Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: newMapHealthChecker(nil),
+	})
+
+	got, err := f2.GetURL(newNetworkID)
+	require.NoError(t, err)
+	require.Equal(t, metadataURL, got.BridgeURL)
+
+	require.Empty(t, f2.PendingNetworks(),
+		"a freshly restarted finder must have nothing pending for a network its own enumeration just resolved")
+}

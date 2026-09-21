@@ -28,6 +28,12 @@ const (
 	// unreachable during initial cache construction. Default is false: record the unhealthy state
 	// but keep the entry so live updates can heal it.
 	DefaultRequireAllHealthyOnStart = false
+
+	// DefaultAutoRegisterNewNetworks is the TOML default of Config.AutoRegisterNewNetworks: true,
+	// i.e. networks attached after Start are served live (the behavior before this flag existed).
+	// NOTE: this is the *TOML* default (see proxy/config/default.go and config/default.go); the Go
+	// zero value of the field is false, so code constructing Config literally must set it.
+	DefaultAutoRegisterNewNetworks = true
 )
 
 var (
@@ -85,6 +91,18 @@ type Config struct {
 	// is unreachable during initial cache construction. When false, unreachable services are cached
 	// with healthy=false and may be healed by a later on-chain update per the health-gating rule.
 	RequireAllHealthyOnStart bool `mapstructure:"RequireAllHealthyOnStart"`
+
+	// AutoRegisterNewNetworks controls whether networks that appear after Start are served.
+	// When true (the TOML default) a rollup attached to the rollup manager after Start, or a
+	// Start-enumerated network that announces its first bridge service URL after Start, is
+	// resolved and served immediately. When false the served set is frozen at Start: such networks
+	// are recorded as pending (see Finder.PendingNetworks), logged once at Warn and never served
+	// until the process is restarted or the network is added to BridgeURLs/RPCURLs. URL refreshes
+	// of already-served networks are unaffected in both modes.
+	//
+	// Beware the bool zero value: applyConfigDefaults cannot tell "false" from "unset", so the
+	// default lives in the TOML defaults only. A Config built in Go must set this explicitly.
+	AutoRegisterNewNetworks bool `mapstructure:"AutoRegisterNewNetworks"`
 
 	// IgnoreNetworkIDs lists networkIDs (rollupIDs) that are entirely excluded from resolution:
 	// buildInitialCache skips them during enumeration (no RollupIDToRollupData call, no contract

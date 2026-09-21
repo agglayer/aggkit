@@ -1,6 +1,7 @@
 package bridgeservicefinder
 
 import (
+	"sort"
 	"sync"
 )
 
@@ -22,12 +23,17 @@ type cacheEntry struct {
 type cache struct {
 	mu      sync.RWMutex
 	entries map[uint32]cacheEntry
+	// pending holds the networks blocked by Config.AutoRegisterNewNetworks, keyed by networkID.
+	// The first record for a network wins, so FirstSeen/BlockNumber/Reason describe the event that
+	// first would have activated it.
+	pending map[uint32]PendingNetwork
 }
 
 // newCache returns an empty, ready-to-use cache.
 func newCache() *cache {
 	return &cache{
 		entries: make(map[uint32]cacheEntry),
+		pending: make(map[uint32]PendingNetwork),
 	}
 }
 
@@ -62,4 +68,41 @@ func (c *cache) networkIDs() []uint32 {
 	}
 
 	return ids
+}
+
+// setPending records p as a pending network. It keeps the first record for a networkID and
+// reports whether p was newly added, so callers can log exactly once per network.
+func (c *cache) setPending(p PendingNetwork) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if _, exists := c.pending[p.NetworkID]; exists {
+		return false
+	}
+
+	c.pending[p.NetworkID] = p
+
+	return true
+}
+
+// pendingList returns a copy of the pending networks sorted by ascending NetworkID, or nil when
+// none are pending.
+func (c *cache) pendingList() []PendingNetwork {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if len(c.pending) == 0 {
+		return nil
+	}
+
+	list := make([]PendingNetwork, 0, len(c.pending))
+	for _, p := range c.pending {
+		list = append(list, p)
+	}
+
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].NetworkID < list[j].NetworkID
+	})
+
+	return list
 }

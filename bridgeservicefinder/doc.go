@@ -147,7 +147,8 @@
 // # Dynamic rollup discovery
 //
 // The initial enumeration is only a snapshot of the rollups attached at Start. To avoid requiring a
-// restart when a new rollup is added later, the listener also watches the rollup manager address for
+// restart when a new rollup is added later (when AutoRegisterNewNetworks is enabled, the default —
+// see "Auto-registration gating" below), the listener also watches the rollup manager address for
 // its lifecycle events and registers the announced network live:
 //
 //   - CreateNewRollup, CreateNewAggchain, AddExistingRollup (on the rollup manager). Each carries the
@@ -159,6 +160,46 @@
 //
 // The rollup manager address is always part of the watched-address filter (even when the initial
 // enumeration found zero rollups), so the very first rollups can be discovered this way.
+//
+// # Auto-registration gating (Config.AutoRegisterNewNetworks)
+//
+// Config.AutoRegisterNewNetworks controls whether the dynamic discovery described above is allowed
+// to change the served set after Start. Its TOML default is true, which is exactly the behavior
+// documented above: a rollup attached after Start, or a Start-enumerated network that announces its
+// first bridge service URL after Start, is resolved and served immediately, no restart required.
+//
+// When it is set to false the served set is FROZEN at Start: the startup enumeration always installs
+// everything it resolves (buildInitialCache is never gated), but none of the three post-Start install
+// paths are allowed to add a new network to the cache:
+//
+//   - discoverRollup - a rollup attached to the rollup manager after Start (CreateNewRollup /
+//     CreateNewAggchain / AddExistingRollup). The Config.IgnoreNetworkIDs check runs first and always
+//     wins: an ignored network is never recorded pending, whatever this flag's value, because
+//     ignoring it is a deliberate operator decision, not a network "waiting to be activated". Only
+//     for a rollupID that is not ignored does this gate apply, and it sits before the rollup's
+//     address is ever registered or watched, so a blocked rollup's later URL-changing events are not
+//     even observed.
+//   - applyUpdate - a Start-enumerated, no-source network's first SetTrustedSequencerURL /
+//     AggchainMetadataSet event. Only the first install is gated; once a network has an entry,
+//     refreshes go through the usual priority and health-gating rules regardless of this flag.
+//   - refreshFromChain - the on-chain re-resolve triggered by a BRIDGE_SERVICE_URL metadata clear,
+//     when that re-resolve would be the network's first install (e.g. a no-source network whose
+//     metadata is later cleared, exposing the sequencer-URL fallback for the first time).
+//
+// URL refreshes of already-served networks are never affected by this flag, in either mode: the
+// health-gating and source-priority rules described elsewhere in this file are unchanged.
+//
+// Each blocked network is instead recorded as a PendingNetwork (cache.go: pending map, guarded by
+// the same mutex as the URL cache) the first time it is seen, and logged exactly once at Warn -
+// repeated lifecycle/URL events for the same network hit the same record and log nothing further.
+// Finder.PendingNetworks returns a sorted, read-only copy of these records. A pending record is
+// never removed at runtime: nothing can activate the network without a restart, and a restart
+// rebuilds the finder (and its pending set) from scratch.
+//
+// There is no admin/activation endpoint, and config is not hot-reloaded: the only way to serve a
+// pending network is restarting the process, either as-is (so the startup enumeration picks it up)
+// or after first adding it to Config.BridgeURLs / Config.RPCURLs (a static override, always
+// installed regardless of this flag, but only as of that restart).
 //
 // # Ignoring known-dead networks (Config.IgnoreNetworkIDs)
 //

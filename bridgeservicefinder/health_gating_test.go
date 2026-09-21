@@ -144,10 +144,11 @@ func TestHealthGating_NoPriorEntryInstallsRegardlessOfHealth(t *testing.T) {
 	t.Run("healthy candidate", func(t *testing.T) {
 		hc := newMapHealthChecker(map[string]bool{"http://healthy.example.com": true})
 		lst := &listener{
-			logger:        testLogger(),
-			healthChecker: hc,
-			resolver:      res,
-			cache:         c,
+			logger:                  testLogger(),
+			healthChecker:           hc,
+			resolver:                res,
+			cache:                   c,
+			autoRegisterNewNetworks: true,
 		}
 
 		lst.applyUpdate(
@@ -164,10 +165,11 @@ func TestHealthGating_NoPriorEntryInstallsRegardlessOfHealth(t *testing.T) {
 	t.Run("unhealthy candidate", func(t *testing.T) {
 		hc := newMapHealthChecker(map[string]bool{})
 		lst := &listener{
-			logger:        testLogger(),
-			healthChecker: hc,
-			resolver:      res,
-			cache:         c,
+			logger:                  testLogger(),
+			healthChecker:           hc,
+			resolver:                res,
+			cache:                   c,
+			autoRegisterNewNetworks: true,
 		}
 
 		lst.applyUpdate(

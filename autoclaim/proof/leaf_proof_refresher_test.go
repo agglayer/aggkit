@@ -48,6 +48,8 @@ func (f *fakeURLResolver) BridgeAddress(context.Context, uint32) (common.Address
 	return common.Address{}, nil
 }
 
+func (f *fakeURLResolver) PendingNetworks() []bridgeservicefinder.PendingNetwork { return nil }
+
 // fakeClaimProofClient implements claimProofClient for tests, keyed by base URL.
 type fakeClaimProofClient struct {
 	baseURL string
