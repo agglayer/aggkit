@@ -112,11 +112,24 @@ func (e *ActivityEngine) resolveTriggered(ctx context.Context, fromAddress commo
 	}
 }
 
-// tick runs one refresh round over every supervised address — each refreshed concurrently,
-// since each is independent and may hit a different set of networks, up to
-// ActivityEngineConfig.MaxConcurrentRefreshes at once — then forgets the addresses whose idle
-// timeout has elapsed (see ActivityEngineConfig.IdleTimeout)
+// tick forgets the addresses whose idle timeout has elapsed (see ActivityEngineConfig.
+// IdleTimeout) before enumerating who's left, then refreshes every remaining supervised address
+// concurrently, since each is independent and may hit a different set of networks, up to
+// ActivityEngineConfig.MaxConcurrentRefreshes at once. Pruning first matters most right after an
+// upgrade from a store whose idle sweep used to be a no-op (see #1822): without it, every
+// long-idle address accumulated under the old behavior would trigger a full multi-network scan
+// on this first tick before being deleted anyway
 func (e *ActivityEngine) tick(ctx context.Context) {
+	pruned, err := e.store.PruneIdle(e.now().Add(-e.cfg.IdleTimeout))
+	if err != nil {
+		e.logger.Warnf("failed to prune idle activity addresses: %v", err)
+	} else if pruned > 0 {
+		e.logger.Infof("forgot %d idle activity addresses past the %s idle timeout", pruned, e.cfg.IdleTimeout)
+	}
+	if ctx.Err() != nil {
+		return
+	}
+
 	addrs, err := e.store.GetActiveAddresses()
 	if err != nil {
 		e.logger.Warnf("failed to list active activity addresses: %v", err)
@@ -140,16 +153,4 @@ func (e *ActivityEngine) tick(ctx context.Context) {
 		}(addr)
 	}
 	wg.Wait()
-	if ctx.Err() != nil {
-		return
-	}
-
-	pruned, err := e.store.PruneIdle(e.now().Add(-e.cfg.IdleTimeout))
-	if err != nil {
-		e.logger.Warnf("failed to prune idle activity addresses: %v", err)
-		return
-	}
-	if pruned > 0 {
-		e.logger.Infof("forgot %d idle activity addresses past the %s idle timeout", pruned, e.cfg.IdleTimeout)
-	}
 }

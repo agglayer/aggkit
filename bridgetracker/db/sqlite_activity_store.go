@@ -321,41 +321,55 @@ func (s *sqliteActivityStore) registerAddress(addr string, now time.Time) (creat
 		return false, err
 	}
 
-	if isNew {
-		s.countMu.Lock()
-		if s.numAddresses >= defaultMaxActivityAddresses {
-			s.countMu.Unlock()
-			return false, domain.ErrActivityRegistryFull
-		}
-		s.numAddresses++
-		s.countMu.Unlock()
-	}
-
 	emptyScanState, merr := json.Marshal(map[uint32]networkScanState{})
 	if merr != nil {
 		return false, merr
 	}
-	_, err = s.db.Exec(
+
+	if !isNew {
+		// A stale-schema row already exists and already counts toward numAddresses: overwrite
+		// it in place, no capacity check or count bookkeeping involved.
+		_, err = s.db.Exec(
+			`UPDATE activity_address SET
+				schema_version = ?, updated_at = ?, last_access = ?, scan_state = ?,
+				include_tracking = 0, last_warnings = NULL, refreshed = 0
+			 WHERE from_address = ?`,
+			activitySchemaVersion, now.Unix(), now.Unix(), emptyScanState, addr,
+		)
+		return false, err
+	}
+
+	// isNew: reserve a capacity slot and insert under countMu, so two concurrent
+	// registerAddress calls racing on the very same brand-new address can't both observe
+	// aggkitdb.ErrNotFound above and both increment numAddresses — a plain INSERT (from_address
+	// is the primary key) means only the call that actually creates the row succeeds; the loser
+	// falls through to the race check below instead of double-counting (mirrors
+	// sqliteRegistry.create's same race)
+	s.countMu.Lock()
+	if s.numAddresses >= defaultMaxActivityAddresses {
+		s.countMu.Unlock()
+		return false, domain.ErrActivityRegistryFull
+	}
+	_, insertErr := s.db.Exec(
 		`INSERT INTO activity_address
 			(from_address, schema_version, updated_at, last_access, scan_state, include_tracking,
 			 last_warnings, refreshed)
-		 VALUES (?, ?, ?, ?, ?, 0, NULL, 0)
-		 ON CONFLICT (from_address) DO UPDATE SET
-			schema_version = excluded.schema_version, updated_at = excluded.updated_at,
-			last_access = excluded.last_access, scan_state = excluded.scan_state,
-			include_tracking = excluded.include_tracking, last_warnings = excluded.last_warnings,
-			refreshed = excluded.refreshed`,
+		 VALUES (?, ?, ?, ?, ?, 0, NULL, 0)`,
 		addr, activitySchemaVersion, now.Unix(), now.Unix(), emptyScanState,
 	)
-	if err != nil {
-		if isNew {
-			s.countMu.Lock()
-			s.numAddresses--
-			s.countMu.Unlock()
-		}
-		return false, err
+	if insertErr == nil {
+		s.numAddresses++
+		s.countMu.Unlock()
+		return true, nil
 	}
-	return true, nil
+	s.countMu.Unlock()
+
+	// Lost the race against a concurrent registerAddress for the same address, or hit a genuine
+	// DB error: either way, check whether the row exists now before deciding which
+	if _, selErr := s.selectAddressRow(addr); selErr != nil {
+		return false, fmt.Errorf("registering activity address %s: %w", addr, insertErr)
+	}
+	return false, nil
 }
 
 // RegisterAndAwait implements domain.ActivitySupervisedStore. On an already-registered address

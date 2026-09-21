@@ -5,6 +5,8 @@ import (
 	"errors"
 	"math/big"
 	"path"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -451,6 +453,40 @@ func TestSQLiteActivityStoreGetActiveAddresses(t *testing.T) {
 	addrs, err = store.GetActiveAddresses()
 	require.NoError(t, err)
 	require.Empty(t, addrs)
+}
+
+// TestSQLiteActivityStoreRegisterAddressConcurrentSameAddressCountsOnce pins that racing
+// registerAddress calls for the very same brand-new address only ever increment numAddresses
+// once: before the fix, both calls could observe aggkitdb.ErrNotFound before either INSERT
+// completed and both increment the in-memory count, permanently overcounting relative to the
+// actual activity_address row count and triggering ErrActivityRegistryFull well before the
+// registry is actually full (see PR #1856 review).
+func TestSQLiteActivityStoreRegisterAddressConcurrentSameAddressCountsOnce(t *testing.T) {
+	store := newTestSQLiteActivityStore(t, &fakeActivityScanner{}, &fakeActivityClaims{})
+
+	const racers = 20
+	now := time.Now()
+	var wg sync.WaitGroup
+	wg.Add(racers)
+	createdCount := int32(0)
+	for range racers {
+		go func() {
+			defer wg.Done()
+			created, err := store.registerAddress(testFromAddress.Hex(), now)
+			require.NoError(t, err)
+			if created {
+				atomic.AddInt32(&createdCount, 1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	require.EqualValues(t, 1, createdCount, "exactly one racer should have created the row")
+
+	store.countMu.Lock()
+	numAddresses := store.numAddresses
+	store.countMu.Unlock()
+	require.Equal(t, 1, numAddresses, "numAddresses must match the single row actually inserted")
 }
 
 // TestSQLiteActivityStoreRegisterAndAwaitWaitsForRefresh verifies RegisterAndAwait blocks a new
