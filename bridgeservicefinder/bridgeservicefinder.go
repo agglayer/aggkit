@@ -46,7 +46,7 @@ type Options struct {
 	// HTTPClient is passed to the default HealthChecker. Defaults to a client with the configured
 	// health-check timeout. Ignored when HealthChecker is supplied.
 	HTTPClient *http.Client
-	// LogFilterer is the eth-client surface the (S4) listener uses. Stored now for the later live-
+	// LogFilterer is the eth-client surface the event listener uses. Stored now for the later live-
 	// update step; not exercised by Start's initial cache build. Defaults to EthClient.
 	LogFilterer LogFilterer
 	// Logger is the logger used by the finder. Defaults to log.WithFields("module", moduleName).
@@ -67,7 +67,7 @@ type finder struct {
 	cache         *cache
 
 	// addrToNetworkID maps each watched rollup contract address to its networkID. It is populated at
-	// Start from the enumeration and is the routing table the (S4) event listener will use to apply
+	// Start from the enumeration and is the routing table the event listener uses to apply
 	// an incoming log to the correct cache entry.
 	addrToNetworkID map[common.Address]uint32
 

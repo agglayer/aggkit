@@ -659,8 +659,8 @@ func TestStart_NetworkZero(t *testing.T) {
 	})
 }
 
-// TestStart_PostStartRollupPendingUntilRestartWhenAutoRegisterDisabled covers the S8 simulated-
-// backend scenario: with Config.AutoRegisterNewNetworks disabled, a rollup attached to the manager
+// TestStart_PostStartRollupPendingUntilRestartWhenAutoRegisterDisabled covers the
+// simulated-backend scenario: with Config.AutoRegisterNewNetworks disabled, a rollup attached to the manager
 // after Start is never served by the already-running finder - it is only recorded pending. A full
 // restart (a brand-new finder, built and Start-ed after the rollup manager's on-chain state already
 // reflects the new rollup) does serve it, because Start's own enumeration is never gated; only

@@ -20,7 +20,7 @@ import (
 
 const (
 	// proxyRedactionUnreachableRPCURL/BridgeURL are the network-2 RPCURLs/BridgeURLs entries
-	// substituted into aggkit-proxy's config (per S3(a)'s confirmed recipe). They use two
+	// substituted into aggkit-proxy's config. They use two
 	// distinct, DNS-unresolvable ".invalid" hostnames -- a fast NXDOMAIN rather than the
 	// connect-timeout stall a blackholed IP would cause -- so both the JSON-RPC and the
 	// bridge-service failure paths are exercised and can be asserted on separately. Ports match
@@ -88,13 +88,13 @@ func fetchTrackingRawBody(ctx context.Context, networkID uint32, txHash common.H
 // descriptions must never leak an internal URL, host or port, even though the underlying error
 // legitimately contains one.
 //
-// Per S3(a)'s confirmed recipe, network 2's RPC and bridge-service URLs in aggkit-proxy's
+// Network 2's RPC and bridge-service URLs in aggkit-proxy's
 // bind-mounted config are rewritten to point at two distinct, unresolvable ".invalid" hosts,
 // aggkit-proxy-001 is restarted to pick up the change (a single restart is enough -- the config
 // is read fresh at process start, no stop/start pair needed), and a plain L1->network2 bridge is
 // sent. The tracker resolves the bridge via its own L1 BridgeEventSource independently of network
 // 2's reachability, but a later resolution step needs to reach network 2 (proxied) -- confirmed by
-// S3(a)'s manual probe, which observed the proxy's own (unredacted) log:
+// a manual probe of this env, which observed the proxy's own (unredacted) log:
 // "forwarding GET ... to http://unreachable-2.invalid:8545 failed: dial tcp: lookup
 // unreachable-2.invalid on 127.0.0.11:53: no such host" -- and that raw host must not reach the
 // tracker API response.
@@ -131,7 +131,7 @@ func TestProxyTrackerRedactsURLs(t *testing.T) {
 		if err := testEnv.RestartAggkitProxyWithConfig(restoreCtx, func(p string) error {
 			return os.WriteFile(p, originalConfig, 0o600)
 		}); err != nil {
-			// S17 L9: a failed restore leaves the tracked aggkit-proxy.toml pointed at the
+			// A failed restore leaves the tracked aggkit-proxy.toml pointed at the
 			// unreachable ".invalid" hosts, which a later local run would then fail on (the
 			// require.Contains precondition above) for an unrelated reason. Surface it as a
 			// test failure rather than silently logging it, so it cannot go unnoticed.

@@ -192,12 +192,13 @@ func TestActivityCommandExecute_RegisterFailureMapsTo500(t *testing.T) {
 	require.Equal(t, []string{"RegisterAndAwait"}, registry.calls)
 }
 
-// TestActivityCommandExecute_RegistryFullMapsTo503RedactsSensitiveTokens is the S21 regression
-// test for the ErrActivityRegistryFull branch of Execute: any URL/host/IP baked into the
-// underlying RegisterAndAwait error must be redacted before it is stored in errData.Message -- in
-// memory, asserted directly on the returned *types.ErrorData, not only once it is marshalled to
-// JSON (types.ErrorData.MarshalJSON is the defensive last line, this is the primary construction
-// site per the design's "in-memory is already clean" invariant).
+// TestActivityCommandExecute_RegistryFullMapsTo503RedactsSensitiveTokens covers the
+// ErrActivityRegistryFull branch of Execute: any URL/host/IP baked into the underlying
+// RegisterAndAwait error must be redacted before it is stored in errData.Message. Asserted
+// directly on the returned *types.ErrorData rather than only on the marshalled JSON, because the
+// WebSocket close frame carries Message as a bare string that never reaches
+// types.ErrorData.MarshalJSON - which is why every ErrorData built from an error inside this
+// package redacts at the literal.
 func TestActivityCommandExecute_RegistryFullMapsTo503RedactsSensitiveTokens(t *testing.T) {
 	wrapped := fmt.Errorf("%w: dial tcp 10.0.0.5:8545: connect: connection refused", domain.ErrActivityRegistryFull)
 	registry := &fakeActivityRegistry{registerAndAwaitErr: wrapped}
@@ -284,10 +285,10 @@ func TestActivityItemMarshalJSON_EmbeddedBridgeGlobalIndexIsQuotedString(t *test
 		"embedded BridgeResponse.GlobalIndex must never marshal as a bare JSON number")
 }
 
-// TestActivityItemMarshalJSON_ErrorsAreRedacted is the S17 C1 regression test: ActivityItem.Errors
-// (surfaced by GET /activity/from/{from_address} as "errors") must never leak a backend URL or
-// host:port to an API client, whether or not the construction site (ActivityCache.refresh)
-// already redacted it - MarshalJSON is the defensive last line.
+// TestActivityItemMarshalJSON_ErrorsAreRedacted pins that ActivityItem.Errors (surfaced by
+// GET /activity/from/{from_address} as "errors") never leaks a backend URL or host:port to an API
+// client. The producers store the raw error on purpose (it is what they also log), so this
+// marshaler is the layer that has to redact it.
 func TestActivityItemMarshalJSON_ErrorsAreRedacted(t *testing.T) {
 	item := ActivityItem{
 		BridgeNetworkID: 2,
@@ -314,11 +315,10 @@ func TestActivityItemMarshalJSON_ErrorsAreRedacted(t *testing.T) {
 		"dial tcp <redacted-host>: connect: connection refused", decoded.Errors["claim"])
 }
 
-// TestActivityWarningItemMarshalJSON_MessageIsRedacted is the S17 C1 regression test:
-// ActivityWarningItem.Message (surfaced by GET /activity/from/{from_address} as
-// "warnings[].message") must never leak a backend URL or host:port to an API client, whether or
-// not the construction site (sources.ActivitySource.warnf) already redacted it - MarshalJSON is
-// the defensive last line.
+// TestActivityWarningItemMarshalJSON_MessageIsRedacted pins that ActivityWarningItem.Message
+// (surfaced by GET /activity/from/{from_address} as "warnings[].message") never leaks a backend
+// URL or host:port to an API client. sources.ActivitySource.warnf keeps the raw message on purpose
+// (it logs the identical string), so this marshaler is the layer that has to redact it.
 func TestActivityWarningItemMarshalJSON_MessageIsRedacted(t *testing.T) {
 	item := ActivityWarningItem{
 		NetworkID: 2,
@@ -340,11 +340,10 @@ func TestActivityWarningItemMarshalJSON_MessageIsRedacted(t *testing.T) {
 		"do request: Get <redacted-url>: dial tcp <redacted-host>: connection refused", decoded.Message)
 }
 
-// TestActivityResponseMarshalJSON_NoRemainingURLs is an end-to-end S17 C1 regression test over
-// the full wire shape GET /activity/from/{from_address} returns: neither a bridge's "errors" nor
-// a top-level "warnings[].message" may contain a raw backend URL or host:port once marshalled,
-// even when the construction sites (ActivityCache.refresh / ActivitySource.warnf) are bypassed by
-// constructing the response types directly.
+// TestActivityResponseMarshalJSON_NoRemainingURLs is the end-to-end pass over the full wire shape
+// GET /activity/from/{from_address} returns: neither a bridge's "errors" nor a top-level
+// "warnings[].message" may contain a raw backend URL or host:port once marshalled, however the
+// values got there.
 func TestActivityResponseMarshalJSON_NoRemainingURLs(t *testing.T) {
 	resp := ActivityResponse{
 		Bridges: []ActivityItem{{

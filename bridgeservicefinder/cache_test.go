@@ -44,10 +44,10 @@ func TestFinder_NetworkIDs(t *testing.T) {
 	}
 }
 
-// TestCache_PendingListSortedAscending is the S17 L11 regression test: pendingList's documented
-// "sorted by ascending NetworkID" contract (also promised by Finder.PendingNetworks, the tracker
-// API docs and the swagger description) must hold even when networks are recorded out of order,
-// not just when they happen to already be inserted in order.
+// TestCache_PendingListSortedAscending pins pendingList's documented "sorted by ascending
+// NetworkID" contract (also promised by Finder.PendingNetworks, the tracker API docs and the
+// swagger description) even when networks are recorded out of order, not just when they happen to
+// already be inserted in order.
 func TestCache_PendingListSortedAscending(t *testing.T) {
 	c := newCache()
 	require.Nil(t, c.pendingList())

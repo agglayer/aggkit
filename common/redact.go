@@ -34,25 +34,25 @@ var (
 	reLookup = regexp.MustCompile(`\b(lookup\s+)[A-Za-z0-9<][A-Za-z0-9.\-<>]*`)
 	// 7. A quoted, scheme-less "URL" (host[:port][/path]) as produced when an operator-configured
 	//    RPCURLs/BridgeURLs value has no scheme and Go's url.Parse / rpc.Dial echoes it verbatim
-	//    inside the double quotes *url.Error normally reserves for a real URL (S17 M2). The host
+	//    inside the double quotes *url.Error normally reserves for a real URL. The host
 	//    must start with a letter so a quoted numeric/timestamp-like token is never mistaken for
 	//    one.
 	reQuotedNoSchemeURL = regexp.MustCompile(`"[A-Za-z][A-Za-z0-9\-]*:\d{1,5}[^\s"]*"`)
 	// 8. A dotless host:port immediately after one of a small set of known wrap-text anchors
 	//    ("dialing ... at <host>:<port>", "for target <host>:<port>", "upstream <host>:<port>
 	//    refused", ...). Anchored deliberately (rather than matching any bare "word:digits" pair)
-	//    so ordinary prose ("network 2:", timestamps, durations) is never touched (S17 M2); the
+	//    so ordinary prose ("network 2:", timestamps, durations) is never touched; the
 	//    host must start with a letter, which also keeps a following timestamp
 	//    ("resolved at 2026-...T10:11:12Z") untouched.
 	reAnchoredHostPort = regexp.MustCompile(
 		`\b(at|to|target|upstream|host|address)\s+([A-Za-z][A-Za-z0-9\-]*:\d{1,5})\b`)
 	// 9. The exact "certificate is valid for <name>, not <name>" shape a TLS/x509 SAN mismatch
-	//    produces, redacting both the certificate's SAN and the hostname the client dialed (S17
-	//    M3). Anchored to this literal phrase rather than the generic words "for"/"not" so
+	//    produces, redacting both the certificate's SAN and the hostname the client dialed.
+	//    Anchored to this literal phrase rather than the generic words "for"/"not" so
 	//    unrelated uses of those words (e.g. "for network 7") are never touched.
 	reCertValidFor = regexp.MustCompile(
 		`\b(certificate is valid for )([A-Za-z0-9][A-Za-z0-9.\-]*)(, not )([A-Za-z0-9][A-Za-z0-9.\-]*)`)
-	// 10. A bare hostname (dotted or not) after the literal "no such host: " prefix (S17 M3) -
+	// 10. A bare hostname (dotted or not) after the literal "no such host: " prefix -
 	//     the reverse ordering of the usual net.DNSError "lookup <name>: no such host" text that
 	//     rule 6 already covers.
 	reNoSuchHostSuffix = regexp.MustCompile(

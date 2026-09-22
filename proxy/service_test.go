@@ -28,8 +28,9 @@ func (f fakeResolver) GetURL(networkID uint32) (bridgeservicefinder.NetworkURLs,
 }
 
 // fakeErrResolver is a NetworkURLResolver that always fails with a fixed error, for tests
-// exercising ForwardHandler's own redaction of GetURL's error (see S1-obs-7: ErrURLNotFound
-// itself never carries a URL today, but the choke point must redact defensively)
+// exercising ForwardHandler's own redaction of GetURL's error. ErrURLNotFound itself never
+// carries a URL today, but the finder's other failure paths wrap transport errors that do, and
+// this handler writes the message into a plain gin.H (no marshaler to fall back on)
 type fakeErrResolver struct {
 	err error
 }
@@ -146,9 +147,9 @@ func TestForwardHandlerUnknownNetwork(t *testing.T) {
 }
 
 // TestForwardHandlerRedactsResolverErrorURL pins that a backend URL embedded in the finder's
-// GetURL error never reaches the proxy's own JSON error body, even though ErrURLNotFound itself
-// never carries one today (S1-obs-7) — this exercises the defensive redaction of the generic
-// finder error path
+// GetURL error never reaches the proxy's own JSON error body. ErrURLNotFound itself never carries
+// one today, so this exercises the generic finder error path, whose message is written straight
+// into a gin.H and therefore has to be redacted where it is built
 func TestForwardHandlerRedactsResolverErrorURL(t *testing.T) {
 	rawErr := fmt.Errorf(
 		"resolving bridge service URL for network 2: %s",

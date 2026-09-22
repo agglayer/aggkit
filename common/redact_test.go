@@ -247,9 +247,9 @@ func TestRedactSensitive_NoSensitiveContentIsByteIdentical(t *testing.T) {
 
 // TestRedactSensitive_NoRemainingSensitiveTokens is a defense-in-depth pass over every vector
 // whose input carries sensitive content: the output must contain none of "://", an IPv4
-// literal, a "[..]:port" bracketed literal, or the original hostname/URL host (forbiddenHosts;
-// see S17 L12 - the original hostname check is asserted explicitly, not just implied by the
-// other three).
+// literal, a "[..]:port" bracketed literal, or the original hostname/URL host (forbiddenHosts,
+// checked explicitly rather than left implied by the other three, since a dotted hostname is
+// neither an IPv4 literal nor a "://" occurrence).
 func TestRedactSensitive_NoRemainingSensitiveTokens(t *testing.T) {
 	cases := []struct {
 		name           string

@@ -30,8 +30,8 @@ const (
 	// proxyAutoregProxy002Service is the docker-compose service name of aggkit-proxy-002.
 	proxyAutoregProxy002Service = "aggkit-proxy-002"
 
-	// proxyAutoregAdminAddr holds DEFAULT_ADMIN_ROLE on the rollup manager in this env (proven in
-	// the plan's "S3 findings" (b)). Its private key is unavailable, so every on-chain write below
+	// proxyAutoregAdminAddr holds DEFAULT_ADMIN_ROLE on the rollup manager in the anvil-2chains
+	// env. Its private key is unavailable, so every on-chain write below
 	// is sent as an unsigned eth_sendTransaction from an anvil-impersonated account, built from the
 	// generated ABI, rather than through bind.TransactOpts (which needs a signer). Reads use the
 	// generated *Caller bindings instead, which need no signer.
@@ -61,7 +61,7 @@ const (
 	proxyAutoregNewNetworkID = 3
 
 	// proxyAutoregRollupVerifierType matches rollupVerifierType on the two pessimistic rollups
-	// already attached in this env (rollupIDToRollupData(1)/(2), per the plan's "S3 findings").
+	// already attached in this env, as reported by rollupIDToRollupData(1)/(2).
 	proxyAutoregRollupVerifierType = 2
 
 	// proxyAutoregAttachBudget bounds the whole attach sequence (impersonate, fund, deploy the mock,
@@ -210,8 +210,8 @@ func sendAndWaitMined(
 
 // TestProxyAutoRegisterNewNetworks exercises #1855: a network discovered after aggkit-proxy starts
 // is only auto-activated when [BridgeServiceFinder] AutoRegisterNewNetworks is true. It attaches a
-// third rollup (network 3) to the L1 rollup manager using the recipe proven in the plan's "S3
-// findings" (b) -- an anvil-impersonated admin (its private key is unavailable, so every on-chain
+// third rollup (network 3) to the L1 rollup manager through an
+// anvil-impersonated admin (its private key is unavailable, so every on-chain
 // write is an unsigned eth_sendTransaction built from the generated ABI, never bind.TransactOpts;
 // reads use the generated *Caller bindings instead, which need no signer) -- and asserts that
 // aggkit-proxy-001 (AutoRegisterNewNetworks = true, the default) starts proxying network 3 within
@@ -243,7 +243,7 @@ func TestProxyAutoRegisterNewNetworks(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNotFound, status, "aggkit-proxy-002 already serves network 3 before attach")
 
-	// Attach rollup 3, per the plan's "S3 findings" (b): impersonate+fund the admin, deploy the
+	// Attach rollup 3: impersonate+fund the admin, deploy the
 	// mock rollup contract, point it at a real, healthy bridge service, self-grant
 	// _ADD_EXISTING_ROLLUP_ROLE, then addExistingRollup.
 	attachCtx, cancelAttach := context.WithTimeout(ctx, proxyAutoregAttachBudget)
