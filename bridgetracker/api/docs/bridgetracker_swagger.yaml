@@ -557,6 +557,14 @@ definitions:
         items:
           $ref: '#/definitions/types.PendingNetwork'
         type: array
+      start_date:
+        description: |-
+          StartDate is when this instance started (RFC3339, UTC), fixed for as long as InstanceID
+          is. It is the reference point PendingNetworks is relative to — every entry there was, by
+          definition, discovered after it. Uptime is not served as its own field: a client derives
+          it as now minus StartDate, and an absolute instant keeps the response byte-identical
+          between calls
+        type: string
       status:
         description: Status is always "ok"
         type: string

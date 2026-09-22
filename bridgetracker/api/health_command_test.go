@@ -8,6 +8,7 @@ import (
 
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -110,4 +111,47 @@ func TestHealthCommandExecute_TwoPendingNetworksSortedByID(t *testing.T) {
 	data, err := json.Marshal(obj)
 	require.NoError(t, err)
 	require.Contains(t, string(data), `"pending_networks"`)
+}
+
+// TestHealthCommandExecute_StartDateIsServedAsRFC3339 verifies that the instance's start date is
+// reported verbatim on every response of one execution (it is captured once, at construction
+// time), serialized as an RFC3339 UTC instant - the reference point pending_networks entries'
+// first_seen values are relative to.
+func TestHealthCommandExecute_StartDateIsServedAsRFC3339(t *testing.T) {
+	startDate := time.Date(2026, 9, 22, 10, 30, 0, 0, time.UTC)
+	cmd := &healthCommand{instanceID: "instance-1", startDate: startDate, configSHA1: "sha1"}
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	_, obj, errData := cmd.Execute(c)
+	require.Nil(t, errData)
+
+	resp, ok := obj.(types.HealthResponse)
+	require.True(t, ok)
+	require.Equal(t, startDate, resp.StartDate)
+
+	data, err := json.Marshal(obj)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"start_date":"2026-09-22T10:30:00Z"`)
+
+	// A second call reports the identical instant: the field describes the execution, not "now".
+	_, again, errData := cmd.Execute(c)
+	require.Nil(t, errData)
+	respAgain, ok := again.(types.HealthResponse)
+	require.True(t, ok)
+	require.Equal(t, resp.StartDate, respAgain.StartDate)
+}
+
+// TestNewAPIHealthStartDateIsSetAtConstruction verifies the wiring NewAPI does: the health
+// command's start date is stamped when the API is built (not left zero, which would serialize as
+// "0001-01-01T00:00:00Z"), in UTC, alongside the instance id it belongs to.
+func TestNewAPIHealthStartDateIsSetAtConstruction(t *testing.T) {
+	before := time.Now().UTC()
+	api := NewAPI(nil, "sha1", nil, nil, nil, 0, 0, 0, aggkitcommon.CORSConfig{}, nil)
+	after := time.Now().UTC()
+
+	require.NotNil(t, api.healthCmd)
+	require.False(t, api.healthCmd.startDate.IsZero(), "start date must be stamped at construction")
+	require.Equal(t, time.UTC, api.healthCmd.startDate.Location())
+	require.False(t, api.healthCmd.startDate.Before(before))
+	require.False(t, api.healthCmd.startDate.After(after))
 }

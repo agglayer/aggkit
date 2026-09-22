@@ -108,8 +108,10 @@ func NewAPI(
 		getTxStatusCmd: &getTxStatusCommand{supervised: supervised, resolveTimeout: registerResolveTimeout},
 		healthCmd: &healthCommand{
 			// instanceID is a UUID generated at startup, exposed by the health endpoint to
-			// tell instances (and restarts of the same instance) apart
+			// tell instances (and restarts of the same instance) apart; startDate is the
+			// instant that identity came into being, which is what pending_networks is relative to
 			instanceID:    uuid.NewString(),
+			startDate:     time.Now().UTC(),
 			configSHA1:    configSHA1,
 			pendingLister: pendingLister,
 		},

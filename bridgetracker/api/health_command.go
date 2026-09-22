@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker/types"
@@ -21,7 +22,10 @@ type PendingNetworksLister interface {
 // healthCommand builds the health-check response: instance identity and build information.
 // It has no side effects (it does not touch the supervised registry).
 type healthCommand struct {
-	instanceID    string
+	instanceID string
+	// startDate is when this instance started, captured once at construction time alongside
+	// instanceID and served verbatim, so every response of one execution reports the same value
+	startDate     time.Time
 	configSHA1    string
 	pendingLister PendingNetworksLister
 }
@@ -41,6 +45,7 @@ func (cmd *healthCommand) Execute(_ *gin.Context) (int, any, *types.ErrorData) {
 		Status:      types.HealthStatusOK,
 		APIRevision: types.CurrentAPIRevision,
 		InstanceID:  cmd.instanceID,
+		StartDate:   cmd.startDate,
 		ConfigSHA1:  cmd.configSHA1,
 		Version:     types.NewVersionInfo(),
 	}

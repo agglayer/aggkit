@@ -891,6 +891,10 @@
                         "$ref": "#/definitions/types.PendingNetwork"
                     }
                 },
+                "start_date": {
+                    "description": "StartDate is when this instance started (RFC3339, UTC), fixed for as long as InstanceID\nis. It is the reference point PendingNetworks is relative to — every entry there was, by\ndefinition, discovered after it. Uptime is not served as its own field: a client derives\nit as now minus StartDate, and an absolute instant keeps the response byte-identical\nbetween calls",
+                    "type": "string"
+                },
                 "status": {
                     "description": "Status is always \"ok\"",
                     "type": "string"

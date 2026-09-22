@@ -369,6 +369,7 @@ Always returns `200 OK` with a `HealthResponse` body:
 | status | string | always `"ok"` |
 | api_revision | int | the tracker's wire API contract version — bumped by one whenever a change could break an existing client (a field added/removed/renamed, an enum's value set changed, a new step inserted into a bridge's expected path, and the like), so a client can tell which contract shape the responding instance speaks. Purely informational: the tracker never rejects or alters behavior based on it |
 | instance_id | string | UUID generated at startup; changes on every execution. Two responses with different `instance_id` come from different instances (or the same instance after a restart) |
+| start_date | string (RFC3339, UTC) | when the instance started; fixed for as long as `instance_id` is. It is the reference point `pending_networks` is relative to — every entry there was, by definition, discovered after it. Uptime is not served as its own field: derive it as `now - start_date`, which keeps the response byte-identical between calls |
 | config_sha1 | string | sha1sum (hex) of the configuration the instance was started with; allows checking that all instances run the same configuration. The binary accepts several `--cfg` files, so the hash is computed over the **concatenation of the config files in the order they were passed** |
 | version | VersionInfo | build/version information of the running instance |
 | pending_networks | PendingNetwork [] | networks the bridge service finder discovered after startup but did not activate because `[BridgeServiceFinder] AutoRegisterNewNetworks` is `false`, sorted by ascending `network_id`. **Omitted** (no key) when nothing is pending — in particular whenever `AutoRegisterNewNetworks` is left at its default (`true`) |
@@ -409,6 +410,7 @@ Example:
   "status": "ok",
   "api_revision": 2,
   "instance_id": "3f1c9a2e-8b4d-4f6a-9c0e-5d7b2a1e4c8f",
+  "start_date": "2026-09-22T10:30:00Z",
   "config_sha1": "2ef7bde608ce5404e97d5f042f95f89f1c232871",
   "version": {
     "version": "v0.1.0",

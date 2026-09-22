@@ -37,7 +37,10 @@ const HealthStatusOK = "ok"
 //   - 5: GET /tracker/v1/health gained a new optional pending_networks array
 //     (HealthResponse.PendingNetworks), listing networks the bridge service finder discovered
 //     after startup but did not activate because [BridgeServiceFinder] AutoRegisterNewNetworks
-//     is false; omitted when empty, so an existing client ignoring unknown fields is unaffected
+//     is false; omitted when empty, so an existing client ignoring unknown fields is unaffected.
+//     The same revision added start_date (HealthResponse.StartDate), the instant this instance
+//     started, which is the reference point every pending_networks entry's first_seen is
+//     relative to
 const CurrentAPIRevision = 5
 
 // HealthResponse is the body of GET /tracker/v1/health
@@ -52,6 +55,12 @@ type HealthResponse struct {
 	// responses with different InstanceID come from different instances (or the same
 	// instance after a restart)
 	InstanceID string `json:"instance_id"`
+	// StartDate is when this instance started (RFC3339, UTC), fixed for as long as InstanceID
+	// is. It is the reference point PendingNetworks is relative to — every entry there was, by
+	// definition, discovered after it. Uptime is not served as its own field: a client derives
+	// it as now minus StartDate, and an absolute instant keeps the response byte-identical
+	// between calls
+	StartDate time.Time `json:"start_date"`
 	// ConfigSHA1 is the sha1sum (hex) of the configuration the instance was started with;
 	// it allows checking that all instances behind a proxy run the same configuration
 	ConfigSHA1 string `json:"config_sha1"`
