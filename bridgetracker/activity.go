@@ -386,11 +386,25 @@ func settled(entry *domain.ActivityEntry) bool {
 	return entry.ClaimStatus == types.ClaimStatusClaimed && entry.Claim != nil
 }
 
+// blockTimeOrNow converts ts, a block's unix-second timestamp, to a UTC time.Time, or returns
+// now when ts is zero — the sentinel BridgeResponse.BlockTimestamp effectively uses for "not
+// resolved yet" (a real on-chain block at exactly the unix epoch does not happen in practice)
+func blockTimeOrNow(ts uint64, now time.Time) time.Time {
+	if ts == 0 {
+		return now
+	}
+	return time.Unix(int64(ts), 0).UTC()
+}
+
 // refresh (re)computes the claim/tracking state of a single bridge item, stamping
-// ActivityEntry.CreatedAt (carried forward from existing, or now if this is the first time) and
-// UpdatedAt (always now — every call to refresh counts as an update, whether or not anything
-// about the entry actually changed). existing is the previously cached entry for this same
-// bridge, or nil if it has never been seen before:
+// ActivityEntry.CreatedAt (carried forward from existing, or item.Bridge's own origin deposit
+// block timestamp — falling back to now only if the bridge service has not populated that yet,
+// see blockTimeOrNow — the first time this bridge is seen) and UpdatedAt (always now — every
+// call to refresh counts as an update, whether or not anything about the entry actually changed;
+// deliberately not a deterministic fact like CreatedAt, since it reports the last time the
+// tracker checked the network, not the last time this bridge's own state actually changed — see
+// ActivityEntry.UpdatedAt's own doc, agglayer/aggkit#1840). existing is the previously cached
+// entry for this same bridge, or nil if it has never been seen before:
 //   - if existing is already confirmed claimed, isClaimed() is not asked again — that result
 //     never reverts — and refresh goes straight to the claim-record step;
 //   - otherwise the on-chain isClaimed() call runs as usual (unclaimed and error states must
@@ -410,7 +424,7 @@ func (a *ActivityCache) refresh(
 	if existing != nil {
 		entry.CreatedAt = existing.CreatedAt
 	} else {
-		entry.CreatedAt = a.now()
+		entry.CreatedAt = blockTimeOrNow(item.Bridge.BlockTimestamp, a.now())
 	}
 	entry.UpdatedAt = a.now()
 
