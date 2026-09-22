@@ -1241,7 +1241,13 @@ func TestStepResolverEndDate(t *testing.T) {
 			expected: nil,
 		},
 		{
-			name:     "WaitingLERUpdate: no deterministic value yet (#1840)",
+			name:     "WaitingLERUpdate: the LER update's own block timestamp",
+			resolver: &WaitingLERUpdateResolver{},
+			result:   &types.LERUpdateResult{BlockNumber: 200, BlockTimestamp: ts},
+			expected: at,
+		},
+		{
+			name:     "WaitingLERUpdate: zero BlockTimestamp -> nil",
 			resolver: &WaitingLERUpdateResolver{},
 			result:   &types.LERUpdateResult{BlockNumber: 200},
 			expected: nil,
@@ -1421,4 +1427,37 @@ func TestResolveStepsChainsDeterministicDates(t *testing.T) {
 	require.Equal(t, blockTime(claimedAt), claimed.StartDate,
 		"overridden with the claim tx's own timestamp, not chained from WaitingClaim")
 	require.Equal(t, blockTime(claimedAt), claimed.EndDate)
+}
+
+// TestResolveStepsChainsDeterministicDatesL2Origin mirrors
+// TestResolveStepsChainsDeterministicDates for an L2-originated path, pinning that
+// WaitingLERUpdate's own EndDate is the LER update's own block timestamp (LERSource.OriginLER
+// reads it back at the bridge's own origin block, so it costs nothing extra to report — see
+// LERUpdateResult's own doc) and that PendingInclusion, which has no deterministic value of its
+// own, chains its StartDate from it instead of now
+func TestResolveStepsChainsDeterministicDatesL2Origin(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
+	depositedAt := uint64(1700000000)
+	lerUpdatedAt := uint64(1700000100)
+
+	originLER := &types.LERUpdateResult{NetworkID: 1, LER: common.Hash{2}, BlockNumber: 200, BlockTimestamp: lerUpdatedAt}
+	info := &BridgeInfo{BlockTimestamp: depositedAt}
+	facts := &fakeFacts{originLER: originLER}
+	resolvers := testResolvers(facts)
+
+	steps := PendingPath(types.BridgeTypeL2ToL1, info, resolvers, now)
+	tracking := NewTrackingData(resolveStepsTestID, TrackingBridgeTx{Info: info}, steps)
+
+	result, err := ResolveSteps(context.Background(), log.NewLoggerNil(), resolvers, facts, tracking, now)
+	require.NoError(t, err)
+
+	all := result.AllSteps()
+	lerUpdate := all[indexOfStep(all, types.StepWaitingLERUpdate)]
+	require.Equal(t, blockTime(depositedAt), lerUpdate.StartDate, "the origin deposit's own block, not now")
+	require.Equal(t, blockTime(lerUpdatedAt), lerUpdate.EndDate, "the LER update's own block timestamp, not now")
+
+	inclusion := all[indexOfStep(all, types.StepPendingInclusion)]
+	require.Equal(t, lerUpdate.EndDate, inclusion.StartDate, "chained from WaitingLERUpdate's own EndDate")
 }

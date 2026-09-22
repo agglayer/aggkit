@@ -51,9 +51,12 @@ func (r *WaitingLERUpdateResolver) StartDate(info *BridgeInfo, _ any) *time.Time
 	return blockTime(info.BlockTimestamp)
 }
 
-// EndDate has no deterministic value today: LERUpdateResult only carries BlockNumber, not its
-// own timestamp — resolving it would need an extra RPC call this resolver does not make yet
-// (agglayer/aggkit#1840)
-func (r *WaitingLERUpdateResolver) EndDate(_ any) *time.Time {
-	return nil
+// EndDate returns the LER update's own block timestamp — the same block the LER was read back
+// at (see LERSource.OriginLER), i.e. the bridge's own origin block, not a later one
+func (r *WaitingLERUpdateResolver) EndDate(result any) *time.Time {
+	update, ok := result.(*types.LERUpdateResult)
+	if !ok {
+		return nil
+	}
+	return blockTime(update.BlockTimestamp)
 }

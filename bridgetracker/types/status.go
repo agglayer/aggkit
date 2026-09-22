@@ -329,11 +329,15 @@ type InjectedL2GERBlock struct {
 }
 
 // LERUpdateResult is the result of StepWaitingLERUpdate once it completes: the LER produced
-// by the update on the origin L2 network and the block it was updated in
+// by the update on the origin L2 network and the block it was updated in. BlockTimestamp is
+// that same block's timestamp — free to populate here, no extra RPC call needed, since the LER
+// is read back at the exact block the bridge's own deposit was emitted in (see
+// sources.LERSource.OriginLER), the same block BridgeInfo.BlockTimestamp already carries
 type LERUpdateResult struct {
-	NetworkID   uint32      `json:"network_id"`
-	LER         common.Hash `json:"ler"`
-	BlockNumber uint64      `json:"block_number"`
+	NetworkID      uint32      `json:"network_id"`
+	LER            common.Hash `json:"ler"`
+	BlockNumber    uint64      `json:"block_number"`
+	BlockTimestamp uint64      `json:"block_timestamp"`
 }
 
 // ClaimResult is the result of StepClaimed once it completes: the claim transaction on

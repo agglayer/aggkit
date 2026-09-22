@@ -100,9 +100,14 @@ func TestBridgeStepPathResultMarshalJSON(t *testing.T) {
 			}`,
 		},
 		{
-			name:     "LER update result",
-			result:   &types.LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0b"), BlockNumber: 200},
-			expected: `{"network_id":1,"ler":"0x000000000000000000000000000000000000000000000000000000000000000b","block_number":200}`,
+			name: "LER update result",
+			result: &types.LERUpdateResult{
+				NetworkID: 1, LER: common.HexToHash("0x0b"), BlockNumber: 200, BlockTimestamp: 1700000400,
+			},
+			expected: `{
+				"network_id":1,"ler":"0x000000000000000000000000000000000000000000000000000000000000000b",
+				"block_number":200,"block_timestamp":1700000400
+			}`,
 		},
 		{
 			name: "pending inclusion result",

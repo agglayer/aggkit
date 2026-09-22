@@ -840,6 +840,7 @@ func rootCallOutput(t *testing.T, root common.Hash) []byte {
 
 func TestLERSourceOriginLER(t *testing.T) {
 	bridge := l2ToL1Bridge()
+	bridge.BlockTimestamp = 1700000400 // the origin deposit's own block timestamp
 	bridgeAddr := common.HexToAddress("0x40")
 	root := common.HexToHash("0x0e")
 
@@ -859,6 +860,8 @@ func TestLERSourceOriginLER(t *testing.T) {
 	require.Equal(t, bridge.NetworkID, result.NetworkID)
 	require.Equal(t, root, result.LER)
 	require.Equal(t, bridge.BlockNumber, result.BlockNumber)
+	require.Equal(t, bridge.BlockTimestamp, result.BlockTimestamp,
+		"the same block GetRoot() was read at, free to report — no extra RPC call")
 }
 
 // TestLERSourceNeverTrustsLogDerivedAddress checks that OriginLER binds GetRoot() to the
