@@ -53,6 +53,23 @@ will walk through before any milestone has been checked — not just the current
 state: `registered` (added to the list, not resolved yet), `running`, `error` (a step, or the
 initial resolution itself, failed terminally), or `finished` (claimed).
 
+### Step dates
+
+Each step's `start_date`/`end_date` prefer a deterministic on-chain fact (the block the step's
+own milestone was met at) over the instant the tracker happened to poll and notice it — see
+[BridgeStepPath](bridgetracker/API.md#bridgesteppath) for exactly which steps have one and how
+they chain into each other. A step whose resolver could not fully resolve that fact anyway still
+completes normally; it just explains why via its own `error`, with `error_type` `"warning"`
+(informational only, not a failure — see [ErrorStep](bridgetracker/API.md#errorstep)).
+
+This only ever applies going forward: a bridge whose steps were already `"done"` before an
+upgrade to this behavior keeps whatever dates were recorded under the previous, observation-time
+implementation — a step already `"done"` is never resolved again (see "How it works" above), so
+there is nothing left to recompute it from. A bridge still in flight at the time of the upgrade
+will show a mixed timeline: earlier, already-completed steps keep their old observation-time
+dates, later ones get the new on-chain-derived ones. This is expected, not a bug — treat it as an
+artifact of the moment a given bridge was resolved, not something to backfill.
+
 ## Endpoints
 
 All routes are served under `/tracker/v1`.
@@ -88,7 +105,7 @@ RegisterResolveTimeout = "3s"
 L1BlockFinality = "LatestBlock"
 L2BlockFinality = "LatestBlock"
 MaxTrackedBridges = 100000
-L2InjectionLookbackBlocks = 1000
+L2InjectionLookbackBlocks = 10000000
 
 # Workaround only: uncomment for a destination network whose bridge-service instance does not
 # report the L2 block a covering GER was injected at.
@@ -139,7 +156,15 @@ UseTLS = false
   fallback attempted; it should not be set otherwise.
 - `L2InjectionLookbackBlocks`: bounds how many blocks that same fallback scans backwards from the
   destination network's head before giving up, instead of continuing all the way back to genesis.
-  Defaults to 1,000 blocks when unset or `<= 0`.
+  Defaults to 10,000,000 blocks when unset or `<= 0`. The scan pages backwards in
+  `bridgeservicefinder.DefaultBlockChunkSize`-sized (10,000-block) `eth_getLogs` calls, so on a
+  miss (wrong address, injection older than the window, or the event genuinely absent) it can
+  issue up to `L2InjectionLookbackBlocks / 10,000` sequential RPC calls before giving up — at the
+  default, up to ~1,000 per bridge, once, the first time that bridge's step needs the fallback
+  (it is never re-scanned once the step completes). Size it to how far back a genuine injection
+  can realistically lag on that network, not larger than needed, especially against a
+  rate-limited RPC provider with several bridges resolving concurrently
+  (`MaxConcurrentResolutions`).
 - `AgglayerClient`: the client used to resolve an L2-originated bridge's covering certificate and
   its status (`PendingInclusion`/`CertificatePending`/`WaitL1SettledGER`). `Cached` is the master
   switch for `ConfigurationCache`'s per-method policy (`false` ignores it entirely). Each method

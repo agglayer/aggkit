@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 )
@@ -41,4 +42,23 @@ func (r *WaitingClaimResolver) Resolve(
 	}
 
 	return nil, nil
+}
+
+// StartDate has no deterministic value of its own: this step's beginning is always "the
+// previous step just finished" (chained by UpdateStep)
+func (r *WaitingClaimResolver) StartDate(_ *BridgeInfo, _ any) *time.Time {
+	return nil
+}
+
+// EndDate has no deterministic value of its own: isClaimed() confirms the milestone but carries
+// no claim transaction/block details — the real value is produced by the very next step (see
+// ClaimedResolver)
+func (r *WaitingClaimResolver) EndDate(_ any) *time.Time {
+	return nil
+}
+
+// Warning has nothing to report: EndDate's own lack of a deterministic value is structural (see
+// its own doc), not a partial-failure mode worth explaining
+func (r *WaitingClaimResolver) Warning(_ any) *string {
+	return nil
 }

@@ -32,7 +32,10 @@ type BridgeStepPath struct {
 	// Error carries the error details when Status is types.StepStatusError, or
 	// types.StepStatusSkipped for the step whose real error triggered the claimed-bridge
 	// fallback — its own ErrorType/description are kept as-is. nil for every other step skipped
-	// alongside it, never itself attempted, and for every other status
+	// alongside it, never itself attempted. Also set, with ErrorType types.StepErrorWarning, on a
+	// step that completed normally (status stays "done") but whose resolver could not fully
+	// resolve some optional deterministic data of its own — informational only, not a reason
+	// this step failed. nil for every other status
 	Error *types.ErrorStep `json:"error,omitempty"`
 }
 

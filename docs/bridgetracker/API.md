@@ -175,11 +175,11 @@ Example (`TrackingData.bridge_status` once resolved):
 | step_index | int | this step's position within the parent `TrackingData.all_steps` list |
 | step_name | string | bare string, one of `"WaitingGERUpdate"`, `"WaitingLERUpdate"`, `"PendingInclusion"`, `"CertificatePending"`, `"WaitL1SettledGER"`, `"WaitingL1InfoLeafAvailable"`, `"WaitingGERInjection"`, `"WaitingClaim"`, `"Claimed"` |
 | status | string | bare string, one of `"pending"`, `"inProgress"`, `"done"`, `"error"` |
-| start_date | *time.Time | **omitted** (no key) while `nil`, not serialized as `null` |
-| end_date | *time.Time | **omitted** (no key) while `nil`, not serialized as `null` |
+| start_date | *time.Time | **omitted** (no key) while `nil`, not serialized as `null`. Prefers a deterministic on-chain fact where one exists (the step's own block, or — for the first step of the route — the origin deposit's own block); otherwise chained from the previous step's own `end_date`, so a route reads as one continuous timeline *within* a single step's own chain of causality. Not necessarily present: `null` for a step that was skipped without ever starting (see `status`) |
+| end_date | *time.Time | **omitted** (no key) while `nil`, not serialized as `null`. Prefers a deterministic on-chain fact where the step's own resolver can produce one (see [StepResult](#stepresult) per step); falls back to the instant the tracker checked and found it complete otherwise — `error` (type `"warning"`) explains which case applies when it isn't deterministic. **Not guaranteed monotonic across steps**: `WaitingGERInjection`'s `start_date` is an L1 block's timestamp while its own `end_date` is an L2 block's — two different chains' clocks — and `Claimed`'s dates come from its own claim tx, which can predate `WaitingClaim`'s `end_date` (always the check time) for a bridge registered after it was already claimed. Only the route's own two endpoints (the very first `start_date`, the very last `end_date`) are guaranteed correctly ordered; do not assume `end_date >= start_date` for a given step, or that one step's dates fall entirely after the previous step's |
 | expected_duration | *Duration | reserved for a future per-step protocol duration estimate; serializes as a human-readable string (e.g. `"5m0s"`) when set, **omitted** otherwise — no resolver currently populates it, so it never appears on the wire today; do not rely on it |
 | result | *StepResult | data produced by the step once it completes; its shape depends on `step_name` (see [StepResult](#stepresult)). **Omitted** (no key) until the step produces it, and for steps without a result |
-| error | *ErrorStep | error details, only set when `status` is `"error"` (see [ErrorStep](#errorstep)). **Omitted** (no key) otherwise |
+| error | *ErrorStep | error details when `status` is `"error"` (a real failure), or — with `error_type` `"warning"` — an explanation for a step whose `status` is `"done"` but that could not fully resolve some optional data of its own (see [ErrorStep](#errorstep)). **Omitted** (no key) for every other status |
 
 Example (an in-progress step, and a completed one with a result):
 
@@ -224,16 +224,17 @@ Carried in the `result` field of a [BridgeStepPath](#bridgesteppath). Its shape 
 
 ## ErrorStep
 
-The same structure carries two different kinds of error, depending on where it appears:
+The same structure carries three different kinds of information, depending on where it appears and its `error_type`:
 
-- in the `error` field of a [BridgeStepPath](#bridgesteppath), when that step's `status` is `"error"` — a step of an otherwise-resolved bridge failed;
+- in the `error` field of a [BridgeStepPath](#bridgesteppath), when that step's `status` is `"error"` — a step of an otherwise-resolved bridge failed (`error_type` 0, 1 or 2);
+- in the `error` field of a [BridgeStepPath](#bridgesteppath) whose `status` is `"done"`, with `error_type` 3 (`"warning"`) — the step completed normally, but its resolver could not fully resolve some optional deterministic data of its own (today, only `WaitingGERInjection`'s L2 injection block/timestamp — see [StepResult](#stepresult)). This is informational only, never a reason the step failed, and `retry_count` is meaningless here (always `0`);
 - in the `error` field of [TrackingData](#trackingdata) — the tracker gave up trying to resolve the bridge at all (e.g. `bridgeAsset`/`bridgeMessage` tx not found, or the tx exists but emitted no `BridgeEvent`). In that case `retry_count` counts the not-found polls before giving up.
 
 | field | type | desc |
 | ------|------|------|
-| error_type | ErrorType (int) | 0->transient, 1->permanent, 2->exhausted (retries have been given up on) |
-| error_type_string | string | string representation of error_type (e.g. "transient") |
-| retry_count | int | number of retries attempted so far |
+| error_type | ErrorType (int) | 0->transient, 1->permanent, 2->exhausted (retries have been given up on), 3->warning (informational only — the step is `"done"`, not `"error"`; see above) |
+| error_type_string | string | string representation of error_type (e.g. "transient", "warning") |
+| retry_count | int | number of retries attempted so far; always `0` for a warning |
 | description | string [] | human-readable description(s) of the error, one entry per occurrence |
 
 ## GERData

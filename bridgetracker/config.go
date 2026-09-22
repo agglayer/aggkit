@@ -48,7 +48,7 @@ const DefaultMaxConcurrentResolutions = DefaultEngineMaxConcurrentResolutions
 
 // DefaultL2InjectionLookbackBlocks is the default Config.L2InjectionLookbackBlocks (must stay in
 // sync with the [Tracker] section of the proxy's default config)
-const DefaultL2InjectionLookbackBlocks = 1_000
+const DefaultL2InjectionLookbackBlocks = 10_000_000
 
 // DefaultActivitySourceBridgeServicePageSize is the default
 // Config.ActivitySourceBridgeService.PageSize: the page size used while paging through a

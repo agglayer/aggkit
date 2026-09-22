@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -42,4 +43,28 @@ func (r *ClaimedResolver) Resolve(
 	}
 
 	return claim, nil
+}
+
+// StartDate returns the same claim tx block timestamp as EndDate: unlike every other step,
+// StepClaimed's own milestone is a single point-in-time on-chain fact, not a span that begins
+// whenever the step before it (StepWaitingClaim, whose own on-chain isClaimed() check carries no
+// block of its own) happened to be checked — so it is worth overriding the StartDate this step
+// was opened with (chained from StepWaitingClaim) with this same, more precise value
+func (r *ClaimedResolver) StartDate(_ *BridgeInfo, result any) *time.Time {
+	return r.EndDate(result)
+}
+
+// EndDate returns the claim tx's own destination-network block timestamp
+func (r *ClaimedResolver) EndDate(result any) *time.Time {
+	claim, ok := result.(*types.ClaimResult)
+	if !ok {
+		return nil
+	}
+	return blockTime(claim.BlockTimestamp)
+}
+
+// Warning never has anything to report: EndDate's own value either exists or falls back to now,
+// with no partial-failure mode of its own worth explaining
+func (r *ClaimedResolver) Warning(_ any) *string {
+	return nil
 }

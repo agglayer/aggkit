@@ -879,6 +879,29 @@ func TestActivityCache_TimestampsTrackCreationAndLastUpdate(t *testing.T) {
 	require.True(t, entries[0].UpdatedAt.Equal(t2), "update time must advance on every recheck")
 }
 
+// TestActivityCache_CreatedAtUsesBridgeBlockTimestamp verifies CreatedAt prefers the bridge's
+// own origin deposit block timestamp over the tick's now, once the bridge service reports one
+// (agglayer/aggkit#1840) — mirroring the tracker's own PendingPath/WaitingGERUpdateResolver.
+func TestActivityCache_CreatedAtUsesBridgeBlockTimestamp(t *testing.T) {
+	bridge := testBridge(1)
+	bridge.BlockTimestamp = 1700000400
+
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{scannedBridge(bridge, testScannedNetworkID)}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false}}
+
+	cache := newTestActivityCache(scanner, claims)
+	mustRegisterActivity(t, cache, testFromAddress, 0)
+	now := time.Now()
+	cache.now = func() time.Time { return now }
+
+	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
+	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.True(t, entries[0].CreatedAt.Equal(time.Unix(int64(bridge.BlockTimestamp), 0)),
+		"the deposit's own block timestamp, not the tick's now")
+	require.True(t, entries[0].UpdatedAt.Equal(now), "UpdatedAt is always now, deliberately")
+}
+
 // TestActivityCache_TimestampsFreezeOnceSettled verifies UpdatedAt stops advancing once a bridge
 // settles (claimed with its claim record fetched), since a settled entry is never refreshed again.
 func TestActivityCache_TimestampsFreezeOnceSettled(t *testing.T) {
