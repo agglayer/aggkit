@@ -87,9 +87,9 @@ type ActivityItem struct {
 }
 
 // MarshalJSON is the implementation of the json.Marshaler interface. It redacts any URL,
-// host:port, IP address or DNS name from every Errors value defensively — domain.ActivityEntry.
-// Errors is already redacted at construction (see ActivityCache.refresh), this is the last line
-// of defense for any caller that does not
+// host:port, IP address or DNS name from every Errors value. domain.ActivityEntry.Errors holds
+// the raw error strings on purpose (they are what the refresh loop logs, where operators need the
+// real endpoint); this is the layer that makes them client-safe
 func (i ActivityItem) MarshalJSON() ([]byte, error) {
 	i.Errors = redactActivityErrors(i.Errors)
 	type activityItemAlias ActivityItem
@@ -121,9 +121,9 @@ type ActivityWarningItem struct {
 }
 
 // MarshalJSON is the implementation of the json.Marshaler interface. It redacts any URL,
-// host:port, IP address or DNS name from Message defensively — domain.ActivityWarning.Message is
-// already redacted at construction (see sources.ActivitySource.warnf), this is the last line of
-// defense for any caller that does not
+// host:port, IP address or DNS name from Message. domain.ActivityWarning.Message holds the raw
+// message on purpose (sources.ActivitySource.warnf logs the same string verbatim, where operators
+// need the real endpoint); this is the layer that makes it client-safe
 func (w ActivityWarningItem) MarshalJSON() ([]byte, error) {
 	w.Message = aggkitcommon.RedactSensitive(w.Message)
 	type activityWarningItemAlias ActivityWarningItem

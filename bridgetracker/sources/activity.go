@@ -365,14 +365,15 @@ func (s *ActivitySource) BridgesFrom(
 	return all, invalidated, warnings, nil
 }
 
-// warnf logs msg (formatted per fmt.Sprintf's rules on format/args), unredacted, and turns it
-// into the domain.ActivityWarning BridgesFrom reports back for networkID - whose Message is
-// redacted (aggkitcommon.RedactSensitive) since, unlike the log line, it reaches API clients via
-// GET /activity/from/{from_address}'s "warnings" field (see S17 C1)
+// warnf logs msg (formatted per fmt.Sprintf's rules on format/args) and turns it into the
+// domain.ActivityWarning BridgesFrom reports back for networkID. Both carry the message verbatim,
+// backend URLs included: operators need the real endpoint to debug, and the value only becomes
+// client-facing once it is marshalled as a wire ActivityWarningItem, which is where it is redacted
+// (see api.ActivityWarningItem.MarshalJSON)
 func (s *ActivitySource) warnf(networkID uint32, format string, args ...any) domain.ActivityWarning {
 	message := fmt.Sprintf(format, args...)
 	s.logger.Warnf("activity: %s", message)
-	return domain.ActivityWarning{NetworkID: networkID, Message: aggkitcommon.RedactSensitive(message)}
+	return domain.ActivityWarning{NetworkID: networkID, Message: message}
 }
 
 // fetchNewBridgesFrom pages through networkID's GET /bridge/v1/bridges filtered by fromAddress,

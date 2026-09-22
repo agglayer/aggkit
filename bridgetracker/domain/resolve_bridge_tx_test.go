@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -24,9 +25,9 @@ func (f *fakeBridgeEventSource) FindBridge(_ context.Context, _ TrackingID) (*Br
 var resolveBridgeTxTestID = TrackingID{NetworkID: 2}
 
 // TestResolveBridgeTxRedactsTransientErrorDescription pins that a transient FindBridge error
-// whose message embeds a backend URL (vector V10 from the plan's redaction vector table) is
-// redacted before being stored in the tx-level Error.Description, the same choke point every
-// other client-visible error string goes through (see aggkitcommon.RedactError)
+// whose message embeds a backend URL is stored raw in the tx-level Error.Description - the string
+// the tracker also logs, where operators need the real endpoint - and reaches the client redacted,
+// through the same types.ErrorStep.MarshalJSON layer every other client-visible error goes through
 func TestResolveBridgeTxRedactsTransientErrorDescription(t *testing.T) {
 	t.Parallel()
 
@@ -36,7 +37,7 @@ func TestResolveBridgeTxRedactsTransientErrorDescription(t *testing.T) {
 			`Get "http://10.0.0.5:5577/bridge/v1/claims?network_id=2&global_index=123": ` +
 			`dial tcp 10.0.0.5:5577: connect: connection refused`,
 	)
-	expected := `claim status: fetching claims of global index 123 on network 2: do request: ` +
+	expectedOnTheWire := `claim status: fetching claims of global index 123 on network 2: do request: ` +
 		`Get <redacted-url>: dial tcp <redacted-host>: connect: connection refused`
 
 	tracking := NewTrackingData(resolveBridgeTxTestID, TrackingBridgeTx{}, nil)
@@ -46,7 +47,17 @@ func TestResolveBridgeTxRedactsTransientErrorDescription(t *testing.T) {
 
 	require.ErrorIs(t, err, rawErr)
 	require.NotNil(t, result.BridgeTx().Error)
-	require.Equal(t, []string{expected}, result.BridgeTx().Error.Description)
-	require.NotContains(t, result.BridgeTx().Error.Description[0], "://")
-	require.NotContains(t, result.BridgeTx().Error.Description[0], "10.0.0.5")
+	require.Equal(t, []string{rawErr.Error()}, result.BridgeTx().Error.Description,
+		"the in-memory description keeps the raw error, for the logs")
+
+	data, err := json.Marshal(result.BridgeTx().Error)
+	require.NoError(t, err)
+
+	var wire struct {
+		Description []string `json:"description"`
+	}
+	require.NoError(t, json.Unmarshal(data, &wire))
+	require.Equal(t, []string{expectedOnTheWire}, wire.Description, "description served to the client")
+	require.NotContains(t, string(data), "://")
+	require.NotContains(t, string(data), "10.0.0.5")
 }

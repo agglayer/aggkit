@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math/big"
 	"path"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
+	"github.com/agglayer/aggkit/bridgetracker/api"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	"github.com/agglayer/aggkit/log"
@@ -307,14 +309,15 @@ func TestSQLiteActivityStoreIsClaimedFailureReportsErrorStatus(t *testing.T) {
 	require.Nil(t, entries[0].Errors, "a successful recheck must not carry over the previous failure")
 }
 
-// TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstances verifies refresh
-// (see sqliteActivityStore.refresh) redacts any URL/host/IP baked into an IsClaimed error before
-// it is stored in entry.Errors["claim"] — i.e. redaction happens at write time, not only when the
-// wire response is later marshalled (see bridgetracker/api/activity_command.go's defensive
-// ActivityItem.MarshalJSON). The row is read back by a second store instance, backed by a scanner/
-// claims that would panic if consulted, mirroring TestSQLiteActivityStorePersistsAcrossInstances —
-// proving the redacted value (not the raw one) is what actually persisted to sqlite and is served
-// back on the write->read round trip.
+// TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstances verifies both
+// halves of the contract for an IsClaimed error stored in entry.Errors["claim"]: the store keeps
+// it verbatim (backend URL included) so an operator reading the row, or the log line refresh
+// already emitted, sees the real endpoint, and it comes out redacted once it is marshalled as the
+// wire ActivityItem — which is where redaction lives (see
+// bridgetracker/api/activity_command.go's ActivityItem.MarshalJSON). The row is read back by a
+// second store instance, backed by a scanner/claims that would panic if consulted, mirroring
+// TestSQLiteActivityStorePersistsAcrossInstances — proving what actually persisted to sqlite and
+// is served back on the write->read round trip.
 func TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstances(t *testing.T) {
 	rawErr := `Post "http://1.2.3.4:8545": dial tcp 1.2.3.4:8545: connect: no route to host`
 	wantRedacted := "Post <redacted-url>: dial tcp <redacted-host>: connect: no route to host"
@@ -332,13 +335,14 @@ func TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstance
 	entries, _, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
-	require.Equal(t, wantRedacted, entries[0].Errors["claim"], "in-memory value from the writing store")
+	require.Equal(t, rawErr, entries[0].Errors["claim"], "in-memory value from the writing store")
+	requireWireErrorsRedacted(t, entries[0].Errors, "claim", wantRedacted, "1.2.3.4")
 	firstSQLite, ok := first.(*sqliteActivityStore)
 	require.True(t, ok)
 	require.NoError(t, firstSQLite.Close())
 
-	// second store, second scanner/claims that would panic if consulted again: proves the
-	// redacted string (not the raw one) is what was actually written to the DB
+	// second store, second scanner/claims that would panic if consulted again: proves the value
+	// served back comes off the disk and not from a fresh IsClaimed call
 	second, err := NewSQLiteActivityStore(
 		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
 	require.NoError(t, err)
@@ -349,9 +353,8 @@ func TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstance
 	entries, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
-	require.Equal(t, wantRedacted, entries[0].Errors["claim"], "in-memory value read back from disk")
-	require.NotContains(t, entries[0].Errors["claim"], "1.2.3.4")
-	require.NotContains(t, entries[0].Errors["claim"], "://")
+	require.Equal(t, rawErr, entries[0].Errors["claim"], "in-memory value read back from disk")
+	requireWireErrorsRedacted(t, entries[0].Errors, "claim", wantRedacted, "1.2.3.4")
 }
 
 // TestSQLiteActivityStoreReadinessFailureRedactsSensitiveTokensAcrossInstances is the same
@@ -377,13 +380,14 @@ func TestSQLiteActivityStoreReadinessFailureRedactsSensitiveTokensAcrossInstance
 	entries, _, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
-	require.Equal(t, wantRedacted, entries[0].Errors["readiness"], "in-memory value from the writing store")
+	require.Equal(t, rawErr, entries[0].Errors["readiness"], "in-memory value from the writing store")
+	requireWireErrorsRedacted(t, entries[0].Errors, "readiness", wantRedacted, "10.0.0.5")
 	firstSQLite, ok := first.(*sqliteActivityStore)
 	require.True(t, ok)
 	require.NoError(t, firstSQLite.Close())
 
-	// second store, second scanner/claims that would panic if consulted again: proves the
-	// redacted string (not the raw one) is what was actually written to the DB
+	// second store, second scanner/claims that would panic if consulted again: proves the value
+	// served back comes off the disk and not from a fresh IsReadyToClaim call
 	second, err := NewSQLiteActivityStore(
 		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
 	require.NoError(t, err)
@@ -394,19 +398,16 @@ func TestSQLiteActivityStoreReadinessFailureRedactsSensitiveTokensAcrossInstance
 	entries, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
-	require.Equal(t, wantRedacted, entries[0].Errors["readiness"], "in-memory value read back from disk")
-	require.NotContains(t, entries[0].Errors["readiness"], "10.0.0.5")
-	require.NotContains(t, entries[0].Errors["readiness"], "://")
+	require.Equal(t, rawErr, entries[0].Errors["readiness"], "in-memory value read back from disk")
+	requireWireErrorsRedacted(t, entries[0].Errors, "readiness", wantRedacted, "10.0.0.5")
 }
 
 // TestSQLiteActivityStoreLastWarningsRedactsSensitiveTokensAcrossInstances covers the third
 // site that can carry a client-facing error string into activity_address.last_warnings: a scan
-// warning reported by ActivityBridgeScanner.BridgesFrom (see domain.ActivityWarning.Message's
-// own doc: in production it is already redacted by ActivitySource.warnf before it ever reaches
-// the store). This test bypasses that upstream redaction the way a pre-fix build's row would
-// have (a raw, unredacted warning fed straight through fakeActivityScanner), to prove
-// decodeWarnings redacts again on read — see S23 finding L1 — rather than relying solely on the
-// wire layer's defensive ActivityWarningItem.MarshalJSON. Same shape as
+// warning reported by ActivityBridgeScanner.BridgesFrom. Same contract as the two Errors tests
+// above: the column round-trips the message verbatim, backend URL included, because it is
+// operator-facing there (ActivitySource.warnf logs the identical string), and the message comes
+// out redacted once it is marshalled as the wire ActivityWarningItem. Same shape as
 // TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstances: a second store
 // instance, backed by a scanner that would panic if consulted, reads the row back from disk.
 func TestSQLiteActivityStoreLastWarningsRedactsSensitiveTokensAcrossInstances(t *testing.T) {
@@ -432,13 +433,14 @@ func TestSQLiteActivityStoreLastWarningsRedactsSensitiveTokensAcrossInstances(t 
 	_, warnings, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Len(t, warnings, 1)
-	require.Equal(t, wantRedacted, warnings[0].Message, "in-memory value from the writing store")
+	require.Equal(t, rawWarning, warnings[0].Message, "in-memory value from the writing store")
+	requireWireWarningRedacted(t, warnings[0].Message, wantRedacted, "10.0.0.6", "aggkit-002.internal")
 	firstSQLite, ok := first.(*sqliteActivityStore)
 	require.True(t, ok)
 	require.NoError(t, firstSQLite.Close())
 
-	// second store, second scanner/claims that would panic if consulted again: proves the
-	// redacted string (not the raw one) is what was actually written to the DB
+	// second store, second scanner/claims that would panic if consulted again: proves the value
+	// served back comes off the disk and not from a fresh scan
 	second, err := NewSQLiteActivityStore(
 		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
 	require.NoError(t, err)
@@ -449,10 +451,49 @@ func TestSQLiteActivityStoreLastWarningsRedactsSensitiveTokensAcrossInstances(t 
 	_, warnings, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
 	require.Len(t, warnings, 1)
-	require.Equal(t, wantRedacted, warnings[0].Message, "in-memory value read back from disk")
-	require.NotContains(t, warnings[0].Message, "10.0.0.6")
-	require.NotContains(t, warnings[0].Message, "aggkit-002.internal")
-	require.NotContains(t, warnings[0].Message, "://")
+	require.Equal(t, rawWarning, warnings[0].Message, "in-memory value read back from disk")
+	requireWireWarningRedacted(t, warnings[0].Message, wantRedacted, "10.0.0.6", "aggkit-002.internal")
+}
+
+// requireWireErrorsRedacted marshals errs the way the activity endpoint does and asserts errs[key]
+// reaches the client as want, with no "://" and none of sensitive left anywhere in the JSON.
+// Redaction lives at the API layer (api.ActivityItem.MarshalJSON), so this is where the
+// client-facing guarantee for domain.ActivityEntry.Errors is asserted - the store itself keeps the
+// raw, operator-facing string.
+func requireWireErrorsRedacted(t *testing.T, errs map[string]string, key, want string, sensitive ...string) {
+	t.Helper()
+
+	data, err := json.Marshal(api.ActivityItem{Errors: errs})
+	require.NoError(t, err)
+
+	var wire struct {
+		Errors map[string]string `json:"errors"`
+	}
+	require.NoError(t, json.Unmarshal(data, &wire))
+	require.Equal(t, want, wire.Errors[key], "value served to the client")
+	require.NotContains(t, string(data), "://")
+	for _, token := range sensitive {
+		require.NotContains(t, string(data), token)
+	}
+}
+
+// requireWireWarningRedacted is requireWireErrorsRedacted's sibling for a scan warning, whose
+// client-facing redaction lives in api.ActivityWarningItem.MarshalJSON.
+func requireWireWarningRedacted(t *testing.T, message, want string, sensitive ...string) {
+	t.Helper()
+
+	data, err := json.Marshal(api.ActivityWarningItem{NetworkID: 2, Message: message})
+	require.NoError(t, err)
+
+	var wire struct {
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(data, &wire))
+	require.Equal(t, want, wire.Message, "value served to the client")
+	require.NotContains(t, string(data), "://")
+	for _, token := range sensitive {
+		require.NotContains(t, string(data), token)
+	}
 }
 
 // TestSQLiteActivityStoreFilterPendingExcludesClaimedAndErrored verifies ActivityFilterPending

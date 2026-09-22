@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
-	aggkitcommon "github.com/agglayer/aggkit/common"
 )
 
 // ErrBridgeTxNotFound is returned by BridgeEventSource.FindBridge when the transaction does
@@ -82,7 +81,7 @@ func ResolveBridgeTx(
 
 	// the tx may simply not be mined yet: give it until Timeout before giving up, same as any
 	// other transient failure — only the persisted description reads more specifically
-	description := aggkitcommon.RedactError(err)
+	description := err.Error()
 	if errors.Is(err, ErrBridgeTxNotFound) {
 		description = fmt.Sprintf("%s does not exist on the network", id)
 	}

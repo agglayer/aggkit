@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -128,9 +129,9 @@ var resolveStepsTestID = TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01
 var errFakeUpdateStep = errors.New("fake update step error")
 
 // errFakeUpdateStepWithURL and its redacted counterpart are shared by every UpdateStep subtest,
-// and by TestResolveStepsRedactsErrorBeforeClaimedSkipFallback, that pins RedactError being
-// applied to an ErrorStep's Description entry (vector V1: a backend URL and a bare IP, both of
-// which RedactSensitive replaces).
+// and by TestResolveStepsRedactsErrorBeforeClaimedSkipFallback, that pin an ErrorStep Description
+// entry keeping the raw error in memory (what the tracker also logs) while coming out redacted on
+// the wire (a backend URL and a bare IP, both of which RedactSensitive replaces).
 var (
 	errFakeUpdateStepWithURL  = errors.New(`post "http://1.2.3.4:8545": dial tcp 1.2.3.4:8545: connect: no route to host`)
 	redactedFakeUpdateStepURL = `post <redacted-url>: dial tcp <redacted-host>: connect: no route to host`
@@ -682,9 +683,9 @@ func TestResolveStepsSkipsOnAlreadyClaimed(t *testing.T) {
 // TestResolveStepsRedactsErrorBeforeClaimedSkipFallback pins that the ErrorStep built directly
 // inside ResolveSteps' case err != nil branch (idxError, handed to trySkipToClaimed and, once
 // the destination network confirms the claim, persisted verbatim by skipToClaimed as the failing
-// step's own Error) has its Description redacted exactly like UpdateStep's own stepErr branches
-// do. Asserted on the in-memory domain value (steps[idx].Error.Description), not on marshalled
-// JSON, so the defensive ErrorStep.MarshalJSON layer cannot mask a regression here
+// step's own Error) behaves exactly like UpdateStep's own stepErr branches: the raw error stays in
+// the in-memory Description (it is the string the tracker logs) and the client only ever sees the
+// redacted form, produced by ErrorStep.MarshalJSON
 func TestResolveStepsRedactsErrorBeforeClaimedSkipFallback(t *testing.T) {
 	t.Parallel()
 
@@ -700,8 +701,29 @@ func TestResolveStepsRedactsErrorBeforeClaimedSkipFallback(t *testing.T) {
 	steps := result.AllSteps()
 	gerUpdate := steps[indexOfStep(steps, types.StepWaitingGERUpdate)]
 	require.Equal(t, types.StepStatusSkipped, gerUpdate.Status)
-	require.Equal(t, []string{"origin GER: " + redactedFakeUpdateStepURL}, gerUpdate.Error.Description,
-		"idxError's Description must already be redacted in memory, not just when later marshalled")
+	require.Equal(t, []string{"origin GER: " + errFakeUpdateStepWithURL.Error()}, gerUpdate.Error.Description,
+		"idxError's Description keeps the raw error in memory, for the logs")
+	requireErrorStepRedactedOnTheWire(t, gerUpdate.Error,
+		[]string{"origin GER: " + redactedFakeUpdateStepURL})
+}
+
+// requireErrorStepRedactedOnTheWire marshals e the way the REST and WebSocket responses do and
+// asserts its description comes out as want, with neither a URL nor the raw host surviving.
+// Redaction lives in types.ErrorStep.MarshalJSON, so this is where the client-facing guarantee for
+// a step (or tx-level) error description is asserted.
+func requireErrorStepRedactedOnTheWire(t *testing.T, e *types.ErrorStep, want []string) {
+	t.Helper()
+
+	data, err := json.Marshal(e)
+	require.NoError(t, err)
+
+	var wire struct {
+		Description []string `json:"description"`
+	}
+	require.NoError(t, json.Unmarshal(data, &wire))
+	require.Equal(t, want, wire.Description, "description served to the client")
+	require.NotContains(t, string(data), "://")
+	require.NotContains(t, string(data), "1.2.3.4")
 }
 
 func TestResolveStepsRecoversAfterResolverTimeout(t *testing.T) {
@@ -1085,7 +1107,7 @@ func TestUpdateStep(t *testing.T) {
 		require.Equal(t, []string{errFakeUpdateStep.Error(), errFakeUpdateStep.Error()}, sp.Error.Description)
 	})
 
-	t.Run("a stepErr embedding a backend URL is redacted before being stored in Description", func(t *testing.T) {
+	t.Run("a stepErr embedding a backend URL is stored raw and redacted on the wire", func(t *testing.T) {
 		t.Parallel()
 
 		tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
@@ -1099,17 +1121,18 @@ func TestUpdateStep(t *testing.T) {
 
 		sp := advanced.AllSteps()[0]
 		require.Equal(t, 1, sp.Error.RetryCount)
-		require.Equal(t, []string{redactedFakeUpdateStepURL}, sp.Error.Description)
+		require.Equal(t, []string{errFakeUpdateStepWithURL.Error()}, sp.Error.Description)
+		requireErrorStepRedactedOnTheWire(t, sp.Error, []string{redactedFakeUpdateStepURL})
 
-		// a second failure appends a second redacted entry, RetryCount keeps counting
+		// a second failure appends a second entry, RetryCount keeps counting
 		advancedAgain := UpdateStep(advanced, 0, nil, false, errFakeUpdateStepWithURL, t2)
 		spAgain := advancedAgain.AllSteps()[0]
 		require.Equal(t, 2, spAgain.Error.RetryCount)
-		require.Equal(t, []string{redactedFakeUpdateStepURL, redactedFakeUpdateStepURL}, spAgain.Error.Description)
-		for _, d := range spAgain.Error.Description {
-			require.NotContains(t, d, "://")
-			require.NotContains(t, d, "1.2.3.4")
-		}
+		require.Equal(t,
+			[]string{errFakeUpdateStepWithURL.Error(), errFakeUpdateStepWithURL.Error()},
+			spAgain.Error.Description)
+		requireErrorStepRedactedOnTheWire(t, spAgain.Error,
+			[]string{redactedFakeUpdateStepURL, redactedFakeUpdateStepURL})
 	})
 
 	t.Run("a repeated stepErr caps Description to the most recent maxErrorDescriptions, RetryCount keeps counting", func(t *testing.T) {
@@ -1177,11 +1200,8 @@ func TestUpdateStep(t *testing.T) {
 
 		sp := advanced.AllSteps()[0]
 		require.Equal(t, types.StepErrorPermanent, sp.Error.ErrorType)
-		require.Equal(t, []string{redactedFakeUpdateStepURL}, sp.Error.Description)
-		for _, d := range sp.Error.Description {
-			require.NotContains(t, d, "://")
-			require.NotContains(t, d, "1.2.3.4")
-		}
+		require.Equal(t, []string{errFakeUpdateStepWithURL.Error()}, sp.Error.Description)
+		requireErrorStepRedactedOnTheWire(t, sp.Error, []string{redactedFakeUpdateStepURL})
 	})
 
 	t.Run("a repeated Permanent stepErr does not accumulate onto a previous transient history", func(t *testing.T) {
@@ -1268,12 +1288,11 @@ func TestUpdateStep(t *testing.T) {
 			require.Equal(t, types.StepErrorPermanent, sp.Error.ErrorType, "the terminal ErrorType is preserved")
 			require.Equal(t, 1, sp.Error.RetryCount)
 			require.Equal(t, []string{
-				"settlement tx receipt does not carry required events", redactedFakeUpdateStepURL,
+				"settlement tx receipt does not carry required events", errFakeUpdateStepWithURL.Error(),
 			}, sp.Error.Description)
-			for _, d := range sp.Error.Description {
-				require.NotContains(t, d, "://")
-				require.NotContains(t, d, "1.2.3.4")
-			}
+			requireErrorStepRedactedOnTheWire(t, sp.Error, []string{
+				"settlement tx receipt does not carry required events", redactedFakeUpdateStepURL,
+			})
 		},
 	)
 }

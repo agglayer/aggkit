@@ -81,6 +81,12 @@ has any backend URL, `host:port` or bare IP address replaced with `<redacted-url
 `<redacted-host>`, keeping the rest of the message intact. Only application logs keep the real
 endpoint; operators need it to debug.
 
+That replacement happens at the API layer, where the value becomes client-facing: the response
+marshalers (`ErrorStep`, `ErrorData`, `CertificateData`, `ActivityItem`, `ActivityWarningItem`) and
+the WebSocket close frame, which carries its reason as a bare string and so is redacted where it
+is built. The tracker's internal objects and its activity store keep the raw error, exactly as the
+logs do.
+
 ## Configuration
 
 Enable the `TRACKER` component (`--components TRACKER,...`) and configure the `[Tracker]`
