@@ -709,8 +709,8 @@ func TestFindL2InjectionBlockBackwards(t *testing.T) {
 
 	t.Run("found only after paginating backwards past an empty chunk", func(t *testing.T) {
 		mockClient := mocks.NewBaseEthereumClienter(t)
-		// an explicit lookback well past head, so the pagination isn't cut short by
-		// DefaultL2InjectionLookbackBlocks (1_000)
+		// an explicit lookback, rather than relying on DefaultL2InjectionLookbackBlocks, so this
+		// test's own expectations stay independent of whatever that default happens to be
 		source := NewGERSource(nil, StaticClients{networkID: mockClient}, common.Address{},
 			aggkittypes.FinalizedBlock, map[uint32]common.Address{networkID: l2GERAddr}, 20_000, nil)
 

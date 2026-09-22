@@ -88,7 +88,7 @@ RegisterResolveTimeout = "3s"
 L1BlockFinality = "LatestBlock"
 L2BlockFinality = "LatestBlock"
 MaxTrackedBridges = 100000
-L2InjectionLookbackBlocks = 1000
+L2InjectionLookbackBlocks = 10000000
 
 # Workaround only: uncomment for a destination network whose bridge-service instance does not
 # report the L2 block a covering GER was injected at.
@@ -139,7 +139,7 @@ UseTLS = false
   fallback attempted; it should not be set otherwise.
 - `L2InjectionLookbackBlocks`: bounds how many blocks that same fallback scans backwards from the
   destination network's head before giving up, instead of continuing all the way back to genesis.
-  Defaults to 1,000 blocks when unset or `<= 0`.
+  Defaults to 10,000,000 blocks when unset or `<= 0`.
 - `AgglayerClient`: the client used to resolve an L2-originated bridge's covering certificate and
   its status (`PendingInclusion`/`CertificatePending`/`WaitL1SettledGER`). `Cached` is the master
   switch for `ConfigurationCache`'s per-method policy (`false` ignores it entirely). Each method
