@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -101,4 +102,27 @@ func (r *WaitL1SettledGERResolver) Resolve(
 
 	settlement.L1InfoTreeIndex = leafIndex
 	return settlement, nil
+}
+
+// StartDate has no deterministic value of its own: this step's beginning is always "the
+// previous step just finished" (chained by UpdateStep)
+func (r *WaitL1SettledGERResolver) StartDate(_ *BridgeInfo, _ any) *time.Time {
+	return nil
+}
+
+// EndDate returns the settlement tx's own VerifyBatchesTrustedAggregator block timestamp — the
+// event that confirms this tx is a genuine certificate settlement, effectively the same instant
+// StepCertificatePending's own EndDate locates (see L1SettledGERResult's own doc)
+func (r *WaitL1SettledGERResolver) EndDate(result any) *time.Time {
+	settlement, ok := result.(*types.L1SettledGERResult)
+	if !ok {
+		return nil
+	}
+	return blockTime(settlement.SettlementBlockTimestamp)
+}
+
+// Warning never has anything to report: EndDate's own value either exists or falls back to now,
+// with no partial-failure mode of its own worth explaining
+func (r *WaitL1SettledGERResolver) Warning(_ any) *string {
+	return nil
 }

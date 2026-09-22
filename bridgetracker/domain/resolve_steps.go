@@ -56,6 +56,50 @@ type StepResolver interface {
 	Resolve(
 		logger aggkitcommon.Logger, ctx context.Context, tracking *TrackingData, idx int,
 	) (result any, err error)
+
+	// StartDate returns the deterministic on-chain time this step's own milestone began at, for
+	// the rare step whose beginning is not simply "the moment the step before it finished" — nil
+	// for every other step, which instead keeps whatever StartDate it was opened with, chained
+	// from the previous step's own EndDate (see UpdateStep). info is the bridge's own immutable
+	// facts, the only thing available to whichever resolver happens to be first on its path (see
+	// WaitingGERUpdateResolver, called before that step's own Resolve ever runs — result is nil
+	// then); result is this same step's own freshly resolved Resolve result, needed by a step
+	// whose milestone is itself a single point-in-time fact (see ClaimedResolver)
+	StartDate(info *BridgeInfo, result any) *time.Time
+
+	// EndDate returns the deterministic on-chain time result carries proof this step's own
+	// milestone was met at, or nil when result carries none — UpdateStep stamps now instead
+	EndDate(result any) *time.Time
+
+	// Warning returns a human-readable reason this step could not (fully) resolve some optional
+	// deterministic data even though it completed normally, or nil when there is nothing to
+	// report — nil for every resolver whose EndDate/StartDate never has a partial-failure mode of
+	// its own to explain (only WaitingGERInjectionResolver does today, see its own doc). UpdateStep
+	// attaches it as this step's own Error, with ErrorType StepErrorWarning: informational only,
+	// it never causes a retry or reads as a failure (isTerminalStepError/isTransientStepError both
+	// gate on Status == StepStatusError first, and this step's Status stays StepStatusDone)
+	Warning(result any) *string
+}
+
+// blockTime converts a block's unix-second timestamp to *time.Time, or nil when ts is zero — the
+// sentinel every non-pointer BlockTimestamp field in this package effectively uses for "not
+// resolved yet" (e.g. types.GERUpdateResult.BlockTimestamp), since a real on-chain block at
+// exactly the unix epoch does not happen in practice
+func blockTime(ts uint64) *time.Time {
+	if ts == 0 {
+		return nil
+	}
+	t := time.Unix(int64(ts), 0).UTC()
+	return &t
+}
+
+// blockTimePtr is blockTime for a field that is already nilable (e.g.
+// types.CertificateData.BlockTimestamp), where nil unambiguously means "not resolved yet"
+func blockTimePtr(ts *uint64) *time.Time {
+	if ts == nil {
+		return nil
+	}
+	return blockTime(*ts)
 }
 
 // ResolveSteps walks a resolved bridge (BridgeTx().IsDone(), AllSteps already seeded — see
@@ -124,24 +168,22 @@ func ResolveSteps(
 		result, err := resolver.Resolve(logger, ctx, tracking, idx)
 		switch {
 		case errors.Is(err, ErrStepPending):
-			return UpdateStep(tracking, idx, result, false, nil, now), nil
+			return UpdateStep(tracking, idx, result, false, nil, now, resolver), nil
 		case err != nil:
 			if step.Step != types.StepClaimed && !claimChecked {
 				errType := types.StepErrorTransient
 				if IsPermanent(err) {
 					errType = types.StepErrorPermanent
 				}
-				idxError := &types.ErrorStep{
-					ErrorType: errType, RetryCount: 1, Description: []string{err.Error()},
-				}
+				idxError := &types.ErrorStep{ErrorType: errType, RetryCount: 1, Description: []string{err.Error()}}
 				if skipped, ok := trySkipToClaimed(ctx, claimChecker, tracking, idx, idxError, now); ok {
 					tracking = skipped
 					continue
 				}
 			}
-			return UpdateStep(tracking, idx, result, false, err, now), err
+			return UpdateStep(tracking, idx, result, false, err, now, resolver), err
 		}
-		tracking = UpdateStep(tracking, idx, result, true, nil, now)
+		tracking = UpdateStep(tracking, idx, result, true, nil, now, resolver)
 	}
 }
 
@@ -177,13 +219,18 @@ func trySkipToClaimed(
 // skipToClaimed marks every step from idx up to (excluding) StepClaimed as StepStatusSkipped —
 // idx itself carries idxError as its own (the failure that triggered the fallback), ErrorType
 // included, so a genuine Transient/Permanent error is not relabeled as StepErrorSkipped just
-// because the tracker gave up chasing it: the two remain distinguishable on the wire; its
-// EndDate is stamped now, since it did run and this is when the tracker gave up on it. Any step
-// after idx that had not even been attempted yet gets neither an Error nor an EndDate — its
-// StartDate stays nil too, untouched — since it never ran at all, there is nothing of its own to
-// report or timestamp. StepClaimed is then opened as StepStatusInProgress, same as UpdateStep
-// does for whichever step follows one it just completed, so the next loop iteration resolves it
-// for real through its own resolver — this fallback never skips StepClaimed itself
+// because the tracker gave up chasing it: the two remain distinguishable on the wire. Every
+// skipped step has its EndDate cleared to nil — Skipped means this step's own milestone was
+// never actually verified (that is exactly why the fallback exists), so there is no real
+// completion instant to report; stamping it with now (when the tracker merely gave up) would
+// present a fact this step never established as if it had. StartDate is cleared the same way,
+// except at index 0: that one is never a stale value chained from a previous step (there is
+// none) — it is the bridge's own creation moment, seeded by PendingPath from BridgeInfo
+// regardless of whether this specific step ever got to verify its own milestone, so clearing it
+// would erase the only record of when the bridge started from the entire path. StepClaimed is
+// then opened as StepStatusInProgress, same as UpdateStep does for whichever step follows one it
+// just completed, so the next loop iteration resolves it for real through its own resolver —
+// this fallback never skips StepClaimed itself
 func skipToClaimed(tracking *TrackingData, idx int, idxError *types.ErrorStep, now time.Time) *TrackingData {
 	steps := tracking.AllSteps()
 	claimedIdx := indexOfStep(steps, types.StepClaimed)
@@ -193,10 +240,12 @@ func skipToClaimed(tracking *TrackingData, idx int, idxError *types.ErrorStep, n
 		sp := newSteps[i]
 		sp.Status = types.StepStatusSkipped
 		sp.Error = nil
+		if i > 0 {
+			sp.StartDate = nil
+		}
+		sp.EndDate = nil
 		if i == idx {
 			sp.Error = idxError
-			endDate := now
-			sp.EndDate = &endDate
 		}
 		newSteps[i] = sp
 	}
@@ -256,9 +305,19 @@ func currentStepIndex(steps []BridgeStepPath) int {
 // in the same loop iteration. Returns tracking unchanged only when there is truly nothing new to
 // record: not complete, no stepErr, no Error to clear, and result unchanged from what is already
 // stored. ResolveSteps calls this once per loop iteration, so completing one step (e.g.
-// PendingInclusionResolver, see its doc) simply has the next resolver asked in turn
+// PendingInclusionResolver, see its doc) simply has the next resolver asked in turn.
+//
+// resolver is idx's own StepResolver, consulted only once complete: its EndDate(result) becomes
+// current.EndDate (now if it returns nil, e.g. a step with no deterministic value of its own —
+// see StepResolver's own doc), and idx+1 is opened chained onto that same value — its StartDate,
+// deterministic or not. resolver.StartDate(tracking.Info(), result) is then given a chance to
+// override current's own StartDate too, for the rare step whose beginning is itself a
+// deterministic fact rather than simply "whenever the step before it happened to finish" (see
+// ClaimedResolver). resolver may be nil, in which case now is used throughout, same as before
+// this per-step deterministic-date support existed
 func UpdateStep(
 	tracking *TrackingData, idx int, result any, complete bool, stepErr error, now time.Time,
+	resolver StepResolver,
 ) *TrackingData {
 	steps := tracking.AllSteps()
 	if idx < 0 || idx >= len(steps) {
@@ -315,6 +374,17 @@ func UpdateStep(
 		current.Error = nil
 		current.Status = types.StepStatusDone
 		endDate := now
+		if resolver != nil {
+			if d := resolver.EndDate(result); d != nil {
+				endDate = *d
+			}
+			if sd := resolver.StartDate(tracking.Info(), result); sd != nil {
+				current.StartDate = sd
+			}
+			if w := resolver.Warning(result); w != nil {
+				current.Error = &types.ErrorStep{ErrorType: types.StepErrorWarning, Description: []string{*w}}
+			}
+		}
 		current.EndDate = &endDate
 	default:
 		current.Error = nil
@@ -326,11 +396,13 @@ func UpdateStep(
 	}
 	newSteps[idx] = current
 
-	if complete && idx+1 < len(newSteps) {
+	// stepErr == nil here too: a step cannot both fail and complete (see this func's own doc),
+	// and only the complete branch above ever stamps current.EndDate
+	if complete && stepErr == nil && idx+1 < len(newSteps) {
 		next := newSteps[idx+1]
 		next.Status = types.StepStatusInProgress
 		next.Error = nil
-		startDate := now
+		startDate := *current.EndDate
 		next.StartDate = &startDate
 		newSteps[idx+1] = next
 	}

@@ -95,12 +95,19 @@ type ActivityEntry struct {
 	// becomes client-facing as GET /activity/from/{from_address}'s "errors" object (see
 	// api.ActivityItem.MarshalJSON)
 	Errors map[string]string
-	// CreatedAt is when this bridge was first cached (its first successful refresh); it never
-	// changes after that
+	// CreatedAt is when this bridge was created: Bridge's own origin deposit block timestamp,
+	// via bridgetracker.BlockTimeOrNow (see ActivityCache.refresh and its SQLite-backed mirror,
+	// sqliteActivityStore.refresh — both call it the same way), falling back to the first
+	// successful refresh only if that is ever unavailable (BlockTimestamp not yet populated by
+	// the bridge service). Set once and never changes after that
 	CreatedAt time.Time
 	// UpdatedAt is when this entry's claim/tracking state was last (re)computed — the last time
-	// refresh ran for it, whether or not anything about it actually changed. Frozen once the
-	// entry settles (see ActivityCache's settled), since a settled entry is never refreshed again
+	// refresh ran for it, whether or not anything about it actually changed. Deliberately always
+	// now, never a deterministic on-chain fact (agglayer/aggkit#1840): unlike CreatedAt, this is
+	// not "the last time this entry's state actually changed", it is "the last time the tracker
+	// checked the network for it" — a fact about the tracker's own polling, not the bridge.
+	// Frozen once the entry settles (see ActivityCache's settled), since a settled entry is
+	// never refreshed again
 	UpdatedAt time.Time
 }
 

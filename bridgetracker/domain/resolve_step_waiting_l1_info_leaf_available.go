@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -55,4 +56,22 @@ func (r *WaitingL1InfoLeafAvailableResolver) Resolve(
 		return nil, ErrStepPending
 	}
 	return &types.L1InfoLeafAvailableResult{L1InfoTreeIndex: *index}, nil
+}
+
+// StartDate has no deterministic value of its own: this step's beginning is always "the
+// previous step just finished" (chained by UpdateStep)
+func (r *WaitingL1InfoLeafAvailableResolver) StartDate(_ *BridgeInfo, _ any) *time.Time {
+	return nil
+}
+
+// EndDate has no deterministic value: the proof-building instance's own L1 info tree index is
+// just an index reported over the bridge-service API, with no block/timestamp of its own
+func (r *WaitingL1InfoLeafAvailableResolver) EndDate(_ any) *time.Time {
+	return nil
+}
+
+// Warning has nothing to report: EndDate's own lack of a deterministic value is structural (see
+// its own doc), not a partial-failure mode worth explaining
+func (r *WaitingL1InfoLeafAvailableResolver) Warning(_ any) *string {
+	return nil
 }

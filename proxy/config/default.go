@@ -115,7 +115,7 @@ MaxTrackedBridges = 100000
 # L2InjectionLookbackBlocks: how many blocks the L2GlobalExitRootAddress fallback scans backwards
 # from the destination network's head before giving up, instead of continuing all the way back
 # to genesis.
-L2InjectionLookbackBlocks = 1000
+L2InjectionLookbackBlocks = 10000000
 
 # MaxConcurrentResolutions: how many active bridges the engine's poll tick resolves at once --
 # independent of MaxTrackedBridges, which bounds the registry's size, not how much of it is in

@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -54,4 +55,27 @@ func (r *CertificatePendingResolver) Resolve(
 		return &cert.CertificateData, nil
 	}
 	return &cert.CertificateData, ErrCertificateNotSettled // still awaiting settlement, or its L1 block
+}
+
+// StartDate has no deterministic value of its own: this step's beginning is always "the
+// previous step just finished" (chained by UpdateStep)
+func (r *CertificatePendingResolver) StartDate(_ *BridgeInfo, _ any) *time.Time {
+	return nil
+}
+
+// EndDate returns the settlement tx's own L1 block timestamp, once known (CertificateData.
+// BlockTimestamp, only set once the certificate is Settled and its tx receipt visible on L1 —
+// see CertificateData's own doc)
+func (r *CertificatePendingResolver) EndDate(result any) *time.Time {
+	cert, ok := result.(*types.CertificateData)
+	if !ok {
+		return nil
+	}
+	return blockTimePtr(cert.BlockTimestamp)
+}
+
+// Warning never has anything to report: EndDate's own value either exists or falls back to now,
+// with no partial-failure mode of its own worth explaining
+func (r *CertificatePendingResolver) Warning(_ any) *string {
+	return nil
 }

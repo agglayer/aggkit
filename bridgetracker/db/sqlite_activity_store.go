@@ -11,6 +11,7 @@ import (
 	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
+	"github.com/agglayer/aggkit/bridgetracker"
 	"github.com/agglayer/aggkit/bridgetracker/db/migrations"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
@@ -796,11 +797,12 @@ func settled(entry *domain.ActivityEntry) bool {
 	return entry.ClaimStatus == types.ClaimStatusClaimed && entry.Claim != nil
 }
 
-// refresh (re)computes the claim/tracking state of a single bridge item. This is
-// ActivityCache.refresh verbatim (same branches, same logging), operating on the same driven
-// ports (scanner/claims/supervised) — only where the result ends up (a SQL row instead of a map
-// entry) differs, which is why the two are not shared: sharing would need a storage interface
-// neither package's existing tests are written against yet
+// refresh (re)computes the claim/tracking state of a single bridge item. This mirrors
+// ActivityCache.refresh (same branches, same logging, same bridgetracker.BlockTimeOrNow for
+// CreatedAt — see its own doc), operating on the same driven ports (scanner/claims/supervised) —
+// only where the result ends up (a SQL row instead of a map entry) differs, which is why the two
+// are not shared outright: sharing would need a storage interface neither package's existing
+// tests are written against yet
 func (s *sqliteActivityStore) refresh(
 	ctx context.Context, item *domain.ScannedBridge, existing *domain.ActivityEntry, includeTracking bool,
 ) *domain.ActivityEntry {
@@ -808,7 +810,7 @@ func (s *sqliteActivityStore) refresh(
 	if existing != nil {
 		entry.CreatedAt = existing.CreatedAt
 	} else {
-		entry.CreatedAt = s.now()
+		entry.CreatedAt = bridgetracker.BlockTimeOrNow(item.Bridge.BlockTimestamp, s.now())
 	}
 	entry.UpdatedAt = s.now()
 

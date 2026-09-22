@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -70,6 +71,7 @@ func (r *WaitingGERInjectionResolver) Resolve(
 		result.L2InjectedGER = &types.InjectedL2GERBlock{BlockNumber: *injected.L2BlockNumber}
 		result.L2InjectedGER.BlockTimestamp = injected.L2BlockTimestamp
 	}
+	result.L2InjectionWarning = injected.L2InjectionUnresolvedReason
 	return result, nil
 }
 
@@ -99,4 +101,36 @@ func (r *WaitingGERInjectionResolver) getLeafIndexFromPreviousStep(
 	default:
 		return 0, fmt.Errorf("unexpected previous step %v for StepWaitingGERInjection", steps[idx-1].Step)
 	}
+}
+
+// StartDate has no deterministic value of its own: this step's beginning is always "the
+// previous step just finished" (chained by UpdateStep)
+func (r *WaitingGERInjectionResolver) StartDate(_ *BridgeInfo, _ any) *time.Time {
+	return nil
+}
+
+// EndDate returns the L2 injection's own block timestamp, only known once the destination's
+// bridge-service instance reports it (InjectedGERResult.L2InjectedGER) — deliberately not
+// L1InfoTreeLeaf's own BlockTimestamp, the L1 event that produced the GER, not the L2 injection
+// itself (that exact conflation was #1818, see InjectedGERResult's own doc)
+func (r *WaitingGERInjectionResolver) EndDate(result any) *time.Time {
+	injected, ok := result.(*types.InjectedGERResult)
+	if !ok || injected.L2InjectedGER == nil {
+		return nil
+	}
+	return blockTimePtr(injected.L2InjectedGER.BlockTimestamp)
+}
+
+// Warning surfaces InjectedGERResult.L2InjectionWarning — the root cause, from
+// sources.GERSource.InjectedGERAtIndex, of why L2InjectedGER is nil (or, once known, why its own
+// BlockTimestamp still is): no L2GlobalExitRootAddress configured for the destination network to
+// even attempt the fallback scan, that scan's own UpdateHashChainValue search exhausting its
+// lookback window, a genuine RPC/contract-binding failure while attempting it, or the
+// destination bridge-service reporting the block but not (yet) its own timestamp
+func (r *WaitingGERInjectionResolver) Warning(result any) *string {
+	injected, ok := result.(*types.InjectedGERResult)
+	if !ok || injected.L2InjectionWarning == "" {
+		return nil
+	}
+	return &injected.L2InjectionWarning
 }

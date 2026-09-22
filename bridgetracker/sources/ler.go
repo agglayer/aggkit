@@ -42,7 +42,8 @@ func NewLERSource(clients EthClientResolver, resolver bridgeAddressResolver) (*L
 // OriginLER implements bridgetracker.LERSource. It never actually returns nil (see the type
 // doc): the origin network's local exit tree always covers its own deposit by the time the
 // BridgeEvent exists, so this resolves the bridge contract's canonical address and reads
-// GetRoot() at that exact block
+// GetRoot() at that exact block — bridge.BlockNumber, the very same block bridge.BlockTimestamp
+// already locates, so the result's own BlockTimestamp costs nothing extra to populate
 func (s *LERSource) OriginLER(
 	ctx context.Context, bridge *bridgetracker.BridgeInfo,
 ) (*trackertypes.LERUpdateResult, error) {
@@ -71,8 +72,9 @@ func (s *LERSource) OriginLER(
 	}
 
 	return &trackertypes.LERUpdateResult{
-		NetworkID:   bridge.NetworkID,
-		LER:         common.Hash(ler),
-		BlockNumber: bridge.BlockNumber,
+		NetworkID:      bridge.NetworkID,
+		LER:            common.Hash(ler),
+		BlockNumber:    bridge.BlockNumber,
+		BlockTimestamp: bridge.BlockTimestamp,
 	}, nil
 }

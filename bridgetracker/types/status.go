@@ -242,7 +242,9 @@ func (d *Duration) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// StepErrorType classifies a step error by whether it is expected to clear on retry
+// StepErrorType classifies a step error by whether it is expected to clear on retry —
+// StepErrorWarning is the one exception: it does not classify a failure at all (see ErrorStep's
+// own doc)
 type StepErrorType int
 
 const (
@@ -252,12 +254,21 @@ const (
 	StepErrorPermanent
 	// StepErrorExhausted the error was transient but retries have been given up on
 	StepErrorExhausted
+	// StepErrorWarning: the step completed normally (Status stays StepStatusDone) — this is not
+	// a reason it failed or was retried, only an explanation for why some optional, non-blocking
+	// piece of the step's own Result could not be resolved deterministically this time (e.g.
+	// StepWaitingGERInjection completing without the L2 injection block — see
+	// WaitingGERInjectionResolver.Warning), so EndDate fell back to now instead of a real
+	// on-chain fact. isTerminalStepError/isTransientStepError both gate on Status ==
+	// StepStatusError first, so a Warning never reads as a failure
+	StepErrorWarning
 )
 
 var stepErrorTypeNames = map[StepErrorType]string{
 	StepErrorTransient: "transient",
 	StepErrorPermanent: "permanent",
 	StepErrorExhausted: "exhausted",
+	StepErrorWarning:   "warning",
 }
 
 // String representation of the enum
@@ -317,6 +328,13 @@ type GERUpdateResult struct {
 type InjectedGERResult struct {
 	L1InfoTreeLeaf InjectedGERL1Leaf   `json:"l1_info_tree_leaf"`
 	L2InjectedGER  *InjectedL2GERBlock `json:"l2_injected_ger,omitempty"`
+	// L2InjectionWarning explains why L2InjectedGER is nil, or (once known) why its own
+	// BlockTimestamp still is — carried from GERData.L2InjectionUnresolvedReason (see
+	// sources.GERSource.InjectedGERAtIndex). Not serialized here: WaitingGERInjectionResolver's
+	// own Warning surfaces it as this step's Error (ErrorType StepErrorWarning) instead, so
+	// clients see it in the one place every other step-level explanation already lives. Empty
+	// once L2InjectedGER and its own BlockTimestamp are both fully known
+	L2InjectionWarning string `json:"-"`
 }
 
 // InjectedGERL1Leaf is the L1 Info Tree leaf covering the bridge: its GER and the L1 block/
@@ -347,11 +365,15 @@ type InjectedL2GERBlock struct {
 }
 
 // LERUpdateResult is the result of StepWaitingLERUpdate once it completes: the LER produced
-// by the update on the origin L2 network and the block it was updated in
+// by the update on the origin L2 network and the block it was updated in. BlockTimestamp is
+// that same block's timestamp — free to populate here, no extra RPC call needed, since the LER
+// is read back at the exact block the bridge's own deposit was emitted in (see
+// sources.LERSource.OriginLER), the same block BridgeInfo.BlockTimestamp already carries
 type LERUpdateResult struct {
-	NetworkID   uint32      `json:"network_id"`
-	LER         common.Hash `json:"ler"`
-	BlockNumber uint64      `json:"block_number"`
+	NetworkID      uint32      `json:"network_id"`
+	LER            common.Hash `json:"ler"`
+	BlockNumber    uint64      `json:"block_number"`
+	BlockTimestamp uint64      `json:"block_timestamp"`
 }
 
 // ClaimResult is the result of StepClaimed once it completes: the claim transaction on
@@ -420,15 +442,26 @@ type GERData struct {
 	// the same conditions as BlockNumber
 	BlockTimestamp *uint64 `json:"-"`
 	// L2BlockNumber/L2BlockTimestamp are the actual L2 block/timestamp the GER was injected at on
-	// the destination network. Only set by InjectedGERAtIndex, and only when the destination's
-	// bridge-service instance reports it (see bridgeservice/types.L1InfoTreeLeafResponse's
-	// InjectedL2BlockNumber/InjectedL2BlockTimestamp). Unlike BlockNumber/BlockTimestamp above —
-	// always the L1 event, even here — these stay nil while unknown instead of being backfilled
-	// with the L1 block, which is exactly the #1818 bug this pair exists to avoid repeating
+	// the destination network. Only set by InjectedGERAtIndex — either straight from the
+	// destination's bridge-service instance (see bridgeservice/types.L1InfoTreeLeafResponse's
+	// InjectedL2BlockNumber/InjectedL2BlockTimestamp), or, when that instance does not report it,
+	// resolved instead by findL2InjectionBlockBackwards's own on-chain scan. Unlike
+	// BlockNumber/BlockTimestamp above — always the L1 event, even here — these stay nil while
+	// unknown instead of being backfilled with the L1 block, which is exactly the #1818 bug this
+	// pair exists to avoid repeating
 	L2BlockNumber *uint64 `json:"-"`
 	// L2BlockTimestamp is L2BlockNumber's timestamp; may lag L2BlockNumber briefly if resolving
 	// it from the L2 RPC failed (see l2gersync.L2GERSync.GetFirstGERAfterL1InfoTreeIndex)
 	L2BlockTimestamp *uint64 `json:"-"`
+	// L2InjectionUnresolvedReason explains, in human-readable terms, why L2BlockNumber (or, once
+	// known, only L2BlockTimestamp) could not be resolved this call: no L2GlobalExitRootAddress
+	// configured for this network to even attempt the fallback scan, that scan's own
+	// UpdateHashChainValue search exhausting its lookback window without finding the event, a
+	// genuine RPC/contract-binding failure while attempting it, or the destination bridge-service
+	// itself reporting the block but not yet its timestamp (see InjectedGERAtIndex). Empty once
+	// L2BlockNumber and L2BlockTimestamp are both known — this is not an error field, just the
+	// reason there was nothing (or only partial data) to report this time
+	L2InjectionUnresolvedReason string `json:"-"`
 }
 
 // MarshalJSON is the implementation of the json.Marshaler interface.

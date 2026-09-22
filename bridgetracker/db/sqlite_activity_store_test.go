@@ -600,6 +600,29 @@ func TestSQLiteActivityStoreTimestampsTrackCreationAndLastUpdate(t *testing.T) {
 	require.True(t, entries[0].UpdatedAt.Equal(t2), "update time must advance on every recheck")
 }
 
+// TestSQLiteActivityStoreCreatedAtUsesBridgeBlockTimestamp mirrors
+// bridgetracker.TestActivityCache_CreatedAtUsesBridgeBlockTimestamp against the SQLite-backed
+// store: CreatedAt must prefer the bridge's own origin deposit block timestamp over the tick's
+// now here too, not just on the in-memory ActivityCache (agglayer/aggkit#1840)
+func TestSQLiteActivityStoreCreatedAtUsesBridgeBlockTimestamp(t *testing.T) {
+	bridge := testBridge(1)
+	bridge.BlockTimestamp = 1700000400
+
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{activityScannedBridge(bridge, testScannedNetworkID)}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false}}
+	store := newTestSQLiteActivityStore(t, scanner, claims)
+	mustRegisterActivity(t, store, testFromAddress, 0)
+
+	now := time.Now()
+	store.now = func() time.Time { return now }
+	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
+	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.True(t, entries[0].CreatedAt.Equal(time.Unix(int64(bridge.BlockTimestamp), 0)),
+		"the deposit's own block timestamp, not the tick's now")
+	require.True(t, entries[0].UpdatedAt.Equal(now), "UpdatedAt is always now, deliberately")
+}
+
 // TestSQLiteActivityStorePruneIdleDeletesRowsAndCascades verifies PruneIdle deletes an idle
 // address's row and, via ON DELETE CASCADE, every activity_bridge row cached for it — the real
 // retention sweep that replaces the old sweepIdle no-op (see issue #1822) — and leaves a

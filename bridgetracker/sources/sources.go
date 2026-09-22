@@ -190,6 +190,20 @@ func blockTimestamp(
 	return header.Time, nil
 }
 
+// blockTimestampAtNumber is blockTimestamp for a block already known by number rather than
+// hash — a single, cheap RPC call, unlike findL2InjectionBlockBackwards's own log-scanning
+// fallback (see InjectedGERAtIndex, which uses this one when the bridge-service already reports
+// the L2 injection block number but not yet its own timestamp)
+func blockTimestampAtNumber(
+	ctx context.Context, client aggkittypes.BaseEthereumClienter, blockNumber uint64,
+) (uint64, error) {
+	header, err := client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNumber))
+	if err != nil {
+		return 0, fmt.Errorf("fetching header of block %d: %w", blockNumber, err)
+	}
+	return header.Time, nil
+}
+
 // isNotFound reports whether a bridge service error means "the resource does not exist
 // (yet)" as opposed to a transient failure. Besides the typed client.ErrNotFound (HTTP 404),
 // the l1-info-tree-index and injected-l1-info-leaf endpoints currently answer 500 with a

@@ -43,7 +43,9 @@ func TestResolveBridgeTxRedactsTransientErrorDescription(t *testing.T) {
 	tracking := NewTrackingData(resolveBridgeTxTestID, TrackingBridgeTx{}, nil)
 	source := &fakeBridgeEventSource{err: rawErr}
 
-	result, err := ResolveBridgeTx(context.Background(), source, tracking, time.Hour, now)
+	// nil resolvers: FindBridge fails here, so PendingPath (the only consumer of resolvers, see
+	// ResolveBridgeTx) is never reached on this path
+	result, err := ResolveBridgeTx(context.Background(), source, nil, tracking, time.Hour, now)
 
 	require.ErrorIs(t, err, rawErr)
 	require.NotNil(t, result.BridgeTx().Error)
