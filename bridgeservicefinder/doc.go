@@ -110,7 +110,8 @@
 // Recording the source is what makes config entries immune to on-chain updates and enforces the
 // metadata-over-sequencer precedence during live updates:
 //
-//   - SourceConfig entries are terminal: no event ever replaces them.
+//   - SourceConfig entries are terminal: neither an event (applyUpdate) nor the on-chain resolution
+//     run when a rollup is attached after Start (discoverRollup) ever replaces their bridge URL.
 //   - A SetTrustedSequencerURL event (source #3) must NOT overwrite an entry currently sourced
 //     from metadata (#2), because #2 outranks #3.
 //   - An AggchainMetadataSet event (source #2) MAY overwrite an entry currently sourced from #3.
@@ -178,7 +179,11 @@
 //     ignoring it is a deliberate operator decision, not a network "waiting to be activated". Only
 //     for a rollupID that is not ignored does this gate apply, and it sits before the rollup's
 //     address is ever registered or watched, so a blocked rollup's later URL-changing events are not
-//     even observed.
+//     even observed. A rollup that is already served when it is attached - the case of a static
+//     Config.BridgeURLs override installed at Start for a network that only later appears on-chain -
+//     is not blocked at all: nothing is added to the served set, so there is nothing to gate. It is
+//     registered, watched and has its JSON-RPC endpoint resolved on-chain exactly as it would be
+//     with the flag on, and no pending record is created (the operator already provisioned it).
 //   - applyUpdate - a Start-enumerated, no-source network's first SetTrustedSequencerURL /
 //     AggchainMetadataSet event. Only the first install is gated; once a network has an entry,
 //     refreshes go through the usual priority and health-gating rules regardless of this flag.
@@ -298,8 +303,8 @@
 //     NewTrustedSequencerURL string; Raw types.Log}; Filter/Parse: FilterSetTrustedSequencerURL,
 //     ParseSetTrustedSequencerURL. aggchainbase also emits SetTrustedSequencerURL identically.
 //
-// All names above match the plan's assumptions. No discrepancies were found. Note the exact
-// capitalisation quirks the implementer must respect: the caller method is RollupIDToRollupData
+// Note the exact capitalisation quirks of the generated bindings, which this package's callers
+// must respect: the caller method is RollupIDToRollupData
 // (upper-case ID), the returned struct type is agglayermanager.AgglayerManagerRollupDataReturn
 // (mixed-case "AgglayerManager"), and the aggchain metadata getter is AggchainMetadata (the
 // getter is method-named without the "Set").

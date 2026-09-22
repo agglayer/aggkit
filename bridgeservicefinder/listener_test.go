@@ -543,9 +543,9 @@ func TestLiveUpdate_CrossTierRejectionIsUnconditional(t *testing.T) {
 		"lower-priority sequencer event must be rejected outright even though it is healthy and current is unhealthy")
 }
 
-// --- S8: AutoRegisterNewNetworks=false gating tests -------------------------------------------
+// --- AutoRegisterNewNetworks=false gating tests ------------------------------------------------
 
-// TestLiveDiscovery_NewRollupPendingWhenAutoRegisterDisabled covers plan item S8(a): with
+// TestLiveDiscovery_NewRollupPendingWhenAutoRegisterDisabled covers the discoverRollup gate: with
 // Config.AutoRegisterNewNetworks disabled, a rollup attached to the manager after Start (announced
 // via CreateNewRollup) is never resolved or served, even though it exposes a perfectly resolvable
 // source. It is instead recorded pending exactly once (repeated lifecycle events for the same
@@ -623,11 +623,14 @@ func TestLiveDiscovery_NewRollupPendingWhenAutoRegisterDisabled(t *testing.T) {
 	require.Len(t, f.PendingNetworks(), 1)
 }
 
-// TestLiveDiscovery_AlreadyServedFromBridgeURLsNeverGoesPending covers the S18/M1 regression: a
-// network pre-provisioned in Config.BridgeURLs (the documented way to make a network servable
-// without AutoRegisterNewNetworks) must NOT be recorded as pending when it is later attached to
-// the rollup manager - discoverRollup's gate must consult the cache, not just addrToNetworkID,
-// before deciding a network is new.
+// TestLiveDiscovery_AlreadyServedFromBridgeURLsNeverGoesPending covers a network pre-provisioned in
+// Config.BridgeURLs (the documented way to make a network servable without AutoRegisterNewNetworks):
+// when it is later attached to the rollup manager it must NOT be recorded as pending -
+// discoverRollup's gate must consult the cache, not just addrToNetworkID, before deciding a network
+// is new - and skipping the pending record must be ALL it skips: the rollup contract still has to be
+// registered and watched so its JSON-RPC endpoint is resolved on-chain at discovery time and later
+// SetTrustedSequencerURL events keep it fresh, which is the flag-independent refresh guarantee
+// doc.go states.
 func TestLiveDiscovery_AlreadyServedFromBridgeURLsNeverGoesPending(t *testing.T) {
 	backend, auth := newTestBackend(t)
 	mgrAddr, _ := deployRollupManagerWithRollups(t, backend, auth, 0)
@@ -652,14 +655,25 @@ func TestLiveDiscovery_AlreadyServedFromBridgeURLsNeverGoesPending(t *testing.T)
 
 	sleepPastSeedTick(testPollInterval)
 
+	// The rollup already announces a trusted sequencer URL when it is attached, so discovery has a
+	// JSON-RPC endpoint to resolve on-chain for it (the bridge URL stays the config override).
+	const firstSequencerURL = "https://seq-1.example.com:8545"
+
 	newRollup := deployStandaloneRollup(t, backend, auth, preConfiguredNetworkID)
+	_, err = newRollup.contract.SetTrustedSequencerURL(auth, firstSequencerURL)
+	require.NoError(t, err)
+	backend.Commit()
+
 	mgr := newRollupManagerContract(t, backend, mgrAddr)
 	_, err = mgr.EmitCreateNewRollup(auth, preConfiguredNetworkID, newRollup.addr)
 	require.NoError(t, err)
 	backend.Commit()
 
-	sleepPastSeedTick(testPollInterval)
-	sleepPastSeedTick(testPollInterval)
+	require.Eventually(t, func() bool {
+		got, err := f.GetURL(preConfiguredNetworkID)
+		return err == nil && got.JSONRPCURL == firstSequencerURL
+	}, testEventuallyWait, testEventuallyTick,
+		"discovery must resolve the json-rpc endpoint of a network served from a static override")
 
 	require.Empty(t, f.PendingNetworks(),
 		"a network already served from a static BridgeURLs override must never be recorded pending")
@@ -668,9 +682,96 @@ func TestLiveDiscovery_AlreadyServedFromBridgeURLsNeverGoesPending(t *testing.T)
 	require.NoError(t, err)
 	require.Equal(t, preConfiguredURL, urls.BridgeURL,
 		"the static override must keep serving the network unaffected by the later on-chain attach")
+
+	entry, ok := f.cache.get(preConfiguredNetworkID)
+	require.True(t, ok)
+	require.Equal(t, SourceConfig, entry.source,
+		"discovery must not downgrade a config-sourced entry to an on-chain source")
+
+	require.Contains(t, f.addrToNetworkID, newRollup.addr,
+		"the rollup contract of a network served from a static override must still be registered")
+
+	// The address being watched is what makes a later URL event observable: refresh the trusted
+	// sequencer URL and the json-rpc endpoint must follow, while the config bridge URL does not.
+	const refreshedSequencerURL = "https://seq-2.example.com:9545"
+
+	_, err = newRollup.contract.SetTrustedSequencerURL(auth, refreshedSequencerURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	require.Eventually(t, func() bool {
+		got, err := f.GetURL(preConfiguredNetworkID)
+		return err == nil && got.JSONRPCURL == refreshedSequencerURL
+	}, testEventuallyWait, testEventuallyTick,
+		"a later SetTrustedSequencerURL must refresh the json-rpc endpoint of an already-served network")
+
+	urls, err = f.GetURL(preConfiguredNetworkID)
+	require.NoError(t, err)
+	require.Equal(t, preConfiguredURL, urls.BridgeURL,
+		"the static bridge url override stays terminal across json-rpc refreshes")
 }
 
-// TestLiveUpdate_FirstInstallPendingWhenAutoRegisterDisabled covers plan item S8(b): a network
+// TestLiveDiscovery_ConfigSourcedEntryIsNeverOverwrittenByDiscovery pins the terminal-source rule on
+// the discovery path, the same rule applyUpdate enforces for events: a cache entry tagged
+// SourceConfig is never replaced by a URL the discovery path resolved from the chain. The entry is
+// seeded directly (the shape buildInitialCache installs for a Config.BridgeURLs network that is not
+// on-chain yet) while the resolver's override map does not cover the network, which is the only
+// state in which the two can disagree - resolve consults config first, so an override the resolver
+// does know about is returned as SourceConfig and merely refreshed. The rollup address must still be
+// registered and watched.
+func TestLiveDiscovery_ConfigSourcedEntryIsNeverOverwrittenByDiscovery(t *testing.T) {
+	backend, auth := newTestBackend(t)
+	mgrAddr, _ := deployRollupManagerWithRollups(t, backend, auth, 0)
+
+	const networkID = uint32(5)
+	const operatorURL = "http://operator-override.example.com:5577"
+
+	f := startFinder(t, baseTestConfig(mgrAddr), Options{
+		EthClient:     newTestEthClient(backend),
+		HealthChecker: newMapHealthChecker(nil),
+	})
+
+	f.cache.set(networkID, cacheEntry{url: operatorURL, source: SourceConfig, healthy: true})
+
+	sleepPastSeedTick(testPollInterval)
+
+	newRollup := deployStandaloneRollup(t, backend, auth, networkID)
+	const metadataURL = "https://on-chain.example.com:5577"
+	_, err := newRollup.contract.SetAggchainMetadata(auth, MetadataBridgeServiceURLKey, metadataURL)
+	require.NoError(t, err)
+	backend.Commit()
+
+	mgr := newRollupManagerContract(t, backend, mgrAddr)
+	_, err = mgr.EmitCreateNewRollup(auth, networkID, newRollup.addr)
+	require.NoError(t, err)
+	backend.Commit()
+
+	require.Eventually(t, func() bool {
+		// discoverRollup's guard returns right after l.cache.get(rollupID) without ever reaching
+		// cache.set on this path (the entry stays config-sourced forever), so there is no cache
+		// value change to poll for; the write to addrToNetworkID is guarded by cache.mu for exactly
+		// this reason - take the read lock here instead of reading the map bare, or -race reports a
+		// read/write conflict against discoverRollup's write.
+		f.cache.mu.RLock()
+		_, known := f.addrToNetworkID[newRollup.addr]
+		f.cache.mu.RUnlock()
+		return known
+	}, testEventuallyWait, testEventuallyTick, "discovery must register the attached rollup's contract")
+
+	sleepPastSeedTick(testPollInterval)
+
+	urls, err := f.GetURL(networkID)
+	require.NoError(t, err)
+	require.Equal(t, operatorURL, urls.BridgeURL,
+		"a config-sourced entry must not be overwritten by the url discovery resolved on-chain")
+
+	entry, ok := f.cache.get(networkID)
+	require.True(t, ok)
+	require.Equal(t, SourceConfig, entry.source, "the entry's source must stay SourceConfig")
+	require.True(t, entry.healthy, "the config-sourced entry's health state must be left untouched")
+}
+
+// TestLiveUpdate_FirstInstallPendingWhenAutoRegisterDisabled covers the applyUpdate gate: a network
 // enumerated at Start with no source (ErrNoSourceAvailable, no cache entry) whose first-ever bridge
 // service URL arrives via a live event after Start is NOT installed when
 // Config.AutoRegisterNewNetworks is disabled - it is recorded pending instead, one test per event
@@ -750,7 +851,7 @@ func TestLiveUpdate_FirstInstallPendingWhenAutoRegisterDisabled(t *testing.T) {
 	})
 }
 
-// TestLiveUpdate_RefreshUnaffectedByAutoRegisterDisabled covers plan item S8(c): once a network has
+// TestLiveUpdate_RefreshUnaffectedByAutoRegisterDisabled covers the refresh guarantee: once a network has
 // been served (here, from Start's own enumeration, which the flag never gates), refreshes of that
 // already-served entry keep applying exactly as they do today, health gating included -
 // AutoRegisterNewNetworks only ever gates a FIRST install, never a refresh of an existing entry.
