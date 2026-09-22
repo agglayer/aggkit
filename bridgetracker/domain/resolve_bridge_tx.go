@@ -43,8 +43,9 @@ type BridgeEventSource interface {
 //   - Already resolved (IsDone): returned unchanged, no call to FindBridge at all — retrying an
 //     already-successful resolution is a no-op.
 //   - Success: Info/Error are updated and, the first time the bridge resolves, AllSteps is
-//     seeded with the full pending path for its BridgeType (PendingPath) — clients see the
-//     whole route the bridge will walk from the moment it resolves.
+//     seeded with the full pending path for its BridgeType (PendingPath, given resolvers so the
+//     first step's own StartDate can prefer a deterministic value over now — see its own doc) —
+//     clients see the whole route the bridge will walk from the moment it resolves.
 //   - Permanent failure (see Permanent/IsPermanent): the tx-level Error becomes Permanent, with
 //     no retries.
 //   - Transient failure (ErrBridgeTxNotFound, or anything else FindBridge returns): the
@@ -52,8 +53,8 @@ type BridgeEventSource interface {
 //     StartDate (the moment the bridge was first seen unresolved). Description is capped to its
 //     most recent maxErrorDescriptions entries (see appendErrorDescription), RetryCount is not.
 func ResolveBridgeTx(
-	ctx context.Context, source BridgeEventSource, tracking *TrackingData,
-	unresolvedTimeout time.Duration, now time.Time,
+	ctx context.Context, source BridgeEventSource, resolvers map[types.BridgeStep]StepResolver,
+	tracking *TrackingData, unresolvedTimeout time.Duration, now time.Time,
 ) (*TrackingData, error) {
 	if tracking == nil {
 		return nil, errors.New("nil tracking data")
@@ -74,7 +75,7 @@ func ResolveBridgeTx(
 		tx.Error = nil
 		allSteps := tracking.AllSteps()
 		if allSteps == nil {
-			allSteps = PendingPath(info.BridgeType(), now)
+			allSteps = PendingPath(info.BridgeType(), info, resolvers, now)
 		}
 		return NewTrackingData(id, tx, allSteps), nil
 	}

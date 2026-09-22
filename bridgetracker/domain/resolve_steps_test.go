@@ -149,7 +149,7 @@ func testResolvers(f *fakeFacts) map[types.BridgeStep]StepResolver {
 func newTracking(bridgeType types.BridgeType, prevSteps []BridgeStepPath, now time.Time) *TrackingData {
 	steps := prevSteps
 	if steps == nil {
-		steps = PendingPath(bridgeType, now)
+		steps = PendingPath(bridgeType, &BridgeInfo{}, nil, now)
 	}
 	return NewTrackingData(resolveStepsTestID, TrackingBridgeTx{Info: &BridgeInfo{}}, steps)
 }
@@ -903,7 +903,7 @@ func TestUpdateStep(t *testing.T) {
 		t.Parallel()
 
 		tracking := newTracking(types.BridgeTypeL1ToL2, nil, t1)
-		result := UpdateStep(tracking, 0, nil, false, nil, t2)
+		result := UpdateStep(tracking, 0, nil, false, nil, t2, nil)
 
 		require.Same(t, tracking, result)
 	})
@@ -913,7 +913,7 @@ func TestUpdateStep(t *testing.T) {
 
 		tracking := newTracking(types.BridgeTypeL1ToL2, nil, t1)
 		gerUpdate := &types.GERUpdateResult{GER: common.Hash{1}, BlockNumber: 100}
-		advanced := UpdateStep(tracking, 0, gerUpdate, true, nil, t2)
+		advanced := UpdateStep(tracking, 0, gerUpdate, true, nil, t2, nil)
 
 		steps := advanced.AllSteps()
 		require.Equal(t, []BridgeStepPath{
@@ -938,7 +938,7 @@ func TestUpdateStep(t *testing.T) {
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
 		}, t1)
 
-		advanced := UpdateStep(tracking, 2, nil, true, nil, t2)
+		advanced := UpdateStep(tracking, 2, nil, true, nil, t2, nil)
 
 		last := advanced.AllSteps()[len(advanced.AllSteps())-1]
 		require.Equal(t, types.StepClaimed, last.Step)
@@ -960,7 +960,7 @@ func TestUpdateStep(t *testing.T) {
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
 		}, t1)
 
-		advanced := UpdateStep(tracking, 0, nil, false, nil, t2)
+		advanced := UpdateStep(tracking, 0, nil, false, nil, t2, nil)
 
 		require.NotSame(t, tracking, advanced, "the error clearing must be recorded")
 		require.Nil(t, advanced.AllSteps()[0].Error)
@@ -980,7 +980,7 @@ func TestUpdateStep(t *testing.T) {
 		}, t1)
 
 		cert := &types.CertificateData{Status: agglayertypes.Pending}
-		advanced := UpdateStep(tracking, 2, cert, false, nil, t2)
+		advanced := UpdateStep(tracking, 2, cert, false, nil, t2, nil)
 
 		require.NotSame(t, tracking, advanced)
 		sp := advanced.AllSteps()[2]
@@ -1003,7 +1003,7 @@ func TestUpdateStep(t *testing.T) {
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
 		}, t1)
 
-		result := UpdateStep(tracking, 2, &types.CertificateData{Status: agglayertypes.Pending}, false, nil, t2)
+		result := UpdateStep(tracking, 2, &types.CertificateData{Status: agglayertypes.Pending}, false, nil, t2, nil)
 
 		require.Same(t, tracking, result, "an equal result is not a change worth republishing")
 	})
@@ -1018,7 +1018,7 @@ func TestUpdateStep(t *testing.T) {
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
 		}, t1)
 
-		advanced := UpdateStep(tracking, 0, nil, true, errFakeUpdateStep, t2)
+		advanced := UpdateStep(tracking, 0, nil, true, errFakeUpdateStep, t2, nil)
 
 		sp := advanced.AllSteps()[0]
 		require.Equal(t, types.StepStatusError, sp.Status, "stepErr takes over regardless of complete")
@@ -1044,7 +1044,7 @@ func TestUpdateStep(t *testing.T) {
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
 		}, t1)
 
-		advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStep, t2)
+		advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStep, t2, nil)
 
 		sp := advanced.AllSteps()[0]
 		require.Equal(t, 2, sp.Error.RetryCount)
@@ -1071,7 +1071,7 @@ func TestUpdateStep(t *testing.T) {
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
 		}, t1)
 
-		advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStep, t2)
+		advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStep, t2, nil)
 
 		sp := advanced.AllSteps()[0]
 		require.Equal(t, maxErrorDescriptions+1, sp.Error.RetryCount, "RetryCount is never trimmed")
@@ -1092,7 +1092,7 @@ func TestUpdateStep(t *testing.T) {
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
 		}, t1)
 
-		advanced := UpdateStep(tracking, 0, nil, false, Permanent(errFakeUpdateStep), t2)
+		advanced := UpdateStep(tracking, 0, nil, false, Permanent(errFakeUpdateStep), t2, nil)
 
 		sp := advanced.AllSteps()[0]
 		require.Equal(t, types.StepStatusError, sp.Status)
@@ -1118,7 +1118,7 @@ func TestUpdateStep(t *testing.T) {
 			{Step: types.StepClaimed, Status: types.StepStatusPending},
 		}, t1)
 
-		advanced := UpdateStep(tracking, 0, nil, false, Permanent(errFakeUpdateStep), t2)
+		advanced := UpdateStep(tracking, 0, nil, false, Permanent(errFakeUpdateStep), t2, nil)
 
 		sp := advanced.AllSteps()[0]
 		require.Equal(t, types.StepErrorPermanent, sp.Error.ErrorType)
@@ -1150,7 +1150,7 @@ func TestUpdateStep(t *testing.T) {
 				{Step: types.StepClaimed, Status: types.StepStatusPending},
 			}, t1)
 
-			advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStep, t2)
+			advanced := UpdateStep(tracking, 0, nil, false, errFakeUpdateStep, t2, nil)
 
 			sp := advanced.AllSteps()[0]
 			require.Equal(t, types.StepStatusError, sp.Status)
@@ -1196,12 +1196,227 @@ func TestCertificateResolverSkipsWaypoints(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"certificate", "certificate", "isClaimed"}, facts.queried)
 
+	settledAt := blockTime(settledBlockTimestamp)
+
 	steps := result.AllSteps()
 	require.Equal(t, types.StepStatusDone, steps[1].Status, "PendingInclusion skipped straight through")
-	require.Equal(t, &t2, steps[1].EndDate)
+	require.Equal(t, &t2, steps[1].EndDate, "PendingInclusion has no deterministic value of its own")
 	require.Equal(t, &types.PendingInclusionResult{CertificateID: cert.CertificateID}, steps[1].Result())
 	require.Equal(t, types.StepStatusDone, steps[2].Status)
-	require.Equal(t, &t2, steps[2].EndDate)
+	require.Equal(t, settledAt, steps[2].EndDate, "the settlement tx's own block timestamp, not now")
 	require.Equal(t, &cert.CertificateData, steps[2].Result())
 	require.Equal(t, types.StepStatusInProgress, steps[3].Status, "WaitingClaim opens next")
+	require.Equal(t, settledAt, steps[3].StartDate, "chained from CertificatePending's own deterministic EndDate")
+}
+
+// TestStepResolverEndDate pins, resolver by resolver, which steps carry a deterministic on-chain
+// EndDate of their own (per the analysis in agglayer/aggkit#1840) and which fall back to nil —
+// UpdateStep then stamps now instead. A zero BlockTimestamp is treated the same as "not resolved
+// yet" (see blockTime), matching every fixture elsewhere in this file that never bothers to set
+// it when it is not the point of the test
+func TestStepResolverEndDate(t *testing.T) {
+	t.Parallel()
+
+	ts := uint64(1700000400)
+	at := blockTime(ts)
+
+	testCases := []struct {
+		name     string
+		resolver StepResolver
+		result   any
+		expected *time.Time
+	}{
+		{
+			name:     "WaitingGERUpdate: the GER update's own L1 block timestamp",
+			resolver: &WaitingGERUpdateResolver{},
+			result:   &types.GERUpdateResult{BlockTimestamp: ts},
+			expected: at,
+		},
+		{
+			name:     "WaitingGERUpdate: zero BlockTimestamp -> nil",
+			resolver: &WaitingGERUpdateResolver{},
+			result:   &types.GERUpdateResult{},
+			expected: nil,
+		},
+		{
+			name:     "WaitingLERUpdate: no deterministic value yet (#1840)",
+			resolver: &WaitingLERUpdateResolver{},
+			result:   &types.LERUpdateResult{BlockNumber: 200},
+			expected: nil,
+		},
+		{
+			name:     "PendingInclusion: an Agglayer-side fact, no block of its own",
+			resolver: &PendingInclusionResolver{},
+			result:   &types.PendingInclusionResult{},
+			expected: nil,
+		},
+		{
+			name:     "CertificatePending: the settlement tx's own L1 block timestamp",
+			resolver: &CertificatePendingResolver{},
+			result:   &types.CertificateData{BlockTimestamp: &ts},
+			expected: at,
+		},
+		{
+			name:     "CertificatePending: not settled yet -> nil",
+			resolver: &CertificatePendingResolver{},
+			result:   &types.CertificateData{},
+			expected: nil,
+		},
+		{
+			name:     "WaitL1SettledGER: the VerifyBatchesTrustedAggregator block timestamp",
+			resolver: &WaitL1SettledGERResolver{},
+			result:   &types.L1SettledGERResult{SettlementBlockTimestamp: ts},
+			expected: at,
+		},
+		{
+			name:     "WaitingGERInjection: the actual L2 injection block timestamp",
+			resolver: &WaitingGERInjectionResolver{},
+			result:   &types.InjectedGERResult{L2InjectedGER: &types.InjectedL2GERBlock{BlockTimestamp: &ts}},
+			expected: at,
+		},
+		{
+			name:     "WaitingGERInjection: L2InjectedGER not reported yet -> nil, never L1InfoTreeLeaf's own (#1818)",
+			resolver: &WaitingGERInjectionResolver{},
+			result:   &types.InjectedGERResult{L1InfoTreeLeaf: types.InjectedGERL1Leaf{BlockTimestamp: ts}},
+			expected: nil,
+		},
+		{
+			name:     "WaitingL1InfoLeafAvailable: just an index, no block of its own",
+			resolver: &WaitingL1InfoLeafAvailableResolver{},
+			result:   &types.L1InfoLeafAvailableResult{},
+			expected: nil,
+		},
+		{
+			name:     "WaitingClaim: no result of its own, the next step produces it",
+			resolver: &WaitingClaimResolver{},
+			result:   nil,
+			expected: nil,
+		},
+		{
+			name:     "Claimed: the claim tx's own destination block timestamp",
+			resolver: &ClaimedResolver{},
+			result:   &types.ClaimResult{BlockTimestamp: ts},
+			expected: at,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tc.expected, tc.resolver.EndDate(tc.result))
+		})
+	}
+}
+
+// TestStepResolverStartDate pins the two exceptions to "every step's StartDate simply chains
+// from the previous step's EndDate": the first step of any path, whose beginning is the bridge's
+// own creation (info.BlockTimestamp), and StepClaimed, whose own milestone is itself a
+// point-in-time fact worth its own StartDate rather than whatever WaitingClaim's on-chain check
+// happened to be chained in with. Every other resolver returns nil unconditionally
+func TestStepResolverStartDate(t *testing.T) {
+	t.Parallel()
+
+	ts := uint64(1700000400)
+	at := blockTime(ts)
+	info := &BridgeInfo{BlockTimestamp: ts}
+
+	testCases := []struct {
+		name     string
+		resolver StepResolver
+		info     *BridgeInfo
+		result   any
+		expected *time.Time
+	}{
+		{
+			name:     "WaitingGERUpdate: the origin deposit's own block timestamp",
+			resolver: &WaitingGERUpdateResolver{},
+			info:     info,
+			expected: at,
+		},
+		{
+			name:     "WaitingLERUpdate: the origin deposit's own block timestamp",
+			resolver: &WaitingLERUpdateResolver{},
+			info:     info,
+			expected: at,
+		},
+		{
+			name:     "PendingInclusion: chains from the previous step instead",
+			resolver: &PendingInclusionResolver{},
+			info:     info,
+			expected: nil,
+		},
+		{
+			name:     "WaitingClaim: chains from the previous step instead",
+			resolver: &WaitingClaimResolver{},
+			info:     info,
+			expected: nil,
+		},
+		{
+			name:     "Claimed: the same point-in-time fact as its own EndDate",
+			resolver: &ClaimedResolver{},
+			info:     &BridgeInfo{},
+			result:   &types.ClaimResult{BlockTimestamp: ts},
+			expected: at,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tc.expected, tc.resolver.StartDate(tc.info, tc.result))
+		})
+	}
+}
+
+// TestResolveStepsChainsDeterministicDates walks an L1->L2 bridge all the way to StepClaimed in
+// one ResolveSteps call, pinning that the resulting timeline is built entirely from on-chain
+// facts rather than the tick's own now: each step's EndDate is its own deterministic value where
+// one exists, every step's StartDate chains from the step before it's own EndDate, and
+// StepClaimed's StartDate is overridden with its own claim tx timestamp instead of whatever it
+// was chained in with (agglayer/aggkit#1840)
+func TestResolveStepsChainsDeterministicDates(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
+	depositedAt := uint64(1700000000)
+	claimedAt := uint64(1700000400)
+
+	ger := common.Hash{1}
+	blockNumber := uint64(100)
+	originGER := &types.GERData{NetworkID: 0, GER: &ger, BlockNumber: &blockNumber}
+	injectedGER := &types.GERData{NetworkID: 2, GER: &common.Hash{1}}
+	bridgeL1InfoTreeIndex := uint32(9)
+	claim := &types.ClaimResult{ClaimTx: common.Hash{3}, BlockNumber: 300, BlockTimestamp: claimedAt}
+
+	info := &BridgeInfo{BlockTimestamp: depositedAt}
+	facts := &fakeFacts{
+		originGER:                originGER,
+		injectedGERAtIndex:       injectedGER,
+		l1InfoTreeIndexForBridge: &bridgeL1InfoTreeIndex,
+		claimed:                  true,
+		claim:                    claim,
+	}
+	resolvers := testResolvers(facts)
+
+	steps := PendingPath(types.BridgeTypeL1ToL2, info, resolvers, now)
+	tracking := NewTrackingData(resolveStepsTestID, TrackingBridgeTx{Info: info}, steps)
+
+	result, err := ResolveSteps(context.Background(), log.NewLoggerNil(), resolvers, facts, tracking, now)
+	require.NoError(t, err)
+
+	all := result.AllSteps()
+	gerUpdate := all[indexOfStep(all, types.StepWaitingGERUpdate)]
+	require.Equal(t, blockTime(depositedAt), gerUpdate.StartDate, "the origin deposit's own block, not now")
+	require.Equal(t, now, *gerUpdate.EndDate, "no BlockTimestamp fixture set here -> falls back to now")
+
+	injection := all[indexOfStep(all, types.StepWaitingGERInjection)]
+	require.Equal(t, gerUpdate.EndDate, injection.StartDate, "chained from WaitingGERUpdate's own EndDate")
+
+	claimed := all[indexOfStep(all, types.StepClaimed)]
+	require.Equal(t, types.StepStatusDone, claimed.Status)
+	require.Equal(t, blockTime(claimedAt), claimed.StartDate,
+		"overridden with the claim tx's own timestamp, not chained from WaitingClaim")
+	require.Equal(t, blockTime(claimedAt), claimed.EndDate)
 }

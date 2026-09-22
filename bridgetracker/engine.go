@@ -322,7 +322,9 @@ func (e *Engine) resolveBridgeTx(
 	id := tracking.ID()
 
 	e.logger.Debugf("resolving bridge %s through FindBridge", id)
-	resolved, err := domain.ResolveBridgeTx(ctx, e.sources.Bridges, tracking, e.cfg.UnresolvedTimeout, e.now())
+	resolved, err := domain.ResolveBridgeTx(
+		ctx, e.sources.Bridges, e.resolvers, tracking, e.cfg.UnresolvedTimeout, e.now(),
+	)
 	if err != nil {
 		e.persistResolveFailure(id, resolved.BridgeTx(), err)
 		return nil, err

@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -39,4 +40,16 @@ func (r *PendingInclusionResolver) Resolve(
 		NewLER:        cert.NewLocalExitRoot,
 		PreviousLER:   cert.PreviousLocalExitRoot,
 	}, nil // met: the certificate that includes the bridge, move on
+}
+
+// StartDate has no deterministic value of its own: this step's beginning is always "the
+// previous step just finished" (chained by UpdateStep)
+func (r *PendingInclusionResolver) StartDate(_ *BridgeInfo, _ any) *time.Time {
+	return nil
+}
+
+// EndDate has no deterministic value: inclusion in a certificate is an Agglayer-side fact with
+// no block/timestamp of its own until the certificate settles (the next step)
+func (r *PendingInclusionResolver) EndDate(_ any) *time.Time {
+	return nil
 }

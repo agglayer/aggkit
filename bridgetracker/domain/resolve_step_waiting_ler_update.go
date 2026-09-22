@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -41,4 +42,18 @@ func (r *WaitingLERUpdateResolver) Resolve(
 	}
 
 	return ler, nil
+}
+
+// StartDate returns the origin deposit's own block timestamp: this resolver is only ever the
+// first step of an L2->L1 or L2->L2' path (see ExpectedPath), whose beginning is the bridge's
+// own creation, not "the step before it finished" — there is none
+func (r *WaitingLERUpdateResolver) StartDate(info *BridgeInfo, _ any) *time.Time {
+	return blockTime(info.BlockTimestamp)
+}
+
+// EndDate has no deterministic value today: LERUpdateResult only carries BlockNumber, not its
+// own timestamp — resolving it would need an extra RPC call this resolver does not make yet
+// (agglayer/aggkit#1840)
+func (r *WaitingLERUpdateResolver) EndDate(_ any) *time.Time {
+	return nil
 }

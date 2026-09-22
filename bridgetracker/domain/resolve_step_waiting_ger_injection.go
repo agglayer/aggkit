@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -99,4 +100,22 @@ func (r *WaitingGERInjectionResolver) getLeafIndexFromPreviousStep(
 	default:
 		return 0, fmt.Errorf("unexpected previous step %v for StepWaitingGERInjection", steps[idx-1].Step)
 	}
+}
+
+// StartDate has no deterministic value of its own: this step's beginning is always "the
+// previous step just finished" (chained by UpdateStep)
+func (r *WaitingGERInjectionResolver) StartDate(_ *BridgeInfo, _ any) *time.Time {
+	return nil
+}
+
+// EndDate returns the L2 injection's own block timestamp, only known once the destination's
+// bridge-service instance reports it (InjectedGERResult.L2InjectedGER) — deliberately not
+// L1InfoTreeLeaf's own BlockTimestamp, the L1 event that produced the GER, not the L2 injection
+// itself (that exact conflation was #1818, see InjectedGERResult's own doc)
+func (r *WaitingGERInjectionResolver) EndDate(result any) *time.Time {
+	injected, ok := result.(*types.InjectedGERResult)
+	if !ok || injected.L2InjectedGER == nil {
+		return nil
+	}
+	return blockTimePtr(injected.L2InjectedGER.BlockTimestamp)
 }
