@@ -329,6 +329,10 @@ func (s *GERSource) InjectedGERAtIndex(
 		if leaf.InjectedL2BlockTimestamp != nil {
 			l2Timestamp := *leaf.InjectedL2BlockTimestamp
 			gerData.L2BlockTimestamp = &l2Timestamp
+		} else {
+			gerData.L2InjectionUnresolvedReason = fmt.Sprintf(
+				"destination bridge-service reported the L2 injection block (%d) but not its timestamp yet "+
+					"(may be syncing in legacy mode, or a transient backfill in progress)", l2BlockNumber)
 		}
 		return gerData, nil
 	}
@@ -337,15 +341,17 @@ func (s *GERSource) InjectedGERAtIndex(
 	// back to finding the injection ourselves, straight off the destination network's own L2, if
 	// its GlobalExitRootManagerL2 address is configured (l2GERAddrs). Best effort — any failure
 	// here just leaves L2BlockNumber/L2BlockTimestamp nil, same as when the fallback isn't
-	// configured at all; it must never fail InjectedGERAtIndex itself over this
-	l2BlockNumber, l2Timestamp, err := s.findL2InjectionBlockBackwards(ctx, bridge.DestinationNetwork, ger)
+	// configured at all; it must never fail InjectedGERAtIndex itself over this. reason always
+	// explains why, whether or not err is also set — a partial result (block found, its own
+	// timestamp resolution failed) is still worth keeping, not discarded just because err is set
+	l2BlockNumber, l2Timestamp, reason, err := s.findL2InjectionBlockBackwards(ctx, bridge.DestinationNetwork, ger)
 	if err != nil {
 		s.logger.Warnf("finding L2 injection block for GER %s on network %d: %v",
 			ger.Hex(), bridge.DestinationNetwork, err)
-		return gerData, nil
 	}
 	gerData.L2BlockNumber = l2BlockNumber
 	gerData.L2BlockTimestamp = l2Timestamp
+	gerData.L2InjectionUnresolvedReason = reason
 	return gerData, nil
 }
 
@@ -353,29 +359,35 @@ func (s *GERSource) InjectedGERAtIndex(
 // SettlementSource.findEventUpdateL1InfoTreeBackwards), for the UpdateHashChainValue event that
 // injected ger into the GlobalExitRootManagerL2 contract on networkID — used only as a fallback
 // when that network's bridge-service instance does not report the injection block itself (see
-// InjectedGERAtIndex). Returns (nil, nil, nil) — not an error — when networkID has no configured
-// l2GERAddrs entry (the fallback is simply not available for it) or the scan reaches genesis, or
-// s.l2InjectionLookbackBlocks (see GERSource.l2InjectionLookbackBlocks), without finding the
-// event; the timestamp alone can be (non-nil, nil) if resolving it off the found block's hash
-// fails, since the block number is already a genuine, useful answer on its own
+// InjectedGERAtIndex). err is nil except for a genuine RPC/contract-binding failure; reason is
+// always populated (regardless of err) whenever blockNumber or timestamp comes back nil,
+// explaining why in human-readable terms — the caller carries it onto GERData.
+// L2InjectionUnresolvedReason (and, from there, onto the wire as this step's own Warning) even
+// when err is also non-nil, since a partial result (block found, only its own timestamp
+// resolution failing) is still worth keeping, not discarded just because err is set. reason
+// alone (err nil) covers the two non-error cases: networkID has no configured l2GERAddrs entry
+// (the fallback is simply not available for it), or the scan reaches genesis, or
+// s.l2InjectionLookbackBlocks (see GERSource.l2InjectionLookbackBlocks), without finding the event
 func (s *GERSource) findL2InjectionBlockBackwards(
 	ctx context.Context, networkID uint32, ger common.Hash,
-) (blockNumber, timestamp *uint64, err error) {
+) (blockNumber, timestamp *uint64, reason string, err error) {
 	addr, ok := s.l2GERAddrs[networkID]
 	if !ok {
-		return nil, nil, nil // fallback not configured for this network, not an error (see doc comment)
+		return nil, nil, fmt.Sprintf("no L2GlobalExitRootAddress configured for network %d", networkID), nil
 	}
 	client, err := s.clients.RPCClientFor(ctx, networkID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, err.Error(), err
 	}
 	l2GERManager, err := agglayergerl2.NewAgglayergerl2(addr, client)
 	if err != nil {
-		return nil, nil, fmt.Errorf("binding GlobalExitRootManagerL2 contract at %s: %w", addr, err)
+		err = fmt.Errorf("binding GlobalExitRootManagerL2 contract at %s: %w", addr, err)
+		return nil, nil, err.Error(), err
 	}
 	head, err := client.CustomHeaderByNumber(ctx, &aggkittypes.LatestBlock)
 	if err != nil {
-		return nil, nil, fmt.Errorf("fetching latest block of network %d: %w", networkID, err)
+		err = fmt.Errorf("fetching latest block of network %d: %w", networkID, err)
+		return nil, nil, err.Error(), err
 	}
 
 	lookback := s.l2InjectionLookbackBlocks
@@ -399,21 +411,27 @@ func (s *GERSource) findL2InjectionBlockBackwards(
 		end := toBlock
 		found, filterErr := s.filterUpdateHashChainValue(ctx, l2GERManager, fromBlock, end, ger)
 		if filterErr != nil {
-			return nil, nil, fmt.Errorf("filtering UpdateHashChainValue logs [%d,%d] on network %d: %w",
+			err = fmt.Errorf("filtering UpdateHashChainValue logs [%d,%d] on network %d: %w",
 				fromBlock, end, networkID, filterErr)
+			return nil, nil, err.Error(), err
 		}
 		if found != nil {
 			block := found.BlockNumber
 			ts, tsErr := blockTimestamp(ctx, client, found.BlockHash)
 			if tsErr != nil {
-				return &block, nil, fmt.Errorf("resolving timestamp of block %d: %w", block, tsErr)
+				err = fmt.Errorf("resolving timestamp of L2 injection block %d on network %d: %w",
+					block, networkID, tsErr)
+				return &block, nil, err.Error(), err
 			}
-			return &block, &ts, nil
+			return &block, &ts, "", nil
 		}
 		if fromBlock == floor {
 			// scanned back to genesis or the configured lookback limit, the injection event
 			// genuinely isn't there (within that window)
-			return nil, nil, nil
+			return nil, nil, fmt.Sprintf(
+				"UpdateHashChainValue event for this GER not found within the last %d blocks on network %d",
+				lookback, networkID,
+			), nil
 		}
 		toBlock = fromBlock - 1
 	}

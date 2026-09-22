@@ -60,3 +60,9 @@ func (r *WaitingLERUpdateResolver) EndDate(result any) *time.Time {
 	}
 	return blockTime(update.BlockTimestamp)
 }
+
+// Warning never has anything to report: EndDate's own value either exists or falls back to now,
+// with no partial-failure mode of its own worth explaining
+func (r *WaitingLERUpdateResolver) Warning(_ any) *string {
+	return nil
+}

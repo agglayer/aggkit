@@ -120,3 +120,9 @@ func (r *WaitL1SettledGERResolver) EndDate(result any) *time.Time {
 	}
 	return blockTime(settlement.SettlementBlockTimestamp)
 }
+
+// Warning never has anything to report: EndDate's own value either exists or falls back to now,
+// with no partial-failure mode of its own worth explaining
+func (r *WaitL1SettledGERResolver) Warning(_ any) *string {
+	return nil
+}

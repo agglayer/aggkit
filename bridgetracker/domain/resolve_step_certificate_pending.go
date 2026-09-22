@@ -73,3 +73,9 @@ func (r *CertificatePendingResolver) EndDate(result any) *time.Time {
 	}
 	return blockTimePtr(cert.BlockTimestamp)
 }
+
+// Warning never has anything to report: EndDate's own value either exists or falls back to now,
+// with no partial-failure mode of its own worth explaining
+func (r *CertificatePendingResolver) Warning(_ any) *string {
+	return nil
+}

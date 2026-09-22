@@ -53,3 +53,9 @@ func (r *PendingInclusionResolver) StartDate(_ *BridgeInfo, _ any) *time.Time {
 func (r *PendingInclusionResolver) EndDate(_ any) *time.Time {
 	return nil
 }
+
+// Warning has nothing to report: EndDate's own lack of a deterministic value is structural (see
+// its own doc), not a partial-failure mode worth explaining
+func (r *PendingInclusionResolver) Warning(_ any) *string {
+	return nil
+}

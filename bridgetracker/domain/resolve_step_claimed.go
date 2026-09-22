@@ -62,3 +62,9 @@ func (r *ClaimedResolver) EndDate(result any) *time.Time {
 	}
 	return blockTime(claim.BlockTimestamp)
 }
+
+// Warning never has anything to report: EndDate's own value either exists or falls back to now,
+// with no partial-failure mode of its own worth explaining
+func (r *ClaimedResolver) Warning(_ any) *string {
+	return nil
+}

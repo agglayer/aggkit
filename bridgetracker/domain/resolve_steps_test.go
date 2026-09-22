@@ -1317,6 +1317,53 @@ func TestStepResolverEndDate(t *testing.T) {
 	}
 }
 
+// TestStepResolverWarning pins that only WaitingGERInjectionResolver ever has anything to
+// report here — every other resolver's EndDate either has a deterministic value or falls back
+// to now with no partial-failure mode worth explaining, so Warning stays nil unconditionally
+func TestStepResolverWarning(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		resolver StepResolver
+		result   any
+		expected *string
+	}{
+		{name: "WaitingGERUpdate: nothing to report", resolver: &WaitingGERUpdateResolver{}, result: &types.GERUpdateResult{}},
+		{name: "WaitingLERUpdate: nothing to report", resolver: &WaitingLERUpdateResolver{}, result: &types.LERUpdateResult{}},
+		{name: "PendingInclusion: nothing to report", resolver: &PendingInclusionResolver{}, result: &types.PendingInclusionResult{}},
+		{name: "CertificatePending: nothing to report", resolver: &CertificatePendingResolver{}, result: &types.CertificateData{}},
+		{name: "WaitL1SettledGER: nothing to report", resolver: &WaitL1SettledGERResolver{}, result: &types.L1SettledGERResult{}},
+		{
+			name:     "WaitingL1InfoLeafAvailable: nothing to report",
+			resolver: &WaitingL1InfoLeafAvailableResolver{}, result: &types.L1InfoLeafAvailableResult{},
+		},
+		{name: "WaitingClaim: nothing to report", resolver: &WaitingClaimResolver{}, result: nil},
+		{name: "Claimed: nothing to report", resolver: &ClaimedResolver{}, result: &types.ClaimResult{}},
+		{
+			name:     "WaitingGERInjection: no L2InjectionWarning of its own -> nil",
+			resolver: &WaitingGERInjectionResolver{},
+			result:   &types.InjectedGERResult{},
+		},
+		{
+			name:     "WaitingGERInjection: surfaces its own L2InjectionWarning",
+			resolver: &WaitingGERInjectionResolver{},
+			result:   &types.InjectedGERResult{L2InjectionWarning: "no L2GlobalExitRootAddress configured for network 81"},
+			expected: strPtr("no L2GlobalExitRootAddress configured for network 81"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tc.expected, tc.resolver.Warning(tc.result))
+		})
+	}
+}
+
+func strPtr(s string) *string { return &s }
+
 // TestStepResolverStartDate pins the two exceptions to "every step's StartDate simply chains
 // from the previous step's EndDate": the first step of any path, whose beginning is the bridge's
 // own creation (info.BlockTimestamp), and StepClaimed, whose own milestone is itself a
@@ -1460,4 +1507,44 @@ func TestResolveStepsChainsDeterministicDatesL2Origin(t *testing.T) {
 
 	inclusion := all[indexOfStep(all, types.StepPendingInclusion)]
 	require.Equal(t, lerUpdate.EndDate, inclusion.StartDate, "chained from WaitingLERUpdate's own EndDate")
+}
+
+// TestResolveStepsAttachesWarningOnDoneStep pins agglayer/aggkit#1840's follow-up: a step that
+// completes normally (Status stays Done) but whose resolver could not fully resolve some
+// optional deterministic data of its own (here, StepWaitingGERInjection's L2 injection block —
+// see WaitingGERInjectionResolver.Warning) carries that reason as its own Error, ErrorType
+// StepErrorWarning — informational only, never read as a failure by TrackingStatus/ClaimStatus
+func TestResolveStepsAttachesWarningOnDoneStep(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
+	ger := common.Hash{1}
+	reason := "no L2GlobalExitRootAddress configured for network 1"
+
+	tracking := newTracking(types.BridgeTypeL1ToL2, []BridgeStepPath{
+		{
+			Step: types.StepWaitingGERUpdate, Status: types.StepStatusDone,
+			ResultGerUpdate: &types.GERUpdateResult{L1InfoTreeIndex: 5},
+		},
+		{Step: types.StepWaitingGERInjection, Status: types.StepStatusInProgress},
+		{Step: types.StepWaitingL1InfoLeafAvailable, Status: types.StepStatusPending},
+		{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+		{Step: types.StepClaimed, Status: types.StepStatusPending},
+	}, now)
+	facts := &fakeFacts{
+		injectedGERAtIndex: &types.GERData{GER: &ger, L2InjectionUnresolvedReason: reason},
+	}
+
+	result, err := ResolveSteps(context.Background(), log.NewLoggerNil(), testResolvers(facts), facts, tracking, now)
+	require.NoError(t, err)
+
+	injection := result.AllSteps()[indexOfStep(result.AllSteps(), types.StepWaitingGERInjection)]
+	require.Equal(t, types.StepStatusDone, injection.Status, "completed normally despite the warning")
+	require.NotNil(t, injection.Error)
+	require.Equal(t, types.StepErrorWarning, injection.Error.ErrorType)
+	require.Equal(t, []string{reason}, injection.Error.Description)
+
+	require.Equal(t, types.StepStatusInProgress, result.AllSteps()[indexOfStep(result.AllSteps(), types.StepWaitingL1InfoLeafAvailable)].Status,
+		"the bridge keeps moving forward, unaffected by the warning")
+	require.Equal(t, types.TrackingStatusRunning, result.TrackingStatus(), "a warning never reads as a failure")
 }

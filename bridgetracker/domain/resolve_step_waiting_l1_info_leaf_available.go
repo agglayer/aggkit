@@ -69,3 +69,9 @@ func (r *WaitingL1InfoLeafAvailableResolver) StartDate(_ *BridgeInfo, _ any) *ti
 func (r *WaitingL1InfoLeafAvailableResolver) EndDate(_ any) *time.Time {
 	return nil
 }
+
+// Warning has nothing to report: EndDate's own lack of a deterministic value is structural (see
+// its own doc), not a partial-failure mode worth explaining
+func (r *WaitingL1InfoLeafAvailableResolver) Warning(_ any) *string {
+	return nil
+}

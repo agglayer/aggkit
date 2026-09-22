@@ -582,10 +582,22 @@ func TestGERSourceInjectedGER(t *testing.T) {
 	// (that conflation was #1818)
 	require.Nil(t, injected.L2BlockNumber)
 	require.Nil(t, injected.L2BlockTimestamp)
+	// the fallback was attempted (no injected_l2_block_num reported) but l2GERAddrs is nil here,
+	// so L2InjectionUnresolvedReason explains exactly why nothing was found
+	require.Contains(t, injected.L2InjectionUnresolvedReason, "no L2GlobalExitRootAddress configured")
+
+	// bridge-service reports the L2 injection block but not (yet) its own timestamp — e.g.
+	// l2gersync syncing in Legacy mode, see InjectedL2BlockTimestamp's own doc
+	fake.injectedLeaf["injected_l2_block_num"] = 999
+	injected, err = source.InjectedGER(t.Context(), l1ToL2Bridge())
+	require.NoError(t, err)
+	require.NotNil(t, injected)
+	require.Equal(t, uint64(999), *injected.L2BlockNumber)
+	require.Nil(t, injected.L2BlockTimestamp)
+	require.Contains(t, injected.L2InjectionUnresolvedReason, "not its timestamp yet")
 
 	// once the bridge-service reports the real L2 injection block/timestamp, they land on their
 	// own fields — block_num/timestamp above stay the L1 event's, per InjectedL1InfoLeafHandler
-	fake.injectedLeaf["injected_l2_block_num"] = 999
 	fake.injectedLeaf["injected_l2_block_timestamp"] = 1800000000
 	injected, err = source.InjectedGER(t.Context(), l1ToL2Bridge())
 	require.NoError(t, err)
@@ -594,6 +606,7 @@ func TestGERSourceInjectedGER(t *testing.T) {
 	require.Equal(t, uint64(1700000000), *injected.BlockTimestamp, "the L1 timestamp must stay untouched")
 	require.Equal(t, uint64(999), *injected.L2BlockNumber)
 	require.Equal(t, uint64(1800000000), *injected.L2BlockTimestamp)
+	require.Empty(t, injected.L2InjectionUnresolvedReason, "fully resolved, nothing to explain")
 }
 
 // TestGERSourceInjectedGER_FallsBackToL2Scan covers the #1818 fallback: when the destination's
@@ -651,6 +664,7 @@ func TestGERSourceInjectedGER_FallsBackToL2Scan(t *testing.T) {
 	require.Equal(t, uint64(4321), *injected.L2BlockNumber)
 	require.NotNil(t, injected.L2BlockTimestamp)
 	require.Equal(t, uint64(1800000000), *injected.L2BlockTimestamp)
+	require.Empty(t, injected.L2InjectionUnresolvedReason, "fully resolved via the fallback scan, nothing to explain")
 }
 
 // TestFindL2InjectionBlockBackwards exercises GERSource.findL2InjectionBlockBackwards directly:
@@ -661,13 +675,14 @@ func TestFindL2InjectionBlockBackwards(t *testing.T) {
 	l2GERAddr := common.HexToAddress("0x1234")
 	networkID := uint32(1)
 
-	t.Run("network not in l2GERAddrs: no RPC call, nil result", func(t *testing.T) {
+	t.Run("network not in l2GERAddrs: no RPC call, nil result with a reason", func(t *testing.T) {
 		source := NewGERSource(nil, nil, common.Address{}, aggkittypes.FinalizedBlock, nil, 0, nil)
 
-		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		blockNumber, timestamp, reason, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
 		require.NoError(t, err)
 		require.Nil(t, blockNumber)
 		require.Nil(t, timestamp)
+		require.Contains(t, reason, "no L2GlobalExitRootAddress configured")
 	})
 
 	t.Run("found on the very first (most recent) chunk", func(t *testing.T) {
@@ -685,10 +700,11 @@ func TestFindL2InjectionBlockBackwards(t *testing.T) {
 		mockClient.EXPECT().HeaderByHash(mock.Anything, blockHash).
 			Return(&gethtypes.Header{Time: 1700000000}, nil)
 
-		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		blockNumber, timestamp, reason, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
 		require.NoError(t, err)
 		require.Equal(t, uint64(400), *blockNumber)
 		require.Equal(t, uint64(1700000000), *timestamp)
+		require.Empty(t, reason, "fully resolved, nothing to explain")
 	})
 
 	t.Run("found only after paginating backwards past an empty chunk", func(t *testing.T) {
@@ -711,13 +727,14 @@ func TestFindL2InjectionBlockBackwards(t *testing.T) {
 		mockClient.EXPECT().HeaderByHash(mock.Anything, blockHash).
 			Return(&gethtypes.Header{Time: 1600000000}, nil)
 
-		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		blockNumber, timestamp, reason, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
 		require.NoError(t, err)
 		require.Equal(t, uint64(123), *blockNumber)
 		require.Equal(t, uint64(1600000000), *timestamp)
+		require.Empty(t, reason)
 	})
 
-	t.Run("never found: scans back to genesis, returns nil without error", func(t *testing.T) {
+	t.Run("never found: scans back to genesis, returns nil with a reason, no error", func(t *testing.T) {
 		mockClient := mocks.NewBaseEthereumClienter(t)
 		source := NewGERSource(nil, StaticClients{networkID: mockClient}, common.Address{},
 			aggkittypes.FinalizedBlock, map[uint32]common.Address{networkID: l2GERAddr}, 0, nil)
@@ -726,10 +743,11 @@ func TestFindL2InjectionBlockBackwards(t *testing.T) {
 			Return(&aggkittypes.BlockHeader{Number: 500}, nil)
 		mockClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]gethtypes.Log{}, nil).Once()
 
-		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		blockNumber, timestamp, reason, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
 		require.NoError(t, err)
 		require.Nil(t, blockNumber)
 		require.Nil(t, timestamp)
+		require.Contains(t, reason, "not found within the last")
 	})
 
 	t.Run("respects a configured lookback: never scans below the floor", func(t *testing.T) {
@@ -745,10 +763,11 @@ func TestFindL2InjectionBlockBackwards(t *testing.T) {
 			Return(&aggkittypes.BlockHeader{Number: 15_000}, nil)
 		mockClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]gethtypes.Log{}, nil).Once()
 
-		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		blockNumber, timestamp, reason, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
 		require.NoError(t, err)
 		require.Nil(t, blockNumber)
 		require.Nil(t, timestamp)
+		require.Contains(t, reason, "not found within the last 5000 blocks")
 	})
 
 	t.Run("lookback <= 0 falls back to DefaultL2InjectionLookbackBlocks: scans back to genesis", func(t *testing.T) {
@@ -762,13 +781,14 @@ func TestFindL2InjectionBlockBackwards(t *testing.T) {
 			Return(&aggkittypes.BlockHeader{Number: 500}, nil)
 		mockClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]gethtypes.Log{}, nil).Once()
 
-		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		blockNumber, timestamp, reason, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
 		require.NoError(t, err)
 		require.Nil(t, blockNumber)
 		require.Nil(t, timestamp)
+		require.NotEmpty(t, reason)
 	})
 
-	t.Run("head lookup fails: propagates the error", func(t *testing.T) {
+	t.Run("head lookup fails: propagates the error, reason mirrors it", func(t *testing.T) {
 		mockClient := mocks.NewBaseEthereumClienter(t)
 		source := NewGERSource(nil, StaticClients{networkID: mockClient}, common.Address{},
 			aggkittypes.FinalizedBlock, map[uint32]common.Address{networkID: l2GERAddr}, 0, nil)
@@ -776,8 +796,9 @@ func TestFindL2InjectionBlockBackwards(t *testing.T) {
 		mockClient.EXPECT().CustomHeaderByNumber(mock.Anything, &aggkittypes.LatestBlock).
 			Return(nil, errors.New("boom"))
 
-		_, _, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		_, _, reason, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
 		require.ErrorContains(t, err, "boom")
+		require.Contains(t, reason, "boom")
 	})
 
 	t.Run("found, but resolving the block's timestamp fails: block number still returned", func(t *testing.T) {
@@ -794,10 +815,11 @@ func TestFindL2InjectionBlockBackwards(t *testing.T) {
 		}, nil).Once()
 		mockClient.EXPECT().HeaderByHash(mock.Anything, blockHash).Return(nil, errors.New("boom"))
 
-		blockNumber, timestamp, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
+		blockNumber, timestamp, reason, err := source.findL2InjectionBlockBackwards(t.Context(), networkID, ger)
 		require.ErrorContains(t, err, "boom")
 		require.Equal(t, uint64(400), *blockNumber)
 		require.Nil(t, timestamp)
+		require.Contains(t, reason, "boom")
 	})
 }
 

@@ -70,6 +70,15 @@ type StepResolver interface {
 	// EndDate returns the deterministic on-chain time result carries proof this step's own
 	// milestone was met at, or nil when result carries none — UpdateStep stamps now instead
 	EndDate(result any) *time.Time
+
+	// Warning returns a human-readable reason this step could not (fully) resolve some optional
+	// deterministic data even though it completed normally, or nil when there is nothing to
+	// report — nil for every resolver whose EndDate/StartDate never has a partial-failure mode of
+	// its own to explain (only WaitingGERInjectionResolver does today, see its own doc). UpdateStep
+	// attaches it as this step's own Error, with ErrorType StepErrorWarning: informational only,
+	// it never causes a retry or reads as a failure (isTerminalStepError/isTransientStepError both
+	// gate on Status == StepStatusError first, and this step's Status stays StepStatusDone)
+	Warning(result any) *string
 }
 
 // blockTime converts a block's unix-second timestamp to *time.Time, or nil when ts is zero — the
@@ -365,6 +374,9 @@ func UpdateStep(
 			}
 			if sd := resolver.StartDate(tracking.Info(), result); sd != nil {
 				current.StartDate = sd
+			}
+			if w := resolver.Warning(result); w != nil {
+				current.Error = &types.ErrorStep{ErrorType: types.StepErrorWarning, Description: []string{*w}}
 			}
 		}
 		current.EndDate = &endDate

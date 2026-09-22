@@ -56,3 +56,9 @@ func (r *WaitingClaimResolver) StartDate(_ *BridgeInfo, _ any) *time.Time {
 func (r *WaitingClaimResolver) EndDate(_ any) *time.Time {
 	return nil
 }
+
+// Warning has nothing to report: EndDate's own lack of a deterministic value is structural (see
+// its own doc), not a partial-failure mode worth explaining
+func (r *WaitingClaimResolver) Warning(_ any) *string {
+	return nil
+}

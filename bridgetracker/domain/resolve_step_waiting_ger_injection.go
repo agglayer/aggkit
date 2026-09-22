@@ -71,6 +71,7 @@ func (r *WaitingGERInjectionResolver) Resolve(
 		result.L2InjectedGER = &types.InjectedL2GERBlock{BlockNumber: *injected.L2BlockNumber}
 		result.L2InjectedGER.BlockTimestamp = injected.L2BlockTimestamp
 	}
+	result.L2InjectionWarning = injected.L2InjectionUnresolvedReason
 	return result, nil
 }
 
@@ -118,4 +119,18 @@ func (r *WaitingGERInjectionResolver) EndDate(result any) *time.Time {
 		return nil
 	}
 	return blockTimePtr(injected.L2InjectedGER.BlockTimestamp)
+}
+
+// Warning surfaces InjectedGERResult.L2InjectionWarning — the root cause, from
+// sources.GERSource.InjectedGERAtIndex, of why L2InjectedGER is nil (or, once known, why its own
+// BlockTimestamp still is): no L2GlobalExitRootAddress configured for the destination network to
+// even attempt the fallback scan, that scan's own UpdateHashChainValue search exhausting its
+// lookback window, a genuine RPC/contract-binding failure while attempting it, or the
+// destination bridge-service reporting the block but not (yet) its own timestamp
+func (r *WaitingGERInjectionResolver) Warning(result any) *string {
+	injected, ok := result.(*types.InjectedGERResult)
+	if !ok || injected.L2InjectionWarning == "" {
+		return nil
+	}
+	return &injected.L2InjectionWarning
 }

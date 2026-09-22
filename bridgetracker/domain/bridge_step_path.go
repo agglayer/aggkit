@@ -39,7 +39,11 @@ type BridgeStepPath struct {
 	// Error carries the error details when Status is types.StepStatusError, or
 	// types.StepStatusSkipped for the step whose real error triggered the claimed-bridge fallback
 	// (see skipToClaimed) — its own ErrorType/description are kept as-is, not relabeled. nil for
-	// every other step skipped alongside it, never itself attempted, and for every other status
+	// every other step skipped alongside it, never itself attempted. Also set, with ErrorType
+	// types.StepErrorWarning, on a step that otherwise completed normally (Status stays
+	// types.StepStatusDone) whose resolver could not fully resolve some optional deterministic
+	// data of its own (see StepResolver.Warning, e.g. WaitingGERInjectionResolver) — informational
+	// only, not a reason this step failed. nil for every other status
 	Error *types.ErrorStep
 }
 
