@@ -486,7 +486,7 @@ const docTemplatebridgetracker = `{
                     "type": "string"
                 },
                 "error": {
-                    "description": "Error carries the error details when Status is types.StepStatusError, or\ntypes.StepStatusSkipped for the step whose real error triggered the claimed-bridge\nfallback — its own ErrorType/description are kept as-is. nil for every other step skipped\nalongside it, never itself attempted, and for every other status",
+                    "description": "Error carries the error details when Status is types.StepStatusError, or\ntypes.StepStatusSkipped for the step whose real error triggered the claimed-bridge\nfallback — its own ErrorType/description are kept as-is. nil for every other step skipped\nalongside it, never itself attempted. Also set, with ErrorType types.StepErrorWarning, on a\nstep that completed normally (status stays \"done\") but whose resolver could not fully\nresolve some optional deterministic data of its own — informational only, not a reason\nthis step failed. nil for every other status",
                     "allOf": [
                         {
                             "$ref": "#/definitions/types.ErrorStep"
@@ -598,14 +598,10 @@ const docTemplatebridgetracker = `{
                         1000000000,
                         60000000000,
                         3600000000000,
-                        -9223372036854775808,
-                        9223372036854775807,
                         1,
                         1000,
                         1000000,
-                        1000000000,
-                        60000000000,
-                        3600000000000
+                        1000000000
                     ],
                     "x-enum-varnames": [
                         "minDuration",
@@ -632,14 +628,10 @@ const docTemplatebridgetracker = `{
                         "Second",
                         "Minute",
                         "Hour",
-                        "minDuration",
-                        "maxDuration",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",
-                        "Second",
-                        "Minute",
-                        "Hour"
+                        "Second"
                     ]
                 }
             }
@@ -910,12 +902,14 @@ const docTemplatebridgetracker = `{
             "enum": [
                 0,
                 1,
-                2
+                2,
+                3
             ],
             "x-enum-varnames": [
                 "StepErrorTransient",
                 "StepErrorPermanent",
-                "StepErrorExhausted"
+                "StepErrorExhausted",
+                "StepErrorWarning"
             ]
         },
         "types.VersionInfo": {

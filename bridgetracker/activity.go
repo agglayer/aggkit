@@ -386,10 +386,12 @@ func settled(entry *domain.ActivityEntry) bool {
 	return entry.ClaimStatus == types.ClaimStatusClaimed && entry.Claim != nil
 }
 
-// blockTimeOrNow converts ts, a block's unix-second timestamp, to a UTC time.Time, or returns
+// BlockTimeOrNow converts ts, a block's unix-second timestamp, to a UTC time.Time, or returns
 // now when ts is zero — the sentinel BridgeResponse.BlockTimestamp effectively uses for "not
-// resolved yet" (a real on-chain block at exactly the unix epoch does not happen in practice)
-func blockTimeOrNow(ts uint64, now time.Time) time.Time {
+// resolved yet" (a real on-chain block at exactly the unix epoch does not happen in practice).
+// Exported so bridgetracker/db.sqliteActivityStore.refresh, a deliberate byte-for-byte mirror of
+// ActivityCache.refresh below (see its own doc), stamps ActivityEntry.CreatedAt the same way
+func BlockTimeOrNow(ts uint64, now time.Time) time.Time {
 	if ts == 0 {
 		return now
 	}
@@ -399,7 +401,7 @@ func blockTimeOrNow(ts uint64, now time.Time) time.Time {
 // refresh (re)computes the claim/tracking state of a single bridge item, stamping
 // ActivityEntry.CreatedAt (carried forward from existing, or item.Bridge's own origin deposit
 // block timestamp — falling back to now only if the bridge service has not populated that yet,
-// see blockTimeOrNow — the first time this bridge is seen) and UpdatedAt (always now — every
+// see BlockTimeOrNow — the first time this bridge is seen) and UpdatedAt (always now — every
 // call to refresh counts as an update, whether or not anything about the entry actually changed;
 // deliberately not a deterministic fact like CreatedAt, since it reports the last time the
 // tracker checked the network, not the last time this bridge's own state actually changed — see
@@ -424,7 +426,7 @@ func (a *ActivityCache) refresh(
 	if existing != nil {
 		entry.CreatedAt = existing.CreatedAt
 	} else {
-		entry.CreatedAt = blockTimeOrNow(item.Bridge.BlockTimestamp, a.now())
+		entry.CreatedAt = BlockTimeOrNow(item.Bridge.BlockTimestamp, a.now())
 	}
 	entry.UpdatedAt = a.now()
 

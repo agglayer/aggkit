@@ -188,7 +188,10 @@ definitions:
           Error carries the error details when Status is types.StepStatusError, or
           types.StepStatusSkipped for the step whose real error triggered the claimed-bridge
           fallback — its own ErrorType/description are kept as-is. nil for every other step skipped
-          alongside it, never itself attempted, and for every other status
+          alongside it, never itself attempted. Also set, with ErrorType types.StepErrorWarning, on a
+          step that completed normally (status stays "done") but whose resolver could not fully
+          resolve some optional deterministic data of its own — informational only, not a reason
+          this step failed. nil for every other status
       expected_duration:
         $ref: '#/definitions/github_com_agglayer_aggkit_bridgetracker_types.Duration'
       result:
@@ -299,14 +302,10 @@ definitions:
         - 1000000000
         - 60000000000
         - 3600000000000
-        - -9223372036854775808
-        - 9223372036854775807
         - 1
         - 1000
         - 1000000
         - 1000000000
-        - 60000000000
-        - 3600000000000
         format: int64
         type: integer
         x-enum-varnames:
@@ -334,14 +333,10 @@ definitions:
         - Second
         - Minute
         - Hour
-        - minDuration
-        - maxDuration
         - Nanosecond
         - Microsecond
         - Millisecond
         - Second
-        - Minute
-        - Hour
     type: object
   types.BridgeResponse:
     description: Detailed information about a bridge event
@@ -563,11 +558,13 @@ definitions:
     - 0
     - 1
     - 2
+    - 3
     type: integer
     x-enum-varnames:
     - StepErrorTransient
     - StepErrorPermanent
     - StepErrorExhausted
+    - StepErrorWarning
   types.VersionInfo:
     properties:
       arch:

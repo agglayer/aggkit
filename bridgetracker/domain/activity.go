@@ -92,10 +92,11 @@ type ActivityEntry struct {
 	// isClaimed() check itself failed), "readiness" when IsReadyToClaim itself failed (Claimed
 	// then conservatively stays "pending"). nil while nothing has failed
 	Errors map[string]string
-	// CreatedAt is when this bridge was created: Bridge's own origin deposit block timestamp
-	// (see ActivityCache.refresh), falling back to the first successful refresh only if that is
-	// ever unavailable (BlockTimestamp not yet populated by the bridge service). Set once and
-	// never changes after that
+	// CreatedAt is when this bridge was created: Bridge's own origin deposit block timestamp,
+	// via bridgetracker.BlockTimeOrNow (see ActivityCache.refresh and its SQLite-backed mirror,
+	// sqliteActivityStore.refresh — both call it the same way), falling back to the first
+	// successful refresh only if that is ever unavailable (BlockTimestamp not yet populated by
+	// the bridge service). Set once and never changes after that
 	CreatedAt time.Time
 	// UpdatedAt is when this entry's claim/tracking state was last (re)computed — the last time
 	// refresh ran for it, whether or not anything about it actually changed. Deliberately always

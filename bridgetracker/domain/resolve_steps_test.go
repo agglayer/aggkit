@@ -653,8 +653,9 @@ func TestResolveStepsSkipsOnAlreadyClaimed(t *testing.T) {
 	require.Equal(t, types.StepErrorTransient, gerUpdate.Error.ErrorType,
 		"keeps its own real error type, not StepErrorSkipped, since factsErr is a genuine transient failure")
 	require.Contains(t, gerUpdate.Error.Description[0], factsErr.Error(), "keeps its own real failure as the reason")
-	require.Nil(t, gerUpdate.StartDate, "Skipped means never actually verified, so no real span to report")
-	require.Nil(t, gerUpdate.EndDate, "Skipped means never actually verified, so no real span to report")
+	require.Equal(t, &now, gerUpdate.StartDate,
+		"index 0's StartDate is the bridge's own creation moment (seeded by PendingPath), not a stale chained value — kept even when this step itself never verified its own milestone")
+	require.Nil(t, gerUpdate.EndDate, "Skipped means never actually verified, so no real completion instant to report")
 
 	for _, stepID := range []types.BridgeStep{types.StepWaitingGERInjection, types.StepWaitingL1InfoLeafAvailable, types.StepWaitingClaim} {
 		sp := steps[indexOfStep(steps, stepID)]

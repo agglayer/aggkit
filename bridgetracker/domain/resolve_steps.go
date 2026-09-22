@@ -220,13 +220,17 @@ func trySkipToClaimed(
 // idx itself carries idxError as its own (the failure that triggered the fallback), ErrorType
 // included, so a genuine Transient/Permanent error is not relabeled as StepErrorSkipped just
 // because the tracker gave up chasing it: the two remain distinguishable on the wire. Every
-// skipped step, idx included, has both StartDate and EndDate cleared to nil — Skipped means this
-// step's own milestone was never actually verified (that is exactly why the fallback exists), so
-// there is no real span to report; stamping EndDate with now (when the tracker merely gave up)
-// would present a fact this step never established as if it had. StepClaimed is then opened as
-// StepStatusInProgress, same as UpdateStep does for whichever step follows one it just
-// completed, so the next loop iteration resolves it for real through its own resolver — this
-// fallback never skips StepClaimed itself
+// skipped step has its EndDate cleared to nil — Skipped means this step's own milestone was
+// never actually verified (that is exactly why the fallback exists), so there is no real
+// completion instant to report; stamping it with now (when the tracker merely gave up) would
+// present a fact this step never established as if it had. StartDate is cleared the same way,
+// except at index 0: that one is never a stale value chained from a previous step (there is
+// none) — it is the bridge's own creation moment, seeded by PendingPath from BridgeInfo
+// regardless of whether this specific step ever got to verify its own milestone, so clearing it
+// would erase the only record of when the bridge started from the entire path. StepClaimed is
+// then opened as StepStatusInProgress, same as UpdateStep does for whichever step follows one it
+// just completed, so the next loop iteration resolves it for real through its own resolver —
+// this fallback never skips StepClaimed itself
 func skipToClaimed(tracking *TrackingData, idx int, idxError *types.ErrorStep, now time.Time) *TrackingData {
 	steps := tracking.AllSteps()
 	claimedIdx := indexOfStep(steps, types.StepClaimed)
@@ -236,7 +240,9 @@ func skipToClaimed(tracking *TrackingData, idx int, idxError *types.ErrorStep, n
 		sp := newSteps[i]
 		sp.Status = types.StepStatusSkipped
 		sp.Error = nil
-		sp.StartDate = nil
+		if i > 0 {
+			sp.StartDate = nil
+		}
 		sp.EndDate = nil
 		if i == idx {
 			sp.Error = idxError
