@@ -21,6 +21,7 @@ BlockChunkSize = 10000
 HealthCheckPath = "/"
 HealthCheckTimeout = "5s"
 RequireAllHealthyOnStart = false
+AutoRegisterNewNetworks = true
 
 [Tracker]
 L1GlobalExitRootAddress = "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674"

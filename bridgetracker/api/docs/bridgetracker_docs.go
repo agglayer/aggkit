@@ -883,6 +883,17 @@ const docTemplatebridgetracker = `{
                     "description": "InstanceID is a UUID generated at startup; it changes on every execution, so two\nresponses with different InstanceID come from different instances (or the same\ninstance after a restart)",
                     "type": "string"
                 },
+                "pending_networks": {
+                    "description": "PendingNetworks lists the networks discovered after startup that were not activated\nbecause AutoRegisterNewNetworks is disabled, sorted by network id. Omitted when empty",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.PendingNetwork"
+                    }
+                },
+                "start_date": {
+                    "description": "StartDate is when this instance started (RFC3339, UTC), fixed for as long as InstanceID\nis. It is the reference point PendingNetworks is relative to — every entry there was, by\ndefinition, discovered after it. Uptime is not served as its own field: a client derives\nit as now minus StartDate, and an absolute instant keeps the response byte-identical\nbetween calls",
+                    "type": "string"
+                },
                 "status": {
                     "description": "Status is always \"ok\"",
                     "type": "string"
@@ -894,6 +905,31 @@ const docTemplatebridgetracker = `{
                             "$ref": "#/definitions/types.VersionInfo"
                         }
                     ]
+                }
+            }
+        },
+        "types.PendingNetwork": {
+            "type": "object",
+            "properties": {
+                "block_number": {
+                    "description": "BlockNumber is the block of the first event that would have activated the network\n(0 when the triggering event's block is not available)",
+                    "type": "integer"
+                },
+                "first_seen": {
+                    "description": "FirstSeen is when that first event was processed (RFC3339, UTC)",
+                    "type": "string"
+                },
+                "network_id": {
+                    "description": "NetworkID is the network (rollup) id that was not activated",
+                    "type": "integer"
+                },
+                "reason": {
+                    "description": "Reason describes which activation path was blocked",
+                    "type": "string"
+                },
+                "rollup_address": {
+                    "description": "RollupAddress is the hex address of the rollup contract that triggered the event",
+                    "type": "string"
                 }
             }
         },

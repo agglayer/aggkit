@@ -92,6 +92,18 @@ The WebSocket connection closes normally (code 1000) once the bridge reaches a t
 bridge transaction). A step-level error on an otherwise-resolved bridge is reported in
 `TrackingData.error` but is not terminal: the engine keeps retrying it.
 
+Every error string these endpoints return to a client — a step's `error.description[]`, the
+tx-level `error`, the REST/WebSocket `ErrorData.message` and the WebSocket close-frame reason —
+has any backend URL, `host:port` or bare IP address replaced with `<redacted-url>` /
+`<redacted-host>`, keeping the rest of the message intact. Only application logs keep the real
+endpoint; operators need it to debug.
+
+That replacement happens at the API layer, where the value becomes client-facing: the response
+marshalers (`ErrorStep`, `ErrorData`, `CertificateData`, `ActivityItem`, `ActivityWarningItem`) and
+the WebSocket close frame, which carries its reason as a bare string and so is redacted where it
+is built. The tracker's internal objects and its activity store keep the raw error, exactly as the
+logs do.
+
 ## Configuration
 
 Enable the `TRACKER` component (`--components TRACKER,...`) and configure the `[Tracker]`
@@ -173,6 +185,41 @@ UseTLS = false
   agglayer — the tracker only ever reads agglayer state, so `SendCertificate` is forbidden here).
   `GetLatestSettledCertificateHeader` is intentionally left unset (passthrough): its "latest"
   answer must always be fresh.
+
+## `[BridgeServiceFinder]` configuration
+
+The `aggkit-proxy` binary shares one `[BridgeServiceFinder]` instance across the `PROXY` request
+forwarding, the tracker's canonical-bridge-address resolution (see [How it
+works](#how-it-works)) and its own on-chain rollup discovery. Most of its keys — `RollupManagerAddr`,
+`BridgeURLs`/`RPCURLs`, `BlockFinality`, `PollInterval`, health-check settings, `IgnoreNetworkIDs` —
+are the same finder used by Auto Claim; see [`AutoClaim.BridgeServiceFinder`
+keys](autoclaim.md#top-level-keys) for the full field list and defaults. This section covers the
+one field that changes what the tracker's health endpoint reports:
+
+- `AutoRegisterNewNetworks` (bool, **TOML default `true`**): controls whether a network discovered
+  after the finder's `Start` gets served. When `true` (today's behavior, unqualified), a rollup
+  attached to the rollup manager after startup — or a startup-enumerated network that only
+  announces its bridge service URL later — is resolved and served immediately, live, without a
+  restart. When `false` the **served set is frozen at startup**: neither of those two paths adds a
+  new network afterwards. A URL *refresh* of a network already being served is unaffected either
+  way — the existing health-gating and source-priority rules keep applying.
+- A network blocked by `AutoRegisterNewNetworks = false` is recorded as **pending** (network id,
+  rollup contract address, the block of the event that would have activated it, first-seen time,
+  and a reason) instead of served, logged once at `Warn`, and listed under `pending_networks` in
+  `GET /tracker/v1/health` (see [HealthResponse](bridgetracker/API.md#healthresponse)) — the key
+  is omitted once there is nothing pending. When the binary runs with only the `PROXY` component
+  enabled (no `TRACKER`, so no health endpoint), pending networks are only visible in the logs.
+- **Activation** always requires restarting the service — the startup enumeration is the explicit
+  operator step that (re-)serves everything it can resolve at that point, and config is not
+  hot-reloaded, so simply adding the network to `BridgeURLs` / `RPCURLs` and leaving the process
+  running does nothing. That static override is always installed regardless of this flag, but
+  only as of the *next* restart. There is deliberately no admin endpoint to activate a pending
+  network any other way.
+
+```toml
+[BridgeServiceFinder]
+AutoRegisterNewNetworks = true
+```
 
 ## API Documentation
 

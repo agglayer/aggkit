@@ -45,6 +45,7 @@ matching the `op-pp`/`op-pp-2chains` pattern in this directory.
   | `config/aggkit-002/config.toml` | `config/002/aggkit-config.toml` |
   | `config/aggkit-002/{sequencer,aggoracle,sovereignadmin}.keystore` | `config/002/{sequencer,aggoracle,sovereignadmin}.keystore` |
   | `config/aggkit-proxy-001/config.toml` | `config/aggkit-proxy/aggkit-proxy.toml` |
+  | *(none -- not from kurtosis-cdk)* | `config/aggkit-proxy/aggkit-proxy-noautoreg.toml` (byte-copy of `aggkit-proxy.toml` with `AutoRegisterNewNetworks = false`, used only by `aggkit-proxy-002` / `TestProxyAutoRegisterNewNetworks`, #1855) |
 
   Only hostnames/internal service names needed to line up (they already did -- this env keeps
   the same compose service names the bundle uses: `anvil-001`, `l2-anvil-001`, `l2-anvil-002`,
@@ -90,6 +91,7 @@ tests, exactly like `op-pp`/`op-pp-2chains`.
 | `l2-anvil-002` | 8545 | 15545 |
 | `aggkit-002` | 5576/5577/5579 | 15576/15577/15579 |
 | `aggkit-proxy-001` | 8080 | 15601 |
+| `aggkit-proxy-002` | 8080 | 15602 |
 
 ## Known deviations from the design note
 

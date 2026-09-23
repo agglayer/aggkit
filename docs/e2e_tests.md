@@ -193,3 +193,53 @@ The impostor contract is compiled by `test/contracts/compile.sh` and bound into 
 ```bash
 go test -v -run 'TestBridgeTrackerNotABridge' -timeout 5m ./test/e2e
 ```
+
+### aggkit-proxy: error redaction (#1845)
+
+`TestProxyTrackerRedactsURLs` (`test/e2e/proxy_tracker_redaction_test.go`) proves that the bridge tracker's
+client-facing error strings never leak an internal URL, host or port, even though the underlying error legitimately
+contains one. It rewrites network 2's `RPCURLs`/`BridgeURLs` entries in `aggkit-proxy-001`'s bind-mounted config to
+two distinct, DNS-unresolvable `.invalid` hostnames (a fast NXDOMAIN rather than a connect-timeout stall), restarts
+the service, and sends a bridge to network 2. It then polls the tracker until the tx-level `error` or a step's
+`error` is populated and asserts that every `description` string, and the raw response body, contains neither
+`://` nor either `.invalid` hostname — while at least one description contains `<redacted-url>` or
+`<redacted-host>`, proving a URL-bearing failure path actually ran rather than the test passing vacuously. The
+original config is restored (and the service restarted) in `t.Cleanup`. See [Bridge Tracker
+component](./bridgetracker.md#endpoints) and [ErrorStep](./bridgetracker/API.md#errorstep) for the redaction rule
+this exercises.
+
+```bash
+go test -v -run 'TestProxyTrackerRedactsURLs' -timeout 5m ./test/e2e
+```
+
+### aggkit-proxy: gated auto-registration (#1855)
+
+`TestProxyAutoRegisterNewNetworks` (`test/e2e/proxy_autoregister_test.go`) covers `[BridgeServiceFinder]
+AutoRegisterNewNetworks` on a second `aggkit-proxy-002` instance that runs with it set to `false`
+(`config/aggkit-proxy/aggkit-proxy-noautoreg.toml`), alongside `aggkit-proxy-001` which keeps the `true` default.
+It attaches a third rollup (network 3) to the L1 rollup manager — as an anvil-impersonated admin account, since its
+private key is unavailable, every on-chain write is sent as an unsigned `eth_sendTransaction` built from the
+generated ABI rather than through `bind.TransactOpts` — advertising network 1's real, healthy bridge service so a
+reachable backend is available. It then asserts that `aggkit-proxy-001` starts serving network 3 live, without a
+restart, while `aggkit-proxy-002` keeps answering 404 for it and instead lists it under `pending_networks` in `GET
+/tracker/v1/health` (network id, rollup address, a non-zero block number and a non-empty reason); once
+`aggkit-proxy-002` is restarted, network 3 is served there too and `pending_networks` is absent again. See [Bridge
+Tracker component](./bridgetracker.md#bridgeservicefinder-configuration) for the frozen-set/activation rules this
+exercises.
+
+```bash
+go test -v -run 'TestProxyAutoRegisterNewNetworks' -timeout 5m ./test/e2e
+```
+
+#### CI matrix
+
+Both tests above run in their own dedicated `.github/workflows/test-go-e2e.yml` matrix group,
+`anvil-2chains` / `proxy-tracker-stateful`, separate from the `bridge` group: they rewrite `aggkit-proxy`'s
+bind-mounted config and restart it, and mutate L1 rollup-manager state, so they must not share a compose stack (or
+share L1 chain state) with the default bridge tests.
+
+```yaml
+- env: anvil-2chains
+  group: proxy-tracker-stateful
+  run: "^(TestProxyAutoRegisterNewNetworks|TestProxyTrackerRedactsURLs)$"
+```

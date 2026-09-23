@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 )
@@ -84,6 +86,30 @@ type ActivityItem struct {
 	Errors map[string]string `json:"errors,omitempty"`
 }
 
+// MarshalJSON is the implementation of the json.Marshaler interface. It redacts any URL,
+// host:port, IP address or DNS name from every Errors value. domain.ActivityEntry.Errors holds
+// the raw error strings on purpose (they are what the refresh loop logs, where operators need the
+// real endpoint); this is the layer that makes them client-safe
+func (i ActivityItem) MarshalJSON() ([]byte, error) {
+	i.Errors = redactActivityErrors(i.Errors)
+	type activityItemAlias ActivityItem
+	return json.Marshal(activityItemAlias(i))
+}
+
+// redactActivityErrors returns a new map with aggkitcommon.RedactSensitive applied to every
+// value of errs, or nil when errs is nil (so ActivityItem.Errors stays omitted from the wire
+// response when there is nothing to report — see its "omitempty" tag). It never mutates errs.
+func redactActivityErrors(errs map[string]string) map[string]string {
+	if errs == nil {
+		return nil
+	}
+	redacted := make(map[string]string, len(errs))
+	for k, v := range errs {
+		redacted[k] = aggkitcommon.RedactSensitive(v)
+	}
+	return redacted
+}
+
 // ActivityWarningItem reports one network's bridge service that could not be scanned while
 // building this response — Bridges is still whatever every other network reported, just
 // possibly incomplete for the networks listed here
@@ -92,6 +118,16 @@ type ActivityWarningItem struct {
 	NetworkID uint32 `json:"network_id"`
 	// Message is the error encountered while scanning NetworkID
 	Message string `json:"message"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface. It redacts any URL,
+// host:port, IP address or DNS name from Message. domain.ActivityWarning.Message holds the raw
+// message on purpose (sources.ActivitySource.warnf logs the same string verbatim, where operators
+// need the real endpoint); this is the layer that makes it client-safe
+func (w ActivityWarningItem) MarshalJSON() ([]byte, error) {
+	w.Message = aggkitcommon.RedactSensitive(w.Message)
+	type activityWarningItemAlias ActivityWarningItem
+	return json.Marshal(activityWarningItemAlias(w))
 }
 
 // ActivityResponse is the body of GET /activity/from/{from_address}
@@ -175,7 +211,7 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 	// first-time registration just to fix a client-side typo)
 	filter, err := types.ParseActivityFilter(c.Query(filterBridgesQueryParam))
 	if err != nil {
-		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: err.Error()}
+		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: aggkitcommon.RedactError(err)}
 	}
 
 	if c.Query(flushCacheQueryParam) == queryValueTrue {
@@ -192,9 +228,11 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 	ready, err := cmd.registry.RegisterAndAwait(fromAddress, includeTracking, cmd.resolveTimeout)
 	if err != nil {
 		if errors.Is(err, domain.ErrActivityRegistryFull) {
-			return 0, nil, &types.ErrorData{Code: http.StatusServiceUnavailable, Message: err.Error()}
+			return 0, nil, &types.ErrorData{
+				Code: http.StatusServiceUnavailable, Message: aggkitcommon.RedactError(err),
+			}
 		}
-		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()}
+		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: aggkitcommon.RedactError(err)}
 	}
 	if !ready {
 		// from_address was only just registered and its first background refresh has not
@@ -211,7 +249,7 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 
 	entries, warnings, err := cmd.registry.GetActivity(c.Request.Context(), fromAddress, includeTracking, filter)
 	if err != nil {
-		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: err.Error()}
+		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: aggkitcommon.RedactError(err)}
 	}
 
 	return http.StatusOK, ActivityResponse{

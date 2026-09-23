@@ -235,7 +235,7 @@ The same structure carries three different kinds of information, depending on wh
 | error_type | ErrorType (int) | 0->transient, 1->permanent, 2->exhausted (retries have been given up on), 3->warning (informational only — the step is `"done"`, not `"error"`; see above) |
 | error_type_string | string | string representation of error_type (e.g. "transient", "warning") |
 | retry_count | int | number of retries attempted so far; always `0` for a warning |
-| description | string [] | human-readable description(s) of the error, one entry per occurrence |
+| description | string [] | human-readable description(s) of the error — or, for `error_type` `"warning"`, of what could not be fully resolved — one entry per occurrence. Any URL, `host:port` or bare IP address is redacted (replaced with `<redacted-url>` / `<redacted-host>`); the rest of the message is kept |
 
 ## GERData
 
@@ -370,8 +370,25 @@ Always returns `200 OK` with a `HealthResponse` body:
 | status | string | always `"ok"` |
 | api_revision | int | the tracker's wire API contract version — bumped by one whenever a change could break an existing client (a field added/removed/renamed, an enum's value set changed, a new step inserted into a bridge's expected path, and the like), so a client can tell which contract shape the responding instance speaks. Purely informational: the tracker never rejects or alters behavior based on it |
 | instance_id | string | UUID generated at startup; changes on every execution. Two responses with different `instance_id` come from different instances (or the same instance after a restart) |
+| start_date | string (RFC3339, UTC) | when the instance started; fixed for as long as `instance_id` is. It is the reference point `pending_networks` is relative to — every entry there was, by definition, discovered after it. Uptime is not served as its own field: derive it as `now - start_date`, which keeps the response byte-identical between calls |
 | config_sha1 | string | sha1sum (hex) of the configuration the instance was started with; allows checking that all instances run the same configuration. The binary accepts several `--cfg` files, so the hash is computed over the **concatenation of the config files in the order they were passed** |
 | version | VersionInfo | build/version information of the running instance |
+| pending_networks | PendingNetwork [] | networks the bridge service finder discovered after startup but did not activate because `[BridgeServiceFinder] AutoRegisterNewNetworks` is `false`, sorted by ascending `network_id`. **Omitted** (no key) when nothing is pending — in particular whenever `AutoRegisterNewNetworks` is left at its default (`true`) |
+
+### PendingNetwork
+
+Read-only observation record; the finder never serves a pending network's URL. Activation requires
+restarting the process (the startup enumeration is the explicit operator step) or adding the
+network to `BridgeServiceFinder.BridgeURLs` / `BridgeServiceFinder.RPCURLs`. See [Bridge Tracker
+component](../bridgetracker.md#bridgeservicefinder-configuration).
+
+| field | type | desc |
+| ------|------|------|
+| network_id | uint32 | the network (rollup) id that was not activated |
+| rollup_address | string | hex address (`0x...`) of the rollup contract that triggered the event |
+| block_number | uint64 | block of the first event that would have activated the network; `0` when the triggering event's block is not available (the on-chain-refresh reason) |
+| first_seen | string (RFC3339, UTC) | when that first event was processed |
+| reason | string | which activation path was blocked |
 
 ### VersionInfo
 
@@ -394,6 +411,7 @@ Example:
   "status": "ok",
   "api_revision": 2,
   "instance_id": "3f1c9a2e-8b4d-4f6a-9c0e-5d7b2a1e4c8f",
+  "start_date": "2026-09-22T10:30:00Z",
   "config_sha1": "2ef7bde608ce5404e97d5f042f95f89f1c232871",
   "version": {
     "version": "v0.1.0",
@@ -447,7 +465,7 @@ Request:
 | field | type | desc |
 | ------|------|------|
 | network_id | uint32 | the network whose bridge service could not be scanned |
-| message | string | the error encountered while scanning `network_id` |
+| message | string | the error encountered while scanning `network_id`. Any URL, `host:port` or bare IP address is redacted (replaced with `<redacted-url>` / `<redacted-host>`); the rest of the message is kept |
 
 ### ActivityItem
 
@@ -466,7 +484,7 @@ sit alongside them (not nested inside) so the caller knows which bridge service 
 | creation_timestamp | uint64 | unix seconds; when this bridge was first cached by this endpoint — never changes after that |
 | last_updated_timestamp | uint64 | unix seconds; when this item's claim/tracking state was last (re)checked, whether or not anything about it actually changed. Stops advancing once the bridge is claimed with its claim record fetched, since it is never rechecked again from that point on |
 | tracking | TrackingData | the bridge tracker's current status for this bridge (see [TrackingData](#trackingdata)); **omitted** (no key) unless the request set `includeTracking=true` and the bridge is still unclaimed |
-| errors | map[string]string | message of whatever check failed the last time this item was refreshed, keyed by which check it was — `"claim"` when the `isClaimed()` check itself failed, `"readiness"` when resolving `"readyToClaim"` vs `"pending"` itself failed (`claim_status` then conservatively stays `"pending"`). **Omitted** (no key) while nothing has failed |
+| errors | map[string]string | message of whatever check failed the last time this item was refreshed, keyed by which check it was — `"claim"` when the `isClaimed()` check itself failed, `"readiness"` when resolving `"readyToClaim"` vs `"pending"` itself failed (`claim_status` then conservatively stays `"pending"`). **Omitted** (no key) while nothing has failed. Any URL, `host:port` or bare IP address in a value is redacted (replaced with `<redacted-url>` / `<redacted-host>`); the rest of the message is kept |
 
 ### BridgeResponse
 

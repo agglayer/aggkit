@@ -30,6 +30,7 @@ func TestLoadFilesDefaults(t *testing.T) {
 	require.Equal(t, "/", cfg.BridgeServiceFinder.HealthCheckPath)
 	require.Equal(t, 5*time.Second, cfg.BridgeServiceFinder.HealthCheckTimeout.Duration)
 	require.False(t, cfg.BridgeServiceFinder.RequireAllHealthyOnStart)
+	require.True(t, cfg.BridgeServiceFinder.AutoRegisterNewNetworks)
 
 	require.Equal(t, 10*time.Minute, cfg.Tracker.RetentionPeriod.Duration)
 	require.Equal(t, aggkittypes.LatestBlock, cfg.Tracker.L1BlockFinality)
@@ -74,6 +75,15 @@ RetentionPeriod = "1h"
 	require.Equal(t, []string{"stderr"}, cfg.Log.Outputs)
 	require.Equal(t, ethermanconfig.RPCModeBasic, cfg.L1RPC.Mode)
 	require.Equal(t, "/", cfg.BridgeServiceFinder.HealthCheckPath)
+	require.True(t, cfg.BridgeServiceFinder.AutoRegisterNewNetworks)
+
+	// CDK_PROXY_* environment overrides are applied on top of file + defaults (viper.AutomaticEnv).
+	t.Setenv("CDK_PROXY_BRIDGESERVICEFINDER_AUTOREGISTERNEWNETWORKS", "false")
+
+	cfgWithEnvOverride, err := LoadFiles([]string{cfgFile})
+	require.NoError(t, err)
+	require.False(t, cfgWithEnvOverride.BridgeServiceFinder.AutoRegisterNewNetworks,
+		"CDK_PROXY_BRIDGESERVICEFINDER_AUTOREGISTERNEWNETWORKS=false must override the true TOML default")
 }
 
 func TestValidateComponents(t *testing.T) {

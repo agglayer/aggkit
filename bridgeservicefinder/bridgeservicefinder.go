@@ -46,7 +46,7 @@ type Options struct {
 	// HTTPClient is passed to the default HealthChecker. Defaults to a client with the configured
 	// health-check timeout. Ignored when HealthChecker is supplied.
 	HTTPClient *http.Client
-	// LogFilterer is the eth-client surface the (S4) listener uses. Stored now for the later live-
+	// LogFilterer is the eth-client surface the event listener uses. Stored now for the later live-
 	// update step; not exercised by Start's initial cache build. Defaults to EthClient.
 	LogFilterer LogFilterer
 	// Logger is the logger used by the finder. Defaults to log.WithFields("module", moduleName).
@@ -67,7 +67,7 @@ type finder struct {
 	cache         *cache
 
 	// addrToNetworkID maps each watched rollup contract address to its networkID. It is populated at
-	// Start from the enumeration and is the routing table the (S4) event listener will use to apply
+	// Start from the enumeration and is the routing table the event listener uses to apply
 	// an incoming log to the correct cache entry.
 	addrToNetworkID map[common.Address]uint32
 
@@ -394,6 +394,14 @@ func (f *finder) GetURL(networkID uint32) (NetworkURLs, error) {
 	}
 
 	return NetworkURLs{BridgeURL: entry.url, JSONRPCURL: entry.jsonRPCURL}, nil
+}
+
+// PendingNetworks returns the networks discovered after Start that were not activated because
+// Config.AutoRegisterNewNetworks is false, sorted by ascending network id. The slice is a copy and
+// is nil when nothing is pending. It reads under the cache read lock, so it is safe to call
+// concurrently with the listener goroutine.
+func (f *finder) PendingNetworks() []PendingNetwork {
+	return f.cache.pendingList()
 }
 
 // NetworkIDs returns the networkIDs of every network currently resolved (i.e. every network

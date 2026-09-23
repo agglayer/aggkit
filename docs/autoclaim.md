@@ -514,8 +514,9 @@ PollInterval = "3s"
 [AutoClaim.BridgeServiceFinder]
 RollupManagerAddr = "0x0000000000000000000000000000000000000000"
 PollInterval = "30s"
-# BlockFinality, BlockChunkSize, HealthCheckPath, HealthCheckTimeout, RequireAllHealthyOnStart default to
-# FinalizedBlock, 10000, "/health", "5s", and false respectively when left unset (see the table below).
+# BlockFinality, BlockChunkSize, HealthCheckPath, HealthCheckTimeout, RequireAllHealthyOnStart,
+# AutoRegisterNewNetworks default to FinalizedBlock, 10000, "/health", "5s", false, and true
+# respectively when left unset (see the table below).
 
 [AutoClaim.BridgeServiceFinder.BridgeURLs]
 # Static override map from source network ID to bridge service base URL. Required to reach network 0 (L1),
@@ -594,6 +595,7 @@ it has no GER-injection gate at all, since the GER already exists on L1 by const
 | `AutoClaim.BridgeServiceFinder.HealthCheckPath` | `/` | No | HTTP path probed to assert a resolved bridge service is alive. Empty inherits the default (`bridgeservicefinder.DefaultHealthCheckPath`, `/`). The bridge service serves the same always-200 health handler on both `/` and `/health`. |
 | `AutoClaim.BridgeServiceFinder.HealthCheckTimeout` | `5s` | No | Timeout applied to each health-check HTTP request. `0` inherits the default. |
 | `AutoClaim.BridgeServiceFinder.RequireAllHealthyOnStart` | `false` | No | When `true`, finder startup fails if any resolved bridge service is unreachable; when `false`, unreachable services are cached as unhealthy and may heal from a later on-chain update. |
+| `AutoClaim.BridgeServiceFinder.AutoRegisterNewNetworks` | `true` | No | When `true` (today's behavior), a rollup attached to the rollup manager after startup, or a startup-enumerated network that only announces its bridge service URL later, is resolved and served live, no restart required. When `false` the served set is frozen at startup: neither path adds a new network afterwards (a URL refresh of an already-served network is unaffected either way); blocked networks are recorded as pending and logged once at `Warn`. Activation always requires restarting the process — config is not hot-reloaded, so adding the network to `BridgeURLs`/`RPCURLs` only takes effect on that restart — and there is no admin endpoint. Only the finder embedded in the `aggkit-proxy` binary's `TRACKER` component surfaces pending networks on a health endpoint (`GET /tracker/v1/health`, `pending_networks`); see [Bridge Tracker component](./bridgetracker.md#bridgeservicefinder-configuration). |
 | `AutoClaim.BridgeServiceFinder.IgnoreNetworkIDs` | `[]` | No | Network IDs to exclude entirely from on-chain resolution (e.g. `[5, 12]`): no `RollupIDToRollupData` call, no contract reads, no health probe during enumeration, and rollup-manager lifecycle events announcing them are ignored by live discovery too. Intended for known-dead networks whose unreachable on-chain reads/health checks would otherwise slow down startup and event processing. A network listed here is still served if also present in `BridgeURLs`. |
 
 The `BlockFinality`, `BlockChunkSize`, `HealthCheckPath`, `HealthCheckTimeout`, and `RequireAllHealthyOnStart` values

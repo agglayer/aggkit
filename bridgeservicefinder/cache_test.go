@@ -2,7 +2,9 @@ package bridgeservicefinder
 
 import (
 	"testing"
+	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,4 +42,23 @@ func TestFinder_NetworkIDs(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, urls.BridgeURL)
 	}
+}
+
+// TestCache_PendingListSortedAscending pins pendingList's documented "sorted by ascending
+// NetworkID" contract (also promised by Finder.PendingNetworks, the tracker API docs and the
+// swagger description) even when networks are recorded out of order, not just when they happen to
+// already be inserted in order.
+func TestCache_PendingListSortedAscending(t *testing.T) {
+	c := newCache()
+	require.Nil(t, c.pendingList())
+
+	now := time.Now().UTC()
+	require.True(t, c.setPending(PendingNetwork{NetworkID: 5, RollupAddress: common.Address{5}, FirstSeen: now}))
+	require.True(t, c.setPending(PendingNetwork{NetworkID: 3, RollupAddress: common.Address{3}, FirstSeen: now}))
+	require.True(t, c.setPending(PendingNetwork{NetworkID: 9, RollupAddress: common.Address{9}, FirstSeen: now}))
+
+	list := c.pendingList()
+	require.Len(t, list, 3)
+	require.Equal(t, []uint32{3, 5, 9}, []uint32{list[0].NetworkID, list[1].NetworkID, list[2].NetworkID},
+		"pendingList must sort by ascending NetworkID regardless of insertion order")
 }

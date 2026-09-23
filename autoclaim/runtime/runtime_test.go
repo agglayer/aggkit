@@ -297,6 +297,8 @@ func (fakeBridgeServiceFinder) BridgeAddress(context.Context, uint32) (common.Ad
 	return common.Address{}, nil
 }
 
+func (fakeBridgeServiceFinder) PendingNetworks() []bridgeservicefinder.PendingNetwork { return nil }
+
 func withL2ToLxEnabled(cfg autoclaimcfg.Config) autoclaimcfg.Config {
 	cfg.L2ToLxBridgeDetector = autoclaimcfg.L2ToLxBridgeDetector{
 		Enabled:      true,

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/agglayer"
+	"github.com/agglayer/aggkit/bridgetracker/api"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -274,6 +275,10 @@ type Config struct {
 	// it still shows up once ActivitySourceBridgeService's own indexer (which does trace) catches
 	// up with it.
 	ActivitySourceRPC ActivitySourceRPCConfig `mapstructure:"ActivitySourceRPC"`
+
+	// PendingNetworksLister exposes the bridge service finder's not-yet-activated networks on the
+	// health endpoint. Wired programmatically by the binary; nil is valid (the field is omitted)
+	PendingNetworksLister api.PendingNetworksLister `mapstructure:"-"`
 }
 
 // ActivitySourceBridgeServiceConfig is [Tracker.ActivitySourceBridgeService].

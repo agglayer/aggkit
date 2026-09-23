@@ -1,3 +1,10 @@
+# This file exists ONLY for TestProxyAutoRegisterNewNetworks (test/e2e/proxy_autoregister_test.go,
+# #1855). It is a byte-copy of aggkit-proxy.toml, bind-mounted into the aggkit-proxy-002 service
+# below, with a single change: [BridgeServiceFinder] AutoRegisterNewNetworks = false. This is the
+# "gated" side of the test's assertion -- aggkit-proxy-001 (AutoRegisterNewNetworks = true, the
+# default) keeps serving as the "auto" side. Do not otherwise diverge this file from
+# aggkit-proxy.toml; keep the two in sync if that file changes.
+#
 # aggkit-proxy config (proxy + tracker components; --components=proxy,tracker
 # -- see aggkit_proxy.star).
 #
@@ -44,7 +51,7 @@ BlockChunkSize = 10000
 HealthCheckPath = "/"
 HealthCheckTimeout = "5s"
 RequireAllHealthyOnStart = false
-AutoRegisterNewNetworks = true
+AutoRegisterNewNetworks = false
 
 [BridgeServiceFinder.BridgeURLs]
 0 = "http://aggkit-001:5577"

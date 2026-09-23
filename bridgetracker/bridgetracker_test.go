@@ -305,6 +305,42 @@ func TestGetTxStatusHandlerTerminalError(t *testing.T) {
 	require.Equal(t, []string{"bridge tx not found"}, tracking.Error.Description)
 }
 
+// TestGetTxStatusHandlerErrorDescriptionRedacted pins that the REST JSON body never carries a
+// raw backend URL in error.description[], even when the stored ErrorStep itself was built with
+// one — the defensive ErrorStep.MarshalJSON layer (bridgetracker/types/status.go) redacts it
+// regardless of how the description made it into the store
+func TestGetTxStatusHandlerErrorDescriptionRedacted(t *testing.T) {
+	tracker, router := newTestTracker(t)
+
+	path := api.TrackerV1Prefix + "/network/1/tx/" + testTxHash
+	resp := performRequest(t, router, http.MethodGet, path)
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	tracker.PublishError(TrackingID{NetworkID: 1, TxHash: common.HexToHash(testTxHash)}, &types.ErrorStep{
+		ErrorType:  types.StepErrorExhausted,
+		RetryCount: 1,
+		Description: []string{
+			`Post "http://1.2.3.4:8545": dial tcp 1.2.3.4:8545: connect: no route to host`,
+		},
+	})
+
+	resp = performRequest(t, router, http.MethodGet, path)
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	require.NotContains(t, resp.Body.String(), "://")
+	require.NotContains(t, resp.Body.String(), "1.2.3.4")
+
+	var tracking struct {
+		Error struct {
+			Description []string `json:"description"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &tracking))
+	require.Equal(t, []string{
+		"Post <redacted-url>: dial tcp <redacted-host>: connect: no route to host",
+	}, tracking.Error.Description)
+}
+
 // TestGetTxStatusHandlerFlushCacheResetsTracking verifies ?flush_cache=true discards the
 // tracker's existing entry for the tx before answering, so a bridge already resolved to
 // "running" reads back as freshly "registered" (bridge_status null) again, exactly as if it had
@@ -362,6 +398,9 @@ func TestHealthHandler(t *testing.T) {
 	require.Equal(t, testConfigSHA1, health.ConfigSHA1)
 	_, err := uuid.Parse(health.InstanceID)
 	require.NoError(t, err, "instance_id must be a valid UUID")
+	require.False(t, health.StartDate.IsZero(), "start_date must report when the instance started")
+	require.False(t, health.StartDate.After(time.Now()), "start_date must not be in the future")
+	require.Contains(t, resp.Body.String(), `"start_date"`)
 	require.Equal(t, aggkit.Version, health.Version.Version)
 	require.NotEmpty(t, health.Version.GoVersion)
 	require.NotEmpty(t, health.Version.OS)

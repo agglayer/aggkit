@@ -333,6 +333,7 @@ BlockChunkSize = 10000
 HealthCheckPath = "$HEALTH_CHECK_PATH"
 HealthCheckTimeout = "5s"
 RequireAllHealthyOnStart = false
+AutoRegisterNewNetworks = true
 
 [Tracker]
 L1GlobalExitRootAddress = "$L1_GER_ADDR"

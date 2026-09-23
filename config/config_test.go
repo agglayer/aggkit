@@ -97,6 +97,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2BridgeDetector.StartBlock)
 	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2BridgeDetector.EtrogL1UpgradeBlock)
 	require.False(t, cfg.AutoClaim.L2ToLxBridgeDetector.Enabled)
+	require.True(t, cfg.AutoClaim.BridgeServiceFinder.AutoRegisterNewNetworks)
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {

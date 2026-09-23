@@ -90,7 +90,10 @@ type ActivityEntry struct {
 	// Errors holds the message of whatever check failed the last time this entry was
 	// refreshed, keyed by which check it was — "claim" when ClaimStatus is Error (the
 	// isClaimed() check itself failed), "readiness" when IsReadyToClaim itself failed (Claimed
-	// then conservatively stays "pending"). nil while nothing has failed
+	// then conservatively stays "pending"). nil while nothing has failed. Values are the raw
+	// error strings, backend URLs included: redaction happens at the API layer, where this map
+	// becomes client-facing as GET /activity/from/{from_address}'s "errors" object (see
+	// api.ActivityItem.MarshalJSON)
 	Errors map[string]string
 	// CreatedAt is when this bridge was created: Bridge's own origin deposit block timestamp,
 	// via bridgetracker.BlockTimeOrNow (see ActivityCache.refresh and its SQLite-backed mirror,
@@ -115,7 +118,10 @@ type ActivityEntry struct {
 type ActivityWarning struct {
 	// NetworkID is the network whose bridge service could not be scanned
 	NetworkID uint32
-	// Message is the error encountered while scanning NetworkID
+	// Message is the error encountered while scanning NetworkID, the raw error string with
+	// backend URLs included: redaction happens at the API layer, where this value becomes
+	// client-facing as GET /activity/from/{from_address}'s "warnings[].message" (see
+	// api.ActivityWarningItem.MarshalJSON)
 	Message string
 }
 

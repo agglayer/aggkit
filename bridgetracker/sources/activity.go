@@ -366,7 +366,10 @@ func (s *ActivitySource) BridgesFrom(
 }
 
 // warnf logs msg (formatted per fmt.Sprintf's rules on format/args) and turns it into the
-// domain.ActivityWarning BridgesFrom reports back for networkID
+// domain.ActivityWarning BridgesFrom reports back for networkID. Both carry the message verbatim,
+// backend URLs included: operators need the real endpoint to debug, and the value only becomes
+// client-facing once it is marshalled as a wire ActivityWarningItem, which is where it is redacted
+// (see api.ActivityWarningItem.MarshalJSON)
 func (s *ActivitySource) warnf(networkID uint32, format string, args ...any) domain.ActivityWarning {
 	message := fmt.Sprintf(format, args...)
 	s.logger.Warnf("activity: %s", message)

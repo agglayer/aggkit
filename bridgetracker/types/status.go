@@ -6,6 +6,7 @@ import (
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -16,6 +17,18 @@ type ErrorData struct {
 	Code int `json:"code"`
 	// Message is a human-readable description of the error
 	Message string `json:"message"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface. It redacts any URL,
+// host:port, IP address or DNS name from Message: the tracker's internal error strings keep the
+// real endpoint (operators need it in the logs), so this marshaler is the layer that makes them
+// client-safe. Every ErrorData literal inside bridgetracker/api redacts explicitly on top of
+// this, because the WebSocket close frame carries Message as a bare string that never passes
+// through a marshaler (see api.wsSendError)
+func (e ErrorData) MarshalJSON() ([]byte, error) {
+	e.Message = aggkitcommon.RedactSensitive(e.Message)
+	type errorDataAlias ErrorData
+	return json.Marshal(errorDataAlias(e))
 }
 
 // BridgeType identifies the direction of a bridge
@@ -277,10 +290,15 @@ type ErrorStep struct {
 	Description []string `json:"description"`
 }
 
-// MarshalJSON is the implementation of the json.Marshaler interface.
-// It populates the string representation of the numeric enum fields
+// MarshalJSON is the implementation of the json.Marshaler interface. It populates the string
+// representation of the numeric enum fields and redacts any URL, host:port, IP address or DNS
+// name from every Description entry. Descriptions are stored raw (they are the error strings the
+// tracker also logs, where operators need the real endpoint); this is the layer that makes them
+// client-safe, and it covers both wire carriers of an ErrorStep - api.TrackingData.Error and
+// api.BridgeStepPath.Error - since encoding/json invokes it for either
 func (e ErrorStep) MarshalJSON() ([]byte, error) {
 	e.ErrorTypeString = e.ErrorType.String()
+	e.Description = aggkitcommon.RedactSensitiveSlice(e.Description)
 	type errorStepAlias ErrorStep
 	return json.Marshal(errorStepAlias(e))
 }
@@ -471,10 +489,12 @@ type CertificateData struct {
 	BlockTimestamp *uint64 `json:"block_timestamp,omitempty"`
 }
 
-// MarshalJSON is the implementation of the json.Marshaler interface.
-// It populates the string representation of the numeric enum fields
+// MarshalJSON is the implementation of the json.Marshaler interface. It populates the string
+// representation of the numeric enum fields and redacts any URL, host:port, IP address or DNS
+// name from Error, which is agglayer-supplied text served straight to clients
 func (c CertificateData) MarshalJSON() ([]byte, error) {
 	c.StatusString = c.Status.String()
+	c.Error = aggkitcommon.RedactSensitive(c.Error)
 	type certificateDataAlias CertificateData
 	return json.Marshal(certificateDataAlias(c))
 }

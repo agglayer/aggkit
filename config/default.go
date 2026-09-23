@@ -430,6 +430,7 @@ BlockChunkSize = 10000
 HealthCheckPath = "/"
 HealthCheckTimeout = "5s"
 RequireAllHealthyOnStart = false
+AutoRegisterNewNetworks = true
 IgnoreNetworkIDs = []
 
 [AutoClaim.BridgeServiceFinder.BridgeURLs]

@@ -57,7 +57,8 @@ func New(cfg *Config) *BridgeTracker {
 		activity:   activity,
 		api: api.NewAPI(
 			cfg.Logger, cfg.ConfigSHA1, supervised, activity, cfg.BridgeAddressResolver,
-			cfg.RegisterResolveTimeout.Duration, cfg.ActivityRegisterResolveTimeout.Duration, activityPollInterval, cfg.CORS),
+			cfg.RegisterResolveTimeout.Duration, cfg.ActivityRegisterResolveTimeout.Duration,
+			activityPollInterval, cfg.CORS, cfg.PendingNetworksLister),
 	}
 }
 

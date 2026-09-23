@@ -58,7 +58,10 @@ type activityAddressRow struct {
 	// with their tracker snapshot
 	IncludeTracking bool `meddler:"include_tracking"`
 	// LastWarnings is the JSON-encoded []domain.ActivityWarning the last background refresh
-	// reported, or NULL if nothing has refreshed yet or the last refresh reported none
+	// reported, or NULL if nothing has refreshed yet or the last refresh reported none. Messages
+	// are stored verbatim, backend URLs included, exactly as they were logged: this column is
+	// operator-facing, and redaction happens where the value becomes client-facing, when the wire
+	// ActivityWarningItem is marshalled (see api.ActivityWarningItem.MarshalJSON)
 	LastWarnings []byte `meddler:"last_warnings"`
 	// Refreshed is set once RefreshAddress has completed at least once for this address
 	// (successful or not) — RegisterAndAwait's ready return value
@@ -87,7 +90,10 @@ func decodeScanState(raw []byte) (map[uint32]networkScanState, error) {
 	return scanState, nil
 }
 
-// decodeWarnings unmarshals an activity_address row's last_warnings column
+// decodeWarnings unmarshals an activity_address row's last_warnings column. Messages are
+// returned exactly as stored, backend URLs included - they are operator-facing here (logs, the
+// store itself) and are redacted only where they become client-facing, when the wire
+// ActivityWarningItem is marshalled (see api.ActivityWarningItem.MarshalJSON).
 func decodeWarnings(raw []byte) ([]domain.ActivityWarning, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -154,7 +160,9 @@ type activityBridgeData struct {
 
 // entry decodes row into the domain.ActivityEntry it represents, for use as upsert's existing
 // argument (the settled check, and refresh's own "already confirmed claimed" shortcut) and as
-// GetActivity's result
+// GetActivity's result. data.Errors is returned exactly as stored, backend URLs included - it is
+// operator-facing here and is redacted only where it becomes client-facing, when the wire
+// ActivityItem is marshalled (see api.ActivityItem.MarshalJSON)
 func (row *activityBridgeRow) entry() (*domain.ActivityEntry, error) {
 	var data activityBridgeData
 	if err := json.Unmarshal(row.Data, &data); err != nil {
