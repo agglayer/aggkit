@@ -34,6 +34,7 @@ const (
 	GetRootByLERReq              = "get_root_by_ler"
 	GetL1InfoTreeLeafByGERReq    = "get_l1_info_tree_leaf_by_ger"
 	GetConfigReq                 = "get_config"
+	GetSettlementsReq            = "get_settlements"
 )
 
 func Register() {

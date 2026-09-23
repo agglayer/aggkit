@@ -82,15 +82,48 @@ type VerifyBatches struct {
 	ExitRoot      common.Hash    `meddler:"exit_root,hash"`
 	Aggregator    common.Address `meddler:"aggregator,address"`
 
+	// TxHash is the L1 settlement tx that emitted this event (issue #1817). Optional: rows synced
+	// before this field existed have it nil, and it is never backfilled for them.
+	TxHash *common.Hash `meddler:"tx_hash,hash"`
+	// BlockTimestamp is the L1 block's timestamp (seconds since the Unix epoch) this event was
+	// mined in. Optional for the same reason as TxHash.
+	BlockTimestamp *uint64 `meddler:"block_timestamp"`
+
 	// Not provided by downloader
 	RollupExitRoot common.Hash `meddler:"rollup_exit_root,hash"`
 }
 
 func (v *VerifyBatches) String() string {
+	txHash := "nil"
+	if v.TxHash != nil {
+		txHash = v.TxHash.String()
+	}
 	return fmt.Sprintf("BlockNumber: %d, BlockPosition: %d, RollupID: %d, NumBatch: %d, StateRoot: %s, "+
-		"ExitRoot: %s, Aggregator: %s, RollupExitRoot: %s",
+		"ExitRoot: %s, Aggregator: %s, RollupExitRoot: %s, TxHash: %s",
 		v.BlockNumber, v.BlockPosition, v.RollupID, v.NumBatch, v.StateRoot.String(),
-		v.ExitRoot.String(), v.Aggregator.String(), v.RollupExitRoot.String())
+		v.ExitRoot.String(), v.Aggregator.String(), v.RollupExitRoot.String(), txHash)
+}
+
+// VerifiedBatchWithBlockHash is a verify_batches row (see VerifyBatches) enriched with its
+// settlement block's hash. It exists as a separate type, rather than adding BlockHash directly
+// to VerifyBatches, because meddler.Insert writes every meddler-tagged field of a struct and
+// block_hash is not a real column of verify_batches -- it is only ever produced by a join
+// against the block table, in GetVerifiedBatchesPaged.
+type VerifiedBatchWithBlockHash struct {
+	BlockNumber    uint64         `meddler:"block_num"`
+	BlockPosition  uint64         `meddler:"block_pos"`
+	RollupID       uint32         `meddler:"rollup_id"`
+	NumBatch       uint64         `meddler:"batch_num"`
+	StateRoot      common.Hash    `meddler:"state_root,hash"`
+	ExitRoot       common.Hash    `meddler:"exit_root,hash"`
+	Aggregator     common.Address `meddler:"aggregator,address"`
+	TxHash         *common.Hash   `meddler:"tx_hash,hash"`
+	BlockTimestamp *uint64        `meddler:"block_timestamp"`
+	RollupExitRoot common.Hash    `meddler:"rollup_exit_root,hash"`
+
+	// BlockHash is the settlement block's hash, joined in from block.hash; nil when that block
+	// has no recorded hash.
+	BlockHash *common.Hash `meddler:"block_hash,hash"`
 }
 
 type InitL1InfoRootMap struct {

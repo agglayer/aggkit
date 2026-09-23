@@ -512,6 +512,40 @@ type RemoveGEREventsResult struct {
 	Count int `json:"count" example:"10"`
 }
 
+// SettlementResponse represents a single L1 event settling a new local exit root for this
+// network, i.e. one row of the RollupManager's VerifyBatchesTrustedAggregator event history
+// (see issue #1817).
+// @Description A single L1 settlement event for this network's local exit root
+type SettlementResponse struct {
+	// L1 transaction that settled this certificate. Omitted for settlements synced before this
+	// field was tracked (#1817); it is never backfilled for those.
+	TxHash *Hash `json:"tx_hash,omitempty" example:"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"` //nolint:lll
+
+	// Local exit root this settlement produced.
+	NewLocalExitRoot Hash `json:"new_local_exit_root" example:"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef12345678"` //nolint:lll
+
+	// L1 block this settlement was mined in.
+	BlockNumber uint64 `json:"block_number" example:"123456"`
+
+	// L1 block's timestamp, in seconds since the Unix epoch. Omitted for the same reason as
+	// TxHash.
+	BlockTimestamp *uint64 `json:"block_timestamp,omitempty" example:"1684500000"`
+
+	// L1 block's hash, when available (nil if the block table has no recorded hash for it).
+	BlockHash *Hash `json:"block_hash,omitempty" example:"0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890a"` //nolint:lll
+}
+
+// SettlementsResult contains a page of this network's L1 settlement history, most recent first,
+// and the total count
+// @Description Paginated response of L1 certificate settlements for this network
+type SettlementsResult struct {
+	// List of settlements, most recent first
+	Settlements []*SettlementResponse `json:"settlements"`
+
+	// Total number of settlements for this network
+	Count int `json:"count" example:"10"`
+}
+
 // UnsetClaimsResult contains the unset claims and the total count
 // @Description Paginated response of unset claim events (L2 networks only)
 type UnsetClaimsResult struct {

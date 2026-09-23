@@ -41,6 +41,15 @@ type fakeFacts struct {
 	settlementErr               error
 	originGERWaitForContext     bool
 
+	// covers/coversErr and earliestSettlementTx/earliestSettlementTxErr back
+	// SettlementHistorySource (see #1817's exact-settlement search in WaitL1SettledGERResolver).
+	// covers defaults to false, matching the "normal path" every existing test case here relies
+	// on -- WaitL1SettledGERResolver.Resolve keeps cert.SettlementTxHash as-is unless it is true
+	covers                  bool
+	coversErr               error
+	earliestSettlementTx    *common.Hash
+	earliestSettlementTxErr error
+
 	queried []string
 }
 
@@ -124,6 +133,21 @@ func (f *fakeFacts) SettlementGERUpdate(
 	return f.settlement, f.settlementErr
 }
 
+// Covers/EarliestSettlementTxCovering implement SettlementHistorySource. Deliberately not
+// appended to f.queried: every existing table case's expectedQueried asserts an exact call
+// sequence that predates this port, and covers defaults false (the normal path, see the field's
+// own doc), so logging these calls would force touching every one of those cases for no
+// behavioral reason
+func (f *fakeFacts) Covers(_ context.Context, _ *BridgeInfo, _ common.Hash) (bool, error) {
+	return f.covers, f.coversErr
+}
+
+func (f *fakeFacts) EarliestSettlementTxCovering(
+	_ context.Context, _ *BridgeInfo, _ uint64,
+) (*common.Hash, error) {
+	return f.earliestSettlementTx, f.earliestSettlementTxErr
+}
+
 var resolveStepsTestID = TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}
 
 var errFakeUpdateStep = errors.New("fake update step error")
@@ -145,7 +169,7 @@ func testResolvers(f *fakeFacts) map[types.BridgeStep]StepResolver {
 		types.StepWaitingLERUpdate:           NewWaitingLERUpdateResolver(f),
 		types.StepPendingInclusion:           NewPendingInclusionResolver(f),
 		types.StepCertificatePending:         NewCertificatePendingResolver(f),
-		types.StepWaitL1SettledGER:           NewWaitL1SettledGERResolver(f, f),
+		types.StepWaitL1SettledGER:           NewWaitL1SettledGERResolver(f, f, f),
 		types.StepWaitingL1InfoLeafAvailable: NewWaitingL1InfoLeafAvailableResolver(f),
 		types.StepWaitingGERInjection:        NewWaitingGERInjectionResolver(f),
 		types.StepWaitingClaim:               NewWaitingClaimResolver(f),

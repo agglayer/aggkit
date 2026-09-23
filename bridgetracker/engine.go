@@ -99,6 +99,10 @@ type EngineSources struct {
 	ClaimChecker           ClaimChecker
 	Claims                 ClaimSource
 	Settlement             SettlementSource
+	// SettlementHistory backs WaitL1SettledGERResolver's exact-settlement search (see issue
+	// #1817): in practice the same concrete instance as Certificates, which also implements
+	// domain.SettlementHistorySource
+	SettlementHistory domain.SettlementHistorySource
 }
 
 // Engine is the tracking engine: it watches the supervised list, resolves the status of
@@ -138,6 +142,8 @@ func NewEngine(
 		return nil, errors.New("engine requires a ClaimChecker")
 	case sources.Claims == nil:
 		return nil, errors.New("engine requires a ClaimSource")
+	case sources.SettlementHistory == nil:
+		return nil, errors.New("engine requires a SettlementHistorySource")
 	case sources.Settlement == nil:
 		return nil, errors.New("engine requires a SettlementSource")
 	}
@@ -155,11 +161,12 @@ func NewEngine(
 
 func createResolvers(logger aggkitcommon.Logger, sources EngineSources) map[types.BridgeStep]domain.StepResolver {
 	return map[types.BridgeStep]domain.StepResolver{
-		types.StepWaitingGERUpdate:           domain.NewWaitingGERUpdateResolver(logger, sources.WaitingGERUpdateSource),
-		types.StepWaitingLERUpdate:           domain.NewWaitingLERUpdateResolver(sources.LERs),
-		types.StepPendingInclusion:           domain.NewPendingInclusionResolver(sources.Certificates),
-		types.StepCertificatePending:         domain.NewCertificatePendingResolver(sources.Certificates),
-		types.StepWaitL1SettledGER:           domain.NewWaitL1SettledGERResolver(sources.Settlement, sources.GERs),
+		types.StepWaitingGERUpdate:   domain.NewWaitingGERUpdateResolver(logger, sources.WaitingGERUpdateSource),
+		types.StepWaitingLERUpdate:   domain.NewWaitingLERUpdateResolver(sources.LERs),
+		types.StepPendingInclusion:   domain.NewPendingInclusionResolver(sources.Certificates),
+		types.StepCertificatePending: domain.NewCertificatePendingResolver(sources.Certificates),
+		types.StepWaitL1SettledGER: domain.NewWaitL1SettledGERResolver(
+			sources.Settlement, sources.GERs, sources.SettlementHistory),
 		types.StepWaitingL1InfoLeafAvailable: domain.NewWaitingL1InfoLeafAvailableResolver(sources.GERs),
 		types.StepWaitingGERInjection:        domain.NewWaitingGERInjectionResolver(sources.GERs),
 		types.StepWaitingClaim:               domain.NewWaitingClaimResolver(sources.ClaimChecker),

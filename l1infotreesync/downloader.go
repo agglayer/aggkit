@@ -152,13 +152,17 @@ func buildAppender(client aggkittypes.BaseEthereumClienter, globalExitRoot,
 				l, err,
 			)
 		}
+		txHash := l.TxHash
+		blockTimestamp := b.Timestamp
 		b.Events = append(b.Events, Event{VerifyBatches: &VerifyBatches{
-			BlockPosition: uint64(l.Index),
-			RollupID:      verifyBatches.RollupID,
-			NumBatch:      verifyBatches.NumBatch,
-			StateRoot:     verifyBatches.StateRoot,
-			ExitRoot:      verifyBatches.ExitRoot,
-			Aggregator:    verifyBatches.Aggregator,
+			BlockPosition:  uint64(l.Index),
+			RollupID:       verifyBatches.RollupID,
+			NumBatch:       verifyBatches.NumBatch,
+			StateRoot:      verifyBatches.StateRoot,
+			ExitRoot:       verifyBatches.ExitRoot,
+			Aggregator:     verifyBatches.Aggregator,
+			TxHash:         &txHash,
+			BlockTimestamp: &blockTimestamp,
 		}})
 
 		return nil

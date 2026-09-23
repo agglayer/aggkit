@@ -53,6 +53,14 @@ type fakeSources struct {
 	settlement    *types.L1SettledGERResult
 	settlementErr error
 
+	// covers/coversErr and earliestSettlementTx/earliestSettlementTxErr back
+	// SettlementHistorySource (see #1817). covers defaults to false, the normal path every
+	// existing test in this file relies on
+	covers                  bool
+	coversErr               error
+	earliestSettlementTx    *common.Hash
+	earliestSettlementTxErr error
+
 	// findBridgeHook, when set, runs synchronously inside FindBridge before it returns — tests
 	// use it to observe/gate concurrent resolutions (see TestEngineTickBoundsConcurrentResolutions)
 	findBridgeHook func()
@@ -127,10 +135,20 @@ func (f *fakeSources) SettlementGERUpdate(
 	return f.settlement, f.settlementErr
 }
 
+func (f *fakeSources) Covers(_ context.Context, _ *BridgeInfo, _ common.Hash) (bool, error) {
+	return f.covers, f.coversErr
+}
+
+func (f *fakeSources) EarliestSettlementTxCovering(
+	_ context.Context, _ *BridgeInfo, _ uint64,
+) (*common.Hash, error) {
+	return f.earliestSettlementTx, f.earliestSettlementTxErr
+}
+
 func (f *fakeSources) engineSources() EngineSources {
 	return EngineSources{
 		Bridges: f, Certificates: f, GERs: f, LERs: f, ClaimChecker: f, Claims: f, Settlement: f,
-		WaitingGERUpdateSource: f,
+		WaitingGERUpdateSource: f, SettlementHistory: f,
 	}
 }
 

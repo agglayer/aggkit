@@ -121,3 +121,37 @@ func (p *processor) GetVerifiedBatchesInBlockRange(fromBlock, toBlock uint64) ([
 	}
 	return verified, nil
 }
+
+// GetVerifiedBatchesPaged returns a page of verify_batches rows for rollupID, most recent
+// settlement first (block_num DESC, block_pos DESC), each enriched with its settlement block's
+// hash (joined from the block table; nil if that block has no recorded hash). pageNumber is
+// 1-based. Returns the page's rows and the total row count for rollupID (0, nil when there are
+// none).
+func (p *processor) GetVerifiedBatchesPaged(
+	rollupID, pageNumber, pageSize uint32,
+) ([]*VerifiedBatchWithBlockHash, int, error) {
+	var count int
+	if err := p.db.QueryRow(`
+		SELECT COUNT(*) FROM verify_batches WHERE rollup_id = $1;
+	`, rollupID).Scan(&count); err != nil {
+		return nil, 0, fmt.Errorf("error counting verify_batches for rollup %d: %w", rollupID, err)
+	}
+	if count == 0 {
+		return []*VerifiedBatchWithBlockHash{}, 0, nil
+	}
+
+	offset := (pageNumber - 1) * pageSize
+	var verified []*VerifiedBatchWithBlockHash
+	err := meddler.QueryAll(p.db, &verified, `
+		SELECT vb.*, b.hash AS block_hash
+		FROM verify_batches vb
+		LEFT JOIN block b ON b.num = vb.block_num
+		WHERE vb.rollup_id = $1
+		ORDER BY vb.block_num DESC, vb.block_pos DESC
+		LIMIT $2 OFFSET $3;
+	`, rollupID, pageSize, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("error querying verify_batches page for rollup %d: %w", rollupID, err)
+	}
+	return verified, count, nil
+}

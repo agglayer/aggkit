@@ -268,3 +268,110 @@ func TestGetVerifiedBatchesInBlockRange(t *testing.T) {
 	require.Zero(t, rows[2].NumBatch)
 	require.Zero(t, rows[3].NumBatch)
 }
+
+// TestGetVerifiedBatchesPaged proves GetVerifiedBatchesPaged (issue #1817) returns rollupID's
+// settlements most recent first, paginates correctly, filters out other rollups, and enriches
+// each row with the settlement block's hash.
+func TestGetVerifiedBatchesPaged(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestGetVerifiedBatchesPaged.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	// No settlements yet for this rollup
+	rows, count, err := p.GetVerifiedBatchesPaged(99, 1, 10)
+	require.NoError(t, err)
+	require.Empty(t, rows)
+	require.Zero(t, count)
+
+	const rollupID = uint32(7)
+	block10Hash := common.HexToHash("0xb10c10")
+	block20Hash := common.HexToHash("0xb10c20")
+	block30Hash := common.HexToHash("0xb10c30")
+	txHash1 := common.HexToHash("0xf00d1")
+	txHash2 := common.HexToHash("0xf00d2")
+	txHash3 := common.HexToHash("0xf00d3")
+	timestamp := uint64(1684500000)
+
+	require.NoError(t, p.ProcessBlock(ctx, sync.Block{
+		Num: 10, Hash: block10Hash,
+		Events: []interface{}{Event{VerifyBatches: &VerifyBatches{
+			RollupID: rollupID, ExitRoot: common.HexToHash("0x111"), Aggregator: common.HexToAddress("0xa1"),
+			TxHash: &txHash1, BlockTimestamp: &timestamp,
+		}}},
+	}))
+	require.NoError(t, p.ProcessBlock(ctx, sync.Block{
+		Num: 20, Hash: block20Hash,
+		Events: []interface{}{Event{VerifyBatches: &VerifyBatches{
+			RollupID: rollupID, ExitRoot: common.HexToHash("0x222"), Aggregator: common.HexToAddress("0xa2"),
+			TxHash: &txHash2, BlockTimestamp: &timestamp,
+		}}},
+	}))
+	require.NoError(t, p.ProcessBlock(ctx, sync.Block{
+		Num: 30, Hash: block30Hash,
+		Events: []interface{}{Event{VerifyBatches: &VerifyBatches{
+			RollupID: rollupID, ExitRoot: common.HexToHash("0x333"), Aggregator: common.HexToAddress("0xa3"),
+			TxHash: &txHash3, BlockTimestamp: &timestamp,
+		}}},
+	}))
+	// A settlement for a different rollup must never leak into rollupID's page
+	require.NoError(t, p.ProcessBlock(ctx, sync.Block{
+		Num: 40, Hash: common.HexToHash("0xb10c40"),
+		Events: []interface{}{Event{VerifyBatches: &VerifyBatches{
+			RollupID: rollupID + 1, ExitRoot: common.HexToHash("0x444"), Aggregator: common.HexToAddress("0xa4"),
+		}}},
+	}))
+
+	// Page 1, size 2: most recent settlements first (block 30, then 20), TxHash/BlockTimestamp
+	// carried through as set by the downloader, block hash joined in
+	rows, count, err = p.GetVerifiedBatchesPaged(rollupID, 1, 2)
+	require.NoError(t, err)
+	require.Equal(t, 3, count)
+	require.Len(t, rows, 2)
+	require.EqualValues(t, 30, rows[0].BlockNumber)
+	require.NotNil(t, rows[0].TxHash)
+	require.NotNil(t, rows[0].BlockTimestamp)
+	require.NotNil(t, rows[0].BlockHash)
+	require.Equal(t, block30Hash, *rows[0].BlockHash)
+	require.EqualValues(t, 20, rows[1].BlockNumber)
+	require.Equal(t, block20Hash, *rows[1].BlockHash)
+
+	// Page 2, size 2: the remaining, oldest row (block 10)
+	rows, count, err = p.GetVerifiedBatchesPaged(rollupID, 2, 2)
+	require.NoError(t, err)
+	require.Equal(t, 3, count)
+	require.Len(t, rows, 1)
+	require.EqualValues(t, 10, rows[0].BlockNumber)
+	require.Equal(t, block10Hash, *rows[0].BlockHash)
+}
+
+// TestGetVerifiedBatchesPagedLegacyRow proves that a row synced before tx_hash/block_timestamp
+// existed (simulated here by inserting directly, bypassing the downloader/meddler.Insert path
+// that always sets them today) comes back with those fields nil, per issue #1817's "never
+// backfilled" design, while block_hash -- unrelated to that migration -- still resolves.
+func TestGetVerifiedBatchesPagedLegacyRow(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestGetVerifiedBatchesPagedLegacyRow.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	blockHash := common.HexToHash("0xb1050")
+	_, err = p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 5, blockHash.String())
+	require.NoError(t, err)
+	_, err = p.db.Exec(`
+		INSERT INTO verify_batches (block_num, block_pos, rollup_id, batch_num, state_root,
+			exit_root, aggregator, rollup_exit_root)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		5, 0, 3, 1,
+		common.HexToHash("0xaaa").String(), common.HexToHash("0x555").String(),
+		common.HexToAddress("0xa5").String(), common.HexToHash("0x555").String())
+	require.NoError(t, err)
+
+	rows, count, err := p.GetVerifiedBatchesPaged(3, 1, 10)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+	require.Len(t, rows, 1)
+	require.Nil(t, rows[0].TxHash)
+	require.Nil(t, rows[0].BlockTimestamp)
+	require.NotNil(t, rows[0].BlockHash)
+	require.Equal(t, blockHash, *rows[0].BlockHash)
+}
