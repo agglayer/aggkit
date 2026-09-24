@@ -140,7 +140,10 @@ func (p *processor) GetVerifiedBatchesPaged(
 		return []*VerifiedBatchWithBlockHash{}, 0, nil
 	}
 
-	offset := (pageNumber - 1) * pageSize
+	// computed in uint64: pageNumber*pageSize can exceed uint32's range for a large/malicious
+	// request, which would otherwise wrap around and silently serve a valid-looking wrong page
+	// instead of an empty one
+	offset := (uint64(pageNumber) - 1) * uint64(pageSize)
 	var verified []*VerifiedBatchWithBlockHash
 	err := meddler.QueryAll(p.db, &verified, `
 		SELECT vb.*, b.hash AS block_hash

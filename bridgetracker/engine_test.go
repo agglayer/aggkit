@@ -140,9 +140,9 @@ func (f *fakeSources) Covers(_ context.Context, _ *BridgeInfo, _ common.Hash) (b
 }
 
 func (f *fakeSources) EarliestSettlementTxCovering(
-	_ context.Context, _ *BridgeInfo, _ uint64,
-) (*common.Hash, error) {
-	return f.earliestSettlementTx, f.earliestSettlementTxErr
+	_ context.Context, _ *BridgeInfo, _ uint64, _ *types.SettlementSearchProgress,
+) (*common.Hash, *types.SettlementSearchProgress, error) {
+	return f.earliestSettlementTx, nil, f.earliestSettlementTxErr
 }
 
 func (f *fakeSources) engineSources() EngineSources {

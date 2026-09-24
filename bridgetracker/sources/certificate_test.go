@@ -11,6 +11,7 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
@@ -156,6 +157,22 @@ func TestCertificateIDForSettledCovers(t *testing.T) {
 	got, err := source.certificateIDFor(t.Context(), bridge)
 	require.NoError(t, err)
 	require.Equal(t, &certID, got)
+}
+
+// TestCoversTreatsEmptyLERAsNotCovering proves Covers recognizes the network's default initial
+// LER (bridgesynctypes.EmptyLER) as covering nothing, without ever asking the bridge service for
+// its root index: that root is never written to the local exit tree's root table (bridgesync's
+// processor special-cases it the same way), so asking would 404 on every retry and leave a
+// bridge whose first-ever covering certificate has this as its PreviousLER stuck at
+// WaitL1SettledGER forever (issue #1817). finder/clients are both nil -- Covers must never touch
+// them for this LER
+func TestCoversTreatsEmptyLERAsNotCovering(t *testing.T) {
+	bridge := l2ToL1Bridge()
+	source := NewCertificateSource(nil, nil, nil, testRollupManagerAddress, testLogger)
+
+	covers, err := source.Covers(t.Context(), bridge, bridgesynctypes.EmptyLER)
+	require.NoError(t, err)
+	require.False(t, covers)
 }
 
 func TestCertificateIDForSettledNotCoveredButPendingSurfaced(t *testing.T) {

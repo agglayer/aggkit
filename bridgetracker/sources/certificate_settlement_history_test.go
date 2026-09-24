@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -8,10 +9,12 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
+	trackertypes "github.com/agglayer/aggkit/bridgetracker/types"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -36,6 +39,10 @@ type fakeSettlement struct {
 type fakeSettlementsServer struct {
 	settlements []fakeSettlement
 	notFound    bool
+	// settlementReqs, when non-nil, is incremented once per GET /bridge/v1/settlements request
+	// received -- tests use it to assert the binary search resolves in O(log N) requests, not a
+	// full linear walk of the history
+	settlementReqs *int
 }
 
 func (f fakeSettlementsServer) start(t *testing.T) NetworkURLResolver {
@@ -54,6 +61,9 @@ func (f fakeSettlementsServer) start(t *testing.T) NetworkURLResolver {
 		fmt.Fprint(w, `{"error":"not found (not synced yet)"}`)
 	})
 	mux.HandleFunc("/bridge/v1/settlements", func(w http.ResponseWriter, r *http.Request) {
+		if f.settlementReqs != nil {
+			*f.settlementReqs++
+		}
 		if f.notFound {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -102,31 +112,38 @@ func TestEarliestSettlementTxCoveringViaBridgeService(t *testing.T) {
 	}}
 	source := NewCertificateSource(nil, server.start(t), nil, testRollupManagerAddress, testLogger)
 
-	got, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 0)
+	got, _, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 0, nil)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Equal(t, txB, *got)
 }
 
-// TestEarliestSettlementTxCoveringViaBridgeServicePaginates proves the walk continues across
-// pages until it finds the transition, not just within the first page
-func TestEarliestSettlementTxCoveringViaBridgeServicePaginates(t *testing.T) {
-	orig := settlementsPageSize
-	settlementsPageSize = 1
-	t.Cleanup(func() { settlementsPageSize = orig })
-
+// TestEarliestSettlementTxCoveringViaBridgeServiceBinarySearchesLargeHistory proves the search
+// resolves in O(log N) bridge-service requests, not one per settlement: a linear walk over a
+// mature network's full history (thousands of entries, one HTTP round-trip each) can outlast the
+// engine's own per-tick resolve timeout and never make progress (see issue #1817's own
+// resumable-search fix, which the primary bridge-service path does not need because binary
+// search sidesteps the problem instead)
+func TestEarliestSettlementTxCoveringViaBridgeServiceBinarySearchesLargeHistory(t *testing.T) {
 	bridge := l2ToL1Bridge() // DepositCount: 7
-	txB, txA := common.HexToHash("0xb"), common.HexToHash("0xa")
-	server := fakeSettlementsServer{settlements: []fakeSettlement{
-		{ler: common.HexToHash("0x222"), rootIndex: 7, txHash: &txB}, // page 1: covers
-		{ler: common.HexToHash("0x333"), rootIndex: 3, txHash: &txA}, // page 2: does not cover
-	}}
+	const historySize = 16
+	txCovering := common.HexToHash("0xcovering")
+	settlements := make([]fakeSettlement, historySize)
+	for i := range settlements {
+		// most-recent-first, root index descending: covers (>= 7) for i in [0,13], not for [14,15]
+		settlements[i] = fakeSettlement{ler: common.HexToHash(fmt.Sprintf("0x%x", 100+i)), rootIndex: uint32(20 - i)}
+	}
+	settlements[13].txHash = &txCovering // the earliest (oldest) covering entry -- the answer
+
+	requests := 0
+	server := fakeSettlementsServer{settlements: settlements, settlementReqs: &requests}
 	source := NewCertificateSource(nil, server.start(t), nil, testRollupManagerAddress, testLogger)
 
-	got, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 0)
+	got, _, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 0, nil)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	require.Equal(t, txB, *got)
+	require.Equal(t, txCovering, *got)
+	require.Less(t, requests, historySize, "binary search must not walk every settlement")
 }
 
 // TestEarliestSettlementTxCoveringViaBridgeServiceOldestCoversEverything proves that when every
@@ -141,16 +158,45 @@ func TestEarliestSettlementTxCoveringViaBridgeServiceOldestCoversEverything(t *t
 	}}
 	source := NewCertificateSource(nil, server.start(t), nil, testRollupManagerAddress, testLogger)
 
-	got, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 0)
+	got, _, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 0, nil)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Equal(t, txA, *got)
 }
 
-// TestEarliestSettlementTxCoveringLegacyRowFallsBackToLogs proves that when the exact covering
-// entry bridge-service reports has no recorded tx hash (a settlement synced before #1817's
-// tx_hash column existed), the search falls back to reading the same event off L1 instead of
-// returning a nil/wrong answer
+// TestEarliestSettlementTxCoveringLegacyRowResolvesAtExactBlock proves that when the exact
+// covering entry bridge-service reports has no recorded tx hash (a settlement synced before
+// #1817's tx_hash column existed), the search resolves it with a single-block FilterLogs at the
+// entry's own (recorded) BlockNumber, instead of falling all the way back to a genesis-ward scan
+func TestEarliestSettlementTxCoveringLegacyRowResolvesAtExactBlock(t *testing.T) {
+	bridge := l2ToL1Bridge() // DepositCount: 7
+	server := fakeSettlementsServer{settlements: []fakeSettlement{
+		{ler: common.HexToHash("0x222"), rootIndex: 7, txHash: nil}, // covers, but legacy (no tx hash)
+	}}
+	ethClient := mocks.NewBaseEthereumClienter(t) // no genesis-ward scan expectation: must not be needed
+	logTxHash := common.HexToHash("0xexact")
+	expectVerifyBatchesLogAtBlock(ethClient, bridge, 1000, []gethtypes.Log{{
+		Topics: []common.Hash{
+			verifyBatchesTrustedAggregatorSignature, rollupIDTopicFor(bridge.NetworkID),
+		},
+		Data:        verifyBatchesLogData(common.HexToHash("0x222")),
+		TxHash:      logTxHash,
+		BlockNumber: 1000,
+	}})
+
+	source := NewCertificateSource(
+		nil, server.start(t), StaticClients{0: ethClient}, testRollupManagerAddress, testLogger)
+
+	got, _, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 999999, nil)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, logTxHash, *got)
+}
+
+// TestEarliestSettlementTxCoveringLegacyRowFallsBackToLogs proves that when the legacy entry's
+// own recorded BlockNumber does not carry a matching log either (e.g. an indexer gap), the
+// search still falls all the way back to the genesis-ward scan anchored at fromBlock, instead of
+// giving up
 func TestEarliestSettlementTxCoveringLegacyRowFallsBackToLogs(t *testing.T) {
 	bridge := l2ToL1Bridge() // DepositCount: 7
 	txA := common.HexToHash("0xa")
@@ -159,6 +205,7 @@ func TestEarliestSettlementTxCoveringLegacyRowFallsBackToLogs(t *testing.T) {
 		{ler: common.HexToHash("0x333"), rootIndex: 3, txHash: &txA}, // does not cover
 	}}
 	ethClient := mocks.NewBaseEthereumClienter(t)
+	expectVerifyBatchesLogAtBlock(ethClient, bridge, 1000, nil) // the legacy row's own block: nothing there
 	logTxHash := common.HexToHash("0xfallback")
 	expectVerifyBatchesLog(ethClient, bridge, 100, gethtypes.Log{
 		Topics: []common.Hash{
@@ -172,7 +219,7 @@ func TestEarliestSettlementTxCoveringLegacyRowFallsBackToLogs(t *testing.T) {
 	source := NewCertificateSource(
 		nil, server.start(t), StaticClients{0: ethClient}, testRollupManagerAddress, testLogger)
 
-	got, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 100)
+	got, _, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 100, nil)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Equal(t, logTxHash, *got)
@@ -203,10 +250,67 @@ func TestEarliestSettlementTxCoveringEndpointNotFoundFallsBackToLogs(t *testing.
 	source := NewCertificateSource(
 		nil, server.start(t), StaticClients{0: ethClient}, testRollupManagerAddress, testLogger)
 
-	got, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 100)
+	got, _, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 100, nil)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Equal(t, logTxHash, *got)
+}
+
+// TestEarliestSettlementTxCoveringResumesFromProgress proves that a resumable
+// *types.SettlementSearchProgress from an earlier tick (see issue #1817's resumable-search fix)
+// anchors the backwards log scan at progress.NextToBlock, not fromBlock, and carries over its
+// LastCoveringTxHash as the fallback answer -- letting the search keep moving forward across
+// retries instead of restarting from the tracked certificate's own settlement block every time,
+// and skipping the bridge-service walk a resumed search already decided needed the log fallback
+func TestEarliestSettlementTxCoveringResumesFromProgress(t *testing.T) {
+	bridge := l2ToL1Bridge() // DepositCount: 7
+	server := fakeSettlementsServer{settlements: []fakeSettlement{
+		{ler: common.HexToHash("0x333"), rootIndex: 3}, // does not cover (3 < 7)
+	}}
+	ethClient := mocks.NewBaseEthereumClienter(t)
+	// stubbed at NextToBlock (100), not at fromBlock (999999): proves the resume cursor, not
+	// fromBlock, anchors the scan
+	expectVerifyBatchesLog(ethClient, bridge, 100, gethtypes.Log{
+		Topics: []common.Hash{
+			verifyBatchesTrustedAggregatorSignature, rollupIDTopicFor(bridge.NetworkID),
+		},
+		Data:        verifyBatchesLogData(common.HexToHash("0x333")),
+		TxHash:      common.HexToHash("0xfresh"),
+		BlockNumber: 100,
+	})
+
+	source := NewCertificateSource(
+		nil, server.start(t), StaticClients{0: ethClient}, testRollupManagerAddress, testLogger)
+
+	priorTxHash := common.HexToHash("0xstale")
+	resume := &trackertypes.SettlementSearchProgress{NextToBlock: 100, LastCoveringTxHash: &priorTxHash}
+	got, progress, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 999999, resume)
+	require.NoError(t, err)
+	require.Nil(t, progress)
+	require.NotNil(t, got)
+	require.Equal(t, priorTxHash, *got) // resume's own carried-over answer, not the fresh log's tx hash
+}
+
+// TestEarliestSettlementTxCoveringViaLogsStopsBeforeDeadline proves the backwards scan checks
+// ctx's remaining budget before each chunk and returns a resumable *types.SettlementSearchProgress
+// once too little is left, instead of letting the engine's own per-tick resolve timeout cut off
+// FilterLogs mid-flight and lose all progress made so far (issue #1817)
+func TestEarliestSettlementTxCoveringViaLogsStopsBeforeDeadline(t *testing.T) {
+	bridge := l2ToL1Bridge()
+	ethClient := mocks.NewBaseEthereumClienter(t) // no FilterLogs expectation: must never be called
+
+	source := NewCertificateSource(nil, nil, StaticClients{0: ethClient}, testRollupManagerAddress, testLogger)
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+	defer cancel()
+	time.Sleep(2 * time.Millisecond) // let the deadline pass, well under the safety margin
+
+	got, progress, err := source.earliestSettlementTxCoveringViaLogs(ctx, bridge, 12345, nil)
+	require.NoError(t, err)
+	require.Nil(t, got)
+	require.NotNil(t, progress)
+	require.Equal(t, uint64(12345), progress.NextToBlock)
+	require.Nil(t, progress.LastCoveringTxHash)
 }
 
 // rollupIDTopicFor mirrors earliestSettlementTxCoveringViaLogs' own topic encoding, for tests
@@ -239,4 +343,18 @@ func expectVerifyBatchesLog(
 		Addresses: []common.Address{testRollupManagerAddress},
 		Topics:    [][]common.Hash{{verifyBatchesTrustedAggregatorSignature}, {rollupIDTopicFor(bridge.NetworkID)}},
 	}).Return([]gethtypes.Log{log}, nil)
+}
+
+// expectVerifyBatchesLogAtBlock stubs ethClient's FilterLogs for verifyBatchesTxHashAtBlock's
+// exact single-block query (FromBlock == ToBlock == blockNumber), filtered to bridge's rollupID,
+// returning logs (nil/empty means the block does not carry a matching log)
+func expectVerifyBatchesLogAtBlock(
+	ethClient *mocks.BaseEthereumClienter, bridge *bridgetracker.BridgeInfo, blockNumber uint64, logs []gethtypes.Log,
+) {
+	ethClient.EXPECT().FilterLogs(mock.Anything, ethereum.FilterQuery{
+		FromBlock: new(big.Int).SetUint64(blockNumber),
+		ToBlock:   new(big.Int).SetUint64(blockNumber),
+		Addresses: []common.Address{testRollupManagerAddress},
+		Topics:    [][]common.Hash{{verifyBatchesTrustedAggregatorSignature}, {rollupIDTopicFor(bridge.NetworkID)}},
+	}).Return(logs, nil)
 }

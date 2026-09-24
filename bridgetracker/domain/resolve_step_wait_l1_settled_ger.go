@@ -58,9 +58,17 @@ type SettlementHistorySource interface {
 	// backwards from fromBlock -- a settlement already known to cover bridge, typically the
 	// currently-tracked certificate's own settlement block -- for the tx hash of the earliest
 	// settlement whose new LER already covers bridge, i.e. the one right after the last
-	// settlement that does not cover it yet. Returns nil if the search has not resolved yet
-	// (transient; retried by the engine)
-	EarliestSettlementTxCovering(ctx context.Context, bridge *BridgeInfo, fromBlock uint64) (*common.Hash, error)
+	// settlement that does not cover it yet. resume, when non-nil, continues a search an earlier
+	// call could not finish within its own engine tick (see types.SettlementSearchProgress)
+	// instead of restarting it from fromBlock; pass nil on the very first attempt. Returns
+	// (nil, nil, nil) if the search has fully resolved without ever finding a covering
+	// settlement (transient -- the caller only calls this once fromBlock's certificate is known
+	// to cover bridge, so this only happens racing a fresh read; retried by the engine), or
+	// (nil, progress, nil) if the search needs at least one more tick to finish -- the caller
+	// persists progress and passes it back as resume next time
+	EarliestSettlementTxCovering(
+		ctx context.Context, bridge *BridgeInfo, fromBlock uint64, resume *types.SettlementSearchProgress,
+	) (*common.Hash, *types.SettlementSearchProgress, error)
 }
 
 // WaitL1SettledGERResolver resolves StepWaitL1SettledGER: whether the certificate's settlement
@@ -92,14 +100,14 @@ func NewWaitL1SettledGERResolver(
 // there, one step back. exactSettlementTxHash may swap that tx hash for an earlier, more exact
 // one first (see its own doc, and issue #1817)
 func (r *WaitL1SettledGERResolver) Resolve(
-	logger aggkitcommon.Logger, ctx context.Context, tracking *TrackingData, _ int,
+	logger aggkitcommon.Logger, ctx context.Context, tracking *TrackingData, idx int,
 ) (any, error) {
 	steps := tracking.AllSteps()
-	idx := indexOfStep(steps, types.StepCertificatePending)
-	if idx < 0 {
+	certIdx := indexOfStep(steps, types.StepCertificatePending)
+	if certIdx < 0 {
 		return nil, ErrStepPending
 	}
-	cert := steps[idx].ResultCertificateData
+	cert := steps[certIdx].ResultCertificateData
 	if cert == nil || cert.SettlementTxHash == nil {
 		// the settlement tx hash may lag a tick behind the certificate turning Settled (see
 		// agglayer/types.CertificateHeader.SettlementTxHash), so this is a transient wait, not
@@ -107,8 +115,16 @@ func (r *WaitL1SettledGERResolver) Resolve(
 		return nil, ErrStepPending
 	}
 
+	// steps[idx] is this same step's own prior Result: a *types.SettlementSearchProgress left
+	// over from an earlier call whose backwards search did not finish within its own engine
+	// tick (see exactSettlementTxHash's own doc); nil on the first attempt, or once resolved
+	resume, _ := steps[idx].Result().(*types.SettlementSearchProgress)
+
 	settlementTxHash := *cert.SettlementTxHash
-	exact, err := r.exactSettlementTxHash(ctx, tracking, steps, cert)
+	exact, progress, err := r.exactSettlementTxHash(ctx, tracking, steps, cert, resume)
+	if progress != nil {
+		return progress, ErrStepPending // search still in progress; resumed from here next tick
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -123,6 +139,10 @@ func (r *WaitL1SettledGERResolver) Resolve(
 	if settlement == nil {
 		return nil, ErrStepPending
 	}
+	// exact is only non-nil once exactSettlementTxHash actually swapped in an earlier settlement
+	// than cert's own (see its own doc) -- StartDate reads this back to pin the step's own start
+	// to its end instead of the chained (later) value in that case
+	settlement.UsedEarlierSettlement = exact != nil
 	if settlement.L1InfoTreeIndex != nil {
 		return settlement, nil // UpdateL1InfoTreeV2 already gave us the leaf index
 	}
@@ -139,10 +159,19 @@ func (r *WaitL1SettledGERResolver) Resolve(
 	return settlement, nil
 }
 
-// StartDate has no deterministic value of its own: this step's beginning is always "the
-// previous step just finished" (chained by UpdateStep)
-func (r *WaitL1SettledGERResolver) StartDate(_ *BridgeInfo, _ any) *time.Time {
-	return nil
+// StartDate has no deterministic value of its own in the normal path: this step's beginning is
+// "the previous step (StepCertificatePending) just finished" (chained by UpdateStep). The
+// exception is when result.UsedEarlierSettlement is true (see its own doc and issue #1817):
+// StepCertificatePending's own EndDate is the tracked (later) certificate's settlement, which
+// can land after the earlier, already-covering settlement this step's own EndDate reports --
+// pinning StartDate to that same EndDate here keeps the step's duration from reading negative,
+// instead of claiming a beginning later than its own end
+func (r *WaitL1SettledGERResolver) StartDate(_ *BridgeInfo, result any) *time.Time {
+	settlement, ok := result.(*types.L1SettledGERResult)
+	if !ok || !settlement.UsedEarlierSettlement {
+		return nil
+	}
+	return blockTime(settlement.SettlementBlockTimestamp)
 }
 
 // EndDate returns the settlement tx's own VerifyBatchesTrustedAggregator block timestamp — the
@@ -174,39 +203,50 @@ func (r *WaitL1SettledGERResolver) Warning(_ any) *string {
 // GER would have been enough (the whole point of #1817).
 //
 // When PreviousLER does not cover the bridge, cert is the network's first certificate to include
-// it, so the normal path applies: this returns (nil, nil), leaving the resolver's own
+// it, so the normal path applies: this returns (nil, nil, nil), leaving the resolver's own
 // cert.SettlementTxHash in charge.
+//
+// resume carries a backwards search's own progress across engine ticks (see
+// types.SettlementSearchProgress): EarliestSettlementTxCovering's L1-log fallback can need far
+// more than one tick to reach genesis or the covering/non-covering transition, so when it
+// returns a non-nil progress instead of resolving, this returns that same progress as its own
+// second value for Resolve to persist as the step's Result and hand back as resume next time,
+// instead of restarting the search from cert.BlockNumber every tick
 func (r *WaitL1SettledGERResolver) exactSettlementTxHash(
 	ctx context.Context, tracking *TrackingData, steps []BridgeStepPath, cert *types.CertificateData,
-) (*common.Hash, error) {
+	resume *types.SettlementSearchProgress,
+) (*common.Hash, *types.SettlementSearchProgress, error) {
 	pendingIdx := indexOfStep(steps, types.StepPendingInclusion)
 	if pendingIdx < 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	pending := steps[pendingIdx].ResultPendingInclusion
 	if pending == nil || pending.PreviousLER == nil {
-		return nil, nil // the network's first-ever certificate: nothing earlier can cover it
+		return nil, nil, nil // the network's first-ever certificate: nothing earlier can cover it
 	}
 
 	covers, err := r.history.Covers(ctx, tracking.Info(), *pending.PreviousLER)
 	if err != nil {
-		return nil, fmt.Errorf("checking previous LER coverage: %w", err)
+		return nil, nil, fmt.Errorf("checking previous LER coverage: %w", err)
 	}
 	if !covers {
-		return nil, nil // normal path: cert is the one that first covered the bridge
+		return nil, nil, nil // normal path: cert is the one that first covered the bridge
 	}
 
 	if cert.BlockNumber == nil {
 		// cert's own settlement block is not visible on L1 yet, nothing to anchor the backwards
 		// search on -- transient, same as the settlement tx hash lagging a tick behind Settled
-		return nil, ErrStepPending
+		return nil, nil, ErrStepPending
 	}
-	exact, err := r.history.EarliestSettlementTxCovering(ctx, tracking.Info(), *cert.BlockNumber)
+	exact, progress, err := r.history.EarliestSettlementTxCovering(ctx, tracking.Info(), *cert.BlockNumber, resume)
 	if err != nil {
-		return nil, fmt.Errorf("finding earliest settlement covering the bridge: %w", err)
+		return nil, nil, fmt.Errorf("finding earliest settlement covering the bridge: %w", err)
+	}
+	if progress != nil {
+		return nil, progress, ErrStepPending // search needs at least one more tick
 	}
 	if exact == nil {
-		return nil, ErrStepPending // search not resolved yet
+		return nil, nil, ErrStepPending // search resolved without ever finding a covering settlement: transient
 	}
-	return exact, nil
+	return exact, nil, nil
 }

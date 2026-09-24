@@ -37,12 +37,14 @@ func (noopGERIndex) L1InfoTreeIndexForGER(context.Context, *BridgeInfo, common.H
 // spyHistory is a SettlementHistorySource with canned answers and a call counter for Covers, so
 // tests can assert it is skipped entirely when PreviousLER is nil
 type spyHistory struct {
-	covers                  bool
-	coversErr               error
-	coversCalls             int
-	earliestTxHash          *common.Hash
-	earliestErr             error
-	earliestCalledWithBlock uint64
+	covers                   bool
+	coversErr                error
+	coversCalls              int
+	earliestTxHash           *common.Hash
+	earliestProgress         *types.SettlementSearchProgress
+	earliestErr              error
+	earliestCalledWithBlock  uint64
+	earliestCalledWithResume *types.SettlementSearchProgress
 }
 
 func (h *spyHistory) Covers(context.Context, *BridgeInfo, common.Hash) (bool, error) {
@@ -51,10 +53,11 @@ func (h *spyHistory) Covers(context.Context, *BridgeInfo, common.Hash) (bool, er
 }
 
 func (h *spyHistory) EarliestSettlementTxCovering(
-	_ context.Context, _ *BridgeInfo, fromBlock uint64,
-) (*common.Hash, error) {
+	_ context.Context, _ *BridgeInfo, fromBlock uint64, resume *types.SettlementSearchProgress,
+) (*common.Hash, *types.SettlementSearchProgress, error) {
 	h.earliestCalledWithBlock = fromBlock
-	return h.earliestTxHash, h.earliestErr
+	h.earliestCalledWithResume = resume
+	return h.earliestTxHash, h.earliestProgress, h.earliestErr
 }
 
 // waitL1SettledGERTestID is a fixed TrackingID for these tests
@@ -101,6 +104,7 @@ func TestWaitL1SettledGERResolverNormalPath(t *testing.T) {
 	require.Equal(t, settlement.result, result)
 	require.Equal(t, certFixtureSettlementTx, settlement.calledWith)
 	require.Equal(t, 1, history.coversCalls)
+	require.False(t, settlement.result.UsedEarlierSettlement)
 }
 
 // TestWaitL1SettledGERResolverFirstCertificateSkipsCoverageCheck proves that a network's very
@@ -118,6 +122,7 @@ func TestWaitL1SettledGERResolverFirstCertificateSkipsCoverageCheck(t *testing.T
 	require.Equal(t, settlement.result, result)
 	require.Equal(t, certFixtureSettlementTx, settlement.calledWith)
 	require.Zero(t, history.coversCalls)
+	require.False(t, settlement.result.UsedEarlierSettlement)
 }
 
 // TestWaitL1SettledGERResolverUsesExactEarlierSettlement is the #1817 fix itself: when
@@ -139,6 +144,24 @@ func TestWaitL1SettledGERResolverUsesExactEarlierSettlement(t *testing.T) {
 	require.Equal(t, exactTxHash, settlement.calledWith)
 	require.NotEqual(t, certFixtureSettlementTx, settlement.calledWith)
 	require.Equal(t, certFixtureBlockNumber, history.earliestCalledWithBlock)
+	require.True(t, settlement.result.UsedEarlierSettlement, "StartDate reads this back to avoid a negative duration")
+}
+
+// TestWaitL1SettledGERResolverStartDatePinnedWhenEarlierSettlementUsed proves that once an
+// earlier, already-covering settlement was swapped in (result.UsedEarlierSettlement, see issue
+// #1817), StartDate pins the step's own start to this same EndDate instead of leaving the
+// chained (later) StepCertificatePending value in place -- otherwise the step could read as
+// ending before it started. The normal path (UsedEarlierSettlement false) is untouched, keeping
+// whatever StartDate the step was already chained to
+func TestWaitL1SettledGERResolverStartDatePinnedWhenEarlierSettlementUsed(t *testing.T) {
+	resolver := NewWaitL1SettledGERResolver(&spySettlement{}, noopGERIndex{}, &spyHistory{})
+
+	blockTimestamp := uint64(1700000000)
+	swapped := &types.L1SettledGERResult{SettlementBlockTimestamp: blockTimestamp, UsedEarlierSettlement: true}
+	require.Equal(t, blockTime(blockTimestamp), resolver.StartDate(&BridgeInfo{}, swapped))
+
+	normal := &types.L1SettledGERResult{SettlementBlockTimestamp: blockTimestamp, UsedEarlierSettlement: false}
+	require.Nil(t, resolver.StartDate(&BridgeInfo{}, normal), "normal path keeps the chained StartDate")
 }
 
 // TestWaitL1SettledGERResolverExactSettlementNotResolvedYet proves the step stays pending
@@ -171,6 +194,57 @@ func TestWaitL1SettledGERResolverCertBlockNumberNilStaysPending(t *testing.T) {
 
 	_, err := resolver.Resolve(log.NewLoggerNil(), t.Context(), tracking, 0)
 	require.ErrorIs(t, err, ErrStepPending)
+}
+
+// TestWaitL1SettledGERResolverPersistsSearchProgress proves that when
+// EarliestSettlementTxCovering's backwards search needs more than one engine tick to finish (see
+// types.SettlementSearchProgress), Resolve persists that progress as this step's own Result and
+// stays pending, instead of erroring or falling back to the tracked certificate's own
+// (known-too-recent) settlement
+func TestWaitL1SettledGERResolverPersistsSearchProgress(t *testing.T) {
+	previousLER := common.HexToHash("0xaaaa")
+	tracking := newWaitL1SettledGERTracking(&previousLER, settledCertFixture(certFixtureSettlementTx, certFixtureBlockNumber))
+
+	progress := &types.SettlementSearchProgress{NextToBlock: 42}
+	settlement := &spySettlement{}
+	history := &spyHistory{covers: true, earliestProgress: progress}
+	resolver := NewWaitL1SettledGERResolver(settlement, noopGERIndex{}, history)
+
+	result, err := resolver.Resolve(log.NewLoggerNil(), t.Context(), tracking, 2)
+	require.ErrorIs(t, err, ErrStepPending)
+	require.Equal(t, progress, result)
+	require.Equal(t, common.Hash{}, settlement.calledWith) // never called
+}
+
+// TestWaitL1SettledGERResolverResumesSearchFromPersistedProgress proves that a previously
+// persisted search progress -- this step's own prior Result -- is read back and threaded into
+// EarliestSettlementTxCovering as resume, instead of restarting the search from scratch every tick
+func TestWaitL1SettledGERResolverResumesSearchFromPersistedProgress(t *testing.T) {
+	previousLER := common.HexToHash("0xaaaa")
+	steps := []BridgeStepPath{
+		{Step: types.StepPendingInclusion, Status: types.StepStatusDone, ResultPendingInclusion: &types.PendingInclusionResult{
+			PreviousLER: &previousLER,
+		}},
+		{
+			Step: types.StepCertificatePending, Status: types.StepStatusDone,
+			ResultCertificateData: settledCertFixture(certFixtureSettlementTx, certFixtureBlockNumber),
+		},
+		{
+			Step: types.StepWaitL1SettledGER, Status: types.StepStatusInProgress,
+			ResultSettlementSearch: &types.SettlementSearchProgress{NextToBlock: 42},
+		},
+	}
+	tracking := NewTrackingData(waitL1SettledGERTestID, TrackingBridgeTx{Info: &BridgeInfo{}}, steps)
+
+	exactTxHash := common.HexToHash("0xbeef")
+	settlement := &spySettlement{result: &types.L1SettledGERResult{L1InfoTreeIndex: ptrUint32(3)}}
+	history := &spyHistory{covers: true, earliestTxHash: &exactTxHash}
+	resolver := NewWaitL1SettledGERResolver(settlement, noopGERIndex{}, history)
+
+	result, err := resolver.Resolve(log.NewLoggerNil(), t.Context(), tracking, 2)
+	require.NoError(t, err)
+	require.Equal(t, settlement.result, result)
+	require.Equal(t, &types.SettlementSearchProgress{NextToBlock: 42}, history.earliestCalledWithResume)
 }
 
 // TestWaitL1SettledGERResolverCoversErrorPropagates proves a transient failure checking

@@ -400,7 +400,13 @@ type ClaimResult struct {
 // GER is still the one this settlement propagated. L1InfoTreeIndex is the leaf index GER
 // landed at: populated straight from UpdateL1InfoTreeV2's LeafCount when that (optional) event
 // fires, otherwise resolved by the step itself with one extra lookup (GER -> leaf) before it
-// can complete — either way, by the time this step is Done, L1InfoTreeIndex is never nil
+// can complete — either way, by the time this step is Done, L1InfoTreeIndex is never nil.
+// UsedEarlierSettlement is true when this evidence comes from an earlier settlement than the
+// one StepCertificatePending tracked (see WaitL1SettledGERResolver.exactSettlementTxHash and
+// issue #1817): SettlementBlockTimestamp can then land before StepCertificatePending's own
+// EndDate, which chained this step's StartDate — WaitL1SettledGERResolver.StartDate uses this
+// flag to pin StartDate to this same EndDate instead, since the milestone was, in truth, already
+// met before the tracker ever started actively waiting on it
 type L1SettledGERResult struct {
 	TxHash                            common.Hash `json:"tx_hash"`
 	SettlementBlockNumber             uint64      `json:"settlement_block_number"`
@@ -414,6 +420,25 @@ type L1SettledGERResult struct {
 	HasVerifyBatchesTrustedAggregator bool        `json:"has_verify_batches_trusted_aggregator"`
 	HasUpdateL1InfoTree               bool        `json:"has_update_l1_info_tree"`
 	HasUpdateL1InfoTreeV2             bool        `json:"has_update_l1_info_tree_v2"`
+	UsedEarlierSettlement             bool        `json:"used_earlier_settlement,omitempty"`
+}
+
+// SettlementSearchProgress is StepWaitL1SettledGER's own transient Result while
+// EarliestSettlementTxCovering's L1-log backwards search (see issue #1817) has not finished
+// within one engine tick: an old bridge's search can take far longer than the engine's
+// per-tick resolve timeout allows in one call, so this cursor lets the next tick resume the
+// backwards walk from NextToBlock instead of restarting it from the tracked certificate's own
+// settlement block every time. Never the step's final Result — once the search finds the
+// covering/non-covering transition, this is replaced by the resolved settlement tx hash's own
+// L1SettledGERResult (or, on the network's very first certificate, is never produced at all)
+type SettlementSearchProgress struct {
+	// NextToBlock is the highest block still left to search, one below the last chunk already
+	// searched with no non-covering settlement found in it
+	NextToBlock uint64 `json:"next_to_block"`
+	// LastCoveringTxHash is the most recent (highest) settlement tx hash seen so far that still
+	// covers the bridge -- the best answer found if the search has not yet reached the
+	// covering/non-covering transition, or genesis
+	LastCoveringTxHash *common.Hash `json:"last_covering_tx_hash,omitempty"`
 }
 
 // GERData holds the exit roots of a Global Exit Root update relevant to a bridge

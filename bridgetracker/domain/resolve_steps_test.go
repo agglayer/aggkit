@@ -143,9 +143,9 @@ func (f *fakeFacts) Covers(_ context.Context, _ *BridgeInfo, _ common.Hash) (boo
 }
 
 func (f *fakeFacts) EarliestSettlementTxCovering(
-	_ context.Context, _ *BridgeInfo, _ uint64,
-) (*common.Hash, error) {
-	return f.earliestSettlementTx, f.earliestSettlementTxErr
+	_ context.Context, _ *BridgeInfo, _ uint64, _ *types.SettlementSearchProgress,
+) (*common.Hash, *types.SettlementSearchProgress, error) {
+	return f.earliestSettlementTx, nil, f.earliestSettlementTxErr
 }
 
 var resolveStepsTestID = TrackingID{NetworkID: 1, TxHash: common.HexToHash("0x01")}
