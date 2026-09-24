@@ -129,15 +129,23 @@ func (s *CertificateSource) certificateIDFor(
 // or past bridge.DepositCount.
 //
 // ler == bridgesynctypes.EmptyLER (the network's default initial LER, before its first-ever
-// certificate) short-circuits to false without asking the bridge service at all: that root is
-// never written to the local exit tree's root table (bridgesync's processor special-cases it the
-// same way, see its own sanityCheckLatestLER/handleForwardLETEvent), so rootIndexFor would 404 on
-// every retry and leave the caller stuck forever instead of recognizing the empty tree covers no
-// deposit at all
+// certificate) or the raw zero hash short-circuits to false without asking the bridge service at
+// all: that root is never written to the local exit tree's root table (bridgesync's processor
+// special-cases it the same way, see its own sanityCheckLatestLER/handleForwardLETEvent), so
+// rootIndexFor would 404 on every retry and leave the caller stuck forever instead of
+// recognizing the empty tree covers no deposit at all.
+//
+// Known gap: a network configured with a non-default genesis LER (etherman/config.
+// NetworkConfig.InitialLER, e.g. a migrated rollup with a non-zero initial exit tree -- see
+// aggsender/query.lerDataQuerier.GetInitialLocalExitRoot) has an initial LER that is neither of
+// the two values above, so this short-circuit does not cover it: PreviousLER carrying that
+// network-specific value would still 404 the same way. Closing that gap needs the same
+// per-network initial LER CertificateSource does not currently have plumbed in (finder only
+// resolves bridge-service/RPC URLs, not genesis rollup data)
 func (s *CertificateSource) Covers(
 	ctx context.Context, bridge *bridgetracker.BridgeInfo, ler common.Hash,
 ) (bool, error) {
-	if ler == bridgesynctypes.EmptyLER {
+	if ler == bridgesynctypes.EmptyLER || ler == aggkitcommon.ZeroHash {
 		return false, nil
 	}
 	index, err := s.rootIndexFor(ctx, bridge.NetworkID, ler)
@@ -272,6 +280,12 @@ func (s *CertificateSource) EarliestSettlementTxCovering(
 // own -- binary search sidesteps the problem instead of needing one, resolving in O(log N)
 // requests regardless of history size.
 //
+// Monotonicity holds unconditionally in the sense the search needs: a rollback
+// (bridgesync.processor's BackwardLET) can genuinely rewind the tree, and the history can grow
+// between two probes of the same search, but neither can turn an already-covering settlement
+// into a non-covering one -- answer is only ever assigned on a covering probe, so the worst
+// either causes is a suboptimal-but-still-covering answer, never a wrong (non-covering) one.
+//
 // needsLogFallback is true when the answer cannot be resolved through bridge-service alone: the
 // endpoint does not exist on this instance yet (client.ErrNotFound), or the exact entry found
 // carries no recorded tx hash (l1infotreesync.VerifyBatches.TxHash is optional, never backfilled
@@ -311,9 +325,17 @@ func (s *CertificateSource) earliestSettlementTxCoveringViaBridgeService(
 	answer := newest
 	for lo, hi := 1, count-1; lo <= hi; {
 		mid := lo + (hi-lo)/2 //nolint:mnd
-		entry, _, _, err := fetchSettlementAt(ctx, svc, bridge.NetworkID, mid)
-		if err != nil {
+		entry, _, notFound, err := fetchSettlementAt(ctx, svc, bridge.NetworkID, mid)
+		switch {
+		case err != nil:
 			return nil, false, err
+		case notFound, entry == nil:
+			// the history shrank since count was read above (e.g. an L1 reorg cascade-deleting
+			// verify_batches rows -- see l1infotreesync0001.sql's ON DELETE CASCADE), or a later
+			// probe 404s even though index 0 did not: either way count is now stale and mid is
+			// out of range. Bail out as transient rather than operate on a shorter history than
+			// the search was bounded for; the engine retries next tick against a fresh count
+			return nil, false, nil
 		}
 		covers, err := s.entryCovers(ctx, bridge, entry)
 		if err != nil {
@@ -333,7 +355,8 @@ func (s *CertificateSource) earliestSettlementTxCoveringViaBridgeService(
 	}
 	// legacy row: no recorded tx hash, but its own BlockNumber is -- resolve the tx hash with a
 	// single-block FilterLogs there instead of falling all the way back to a genesis-ward scan
-	fromBlock, err := s.verifyBatchesTxHashAtBlock(ctx, bridge, answer.BlockNumber)
+	answerLER := common.HexToHash(string(answer.NewLocalExitRoot))
+	fromBlock, err := s.verifyBatchesTxHashAtBlock(ctx, bridge, answer.BlockNumber, answerLER)
 	if err != nil {
 		return nil, false, err
 	}
@@ -379,14 +402,18 @@ func (s *CertificateSource) entryCovers(
 }
 
 // verifyBatchesTxHashAtBlock resolves the tx hash of bridge.NetworkID's own
-// VerifyBatchesTrustedAggregator log at exactly blockNumber, via a single-block FilterLogs --
-// used when earliestSettlementTxCoveringViaBridgeService's binary search lands on a legacy row
-// with a known BlockNumber but no recorded TxHash, so the exact tx resolves directly instead of
-// falling all the way back to earliestSettlementTxCoveringViaLogs' genesis-ward scan. Returns
-// nil (not an error) if that block does not carry a matching log either, leaving the caller free
-// to fall back further
+// VerifyBatchesTrustedAggregator log at exactly blockNumber whose own exit root matches
+// expectedLER, via a single-block FilterLogs -- used when
+// earliestSettlementTxCoveringViaBridgeService's binary search lands on a legacy row with a
+// known BlockNumber but no recorded TxHash, so the exact tx resolves directly instead of falling
+// all the way back to earliestSettlementTxCoveringViaLogs' genesis-ward scan. Matching
+// expectedLER (rather than taking whichever log comes first) matters because a rollup can settle
+// more than one certificate in the same L1 block, each its own VerifyBatchesTrustedAggregator
+// log for the same rollupID -- returning the wrong one would silently point at the wrong
+// settlement tx. Returns nil (not an error) if no log at that block matches, leaving the caller
+// free to fall back further
 func (s *CertificateSource) verifyBatchesTxHashAtBlock(
-	ctx context.Context, bridge *bridgetracker.BridgeInfo, blockNumber uint64,
+	ctx context.Context, bridge *bridgetracker.BridgeInfo, blockNumber uint64, expectedLER common.Hash,
 ) (*common.Hash, error) {
 	client, err := s.clients.RPCClientFor(ctx, 0) // VerifyBatchesTrustedAggregator is always on L1
 	if err != nil {
@@ -405,11 +432,17 @@ func (s *CertificateSource) verifyBatchesTxHashAtBlock(
 			"fetching VerifyBatchesTrustedAggregator log for network %d at block %d: %w",
 			bridge.NetworkID, blockNumber, err)
 	}
-	if len(logs) == 0 {
-		return nil, nil
+	for _, l := range logs {
+		if len(l.Data) < verifyBatchesTrustedAggregatorDataLen {
+			continue // malformed/unexpected log, ignore
+		}
+		exitRoot := common.BytesToHash(l.Data[len(l.Data)-common.HashLength:])
+		if exitRoot == expectedLER {
+			txHash := l.TxHash
+			return &txHash, nil
+		}
 	}
-	txHash := logs[0].TxHash
-	return &txHash, nil
+	return nil, nil
 }
 
 // earliestSettlementTxCoveringSafetyMargin is how much time earliestSettlementTxCoveringViaLogs
@@ -471,9 +504,15 @@ func (s *CertificateSource) earliestSettlementTxCoveringViaLogs(
 			Topics:    [][]common.Hash{{verifyBatchesTrustedAggregatorSignature}, {rollupIDTopic}},
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf(
-				"fetching VerifyBatchesTrustedAggregator logs for network %d from block %d to %d: %w",
-				bridge.NetworkID, fromBlockChunk, toBlock, err)
+			// a transient RPC failure mid-scan must not throw away how far the search already
+			// got: return the cursor alongside the error so the caller persists it and resumes
+			// from here, instead of restarting from fromBlock once the failure clears (see this
+			// function's own doc on issue #1817's resumable-search fix)
+			return nil, &trackertypes.SettlementSearchProgress{
+					NextToBlock: toBlock, LastCoveringTxHash: lastCoveringTxHash,
+				}, fmt.Errorf(
+					"fetching VerifyBatchesTrustedAggregator logs for network %d from block %d to %d: %w",
+					bridge.NetworkID, fromBlockChunk, toBlock, err)
 		}
 
 		// FilterLogs returns logs in ascending block/log-index order; walk this chunk back to
@@ -486,7 +525,12 @@ func (s *CertificateSource) earliestSettlementTxCoveringViaLogs(
 			exitRoot := common.BytesToHash(l.Data[len(l.Data)-common.HashLength:])
 			covers, err := s.Covers(ctx, bridge, exitRoot)
 			if err != nil {
-				return nil, nil, err
+				// same reasoning as the FilterLogs error above: keep the cursor at the start of
+				// this still-unprocessed chunk (toBlock), since which logs within it already
+				// resolved is not itself resumable progress
+				return nil, &trackertypes.SettlementSearchProgress{
+					NextToBlock: toBlock, LastCoveringTxHash: lastCoveringTxHash,
+				}, err
 			}
 			if !covers {
 				return lastCoveringTxHash, nil, nil

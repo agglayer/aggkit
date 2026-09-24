@@ -12,6 +12,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
@@ -171,6 +172,19 @@ func TestCoversTreatsEmptyLERAsNotCovering(t *testing.T) {
 	source := NewCertificateSource(nil, nil, nil, testRollupManagerAddress, testLogger)
 
 	covers, err := source.Covers(t.Context(), bridge, bridgesynctypes.EmptyLER)
+	require.NoError(t, err)
+	require.False(t, covers)
+}
+
+// TestCoversTreatsRawZeroHashAsNotCovering proves the same defensive short-circuit applies to
+// the raw zero hash (aggkitcommon.ZeroHash), not just bridgesynctypes.EmptyLER -- a network's
+// configured (non-default) initial LER is not covered by either check, a known gap documented on
+// Covers itself, but the zero hash at least is never mistaken for a real, unsynced root
+func TestCoversTreatsRawZeroHashAsNotCovering(t *testing.T) {
+	bridge := l2ToL1Bridge()
+	source := NewCertificateSource(nil, nil, nil, testRollupManagerAddress, testLogger)
+
+	covers, err := source.Covers(t.Context(), bridge, aggkitcommon.ZeroHash)
 	require.NoError(t, err)
 	require.False(t, covers)
 }

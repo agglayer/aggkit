@@ -164,6 +164,30 @@ func TestWaitL1SettledGERResolverStartDatePinnedWhenEarlierSettlementUsed(t *tes
 	require.Nil(t, resolver.StartDate(&BridgeInfo{}, normal), "normal path keeps the chained StartDate")
 }
 
+// TestWaitL1SettledGERResolverPersistsProgressAlongsideTransientError proves that when
+// EarliestSettlementTxCovering's search fails transiently (e.g. an RPC hiccup) after already
+// building up some progress, Resolve still returns that progress as its own result -- alongside
+// the real error, not silently swapped for ErrStepPending -- so the cursor survives the retry
+// instead of being discarded by the very failure the resumable search exists to be resilient
+// against
+func TestWaitL1SettledGERResolverPersistsProgressAlongsideTransientError(t *testing.T) {
+	previousLER := common.HexToHash("0xaaaa")
+	tracking := newWaitL1SettledGERTracking(&previousLER, settledCertFixture(certFixtureSettlementTx, certFixtureBlockNumber))
+
+	progress := &types.SettlementSearchProgress{NextToBlock: 42}
+	errTransient := errors.New("rpc hiccup")
+	settlement := &spySettlement{}
+	history := &spyHistory{covers: true, earliestProgress: progress, earliestErr: errTransient}
+	resolver := NewWaitL1SettledGERResolver(settlement, noopGERIndex{}, history)
+
+	result, err := resolver.Resolve(log.NewLoggerNil(), t.Context(), tracking, 0)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrStepPending, "a real failure, not merely 'still pending'")
+	require.ErrorIs(t, err, errTransient)
+	require.Equal(t, progress, result)
+	require.Equal(t, common.Hash{}, settlement.calledWith) // never called
+}
+
 // TestWaitL1SettledGERResolverExactSettlementNotResolvedYet proves the step stays pending
 // (ErrStepPending) while EarliestSettlementTxCovering's search has not found the transition yet,
 // instead of falling back to the tracked certificate's own (known-too-recent) settlement

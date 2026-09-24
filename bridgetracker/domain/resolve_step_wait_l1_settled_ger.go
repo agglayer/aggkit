@@ -65,7 +65,11 @@ type SettlementHistorySource interface {
 	// settlement (transient -- the caller only calls this once fromBlock's certificate is known
 	// to cover bridge, so this only happens racing a fresh read; retried by the engine), or
 	// (nil, progress, nil) if the search needs at least one more tick to finish -- the caller
-	// persists progress and passes it back as resume next time
+	// persists progress and passes it back as resume next time. progress can also come back
+	// non-nil alongside a non-nil error: a transient failure mid-scan (e.g. an RPC hiccup) still
+	// reports the cursor built up so far, so the caller persists it even though this same call
+	// also needs to be retried, instead of losing that progress to the very failure the resumable
+	// search exists to be resilient against
 	EarliestSettlementTxCovering(
 		ctx context.Context, bridge *BridgeInfo, fromBlock uint64, resume *types.SettlementSearchProgress,
 	) (*common.Hash, *types.SettlementSearchProgress, error)
@@ -123,7 +127,11 @@ func (r *WaitL1SettledGERResolver) Resolve(
 	settlementTxHash := *cert.SettlementTxHash
 	exact, progress, err := r.exactSettlementTxHash(ctx, tracking, steps, cert, resume)
 	if progress != nil {
-		return progress, ErrStepPending // search still in progress; resumed from here next tick
+		// persisted regardless of err: a transient failure mid-scan (e.g. an RPC hiccup) must
+		// not discard search progress just because it also needs to be retried -- err is either
+		// ErrStepPending (ran out of time this tick, not a failure) or a real error (recorded as
+		// this step's transient error, but the cursor survives it either way)
+		return progress, err
 	}
 	if err != nil {
 		return nil, err
@@ -239,11 +247,16 @@ func (r *WaitL1SettledGERResolver) exactSettlementTxHash(
 		return nil, nil, ErrStepPending
 	}
 	exact, progress, err := r.history.EarliestSettlementTxCovering(ctx, tracking.Info(), *cert.BlockNumber, resume)
+	if progress != nil {
+		// progress survives err: a transient failure mid-scan (e.g. an RPC hiccup) must not
+		// discard how far the search already got just because it also needs to be retried
+		if err != nil {
+			return nil, progress, fmt.Errorf("finding earliest settlement covering the bridge: %w", err)
+		}
+		return nil, progress, ErrStepPending // search needs at least one more tick
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("finding earliest settlement covering the bridge: %w", err)
-	}
-	if progress != nil {
-		return nil, progress, ErrStepPending // search needs at least one more tick
 	}
 	if exact == nil {
 		return nil, nil, ErrStepPending // search resolved without ever finding a covering settlement: transient

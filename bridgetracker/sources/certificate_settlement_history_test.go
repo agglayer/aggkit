@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -164,6 +165,47 @@ func TestEarliestSettlementTxCoveringViaBridgeServiceOldestCoversEverything(t *t
 	require.Equal(t, txA, *got)
 }
 
+// TestEarliestSettlementTxCoveringViaBridgeServiceHandlesShrinkingHistory proves the binary
+// search does not panic when a later probe reports no entry even though count (read from index
+// 0) said one should still be there -- e.g. an L1 reorg cascade-deleting verify_batches rows
+// mid-search (verify_batches.block_num references block(num) ON DELETE CASCADE, see
+// l1infotreesync0001.sql), or a 404 on a later page even though index 0 answered normally.
+// Either way this must be treated as transient, not dereference a nil entry
+func TestEarliestSettlementTxCoveringViaBridgeServiceHandlesShrinkingHistory(t *testing.T) {
+	bridge := l2ToL1Bridge() // DepositCount: 7
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/bridge/v1/root-by-ler", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"index":9,"block_num":0,"block_position":0}`) // always covers (9 >= 7)
+	})
+	mux.HandleFunc("/bridge/v1/settlements", func(w http.ResponseWriter, r *http.Request) {
+		pageNumber, _ := strconv.Atoi(r.URL.Query().Get("page_number"))
+		result := bridgeservicetypes.SettlementsResult{Count: 10}
+		if pageNumber == 1 {
+			// index 0 (newest): a real, covering entry, with a count implying nine more exist
+			ler := bridgeservicetypes.Hash(common.HexToHash("0x111").Hex())
+			result.Settlements = []*bridgeservicetypes.SettlementResponse{{NewLocalExitRoot: ler}}
+		}
+		// every later probe: the history shrank since count was read above -- nothing there
+		// anymore, even though count on this very response still says otherwise
+		body, err := json.Marshal(result)
+		require.NoError(t, err)
+		_, err = w.Write(body)
+		require.NoError(t, err)
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	source := NewCertificateSource(
+		nil, staticURLs{bridge.NetworkID: bridgeservicefinder.NetworkURLs{BridgeURL: server.URL}},
+		nil, testRollupManagerAddress, testLogger)
+
+	got, progress, err := source.EarliestSettlementTxCovering(t.Context(), bridge, 0, nil)
+	require.NoError(t, err)
+	require.Nil(t, got)
+	require.Nil(t, progress)
+}
+
 // TestEarliestSettlementTxCoveringLegacyRowResolvesAtExactBlock proves that when the exact
 // covering entry bridge-service reports has no recorded tx hash (a settlement synced before
 // #1817's tx_hash column existed), the search resolves it with a single-block FilterLogs at the
@@ -311,6 +353,96 @@ func TestEarliestSettlementTxCoveringViaLogsStopsBeforeDeadline(t *testing.T) {
 	require.NotNil(t, progress)
 	require.Equal(t, uint64(12345), progress.NextToBlock)
 	require.Nil(t, progress.LastCoveringTxHash)
+}
+
+// TestEarliestSettlementTxCoveringViaLogsPersistsProgressOnFilterLogsError proves that a
+// transient FilterLogs failure mid-scan still returns the cursor built up so far alongside the
+// error, instead of discarding it: a flaky RPC call must not force the next tick to restart from
+// fromBlock, exactly what the resumable cursor exists to avoid (this round's own review finding)
+func TestEarliestSettlementTxCoveringViaLogsPersistsProgressOnFilterLogsError(t *testing.T) {
+	bridge := l2ToL1Bridge()
+	ethClient := mocks.NewBaseEthereumClienter(t)
+	ethClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, errors.New("rpc hiccup"))
+
+	source := NewCertificateSource(nil, nil, StaticClients{0: ethClient}, testRollupManagerAddress, testLogger)
+
+	got, progress, err := source.earliestSettlementTxCoveringViaLogs(t.Context(), bridge, 12345, nil)
+	require.Error(t, err)
+	require.Nil(t, got)
+	require.NotNil(t, progress)
+	require.Equal(t, uint64(12345), progress.NextToBlock)
+	require.Nil(t, progress.LastCoveringTxHash)
+}
+
+// TestEarliestSettlementTxCoveringViaLogsPersistsProgressOnCoversError proves the same for a
+// transient failure checking Covers mid-chunk (bridge-service returning a hard error, not a
+// 404) rather than FilterLogs itself
+func TestEarliestSettlementTxCoveringViaLogsPersistsProgressOnCoversError(t *testing.T) {
+	bridge := l2ToL1Bridge()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/bridge/v1/root-by-ler", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	ethClient := mocks.NewBaseEthereumClienter(t)
+	expectVerifyBatchesLog(ethClient, bridge, 12345, gethtypes.Log{
+		Topics: []common.Hash{
+			verifyBatchesTrustedAggregatorSignature, rollupIDTopicFor(bridge.NetworkID),
+		},
+		Data:        verifyBatchesLogData(common.HexToHash("0x222")),
+		TxHash:      common.HexToHash("0xsomething"),
+		BlockNumber: 12345,
+	})
+
+	source := NewCertificateSource(
+		nil, staticURLs{bridge.NetworkID: bridgeservicefinder.NetworkURLs{BridgeURL: server.URL}},
+		StaticClients{0: ethClient}, testRollupManagerAddress, testLogger)
+
+	got, progress, err := source.earliestSettlementTxCoveringViaLogs(t.Context(), bridge, 12345, nil)
+	require.Error(t, err)
+	require.Nil(t, got)
+	require.NotNil(t, progress)
+	require.Equal(t, uint64(12345), progress.NextToBlock)
+}
+
+// TestVerifyBatchesTxHashAtBlockMatchesExitRoot proves it picks the log whose own exit root
+// matches expectedLER rather than just the first log in the block: a rollup can settle more than
+// one certificate in the same L1 block, each its own VerifyBatchesTrustedAggregator log, and
+// taking the wrong one would silently point at the wrong settlement tx
+func TestVerifyBatchesTxHashAtBlockMatchesExitRoot(t *testing.T) {
+	bridge := l2ToL1Bridge()
+	ethClient := mocks.NewBaseEthereumClienter(t)
+	wrongTxHash := common.HexToHash("0xwrong")
+	rightTxHash := common.HexToHash("0xright")
+	expectVerifyBatchesLogAtBlock(ethClient, bridge, 500, []gethtypes.Log{
+		{Data: verifyBatchesLogData(common.HexToHash("0xaaa")), TxHash: wrongTxHash},
+		{Data: verifyBatchesLogData(common.HexToHash("0xbbb")), TxHash: rightTxHash},
+	})
+
+	source := NewCertificateSource(nil, nil, StaticClients{0: ethClient}, testRollupManagerAddress, testLogger)
+
+	got, err := source.verifyBatchesTxHashAtBlock(t.Context(), bridge, 500, common.HexToHash("0xbbb"))
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, rightTxHash, *got)
+}
+
+// TestVerifyBatchesTxHashAtBlockNoMatchReturnsNil proves that when no log at the block matches
+// expectedLER, it returns nil (not an error), leaving the caller free to fall back further
+func TestVerifyBatchesTxHashAtBlockNoMatchReturnsNil(t *testing.T) {
+	bridge := l2ToL1Bridge()
+	ethClient := mocks.NewBaseEthereumClienter(t)
+	expectVerifyBatchesLogAtBlock(ethClient, bridge, 500, []gethtypes.Log{
+		{Data: verifyBatchesLogData(common.HexToHash("0xaaa")), TxHash: common.HexToHash("0xwrong")},
+	})
+
+	source := NewCertificateSource(nil, nil, StaticClients{0: ethClient}, testRollupManagerAddress, testLogger)
+
+	got, err := source.verifyBatchesTxHashAtBlock(t.Context(), bridge, 500, common.HexToHash("0xbbb"))
+	require.NoError(t, err)
+	require.Nil(t, got)
 }
 
 // rollupIDTopicFor mirrors earliestSettlementTxCoveringViaLogs' own topic encoding, for tests
