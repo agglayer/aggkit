@@ -720,6 +720,19 @@
                 }
             }
         },
+        "types.CacheInfo": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "description": "Kind is CacheKindMemory or CacheKindDisk",
+                    "type": "string"
+                },
+                "size_bytes": {
+                    "description": "SizeBytes is the on-disk size of the SQLite database, in bytes. Omitted when Kind is\nCacheKindMemory, which has no disk footprint to report",
+                    "type": "integer"
+                }
+            }
+        },
         "types.ClaimResponse": {
             "description": "Detailed information about a claim event",
             "type": "object",
@@ -864,9 +877,25 @@
         "types.HealthResponse": {
             "type": "object",
             "properties": {
+                "alive_activities": {
+                    "description": "AliveActivities is the number of from_addresses currently supervised by the activity\nsubsystem (see domain.ActivitySupervisedStore.GetActiveAddresses). Omitted when the\nactivity endpoint is not configured, mirroring pending_networks/PendingNetworksLister",
+                    "type": "integer"
+                },
+                "alive_trackers": {
+                    "description": "AliveTrackers is the number of supervised bridges still being tracked — registered and\nnot yet in a terminal state (see domain.SupervisedStore.GetTrackerActives)",
+                    "type": "integer"
+                },
                 "api_revision": {
                     "description": "APIRevision is the tracker's wire API contract version (see CurrentAPIRevision) —\nbumped whenever the wire contract changes, so a client can detect which shape the\nresponding instance speaks",
                     "type": "integer"
+                },
+                "cache": {
+                    "description": "Cache reports the supervised-bridges registry's persistence backend: in-memory\n(CacheKindMemory, the default — Config.DBPath empty) or SQLite-backed on disk\n(CacheKindDisk, with its current size). When the activity subsystem is also SQLite-backed\nit typically shares this same file (see bridgetracker/db.NewSQLiteActivityStore)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/types.CacheInfo"
+                        }
+                    ]
                 },
                 "config_sha1": {
                     "description": "ConfigSHA1 is the sha1sum (hex) of the configuration the instance was started with;\nit allows checking that all instances behind a proxy run the same configuration",

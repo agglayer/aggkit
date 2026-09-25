@@ -414,6 +414,17 @@ definitions:
         example: 0xabc1234567890abcdef1234567890abcdef12345
         type: string
     type: object
+  types.CacheInfo:
+    properties:
+      kind:
+        description: Kind is CacheKindMemory or CacheKindDisk
+        type: string
+      size_bytes:
+        description: |-
+          SizeBytes is the on-disk size of the SQLite database, in bytes. Omitted when Kind is
+          CacheKindMemory, which has no disk footprint to report
+        type: integer
+    type: object
   types.ClaimResponse:
     description: Detailed information about a claim event
     properties:
@@ -528,12 +539,31 @@ definitions:
     type: object
   types.HealthResponse:
     properties:
+      alive_activities:
+        description: |-
+          AliveActivities is the number of from_addresses currently supervised by the activity
+          subsystem (see domain.ActivitySupervisedStore.GetActiveAddresses). Omitted when the
+          activity endpoint is not configured, mirroring pending_networks/PendingNetworksLister
+        type: integer
+      alive_trackers:
+        description: |-
+          AliveTrackers is the number of supervised bridges still being tracked — registered and
+          not yet in a terminal state (see domain.SupervisedStore.GetTrackerActives)
+        type: integer
       api_revision:
         description: |-
           APIRevision is the tracker's wire API contract version (see CurrentAPIRevision) —
           bumped whenever the wire contract changes, so a client can detect which shape the
           responding instance speaks
         type: integer
+      cache:
+        allOf:
+        - $ref: '#/definitions/types.CacheInfo'
+        description: |-
+          Cache reports the supervised-bridges registry's persistence backend: in-memory
+          (CacheKindMemory, the default — Config.DBPath empty) or SQLite-backed on disk
+          (CacheKindDisk, with its current size). When the activity subsystem is also SQLite-backed
+          it typically shares this same file (see bridgetracker/db.NewSQLiteActivityStore)
       config_sha1:
         description: |-
           ConfigSHA1 is the sha1sum (hex) of the configuration the instance was started with;

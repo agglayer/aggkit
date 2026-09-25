@@ -158,6 +158,9 @@ type sqliteRegistry struct {
 // compile-time check: the SQLite adapter fulfils the full port
 var _ domain.SupervisedRegistry = (*sqliteRegistry)(nil)
 
+// compile-time check: the SQLite adapter also reports its own on-disk footprint
+var _ domain.CacheStatsProvider = (*sqliteRegistry)(nil)
+
 // NewSQLiteRegistry returns a domain.SupervisedRegistry backed by a SQLite database at dbPath,
 // creating the file and running its migrations if it does not exist yet. maxEntries <= 0 falls
 // back to defaultMaxTrackedBridges, exactly like bridgetracker.NewMemoryRegistry. verifier may be
@@ -761,4 +764,28 @@ func (r *sqliteRegistry) Forget(id domain.TrackingID) {
 // Triggers implements domain.Triggerable
 func (r *sqliteRegistry) Triggers() <-chan domain.TrackingID {
 	return r.trigger
+}
+
+// CacheStats implements domain.CacheStatsProvider: the SQLite file's current size, used by
+// GET /health to report how much space this registry's cache is using on disk
+func (r *sqliteRegistry) CacheStats() (domain.CacheStats, error) {
+	size, err := sqliteFileSize(r.db)
+	if err != nil {
+		return domain.CacheStats{}, fmt.Errorf("reading tracked_bridge cache size: %w", err)
+	}
+	return domain.CacheStats{SizeBytes: size}, nil
+}
+
+// sqliteFileSize computes db's current on-disk size via PRAGMA page_count * page_size — shared
+// by sqliteRegistry.CacheStats and sqliteActivityStore.CacheStats, since either may be asked
+// for the size of what is, in the common case, the very same file (see NewSQLiteActivityStore)
+func sqliteFileSize(db *sql.DB) (int64, error) {
+	var pageCount, pageSize int64
+	if err := db.QueryRow("PRAGMA page_count").Scan(&pageCount); err != nil {
+		return 0, fmt.Errorf("querying page_count: %w", err)
+	}
+	if err := db.QueryRow("PRAGMA page_size").Scan(&pageSize); err != nil {
+		return 0, fmt.Errorf("querying page_size: %w", err)
+	}
+	return pageCount * pageSize, nil
 }

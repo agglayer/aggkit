@@ -14,11 +14,14 @@ import (
 )
 
 // fakeSupervisedRegistry is a minimal domain.SupervisedRegistry double, shared by the
-// getTxStatusCommand and wsHandler tests in this package: each test only sets the field(s) its
-// scenario needs (getAndAwaitErr, subscribeErr, ...), the rest are left as zero-value stubs
+// getTxStatusCommand, wsHandler and healthCommand tests in this package: each test only sets
+// the field(s) its scenario needs (getAndAwaitErr, subscribeErr, ...), the rest are left as
+// zero-value stubs
 type fakeSupervisedRegistry struct {
-	getAndAwaitErr error
-	subscribeErr   error
+	getAndAwaitErr       error
+	subscribeErr         error
+	getTrackerActives    []*domain.TrackingData
+	getTrackerActivesErr error
 }
 
 func (f *fakeSupervisedRegistry) Get(_ domain.TrackingID, _ bool) (*domain.TrackingData, error) {
@@ -38,7 +41,7 @@ func (f *fakeSupervisedRegistry) UpdateTrackingStep(_ domain.TrackingID, _ uint,
 }
 
 func (f *fakeSupervisedRegistry) GetTrackerActives(_ *uint32) ([]*domain.TrackingData, error) {
-	return nil, nil
+	return f.getTrackerActives, f.getTrackerActivesErr
 }
 
 func (f *fakeSupervisedRegistry) GetNetworks(_ *types.TrackingStatus) ([]uint32, error) {

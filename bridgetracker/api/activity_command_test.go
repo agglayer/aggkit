@@ -36,6 +36,8 @@ type fakeActivityRegistry struct {
 	getActivityEntries    []*domain.ActivityEntry
 	getActivityWarnings   []domain.ActivityWarning
 	getActivityErr        error
+	activeAddresses       []common.Address
+	activeAddressesErr    error
 
 	lastRegisterAddress         common.Address
 	lastRegisterIncludeTracking bool
@@ -61,7 +63,9 @@ func (f *fakeActivityRegistry) RegisterAndAwait(
 	return f.registerAndAwaitReady, f.registerAndAwaitErr
 }
 
-func (f *fakeActivityRegistry) GetActiveAddresses() ([]common.Address, error) { return nil, nil }
+func (f *fakeActivityRegistry) GetActiveAddresses() ([]common.Address, error) {
+	return f.activeAddresses, f.activeAddressesErr
+}
 
 func (f *fakeActivityRegistry) RefreshAddress(context.Context, common.Address) error { return nil }
 
