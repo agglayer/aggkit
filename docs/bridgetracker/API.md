@@ -441,11 +441,13 @@ Request:
 | from_address | path | Address | yes | address that sent the bridges to look up |
 | includeTracking | query | bool | no | `true` additionally registers every still-unclaimed bridge in the result with the bridge tracker (same effect as calling the main endpoint for it) and includes its current [TrackingData](#trackingdata) snapshot. Default `false` |
 | filterBridges | query | string | no | one of `"all"` (default), `"claimed"`, `"pending"`, `"readyToClaim"`, `"error"` — restricts the result to bridges with only that `claim_status` |
+| page_number | query | uint32 | no | 1-based page number. Default `1` — same parameter name and numbering as the bridge service's own paginated endpoints |
+| page_size | query | uint32 | no | page size. Default `20`, max `200` |
 
 ### Behavior
 
 - `200 OK` — the body is an [ActivityResponse](#activityresponse).
-- `400 Bad Request` — invalid `from_address`, or an unrecognized `filterBridges` value: the body is an [ErrorData](#errordata).
+- `400 Bad Request` — invalid `from_address`, an unrecognized `filterBridges` value, or an invalid `page_number`/`page_size` (zero, non-numeric, or `page_size` over `200`): the body is an [ErrorData](#errordata).
 - `500 Internal Server Error` — scanning the configured bridge services failed: the body is an [ErrorData](#errordata).
 - **This endpoint is opt-in**: it only exists if the binary is configured with both an activity bridge scanner and claim checker (`Config.ActivityScanner`/`ActivityClaims`); otherwise the route is not registered at all (plain `404`).
 - Requesting `filterBridges=pending`, `filterBridges=readyToClaim` or `filterBridges=error` **skips fetching the claim record** of a bridge found to be claimed, since it would be filtered out of that result anyway — its cache entry simply has no `claim` yet, and is fetched normally the next time `filterBridges=all`/`claimed` is used for that address.
@@ -457,7 +459,8 @@ Request:
 | field | type | desc |
 | ------|------|------|
 | from_address | Address | the address requested |
-| bridges | ActivityItem [] | every bridge found for `from_address`, across every configured bridge service, matching `filterBridges` |
+| bridges | ActivityItem [] | this page of the bridges found for `from_address`, across every configured bridge service, matching `filterBridges` — sorted most recent first and sliced per `page_number`/`page_size` |
+| count | int | how many bridges matched `filterBridges` in total, across every page — not just `len(bridges)` |
 | warnings | ActivityWarningItem [] | every network whose bridge service could not be scanned this call; **omitted** (no key) when every configured network was scanned successfully |
 
 ### ActivityWarningItem

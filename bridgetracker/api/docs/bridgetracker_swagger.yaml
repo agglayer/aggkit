@@ -71,11 +71,18 @@ definitions:
   api.ActivityResponse:
     properties:
       bridges:
-        description: Bridges holds every bridge found for FromAddress across every
-          configured bridge service
+        description: |-
+          Bridges holds this page of the bridges found for FromAddress across every configured
+          bridge service, most recent first (see CreationTimestamp), restricted to filterBridges
+          and sliced to page_number/page_size
         items:
           $ref: '#/definitions/api.ActivityItem'
         type: array
+      count:
+        description: |-
+          Count is how many bridges matched filterBridges in total, across every page — not just
+          len(Bridges) — mirroring bridgeservice's BridgesResult/ClaimsResult "count" field
+        type: integer
       from_address:
         description: FromAddress is the address requested
         items:
@@ -654,7 +661,10 @@ paths:
         whatever is already cached for from_address, so the next background refresh
         rechecks everything from scratch. A network whose bridge service could not be
         scanned is skipped and reported in the "warnings" field instead of failing the
-        whole request.
+        whole request. Bridges are sorted most recent first and paginated via
+        page_number/page_size (same names and 1-based numbering as the bridge service's
+        own paginated endpoints); "count" reports how many bridges matched in total,
+        across every page.
       parameters:
       - description: Address that sent the bridges to look up
         in: path
@@ -680,6 +690,16 @@ paths:
         in: query
         name: flush_cache
         type: boolean
+      - description: Page number, 1-based (default 1)
+        format: int32
+        in: query
+        name: page_number
+        type: integer
+      - description: Page size (default 20, max 200)
+        format: int32
+        in: query
+        name: page_size
+        type: integer
       produces:
       - application/json
       responses:

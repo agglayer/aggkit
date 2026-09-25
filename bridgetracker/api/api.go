@@ -54,6 +54,12 @@ const (
 	// endpoint, and the activity endpoint
 	flushCacheQueryParam = "flush_cache"
 
+	// pageNumberQueryParam/pageSizeQueryParam paginate the activity endpoint's result, same
+	// parameter names and 1-based page numbering as the bridge service's own paginated
+	// endpoints (see bridgeservice.pageNumberParam/pageSizeParam)
+	pageNumberQueryParam = "page_number"
+	pageSizeQueryParam   = "page_size"
+
 	// queryValueTrue is the only value that turns on a boolean query flag (includeTracking,
 	// flush_cache): anything else, including its absence, is treated as false
 	queryValueTrue = "true"
