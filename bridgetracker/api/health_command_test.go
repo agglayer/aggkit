@@ -2,11 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/agglayer/aggkit/bridgeservicefinder"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
@@ -22,6 +24,20 @@ type fakePendingNetworksLister struct {
 
 func (f *fakePendingNetworksLister) PendingNetworks() []bridgeservicefinder.PendingNetwork {
 	return f.networks
+}
+
+// fakeCacheStatsRegistry embeds fakeSupervisedRegistry (see get_tx_status_command_test.go) and
+// additionally implements domain.CacheStatsProvider, standing in for the SQLite-backed adapter
+// (see bridgetracker/db.sqliteRegistry) so healthCommand's memory-vs-disk detection can be
+// exercised without a real database
+type fakeCacheStatsRegistry struct {
+	fakeSupervisedRegistry
+	sizeBytes int64
+	statsErr  error
+}
+
+func (f *fakeCacheStatsRegistry) CacheStats() (domain.CacheStats, error) {
+	return domain.CacheStats{SizeBytes: f.sizeBytes}, f.statsErr
 }
 
 // TestHealthCommandExecute_NoPendingListerOmitsKey verifies that a nil PendingNetworksLister
@@ -154,4 +170,146 @@ func TestNewAPIHealthStartDateIsSetAtConstruction(t *testing.T) {
 	require.Equal(t, time.UTC, api.healthCmd.startDate.Location())
 	require.False(t, api.healthCmd.startDate.Before(before))
 	require.False(t, api.healthCmd.startDate.After(after))
+}
+
+// TestNewAPIHealthWiresSupervisedAndActivity verifies that NewAPI threads the same supervised
+// registry and activity registry it was given into the health command, so GET /health can report
+// their alive counts/cache size instead of only instance identity.
+func TestNewAPIHealthWiresSupervisedAndActivity(t *testing.T) {
+	supervised := &fakeSupervisedRegistry{}
+	activity := newFakeActivityRegistry()
+	api := NewAPI(nil, "sha1", supervised, activity, nil, 0, 0, 0, aggkitcommon.CORSConfig{}, nil)
+
+	require.NotNil(t, api.healthCmd)
+	gotSupervised, ok := api.healthCmd.supervised.(*fakeSupervisedRegistry)
+	require.True(t, ok)
+	require.Same(t, supervised, gotSupervised)
+
+	gotActivity, ok := api.healthCmd.activity.(*fakeActivityRegistry)
+	require.True(t, ok)
+	require.Same(t, activity, gotActivity)
+}
+
+// TestHealthCommandExecute_NoSupervisedOrActivityOmitsCounts verifies healthCommand.Execute
+// never panics on a nil supervised/activity (the wiring test above always sets supervised, but
+// some earlier tests in this file construct a bare healthCommand to isolate pending_networks
+// behavior): Cache reports memory and both alive counts stay at their zero value.
+func TestHealthCommandExecute_NoSupervisedOrActivityOmitsCounts(t *testing.T) {
+	cmd := &healthCommand{instanceID: "instance-1", configSHA1: "sha1"}
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	_, obj, errData := cmd.Execute(c)
+	require.Nil(t, errData)
+
+	resp, ok := obj.(types.HealthResponse)
+	require.True(t, ok)
+	require.Equal(t, types.CacheInfo{Kind: types.CacheKindMemory}, resp.Cache)
+	require.Equal(t, 0, resp.AliveTrackers)
+	require.Nil(t, resp.AliveActivities)
+}
+
+// TestHealthCommandExecute_MemoryRegistryReportsMemoryKindAndAliveTrackers verifies that a
+// supervised registry not implementing domain.CacheStatsProvider (the in-memory adapter) is
+// reported as CacheKindMemory with no size, while AliveTrackers still reflects
+// GetTrackerActives's length.
+func TestHealthCommandExecute_MemoryRegistryReportsMemoryKindAndAliveTrackers(t *testing.T) {
+	supervised := &fakeSupervisedRegistry{
+		getTrackerActives: []*domain.TrackingData{{}, {}, {}},
+	}
+	cmd := &healthCommand{instanceID: "instance-1", configSHA1: "sha1", supervised: supervised}
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	_, obj, errData := cmd.Execute(c)
+	require.Nil(t, errData)
+
+	resp, ok := obj.(types.HealthResponse)
+	require.True(t, ok)
+	require.Equal(t, types.CacheInfo{Kind: types.CacheKindMemory}, resp.Cache)
+	require.Equal(t, 3, resp.AliveTrackers)
+
+	data, err := json.Marshal(obj)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"kind":"memory"`)
+	require.NotContains(t, string(data), "size_bytes")
+}
+
+// TestHealthCommandExecute_SQLiteRegistryReportsDiskKindAndSize verifies that a supervised
+// registry implementing domain.CacheStatsProvider (the SQLite-backed adapter) is reported as
+// CacheKindDisk with its SizeBytes serialized.
+func TestHealthCommandExecute_SQLiteRegistryReportsDiskKindAndSize(t *testing.T) {
+	supervised := &fakeCacheStatsRegistry{sizeBytes: 4096}
+	cmd := &healthCommand{instanceID: "instance-1", configSHA1: "sha1", supervised: supervised}
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	_, obj, errData := cmd.Execute(c)
+	require.Nil(t, errData)
+
+	resp, ok := obj.(types.HealthResponse)
+	require.True(t, ok)
+	require.Equal(t, types.CacheInfo{Kind: types.CacheKindDisk, SizeBytes: 4096}, resp.Cache)
+
+	data, err := json.Marshal(obj)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"kind":"disk"`)
+	require.Contains(t, string(data), `"size_bytes":4096`)
+}
+
+// TestHealthCommandExecute_CacheStatsErrorFallsBackToDiskKindNoSize verifies that a
+// CacheStatsProvider error still reports CacheKindDisk (the adapter is disk-backed regardless)
+// but omits SizeBytes, instead of failing the whole health check.
+func TestHealthCommandExecute_CacheStatsErrorFallsBackToDiskKindNoSize(t *testing.T) {
+	supervised := &fakeCacheStatsRegistry{statsErr: errors.New("disk i/o error")}
+	cmd := &healthCommand{instanceID: "instance-1", configSHA1: "sha1", supervised: supervised}
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	code, obj, errData := cmd.Execute(c)
+	require.Nil(t, errData)
+	require.Equal(t, 200, code)
+
+	resp, ok := obj.(types.HealthResponse)
+	require.True(t, ok)
+	require.Equal(t, types.CacheInfo{Kind: types.CacheKindDisk}, resp.Cache)
+}
+
+// TestHealthCommandExecute_NoActivityOmitsAliveActivities verifies that a nil activity registry
+// (the activity endpoint not configured, see NewAPI's doc) omits alive_activities entirely
+// rather than serializing it as zero — mirroring pending_networks' own omission convention.
+func TestHealthCommandExecute_NoActivityOmitsAliveActivities(t *testing.T) {
+	cmd := &healthCommand{instanceID: "instance-1", configSHA1: "sha1"}
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	_, obj, errData := cmd.Execute(c)
+	require.Nil(t, errData)
+
+	resp, ok := obj.(types.HealthResponse)
+	require.True(t, ok)
+	require.Nil(t, resp.AliveActivities)
+
+	data, err := json.Marshal(obj)
+	require.NoError(t, err)
+	require.NotContains(t, string(data), "alive_activities")
+}
+
+// TestHealthCommandExecute_ActivityReportsAliveAddressCount verifies that a configured activity
+// registry's currently supervised addresses are counted into alive_activities.
+func TestHealthCommandExecute_ActivityReportsAliveAddressCount(t *testing.T) {
+	activity := newFakeActivityRegistry()
+	activity.activeAddresses = []common.Address{
+		common.HexToAddress("0x1111111111111111111111111111111111111111"),
+		common.HexToAddress("0x2222222222222222222222222222222222222222"),
+	}
+	cmd := &healthCommand{instanceID: "instance-1", configSHA1: "sha1", activity: activity}
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	_, obj, errData := cmd.Execute(c)
+	require.Nil(t, errData)
+
+	resp, ok := obj.(types.HealthResponse)
+	require.True(t, ok)
+	require.NotNil(t, resp.AliveActivities)
+	require.Equal(t, 2, *resp.AliveActivities)
+
+	data, err := json.Marshal(obj)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"alive_activities":2`)
 }

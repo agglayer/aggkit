@@ -10,6 +10,14 @@ import (
 // returns 200, so the status is always "ok"
 const HealthStatusOK = "ok"
 
+const (
+	// CacheKindMemory is CacheInfo.Kind's value when Config.DBPath is empty: the supervised
+	// bridges/activity state lives only in memory and does not survive a restart
+	CacheKindMemory = "memory"
+	// CacheKindDisk is CacheInfo.Kind's value when the store is SQLite-backed (Config.DBPath set)
+	CacheKindDisk = "disk"
+)
+
 // CurrentAPIRevision is the tracker's wire API contract version, returned by GET /health as
 // APIRevision. Bump it by one whenever a change could break an existing client parsing the
 // tracker's responses — a field added/removed/renamed, an enum's value set changed, a new step
@@ -41,7 +49,14 @@ const HealthStatusOK = "ok"
 //     The same revision added start_date (HealthResponse.StartDate), the instant this instance
 //     started, which is the reference point every pending_networks entry's first_seen is
 //     relative to
-const CurrentAPIRevision = 5
+//   - 6: GET /tracker/v1/health gained cache (HealthResponse.Cache), reporting whether the
+//     supervised-bridges/activity persistence backend is in-memory or SQLite-backed and, for the
+//     latter, its current on-disk size, and alive_trackers (HealthResponse.AliveTrackers), the
+//     number of supervised bridges not yet in a terminal state. The same revision added the
+//     optional alive_activities (HealthResponse.AliveActivities), the number of from_addresses
+//     currently supervised by the activity subsystem — omitted, like pending_networks, when the
+//     activity endpoint is not configured (agglayer/aggkit#1870)
+const CurrentAPIRevision = 6
 
 // HealthResponse is the body of GET /tracker/v1/health
 type HealthResponse struct {
@@ -69,6 +84,27 @@ type HealthResponse struct {
 	// PendingNetworks lists the networks discovered after startup that were not activated
 	// because AutoRegisterNewNetworks is disabled, sorted by network id. Omitted when empty
 	PendingNetworks []PendingNetwork `json:"pending_networks,omitempty"`
+	// Cache reports the supervised-bridges registry's persistence backend: in-memory
+	// (CacheKindMemory, the default — Config.DBPath empty) or SQLite-backed on disk
+	// (CacheKindDisk, with its current size). When the activity subsystem is also SQLite-backed
+	// it typically shares this same file (see bridgetracker/db.NewSQLiteActivityStore)
+	Cache CacheInfo `json:"cache"`
+	// AliveTrackers is the number of supervised bridges still being tracked — registered and
+	// not yet in a terminal state (see domain.SupervisedStore.GetTrackerActives)
+	AliveTrackers int `json:"alive_trackers"`
+	// AliveActivities is the number of from_addresses currently supervised by the activity
+	// subsystem (see domain.ActivitySupervisedStore.GetActiveAddresses). Omitted when the
+	// activity endpoint is not configured, mirroring pending_networks/PendingNetworksLister
+	AliveActivities *int `json:"alive_activities,omitempty"`
+}
+
+// CacheInfo describes a persistence backend's current footprint — see HealthResponse.Cache
+type CacheInfo struct {
+	// Kind is CacheKindMemory or CacheKindDisk
+	Kind string `json:"kind"`
+	// SizeBytes is the on-disk size of the SQLite database, in bytes. Omitted when Kind is
+	// CacheKindMemory, which has no disk footprint to report
+	SizeBytes int64 `json:"size_bytes,omitempty"`
 }
 
 // PendingNetwork is a network the bridge service finder saw appear after startup but did not

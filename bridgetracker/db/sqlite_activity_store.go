@@ -255,6 +255,9 @@ type sqliteActivityStore struct {
 // compile-time check: the SQLite adapter fulfils the full port
 var _ domain.ActivityRegistry = (*sqliteActivityStore)(nil)
 
+// compile-time check: the SQLite adapter also reports its own on-disk footprint
+var _ domain.CacheStatsProvider = (*sqliteActivityStore)(nil)
+
 // NewSQLiteActivityStore returns a domain.ActivityRegistry backed by a SQLite database at
 // dbPath, creating the file and running its migrations if it does not exist yet. dbPath may
 // (and typically does) point at the same file bridgetracker/db.NewSQLiteRegistry uses — every
@@ -725,6 +728,18 @@ func (s *sqliteActivityStore) FlushActivity(fromAddress common.Address) {
 	s.countMu.Lock()
 	s.numAddresses -= int(affected)
 	s.countMu.Unlock()
+}
+
+// CacheStats implements domain.CacheStatsProvider: the SQLite file's current size, used by
+// GET /health to report how much space this store's cache is using on disk. dbPath typically
+// (see NewSQLiteActivityStore) points at the same file sqliteRegistry.CacheStats reports on —
+// this is expected, not a bug, when both are wired over one Config.DBPath
+func (s *sqliteActivityStore) CacheStats() (domain.CacheStats, error) {
+	size, err := sqliteFileSize(s.db)
+	if err != nil {
+		return domain.CacheStats{}, fmt.Errorf("reading activity_address cache size: %w", err)
+	}
+	return domain.CacheStats{SizeBytes: size}, nil
 }
 
 // selectAddressRow's sibling for scan_state updates: recordScanWarnings merges warnings into
