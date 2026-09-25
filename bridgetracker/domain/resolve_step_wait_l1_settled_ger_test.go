@@ -140,11 +140,15 @@ func TestWaitL1SettledGERResolverUsesExactEarlierSettlement(t *testing.T) {
 
 	result, err := resolver.Resolve(log.NewLoggerNil(), t.Context(), tracking, 0)
 	require.NoError(t, err)
-	require.Equal(t, settlement.result, result)
+	// Resolve returns a copy of settlement.result (never the exact same pointer -- see its own
+	// doc on not mutating a SettlementSource-owned object in place), equal in every field except
+	// UsedEarlierSettlement, which it sets to true
+	expected := *settlement.result
+	expected.UsedEarlierSettlement = true
+	require.Equal(t, &expected, result)
 	require.Equal(t, exactTxHash, settlement.calledWith)
 	require.NotEqual(t, certFixtureSettlementTx, settlement.calledWith)
 	require.Equal(t, certFixtureBlockNumber, history.earliestCalledWithBlock)
-	require.True(t, settlement.result.UsedEarlierSettlement, "StartDate reads this back to avoid a negative duration")
 }
 
 // TestWaitL1SettledGERResolverStartDatePinnedWhenEarlierSettlementUsed proves that once an
@@ -267,7 +271,11 @@ func TestWaitL1SettledGERResolverResumesSearchFromPersistedProgress(t *testing.T
 
 	result, err := resolver.Resolve(log.NewLoggerNil(), t.Context(), tracking, 2)
 	require.NoError(t, err)
-	require.Equal(t, settlement.result, result)
+	// see TestWaitL1SettledGERResolverUsesExactEarlierSettlement's own note: Resolve never
+	// returns settlement.result's exact pointer, only an equal copy with UsedEarlierSettlement set
+	expected := *settlement.result
+	expected.UsedEarlierSettlement = true
+	require.Equal(t, &expected, result)
 	require.Equal(t, &types.SettlementSearchProgress{NextToBlock: 42}, history.earliestCalledWithResume)
 }
 

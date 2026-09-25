@@ -140,19 +140,24 @@ func (r *WaitL1SettledGERResolver) Resolve(
 		settlementTxHash = *exact
 	}
 
-	settlement, err := r.settlement.SettlementGERUpdate(ctx, tracking.Info(), settlementTxHash)
+	fetched, err := r.settlement.SettlementGERUpdate(ctx, tracking.Info(), settlementTxHash)
 	if err != nil {
 		return nil, fmt.Errorf("settlement GER update: %w", err)
 	}
-	if settlement == nil {
+	if fetched == nil {
 		return nil, ErrStepPending
 	}
+	// copy before mutating: fetched is SettlementSource's own returned value, not necessarily
+	// exclusively owned by this call (nothing in that port's contract rules out the same
+	// instance being returned again, or shared, across calls) -- writing straight onto it would
+	// risk racing a concurrent caller of the same port
+	settlement := *fetched
 	// exact is only non-nil once exactSettlementTxHash actually swapped in an earlier settlement
 	// than cert's own (see its own doc) -- StartDate reads this back to pin the step's own start
 	// to its end instead of the chained (later) value in that case
 	settlement.UsedEarlierSettlement = exact != nil
 	if settlement.L1InfoTreeIndex != nil {
-		return settlement, nil // UpdateL1InfoTreeV2 already gave us the leaf index
+		return &settlement, nil // UpdateL1InfoTreeV2 already gave us the leaf index
 	}
 
 	leafIndex, err := r.gerIndex.L1InfoTreeIndexForGER(ctx, tracking.Info(), settlement.GER)
@@ -160,11 +165,11 @@ func (r *WaitL1SettledGERResolver) Resolve(
 		return nil, fmt.Errorf("L1 info tree index for GER: %w", err)
 	}
 	if leafIndex == nil {
-		return settlement, ErrLeafIndexNotResolved // settlement confirmed, still resolving the leaf
+		return &settlement, ErrLeafIndexNotResolved // settlement confirmed, still resolving the leaf
 	}
 
 	settlement.L1InfoTreeIndex = leafIndex
-	return settlement, nil
+	return &settlement, nil
 }
 
 // StartDate has no deterministic value of its own in the normal path: this step's beginning is
