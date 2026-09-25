@@ -6597,3 +6597,110 @@ func TestRootByLERHandler(t *testing.T) {
 		require.Equal(t, http.StatusServiceUnavailable, w.Code)
 	})
 }
+
+func TestGetSettlementsHandler(t *testing.T) {
+	txHash := common.HexToHash("0xaaaa")
+	newLER := common.HexToHash("0xbbbb")
+	blockHash := common.HexToHash("0xcccc")
+	blockTimestamp := uint64(1684500000)
+
+	t.Run("success, most recent first, with tx_hash/block_timestamp/block_hash", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetVerifiedBatchesPaged(l2NetworkID, DefaultPage, DefaultPageSize).
+			Return([]*l1infotreesync.VerifiedBatchWithBlockHash{
+				{
+					BlockNumber:    200,
+					ExitRoot:       newLER,
+					TxHash:         &txHash,
+					BlockTimestamp: &blockTimestamp,
+					BlockHash:      &blockHash,
+				},
+			}, 1, nil)
+
+		w := performRequest(t, bridgeMocks.router, fmt.Sprintf("%s/settlements", BridgeV1Prefix))
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.SettlementsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, 1, response.Count)
+		require.Len(t, response.Settlements, 1)
+		require.Equal(t, uint64(200), response.Settlements[0].BlockNumber)
+		require.Equal(t, bridgetypes.Hash(newLER.Hex()), response.Settlements[0].NewLocalExitRoot)
+		require.NotNil(t, response.Settlements[0].TxHash)
+		require.Equal(t, bridgetypes.Hash(txHash.Hex()), *response.Settlements[0].TxHash)
+		require.NotNil(t, response.Settlements[0].BlockTimestamp)
+		require.Equal(t, blockTimestamp, *response.Settlements[0].BlockTimestamp)
+		require.NotNil(t, response.Settlements[0].BlockHash)
+		require.Equal(t, bridgetypes.Hash(blockHash.Hex()), *response.Settlements[0].BlockHash)
+	})
+
+	t.Run("legacy row omits tx_hash/block_timestamp/block_hash", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetVerifiedBatchesPaged(l2NetworkID, DefaultPage, DefaultPageSize).
+			Return([]*l1infotreesync.VerifiedBatchWithBlockHash{
+				{BlockNumber: 100, ExitRoot: newLER},
+			}, 1, nil)
+
+		w := performRequest(t, bridgeMocks.router, fmt.Sprintf("%s/settlements", BridgeV1Prefix))
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.SettlementsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Len(t, response.Settlements, 1)
+		require.Nil(t, response.Settlements[0].TxHash)
+		require.Nil(t, response.Settlements[0].BlockTimestamp)
+		require.Nil(t, response.Settlements[0].BlockHash)
+	})
+
+	t.Run("honors pagination params", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetVerifiedBatchesPaged(l2NetworkID, uint32(2), uint32(5)).
+			Return([]*l1infotreesync.VerifiedBatchWithBlockHash{}, 0, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "2")
+		queryParams.Set(pageSizeParam, "5")
+
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/settlements?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("invalid pagination params return 400", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(pageNumberParam, "not-a-number")
+
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/settlements?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("l1infotreesync unavailable returns 503", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.l1InfoTree = nil
+
+		w := performRequest(t, bridgeMocks.router, fmt.Sprintf("%s/settlements", BridgeV1Prefix))
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	})
+
+	t.Run("syncer error returns 500", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetVerifiedBatchesPaged(l2NetworkID, DefaultPage, DefaultPageSize).
+			Return(nil, 0, errors.New(fooErrMsg))
+
+		w := performRequest(t, bridgeMocks.router, fmt.Sprintf("%s/settlements", BridgeV1Prefix))
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+	})
+}

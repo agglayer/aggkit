@@ -1037,6 +1037,60 @@
                 }
             }
         },
+        "/settlements": {
+            "get": {
+                "description": "Returns a paginated list of the L1 transactions that settled a new local exit\nroot for this network, most recent first. tx_hash and block_timestamp are omitted\nfor settlements synced before this endpoint was added, and are never backfilled\nfor those.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settlements"
+                ],
+                "summary": "Get L1 settlement history for this network",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Page number (default 1)",
+                        "name": "page_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Page size (default 20)",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.SettlementsResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/sync-status": {
             "get": {
                 "description": "Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.\nShows if bridge syncers are active and whether they're keeping up with on-chain events.\nAlso reports the l2gersync (injected-GER) sync status when available.",
@@ -2031,6 +2085,55 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/types.SetClaimResponse"
+                    }
+                }
+            }
+        },
+        "types.SettlementResponse": {
+            "description": "A single L1 settlement event for this network's local exit root",
+            "type": "object",
+            "properties": {
+                "block_hash": {
+                    "description": "L1 block's hash, when available (nil if the block table has no recorded hash for it).",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890a"
+                },
+                "block_number": {
+                    "description": "L1 block this settlement was mined in.",
+                    "type": "integer",
+                    "example": 123456
+                },
+                "block_timestamp": {
+                    "description": "L1 block's timestamp, in seconds since the Unix epoch. Omitted for the same reason as\nTxHash.",
+                    "type": "integer",
+                    "example": 1684500000
+                },
+                "new_local_exit_root": {
+                    "description": "Local exit root this settlement produced.",
+                    "type": "string",
+                    "example": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef12345678"
+                },
+                "tx_hash": {
+                    "description": "L1 transaction that settled this certificate. Omitted for settlements synced before this\nfield was tracked (#1817); it is never backfilled for those.",
+                    "type": "string",
+                    "example": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"
+                }
+            }
+        },
+        "types.SettlementsResult": {
+            "description": "Paginated response of L1 certificate settlements for this network",
+            "type": "object",
+            "properties": {
+                "count": {
+                    "description": "Total number of settlements for this network",
+                    "type": "integer",
+                    "example": 10
+                },
+                "settlements": {
+                    "description": "List of settlements, most recent first",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.SettlementResponse"
                     }
                 }
             }

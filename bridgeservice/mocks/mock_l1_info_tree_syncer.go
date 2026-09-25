@@ -728,6 +728,73 @@ func (_c *L1InfoTreeSyncer_GetRollupExitTreeMerkleProof_Call) RunAndReturn(run f
 	return _c
 }
 
+// GetVerifiedBatchesPaged provides a mock function with given fields: rollupID, pageNumber, pageSize
+func (_m *L1InfoTreeSyncer) GetVerifiedBatchesPaged(rollupID uint32, pageNumber uint32, pageSize uint32) ([]*l1infotreesync.VerifiedBatchWithBlockHash, int, error) {
+	ret := _m.Called(rollupID, pageNumber, pageSize)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetVerifiedBatchesPaged")
+	}
+
+	var r0 []*l1infotreesync.VerifiedBatchWithBlockHash
+	var r1 int
+	var r2 error
+	if rf, ok := ret.Get(0).(func(uint32, uint32, uint32) ([]*l1infotreesync.VerifiedBatchWithBlockHash, int, error)); ok {
+		return rf(rollupID, pageNumber, pageSize)
+	}
+	if rf, ok := ret.Get(0).(func(uint32, uint32, uint32) []*l1infotreesync.VerifiedBatchWithBlockHash); ok {
+		r0 = rf(rollupID, pageNumber, pageSize)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*l1infotreesync.VerifiedBatchWithBlockHash)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(uint32, uint32, uint32) int); ok {
+		r1 = rf(rollupID, pageNumber, pageSize)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+
+	if rf, ok := ret.Get(2).(func(uint32, uint32, uint32) error); ok {
+		r2 = rf(rollupID, pageNumber, pageSize)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// L1InfoTreeSyncer_GetVerifiedBatchesPaged_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetVerifiedBatchesPaged'
+type L1InfoTreeSyncer_GetVerifiedBatchesPaged_Call struct {
+	*mock.Call
+}
+
+// GetVerifiedBatchesPaged is a helper method to define mock.On call
+//   - rollupID uint32
+//   - pageNumber uint32
+//   - pageSize uint32
+func (_e *L1InfoTreeSyncer_Expecter) GetVerifiedBatchesPaged(rollupID interface{}, pageNumber interface{}, pageSize interface{}) *L1InfoTreeSyncer_GetVerifiedBatchesPaged_Call {
+	return &L1InfoTreeSyncer_GetVerifiedBatchesPaged_Call{Call: _e.mock.On("GetVerifiedBatchesPaged", rollupID, pageNumber, pageSize)}
+}
+
+func (_c *L1InfoTreeSyncer_GetVerifiedBatchesPaged_Call) Run(run func(rollupID uint32, pageNumber uint32, pageSize uint32)) *L1InfoTreeSyncer_GetVerifiedBatchesPaged_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(uint32), args[1].(uint32), args[2].(uint32))
+	})
+	return _c
+}
+
+func (_c *L1InfoTreeSyncer_GetVerifiedBatchesPaged_Call) Return(_a0 []*l1infotreesync.VerifiedBatchWithBlockHash, _a1 int, _a2 error) *L1InfoTreeSyncer_GetVerifiedBatchesPaged_Call {
+	_c.Call.Return(_a0, _a1, _a2)
+	return _c
+}
+
+func (_c *L1InfoTreeSyncer_GetVerifiedBatchesPaged_Call) RunAndReturn(run func(uint32, uint32, uint32) ([]*l1infotreesync.VerifiedBatchWithBlockHash, int, error)) *L1InfoTreeSyncer_GetVerifiedBatchesPaged_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewL1InfoTreeSyncer creates a new instance of L1InfoTreeSyncer. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewL1InfoTreeSyncer(t interface {

@@ -22,7 +22,8 @@ type BridgeStepPath struct {
 	// *types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult
 	// (StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),
 	// *types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData
-	// (StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER),
+	// (StepCertificatePending), *types.L1SettledGERResult or, while its own backwards search is
+	// still in progress, *types.SettlementSearchProgress (StepWaitL1SettledGER),
 	// *types.L1InfoLeafAvailableResult (StepWaitingL1InfoLeafAvailable) or *types.ClaimResult
 	// (StepClaimed). nil until
 	// the step produces one, and for steps that never do. Most steps only set this once Done,

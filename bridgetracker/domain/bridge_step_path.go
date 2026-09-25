@@ -22,7 +22,8 @@ type BridgeStepPath struct {
 	// *types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult
 	// (StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),
 	// *types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData
-	// (StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER),
+	// (StepCertificatePending), *types.L1SettledGERResult or, while its own backwards search is
+	// still in progress, *types.SettlementSearchProgress (StepWaitL1SettledGER),
 	// *types.L1InfoLeafAvailableResult (StepWaitingL1InfoLeafAvailable) or *types.ClaimResult
 	// (StepClaimed). nil until the step produces one, and for steps
 	// that never do. Most steps only set this once Done, but StepCertificatePending (Status
@@ -34,6 +35,7 @@ type BridgeStepPath struct {
 	ResultPendingInclusion    *types.PendingInclusionResult
 	ResultCertificateData     *types.CertificateData
 	ResultL1SettledGer        *types.L1SettledGERResult
+	ResultSettlementSearch    *types.SettlementSearchProgress
 	ResultL1InfoLeafAvailable *types.L1InfoLeafAvailableResult
 	ResultClaim               *types.ClaimResult
 	// Error carries the error details when Status is types.StepStatusError, or
@@ -57,6 +59,7 @@ func (b *BridgeStepPath) SetResult(result any) {
 	b.ResultPendingInclusion = nil
 	b.ResultCertificateData = nil
 	b.ResultL1SettledGer = nil
+	b.ResultSettlementSearch = nil
 	b.ResultL1InfoLeafAvailable = nil
 	b.ResultClaim = nil
 
@@ -74,6 +77,8 @@ func (b *BridgeStepPath) SetResult(result any) {
 		b.ResultCertificateData = r
 	case *types.L1SettledGERResult:
 		b.ResultL1SettledGer = r
+	case *types.SettlementSearchProgress:
+		b.ResultSettlementSearch = r
 	case *types.L1InfoLeafAvailableResult:
 		b.ResultL1InfoLeafAvailable = r
 	case *types.ClaimResult:
@@ -98,6 +103,8 @@ func (b *BridgeStepPath) Result() any {
 		return b.ResultCertificateData
 	case b.ResultL1SettledGer != nil:
 		return b.ResultL1SettledGer
+	case b.ResultSettlementSearch != nil:
+		return b.ResultSettlementSearch
 	case b.ResultL1InfoLeafAvailable != nil:
 		return b.ResultL1InfoLeafAvailable
 	case b.ResultClaim != nil:

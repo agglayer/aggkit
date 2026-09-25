@@ -311,18 +311,26 @@ func runTracker(
 		},
 		log.WithFields("module", "bridgetracker-engine"),
 		registry,
-		bridgetracker.EngineSources{
-			Bridges: bridgeEvents,
-			Certificates: sources.NewCertificateSource(
-				agglayerClient, finder, rpcClients, log.WithFields("module", "bridgetracker-certificatesource")),
-			GERs:                   gerSource,
-			WaitingGERUpdateSource: gerSource,
-			LERs:                   lerSource,
-			ClaimChecker:           sources.NewClaimChecker(finder, rpcClients),
-			Claims:                 sources.NewClaimSource(finder),
-			Settlement: sources.NewSettlementSource(
-				rpcClients, trackerCfg.L1BlockFinality, trackerCfg.L1GlobalExitRootAddress),
-		},
+		func() bridgetracker.EngineSources {
+			// certificateSource also implements domain.SettlementHistorySource (see issue
+			// #1817), which WaitL1SettledGERResolver needs when the certificate it is tracking
+			// turns out not to be the exact one that first included a bridge
+			certificateSource := sources.NewCertificateSource(
+				agglayerClient, finder, rpcClients, cfg.BridgeServiceFinder.RollupManagerAddr,
+				log.WithFields("module", "bridgetracker-certificatesource"))
+			return bridgetracker.EngineSources{
+				Bridges:                bridgeEvents,
+				Certificates:           certificateSource,
+				GERs:                   gerSource,
+				WaitingGERUpdateSource: gerSource,
+				LERs:                   lerSource,
+				ClaimChecker:           sources.NewClaimChecker(finder, rpcClients),
+				Claims:                 sources.NewClaimSource(finder),
+				Settlement: sources.NewSettlementSource(
+					rpcClients, trackerCfg.L1BlockFinality, trackerCfg.L1GlobalExitRootAddress),
+				SettlementHistory: certificateSource,
+			}
+		}(),
 	)
 	if err != nil {
 		log.Fatalf("failed to create bridge tracker engine: %v", err)

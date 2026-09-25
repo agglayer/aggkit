@@ -107,6 +107,12 @@ type GetRemoveGEREventsParams struct {
 	Limit          *int
 }
 
+// GetSettlementsParams contains parameters for GetSettlements
+type GetSettlementsParams struct {
+	PageNumber *uint32
+	PageSize   *uint32
+}
+
 // HealthCheck performs a health check
 func (c *Client) HealthCheck(ctx context.Context) (*types.HealthCheckResponse, error) {
 	var resp types.HealthCheckResponse
@@ -401,6 +407,29 @@ func (c *Client) GetRootByLER(ctx context.Context, networkID uint32, ler string)
 
 	var resp types.RootByLERResponse
 	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/root-by-ler?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GetSettlements retrieves a paginated list of the L1 events that settled a new local exit root
+// for the network this bridge-service instance is bound to (see issue #1817), most recent first.
+//
+// Uses doRequestAllowNotFound: an older bridge-service instance that predates this endpoint
+// answers HTTP 404 (no such route), surfaced here as ErrNotFound so callers can fall back to
+// reading the same history straight off L1 instead (see bridgetracker/sources.CertificateSource.
+// EarliestSettlementTxCovering).
+func (c *Client) GetSettlements(ctx context.Context, params GetSettlementsParams) (*types.SettlementsResult, error) {
+	query := url.Values{}
+	if params.PageNumber != nil {
+		query.Set("page_number", strconv.FormatUint(uint64(*params.PageNumber), 10))
+	}
+	if params.PageSize != nil {
+		query.Set("page_size", strconv.FormatUint(uint64(*params.PageSize), 10))
+	}
+
+	var resp types.SettlementsResult
+	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/settlements?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

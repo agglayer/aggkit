@@ -11,6 +11,8 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
@@ -23,6 +25,10 @@ import (
 var errFakeCertificateHeaderClient = errors.New("fake certificate header client error")
 
 var testLogger = log.WithFields("module", "certificate_test")
+
+// testRollupManagerAddress is the canned RollupManager contract address tests that don't
+// exercise earliestSettlementTxCoveringViaLogs pass to NewCertificateSource
+var testRollupManagerAddress = common.HexToAddress("0x1011")
 
 // fakeCertificateHeaderClient is a fixed CertificateHeaderClient for tests
 type fakeCertificateHeaderClient struct {
@@ -95,7 +101,7 @@ func TestCertificateSourceCertificateHeaderFor(t *testing.T) {
 		BlockNumber: big.NewInt(12345), BlockHash: testBlockHash,
 	}, nil)
 	expectBlockTimestamp(client)
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), StaticClients{0: client}, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), StaticClients{0: client}, testRollupManagerAddress, testLogger)
 
 	cert, err := source.certificateHeaderFor(t.Context(), certID)
 	require.NoError(t, err)
@@ -123,7 +129,7 @@ func TestCertificateSourceCertificateHeaderForSettlementTxNotMinedYet(t *testing
 	}}
 	client := mocks.NewBaseEthereumClienter(t)
 	client.EXPECT().TransactionReceipt(mock.Anything, settlementTx).Return(nil, ethereum.NotFound)
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), StaticClients{0: client}, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), StaticClients{0: client}, testRollupManagerAddress, testLogger)
 
 	cert, err := source.certificateHeaderFor(t.Context(), certID)
 	require.NoError(t, err)
@@ -133,7 +139,7 @@ func TestCertificateSourceCertificateHeaderForSettlementTxNotMinedYet(t *testing
 
 func TestCertificateSourceCertificateHeaderForTransientError(t *testing.T) {
 	fake := &fakeCertificateHeaderClient{err: errFakeCertificateHeaderClient}
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testRollupManagerAddress, testLogger)
 
 	_, err := source.certificateHeaderFor(t.Context(), common.HexToHash("0x0f"))
 	require.ErrorIs(t, err, errFakeCertificateHeaderClient)
@@ -147,11 +153,40 @@ func TestCertificateIDForSettledCovers(t *testing.T) {
 	fake := &fakeCertificateHeaderClient{
 		settled: &agglayertypes.CertificateHeader{CertificateID: certID, NewLocalExitRoot: ler},
 	}
-	source := NewCertificateSource(fake, fakeRootIndexes{ler.Hex(): 7}.start(t), nil, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{ler.Hex(): 7}.start(t), nil, testRollupManagerAddress, testLogger)
 
 	got, err := source.certificateIDFor(t.Context(), bridge)
 	require.NoError(t, err)
 	require.Equal(t, &certID, got)
+}
+
+// TestCoversTreatsEmptyLERAsNotCovering proves Covers recognizes the network's default initial
+// LER (bridgesynctypes.EmptyLER) as covering nothing, without ever asking the bridge service for
+// its root index: that root is never written to the local exit tree's root table (bridgesync's
+// processor special-cases it the same way), so asking would 404 on every retry and leave a
+// bridge whose first-ever covering certificate has this as its PreviousLER stuck at
+// WaitL1SettledGER forever (issue #1817). finder/clients are both nil -- Covers must never touch
+// them for this LER
+func TestCoversTreatsEmptyLERAsNotCovering(t *testing.T) {
+	bridge := l2ToL1Bridge()
+	source := NewCertificateSource(nil, nil, nil, testRollupManagerAddress, testLogger)
+
+	covers, err := source.Covers(t.Context(), bridge, bridgesynctypes.EmptyLER)
+	require.NoError(t, err)
+	require.False(t, covers)
+}
+
+// TestCoversTreatsRawZeroHashAsNotCovering proves the same defensive short-circuit applies to
+// the raw zero hash (aggkitcommon.ZeroHash), not just bridgesynctypes.EmptyLER -- a network's
+// configured (non-default) initial LER is not covered by either check, a known gap documented on
+// Covers itself, but the zero hash at least is never mistaken for a real, unsynced root
+func TestCoversTreatsRawZeroHashAsNotCovering(t *testing.T) {
+	bridge := l2ToL1Bridge()
+	source := NewCertificateSource(nil, nil, nil, testRollupManagerAddress, testLogger)
+
+	covers, err := source.Covers(t.Context(), bridge, aggkitcommon.ZeroHash)
+	require.NoError(t, err)
+	require.False(t, covers)
 }
 
 func TestCertificateIDForSettledNotCoveredButPendingSurfaced(t *testing.T) {
@@ -166,7 +201,7 @@ func TestCertificateIDForSettledNotCoveredButPendingSurfaced(t *testing.T) {
 	}
 	// pending's root deliberately does not cover bridge (index 3 < DepositCount 7) either: it
 	// must still be surfaced (see certificateIDFor's doc) since it is not settled/terminal
-	source := NewCertificateSource(fake, fakeRootIndexes{settledLER.Hex(): 5, pendingLER.Hex(): 3}.start(t), nil, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{settledLER.Hex(): 5, pendingLER.Hex(): 3}.start(t), nil, testRollupManagerAddress, testLogger)
 
 	got, err := source.certificateIDFor(t.Context(), bridge)
 	require.NoError(t, err)
@@ -182,7 +217,7 @@ func TestCertificateIDForSettledNotCoveredNoPending(t *testing.T) {
 	}
 	// A settled-but-non-covering certificate must never be returned: CertificatePendingResolver
 	// treats Settled as "done", so this would make the tracker think the step completed early
-	source := NewCertificateSource(fake, fakeRootIndexes{settledLER.Hex(): 5}.start(t), nil, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{settledLER.Hex(): 5}.start(t), nil, testRollupManagerAddress, testLogger)
 
 	got, err := source.certificateIDFor(t.Context(), bridge)
 	require.NoError(t, err)
@@ -192,7 +227,7 @@ func TestCertificateIDForSettledNotCoveredNoPending(t *testing.T) {
 func TestCertificateIDForNoSettledNoPending(t *testing.T) {
 	bridge := l2ToL1Bridge()
 	fake := &fakeCertificateHeaderClient{}
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testRollupManagerAddress, testLogger)
 
 	got, err := source.certificateIDFor(t.Context(), bridge)
 	require.NoError(t, err)
@@ -207,7 +242,7 @@ func TestCertificateIDForNoSettledPendingSurfaced(t *testing.T) {
 	fake := &fakeCertificateHeaderClient{
 		pending: &agglayertypes.CertificateHeader{CertificateID: pendingCertID, NewLocalExitRoot: pendingLER},
 	}
-	source := NewCertificateSource(fake, fakeRootIndexes{pendingLER.Hex(): 7}.start(t), nil, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{pendingLER.Hex(): 7}.start(t), nil, testRollupManagerAddress, testLogger)
 
 	got, err := source.certificateIDFor(t.Context(), bridge)
 	require.NoError(t, err)
@@ -217,7 +252,7 @@ func TestCertificateIDForNoSettledPendingSurfaced(t *testing.T) {
 func TestCertificateIDForSettledErrorPropagates(t *testing.T) {
 	bridge := l2ToL1Bridge()
 	fake := &fakeCertificateHeaderClient{settledErr: errFakeCertificateHeaderClient}
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testRollupManagerAddress, testLogger)
 
 	_, err := source.certificateIDFor(t.Context(), bridge)
 	require.ErrorIs(t, err, errFakeCertificateHeaderClient)
@@ -226,7 +261,7 @@ func TestCertificateIDForSettledErrorPropagates(t *testing.T) {
 func TestCertificateIDForPendingErrorPropagates(t *testing.T) {
 	bridge := l2ToL1Bridge()
 	fake := &fakeCertificateHeaderClient{pendingErr: errFakeCertificateHeaderClient}
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testRollupManagerAddress, testLogger)
 
 	_, err := source.certificateIDFor(t.Context(), bridge)
 	require.ErrorIs(t, err, errFakeCertificateHeaderClient)
@@ -241,7 +276,7 @@ func TestCertificateIDForRootNotSyncedYetIsTransient(t *testing.T) {
 	}
 	// the bridge service on bridge.NetworkID has not synced settledLER yet: retried by the
 	// engine, not treated as "not covered"
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testRollupManagerAddress, testLogger)
 
 	_, err := source.certificateIDFor(t.Context(), bridge)
 	require.Error(t, err)
@@ -250,7 +285,7 @@ func TestCertificateIDForRootNotSyncedYetIsTransient(t *testing.T) {
 func TestCertificateForNotCovered(t *testing.T) {
 	bridge := l2ToL1Bridge()
 	fake := &fakeCertificateHeaderClient{}
-	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{}.start(t), nil, testRollupManagerAddress, testLogger)
 
 	cert, err := source.CertificateFor(t.Context(), bridge)
 	require.NoError(t, err)
@@ -276,7 +311,7 @@ func TestCertificateForCovered(t *testing.T) {
 		BlockNumber: big.NewInt(12345), BlockHash: testBlockHash,
 	}, nil)
 	expectBlockTimestamp(client)
-	source := NewCertificateSource(fake, fakeRootIndexes{ler.Hex(): 7}.start(t), StaticClients{0: client}, testLogger)
+	source := NewCertificateSource(fake, fakeRootIndexes{ler.Hex(): 7}.start(t), StaticClients{0: client}, testRollupManagerAddress, testLogger)
 
 	cert, err := source.CertificateFor(t.Context(), bridge)
 	require.NoError(t, err)

@@ -395,6 +395,17 @@ func (s *L1InfoTreeSync) GetVerifiedBatchesInBlockRange(fromBlock, toBlock uint6
 	return s.processor.GetVerifiedBatchesInBlockRange(fromBlock, toBlock)
 }
 
+// GetVerifiedBatchesPaged returns a page of rollupID's verify_batches rows, most recent
+// settlement first, and the total row count. See processor.GetVerifiedBatchesPaged.
+func (s *L1InfoTreeSync) GetVerifiedBatchesPaged(
+	rollupID, pageNumber, pageSize uint32,
+) ([]*VerifiedBatchWithBlockHash, int, error) {
+	if s.processor.isHalted() {
+		return nil, 0, sync.ErrInconsistentState
+	}
+	return s.processor.GetVerifiedBatchesPaged(rollupID, pageNumber, pageSize)
+}
+
 func (s *L1InfoTreeSync) GetFirstL1InfoWithRollupExitRoot(rollupExitRoot common.Hash) (*L1InfoTreeLeaf, error) {
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState

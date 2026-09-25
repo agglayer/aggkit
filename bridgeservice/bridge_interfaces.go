@@ -70,4 +70,7 @@ type L1InfoTreeSyncer interface {
 	GetFirstVerifiedBatches(rollupID uint32) (*l1infotreesync.VerifyBatches, error)
 	GetFirstVerifiedBatchesAfterBlock(rollupID uint32, blockNum uint64) (*l1infotreesync.VerifyBatches, error)
 	GetFirstL1InfoWithRollupExitRoot(rollupExitRoot common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
+	GetVerifiedBatchesPaged(
+		rollupID, pageNumber, pageSize uint32,
+	) ([]*l1infotreesync.VerifiedBatchWithBlockHash, int, error)
 }

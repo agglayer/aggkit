@@ -688,6 +688,48 @@ definitions:
           $ref: '#/definitions/types.SetClaimResponse'
         type: array
     type: object
+  types.SettlementResponse:
+    description: A single L1 settlement event for this network's local exit root
+    properties:
+      block_hash:
+        description: L1 block's hash, when available (nil if the block table has no
+          recorded hash for it).
+        example: 0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890a
+        type: string
+      block_number:
+        description: L1 block this settlement was mined in.
+        example: 123456
+        type: integer
+      block_timestamp:
+        description: |-
+          L1 block's timestamp, in seconds since the Unix epoch. Omitted for the same reason as
+          TxHash.
+        example: 1684500000
+        type: integer
+      new_local_exit_root:
+        description: Local exit root this settlement produced.
+        example: 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef12345678
+        type: string
+      tx_hash:
+        description: |-
+          L1 transaction that settled this certificate. Omitted for settlements synced before this
+          field was tracked (#1817); it is never backfilled for those.
+        example: 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd
+        type: string
+    type: object
+  types.SettlementsResult:
+    description: Paginated response of L1 certificate settlements for this network
+    properties:
+      count:
+        description: Total number of settlements for this network
+        example: 10
+        type: integer
+      settlements:
+        description: List of settlements, most recent first
+        items:
+          $ref: '#/definitions/types.SettlementResponse'
+        type: array
+    type: object
   types.SyncComponentConfig:
     description: Public configuration of a single syncer component
     properties:
@@ -1546,6 +1588,46 @@ paths:
       summary: Get set claims
       tags:
       - set-claims
+  /settlements:
+    get:
+      description: |-
+        Returns a paginated list of the L1 transactions that settled a new local exit
+        root for this network, most recent first. tx_hash and block_timestamp are omitted
+        for settlements synced before this endpoint was added, and are never backfilled
+        for those.
+      parameters:
+      - description: Page number (default 1)
+        format: int32
+        in: query
+        name: page_number
+        type: integer
+      - description: Page size (default 20)
+        format: int32
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.SettlementsResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get L1 settlement history for this network
+      tags:
+      - settlements
   /sync-status:
     get:
       description: |-

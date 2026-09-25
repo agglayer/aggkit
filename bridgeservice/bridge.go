@@ -238,6 +238,7 @@ func (b *BridgeService) RegisterRoutes(router gin.IRouter) {
 		bridgeGroup.GET("/claim-candidates", b.GetClaimCandidatesHandler)
 		bridgeGroup.GET("/root-by-ler", b.RootByLERHandler)
 		bridgeGroup.GET("/config", b.GetPublicConfigHandler)
+		bridgeGroup.GET("/settlements", b.GetSettlementsHandler)
 
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -2726,6 +2727,83 @@ func (b *BridgeService) RootByLERHandler(c *gin.Context) {
 		Index:         root.Index,
 		BlockNum:      root.BlockNum,
 		BlockPosition: root.BlockPosition,
+	})
+}
+
+// GetSettlementsHandler returns a paginated list of the L1 events that settled a new local exit
+// root for this network (RollupManager's VerifyBatchesTrustedAggregator), most recent first.
+// This lets a caller walk the network's settlement history to find the exact settlement that
+// first covered a given bridge, instead of relying on agglayer reporting "the latest settled
+// certificate" (issue #1817).
+//
+// @Summary Get L1 settlement history for this network
+// @Description Returns a paginated list of the L1 transactions that settled a new local exit
+// @Description root for this network, most recent first. tx_hash and block_timestamp are omitted
+// @Description for settlements synced before this endpoint was added, and are never backfilled
+// @Description for those.
+// @Tags settlements
+// @Param page_number query uint32 false "Page number (default 1)"
+// @Param page_size query uint32 false "Page size (default 20)"
+// @Produce json
+// @Success 200 {object} types.SettlementsResult
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Failure 503 {object} types.ErrorResponse "Service Unavailable"
+// @Router /settlements [get]
+func (b *BridgeService) GetSettlementsHandler(c *gin.Context) {
+	b.logger.Debugf("GetSettlements request received (page number=%s, page size=%s)",
+		c.Query(pageNumberParam), c.Query(pageSizeParam))
+
+	statusCode := http.StatusOK
+	startTime := time.Now()
+	defer func() {
+		reportMetrics(metrics.GetSettlementsReq, statusCode, startTime)
+	}()
+
+	_, cancel, pageNumber, pageSize, err := b.setupRequest(c)
+	if err != nil {
+		b.logger.Warnf(errSetupRequest, err)
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
+	defer cancel()
+
+	if b.l1InfoTree == nil {
+		statusCode = http.StatusServiceUnavailable
+		c.JSON(statusCode, gin.H{"error": "l1infotreesync syncer is not available"})
+		return
+	}
+
+	verified, count, err := b.l1InfoTree.GetVerifiedBatchesPaged(b.networkID, pageNumber, pageSize)
+	if err != nil {
+		statusCode = b.respondSyncerError(c, err,
+			fmt.Sprintf("settlements for network id %d are not available yet, retry later: %s", b.networkID, err),
+			fmt.Sprintf("failed to get settlements for network id %d, error: %s", b.networkID, err))
+		return
+	}
+
+	settlements := make([]*types.SettlementResponse, 0, len(verified))
+	for _, v := range verified {
+		settlement := &types.SettlementResponse{
+			NewLocalExitRoot: types.Hash(v.ExitRoot.Hex()),
+			BlockNumber:      v.BlockNumber,
+			BlockTimestamp:   v.BlockTimestamp,
+		}
+		if v.TxHash != nil {
+			txHash := types.Hash(v.TxHash.Hex())
+			settlement.TxHash = &txHash
+		}
+		if v.BlockHash != nil {
+			blockHash := types.Hash(v.BlockHash.Hex())
+			settlement.BlockHash = &blockHash
+		}
+		settlements = append(settlements, settlement)
+	}
+
+	c.JSON(statusCode, types.SettlementsResult{
+		Settlements: settlements,
+		Count:       count,
 	})
 }
 
