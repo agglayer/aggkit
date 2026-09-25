@@ -129,3 +129,23 @@ type Triggerable interface {
 	// left for the next regular poll tick like before
 	Triggers() <-chan TrackingID
 }
+
+// CacheStats is the on-disk footprint of a SupervisedStore/ActivitySupervisedStore
+// implementation backed by a real cache file — see CacheStatsProvider
+type CacheStats struct {
+	// SizeBytes is the current size, in bytes, of the SQLite database file backing the store
+	SizeBytes int64
+}
+
+// CacheStatsProvider is an optional capability of a SupervisedStore/ActivitySupervisedStore
+// implementation: reporting how large its on-disk cache currently is. Only the SQLite-backed
+// adapters (see bridgetracker/db.sqliteRegistry/sqliteActivityStore) implement it — the
+// in-memory adapters keep no on-disk cache at all, so GET /health (see api.healthCommand)
+// treats "does not implement this" as "in-memory, nothing to report". Mirrors the
+// optional-capability pattern of Triggerable/ActivityTriggerable.
+type CacheStatsProvider interface {
+	// CacheStats returns the current on-disk size of the SQLite database backing this store,
+	// computed via PRAGMA page_count * page_size — the adapters do not otherwise retain the
+	// file path passed to their constructor (see NewSQLiteRegistry/NewSQLiteActivityStore)
+	CacheStats() (CacheStats, error)
+}

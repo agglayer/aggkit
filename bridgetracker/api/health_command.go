@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/bridgeservicefinder"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/gin-gonic/gin"
 )
 
@@ -19,8 +21,9 @@ type PendingNetworksLister interface {
 	PendingNetworks() []bridgeservicefinder.PendingNetwork
 }
 
-// healthCommand builds the health-check response: instance identity and build information.
-// It has no side effects (it does not touch the supervised registry).
+// healthCommand builds the health-check response: instance identity, build information, and a
+// read-only snapshot of the supervised registry/activity subsystem's size (cache footprint,
+// alive counts). It never writes to either.
 type healthCommand struct {
 	instanceID string
 	// startDate is when this instance started, captured once at construction time alongside
@@ -28,14 +31,23 @@ type healthCommand struct {
 	startDate     time.Time
 	configSHA1    string
 	pendingLister PendingNetworksLister
+
+	// supervised is read for AliveTrackers/Cache (see NewAPI); nil only in tests that don't
+	// exercise those fields
+	supervised domain.SupervisedStore
+	// activity is read for AliveActivities; nil when the activity endpoint is not configured
+	// (see NewAPI's doc), in which case AliveActivities is omitted entirely
+	activity domain.ActivityRegistry
+	logger   aggkitcommon.Logger
 }
 
 // Execute implements command
 //
 // @Summary Health check
-// @Description Returns the health status, instance identity and build information of the
-// @Description running instance. Useful as liveness/readiness probe and to check which
-// @Description build/configuration runs on each instance behind the proxy
+// @Description Returns the health status, instance identity, build information and a snapshot
+// @Description of the supervised registry/activity subsystem's size (cache footprint, alive
+// @Description counts) of the running instance. Useful as liveness/readiness probe and to check
+// @Description which build/configuration runs on each instance behind the proxy
 // @Tags bridge-tracker
 // @Produce json
 // @Success 200 {object} types.HealthResponse "Health status and version information"
@@ -48,12 +60,53 @@ func (cmd *healthCommand) Execute(_ *gin.Context) (int, any, *types.ErrorData) {
 		StartDate:   cmd.startDate,
 		ConfigSHA1:  cmd.configSHA1,
 		Version:     types.NewVersionInfo(),
+		Cache:       cmd.cacheInfo(),
 	}
 	if cmd.pendingLister != nil {
 		resp.PendingNetworks = toPendingNetworks(cmd.pendingLister.PendingNetworks())
 	}
+	if cmd.supervised != nil {
+		if active, err := cmd.supervised.GetTrackerActives(nil); err != nil {
+			cmd.warnf("bridgetracker: health check counting active trackers: %v", err)
+		} else {
+			resp.AliveTrackers = len(active)
+		}
+	}
+	if cmd.activity != nil {
+		if addrs, err := cmd.activity.GetActiveAddresses(); err != nil {
+			cmd.warnf("bridgetracker: health check counting active activity addresses: %v", err)
+		} else {
+			numActive := len(addrs)
+			resp.AliveActivities = &numActive
+		}
+	}
 
 	return http.StatusOK, resp, nil
+}
+
+// cacheInfo reports the supervised registry's persistence backend: CacheKindDisk with its
+// current size when supervised implements domain.CacheStatsProvider (the SQLite-backed
+// adapter), CacheKindMemory otherwise — including when supervised is nil, which should not
+// happen outside tests (see NewAPI, always given at least an in-memory registry)
+func (cmd *healthCommand) cacheInfo() types.CacheInfo {
+	provider, ok := cmd.supervised.(domain.CacheStatsProvider)
+	if !ok {
+		return types.CacheInfo{Kind: types.CacheKindMemory}
+	}
+	stats, err := provider.CacheStats()
+	if err != nil {
+		cmd.warnf("bridgetracker: health check reading cache size: %v", err)
+		return types.CacheInfo{Kind: types.CacheKindDisk}
+	}
+	return types.CacheInfo{Kind: types.CacheKindDisk, SizeBytes: stats.SizeBytes}
+}
+
+// warnf logs through cmd.logger if one was wired (see NewAPI); a no-op otherwise, so tests that
+// exercise an error path without setting logger don't need a fake one just to avoid a nil panic
+func (cmd *healthCommand) warnf(format string, args ...any) {
+	if cmd.logger != nil {
+		cmd.logger.Warnf(format, args...)
+	}
 }
 
 // toPendingNetworks maps the finder's pending records onto the health response's own type,

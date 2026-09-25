@@ -593,3 +593,21 @@ func TestSQLiteRegistryUpdateMethodsPropagateRealDBErrors(t *testing.T) {
 	require.Error(t, err)
 	require.NotErrorIs(t, err, domain.ErrTrackingNotFound)
 }
+
+// TestSQLiteRegistryCacheStatsReportsNonZeroSize pins that CacheStats (see
+// domain.CacheStatsProvider, used by GET /health) returns the SQLite file's actual on-disk size
+// rather than a hardcoded/zero value: writing a row must grow it
+func TestSQLiteRegistryCacheStatsReportsNonZeroSize(t *testing.T) {
+	r := newTestSQLiteRegistry(t)
+
+	before, err := r.CacheStats()
+	require.NoError(t, err)
+	require.Positive(t, before.SizeBytes, "a freshly migrated SQLite file already has a non-zero page count")
+
+	_, err = r.Get(domain.TrackingID{NetworkID: 1, TxHash: testHash}, true)
+	require.NoError(t, err)
+
+	after, err := r.CacheStats()
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, after.SizeBytes, before.SizeBytes)
+}

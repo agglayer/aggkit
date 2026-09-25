@@ -114,6 +114,9 @@ func NewAPI(
 			startDate:     time.Now().UTC(),
 			configSHA1:    configSHA1,
 			pendingLister: pendingLister,
+			supervised:    supervised,
+			activity:      activity,
+			logger:        logger,
 		},
 		wsHandler: newWSHandler(logger, supervised, cors),
 	}

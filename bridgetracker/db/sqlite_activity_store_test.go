@@ -1054,3 +1054,23 @@ func TestSQLiteActivityStorePruneIdleSkipsAddressWithWaiter(t *testing.T) {
 	_, err = store.selectAddressRow(testFromAddress.Hex())
 	require.NoError(t, err, "the row must still exist")
 }
+
+// TestSQLiteActivityStoreCacheStatsMatchesSharedRegistryFile pins that CacheStats (see
+// domain.CacheStatsProvider, used by GET /health) returns a non-zero size and, since
+// newTestSQLiteActivityStore wires the activity store over the very same file as its supervised
+// sqliteRegistry (the common production setup, see NewSQLiteActivityStore's doc), that both
+// report the identical size rather than double-counting or diverging
+func TestSQLiteActivityStoreCacheStatsMatchesSharedRegistryFile(t *testing.T) {
+	store := newTestSQLiteActivityStore(t, &fakeActivityScanner{}, &fakeActivityClaims{})
+
+	activityStats, err := store.CacheStats()
+	require.NoError(t, err)
+	require.Positive(t, activityStats.SizeBytes)
+
+	registry, ok := store.supervised.(*sqliteRegistry)
+	require.True(t, ok)
+	registryStats, err := registry.CacheStats()
+	require.NoError(t, err)
+
+	require.Equal(t, registryStats.SizeBytes, activityStats.SizeBytes)
+}
