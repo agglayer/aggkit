@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xPolygon/zkevm-ethtx-manager/config/types"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
@@ -248,6 +249,82 @@ func TestConfigValidateRejectsL1DestinationClaimerWhenL2ToLxDisabled(t *testing.
 
 	err := cfg.Validate()
 	require.ErrorContains(t, err, "AutoClaim.L2ToLxBridgeDetector.Enabled must be true")
+}
+
+func TestApplyDefaultsFillsUnsetEthTxManagerFields(t *testing.T) {
+	cfg := Config{
+		Claimers: []ClaimerConfig{
+			{
+				ID: "l2-a",
+				EthTxManager: ethtxmanager.Config{
+					StoragePath: "/tmp/autoclaim-ethtxmanager.sqlite",
+				},
+			},
+		},
+	}
+
+	cfg.ApplyDefaults()
+
+	claimer := cfg.Claimers[0].EthTxManager
+	require.Equal(t, DefaultEthTxManagerFrequencyToMonitorTxs, claimer.FrequencyToMonitorTxs.Duration)
+	require.Equal(t, DefaultEthTxManagerWaitTxToBeMined, claimer.WaitTxToBeMined.Duration)
+	require.Equal(t, DefaultEthTxManagerWaitReceiptMaxTime, claimer.GetReceiptMaxTime.Duration)
+	require.Equal(t, DefaultEthTxManagerWaitReceiptCheckInterval, claimer.GetReceiptWaitInterval.Duration)
+	require.InDelta(t, DefaultEthTxManagerGasPriceMarginFactor, claimer.GasPriceMarginFactor, 0)
+	require.Equal(t, uint64(DefaultEthTxManagerSafeStatusL1NumberOfBlocks), claimer.SafeStatusL1NumberOfBlocks)
+	require.Equal(t, uint64(DefaultEthTxManagerFinalizedStatusL1NumberOfBlocks), claimer.FinalizedStatusL1NumberOfBlocks)
+	require.Equal(t, uint64(DefaultEthTxManagerEstimateGasMaxRetries), claimer.EstimateGasMaxRetries)
+	// StoragePath is not a default-applied field: it must be preserved untouched.
+	require.Equal(t, "/tmp/autoclaim-ethtxmanager.sqlite", claimer.StoragePath)
+}
+
+func TestApplyDefaultsPreservesExplicitlySetEthTxManagerFields(t *testing.T) {
+	explicit := ethtxmanager.Config{
+		StoragePath:                     "/tmp/autoclaim-ethtxmanager.sqlite",
+		FrequencyToMonitorTxs:           types.NewDuration(5 * time.Second),
+		WaitTxToBeMined:                 types.NewDuration(9 * time.Second),
+		GetReceiptMaxTime:               types.NewDuration(3 * time.Second),
+		GetReceiptWaitInterval:          types.NewDuration(4 * time.Second),
+		GasPriceMarginFactor:            1.5,
+		SafeStatusL1NumberOfBlocks:      7,
+		FinalizedStatusL1NumberOfBlocks: 20,
+		EstimateGasMaxRetries:           3,
+	}
+	cfg := Config{
+		Claimers: []ClaimerConfig{{ID: "l2-a", EthTxManager: explicit}},
+	}
+
+	cfg.ApplyDefaults()
+
+	require.Equal(t, explicit, cfg.Claimers[0].EthTxManager)
+}
+
+func TestApplyDefaultsCoercesNonPositiveGasPriceMarginFactor(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		value float64
+	}{
+		{name: "zero", value: 0},
+		{name: "negative", value: -1.2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{
+				Claimers: []ClaimerConfig{
+					{
+						ID: "l2-a",
+						EthTxManager: ethtxmanager.Config{
+							StoragePath:          "/tmp/autoclaim-ethtxmanager.sqlite",
+							GasPriceMarginFactor: tt.value,
+						},
+					},
+				},
+			}
+
+			cfg.ApplyDefaults()
+
+			require.InDelta(t, DefaultEthTxManagerGasPriceMarginFactor, cfg.Claimers[0].EthTxManager.GasPriceMarginFactor, 0)
+		})
+	}
 }
 
 func validConfig() Config {

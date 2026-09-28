@@ -123,8 +123,8 @@ EnableAggOracleCommittee = false
 		[AggOracle.EVMSender.EthTxManager]
 				FrequencyToMonitorTxs = "1s"
 				WaitTxToBeMined = "2s"
-				GetReceiptMaxTime = "250ms"
-				GetReceiptWaitInterval = "1s"
+				WaitReceiptMaxTime = "250ms"
+				WaitReceiptCheckInterval = "1s"
 				PrivateKeys = [
 					{Method =  "local", Path = "/app/keystore/aggoracle.keystore", Password = "testonly"},
 				]

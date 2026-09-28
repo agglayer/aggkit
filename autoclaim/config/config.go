@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
@@ -14,6 +15,23 @@ import (
 // detector can ever route a request to such a claimer, since the L1ToL2 detector only discovers
 // L1-origin bridges (which always target an L2 destination).
 const l1DestinationNetworkID = uint32(0)
+
+// Default values applied to every claimer's EthTxManager by ApplyDefaults, mirroring aggkit's own
+// AggOracle.EVMSender.EthTxManager opinion (config/default.go). TOML array-of-tables elements like
+// AutoClaim.Claimers get no per-element defaults from the config loader, so without these an
+// operator who omits the EthTxManager block gets a zero-value one: FrequencyToMonitorTxs=0 spins
+// the tx-monitor loop with no delay, and GasPriceMarginFactor=0 zeroes every tx's gas price
+// ("transaction underpriced").
+const (
+	DefaultEthTxManagerFrequencyToMonitorTxs           = 1 * time.Second
+	DefaultEthTxManagerWaitTxToBeMined                 = 2 * time.Second
+	DefaultEthTxManagerWaitReceiptMaxTime              = 250 * time.Millisecond
+	DefaultEthTxManagerWaitReceiptCheckInterval        = 1 * time.Second
+	DefaultEthTxManagerGasPriceMarginFactor            = 1
+	DefaultEthTxManagerSafeStatusL1NumberOfBlocks      = 5
+	DefaultEthTxManagerFinalizedStatusL1NumberOfBlocks = 10
+	DefaultEthTxManagerEstimateGasMaxRetries           = 1
+)
 
 // NetworkType identifies the destination chain family a claimer targets.
 type NetworkType string
@@ -112,6 +130,54 @@ type ClaimerConfig struct {
 	RetryAfter   cfgtypes.Duration   `mapstructure:"RetryAfter"`
 	MaxRetries   uint64              `mapstructure:"MaxRetries"`
 	EthTxManager ethtxmanager.Config `mapstructure:"EthTxManager"`
+}
+
+// ApplyDefaults fills every claimer's EthTxManager fields left at their Go zero value with
+// aggkit's own established EthTxManager opinion (see the Default* constants above). It never
+// overrides a value the operator did set. Callers should invoke it once, right after unmarshalling
+// and before Validate.
+func (c *Config) ApplyDefaults() {
+	for i := range c.Claimers {
+		applyEthTxManagerDefaults(&c.Claimers[i].EthTxManager)
+	}
+}
+
+// applyEthTxManagerDefaults fills cfg's zero-valued fields in place.
+//
+// GasPriceMarginFactor, SafeStatusL1NumberOfBlocks, FinalizedStatusL1NumberOfBlocks and
+// EstimateGasMaxRetries are also documented by the vendored zkevm-ethtx-manager module as having a
+// meaningful zero value (respectively: "never adjust price", "use the network's own safe/finalized
+// tag", "retry forever"). aggkit's own AggOracle.EVMSender.EthTxManager already overrides all four
+// of those module defaults with a fixed opinion (config/default.go), so this mirrors that same
+// override here for consistency across every EthTxManager instance in the binary, rather than
+// leaving claimers as the only place that falls through to the vendored zero-value behavior.
+func applyEthTxManagerDefaults(cfg *ethtxmanager.Config) {
+	if cfg.FrequencyToMonitorTxs.Duration == 0 {
+		cfg.FrequencyToMonitorTxs.Duration = DefaultEthTxManagerFrequencyToMonitorTxs
+	}
+	if cfg.WaitTxToBeMined.Duration == 0 {
+		cfg.WaitTxToBeMined.Duration = DefaultEthTxManagerWaitTxToBeMined
+	}
+	if cfg.GetReceiptMaxTime.Duration == 0 {
+		cfg.GetReceiptMaxTime.Duration = DefaultEthTxManagerWaitReceiptMaxTime
+	}
+	if cfg.GetReceiptWaitInterval.Duration == 0 {
+		cfg.GetReceiptWaitInterval.Duration = DefaultEthTxManagerWaitReceiptCheckInterval
+	}
+	// A zero (or negative) GasPriceMarginFactor is never a legitimate request: it means "multiply
+	// the suggested gas price by zero", i.e. never send a valid tx.
+	if cfg.GasPriceMarginFactor <= 0 {
+		cfg.GasPriceMarginFactor = DefaultEthTxManagerGasPriceMarginFactor
+	}
+	if cfg.SafeStatusL1NumberOfBlocks == 0 {
+		cfg.SafeStatusL1NumberOfBlocks = DefaultEthTxManagerSafeStatusL1NumberOfBlocks
+	}
+	if cfg.FinalizedStatusL1NumberOfBlocks == 0 {
+		cfg.FinalizedStatusL1NumberOfBlocks = DefaultEthTxManagerFinalizedStatusL1NumberOfBlocks
+	}
+	if cfg.EstimateGasMaxRetries == 0 {
+		cfg.EstimateGasMaxRetries = DefaultEthTxManagerEstimateGasMaxRetries
+	}
 }
 
 // PolicyConfig configures named policy behavior.
