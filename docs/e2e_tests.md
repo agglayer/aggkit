@@ -144,6 +144,26 @@ always-`200` contract, same `sync_status`). See [Bridge service component](./bri
 AGGKIT_E2E_ENV=anvil-2chains make test-e2e TEST_RUN='^TestBridgeServiceHealthSyncStatus$'
 ```
 
+### Bridge service sync status for all syncers
+
+`TestBridgeServiceSyncStatusAllSyncers` (`test/e2e/sync_status_all_syncers_test.go`) exercises issue #1861 on
+`anvil-2chains`: for `aggkit-001`'s bridge service (and, since this env is multi-chain, the L2B bridge service too),
+it reads `GET /bridge/v1/config` to learn which of l1infotreesync, bridge L1, bridge L2 and l2gersync are
+configured, hardcodes that both claim syncers are always present (`/config` has no field for them), and polls
+`GET /bridge/v1/sync-status` until every entry matches that running/absent shape with no `error`. It then sends an
+L1 -> L2A bridge (without claiming) to force new blocks on the shared L1 chain and on L2A, and asserts that
+`l1_info_tree_info` and `claim_l1_info`'s `last_processed_block` strictly advance on both bridge services (both
+track L1), and that L2A's `claim_l2_info` does too (its own chain gets the new block); L2B's `claim_l2_info` is only
+asserted to never go backwards, since nothing in this run mines a block on L2B's own chain. Finally it polls
+`GET /health` until its `details` agree with the settled `/sync-status` entries' `is_active`/`is_halted` and asserts
+`sync_status` is never `"error"`. The halted path is covered by `TestBridgeServiceReportsL1InfoTreeHalt`
+(`l1infotreesync` package) and the `bridgeservice` unit test matrix, not here. See
+[Bridge service component](./bridge_service.md#sync-status).
+
+```bash
+AGGKIT_E2E_ENV=anvil-2chains make test-e2e TEST_RUN='^TestBridgeServiceSyncStatusAllSyncers$'
+```
+
 ## Two L2 networks
 
 It involves two L2 networks (and single L1 network), that are attached to the same agglayer.
