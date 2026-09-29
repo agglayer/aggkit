@@ -33,6 +33,13 @@ const (
 	DefaultEthTxManagerEstimateGasMaxRetries           = 1
 )
 
+// DefaultStartLookback is the fallback StartLookback for both bridge detectors when left unset. A
+// bridge only becomes claimable after certificate settlement and destination GER injection, which
+// has been observed in production to take over an hour; 24h keeps that comfortably covered while
+// still being a tiny fraction of a chain's full history (e.g. ~7,000 Sepolia blocks vs. the ~6.9M
+// blocks a genesis backfill actually scanned).
+const DefaultStartLookback = 24 * time.Hour
+
 // NetworkType identifies the destination chain family a claimer targets.
 type NetworkType string
 
@@ -81,8 +88,16 @@ type APIConfig struct {
 // L1ToL2BridgeDetector configures L1-to-L2 bridge exit discovery. A failed poll is logged and
 // retried on the next PollInterval tick; there is no separate error-retry policy.
 type L1ToL2BridgeDetector struct {
-	Enabled             bool              `mapstructure:"Enabled"`
-	StartBlock          uint64            `mapstructure:"StartBlock"`
+	Enabled bool `mapstructure:"Enabled"`
+	// StartBlock is the first L1 block scanned when no durable cursor exists. Nil (the field is
+	// absent from config) means "resolve it automatically from StartLookback"; an explicit value --
+	// including 0, meaning genesis -- is honored verbatim and never adjusted or clamped. Leaving
+	// this absent is the recommended default: a hand-pinned block number goes stale the moment the
+	// deployment it was computed for slips in time.
+	StartBlock *uint64 `mapstructure:"StartBlock"`
+	// StartLookback is how far back from "now" StartBlock is resolved when left unset (see
+	// StartBlock). Ignored when StartBlock is set. Defaults to DefaultStartLookback.
+	StartLookback       cfgtypes.Duration `mapstructure:"StartLookback"`
 	PollInterval        cfgtypes.Duration `mapstructure:"PollInterval"`
 	EtrogL1UpgradeBlock uint64            `mapstructure:"EtrogL1UpgradeBlock"`
 }
@@ -95,9 +110,14 @@ type L1ToL2BridgeDetector struct {
 type L2ToLxBridgeDetector struct {
 	Enabled bool `mapstructure:"Enabled"`
 	// StartL1Block is the L1 block used to derive a newly discovered source network's initial LER
-	// cursor (via the GER at that block). 0 means full history (from_ler omitted on first fetch).
-	StartL1Block uint64            `mapstructure:"StartL1Block"`
-	PollInterval cfgtypes.Duration `mapstructure:"PollInterval"`
+	// cursor (via the GER at that block). Nil (absent from config) means "resolve it automatically
+	// from StartLookback"; an explicit value is honored verbatim, including 0, which means full
+	// history (from_ler omitted on first fetch) and is never adjusted or clamped.
+	StartL1Block *uint64 `mapstructure:"StartL1Block"`
+	// StartLookback is how far back from "now" StartL1Block is resolved when left unset (see
+	// StartL1Block). Ignored when StartL1Block is set. Defaults to DefaultStartLookback.
+	StartLookback cfgtypes.Duration `mapstructure:"StartLookback"`
+	PollInterval  cfgtypes.Duration `mapstructure:"PollInterval"`
 }
 
 // Validate checks whether an enabled L2ToLxBridgeDetector config is usable. It is a no-op when
@@ -133,10 +153,19 @@ type ClaimerConfig struct {
 }
 
 // ApplyDefaults fills every claimer's EthTxManager fields left at their Go zero value with
-// aggkit's own established EthTxManager opinion (see the Default* constants above). It never
-// overrides a value the operator did set. Callers should invoke it once, right after unmarshalling
-// and before Validate.
+// aggkit's own established EthTxManager opinion (see the Default* constants above), and fills each
+// bridge detector's StartLookback with DefaultStartLookback when left unset. It never overrides a
+// value the operator did set -- including a detector's StartBlock/StartL1Block pointer, which stays
+// nil here; resolving it into a concrete block happens later, once an L1 client is available (see
+// autoclaim/bridgedetector.ResolveStartBlock). Callers should invoke it once, right after
+// unmarshalling and before Validate.
 func (c *Config) ApplyDefaults() {
+	if c.L1ToL2BridgeDetector.StartLookback.Duration == 0 {
+		c.L1ToL2BridgeDetector.StartLookback.Duration = DefaultStartLookback
+	}
+	if c.L2ToLxBridgeDetector.StartLookback.Duration == 0 {
+		c.L2ToLxBridgeDetector.StartLookback.Duration = DefaultStartLookback
+	}
 	for i := range c.Claimers {
 		applyEthTxManagerDefaults(&c.Claimers[i].EthTxManager)
 	}

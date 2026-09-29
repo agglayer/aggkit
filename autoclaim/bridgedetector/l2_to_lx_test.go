@@ -137,7 +137,37 @@ func TestL2ToLxInitialCursorFromStartL1Block(t *testing.T) {
 	require.Equal(t, newLER, fetcher.queries[0].ToLER)
 }
 
-func TestL2ToLxInitialCursorZeroLEROmitsFromLER(t *testing.T) {
+func TestL2ToLxInitialCursorZeroLERExplicitGenesisOmitsFromLER(t *testing.T) {
+	// StartL1Block=0 is explicit operator intent to scan full history; it must never reach
+	// initialFromLER's LER lookup at all.
+	ctx := context.Background()
+	newLER := lerHash(9)
+	source := &fakeVerifiedBatchSource{
+		lastProcessedBlock: 100,
+		rowsByRange: map[blockRange][]*l1infotreesync.VerifyBatches{
+			{from: 0, to: 99}: {makeVerifyRow(1, newLER, 60)},
+		},
+		latestLeaf:     &l1infotreesync.L1InfoTreeLeaf{BlockNumber: 40, RollupExitRoot: lerHash(555)},
+		localExitRoots: map[uint32]common.Hash{1: {}}, // network had no LER yet at StartL1Block
+	}
+	fetcher := newFakeFetcher()
+	fetcher.urls[1] = fakeSrcURL1
+	fetcher.setPage(fakeSrcURL1, 1, []ClaimCandidate{makeCandidate(5, 0)}, 1)
+	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
+	detector := newTestL2ToLxDetector(
+		t, source, fetcher, newFakeRegistry(claimer0), newMemoryCursorStore(), newFakePerPairLERStore(), newFakeEnqueuer(),
+		WithL2ToLxStartL1Block(0), WithL2ToLxBlockWindow(100),
+	)
+
+	_, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Len(t, fetcher.queries, 1)
+	require.Nil(t, fetcher.queries[0].FromLER, "explicit StartL1Block=0 must omit from_ler (full history)")
+}
+
+func TestL2ToLxInitialCursorZeroLERWithNonZeroStartBlockRetriesInsteadOfFallingBack(t *testing.T) {
+	// A non-zero, non-explicit-genesis StartL1Block that resolves to a zero LER used to silently
+	// fall back to full history. It must now retry the source instead of fetching candidates.
 	ctx := context.Background()
 	newLER := lerHash(9)
 	source := &fakeVerifiedBatchSource{
@@ -150,17 +180,17 @@ func TestL2ToLxInitialCursorZeroLEROmitsFromLER(t *testing.T) {
 	}
 	fetcher := newFakeFetcher()
 	fetcher.urls[1] = fakeSrcURL1
-	fetcher.setPage(fakeSrcURL1, 1, []ClaimCandidate{makeCandidate(5, 0)}, 1)
 	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
 	detector := newTestL2ToLxDetector(
 		t, source, fetcher, newFakeRegistry(claimer0), newMemoryCursorStore(), newFakePerPairLERStore(), newFakeEnqueuer(),
 		WithL2ToLxStartL1Block(40), WithL2ToLxBlockWindow(100),
 	)
 
-	_, err := detector.PollOnce(ctx)
-	require.NoError(t, err)
-	require.Len(t, fetcher.queries, 1)
-	require.Nil(t, fetcher.queries[0].FromLER, "a zero initial LER must omit from_ler (full history)")
+	result, err := detector.PollOnce(ctx)
+	require.NoError(t, err, "an unresolvable initial LER must not fail the whole poll")
+	require.Empty(t, fetcher.queries, "must not silently fetch full history")
+	require.Equal(t, 1, result.SkippedSourceCount)
+	require.Equal(t, 0, result.ProcessedSourceCount)
 }
 
 func TestL2ToLxFinderMissSkipsSourceWithoutAdvancingCursor(t *testing.T) {
@@ -396,9 +426,36 @@ func TestL2ToLxFetchAllCandidatesMergesAcrossBatches(t *testing.T) {
 		"fetchAllCandidates must merge every batch's candidates, not keep only the last batch's")
 }
 
-func TestL2ToLxInitialCursorLeafNotFoundOmitsFromLER(t *testing.T) {
-	// A StartL1Block that predates the first L1 info tree leaf has no baseline to derive a
-	// lower-bound LER from; it must behave like the zero-LER case and request the full history.
+func TestL2ToLxInitialCursorLeafNotFoundExplicitGenesisOmitsFromLER(t *testing.T) {
+	// StartL1Block=0 is explicit operator intent to scan full history; it must never reach
+	// initialFromLER's leaf lookup at all.
+	ctx := context.Background()
+	newLER := lerHash(9)
+	source := &fakeVerifiedBatchSource{
+		lastProcessedBlock: 100,
+		rowsByRange: map[blockRange][]*l1infotreesync.VerifyBatches{
+			{from: 0, to: 99}: {makeVerifyRow(1, newLER, 60)},
+		},
+		latestLeafErr: l1infotreesync.ErrNotFound,
+	}
+	fetcher := newFakeFetcher()
+	fetcher.urls[1] = fakeSrcURL1
+	fetcher.setPage(fakeSrcURL1, 1, []ClaimCandidate{makeCandidate(5, 0)}, 1)
+	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
+	detector := newTestL2ToLxDetector(
+		t, source, fetcher, newFakeRegistry(claimer0), newMemoryCursorStore(), newFakePerPairLERStore(), newFakeEnqueuer(),
+		WithL2ToLxStartL1Block(0), WithL2ToLxBlockWindow(100),
+	)
+
+	_, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Len(t, fetcher.queries, 1)
+	require.Nil(t, fetcher.queries[0].FromLER, "explicit StartL1Block=0 must omit from_ler (full history)")
+}
+
+func TestL2ToLxInitialCursorLeafNotFoundWithNonZeroStartBlockRetriesInsteadOfFallingBack(t *testing.T) {
+	// A non-zero, non-explicit-genesis StartL1Block that predates the first L1 info tree leaf used
+	// to silently fall back to full history. It must now retry the source instead.
 	ctx := context.Background()
 	newLER := lerHash(9)
 	source := &fakeVerifiedBatchSource{
@@ -410,18 +467,17 @@ func TestL2ToLxInitialCursorLeafNotFoundOmitsFromLER(t *testing.T) {
 	}
 	fetcher := newFakeFetcher()
 	fetcher.urls[1] = fakeSrcURL1
-	fetcher.setPage(fakeSrcURL1, 1, []ClaimCandidate{makeCandidate(5, 0)}, 1)
 	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
 	detector := newTestL2ToLxDetector(
 		t, source, fetcher, newFakeRegistry(claimer0), newMemoryCursorStore(), newFakePerPairLERStore(), newFakeEnqueuer(),
 		WithL2ToLxStartL1Block(40), WithL2ToLxBlockWindow(100),
 	)
 
-	_, err := detector.PollOnce(ctx)
-	require.NoError(t, err)
-	require.Len(t, fetcher.queries, 1)
-	require.Nil(t, fetcher.queries[0].FromLER,
-		"a StartL1Block older than the first L1 info tree leaf must omit from_ler (full history)")
+	result, err := detector.PollOnce(ctx)
+	require.NoError(t, err, "an unresolvable initial LER must not fail the whole poll")
+	require.Empty(t, fetcher.queries, "must not silently fetch full history")
+	require.Equal(t, 1, result.SkippedSourceCount)
+	require.Equal(t, 0, result.ProcessedSourceCount)
 }
 
 func TestL2ToLxPaginationAndDedup(t *testing.T) {

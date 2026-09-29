@@ -26,6 +26,13 @@ var (
 	// ErrCandidatesNotSynced signals that the source bridge service has not yet synced the requested
 	// LER. The detector treats it as "retry later": it skips the source without advancing its LER cursor.
 	ErrCandidatesNotSynced = errors.New("autoclaim l2-to-lx bridge detector: source bridge service not synced yet")
+	// ErrCannotResolveInitialLER signals that a newly discovered source network's initial LER cursor
+	// could not be derived from the configured (non-zero) StartL1Block: it either predates the first
+	// L1 info tree leaf or has no LER yet at that block. The detector treats it as "retry later" --
+	// it skips the source without advancing its LER cursor -- rather than silently falling back to
+	// full history, which for an established chain can mean scanning years of stale deposits.
+	ErrCannotResolveInitialLER = errors.New(
+		"autoclaim l2-to-lx bridge detector: cannot resolve initial LER cursor from configured StartL1Block")
 )
 
 // VerifiedBatchSource exposes the l1infotreesync data the L2-to-Lx detector needs to discover
@@ -477,6 +484,17 @@ func (w *L2ToLx) processSource(
 
 	pending, err := w.resolveFromLER(ctx, source, destinationIDs)
 	if err != nil {
+		if errors.Is(err, ErrCannotResolveInitialLER) {
+			// Loud and retried, never silent: unlike a stale bridge-service URL this is a config
+			// problem an operator must fix (lower StartL1Block, or set it to 0 to accept scanning
+			// full history), so it is worth a WARN rather than the Info level used for transient
+			// finder/sync misses below. It only holds back this one source -- other sources in the
+			// same poll are unaffected -- and is retried every poll until the config is corrected.
+			w.logWarnf("autoclaim l2-to-lx bridge detector: skip source %d (cannot resolve initial "+
+				"LER cursor, will retry every poll until fixed): %v -- bridges from this source will "+
+				"not be autoclaimed until this is resolved", source.sourceID, err)
+			return sourceRetryLater, nil
+		}
 		return sourceUpToDate, err
 	}
 	if len(pending) == 0 {
@@ -643,8 +661,17 @@ func sortedNetworks(networks []uint32) []uint32 {
 }
 
 // initialFromLER derives the exclusive lower-bound LER the first time a source network is seen. When
-// StartL1Block is 0, the full history is requested (nil). Otherwise the source's LER at StartL1Block
-// is used; a zero LER (the network had no LER yet at that block) also requests the full history.
+// StartL1Block is 0, the full history is requested (nil) -- StartL1Block can only be literally 0
+// when an operator sets it explicitly, since automatic resolution (autoclaim/bridgedetector.
+// ResolveStartBlock) is always clamped to a strictly positive minimum block, so a 0 here is always
+// deliberate operator intent, never a resolution artifact.
+//
+// For any other configured StartL1Block, the source's LER at that block is used. If it cannot be
+// derived -- StartL1Block predates the first L1 info tree leaf, or the network had no LER yet at
+// that block -- this used to silently fall back to full history too. That is dangerous for an
+// established chain (it can mean scanning years of stale deposits the moment DryRun is lifted), so
+// it now returns ErrCannotResolveInitialLER instead; the caller treats that as "retry later" for
+// just this source; see processSource.
 func (w *L2ToLx) initialFromLER(ctx context.Context, sourceID uint32) (*common.Hash, error) {
 	if w.startL1Block == 0 {
 		return nil, nil
@@ -653,9 +680,8 @@ func (w *L2ToLx) initialFromLER(ctx context.Context, sourceID uint32) (*common.H
 	leaf, err := w.source.GetLatestL1InfoLeafUntilBlock(ctx, w.startL1Block)
 	if err != nil {
 		if errors.Is(err, l1infotreesync.ErrNotFound) {
-			// StartL1Block predates the first L1 info tree leaf, so there is no baseline to derive a
-			// lower-bound LER from. Same situation as a zero LER at that block: fetch the full history.
-			return nil, nil
+			return nil, fmt.Errorf("%w: source %d: StartL1Block %d predates the first L1 info tree leaf",
+				ErrCannotResolveInitialLER, sourceID, w.startL1Block)
 		}
 		return nil, fmt.Errorf("get latest l1 info leaf until block %d for source %d: %w",
 			w.startL1Block, sourceID, err)
@@ -667,7 +693,8 @@ func (w *L2ToLx) initialFromLER(ctx context.Context, sourceID uint32) (*common.H
 			sourceID, leaf.RollupExitRoot, err)
 	}
 	if ler == (common.Hash{}) {
-		return nil, nil
+		return nil, fmt.Errorf("%w: source %d has no LER yet at StartL1Block %d",
+			ErrCannotResolveInitialLER, sourceID, w.startL1Block)
 	}
 	return &ler, nil
 }
@@ -839,6 +866,12 @@ func (w *L2ToLx) nextFromBlock(
 func (w *L2ToLx) logErrorf(format string, args ...interface{}) {
 	if w.log != nil {
 		w.log.Errorf(format, args...)
+	}
+}
+
+func (w *L2ToLx) logWarnf(format string, args ...interface{}) {
+	if w.log != nil {
+		w.log.Warnf(format, args...)
 	}
 }
 
