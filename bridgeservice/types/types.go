@@ -392,18 +392,22 @@ type L1InfoTreeLeafResponse struct {
 // SyncStatus represents the bridge synchronization status for both L1 and L2 networks
 // @Description Bridge sync status comparing on-chain deposit counts with local database counts
 // @example {"l1_info":{"contract_deposit_count":100,"synchronized_deposit_count":100,
-// "is_synced":true,"is_active":true},"l2_info":{"contract_deposit_count":200,
-// "synchronized_deposit_count":200,"is_synced":true,"is_active":true}}
+// "is_synced":true,"is_active":true,"is_halted":false},"l2_info":{"contract_deposit_count":200,
+// "synchronized_deposit_count":200,"is_synced":true,"is_active":true,"is_halted":false},
+// "l1_info_tree_info":{"is_active":true,"is_halted":false,"last_processed_block":12345678}}
 type SyncStatus struct {
-	L1Info    *NetworkSyncInfo `json:"l1_info" description:"L1 network bridge sync status"`
-	L2Info    *NetworkSyncInfo `json:"l2_info" description:"L2 network bridge sync status"`
-	L2GERInfo *L2GERSyncInfo   `json:"l2_ger_info,omitempty" description:"l2gersync (injected-GER) sync status"`
+	L1Info         *NetworkSyncInfo `json:"l1_info" description:"L1 network bridge sync status"`
+	L2Info         *NetworkSyncInfo `json:"l2_info" description:"L2 network bridge sync status"`
+	L2GERInfo      *L2GERSyncInfo   `json:"l2_ger_info,omitempty" description:"l2gersync (injected-GER) sync status"`
+	L1InfoTreeInfo *SyncerSyncInfo  `json:"l1_info_tree_info,omitempty" description:"l1infotreesync sync status"`
+	ClaimL1Info    *SyncerSyncInfo  `json:"claim_l1_info,omitempty" description:"L1 claimsync sync status"`
+	ClaimL2Info    *SyncerSyncInfo  `json:"claim_l2_info,omitempty" description:"L2 claimsync sync status"`
 }
 
 // NetworkSyncInfo represents the bridge synchronization status of a single network (L1 or L2)
 // @Description Network-specific bridge sync status with deposit counts and block information
 // @example {"contract_deposit_count":100,"synchronized_deposit_count":100,"is_synced":true,"is_active":true,
-// "last_processed_block":1234,"network_block":2555}
+// "is_halted":false,"last_processed_block":1234,"network_block":2555}
 type NetworkSyncInfo struct {
 	ContractDepositCount     uint32 `json:"contract_deposit_count" example:"676797" description:"Bridge deposits in contract"`     //nolint:lll
 	SynchronizedDepositCount uint32 `json:"synchronized_deposit_count" example:"676797" description:"Bridge deposits in database"` //nolint:lll
@@ -411,22 +415,38 @@ type NetworkSyncInfo struct {
 	IsActive                 bool   `json:"is_active" example:"true" description:"True if bridge syncer is running"`
 	LastProcessedBlock       uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last block processed"` //nolint:lll
 	NetworkBlock             uint64 `json:"network_block,omitempty" example:"12350000" description:"Current latest block"`
+	IsHalted                 bool   `json:"is_halted" example:"false" description:"True if the bridge syncer is configured but halted (e.g. resolving a reorg)"`                                                        //nolint:lll
+	Error                    string `json:"error,omitempty" example:"failed to get deposit count from L1 bridge contract: context deadline exceeded" description:"Set when this syncer's status could not be computed"` //nolint:lll
 }
 
 // L2GERSyncInfo represents the l2gersync (injected-GER) synchronization status.
 // @Description l2gersync (injected-GER) synchronization status
-// @example {"is_active":true,"last_processed_block":12345678}
+// @example {"is_active":true,"is_halted":false,"last_processed_block":12345678}
 type L2GERSyncInfo struct {
-	IsActive           bool   `json:"is_active" example:"true" description:"True if the l2gersync syncer is available"`                     //nolint:lll
-	LastProcessedBlock uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last L2 block processed by l2gersync"` //nolint:lll
+	IsActive           bool   `json:"is_active" example:"true" description:"True if the l2gersync syncer is available"`                                                                                 //nolint:lll
+	LastProcessedBlock uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last L2 block processed by l2gersync"`                                                             //nolint:lll
+	IsHalted           bool   `json:"is_halted" example:"false" description:"Always false: l2gersync has no halt state"`                                                                                //nolint:lll
+	Error              string `json:"error,omitempty" example:"failed to get last processed block for l2gersync: database is locked" description:"Set when this syncer's status could not be computed"` //nolint:lll
+}
+
+// SyncerSyncInfo is the sync status of a syncer that has no in-service "caught up" signal
+// (l1infotreesync, claimsync L1/L2).
+// @Description Sync status of an auxiliary syncer (no is_synced signal)
+// @example {"is_active":true,"is_halted":false,"last_processed_block":12345678}
+type SyncerSyncInfo struct {
+	IsActive           bool   `json:"is_active" example:"true" description:"True if the syncer is running and not halted"`                                                                                 //nolint:lll
+	IsHalted           bool   `json:"is_halted" example:"false" description:"True if the syncer is halted (always false for claimsync)"`                                                                   //nolint:lll
+	LastProcessedBlock uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last block processed (omitted if none yet)"`                                                          //nolint:lll
+	Error              string `json:"error,omitempty" example:"failed to get last processed block for claimsync L1: database is locked" description:"Set when this syncer's status could not be computed"` //nolint:lll
 }
 
 // HealthCheckResponse represents the JSON returned by HealthCheckHandler.
 // @Description Contains basic health‐check information for the bridge service
 // including service status, current time, version, and a summary sync status.
 // @example {"status":"ok","time":"2025-06-05T07:30:00Z","version":"v0.4.0-beta9",
-// "sync_status":"pending","details":{"l1":{"is_active":true,"is_synced":false},
-// "l2":{"is_active":true,"is_synced":true},"l2_ger":{"is_active":true}}}
+// "sync_status":"pending","details":{"l1":{"is_active":true,"is_synced":false,"is_halted":false},
+// "l2":{"is_active":true,"is_synced":true,"is_halted":false},"l2_ger":{"is_active":true,"is_halted":false},
+// "l1_info_tree":{"is_active":true,"is_halted":false}}}
 type HealthCheckResponse struct {
 	Status  string    `json:"status"`
 	Time    time.Time `json:"time"`
@@ -462,12 +482,16 @@ const (
 )
 
 // HealthCheckDetails is the compact, per-component breakdown backing HealthCheckResponse.SyncStatus.
-// @Description Per-component sync summary. A nil component (not configured on this instance,
-// @Description e.g. no L1 bridge syncer on an L2-only bridge service) is omitted entirely.
+// @Description Per-component sync summary: l1, l2, l2_ger, l1_info_tree, claim_l1, claim_l2. A nil
+// @Description component (not configured on this instance, e.g. no L1 bridge syncer on an L2-only
+// @Description bridge service) is omitted entirely.
 type HealthCheckDetails struct {
-	L1    *ComponentHealth `json:"l1,omitempty"`
-	L2    *ComponentHealth `json:"l2,omitempty"`
-	L2GER *ComponentHealth `json:"l2_ger,omitempty"`
+	L1         *ComponentHealth `json:"l1,omitempty"`
+	L2         *ComponentHealth `json:"l2,omitempty"`
+	L2GER      *ComponentHealth `json:"l2_ger,omitempty"`
+	L1InfoTree *ComponentHealth `json:"l1_info_tree,omitempty"`
+	ClaimL1    *ComponentHealth `json:"claim_l1,omitempty"`
+	ClaimL2    *ComponentHealth `json:"claim_l2,omitempty"`
 }
 
 // ComponentHealth is the minimal is_active/is_synced summary for one sync component inside
@@ -480,9 +504,11 @@ type ComponentHealth struct {
 	// (e.g. l2gersync, which currently exposes no is_synced signal -- see docs/bridge_service.md).
 	IsSynced *bool `json:"is_synced,omitempty" example:"true"`
 
-	// Error is set (non-empty) only when this component is configured/active but its sync
-	// status could not be computed; its presence alone is what drives HealthSyncStatusError for
-	// this component, independent of IsSynced.
+	// IsHalted mirrors the matching /bridge/v1/sync-status entry's is_halted.
+	IsHalted bool `json:"is_halted" example:"false"`
+
+	// Error is set when this component's sync status could not be computed; same text as the
+	// matching /bridge/v1/sync-status entry's error.
 	Error string `json:"error,omitempty" example:"failed to get deposit count from L1 bridge contract: dial tcp: timeout"` //nolint:lll
 }
 
