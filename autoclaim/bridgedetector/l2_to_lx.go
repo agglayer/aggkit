@@ -9,6 +9,7 @@ import (
 
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
+	"github.com/agglayer/aggkit/bridgeservicefinder"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
@@ -229,6 +230,10 @@ type L2ToLx struct {
 	enabled       bool
 	now           func() time.Time
 	log           aggkitcommon.Logger
+	// disabledSourceLogged remembers the sources already reported as permanently disabled, so the
+	// report is made once per source instead of once per poll (the detector polls indefinitely).
+	// Only ever touched from the single poll goroutine.
+	disabledSourceLogged map[uint32]struct{}
 }
 
 // NewL2ToLx creates an L2-to-Lx Auto Claim bridge detector.
@@ -277,6 +282,7 @@ func NewL2ToLx(
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
+		disabledSourceLogged: make(map[uint32]struct{}),
 	}
 	for _, option := range options {
 		option(detector)
@@ -336,15 +342,19 @@ type lerGroup struct {
 type sourceOutcome int
 
 const (
-	// sourceUpToDate means every (source, destination) pair's cursor already matches the source's
-	// newest LER, or the source has no destination pair at all: nothing to do.
+	// sourceUpToDate means there is nothing to do for this source: every (source, destination) pair's
+	// cursor already matches the source's newest LER, the source has no destination pair at all, or
+	// the source is permanently excluded (bridgeservicefinder.ErrNetworkDisabled). Nothing to do is
+	// not a retry, so it never holds the shared block-window cursor back.
 	sourceUpToDate sourceOutcome = iota
 	// sourceProcessed means every fetch group's candidates were enqueued and every pair's LER cursor
 	// advanced.
 	sourceProcessed
-	// sourceRetryLater means at least one of the source's fetch groups was skipped for a transient
-	// reason (finder miss or source bridge service not synced yet) and must be retried on a later
-	// poll. Groups that did succeed keep their persisted pair cursors.
+	// sourceRetryLater means at least one of the source's fetch groups was skipped for a reason that
+	// can still clear on its own (a finder miss for a service not yet announced or unhealthy, or a
+	// source bridge service not synced yet) and must be retried on a later poll. Groups that did
+	// succeed keep their persisted pair cursors. A permanently excluded source is NOT this outcome:
+	// it can never clear, so holding the shared cursor for it would deadlock every other source.
 	sourceRetryLater
 )
 
@@ -390,8 +400,9 @@ func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 		return result, err
 	}
 
-	// retryBlock is the block of the earliest verify row whose source was skipped for a transient
-	// reason (finder miss or source not synced yet); 0 = none.
+	// retryBlock is the block of the earliest verify row whose source was skipped for a reason that
+	// can still clear on its own (finder miss or source not synced yet); 0 = none. A source that can
+	// never resolve (permanently excluded) deliberately does not contribute here.
 	var retryBlock uint64
 	for _, source := range orderedSourceLERs(latestBySource) {
 		outcome, err := w.processSource(ctx, source, destinationNetworks, result)
@@ -412,8 +423,10 @@ func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 	}
 
 	// The block-window cursor advances on every non-erroring poll, except that it never advances past
-	// the verify row of a source skipped for a transient reason: it is held just before that row, so
-	// the next poll re-observes it and retries the source even if it never publishes another LER.
+	// the verify row of a source skipped for a reason that can still clear: it is held just before
+	// that row, so the next poll re-observes it and retries the source even if it never publishes
+	// another LER. The cursor is shared by every source, so only a genuinely retryable skip may hold
+	// it: a permanently excluded source would otherwise pin it forever and starve every other source.
 	// A (source, destination) pair skipped this round keeps its LER cursor at its previous value, so
 	// the retry fetch still uses from_ler = <old pair cursor>, which covers every candidate missed in
 	// between; a pair whose group did succeed keeps its advanced cursor and is simply not re-fetched.
@@ -449,9 +462,10 @@ func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 // baseline instead of inheriting an already-advanced cursor that would skip its history, and it does
 // not disturb the established destinations, which keep batching exactly as before.
 //
-// It returns sourceUpToDate when no pair has anything new (or the source has no destination pair at
-// all), sourceRetryLater when at least one group was skipped for a transient reason (finder miss or
-// not synced yet), and sourceProcessed when every group advanced its pairs' LER cursors.
+// It returns sourceUpToDate when there is nothing to do -- no pair has anything new, the source has
+// no destination pair at all, or the source is permanently excluded from bridge service resolution --
+// sourceRetryLater when at least one group was skipped for a reason that can still clear (finder miss
+// or not synced yet), and sourceProcessed when every group advanced its pairs' LER cursors.
 func (w *L2ToLx) processSource(
 	ctx context.Context,
 	source sourceLER,
@@ -487,6 +501,19 @@ func (w *L2ToLx) processSource(
 
 	url, err := w.fetcher.GetURL(source.sourceID)
 	if err != nil {
+		if errors.Is(err, bridgeservicefinder.ErrNetworkDisabled) {
+			// The operator deliberately excluded this network (bridgeservicefinder IgnoreNetworkIDs),
+			// so its URL can never resolve. Treating that as "retry later" would hold the block-window
+			// cursor -- which is shared by every source -- just before this source's verify row for as
+			// long as the exclusion stands, so no other source's row is ever reached and no L2-origin
+			// claim request is ever created. It is "nothing to do" instead: the window moves on.
+			//
+			// The source's own (source, destination) LER cursors are left untouched, so if the network
+			// is later removed from the ignore list its next verify row is fetched from its old pair
+			// cursor and still covers everything bridged in between.
+			w.logDisabledSourceOnce(source.sourceID)
+			return sourceUpToDate, nil
+		}
 		w.logInfof("autoclaim l2-to-lx bridge detector: skip source %d (url not resolved): %v", source.sourceID, err)
 		return sourceRetryLater, nil
 	}
@@ -846,6 +873,22 @@ func (w *L2ToLx) logInfof(format string, args ...interface{}) {
 	if w.log != nil {
 		w.log.Infof(format, args...)
 	}
+}
+
+// logDisabledSourceOnce reports a permanently excluded source the first time it is seen and stays
+// quiet for it afterwards. The exclusion never clears on its own, so repeating the line on every
+// poll -- the detector polls for the lifetime of the process -- adds no information.
+func (w *L2ToLx) logDisabledSourceOnce(sourceID uint32) {
+	if w.disabledSourceLogged == nil {
+		w.disabledSourceLogged = make(map[uint32]struct{})
+	}
+	if _, seen := w.disabledSourceLogged[sourceID]; seen {
+		return
+	}
+	w.disabledSourceLogged[sourceID] = struct{}{}
+	w.logInfof("autoclaim l2-to-lx bridge detector: source %d is disabled in the bridge service finder"+
+		" (IgnoreNetworkIDs); skipping it for the lifetime of this process, the block window still advances",
+		sourceID)
 }
 
 // newestLERPerSource groups verified-batch rows by rollup id and keeps the newest LER per source.

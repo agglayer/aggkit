@@ -3,6 +3,7 @@ package bridgedetector
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -58,6 +59,21 @@ func TestServiceFetcherGetURL(t *testing.T) {
 	t.Run("url not found is wrapped", func(t *testing.T) {
 		f := newTestFetcher(fakeURLResolver{err: bridgeservicefinder.ErrURLNotFound}, nil)
 		_, err := f.GetURL(10)
+		require.ErrorIs(t, err, ErrURLNotFound)
+		require.ErrorIs(t, err, bridgeservicefinder.ErrURLNotFound)
+	})
+
+	// The detector distinguishes a permanently disabled network from a retryable miss with
+	// errors.Is(err, bridgeservicefinder.ErrNetworkDisabled). ErrNetworkDisabled wraps
+	// ErrURLNotFound, so it takes the branch above and is re-wrapped; this pins that the sentinel
+	// still survives that mapping, since losing it would silently reintroduce the cursor deadlock
+	// the detector guards against.
+	t.Run("network disabled sentinel survives the not-found wrapping", func(t *testing.T) {
+		finderErr := fmt.Errorf("%w: network %d", bridgeservicefinder.ErrNetworkDisabled, 10)
+		f := newTestFetcher(fakeURLResolver{err: finderErr}, nil)
+		_, err := f.GetURL(10)
+		require.ErrorIs(t, err, bridgeservicefinder.ErrNetworkDisabled,
+			"the detector must still be able to recognise a permanently disabled network")
 		require.ErrorIs(t, err, ErrURLNotFound)
 		require.ErrorIs(t, err, bridgeservicefinder.ErrURLNotFound)
 	})
