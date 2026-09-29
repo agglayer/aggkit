@@ -20,6 +20,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -83,15 +84,6 @@ const (
 
 	// etrogVersionID is the version ID of AgglayerManager after Etrog upgrade
 	etrogVersionID = 2
-
-	// syncComponentL1/L2/L2GER tag which component a computeSyncStatus failure (syncComponentError)
-	// belongs to, so buildHealthCheckDetails can attach the error to the right ComponentHealth
-	// without re-deriving it from the error message text. Their values intentionally match the
-	// networkName arguments already passed to populateNetworkSyncInfo ("L1"/"L2"), so existing
-	// /bridge/v1/sync-status error message text is unaffected.
-	syncComponentL1    = "L1"
-	syncComponentL2    = "L2"
-	syncComponentL2GER = "L2GER"
 )
 
 var (
@@ -106,15 +98,19 @@ var (
 	DefaultHealthCheckCacheTTL = cfgtypes.Duration{Duration: 2 * time.Second} //nolint:mnd
 
 	// DefaultHealthCheckComputeTimeout bounds a single computeSyncStatus computation (the RPC/DB
-	// calls across L1, L2 and l2gersync backing HealthCheckHandler) independently of
-	// Config.ReadTimeout. ReadTimeout is request-scoped and can be as large as 5 minutes
+	// calls across all configured syncers, computed concurrently, backing HealthCheckHandler)
+	// independently of Config.ReadTimeout. ReadTimeout is request-scoped and can be as large as 5 minutes
 	// (PublicREST.ReadTimeout's default), which is sized for large paginated response bodies, not
 	// for a liveness probe: without its own bound, a black-holed RPC endpoint would let /` and
 	// `/health` hang for up to ReadTimeout, and every concurrent caller waiting on the
-	// single-flight channel (see healthCheckCache) with them. On expiry the in-flight RPC/DB call
-	// returns a context-deadline error, which computeSyncStatus reports the same way as any other
-	// component error -- HealthSyncStatusError, HTTP 200 -- rather than a hang. A package-level
-	// var (not a const) so tests can shrink it instead of sleeping for the real default.
+	// single-flight channel (see healthCheckCache) with them. On expiry, a call that honors ctx
+	// (e.g. a database read using QueryContext) returns a context-deadline error promptly, which
+	// computeSyncStatus reports the same way as any other component error -- HealthSyncStatusError,
+	// HTTP 200 -- rather than a hang. A call that does not honor ctx keeps running until it returns
+	// on its own instead (a pre-existing gap, not addressed here); this timeout only bounds how
+	// long a ctx-respecting call waits, not the wall-clock time of the slowest component. A
+	// package-level var (not a const) so tests can shrink it instead of sleeping for the real
+	// default.
 	DefaultHealthCheckComputeTimeout = 3 * time.Second
 )
 
@@ -1414,7 +1410,15 @@ func (b *BridgeService) GetRemoveGEREventsHandler(c *gin.Context) {
 	c.JSON(statusCode, result)
 }
 
-// populateNetworkSyncInfo populates sync information for a network if it's active
+// populateNetworkSyncInfo fills in networkInfo's deposit counts and, when not caught up, its
+// best-effort LastProcessedBlock/NetworkBlock. The caller (bridgeNetworkSyncInfo) is responsible
+// for discarding networkInfo on error rather than publishing a partially-filled struct: some
+// fields below are only set once earlier calls in this function have already succeeded.
+//
+// A GetLastProcessedBlock/GetLatestNetworkBlock error that satisfies isSyncerHaltedErr is
+// returned (wrapped) instead of the usual best-effort log-and-swallow, so the halt guard racing
+// with populateNetworkSyncInfo (the syncer halts between IsActive() and this call) is reported as
+// is_halted by the caller, never as this network's error.
 func (b *BridgeService) populateNetworkSyncInfo(
 	ctx context.Context,
 	bridge Bridger,
@@ -1439,6 +1443,9 @@ func (b *BridgeService) populateNetworkSyncInfo(
 	if !networkInfo.IsSynced {
 		lastProcessedBlock, _, err := bridge.GetLastProcessedBlock(ctx)
 		if err != nil {
+			if isSyncerHaltedErr(err) {
+				return fmt.Errorf("failed to get last processed block for %s: %w", networkName, err)
+			}
 			b.logger.Warnf("failed to get last processed block for %s: %s", networkName, err)
 		} else {
 			networkInfo.LastProcessedBlock = lastProcessedBlock
@@ -1446,6 +1453,9 @@ func (b *BridgeService) populateNetworkSyncInfo(
 
 		networkBlock, err := bridge.GetLatestNetworkBlock(ctx)
 		if err != nil {
+			if isSyncerHaltedErr(err) {
+				return fmt.Errorf("failed to get latest network block for %s: %w", networkName, err)
+			}
 			b.logger.Warnf("failed to get latest network block for %s: %s", networkName, err)
 		} else {
 			networkInfo.NetworkBlock = networkBlock
@@ -1455,141 +1465,244 @@ func (b *BridgeService) populateNetworkSyncInfo(
 	return nil
 }
 
-// syncComponentError wraps a computeSyncStatus failure with the component (syncComponentL1/L2/L2GER)
-// it belongs to. Its Error() reproduces the wrapped error's message unchanged, so
-// GetSyncStatusHandler's response stays byte-for-byte identical to before this type existed;
-// buildHealthCheckDetails additionally uses the component tag to attach the message to the right
-// ComponentHealth entry.
-type syncComponentError struct {
-	component string
-	err       error
+// isSyncerHaltedErr reports whether err is a halt-capable syncer's halted guard
+// (aggkitsync.ErrInconsistentState). It is reported as is_halted, never as an entry's error.
+func isSyncerHaltedErr(err error) bool {
+	return errors.Is(err, aggkitsync.ErrInconsistentState)
 }
 
-func (e *syncComponentError) Error() string { return e.err.Error() }
-func (e *syncComponentError) Unwrap() error { return e.err }
+// publicSyncError is the text put in a sync-status entry's error field: redacted, since these
+// errors routinely wrap RPC/DB internals (URLs, hosts) and, with computeSyncStatus always
+// answering 200, that text is now a routine part of a public, frequently polled payload. The raw
+// error is logged separately, unredacted.
+func publicSyncError(err error) string {
+	return aggkitcommon.RedactError(err)
+}
 
-// computeSyncStatus computes the bridge synchronization status for L1, L2 and l2gersync, i.e. the
-// shared feed backing both GetSyncStatusHandler and HealthCheckHandler, so the two endpoints can
-// never drift apart.
-//
-// On error it returns the *types.SyncStatus as far as it got, alongside a *syncComponentError
-// (always unwrappable to that concrete type) identifying which component failed. Computation
-// stops at the first error, mirroring this method's pre-refactor behavior in
-// GetSyncStatusHandler: a later component's syncer methods are simply never called that cycle
-// (this repo's tests for /bridge/v1/sync-status rely on exactly that -- see bridge_test.go).
-func (b *BridgeService) computeSyncStatus(ctx context.Context) (*types.SyncStatus, error) {
-	syncStatus := &types.SyncStatus{}
+// bridgeNetworkSyncInfo computes the sync status of one L1/L2 bridge syncer: IsActive is read
+// first, and if it is false every data call is skipped (as today), reporting IsHalted instead. If
+// the syncer halts between that read and a data call, the resulting isSyncerHaltedErr is mapped
+// to the same halted shape, never to Error. Any other failure discards whatever partial fields
+// populateNetworkSyncInfo may have set, so a failing component never publishes misleading partial
+// data.
+func (b *BridgeService) bridgeNetworkSyncInfo(
+	ctx context.Context, bridge Bridger, networkName string,
+) *types.NetworkSyncInfo {
+	if !bridge.IsActive(ctx) {
+		return &types.NetworkSyncInfo{IsActive: false, IsHalted: true}
+	}
 
-	// Check L1 sync status
+	info := &types.NetworkSyncInfo{IsActive: true}
+	if err := b.populateNetworkSyncInfo(ctx, bridge, info, networkName); err != nil {
+		if isSyncerHaltedErr(err) {
+			return &types.NetworkSyncInfo{IsActive: false, IsHalted: true}
+		}
+		b.logger.Warnf("sync status: %s: %v", networkName, err)
+		return &types.NetworkSyncInfo{IsActive: true, Error: publicSyncError(err)}
+	}
+
+	return info
+}
+
+// l2GERSyncInfo computes l2gersync's sync status. l2gersync has no halt state, so IsHalted is
+// always false.
+func (b *BridgeService) l2GERSyncInfo(ctx context.Context) *types.L2GERSyncInfo {
+	lastProcessedBlock, err := b.injectedGERs.GetLastProcessedBlock(ctx)
+	if err != nil {
+		wrapped := fmt.Errorf("failed to get last processed block for l2gersync: %w", err)
+		b.logger.Warnf("sync status: l2gersync: %v", wrapped)
+		return &types.L2GERSyncInfo{IsActive: true, Error: publicSyncError(wrapped)}
+	}
+
+	return &types.L2GERSyncInfo{IsActive: true, LastProcessedBlock: lastProcessedBlock}
+}
+
+// l1InfoTreeSyncInfo computes l1infotreesync's sync status. Like bridgeNetworkSyncInfo, IsActive
+// is read first and no data call is made if it is false, and a halt racing with
+// GetLastProcessedBlock maps to the halted shape rather than to Error.
+func (b *BridgeService) l1InfoTreeSyncInfo(ctx context.Context) *types.SyncerSyncInfo {
+	const name = "l1infotreesync"
+
+	if !b.l1InfoTree.IsActive(ctx) {
+		return &types.SyncerSyncInfo{IsActive: false, IsHalted: true}
+	}
+
+	lastProcessedBlock, err := b.l1InfoTree.GetLastProcessedBlock(ctx)
+	if err != nil {
+		if isSyncerHaltedErr(err) {
+			return &types.SyncerSyncInfo{IsActive: false, IsHalted: true}
+		}
+		wrapped := fmt.Errorf("failed to get last processed block for %s: %w", name, err)
+		b.logger.Warnf("sync status: %s: %v", name, wrapped)
+		return &types.SyncerSyncInfo{IsActive: true, Error: publicSyncError(wrapped)}
+	}
+
+	return &types.SyncerSyncInfo{IsActive: true, LastProcessedBlock: lastProcessedBlock}
+}
+
+// claimSyncInfo computes a claimsync instance's sync status. claimsync has no halt state, so
+// IsHalted is always false; a LastProcessedBlock of (0, false, nil) means nothing has been
+// processed yet, reported by omitting LastProcessedBlock rather than as an error.
+func (b *BridgeService) claimSyncInfo(ctx context.Context, claimer Claimer, name string) *types.SyncerSyncInfo {
+	lastProcessedBlock, hasProcessed, err := claimer.GetLastProcessedBlock(ctx)
+	if err != nil {
+		wrapped := fmt.Errorf("failed to get last processed block for %s: %w", name, err)
+		b.logger.Warnf("sync status: %s: %v", name, wrapped)
+		return &types.SyncerSyncInfo{IsActive: true, Error: publicSyncError(wrapped)}
+	}
+
+	info := &types.SyncerSyncInfo{IsActive: true}
+	if hasProcessed {
+		info.LastProcessedBlock = lastProcessedBlock
+	}
+
+	return info
+}
+
+// computeSyncStatus computes every configured syncer independently and concurrently, sharing ctx,
+// i.e. the shared feed backing both GetSyncStatusHandler and HealthCheckHandler, so the two
+// endpoints can never drift apart. A failing syncer carries its own Error; a halted one carries
+// IsHalted; one component's failure never blanks another component's entry, and this never
+// returns early -- every configured syncer is always evaluated. Each syncer's own calls stay
+// sequential; only the six components run concurrently, so a slow component gets its own full
+// share of ctx's budget instead of being queued behind another one -- but that does not bound the
+// overall wall-clock time of this function: wg.Wait() below still waits for every goroutine to
+// finish, so a component whose underlying call ignores ctx (a pre-existing gap, not addressed
+// here) can still make the whole call take as long as that RPC/DB round trip. A panic in one
+// component's goroutine is recovered (its stack is logged at the point of recovery, since
+// re-panicking on a different goroutine would otherwise lose the original frames) and re-panicked
+// in the caller goroutine after every component has finished, in fixed component order (L1, L2,
+// L2GER, L1InfoTree, ClaimL1, ClaimL2), preserving today's behavior of letting a panic propagate
+// to gin's Recovery middleware.
+func (b *BridgeService) computeSyncStatus(ctx context.Context) *types.SyncStatus {
+	syncStatus := &types.SyncStatus{
+		// "Not configured" shape for the legacy entries; overwritten below when configured. The
+		// new entries stay nil (omitted) unless configured.
+		L1Info:    &types.NetworkSyncInfo{},
+		L2Info:    &types.NetworkSyncInfo{},
+		L2GERInfo: &types.L2GERSyncInfo{},
+	}
+
+	// Fixed component order, used for the panics/componentNames slices below and for the doc
+	// comment above.
+	const (
+		componentL1 = iota
+		componentL2
+		componentL2GER
+		componentL1InfoTree
+		componentClaimL1
+		componentClaimL2
+		numComponents
+	)
+	componentNames := [numComponents]string{"L1", "L2", "L2GER", "L1InfoTree", "ClaimL1", "ClaimL2"}
+	panics := make([]any, numComponents)
+
+	var wg sync.WaitGroup
+	run := func(i int, f func()) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					panics[i] = r
+					// Logged here, not just re-panicked, because the re-panic below happens on a
+					// different goroutine (the caller of computeSyncStatus): gin's Recovery
+					// middleware would only see that goroutine's own stack, with no frame
+					// pointing at where the panic actually originated.
+					b.logger.Errorf("sync status: component %s panicked: %v\n%s",
+						componentNames[i], r, debug.Stack())
+				}
+			}()
+			f()
+		}()
+	}
+
 	if b.bridgeL1 != nil {
-		l1IsActive := b.bridgeL1.IsActive(ctx)
-		syncStatus.L1Info = &types.NetworkSyncInfo{IsActive: l1IsActive}
-
-		if l1IsActive {
-			if err := b.populateNetworkSyncInfo(ctx, b.bridgeL1, syncStatus.L1Info, syncComponentL1); err != nil {
-				return syncStatus, &syncComponentError{component: syncComponentL1, err: err}
-			}
-		}
-	} else {
-		syncStatus.L1Info = &types.NetworkSyncInfo{IsActive: false}
+		run(componentL1, func() { syncStatus.L1Info = b.bridgeNetworkSyncInfo(ctx, b.bridgeL1, "L1") })
 	}
-
-	// Check L2 sync status
 	if b.bridgeL2 != nil {
-		l2IsActive := b.bridgeL2.IsActive(ctx)
-		syncStatus.L2Info = &types.NetworkSyncInfo{IsActive: l2IsActive}
-
-		if l2IsActive {
-			if err := b.populateNetworkSyncInfo(ctx, b.bridgeL2, syncStatus.L2Info, syncComponentL2); err != nil {
-				return syncStatus, &syncComponentError{component: syncComponentL2, err: err}
-			}
-		}
-	} else {
-		syncStatus.L2Info = &types.NetworkSyncInfo{IsActive: false}
+		run(componentL2, func() { syncStatus.L2Info = b.bridgeNetworkSyncInfo(ctx, b.bridgeL2, "L2") })
 	}
-
-	// Check l2gersync (injected-GER) sync status
 	if b.injectedGERs != nil {
-		syncStatus.L2GERInfo = &types.L2GERSyncInfo{IsActive: true}
-
-		lastProcessedBlock, err := b.injectedGERs.GetLastProcessedBlock(ctx)
-		if err != nil {
-			b.logger.Errorf("failed to get last processed block for l2gersync: %s", err)
-			wrapped := fmt.Errorf("failed to get last processed block for l2gersync: %w", err)
-			return syncStatus, &syncComponentError{component: syncComponentL2GER, err: wrapped}
-		}
-		syncStatus.L2GERInfo.LastProcessedBlock = lastProcessedBlock
-	} else {
-		syncStatus.L2GERInfo = &types.L2GERSyncInfo{IsActive: false}
+		run(componentL2GER, func() { syncStatus.L2GERInfo = b.l2GERSyncInfo(ctx) })
+	}
+	if b.l1InfoTree != nil {
+		run(componentL1InfoTree, func() { syncStatus.L1InfoTreeInfo = b.l1InfoTreeSyncInfo(ctx) })
+	}
+	if b.claimL1 != nil {
+		run(componentClaimL1, func() { syncStatus.ClaimL1Info = b.claimSyncInfo(ctx, b.claimL1, "claimsync L1") })
+	}
+	if b.claimL2 != nil {
+		run(componentClaimL2, func() { syncStatus.ClaimL2Info = b.claimSyncInfo(ctx, b.claimL2, "claimsync L2") })
 	}
 
-	return syncStatus, nil
+	wg.Wait()
+	for _, p := range panics {
+		if p != nil {
+			panic(p)
+		}
+	}
+
+	return syncStatus
 }
 
-// GetSyncStatusHandler returns the bridge synchronization status for L1 and L2 networks,
-// as well as the l2gersync (injected-GER) synchronization status.
+// GetSyncStatusHandler returns the bridge synchronization status for L1 and L2 networks, the
+// l2gersync (injected-GER) synchronization status, and the l1infotreesync/claimsync synchronization
+// status when configured.
 //
 // @Summary Get bridge synchronization status
 // @Description Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.
-// @Description Shows if bridge syncers are active and whether they're keeping up with on-chain events.
-// @Description Also reports the l2gersync (injected-GER) sync status when available.
+// @Description Shows if bridge syncers are active and whether they're keeping up with on-chain events. Also
+// @Description reports l2gersync, l1infotreesync and claimsync status when available. Always responds 200 --
+// @Description a syncer that could not be computed reports its own error in its entry, it never fails the request.
 // @Tags sync
 // @Produce json
-// @Success 200 {object} types.SyncStatus "Bridge synchronization status for L1 and L2 networks"
-// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Success 200 {object} types.SyncStatus "Bridge synchronization status"
 // @Router /sync-status [get]
 func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	b.logger.Debugf("GetSyncStatus request received")
 
-	statusCode := http.StatusOK
 	startTime := time.Now()
 	defer func() {
-		reportMetrics(metrics.GetSyncStatusReq, statusCode, startTime)
+		reportMetrics(metrics.GetSyncStatusReq, http.StatusOK, startTime)
 	}()
 
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
-	syncStatus, err := b.computeSyncStatus(ctx)
-	if err != nil {
-		statusCode = http.StatusInternalServerError
-		c.JSON(statusCode, gin.H{"error": err.Error()})
-		return
-	}
+	syncStatus := b.computeSyncStatus(ctx)
 
-	c.JSON(statusCode, syncStatus)
+	c.JSON(http.StatusOK, syncStatus)
 }
 
 // componentHealthFromNetworkSyncInfo builds a *types.ComponentHealth for an L1/L2 bridge
 // component from its *types.NetworkSyncInfo (as computed by computeSyncStatus), and reports
 // whether it should count toward the error/pending buckets of the aggregate HealthSyncStatus (see
-// buildHealthCheckDetails). The caller must only call this for a component that is actually
-// configured on this instance (e.g. b.bridgeL1 != nil) -- a nil info here means computeSyncStatus
-// had not reached this component yet this cycle (an earlier component failed first), which is
-// treated the same as "nothing to report" rather than mislabeled as an error.
+// healthFromSyncStatus). The caller must only call this for a component that is actually
+// configured on this instance (e.g. b.bridgeL1 != nil); computeSyncStatus always evaluates every
+// configured component, so info is never nil in that case (the nil check below is defensive).
+// IsActive, IsHalted and Error are carried over verbatim from info.
 func componentHealthFromNetworkSyncInfo(
-	info *types.NetworkSyncInfo, component string, componentErr *syncComponentError,
+	info *types.NetworkSyncInfo,
 ) (health *types.ComponentHealth, isError, isPending bool) {
 	if info == nil {
 		return nil, false, false
 	}
 
-	health = &types.ComponentHealth{IsActive: info.IsActive}
+	health = &types.ComponentHealth{IsActive: info.IsActive, IsHalted: info.IsHalted}
 
-	switch {
-	case !info.IsActive:
-		// Configured but reporting not active: an operational fault (e.g. resolving a reorg),
-		// distinct from "not configured" -- that case never reaches this function at all, see
-		// buildHealthCheckDetails.
+	// Configured but halted/inactive is an operational fault (e.g. resolving a reorg), distinct
+	// from "not configured" -- that case never reaches this function at all, see
+	// healthFromSyncStatus. The same uniform predicate (!IsActive || IsHalted || Error != "") is
+	// used by componentHealthFromL2GERSyncInfo and componentHealthFromSyncerSyncInfo below.
+	if !info.IsActive || info.IsHalted || info.Error != "" {
+		health.Error = info.Error
 		return health, true, false
-	case componentErr != nil && componentErr.component == component:
-		health.Error = componentErr.Error()
-		return health, true, false
-	default:
-		isSynced := info.IsSynced
-		health.IsSynced = &isSynced
-		return health, false, !isSynced
 	}
+
+	isSynced := info.IsSynced
+	health.IsSynced = &isSynced
+	return health, false, !isSynced
 }
 
 // componentHealthFromL2GERSyncInfo builds a *types.ComponentHealth for l2gersync from its
@@ -1598,73 +1711,123 @@ func componentHealthFromNetworkSyncInfo(
 // Bridger.GetLatestNetworkBlock to compare last_processed_block against -- comparing it to
 // l2_info.network_block is documented (docs/bridge_service.md) as something callers do
 // externally, not a signal this service computes. So l2gersync's ComponentHealth never sets
-// IsSynced and only ever contributes to the error bucket, never to pending/done.
+// IsSynced and only ever contributes to the error bucket, never to pending/done. l2gersync has no
+// halt state, so IsHalted is always false, but it is still carried over verbatim like the other
+// components.
 func componentHealthFromL2GERSyncInfo(
-	info *types.L2GERSyncInfo, componentErr *syncComponentError,
+	info *types.L2GERSyncInfo,
 ) (health *types.ComponentHealth, isError bool) {
 	if info == nil {
 		return nil, false
 	}
 
-	health = &types.ComponentHealth{IsActive: info.IsActive}
-	if componentErr != nil && componentErr.component == syncComponentL2GER {
-		health.Error = componentErr.Error()
+	health = &types.ComponentHealth{IsActive: info.IsActive, IsHalted: info.IsHalted}
+	if !info.IsActive || info.IsHalted || info.Error != "" {
+		health.Error = info.Error
 		return health, true
 	}
 
 	return health, false
 }
 
-// buildHealthCheckDetails derives HealthCheckHandler's SyncStatus/Details fields from the same
-// computeSyncStatus feed GetSyncStatusHandler uses, so the two endpoints can never drift. Summary:
-//   - a syncer that is nil on this instance (e.g. no L1 bridge syncer on an L2-only bridge
-//     service) is excluded from Details, and from the error/pending/done aggregation, entirely --
-//     it is normal, expected topology for a large fraction of deployed instances, not a fault.
-//   - a configured syncer reporting IsActive() == false (halted, e.g. resolving a reorg) is an
-//     operational fault -> error.
-//   - a configured, active syncer whose sync status could not be computed (RPC/DB error) ->
-//     error, with the message on that component's ComponentHealth.Error.
-//   - a configured, active, successfully-computed syncer contributes its IsSynced to the
-//     pending/done aggregation.
-//   - l2gersync never gates pending/done (see componentHealthFromL2GERSyncInfo's doc); it only
-//     ever contributes to the error bucket.
-//
-// Note: because computeSyncStatus mirrors GetSyncStatusHandler's original stop-at-first-error
-// behavior (required so /bridge/v1/sync-status keeps calling exactly the syncer methods it
-// always has -- see computeSyncStatus's doc), a component computeSyncStatus had not yet reached
-// when an earlier one failed has no info to report this cycle: componentHealthFromNetworkSyncInfo/
-// componentHealthFromL2GERSyncInfo return nil for it, so it is simply omitted from Details for
-// this cycle rather than mislabeled. The cache TTL (healthCheckCache) bounds how long that lasts:
-// the next recomputation evaluates every configured component from the start again.
+// componentHealthFromSyncerSyncInfo builds a *types.ComponentHealth for a syncer with no
+// in-service "caught up" signal (l1infotreesync, claimsync L1/L2) from its *types.SyncerSyncInfo.
+// A nil info (component not configured on this instance) maps to a nil health and isError==false,
+// so the caller does not need a separate "is this configured" check for these three entries --
+// unlike the legacy L1/L2/l2gersync entries, which are always non-nil in *types.SyncStatus even
+// when unconfigured (see healthFromSyncStatus). These components never contribute to the
+// pending/done aggregation, only to the error bucket: is_halted (l1infotreesync only; claimsync
+// never halts) or a non-empty error both count as an error, consistent with computeSyncStatus's
+// invariant that a configured entry's IsActive == !IsHalted.
+func componentHealthFromSyncerSyncInfo(info *types.SyncerSyncInfo) (health *types.ComponentHealth, isError bool) {
+	if info == nil {
+		return nil, false
+	}
+
+	health = &types.ComponentHealth{IsActive: info.IsActive, IsHalted: info.IsHalted}
+	if !info.IsActive || info.IsHalted || info.Error != "" {
+		health.Error = info.Error
+		return health, true
+	}
+
+	return health, false
+}
+
+// buildHealthCheckDetails computes every configured syncer's sync status and derives
+// HealthCheckHandler's SyncStatus/Details fields from it. The derivation itself lives in the pure
+// function healthFromSyncStatus, so this method is just the thin, syncer-calling wrapper around
+// it; GetSyncStatusHandler feeds off the same computeSyncStatus call, so the two endpoints can
+// never drift apart.
 func (b *BridgeService) buildHealthCheckDetails(
 	ctx context.Context,
 ) (types.HealthSyncStatus, types.HealthCheckDetails) {
-	syncStatus, err := b.computeSyncStatus(ctx)
+	syncStatus := b.computeSyncStatus(ctx)
 
-	var componentErr *syncComponentError
-	errors.As(err, &componentErr)
+	return healthFromSyncStatus(syncStatus, b.bridgeL1 != nil, b.bridgeL2 != nil, b.injectedGERs != nil)
+}
 
+// healthFromSyncStatus is a pure function of a *types.SyncStatus value: no syncer calls, so it is
+// unit-testable on its own and guarantees /health can never disagree with /bridge/v1/sync-status
+// about a component that both endpoints report. The l1Configured/l2Configured/l2GERConfigured
+// bools are needed only for the three legacy entries (l1_info/l2_info/l2_ger_info), which are
+// always non-nil in s even when unconfigured, so "configured" cannot be read from nil-ness there.
+// The three new entries (s.L1InfoTreeInfo/ClaimL1Info/ClaimL2Info) are configured iff non-nil, so
+// componentHealthFromSyncerSyncInfo's nil handling covers them without an extra bool.
+//
+// Aggregation:
+//   - a syncer that is not configured on this instance (e.g. no L1 bridge syncer on an L2-only
+//     bridge service) is excluded from Details, and from the error/pending/done aggregation,
+//     entirely -- it is normal, expected topology for a large fraction of deployed instances, not
+//     a fault.
+//   - a configured syncer that is halted (e.g. resolving a reorg) is an operational fault -> error.
+//   - a configured, active syncer whose sync status could not be computed (RPC/DB error) ->
+//     error, with the message on that component's ComponentHealth.Error (the same, already
+//     redacted string as the matching sync-status entry's error).
+//   - a configured, active, successfully-computed L1/L2 bridge syncer contributes its IsSynced to
+//     the pending/done aggregation.
+//   - l2gersync, l1infotreesync and claimsync L1/L2 never gate pending/done: they have no
+//     in-service "caught up" signal, so they only ever contribute to the error bucket (l2gersync
+//     always via a non-empty error, since it never halts; l1infotreesync via IsHalted or a
+//     non-empty error; claimsync only via a non-empty error).
+func healthFromSyncStatus(
+	s *types.SyncStatus, l1Configured, l2Configured, l2GERConfigured bool,
+) (types.HealthSyncStatus, types.HealthCheckDetails) {
 	var details types.HealthCheckDetails
 	hasError := false
 	hasPending := false
 
-	if b.bridgeL1 != nil {
-		health, isErr, isPending := componentHealthFromNetworkSyncInfo(syncStatus.L1Info, syncComponentL1, componentErr)
+	if l1Configured {
+		health, isErr, isPending := componentHealthFromNetworkSyncInfo(s.L1Info)
 		details.L1 = health
 		hasError = hasError || isErr
 		hasPending = hasPending || isPending
 	}
 
-	if b.bridgeL2 != nil {
-		health, isErr, isPending := componentHealthFromNetworkSyncInfo(syncStatus.L2Info, syncComponentL2, componentErr)
+	if l2Configured {
+		health, isErr, isPending := componentHealthFromNetworkSyncInfo(s.L2Info)
 		details.L2 = health
 		hasError = hasError || isErr
 		hasPending = hasPending || isPending
 	}
 
-	if b.injectedGERs != nil {
-		health, isErr := componentHealthFromL2GERSyncInfo(syncStatus.L2GERInfo, componentErr)
+	if l2GERConfigured {
+		health, isErr := componentHealthFromL2GERSyncInfo(s.L2GERInfo)
 		details.L2GER = health
+		hasError = hasError || isErr
+	}
+
+	if health, isErr := componentHealthFromSyncerSyncInfo(s.L1InfoTreeInfo); health != nil {
+		details.L1InfoTree = health
+		hasError = hasError || isErr
+	}
+
+	if health, isErr := componentHealthFromSyncerSyncInfo(s.ClaimL1Info); health != nil {
+		details.ClaimL1 = health
+		hasError = hasError || isErr
+	}
+
+	if health, isErr := componentHealthFromSyncerSyncInfo(s.ClaimL2Info); health != nil {
+		details.ClaimL2 = health
 		hasError = hasError || isErr
 	}
 
