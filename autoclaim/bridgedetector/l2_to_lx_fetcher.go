@@ -50,11 +50,21 @@ func NewServiceFetcher(finder bridgeservicefinder.Finder) *ServiceFetcher {
 	}
 }
 
-// GetURL resolves the source network's bridge service URL, mapping the finder's not-found error to
-// the detector-local ErrURLNotFound.
+// GetURL resolves the source network's bridge service URL, mapping the finder's errors to the
+// detector-local sentinels. This is the single place the finder's vocabulary is translated, so the
+// detector never has to know which resolver backs it:
+//   - ErrNetworkDisabled (networkID in Config.IgnoreNetworkIDs) is permanent while that config
+//     stands, so it maps to ErrSourceDisabled;
+//   - any other ErrURLNotFound is a possibly-transient miss and maps to ErrURLNotFound.
+//
+// ErrNetworkDisabled wraps ErrURLNotFound, so it must be checked first. Both mappings also wrap
+// ErrURLNotFound: a permanently excluded source is still a source with no URL.
 func (f *ServiceFetcher) GetURL(sourceNetwork uint32) (string, error) {
 	urls, err := f.finder.GetURL(sourceNetwork)
 	if err != nil {
+		if errors.Is(err, bridgeservicefinder.ErrNetworkDisabled) {
+			return "", fmt.Errorf("%w: %w: source %d: %w", ErrSourceDisabled, ErrURLNotFound, sourceNetwork, err)
+		}
 		if errors.Is(err, bridgeservicefinder.ErrURLNotFound) {
 			return "", fmt.Errorf("%w: source %d: %w", ErrURLNotFound, sourceNetwork, err)
 		}
