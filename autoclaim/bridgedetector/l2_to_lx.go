@@ -9,7 +9,6 @@ import (
 
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
-	"github.com/agglayer/aggkit/bridgeservicefinder"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,6 +26,12 @@ var (
 	// ErrCandidatesNotSynced signals that the source bridge service has not yet synced the requested
 	// LER. The detector treats it as "retry later": it skips the source without advancing its LER cursor.
 	ErrCandidatesNotSynced = errors.New("autoclaim l2-to-lx bridge detector: source bridge service not synced yet")
+	// ErrSourceDisabled signals that a source network is permanently excluded from bridge service
+	// resolution, so its URL can never resolve, however long the detector waits. It is the permanent
+	// counterpart of ErrURLNotFound: the detector treats it as "nothing to do" rather than "retry
+	// later", so it never holds the shared block-window cursor back. A fetcher that returns it SHOULD
+	// also wrap ErrURLNotFound, since a permanently excluded source is also a source with no URL.
+	ErrSourceDisabled = errors.New("autoclaim l2-to-lx bridge detector: source is permanently excluded")
 )
 
 // VerifiedBatchSource exposes the l1infotreesync data the L2-to-Lx detector needs to discover
@@ -94,8 +99,18 @@ type ClaimCandidatesQuery struct {
 // candidates. The detector consumes it so unit tests can mock the remote bridge service; the
 // production implementation wraps bridgeservicefinder.Finder and bridgeservice/client.Client.
 type ClaimCandidatesFetcher interface {
-	// GetURL resolves the source network's bridge service base URL. It returns ErrURLNotFound when no
-	// healthy URL is cached, which the detector treats as "skip this source this round".
+	// GetURL resolves the source network's bridge service base URL. The two failure sentinels differ
+	// by permanence, and the detector acts on that difference:
+	//   - ErrURLNotFound: no healthy URL is cached right now, but one may appear (the service has not
+	//     announced itself yet, or is unhealthy). The detector skips this source this round and holds
+	//     the shared block-window cursor just before the source's verify row, so the row is
+	//     re-observed and the source retried on a later poll.
+	//   - ErrSourceDisabled: the source is excluded from resolution by operator configuration, so no
+	//     URL can ever resolve while that configuration stands. The detector treats it as "nothing to
+	//     do" and lets the block-window cursor advance past the source's verify row -- holding a cursor
+	//     shared by every source for a condition that never clears would starve all of them.
+	// An implementation returning ErrSourceDisabled SHOULD also wrap ErrURLNotFound; the detector
+	// checks the permanent sentinel first.
 	GetURL(sourceNetwork uint32) (string, error)
 	// GetClaimCandidates fetches one page of claim candidates. It returns ErrCandidatesNotSynced when
 	// the source has not yet synced the requested LER (retry later). The returned count is the total
@@ -196,9 +211,12 @@ type L2ToLxPollResult struct {
 	// ProcessedSourceCount is the number of sources fully processed this poll: every one of their
 	// (source, destination) pair cursors advanced to the source's newest LER.
 	ProcessedSourceCount int
-	// SkippedSourceCount is the number of sources skipped this poll: nothing new for any pair, or at
-	// least one pair's fetch group must be retried (finder miss or not synced yet). A source whose
-	// groups partially succeeded counts as skipped, since its block-window position is held back.
+	// SkippedSourceCount is the number of sources skipped this poll, for any of three reasons:
+	// nothing new for any pair; the source is permanently excluded from bridge service resolution
+	// (ErrSourceDisabled); or at least one pair's fetch group must be retried (url miss or not synced
+	// yet). Only the last one holds the source's block-window position back -- a source whose groups
+	// partially succeeded is that case, while a permanently excluded source is counted here yet lets
+	// the window advance past its verify row.
 	SkippedSourceCount int
 	// CandidateCount is the total number of claim candidates fetched across every fetch group of
 	// every processed source.
@@ -344,8 +362,8 @@ type sourceOutcome int
 const (
 	// sourceUpToDate means there is nothing to do for this source: every (source, destination) pair's
 	// cursor already matches the source's newest LER, the source has no destination pair at all, or
-	// the source is permanently excluded (bridgeservicefinder.ErrNetworkDisabled). Nothing to do is
-	// not a retry, so it never holds the shared block-window cursor back.
+	// the source is permanently excluded (ErrSourceDisabled). Nothing to do is not a retry, so it
+	// never holds the shared block-window cursor back.
 	sourceUpToDate sourceOutcome = iota
 	// sourceProcessed means every fetch group's candidates were enqueued and every pair's LER cursor
 	// advanced.
@@ -501,16 +519,20 @@ func (w *L2ToLx) processSource(
 
 	url, err := w.fetcher.GetURL(source.sourceID)
 	if err != nil {
-		if errors.Is(err, bridgeservicefinder.ErrNetworkDisabled) {
-			// The operator deliberately excluded this network (bridgeservicefinder IgnoreNetworkIDs),
-			// so its URL can never resolve. Treating that as "retry later" would hold the block-window
-			// cursor -- which is shared by every source -- just before this source's verify row for as
-			// long as the exclusion stands, so no other source's row is ever reached and no L2-origin
-			// claim request is ever created. It is "nothing to do" instead: the window moves on.
+		if errors.Is(err, ErrSourceDisabled) {
+			// The operator deliberately excluded this network, so its URL can never resolve. Treating
+			// that as "retry later" would hold the block-window cursor -- which is shared by every
+			// source -- just before this source's verify row for as long as the exclusion stands, so no
+			// other source's row is ever reached and no L2-origin claim request is ever created. It is
+			// "nothing to do" instead: the window moves on.
 			//
-			// The source's own (source, destination) LER cursors are left untouched, so if the network
-			// is later removed from the ignore list its next verify row is fetched from its old pair
-			// cursor and still covers everything bridged in between.
+			// The source's own (source, destination) LER cursors are left untouched, so when the source
+			// is later re-enabled its NEXT verify row is fetched from its old pair cursor and still
+			// covers everything bridged in between. That recovery therefore depends on the source
+			// publishing another verify row: the shared window has already moved past the row seen
+			// while it was excluded and only rewinds by overlapBlocks, so it never returns to it. To
+			// re-enable a source that has stopped producing verified batches, reset this detector's
+			// block-window cursor so the old verify row falls inside the scanned range again.
 			w.logDisabledSourceOnce(source.sourceID)
 			return sourceUpToDate, nil
 		}
@@ -879,9 +901,6 @@ func (w *L2ToLx) logInfof(format string, args ...interface{}) {
 // quiet for it afterwards. The exclusion never clears on its own, so repeating the line on every
 // poll -- the detector polls for the lifetime of the process -- adds no information.
 func (w *L2ToLx) logDisabledSourceOnce(sourceID uint32) {
-	if w.disabledSourceLogged == nil {
-		w.disabledSourceLogged = make(map[uint32]struct{})
-	}
 	if _, seen := w.disabledSourceLogged[sourceID]; seen {
 		return
 	}

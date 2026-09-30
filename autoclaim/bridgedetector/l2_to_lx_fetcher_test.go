@@ -61,20 +61,25 @@ func TestServiceFetcherGetURL(t *testing.T) {
 		_, err := f.GetURL(10)
 		require.ErrorIs(t, err, ErrURLNotFound)
 		require.ErrorIs(t, err, bridgeservicefinder.ErrURLNotFound)
+		require.NotErrorIs(t, err, ErrSourceDisabled,
+			"a plain finder miss is retryable and must keep holding the block window")
 	})
 
-	// The detector distinguishes a permanently disabled network from a retryable miss with
-	// errors.Is(err, bridgeservicefinder.ErrNetworkDisabled). ErrNetworkDisabled wraps
-	// ErrURLNotFound, so it takes the branch above and is re-wrapped; this pins that the sentinel
-	// still survives that mapping, since losing it would silently reintroduce the cursor deadlock
-	// the detector guards against.
-	t.Run("network disabled sentinel survives the not-found wrapping", func(t *testing.T) {
+	// This is the mapping point for the permanence distinction the detector acts on: a network the
+	// finder was told to ignore must arrive at the detector as ErrSourceDisabled, never as a plain
+	// retryable ErrURLNotFound, since the latter makes the detector hold the shared block-window
+	// cursor for a condition that never clears. ErrNetworkDisabled wraps ErrURLNotFound, so the
+	// disabled branch must be checked first; that ordering is what this pins.
+	t.Run("network disabled maps to the permanent sentinel", func(t *testing.T) {
 		finderErr := fmt.Errorf("%w: network %d", bridgeservicefinder.ErrNetworkDisabled, 10)
 		f := newTestFetcher(fakeURLResolver{err: finderErr}, nil)
 		_, err := f.GetURL(10)
-		require.ErrorIs(t, err, bridgeservicefinder.ErrNetworkDisabled,
-			"the detector must still be able to recognise a permanently disabled network")
+		require.ErrorIs(t, err, ErrSourceDisabled,
+			"the detector must be able to recognise a permanently excluded source")
+		// A permanently excluded source is also a source with no URL, and the finder chain stays
+		// readable in the message.
 		require.ErrorIs(t, err, ErrURLNotFound)
+		require.ErrorIs(t, err, bridgeservicefinder.ErrNetworkDisabled)
 		require.ErrorIs(t, err, bridgeservicefinder.ErrURLNotFound)
 	})
 

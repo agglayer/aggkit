@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -310,11 +311,12 @@ func TestL2ToLxRetrySkipAtWindowStartKeepsStoredCursor(t *testing.T) {
 }
 
 // disabledURLErr builds the error a real ServiceFetcher returns for a network the bridge service
-// finder was configured to ignore: bridgeservicefinder.ErrNetworkDisabled, wrapped exactly the way
-// ServiceFetcher.GetURL wraps it (see TestServiceFetcherGetURL).
+// finder was configured to ignore, wrapped exactly the way ServiceFetcher.GetURL wraps it (see
+// TestServiceFetcherGetURL): the permanent ErrSourceDisabled over the detector-local ErrURLNotFound
+// over the finder's own error.
 func disabledURLErr(sourceID uint32) error {
 	finderErr := fmt.Errorf("%w: network %d", bridgeservicefinder.ErrNetworkDisabled, sourceID)
-	return fmt.Errorf("%w: source %d: %w", ErrURLNotFound, sourceID, finderErr)
+	return fmt.Errorf("%w: %w: source %d: %w", ErrSourceDisabled, ErrURLNotFound, sourceID, finderErr)
 }
 
 func TestL2ToLxDisabledSourceDoesNotHoldBlockCursor(t *testing.T) {
@@ -484,7 +486,10 @@ func TestL2ToLxDisabledSourceIsReportedOncePerSource(t *testing.T) {
 	fetcher.urlErr[disabledSource] = disabledURLErr(disabledSource)
 	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
 	logger := commonmocks.NewLogger(t)
-	logger.EXPECT().Infof(mock.Anything, mock.Anything).Once()
+	logger.EXPECT().Infof(
+		mock.MatchedBy(func(format string) bool { return strings.Contains(format, "is disabled") }),
+		disabledSource,
+	).Once()
 	detector := newTestL2ToLxDetector(
 		t, source, fetcher, newFakeRegistry(claimer0), newMemoryCursorStore(), newFakePerPairLERStore(),
 		newFakeEnqueuer(), WithL2ToLxBlockWindow(50), WithL2ToLxOverlapBlocks(1), WithL2ToLxLogger(logger),
