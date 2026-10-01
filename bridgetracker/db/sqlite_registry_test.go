@@ -596,7 +596,7 @@ func TestSQLiteRegistryUpdateMethodsPropagateRealDBErrors(t *testing.T) {
 }
 
 // TestSQLiteRegistryCacheStatsReportsNonZeroSize pins that CacheStats (see
-// domain.CacheStatsProvider, used by GET /health) returns the SQLite file's actual on-disk size
+// domain.CacheStatsProvider, used by the Prometheus sampler) returns the SQLite file's actual on-disk size
 // rather than a hardcoded/zero value: writing a row must grow it
 func TestSQLiteRegistryCacheStatsReportsNonZeroSize(t *testing.T) {
 	r := newTestSQLiteRegistry(t)

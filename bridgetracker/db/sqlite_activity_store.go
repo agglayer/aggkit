@@ -734,8 +734,8 @@ func (s *sqliteActivityStore) FlushActivity(fromAddress common.Address) {
 	s.countMu.Unlock()
 }
 
-// CacheStats implements domain.CacheStatsProvider: the SQLite file's current size, used by
-// GET /health to report how much space this store's cache is using on disk. dbPath typically
+// CacheStats implements domain.CacheStatsProvider: the SQLite file's current size, published
+// by the Prometheus sampler as the cache_size_bytes gauge. dbPath typically
 // (see NewSQLiteActivityStore) points at the same file sqliteRegistry.CacheStats reports on —
 // this is expected, not a bug, when both are wired over one Config.DBPath
 func (s *sqliteActivityStore) CacheStats() (domain.CacheStats, error) {

@@ -1056,7 +1056,7 @@ func TestSQLiteActivityStorePruneIdleSkipsAddressWithWaiter(t *testing.T) {
 }
 
 // TestSQLiteActivityStoreCacheStatsMatchesSharedRegistryFile pins that CacheStats (see
-// domain.CacheStatsProvider, used by GET /health) returns a non-zero size and, since
+// domain.CacheStatsProvider, used by the Prometheus sampler) returns a non-zero size and, since
 // newTestSQLiteActivityStore wires the activity store over the very same file as its supervised
 // sqliteRegistry (the common production setup, see NewSQLiteActivityStore's doc), that both
 // report the identical size rather than double-counting or diverging

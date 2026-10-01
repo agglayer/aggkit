@@ -140,8 +140,8 @@ type CacheStats struct {
 // CacheStatsProvider is an optional capability of a SupervisedStore/ActivitySupervisedStore
 // implementation: reporting how large its on-disk cache currently is. Only the SQLite-backed
 // adapters (see bridgetracker/db.sqliteRegistry/sqliteActivityStore) implement it — the
-// in-memory adapters keep no on-disk cache at all, so GET /health (see api.healthCommand)
-// treats "does not implement this" as "in-memory, nothing to report". Mirrors the
+// in-memory adapters keep no on-disk cache at all, so the Prometheus sampler (see
+// BridgeTracker.StartMetricsSampler) treats "does not implement this" as "in-memory, nothing to report". Mirrors the
 // optional-capability pattern of Triggerable/ActivityTriggerable.
 type CacheStatsProvider interface {
 	// CacheStats returns the current on-disk size of the SQLite database backing this store,

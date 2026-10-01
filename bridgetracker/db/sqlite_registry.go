@@ -771,8 +771,8 @@ func (r *sqliteRegistry) Triggers() <-chan domain.TrackingID {
 	return r.trigger
 }
 
-// CacheStats implements domain.CacheStatsProvider: the SQLite file's current size, used by
-// GET /health to report how much space this registry's cache is using on disk
+// CacheStats implements domain.CacheStatsProvider: the SQLite file's current size, published
+// by the Prometheus sampler as the cache_size_bytes gauge
 func (r *sqliteRegistry) CacheStats() (domain.CacheStats, error) {
 	size, err := sqliteFileSize(r.dbPath)
 	if err != nil {

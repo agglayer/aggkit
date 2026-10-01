@@ -48,6 +48,13 @@ AllowedHeaders = ["*"]
 AllowCredentials = false
 MaxAge = "12h"
 
+[Prometheus]
+# Exposes the tracker's metrics (bridgetracker_cache_size_bytes, bridgetracker_alive_trackers,
+# bridgetracker_alive_activities) at http://Host:Port/metrics. Disabled by default.
+Enabled = false
+Host = "0.0.0.0"
+Port = 9091
+
 [Tracker]
 # DBPath: SQLite file the supervised-bridges registry persists to, so an already-resolved
 # bridge survives a restart instead of being re-resolved from scratch. Empty (the default)

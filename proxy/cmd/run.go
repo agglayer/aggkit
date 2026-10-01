@@ -17,6 +17,8 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/metrics"
+	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/proxy"
 	proxyconfig "github.com/agglayer/aggkit/proxy/config"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -67,6 +69,13 @@ func start(cliCtx *cli.Context) error {
 	// The finder serves the per-network bridge service URL / JSON-RPC endpoint and is shared by
 	// every component of this binary.
 	finder := runBridgeServiceFinder(ctx, cfg.BridgeServiceFinder, l1Client)
+
+	if cfg.Prometheus.Enabled {
+		prometheus.Init()
+		go metrics.StartPrometheusHTTPServer(cfg.Prometheus)
+	} else {
+		log.Info("Prometheus metrics server is disabled")
+	}
 
 	// Shared REST/WS server: every component registers its routes on it before Start
 	restServer := proxy.NewRESTServer(cfg.REST, log.WithFields("module", "rest"))
@@ -356,6 +365,10 @@ func runTracker(
 			log.Fatalf("failed to create bridge tracker activity engine: %v", err)
 		}
 		activityEngine.Start(ctx)
+	}
+
+	if cfg.Prometheus.Enabled {
+		tracker.StartMetricsSampler(ctx, bridgetracker.DefaultMetricsSampleInterval)
 	}
 
 	restServer.Register(tracker.API())

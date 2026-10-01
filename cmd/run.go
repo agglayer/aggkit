@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
@@ -44,6 +42,7 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/metrics"
 	"github.com/agglayer/aggkit/multidownloader"
 	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
@@ -51,7 +50,6 @@ import (
 	aggkitsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
 )
 
@@ -370,7 +368,7 @@ func start(cliCtx *cli.Context) error {
 	}
 
 	if cfg.Prometheus.Enabled {
-		go startPrometheusHTTPServer(cfg.Prometheus)
+		go metrics.StartPrometheusHTTPServer(cfg.Prometheus)
 	} else {
 		log.Info("Prometheus metrics server is disabled")
 	}
@@ -1137,33 +1135,6 @@ func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {
 	return jRPC.NewServer(cfg, services,
 		jRPC.WithLogger(logger.GetSugaredLogger()),
 		jRPC.WithHealthHandler(healthHandler))
-}
-
-func startPrometheusHTTPServer(c prometheus.Config) {
-	const ten = 10
-	mux := http.NewServeMux()
-	address := fmt.Sprintf("%s:%d", c.Host, c.Port)
-	lis, err := net.Listen("tcp", address)
-	if err != nil {
-		log.Errorf("failed to create tcp listener for metrics: %v", err)
-		return
-	}
-	mux.Handle(prometheus.Endpoint, promhttp.Handler())
-
-	metricsServer := &http.Server{
-		Handler:           mux,
-		ReadHeaderTimeout: ten * time.Second,
-		ReadTimeout:       ten * time.Second,
-	}
-	log.Infof("prometheus server listening on port %d", c.Port)
-	if err := metricsServer.Serve(lis); err != nil {
-		if err == http.ErrServerClosed {
-			log.Warnf("prometheus http server stopped")
-			return
-		}
-		log.Errorf("closed http connection for prometheus server: %v", err)
-		return
-	}
 }
 
 // createRollupDataQuerier initializes and returns the rollup data querier if any of the required components

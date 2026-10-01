@@ -221,6 +221,27 @@ one field that changes what the tracker's health endpoint reports:
 AutoRegisterNewNetworks = true
 ```
 
+## Prometheus Metrics
+
+If enabled in the configuration (`[Prometheus]`, disabled by default), the tracker exposes the following Prometheus metrics, refreshed every 15 seconds:
+
+| **Metric Name**                  | **Type** | **Description**                                                                                      |
+| -------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `bridgetracker_cache_size_bytes`    | Gauge    | On-disk size of the SQLite cache (main file plus `-wal`/`-shm`); `0` when `Tracker.DBPath` is empty (in-memory) |
+| `bridgetracker_alive_trackers`      | Gauge    | Supervised bridges not yet in a terminal state                                                       |
+| `bridgetracker_alive_activities`    | Gauge    | `from_address`es currently supervised by the activity subsystem (only present when the activity endpoint is configured) |
+
+A failed read keeps the gauge's previous value (and logs a warning) instead of reporting a misleading zero.
+
+```toml
+[Prometheus]
+Enabled = true
+Host = "0.0.0.0"
+Port = 9091
+```
+
+The metrics are then available at `http://<Host>:<Port>/metrics`.
+
 ## API Documentation
 
 <iframe src="assets/swagger/bridge_tracker/index.html"
