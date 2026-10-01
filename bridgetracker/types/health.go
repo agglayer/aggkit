@@ -51,11 +51,14 @@ const (
 //     relative to
 //   - 6: GET /tracker/v1/health gained cache (HealthResponse.Cache), reporting whether the
 //     supervised-bridges/activity persistence backend is in-memory or SQLite-backed and, for the
-//     latter, its current on-disk size, and alive_trackers (HealthResponse.AliveTrackers), the
-//     number of supervised bridges not yet in a terminal state. The same revision added the
-//     optional alive_activities (HealthResponse.AliveActivities), the number of from_addresses
-//     currently supervised by the activity subsystem — omitted, like pending_networks, when the
-//     activity endpoint is not configured (agglayer/aggkit#1870)
+//     latter, its current on-disk size (including its WAL/SHM sidecars, not just the main
+//     file's logical page count — see db.sqliteFileSize), and the optional alive_trackers
+//     (HealthResponse.AliveTrackers) and alive_activities (HealthResponse.AliveActivities), the
+//     number of supervised bridges not yet in a terminal state and of from_addresses currently
+//     supervised by the activity subsystem, respectively. Both alive_* fields, like
+//     pending_networks, are omitted rather than reported as zero whenever the underlying count
+//     could not be read (alive_trackers) or the activity endpoint is not configured
+//     (alive_activities) — a client must not read a missing field as "none" (agglayer/aggkit#1870)
 const CurrentAPIRevision = 6
 
 // HealthResponse is the body of GET /tracker/v1/health
@@ -90,8 +93,10 @@ type HealthResponse struct {
 	// it typically shares this same file (see bridgetracker/db.NewSQLiteActivityStore)
 	Cache CacheInfo `json:"cache"`
 	// AliveTrackers is the number of supervised bridges still being tracked — registered and
-	// not yet in a terminal state (see domain.SupervisedStore.GetTrackerActives)
-	AliveTrackers int `json:"alive_trackers"`
+	// not yet in a terminal state (see domain.SupervisedStore.GetTrackerActives). Omitted, not
+	// reported as zero, if the count itself could not be read — a client must not read a missing
+	// value as "no active trackers"
+	AliveTrackers *int `json:"alive_trackers,omitempty"`
 	// AliveActivities is the number of from_addresses currently supervised by the activity
 	// subsystem (see domain.ActivitySupervisedStore.GetActiveAddresses). Omitted when the
 	// activity endpoint is not configured, mirroring pending_networks/PendingNetworksLister

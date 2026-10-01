@@ -889,7 +889,7 @@ const docTemplatebridgetracker = `{
                     "type": "integer"
                 },
                 "alive_trackers": {
-                    "description": "AliveTrackers is the number of supervised bridges still being tracked — registered and\nnot yet in a terminal state (see domain.SupervisedStore.GetTrackerActives)",
+                    "description": "AliveTrackers is the number of supervised bridges still being tracked — registered and\nnot yet in a terminal state (see domain.SupervisedStore.GetTrackerActives). Omitted, not\nreported as zero, if the count itself could not be read — a client must not read a missing\nvalue as \"no active trackers\"",
                     "type": "integer"
                 },
                 "api_revision": {

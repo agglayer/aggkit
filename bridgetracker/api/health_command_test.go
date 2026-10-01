@@ -193,7 +193,8 @@ func TestNewAPIHealthWiresSupervisedAndActivity(t *testing.T) {
 // TestHealthCommandExecute_NoSupervisedOrActivityOmitsCounts verifies healthCommand.Execute
 // never panics on a nil supervised/activity (the wiring test above always sets supervised, but
 // some earlier tests in this file construct a bare healthCommand to isolate pending_networks
-// behavior): Cache reports memory and both alive counts stay at their zero value.
+// behavior): Cache reports memory and both alive counts are omitted (nil), not zero — a nil
+// supervised/activity is "unknown", not "none"
 func TestHealthCommandExecute_NoSupervisedOrActivityOmitsCounts(t *testing.T) {
 	cmd := &healthCommand{instanceID: "instance-1", configSHA1: "sha1"}
 
@@ -204,8 +205,12 @@ func TestHealthCommandExecute_NoSupervisedOrActivityOmitsCounts(t *testing.T) {
 	resp, ok := obj.(types.HealthResponse)
 	require.True(t, ok)
 	require.Equal(t, types.CacheInfo{Kind: types.CacheKindMemory}, resp.Cache)
-	require.Equal(t, 0, resp.AliveTrackers)
+	require.Nil(t, resp.AliveTrackers)
 	require.Nil(t, resp.AliveActivities)
+
+	data, err := json.Marshal(obj)
+	require.NoError(t, err)
+	require.NotContains(t, string(data), "alive_trackers")
 }
 
 // TestHealthCommandExecute_MemoryRegistryReportsMemoryKindAndAliveTrackers verifies that a
@@ -225,12 +230,35 @@ func TestHealthCommandExecute_MemoryRegistryReportsMemoryKindAndAliveTrackers(t 
 	resp, ok := obj.(types.HealthResponse)
 	require.True(t, ok)
 	require.Equal(t, types.CacheInfo{Kind: types.CacheKindMemory}, resp.Cache)
-	require.Equal(t, 3, resp.AliveTrackers)
+	require.NotNil(t, resp.AliveTrackers)
+	require.Equal(t, 3, *resp.AliveTrackers)
 
 	data, err := json.Marshal(obj)
 	require.NoError(t, err)
 	require.Contains(t, string(data), `"kind":"memory"`)
 	require.NotContains(t, string(data), "size_bytes")
+	require.Contains(t, string(data), `"alive_trackers":3`)
+}
+
+// TestHealthCommandExecute_AliveTrackersOmittedOnCountError verifies that a GetTrackerActives
+// failure (e.g. the DB is temporarily unavailable) omits alive_trackers entirely instead of
+// reporting a misleading zero — a consumer must be able to tell "unknown" from "none active"
+func TestHealthCommandExecute_AliveTrackersOmittedOnCountError(t *testing.T) {
+	supervised := &fakeSupervisedRegistry{getTrackerActivesErr: errors.New("db unavailable")}
+	cmd := &healthCommand{instanceID: "instance-1", configSHA1: "sha1", supervised: supervised}
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	code, obj, errData := cmd.Execute(c)
+	require.Nil(t, errData)
+	require.Equal(t, 200, code)
+
+	resp, ok := obj.(types.HealthResponse)
+	require.True(t, ok)
+	require.Nil(t, resp.AliveTrackers)
+
+	data, err := json.Marshal(obj)
+	require.NoError(t, err)
+	require.NotContains(t, string(data), "alive_trackers")
 }
 
 // TestHealthCommandExecute_SQLiteRegistryReportsDiskKindAndSize verifies that a supervised

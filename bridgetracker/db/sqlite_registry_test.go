@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"os"
 	"path"
 	"testing"
 	"time"
@@ -610,4 +611,22 @@ func TestSQLiteRegistryCacheStatsReportsNonZeroSize(t *testing.T) {
 	after, err := r.CacheStats()
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, after.SizeBytes, before.SizeBytes)
+}
+
+// TestSQLiteRegistryCacheStatsIncludesWALSidecar pins that CacheStats counts dbPath's "-wal"
+// sidecar, not just the main file: NewSQLiteDB opens every connection in WAL mode (see
+// db/sqlite.go), so a recent write can sit there, uncheckpointed, and PRAGMA page_count alone
+// would silently under-report the cache's real on-disk footprint (agglayer/aggkit#1871 review)
+func TestSQLiteRegistryCacheStatsIncludesWALSidecar(t *testing.T) {
+	r := newTestSQLiteRegistry(t)
+
+	withoutWAL, err := r.CacheStats()
+	require.NoError(t, err)
+
+	const walPayload = "pretend-wal-content-sized-to-be-clearly-non-zero"
+	require.NoError(t, os.WriteFile(r.dbPath+"-wal", []byte(walPayload), 0o600))
+
+	withWAL, err := r.CacheStats()
+	require.NoError(t, err)
+	require.Equal(t, withoutWAL.SizeBytes+int64(len(walPayload)), withWAL.SizeBytes)
 }

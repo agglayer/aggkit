@@ -69,7 +69,8 @@ func (cmd *healthCommand) Execute(_ *gin.Context) (int, any, *types.ErrorData) {
 		if active, err := cmd.supervised.GetTrackerActives(nil); err != nil {
 			cmd.warnf("bridgetracker: health check counting active trackers: %v", err)
 		} else {
-			resp.AliveTrackers = len(active)
+			numActive := len(active)
+			resp.AliveTrackers = &numActive
 		}
 	}
 	if cmd.activity != nil {

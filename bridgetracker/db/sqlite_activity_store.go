@@ -227,7 +227,10 @@ func parseTrackerClaimStatus(s string) types.TrackerClaimStatus {
 // Safe for concurrent use (every mutation is a self-contained SQL statement; SQLite itself
 // serializes writers).
 type sqliteActivityStore struct {
-	db         *sql.DB
+	db *sql.DB
+	// dbPath is the file db was opened from — kept only for CacheStats (os.Stat of the main file
+	// plus its WAL/SHM sidecars), since every other operation goes through db itself
+	dbPath     string
 	scanner    domain.ActivityBridgeScanner
 	claims     domain.ActivityClaimChecker
 	supervised domain.SupervisedStore
@@ -284,6 +287,7 @@ func NewSQLiteActivityStore(
 
 	return &sqliteActivityStore{
 		db:           sqlDB,
+		dbPath:       dbPath,
 		scanner:      scanner,
 		claims:       claims,
 		supervised:   supervised,
@@ -735,7 +739,7 @@ func (s *sqliteActivityStore) FlushActivity(fromAddress common.Address) {
 // (see NewSQLiteActivityStore) points at the same file sqliteRegistry.CacheStats reports on —
 // this is expected, not a bug, when both are wired over one Config.DBPath
 func (s *sqliteActivityStore) CacheStats() (domain.CacheStats, error) {
-	size, err := sqliteFileSize(s.db)
+	size, err := sqliteFileSize(s.dbPath)
 	if err != nil {
 		return domain.CacheStats{}, fmt.Errorf("reading activity_address cache size: %w", err)
 	}
