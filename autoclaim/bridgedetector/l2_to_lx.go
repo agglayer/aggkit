@@ -259,7 +259,14 @@ type L2ToLx struct {
 	// report is made once per source instead of once per poll (the detector polls indefinitely).
 	// Only ever touched from the single poll goroutine.
 	disabledSourceLogged map[uint32]struct{}
+	// retryLogged records when each retry-later condition was last reported, keyed by
+	// "<condition>/<sourceID>", so a persistent condition logs at most once per retryLogInterval
+	// rather than on every poll. Only ever touched from the single poll goroutine.
+	retryLogged map[string]time.Time
 }
+
+// retryLogInterval bounds how often a persistent retry-later condition is logged per source.
+const retryLogInterval = 10 * time.Minute
 
 // NewL2ToLx creates an L2-to-Lx Auto Claim bridge detector.
 func NewL2ToLx(
@@ -308,6 +315,7 @@ func NewL2ToLx(
 			return time.Now().UTC()
 		},
 		disabledSourceLogged: make(map[uint32]struct{}),
+		retryLogged:          make(map[string]time.Time),
 	}
 	for _, option := range options {
 		option(detector)
@@ -516,15 +524,28 @@ func (w *L2ToLx) processSource(
 
 	pending, err := w.resolveFromLER(ctx, source, destinationIDs)
 	if err != nil {
+		if errors.Is(err, l1infotreesync.ErrBlockNotProcessed) {
+			// l1infotreesync has not reached StartL1Block yet (expected on a fresh datadir, where the
+			// auto-resolved block is far ahead of the sync). Transient: retry this source next poll
+			// instead of failing the whole poll.
+			if w.shouldLogRetry("not-processed", source.sourceID) {
+				w.logInfof("autoclaim l2-to-lx bridge detector: skip source %d (l1infotreesync has not "+
+					"reached StartL1Block yet, will retry every poll): %v", source.sourceID, err)
+			}
+			return sourceRetryLater, nil
+		}
 		if errors.Is(err, ErrCannotResolveInitialLER) {
 			// Loud and retried, never silent: unlike a stale bridge-service URL this is a config
 			// problem an operator must fix (lower StartL1Block, or set it to 0 to accept scanning
 			// full history), so it is worth a WARN rather than the Info level used for transient
 			// finder/sync misses below. It only holds back this one source -- other sources in the
 			// same poll are unaffected -- and is retried every poll until the config is corrected.
-			w.logWarnf("autoclaim l2-to-lx bridge detector: skip source %d (cannot resolve initial "+
-				"LER cursor, will retry every poll until fixed): %v -- bridges from this source will "+
-				"not be autoclaimed until this is resolved", source.sourceID, err)
+			if w.shouldLogRetry("initial-ler", source.sourceID) {
+				w.logWarnf("autoclaim l2-to-lx bridge detector: skip source %d (cannot resolve initial "+
+					"LER cursor, will retry every poll until fixed; logged at most every %s): %v -- bridges "+
+					"from this source will not be autoclaimed until this is resolved",
+					source.sourceID, retryLogInterval, err)
+			}
 			return sourceRetryLater, nil
 		}
 		return sourceUpToDate, err
@@ -922,6 +943,18 @@ func (w *L2ToLx) logWarnf(format string, args ...interface{}) {
 	if w.log != nil {
 		w.log.Warnf(format, args...)
 	}
+}
+
+// shouldLogRetry reports whether the given retry-later condition for sourceID is due to be logged,
+// and records the time if so.
+func (w *L2ToLx) shouldLogRetry(condition string, sourceID uint32) bool {
+	key := fmt.Sprintf("%s/%d", condition, sourceID)
+	now := w.now()
+	if last, ok := w.retryLogged[key]; ok && now.Sub(last) < retryLogInterval {
+		return false
+	}
+	w.retryLogged[key] = now
+	return true
 }
 
 func (w *L2ToLx) logInfof(format string, args ...interface{}) {

@@ -9,8 +9,8 @@ EthTxManager is responsible for managing transactions
 |:---|:---|:---|:---|
 | `FrequencyToMonitorTxs` | `duration` | Frequency to monitor pending transactions. | `"1s"` |
 | `WaitTxToBeMined` | `duration` | Wait time before retrying mining confirmation. | `"2s"` |
-| `GetReceiptMaxTime` | `duration` | Max wait time for getting transaction receipt. | `"250ms"` |
-| `GetReceiptWaitInterval` | `duration` | Interval between retries for fetching receipt. | `"1s"` |
+| `WaitReceiptMaxTime` | `duration` | Max wait time for getting transaction receipt. | `"250ms"` |
+| `WaitReceiptCheckInterval` | `duration` | Interval between retries for fetching receipt. | `"1s"` |
 | `PrivateKeys` | `array` | List of private key configurations (keystore path + password). | `[ { Path = "/app/keystore/claimsponsor.keystore", Password = "testonly" } ]` |
 | `ForcedGas` | `uint64` | Fixed gas value override (0 = no override). | `0` |
 | `GasPriceMarginFactor` | `float64` | Gas price multiplier margin. | `1.0` |

@@ -71,7 +71,8 @@ func ResolveStartBlock(
 }
 
 // resolveBlockAtLookback binary-searches L1 block headers for the highest block whose timestamp is
-// at or before now-lookback, then clamps the result to [minBlock, head].
+// at or before now-lookback, then clamps the result to [minBlock, head]. If the head itself is at or below minBlock (a
+// misconfigured floor), the head is returned as-is: there is nothing newer to resolve to.
 func resolveBlockAtLookback(
 	ctx context.Context,
 	l1Client aggkittypes.EthClienter,

@@ -23,14 +23,11 @@ const l1DestinationNetworkID = uint32(0)
 // the tx-monitor loop with no delay, and GasPriceMarginFactor=0 zeroes every tx's gas price
 // ("transaction underpriced").
 const (
-	DefaultEthTxManagerFrequencyToMonitorTxs           = 1 * time.Second
-	DefaultEthTxManagerWaitTxToBeMined                 = 2 * time.Second
-	DefaultEthTxManagerWaitReceiptMaxTime              = 250 * time.Millisecond
-	DefaultEthTxManagerWaitReceiptCheckInterval        = 1 * time.Second
-	DefaultEthTxManagerGasPriceMarginFactor            = 1
-	DefaultEthTxManagerSafeStatusL1NumberOfBlocks      = 5
-	DefaultEthTxManagerFinalizedStatusL1NumberOfBlocks = 10
-	DefaultEthTxManagerEstimateGasMaxRetries           = 1
+	defaultEthTxManagerFrequencyToMonitorTxs  = 1 * time.Second
+	defaultEthTxManagerWaitTxToBeMined        = 2 * time.Second
+	defaultEthTxManagerGetReceiptMaxTime      = 250 * time.Millisecond
+	defaultEthTxManagerGetReceiptWaitInterval = 1 * time.Second
+	defaultEthTxManagerGasPriceMarginFactor   = 1
 )
 
 // DefaultStartLookback is the fallback StartLookback for both bridge detectors when left unset. A
@@ -129,6 +126,9 @@ func (c L2ToLxBridgeDetector) Validate() error {
 	if c.PollInterval.Duration <= 0 {
 		return fmt.Errorf("PollInterval must be greater than 0")
 	}
+	if c.StartLookback.Duration < 0 {
+		return fmt.Errorf("StartLookback must not be negative")
+	}
 	return nil
 }
 
@@ -173,39 +173,28 @@ func (c *Config) ApplyDefaults() {
 
 // applyEthTxManagerDefaults fills cfg's zero-valued fields in place.
 //
-// GasPriceMarginFactor, SafeStatusL1NumberOfBlocks, FinalizedStatusL1NumberOfBlocks and
-// EstimateGasMaxRetries are also documented by the vendored zkevm-ethtx-manager module as having a
-// meaningful zero value (respectively: "never adjust price", "use the network's own safe/finalized
-// tag", "retry forever"). aggkit's own AggOracle.EVMSender.EthTxManager already overrides all four
-// of those module defaults with a fixed opinion (config/default.go), so this mirrors that same
-// override here for consistency across every EthTxManager instance in the binary, rather than
-// leaving claimers as the only place that falls through to the vendored zero-value behavior.
+// Only fields whose zero value is always broken are defaulted. SafeStatusL1NumberOfBlocks,
+// FinalizedStatusL1NumberOfBlocks and EstimateGasMaxRetries are deliberately left alone: the
+// vendored zkevm-ethtx-manager module gives their zero value a meaning ("use the network's own
+// safe/finalized tag", "retry forever"), and an unmarshalled struct cannot tell an omitted field
+// from an explicit 0, so defaulting them would silently override a deliberate operator choice.
 func applyEthTxManagerDefaults(cfg *ethtxmanager.Config) {
 	if cfg.FrequencyToMonitorTxs.Duration == 0 {
-		cfg.FrequencyToMonitorTxs.Duration = DefaultEthTxManagerFrequencyToMonitorTxs
+		cfg.FrequencyToMonitorTxs.Duration = defaultEthTxManagerFrequencyToMonitorTxs
 	}
 	if cfg.WaitTxToBeMined.Duration == 0 {
-		cfg.WaitTxToBeMined.Duration = DefaultEthTxManagerWaitTxToBeMined
+		cfg.WaitTxToBeMined.Duration = defaultEthTxManagerWaitTxToBeMined
 	}
 	if cfg.GetReceiptMaxTime.Duration == 0 {
-		cfg.GetReceiptMaxTime.Duration = DefaultEthTxManagerWaitReceiptMaxTime
+		cfg.GetReceiptMaxTime.Duration = defaultEthTxManagerGetReceiptMaxTime
 	}
 	if cfg.GetReceiptWaitInterval.Duration == 0 {
-		cfg.GetReceiptWaitInterval.Duration = DefaultEthTxManagerWaitReceiptCheckInterval
+		cfg.GetReceiptWaitInterval.Duration = defaultEthTxManagerGetReceiptWaitInterval
 	}
 	// A zero (or negative) GasPriceMarginFactor is never a legitimate request: it means "multiply
 	// the suggested gas price by zero", i.e. never send a valid tx.
 	if cfg.GasPriceMarginFactor <= 0 {
-		cfg.GasPriceMarginFactor = DefaultEthTxManagerGasPriceMarginFactor
-	}
-	if cfg.SafeStatusL1NumberOfBlocks == 0 {
-		cfg.SafeStatusL1NumberOfBlocks = DefaultEthTxManagerSafeStatusL1NumberOfBlocks
-	}
-	if cfg.FinalizedStatusL1NumberOfBlocks == 0 {
-		cfg.FinalizedStatusL1NumberOfBlocks = DefaultEthTxManagerFinalizedStatusL1NumberOfBlocks
-	}
-	if cfg.EstimateGasMaxRetries == 0 {
-		cfg.EstimateGasMaxRetries = DefaultEthTxManagerEstimateGasMaxRetries
+		cfg.GasPriceMarginFactor = defaultEthTxManagerGasPriceMarginFactor
 	}
 }
 
@@ -242,6 +231,9 @@ func (c Config) Validate() error {
 	}
 	if c.L1ToL2BridgeDetector.PollInterval.Duration <= 0 {
 		return fmt.Errorf("AutoClaim.L1ToL2BridgeDetector.PollInterval must be greater than 0")
+	}
+	if c.L1ToL2BridgeDetector.StartLookback.Duration < 0 {
+		return fmt.Errorf("AutoClaim.L1ToL2BridgeDetector.StartLookback must not be negative")
 	}
 	if err := c.L2ToLxBridgeDetector.Validate(); err != nil {
 		return fmt.Errorf("AutoClaim.L2ToLxBridgeDetector: %w", err)
