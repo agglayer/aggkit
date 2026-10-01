@@ -3,6 +3,7 @@ package bridgedetector
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -60,7 +61,7 @@ func ResolveStartBlock(
 		logger.Infof(
 			"autoclaim %s: no start block configured; resolved block %d (timestamp %s UTC) from a "+
 				"%s lookback ending %s UTC",
-			detectorName, block, time.Unix(int64(blockTime), 0).UTC().Format(time.RFC3339),
+			detectorName, block, time.Unix(int64(min(blockTime, math.MaxInt64)), 0).UTC().Format(time.RFC3339),
 			lookback, now.UTC().Format(time.RFC3339))
 		logger.Warnf(
 			"autoclaim %s: bridges originating before block %d will never be autoclaimed and "+
