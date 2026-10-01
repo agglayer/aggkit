@@ -49,9 +49,19 @@ type Dependencies struct {
 		proof.RollupL1InfoTreeSyncer
 		bridgedetector.VerifiedBatchSource
 	}
-	// L1Client is the L1 JSON-RPC client used to build the shared bridge service finder.
+	// L1Client is the L1 JSON-RPC client used to build the shared bridge service finder, and to
+	// resolve a bridge detector's start block when its config field is left unset (see
+	// bridgedetector.ResolveStartBlock).
 	L1Client aggkittypes.EthClienter
-	Logger   aggkitcommon.Logger
+	// L1BridgeSyncInitialBlock is the L1 bridge sync's own configured genesis block. It is the lower
+	// clamp used when auto-resolving L1ToL2BridgeDetector.StartBlock: that detector can never usefully
+	// start earlier than the bridge sync it reads from.
+	L1BridgeSyncInitialBlock uint64
+	// RollupManagerCreationBlock is the L1 block the RollupManager contract was deployed at. It is
+	// the lower clamp used when auto-resolving L2ToLxBridgeDetector.StartL1Block: no rollup-origin
+	// bridge can exist before the RollupManager itself did.
+	RollupManagerCreationBlock uint64
+	Logger                     aggkitcommon.Logger
 }
 
 // Runtime owns the started Auto Claim components.
@@ -486,12 +496,23 @@ func createAndRegisterClaimers(
 	if !ok {
 		return nil, fmt.Errorf("AutoClaim L1-to-L2 bridge detector requires storage with cursor methods")
 	}
+	l1ToL2StartBlock := uint64(0)
+	if cfg.L1ToL2BridgeDetector.Enabled {
+		resolution, err := bridgedetector.ResolveStartBlock(
+			ctx, deps.L1Client, cfg.L1ToL2BridgeDetector.StartBlock,
+			cfg.L1ToL2BridgeDetector.StartLookback.Duration, deps.L1BridgeSyncInitialBlock,
+			time.Now().UTC(), logger, "L1ToL2BridgeDetector")
+		if err != nil {
+			return nil, fmt.Errorf("resolve AutoClaim L1-to-L2 bridge detector start block: %w", err)
+		}
+		l1ToL2StartBlock = resolution.Block
+	}
 	bd, err := factories.NewBridgeDetector(
 		deps.L1BridgeSync,
 		cursorStore,
 		registry,
 		bridgedetector.WithEnabled(cfg.L1ToL2BridgeDetector.Enabled),
-		bridgedetector.WithStartBlock(cfg.L1ToL2BridgeDetector.StartBlock),
+		bridgedetector.WithStartBlock(l1ToL2StartBlock),
 		bridgedetector.WithPollPeriod(cfg.L1ToL2BridgeDetector.PollInterval.Duration),
 		bridgedetector.WithEtrogL1UpgradeBlock(cfg.L1ToL2BridgeDetector.EtrogL1UpgradeBlock),
 		bridgedetector.WithLogger(logger),
@@ -501,7 +522,7 @@ func createAndRegisterClaimers(
 	}
 	runtime.BridgeDetector = bd
 
-	l2ToLxDetector, err := createL2ToLxDetector(cfg, deps, storage, registry, cursorStore, finder, logger, factories)
+	l2ToLxDetector, err := createL2ToLxDetector(ctx, cfg, deps, storage, registry, cursorStore, finder, logger, factories)
 	if err != nil {
 		return nil, err
 	}
@@ -514,6 +535,7 @@ func createAndRegisterClaimers(
 // L1-to-L2 detector), gated by bridgedetector.WithL2ToLxEnabled, so back-compat configs that never
 // set AutoClaim.L2ToLxBridgeDetector.Enabled=true get a detector that never does any work.
 func createL2ToLxDetector(
+	ctx context.Context,
 	cfg autoclaimcfg.Config,
 	deps Dependencies,
 	storage autoclaimtypes.Storage,
@@ -528,6 +550,18 @@ func createL2ToLxDetector(
 		return nil, fmt.Errorf("AutoClaim L2-to-Lx bridge detector requires storage with LER cursor methods")
 	}
 
+	l2ToLxStartBlock := uint64(0)
+	if cfg.L2ToLxBridgeDetector.Enabled {
+		resolution, err := bridgedetector.ResolveStartBlock(
+			ctx, deps.L1Client, cfg.L2ToLxBridgeDetector.StartL1Block,
+			cfg.L2ToLxBridgeDetector.StartLookback.Duration, deps.RollupManagerCreationBlock,
+			time.Now().UTC(), logger, "L2ToLxBridgeDetector")
+		if err != nil {
+			return nil, fmt.Errorf("resolve AutoClaim L2-to-Lx bridge detector start block: %w", err)
+		}
+		l2ToLxStartBlock = resolution.Block
+	}
+
 	fetcher := factories.NewClaimCandidatesFetcher(finder)
 	l2ToLxDetector, err := factories.NewL2ToLxDetector(
 		deps.L1InfoTreeSync,
@@ -537,7 +571,7 @@ func createL2ToLxDetector(
 		lerCursorStore,
 		storage,
 		bridgedetector.WithL2ToLxEnabled(cfg.L2ToLxBridgeDetector.Enabled),
-		bridgedetector.WithL2ToLxStartL1Block(cfg.L2ToLxBridgeDetector.StartL1Block),
+		bridgedetector.WithL2ToLxStartL1Block(l2ToLxStartBlock),
 		bridgedetector.WithL2ToLxPollPeriod(cfg.L2ToLxBridgeDetector.PollInterval.Duration),
 		bridgedetector.WithL2ToLxLogger(logger),
 	)

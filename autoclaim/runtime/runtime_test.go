@@ -301,7 +301,10 @@ func (fakeBridgeServiceFinder) PendingNetworks() []bridgeservicefinder.PendingNe
 
 func withL2ToLxEnabled(cfg autoclaimcfg.Config) autoclaimcfg.Config {
 	cfg.L2ToLxBridgeDetector = autoclaimcfg.L2ToLxBridgeDetector{
-		Enabled:      true,
+		Enabled: true,
+		// Pinned explicitly so these runtime-wiring tests never need a real L1Client to resolve a
+		// start block from StartLookback; see the comment on validConfig()'s L1ToL2BridgeDetector.
+		StartL1Block: uint64Ptr(0),
 		PollInterval: cfgtypes.Duration{Duration: time.Second},
 	}
 	cfg.BridgeServiceFinder = bridgeservicefinder.Config{
@@ -467,6 +470,8 @@ func requireClosed(t *testing.T, ch <-chan struct{}) {
 	}, time.Second, 10*time.Millisecond)
 }
 
+func uint64Ptr(v uint64) *uint64 { return &v }
+
 func validConfig() autoclaimcfg.Config {
 	return autoclaimcfg.Config{
 		StoragePath: "/tmp/autoclaim.sqlite",
@@ -474,7 +479,11 @@ func validConfig() autoclaimcfg.Config {
 			Enabled: false,
 		},
 		L1ToL2BridgeDetector: autoclaimcfg.L1ToL2BridgeDetector{
-			Enabled:      true,
+			Enabled: true,
+			// Pinned explicitly so these runtime-wiring tests never need a real L1Client to resolve
+			// a start block from StartLookback; that resolution path is covered on its own in
+			// bridgedetector's TestResolveStartBlock* tests.
+			StartBlock:   uint64Ptr(0),
 			PollInterval: cfgtypes.Duration{Duration: time.Hour},
 		},
 		Claimers: []autoclaimcfg.ClaimerConfig{validClaimer("primary", 1, true)},

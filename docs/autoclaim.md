@@ -175,15 +175,17 @@ configured and that destination network's bridge service to be reachable — eve
 
 **Adding a claimer to a running deployment.** Each destination network already keeps its own durable block-window
 cursor (`autoclaim_bridge_cursor`, name `l1-to-l2:<destination>`), so a brand-new destination simply has no cursor
-row yet and backfills from `AutoClaim.L1ToL2BridgeDetector.StartBlock` (default `0`, i.e. from L1 genesis) the first
-time it is polled, without disturbing any other destination's already-advanced cursor or requiring any migration.
-Every poll processes each distinct per-destination `fromBlock` as its own independent query and cursor write (issue
-#1651): a newly added destination backfilling from a low `StartBlock` no longer stalls an already-caught-up
-destination the way a single shared block window used to (the shared window collapsed to the lowest `fromBlock`
-across every destination, which meant every established destination's window shrank to the new destination's
-backfill pace until it caught up) — see the "Operational notes" section below. When adding a claimer against a
-destination with a long L1 history, set `StartBlock` to a recent block instead of leaving it at `0`, unless
-backfilling the destination's full history is actually wanted; `GetBridges` is still bounded by
+row yet and backfills from `AutoClaim.L1ToL2BridgeDetector.StartBlock` the first time it is polled, without
+disturbing any other destination's already-advanced cursor or requiring any migration. When `StartBlock` is left
+unset, it is resolved automatically from `StartLookback` (default `24h`) the first time the L1 client is available;
+an explicit value, including `0` (L1 genesis), is used verbatim. Every poll processes each distinct per-destination
+`fromBlock` as its own independent query and cursor write (issue #1651): a newly added destination backfilling from
+a low `StartBlock` no longer stalls an already-caught-up destination the way a single shared block window used to
+(the shared window collapsed to the lowest `fromBlock` across every destination, which meant every established
+destination's window shrank to the new destination's backfill pace until it caught up) — see the "Operational
+notes" section below. When adding a claimer against a destination with a long L1 history, leave `StartBlock` unset
+(or pin it to a recent block) rather than setting it to `0`, unless backfilling the destination's full history is
+actually wanted; `GetBridges` is still bounded by
 `AutoClaim.L1ToL2BridgeDetector.PollInterval`-paced windows of at most `blockWindow` blocks each (not configurable,
 1000 by default), so unlike the L2-to-Lx LER cursor below, a `StartBlock = 0` backfill here cannot request a single
 poll's worth of unbounded history — it just takes more polls to catch up.
@@ -290,20 +292,26 @@ and `bridgeservicefinder` resolves its URL from the on-chain rollup manager (or 
 
 **Initial LER cursor.** The first time a given (source, destination) pair is seen (no cursor row yet for it), the
 detector derives its initial `from_ler` the same way regardless of whether the source itself is new or already
-established: if `AutoClaim.L2ToLxBridgeDetector.StartL1Block` is `0`, `from_ler` is omitted (the full bridge
-history is requested). Otherwise it resolves `l1infotreesync.GetLatestL1InfoLeafUntilBlock(StartL1Block)`, then that
-leaf's `GetLocalExitRoot(source, leaf.RollupExitRoot)`; a zero LER (the source had not yet been verified at that
-block) also falls back to omitting `from_ler`.
+established: if `AutoClaim.L2ToLxBridgeDetector.StartL1Block` is explicitly `0`, `from_ler` is omitted (the full
+bridge history is requested). Otherwise it resolves `l1infotreesync.GetLatestL1InfoLeafUntilBlock(StartL1Block)`,
+then that leaf's `GetLocalExitRoot(source, leaf.RollupExitRoot)`. If that leaf cannot be found (StartL1Block predates
+it) or the resolved LER is zero (the source had not yet been verified at that block), the pair is retried on the
+next poll — with a `WARN` log naming the source — rather than silently falling back to full history; the only way to
+request full history is to set `StartL1Block` to `0` explicitly.
 
-**Backfill-volume risk.** `StartL1Block = 0` (the default) means every unseeded pair's first poll requests the
+When `StartL1Block` is left unset, it is resolved automatically from `StartLookback` (default `24h`) the first time
+the L1 client is available, clamped to never predate the RollupManager contract's own creation block.
+
+**Backfill-volume risk.** An explicit `StartL1Block = 0` means every unseeded pair's first poll requests the
 source's *entire* bridge history in one `from_ler`-omitted query, and the detector pages through however many
 candidates the source's bridge service reports with no upper bound on that count — on a mature source with a long
 history this can mean a very large number of candidate pages fetched (and, for matching destinations, requests
-enqueued) before that pair's cursor first advances. When adding a claimer for a destination against a source that
-already has significant bridge history, set `AutoClaim.L2ToLxBridgeDetector.StartL1Block` to a recent L1 block (e.g.
-close to the current tip) before starting the new claimer, rather than leaving it at `0`: this bounds the pair's
-initial `from_ler` to a small tail of recent history instead of the source's full history. This only affects a
-pair's *first* poll; every later poll always requests just the delta since that pair's cursor.
+enqueued) before that pair's cursor first advances. Leaving `StartL1Block` unset (the recommended default) avoids
+this entirely: it resolves to a recent block via `StartLookback` instead of genesis. When adding a claimer for a
+destination against a source that already has significant bridge history, leave `StartL1Block` unset or pin it to a
+recent L1 block (e.g. close to the current tip) before starting the new claimer, rather than setting it to `0`:
+this bounds the pair's initial `from_ler` to a small tail of recent history instead of the source's full history.
+This only affects a pair's *first* poll; every later poll always requests just the delta since that pair's cursor.
 
 **Legacy upgrade seed.** A deployment upgrading from a pre-#1651 build (autoclaim0002 and earlier, shipped in
 v0.11.0-rc3..rc10) has one `autoclaim_ler_cursor` row per source, not per pair. The `autoclaim0003` migration parks
@@ -502,13 +510,15 @@ Port = 5579
 
 [AutoClaim.L1ToL2BridgeDetector]
 Enabled = true
-StartBlock = 0
+# StartBlock left unset: resolved automatically from StartLookback (default 24h). Set it explicitly
+# (including 0 for genesis) to pin an exact block instead.
 PollInterval = "3s"
 EtrogL1UpgradeBlock = 0
 
 [AutoClaim.L2ToLxBridgeDetector]
 Enabled = true
-StartL1Block = 0
+# StartL1Block left unset: resolved automatically from StartLookback (default 24h). Set it
+# explicitly (including 0 for full history) to pin an exact block instead.
 PollInterval = "3s"
 
 [AutoClaim.BridgeServiceFinder]
@@ -581,11 +591,13 @@ it has no GER-injection gate at all, since the GER already exists on L1 by const
 | `AutoClaim.StoragePath` | `{{PathRWData}}/autoclaim.sqlite` | Yes | SQLite database for requests, cursors, decisions, proofs, and transaction attempts. |
 | `AutoClaim.API.Enabled` | `false` | No | Enables the admin routes (approve/reject) on the shared admin API server (`[AdminREST]`). |
 | `AutoClaim.L1ToL2BridgeDetector.Enabled` | `true` | No | Enables L1 bridge discovery for configured L2 claimers. |
-| `AutoClaim.L1ToL2BridgeDetector.StartBlock` | `0` | No | First L1 block used when a destination-network cursor does not exist. New claimers backfill from this block. |
+| `AutoClaim.L1ToL2BridgeDetector.StartBlock` | unset | No | First L1 block used when a destination-network cursor does not exist. New claimers backfill from this block. Unset (the recommended default) resolves it automatically from `StartLookback`; an explicit value, including `0` (genesis), is used verbatim. |
+| `AutoClaim.L1ToL2BridgeDetector.StartLookback` | `24h` | No | How far back from "now" to resolve `StartBlock` when it is left unset. Ignored when `StartBlock` is set. Must not be negative. The window is relative to process start: it is recomputed on every restart and not persisted. |
 | `AutoClaim.L1ToL2BridgeDetector.PollInterval` | `3s` | Yes | How often the bridge detector polls `l1bridgesync`. Must be greater than zero. |
 | `AutoClaim.L1ToL2BridgeDetector.EtrogL1UpgradeBlock` | `0` | No | L1 block where Etrog global-index encoding becomes active for legacy zkEVM destination network `1`; `0` treats bridges as post-Etrog. |
 | `AutoClaim.L2ToLxBridgeDetector.Enabled` | `false` | No | Enables rollup-origin (L2-to-L1, L2-to-L2) bridge discovery. Requires `AutoClaim.BridgeServiceFinder.RollupManagerAddr` to be set, and is itself required by any claimer with `NetworkID = 0`. |
-| `AutoClaim.L2ToLxBridgeDetector.StartL1Block` | `0` | No | L1 block used to derive the initial LER cursor of a newly discovered (source, destination) pair — including a claimer added later against an already-established source (via the GER at that block); `0` means full history (`from_ler` omitted on first fetch), which can mean fetching a very large number of claim-candidate pages in that pair's first poll on a mature source (see [Backfill-volume risk](#l2-to-lx-l2-to-l1-and-l2-to-l2) above) — set it to a recent block instead when adding a claimer against a source with significant history. |
+| `AutoClaim.L2ToLxBridgeDetector.StartL1Block` | unset | No | L1 block used to derive the initial LER cursor of a newly discovered (source, destination) pair — including a claimer added later against an already-established source (via the GER at that block). Unset (the recommended default) resolves it automatically from `StartLookback`; an explicit `0` means full history (`from_ler` omitted on first fetch), which can mean fetching a very large number of claim-candidate pages in that pair's first poll on a mature source (see [Backfill-volume risk](#l2-to-lx-l2-to-l1-and-l2-to-l2) above) — leave it unset or pin it to a recent block instead when adding a claimer against a source with significant history. |
+| `AutoClaim.L2ToLxBridgeDetector.StartLookback` | `24h` | No | How far back from "now" to resolve `StartL1Block` when it is left unset. Ignored when `StartL1Block` is set. Must not be negative. The window is relative to process start: a source/destination pair first seen after a restart is baselined from the new, later block, so pin `StartL1Block` explicitly if that matters. |
 | `AutoClaim.L2ToLxBridgeDetector.PollInterval` | `3s` | Yes, when the detector is enabled | How often the detector polls `l1infotreesync` for new verified-batches rows. Must be greater than zero. |
 | `AutoClaim.BridgeServiceFinder.RollupManagerAddr` | `{{L1NetworkConfig.RollupManagerAddr}}` | Yes, when `L2ToLxBridgeDetector.Enabled = true` or any enabled claimer has an L2 destination (`NetworkID != 0`) | Address of the rollup manager / agglayer manager contract on L1 used to enumerate attached rollups and resolve their bridge service URLs — both as claim-candidate/claim-proof sources and as GER-injection-gate destinations — and their bridge contracts. |
 | `AutoClaim.BridgeServiceFinder.BridgeURLs` | `{}` | No | Static override map from source network ID to bridge service base URL (e.g. `1 = "http://bridge-svc-1:5577"`). Highest-priority source; never overridden by on-chain events. The only way to resolve network 0 (L1), which is not enumerated on-chain. |
@@ -622,7 +634,7 @@ destination, reachable only through the L2-to-Lx detector.
 | `WaitPeriod` | Yes | Claimer poll period and transaction-result polling interval. Must be greater than zero. |
 | `RetryAfter` | No | Retry delay after a failed claim attempt. Defaults to `WaitPeriod` when omitted or zero. |
 | `MaxRetries` | No | Maximum claim submission retries before the request is marked failed. `0` means failures are immediately final. |
-| `EthTxManager` | Yes | Independent transaction-manager configuration and storage path for this claimer. |
+| `EthTxManager` | Yes | Independent transaction-manager configuration and storage path for this claimer. Unset `FrequencyToMonitorTxs` (`1s`), `WaitTxToBeMined` (`2s`), `WaitReceiptMaxTime` (`250ms`), `WaitReceiptCheckInterval` (`1s`) and `GasPriceMarginFactor` (`1`; values `<= 0` are coerced to `1`) are filled in with these defaults. `SafeStatusL1NumberOfBlocks`, `FinalizedStatusL1NumberOfBlocks` and `EstimateGasMaxRetries` are never defaulted: an explicit `0` keeps the `zkevm-ethtx-manager` meaning. |
 
 ## Policies
 

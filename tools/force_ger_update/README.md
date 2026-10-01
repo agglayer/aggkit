@@ -90,8 +90,8 @@ in `config/default.go`).
 | --- | --- | --- | --- |
 | `FrequencyToMonitorTxs` | duration | Frequency to monitor pending transactions. | `"1s"` |
 | `WaitTxToBeMined` | duration | Wait time before retrying mining confirmation. | `"2s"` |
-| `GetReceiptMaxTime` | duration | Max wait time for getting a transaction receipt. | `"250ms"` |
-| `GetReceiptWaitInterval` | duration | Interval between retries for fetching the receipt. | `"1s"` |
+| `WaitReceiptMaxTime` | duration | Max wait time for getting a transaction receipt. | `"250ms"` |
+| `WaitReceiptCheckInterval` | duration | Interval between retries for fetching the receipt. | `"1s"` |
 | `PrivateKeys` | array of `SignerConfig` | List of signer configurations used to sign the forced-update transaction. See [signer examples](#signer-examples) below. | `[{Method="local", Path="/app/keystore/force_ger_update.keystore", Password="testonly"}]` |
 | `ForcedGas` | uint64 | Fixed gas value override (`0` = no override). | `0` |
 | `GasPriceMarginFactor` | float64 | Gas price multiplier margin. | `1` |

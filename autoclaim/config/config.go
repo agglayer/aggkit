@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
@@ -14,6 +15,27 @@ import (
 // detector can ever route a request to such a claimer, since the L1ToL2 detector only discovers
 // L1-origin bridges (which always target an L2 destination).
 const l1DestinationNetworkID = uint32(0)
+
+// Default values applied to every claimer's EthTxManager by ApplyDefaults, mirroring aggkit's own
+// AggOracle.EVMSender.EthTxManager opinion (config/default.go). TOML array-of-tables elements like
+// AutoClaim.Claimers get no per-element defaults from the config loader, so without these an
+// operator who omits the EthTxManager block gets a zero-value one: FrequencyToMonitorTxs=0 spins
+// the tx-monitor loop with no delay, and GasPriceMarginFactor=0 zeroes every tx's gas price
+// ("transaction underpriced").
+const (
+	defaultEthTxManagerFrequencyToMonitorTxs  = 1 * time.Second
+	defaultEthTxManagerWaitTxToBeMined        = 2 * time.Second
+	defaultEthTxManagerGetReceiptMaxTime      = 250 * time.Millisecond
+	defaultEthTxManagerGetReceiptWaitInterval = 1 * time.Second
+	defaultEthTxManagerGasPriceMarginFactor   = 1
+)
+
+// DefaultStartLookback is the fallback StartLookback for both bridge detectors when left unset. A
+// bridge only becomes claimable after certificate settlement and destination GER injection, which
+// has been observed in production to take over an hour; 24h keeps that comfortably covered while
+// still being a tiny fraction of a chain's full history (e.g. ~7,000 Sepolia blocks vs. the ~6.9M
+// blocks a genesis backfill actually scanned).
+const DefaultStartLookback = 24 * time.Hour
 
 // NetworkType identifies the destination chain family a claimer targets.
 type NetworkType string
@@ -63,8 +85,16 @@ type APIConfig struct {
 // L1ToL2BridgeDetector configures L1-to-L2 bridge exit discovery. A failed poll is logged and
 // retried on the next PollInterval tick; there is no separate error-retry policy.
 type L1ToL2BridgeDetector struct {
-	Enabled             bool              `mapstructure:"Enabled"`
-	StartBlock          uint64            `mapstructure:"StartBlock"`
+	Enabled bool `mapstructure:"Enabled"`
+	// StartBlock is the first L1 block scanned when no durable cursor exists. Nil (the field is
+	// absent from config) means "resolve it automatically from StartLookback"; an explicit value --
+	// including 0, meaning genesis -- is honored verbatim and never adjusted or clamped. Leaving
+	// this absent is the recommended default: a hand-pinned block number goes stale the moment the
+	// deployment it was computed for slips in time.
+	StartBlock *uint64 `mapstructure:"StartBlock"`
+	// StartLookback is how far back from "now" StartBlock is resolved when left unset (see
+	// StartBlock). Ignored when StartBlock is set. Defaults to DefaultStartLookback.
+	StartLookback       cfgtypes.Duration `mapstructure:"StartLookback"`
 	PollInterval        cfgtypes.Duration `mapstructure:"PollInterval"`
 	EtrogL1UpgradeBlock uint64            `mapstructure:"EtrogL1UpgradeBlock"`
 }
@@ -77,9 +107,14 @@ type L1ToL2BridgeDetector struct {
 type L2ToLxBridgeDetector struct {
 	Enabled bool `mapstructure:"Enabled"`
 	// StartL1Block is the L1 block used to derive a newly discovered source network's initial LER
-	// cursor (via the GER at that block). 0 means full history (from_ler omitted on first fetch).
-	StartL1Block uint64            `mapstructure:"StartL1Block"`
-	PollInterval cfgtypes.Duration `mapstructure:"PollInterval"`
+	// cursor (via the GER at that block). Nil (absent from config) means "resolve it automatically
+	// from StartLookback"; an explicit value is honored verbatim, including 0, which means full
+	// history (from_ler omitted on first fetch) and is never adjusted or clamped.
+	StartL1Block *uint64 `mapstructure:"StartL1Block"`
+	// StartLookback is how far back from "now" StartL1Block is resolved when left unset (see
+	// StartL1Block). Ignored when StartL1Block is set. Defaults to DefaultStartLookback.
+	StartLookback cfgtypes.Duration `mapstructure:"StartLookback"`
+	PollInterval  cfgtypes.Duration `mapstructure:"PollInterval"`
 }
 
 // Validate checks whether an enabled L2ToLxBridgeDetector config is usable. It is a no-op when
@@ -90,6 +125,9 @@ func (c L2ToLxBridgeDetector) Validate() error {
 	}
 	if c.PollInterval.Duration <= 0 {
 		return fmt.Errorf("PollInterval must be greater than 0")
+	}
+	if c.StartLookback.Duration < 0 {
+		return fmt.Errorf("StartLookback must not be negative")
 	}
 	return nil
 }
@@ -112,6 +150,52 @@ type ClaimerConfig struct {
 	RetryAfter   cfgtypes.Duration   `mapstructure:"RetryAfter"`
 	MaxRetries   uint64              `mapstructure:"MaxRetries"`
 	EthTxManager ethtxmanager.Config `mapstructure:"EthTxManager"`
+}
+
+// ApplyDefaults fills every claimer's EthTxManager fields left at their Go zero value with
+// aggkit's own established EthTxManager opinion (see the Default* constants above), and fills each
+// bridge detector's StartLookback with DefaultStartLookback when left unset. It never overrides a
+// value the operator did set -- including a detector's StartBlock/StartL1Block pointer, which stays
+// nil here; resolving it into a concrete block happens later, once an L1 client is available (see
+// autoclaim/bridgedetector.ResolveStartBlock). Callers should invoke it once, right after
+// unmarshalling and before Validate.
+func (c *Config) ApplyDefaults() {
+	if c.L1ToL2BridgeDetector.StartLookback.Duration == 0 {
+		c.L1ToL2BridgeDetector.StartLookback.Duration = DefaultStartLookback
+	}
+	if c.L2ToLxBridgeDetector.StartLookback.Duration == 0 {
+		c.L2ToLxBridgeDetector.StartLookback.Duration = DefaultStartLookback
+	}
+	for i := range c.Claimers {
+		applyEthTxManagerDefaults(&c.Claimers[i].EthTxManager)
+	}
+}
+
+// applyEthTxManagerDefaults fills cfg's zero-valued fields in place.
+//
+// Only fields whose zero value is always broken are defaulted. SafeStatusL1NumberOfBlocks,
+// FinalizedStatusL1NumberOfBlocks and EstimateGasMaxRetries are deliberately left alone: the
+// vendored zkevm-ethtx-manager module gives their zero value a meaning ("use the network's own
+// safe/finalized tag", "retry forever"), and an unmarshalled struct cannot tell an omitted field
+// from an explicit 0, so defaulting them would silently override a deliberate operator choice.
+func applyEthTxManagerDefaults(cfg *ethtxmanager.Config) {
+	if cfg.FrequencyToMonitorTxs.Duration == 0 {
+		cfg.FrequencyToMonitorTxs.Duration = defaultEthTxManagerFrequencyToMonitorTxs
+	}
+	if cfg.WaitTxToBeMined.Duration == 0 {
+		cfg.WaitTxToBeMined.Duration = defaultEthTxManagerWaitTxToBeMined
+	}
+	if cfg.GetReceiptMaxTime.Duration == 0 {
+		cfg.GetReceiptMaxTime.Duration = defaultEthTxManagerGetReceiptMaxTime
+	}
+	if cfg.GetReceiptWaitInterval.Duration == 0 {
+		cfg.GetReceiptWaitInterval.Duration = defaultEthTxManagerGetReceiptWaitInterval
+	}
+	// A zero (or negative) GasPriceMarginFactor is never a legitimate request: it means "multiply
+	// the suggested gas price by zero", i.e. never send a valid tx.
+	if cfg.GasPriceMarginFactor <= 0 {
+		cfg.GasPriceMarginFactor = defaultEthTxManagerGasPriceMarginFactor
+	}
 }
 
 // PolicyConfig configures named policy behavior.
@@ -147,6 +231,9 @@ func (c Config) Validate() error {
 	}
 	if c.L1ToL2BridgeDetector.PollInterval.Duration <= 0 {
 		return fmt.Errorf("AutoClaim.L1ToL2BridgeDetector.PollInterval must be greater than 0")
+	}
+	if c.L1ToL2BridgeDetector.StartLookback.Duration < 0 {
+		return fmt.Errorf("AutoClaim.L1ToL2BridgeDetector.StartLookback must not be negative")
 	}
 	if err := c.L2ToLxBridgeDetector.Validate(); err != nil {
 		return fmt.Errorf("AutoClaim.L2ToLxBridgeDetector: %w", err)

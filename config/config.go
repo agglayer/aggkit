@@ -497,6 +497,7 @@ func loadString(cfg *Config, configData string, configType string,
 	if err != nil {
 		return err
 	}
+	cfg.AutoClaim.ApplyDefaults()
 	if err := cfg.AutoClaim.Validate(); err != nil {
 		return err
 	}

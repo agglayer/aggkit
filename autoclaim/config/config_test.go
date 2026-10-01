@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xPolygon/zkevm-ethtx-manager/config/types"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
@@ -250,6 +251,83 @@ func TestConfigValidateRejectsL1DestinationClaimerWhenL2ToLxDisabled(t *testing.
 	require.ErrorContains(t, err, "AutoClaim.L2ToLxBridgeDetector.Enabled must be true")
 }
 
+func TestApplyDefaultsFillsUnsetEthTxManagerFields(t *testing.T) {
+	cfg := Config{
+		Claimers: []ClaimerConfig{
+			{
+				ID: "l2-a",
+				EthTxManager: ethtxmanager.Config{
+					StoragePath: "/tmp/autoclaim-ethtxmanager.sqlite",
+				},
+			},
+		},
+	}
+
+	cfg.ApplyDefaults()
+
+	claimer := cfg.Claimers[0].EthTxManager
+	require.Equal(t, defaultEthTxManagerFrequencyToMonitorTxs, claimer.FrequencyToMonitorTxs.Duration)
+	require.Equal(t, defaultEthTxManagerWaitTxToBeMined, claimer.WaitTxToBeMined.Duration)
+	require.Equal(t, defaultEthTxManagerGetReceiptMaxTime, claimer.GetReceiptMaxTime.Duration)
+	require.Equal(t, defaultEthTxManagerGetReceiptWaitInterval, claimer.GetReceiptWaitInterval.Duration)
+	require.Equal(t, float64(defaultEthTxManagerGasPriceMarginFactor), claimer.GasPriceMarginFactor)
+	// Fields whose zero value is meaningful to the module must stay untouched.
+	require.Zero(t, claimer.SafeStatusL1NumberOfBlocks)
+	require.Zero(t, claimer.FinalizedStatusL1NumberOfBlocks)
+	require.Zero(t, claimer.EstimateGasMaxRetries)
+	// StoragePath is not a default-applied field: it must be preserved untouched.
+	require.Equal(t, "/tmp/autoclaim-ethtxmanager.sqlite", claimer.StoragePath)
+}
+
+func TestApplyDefaultsPreservesExplicitlySetEthTxManagerFields(t *testing.T) {
+	explicit := ethtxmanager.Config{
+		StoragePath:                     "/tmp/autoclaim-ethtxmanager.sqlite",
+		FrequencyToMonitorTxs:           types.NewDuration(5 * time.Second),
+		WaitTxToBeMined:                 types.NewDuration(9 * time.Second),
+		GetReceiptMaxTime:               types.NewDuration(3 * time.Second),
+		GetReceiptWaitInterval:          types.NewDuration(4 * time.Second),
+		GasPriceMarginFactor:            1.5,
+		SafeStatusL1NumberOfBlocks:      7,
+		FinalizedStatusL1NumberOfBlocks: 20,
+		EstimateGasMaxRetries:           3,
+	}
+	cfg := Config{
+		Claimers: []ClaimerConfig{{ID: "l2-a", EthTxManager: explicit}},
+	}
+
+	cfg.ApplyDefaults()
+
+	require.Equal(t, explicit, cfg.Claimers[0].EthTxManager)
+}
+
+func TestApplyDefaultsCoercesNonPositiveGasPriceMarginFactor(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		value float64
+	}{
+		{name: "zero", value: 0},
+		{name: "negative", value: -1.2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{
+				Claimers: []ClaimerConfig{
+					{
+						ID: "l2-a",
+						EthTxManager: ethtxmanager.Config{
+							StoragePath:          "/tmp/autoclaim-ethtxmanager.sqlite",
+							GasPriceMarginFactor: tt.value,
+						},
+					},
+				},
+			}
+
+			cfg.ApplyDefaults()
+
+			require.Equal(t, float64(defaultEthTxManagerGasPriceMarginFactor), cfg.Claimers[0].EthTxManager.GasPriceMarginFactor)
+		})
+	}
+}
+
 func validConfig() Config {
 	return Config{
 		StoragePath: "/tmp/autoclaim.sqlite",
@@ -284,4 +362,12 @@ func validClaimerConfig(id string, networkID uint32) ClaimerConfig {
 			StoragePath: "/tmp/autoclaim-ethtxmanager.sqlite",
 		},
 	}
+}
+
+func TestValidateRejectsNegativeStartLookback(t *testing.T) {
+	cfg := Config{L1ToL2BridgeDetector: L1ToL2BridgeDetector{StartLookback: cfgtypes.Duration{Duration: -time.Hour}}}
+	cfg.StoragePath = "/tmp/x"
+	cfg.Claimers = []ClaimerConfig{{Enabled: true}}
+	cfg.L1ToL2BridgeDetector.PollInterval = cfgtypes.Duration{Duration: time.Second}
+	require.ErrorContains(t, cfg.Validate(), "StartLookback must not be negative")
 }
