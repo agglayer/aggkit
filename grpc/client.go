@@ -41,15 +41,34 @@ const (
 	ClientTypeMetadataValue = "aggkit"
 )
 
-// VersionHeaderInterceptor adds the client version and type headers to all outgoing requests
-func VersionHeaderInterceptor() grpc.UnaryClientInterceptor {
+// mergeHeaders overlays the configured headers on top of the built-in defaults.
+// Configured values win, so x-client-version / x-client-type can be overridden.
+// Keys are normalized to lowercase to match gRPC metadata semantics, so a
+// mixed-case override (e.g. "X-Client-Type") replaces the default instead of
+// adding a duplicate entry.
+func mergeHeaders(extra map[string]string) map[string]string {
+	merged := map[string]string{
+		ClientVersionMetadataKey: aggkit.Version,
+		ClientTypeMetadataKey:    ClientTypeMetadataValue,
+	}
+	for k, v := range extra {
+		merged[strings.ToLower(k)] = v
+	}
+	return merged
+}
+
+// HeaderInterceptor returns a unary client interceptor that appends the given
+// metadata headers to every outgoing request. Callers build the header set with
+// mergeHeaders, which combines the built-in client version/type defaults with
+// any per-client overrides.
+func HeaderInterceptor(headers map[string]string) grpc.UnaryClientInterceptor {
 	return func(
 		ctx context.Context,
 		method string, req, reply interface{},
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		// Add version and type headers to context
-		ctx = metadata.AppendToOutgoingContext(ctx, ClientVersionMetadataKey, aggkit.Version)
-		ctx = metadata.AppendToOutgoingContext(ctx, ClientTypeMetadataKey, ClientTypeMetadataValue)
+		for k, v := range headers {
+			ctx = metadata.AppendToOutgoingContext(ctx, k, v)
+		}
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
 }
@@ -71,6 +90,11 @@ type ClientConfig struct {
 
 	// Retry represents the retry configuration
 	Retry *RetryConfig `mapstructure:"Retry"`
+
+	// Headers are static metadata headers appended to every outgoing request on
+	// this client. Configured per-client; empty means none. Configured keys
+	// x-client-version / x-client-type override the built-in defaults.
+	Headers map[string]string `mapstructure:"Headers"`
 }
 
 // WithURL returns a copy of the current ClientConfig with the URL field set to the given value.
@@ -265,7 +289,7 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithConnectParams(connectParams),
-		grpc.WithUnaryInterceptor(VersionHeaderInterceptor()),
+		grpc.WithUnaryInterceptor(HeaderInterceptor(mergeHeaders(cfg.Headers))),
 	}
 
 	serviceCfgJSON, err := createServiceConfig(retryCfg)
