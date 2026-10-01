@@ -61,7 +61,7 @@ func ResolveStartBlock(
 		logger.Infof(
 			"autoclaim %s: no start block configured; resolved block %d (timestamp %s UTC) from a "+
 				"%s lookback ending %s UTC",
-			detectorName, block, time.Unix(int64(min(blockTime, math.MaxInt64)), 0).UTC().Format(time.RFC3339),
+			detectorName, block, unixTime(blockTime).UTC().Format(time.RFC3339),
 			lookback, now.UTC().Format(time.RFC3339))
 		logger.Warnf(
 			"autoclaim %s: bridges originating before block %d will never be autoclaimed and "+
@@ -129,4 +129,13 @@ func headerAt(ctx context.Context, l1Client aggkittypes.EthClienter, block uint6
 		return nil, fmt.Errorf("get header at block %d: %w", block, err)
 	}
 	return h, nil
+}
+
+// unixTime converts a uint64 unix timestamp to time.Time, saturating at math.MaxInt64 so the
+// uint64 -> int64 conversion cannot overflow.
+func unixTime(ts uint64) time.Time {
+	if ts > math.MaxInt64 {
+		ts = math.MaxInt64
+	}
+	return time.Unix(int64(ts), 0)
 }
