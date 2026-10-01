@@ -5,14 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
+	"github.com/agglayer/aggkit/bridgeservicefinder"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	commonmocks "github.com/agglayer/aggkit/common/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -334,6 +338,199 @@ func TestL2ToLxRetrySkipAtWindowStartKeepsStoredCursor(t *testing.T) {
 	require.False(t, result.CursorAdvanced)
 	require.Equal(t, uint64(20), cursorStore.cursors[defaultL2ToLxCursorName].ToBlock,
 		"stored cursor stays put so the row at block 20 keeps being re-observed")
+}
+
+// disabledURLErr builds the error a real ServiceFetcher returns for a network the bridge service
+// finder was configured to ignore, wrapped exactly the way ServiceFetcher.GetURL wraps it (see
+// TestServiceFetcherGetURL): the permanent ErrSourceDisabled over the detector-local ErrURLNotFound
+// over the finder's own error.
+func disabledURLErr(sourceID uint32) error {
+	finderErr := fmt.Errorf("%w: network %d", bridgeservicefinder.ErrNetworkDisabled, sourceID)
+	return fmt.Errorf("%w: %w: source %d: %w", ErrSourceDisabled, ErrURLNotFound, sourceID, finderErr)
+}
+
+func TestL2ToLxDisabledSourceDoesNotHoldBlockCursor(t *testing.T) {
+	// A source network excluded from bridge service resolution can never resolve a URL, so it must
+	// count as "nothing to do", not as a retry: the block-window cursor is shared by every source and
+	// holding it for this row would pin the detector on the same window forever.
+	ctx := context.Background()
+	const disabledSource uint32 = 7001
+	source := &fakeVerifiedBatchSource{
+		lastProcessedBlock: 50,
+		rowsByRange: map[blockRange][]*l1infotreesync.VerifyBatches{
+			{from: 0, to: 49}: {makeVerifyRow(disabledSource, lerHash(11), 20)},
+		},
+	}
+	fetcher := newFakeFetcher()
+	fetcher.urlErr[disabledSource] = disabledURLErr(disabledSource)
+	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
+	lerStore := newFakePerPairLERStore()
+	cursorStore := newMemoryCursorStore()
+	detector := newTestL2ToLxDetector(
+		t, source, fetcher, newFakeRegistry(claimer0), cursorStore, lerStore, newFakeEnqueuer(),
+		WithL2ToLxBlockWindow(50),
+	)
+
+	result, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 0, result.ProcessedSourceCount)
+	require.Equal(t, 1, result.SkippedSourceCount)
+	require.True(t, result.CursorAdvanced, "a permanently disabled source must not block the window")
+	require.Equal(t, uint64(49), cursorStore.cursors[defaultL2ToLxCursorName].ToBlock,
+		"cursor must advance past the disabled source's verify row (block 20), not stop before it")
+	_, ok := lerStore.cursors[pairKey(disabledSource, 0)]
+	require.False(t, ok, "the disabled source's LER cursor stays untouched, so re-enabling it loses nothing")
+}
+
+func TestL2ToLxTransientURLErrorStillHoldsBlockCursor(t *testing.T) {
+	// The companion of the test above: a URL error that is NOT a permanent exclusion (here, a plain
+	// finder miss for a bridge service that has not announced itself yet) can still clear on its own,
+	// so it must keep holding the window just before its verify row.
+	ctx := context.Background()
+	const transientSource uint32 = 7002
+	source := &fakeVerifiedBatchSource{
+		lastProcessedBlock: 50,
+		rowsByRange: map[blockRange][]*l1infotreesync.VerifyBatches{
+			{from: 0, to: 49}: {makeVerifyRow(transientSource, lerHash(11), 20)},
+		},
+	}
+	fetcher := newFakeFetcher()
+	fetcher.urlErr[transientSource] = fmt.Errorf("%w: source %d: %w",
+		ErrURLNotFound, transientSource, bridgeservicefinder.ErrURLNotFound)
+	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
+	cursorStore := newMemoryCursorStore()
+	detector := newTestL2ToLxDetector(
+		t, source, fetcher, newFakeRegistry(claimer0), cursorStore, newFakePerPairLERStore(), newFakeEnqueuer(),
+		WithL2ToLxBlockWindow(50),
+	)
+
+	result, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.SkippedSourceCount)
+	require.True(t, result.CursorAdvanced)
+	require.Equal(t, uint64(19), cursorStore.cursors[defaultL2ToLxCursorName].ToBlock,
+		"a retryable url miss must still hold the window before its verify row (block 20)")
+}
+
+func TestL2ToLxDisabledSourceDoesNotStarveHealthySource(t *testing.T) {
+	// Mixed window: a disabled source's row comes first, a healthy source's row later. The healthy
+	// source must be processed and the window must advance past both.
+	ctx := context.Background()
+	const (
+		disabledSource uint32 = 7001
+		healthySource  uint32 = 7003
+	)
+	healthyLER := lerHash(22)
+	source := &fakeVerifiedBatchSource{
+		lastProcessedBlock: 50,
+		rowsByRange: map[blockRange][]*l1infotreesync.VerifyBatches{
+			{from: 0, to: 49}: {
+				makeVerifyRow(disabledSource, lerHash(11), 20),
+				makeVerifyRow(healthySource, healthyLER, 30),
+			},
+		},
+	}
+	fetcher := newFakeFetcher()
+	fetcher.urlErr[disabledSource] = disabledURLErr(disabledSource)
+	fetcher.urls[healthySource] = fakeSrcURL1
+	fetcher.setPage(fakeSrcURL1, 1, []ClaimCandidate{makeCandidate(5, 0)}, 1)
+	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
+	lerStore := newFakePerPairLERStore()
+	enqueuer := newFakeEnqueuer()
+	cursorStore := newMemoryCursorStore()
+	detector := newTestL2ToLxDetector(
+		t, source, fetcher, newFakeRegistry(claimer0), cursorStore, lerStore, enqueuer,
+		WithL2ToLxBlockWindow(50),
+	)
+
+	result, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.ProcessedSourceCount)
+	require.Equal(t, 1, result.EnqueuedCount)
+	require.Len(t, enqueuer.order, 1, "the healthy source's candidate must actually be enqueued")
+	require.Equal(t, healthyLER, lerStore.cursors[pairKey(healthySource, 0)].LastLER)
+	require.True(t, result.CursorAdvanced)
+	require.Equal(t, uint64(49), cursorStore.cursors[defaultL2ToLxCursorName].ToBlock)
+}
+
+func TestL2ToLxDisabledSourceAtWindowStartDoesNotPinCursor(t *testing.T) {
+	// The production regression: in a deployment whose ignore list covers most registered rollups,
+	// the earliest verify row in the window belonged to an ignored network. Treating it as a retry
+	// held the shared cursor at or before the start of the window, so PollOnce returned without
+	// saving anything and re-scanned the identical window on every poll, indefinitely -- and no
+	// L2-origin claim request was ever created for ANY source.
+	ctx := context.Background()
+	const (
+		disabledSource uint32 = 7001
+		healthySource  uint32 = 7003
+	)
+	healthyLER := lerHash(22)
+	source := &fakeVerifiedBatchSource{
+		lastProcessedBlock: 50,
+		rowsByRange: map[blockRange][]*l1infotreesync.VerifyBatches{
+			{from: 20, to: 50}: {
+				makeVerifyRow(disabledSource, lerHash(11), 20),
+				makeVerifyRow(healthySource, healthyLER, 40),
+			},
+		},
+	}
+	fetcher := newFakeFetcher()
+	fetcher.urlErr[disabledSource] = disabledURLErr(disabledSource)
+	fetcher.urls[healthySource] = fakeSrcURL1
+	fetcher.setPage(fakeSrcURL1, 1, []ClaimCandidate{makeCandidate(5, 0)}, 1)
+	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
+	lerStore := newFakePerPairLERStore()
+	enqueuer := newFakeEnqueuer()
+	cursorStore := newMemoryCursorStore()
+	cursorStore.cursors[defaultL2ToLxCursorName] = autoclaimtypes.BridgeCursor{
+		FromBlock: 0, ToBlock: 20, BlockNum: 20,
+	}
+	detector := newTestL2ToLxDetector(
+		t, source, fetcher, newFakeRegistry(claimer0), cursorStore, lerStore, enqueuer,
+		WithL2ToLxBlockWindow(50), WithL2ToLxOverlapBlocks(1),
+	)
+
+	result, err := detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.True(t, result.CursorAdvanced,
+		"the ignored row at the window start must not send PollOnce down the return-without-saving path")
+	require.Equal(t, uint64(50), cursorStore.cursors[defaultL2ToLxCursorName].ToBlock,
+		"the window must move on instead of being re-scanned forever")
+	require.Equal(t, 1, result.EnqueuedCount, "the healthy source behind the ignored row must be reached")
+	require.Equal(t, healthyLER, lerStore.cursors[pairKey(healthySource, 0)].LastLER)
+}
+
+func TestL2ToLxDisabledSourceIsReportedOncePerSource(t *testing.T) {
+	// The exclusion never clears, and the detector polls for the lifetime of the process, so the
+	// report belongs at most once per source rather than on every poll.
+	ctx := context.Background()
+	const disabledSource uint32 = 7001
+	source := &fakeVerifiedBatchSource{
+		lastProcessedBlock: 50,
+		rowsByRange: map[blockRange][]*l1infotreesync.VerifyBatches{
+			{from: 0, to: 49}:  {makeVerifyRow(disabledSource, lerHash(11), 20)},
+			{from: 48, to: 50}: {makeVerifyRow(disabledSource, lerHash(11), 50)},
+		},
+	}
+	fetcher := newFakeFetcher()
+	fetcher.urlErr[disabledSource] = disabledURLErr(disabledSource)
+	claimer0 := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer0ID, DestinationNetwork: 0}}
+	logger := commonmocks.NewLogger(t)
+	logger.EXPECT().Infof(
+		mock.MatchedBy(func(format string) bool { return strings.Contains(format, "is disabled") }),
+		disabledSource,
+	).Once()
+	detector := newTestL2ToLxDetector(
+		t, source, fetcher, newFakeRegistry(claimer0), newMemoryCursorStore(), newFakePerPairLERStore(),
+		newFakeEnqueuer(), WithL2ToLxBlockWindow(50), WithL2ToLxOverlapBlocks(1), WithL2ToLxLogger(logger),
+	)
+
+	for range 2 {
+		_, err := detector.PollOnce(ctx)
+		require.NoError(t, err)
+	}
+	// logger.AssertExpectations runs on cleanup: a second Infof call would fail the test as
+	// unexpected, and zero calls would fail the Once() expectation.
 }
 
 func TestL2ToLxBatchesDestinationNetworkIDs(t *testing.T) {
