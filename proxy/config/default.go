@@ -91,6 +91,11 @@ ActivityIdleTimeout = "30m"
 # the background, independent of any incoming request.
 ActivityPollInterval = "30s"
 
+# MetricsSampleInterval: how often the Prometheus gauges (bridgetracker_cache_size_bytes,
+# bridgetracker_alive_trackers, bridgetracker_alive_activities) are refreshed. Only used when
+# [Prometheus] is enabled.
+MetricsSampleInterval = "15s"
+
 # ActivityRegisterResolveTimeout: how long the first request for a freshly registered
 # from_address waits for the activity engine's immediate refresh attempt before answering, so it
 # has a shot at real data instead of an empty result; a lookup of an already-registered address

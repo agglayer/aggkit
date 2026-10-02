@@ -223,7 +223,7 @@ AutoRegisterNewNetworks = true
 
 ## Prometheus Metrics
 
-The tracker exposes (unless `[Prometheus] Enabled = false`, it is enabled by default) the following Prometheus metrics, refreshed every 15 seconds:
+The tracker exposes (unless `[Prometheus] Enabled = false`, it is enabled by default) the following Prometheus metrics, refreshed every `[Tracker] MetricsSampleInterval` (default `15s`):
 
 | **Metric Name**                  | **Type** | **Description**                                                                                      |
 | -------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |

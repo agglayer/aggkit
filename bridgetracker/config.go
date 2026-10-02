@@ -241,6 +241,12 @@ type Config struct {
 	// PollInterval). A value <= 0 falls back to DefaultActivityPollInterval.
 	ActivityPollInterval types.Duration `mapstructure:"ActivityPollInterval"`
 
+	// MetricsSampleInterval is how often the Prometheus gauges (cache size, alive trackers/
+	// activities) are refreshed (see BridgeTracker.StartMetricsSampler). Only used when the
+	// proxy's [Prometheus] section is enabled. A value <= 0 falls back to
+	// DefaultMetricsSampleInterval.
+	MetricsSampleInterval types.Duration `mapstructure:"MetricsSampleInterval"`
+
 	// ActivityRegisterResolveTimeout is how long the activity endpoint waits, the first time a
 	// from_address is registered, for the activity engine's immediate refresh attempt
 	// (triggered right away instead of on the next poll tick, see ActivitySupervisedStore.

@@ -368,7 +368,7 @@ func runTracker(
 	}
 
 	if cfg.Prometheus.Enabled {
-		tracker.StartMetricsSampler(ctx, bridgetracker.DefaultMetricsSampleInterval)
+		tracker.StartMetricsSampler(ctx, trackerCfg.MetricsSampleInterval.Duration)
 	}
 
 	restServer.Register(tracker.API())
