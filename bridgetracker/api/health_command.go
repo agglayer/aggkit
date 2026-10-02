@@ -43,7 +43,7 @@ type healthCommand struct {
 func (cmd *healthCommand) Execute(_ *gin.Context) (int, any, *types.ErrorData) {
 	resp := types.HealthResponse{
 		Status:      types.HealthStatusOK,
-		APIRevision: types.CurrentAPIRevision,
+		APIRevision: CurrentAPIRevision,
 		InstanceID:  cmd.instanceID,
 		StartDate:   cmd.startDate,
 		ConfigSHA1:  cmd.configSHA1,
