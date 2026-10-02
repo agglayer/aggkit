@@ -454,6 +454,23 @@ Request:
 - A network whose bridge service could not be scanned **never fails the request**: it is skipped and reported in `warnings` instead, so `bridges` is still whatever every other network reported (possibly incomplete for the networks listed in `warnings`).
 - When the RPC-based fallback (`Tracker.ActivitySourceRPC`) is enabled, it never calls `debug_traceTransaction` — so it works against any standard JSON-RPC endpoint — but as a result it cannot resolve the sender of an Asset bridge routed through an intermediate contract (i.e. the transaction was not sent directly to the bridge contract); such a bridge is silently skipped by the fallback and only appears once the network's own bridge-service indexer (which does trace) has caught up with it.
 
+### Pagination
+
+Pagination works exactly like the bridge service's paginated endpoints: `page_number` (1-based) and `page_size`, with the total number of matching bridges reported in `count`. There is no `next_page`/`has_more`/`total_pages` field:
+
+- total pages: `ceil(count / page_size)`
+- a page is the last one if `page_number * page_size >= count` (or `bridges` has fewer than `page_size` items)
+- a `page_number` past the last page answers `200 OK` with an empty `bridges` and the real `count`
+
+Bridges are sorted most recent first (`creation_timestamp` descending). Bridges sharing the same `creation_timestamp` have no guaranteed relative order, and that order may differ between requests.
+
+**Pages are not a consistent snapshot.** Every request reads the cache as it is at that moment, and the background refresh can add new bridges between two requests of the same traversal. Because newest bridges come first, a new bridge shifts every older one down, so a client paging through the whole result can see:
+
+- **duplicates**: a bridge already received at the end of page N reappears at the start of page N+1
+- **missed new bridges**: a bridge created after page 1 was read lands on page 1, which the client no longer fetches, so it is not seen until the traversal is repeated. The only hint is that `count` grew between responses
+
+Clients that need the complete list must deduplicate by `bridge.global_index` (unique per bridge) and, if `count` changes during the traversal, fetch the first page again to pick up the new bridges.
+
 ### ActivityResponse
 
 | field | type | desc |
