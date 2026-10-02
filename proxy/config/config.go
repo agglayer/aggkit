@@ -56,7 +56,7 @@ type Config struct {
 	// its routes (tracker REST/WS endpoints, proxy routes)
 	REST aggkitcommon.RESTConfig `mapstructure:"REST"`
 
-	// Prometheus configures the metrics server (disabled by default)
+	// Prometheus configures the metrics server (enabled by default, like aggkit's)
 	Prometheus prometheus.Config `mapstructure:"Prometheus"`
 
 	// Tracker configures the bridge tracker component (only its file-borne fields; the

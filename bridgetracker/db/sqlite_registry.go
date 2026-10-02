@@ -781,9 +781,9 @@ func (r *sqliteRegistry) CacheStats() (domain.CacheStats, error) {
 	return domain.CacheStats{SizeBytes: size}, nil
 }
 
-// sqliteFileSize sums the on-disk size of dbPath's main file plus its "-wal"/"-shm" sidecars,
-// shared by sqliteRegistry.CacheStats and sqliteActivityStore.CacheStats (either may be asked for
-// the size of what is, in the common case, the very same file — see NewSQLiteActivityStore).
+// sqliteFileSize sums the on-disk size of dbPath's main file plus its "-wal"/"-shm" sidecars
+// (used by sqliteRegistry.CacheStats; the activity store typically shares the same file, see
+// NewSQLiteActivityStore).
 // NewSQLiteDB opens every connection with _journal_mode=WAL (see db/sqlite.go): a recent write
 // can sit in "-wal" until the next checkpoint merges it back into the main file, so a
 // PRAGMA page_count * page_size reading of the main file alone would silently under-report the

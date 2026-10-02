@@ -242,6 +242,8 @@ Port = 9091
 
 The metrics are then available at `http://<Host>:<Port>/metrics`.
 
+> **Note:** aggkit and the proxy both default to `localhost:9091`. If they run on the same host, change `Port` on one of them: the second one to start fails to bind the port, logs an error and keeps running **without** metrics.
+
 ## API Documentation
 
 <iframe src="assets/swagger/bridge_tracker/index.html"
