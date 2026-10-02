@@ -462,7 +462,7 @@ Pagination works exactly like the bridge service's paginated endpoints: `page_nu
 - a page is the last one if `page_number * page_size >= count` (or `bridges` has fewer than `page_size` items)
 - a `page_number` past the last page answers `200 OK` with an empty `bridges` and the real `count`
 
-Bridges are sorted most recent first (`creation_timestamp` descending). Bridges sharing the same `creation_timestamp` have no guaranteed relative order, and that order may differ between requests.
+Bridges are sorted most recent first (`creation_timestamp` descending). Bridges sharing the same `creation_timestamp` are ordered by `bridge.global_index` descending (compared numerically), so their relative order is the same on every request.
 
 **Pages are not a consistent snapshot.** Every request reads the cache as it is at that moment, and the background refresh can add new bridges between two requests of the same traversal. Because newest bridges come first, a new bridge shifts every older one down, so a client paging through the whole result can see:
 

@@ -415,6 +415,29 @@ func TestActivityCommandExecute_SortsMostRecentFirst(t *testing.T) {
 	require.Equal(t, 3, body.Count)
 }
 
+// TestActivityCommandExecute_TiedCreatedAtOrderedByGlobalIndex verifies entries sharing a
+// CreatedAt are ordered by global index descending (numerically, not as text) whatever order the
+// registry reports them in, so paging never moves a tied entry across a page boundary.
+func TestActivityCommandExecute_TiedCreatedAtOrderedByGlobalIndex(t *testing.T) {
+	now := time.Now()
+	orders := [][]string{{"9", "10", "2"}, {"2", "10", "9"}, {"10", "2", "9"}}
+	for _, order := range orders {
+		entries := make([]*domain.ActivityEntry, 0, len(order))
+		for _, gi := range order {
+			entries = append(entries, activityEntryAt(gi, now))
+		}
+		registry := newFakeActivityRegistry()
+		registry.getActivityEntries = entries
+		cmd := &activityCommand{registry: registry}
+
+		_, obj, errData := cmd.Execute(newActivityTestContext(""))
+		require.Nil(t, errData)
+		body, ok := obj.(ActivityResponse)
+		require.True(t, ok)
+		require.Equal(t, []string{"10", "9", "2"}, bridgeGlobalIndexes(body.Bridges))
+	}
+}
+
 // TestActivityCommandExecute_DefaultPagination verifies that with no page_number/page_size
 // given, Execute answers page 1 of size 20 (bridgeservice's own defaults, see
 // bridgeservice.DefaultPage/DefaultPageSize) and Count reports the true total rather than
