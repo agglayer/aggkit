@@ -41,7 +41,14 @@ const HealthStatusOK = "ok"
 //     The same revision added start_date (HealthResponse.StartDate), the instant this instance
 //     started, which is the reference point every pending_networks entry's first_seen is
 //     relative to
-const CurrentAPIRevision = 5
+//   - 6: GET /tracker/v1/activity/from/{from_address} is now paginated: it gained optional
+//     page_number (default 1) and page_size (default 20, max 200) query parameters — same names
+//     and 1-based numbering as the bridge service's paginated endpoints — and its response a
+//     new count field (the total number of bridges matching filterBridges across every page).
+//     Bridges are now returned most recent first (creation_timestamp descending). A client that
+//     sends neither parameter used to receive every bridge and now receives only the first 20,
+//     so it must page through the result using count
+const CurrentAPIRevision = 6
 
 // HealthResponse is the body of GET /tracker/v1/health
 type HealthResponse struct {
