@@ -506,6 +506,21 @@ func TestActivityCommandExecute_PageBeyondRangeReturnsEmptyBridgesWithCount(t *t
 	require.Equal(t, 1, body.Count)
 }
 
+// TestActivityCommandExecute_MaxPageSizeAccepted verifies page_size=200 (the maximum) is accepted
+// and page_size=201 is not.
+func TestActivityCommandExecute_MaxPageSizeAccepted(t *testing.T) {
+	registry := newFakeActivityRegistry()
+	cmd := &activityCommand{registry: registry}
+
+	code, _, errData := cmd.Execute(newActivityTestContext("page_size=200"))
+	require.Nil(t, errData)
+	require.Equal(t, http.StatusOK, code)
+
+	_, _, errData = cmd.Execute(newActivityTestContext("page_size=201"))
+	require.NotNil(t, errData)
+	require.Equal(t, http.StatusBadRequest, errData.Code)
+}
+
 // TestActivityCommandExecute_InvalidPaginationParamsRejectedBeforeFlush verifies invalid
 // page_number/page_size values 400 before FlushActivity runs, mirroring
 // TestActivityCommandExecute_InvalidFilterRejectedBeforeFlush's reasoning for filterBridges.

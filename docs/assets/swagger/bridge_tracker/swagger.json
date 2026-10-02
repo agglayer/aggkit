@@ -323,7 +323,7 @@
                     "type": "string"
                 },
                 "creation_timestamp": {
-                    "description": "CreationTimestamp is when this bridge was first cached by the activity endpoint (unix\nseconds); it never changes after that",
+                    "description": "CreationTimestamp is when this bridge was created (unix seconds): its origin deposit block\ntimestamp, or when the activity endpoint first cached it if the bridge service had not\npopulated that timestamp yet; it never changes after that",
                     "type": "integer"
                 },
                 "errors": {

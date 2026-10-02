@@ -84,8 +84,9 @@ type ActivityItem struct {
 	// Claim is the raw claim record, exactly as returned by the destination network's bridge
 	// service, unmodified, once ClaimStatus is "claimed" and the indexer has recorded it
 	Claim *bridgeservicetypes.ClaimResponse `json:"claim,omitempty"`
-	// CreationTimestamp is when this bridge was first cached by the activity endpoint (unix
-	// seconds); it never changes after that
+	// CreationTimestamp is when this bridge was created (unix seconds): its origin deposit block
+	// timestamp, or when the activity endpoint first cached it if the bridge service had not
+	// populated that timestamp yet; it never changes after that
 	CreationTimestamp uint64 `json:"creation_timestamp"`
 	// LastUpdatedTimestamp is when this item's claim/tracking state was last (re)checked (unix
 	// seconds), whether or not anything about it actually changed. Stops advancing once the
@@ -329,17 +330,13 @@ func parseActivityUintQuery(c *gin.Context, key string, defaultVal uint32) (uint
 
 // paginateActivityEntries sorts entries most recent first (by CreatedAt, descending — see
 // domain.ActivityEntry.CreatedAt — then by global index, descending, so entries sharing a
-// CreatedAt keep the same relative order across requests) and returns the pageNumber-th page of pageSize entries (both
-// 1-based/positive, as validated by parseActivityPageParams). A pageNumber past the end of
-// entries returns an empty, non-nil slice rather than an error: the caller already has the true
-// total in ActivityResponse.Count to tell "no more pages" from "no activity at all"
+// CreatedAt keep the same relative order across requests) and returns the pageNumber-th page
+// of pageSize entries (both 1-based/positive, as validated by parseActivityPageParams). A
+// pageNumber past the end of entries returns an empty, non-nil slice rather than an error: the
+// caller already has the true total in ActivityResponse.Count to tell "no more pages" from "no
+// activity at all"
 func paginateActivityEntries(entries []*domain.ActivityEntry, pageNumber, pageSize uint32) []*domain.ActivityEntry {
-	sort.Slice(entries, func(i, j int) bool {
-		if !entries[i].CreatedAt.Equal(entries[j].CreatedAt) {
-			return entries[i].CreatedAt.After(entries[j].CreatedAt)
-		}
-		return globalIndexGreater(entries[i], entries[j])
-	})
+	sortActivityEntries(entries)
 
 	offset := uint64(pageNumber-1) * uint64(pageSize)
 	if offset >= uint64(len(entries)) {
@@ -349,17 +346,33 @@ func paginateActivityEntries(entries []*domain.ActivityEntry, pageNumber, pageSi
 	return entries[offset:end]
 }
 
-// globalIndexGreater reports whether a's bridge global index is greater than b's, comparing them
-// numerically (a global index can exceed 2^64): the unique tie-breaker for entries sharing a
-// CreatedAt, so their relative order is the same on every request. Falls back to a plain string
-// comparison for a value that does not parse
-func globalIndexGreater(a, b *domain.ActivityEntry) bool {
-	ai, aok := new(big.Int).SetString(string(a.Bridge.GlobalIndex), decimalBase)
-	bi, bok := new(big.Int).SetString(string(b.Bridge.GlobalIndex), decimalBase)
-	if aok && bok {
-		return ai.Cmp(bi) > 0
+// sortActivityEntries sorts entries in place by CreatedAt descending, breaking ties by bridge
+// global index descending — compared numerically, since it can exceed 2^64 — so entries sharing
+// a CreatedAt have the same relative order on every request. Each global index is parsed once,
+// before sorting, rather than on every comparison
+func sortActivityEntries(entries []*domain.ActivityEntry) {
+	type keyed struct {
+		entry       *domain.ActivityEntry
+		globalIndex *big.Int
 	}
-	return a.Bridge.GlobalIndex > b.Bridge.GlobalIndex
+	keyedEntries := make([]keyed, len(entries))
+	for i, e := range entries {
+		gi, ok := new(big.Int).SetString(string(e.Bridge.GlobalIndex), decimalBase)
+		if !ok {
+			gi = new(big.Int)
+		}
+		keyedEntries[i] = keyed{entry: e, globalIndex: gi}
+	}
+	sort.Slice(keyedEntries, func(i, j int) bool {
+		a, b := keyedEntries[i], keyedEntries[j]
+		if !a.entry.CreatedAt.Equal(b.entry.CreatedAt) {
+			return a.entry.CreatedAt.After(b.entry.CreatedAt)
+		}
+		return a.globalIndex.Cmp(b.globalIndex) > 0
+	})
+	for i, k := range keyedEntries {
+		entries[i] = k.entry
+	}
 }
 
 // newActivityItems builds the wire ActivityItems from the resolved activity entries

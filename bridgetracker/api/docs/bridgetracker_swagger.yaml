@@ -38,8 +38,9 @@ definitions:
         type: string
       creation_timestamp:
         description: |-
-          CreationTimestamp is when this bridge was first cached by the activity endpoint (unix
-          seconds); it never changes after that
+          CreationTimestamp is when this bridge was created (unix seconds): its origin deposit block
+          timestamp, or when the activity endpoint first cached it if the bridge service had not
+          populated that timestamp yet; it never changes after that
         type: integer
       errors:
         additionalProperties:
