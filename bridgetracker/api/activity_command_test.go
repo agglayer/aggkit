@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -368,4 +369,179 @@ func TestActivityResponseMarshalJSON_NoRemainingURLs(t *testing.T) {
 
 	require.NotContains(t, string(data), "://")
 	require.NotContains(t, string(data), "aggkit-002.internal")
+}
+
+// activityEntryAt builds a bare domain.ActivityEntry for pagination tests: only CreatedAt (the
+// sort key, see paginateActivityEntries) and TrackerClaimStatus (read by newActivityItems) need
+// to be set, globalIndex only distinguishes entries in assertions
+func activityEntryAt(globalIndex string, createdAt time.Time) *domain.ActivityEntry {
+	return &domain.ActivityEntry{
+		Bridge:             &bridgeservicetypes.BridgeResponse{GlobalIndex: bridgeservicetypes.BigIntString(globalIndex)},
+		TrackerClaimStatus: types.TrackerClaimStatusPending,
+		CreatedAt:          createdAt,
+	}
+}
+
+// bridgeGlobalIndexes extracts, in order, the global_index of every ActivityItem in bridges
+func bridgeGlobalIndexes(bridges []ActivityItem) []string {
+	out := make([]string, 0, len(bridges))
+	for _, b := range bridges {
+		out = append(out, string(b.Bridge.GlobalIndex))
+	}
+	return out
+}
+
+// TestActivityCommandExecute_SortsMostRecentFirst verifies GetActivity's result is sorted by
+// CreatedAt descending before being returned, regardless of the order the registry reports it
+// in — the activity engine's map-backed cache (ActivityCache) and the SQLite store's row order
+// are both otherwise unspecified.
+func TestActivityCommandExecute_SortsMostRecentFirst(t *testing.T) {
+	now := time.Now()
+	registry := newFakeActivityRegistry()
+	registry.getActivityEntries = []*domain.ActivityEntry{
+		activityEntryAt("1", now.Add(-time.Hour)),
+		activityEntryAt("2", now),
+		activityEntryAt("3", now.Add(-2*time.Hour)),
+	}
+	cmd := &activityCommand{registry: registry}
+
+	code, obj, errData := cmd.Execute(newActivityTestContext(""))
+	require.Nil(t, errData)
+	require.Equal(t, http.StatusOK, code)
+	body, ok := obj.(ActivityResponse)
+	require.True(t, ok)
+
+	require.Equal(t, []string{"2", "1", "3"}, bridgeGlobalIndexes(body.Bridges))
+	require.Equal(t, 3, body.Count)
+}
+
+// TestActivityCommandExecute_TiedCreatedAtOrderedByGlobalIndex verifies entries sharing a
+// CreatedAt are ordered by global index descending (numerically, not as text) whatever order the
+// registry reports them in, so paging never moves a tied entry across a page boundary.
+func TestActivityCommandExecute_TiedCreatedAtOrderedByGlobalIndex(t *testing.T) {
+	now := time.Now()
+	orders := [][]string{{"9", "10", "2"}, {"2", "10", "9"}, {"10", "2", "9"}}
+	for _, order := range orders {
+		entries := make([]*domain.ActivityEntry, 0, len(order))
+		for _, gi := range order {
+			entries = append(entries, activityEntryAt(gi, now))
+		}
+		registry := newFakeActivityRegistry()
+		registry.getActivityEntries = entries
+		cmd := &activityCommand{registry: registry}
+
+		_, obj, errData := cmd.Execute(newActivityTestContext(""))
+		require.Nil(t, errData)
+		body, ok := obj.(ActivityResponse)
+		require.True(t, ok)
+		require.Equal(t, []string{"10", "9", "2"}, bridgeGlobalIndexes(body.Bridges))
+	}
+}
+
+// TestActivityCommandExecute_DefaultPagination verifies that with no page_number/page_size
+// given, Execute answers page 1 of size 20 (bridgeservice's own defaults, see
+// bridgeservice.DefaultPage/DefaultPageSize) and Count reports the true total rather than
+// len(Bridges).
+func TestActivityCommandExecute_DefaultPagination(t *testing.T) {
+	now := time.Now()
+	entries := make([]*domain.ActivityEntry, 0, 25)
+	for i := range 25 {
+		entries = append(entries, activityEntryAt(strconv.Itoa(i), now.Add(-time.Duration(i)*time.Minute)))
+	}
+	registry := newFakeActivityRegistry()
+	registry.getActivityEntries = entries
+	cmd := &activityCommand{registry: registry}
+
+	code, obj, errData := cmd.Execute(newActivityTestContext(""))
+	require.Nil(t, errData)
+	require.Equal(t, http.StatusOK, code)
+	body, ok := obj.(ActivityResponse)
+	require.True(t, ok)
+
+	require.Len(t, body.Bridges, 20, "default page_size must be 20")
+	require.Equal(t, 25, body.Count)
+	require.Equal(t, "0", string(body.Bridges[0].Bridge.GlobalIndex), "most recent entry must lead page 1")
+}
+
+// TestActivityCommandExecute_ExplicitPageNumberAndSize verifies page_number/page_size slice the
+// sorted (most-recent-first) result exactly like the bridge service's own paginated endpoints.
+func TestActivityCommandExecute_ExplicitPageNumberAndSize(t *testing.T) {
+	now := time.Now()
+	registry := newFakeActivityRegistry()
+	registry.getActivityEntries = []*domain.ActivityEntry{
+		activityEntryAt("0", now),
+		activityEntryAt("1", now.Add(-time.Minute)),
+		activityEntryAt("2", now.Add(-2*time.Minute)),
+		activityEntryAt("3", now.Add(-3*time.Minute)),
+		activityEntryAt("4", now.Add(-4*time.Minute)),
+	}
+	cmd := &activityCommand{registry: registry}
+
+	code, obj, errData := cmd.Execute(newActivityTestContext("page_number=2&page_size=2"))
+	require.Nil(t, errData)
+	require.Equal(t, http.StatusOK, code)
+	body, ok := obj.(ActivityResponse)
+	require.True(t, ok)
+
+	require.Equal(t, []string{"2", "3"}, bridgeGlobalIndexes(body.Bridges))
+	require.Equal(t, 5, body.Count)
+}
+
+// TestActivityCommandExecute_PageBeyondRangeReturnsEmptyBridgesWithCount verifies a page past the
+// last one answers 200 with an empty (not nil-vs-empty-ambiguous) Bridges slice and the true
+// Count, rather than an error — the caller already knows from Count that there is nothing more
+// to page through.
+func TestActivityCommandExecute_PageBeyondRangeReturnsEmptyBridgesWithCount(t *testing.T) {
+	registry := newFakeActivityRegistry()
+	registry.getActivityEntries = []*domain.ActivityEntry{activityEntryAt("0", time.Now())}
+	cmd := &activityCommand{registry: registry}
+
+	code, obj, errData := cmd.Execute(newActivityTestContext("page_number=5&page_size=20"))
+	require.Nil(t, errData)
+	require.Equal(t, http.StatusOK, code)
+	body, ok := obj.(ActivityResponse)
+	require.True(t, ok)
+
+	require.Empty(t, body.Bridges)
+	require.Equal(t, 1, body.Count)
+}
+
+// TestActivityCommandExecute_MaxPageSizeAccepted verifies page_size=200 (the maximum) is accepted
+// and page_size=201 is not.
+func TestActivityCommandExecute_MaxPageSizeAccepted(t *testing.T) {
+	registry := newFakeActivityRegistry()
+	cmd := &activityCommand{registry: registry}
+
+	code, _, errData := cmd.Execute(newActivityTestContext("page_size=200"))
+	require.Nil(t, errData)
+	require.Equal(t, http.StatusOK, code)
+
+	_, _, errData = cmd.Execute(newActivityTestContext("page_size=201"))
+	require.NotNil(t, errData)
+	require.Equal(t, http.StatusBadRequest, errData.Code)
+}
+
+// TestActivityCommandExecute_InvalidPaginationParamsRejectedBeforeFlush verifies invalid
+// page_number/page_size values 400 before FlushActivity runs, mirroring
+// TestActivityCommandExecute_InvalidFilterRejectedBeforeFlush's reasoning for filterBridges.
+func TestActivityCommandExecute_InvalidPaginationParamsRejectedBeforeFlush(t *testing.T) {
+	tests := map[string]string{
+		"page_number zero":         "page_number=0",
+		"page_number not a number": "page_number=abc",
+		"page_size zero":           "page_size=0",
+		"page_size over max":       "page_size=201",
+	}
+	for name, query := range tests {
+		t.Run(name, func(t *testing.T) {
+			registry := newFakeActivityRegistry()
+			cmd := &activityCommand{registry: registry}
+
+			code, obj, errData := cmd.Execute(newActivityTestContext("flush_cache=true&" + query))
+			require.Zero(t, code)
+			require.Nil(t, obj)
+			require.NotNil(t, errData)
+			require.Equal(t, http.StatusBadRequest, errData.Code)
+			require.Empty(t, registry.calls, "invalid pagination params must reject before touching the registry at all")
+		})
+	}
 }

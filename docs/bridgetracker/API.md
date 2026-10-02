@@ -441,23 +441,43 @@ Request:
 | from_address | path | Address | yes | address that sent the bridges to look up |
 | includeTracking | query | bool | no | `true` additionally registers every still-unclaimed bridge in the result with the bridge tracker (same effect as calling the main endpoint for it) and includes its current [TrackingData](#trackingdata) snapshot. Default `false` |
 | filterBridges | query | string | no | one of `"all"` (default), `"claimed"`, `"pending"`, `"readyToClaim"`, `"error"` — restricts the result to bridges with only that `claim_status` |
+| page_number | query | uint32 | no | 1-based page number. Default `1` — same parameter name and numbering as the bridge service's own paginated endpoints |
+| page_size | query | uint32 | no | page size. Default `20`, max `200` |
 
 ### Behavior
 
 - `200 OK` — the body is an [ActivityResponse](#activityresponse).
-- `400 Bad Request` — invalid `from_address`, or an unrecognized `filterBridges` value: the body is an [ErrorData](#errordata).
+- `400 Bad Request` — invalid `from_address`, an unrecognized `filterBridges` value, or an invalid `page_number`/`page_size` (zero, non-numeric, or `page_size` over `200`): the body is an [ErrorData](#errordata).
 - `500 Internal Server Error` — scanning the configured bridge services failed: the body is an [ErrorData](#errordata).
 - **This endpoint is opt-in**: it only exists if the binary is configured with both an activity bridge scanner and claim checker (`Config.ActivityScanner`/`ActivityClaims`); otherwise the route is not registered at all (plain `404`).
 - Requesting `filterBridges=pending`, `filterBridges=readyToClaim` or `filterBridges=error` **skips fetching the claim record** of a bridge found to be claimed, since it would be filtered out of that result anyway — its cache entry simply has no `claim` yet, and is fetched normally the next time `filterBridges=all`/`claimed` is used for that address.
 - A network whose bridge service could not be scanned **never fails the request**: it is skipped and reported in `warnings` instead, so `bridges` is still whatever every other network reported (possibly incomplete for the networks listed in `warnings`).
 - When the RPC-based fallback (`Tracker.ActivitySourceRPC`) is enabled, it never calls `debug_traceTransaction` — so it works against any standard JSON-RPC endpoint — but as a result it cannot resolve the sender of an Asset bridge routed through an intermediate contract (i.e. the transaction was not sent directly to the bridge contract); such a bridge is silently skipped by the fallback and only appears once the network's own bridge-service indexer (which does trace) has caught up with it.
 
+### Pagination
+
+Pagination works exactly like the bridge service's paginated endpoints: `page_number` (1-based) and `page_size`, with the total number of matching bridges reported in `count`. There is no `next_page`/`has_more`/`total_pages` field:
+
+- total pages: `ceil(count / page_size)`
+- a page is the last one if `page_number * page_size >= count` (or `bridges` has fewer than `page_size` items)
+- a `page_number` past the last page answers `200 OK` with an empty `bridges` and the real `count`
+
+Bridges are sorted most recent first (`creation_timestamp` descending). A bridge whose block timestamp the bridge service has not populated yet is stamped with the time it was first cached, so it appears at the top until then. Bridges sharing the same `creation_timestamp` are ordered by `bridge.global_index` descending (compared numerically), so their relative order is the same on every request.
+
+**Pages are not a consistent snapshot.** Every request reads the cache as it is at that moment, and the background refresh can add new bridges between two requests of the same traversal. Because newest bridges come first, a new bridge shifts every older one down, so a client paging through the whole result can see:
+
+- **duplicates**: a bridge already received at the end of page N reappears at the start of page N+1
+- **missed new bridges**: a bridge created after page 1 was read lands on page 1, which the client no longer fetches, so it is not seen until the traversal is repeated. The only hint is that `count` grew between responses
+
+Clients that need the complete list must deduplicate by `bridge.global_index` (unique per bridge) and, if `count` changes during the traversal, fetch the first page again to pick up the new bridges.
+
 ### ActivityResponse
 
 | field | type | desc |
 | ------|------|------|
 | from_address | Address | the address requested |
-| bridges | ActivityItem [] | every bridge found for `from_address`, across every configured bridge service, matching `filterBridges` |
+| bridges | ActivityItem [] | this page of the bridges found for `from_address`, across every configured bridge service, matching `filterBridges` — sorted most recent first and sliced per `page_number`/`page_size` |
+| count | int | how many bridges matched `filterBridges` in total, across every page — not just `len(bridges)` |
 | warnings | ActivityWarningItem [] | every network whose bridge service could not be scanned this call; **omitted** (no key) when every configured network was scanned successfully |
 
 ### ActivityWarningItem
@@ -481,7 +501,7 @@ sit alongside them (not nested inside) so the caller knows which bridge service 
 | claim_status | string | bare string, one of `"pending"`, `"readyToClaim"`, `"claimed"`, `"error"` — the same vocabulary and field name as `claim_status` on [TrackingData](#trackingdata). `"claimed"`/`"error"` are derived straight from the destination bridge contract's `isClaimed()` call the last time it was checked — `"error"` if the check itself failed (e.g. no bridge contract address configured for the destination network), callers must **not** read it as `"pending"`. While unclaimed, `"readyToClaim"` vs `"pending"` is copied from the tracker's own snapshot when `tracking` is present, or resolved directly against `l1-info-tree-index`/`injected-l1-info-leaf` otherwise |
 | claim_network_id | uint32 | network whose bridge service reported `claim` (the bridge's destination network); **omitted** (no key) until `claim` is present |
 | claim | ClaimResponse | raw claim record, exactly as returned by the destination network's bridge service, once `claim_status` is `"claimed"` and the indexer has recorded it; **omitted** (no key) until then |
-| creation_timestamp | uint64 | unix seconds; when this bridge was first cached by this endpoint — never changes after that |
+| creation_timestamp | uint64 | unix seconds; when this bridge was created: its origin deposit block timestamp, or, only if the bridge service had not populated that timestamp yet, when this endpoint first cached it — never changes after that. It is the sort key of `bridges` |
 | last_updated_timestamp | uint64 | unix seconds; when this item's claim/tracking state was last (re)checked, whether or not anything about it actually changed. Stops advancing once the bridge is claimed with its claim record fetched, since it is never rechecked again from that point on |
 | tracking | TrackingData | the bridge tracker's current status for this bridge (see [TrackingData](#trackingdata)); **omitted** (no key) unless the request set `includeTracking=true` and the bridge is still unclaimed |
 | errors | map[string]string | message of whatever check failed the last time this item was refreshed, keyed by which check it was — `"claim"` when the `isClaimed()` check itself failed, `"readiness"` when resolving `"readyToClaim"` vs `"pending"` itself failed (`claim_status` then conservatively stays `"pending"`). **Omitted** (no key) while nothing has failed. Any URL, `host:port` or bare IP address in a value is redacted (replaced with `<redacted-url>` / `<redacted-host>`); the rest of the message is kept |

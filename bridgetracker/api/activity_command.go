@@ -3,7 +3,10 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math/big"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -21,6 +24,16 @@ var _ command = (*activityCommand)(nil)
 // retryAfterHeader is the standard HTTP header telling the client how long to wait before
 // retrying a 503 response (RFC 9110 §10.2.3), expressed here in whole seconds
 const retryAfterHeader = "Retry-After"
+
+// Pagination defaults/limits for the activity endpoint, matching the bridge service's own
+// paginated endpoints (see bridgeservice.DefaultPage/DefaultPageSize/MaxPageSize) — same
+// numbers, same 1-based page numbering, so a client already paging bridge service endpoints
+// needs no new mental model for this one.
+const (
+	defaultActivityPage     = uint32(1)
+	defaultActivityPageSize = uint32(20)
+	maxActivityPageSize     = uint32(200)
+)
 
 // activityCommand answers GET /activity/from/{from_address}: it registers from_address as
 // supervised (see domain.ActivitySupervisedStore.RegisterAndAwait), then reports whatever is
@@ -71,8 +84,9 @@ type ActivityItem struct {
 	// Claim is the raw claim record, exactly as returned by the destination network's bridge
 	// service, unmodified, once ClaimStatus is "claimed" and the indexer has recorded it
 	Claim *bridgeservicetypes.ClaimResponse `json:"claim,omitempty"`
-	// CreationTimestamp is when this bridge was first cached by the activity endpoint (unix
-	// seconds); it never changes after that
+	// CreationTimestamp is when this bridge was created (unix seconds): its origin deposit block
+	// timestamp, or when the activity endpoint first cached it if the bridge service had not
+	// populated that timestamp yet; it never changes after that
 	CreationTimestamp uint64 `json:"creation_timestamp"`
 	// LastUpdatedTimestamp is when this item's claim/tracking state was last (re)checked (unix
 	// seconds), whether or not anything about it actually changed. Stops advancing once the
@@ -134,8 +148,13 @@ func (w ActivityWarningItem) MarshalJSON() ([]byte, error) {
 type ActivityResponse struct {
 	// FromAddress is the address requested
 	FromAddress common.Address `json:"from_address"`
-	// Bridges holds every bridge found for FromAddress across every configured bridge service
+	// Bridges holds this page of the bridges found for FromAddress across every configured
+	// bridge service, most recent first (see CreationTimestamp), restricted to filterBridges
+	// and sliced to page_number/page_size
 	Bridges []ActivityItem `json:"bridges"`
+	// Count is how many bridges matched filterBridges in total, across every page — not just
+	// len(Bridges) — mirroring bridgeservice's BridgesResult/ClaimsResult "count" field
+	Count int `json:"count"`
 	// Warnings lists every network whose bridge service could not be scanned this call; absent
 	// when every configured network was scanned successfully. Bridges may be incomplete for the
 	// networks listed here, but is still valid for every other network
@@ -185,13 +204,18 @@ type ActivityResponse struct {
 // @Description whatever is already cached for from_address, so the next background refresh
 // @Description rechecks everything from scratch. A network whose bridge service could not be
 // @Description scanned is skipped and reported in the "warnings" field instead of failing the
-// @Description whole request.
+// @Description whole request. Bridges are sorted most recent first and paginated via
+// @Description page_number/page_size (same names and 1-based numbering as the bridge service's
+// @Description own paginated endpoints); "count" reports how many bridges matched in total,
+// @Description across every page.
 // @Tags bridge-tracker
 // @Produce json
 // @Param from_address path string true "Address that sent the bridges to look up"
 // @Param includeTracking query bool false "Register still-unclaimed bridges with the tracker"
 // @Param filterBridges query string false "Claim filter" Enums(all, claimed, pending, readyToClaim, error) default(all)
 // @Param flush_cache query bool false "Discard cached activity for from_address before answering"
+// @Param page_number query uint32 false "Page number, 1-based (default 1)"
+// @Param page_size query uint32 false "Page size (default 20, max 200)"
 // @Success 200 {object} ActivityResponse
 // @Failure 400 {object} types.ErrorData "Invalid from_address or filterBridges"
 // @Failure 500 {object} types.ErrorData "Registering from_address failed"
@@ -205,11 +229,16 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 	fromAddress := common.HexToAddress(addrStr)
 	includeTracking := c.Query(includeTrackingQueryParam) == queryValueTrue
 
-	// Validate before mutating anything: a bad filterBridges value must 400 without having
-	// already discarded the cache below (flush_cache=true&filterBridges=typo used to flush first
-	// and reject after, forcing the follow-up request through the same not-ready-yet path as a
-	// first-time registration just to fix a client-side typo)
+	// Validate before mutating anything: a bad filterBridges/page_number/page_size value must
+	// 400 without having already discarded the cache below (flush_cache=true&filterBridges=typo
+	// used to flush first and reject after, forcing the follow-up request through the same
+	// not-ready-yet path as a first-time registration just to fix a client-side typo)
 	filter, err := types.ParseActivityFilter(c.Query(filterBridgesQueryParam))
+	if err != nil {
+		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: aggkitcommon.RedactError(err)}
+	}
+
+	pageNumber, pageSize, err := parseActivityPageParams(c)
 	if err != nil {
 		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: aggkitcommon.RedactError(err)}
 	}
@@ -254,9 +283,96 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 
 	return http.StatusOK, ActivityResponse{
 		FromAddress: fromAddress,
-		Bridges:     newActivityItems(entries),
+		Bridges:     newActivityItems(paginateActivityEntries(entries, pageNumber, pageSize)),
+		Count:       len(entries),
 		Warnings:    newActivityWarningItems(warnings),
 	}, nil
+}
+
+// parseActivityPageParams parses and validates the activity endpoint's page_number/page_size
+// query parameters, same names, defaults and bounds as the bridge service's own paginated
+// endpoints (see bridgeservice.parseUintQuery/validatePaginationParams): page_number defaults to
+// 1 and must be > 0; page_size defaults to 20 and must be in (0, 200]
+func parseActivityPageParams(c *gin.Context) (pageNumber, pageSize uint32, err error) {
+	pageNumber, err = parseActivityUintQuery(c, pageNumberQueryParam, defaultActivityPage)
+	if err != nil {
+		return 0, 0, err
+	}
+	if pageNumber == 0 {
+		return 0, 0, fmt.Errorf("invalid %s parameter: must be greater than 0", pageNumberQueryParam)
+	}
+
+	pageSize, err = parseActivityUintQuery(c, pageSizeQueryParam, defaultActivityPageSize)
+	if err != nil {
+		return 0, 0, err
+	}
+	if pageSize == 0 || pageSize > maxActivityPageSize {
+		return 0, 0, fmt.Errorf(
+			"invalid %s parameter: must be greater than 0 and less than or equal to %d", pageSizeQueryParam, maxActivityPageSize)
+	}
+
+	return pageNumber, pageSize, nil
+}
+
+// parseActivityUintQuery parses key as a uint32 query parameter, returning defaultVal if it is
+// absent
+func parseActivityUintQuery(c *gin.Context, key string, defaultVal uint32) (uint32, error) {
+	paramStr := c.Query(key)
+	if paramStr == "" {
+		return defaultVal, nil
+	}
+	val, err := strconv.ParseUint(paramStr, decimalBase, uint32BitSize)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s parameter: %w", key, err)
+	}
+	return uint32(val), nil
+}
+
+// paginateActivityEntries sorts entries most recent first (by CreatedAt, descending — see
+// domain.ActivityEntry.CreatedAt — then by global index, descending, so entries sharing a
+// CreatedAt keep the same relative order across requests) and returns the pageNumber-th page
+// of pageSize entries (both 1-based/positive, as validated by parseActivityPageParams). A
+// pageNumber past the end of entries returns an empty, non-nil slice rather than an error: the
+// caller already has the true total in ActivityResponse.Count to tell "no more pages" from "no
+// activity at all"
+func paginateActivityEntries(entries []*domain.ActivityEntry, pageNumber, pageSize uint32) []*domain.ActivityEntry {
+	sortActivityEntries(entries)
+
+	offset := uint64(pageNumber-1) * uint64(pageSize)
+	if offset >= uint64(len(entries)) {
+		return []*domain.ActivityEntry{}
+	}
+	end := min(offset+uint64(pageSize), uint64(len(entries)))
+	return entries[offset:end]
+}
+
+// sortActivityEntries sorts entries in place by CreatedAt descending, breaking ties by bridge
+// global index descending — compared numerically, since it can exceed 2^64 — so entries sharing
+// a CreatedAt have the same relative order on every request. Each global index is parsed once,
+// before sorting, rather than on every comparison
+func sortActivityEntries(entries []*domain.ActivityEntry) {
+	type keyed struct {
+		entry       *domain.ActivityEntry
+		globalIndex *big.Int
+	}
+	keyedEntries := make([]keyed, len(entries))
+	for i, e := range entries {
+		gi, ok := new(big.Int).SetString(string(e.Bridge.GlobalIndex), decimalBase)
+		if !ok {
+			gi = new(big.Int)
+		}
+		keyedEntries[i] = keyed{entry: e, globalIndex: gi}
+	}
+	sort.Slice(keyedEntries, func(i, j int) bool {
+		a, b := keyedEntries[i], keyedEntries[j]
+		if !a.entry.CreatedAt.Equal(b.entry.CreatedAt) {
+			return a.entry.CreatedAt.After(b.entry.CreatedAt)
+		}
+		return a.globalIndex.Cmp(b.globalIndex) > 0
+	})
+	for i, k := range keyedEntries {
+		entries[i] = k.entry
+	}
 }
 
 // newActivityItems builds the wire ActivityItems from the resolved activity entries

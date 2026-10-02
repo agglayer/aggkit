@@ -17,7 +17,7 @@
     "paths": {
         "/activity/from/{from_address}": {
             "get": {
-                "description": "Registers from_address as supervised and reports whatever the activity engine's\nbackground refresh has cached for it so far — on a first-time address, this\nrequest waits briefly for that first refresh before answering, and answers 503\nwith a Retry-After header (the engine's poll interval) if it is still not ready\nby then, instead of an empty 200 indistinguishable from \"no activity\" (see\nRegisterResolveTimeout-equivalent config). Results are cached: a bridge already\nknown to be claimed, with its claim record already fetched, is not rechecked on a\nlater refresh. Passing includeTracking=true additionally marks the address so a\nfollowing background refresh registers every still-unclaimed bridge with the\nbridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). flush_cache=true discards\nwhatever is already cached for from_address, so the next background refresh\nrechecks everything from scratch. A network whose bridge service could not be\nscanned is skipped and reported in the \"warnings\" field instead of failing the\nwhole request.",
+                "description": "Registers from_address as supervised and reports whatever the activity engine's\nbackground refresh has cached for it so far — on a first-time address, this\nrequest waits briefly for that first refresh before answering, and answers 503\nwith a Retry-After header (the engine's poll interval) if it is still not ready\nby then, instead of an empty 200 indistinguishable from \"no activity\" (see\nRegisterResolveTimeout-equivalent config). Results are cached: a bridge already\nknown to be claimed, with its claim record already fetched, is not rechecked on a\nlater refresh. Passing includeTracking=true additionally marks the address so a\nfollowing background refresh registers every still-unclaimed bridge with the\nbridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). flush_cache=true discards\nwhatever is already cached for from_address, so the next background refresh\nrechecks everything from scratch. A network whose bridge service could not be\nscanned is skipped and reported in the \"warnings\" field instead of failing the\nwhole request. Bridges are sorted most recent first and paginated via\npage_number/page_size (same names and 1-based numbering as the bridge service's\nown paginated endpoints); \"count\" reports how many bridges matched in total,\nacross every page.",
                 "produces": [
                     "application/json"
                 ],
@@ -57,6 +57,20 @@
                         "type": "boolean",
                         "description": "Discard cached activity for from_address before answering",
                         "name": "flush_cache",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Page number, 1-based (default 1)",
+                        "name": "page_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Page size (default 20, max 200)",
+                        "name": "page_size",
                         "in": "query"
                     }
                 ],
@@ -309,7 +323,7 @@
                     "type": "string"
                 },
                 "creation_timestamp": {
-                    "description": "CreationTimestamp is when this bridge was first cached by the activity endpoint (unix\nseconds); it never changes after that",
+                    "description": "CreationTimestamp is when this bridge was created (unix seconds): its origin deposit block\ntimestamp, or when the activity endpoint first cached it if the bridge service had not\npopulated that timestamp yet; it never changes after that",
                     "type": "integer"
                 },
                 "errors": {
@@ -341,11 +355,15 @@
             "type": "object",
             "properties": {
                 "bridges": {
-                    "description": "Bridges holds every bridge found for FromAddress across every configured bridge service",
+                    "description": "Bridges holds this page of the bridges found for FromAddress across every configured\nbridge service, most recent first (see CreationTimestamp), restricted to filterBridges\nand sliced to page_number/page_size",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/api.ActivityItem"
                     }
+                },
+                "count": {
+                    "description": "Count is how many bridges matched filterBridges in total, across every page — not just\nlen(Bridges) — mirroring bridgeservice's BridgesResult/ClaimsResult \"count\" field",
+                    "type": "integer"
                 },
                 "from_address": {
                     "description": "FromAddress is the address requested",
