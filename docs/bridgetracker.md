@@ -223,7 +223,7 @@ AutoRegisterNewNetworks = true
 
 ## Prometheus Metrics
 
-If enabled in the configuration (`[Prometheus]`, disabled by default), the tracker exposes the following Prometheus metrics, refreshed every 15 seconds:
+The tracker exposes (unless `[Prometheus] Enabled = false`, it is enabled by default) the following Prometheus metrics, refreshed every 15 seconds:
 
 | **Metric Name**                  | **Type** | **Description**                                                                                      |
 | -------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
@@ -236,7 +236,7 @@ A failed read keeps the gauge's previous value (and logs a warning) instead of r
 ```toml
 [Prometheus]
 Enabled = true
-Host = "0.0.0.0"
+Host = "localhost"
 Port = 9091
 ```
 

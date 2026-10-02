@@ -50,9 +50,10 @@ MaxAge = "12h"
 
 [Prometheus]
 # Exposes the tracker's metrics (bridgetracker_cache_size_bytes, bridgetracker_alive_trackers,
-# bridgetracker_alive_activities) at http://Host:Port/metrics. Disabled by default.
-Enabled = false
-Host = "0.0.0.0"
+# bridgetracker_alive_activities) at http://Host:Port/metrics. Enabled by default, like aggkit's.
+# Set Enabled = false to not open the metrics port.
+Enabled = true
+Host = "localhost"
 Port = 9091
 
 [Tracker]
