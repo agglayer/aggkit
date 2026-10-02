@@ -495,7 +495,7 @@ func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error
 		return 0, sync.ErrInconsistentState
 	}
 
-	depositCount, err := s.agglayerBridge.DepositCount(nil)
+	depositCount, err := s.agglayerBridge.DepositCount(&bind.CallOpts{Context: ctx})
 	if err != nil {
 		return 0, fmt.Errorf("failed to get deposit count: %w", err)
 	}

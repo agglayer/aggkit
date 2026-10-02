@@ -304,7 +304,7 @@ func (p *processor) getInfoByIndexWithTx(tx dbtypes.DBer, index uint32) (*L1Info
 // Returns (0, false, nil) if no blocks have been processed yet.
 func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
 	var lastProcessedBlockNum uint64
-	row := p.db.QueryRow("SELECT num FROM BLOCK ORDER BY num DESC LIMIT 1;")
+	row := p.db.QueryRowContext(ctx, "SELECT num FROM BLOCK ORDER BY num DESC LIMIT 1;")
 	err := row.Scan(&lastProcessedBlockNum)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil

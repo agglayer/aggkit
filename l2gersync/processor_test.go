@@ -203,6 +203,60 @@ func TestProcessBlock_RemoveEventForSkippedInsert(t *testing.T) {
 	require.Equal(t, uint64(10), events[0].BlockNum)
 }
 
+// TestGetLastProcessedBlock_HonoursContext guards the fix that made GetLastProcessedBlock use
+// database.QueryRowContext instead of meddler.QueryRow (which has no ctx-aware variant), so a
+// hung caller-supplied ctx (e.g. the sync-status/health endpoint timeouts) bounds this query
+// instead of it running unbounded. It also re-checks the normal and no-rows paths are unchanged.
+func TestGetLastProcessedBlock_HonoursContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("already-cancelled ctx returns a ctx error", func(t *testing.T) {
+		t.Parallel()
+		testDir := path.Join(t.TempDir(), "l2gersync_TestGetLastProcessedBlock_HonoursContext_cancelled.sqlite")
+		p, err := newProcessor(testDir)
+		require.NoError(t, err)
+
+		_, err = p.database.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, common.HexToHash("0x1").String())
+		require.NoError(t, err)
+
+		cancelledCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, _, err = p.GetLastProcessedBlock(cancelledCtx)
+		require.Error(t, err)
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("returns (0, false, nil) when no blocks are processed", func(t *testing.T) {
+		t.Parallel()
+		testDir := path.Join(t.TempDir(), "l2gersync_TestGetLastProcessedBlock_HonoursContext_empty.sqlite")
+		p, err := newProcessor(testDir)
+		require.NoError(t, err)
+
+		num, found, err := p.GetLastProcessedBlock(context.Background())
+		require.NoError(t, err)
+		require.False(t, found)
+		require.Equal(t, uint64(0), num)
+	})
+
+	t.Run("returns the last processed block when rows exist", func(t *testing.T) {
+		t.Parallel()
+		testDir := path.Join(t.TempDir(), "l2gersync_TestGetLastProcessedBlock_HonoursContext_rows.sqlite")
+		p, err := newProcessor(testDir)
+		require.NoError(t, err)
+
+		_, err = p.database.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, common.HexToHash("0x1").String())
+		require.NoError(t, err)
+		_, err = p.database.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 5, common.HexToHash("0x5").String())
+		require.NoError(t, err)
+
+		num, found, err := p.GetLastProcessedBlock(context.Background())
+		require.NoError(t, err)
+		require.True(t, found)
+		require.Equal(t, uint64(5), num)
+	})
+}
+
 func TestReorg(t *testing.T) {
 	testDir := path.Join(t.TempDir(), "l2gersync_TestReorg.sqlite")
 	processor, err := newProcessor(testDir)

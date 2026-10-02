@@ -274,32 +274,49 @@ is not synced yet.
   "version": "v0.11.0",
   "sync_status": "pending",
   "details": {
-    "l1": { "is_active": true, "is_synced": false },
-    "l2": { "is_active": true, "is_synced": true },
-    "l2_ger": { "is_active": true }
+    "l1": { "is_active": true, "is_synced": false, "is_halted": false },
+    "l2": { "is_active": true, "is_synced": true, "is_halted": false },
+    "l2_ger": { "is_active": true, "is_halted": false },
+    "l1_info_tree": { "is_active": true, "is_halted": false },
+    "claim_l1": { "is_active": true, "is_halted": false },
+    "claim_l2": { "is_active": true, "is_halted": false }
   }
 }
 ```
 
 `sync_status` (`types.HealthSyncStatus`) is one of:
 
-- `done` — every configured, active sync component is fully caught up.
-- `pending` — every configured, active sync component was computed successfully, but at least one has
-  not yet caught up (`is_synced == false`). Not an error: this is the expected transient state while a
-  node catches up after startup or a burst of activity.
-- `error` — a configured component is halted (`is_active == false`, e.g. resolving a reorg) or its sync
-  status could not be computed (an RPC/DB error while checking it); `details.<component>.error` carries
-  the message in that case.
+- `done` — every configured sync component is fully caught up (or has no "caught up" signal at all,
+  see below).
+- `pending` — no configured component is halted or erroring, but the L1 or L2 bridge syncer has not yet
+  caught up (`is_synced == false`). Not an error: this is the expected transient state while a node
+  catches up after startup or a burst of activity. l2gersync, l1infotreesync and claimsync never put the
+  instance in `pending` — they have no "caught up" signal today, so they only ever contribute to `done`
+  or `error`.
+- `error` — a configured component is halted (`is_halted: true`) or its sync status could not be computed
+  (an RPC/DB error while checking it, surfaced as a non-empty `details.<component>.error` with
+  `is_active: true`). This takes priority over `pending`: if one component is behind and another is
+  halted or erroring, the overall `sync_status` is `error`.
 
-`details` is a per-component breakdown (`l1`, `l2`, `l2_ger`, each a `types.ComponentHealth` with
-`is_active`, an optional `is_synced`, and an optional `error`) derived from the exact same computation
-`GET /bridge/v1/sync-status` uses, so the two endpoints can never disagree. A component that is not
-configured on this instance at all (for example no L1 bridge syncer on an L2-only bridge service, or no
-l2gersync wired in) is **omitted from `details` entirely** and excluded from the `sync_status`
-aggregation — it is normal, expected topology for a large fraction of deployed instances, not a fault.
-l2gersync (`l2_ger`) never has a meaningful "caught up" signal today, so it never sets `is_synced` and
-never gates `pending`/`done`; it only ever contributes to the `error` bucket, when it is configured and
-its own last-processed-block read fails.
+`details` is a per-component breakdown (`l1`, `l2`, `l2_ger`, `l1_info_tree`, `claim_l1`, `claim_l2`,
+each a `types.ComponentHealth` with `is_active`, `is_halted`, an optional `is_synced`, and an optional
+`error`) derived from the exact same computation `GET /bridge/v1/sync-status` uses, so the two endpoints
+can never disagree — `is_active`, `is_halted` and `error` are copied verbatim from the matching
+sync-status entry. A component that is not configured on this instance at all (for example no L1 bridge
+syncer on an L2-only bridge service, or no l2gersync/l1infotreesync/claimsync wired in) is **omitted
+from `details` entirely** and excluded from the `sync_status` aggregation — it is normal, expected
+topology for a large fraction of deployed instances, not a fault.
+
+`l2gersync` (`l2_ger`), `l1infotreesync` (`l1_info_tree`) and claimsync (`claim_l1`/`claim_l2`) never
+have a meaningful "caught up" signal today, so none of them ever set `is_synced` and none of them gate
+`pending`/`done`. `l1infotreesync` is the only one of the three that can halt (e.g. resolving a reorg),
+which puts it in the `error` bucket via `is_halted`; l2gersync and claimsync have no halt state, so
+`is_halted` is always `false` for `l2_ger`, `claim_l1` and `claim_l2`, and they only ever reach the
+`error` bucket through a non-empty `error`.
+
+Putting the aggregation rule together: any configured component that is halted or has a non-empty
+`error` puts the instance in `error`; otherwise, if the L1 or L2 bridge syncer is behind, the instance is
+`pending`; otherwise it is `done`.
 
 **This endpoint always answers HTTP 200**, regardless of `sync_status` — including `error`. This is
 deliberate: it backs the liveness/routing probe a `bridgeservicefinder.Finder` instance uses to decide
@@ -357,8 +374,9 @@ code change.
 
 ## Sync status
 
-`GET /bridge/v1/sync-status` reports the synchronization status of the L1 and L2 bridge indexers, plus
-(when applicable) the l2gersync (injected-GER) syncer. Response shape (`types.SyncStatus`):
+`GET /bridge/v1/sync-status` reports the synchronization status of every syncer this bridge service
+instance runs: the L1 and L2 bridge indexers (`bridgesync`), the l2gersync (injected-GER) syncer,
+l1infotreesync, and the L1/L2 claimsync syncers. Response shape (`types.SyncStatus`):
 
 ```json
 {
@@ -367,6 +385,7 @@ code change.
     "synchronized_deposit_count": 100,
     "is_synced": true,
     "is_active": true,
+    "is_halted": false,
     "last_processed_block": 1234,
     "network_block": 2555
   },
@@ -375,12 +394,29 @@ code change.
     "synchronized_deposit_count": 200,
     "is_synced": true,
     "is_active": true,
+    "is_halted": false,
     "last_processed_block": 5678,
     "network_block": 5680
   },
   "l2_ger_info": {
     "is_active": true,
+    "is_halted": false,
     "last_processed_block": 12345678
+  },
+  "l1_info_tree_info": {
+    "is_active": true,
+    "is_halted": false,
+    "last_processed_block": 777
+  },
+  "claim_l1_info": {
+    "is_active": true,
+    "is_halted": false,
+    "last_processed_block": 888
+  },
+  "claim_l2_info": {
+    "is_active": true,
+    "is_halted": false,
+    "last_processed_block": 999
   }
 }
 ```
@@ -400,6 +436,76 @@ code change.
   an invalid GER was injected and not yet removed on-chain; see the
   [remove-GER runbook](./remove_ger_runbook.md#blocking-and-automatic-recovery) for the blocking/automatic
   recovery behavior and how to use this field to confirm recovery.
+
+`l1_info_tree_info`, `claim_l1_info` and `claim_l2_info` (all `SyncerSyncInfo`) report l1infotreesync
+and the L1/L2 claimsync syncers. These three syncers have no in-service "caught up" signal — in
+particular claimsync claims on demand, so there is no on-chain count to compare `last_processed_block`
+against — so `SyncerSyncInfo` has no `is_synced` field. They are entirely absent (omitted, `omitempty`)
+from the JSON response when the corresponding syncer is not configured on this instance, unlike the
+three legacy entries above (see "Not configured vs. halted" below).
+
+### `is_halted`
+
+Every entry, legacy and new, carries `is_halted`. It is `true` only for a **configured, halt-capable**
+syncer whose processor is currently halted (e.g. resolving a reorg): today that means `l1_info`,
+`l2_info` and `l1_info_tree_info` only. `l2gersync` and both claimsync syncers have no halt state at
+all, so `l2_ger_info.is_halted`, `claim_l1_info.is_halted` and `claim_l2_info.is_halted` are always
+`false`.
+
+For every configured entry, `is_active == !is_halted`: a halted syncer stops serving reads (no deposit
+counts, no last-processed-block), so its entry collapses to `{"is_active": false, "is_halted": true}`
+with every other field at its zero value (and never an `error` — a halt is reported through
+`is_halted`, not through `error`).
+
+### Not configured vs. halted
+
+Before `is_halted` existed, `is_active: false` on `l1_info`/`l2_info` was ambiguous: it meant either
+"this syncer is not wired into this instance" or "it is wired in but halted". `is_halted` resolves that
+ambiguity for the three legacy entries, which keep their pre-existing, always-present shape for backward
+compatibility:
+
+- **Not configured** (legacy entries only): `{"is_active": false, "is_halted": false}` — the entry is
+  still present, with every other field at its zero value.
+- **Halted** (legacy entries): `{"is_active": false, "is_halted": true}`.
+
+The three new entries (`l1_info_tree_info`, `claim_l1_info`, `claim_l2_info`) don't need this
+disambiguation: when not configured, they are simply **omitted** from the response entirely (the key
+does not appear in the JSON), matching how `/health`'s `details` already handles an unconfigured
+component. A present-but-unconfigured shape only exists for the three legacy entries.
+
+### `error`
+
+Every entry (legacy and new) has an optional `error` string, set when this syncer's status could not
+be computed (an RPC or DB call failed). It is omitted (`omitempty`) when there is no error. `GET
+/bridge/v1/sync-status` computes every configured syncer independently, so one syncer's error never
+prevents the others from being reported.
+
+`error` text is redacted before it reaches this endpoint: any URL is replaced with `<redacted-url>`
+and any bare host, IP address or DNS name is replaced with `<redacted-host>`, so an RPC error such as
+`Post "https://mainnet.example.com/v3/<api-key>": dial tcp 10.1.2.3:8545: connect: connection refused`
+is never exposed verbatim — it appears with the sensitive tokens replaced. Database errors (e.g.
+`database is locked`) carry no such tokens and pass through unchanged. The redacted text is exactly
+what appears in the matching `/health` `details.<component>.error` field: only that redacted text is
+ever returned to clients, and the raw error is logged server-side.
+
+**Deposit counts are meaningless when `error` is set.** For `l1_info`/`l2_info`, `contract_deposit_count`
+and `synchronized_deposit_count` are not `omitempty`, so they still appear in the JSON as `0` when
+`error` is non-empty — that `0` is not a real count, just the zero value of a struct field that could
+not be populated. Check `error` before trusting either count.
+
+**An absent `last_processed_block` means nothing has been processed yet**, not an error. This applies to
+`l1_info_tree_info` and the two claimsync entries: a syncer that is active, not halted, and has no
+`error` but omits `last_processed_block` is a syncer that simply hasn't processed any block yet (for
+example, a fresh claimsync instance still on its initial block).
+
+### This endpoint always answers HTTP 200
+
+Every configured syncer is computed independently; a syncer whose status could not be computed reports
+its own `error` in its own entry, and this never fails the request as a whole. **This is a behaviour
+change**: previously, the first syncer that failed to compute its status short-circuited the whole
+handler and produced an HTTP 500 with no information about the other syncers. Callers that used to treat
+a non-2xx response from this endpoint as a signal must now inspect the per-entry `error`/`is_halted`
+fields instead.
 
 ## Public configuration
 

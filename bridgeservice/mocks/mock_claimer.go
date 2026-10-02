@@ -155,6 +155,69 @@ func (_c *Claimer_GetClaimsPaged_Call) RunAndReturn(run func(context.Context, ui
 	return _c
 }
 
+// GetLastProcessedBlock provides a mock function with given fields: ctx
+func (_m *Claimer) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLastProcessedBlock")
+	}
+
+	var r0 uint64
+	var r1 bool
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context) (uint64, bool, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) uint64); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) bool); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context) error); ok {
+		r2 = rf(ctx)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// Claimer_GetLastProcessedBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastProcessedBlock'
+type Claimer_GetLastProcessedBlock_Call struct {
+	*mock.Call
+}
+
+// GetLastProcessedBlock is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *Claimer_Expecter) GetLastProcessedBlock(ctx interface{}) *Claimer_GetLastProcessedBlock_Call {
+	return &Claimer_GetLastProcessedBlock_Call{Call: _e.mock.On("GetLastProcessedBlock", ctx)}
+}
+
+func (_c *Claimer_GetLastProcessedBlock_Call) Run(run func(ctx context.Context)) *Claimer_GetLastProcessedBlock_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *Claimer_GetLastProcessedBlock_Call) Return(_a0 uint64, _a1 bool, _a2 error) *Claimer_GetLastProcessedBlock_Call {
+	_c.Call.Return(_a0, _a1, _a2)
+	return _c
+}
+
+func (_c *Claimer_GetLastProcessedBlock_Call) RunAndReturn(run func(context.Context) (uint64, bool, error)) *Claimer_GetLastProcessedBlock_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetSetClaimsPaged provides a mock function with given fields: ctx, page, pageSize, globalIndex
 func (_m *Claimer) GetSetClaimsPaged(ctx context.Context, page uint32, pageSize uint32, globalIndex *big.Int) ([]*types.SetClaim, int, error) {
 	ret := _m.Called(ctx, page, pageSize, globalIndex)

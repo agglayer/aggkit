@@ -675,6 +675,60 @@ func TestGetLastProcessedBlockHeader(t *testing.T) {
 	})
 }
 
+// TestGetLastProcessedBlock_HonoursContext guards the fix that made GetLastProcessedBlock use
+// QueryRowContext instead of QueryRow, so a hung caller-supplied ctx (e.g. the sync-status/health
+// endpoint timeouts) bounds this query instead of it running unbounded. It also re-checks the
+// normal and no-rows paths are unchanged.
+func TestGetLastProcessedBlock_HonoursContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("already-cancelled ctx returns a ctx error", func(t *testing.T) {
+		t.Parallel()
+		dbPath := path.Join(t.TempDir(), "TestGetLastProcessedBlock_HonoursContext_cancelled.sqlite")
+		p, err := newProcessor(dbPath)
+		require.NoError(t, err)
+
+		_, err = p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, common.HexToHash("0x1").String())
+		require.NoError(t, err)
+
+		cancelledCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, _, err = p.GetLastProcessedBlock(cancelledCtx)
+		require.Error(t, err)
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("returns (0, false, nil) when no blocks are processed", func(t *testing.T) {
+		t.Parallel()
+		dbPath := path.Join(t.TempDir(), "TestGetLastProcessedBlock_HonoursContext_empty.sqlite")
+		p, err := newProcessor(dbPath)
+		require.NoError(t, err)
+
+		num, found, err := p.GetLastProcessedBlock(context.Background())
+		require.NoError(t, err)
+		require.False(t, found)
+		require.Equal(t, uint64(0), num)
+	})
+
+	t.Run("returns the last processed block when rows exist", func(t *testing.T) {
+		t.Parallel()
+		dbPath := path.Join(t.TempDir(), "TestGetLastProcessedBlock_HonoursContext_rows.sqlite")
+		p, err := newProcessor(dbPath)
+		require.NoError(t, err)
+
+		_, err = p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, common.HexToHash("0x1").String())
+		require.NoError(t, err)
+		_, err = p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 5, common.HexToHash("0x5").String())
+		require.NoError(t, err)
+
+		num, found, err := p.GetLastProcessedBlock(context.Background())
+		require.NoError(t, err)
+		require.True(t, found)
+		require.Equal(t, uint64(5), num)
+	})
+}
+
 // TestReorgUnhaltsWhenNoRowsAffected covers the recovery path of the cardona-67-op incident
 // (2026-07-23): a halt caused by a batch whose tx rolled back leaves nothing persisted, so a
 // recovery Reorg deletes 0 rows — it must still unhalt the processor.

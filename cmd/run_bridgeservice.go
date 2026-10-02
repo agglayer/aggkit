@@ -5,23 +5,35 @@ import (
 
 	"github.com/agglayer/aggkit/bridgeservice"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
+	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/claimsync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config"
+	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 )
 
+// createBridgeService takes the concrete syncer pointers straight from run.go's wiring (any of
+// which may be nil when that syncer isn't running on this instance) and converts each to its
+// bridgeservice interface through the *OrNil helpers below before calling bridgeservice.New. A nil
+// *T assigned directly to an interface-typed parameter would produce a non-nil interface wrapping
+// a nil pointer (the interface's type is set, only its value is nil), which is indistinguishable
+// from a configured syncer: bridgeservice.BridgeService's own `!= nil` checks would pass, and the
+// first method call on it would panic. Converting here, where the concrete type is still known,
+// keeps that check correct.
 func createBridgeService(
 	cfg *config.Config,
 	l2GERSyncMode string,
 	l2NetworkID uint32,
 	runningComponents runningBridgeComponents,
 	upgradeQuery bridgeservice.AgglayerManagerUpgradeQuerier,
-	l1InfoTree bridgeservice.L1InfoTreeSyncer,
-	injectedGERs bridgeservice.L2GERSyncer,
-	bridgeL1 bridgeservice.Bridger,
-	bridgeL2 bridgeservice.Bridger,
-	claimL1 bridgeservice.Claimer,
-	claimL2 bridgeservice.Claimer,
+	l1InfoTree *l1infotreesync.L1InfoTreeSync,
+	injectedGERs *l2gersync.L2GERSync,
+	bridgeL1 *bridgesync.BridgeSync,
+	bridgeL2 *bridgesync.BridgeSync,
+	claimL1 *claimsync.ClaimSync,
+	claimL2 *claimsync.ClaimSync,
 ) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
 
@@ -41,13 +53,49 @@ func createBridgeService(
 	return bridgeservice.New(
 		bridgeCfg,
 		upgradeQuery,
-		l1InfoTree,
-		injectedGERs,
-		bridgeL1,
-		claimL1,
-		bridgeL2,
-		claimL2,
+		l1InfoTreeSyncerOrNil(l1InfoTree),
+		l2GERSyncerOrNil(injectedGERs),
+		bridgerOrNil(bridgeL1),
+		claimerOrNil(claimL1),
+		bridgerOrNil(bridgeL2),
+		claimerOrNil(claimL2),
 	)
+}
+
+// bridgerOrNil returns bridge as a bridgeservice.Bridger, or an untyped nil interface when bridge
+// is a nil pointer (see createBridgeService's doc comment for why this matters).
+func bridgerOrNil(bridge *bridgesync.BridgeSync) bridgeservice.Bridger {
+	if bridge == nil {
+		return nil
+	}
+	return bridge
+}
+
+// claimerOrNil returns claimer as a bridgeservice.Claimer, or an untyped nil interface when
+// claimer is a nil pointer.
+func claimerOrNil(claimer *claimsync.ClaimSync) bridgeservice.Claimer {
+	if claimer == nil {
+		return nil
+	}
+	return claimer
+}
+
+// l1InfoTreeSyncerOrNil returns syncer as a bridgeservice.L1InfoTreeSyncer, or an untyped nil
+// interface when syncer is a nil pointer.
+func l1InfoTreeSyncerOrNil(syncer *l1infotreesync.L1InfoTreeSync) bridgeservice.L1InfoTreeSyncer {
+	if syncer == nil {
+		return nil
+	}
+	return syncer
+}
+
+// l2GERSyncerOrNil returns syncer as a bridgeservice.L2GERSyncer, or an untyped nil interface when
+// syncer is a nil pointer.
+func l2GERSyncerOrNil(syncer *l2gersync.L2GERSync) bridgeservice.L2GERSyncer {
+	if syncer == nil {
+		return nil
+	}
+	return syncer
 }
 
 // runningBridgeComponents flags which syncer components are actually running on this bridge
