@@ -104,6 +104,24 @@ func TestGetLastProcessedBlock(t *testing.T) {
 	require.True(t, errors.Is(err, sync.ErrInconsistentState))
 }
 
+func TestIsActive(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncProcessor.db")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+	defer p.db.Close()
+
+	s := L1InfoTreeSync{processor: p}
+	ctx := context.Background()
+
+	require.True(t, s.IsActive(ctx))
+
+	p.halt("test halt reason")
+	require.False(t, s.IsActive(ctx))
+
+	p.unhalt()
+	require.True(t, s.IsActive(ctx))
+}
+
 func TestGetLocalExitRoot(t *testing.T) {
 	s := L1InfoTreeSync{
 		processor: &processor{

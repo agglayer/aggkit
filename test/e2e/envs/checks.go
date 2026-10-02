@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/bridgeservice/client"
+	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -191,7 +192,7 @@ func (e *Env) checkBridgeServiceConnectivity(ctx context.Context) error {
 }
 
 // checkBridgeServiceConnectivityFor validates a bridge-service client responds to health and
-// sync-status calls.
+// sync-status calls, and that every present sync-status entry reports no error.
 func checkBridgeServiceConnectivityFor(ctx context.Context, bridgeService *client.Client) error {
 	healthResp, err := bridgeService.HealthCheck(ctx)
 	if err != nil {
@@ -208,7 +209,55 @@ func checkBridgeServiceConnectivityFor(ctx context.Context, bridgeService *clien
 	if syncStatus == nil {
 		return fmt.Errorf("sync status response is nil")
 	}
+	return checkSyncStatusEntryErrors(syncStatus)
+}
+
+// checkSyncStatusEntryErrors fails with the offending entry's name if any present entry of a
+// GET /bridge/v1/sync-status response carries a non-empty error. It intentionally does not check
+// is_halted: a halted syncer still answers 200 with is_active/false, which this one-shot,
+// no-retry pre-test check has never treated as a failure.
+func checkSyncStatusEntryErrors(status *types.SyncStatus) error {
+	entries := []struct {
+		name  string
+		error string
+	}{
+		{"l1_info", errorOf(status.L1Info)},
+		{"l2_info", errorOf(status.L2Info)},
+		{"l2_ger_info", errorOfL2GER(status.L2GERInfo)},
+		{"l1_info_tree_info", errorOfSyncer(status.L1InfoTreeInfo)},
+		{"claim_l1_info", errorOfSyncer(status.ClaimL1Info)},
+		{"claim_l2_info", errorOfSyncer(status.ClaimL2Info)},
+	}
+	for _, e := range entries {
+		if e.error != "" {
+			return fmt.Errorf("sync status: %s: %s", e.name, e.error)
+		}
+	}
 	return nil
+}
+
+// errorOf returns info.Error, or "" if info is nil.
+func errorOf(info *types.NetworkSyncInfo) string {
+	if info == nil {
+		return ""
+	}
+	return info.Error
+}
+
+// errorOfL2GER returns info.Error, or "" if info is nil.
+func errorOfL2GER(info *types.L2GERSyncInfo) string {
+	if info == nil {
+		return ""
+	}
+	return info.Error
+}
+
+// errorOfSyncer returns info.Error, or "" if info is nil.
+func errorOfSyncer(info *types.SyncerSyncInfo) string {
+	if info == nil {
+		return ""
+	}
+	return info.Error
 }
 
 func (e *Env) checkL1Contracts(ctx context.Context) error {

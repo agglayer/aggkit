@@ -21,10 +21,6 @@ const (
 	deleteGERSql = "DELETE FROM imported_global_exit_root_v2 WHERE global_exit_root = $1;"
 )
 
-type BlockNum struct {
-	Num uint64 `meddler:"num"`
-}
-
 type GlobalExitRootInfo struct {
 	GlobalExitRoot  ethcommon.Hash `meddler:"global_exit_root,hash"`
 	L1InfoTreeIndex uint32         `meddler:"l1_info_tree_index"`
@@ -165,18 +161,15 @@ func (p *processor) handleGEREvent(tx dbtypes.Txer, gerInfo *GlobalExitRootInfo,
 // including those without events.
 // Returns (0, false, nil) if no blocks have been processed yet.
 func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
-	var block BlockNum
-	if err := meddler.QueryRow(
-		p.database,
-		&block,
-		"SELECT num FROM block ORDER BY num DESC LIMIT 1;",
-	); err != nil {
+	var lastProcessedBlockNum uint64
+	row := p.database.QueryRowContext(ctx, "SELECT num FROM block ORDER BY num DESC LIMIT 1;")
+	if err := row.Scan(&lastProcessedBlockNum); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, false, nil
 		}
 		return 0, false, err
 	}
-	return block.Num, true, nil
+	return lastProcessedBlockNum, true, nil
 }
 
 // getLatestL1InfoTreeIndex retrieves the highest L1InfoTreeIndex recorded in the imported_global_exit_root_v2 table

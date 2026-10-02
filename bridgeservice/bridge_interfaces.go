@@ -44,6 +44,9 @@ type Claimer interface {
 	GetSetClaimsPaged(ctx context.Context, page, pageSize uint32,
 		globalIndex *big.Int) ([]*claimsynctype.SetClaim, int, error)
 	GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*claimsynctype.Claim, error)
+	// GetLastProcessedBlock returns the last processed block and whether any block has been
+	// processed yet.
+	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
 }
 
 type L2GERSyncer interface {
@@ -73,4 +76,9 @@ type L1InfoTreeSyncer interface {
 	GetVerifiedBatchesPaged(
 		rollupID, pageNumber, pageSize uint32,
 	) ([]*l1infotreesync.VerifiedBatchWithBlockHash, int, error)
+	// IsActive reports whether the l1infotreesync processor is not halted.
+	IsActive(ctx context.Context) bool
+	// GetLastProcessedBlock returns the last processed L1 block; 0 (nil error) if none yet.
+	// Returns sync.ErrInconsistentState while the processor is halted.
+	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 }

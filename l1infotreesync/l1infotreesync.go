@@ -350,6 +350,11 @@ func (s *L1InfoTreeSync) GetLastProcessedBlock(ctx context.Context) (uint64, err
 	return num, err
 }
 
+// IsActive returns true if the syncer is active (not halted)
+func (s *L1InfoTreeSync) IsActive(ctx context.Context) bool {
+	return !s.processor.isHalted()
+}
+
 func (s *L1InfoTreeSync) GetLocalExitRoot(
 	ctx context.Context, networkID uint32, rollupExitRoot common.Hash,
 ) (common.Hash, error) {

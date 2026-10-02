@@ -111,25 +111,61 @@ func newBridgeWithMocksAndHealthCacheTTL(t *testing.T, networkID uint32, ttl tim
 	return b
 }
 
-// expectFullySyncedBridgeService sets up mock expectations, on a bridgeWithMocks built by
-// newBridgeWithMocks or newBridgeWithMocksAndHealthCacheTTL, for a fully healthy instance: L1 and
-// L2 bridge syncers both active and caught up, and l2gersync active. times controls how many
-// times each underlying call is expected (Once() semantics multiplied by times), letting callers
-// share this setup between a single-call test and a cache repeated-calls test.
-func expectFullySyncedBridgeService(b bridgeWithMocks, times int) {
+// expectL1BridgeSynced sets up mock expectations for an active, fully caught-up L1 bridge syncer
+// (contract deposit count 100, matching database count). times controls how many times each
+// underlying call is expected (Once() semantics multiplied by times).
+func expectL1BridgeSynced(b bridgeWithMocks, times int) {
 	b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Times(times)
 	b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(100), nil).Times(times)
 	b.bridgeL1.EXPECT().
 		GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 		Return(nil, 100, nil).Times(times)
+}
 
+// expectL2BridgeSynced is expectL1BridgeSynced's L2 counterpart (contract deposit count 200).
+func expectL2BridgeSynced(b bridgeWithMocks, times int) {
 	b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Times(times)
 	b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(200), nil).Times(times)
 	b.bridgeL2.EXPECT().
 		GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 		Return(nil, 200, nil).Times(times)
+}
 
+// expectL2GERSynced sets up mock expectations for an active l2gersync with last processed block 555.
+func expectL2GERSynced(b bridgeWithMocks, times int) {
 	b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(555), nil).Times(times)
+}
+
+// expectL1InfoTreeSynced sets up mock expectations for an active l1infotreesync with last
+// processed block 777.
+func expectL1InfoTreeSynced(b bridgeWithMocks, times int) {
+	b.l1InfoTree.EXPECT().IsActive(mock.Anything).Return(true).Times(times)
+	b.l1InfoTree.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(777), nil).Times(times)
+}
+
+// expectClaimL1Synced sets up mock expectations for claimsync L1 having already processed block 888.
+func expectClaimL1Synced(b bridgeWithMocks, times int) {
+	b.claimL1.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(888), true, nil).Times(times)
+}
+
+// expectClaimL2Synced is expectClaimL1Synced's L2 counterpart (block 999).
+func expectClaimL2Synced(b bridgeWithMocks, times int) {
+	b.claimL2.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(999), true, nil).Times(times)
+}
+
+// expectFullySyncedBridgeService sets up mock expectations, on a bridgeWithMocks built by
+// newBridgeWithMocks or newBridgeWithMocksAndHealthCacheTTL, for a fully healthy instance: all six
+// syncers active and caught up (or, for l2gersync/l1infotreesync/claimsync, active with something
+// already processed -- they have no is_synced signal). times controls how many times each
+// underlying call is expected (Once() semantics multiplied by times), letting callers share this
+// setup between a single-call test and a cache repeated-calls test.
+func expectFullySyncedBridgeService(b bridgeWithMocks, times int) {
+	expectL1BridgeSynced(b, times)
+	expectL2BridgeSynced(b, times)
+	expectL2GERSynced(b, times)
+	expectL1InfoTreeSynced(b, times)
+	expectClaimL1Synced(b, times)
+	expectClaimL2Synced(b, times)
 }
 
 func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
@@ -3390,6 +3426,13 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				Return(uint64(0), nil).
 				Once()
 
+			// l1infotreesync/claimsync: computeSyncStatus now evaluates every configured syncer
+			// independently and concurrently, so these three also need expectations even though
+			// this table only varies L1/L2 bridge counts.
+			expectL1InfoTreeSynced(b, 1)
+			expectClaimL1Synced(b, 1)
+			expectClaimL2Synced(b, 1)
+
 			// Add expectations for block information when not synced
 			if !tc.l1IsSynced {
 				b.bridgeL1.EXPECT().GetLastProcessedBlock(mock.Anything).
@@ -3425,6 +3468,8 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			require.Equal(t, tc.l1ContractCount, response.L1Info.ContractDepositCount)
 			require.Equal(t, tc.l1IsSynced, response.L1Info.IsSynced)
 			require.True(t, response.L1Info.IsActive) // L1 syncer is always active in tests
+			require.False(t, response.L1Info.IsHalted)
+			require.Empty(t, response.L1Info.Error)
 			if !tc.l1IsSynced {
 				require.Equal(t, uint64(1234), response.L1Info.LastProcessedBlock)
 				require.Equal(t, uint64(2555), response.L1Info.NetworkBlock)
@@ -3436,207 +3481,229 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			require.Equal(t, tc.l2ContractCount, response.L2Info.ContractDepositCount)
 			require.Equal(t, tc.l2IsSynced, response.L2Info.IsSynced)
 			require.True(t, response.L2Info.IsActive) // L2 syncer is always active in tests
+			require.False(t, response.L2Info.IsHalted)
+			require.Empty(t, response.L2Info.Error)
 			if !tc.l2IsSynced {
 				require.Equal(t, uint64(1234), response.L2Info.LastProcessedBlock)
 				require.Equal(t, uint64(2555), response.L2Info.NetworkBlock)
 			}
+
+			// The three new entries, unaffected by L1/L2's counts.
+			requireL1InfoTreeSynced(t, response.L1InfoTreeInfo)
+			requireClaimL1Synced(t, response.ClaimL1Info)
+			requireClaimL2Synced(t, response.ClaimL2Info)
 		})
 	}
 
-	// Error test cases
+	// Error test cases. GetSyncStatusHandler no longer stops at the first component error and
+	// never answers 500 -- every configured syncer is still evaluated independently and
+	// concurrently, so each case below also mocks every other component as fully synced
+	// (expectL1BridgeSynced/expectL2BridgeSynced/expectL2GERSynced/
+	// expectL1InfoTreeSynced/expectClaimL1Synced/expectClaimL2Synced) and asserts 200 with the
+	// failure confined to that one entry's Error field, proving one component's failure never
+	// blanks another's entry (this is the regression guard for the old first-error 500).
 	errorTestCases := []struct {
-		description        string
-		setupMocks         func() bridgeWithMocks
-		expectedStatusCode int
-		expectedError      string
+		description   string
+		setupMocks    func() bridgeWithMocks
+		checkResponse func(t *testing.T, resp bridgetypes.SyncStatus)
 	}{
 		{
 			description: "error getting L1 contract deposit count",
 			setupMocks: func() bridgeWithMocks {
 				b := newBridgeWithMocks(t, l2NetworkID)
-				b.bridgeL1.EXPECT().IsActive(mock.Anything).
-					Return(true).
-					Once()
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
-					Return(uint32(0), errors.New("L1 contract error")).
-					Once()
+					Return(uint32(0), errors.New("L1 contract error")).Once()
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
 				return b
 			},
-			expectedStatusCode: http.StatusInternalServerError,
-			expectedError:      "failed to get deposit count from L1 bridge contract: L1 contract error",
+			checkResponse: func(t *testing.T, resp bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoError(t, resp.L1Info,
+					"failed to get deposit count from L1 bridge contract: L1 contract error")
+				requireL2BridgeSynced(t, resp.L2Info)
+				requireL2GERSynced(t, resp.L2GERInfo)
+				requireL1InfoTreeSynced(t, resp.L1InfoTreeInfo)
+				requireClaimL1Synced(t, resp.ClaimL1Info)
+				requireClaimL2Synced(t, resp.ClaimL2Info)
+			},
 		},
 		{
 			description: "error getting L1 bridges from database",
 			setupMocks: func() bridgeWithMocks {
 				b := newBridgeWithMocks(t, l2NetworkID)
-				b.bridgeL1.EXPECT().IsActive(mock.Anything).
-					Return(true).
-					Once()
-				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
-					Return(uint32(100), nil).
-					Once()
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(100), nil).Once()
 				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
-					Return(nil, 0, errors.New("L1 database error"))
+					Return(nil, 0, errors.New("L1 database error")).Once()
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
 				return b
 			},
-			expectedStatusCode: http.StatusInternalServerError,
-			expectedError:      "failed to get bridges from L1 database: L1 database error",
+			checkResponse: func(t *testing.T, resp bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoError(t, resp.L1Info,
+					"failed to get bridges from L1 database: L1 database error")
+				requireL2BridgeSynced(t, resp.L2Info)
+				requireL2GERSynced(t, resp.L2GERInfo)
+				requireL1InfoTreeSynced(t, resp.L1InfoTreeInfo)
+				requireClaimL1Synced(t, resp.ClaimL1Info)
+				requireClaimL2Synced(t, resp.ClaimL2Info)
+			},
 		},
 		{
 			description: "error getting L2 contract deposit count",
 			setupMocks: func() bridgeWithMocks {
 				b := newBridgeWithMocks(t, l2NetworkID)
-				b.bridgeL1.EXPECT().IsActive(mock.Anything).
-					Return(true).
-					Once()
-				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
-					Return(uint32(100), nil).
-					Once()
-				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
-					Return(nil, 100, nil).
-					Once()
-				b.bridgeL2.EXPECT().IsActive(mock.Anything).
-					Return(true).
-					Once()
+				expectL1BridgeSynced(b, 1)
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Once()
 				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
-					Return(uint32(0), errors.New("L2 contract error")).
-					Once()
+					Return(uint32(0), errors.New("L2 contract error")).Once()
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
 				return b
 			},
-			expectedStatusCode: http.StatusInternalServerError,
-			expectedError:      "failed to get deposit count from L2 bridge contract: L2 contract error",
+			checkResponse: func(t *testing.T, resp bridgetypes.SyncStatus) {
+				t.Helper()
+				requireL1BridgeSynced(t, resp.L1Info)
+				requireNetworkSyncInfoError(t, resp.L2Info,
+					"failed to get deposit count from L2 bridge contract: L2 contract error")
+				requireL2GERSynced(t, resp.L2GERInfo)
+				requireL1InfoTreeSynced(t, resp.L1InfoTreeInfo)
+				requireClaimL1Synced(t, resp.ClaimL1Info)
+				requireClaimL2Synced(t, resp.ClaimL2Info)
+			},
 		},
 		{
 			description: "error getting L2 bridges from database",
 			setupMocks: func() bridgeWithMocks {
 				b := newBridgeWithMocks(t, l2NetworkID)
-				b.bridgeL1.EXPECT().IsActive(mock.Anything).
-					Return(true).
-					Once()
-				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
-					Return(uint32(100), nil).
-					Once()
-				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
-					Return(nil, 100, nil).
-					Once()
-				b.bridgeL2.EXPECT().IsActive(mock.Anything).
-					Return(true).
-					Once()
-				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
-					Return(uint32(200), nil).
-					Once()
+				expectL1BridgeSynced(b, 1)
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(200), nil).Once()
 				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
-					Return(nil, 0, errors.New("L2 database error")).
-					Once()
+					Return(nil, 0, errors.New("L2 database error")).Once()
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
 				return b
 			},
-			expectedStatusCode: http.StatusInternalServerError,
-			expectedError:      "failed to get bridges from L2 database: L2 database error",
+			checkResponse: func(t *testing.T, resp bridgetypes.SyncStatus) {
+				t.Helper()
+				requireL1BridgeSynced(t, resp.L1Info)
+				requireNetworkSyncInfoError(t, resp.L2Info,
+					"failed to get bridges from L2 database: L2 database error")
+				requireL2GERSynced(t, resp.L2GERInfo)
+				requireL1InfoTreeSynced(t, resp.L1InfoTreeInfo)
+				requireClaimL1Synced(t, resp.ClaimL1Info)
+				requireClaimL2Synced(t, resp.ClaimL2Info)
+			},
 		},
 		{
 			description: "error getting L1 contract deposit count with context timeout",
 			setupMocks: func() bridgeWithMocks {
 				b := newBridgeWithMocks(t, l2NetworkID)
-				b.bridgeL1.EXPECT().IsActive(mock.Anything).
-					Return(true).
-					Once()
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
-					Return(uint32(0), context.DeadlineExceeded).
-					Once()
+					Return(uint32(0), context.DeadlineExceeded).Once()
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
 				return b
 			},
-			expectedStatusCode: http.StatusInternalServerError,
-			expectedError:      "failed to get deposit count from L1 bridge contract: context deadline exceeded",
+			checkResponse: func(t *testing.T, resp bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoError(t, resp.L1Info,
+					"failed to get deposit count from L1 bridge contract: context deadline exceeded")
+				requireL2BridgeSynced(t, resp.L2Info)
+			},
 		},
 		{
 			description: "error getting L2 contract deposit count with context timeout",
 			setupMocks: func() bridgeWithMocks {
 				b := newBridgeWithMocks(t, l2NetworkID)
-				b.bridgeL1.EXPECT().IsActive(mock.Anything).
-					Return(true).
-					Once()
-				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
-					Return(uint32(100), nil).
-					Once()
-				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
-					Return(nil, 100, nil).
-					Once()
-				b.bridgeL2.EXPECT().IsActive(mock.Anything).
-					Return(true).
-					Once()
+				expectL1BridgeSynced(b, 1)
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Once()
 				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
-					Return(uint32(0), context.DeadlineExceeded).
-					Once()
+					Return(uint32(0), context.DeadlineExceeded).Once()
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
 				return b
 			},
-			expectedStatusCode: http.StatusInternalServerError,
-			expectedError:      "failed to get deposit count from L2 bridge contract: context deadline exceeded",
+			checkResponse: func(t *testing.T, resp bridgetypes.SyncStatus) {
+				t.Helper()
+				requireL1BridgeSynced(t, resp.L1Info)
+				requireNetworkSyncInfoError(t, resp.L2Info,
+					"failed to get deposit count from L2 bridge contract: context deadline exceeded")
+			},
 		},
 		{
-			description: "L1 syncer inactive - only isActive field populated",
+			description: "L1 syncer inactive - halted shape, no error",
 			setupMocks: func() bridgeWithMocks {
 				b := newBridgeWithMocks(t, l2NetworkID)
-				b.bridgeL1.EXPECT().IsActive(mock.Anything).
-					Return(false).
-					Once()
-				b.bridgeL2.EXPECT().IsActive(mock.Anything).
-					Return(true).
-					Once()
-				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
-					Return(uint32(200), nil).
-					Once()
-				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
-					Return(nil, 200, nil).
-					Once()
-				b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
-					Return(uint64(0), nil).
-					Once()
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(false).Once()
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
 				return b
 			},
-			expectedStatusCode: http.StatusOK,
-			expectedError:      "",
+			checkResponse: func(t *testing.T, resp bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoHalted(t, resp.L1Info)
+				requireL2BridgeSynced(t, resp.L2Info)
+			},
 		},
 		{
-			description: "L2 syncer inactive - only isActive field populated",
+			description: "L2 syncer inactive - halted shape, no error",
 			setupMocks: func() bridgeWithMocks {
 				b := newBridgeWithMocks(t, l2NetworkID)
-				b.bridgeL1.EXPECT().IsActive(mock.Anything).
-					Return(true).
-					Once()
-				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
-					Return(uint32(100), nil).
-					Once()
-				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
-					Return(nil, 100, nil).
-					Once()
-				b.bridgeL2.EXPECT().IsActive(mock.Anything).
-					Return(false).
-					Once()
-				b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
-					Return(uint64(0), nil).
-					Once()
+				expectL1BridgeSynced(b, 1)
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(false).Once()
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
 				return b
 			},
-			expectedStatusCode: http.StatusOK,
-			expectedError:      "",
+			checkResponse: func(t *testing.T, resp bridgetypes.SyncStatus) {
+				t.Helper()
+				requireL1BridgeSynced(t, resp.L1Info)
+				requireNetworkSyncInfoHalted(t, resp.L2Info)
+			},
 		},
 		{
-			description: "Both syncers inactive - only isActive fields populated",
+			description: "Both bridge syncers inactive - halted shape, no error",
 			setupMocks: func() bridgeWithMocks {
 				b := newBridgeWithMocks(t, l2NetworkID)
-				b.bridgeL1.EXPECT().IsActive(mock.Anything).
-					Return(false).
-					Once()
-				b.bridgeL2.EXPECT().IsActive(mock.Anything).
-					Return(false).
-					Once()
-				b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
-					Return(uint64(0), nil).
-					Once()
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(false).Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(false).Once()
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
 				return b
 			},
-			expectedStatusCode: http.StatusOK,
-			expectedError:      "",
+			checkResponse: func(t *testing.T, resp bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoHalted(t, resp.L1Info)
+				requireNetworkSyncInfoHalted(t, resp.L2Info)
+			},
 		},
 	}
 
@@ -3649,70 +3716,114 @@ func TestGetSyncStatusHandler(t *testing.T) {
 
 			b.bridge.GetSyncStatusHandler(c)
 
-			require.Equal(t, tc.expectedStatusCode, w.Code)
+			// GetSyncStatusHandler always answers 200 now: a component failure is reported in its
+			// own entry's Error field, never as a top-level 500 (the old stop-at-first-error
+			// behavior this test previously exercised).
+			require.Equal(t, http.StatusOK, w.Code)
 
-			if tc.expectedStatusCode == http.StatusOK {
-				// For successful responses, check the sync status structure
-				var response bridgetypes.SyncStatus
-				err := json.Unmarshal(w.Body.Bytes(), &response)
-				require.NoError(t, err)
+			var response bridgetypes.SyncStatus
+			err := json.Unmarshal(w.Body.Bytes(), &response)
+			require.NoError(t, err)
 
-				// For inactive syncer test cases, verify only isActive field is populated
-				switch tc.description {
-				case "L1 syncer inactive - only isActive field populated":
-					require.NotNil(t, response.L1Info)
-					require.False(t, response.L1Info.IsActive)
-					require.Equal(t, uint32(0), response.L1Info.SynchronizedDepositCount)
-					require.Equal(t, uint32(0), response.L1Info.ContractDepositCount)
-					require.False(t, response.L1Info.IsSynced)
-					require.Equal(t, uint64(0), response.L1Info.LastProcessedBlock)
-					require.Equal(t, uint64(0), response.L1Info.NetworkBlock)
-
-					require.NotNil(t, response.L2Info)
-					require.True(t, response.L2Info.IsActive)
-					require.Equal(t, uint32(200), response.L2Info.SynchronizedDepositCount)
-					require.Equal(t, uint32(200), response.L2Info.ContractDepositCount)
-					require.True(t, response.L2Info.IsSynced)
-				case "L2 syncer inactive - only isActive field populated":
-					require.NotNil(t, response.L1Info)
-					require.True(t, response.L1Info.IsActive)
-					require.Equal(t, uint32(100), response.L1Info.SynchronizedDepositCount)
-					require.Equal(t, uint32(100), response.L1Info.ContractDepositCount)
-					require.True(t, response.L1Info.IsSynced)
-
-					require.NotNil(t, response.L2Info)
-					require.False(t, response.L2Info.IsActive)
-					require.Equal(t, uint32(0), response.L2Info.SynchronizedDepositCount)
-					require.Equal(t, uint32(0), response.L2Info.ContractDepositCount)
-					require.False(t, response.L2Info.IsSynced)
-					require.Equal(t, uint64(0), response.L2Info.LastProcessedBlock)
-					require.Equal(t, uint64(0), response.L2Info.NetworkBlock)
-				case "Both syncers inactive - only isActive fields populated":
-					require.NotNil(t, response.L1Info)
-					require.False(t, response.L1Info.IsActive)
-					require.Equal(t, uint32(0), response.L1Info.SynchronizedDepositCount)
-					require.Equal(t, uint32(0), response.L1Info.ContractDepositCount)
-					require.False(t, response.L1Info.IsSynced)
-					require.Equal(t, uint64(0), response.L1Info.LastProcessedBlock)
-					require.Equal(t, uint64(0), response.L1Info.NetworkBlock)
-
-					require.NotNil(t, response.L2Info)
-					require.False(t, response.L2Info.IsActive)
-					require.Equal(t, uint32(0), response.L2Info.SynchronizedDepositCount)
-					require.Equal(t, uint32(0), response.L2Info.ContractDepositCount)
-					require.False(t, response.L2Info.IsSynced)
-					require.Equal(t, uint64(0), response.L2Info.LastProcessedBlock)
-					require.Equal(t, uint64(0), response.L2Info.NetworkBlock)
-				}
-			} else {
-				// For error responses, check the error message
-				var response gin.H
-				err := json.Unmarshal(w.Body.Bytes(), &response)
-				require.NoError(t, err)
-				require.Equal(t, tc.expectedError, response["error"])
-			}
+			tc.checkResponse(t, response)
 		})
 	}
+}
+
+// requireNetworkSyncInfoError asserts that info reports an active, non-halted syncer whose sync
+// status could not be computed: Error is set (verbatim, since these test errors carry no
+// URL/host token for RedactError to touch) and every count/block field is at its zero value
+// (a failing component never publishes partial data from before the failure).
+func requireNetworkSyncInfoError(t *testing.T, info *bridgetypes.NetworkSyncInfo, expectedError string) {
+	t.Helper()
+	require.NotNil(t, info)
+	require.True(t, info.IsActive)
+	require.False(t, info.IsHalted)
+	require.Equal(t, expectedError, info.Error)
+	require.False(t, info.IsSynced)
+	require.Zero(t, info.ContractDepositCount)
+	require.Zero(t, info.SynchronizedDepositCount)
+	require.Zero(t, info.LastProcessedBlock)
+	require.Zero(t, info.NetworkBlock)
+}
+
+// requireNetworkSyncInfoHalted asserts the halted shape for a configured, halt-capable bridge
+// syncer: is_active false, is_halted true, no error and no partial data.
+func requireNetworkSyncInfoHalted(t *testing.T, info *bridgetypes.NetworkSyncInfo) {
+	t.Helper()
+	require.NotNil(t, info)
+	require.False(t, info.IsActive)
+	require.True(t, info.IsHalted)
+	require.Empty(t, info.Error)
+	require.False(t, info.IsSynced)
+	require.Zero(t, info.ContractDepositCount)
+	require.Zero(t, info.SynchronizedDepositCount)
+	require.Zero(t, info.LastProcessedBlock)
+	require.Zero(t, info.NetworkBlock)
+}
+
+// requireL1BridgeSynced/requireL2BridgeSynced assert the fully-synced shape produced by
+// expectL1BridgeSynced/expectL2BridgeSynced.
+func requireL1BridgeSynced(t *testing.T, info *bridgetypes.NetworkSyncInfo) {
+	t.Helper()
+	require.NotNil(t, info)
+	require.True(t, info.IsActive)
+	require.False(t, info.IsHalted)
+	require.Empty(t, info.Error)
+	require.True(t, info.IsSynced)
+	require.Equal(t, uint32(100), info.ContractDepositCount)
+	require.Equal(t, uint32(100), info.SynchronizedDepositCount)
+}
+
+func requireL2BridgeSynced(t *testing.T, info *bridgetypes.NetworkSyncInfo) {
+	t.Helper()
+	require.NotNil(t, info)
+	require.True(t, info.IsActive)
+	require.False(t, info.IsHalted)
+	require.Empty(t, info.Error)
+	require.True(t, info.IsSynced)
+	require.Equal(t, uint32(200), info.ContractDepositCount)
+	require.Equal(t, uint32(200), info.SynchronizedDepositCount)
+}
+
+// requireL2GERSynced asserts the shape produced by expectL2GERSynced.
+func requireL2GERSynced(t *testing.T, info *bridgetypes.L2GERSyncInfo) {
+	t.Helper()
+	require.NotNil(t, info)
+	require.True(t, info.IsActive)
+	require.False(t, info.IsHalted)
+	require.Empty(t, info.Error)
+	require.Equal(t, uint64(555), info.LastProcessedBlock)
+}
+
+// requireL1InfoTreeSynced asserts the shape produced by expectL1InfoTreeSynced.
+func requireL1InfoTreeSynced(t *testing.T, info *bridgetypes.SyncerSyncInfo) {
+	t.Helper()
+	require.NotNil(t, info)
+	require.True(t, info.IsActive)
+	require.False(t, info.IsHalted)
+	require.Empty(t, info.Error)
+	require.Equal(t, uint64(777), info.LastProcessedBlock)
+}
+
+// requireClaimL1Synced/requireClaimL2Synced assert the shape produced by
+// expectClaimL1Synced/expectClaimL2Synced.
+func requireClaimL1Synced(t *testing.T, info *bridgetypes.SyncerSyncInfo) {
+	t.Helper()
+	require.NotNil(t, info)
+	require.True(t, info.IsActive)
+	require.False(t, info.IsHalted)
+	require.Empty(t, info.Error)
+	require.Equal(t, uint64(888), info.LastProcessedBlock)
+}
+
+func requireClaimL2Synced(t *testing.T, info *bridgetypes.SyncerSyncInfo) {
+	t.Helper()
+	require.NotNil(t, info)
+	require.True(t, info.IsActive)
+	require.False(t, info.IsHalted)
+	require.Empty(t, info.Error)
+	require.Equal(t, uint64(999), info.LastProcessedBlock)
 }
 
 // TestGetSyncStatusHandler_L2GERInfo dedicatedly covers the l2gersync section of
@@ -3736,6 +3847,9 @@ func TestGetSyncStatusHandler_L2GERInfo(t *testing.T) {
 			b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
 				Return(tc.lastProcessedBlock, nil).
 				Once()
+			expectL1InfoTreeSynced(b, 1)
+			expectClaimL1Synced(b, 1)
+			expectClaimL2Synced(b, 1)
 
 			w := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(w)
@@ -3766,6 +3880,9 @@ func TestGetSyncStatusHandler_L2GERInfo(t *testing.T) {
 		// is a mockery mock bound to t (mocks.NewL2GERSyncer(t)), any unexpected call to
 		// GetLastProcessedBlock would fail the test immediately, and t.Cleanup runs
 		// AssertExpectations - so this also proves the mock is never invoked.
+		expectL1InfoTreeSynced(b, 1)
+		expectClaimL1Synced(b, 1)
+		expectClaimL2Synced(b, 1)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -3790,18 +3907,26 @@ func TestGetSyncStatusHandler_L2GERInfo(t *testing.T) {
 		b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).
 			Return(uint64(0), errors.New("db error")).
 			Once()
+		expectL1InfoTreeSynced(b, 1)
+		expectClaimL1Synced(b, 1)
+		expectClaimL2Synced(b, 1)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 
 		b.bridge.GetSyncStatusHandler(c)
 
-		require.Equal(t, http.StatusInternalServerError, w.Code)
+		// GetSyncStatusHandler always answers 200 now: l2gersync's failure is reported in its own
+		// entry's Error field, not as a top-level 500.
+		require.Equal(t, http.StatusOK, w.Code)
 
-		var response gin.H
+		var response bridgetypes.SyncStatus
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
-		require.Contains(t, response["error"], "failed to get last processed block for l2gersync")
+		require.Contains(t, response.L2GERInfo.Error, "failed to get last processed block for l2gersync")
+		requireL1InfoTreeSynced(t, response.L1InfoTreeInfo)
+		requireClaimL1Synced(t, response.ClaimL1Info)
+		requireClaimL2Synced(t, response.ClaimL2Info)
 	})
 }
 
@@ -3869,6 +3994,9 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 		b.bridgeL2.EXPECT().GetLatestNetworkBlock(mock.Anything).Return(uint64(2555), nil).Once()
 
 		b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(555), nil).Once()
+		expectL1InfoTreeSynced(b, 1)
+		expectClaimL1Synced(b, 1)
+		expectClaimL2Synced(b, 1)
 
 		w := performRequest(t, b.router, "/health")
 		require.Equal(t, http.StatusOK, w.Code)
@@ -3888,9 +4016,14 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 		b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
 		b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 			Return(uint32(0), errors.New("L1 contract error")).Once()
-		// computeSyncStatus stops at the first error: L2/l2gersync are never reached this cycle
-		// (see computeSyncStatus's doc comment), so no expectations are set on b.bridgeL2 /
-		// b.injectedGERs -- were they called unexpectedly, these mockery mocks would fail the test.
+		// computeSyncStatus now evaluates every configured syncer independently and concurrently
+		// (no more stop-at-first-error), so L2/l2gersync/l1infotreesync/claimsync are still reached
+		// this cycle and need their own (fully-synced) expectations.
+		expectL2BridgeSynced(b, 1)
+		expectL2GERSynced(b, 1)
+		expectL1InfoTreeSynced(b, 1)
+		expectClaimL1Synced(b, 1)
+		expectClaimL2Synced(b, 1)
 
 		w := performRequest(t, b.router, "/health")
 		require.Equal(t, http.StatusOK, w.Code, "health check must always answer 200, even on a computation error")
@@ -3904,9 +4037,13 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 		require.Nil(t, response.Details.L1.IsSynced)
 		require.Contains(t, response.Details.L1.Error, "failed to get deposit count from L1 bridge contract")
 
-		// L2/L2GER were never reached this cycle: omitted, not mislabeled as an error.
-		require.Nil(t, response.Details.L2)
-		require.Nil(t, response.Details.L2GER)
+		// L2/L2GER are configured and were fully evaluated this cycle: present, and not in error.
+		require.NotNil(t, response.Details.L2)
+		require.NotNil(t, response.Details.L2.IsSynced)
+		require.True(t, *response.Details.L2.IsSynced)
+		require.Empty(t, response.Details.L2.Error)
+		require.NotNil(t, response.Details.L2GER)
+		require.Empty(t, response.Details.L2GER.Error)
 	})
 
 	t.Run("error - L1 syncer halted (configured but IsActive false)", func(t *testing.T) {
@@ -3920,6 +4057,9 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 			Return(nil, 200, nil).Once()
 
 		b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(555), nil).Once()
+		expectL1InfoTreeSynced(b, 1)
+		expectClaimL1Synced(b, 1)
+		expectClaimL2Synced(b, 1)
 
 		w := performRequest(t, b.router, "/health")
 		require.Equal(t, http.StatusOK, w.Code)
@@ -3952,6 +4092,9 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 			Return(nil, 200, nil).Once()
 
 		b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(555), nil).Once()
+		expectL1InfoTreeSynced(b, 1)
+		expectClaimL1Synced(b, 1)
+		expectClaimL2Synced(b, 1)
 
 		w := performRequest(t, b.router, "/health")
 		require.Equal(t, http.StatusOK, w.Code)
@@ -4021,7 +4164,7 @@ func TestHealthCheckHandler_Cache(t *testing.T) {
 			GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 			Return(nil, 100, nil).Once()
 
-		expectL2AndL2GERSynced(b, 1)
+		expectEverythingExceptL1BridgeSynced(b, 1)
 
 		const concurrentRequests = 10
 		var wg stdsync.WaitGroup
@@ -4047,15 +4190,17 @@ func TestHealthCheckHandler_Cache(t *testing.T) {
 	})
 }
 
-// expectL2AndL2GERSynced sets up mock expectations for a synced, active L2 bridge syncer and an
-// active l2gersync, shared by cache tests that only need to drive L1's computation directly.
-func expectL2AndL2GERSynced(b bridgeWithMocks, times int) {
-	b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Times(times)
-	b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(200), nil).Times(times)
-	b.bridgeL2.EXPECT().
-		GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
-		Return(nil, 200, nil).Times(times)
-	b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(555), nil).Times(times)
+// expectEverythingExceptL1BridgeSynced sets up mock expectations for every syncer except the L1
+// bridge syncer (L2 bridge, l2gersync, l1infotreesync, both claimsync instances), shared by cache
+// tests that only need to drive L1's computation directly: since computeSyncStatus computes
+// every configured component concurrently, they all still need expectations even though the test
+// only cares about racing L1's own call against the single-flight cache.
+func expectEverythingExceptL1BridgeSynced(b bridgeWithMocks, times int) {
+	expectL2BridgeSynced(b, times)
+	expectL2GERSynced(b, times)
+	expectL1InfoTreeSynced(b, times)
+	expectClaimL1Synced(b, times)
+	expectClaimL2Synced(b, times)
 }
 
 // TestHealthCheckCache_PanicInComputeDoesNotWedgeCache proves that a panic inside compute (a)
@@ -4113,8 +4258,11 @@ func TestHealthCheckHandler_ComputeTimeout(t *testing.T) {
 			<-ctx.Done()
 			return 0, ctx.Err()
 		}).Once()
-	// computeSyncStatus stops at the first error: L2/l2gersync are never reached this cycle, so
-	// no expectations are set on b.bridgeL2 / b.injectedGERs.
+	// computeSyncStatus computes every configured component concurrently: L1 hangs until the
+	// (shrunk) compute timeout fires, but the other five components still need their own
+	// expectations, and asserting they stay fully populated below proves L1's timeout cannot
+	// spend another component's share of the timeout budget.
+	expectEverythingExceptL1BridgeSynced(b, 1)
 
 	start := time.Now()
 	w := performRequest(t, b.router, "/health")
@@ -4133,6 +4281,22 @@ func TestHealthCheckHandler_ComputeTimeout(t *testing.T) {
 	require.Equal(t, bridgetypes.HealthSyncStatusError, response.SyncStatus)
 	require.NotNil(t, response.Details.L1)
 	require.Contains(t, response.Details.L1.Error, "context deadline exceeded")
+
+	// L1's timeout must not blank L2/L2GER/l1infotreesync/claimsync: they completed within the
+	// same compute cycle, proving one hanging component cannot spend another's share of the
+	// shared compute-timeout budget.
+	require.NotNil(t, response.Details.L2)
+	require.NotNil(t, response.Details.L2.IsSynced)
+	require.True(t, *response.Details.L2.IsSynced)
+	require.Empty(t, response.Details.L2.Error)
+	require.NotNil(t, response.Details.L2GER)
+	require.Empty(t, response.Details.L2GER.Error)
+	require.NotNil(t, response.Details.L1InfoTree)
+	require.Empty(t, response.Details.L1InfoTree.Error)
+	require.NotNil(t, response.Details.ClaimL1)
+	require.Empty(t, response.Details.ClaimL1.Error)
+	require.NotNil(t, response.Details.ClaimL2)
+	require.Empty(t, response.Details.ClaimL2.Error)
 }
 
 // TestHealthCheckHandler_ComputeTimeoutIsConfigurable proves Config.HealthCheckComputeTimeout
@@ -4169,6 +4333,9 @@ func TestHealthCheckHandler_ComputeTimeoutIsConfigurable(t *testing.T) {
 			<-ctx.Done()
 			return 0, ctx.Err()
 		}).Once()
+	// computeSyncStatus computes every configured component concurrently, so the other five
+	// still need their own expectations even though this test only cares about L1's timeout.
+	expectEverythingExceptL1BridgeSynced(b, 1)
 
 	start := time.Now()
 	w := performRequest(t, b.router, "/health")
@@ -4181,28 +4348,62 @@ func TestHealthCheckHandler_ComputeTimeoutIsConfigurable(t *testing.T) {
 	var response bridgetypes.HealthCheckResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 	require.Equal(t, bridgetypes.HealthSyncStatusError, response.SyncStatus)
+	// L1's timeout must not blank the other five components.
+	require.NotNil(t, response.Details.L2)
+	require.Empty(t, response.Details.L2.Error)
+	require.NotNil(t, response.Details.L1InfoTree)
+	require.Empty(t, response.Details.L1InfoTree.Error)
+	require.NotNil(t, response.Details.ClaimL1)
+	require.Empty(t, response.Details.ClaimL1.Error)
+	require.NotNil(t, response.Details.ClaimL2)
+	require.Empty(t, response.Details.ClaimL2.Error)
 }
 
 // TestGetSyncStatusHandler_UnaffectedByHealthCheckRefactor proves /bridge/v1/sync-status's
 // response shape is unchanged (byte-compatible) after factoring its computation out into
-// computeSyncStatus for reuse by HealthCheckHandler: no sync_status/details leakage, and the
-// same three top-level keys as before.
+// computeSyncStatus for reuse by HealthCheckHandler: no sync_status/details leakage, every
+// pre-existing top-level key is still present, and the three new entries (added on top of the
+// legacy three) are present too when every syncer is configured. The golden_keys subtest below
+// asserts the exact top-level key set and every pre-existing sub-key of l1_info/l2_info, guarding
+// against a silently dropped or renamed field.
 func TestGetSyncStatusHandler_UnaffectedByHealthCheckRefactor(t *testing.T) {
-	b := newBridgeWithMocks(t, l2NetworkID)
-	expectFullySyncedBridgeService(b, 1)
+	// golden_keys is a backward-compatibility guard: the top-level key set is exactly the three
+	// pre-existing entries plus the three new ones, every pre-existing sub-key of l1_info/l2_info
+	// is still present under the same name, and is_halted (new, never omitempty) is present in
+	// every one of the six entries.
+	t.Run("golden_keys", func(t *testing.T) {
+		b := newBridgeWithMocks(t, l2NetworkID)
+		expectFullySyncedBridgeService(b, 1)
 
-	w := performRequest(t, b.router, BridgeV1Prefix+"/sync-status")
-	require.Equal(t, http.StatusOK, w.Code)
+		w := performRequest(t, b.router, BridgeV1Prefix+"/sync-status")
+		require.Equal(t, http.StatusOK, w.Code)
 
-	var asMap map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &asMap))
-	require.ElementsMatch(t, []string{"l1_info", "l2_info", "l2_ger_info"}, mapKeys(asMap))
+		var asMap map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &asMap))
+		allKeys := []string{"l1_info", "l2_info", "l2_ger_info", "l1_info_tree_info", "claim_l1_info", "claim_l2_info"}
+		require.ElementsMatch(t, allKeys, mapKeys(asMap))
 
-	var response bridgetypes.SyncStatus
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
-	require.True(t, response.L1Info.IsSynced)
-	require.True(t, response.L2Info.IsSynced)
-	require.Equal(t, uint64(555), response.L2GERInfo.LastProcessedBlock)
+		for _, key := range []string{"l1_info", "l2_info"} {
+			var sub map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(asMap[key], &sub))
+			for _, subKey := range []string{"contract_deposit_count", "synchronized_deposit_count", "is_synced", "is_active"} {
+				require.Contains(t, sub, subKey, "%s must still carry %s", key, subKey)
+			}
+		}
+
+		for _, key := range allKeys {
+			var sub map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(asMap[key], &sub))
+			require.Contains(t, sub, "is_halted", "%s must carry is_halted", key)
+			require.Contains(t, sub, "is_active", "%s must carry is_active", key)
+		}
+
+		var response bridgetypes.SyncStatus
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.True(t, response.L1Info.IsSynced)
+		require.True(t, response.L2Info.IsSynced)
+		require.Equal(t, uint64(555), response.L2GERInfo.LastProcessedBlock)
+	})
 }
 
 func mapKeys(m map[string]json.RawMessage) []string {
@@ -4211,6 +4412,1181 @@ func mapKeys(m map[string]json.RawMessage) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// requireComponentHalted asserts the halted shape of a *types.ComponentHealth: configured but
+// halted is an operational fault, not a compute error, so Error stays empty.
+func requireComponentHalted(t *testing.T, health *bridgetypes.ComponentHealth) {
+	t.Helper()
+	require.NotNil(t, health)
+	require.False(t, health.IsActive)
+	require.True(t, health.IsHalted)
+	require.Empty(t, health.Error)
+}
+
+// requireSyncerSyncInfoHalted asserts the halted shape for a configured, halted
+// *types.SyncerSyncInfo (l1infotreesync): is_active false, is_halted true, no error, no partial data.
+func requireSyncerSyncInfoHalted(t *testing.T, info *bridgetypes.SyncerSyncInfo) {
+	t.Helper()
+	require.NotNil(t, info)
+	require.False(t, info.IsActive)
+	require.True(t, info.IsHalted)
+	require.Empty(t, info.Error)
+	require.Zero(t, info.LastProcessedBlock)
+}
+
+// requireNetworkSyncInfoUnconfigured asserts the legacy "not configured" shape for
+// *types.NetworkSyncInfo: is_active false, is_halted false (this exact combination is how "not
+// configured" is told apart from "halted"), no error and every other field at its zero value.
+func requireNetworkSyncInfoUnconfigured(t *testing.T, info *bridgetypes.NetworkSyncInfo) {
+	t.Helper()
+	require.NotNil(t, info)
+	require.False(t, info.IsActive)
+	require.False(t, info.IsHalted)
+	require.Empty(t, info.Error)
+	require.False(t, info.IsSynced)
+	require.Zero(t, info.ContractDepositCount)
+	require.Zero(t, info.SynchronizedDepositCount)
+	require.Zero(t, info.LastProcessedBlock)
+	require.Zero(t, info.NetworkBlock)
+}
+
+// requireL2GERSyncInfoUnconfigured is requireNetworkSyncInfoUnconfigured's l2gersync counterpart.
+func requireL2GERSyncInfoUnconfigured(t *testing.T, info *bridgetypes.L2GERSyncInfo) {
+	t.Helper()
+	require.NotNil(t, info)
+	require.False(t, info.IsActive)
+	require.False(t, info.IsHalted)
+	require.Empty(t, info.Error)
+	require.Zero(t, info.LastProcessedBlock)
+}
+
+// requireSyncerDetailConsistent is requireHealthConsistentWithSyncStatus's helper for the three
+// syncers with no is_synced signal: a nil sync-status entry (not configured on this instance)
+// must stay omitted from health details too, and a present one must carry exactly the same
+// is_active/is_halted/error as its /health counterpart.
+func requireSyncerDetailConsistent(
+	t *testing.T, name string, info *bridgetypes.SyncerSyncInfo, health *bridgetypes.ComponentHealth,
+) {
+	t.Helper()
+	if info == nil {
+		require.Nil(t, health, "%s: omitted from sync-status must also be omitted from health details", name)
+		return
+	}
+	require.NotNil(t, health, "%s: present in sync-status must also be present in health details", name)
+	require.Equal(t, info.IsActive, health.IsActive, "%s is_active", name)
+	require.Equal(t, info.IsHalted, health.IsHalted, "%s is_halted", name)
+	require.Equal(t, info.Error, health.Error, "%s error", name)
+}
+
+// requireHealthConsistentWithSyncStatus is the consistency property every case in
+// TestSyncStatusAllSyncers checks: for every component present in health details, its
+// is_active/is_halted/error must equal the matching /bridge/v1/sync-status entry (the same,
+// already-redacted string, since healthFromSyncStatus copies it verbatim), so the two endpoints
+// can never drift apart about a component both of them report.
+func requireHealthConsistentWithSyncStatus(
+	t *testing.T, s bridgetypes.SyncStatus, d bridgetypes.HealthCheckDetails,
+) {
+	t.Helper()
+
+	if d.L1 != nil {
+		require.Equal(t, s.L1Info.IsActive, d.L1.IsActive, "l1 is_active")
+		require.Equal(t, s.L1Info.IsHalted, d.L1.IsHalted, "l1 is_halted")
+		require.Equal(t, s.L1Info.Error, d.L1.Error, "l1 error")
+	}
+	if d.L2 != nil {
+		require.Equal(t, s.L2Info.IsActive, d.L2.IsActive, "l2 is_active")
+		require.Equal(t, s.L2Info.IsHalted, d.L2.IsHalted, "l2 is_halted")
+		require.Equal(t, s.L2Info.Error, d.L2.Error, "l2 error")
+	}
+	if d.L2GER != nil {
+		require.Equal(t, s.L2GERInfo.IsActive, d.L2GER.IsActive, "l2_ger is_active")
+		require.Equal(t, s.L2GERInfo.IsHalted, d.L2GER.IsHalted, "l2_ger is_halted")
+		require.Equal(t, s.L2GERInfo.Error, d.L2GER.Error, "l2_ger error")
+	}
+
+	requireSyncerDetailConsistent(t, "l1_info_tree", s.L1InfoTreeInfo, d.L1InfoTree)
+	requireSyncerDetailConsistent(t, "claim_l1", s.ClaimL1Info, d.ClaimL1)
+	requireSyncerDetailConsistent(t, "claim_l2", s.ClaimL2Info, d.ClaimL2)
+}
+
+// syncStatusCase is one row of TestSyncStatusAllSyncers: setupMocks configures a fresh
+// bridgeWithMocks (called independently, once to drive /bridge/v1/sync-status and once to drive
+// /health, so each endpoint gets its own computation instead of sharing one through the health
+// cache), and the check* fields assert on the resulting response(s). A nil check* is skipped.
+type syncStatusCase struct {
+	name           string
+	setupMocks     func(b bridgeWithMocks)
+	checkStatus    func(t *testing.T, s bridgetypes.SyncStatus)
+	checkRawJSON   func(t *testing.T, raw []byte)
+	expectedHealth bridgetypes.HealthSyncStatus
+	checkHealth    func(t *testing.T, h bridgetypes.HealthCheckResponse)
+}
+
+// TestSyncStatusAllSyncers is the binding test matrix for computeSyncStatus/healthFromSyncStatus:
+// every configured syncer is computed independently, a halted or failing component never blanks
+// another component's entry, /bridge/v1/sync-status always answers 200 (even when a component's
+// status could not be computed), and /health can never disagree with /bridge/v1/sync-status about
+// a component both endpoints report -- checked at the end of every case below.
+func TestSyncStatusAllSyncers(t *testing.T) {
+	boom := errors.New("boom")
+
+	cases := []syncStatusCase{
+		{
+			name:       "all_six_healthy",
+			setupMocks: func(b bridgeWithMocks) { expectFullySyncedBridgeService(b, 1) },
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireL1BridgeSynced(t, s.L1Info)
+				requireL2BridgeSynced(t, s.L2Info)
+				requireL2GERSynced(t, s.L2GERInfo)
+				requireL1InfoTreeSynced(t, s.L1InfoTreeInfo)
+				requireClaimL1Synced(t, s.ClaimL1Info)
+				requireClaimL2Synced(t, s.ClaimL2Info)
+			},
+			checkRawJSON: func(t *testing.T, raw []byte) {
+				t.Helper()
+				body := string(raw)
+				for _, key := range []string{
+					"l1_info", "l2_info", "l2_ger_info", "l1_info_tree_info", "claim_l1_info", "claim_l2_info",
+				} {
+					require.Contains(t, body, `"`+key+`":`)
+				}
+				require.Contains(t, body, `"last_processed_block":777`)
+				require.Contains(t, body, `"last_processed_block":888`)
+				require.Contains(t, body, `"last_processed_block":999`)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusDone,
+		},
+		{
+			name: "halted/bridge_L1",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(false).Once()
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoHalted(t, s.L1Info)
+				requireL2BridgeSynced(t, s.L2Info)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				requireComponentHalted(t, h.Details.L1)
+			},
+		},
+		{
+			name: "halted/bridge_L2",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(false).Once()
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireL1BridgeSynced(t, s.L1Info)
+				requireNetworkSyncInfoHalted(t, s.L2Info)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				requireComponentHalted(t, h.Details.L2)
+			},
+		},
+		{
+			name: "halted/l1_info_tree",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				b.l1InfoTree.EXPECT().IsActive(mock.Anything).Return(false).Once()
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireSyncerSyncInfoHalted(t, s.L1InfoTreeInfo)
+				requireL1BridgeSynced(t, s.L1Info)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				requireComponentHalted(t, h.Details.L1InfoTree)
+			},
+		},
+		{
+			name: "halted_between_calls/bridge_L1",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(0), aggkitsync.ErrInconsistentState).Once()
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoHalted(t, s.L1Info)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				requireComponentHalted(t, h.Details.L1)
+			},
+		},
+		{
+			name: "halted_between_calls/l1_info_tree",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				b.l1InfoTree.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.l1InfoTree.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(uint64(0), aggkitsync.ErrInconsistentState).Once()
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireSyncerSyncInfoHalted(t, s.L1InfoTreeInfo)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				requireComponentHalted(t, h.Details.L1InfoTree)
+			},
+		},
+		{
+			name: "halted_in_best_effort/bridge_L2",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(200), nil).Once()
+				b.bridgeL2.EXPECT().
+					GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 150, nil).Once()
+				b.bridgeL2.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(uint64(0), false, aggkitsync.ErrInconsistentState).Once()
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoHalted(t, s.L2Info)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				requireComponentHalted(t, h.Details.L2)
+			},
+		},
+		{
+			name: "error/bridge_L1_contract",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(0), boom).Once()
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoError(t, s.L1Info, "failed to get deposit count from L1 bridge contract: boom")
+				requireL2BridgeSynced(t, s.L2Info)
+				requireL2GERSynced(t, s.L2GERInfo)
+				requireL1InfoTreeSynced(t, s.L1InfoTreeInfo)
+				requireClaimL1Synced(t, s.ClaimL1Info)
+				requireClaimL2Synced(t, s.ClaimL2Info)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "error/bridge_L1_db",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(100), nil).Once()
+				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 0, boom).Once()
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoError(t, s.L1Info, "failed to get bridges from L1 database: boom")
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "error/bridge_L2_contract",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(0), boom).Once()
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoError(t, s.L2Info, "failed to get deposit count from L2 bridge contract: boom")
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "error/bridge_L2_db",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(200), nil).Once()
+				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 0, boom).Once()
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoError(t, s.L2Info, "failed to get bridges from L2 database: boom")
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "error/l2_ger",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), boom).Once()
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				require.Equal(t, "failed to get last processed block for l2gersync: boom", s.L2GERInfo.Error)
+				require.Zero(t, s.L2GERInfo.LastProcessedBlock)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "error/l1_info_tree",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				b.l1InfoTree.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.l1InfoTree.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), boom).Once()
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				require.Equal(t, "failed to get last processed block for l1infotreesync: boom", s.L1InfoTreeInfo.Error)
+				require.True(t, s.L1InfoTreeInfo.IsActive)
+				require.False(t, s.L1InfoTreeInfo.IsHalted)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "error/claim_L1",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				b.claimL1.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, boom).Once()
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				require.Equal(t, "failed to get last processed block for claimsync L1: boom", s.ClaimL1Info.Error)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "error/claim_L2",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				b.claimL2.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, boom).Once()
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				require.Equal(t, "failed to get last processed block for claimsync L2: boom", s.ClaimL2Info.Error)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "error/two_at_once",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(0), boom).Once()
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				b.claimL1.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, boom).Once()
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoError(t, s.L2Info, "failed to get deposit count from L2 bridge contract: boom")
+				require.Equal(t, "failed to get last processed block for claimsync L1: boom", s.ClaimL1Info.Error)
+				requireL1BridgeSynced(t, s.L1Info)
+				requireL2GERSynced(t, s.L2GERInfo)
+				requireL1InfoTreeSynced(t, s.L1InfoTreeInfo)
+				requireClaimL2Synced(t, s.ClaimL2Info)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				require.NotEmpty(t, h.Details.L2.Error)
+				require.NotEmpty(t, h.Details.ClaimL1.Error)
+				require.Empty(t, h.Details.L1.Error)
+				require.Empty(t, h.Details.L2GER.Error)
+				require.Empty(t, h.Details.L1InfoTree.Error)
+				require.Empty(t, h.Details.ClaimL2.Error)
+			},
+		},
+		{
+			name: "unconfigured/bridge_L1",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridge.bridgeL1 = nil
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoUnconfigured(t, s.L1Info)
+				requireL2BridgeSynced(t, s.L2Info)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusDone,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				require.Nil(t, h.Details.L1)
+			},
+		},
+		{
+			name: "unconfigured/bridge_L2",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridge.bridgeL2 = nil
+				expectL1BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoUnconfigured(t, s.L2Info)
+				requireL1BridgeSynced(t, s.L1Info)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusDone,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				require.Nil(t, h.Details.L2)
+			},
+		},
+		{
+			name: "unconfigured/l2_ger",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridge.injectedGERs = nil
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireL2GERSyncInfoUnconfigured(t, s.L2GERInfo)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusDone,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				require.Nil(t, h.Details.L2GER)
+			},
+		},
+		{
+			name: "unconfigured/l1_info_tree",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridge.l1InfoTree = nil
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				require.Nil(t, s.L1InfoTreeInfo)
+			},
+			checkRawJSON: func(t *testing.T, raw []byte) {
+				t.Helper()
+				require.NotContains(t, string(raw), "l1_info_tree_info")
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusDone,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				require.Nil(t, h.Details.L1InfoTree)
+			},
+		},
+		{
+			name: "unconfigured/claim_L1",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridge.claimL1 = nil
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				require.Nil(t, s.ClaimL1Info)
+			},
+			checkRawJSON: func(t *testing.T, raw []byte) {
+				t.Helper()
+				require.NotContains(t, string(raw), "claim_l1_info")
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusDone,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				require.Nil(t, h.Details.ClaimL1)
+			},
+		},
+		{
+			name: "unconfigured/claim_L2",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridge.claimL2 = nil
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				require.Nil(t, s.ClaimL2Info)
+			},
+			checkRawJSON: func(t *testing.T, raw []byte) {
+				t.Helper()
+				require.NotContains(t, string(raw), "claim_l2_info")
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusDone,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				require.Nil(t, h.Details.ClaimL2)
+			},
+		},
+		{
+			name: "unconfigured/all_but_bridge_L2",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridge.bridgeL1 = nil
+				b.bridge.injectedGERs = nil
+				b.bridge.l1InfoTree = nil
+				b.bridge.claimL1 = nil
+				b.bridge.claimL2 = nil
+				expectL2BridgeSynced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireNetworkSyncInfoUnconfigured(t, s.L1Info)
+				requireL2BridgeSynced(t, s.L2Info)
+				requireL2GERSyncInfoUnconfigured(t, s.L2GERInfo)
+				require.Nil(t, s.L1InfoTreeInfo)
+				require.Nil(t, s.ClaimL1Info)
+				require.Nil(t, s.ClaimL2Info)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusDone,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				require.Nil(t, h.Details.L1)
+				require.NotNil(t, h.Details.L2)
+				require.Nil(t, h.Details.L2GER)
+				require.Nil(t, h.Details.L1InfoTree)
+				require.Nil(t, h.Details.ClaimL1)
+				require.Nil(t, h.Details.ClaimL2)
+			},
+		},
+		{
+			name: "claim_nothing_processed",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				b.claimL1.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil).Once()
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				require.NotNil(t, s.ClaimL1Info)
+				require.True(t, s.ClaimL1Info.IsActive)
+				require.False(t, s.ClaimL1Info.IsHalted)
+				require.Empty(t, s.ClaimL1Info.Error)
+				require.Zero(t, s.ClaimL1Info.LastProcessedBlock)
+			},
+			checkRawJSON: func(t *testing.T, raw []byte) {
+				t.Helper()
+				var asMap map[string]json.RawMessage
+				require.NoError(t, json.Unmarshal(raw, &asMap))
+				var claimL1 map[string]json.RawMessage
+				require.NoError(t, json.Unmarshal(asMap["claim_l1_info"], &claimL1))
+				require.NotContains(t, claimL1, "last_processed_block")
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusDone,
+		},
+		{
+			name: "pending/bridge_L1_behind",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(100), nil).Once()
+				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 90, nil).Once()
+				b.bridgeL1.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(1234), false, nil).Once()
+				b.bridgeL1.EXPECT().GetLatestNetworkBlock(mock.Anything).Return(uint64(2555), nil).Once()
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				require.True(t, s.L1Info.IsActive)
+				require.False(t, s.L1Info.IsSynced)
+				require.Empty(t, s.L1Info.Error)
+				requireL2BridgeSynced(t, s.L2Info)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusPending,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				require.NotNil(t, h.Details.L1.IsSynced)
+				require.False(t, *h.Details.L1.IsSynced)
+				require.NotNil(t, h.Details.L2.IsSynced)
+				require.True(t, *h.Details.L2.IsSynced)
+			},
+		},
+		{
+			name: "pending/bridge_L2_behind",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(200), nil).Once()
+				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 150, nil).Once()
+				b.bridgeL2.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(1234), false, nil).Once()
+				b.bridgeL2.EXPECT().GetLatestNetworkBlock(mock.Anything).Return(uint64(2555), nil).Once()
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				requireL1BridgeSynced(t, s.L1Info)
+				require.True(t, s.L2Info.IsActive)
+				require.False(t, s.L2Info.IsSynced)
+				require.Empty(t, s.L2Info.Error)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusPending,
+			checkHealth: func(t *testing.T, h bridgetypes.HealthCheckResponse) {
+				t.Helper()
+				require.NotNil(t, h.Details.L1.IsSynced)
+				require.True(t, *h.Details.L1.IsSynced)
+				require.NotNil(t, h.Details.L2.IsSynced)
+				require.False(t, *h.Details.L2.IsSynced)
+			},
+		},
+		{
+			name: "error_beats_pending",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(100), nil).Once()
+				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 90, nil).Once()
+				b.bridgeL1.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(1234), false, nil).Once()
+				b.bridgeL1.EXPECT().GetLatestNetworkBlock(mock.Anything).Return(uint64(2555), nil).Once()
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				b.claimL2.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, boom).Once()
+			},
+			checkStatus: func(t *testing.T, s bridgetypes.SyncStatus) {
+				t.Helper()
+				require.False(t, s.L1Info.IsSynced)
+				require.Equal(t, "failed to get last processed block for claimsync L2: boom", s.ClaimL2Info.Error)
+			},
+			expectedHealth: bridgetypes.HealthSyncStatusError,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bStatus := newBridgeWithMocks(t, l2NetworkID)
+			tc.setupMocks(bStatus)
+			wStatus := performRequest(t, bStatus.router, BridgeV1Prefix+"/sync-status")
+			require.Equal(t, http.StatusOK, wStatus.Code)
+
+			var syncStatus bridgetypes.SyncStatus
+			require.NoError(t, json.Unmarshal(wStatus.Body.Bytes(), &syncStatus))
+			if tc.checkStatus != nil {
+				tc.checkStatus(t, syncStatus)
+			}
+			if tc.checkRawJSON != nil {
+				tc.checkRawJSON(t, wStatus.Body.Bytes())
+			}
+
+			bHealth := newBridgeWithMocks(t, l2NetworkID)
+			tc.setupMocks(bHealth)
+			wHealth := performRequest(t, bHealth.router, "/health")
+			require.Equal(t, http.StatusOK, wHealth.Code)
+
+			var health bridgetypes.HealthCheckResponse
+			require.NoError(t, json.Unmarshal(wHealth.Body.Bytes(), &health))
+			require.Equal(t, tc.expectedHealth, health.SyncStatus)
+			if tc.checkHealth != nil {
+				tc.checkHealth(t, health)
+			}
+
+			// Consistency property: /health must agree with /bridge/v1/sync-status about every
+			// component both endpoints report, even though the two responses above came from two
+			// independently-computed bridgeWithMocks instances.
+			requireHealthConsistentWithSyncStatus(t, syncStatus, health.Details)
+		})
+	}
+}
+
+// TestSyncStatusRedactsErrors proves publicSyncError strips URL/host tokens from a component's
+// error text before it reaches either public endpoint: with GetSyncStatusHandler always
+// answering 200, that text is a routine part of a public, frequently-polled payload. Table-driven
+// over all six components, so a refactor that swaps publicSyncError(wrapped) for wrapped.Error()
+// in any single component's own helper (bridgeNetworkSyncInfo, l2GERSyncInfo,
+// l1InfoTreeSyncInfo, claimSyncInfo) fails exactly that component's subtest.
+func TestSyncStatusRedactsErrors(t *testing.T) {
+	rawErr := errors.New(
+		`Post "http://10.1.2.3:8545/v3/KEY": dial tcp 10.1.2.3:8545: connect: connection refused`)
+
+	cases := []struct {
+		name       string
+		setupMocks func(b bridgeWithMocks)
+		statusErr  func(s bridgetypes.SyncStatus) string
+		healthErr  func(d bridgetypes.HealthCheckDetails) string
+	}{
+		{
+			name: "l1",
+			setupMocks: func(b bridgeWithMocks) {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(0), rawErr).Once()
+				expectEverythingExceptL1BridgeSynced(b, 1)
+			},
+			statusErr: func(s bridgetypes.SyncStatus) string { return s.L1Info.Error },
+			healthErr: func(d bridgetypes.HealthCheckDetails) string { return d.L1.Error },
+		},
+		{
+			name: "l2",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).Return(uint32(0), rawErr).Once()
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			statusErr: func(s bridgetypes.SyncStatus) string { return s.L2Info.Error },
+			healthErr: func(d bridgetypes.HealthCheckDetails) string { return d.L2.Error },
+		},
+		{
+			name: "l2ger",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				b.injectedGERs.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), rawErr).Once()
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			statusErr: func(s bridgetypes.SyncStatus) string { return s.L2GERInfo.Error },
+			healthErr: func(d bridgetypes.HealthCheckDetails) string { return d.L2GER.Error },
+		},
+		{
+			name: "l1infotree",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				b.l1InfoTree.EXPECT().IsActive(mock.Anything).Return(true).Once()
+				b.l1InfoTree.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), rawErr).Once()
+				expectClaimL1Synced(b, 1)
+				expectClaimL2Synced(b, 1)
+			},
+			statusErr: func(s bridgetypes.SyncStatus) string { return s.L1InfoTreeInfo.Error },
+			healthErr: func(d bridgetypes.HealthCheckDetails) string { return d.L1InfoTree.Error },
+		},
+		{
+			name: "claim_l1",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				b.claimL1.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, rawErr).Once()
+				expectClaimL2Synced(b, 1)
+			},
+			statusErr: func(s bridgetypes.SyncStatus) string { return s.ClaimL1Info.Error },
+			healthErr: func(d bridgetypes.HealthCheckDetails) string { return d.ClaimL1.Error },
+		},
+		{
+			name: "claim_l2",
+			setupMocks: func(b bridgeWithMocks) {
+				expectL1BridgeSynced(b, 1)
+				expectL2BridgeSynced(b, 1)
+				expectL2GERSynced(b, 1)
+				expectL1InfoTreeSynced(b, 1)
+				expectClaimL1Synced(b, 1)
+				b.claimL2.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, rawErr).Once()
+			},
+			statusErr: func(s bridgetypes.SyncStatus) string { return s.ClaimL2Info.Error },
+			healthErr: func(d bridgetypes.HealthCheckDetails) string { return d.ClaimL2.Error },
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := newBridgeWithMocks(t, l2NetworkID)
+			tc.setupMocks(b)
+
+			wStatus := performRequest(t, b.router, BridgeV1Prefix+"/sync-status")
+			require.Equal(t, http.StatusOK, wStatus.Code)
+			body := wStatus.Body.String()
+			require.NotContains(t, body, "10.1.2.3")
+			require.NotContains(t, body, "KEY")
+
+			var syncStatus bridgetypes.SyncStatus
+			require.NoError(t, json.Unmarshal(wStatus.Body.Bytes(), &syncStatus))
+			gotStatusErr := tc.statusErr(syncStatus)
+			require.Contains(t, gotStatusErr, aggkitcommon.RedactedURLPlaceholder)
+			require.NotContains(t, gotStatusErr, "10.1.2.3")
+			require.NotContains(t, gotStatusErr, "KEY")
+
+			bHealth := newBridgeWithMocks(t, l2NetworkID)
+			tc.setupMocks(bHealth)
+
+			wHealth := performRequest(t, bHealth.router, "/health")
+			require.Equal(t, http.StatusOK, wHealth.Code)
+			healthBody := wHealth.Body.String()
+			require.NotContains(t, healthBody, "10.1.2.3")
+			require.NotContains(t, healthBody, "KEY")
+
+			var health bridgetypes.HealthCheckResponse
+			require.NoError(t, json.Unmarshal(wHealth.Body.Bytes(), &health))
+			gotHealthErr := tc.healthErr(health.Details)
+			require.Contains(t, gotHealthErr, aggkitcommon.RedactedURLPlaceholder)
+			require.NotContains(t, gotHealthErr, "10.1.2.3")
+			require.NotContains(t, gotHealthErr, "KEY")
+		})
+	}
+}
+
+// TestComputeSyncStatusPanicPropagates proves a panic inside one component's goroutine is
+// recovered and re-panicked in the caller (computeSyncStatus itself) rather than being silently
+// swallowed, and that going through a real handler still turns it into a single 500 via gin's
+// Recovery middleware (which production wiring adds through common.NewHTTPServer;
+// RegisterRoutes itself does not, matching bridgeWithMocks's plain gin.New() router).
+func TestComputeSyncStatusPanicPropagates(t *testing.T) {
+	b := newBridgeWithMocks(t, l2NetworkID)
+	b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+	b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+		RunAndReturn(func(context.Context) (uint32, error) {
+			panic("boom")
+		}).Once()
+	expectEverythingExceptL1BridgeSynced(b, 1)
+
+	require.Panics(t, func() {
+		b.bridge.computeSyncStatus(context.Background())
+	})
+
+	b2 := newBridgeWithMocks(t, l2NetworkID)
+	b2.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+	b2.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+		RunAndReturn(func(context.Context) (uint32, error) {
+			panic("boom")
+		}).Once()
+	expectEverythingExceptL1BridgeSynced(b2, 1)
+
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.GET(BridgeV1Prefix+"/sync-status", b2.bridge.GetSyncStatusHandler)
+
+	w := performRequest(t, router, BridgeV1Prefix+"/sync-status")
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// TestComputeSyncStatus_ComponentsRunConcurrently proves the six components of computeSyncStatus
+// run concurrently rather than one after another: L1's mocked deposit-count call blocks on a
+// channel that only claimL2's mocked call closes. computeSyncStatus's fixed component order runs
+// L1 first and claimL2 last (see its doc comment), so a sequential implementation would block
+// inside L1's call forever, since claimL2 -- the only goroutine that ever closes the channel --
+// would never get a chance to run. computeSyncStatus itself runs on its own goroutine below, with
+// a timeout, so that deadlock fails this test outright instead of hanging the suite.
+func TestComputeSyncStatus_ComponentsRunConcurrently(t *testing.T) {
+	b := newBridgeWithMocks(t, l2NetworkID)
+
+	release := make(chan struct{})
+
+	b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
+	b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+		RunAndReturn(func(context.Context) (uint32, error) {
+			<-release
+			return uint32(100), nil
+		}).Once()
+	b.bridgeL1.EXPECT().
+		GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+		Return(nil, 100, nil).Once()
+
+	expectL2BridgeSynced(b, 1)
+	expectL2GERSynced(b, 1)
+	expectL1InfoTreeSynced(b, 1)
+	expectClaimL1Synced(b, 1)
+	b.claimL2.EXPECT().GetLastProcessedBlock(mock.Anything).
+		RunAndReturn(func(context.Context) (uint64, bool, error) {
+			close(release)
+			return uint64(999), true, nil
+		}).Once()
+
+	done := make(chan *bridgetypes.SyncStatus, 1)
+	go func() {
+		done <- b.bridge.computeSyncStatus(context.Background())
+	}()
+
+	select {
+	case status := <-done:
+		requireL1BridgeSynced(t, status.L1Info)
+		require.Empty(t, status.ClaimL2Info.Error)
+		require.Equal(t, uint64(999), status.ClaimL2Info.LastProcessedBlock)
+	case <-time.After(2 * time.Second):
+		t.Fatal("computeSyncStatus did not return: L1 blocked on a channel that only claimL2's " +
+			"goroutine closes, which can only happen if the six components run concurrently")
+	}
+}
+
+// TestHealthFromSyncStatus is a pure-function table test of healthFromSyncStatus's aggregation
+// rule: any configured component that is halted or has a non-empty error puts the instance in
+// the error bucket; otherwise an L1/L2 bridge syncer that is not yet caught up puts it in the
+// pending bucket; a syncer with no is_synced signal (l2gersync, l1infotreesync, claimsync) never
+// contributes to pending; a component not configured on this instance (nil for the new entries,
+// or the *Configured bool for the three legacy ones) is excluded from Details and aggregation
+// entirely, distinct from "configured but halted/erroring".
+func TestHealthFromSyncStatus(t *testing.T) {
+	type tc struct {
+		name                                    string
+		s                                       *bridgetypes.SyncStatus
+		l1Configured, l2Configured, l2GERConfig bool
+		wantStatus                              bridgetypes.HealthSyncStatus
+		checkDetails                            func(t *testing.T, d bridgetypes.HealthCheckDetails)
+	}
+
+	fullyDone := func() *bridgetypes.SyncStatus {
+		return &bridgetypes.SyncStatus{
+			L1Info:         &bridgetypes.NetworkSyncInfo{IsActive: true, IsSynced: true},
+			L2Info:         &bridgetypes.NetworkSyncInfo{IsActive: true, IsSynced: true},
+			L2GERInfo:      &bridgetypes.L2GERSyncInfo{IsActive: true},
+			L1InfoTreeInfo: &bridgetypes.SyncerSyncInfo{IsActive: true},
+			ClaimL1Info:    &bridgetypes.SyncerSyncInfo{IsActive: true},
+			ClaimL2Info:    &bridgetypes.SyncerSyncInfo{IsActive: true},
+		}
+	}
+
+	cases := []tc{
+		{
+			name:         "all configured and done",
+			s:            fullyDone(),
+			l1Configured: true, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusDone,
+			checkDetails: func(t *testing.T, d bridgetypes.HealthCheckDetails) {
+				t.Helper()
+				require.NotNil(t, d.L1)
+				require.NotNil(t, d.L2)
+				require.NotNil(t, d.L2GER)
+				require.NotNil(t, d.L1InfoTree)
+				require.NotNil(t, d.ClaimL1)
+				require.NotNil(t, d.ClaimL2)
+			},
+		},
+		{
+			name: "l1 not synced -> pending",
+			s: func() *bridgetypes.SyncStatus {
+				s := fullyDone()
+				s.L1Info.IsSynced = false
+				return s
+			}(),
+			l1Configured: true, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusPending,
+		},
+		{
+			name: "l1 halted -> error",
+			s: func() *bridgetypes.SyncStatus {
+				s := fullyDone()
+				s.L1Info = &bridgetypes.NetworkSyncInfo{IsActive: false, IsHalted: true}
+				return s
+			}(),
+			l1Configured: true, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "l1 error -> error",
+			s: func() *bridgetypes.SyncStatus {
+				s := fullyDone()
+				s.L1Info = &bridgetypes.NetworkSyncInfo{IsActive: true, Error: "boom"}
+				return s
+			}(),
+			l1Configured: true, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "l1 configured but !IsActive with no IsHalted set (defensive) -> error",
+			s: func() *bridgetypes.SyncStatus {
+				s := fullyDone()
+				s.L1Info = &bridgetypes.NetworkSyncInfo{IsActive: false}
+				return s
+			}(),
+			l1Configured: true, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name:         "l1 not configured -> excluded, done",
+			s:            fullyDone(),
+			l1Configured: false, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusDone,
+			checkDetails: func(t *testing.T, d bridgetypes.HealthCheckDetails) {
+				t.Helper()
+				require.Nil(t, d.L1)
+			},
+		},
+		{
+			name: "l2gersync error -> error, never pending",
+			s: func() *bridgetypes.SyncStatus {
+				s := fullyDone()
+				s.L2GERInfo = &bridgetypes.L2GERSyncInfo{IsActive: true, Error: "boom"}
+				return s
+			}(),
+			l1Configured: true, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name:         "l2gersync not configured -> excluded",
+			s:            fullyDone(),
+			l1Configured: true, l2Configured: true, l2GERConfig: false,
+			wantStatus: bridgetypes.HealthSyncStatusDone,
+			checkDetails: func(t *testing.T, d bridgetypes.HealthCheckDetails) {
+				t.Helper()
+				require.Nil(t, d.L2GER)
+			},
+		},
+		{
+			name: "l1infotreesync halted -> error",
+			s: func() *bridgetypes.SyncStatus {
+				s := fullyDone()
+				s.L1InfoTreeInfo = &bridgetypes.SyncerSyncInfo{IsActive: false, IsHalted: true}
+				return s
+			}(),
+			l1Configured: true, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "l1infotreesync error -> error",
+			s: func() *bridgetypes.SyncStatus {
+				s := fullyDone()
+				s.L1InfoTreeInfo = &bridgetypes.SyncerSyncInfo{IsActive: true, Error: "boom"}
+				return s
+			}(),
+			l1Configured: true, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "l1infotreesync not configured -> excluded",
+			s: func() *bridgetypes.SyncStatus {
+				s := fullyDone()
+				s.L1InfoTreeInfo = nil
+				return s
+			}(),
+			l1Configured: true, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusDone,
+			checkDetails: func(t *testing.T, d bridgetypes.HealthCheckDetails) {
+				t.Helper()
+				require.Nil(t, d.L1InfoTree)
+			},
+		},
+		{
+			name: "claim L1 error -> error",
+			s: func() *bridgetypes.SyncStatus {
+				s := fullyDone()
+				s.ClaimL1Info = &bridgetypes.SyncerSyncInfo{IsActive: true, Error: "boom"}
+				return s
+			}(),
+			l1Configured: true, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusError,
+		},
+		{
+			name: "claim L1 nothing processed yet -> done, not error",
+			s: func() *bridgetypes.SyncStatus {
+				s := fullyDone()
+				s.ClaimL1Info = &bridgetypes.SyncerSyncInfo{IsActive: true}
+				return s
+			}(),
+			l1Configured: true, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusDone,
+		},
+		{
+			name: "claim L2 not configured -> excluded",
+			s: func() *bridgetypes.SyncStatus {
+				s := fullyDone()
+				s.ClaimL2Info = nil
+				return s
+			}(),
+			l1Configured: true, l2Configured: true, l2GERConfig: true,
+			wantStatus: bridgetypes.HealthSyncStatusDone,
+			checkDetails: func(t *testing.T, d bridgetypes.HealthCheckDetails) {
+				t.Helper()
+				require.Nil(t, d.ClaimL2)
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			status, details := healthFromSyncStatus(c.s, c.l1Configured, c.l2Configured, c.l2GERConfig)
+			require.Equal(t, c.wantStatus, status)
+			if c.checkDetails != nil {
+				c.checkDetails(t, details)
+			}
+		})
+	}
 }
 
 func TestGetPublicConfigHandler(t *testing.T) {

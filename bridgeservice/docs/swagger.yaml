@@ -298,13 +298,17 @@ definitions:
     properties:
       error:
         description: |-
-          Error is set (non-empty) only when this component is configured/active but its sync
-          status could not be computed; its presence alone is what drives HealthSyncStatusError for
-          this component, independent of IsSynced.
+          Error is set when this component's sync status could not be computed; same text as the
+          matching /bridge/v1/sync-status entry's error.
         example: 'failed to get deposit count from L1 bridge contract: dial tcp: timeout'
         type: string
       is_active:
         example: true
+        type: boolean
+      is_halted:
+        description: IsHalted mirrors the matching /bridge/v1/sync-status entry's
+          is_halted.
+        example: false
         type: boolean
       is_synced:
         description: |-
@@ -321,11 +325,17 @@ definitions:
         type: string
     type: object
   types.HealthCheckDetails:
-    description: Per-component sync summary. A nil component (not configured on this
-      instance, e.g. no L1 bridge syncer on an L2-only bridge service) is omitted
-      entirely.
+    description: 'Per-component sync summary: l1, l2, l2_ger, l1_info_tree, claim_l1,
+      claim_l2. A nil component (not configured on this instance, e.g. no L1 bridge
+      syncer on an L2-only bridge service) is omitted entirely.'
     properties:
+      claim_l1:
+        $ref: '#/definitions/types.ComponentHealth'
+      claim_l2:
+        $ref: '#/definitions/types.ComponentHealth'
       l1:
+        $ref: '#/definitions/types.ComponentHealth'
+      l1_info_tree:
         $ref: '#/definitions/types.ComponentHealth'
       l2:
         $ref: '#/definitions/types.ComponentHealth'
@@ -463,8 +473,14 @@ definitions:
   types.L2GERSyncInfo:
     description: l2gersync (injected-GER) synchronization status
     properties:
+      error:
+        example: 'failed to get last processed block for l2gersync: database is locked'
+        type: string
       is_active:
         example: true
+        type: boolean
+      is_halted:
+        example: false
         type: boolean
       last_processed_block:
         example: 12345678
@@ -526,8 +542,15 @@ definitions:
       contract_deposit_count:
         example: 676797
         type: integer
+      error:
+        example: 'failed to get deposit count from L1 bridge contract: context deadline
+          exceeded'
+        type: string
       is_active:
         example: true
+        type: boolean
+      is_halted:
+        example: false
         type: boolean
       is_synced:
         example: true
@@ -752,12 +775,35 @@ definitions:
     description: Bridge sync status comparing on-chain deposit counts with local database
       counts
     properties:
+      claim_l1_info:
+        $ref: '#/definitions/types.SyncerSyncInfo'
+      claim_l2_info:
+        $ref: '#/definitions/types.SyncerSyncInfo'
       l1_info:
         $ref: '#/definitions/types.NetworkSyncInfo'
+      l1_info_tree_info:
+        $ref: '#/definitions/types.SyncerSyncInfo'
       l2_ger_info:
         $ref: '#/definitions/types.L2GERSyncInfo'
       l2_info:
         $ref: '#/definitions/types.NetworkSyncInfo'
+    type: object
+  types.SyncerSyncInfo:
+    description: Sync status of an auxiliary syncer (no is_synced signal)
+    properties:
+      error:
+        example: 'failed to get last processed block for claimsync L1: database is
+          locked'
+        type: string
+      is_active:
+        example: true
+        type: boolean
+      is_halted:
+        example: false
+        type: boolean
+      last_processed_block:
+        example: 12345678
+        type: integer
     type: object
   types.TokenMappingResponse:
     description: Detailed information about a token mapping between origin and wrapped
@@ -1632,19 +1678,16 @@ paths:
     get:
       description: |-
         Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.
-        Shows if bridge syncers are active and whether they're keeping up with on-chain events.
-        Also reports the l2gersync (injected-GER) sync status when available.
+        Shows if bridge syncers are active and whether they're keeping up with on-chain events. Also
+        reports l2gersync, l1infotreesync and claimsync status when available. Always responds 200 --
+        a syncer that could not be computed reports its own error in its entry, it never fails the request.
       produces:
       - application/json
       responses:
         "200":
-          description: Bridge synchronization status for L1 and L2 networks
+          description: Bridge synchronization status
           schema:
             $ref: '#/definitions/types.SyncStatus'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
       summary: Get bridge synchronization status
       tags:
       - sync

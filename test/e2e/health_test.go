@@ -96,7 +96,8 @@ func TestBridgeServiceHealthSyncStatus(t *testing.T) {
 	require.NotEmpty(t, lastHealth.Version)
 	require.False(t, lastHealth.Time.IsZero())
 	require.True(t,
-		lastHealth.Details.L1 != nil || lastHealth.Details.L2 != nil || lastHealth.Details.L2GER != nil,
+		lastHealth.Details.L1 != nil || lastHealth.Details.L2 != nil || lastHealth.Details.L2GER != nil ||
+			lastHealth.Details.L1InfoTree != nil,
 		"a settled instance must report at least one configured sync component",
 	)
 	if lastHealth.Details.L1 != nil {
@@ -110,6 +111,23 @@ func TestBridgeServiceHealthSyncStatus(t *testing.T) {
 	if lastHealth.Details.L2GER != nil {
 		require.True(t, lastHealth.Details.L2GER.IsActive)
 		require.Empty(t, lastHealth.Details.L2GER.Error)
+	}
+	// l1_info_tree/claim_l1/claim_l2 details keys (issue #1861): same shape check as the bridge
+	// syncers above, plus is_halted since these are the entries that first introduced it here.
+	if lastHealth.Details.L1InfoTree != nil {
+		require.True(t, lastHealth.Details.L1InfoTree.IsActive)
+		require.False(t, lastHealth.Details.L1InfoTree.IsHalted)
+		require.Empty(t, lastHealth.Details.L1InfoTree.Error)
+	}
+	if lastHealth.Details.ClaimL1 != nil {
+		require.True(t, lastHealth.Details.ClaimL1.IsActive)
+		require.False(t, lastHealth.Details.ClaimL1.IsHalted)
+		require.Empty(t, lastHealth.Details.ClaimL1.Error)
+	}
+	if lastHealth.Details.ClaimL2 != nil {
+		require.True(t, lastHealth.Details.ClaimL2.IsActive)
+		require.False(t, lastHealth.Details.ClaimL2.IsHalted)
+		require.Empty(t, lastHealth.Details.ClaimL2.Error)
 	}
 
 	// GET /health is the explicit alias added by #1689: it must serve the identical handler,

@@ -434,6 +434,22 @@ func TestInvalidatedBridges(t *testing.T) {
 	require.ElementsMatch(t, []string{"1"}, invalidated)
 }
 
+// TestIsNetworkSynced verifies isNetworkSynced reads only its own side of the sync-status pair
+// for a given network, so an error on the other side never leaks into it: network 0 (mainnet)
+// reads L1Info and network N reads L2Info independently. An erroring entry keeps IsSynced false
+// (see bridgeservice.computeSyncStatus), so isNetworkSynced still reports it as not synced.
+func TestIsNetworkSynced(t *testing.T) {
+	status := &bridgeservicetypes.SyncStatus{
+		L1Info: &bridgeservicetypes.NetworkSyncInfo{IsSynced: true},
+		L2Info: &bridgeservicetypes.NetworkSyncInfo{IsSynced: false, Error: "boom"},
+	}
+	require.True(t, isNetworkSynced(MainnetNetworkID, status),
+		"network 0 (mainnet) reads L1Info, unaffected by L2Info's error")
+	require.False(t, isNetworkSynced(5, status), "network 5 reads L2Info, which errored and so is not synced")
+
+	require.False(t, isNetworkSynced(MainnetNetworkID, nil), "a nil status is conservatively not synced")
+}
+
 // TestActivitySource_IsClaimed_NoBridgeAddrConfigured verifies IsClaimed errors clearly when
 // the destination network has no bridge contract address configured.
 func TestActivitySource_IsClaimed_NoBridgeAddrConfigured(t *testing.T) {
