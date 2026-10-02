@@ -94,7 +94,9 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, "/tmp/aggkit/autoclaim.sqlite", cfg.AutoClaim.StoragePath)
 	require.Empty(t, cfg.AutoClaim.Claimers)
 	require.True(t, cfg.AutoClaim.L1ToL2BridgeDetector.Enabled)
-	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2BridgeDetector.StartBlock)
+	require.Nil(t, cfg.AutoClaim.L1ToL2BridgeDetector.StartBlock,
+		"unset by default: it is resolved from StartLookback once an L1 client is available")
+	require.Equal(t, 24*time.Hour, cfg.AutoClaim.L1ToL2BridgeDetector.StartLookback.Duration)
 	require.Equal(t, uint64(0), cfg.AutoClaim.L1ToL2BridgeDetector.EtrogL1UpgradeBlock)
 	require.False(t, cfg.AutoClaim.L2ToLxBridgeDetector.Enabled)
 	require.True(t, cfg.AutoClaim.BridgeServiceFinder.AutoRegisterNewNetworks)
@@ -199,7 +201,8 @@ func TestLoadConfigWithAutoClaimEnabled(t *testing.T) {
 	require.True(t, cfg.AutoClaim.DryRun)
 	require.Equal(t, "/tmp/aggkit/autoclaim.sqlite", cfg.AutoClaim.StoragePath)
 	require.True(t, cfg.AutoClaim.API.Enabled)
-	require.Equal(t, uint64(1234), cfg.AutoClaim.L1ToL2BridgeDetector.StartBlock)
+	require.NotNil(t, cfg.AutoClaim.L1ToL2BridgeDetector.StartBlock)
+	require.Equal(t, uint64(1234), *cfg.AutoClaim.L1ToL2BridgeDetector.StartBlock)
 	require.Equal(t, uint64(1000000), cfg.AutoClaim.L1ToL2BridgeDetector.EtrogL1UpgradeBlock)
 	require.Len(t, cfg.AutoClaim.Claimers, 1)
 

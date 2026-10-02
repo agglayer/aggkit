@@ -26,6 +26,13 @@ var (
 	// ErrCandidatesNotSynced signals that the source bridge service has not yet synced the requested
 	// LER. The detector treats it as "retry later": it skips the source without advancing its LER cursor.
 	ErrCandidatesNotSynced = errors.New("autoclaim l2-to-lx bridge detector: source bridge service not synced yet")
+	// ErrCannotResolveInitialLER signals that a newly discovered source network's initial LER cursor
+	// could not be derived from the configured (non-zero) StartL1Block: it either predates the first
+	// L1 info tree leaf or has no LER yet at that block. The detector treats it as "retry later" --
+	// it skips the source without advancing its LER cursor -- rather than silently falling back to
+	// full history, which for an established chain can mean scanning years of stale deposits.
+	ErrCannotResolveInitialLER = errors.New(
+		"autoclaim l2-to-lx bridge detector: cannot resolve initial LER cursor from configured StartL1Block")
 	// ErrSourceDisabled signals that a source network is permanently excluded from bridge service
 	// resolution, so its URL can never resolve, however long the detector waits. It is the permanent
 	// counterpart of ErrURLNotFound: the detector treats it as "nothing to do" rather than "retry
@@ -252,7 +259,14 @@ type L2ToLx struct {
 	// report is made once per source instead of once per poll (the detector polls indefinitely).
 	// Only ever touched from the single poll goroutine.
 	disabledSourceLogged map[uint32]struct{}
+	// retryLogged records when each retry-later condition was last reported, keyed by
+	// "<condition>/<sourceID>", so a persistent condition logs at most once per retryLogInterval
+	// rather than on every poll. Only ever touched from the single poll goroutine.
+	retryLogged map[string]time.Time
 }
+
+// retryLogInterval bounds how often a persistent retry-later condition is logged per source.
+const retryLogInterval = 10 * time.Minute
 
 // NewL2ToLx creates an L2-to-Lx Auto Claim bridge detector.
 func NewL2ToLx(
@@ -301,6 +315,7 @@ func NewL2ToLx(
 			return time.Now().UTC()
 		},
 		disabledSourceLogged: make(map[uint32]struct{}),
+		retryLogged:          make(map[string]time.Time),
 	}
 	for _, option := range options {
 		option(detector)
@@ -509,6 +524,30 @@ func (w *L2ToLx) processSource(
 
 	pending, err := w.resolveFromLER(ctx, source, destinationIDs)
 	if err != nil {
+		if errors.Is(err, l1infotreesync.ErrBlockNotProcessed) {
+			// l1infotreesync has not reached StartL1Block yet (expected on a fresh datadir, where the
+			// auto-resolved block is far ahead of the sync). Transient: retry this source next poll
+			// instead of failing the whole poll.
+			if w.shouldLogRetry("not-processed", source.sourceID) {
+				w.logInfof("autoclaim l2-to-lx bridge detector: skip source %d (l1infotreesync has not "+
+					"reached StartL1Block yet, will retry every poll): %v", source.sourceID, err)
+			}
+			return sourceRetryLater, nil
+		}
+		if errors.Is(err, ErrCannotResolveInitialLER) {
+			// Loud and retried, never silent: unlike a stale bridge-service URL this is a config
+			// problem an operator must fix (lower StartL1Block, or set it to 0 to accept scanning
+			// full history), so it is worth a WARN rather than the Info level used for transient
+			// finder/sync misses below. It only holds back this one source -- other sources in the
+			// same poll are unaffected -- and is retried every poll until the config is corrected.
+			if w.shouldLogRetry("initial-ler", source.sourceID) {
+				w.logWarnf("autoclaim l2-to-lx bridge detector: skip source %d (cannot resolve initial "+
+					"LER cursor, will retry every poll until fixed; logged at most every %s): %v -- bridges "+
+					"from this source will not be autoclaimed until this is resolved",
+					source.sourceID, retryLogInterval, err)
+			}
+			return sourceRetryLater, nil
+		}
 		return sourceUpToDate, err
 	}
 	if len(pending) == 0 {
@@ -692,8 +731,17 @@ func sortedNetworks(networks []uint32) []uint32 {
 }
 
 // initialFromLER derives the exclusive lower-bound LER the first time a source network is seen. When
-// StartL1Block is 0, the full history is requested (nil). Otherwise the source's LER at StartL1Block
-// is used; a zero LER (the network had no LER yet at that block) also requests the full history.
+// StartL1Block is 0, the full history is requested (nil) -- StartL1Block can only be literally 0
+// when an operator sets it explicitly, since automatic resolution (autoclaim/bridgedetector.
+// ResolveStartBlock) is always clamped to a strictly positive minimum block, so a 0 here is always
+// deliberate operator intent, never a resolution artifact.
+//
+// For any other configured StartL1Block, the source's LER at that block is used. If it cannot be
+// derived -- StartL1Block predates the first L1 info tree leaf, or the network had no LER yet at
+// that block -- this used to silently fall back to full history too. That is dangerous for an
+// established chain (it can mean scanning years of stale deposits the moment DryRun is lifted), so
+// it now returns ErrCannotResolveInitialLER instead; the caller treats that as "retry later" for
+// just this source; see processSource.
 func (w *L2ToLx) initialFromLER(ctx context.Context, sourceID uint32) (*common.Hash, error) {
 	if w.startL1Block == 0 {
 		return nil, nil
@@ -702,9 +750,8 @@ func (w *L2ToLx) initialFromLER(ctx context.Context, sourceID uint32) (*common.H
 	leaf, err := w.source.GetLatestL1InfoLeafUntilBlock(ctx, w.startL1Block)
 	if err != nil {
 		if errors.Is(err, l1infotreesync.ErrNotFound) {
-			// StartL1Block predates the first L1 info tree leaf, so there is no baseline to derive a
-			// lower-bound LER from. Same situation as a zero LER at that block: fetch the full history.
-			return nil, nil
+			return nil, fmt.Errorf("%w: source %d: StartL1Block %d predates the first L1 info tree leaf",
+				ErrCannotResolveInitialLER, sourceID, w.startL1Block)
 		}
 		return nil, fmt.Errorf("get latest l1 info leaf until block %d for source %d: %w",
 			w.startL1Block, sourceID, err)
@@ -716,7 +763,8 @@ func (w *L2ToLx) initialFromLER(ctx context.Context, sourceID uint32) (*common.H
 			sourceID, leaf.RollupExitRoot, err)
 	}
 	if ler == (common.Hash{}) {
-		return nil, nil
+		return nil, fmt.Errorf("%w: source %d has no LER yet at StartL1Block %d",
+			ErrCannotResolveInitialLER, sourceID, w.startL1Block)
 	}
 	return &ler, nil
 }
@@ -889,6 +937,24 @@ func (w *L2ToLx) logErrorf(format string, args ...interface{}) {
 	if w.log != nil {
 		w.log.Errorf(format, args...)
 	}
+}
+
+func (w *L2ToLx) logWarnf(format string, args ...interface{}) {
+	if w.log != nil {
+		w.log.Warnf(format, args...)
+	}
+}
+
+// shouldLogRetry reports whether the given retry-later condition for sourceID is due to be logged,
+// and records the time if so.
+func (w *L2ToLx) shouldLogRetry(condition string, sourceID uint32) bool {
+	key := fmt.Sprintf("%s/%d", condition, sourceID)
+	now := w.now()
+	if last, ok := w.retryLogged[key]; ok && now.Sub(last) < retryLogInterval {
+		return false
+	}
+	w.retryLogged[key] = now
+	return true
 }
 
 func (w *L2ToLx) logInfof(format string, args ...interface{}) {

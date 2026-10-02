@@ -123,8 +123,8 @@ EnableAggOracleCommittee = false
 		[AggOracle.EVMSender.EthTxManager]
 				FrequencyToMonitorTxs = "1s"
 				WaitTxToBeMined = "2s"
-				GetReceiptMaxTime = "250ms"
-				GetReceiptWaitInterval = "1s"
+				WaitReceiptMaxTime = "250ms"
+				WaitReceiptCheckInterval = "1s"
 				PrivateKeys = [
 					{Method =  "local", Path = "/app/keystore/aggoracle.keystore", Password = "testonly"},
 				]
@@ -413,14 +413,16 @@ Enabled = false
 
 [AutoClaim.L1ToL2BridgeDetector]
 Enabled = true
-StartBlock = 0
 PollInterval = "3s"
 EtrogL1UpgradeBlock = 0
+# StartBlock is intentionally left unset here: an operator override in a per-deployment config is
+# used verbatim, and otherwise it is auto-resolved from StartLookback once the L1 client starts
+# (see autoclaim/config.L1ToL2BridgeDetector.StartBlock).
 
 [AutoClaim.L2ToLxBridgeDetector]
 Enabled = false
-StartL1Block = 0
 PollInterval = "3s"
+# StartL1Block is intentionally left unset here; see the StartBlock note above.
 
 [AutoClaim.BridgeServiceFinder]
 RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"

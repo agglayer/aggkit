@@ -281,14 +281,14 @@ WaitPeriodMonitorTx = "10s"
 PrivateKeys = [{Path = "{{.zkevm_aggoracle_privatekey_path}}", Password = "{{.zkevm_l2_keystore_password}}"}]
 
 # ------------------------------------------------------------------------------
-# GetReceiptMaxTime is the max time to wait to get the receipt of the mined transaction
+# WaitReceiptMaxTime is the max time to wait to get the receipt of the mined transaction
 # ------------------------------------------------------------------------------
-# GetReceiptMaxTime = "250ms"
+# WaitReceiptMaxTime = "250ms"
 
 # ------------------------------------------------------------------------------
-# GetReceiptWaitInterval is the time to sleep before trying to get the receipt of the mined transaction
+# WaitReceiptCheckInterval is the time to sleep before trying to get the receipt of the mined transaction
 # ------------------------------------------------------------------------------
-# GetReceiptWaitInterval = "1s"
+# WaitReceiptCheckInterval = "1s"
 
 # ------------------------------------------------------------------------------
 # ForcedGas is the amount of gas to be forced in case of gas estimation error
