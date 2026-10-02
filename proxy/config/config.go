@@ -15,6 +15,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/prometheus"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 	"github.com/urfave/cli/v2"
@@ -54,6 +55,9 @@ type Config struct {
 	// REST configures the shared HTTP server where every component of this binary registers
 	// its routes (tracker REST/WS endpoints, proxy routes)
 	REST aggkitcommon.RESTConfig `mapstructure:"REST"`
+
+	// Prometheus configures the metrics server (enabled by default, like aggkit's)
+	Prometheus prometheus.Config `mapstructure:"Prometheus"`
 
 	// Tracker configures the bridge tracker component (only its file-borne fields; the
 	// programmatic ones are wired by the binary, see cmd)

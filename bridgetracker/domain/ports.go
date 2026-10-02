@@ -129,3 +129,23 @@ type Triggerable interface {
 	// left for the next regular poll tick like before
 	Triggers() <-chan TrackingID
 }
+
+// CacheStats is the on-disk footprint of a SupervisedStore implementation backed by a real
+// cache file — see CacheStatsProvider
+type CacheStats struct {
+	// SizeBytes is the current size, in bytes, of the SQLite database file backing the store
+	SizeBytes int64
+}
+
+// CacheStatsProvider is an optional capability of a SupervisedStore implementation: reporting
+// how large its on-disk cache currently is. Only the SQLite-backed registry (see
+// bridgetracker/db.sqliteRegistry) implements it — the in-memory adapter keeps no on-disk cache
+// at all, so the Prometheus sampler (see BridgeTracker.StartMetricsSampler) treats "does not
+// implement this" as "in-memory, nothing to report". The SQLite activity store is not asked: it
+// is opened over the same file as the registry (see NewSQLiteActivityStore), so reading the
+// registry's size already covers both. Mirrors the optional-capability pattern of Triggerable.
+type CacheStatsProvider interface {
+	// CacheStats returns the current on-disk size of the SQLite database backing this store,
+	// including its -wal/-shm sidecars (the file path is retained by the adapter for that)
+	CacheStats() (CacheStats, error)
+}

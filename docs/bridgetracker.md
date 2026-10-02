@@ -221,6 +221,29 @@ one field that changes what the tracker's health endpoint reports:
 AutoRegisterNewNetworks = true
 ```
 
+## Prometheus Metrics
+
+The tracker exposes (unless `[Prometheus] Enabled = false`, it is enabled by default) the following Prometheus metrics, refreshed every `[Tracker] MetricsSampleInterval` (default `15s`):
+
+| **Metric Name**                  | **Type** | **Description**                                                                                      |
+| -------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `bridgetracker_cache_size_bytes`    | Gauge    | On-disk size of the SQLite cache (main file plus `-wal`/`-shm`); `0` when `Tracker.DBPath` is empty (in-memory) |
+| `bridgetracker_alive_trackers`      | Gauge    | Supervised bridges not yet in a terminal state                                                       |
+| `bridgetracker_alive_activities`    | Gauge    | `from_address`es currently supervised by the activity subsystem (only present when the activity endpoint is configured) |
+
+A failed read keeps the gauge's previous value (and logs a warning) instead of reporting a misleading zero.
+
+```toml
+[Prometheus]
+Enabled = true
+Host = "localhost"
+Port = 9091
+```
+
+The metrics are then available at `http://<Host>:<Port>/metrics`.
+
+> **Note:** aggkit and the proxy both default to `localhost:9091`. If they run on the same host, change `Port` on one of them: the second one to start fails to bind the port, logs an error and keeps running **without** metrics.
+
 ## API Documentation
 
 <iframe src="assets/swagger/bridge_tracker/index.html"

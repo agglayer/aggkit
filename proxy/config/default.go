@@ -48,6 +48,14 @@ AllowedHeaders = ["*"]
 AllowCredentials = false
 MaxAge = "12h"
 
+[Prometheus]
+# Exposes the tracker's metrics (bridgetracker_cache_size_bytes, bridgetracker_alive_trackers,
+# bridgetracker_alive_activities) at http://Host:Port/metrics. Enabled by default, like aggkit's.
+# Set Enabled = false to not open the metrics port.
+Enabled = true
+Host = "localhost"
+Port = 9091
+
 [Tracker]
 # DBPath: SQLite file the supervised-bridges registry persists to, so an already-resolved
 # bridge survives a restart instead of being re-resolved from scratch. Empty (the default)
@@ -82,6 +90,11 @@ ActivityIdleTimeout = "30m"
 # ActivityPollInterval: how often the activity engine refreshes every supervised from_address in
 # the background, independent of any incoming request.
 ActivityPollInterval = "30s"
+
+# MetricsSampleInterval: how often the Prometheus gauges (bridgetracker_cache_size_bytes,
+# bridgetracker_alive_trackers, bridgetracker_alive_activities) are refreshed. Only used when
+# [Prometheus] is enabled.
+MetricsSampleInterval = "15s"
 
 # ActivityRegisterResolveTimeout: how long the first request for a freshly registered
 # from_address waits for the activity engine's immediate refresh attempt before answering, so it

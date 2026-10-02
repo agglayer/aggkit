@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"sync"
 	"time"
@@ -122,7 +123,10 @@ func (row *trackedBridgeRow) staleSchema() bool {
 //
 // Safe for concurrent use.
 type sqliteRegistry struct {
-	db     *sql.DB
+	db *sql.DB
+	// dbPath is the file db was opened from — kept only for CacheStats (os.Stat of the main file
+	// plus its WAL/SHM sidecars), since every other operation goes through db itself
+	dbPath string
 	logger aggkitcommon.Logger
 	// now is the clock updated_at/last_access/terminal_since are stamped with, injectable for tests
 	now func() time.Time
@@ -158,6 +162,9 @@ type sqliteRegistry struct {
 // compile-time check: the SQLite adapter fulfils the full port
 var _ domain.SupervisedRegistry = (*sqliteRegistry)(nil)
 
+// compile-time check: the SQLite adapter also reports its own on-disk footprint
+var _ domain.CacheStatsProvider = (*sqliteRegistry)(nil)
+
 // NewSQLiteRegistry returns a domain.SupervisedRegistry backed by a SQLite database at dbPath,
 // creating the file and running its migrations if it does not exist yet. maxEntries <= 0 falls
 // back to defaultMaxTrackedBridges, exactly like bridgetracker.NewMemoryRegistry. verifier may be
@@ -183,6 +190,7 @@ func NewSQLiteRegistry(
 
 	return &sqliteRegistry{
 		db:          sqlDB,
+		dbPath:      dbPath,
 		logger:      logger,
 		now:         time.Now,
 		verifier:    verifier,
@@ -761,4 +769,37 @@ func (r *sqliteRegistry) Forget(id domain.TrackingID) {
 // Triggers implements domain.Triggerable
 func (r *sqliteRegistry) Triggers() <-chan domain.TrackingID {
 	return r.trigger
+}
+
+// CacheStats implements domain.CacheStatsProvider: the SQLite file's current size, published
+// by the Prometheus sampler as the cache_size_bytes gauge
+func (r *sqliteRegistry) CacheStats() (domain.CacheStats, error) {
+	size, err := sqliteFileSize(r.dbPath)
+	if err != nil {
+		return domain.CacheStats{}, fmt.Errorf("reading tracked_bridge cache size: %w", err)
+	}
+	return domain.CacheStats{SizeBytes: size}, nil
+}
+
+// sqliteFileSize sums the on-disk size of dbPath's main file plus its "-wal"/"-shm" sidecars
+// (used by sqliteRegistry.CacheStats; the activity store typically shares the same file, see
+// NewSQLiteActivityStore).
+// NewSQLiteDB opens every connection with _journal_mode=WAL (see db/sqlite.go): a recent write
+// can sit in "-wal" until the next checkpoint merges it back into the main file, so a
+// PRAGMA page_count * page_size reading of the main file alone would silently under-report the
+// cache's real footprint during normal operation. A missing sidecar (no WAL activity yet, or
+// already checkpointed and removed) contributes zero rather than an error
+func sqliteFileSize(dbPath string) (int64, error) {
+	var total int64
+	for _, suffix := range [...]string{"", "-wal", "-shm"} {
+		info, err := os.Stat(dbPath + suffix)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return 0, fmt.Errorf("stating %s%s: %w", dbPath, suffix, err)
+		}
+		total += info.Size()
+	}
+	return total, nil
 }
