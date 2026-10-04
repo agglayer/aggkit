@@ -844,11 +844,59 @@ is created for GER tracking.
   the relevant leaf.
 - Auto Claim logs startup, API startup, bridge detector polling errors, claimer recovery errors, and per-request
   errors through the standard Aggkit logger. Request-level error details are also stored in `last_error` and exposed
-  by the API. The component does not export Prometheus metrics.
+  by the API. The bridge detectors export a small set of Prometheus metrics (see
+  [RPC failure handling](#rpc-failure-handling)).
 - Failed or evicted transaction-manager results are retried while retry budget remains. Exhausted requests become
   `failed` and require operator investigation.
 - Use `api-approve` when an operator must explicitly inspect each request before claim submission. Expose the API
   only on trusted networks or behind access controls; it can approve or reject pending manual requests.
+
+### RPC failure handling
+
+A failing RPC endpoint of one destination network must not stall detection for the others. Both bridge detectors
+(L1-to-L2 and L2-to-Lx) isolate failures per destination:
+
+- Only failures of the destination's own calls are soft: `IsClaimed` and claimer `Enqueue` for the L1-to-L2
+  detector, and `IsClaimed` for the L2-to-Lx detector. Other errors (local database, claimer registry, source
+  fetch, cursor persistence) still abort the poll as before.
+- A destination that fails is paused with a per-destination back-off: the first window is the detector poll period,
+  doubling on each consecutive failure up to 2 minutes, with +-20 % jitter. A successful poll resets it. HTTP `429`
+  uses the same curve. A server-provided `Retry-After` is not honoured, because go-ethereum drops the response
+  headers before the error reaches the detector.
+- While a destination is paused its cursor does not advance, so nothing is skipped; healthy destinations keep
+  advancing normally. When the pause ends, detection resumes from the held cursor.
+- Known L2-to-Lx liveness limitation: while a destination stays failed, the shared block window restarts at that
+  source's verify row on every poll, so verify rows more than `BlockWindow` (default `1000`) L1 blocks later are not
+  reached until the destination recovers. This is the same behaviour as the existing finder-miss path.
+
+Log lines to grep for (`<d>` is the destination network ID; the L2-to-Lx detector uses the prefix
+`autoclaim l2-to-lx bridge detector:`):
+
+```text
+autoclaim l1-to-l2 bridge detector: detection for destination <d> paused for <window> after error (attempt <n>): <err>
+autoclaim l1-to-l2 bridge detector: detection for destination <d> paused for <window> after rate limiting (HTTP 429, attempt <n>): <err>
+autoclaim l1-to-l2 bridge detector: skipping destination <d>, backed off until <time>   (Debug)
+```
+
+The first two are logged at Warn once per back-off window. A bridge that is skipped because it is already claimed on
+the target bridge is traced at Debug:
+
+```text
+autoclaim <detector> bridge detector: skipped bridge <key> (destination <d>, global index <gi>): already claimed on target
+```
+
+where `<detector>` is `l1_to_l2` or `l2_to_lx`.
+
+Prometheus metrics (registered when the `autoclaim` component runs and Prometheus is enabled):
+
+| **Metric Name** | **Type** | **Description** |
+| --- | --- | --- |
+| `autoclaim_l1_to_l2_stalled_destinations` | Gauge | Number of destinations currently failing or backed off in the L1-to-L2 bridge detector |
+| `autoclaim_l2_to_lx_stalled_destinations` | Gauge | Number of destinations currently failing or backed off in the L2-to-Lx bridge detector |
+| `autoclaim_detector_destination_errors_total{detector,destination}` | Counter | Failing detector polls per detector (`l1_to_l2`, `l2_to_lx`) and destination network ID (one per back-off window) |
+| `autoclaim_detector_skipped_already_claimed_total{detector,destination}` | Counter | Bridges skipped by a detector because they were already claimed on the target |
+
+The syncer-side RPC handling (batch sizing, `eth_getLogs` omissions) is described in [Etherman](./etherman.md).
 
 ## Testing
 
@@ -883,3 +931,11 @@ go test -v -run 'TestAutoClaimL2ToL2AllowAll' -timeout 30m ./test/e2e
 `bridgeservicefinder` resolving both the source and destination networks, the destination-bridge-service
 GER-injection gate, and the claim-time leaf-proof fetch. Mocks for the interfaces in `autoclaim/types` and the other
 touched packages are generated with `make generate-mocks`.
+
+`TestAutoClaimL1ToL2FailingDestinationIsolated` (issue #1889) bridges from L1 to a healthy L2 while a second
+destination's claimer RPC refuses connections, and checks that the healthy destination is still auto-claimed and the
+failing one is backed off:
+
+```bash
+go test -v -run 'TestAutoClaimL1ToL2FailingDestinationIsolated' -timeout 30m ./test/e2e
+```

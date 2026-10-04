@@ -46,6 +46,21 @@ go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove)' -timeout 30m ./test/e
 `manual-approval-required`, approves the request through `POST /autoclaim/v1/bridges/{id}/approve`, and then waits for
 `confirmed`.
 
+`TestAutoClaimL1ToL2FailingDestinationIsolated` (issue #1889) checks that one L1 -> L2 destination whose RPC is
+failing does not stall the healthy destination: the L1 -> L2A bridge is auto-claimed while L2B's claimer RPC refuses
+connections, and L2B's detection is backed off. It runs against the two-chain environment like the tests above:
+
+```bash
+go test -v -run 'TestAutoClaimL1ToL2FailingDestinationIsolated' -timeout 30m ./test/e2e
+```
+
+`TestE2E_BatchLimitedProvider` is not part of `test/e2e`: it is a component test in `multidownloader/e2e_test.go`
+(provider that rejects oversized JSON-RPC batches, see [Etherman](./etherman.md#json-rpc-batch-sizing)) and runs with:
+
+```bash
+go test -v -run TestE2E_BatchLimitedProvider ./multidownloader/
+```
+
 The e2e environment must be able to start the docker compose stack, which requires enough host resources. If the host
 kills `docker compose up` (`signal: killed`) before the tests start, rerun the command on a host with more memory.
 
