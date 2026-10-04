@@ -113,6 +113,9 @@ type PollResult struct {
 	MatchedBridgeCount  int
 	EnqueuedBridgeCount int
 	IgnoredBridgeCount  int
+	// AlreadyClaimedCount counts bridges skipped because the target network already claimed them. They
+	// are not part of IgnoredBridgeCount, which only counts bridges to unknown destinations.
+	AlreadyClaimedCount int
 	SkippedBridgeCount  int
 	// DeferredBridgeCount counts bridges of a destination that failed earlier in this poll: they were
 	// not evaluated and will be re-evaluated on the next poll.
@@ -372,7 +375,10 @@ func (w *L1ToL2) processBridge(
 		return state.err
 	}
 	if claimed {
-		result.IgnoredBridgeCount++
+		result.AlreadyClaimedCount++
+		metrics.IncSkippedAlreadyClaimed(metrics.DetectorL1ToL2, exit.DestinationNetwork)
+		w.logDebugf("autoclaim %s bridge detector: skipped bridge %s (destination %d, global index %s): "+
+			"already claimed on target", metrics.DetectorL1ToL2, key, exit.DestinationNetwork, globalIndexString(exit))
 		return nil
 	}
 
@@ -615,4 +621,12 @@ func maxCursorPosition(
 		cursor.BlockPos = blockPos
 	}
 	return cursor
+}
+
+// globalIndexString renders the exit's global index for logs, or "unknown" when it is not set.
+func globalIndexString(exit autoclaimtypes.BridgeExit) string {
+	if exit.GlobalIndex == nil {
+		return "unknown"
+	}
+	return exit.GlobalIndex.String()
 }

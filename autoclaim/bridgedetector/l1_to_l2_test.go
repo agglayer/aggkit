@@ -9,11 +9,14 @@ import (
 	"testing"
 	"time"
 
+	autoclaimmetrics "github.com/agglayer/aggkit/autoclaim/metrics"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/prometheus"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -277,12 +280,27 @@ func TestPollOnceIgnoresAlreadyClaimedBridgeBeforeEnqueue(t *testing.T) {
 		target:  autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10},
 		claimed: true,
 	}
-	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(11))
+	log := &capturingLogger{}
+	detector := newTestDetector(t, source, store, newFakeRegistry(claimer), WithBlockWindow(11), WithLogger(log))
+
+	prometheus.Init()
+	autoclaimmetrics.Register()
+	vec, ok := prometheus.CounterVec("detector_skipped_already_claimed_total")
+	require.True(t, ok)
+	skipped := vec.WithLabelValues(string(autoclaimmetrics.DetectorL1ToL2), "10")
+	before := testutil.ToFloat64(skipped)
 
 	result, err := detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 0, result.EnqueuedBridgeCount)
-	require.Equal(t, 1, result.IgnoredBridgeCount)
+	require.Equal(t, 0, result.IgnoredBridgeCount)
+	require.Equal(t, 1, result.AlreadyClaimedCount)
+	require.Equal(t, before+1, testutil.ToFloat64(skipped))
+	require.Len(t, claimer.claimChecks, 1)
+	require.Contains(t, log.debugs, fmt.Sprintf(
+		"autoclaim l1_to_l2 bridge detector: skipped bridge 0:10:1 (destination 10, global index %s): "+
+			"already claimed on target", claimer.claimChecks[0].GlobalIndex.String()))
+	require.Empty(t, log.warns)
 	require.True(t, result.CursorAdvanced)
 	require.Empty(t, claimer.enqueued)
 	require.Len(t, claimer.claimChecks, 1)

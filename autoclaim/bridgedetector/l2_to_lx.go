@@ -1030,6 +1030,11 @@ func (w *L2ToLx) enqueueCandidates(
 		}
 		if claimed {
 			result.AlreadyClaimedCount++
+			metrics.IncSkippedAlreadyClaimed(metrics.DetectorL2ToLx, exit.DestinationNetwork)
+			w.logDebugf("autoclaim %s bridge detector: skipped bridge %s (destination %d, global index %s): "+
+				"already claimed on target", metrics.DetectorL2ToLx,
+				autoclaimtypes.DeriveRequestKey(source.sourceID, exit.DestinationNetwork, exit.DepositCount),
+				exit.DestinationNetwork, globalIndexString(exit))
 			continue
 		}
 

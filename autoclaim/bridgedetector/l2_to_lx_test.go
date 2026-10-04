@@ -732,14 +732,27 @@ func TestL2ToLxAlreadyClaimedSkip(t *testing.T) {
 	}
 	lerStore := newFakePerPairLERStore()
 	enqueuer := newFakeEnqueuer()
+	log := &capturingLogger{}
 	detector := newTestL2ToLxDetector(
 		t, source, fetcher, newFakeRegistry(claimer0), newMemoryCursorStore(), lerStore, enqueuer,
-		WithL2ToLxBlockWindow(50),
+		WithL2ToLxBlockWindow(50), WithL2ToLxLogger(log),
 	)
+
+	prometheus.Init()
+	autoclaimmetrics.Register()
+	vec, ok := prometheus.CounterVec("detector_skipped_already_claimed_total")
+	require.True(t, ok)
+	skipped := vec.WithLabelValues(string(autoclaimmetrics.DetectorL2ToLx), "0")
+	before := testutil.ToFloat64(skipped)
 
 	result, err := detector.PollOnce(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, result.AlreadyClaimedCount)
+	require.Equal(t, before+1, testutil.ToFloat64(skipped))
+	require.Contains(t, log.debugs,
+		"autoclaim l2_to_lx bridge detector: skipped bridge 1:0:5 (destination 0, global index unknown): "+
+			"already claimed on target")
+	require.Empty(t, log.warns)
 	require.Equal(t, 0, result.EnqueuedCount)
 	require.Empty(t, enqueuer.order)
 	require.Len(t, claimer0.claimChecks, 1)
@@ -1855,8 +1868,14 @@ func TestL2ToLx_BackedOffDestinationHoldsBlockCursor(t *testing.T) {
 		requireLERCursorInvariant(t, f)
 	}
 	require.Len(t, f.log.warns, 1, "no Warn while backed off")
-	require.Len(t, f.log.debugs, 2)
-	require.Contains(t, f.log.debugs[0],
+	var backoffDebugs []string
+	for _, line := range f.log.debugs {
+		if strings.Contains(line, "backed off until") {
+			backoffDebugs = append(backoffDebugs, line)
+		}
+	}
+	require.Len(t, backoffDebugs, 2)
+	require.Contains(t, backoffDebugs[0],
 		"autoclaim l2-to-lx bridge detector: skipping destination 10, backed off until")
 }
 
