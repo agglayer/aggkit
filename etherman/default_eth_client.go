@@ -28,6 +28,7 @@ type DefaultEthClient struct {
 	HashFromJSON      bool
 	batchBlockHeaders bool
 	logger            aggkitcommon.Logger
+	batchSize         *batchSizeLimiter
 }
 
 // DialWithRetry attempts to connect to an Ethereum client with retries and exponential backoff.
@@ -86,6 +87,7 @@ func NewDefaultEthClientWithLogger(
 		HashFromJSON:      hashFromJSON,
 		batchBlockHeaders: batchBlockHeaders,
 		logger:            logger,
+		batchSize:         newBatchSizeLimiter(cfg.BatchRequestMaxSize),
 	}
 }
 
@@ -175,7 +177,7 @@ func (c *DefaultEthClient) RetrieveBlockHeaders(
 	ctx context.Context, blockNumbers []uint64, maxConcurrency int,
 ) (*aggkittypes.BlockHeadersResult, error) {
 	if c.batchBlockHeaders {
-		return RetrieveBlockHeadersBatch(ctx, c.logger, c.RPCClienter, blockNumbers, maxConcurrency)
+		return retrieveBlockHeadersBatchAdaptive(ctx, c.logger, c.RPCClienter, c.batchSize, blockNumbers, maxConcurrency)
 	}
 	return RetrieveBlockHeadersLegacy(ctx, c.logger, c, blockNumbers, maxConcurrency)
 }

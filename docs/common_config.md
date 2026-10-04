@@ -194,6 +194,7 @@ request per IP ever. Its default stays `10`.
 | `Mode` | `string` | `""` | Client mode: `""` or `"basic"` for standard nodes, `"op"` for Optimism nodes |
 | `HashFromJSON` | `bool` | `false` | When `true`, fetches block hashes via JSON-RPC (`eth_getBlockByNumber`). When `false`, computes them locally from the RLP-encoded header (go-ethereum default). Enable this for nodes where RLP hashing does not match the canonical block hash |
 | `BatchBlockHeaderRetrieval` | `bool` | `true` | When `true`, uses JSON-RPC batch requests to fetch block headers in bulk (faster). Disable if the node does not support batch calls |
+| `BatchRequestMaxSize` | `int` | `1000` | Initial maximum number of requests per JSON-RPC batch when fetching block headers. The client lowers it automatically when the provider rejects a batch as too large. `0` means the default (`1000`); negative values are invalid |
 | `RetryMode` | `string` | `"backoff"` | Retry strategy: `"backoff"` for exponential backoff, `"delays"` for fixed delay list, `""` for no retries |
 | `MaxRetries` | `int` | `5` | Maximum number of retry attempts |
 | `InitialBackoff` | `duration` | `5s` | Initial wait time before the first retry (backoff mode) |
@@ -209,6 +210,7 @@ URL = "http://localhost:8545"
 Mode = "basic"
 HashFromJSON = false
 BatchBlockHeaderRetrieval = true
+BatchRequestMaxSize = 1000
 RetryMode = "backoff"
 MaxRetries = 5
 InitialBackoff = "5s"
@@ -220,6 +222,7 @@ URL = "http://localhost:8123"
 Mode = "basic"
 HashFromJSON = true
 BatchBlockHeaderRetrieval = true
+BatchRequestMaxSize = 1000
 RetryMode = "delays"
 MaxRetries = 6
 Delays = ["1s", "2s", "5s", "10s", "30s", "60s"]

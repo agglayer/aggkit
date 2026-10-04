@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math/big"
@@ -12,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -338,4 +340,62 @@ func TestNewDefaultRPCClientConfig(t *testing.T) {
 	require.Equal(t, time.Second*5, cfg.InitialBackoff.Duration)
 	require.Equal(t, time.Second*60, cfg.MaxBackoff.Duration)
 	require.Equal(t, 2.0, cfg.BackoffMultiplier)
+}
+
+func TestRPCClientConfig_BatchRequestMaxSize(t *testing.T) {
+	decode := func(t *testing.T, tomlData string, into *RPCClientConfig) {
+		t.Helper()
+		v := viper.New()
+		v.SetConfigType("toml")
+		require.NoError(t, v.ReadConfig(bytes.NewBufferString(tomlData)))
+		require.NoError(t, v.Unmarshal(into))
+	}
+
+	t.Run("default is 1000", func(t *testing.T) {
+		require.Equal(t, 1000, DefaultBatchRequestMaxSize)
+		require.Equal(t, DefaultBatchRequestMaxSize, NewDefaultRPCClientConfig().BatchRequestMaxSize)
+	})
+
+	t.Run("existing TOML without the key still loads with 1000", func(t *testing.T) {
+		cfg := NewDefaultRPCClientConfig()
+		decode(t, `
+URL = "http://localhost:8545"
+Mode = "basic"
+HashFromJSON = true
+BatchBlockHeaderRetrieval = true
+`, cfg)
+		require.Equal(t, "http://localhost:8545", cfg.URL)
+		require.Equal(t, 1000, cfg.BatchRequestMaxSize)
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("key in TOML is honoured", func(t *testing.T) {
+		cfg := NewDefaultRPCClientConfig()
+		decode(t, `
+URL = "http://localhost:8545"
+BatchRequestMaxSize = 40
+`, cfg)
+		require.Equal(t, 40, cfg.BatchRequestMaxSize)
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("zero is valid and means the default", func(t *testing.T) {
+		cfg := NewDefaultRPCClientConfig()
+		decode(t, `
+URL = "http://localhost:8545"
+BatchRequestMaxSize = 0
+`, cfg)
+		require.Zero(t, cfg.BatchRequestMaxSize)
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("negative is rejected", func(t *testing.T) {
+		cfg := NewDefaultRPCClientConfig()
+		decode(t, `
+URL = "http://localhost:8545"
+BatchRequestMaxSize = -1
+`, cfg)
+		err := cfg.Validate()
+		require.ErrorIs(t, err, ErrInvalidBatchRequestMaxSize)
+	})
 }

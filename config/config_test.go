@@ -63,8 +63,10 @@ func TestLoadDefaultConfig(t *testing.T) {
 		Mode:                      ethermanconfig.RPCModeBasic,
 		HashFromJSON:              true,
 		BatchBlockHeaderRetrieval: true,
+		BatchRequestMaxSize:       ethermanconfig.DefaultBatchRequestMaxSize,
 	}, cfg.Common.L2RPC)
 	require.True(t, cfg.L1NetworkConfig.RPC.BatchBlockHeaderRetrieval)
+	require.Equal(t, ethermanconfig.DefaultBatchRequestMaxSize, cfg.L1NetworkConfig.RPC.BatchRequestMaxSize)
 	require.Equal(t, cfg.Profiling.ProfilingEnabled, false)
 	require.Equal(t, cfg.Profiling.ProfilingHost, "localhost")
 	require.Equal(t, cfg.Profiling.ProfilingPort, 6060)

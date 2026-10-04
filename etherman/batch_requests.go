@@ -3,9 +3,11 @@ package etherman
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -58,7 +60,7 @@ func (b *blockRawEth) ToBlockHeader() (*aggkittypes.BlockHeader, error) {
 }
 
 // https://www.alchemy.com/docs/reference/batch-requests
-const batchRequestLimitHTTP = 1000
+const batchRequestLimitHTTP = ethermanconfig.DefaultBatchRequestMaxSize
 
 // BlockHeadersResult is an alias for aggkittypes.BlockHeadersResult for backward compatibility.
 type BlockHeadersResult = aggkittypes.BlockHeadersResult
@@ -90,12 +92,66 @@ func RetrieveBlockHeadersBatch(ctx context.Context,
 	rpcClient aggkittypes.RPCClienter,
 	blockNumbers []uint64,
 	maxConcurrency int) (*BlockHeadersResult, error) {
-	return retrieveBlockHeadersInBatchParallel(
-		ctx,
-		log,
-		func(ctx context.Context, blocks []uint64) (*BlockHeadersResult, error) {
-			return retrieveBlockHeadersInBatch(ctx, log, rpcClient, blocks)
-		}, blockNumbers, batchRequestLimitHTTP, maxConcurrency)
+	return retrieveBlockHeadersBatchAdaptive(ctx, log, rpcClient,
+		newBatchSizeLimiter(batchRequestLimitHTTP), blockNumbers, maxConcurrency)
+}
+
+// retrieveBlockHeadersBatchAdaptive retrieves block headers using batch requests whose size is bounded by limiter.
+// When the provider rejects a batch as too large, the limiter is lowered and only the rejected block numbers
+// are requested again; headers already retrieved are kept.
+func retrieveBlockHeadersBatchAdaptive(ctx context.Context,
+	log aggkitcommon.Logger,
+	rpcClient aggkittypes.RPCClienter,
+	limiter *batchSizeLimiter,
+	blockNumbers []uint64,
+	maxConcurrency int) (*BlockHeadersResult, error) {
+	var mu sync.Mutex
+	remaining := blockNumbers
+	finalResult := NewBlockHeadersResult()
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		chunks := splitBlockNumbersIntoChunks(remaining, limiter.Size())
+		var rejected []uint64
+
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(maxConcurrency)
+		for _, chunk := range chunks {
+			g.Go(func() error {
+				chunkResult, err := retrieveBlockHeadersInBatch(gctx, log, rpcClient, chunk)
+				if err == nil {
+					mu.Lock()
+					defer mu.Unlock()
+					finalResult.Merge(chunkResult)
+					return nil
+				}
+				if aggkitcommon.IsBatchLimitError(err) && len(chunk) > 1 {
+					oldSize, newSize, changed := limiter.shrinkAfterRejection(len(chunk), err)
+					if changed {
+						log.Warnf("etherman: provider rejected a JSON-RPC batch of %d requests, "+
+							"reducing batch size %d -> %d: %v", len(chunk), oldSize, newSize, err)
+					}
+					mu.Lock()
+					defer mu.Unlock()
+					rejected = append(rejected, chunk...)
+					return nil
+				}
+				return fmt.Errorf("RetrieveBlockHeadersInBatchParallel: %w", err)
+			})
+		}
+		if err := g.Wait(); err != nil {
+			return nil, err
+		}
+		if len(rejected) == 0 {
+			log.Debugf("retrieveRPCBlockHeadersInParallel: Retrieved %d/%d block headers",
+				len(finalResult.Headers), len(blockNumbers))
+			return finalResult, nil
+		}
+		sort.Slice(rejected, func(i, j int) bool { return rejected[i] < rejected[j] })
+		remaining = rejected
+	}
 }
 
 // RetrieveBlockHeadersLegacy retrieves block headers for the given block numbers using individual requests
@@ -153,6 +209,16 @@ func retrieveBlockHeadersInBatch(ctx context.Context,
 	if err != nil {
 		// Catastrophic error: the whole batch call failed
 		return nil, fmt.Errorf("retrieveRPCBlockHeadersInBatch(%d): BatchCallContext error: %w", len(blockNumbers), err)
+	}
+	// go-ethereum rejects an oversized batch per element with a nil top-level error: lift it to a batch error.
+	// A single-element batch cannot be shrunk further, so its error stays a per-block error below.
+	if len(batch) > 1 {
+		for _, elem := range batch {
+			if elem.Error != nil && aggkitcommon.IsBatchLimitError(elem.Error) {
+				return nil, fmt.Errorf("retrieveRPCBlockHeadersInBatch(%d): batch rejected by provider: %w",
+					len(blockNumbers), elem.Error)
+			}
+		}
 	}
 
 	// Process each element individually, collecting successes and failures

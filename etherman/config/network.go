@@ -18,7 +18,12 @@ var (
 	ErrMissingGlobalExitRootManagerAddress = errors.New("missing global exit root manager address")
 	ErrInvalidBlocksChunkSize              = errors.New("blocks chunk size must be greater than 0")
 	ErrInvalidRollupManagerCreationBlock   = errors.New("rollup manager creation block must be greater than 0")
+	// ErrInvalidBatchRequestMaxSize is returned when BatchRequestMaxSize is negative.
+	ErrInvalidBatchRequestMaxSize = errors.New("BatchRequestMaxSize must be >= 0")
 )
+
+// DefaultBatchRequestMaxSize is the default initial JSON-RPC batch size for block header retrieval.
+const DefaultBatchRequestMaxSize = 1000
 
 // Config holds the common configuration for the Aggkit services
 type CommonConfig struct {
@@ -106,6 +111,10 @@ type RPCClientConfig struct {
 	// BatchBlockHeaderRetrieval enables using JSON-RPC batch requests when fetching block headers.
 	// Disable this if the node does not support batch requests. Default: true.
 	BatchBlockHeaderRetrieval bool `mapstructure:"BatchBlockHeaderRetrieval"`
+	// BatchRequestMaxSize is the initial maximum number of requests per JSON-RPC batch when fetching block
+	// headers. The client lowers it automatically when the provider rejects a batch as too large.
+	// 0 means the default (1000).
+	BatchRequestMaxSize int `mapstructure:"BatchRequestMaxSize"`
 	//
 	// Params specific per client
 	// ExtraParams contains any additional parameters that may be needed for the RPC client
@@ -118,6 +127,7 @@ func NewDefaultRPCClientConfig() *RPCClientConfig {
 		Mode:                      RPCModeDefault,
 		HashFromJSON:              false,
 		BatchBlockHeaderRetrieval: true,
+		BatchRequestMaxSize:       DefaultBatchRequestMaxSize,
 		ExtraParams:               make(map[string]any),
 		RetryPolicyGenericConfig: common.RetryPolicyGenericConfig{
 			Mode:              common.RetryConfigModeBackoff,
@@ -137,6 +147,10 @@ func (c *RPCClientConfig) Validate() error {
 
 	if err := c.RetryPolicyGenericConfig.Validate(); err != nil {
 		return fmt.Errorf("invalid RPC configuration: %w", err)
+	}
+
+	if c.BatchRequestMaxSize < 0 {
+		return fmt.Errorf("invalid RPC configuration: %w (got %d)", ErrInvalidBatchRequestMaxSize, c.BatchRequestMaxSize)
 	}
 
 	if c.Mode != RPCModeDefault && c.Mode != RPCModeBasic && c.Mode != RPCModeOp {
