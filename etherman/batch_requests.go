@@ -87,6 +87,8 @@ func RetrieveBlockHeaders(ctx context.Context,
 
 // RetrieveBlockHeadersBatch retrieves block headers for the given block numbers using batch requests
 // with concurrency control. Returns a BlockHeadersResult with successful headers and individual errors.
+// The adaptive batch size is local to the call: it is not shared across calls. Callers that issue many
+// calls should go through DefaultEthClient, which keeps the learned limit for the lifetime of the client.
 func RetrieveBlockHeadersBatch(ctx context.Context,
 	log aggkitcommon.Logger,
 	rpcClient aggkittypes.RPCClienter,

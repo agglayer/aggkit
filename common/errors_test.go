@@ -214,6 +214,9 @@ func TestIsBatchLimitError(t *testing.T) {
 		{"connection refused", errors.New("connection refused"), false},
 		{"response too large", errors.New("response too large"), false},
 		{"max is 0", errors.New("some error, max is 0"), false},
+		{"batch limit exceeded without number", errors.New("batch limit exceeded"), true},
+		{"batch rate limit is not a size limit", errors.New("batch request limit per second, retry later"), false},
+		{"unrelated rate limit", errors.New("rate limit reached for batch endpoint"), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

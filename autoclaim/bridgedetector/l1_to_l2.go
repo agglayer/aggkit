@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"sort"
 	"time"
 
 	"github.com/agglayer/aggkit/autoclaim/metrics"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const (
@@ -450,16 +448,7 @@ func (w *L1ToL2) updateBackoff(
 		if ctx.Err() != nil {
 			continue
 		}
-		window, attempt := w.backoff.recordFailure(dest, state.err, w.now())
-		metrics.IncDestinationError(metrics.DetectorL1ToL2, dest)
-		var httpErr rpc.HTTPError
-		if errors.As(state.err, &httpErr) && httpErr.StatusCode == http.StatusTooManyRequests {
-			w.logWarnf("autoclaim l1-to-l2 bridge detector: detection for destination %d paused for %s "+
-				"after rate limiting (HTTP 429, attempt %d): %v", dest, window, attempt, state.err)
-		} else {
-			w.logWarnf("autoclaim l1-to-l2 bridge detector: detection for destination %d paused for %s "+
-				"after error (attempt %d): %v", dest, window, attempt, state.err)
-		}
+		w.backoff.recordFailureAndWarn(metrics.DetectorL1ToL2, "l1-to-l2", dest, state.err, w.now(), w.logWarnf)
 	}
 }
 

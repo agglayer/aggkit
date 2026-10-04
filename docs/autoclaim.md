@@ -896,6 +896,11 @@ Prometheus metrics (registered when the `autoclaim` component runs and Prometheu
 | `autoclaim_detector_destination_errors_total{detector,destination}` | Counter | Failing detector polls per detector (`l1_to_l2`, `l2_to_lx`) and destination network ID (one per back-off window) |
 | `autoclaim_detector_skipped_already_claimed_total{detector,destination}` | Counter | Bridges skipped by a detector because they were already claimed on the target |
 
+Recommended alert: `autoclaim_l2_to_lx_stalled_destinations > 0` (and the L1-to-L2 equivalent) for several
+minutes. A destination that stays failed is isolated, but in the L2-to-Lx detector it keeps the shared block
+window held at the affected source, so detection for the healthy destinations can lag once the outage exceeds
+`BlockWindow` L1 blocks. The gauge is the only signal of that condition.
+
 The syncer-side RPC handling (batch sizing, `eth_getLogs` omissions) is described in [Etherman](./etherman.md).
 
 ## Testing

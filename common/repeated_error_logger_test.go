@@ -137,6 +137,19 @@ func TestRepeatedErrorLogger_VaryingNumbersAreTheSameError(t *testing.T) {
 	require.Equal(t, "warn", logger.levels()[3])
 }
 
+func TestRepeatedErrorLogger_HTTPStatusCodesStayDistinct(t *testing.T) {
+	logger := &captureLogger{}
+	now := time.Unix(0, 0)
+	rl := NewRepeatedErrorLogger(logger, "p", time.Minute).WithClock(func() time.Time { return now })
+
+	rl.Log(errors.New("429 Too Many Requests"))
+	now = now.Add(time.Second)
+	rl.Log(errors.New("500 Internal Server Error"))
+	now = now.Add(time.Second)
+	rl.Log(errors.New("500 Internal Server Error"))
+	require.Equal(t, []string{"warn", "warn", "debug"}, logger.levels())
+}
+
 func TestRepeatedErrorLogger_ResetEmitsSummaryOfSuppressed(t *testing.T) {
 	logger := &captureLogger{}
 	now := time.Unix(0, 0)

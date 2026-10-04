@@ -10,10 +10,12 @@ import (
 
 // reVariablePart matches the parts of an error message that usually change between attempts of the same
 // failure (block numbers, ranges, hashes, request ids), so they do not make each retry a "distinct" error.
-var reVariablePart = regexp.MustCompile(`0x[0-9a-fA-F]+|\d+`)
+// Only numbers of four or more digits are replaced, so short numbers such as HTTP status codes (429 vs
+// 500) keep two different failures distinguishable.
+var reVariablePart = regexp.MustCompile(`0x[0-9a-fA-F]+|\d{4,}`)
 
 // RepeatedErrorLogger bounds the log volume of an error that may repeat indefinitely in a retry loop.
-// Messages are compared after replacing numbers and hex strings, so errors that only differ in them are
+// Messages are compared after replacing long numbers and hex strings, so errors that only differ in them are
 // considered the same. The first occurrence of a distinct message is logged at Warn, repeats at Debug,
 // and a Warn summary carrying the number of occurrences is emitted once per window.
 type RepeatedErrorLogger struct {

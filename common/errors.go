@@ -30,7 +30,7 @@ var (
 	// Matches batch-limit messages that do not carry the limit (the caller must reduce the size by itself)
 	reBatchLimitKeyword = regexp.MustCompile(
 		`(?i)(batch too large|too many batch requests|batch size (limit|too large|exceeded)|` +
-			`batch (request )?limit|batch request (was )?too large)`)
+			`batch (request )?limit (exceeded|reached)|batch request (was )?too large)`)
 )
 
 // ParseMaxRangeFromError extracts the max range value from error message

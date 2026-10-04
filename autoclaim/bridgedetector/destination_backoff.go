@@ -1,9 +1,13 @@
 package bridgedetector
 
 import (
+	"errors"
+	"net/http"
 	"time"
 
+	"github.com/agglayer/aggkit/autoclaim/metrics"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const (
@@ -104,4 +108,27 @@ func (b *destinationBackoff) recordSuccess(dest uint32) {
 // stalledCount returns the number of destinations with an entry (failing and not yet recovered).
 func (b *destinationBackoff) stalledCount() int {
 	return len(b.entries)
+}
+
+// recordFailureAndWarn records a destination failure, counts it in the destination error metric and logs
+// the one Warn per back-off window (an HTTP 429 gets its own wording). detectorName is the detector name
+// used in the log text ("l1-to-l2" or "l2-to-lx").
+func (b *destinationBackoff) recordFailureAndWarn(
+	detector metrics.Detector,
+	detectorName string,
+	dest uint32,
+	err error,
+	now time.Time,
+	warnf func(format string, args ...interface{}),
+) {
+	window, attempt := b.recordFailure(dest, err, now)
+	metrics.IncDestinationError(detector, dest)
+	var httpErr rpc.HTTPError
+	if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusTooManyRequests {
+		warnf("autoclaim %s bridge detector: detection for destination %d paused for %s "+
+			"after rate limiting (HTTP 429, attempt %d): %v", detectorName, dest, window, attempt, err)
+		return
+	}
+	warnf("autoclaim %s bridge detector: detection for destination %d paused for %s "+
+		"after error (attempt %d): %v", detectorName, dest, window, attempt, err)
 }

@@ -1,6 +1,7 @@
 package etherman
 
 import (
+	"math"
 	"sync/atomic"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -36,7 +37,7 @@ func (l *batchSizeLimiter) shrinkAfterRejection(sentSize int, err error) (oldSiz
 	target := int64(max(1, sentSize/2)) //nolint:mnd
 	if err != nil {
 		if parsed, ok := aggkitcommon.ParseMaxBatchSizeFromError(err.Error()); ok &&
-			parsed >= 1 && parsed < uint64(sentSize) {
+			parsed >= 1 && parsed < uint64(sentSize) && parsed <= math.MaxInt32 {
 			target = int64(parsed)
 		}
 	}

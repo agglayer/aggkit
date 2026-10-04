@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"net/http"
 	"slices"
 	"sort"
 	"time"
@@ -16,7 +15,6 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const (
@@ -485,6 +483,7 @@ func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 	outcomes := newPollDestinationOutcomes()
 	defer w.updateBackoff(ctx, outcomes)
 	for _, destination := range sortedNetworks(destinationNetworks) {
+		// dup guards against the same destination being listed twice: sortedNetworks does not de-duplicate.
 		if _, dup := outcomes.backedOff[destination]; dup || !w.backoff.shouldSkip(destination, w.now()) {
 			continue
 		}
@@ -581,16 +580,8 @@ func (w *L2ToLx) updateBackoff(ctx context.Context, outcomes *pollDestinationOut
 	}
 	for _, destination := range sortedDestinationKeys(outcomes.failed) {
 		failure := outcomes.failed[destination]
-		window, attempt := w.backoff.recordFailure(destination, failure, w.now())
-		metrics.IncDestinationError(metrics.DetectorL2ToLx, destination)
-		var httpErr rpc.HTTPError
-		if errors.As(failure, &httpErr) && httpErr.StatusCode == http.StatusTooManyRequests {
-			w.logWarnf("autoclaim l2-to-lx bridge detector: detection for destination %d paused for %s "+
-				"after rate limiting (HTTP 429, attempt %d): %v", destination, window, attempt, failure)
-		} else {
-			w.logWarnf("autoclaim l2-to-lx bridge detector: detection for destination %d paused for %s "+
-				"after error (attempt %d): %v", destination, window, attempt, failure)
-		}
+		w.backoff.recordFailureAndWarn(
+			metrics.DetectorL2ToLx, "l2-to-lx", destination, failure, w.now(), w.logWarnf)
 	}
 }
 
