@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/db"
 	dbmocks "github.com/agglayer/aggkit/db/mocks"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/etherman"
 	mockethermantypes "github.com/agglayer/aggkit/etherman/types/mocks"
 	"github.com/agglayer/aggkit/log"
@@ -1768,5 +1769,155 @@ func TestEVMMultidownloader_waitForNewBlocks(t *testing.T) {
 		// Assert
 		require.NoError(t, err)
 		require.Equal(t, uint64(101), blockNumber)
+	})
+}
+
+// stepRetryCaptureLogger records the number of Warn and Debug calls (thread-safe).
+type stepRetryCaptureLogger struct {
+	mu    sync.Mutex
+	warns []string
+	debug int
+}
+
+func (c *stepRetryCaptureLogger) Panicf(string, ...interface{}) {}
+func (c *stepRetryCaptureLogger) Fatalf(string, ...interface{}) {}
+func (c *stepRetryCaptureLogger) Info(...interface{})           {}
+func (c *stepRetryCaptureLogger) Infof(string, ...interface{})  {}
+func (c *stepRetryCaptureLogger) Error(...interface{})          {}
+func (c *stepRetryCaptureLogger) Errorf(string, ...interface{}) {}
+func (c *stepRetryCaptureLogger) Warn(args ...interface{}) {
+	c.addWarn(fmt.Sprint(args...))
+}
+func (c *stepRetryCaptureLogger) Warnf(f string, a ...interface{}) {
+	c.addWarn(fmt.Sprintf(f, a...))
+}
+func (c *stepRetryCaptureLogger) Debug(...interface{})          { c.addDebug() }
+func (c *stepRetryCaptureLogger) Debugf(string, ...interface{}) { c.addDebug() }
+func (c *stepRetryCaptureLogger) addWarn(s string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.warns = append(c.warns, s)
+}
+func (c *stepRetryCaptureLogger) addDebug() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.debug++
+}
+func (c *stepRetryCaptureLogger) warnCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.warns)
+}
+
+// setupStepRetryTest makes StartStep fail (non-reorg error) or succeed following script, one entry per
+// StartStep call (true = success). Backoff sleeps are recorded instead of waited and jitter is zero.
+func setupStepRetryTest(t *testing.T, script []bool) (*testDataEVMMultidownloader, *stepRetryCaptureLogger, *[]time.Duration) {
+	t.Helper()
+	data := newEVMMultidownloaderTestData(t, true)
+	data.FakeInitialized(t)
+	data.mdr.cfg.PeriodToCheckReorgs = types.NewDuration(time.Millisecond)
+
+	captured := &stepRetryCaptureLogger{}
+	data.mdr.log = captured
+	clock := time.Unix(1000, 0)
+	data.mdr.startStepErrLogger = aggkitcommon.NewRepeatedErrorLogger(captured, "step", startStepErrorLogWindow).
+		WithClock(func() time.Time {
+			clock = clock.Add(20 * time.Second)
+			return clock
+		})
+	delays := &[]time.Duration{}
+	backoff, err := aggkitcommon.NewExponentialBackoff(aggkitcommon.ExponentialBackoffConfig{
+		Initial: startStepRetryInitialBackoff,
+		Max:     startStepRetryMaxBackoff,
+		Factor:  startStepRetryBackoffFactor,
+		Jitter:  startStepRetryBackoffJitter,
+	},
+		aggkitcommon.WithBackoffRandFloat(func() float64 { return 0.5 }),
+		aggkitcommon.WithBackoffSleeper(func(_ context.Context, d time.Duration) error {
+			*delays = append(*delays, d)
+			return nil
+		}))
+	require.NoError(t, err)
+	data.mdr.startStepBackoff = backoff
+
+	data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+		Return(uint64(100), nil).Maybe()
+	data.mockStorage.EXPECT().GetBlockHeadersNotFinalized(mock.Anything, mock.Anything).
+		Return(aggkittypes.ListBlockHeaders{}, nil).Maybe()
+	data.mockStorage.EXPECT().GetBlockHeaderByNumber(mock.Anything, mock.Anything).
+		Return(nil, mdrtypes.Finalized, nil).Maybe()
+	mockTx := dbmocks.NewTxer(t)
+	mockTx.EXPECT().Rollback().Return(nil).Maybe()
+	mockTx.EXPECT().Commit().Return(nil).Maybe()
+	call := 0
+	data.mockStorage.EXPECT().NewTx(mock.Anything).RunAndReturn(func(context.Context) (dbtypes.Txer, error) {
+		ok := script[call]
+		call++
+		if ok {
+			return mockTx, nil
+		}
+		return nil, fmt.Errorf("persistent step failure")
+	}).Maybe()
+	return data, captured, delays
+}
+
+func TestEVMMultidownloader_Start_StepErrorBackoff(t *testing.T) {
+	t.Run("delays grow by 2 from 100ms, cap at 10s, reset after a success, warns are bounded", func(t *testing.T) {
+		script := []bool{false, false, false, false, false, false, false, false, false, true, false}
+		data, captured, delays := setupStepRetryTest(t, script)
+
+		require.NoError(t, data.mdr.startNumLoops(context.Background(), len(script)))
+
+		require.Equal(t, []time.Duration{
+			100 * time.Millisecond, 200 * time.Millisecond, 400 * time.Millisecond, 800 * time.Millisecond,
+			1600 * time.Millisecond, 3200 * time.Millisecond, 6400 * time.Millisecond,
+			10 * time.Second, 10 * time.Second,
+			100 * time.Millisecond, // after the success the back-off restarts
+		}, *delays)
+		// 9 identical errors, one every 20 s of fake time, window 1 min: Warn at t=0, 60 s and 120 s
+		// (the success then emits one summary Warn for the suppressed repeats and resets the logger so the
+		// last error warns again)
+		require.Equal(t, 5, captured.warnCount())
+	})
+
+	t.Run("context cancelled during the sleep returns promptly", func(t *testing.T) {
+		data, captured, _ := setupStepRetryTest(t, []bool{false, false, false})
+		longBackoff, err := aggkitcommon.NewExponentialBackoff(aggkitcommon.ExponentialBackoffConfig{
+			Initial: time.Hour, Max: time.Hour, Factor: 2, Jitter: 0,
+		})
+		require.NoError(t, err)
+		data.mdr.startStepBackoff = longBackoff
+
+		done := make(chan error, 1)
+		go func() { done <- data.mdr.Start(context.Background()) }()
+		require.Eventually(t, func() bool { return captured.warnCount() == 1 }, 5*time.Second, time.Millisecond)
+
+		require.NoError(t, data.mdr.Stop(context.Background()))
+		select {
+		case startErr := <-done:
+			require.ErrorIs(t, startErr, context.Canceled)
+		case <-time.After(5 * time.Second):
+			require.FailNow(t, "Start did not return after cancellation during the back-off sleep")
+		}
+		require.Equal(t, 1, captured.warnCount(), "shutdown must not produce extra Warn")
+	})
+
+	t.Run("shutdown during a failing step produces no Warn", func(t *testing.T) {
+		data := newEVMMultidownloaderTestData(t, true)
+		data.FakeInitialized(t)
+		captured := &stepRetryCaptureLogger{}
+		data.mdr.log = captured
+		data.mdr.startStepErrLogger = aggkitcommon.NewRepeatedErrorLogger(captured, "step", startStepErrorLogWindow)
+		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+			Return(uint64(100), nil).Maybe()
+		ctx, cancel := context.WithCancel(context.Background())
+		data.mockStorage.EXPECT().NewTx(mock.Anything).RunAndReturn(func(context.Context) (dbtypes.Txer, error) {
+			cancel()
+			return nil, fmt.Errorf("step failure caused by shutdown")
+		}).Once()
+
+		err := data.mdr.Start(ctx)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, 0, captured.warnCount())
 	})
 }

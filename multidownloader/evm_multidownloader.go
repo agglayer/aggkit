@@ -32,6 +32,15 @@ const (
 	minChunkSize             = 1
 )
 
+// Back-off and log throttling applied by Start when StartStep fails with a non-reorg error.
+const (
+	startStepRetryInitialBackoff = 100 * time.Millisecond
+	startStepRetryMaxBackoff     = 10 * time.Second
+	startStepRetryBackoffFactor  = 2.0
+	startStepRetryBackoffJitter  = 0.2
+	startStepErrorLogWindow      = time.Minute
+)
+
 type EVMMultidownloader struct {
 	log                  aggkitcommon.Logger
 	cfg                  Config
@@ -52,6 +61,10 @@ type EVMMultidownloader struct {
 	isRunning     bool
 	wg            sync.WaitGroup
 	cancel        context.CancelFunc
+
+	// Retry policy of the Start loop on non-reorg errors (only used from the Start goroutine)
+	startStepBackoff   *aggkitcommon.ExponentialBackoff
+	startStepErrLogger *aggkitcommon.RepeatedErrorLogger
 
 	// Debug fields
 	debug *EVMMultidownloaderDebug
@@ -102,6 +115,19 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 		debug = NewEVMMultidownloaderDebug()
 	}
 
+	startStepBackoff, err := aggkitcommon.NewExponentialBackoff(aggkitcommon.ExponentialBackoffConfig{
+		Initial: startStepRetryInitialBackoff,
+		Max:     startStepRetryMaxBackoff,
+		Factor:  startStepRetryBackoffFactor,
+		Jitter:  startStepRetryBackoffJitter,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("NewEVMMultidownloader: cannot create step retry back-off: %w", err)
+	}
+	startStepErrLogger := aggkitcommon.NewRepeatedErrorLogger(log,
+		fmt.Sprintf("EVMMultidownloader(%s).Start: error running multidownloader step", name),
+		startStepErrorLogWindow)
+
 	return &EVMMultidownloader{
 		log:                  log,
 		ethClient:            ethClient,
@@ -114,6 +140,8 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 		name:                 name,
 		reorgProcessor:       reorgProcessor,
 		debug:                debug,
+		startStepBackoff:     startStepBackoff,
+		startStepErrLogger:   startStepErrLogger,
 	}, nil
 }
 
@@ -266,8 +294,12 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 		if err != nil {
 			reorgErr := mdrtypes.CastDetectedReorgError(err)
 			if reorgErr == nil {
-				dh.log.Warnf("Error running multidownloader: %s ", err.Error())
-				time.Sleep(time.Millisecond) // Brief pause before retry
+				if runCtx.Err() != nil {
+					continue // the loop top returns; no Warn on shutdown
+				}
+				dh.startStepErrLogger.Log(err)
+				// A sleep error means the context is done: the loop top returns.
+				_, _ = dh.startStepBackoff.Sleep(runCtx)
 				continue
 			}
 			dh.log.Warnf("Reorg detected: %s", reorgErr.Error())
@@ -299,6 +331,9 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 				dh.mutex.Unlock()
 				break
 			}
+		} else {
+			dh.startStepBackoff.Reset()
+			dh.startStepErrLogger.Reset()
 		}
 	}
 }
