@@ -2,12 +2,16 @@ package bridgedetector
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"time"
 
+	"github.com/agglayer/aggkit/autoclaim/metrics"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const (
@@ -110,7 +114,16 @@ type PollResult struct {
 	EnqueuedBridgeCount int
 	IgnoredBridgeCount  int
 	SkippedBridgeCount  int
-	CursorAdvanced      bool
+	// DeferredBridgeCount counts bridges of a destination that failed earlier in this poll: they were
+	// not evaluated and will be re-evaluated on the next poll.
+	DeferredBridgeCount int
+	// FailedDestinations lists, in ascending order, the destinations whose IsClaimed or Enqueue failed
+	// this poll.
+	FailedDestinations []uint32
+	// BackedOffDestinations lists, in ascending order, the destinations excluded from this poll because
+	// they are inside a back-off window after earlier failures.
+	BackedOffDestinations []uint32
+	CursorAdvanced        bool
 }
 
 // L1ToL2 is the bridge detector that discovers L1-initiated bridge exits and routes them to destination claimers.
@@ -127,6 +140,7 @@ type L1ToL2 struct {
 	etrogL1UpgradeBlock uint64
 	now                 func() time.Time
 	log                 aggkitcommon.Logger
+	backoff             *destinationBackoff
 }
 
 type destinationCursorState struct {
@@ -136,6 +150,8 @@ type destinationCursorState struct {
 	cursorFound bool
 	fromBlock   uint64
 	nextCursor  autoclaimtypes.BridgeCursor
+	// err is the first IsClaimed/Enqueue failure for this destination in the current poll (nil = healthy).
+	err error
 }
 
 // NewL1ToL2 creates an L1-to-L2 Auto Claim bridge detector.
@@ -172,6 +188,7 @@ func NewL1ToL2(
 	for _, option := range options {
 		option(detector)
 	}
+	detector.backoff = newDestinationBackoff(detector.pollPeriod, destinationBackoffMax, destinationBackoffJitter)
 
 	return detector, nil
 }
@@ -208,6 +225,12 @@ func (w *L1ToL2) Start(ctx context.Context) {
 // cursor does not roll back or gate a different group's already-persisted cursor. A single map[RequestKey]
 // deduplication set spans the whole poll (not per group), which stays correct because every RequestKey
 // embeds its destination and each destination belongs to exactly one group.
+//
+// Failures are isolated per destination: when IsClaimed or Enqueue fails for a destination, that
+// destination's remaining bridges in the window are deferred (not evaluated, not marked seen) and its
+// cursor is not saved, so the next poll re-evaluates them from the persisted cursor. The other
+// destinations of the same group keep processing and persist their cursors. All errors are returned
+// joined, and PollResult.FailedDestinations lists the failed destinations.
 func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 	if !w.enabled {
 		return &PollResult{}, nil
@@ -221,11 +244,14 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 		return &PollResult{}, nil
 	}
 
-	states, err := w.destinationCursorStates(ctx, lastProcessedBlock)
+	states, backedOff, err := w.destinationCursorStates(ctx, lastProcessedBlock)
 	if err != nil {
 		return nil, err
 	}
-	result := &PollResult{LastProcessedBlock: lastProcessedBlock}
+	result := &PollResult{LastProcessedBlock: lastProcessedBlock, BackedOffDestinations: backedOff}
+	// queried holds the destinations of the groups whose GetBridges succeeded.
+	queried := make(map[uint32]*destinationCursorState)
+	defer func() { w.updateBackoff(ctx, states, queried) }()
 	if len(states) == 0 {
 		return result, nil
 	}
@@ -233,7 +259,7 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 	groups := groupStatesByFromBlock(states)
 	seen := make(map[autoclaimtypes.RequestKey]struct{})
 
-	var firstErr error
+	var errs []error
 	firstWindow := true
 	for _, fromBlock := range orderedFromBlocks(groups) {
 		// A fromBlock beyond lastProcessedBlock means that group's destination(s) are already
@@ -261,12 +287,13 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 
 		bridges, err := w.bridgeSource.GetBridges(ctx, fromBlock, toBlock)
 		if err != nil {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("get l1 bridges from %d to %d: %w", fromBlock, toBlock, err)
-			}
+			errs = append(errs, fmt.Errorf("get l1 bridges from %d to %d: %w", fromBlock, toBlock, err))
 			continue
 		}
 		result.BridgeCount += len(bridges)
+		for destination, state := range groupStates {
+			queried[destination] = state
+		}
 
 		// Every bridge exit returned by l1bridgesync was initiated on L1, so there is no
 		// bridge-origin filter to apply here. The claim identity (and the request key) is keyed on
@@ -274,30 +301,25 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 		// exit.OriginNetwork (the bridged token's origin network, which can be any network for a
 		// wrapped token). A bridge whose destination is not part of this group (e.g. its window
 		// overlaps another group's) is ignored here and left for the group that owns it.
-		groupFailed := false
 		for _, bridge := range bridges {
 			exit := autoclaimtypes.NewBridgeExitFromSyncWithEtrog(bridge, w.etrogL1UpgradeBlock)
 			if err := w.processBridge(ctx, exit, groupStates, seen, result); err != nil {
-				if firstErr == nil {
-					firstErr = err
-				}
-				groupFailed = true
-				break
+				errs = append(errs, fmt.Errorf("destination %d: %w", exit.DestinationNetwork, err))
 			}
-		}
-		if groupFailed {
-			continue
 		}
 
 		if err := w.saveCursors(ctx, groupStates, result); err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
+			errs = append(errs, err)
 		}
 	}
 
-	return result, firstErr
+	for _, state := range orderedStates(states) {
+		if state.err != nil {
+			result.FailedDestinations = append(result.FailedDestinations, state.claimer.Target().DestinationNetwork)
+		}
+	}
+
+	return result, errors.Join(errs...)
 }
 
 // processBridge evaluates a single bridge exit and enqueues it for claiming when appropriate.
@@ -305,6 +327,10 @@ func (w *L1ToL2) PollOnce(ctx context.Context) (*PollResult, error) {
 // bridge whose destination is owned by a different group's window (e.g. two windows overlap) is
 // tallied via the same unknown-destination path as a truly unknown destination: it is ignored here
 // and left for the group that owns it to enqueue exactly once.
+// A destination that already failed in this poll (state.err != nil) defers its later bridges: they are
+// counted in result.DeferredBridgeCount, neither marked seen nor used to advance the cursor, and
+// nil is returned. The first IsClaimed/Enqueue failure of a destination is recorded in state.err and
+// returned; it never affects other destinations.
 // It updates result counters and the seen deduplication map in place.
 func (w *L1ToL2) processBridge(
 	ctx context.Context,
@@ -323,6 +349,11 @@ func (w *L1ToL2) processBridge(
 		return nil
 	}
 
+	if state.err != nil {
+		result.DeferredBridgeCount++
+		return nil
+	}
+
 	state.nextCursor = maxCursorPosition(state.nextCursor, exit.BlockNum, exit.BlockPos)
 
 	// The source network is always L1 (network 0) for L1-initiated exits, independent of the
@@ -337,7 +368,8 @@ func (w *L1ToL2) processBridge(
 
 	claimed, err := state.claimer.IsClaimed(ctx, exit)
 	if err != nil {
-		return fmt.Errorf("check l1 bridge %s target claim state: %w", key, err)
+		state.err = fmt.Errorf("check l1 bridge %s target claim state: %w", key, err)
+		return state.err
 	}
 	if claimed {
 		result.IgnoredBridgeCount++
@@ -346,7 +378,8 @@ func (w *L1ToL2) processBridge(
 
 	result.MatchedBridgeCount++
 	if err := state.claimer.Enqueue(ctx, exit); err != nil {
-		return fmt.Errorf("enqueue l1 bridge %s to claimer %s: %w", key, state.claimer.Target().ID, err)
+		state.err = fmt.Errorf("enqueue l1 bridge %s to claimer %s: %w", key, state.claimer.Target().ID, err)
+		return state.err
 	}
 	result.EnqueuedBridgeCount++
 	return nil
@@ -370,13 +403,18 @@ func bridgeFilteredByPosition(exit autoclaimtypes.BridgeExit, state *destination
 // saveCursors persists the advanced cursor for every destination state in states, which is scoped to
 // a single window group by the caller. A destination whose cursor is saved here keeps that write even
 // if a save for a different group fails later in the same poll: persistence is per-group, never rolled
-// back or gated by another group's outcome.
+// back or gated by another group's outcome. Destinations that failed during this poll (state.err != nil)
+// are skipped, so their persisted cursor stays unchanged and their bridges are re-evaluated next poll.
+// A SaveBridgeCursor error stops the loop and is returned.
 func (w *L1ToL2) saveCursors(
 	ctx context.Context,
 	states map[uint32]*destinationCursorState,
 	result *PollResult,
 ) error {
 	for _, state := range orderedStates(states) {
+		if state.err != nil {
+			continue
+		}
 		if err := w.cursorStore.SaveBridgeCursor(ctx, state.cursorName, state.nextCursor, w.now()); err != nil {
 			return fmt.Errorf("save autoclaim l1-to-l2 bridge detector cursor %s: %w", state.cursorName, err)
 		}
@@ -385,24 +423,67 @@ func (w *L1ToL2) saveCursors(
 	return nil
 }
 
+// updateBackoff feeds the outcome of a poll into the per-destination back-off tracker: a destination of a
+// group whose GetBridges succeeded and that did not fail is reset, and a destination that failed opens its
+// next back-off window (one Warn per window). When ctx is done the failure may be a cancellation artefact,
+// so the tracker is left untouched.
+func (w *L1ToL2) updateBackoff(
+	ctx context.Context,
+	states map[uint32]*destinationCursorState,
+	queried map[uint32]*destinationCursorState,
+) {
+	defer func() { metrics.SetStalledDestinations(metrics.DetectorL1ToL2, w.backoff.stalledCount()) }()
+	for _, state := range orderedStates(states) {
+		dest := state.claimer.Target().DestinationNetwork
+		if state.err == nil {
+			if _, ok := queried[dest]; ok {
+				w.backoff.recordSuccess(dest)
+			}
+			continue
+		}
+		if ctx.Err() != nil {
+			continue
+		}
+		window, attempt := w.backoff.recordFailure(dest, state.err, w.now())
+		metrics.IncDestinationError(metrics.DetectorL1ToL2, dest)
+		var httpErr rpc.HTTPError
+		if errors.As(state.err, &httpErr) && httpErr.StatusCode == http.StatusTooManyRequests {
+			w.logWarnf("autoclaim l1-to-l2 bridge detector: detection for destination %d paused for %s "+
+				"after rate limiting (HTTP 429, attempt %d): %v", dest, window, attempt, state.err)
+		} else {
+			w.logWarnf("autoclaim l1-to-l2 bridge detector: detection for destination %d paused for %s "+
+				"after error (attempt %d): %v", dest, window, attempt, state.err)
+		}
+	}
+}
+
+// destinationCursorStates builds the cursor state of every registered destination that is not inside a
+// back-off window. The skipped destinations are returned, in ascending order, as the second value.
 func (w *L1ToL2) destinationCursorStates(
 	ctx context.Context,
 	lastProcessedBlock uint64,
-) (map[uint32]*destinationCursorState, error) {
+) (map[uint32]*destinationCursorState, []uint32, error) {
 	claimers, err := w.registry.Claimers(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list autoclaim l1-to-l2 bridge detector claimers: %w", err)
+		return nil, nil, fmt.Errorf("list autoclaim l1-to-l2 bridge detector claimers: %w", err)
 	}
 	states := make(map[uint32]*destinationCursorState, len(claimers))
+	var backedOff []uint32
 	for _, runtimeClaimer := range claimers {
 		if runtimeClaimer == nil {
-			return nil, fmt.Errorf("autoclaim l1-to-l2 bridge detector registry returned nil claimer")
+			return nil, nil, fmt.Errorf("autoclaim l1-to-l2 bridge detector registry returned nil claimer")
 		}
 		target := runtimeClaimer.Target()
+		if w.backoff.shouldSkip(target.DestinationNetwork, w.now()) {
+			w.logDebugf("autoclaim l1-to-l2 bridge detector: skipping destination %d, backed off until %s",
+				target.DestinationNetwork, w.backoff.skipUntil(target.DestinationNetwork))
+			backedOff = append(backedOff, target.DestinationNetwork)
+			continue
+		}
 		cursorName := w.cursorNameForDestination(target.DestinationNetwork)
 		cursor, cursorFound, err := w.cursorStore.GetBridgeCursor(ctx, cursorName)
 		if err != nil {
-			return nil, fmt.Errorf("get autoclaim l1-to-l2 bridge detector cursor %s: %w", cursorName, err)
+			return nil, nil, fmt.Errorf("get autoclaim l1-to-l2 bridge detector cursor %s: %w", cursorName, err)
 		}
 		states[target.DestinationNetwork] = &destinationCursorState{
 			claimer:     runtimeClaimer,
@@ -412,7 +493,8 @@ func (w *L1ToL2) destinationCursorStates(
 			fromBlock:   w.nextFromBlock(cursor, cursorFound, lastProcessedBlock),
 		}
 	}
-	return states, nil
+	sort.Slice(backedOff, func(i, j int) bool { return backedOff[i] < backedOff[j] })
+	return states, backedOff, nil
 }
 
 func (w *L1ToL2) cursorNameForDestination(destinationNetwork uint32) string {
@@ -494,6 +576,18 @@ func (w *L1ToL2) nextFromBlock(
 func (w *L1ToL2) logErrorf(format string, args ...interface{}) {
 	if w.log != nil {
 		w.log.Errorf(format, args...)
+	}
+}
+
+func (w *L1ToL2) logWarnf(format string, args ...interface{}) {
+	if w.log != nil {
+		w.log.Warnf(format, args...)
+	}
+}
+
+func (w *L1ToL2) logDebugf(format string, args ...interface{}) {
+	if w.log != nil {
+		w.log.Debugf(format, args...)
 	}
 }
 

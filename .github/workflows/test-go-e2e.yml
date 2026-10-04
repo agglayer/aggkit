@@ -75,7 +75,7 @@ jobs:
           # a primary failure cascade into otherwise unrelated bridge tests.
           - env: anvil-2chains
             group: autoclaim
-            run: "^(TestAutoClaimL1ToL2AllowAll|TestAutoClaimL1ToL2APIApprove|TestAutoClaimL1ToL2BasicFilter|TestAutoClaimL2ToL1AllowAll|TestAutoClaimL2ToL2AllowAll)$"
+            run: "^(TestAutoClaimL1ToL2AllowAll|TestAutoClaimL1ToL2APIApprove|TestAutoClaimL1ToL2BasicFilter|TestAutoClaimL2ToL1AllowAll|TestAutoClaimL2ToL2AllowAll|TestAutoClaimL1ToL2FailingDestinationIsolated)$"
           - env: anvil-2chains
             group: bridge
             run: "^(TestJustBridge|TestBridgeL2ToL2|TestBridgeTrackerL1ToL2)$"

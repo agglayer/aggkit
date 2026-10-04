@@ -5,17 +5,22 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	autoclaimmetrics "github.com/agglayer/aggkit/autoclaim/metrics"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	commonmocks "github.com/agglayer/aggkit/common/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/prometheus"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -1582,4 +1587,405 @@ func (e *fakeEnqueuer) EnqueueRequest(
 	e.requests[request.Key] = request
 	e.order = append(e.order, request)
 	return &request, true, nil
+}
+
+// --- S23: per-destination isolation and back-off ---
+
+const (
+	isoSource   uint32 = 1
+	isoFailing  uint32 = 10
+	isoHealthy  uint32 = 11
+	isoClaimed  uint32 = 12
+	isoVerify          = uint64(40)
+	isoFirstTo         = isoVerify - 1 // block cursor held just before the source's verify row
+	isoLastBlck        = uint64(50)
+)
+
+// destinationFilteringFetcher wraps fakeFetcher and, like the real bridge service, only returns the
+// candidates whose destination is in the query's DestinationNetworkIDs (with a matching count).
+type destinationFilteringFetcher struct {
+	*fakeFetcher
+}
+
+func (f *destinationFilteringFetcher) GetClaimCandidates(
+	ctx context.Context, query ClaimCandidatesQuery,
+) ([]ClaimCandidate, int, error) {
+	candidates, _, err := f.fakeFetcher.GetClaimCandidates(ctx, query)
+	if err != nil {
+		return nil, 0, err
+	}
+	wanted := make(map[uint32]struct{}, len(query.DestinationNetworkIDs))
+	for _, destination := range query.DestinationNetworkIDs {
+		wanted[destination] = struct{}{}
+	}
+	filtered := make([]ClaimCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if _, ok := wanted[candidate.Bridge.DestinationNetwork]; ok {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered, len(filtered), nil
+}
+
+type isolationFixture struct {
+	detector    *L2ToLx
+	fetcher     *destinationFilteringFetcher
+	registry    *fakeRegistry
+	failing     *fakeClaimer
+	healthy     *fakeClaimer
+	claimed     *fakeClaimer
+	lerStore    *fakePerPairLERStore
+	cursorStore *memoryCursorStore
+	enqueuer    *fakeEnqueuer
+	log         *capturingLogger
+	clock       *time.Time
+	lerX, lerY  common.Hash
+	// published maps a source LER to every candidate the source published up to (and including) it.
+	published map[common.Hash][]ClaimCandidate
+}
+
+// newIsolationFixture builds one source whose three destination pairs share from_ler = lerX and whose
+// newest LER lerY (verify row at block 40) carries two candidates for the failing destination, one for
+// the healthy destination and one for a destination where the bridge is already claimed.
+func newIsolationFixture(t *testing.T, failure error) *isolationFixture {
+	t.Helper()
+	f := &isolationFixture{
+		failing: &fakeClaimer{
+			target:   autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: isoFailing},
+			claimErr: failure,
+		},
+		healthy:  &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer11ID, DestinationNetwork: isoHealthy}},
+		claimed:  &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-12", DestinationNetwork: isoClaimed}, claimed: true},
+		lerStore: newFakePerPairLERStore(),
+		enqueuer: newFakeEnqueuer(),
+		log:      &capturingLogger{},
+		lerX:     lerHash(20),
+		lerY:     lerHash(30),
+	}
+	clock := testNow
+	f.clock = &clock
+	f.registry = newFakeRegistry(f.failing, f.healthy, f.claimed)
+	f.cursorStore = newMemoryCursorStore()
+
+	candidates := []ClaimCandidate{
+		makeCandidate(5, isoFailing), makeCandidate(6, isoFailing),
+		makeCandidate(7, isoHealthy), makeCandidate(8, isoClaimed),
+	}
+	f.published = map[common.Hash][]ClaimCandidate{f.lerX: nil, f.lerY: candidates}
+	f.fetcher = &destinationFilteringFetcher{fakeFetcher: newFakeFetcher()}
+	f.fetcher.urls[isoSource] = fakeSrcURL1
+	f.fetcher.setPageForLER(fakeSrcURL1, &f.lerX, 1, candidates, len(candidates))
+
+	for _, destination := range []uint32{isoFailing, isoHealthy, isoClaimed} {
+		f.lerStore.set(isoSource, destination, autoclaimtypes.LERCursor{
+			SourceNetwork: isoSource, DestinationNetwork: destination, LastLER: f.lerX, LastVerifyBlockNum: 5,
+		})
+	}
+
+	row := makeVerifyRow(isoSource, f.lerY, isoVerify)
+	source := &fakeVerifiedBatchSource{
+		lastProcessedBlock: isoLastBlck,
+		rowsByRange: map[blockRange][]*l1infotreesync.VerifyBatches{
+			{from: 0, to: 49}:                   {row},
+			{from: isoFirstTo, to: isoLastBlck}: {row}, // re-observed window (overlap 1) while the cursor is held
+		},
+	}
+	f.detector = newTestL2ToLxDetector(t, source, f.fetcher, f.registry, f.cursorStore, f.lerStore, f.enqueuer,
+		WithL2ToLxBlockWindow(50), WithL2ToLxLogger(f.log), WithL2ToLxNow(func() time.Time { return *f.clock }))
+	f.detector.backoff = newDestinationBackoff(time.Second, 2*time.Minute, 0)
+	return f
+}
+
+func (f *isolationFixture) pairLER(t *testing.T, destination uint32) common.Hash {
+	t.Helper()
+	cursor, found, err := f.lerStore.GetLERCursor(context.Background(), isoSource, destination)
+	require.NoError(t, err)
+	require.True(t, found)
+	return cursor.LastLER
+}
+
+func (f *isolationFixture) blockCursorTo(t *testing.T) uint64 {
+	t.Helper()
+	cursor, ok := f.cursorStore.cursors[defaultL2ToLxCursorName]
+	require.True(t, ok)
+	return cursor.ToBlock
+}
+
+// requireLERCursorInvariant asserts the S23 safety invariant: for every persisted LER pair cursor, every
+// candidate the source published up to that cursor's LER for that destination was enqueued or is already
+// claimed on the destination. A pair cursor therefore never moves past an un-enqueued candidate.
+func requireLERCursorInvariant(t *testing.T, f *isolationFixture) {
+	t.Helper()
+	require.NotEmpty(t, f.lerStore.cursors)
+	for key, cursor := range f.lerStore.cursors {
+		sourceID, destination := key[0], key[1]
+		upTo, known := f.published[cursor.LastLER]
+		require.True(t, known, "pair (%d, %d) cursor points at an unknown LER %s", sourceID, destination, cursor.LastLER)
+		for _, candidate := range upTo {
+			if candidate.Bridge.DestinationNetwork != destination {
+				continue
+			}
+			requestKey := autoclaimtypes.DeriveRequestKey(sourceID, destination, candidate.Bridge.DepositCount)
+			_, enqueued := f.enqueuer.requests[requestKey]
+			claimer := f.registry.claimers[destination]
+			alreadyClaimed := claimer != nil && claimer.claimed
+			require.True(t, enqueued || alreadyClaimed,
+				"pair (%d, %d) cursor at %s is past candidate %s, which was neither enqueued nor already claimed",
+				sourceID, destination, cursor.LastLER, requestKey)
+		}
+	}
+}
+
+func TestL2ToLx_FailingDestinationIsIsolated(t *testing.T) {
+	ctx := context.Background()
+	claimErr := errors.New("destination rpc down")
+	f := newIsolationFixture(t, claimErr)
+
+	result, err := f.detector.PollOnce(ctx)
+	require.ErrorIs(t, err, claimErr)
+	require.ErrorContains(t, err, fmt.Sprintf("destination %d:", isoFailing))
+	require.True(t, result.CursorAdvanced, "a per-destination failure still saves the (held) block cursor")
+	require.Equal(t, []uint32{isoFailing}, result.FailedDestinations)
+	require.Empty(t, result.BackedOffDestinations)
+	require.Equal(t, 1, result.DeferredCandidateCount, "the failing destination's second candidate is deferred")
+	require.Len(t, f.failing.claimChecks, 1, "no IsClaimed call after the destination failed")
+	require.Equal(t, 1, result.SkippedSourceCount)
+	require.Equal(t, 0, result.ProcessedSourceCount)
+
+	// One query for the shared from_ler group.
+	require.Len(t, f.fetcher.queries, 1)
+	require.Equal(t, []uint32{isoFailing, isoHealthy, isoClaimed}, f.fetcher.queries[0].DestinationNetworkIDs)
+
+	// The healthy destination's candidate is enqueued and its pair advances; the already-claimed pair
+	// advances too; the failing pair stays.
+	_, enqueued := f.enqueuer.requests[autoclaimtypes.DeriveRequestKey(isoSource, isoHealthy, 7)]
+	require.True(t, enqueued)
+	require.Len(t, f.enqueuer.order, 1)
+	require.Equal(t, f.lerY, f.pairLER(t, isoHealthy))
+	require.Equal(t, f.lerY, f.pairLER(t, isoClaimed))
+	require.Equal(t, f.lerX, f.pairLER(t, isoFailing))
+
+	// The block cursor is held just before the source's verify row.
+	require.Equal(t, isoFirstTo, f.blockCursorTo(t))
+
+	require.Len(t, f.log.warns, 1)
+	require.Contains(t, f.log.warns[0], "autoclaim l2-to-lx bridge detector: detection for destination 10 "+
+		"paused for 1s after error (attempt 1)")
+	require.Equal(t, 1, f.detector.backoff.stalledCount())
+	requireLERCursorInvariant(t, f)
+}
+
+// TestL2ToLx_DestinationFailingAfterSomeCandidatesEnqueued covers a destination whose claim-state check fails
+// on its second candidate: the first one is enqueued, the pair cursor stays, and once the destination
+// recovers the first is re-enqueued idempotently before the cursor advances.
+func TestL2ToLx_DestinationFailingAfterSomeCandidatesEnqueued(t *testing.T) {
+	ctx := context.Background()
+	f := newIsolationFixture(t, nil)
+	failure := errors.New("destination rpc down")
+	f.failing.claimErr, f.failing.claimErrFrom = failure, 2
+
+	result, err := f.detector.PollOnce(ctx)
+	require.ErrorIs(t, err, failure)
+	require.Equal(t, []uint32{isoFailing}, result.FailedDestinations)
+	_, enqueued := f.enqueuer.requests[autoclaimtypes.DeriveRequestKey(isoSource, isoFailing, 5)]
+	require.True(t, enqueued, "the first candidate was enqueued before the failure")
+	_, enqueued = f.enqueuer.requests[autoclaimtypes.DeriveRequestKey(isoSource, isoFailing, 6)]
+	require.False(t, enqueued)
+	require.Equal(t, f.lerX, f.pairLER(t, isoFailing), "the pair cursor does not move")
+	require.Equal(t, isoFirstTo, f.blockCursorTo(t))
+	requireLERCursorInvariant(t, f)
+
+	f.failing.claimErr = nil
+	*f.clock = testNow.Add(time.Second)
+	_, err = f.detector.PollOnce(ctx)
+	require.NoError(t, err)
+	for _, deposit := range []uint32{5, 6} {
+		_, enqueued = f.enqueuer.requests[autoclaimtypes.DeriveRequestKey(isoSource, isoFailing, deposit)]
+		require.True(t, enqueued)
+	}
+	require.Len(t, f.enqueuer.order, 3, "failing deposits 5 and 6 plus the healthy one, each enqueued once")
+	require.Equal(t, f.lerY, f.pairLER(t, isoFailing))
+	requireLERCursorInvariant(t, f)
+}
+
+// TestL2ToLx_SoftFailureRecordedWhenGroupAlsoHitsHardError covers a fetch group where one destination's
+// claim-state check fails (soft) and a later enqueue fails with a hard error: the soft failure must still
+// open the destination's back-off window.
+func TestL2ToLx_SoftFailureRecordedWhenGroupAlsoHitsHardError(t *testing.T) {
+	ctx := context.Background()
+	soft := errors.New("destination rpc down")
+	hard := errors.New("local db down")
+	f := newIsolationFixture(t, soft)
+	f.enqueuer.errForDestination = map[uint32]error{isoHealthy: hard}
+
+	result, err := f.detector.PollOnce(ctx)
+	require.ErrorIs(t, err, hard)
+	require.Equal(t, []uint32{isoFailing}, result.FailedDestinations)
+	require.Equal(t, 1, f.detector.backoff.stalledCount(), "the soft failure opens a back-off window")
+	require.Len(t, f.log.warns, 1)
+	require.Contains(t, f.log.warns[0], "detection for destination 10 paused for 1s")
+	require.Equal(t, f.lerX, f.pairLER(t, isoFailing))
+	require.Equal(t, f.lerX, f.pairLER(t, isoHealthy), "nothing advances in the group that hit the hard error")
+	requireLERCursorInvariant(t, f)
+}
+
+func TestL2ToLx_BackedOffDestinationHoldsBlockCursor(t *testing.T) {
+	ctx := context.Background()
+	f := newIsolationFixture(t, errors.New("boom"))
+
+	_, err := f.detector.PollOnce(ctx)
+	require.Error(t, err)
+	queries := len(f.fetcher.queries)
+
+	// Same clock, then just before the window ends: the destination is backed off, nothing is fetched,
+	// and the source still holds the block cursor at the verify row.
+	for _, at := range []time.Time{testNow, testNow.Add(time.Second - time.Nanosecond)} {
+		*f.clock = at
+		result, err := f.detector.PollOnce(ctx)
+		require.NoError(t, err)
+		require.Equal(t, []uint32{isoFailing}, result.BackedOffDestinations)
+		require.Empty(t, result.FailedDestinations)
+		require.Equal(t, 1, result.NewLERSourceCount)
+		require.Equal(t, 1, result.SkippedSourceCount)
+		require.Equal(t, 0, result.ProcessedSourceCount)
+		require.Len(t, f.fetcher.queries, queries, "a backed-off pair is not fetched")
+		require.Len(t, f.failing.claimChecks, 1, "no IsClaimed call while backed off")
+		require.Equal(t, isoFirstTo, f.blockCursorTo(t), "the block cursor stays held at the verify row")
+		require.Equal(t, f.lerX, f.pairLER(t, isoFailing))
+		requireLERCursorInvariant(t, f)
+	}
+	require.Len(t, f.log.warns, 1, "no Warn while backed off")
+	require.Len(t, f.log.debugs, 2)
+	require.Contains(t, f.log.debugs[0],
+		"autoclaim l2-to-lx bridge detector: skipping destination 10, backed off until")
+}
+
+func TestL2ToLx_FailedDestinationRetriedAloneAfterWindow(t *testing.T) {
+	ctx := context.Background()
+	f := newIsolationFixture(t, errors.New("boom"))
+
+	_, err := f.detector.PollOnce(ctx)
+	require.Error(t, err)
+	queries := len(f.fetcher.queries)
+
+	f.failing.claimErr = nil
+	*f.clock = testNow.Add(time.Second)
+	result, err := f.detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Empty(t, result.BackedOffDestinations)
+	require.Empty(t, result.FailedDestinations)
+	require.Equal(t, 1, result.ProcessedSourceCount)
+
+	// Only the failed destination's own group is re-fetched, from its unchanged pair cursor.
+	require.Len(t, f.fetcher.queries, queries+1)
+	retry := f.fetcher.queries[queries]
+	require.Equal(t, []uint32{isoFailing}, retry.DestinationNetworkIDs)
+	require.NotNil(t, retry.FromLER)
+	require.Equal(t, f.lerX, *retry.FromLER)
+
+	for _, deposit := range []uint32{5, 6} {
+		_, enqueued := f.enqueuer.requests[autoclaimtypes.DeriveRequestKey(isoSource, isoFailing, deposit)]
+		require.True(t, enqueued)
+	}
+	require.Equal(t, f.lerY, f.pairLER(t, isoFailing))
+	require.Equal(t, isoLastBlck, f.blockCursorTo(t), "the block cursor moves on once the destination recovered")
+	require.Equal(t, 0, f.detector.backoff.stalledCount())
+	requireLERCursorInvariant(t, f)
+}
+
+func TestL2ToLx_BackoffWindowsGrowAndSuccessResets(t *testing.T) {
+	ctx := context.Background()
+	f := newIsolationFixture(t, errors.New("boom"))
+
+	for i, window := range []time.Duration{time.Second, 2 * time.Second, 4 * time.Second} {
+		result, err := f.detector.PollOnce(ctx)
+		require.Error(t, err)
+		require.Equal(t, []uint32{isoFailing}, result.FailedDestinations)
+		require.Len(t, f.log.warns, i+1)
+		require.Contains(t, f.log.warns[i], "paused for "+window.String())
+		require.Contains(t, f.log.warns[i], fmt.Sprintf("after error (attempt %d)", i+1))
+		require.Equal(t, f.clock.Add(window), f.detector.backoff.skipUntil(isoFailing))
+		require.Equal(t, isoFirstTo, f.blockCursorTo(t))
+		requireLERCursorInvariant(t, f)
+		*f.clock = f.clock.Add(window)
+	}
+
+	f.failing.claimErr = nil
+	result, err := f.detector.PollOnce(ctx)
+	require.NoError(t, err)
+	require.Empty(t, result.FailedDestinations)
+	require.Equal(t, 0, f.detector.backoff.stalledCount(), "success resets the back-off")
+	require.Len(t, f.log.warns, 3)
+	requireLERCursorInvariant(t, f)
+
+	// A new failure starts again from the initial window.
+	window, attempt := f.detector.backoff.recordFailure(isoFailing, errors.New("again"), *f.clock)
+	require.Equal(t, time.Second, window)
+	require.Equal(t, 1, attempt)
+}
+
+func TestL2ToLx_BackoffRateLimitedUsesHTTP429Wording(t *testing.T) {
+	ctx := context.Background()
+	f := newIsolationFixture(t, rpc.HTTPError{StatusCode: http.StatusTooManyRequests, Status: "429 Too Many Requests"})
+
+	_, err := f.detector.PollOnce(ctx)
+	require.Error(t, err)
+	require.Len(t, f.log.warns, 1)
+	require.Contains(t, f.log.warns[0], "autoclaim l2-to-lx bridge detector: detection for destination 10 "+
+		"paused for 1s after rate limiting (HTTP 429, attempt 1)")
+}
+
+func TestL2ToLx_BackoffNotUpdatedWhenContextCancelled(t *testing.T) {
+	f := newIsolationFixture(t, errors.New("boom"))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, err := f.detector.PollOnce(ctx)
+	require.Error(t, err)
+	require.Equal(t, []uint32{isoFailing}, result.FailedDestinations)
+	require.Equal(t, 0, f.detector.backoff.stalledCount())
+	require.Empty(t, f.log.warns)
+	require.Equal(t, f.lerX, f.pairLER(t, isoFailing))
+	requireLERCursorInvariant(t, f)
+}
+
+func TestL2ToLx_BackoffMetrics(t *testing.T) {
+	prometheus.Init()
+	autoclaimmetrics.Register()
+	ctx := context.Background()
+	f := newIsolationFixture(t, errors.New("boom"))
+
+	gauge, ok := prometheus.Gauge("l2_to_lx_stalled_destinations") // the wrapper keys series by bare name
+	require.True(t, ok)
+	vec, ok := prometheus.CounterVec("detector_destination_errors_total")
+	require.True(t, ok)
+	errCounter := vec.WithLabelValues(string(autoclaimmetrics.DetectorL2ToLx), "10")
+	before := testutil.ToFloat64(errCounter) // counters are process-global: assert deltas
+
+	steps := []struct {
+		name       string
+		recover    bool
+		advance    time.Duration
+		wantErr    bool
+		wantGauge  float64
+		wantErrInc float64
+	}{
+		{name: "failure opens a window", wantErr: true, wantGauge: 1, wantErrInc: 1},
+		{name: "poll inside the window adds nothing", wantGauge: 1, wantErrInc: 1},
+		{name: "recovery clears the gauge", recover: true, advance: time.Second, wantGauge: 0, wantErrInc: 1},
+	}
+	for _, step := range steps {
+		if step.recover {
+			f.failing.claimErr = nil
+		}
+		*f.clock = f.clock.Add(step.advance)
+		_, err := f.detector.PollOnce(ctx)
+		if step.wantErr {
+			require.Error(t, err, step.name)
+		} else {
+			require.NoError(t, err, step.name)
+		}
+		require.Equal(t, step.wantGauge, testutil.ToFloat64(gauge), step.name)
+		require.Equal(t, before+step.wantErrInc, testutil.ToFloat64(errCounter), step.name)
+	}
 }

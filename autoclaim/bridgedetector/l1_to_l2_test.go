@@ -656,6 +656,154 @@ func TestL1ToL2_IgnoresBridgeOutsideOwnWindowWithoutDoubleEnqueue(t *testing.T) 
 	require.Len(t, claimerB.enqueued, 1, "destination B must receive exactly one enqueue, not one per overlapping window")
 }
 
+// TestL1ToL2_FailingDestinationDoesNotBlockOthersInGroup proves that an IsClaimed or Enqueue failure
+// for one destination of a window group neither blocks the other destinations of that group nor lets
+// the failed destination's cursor advance past a bridge that was not enqueued.
+func TestL1ToL2_FailingDestinationDoesNotBlockOthersInGroup(t *testing.T) {
+	failure := errors.New("claimer failure")
+	tests := []struct {
+		name  string
+		setup func(c *fakeClaimer)
+	}{
+		{name: "IsClaimed error", setup: func(c *fakeClaimer) { c.claimErr = failure }},
+		{name: "Enqueue error", setup: func(c *fakeClaimer) { c.err = failure }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			bridges := []bridgesync.Bridge{
+				makeSyncBridge(1, autoclaimtypes.L1OriginNetwork, 10, 2, 0),
+				makeSyncBridge(2, autoclaimtypes.L1OriginNetwork, 11, 3, 0),
+				makeSyncBridge(3, autoclaimtypes.L1OriginNetwork, 12, 4, 0),
+				makeSyncBridge(4, autoclaimtypes.L1OriginNetwork, 10, 5, 0),
+				makeSyncBridge(5, autoclaimtypes.L1OriginNetwork, 11, 6, 0),
+				makeSyncBridge(6, autoclaimtypes.L1OriginNetwork, 10, 7, 0),
+				makeSyncBridge(7, autoclaimtypes.L1OriginNetwork, 12, 8, 0),
+			}
+			source := &fakeBridgeSource{
+				lastProcessedBlock: 10,
+				found:              true,
+				bridgesByRange:     map[blockRange][]bridgesync.Bridge{{from: 1, to: 10}: bridges},
+			}
+			store := newMemoryCursorStore()
+			failing := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
+			tt.setup(failing)
+			healthyY := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer11ID, DestinationNetwork: 11}}
+			healthyZ := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: "claimer-12", DestinationNetwork: 12}}
+			detector := newTestDetector(
+				t, source, store, newFakeRegistry(failing, healthyY, healthyZ),
+				WithStartBlock(0), WithBlockWindow(10), WithOverlapBlocks(0),
+			)
+			seeded := autoclaimtypes.BridgeCursor{FromBlock: 0, ToBlock: 0, BlockNum: 0}
+			for _, dest := range []uint32{10, 11, 12} {
+				store.cursors[detector.cursorNameForDestination(dest)] = seeded
+			}
+
+			result, err := detector.PollOnce(ctx)
+			require.ErrorIs(t, err, failure)
+			require.ErrorContains(t, err, "destination 10")
+			require.Equal(t, []uint32{10}, result.FailedDestinations)
+			require.Equal(t, 2, result.DeferredBridgeCount, "bridges 4 and 6 of the failed destination are deferred")
+			require.True(t, result.CursorAdvanced)
+
+			require.Len(t, healthyY.enqueued, 2)
+			require.Len(t, healthyZ.enqueued, 2)
+			require.Equal(t, uint64(10), store.cursors[detector.cursorNameForDestination(11)].ToBlock)
+			require.Equal(t, uint64(10), store.cursors[detector.cursorNameForDestination(12)].ToBlock)
+
+			require.Empty(t, failing.enqueued)
+			require.Len(t, failing.claimChecks, 1, "later bridges of the failed destination must not be evaluated")
+			require.Equal(t, seeded, store.cursors[detector.cursorNameForDestination(10)])
+
+			claimers := map[uint32]*fakeClaimer{10: failing, 11: healthyY, 12: healthyZ}
+			for dest, claimer := range claimers {
+				cursor := store.cursors[detector.cursorNameForDestination(dest)]
+				for _, bridge := range bridges {
+					if bridge.DestinationNetwork != dest || bridge.BlockNum > cursor.BlockNum {
+						continue
+					}
+					enqueued := false
+					for _, exit := range claimer.enqueued {
+						enqueued = enqueued || exit.DepositCount == bridge.DepositCount
+					}
+					require.True(t, enqueued,
+						"cursor of destination %d advanced past non-enqueued bridge %d", dest, bridge.DepositCount)
+				}
+			}
+		})
+	}
+}
+
+// TestL1ToL2_DestinationFailingAfterSomeBridgesEnqueued covers a destination that fails after part of its
+// bridges were enqueued: its cursor must not move, and once it recovers the earlier bridges are
+// re-enqueued idempotently before the cursor advances.
+func TestL1ToL2_DestinationFailingAfterSomeBridgesEnqueued(t *testing.T) {
+	failure := errors.New("claimer failure")
+	tests := []struct {
+		name  string
+		setup func(c *fakeClaimer)
+		clear func(c *fakeClaimer)
+	}{
+		{
+			name:  "IsClaimed error on the second bridge",
+			setup: func(c *fakeClaimer) { c.claimErr, c.claimErrFrom = failure, 2 },
+			clear: func(c *fakeClaimer) { c.claimErr = nil },
+		},
+		{
+			name:  "Enqueue error on the second bridge",
+			setup: func(c *fakeClaimer) { c.err, c.enqueueErrFrom = failure, 2 },
+			clear: func(c *fakeClaimer) { c.err = nil },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			bridges := []bridgesync.Bridge{
+				makeSyncBridge(1, autoclaimtypes.L1OriginNetwork, 10, 2, 0),
+				makeSyncBridge(2, autoclaimtypes.L1OriginNetwork, 11, 3, 0),
+				makeSyncBridge(4, autoclaimtypes.L1OriginNetwork, 10, 5, 0),
+				makeSyncBridge(6, autoclaimtypes.L1OriginNetwork, 10, 7, 0),
+			}
+			source := &fakeBridgeSource{
+				lastProcessedBlock: 10,
+				found:              true,
+				bridgesByRange:     map[blockRange][]bridgesync.Bridge{{from: 1, to: 10}: bridges},
+			}
+			store := newMemoryCursorStore()
+			failing := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer10ID, DestinationNetwork: 10}}
+			tt.setup(failing)
+			healthy := &fakeClaimer{target: autoclaimtypes.ClaimerTarget{ID: fakeClaimer11ID, DestinationNetwork: 11}}
+			clock := testNow
+			detector := newTestDetector(t, source, store, newFakeRegistry(failing, healthy),
+				WithStartBlock(0), WithBlockWindow(10), WithOverlapBlocks(0),
+				WithNow(func() time.Time { return clock }))
+			detector.backoff = newDestinationBackoff(time.Second, 2*time.Minute, 0)
+			seeded := autoclaimtypes.BridgeCursor{FromBlock: 0, ToBlock: 0, BlockNum: 0}
+			for _, dest := range []uint32{10, 11} {
+				store.cursors[detector.cursorNameForDestination(dest)] = seeded
+			}
+
+			result, err := detector.PollOnce(ctx)
+			require.ErrorIs(t, err, failure)
+			require.Equal(t, []uint32{10}, result.FailedDestinations)
+			require.Len(t, failing.enqueued, 1, "the first bridge was enqueued before the failure")
+			require.Equal(t, uint32(1), failing.enqueued[0].DepositCount)
+			require.Equal(t, seeded, store.cursors[detector.cursorNameForDestination(10)],
+				"the cursor of the failed destination does not move")
+			require.Equal(t, uint64(10), store.cursors[detector.cursorNameForDestination(11)].ToBlock)
+
+			// Recovered and past the back-off window: earlier bridges are re-enqueued idempotently.
+			tt.clear(failing)
+			clock = clock.Add(time.Second)
+			result, err = detector.PollOnce(ctx)
+			require.NoError(t, err)
+			require.Empty(t, result.FailedDestinations)
+			require.Len(t, failing.enqueued, 3, "bridges 1, 4 and 6 are enqueued exactly once each")
+			require.Equal(t, uint64(10), store.cursors[detector.cursorNameForDestination(10)].ToBlock)
+		})
+	}
+}
+
 func newTestDetector(
 	t *testing.T,
 	source autoclaimtypes.BridgeSource,
@@ -824,13 +972,18 @@ func (r *fakeRegistry) Claimers(_ context.Context) ([]autoclaimtypes.Claimer, er
 }
 
 type fakeClaimer struct {
-	target      autoclaimtypes.ClaimerTarget
-	err         error
-	claimErr    error
-	claimed     bool
-	claimChecks []autoclaimtypes.BridgeExit
-	enqueued    []autoclaimtypes.BridgeExit
-	seen        map[autoclaimtypes.RequestKey]struct{}
+	target   autoclaimtypes.ClaimerTarget
+	err      error
+	claimErr error
+	// claimErrFrom, when > 0, makes claimErr apply only from the N-th IsClaimed call (1-based);
+	// enqueueErrFrom does the same for err and Enqueue. Zero means every call fails.
+	claimErrFrom   int
+	enqueueErrFrom int
+	enqueueCalls   int
+	claimed        bool
+	claimChecks    []autoclaimtypes.BridgeExit
+	enqueued       []autoclaimtypes.BridgeExit
+	seen           map[autoclaimtypes.RequestKey]struct{}
 }
 
 func (c *fakeClaimer) Target() autoclaimtypes.ClaimerTarget {
@@ -839,14 +992,15 @@ func (c *fakeClaimer) Target() autoclaimtypes.ClaimerTarget {
 
 func (c *fakeClaimer) IsClaimed(_ context.Context, bridge autoclaimtypes.BridgeExit) (bool, error) {
 	c.claimChecks = append(c.claimChecks, bridge)
-	if c.claimErr != nil {
+	if c.claimErr != nil && len(c.claimChecks) >= c.claimErrFrom {
 		return false, c.claimErr
 	}
 	return c.claimed, nil
 }
 
 func (c *fakeClaimer) Enqueue(_ context.Context, bridge autoclaimtypes.BridgeExit) error {
-	if c.err != nil {
+	c.enqueueCalls++
+	if c.err != nil && c.enqueueCalls >= c.enqueueErrFrom {
 		return c.err
 	}
 	if c.seen == nil {

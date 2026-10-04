@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -1447,5 +1448,273 @@ HTTPHeaders = {}
 		l1KeystorePath, autoClaimKeystorePass, suffix,
 		autoClaimL1RPC, autoClaimL1ChainID,
 		networkBClaimerSection,
+	)
+}
+
+const (
+	// autoClaimFailingDestinationURL is a refused-connection endpoint inside the aggkit-001 container
+	// (nothing listens on port 1), used as the failing destination's detection RPC.
+	autoClaimFailingDestinationURL = "http://127.0.0.1:1"
+	// autoClaimFailingDestinationService is the compose service whose logs are inspected.
+	autoClaimFailingDestinationService = "aggkit-001"
+	// autoClaimBackoffLogWindow is the window after the first back-off line in which the number of
+	// repeated back-off lines is bounded.
+	autoClaimBackoffLogWindow = 60 * time.Second
+	// autoClaimBackoffMaxLogLines bounds the back-off lines in autoClaimBackoffLogWindow; without
+	// back-off a 2s poll would produce about 30.
+	autoClaimBackoffMaxLogLines = 8
+)
+
+// TestAutoClaimL1ToL2FailingDestinationIsolated proves (issue #1889) that one L1->L2 destination whose
+// detection RPC is failing neither stalls the healthy destination nor gets hammered: an L1->L2A bridge is
+// auto-claimed while L2B's claimer URLRPC refuses connections, and L2B's detection is backed off.
+func TestAutoClaimL1ToL2FailingDestinationIsolated(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping E2E test in short mode")
+	}
+	env := loadAutoClaimL2ToL2TestEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
+	l2aNetworkID := env.L2.NetworkID
+	l2bNetworkID := env.L2B.NetworkID
+
+	// The failing claimer never sends a tx, so its signer is a fresh, unfunded key outside the key pool.
+	failingKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	l2bKeystorePath, err := writeAutoClaimL2NetworkBKeystore(env, failingKey)
+	require.NoError(t, err, "provision failing-destination claimer keystore")
+	requireHostKeystoreVisible(t, env, "autoclaim-l2b-keystore", "l2b-autoclaim.keystore")
+
+	originalConfig, err := os.ReadFile(env.GetAggkitConfigPath())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		restoreCtx, restoreCancel := context.WithTimeout(context.Background(), autoClaimRestoreWait)
+		defer restoreCancel()
+		if err := env.RestartAggkitWithConfig(restoreCtx, func(configPath string) error {
+			return os.WriteFile(configPath, originalConfig, 0o600)
+		}); err != nil {
+			t.Logf("failed to restore aggkit-001 config after %s: %v", t.Name(), err)
+		}
+	})
+
+	t0 := time.Now()
+	restartCtx, restartCancel := context.WithTimeout(ctx, autoClaimRestartWait)
+	err = env.RestartAggkitWithConfig(restartCtx, func(configPath string) error {
+		patched := patchAutoClaimConfig(
+			string(originalConfig),
+			autoClaimFailingDestinationConfig(l2aNetworkID, l2bNetworkID, l2bKeystorePath),
+		)
+		return os.WriteFile(configPath, []byte(patched), 0o600)
+	})
+	restartCancel()
+	require.NoError(t, err, "restart aggkit-001 with failing-destination Auto Claim config")
+	waitForBridgeServiceSynced(ctx, t)
+
+	l1Opts, l1Key, err := env.Keys.L1Keys.Checkout()
+	require.NoError(t, err)
+	defer env.Keys.L1Keys.Return(l1Key)
+	l2Opts, l2Key, err := env.Keys.L2Keys.Checkout()
+	require.NoError(t, err)
+	defer env.Keys.L2Keys.Return(l2Key)
+
+	bridgeAmount := big.NewInt(autoClaimBridgeAmountWei)
+	initialBalance, err := env.Clients.L2.BalanceAt(ctx, l2Opts.From, nil)
+	require.NoError(t, err)
+
+	// Bridge L1->L2B first, then L1->L2A: both land in the same L1 window, with the failing
+	// destination's bridge first.
+	l2bDepositCount, err := bridgeL1ToNetworkNoClaim(ctx, env, l1Opts, l2bNetworkID, bridgeAmount)
+	require.NoError(t, err, "bridge L1->L2B")
+	result, err := BridgeL1NoClaim(ctx, env, l1Opts, l2Opts, bridgeAmount, "autoclaim-failing-destination-L2A")
+	require.NoError(t, err)
+	require.Empty(t, result.ClaimTxHash, "test helper must not manually claim on L2")
+
+	requestKey := autoclaimtypes.DeriveRequestKey(
+		result.Bridge.OriginNetwork, result.Bridge.DestinationNetwork, result.DepositCount,
+	)
+	confirmed := waitForAutoClaimStatus(ctx, t, requestKey, autoclaimtypes.RequestStatusConfirmed)
+	require.NotNil(t, confirmed.ClaimTxHash, "confirmed Auto Claim request should expose claim tx hash")
+	require.Equal(t, string(result.Bridge.TxHash), confirmed.BridgeTxHash)
+	assertClaimedOnL2(ctx, t, env, result.GlobalIndex)
+	finalBalance, err := env.Clients.L2.BalanceAt(ctx, result.DestinationAddr, nil)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, new(big.Int).Sub(finalBalance, initialBalance).Cmp(bridgeAmount), 0)
+
+	// The failing destination's request must never be created.
+	l2bKey := autoclaimtypes.DeriveRequestKey(0, l2bNetworkID, l2bDepositCount)
+	_, found, err := getAutoClaimRequestAt(ctx, bridgeServiceBaseURL, l2bKey)
+	require.NoError(t, err)
+	require.False(t, found, "no Auto Claim request must exist for the failing destination (%s)", l2bKey)
+
+	// Back-off assertions on the container logs.
+	pausedFailing := fmt.Sprintf("detection for destination %d paused for", l2bNetworkID)
+	pausedHealthy := fmt.Sprintf("detection for destination %d paused for", l2aNetworkID)
+	var logs string
+	var first time.Time
+	require.Eventually(t, func() bool {
+		out, logErr := env.DockerComposeLogs(
+			ctx, "--no-log-prefix", "--timestamps", "--since", t0.Format(time.RFC3339),
+			autoClaimFailingDestinationService,
+		)
+		if logErr != nil {
+			return false
+		}
+		logs = string(out)
+		for _, ts := range logLineTimes(logs, pausedFailing) {
+			if first.IsZero() || ts.Before(first) {
+				first = ts
+			}
+		}
+		// Only judge the window once it has fully elapsed in the container's clock.
+		return !first.IsZero() && time.Now().After(first.Add(autoClaimBackoffLogWindow+5*time.Second))
+	}, 3*time.Minute, 5*time.Second, "failing destination back-off log line never appeared")
+
+	require.NotEmpty(t, logLineTimes(logs, pausedFailing), "expected %q in aggkit-001 logs", pausedFailing)
+	inWindow := 0
+	for _, ts := range logLineTimes(logs, pausedFailing) {
+		if !ts.After(first.Add(autoClaimBackoffLogWindow)) {
+			inWindow++
+		}
+	}
+	require.LessOrEqual(t, inWindow, autoClaimBackoffMaxLogLines,
+		"failing destination must be backed off, not hammered (%d %q lines in the first %s)",
+		inWindow, pausedFailing, autoClaimBackoffLogWindow)
+	require.Empty(t, logLineTimes(logs, pausedHealthy), "healthy destination must never be paused")
+}
+
+// logLineTimes returns the leading RFC3339Nano timestamps of the log lines containing substr. Lines
+// whose timestamp cannot be parsed are ignored.
+func logLineTimes(logs, substr string) []time.Time {
+	times := make([]time.Time, 0)
+	for _, line := range strings.Split(logs, "\n") {
+		if !strings.Contains(line, substr) {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		ts, err := time.Parse(time.RFC3339Nano, fields[0])
+		if err != nil {
+			continue
+		}
+		times = append(times, ts)
+	}
+	return times
+}
+
+// bridgeL1ToNetworkNoClaim bridges native ETH from L1 to destNetworkID (to the sender's own address),
+// waits until the tx is mined and returns the bridge's deposit count. It never claims.
+func bridgeL1ToNetworkNoClaim(
+	ctx context.Context, env *envs.Env, l1Opts *bind.TransactOpts, destNetworkID uint32, amount *big.Int,
+) (uint32, error) {
+	l1Opts.Value = amount
+	defer func() { l1Opts.Value = nil }()
+	tx, err := env.L1.Contracts.Bridge.BridgeAsset(
+		l1Opts, destNetworkID, l1Opts.From, amount, common.Address{}, true, nil,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("send bridge tx: %w", err)
+	}
+	mineCtx, mineCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer mineCancel()
+	receipt, err := bind.WaitMined(mineCtx, env.Clients.L1, tx)
+	if err != nil {
+		return 0, fmt.Errorf("wait for bridge tx: %w", err)
+	}
+	if receipt.Status != ethtypes.ReceiptStatusSuccessful {
+		return 0, fmt.Errorf("bridge tx %s failed", tx.Hash().Hex())
+	}
+	bridgeEvent, err := env.L1.Contracts.Bridge.ParseBridgeEvent(*receipt.Logs[0])
+	if err != nil {
+		return 0, fmt.Errorf("parse bridge event: %w", err)
+	}
+	return bridgeEvent.DepositCount, nil
+}
+
+// autoClaimFailingDestinationConfig renders the [AutoClaim] section for
+// TestAutoClaimL1ToL2FailingDestinationIsolated: the L1ToL2 detector enabled (L2ToLx disabled), a
+// healthy allow-all claimer for L2A, and an allow-all claimer for L2B whose detection URLRPC refuses
+// connections while its tx sender (EthTxManager.Etherman.URL) points at the real L2B RPC. The
+// StoragePath is fresh, so both destinations start with no cursor and share one window group.
+func autoClaimFailingDestinationConfig(l2aNetworkID, l2bNetworkID uint32, l2bKeystorePath string) string {
+	const policyName = "allow-all"
+	claimer := func(id string, networkID uint32, urlRPC, keystorePath, ethtxStorage, txRPC string, chainID int) string {
+		return fmt.Sprintf(`
+[[AutoClaim.Claimers]]
+Enabled = true
+ID = %q
+NetworkType = "EVM"
+NetworkID = %d
+URLRPC = %q
+BridgeAddr = %q
+PolicyName = %q
+GasOffset = 100000
+WaitPeriod = "1s"
+RetryAfter = "1s"
+MaxRetries = 180
+
+[AutoClaim.Claimers.Policy]
+AllowMessageClaims = false
+AllowedOrigins = [0]
+AllowedTokens = []
+ManualFallback = false
+MaxGas = 500000
+
+[AutoClaim.Claimers.EthTxManager]
+FrequencyToMonitorTxs = "1s"
+WaitTxToBeMined = "2s"
+WaitReceiptMaxTime = "250ms"
+WaitReceiptCheckInterval = "1s"
+PrivateKeys = [
+	{Method = "local", Path = %q, Password = %q},
+]
+ForcedGas = 0
+GasPriceMarginFactor = 1
+MaxGasPriceLimit = 0
+StoragePath = %q
+ReadPendingL1Txs = false
+SafeStatusL1NumberOfBlocks = 0
+FinalizedStatusL1NumberOfBlocks = 0
+EstimateGasMaxRetries = 1
+
+[AutoClaim.Claimers.EthTxManager.Etherman]
+URL = %q
+MultiGasProvider = false
+L1ChainID = %d
+HTTPHeaders = {}
+`, id, networkID, urlRPC, autoClaimBridgeAddr, policyName, keystorePath, autoClaimKeystorePass,
+			ethtxStorage, txRPC, chainID)
+	}
+
+	return fmt.Sprintf(`
+[AutoClaim]
+StoragePath = "/tmp/autoclaim-e2e-failing-destination.sqlite"
+
+[AutoClaim.API]
+Enabled = true
+
+[AutoClaim.L1ToL2BridgeDetector]
+Enabled = true
+PollInterval = "2s"
+EtrogL1UpgradeBlock = 0
+
+[AutoClaim.L2ToLxBridgeDetector]
+Enabled = false
+
+[AutoClaim.BridgeServiceFinder]
+PollInterval = "3s"
+
+[AutoClaim.BridgeServiceFinder.BridgeURLs]
+%d = %q
+%d = %q
+%s%s`,
+		l2aNetworkID, autoClaimSourceBridgeServiceURL, l2bNetworkID, autoClaimNet2BridgeServiceURL,
+		claimer("l2-autoclaim-e2e", l2aNetworkID, autoClaimL2RPC, "/etc/aggkit/aggoracle.keystore",
+			"/tmp/ethtxmanager-autoclaim-failing-destination-l2a.sqlite", autoClaimL2RPC, autoClaimL2ChainID),
+		claimer("failing-destination-e2e", l2bNetworkID, autoClaimFailingDestinationURL, l2bKeystorePath,
+			"/tmp/ethtxmanager-autoclaim-failing-destination-l2b.sqlite", autoClaimL2BRPC, autoClaimL2BChainID),
 	)
 }

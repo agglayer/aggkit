@@ -4,14 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"net/http"
+	"slices"
 	"sort"
 	"time"
 
+	"github.com/agglayer/aggkit/autoclaim/metrics"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/bridgeservice"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const (
@@ -220,10 +225,11 @@ type L2ToLxPollResult struct {
 	ProcessedSourceCount int
 	// SkippedSourceCount is the number of sources skipped this poll, for any of three reasons:
 	// nothing new for any pair; the source is permanently excluded from bridge service resolution
-	// (ErrSourceDisabled); or at least one pair's fetch group must be retried (url miss or not synced
-	// yet). Only the last one holds the source's block-window position back -- a source whose groups
-	// partially succeeded is that case, while a permanently excluded source is counted here yet lets
-	// the window advance past its verify row.
+	// (ErrSourceDisabled); or at least one pair must be retried (url miss, not synced yet, or a
+	// destination whose claim-state check failed this poll or is backed off). Only the last one holds
+	// the source's block-window position back -- a source whose groups partially succeeded is that
+	// case, while a permanently excluded source is counted here yet lets the window advance past its
+	// verify row.
 	SkippedSourceCount int
 	// CandidateCount is the total number of claim candidates fetched across every fetch group of
 	// every processed source.
@@ -232,8 +238,19 @@ type L2ToLxPollResult struct {
 	EnqueuedCount int
 	// AlreadyClaimedCount is the number of candidates skipped because the target already claimed them.
 	AlreadyClaimedCount int
-	// CursorAdvanced reports whether the block-window cursor was advanced.
+	// CursorAdvanced reports whether the block-window cursor was advanced. It can be true together with
+	// a non-nil PollOnce error when only per-destination failures occurred (see FailedDestinations).
 	CursorAdvanced bool
+	// DeferredCandidateCount is the number of candidates of a destination whose claim-state check had
+	// already failed earlier in the same fetch group: they are neither checked nor enqueued this poll and
+	// are re-fetched on a later poll from the destination's unchanged pair cursor.
+	DeferredCandidateCount int
+	// FailedDestinations lists, in ascending order, the destinations whose claim-state check (IsClaimed)
+	// failed this poll. Their pair cursors were not advanced past the failing group.
+	FailedDestinations []uint32
+	// BackedOffDestinations lists, in ascending order, the destinations excluded from this poll because
+	// they are inside a back-off window after an earlier failure.
+	BackedOffDestinations []uint32
 }
 
 // L2ToLx is the bridge detector that discovers L2-initiated (rollup-origin) bridge exits by watching
@@ -263,6 +280,9 @@ type L2ToLx struct {
 	// "<condition>/<sourceID>", so a persistent condition logs at most once per retryLogInterval
 	// rather than on every poll. Only ever touched from the single poll goroutine.
 	retryLogged map[string]time.Time
+	// backoff pauses detection for a destination whose claim-state check keeps failing. Only ever
+	// touched from the single poll goroutine.
+	backoff *destinationBackoff
 }
 
 // retryLogInterval bounds how often a persistent retry-later condition is logged per source.
@@ -320,6 +340,7 @@ func NewL2ToLx(
 	for _, option := range options {
 		option(detector)
 	}
+	detector.backoff = newDestinationBackoff(detector.pollPeriod, destinationBackoffMax, destinationBackoffJitter)
 
 	return detector, nil
 }
@@ -383,19 +404,47 @@ const (
 	// sourceProcessed means every fetch group's candidates were enqueued and every pair's LER cursor
 	// advanced.
 	sourceProcessed
-	// sourceRetryLater means at least one of the source's fetch groups was skipped for a reason that
-	// can still clear on its own (a finder miss for a service not yet announced or unhealthy, or a
-	// source bridge service not synced yet) and must be retried on a later poll. Groups that did
-	// succeed keep their persisted pair cursors. A permanently excluded source is NOT this outcome:
-	// it can never clear, so holding the shared cursor for it would deadlock every other source.
+	// sourceRetryLater means at least one of the source's pending pairs was not advanced for a reason
+	// that can still clear on its own (a finder miss for a service not yet announced or unhealthy, a
+	// source bridge service not synced yet, a destination whose claim-state check failed, or a
+	// destination inside its back-off window) and must be retried on a later poll. Pairs that did
+	// succeed keep their persisted cursors. A permanently excluded source is NOT this outcome: it can
+	// never clear, so holding the shared cursor for it would deadlock every other source.
 	sourceRetryLater
 )
+
+// pollDestinationOutcomes accumulates per-destination results across all sources of one poll.
+type pollDestinationOutcomes struct {
+	// failed holds the first IsClaimed error per destination this poll.
+	failed map[uint32]error
+	// succeeded holds the destinations with at least one LER pair cursor advanced this poll.
+	succeeded map[uint32]struct{}
+	// backedOff holds the destinations skipped by back-off this poll (computed once at poll start).
+	backedOff map[uint32]struct{}
+}
+
+func newPollDestinationOutcomes() *pollDestinationOutcomes {
+	return &pollDestinationOutcomes{
+		failed:    make(map[uint32]error),
+		succeeded: make(map[uint32]struct{}),
+		backedOff: make(map[uint32]struct{}),
+	}
+}
 
 // PollOnce processes at most one L1 block window of verified-batch rows. Each source found in the
 // window resolves an independent from_ler per destination claimer and issues one claim-candidates
 // query per distinct from_ler (issue #1651), so the number of fetcher calls per poll stays bounded by
 // the number of enabled claimers times the pages each of their queries needs, and collapses back to
 // today's single batched query set as soon as every destination of a source shares one cursor.
+//
+// Failures of a destination's claim-state check (IsClaimed) are isolated per destination: the other
+// destinations keep processing and advance their pair cursors, the failed destination's pair cursor is
+// held, its source holds the block-window cursor just before its verify row, and the destination is
+// then paused by a per-destination back-off (it is excluded from fetches until its window ends). Those
+// per-destination errors are returned joined, after the block-window cursor has been handled, so a
+// non-nil error together with L2ToLxPollResult.CursorAdvanced == true is possible; FailedDestinations
+// lists the destinations concerned. Any other failure (registry, enqueue, fetch, cursor storage) is a
+// hard error that leaves the block-window cursor untouched, as before.
 func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 	if !w.enabled {
 		return &L2ToLxPollResult{}, nil
@@ -433,14 +482,26 @@ func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 		return result, err
 	}
 
+	outcomes := newPollDestinationOutcomes()
+	defer w.updateBackoff(ctx, outcomes)
+	for _, destination := range sortedNetworks(destinationNetworks) {
+		if _, dup := outcomes.backedOff[destination]; dup || !w.backoff.shouldSkip(destination, w.now()) {
+			continue
+		}
+		w.logDebugf("autoclaim l2-to-lx bridge detector: skipping destination %d, backed off until %s",
+			destination, w.backoff.skipUntil(destination))
+		outcomes.backedOff[destination] = struct{}{}
+		result.BackedOffDestinations = append(result.BackedOffDestinations, destination)
+	}
+
 	// retryBlock is the block of the earliest verify row whose source was skipped for a reason that
 	// can still clear on its own (finder miss or source not synced yet); 0 = none. A source that can
 	// never resolve (permanently excluded) deliberately does not contribute here.
 	var retryBlock uint64
 	for _, source := range orderedSourceLERs(latestBySource) {
-		outcome, err := w.processSource(ctx, source, destinationNetworks, result)
+		outcome, err := w.processSource(ctx, source, destinationNetworks, outcomes, result)
 		if err != nil {
-			return result, err
+			return result, w.pollError(err, outcomes, result)
 		}
 		switch outcome {
 		case sourceProcessed:
@@ -464,13 +525,14 @@ func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 	// the retry fetch still uses from_ler = <old pair cursor>, which covers every candidate missed in
 	// between; a pair whose group did succeed keeps its advanced cursor and is simply not re-fetched.
 	// A hard error above returns before this point, leaving the cursor unchanged so the whole window
-	// is retried.
+	// is retried. A destination whose claim-state check failed (or that is backed off) is a retryable
+	// skip of its source, so it holds the cursor like any other; its error is returned after this point.
 	cursorToBlock := toBlock
 	if retryBlock > 0 {
 		if retryBlock <= fromBlock {
 			// The retried row sits at the very start of the window: there is no forward progress to
 			// record, keep the stored cursor untouched and retry the same window next poll.
-			return result, nil
+			return result, w.pollError(nil, outcomes, result)
 		}
 		cursorToBlock = retryBlock - 1
 	}
@@ -481,11 +543,60 @@ func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 		BlockPos:  0,
 	}
 	if err := w.cursorStore.SaveBridgeCursor(ctx, w.cursorName, nextCursor, w.now()); err != nil {
-		return result, fmt.Errorf("save autoclaim l2-to-lx bridge detector cursor %s: %w", w.cursorName, err)
+		return result, w.pollError(
+			fmt.Errorf("save autoclaim l2-to-lx bridge detector cursor %s: %w", w.cursorName, err), outcomes, result)
 	}
 	result.CursorAdvanced = true
 
-	return result, nil
+	return result, w.pollError(nil, outcomes, result)
+}
+
+// pollError fills result.FailedDestinations (ascending) from outcomes and returns hardErr (nil when
+// none) joined with one "destination %d: ..." error per failed destination, in ascending order. The
+// result is nil when there is neither a hard error nor a failed destination.
+func (w *L2ToLx) pollError(hardErr error, outcomes *pollDestinationOutcomes, result *L2ToLxPollResult) error {
+	errs := []error{hardErr}
+	result.FailedDestinations = nil
+	for _, destination := range sortedDestinationKeys(outcomes.failed) {
+		result.FailedDestinations = append(result.FailedDestinations, destination)
+		errs = append(errs, fmt.Errorf("destination %d: %w", destination, outcomes.failed[destination]))
+	}
+	return errors.Join(errs...)
+}
+
+// updateBackoff feeds the per-destination outcome of a poll into the back-off tracker: a destination
+// that advanced at least one pair cursor and did not fail is reset, and a destination whose claim-state
+// check failed opens its next back-off window (one Warn per window). A destination with no activity this
+// poll is left unchanged. When ctx is done the failure may be a cancellation artefact, so failures are
+// not recorded.
+func (w *L2ToLx) updateBackoff(ctx context.Context, outcomes *pollDestinationOutcomes) {
+	defer func() { metrics.SetStalledDestinations(metrics.DetectorL2ToLx, w.backoff.stalledCount()) }()
+	for _, destination := range sortedDestinationKeys(outcomes.succeeded) {
+		if _, failed := outcomes.failed[destination]; !failed {
+			w.backoff.recordSuccess(destination)
+		}
+	}
+	if ctx.Err() != nil {
+		return
+	}
+	for _, destination := range sortedDestinationKeys(outcomes.failed) {
+		failure := outcomes.failed[destination]
+		window, attempt := w.backoff.recordFailure(destination, failure, w.now())
+		metrics.IncDestinationError(metrics.DetectorL2ToLx, destination)
+		var httpErr rpc.HTTPError
+		if errors.As(failure, &httpErr) && httpErr.StatusCode == http.StatusTooManyRequests {
+			w.logWarnf("autoclaim l2-to-lx bridge detector: detection for destination %d paused for %s "+
+				"after rate limiting (HTTP 429, attempt %d): %v", destination, window, attempt, failure)
+		} else {
+			w.logWarnf("autoclaim l2-to-lx bridge detector: detection for destination %d paused for %s "+
+				"after error (attempt %d): %v", destination, window, attempt, failure)
+		}
+	}
+}
+
+// sortedDestinationKeys returns the keys of a destination-keyed map in ascending order.
+func sortedDestinationKeys[V any](m map[uint32]V) []uint32 {
+	return slices.Sorted(maps.Keys(m))
 }
 
 // processSource evaluates one source network's newest LER against every destination the enabled
@@ -495,14 +606,20 @@ func (w *L2ToLx) PollOnce(ctx context.Context) (*L2ToLxPollResult, error) {
 // baseline instead of inheriting an already-advanced cursor that would skip its history, and it does
 // not disturb the established destinations, which keep batching exactly as before.
 //
+// Pending pairs whose destination is backed off this poll (outcomes.backedOff) are not fetched at all:
+// they are left out of every fetch group, keep their pair cursors, and make the source retry later, so
+// a backed-off pair holds the block-window cursor exactly like a failed one.
+//
 // It returns sourceUpToDate when there is nothing to do -- no pair has anything new, the source has
 // no destination pair at all, or the source is permanently excluded from bridge service resolution --
-// sourceRetryLater when at least one group was skipped for a reason that can still clear (finder miss
-// or not synced yet), and sourceProcessed when every group advanced its pairs' LER cursors.
+// sourceRetryLater when at least one pair was not advanced for a reason that can still clear (finder
+// miss, not synced yet, a failed claim-state check, or a backed-off destination), and sourceProcessed
+// when every pending pair advanced its LER cursor.
 func (w *L2ToLx) processSource(
 	ctx context.Context,
 	source sourceLER,
 	destinationNetworks []uint32,
+	outcomes *pollDestinationOutcomes,
 	result *L2ToLxPollResult,
 ) (sourceOutcome, error) {
 	destinationIDs := excludeNetwork(destinationNetworks, source.sourceID)
@@ -556,6 +673,21 @@ func (w *L2ToLx) processSource(
 	}
 	result.NewLERSourceCount++
 
+	active := make([]pendingDestination, 0, len(pending))
+	deferred := 0
+	for _, pair := range pending {
+		if _, backedOff := outcomes.backedOff[pair.destination]; backedOff {
+			deferred++
+			continue
+		}
+		active = append(active, pair)
+	}
+	if len(active) == 0 {
+		// Every pending pair is backed off: nothing is fetched, and the source is retried later so its
+		// verify row is re-observed once the back-off window ends.
+		return sourceRetryLater, nil
+	}
+
 	url, err := w.fetcher.GetURL(source.sourceID)
 	if err != nil {
 		if errors.Is(err, ErrSourceDisabled) {
@@ -579,7 +711,11 @@ func (w *L2ToLx) processSource(
 		return sourceRetryLater, nil
 	}
 
-	return w.processLERGroups(ctx, source, url, groupPendingByFromLER(pending), result)
+	outcome, err := w.processLERGroups(ctx, source, url, groupPendingByFromLER(active), outcomes, result)
+	if err == nil && outcome == sourceProcessed && deferred > 0 {
+		outcome = sourceRetryLater
+	}
+	return outcome, err
 }
 
 // processLERGroups fetches, enqueues and persists each from_ler group of one source in turn. A group
@@ -588,11 +724,18 @@ func (w *L2ToLx) processSource(
 // gates it. A group that failed leaves its pairs' cursors untouched, so the next poll re-fetches only
 // that group; the source itself still reports retry-later (or the hard error), which holds the
 // block-window cursor just before this source's verify row so the row is re-observed.
+//
+// Within a group, a destination whose claim-state check failed is recorded in outcomes.failed and
+// excluded from the cursor advance, while the group's other destinations still advance (and are
+// recorded in outcomes.succeeded); the source then reports retry-later. On the next poll the failed
+// pair's from_ler differs from its former group mates', so it forms its own group and only that group
+// is re-fetched.
 func (w *L2ToLx) processLERGroups(
 	ctx context.Context,
 	source sourceLER,
 	url string,
 	groups []lerGroup,
+	outcomes *pollDestinationOutcomes,
 	result *L2ToLxPollResult,
 ) (sourceOutcome, error) {
 	var (
@@ -616,18 +759,41 @@ func (w *L2ToLx) processLERGroups(
 		}
 		result.CandidateCount += len(candidates)
 
-		if err := w.enqueueCandidates(ctx, source, candidates, result); err != nil {
+		failed, err := w.enqueueCandidates(ctx, source, candidates, result)
+		// Record soft destination failures even when the same group also hit a hard error, so the
+		// failing destination still gets its back-off window.
+		for destination, failure := range failed {
+			if _, seen := outcomes.failed[destination]; !seen {
+				outcomes.failed[destination] = failure
+			}
+		}
+		if len(failed) > 0 {
+			retryLater = true
+		}
+		if err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
 			continue
 		}
 
-		if err := w.advanceLERCursors(ctx, source, group.destinations); err != nil {
+		advance := make([]uint32, 0, len(group.destinations))
+		for _, destination := range group.destinations {
+			if _, isFailed := failed[destination]; !isFailed {
+				advance = append(advance, destination)
+			}
+		}
+		if len(advance) == 0 {
+			continue
+		}
+		if err := w.advanceLERCursors(ctx, source, advance); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
 			continue
+		}
+		for _, destination := range advance {
+			outcomes.succeeded[destination] = struct{}{}
 		}
 	}
 
@@ -722,12 +888,7 @@ func lerGroupKey(fromLER *common.Hash) string {
 
 // sortedNetworks returns a copy of networks in ascending order.
 func sortedNetworks(networks []uint32) []uint32 {
-	sorted := make([]uint32, len(networks))
-	copy(sorted, networks)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i] < sorted[j]
-	})
-	return sorted
+	return slices.Sorted(slices.Values(networks))
 }
 
 // initialFromLER derives the exclusive lower-bound LER the first time a source network is seen. When
@@ -827,20 +988,33 @@ func (w *L2ToLx) fetchCandidatesForDestinations(
 
 // enqueueCandidates routes every candidate to its destination claimer and enqueues the ones that are
 // not already claimed on the target.
+//
+// A failing claim-state check (IsClaimed, the only call that reaches the destination's RPC) is isolated
+// per destination: it is recorded in the returned failed map (first error per destination), that
+// destination's remaining candidates in this call are skipped (counted in
+// result.DeferredCandidateCount, neither checked nor enqueued), and the other destinations' candidates
+// continue. Every other failure (claimer registry, EnqueueRequest) is a hard error returned as err,
+// which aborts the call.
 func (w *L2ToLx) enqueueCandidates(
 	ctx context.Context,
 	source sourceLER,
 	candidates []ClaimCandidate,
 	result *L2ToLxPollResult,
-) error {
+) (map[uint32]error, error) {
+	failed := make(map[uint32]error)
 	for i := range candidates {
 		candidate := candidates[i]
 		exit := candidate.Bridge
 		exit.SourceNetwork = source.sourceID
 
+		if _, isFailed := failed[exit.DestinationNetwork]; isFailed {
+			result.DeferredCandidateCount++
+			continue
+		}
+
 		claimer, ok, err := w.registry.ClaimerForDestination(ctx, exit.DestinationNetwork)
 		if err != nil {
-			return fmt.Errorf("resolve claimer for destination %d: %w", exit.DestinationNetwork, err)
+			return failed, fmt.Errorf("resolve claimer for destination %d: %w", exit.DestinationNetwork, err)
 		}
 		if !ok {
 			// The destination was requested from the source bridge service but no claimer handles it;
@@ -850,8 +1024,9 @@ func (w *L2ToLx) enqueueCandidates(
 
 		claimed, err := claimer.IsClaimed(ctx, exit)
 		if err != nil {
-			return fmt.Errorf("check target claim state for source %d deposit %d: %w",
+			failed[exit.DestinationNetwork] = fmt.Errorf("check target claim state for source %d deposit %d: %w",
 				source.sourceID, exit.DepositCount, err)
+			continue
 		}
 		if claimed {
 			result.AlreadyClaimedCount++
@@ -864,18 +1039,19 @@ func (w *L2ToLx) enqueueCandidates(
 		request.VerifyBlockNum = source.verifyNum
 
 		if _, inserted, err := w.enqueuer.EnqueueRequest(ctx, request); err != nil {
-			return fmt.Errorf("enqueue autoclaim request %s: %w", request.Key, err)
+			return failed, fmt.Errorf("enqueue autoclaim request %s: %w", request.Key, err)
 		} else if inserted {
 			result.EnqueuedCount++
 		}
 	}
-	return nil
+	return failed, nil
 }
 
 // advanceLERCursors records the source's newest LER as processed for each of the given destinations.
-// It is called once per fetch group and only after every candidate of that group has been enqueued,
-// so a pair's cursor never moves past candidates that were not persisted. Destinations whose group
-// did not complete are not passed in, which leaves their own cursors at their previous value.
+// It is called once per fetch group and only after every candidate of that group has been enqueued or
+// classified as already claimed, so a pair's cursor never moves past candidates that were not
+// persisted. Destinations whose group did not complete, and destinations whose claim-state check failed
+// within the group, are not passed in, which leaves their own cursors at their previous value.
 func (w *L2ToLx) advanceLERCursors(ctx context.Context, source sourceLER, destinations []uint32) error {
 	for _, destination := range destinations {
 		cursor := autoclaimtypes.LERCursor{
@@ -942,6 +1118,12 @@ func (w *L2ToLx) logErrorf(format string, args ...interface{}) {
 func (w *L2ToLx) logWarnf(format string, args ...interface{}) {
 	if w.log != nil {
 		w.log.Warnf(format, args...)
+	}
+}
+
+func (w *L2ToLx) logDebugf(format string, args ...interface{}) {
+	if w.log != nil {
+		w.log.Debugf(format, args...)
 	}
 }
 

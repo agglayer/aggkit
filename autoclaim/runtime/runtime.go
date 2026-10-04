@@ -15,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/autoclaim/bridgedetector"
 	"github.com/agglayer/aggkit/autoclaim/claimer"
 	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
+	autoclaimmetrics "github.com/agglayer/aggkit/autoclaim/metrics"
 	"github.com/agglayer/aggkit/autoclaim/policy"
 	"github.com/agglayer/aggkit/autoclaim/proof"
 	"github.com/agglayer/aggkit/autoclaim/sender"
@@ -344,6 +345,7 @@ func Start(ctx context.Context, deps Dependencies, factories Factories) (*Runtim
 	}
 
 	factories = withDefaultFactories(factories, deps.LogConfig)
+	autoclaimmetrics.Register()
 	logger := deps.Logger
 	if logger == nil {
 		logger = log.WithFields("module", aggkitcommon.AUTOCLAIM)
