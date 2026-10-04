@@ -12,6 +12,7 @@ import (
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
+	syncmetrics "github.com/agglayer/aggkit/sync/metrics"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -351,7 +352,8 @@ type EVMDownloaderImplementation struct {
 	topicsToQuery          []common.Hash
 	addressesToQuery       []common.Address
 	rh                     *RetryHandler
-	log                    *log.Logger
+	log                    aggkitcommon.Logger
+	syncerID               string
 	finalizedBlockType     *aggkittypes.BlockNumberFinality
 	reorgDetector          ReorgDetector
 	reorgDetectorID        string
@@ -381,6 +383,7 @@ func NewEVMDownloaderImplementation(
 	reorgDetectorID string,
 ) *EVMDownloaderImplementation {
 	logger := log.WithFields("syncer", syncerID)
+	syncmetrics.Register()
 	var topics []common.Hash
 	if appender != nil {
 		topics = appender.GetTopics()
@@ -395,6 +398,7 @@ func NewEVMDownloaderImplementation(
 		addressesToQuery:       addressesToQuery,
 		rh:                     rh,
 		log:                    logger,
+		syncerID:               syncerID,
 		finalizedBlockType:     finalizedBlockType,
 		reorgDetector:          reorgDetector,
 		reorgDetectorID:        reorgDetectorID,
@@ -521,6 +525,53 @@ retry:
 		// block, not that a log matching the queried topics exists (a contract emitting only a
 		// non-queried event would otherwise be flagged as a false omission).
 		unfilteredLogs := d.getUnfilteredLogs(ctx, fromBlock, toBlock)
+
+		// The completeness check runs before block assembly because it can splice: for every
+		// confirmed omission it returns the logs recovered by the by-hash query, which are merged
+		// into unfilteredLogs so they go through the same filter, hook and assembly path as range
+		// logs. Block header logs blooms have no false negatives, so a bloom-positive, zero-log
+		// block is only ever *suspicious* -- never a direct failure -- because a bloom false
+		// positive is deterministic per (block, address) and would otherwise wedge the syncer
+		// forever; checkLogsCompleteness arbitrates every suspicion with a single-block re-query.
+		res := d.checkLogsCompleteness(ctx, fromBlock, toBlock, lastFinalizedBlock, unfilteredLogs)
+		if res.canceled {
+			return nil
+		}
+		syncmetrics.AddLogsOmissionConfirmed(d.syncerID, res.omittedBlocks)
+		if res.needsRangeRetry {
+			omissionAttempts++
+			syncmetrics.IncLogsOmissionRangeRetry(d.syncerID)
+			// An omission that cannot be spliced must NOT be treated like an exhausted hash-mismatch
+			// retry (which returns nil below): returning nil here would make the Download loop treat
+			// the range as legitimately empty and advance past it, permanently losing the omitted log
+			// (a missing deposit / wrong exit tree, with no error surfaced anywhere). Retry
+			// indefinitely instead, with bounded/throttled logging, so a persistently-omitting RPC
+			// produces a loud but bounded log stream rather than silent data loss.
+			if aggkitcommon.ShouldLogRetryAtError(omissionAttempts) {
+				d.log.Errorf(
+					"eth_getLogs completeness check failed for range [%d,%d] (attempt %d, %d block(s) confirmed "+
+						"omitted, splice cap %d), retrying range download",
+					fromBlock, toBlock, omissionAttempts, res.omittedBlocks, maxSplicedOmittedBlocks,
+				)
+			} else {
+				d.log.Debugf(
+					"eth_getLogs completeness check failed for range [%d,%d] (attempt %d, %d block(s) confirmed "+
+						"omitted, splice cap %d), retrying range download",
+					fromBlock, toBlock, omissionAttempts, res.omittedBlocks, maxSplicedOmittedBlocks,
+				)
+			}
+			d.rh.Handle(ctx, "logsCompletenessOmission", omissionAttempts)
+			continue retry
+		}
+		if len(res.splicedLogs) > 0 {
+			unfilteredLogs = mergeSplicedLogs(unfilteredLogs, res.splicedLogs)
+			d.log.Warnf(
+				"logs completeness check: eth_getLogs omitted logs for %d block(s) in range [%d,%d]; "+
+					"spliced %d log(s) recovered by block-hash query",
+				res.omittedBlocks, fromBlock, toBlock, len(res.splicedLogs),
+			)
+		}
+
 		logs := d.filterLogs(unfilteredLogs)
 		if d.logsHook != nil {
 			originalCount := len(logs)
@@ -586,34 +637,6 @@ retry:
 				}
 				d.rh.Handle(ctx, "appendLogs", attempts)
 			}
-		}
-
-		// Block header logs blooms have no false negatives, so a bloom-positive, zero-log block is
-		// only ever *suspicious* -- never a direct failure -- because a bloom false positive is
-		// deterministic per (block, address) and would otherwise wedge the syncer forever.
-		// checkLogsCompleteness arbitrates every suspicion with a single-block re-query before
-		// reporting a confirmed omission.
-		if d.checkLogsCompleteness(ctx, fromBlock, toBlock, lastFinalizedBlock, unfilteredLogs) {
-			omissionAttempts++
-			// A confirmed omission must NOT be treated like an exhausted hash-mismatch retry
-			// (which returns nil above): returning nil here would make the Download loop treat the
-			// range as legitimately empty and advance past it, permanently losing the omitted log
-			// (a missing deposit / wrong exit tree, with no error surfaced anywhere). Retry
-			// indefinitely instead, with bounded/throttled logging, so a persistently-omitting RPC
-			// produces a loud but bounded log stream rather than silent data loss.
-			if aggkitcommon.ShouldLogRetryAtError(omissionAttempts) {
-				d.log.Errorf(
-					"confirmed eth_getLogs omission for range [%d,%d] (attempt %d), retrying range download",
-					fromBlock, toBlock, omissionAttempts,
-				)
-			} else {
-				d.log.Debugf(
-					"confirmed eth_getLogs omission for range [%d,%d] (attempt %d), retrying range download",
-					fromBlock, toBlock, omissionAttempts,
-				)
-			}
-			d.rh.Handle(ctx, "logsCompletenessOmission", omissionAttempts)
-			continue retry
 		}
 
 		return blocks
