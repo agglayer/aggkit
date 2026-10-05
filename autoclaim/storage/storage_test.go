@@ -801,3 +801,53 @@ func TestMissingRequestReturnsNotFound(t *testing.T) {
 	_, err := storage.GetRequest(context.Background(), autoclaimtypes.RequestKey("missing"))
 	require.True(t, errors.Is(err, db.ErrNotFound))
 }
+
+func TestGetRequestByGlobalIndex(t *testing.T) {
+	storage, _ := newTestStorage(t)
+	defer storage.Close()
+	ctx := context.Background()
+
+	request := makeRequest(3, 10, autoclaimtypes.RequestStatusDetected)
+	enqueueRequest(t, ctx, storage, request)
+	enqueueRequest(t, ctx, storage, makeRequest(4, 10, autoclaimtypes.RequestStatusDetected))
+
+	got, err := storage.GetRequestByGlobalIndex(ctx, new(big.Int).Set(request.GlobalIndex))
+	require.NoError(t, err)
+	require.Equal(t, request.Key, got.Key)
+	require.Equal(t, request.GlobalIndex, got.GlobalIndex)
+
+	_, err = storage.GetRequestByGlobalIndex(ctx, big.NewInt(999))
+	require.ErrorIs(t, err, db.ErrNotFound)
+
+	_, err = storage.GetRequestByGlobalIndex(ctx, nil)
+	require.Error(t, err)
+}
+
+func TestGetRequestByGlobalIndexAmbiguous(t *testing.T) {
+	storage, _ := newTestStorage(t)
+	defer storage.Close()
+	ctx := context.Background()
+
+	// Same source network and deposit count, different destination: identical global index.
+	enqueueRequest(t, ctx, storage, makeRequest(5, 10, autoclaimtypes.RequestStatusDetected))
+	enqueueRequest(t, ctx, storage, makeRequest(5, 11, autoclaimtypes.RequestStatusDetected))
+
+	_, err := storage.GetRequestByGlobalIndex(ctx, autoclaimtypes.DeriveGlobalIndex(autoclaimtypes.L1OriginNetwork, 5))
+	require.ErrorIs(t, err, ErrAmbiguousGlobalIndex)
+}
+
+func TestListRequestsFiltersByGlobalIndex(t *testing.T) {
+	storage, _ := newTestStorage(t)
+	defer storage.Close()
+	ctx := context.Background()
+
+	for i := uint32(1); i <= 3; i++ {
+		enqueueRequest(t, ctx, storage, makeRequest(i, 10, autoclaimtypes.RequestStatusDetected))
+	}
+	target := autoclaimtypes.DeriveGlobalIndex(autoclaimtypes.L1OriginNetwork, 2)
+
+	page, err := storage.ListRequests(ctx, autoclaimtypes.RequestFilter{GlobalIndex: target})
+	require.NoError(t, err)
+	require.Equal(t, 1, page.Count)
+	require.Equal(t, uint32(2), page.Requests[0].Bridge.DepositCount)
+}

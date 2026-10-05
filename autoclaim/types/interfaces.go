@@ -46,6 +46,7 @@ type ClaimSender interface {
 type Storage interface {
 	EnqueueRequest(ctx context.Context, request AutoClaimRequest) (*AutoClaimRequest, bool, error)
 	GetRequest(ctx context.Context, key RequestKey) (*AutoClaimRequest, error)
+	GetRequestByGlobalIndex(ctx context.Context, globalIndex *big.Int) (*AutoClaimRequest, error)
 	ListRequests(ctx context.Context, filter RequestFilter) (*RequestPage, error)
 	ListRecoverableRequests(ctx context.Context, filter RecoveryFilter) (*RequestPage, error)
 	RecordPolicyDecision(ctx context.Context, key RequestKey, decision PolicyDecision) error

@@ -78,7 +78,7 @@ func makePublicTestRequest(depositCount, destinationNetwork uint32) autoclaimtyp
 
 // makePublicTestRequestWithSource builds a test request whose bridge exit originated on
 // sourceNetwork, distinct from the bridged token's OriginNetwork set by makePublicTestRequest.
-// This exercises the source:destination:deposit_count request ID format (S06/S07) end to end.
+// This exercises the source-derived global index end to end.
 func makePublicTestRequestWithSource(
 	depositCount, sourceNetwork uint32,
 ) autoclaimtypes.AutoClaimRequest {
@@ -152,7 +152,7 @@ func TestPublicRESTListBridgesFiltersBySourceNetwork(t *testing.T) {
 	require.Equal(t, 1, filtered.Count)
 	require.Len(t, filtered.Bridges, 1)
 	require.Equal(t, uint32(1), filtered.Bridges[0].SourceNetwork)
-	require.Equal(t, "1:10:2", filtered.Bridges[0].ID)
+	require.Equal(t, autoclaimtypes.DeriveGlobalIndexForSource(1, 2).String(), filtered.Bridges[0].GlobalIndex)
 }
 
 func TestPublicRESTListBridgesRejectsOversizedPageSize(t *testing.T) {
@@ -169,11 +169,11 @@ func TestPublicRESTGetBridgeByID(t *testing.T) {
 	request := makePublicTestRequest(4, 10)
 	enqueuePublicTestRequest(t, storage, request)
 
-	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/"+string(request.Key))
+	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/"+request.GlobalIndex.String())
 	require.Equal(t, http.StatusOK, resp.Code)
 	var result apitypes.RequestResponse
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &result))
-	require.Equal(t, string(request.Key), result.ID)
+	require.Equal(t, request.GlobalIndex.String(), result.GlobalIndex)
 	require.Equal(t, uint32(10), result.DestinationNetwork)
 	require.Equal(t, uint32(4), result.DepositCount)
 	require.NotEmpty(t, result.GlobalIndex)
@@ -183,19 +183,20 @@ func TestPublicRESTGetBridgeByIDWithRollupSource(t *testing.T) {
 	storage := newPublicTestStorage(t)
 	router := newPublicTestRouter(t, storage)
 	// SourceNetwork (1, a rollup) differs from OriginNetwork (L1, set by makePublicTestRequest) to
-	// exercise a wrapped-token bridge whose source:destination:deposit_count ID (S06/S07 format) is
-	// not derived from the token's origin network.
+	// exercise a wrapped-token bridge whose global index is derived from the source network, not the
+	// token's origin network.
 	request := makePublicTestRequestWithSource(5, 1)
 	request.LER = common.HexToHash("0xabc")
 	enqueuePublicTestRequest(t, storage, request)
 
-	require.Equal(t, autoclaimtypes.RequestKey("1:10:5"), request.Key)
+	globalIndex := autoclaimtypes.DeriveGlobalIndexForSource(1, 5)
+	require.Equal(t, globalIndex, request.GlobalIndex)
 
-	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/1:10:5")
+	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/"+globalIndex.String())
 	require.Equal(t, http.StatusOK, resp.Code)
 	var result apitypes.RequestResponse
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &result))
-	require.Equal(t, "1:10:5", result.ID)
+	require.Equal(t, globalIndex.String(), result.GlobalIndex)
 	require.Equal(t, uint32(1), result.SourceNetwork)
 	require.Equal(t, autoclaimtypes.L1OriginNetwork, result.OriginNetwork)
 	require.Equal(t, common.HexToHash("0xabc").Hex(), result.LER)
@@ -207,7 +208,7 @@ func TestPublicRESTGetBridgeByIDOmitsZeroLER(t *testing.T) {
 	request := makePublicTestRequest(6, 10)
 	enqueuePublicTestRequest(t, storage, request)
 
-	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/"+string(request.Key))
+	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/"+request.GlobalIndex.String())
 	require.Equal(t, http.StatusOK, resp.Code)
 	var result apitypes.RequestResponse
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &result))
@@ -216,6 +217,58 @@ func TestPublicRESTGetBridgeByIDOmitsZeroLER(t *testing.T) {
 
 func TestPublicRESTGetBridgeNotFound(t *testing.T) {
 	router := newPublicTestRouter(t, newPublicTestStorage(t))
-	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/0:10:404")
+	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/404")
 	require.Equal(t, http.StatusNotFound, resp.Code)
+}
+
+func TestPublicRESTGetBridgeInvalidGlobalIndex(t *testing.T) {
+	router := newPublicTestRouter(t, newPublicTestStorage(t))
+	for _, id := range []string{"abc", "0:10:5", "-1"} {
+		resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/"+id)
+		require.Equal(t, http.StatusBadRequest, resp.Code, id)
+		require.Contains(t, resp.Body.String(), "global_index")
+	}
+}
+
+func TestPublicRESTGetBridgeAcceptsHexGlobalIndex(t *testing.T) {
+	storage := newPublicTestStorage(t)
+	router := newPublicTestRouter(t, storage)
+	request := makePublicTestRequest(9, 10)
+	enqueuePublicTestRequest(t, storage, request)
+
+	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/0x"+request.GlobalIndex.Text(16))
+	require.Equal(t, http.StatusOK, resp.Code)
+	var result apitypes.RequestResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &result))
+	require.Equal(t, request.GlobalIndex.String(), result.GlobalIndex)
+}
+
+func TestPublicRESTGetBridgeAmbiguousGlobalIndex(t *testing.T) {
+	storage := newPublicTestStorage(t)
+	router := newPublicTestRouter(t, storage)
+	first := makePublicTestRequest(10, 10)
+	enqueuePublicTestRequest(t, storage, first)
+	enqueuePublicTestRequest(t, storage, makePublicTestRequest(10, 11))
+
+	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/"+first.GlobalIndex.String())
+	require.Equal(t, http.StatusConflict, resp.Code)
+}
+
+func TestPublicRESTListBridgesFiltersByGlobalIndex(t *testing.T) {
+	storage := newPublicTestStorage(t)
+	router := newPublicTestRouter(t, storage)
+	for i := uint32(1); i <= 3; i++ {
+		enqueuePublicTestRequest(t, storage, makePublicTestRequest(i, 10))
+	}
+	target := autoclaimtypes.DeriveGlobalIndex(autoclaimtypes.L1OriginNetwork, 2)
+
+	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges?global_index="+target.String())
+	require.Equal(t, http.StatusOK, resp.Code)
+	var filtered apitypes.ListResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &filtered))
+	require.Equal(t, 1, filtered.Count)
+	require.Equal(t, uint32(2), filtered.Bridges[0].DepositCount)
+
+	resp = doPublicRequest(t, router, autoclaimpublicV1+"/bridges?global_index=notanumber")
+	require.Equal(t, http.StatusBadRequest, resp.Code)
 }

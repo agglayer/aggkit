@@ -3,6 +3,7 @@ package apitypes
 import (
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -34,6 +35,9 @@ func ParseRequestFilter(c *gin.Context) (autoclaimtypes.RequestFilter, error) {
 		return filter, err
 	}
 	if filter.ClaimTxHash, err = parseOptionalHash(c, "claim_tx_hash"); err != nil {
+		return filter, err
+	}
+	if filter.GlobalIndex, err = parseOptionalGlobalIndex(c); err != nil {
 		return filter, err
 	}
 	if filter.FromBlock, err = parseOptionalUint64(c, "from_block"); err != nil {
@@ -69,6 +73,27 @@ func EffectivePageSize(pageSize uint32) uint32 {
 		return autoclaimtypes.DefaultRequestPageSize
 	}
 	return pageSize
+}
+
+// GlobalIndexParam is the query parameter and path segment name carrying a claim global index.
+const GlobalIndexParam = "global_index"
+
+// ParseGlobalIndex parses a claim global index as accepted by the bridge API: a decimal number, or a
+// 0x-prefixed hexadecimal one.
+func ParseGlobalIndex(value string) (*big.Int, error) {
+	globalIndex, ok := new(big.Int).SetString(strings.TrimSpace(value), 0)
+	if !ok || globalIndex.Sign() < 0 {
+		return nil, fmt.Errorf("invalid %s parameter, it should be a numeric", GlobalIndexParam)
+	}
+	return globalIndex, nil
+}
+
+func parseOptionalGlobalIndex(c *gin.Context) (*big.Int, error) {
+	value := strings.TrimSpace(c.Query(GlobalIndexParam))
+	if value == "" {
+		return nil, nil
+	}
+	return ParseGlobalIndex(value)
 }
 
 func parseOptionalUint32(c *gin.Context, name string) (*uint32, error) {

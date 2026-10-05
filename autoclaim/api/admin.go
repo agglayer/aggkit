@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -61,7 +62,7 @@ func ConfigFromRESTConfig(enabled bool, _ aggkitcommon.RESTConfig) Config {
 
 // Storage is the admin API persistence boundary.
 type Storage interface {
-	GetRequest(ctx context.Context, key autoclaimtypes.RequestKey) (*autoclaimtypes.AutoClaimRequest, error)
+	GetRequestByGlobalIndex(ctx context.Context, globalIndex *big.Int) (*autoclaimtypes.AutoClaimRequest, error)
 	ApproveManualRequest(
 		ctx context.Context,
 		key autoclaimtypes.RequestKey,
@@ -149,8 +150,8 @@ func (a *API) RegisterRoutes(router gin.IRouter) {
 
 	group := router.Group(Prefix)
 	{
-		group.POST("/bridges/:id/approve", a.approveBridge)
-		group.POST("/bridges/:id/reject", a.rejectBridge)
+		group.POST("/bridges/:global_index/approve", a.approveBridge)
+		group.POST("/bridges/:global_index/reject", a.rejectBridge)
 
 		group.GET("/swagger/*any", ginswagger.WrapHandler(
 			swaggerfiles.Handler,
@@ -167,7 +168,7 @@ func (a *API) RegisterRoutes(router gin.IRouter) {
 // @Summary Approve Auto Claim bridge request
 // @Description Approves a request currently in manual-approval-required and advances the matching claimer when present.
 // @Tags autoclaim
-// @Param id path string true "Auto Claim request ID"
+// @Param global_index path string true "Global index of the bridge (decimal or 0x-prefixed hex)"
 // @Param decision body apitypes.DecisionRequest false "Manual approval metadata"
 // @Accept json
 // @Produce json
@@ -176,7 +177,7 @@ func (a *API) RegisterRoutes(router gin.IRouter) {
 // @Failure 404 {object} apitypes.ErrorResponse "Not Found"
 // @Failure 409 {object} apitypes.ErrorResponse "Conflict"
 // @Failure 500 {object} apitypes.ErrorResponse "Internal Server Error"
-// @Router /bridges/{id}/approve [post]
+// @Router /bridges/{global_index}/approve [post]
 func (a *API) approveBridge(c *gin.Context) {
 	a.manualDecision(c, autoclaimtypes.PolicyResultApproved)
 }
@@ -186,7 +187,7 @@ func (a *API) approveBridge(c *gin.Context) {
 // @Summary Reject Auto Claim bridge request
 // @Description Rejects a request currently in manual-approval-required and advances the matching claimer when present.
 // @Tags autoclaim
-// @Param id path string true "Auto Claim request ID"
+// @Param global_index path string true "Global index of the bridge (decimal or 0x-prefixed hex)"
 // @Param decision body apitypes.DecisionRequest false "Manual rejection metadata"
 // @Accept json
 // @Produce json
@@ -195,18 +196,19 @@ func (a *API) approveBridge(c *gin.Context) {
 // @Failure 404 {object} apitypes.ErrorResponse "Not Found"
 // @Failure 409 {object} apitypes.ErrorResponse "Conflict"
 // @Failure 500 {object} apitypes.ErrorResponse "Internal Server Error"
-// @Router /bridges/{id}/reject [post]
+// @Router /bridges/{global_index}/reject [post]
 func (a *API) rejectBridge(c *gin.Context) {
 	a.manualDecision(c, autoclaimtypes.PolicyResultRejected)
 }
 
 func (a *API) manualDecision(c *gin.Context, result autoclaimtypes.PolicyResult) {
-	request, ok := a.requestByID(c)
+	request, ok := a.requestByGlobalIndex(c)
 	if !ok {
 		return
 	}
 	if request.Status != autoclaimtypes.RequestStatusManualApprovalRequired {
-		writeError(c, http.StatusConflict, fmt.Errorf("request %s is not waiting for manual approval", request.Key))
+		writeError(c, http.StatusConflict,
+			fmt.Errorf("request with global index %s is not waiting for manual approval", request.GlobalIndex))
 		return
 	}
 
@@ -253,9 +255,13 @@ func (a *API) manualDecision(c *gin.Context, result autoclaimtypes.PolicyResult)
 	c.JSON(http.StatusOK, apitypes.NewRequestResponse(*updated))
 }
 
-func (a *API) requestByID(c *gin.Context) (*autoclaimtypes.AutoClaimRequest, bool) {
-	key := autoclaimtypes.RequestKey(c.Param("id"))
-	request, err := a.storage.GetRequest(c.Request.Context(), key)
+func (a *API) requestByGlobalIndex(c *gin.Context) (*autoclaimtypes.AutoClaimRequest, bool) {
+	globalIndex, err := apitypes.ParseGlobalIndex(c.Param(apitypes.GlobalIndexParam))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, err)
+		return nil, false
+	}
+	request, err := a.storage.GetRequestByGlobalIndex(c.Request.Context(), globalIndex)
 	if err != nil {
 		a.writeStorageError(c, err)
 		return nil, false
@@ -284,7 +290,9 @@ func (a *API) writeStorageError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, db.ErrNotFound):
 		writeError(c, http.StatusNotFound, err)
-	case errors.Is(err, autoclaimstorage.ErrPreconditionFailed), errors.Is(err, autoclaimstorage.ErrInvalidTransition):
+	case errors.Is(err, autoclaimstorage.ErrPreconditionFailed),
+		errors.Is(err, autoclaimstorage.ErrInvalidTransition),
+		errors.Is(err, autoclaimstorage.ErrAmbiguousGlobalIndex):
 		writeError(c, http.StatusConflict, err)
 	default:
 		writeError(c, http.StatusInternalServerError, err)

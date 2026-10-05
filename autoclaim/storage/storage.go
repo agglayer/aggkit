@@ -23,12 +23,16 @@ var (
 	ErrInvalidTransition = errors.New("invalid autoclaim request transition")
 	// ErrPreconditionFailed is returned when an atomic update precondition does not match the stored row.
 	ErrPreconditionFailed = errors.New("autoclaim request precondition failed")
+	// ErrAmbiguousGlobalIndex is returned when more than one stored request shares a global index.
+	ErrAmbiguousGlobalIndex = errors.New("autoclaim global index matches more than one request")
 )
 
 const (
 	recoveryFilterClauseCapacity = 2
-	requestFilterClauseCapacity  = 9
+	requestFilterClauseCapacity  = 10
 	base10                       = 10
+	// globalIndexLookupPageSize is just enough rows to detect a global index shared by two requests.
+	globalIndexLookupPageSize = 2
 )
 
 var _ autoclaimtypes.Storage = (*Storage)(nil)
@@ -619,6 +623,33 @@ func (s *Storage) GetRequest(
 	return request, nil
 }
 
+// GetRequestByGlobalIndex returns the stored request whose claim global index equals globalIndex.
+// It returns db.ErrNotFound when no request matches and ErrAmbiguousGlobalIndex when more than one does
+// (a legacy pre-Etrog bare deposit-count index can numerically equal a rollup-origin index).
+func (s *Storage) GetRequestByGlobalIndex(
+	ctx context.Context,
+	globalIndex *big.Int,
+) (*autoclaimtypes.AutoClaimRequest, error) {
+	if globalIndex == nil {
+		return nil, fmt.Errorf("get autoclaim request by global index: nil global index")
+	}
+	page, err := s.ListRequests(ctx, autoclaimtypes.RequestFilter{
+		GlobalIndex: globalIndex,
+		PageSize:    globalIndexLookupPageSize,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get autoclaim request by global index %s: %w", globalIndex, err)
+	}
+	switch {
+	case page.Count == 0 || len(page.Requests) == 0:
+		return nil, fmt.Errorf("get autoclaim request by global index %s: %w", globalIndex, db.ErrNotFound)
+	case page.Count > 1:
+		return nil, fmt.Errorf("get autoclaim request by global index %s: %w", globalIndex, ErrAmbiguousGlobalIndex)
+	default:
+		return page.Requests[0], nil
+	}
+}
+
 // ListRequests returns a filtered, paginated request list ordered by newest bridge block first.
 func (s *Storage) ListRequests(
 	ctx context.Context,
@@ -1139,6 +1170,10 @@ func buildRequestWhereClause(filter autoclaimtypes.RequestFilter) (string, []any
 	if filter.ClaimTxHash != nil {
 		clauses = append(clauses, "claim_tx_hash = ?")
 		args = append(args, filter.ClaimTxHash.Hex())
+	}
+	if filter.GlobalIndex != nil {
+		clauses = append(clauses, "global_index = ?")
+		args = append(args, filter.GlobalIndex.String())
 	}
 	if filter.FromBlock != nil {
 		clauses = append(clauses, "block_num >= ?")

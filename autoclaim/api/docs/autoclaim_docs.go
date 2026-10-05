@@ -99,6 +99,12 @@ const docTemplateautoclaim = `{
                         "in": "query"
                     },
                     {
+                        "type": "string",
+                        "description": "Filter by global index (decimal or 0x-prefixed hex)",
+                        "name": "global_index",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "format": "int32",
                         "description": "Page number (default 0)",
@@ -135,9 +141,9 @@ const docTemplateautoclaim = `{
                 }
             }
         },
-        "/autoclaim/v1/bridges/{id}": {
+        "/autoclaim/v1/bridges/{global_index}": {
             "get": {
-                "description": "Returns one tracked Auto Claim request by request ID.",
+                "description": "Returns one tracked Auto Claim request by global index.",
                 "produces": [
                     "application/json"
                 ],
@@ -148,8 +154,8 @@ const docTemplateautoclaim = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Auto Claim request ID",
-                        "name": "id",
+                        "description": "Global index of the bridge (decimal or 0x-prefixed hex)",
+                        "name": "global_index",
                         "in": "path",
                         "required": true
                     }
@@ -161,8 +167,20 @@ const docTemplateautoclaim = `{
                             "$ref": "#/definitions/apitypes.RequestResponse"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apitypes.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/apitypes.ErrorResponse"
                         }
@@ -176,7 +194,7 @@ const docTemplateautoclaim = `{
                 }
             }
         },
-        "/bridges/{id}/approve": {
+        "/bridges/{global_index}/approve": {
             "post": {
                 "description": "Approves a request currently in manual-approval-required and advances the matching claimer when present.",
                 "consumes": [
@@ -192,8 +210,8 @@ const docTemplateautoclaim = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Auto Claim request ID",
-                        "name": "id",
+                        "description": "Global index of the bridge (decimal or 0x-prefixed hex)",
+                        "name": "global_index",
                         "in": "path",
                         "required": true
                     },
@@ -240,7 +258,7 @@ const docTemplateautoclaim = `{
                 }
             }
         },
-        "/bridges/{id}/reject": {
+        "/bridges/{global_index}/reject": {
             "post": {
                 "description": "Rejects a request currently in manual-approval-required and advances the matching claimer when present.",
                 "consumes": [
@@ -256,8 +274,8 @@ const docTemplateautoclaim = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Auto Claim request ID",
-                        "name": "id",
+                        "description": "Global index of the bridge (decimal or 0x-prefixed hex)",
+                        "name": "global_index",
                         "in": "path",
                         "required": true
                     },
@@ -366,7 +384,7 @@ const docTemplateautoclaim = `{
             "properties": {
                 "error": {
                     "type": "string",
-                    "example": "request 0:1:42 not found"
+                    "example": "request with global index 18446744073709551658 not found"
                 }
             }
         },
@@ -424,9 +442,6 @@ const docTemplateautoclaim = `{
                     "type": "integer"
                 },
                 "global_index": {
-                    "type": "string"
-                },
-                "id": {
                     "type": "string"
                 },
                 "l1_info_tree_index": {

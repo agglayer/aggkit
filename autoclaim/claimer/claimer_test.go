@@ -1122,6 +1122,21 @@ func (s *memoryStorage) GetRequest(
 	return copyRequest(request), nil
 }
 
+func (s *memoryStorage) GetRequestByGlobalIndex(
+	_ context.Context,
+	globalIndex *big.Int,
+) (*autoclaimtypes.AutoClaimRequest, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, request := range s.requests {
+		if request.GlobalIndex != nil && request.GlobalIndex.Cmp(globalIndex) == 0 {
+			return copyRequest(request), nil
+		}
+	}
+	return nil, fmt.Errorf("missing request with global index %s", globalIndex)
+}
+
 func (s *memoryStorage) ListRequests(
 	_ context.Context,
 	_ autoclaimtypes.RequestFilter,
