@@ -100,7 +100,7 @@ const docTemplateautoclaim = `{
                     },
                     {
                         "type": "string",
-                        "description": "Filter by global index (decimal or 0x-prefixed hex)",
+                        "description": "Filter by global index (same format as the bridge API)",
                         "name": "global_index",
                         "in": "query"
                     },
@@ -154,10 +154,17 @@ const docTemplateautoclaim = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Global index of the bridge (decimal or 0x-prefixed hex)",
+                        "description": "Global index of the bridge (same format as the bridge API)",
                         "name": "global_index",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Destination network ID, to disambiguate a shared global index",
+                        "name": "destination_network",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -210,10 +217,17 @@ const docTemplateautoclaim = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Global index of the bridge (decimal or 0x-prefixed hex)",
+                        "description": "Global index of the bridge (same format as the bridge API)",
                         "name": "global_index",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Destination network ID, to disambiguate a shared global index",
+                        "name": "destination_network",
+                        "in": "query"
                     },
                     {
                         "description": "Manual approval metadata",
@@ -274,10 +288,17 @@ const docTemplateautoclaim = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Global index of the bridge (decimal or 0x-prefixed hex)",
+                        "description": "Global index of the bridge (same format as the bridge API)",
                         "name": "global_index",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Destination network ID, to disambiguate a shared global index",
+                        "name": "destination_network",
+                        "in": "query"
                     },
                     {
                         "description": "Manual rejection metadata",
@@ -384,7 +405,7 @@ const docTemplateautoclaim = `{
             "properties": {
                 "error": {
                     "type": "string",
-                    "example": "request with global index 18446744073709551658 not found"
+                    "example": "get autoclaim request by global index 18446744073709551658: not found"
                 }
             }
         },

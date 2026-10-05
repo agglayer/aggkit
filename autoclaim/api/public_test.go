@@ -252,6 +252,15 @@ func TestPublicRESTGetBridgeAmbiguousGlobalIndex(t *testing.T) {
 
 	resp := doPublicRequest(t, router, autoclaimpublicV1+"/bridges/"+first.GlobalIndex.String())
 	require.Equal(t, http.StatusConflict, resp.Code)
+
+	resp = doPublicRequest(t, router, autoclaimpublicV1+"/bridges/"+first.GlobalIndex.String()+"?destination_network=11")
+	require.Equal(t, http.StatusOK, resp.Code)
+	var result apitypes.RequestResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &result))
+	require.Equal(t, uint32(11), result.DestinationNetwork)
+
+	resp = doPublicRequest(t, router, autoclaimpublicV1+"/bridges/"+first.GlobalIndex.String()+"?destination_network=abc")
+	require.Equal(t, http.StatusBadRequest, resp.Code)
 }
 
 func TestPublicRESTListBridgesFiltersByGlobalIndex(t *testing.T) {

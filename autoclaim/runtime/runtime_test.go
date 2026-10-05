@@ -749,7 +749,11 @@ func (*fakeStorage) GetRequest(context.Context, autoclaimtypes.RequestKey) (*aut
 	return nil, nil
 }
 
-func (*fakeStorage) GetRequestByGlobalIndex(context.Context, *big.Int) (*autoclaimtypes.AutoClaimRequest, error) {
+func (*fakeStorage) GetRequestByGlobalIndex(
+	context.Context,
+	*big.Int,
+	*uint32,
+) (*autoclaimtypes.AutoClaimRequest, error) {
 	return nil, nil
 }
 

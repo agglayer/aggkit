@@ -1125,6 +1125,7 @@ func (s *memoryStorage) GetRequest(
 func (s *memoryStorage) GetRequestByGlobalIndex(
 	_ context.Context,
 	globalIndex *big.Int,
+	_ *uint32,
 ) (*autoclaimtypes.AutoClaimRequest, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

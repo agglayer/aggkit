@@ -811,15 +811,15 @@ func TestGetRequestByGlobalIndex(t *testing.T) {
 	enqueueRequest(t, ctx, storage, request)
 	enqueueRequest(t, ctx, storage, makeRequest(4, 10, autoclaimtypes.RequestStatusDetected))
 
-	got, err := storage.GetRequestByGlobalIndex(ctx, new(big.Int).Set(request.GlobalIndex))
+	got, err := storage.GetRequestByGlobalIndex(ctx, new(big.Int).Set(request.GlobalIndex), nil)
 	require.NoError(t, err)
 	require.Equal(t, request.Key, got.Key)
 	require.Equal(t, request.GlobalIndex, got.GlobalIndex)
 
-	_, err = storage.GetRequestByGlobalIndex(ctx, big.NewInt(999))
+	_, err = storage.GetRequestByGlobalIndex(ctx, big.NewInt(999), nil)
 	require.ErrorIs(t, err, db.ErrNotFound)
 
-	_, err = storage.GetRequestByGlobalIndex(ctx, nil)
+	_, err = storage.GetRequestByGlobalIndex(ctx, nil, nil)
 	require.Error(t, err)
 }
 
@@ -832,8 +832,19 @@ func TestGetRequestByGlobalIndexAmbiguous(t *testing.T) {
 	enqueueRequest(t, ctx, storage, makeRequest(5, 10, autoclaimtypes.RequestStatusDetected))
 	enqueueRequest(t, ctx, storage, makeRequest(5, 11, autoclaimtypes.RequestStatusDetected))
 
-	_, err := storage.GetRequestByGlobalIndex(ctx, autoclaimtypes.DeriveGlobalIndex(autoclaimtypes.L1OriginNetwork, 5))
+	globalIndex := autoclaimtypes.DeriveGlobalIndex(autoclaimtypes.L1OriginNetwork, 5)
+	_, err := storage.GetRequestByGlobalIndex(ctx, globalIndex, nil)
 	require.ErrorIs(t, err, ErrAmbiguousGlobalIndex)
+
+	// Narrowing by destination network disambiguates.
+	destination := uint32(11)
+	got, err := storage.GetRequestByGlobalIndex(ctx, globalIndex, &destination)
+	require.NoError(t, err)
+	require.Equal(t, destination, got.Bridge.DestinationNetwork)
+
+	missing := uint32(99)
+	_, err = storage.GetRequestByGlobalIndex(ctx, globalIndex, &missing)
+	require.ErrorIs(t, err, db.ErrNotFound)
 }
 
 func TestListRequestsFiltersByGlobalIndex(t *testing.T) {

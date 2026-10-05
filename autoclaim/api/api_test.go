@@ -426,8 +426,16 @@ func TestManualDecisionAmbiguousGlobalIndex(t *testing.T) {
 	enqueueRequest(t, context.Background(), storage, first)
 	enqueueRequest(t, context.Background(), storage, second)
 
-	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+first.GlobalIndex.String()+"/approve", nil)
+	path := Prefix + "/bridges/" + first.GlobalIndex.String() + "/approve"
+	response := performRequest(t, api, http.MethodPost, path, nil)
 	require.Equal(t, http.StatusConflict, response.Code)
+
+	response = performRequest(t, api, http.MethodPost, path+"?destination_network=abc", nil)
+	require.Equal(t, http.StatusBadRequest, response.Code)
+
+	response = performRequest(t, api, http.MethodPost, path+"?destination_network=11", nil)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Contains(t, response.Body.String(), `"destination_network":11`)
 }
 
 func TestManualDecisionInvalidJSONBody(t *testing.T) {

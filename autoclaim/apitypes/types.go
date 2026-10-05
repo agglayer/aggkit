@@ -13,7 +13,7 @@ import (
 
 // ErrorResponse is returned when an Auto Claim request cannot be completed.
 type ErrorResponse struct {
-	Error string `json:"error" example:"request with global index 18446744073709551658 not found"`
+	Error string `json:"error" example:"get autoclaim request by global index 18446744073709551658: not found"`
 }
 
 // ListResponse is returned by the Auto Claim bridge request listing endpoint.

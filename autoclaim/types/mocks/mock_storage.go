@@ -151,9 +151,9 @@ func (_c *Storage_GetRequest_Call) RunAndReturn(run func(context.Context, types.
 	return _c
 }
 
-// GetRequestByGlobalIndex provides a mock function with given fields: ctx, globalIndex
-func (_m *Storage) GetRequestByGlobalIndex(ctx context.Context, globalIndex *big.Int) (*types.AutoClaimRequest, error) {
-	ret := _m.Called(ctx, globalIndex)
+// GetRequestByGlobalIndex provides a mock function with given fields: ctx, globalIndex, destinationNetwork
+func (_m *Storage) GetRequestByGlobalIndex(ctx context.Context, globalIndex *big.Int, destinationNetwork *uint32) (*types.AutoClaimRequest, error) {
+	ret := _m.Called(ctx, globalIndex, destinationNetwork)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetRequestByGlobalIndex")
@@ -161,19 +161,19 @@ func (_m *Storage) GetRequestByGlobalIndex(ctx context.Context, globalIndex *big
 
 	var r0 *types.AutoClaimRequest
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *big.Int) (*types.AutoClaimRequest, error)); ok {
-		return rf(ctx, globalIndex)
+	if rf, ok := ret.Get(0).(func(context.Context, *big.Int, *uint32) (*types.AutoClaimRequest, error)); ok {
+		return rf(ctx, globalIndex, destinationNetwork)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *big.Int) *types.AutoClaimRequest); ok {
-		r0 = rf(ctx, globalIndex)
+	if rf, ok := ret.Get(0).(func(context.Context, *big.Int, *uint32) *types.AutoClaimRequest); ok {
+		r0 = rf(ctx, globalIndex, destinationNetwork)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.AutoClaimRequest)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *big.Int) error); ok {
-		r1 = rf(ctx, globalIndex)
+	if rf, ok := ret.Get(1).(func(context.Context, *big.Int, *uint32) error); ok {
+		r1 = rf(ctx, globalIndex, destinationNetwork)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -189,13 +189,14 @@ type Storage_GetRequestByGlobalIndex_Call struct {
 // GetRequestByGlobalIndex is a helper method to define mock.On call
 //   - ctx context.Context
 //   - globalIndex *big.Int
-func (_e *Storage_Expecter) GetRequestByGlobalIndex(ctx interface{}, globalIndex interface{}) *Storage_GetRequestByGlobalIndex_Call {
-	return &Storage_GetRequestByGlobalIndex_Call{Call: _e.mock.On("GetRequestByGlobalIndex", ctx, globalIndex)}
+//   - destinationNetwork *uint32
+func (_e *Storage_Expecter) GetRequestByGlobalIndex(ctx interface{}, globalIndex interface{}, destinationNetwork interface{}) *Storage_GetRequestByGlobalIndex_Call {
+	return &Storage_GetRequestByGlobalIndex_Call{Call: _e.mock.On("GetRequestByGlobalIndex", ctx, globalIndex, destinationNetwork)}
 }
 
-func (_c *Storage_GetRequestByGlobalIndex_Call) Run(run func(ctx context.Context, globalIndex *big.Int)) *Storage_GetRequestByGlobalIndex_Call {
+func (_c *Storage_GetRequestByGlobalIndex_Call) Run(run func(ctx context.Context, globalIndex *big.Int, destinationNetwork *uint32)) *Storage_GetRequestByGlobalIndex_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*big.Int))
+		run(args[0].(context.Context), args[1].(*big.Int), args[2].(*uint32))
 	})
 	return _c
 }
@@ -205,7 +206,7 @@ func (_c *Storage_GetRequestByGlobalIndex_Call) Return(_a0 *types.AutoClaimReque
 	return _c
 }
 
-func (_c *Storage_GetRequestByGlobalIndex_Call) RunAndReturn(run func(context.Context, *big.Int) (*types.AutoClaimRequest, error)) *Storage_GetRequestByGlobalIndex_Call {
+func (_c *Storage_GetRequestByGlobalIndex_Call) RunAndReturn(run func(context.Context, *big.Int, *uint32) (*types.AutoClaimRequest, error)) *Storage_GetRequestByGlobalIndex_Call {
 	_c.Call.Return(run)
 	return _c
 }

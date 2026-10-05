@@ -18,7 +18,11 @@ const publicPrefix = "/autoclaim/v1"
 
 // Querier is the read-only view of Auto Claim request state needed for the public API.
 type Querier interface {
-	GetRequestByGlobalIndex(ctx context.Context, globalIndex *big.Int) (*autoclaimtypes.AutoClaimRequest, error)
+	GetRequestByGlobalIndex(
+		ctx context.Context,
+		globalIndex *big.Int,
+		destinationNetwork *uint32,
+	) (*autoclaimtypes.AutoClaimRequest, error)
 	ListRequests(ctx context.Context, filter autoclaimtypes.RequestFilter) (*autoclaimtypes.RequestPage, error)
 }
 
@@ -58,7 +62,7 @@ func (p *PublicREST) RegisterRoutes(router gin.IRouter) {
 // @Param claim_tx_hash query string false "Filter by 0x-prefixed claim transaction hash"
 // @Param from_block query uint64 false "Filter by minimum bridge block number"
 // @Param to_block query uint64 false "Filter by maximum bridge block number"
-// @Param global_index query string false "Filter by global index (decimal or 0x-prefixed hex)"
+// @Param global_index query string false "Filter by global index (same format as the bridge API)"
 // @Param page_number query uint32 false "Page number (default 0)"
 // @Param page_size query uint32 false "Page size (default 100, max 1000)"
 // @Produce json
@@ -102,7 +106,8 @@ func (p *PublicREST) listBridges(c *gin.Context) {
 // @Summary Get Auto Claim bridge request
 // @Description Returns one tracked Auto Claim request by global index.
 // @Tags autoclaim
-// @Param global_index path string true "Global index of the bridge (decimal or 0x-prefixed hex)"
+// @Param global_index path string true "Global index of the bridge (same format as the bridge API)"
+// @Param destination_network query uint32 false "Destination network ID, to disambiguate a shared global index"
 // @Produce json
 // @Success 200 {object} apitypes.RequestResponse
 // @Failure 400 {object} apitypes.ErrorResponse "Bad Request"
@@ -119,7 +124,12 @@ func (p *PublicREST) getBridge(c *gin.Context) {
 		writePublicError(c, http.StatusBadRequest, err)
 		return
 	}
-	request, err := p.querier.GetRequestByGlobalIndex(ctx, globalIndex)
+	destinationNetwork, err := apitypes.ParseOptionalDestinationNetwork(c)
+	if err != nil {
+		writePublicError(c, http.StatusBadRequest, err)
+		return
+	}
+	request, err := p.querier.GetRequestByGlobalIndex(ctx, globalIndex, destinationNetwork)
 	if err != nil {
 		switch {
 		case errors.Is(err, db.ErrNotFound):

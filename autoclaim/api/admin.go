@@ -62,7 +62,11 @@ func ConfigFromRESTConfig(enabled bool, _ aggkitcommon.RESTConfig) Config {
 
 // Storage is the admin API persistence boundary.
 type Storage interface {
-	GetRequestByGlobalIndex(ctx context.Context, globalIndex *big.Int) (*autoclaimtypes.AutoClaimRequest, error)
+	GetRequestByGlobalIndex(
+		ctx context.Context,
+		globalIndex *big.Int,
+		destinationNetwork *uint32,
+	) (*autoclaimtypes.AutoClaimRequest, error)
 	ApproveManualRequest(
 		ctx context.Context,
 		key autoclaimtypes.RequestKey,
@@ -168,7 +172,8 @@ func (a *API) RegisterRoutes(router gin.IRouter) {
 // @Summary Approve Auto Claim bridge request
 // @Description Approves a request currently in manual-approval-required and advances the matching claimer when present.
 // @Tags autoclaim
-// @Param global_index path string true "Global index of the bridge (decimal or 0x-prefixed hex)"
+// @Param global_index path string true "Global index of the bridge (same format as the bridge API)"
+// @Param destination_network query uint32 false "Destination network ID, to disambiguate a shared global index"
 // @Param decision body apitypes.DecisionRequest false "Manual approval metadata"
 // @Accept json
 // @Produce json
@@ -187,7 +192,8 @@ func (a *API) approveBridge(c *gin.Context) {
 // @Summary Reject Auto Claim bridge request
 // @Description Rejects a request currently in manual-approval-required and advances the matching claimer when present.
 // @Tags autoclaim
-// @Param global_index path string true "Global index of the bridge (decimal or 0x-prefixed hex)"
+// @Param global_index path string true "Global index of the bridge (same format as the bridge API)"
+// @Param destination_network query uint32 false "Destination network ID, to disambiguate a shared global index"
 // @Param decision body apitypes.DecisionRequest false "Manual rejection metadata"
 // @Accept json
 // @Produce json
@@ -261,7 +267,12 @@ func (a *API) requestByGlobalIndex(c *gin.Context) (*autoclaimtypes.AutoClaimReq
 		writeError(c, http.StatusBadRequest, err)
 		return nil, false
 	}
-	request, err := a.storage.GetRequestByGlobalIndex(c.Request.Context(), globalIndex)
+	destinationNetwork, err := apitypes.ParseOptionalDestinationNetwork(c)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, err)
+		return nil, false
+	}
+	request, err := a.storage.GetRequestByGlobalIndex(c.Request.Context(), globalIndex, destinationNetwork)
 	if err != nil {
 		a.writeStorageError(c, err)
 		return nil, false

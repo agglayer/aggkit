@@ -672,19 +672,19 @@ controls:
 | Method and path | Server | Purpose |
 | --- | --- | --- |
 | `GET /autoclaim/v1/bridges` | Public (`[PublicREST]`) | List tracked requests. |
-| `GET /autoclaim/v1/bridges/{global_index}` | Public (`[PublicREST]`) | Inspect one request by its claim global index (decimal, or `0x`-prefixed hex). |
+| `GET /autoclaim/v1/bridges/{global_index}` | Public (`[PublicREST]`) | Inspect one request by its claim global index. |
 | `POST /autoclaim/v1/bridges/{global_index}/approve` | Admin (`[AdminREST]`) | Approve a request currently in `manual-approval-required`. |
 | `POST /autoclaim/v1/bridges/{global_index}/reject` | Admin (`[AdminREST]`) | Reject a request currently in `manual-approval-required`. |
 
 List query parameters: `source_network`, `origin_network`, `destination_network`, `status`, `policy_status` (alias:
-`policy_result`), `bridge_tx_hash`, `claim_tx_hash`, `global_index` (decimal or `0x`-prefixed hex), `from_block`, `to_block`,
-`page_number`, and `page_size` (maximum 1000).
+`policy_result`), `bridge_tx_hash`, `claim_tx_hash`, `global_index`, `from_block`, `to_block`, `page_number`, and `page_size`
+(maximum 1000).
 
-`{global_index}` follows the same encoding as the bridge API's `global_index`. A non-numeric value returns `400`,
-an unknown one `404`. The global index does not encode the destination network, so in the rare case where two
-tracked requests share one (a legacy pre-Etrog bare deposit-count index that numerically equals a rollup-origin
-index), the by-index routes return `409`; use `GET /autoclaim/v1/bridges?global_index=...&destination_network=...`
-to tell them apart.
+`{global_index}` (and the `global_index` filter) is parsed exactly like the bridge API's `global_index` parameter
+(decimal, or `0x`-prefixed hex); a non-numeric value returns `400` and an unknown one `404`. The global index does
+not encode the destination network, so in the rare case where two tracked requests share one (a legacy pre-Etrog
+bare deposit-count index that numerically equals a rollup-origin index), the by-index routes return `409`. Add
+`?destination_network=<id>` to `GET /bridges/{global_index}`, `approve` or `reject` to pick the intended request.
 
 Manual approval and rejection bodies are optional JSON objects:
 

@@ -78,14 +78,21 @@ func EffectivePageSize(pageSize uint32) uint32 {
 // GlobalIndexParam is the query parameter and path segment name carrying a claim global index.
 const GlobalIndexParam = "global_index"
 
-// ParseGlobalIndex parses a claim global index as accepted by the bridge API: a decimal number, or a
-// 0x-prefixed hexadecimal one.
+// ParseGlobalIndex parses a claim global index with the same rules as the bridge API's global_index
+// parameter (big.Int base prefixes: decimal, 0x hex, ...), additionally trimming spaces and rejecting
+// negative values.
 func ParseGlobalIndex(value string) (*big.Int, error) {
 	globalIndex, ok := new(big.Int).SetString(strings.TrimSpace(value), 0)
 	if !ok || globalIndex.Sign() < 0 {
 		return nil, fmt.Errorf("invalid %s parameter, it should be a numeric", GlobalIndexParam)
 	}
 	return globalIndex, nil
+}
+
+// ParseOptionalDestinationNetwork parses the optional destination_network query parameter, used to
+// disambiguate requests that share a global index.
+func ParseOptionalDestinationNetwork(c *gin.Context) (*uint32, error) {
+	return parseOptionalUint32(c, "destination_network")
 }
 
 func parseOptionalGlobalIndex(c *gin.Context) (*big.Int, error) {

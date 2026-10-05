@@ -623,30 +623,50 @@ func (s *Storage) GetRequest(
 	return request, nil
 }
 
-// GetRequestByGlobalIndex returns the stored request whose claim global index equals globalIndex.
-// It returns db.ErrNotFound when no request matches and ErrAmbiguousGlobalIndex when more than one does
-// (a legacy pre-Etrog bare deposit-count index can numerically equal a rollup-origin index).
+// GetRequestByGlobalIndex returns the stored request whose claim global index equals globalIndex,
+// optionally narrowed to one destination network. It returns db.ErrNotFound when no request matches and
+// ErrAmbiguousGlobalIndex when more than one does (a legacy pre-Etrog bare deposit-count index can
+// numerically equal a rollup-origin index; pass destinationNetwork to tell them apart).
 func (s *Storage) GetRequestByGlobalIndex(
 	ctx context.Context,
 	globalIndex *big.Int,
+	destinationNetwork *uint32,
 ) (*autoclaimtypes.AutoClaimRequest, error) {
 	if globalIndex == nil {
 		return nil, fmt.Errorf("get autoclaim request by global index: nil global index")
 	}
-	page, err := s.ListRequests(ctx, autoclaimtypes.RequestFilter{
-		GlobalIndex: globalIndex,
-		PageSize:    globalIndexLookupPageSize,
+
+	where, args := buildRequestWhereClause(autoclaimtypes.RequestFilter{
+		GlobalIndex:        globalIndex,
+		DestinationNetwork: destinationNetwork,
 	})
+
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	// The WHERE fragment is built only by buildRequestWhereClause and contains placeholders only. Fetching
+	// globalIndexLookupPageSize rows is enough to detect a global index shared by two requests.
+	query := selectRequestSQL() + where + " LIMIT ?"
+	rows, err := s.database.QueryContext(dbCtx, query, append(args, globalIndexLookupPageSize)...)
 	if err != nil {
 		return nil, fmt.Errorf("get autoclaim request by global index %s: %w", globalIndex, err)
 	}
-	switch {
-	case page.Count == 0 || len(page.Requests) == 0:
+	var requestRows []*requestRow
+	if err := meddler.ScanAll(rows, &requestRows); err != nil {
+		return nil, fmt.Errorf("scan autoclaim request by global index %s: %w", globalIndex, err)
+	}
+
+	switch len(requestRows) {
+	case 0:
 		return nil, fmt.Errorf("get autoclaim request by global index %s: %w", globalIndex, db.ErrNotFound)
-	case page.Count > 1:
-		return nil, fmt.Errorf("get autoclaim request by global index %s: %w", globalIndex, ErrAmbiguousGlobalIndex)
+	case 1:
+		request, err := requestRows[0].toRequest()
+		if err != nil {
+			return nil, fmt.Errorf("get autoclaim request by global index %s: %w", globalIndex, err)
+		}
+		return request, nil
 	default:
-		return page.Requests[0], nil
+		return nil, fmt.Errorf("get autoclaim request by global index %s: %w", globalIndex, ErrAmbiguousGlobalIndex)
 	}
 }
 
