@@ -271,6 +271,7 @@ type RequestFilter struct {
 	PolicyResult       *PolicyResult
 	BridgeTxHash       *common.Hash
 	ClaimTxHash        *common.Hash
+	GlobalIndex        *big.Int
 	FromBlock          *uint64
 	ToBlock            *uint64
 	PageNumber         uint32

@@ -43,7 +43,7 @@ go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove)' -timeout 30m ./test/e
 
 `TestAutoClaimL1ToL2AllowAll` enables Auto Claim with the `allow-all` policy and waits for the request to reach
 `confirmed` without a manual claim. `TestAutoClaimL1ToL2APIApprove` enables the API, waits for
-`manual-approval-required`, approves the request through `POST /autoclaim/v1/bridges/{id}/approve`, and then waits for
+`manual-approval-required`, approves the request through `POST /autoclaim/v1/bridges/{global_index}/approve`, and then waits for
 `confirmed`.
 
 `TestAutoClaimL1ToL2FailingDestinationIsolated` (issue #1889) checks that one L1 -> L2 destination whose RPC is

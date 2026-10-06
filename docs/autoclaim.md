@@ -389,9 +389,10 @@ claimer's own destination network.
 
 ## Request lifecycle
 
-Requests are uniquely keyed by `source_network:destination_network:deposit_count` (for example `0:1:42` for an
-L1-to-L2 request, or `1:0:7` for an L2-to-L1 request from rollup 1); this key is also the request ID used by the
-API. `source_network` is the network the bridge exit was initiated on — always `0` for L1-to-L2 requests, the
+Requests are uniquely keyed internally by `source_network:destination_network:deposit_count` (for example `0:1:42`
+for an L1-to-L2 request, or `1:0:7` for an L2-to-L1 request from rollup 1). The API does not expose this key: like
+the bridge API, it identifies a request by its claim **global index** (`18446744073709551658` for `0:1:42`, `7` for
+`1:0:7`). `source_network` is the network the bridge exit was initiated on — always `0` for L1-to-L2 requests, the
 source rollup's network ID for L2-to-Lx requests — and is distinct from `origin_network`, the bridged token's
 origin network, which can be non-zero for either direction (for example an L2-origin token bridged from L1, or a
 wrapped token bridged from one rollup to another).
@@ -438,7 +439,7 @@ Step by step:
 1. A bridge detector (L1-to-L2 or L2-to-Lx) discovers a bridge exit whose destination matches an enabled claimer.
    Bridges the target bridge contract already reports as claimed (`isClaimed`, keyed by `source_network` and
    `deposit_count`) are skipped without being stored. Each remaining matched bridge exit is enqueued immediately as
-   `detected` with no GER precondition. Enqueue is idempotent and deduplicated by the request key.
+   `detected` with no GER precondition. Enqueue is idempotent and deduplicated by the internal request key.
 2. The claimer evaluates the configured policy and moves the request to `policy-approved`, `policy-rejected`, or
    `manual-approval-required`. For `basic-filter`, the claimer prepares and stores the exact claim proof before
    policy evaluation so simulation uses the same calldata as the later send path; if proof data is not ready, the
@@ -671,13 +672,19 @@ controls:
 | Method and path | Server | Purpose |
 | --- | --- | --- |
 | `GET /autoclaim/v1/bridges` | Public (`[PublicREST]`) | List tracked requests. |
-| `GET /autoclaim/v1/bridges/{id}` | Public (`[PublicREST]`) | Inspect one request by Auto Claim request ID (`source_network:destination_network:deposit_count`). |
-| `POST /autoclaim/v1/bridges/{id}/approve` | Admin (`[AdminREST]`) | Approve a request currently in `manual-approval-required`. |
-| `POST /autoclaim/v1/bridges/{id}/reject` | Admin (`[AdminREST]`) | Reject a request currently in `manual-approval-required`. |
+| `GET /autoclaim/v1/bridges/{global_index}` | Public (`[PublicREST]`) | Inspect one request by its claim global index. |
+| `POST /autoclaim/v1/bridges/{global_index}/approve` | Admin (`[AdminREST]`) | Approve a request currently in `manual-approval-required`. |
+| `POST /autoclaim/v1/bridges/{global_index}/reject` | Admin (`[AdminREST]`) | Reject a request currently in `manual-approval-required`. |
 
 List query parameters: `source_network`, `origin_network`, `destination_network`, `status`, `policy_status` (alias:
-`policy_result`), `bridge_tx_hash`, `claim_tx_hash`, `from_block`, `to_block`, `page_number`, and `page_size`
+`policy_result`), `bridge_tx_hash`, `claim_tx_hash`, `global_index`, `from_block`, `to_block`, `page_number`, and `page_size`
 (maximum 1000).
+
+`{global_index}` (and the `global_index` filter) is parsed exactly like the bridge API's `global_index` parameter
+(decimal, or `0x`-prefixed hex); a non-numeric value returns `400` and an unknown one `404`. The global index does
+not encode the destination network, so in the rare case where two tracked requests share one (a legacy pre-Etrog
+bare deposit-count index that numerically equals a rollup-origin index), the by-index routes return `409`. Add
+`?destination_network=<id>` to `GET /bridges/{global_index}`, `approve` or `reject` to pick the intended request.
 
 Manual approval and rejection bodies are optional JSON objects:
 
@@ -692,7 +699,7 @@ Manual approval and rejection bodies are optional JSON objects:
 }
 ```
 
-The API returns request fields including `id`, `status`, `source_network`, bridge identifiers (including
+The API returns request fields including `status`, `source_network`, bridge identifiers (including
 `origin_network`), `global_index`, `bridge_tx_hash`, `claim_tx_hash`, `tx_manager_id`, `l1_info_tree_index`, `ler`
 (the source network's local exit root observed at detection time, used to select the covering L1 info tree leaf;
 the leaf-to-LER Merkle proof itself is always fetched fresh from the source's bridge service at claim time and is
@@ -704,9 +711,9 @@ Example workflow for `api-approve`:
 ```bash
 # Inspect via the public API ([PublicREST] port, e.g. 5577).
 curl "http://localhost:5577/autoclaim/v1/bridges?status=manual-approval-required"
-curl "http://localhost:5577/autoclaim/v1/bridges/0:1:42"
+curl "http://localhost:5577/autoclaim/v1/bridges/18446744073709551658"
 # Approve via the admin API ([AdminREST] port, e.g. 5579).
-curl -X POST "http://localhost:5579/autoclaim/v1/bridges/0:1:42/approve" \
+curl -X POST "http://localhost:5579/autoclaim/v1/bridges/18446744073709551658/approve" \
   -H "Content-Type: application/json" \
   -d '{"reason":"approved after bridge review","decider":"operator","decider_id":"alice"}'
 ```
