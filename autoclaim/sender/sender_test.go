@@ -544,6 +544,15 @@ func (s *fakeStorage) GetRequest(
 	return &request, nil
 }
 
+func (s *fakeStorage) GetRequestByGlobalIndex(
+	context.Context,
+	*big.Int,
+	*uint32,
+) (*autoclaimtypes.AutoClaimRequest, error) {
+	request := s.request
+	return &request, nil
+}
+
 func (s *fakeStorage) ListRequests(
 	context.Context,
 	autoclaimtypes.RequestFilter,

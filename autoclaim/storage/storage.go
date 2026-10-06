@@ -23,12 +23,16 @@ var (
 	ErrInvalidTransition = errors.New("invalid autoclaim request transition")
 	// ErrPreconditionFailed is returned when an atomic update precondition does not match the stored row.
 	ErrPreconditionFailed = errors.New("autoclaim request precondition failed")
+	// ErrAmbiguousGlobalIndex is returned when more than one stored request shares a global index.
+	ErrAmbiguousGlobalIndex = errors.New("autoclaim global index matches more than one request")
 )
 
 const (
 	recoveryFilterClauseCapacity = 2
-	requestFilterClauseCapacity  = 9
+	requestFilterClauseCapacity  = 10
 	base10                       = 10
+	// globalIndexLookupPageSize is just enough rows to detect a global index shared by two requests.
+	globalIndexLookupPageSize = 2
 )
 
 var _ autoclaimtypes.Storage = (*Storage)(nil)
@@ -619,6 +623,53 @@ func (s *Storage) GetRequest(
 	return request, nil
 }
 
+// GetRequestByGlobalIndex returns the stored request whose claim global index equals globalIndex,
+// optionally narrowed to one destination network. It returns db.ErrNotFound when no request matches and
+// ErrAmbiguousGlobalIndex when more than one does (a legacy pre-Etrog bare deposit-count index can
+// numerically equal a rollup-origin index; pass destinationNetwork to tell them apart).
+func (s *Storage) GetRequestByGlobalIndex(
+	ctx context.Context,
+	globalIndex *big.Int,
+	destinationNetwork *uint32,
+) (*autoclaimtypes.AutoClaimRequest, error) {
+	if globalIndex == nil {
+		return nil, fmt.Errorf("get autoclaim request by global index: nil global index")
+	}
+
+	where, args := buildRequestWhereClause(autoclaimtypes.RequestFilter{
+		GlobalIndex:        globalIndex,
+		DestinationNetwork: destinationNetwork,
+	})
+
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	// The WHERE fragment is built only by buildRequestWhereClause and contains placeholders only. Fetching
+	// globalIndexLookupPageSize rows is enough to detect a global index shared by two requests.
+	query := selectRequestSQL() + where + " LIMIT ?"
+	rows, err := s.database.QueryContext(dbCtx, query, append(args, globalIndexLookupPageSize)...)
+	if err != nil {
+		return nil, fmt.Errorf("get autoclaim request by global index %s: %w", globalIndex, err)
+	}
+	var requestRows []*requestRow
+	if err := meddler.ScanAll(rows, &requestRows); err != nil {
+		return nil, fmt.Errorf("scan autoclaim request by global index %s: %w", globalIndex, err)
+	}
+
+	switch len(requestRows) {
+	case 0:
+		return nil, fmt.Errorf("get autoclaim request by global index %s: %w", globalIndex, db.ErrNotFound)
+	case 1:
+		request, err := requestRows[0].toRequest()
+		if err != nil {
+			return nil, fmt.Errorf("get autoclaim request by global index %s: %w", globalIndex, err)
+		}
+		return request, nil
+	default:
+		return nil, fmt.Errorf("get autoclaim request by global index %s: %w", globalIndex, ErrAmbiguousGlobalIndex)
+	}
+}
+
 // ListRequests returns a filtered, paginated request list ordered by newest bridge block first.
 func (s *Storage) ListRequests(
 	ctx context.Context,
@@ -1139,6 +1190,10 @@ func buildRequestWhereClause(filter autoclaimtypes.RequestFilter) (string, []any
 	if filter.ClaimTxHash != nil {
 		clauses = append(clauses, "claim_tx_hash = ?")
 		args = append(args, filter.ClaimTxHash.Hex())
+	}
+	if filter.GlobalIndex != nil {
+		clauses = append(clauses, "global_index = ?")
+		args = append(args, filter.GlobalIndex.String())
 	}
 	if filter.FromBlock != nil {
 		clauses = append(clauses, "block_num >= ?")

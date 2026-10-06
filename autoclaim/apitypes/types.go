@@ -13,7 +13,7 @@ import (
 
 // ErrorResponse is returned when an Auto Claim request cannot be completed.
 type ErrorResponse struct {
-	Error string `json:"error" example:"request 0:1:42 not found"`
+	Error string `json:"error" example:"get autoclaim request by global index 18446744073709551658: not found"`
 }
 
 // ListResponse is returned by the Auto Claim bridge request listing endpoint.
@@ -26,7 +26,6 @@ type ListResponse struct {
 
 // RequestResponse contains stable Auto Claim request status fields.
 type RequestResponse struct {
-	ID                 string            `json:"id"`
 	Status             string            `json:"status"`
 	SourceNetwork      uint32            `json:"source_network"`
 	OriginNetwork      uint32            `json:"origin_network"`
@@ -83,7 +82,6 @@ type DecisionRequest struct {
 // NewRequestResponse maps a domain Auto Claim request into its stable REST representation.
 func NewRequestResponse(request autoclaimtypes.AutoClaimRequest) RequestResponse {
 	response := RequestResponse{
-		ID:                 string(request.Key),
 		Status:             request.Status.String(),
 		SourceNetwork:      request.Bridge.SourceNetwork,
 		OriginNetwork:      request.Bridge.OriginNetwork,

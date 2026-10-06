@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -77,7 +78,7 @@ const (
 	// L2ToLx detector is enabled.
 	autoClaimL1RollupManagerAddr = "0x6c6c009cC348976dB4A908c92B24433d4F6edA43"
 	// autoClaimL2BBridgeServiceBaseURL is the external (host) URL of the network-2 bridge service,
-	// which also serves the public Auto Claim request-status API (/autoclaim/v1/bridges/<key>).
+	// which also serves the public Auto Claim request-status API (/autoclaim/v1/bridges/<global_index>).
 	autoClaimL2BBridgeServiceBaseURL = "http://127.0.0.1:15577"
 	// l2NetworkKeyB mirrors envs.l2NetworkKeyB (unexported): the summary.json key / config dir of the
 	// secondary L2 network (L2B) whose aggkit node runs Auto Claim in the L2->L2 test.
@@ -85,7 +86,6 @@ const (
 )
 
 type autoClaimRequestResponse struct {
-	ID                 string                     `json:"id"`
 	Status             string                     `json:"status"`
 	OriginNetwork      uint32                     `json:"origin_network"`
 	DestinationNetwork uint32                     `json:"destination_network"`
@@ -768,11 +768,15 @@ func getAutoClaimRequestAt(
 	baseURL string,
 	key autoclaimtypes.RequestKey,
 ) (autoClaimRequestResponse, bool, error) {
+	globalIndex, err := autoClaimGlobalIndex(key)
+	if err != nil {
+		return autoClaimRequestResponse{}, false, err
+	}
 	// Public request inspection is served by the bridge service, not the admin Auto Claim API.
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		fmt.Sprintf("%s/autoclaim/v1/bridges/%s", baseURL, key),
+		fmt.Sprintf("%s/autoclaim/v1/bridges/%s", baseURL, globalIndex),
 		nil,
 	)
 	if err != nil {
@@ -803,13 +807,33 @@ func getAutoClaimRequestAt(
 	return request, true, nil
 }
 
+// autoClaimGlobalIndex converts an internal request key (source:destination:deposit_count) into the
+// global index the Auto Claim API uses to address a request.
+func autoClaimGlobalIndex(key autoclaimtypes.RequestKey) (string, error) {
+	parts := strings.Split(string(key), ":")
+	if len(parts) != 3 {
+		return "", fmt.Errorf("invalid Auto Claim request key %q", key)
+	}
+	source, err := strconv.ParseUint(parts[0], 10, 32)
+	if err != nil {
+		return "", fmt.Errorf("invalid source network in Auto Claim request key %q: %w", key, err)
+	}
+	depositCount, err := strconv.ParseUint(parts[2], 10, 32)
+	if err != nil {
+		return "", fmt.Errorf("invalid deposit count in Auto Claim request key %q: %w", key, err)
+	}
+	return autoclaimtypes.DeriveGlobalIndexForSource(uint32(source), uint32(depositCount)).String(), nil
+}
+
 func approveAutoClaimRequest(ctx context.Context, t *testing.T, key autoclaimtypes.RequestKey) {
 	t.Helper()
+	globalIndex, err := autoClaimGlobalIndex(key)
+	require.NoError(t, err)
 	body := bytes.NewBufferString(`{"reason":"e2e approved","decider":"e2e","decider_id":"autoclaim-test"}`)
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		fmt.Sprintf("%s/autoclaim/v1/bridges/%s/approve", autoClaimAPIBaseURL, key),
+		fmt.Sprintf("%s/autoclaim/v1/bridges/%s/approve", autoClaimAPIBaseURL, globalIndex),
 		body,
 	)
 	require.NoError(t, err)

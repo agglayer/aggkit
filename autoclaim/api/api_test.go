@@ -64,7 +64,7 @@ func TestDisabledAPIDoesNotExposeRoutesOrRequireDependencies(t *testing.T) {
 	api, err := New(Config{Enabled: false}, nil, nil)
 	require.NoError(t, err)
 
-	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/0:10:1/approve", nil)
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/1/approve", nil)
 	require.Equal(t, http.StatusNotFound, response.Code)
 }
 
@@ -82,7 +82,7 @@ func TestApproveManualRequest(t *testing.T) {
 		"decider_id": "alice",
 		"metadata":   map[string]string{"ticket": "ABC-1"},
 	}
-	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", body)
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+request.GlobalIndex.String()+"/approve", body)
 	require.Equal(t, http.StatusOK, response.Code)
 
 	var result apitypes.RequestResponse
@@ -108,7 +108,7 @@ func TestRejectManualRequest(t *testing.T) {
 	request := makeManualRequest(2, 10)
 	enqueueRequest(t, ctx, storage, request)
 
-	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/reject", nil)
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+request.GlobalIndex.String()+"/reject", nil)
 	require.Equal(t, http.StatusOK, response.Code)
 
 	var result apitypes.RequestResponse
@@ -126,7 +126,7 @@ func TestInvalidManualTransition(t *testing.T) {
 	request := makeRequest(3, 10, autoclaimtypes.RequestStatusDetected)
 	enqueueRequest(t, ctx, storage, request)
 
-	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", nil)
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+request.GlobalIndex.String()+"/approve", nil)
 	require.Equal(t, http.StatusConflict, response.Code)
 }
 
@@ -140,7 +140,7 @@ func TestManualDecisionRejectsOversizedFields(t *testing.T) {
 	body := map[string]any{
 		"decider": string(make([]byte, 300)),
 	}
-	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", body)
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+request.GlobalIndex.String()+"/approve", body)
 	require.Equal(t, http.StatusBadRequest, response.Code)
 	require.Contains(t, response.Body.String(), "decider exceeds maximum length")
 }
@@ -162,8 +162,8 @@ func TestSwaggerRoutes(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &doc))
 	require.Equal(t, Prefix, doc.BasePath)
-	require.Contains(t, doc.Paths, "/bridges/{id}/approve")
-	require.Contains(t, doc.Paths, "/bridges/{id}/reject")
+	require.Contains(t, doc.Paths, "/bridges/{global_index}/approve")
+	require.Contains(t, doc.Paths, "/bridges/{global_index}/reject")
 	require.NotContains(t, doc.Paths, "/bridges")
 }
 
@@ -393,8 +393,49 @@ func TestManualDecisionRequestNotFound(t *testing.T) {
 	storage := newTestStorage(t)
 	api := newTestAPI(t, storage, nil)
 
-	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/0:99:999/approve", nil)
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/999/approve", nil)
 	require.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestManualDecisionInvalidGlobalIndex(t *testing.T) {
+	api := newTestAPI(t, newTestStorage(t), nil)
+
+	for _, id := range []string{"abc", "0:10:1", "-1"} {
+		response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+id+"/approve", nil)
+		require.Equal(t, http.StatusBadRequest, response.Code, id)
+		require.Contains(t, response.Body.String(), "global_index")
+	}
+}
+
+func TestManualDecisionAcceptsHexGlobalIndex(t *testing.T) {
+	storage := newTestStorage(t)
+	api := newTestAPI(t, storage, newFakeRegistry())
+	request := makeManualRequest(7, 10)
+	enqueueRequest(t, context.Background(), storage, request)
+
+	path := Prefix + "/bridges/0x" + request.GlobalIndex.Text(16) + "/approve"
+	response := performRequest(t, api, http.MethodPost, path, nil)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+}
+
+func TestManualDecisionAmbiguousGlobalIndex(t *testing.T) {
+	storage := newTestStorage(t)
+	api := newTestAPI(t, storage, nil)
+	first := makeManualRequest(8, 10)
+	second := makeManualRequest(8, 11)
+	enqueueRequest(t, context.Background(), storage, first)
+	enqueueRequest(t, context.Background(), storage, second)
+
+	path := Prefix + "/bridges/" + first.GlobalIndex.String() + "/approve"
+	response := performRequest(t, api, http.MethodPost, path, nil)
+	require.Equal(t, http.StatusConflict, response.Code)
+
+	response = performRequest(t, api, http.MethodPost, path+"?destination_network=abc", nil)
+	require.Equal(t, http.StatusBadRequest, response.Code)
+
+	response = performRequest(t, api, http.MethodPost, path+"?destination_network=11", nil)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Contains(t, response.Body.String(), `"destination_network":11`)
 }
 
 func TestManualDecisionInvalidJSONBody(t *testing.T) {
@@ -405,7 +446,7 @@ func TestManualDecisionInvalidJSONBody(t *testing.T) {
 	enqueueRequest(t, ctx, storage, request)
 
 	response := performRawRequest(t, api, http.MethodPost,
-		Prefix+"/bridges/"+string(request.Key)+"/approve", []byte("not-json"))
+		Prefix+"/bridges/"+request.GlobalIndex.String()+"/approve", []byte("not-json"))
 	require.Equal(t, http.StatusBadRequest, response.Code)
 	require.Contains(t, response.Body.String(), "decode manual decision request")
 }
@@ -420,7 +461,7 @@ func TestManualDecisionDeciderIDOversize(t *testing.T) {
 	body := map[string]any{
 		"decider_id": string(make([]byte, maxDeciderIDLength+1)),
 	}
-	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", body)
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+request.GlobalIndex.String()+"/approve", body)
 	require.Equal(t, http.StatusBadRequest, response.Code)
 	require.Contains(t, response.Body.String(), "decider_id exceeds maximum length")
 }
@@ -435,7 +476,7 @@ func TestManualDecisionReasonOversize(t *testing.T) {
 	body := map[string]any{
 		"reason": string(make([]byte, maxReasonLength+1)),
 	}
-	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", body)
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+request.GlobalIndex.String()+"/approve", body)
 	require.Equal(t, http.StatusBadRequest, response.Code)
 	require.Contains(t, response.Body.String(), "reason exceeds maximum length")
 }
@@ -447,7 +488,7 @@ func TestManualDecisionNilRegistryApproves(t *testing.T) {
 	request := makeManualRequest(23, 99)
 	enqueueRequest(t, ctx, storage, request)
 
-	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", nil)
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+request.GlobalIndex.String()+"/approve", nil)
 	require.Equal(t, http.StatusOK, response.Code)
 }
 
@@ -459,7 +500,7 @@ func TestManualDecisionNotifyClaimerLookupError(t *testing.T) {
 	request := makeManualRequest(24, 10)
 	enqueueRequest(t, ctx, storage, request)
 
-	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", nil)
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+request.GlobalIndex.String()+"/approve", nil)
 	require.Equal(t, http.StatusInternalServerError, response.Code)
 	require.Contains(t, response.Body.String(), "registry rpc failed")
 }
@@ -477,7 +518,7 @@ func TestManualDecisionNotifyClaimerAdvanceError(t *testing.T) {
 	request := makeManualRequest(25, 10)
 	enqueueRequest(t, ctx, storage, request)
 
-	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+string(request.Key)+"/approve", nil)
+	response := performRequest(t, api, http.MethodPost, Prefix+"/bridges/"+request.GlobalIndex.String()+"/approve", nil)
 	require.Equal(t, http.StatusInternalServerError, response.Code)
 	require.Contains(t, response.Body.String(), "advance failed")
 }

@@ -1,6 +1,7 @@
 package apitypes
 
 import (
+	"encoding/json"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -35,6 +36,7 @@ func TestParseRequestFilterValid(t *testing.T) {
 	query.Set("policy_result", autoclaimtypes.PolicyResultApproved.String())
 	query.Set("bridge_tx_hash", common.HexToHash("0x1").Hex())
 	query.Set("claim_tx_hash", common.HexToHash("0x2").Hex())
+	query.Set("global_index", "18446744073709551621")
 	query.Set("from_block", "100")
 	query.Set("to_block", "200")
 	query.Set("page_number", "2")
@@ -50,6 +52,7 @@ func TestParseRequestFilterValid(t *testing.T) {
 	require.Equal(t, autoclaimtypes.PolicyResultApproved, *filter.PolicyResult)
 	require.NotNil(t, filter.BridgeTxHash)
 	require.NotNil(t, filter.ClaimTxHash)
+	require.Equal(t, "18446744073709551621", filter.GlobalIndex.String())
 	require.Equal(t, uint64(100), *filter.FromBlock)
 	require.Equal(t, uint64(200), *filter.ToBlock)
 	require.Equal(t, uint32(2), filter.PageNumber)
@@ -68,6 +71,8 @@ func TestParseRequestFilterErrors(t *testing.T) {
 		{"status", "status", "bogus"},
 		{"policy", "policy_status", "bogus"},
 		{"bridge hash", "bridge_tx_hash", "0x123"},
+		{"global index", "global_index", invalidUintValue},
+		{"negative global index", "global_index", "-1"},
 		{"from block", "from_block", invalidUintValue},
 		{"page number", "page_number", invalidUintValue},
 	} {
@@ -129,7 +134,6 @@ func TestNewRequestResponseMapsDecisions(t *testing.T) {
 	}
 
 	response := NewRequestResponse(request)
-	require.Equal(t, "0:10:5", response.ID)
 	require.Equal(t, autoclaimtypes.RequestStatusConfirmed.String(), response.Status)
 	require.Equal(t, uint32(0), response.SourceNetwork)
 	require.Empty(t, response.LER)
@@ -166,8 +170,44 @@ func TestNewRequestResponseMapsSourceNetworkAndLER(t *testing.T) {
 	}
 
 	response := NewRequestResponse(request)
-	require.Equal(t, "1:0:7", response.ID)
 	require.Equal(t, uint32(1), response.SourceNetwork)
 	require.Equal(t, uint32(5), response.OriginNetwork)
 	require.Equal(t, common.HexToHash("0xdeadbeef").Hex(), response.LER)
+}
+
+func TestParseGlobalIndex(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		value    string
+		expected string
+	}{
+		{"decimal", "18446744073709551621", "18446744073709551621"},
+		{"hex", "0x10000000000000005", "18446744073709551621"},
+		{"zero", "0", "0"},
+		{"padded", " 42 ", "42"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			globalIndex, err := ParseGlobalIndex(tc.value)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, globalIndex.String())
+		})
+	}
+
+	for _, value := range []string{"", "abc", "0:10:5", "-1"} {
+		_, err := ParseGlobalIndex(value)
+		require.ErrorContains(t, err, GlobalIndexParam, value)
+	}
+}
+
+func TestNewRequestResponseHasNoCustomID(t *testing.T) {
+	request := autoclaimtypes.AutoClaimRequest{
+		Key:         autoclaimtypes.RequestKey("0:10:5"),
+		Status:      autoclaimtypes.RequestStatusDetected,
+		GlobalIndex: big.NewInt(42),
+	}
+	body, err := json.Marshal(NewRequestResponse(request))
+	require.NoError(t, err)
+	require.NotContains(t, string(body), `"id"`)
+	require.NotContains(t, string(body), "0:10:5")
+	require.Contains(t, string(body), `"global_index":"42"`)
 }

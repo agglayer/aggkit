@@ -3,10 +3,12 @@ package api
 import (
 	"context"
 	"errors"
+	"math/big"
 	"net/http"
 	"time"
 
 	"github.com/agglayer/aggkit/autoclaim/apitypes"
+	autoclaimstorage "github.com/agglayer/aggkit/autoclaim/storage"
 	autoclaimtypes "github.com/agglayer/aggkit/autoclaim/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/gin-gonic/gin"
@@ -16,7 +18,11 @@ const publicPrefix = "/autoclaim/v1"
 
 // Querier is the read-only view of Auto Claim request state needed for the public API.
 type Querier interface {
-	GetRequest(ctx context.Context, key autoclaimtypes.RequestKey) (*autoclaimtypes.AutoClaimRequest, error)
+	GetRequestByGlobalIndex(
+		ctx context.Context,
+		globalIndex *big.Int,
+		destinationNetwork *uint32,
+	) (*autoclaimtypes.AutoClaimRequest, error)
 	ListRequests(ctx context.Context, filter autoclaimtypes.RequestFilter) (*autoclaimtypes.RequestPage, error)
 }
 
@@ -34,11 +40,11 @@ func NewPublicREST(querier Querier, readTimeout time.Duration) *PublicREST {
 // RegisterRoutes registers Auto Claim public read routes on router.
 //
 //	GET /autoclaim/v1/bridges
-//	GET /autoclaim/v1/bridges/:id
+//	GET /autoclaim/v1/bridges/:global_index
 func (p *PublicREST) RegisterRoutes(router gin.IRouter) {
 	group := router.Group(publicPrefix)
 	group.GET("/bridges", p.listBridges)
-	group.GET("/bridges/:id", p.getBridge)
+	group.GET("/bridges/:global_index", p.getBridge)
 }
 
 // listBridges lists Auto Claim bridge requests.
@@ -56,6 +62,7 @@ func (p *PublicREST) RegisterRoutes(router gin.IRouter) {
 // @Param claim_tx_hash query string false "Filter by 0x-prefixed claim transaction hash"
 // @Param from_block query uint64 false "Filter by minimum bridge block number"
 // @Param to_block query uint64 false "Filter by maximum bridge block number"
+// @Param global_index query string false "Filter by global index (same format as the bridge API)"
 // @Param page_number query uint32 false "Page number (default 0)"
 // @Param page_size query uint32 false "Page size (default 100, max 1000)"
 // @Produce json
@@ -94,29 +101,44 @@ func (p *PublicREST) listBridges(c *gin.Context) {
 	})
 }
 
-// getBridge returns one Auto Claim bridge request by ID.
+// getBridge returns one Auto Claim bridge request by global index.
 //
 // @Summary Get Auto Claim bridge request
-// @Description Returns one tracked Auto Claim request by request ID.
+// @Description Returns one tracked Auto Claim request by global index.
 // @Tags autoclaim
-// @Param id path string true "Auto Claim request ID"
+// @Param global_index path string true "Global index of the bridge (same format as the bridge API)"
+// @Param destination_network query uint32 false "Destination network ID, to disambiguate a shared global index"
 // @Produce json
 // @Success 200 {object} apitypes.RequestResponse
+// @Failure 400 {object} apitypes.ErrorResponse "Bad Request"
 // @Failure 404 {object} apitypes.ErrorResponse "Not Found"
+// @Failure 409 {object} apitypes.ErrorResponse "Conflict"
 // @Failure 500 {object} apitypes.ErrorResponse "Internal Server Error"
-// @Router /autoclaim/v1/bridges/{id} [get]
+// @Router /autoclaim/v1/bridges/{global_index} [get]
 func (p *PublicREST) getBridge(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), p.readTimeout)
 	defer cancel()
 
-	key := autoclaimtypes.RequestKey(c.Param("id"))
-	request, err := p.querier.GetRequest(ctx, key)
+	globalIndex, err := apitypes.ParseGlobalIndex(c.Param(apitypes.GlobalIndexParam))
 	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
+		writePublicError(c, http.StatusBadRequest, err)
+		return
+	}
+	destinationNetwork, err := apitypes.ParseOptionalDestinationNetwork(c)
+	if err != nil {
+		writePublicError(c, http.StatusBadRequest, err)
+		return
+	}
+	request, err := p.querier.GetRequestByGlobalIndex(ctx, globalIndex, destinationNetwork)
+	if err != nil {
+		switch {
+		case errors.Is(err, db.ErrNotFound):
 			writePublicError(c, http.StatusNotFound, err)
-			return
+		case errors.Is(err, autoclaimstorage.ErrAmbiguousGlobalIndex):
+			writePublicError(c, http.StatusConflict, err)
+		default:
+			writePublicError(c, http.StatusInternalServerError, err)
 		}
-		writePublicError(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, apitypes.NewRequestResponse(*request))
