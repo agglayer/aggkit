@@ -9,32 +9,6 @@ definitions:
       to_block:
         type: integer
     type: object
-  github_com_agglayer_aggkit_bridgeservice_types.ClaimProof:
-    description: Claim proof structure for verifying claims in the bridge
-    properties:
-      l1_info_tree_leaf:
-        allOf:
-        - $ref: '#/definitions/types.L1InfoTreeLeafResponse'
-        description: L1 info tree leaf data associated with the claim
-      proof_local_exit_root:
-        description: Merkle proof for the local exit root
-        example:
-        - '[0x1'
-        - ' 0x2'
-        - ' 0x3...]'
-        items:
-          type: string
-        type: array
-      proof_rollup_exit_root:
-        description: Merkle proof for the rollup exit root
-        example:
-        - '[0x4'
-        - ' 0x5'
-        - ' 0x6...]'
-        items:
-          type: string
-        type: array
-    type: object
   github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse:
     description: Contains basic health‐check information for the bridge service
     properties:
@@ -162,26 +136,31 @@ definitions:
         example: 42
         type: integer
     type: object
-  types.ClaimCandidateResponse:
-    description: A bridge event that is a candidate for claiming
+  types.ClaimProof:
+    description: Claim proof structure for verifying claims in the bridge
     properties:
-      bridge:
+      l1_info_tree_leaf:
         allOf:
-        - $ref: '#/definitions/types.BridgeResponse'
-        description: The bridge event that is a candidate for claiming
-    type: object
-  types.ClaimCandidatesResult:
-    description: Paginated response of claim candidates (bridge events)
-    properties:
-      claim_candidates:
-        description: List of claim candidates
+        - $ref: '#/definitions/types.L1InfoTreeLeafResponse'
+        description: L1 info tree leaf data associated with the claim
+      proof_local_exit_root:
+        description: Merkle proof for the local exit root
+        example:
+        - '[0x1'
+        - ' 0x2'
+        - ' 0x3...]'
         items:
-          $ref: '#/definitions/types.ClaimCandidateResponse'
+          type: string
         type: array
-      count:
-        description: Total number of matching claim candidates
-        example: 5
-        type: integer
+      proof_rollup_exit_root:
+        description: Merkle proof for the rollup exit root
+        example:
+        - '[0x4'
+        - ' 0x5'
+        - ' 0x6...]'
+        items:
+          type: string
+        type: array
     type: object
   types.ClaimResponse:
     description: Detailed information about a claim event
@@ -1093,68 +1072,6 @@ paths:
       summary: Get bridges by content
       tags:
       - bridges
-  /claim-candidates:
-    get:
-      description: |-
-        Returns bridges originated on this network with deposit_count in
-        (from_ler's index, to_ler's index] whose destination network is one of
-        destination_network_ids. to_ler/from_ler define the deposit-count range only.
-      parameters:
-      - collectionFormat: csv
-        description: Destination network IDs to filter by (maximum 5)
-        in: query
-        items:
-          format: int32
-          type: integer
-        name: destination_network_ids
-        required: true
-        type: array
-      - description: Local exit root, upper bound of the deposit-count range (0x-prefixed
-          32-byte hex)
-        in: query
-        name: to_ler
-        required: true
-        type: string
-      - description: Exclusive lower-bound local exit root; omitted means full history
-        in: query
-        name: from_ler
-        type: string
-      - description: Page number (default 1)
-        format: int32
-        in: query
-        name: page_number
-        type: integer
-      - description: Page size (default 100)
-        format: int32
-        in: query
-        name: page_size
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/types.ClaimCandidatesResult'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "404":
-          description: Not Found - to_ler or from_ler not synced yet
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "503":
-          description: Service Unavailable
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-      summary: Get claim candidates
-      tags:
-      - bridges
   /claim-proof:
     get:
       description: |-
@@ -1185,7 +1102,7 @@ paths:
         "200":
           description: Merkle proofs and L1 info tree leaf
           schema:
-            $ref: '#/definitions/github_com_agglayer_aggkit_bridgeservice_types.ClaimProof'
+            $ref: '#/definitions/types.ClaimProof'
         "400":
           description: Bad Request
           schema:

@@ -321,22 +321,6 @@ func (s *BridgeSync) GetBridgesPaged(
 	return s.processor.GetBridgesPaged(ctx, page, pageSize, depositCount, networkIDs, fromAddress)
 }
 
-// GetBridgesInDepositRange returns bridges with deposit_count in the range
-// (fromDepositCount, toDepositCount] (exclusive lower bound, inclusive upper bound) whose
-// destination_network is one of destinationNetworkIDs (all destination networks when empty),
-// ordered by deposit_count ASC and paged. A nil fromDepositCount means no lower bound (full
-// history up to toDepositCount).
-func (s *BridgeSync) GetBridgesInDepositRange(
-	ctx context.Context,
-	page, pageSize uint32,
-	fromDepositCount *uint64, toDepositCount uint64, destinationNetworkIDs []uint32) ([]*Bridge, int, error) {
-	if s.processor.isHalted() {
-		return nil, 0, sync.ErrInconsistentState
-	}
-	return s.processor.GetBridgesInDepositRange(
-		ctx, page, pageSize, fromDepositCount, toDepositCount, destinationNetworkIDs)
-}
-
 func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
 	if s.processor.isHalted() {
 		s.processor.log.Error("processor is halted, cannot get last processed block")

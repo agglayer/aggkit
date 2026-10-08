@@ -633,25 +633,6 @@ type SetClaimsResult struct {
 	Count int `json:"count" example:"20"`
 }
 
-// ClaimCandidateResponse represents a single claim candidate: a bridge originated on this
-// network whose deposit count falls within the requested local-exit-root range. The leaf-to-LER
-// proof is fetched separately at claim time, so it is no longer part of this response.
-// @Description A bridge event that is a candidate for claiming
-type ClaimCandidateResponse struct {
-	// The bridge event that is a candidate for claiming
-	Bridge *BridgeResponse `json:"bridge"`
-}
-
-// ClaimCandidatesResult contains the claim candidates matching the query and their total count
-// @Description Paginated response of claim candidates (bridge events)
-type ClaimCandidatesResult struct {
-	// List of claim candidates
-	ClaimCandidates []*ClaimCandidateResponse `json:"claim_candidates"`
-
-	// Total number of matching claim candidates
-	Count int `json:"count" example:"5"`
-}
-
 // RootByLERResponse locates a local exit root (LER) in its network's local exit tree: the
 // deposit-count position it had when it was computed. Resolving two LERs to their Index lets
 // a caller order them (or compare a known deposit count against one) without walking the tree
