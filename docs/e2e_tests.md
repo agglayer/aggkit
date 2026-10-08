@@ -9,6 +9,9 @@ Reusable helper functions are placed in the `test/bats/helpers` folder and they 
 
 It involves single L2 network (and single L1 network), that are attached to the same agglayer.
 
+The e2e environment must be able to start the docker compose stack, which requires enough host resources. If the host
+kills `docker compose up` (`signal: killed`) before the tests start, rerun the command on a host with more memory.
+
 ### Transfer message
 
 Bridges message from L1 to L2, by invoking `bridgeMessage` function on the bridge contract and then claiming once the global exit root is injected to the destination L2 network.
@@ -32,22 +35,6 @@ Bridges and claims native token on L2 network, that is pre-deployed and mapped t
 ### ERC20 token deposit L1 -> L2
 
 It deploys the ERC20 token on the L1 and bridges and claims it to the L2. In this process of claiming the bridge, a token representation of given ERC20 token is automatically deployed on the L2.
-
-### Auto Claim L1 -> L2
-
-Validates the L1 to L2 Auto Claim service with the existing e2e environment. The focused Go e2e command is:
-
-```bash
-go test -v -run 'TestAutoClaimL1ToL2(AllowAll|APIApprove)' -timeout 30m ./test/e2e
-```
-
-`TestAutoClaimL1ToL2AllowAll` enables Auto Claim with the `allow-all` policy and waits for the request to reach
-`confirmed` without a manual claim. `TestAutoClaimL1ToL2APIApprove` enables the API, waits for
-`manual-approval-required`, approves the request through `POST /autoclaim/v1/bridges/{global_index}/approve`, and then waits for
-`confirmed`.
-
-The e2e environment must be able to start the docker compose stack, which requires enough host resources. If the host
-kills `docker compose up` (`signal: killed`) before the tests start, rerun the command on a host with more memory.
 
 ### Remove GER (invalid-GER recovery)
 
@@ -171,28 +158,6 @@ It involves two L2 networks (and single L1 network), that are attached to the sa
 ### Test L2 to L2 bridge
 
 It bridges native tokens from L1 to both L2 networks and claims them. Afterwards, it bridges from L2 (PP2) to L2 (PP1) network and claims it on the destination network.
-
-### Auto Claim: claimer added after others
-
-`TestAutoClaimClaimerAddedAfterOthers` (`test/e2e/autoclaim_test.go`) proves the fix for issue #1651 end to end on
-the two-chain Anvil env. Auto Claim runs on `aggkit-001` with its L2-to-Lx bridge detector watching its own network
-as the source. An L1-destination claimer ("network A") is present from the first restart; an L2B-destination
-claimer ("network B") is added only on a **second, later** restart, after a bridge has already been sent to network
-B while no claimer for it existed yet. The test asserts:
-
-- the bridge sent to network B before its claimer existed is still discovered and claimed once the claimer is added
-  (pre-fix, a per-source — not per-(source, destination) — LER cursor would have already advanced past it via
-  network A's traffic, silently and permanently losing it with no backfill path); and
-- network A's claiming never stalled while network B backfilled: a fresh network-A bridge sent after network B's
-  claimer is added still claims within the normal wait window.
-
-See [Auto Claim's "Adding a claimer to a running deployment" / "Legacy upgrade seed"
-sections](./autoclaim.md#l2-to-lx-l2-to-l1-and-l2-to-l2) for the underlying model this test exercises, and the
-test's own doc comment for why the analogous L1-to-L2 failure mode is covered by the unit suite instead of here.
-
-```bash
-go test -v -run 'TestAutoClaimClaimerAddedAfterOthers' -timeout 40m ./test/e2e
-```
 
 ### Bridge tracker: non-bridge emitter check
 

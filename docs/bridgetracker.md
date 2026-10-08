@@ -190,10 +190,24 @@ UseTLS = false
 
 The `aggkit-proxy` binary shares one `[BridgeServiceFinder]` instance across the `PROXY` request
 forwarding, the tracker's canonical-bridge-address resolution (see [How it
-works](#how-it-works)) and its own on-chain rollup discovery. Most of its keys — `RollupManagerAddr`,
-`BridgeURLs`/`RPCURLs`, `BlockFinality`, `PollInterval`, health-check settings, `IgnoreNetworkIDs` —
-are the same finder used by Auto Claim; see [`AutoClaim.BridgeServiceFinder`
-keys](autoclaim.md#top-level-keys) for the full field list and defaults. This section covers the
+works](#how-it-works)) and its own on-chain rollup discovery. Its keys are:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `RollupManagerAddr` | `{{L1NetworkConfig.RollupManagerAddr}}` | Address of the RollupManager / AgglayerManager contract on L1 from which the set of attached networks is enumerated. |
+| `BridgeURLs` | `{}` | Highest-priority static override map from network ID to bridge service base URL (e.g. `1 = "http://bridge-svc-1:5577"`). Never overwritten by on-chain events. The only way to resolve network 0 (L1), which is not enumerated on-chain. |
+| `RPCURLs` | `{}` | Static override map from network ID to that network's JSON-RPC endpoint, with the same priority semantics as `BridgeURLs`. Networks absent from this map take their RPC endpoint from the rollup's trusted-sequencer URL. |
+| `BridgeAddress` | `{}` | Static override map from network ID to bridge contract address, consulted in priority order: the network's own entry, then `BridgeAddress[0]` (which doubles as the default for every network without an entry — typically the shared L1 bridge), then the rollup manager's own on-chain `BridgeAddress()`. Only networks whose bridge contract differs from that default need an entry. |
+| `BlockFinality` | `FinalizedBlock` | Finality level bounding the upper block of each event scan, so the finder does not react to logs that may still be reorged away. |
+| `PollInterval` | `30s` | Period between event-scan iterations of the listener loop. |
+| `BlockChunkSize` | `10000` | Maximum number of blocks queried per `FilterLogs` request while scanning. |
+| `HealthCheckPath` | `/` | HTTP path appended to a resolved bridge service URL to probe liveness. The bridge service serves the same always-200 health handler on both `/` and `/health`. |
+| `HealthCheckTimeout` | `5s` | Timeout applied to each health-check HTTP request. |
+| `RequireAllHealthyOnStart` | `false` | When `true`, finder startup fails if any resolved bridge service is unreachable; when `false`, unreachable services are cached as unhealthy and may heal from a later on-chain update. |
+| `AutoRegisterNewNetworks` | `true` | Controls whether networks discovered after `Start` are served — see below. |
+| `IgnoreNetworkIDs` | `[]` | Network IDs (rollup IDs) excluded from resolution entirely: no on-chain reads and no health probe during enumeration, no cache entry even when the network is also present in `BridgeURLs`/`RPCURLs`, and rollup-manager lifecycle events announcing them are ignored by live discovery too. Intended for known-dead networks whose unreachable reads would otherwise slow down startup and event processing. `GetURL` returns `ErrNetworkDisabled` for them. |
+
+This section covers the
 one field that changes what the tracker's health endpoint reports:
 
 - `AutoRegisterNewNetworks` (bool, **TOML default `true`**): controls whether a network discovered
