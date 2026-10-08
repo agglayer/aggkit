@@ -135,6 +135,25 @@ type ClientsConfig struct {
 	L1            *ethclient.Client
 	L2            *ethclient.Client
 	BridgeService *client.Client
+	// BridgeServiceProxy is the aggkit-proxy REST client of the envs that publish one, nil
+	// otherwise. The proxy serves the same /bridge/v1/* API as a bridge service and routes every
+	// request to the right per-network bridge service by the network_id parameter, so one client
+	// stands in for each of the per-L2 BridgeService clients above.
+	BridgeServiceProxy *client.Client
+	// BridgeServiceProxyURL is the external REST URL behind BridgeServiceProxy ("" when absent).
+	BridgeServiceProxyURL string
+}
+
+// ClaimBridgeService returns the client the bridge/claim helpers should read bridge and claim
+// proof data from: this env's aggkit-proxy when it publishes one, and direct otherwise (the
+// per-L2 bridge service the caller would have used). Routing through the proxy exercises the
+// path production uses for a proxy-fronted deployment, and works for every network a helper
+// queries because the proxy resolves the network_id of each request itself.
+func (e *Env) ClaimBridgeService(direct *client.Client) *client.Client {
+	if e.Clients.BridgeServiceProxy != nil {
+		return e.Clients.BridgeServiceProxy
+	}
+	return direct
 }
 
 // summaryJSON represents the structure of summary.json
@@ -159,6 +178,15 @@ type summaryJSON struct {
 			} `json:"accounts"`
 		} `json:"l1"`
 		L2Networks map[string]summaryL2Network `json:"l2_networks"`
+		// AggkitProxy is the shared aggkit-proxy fronting this env's bridge services. Only the
+		// envs that actually run one carry this entry (anvil-2chains, op-pp-2chains); op-pp's
+		// summary.json has none, so its absence is what marks an env as proxy-less.
+		AggkitProxy struct {
+			RESTAPI struct {
+				Internal string `json:"internal"`
+				External string `json:"external"`
+			} `json:"rest_api"`
+		} `json:"aggkit_proxy"`
 	} `json:"networks"`
 }
 
@@ -362,6 +390,16 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		return nil, fmt.Errorf("load sovereign admin key: %w", err)
 	}
 
+	// The aggkit-proxy is optional infrastructure: anvil-2chains and op-pp-2chains run one,
+	// op-pp does not. Its REST URL is published in summary.json, so a missing entry is what
+	// tells the bridge helpers to keep talking to the per-L2 bridge service directly.
+	var proxyBridgeServiceClient *client.Client
+	proxyBridgeServiceURL := summary.Networks.AggkitProxy.RESTAPI.External
+	if proxyBridgeServiceURL != "" {
+		proxyBridgeServiceClient = client.New(client.Config{BaseURL: proxyBridgeServiceURL})
+		log.Debugf("env %s is fronted by an aggkit-proxy at %s", envName, proxyBridgeServiceURL)
+	}
+
 	return &Env{
 		L1: L1Config{
 			ChainID: l1ChainID,
@@ -374,9 +412,11 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 		L2:  *l2A,
 		L2B: l2B,
 		Clients: ClientsConfig{
-			L1:            l1Client,
-			L2:            l2A.Client,
-			BridgeService: l2A.BridgeService,
+			L1:                    l1Client,
+			L2:                    l2A.Client,
+			BridgeService:         l2A.BridgeService,
+			BridgeServiceProxy:    proxyBridgeServiceClient,
+			BridgeServiceProxyURL: proxyBridgeServiceURL,
 		},
 		Keys: KeysConfig{
 			L1Keys:         l1KeyPool,
@@ -837,7 +877,9 @@ func (e *Env) RestartAggkitServiceWithConfig(
 	return e.StartAggkitService(ctx, networkKey)
 }
 
-// aggkitProxyServiceName is the compose service of the aggkit-proxy that every env runs.
+// aggkitProxyServiceName is the compose service name of the aggkit-proxy in the envs that run
+// one. Not every env has a proxy -- the single-chain op-pp env has none -- so callers must check
+// for its presence (Env.ClaimBridgeService) rather than assume it exists.
 const aggkitProxyServiceName = "aggkit-proxy-001"
 
 // GetAggkitProxyConfigPath returns the host path of the aggkit-proxy config file, bind-mounted

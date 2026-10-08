@@ -4,7 +4,7 @@
 
 Two independent anvil-backed L2 sovereign chains (L2-001 chain 20201, L2-002 chain 20202)
 settling PessimisticProof certificates against a single anvil L1 (chain 271828) through one
-agglayer, each with its own aggkit instance (merged aggsender + aggoracle + bridge + autoclaim
+agglayer, each with its own aggkit instance (merged aggsender + aggoracle + bridge
 -- no separate `-bridge` sidecar), fronted by a shared aggkit-proxy. Sourced from a
 kurtosis-cdk anvil devnet snapshot rather than a live `kurtosis run` per test invocation,
 matching the `op-pp`/`op-pp-2chains` pattern in this directory.
