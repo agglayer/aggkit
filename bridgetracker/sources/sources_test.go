@@ -15,6 +15,8 @@ import (
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
 	trackertypes "github.com/agglayer/aggkit/bridgetracker/types"
+	"github.com/agglayer/aggkit/etherman"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
@@ -479,7 +481,8 @@ func TestFinderClients(t *testing.T) {
 		1: bridgeservicefinder.NetworkURLs{JSONRPCURL: "http://rpc-1"},
 		3: bridgeservicefinder.NetworkURLs{BridgeURL: "http://bridge-3"}, // no JSON-RPC URL
 	}
-	fc := NewFinderClients(log.WithFields("module", "sources_test"), urls, StaticClients{0: override})
+	fc := NewFinderClients(log.WithFields("module", "sources_test"), urls, StaticClients{0: override},
+		*ethermanconfig.NewDefaultRPCClientConfig())
 
 	dialCalls := 0
 	fc.dial = func(_ context.Context, url string) (aggkittypes.BaseEthereumClienter, error) {
@@ -995,4 +998,22 @@ func TestSourcesUnresolvedNetworkIsTransient(t *testing.T) {
 	require.Error(t, err)
 	_, err = lerSource.OriginLER(t.Context(), l2ToL1Bridge())
 	require.Error(t, err)
+}
+
+// TestFinderClients_DialUsesRPCConfig checks the clients dialed by default are built from the
+// provided RPC config (HashFromJSON in particular) with the finder-resolved URL
+func TestFinderClients_DialUsesRPCConfig(t *testing.T) {
+	t.Parallel()
+
+	for _, hashFromJSON := range []bool{true, false} {
+		cfg := ethermanconfig.NewDefaultRPCClientConfig()
+		cfg.HashFromJSON = hashFromJSON
+		fc := NewFinderClients(log.WithFields("module", "sources_test"), staticURLs{}, nil, *cfg)
+
+		client, err := fc.dial(context.Background(), "http://127.0.0.1:1")
+		require.NoError(t, err)
+		ethClient, ok := client.(*etherman.DefaultEthClient)
+		require.True(t, ok, "unexpected client type %T", client)
+		require.Equal(t, hashFromJSON, ethClient.HashFromJSON)
+	}
 }

@@ -12,6 +12,23 @@ URL = "http://localhost:8545"
 Mode = "basic"
 RetryMode = "backoff"
 MaxRetries = 5
+InitialBackoff = "2s"
+MaxBackoff = "10s"
+BackoffMultiplier = 2.0
+HashFromJSON = true
+BatchBlockHeaderRetrieval = true
+
+# Settings of the JSON-RPC clients of every L2 network. The URL of each network is resolved by
+# the bridge service finder (BridgeServiceFinder.RPCURLs), so it is not set here
+[L2RPC]
+Mode = "basic"
+RetryMode = "backoff"
+MaxRetries = 5
+InitialBackoff = "2s"
+MaxBackoff = "10s"
+BackoffMultiplier = 2.0
+HashFromJSON = true
+BatchBlockHeaderRetrieval = true
 
 [BridgeServiceFinder]
 RollupManagerAddr = "0x0000000000000000000000000000000000000000"

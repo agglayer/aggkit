@@ -22,6 +22,17 @@ func TestLoadFilesDefaults(t *testing.T) {
 
 	require.Equal(t, "http://localhost:8545", cfg.L1RPC.URL)
 	require.Equal(t, ethermanconfig.RPCModeBasic, cfg.L1RPC.Mode)
+	require.True(t, cfg.L1RPC.HashFromJSON)
+	require.True(t, cfg.L1RPC.BatchBlockHeaderRetrieval)
+
+	// L2RPC has no URL: each network's one is resolved by the finder
+	require.Empty(t, cfg.L2RPC.URL)
+	require.Equal(t, ethermanconfig.RPCModeBasic, cfg.L2RPC.Mode)
+	require.True(t, cfg.L2RPC.HashFromJSON)
+	require.True(t, cfg.L2RPC.BatchBlockHeaderRetrieval)
+	require.Equal(t, 5, cfg.L2RPC.MaxRetries)
+	require.Equal(t, 2*time.Second, cfg.L2RPC.InitialBackoff.Duration)
+	require.Equal(t, 10*time.Second, cfg.L2RPC.MaxBackoff.Duration)
 
 	require.Equal(t, common.Address{}, cfg.BridgeServiceFinder.RollupManagerAddr)
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.BridgeServiceFinder.BlockFinality)

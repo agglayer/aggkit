@@ -231,6 +231,10 @@ func runTracker(
 	if err := trackerCfg.Validate(); err != nil {
 		log.Fatalf("invalid tracker config: %v", err)
 	}
+	// L2RPC is only consumed by the tracker, so it is only validated when the tracker runs
+	if err := validateL2RPC(cfg.L2RPC); err != nil {
+		log.Fatalf("invalid L2RPC config: %v", err)
+	}
 	trackerCfg.Logger = log.WithFields("module", "bridgetracker")
 	trackerCfg.ConfigSHA1 = configSHA1
 
@@ -239,7 +243,7 @@ func runTracker(
 	// registry so its SQLite adapter can use it to verify persisted rows on reload (see
 	// rpcClientsBlockHashVerifier)
 	rpcClients := sources.NewFinderClients(
-		log.WithFields("module", "bridgetracker-rpcclients"), finder, sources.StaticClients{0: l1Client})
+		log.WithFields("module", "bridgetracker-rpcclients"), finder, sources.StaticClients{0: l1Client}, cfg.L2RPC)
 
 	registry := newTrackerRegistry(trackerCfg, rpcClientsBlockHashVerifier{clients: rpcClients})
 	trackerCfg.Registry = registry
@@ -381,4 +385,14 @@ func waitSignal() {
 
 	sig := <-signals
 	log.Infof("Received signal %s, shutting down %s", sig, appName)
+}
+
+// validateL2RPC validates the template config of the L2 clients. Its URL is never used (each
+// network's one comes from the finder), and only the basic mode is supported, like for L1
+func validateL2RPC(cfg ethermanconfig.RPCClientConfig) error {
+	if cfg.Mode != ethermanconfig.RPCModeBasic {
+		return fmt.Errorf("only basic RPC mode is supported for L2 clients, got: %s", cfg.Mode)
+	}
+	cfg.URL = "placeholder"
+	return cfg.Validate()
 }
