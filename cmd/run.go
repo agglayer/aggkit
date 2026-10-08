@@ -244,6 +244,8 @@ func start(cliCtx *cli.Context) error {
 		}
 		log.Infof("Public API listening on %s", cfg.PublicREST.Address())
 	}
+	// Kept as generic infrastructure: no component registers admin routes right now, so this
+	// block is currently unreachable. A future component that needs an admin API gets one for free.
 	if adminHasRoutes {
 		if err := adminServer.Start(ctx); err != nil {
 			log.Fatalf("failed to start admin-api server: %v", err)
