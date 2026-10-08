@@ -48,10 +48,6 @@ func start(cliCtx *cli.Context) error {
 		return fmt.Errorf("invalid L1RPC config: %w", err)
 	}
 
-	if err := validateL2RPC(cfg.L2RPC); err != nil {
-		return fmt.Errorf("invalid L2RPC config: %w", err)
-	}
-
 	log.Init(cfg.Log)
 
 	switch cfg.Log.Environment {
@@ -234,6 +230,10 @@ func runTracker(
 	trackerCfg := cfg.Tracker
 	if err := trackerCfg.Validate(); err != nil {
 		log.Fatalf("invalid tracker config: %v", err)
+	}
+	// L2RPC is only consumed by the tracker, so it is only validated when the tracker runs
+	if err := validateL2RPC(cfg.L2RPC); err != nil {
+		log.Fatalf("invalid L2RPC config: %v", err)
 	}
 	trackerCfg.Logger = log.WithFields("module", "bridgetracker")
 	trackerCfg.ConfigSHA1 = configSHA1
