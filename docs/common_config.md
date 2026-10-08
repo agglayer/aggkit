@@ -65,6 +65,7 @@ The `ClientConfig` structure configures the gRPC client connection. It includes 
 | RequestTimeout     | types.Duration | Timeout for individual requests                                                            |
 | UseTLS             | bool           | Whether to use TLS for the gRPC connection                                                 |
 | Retry              | *[RetryConfig](#retryconfig)   | Retry configuration for failed requests                                                    |
+| MaxDecodingMessageSize | int        | Maximum size in bytes of a message the client can receive. Default 16 MiB (16777216); 0 uses the gRPC default (4 MiB) |
 
 ### RetryConfig
 

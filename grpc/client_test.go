@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 func TestRepackGRPCErrorWithDetails(t *testing.T) {
@@ -720,5 +722,41 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 		clientTypeValues := md.Get(ClientTypeMetadataKey)
 		require.Len(t, clientTypeValues, 1, "Should have exactly one client type header")
 		require.Equal(t, ClientTypeMetadataValue, clientTypeValues[0], "Client type should match ClientTypeMetadataValue")
+	})
+}
+
+func TestNewClient_MaxDecodingMessageSize(t *testing.T) {
+	const payloadSize = 5 << 20 // 5 MiB, above the 4 MiB gRPC default
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	srv := grpc.NewServer(grpc.UnknownServiceHandler(func(_ any, stream grpc.ServerStream) error {
+		return stream.SendMsg(&wrapperspb.BytesValue{Value: make([]byte, payloadSize)})
+	}))
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+
+	newClient := func(maxSize int) *Client {
+		cfg := DefaultConfig().WithURL(lis.Addr().String())
+		cfg.MaxDecodingMessageSize = maxSize
+		client, err := NewClient(&cfg)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = client.Close() })
+		return client
+	}
+
+	invoke := func(client *Client) error {
+		return client.Conn().Invoke(context.Background(), "/test.Service/Big",
+			&wrapperspb.BytesValue{}, &wrapperspb.BytesValue{})
+	}
+
+	t.Run("default limit rejects large message", func(t *testing.T) {
+		err := invoke(newClient(0))
+		require.Error(t, err)
+		require.Equal(t, codes.ResourceExhausted, status.Code(err))
+	})
+
+	t.Run("configured limit accepts large message", func(t *testing.T) {
+		require.NoError(t, invoke(newClient(10<<20)))
 	})
 }

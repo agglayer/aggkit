@@ -301,6 +301,7 @@ TriggerCertMode = "Auto"
 			MinConnectTimeout = "5s"
 			RequestTimeout = "300s"
 			UseTLS = false
+			MaxDecodingMessageSize = 16777216  # 16MiB
 			[AggSender.AgglayerClient.GRPC.Retry]
 				InitialBackoff = "1s"
 				MaxBackoff = "10s"
@@ -311,6 +312,7 @@ TriggerCertMode = "Auto"
 		MinConnectTimeout = "5s"
 		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
 		UseTLS = false
+		MaxDecodingMessageSize = 16777216  # 16MiB
 	[AggSender.OptimisticModeConfig]
 		SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
 		# By default use the same key that aggsender signs certs
@@ -323,6 +325,7 @@ TriggerCertMode = "Auto"
 		MinConnectTimeout = "5s"
 		RequestTimeout = "30s"
 		UseTLS = false
+		MaxDecodingMessageSize = 16777216  # 16MiB
 	# Overide a committee URL to point to a local service
 	# [AggSender.CommitteeOverride]
 	#	URLMapping = { "http://aggkit-001-aggsender-validator-001:5578" = "http://localhost:32954" }
@@ -345,6 +348,7 @@ GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 		MinConnectTimeout = "5s"
 		UseTLS = false
 		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
+		MaxDecodingMessageSize = 16777216  # 16MiB
 
 [Profiling]
 ProfilingHost = "localhost"
@@ -397,6 +401,7 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 		MinConnectTimeout = "{{AggSender.AgglayerClient.GRPC.MinConnectTimeout}}"
 		RequestTimeout = "{{AggSender.AgglayerClient.GRPC.RequestTimeout}}"
 		UseTLS = "{{AggSender.AgglayerClient.GRPC.UseTLS}}"
+		MaxDecodingMessageSize = "{{AggSender.AgglayerClient.GRPC.MaxDecodingMessageSize}}"
 		[Validator.AgglayerClient.GRPC.Retry]
 			InitialBackoff = "{{AggSender.AgglayerClient.GRPC.Retry.InitialBackoff}}"
 			MaxBackoff = "{{AggSender.AgglayerClient.GRPC.Retry.MaxBackoff}}"
