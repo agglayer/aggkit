@@ -28,6 +28,8 @@ const (
 	defaultMaxAttempts       = 3
 	defaultMaxBackoff        = 10 * time.Second
 	defaultBackoffMultiplier = 2.0
+	// defaultMaxDecodingMessageSize is 16 MiB
+	defaultMaxDecodingMessageSize = 16 * 1024 * 1024
 
 	noneStr = "none"
 
@@ -73,7 +75,7 @@ type ClientConfig struct {
 	Retry *RetryConfig `mapstructure:"Retry"`
 
 	// MaxDecodingMessageSize is the maximum size in bytes of a message the client can receive.
-	// If zero (or negative), the gRPC default (4 MiB) is used.
+	// If zero (or negative), the gRPC default (4 MiB) is used. Defaults to 16 MiB in DefaultConfig.
 	MaxDecodingMessageSize int `mapstructure:"MaxDecodingMessageSize"`
 }
 
@@ -96,8 +98,9 @@ func DefaultConfig() *ClientConfig {
 			MaxBackoff:        types.NewDuration(defaultMaxBackoff),
 			BackoffMultiplier: defaultBackoffMultiplier,
 		},
-		RequestTimeout: types.NewDuration(defaultTimeout),
-		UseTLS:         false,
+		RequestTimeout:         types.NewDuration(defaultTimeout),
+		UseTLS:                 false,
+		MaxDecodingMessageSize: defaultMaxDecodingMessageSize,
 	}
 }
 
