@@ -27,8 +27,6 @@ const (
 	AGGSENDERVALIDATOR = "aggsender-validator"
 	// L2CLAIMSYNC name to identify the l2 claim sync component
 	L2CLAIMSYNC = "l2claimsync"
-	// AUTOCLAIM name to identify the auto claim component
-	AUTOCLAIM = "autoclaim"
 )
 
 // ValidateComponents validates that all provided components are known/supported.
@@ -44,7 +42,6 @@ func ValidateComponents(components []string) error {
 		AGGCHAINPROOFGEN:   {},
 		AGGSENDERVALIDATOR: {},
 		L2CLAIMSYNC:        {},
-		AUTOCLAIM:          {},
 	}
 
 	// build a sorted list of valid component names for error messages

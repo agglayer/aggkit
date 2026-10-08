@@ -21,6 +21,10 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// bridgeServiceBaseURL is the host-side URL of the primary bridge service, used by tests that talk
+// to it over HTTP (health checks, sync-status targets).
+const bridgeServiceBaseURL = "http://127.0.0.1:14577"
+
 // bridgeMineWait bounds how long a bridge helper waits for its bridge tx to be mined before giving
 // up. Used by BridgeL2ToL2NoClaim; mirrors the (unnamed) 30s literal already used for the same
 // purpose in the other *NoClaim helpers in this file.

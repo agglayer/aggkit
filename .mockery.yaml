@@ -179,10 +179,6 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
-  github.com/agglayer/aggkit/autoclaim/types:
-    config:
-      dir: "{{ .InterfaceDir }}/mocks"
-      all: true
   github.com/agglayer/aggkit/bridgeservicefinder:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
@@ -192,12 +188,3 @@ packages:
       RollupContractReader:
       LogFilterer:
       HealthChecker:
-  github.com/agglayer/aggkit/autoclaim/bridgedetector:
-    config:
-      dir: "{{ .InterfaceDir }}/mocks"
-    interfaces:
-      ClaimCandidatesFetcher:
-      VerifiedBatchSource:
-      LERCursorStore:
-      RequestEnqueuer:
-      CursorStore:
