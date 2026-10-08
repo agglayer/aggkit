@@ -72,18 +72,20 @@ type FinderClients struct {
 }
 
 // NewFinderClients returns a FinderClients resolving per-network JSON-RPC endpoints through
-// finder, with overrides (may be nil) taking precedence
+// finder, with overrides (may be nil) taking precedence. Every dialed client is built from
+// rpcCfg (mode, retry policy, HashFromJSON...) with its URL replaced by the resolved one
 func NewFinderClients(
 	logger aggkitcommon.Logger, finder NetworkURLResolver, overrides StaticClients,
+	rpcCfg ethermanconfig.RPCClientConfig,
 ) *FinderClients {
 	return &FinderClients{
 		finder:    finder,
 		overrides: overrides,
 		clients:   make(map[string]aggkittypes.BaseEthereumClienter),
 		dial: func(ctx context.Context, url string) (aggkittypes.BaseEthereumClienter, error) {
-			cfg := ethermanconfig.NewDefaultRPCClientConfig()
+			cfg := rpcCfg
 			cfg.URL = url
-			return etherman.NewRPCClient(ctx, logger, *cfg)
+			return etherman.NewRPCClient(ctx, logger, cfg)
 		},
 	}
 }
