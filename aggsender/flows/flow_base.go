@@ -133,9 +133,16 @@ func (f *baseFlow) NextCertificateBlockRange(ctx context.Context,
 			return aggkitcommon.BlockRangeZero, 0,
 				fmt.Errorf("error deriving toBlock for settled cert %s: %w", lastSentCertificate.ID(), err)
 		}
-		if derivedToBlock != previousToBlock {
+		switch {
+		case derivedToBlock > previousToBlock:
 			f.log.Warnf("toBlock inconsistency for settled cert %s: agglayer-derived=%d, db-stored=%d. "+
 				"Using agglayer-derived value.",
+				lastSentCertificate.ID(), derivedToBlock, previousToBlock)
+		case derivedToBlock < previousToBlock:
+			// Expected when the trailing blocks of the certificate have no bridge exits:
+			// agglayer only knows the block of the last exit, not the last synced block.
+			f.log.Infof("settled cert %s: agglayer-derived toBlock=%d is lower than db-stored=%d "+
+				"(no bridge exits in trailing blocks). Using agglayer-derived value.",
 				lastSentCertificate.ID(), derivedToBlock, previousToBlock)
 		}
 		previousToBlock = derivedToBlock

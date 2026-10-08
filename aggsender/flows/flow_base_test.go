@@ -1266,6 +1266,34 @@ func Test_baseFlow_NextCertificateBlockRange_CertQuerier(t *testing.T) {
 		require.Equal(t, 0, retryCount)
 	})
 
+	for name, tc := range map[string]struct{ derived, stored, wantFrom uint64 }{
+		"derived lower than stored (no exits in trailing blocks)": {derived: 10, stored: 15, wantFrom: 11},
+		"derived higher than stored":                              {derived: 15, stored: 10, wantFrom: 16},
+	} {
+		t.Run("settled cert "+name+" uses derived toBlock", func(t *testing.T) {
+			t.Parallel()
+
+			mockBridgeQuerier := mocks.NewBridgeQuerier(t)
+			mockCertQuerier := mocks.NewCertificateQuerier(t)
+			mockBridgeQuerier.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(20), true, nil)
+			mockBridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1))
+			mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(mock.Anything, mock.Anything).
+				Return(tc.derived, nil)
+
+			f := &baseFlow{
+				l2BridgeQuerier: mockBridgeQuerier,
+				certQuerier:     mockCertQuerier,
+				log:             log.WithFields("test", t.Name()),
+			}
+
+			blockRange, _, err := f.NextCertificateBlockRange(context.Background(),
+				&types.CertificateHeader{Status: agglayertypes.Settled, ToBlock: tc.stored, Height: 1})
+			require.NoError(t, err)
+			require.Equal(t, tc.wantFrom, blockRange.FromBlock)
+			require.Equal(t, uint64(20), blockRange.ToBlock)
+		})
+	}
+
 	t.Run("settled cert with certQuerier error", func(t *testing.T) {
 		t.Parallel()
 

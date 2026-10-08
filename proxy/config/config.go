@@ -48,6 +48,11 @@ type Config struct {
 	// poll the on-chain events the bridge service finder watches
 	L1RPC ethermanconfig.RPCClientConfig `mapstructure:"L1RPC"`
 
+	// L2RPC configures the JSON-RPC clients dialed for every L2 network (mode, retry policy,
+	// HashFromJSON, batching). Its URL is ignored: each network's URL is resolved by the
+	// BridgeServiceFinder
+	L2RPC ethermanconfig.RPCClientConfig `mapstructure:"L2RPC"`
+
 	// BridgeServiceFinder configures the networkID -> bridge service URL / JSON-RPC resolver shared
 	// by the proxy and tracker components
 	BridgeServiceFinder bridgeservicefinder.Config `mapstructure:"BridgeServiceFinder"`

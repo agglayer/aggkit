@@ -12,4 +12,4 @@ Etherman handles the communication with the network.
 
 ---
 
-**Note:** If the `L1ChainID` field is set to `0`, Etherman will automatically determine and populate the correct Chain ID at runtime, provided that a valid JSON-RPC URL is supplied.
+**Note:** If the `L1ChainID` field is set to `0`, Etherman will automatically determine and populate the correct Chain ID at runtime, provided that a valid JSON-RPC URL is supplied. It is recommended not to set `L1ChainID` in the config file and to rely on this auto-discovery.

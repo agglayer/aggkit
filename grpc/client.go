@@ -28,6 +28,8 @@ const (
 	defaultMaxAttempts       = 3
 	defaultMaxBackoff        = 10 * time.Second
 	defaultBackoffMultiplier = 2.0
+	// defaultMaxDecodingMessageSize is 16 MiB
+	defaultMaxDecodingMessageSize = 16 * 1024 * 1024
 
 	noneStr = "none"
 
@@ -71,6 +73,10 @@ type ClientConfig struct {
 
 	// Retry represents the retry configuration
 	Retry *RetryConfig `mapstructure:"Retry"`
+
+	// MaxDecodingMessageSize is the maximum size in bytes of a message the client can receive.
+	// If zero (or negative), the gRPC default (4 MiB) is used. Defaults to 16 MiB in DefaultConfig.
+	MaxDecodingMessageSize int `mapstructure:"MaxDecodingMessageSize"`
 }
 
 // WithURL returns a copy of the current ClientConfig with the URL field set to the given value.
@@ -92,8 +98,9 @@ func DefaultConfig() *ClientConfig {
 			MaxBackoff:        types.NewDuration(defaultMaxBackoff),
 			BackoffMultiplier: defaultBackoffMultiplier,
 		},
-		RequestTimeout: types.NewDuration(defaultTimeout),
-		UseTLS:         false,
+		RequestTimeout:         types.NewDuration(defaultTimeout),
+		UseTLS:                 false,
+		MaxDecodingMessageSize: defaultMaxDecodingMessageSize,
 	}
 }
 
@@ -105,9 +112,9 @@ func (c *ClientConfig) String() string {
 
 	return fmt.Sprintf("GRPC Client Config: "+
 		"URL=%s, MinConnectTimeout=%s, "+
-		"RequestTimeout=%s, UseTLS=%t, Retry=%s",
+		"RequestTimeout=%s, UseTLS=%t, Retry=%s, MaxDecodingMessageSize=%d",
 		c.URL, c.MinConnectTimeout.String(),
-		c.RequestTimeout.Duration, c.UseTLS, c.Retry.String())
+		c.RequestTimeout.Duration, c.UseTLS, c.Retry.String(), c.MaxDecodingMessageSize)
 }
 
 // Validate checks if the gRPC client configuration is valid.
@@ -266,6 +273,10 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithConnectParams(connectParams),
 		grpc.WithUnaryInterceptor(VersionHeaderInterceptor()),
+	}
+
+	if cfg.MaxDecodingMessageSize > 0 {
+		opts = append(opts, grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(cfg.MaxDecodingMessageSize)))
 	}
 
 	serviceCfgJSON, err := createServiceConfig(retryCfg)
