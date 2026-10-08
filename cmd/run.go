@@ -303,7 +303,7 @@ func start(cliCtx *cli.Context) error {
 	for _, component := range components {
 		switch component {
 		case aggkitcommon.AGGORACLE:
-			aggOracle := createAggoracle(rollupDataQuerier, *cfg, l1Client, l2Client, l1InfoTreeSync)
+			aggOracle := createAggoracle(*cfg, l1Client, l2Client, l1InfoTreeSync)
 			go aggOracle.Start(ctx)
 		case aggkitcommon.AGGSENDER:
 			aggsender, err := createAggSender(
@@ -530,25 +530,12 @@ func createAggSender(
 }
 
 func createAggoracle(
-	rollupDataQuerier *ethermanquierier.RollupDataQuerier,
 	cfg config.Config,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer aggoracle.L1InfoTreeSyncer,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
-	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
-	if err != nil {
-		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
-	}
-
-	// sanity check for the aggOracle ChainID
-	if cfg.AggOracle.EVMSender.EthTxManager.Etherman.L1ChainID != l2ChainID {
-		logger.Warnf("Incorrect ChainID in aggOracle provided: %d expected: %d",
-			cfg.AggOracle.EVMSender.EthTxManager.Etherman.L1ChainID,
-			l2ChainID,
-		)
-	}
 
 	var sender aggoracle.ChainSender
 	switch cfg.AggOracle.TargetChainType {
