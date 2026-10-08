@@ -942,12 +942,12 @@ func BridgeL2ToL2NoClaim(
 func BridgeL2ToL2(
 	ctx context.Context, env *envs.Env, originOpts, destOpts *bind.TransactOpts, token common.Address,
 ) error {
-	bs := env.ClaimBridgeService(env.L2.BridgeService)
-	bsB := env.ClaimBridgeService(env.L2B.BridgeService)
 	log.Info("Starting L2->L2 bridge flow (helper)")
 	if env.L2B == nil {
 		return errors.New("L2->L2 bridge requires a multi-chain env (env.L2B is nil)")
 	}
+	bs := env.ClaimBridgeService(env.L2.BridgeService)
+	bsB := env.ClaimBridgeService(env.L2B.BridgeService)
 	callOpts := &bind.CallOpts{Context: ctx}
 	originNetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
 	if err != nil {
