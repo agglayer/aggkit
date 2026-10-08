@@ -164,7 +164,6 @@ func TestProcessPessimisticVerifyBatches(t *testing.T) {
 	require.Equal(t, newLocalExitRoot, last.ExitRoot)
 	require.Zero(t, last.NumBatch)
 	require.Equal(t, common.Hash{}, last.StateRoot)
-
 }
 
 // TestGetVerifiedBatchesPaged proves GetVerifiedBatchesPaged (issue #1817) returns rollupID's
