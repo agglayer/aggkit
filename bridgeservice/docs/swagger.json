@@ -268,91 +268,6 @@
                 }
             }
         },
-        "/claim-candidates": {
-            "get": {
-                "description": "Returns bridges originated on this network with deposit_count in\n(from_ler's index, to_ler's index] whose destination network is one of\ndestination_network_ids. to_ler/from_ler define the deposit-count range only.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "bridges"
-                ],
-                "summary": "Get claim candidates",
-                "parameters": [
-                    {
-                        "type": "array",
-                        "items": {
-                            "type": "integer",
-                            "format": "int32"
-                        },
-                        "collectionFormat": "csv",
-                        "description": "Destination network IDs to filter by (maximum 5)",
-                        "name": "destination_network_ids",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Local exit root, upper bound of the deposit-count range (0x-prefixed 32-byte hex)",
-                        "name": "to_ler",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Exclusive lower-bound local exit root; omitted means full history",
-                        "name": "from_ler",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "format": "int32",
-                        "description": "Page number (default 1)",
-                        "name": "page_number",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "format": "int32",
-                        "description": "Page size (default 100)",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/types.ClaimCandidatesResult"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found - to_ler or from_ler not synced yet",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/claim-proof": {
             "get": {
                 "description": "Returns the Merkle proofs (local and rollup exit root) and\nthe corresponding L1 info tree leaf needed to verify a claim.",
@@ -393,7 +308,7 @@
                     "200": {
                         "description": "Merkle proofs and L1 info tree leaf",
                         "schema": {
-                            "$ref": "#/definitions/github_com_agglayer_aggkit_bridgeservice_types.ClaimProof"
+                            "$ref": "#/definitions/types.ClaimProof"
                         }
                     },
                     "400": {
@@ -1244,44 +1159,6 @@
                 }
             }
         },
-        "github_com_agglayer_aggkit_bridgeservice_types.ClaimProof": {
-            "description": "Claim proof structure for verifying claims in the bridge",
-            "type": "object",
-            "properties": {
-                "l1_info_tree_leaf": {
-                    "description": "L1 info tree leaf data associated with the claim",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/types.L1InfoTreeLeafResponse"
-                        }
-                    ]
-                },
-                "proof_local_exit_root": {
-                    "description": "Merkle proof for the local exit root",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "example": [
-                        "[0x1",
-                        " 0x2",
-                        " 0x3...]"
-                    ]
-                },
-                "proof_rollup_exit_root": {
-                    "description": "Merkle proof for the rollup exit root",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "example": [
-                        "[0x4",
-                        " 0x5",
-                        " 0x6...]"
-                    ]
-                }
-            }
-        },
         "github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse": {
             "description": "Contains basic health‐check information for the bridge service",
             "type": "object",
@@ -1440,35 +1317,41 @@
                 }
             }
         },
-        "types.ClaimCandidateResponse": {
-            "description": "A bridge event that is a candidate for claiming",
+        "types.ClaimProof": {
+            "description": "Claim proof structure for verifying claims in the bridge",
             "type": "object",
             "properties": {
-                "bridge": {
-                    "description": "The bridge event that is a candidate for claiming",
+                "l1_info_tree_leaf": {
+                    "description": "L1 info tree leaf data associated with the claim",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/types.BridgeResponse"
+                            "$ref": "#/definitions/types.L1InfoTreeLeafResponse"
                         }
                     ]
-                }
-            }
-        },
-        "types.ClaimCandidatesResult": {
-            "description": "Paginated response of claim candidates (bridge events)",
-            "type": "object",
-            "properties": {
-                "claim_candidates": {
-                    "description": "List of claim candidates",
+                },
+                "proof_local_exit_root": {
+                    "description": "Merkle proof for the local exit root",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/types.ClaimCandidateResponse"
-                    }
+                        "type": "string"
+                    },
+                    "example": [
+                        "[0x1",
+                        " 0x2",
+                        " 0x3...]"
+                    ]
                 },
-                "count": {
-                    "description": "Total number of matching claim candidates",
-                    "type": "integer",
-                    "example": 5
+                "proof_rollup_exit_root": {
+                    "description": "Merkle proof for the rollup exit root",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[0x4",
+                        " 0x5",
+                        " 0x6...]"
+                    ]
                 }
             }
         },

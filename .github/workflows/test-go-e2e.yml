@@ -70,12 +70,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Keep stateful suites in separate stacks. The AutoClaim and backward/forward LET tests
-          # restart services and mutate chain/AggLayer state, so sharing one go-test process makes
-          # a primary failure cascade into otherwise unrelated bridge tests.
-          - env: anvil-2chains
-            group: autoclaim
-            run: "^(TestAutoClaimL1ToL2AllowAll|TestAutoClaimL1ToL2APIApprove|TestAutoClaimL1ToL2BasicFilter|TestAutoClaimL2ToL1AllowAll|TestAutoClaimL2ToL2AllowAll)$"
+          # Keep stateful suites in separate stacks. The backward/forward LET tests restart
+          # services and mutate chain/AggLayer state, so sharing one go-test process makes a
+          # primary failure cascade into otherwise unrelated bridge tests.
           - env: anvil-2chains
             group: bridge
             run: "^(TestJustBridge|TestBridgeL2ToL2|TestBridgeTrackerL1ToL2)$"

@@ -6,7 +6,7 @@
 #
 # Topology: one anvil L1 (anvil-001) + two independent anvil L2 sovereign chains
 # (l2-anvil-001 / l2-anvil-002), each with its own aggkit instance (merged
-# aggsender+aggoracle+bridge+autoclaim, no separate "-bridge" sidecar), settling through a
+# aggsender+aggoracle+bridge, no separate "-bridge" sidecar), settling through a
 # single agglayer in PessimisticProof mode, fronted by a shared aggkit-proxy.
 #
 # Images: anvil-001/l2-anvil-001/l2-anvil-002/agglayer are the digest-pinned kurtosis-cdk
@@ -114,7 +114,7 @@ services:
     command:
       - "run"
       - "--cfg=/etc/aggkit/config.toml"
-      - "--components=aggsender,aggoracle,bridge,autoclaim"
+      - "--components=aggsender,aggoracle,bridge"
     volumes:
       - ./config/001/aggkit-config.toml:/etc/aggkit/config.toml:ro
       - ./config/001/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
@@ -147,7 +147,7 @@ services:
     command:
       - "run"
       - "--cfg=/etc/aggkit/config.toml"
-      - "--components=aggsender,aggoracle,bridge,autoclaim"
+      - "--components=aggsender,aggoracle,bridge"
     volumes:
       - ./config/002/aggkit-config.toml:/etc/aggkit/config.toml:ro
       - ./config/002/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro

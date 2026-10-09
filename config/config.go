@@ -14,7 +14,6 @@ import (
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	validator "github.com/agglayer/aggkit/aggsender/validator"
-	autoclaimcfg "github.com/agglayer/aggkit/autoclaim/config"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsync"
 	"github.com/agglayer/aggkit/common"
@@ -81,6 +80,7 @@ const (
 	urlRPCL1DeprecatedHint       = "URLRPCL1 field is deprecated, remove it from configuration"
 	aggsenderEpochPercentageHint = "AggSender.EpochNotificationPercentage moved to AggSender.TriggerEpochBased.EpochNotificationPercentage" //nolint:lll
 	restSectionDeprecatedHint    = "REST section is deprecated and ignored, split into PublicREST and AdminREST, update your configuration" //nolint:lll
+	autoClaimRemovedHint         = "AutoClaim has been removed, delete the [AutoClaim] section from the configuration"                      //nolint:lll
 )
 
 type DeprecatedFieldsError struct {
@@ -249,6 +249,10 @@ var (
 			FieldNamePattern: "REST",
 			Reason:           restSectionDeprecatedHint,
 		},
+		{
+			FieldNamePattern: "AutoClaim",
+			Reason:           autoClaimRemovedHint,
+		},
 	}
 )
 
@@ -320,9 +324,6 @@ type Config struct {
 
 	// Validator is the configuration of the aggsender validator service
 	Validator validator.Config
-
-	// AutoClaim is the configuration of the auto claim service.
-	AutoClaim autoclaimcfg.Config
 
 	// L1Multidownloader is the configuration of the multidownloader service for L1
 	L1Multidownloader multidownloader.Config
@@ -497,11 +498,6 @@ func loadString(cfg *Config, configData string, configType string,
 	if err != nil {
 		return err
 	}
-	cfg.AutoClaim.ApplyDefaults()
-	if err := cfg.AutoClaim.Validate(); err != nil {
-		return err
-	}
-
 	return nil
 }
 

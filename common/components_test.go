@@ -19,13 +19,8 @@ func TestValidateComponents(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "valid autoclaim component",
-			components:  []string{AUTOCLAIM},
-			expectError: false,
-		},
-		{
 			name:        "valid multiple components",
-			components:  []string{AGGORACLE, BRIDGE, AGGSENDER, AUTOCLAIM},
+			components:  []string{AGGORACLE, BRIDGE, AGGSENDER},
 			expectError: false,
 		},
 		{

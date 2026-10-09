@@ -408,42 +408,6 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 			BackoffMultiplier = "{{AggSender.AgglayerClient.GRPC.Retry.BackoffMultiplier}}"
 			MaxAttempts = "{{AggSender.AgglayerClient.GRPC.Retry.MaxAttempts}}"
 
-[AutoClaim]
-DryRun = false
-StoragePath = "{{PathRWData}}/autoclaim.sqlite"
-Claimers = []
-
-[AutoClaim.API]
-Enabled = false
-
-[AutoClaim.L1ToL2BridgeDetector]
-Enabled = true
-PollInterval = "3s"
-EtrogL1UpgradeBlock = 0
-# StartBlock is intentionally left unset here: an operator override in a per-deployment config is
-# used verbatim, and otherwise it is auto-resolved from StartLookback once the L1 client starts
-# (see autoclaim/config.L1ToL2BridgeDetector.StartBlock).
-
-[AutoClaim.L2ToLxBridgeDetector]
-Enabled = false
-PollInterval = "3s"
-# StartL1Block is intentionally left unset here; see the StartBlock note above.
-
-[AutoClaim.BridgeServiceFinder]
-RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
-BlockFinality = "FinalizedBlock"
-PollInterval = "30s"
-BlockChunkSize = 10000
-HealthCheckPath = "/"
-HealthCheckTimeout = "5s"
-RequireAllHealthyOnStart = false
-AutoRegisterNewNetworks = true
-IgnoreNetworkIDs = []
-
-[AutoClaim.BridgeServiceFinder.BridgeURLs]
-
-[AutoClaim.BridgeServiceFinder.RPCURLs]
-
 [L1Multidownloader]
 	Enabled = true
 	DeveloperMode = false

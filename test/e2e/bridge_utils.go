@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 	"time"
 
 	"github.com/agglayer/aggkit/bridgeservice/client"
@@ -21,6 +20,10 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// bridgeServiceBaseURL is the host-side URL of the primary bridge service, used by tests that talk
+// to it over HTTP (health checks, sync-status targets).
+const bridgeServiceBaseURL = "http://127.0.0.1:14577"
+
 // bridgeMineWait bounds how long a bridge helper waits for its bridge tx to be mined before giving
 // up. Used by BridgeL2ToL2NoClaim; mirrors the (unnamed) 30s literal already used for the same
 // purpose in the other *NoClaim helpers in this file.
@@ -30,9 +33,6 @@ const bridgeMineWait = 30 * time.Second
 // concurrent L2->L1 flow can update the L1 info tree after BridgeAsset estimates gas but before its
 // transaction is mined, making the original estimate too low for the now-larger tree update.
 const l1BridgeGasLimit uint64 = 500_000
-
-// alreadyClaimedErrorSelector is the selector for the bridge contract's AlreadyClaimed() error.
-const alreadyClaimedErrorSelector = "0x646cf558"
 
 // l1MineDiagnosticsWait bounds how long waitMinedL1WithDiagnostics waits for an L1 tx to be mined.
 // Normal L1 mining takes ~4s; 4 minutes is far above that while still failing fast enough to leave
@@ -143,6 +143,7 @@ func logL1Diagnostics(
 // BridgeL1ToL2 runs the L1 -> L2 bridge flow using the given environment and transactors.
 // Performs the full deposit and claim flows. Returns error for any non-successful operation.
 func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.TransactOpts) error {
+	bs := env.ClaimBridgeService(env.Clients.BridgeService)
 	log.Info("Starting L1->L2 bridge flow (helper)")
 	callOpts := &bind.CallOpts{Context: ctx}
 	l2NetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
@@ -184,7 +185,7 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	for i := 0; i < 30; i++ {
 		pageSize := uint32(100)
 		params := client.GetBridgesParams{NetworkID: 0, PageSize: &pageSize}
-		bridgesResult, err := env.Clients.BridgeService.GetBridges(ctx, params)
+		bridgesResult, err := bs.GetBridges(ctx, params)
 		if err == nil && bridgesResult != nil {
 			for _, b := range bridgesResult.Bridges {
 				if string(b.TxHash) == tx.Hash().Hex() {
@@ -206,7 +207,7 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	log.Debugf("waiting for bridge to be included in L1 Info Tree: deposit_count=%d", depositCount)
 	var l1InfoTreeIndex uint32
 	for i := 0; i < 60; i++ {
-		idx, err := env.Clients.BridgeService.GetL1InfoTreeIndex(ctx, 0, int(depositCount))
+		idx, err := bs.GetL1InfoTreeIndex(ctx, 0, int(depositCount))
 		if err == nil {
 			l1InfoTreeIndex = idx
 			break
@@ -220,7 +221,7 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	log.Debugf("waiting for L1InfoTreeLeaf to be injected on L2: l2NetworkID=%d l1InfoTreeIndex=%d", l2NetworkID, l1InfoTreeIndex)
 	var injectedLeaf *types.L1InfoTreeLeafResponse
 	for i := 0; i < 120; i++ {
-		leaf, err := env.Clients.BridgeService.GetInjectedL1InfoLeaf(ctx, int(l2NetworkID), int(l1InfoTreeIndex))
+		leaf, err := bs.GetInjectedL1InfoLeaf(ctx, int(l2NetworkID), int(l1InfoTreeIndex))
 		if err == nil && leaf != nil {
 			injectedLeaf = leaf
 			break
@@ -237,7 +238,7 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	claimL1InfoTreeIndex := injectedLeaf.L1InfoTreeIndex
 	log.Debugf("L1InfoTreeLeaf injected: l2NetworkID=%d depositIndex=%d claimIndex=%d", l2NetworkID, l1InfoTreeIndex, claimL1InfoTreeIndex)
 	log.Debugf("fetching claim proof: networkID=0 l1InfoTreeIndex=%d depositCount=%d", claimL1InfoTreeIndex, depositCount)
-	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, claimL1InfoTreeIndex, depositCount)
+	claimProof, err := bs.GetClaimProof(ctx, 0, claimL1InfoTreeIndex, depositCount)
 	if err != nil || claimProof == nil {
 		return fmt.Errorf("failed to get claim proof: %w", err)
 	}
@@ -271,62 +272,24 @@ func BridgeL1ToL2(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 		}
 		time.Sleep(time.Second)
 	}
-	// Some envs (e.g. anvil-2chains) run AutoClaim's L1ToL2BridgeDetector on this destination
-	// network, which may claim the deposit before this helper gets to it -- a real race, not a
-	// bug, since AutoClaim polls independently of this test. Check IsClaimed first (same check
-	// autoclaim_test.go already uses) so a legitimately-already-claimed deposit is treated as
-	// success instead of failing on the bridge contract's AlreadyClaimed revert.
-	alreadyClaimed, err := env.L2.Contracts.L2Bridge.IsClaimed(callOpts, depositCount, bridge.OriginNetwork)
+	log.Debugf("sending claim transaction on L2")
+	claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
+		l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
+		bridge.GlobalIndex.ToBigInt(), mainnetExitRoot, rollupExitRoot,
+		bridge.OriginNetwork, originTokenAddress, bridge.DestinationNetwork,
+		destinationAddress, bridgeAmount, metadata,
+	)
 	if err != nil {
-		return fmt.Errorf("failed to check IsClaimed: %w", err)
+		return fmt.Errorf("failed to send claim transaction: %w", err)
 	}
-	if alreadyClaimed {
-		log.Debugf("deposit already claimed (likely by AutoClaim): deposit_count=%d", depositCount)
-	} else {
-		log.Debugf("sending claim transaction on L2")
-		claimTx, err := env.L2.Contracts.L2Bridge.ClaimAsset(
-			l2Opts, smtProofLocalExitRoot, smtProofRollupExitRoot,
-			bridge.GlobalIndex.ToBigInt(), mainnetExitRoot, rollupExitRoot,
-			bridge.OriginNetwork, originTokenAddress, bridge.DestinationNetwork,
-			destinationAddress, bridgeAmount, metadata,
-		)
-		if err != nil {
-			// AutoClaim may have won the race between our IsClaimed check above and this send
-			// (its own poll loop runs concurrently and independently). Anvil's gas estimation sees
-			// pending transactions, while the default IsClaimed call reads latest state, so wait for
-			// that pending AutoClaim transaction to be mined before deciding whether this is fatal.
-			if !strings.Contains(err.Error(), alreadyClaimedErrorSelector) {
-				return fmt.Errorf("failed to send claim transaction: %w", err)
-			}
-			claimedByAutoClaim := false
-			for i := 0; i < 30; i++ {
-				reClaimed, reErr := env.L2.Contracts.L2Bridge.IsClaimed(
-					callOpts, depositCount, bridge.OriginNetwork)
-				if reErr == nil && reClaimed {
-					claimedByAutoClaim = true
-					break
-				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(time.Second):
-				}
-			}
-			if !claimedByAutoClaim {
-				return fmt.Errorf("failed to confirm competing AutoClaim transaction: %w", err)
-			}
-			log.Debugf("claim transaction lost the race to AutoClaim: deposit_count=%d", depositCount)
-		} else {
-			log.Debugf("L2 claim tx submitted, waiting for mining: tx=%s", claimTx.Hash().Hex())
-			claimReceipt, err := bind.WaitMined(ctx, env.Clients.L2, claimTx)
-			if err != nil {
-				return fmt.Errorf("failed to wait for claim tx: %w", err)
-			}
-			log.Debugf("L2 claim tx mined: tx=%s block=%d", claimTx.Hash().Hex(), claimReceipt.BlockNumber.Uint64())
-			if claimReceipt.Status != ethtypes.ReceiptStatusSuccessful {
-				return errors.New("claim transaction failed")
-			}
-		}
+	log.Debugf("L2 claim tx submitted, waiting for mining: tx=%s", claimTx.Hash().Hex())
+	claimReceipt, err := bind.WaitMined(ctx, env.Clients.L2, claimTx)
+	if err != nil {
+		return fmt.Errorf("failed to wait for claim tx: %w", err)
+	}
+	log.Debugf("L2 claim tx mined: tx=%s block=%d", claimTx.Hash().Hex(), claimReceipt.BlockNumber.Uint64())
+	if claimReceipt.Status != ethtypes.ReceiptStatusSuccessful {
+		return errors.New("claim transaction failed")
 	}
 	finalL2Balance, err := env.Clients.L2.BalanceAt(ctx, destinationAddress, nil)
 	if err != nil {
@@ -355,6 +318,7 @@ type bridgeResult struct {
 // BridgeL1ToL2WithResult performs a full L1->L2 bridge and claim using the given transactors.
 // Uses l2Opts.From as the destination address. Returns detailed bridge and claim information.
 func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.TransactOpts, bridgeAmount *big.Int) (*bridgeResult, error) {
+	bs := env.ClaimBridgeService(env.Clients.BridgeService)
 	callOpts := &bind.CallOpts{Context: ctx}
 	l2NetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
 	if err != nil {
@@ -385,7 +349,7 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 	for i := 0; i < 30; i++ {
 		pageSize := uint32(100)
 		params := client.GetBridgesParams{NetworkID: 0, PageSize: &pageSize}
-		bridgesResult, err := env.Clients.BridgeService.GetBridges(ctx, params)
+		bridgesResult, err := bs.GetBridges(ctx, params)
 		if err == nil && bridgesResult != nil {
 			for _, b := range bridgesResult.Bridges {
 				if string(b.TxHash) == tx.Hash().Hex() {
@@ -407,7 +371,7 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 	log.Debugf("waiting for bridge to be included in L1 Info Tree: deposit_count=%d", depositCount)
 	var l1InfoTreeIndex uint32
 	for i := 0; i < 60; i++ {
-		idx, err := env.Clients.BridgeService.GetL1InfoTreeIndex(ctx, 0, int(depositCount))
+		idx, err := bs.GetL1InfoTreeIndex(ctx, 0, int(depositCount))
 		if err == nil {
 			l1InfoTreeIndex = idx
 			break
@@ -421,7 +385,7 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 	log.Debugf("waiting for L1InfoTreeLeaf to be injected on L2: l2NetworkID=%d l1InfoTreeIndex=%d", l2NetworkID, l1InfoTreeIndex)
 	var injectedLeafWithResult *types.L1InfoTreeLeafResponse
 	for i := 0; i < 120; i++ {
-		leaf, err := env.Clients.BridgeService.GetInjectedL1InfoLeaf(ctx, int(l2NetworkID), int(l1InfoTreeIndex))
+		leaf, err := bs.GetInjectedL1InfoLeaf(ctx, int(l2NetworkID), int(l1InfoTreeIndex))
 		if err == nil && leaf != nil {
 			injectedLeafWithResult = leaf
 			break
@@ -435,7 +399,7 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 	claimL1InfoTreeIndex := injectedLeafWithResult.L1InfoTreeIndex
 	log.Debugf("L1InfoTreeLeaf injected: l2NetworkID=%d depositIndex=%d claimIndex=%d", l2NetworkID, l1InfoTreeIndex, claimL1InfoTreeIndex)
 	log.Debugf("fetching claim proof: networkID=0 l1InfoTreeIndex=%d depositCount=%d", claimL1InfoTreeIndex, depositCount)
-	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, claimL1InfoTreeIndex, depositCount)
+	claimProof, err := bs.GetClaimProof(ctx, 0, claimL1InfoTreeIndex, depositCount)
 	if err != nil || claimProof == nil {
 		return nil, fmt.Errorf("failed to get claim proof: %w", err)
 	}
@@ -502,6 +466,7 @@ func BridgeL1ToL2WithResult(ctx context.Context, env *envs.Env, l1Opts, l2Opts *
 // BridgeL1NoClaim performs a real L1->L2 bridge and waits for it to be fully indexed but does not claim.
 // label is used in log messages to identify the caller context (e.g. "B1", "B2-1").
 func BridgeL1NoClaim(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.TransactOpts, bridgeAmount *big.Int, label string) (*bridgeResult, error) {
+	bs := env.ClaimBridgeService(env.Clients.BridgeService)
 	callOpts := &bind.CallOpts{Context: ctx}
 	l2NetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
 	if err != nil {
@@ -540,7 +505,7 @@ func BridgeL1NoClaim(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Tr
 	for i := 0; i < 30; i++ {
 		pageSize := uint32(100)
 		params := client.GetBridgesParams{NetworkID: 0, PageSize: &pageSize, DepositCount: &depositCount}
-		bridgesResult, err := env.Clients.BridgeService.GetBridges(ctx, params)
+		bridgesResult, err := bs.GetBridges(ctx, params)
 		if err == nil && bridgesResult != nil {
 			for _, b := range bridgesResult.Bridges {
 				if string(b.TxHash) == tx.Hash().Hex() {
@@ -564,7 +529,7 @@ func BridgeL1NoClaim(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Tr
 	log.Debugf("[%s] waiting for bridge to be included in L1 Info Tree: deposit_count=%d", label, depositCount)
 	var l1InfoTreeIndex uint32
 	for i := 0; i < 60; i++ {
-		idx, err := env.Clients.BridgeService.GetL1InfoTreeIndex(ctx, 0, int(depositCount))
+		idx, err := bs.GetL1InfoTreeIndex(ctx, 0, int(depositCount))
 		if err == nil {
 			l1InfoTreeIndex = idx
 			break
@@ -580,7 +545,7 @@ func BridgeL1NoClaim(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Tr
 	log.Infof("[%s] L1InfoTreeIndex ready: %d", label, l1InfoTreeIndex)
 	log.Debugf("[%s] waiting for L1InfoTreeLeaf to be injected on L2: l2NetworkID=%d l1InfoTreeIndex=%d", label, l2NetworkID, l1InfoTreeIndex)
 	for i := 0; i < 120; i++ {
-		_, err := env.Clients.BridgeService.GetInjectedL1InfoLeaf(ctx, int(l2NetworkID), int(l1InfoTreeIndex))
+		_, err := bs.GetInjectedL1InfoLeaf(ctx, int(l2NetworkID), int(l1InfoTreeIndex))
 		if err == nil {
 			break
 		}
@@ -609,6 +574,7 @@ func BridgeL1NoClaim(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Tr
 func BridgeL2ToL1NoClaim(
 	ctx context.Context, env *envs.Env, l2Opts *bind.TransactOpts, bridgeAmount *big.Int, label string,
 ) (*bridgeResult, error) {
+	bs := env.ClaimBridgeService(env.Clients.BridgeService)
 	callOpts := &bind.CallOpts{Context: ctx}
 	l2NetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
 	if err != nil {
@@ -673,7 +639,7 @@ func BridgeL2ToL1NoClaim(
 	log.Debugf("[%s] waiting for L2->L1 bridge to appear in bridge service: deposit_count=%d", label, depositCount)
 	var bridge *types.BridgeResponse
 	for i := 0; i < 30; i++ {
-		b, err := env.Clients.BridgeService.GetBridgeByDepositCount(ctx, l2NetworkID, depositCount)
+		b, err := bs.GetBridgeByDepositCount(ctx, l2NetworkID, depositCount)
 		if err == nil && b != nil {
 			bridge = b
 			break
@@ -691,7 +657,7 @@ func BridgeL2ToL1NoClaim(
 	log.Debugf("[%s] waiting for L2->L1 bridge to be included in L1 Info Tree: deposit_count=%d", label, depositCount)
 	var l1InfoTreeIndex uint32
 	for i := 0; i < 120; i++ {
-		idx, err := env.Clients.BridgeService.GetL1InfoTreeIndex(ctx, int(l2NetworkID), int(depositCount))
+		idx, err := bs.GetL1InfoTreeIndex(ctx, int(l2NetworkID), int(depositCount))
 		if err == nil {
 			l1InfoTreeIndex = idx
 			break
@@ -720,6 +686,7 @@ func BridgeL2ToL1NoClaim(
 // BridgeL2ToL1 runs the L2 -> L1 bridge flow using the given environment and transactors.
 // Returns error for any failure.
 func BridgeL2ToL1(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.TransactOpts, token common.Address) error {
+	bs := env.ClaimBridgeService(env.Clients.BridgeService)
 	log.Info("Starting L2->L1 bridge flow (helper)")
 	callOpts := &bind.CallOpts{Context: ctx}
 	l2NetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
@@ -755,7 +722,7 @@ func BridgeL2ToL1(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	for i := 0; i < 30; i++ {
 		pageSize := uint32(100)
 		params := client.GetBridgesParams{NetworkID: l2NetworkID, PageSize: &pageSize}
-		bridgesResult, err := env.Clients.BridgeService.GetBridges(ctx, params)
+		bridgesResult, err := bs.GetBridges(ctx, params)
 		if err == nil && bridgesResult != nil {
 			for _, b := range bridgesResult.Bridges {
 				if string(b.TxHash) == bridgeTx.Hash().Hex() {
@@ -777,7 +744,7 @@ func BridgeL2ToL1(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	log.Debugf("waiting for L2->L1 bridge to be included in L1 Info Tree: deposit_count=%d", depositCount)
 	var l1InfoTreeIndex uint32
 	for i := 0; i < 120; i++ {
-		idx, err := env.Clients.BridgeService.GetL1InfoTreeIndex(ctx, int(l2NetworkID), int(depositCount))
+		idx, err := bs.GetL1InfoTreeIndex(ctx, int(l2NetworkID), int(depositCount))
 		if err == nil {
 			l1InfoTreeIndex = idx
 			break
@@ -789,7 +756,7 @@ func BridgeL2ToL1(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 	}
 	log.Debugf("L2->L1 bridge included in L1 Info Tree: deposit_count=%d l1InfoTreeIndex=%d", depositCount, l1InfoTreeIndex)
 	log.Debugf("fetching L2->L1 claim proof: networkID=%d l1InfoTreeIndex=%d depositCount=%d", l2NetworkID, l1InfoTreeIndex, depositCount)
-	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, l2NetworkID, l1InfoTreeIndex, depositCount)
+	claimProof, err := bs.GetClaimProof(ctx, l2NetworkID, l1InfoTreeIndex, depositCount)
 	if err != nil || claimProof == nil {
 		return fmt.Errorf("failed to get claim proof: %w", err)
 	}
@@ -846,6 +813,7 @@ func BridgeL2ToL1(ctx context.Context, env *envs.Env, l1Opts, l2Opts *bind.Trans
 func BridgeL2ToL2NoClaim(
 	ctx context.Context, env *envs.Env, originOpts, destOpts *bind.TransactOpts, bridgeAmount *big.Int, label string,
 ) (*bridgeResult, error) {
+	bs := env.ClaimBridgeService(env.L2.BridgeService)
 	if env.L2B == nil {
 		return nil, errors.New("L2->L2 bridge requires a multi-chain env (env.L2B is nil)")
 	}
@@ -918,7 +886,7 @@ func BridgeL2ToL2NoClaim(
 	log.Debugf("[%s] waiting for L2->L2 bridge to appear in origin bridge service: deposit_count=%d", label, depositCount)
 	var bridge *types.BridgeResponse
 	for i := 0; i < 30; i++ {
-		b, err := env.L2.BridgeService.GetBridgeByDepositCount(ctx, originNetworkID, depositCount)
+		b, err := bs.GetBridgeByDepositCount(ctx, originNetworkID, depositCount)
 		if err == nil && b != nil {
 			bridge = b
 			break
@@ -939,7 +907,7 @@ func BridgeL2ToL2NoClaim(
 	log.Debugf("[%s] waiting for L2->L2 bridge inclusion in L1 Info Tree: deposit_count=%d", label, depositCount)
 	var l1InfoTreeIndex uint32
 	for i := 0; i < 120; i++ {
-		idx, err := env.L2.BridgeService.GetL1InfoTreeIndex(ctx, int(originNetworkID), int(depositCount))
+		idx, err := bs.GetL1InfoTreeIndex(ctx, int(originNetworkID), int(depositCount))
 		if err == nil {
 			l1InfoTreeIndex = idx
 			break
@@ -978,6 +946,8 @@ func BridgeL2ToL2(
 	if env.L2B == nil {
 		return errors.New("L2->L2 bridge requires a multi-chain env (env.L2B is nil)")
 	}
+	bs := env.ClaimBridgeService(env.L2.BridgeService)
+	bsB := env.ClaimBridgeService(env.L2B.BridgeService)
 	callOpts := &bind.CallOpts{Context: ctx}
 	originNetworkID, err := env.L2.Contracts.L2Bridge.NetworkID(callOpts)
 	if err != nil {
@@ -1020,7 +990,7 @@ func BridgeL2ToL2(
 	for i := 0; i < 60; i++ {
 		pageSize := uint32(100)
 		params := client.GetBridgesParams{NetworkID: originNetworkID, PageSize: &pageSize}
-		bridgesResult, err := env.L2.BridgeService.GetBridges(ctx, params)
+		bridgesResult, err := bs.GetBridges(ctx, params)
 		if err == nil && bridgesResult != nil {
 			for _, b := range bridgesResult.Bridges {
 				if string(b.TxHash) == bridgeTx.Hash().Hex() {
@@ -1044,7 +1014,7 @@ func BridgeL2ToL2(
 	log.Debugf("waiting for L2->L2 bridge to be included in L1 Info Tree: deposit_count=%d", depositCount)
 	var l1InfoTreeIndex uint32
 	for i := 0; i < 120; i++ {
-		idx, err := env.L2.BridgeService.GetL1InfoTreeIndex(ctx, int(originNetworkID), int(depositCount))
+		idx, err := bs.GetL1InfoTreeIndex(ctx, int(originNetworkID), int(depositCount))
 		if err == nil {
 			l1InfoTreeIndex = idx
 			break
@@ -1062,7 +1032,7 @@ func BridgeL2ToL2(
 	log.Debugf("waiting for L1InfoTreeLeaf injection on L2B: dest=%d leafIndex=%d", destNetworkID, l1InfoTreeIndex)
 	var injectedLeaf *types.L1InfoTreeLeafResponse
 	for i := 0; i < 120; i++ {
-		leaf, err := env.L2B.BridgeService.GetInjectedL1InfoLeaf(ctx, int(destNetworkID), int(l1InfoTreeIndex))
+		leaf, err := bsB.GetInjectedL1InfoLeaf(ctx, int(destNetworkID), int(l1InfoTreeIndex))
 		if err == nil && leaf != nil {
 			injectedLeaf = leaf
 			break
@@ -1098,7 +1068,7 @@ func BridgeL2ToL2(
 	// The origin bridge service knows about L2A's deposits; networkID must be
 	// originNetworkID so the service uses L2A's bridge syncer for the local exit proof.
 	log.Debugf("fetching L2->L2 claim proof: origin=%d leaf=%d deposit=%d", originNetworkID, l1InfoTreeIndex, depositCount)
-	claimProof, err := env.L2.BridgeService.GetClaimProof(ctx, originNetworkID, l1InfoTreeIndex, depositCount)
+	claimProof, err := bs.GetClaimProof(ctx, originNetworkID, l1InfoTreeIndex, depositCount)
 	if err != nil || claimProof == nil {
 		return fmt.Errorf("failed to get L2->L2 claim proof from L2A: %w", err)
 	}
