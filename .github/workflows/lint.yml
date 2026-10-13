@@ -29,3 +29,4 @@ jobs:
         with:
           version: v2.14.0
           args: --timeout=30m
+          skip-cache: true  # the action's cache key doesn't change across golangci-lint versions (v2.4.0 -> v2.14.0 reused the same key), poisoning results
