@@ -1,14 +1,12 @@
 package feeestimate
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
 )
 
 // Estimate source values (FeeEstimate.Source), part of the wire contract.
@@ -17,15 +15,19 @@ const (
 	sourceToken = "token"
 	// sourceClass marks an estimate quoted from the token-class fallback bucket.
 	sourceClass = "class"
+	// sourceMechanism marks an estimate quoted from a bridging-mechanism bucket.
+	sourceMechanism = "mechanism"
 )
 
 // abiWordLen is the byte length of one ABI-encoded return slot, the shape an address return
 // value takes.
 const abiWordLen = 32
 
-// bridgeViewABIJSON declares only the bridge view method the claim estimator eth_calls:
-// the wrapper lookup. Hand-declared instead of the full generated binding so the package
-// stays light; the selector it packs is the well-known 0x22e95f2c.
+// bridgeViewABIJSON declares only the bridge view methods the estimator eth_calls: the
+// claim side's wrapper lookup and the bridge side's wrapped-token lookup. Hand-declared
+// instead of the full generated binding so the package stays light; the selectors they pack
+// are the well-known 0x22e95f2c (getTokenWrappedAddress) and 0x318aee3d
+// (wrappedTokenToTokenInfo).
 const bridgeViewABIJSON = `[
   {
     "type": "function",
@@ -37,6 +39,18 @@ const bridgeViewABIJSON = `[
     ],
     "outputs": [
       {"name": "", "type": "address", "internalType": "address"}
+    ]
+  },
+  {
+    "type": "function",
+    "name": "wrappedTokenToTokenInfo",
+    "stateMutability": "view",
+    "inputs": [
+      {"name": "wrappedAddress", "type": "address", "internalType": "address"}
+    ],
+    "outputs": [
+      {"name": "originNetwork", "type": "uint32", "internalType": "uint32"},
+      {"name": "originTokenAddress", "type": "address", "internalType": "address"}
     ]
   }
 ]`
@@ -59,6 +73,8 @@ type Estimator struct {
 	gasPrice *ttlResult[gasPriceSnapshot]
 	// claimStats caches the claim gas-unit statistics snapshot for Config.StatsTTL.
 	claimStats *ttlResult[claimStats]
+	// bridgeStats caches the bridge gas-unit statistics snapshot for Config.StatsTTL.
+	bridgeStats *ttlResult[bridgeStats]
 	// txs fetches and caches transactions and receipts by hash.
 	txs *txStore
 
@@ -84,15 +100,16 @@ func New(cfg Config, chain ChainReader, claims ClaimsReader, bridges BridgesRead
 	cfg = cfg.withDefaults()
 	now := time.Now
 	return &Estimator{
-		cfg:        cfg,
-		chain:      chain,
-		claims:     claims,
-		bridges:    bridges,
-		viewABI:    viewABI,
-		gasPrice:   newTTLResult[gasPriceSnapshot](cfg.GasPriceTTL, now),
-		claimStats: newTTLResult[claimStats](cfg.StatsTTL, now),
-		txs:        newTxStore(chain, cfg.TxCacheSize, cfg.RPCConcurrency),
-		now:        now,
+		cfg:         cfg,
+		chain:       chain,
+		claims:      claims,
+		bridges:     bridges,
+		viewABI:     viewABI,
+		gasPrice:    newTTLResult[gasPriceSnapshot](cfg.GasPriceTTL, now),
+		claimStats:  newTTLResult[claimStats](cfg.StatsTTL, now),
+		bridgeStats: newTTLResult[bridgeStats](cfg.StatsTTL, now),
+		txs:         newTxStore(chain, cfg.TxCacheSize, cfg.RPCConcurrency),
+		now:         now,
 	}, nil
 }
 
@@ -102,19 +119,5 @@ func (e *Estimator) setClock(now func() time.Time) {
 	e.now = now
 	e.gasPrice.now = now
 	e.claimStats.now = now
-}
-
-// EstimateBridgeFee is the bridge-side (per mechanism) estimate, built in a later step on
-// top of this package's sampler, statistics and gas price code. Until then it fails closed
-// rather than return anything: a nil bridges reader means the estimate is not configured,
-// a configured one meets a not-yet-implemented estimator.
-func (e *Estimator) EstimateBridgeFee(
-	_ context.Context, _ common.Address,
-) (*BridgeFeeEstimateResponse, error) {
-	if e.bridges == nil {
-		return nil, fmt.Errorf("%w: bridge fee estimation is not configured for network %d",
-			ErrFeeEstimateUnavailable, e.cfg.NetworkID)
-	}
-	return nil, fmt.Errorf("%w: bridge fee estimation is not implemented yet",
-		ErrFeeEstimateUnavailable)
+	e.bridgeStats.now = now
 }
