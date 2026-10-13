@@ -32,14 +32,14 @@ import (
 // the finder cannot resolve, 400 from the instance's own parameter validation, 400 from the
 // proxy itself for a missing or non-numeric network_id).
 //
-// The success-shape scenario runs against the L1 destination (network_id=0): claims on this
-// env's L2 are sovereign-chain claims whose receipts carry both ClaimEvent and
-// DetailedClaimEvent, so the estimator's "exactly one claim event" eligibility rule (D4) finds
-// no samples there and every L2-destination estimate answers 503 -- asserted as the fail-closed
-// contract below, after real L2 claims have been indexed. On L1 the bridge emits a single
-// ClaimEvent per claim, so L1-destination estimates are served and the first-vs-repeat
-// comparison runs there. The test is self-sufficient: it deploys its own tokens and performs
-// its own bridges and claims, in any test order.
+// Success-shape scenarios run against both destinations: claims on this env's L2 are
+// sovereign-chain claims whose receipts carry both ClaimEvent and DetailedClaimEvent, and the
+// estimator counts that pair as ONE claim (dedup mirrors claimsync), so its "exactly one claim
+// event" eligibility rule (D4) finds samples there and L2-destination estimates are served --
+// required as the served contract below, after real L2 claims have been indexed. On L1 the
+// bridge emits a single ClaimEvent per claim, so L1-destination estimates are served and the
+// first-vs-repeat comparison runs there as well. The test is self-sufficient: it deploys its
+// own tokens and performs its own bridges and claims, in any test order.
 func TestClaimFeeEstimateViaProxy(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
@@ -76,8 +76,11 @@ func TestClaimFeeEstimateViaProxy(t *testing.T) {
 
 	// 2. A fresh L1 ERC20, queried before anything claims it: no wrapper exists on L2 yet, so
 	// the request resolves to first_claim. Whether it is served depends on whether the
-	// wrapped_erc20 first-claim bucket on L2 holds samples (in this env it does not -- see the
-	// file-top comment) -- both outcomes are asserted for their documented shape.
+	// wrapped_erc20 first-claim bucket on L2 holds samples yet: L2-destination estimates are
+	// served on this env (the paired ClaimEvent+DetailedClaimEvent of a sovereign L2 claim
+	// counts as one claim -- see the file-top comment), so any wrapper-deploying L2 claim
+	// indexed before this point fills the bucket -- both outcomes are asserted for their
+	// documented shape.
 	freshToken := deployL1MintableERC20(ctx, t, "ClaimFeeToken", "CFT")
 	resp, err := proxy.GetClaimFeeEstimate(ctx, l2NetworkID, 0, freshToken)
 	if err != nil {
@@ -97,28 +100,29 @@ func TestClaimFeeEstimateViaProxy(t *testing.T) {
 	bridgeERC20L1ToL2AndClaimOnL2(ctx, t, freshToken, feeEstimateBridgeAmount, "claim-fee-A-1")
 	bridgeERC20L1ToL2AndClaimOnL2(ctx, t, freshToken, feeEstimateBridgeAmount, "claim-fee-A-2")
 
-	// 4. Poll the L2-destination repeat-claim estimate for a bounded while (a serving estimator
-	// needs claimsync to index the claims plus one statistics TTL to pick them up), then let
-	// one final query decide which contract the endpoint currently honors: the served estimate
-	// or the fail-closed 503 (the current behavior on this env, per the file-top comment). The
-	// poll's own error is deliberately ignored: it only exists to give a serving estimator time
-	// to converge; the final query below carries the assertion.
-	_ = pollWithBackoff(ctx, feeEstimateL2ClaimPollTimeout, backoffInitial, backoffMax,
+	// 4. The L2-destination repeat-claim estimate must be served: the paired
+	// ClaimEvent+DetailedClaimEvent each sovereign L2 claim emits is counted as ONE claim (the
+	// dedup mirrors claimsync -- see the file-top comment), so the estimator's eligibility rule
+	// finds the two claims above. Poll for a bounded while (a serving estimator needs claimsync
+	// to index the claims plus one statistics TTL to pick them up) and require the served
+	// estimate within that window: a fail-closed 503 here is a regression of the event pairing
+	// and must fail the test.
+	var l2RepeatResp *feeestimate.ClaimFeeEstimateResponse
+	err = pollWithBackoff(ctx, feeEstimateL2ClaimPollTimeout, backoffInitial, backoffMax,
 		"repeat_claim estimate on the L2 destination", func() (bool, error) {
 			resp, err := proxy.GetClaimFeeEstimate(ctx, l2NetworkID, 0, freshToken)
-			return err == nil && resp.RepeatClaim != nil, nil
+			if err != nil || resp.RepeatClaim == nil {
+				return false, nil //nolint:nilerr // fail closed until the claim is indexed
+			}
+			l2RepeatResp = resp
+			return true, nil
 		})
-	resp, err = proxy.GetClaimFeeEstimate(ctx, l2NetworkID, 0, freshToken)
-	if err != nil {
-		requireFeeEstimateStatus(t, err, http.StatusServiceUnavailable,
-			"repeat-claim estimate on the L2 destination after both claims are indexed")
-	} else {
-		require.True(t, *resp.WrapperExists, "the first claim deployed the wrapper on L2")
-		require.Equal(t, feeestimate.RepeatClaim, resp.Applicable)
-		require.Nil(t, resp.FirstClaim)
-		require.NotEmpty(t, resp.Unavailable[feeestimate.FirstClaim])
-		requireFeeEstimateCost(t, "repeat claim on the L2 destination", resp.GasPrice, resp.RepeatClaim)
-	}
+	require.NoError(t, err, "repeat_claim estimate on the L2 destination was never served")
+	require.True(t, *l2RepeatResp.WrapperExists, "the first claim deployed the wrapper on L2")
+	require.Equal(t, feeestimate.RepeatClaim, l2RepeatResp.Applicable)
+	require.Nil(t, l2RepeatResp.FirstClaim)
+	require.NotEmpty(t, l2RepeatResp.Unavailable[feeestimate.FirstClaim])
+	requireFeeEstimateCost(t, "repeat claim on the L2 destination", l2RepeatResp.GasPrice, l2RepeatResp.RepeatClaim)
 
 	// 5. L1 destination: bridge the env's L2-native ERC20 to L1 and claim it there. This first
 	// L1 claim deploys the token's wrapper on L1, so the request for the token itself resolves
@@ -226,9 +230,11 @@ const (
 	// within seconds, but the estimator caches its statistics for a short TTL.
 	feeEstimatePollTimeout = 6 * time.Minute
 
-	// feeEstimateL2ClaimPollTimeout bounds the courtesy poll for the L2-destination repeat
-	// estimate (see the file-top comment: on this env the estimator never serves L2-destination
-	// claim estimates, so this poll is expected to elapse before the fail-closed assertion).
+	// feeEstimateL2ClaimPollTimeout bounds how long the L2-destination repeat-claim estimate must
+	// take to be served (see step 4 and the file-top comment: the paired
+	// ClaimEvent+DetailedClaimEvent of a sovereign L2 claim counts as one claim, so the
+	// estimator serves L2-destination estimates on this env; failing closed within this window
+	// is a regression).
 	feeEstimateL2ClaimPollTimeout = 2 * time.Minute
 )
 
