@@ -97,6 +97,61 @@
                 }
             }
         },
+        "/bridge-fee-estimate": {
+            "get": {
+                "description": "Returns the estimated cost of bridgeAsset out of the origin network, covering only\nwhat the user or sponsor pays: execution gas times the gas price of the origin\nnetwork (chains served by this endpoint do not charge senders an L1 data fee). It\nis coarser than the claim estimate: one estimate per bridging mechanism, with no\nper-token breakdown. The mechanism is native gas token via msg.value\n(token_address 0x0), lock of an origin-native ERC20, or burn of a wrapped token.\nThe estimate fails closed: with no estimator configured for the network, a required\nRPC call failing or no samples for the resolved mechanism it answers 503, never a\ndefault value. No server-side margin is added: callers buffer for gas-price\nmovement themselves. Message bridges (bridgeMessage) are not estimated.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fee-estimation"
+                ],
+                "summary": "Get bridge fee estimate",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Origin network ID (0 for L1, the L2 network ID otherwise)",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Token address on the origin network, 0x-prefixed (0x0 = native gas token)",
+                        "name": "token_address",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Bridge fee estimate",
+                        "schema": {
+                            "$ref": "#/definitions/feeestimate.BridgeFeeEstimateResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/bridges": {
             "get": {
                 "description": "Returns a paginated list of bridge events for the specified network.",
@@ -245,6 +300,69 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/types.BridgesByContentResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/claim-fee-estimate": {
+            "get": {
+                "description": "Returns the estimated cost of claimAsset on the destination network, covering only\nwhat the user or sponsor pays: execution gas times the gas price of the destination\nnetwork (chains served by this endpoint do not charge senders an L1 data fee). It\ngives separate first-claim (wrapper deployment) and repeat-claim estimates; exactly\none of them applies to the request (chosen by wrapper_exists) and the other is null\nwith its reason in unavailable. The estimate fails closed: with no estimator\nconfigured for the network, a required RPC call failing or no samples for the\napplicable bucket it answers 503, never a default value. No server-side margin is\nadded: callers buffer for gas-price movement themselves. Message claims\n(claimMessage) are not estimated.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fee-estimation"
+                ],
+                "summary": "Get claim fee estimate",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Destination network ID (0 for L1, the L2 network ID otherwise)",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "Network the token is bridged from",
+                        "name": "origin_network",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Token address on the origin network (0x0 = native gas token)",
+                        "name": "origin_token_address",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Claim fee estimate",
+                        "schema": {
+                            "$ref": "#/definitions/feeestimate.ClaimFeeEstimateResponse"
                         }
                     },
                     "400": {
@@ -1158,6 +1276,224 @@
                     "type": "integer"
                 }
             }
+        },
+        "feeestimate.Applicable": {
+            "description": "Which claim estimate applies to the request",
+            "type": "string",
+            "enum": [
+                "first_claim",
+                "repeat_claim"
+            ],
+            "x-enum-varnames": [
+                "FirstClaim",
+                "RepeatClaim"
+            ]
+        },
+        "feeestimate.BridgeFeeEstimateResponse": {
+            "description": "Cost of bridging a token out of the origin network",
+            "type": "object",
+            "properties": {
+                "computed_at": {
+                    "description": "ComputedAt is when the estimate was computed, in seconds since the Unix epoch.",
+                    "type": "integer",
+                    "example": 1760000000
+                },
+                "estimate": {
+                    "description": "Estimate is the per-mechanism cost estimate.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/feeestimate.FeeEstimate"
+                        }
+                    ]
+                },
+                "gas_price": {
+                    "description": "GasPrice is the gas price snapshot the estimate is computed with.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/feeestimate.GasPriceInfo"
+                        }
+                    ]
+                },
+                "mechanism": {
+                    "description": "Mechanism is the bridging mechanism the token resolves to (D6).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/feeestimate.Mechanism"
+                        }
+                    ],
+                    "example": "native"
+                },
+                "network_id": {
+                    "description": "NetworkID is the origin network the bridge tx runs on (0 = L1, or the instance's L2 id).",
+                    "type": "integer",
+                    "example": 1
+                },
+                "token_address": {
+                    "description": "TokenAddress is the token address on the origin network; 0x0 is the native gas token.",
+                    "type": "string",
+                    "example": "0x0000000000000000000000000000000000000000"
+                }
+            }
+        },
+        "feeestimate.ClaimFeeEstimateResponse": {
+            "description": "Cost of claiming a token on the destination network",
+            "type": "object",
+            "properties": {
+                "applicable": {
+                    "description": "Applicable names the estimate the request resolves to (D5).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/feeestimate.Applicable"
+                        }
+                    ],
+                    "example": "repeat_claim"
+                },
+                "computed_at": {
+                    "description": "ComputedAt is when the estimates were computed, in seconds since the Unix epoch.",
+                    "type": "integer",
+                    "example": 1760000000
+                },
+                "first_claim": {
+                    "description": "FirstClaim is the wrapper-deployment claim estimate, or null when RepeatClaim is the\napplicable estimate (its reason is in Unavailable).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/feeestimate.FeeEstimate"
+                        }
+                    ]
+                },
+                "gas_price": {
+                    "description": "GasPrice is the gas price snapshot both estimates are computed with.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/feeestimate.GasPriceInfo"
+                        }
+                    ]
+                },
+                "network_id": {
+                    "description": "NetworkID is the destination network the claim runs on (0 = L1, or the instance's L2 id).",
+                    "type": "integer",
+                    "example": 1
+                },
+                "origin_network": {
+                    "description": "OriginNetwork is the network the token is bridged from.",
+                    "type": "integer",
+                    "example": 0
+                },
+                "origin_token_address": {
+                    "description": "OriginTokenAddress is the token address on the origin network; 0x0 is the origin's\nnative gas token.",
+                    "type": "string",
+                    "example": "0x1234567890abcdef1234567890abcdef12345678"
+                },
+                "repeat_claim": {
+                    "description": "RepeatClaim is the claim-without-deployment estimate, or null when FirstClaim is the\napplicable estimate (its reason is in Unavailable).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/feeestimate.FeeEstimate"
+                        }
+                    ]
+                },
+                "token_class": {
+                    "description": "TokenClass classifies the token from the destination's point of view.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/feeestimate.TokenClass"
+                        }
+                    ],
+                    "example": "wrapped_erc20"
+                },
+                "unavailable": {
+                    "description": "Unavailable holds, for the non-applicable estimate, the reason it is null (D5); it is\nnull when unset. The applicable estimate is never listed here: if it cannot be\ncomputed, the endpoint errors out instead of returning this body.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "wrapper_exists": {
+                    "description": "WrapperExists reports whether the destination already holds a deployed wrapper for the\ntoken. Null when no wrapper applies (TokenClass is origin_native_erc20 or gas_token).\nFalse means the next claim deploys the wrapper, so the applicable estimate is\nFirstClaim.",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "feeestimate.FeeEstimate": {
+            "description": "Cost estimate: observed gas units times the gas price snapshot",
+            "type": "object",
+            "properties": {
+                "cost": {
+                    "description": "Cost is what the tx sender pays on the estimated network: GasUnits times\nGasPriceInfo.GasPrice, in wei of that network's native gas token, as a decimal string.",
+                    "type": "string",
+                    "example": "1870000000000000"
+                },
+                "gas_units": {
+                    "description": "GasUnits is the p90 (or, for a small bucket, the maximum) gasUsed of the observed\ntransactions in the bucket (D2).",
+                    "type": "integer",
+                    "example": 110000
+                },
+                "sample_count": {
+                    "description": "SampleCount is the number of observed transactions the bucket holds.",
+                    "type": "integer",
+                    "example": 37
+                },
+                "source": {
+                    "description": "Source names the bucket granularity the estimate came from: \"token\" (a per-token\nbucket), \"class\" (a token-class fallback bucket) or \"mechanism\" (bridge side).",
+                    "type": "string",
+                    "example": "class"
+                }
+            }
+        },
+        "feeestimate.GasPriceInfo": {
+            "description": "Gas price snapshot an estimate was computed with (wei, decimal strings)",
+            "type": "object",
+            "properties": {
+                "base_fee": {
+                    "description": "BaseFee is the base fee of the block the snapshot was taken at. Null on chains that\ndo not use EIP-1559, where GasPrice comes from eth_gasPrice instead.",
+                    "type": "string",
+                    "example": "15000000000"
+                },
+                "block_number": {
+                    "description": "BlockNumber is the block the snapshot was taken at.",
+                    "type": "integer",
+                    "example": 123
+                },
+                "gas_price": {
+                    "description": "GasPrice is the effective gas price the cost is computed with: base fee plus priority\nfee on EIP-1559 chains, eth_gasPrice otherwise. Always present.",
+                    "type": "string",
+                    "example": "17000000000"
+                },
+                "priority_fee": {
+                    "description": "PriorityFee is the suggested priority fee (eth_maxPriorityFeePerGas). Null on chains\nthat do not use EIP-1559.",
+                    "type": "string",
+                    "example": "2000000000"
+                }
+            }
+        },
+        "feeestimate.Mechanism": {
+            "description": "Bridging mechanism a bridge fee estimate is about",
+            "type": "string",
+            "enum": [
+                "native",
+                "erc20_lock",
+                "wrapped_burn"
+            ],
+            "x-enum-varnames": [
+                "Native",
+                "ERC20Lock",
+                "WrappedBurn"
+            ]
+        },
+        "feeestimate.TokenClass": {
+            "description": "Class of the token a claim fee estimate is about",
+            "type": "string",
+            "enum": [
+                "wrapped_erc20",
+                "origin_native_erc20",
+                "gas_token"
+            ],
+            "x-enum-varnames": [
+                "WrappedERC20",
+                "OriginNativeERC20",
+                "GasToken"
+            ]
         },
         "github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse": {
             "description": "Contains basic health‐check information for the bridge service",

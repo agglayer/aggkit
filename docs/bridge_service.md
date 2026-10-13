@@ -583,6 +583,8 @@ Each handler is described with a unique handler id and these are the values, dep
 - `last_reorg_event`,
 - `get_sync_status`,
 - `health_check`,
+- `get_claim_fee_estimate`,
+- `get_bridge_fee_estimate`,
 
 | **Metric Name** | **Type** | **Description** |
 | --- | --- | --- |

@@ -603,14 +603,6 @@ func TestClassifyToken(t *testing.T) {
 	}
 }
 
-func TestEstimateBridgeFee_FailsClosedUntilImplemented(t *testing.T) {
-	chain := eip1559Chain()
-	estimator, _ := newEstimator(t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr},
-		chain, &fakeClaimsReader{})
-	_, err := estimator.EstimateBridgeFee(context.Background(), wrappedToken)
-	require.ErrorIs(t, err, ErrFeeEstimateUnavailable)
-}
-
 func TestNew_RequiresChainReader(t *testing.T) {
 	_, err := New(Config{NetworkID: l2Network}, nil, &fakeClaimsReader{}, nil)
 	require.ErrorContains(t, err, "chain reader must not be nil")
