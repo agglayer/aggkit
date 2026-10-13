@@ -543,6 +543,24 @@ BridgeAddr = "{{.sovereign_bridge_proxy_addr}}"
 BridgeAddr = ""
 {{- end }}
 
+{{- if eq .sequencer_type "cdk-erigon" }}
+# ------------------------------------------------------------------------------
+# BlockFinality selects which L2 block type to use when querying the bridge
+# contract for synchronization
+# Accepted values:
+#   - LatestBlock
+#   - SafeBlock
+#   - PendingBlock
+#   - FinalizedBlock
+#
+# Pinned to LatestBlock for cdk-erigon: the kurtosis cdk-erigon L2 nodes never
+# advance the `safe` block tag, so a SafeBlock syncer would index nothing and
+# L2-origin bridges would never show up on the bridge API. Other sequencer
+# types (op-geth) keep the binary default (SafeBlock), which their L2s support.
+# ------------------------------------------------------------------------------
+BlockFinality = "LatestBlock"
+{{- end }}
+
 # ------------------------------------------------------------------------------
 # DBPath path of the sqlite db
 # ------------------------------------------------------------------------------
