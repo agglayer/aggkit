@@ -197,7 +197,7 @@ RequireStorageContentCompatibility = {{BridgeL1Sync.RequireStorageContentCompati
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
-BlockFinality = "LatestBlock"
+BlockFinality = "SafeBlock"
 InitialBlockNum = 0
 BridgeAddr = "{{L2Config.BridgeAddr}}"
 SyncBlockChunkSize = 100
@@ -226,7 +226,7 @@ RequireStorageContentCompatibility = {{BridgeL2Sync.RequireStorageContentCompati
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"
-BlockFinality = "LatestBlock"
+BlockFinality = "SafeBlock"
 InitialBlockNum = 0
 GlobalExitRootL2Addr = "{{L2Config.GlobalExitRootAddr}}"
 GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
