@@ -180,7 +180,7 @@ func TestEstimateClaimFee_SampleEligibilityFiltering(t *testing.T) {
 	wrapper := wrapperAddr
 	wrapperLookup(chain, &wrapper)
 
-	txs := hashes(8)
+	txs := hashes(12)
 	// The one eligible sample.
 	eligibleClaimFixture(chain, reader, bridgeAddr, txs[0], l1Origin, wrappedToken, 100000)
 	// A failed (reverted) claim tx.
@@ -219,16 +219,50 @@ func TestEstimateClaimFee_SampleEligibilityFiltering(t *testing.T) {
 	// A claim whose receipt the RPC no longer knows (reorged away): skipped, not an error.
 	reader.claims = append(reader.claims, assetClaim(txs[7], l1Origin, wrappedToken))
 	chain.notFound[txs[7]] = true
+	// A sovereign-chain claim: AgglayerBridgeL2 emits ClaimEvent AND DetailedClaimEvent for
+	// one claim, so the receipt holds two claim logs. Counted the way claimsync counts rows,
+	// the pair is one claim: an eligible sample (the L2 destination's everyday claim).
+	chain.txs[txs[8]] = claimTx(bridgeAddr)
+	chain.receipts[txs[8]] = receiptOf(ethtypes.ReceiptStatusSuccessful, 180000,
+		bridgeLog(bridgeAddr, claimEventTopic),
+		bridgeLog(bridgeAddr, detailedClaimEventTopic))
+	reader.claims = append(reader.claims, assetClaim(txs[8], l1Origin, wrappedToken))
+	// A tx performing two sovereign claims, one pair each: two claims in one receipt, still
+	// excluded by the exactly-one-claim rule.
+	chain.txs[txs[9]] = claimTx(bridgeAddr)
+	chain.receipts[txs[9]] = receiptOf(ethtypes.ReceiptStatusSuccessful, 190000,
+		bridgeLog(bridgeAddr, claimEventTopic),
+		bridgeLog(bridgeAddr, detailedClaimEventTopic),
+		bridgeLog(bridgeAddr, claimEventTopic),
+		bridgeLog(bridgeAddr, detailedClaimEventTopic))
+	reader.claims = append(reader.claims, assetClaim(txs[9], l1Origin, wrappedToken))
+	// A ClaimEvent from the bridge paired with a DetailedClaimEvent another contract emitted:
+	// not a pair (claimsync only ever queries the bridge's logs), so the bridge's ClaimEvent
+	// stands alone and the claim stays eligible.
+	chain.txs[txs[10]] = claimTx(bridgeAddr)
+	chain.receipts[txs[10]] = receiptOf(ethtypes.ReceiptStatusSuccessful, 200000,
+		bridgeLog(bridgeAddr, claimEventTopic),
+		bridgeLog(common.HexToAddress("0x8888888888888888888888888888888888888888"),
+			detailedClaimEventTopic))
+	reader.claims = append(reader.claims, assetClaim(txs[10], l1Origin, wrappedToken))
+	// The mirrored split: the bridge's DetailedClaimEvent plus another contract's ClaimEvent.
+	chain.txs[txs[11]] = claimTx(bridgeAddr)
+	chain.receipts[txs[11]] = receiptOf(ethtypes.ReceiptStatusSuccessful, 210000,
+		bridgeLog(common.HexToAddress("0x8888888888888888888888888888888888888888"),
+			claimEventTopic),
+		bridgeLog(bridgeAddr, detailedClaimEventTopic))
+	reader.claims = append(reader.claims, assetClaim(txs[11], l1Origin, wrappedToken))
 
 	estimator, _ := newEstimator(t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader)
 	resp, err := estimator.EstimateClaimFee(context.Background(), l1Origin, wrappedToken)
 	require.NoError(t, err)
 	require.NotNil(t, resp.RepeatClaim)
 
-	// The class bucket counts exactly the three eligible samples: the clean one, the
-	// pre-Etrog one and the DetailedClaimEvent one. Everything else is filtered out.
-	require.Equal(t, 3, resp.RepeatClaim.SampleCount)
-	require.Equal(t, uint64(170000), resp.RepeatClaim.GasUnits, "small bucket quotes the maximum")
+	// The class bucket counts exactly the six eligible samples: the clean one, the pre-Etrog
+	// one, the DetailedClaimEvent one, the paired-emission one and the two split-emitter
+	// ones. Everything else is filtered out.
+	require.Equal(t, 6, resp.RepeatClaim.SampleCount)
+	require.Equal(t, uint64(210000), resp.RepeatClaim.GasUnits, "small bucket quotes the maximum")
 }
 
 func TestEstimateClaimFee_FailClosedPaths(t *testing.T) {

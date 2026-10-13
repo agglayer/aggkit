@@ -135,3 +135,37 @@ func countBridgeLogs(obs *txObservation, bridgeAddr common.Address, topics []com
 	}
 	return count
 }
+
+// countClaimEvents counts the CLAIMS the receipt records rather than the claim-event logs it
+// holds: the sovereign AgglayerBridgeL2 (v12.2.1 and later) emits a ClaimEvent AND a
+// DetailedClaimEvent for one and the same claim, so the receipt of a single claim carries two
+// claim-topic logs. The counting mirrors claimsync's row-level dedup in
+// buildDetailedClaimEventHandler (claimsync/downloader.go), which drops the ClaimEvent row of
+// the same transaction when it indexes the paired DetailedClaimEvent ("DetailedClaimEvent
+// takes precedence"). Every log of a receipt shares the receipt's transaction hash, so the
+// claimsync pairing of one receipt is: a DetailedClaimEvent the bridge emitted counts one
+// claim, and the bridge's ClaimEvent logs count only when no bridge-emitted
+// DetailedClaimEvent accompanies them -- the paired emission counts once, while two separate
+// claims in one transaction still count two. Logs any other emitter produced never count,
+// matching the log filter claimsync downloads behind, which only ever queries the bridge
+// contract: a pair split across emitters is not a pair.
+func countClaimEvents(obs *txObservation, bridgeAddr common.Address) int {
+	claimEvents := 0
+	detailedClaimEvents := 0
+	for _, log := range obs.receipt.Logs {
+		if log == nil || len(log.Topics) == 0 || log.Address != bridgeAddr {
+			continue
+		}
+		switch log.Topics[0] {
+		case claimEventTopic, claimEventPreEtrogTopic:
+			claimEvents++
+		case detailedClaimEventTopic:
+			detailedClaimEvents++
+		}
+	}
+	if detailedClaimEvents > 0 {
+		// The ClaimEvent logs are the paired emission of the same claims.
+		return detailedClaimEvents
+	}
+	return claimEvents
+}

@@ -179,7 +179,127 @@ func TestCountBridgeLogs(t *testing.T) {
 		bridgeLog(bridge, newWrappedTokenTopic),
 	)}
 
-	require.Equal(t, 2, countBridgeLogs(obs, bridge, claimEventTopics))
+	require.Equal(t, 2, countBridgeLogs(obs, bridge,
+		[]common.Hash{claimEventTopic, claimEventPreEtrogTopic}))
 	require.Equal(t, 1, countBridgeLogs(obs, bridge, []common.Hash{newWrappedTokenTopic}))
 	require.Equal(t, 0, countBridgeLogs(obs, bridge, []common.Hash{detailedClaimEventTopic}))
+}
+
+func TestCountClaimEvents(t *testing.T) {
+	bridge := common.HexToAddress("0x9999999999999999999999999999999999999999")
+	other := common.HexToAddress("0x8888888888888888888888888888888888888888")
+
+	tests := []struct {
+		name string
+		logs []*ethtypes.Log
+		want int
+	}{
+		{
+			name: "L1 receipt: one Etrog ClaimEvent is one claim",
+			logs: []*ethtypes.Log{bridgeLog(bridge, claimEventTopic)},
+			want: 1,
+		},
+		{
+			name: "one pre-Etrog ClaimEvent is one claim",
+			logs: []*ethtypes.Log{bridgeLog(bridge, claimEventPreEtrogTopic)},
+			want: 1,
+		},
+		{
+			name: "one DetailedClaimEvent alone is one claim",
+			logs: []*ethtypes.Log{bridgeLog(bridge, detailedClaimEventTopic)},
+			want: 1,
+		},
+		{
+			// The sovereign AgglayerBridgeL2 paired emission: one claim, two logs.
+			name: "ClaimEvent + DetailedClaimEvent pair from the bridge is one claim",
+			logs: []*ethtypes.Log{
+				bridgeLog(bridge, claimEventTopic),
+				bridgeLog(bridge, detailedClaimEventTopic),
+			},
+			want: 1,
+		},
+		{
+			name: "pre-Etrog ClaimEvent + DetailedClaimEvent pair from the bridge is one claim",
+			logs: []*ethtypes.Log{
+				bridgeLog(bridge, claimEventPreEtrogTopic),
+				bridgeLog(bridge, detailedClaimEventTopic),
+			},
+			want: 1,
+		},
+		{
+			name: "both ClaimEvent topics + DetailedClaimEvent from the bridge is one claim",
+			logs: []*ethtypes.Log{
+				bridgeLog(bridge, claimEventTopic),
+				bridgeLog(bridge, claimEventPreEtrogTopic),
+				bridgeLog(bridge, detailedClaimEventTopic),
+			},
+			want: 1,
+		},
+		{
+			name: "two separate claims in one receipt (two pairs) are two claims",
+			logs: []*ethtypes.Log{
+				bridgeLog(bridge, claimEventTopic),
+				bridgeLog(bridge, detailedClaimEventTopic),
+				bridgeLog(bridge, claimEventTopic),
+				bridgeLog(bridge, detailedClaimEventTopic),
+			},
+			want: 2,
+		},
+		{
+			name: "two separate L1 claims in one receipt (two ClaimEvents) are two claims",
+			logs: []*ethtypes.Log{
+				bridgeLog(bridge, claimEventTopic),
+				bridgeLog(bridge, claimEventTopic),
+			},
+			want: 2,
+		},
+		{
+			name: "two DetailedClaimEvents in one receipt are two claims",
+			logs: []*ethtypes.Log{
+				bridgeLog(bridge, detailedClaimEventTopic),
+				bridgeLog(bridge, detailedClaimEventTopic),
+			},
+			want: 2,
+		},
+		{
+			// A pair split across emitters is not a pair: the bridge's own logs stand alone.
+			name: "bridge ClaimEvent + other emitter's DetailedClaimEvent is one claim, not zero",
+			logs: []*ethtypes.Log{
+				bridgeLog(bridge, claimEventTopic),
+				bridgeLog(other, detailedClaimEventTopic),
+			},
+			want: 1,
+		},
+		{
+			name: "bridge DetailedClaimEvent + other emitter's ClaimEvent is one claim",
+			logs: []*ethtypes.Log{
+				bridgeLog(other, claimEventTopic),
+				bridgeLog(bridge, detailedClaimEventTopic),
+			},
+			want: 1,
+		},
+		{
+			name: "logs other emitters produced never count",
+			logs: []*ethtypes.Log{
+				bridgeLog(other, claimEventTopic),
+				bridgeLog(other, detailedClaimEventTopic),
+			},
+			want: 0,
+		},
+		{
+			name: "no claim logs at all",
+			logs: []*ethtypes.Log{
+				bridgeLog(bridge, newWrappedTokenTopic),
+				{Address: bridge, Topics: []common.Hash{}},
+				nil,
+			},
+			want: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obs := &txObservation{receipt: receiptOf(ethtypes.ReceiptStatusSuccessful, 1, tt.logs...)}
+			require.Equal(t, tt.want, countClaimEvents(obs, bridge))
+		})
+	}
 }

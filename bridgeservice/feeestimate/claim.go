@@ -296,15 +296,16 @@ func (e *Estimator) collectClaimStats(ctx context.Context) (claimStats, error) {
 
 // classifyClaimObservation applies the claim-side eligibility rules (D4) to one observation:
 // the transaction must have succeeded and gone directly to the bridge, and its receipt must
-// hold exactly one bridge-emitted claim event, by any of the signatures claimsync indexes
-// (Etrog and pre-Etrog ClaimEvent, or the sovereign chains' DetailedClaimEvent). It reports
-// the gas the claim actually used and whether the claim deployed a wrapper token, the
-// first-claim marker.
+// record exactly one claim, by any of the signatures claimsync indexes (Etrog and pre-Etrog
+// ClaimEvent, or the sovereign chains' DetailedClaimEvent) and counted the way claimsync
+// counts them: a ClaimEvent + DetailedClaimEvent pair the bridge emitted for one claim counts
+// once. It reports the gas the claim actually used and whether the claim deployed a wrapper
+// token, the first-claim marker.
 func classifyClaimObservation(obs *txObservation, bridgeAddr common.Address) (gasUsed uint64, firstClaim, ok bool) {
 	if !isSuccessfulBridgeTx(obs, bridgeAddr) {
 		return 0, false, false
 	}
-	if countBridgeLogs(obs, bridgeAddr, claimEventTopics) != 1 {
+	if countClaimEvents(obs, bridgeAddr) != 1 {
 		return 0, false, false
 	}
 	firstClaim = countBridgeLogs(obs, bridgeAddr, []common.Hash{newWrappedTokenTopic}) > 0

@@ -1,7 +1,6 @@
 package feeestimate
 
 import (
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -14,8 +13,9 @@ var (
 	// claimEventPreEtrogTopic is the pre-Etrog ClaimEvent, whose global index was a uint32.
 	claimEventPreEtrogTopic = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
 	// detailedClaimEventTopic is the sovereign-chain DetailedClaimEvent (AgglayerBridgeL2
-	// v12.2.1 and later), which claimAsset emits there instead of ClaimEvent. claimsync
-	// indexes those claims, so a claim log must be recognized by any of the three topics.
+	// v12.2.1 and later). claimAsset emits it there alongside ClaimEvent: one claim, two
+	// logs. claimsync indexes those claims behind both topics and dedups the pair, so the
+	// estimator must recognize all three topics and count the pair once.
 	detailedClaimEventTopic = crypto.Keccak256Hash([]byte(
 		"DetailedClaimEvent(bytes32[32],bytes32[32]," +
 			"uint256,bytes32,bytes32,uint8,uint32," +
@@ -24,6 +24,3 @@ var (
 	// when it deploys the wrapper for a token that had none: the marker of a first claim.
 	newWrappedTokenTopic = crypto.Keccak256Hash([]byte("NewWrappedToken(uint32,address,address,bytes)"))
 )
-
-// claimEventTopics are the topics a bridge-emitted log must carry to count as one claim.
-var claimEventTopics = []common.Hash{claimEventTopic, claimEventPreEtrogTopic, detailedClaimEventTopic}
