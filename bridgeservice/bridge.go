@@ -28,6 +28,7 @@ import (
 
 	"github.com/agglayer/aggkit"
 	_ "github.com/agglayer/aggkit/bridgeservice/docs"
+	"github.com/agglayer/aggkit/bridgeservice/feeestimate"
 	"github.com/agglayer/aggkit/bridgeservice/metrics"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -137,6 +138,10 @@ type Config struct {
 	// share a budget). Zero (the field's default when unset -- there is no [BridgeService] TOML
 	// section today) falls back to DefaultHealthCheckComputeTimeout.
 	HealthCheckComputeTimeout cfgtypes.Duration
+	// FeeEstimators holds the fee estimator quoting each network this instance can serve (0 = L1
+	// and/or its own L2 id), wired by cmd. A network without an entry makes both fee estimate
+	// endpoints fail closed (503) for it. The map may be nil; New's signature does not change.
+	FeeEstimators map[uint32]feeestimate.FeeEstimator
 }
 
 // BridgeService contains implementations for the bridge service endpoints
@@ -159,6 +164,9 @@ type BridgeService struct {
 	// healthCheckComputeTimeout bounds one health-check computation, see Config's field of the
 	// same name.
 	healthCheckComputeTimeout time.Duration
+	// feeEstimators backs GET /claim-fee-estimate and GET /bridge-fee-estimate, keyed by the
+	// network each estimator quotes (0 = L1 and/or the instance's L2 id). See Config.FeeEstimators.
+	feeEstimators map[uint32]feeestimate.FeeEstimator
 }
 
 // New returns instance of BridgeService
@@ -199,6 +207,7 @@ func New(
 		claimL2:                     claimL2,
 		healthCache:                 newHealthCheckCache(healthCheckCacheTTL),
 		healthCheckComputeTimeout:   healthCheckComputeTimeout,
+		feeEstimators:               cfg.FeeEstimators,
 	}
 
 	cfg.Logger.Info("bridge service initialized successfully")
@@ -234,6 +243,8 @@ func (b *BridgeService) RegisterRoutes(router gin.IRouter) {
 		bridgeGroup.GET("/root-by-ler", b.RootByLERHandler)
 		bridgeGroup.GET("/config", b.GetPublicConfigHandler)
 		bridgeGroup.GET("/settlements", b.GetSettlementsHandler)
+		bridgeGroup.GET("/claim-fee-estimate", b.GetClaimFeeEstimateHandler)
+		bridgeGroup.GET("/bridge-fee-estimate", b.GetBridgeFeeEstimateHandler)
 
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -2249,19 +2260,29 @@ func reportMetrics(handlerID string, statusCode int, startTime time.Time) {
 	metrics.ObserveRequestLatencyHistogram(handlerID, startTime)
 }
 
-// httpStatusForSyncerError maps an error returned by one of the syncers this service reads from to
-// the HTTP status the API should answer with:
+// httpStatusForSyncerError maps an error returned by one of the syncers this service reads from --
+// or, for the fee estimate endpoints, by a fee estimator -- to the HTTP status the API should
+// answer with:
 //
+//	400 - a fee estimate request parameter is invalid (feeestimate.ErrFeeEstimateBadRequest)
 //	404 - a syncer has not indexed the requested data (yet); callers should retry later
-//	503 - a syncer is halted on an inconsistent state (reorg being resolved); retryable
+//	503 - a fee estimate is unavailable, fail closed (not configured, no samples, RPC failure;
+//	      feeestimate.ErrFeeEstimateUnavailable), or a syncer is halted on an inconsistent state
+//	      (reorg being resolved); retryable
 //	500 - a genuine fault
 //
 // Both not-found sentinels must be handled: reads routed through l1infotreesync's translateError
 // (e.g. GetLatestL1InfoLeafUntilBlock) surface l1infotreesync.ErrNotFound, while every sibling read
 // surfaces db.ErrNotFound raw.
+// The fee estimate sentinels are checked first: an estimator wraps its underlying failures (RPC
+// reads, not-yet-indexed data, halted syncers) in ErrFeeEstimateUnavailable on purpose (D1), so
+// the fail-closed classification must win over the wrapped error's own.
 func httpStatusForSyncerError(err error) int {
 	switch {
-	case errors.Is(err, aggkitsync.ErrInconsistentState):
+	case errors.Is(err, feeestimate.ErrFeeEstimateBadRequest):
+		return http.StatusBadRequest
+	case errors.Is(err, feeestimate.ErrFeeEstimateUnavailable),
+		errors.Is(err, aggkitsync.ErrInconsistentState):
 		return http.StatusServiceUnavailable
 	case errors.Is(err, db.ErrNotFound),
 		errors.Is(err, l1infotreesync.ErrNotFound),
