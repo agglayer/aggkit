@@ -594,6 +594,220 @@ Each handler is described with a unique handler id and these are the values, dep
 All metrics are counters, meaning they only increase over time.
 Each metric helps monitor usage and performance of its corresponding API endpoint.
 
+## Fee estimation
+
+Two read-only endpoints estimate what a bridging transaction costs, without sending it:
+
+- `GET /bridge/v1/claim-fee-estimate` — the cost of `claimAsset` on a destination network. Built for
+  sponsored claims (a sponsor pays the claim on behalf of the user) and for quote flows such as
+  Trails.
+- `GET /bridge/v1/bridge-fee-estimate` — the cost of `bridgeAsset` out of an origin network.
+
+Both are estimated from transactions that were actually observed: the estimator takes the latest
+indexed claims or bridges of the network, reads their transactions and receipts from that network's
+RPC, buckets them, and prices a percentile of `gasUsed` with a live gas price read. The estimate is
+fail-closed: when it cannot be computed honestly, the endpoint answers an HTTP error — **never a
+default or partial value**.
+
+Both endpoints work the same through the proxy: like every `/bridge/v1/*` route, the proxy forwards
+the request to the bridge service of the network selected by the `network_id` query parameter, so no
+proxy change is needed.
+
+**What the estimates cover.** Chains served by these endpoints do not charge senders an L1 data fee
+(the sequencer or operator absorbs it), so the estimate covers only what the user or sponsor pays:
+execution gas × gas price. Every wei value in a response is a decimal string (`types.BigIntString`),
+as wei exceeds `float64` precision.
+
+### Claim fee estimate
+
+`GET /bridge/v1/claim-fee-estimate?network_id=<destination>&origin_network=..&origin_token_address=..`
+returns the estimated cost of `claimAsset` on the destination network. Query parameters:
+
+- `network_id` (required): the **destination** network the claim runs on — `0` for L1, otherwise the
+  instance's L2 network id. Any other value answers 400.
+- `origin_network` (required, uint32): the network the token is bridged from.
+- `origin_token_address` (required, 0x-prefixed hex): the token address on the origin network; `0x0`
+  is the origin's native gas token.
+
+Example requests:
+
+```bash
+# Claim on L1 (network_id 0) of the origin's native gas token
+curl 'localhost:8080/bridge/v1/claim-fee-estimate?network_id=0&origin_network=0&origin_token_address=0x0000000000000000000000000000000000000000'
+# Claim on the instance's L2 (network_id = its network id, e.g. 1) of an L1 ERC20
+curl 'localhost:8080/bridge/v1/claim-fee-estimate?network_id=1&origin_network=0&origin_token_address=0x3355...ff21'
+```
+
+Response shape (`feeestimate.ClaimFeeEstimateResponse`), for the L2 example above:
+
+```json
+{
+  "network_id": 1,
+  "origin_network": 0,
+  "origin_token_address": "0x3355789c8b6b7e4d3c2f1a0b9e8d7c6b5a49ff21",
+  "token_class": "wrapped_erc20",
+  "wrapper_exists": true,
+  "applicable": "repeat_claim",
+  "gas_price": {
+    "base_fee": "15000000000",
+    "priority_fee": "2000000000",
+    "gas_price": "17000000000",
+    "block_number": 123
+  },
+  "first_claim": null,
+  "repeat_claim": {
+    "gas_units": 110000,
+    "cost": "1870000000000000",
+    "sample_count": 37,
+    "source": "class"
+  },
+  "unavailable": {
+    "first_claim": "wrapper already deployed; the first-claim estimate does not apply"
+  },
+  "computed_at": 1760000000
+}
+```
+
+- `token_class` classifies the token from the destination's point of view: `origin_native_erc20`
+  when it already lives on the destination network (`origin_network` equals the destination),
+  `gas_token` when it is the origin's native gas token (`0x0`), and `wrapped_erc20` otherwise.
+- `wrapper_exists` reports whether the destination already holds a deployed wrapper for the token.
+  It is **null when no wrapper applies** (`origin_native_erc20` and `gas_token` tokens never deploy
+  one). `false` means the next claim deploys the wrapper.
+- The first claim of a token deploys its wrapper on the destination and every later claim does not,
+  so the two scenarios have very different gas footprints and get **separate estimates**:
+  `first_claim` (wrapper deployment) and `repeat_claim`. `applicable` (`first_claim` or
+  `repeat_claim`) names the one this request resolves to, chosen by `wrapper_exists`.
+- Exactly one of `first_claim` / `repeat_claim` is populated; **the other is `null`, with its reason
+  in `unavailable`**. On every successful response `unavailable` is present with exactly one entry,
+  keyed by the non-applicable estimate's name. The applicable estimate is never listed there: if it
+  cannot be computed, the endpoint answers an error instead of this body.
+- `gas_price` is the snapshot the estimates are priced with. `base_fee` and `priority_fee` are
+  **null on chains that do not use EIP-1559**, where `gas_price` comes from `eth_gasPrice`;
+  `gas_price` itself is always present. All three are decimal strings in wei.
+- `computed_at` is when the estimates were computed, in seconds since the Unix epoch.
+
+### Bridge fee estimate
+
+`GET /bridge/v1/bridge-fee-estimate?network_id=<origin>&token_address=..` returns the estimated cost
+of `bridgeAsset` out of the origin network. Query parameters:
+
+- `network_id` (required): the **origin** network the bridge transaction runs on — `0` for L1,
+  otherwise the instance's L2 network id. Any other value answers 400.
+- `token_address` (required, 0x-prefixed hex): the token address on the origin network; `0x0` is the
+  native gas token.
+
+Example requests:
+
+```bash
+# Bridge out of L1 (network_id 0): the native gas token
+curl 'localhost:8080/bridge/v1/bridge-fee-estimate?network_id=0&token_address=0x0000000000000000000000000000000000000000'
+# Bridge out of the instance's L2 (network_id = its network id, e.g. 1): an ERC20 native to the L2
+curl 'localhost:8080/bridge/v1/bridge-fee-estimate?network_id=1&token_address=0x3355...ff21'
+```
+
+Response shape (`feeestimate.BridgeFeeEstimateResponse`), for the L1 example above:
+
+```json
+{
+  "network_id": 0,
+  "token_address": "0x0000000000000000000000000000000000000000",
+  "mechanism": "native",
+  "gas_price": {
+    "base_fee": "15000000000",
+    "priority_fee": "2000000000",
+    "gas_price": "17000000000",
+    "block_number": 123
+  },
+  "estimate": {
+    "gas_units": 65000,
+    "cost": "1105000000000000",
+    "sample_count": 42,
+    "source": "mechanism"
+  },
+  "computed_at": 1760000000
+}
+```
+
+This estimate is coarser than the claim one: it is per **bridging mechanism**, with no per-token
+breakdown. `mechanism` is one of:
+
+- `native` — the network's native gas token, bridged via `msg.value` (requested with
+  `token_address=0x0`).
+- `erc20_lock` — an ERC20 native to the origin network, locked in the bridge contract.
+- `wrapped_burn` — a wrapped token burned on its origin network.
+
+The mechanism a request resolves to is derived on-chain from the origin network's bridge contract:
+`0x0` resolves to `native`, an address the bridge knows as a wrapped token resolves to
+`wrapped_burn`, and anything else to `erc20_lock`. Sovereign-mapped tokens with non-standard
+burn/lock behaviour fall into whichever bucket their bridge events imply — this estimate is
+deliberately coarse.
+
+`estimate` is the same shared estimate object as on the claim side, always with
+`source: "mechanism"`. Unlike the claim endpoint there is no nullable field here: on success
+`estimate` is always populated, or the endpoint errors out.
+
+### The estimate object
+
+`first_claim`, `repeat_claim` and the bridge endpoint's `estimate` share the same shape
+(`feeestimate.FeeEstimate`):
+
+- `gas_units` (uint64): the p90 `gasUsed` of the observed transactions in the bucket — or the
+  maximum when the bucket holds fewer than 10 samples.
+- `cost` (decimal string, wei): `gas_units × gas_price.gas_price`, in the native gas token of the
+  network where the transaction runs.
+- `sample_count` (int): how many observed transactions the bucket holds.
+- `source`: the bucket granularity the estimate came from — `token` (a per-token repeat-claim
+  bucket), `class` (the token-class fallback) or `mechanism` (bridge side).
+
+### How the estimates are computed
+
+- **Samples.** The estimator pages through the latest 200 indexed claims (claimsync) or bridges
+  (bridgesync) of the network. For each one it fetches the transaction and its receipt from that
+  network's RPC, keeping only successful transactions sent **directly** to the bridge contract whose
+  receipt holds exactly one `ClaimEvent` (claims) or one `BridgeEvent` (bridges). Message leaves
+  (`claimMessage` / `bridgeMessage`) are never sampled, and synthetic LET rows (`backward_let` /
+  `forward_let`) are excluded on the bridge side.
+- **Buckets.** Claims are bucketed into first claims (receipts that deploy a wrapper) and repeat
+  claims, with repeat claims keyed per token and by token class. Bridges are bucketed by mechanism
+  only.
+- **Statistic.** p90 of `gasUsed`, or the maximum for a bucket with fewer than 10 samples; a bucket
+  needs at least one sample to serve an estimate. The repeat-claim estimate comes from the
+  per-token bucket when the token has at least 3 samples in the window (`source: "token"`), and
+  from its token-class bucket otherwise (`source: "class"`).
+- **Gas price.** Read live and cached for 5 s: the latest block `baseFee` plus
+  `eth_maxPriorityFeePerGas` on EIP-1559 chains, `eth_gasPrice` on chains without a base fee.
+  Gas-unit statistics are cached for 60 s and per-transaction RPC results in an LRU of 2048 entries,
+  so bursts of identical requests collapse into one shared computation instead of duplicating RPC
+  fan-out.
+- **Cost.** `cost = gas_units × gas_price.gas_price`, in wei of the estimated network's native gas
+  token.
+- **Token facts.** Read on-chain from the network's bridge contract: whether the destination already
+  holds a wrapper for the claimed token (claim side), and whether an origin token is a wrapped token
+  (bridge side).
+
+### Errors
+
+Errors use the existing `{"error": "..."}` body shape:
+
+- **400** — invalid input: a missing or malformed parameter, or a `network_id` that is neither `0`
+  nor this instance's L2 network id.
+- **503** — the estimate is genuinely unavailable. This is fail-closed by design: no estimator is
+  configured for the network, no sample exists for the applicable bucket (e.g. a young chain that
+  has never seen a first claim of anything, or a mechanism the chain has never used), a required RPC
+  call failed, or the relevant syncer is halted. The endpoint never answers a default or partial
+  estimate.
+- **500** — anything unexpected.
+
+### Caveats
+
+- No server-side margin is added: `cost` is exactly `gas_units × gas_price` at quote time. Callers
+  should buffer for gas-price movement between the quote and the transaction themselves.
+- Only direct, single-event transactions are sampled, so txs that batch several bridge events (and
+  their gas savings) are not reflected, and message claims/bridges are not covered at all.
+- A bucket with no observed transactions answers 503 by design. Treat it as "no quote for this
+  route" rather than as an outage.
+
 ## API Documentation
 
 <iframe src="assets/swagger/bridge_service/index.html" 
