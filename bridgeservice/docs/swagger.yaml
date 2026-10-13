@@ -9,6 +9,190 @@ definitions:
       to_block:
         type: integer
     type: object
+  feeestimate.Applicable:
+    description: Which claim estimate applies to the request
+    enum:
+    - first_claim
+    - repeat_claim
+    type: string
+    x-enum-varnames:
+    - FirstClaim
+    - RepeatClaim
+  feeestimate.BridgeFeeEstimateResponse:
+    description: Cost of bridging a token out of the origin network
+    properties:
+      computed_at:
+        description: ComputedAt is when the estimate was computed, in seconds since
+          the Unix epoch.
+        example: 1760000000
+        type: integer
+      estimate:
+        allOf:
+        - $ref: '#/definitions/feeestimate.FeeEstimate'
+        description: Estimate is the per-mechanism cost estimate.
+      gas_price:
+        allOf:
+        - $ref: '#/definitions/feeestimate.GasPriceInfo'
+        description: GasPrice is the gas price snapshot the estimate is computed with.
+      mechanism:
+        allOf:
+        - $ref: '#/definitions/feeestimate.Mechanism'
+        description: Mechanism is the bridging mechanism the token resolves to (D6).
+        example: native
+      network_id:
+        description: NetworkID is the origin network the bridge tx runs on (0 = L1,
+          or the instance's L2 id).
+        example: 1
+        type: integer
+      token_address:
+        description: TokenAddress is the token address on the origin network; 0x0
+          is the native gas token.
+        example: "0x0000000000000000000000000000000000000000"
+        type: string
+    type: object
+  feeestimate.ClaimFeeEstimateResponse:
+    description: Cost of claiming a token on the destination network
+    properties:
+      applicable:
+        allOf:
+        - $ref: '#/definitions/feeestimate.Applicable'
+        description: Applicable names the estimate the request resolves to (D5).
+        example: repeat_claim
+      computed_at:
+        description: ComputedAt is when the estimates were computed, in seconds since
+          the Unix epoch.
+        example: 1760000000
+        type: integer
+      first_claim:
+        allOf:
+        - $ref: '#/definitions/feeestimate.FeeEstimate'
+        description: |-
+          FirstClaim is the wrapper-deployment claim estimate, or null when RepeatClaim is the
+          applicable estimate (its reason is in Unavailable).
+      gas_price:
+        allOf:
+        - $ref: '#/definitions/feeestimate.GasPriceInfo'
+        description: GasPrice is the gas price snapshot both estimates are computed
+          with.
+      network_id:
+        description: NetworkID is the destination network the claim runs on (0 = L1,
+          or the instance's L2 id).
+        example: 1
+        type: integer
+      origin_network:
+        description: OriginNetwork is the network the token is bridged from.
+        example: 0
+        type: integer
+      origin_token_address:
+        description: |-
+          OriginTokenAddress is the token address on the origin network; 0x0 is the origin's
+          native gas token.
+        example: 0x1234567890abcdef1234567890abcdef12345678
+        type: string
+      repeat_claim:
+        allOf:
+        - $ref: '#/definitions/feeestimate.FeeEstimate'
+        description: |-
+          RepeatClaim is the claim-without-deployment estimate, or null when FirstClaim is the
+          applicable estimate (its reason is in Unavailable).
+      token_class:
+        allOf:
+        - $ref: '#/definitions/feeestimate.TokenClass'
+        description: TokenClass classifies the token from the destination's point
+          of view.
+        example: wrapped_erc20
+      unavailable:
+        additionalProperties:
+          type: string
+        description: |-
+          Unavailable holds, for the non-applicable estimate, the reason it is null (D5); it is
+          null when unset. The applicable estimate is never listed here: if it cannot be
+          computed, the endpoint errors out instead of returning this body.
+        type: object
+      wrapper_exists:
+        description: |-
+          WrapperExists reports whether the destination already holds a deployed wrapper for the
+          token. Null when no wrapper applies (TokenClass is origin_native_erc20 or gas_token).
+          False means the next claim deploys the wrapper, so the applicable estimate is
+          FirstClaim.
+        example: true
+        type: boolean
+    type: object
+  feeestimate.FeeEstimate:
+    description: 'Cost estimate: observed gas units times the gas price snapshot'
+    properties:
+      cost:
+        description: |-
+          Cost is what the tx sender pays on the estimated network: GasUnits times
+          GasPriceInfo.GasPrice, in wei of that network's native gas token, as a decimal string.
+        example: "1870000000000000"
+        type: string
+      gas_units:
+        description: |-
+          GasUnits is the p90 (or, for a small bucket, the maximum) gasUsed of the observed
+          transactions in the bucket (D2).
+        example: 110000
+        type: integer
+      sample_count:
+        description: SampleCount is the number of observed transactions the bucket
+          holds.
+        example: 37
+        type: integer
+      source:
+        description: |-
+          Source names the bucket granularity the estimate came from: "token" (a per-token
+          bucket), "class" (a token-class fallback bucket) or "mechanism" (bridge side).
+        example: class
+        type: string
+    type: object
+  feeestimate.GasPriceInfo:
+    description: Gas price snapshot an estimate was computed with (wei, decimal strings)
+    properties:
+      base_fee:
+        description: |-
+          BaseFee is the base fee of the block the snapshot was taken at. Null on chains that
+          do not use EIP-1559, where GasPrice comes from eth_gasPrice instead.
+        example: "15000000000"
+        type: string
+      block_number:
+        description: BlockNumber is the block the snapshot was taken at.
+        example: 123
+        type: integer
+      gas_price:
+        description: |-
+          GasPrice is the effective gas price the cost is computed with: base fee plus priority
+          fee on EIP-1559 chains, eth_gasPrice otherwise. Always present.
+        example: "17000000000"
+        type: string
+      priority_fee:
+        description: |-
+          PriorityFee is the suggested priority fee (eth_maxPriorityFeePerGas). Null on chains
+          that do not use EIP-1559.
+        example: "2000000000"
+        type: string
+    type: object
+  feeestimate.Mechanism:
+    description: Bridging mechanism a bridge fee estimate is about
+    enum:
+    - native
+    - erc20_lock
+    - wrapped_burn
+    type: string
+    x-enum-varnames:
+    - Native
+    - ERC20Lock
+    - WrappedBurn
+  feeestimate.TokenClass:
+    description: Class of the token a claim fee estimate is about
+    enum:
+    - wrapped_erc20
+    - origin_native_erc20
+    - gas_token
+    type: string
+    x-enum-varnames:
+    - WrappedERC20
+    - OriginNativeERC20
+    - GasToken
   github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse:
     description: Contains basic health‐check information for the bridge service
     properties:
@@ -953,6 +1137,54 @@ paths:
       summary: Get bridge by deposit count
       tags:
       - bridges
+  /bridge-fee-estimate:
+    get:
+      description: |-
+        Returns the estimated cost of bridgeAsset out of the origin network, covering only
+        what the user or sponsor pays: execution gas times the gas price of the origin
+        network (chains served by this endpoint do not charge senders an L1 data fee). It
+        is coarser than the claim estimate: one estimate per bridging mechanism, with no
+        per-token breakdown. The mechanism is native gas token via msg.value
+        (token_address 0x0), lock of an origin-native ERC20, or burn of a wrapped token.
+        The estimate fails closed: with no estimator configured for the network, a required
+        RPC call failing or no samples for the resolved mechanism it answers 503, never a
+        default value. No server-side margin is added: callers buffer for gas-price
+        movement themselves. Message bridges (bridgeMessage) are not estimated.
+      parameters:
+      - description: Origin network ID (0 for L1, the L2 network ID otherwise)
+        format: int32
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      - description: Token address on the origin network, 0x-prefixed (0x0 = native
+          gas token)
+        in: query
+        name: token_address
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Bridge fee estimate
+          schema:
+            $ref: '#/definitions/feeestimate.BridgeFeeEstimateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get bridge fee estimate
+      tags:
+      - fee-estimation
   /bridges:
     get:
       description: Returns a paginated list of bridge events for the specified network.
@@ -1072,6 +1304,59 @@ paths:
       summary: Get bridges by content
       tags:
       - bridges
+  /claim-fee-estimate:
+    get:
+      description: |-
+        Returns the estimated cost of claimAsset on the destination network, covering only
+        what the user or sponsor pays: execution gas times the gas price of the destination
+        network (chains served by this endpoint do not charge senders an L1 data fee). It
+        gives separate first-claim (wrapper deployment) and repeat-claim estimates; exactly
+        one of them applies to the request (chosen by wrapper_exists) and the other is null
+        with its reason in unavailable. The estimate fails closed: with no estimator
+        configured for the network, a required RPC call failing or no samples for the
+        applicable bucket it answers 503, never a default value. No server-side margin is
+        added: callers buffer for gas-price movement themselves. Message claims
+        (claimMessage) are not estimated.
+      parameters:
+      - description: Destination network ID (0 for L1, the L2 network ID otherwise)
+        format: int32
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      - description: Network the token is bridged from
+        format: int32
+        in: query
+        name: origin_network
+        required: true
+        type: integer
+      - description: Token address on the origin network (0x0 = native gas token)
+        in: query
+        name: origin_token_address
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Claim fee estimate
+          schema:
+            $ref: '#/definitions/feeestimate.ClaimFeeEstimateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get claim fee estimate
+      tags:
+      - fee-estimation
   /claim-proof:
     get:
       description: |-
