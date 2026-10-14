@@ -672,6 +672,10 @@ func TestEstimateBridgeFee_TokenInfoLookupCachedPerToken(t *testing.T) {
 		tokenInfoLookup(chain, wrappedToken, &wrappedTokenInfo{originNetwork: l1Origin, originToken: otherToken})
 		estimator, _ := newBridgeEstimator(
 			t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader)
+		// The construction's gas-token identity read is counted too (its answer fails the
+		// length check, so no custom gas token results); only the wrapped-token lookups
+		// matter below.
+		base := chain.callCalls.Load()
 
 		resp, err := estimator.EstimateBridgeFee(ctx, wrappedToken)
 		require.NoError(t, err)
@@ -679,17 +683,17 @@ func TestEstimateBridgeFee_TokenInfoLookupCachedPerToken(t *testing.T) {
 		resp, err = estimator.EstimateBridgeFee(ctx, wrappedToken)
 		require.NoError(t, err)
 		require.Equal(t, WrappedBurn, resp.Mechanism)
-		require.Equal(t, int64(1), chain.callCalls.Load(), "the wrapped-token lookup is cached per token")
+		require.Equal(t, base+1, chain.callCalls.Load(), "the wrapped-token lookup is cached per token")
 
 		// A different token is looked up separately; its zero pair is cached too.
 		resp, err = estimator.EstimateBridgeFee(ctx, otherToken)
 		require.NoError(t, err)
 		require.Equal(t, ERC20Lock, resp.Mechanism)
-		require.Equal(t, int64(2), chain.callCalls.Load())
+		require.Equal(t, base+2, chain.callCalls.Load())
 		resp, err = estimator.EstimateBridgeFee(ctx, otherToken)
 		require.NoError(t, err)
 		require.Equal(t, ERC20Lock, resp.Mechanism)
-		require.Equal(t, int64(2), chain.callCalls.Load(), "the zero pair is cached, zero answer semantics kept")
+		require.Equal(t, base+2, chain.callCalls.Load(), "the zero pair is cached, zero answer semantics kept")
 	})
 
 	t.Run("the cached answer expires after the token facts TTL", func(t *testing.T) {
@@ -700,14 +704,15 @@ func TestEstimateBridgeFee_TokenInfoLookupCachedPerToken(t *testing.T) {
 		estimator, _ := newBridgeEstimator(t, Config{
 			NetworkID: l2Network, BridgeAddr: bridgeAddr, TokenFactsTTL: 10 * time.Millisecond,
 		}, chain, reader)
+		base := chain.callCalls.Load()
 
 		_, err := estimator.EstimateBridgeFee(ctx, wrappedToken)
 		require.NoError(t, err)
-		require.Equal(t, int64(1), chain.callCalls.Load())
+		require.Equal(t, base+1, chain.callCalls.Load())
 		time.Sleep(50 * time.Millisecond)
 		_, err = estimator.EstimateBridgeFee(ctx, wrappedToken)
 		require.NoError(t, err)
-		require.Equal(t, int64(2), chain.callCalls.Load(), "the cached token info expired")
+		require.Equal(t, base+2, chain.callCalls.Load(), "the cached token info expired")
 	})
 }
 

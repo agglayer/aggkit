@@ -1,7 +1,9 @@
 package feeestimate
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"math/big"
 	"sync/atomic"
 	"testing"
@@ -38,14 +40,59 @@ func firstClaimFixture(
 }
 
 // wrapperLookup equips the fake chain with the eth_call answer of getTokenWrappedAddress:
-// wrapped when non-nil, the zero address (no wrapper yet) when nil.
+// wrapped when non-nil, the zero address (no wrapper yet) when nil. The no-argument
+// construction-time gas-token reads revert (as on an older bridge), which the estimator
+// tolerates as no custom gas token.
 func wrapperLookup(chain *fakeChain, wrapped *common.Address) {
-	chain.callFn = func(ethereum.CallMsg) ([]byte, error) {
+	chain.callFn = func(msg ethereum.CallMsg) ([]byte, error) {
+		if len(msg.Data) != 4+2*abiWordLen {
+			return nil, errRPC("eth_call")
+		}
 		addr := common.Address{}
 		if wrapped != nil {
 			addr = *wrapped
 		}
 		return addressReturn(addr), nil
+	}
+}
+
+// Selectors of the no-argument gas-token view methods, for the fake chain's dispatch: the
+// estimator packs them from bridgeViewABIJSON; these mirror the first four keccak bytes of
+// the signatures.
+var (
+	gasTokenAddressSelector = common.Hex2Bytes("3c351e10")
+	gasTokenNetworkSelector = common.Hex2Bytes("3cbc795b")
+)
+
+// uint32Return packs v as the 32-byte ABI return of gasTokenNetwork.
+func uint32Return(v uint32) []byte {
+	out := make([]byte, abiWordLen)
+	binary.BigEndian.PutUint32(out[abiWordLen-4:], v)
+	return out
+}
+
+// gasTokenLookup equips the fake chain with the answers of the construction-time gas-token
+// view calls (the given pair; the zero pair answers both as zero) and of
+// getTokenWrappedAddress (wrapped when non-nil, no wrapper when nil), dispatching on the
+// packed selector. Anything else reverts.
+func gasTokenLookup(chain *fakeChain, pair tokenKey, wrapped *common.Address) {
+	chain.callFn = func(msg ethereum.CallMsg) ([]byte, error) {
+		if len(msg.Data) >= 4 {
+			switch {
+			case bytes.Equal(msg.Data[:4], gasTokenAddressSelector):
+				return addressReturn(pair.originToken), nil
+			case bytes.Equal(msg.Data[:4], gasTokenNetworkSelector):
+				return uint32Return(pair.originNetwork), nil
+			}
+		}
+		if len(msg.Data) == 4+2*abiWordLen {
+			addr := common.Address{}
+			if wrapped != nil {
+				addr = *wrapped
+			}
+			return addressReturn(addr), nil
+		}
+		return nil, errRPC("eth_call")
 	}
 }
 
@@ -353,9 +400,12 @@ func TestEstimateClaimFee_TokenClassesWithoutWrapper(t *testing.T) {
 	// ERC20 repeat claim (origin network is this network).
 	eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[0], l1Origin, zeroToken, 80000)
 	eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[1], l2Network, otherToken, 60000)
-	chain.callFn = func(ethereum.CallMsg) ([]byte, error) {
-		t.Fatal("no wrapper lookup happens for classes that never deploy a wrapper")
-		return nil, nil
+	chain.callFn = func(msg ethereum.CallMsg) ([]byte, error) {
+		if len(msg.Data) != 4 {
+			t.Fatal("no wrapper lookup happens for classes that never deploy a wrapper")
+		}
+		// The construction-time gas-token reads revert: no custom gas token.
+		return nil, errRPC("eth_call")
 	}
 
 	estimator, _ := newEstimator(t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader)
@@ -397,26 +447,125 @@ func TestEstimateClaimFee_DestinationGasTokenPairRejectedAsBadRequest(t *testing
 	wrapperLookup(chain, &wrapper)
 	eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[0], l1Origin, wrappedToken, 100000)
 
+	l2Estimator, _ := newEstimator(t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader)
+	l1Estimator, _ := newEstimator(t, Config{NetworkID: 0, BridgeAddr: bridgeAddr}, chain, reader)
+
 	t.Run("L2 destination", func(t *testing.T) {
-		estimator, _ := newEstimator(t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader)
-		_, err := estimator.EstimateClaimFee(context.Background(), l2Network, zeroToken)
+		_, err := l2Estimator.EstimateClaimFee(context.Background(), l2Network, zeroToken)
 		require.ErrorIs(t, err, ErrFeeEstimateBadRequest)
 		require.NotErrorIs(t, err, ErrFeeEstimateUnavailable)
 		require.ErrorContains(t, err, "no bridge deposit can deliver")
 	})
 
 	t.Run("L1 destination", func(t *testing.T) {
-		estimator, _ := newEstimator(t, Config{NetworkID: 0, BridgeAddr: bridgeAddr}, chain, reader)
-		_, err := estimator.EstimateClaimFee(context.Background(), l1Origin, zeroToken)
+		_, err := l1Estimator.EstimateClaimFee(context.Background(), l1Origin, zeroToken)
 		require.ErrorIs(t, err, ErrFeeEstimateBadRequest)
 		require.NotErrorIs(t, err, ErrFeeEstimateUnavailable)
 	})
 
 	// The rejection happens before any estimator input is read: no claims page, no gas
-	// price header, no eth_call.
+	// price header, and no wrapper eth_call. The only eth_call is the L2 construction's
+	// gas-token identity read (it stops at the first failure); the L1 construction makes
+	// none (network 0 is plain native ETH).
 	require.Zero(t, reader.getCalls.Load())
 	require.Zero(t, chain.headerCalls.Load())
-	require.Zero(t, chain.callCalls.Load())
+	require.Equal(t, int64(1), chain.callCalls.Load(),
+		"only the L2 construction's gas-token identity read")
+}
+
+// TestEstimateClaimFee_CustomGasTokenClassifiedFromTheBridge pins the on-chain gas-token
+// detection: on an L2 whose bridge configures a custom gas token, claims of that token —
+// identified by the bridge's (gasTokenNetwork, gasTokenAddress) pair rather than the 0x0
+// marker — classify as gas_token on both the request path and the sampled-claim path, while
+// wrapped tokens keep their classification. The L1 estimator never reads the pair, and a
+// bridge without the two view methods (or a failing read) falls back to no custom gas
+// token without failing construction.
+func TestEstimateClaimFee_CustomGasTokenClassifiedFromTheBridge(t *testing.T) {
+	ctx := context.Background()
+	// The custom gas token of the L2 under test: a token native to L1, bridged to the L2
+	// as its native currency.
+	gasToken := tokenKey{originNetwork: l1Origin, originToken: otherToken}
+
+	t.Run("requests and samples of the custom gas token classify as gas_token", func(t *testing.T) {
+		chain := eip1559Chain()
+		reader := &fakeClaimsReader{}
+		gasTokenLookup(chain, gasToken, nil) // no wrapper ever: the gas token deploys none
+		// Two repeat claims of the gas token and one wrapper-deploying first claim of an
+		// ordinary wrapped token.
+		eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[0],
+			gasToken.originNetwork, gasToken.originToken, 80000)
+		eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[1],
+			gasToken.originNetwork, gasToken.originToken, 82000)
+		firstClaimFixture(chain, reader, testHashes[2], l1Origin, wrappedToken, 200000)
+		estimator, _ := newEstimator(t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader)
+
+		// Request path: the gas token's non-zero origin pair resolves to gas_token, with
+		// no wrapper lookup (the gas token never deploys one) and the repeat claim as the
+		// applicable estimate.
+		resp, err := estimator.EstimateClaimFee(ctx, gasToken.originNetwork, gasToken.originToken)
+		require.NoError(t, err)
+		require.Equal(t, GasToken, resp.TokenClass)
+		require.Nil(t, resp.WrapperExists)
+		require.Equal(t, RepeatClaim, resp.Applicable)
+		// Sampled path: both gas-token claims landed in the gas_token class bucket, not
+		// the wrapped one.
+		require.NotNil(t, resp.RepeatClaim)
+		require.Equal(t, 2, resp.RepeatClaim.SampleCount)
+		requireCostMatches(t, "custom gas token", resp.RepeatClaim, &resp.GasPrice)
+		require.Equal(t, int64(2), chain.callCalls.Load(),
+			"only the construction's gas-token reads: no wrapper lookup for the gas_token class")
+
+		// A wrapped token on the same chain keeps its classification and its wrapper
+		// lookup.
+		resp, err = estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
+		require.NoError(t, err)
+		require.Equal(t, WrappedERC20, resp.TokenClass)
+		require.NotNil(t, resp.WrapperExists)
+		require.False(t, *resp.WrapperExists)
+		require.Equal(t, FirstClaim, resp.Applicable)
+	})
+
+	t.Run("L1 estimator never reads the gas-token pair", func(t *testing.T) {
+		chain := eip1559Chain()
+		reader := &fakeClaimsReader{}
+		eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[0], l1Origin, wrappedToken, 100000)
+		wrapper := wrapperAddr
+		wrapperLookup(chain, &wrapper)
+		_, err := New(Config{NetworkID: 0, BridgeAddr: bridgeAddr}, chain, reader, nil)
+		require.NoError(t, err)
+		require.Zero(t, chain.callCalls.Load(), "network 0 is L1: plain native ETH, no read")
+	})
+
+	t.Run("a bridge without the view methods falls back to no custom gas token", func(t *testing.T) {
+		chain := eip1559Chain()
+		reader := &fakeClaimsReader{}
+		// One repeat claim of the gas token's origin pair and one of an ordinary wrapped
+		// token: with no pair, both land in the wrapped_erc20 bucket.
+		eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[0],
+			gasToken.originNetwork, gasToken.originToken, 80000)
+		eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[1], l1Origin, wrappedToken, 100000)
+		var calls atomic.Int64
+		wrapper := wrapperAddr
+		chain.callFn = func(ethereum.CallMsg) ([]byte, error) {
+			if calls.Add(1) == 1 {
+				// The construction-time gas-token read reverts, as on an older bridge; the
+				// read stops at the first failure, so construction consumes one call.
+				return nil, errRPC("eth_call")
+			}
+			return addressReturn(wrapper), nil
+		}
+		estimator, err := New(Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader, nil)
+		require.NoError(t, err, "a failing gas-token read must never fail construction")
+		require.Equal(t, int64(1), calls.Load(), "the pair read stops at the first failure")
+
+		// Fail-soft: the gas token's origin pair is classified as wrapped_erc20 (the
+		// pre-detection behaviour), and its sampled claim skews the wrapped bucket.
+		resp, err := estimator.EstimateClaimFee(ctx, gasToken.originNetwork, gasToken.originToken)
+		require.NoError(t, err)
+		require.Equal(t, WrappedERC20, resp.TokenClass)
+		require.Equal(t, 2, resp.RepeatClaim.SampleCount,
+			"without a pair, the gas-token claim samples into the wrapped bucket")
+	})
 }
 
 // TestEstimateClaimFee_WrapperLookupCachedPerToken pins the TTL cache behind the wrapper
@@ -434,6 +583,9 @@ func TestEstimateClaimFee_WrapperLookupCachedPerToken(t *testing.T) {
 		firstClaimFixture(chain, reader, testHashes[0], l1Origin, wrappedToken, 200000)
 		eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[1], l1Origin, wrappedToken, 120000)
 		estimator, _ := newEstimator(t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader)
+		// The construction's gas-token identity read is counted too (it fails here, so no
+		// custom gas token results); only the wrapper-lookup calls matter below.
+		base := chain.callCalls.Load()
 
 		resp, err := estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
 		require.NoError(t, err)
@@ -441,16 +593,16 @@ func TestEstimateClaimFee_WrapperLookupCachedPerToken(t *testing.T) {
 		resp, err = estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
 		require.NoError(t, err)
 		require.False(t, *resp.WrapperExists)
-		require.Equal(t, int64(1), chain.callCalls.Load(),
+		require.Equal(t, base+1, chain.callCalls.Load(),
 			"the wrapper lookup is cached per token, zero answer included")
 
 		// A different token is looked up separately.
 		_, err = estimator.EstimateClaimFee(ctx, l1Origin, otherToken)
 		require.NoError(t, err)
-		require.Equal(t, int64(2), chain.callCalls.Load())
+		require.Equal(t, base+2, chain.callCalls.Load())
 		_, err = estimator.EstimateClaimFee(ctx, l1Origin, otherToken)
 		require.NoError(t, err)
-		require.Equal(t, int64(2), chain.callCalls.Load())
+		require.Equal(t, base+2, chain.callCalls.Load())
 	})
 
 	t.Run("the cached answer expires after the token facts TTL", func(t *testing.T) {
@@ -462,14 +614,15 @@ func TestEstimateClaimFee_WrapperLookupCachedPerToken(t *testing.T) {
 		estimator, _ := newEstimator(t, Config{
 			NetworkID: l2Network, BridgeAddr: bridgeAddr, TokenFactsTTL: 10 * time.Millisecond,
 		}, chain, reader)
+		base := chain.callCalls.Load()
 
 		_, err := estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
 		require.NoError(t, err)
-		require.Equal(t, int64(1), chain.callCalls.Load())
+		require.Equal(t, base+1, chain.callCalls.Load())
 		time.Sleep(50 * time.Millisecond)
 		_, err = estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
 		require.NoError(t, err)
-		require.Equal(t, int64(2), chain.callCalls.Load(), "the cached wrapper answer expired")
+		require.Equal(t, base+2, chain.callCalls.Load(), "the cached wrapper answer expired")
 	})
 
 	t.Run("a failed lookup is not cached", func(t *testing.T) {
@@ -477,13 +630,17 @@ func TestEstimateClaimFee_WrapperLookupCachedPerToken(t *testing.T) {
 		reader := &fakeClaimsReader{}
 		eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[0], l1Origin, wrappedToken, 100000)
 		var failing atomic.Bool
-		chain.callFn = func(ethereum.CallMsg) ([]byte, error) {
+		chain.callFn = func(msg ethereum.CallMsg) ([]byte, error) {
+			if len(msg.Data) != 4+2*abiWordLen {
+				return nil, errRPC("eth_call") // the construction-time gas-token reads revert
+			}
 			if failing.Load() {
 				return nil, errRPC("eth_call")
 			}
 			return addressReturn(wrapperAddr), nil
 		}
 		estimator, _ := newEstimator(t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader)
+		base := chain.callCalls.Load()
 
 		failing.Store(true)
 		_, err := estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
@@ -493,7 +650,7 @@ func TestEstimateClaimFee_WrapperLookupCachedPerToken(t *testing.T) {
 		failing.Store(false)
 		_, err = estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
 		require.NoError(t, err)
-		require.Equal(t, int64(2), chain.callCalls.Load(), "the failed lookup was retried")
+		require.Equal(t, base+2, chain.callCalls.Load(), "the failed lookup was retried")
 	})
 }
 
@@ -666,11 +823,16 @@ func TestEstimateClaimFee_MultiClaimTxRowsDeduplicate(t *testing.T) {
 }
 
 func TestClassifyToken(t *testing.T) {
+	// The gas-token identity a custom-gas-token L2's bridge would answer: a token native
+	// to L1 arriving as the L2's native currency.
+	customGasToken := tokenKey{originNetwork: l1Origin, originToken: otherToken}
+
 	tests := []struct {
 		name          string
 		destination   uint32
 		originNetwork uint32
 		originToken   common.Address
+		gasTokenPair  tokenKey
 		want          TokenClass
 	}{
 		{
@@ -708,10 +870,42 @@ func TestClassifyToken(t *testing.T) {
 			originToken:   otherToken,
 			want:          OriginNativeERC20,
 		},
+		{
+			name:          "custom gas token: the bridge-configured pair matches",
+			destination:   l2Network,
+			originNetwork: customGasToken.originNetwork,
+			originToken:   customGasToken.originToken,
+			gasTokenPair:  customGasToken,
+			want:          GasToken,
+		},
+		{
+			name:          "custom gas token configured, but the token's network differs",
+			destination:   l2Network,
+			originNetwork: 5,
+			originToken:   customGasToken.originToken,
+			gasTokenPair:  customGasToken,
+			want:          WrappedERC20,
+		},
+		{
+			name:          "custom gas token configured, but the token's address differs",
+			destination:   l2Network,
+			originNetwork: customGasToken.originNetwork,
+			originToken:   wrappedToken,
+			gasTokenPair:  customGasToken,
+			want:          WrappedERC20,
+		},
+		{
+			name:          "no custom gas token configured: the same pair stays wrapped",
+			destination:   l2Network,
+			originNetwork: customGasToken.originNetwork,
+			originToken:   customGasToken.originToken,
+			want:          WrappedERC20,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, classifyToken(tt.destination, tt.originNetwork, tt.originToken))
+			require.Equal(t, tt.want,
+				classifyToken(tt.destination, tt.originNetwork, tt.originToken, tt.gasTokenPair))
 		})
 	}
 }

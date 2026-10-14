@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	typesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -338,10 +340,15 @@ func TestBridgesReaderOrNil_NilPointerYieldsUntypedNilInterface(t *testing.T) {
 // never produce typed-nil map entries: a network without an estimator must be absent from the map
 // so its endpoints fail closed with 503 instead of treating a nil-wrapped estimator as configured.
 func TestBuildFeeEstimators(t *testing.T) {
-	// Non-nil chain clients. The estimator never calls the client at construction (it is only
-	// stored for later RPC reads), so an empty mock suffices as "this client was dialed".
+	// Non-nil chain clients. The L1 estimator never calls its client at construction
+	// (network 0 is plain native ETH, so no gas-token read happens); the L2 one eth_calls
+	// the bridge's gas-token identity once at construction, and a reverting answer (an
+	// older bridge, or any error) is tolerated as no custom gas token, so a single
+	// persistent error expectation covers every subtest that builds an L2 estimator.
 	l1Client := &typesmocks.EthClienter{}
 	l2Client := &typesmocks.EthClienter{}
+	l2Client.On("CallContract", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, errors.New("eth_call reverted: gasTokenAddress"))
 	claimL1 := &claimsync.ClaimSync{}
 	claimL2 := &claimsync.ClaimSync{}
 	bridgeL1 := &bridgesync.BridgeSync{}
@@ -430,8 +437,9 @@ func TestBuildFeeEstimators(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Zero bridge addresses are fine: the wiring only stores them in the estimator, it
-			// never eth_calls anything at construction.
+			// Zero bridge addresses are fine: the only construction-time eth_calls are the
+			// L2 estimator's two gas-token identity reads (mocked to revert above), never a
+			// call keyed by the bridge address' content.
 			got := buildFeeEstimators(&config.Config{}, tt.l2NetworkID, tt.l1Client, tt.l2Client,
 				tt.claimL1, tt.claimL2, tt.bridgeL1, tt.bridgeL2)
 
@@ -512,17 +520,22 @@ func TestCreateBridgeService_FeeEstimatorWiring(t *testing.T) {
 	}
 
 	// Instance B: an L2 estimator built from the L2 claim syncer only (no bridges reader).
+	// The L2 client answers the estimator's two construction-time gas-token identity reads
+	// with a revert, which New tolerates as no custom gas token.
+	l2Client := &typesmocks.EthClienter{}
+	l2Client.On("CallContract", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, errors.New("eth_call reverted: gasTokenAddress"))
 	b = createBridgeService(
 		&config.Config{}, "", testNetworkID, runningBridgeComponents{},
-		nil,                       // upgradeQuery
-		nil,                       // l1InfoTree
-		nil,                       // injectedGERs
-		nil,                       // bridgeL1
-		nil,                       // bridgeL2
-		nil,                       // claimL1
-		&claimsync.ClaimSync{},    // claimL2: gives the L2 estimator a claims reader
-		nil,                       // l1Client
-		&typesmocks.EthClienter{}, // l2Client
+		nil,                    // upgradeQuery
+		nil,                    // l1InfoTree
+		nil,                    // injectedGERs
+		nil,                    // bridgeL1
+		nil,                    // bridgeL2
+		nil,                    // claimL1
+		&claimsync.ClaimSync{}, // claimL2: gives the L2 estimator a claims reader
+		nil,                    // l1Client
+		l2Client,               // l2Client
 	)
 
 	router = gin.New()

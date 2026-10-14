@@ -672,7 +672,8 @@ Response shape (`feeestimate.ClaimFeeEstimateResponse`), for the L2 example abov
 
 - `token_class` classifies the token from the destination's point of view: `origin_native_erc20`
   when it already lives on the destination network (`origin_network` equals the destination),
-  `gas_token` when it is the origin's native gas token (`0x0`), and `wrapped_erc20` otherwise.
+  `gas_token` when it is the origin's native gas token (`0x0`) or the destination's own custom
+  gas token (detected from the bridge contract at startup), and `wrapped_erc20` otherwise.
 - `wrapper_exists` reports whether the destination already holds a deployed wrapper for the token.
   It is **null when no wrapper applies** (`origin_native_erc20` and `gas_token` tokens never deploy
   one). `false` means the next claim deploys the wrapper.
@@ -788,8 +789,9 @@ deliberately coarse.
 - **Cost.** `cost = gas_units × gas_price.gas_price`, in wei of the estimated network's native gas
   token.
 - **Token facts.** Read on-chain from the network's bridge contract: whether the destination already
-  holds a wrapper for the claimed token (claim side), and whether an origin token is a wrapped token
-  (bridge side). Answers are reused for 30 s per token — wrapper existence and token mappings are
+  holds a wrapper for the claimed token (claim side), whether an origin token is a wrapped token
+  (bridge side), and — once, at startup — the network's gas-token identity (claim side).
+  Request-path answers are reused for 30 s per token — wrapper existence and token mappings are
   stable on-chain facts, so a short reuse window only delays a freshly deployed wrapper by at most
   that long.
 
@@ -818,12 +820,14 @@ Errors use the existing `{"error": "..."}` body shape:
   their gas savings) are not reflected, and message claims/bridges are not covered at all.
 - A bucket with no observed transactions answers 503 by design. Treat it as "no quote for this
   route" rather than as an outage.
-- On L2s whose native gas token is a custom token (not plain ETH), the claim endpoint currently
-  classifies the gas token's own claims as `wrapped_erc20` (their origin pair is non-zero), so a
-  claim estimate for the gas token itself is unreliable — a first-claim quote it should not get,
-  or 503 — and those claims sample into the wrapped buckets. Threading the gas-token identity
-  into the estimator needs a wiring source aggkit does not configure today; the bridge endpoint
-  is unaffected (msg.value decides the mechanism there).
+- On L2s whose native gas token is a custom token (not plain ETH), the claim endpoint detects
+  it on-chain: at startup the estimator reads the network's gas-token identity
+  (`gasTokenAddress`/`gasTokenNetwork`) from its bridge contract, so claims of that token —
+  identified by their non-zero origin pair — classify as `gas_token` and never deploy a
+  wrapper. Bridges predating the two view methods (or an unreachable chain at startup) fall
+  back to no custom gas token, which misclassifies such claims as `wrapped_erc20` until the
+  next restart. The bridge endpoint is unaffected either way (msg.value decides the mechanism
+  there).
 
 ## API Documentation
 

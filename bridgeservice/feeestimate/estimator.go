@@ -1,11 +1,13 @@
 package feeestimate
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jellydator/ttlcache/v3"
@@ -26,10 +28,12 @@ const (
 const abiWordLen = 32
 
 // bridgeViewABIJSON declares only the bridge view methods the estimator eth_calls: the
-// claim side's wrapper lookup and the bridge side's wrapped-token lookup. Hand-declared
+// claim side's wrapper lookup, the bridge side's wrapped-token lookup, and the gas-token
+// identity pair the claim-side classification consults. Hand-declared
 // instead of the full generated binding so the package stays light; the selectors they pack
-// are the well-known 0x22e95f2c (getTokenWrappedAddress) and 0x318aee3d
-// (wrappedTokenToTokenInfo).
+// are the well-known 0x22e95f2c (getTokenWrappedAddress), 0x318aee3d
+// (wrappedTokenToTokenInfo), 0x3c351e10 (gasTokenAddress) and 0x3cbc795b
+// (gasTokenNetwork).
 const bridgeViewABIJSON = `[
   {
     "type": "function",
@@ -53,6 +57,24 @@ const bridgeViewABIJSON = `[
     "outputs": [
       {"name": "originNetwork", "type": "uint32", "internalType": "uint32"},
       {"name": "originTokenAddress", "type": "address", "internalType": "address"}
+    ]
+  },
+  {
+    "type": "function",
+    "name": "gasTokenAddress",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [
+      {"name": "", "type": "address", "internalType": "address"}
+    ]
+  },
+  {
+    "type": "function",
+    "name": "gasTokenNetwork",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [
+      {"name": "", "type": "uint32", "internalType": "uint32"}
     ]
   }
 ]`
@@ -86,6 +108,12 @@ type Estimator struct {
 	// eth_calls out at request rate.
 	wrappedAddresses *ttlcache.Cache[tokenKey, common.Address]
 	tokenInfos       *ttlcache.Cache[common.Address, tokenInfo]
+	// gasToken is the origin identity of the network's own native gas token, read from
+	// the bridge contract once at construction (readGasTokenPair): on a custom-gas-token
+	// L2 the gas token arrives as that (origin network, origin token) pair instead of
+	// the plain 0x0 marker. The zero pair means the network's gas token is plain native
+	// currency (L1 always, and any L2 whose bridge answers zero or fails the read).
+	gasToken tokenKey
 
 	// now is the clock the caches and snapshots consult; tests replace it via setClock.
 	now func() time.Time
@@ -96,7 +124,9 @@ var _ FeeEstimator = (*Estimator)(nil)
 
 // New builds the estimator for one network. chain must not be nil; claims and bridges may
 // be nil, in which case the matching estimate method fails closed with "not configured"
-// (ErrFeeEstimateUnavailable) instead of returning anything.
+// (ErrFeeEstimateUnavailable) instead of returning anything. For an L2 (NetworkID != 0) the
+// bridge's gas-token identity is eth_called once here; the read is fail-soft (see
+// readGasTokenPair) and never fails construction.
 func New(cfg Config, chain ChainReader, claims ClaimsReader, bridges BridgesReader) (*Estimator, error) {
 	if chain == nil {
 		return nil, errors.New("feeestimate: chain reader must not be nil")
@@ -108,7 +138,7 @@ func New(cfg Config, chain ChainReader, claims ClaimsReader, bridges BridgesRead
 
 	cfg = cfg.withDefaults()
 	now := time.Now
-	return &Estimator{
+	e := &Estimator{
 		cfg:              cfg,
 		chain:            chain,
 		claims:           claims,
@@ -121,7 +151,27 @@ func New(cfg Config, chain ChainReader, claims ClaimsReader, bridges BridgesRead
 		wrappedAddresses: newViewCache[tokenKey, common.Address](cfg.TokenFactsTTL),
 		tokenInfos:       newViewCache[common.Address, tokenInfo](cfg.TokenFactsTTL),
 		now:              now,
-	}, nil
+	}
+
+	// Network 0 is L1 by convention, whose gas token is plain native ETH: no read. An L2's
+	// gas-token identity never changes, so once is enough; a read that fails (an older
+	// bridge without the view methods, or a briefly unreachable chain at startup) is
+	// tolerated as "no custom gas token" rather than failing startup, trading a
+	// misclassification until the next restart for a fail-soft constructor.
+	if cfg.NetworkID != 0 {
+		readCtx, cancel := context.WithTimeout(context.Background(), cfg.ComputeTimeout)
+		pair, err := e.readGasTokenPair(readCtx)
+		cancel()
+		if err != nil {
+			log.Debugf("feeestimate: reading the gas token identity of network %d from bridge %s failed; "+
+				"treating the network as having no custom gas token: %v",
+				cfg.NetworkID, cfg.BridgeAddr.Hex(), err)
+		} else {
+			e.gasToken = pair
+		}
+	}
+
+	return e, nil
 }
 
 // setClock replaces the clock the estimator and its caches consult. It exists for tests;

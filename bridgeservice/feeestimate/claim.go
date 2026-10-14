@@ -52,16 +52,65 @@ type claimStats struct {
 
 // classifyToken classifies the token identified by originNetwork and originToken from the
 // point of view of destinationNetwork: a token class the response reports and the repeat
-// buckets are keyed by.
-func classifyToken(destinationNetwork, originNetwork uint32, originToken common.Address) TokenClass {
+// buckets are keyed by. gasTokenPair is the destination network's own gas-token identity
+// (Estimator.gasToken, read from its bridge contract): the zero pair means the destination's
+// gas token is plain native currency, so only the zero address marks it.
+func classifyToken(
+	destinationNetwork, originNetwork uint32, originToken common.Address, gasTokenPair tokenKey,
+) TokenClass {
 	switch {
 	case originNetwork == destinationNetwork:
 		return OriginNativeERC20
 	case originToken == (common.Address{}):
 		return GasToken
+	case gasTokenPair != (tokenKey{}) &&
+		gasTokenPair == tokenKey{originNetwork: originNetwork, originToken: originToken}:
+		// A custom-gas-token L2: its native token arrives as the bridge-configured origin
+		// pair, not as the 0x0 marker, and claims of it deploy no wrapper either.
+		return GasToken
 	default:
 		return WrappedERC20
 	}
+}
+
+// readGasTokenPair eth_calls the bridge's gasTokenAddress() and gasTokenNetwork() and
+// returns the origin identity of the network's native gas token: the (origin network,
+// origin token) pair a custom-gas-token L2's gas token carries when it is bridged. The zero
+// pair means the gas token is the network's plain native currency. The errors it returns
+// are the caller's to tolerate (fail soft at construction): bridges predating the two view
+// methods revert, and a chain briefly unreachable at startup errors — both must read as
+// "no custom gas token", never as a failed startup. Unlike the request-path view calls it
+// does not wrap ErrFeeEstimateUnavailable: it never reaches the HTTP error mapping.
+func (e *Estimator) readGasTokenPair(ctx context.Context) (tokenKey, error) {
+	calldata, err := e.viewABI.Pack("gasTokenAddress")
+	if err != nil {
+		// The ABI is a fixed constant, so a packing failure is a programming error.
+		return tokenKey{}, fmt.Errorf("packing gasTokenAddress: %w", err)
+	}
+	output, err := e.chain.CallContract(ctx, ethereum.CallMsg{To: &e.cfg.BridgeAddr, Data: calldata}, nil)
+	if err != nil {
+		return tokenKey{}, fmt.Errorf("calling gasTokenAddress on the bridge: %w", err)
+	}
+	if len(output) != abiWordLen {
+		return tokenKey{}, fmt.Errorf("gasTokenAddress returned %d bytes, want %d", len(output), abiWordLen)
+	}
+	address := common.BytesToAddress(output)
+
+	calldata, err = e.viewABI.Pack("gasTokenNetwork")
+	if err != nil {
+		return tokenKey{}, fmt.Errorf("packing gasTokenNetwork: %w", err)
+	}
+	output, err = e.chain.CallContract(ctx, ethereum.CallMsg{To: &e.cfg.BridgeAddr, Data: calldata}, nil)
+	if err != nil {
+		return tokenKey{}, fmt.Errorf("calling gasTokenNetwork on the bridge: %w", err)
+	}
+	if len(output) != abiWordLen {
+		return tokenKey{}, fmt.Errorf("gasTokenNetwork returned %d bytes, want %d", len(output), abiWordLen)
+	}
+	return tokenKey{
+		originNetwork: uint32(new(big.Int).SetBytes(output).Uint64()),
+		originToken:   address,
+	}, nil
 }
 
 // EstimateClaimFee estimates the cost of claiming originToken, which originates on
@@ -99,7 +148,7 @@ func (e *Estimator) EstimateClaimFee(
 		return nil, fmt.Errorf("%w: computing the gas price: %w", ErrFeeEstimateUnavailable, err)
 	}
 
-	class := classifyToken(e.cfg.NetworkID, originNetwork, originToken)
+	class := classifyToken(e.cfg.NetworkID, originNetwork, originToken, e.gasToken)
 	wrapperExists, applicable, err := e.resolveApplicable(ctx, class, originNetwork, originToken)
 	if err != nil {
 		return nil, err
@@ -305,7 +354,7 @@ func (e *Estimator) collectClaimStats(ctx context.Context) (claimStats, error) {
 			continue
 		}
 		row := rows[hash]
-		class := classifyToken(e.cfg.NetworkID, row.OriginNetwork, row.OriginAddress)
+		class := classifyToken(e.cfg.NetworkID, row.OriginNetwork, row.OriginAddress, e.gasToken)
 		if firstClaim {
 			stats.firstByClass[class] = append(stats.firstByClass[class], gasUsed)
 			continue

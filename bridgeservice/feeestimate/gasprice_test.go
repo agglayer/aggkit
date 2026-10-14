@@ -143,6 +143,10 @@ func TestGetTokenWrappedAddress_PacksTheWellKnownSelector(t *testing.T) {
 	var gotTo *common.Address
 	var gotData []byte
 	chain.callFn = func(msg ethereum.CallMsg) ([]byte, error) {
+		if len(msg.Data) != 4+2*abiWordLen {
+			// The construction-time gas-token reads revert: no custom gas token.
+			return nil, errRPC("eth_call")
+		}
 		gotTo = msg.To
 		gotData = msg.Data
 		return addressReturn(wrapperAddr), nil
