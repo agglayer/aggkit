@@ -270,7 +270,7 @@ func runDeltaSteps(ctx context.Context, cfg *Config, step string) error {
 	}
 	for _, s := range steps {
 		switch s {
-		case "sign", "submit", "wait":
+		case lastAutoStep, "submit", "wait": // lastAutoStep is "sign"
 		default:
 			return fmt.Errorf("step %q is not available with options.deltaMode (only all, sign, submit, wait)", s)
 		}
@@ -508,6 +508,9 @@ func RunStepG2Delta(
 	if err != nil {
 		return nil, err
 	}
+	if err := rejectDuplicateExits(prev.Certificate.BridgeExits, certificate.BridgeExits, rawMetadata); err != nil {
+		return nil, err
+	}
 	gasTokenNetwork, gasTokenAddress, err := fetchL2GasTokenInfo(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -571,6 +574,37 @@ func RunStepG2Delta(
 	log.Infof("Local exit root: %s → %s", rootBefore.Hex(), newLER.Hex())
 	log.Info("STEP G2 (delta) complete")
 	return result, nil
+}
+
+// rejectDuplicateExits fails when a delta exit has the same leaf hash (token, destination, amount and
+// metadata) as a previous exit or as another delta exit. Both would be distinct tree leaves with the
+// same hash, and the claimer indexes leaves by hash: the later one would overwrite the earlier
+// deposit count, so the earlier exit could no longer be claimed. Merge such exits (sum the amounts)
+// instead.
+func rejectDuplicateExits(
+	previous, delta []*agglayertypes.BridgeExit, rawMetadata [][]byte,
+) error {
+	seen := make(map[common.Hash]string, len(previous)+len(delta))
+	for i, be := range previous {
+		if h := be.Hash(); h != (common.Hash{}) {
+			seen[h] = fmt.Sprintf("previous exit %d", i)
+		}
+	}
+	for i, be := range delta {
+		hashed := *be
+		hashed.Metadata = crypto.Keccak256(rawMetadata[i])
+		h := hashed.Hash()
+		if h == (common.Hash{}) {
+			continue
+		}
+		if other, dup := seen[h]; dup {
+			return fmt.Errorf("delta exit %d (token %s, dest %s, amount %s) duplicates %s: identical exits "+
+				"share a leaf hash and the claimer could not tell them apart — merge them into one exit",
+				i, be.TokenInfo, be.DestinationAddress.Hex(), be.Amount, other)
+		}
+		seen[h] = fmt.Sprintf("delta exit %d", i)
+	}
+	return nil
 }
 
 // deltaRawMetadata returns each exit's raw leaf metadata, aligned by index: the metadata the delta file

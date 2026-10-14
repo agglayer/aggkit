@@ -7,7 +7,8 @@
 # AgglayerBridge.claimAsset for each one through the sibling claim-asset.sh.
 #
 # The set of addresses is:
-#   - every EOA listed in <outputDir>/step-b-eoa-balances.json, and
+#   - every EOA listed in <outputDir>/step-b-eoa-balances.json,
+#   - every L1 destination of <outputDir>/exit-certificate-full.json when it exists (delta runs), and
 #   - the config's exitAddress (where the smart-contract-locked funds are sent).
 #
 # Usage:
@@ -190,6 +191,16 @@ fi
 while IFS= read -r addr; do
 	add_address "$addr"
 done < <(jq -r '.[] | if type == "object" then .address else . end' "$EOA_FILE")
+
+# After a delta run the output dir holds exit-certificate-full.json (every exit, old and new). Its
+# destinations are claimed too: a delta may pay an address that was neither an EOA of the first scan
+# nor the exitAddress.
+FULL_CERT="${OUTPUT_DIR}/exit-certificate-full.json"
+if [ -f "$FULL_CERT" ]; then
+	while IFS= read -r addr; do
+		add_address "$addr"
+	done < <(jq -r '.bridge_exits[]? | select(.dest_network == 0) | .dest_address' "$FULL_CERT")
+fi
 
 [ "${#ADDRESSES[@]}" -gt 0 ] || [ -n "$EXIT_ADDRESS_LC" ] || {
 	echo "error: no addresses to claim for" >&2
