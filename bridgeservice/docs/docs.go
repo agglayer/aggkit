@@ -332,7 +332,7 @@ const docTemplate = `{
         },
         "/claim-fee-estimate": {
             "get": {
-                "description": "Returns the estimated cost of claimAsset on the destination network, covering only\nwhat the user or sponsor pays: execution gas times the gas price of the destination\nnetwork (chains served by this endpoint do not charge senders an L1 data fee). It\ngives separate first-claim (wrapper deployment) and repeat-claim estimates; exactly\none of them applies to the request (chosen by wrapper_exists) and the other is null\nwith its reason in unavailable. The estimate fails closed: with no estimator\nconfigured for the network, a required RPC call failing or no samples for the\napplicable bucket it answers 503, never a default value. No server-side margin is\nadded: callers buffer for gas-price movement themselves. Message claims\n(claimMessage) are not estimated.",
+                "description": "Returns the estimated cost of claimAsset on the destination network, covering only\nwhat the user or sponsor pays: execution gas times the gas price of the destination\nnetwork (chains served by this endpoint do not charge senders an L1 data fee). It\ngives separate first-claim (wrapper deployment) and repeat-claim estimates; exactly\none of them applies to the request (chosen by wrapper_exists) and the other is null\nwith its reason in unavailable. The estimate fails closed: with no estimator\nconfigured for the network, a required RPC call failing or no samples for the\napplicable bucket it answers 503, never a default value. No server-side margin is\nadded: callers buffer for gas-price movement themselves. Message claims\n(claimMessage) are not estimated. A request whose origin_network equals the\ndestination network while origin_token_address is 0x0 (the destination's own\nnative gas token, which no bridge deposit can deliver) answers 400.",
                 "produces": [
                     "application/json"
                 ],
@@ -1322,7 +1322,7 @@ const docTemplate = `{
                     ]
                 },
                 "mechanism": {
-                    "description": "Mechanism is the bridging mechanism the token resolves to (D6).",
+                    "description": "Mechanism is the bridging mechanism the token resolves to.",
                     "allOf": [
                         {
                             "$ref": "#/definitions/feeestimate.Mechanism"
@@ -1347,7 +1347,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "applicable": {
-                    "description": "Applicable names the estimate the request resolves to (D5).",
+                    "description": "Applicable names the estimate the request resolves to.",
                     "allOf": [
                         {
                             "$ref": "#/definitions/feeestimate.Applicable"
@@ -1409,7 +1409,7 @@ const docTemplate = `{
                     "example": "wrapped_erc20"
                 },
                 "unavailable": {
-                    "description": "Unavailable holds, for the non-applicable estimate, the reason it is null (D5); it is\nnull when unset. The applicable estimate is never listed here: if it cannot be\ncomputed, the endpoint errors out instead of returning this body.",
+                    "description": "Unavailable holds, for the non-applicable estimate, the reason it is null; it is\nnull when unset. The applicable estimate is never listed here: if it cannot be\ncomputed, the endpoint errors out instead of returning this body.",
                     "type": "object",
                     "additionalProperties": {
                         "type": "string"
@@ -1432,7 +1432,7 @@ const docTemplate = `{
                     "example": "1870000000000000"
                 },
                 "gas_units": {
-                    "description": "GasUnits is the p90 (or, for a small bucket, the maximum) gasUsed of the observed\ntransactions in the bucket (D2).",
+                    "description": "GasUnits is the p90 (or, for a small bucket, the maximum) gasUsed of the observed\ntransactions in the bucket.",
                     "type": "integer",
                     "example": 110000
                 },

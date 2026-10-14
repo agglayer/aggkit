@@ -37,7 +37,7 @@ definitions:
       mechanism:
         allOf:
         - $ref: '#/definitions/feeestimate.Mechanism'
-        description: Mechanism is the bridging mechanism the token resolves to (D6).
+        description: Mechanism is the bridging mechanism the token resolves to.
         example: native
       network_id:
         description: NetworkID is the origin network the bridge tx runs on (0 = L1,
@@ -56,7 +56,7 @@ definitions:
       applicable:
         allOf:
         - $ref: '#/definitions/feeestimate.Applicable'
-        description: Applicable names the estimate the request resolves to (D5).
+        description: Applicable names the estimate the request resolves to.
         example: repeat_claim
       computed_at:
         description: ComputedAt is when the estimates were computed, in seconds since
@@ -105,7 +105,7 @@ definitions:
         additionalProperties:
           type: string
         description: |-
-          Unavailable holds, for the non-applicable estimate, the reason it is null (D5); it is
+          Unavailable holds, for the non-applicable estimate, the reason it is null; it is
           null when unset. The applicable estimate is never listed here: if it cannot be
           computed, the endpoint errors out instead of returning this body.
         type: object
@@ -130,7 +130,7 @@ definitions:
       gas_units:
         description: |-
           GasUnits is the p90 (or, for a small bucket, the maximum) gasUsed of the observed
-          transactions in the bucket (D2).
+          transactions in the bucket.
         example: 110000
         type: integer
       sample_count:
@@ -1316,7 +1316,9 @@ paths:
         configured for the network, a required RPC call failing or no samples for the
         applicable bucket it answers 503, never a default value. No server-side margin is
         added: callers buffer for gas-price movement themselves. Message claims
-        (claimMessage) are not estimated.
+        (claimMessage) are not estimated. A request whose origin_network equals the
+        destination network while origin_token_address is 0x0 (the destination's own
+        native gas token, which no bridge deposit can deliver) answers 400.
       parameters:
       - description: Destination network ID (0 for L1, the L2 network ID otherwise)
         format: int32
