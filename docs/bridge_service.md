@@ -818,6 +818,12 @@ Errors use the existing `{"error": "..."}` body shape:
   their gas savings) are not reflected, and message claims/bridges are not covered at all.
 - A bucket with no observed transactions answers 503 by design. Treat it as "no quote for this
   route" rather than as an outage.
+- On L2s whose native gas token is a custom token (not plain ETH), the claim endpoint currently
+  classifies the gas token's own claims as `wrapped_erc20` (their origin pair is non-zero), so a
+  claim estimate for the gas token itself is unreliable — a first-claim quote it should not get,
+  or 503 — and those claims sample into the wrapped buckets. Threading the gas-token identity
+  into the estimator needs a wiring source aggkit does not configure today; the bridge endpoint
+  is unaffected (msg.value decides the mechanism there).
 
 ## API Documentation
 
