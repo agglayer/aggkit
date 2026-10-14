@@ -2,6 +2,8 @@
 # Triggers only when a PR touches files under tools/exit_certificate/** (or the
 # test harness / this workflow itself). The test spins up a Kurtosis CDK
 # network, prepares a settled certificate and runs the exit_certificate tool.
+# Two jobs: the regular exit certificate, and the delta mode (a first certificate that leaves
+# smart-contract-locked funds behind, then two delta certificates recovering them on top of it).
 name: Test E2E exit-certificate tool
 
 on:
@@ -53,6 +55,42 @@ jobs:
           # artifact users deploy) instead of a host binary.
           CLAIMER_MODE: docker
         run: ./test/e2e-exit_certificate/run_e2e_test.sh
+
+      - name: Stop Kurtosis enclave
+        if: always()
+        run: ./test/e2e-exit_certificate/10-run_network.sh stop || true
+
+  test-e2e-exit-certificate-delta:
+    name: Exit-certificate tool E2E (delta mode)
+    runs-on: amd-runner-2204
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.26.9
+
+      - name: Install Foundry (cast/forge)
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+
+      - name: Install Kurtosis CLI
+        run: |
+          echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" \
+            | sudo tee /etc/apt/sources.list.d/kurtosis.list
+          sudo apt update
+          sudo apt install -y kurtosis-cli
+          kurtosis analytics disable
+          kurtosis version
+
+      - name: Run exit-certificate delta E2E test
+        env:
+          VERBOSE: "1"
+          # Exercise the claimer through its docker-compose deployment (the same
+          # artifact users deploy) instead of a host binary.
+          CLAIMER_MODE: docker
+        run: ./test/e2e-exit_certificate/run_e2e_test.sh --delta
 
       - name: Stop Kurtosis enclave
         if: always()

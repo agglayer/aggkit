@@ -341,6 +341,9 @@ type StepGResult struct {
 	// BridgeEvent the replay emitted for the exit). Step I applies these values to each
 	// BridgeExit.Metadata before finalising the certificate.
 	BridgeExitMetadata [][]byte `json:"bridgeExitMetadata,omitempty"`
+	// FirstDepositCount is the leaf index of the first bridge exit the delta mode appended to the
+	// previous run's tree (delta mode only; zero otherwise).
+	FirstDepositCount uint32 `json:"firstDepositCount,omitempty"`
 }
 
 // StepHResult holds the output of Step H (PreviousLocalExitRoot and next height from agglayer).

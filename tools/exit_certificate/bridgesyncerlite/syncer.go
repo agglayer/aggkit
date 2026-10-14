@@ -25,6 +25,7 @@ const bridgeTableName = "bridge"
 const (
 	queryCountBridges    = "SELECT COUNT(*) FROM " + bridgeTableName
 	queryMaxDepositCount = "SELECT MAX(deposit_count) FROM " + bridgeTableName
+	queryMaxBlockNum     = "SELECT MAX(block_num) FROM " + bridgeTableName
 	queryAllBridges      = "SELECT * FROM " + bridgeTableName + " ORDER BY deposit_count ASC"
 )
 
@@ -267,9 +268,53 @@ func (s *BridgeSyncerLite) BuildTree(ctx context.Context) (common.Hash, error) {
 		return common.Hash{}, nil
 	}
 
+	if err := s.putLeaves(ctx, bridges); err != nil {
+		return common.Hash{}, err
+	}
+
+	root, err := s.LocalExitRoot()
+	if err != nil {
+		return common.Hash{}, err
+	}
+	s.log.Infof("built exit tree from %d bridges; local exit root = %s", len(bridges), root.Hex())
+	return root, nil
+}
+
+// AppendBridges persists the given bridges on top of an already-built exit tree and appends their
+// leaves to it, returning the new local exit root. Unlike BuildTree it keeps the existing leaves: the
+// first new deposit count must be exactly one past the tree's last leaf and the counts must be
+// contiguous, or the append fails (the append-only tree rejects any gap or overlap). Used to extend a
+// previously built tree (e.g. the exit_certificate delta mode).
+func (s *BridgeSyncerLite) AppendBridges(ctx context.Context, bridges []BridgeLeaf) (common.Hash, error) {
+	if s.db == nil || s.exitTree == nil {
+		return common.Hash{}, errors.New("AppendBridges requires a DB-backed syncer (set Config.DBPath)")
+	}
+	if len(bridges) == 0 {
+		return s.LocalExitRoot()
+	}
+	// Keep a private, deposit-count ordered copy: StoreBridges sorts in place and the leaves must be
+	// appended in that same order.
+	ordered := append([]BridgeLeaf(nil), bridges...)
+	if err := s.StoreBridges(ctx, ordered); err != nil {
+		return common.Hash{}, err
+	}
+	if err := s.putLeaves(ctx, ordered); err != nil {
+		return common.Hash{}, err
+	}
+	root, err := s.LocalExitRoot()
+	if err != nil {
+		return common.Hash{}, err
+	}
+	s.log.Infof("appended %d bridges to the exit tree; local exit root = %s", len(ordered), root.Hex())
+	return root, nil
+}
+
+// putLeaves inserts the leaf of every bridge (already sorted by deposit count) into the exit tree in
+// a single transaction.
+func (s *BridgeSyncerLite) putLeaves(ctx context.Context, bridges []BridgeLeaf) error {
 	tx, err := db.NewTx(ctx, s.db)
 	if err != nil {
-		return common.Hash{}, fmt.Errorf("begin transaction: %w", err)
+		return fmt.Errorf("begin transaction: %w", err)
 	}
 	committed := false
 	defer func() {
@@ -287,22 +332,16 @@ func (s *BridgeSyncerLite) BuildTree(ctx context.Context) (common.Hash, error) {
 			Index: b.DepositCount,
 			Hash:  b.Hash(),
 		}); err != nil {
-			return common.Hash{}, fmt.Errorf("add leaf (deposit_count %d) to exit tree: %w", b.DepositCount, err)
+			return fmt.Errorf("add leaf (deposit_count %d) to exit tree: %w", b.DepositCount, err)
 		}
 		progress(i + 1)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return common.Hash{}, fmt.Errorf("commit transaction: %w", err)
+		return fmt.Errorf("commit transaction: %w", err)
 	}
 	committed = true
-
-	root, err := s.LocalExitRoot()
-	if err != nil {
-		return common.Hash{}, err
-	}
-	s.log.Infof("built exit tree from %d bridges; local exit root = %s", len(bridges), root.Hex())
-	return root, nil
+	return nil
 }
 
 // LocalExitRoot returns the current root of the exit tree, or the zero hash if the tree is empty.
@@ -349,6 +388,23 @@ func (s *BridgeSyncerLite) NextDepositCount(ctx context.Context) (uint32, error)
 		return 0, nil
 	}
 	return uint32(maxDepositCount.Int64) + 1, nil
+}
+
+// NextBlockNum returns one past the highest block number currently persisted, or 0 when the DB is
+// empty. Leaves that do not exist on a chain (appended off-chain) use it as their synthetic block so
+// they sort after every persisted bridge. It runs a single aggregate query (MAX(block_num)).
+func (s *BridgeSyncerLite) NextBlockNum(ctx context.Context) (uint64, error) {
+	if s.db == nil {
+		return 0, errors.New("NextBlockNum requires a DB-backed syncer (set Config.DBPath)")
+	}
+	var maxBlockNum sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, queryMaxBlockNum).Scan(&maxBlockNum); err != nil {
+		return 0, fmt.Errorf("query max block number: %w", err)
+	}
+	if !maxBlockNum.Valid {
+		return 0, nil
+	}
+	return uint64(maxBlockNum.Int64) + 1, nil
 }
 
 // GetBridges returns all persisted bridge leaves ordered by deposit count.
