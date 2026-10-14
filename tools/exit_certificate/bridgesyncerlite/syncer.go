@@ -10,6 +10,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/db"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/tree"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -222,6 +223,15 @@ func (s *BridgeSyncerLite) StoreBridges(ctx context.Context, bridges []BridgeLea
 
 	sort.Slice(bridges, func(i, j int) bool { return bridges[i].DepositCount < bridges[j].DepositCount })
 
+	if err := s.inTx(ctx, func(tx dbtypes.Txer) error { return s.insertBridges(tx, bridges) }); err != nil {
+		return err
+	}
+	s.log.Infof("stored %d bridges", len(bridges))
+	return nil
+}
+
+// inTx runs fn inside a transaction: committed when fn succeeds, rolled back otherwise.
+func (s *BridgeSyncerLite) inTx(ctx context.Context, fn func(tx dbtypes.Txer) error) error {
 	tx, err := db.NewTx(ctx, s.db)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -235,6 +245,18 @@ func (s *BridgeSyncerLite) StoreBridges(ctx context.Context, bridges []BridgeLea
 		}
 	}()
 
+	if err := fn(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	committed = true
+	return nil
+}
+
+// insertBridges inserts the bridges (already sorted by deposit count) into the bridge table.
+func (s *BridgeSyncerLite) insertBridges(tx dbtypes.Txer, bridges []BridgeLeaf) error {
 	progress := s.newBuildProgress("persisting bridges", len(bridges))
 	for i := range bridges {
 		if err := meddler.Insert(tx, bridgeTableName, &bridges[i]); err != nil {
@@ -242,12 +264,6 @@ func (s *BridgeSyncerLite) StoreBridges(ctx context.Context, bridges []BridgeLea
 		}
 		progress(i + 1)
 	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
-	}
-	committed = true
-	s.log.Infof("stored %d bridges", len(bridges))
 	return nil
 }
 
@@ -295,10 +311,15 @@ func (s *BridgeSyncerLite) AppendBridges(ctx context.Context, bridges []BridgeLe
 	// Keep a private, deposit-count ordered copy: StoreBridges sorts in place and the leaves must be
 	// appended in that same order.
 	ordered := append([]BridgeLeaf(nil), bridges...)
-	if err := s.StoreBridges(ctx, ordered); err != nil {
-		return common.Hash{}, err
-	}
-	if err := s.putLeaves(ctx, ordered); err != nil {
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].DepositCount < ordered[j].DepositCount })
+	// Bridge rows and tree leaves go in ONE transaction: a gap/overlap (or any tree failure) must leave
+	// the DB untouched, not the bridge table ahead of the tree.
+	if err := s.inTx(ctx, func(tx dbtypes.Txer) error {
+		if err := s.insertBridges(tx, ordered); err != nil {
+			return err
+		}
+		return s.putLeavesTx(tx, ordered)
+	}); err != nil {
 		return common.Hash{}, err
 	}
 	root, err := s.LocalExitRoot()
@@ -312,19 +333,11 @@ func (s *BridgeSyncerLite) AppendBridges(ctx context.Context, bridges []BridgeLe
 // putLeaves inserts the leaf of every bridge (already sorted by deposit count) into the exit tree in
 // a single transaction.
 func (s *BridgeSyncerLite) putLeaves(ctx context.Context, bridges []BridgeLeaf) error {
-	tx, err := db.NewTx(ctx, s.db)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			if rerr := tx.Rollback(); rerr != nil {
-				s.log.Errorf("rollback failed: %v", rerr)
-			}
-		}
-	}()
+	return s.inTx(ctx, func(tx dbtypes.Txer) error { return s.putLeavesTx(tx, bridges) })
+}
 
+// putLeavesTx inserts the leaf of every bridge (sorted by deposit count) into the exit tree within tx.
+func (s *BridgeSyncerLite) putLeavesTx(tx dbtypes.Txer, bridges []BridgeLeaf) error {
 	progress := s.newBuildProgress("building exit tree", len(bridges))
 	for i := range bridges {
 		b := &bridges[i]
@@ -336,11 +349,6 @@ func (s *BridgeSyncerLite) putLeaves(ctx context.Context, bridges []BridgeLeaf) 
 		}
 		progress(i + 1)
 	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
-	}
-	committed = true
 	return nil
 }
 

@@ -101,11 +101,15 @@ run_quiet "$BINARY" --config "$DELTA_CONFIG" --step submit,wait
 
 # --- verification ---
 FAILURES=0
-check() { # check <description> <condition-exit-code>
-    if [[ "$2" -eq 0 ]]; then
-        log_info "  ✅ $1"
+# check <description> <command...>: runs the command (a failing one must not abort under set -e) and
+# reports ✅/❌. Use `test`, not `[[ ]]`, for the conditions.
+check() {
+    local desc="$1"
+    shift
+    if "$@"; then
+        log_info "  ✅ $desc"
     else
-        log_error "  ❌ $1"
+        log_error "  ❌ $desc"
         FAILURES=$((FAILURES + 1))
     fi
 }
@@ -124,30 +128,30 @@ PREV_LER="$(jq -r '.new_local_exit_root' "$PREV_CERT")"
 PREV_EXITS="$(jq '.bridge_exits | length' "$PREV_CERT")"
 DELTA_LER="$(jq -r '.new_local_exit_root' "$SIGNED")"
 
-[[ "$(jq -r '.finalStatus' "$WAIT")" == "Settled" ]]
-check "the delta certificate settled" $?
-[[ "$(jq -r '.height' "$SIGNED")" -eq $((PREV_HEIGHT + 1)) ]]
-check "height is the previous height + 1 ($((PREV_HEIGHT + 1)))" $?
-[[ "$(jq -r '.prev_local_exit_root' "$SIGNED")" == "$PREV_LER" ]]
-check "prev_local_exit_root is the previous new_local_exit_root ($PREV_LER)" $?
-[[ "$DELTA_LER" != "$PREV_LER" ]]
-check "new_local_exit_root changed ($DELTA_LER)" $?
-[[ "$(jq '.bridge_exits | length' "$SIGNED")" -eq 1 ]]
-check "the delta certificate carries only the new exit" $?
-[[ "$(jq -r '.bridge_exits[0].amount' "$SIGNED")" == "$DELTA_AMOUNT" ]]
-check "the delta exit amount is $DELTA_AMOUNT" $?
+# agglayertypes.CertificateStatus is serialized as its number (Settled = 4) in step-wait-result.json.
+check "the delta certificate settled" \
+    jq -e '.finalStatus == 4 or .finalStatus == "Settled"' "$WAIT" >/dev/null
+check "height is the previous height + 1 ($((PREV_HEIGHT + 1)))" \
+    jq -e --argjson h "$((PREV_HEIGHT + 1))" '.height == $h' "$SIGNED" >/dev/null
+check "prev_local_exit_root is the previous new_local_exit_root ($PREV_LER)" \
+    jq -e --arg ler "$PREV_LER" '.prev_local_exit_root == $ler' "$SIGNED" >/dev/null
+check "new_local_exit_root changed ($DELTA_LER)" test "$DELTA_LER" != "$PREV_LER"
+check "the delta certificate carries only the new exit" \
+    jq -e '.bridge_exits | length == 1' "$SIGNED" >/dev/null
+check "the delta exit amount is $DELTA_AMOUNT" \
+    jq -e --arg a "$DELTA_AMOUNT" '.bridge_exits[0].amount == $a' "$SIGNED" >/dev/null
 
-[[ "$(jq '.bridge_exits | length' "$FULL")" -eq $((PREV_EXITS + 1)) ]]
-check "the full certificate carries every exit (previous $PREV_EXITS + 1)" $?
-[[ "$(jq -r '.new_local_exit_root' "$FULL")" == "$DELTA_LER" ]]
-check "the full certificate has the latest new_local_exit_root" $?
-diff <(jq -S '.bridge_exits[0:'"$PREV_EXITS"']' "$FULL") <(jq -S '.bridge_exits' "$PREV_CERT") >/dev/null
-check "the previous exits are untouched and keep their order (same leaf indexes)" $?
+check "the full certificate carries every exit (previous $PREV_EXITS + 1)" \
+    jq -e --argjson n "$((PREV_EXITS + 1))" '.bridge_exits | length == $n' "$FULL" >/dev/null
+check "the full certificate has the latest new_local_exit_root" \
+    jq -e --arg ler "$DELTA_LER" '.new_local_exit_root == $ler' "$FULL" >/dev/null
+check "the previous exits are untouched and keep their order (same leaf indexes)" \
+    diff <(jq -S ".bridge_exits[0:${PREV_EXITS}]" "$FULL") <(jq -S '.bridge_exits' "$PREV_CERT")
 
-[[ "$(jq -r '.rootBefore' "$MANIFEST")" == "$PREV_LER" && "$(jq -r '.rootAfter' "$MANIFEST")" == "$DELTA_LER" ]]
-check "delta-manifest.json links the roots before/after" $?
-[[ "$(jq -r '.firstDepositCount' "$MANIFEST")" -ge "$PREV_EXITS" ]]
-check "delta-manifest.json: the added leaves come after the previous ones" $?
+check "delta-manifest.json links the roots before/after" \
+    jq -e --arg b "$PREV_LER" --arg a "$DELTA_LER" '.rootBefore == $b and .rootAfter == $a' "$MANIFEST" >/dev/null
+check "delta-manifest.json: the added leaves come after the previous ones" \
+    jq -e --argjson n "$PREV_EXITS" '.firstDepositCount >= $n' "$MANIFEST" >/dev/null
 
 if [[ "$FAILURES" -ne 0 ]]; then
     log_error "$FAILURES check(s) failed for delta ${INDEX} (output: $DELTA_OUTPUT)"

@@ -488,6 +488,37 @@ func TestRunStepG2DeltaErrors(t *testing.T) {
 	})
 }
 
+// Two exits with the same leaf hash would be served with the same deposit count by the claimer.
+func TestRunStepG2DeltaRejectsDuplicateExits(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cfg := func() *Config { return &Config{L2RPCURL: gasTokenStubURL(t), Options: Options{OutputDir: t.TempDir()}} }
+
+	// duplicates a previous exit (metadata hash of the previous exit = keccak of the delta raw metadata)
+	prevExit := deltaExit(7, deltaToken, crypto.Keccak256(deltaRawMD1))
+	dir, _ := writePreviousRun(t, fileSignedCertificate, 2, []*agglayertypes.BridgeExit{prevExit})
+	prev, err := loadPreviousRun(dir)
+	require.NoError(t, err)
+	_, err = RunStepG2Delta(ctx, cfg(), prev, &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{deltaExit(7, deltaToken, deltaRawMD1)},
+	})
+	require.ErrorContains(t, err, "duplicates previous exit 0")
+
+	// duplicates another delta exit
+	_, err = RunStepG2Delta(ctx, cfg(), prev, &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{
+			deltaExit(8, deltaToken, deltaRawMD1), deltaExit(8, deltaToken, deltaRawMD1),
+		},
+	})
+	require.ErrorContains(t, err, "duplicates delta exit 0")
+
+	// a different amount is fine
+	_, err = RunStepG2Delta(ctx, cfg(), prev, &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{deltaExit(9, deltaToken, deltaRawMD1)},
+	})
+	require.NoError(t, err)
+}
+
 func TestBuildFullCertificate(t *testing.T) {
 	t.Parallel()
 	prevExit := deltaExit(1, deltaToken, nil)

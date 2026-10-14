@@ -306,7 +306,25 @@ func TestAppendBridgesRejectsGapAndOverlap(t *testing.T) {
 	_, err := s.BuildTree(ctx)
 	require.NoError(t, err)
 
+	rootBefore, err := s.LocalExitRoot()
+	require.NoError(t, err)
+
 	// gap: deposit count 3 while the tree ends at 1
 	_, err = s.AppendBridges(ctx, []BridgeLeaf{newTestLeaf(3)})
 	require.Error(t, err)
+
+	// atomic: neither the bridge row nor a tree leaf was committed, so the append can be retried
+	count, err := s.CountBridges(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+	next, err := s.NextDepositCount(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint32(2), next)
+	rootAfter, err := s.LocalExitRoot()
+	require.NoError(t, err)
+	require.Equal(t, rootBefore, rootAfter)
+
+	root, err := s.AppendBridges(ctx, []BridgeLeaf{newTestLeaf(2)})
+	require.NoError(t, err)
+	require.NotEqual(t, rootBefore, root)
 }

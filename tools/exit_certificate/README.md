@@ -569,6 +569,7 @@ The new exits, with the same `BridgeExit` shape as a certificate's `bridge_exits
 ```
 
 - Only `Transfer` exits are supported, with a positive `amount`, a `token_info`, and a `dest_network` other than the exiting network.
+- An exit identical to a previous one (or to another delta exit) — same token, destination, amount and metadata — is rejected: both would be distinct leaves with the same hash and the claimer indexes leaves by hash, so it could not tell them apart. Merge them into one exit (sum the amounts).
 - `metadata`, when present, is the **raw** leaf metadata (the tool hashes it). When absent the tool derives it from the L2 bridge the way `bridgeAsset` does: the ABI-encoded name/symbol/decimals of the L2 token for ERC-20 exits, the gas-token metadata for native exits.
 
 ### Pipeline
