@@ -122,6 +122,17 @@ type Options struct {
 	// the detected genesis ETH preload total. Empty means 0. Typical testnet value:
 	// 100000 ETH = "100000000000000000000000".
 	GenesisPrefundETHWei string `json:"genesisPrefundETHWei"`
+	// DeltaMode, when true, makes the tool build a certificate that only carries NEW bridge exits
+	// (options.deltaExitsFile) chained on top of the previous run (options.previousRun) instead of
+	// scanning the L2: the L2 scan steps are skipped and the tree of the previous run is continued.
+	// Defaults to false (full pipeline).
+	DeltaMode bool `json:"deltaMode"`
+	// PreviousRun is the output directory of the previous (settled) run the delta certificate is chained
+	// on. Required with DeltaMode. Relative paths resolve from the config file directory.
+	PreviousRun string `json:"previousRun"`
+	// DeltaExitsFile is the JSON file with the new bridge exits (see DeltaExitsFile). Required with
+	// DeltaMode. Relative paths resolve from the config file directory.
+	DeltaExitsFile string `json:"deltaExitsFile"`
 }
 
 // Cap modes for Options.CapMode (how Step F trims exits when capping a certificate).
@@ -240,7 +251,12 @@ func validateRawConfig(raw *rawConfig) error {
 	// exitAddress only receives the SC-locked funds (Step D), so with skipSCLockedValue enabled it is
 	// no longer required (nor meaningful): the presence and zero-address checks are skipped. The hex
 	// format check still runs on any non-empty value to catch typos early.
-	skipSCLocked := skipSCLockedValueEnabled(raw.Options)
+	// The delta mode builds no SC-locked exits either (it only carries the exits of the delta file).
+	deltaMode := deltaModeEnabled(raw.Options)
+	if err := validateDeltaOptions(raw.Options, deltaMode); err != nil {
+		return err
+	}
+	skipSCLocked := skipSCLockedValueEnabled(raw.Options) || deltaMode
 	if raw.ExitAddress == "" && !skipSCLocked {
 		return fmt.Errorf("missing required parameter: exitAddress " +
 			"(only optional with options.skipSCLockedValue=true)")
@@ -281,6 +297,32 @@ func validateRawConfig(raw *rawConfig) error {
 		(raw.Options == nil || raw.Options.AgglayerAdminURL == "") {
 		return fmt.Errorf("options.agglayerAdminURL is required when options.useAgglayerAdminToStepFCheck " +
 			"is true (the default); set agglayerAdminURL, or set useAgglayerAdminToStepFCheck=false to skip Step F")
+	}
+	return nil
+}
+
+// deltaModeEnabled reports the effective value of options.deltaMode (false when absent).
+func deltaModeEnabled(raw *rawOpts) bool {
+	return raw != nil && raw.DeltaMode != nil && *raw.DeltaMode
+}
+
+// validateDeltaOptions checks the delta-mode options: with deltaMode enabled previousRun and
+// deltaExitsFile are required; without it they would be silently ignored, so setting them is an error.
+func validateDeltaOptions(raw *rawOpts, deltaMode bool) error {
+	if raw == nil {
+		return nil
+	}
+	if !deltaMode {
+		if raw.PreviousRun != "" || raw.DeltaExitsFile != "" {
+			return fmt.Errorf("options.previousRun / options.deltaExitsFile are only valid with options.deltaMode=true")
+		}
+		return nil
+	}
+	if raw.PreviousRun == "" {
+		return fmt.Errorf("missing required parameter: options.previousRun (required by options.deltaMode)")
+	}
+	if raw.DeltaExitsFile == "" {
+		return fmt.Errorf("missing required parameter: options.deltaExitsFile (required by options.deltaMode)")
 	}
 	return nil
 }
@@ -484,6 +526,12 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	if raw.GenesisPrefundETHWei != "" {
 		opts.GenesisPrefundETHWei = raw.GenesisPrefundETHWei
 	}
+	if raw.PreviousRun != "" {
+		opts.PreviousRun = resolvePath(configDir, raw.PreviousRun)
+	}
+	if raw.DeltaExitsFile != "" {
+		opts.DeltaExitsFile = resolvePath(configDir, raw.DeltaExitsFile)
+	}
 }
 
 // mergeFlagOptions overrides the boolean (tri-state *bool) option flags that were explicitly set.
@@ -514,6 +562,9 @@ func mergeFlagOptions(opts *Options, raw *rawOpts) {
 	}
 	if raw.VerifyNewLocalExitRootUsingShadowFork != nil {
 		opts.VerifyNewLocalExitRootUsingShadowFork = *raw.VerifyNewLocalExitRootUsingShadowFork
+	}
+	if raw.DeltaMode != nil {
+		opts.DeltaMode = *raw.DeltaMode
 	}
 }
 
@@ -586,6 +637,9 @@ type rawOpts struct {
 	IgnoreUnsupportedL2Events             *bool                  `json:"ignoreUnsupportedL2Events"`
 	IgnoreLERMismatch                     *bool                  `json:"ignoreLERMismatch"`
 	VerifyNewLocalExitRootUsingShadowFork *bool                  `json:"verifyNewLocalExitRootUsingShadowFork"`
+	DeltaMode                             *bool                  `json:"deltaMode"`
+	PreviousRun                           string                 `json:"previousRun"`
+	DeltaExitsFile                        string                 `json:"deltaExitsFile"`
 }
 
 // --- LBT file parsing ---

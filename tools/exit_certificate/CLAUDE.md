@@ -30,6 +30,7 @@ tools/exit_certificate/
 ├── step_h.go            — fetch PreviousLocalExitRoot from agglayer
 ├── step_i.go            — assemble final certificate (LER, prev LER, L1InfoTreeLeafCount)
 ├── step_check.go        — prerequisite checks (Anvil, L1 RPC, network type, threshold, gas token)
+├── delta.go             — delta mode (options.deltaMode): previous-run loading, delta CHECK/F/G2/H, full certificate + manifest
 ├── step_sign.go         — ECDSA certificate signing
 ├── step_submit.go       — send certificate to agglayer via gRPC
 ├── step_wait.go         — poll agglayer until certificate is settled or in error
@@ -44,6 +45,17 @@ Post-submission steps (explicit only, not part of `runAll`): **SUBMIT → WAIT**
 
 Each step reads its inputs from disk (output dir) and writes its outputs to disk. The
 `runAll` path passes data in memory directly; `runSingleStep` always loads from disk.
+
+### Delta mode (`options.deltaMode`)
+
+`Run` dispatches to `runDeltaSteps` (delta.go) instead of `runAll` when `options.deltaMode=true`. It builds a certificate with **only the new exits** of `options.deltaExitsFile`, chained on the settled previous run (`options.previousRun`, loaded by `loadPreviousRun`: `exit-certificate-full.json` if present, else `exit-certificate-signed.json`; plus `step-wait-result.json` — must be `Settled` — and `step-g-l2bridgesyncerlite.sqlite`). Pipeline: **CHECK → F → G2 → H → I → SIGN** (`runDelta`); SUBMIT/WAIT are explicit as always. Single steps available: `sign`, `submit`, `wait`. Steps 0/A/B/C/D/E are skipped. The delta output dir must differ from `previousRun`.
+
+- **Delta exits file** (`DeltaExitsFile`, `LoadDeltaExits`): `{"bridge_exits": [...]}` with the certificate's `BridgeExit` JSON. Transfer exits only, amount > 0, token_info required, `dest_network` ≠ L2 network. `metadata` is the **raw** leaf metadata (hex, no `0x`); when empty it is generated from the L2 bridge (`generateMetadata`, via `deltaRawMetadata`).
+- **CHECK (delta)** — `runStepCheck(…, prev)`: Anvil not required; check 9 (AET-11) becomes `checkDeltaUnsettledExits` → `verifyChainsOnPreviousRun`: the agglayer `settled_ler` must equal the previous certificate's `new_local_exit_root` and the next height must be previous + 1 (mismatch wraps `errUnsettledBridgeExits`; pending certificates fail via `fetchSettledNetworkState`). `ignoreLERMismatch` applies.
+- **F (delta)** — `RunStepFDelta` / `compareDeltaBalances`: per token `sum(new exits) ≤ admin_getTokenBalance` (no LBT equality). `ignoreBalanceMismatch` + `capMode` cap exits to the remaining balance through `capCertificateExits`. Skipped (warning) with `useAgglayerAdminToStepFCheck=false`.
+- **G2 (delta)** — `RunStepG2Delta`: copies the previous lite DB to `step-g-l2bridgesyncerlite.sqlite`, checks its root equals the previous `new_local_exit_root`, then `BridgeSyncerLite.AppendBridges` appends the leaves built by `liteLeavesFromExits` (the same encoding path as `buildLiteTreeFromCertificate`) with deposit counts continuing from `NextDepositCount` and a synthetic block `NextBlockNum` (the tree's last root is block ordered, so new leaves must sort after the old ones). No shadow-fork.
+- **H (delta)** — `RunStepHDelta`: `PreviousLocalExitRoot` = previous `new_local_exit_root`, `Height` = previous + 1, cross-checked with the agglayer.
+- **Outputs:** `exit-certificate-signed.json` (delta exits only — what is submitted), `exit-certificate-full.json` (`buildFullCertificate`: all exits, previous first, latest root — input of the next delta and of the claimer), `delta-manifest.json` (`DeltaManifest`), the lite DB with all leaves and `step-wait-result.json` after WAIT.
 
 ### Step CHECK — Verify prerequisites
 
@@ -387,7 +399,7 @@ to JSON internally (`tomlToJSON`: decode to a map, re-encode as JSON) so both fo
 parsing/validation path, including `signerConfig` and `agglayerClient`. Field names are identical in
 both formats (camelCase keys, e.g. `l2RpcUrl`; `signerConfig` uses PascalCase `Method`/`Path`/`Password`).
 
-Required: `l2RpcUrl`, `l2BridgeAddress`, `exitAddress` (unless `options.skipSCLockedValue=true`),
+Required: `l2RpcUrl`, `l2BridgeAddress`, `exitAddress` (unless `options.skipSCLockedValue=true` or `options.deltaMode=true`),
 `targetBlock`.
 
 `exitAddress` is validated by `LoadConfig`: it must be present **and** must not be the zero address
@@ -414,6 +426,7 @@ Notable optional fields:
 - `options.useAgglayerAdminToStepFCheck` — `true` (default). When `true`, Step F runs the agglayer admin balance check (`admin_getTokenBalance`, three-way comparison; requires `agglayerAdminURL`). When `false`, Step F skips the agglayer query and instead compares the LBT (Step 0) totals against the certificate bridge-exit sums offline (no `agglayerAdminURL` needed; skipped only if no LBT data exists). Set to `false` when no agglayer admin endpoint is available.
 - `options.ignoreUnsupportedL2Events` — `false` (default). When `true`, the Step G lite syncer logs a warning and continues instead of aborting when it encounters an event that would invalidate a BridgeEvent-only reconstruction (`SetSovereignTokenAddress`, `MigrateLegacyToken`, `RemoveLegacySovereignTokenAddress`, `BackwardLET`, `ForwardLET`). The computed `NewLocalExitRoot` may then be incorrect — enable only to inspect such a chain knowingly.
 - `options.ignoreLERMismatch` — `false` (default). When `true`, the AET-11 unsettled-bridge-exits verification (Step CHECK check 9 via `reportUnsettledExitsFailure`, the Step 0 guard and Step H's LER cross-check via `suppressUnsettledExitsError`) is downgraded from an abort to a warning; the Step CHECK result still records the real outcome. The certificate then chains from a `PrevLocalExitRoot` that does not cover every emitted bridge exit, so the agglayer will most likely reject it — enable only to inspect such a snapshot knowingly. Step H's pending-certificate guard is unaffected.
+- `options.deltaMode` / `options.previousRun` / `options.deltaExitsFile` — see [Delta mode](#delta-mode-optionsdeltamode). `previousRun` and `deltaExitsFile` are required with `deltaMode` and rejected without it; relative paths resolve from the config file directory.
 - `options.verifyNewLocalExitRootUsingShadowFork` — `true` (default). When `true`, Step G2 spins up the Anvil shadow-fork, replays every exit against the real bridge contract, recovers the on-chain metadata, and verifies the off-chain leaf encoding against the contract's `getRoot()` via a deposit-count-ordered copy of the exits (requires Anvil). When `false`, Step G2 skips Anvil and trusts the off-chain leaf encoding/metadata. In both modes the certificate keeps its deterministic exit order and the `NewLocalExitRoot` is the lite exit tree root in that order (G1's genesis→fork bridges + the certificate's exits).
 
 Defaults applied by `LoadConfig`:

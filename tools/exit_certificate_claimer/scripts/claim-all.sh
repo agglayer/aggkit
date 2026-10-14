@@ -25,6 +25,8 @@
 #     PRIVATE_KEY            raw hex signing key for the claimAsset transactions
 #     KEYSTORE               path to an encrypted keystore JSON
 #     KEYSTORE_PASSWORD      password for KEYSTORE
+#   EOA_FILE      EOA list to claim for (default: <outputDir>/step-b-eoa-balances.json); needed
+#                 with a delta config, whose output dir has no such file.
 #   DRY_RUN       When 1, only print the parameters / cast command for each claim.
 #   ASSUME_YES    When 1, skip the single up-front confirmation prompt.
 #
@@ -61,6 +63,8 @@ usage() {
 		  KEYSTORE_PASSWORD  Password for KEYSTORE.
 		                     If none of the above signer vars are set, the config's local
 		                     signerConfig keystore is used.
+		  EOA_FILE           EOA list to claim for (default: <outputDir>/step-b-eoa-balances.json).
+		                     Needed with a delta config, whose output dir has no such file.
 		  DRY_RUN            When 1, only print the parameters / cast command for each claim.
 		  ASSUME_YES         When 1, skip the up-front confirmation prompt.
 	EOF
@@ -114,7 +118,9 @@ BRIDGE_ADDRESS="${BRIDGE_ADDRESS:-$(jq -r '.l1BridgeAddress // empty' "$CONFIG_F
 	exit 1
 }
 OUTPUT_DIR="$(resolve_path "$OUTPUT_DIR_RAW")"
-EOA_FILE="${OUTPUT_DIR}/step-b-eoa-balances.json"
+# A delta run's output dir has no step-b-eoa-balances.json (it does not scan the L2): point EOA_FILE
+# at the one of the run that produced the first certificate.
+EOA_FILE="${EOA_FILE:-${OUTPUT_DIR}/step-b-eoa-balances.json}"
 [ -f "$EOA_FILE" ] || {
 	echo "error: EOA balances file '$EOA_FILE' not found (run the exit tool first)" >&2
 	exit 1
