@@ -10,10 +10,11 @@ import (
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/jellydator/ttlcache/v3"
 )
 
 // notApplicable reasons carried by ClaimFeeEstimateResponse.Unavailable for the estimate the
-// request does not resolve to (D5): that estimate is null and only its reason is reported.
+// request does not resolve to: that estimate is null and only its reason is reported.
 const (
 	// firstClaimWrapperDeployedReason applies when the wrapper exists, so the next claim is
 	// a repeat claim.
@@ -66,12 +67,24 @@ func classifyToken(destinationNetwork, originNetwork uint32, originToken common.
 // EstimateClaimFee estimates the cost of claiming originToken, which originates on
 // originNetwork, on the estimator's own network (the claim destination). It samples the
 // latest indexed claims, classifies them first-claim (wrapper deployment) versus repeat
-// claim, and prices them with a live gas price read. It fails closed (D1): when the
-// applicable estimate (D5, chosen by the wrapper's existence) cannot be computed, it
+// claim, and prices them with a live gas price read. It fails closed: when the
+// applicable estimate (chosen by the wrapper's existence) cannot be computed, it
 // returns an error wrapping ErrFeeEstimateUnavailable instead of a default value.
 func (e *Estimator) EstimateClaimFee(
 	ctx context.Context, originNetwork uint32, originToken common.Address,
 ) (*ClaimFeeEstimateResponse, error) {
+	// The one parameter combination that cannot describe a claimable deposit: a claim
+	// delivers a token bridged from another network, so origin_network equal to the
+	// destination with origin_token_address 0x0 would claim the destination's own native
+	// gas token. Reject it as a bad request up front rather than answering a fail-closed
+	// 503 for a structurally unsampleable origin-native class.
+	if originNetwork == e.cfg.NetworkID && originToken == (common.Address{}) {
+		return nil, fmt.Errorf(
+			"%w: origin_network %d with origin_token_address 0x0 is the destination network's own gas token, "+
+				"which no bridge deposit can deliver",
+			ErrFeeEstimateBadRequest, originNetwork)
+	}
+
 	if e.claims == nil {
 		return nil, fmt.Errorf("%w: claim fee estimation is not configured for network %d",
 			ErrFeeEstimateUnavailable, e.cfg.NetworkID)
@@ -107,7 +120,7 @@ func (e *Estimator) EstimateClaimFee(
 			ErrFeeEstimateUnavailable, class, e.cfg.Window, e.cfg.NetworkID, e.cfg.MinSamples)
 	}
 
-	// The estimate the request does not resolve to is null with its reason (D5); only the
+	// The estimate the request does not resolve to is null with its reason; only the
 	// applicable one can ever be served.
 	unavailable := make(map[Applicable]string, 1)
 	if applicable == RepeatClaim {
@@ -144,7 +157,7 @@ func (e *Estimator) EstimateClaimFee(
 }
 
 // resolveApplicable looks up the wrapper for wrapped tokens, the only class a wrapper
-// applies to, and picks the applicable estimate (D5): a missing wrapper makes the next
+// applies to, and picks the applicable estimate: a missing wrapper makes the next
 // claim the first one; everything else repeats. For token classes that never deploy a
 // wrapper, no lookup happens and wrapperExists is null.
 func (e *Estimator) resolveApplicable(
@@ -166,12 +179,19 @@ func (e *Estimator) resolveApplicable(
 
 // getTokenWrappedAddress eth_calls the bridge's getTokenWrappedAddress(originNetwork,
 // originToken) and returns the wrapper the destination already holds, or the zero address
-// when none exists. The calldata is packed with a hand-declared ABI (only this one view
+// when none exists. Answers — the zero address included, since "no wrapper yet" is a fact —
+// are cached per token for Config.TokenFactsTTL: wrapper existence is stable on-chain
+// state, so an unauthenticated endpoint must not let one eth_call per request fan out at
+// request rate. The calldata is packed with a hand-declared ABI (only this one view
 // method) so the package needs no generated binding; the selector it produces is the
 // well-known 0x22e95f2c.
 func (e *Estimator) getTokenWrappedAddress(
 	ctx context.Context, originNetwork uint32, originToken common.Address,
 ) (common.Address, error) {
+	key := tokenKey{originNetwork: originNetwork, originToken: originToken}
+	if item := e.wrappedAddresses.Get(key); item != nil {
+		return item.Value(), nil
+	}
 	calldata, err := e.viewABI.Pack("getTokenWrappedAddress", originNetwork, originToken)
 	if err != nil {
 		// The ABI is a fixed constant, so a packing failure is a programming error rather
@@ -188,11 +208,14 @@ func (e *Estimator) getTokenWrappedAddress(
 			"%w: getTokenWrappedAddress returned %d bytes, want %d",
 			ErrFeeEstimateUnavailable, len(output), abiWordLen)
 	}
-	return common.BytesToAddress(output), nil
+	wrapped := common.BytesToAddress(output)
+	// Only successful calls are cached; a failed one is retried by the next request.
+	e.wrappedAddresses.Set(key, wrapped, ttlcache.DefaultTTL)
+	return wrapped, nil
 }
 
 // firstEstimate builds the first-claim (wrapper-deployment) estimate from the class bucket,
-// or nil when the bucket is too small (D2). First claims are always quoted from the token
+// or nil when the bucket is too small. First claims are always quoted from the token
 // class: there is no per-token first-claim bucket.
 func (e *Estimator) firstEstimate(stats claimStats, class TokenClass, price *big.Int) *FeeEstimate {
 	samples := stats.firstByClass[class]
@@ -209,7 +232,7 @@ func (e *Estimator) firstEstimate(stats claimStats, class TokenClass, price *big
 }
 
 // repeatEstimate builds the repeat-claim estimate from the origin token's own bucket once
-// it holds at least Config.PerTokenMinSamples samples (D2), otherwise from the token-class
+// it holds at least Config.PerTokenMinSamples samples, otherwise from the token-class
 // fallback bucket, or nil when neither is usable.
 func (e *Estimator) repeatEstimate(
 	stats claimStats, class TokenClass, key tokenKey, price *big.Int,
@@ -238,7 +261,7 @@ func (e *Estimator) repeatEstimate(
 
 // collectClaimStats pages through the latest Config.Window claims the reader has indexed
 // (newest first), keeps the asset claims, fetches each transaction with its receipt, applies
-// the eligibility rules and buckets the survivors (D2, D4). It is the compute function
+// the eligibility rules and buckets the survivors. It is the compute function
 // behind the statistics TTL cache.
 func (e *Estimator) collectClaimStats(ctx context.Context) (claimStats, error) {
 	stats := claimStats{
@@ -294,7 +317,7 @@ func (e *Estimator) collectClaimStats(ctx context.Context) (claimStats, error) {
 	return stats, nil
 }
 
-// classifyClaimObservation applies the claim-side eligibility rules (D4) to one observation:
+// classifyClaimObservation applies the claim-side eligibility rules to one observation:
 // the transaction must have succeeded and gone directly to the bridge, and its receipt must
 // record exactly one claim, by any of the signatures claimsync indexes (Etrog and pre-Etrog
 // ClaimEvent, or the sovereign chains' DetailedClaimEvent) and counted the way claimsync

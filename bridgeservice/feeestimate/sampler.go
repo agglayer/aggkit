@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -23,6 +24,8 @@ type txObservation struct {
 // immutable results in an LRU bounded by Config.TxCacheSize and fanning the fetches out
 // over at most Config.RPCConcurrency concurrent RPC calls. A transaction that is unknown or
 // still pending is not cached: it is simply not returned, and retried on the next recompute.
+// A reorg is not detected (the syncers feed the estimator from finalized blocks, so the
+// residual window a reorg could invalidate is accepted as negligible).
 type txStore struct {
 	chain       ChainReader
 	cache       *ttlcache.Cache[common.Hash, *txObservation]
@@ -41,7 +44,7 @@ func newTxStore(chain ChainReader, capacity, concurrency int) *txStore {
 }
 
 // fetch returns the observations of the given hashes, skipping without error the ones that
-// are unknown or still pending. It fails closed on any RPC error (D1): a partial sample set
+// are unknown or still pending. It fails closed on any RPC error: a partial sample set
 // would silently bias the statistics.
 func (s *txStore) fetch(ctx context.Context, hashes []common.Hash) (map[common.Hash]*txObservation, error) {
 	observations := make(map[common.Hash]*txObservation, len(hashes))
@@ -104,8 +107,26 @@ func (s *txStore) fetchOne(ctx context.Context, hash common.Hash) (*txObservatio
 	return observation, nil
 }
 
+// viewCacheCapacity bounds each bridge-view cache: the number of distinct tokens one TTL
+// window can hold answers for. Entries are address-sized, so a generous bound is cheap.
+const viewCacheCapacity = 4096
+
+// newViewCache builds the TTL+LRU cache a bridge view lookup reuses its answers in: a
+// bounded number of entries, each expiring a fixed ttl after it was stored. The TTL is
+// deliberately fixed, not sliding on hits: a continuously queried token must still refresh
+// within one ttl, so a freshly deployed wrapper becomes visible to the claim estimate
+// within one TTL no matter how hot the token is. Only successful lookups are stored, the
+// zero answer included: "no wrapper yet" is a fact, not a miss.
+func newViewCache[K comparable, V any](ttl time.Duration) *ttlcache.Cache[K, V] {
+	return ttlcache.New(
+		ttlcache.WithCapacity[K, V](viewCacheCapacity),
+		ttlcache.WithTTL[K, V](ttl),
+		ttlcache.WithDisableTouchOnHit[K, V](),
+	)
+}
+
 // isSuccessfulBridgeTx reports whether obs is a successfully executed transaction that was
-// sent directly to the bridge contract: the part of the sample eligibility rule (D4) every
+// sent directly to the bridge contract: the part of the sample eligibility rule every
 // estimator side shares.
 func isSuccessfulBridgeTx(obs *txObservation, bridgeAddr common.Address) bool {
 	if obs == nil || obs.tx == nil || obs.receipt == nil {

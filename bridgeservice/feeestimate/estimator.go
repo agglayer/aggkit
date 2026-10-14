@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/jellydator/ttlcache/v3"
 )
 
 // Estimate source values (FeeEstimate.Source), part of the wire contract.
@@ -60,7 +62,7 @@ const bridgeViewABIJSON = `[
 // first versus repeat, bridges by mechanism) and prices them with a live gas price read. One
 // instance serves exactly one network; the bridge service holds one per network it serves.
 //
-// It fails closed (D1): every path that cannot produce a real estimate returns an error
+// It fails closed: every path that cannot produce a real estimate returns an error
 // wrapping ErrFeeEstimateUnavailable rather than a default value.
 type Estimator struct {
 	cfg     Config
@@ -77,6 +79,13 @@ type Estimator struct {
 	bridgeStats *ttlResult[bridgeStats]
 	// txs fetches and caches transactions and receipts by hash.
 	txs *txStore
+	// wrappedAddresses caches getTokenWrappedAddress answers by origin token, and
+	// tokenInfos caches wrappedTokenToTokenInfo answers by wrapped address, both for
+	// Config.TokenFactsTTL: wrapper existence and token mappings are stable on-chain
+	// state, so reusing them keeps an unauthenticated caller from fanning the same
+	// eth_calls out at request rate.
+	wrappedAddresses *ttlcache.Cache[tokenKey, common.Address]
+	tokenInfos       *ttlcache.Cache[common.Address, tokenInfo]
 
 	// now is the clock the caches and snapshots consult; tests replace it via setClock.
 	now func() time.Time
@@ -100,16 +109,18 @@ func New(cfg Config, chain ChainReader, claims ClaimsReader, bridges BridgesRead
 	cfg = cfg.withDefaults()
 	now := time.Now
 	return &Estimator{
-		cfg:         cfg,
-		chain:       chain,
-		claims:      claims,
-		bridges:     bridges,
-		viewABI:     viewABI,
-		gasPrice:    newTTLResult[gasPriceSnapshot](cfg.GasPriceTTL, now),
-		claimStats:  newTTLResult[claimStats](cfg.StatsTTL, now),
-		bridgeStats: newTTLResult[bridgeStats](cfg.StatsTTL, now),
-		txs:         newTxStore(chain, cfg.TxCacheSize, cfg.RPCConcurrency),
-		now:         now,
+		cfg:              cfg,
+		chain:            chain,
+		claims:           claims,
+		bridges:          bridges,
+		viewABI:          viewABI,
+		gasPrice:         newTTLResult[gasPriceSnapshot](cfg.GasPriceTTL, cfg.ComputeTimeout, now),
+		claimStats:       newTTLResult[claimStats](cfg.StatsTTL, cfg.ComputeTimeout, now),
+		bridgeStats:      newTTLResult[bridgeStats](cfg.StatsTTL, cfg.ComputeTimeout, now),
+		txs:              newTxStore(chain, cfg.TxCacheSize, cfg.RPCConcurrency),
+		wrappedAddresses: newViewCache[tokenKey, common.Address](cfg.TokenFactsTTL),
+		tokenInfos:       newViewCache[common.Address, tokenInfo](cfg.TokenFactsTTL),
+		now:              now,
 	}, nil
 }
 

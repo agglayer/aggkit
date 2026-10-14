@@ -3,6 +3,7 @@ package feeestimate
 import (
 	"context"
 	"math/big"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -381,6 +382,118 @@ func TestEstimateClaimFee_TokenClassesWithoutWrapper(t *testing.T) {
 		require.Equal(t, RepeatClaim, resp.Applicable)
 		require.Equal(t, uint64(60000), resp.RepeatClaim.GasUnits)
 		require.Len(t, resp.Unavailable, 1)
+	})
+}
+
+// TestEstimateClaimFee_DestinationGasTokenPairRejectedAsBadRequest pins the rejection of the
+// one parameter combination that cannot describe a claimable deposit: origin_network equal
+// to the destination with origin_token_address 0x0 would claim the destination's own native
+// gas token. It answers ErrFeeEstimateBadRequest (400 via the handler mapping) before any
+// estimator input is read.
+func TestEstimateClaimFee_DestinationGasTokenPairRejectedAsBadRequest(t *testing.T) {
+	chain := eip1559Chain()
+	reader := &fakeClaimsReader{}
+	wrapper := wrapperAddr
+	wrapperLookup(chain, &wrapper)
+	eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[0], l1Origin, wrappedToken, 100000)
+
+	t.Run("L2 destination", func(t *testing.T) {
+		estimator, _ := newEstimator(t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader)
+		_, err := estimator.EstimateClaimFee(context.Background(), l2Network, zeroToken)
+		require.ErrorIs(t, err, ErrFeeEstimateBadRequest)
+		require.NotErrorIs(t, err, ErrFeeEstimateUnavailable)
+		require.ErrorContains(t, err, "no bridge deposit can deliver")
+	})
+
+	t.Run("L1 destination", func(t *testing.T) {
+		estimator, _ := newEstimator(t, Config{NetworkID: 0, BridgeAddr: bridgeAddr}, chain, reader)
+		_, err := estimator.EstimateClaimFee(context.Background(), l1Origin, zeroToken)
+		require.ErrorIs(t, err, ErrFeeEstimateBadRequest)
+		require.NotErrorIs(t, err, ErrFeeEstimateUnavailable)
+	})
+
+	// The rejection happens before any estimator input is read: no claims page, no gas
+	// price header, no eth_call.
+	require.Zero(t, reader.getCalls.Load())
+	require.Zero(t, chain.headerCalls.Load())
+	require.Zero(t, chain.callCalls.Load())
+}
+
+// TestEstimateClaimFee_WrapperLookupCachedPerToken pins the TTL cache behind the wrapper
+// lookup: an answer — the zero address included — is eth_called once per token and reused
+// until the token facts TTL expires, and a failed call is retried by the next request.
+func TestEstimateClaimFee_WrapperLookupCachedPerToken(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("answers are reused within the TTL, the zero answer included", func(t *testing.T) {
+		chain := eip1559Chain()
+		reader := &fakeClaimsReader{}
+		wrapperLookup(chain, nil) // no wrapper: the zero address is the answer
+		// One first claim (so the applicable first-claim estimate is served) and one repeat
+		// claim of the same token.
+		firstClaimFixture(chain, reader, testHashes[0], l1Origin, wrappedToken, 200000)
+		eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[1], l1Origin, wrappedToken, 120000)
+		estimator, _ := newEstimator(t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader)
+
+		resp, err := estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
+		require.NoError(t, err)
+		require.False(t, *resp.WrapperExists)
+		resp, err = estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
+		require.NoError(t, err)
+		require.False(t, *resp.WrapperExists)
+		require.Equal(t, int64(1), chain.callCalls.Load(),
+			"the wrapper lookup is cached per token, zero answer included")
+
+		// A different token is looked up separately.
+		_, err = estimator.EstimateClaimFee(ctx, l1Origin, otherToken)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), chain.callCalls.Load())
+		_, err = estimator.EstimateClaimFee(ctx, l1Origin, otherToken)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), chain.callCalls.Load())
+	})
+
+	t.Run("the cached answer expires after the token facts TTL", func(t *testing.T) {
+		chain := eip1559Chain()
+		reader := &fakeClaimsReader{}
+		wrapper := wrapperAddr
+		wrapperLookup(chain, &wrapper)
+		eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[0], l1Origin, wrappedToken, 100000)
+		estimator, _ := newEstimator(t, Config{
+			NetworkID: l2Network, BridgeAddr: bridgeAddr, TokenFactsTTL: 10 * time.Millisecond,
+		}, chain, reader)
+
+		_, err := estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), chain.callCalls.Load())
+		time.Sleep(50 * time.Millisecond)
+		_, err = estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), chain.callCalls.Load(), "the cached wrapper answer expired")
+	})
+
+	t.Run("a failed lookup is not cached", func(t *testing.T) {
+		chain := eip1559Chain()
+		reader := &fakeClaimsReader{}
+		eligibleClaimFixture(chain, reader, bridgeAddr, testHashes[0], l1Origin, wrappedToken, 100000)
+		var failing atomic.Bool
+		chain.callFn = func(ethereum.CallMsg) ([]byte, error) {
+			if failing.Load() {
+				return nil, errRPC("eth_call")
+			}
+			return addressReturn(wrapperAddr), nil
+		}
+		estimator, _ := newEstimator(t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader)
+
+		failing.Store(true)
+		_, err := estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
+		require.ErrorIs(t, err, ErrFeeEstimateUnavailable)
+		require.ErrorContains(t, err, "getTokenWrappedAddress")
+
+		failing.Store(false)
+		_, err = estimator.EstimateClaimFee(ctx, l1Origin, wrappedToken)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), chain.callCalls.Load(), "the failed lookup was retried")
 	})
 }
 

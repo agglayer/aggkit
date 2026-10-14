@@ -57,7 +57,7 @@ func legacyGasPrice() GasPriceInfo {
 // shape against the plan's "Goals" section, field names, types and nullability included, and
 // round-trips each variant through json.Unmarshal back into the struct:
 //   - repeat applicable: the wrapper exists, so repeat_claim holds the estimate and the
-//     non-applicable first_claim is null with its reason in Unavailable (D5);
+//     non-applicable first_claim is null with its reason in Unavailable;
 //   - first applicable: the wrapper does not exist yet, so first_claim holds the estimate;
 //   - gas token on a chain without EIP-1559: no wrapper applies, so wrapper_exists is null,
 //     and the gas price snapshot carries null base/priority fees.
@@ -255,7 +255,7 @@ func TestClaimFeeEstimateResponse_ZeroValueMarshalsNulls(t *testing.T) {
 
 // TestBridgeFeeEstimateResponse_MarshalJSON_GoalsShape pins the bridge-fee-estimate response
 // shape against the plan's "Goals" section and round-trips it through json.Unmarshal. One
-// estimate per mechanism (D6), with the gas price nullability of both an EIP-1559 chain and a
+// estimate per mechanism, with the gas price nullability of both an EIP-1559 chain and a
 // chain without one.
 func TestBridgeFeeEstimateResponse_MarshalJSON_GoalsShape(t *testing.T) {
 	tests := []struct {

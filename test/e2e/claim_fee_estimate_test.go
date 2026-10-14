@@ -29,13 +29,14 @@ import (
 // cost == gas_units x gas_price, no server-side margin) and to fail closed with HTTP 503 and a
 // readable {"error": ...} body whenever the applicable estimate cannot be computed. Unsupported
 // networks and missing/invalid parameters must answer 4xx (404 through the proxy for a network
-// the finder cannot resolve, 400 from the instance's own parameter validation, 400 from the
+// the finder cannot resolve, 400 from the instance's own parameter validation, 400 for the
+// non-claimable origin_network == network_id with origin_token_address 0x0 pair, 400 from the
 // proxy itself for a missing or non-numeric network_id).
 //
 // Success-shape scenarios run against both destinations: claims on this env's L2 are
 // sovereign-chain claims whose receipts carry both ClaimEvent and DetailedClaimEvent, and the
 // estimator counts that pair as ONE claim (dedup mirrors claimsync), so its "exactly one claim
-// event" eligibility rule (D4) finds samples there and L2-destination estimates are served --
+// event" eligibility rule finds samples there and L2-destination estimates are served --
 // required as the served contract below, after real L2 claims have been indexed. On L1 the
 // bridge emits a single ClaimEvent per claim, so L1-destination estimates are served and the
 // first-vs-repeat comparison runs there as well. The test is self-sufficient: it deploys its
@@ -192,6 +193,9 @@ func TestClaimFeeEstimateViaProxy(t *testing.T) {
 	// - the instance's own parameter validation answers 400 for an unsupported network
 	//   (observable by addressing the instance directly, since the proxy would route any
 	//   network it resolves to a service that accepts it);
+	// - the claim endpoint answers 400 for the non-claimable pair origin_network ==
+	//   network_id with origin_token_address 0x0: that claims the destination's own native
+	//   gas token, which no bridge deposit can deliver;
 	// - the proxy itself answers 400 for a missing or non-numeric network_id, which the typed
 	//   client cannot send (it always serializes a valid uint32), so those go as raw requests.
 	_, err = proxy.GetClaimFeeEstimate(ctx, feeEstimateUnroutableNetworkID, 0, someToken)
@@ -200,6 +204,12 @@ func TestClaimFeeEstimateViaProxy(t *testing.T) {
 	_, err = direct.GetClaimFeeEstimate(ctx, feeEstimateUnroutableNetworkID, 0, someToken)
 	requireFeeEstimateStatus(t, err, http.StatusBadRequest,
 		"unsupported network id answered by the instance itself")
+	_, err = proxy.GetClaimFeeEstimate(ctx, l2NetworkID, l2NetworkID, common.Address{})
+	requireFeeEstimateStatus(t, err, http.StatusBadRequest,
+		"claim of the destination network's own gas token through the proxy")
+	_, err = direct.GetClaimFeeEstimate(ctx, 0, 0, common.Address{})
+	requireFeeEstimateStatus(t, err, http.StatusBadRequest,
+		"claim of the destination network's own gas token on L1, instance direct")
 	requireProxyRaw400(t, "/bridge/v1/claim-fee-estimate"+
 		"?origin_network=0&origin_token_address="+feeEstimateSomeTokenAddr)
 	requireProxyRaw400(t, "/bridge/v1/claim-fee-estimate"+
@@ -282,7 +292,7 @@ func requireFeeEstimateStatus(t *testing.T, err error, wantStatus int, what stri
 
 // requireFeeEstimateCost asserts the structural invariants the fee estimate API documents for a
 // served estimate: at least one observed sample, positive gas units and cost, a gas price
-// snapshot naming its block, and cost exactly equal to gas_units x gas_price (D3: the endpoint
+// snapshot naming its block, and cost exactly equal to gas_units x gas_price (the endpoint
 // adds no server-side margin).
 func requireFeeEstimateCost(
 	t *testing.T, what string, gasPrice feeestimate.GasPriceInfo, est *feeestimate.FeeEstimate,

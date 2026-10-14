@@ -81,11 +81,11 @@ func createBridgeService(
 // only when the BRIDGE component runs, see runL2ClientIfNeeded) and at least one of the network's
 // claim/bridge syncers runs to sample from. Every other network is left out of the map, so both
 // fee estimate endpoints answer 503 "fee estimation is not configured" for it — fail closed
-// (D1 of bridge-fee-estimation-plan) — instead of serving an estimator that cannot work. The
+// (an error, never a default value) — instead of serving an estimator that cannot work. The
 // syncer pointers go through the *OrNil helpers because a nil *T stored in an interface would
 // look configured to feeestimate.New while panicking on first use (see createBridgeService's doc
-// comment). Estimator internals (window, percentile, TTLs) deliberately have no TOML section
-// (D2): the zero-value feeestimate.Config used here applies the package defaults.
+// comment). Estimator internals (window, percentile, TTLs, compute timeout) deliberately have no
+// TOML section: the zero-value feeestimate.Config used here applies the package defaults.
 //
 // Both chain clients arrive as aggkittypes.EthClienter from runL1ClientIfNeeded /
 // runL2ClientIfNeeded, which return untyped nils when not dialing, so the nil guard below cannot

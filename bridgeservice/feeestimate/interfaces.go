@@ -41,7 +41,7 @@ type ClaimsReader interface {
 
 // BridgesReader reads the bridges bridgesync has indexed for the estimator's own network,
 // with the GetBridgesPaged shape of bridgeservice.Bridger. The claim estimator does not use
-// it; the bridge-side estimate (per mechanism, s3) does.
+// it; the bridge-side estimate (per mechanism) does.
 type BridgesReader interface {
 	GetBridgesPaged(ctx context.Context, pageNumber, pageSize uint32,
 		depositCount *uint64, networkIDs []uint32, fromAddress string) ([]*bridgesync.Bridge, int, error)

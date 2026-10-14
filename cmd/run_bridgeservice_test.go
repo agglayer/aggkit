@@ -477,13 +477,25 @@ func TestCreateBridgeService_FeeEstimatorWiring(t *testing.T) {
 	b.RegisterRoutes(router)
 
 	// The L1 claim endpoint reaches the L1 estimator, which fails closed on its missing claims
-	// reader with its own message (not the handler's not-configured message).
+	// reader with its own message (not the handler's not-configured message). A non-zero
+	// origin token: with 0x0 the origin_network == network_id pair would be rejected as a
+	// bad request before the estimator is consulted (asserted separately below).
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet,
 		"/bridge/v1/claim-fee-estimate?network_id=0&origin_network=0"+
-			"&origin_token_address=0x0000000000000000000000000000000000000000", nil))
+			"&origin_token_address=0x0000000000000000000000000000000000000001", nil))
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
 	require.Contains(t, w.Body.String(), "claim fee estimation is not configured for network 0")
+
+	// The non-claimable pair (origin_network equal to the destination, zero token: the
+	// destination's own gas token) answers 400 before any estimator input is read, here on
+	// the L1 destination whose estimator exists.
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet,
+		"/bridge/v1/claim-fee-estimate?network_id=0&origin_network=0"+
+			"&origin_token_address=0x0000000000000000000000000000000000000000", nil))
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "no bridge deposit can deliver")
 
 	// Without an L2 client no L2 estimator is built: both L2 endpoints fail closed with the
 	// handler's not-configured message.

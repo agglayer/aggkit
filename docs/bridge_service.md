@@ -755,7 +755,10 @@ deliberately coarse.
 (`feeestimate.FeeEstimate`):
 
 - `gas_units` (uint64): the p90 `gasUsed` of the observed transactions in the bucket — or the
-  maximum when the bucket holds fewer than 10 samples.
+  maximum when the bucket holds fewer than 10 samples. This is **observed usage, not a gas
+  limit**: when sending the transaction, set a gas limit with headroom over it, because the
+  gas a real claim or bridge uses varies around the quoted statistic (input length, token
+  metadata, cold vs warm storage).
 - `cost` (decimal string, wei): `gas_units × gas_price.gas_price`, in the native gas token of the
   network where the transaction runs.
 - `sample_count` (int): how many observed transactions the bucket holds.
@@ -786,14 +789,18 @@ deliberately coarse.
   token.
 - **Token facts.** Read on-chain from the network's bridge contract: whether the destination already
   holds a wrapper for the claimed token (claim side), and whether an origin token is a wrapped token
-  (bridge side).
+  (bridge side). Answers are reused for 30 s per token — wrapper existence and token mappings are
+  stable on-chain facts, so a short reuse window only delays a freshly deployed wrapper by at most
+  that long.
 
 ### Errors
 
 Errors use the existing `{"error": "..."}` body shape:
 
-- **400** — invalid input: a missing or malformed parameter, or a `network_id` that is neither `0`
-  nor this instance's L2 network id.
+- **400** — invalid input: a missing or malformed parameter, a `network_id` that is neither `0`
+  nor this instance's L2 network id, or (claim side only) `origin_network` equal to the
+  destination network together with `origin_token_address` `0x0` — the destination's own native
+  gas token, which no bridge deposit can deliver.
 - **503** — the estimate is genuinely unavailable. This is fail-closed by design: no estimator is
   configured for the network, no sample exists for the applicable bucket (e.g. a young chain that
   has never seen a first claim of anything, or a mechanism the chain has never used), a required RPC
@@ -804,7 +811,9 @@ Errors use the existing `{"error": "..."}` body shape:
 ### Caveats
 
 - No server-side margin is added: `cost` is exactly `gas_units × gas_price` at quote time. Callers
-  should buffer for gas-price movement between the quote and the transaction themselves.
+  should buffer for gas-price movement between the quote and the transaction themselves, and for
+  gas-unit variance: `gas_units` is the observed usage of comparable transactions, not a cap on
+  what their own transaction will actually use.
 - Only direct, single-event transactions are sampled, so txs that batch several bridge events (and
   their gas savings) are not reflected, and message claims/bridges are not covered at all.
 - A bucket with no observed transactions answers 503 by design. Treat it as "no quote for this

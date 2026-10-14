@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -86,7 +87,7 @@ func shuffledRange(from, to uint64) []uint64 {
 
 func TestTTLResult_CachesWithinTTLAndRecomputesAfter(t *testing.T) {
 	clock := newFakeClock()
-	result := newTTLResult[int](2*time.Second, clock.now)
+	result := newTTLResult[int](2*time.Second, time.Minute, clock.now)
 
 	calls := 0
 	compute := func(context.Context) (int, error) { calls++; return 42, nil }
@@ -112,7 +113,7 @@ func TestTTLResult_CachesWithinTTLAndRecomputesAfter(t *testing.T) {
 
 func TestTTLResult_DoesNotCacheErrors(t *testing.T) {
 	clock := newFakeClock()
-	result := newTTLResult[int](time.Hour, clock.now)
+	result := newTTLResult[int](time.Hour, time.Minute, clock.now)
 
 	calls := 0
 	boom := errors.New("boom")
@@ -137,7 +138,7 @@ func TestTTLResult_DoesNotCacheErrors(t *testing.T) {
 
 func TestTTLResult_SingleRecomputeUnderConcurrentCallers(t *testing.T) {
 	clock := newFakeClock()
-	result := newTTLResult[int](time.Hour, clock.now)
+	result := newTTLResult[int](time.Hour, time.Minute, clock.now)
 
 	const callers = 20
 	var calls int64
@@ -171,6 +172,97 @@ func TestTTLResult_SingleRecomputeUnderConcurrentCallers(t *testing.T) {
 	require.Equal(t, int64(1), calls)
 }
 
+// TestTTLResult_CancelledCallerDoesNotAbortSharedCompute pins the detachment of the shared
+// computation from any single caller's request context: a caller that cancels mid-compute
+// returns immediately with its own context error, while a concurrent waiter on the same
+// flight still receives the computed result, and the result is cached afterwards.
+func TestTTLResult_CancelledCallerDoesNotAbortSharedCompute(t *testing.T) {
+	clock := newFakeClock()
+	result := newTTLResult[int](time.Hour, time.Minute, clock.now)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int64
+	compute := func(context.Context) (int, error) {
+		calls.Add(1)
+		close(started)
+		<-release
+		return 42, nil
+	}
+
+	// Caller 1 starts the shared compute; caller 2 joins the same in-flight compute.
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	defer cancel1()
+	type outcome struct {
+		value int
+		err   error
+	}
+	first := make(chan outcome, 1)
+	go func() {
+		value, err := result.get(ctx1, compute)
+		first <- outcome{value: value, err: err}
+	}()
+	<-started
+	second := make(chan outcome, 1)
+	go func() {
+		value, err := result.get(context.Background(), compute)
+		second <- outcome{value: value, err: err}
+	}()
+	time.Sleep(50 * time.Millisecond) // let caller 2 join the in-flight compute
+
+	// Caller 1 disconnects mid-compute: it returns its own context error at once, without
+	// aborting the compute caller 2 is still waiting on.
+	cancel1()
+	got := <-first
+	require.ErrorIs(t, got.err, context.Canceled)
+	require.Equal(t, 0, got.value)
+
+	// Caller 2, still connected, receives the result of the flight it shared with the
+	// caller that already left.
+	close(release)
+	got = <-second
+	require.NoError(t, got.err)
+	require.Equal(t, 42, got.value)
+	require.Equal(t, int64(1), calls.Load(), "the cancelled caller must not trigger a recompute")
+
+	// The completed computation is cached: a later caller is served without another compute.
+	value, err := result.get(context.Background(), compute)
+	require.NoError(t, err)
+	require.Equal(t, 42, value)
+	require.Equal(t, int64(1), calls.Load())
+}
+
+// TestTTLResult_ComputeOutlivingCallersDeadlineIsStillCached pins the other half of the
+// detachment: a compute that outlives a caller's own request deadline keeps running under
+// its own compute timeout, and its result is cached for the next caller.
+func TestTTLResult_ComputeOutlivingCallersDeadlineIsStillCached(t *testing.T) {
+	clock := newFakeClock()
+	result := newTTLResult[int](time.Hour, 10*time.Second, clock.now)
+
+	release := make(chan struct{})
+	var calls atomic.Int64
+	compute := func(context.Context) (int, error) {
+		calls.Add(1)
+		<-release
+		return 42, nil
+	}
+
+	// The caller's own deadline expires far before the shared compute's bound: the caller
+	// returns its deadline error instead of pinning the shared compute to it.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	_, err := result.get(ctx, compute)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	// The shared computation runs to its own bound and caches its result: the next caller
+	// is served the value, with no second compute.
+	close(release)
+	value, err := result.get(context.Background(), compute)
+	require.NoError(t, err)
+	require.Equal(t, 42, value)
+	require.Equal(t, int64(1), calls.Load())
+}
+
 func TestConfigWithDefaults(t *testing.T) {
 	t.Run("zero value takes every default", func(t *testing.T) {
 		cfg := Config{}.withDefaults()
@@ -183,6 +275,8 @@ func TestConfigWithDefaults(t *testing.T) {
 		require.Equal(t, defaultPercentile, cfg.Percentile)
 		require.Equal(t, defaultStatsTTL, cfg.StatsTTL)
 		require.Equal(t, defaultGasPriceTTL, cfg.GasPriceTTL)
+		require.Equal(t, defaultComputeTimeout, cfg.ComputeTimeout)
+		require.Equal(t, defaultTokenFactsTTL, cfg.TokenFactsTTL)
 	})
 
 	t.Run("explicit values are kept", func(t *testing.T) {
@@ -196,6 +290,8 @@ func TestConfigWithDefaults(t *testing.T) {
 			Percentile:         95,
 			StatsTTL:           time.Minute,
 			GasPriceTTL:        time.Second,
+			ComputeTimeout:     2 * time.Minute,
+			TokenFactsTTL:      time.Second,
 		}.withDefaults()
 		require.Equal(t, uint32(7), cfg.NetworkID)
 		require.Equal(t, 50, cfg.Window)
@@ -206,12 +302,16 @@ func TestConfigWithDefaults(t *testing.T) {
 		require.Equal(t, 95.0, cfg.Percentile)
 		require.Equal(t, time.Minute, cfg.StatsTTL)
 		require.Equal(t, time.Second, cfg.GasPriceTTL)
+		require.Equal(t, 2*time.Minute, cfg.ComputeTimeout)
+		require.Equal(t, time.Second, cfg.TokenFactsTTL)
 	})
 
 	t.Run("invalid values fall back", func(t *testing.T) {
-		cfg := Config{Window: -1, Percentile: 250, StatsTTL: -time.Second}.withDefaults()
+		cfg := Config{Window: -1, Percentile: 250, StatsTTL: -time.Second, TokenFactsTTL: -time.Second}.
+			withDefaults()
 		require.Equal(t, defaultWindow, cfg.Window)
 		require.Equal(t, maxPercentile, cfg.Percentile)
 		require.Equal(t, defaultStatsTTL, cfg.StatsTTL)
+		require.Equal(t, defaultTokenFactsTTL, cfg.TokenFactsTTL)
 	})
 }

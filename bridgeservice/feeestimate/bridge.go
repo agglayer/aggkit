@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/jellydator/ttlcache/v3"
 )
 
 var (
@@ -41,14 +42,21 @@ type bridgeStats struct {
 	// computedAt is when the snapshot computation started; the freshest data in it is at
 	// least this old.
 	computedAt time.Time
-	// byMechanism holds the gasUsed of asset bridges by bridging mechanism (D6).
+	// byMechanism holds the gasUsed of asset bridges by bridging mechanism.
 	byMechanism map[Mechanism][]uint64
 }
 
+// tokenInfo is the (origin network, origin token) pair the bridge maps a wrapped token
+// back to: the value shape of the wrappedTokenToTokenInfo view.
+type tokenInfo struct {
+	originNetwork uint32
+	originToken   common.Address
+}
+
 // EstimateBridgeFee estimates the cost of bridging token out of the estimator's own network
-// (the bridge origin), grouped by bridging mechanism (D6) with no per-token breakdown. It
+// (the bridge origin), grouped by bridging mechanism with no per-token breakdown. It
 // samples the latest indexed bridges, resolves which mechanism a bridge of token would use,
-// and prices that mechanism's bucket with a live gas price read. It fails closed (D1): when
+// and prices that mechanism's bucket with a live gas price read. It fails closed: when
 // the mechanism's bucket has no samples or a required RPC call fails, it returns an error
 // wrapping ErrFeeEstimateUnavailable instead of a default value.
 func (e *Estimator) EstimateBridgeFee(
@@ -101,7 +109,7 @@ func (e *Estimator) EstimateBridgeFee(
 }
 
 // resolveMechanism resolves which bridging mechanism a bridge of token uses on the
-// estimator's network (D6): the zero address is the network's native gas token bridged via
+// estimator's network: the zero address is the network's native gas token bridged via
 // msg.value; a token the bridge maps back to an origin (wrappedTokenToTokenInfo non-zero)
 // is a wrapped token burned on this network; anything else is an origin-native ERC20 locked
 // in the bridge.
@@ -121,12 +129,20 @@ func (e *Estimator) resolveMechanism(ctx context.Context, token common.Address) 
 
 // wrappedTokenToTokenInfo eth_calls the bridge's wrappedTokenToTokenInfo(wrappedAddress)
 // and returns the (origin network, origin token) pair the token maps back to, or the zero
-// pair when the token is not a wrapped token the bridge knows. The calldata is packed with
+// pair when the token is not a wrapped token the bridge knows. Answers — the zero pair
+// included, since "not a wrapped token" is a fact — are cached per token for
+// Config.TokenFactsTTL, mirroring the claim side's wrapper lookup: the mapping is stable
+// on-chain state, so an unauthenticated endpoint must not let one eth_call per request fan
+// out at request rate. The calldata is packed with
 // the same hand-declared ABI as the wrapper lookup so the package needs no generated
 // binding; the selector it produces is the well-known 0x318aee3d.
 func (e *Estimator) wrappedTokenToTokenInfo(
 	ctx context.Context, token common.Address,
 ) (uint32, common.Address, error) {
+	if item := e.tokenInfos.Get(token); item != nil {
+		info := item.Value()
+		return info.originNetwork, info.originToken, nil
+	}
 	calldata, err := e.viewABI.Pack("wrappedTokenToTokenInfo", token)
 	if err != nil {
 		// The ABI is a fixed constant, so a packing failure is a programming error rather
@@ -143,24 +159,29 @@ func (e *Estimator) wrappedTokenToTokenInfo(
 			"%w: wrappedTokenToTokenInfo returned %d bytes, want %d",
 			ErrFeeEstimateUnavailable, len(output), tokenInfoWords*abiWordLen)
 	}
-	originNetwork := uint32(new(big.Int).SetBytes(output[:abiWordLen]).Uint64())
-	return originNetwork, common.BytesToAddress(output[abiWordLen:]), nil
+	info := tokenInfo{
+		originNetwork: uint32(new(big.Int).SetBytes(output[:abiWordLen]).Uint64()),
+		originToken:   common.BytesToAddress(output[abiWordLen:]),
+	}
+	// Only successful calls are cached; a failed one is retried by the next request.
+	e.tokenInfos.Set(token, info, ttlcache.DefaultTTL)
+	return info.originNetwork, info.originToken, nil
 }
 
 // carriesValue reports whether the observed transaction moved native value with it: the
-// marker of a native gas-token bridge, the first D6 rule. It also covers custom-gas-token
-// L2s, where the native token's BridgeEvent carries the gas-token origin network rather
-// than the network the bridge runs on, so msg.value decides the mechanism before the origin
-// network does.
+// marker of a native gas-token bridge, the first mechanism rule. It also covers
+// custom-gas-token L2s, where the native token's BridgeEvent carries the gas-token origin
+// network rather than the network the bridge runs on, so msg.value decides the mechanism
+// before the origin network does.
 func carriesValue(obs *txObservation) bool {
 	value := obs.tx.Value()
 	return value != nil && value.Sign() > 0
 }
 
-// classifyBridgeObservation applies the bridge-side eligibility rules (D4) to one
+// classifyBridgeObservation applies the bridge-side eligibility rules to one
 // observation-row pair: the transaction must have succeeded and gone directly to the
 // bridge, and its receipt must hold exactly one bridge-emitted BridgeEvent. It reports the
-// gas the bridge actually used and the bridging mechanism it performed (D6): msg.value
+// gas the bridge actually used and the bridging mechanism it performed: msg.value
 // makes a native bridge; without it, a token native to this network is locked and anything
 // else is a wrapped token burned.
 func classifyBridgeObservation(
@@ -184,7 +205,7 @@ func classifyBridgeObservation(
 // collectBridgeStats pages through the latest Config.Window bridges the reader has indexed
 // (newest first, no filters), keeps the asset bridges that are real user transactions,
 // fetches each transaction with its receipt, applies the eligibility rules and buckets the
-// survivors by mechanism (D2, D4, D6). It is the compute function behind the bridge
+// survivors by mechanism. It is the compute function behind the bridge
 // statistics TTL cache.
 func (e *Estimator) collectBridgeStats(ctx context.Context) (bridgeStats, error) {
 	stats := bridgeStats{

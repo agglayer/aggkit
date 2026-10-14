@@ -20,7 +20,7 @@ func (s gasPriceSnapshot) price() *big.Int {
 	return s.info.GasPrice.ToBigInt()
 }
 
-// readGasPrice takes the live gas price reading the plan prescribes: on an EIP-1559 chain
+// readGasPrice takes the live gas price reading: on an EIP-1559 chain
 // (the latest header carries a base fee) it is the base fee plus eth_maxPriorityFeePerGas,
 // with all three reported; on a chain without a base fee it is eth_gasPrice and the base fee
 // and priority fee are null.

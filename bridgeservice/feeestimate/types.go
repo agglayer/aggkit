@@ -18,7 +18,7 @@ import (
 var (
 	// ErrFeeEstimateUnavailable maps to HTTP 503: the estimator is not configured for the
 	// network, a required RPC call failed, or the applicable bucket has no samples yet.
-	// Fail closed (D1): the endpoint answers an error, never a default value.
+	// Fail closed: the endpoint answers an error, never a default value.
 	ErrFeeEstimateUnavailable = errors.New("fee estimate unavailable")
 	// ErrFeeEstimateBadRequest maps to HTTP 400: a request parameter is invalid.
 	ErrFeeEstimateBadRequest = errors.New("fee estimate bad request")
@@ -26,7 +26,7 @@ var (
 
 // TokenClass classifies the token a claim fee estimate is about, from the point of view of
 // the destination network the claim runs on. It matches the buckets the estimator samples
-// repeat claims into (D2 of bridge-fee-estimation-plan).
+// repeat claims into.
 // @Description Class of the token a claim fee estimate is about
 // @Enum TokenClass
 type TokenClass string
@@ -42,8 +42,8 @@ const (
 	GasToken TokenClass = "gas_token"
 )
 
-// Applicable names which of the two claim estimates the request resolves to (D5 of
-// bridge-fee-estimation-plan): the first claim of a token on the destination deploys its
+// Applicable names which of the two claim estimates the request resolves to: the first
+// claim of a token on the destination deploys its
 // wrapper, every later claim is a repeat claim.
 // @Description Which claim estimate applies to the request
 // @Enum Applicable
@@ -57,8 +57,8 @@ const (
 	RepeatClaim Applicable = "repeat_claim"
 )
 
-// Mechanism is the bridging mechanism a bridge fee estimate is about (D6 of
-// bridge-fee-estimation-plan). The bridge-side estimate is per mechanism, deliberately with
+// Mechanism is the bridging mechanism a bridge fee estimate is about. The bridge-side
+// estimate is per mechanism, deliberately with
 // no per-token breakdown.
 // @Description Bridging mechanism a bridge fee estimate is about
 // @Enum Mechanism
@@ -92,15 +92,14 @@ type GasPriceInfo struct {
 	BlockNumber uint64 `json:"block_number" example:"123"`
 }
 
-// FeeEstimate is the shared estimate object carried by both fee estimate responses
-// (`<Estimate>` in the plan's "Goals"): the gas units of comparable observed transactions,
-// times the gas price snapshot, with no server-side margin added (D3: callers buffer for
-// gas-price movement themselves).
+// FeeEstimate is the shared estimate object carried by both fee estimate responses: the
+// gas units of comparable observed transactions, times the gas price snapshot, with no
+// server-side margin added (callers buffer for gas-price movement themselves).
 // @Description Cost estimate: observed gas units times the gas price snapshot
 // @example {"gas_units":110000,"cost":"1870000000000000","sample_count":37,"source":"class"}
 type FeeEstimate struct {
 	// GasUnits is the p90 (or, for a small bucket, the maximum) gasUsed of the observed
-	// transactions in the bucket (D2).
+	// transactions in the bucket.
 	GasUnits uint64 `json:"gas_units" example:"110000"`
 	// Cost is what the tx sender pays on the estimated network: GasUnits times
 	// GasPriceInfo.GasPrice, in wei of that network's native gas token, as a decimal string.
@@ -115,7 +114,7 @@ type FeeEstimate struct {
 // ClaimFeeEstimateResponse is the response body of GET /bridge/v1/claim-fee-estimate: the
 // cost of claiming a token on the queried destination network. It always carries both the
 // first-claim (wrapper deployment) and repeat-claim estimates; exactly one of them is
-// applicable (D5) and the other is null with its reason in Unavailable. When the applicable
+// applicable and the other is null with its reason in Unavailable. When the applicable
 // estimate cannot be computed, the endpoint answers an error body instead (fail closed).
 // @Description Cost of claiming a token on the destination network
 // @example {"network_id":1,"origin_network":0,
@@ -141,7 +140,7 @@ type ClaimFeeEstimateResponse struct {
 	// False means the next claim deploys the wrapper, so the applicable estimate is
 	// FirstClaim.
 	WrapperExists *bool `json:"wrapper_exists" example:"true"`
-	// Applicable names the estimate the request resolves to (D5).
+	// Applicable names the estimate the request resolves to.
 	Applicable Applicable `json:"applicable" example:"repeat_claim"`
 	// GasPrice is the gas price snapshot both estimates are computed with.
 	GasPrice GasPriceInfo `json:"gas_price"`
@@ -151,7 +150,7 @@ type ClaimFeeEstimateResponse struct {
 	// RepeatClaim is the claim-without-deployment estimate, or null when FirstClaim is the
 	// applicable estimate (its reason is in Unavailable).
 	RepeatClaim *FeeEstimate `json:"repeat_claim"`
-	// Unavailable holds, for the non-applicable estimate, the reason it is null (D5); it is
+	// Unavailable holds, for the non-applicable estimate, the reason it is null; it is
 	// null when unset. The applicable estimate is never listed here: if it cannot be
 	// computed, the endpoint errors out instead of returning this body.
 	Unavailable map[Applicable]string `json:"unavailable"`
@@ -161,7 +160,7 @@ type ClaimFeeEstimateResponse struct {
 
 // BridgeFeeEstimateResponse is the response body of GET /bridge/v1/bridge-fee-estimate: the
 // cost of bridging a token out of the queried origin network. It is coarser than the claim
-// estimate: one estimate per bridging mechanism (D6), with no per-token breakdown.
+// estimate: one estimate per bridging mechanism, with no per-token breakdown.
 // @Description Cost of bridging a token out of the origin network
 // @example {"network_id":1,"token_address":"0x0000000000000000000000000000000000000000",
 // "mechanism":"native",
@@ -173,7 +172,7 @@ type BridgeFeeEstimateResponse struct {
 	NetworkID uint32 `json:"network_id" example:"1"`
 	// TokenAddress is the token address on the origin network; 0x0 is the native gas token.
 	TokenAddress types.Address `json:"token_address" example:"0x0000000000000000000000000000000000000000"`
-	// Mechanism is the bridging mechanism the token resolves to (D6).
+	// Mechanism is the bridging mechanism the token resolves to.
 	Mechanism Mechanism `json:"mechanism" example:"native"`
 	// GasPrice is the gas price snapshot the estimate is computed with.
 	GasPrice GasPriceInfo `json:"gas_price"`

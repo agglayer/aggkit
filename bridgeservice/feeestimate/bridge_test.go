@@ -192,9 +192,9 @@ func TestEstimateBridgeFee_EachMechanism(t *testing.T) {
 	})
 }
 
-// TestClassifyBridgeObservation is the sample-classification half of D6, as a table over
-// the pure classifier: msg.value decides native before the origin network is consulted,
-// then the origin network separates an ERC20 lock from a wrapped burn.
+// TestClassifyBridgeObservation is the sample-classification half of the mechanism rule, as a
+// table over the pure classifier: msg.value decides native before the origin network is
+// consulted, then the origin network separates an ERC20 lock from a wrapped burn.
 func TestClassifyBridgeObservation(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -255,9 +255,9 @@ func TestClassifyBridgeObservation(t *testing.T) {
 	}
 }
 
-// TestClassifyBridgeObservation_IneligibleObservations is the bridge-side half of the D4
-// filter: only successful txs sent directly to the bridge, holding exactly one
-// bridge-emitted BridgeEvent, count as samples.
+// TestClassifyBridgeObservation_IneligibleObservations is the bridge-side half of the
+// sample eligibility filter: only successful txs sent directly to the bridge, holding
+// exactly one bridge-emitted BridgeEvent, count as samples.
 func TestClassifyBridgeObservation_IneligibleObservations(t *testing.T) {
 	router := common.HexToAddress("0x7777777777777777777777777777777777777777")
 	tests := []struct {
@@ -306,10 +306,10 @@ func TestClassifyBridgeObservation_IneligibleObservations(t *testing.T) {
 	}
 }
 
-// TestEstimateBridgeFee_CustomGasTokenL2 covers the custom-gas-token case of D6: the
-// native token's BridgeEvent carries the gas-token origin network rather than the network
-// the bridge runs on, so only msg.value marks the bridge native, and WETH (a wrapped token)
-// is burned.
+// TestEstimateBridgeFee_CustomGasTokenL2 covers the custom-gas-token case of the mechanism
+// rule: the native token's BridgeEvent carries the gas-token origin network rather than the
+// network the bridge runs on, so only msg.value marks the bridge native, and WETH (a
+// wrapped token) is burned.
 func TestEstimateBridgeFee_CustomGasTokenL2(t *testing.T) {
 	chain := eip1559Chain()
 	reader := &fakeBridgesReader{}
@@ -401,7 +401,7 @@ func TestEstimateBridgeFee_SampleEligibilityFiltering(t *testing.T) {
 }
 
 // TestEstimateBridgeFee_FailClosedPaths walks every path that must answer an error instead
-// of an estimate (D1): no samples at all, an empty bucket for the requested mechanism, and
+// of an estimate: no samples at all, an empty bucket for the requested mechanism, and
 // each failing RPC call.
 func TestEstimateBridgeFee_FailClosedPaths(t *testing.T) {
 	t.Run("no bridges at all", func(t *testing.T) {
@@ -534,7 +534,7 @@ func TestEstimateBridgeFee_ChainWithoutEIP1559(t *testing.T) {
 }
 
 // TestEstimateBridgeFee_PercentileOnLargeBuckets quotes the p90 rather than the maximum
-// once a mechanism bucket grows past the small-bucket threshold (D2).
+// once a mechanism bucket grows past the small-bucket threshold.
 func TestEstimateBridgeFee_PercentileOnLargeBuckets(t *testing.T) {
 	chain := eip1559Chain()
 	reader := &fakeBridgesReader{}
@@ -655,6 +655,60 @@ func TestEstimateBridgeFee_MultiBridgeTxRowsDeduplicate(t *testing.T) {
 	// Both rows would be erc20_lock, but the shared tx only counts once.
 	require.Equal(t, 1, resp.Estimate.SampleCount)
 	require.Equal(t, int64(1), chain.receiptCalls.Load())
+}
+
+// TestEstimateBridgeFee_TokenInfoLookupCachedPerToken pins the TTL cache behind the bridge
+// side's wrapped-token lookup: an answer — the zero pair ("not a wrapped token") included —
+// is eth_called once per token and reused until the token facts TTL expires.
+func TestEstimateBridgeFee_TokenInfoLookupCachedPerToken(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("answers are reused within the TTL, the zero pair included", func(t *testing.T) {
+		chain := eip1559Chain()
+		reader := &fakeBridgesReader{}
+		// One lock and one burn sample so both resolved mechanisms are served.
+		eligibleBridgeFixture(chain, reader, bridgeAddr, testHashes[0], l2Network, otherToken, 80000, 0)
+		eligibleBridgeFixture(chain, reader, bridgeAddr, testHashes[1], l1Origin, wrappedToken, 70000, 0)
+		tokenInfoLookup(chain, wrappedToken, &wrappedTokenInfo{originNetwork: l1Origin, originToken: otherToken})
+		estimator, _ := newBridgeEstimator(
+			t, Config{NetworkID: l2Network, BridgeAddr: bridgeAddr}, chain, reader)
+
+		resp, err := estimator.EstimateBridgeFee(ctx, wrappedToken)
+		require.NoError(t, err)
+		require.Equal(t, WrappedBurn, resp.Mechanism)
+		resp, err = estimator.EstimateBridgeFee(ctx, wrappedToken)
+		require.NoError(t, err)
+		require.Equal(t, WrappedBurn, resp.Mechanism)
+		require.Equal(t, int64(1), chain.callCalls.Load(), "the wrapped-token lookup is cached per token")
+
+		// A different token is looked up separately; its zero pair is cached too.
+		resp, err = estimator.EstimateBridgeFee(ctx, otherToken)
+		require.NoError(t, err)
+		require.Equal(t, ERC20Lock, resp.Mechanism)
+		require.Equal(t, int64(2), chain.callCalls.Load())
+		resp, err = estimator.EstimateBridgeFee(ctx, otherToken)
+		require.NoError(t, err)
+		require.Equal(t, ERC20Lock, resp.Mechanism)
+		require.Equal(t, int64(2), chain.callCalls.Load(), "the zero pair is cached, zero answer semantics kept")
+	})
+
+	t.Run("the cached answer expires after the token facts TTL", func(t *testing.T) {
+		chain := eip1559Chain()
+		reader := &fakeBridgesReader{}
+		eligibleBridgeFixture(chain, reader, bridgeAddr, testHashes[0], l1Origin, wrappedToken, 70000, 0)
+		tokenInfoLookup(chain, wrappedToken, &wrappedTokenInfo{originNetwork: l1Origin, originToken: otherToken})
+		estimator, _ := newBridgeEstimator(t, Config{
+			NetworkID: l2Network, BridgeAddr: bridgeAddr, TokenFactsTTL: 10 * time.Millisecond,
+		}, chain, reader)
+
+		_, err := estimator.EstimateBridgeFee(ctx, wrappedToken)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), chain.callCalls.Load())
+		time.Sleep(50 * time.Millisecond)
+		_, err = estimator.EstimateBridgeFee(ctx, wrappedToken)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), chain.callCalls.Load(), "the cached token info expired")
+	})
 }
 
 // TestWrappedTokenToTokenInfo_PacksTheWellKnownSelector pins the eth_call the mechanism

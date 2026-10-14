@@ -21,7 +21,7 @@ const (
 	tokenAddressParam = "token_address"
 
 	// errFeeEstimationNotConfigured is the 503 body for a network this instance serves but has no
-	// fee estimator for (fail closed, D1 of bridge-fee-estimation-plan)
+	// fee estimator for (fail closed)
 	errFeeEstimationNotConfigured = "fee estimation is not configured for network %d"
 
 	// Handler ids the fee estimate handlers report to request metrics. They live here (not in the
@@ -58,7 +58,9 @@ func parseAddressQuery(c *gin.Context, key string) (common.Address, error) {
 // @Description configured for the network, a required RPC call failing or no samples for the
 // @Description applicable bucket it answers 503, never a default value. No server-side margin is
 // @Description added: callers buffer for gas-price movement themselves. Message claims
-// @Description (claimMessage) are not estimated.
+// @Description (claimMessage) are not estimated. A request whose origin_network equals the
+// @Description destination network while origin_token_address is 0x0 (the destination's own
+// @Description native gas token, which no bridge deposit can deliver) answers 400.
 // @Tags fee-estimation
 // @Param network_id query uint32 true "Destination network ID (0 for L1, the L2 network ID otherwise)"
 // @Param origin_network query uint32 true "Network the token is bridged from"
@@ -131,7 +133,7 @@ func (b *BridgeService) GetClaimFeeEstimateHandler(c *gin.Context) {
 	}
 	if resp == nil {
 		// A nil estimate with a nil error would answer 200 with a null body; these endpoints
-		// never serve a default value, so treat it as an internal fault (fail closed, D1).
+		// never serve a default value, so treat it as an internal fault (fail closed).
 		b.logger.Errorf("fee estimator returned no claim fee estimate for network %d", networkID)
 		statusCode = http.StatusInternalServerError
 		c.JSON(statusCode, gin.H{"error": "fee estimator returned no claim fee estimate"})
@@ -218,7 +220,7 @@ func (b *BridgeService) GetBridgeFeeEstimateHandler(c *gin.Context) {
 	}
 	if resp == nil {
 		// A nil estimate with a nil error would answer 200 with a null body; these endpoints
-		// never serve a default value, so treat it as an internal fault (fail closed, D1).
+		// never serve a default value, so treat it as an internal fault (fail closed).
 		b.logger.Errorf("fee estimator returned no bridge fee estimate for network %d", networkID)
 		statusCode = http.StatusInternalServerError
 		c.JSON(statusCode, gin.H{"error": "fee estimator returned no bridge fee estimate"})
