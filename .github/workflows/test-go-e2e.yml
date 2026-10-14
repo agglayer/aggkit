@@ -111,7 +111,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.25.7
+          go-version: 1.26.9
 
       - name: Install Docker Compose
         run: |
@@ -179,7 +179,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.25.7
+          go-version: 1.26.9
 
       - name: Install Docker Compose
         run: |
