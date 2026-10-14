@@ -509,10 +509,10 @@ func (s *CertificateSource) earliestSettlementTxCoveringViaLogs(
 			// from here, instead of restarting from fromBlock once the failure clears (see this
 			// function's own doc on issue #1817's resumable-search fix)
 			return nil, &trackertypes.SettlementSearchProgress{
-					NextToBlock: toBlock, LastCoveringTxHash: lastCoveringTxHash,
-				}, fmt.Errorf(
-					"fetching VerifyBatchesTrustedAggregator logs for network %d from block %d to %d: %w",
-					bridge.NetworkID, fromBlockChunk, toBlock, err)
+				NextToBlock: toBlock, LastCoveringTxHash: lastCoveringTxHash,
+			}, fmt.Errorf(
+				"fetching VerifyBatchesTrustedAggregator logs for network %d from block %d to %d: %w",
+				bridge.NetworkID, fromBlockChunk, toBlock, err)
 		}
 
 		// FilterLogs returns logs in ascending block/log-index order; walk this chunk back to
