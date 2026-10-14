@@ -36,6 +36,8 @@ Environment variables (override defaults):
   EXIT_ADDRESS                        Address to receive SC-locked value (default: zero address)
   GENESIS_PREFUND_ETH_WEI             options.genesisPrefundETHWei value: native ETH preminted at
                                       genesis by the Kurtosis enclave (default: 110000 ETH in wei)
+  SKIP_SC_LOCKED_VALUE                Set to 1 to write options.skipSCLockedValue=true: the SC-locked funds
+                                      are left behind (e.g. to be recovered later with a delta certificate)
   OUTPUT_FILE                         Output path (relative to project root)
 
 Examples:
@@ -80,6 +82,7 @@ if [[ "$EXIT_ADDRESS" == "$_EXIT_ADDRESS_DEFAULT" ]]; then
     fi
 fi
 OUTPUT_FILE="${OUTPUT_FILE:-tmp/exit_certificate-kurtosis.json}"
+SKIP_SC_LOCKED_VALUE="${SKIP_SC_LOCKED_VALUE:-0}"
 # Native ETH preminted at genesis by the Kurtosis enclave, discounted by Step F:
 # 110000 ETH across two accounts plus the 1 wei the OP-stack genesis allocates to
 # the zero address (Step A always includes 0x000…000, so Step B detects that wei
@@ -362,6 +365,13 @@ if [[ -n "$ZKEVM_BRIDGE_SERVICE_URL" ]]; then
         \"bridgeServiceType\": \"zkevm\""
 fi
 
+SKIP_SC_LOCKED_OPT=""
+if [[ "$SKIP_SC_LOCKED_VALUE" == "1" ]]; then
+    SKIP_SC_LOCKED_OPT=',
+        "skipSCLockedValue": true'
+    log_info "skipSCLockedValue=true: the SC-locked funds are left out of the certificate"
+fi
+
 cat > "$OUTPUT_PATH" <<EOF
 {
     "l2RpcUrl": "$L2_RPC_URL",
@@ -385,7 +395,7 @@ ${SOVEREIGN_ROLLUP_LINE}${L1_GLOBAL_EXIT_ROOT_LINE}${SIGNER_CONFIG_BLOCK}    "op
         "genesisPrefundETHWei": "$GENESIS_PREFUND_ETH_WEI",
         "ignoreBalanceMismatch": false,
         "capMode": "amount",
-        "ignoreUnsupportedL2Events": true${BRIDGE_SERVICE_OPTS:+,
+        "ignoreUnsupportedL2Events": true${SKIP_SC_LOCKED_OPT}${BRIDGE_SERVICE_OPTS:+,
 $BRIDGE_SERVICE_OPTS}
     }
 }
