@@ -470,12 +470,12 @@ value. Response shape (`types.PublicConfigResponse`):
       "sync_block_chunk_size": 100
     },
     "BridgeL2Sync": {
-      "block_finality": "LatestBlock",
+      "block_finality": "FinalizedBlock",
       "initial_block": 0,
       "sync_block_chunk_size": 100
     },
     "L2GERSync": {
-      "block_finality": "LatestBlock",
+      "block_finality": "FinalizedBlock",
       "initial_block": 0,
       "sync_block_chunk_size": 100,
       "sync_mode": "SovereignChain"
