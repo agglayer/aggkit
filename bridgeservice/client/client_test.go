@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/bridgeservice/feeestimate"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1223,5 +1225,193 @@ func TestDoRequestAllowNotFound(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, uint32(42), resp.DepositCount)
+	})
+}
+
+//nolint:dupl
+func TestGetClaimFeeEstimate(t *testing.T) {
+	wrapperExists := true
+	token := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+
+	t.Run("successful request", func(t *testing.T) {
+		baseFee := types.BigIntString("15000000000")
+		priorityFee := types.BigIntString("2000000000")
+		expectedResp := &feeestimate.ClaimFeeEstimateResponse{
+			NetworkID:          1,
+			OriginNetwork:      0,
+			OriginTokenAddress: types.Address(token.Hex()),
+			TokenClass:         feeestimate.WrappedERC20,
+			WrapperExists:      &wrapperExists,
+			Applicable:         feeestimate.RepeatClaim,
+			GasPrice: feeestimate.GasPriceInfo{
+				BaseFee:     &baseFee,
+				PriorityFee: &priorityFee,
+				GasPrice:    types.BigIntString("17000000000"),
+				BlockNumber: 123,
+			},
+			FirstClaim: nil,
+			RepeatClaim: &feeestimate.FeeEstimate{
+				GasUnits:    110000,
+				Cost:        types.BigIntString("1870000000000000"),
+				SampleCount: 37,
+				Source:      "class",
+			},
+			Unavailable: map[feeestimate.Applicable]string{
+				feeestimate.FirstClaim: "wrapper already deployed; the first-claim estimate does not apply",
+			},
+			ComputedAt: 1760000000,
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "GET", r.Method)
+			require.Equal(t, "/bridge/v1/claim-fee-estimate", r.URL.Path)
+			require.Equal(t, "1", r.URL.Query().Get("network_id"))
+			require.Equal(t, "0", r.URL.Query().Get("origin_network"))
+			require.Equal(t, token.Hex(), r.URL.Query().Get("origin_token_address"))
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimFeeEstimate(context.Background(), 1, 0, token)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, expectedResp, resp)
+	})
+
+	t.Run("answers 400 with the service error body for a bad parameter", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"invalid origin_network: not a valid uint32"}`))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimFeeEstimate(context.Background(), 1, 0, token)
+
+		require.Error(t, err)
+		require.Nil(t, resp)
+
+		var statusErr *HTTPStatusError
+		require.ErrorAs(t, err, &statusErr)
+		require.Equal(t, http.StatusBadRequest, statusErr.StatusCode)
+		require.Contains(t, statusErr.Error(), "400")
+		require.Contains(t, statusErr.Error(), "invalid origin_network")
+	})
+
+	t.Run("answers 503 when the estimate is unavailable (fail closed)", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(
+				`{"error":"fee estimate unavailable: no samples for token class wrapped_erc20"}`))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetClaimFeeEstimate(context.Background(), 1, 0, token)
+
+		require.Error(t, err)
+		require.Nil(t, resp)
+
+		var statusErr *HTTPStatusError
+		require.ErrorAs(t, err, &statusErr)
+		require.Equal(t, http.StatusServiceUnavailable, statusErr.StatusCode)
+		require.Contains(t, statusErr.Error(), "503")
+		require.Contains(t, statusErr.Error(), "fee estimate unavailable")
+	})
+}
+
+//nolint:dupl
+func TestGetBridgeFeeEstimate(t *testing.T) {
+	t.Run("successful request for the native gas token", func(t *testing.T) {
+		// 0x0 is the native gas token; the client must send it as the canonical zero address
+		token := common.Address{}
+		baseFee := types.BigIntString("15000000000")
+		priorityFee := types.BigIntString("2000000000")
+
+		expectedResp := &feeestimate.BridgeFeeEstimateResponse{
+			NetworkID:    0,
+			TokenAddress: types.Address(token.Hex()),
+			Mechanism:    feeestimate.Native,
+			GasPrice: feeestimate.GasPriceInfo{
+				BaseFee:     &baseFee,
+				PriorityFee: &priorityFee,
+				GasPrice:    types.BigIntString("17000000000"),
+				BlockNumber: 123,
+			},
+			Estimate: feeestimate.FeeEstimate{
+				GasUnits:    65000,
+				Cost:        types.BigIntString("1105000000000000"),
+				SampleCount: 42,
+				Source:      "mechanism",
+			},
+			ComputedAt: 1760000000,
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, "GET", r.Method)
+			require.Equal(t, "/bridge/v1/bridge-fee-estimate", r.URL.Path)
+			require.Equal(t, "0", r.URL.Query().Get("network_id"))
+			require.Equal(t, "0x0000000000000000000000000000000000000000", r.URL.Query().Get("token_address"))
+
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(expectedResp)
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgeFeeEstimate(context.Background(), 0, token)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, expectedResp, resp)
+	})
+
+	t.Run("answers 400 with the service error body for a bad parameter", func(t *testing.T) {
+		token := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"invalid token_address: not a valid address"}`))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgeFeeEstimate(context.Background(), 1, token)
+
+		require.Error(t, err)
+		require.Nil(t, resp)
+
+		var statusErr *HTTPStatusError
+		require.ErrorAs(t, err, &statusErr)
+		require.Equal(t, http.StatusBadRequest, statusErr.StatusCode)
+		require.Contains(t, statusErr.Error(), "400")
+		require.Contains(t, statusErr.Error(), "invalid token_address")
+	})
+
+	t.Run("answers 503 when the estimate is unavailable (fail closed)", func(t *testing.T) {
+		token := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(
+				`{"error":"fee estimate unavailable: no samples for mechanism erc20_lock"}`))
+		}))
+		defer server.Close()
+
+		c := New(Config{BaseURL: server.URL})
+		resp, err := c.GetBridgeFeeEstimate(context.Background(), 1, token)
+
+		require.Error(t, err)
+		require.Nil(t, resp)
+
+		var statusErr *HTTPStatusError
+		require.ErrorAs(t, err, &statusErr)
+		require.Equal(t, http.StatusServiceUnavailable, statusErr.StatusCode)
+		require.Contains(t, statusErr.Error(), "503")
+		require.Contains(t, statusErr.Error(), "fee estimate unavailable")
 	})
 }
