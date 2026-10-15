@@ -554,9 +554,10 @@ BridgeAddr = ""
 #   - FinalizedBlock
 #
 # Pinned to LatestBlock for cdk-erigon: the kurtosis cdk-erigon L2 nodes never
-# advance the `safe` block tag, so a SafeBlock syncer would index nothing and
-# L2-origin bridges would never show up on the bridge API. Other sequencer
-# types (op-geth) keep the binary default (SafeBlock), which their L2s support.
+# advance the `safe` or `finalized` block tags, so a SafeBlock/FinalizedBlock
+# syncer would index nothing and L2-origin bridges would never show up on the
+# bridge API. Other sequencer types (op-geth) keep the binary default
+# (FinalizedBlock), which their L2s support.
 # ------------------------------------------------------------------------------
 BlockFinality = "LatestBlock"
 {{- end }}
@@ -619,7 +620,7 @@ InitialBlock = "{{.rollup_manager_block_number}}"
 # ------------------------------------------------------------------------------
 # BlockFinality indicates which finality follows AggLayer accepted values are:
 # LatestBlock, SafeBlock, PendingBlock, FinalizedBlock, EarliestBlock
-# Default value is "LatestBlock"
+# Default value is "FinalizedBlock"
 # ------------------------------------------------------------------------------
 BlockFinality = "LatestBlock"
 
