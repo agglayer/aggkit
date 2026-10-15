@@ -394,8 +394,9 @@ func createAggSenderValidator(ctx context.Context,
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
 
-	aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(
+	aggchainFEPQuerier, err := query.NewRollupQuerier(
 		logger,
+		committeeQuerier,
 		cfg.Mode,
 		cfg.FEPConfig.SovereignRollupAddr,
 		l1Client,

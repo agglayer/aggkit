@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	typesmocks "github.com/agglayer/aggkit/types/mocks"
@@ -180,6 +181,7 @@ func TestNewFlow(t *testing.T) {
 			mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()
 			mockL2Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()
 			mockRollupDataQuerier.EXPECT().GetRollupChainID().Return(uint64(1234), nil).Maybe()
+			mockCommitteeQuerier.EXPECT().AggchainType().Return(types.AggchainTypeFEP, nil).Maybe()
 
 			if tc.mockFn != nil {
 				tc.mockFn(mockCommitteeQuerier)
@@ -210,6 +212,122 @@ func TestNewFlow(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, flow)
 			}
+		})
+	}
+}
+
+func TestNewBuilderFlow_QBFT(t *testing.T) {
+	// not parallel: it replaces the package level l2GERReaderFactory
+	origFactory := l2GERReaderFactory
+	defer func() { l2GERReaderFactory = origFactory }()
+	l2GERReaderFactory = func(common.Address, aggkittypes.BaseEthereumClienter, l2gersync.L1InfoTreeQuerier,
+	) (*l2gersync.L2EVMGERReader, error) {
+		return nil, nil
+	}
+
+	baseCfg := func() config.Config {
+		return config.Config{
+			Mode:                types.AggchainProofMode,
+			AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
+			AggkitProverClient: &aggkitgrpc.ClientConfig{
+				URL:               "http://127.0.0.1",
+				MinConnectTimeout: cfgtypes.Duration{Duration: 1 * time.Millisecond},
+			},
+			SovereignRollupAddr:        common.HexToAddress("0x1234"),
+			BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
+		}
+	}
+	// ABI encoded uint64(42): lastProvenBlockNumber
+	lastProvenBlock42 := common.LeftPadBytes([]byte{42}, 32)
+
+	testCases := []struct {
+		name          string
+		cfgFn         func(*config.Config)
+		aggchainType  types.AggchainType
+		aggchainErr   error
+		l1CallResult  []byte
+		expectedError string
+	}{
+		{
+			name:         "success: no op-node nor optimistic mode needed",
+			aggchainType: types.AggchainTypeQBFT,
+			l1CallResult: lastProvenBlock42,
+		},
+		{
+			name:         "success: optimistic config with empty OpNodeURL is ignored",
+			aggchainType: types.AggchainTypeQBFT,
+			cfgFn: func(c *config.Config) {
+				c.OptimisticModeConfig = optimistic.Config{SovereignRollupAddr: c.SovereignRollupAddr}
+			},
+			l1CallResult: lastProvenBlock42,
+		},
+		{
+			name:         "error: optimistic mode configured with QBFT",
+			aggchainType: types.AggchainTypeQBFT,
+			cfgFn: func(c *config.Config) {
+				c.OptimisticModeConfig = optimistic.Config{OpNodeURL: "http://localhost:8545"}
+			},
+			l1CallResult:  lastProvenBlock42,
+			expectedError: "does not support optimistic mode",
+		},
+		{
+			name:          "error: lastProvenBlockNumber can not be read",
+			aggchainType:  types.AggchainTypeQBFT,
+			l1CallResult:  []byte{1, 2, 3},
+			expectedError: "error creating aggchain QBFT querier",
+		},
+		{
+			name:          "error: aggchain type can not be read",
+			aggchainErr:   errors.New("rpc down"),
+			expectedError: "error getting aggchain type: rpc down",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockL1Client := typesmocks.NewBaseEthereumClienter(t)
+			mockL2Client := typesmocks.NewBaseEthereumClienter(t)
+			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+			mockL2BridgeSyncer := mocks.NewL2BridgeSyncer(t)
+			mockRollupDataQuerier := mocks.NewRollupDataQuerier(t)
+			mockCommitteeQuerier := mocks.NewMultisigQuerier(t)
+
+			mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(1).Maybe()
+			mockL1InfoTreeSyncer.EXPECT().Finality().Return(aggkittypes.FinalizedBlock).Maybe()
+			mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).
+				Return(tc.l1CallResult, nil).Maybe()
+			mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).
+				Return([]byte{1, 2, 3}, nil).Maybe()
+			mockL2Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).
+				Return([]byte{1, 2, 3}, nil).Maybe()
+			mockRollupDataQuerier.EXPECT().GetRollupChainID().Return(uint64(1234), nil).Maybe()
+			mockCommitteeQuerier.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).
+				Return(nil, errors.New("not needed")).Maybe()
+			mockCommitteeQuerier.EXPECT().AggchainType().Return(tc.aggchainType, tc.aggchainErr).Once()
+
+			cfg := baseCfg()
+			if tc.cfgFn != nil {
+				tc.cfgFn(&cfg)
+			}
+
+			flow, err := NewBuilderFlow(t.Context(), cfg, log.WithFields("test", "NewBuilderFlowQBFT"),
+				mocks.NewAggSenderStorage(t), mockL1Client, mockL2Client, mockL1InfoTreeSyncer,
+				mockL2BridgeSyncer, nil, mockRollupDataQuerier, mockCommitteeQuerier, nil, common.Hash{})
+
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+				require.Nil(t, flow)
+				return
+			}
+			require.NoError(t, err)
+			proverFlow, ok := flow.(*AggchainProverBuilderFlow)
+			require.True(t, ok, "flow must be an AggchainProverBuilderFlow, got %T", flow)
+			// the start block comes from AggchainQBFT.lastProvenBlockNumber
+			require.Equal(t, uint64(42), proverFlow.baseFlow.StartL2Block())
+			// optimistic mode is never on for QBFT
+			certType, err := proverFlow.getCertificateTypeToGenerate()
+			require.NoError(t, err)
+			require.Equal(t, types.CertificateTypeFEP, certType)
 		})
 	}
 }

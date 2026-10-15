@@ -97,6 +97,8 @@ sequenceDiagram
 
 ### AggchainProof Mode
 
+> This mode serves two aggchain types, selected by `AGGCHAIN_TYPE()` of the rollup contract (`Mode = "Auto"` resolves both `0x0001` and `0x0002` to `AggchainProof`): `AggchainFEP` (`0x0001`, OP Stack with op-succinct) and `AggchainQBFT` (`0x0002`, Besu QBFT chains). See [AggchainQBFT networks](#aggchainqbft-networks-aggchain_type-0x0002) below.
+
 In essence, the `AggchainProof` mode follows the same logic and flow as `PessimisticProof` mode. Only difference is in two points:
 - Calling the `aggchain prover` to generate an `aggchain proof` that will be sent in the certfiicate to the `Agglayer`.
 - Resending an `InError` certficate does not expand it with new bridges and events that the syncer might have gotten in the meantime. This is done because `aggchain prover` already generated a proof for a given block range, and since proof generation can be a long process, this is a small optimization.
@@ -371,7 +373,7 @@ The `TriggerCertMode` field supports the following modes:
 
 ## OptimisticConfig
 
-The `OptimisticConfig` structure configures the optimistic mode for the AggSender. This configuration is required when running in FEP (Fast Exit Protocol) mode.
+The `OptimisticConfig` structure configures the optimistic mode for the AggSender. This configuration is required when running in FEP (Fast Exit Protocol) mode. It is unused for AggchainQBFT networks (`OpNodeURL` must be empty there).
 
 | Field Name                    | Type                | Description                                                                                                     |
 |-------------------------------|---------------------|-----------------------------------------------------------------------------------------------------------------|
@@ -391,6 +393,14 @@ Example:
 ```
 
 The optimistic mode is used in FEP (Fast Exit Protocol) to enable faster exit processing by allowing optimistic proofs to be submitted before full verification. The trusted sequencer is responsible for signing these proofs, and this configuration ensures that only the authorized trusted sequencer can submit proofs.
+
+### AggchainQBFT networks (AGGCHAIN_TYPE 0x0002)
+
+When the rollup contract reports `AGGCHAIN_TYPE() == 0x0002` the aggsender runs the same `AggchainProverBuilderFlow` as FEP, with a QBFT-specific rollup querier and verifier:
+
+- **Config**: `Mode = "AggchainProof"` (or `Auto`), `SovereignRollupAddr` (the `AggchainQBFT` contract) and `[AggSender.AggkitProverClient]` (`aggkit-prover-qbft`). `OpNodeURL` and `OptimisticModeConfig` are unused: optimistic mode is always off for QBFT and the aggsender fails at startup if `OptimisticModeConfig.OpNodeURL` is set.
+- **Block range**: the first block of a certificate is the last settled `ToBlock + 1` (the starting block is read from `lastProvenBlockNumber()` of the `AggchainQBFT` contract) and the last block is the last block processed by the L2 bridge syncer. The `end_block` returned by the prover re-slices the range, as in FEP.
+- **Validator checks**: the certificate carries `custom_chain_data = abi.encode(bytes4 aggchainVKeySelector, bytes32 newBlockHash, uint64 newBlockNumber, bytes32 newConsensusHash)` (128 bytes). Each validator decodes it and checks, against its own L2 RPC, that `getAggchainTypeFromSelector(selector) == 0x0002`, `newBlockNumber` is the last block of the certificate, `eth_getBlockByNumber(newBlockNumber).hash == newBlockHash` and that the L2 bridge `getRoot()` at that block equals the certificate's new local exit root. Validators do not re-prove consensus. The L2 RPC must return the block hash as sent by the node (`HashFromJSON = true`).
 
 ## Use Cases
 

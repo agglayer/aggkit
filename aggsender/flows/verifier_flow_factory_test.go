@@ -23,10 +23,12 @@ func TestNewVerifierFlow(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name          string
-		cfg           validator.Config
-		mockFn        func(*mocks.MultisigQuerier)
-		expectedError string
+		name             string
+		cfg              validator.Config
+		aggchainType     types.AggchainType // defaults to FEP
+		mockFn           func(*mocks.MultisigQuerier)
+		expectedError    string
+		expectedFlowType string
 	}{
 		{
 			name: "success with PessimisticProofMode",
@@ -90,6 +92,62 @@ func TestNewVerifierFlow(t *testing.T) {
 			expectedError: "error getting multisig committee: test error",
 		},
 		{
+			name:         "success with AggchainProofMode and QBFT aggchain type",
+			aggchainType: types.AggchainTypeQBFT,
+			cfg: validator.Config{
+				Mode:   types.AggchainProofMode,
+				Signer: signertypes.SignerConfig{Method: signertypes.MethodNone},
+				FEPConfig: validator.FEPConfig{
+					SovereignRollupAddr: common.HexToAddress("0x1234"),
+				},
+				AgglayerBridgeL2Addr:       common.HexToAddress("0x5678"),
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
+			},
+			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
+				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{types.NewSignerInfo("", common.Address{})}, 1)
+				require.NoError(t, err)
+
+				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Once()
+			},
+			expectedFlowType: "*flows.AggchainQBFTVerifierFlow",
+		},
+		{
+			name:         "error with AggchainProofMode and QBFT aggchain type when OpNodeURL is set",
+			aggchainType: types.AggchainTypeQBFT,
+			cfg: validator.Config{
+				Mode:   types.AggchainProofMode,
+				Signer: signertypes.SignerConfig{Method: signertypes.MethodNone},
+				FEPConfig: validator.FEPConfig{
+					SovereignRollupAddr: common.HexToAddress("0x1234"),
+					OpNodeURL:           "http://localhost:8545",
+				},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
+			},
+			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
+				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{types.NewSignerInfo("", common.Address{})}, 1)
+				require.NoError(t, err)
+
+				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Once()
+			},
+			expectedError: "does not support optimistic mode",
+		},
+		{
+			name: "error getting aggchain type with AggchainProofMode",
+			cfg: validator.Config{
+				Mode:                       types.AggchainProofMode,
+				Signer:                     signertypes.SignerConfig{Method: signertypes.MethodNone},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
+			},
+			aggchainType: "error",
+			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
+				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{types.NewSignerInfo("", common.Address{})}, 1)
+				require.NoError(t, err)
+
+				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Once()
+			},
+			expectedError: "failed to get aggchain type",
+		},
+		{
 			name: "unsupported mode",
 			cfg: validator.Config{
 				Mode:                       "unsupported-mode",
@@ -117,6 +175,15 @@ func TestNewVerifierFlow(t *testing.T) {
 			mockRollupDataQuerier.EXPECT().GetRollupChainID().Return(uint64(1234), nil).Maybe()
 			mockL2Syncer.EXPECT().OriginNetwork().Return(1).Maybe()
 
+			switch tc.aggchainType {
+			case "error":
+				mockCommitteeQuerier.EXPECT().AggchainType().Return("", fmt.Errorf("aggchain type error")).Maybe()
+			case "":
+				mockCommitteeQuerier.EXPECT().AggchainType().Return(types.AggchainTypeFEP, nil).Maybe()
+			default:
+				mockCommitteeQuerier.EXPECT().AggchainType().Return(tc.aggchainType, nil).Maybe()
+			}
+
 			if tc.mockFn != nil {
 				tc.mockFn(mockCommitteeQuerier)
 			}
@@ -143,6 +210,9 @@ func TestNewVerifierFlow(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, verifierFlow)
 				require.NotNil(t, commonComponents)
+				if tc.expectedFlowType != "" {
+					require.Equal(t, tc.expectedFlowType, fmt.Sprintf("%T", verifierFlow))
+				}
 			}
 		})
 	}
@@ -154,6 +224,7 @@ func TestNewLocalVerifier(t *testing.T) {
 	testCases := []struct {
 		name                     string
 		mode                     types.AggsenderMode
+		aggchainType             types.AggchainType // defaults to FEP
 		builderFlow              types.AggsenderBuilderFlow
 		cfg                      config.Config
 		expectedErrorSubstr      string
@@ -236,6 +307,38 @@ func TestNewLocalVerifier(t *testing.T) {
 			},
 			expectedVerifierFlowType: "*flows.AggchainProverVerifierFlow",
 		},
+		{
+			name:         "Aggchain mode QBFT success (no op-node nor optimistic config needed)",
+			mode:         types.AggchainProofMode,
+			aggchainType: types.AggchainTypeQBFT,
+			builderFlow:  &AggchainProverBuilderFlow{},
+			cfg: config.Config{
+				Mode:                types.AggchainProofMode,
+				SovereignRollupAddr: common.HexToAddress("0x1"),
+			},
+			expectedVerifierFlowType: "*flows.AggchainQBFTVerifierFlow",
+		},
+		{
+			name:         "Aggchain mode QBFT with OpNodeURL set fails",
+			mode:         types.AggchainProofMode,
+			aggchainType: types.AggchainTypeQBFT,
+			builderFlow:  &AggchainProverBuilderFlow{},
+			cfg: config.Config{
+				Mode:                 types.AggchainProofMode,
+				SovereignRollupAddr:  common.HexToAddress("0x1"),
+				OptimisticModeConfig: optimistic.Config{OpNodeURL: "http://localhost:8545"},
+			},
+			expectedErrorSubstr: "does not support optimistic mode",
+		},
+		{
+			name:         "Aggchain mode QBFT with wrong builder type - PPBuilderFlow",
+			mode:         types.AggchainProofMode,
+			aggchainType: types.AggchainTypeQBFT,
+			builderFlow:  &PPBuilderFlow{},
+			cfg:          config.Config{Mode: types.AggchainProofMode},
+
+			expectedErrorSubstr: "expected AggchainProverBuilderFlow",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -243,9 +346,18 @@ func TestNewLocalVerifier(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			tc.cfg.OptimisticModeConfig.SovereignRollupAddr = common.HexToAddress("0x1")
-			tc.cfg.OptimisticModeConfig.OpNodeURL = "http://localhost:8545"
-			verifierFlow, err := NewLocalVerifier(ctx, tc.cfg, nil, tc.builderFlow)
+			mockCommitteeQuerier := mocks.NewMultisigQuerier(t)
+			aggchainType := tc.aggchainType
+			if aggchainType == "" {
+				aggchainType = types.AggchainTypeFEP
+			}
+			mockCommitteeQuerier.EXPECT().AggchainType().Return(aggchainType, nil).Maybe()
+
+			if aggchainType != types.AggchainTypeQBFT {
+				tc.cfg.OptimisticModeConfig.SovereignRollupAddr = common.HexToAddress("0x1")
+				tc.cfg.OptimisticModeConfig.OpNodeURL = "http://localhost:8545"
+			}
+			verifierFlow, err := NewLocalVerifier(ctx, tc.cfg, nil, nil, mockCommitteeQuerier, tc.builderFlow)
 
 			if tc.expectedErrorSubstr != "" {
 				require.ErrorContains(t, err, tc.expectedErrorSubstr)

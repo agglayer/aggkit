@@ -24,6 +24,61 @@ func (_m *MultisigQuerier) EXPECT() *MultisigQuerier_Expecter {
 	return &MultisigQuerier_Expecter{mock: &_m.Mock}
 }
 
+// AggchainType provides a mock function with no fields
+func (_m *MultisigQuerier) AggchainType() (types.AggchainType, error) {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for AggchainType")
+	}
+
+	var r0 types.AggchainType
+	var r1 error
+	if rf, ok := ret.Get(0).(func() (types.AggchainType, error)); ok {
+		return rf()
+	}
+	if rf, ok := ret.Get(0).(func() types.AggchainType); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(types.AggchainType)
+	}
+
+	if rf, ok := ret.Get(1).(func() error); ok {
+		r1 = rf()
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MultisigQuerier_AggchainType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AggchainType'
+type MultisigQuerier_AggchainType_Call struct {
+	*mock.Call
+}
+
+// AggchainType is a helper method to define mock.On call
+func (_e *MultisigQuerier_Expecter) AggchainType() *MultisigQuerier_AggchainType_Call {
+	return &MultisigQuerier_AggchainType_Call{Call: _e.mock.On("AggchainType")}
+}
+
+func (_c *MultisigQuerier_AggchainType_Call) Run(run func()) *MultisigQuerier_AggchainType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MultisigQuerier_AggchainType_Call) Return(_a0 types.AggchainType, _a1 error) *MultisigQuerier_AggchainType_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MultisigQuerier_AggchainType_Call) RunAndReturn(run func() (types.AggchainType, error)) *MultisigQuerier_AggchainType_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ContractMode provides a mock function with no fields
 func (_m *MultisigQuerier) ContractMode() (types.AggsenderMode, error) {
 	ret := _m.Called()

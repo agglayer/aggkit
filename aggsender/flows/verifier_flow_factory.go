@@ -6,6 +6,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainfep"
 	"github.com/agglayer/aggkit/aggsender/config"
+	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
@@ -84,13 +85,31 @@ func NewVerifierFlow(
 			return nil, nil, fmt.Errorf("failed to create common flow components: %w", err)
 		}
 
-		fepInputsQuery, err := newFEPInputsQuerier(
-			cfg.FEPConfig.SovereignRollupAddr,
-			l1Client,
-			cfg.FEPConfig.OpNodeURL,
-		)
+		aggchainType, err := committeeQuerier.AggchainType()
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create FEPInputsQuery: %w", err)
+			return nil, nil, fmt.Errorf("failed to get aggchain type: %w", err)
+		}
+
+		var chainQuerier types.QBFTChainQuerier
+		var fepInputsQuery types.FEPInputsQuerier
+		if aggchainType == types.AggchainTypeQBFT {
+			if err := ValidateQBFTOptimisticConfig(optimistic.Config{OpNodeURL: cfg.FEPConfig.OpNodeURL}); err != nil {
+				return nil, nil, err
+			}
+			chainQuerier, err = query.NewQBFTChainQuery(
+				l1Client, l2Client, cfg.FEPConfig.SovereignRollupAddr, cfg.AgglayerBridgeL2Addr)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to create QBFTChainQuery: %w", err)
+			}
+		} else {
+			fepInputsQuery, err = newFEPInputsQuerier(
+				cfg.FEPConfig.SovereignRollupAddr,
+				l1Client,
+				cfg.FEPConfig.OpNodeURL,
+			)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to create FEPInputsQuery: %w", err)
+			}
 		}
 
 		builderFlow := NewAggchainProverBuilderFlow(
@@ -105,6 +124,10 @@ func NewVerifierFlow(
 			nil, // we don't query the prover in validator mode
 		)
 
+		if aggchainType == types.AggchainTypeQBFT {
+			return NewAggchainQBFTVerifierFlow(builderFlow, chainQuerier), commonFlowComponents, nil
+		}
+
 		return NewAggchainProverVerifierFlow(builderFlow, fepInputsQuery), commonFlowComponents, nil
 	default:
 		return nil, nil, fmt.Errorf("unsupported Aggsender Validator mode: %s", cfg.Mode)
@@ -116,6 +139,8 @@ func NewLocalVerifier(
 	ctx context.Context,
 	cfg config.Config,
 	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
+	committeeQuerier types.MultisigQuerier,
 	builderFlow types.AggsenderBuilderFlow,
 ) (types.AggsenderVerifierFlow, error) {
 	switch cfg.Mode {
@@ -128,13 +153,31 @@ func NewLocalVerifier(
 
 		return NewPPVerifierFlow(ppBuilderFlow), nil
 	case types.AggchainProofMode:
-		if err := cfg.OptimisticModeConfig.Validate(); err != nil {
-			return nil, fmt.Errorf("invalid optimistic mode config: %w", err)
+		aggchainType, err := committeeQuerier.AggchainType()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get aggchain type: %w", err)
+		}
+		if aggchainType != types.AggchainTypeQBFT {
+			if err := cfg.OptimisticModeConfig.Validate(); err != nil {
+				return nil, fmt.Errorf("invalid optimistic mode config: %w", err)
+			}
 		}
 		builderFlow, ok := builderFlow.(*AggchainProverBuilderFlow)
 		if !ok {
 			return nil,
 				fmt.Errorf("expected AggchainProverBuilderFlow for AggchainProofMode mode, got %T", builderFlow)
+		}
+
+		if aggchainType == types.AggchainTypeQBFT {
+			if err := ValidateQBFTOptimisticConfig(cfg.OptimisticModeConfig); err != nil {
+				return nil, err
+			}
+			chainQuerier, err := query.NewQBFTChainQuery(
+				l1Client, l2Client, cfg.SovereignRollupAddr, cfg.AgglayerBridgeL2Addr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create QBFTChainQuery: %w", err)
+			}
+			return NewAggchainQBFTVerifierFlow(builderFlow, chainQuerier), nil
 		}
 
 		fepInputsQuery, err := newFEPInputsQuerier(

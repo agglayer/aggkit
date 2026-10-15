@@ -312,6 +312,8 @@ type MultisigContract interface {
 type MultisigQuerier interface {
 	GetMultisigCommittee(ctx context.Context, blockNum *big.Int) (*MultisigCommittee, error)
 	ContractMode() (AggsenderMode, error)
+	// AggchainType returns the aggchain type (AGGCHAIN_TYPE) of the rollup contract
+	AggchainType() (AggchainType, error)
 	ResolveAutoMode(cfgMode AggsenderMode) (AggsenderMode, error)
 }
 
@@ -325,6 +327,22 @@ type AggchainFEPRollupQuerier interface {
 	StartL2Block() uint64
 	GetLastSettledL2Block() (uint64, error)
 	IsFEP() bool
+}
+
+// QBFTContractQuerier is the read-only surface of the AggchainQBFT contract used by the aggsender
+type QBFTContractQuerier interface {
+	LastProvenBlockNumber(opts *bind.CallOpts) (uint64, error)
+}
+
+// QBFTChainQuerier queries the data needed by the validator to check the custom chain data of an
+// AggchainQBFT certificate against its own L2 RPC (and the L1 rollup contract)
+type QBFTChainQuerier interface {
+	// GetBlockHash returns the hash of the L2 block as reported by the node (eth_getBlockByNumber.hash)
+	GetBlockHash(ctx context.Context, blockNumber uint64) (common.Hash, error)
+	// GetBridgeRootAtBlock returns the L2 bridge getRoot() (local exit root) at the given L2 block
+	GetBridgeRootAtBlock(ctx context.Context, blockNumber uint64) (common.Hash, error)
+	// GetAggchainTypeFromSelector returns the aggchain type encoded in the aggchain vkey selector
+	GetAggchainTypeFromSelector(selector [4]byte) (AggchainType, error)
 }
 
 // CertificateQuerier is an interface defining functions that a CertificateQuerier should implement

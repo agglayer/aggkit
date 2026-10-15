@@ -24,6 +24,18 @@ const (
 	AutoMode             AggsenderMode = "Auto"
 )
 
+// AggchainType identifies the kind of consensus contract (AGGCHAIN_TYPE) registered for the rollup on L1
+type AggchainType string
+
+const (
+	// AggchainTypeECDSAMultisig is AGGCHAIN_TYPE 0x0000 (AggchainECDSAMultisig, pessimistic proof)
+	AggchainTypeECDSAMultisig AggchainType = "ECDSAMultisig"
+	// AggchainTypeFEP is AGGCHAIN_TYPE 0x0001 (AggchainFEP, op-succinct)
+	AggchainTypeFEP AggchainType = "FEP"
+	// AggchainTypeQBFT is AGGCHAIN_TYPE 0x0002 (AggchainQBFT, Besu QBFT commit seals)
+	AggchainTypeQBFT AggchainType = "QBFT"
+)
+
 // meddler support for store as string
 func (c *AggsenderMode) Scan(value interface{}) error {
 	str, ok := value.(string)

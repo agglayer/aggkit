@@ -132,9 +132,21 @@ EnableAggOracleCommittee = false
 #
 [AggSender]
 # ------------------------------------------------------------------------------
-# Set to "AggchainProof" when enabling FEP. Possible values - "PessimisticProof", "AggchainProof", "Auto"
+# Set to "AggchainProof" when enabling FEP or QBFT. Possible values - "PessimisticProof", "AggchainProof", "Auto"
+# "Auto" resolves the mode from AGGCHAIN_TYPE() of the rollup contract:
+#   0x0000 (ECDSA multisig) -> PessimisticProof, 0x0001 (FEP) and 0x0002 (QBFT) -> AggchainProof
 # ------------------------------------------------------------------------------
 # Mode = "Auto"
+#
+# ------------------------------------------------------------------------------
+# AggchainQBFT (AGGCHAIN_TYPE 0x0002, Besu QBFT chains): use Mode = "AggchainProof" (or "Auto"),
+# set SovereignRollupAddr to the AggchainQBFT contract and point
+# [AggSender.AggkitProverClient] URL/RequestTimeout to aggkit-prover-qbft.
+# There is no op-node and no optimistic mode: OpNodeURL / [AggSender.OptimisticModeConfig] are unused
+# and OpNodeURL must be left empty (the aggsender refuses to start otherwise).
+# The L2 RPC (L2URL) must return the block hash as sent by the node (HashFromJSON = true), because the
+# Besu QBFT block hash can not be recomputed from the header.
+# ------------------------------------------------------------------------------
 #
 # [Prometheus]
 # Enabled = true

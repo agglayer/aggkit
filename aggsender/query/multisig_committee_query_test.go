@@ -275,6 +275,12 @@ func Test_ContractMode(t *testing.T) {
 			expectedMode:        types.AggchainProofMode,
 		},
 		{
+			name:                "return AggchainProofMode for AggchainQBFT (0x0002)",
+			consensusTypeReturn: consensusTypeMultiECDSAAndSP1,
+			aggchainTypeReturn:  aggchainQBFT,
+			expectedMode:        types.AggchainProofMode,
+		},
+		{
 			name:                "unknown AGGCHAINTYPE",
 			consensusTypeReturn: consensusTypeMultiECDSAAndSP1,
 			aggchainTypeReturn:  [2]byte{0xFF, 0xFF},
@@ -343,6 +349,12 @@ func Test_ResolveAutoMode(t *testing.T) {
 			cfgMode:            types.AutoMode,
 			expectedMode:       types.AggchainProofMode,
 		},
+		{
+			name:               "Auto resolves AggchainQBFT (0x0002) to AggchainProofMode",
+			aggchainTypeReturn: aggchainQBFT,
+			cfgMode:            types.AutoMode,
+			expectedMode:       types.AggchainProofMode,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -368,4 +380,45 @@ func Test_ResolveAutoMode(t *testing.T) {
 			mockSC.AssertExpectations(t)
 		})
 	}
+}
+
+func Test_AggchainQBFTTypeValue(t *testing.T) {
+	require.Equal(t, [2]byte{0x00, 0x02}, aggchainQBFT)
+}
+
+func Test_AggchainType(t *testing.T) {
+	errGeneric := errors.New("some error")
+	testCases := []struct {
+		name         string
+		typeReturn   [2]byte
+		typeErr      error
+		expectedType types.AggchainType
+		expectedErr  string
+	}{
+		{name: "ECDSA multisig", typeReturn: aggchainECDSAMultisig, expectedType: types.AggchainTypeECDSAMultisig},
+		{name: "FEP", typeReturn: aggchainFEP, expectedType: types.AggchainTypeFEP},
+		{name: "QBFT", typeReturn: aggchainQBFT, expectedType: types.AggchainTypeQBFT},
+		{name: "unknown", typeReturn: [2]byte{0xFF, 0xFF}, expectedErr: "unsupported aggchain type"},
+		{name: "contract error", typeErr: errGeneric, expectedErr: "failed to get aggchain type"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockSC := new(mocks.MultisigContract)
+			sut := &BaseMultisigCommitteeQuery{sovereignRollupSC: mockSC}
+			mockSC.EXPECT().AGGCHAINTYPE(mock.Anything).Return(tc.typeReturn, tc.typeErr).Once()
+
+			got, err := sut.AggchainType()
+			if tc.expectedErr != "" {
+				require.ErrorContains(t, err, tc.expectedErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedType, got)
+			mockSC.AssertExpectations(t)
+		})
+	}
+
+	var nilQuery *BaseMultisigCommitteeQuery
+	_, err := nilQuery.AggchainType()
+	require.ErrorContains(t, err, "object is nil")
 }

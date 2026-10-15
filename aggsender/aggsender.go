@@ -142,7 +142,7 @@ func newAggsender(
 		return nil, err
 	}
 
-	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, cfg.Mode,
+	aggchainFEPCaller, err := query.NewRollupQuerier(logger, committeeQuerier, cfg.Mode,
 		cfg.SovereignRollupAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
@@ -196,6 +196,8 @@ func newAggsender(
 		ctx,
 		cfg,
 		l1Client,
+		l2Client,
+		committeeQuerier,
 		flowManager,
 	)
 	if err != nil {

@@ -248,6 +248,9 @@ MaxCertSize = 8388608
 DryRun = false
 EnableRPC = true
 # PessimisticProof, AggchainProof or Auto
+# Auto resolves from AGGCHAIN_TYPE() of the rollup contract: 0x0000 -> PessimisticProof, 0x0001 (FEP) and
+# 0x0002 (QBFT) -> AggchainProof. AggchainQBFT needs SovereignRollupAddr and [AggSender.AggkitProverClient];
+# OpNodeURL and [AggSender.OptimisticModeConfig] are unused there (OpNodeURL must be empty).
 Mode = "Auto"
 CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false

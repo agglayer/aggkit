@@ -17,6 +17,7 @@ var (
 	_                     types.MultisigContract = (*aggchainbase.Aggchainbase)(nil)
 	aggchainECDSAMultisig                        = [2]byte{0, 0}
 	aggchainFEP                                  = [2]byte{0, 1}
+	aggchainQBFT                                 = [2]byte{0, 2}
 )
 
 const consensusTypeMultiECDSAAndSP1 = uint32(1)
@@ -123,10 +124,37 @@ func (m *BaseMultisigCommitteeQuery) ContractMode() (types.AggsenderMode, error)
 	switch aggchainType {
 	case aggchainECDSAMultisig:
 		return types.PessimisticProofMode, nil
-	case aggchainFEP:
+	case aggchainFEP, aggchainQBFT:
+		// QBFT uses the same aggchain-proof flow as FEP (certificate + aggkit-prover proof)
 		return types.AggchainProofMode, nil
 	default:
 		return none, fmt.Errorf("unsupported aggchain type: %v", aggchainType)
+	}
+}
+
+// AggchainType returns the aggchain type (AGGCHAIN_TYPE) of the rollup contract
+func (m *BaseMultisigCommitteeQuery) AggchainType() (types.AggchainType, error) {
+	if m == nil {
+		return "", fmt.Errorf("object is nil")
+	}
+	aggchainType, err := m.sovereignRollupSC.AGGCHAINTYPE(&bind.CallOpts{})
+	if err != nil {
+		return "", fmt.Errorf("failed to get aggchain type from contract: %w", err)
+	}
+	return aggchainTypeFromBytes(aggchainType)
+}
+
+// aggchainTypeFromBytes maps the bytes2 AGGCHAIN_TYPE value to the AggchainType enum
+func aggchainTypeFromBytes(aggchainType [2]byte) (types.AggchainType, error) {
+	switch aggchainType {
+	case aggchainECDSAMultisig:
+		return types.AggchainTypeECDSAMultisig, nil
+	case aggchainFEP:
+		return types.AggchainTypeFEP, nil
+	case aggchainQBFT:
+		return types.AggchainTypeQBFT, nil
+	default:
+		return "", fmt.Errorf("unsupported aggchain type: %v", aggchainType)
 	}
 }
 

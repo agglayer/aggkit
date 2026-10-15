@@ -82,21 +82,43 @@ func NewBuilderFlow(
 			return nil, fmt.Errorf("aggchainProverFlow - error creating aggkit prover client: %w", err)
 		}
 
-		l2ChainID, err := rollupDataQuerier.GetRollupChainID()
+		aggchainType, err := committeeQuerier.AggchainType()
 		if err != nil {
-			return nil, fmt.Errorf("error getting rollup chain id: %w", err)
+			return nil, fmt.Errorf("aggchainProverFlow - error getting aggchain type: %w", err)
 		}
 
-		optimisticSigner, optimisticModeQuerier, err := optimistic.NewOptimistic(
-			ctx, logger, l1Client, l2ChainID, cfg.OptimisticModeConfig)
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
-		}
+		var (
+			optimisticSigner      types.OptimisticSigner
+			optimisticModeQuerier types.OptimisticModeQuerier
+			aggchainFEPQuerier    types.AggchainFEPRollupQuerier
+		)
+		if aggchainType == types.AggchainTypeQBFT {
+			// QBFT has no op-node and no optimistic mode: the range policy and the prover are the only inputs
+			if err := ValidateQBFTOptimisticConfig(cfg.OptimisticModeConfig); err != nil {
+				return nil, err
+			}
+			optimisticModeQuerier = disabledOptimisticModeQuerier{}
+			aggchainFEPQuerier, err = query.NewQbftQuerier(logger, cfg.SovereignRollupAddr, l1Client)
+			if err != nil {
+				return nil, fmt.Errorf("aggchainProverFlow - error creating aggchain QBFT querier: %w", err)
+			}
+		} else {
+			l2ChainID, err := rollupDataQuerier.GetRollupChainID()
+			if err != nil {
+				return nil, fmt.Errorf("error getting rollup chain id: %w", err)
+			}
 
-		aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(logger, types.AggchainProofMode,
-			cfg.SovereignRollupAddr, l1Client)
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error creating aggchain FEP querier: %w", err)
+			optimisticSigner, optimisticModeQuerier, err = newOptimistic(
+				ctx, logger, l1Client, l2ChainID, cfg.OptimisticModeConfig)
+			if err != nil {
+				return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
+			}
+
+			aggchainFEPQuerier, err = query.NewAggchainFEPQuerier(logger, types.AggchainProofMode,
+				cfg.SovereignRollupAddr, l1Client)
+			if err != nil {
+				return nil, fmt.Errorf("aggchainProverFlow - error creating aggchain FEP querier: %w", err)
+			}
 		}
 
 		commonFlowComponents, err := CreateCommonFlowComponents(
@@ -148,6 +170,34 @@ func NewBuilderFlow(
 	default:
 		return nil, fmt.Errorf("unsupported Aggsender mode: %s", cfg.Mode)
 	}
+}
+
+// disabledOptimisticModeQuerier reports optimistic mode as always off (used by networks without it, e.g. QBFT)
+type disabledOptimisticModeQuerier struct{}
+
+// IsOptimisticModeOn always returns false
+func (disabledOptimisticModeQuerier) IsOptimisticModeOn() (bool, error) {
+	return false, nil
+}
+
+// ValidateQBFTOptimisticConfig fails if optimistic mode is configured: AggchainQBFT has no optimistic mode
+// and no op-node, so OptimisticModeConfig.OpNodeURL must be empty.
+func ValidateQBFTOptimisticConfig(cfg optimistic.Config) error {
+	if cfg.OpNodeURL != "" {
+		return fmt.Errorf("aggchain type QBFT (0x0002) does not support optimistic mode: " +
+			"OptimisticModeConfig.OpNodeURL must be empty")
+	}
+	return nil
+}
+
+// newOptimistic is optimistic.NewOptimistic returning the interfaces used by the flow
+func newOptimistic(ctx context.Context, logger *log.Logger, l1Client aggkittypes.BaseEthereumClienter,
+	chainID uint64, cfg optimistic.Config) (types.OptimisticSigner, types.OptimisticModeQuerier, error) {
+	signer, modeQuerier, err := optimistic.NewOptimistic(ctx, logger, l1Client, chainID, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return signer, modeQuerier, nil
 }
 
 type CommonFlowComponents struct {
