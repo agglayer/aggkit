@@ -497,13 +497,19 @@ func compareTokenBalances(
 		checks = append(checks, check)
 	}
 
+	sortTokenBalanceChecks(checks)
+	return checks, nil
+}
+
+// sortTokenBalanceChecks orders the checks by origin network, then origin token address, so the
+// output is deterministic.
+func sortTokenBalanceChecks(checks []TokenBalanceCheck) {
 	sort.Slice(checks, func(i, j int) bool {
 		if checks[i].OriginNetwork != checks[j].OriginNetwork {
 			return checks[i].OriginNetwork < checks[j].OriginNetwork
 		}
 		return checks[i].OriginTokenAddress < checks[j].OriginTokenAddress
 	})
-	return checks, nil
 }
 
 // lbtBalanceMap indexes the LBT entries' balances by token. An unparseable balance is an error:

@@ -10,6 +10,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/db"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/tree"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -25,6 +26,7 @@ const bridgeTableName = "bridge"
 const (
 	queryCountBridges    = "SELECT COUNT(*) FROM " + bridgeTableName
 	queryMaxDepositCount = "SELECT MAX(deposit_count) FROM " + bridgeTableName
+	queryMaxBlockNum     = "SELECT MAX(block_num) FROM " + bridgeTableName
 	queryAllBridges      = "SELECT * FROM " + bridgeTableName + " ORDER BY deposit_count ASC"
 )
 
@@ -221,6 +223,15 @@ func (s *BridgeSyncerLite) StoreBridges(ctx context.Context, bridges []BridgeLea
 
 	sort.Slice(bridges, func(i, j int) bool { return bridges[i].DepositCount < bridges[j].DepositCount })
 
+	if err := s.inTx(ctx, func(tx dbtypes.Txer) error { return s.insertBridges(tx, bridges) }); err != nil {
+		return err
+	}
+	s.log.Infof("stored %d bridges", len(bridges))
+	return nil
+}
+
+// inTx runs fn inside a transaction: committed when fn succeeds, rolled back otherwise.
+func (s *BridgeSyncerLite) inTx(ctx context.Context, fn func(tx dbtypes.Txer) error) error {
 	tx, err := db.NewTx(ctx, s.db)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -234,6 +245,18 @@ func (s *BridgeSyncerLite) StoreBridges(ctx context.Context, bridges []BridgeLea
 		}
 	}()
 
+	if err := fn(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	committed = true
+	return nil
+}
+
+// insertBridges inserts the bridges (already sorted by deposit count) into the bridge table.
+func (s *BridgeSyncerLite) insertBridges(tx dbtypes.Txer, bridges []BridgeLeaf) error {
 	progress := s.newBuildProgress("persisting bridges", len(bridges))
 	for i := range bridges {
 		if err := meddler.Insert(tx, bridgeTableName, &bridges[i]); err != nil {
@@ -241,12 +264,6 @@ func (s *BridgeSyncerLite) StoreBridges(ctx context.Context, bridges []BridgeLea
 		}
 		progress(i + 1)
 	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
-	}
-	committed = true
-	s.log.Infof("stored %d bridges", len(bridges))
 	return nil
 }
 
@@ -267,35 +284,9 @@ func (s *BridgeSyncerLite) BuildTree(ctx context.Context) (common.Hash, error) {
 		return common.Hash{}, nil
 	}
 
-	tx, err := db.NewTx(ctx, s.db)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("begin transaction: %w", err)
+	if err := s.putLeaves(ctx, bridges); err != nil {
+		return common.Hash{}, err
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			if rerr := tx.Rollback(); rerr != nil {
-				s.log.Errorf("rollback failed: %v", rerr)
-			}
-		}
-	}()
-
-	progress := s.newBuildProgress("building exit tree", len(bridges))
-	for i := range bridges {
-		b := &bridges[i]
-		if _, err := s.exitTree.PutLeaf(tx, b.BlockNum, b.BlockPos, treetypes.Leaf{
-			Index: b.DepositCount,
-			Hash:  b.Hash(),
-		}); err != nil {
-			return common.Hash{}, fmt.Errorf("add leaf (deposit_count %d) to exit tree: %w", b.DepositCount, err)
-		}
-		progress(i + 1)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return common.Hash{}, fmt.Errorf("commit transaction: %w", err)
-	}
-	committed = true
 
 	root, err := s.LocalExitRoot()
 	if err != nil {
@@ -303,6 +294,62 @@ func (s *BridgeSyncerLite) BuildTree(ctx context.Context) (common.Hash, error) {
 	}
 	s.log.Infof("built exit tree from %d bridges; local exit root = %s", len(bridges), root.Hex())
 	return root, nil
+}
+
+// AppendBridges persists the given bridges on top of an already-built exit tree and appends their
+// leaves to it, returning the new local exit root. Unlike BuildTree it keeps the existing leaves: the
+// first new deposit count must be exactly one past the tree's last leaf and the counts must be
+// contiguous, or the append fails (the append-only tree rejects any gap or overlap). Used to extend a
+// previously built tree (e.g. the exit_certificate delta mode).
+func (s *BridgeSyncerLite) AppendBridges(ctx context.Context, bridges []BridgeLeaf) (common.Hash, error) {
+	if s.db == nil || s.exitTree == nil {
+		return common.Hash{}, errors.New("AppendBridges requires a DB-backed syncer (set Config.DBPath)")
+	}
+	if len(bridges) == 0 {
+		return s.LocalExitRoot()
+	}
+	// Keep a private, deposit-count ordered copy: StoreBridges sorts in place and the leaves must be
+	// appended in that same order.
+	ordered := append([]BridgeLeaf(nil), bridges...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].DepositCount < ordered[j].DepositCount })
+	// Bridge rows and tree leaves go in ONE transaction: a gap/overlap (or any tree failure) must leave
+	// the DB untouched, not the bridge table ahead of the tree.
+	if err := s.inTx(ctx, func(tx dbtypes.Txer) error {
+		if err := s.insertBridges(tx, ordered); err != nil {
+			return err
+		}
+		return s.putLeavesTx(tx, ordered)
+	}); err != nil {
+		return common.Hash{}, err
+	}
+	root, err := s.LocalExitRoot()
+	if err != nil {
+		return common.Hash{}, err
+	}
+	s.log.Infof("appended %d bridges to the exit tree; local exit root = %s", len(ordered), root.Hex())
+	return root, nil
+}
+
+// putLeaves inserts the leaf of every bridge (already sorted by deposit count) into the exit tree in
+// a single transaction.
+func (s *BridgeSyncerLite) putLeaves(ctx context.Context, bridges []BridgeLeaf) error {
+	return s.inTx(ctx, func(tx dbtypes.Txer) error { return s.putLeavesTx(tx, bridges) })
+}
+
+// putLeavesTx inserts the leaf of every bridge (sorted by deposit count) into the exit tree within tx.
+func (s *BridgeSyncerLite) putLeavesTx(tx dbtypes.Txer, bridges []BridgeLeaf) error {
+	progress := s.newBuildProgress("building exit tree", len(bridges))
+	for i := range bridges {
+		b := &bridges[i]
+		if _, err := s.exitTree.PutLeaf(tx, b.BlockNum, b.BlockPos, treetypes.Leaf{
+			Index: b.DepositCount,
+			Hash:  b.Hash(),
+		}); err != nil {
+			return fmt.Errorf("add leaf (deposit_count %d) to exit tree: %w", b.DepositCount, err)
+		}
+		progress(i + 1)
+	}
+	return nil
 }
 
 // LocalExitRoot returns the current root of the exit tree, or the zero hash if the tree is empty.
@@ -349,6 +396,23 @@ func (s *BridgeSyncerLite) NextDepositCount(ctx context.Context) (uint32, error)
 		return 0, nil
 	}
 	return uint32(maxDepositCount.Int64) + 1, nil
+}
+
+// NextBlockNum returns one past the highest block number currently persisted, or 0 when the DB is
+// empty. Leaves that do not exist on a chain (appended off-chain) use it as their synthetic block so
+// they sort after every persisted bridge. It runs a single aggregate query (MAX(block_num)).
+func (s *BridgeSyncerLite) NextBlockNum(ctx context.Context) (uint64, error) {
+	if s.db == nil {
+		return 0, errors.New("NextBlockNum requires a DB-backed syncer (set Config.DBPath)")
+	}
+	var maxBlockNum sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, queryMaxBlockNum).Scan(&maxBlockNum); err != nil {
+		return 0, fmt.Errorf("query max block number: %w", err)
+	}
+	if !maxBlockNum.Valid {
+		return 0, nil
+	}
+	return uint64(maxBlockNum.Int64) + 1, nil
 }
 
 // GetBridges returns all persisted bridge leaves ordered by deposit count.

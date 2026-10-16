@@ -98,6 +98,9 @@ func Run(c *cli.Context) error {
 	}
 
 	step := c.String("step")
+	if cfg.Options.DeltaMode {
+		return runDeltaSteps(ctx, cfg, step)
+	}
 	if step == "" || step == "all" {
 		return runAll(ctx, cfg)
 	}
