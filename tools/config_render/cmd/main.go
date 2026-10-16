@@ -38,6 +38,14 @@ func main() {
 			Usage: "Use aggkit's DefaultMandatoryVars from aggkit/config/default.go (ignored if --mandatory-vars is set)",
 		},
 		&cli.StringFlag{
+			Name:  "deprecated-fields",
+			Usage: "TOML file of \"pattern\" = \"reason\" entries; fail if the rendered config uses any of them",
+		},
+		&cli.BoolFlag{
+			Name:  "use-default-deprecated-fields",
+			Usage: "Check against aggkit's built-in deprecated fields (ignored if --deprecated-fields is set)",
+		},
+		&cli.StringFlag{
 			Name:  "env-prefix",
 			Usage: "Prefix of the env vars that override variables",
 			Value: config.EnvVarPrefix,
@@ -58,12 +66,14 @@ func main() {
 
 func run(c *cli.Context) error {
 	rendered, err := configrender.Render(configrender.Options{
-		DefaultValuesFile:       c.String("default-values"),
-		DefaultVarsFile:         c.String("default-vars"),
-		MandatoryVarsFile:       c.String("mandatory-vars"),
-		UseDefaultMandatoryVars: c.Bool("use-default-mandatory-vars"),
-		ConfigFiles:             c.StringSlice("cfg"),
-		EnvPrefix:               c.String("env-prefix"),
+		DefaultValuesFile:          c.String("default-values"),
+		DefaultVarsFile:            c.String("default-vars"),
+		MandatoryVarsFile:          c.String("mandatory-vars"),
+		UseDefaultMandatoryVars:    c.Bool("use-default-mandatory-vars"),
+		ConfigFiles:                c.StringSlice("cfg"),
+		DeprecatedFieldsFile:       c.String("deprecated-fields"),
+		UseDefaultDeprecatedFields: c.Bool("use-default-deprecated-fields"),
+		EnvPrefix:                  c.String("env-prefix"),
 	})
 	if err != nil {
 		switch {

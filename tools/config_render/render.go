@@ -5,8 +5,14 @@ package configrender
 
 import (
 	"fmt"
+	"os"
+	"sort"
 
 	"github.com/agglayer/aggkit/config"
+	kotoml "github.com/knadh/koanf/parsers/toml"
+	"github.com/knadh/koanf/providers/rawbytes"
+	"github.com/knadh/koanf/v2"
+	"github.com/pelletier/go-toml/v2"
 )
 
 // Options describes the layers to compose. Layers are merged in this order
@@ -23,6 +29,12 @@ type Options struct {
 	UseDefaultMandatoryVars bool
 	// ConfigFiles are the user config files, merged in order.
 	ConfigFiles []string
+	// DeprecatedFieldsFile is a TOML file mapping a field pattern to its reason
+	// (e.g. "AggSender.URLRPCL2" = "use L2URL"). Replaces config.DefaultDeprecatedFields.
+	DeprecatedFieldsFile string
+	// UseDefaultDeprecatedFields checks against aggkit's deprecated fields
+	// (ignored if DeprecatedFieldsFile is set).
+	UseDefaultDeprecatedFields bool
 	// EnvPrefix is the prefix for env var overrides (default config.EnvVarPrefix).
 	EnvPrefix string
 }
@@ -38,7 +50,61 @@ func Render(opts Options) (string, error) {
 	if prefix == "" {
 		prefix = config.EnvVarPrefix
 	}
-	return config.NewConfigRender(files, prefix).Render()
+	rendered, err := config.NewConfigRender(files, prefix).Render()
+	if err != nil {
+		return rendered, err
+	}
+	rules, err := deprecatedRules(opts)
+	if err != nil || len(rules) == 0 {
+		return rendered, err
+	}
+	keys, err := renderedKeys(rendered)
+	if err != nil {
+		return rendered, err
+	}
+	return rendered, config.CheckDeprecatedFields(keys, rules)
+}
+
+func deprecatedRules(opts Options) ([]config.DeprecatedField, error) {
+	switch {
+	case opts.DeprecatedFieldsFile != "":
+		return LoadDeprecatedFields(opts.DeprecatedFieldsFile)
+	case opts.UseDefaultDeprecatedFields:
+		return config.DefaultDeprecatedFields(), nil
+	}
+	return nil, nil
+}
+
+// LoadDeprecatedFields reads a TOML file of "pattern" = "reason" entries. A pattern ending
+// with a dot, or naming a section, matches everything under it.
+func LoadDeprecatedFields(path string) ([]config.DeprecatedField, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading deprecated fields file %s: %w", path, err)
+	}
+	entries := map[string]string{}
+	if err := toml.Unmarshal(content, &entries); err != nil {
+		return nil, fmt.Errorf("parsing deprecated fields file %s (expected \"pattern\" = \"reason\"): %w", path, err)
+	}
+	patterns := make([]string, 0, len(entries))
+	for pattern := range entries {
+		patterns = append(patterns, pattern)
+	}
+	sort.Strings(patterns)
+	rules := make([]config.DeprecatedField, 0, len(patterns))
+	for _, pattern := range patterns {
+		rules = append(rules, config.DeprecatedField{FieldNamePattern: pattern, Reason: entries[pattern]})
+	}
+	return rules, nil
+}
+
+// renderedKeys returns the leaf keys (dot separated) of the rendered TOML config.
+func renderedKeys(rendered string) ([]string, error) {
+	k := koanf.New(".")
+	if err := k.Load(rawbytes.Provider([]byte(rendered)), kotoml.Parser()); err != nil {
+		return nil, fmt.Errorf("parsing rendered config: %w", err)
+	}
+	return k.Keys(), nil
 }
 
 // BuildFileData reads every layer and returns them in merge order.

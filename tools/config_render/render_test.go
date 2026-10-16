@@ -83,3 +83,41 @@ func TestRender_JSONConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, `debug`)
 }
+
+func TestRender_DeprecatedFields(t *testing.T) {
+	vars := write(t, "vars.toml", `A = 1`)
+	values := write(t, "values.toml", "[Old]\nField = {{A}}\n[Fine]\nX = 1")
+
+	// not checked unless requested
+	_, err := Render(Options{DefaultVarsFile: vars, DefaultValuesFile: values})
+	require.NoError(t, err)
+
+	rules := write(t, "dep.toml", `"Old.Field" = "use New.Field instead"`)
+	_, err = Render(Options{DefaultVarsFile: vars, DefaultValuesFile: values, DeprecatedFieldsFile: rules})
+	var depErr *config.DeprecatedFieldsError
+	require.ErrorAs(t, err, &depErr)
+	require.ErrorContains(t, err, "use New.Field instead")
+
+	// section pattern matches everything under it
+	rules = write(t, "dep2.toml", `"Old" = "section gone"`)
+	_, err = Render(Options{DefaultVarsFile: vars, DefaultValuesFile: values, DeprecatedFieldsFile: rules})
+	require.ErrorAs(t, err, &depErr)
+
+	rules = write(t, "dep3.toml", `"Other.Field" = "nope"`)
+	_, err = Render(Options{DefaultVarsFile: vars, DefaultValuesFile: values, DeprecatedFieldsFile: rules})
+	require.NoError(t, err)
+
+	bad := write(t, "bad.toml", `not valid = = toml`)
+	_, err = Render(Options{DefaultVarsFile: vars, DefaultValuesFile: values, DeprecatedFieldsFile: bad})
+	require.Error(t, err)
+}
+
+func TestRender_DefaultDeprecatedFields(t *testing.T) {
+	cfg := write(t, "cfg.toml", "[AggSender]\nURLRPCL2 = \"http://x\"")
+	_, err := Render(Options{UseDefaultMandatoryVars: true, ConfigFiles: []string{cfg}})
+	require.NoError(t, err)
+
+	_, err = Render(Options{UseDefaultMandatoryVars: true, UseDefaultDeprecatedFields: true, ConfigFiles: []string{cfg}})
+	var depErr *config.DeprecatedFieldsError
+	require.ErrorAs(t, err, &depErr)
+}
