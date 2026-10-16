@@ -92,7 +92,7 @@ run-proxy: build-aggkit-proxy ## Runs aggkit-proxy (pass args with ARGS, e.g. ma
 	$(GOBIN)/aggkit-proxy $(ARGS)
 
 .PHONY: build-tools
-build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger $(GOBIN)/exit_certificate $(GOBIN)/exit_certificate_claimer $(GOBIN)/force_ger_update ## Builds the tools
+build-tools: $(GOBIN)/aggsender_find_imported_bridge $(GOBIN)/remove_ger $(GOBIN)/exit_certificate $(GOBIN)/exit_certificate_claimer $(GOBIN)/force_ger_update $(GOBIN)/config_render ## Builds the tools
 
 
 .PHONY: build-aggsender_find_imported_bridge
@@ -109,6 +109,9 @@ build-exit_certificate_claimer: $(GOBIN)/exit_certificate_claimer ## Build exit_
 
 .PHONY: build-force_ger_update
 build-force_ger_update: $(GOBIN)/force_ger_update ## Build force_ger_update tool
+
+.PHONY: build-config_render
+build-config_render: $(GOBIN)/config_render ## Build config_render tool
 
 .PHONY: $(GOBIN)/aggsender_find_imported_bridge
 $(GOBIN)/aggsender_find_imported_bridge:
@@ -130,6 +133,10 @@ $(GOBIN)/exit_certificate_claimer:
 .PHONY: $(GOBIN)/force_ger_update
 $(GOBIN)/force_ger_update:
 	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/force_ger_update ./tools/force_ger_update/cmd
+
+.PHONY: $(GOBIN)/config_render
+$(GOBIN)/config_render:
+	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/config_render ./tools/config_render/cmd
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
