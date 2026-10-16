@@ -33,6 +33,25 @@ linters:
     goconst:
       min-len: 3
       min-occurrences: 3
+      # Domain strings repeated by design (map keys, JSON-RPC methods, status values, syncer messages).
+      # golangci-lint >= v2.14 counts these package-wide (v2.4.0's goconst didn't); restring them via
+      # ignore-string-values instead of forcing one-constant-per-string refactors of old code.
+      ignore-string-values:
+        - "^error$"
+        - "^address$"
+        - "^data$"
+        - "^pending$"
+        - "^latest$"
+        - "^topics$"
+        - "^toBlock$"
+        - "^fromBlock$"
+        - "^eth_call$"
+        - "^eth_getBalance$"
+        - "^InError$"
+        - "^l1infotreesync$"
+        - "^L1 bridge syncer is not available$"
+        - "^L2 bridge syncer is not available$"
+        - "^invalid global_exit_root parameter, must be a valid hex hash$"
     gocritic:
       enabled-checks:
         - ruleguard
@@ -43,6 +62,8 @@ linters:
         - G115
         - G204  # subprocess with tainted args — controlled via config/CLI
         - G602  # slice OOB — false positive in taint analysis
+        - G202  # SQL string concatenation — only builds ?,? placeholder lists; values are bound parameters
+        - G708  # template injection via taint analysis — internal codegen scripts, no untrusted input
     revive:
       rules:
         - name: exported
@@ -60,10 +81,14 @@ linters:
           - lll
           - mnd
           - unparam
+          - goconst  # golangci-lint >= v2.14 runs goconst on test files by default; v2.4.0 didn't
         path: (_test\.go|^test/.*)
       - linters:
           - dupl
         path: etherman/contracts/contracts_(banana|elderberry)\.go
+      - linters:
+          - prealloc
+        path: tools/exit_certificate/bridgesyncerlite/migrations\.go  # slice seeded with a literal element; capacity hint is noise here
       - linters:
           - gosec
         text: "G703"  # path traversal false positive — not a valid rule ID in golangci-lint v2.4.0

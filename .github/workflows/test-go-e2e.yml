@@ -104,6 +104,13 @@ jobs:
           - env: anvil-2chains
             group: finality-knobs
             run: "^TestAggsenderIndependentL1FinalityKnobs$"
+          # Fee estimation endpoints (agglayer/issues#38, agglayer/issues#40): the tests create
+          # their own bridge/claim traffic (ERC20 deployments, bridges, claims and burns) and read
+          # statistics through the aggkit-proxy, so they run in their own stack rather than
+          # sharing one with the state-mutating suites above.
+          - env: anvil-2chains
+            group: fee-estimate
+            run: "^(TestClaimFeeEstimateViaProxy|TestBridgeFeeEstimateViaProxy)$"
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -111,7 +118,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.25.7
+          go-version: 1.26.9
 
       - name: Install Docker Compose
         run: |
@@ -179,7 +186,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.25.7
+          go-version: 1.26.9
 
       - name: Install Docker Compose
         run: |

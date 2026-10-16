@@ -106,14 +106,14 @@ func RunStepE(
 	}
 
 	return &StepEResult{
-			UnclaimedBridges:  unclaimedAssets,
-			UnclaimedMessages: unclaimedMessages,
-			FinalCertificate:  nil,
-		}, fmt.Errorf(
-			"unclaimed deposits not supported, require to implement merkle proofs "+
-				"(disable with options.ignoreUnclaimed=true or claim the deposits on L2): %d unclaimed asset deposit(s)",
-			len(unclaimedAssets),
-		)
+		UnclaimedBridges:  unclaimedAssets,
+		UnclaimedMessages: unclaimedMessages,
+		FinalCertificate:  nil,
+	}, fmt.Errorf(
+		"unclaimed deposits not supported, require to implement merkle proofs "+
+			"(disable with options.ignoreUnclaimed=true or claim the deposits on L2): %d unclaimed asset deposit(s)",
+		len(unclaimedAssets),
+	)
 }
 
 // resolveL1EndBlock returns the last L1 block the L1 reads cover: the l1EndBlock cutoff when

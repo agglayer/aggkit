@@ -213,6 +213,8 @@ func start(cliCtx *cli.Context) error {
 			l2BridgeSync,
 			l1ClaimSync,
 			l2ClaimSync,
+			l1Client,
+			l2Client,
 		)
 		b.RegisterRoutes(publicServer.Engine())
 		publicHasRoutes = true
