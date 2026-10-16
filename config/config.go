@@ -345,6 +345,11 @@ func Load(ctx *cli.Context) (*Config, error) {
 	return LoadFile(filesData, saveConfigPath, defaultConfigVars, allowDeprecatedFields)
 }
 
+// ReadFiles reads the given config files, converting the non-TOML ones (e.g. JSON) to TOML.
+func ReadFiles(files []string) ([]FileData, error) {
+	return readFiles(files)
+}
+
 func readFiles(files []string) ([]FileData, error) {
 	result := make([]FileData, 0, len(files))
 	for _, file := range files {
@@ -502,9 +507,20 @@ func loadString(cfg *Config, configData string, configType string,
 }
 
 func checkDeprecatedFields(keysOnConfig []string) error {
+	return CheckDeprecatedFields(keysOnConfig, deprecatedFieldsOnConfig)
+}
+
+// DefaultDeprecatedFields returns a copy of the deprecated-fields rules used by aggkit.
+func DefaultDeprecatedFields() []DeprecatedField {
+	return append([]DeprecatedField(nil), deprecatedFieldsOnConfig...)
+}
+
+// CheckDeprecatedFields checks the config keys against the given rules. WarnOnly rules are
+// logged; for the rest it returns a *DeprecatedFieldsError listing the matching keys.
+func CheckDeprecatedFields(keysOnConfig []string, rules []DeprecatedField) error {
 	err := NewErrDeprecatedFields()
 	for _, key := range keysOnConfig {
-		forbbidenInfo := getDeprecatedField(key)
+		forbbidenInfo := getDeprecatedField(key, rules)
 		if forbbidenInfo == nil {
 			continue
 		}
@@ -520,9 +536,9 @@ func checkDeprecatedFields(keysOnConfig []string) error {
 	return nil
 }
 
-func getDeprecatedField(fieldName string) *DeprecatedField {
+func getDeprecatedField(fieldName string, rules []DeprecatedField) *DeprecatedField {
 	field := strings.ToLower(fieldName)
-	for _, deprecatedField := range deprecatedFieldsOnConfig {
+	for _, deprecatedField := range rules {
 		pattern := strings.ToLower(deprecatedField.FieldNamePattern)
 
 		// Exact match

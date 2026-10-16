@@ -14,12 +14,32 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agglayer/aggkit/bridgeservice/feeestimate"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // ErrNotFound is returned when a resource is not found (HTTP 404)
 var ErrNotFound = errors.New("not found")
+
+// HTTPStatusError is the error the client returns when the bridge service answers a status
+// other than 200 (404 answers on the doRequestAllowNotFound paths surface ErrNotFound instead).
+// It exposes the HTTP status code so callers can act on the status semantics: e.g. the fee
+// estimate endpoints answer 400 for a bad parameter and 503 when an estimate is unavailable
+// (fail closed), which callers should treat as "no quote for this route" rather than a hard
+// failure. Body holds the raw response body, the {"error": "..."} JSON the service writes for
+// its errors. Error() keeps the client's historical message format, which log redaction also
+// matches on (see common/redact.go).
+type HTTPStatusError struct {
+	StatusCode int
+	Body       string
+}
+
+// Error returns the status code and the raw response body, in the client's historical format.
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("unexpected status code %d: %s", e.StatusCode, e.Body)
+}
 
 const (
 	// DefaultTimeout is the default HTTP client timeout
@@ -496,6 +516,55 @@ func (c *Client) GetBridgesByContent(
 	return &resp, nil
 }
 
+// GetClaimFeeEstimate retrieves the fee estimate for claiming a token on the destination
+// network networkID (0 = L1, or the instance's L2 id): the cost of the claimAsset tx the
+// destination runs, reported as separate first-claim (wrapper deployment) and repeat-claim
+// estimates, exactly one of which is applicable. originNetwork is the network the token is
+// bridged from and originToken its address there (0x0 is the origin's native gas token).
+//
+// The endpoint fails closed: a bad parameter answers 400, and an estimate that cannot be
+// computed (no samples yet, an RPC failure, or no estimator configured) answers 503. Both
+// surface as *HTTPStatusError, so callers can read the status with errors.As and treat 503 as
+// "no quote for this route" rather than a hard failure.
+func (c *Client) GetClaimFeeEstimate(
+	ctx context.Context, networkID, originNetwork uint32, originToken common.Address,
+) (*feeestimate.ClaimFeeEstimateResponse, error) {
+	query := url.Values{}
+	query.Set("network_id", strconv.FormatUint(uint64(networkID), 10))
+	query.Set("origin_network", strconv.FormatUint(uint64(originNetwork), 10))
+	query.Set("origin_token_address", originToken.Hex())
+
+	var resp feeestimate.ClaimFeeEstimateResponse
+	if err := c.doRequest(ctx, "/bridge/v1/claim-fee-estimate?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GetBridgeFeeEstimate retrieves the fee estimate for bridging a token out of the origin
+// network networkID (0 = L1, or the instance's L2 id): the cost of the bridgeAsset tx the
+// origin runs, one estimate per bridging mechanism (native, erc20_lock or wrapped_burn), with
+// no per-token breakdown. token is the token address on the origin network; 0x0 is the native
+// gas token.
+//
+// The endpoint fails closed: a bad parameter answers 400, and an estimate that cannot be
+// computed (no samples yet for the mechanism, an RPC failure, or no estimator configured)
+// answers 503. Both surface as *HTTPStatusError, so callers can read the status with errors.As
+// and treat 503 as "no quote for this route" rather than a hard failure.
+func (c *Client) GetBridgeFeeEstimate(
+	ctx context.Context, networkID uint32, token common.Address,
+) (*feeestimate.BridgeFeeEstimateResponse, error) {
+	query := url.Values{}
+	query.Set("network_id", strconv.FormatUint(uint64(networkID), 10))
+	query.Set("token_address", token.Hex())
+
+	var resp feeestimate.BridgeFeeEstimateResponse
+	if err := c.doRequest(ctx, "/bridge/v1/bridge-fee-estimate?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // doRequest performs an HTTP GET request and decodes the response
 func (c *Client) doRequest(ctx context.Context, path string, result interface{}) error {
 	reqURL := c.baseURL + path
@@ -520,7 +589,10 @@ func (c *Client) doRequest(ctx context.Context, path string, result interface{})
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(respBody))
+		return &HTTPStatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(respBody),
+		}
 	}
 
 	if result != nil {
@@ -561,7 +633,10 @@ func (c *Client) doRequestAllowNotFound(ctx context.Context, path string, result
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(respBody))
+		return &HTTPStatusError{
+			StatusCode: resp.StatusCode,
+			Body:       string(respBody),
+		}
 	}
 
 	if result != nil {
