@@ -508,7 +508,7 @@ BridgeAddr = "0xC8cbEBf950B9Df44d987c8619f092beA980fF038"
 #   - PendingBlock
 #   - FinalizedBlock
 # ------------------------------------------------------------------------------
-BlockFinality = "LatestBlock"
+BlockFinality = "FinalizedBlock"
 
 [ReorgDetectorL2]
 # ------------------------------------------------------------------------------
@@ -592,7 +592,7 @@ InitialBlock = "60"
 # LatestBlock, SafeBlock, PendingBlock, FinalizedBlock, EarliestBlock
 # Default value is "LatestBlock"
 # ------------------------------------------------------------------------------
-BlockFinality = "LatestBlock"
+BlockFinality = "FinalizedBlock"
 
 # ==============================================================================
 #                        _           _                              __
