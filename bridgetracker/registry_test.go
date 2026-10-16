@@ -522,6 +522,44 @@ func TestRegistryUpdateTrackingStepUnregisteredReturnsNotFound(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
 }
 
+// TestRegistryUpdateTracking pins UpdateTracking: steps and tx land together with one
+// notification, steps beyond the written ones are kept, and an unknown id is not found
+func TestRegistryUpdateTracking(t *testing.T) {
+	r := newMemoryRegistry(0)
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+	require.ErrorIs(t, r.UpdateTracking(id, domain.TrackingBridgeTx{}, nil), domain.ErrTrackingNotFound)
+
+	_, err := r.Get(id, true)
+	require.NoError(t, err)
+	tail := BridgeStepPath{Step: types.StepClaimed, Status: types.StepStatusPending}
+	require.NoError(t, r.UpdateTrackingStep(id, 2, tail))
+
+	ch, unsubscribe, err := r.Subscribe(id)
+	require.NoError(t, err)
+	defer unsubscribe()
+
+	info := &BridgeInfo{NetworkID: 1}
+	steps := []BridgeStepPath{
+		{Step: types.StepWaitingL1InfoLeafAvailable, Status: types.StepStatusDone},
+		{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress},
+	}
+	require.NoError(t, r.UpdateTracking(id, domain.TrackingBridgeTx{Info: info}, steps))
+
+	select {
+	case update := <-ch:
+		require.Equal(t, info, update.Info())
+		require.Equal(t, append(append([]BridgeStepPath(nil), steps...), tail), update.AllSteps())
+		require.Equal(t, types.TrackerClaimStatusReadyToClaim, update.ClaimStatus())
+	case <-time.After(time.Second):
+		t.Fatal("expected one notification")
+	}
+	select {
+	case <-ch:
+		t.Fatal("UpdateTracking must notify exactly once")
+	default:
+	}
+}
+
 // TestRegistryGetRefusesNewEntryPastCapacity guards against an unauthenticated caller growing
 // the registry without bound: once maxEntries distinct bridges are registered, Get refuses to
 // create another one (ErrRegistryFull), while already-registered bridges remain fully usable.

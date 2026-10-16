@@ -217,6 +217,28 @@ func (r *memoryRegistry) UpdateTrackingStep(id TrackingID, stepIndex uint, step 
 	return nil
 }
 
+// UpdateTracking implements SupervisedStore: the steps and tx are swapped in under one lock
+// hold and subscribers are notified once, so no reader ever sees them half-written
+func (r *memoryRegistry) UpdateTracking(id TrackingID, tx domain.TrackingBridgeTx, allSteps []BridgeStepPath) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entry, ok := r.bridges[id]
+	if !ok {
+		return domain.ErrTrackingNotFound
+	}
+	steps := entry.tracking.AllSteps()
+	if !entry.tracking.TerminallyFailed() {
+		steps = domain.MergeSteps(steps, allSteps)
+	}
+	entry.tracking = domain.NewTrackingData(id, tx, steps)
+	if entry.terminalSince.IsZero() && entry.tracking.IsTerminal() {
+		entry.terminalSince = r.now()
+	}
+	entry.notify(entry.tracking)
+	return nil
+}
+
 // GetTrackerActives implements SupervisedStore: snapshots of the entries that never failed
 // to resolve whose TrackingStatus is not yet Finished, optionally filtered to one network
 func (r *memoryRegistry) GetTrackerActives(networkID *uint32) ([]*domain.TrackingData, error) {

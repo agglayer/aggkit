@@ -54,6 +54,16 @@ type SupervisedStore interface {
 	// the bridge is not in the supervised list
 	UpdateTrackingStep(id TrackingID, stepIndex uint, step BridgeStepPath) error
 
+	// UpdateTracking writes allSteps and tx in one atomic update and notifies subscribers
+	// once: the same end state as UpdateTrackingStep for each step followed by
+	// UpdateTrackingBridgeTx, but a concurrent Get never observes the steps half-written (e.g.
+	// one step done while the next one is still the stored pending, which would read as a
+	// different status than either the old or the new snapshot). Steps beyond len(allSteps)
+	// are kept, and steps are left untouched if the stored tx is a terminal give-up (see
+	// TrackingData.TerminallyFailed). Returns ErrTrackingNotFound if the bridge is not in the
+	// supervised list
+	UpdateTracking(id TrackingID, tx TrackingBridgeTx, allSteps []BridgeStepPath) error
+
 	// GetTrackerActives returns the snapshots of the supervised bridges that still need
 	// tracking (never failed to resolve and not yet Finished), optionally filtered to a
 	// single network

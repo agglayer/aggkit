@@ -82,8 +82,10 @@ func (t *TrackingData) AllSteps() []BridgeStepPath {
 // first step in a terminal error (permanent, or transient turned exhausted) if any step failed
 // that way, the step currently in progress — a step whose error is still transient counts as
 // in progress here too, mirroring TrackingBridgeTx.IsInTerminalError (see
-// isTerminalStepError) — if the bridge is still running, or the last step (Claimed, always the
-// tail of every path) once it is finished. nil while AllSteps is nil
+// isTerminalStepError) — if the bridge is still running, else the first step still pending (a
+// snapshot with nothing in progress but steps left to do is not finished: e.g. a store read
+// mid-way through a multi-step transition), or the last step (Claimed, always the tail of every
+// path) once every step is done or skipped. nil while AllSteps is nil
 func (t *TrackingData) StepIndex() *int {
 	if t == nil || t.allSteps == nil {
 		return nil
@@ -95,6 +97,11 @@ func (t *TrackingData) StepIndex() *int {
 	}
 	for i, step := range t.allSteps {
 		if step.Status == types.StepStatusInProgress || isTransientStepError(step) {
+			return &i
+		}
+	}
+	for i, step := range t.allSteps {
+		if step.Status == types.StepStatusPending {
 			return &i
 		}
 	}
@@ -147,16 +154,20 @@ func (t *TrackingData) TrackingStatus() types.TrackingStatus {
 // that only care about "is this claimable" without walking AllSteps themselves:
 // TrackingStatusError takes priority (types.TrackerClaimStatusError, whether the tracker gave
 // up resolving the bridge at all or one of its steps reached an error); otherwise the current
-// step decides — types.TrackerClaimStatusClaimed for StepClaimed, types.
-// TrackerClaimStatusReadyToClaim for StepWaitingClaim, and types.TrackerClaimStatusPending for
-// every other step, including before the bridge resolves (StepIndex nil)
+// step decides — types.TrackerClaimStatusClaimed for StepClaimed only once that step is done,
+// types.TrackerClaimStatusReadyToClaim for StepWaitingClaim, and types.TrackerClaimStatusPending
+// for every other step, including before the bridge resolves (StepIndex nil)
 func (t *TrackingData) ClaimStatus() types.TrackerClaimStatus {
 	if t.TrackingStatus() == types.TrackingStatusError {
 		return types.TrackerClaimStatusError
 	}
 	if idx := t.StepIndex(); idx != nil {
-		switch t.allSteps[*idx].Step {
+		step := t.allSteps[*idx]
+		switch step.Step {
 		case types.StepClaimed:
+			if step.Status != types.StepStatusDone {
+				return types.TrackerClaimStatusPending
+			}
 			return types.TrackerClaimStatusClaimed
 		case types.StepWaitingClaim:
 			return types.TrackerClaimStatusReadyToClaim
