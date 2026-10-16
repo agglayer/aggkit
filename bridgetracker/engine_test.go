@@ -1115,9 +1115,9 @@ func TestEngineTransientErrorKeepsState(t *testing.T) {
 	}
 }
 
-// countingStore wraps a real memoryRegistry, counting UpdateTrackingBridgeTx calls — the only
-// SupervisedStore method that notifies subscribers (see registry.go) — so a test can assert the
-// engine commits a bridge's resolved facts and its computed steps together, in a single call,
+// countingStore wraps a real memoryRegistry, counting the calls that commit and notify
+// subscribers (UpdateTrackingBridgeTx and UpdateTracking, see registry.go) — so a test can assert
+// the engine commits a bridge's resolved facts and its computed steps together, in a single call,
 // rather than a premature notification (Info populated, steps still the bare just-seeded path)
 // followed by a second one once the steps are actually computed.
 type countingStore struct {
@@ -1128,6 +1128,100 @@ type countingStore struct {
 func (s *countingStore) UpdateTrackingBridgeTx(id TrackingID, tx domain.TrackingBridgeTx) error {
 	s.txCommits++
 	return s.memoryRegistry.UpdateTrackingBridgeTx(id, tx)
+}
+
+func (s *countingStore) UpdateTracking(id TrackingID, tx domain.TrackingBridgeTx, allSteps []BridgeStepPath) error {
+	s.txCommits++
+	return s.memoryRegistry.UpdateTracking(id, tx, allSteps)
+}
+
+// snapshotRecordingStore wraps a real memoryRegistry and, after every write the engine makes,
+// records the claim status a concurrent reader (e.g. the activity refresh) would read at that
+// instant, plus how many per-step writes were made
+type snapshotRecordingStore struct {
+	*memoryRegistry
+	id         TrackingID
+	stepWrites int
+	seen       []types.TrackerClaimStatus
+}
+
+func (s *snapshotRecordingStore) record() {
+	if tracking, err := s.Get(s.id, false); err == nil {
+		s.seen = append(s.seen, tracking.ClaimStatus())
+	}
+}
+
+func (s *snapshotRecordingStore) UpdateTrackingStep(id TrackingID, stepIndex uint, step BridgeStepPath) error {
+	s.stepWrites++
+	err := s.memoryRegistry.UpdateTrackingStep(id, stepIndex, step)
+	s.record()
+	return err
+}
+
+func (s *snapshotRecordingStore) UpdateTrackingBridgeTx(id TrackingID, tx domain.TrackingBridgeTx) error {
+	err := s.memoryRegistry.UpdateTrackingBridgeTx(id, tx)
+	s.record()
+	return err
+}
+
+func (s *snapshotRecordingStore) UpdateTracking(
+	id TrackingID, tx domain.TrackingBridgeTx, allSteps []BridgeStepPath,
+) error {
+	err := s.memoryRegistry.UpdateTracking(id, tx, allSteps)
+	s.record()
+	return err
+}
+
+// TestEnginePersistsMultiStepTransitionAtomically guards against the engine persisting a tick's
+// steps with one store write per step: when one tick moves a bridge across several steps, a
+// reader landing between those writes saw a step done while the next one was still the stored
+// pending — nothing in progress — which derived as claimed for a bridge nobody had claimed. The
+// whole tick must land in one write, and no snapshot a reader can observe may read as claimed
+func TestEnginePersistsMultiStepTransitionAtomically(t *testing.T) {
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+	settledBlockNumber := uint64(1500)
+	settledBlockTimestamp := uint64(1700001500)
+	settlementLeafIndex := uint32(7)
+	injectedGER := common.HexToHash("0x04")
+	injectedGERBlockNumber := uint64(200)
+	injectedGERTimestamp := uint64(1700000000)
+	proofBuildingIndex := uint32(7)
+	// every fact up to (not including) the claim is already available: the first tick that gets
+	// through walks the bridge from WaitingLERUpdate all the way to WaitingClaim
+	f := &fakeSources{
+		bridge:    l2ToL2Bridge(),
+		originLER: &types.LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0a"), BlockNumber: 10},
+		cert: &types.CertificateInclusionData{
+			CertificateData: types.CertificateData{
+				CertificateID: common.HexToHash("0x02"), Status: agglayertypes.Settled,
+				SettlementTxHash: &settlementTxHash,
+				BlockNumber:      &settledBlockNumber, BlockTimestamp: &settledBlockTimestamp,
+			},
+		},
+		settlement: &types.L1SettledGERResult{
+			TxHash: settlementTxHash, SettlementBlockNumber: 2000, GER: common.HexToHash("0x0b"),
+			L1InfoTreeIndex:                   &settlementLeafIndex,
+			HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
+		},
+		injectedGERAtIndex: &types.GERData{
+			NetworkID: 2, GER: &injectedGER, LERType: types.LERTypeLocal,
+			BlockNumber: &injectedGERBlockNumber, BlockTimestamp: &injectedGERTimestamp,
+		},
+		l1InfoTreeIndexForBridge: &proofBuildingIndex,
+	}
+	store := &snapshotRecordingStore{memoryRegistry: newMemoryRegistry(0), id: id}
+	engine, err := NewEngine(EngineConfig{UnresolvedTimeout: 20 * time.Second},
+		log.WithFields("module", "engine_test"), store, f.engineSources())
+	require.NoError(t, err)
+	mustRegister(t, store.memoryRegistry, id)
+
+	engine.tick(t.Context())
+
+	require.Equal(t, types.StepWaitingClaim, currentStep(t, store.memoryRegistry),
+		"one tick walked the bridge through several steps")
+	require.Zero(t, store.stepWrites, "a tick's steps must not be persisted one write at a time")
+	require.Equal(t, []types.TrackerClaimStatus{types.TrackerClaimStatusReadyToClaim}, store.seen,
+		"exactly one write, and the only snapshot a reader can see is the final one")
 }
 
 // TestEngineFirstResolutionCommitsInfoAndStepsTogether guards against the bug where a bridge's

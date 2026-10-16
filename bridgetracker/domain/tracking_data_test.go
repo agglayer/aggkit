@@ -250,6 +250,47 @@ func TestClaimStatusDerivation(t *testing.T) {
 			expected: types.TrackerClaimStatusPending,
 		},
 		{
+			name:     "claimed step pending, nothing in progress -> Pending (not finished yet)",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{Step: types.StepWaitingClaim, Status: types.StepStatusDone},
+				{Step: types.StepClaimed, Status: types.StepStatusPending},
+			},
+			expected: types.TrackerClaimStatusPending,
+		},
+		{
+			name:     "done steps followed by pending ones, nothing in progress -> Pending (torn read)",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone},
+				{Step: types.StepPendingInclusion, Status: types.StepStatusDone},
+				{Step: types.StepCertificatePending, Status: types.StepStatusPending},
+				{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+				{Step: types.StepClaimed, Status: types.StepStatusPending},
+			},
+			expected: types.TrackerClaimStatusPending,
+		},
+		{
+			name:     "only WaitingClaim left pending, nothing in progress -> ReadyToClaim",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{Step: types.StepWaitingL1InfoLeafAvailable, Status: types.StepStatusDone},
+				{Step: types.StepWaitingClaim, Status: types.StepStatusPending},
+				{Step: types.StepClaimed, Status: types.StepStatusPending},
+			},
+			expected: types.TrackerClaimStatusReadyToClaim,
+		},
+		{
+			name:     "intermediate steps skipped, claimed done -> Claimed",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{Step: types.StepWaitingLERUpdate, Status: types.StepStatusDone},
+				{Step: types.StepPendingInclusion, Status: types.StepStatusSkipped},
+				{Step: types.StepClaimed, Status: types.StepStatusDone},
+			},
+			expected: types.TrackerClaimStatusClaimed,
+		},
+		{
 			name:     "exhausted error on WaitingClaim -> Error (gave up retrying)",
 			bridgeTx: TrackingBridgeTx{Info: info},
 			allSteps: []BridgeStepPath{
@@ -278,4 +319,34 @@ func TestClaimStatusDerivation(t *testing.T) {
 		var tracking *TrackingData
 		require.Equal(t, types.TrackerClaimStatusError, tracking.ClaimStatus())
 	})
+}
+
+// TestStepIndexPicksFirstPendingWhenNothingInProgress pins that a snapshot with done steps
+// followed by pending ones (and nothing in progress, e.g. read mid-way through a multi-step
+// store write) points at the first pending step and reads as Running, never at the last
+// (Claimed) step as if the bridge were finished
+func TestStepIndexPicksFirstPendingWhenNothingInProgress(t *testing.T) {
+	t.Parallel()
+
+	path := ExpectedPath(types.BridgeTypeL2ToL2)
+	allSteps := make([]BridgeStepPath, len(path))
+	for i, s := range path {
+		allSteps[i] = BridgeStepPath{Step: s, Status: types.StepStatusPending}
+	}
+	allSteps[0].Status = types.StepStatusDone
+	allSteps[1].Status = types.StepStatusDone
+
+	tracking := NewTrackingData(TrackingID{NetworkID: 1}, TrackingBridgeTx{Info: &BridgeInfo{NetworkID: 1}}, allSteps)
+	require.NotNil(t, tracking.StepIndex())
+	require.Equal(t, 2, *tracking.StepIndex())
+	require.Equal(t, types.TrackingStatusRunning, tracking.TrackingStatus())
+	require.NotEqual(t, types.TrackerClaimStatusClaimed, tracking.ClaimStatus())
+
+	for i := range allSteps {
+		allSteps[i].Status = types.StepStatusDone
+	}
+	finished := NewTrackingData(TrackingID{NetworkID: 1}, TrackingBridgeTx{Info: &BridgeInfo{NetworkID: 1}}, allSteps)
+	require.Equal(t, len(allSteps)-1, *finished.StepIndex(), "every step done -> the last one (Claimed)")
+	require.Equal(t, types.TrackingStatusFinished, finished.TrackingStatus())
+	require.Equal(t, types.TrackerClaimStatusClaimed, finished.ClaimStatus())
 }

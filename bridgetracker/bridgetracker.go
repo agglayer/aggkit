@@ -95,10 +95,9 @@ func (b *BridgeTracker) PublishError(id TrackingID, errStep *types.ErrorStep) {
 	}
 }
 
-// publishStatus upserts the bridge's resolved facts and expected path through the store's
-// fine-grained update methods: the steps first (UpdateTrackingStep, silent), then the tx
-// last (UpdateTrackingBridgeTx, which notifies) so subscribers see exactly one consistent,
-// fully-merged snapshot instead of one partial notification per step. It is a no-op
+// publishStatus upserts the bridge's resolved facts and expected path through one atomic
+// UpdateTracking call, so subscribers and concurrent readers see exactly one consistent,
+// fully-merged snapshot instead of one partial state per step. It is a no-op
 // (ErrTrackingNotFound) if the bridge is not in the supervised list
 func publishStatus(
 	store SupervisedStore, id TrackingID, info *BridgeInfo, allSteps []BridgeStepPath,
@@ -108,15 +107,9 @@ func publishStatus(
 		return err
 	}
 
-	for i, step := range allSteps {
-		if err := store.UpdateTrackingStep(id, uint(i), step); err != nil {
-			return err
-		}
-	}
-
 	tx := tracking.BridgeTx()
 	tx.Info = info
-	return store.UpdateTrackingBridgeTx(id, tx)
+	return store.UpdateTracking(id, tx, allSteps)
 }
 
 // publishError marks the bridge as terminally failed to resolve at all through the store. It

@@ -113,3 +113,16 @@ func (b *BridgeStepPath) Result() any {
 		return nil
 	}
 }
+
+// MergeSteps returns prev overwritten index by index with next, keeping any step of prev beyond
+// len(next): the same result as one SupervisedStore.UpdateTrackingStep call per step of next,
+// for store implementations of SupervisedStore.UpdateTracking. prev itself is never modified
+func MergeSteps(prev, next []BridgeStepPath) []BridgeStepPath {
+	if len(next) == 0 {
+		return prev
+	}
+	merged := make([]BridgeStepPath, max(len(prev), len(next)))
+	copy(merged, prev)
+	copy(merged, next)
+	return merged
+}
