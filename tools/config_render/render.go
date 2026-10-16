@@ -5,7 +5,6 @@ package configrender
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/agglayer/aggkit/config"
 )
@@ -85,9 +84,10 @@ func layerOrDefault(name, path, defaultContent string) (config.FileData, error) 
 }
 
 func readLayer(name, path string) (config.FileData, error) {
-	content, err := os.ReadFile(path)
+	// Same loading as aggkit: non-TOML files (e.g. JSON) are converted to TOML.
+	fds, err := config.ReadFiles([]string{path})
 	if err != nil {
 		return config.FileData{}, fmt.Errorf("reading %s (%s): %w", name, path, err)
 	}
-	return config.FileData{Name: name, Content: string(content)}, nil
+	return config.FileData{Name: name, Content: fds[0].Content}, nil
 }

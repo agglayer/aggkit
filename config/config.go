@@ -345,6 +345,11 @@ func Load(ctx *cli.Context) (*Config, error) {
 	return LoadFile(filesData, saveConfigPath, defaultConfigVars, allowDeprecatedFields)
 }
 
+// ReadFiles reads the given config files, converting the non-TOML ones (e.g. JSON) to TOML.
+func ReadFiles(files []string) ([]FileData, error) {
+	return readFiles(files)
+}
+
 func readFiles(files []string) ([]FileData, error) {
 	result := make([]FileData, 0, len(files))
 	for _, file := range files {

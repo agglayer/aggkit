@@ -10,8 +10,6 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const outputFilePermissions = 0o644
-
 func main() {
 	app := cli.NewApp()
 	app.Name = "config-render"
@@ -80,7 +78,7 @@ func run(c *cli.Context) error {
 	}
 
 	if out := c.String("output"); out != "" {
-		return os.WriteFile(out, []byte(rendered), outputFilePermissions)
+		return os.WriteFile(out, []byte(rendered), config.DefaultCreationFilePermissions)
 	}
 	_, err = fmt.Fprint(os.Stdout, rendered)
 	return err

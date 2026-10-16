@@ -73,3 +73,13 @@ func TestRender_MissingFile(t *testing.T) {
 	_, err := Render(Options{ConfigFiles: []string{"/nonexistent.toml"}})
 	require.Error(t, err)
 }
+
+func TestRender_JSONConfig(t *testing.T) {
+	vars := write(t, "vars.toml", `A = 1`)
+	values := write(t, "values.toml", `B = {{A}}`)
+	cfg := write(t, "cfg.json", `{"Log": {"Level": "debug"}}`)
+
+	out, err := Render(Options{DefaultVarsFile: vars, DefaultValuesFile: values, ConfigFiles: []string{cfg}})
+	require.NoError(t, err)
+	require.Contains(t, out, `debug`)
+}
