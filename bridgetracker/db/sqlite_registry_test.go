@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path"
+	"sync"
 	"testing"
 	"time"
 
@@ -629,4 +630,185 @@ func TestSQLiteRegistryCacheStatsIncludesWALSidecar(t *testing.T) {
 	withWAL, err := r.CacheStats()
 	require.NoError(t, err)
 	require.Equal(t, withoutWAL.SizeBytes+int64(len(walPayload)), withWAL.SizeBytes)
+}
+
+// tornPersistSteps returns the before/after step snapshots of an L2->L2 bridge that crosses
+// several steps in one engine tick: before, PendingInclusion is failing transiently (e.g. a
+// rate-limited source) with every later step still pending; after, the tick got through and
+// completed PendingInclusion..WaitingL1InfoLeafAvailable, opening WaitingClaim
+func tornPersistSteps() (before, after []domain.BridgeStepPath) {
+	path := domain.ExpectedPath(types.BridgeTypeL2ToL2)
+	before = make([]domain.BridgeStepPath, len(path))
+	for i, s := range path {
+		before[i] = domain.BridgeStepPath{Step: s, Status: types.StepStatusPending}
+	}
+	before[0].Status = types.StepStatusDone
+	before[1].Status = types.StepStatusError
+	before[1].Error = &types.ErrorStep{
+		ErrorType: types.StepErrorTransient, RetryCount: 30, Description: []string{"rate limited"},
+	}
+
+	after = append([]domain.BridgeStepPath(nil), before...)
+	for i := 1; i <= 5; i++ {
+		after[i].Status, after[i].Error = types.StepStatusDone, nil
+	}
+	after[6].Status = types.StepStatusInProgress // WaitingClaim
+	return before, after
+}
+
+// TestSQLiteRegistryTornStepWritesNeverReadAsClaimed reproduces a reader (e.g. the activity
+// refresh) loading a bridge's row between the per-step writes of one multi-step transition: a
+// snapshot with steps done followed by steps still pending (nothing in progress) must never
+// derive as claimed, and readyToClaim only once every step before WaitingClaim is done
+func TestSQLiteRegistryTornStepWritesNeverReadAsClaimed(t *testing.T) {
+	r := newTestSQLiteRegistry(t)
+	id := domain.TrackingID{NetworkID: 85, TxHash: testHash}
+	_, err := r.Get(id, true)
+	require.NoError(t, err)
+
+	before, after := tornPersistSteps()
+	for i, s := range before {
+		require.NoError(t, r.UpdateTrackingStep(id, uint(i), s))
+	}
+	for i, s := range after {
+		require.NoError(t, r.UpdateTrackingStep(id, uint(i), s))
+		mid, err := r.Get(id, false)
+		require.NoError(t, err)
+		require.NotEqual(t, types.TrackerClaimStatusClaimed, mid.ClaimStatus(),
+			"a partial write (after step %d) must not read as claimed", i)
+		if i < 5 {
+			// WaitingClaim may only read as current once WaitingL1InfoLeafAvailable (index 5) is done
+			require.NotEqual(t, types.TrackerClaimStatusReadyToClaim, mid.ClaimStatus(),
+				"WaitingClaim is not reachable yet after step %d", i)
+		}
+	}
+
+	final, err := r.Get(id, false)
+	require.NoError(t, err)
+	require.Equal(t, types.TrackerClaimStatusReadyToClaim, final.ClaimStatus())
+}
+
+// TestSQLiteRegistryUpdateTrackingIsAtomic pins that UpdateTracking writes a whole multi-step
+// transition (and the tx) with one row update: a reader polling concurrently only ever sees the
+// snapshot before or the one after, never a mix of the two
+func TestSQLiteRegistryUpdateTrackingIsAtomic(t *testing.T) {
+	r := newTestSQLiteRegistry(t)
+	id := domain.TrackingID{NetworkID: 85, TxHash: testHash}
+	_, err := r.Get(id, true)
+	require.NoError(t, err)
+
+	before, after := tornPersistSteps()
+	beforeTx := domain.TrackingBridgeTx{Info: testBridgeInfo()}
+	require.NoError(t, r.UpdateTracking(id, beforeTx, before))
+
+	statuses := func(steps []domain.BridgeStepPath) []types.StepStatus {
+		out := make([]types.StepStatus, len(steps))
+		for i, s := range steps {
+			out[i] = s.Status
+		}
+		return out
+	}
+	beforeStatuses, afterStatuses := statuses(before), statuses(after)
+
+	const rounds = 200
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	var mixed []types.StepStatus
+	var mixedClaim types.TrackerClaimStatus
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			snapshot, err := r.Get(id, false)
+			if err != nil {
+				continue
+			}
+			got := statuses(snapshot.AllSteps())
+			if !equalStatuses(got, beforeStatuses) && !equalStatuses(got, afterStatuses) && mixed == nil {
+				mixed, mixedClaim = got, snapshot.ClaimStatus()
+			}
+		}
+	}()
+	for i := 0; i < rounds; i++ {
+		next, nextTx := after, domain.TrackingBridgeTx{Info: testBridgeInfo()}
+		if i%2 == 1 {
+			next = before
+		}
+		require.NoError(t, r.UpdateTracking(id, nextTx, next))
+	}
+	close(done)
+	wg.Wait()
+	require.Nil(t, mixed, "a reader saw a half-written snapshot (claim status %s)", mixedClaim)
+
+	final, err := r.Get(id, false)
+	require.NoError(t, err)
+	require.Equal(t, beforeStatuses, statuses(final.AllSteps()), "an even number of round trips ends on before")
+}
+
+// TestSQLiteRegistryUpdateTracking pins the rest of UpdateTracking's contract: tx and steps
+// land together with one notification, steps beyond the written ones are kept, a terminally
+// failed bridge's steps stay untouched, and an unknown id is not found
+func TestSQLiteRegistryUpdateTracking(t *testing.T) {
+	r := newTestSQLiteRegistry(t)
+	id := domain.TrackingID{NetworkID: 1, TxHash: testHash}
+	require.ErrorIs(t, r.UpdateTracking(id, domain.TrackingBridgeTx{}, nil), domain.ErrTrackingNotFound)
+
+	_, err := r.Get(id, true)
+	require.NoError(t, err)
+	tail := domain.BridgeStepPath{Step: types.StepClaimed, Status: types.StepStatusPending}
+	require.NoError(t, r.UpdateTrackingStep(id, 2, tail))
+
+	ch, unsubscribe, err := r.Subscribe(id)
+	require.NoError(t, err)
+	defer unsubscribe()
+
+	info := testBridgeInfo()
+	steps := []domain.BridgeStepPath{
+		{Step: types.StepWaitingL1InfoLeafAvailable, Status: types.StepStatusDone},
+		{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress},
+	}
+	require.NoError(t, r.UpdateTracking(id, domain.TrackingBridgeTx{Info: info}, steps))
+
+	select {
+	case update := <-ch:
+		require.Equal(t, info, update.Info())
+		require.Equal(t, types.TrackerClaimStatusReadyToClaim, update.ClaimStatus())
+	case <-time.After(time.Second):
+		t.Fatal("expected a notification")
+	}
+	select {
+	case <-ch:
+		t.Fatal("UpdateTracking must notify exactly once")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	tracking, err := r.Get(id, false)
+	require.NoError(t, err)
+	require.Equal(t, append(append([]domain.BridgeStepPath(nil), steps...), tail), tracking.AllSteps())
+
+	failedID := domain.TrackingID{NetworkID: 2, TxHash: testHash}
+	_, err = r.Get(failedID, true)
+	require.NoError(t, err)
+	require.NoError(t, publishError(r, failedID, testErrorStep()))
+	require.NoError(t, r.UpdateTracking(failedID, domain.TrackingBridgeTx{Error: testErrorStep()}, steps))
+	failed, err := r.Get(failedID, false)
+	require.NoError(t, err)
+	require.Nil(t, failed.AllSteps(), "a terminally failed bridge's steps must stay untouched")
+}
+
+func equalStatuses(a, b []types.StepStatus) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

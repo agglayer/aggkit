@@ -257,6 +257,41 @@ func TestSQLiteActivityStoreIncludeTrackingRegistersUnclaimedBridge(t *testing.T
 	require.Equal(t, wantID, entries[0].Tracking.ID())
 }
 
+// TestSQLiteActivityStoreTrackerClaimedNeedsOnChainConfirmation pins that a tracker snapshot
+// reading claimed is never stored or served as claimed while the same refresh's on-chain
+// isClaimed() said unclaimed: it falls back to pending, also across a reload from disk
+func TestSQLiteActivityStoreTrackerClaimedNeedsOnChainConfirmation(t *testing.T) {
+	bridge := testBridge(1)
+	scanner := &fakeActivityScanner{
+		bridges: []*domain.ScannedBridge{activityScannedBridge(bridge, testScannedNetworkID)},
+	}
+	claims := &fakeActivityClaims{isClaimed: []bool{false}}
+	store := newTestSQLiteActivityStore(t, scanner, claims)
+
+	id := domain.TrackingID{NetworkID: testScannedNetworkID, TxHash: common.HexToHash(string(bridge.TxHash))}
+	_, err := store.supervised.Get(id, true)
+	require.NoError(t, err)
+	tx := domain.TrackingBridgeTx{Info: testBridgeInfo()}
+	require.NoError(t, store.supervised.UpdateTracking(id, tx, []domain.BridgeStepPath{
+		{Step: types.StepWaitingClaim, Status: types.StepStatusDone},
+		{Step: types.StepClaimed, Status: types.StepStatusDone},
+	}))
+	snapshot, err := store.supervised.Get(id, false)
+	require.NoError(t, err)
+	require.Equal(t, types.TrackerClaimStatusClaimed, snapshot.ClaimStatus(), "precondition: the tracker says claimed")
+
+	entries, _, err := refreshAndGet(t, store, testFromAddress, true, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
+	require.NotNil(t, entries[0].Tracking)
+	require.Equal(t, types.TrackerClaimStatusPending, entries[0].TrackerClaimStatus)
+
+	claimedOnly, _, err := store.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterClaimed)
+	require.NoError(t, err)
+	require.Empty(t, claimedOnly, "an on-chain unclaimed bridge must not be listed as claimed")
+}
+
 // TestSQLiteActivityStoreClaimedAndIndexedBridgeIsNeverRechecked verifies a bridge that is
 // claimed with its claim record already fetched is never rechecked on a later refresh —
 // settled, and persisted as such across refreshes

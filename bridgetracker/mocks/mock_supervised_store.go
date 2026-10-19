@@ -448,6 +448,54 @@ func (_c *SupervisedStore_PruneTerminal_Call) RunAndReturn(run func(time.Time) (
 	return _c
 }
 
+// UpdateTracking provides a mock function with given fields: id, tx, allSteps
+func (_m *SupervisedStore) UpdateTracking(id domain.TrackingID, tx domain.TrackingBridgeTx, allSteps []domain.BridgeStepPath) error {
+	ret := _m.Called(id, tx, allSteps)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateTracking")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(domain.TrackingID, domain.TrackingBridgeTx, []domain.BridgeStepPath) error); ok {
+		r0 = rf(id, tx, allSteps)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// SupervisedStore_UpdateTracking_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateTracking'
+type SupervisedStore_UpdateTracking_Call struct {
+	*mock.Call
+}
+
+// UpdateTracking is a helper method to define mock.On call
+//   - id domain.TrackingID
+//   - tx domain.TrackingBridgeTx
+//   - allSteps []domain.BridgeStepPath
+func (_e *SupervisedStore_Expecter) UpdateTracking(id interface{}, tx interface{}, allSteps interface{}) *SupervisedStore_UpdateTracking_Call {
+	return &SupervisedStore_UpdateTracking_Call{Call: _e.mock.On("UpdateTracking", id, tx, allSteps)}
+}
+
+func (_c *SupervisedStore_UpdateTracking_Call) Run(run func(id domain.TrackingID, tx domain.TrackingBridgeTx, allSteps []domain.BridgeStepPath)) *SupervisedStore_UpdateTracking_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(domain.TrackingID), args[1].(domain.TrackingBridgeTx), args[2].([]domain.BridgeStepPath))
+	})
+	return _c
+}
+
+func (_c *SupervisedStore_UpdateTracking_Call) Return(_a0 error) *SupervisedStore_UpdateTracking_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *SupervisedStore_UpdateTracking_Call) RunAndReturn(run func(domain.TrackingID, domain.TrackingBridgeTx, []domain.BridgeStepPath) error) *SupervisedStore_UpdateTracking_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateTrackingBridgeTx provides a mock function with given fields: id, tx
 func (_m *SupervisedStore) UpdateTrackingBridgeTx(id domain.TrackingID, tx domain.TrackingBridgeTx) error {
 	ret := _m.Called(id, tx)

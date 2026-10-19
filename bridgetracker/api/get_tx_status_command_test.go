@@ -37,6 +37,12 @@ func (f *fakeSupervisedRegistry) UpdateTrackingStep(_ domain.TrackingID, _ uint,
 	return nil
 }
 
+func (f *fakeSupervisedRegistry) UpdateTracking(
+	_ domain.TrackingID, _ domain.TrackingBridgeTx, _ []domain.BridgeStepPath,
+) error {
+	return nil
+}
+
 func (f *fakeSupervisedRegistry) GetTrackerActives(_ *uint32) ([]*domain.TrackingData, error) {
 	return nil, nil
 }

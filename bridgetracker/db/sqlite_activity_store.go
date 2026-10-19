@@ -854,7 +854,7 @@ func (s *sqliteActivityStore) refresh(
 			s.logger.Warnf("activity: registering bridge tx=%s with the tracker: %v", item.Bridge.TxHash, err)
 		} else {
 			entry.Tracking = tracking
-			entry.TrackerClaimStatus = tracking.ClaimStatus()
+			entry.TrackerClaimStatus = domain.UnclaimedTrackerClaimStatus(tracking)
 			return entry
 		}
 	}

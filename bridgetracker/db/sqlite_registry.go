@@ -574,6 +574,42 @@ func (r *sqliteRegistry) UpdateTrackingBridgeTx(id domain.TrackingID, tx domain.
 	if err != nil {
 		return err
 	}
+	return r.writeTracking(id, row, tx, steps)
+}
+
+// UpdateTracking implements domain.SupervisedStore: the merged steps and tx are written with a
+// single UPDATE of the row, so a concurrent Get only ever reads the old or the new snapshot —
+// never one with some steps of the batch written and the rest not yet. Notifies every
+// subscriber of id, like UpdateTrackingBridgeTx
+func (r *sqliteRegistry) UpdateTracking(
+	id domain.TrackingID, tx domain.TrackingBridgeTx, allSteps []domain.BridgeStepPath,
+) error {
+	row, err := r.selectRow(id)
+	if err != nil {
+		if errors.Is(err, aggkitdb.ErrNotFound) {
+			return domain.ErrTrackingNotFound
+		}
+		return fmt.Errorf("looking up tracked_bridge row for %s: %w", id, err)
+	}
+
+	prevTx, steps, err := row.decode()
+	if err != nil {
+		return err
+	}
+	if !domain.NewTrackingData(id, prevTx, steps).TerminallyFailed() {
+		// terminal failure is final: nothing may resurrect the bridge's steps afterwards (same
+		// rule as UpdateTrackingStep)
+		steps = domain.MergeSteps(steps, allSteps)
+	}
+	return r.writeTracking(id, row, tx, steps)
+}
+
+// writeTracking overwrites row's tx and steps with one UPDATE, recomputing claim_status and
+// stamping terminal_since the first time the snapshot turns terminal, then notifies every
+// subscriber of id with the written snapshot
+func (r *sqliteRegistry) writeTracking(
+	id domain.TrackingID, row *trackedBridgeRow, tx domain.TrackingBridgeTx, steps []domain.BridgeStepPath,
+) error {
 	tracking := domain.NewTrackingData(id, tx, steps)
 
 	data, err := json.Marshal(trackedBridgeData{Tx: tx, Steps: steps})

@@ -361,6 +361,58 @@ func TestActivityCache_TrackerClaimStatusMirrorsClaimState(t *testing.T) {
 	}
 }
 
+// TestActivityCache_TrackerClaimedNeedsOnChainConfirmation pins that a tracker snapshot reading
+// claimed is never served as claimed while the same refresh's on-chain isClaimed() said
+// unclaimed: it falls back to pending. Any other tracker status is served as is
+func TestActivityCache_TrackerClaimedNeedsOnChainConfirmation(t *testing.T) {
+	testCases := []struct {
+		name  string
+		steps []BridgeStepPath
+		want  types.TrackerClaimStatus
+	}{
+		{
+			name: "tracker claimed, on-chain unclaimed -> pending",
+			steps: []BridgeStepPath{
+				{Step: types.StepWaitingClaim, Status: types.StepStatusDone},
+				{Step: types.StepClaimed, Status: types.StepStatusDone},
+			},
+			want: types.TrackerClaimStatusPending,
+		},
+		{
+			name: "tracker readyToClaim, on-chain unclaimed -> readyToClaim",
+			steps: []BridgeStepPath{
+				{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress},
+				{Step: types.StepClaimed, Status: types.StepStatusPending},
+			},
+			want: types.TrackerClaimStatusReadyToClaim,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			bridge := testBridge(1)
+			scanner := &fakeActivityScanner{
+				bridges: []*domain.ScannedBridge{scannedBridge(bridge, testScannedNetworkID)},
+			}
+			claims := &fakeActivityClaims{isClaimed: []bool{false}}
+			cache := newTestActivityCache(scanner, claims)
+
+			id := TrackingID{NetworkID: testScannedNetworkID, TxHash: common.HexToHash(string(bridge.TxHash))}
+			_, err := cache.supervised.Get(id, true)
+			require.NoError(t, err)
+			tx := domain.TrackingBridgeTx{Info: &BridgeInfo{NetworkID: testScannedNetworkID}}
+			require.NoError(t, cache.supervised.UpdateTracking(id, tx, tc.steps))
+
+			entries, _, err := refreshAndGet(t, cache, testFromAddress, true, types.ActivityFilterAll)
+			require.NoError(t, err)
+			require.Len(t, entries, 1)
+			require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
+			require.NotNil(t, entries[0].Tracking)
+			require.Equal(t, tc.want, entries[0].TrackerClaimStatus)
+		})
+	}
+}
+
 // TestActivityCache_ReadyToClaimFailureLeavesPendingAndReportsError verifies a failed
 // IsReadyToClaim check does not fail the whole entry: TrackerClaimStatus conservatively stays
 // TrackerClaimStatusPending, and the failure is reported under Errors["readiness"].

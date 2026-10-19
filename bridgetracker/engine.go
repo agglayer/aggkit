@@ -278,8 +278,8 @@ func (e *Engine) tick(ctx context.Context) {
 // first unmet one). A source failure is persisted as a step-level error instead of
 // only being logged — see persistStepError. On success, all mutations for the tick — including
 // the bridge's tx-level facts (Info) the first time FindBridge resolves it — are merged into a
-// single tx, committed through exactly one UpdateTrackingBridgeTx call (preceded by the step
-// writes, if any changed) so subscribers only ever see one consistent, fully-merged snapshot:
+// single tx, committed together with the steps through exactly one atomic UpdateTracking call
+// (see persist) so subscribers only ever see one consistent, fully-merged snapshot:
 // never one where BridgeStatus is already populated but AllSteps still reflects the bare,
 // just-seeded pending path instead of what ResolveSteps actually computed for it
 func (e *Engine) resolveBridgeStep(ctx context.Context, tracking *domain.TrackingData) error {
@@ -349,20 +349,14 @@ func (e *Engine) persistStepError(id TrackingID, causeErr error, stepped *domain
 	_ = e.persist(id, stepped.BridgeTx(), stepped.AllSteps())
 }
 
-// persist writes allSteps (UpdateTrackingStep, silent) then tx (UpdateTrackingBridgeTx, which
-// notifies) as a single commit, so subscribers see one consistent, fully-merged snapshot
-// instead of one partial notification per field. Failures are logged here; the returned
-// error lets callers abort the tick for this bridge
+// persist writes allSteps and tx through one atomic UpdateTracking call, so neither
+// subscribers nor concurrent readers (Get) ever see a partially written snapshot — with one
+// write per step, a reader landing between them would see a step done while the next one is
+// still pending. Failures are logged here; the returned error lets callers abort the tick for
+// this bridge
 func (e *Engine) persist(id TrackingID, tx domain.TrackingBridgeTx, allSteps []BridgeStepPath) error {
-	for i, step := range allSteps {
-		if err := e.store.UpdateTrackingStep(id, uint(i), step); err != nil {
-			e.logger.Warnf("failed to persist step %d of bridge %s: %v", i, id, err)
-			return err
-		}
-	}
-
-	if err := e.store.UpdateTrackingBridgeTx(id, tx); err != nil {
-		e.logger.Warnf("failed to persist status of bridge %s: %v", id, err)
+	if err := e.store.UpdateTracking(id, tx, allSteps); err != nil {
+		e.logger.Warnf("failed to persist bridge %s: %v", id, err)
 		return err
 	}
 	return nil

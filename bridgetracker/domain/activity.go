@@ -82,10 +82,11 @@ type ActivityEntry struct {
 	// (see TrackingData.ClaimStatus) so the activity endpoint reports the same vocabulary —
 	// "pending"/"readyToClaim"/"claimed"/"error" — instead of ClaimStatus's plain tri-state.
 	// Derived from ClaimStatus: TrackerClaimStatusClaimed/Error mirror ClaimStatus directly;
-	// while ClaimStatus is Unclaimed, it is copied straight from Tracking.ClaimStatus() when
-	// Tracking is populated, or otherwise resolved directly against the bridge-service
-	// endpoints (see ActivityClaimChecker.IsReadyToClaim) without registering the bridge with
-	// the tracker
+	// while ClaimStatus is Unclaimed, it is taken from Tracking.ClaimStatus() when Tracking is
+	// populated — except that a tracker "claimed" is never served against an on-chain
+	// "unclaimed" (see UnclaimedTrackerClaimStatus) — or otherwise resolved directly against the
+	// bridge-service endpoints (see ActivityClaimChecker.IsReadyToClaim) without registering the
+	// bridge with the tracker
 	TrackerClaimStatus types.TrackerClaimStatus
 	// Errors holds the message of whatever check failed the last time this entry was
 	// refreshed, keyed by which check it was — "claim" when ClaimStatus is Error (the
@@ -109,6 +110,21 @@ type ActivityEntry struct {
 	// Frozen once the entry settles (see ActivityCache's settled), since a settled entry is
 	// never refreshed again
 	UpdatedAt time.Time
+}
+
+// UnclaimedTrackerClaimStatus is ActivityEntry.TrackerClaimStatus for a bridge the destination
+// bridge contract's isClaimed() just reported as unclaimed, given the tracker's snapshot of it:
+// tracking.ClaimStatus(), except that types.TrackerClaimStatusClaimed is downgraded to
+// types.TrackerClaimStatusPending. "claimed" must be confirmed on-chain: serving it for a bridge
+// isClaimed() just reported unclaimed would hide the claim action from the user until the next
+// refresh, whatever made the snapshot say so (e.g. a store read mid-way through a multi-step
+// write)
+func UnclaimedTrackerClaimStatus(tracking *TrackingData) types.TrackerClaimStatus {
+	status := tracking.ClaimStatus()
+	if status == types.TrackerClaimStatusClaimed {
+		return types.TrackerClaimStatusPending
+	}
+	return status
 }
 
 // ActivityWarning reports one network's bridge service that could not be scanned/reached while
