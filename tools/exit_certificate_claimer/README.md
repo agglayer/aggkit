@@ -29,6 +29,14 @@ The bridge-exit list is taken from the signed certificate; each exit is matched 
 (the exit-tree leaf index) by recomputing its canonical leaf hash and looking it up in the local
 exit tree database.
 
+> **After a delta.** When the exit_certificate tool ran in [delta mode](../exit_certificate/README.md#delta-mode--chain-additional-exits-on-a-previous-certificate),
+> point `signedCertificatePath` at the latest delta's **`exit-certificate-full.json`** (every exit, previous
+> + new, with the latest `new_local_exit_root`), `localExitTreeDBPath` at the latest delta's sqlite (it
+> holds every leaf) and `stepWaitResultPath` at its `step-wait-result.json`. No other change: old exits
+> keep the deposit count (and therefore the `globalIndex`) they had before the delta, and old and new
+> exits alike are proven against the latest root. With `--exit-certificate-config` and a delta config
+> (`options.deltaMode=true`) this is derived automatically.
+
 > **Settlement requirement.** The certificate's `new_local_exit_root` must already be settled on L1
 > — i.e. present in the rollup exit tree of some L1 Info Tree leaf. `/claim-params` verifies this
 > against the selected leaf (latest by default) and returns HTTP `409` if it is not yet settled.
