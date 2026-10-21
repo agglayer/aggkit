@@ -299,8 +299,8 @@ func TestSplitBlockNumbersIntoChunks(t *testing.T) {
 
 			var result [][]uint64
 			for _, chunk := range chunks {
-				var chunkList []uint64
-				chunkList = append(chunkList, chunk...)
+				chunkList := make([]uint64, len(chunk))
+				copy(chunkList, chunk)
 				result = append(result, chunkList)
 			}
 
