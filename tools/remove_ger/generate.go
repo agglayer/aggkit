@@ -67,8 +67,8 @@ func GenerateInvalidGER(params GenerateParams) *GeneratedInvalidGER {
 
 	var proofLocal, proofRollup [32][32]byte
 	for i := range 32 {
-		proofLocal[i] = proof[i]
-		proofRollup[i] = zeroHashes[i]
+		proofLocal[i] = proof[i]       //nolint:gosec // G602: index bounded by range over fixed-size array
+		proofRollup[i] = zeroHashes[i] //nolint:gosec // G602: index bounded by range over fixed-size array
 	}
 
 	globalIndex := bridgesync.GenerateGlobalIndexForNetworkID(params.OriginNetwork, params.DepositCount)
@@ -100,7 +100,7 @@ func generateZeroHashes(height uint8) []common.Hash {
 func formatBytes32ArrayForCast(arr [32][32]byte) string {
 	parts := make([]string, treetypes.DefaultHeight)
 	for i := range treetypes.DefaultHeight {
-		parts[i] = common.Hash(arr[i]).Hex()
+		parts[i] = common.Hash(arr[i]).Hex() //nolint:gosec // G602: index bounded by range over fixed-size array
 	}
 	return "[" + strings.Join(parts, ",") + "]"
 }

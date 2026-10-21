@@ -47,7 +47,7 @@ func TestGetEventsByBlockRange(t *testing.T) {
 		setupMocks         func(*aggkittypesmocks.MultiDownloader)
 		contextCancelled   bool
 	}
-	testCases := []testCase{}
+	testCases := make([]testCase, 0, 9)
 	ctx := context.Background()
 	d, clientMock := NewTestDownloader(t, time.Millisecond*100)
 
