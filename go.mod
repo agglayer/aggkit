@@ -1,6 +1,6 @@
 module github.com/agglayer/aggkit
 
-go 1.25.7
+go 1.26.10
 
 require (
 	buf.build/gen/go/agglayer/agglayer/grpc/go v1.6.2-20260721180539-9c8c052f9efb.1

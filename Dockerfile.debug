@@ -1,7 +1,7 @@
 # ================================
 # STAGE 1: Build debug binary + dlv
 # ================================
-FROM golang:1.25.7-alpine AS builder
+FROM golang:1.26.10-alpine AS builder
 
 RUN apk add --no-cache gcc musl-dev make sqlite-dev git
 
