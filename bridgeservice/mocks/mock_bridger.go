@@ -275,62 +275,6 @@ func (_c *Bridger_GetContractDepositCount_Call) RunAndReturn(run func(context.Co
 	return _c
 }
 
-// GetFinalizedBlock provides a mock function with given fields: ctx
-func (_m *Bridger) GetFinalizedBlock(ctx context.Context) (uint64, error) {
-	ret := _m.Called(ctx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetFinalizedBlock")
-	}
-
-	var r0 uint64
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context) (uint64, error)); ok {
-		return rf(ctx)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context) uint64); ok {
-		r0 = rf(ctx)
-	} else {
-		r0 = ret.Get(0).(uint64)
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
-		r1 = rf(ctx)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// Bridger_GetFinalizedBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFinalizedBlock'
-type Bridger_GetFinalizedBlock_Call struct {
-	*mock.Call
-}
-
-// GetFinalizedBlock is a helper method to define mock.On call
-//   - ctx context.Context
-func (_e *Bridger_Expecter) GetFinalizedBlock(ctx interface{}) *Bridger_GetFinalizedBlock_Call {
-	return &Bridger_GetFinalizedBlock_Call{Call: _e.mock.On("GetFinalizedBlock", ctx)}
-}
-
-func (_c *Bridger_GetFinalizedBlock_Call) Run(run func(ctx context.Context)) *Bridger_GetFinalizedBlock_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context))
-	})
-	return _c
-}
-
-func (_c *Bridger_GetFinalizedBlock_Call) Return(_a0 uint64, _a1 error) *Bridger_GetFinalizedBlock_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *Bridger_GetFinalizedBlock_Call) RunAndReturn(run func(context.Context) (uint64, error)) *Bridger_GetFinalizedBlock_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetLastProcessedBlock provides a mock function with given fields: ctx
 func (_m *Bridger) GetLastProcessedBlock(ctx context.Context) (uint64, bool, error) {
 	ret := _m.Called(ctx)
@@ -862,6 +806,71 @@ func (_c *Bridger_IsActive_Call) Return(_a0 bool) *Bridger_IsActive_Call {
 }
 
 func (_c *Bridger_IsActive_Call) RunAndReturn(run func(context.Context) bool) *Bridger_IsActive_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsBlockFinalized provides a mock function with given fields: ctx, blockNum, blockHash
+func (_m *Bridger) IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (bool, bool, error) {
+	ret := _m.Called(ctx, blockNum, blockHash)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsBlockFinalized")
+	}
+
+	var r0 bool
+	var r1 bool
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, common.Hash) (bool, bool, error)); ok {
+		return rf(ctx, blockNum, blockHash)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, common.Hash) bool); ok {
+		r0 = rf(ctx, blockNum, blockHash)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64, common.Hash) bool); ok {
+		r1 = rf(ctx, blockNum, blockHash)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, uint64, common.Hash) error); ok {
+		r2 = rf(ctx, blockNum, blockHash)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// Bridger_IsBlockFinalized_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsBlockFinalized'
+type Bridger_IsBlockFinalized_Call struct {
+	*mock.Call
+}
+
+// IsBlockFinalized is a helper method to define mock.On call
+//   - ctx context.Context
+//   - blockNum uint64
+//   - blockHash common.Hash
+func (_e *Bridger_Expecter) IsBlockFinalized(ctx interface{}, blockNum interface{}, blockHash interface{}) *Bridger_IsBlockFinalized_Call {
+	return &Bridger_IsBlockFinalized_Call{Call: _e.mock.On("IsBlockFinalized", ctx, blockNum, blockHash)}
+}
+
+func (_c *Bridger_IsBlockFinalized_Call) Run(run func(ctx context.Context, blockNum uint64, blockHash common.Hash)) *Bridger_IsBlockFinalized_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64), args[2].(common.Hash))
+	})
+	return _c
+}
+
+func (_c *Bridger_IsBlockFinalized_Call) Return(finalized bool, found bool, err error) *Bridger_IsBlockFinalized_Call {
+	_c.Call.Return(finalized, found, err)
+	return _c
+}
+
+func (_c *Bridger_IsBlockFinalized_Call) RunAndReturn(run func(context.Context, uint64, common.Hash) (bool, bool, error)) *Bridger_IsBlockFinalized_Call {
 	_c.Call.Return(run)
 	return _c
 }

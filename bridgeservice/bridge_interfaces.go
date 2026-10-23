@@ -26,7 +26,9 @@ type Bridger interface {
 	GetContractDepositCount(ctx context.Context) (uint32, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
 	GetLatestNetworkBlock(ctx context.Context) (uint64, error)
-	GetFinalizedBlock(ctx context.Context) (uint64, error)
+	// IsBlockFinalized reports whether the block, as read from the syncer with the given hash, is
+	// finalized (can't be reorged). found is false when it can't be determined
+	IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (finalized, found bool, err error)
 	IsActive(ctx context.Context) bool
 	GetBridgeByDepositCount(ctx context.Context, depositCount uint32) (*bridgesync.Bridge, error)
 	GetBridgesByContent(ctx context.Context, leafType uint8, originAddress common.Address,

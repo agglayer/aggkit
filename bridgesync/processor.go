@@ -124,6 +124,9 @@ type Bridge struct {
 	TxnSender          common.Address  `meddler:"txn_sender,address"`
 	Source             BridgeSource    `meddler:"source"`
 	ToAddress          common.Address  `meddler:"to_address,address"`
+	// BlockHash is the hash of the block BlockNum, as stored in the block table. It is not a column of
+	// the bridge tables: it is filled in by the read queries (zero if unknown), see fillBlockHashes
+	BlockHash common.Hash `meddler:"-"`
 }
 
 func (b *Bridge) String() string {
@@ -547,6 +550,10 @@ func (p *processor) GetBridgesPaged(
 	if err = meddler.ScanAll(rows, &bridges); err != nil {
 		p.log.Errorf("GetBridgesPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
 			pageNumber, pageSize, err)
+		return nil, 0, err
+	}
+
+	if err = p.fillBlockHashes(ctx, bridges); err != nil {
 		return nil, 0, err
 	}
 
@@ -1476,6 +1483,9 @@ func (p *processor) GetBridgeByDepositCount(ctx context.Context, depositCount ui
 			return nil, fmt.Errorf("GetBridgeByDepositCount (%s): scan: %w", tq.name, scanErr)
 		}
 		if len(bridges) > 0 {
+			if err = p.fillBlockHashes(ctx, bridges[:1]); err != nil {
+				return nil, err
+			}
 			return bridges[0], nil
 		}
 	}
@@ -1549,7 +1559,49 @@ func (p *processor) GetBridgesByContent(
 		}
 		result = append(result, bridges...)
 	}
+	if err := p.fillBlockHashes(ctx, result); err != nil {
+		return nil, err
+	}
 	return result, nil
+}
+
+// getBlockHash returns the hash stored for the given block. found is false if the block is not stored
+// or it has no hash (blocks synced before the hash column existed).
+func (p *processor) getBlockHash(ctx context.Context, blockNum uint64) (hash common.Hash, found bool, err error) {
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	var hashStr sql.NullString
+	err = p.db.QueryRowContext(dbCtx, `SELECT hash FROM block WHERE num = $1`, blockNum).Scan(&hashStr)
+	if errors.Is(err, sql.ErrNoRows) {
+		return common.Hash{}, false, nil
+	}
+	if err != nil {
+		return common.Hash{}, false, fmt.Errorf("failed to get the hash of block %d: %w", blockNum, err)
+	}
+	if !hashStr.Valid || hashStr.String == "" {
+		return common.Hash{}, false, nil
+	}
+	return common.HexToHash(hashStr.String), true, nil
+}
+
+// fillBlockHashes sets Bridge.BlockHash from the block table. Bridges whose block has no stored
+// hash keep the zero hash.
+func (p *processor) fillBlockHashes(ctx context.Context, bridges []*Bridge) error {
+	hashes := make(map[uint64]common.Hash)
+	for _, bridge := range bridges {
+		hash, ok := hashes[bridge.BlockNum]
+		if !ok {
+			var err error
+			hash, _, err = p.getBlockHash(ctx, bridge.BlockNum)
+			if err != nil {
+				return err
+			}
+			hashes[bridge.BlockNum] = hash
+		}
+		bridge.BlockHash = hash
+	}
+	return nil
 }
 
 // GenerateGlobalIndexForNetworkID builds the "global index" used to identify bridges and claims.

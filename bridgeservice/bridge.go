@@ -432,10 +432,10 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 
 	b.logger.Debugf("successfully retrieved %d bridges for network %d", count, networkID)
 	bridgeResponses := make([]*types.BridgeResponse, 0, len(bridges))
-	finality := b.finalityForNetwork(ctx, networkID)
+	bridger := b.bridgerForNetwork(networkID)
 	for _, bridge := range bridges {
 		bridgeResponse := NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block)
-		bridgeResponse.BlockFinalized = finality.isFinalized(bridge.BlockNum)
+		bridgeResponse.BlockFinalized = b.blockFinalized(ctx, bridger, bridge.BlockNum, bridge.BlockHash)
 		bridgeResponses = append(bridgeResponses, bridgeResponse)
 	}
 
@@ -560,10 +560,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 
 	// Use conditional function to create claim responses
 	claimResponses := make([]*types.ClaimResponse, len(claims))
-	finality := b.finalityForNetwork(ctx, networkID)
 	for i, claim := range claims {
 		claimResponses[i] = NewClaimResponse(claim, includeAllFieldsFlag)
-		claimResponses[i].BlockFinalized = finality.isFinalized(claim.BlockNum)
 	}
 
 	c.JSON(statusCode,
@@ -1061,8 +1059,8 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	// the leaf's L1 block must be finalized and, if injected on an L2, that L2 block too
 	resp.BlockFinalized = b.l1BlockFinalized(ctx, l1InfoLeaf.BlockNumber)
 	if injectedL2BlockNumber != nil {
-		resp.BlockFinalized = andFinalized(resp.BlockFinalized,
-			b.finalityForNetwork(ctx, networkID).isFinalized(*injectedL2BlockNumber))
+		// the injection block on L2 is not covered by a syncer finality yet
+		resp.BlockFinalized = nil
 	}
 
 	statusCode = http.StatusOK
@@ -2436,11 +2434,8 @@ func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
 	}
 
 	claimResponses := make([]*types.ClaimResponse, 0, len(claims))
-	finality := b.finalityForNetwork(ctx, networkID)
 	for _, claim := range claims {
-		claimResponse := NewClaimResponse(claim, false)
-		claimResponse.BlockFinalized = finality.isFinalized(claim.BlockNum)
-		claimResponses = append(claimResponses, claimResponse)
+		claimResponses = append(claimResponses, NewClaimResponse(claim, false))
 	}
 	c.JSON(statusCode, types.ClaimsByGERResult{
 		Claims: claimResponses,
@@ -2536,7 +2531,8 @@ func (b *BridgeService) GetBridgeByDepositCountHandler(c *gin.Context) {
 
 	etrogUpgradeL1Block := b.agglayerManagerUpgradeQuery.GetUpgradeBlock(ctx, etrogVersionID)
 	bridgeResponse := NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block)
-	bridgeResponse.BlockFinalized = b.finalityForNetwork(ctx, networkID).isFinalized(bridge.BlockNum)
+	bridgeResponse.BlockFinalized = b.blockFinalized(ctx, b.bridgerForNetwork(networkID),
+		bridge.BlockNum, bridge.BlockHash)
 	c.JSON(statusCode, bridgeResponse)
 }
 
@@ -2687,10 +2683,10 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 
 	etrogUpgradeL1Block := b.agglayerManagerUpgradeQuery.GetUpgradeBlock(ctx, etrogVersionID)
 	bridgeResponses := make([]*types.BridgeResponse, 0, len(bridges))
-	finality := b.finalityForNetwork(ctx, networkID)
+	bridger := b.bridgerForNetwork(networkID)
 	for _, bridge := range bridges {
 		bridgeResponse := NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block)
-		bridgeResponse.BlockFinalized = finality.isFinalized(bridge.BlockNum)
+		bridgeResponse.BlockFinalized = b.blockFinalized(ctx, bridger, bridge.BlockNum, bridge.BlockHash)
 		bridgeResponses = append(bridgeResponses, bridgeResponse)
 	}
 	c.JSON(statusCode, types.BridgesByContentResult{
@@ -2786,7 +2782,7 @@ func (b *BridgeService) RootByLERHandler(c *gin.Context) {
 		Index:          root.Index,
 		BlockNum:       root.BlockNum,
 		BlockPosition:  root.BlockPosition,
-		BlockFinalized: b.finalityForNetwork(ctx, networkID).isFinalized(root.BlockNum),
+		BlockFinalized: b.blockFinalized(ctx, bridger, root.BlockNum, root.BlockHash),
 	})
 }
 
