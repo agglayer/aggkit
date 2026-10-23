@@ -1947,7 +1947,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "block_finalized": {
-                    "description": "BlockFinalized reports whether the block(s) this leaf depends on are finalized (reorg-safe): the L1 block\nof the leaf and, when injected on L2, the L2 injection block too. Only set by the injected-l1-info-leaf\nendpoint; omitted when finality could not be determined.",
+                    "description": "BlockFinalized reports whether the L1 block of the leaf is finalized (reorg-safe). Only set by the\ninjected-l1-info-leaf endpoint for an L1 (network_id=0) lookup; omitted when finality could not be\ndetermined and, for now, for an L2 lookup (the L2 injection block finality is not reported yet).",
                     "type": "boolean",
                     "example": true
                 },

@@ -73,10 +73,10 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		WriteTimeout: 0,
 		NetworkID:    networkID,
 	}
-	// by default the finalized block is unavailable, so block_finalized is omitted from responses;
+	// by default the finality is unknown, so block_finalized is omitted from responses;
 	// tests covering it override this with expectFinalizedBlock
-	expectFinalizedBlock(b.bridgeL1, 0, errors.New("finalized block not available"))
-	expectFinalizedBlock(b.bridgeL2, 0, errors.New("finalized block not available"))
+	b.bridgeL1.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
+	b.bridgeL2.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
 	expectL1BlocksFinalized(b.l1InfoTree, nil)
 	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs,
 		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
@@ -85,17 +85,22 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	return b
 }
 
-// expectFinalizedBlock replaces any GetFinalizedBlock expectation of the bridger with one returning
-// the given result (any number of times).
-func expectFinalizedBlock(bridger *mocks.Bridger, finalizedBlock uint64, err error) {
+// expectBridgeBlockFinalized replaces any IsBlockFinalized expectation of the bridger: the block with the
+// given hash gets that finality, any other block is unknown (found=false).
+func expectBridgeBlockFinalized(bridger *mocks.Bridger, blockNum uint64, blockHash common.Hash, finalized bool) {
+	clearIsBlockFinalized(bridger)
+	bridger.EXPECT().IsBlockFinalized(mock.Anything, blockNum, blockHash).Return(finalized, true, nil).Maybe()
+	bridger.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
+}
+
+func clearIsBlockFinalized(bridger *mocks.Bridger) {
 	expected := bridger.ExpectedCalls[:0]
 	for _, call := range bridger.ExpectedCalls {
-		if call.Method != "GetFinalizedBlock" {
+		if call.Method != "IsBlockFinalized" {
 			expected = append(expected, call)
 		}
 	}
 	bridger.ExpectedCalls = expected
-	bridger.EXPECT().GetFinalizedBlock(mock.Anything).Return(finalizedBlock, err).Maybe()
 }
 
 // expectL1BlocksFinalized replaces any IsBlockFinalized expectation of the l1infotreesync mock: the

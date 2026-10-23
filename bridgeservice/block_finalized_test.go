@@ -11,7 +11,6 @@ import (
 
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -21,37 +20,23 @@ import (
 
 func boolPtr(v bool) *bool { return &v }
 
-func TestBlockFinalityIsFinalized(t *testing.T) {
-	finalizedBlock := uint64(100)
-	finality := blockFinality{finalizedBlock: &finalizedBlock}
-
-	require.Equal(t, boolPtr(true), finality.isFinalized(99))
-	require.Equal(t, boolPtr(true), finality.isFinalized(100))
-	require.Equal(t, boolPtr(false), finality.isFinalized(101))
-	require.Nil(t, blockFinality{}.isFinalized(1))
-}
-
-func TestAndFinalized(t *testing.T) {
-	require.Equal(t, boolPtr(true), andFinalized(boolPtr(true), boolPtr(true)))
-	require.Equal(t, boolPtr(false), andFinalized(boolPtr(true), boolPtr(false)))
-	require.Equal(t, boolPtr(false), andFinalized(boolPtr(false), boolPtr(true)))
-	require.Nil(t, andFinalized(nil, boolPtr(true)))
-	require.Nil(t, andFinalized(boolPtr(true), nil))
-}
-
 func TestBlockFinalizedInResponses(t *testing.T) {
-	const finalizedBlock = uint64(100)
+	var (
+		blockHash      = common.HexToHash("0xb10c")
+		otherBlockHash = common.HexToHash("0xdead")
+	)
 
 	t.Run("bridges", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		expectFinalizedBlock(bridgeMocks.bridgeL1, finalizedBlock, nil)
-
-		newBridge := func(blockNum uint64) *bridgesync.Bridge {
-			return &bridgesync.Bridge{BlockNum: blockNum, Amount: common.Big0}
-		}
+		clearIsBlockFinalized(bridgeMocks.bridgeL1)
+		bridgeMocks.bridgeL1.EXPECT().IsBlockFinalized(mock.Anything, uint64(10), blockHash).Return(true, true, nil).Maybe()
+		bridgeMocks.bridgeL1.EXPECT().IsBlockFinalized(mock.Anything, uint64(11), blockHash).Return(false, true, nil).Maybe()
 		bridgeMocks.bridgeL1.EXPECT().
 			GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			Return([]*bridgesync.Bridge{newBridge(finalizedBlock), newBridge(finalizedBlock + 1)}, 2, nil)
+			Return([]*bridgesync.Bridge{
+				{BlockNum: 10, BlockHash: blockHash, Amount: common.Big0},
+				{BlockNum: 11, BlockHash: blockHash, Amount: common.Big0},
+			}, 2, nil)
 		bridgeMocks.upgradeQuerier.EXPECT().GetUpgradeBlock(mock.Anything, mock.Anything).Return(uint64(0))
 
 		w := performRequest(t, bridgeMocks.router,
@@ -65,15 +50,15 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 		require.Equal(t, boolPtr(false), response.Bridges[1].BlockFinalized)
 	})
 
-	t.Run("bridges on L2 use the L2 finalized block", func(t *testing.T) {
+	t.Run("bridges on L2 ask the L2 syncer, with the hash it served", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		// L1 finalized block would make the bridge finalized, the L2 one must be the one used
-		expectFinalizedBlock(bridgeMocks.bridgeL1, finalizedBlock*10, nil)
-		expectFinalizedBlock(bridgeMocks.bridgeL2, finalizedBlock, nil)
+		// the L1 syncer would say it's finalized: it must not be asked
+		expectBridgeBlockFinalized(bridgeMocks.bridgeL1, 10, blockHash, true)
+		expectBridgeBlockFinalized(bridgeMocks.bridgeL2, 10, blockHash, false)
 
 		bridgeMocks.bridgeL2.EXPECT().
 			GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			Return([]*bridgesync.Bridge{{BlockNum: finalizedBlock + 1, Amount: common.Big0}}, 1, nil)
+			Return([]*bridgesync.Bridge{{BlockNum: 10, BlockHash: blockHash, Amount: common.Big0}}, 1, nil)
 		bridgeMocks.upgradeQuerier.EXPECT().GetUpgradeBlock(mock.Anything, mock.Anything).Return(uint64(0))
 
 		w := performRequest(t, bridgeMocks.router,
@@ -86,13 +71,13 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 		require.Equal(t, boolPtr(false), response.Bridges[0].BlockFinalized)
 	})
 
-	t.Run("bridges omit block_finalized when the finalized block is unavailable", func(t *testing.T) {
+	t.Run("bridges omit block_finalized when the syncer can't tell", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		expectFinalizedBlock(bridgeMocks.bridgeL1, 0, errors.New("rpc down"))
-
+		// finalized only for another hash of the same block number
+		expectBridgeBlockFinalized(bridgeMocks.bridgeL1, 10, otherBlockHash, true)
 		bridgeMocks.bridgeL1.EXPECT().
 			GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			Return([]*bridgesync.Bridge{{BlockNum: 1, Amount: common.Big0}}, 1, nil)
+			Return([]*bridgesync.Bridge{{BlockNum: 10, BlockHash: blockHash, Amount: common.Big0}}, 1, nil)
 		bridgeMocks.upgradeQuerier.EXPECT().GetUpgradeBlock(mock.Anything, mock.Anything).Return(uint64(0))
 
 		w := performRequest(t, bridgeMocks.router,
@@ -101,36 +86,30 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 		require.NotContains(t, w.Body.String(), "block_finalized")
 	})
 
-	t.Run("claims", func(t *testing.T) {
+	t.Run("bridges omit block_finalized when the syncer fails", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		expectFinalizedBlock(bridgeMocks.bridgeL2, finalizedBlock, nil)
-
-		newClaim := func(blockNum uint64) *claimsynctypes.Claim {
-			return &claimsynctypes.Claim{BlockNum: blockNum, Amount: common.Big0, GlobalIndex: common.Big0}
-		}
-		bridgeMocks.claimL2.EXPECT().
-			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			Return([]*claimsynctypes.Claim{newClaim(finalizedBlock - 1), newClaim(finalizedBlock + 1)}, 2, nil)
+		clearIsBlockFinalized(bridgeMocks.bridgeL1)
+		bridgeMocks.bridgeL1.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).
+			Return(false, false, errors.New("db down"))
+		bridgeMocks.bridgeL1.EXPECT().
+			GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]*bridgesync.Bridge{{BlockNum: 10, BlockHash: blockHash, Amount: common.Big0}}, 1, nil)
+		bridgeMocks.upgradeQuerier.EXPECT().GetUpgradeBlock(mock.Anything, mock.Anything).Return(uint64(0))
 
 		w := performRequest(t, bridgeMocks.router,
-			fmt.Sprintf("%s/claims?%s=%d", BridgeV1Prefix, networkIDParam, l2NetworkID))
+			fmt.Sprintf("%s/bridges?%s=%d", BridgeV1Prefix, networkIDParam, mainnetNetworkID))
 		require.Equal(t, http.StatusOK, w.Code)
-
-		var response bridgetypes.ClaimsResult
-		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
-		require.Len(t, response.Claims, 2)
-		require.Equal(t, boolPtr(true), response.Claims[0].BlockFinalized)
-		require.Equal(t, boolPtr(false), response.Claims[1].BlockFinalized)
+		require.NotContains(t, w.Body.String(), "block_finalized")
 	})
 
 	t.Run("root-by-ler", func(t *testing.T) {
 		ler := common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
-		for blockNum, expected := range map[uint64]bool{finalizedBlock: true, finalizedBlock + 1: false} {
+		for _, expected := range []bool{true, false} {
 			bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-			expectFinalizedBlock(bridgeMocks.bridgeL2, finalizedBlock, nil)
+			expectBridgeBlockFinalized(bridgeMocks.bridgeL2, 10, blockHash, expected)
 			bridgeMocks.bridgeL2.EXPECT().
 				GetRootByLER(mock.Anything, ler).
-				Return(&tree.Root{Index: 1, BlockNum: blockNum}, nil)
+				Return(&tree.Root{Index: 1, BlockNum: 10, BlockHash: blockHash}, nil)
 
 			queryParams := url.Values{}
 			queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
@@ -141,18 +120,18 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 
 			var response bridgetypes.RootByLERResponse
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
-			require.Equal(t, boolPtr(expected), response.BlockFinalized, "block %d", blockNum)
+			require.Equal(t, boolPtr(expected), response.BlockFinalized)
 		}
 	})
 
 	t.Run("settlements use the l1infotreesync finality", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		expectL1BlocksFinalized(bridgeMocks.l1InfoTree, map[uint64]bool{finalizedBlock + 1: false, finalizedBlock: true})
+		expectL1BlocksFinalized(bridgeMocks.l1InfoTree, map[uint64]bool{101: false, 100: true})
 		bridgeMocks.l1InfoTree.EXPECT().
 			GetVerifiedBatchesPaged(l2NetworkID, DefaultPage, DefaultPageSize).
 			Return([]*l1infotreesync.VerifiedBatchWithBlockHash{
-				{BlockNumber: finalizedBlock + 1},
-				{BlockNumber: finalizedBlock},
+				{BlockNumber: 101},
+				{BlockNumber: 100},
 			}, 2, nil)
 
 		w := performRequest(t, bridgeMocks.router, fmt.Sprintf("%s/settlements", BridgeV1Prefix))
@@ -167,10 +146,10 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 
 	t.Run("injected-l1-info-leaf on L1", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		expectL1BlocksFinalized(bridgeMocks.l1InfoTree, map[uint64]bool{finalizedBlock + 1: false})
+		expectL1BlocksFinalized(bridgeMocks.l1InfoTree, map[uint64]bool{101: false})
 		bridgeMocks.l1InfoTree.EXPECT().
 			GetInfoByIndex(mock.Anything, uint32(3)).
-			Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: finalizedBlock + 1}, nil)
+			Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: 101}, nil)
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, "0")
@@ -188,7 +167,7 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.l1InfoTree.EXPECT().
 			GetInfoByIndex(mock.Anything, uint32(3)).
-			Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: finalizedBlock}, nil)
+			Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: 100}, nil)
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, "0")

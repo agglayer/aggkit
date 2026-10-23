@@ -21,6 +21,9 @@ type Root struct {
 	Index         uint32      `meddler:"position"`
 	BlockNum      uint64      `meddler:"block_num"`
 	BlockPosition uint64      `meddler:"block_position"`
+	// BlockHash is the hash of the block BlockNum, as stored by the syncer. It is not a column of
+	// the tree: it is only filled in by the syncers that serve the root (zero if unknown)
+	BlockHash common.Hash `meddler:"-"`
 }
 
 type TreeNode struct {
