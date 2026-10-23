@@ -13,6 +13,7 @@ import (
 	claimsyncStorage "github.com/agglayer/aggkit/claimsync/storage"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -31,6 +32,7 @@ type ClaimSync struct {
 	processor     *processor
 	driver        *sync.EVMDriver
 	reader        claimsynctypes.ClaimsReader
+	reorgDetector sync.ReorgDetector
 	ethClient     aggkittypes.EthClienter
 	logger        aggkitcommon.Logger
 	originNetwork uint32
@@ -128,6 +130,7 @@ func NewClaimSync(
 		processor:     proc,
 		driver:        driver,
 		reader:        store,
+		reorgDetector: rd,
 		ethClient:     ethClient,
 		logger:        logger,
 		originNetwork: originNetwork,
@@ -367,4 +370,37 @@ func (c *ClaimSync) GetSetClaimsPaged(ctx context.Context, page, pageSize uint32
 
 func (c *ClaimSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*Claim, error) {
 	return c.reader.GetClaimsByGER(ctx, nil, globalExitRoot)
+}
+
+// IsBlockFinalized reports whether the block with the given number and hash, as read from this syncer,
+// is finalized, i.e. it can no longer be reorged. The syncer has no finality flag, but the reorg detector
+// tracks every block that was not final when processed and only stops tracking it once its hash was
+// checked against the canonical chain and it is below the finalized block. So a processed block with the
+// given hash that is no longer tracked is finalized.
+// found is false when it can't be determined: no hash was given, or the block is not stored with that
+// same hash (unknown, no hash stored for it, or it was replaced after the caller read it).
+func (c *ClaimSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
+	blockHash common.Hash) (finalized, found bool, err error) {
+	if blockHash == (common.Hash{}) {
+		return false, false, nil
+	}
+
+	storedHash, stored, err := c.reader.GetBlockHash(ctx, nil, blockNum)
+	if err != nil {
+		return false, false, err
+	}
+	if !stored || storedHash != blockHash {
+		return false, false, nil
+	}
+
+	_, err = c.reorgDetector.GetTrackedBlockByBlockNumber(c.syncerID.String(), blockNum)
+	switch {
+	case err == nil:
+		// still tracked: its hash was not confirmed against a finalized block yet
+		return false, true, nil
+	case errors.Is(err, db.ErrNotFound):
+		return true, true, nil
+	default:
+		return false, false, fmt.Errorf("failed to check if block %d is tracked: %w", blockNum, err)
+	}
 }

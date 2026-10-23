@@ -225,6 +225,12 @@ definitions:
         description: Amount of tokens being bridged
         example: "1000000000000000000"
         type: string
+      block_finalized:
+        description: |-
+          BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+          It is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).
+        example: true
+        type: boolean
       block_num:
         description: Block number where the bridge event was recorded
         example: 1234
@@ -353,6 +359,12 @@ definitions:
         description: Amount claimed
         example: "1000000000000000000"
         type: string
+      block_finalized:
+        description: |-
+          BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+          It is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).
+        example: true
+        type: boolean
       block_num:
         description: Block number where the claim was processed
         example: 1234
@@ -538,6 +550,13 @@ definitions:
     type: object
   types.L1InfoTreeLeafResponse:
     properties:
+      block_finalized:
+        description: |-
+          BlockFinalized reports whether the L1 block of the leaf is finalized (reorg-safe). Only set by the
+          injected-l1-info-leaf endpoint for an L1 (network_id=0) lookup; omitted when finality could not be
+          determined and, for now, for an L2 lookup (the L2 injection block finality is not reported yet).
+        example: true
+        type: boolean
       block_num:
         description: Block number where the leaf was recorded
         example: 123456
@@ -821,6 +840,12 @@ definitions:
     description: The deposit-count position of a local exit root in its network's
       local exit tree
     properties:
+      block_finalized:
+        description: |-
+          BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+          It is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).
+        example: true
+        type: boolean
       block_num:
         description: BlockNum is the block in which the leaf that produced this root
           was added
@@ -877,6 +902,12 @@ definitions:
   types.SettlementResponse:
     description: A single L1 settlement event for this network's local exit root
     properties:
+      block_finalized:
+        description: |-
+          BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+          It is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).
+        example: true
+        type: boolean
       block_hash:
         description: L1 block's hash, when available (nil if the block table has no
           recorded hash for it).

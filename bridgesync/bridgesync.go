@@ -11,6 +11,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -71,11 +72,13 @@ type BridgeSync struct {
 	driver     *sync.EVMDriver
 	downloader *sync.EVMDownloader
 
-	originNetwork  uint32
-	reorgDetector  ReorgDetector
-	ethClient      aggkittypes.EthClienter
-	agglayerBridge *agglayerbridge.Agglayerbridge
-	cfg            Config
+	originNetwork uint32
+	reorgDetector ReorgDetector
+	// reorgDetectorID is the id this syncer is subscribed with in the reorg detector
+	reorgDetectorID string
+	ethClient       aggkittypes.EthClienter
+	agglayerBridge  *agglayerbridge.Agglayerbridge
+	cfg             Config
 }
 
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
@@ -246,14 +249,15 @@ func newBridgeSync(
 	)
 
 	return &BridgeSync{
-		processor:      processor,
-		driver:         driver,
-		downloader:     downloader,
-		originNetwork:  networkID,
-		reorgDetector:  rd,
-		ethClient:      ethClient,
-		agglayerBridge: agglayerBridge,
-		cfg:            cfg,
+		processor:       processor,
+		driver:          driver,
+		downloader:      downloader,
+		originNetwork:   networkID,
+		reorgDetector:   rd,
+		reorgDetectorID: syncerID.String(),
+		ethClient:       ethClient,
+		agglayerBridge:  agglayerBridge,
+		cfg:             cfg,
 	}, nil
 }
 
@@ -414,7 +418,48 @@ func (s *BridgeSync) GetRootByLER(ctx context.Context, ler common.Hash) (*tree.R
 	if err != nil {
 		return root, err
 	}
+	blockHash, _, err := s.processor.getBlockHash(ctx, root.BlockNum)
+	if err != nil {
+		return nil, err
+	}
+	root.BlockHash = blockHash
 	return root, nil
+}
+
+// IsBlockFinalized reports whether the block with the given number and hash, as read from this syncer,
+// is finalized, i.e. it can no longer be reorged. The legacy syncer doesn't store a finality flag, but the
+// reorg detector tracks every block that was not final when processed and only stops tracking it once its
+// hash was checked against the canonical chain and it is below the finalized block. So a processed block
+// that is not tracked anymore is a finalized one.
+// found is false when it can't be determined: no hash was given, or the block is not stored with that
+// same hash (unknown, no hash stored for it, or it was replaced after the caller read it).
+func (s *BridgeSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
+	blockHash common.Hash) (finalized, found bool, err error) {
+	if s.processor.isHalted() {
+		return false, false, sync.ErrInconsistentState
+	}
+	if blockHash == (common.Hash{}) {
+		return false, false, nil
+	}
+
+	storedHash, stored, err := s.processor.getBlockHash(ctx, blockNum)
+	if err != nil {
+		return false, false, err
+	}
+	if !stored || storedHash != blockHash {
+		return false, false, nil
+	}
+
+	_, err = s.reorgDetector.GetTrackedBlockByBlockNumber(s.reorgDetectorID, blockNum)
+	switch {
+	case err == nil:
+		// still tracked: its hash was not confirmed against a finalized block yet
+		return false, true, nil
+	case errors.Is(err, db.ErrNotFound):
+		return true, true, nil
+	default:
+		return false, false, fmt.Errorf("failed to check if block %d is tracked: %w", blockNum, err)
+	}
 }
 
 // GetExitRootByIndex returns the root of the exit tree at the moment the leaf with the given index was added

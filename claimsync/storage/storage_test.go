@@ -1435,3 +1435,39 @@ func TestGetClaimsPaged_Compact(t *testing.T) {
 		require.Equal(t, claims[4].ProofLocalExitRoot, got[0].ProofLocalExitRoot)
 	})
 }
+
+func TestClaimQueriesFillBlockHash(t *testing.T) {
+	s, _ := newTestStorage(t)
+	ctx := context.Background()
+	hash := common.HexToHash("0xb10c")
+
+	tx, err := s.NewTx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.InsertBlock(ctx, tx, 1, hash))
+	require.NoError(t, s.InsertBlock(ctx, tx, 2, common.Hash{}))
+	require.NoError(t, s.InsertClaim(ctx, tx, claimsynctypes.Claim{
+		BlockNum: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1), Type: claimsynctypes.ClaimEvent,
+	}))
+	require.NoError(t, s.InsertClaim(ctx, tx, claimsynctypes.Claim{
+		BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1), Type: claimsynctypes.ClaimEvent,
+	}))
+	require.NoError(t, tx.Commit())
+
+	gotHash, found, err := s.GetBlockHash(ctx, nil, 1)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, hash, gotHash)
+
+	_, found, err = s.GetBlockHash(ctx, nil, 99)
+	require.NoError(t, err)
+	require.False(t, found)
+
+	claims, count, err := s.GetClaimsPaged(ctx, 1, 10, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+	hashByBlock := map[uint64]common.Hash{}
+	for _, claim := range claims {
+		hashByBlock[claim.BlockNum] = claim.BlockHash
+	}
+	require.Equal(t, map[uint64]common.Hash{1: hash, 2: {}}, hashByBlock)
+}

@@ -1,6 +1,7 @@
 package bridgeservice
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -10,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 )
 
@@ -224,4 +226,66 @@ func NewL1InfoTreeLeafResponse(leaf *l1infotreesync.L1InfoTreeLeaf) *bridgetypes
 		GlobalExitRoot:    bridgetypes.Hash(leaf.GlobalExitRoot.Hex()),
 		Hash:              bridgetypes.Hash(leaf.Hash.Hex()),
 	}
+}
+
+// bridgerForNetwork returns the bridge syncer of the given network (0 = L1, or this instance's L2), nil if none
+func (b *BridgeService) bridgerForNetwork(networkID uint32) Bridger {
+	switch networkID {
+	case mainnetNetworkID:
+		return b.bridgeL1
+	case b.networkID:
+		return b.bridgeL2
+	}
+	return nil
+}
+
+// claimerForNetwork returns the claim syncer of the given network (0 = L1, or this instance's L2), nil if none
+func (b *BridgeService) claimerForNetwork(networkID uint32) Claimer {
+	switch networkID {
+	case mainnetNetworkID:
+		return b.claimL1
+	case b.networkID:
+		return b.claimL2
+	}
+	return nil
+}
+
+// blockFinalitySource is implemented by the syncers that can tell if a block they served is finalized
+type blockFinalitySource interface {
+	IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (finalized, found bool, err error)
+}
+
+// blockFinalized asks the syncer whether a block it served (identified by number and hash) is finalized.
+// It returns nil (unknown) if the syncer can't tell or fails, so the response omits block_finalized.
+func (b *BridgeService) blockFinalized(ctx context.Context, syncer blockFinalitySource, blockNum uint64,
+	blockHash common.Hash) *bool {
+	if syncer == nil {
+		return nil
+	}
+	finalized, found, err := syncer.IsBlockFinalized(ctx, blockNum, blockHash)
+	if err != nil {
+		b.logger.Warnf("unable to get the finality of block %d, block_finalized will be omitted: %v", blockNum, err)
+		return nil
+	}
+	if !found {
+		return nil
+	}
+	return &finalized
+}
+
+// l1BlockFinalized asks the l1infotreesync syncer whether an L1 block it stored is finalized.
+// It returns nil (unknown) if the syncer can't tell or fails, so the response omits block_finalized.
+func (b *BridgeService) l1BlockFinalized(ctx context.Context, blockNum uint64) *bool {
+	if b.l1InfoTree == nil {
+		return nil
+	}
+	finalized, found, err := b.l1InfoTree.IsBlockFinalized(ctx, blockNum)
+	if err != nil {
+		b.logger.Warnf("unable to get the finality of L1 block %d, block_finalized will be omitted: %v", blockNum, err)
+		return nil
+	}
+	if !found {
+		return nil
+	}
+	return &finalized
 }

@@ -1542,6 +1542,11 @@ const docTemplate = `{
                     "type": "string",
                     "example": "1000000000000000000"
                 },
+                "block_finalized": {
+                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).",
+                    "type": "boolean",
+                    "example": true
+                },
                 "block_num": {
                     "description": "Block number where the bridge event was recorded",
                     "type": "integer",
@@ -1706,6 +1711,11 @@ const docTemplate = `{
                     "description": "Amount claimed",
                     "type": "string",
                     "example": "1000000000000000000"
+                },
+                "block_finalized": {
+                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).",
+                    "type": "boolean",
+                    "example": true
                 },
                 "block_num": {
                     "description": "Block number where the claim was processed",
@@ -1936,6 +1946,11 @@ const docTemplate = `{
         "types.L1InfoTreeLeafResponse": {
             "type": "object",
             "properties": {
+                "block_finalized": {
+                    "description": "BlockFinalized reports whether the L1 block of the leaf is finalized (reorg-safe). Only set by the\ninjected-l1-info-leaf endpoint for an L1 (network_id=0) lookup; omitted when finality could not be\ndetermined and, for now, for an L2 lookup (the L2 injection block finality is not reported yet).",
+                    "type": "boolean",
+                    "example": true
+                },
                 "block_num": {
                     "description": "Block number where the leaf was recorded",
                     "type": "integer",
@@ -2273,6 +2288,11 @@ const docTemplate = `{
             "description": "The deposit-count position of a local exit root in its network's local exit tree",
             "type": "object",
             "properties": {
+                "block_finalized": {
+                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).",
+                    "type": "boolean",
+                    "example": true
+                },
                 "block_num": {
                     "description": "BlockNum is the block in which the leaf that produced this root was added",
                     "type": "integer",
@@ -2343,6 +2363,11 @@ const docTemplate = `{
             "description": "A single L1 settlement event for this network's local exit root",
             "type": "object",
             "properties": {
+                "block_finalized": {
+                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).",
+                    "type": "boolean",
+                    "example": true
+                },
                 "block_hash": {
                     "description": "L1 block's hash, when available (nil if the block table has no recorded hash for it).",
                     "type": "string",
