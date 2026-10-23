@@ -239,14 +239,30 @@ func (b *BridgeService) bridgerForNetwork(networkID uint32) Bridger {
 	return nil
 }
 
-// blockFinalized asks the bridge syncer whether a block it served (identified by number and hash) is finalized.
+// claimerForNetwork returns the claim syncer of the given network (0 = L1, or this instance's L2), nil if none
+func (b *BridgeService) claimerForNetwork(networkID uint32) Claimer {
+	switch networkID {
+	case mainnetNetworkID:
+		return b.claimL1
+	case b.networkID:
+		return b.claimL2
+	}
+	return nil
+}
+
+// blockFinalitySource is implemented by the syncers that can tell if a block they served is finalized
+type blockFinalitySource interface {
+	IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (finalized, found bool, err error)
+}
+
+// blockFinalized asks the syncer whether a block it served (identified by number and hash) is finalized.
 // It returns nil (unknown) if the syncer can't tell or fails, so the response omits block_finalized.
-func (b *BridgeService) blockFinalized(ctx context.Context, bridger Bridger, blockNum uint64,
+func (b *BridgeService) blockFinalized(ctx context.Context, syncer blockFinalitySource, blockNum uint64,
 	blockHash common.Hash) *bool {
-	if bridger == nil {
+	if syncer == nil {
 		return nil
 	}
-	finalized, found, err := bridger.IsBlockFinalized(ctx, blockNum, blockHash)
+	finalized, found, err := syncer.IsBlockFinalized(ctx, blockNum, blockHash)
 	if err != nil {
 		b.logger.Warnf("unable to get the finality of block %d, block_finalized will be omitted: %v", blockNum, err)
 		return nil

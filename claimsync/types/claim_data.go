@@ -42,6 +42,9 @@ type Claim struct {
 	IsMessage           bool            `meddler:"is_message"`
 	BlockTimestamp      uint64          `meddler:"block_timestamp"`
 	Type                ClaimType       `meddler:"type"`
+	// BlockHash is the hash of the block BlockNum, as stored in the block table. It is not a column of
+	// the claim table: it is filled in by the paged/by-GER read queries (zero if unknown)
+	BlockHash common.Hash `meddler:"-"`
 }
 
 // String returns a string representation of the Claim.

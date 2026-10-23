@@ -15,6 +15,9 @@ type ClaimsReader interface {
 	GetClaims(ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64) ([]Claim, error)
 	GetClaimsByGlobalIndex(ctx context.Context, tx dbtypes.Querier, globalIndex *big.Int) ([]Claim, error)
 	GetClaimsByGER(ctx context.Context, tx dbtypes.Querier, globalExitRoot common.Hash) ([]*Claim, error)
+	// GetBlockHash returns the hash stored for the block. found is false if the block is not stored
+	// or has no hash
+	GetBlockHash(ctx context.Context, tx dbtypes.Querier, blockNum uint64) (hash common.Hash, found bool, err error)
 	GetClaimsPaged(
 		ctx context.Context, pageNumber, pageSize uint32,
 		networkIDs []uint32, globalIndex *big.Int,

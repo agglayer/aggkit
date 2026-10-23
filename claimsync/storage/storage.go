@@ -359,7 +359,51 @@ func (p *claimStorage) GetClaimsByGER(
 	if err = meddler.ScanAll(rows, &claims); err != nil {
 		return nil, fmt.Errorf("GetClaimsByGER: scan: %w", err)
 	}
+	if err = p.FillBlockHashes(ctx, tx, claims); err != nil {
+		return nil, fmt.Errorf("GetClaimsByGER: %w", err)
+	}
 	return claims, nil
+}
+
+// GetBlockHash returns the hash stored for the given block. found is false if the block is not
+// stored or it has no hash.
+func (s *claimStorage) GetBlockHash(ctx context.Context, tx dbtypes.Querier,
+	blockNum uint64) (hash common.Hash, found bool, err error) {
+	dbCtx, cancel := s.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	var hashStr sql.NullString
+	err = s.getQuerier(tx).QueryRowContext(dbCtx, `SELECT hash FROM block WHERE num = $1`, blockNum).Scan(&hashStr)
+	if errors.Is(err, sql.ErrNoRows) {
+		return common.Hash{}, false, nil
+	}
+	if err != nil {
+		return common.Hash{}, false, fmt.Errorf("GetBlockHash %d: %w", blockNum, err)
+	}
+	if !hashStr.Valid || hashStr.String == "" {
+		return common.Hash{}, false, nil
+	}
+	return common.HexToHash(hashStr.String), true, nil
+}
+
+// FillBlockHashes sets Claim.BlockHash from the block table. Claims whose block has no stored hash
+// keep the zero hash.
+func (s *claimStorage) FillBlockHashes(ctx context.Context, tx dbtypes.Querier,
+	claims []*claimsynctypes.Claim) error {
+	hashes := make(map[uint64]common.Hash)
+	for _, claim := range claims {
+		hash, ok := hashes[claim.BlockNum]
+		if !ok {
+			var err error
+			hash, _, err = s.GetBlockHash(ctx, tx, claim.BlockNum)
+			if err != nil {
+				return err
+			}
+			hashes[claim.BlockNum] = hash
+		}
+		claim.BlockHash = hash
+	}
+	return nil
 }
 
 // DeleteBlocksFrom deletes all blocks with num >= firstBlock and returns the count deleted.
