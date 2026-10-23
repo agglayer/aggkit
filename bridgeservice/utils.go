@@ -273,3 +273,20 @@ func (b *BridgeService) finalityForNetwork(ctx context.Context, networkID uint32
 	}
 	return blockFinality{finalizedBlock: &finalizedBlock}
 }
+
+// l1BlockFinalized asks the l1infotreesync syncer whether an L1 block it stored is finalized.
+// It returns nil (unknown) if the syncer can't tell or fails, so the response omits block_finalized.
+func (b *BridgeService) l1BlockFinalized(ctx context.Context, blockNum uint64) *bool {
+	if b.l1InfoTree == nil {
+		return nil
+	}
+	finalized, found, err := b.l1InfoTree.IsBlockFinalized(ctx, blockNum)
+	if err != nil {
+		b.logger.Warnf("unable to get the finality of L1 block %d, block_finalized will be omitted: %v", blockNum, err)
+		return nil
+	}
+	if !found {
+		return nil
+	}
+	return &finalized
+}

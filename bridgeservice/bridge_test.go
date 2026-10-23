@@ -77,6 +77,7 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	// tests covering it override this with expectFinalizedBlock
 	expectFinalizedBlock(b.bridgeL1, 0, errors.New("finalized block not available"))
 	expectFinalizedBlock(b.bridgeL2, 0, errors.New("finalized block not available"))
+	expectL1BlocksFinalized(b.l1InfoTree, nil)
 	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs,
 		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
 	b.router = gin.New()
@@ -95,6 +96,22 @@ func expectFinalizedBlock(bridger *mocks.Bridger, finalizedBlock uint64, err err
 	}
 	bridger.ExpectedCalls = expected
 	bridger.EXPECT().GetFinalizedBlock(mock.Anything).Return(finalizedBlock, err).Maybe()
+}
+
+// expectL1BlocksFinalized replaces any IsBlockFinalized expectation of the l1infotreesync mock: the
+// blocks in finality get that finality, any other block is unknown (found=false).
+func expectL1BlocksFinalized(l1InfoTree *mocks.L1InfoTreeSyncer, finality map[uint64]bool) {
+	expected := l1InfoTree.ExpectedCalls[:0]
+	for _, call := range l1InfoTree.ExpectedCalls {
+		if call.Method != "IsBlockFinalized" {
+			expected = append(expected, call)
+		}
+	}
+	l1InfoTree.ExpectedCalls = expected
+	for blockNum, finalized := range finality {
+		l1InfoTree.EXPECT().IsBlockFinalized(mock.Anything, blockNum).Return(finalized, true, nil).Maybe()
+	}
+	l1InfoTree.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
 }
 
 // newBridgeWithMocksAndHealthCacheTTL is newBridgeWithMocks with an explicit

@@ -145,9 +145,9 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 		}
 	})
 
-	t.Run("settlements use the L1 finalized block", func(t *testing.T) {
+	t.Run("settlements use the l1infotreesync finality", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		expectFinalizedBlock(bridgeMocks.bridgeL1, finalizedBlock, nil)
+		expectL1BlocksFinalized(bridgeMocks.l1InfoTree, map[uint64]bool{finalizedBlock + 1: false, finalizedBlock: true})
 		bridgeMocks.l1InfoTree.EXPECT().
 			GetVerifiedBatchesPaged(l2NetworkID, DefaultPage, DefaultPageSize).
 			Return([]*l1infotreesync.VerifiedBatchWithBlockHash{
@@ -167,7 +167,7 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 
 	t.Run("injected-l1-info-leaf on L1", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		expectFinalizedBlock(bridgeMocks.bridgeL1, finalizedBlock, nil)
+		expectL1BlocksFinalized(bridgeMocks.l1InfoTree, map[uint64]bool{finalizedBlock + 1: false})
 		bridgeMocks.l1InfoTree.EXPECT().
 			GetInfoByIndex(mock.Anything, uint32(3)).
 			Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: finalizedBlock + 1}, nil)
@@ -182,5 +182,20 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 		var response bridgetypes.L1InfoTreeLeafResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 		require.Equal(t, boolPtr(false), response.BlockFinalized)
+	})
+
+	t.Run("injected-l1-info-leaf omits block_finalized when l1infotreesync can't tell", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, uint32(3)).
+			Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: finalizedBlock}, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "0")
+		queryParams.Set(leafIndexParam, "3")
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusOK, w.Code)
+		require.NotContains(t, w.Body.String(), "block_finalized")
 	})
 }

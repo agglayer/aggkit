@@ -1059,7 +1059,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	resp.InjectedL2BlockNumber = injectedL2BlockNumber
 	resp.InjectedL2BlockTimestamp = injectedL2Timestamp
 	// the leaf's L1 block must be finalized and, if injected on an L2, that L2 block too
-	resp.BlockFinalized = b.finalityForNetwork(ctx, mainnetNetworkID).isFinalized(l1InfoLeaf.BlockNumber)
+	resp.BlockFinalized = b.l1BlockFinalized(ctx, l1InfoLeaf.BlockNumber)
 	if injectedL2BlockNumber != nil {
 		resp.BlockFinalized = andFinalized(resp.BlockFinalized,
 			b.finalityForNetwork(ctx, networkID).isFinalized(*injectedL2BlockNumber))
@@ -2844,14 +2844,12 @@ func (b *BridgeService) GetSettlementsHandler(c *gin.Context) {
 	}
 
 	settlements := make([]*types.SettlementResponse, 0, len(verified))
-	// settlements are L1 events
-	finality := b.finalityForNetwork(ctx, mainnetNetworkID)
 	for _, v := range verified {
 		settlement := &types.SettlementResponse{
 			NewLocalExitRoot: types.Hash(v.ExitRoot.Hex()),
 			BlockNumber:      v.BlockNumber,
 			BlockTimestamp:   v.BlockTimestamp,
-			BlockFinalized:   finality.isFinalized(v.BlockNumber),
+			BlockFinalized:   b.l1BlockFinalized(ctx, v.BlockNumber),
 		}
 		if v.TxHash != nil {
 			txHash := types.Hash(v.TxHash.Hex())

@@ -13,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader"
 	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
+	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -43,10 +44,21 @@ type DriverInterface interface {
 	GetCompletionPercentage() *float64
 }
 
+// BlockFinalityQuerier tells whether the downloader stored a block as finalized
+type BlockFinalityQuerier interface {
+	// StorageHeaderByNumber returns the stored header of the block and whether it is finalized.
+	// The header is nil if the block is not stored
+	StorageHeaderByNumber(ctx context.Context,
+		number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, mdrtypes.FinalizedType, error)
+}
+
 type L1InfoTreeSync struct {
 	processor *processor
 	driver    DriverInterface
 	cfg       Config
+	// blockFinality is only set when synced through the multidownloader, which is the one
+	// that tracks the finality of the blocks. It is nil for the legacy syncer
+	blockFinality BlockFinalityQuerier
 }
 
 type RuntimeData = mdrsync.RuntimeData
@@ -137,9 +149,10 @@ func NewMultidownloadBased(
 		return nil, err
 	}
 	return &L1InfoTreeSync{
-		processor: processor,
-		driver:    driver,
-		cfg:       cfg,
+		processor:     processor,
+		driver:        driver,
+		cfg:           cfg,
+		blockFinality: l1Multidownloader,
 	}, nil
 }
 
@@ -219,6 +232,23 @@ func NewLegacy(
 		driver:    driver,
 		cfg:       cfg,
 	}, nil
+}
+
+// IsBlockFinalized reports whether the block was stored as finalized by the multidownloader (so
+// it can no longer be reorged). found is false when it can't be determined: the block is not
+// stored by the multidownloader, or the syncer is not multidownloader based (legacy or read-only).
+func (d *L1InfoTreeSync) IsBlockFinalized(ctx context.Context, blockNum uint64) (finalized, found bool, err error) {
+	if d.blockFinality == nil {
+		return false, false, nil
+	}
+	header, isFinal, err := d.blockFinality.StorageHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNum))
+	if err != nil {
+		return false, false, fmt.Errorf("l1infotreesync: failed to get block %d finality: %w", blockNum, err)
+	}
+	if header == nil {
+		return false, false, nil
+	}
+	return isFinal, true, nil
 }
 
 // Finality returns the block finality this syncer syncs up to (its own BlockFinality config).
