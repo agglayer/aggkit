@@ -173,6 +173,10 @@ type BridgeResponse struct {
 
 	// Address of the contract that was the recipient of the transaction. This may differ from the bridge contract address.
 	ToAddress Address `json:"to_address" example:"0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0"`
+
+	// BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+	// It is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).
+	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
 // ClaimsResult contains the list of claim records and the total count
@@ -238,6 +242,10 @@ type ClaimResponse struct {
 
 	// IsMessage indicates whether this is a message claim (leaf type 1) rather than an asset claim (leaf type 0)
 	IsMessage bool `json:"is_message" example:"false"`
+
+	// BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+	// It is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).
+	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
 // ClaimsByGERResult contains the claims matching a given global exit root and their count
@@ -387,6 +395,11 @@ type L1InfoTreeLeafResponse struct {
 	// on a later request. Always nil for L2 chains synced by l2gersync in Legacy mode, where
 	// InjectedL2BlockNumber is only approximate and no accurate timestamp can be derived from it
 	InjectedL2BlockTimestamp *uint64 `json:"injected_l2_block_timestamp,omitempty" example:"1684500123"`
+
+	// BlockFinalized reports whether the block(s) this leaf depends on are finalized (reorg-safe): the L1 block
+	// of the leaf and, when injected on L2, the L2 injection block too. Only set by the injected-l1-info-leaf
+	// endpoint; omitted when finality could not be determined.
+	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
 // SyncStatus represents the bridge synchronization status for both L1 and L2 networks
@@ -559,6 +572,10 @@ type SettlementResponse struct {
 
 	// L1 block's hash, when available (nil if the block table has no recorded hash for it).
 	BlockHash *Hash `json:"block_hash,omitempty" example:"0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890a"` //nolint:lll
+
+	// BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+	// It is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).
+	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
 // SettlementsResult contains a page of this network's L1 settlement history, most recent first,
@@ -647,6 +664,10 @@ type RootByLERResponse struct {
 
 	// BlockPosition orders same-block roots (multiple deposits in one block)
 	BlockPosition uint64 `json:"block_position" example:"0"`
+
+	// BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+	// It is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).
+	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
 // PublicConfigResponse is a sanitized view of the bridge service configuration: only the

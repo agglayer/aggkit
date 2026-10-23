@@ -73,11 +73,28 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		WriteTimeout: 0,
 		NetworkID:    networkID,
 	}
+	// by default the finalized block is unavailable, so block_finalized is omitted from responses;
+	// tests covering it override this with expectFinalizedBlock
+	expectFinalizedBlock(b.bridgeL1, 0, errors.New("finalized block not available"))
+	expectFinalizedBlock(b.bridgeL2, 0, errors.New("finalized block not available"))
 	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs,
 		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
 	b.router = gin.New()
 	b.bridge.RegisterRoutes(b.router)
 	return b
+}
+
+// expectFinalizedBlock replaces any GetFinalizedBlock expectation of the bridger with one returning
+// the given result (any number of times).
+func expectFinalizedBlock(bridger *mocks.Bridger, finalizedBlock uint64, err error) {
+	expected := bridger.ExpectedCalls[:0]
+	for _, call := range bridger.ExpectedCalls {
+		if call.Method != "GetFinalizedBlock" {
+			expected = append(expected, call)
+		}
+	}
+	bridger.ExpectedCalls = expected
+	bridger.EXPECT().GetFinalizedBlock(mock.Anything).Return(finalizedBlock, err).Maybe()
 }
 
 // newBridgeWithMocksAndHealthCacheTTL is newBridgeWithMocks with an explicit

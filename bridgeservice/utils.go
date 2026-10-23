@@ -1,6 +1,7 @@
 package bridgeservice
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -224,4 +225,51 @@ func NewL1InfoTreeLeafResponse(leaf *l1infotreesync.L1InfoTreeLeaf) *bridgetypes
 		GlobalExitRoot:    bridgetypes.Hash(leaf.GlobalExitRoot.Hex()),
 		Hash:              bridgetypes.Hash(leaf.Hash.Hex()),
 	}
+}
+
+// blockFinality tells whether a block of a given network is finalized. The zero value reports
+// every block as unknown (nil), which is what clients get when the finalized block is unavailable.
+type blockFinality struct {
+	finalizedBlock *uint64
+}
+
+// isFinalized returns whether blockNum is finalized, or nil when the finalized block is unknown
+func (f blockFinality) isFinalized(blockNum uint64) *bool {
+	if f.finalizedBlock == nil {
+		return nil
+	}
+	finalized := blockNum <= *f.finalizedBlock
+	return &finalized
+}
+
+// andFinalized combines two finality results: nil if any is unknown, true only if both are true
+func andFinalized(a, b *bool) *bool {
+	if a == nil || b == nil {
+		return nil
+	}
+	res := *a && *b
+	return &res
+}
+
+// finalityForNetwork resolves the finalized block of the given network (0 = L1, or this instance's L2).
+// Failures are not fatal: the finality is just reported as unknown.
+func (b *BridgeService) finalityForNetwork(ctx context.Context, networkID uint32) blockFinality {
+	var bridger Bridger
+	switch networkID {
+	case mainnetNetworkID:
+		bridger = b.bridgeL1
+	case b.networkID:
+		bridger = b.bridgeL2
+	}
+	if bridger == nil {
+		return blockFinality{}
+	}
+
+	finalizedBlock, err := bridger.GetFinalizedBlock(ctx)
+	if err != nil {
+		b.logger.Warnf("unable to get the finalized block of network %d, block_finalized will be omitted: %v",
+			networkID, err)
+		return blockFinality{}
+	}
+	return blockFinality{finalizedBlock: &finalizedBlock}
 }
