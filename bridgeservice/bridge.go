@@ -560,8 +560,10 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 
 	// Use conditional function to create claim responses
 	claimResponses := make([]*types.ClaimResponse, len(claims))
+	claimer := b.claimerForNetwork(networkID)
 	for i, claim := range claims {
 		claimResponses[i] = NewClaimResponse(claim, includeAllFieldsFlag)
+		claimResponses[i].BlockFinalized = b.blockFinalized(ctx, claimer, claim.BlockNum, claim.BlockHash)
 	}
 
 	c.JSON(statusCode,
@@ -2434,8 +2436,11 @@ func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
 	}
 
 	claimResponses := make([]*types.ClaimResponse, 0, len(claims))
+	claimer := b.claimerForNetwork(networkID)
 	for _, claim := range claims {
-		claimResponses = append(claimResponses, NewClaimResponse(claim, false))
+		claimResponse := NewClaimResponse(claim, false)
+		claimResponse.BlockFinalized = b.blockFinalized(ctx, claimer, claim.BlockNum, claim.BlockHash)
+		claimResponses = append(claimResponses, claimResponse)
 	}
 	c.JSON(statusCode, types.ClaimsByGERResult{
 		Claims: claimResponses,

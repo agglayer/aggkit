@@ -47,6 +47,9 @@ type Claimer interface {
 	// GetLastProcessedBlock returns the last processed block and whether any block has been
 	// processed yet.
 	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
+	// IsBlockFinalized reports whether the block, as read from the syncer with the given hash, is
+	// finalized (can't be reorged). found is false when it can't be determined
+	IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (finalized, found bool, err error)
 }
 
 type L2GERSyncer interface {

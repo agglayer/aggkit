@@ -9,8 +9,10 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/agglayer/aggkit/bridgeservice/mocks"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -19,6 +21,16 @@ import (
 )
 
 func boolPtr(v bool) *bool { return &v }
+
+func clearClaimerIsBlockFinalized(claimer *mocks.Claimer) {
+	expected := claimer.ExpectedCalls[:0]
+	for _, call := range claimer.ExpectedCalls {
+		if call.Method != "IsBlockFinalized" {
+			expected = append(expected, call)
+		}
+	}
+	claimer.ExpectedCalls = expected
+}
 
 func TestBlockFinalizedInResponses(t *testing.T) {
 	var (
@@ -100,6 +112,58 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 			fmt.Sprintf("%s/bridges?%s=%d", BridgeV1Prefix, networkIDParam, mainnetNetworkID))
 		require.Equal(t, http.StatusOK, w.Code)
 		require.NotContains(t, w.Body.String(), "block_finalized")
+	})
+
+	t.Run("claims ask the claim syncer of the network, with the hash it served", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		clearIsBlockFinalized(bridgeMocks.bridgeL2) // the bridge syncer must not be asked
+		clearClaimerIsBlockFinalized(bridgeMocks.claimL2)
+		claimer := bridgeMocks.claimL2
+		claimer.EXPECT().IsBlockFinalized(mock.Anything, uint64(10), blockHash).Return(true, true, nil).Maybe()
+		claimer.EXPECT().IsBlockFinalized(mock.Anything, uint64(11), blockHash).Return(false, true, nil).Maybe()
+		claimer.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
+		newClaim := func(blockNum uint64, hash common.Hash) *claimsynctypes.Claim {
+			return &claimsynctypes.Claim{BlockNum: blockNum, BlockHash: hash, Amount: common.Big0, GlobalIndex: common.Big0}
+		}
+		bridgeMocks.claimL2.EXPECT().
+			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]*claimsynctypes.Claim{
+				newClaim(10, blockHash), newClaim(11, blockHash), newClaim(12, blockHash), newClaim(10, common.Hash{}),
+			}, 4, nil)
+
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/claims?%s=%d", BridgeV1Prefix, networkIDParam, l2NetworkID))
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.ClaimsResult
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Len(t, response.Claims, 4)
+		require.Equal(t, boolPtr(true), response.Claims[0].BlockFinalized)
+		require.Equal(t, boolPtr(false), response.Claims[1].BlockFinalized)
+		require.Nil(t, response.Claims[2].BlockFinalized)
+		require.Nil(t, response.Claims[3].BlockFinalized) // no hash: unknown
+	})
+
+	t.Run("claims-by-ger", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		ger := common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
+		clearClaimerIsBlockFinalized(bridgeMocks.claimL1)
+		bridgeMocks.claimL1.EXPECT().IsBlockFinalized(mock.Anything, uint64(10), blockHash).Return(true, true, nil).Maybe()
+		bridgeMocks.claimL1.EXPECT().GetClaimsByGER(mock.Anything, ger).Return(
+			[]*claimsynctypes.Claim{{BlockNum: 10, BlockHash: blockHash, Amount: common.Big0, GlobalIndex: common.Big0}},
+			nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "0")
+		queryParams.Set(globalExitRootParam, ger.Hex())
+		w := performRequest(t, bridgeMocks.router,
+			fmt.Sprintf("%s/claims-by-ger?%s", BridgeV1Prefix, queryParams.Encode()))
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.ClaimsByGERResult
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Len(t, response.Claims, 1)
+		require.Equal(t, boolPtr(true), response.Claims[0].BlockFinalized)
 	})
 
 	t.Run("root-by-ler", func(t *testing.T) {

@@ -233,6 +233,10 @@ func (p *claimStorage) GetClaimsPaged(
 		return nil, 0, err
 	}
 
+	if err = p.FillBlockHashes(ctx, nil, claims); err != nil {
+		return nil, 0, fmt.Errorf("GetClaimsPaged: %w", err)
+	}
+
 	return claims, claimsCount, nil
 }
 
