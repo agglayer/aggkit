@@ -32,6 +32,7 @@ type downloaderSovereign struct {
 	l2GERAddr          common.Address
 	l1InfoTreeSync     L1InfoTreeQuerier
 	l1GERManager       *agglayerger.Agglayerger
+	l1Client           aggkittypes.BaseEthereumClienter
 	rh                 *sync.RetryHandler
 	syncBlockChunkSize uint64
 
@@ -70,6 +71,7 @@ func newDownloaderSovereign(
 		l2GERAddr:          l2GERAddr,
 		l1InfoTreeSync:     l1InfoTreeSync,
 		l1GERManager:       l1GERManager,
+		l1Client:           l1Client,
 		rh:                 rh,
 		syncBlockChunkSize: syncBlockChunkSize,
 	}
@@ -156,9 +158,21 @@ func (d *downloaderSovereign) buildAppender(
 		l1InfoTreeLeaf, err := d.l1InfoTreeSync.GetInfoByGlobalExitRoot(insertGEREvent.NewGlobalExitRoot)
 		if err != nil {
 			gerHash := common.Hash(insertGEREvent.NewGlobalExitRoot)
-			log.Errorf("failed to fetch l1 info tree for global exit root %s (block: %d): %v",
-				gerHash.Hex(), b.Num, err)
 			ctx := context.Background()
+
+			// A GER missing from the L1 info tree is usually not an error: the L1 info tree syncer just
+			// hasn't caught up yet and the lookup is retried. Only when it is fully synced does the
+			// miss point to a real problem (e.g. a fake GER injected on L2).
+			if upToDate, syncErr := d.l1InfoTreeSync.IsUpToDate(ctx, d.l1Client); syncErr == nil && !upToDate {
+				log.Warnf("l1 info tree not synced yet, cannot resolve global exit root %s (block: %d), "+
+					"will retry: %v", gerHash.Hex(), b.Num, err)
+			} else {
+				if syncErr != nil {
+					log.Warnf("could not check whether the l1 info tree is synced: %v", syncErr)
+				}
+				log.Errorf("failed to fetch l1 info tree for global exit root %s (block: %d): %v",
+					gerHash.Hex(), b.Num, err)
+			}
 
 			// The L1 contract read is informational only: it is redundant with the
 			// invalid-GER condition ("on L2, not in L1 info tree") and must not gate the skip

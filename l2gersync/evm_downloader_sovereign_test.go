@@ -157,8 +157,12 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 	}
 
 	tests := []struct {
-		name                string
-		getInfoByGERError   error
+		name              string
+		getInfoByGERError error
+		// l1InfoTreeNotSynced / isUpToDateError simulate the answer of l1InfoTreeSync.IsUpToDate. The
+		// zero values mean "synced, no error", so a missing GER is a real (error-level) problem.
+		l1InfoTreeNotSynced bool
+		isUpToDateError     error
 		l1ContractTimestamp *big.Int
 		l1ContractError     error
 		// removalLogFound simulates the (S-log) UpdateRemovalHashChainValue scan finding (or not
@@ -175,6 +179,34 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			// With no removal event on L2 (S-log empty), the appender stays blocked.
 			name:                 "no_removal_event_stays_blocked",
 			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
+			expectError:          true,
+			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
+		},
+		{
+			// L1 info tree not synced yet: the miss is expected (only logged as a warning), but the
+			// appender must still fail so the lookup is retried once the syncer catches up.
+			name:                 "l1_info_tree_not_synced_stays_blocked_to_retry",
+			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
+			l1InfoTreeNotSynced:  true,
+			expectError:          true,
+			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
+		},
+		{
+			// L1 info tree not synced and the GER was removed from L2: the stale insert is skipped.
+			name:                "l1_info_tree_not_synced_removal_event_unsticks",
+			getInfoByGERError:   fmt.Errorf("GER lookup failed"),
+			l1InfoTreeNotSynced: true,
+			l1ContractTimestamp: big.NewInt(0),
+			removalLogFound:     true,
+			l2ContractTimestamp: big.NewInt(0),
+			expectError:         false,
+		},
+		{
+			// Failing to determine the sync status must not change the outcome: the appender stays
+			// blocked.
+			name:                 "is_up_to_date_error_stays_blocked",
+			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
+			isUpToDateError:      fmt.Errorf("finalized block unavailable"),
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
 		},
@@ -254,6 +286,8 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
 
 			mockL1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(testGER).Return(nil, tt.getInfoByGERError).Maybe()
+			mockL1InfoTreeSync.EXPECT().IsUpToDate(mock.Anything, mockL1Client).
+				Return(!tt.l1InfoTreeNotSynced, tt.isUpToDateError).Once()
 
 			// The L1 contract read is now unconditional (informational only, does not gate the
 			// skip decision), so it must always be mocked.

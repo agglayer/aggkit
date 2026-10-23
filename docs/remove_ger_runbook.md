@@ -51,8 +51,14 @@ The l2gersync component detects invalid GERs during synchronization when it trie
 
 **1. Failed to fetch L1 info tree for GER**
 ```
-failed to fetch l1 info tree for global exit root <GER_HASH>: ...
+failed to fetch l1 info tree for global exit root <GER_HASH> (block: <N>): ...
 ```
+
+This is logged at `ERROR` level only when the L1 info tree syncer is up to date (`IsUpToDate`), which is when it points to an invalid GER. While the L1 info tree syncer is still catching up with the finalized L1 block, a missing GER is expected and the same lookup is logged at `WARN` level instead and retried:
+```
+l1 info tree not synced yet, cannot resolve global exit root <GER_HASH> (block: <N>), will retry: ...
+```
+If the sync status cannot be determined, the `ERROR` line is logged (preceded by a `WARN` line `could not check whether the l1 info tree is synced`).
 
 **2. GER not found in L1 contract**
 ```
