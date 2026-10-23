@@ -510,6 +510,21 @@ func (s *BridgeSync) GetLatestNetworkBlock(ctx context.Context) (uint64, error) 
 	return blockNumber, nil
 }
 
+// GetFinalizedBlock returns the latest finalized block number of the network
+func (s *BridgeSync) GetFinalizedBlock(ctx context.Context) (uint64, error) {
+	if s.processor.isHalted() {
+		return 0, sync.ErrInconsistentState
+	}
+
+	finalized := aggkittypes.FinalizedBlock
+	blockNumber, err := finalized.BlockNumber(ctx, s.ethClient)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get finalized block number: %w", err)
+	}
+
+	return blockNumber, nil
+}
+
 // IsActive returns true if the syncer is active (not halted)
 func (s *BridgeSync) IsActive(ctx context.Context) bool {
 	return !s.processor.isHalted()

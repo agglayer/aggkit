@@ -26,6 +26,7 @@ type Bridger interface {
 	GetContractDepositCount(ctx context.Context) (uint32, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
 	GetLatestNetworkBlock(ctx context.Context) (uint64, error)
+	GetFinalizedBlock(ctx context.Context) (uint64, error)
 	IsActive(ctx context.Context) bool
 	GetBridgeByDepositCount(ctx context.Context, depositCount uint32) (*bridgesync.Bridge, error)
 	GetBridgesByContent(ctx context.Context, leafType uint8, originAddress common.Address,
