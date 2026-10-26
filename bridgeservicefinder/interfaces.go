@@ -35,13 +35,19 @@ const (
 var (
 	// ErrURLNotFound is returned by GetURL when no bridge service URL is cached for the network.
 	ErrURLNotFound = errors.New("bridge service url not found for network")
-	// ErrNetworkDisabled is returned by GetURL when networkID is listed in Config.IgnoreNetworkIDs.
+	// ErrConflictingNetworkFilters is returned by New when both Config.IgnoreNetworkIDs and
+	// Config.AllowNetworkIDs are set: they are mutually exclusive.
+	ErrConflictingNetworkFilters = errors.New(
+		"bridgeservicefinder: IgnoreNetworkIDs and AllowNetworkIDs are mutually exclusive")
+	// ErrNetworkDisabled is returned by GetURL when networkID is listed in Config.IgnoreNetworkIDs
+	// or is not listed in a non-empty Config.AllowNetworkIDs.
 	// An ignored network is excluded from resolution entirely: GetURL never returns cached
 	// information for it, even when a config override (BridgeURLs/RPCURLs) is set for that
 	// networkID — the ignore list now takes precedence over a static override, unlike a plain
 	// unresolved network. It wraps ErrURLNotFound so existing callers that classify "not found" as
 	// e.g. an HTTP 404 keep doing so for disabled networks too.
-	ErrNetworkDisabled = fmt.Errorf("%w: network is disabled (listed in IgnoreNetworkIDs)", ErrURLNotFound)
+	ErrNetworkDisabled = fmt.Errorf(
+		"%w: network is disabled (excluded by IgnoreNetworkIDs/AllowNetworkIDs)", ErrURLNotFound)
 	// ErrNoSourceAvailable is returned by the resolver when none of the three sources yields a URL.
 	ErrNoSourceAvailable = errors.New("no bridge service url source available for network")
 	// ErrSourceNotAvailable is returned by a RollupContractReader method when the underlying contract
@@ -105,8 +111,8 @@ type Finder interface {
 	// service is unreachable at startup.
 	Start(ctx context.Context) error
 	// GetURL returns the currently cached URLs (bridge service + JSON-RPC) for the given networkID, or
-	// ErrURLNotFound if nothing is cached, or ErrNetworkDisabled if networkID is listed in
-	// Config.IgnoreNetworkIDs (never any cached information for it, even a config override).
+	// ErrURLNotFound if nothing is cached, or ErrNetworkDisabled if networkID is excluded by
+	// Config.IgnoreNetworkIDs / Config.AllowNetworkIDs (never any cached information for it, even a config override).
 	// networkID follows the mapping documented in doc.go (networkID == rollupID; network 0 is L1 and
 	// is only served if provided via Config.BridgeURLs).
 	GetURL(networkID uint32) (NetworkURLs, error)

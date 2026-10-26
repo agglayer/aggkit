@@ -71,10 +71,10 @@ type finder struct {
 	// an incoming log to the correct cache entry.
 	addrToNetworkID map[common.Address]uint32
 
-	// ignoreNetworkIDs is the set built from Config.IgnoreNetworkIDs. Networks in this set are
+	// filter is built from Config.IgnoreNetworkIDs / Config.AllowNetworkIDs. Networks it excludes are
 	// skipped entirely during enumeration (see buildInitialCache) and live discovery (see listener's
 	// discoverRollup).
-	ignoreNetworkIDs map[uint32]struct{}
+	filter networkFilter
 
 	// bridgeAddrMu guards defaultBridgeAddr
 	bridgeAddrMu sync.Mutex
@@ -84,8 +84,49 @@ type finder struct {
 	defaultBridgeAddr *common.Address
 }
 
-// buildIgnoreSet turns Config.IgnoreNetworkIDs into a set for O(1) membership checks.
-func buildIgnoreSet(ids []uint32) map[uint32]struct{} {
+// networkFilter decides which networkIDs are excluded from resolution, built from
+// Config.IgnoreNetworkIDs (blacklist) or Config.AllowNetworkIDs (whitelist). newNetworkFilter
+// guarantees at most one of the two is set.
+type networkFilter struct {
+	ignore map[uint32]struct{}
+	// allow is nil when no allowlist is configured (every network not in ignore is permitted).
+	allow map[uint32]struct{}
+}
+
+// newNetworkFilter builds the filter from cfg, returning ErrConflictingNetworkFilters if both
+// Config.IgnoreNetworkIDs and Config.AllowNetworkIDs are non-empty.
+func newNetworkFilter(cfg Config) (networkFilter, error) {
+	if len(cfg.IgnoreNetworkIDs) > 0 && len(cfg.AllowNetworkIDs) > 0 {
+		return networkFilter{}, ErrConflictingNetworkFilters
+	}
+
+	f := networkFilter{ignore: buildNetworkSet(cfg.IgnoreNetworkIDs)}
+	if len(cfg.AllowNetworkIDs) > 0 {
+		f.allow = buildNetworkSet(cfg.AllowNetworkIDs)
+	}
+
+	return f, nil
+}
+
+// excluded reports whether networkID must be left out of resolution entirely.
+func (n networkFilter) excluded(networkID uint32) bool {
+	if n.allow != nil {
+		_, allowed := n.allow[networkID]
+		return !allowed
+	}
+
+	_, ignored := n.ignore[networkID]
+
+	return ignored
+}
+
+// active reports whether any network can be excluded at all.
+func (n networkFilter) active() bool {
+	return len(n.ignore) > 0 || n.allow != nil
+}
+
+// buildNetworkSet turns a list of networkIDs into a set for O(1) membership checks.
+func buildNetworkSet(ids []uint32) map[uint32]struct{} {
 	set := make(map[uint32]struct{}, len(ids))
 	for _, id := range ids {
 		set[id] = struct{}{}
@@ -100,6 +141,11 @@ func buildIgnoreSet(ids []uint32) map[uint32]struct{} {
 // applies Config defaults for unset fields.
 func New(cfg Config, opts Options) (Finder, error) {
 	cfg = applyConfigDefaults(cfg)
+
+	filter, err := newNetworkFilter(cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	logger := opts.Logger
 	if logger == nil {
@@ -137,17 +183,17 @@ func New(cfg Config, opts Options) (Finder, error) {
 	}
 
 	return &finder{
-		cfg:              cfg,
-		logger:           logger,
-		rollupManager:    rollupManager,
-		readerFactory:    readerFactory,
-		healthChecker:    healthChecker,
-		logFilterer:      logFilterer,
-		ethClient:        opts.EthClient,
-		resolver:         newResolver(cfg.BridgeURLs, cfg.RPCURLs, DefaultBridgeServicePort),
-		cache:            newCache(),
-		addrToNetworkID:  make(map[common.Address]uint32),
-		ignoreNetworkIDs: buildIgnoreSet(cfg.IgnoreNetworkIDs),
+		cfg:             cfg,
+		logger:          logger,
+		rollupManager:   rollupManager,
+		readerFactory:   readerFactory,
+		healthChecker:   healthChecker,
+		logFilterer:     logFilterer,
+		ethClient:       opts.EthClient,
+		resolver:        newResolver(cfg.BridgeURLs, cfg.RPCURLs, DefaultBridgeServicePort),
+		cache:           newCache(),
+		addrToNetworkID: make(map[common.Address]uint32),
+		filter:          filter,
 	}, nil
 }
 
@@ -238,7 +284,7 @@ func (f *finder) buildInitialCache(ctx context.Context) error {
 			continue
 		}
 
-		if _, ignored := f.ignoreNetworkIDs[networkID]; ignored {
+		if f.filter.excluded(networkID) {
 			continue
 		}
 
@@ -258,8 +304,9 @@ func (f *finder) buildInitialCache(ctx context.Context) error {
 			return err
 		}
 
-		if _, ignored := f.ignoreNetworkIDs[rollupID]; ignored {
-			f.logger.Infof("network %d is in IgnoreNetworkIDs, skipping on-chain resolution", rollupID)
+		if f.filter.excluded(rollupID) {
+			f.logger.Infof(
+				"network %d is excluded by IgnoreNetworkIDs/AllowNetworkIDs, skipping on-chain resolution", rollupID)
 			continue
 		}
 
@@ -359,7 +406,7 @@ func (f *finder) probeAll(ctx context.Context) int {
 
 	f.cache.mu.Lock()
 	for networkID, entry := range f.cache.entries {
-		if _, ignored := f.ignoreNetworkIDs[networkID]; ignored {
+		if f.filter.excluded(networkID) {
 			continue
 		}
 
@@ -378,13 +425,13 @@ func (f *finder) probeAll(ctx context.Context) int {
 }
 
 // GetURL returns the currently cached URLs (bridge service + JSON-RPC endpoint) for networkID, or
-// ErrNetworkDisabled if networkID is listed in Config.IgnoreNetworkIDs, or ErrURLNotFound if
+// ErrNetworkDisabled if networkID is excluded by Config.IgnoreNetworkIDs / Config.AllowNetworkIDs, or ErrURLNotFound if
 // nothing is cached. A disabled network is rejected before the cache is even consulted, so no
 // information is ever returned for it — not even a config override (see buildInitialCache). The
 // JSONRPCURL field may be empty when that source is unavailable (see NetworkURLs). It reads under
 // the cache read lock so it is safe to call concurrently.
 func (f *finder) GetURL(networkID uint32) (NetworkURLs, error) {
-	if _, ignored := f.ignoreNetworkIDs[networkID]; ignored {
+	if f.filter.excluded(networkID) {
 		return NetworkURLs{}, fmt.Errorf("%w: network %d", ErrNetworkDisabled, networkID)
 	}
 
@@ -409,13 +456,13 @@ func (f *finder) PendingNetworks() []PendingNetwork {
 // out even if it somehow still had a cache entry, since GetURL would reject it anyway.
 func (f *finder) NetworkIDs() []uint32 {
 	ids := f.cache.networkIDs()
-	if len(f.ignoreNetworkIDs) == 0 {
+	if !f.filter.active() {
 		return ids
 	}
 
 	filtered := make([]uint32, 0, len(ids))
 	for _, id := range ids {
-		if _, ignored := f.ignoreNetworkIDs[id]; ignored {
+		if f.filter.excluded(id) {
 			continue
 		}
 

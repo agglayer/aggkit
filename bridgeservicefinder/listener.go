@@ -68,10 +68,10 @@ type listener struct {
 	// addrToNetworkID, is only mutated on the listener goroutine, under the same cache.mu.
 	watchedAddresses []common.Address
 
-	// ignoreNetworkIDs is the set built from Config.IgnoreNetworkIDs. A rollup-manager lifecycle
-	// event announcing one of these networkIDs is skipped by discoverRollup: no on-chain reads, no
-	// cache entry, and its contract is never added to watchedAddresses.
-	ignoreNetworkIDs map[uint32]struct{}
+	// filter is built from Config.IgnoreNetworkIDs / Config.AllowNetworkIDs. A rollup-manager
+	// lifecycle event announcing a networkID it excludes is skipped by discoverRollup: no on-chain
+	// reads, no cache entry, and its contract is never added to watchedAddresses.
+	filter networkFilter
 
 	// autoRegisterNewNetworks mirrors Config.AutoRegisterNewNetworks; when false the served set is
 	// frozen at Start and post-Start first installs are recorded as pending instead.
@@ -124,6 +124,11 @@ func newListener(
 	ethClient aggkittypes.BaseEthereumClienter,
 	cfg Config,
 ) (*listener, error) {
+	filter, err := newNetworkFilter(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	aggchainABI, err := aggchainbase.AggchainbaseMetaData.GetAbi()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load aggchainbase ABI: %w", err)
@@ -184,7 +189,7 @@ func newListener(
 		ethClient:               ethClient,
 		addrToNetworkID:         addrToNetworkID,
 		watchedAddresses:        watched,
-		ignoreNetworkIDs:        buildIgnoreSet(cfg.IgnoreNetworkIDs),
+		filter:                  filter,
 		autoRegisterNewNetworks: cfg.AutoRegisterNewNetworks,
 		blockFinality:           cfg.BlockFinality,
 		pollInterval:            cfg.PollInterval.Duration,
@@ -462,17 +467,17 @@ func (l *listener) processRollupManagerLog(ctx context.Context, lg types.Log) {
 // the rollup's bridge service URL (same priority rules as the initial cache build), installs a cache
 // entry and adds the rollup contract to the watched set so its later URL-changing events are picked
 // up. It is a no-op if the rollup contract is already watched, or if rollupID is listed in
-// Config.IgnoreNetworkIDs (in which case it is never added to the watched set either, so its later
-// events are not observed) - the IgnoreNetworkIDs check runs first and always wins, regardless of
-// Config.AutoRegisterNewNetworks: an ignored network is a deliberate operator decision, not a
-// candidate for the pending set. Only once a rollup passes that check does the auto-register gate
-// apply: when Config.AutoRegisterNewNetworks is false a rollup that is not served yet is recorded as
-// pending (see Finder.PendingNetworks) and never watched. A rollup that IS already served - from a
-// static Config.BridgeURLs override installed at Start - is not recorded as pending (the operator
-// already provisioned it) but is otherwise registered and watched exactly like in the
-// AutoRegisterNewNetworks=true case: only that way does its JSON-RPC endpoint get resolved on-chain
-// and do its later URL events reach the address filter, which is what keeps the "URL refreshes of
-// already-served networks are never affected by this flag" invariant true (see doc.go).
+// Config.IgnoreNetworkIDs, or is not listed in a non-empty Config.AllowNetworkIDs (in which case it is
+// never added to the watched set either, so its later events are not observed) - this filter runs
+// first and always wins, regardless of Config.AutoRegisterNewNetworks: an excluded network is a
+// deliberate operator decision, not a candidate for the pending set. Only once a rollup passes that
+// check does the auto-register gate apply: when Config.AutoRegisterNewNetworks is false a rollup that
+// is not served yet is recorded as pending (see Finder.PendingNetworks) and never watched. A rollup
+// that IS already served - from a static Config.BridgeURLs override installed at Start - is not
+// recorded as pending (the operator already provisioned it) but is otherwise registered and watched
+// exactly like in the AutoRegisterNewNetworks=true case: only that way does its JSON-RPC endpoint get
+// resolved on-chain and do its later URL events reach the address filter, which is what keeps the "URL
+// refreshes of already-served networks are never affected by this flag" invariant true (see doc.go).
 //
 // Unlike the initial cache build (which aborts Start on a hard error), discovery runs on the polling
 // goroutine and must not tear it down, so failures are logged rather than propagated. The address is
@@ -482,8 +487,9 @@ func (l *listener) discoverRollup(ctx context.Context, rollupID uint32, addr com
 		return
 	}
 
-	if _, ignored := l.ignoreNetworkIDs[rollupID]; ignored {
-		l.logger.Debugf("network %d (%s) is in IgnoreNetworkIDs, skipping live discovery", rollupID, addr)
+	if l.filter.excluded(rollupID) {
+		l.logger.Debugf(
+			"network %d (%s) is excluded by IgnoreNetworkIDs/AllowNetworkIDs, skipping live discovery", rollupID, addr)
 		return
 	}
 
