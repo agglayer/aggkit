@@ -71,11 +71,13 @@ type BridgeSync struct {
 	driver     *sync.EVMDriver
 	downloader *sync.EVMDownloader
 
-	originNetwork  uint32
-	reorgDetector  ReorgDetector
-	ethClient      aggkittypes.EthClienter
-	agglayerBridge *agglayerbridge.Agglayerbridge
-	cfg            Config
+	originNetwork uint32
+	reorgDetector ReorgDetector
+	// reorgDetectorID is the id this syncer is subscribed with in the reorg detector
+	reorgDetectorID string
+	ethClient       aggkittypes.EthClienter
+	agglayerBridge  *agglayerbridge.Agglayerbridge
+	cfg             Config
 }
 
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
@@ -139,6 +141,8 @@ func newBridgeSync(
 	initialLER common.Hash,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
+	// the same id is used by the driver and the downloader to track blocks and by IsBlockFinalized to query them
+	reorgDetectorID := syncerID.String()
 
 	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(cfg.BridgeAddr, ethClient)
 	if err != nil {
@@ -189,8 +193,8 @@ func newBridgeSync(
 		[]common.Address{cfg.BridgeAddr},
 		rh,
 		rd.GetFinalizedBlockType(),
-		rd,                // reorgDetector
-		syncerID.String(), // reorgDetectorID
+		rd,              // reorgDetector
+		reorgDetectorID, // reorgDetectorID
 	)
 	if err != nil {
 		return nil, err
@@ -212,7 +216,7 @@ func newBridgeSync(
 		},
 		processor)
 
-	driver, err := sync.NewEVMDriver(rd, processor, downloader, syncerID.String(),
+	driver, err := sync.NewEVMDriver(rd, processor, downloader, reorgDetectorID,
 		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
@@ -246,14 +250,15 @@ func newBridgeSync(
 	)
 
 	return &BridgeSync{
-		processor:      processor,
-		driver:         driver,
-		downloader:     downloader,
-		originNetwork:  networkID,
-		reorgDetector:  rd,
-		ethClient:      ethClient,
-		agglayerBridge: agglayerBridge,
-		cfg:            cfg,
+		processor:       processor,
+		driver:          driver,
+		downloader:      downloader,
+		originNetwork:   networkID,
+		reorgDetector:   rd,
+		reorgDetectorID: reorgDetectorID,
+		ethClient:       ethClient,
+		agglayerBridge:  agglayerBridge,
+		cfg:             cfg,
 	}, nil
 }
 
@@ -410,11 +415,25 @@ func (s *BridgeSync) GetRootByLER(ctx context.Context, ler common.Hash) (*tree.R
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
 	}
-	root, err := s.processor.exitTree.GetRootByHash(ctx, ler)
-	if err != nil {
-		return root, err
+	// the root and the hash of its block are read in the same statement, so the hash can't be the one
+	// of a block that replaced the root's block after a reorg
+	return s.processor.getExitTreeRootByHash(ctx, ler)
+}
+
+// IsBlockFinalized reports whether the block with the given number and hash, as read from this syncer,
+// is finalized, i.e. it can no longer be reorged. The legacy syncer doesn't store a finality flag, but the
+// reorg detector tracks every block that was not final when processed and only stops tracking it once its
+// hash was checked against the canonical chain and it is below the finalized block. So a processed block
+// that is not tracked anymore is a finalized one.
+// found is false when it can't be determined: no hash was given, or the block is not stored with that
+// same hash (unknown, no hash stored for it, or it was replaced after the caller read it).
+func (s *BridgeSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
+	blockHash common.Hash) (finalized, found bool, err error) {
+	if s.processor.isHalted() {
+		return false, false, sync.ErrInconsistentState
 	}
-	return root, nil
+	return reorgdetector.IsBlockFinalized(ctx, s.reorgDetector, s.reorgDetectorID, blockNum, blockHash,
+		s.processor.getBlockHash)
 }
 
 // GetExitRootByIndex returns the root of the exit tree at the moment the leaf with the given index was added

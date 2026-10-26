@@ -36,6 +36,12 @@ const (
 	// bridgeTableName is the name of the table that stores bridge events
 	bridgeTableName = "bridge"
 
+	// bridgeArchiveTableName is the name of the table that stores the archived bridge events
+	bridgeArchiveTableName = "bridge_archive"
+
+	// exitTreeDBPrefix is the table prefix of the local exit tree (see tree.NewAppendOnlyTree)
+	exitTreeDBPrefix = ""
+
 	// tokenMappingTableName is the name of the table that stores token mapping events
 	tokenMappingTableName = "token_mapping"
 
@@ -56,31 +62,51 @@ const (
 	// orderByBlockDesc is the default order by clause for block-based queries
 	orderByBlockDesc = "block_num DESC, block_pos DESC"
 
+	// blockHashSelectSQL selects every column of the table aliased t plus the hash of the block the row
+	// belongs to, as block_hash, read in the same statement (see bridgeWithBlockHash). The block is
+	// LEFT JOINed so a row whose block is missing or has no hash is still returned, with an empty
+	// block_hash. Columns named like block's ones (num, hash) must be qualified in the rest of the
+	// statement; the statements below qualify every column anyway.
+	blockHashSelectSQL = "SELECT t.*, COALESCE(b.hash, '') AS block_hash FROM "
+	// blockHashJoinSQL goes right after the table name in a statement started with blockHashSelectSQL
+	blockHashJoinSQL = " t LEFT JOIN block b ON b.num = t.block_num"
+
 	// bridgeByDepositCountSQL is the query used by GetBridgeByDepositCount for the main bridge table.
 	// deposit_count is a unique monotonic counter per bridge event in the contract, so no
 	// additional origin_network filter is needed (it would incorrectly exclude L2-native tokens).
-	bridgeByDepositCountSQL = "SELECT * FROM " + bridgeTableName +
-		" WHERE deposit_count = $1 LIMIT 1"
+	bridgeByDepositCountSQL = blockHashSelectSQL + bridgeTableName + blockHashJoinSQL +
+		" WHERE t.deposit_count = $1 LIMIT 1"
 
 	// archiveByDepositCountSQL is the query used by GetBridgeByDepositCount for bridge_archive.
-	archiveByDepositCountSQL = `SELECT * FROM bridge_archive WHERE deposit_count = $1 LIMIT 1`
+	archiveByDepositCountSQL = blockHashSelectSQL + bridgeArchiveTableName + blockHashJoinSQL +
+		" WHERE t.deposit_count = $1 LIMIT 1"
 
 	// bridgesByContentWhereNoMeta is the WHERE clause for GetBridgesByContent without metadata.
-	bridgesByContentWhereNoMeta = "origin_network = 0 AND leaf_type = $1 AND origin_address = $2" +
-		" AND destination_network = $3 AND destination_address = $4 AND amount = $5" +
-		" AND (metadata IS NULL OR metadata = x'')"
+	bridgesByContentWhereNoMeta = "t.origin_network = 0 AND t.leaf_type = $1 AND t.origin_address = $2" +
+		" AND t.destination_network = $3 AND t.destination_address = $4 AND t.amount = $5" +
+		" AND (t.metadata IS NULL OR t.metadata = x'')"
 
 	// bridgesByContentWhereWithMeta is the WHERE clause for GetBridgesByContent with metadata.
-	bridgesByContentWhereWithMeta = "origin_network = 0 AND leaf_type = $1 AND origin_address = $2" +
-		" AND destination_network = $3 AND destination_address = $4 AND amount = $5" +
-		" AND metadata = $6"
+	bridgesByContentWhereWithMeta = "t.origin_network = 0 AND t.leaf_type = $1 AND t.origin_address = $2" +
+		" AND t.destination_network = $3 AND t.destination_address = $4 AND t.amount = $5" +
+		" AND t.metadata = $6"
 
 	// Precomputed full SELECT queries for GetBridgesByContent (bridge and bridge_archive tables,
 	// with and without metadata filter). Using compile-time constants avoids dynamic SQL construction.
-	bridgeByContentNoMetaSQL    = "SELECT * FROM " + bridgeTableName + " WHERE " + bridgesByContentWhereNoMeta
-	bridgeByContentWithMetaSQL  = "SELECT * FROM " + bridgeTableName + " WHERE " + bridgesByContentWhereWithMeta
-	archiveByContentNoMetaSQL   = "SELECT * FROM bridge_archive WHERE " + bridgesByContentWhereNoMeta
-	archiveByContentWithMetaSQL = "SELECT * FROM bridge_archive WHERE " + bridgesByContentWhereWithMeta
+	bridgeByContentNoMetaSQL = blockHashSelectSQL + bridgeTableName + blockHashJoinSQL +
+		" WHERE " + bridgesByContentWhereNoMeta
+	bridgeByContentWithMetaSQL = blockHashSelectSQL + bridgeTableName + blockHashJoinSQL +
+		" WHERE " + bridgesByContentWhereWithMeta
+	archiveByContentNoMetaSQL = blockHashSelectSQL + bridgeArchiveTableName + blockHashJoinSQL +
+		" WHERE " + bridgesByContentWhereNoMeta
+	archiveByContentWithMetaSQL = blockHashSelectSQL + bridgeArchiveTableName + blockHashJoinSQL +
+		" WHERE " + bridgesByContentWhereWithMeta
+
+	// exitTreeRootByHashSQL is the query used by GetRootByLER: the exit tree root with the given hash
+	// plus the hash of its block, read in the same statement (see rootWithBlockHash). The exit tree
+	// is created with the exitTreeDBPrefix prefix, so its roots are in the exitTreeDBPrefix+"root" table
+	exitTreeRootByHashSQL = blockHashSelectSQL + exitTreeDBPrefix + "root" + blockHashJoinSQL +
+		" WHERE t.hash = $1"
 )
 
 var (
@@ -124,6 +150,57 @@ type Bridge struct {
 	TxnSender          common.Address  `meddler:"txn_sender,address"`
 	Source             BridgeSource    `meddler:"source"`
 	ToAddress          common.Address  `meddler:"to_address,address"`
+	// BlockHash is the hash of the block BlockNum, as stored in the block table. It is not a column of
+	// the bridge tables: the read queries that serve it (GetBridgesPaged, GetBridgeByDepositCount and
+	// GetBridgesByContent) join it from the block table in the same statement that reads the row, so it
+	// is the hash of the block the row belonged to when it was read. Zero if that block has no hash, or
+	// when the bridge was read by any other query.
+	BlockHash common.Hash `meddler:"-"`
+}
+
+// bridgeWithBlockHash is the read model of a bridge row joined with the hash of its block (see
+// blockHashSelectSQL). It can't be Bridge itself: meddler.Insert writes every meddler-tagged field and
+// block_hash is not a column of the bridge tables, and meddler doesn't flatten embedded structs. It has
+// exactly the fields of Bridge, in the same order, so that Bridge(row) compiles only while both match.
+type bridgeWithBlockHash struct {
+	BlockNum           uint64          `meddler:"block_num"`
+	BlockPos           uint64          `meddler:"block_pos"`
+	FromAddress        *common.Address `meddler:"from_address,address"`
+	TxHash             common.Hash     `meddler:"tx_hash,hash"`
+	BlockTimestamp     uint64          `meddler:"block_timestamp"`
+	LeafType           uint8           `meddler:"leaf_type"`
+	OriginNetwork      uint32          `meddler:"origin_network"`
+	OriginAddress      common.Address  `meddler:"origin_address"`
+	DestinationNetwork uint32          `meddler:"destination_network"`
+	DestinationAddress common.Address  `meddler:"destination_address"`
+	Amount             *big.Int        `meddler:"amount,bigint"`
+	Metadata           []byte          `meddler:"metadata"`
+	DepositCount       uint32          `meddler:"deposit_count"`
+	TxnSender          common.Address  `meddler:"txn_sender,address"`
+	Source             BridgeSource    `meddler:"source"`
+	ToAddress          common.Address  `meddler:"to_address,address"`
+	BlockHash          common.Hash     `meddler:"block_hash,hash"`
+}
+
+// toBridges converts the rows read with bridgeWithBlockHash to bridges
+func toBridges(rows []*bridgeWithBlockHash) []*Bridge {
+	bridges := make([]*Bridge, len(rows))
+	for i, row := range rows {
+		bridge := Bridge(*row)
+		bridges[i] = &bridge
+	}
+	return bridges
+}
+
+// rootWithBlockHash is the read model of an exit tree root joined with the hash of its block (see
+// exitTreeRootByHashSQL), for the same reasons as bridgeWithBlockHash. It has exactly the fields of
+// tree.Root, in the same order, so that tree.Root(row) compiles only while both match.
+type rootWithBlockHash struct {
+	Hash          common.Hash `meddler:"hash,hash"`
+	Index         uint32      `meddler:"position"`
+	BlockNum      uint64      `meddler:"block_num"`
+	BlockPosition uint64      `meddler:"block_position"`
+	BlockHash     common.Hash `meddler:"block_hash,hash"`
 }
 
 func (b *Bridge) String() string {
@@ -454,7 +531,7 @@ func newProcessor(
 	logger *log.Logger,
 	dbQueryTimeout time.Duration,
 ) (*processor, error) {
-	exitTree := tree.NewAppendOnlyTree(database, "")
+	exitTree := tree.NewAppendOnlyTree(database, exitTreeDBPrefix)
 
 	return &processor{
 		syncerID:         syncerID,
@@ -524,7 +601,7 @@ func (p *processor) GetBridgesPaged(
 		return nil, 0, err
 	}
 
-	rows, err := p.queryPagedWithParams(ctx, p.db, offset, pageSize, bridgeTableName,
+	rows, err := p.queryPagedWithBlockHash(ctx, p.db, offset, pageSize, bridgeTableName,
 		orderByClause, whereClause, whereArgs)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -532,7 +609,7 @@ func (p *processor) GetBridgesPaged(
 				pageNumber, pageSize, whereClause)
 			return nil, bridgesCount, nil
 		}
-		p.log.Errorf("GetBridgesPaged: queryPagedWithParams failed for pageNumber=%d, pageSize=%d: %v",
+		p.log.Errorf("GetBridgesPaged: queryPagedWithBlockHash failed for pageNumber=%d, pageSize=%d: %v",
 			pageNumber, pageSize, err)
 		return nil, 0, err
 	}
@@ -543,14 +620,14 @@ func (p *processor) GetBridgesPaged(
 		}
 	}()
 
-	bridges := []*Bridge{}
-	if err = meddler.ScanAll(rows, &bridges); err != nil {
+	bridgeRows := []*bridgeWithBlockHash{}
+	if err = meddler.ScanAll(rows, &bridgeRows); err != nil {
 		p.log.Errorf("GetBridgesPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
 			pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
-	return bridges, bridgesCount, nil
+	return toBridges(bridgeRows), bridgesCount, nil
 }
 
 // buildBridgesFilterClause builds the WHERE clause for the bridges table
@@ -688,9 +765,12 @@ func (p *processor) queryPaged(ctx context.Context, tx dbtypes.Querier,
 	return rows, nil
 }
 
-// queryPagedWithParams returns a paged result from the given table with parameterized WHERE clause
-// to prevent SQL injection attacks
-func (p *processor) queryPagedWithParams(ctx context.Context, tx dbtypes.Querier,
+// queryPagedWithBlockHash returns a paged result from the given table with parameterized WHERE clause
+// to prevent SQL injection attacks. Each row is joined with the hash of its block (table rows must have
+// block_num), read in the same statement: see blockHashSelectSQL. whereClause and orderByClause are
+// applied to the joined rows, so they must not use the columns that the table shares with block
+// (num and hash), unless qualified with the table alias t.
+func (p *processor) queryPagedWithBlockHash(ctx context.Context, tx dbtypes.Querier,
 	offset, pageSize uint32,
 	table, orderByClause, whereClause string,
 	whereArgs []interface{},
@@ -703,12 +783,11 @@ func (p *processor) queryPagedWithParams(ctx context.Context, tx dbtypes.Querier
 	// We need to adjust LIMIT and OFFSET to use the next available placeholders
 	nextParam := len(whereArgs) + 1
 	query := fmt.Sprintf(`
-		SELECT *
-		FROM %s
+		%s%s%s
 		%s
 		ORDER BY %s
 		LIMIT $%d OFFSET $%d;
-	`, table, whereClause, orderByClause, nextParam, nextParam+1)
+	`, blockHashSelectSQL, table, blockHashJoinSQL, whereClause, orderByClause, nextParam, nextParam+1)
 
 	// Combine WHERE args with pagination args
 	args := make([]interface{}, 0, len(whereArgs)+2) //nolint:mnd
@@ -1458,7 +1537,7 @@ func (p *processor) GetBridgeByDepositCount(ctx context.Context, depositCount ui
 
 	for _, tq := range []struct{ name, query string }{
 		{bridgeTableName, bridgeByDepositCountSQL},
-		{"bridge_archive", archiveByDepositCountSQL},
+		{bridgeArchiveTableName, archiveByDepositCountSQL},
 	} {
 		rows, err := p.db.QueryContext(dbCtx, tq.query, depositCount)
 		if err != nil {
@@ -1467,16 +1546,16 @@ func (p *processor) GetBridgeByDepositCount(ctx context.Context, depositCount ui
 			}
 			return nil, fmt.Errorf("GetBridgeByDepositCount (%s): %w", tq.name, err)
 		}
-		bridges := []*Bridge{}
-		scanErr := meddler.ScanAll(rows, &bridges)
+		bridgeRows := []*bridgeWithBlockHash{}
+		scanErr := meddler.ScanAll(rows, &bridgeRows)
 		if cerr := rows.Close(); cerr != nil {
 			p.log.Errorf("error closing rows: %v", cerr)
 		}
 		if scanErr != nil {
 			return nil, fmt.Errorf("GetBridgeByDepositCount (%s): scan: %w", tq.name, scanErr)
 		}
-		if len(bridges) > 0 {
-			return bridges[0], nil
+		if len(bridgeRows) > 0 {
+			return toBridges(bridgeRows[:1])[0], nil
 		}
 	}
 	return nil, db.ErrNotFound
@@ -1524,7 +1603,7 @@ func (p *processor) GetBridgesByContent(
 	var result []*Bridge
 	for _, pair := range []struct{ name, query string }{
 		{bridgeTableName, tq.bridge},
-		{"bridge_archive", tq.archive},
+		{bridgeArchiveTableName, tq.archive},
 	} {
 		rows, err := p.db.QueryContext(dbCtx, pair.query, queryArgs...)
 		p.log.Infof("[GetBridgesByContent] table=%s", pair.name)
@@ -1534,14 +1613,15 @@ func (p *processor) GetBridgesByContent(
 			}
 			return nil, fmt.Errorf("GetBridgesByContent (%s): %w", pair.name, err)
 		}
-		var bridges []*Bridge
-		scanErr := meddler.ScanAll(rows, &bridges)
+		var bridgeRows []*bridgeWithBlockHash
+		scanErr := meddler.ScanAll(rows, &bridgeRows)
 		if cerr := rows.Close(); cerr != nil {
 			p.log.Errorf("error closing rows: %v", cerr)
 		}
 		if scanErr != nil {
 			return nil, fmt.Errorf("GetBridgesByContent (%s): scan: %w", pair.name, scanErr)
 		}
+		bridges := toBridges(bridgeRows)
 		p.log.Infof("[GetBridgesByContent] table=%s found=%d", pair.name, len(bridges))
 		for i, b := range bridges {
 			p.log.Infof("[GetBridgesByContent]   bridge[%d]: deposit_count=%d origin_addr=%s dest_addr=%s amount=%s metadata=%x",
@@ -1550,6 +1630,49 @@ func (p *processor) GetBridgesByContent(
 		result = append(result, bridges...)
 	}
 	return result, nil
+}
+
+// getExitTreeRootByHash returns the exit tree root with the given hash, with BlockHash set to the hash
+// of its block read in the same statement (zero if that block has no hash). Returns db.ErrNotFound if
+// there is no such root, like the exit tree's GetRootByHash.
+func (p *processor) getExitTreeRootByHash(ctx context.Context, hash common.Hash) (*types.Root, error) {
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	rows, err := p.db.QueryContext(dbCtx, exitTreeRootByHashSQL, hash.Hex())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get the exit tree root %s: %w", hash.Hex(), err)
+	}
+	var row rootWithBlockHash
+	// meddler.ScanRow closes rows
+	if err = meddler.ScanRow(rows, &row); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, db.ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get the exit tree root %s: %w", hash.Hex(), err)
+	}
+	root := types.Root(row)
+	return &root, nil
+}
+
+// getBlockHash returns the hash stored for the given block. found is false if the block is not stored
+// or it has no hash (blocks synced before the hash column existed).
+func (p *processor) getBlockHash(ctx context.Context, blockNum uint64) (hash common.Hash, found bool, err error) {
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	var hashStr sql.NullString
+	err = p.db.QueryRowContext(dbCtx, `SELECT hash FROM block WHERE num = $1`, blockNum).Scan(&hashStr)
+	if errors.Is(err, sql.ErrNoRows) {
+		return common.Hash{}, false, nil
+	}
+	if err != nil {
+		return common.Hash{}, false, fmt.Errorf("failed to get the hash of block %d: %w", blockNum, err)
+	}
+	if !hashStr.Valid || hashStr.String == "" {
+		return common.Hash{}, false, nil
+	}
+	return common.HexToHash(hashStr.String), true, nil
 }
 
 // GenerateGlobalIndexForNetworkID builds the "global index" used to identify bridges and claims.

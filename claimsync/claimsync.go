@@ -15,6 +15,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
@@ -31,6 +32,7 @@ type ClaimSync struct {
 	processor     *processor
 	driver        *sync.EVMDriver
 	reader        claimsynctypes.ClaimsReader
+	reorgDetector sync.ReorgDetector
 	ethClient     aggkittypes.EthClienter
 	logger        aggkitcommon.Logger
 	originNetwork uint32
@@ -128,6 +130,7 @@ func NewClaimSync(
 		processor:     proc,
 		driver:        driver,
 		reader:        store,
+		reorgDetector: rd,
 		ethClient:     ethClient,
 		logger:        logger,
 		originNetwork: originNetwork,
@@ -367,4 +370,19 @@ func (c *ClaimSync) GetSetClaimsPaged(ctx context.Context, page, pageSize uint32
 
 func (c *ClaimSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Hash) ([]*Claim, error) {
 	return c.reader.GetClaimsByGER(ctx, nil, globalExitRoot)
+}
+
+// IsBlockFinalized reports whether the block with the given number and hash, as read from this syncer,
+// is finalized, i.e. it can no longer be reorged. The syncer has no finality flag, but the reorg detector
+// tracks every block that was not final when processed and only stops tracking it once its hash was
+// checked against the canonical chain and it is below the finalized block. So a processed block with the
+// given hash that is no longer tracked is finalized.
+// found is false when it can't be determined: no hash was given, or the block is not stored with that
+// same hash (unknown, no hash stored for it, or it was replaced after the caller read it).
+func (c *ClaimSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
+	blockHash common.Hash) (finalized, found bool, err error) {
+	return reorgdetector.IsBlockFinalized(ctx, c.reorgDetector, c.syncerID.String(), blockNum, blockHash,
+		func(ctx context.Context, num uint64) (common.Hash, bool, error) {
+			return c.reader.GetBlockHash(ctx, nil, num)
+		})
 }

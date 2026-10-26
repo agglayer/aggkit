@@ -49,9 +49,10 @@ func TestNew(t *testing.T) {
 func TestHealthCheck(t *testing.T) {
 	t.Run("successful health check", func(t *testing.T) {
 		expectedResp := &types.HealthCheckResponse{
-			Status:  "OK",
-			Time:    time.Now(),
-			Version: "1.0.0",
+			Status:      "OK",
+			Time:        time.Now(),
+			Version:     "1.0.0",
+			APIRevision: 3,
 		}
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -70,6 +71,7 @@ func TestHealthCheck(t *testing.T) {
 		require.NotNil(t, resp)
 		require.Equal(t, expectedResp.Status, resp.Status)
 		require.Equal(t, expectedResp.Version, resp.Version)
+		require.Equal(t, expectedResp.APIRevision, resp.APIRevision)
 	})
 
 	t.Run("handles server error", func(t *testing.T) {
