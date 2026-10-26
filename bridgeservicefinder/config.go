@@ -113,4 +113,14 @@ type Config struct {
 	// (e.g. decommissioned or unreachable test rollups) whose on-chain reads and health-check
 	// timeouts would otherwise slow down startup and event processing for no benefit.
 	IgnoreNetworkIDs []uint32 `mapstructure:"IgnoreNetworkIDs"`
+
+	// AllowNetworkIDs is the whitelist counterpart of IgnoreNetworkIDs: when non-empty, ONLY the
+	// listed networkIDs (rollupIDs) are resolved and every other network is excluded exactly as if
+	// it were in IgnoreNetworkIDs (same enumeration/live-discovery skipping, same ErrNetworkDisabled
+	// from GetURL). It still combines with AutoRegisterNewNetworks, which lets an operator list a
+	// networkID before that network is attached to the rollup manager. Network 0 (L1) is a regular
+	// entry: list 0 to keep serving the L1 bridge service from BridgeURLs. An empty list disables the
+	// allowlist (every network is permitted). It is mutually exclusive with IgnoreNetworkIDs: New
+	// returns ErrConflictingNetworkFilters if both are set.
+	AllowNetworkIDs []uint32 `mapstructure:"AllowNetworkIDs"`
 }

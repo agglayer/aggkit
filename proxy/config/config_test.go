@@ -42,6 +42,8 @@ func TestLoadFilesDefaults(t *testing.T) {
 	require.Equal(t, 5*time.Second, cfg.BridgeServiceFinder.HealthCheckTimeout.Duration)
 	require.False(t, cfg.BridgeServiceFinder.RequireAllHealthyOnStart)
 	require.True(t, cfg.BridgeServiceFinder.AutoRegisterNewNetworks)
+	require.Empty(t, cfg.BridgeServiceFinder.IgnoreNetworkIDs)
+	require.Empty(t, cfg.BridgeServiceFinder.AllowNetworkIDs)
 
 	require.Equal(t, 10*time.Minute, cfg.Tracker.RetentionPeriod.Duration)
 	require.Equal(t, aggkittypes.LatestBlock, cfg.Tracker.L1BlockFinality)

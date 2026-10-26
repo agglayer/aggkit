@@ -220,6 +220,16 @@
 // never succeed, and to guarantee that disabling a network actually stops it from being served,
 // static override included.
 //
+// # Allowing only specific networks (Config.AllowNetworkIDs)
+//
+// Config.AllowNetworkIDs is the whitelist form of the same mechanism: when non-empty, every networkID
+// NOT listed is excluded exactly as if it were in Config.IgnoreNetworkIDs (same enumeration and live
+// discovery skipping, same ErrNetworkDisabled, never recorded as pending). Unlike an ignore list it
+// does not need updating when a new network appears, and combined with
+// Config.AutoRegisterNewNetworks a networkID can be listed before that network is attached to the
+// rollup manager. Network 0 (L1) is a regular entry and must be listed to keep being served. The two
+// lists are mutually exclusive: New returns ErrConflictingNetworkFilters if both are non-empty.
+//
 // # Error handling at Start (fail loudly vs graceful skip)
 //
 // During the initial cache build a per-network outcome is classified as either a hard failure or a

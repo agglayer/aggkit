@@ -40,6 +40,7 @@ HealthCheckTimeout = "5s"
 RequireAllHealthyOnStart = false
 AutoRegisterNewNetworks = true
 IgnoreNetworkIDs = []
+AllowNetworkIDs = []
 
 [BridgeServiceFinder.BridgeURLs]
 
