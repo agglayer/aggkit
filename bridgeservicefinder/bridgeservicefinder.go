@@ -305,7 +305,8 @@ func (f *finder) buildInitialCache(ctx context.Context) error {
 		}
 
 		if f.filter.excluded(rollupID) {
-			f.logger.Infof("network %d is excluded by IgnoreNetworkIDs/AllowNetworkIDs, skipping on-chain resolution", rollupID)
+			f.logger.Infof(
+				"network %d is excluded by IgnoreNetworkIDs/AllowNetworkIDs, skipping on-chain resolution", rollupID)
 			continue
 		}
 

@@ -468,8 +468,8 @@ func (l *listener) processRollupManagerLog(ctx context.Context, lg types.Log) {
 // entry and adds the rollup contract to the watched set so its later URL-changing events are picked
 // up. It is a no-op if the rollup contract is already watched, or if rollupID is listed in
 // Config.IgnoreNetworkIDs, or is not listed in a non-empty Config.AllowNetworkIDs (in which case it
-// is never added to the watched set either, so its later events are not observed) - this filter runs first and always wins, regardless of
-// Config.AutoRegisterNewNetworks: an ignored network is a deliberate operator decision, not a
+// is never added to the watched set either, so its later events are not observed) - this filter runs
+// first and always wins, regardless of Config.AutoRegisterNewNetworks: an excluded network is a deliberate operator decision, not a
 // candidate for the pending set. Only once a rollup passes that check does the auto-register gate
 // apply: when Config.AutoRegisterNewNetworks is false a rollup that is not served yet is recorded as
 // pending (see Finder.PendingNetworks) and never watched. A rollup that IS already served - from a
@@ -488,7 +488,8 @@ func (l *listener) discoverRollup(ctx context.Context, rollupID uint32, addr com
 	}
 
 	if l.filter.excluded(rollupID) {
-		l.logger.Debugf("network %d (%s) is excluded by IgnoreNetworkIDs/AllowNetworkIDs, skipping live discovery", rollupID, addr)
+		l.logger.Debugf(
+			"network %d (%s) is excluded by IgnoreNetworkIDs/AllowNetworkIDs, skipping live discovery", rollupID, addr)
 		return
 	}
 

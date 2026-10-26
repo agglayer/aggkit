@@ -46,7 +46,8 @@ var (
 	// networkID — the ignore list now takes precedence over a static override, unlike a plain
 	// unresolved network. It wraps ErrURLNotFound so existing callers that classify "not found" as
 	// e.g. an HTTP 404 keep doing so for disabled networks too.
-	ErrNetworkDisabled = fmt.Errorf("%w: network is disabled (excluded by IgnoreNetworkIDs/AllowNetworkIDs)", ErrURLNotFound)
+	ErrNetworkDisabled = fmt.Errorf(
+		"%w: network is disabled (excluded by IgnoreNetworkIDs/AllowNetworkIDs)", ErrURLNotFound)
 	// ErrNoSourceAvailable is returned by the resolver when none of the three sources yields a URL.
 	ErrNoSourceAvailable = errors.New("no bridge service url source available for network")
 	// ErrSourceNotAvailable is returned by a RollupContractReader method when the underlying contract
