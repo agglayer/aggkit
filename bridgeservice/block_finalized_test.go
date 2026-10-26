@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/l2gersync"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -240,5 +241,60 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 			fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()))
 		require.Equal(t, http.StatusOK, w.Code)
 		require.NotContains(t, w.Body.String(), "block_finalized")
+	})
+
+	t.Run("injected-l1-info-leaf on L2 needs the L1 leaf block and the L2 injection block", func(t *testing.T) {
+		const (
+			l1Block = uint64(101)
+			l2Block = uint64(999)
+		)
+		unknown := (*bool)(nil)
+		testCases := []struct {
+			name        string
+			l1Finalized *bool
+			l2Finalized *bool
+			expected    *bool
+		}{
+			{"both finalized", boolPtr(true), boolPtr(true), boolPtr(true)},
+			{"L2 not finalized", boolPtr(true), boolPtr(false), boolPtr(false)},
+			{"L1 not finalized", boolPtr(false), boolPtr(true), boolPtr(false)},
+			{"L2 unknown, L1 finalized", boolPtr(true), unknown, unknown},
+			{"L2 unknown, L1 not finalized", boolPtr(false), unknown, boolPtr(false)},
+			{"L1 unknown, L2 finalized", unknown, boolPtr(true), unknown},
+		}
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+				if tc.l1Finalized != nil {
+					expectL1BlocksFinalized(bridgeMocks.l1InfoTree, map[uint64]bool{l1Block: *tc.l1Finalized})
+				}
+				bridgeMocks.injectedGERs.ExpectedCalls = nil
+				if tc.l2Finalized != nil {
+					bridgeMocks.injectedGERs.EXPECT().IsBlockFinalized(mock.Anything, l2Block, blockHash).
+						Return(*tc.l2Finalized, true, nil).Maybe()
+				}
+				bridgeMocks.injectedGERs.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).
+					Return(false, false, nil).Maybe()
+				bridgeMocks.injectedGERs.EXPECT().
+					GetFirstGERAfterL1InfoTreeIndex(mock.Anything, uint32(3)).
+					Return(l2gersync.GlobalExitRootInfo{
+						L1InfoTreeIndex: 3, BlockNum: l2Block, BlockHash: blockHash,
+					}, nil)
+				bridgeMocks.l1InfoTree.EXPECT().
+					GetInfoByIndex(mock.Anything, uint32(3)).
+					Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: l1Block}, nil)
+
+				queryParams := url.Values{}
+				queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+				queryParams.Set(leafIndexParam, "3")
+				w := performRequest(t, bridgeMocks.router,
+					fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()))
+				require.Equal(t, http.StatusOK, w.Code)
+
+				var response bridgetypes.L1InfoTreeLeafResponse
+				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+				require.Equal(t, tc.expected, response.BlockFinalized)
+			})
+		}
 	})
 }

@@ -396,9 +396,10 @@ type L1InfoTreeLeafResponse struct {
 	// InjectedL2BlockNumber is only approximate and no accurate timestamp can be derived from it
 	InjectedL2BlockTimestamp *uint64 `json:"injected_l2_block_timestamp,omitempty" example:"1684500123"`
 
-	// BlockFinalized reports whether the L1 block of the leaf is finalized (reorg-safe). Only set by the
-	// injected-l1-info-leaf endpoint for an L1 (network_id=0) lookup; omitted when finality could not be
-	// determined and, for now, for an L2 lookup (the L2 injection block finality is not reported yet).
+	// BlockFinalized reports whether the block(s) this leaf depends on are finalized (reorg-safe): the L1 block
+	// of the leaf and, for an L2 lookup, the L2 block where the GER was injected too. Only set by the
+	// injected-l1-info-leaf endpoint; omitted when finality could not be determined (e.g. L2 chains synced by
+	// l2gersync in Legacy mode, where the injection block is only approximate).
 	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 

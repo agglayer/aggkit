@@ -34,6 +34,9 @@ type GlobalExitRootInfo struct {
 	// (see evm_downloader_legacy.go).
 	Timestamp *uint64 `meddler:"block_timestamp"`
 	Removed   bool    `meddler:"-"`
+	// BlockHash is the hash of the block BlockNum, as stored in the block table. It is not a column of
+	// imported_global_exit_root_v2: GetFirstGERAfterL1InfoTreeIndex fills it in (zero if unknown)
+	BlockHash ethcommon.Hash `meddler:"-"`
 }
 
 // RemoveGEREvent represents a remove GER event stored in the database
@@ -241,8 +244,28 @@ func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
 		}
 		return e, fmt.Errorf("failed to get first GER after index %d: %w", l1InfoTreeIndex, err)
 	}
+	if e.BlockHash, _, err = p.getBlockHash(ctx, e.BlockNum); err != nil {
+		return e, err
+	}
 
 	return e, nil
+}
+
+// getBlockHash returns the hash stored for the given block. found is false if the block is not stored
+// or it has no hash (blocks synced before the hash column existed).
+func (p *processor) getBlockHash(ctx context.Context, blockNum uint64) (hash ethcommon.Hash, found bool, err error) {
+	var hashStr sql.NullString
+	err = p.database.QueryRowContext(ctx, `SELECT hash FROM block WHERE num = $1`, blockNum).Scan(&hashStr)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ethcommon.Hash{}, false, nil
+	}
+	if err != nil {
+		return ethcommon.Hash{}, false, fmt.Errorf("failed to get the hash of block %d: %w", blockNum, err)
+	}
+	if !hashStr.Valid || hashStr.String == "" {
+		return ethcommon.Hash{}, false, nil
+	}
+	return ethcommon.HexToHash(hashStr.String), true, nil
 }
 
 // GetLastGER retrieves the most recently injected global exit root, i.e. the row with the

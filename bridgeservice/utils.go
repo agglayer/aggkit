@@ -289,3 +289,17 @@ func (b *BridgeService) l1BlockFinalized(ctx context.Context, blockNum uint64) *
 	}
 	return &finalized
 }
+
+// andFinalized combines the finality of the blocks a response depends on: false if any of them is not
+// finalized, unknown (nil) if none is known to be not finalized but any is unknown, true if all are
+func andFinalized(a, b *bool) *bool {
+	if (a != nil && !*a) || (b != nil && !*b) {
+		finalized := false
+		return &finalized
+	}
+	if a == nil || b == nil {
+		return nil
+	}
+	finalized := true
+	return &finalized
+}

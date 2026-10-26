@@ -61,6 +61,9 @@ type L2GERSyncer interface {
 	) ([]*l2gersync.RemoveGEREvent, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	GetLastGER(ctx context.Context) (l2gersync.GlobalExitRootInfo, error)
+	// IsBlockFinalized reports whether the block, as read from the syncer with the given hash, is
+	// finalized (can't be reorged). found is false when it can't be determined
+	IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (finalized, found bool, err error)
 }
 
 type L1InfoTreeSyncer interface {

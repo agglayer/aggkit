@@ -1008,6 +1008,8 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	// actual block on the destination network where the GER got injected, and when), left nil for
 	// the L1 (network_id=0) case
 	var injectedL2BlockNumber, injectedL2Timestamp *uint64
+	// injectedL2Finalized is whether that L2 injection block is finalized (nil if unknown)
+	var injectedL2Finalized *bool
 
 	switch networkID {
 	case mainnetNetworkID:
@@ -1039,6 +1041,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 			return
 		}
 		injectedL2BlockNumber = &e.BlockNum
+		injectedL2Finalized = b.blockFinalized(ctx, b.injectedGERs, e.BlockNum, e.BlockHash)
 		injectedL2Timestamp = e.Timestamp
 	default:
 		b.logger.Warnf(errNetworkID, networkID)
@@ -1058,11 +1061,10 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	resp := NewL1InfoTreeLeafResponse(l1InfoLeaf)
 	resp.InjectedL2BlockNumber = injectedL2BlockNumber
 	resp.InjectedL2BlockTimestamp = injectedL2Timestamp
-	// the leaf's L1 block must be finalized and, if injected on an L2, that L2 block too
+	// the leaf's L1 block and, if injected on an L2, that L2 block must both be finalized
 	resp.BlockFinalized = b.l1BlockFinalized(ctx, l1InfoLeaf.BlockNumber)
 	if injectedL2BlockNumber != nil {
-		// the injection block on L2 is not covered by a syncer finality yet
-		resp.BlockFinalized = nil
+		resp.BlockFinalized = andFinalized(resp.BlockFinalized, injectedL2Finalized)
 	}
 
 	statusCode = http.StatusOK
