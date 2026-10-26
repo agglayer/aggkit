@@ -3991,6 +3991,8 @@ func TestHealthCheckHandler(t *testing.T) {
 			require.Equal(t, "ok", response.Status)
 			require.NotEmpty(t, response.Time)
 			require.NotEmpty(t, response.Version)
+			require.Equal(t, CurrentAPIRevision, response.APIRevision)
+			require.Contains(t, w.Body.String(), `"api_revision":`+strconv.Itoa(CurrentAPIRevision))
 
 			require.Equal(t, bridgetypes.HealthSyncStatusDone, response.SyncStatus)
 			require.NotNil(t, response.Details.L1)
@@ -4045,6 +4047,7 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 
 		var response bridgetypes.HealthCheckResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, CurrentAPIRevision, response.APIRevision, "api_revision is present in every sync_status")
 
 		require.Equal(t, bridgetypes.HealthSyncStatusPending, response.SyncStatus)
 		require.NotNil(t, response.Details.L1.IsSynced)
@@ -4072,6 +4075,7 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 
 		var response bridgetypes.HealthCheckResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, CurrentAPIRevision, response.APIRevision, "api_revision is present in every sync_status")
 
 		require.Equal(t, bridgetypes.HealthSyncStatusError, response.SyncStatus)
 		require.NotNil(t, response.Details.L1)
@@ -4108,6 +4112,7 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 
 		var response bridgetypes.HealthCheckResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, CurrentAPIRevision, response.APIRevision, "api_revision is present in every sync_status")
 
 		require.Equal(t, bridgetypes.HealthSyncStatusError, response.SyncStatus)
 		require.NotNil(t, response.Details.L1)
@@ -4143,6 +4148,7 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 
 		var response bridgetypes.HealthCheckResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, CurrentAPIRevision, response.APIRevision, "api_revision is present in every sync_status")
 
 		require.Equal(t, bridgetypes.HealthSyncStatusDone, response.SyncStatus)
 		require.Nil(t, response.Details.L1, "nil-configured syncer must be omitted, not reported as inactive/error")

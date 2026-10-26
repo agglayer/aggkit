@@ -456,8 +456,8 @@ type SyncerSyncInfo struct {
 
 // HealthCheckResponse represents the JSON returned by HealthCheckHandler.
 // @Description Contains basic health‐check information for the bridge service
-// including service status, current time, version, and a summary sync status.
-// @example {"status":"ok","time":"2025-06-05T07:30:00Z","version":"v0.4.0-beta9",
+// including service status, current time, version, API revision, and a summary sync status.
+// @example {"status":"ok","time":"2025-06-05T07:30:00Z","version":"v0.4.0-beta9","api_revision":1,
 // "sync_status":"pending","details":{"l1":{"is_active":true,"is_synced":false,"is_halted":false},
 // "l2":{"is_active":true,"is_synced":true,"is_halted":false},"l2_ger":{"is_active":true,"is_halted":false},
 // "l1_info_tree":{"is_active":true,"is_halted":false}}}
@@ -465,6 +465,13 @@ type HealthCheckResponse struct {
 	Status  string    `json:"status"`
 	Time    time.Time `json:"time"`
 	Version string    `json:"version"`
+
+	// APIRevision is the bridge service's wire API contract version (see
+	// bridgeservice.CurrentAPIRevision), bumped whenever a change could break an existing client, so a
+	// client can tell which contract shape the responding instance speaks. It is independent of the
+	// bridge tracker's own api_revision. Purely informational, and always present, whatever the
+	// SyncStatus.
+	APIRevision int `json:"api_revision" example:"1"`
 
 	// SyncStatus summarizes bridge synchronization health as one of "done", "pending" or
 	// "error". It never affects the HTTP status code of this endpoint (always 200) so that

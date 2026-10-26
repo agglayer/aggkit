@@ -266,8 +266,10 @@ func (b *BridgeService) RegisterRoutes(router gin.IRouter) {
 // should inspect the SyncStatus/Details fields, not the HTTP status code.
 //
 // @Summary Get health status
-// @Description Returns the health status, version information and summary bridge sync status of
-// @Description the bridge service. Always responds 200 -- see SyncStatus/Details for sync health.
+// @Description Returns the health status, version information, API revision and summary bridge sync
+// @Description status of the bridge service. Always responds 200 -- see SyncStatus/Details for sync
+// @Description health. api_revision is the bridge service wire contract version only, not the bridge
+// @Description tracker's.
 // @Tags health
 // @Produce json
 // @Success 200 {object} types.HealthCheckResponse "Health status, version and sync status information"
@@ -290,11 +292,12 @@ func (b *BridgeService) HealthCheckHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK,
 		types.HealthCheckResponse{
-			Status:     "ok",
-			Time:       startTime.UTC(),
-			Version:    version.Version,
-			SyncStatus: syncStatus,
-			Details:    details,
+			Status:      "ok",
+			Time:        startTime.UTC(),
+			Version:     version.Version,
+			APIRevision: CurrentAPIRevision,
+			SyncStatus:  syncStatus,
+			Details:     details,
 		})
 
 	reportMetrics(metrics.GetHealthCheckReq, http.StatusOK, startTime)

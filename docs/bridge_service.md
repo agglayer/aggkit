@@ -213,6 +213,7 @@ It interacts with the L2 or L1 execution layer (via RPC) in order to:
   "status": "ok",
   "time": "2025-06-05T07:30:00Z",
   "version": "v0.11.0",
+  "api_revision": 1,
   "sync_status": "pending",
   "details": {
     "l1": { "is_active": true, "is_synced": false, "is_halted": false },
@@ -224,6 +225,16 @@ It interacts with the L2 or L1 execution layer (via RPC) in order to:
   }
 }
 ```
+
+`api_revision` is the bridge service's wire API contract version (`bridgeservice.CurrentAPIRevision`, in
+`bridgeservice/revision.go`, which also holds the revision history). It starts at `1` and is bumped by one
+whenever a change could break an existing client — a field added/removed/renamed, an enum's value set
+changed, a query parameter whose absence changes the response shape, or any behaviour change an existing
+client could trip over — so a client can tell which contract an instance speaks without diffing response
+bodies. It is purely informational (the service never rejects or alters its behaviour based on it) and is
+always present, whatever the `sync_status`. It refers to the **bridge service contract only**: the bridge
+tracker has its own, independent `api_revision` in `GET /tracker/v1/health`, and the two counters are
+unrelated. The revision of an environment's instance can be read with `GET /health | jq .api_revision`.
 
 `sync_status` (`types.HealthSyncStatus`) is one of:
 

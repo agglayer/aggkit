@@ -24,7 +24,7 @@ const docTemplate = `{
     "paths": {
         "/": {
             "get": {
-                "description": "Returns the health status, version information and summary bridge sync status of\nthe bridge service. Always responds 200 -- see SyncStatus/Details for sync health.",
+                "description": "Returns the health status, version information, API revision and summary bridge sync\nstatus of the bridge service. Always responds 200 -- see SyncStatus/Details for sync\nhealth. api_revision is the bridge service wire contract version only, not the bridge\ntracker's.",
                 "produces": [
                     "application/json"
                 ],
@@ -620,7 +620,7 @@ const docTemplate = `{
         },
         "/health": {
             "get": {
-                "description": "Returns the health status, version information and summary bridge sync status of\nthe bridge service. Always responds 200 -- see SyncStatus/Details for sync health.",
+                "description": "Returns the health status, version information, API revision and summary bridge sync\nstatus of the bridge service. Always responds 200 -- see SyncStatus/Details for sync\nhealth. api_revision is the bridge service wire contract version only, not the bridge\ntracker's.",
                 "produces": [
                     "application/json"
                 ],
@@ -1506,6 +1506,11 @@ const docTemplate = `{
             "description": "Contains basic health‐check information for the bridge service",
             "type": "object",
             "properties": {
+                "api_revision": {
+                    "description": "APIRevision is the bridge service's wire API contract version (see\nbridgeservice.CurrentAPIRevision), bumped whenever a change could break an existing client, so a\nclient can tell which contract shape the responding instance speaks. It is independent of the\nbridge tracker's own api_revision. Purely informational, and always present, whatever the\nSyncStatus.",
+                    "type": "integer",
+                    "example": 1
+                },
                 "details": {
                     "description": "Details gives a compact per-component breakdown backing SyncStatus. It intentionally\ndoes not duplicate the full SyncStatus (deposit counts, block numbers) payload -- callers\nwanting that detail should use GET /bridge/v1/sync-status.",
                     "allOf": [
