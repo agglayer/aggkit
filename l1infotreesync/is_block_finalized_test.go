@@ -43,13 +43,13 @@ func TestIsBlockFinalizedMultidownloader(t *testing.T) {
 		require.True(t, found)
 	})
 
-	t.Run("stored as finalized, no hash given", func(t *testing.T) {
-		syncer, querier := newSyncer(t)
-		querier.EXPECT().StorageHeaderByNumber(mock.Anything, aggkittypes.NewBlockNumber(10)).Return(header, true, nil)
+	t.Run("no hash given: unknown, the stored block may have replaced the one the caller read", func(t *testing.T) {
+		// the querier must not even be asked: no expectation set
+		syncer, _ := newSyncer(t)
 		finalized, found, err := syncer.IsBlockFinalized(ctx, 10, common.Hash{})
 		require.NoError(t, err)
-		require.True(t, finalized)
-		require.True(t, found)
+		require.False(t, finalized)
+		require.False(t, found)
 	})
 
 	t.Run("stored but not finalized", func(t *testing.T) {

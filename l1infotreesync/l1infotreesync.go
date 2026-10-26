@@ -241,22 +241,28 @@ func NewLegacy(
 // IsBlockFinalized reports whether the block with the given number and hash, as read from this syncer,
 // is finalized, i.e. it can no longer be reorged.
 // With the multidownloader, it is the IsFinal flag the multidownloader stores, which is only set once the
-// block was validated; the hash, when given, must be the stored one.
+// block was validated; the stored header must have the given hash.
 // The legacy syncer has no such flag, but the reorg detector tracks every block that was not final when
 // processed and only stops tracking it once its hash was checked against the canonical chain and it is
 // below the finalized block. So a processed block with the given hash that is no longer tracked is
-// finalized; here the hash is required.
-// found is false when it can't be determined: the block is not stored (or not with that hash), no hash was
-// given to the legacy syncer, or the syncer is read-only.
+// finalized.
+// In both modes the hash is required: the multidownloader stores one block per number, so without the hash
+// of the block the caller read, the flag could belong to the block that replaced it after a reorg.
+// found is false when it can't be determined: no hash was given (e.g. rows written before the block table
+// had a hash), the block is not stored (or not with that hash), or the syncer is read-only.
 func (d *L1InfoTreeSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
 	blockHash common.Hash) (finalized, found bool, err error) {
+	if blockHash == (common.Hash{}) {
+		return false, false, nil
+	}
+
 	switch {
 	case d.blockFinality != nil:
 		header, isFinal, err := d.blockFinality.StorageHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNum))
 		if err != nil {
 			return false, false, fmt.Errorf("l1infotreesync: failed to get block %d finality: %w", blockNum, err)
 		}
-		if header == nil || (blockHash != (common.Hash{}) && header.Hash != blockHash) {
+		if header == nil || header.Hash != blockHash {
 			return false, false, nil
 		}
 		return isFinal, true, nil
@@ -271,9 +277,6 @@ func (d *L1InfoTreeSync) isBlockFinalizedLegacy(ctx context.Context, blockNum ui
 	blockHash common.Hash) (finalized, found bool, err error) {
 	if d.processor.isHalted() {
 		return false, false, sync.ErrInconsistentState
-	}
-	if blockHash == (common.Hash{}) {
-		return false, false, nil
 	}
 
 	storedHash, stored, err := d.processor.getBlockHash(ctx, blockNum)
