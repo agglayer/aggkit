@@ -9,14 +9,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCurrentAPIRevisionHasHistoryEntry keeps CurrentAPIRevision in sync with the revision history
-// documented in revision.go: the latest history entry must be the current revision.
-func TestCurrentAPIRevisionHasHistoryEntry(t *testing.T) {
-	content, err := os.ReadFile("revision.go")
+// latestRevision returns the highest revision number matched by the first capture group of re in the file
+func latestRevision(t *testing.T, file string, re *regexp.Regexp) int {
+	t.Helper()
+
+	content, err := os.ReadFile(file)
 	require.NoError(t, err)
 
-	entries := regexp.MustCompile(`(?m)^//   - (\d+):`).FindAllStringSubmatch(string(content), -1)
-	require.NotEmpty(t, entries, "revision.go has no revision history entry")
+	entries := re.FindAllStringSubmatch(string(content), -1)
+	require.NotEmpty(t, entries, "%s has no revision history entry", file)
 
 	latest := 0
 	for _, entry := range entries {
@@ -24,6 +25,19 @@ func TestCurrentAPIRevisionHasHistoryEntry(t *testing.T) {
 		require.NoError(t, err)
 		latest = max(latest, revision)
 	}
-	require.Equal(t, CurrentAPIRevision, latest,
-		"CurrentAPIRevision changed without a matching entry in the revision history of revision.go")
+	return latest
+}
+
+// TestCurrentAPIRevisionHasHistoryEntry keeps CurrentAPIRevision in sync with the revision history of
+// revision.go and with the detailed changes in docs/API_REVISIONS.md: the latest entry of each must be
+// the current revision.
+func TestCurrentAPIRevisionHasHistoryEntry(t *testing.T) {
+	const bumpHint = "CurrentAPIRevision changed without a matching entry in %s"
+
+	require.Equal(t, CurrentAPIRevision,
+		latestRevision(t, "revision.go", regexp.MustCompile(`(?m)^//   - (\d+):`)),
+		bumpHint, "the revision history of revision.go")
+	require.Equal(t, CurrentAPIRevision,
+		latestRevision(t, "docs/API_REVISIONS.md", regexp.MustCompile(`(?m)^### Revision (\d+)\s*$`)),
+		bumpHint, "docs/API_REVISIONS.md")
 }

@@ -235,6 +235,8 @@ bodies. It is purely informational (the service never rejects or alters its beha
 always present, whatever the `sync_status`. It refers to the **bridge service contract only**: the bridge
 tracker has its own, independent `api_revision` in `GET /tracker/v1/health`, and the two counters are
 unrelated. The revision of an environment's instance can be read with `GET /health | jq .api_revision`.
+The changes of each revision are detailed in
+[bridgeservice/docs/API_REVISIONS.md](../bridgeservice/docs/API_REVISIONS.md), which also states when a bump is required.
 
 `sync_status` (`types.HealthSyncStatus`) is one of:
 

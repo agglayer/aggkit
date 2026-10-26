@@ -11,6 +11,9 @@ package bridgeservice
 // It is independent of the bridge tracker's own revision (bridgetracker/api.CurrentAPIRevision): each
 // service keeps its own counter, and this one only refers to the bridge service contract.
 //
+// Every revision is detailed in bridgeservice/docs/API_REVISIONS.md, which must get an entry together
+// with the bump.
+//
 // Revision history:
 //   - 1: first revision, the contract as of the release that introduced api_revision. Earlier changes
 //     are not back-filled
