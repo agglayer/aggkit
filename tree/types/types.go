@@ -22,7 +22,9 @@ type Root struct {
 	BlockNum      uint64      `meddler:"block_num"`
 	BlockPosition uint64      `meddler:"block_position"`
 	// BlockHash is the hash of the block BlockNum, as stored by the syncer. It is not a column of
-	// the tree: it is only filled in by the syncers that serve the root (zero if unknown)
+	// the tree, so the tree never fills it: only the syncer queries that serve a root with its block
+	// hash (e.g. BridgeSync.GetRootByLER) set it, reading it in the same statement as the root.
+	// Zero if that block has no hash, or when the root was read by any other query.
 	BlockHash common.Hash `meddler:"-"`
 }
 

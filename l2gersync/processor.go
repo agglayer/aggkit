@@ -35,8 +35,26 @@ type GlobalExitRootInfo struct {
 	Timestamp *uint64 `meddler:"block_timestamp"`
 	Removed   bool    `meddler:"-"`
 	// BlockHash is the hash of the block BlockNum, as stored in the block table. It is not a column of
-	// imported_global_exit_root_v2: GetFirstGERAfterL1InfoTreeIndex fills it in (zero if unknown)
+	// imported_global_exit_root_v2: GetFirstGERAfterL1InfoTreeIndex joins it from the block table in the
+	// same statement that reads the row, so it is the hash of the block the GER belonged to when it was
+	// read. Zero if that block has no hash, or when the GER was read by any other query.
 	BlockHash ethcommon.Hash `meddler:"-"`
+}
+
+// globalExitRootInfoWithBlockHash is the read model of an imported_global_exit_root_v2 row joined with
+// the hash of its block (see GetFirstGERAfterL1InfoTreeIndex). It can't be GlobalExitRootInfo itself:
+// meddler.Insert writes every meddler-tagged field and block_hash is not a column of
+// imported_global_exit_root_v2, and meddler doesn't flatten embedded structs. It has exactly the fields
+// of GlobalExitRootInfo, in the same order, so that GlobalExitRootInfo(row) compiles only while both
+// match.
+type globalExitRootInfoWithBlockHash struct {
+	GlobalExitRoot  ethcommon.Hash `meddler:"global_exit_root,hash"`
+	L1InfoTreeIndex uint32         `meddler:"l1_info_tree_index"`
+	BlockNum        uint64         `meddler:"block_num"`
+	BlockPosition   uint64         `meddler:"block_pos"`
+	Timestamp       *uint64        `meddler:"block_timestamp"`
+	Removed         bool           `meddler:"-"`
+	BlockHash       ethcommon.Hash `meddler:"block_hash,hash"`
 }
 
 // RemoveGEREvent represents a remove GER event stored in the database
@@ -231,24 +249,29 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 // or greater than the specified l1InfoTreeIndex.
 func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
 	ctx context.Context, l1InfoTreeIndex uint32) (GlobalExitRootInfo, error) {
-	e := GlobalExitRootInfo{}
-	err := meddler.QueryRow(p.database, &e, `
-		SELECT l1_info_tree_index, block_num, global_exit_root, block_pos, block_timestamp
-		FROM imported_global_exit_root_v2
-		WHERE l1_info_tree_index >= $1
-		ORDER BY l1_info_tree_index ASC LIMIT 1;
+	// the hash of the GER's block is joined in the same statement, so it is the hash of the block the GER
+	// belonged to when it was read (see GlobalExitRootInfo.BlockHash)
+	rows, err := p.database.QueryContext(ctx, `
+		SELECT g.l1_info_tree_index, g.block_num, g.global_exit_root, g.block_pos, g.block_timestamp,
+			COALESCE(b.hash, '') AS block_hash
+		FROM imported_global_exit_root_v2 g
+		LEFT JOIN block b ON b.num = g.block_num
+		WHERE g.l1_info_tree_index >= $1
+		ORDER BY g.l1_info_tree_index ASC LIMIT 1;
 	`, l1InfoTreeIndex)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return e, db.ErrNotFound
-		}
-		return e, fmt.Errorf("failed to get first GER after index %d: %w", l1InfoTreeIndex, err)
+		return GlobalExitRootInfo{}, fmt.Errorf("failed to get first GER after index %d: %w", l1InfoTreeIndex, err)
 	}
-	if e.BlockHash, _, err = p.getBlockHash(ctx, e.BlockNum); err != nil {
-		return e, err
+	row := globalExitRootInfoWithBlockHash{}
+	// meddler.ScanRow closes rows
+	if err = meddler.ScanRow(rows, &row); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return GlobalExitRootInfo{}, db.ErrNotFound
+		}
+		return GlobalExitRootInfo{}, fmt.Errorf("failed to get first GER after index %d: %w", l1InfoTreeIndex, err)
 	}
 
-	return e, nil
+	return GlobalExitRootInfo(row), nil
 }
 
 // getBlockHash returns the hash stored for the given block. found is false if the block is not stored

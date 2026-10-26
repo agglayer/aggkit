@@ -392,14 +392,9 @@ func (s *L1InfoTreeSync) GetInfoByIndex(ctx context.Context, index uint32) (*L1I
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
 	}
-	leaf, err := s.processor.GetInfoByIndex(ctx, index)
-	if err != nil {
-		return leaf, err
-	}
-	if leaf.BlockHash, _, err = s.processor.getBlockHash(ctx, leaf.BlockNumber); err != nil {
-		return nil, err
-	}
-	return leaf, nil
+	// the leaf and the hash of its block are read in the same statement, so the hash can't be the one of
+	// a block that replaced the leaf's block after a reorg
+	return s.processor.getInfoByIndexWithBlockHash(ctx, index)
 }
 
 // GetL1InfoTreeRootByIndex returns the root of the L1 info tree at the moment the leaf with the given index was added

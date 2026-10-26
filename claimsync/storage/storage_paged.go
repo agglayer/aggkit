@@ -204,12 +204,19 @@ func (p *claimStorage) GetClaimsPaged(
 			JOIN all_claims_ranked n ON o.global_index = n.global_index AND n.rn_newest_global = 1
 			WHERE o.rn_oldest_global = 1  -- Globally oldest claim
 			AND o.global_index IN (SELECT global_index FROM newest_on_page)
+		),
+		page_result AS (
+			SELECT * FROM claims_with_unset_on_page
+			UNION ALL
+			SELECT * FROM compactable_claims
 		)
-		SELECT * FROM claims_with_unset_on_page
-		UNION ALL
-		SELECT * FROM compactable_claims
-		ORDER BY block_num DESC, block_pos DESC;
-	`, whereClause, whereClause, claimColumnsSQL, compactedClaimsSelectSQL)
+		-- the hash of each claim's block is joined here, in the same statement, so it is the hash of the
+		-- block the claim belonged to when it was read (see claimWithBlockHash)
+		SELECT r.*, %s
+		FROM page_result r
+		LEFT JOIN block b ON b.num = r.block_num
+		ORDER BY r.block_num DESC, r.block_pos DESC;
+	`, whereClause, whereClause, claimColumnsSQL, compactedClaimsSelectSQL, blockHashColumnSQL)
 
 	rows, err := p.database.QueryContext(dbCtx, query, pageSize, offset)
 	if err != nil {
@@ -227,17 +234,13 @@ func (p *claimStorage) GetClaimsPaged(
 		}
 	}()
 
-	claims := []*claimsynctypes.Claim{}
-	if err = meddler.ScanAll(rows, &claims); err != nil {
+	claimRows := []*claimWithBlockHash{}
+	if err = meddler.ScanAll(rows, &claimRows); err != nil {
 		p.log.Errorf("GetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
-	if err = p.FillBlockHashes(ctx, nil, claims); err != nil {
-		return nil, 0, fmt.Errorf("GetClaimsPaged: %w", err)
-	}
-
-	return claims, claimsCount, nil
+	return toClaims(claimRows), claimsCount, nil
 }
 
 // buildGlobalIndexFilterClause builds a WHERE clause for filtering by global_index

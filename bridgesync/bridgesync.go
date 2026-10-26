@@ -414,16 +414,9 @@ func (s *BridgeSync) GetRootByLER(ctx context.Context, ler common.Hash) (*tree.R
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
 	}
-	root, err := s.processor.exitTree.GetRootByHash(ctx, ler)
-	if err != nil {
-		return root, err
-	}
-	blockHash, _, err := s.processor.getBlockHash(ctx, root.BlockNum)
-	if err != nil {
-		return nil, err
-	}
-	root.BlockHash = blockHash
-	return root, nil
+	// the root and the hash of its block are read in the same statement, so the hash can't be the one
+	// of a block that replaced the root's block after a reorg
+	return s.processor.getExitTreeRootByHash(ctx, ler)
 }
 
 // IsBlockFinalized reports whether the block with the given number and hash, as read from this syncer,

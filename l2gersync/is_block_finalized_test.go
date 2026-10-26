@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path"
+	"reflect"
 	"testing"
 
 	"github.com/agglayer/aggkit/db"
@@ -100,9 +101,45 @@ func TestL2GERSyncIsBlockFinalized(t *testing.T) {
 
 func TestGetFirstGERAfterL1InfoTreeIndexFillsBlockHash(t *testing.T) {
 	s, _, hash := newBlockFinalityTestSyncer(t)
+	ctx := context.Background()
 
-	info, err := s.processor.GetFirstGERAfterL1InfoTreeIndex(context.Background(), 1)
+	info, err := s.processor.GetFirstGERAfterL1InfoTreeIndex(ctx, 1)
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), info.BlockNum)
+	require.Equal(t, uint32(2), info.L1InfoTreeIndex)
+	require.Equal(t, common.HexToHash("0x1"), info.GlobalExitRoot)
 	require.Equal(t, hash, info.BlockHash)
+
+	// a GER in a block stored without hash
+	_, err = s.processor.database.Exec(`INSERT INTO imported_global_exit_root_v2
+		(block_num, block_pos, global_exit_root, l1_info_tree_index) VALUES (11, 0, $1, 3)`,
+		common.HexToHash("0x2").Hex())
+	require.NoError(t, err)
+	info, err = s.processor.GetFirstGERAfterL1InfoTreeIndex(ctx, 3)
+	require.NoError(t, err)
+	require.Equal(t, uint64(11), info.BlockNum)
+	require.Equal(t, common.HexToHash("0x2"), info.GlobalExitRoot)
+	require.Equal(t, common.Hash{}, info.BlockHash)
+
+	_, err = s.processor.GetFirstGERAfterL1InfoTreeIndex(ctx, 4)
+	require.ErrorIs(t, err, db.ErrNotFound)
+}
+
+// TestGlobalExitRootInfoWithBlockHashColumns checks that globalExitRootInfoWithBlockHash maps the same
+// columns as GlobalExitRootInfo, besides block_hash. Field names and types are already checked by the
+// compiler, through the conversion in GetFirstGERAfterL1InfoTreeIndex.
+func TestGlobalExitRootInfoWithBlockHashColumns(t *testing.T) {
+	publicType := reflect.TypeOf(GlobalExitRootInfo{})
+	readModelType := reflect.TypeOf(globalExitRootInfoWithBlockHash{})
+	require.Equal(t, publicType.NumField(), readModelType.NumField())
+	for i := range publicType.NumField() {
+		publicField, readModelField := publicType.Field(i), readModelType.Field(i)
+		require.Equal(t, publicField.Name, readModelField.Name)
+		if publicField.Name == "BlockHash" {
+			require.Equal(t, "-", publicField.Tag.Get("meddler"))
+			require.Equal(t, "block_hash,hash", readModelField.Tag.Get("meddler"))
+			continue
+		}
+		require.Equal(t, publicField.Tag.Get("meddler"), readModelField.Tag.Get("meddler"), publicField.Name)
+	}
 }

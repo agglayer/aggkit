@@ -3,7 +3,9 @@ package l1infotreesync
 import (
 	"encoding/json"
 	"errors"
+	"math/big"
 	"path"
+	"reflect"
 	"testing"
 
 	"github.com/agglayer/aggkit/db"
@@ -170,26 +172,66 @@ func TestGetInfoByIndexFillsBlockHash(t *testing.T) {
 	processor, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncGetInfoByIndex.sqlite"))
 	require.NoError(t, err)
 	hash := common.HexToHash("0xb10c")
-	require.NoError(t, processor.ProcessBlock(t.Context(), sync.Block{
-		Num:  1,
-		Hash: hash,
-		Events: []any{Event{UpdateL1InfoTree: &UpdateL1InfoTree{
-			MainnetExitRoot: common.HexToHash("beef"),
-			RollupExitRoot:  common.HexToHash("5ca1e"),
-			ParentHash:      common.HexToHash("1010101"),
-			Timestamp:       420,
-		}}},
-	}))
+	for i, blockHash := range []common.Hash{hash, common.HexToHash("0xb10c2")} {
+		require.NoError(t, processor.ProcessBlock(t.Context(), sync.Block{
+			Num:  uint64(i) + 1,
+			Hash: blockHash,
+			Events: []any{Event{UpdateL1InfoTree: &UpdateL1InfoTree{
+				MainnetExitRoot: common.BigToHash(big.NewInt(int64(0xbeef + i))),
+				RollupExitRoot:  common.HexToHash("5ca1e"),
+				ParentHash:      common.HexToHash("1010101"),
+				Timestamp:       420 + uint64(i),
+			}}},
+		}))
+	}
+	// block 2 without stored hash
+	_, err = processor.db.Exec(`UPDATE block SET hash = NULL WHERE num = 2`)
+	require.NoError(t, err)
 	syncer := &L1InfoTreeSync{processor: processor}
 
 	leaf, err := syncer.GetInfoByIndex(t.Context(), 0)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), leaf.BlockNumber)
 	require.Equal(t, hash, leaf.BlockHash)
+	// the leaf's own hash column is not mixed up with the block's one
+	plainLeaf, err := processor.GetInfoByIndex(t.Context(), 0)
+	require.NoError(t, err)
+	require.NotEqual(t, common.Hash{}, plainLeaf.Hash)
+	require.Equal(t, common.Hash{}, plainLeaf.BlockHash)
+	plainLeaf.BlockHash = hash
+	require.Equal(t, plainLeaf, leaf)
+
+	leaf, err = syncer.GetInfoByIndex(t.Context(), 1)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), leaf.BlockNumber)
+	require.Equal(t, common.Hash{}, leaf.BlockHash)
+
+	_, err = syncer.GetInfoByIndex(t.Context(), 2)
+	require.ErrorIs(t, err, db.ErrNotFound)
 
 	// the hash is not part of the leaf's JSON
+	leaf, err = syncer.GetInfoByIndex(t.Context(), 0)
+	require.NoError(t, err)
 	raw, err := json.Marshal(leaf)
 	require.NoError(t, err)
 	require.NotContains(t, string(raw), "BlockHash")
 	require.NotContains(t, string(raw), hash.Hex())
+}
+
+// TestL1InfoTreeLeafWithBlockHashColumns checks that l1InfoTreeLeafWithBlockHash maps the same columns as
+// L1InfoTreeLeaf, besides block_hash. Field names and types are already checked by the compiler, through
+// the conversion in getInfoByIndexWithBlockHash.
+func TestL1InfoTreeLeafWithBlockHashColumns(t *testing.T) {
+	publicType, readModelType := reflect.TypeOf(L1InfoTreeLeaf{}), reflect.TypeOf(l1InfoTreeLeafWithBlockHash{})
+	require.Equal(t, publicType.NumField(), readModelType.NumField())
+	for i := range publicType.NumField() {
+		publicField, readModelField := publicType.Field(i), readModelType.Field(i)
+		require.Equal(t, publicField.Name, readModelField.Name)
+		if publicField.Name == "BlockHash" {
+			require.Equal(t, "-", publicField.Tag.Get("meddler"))
+			require.Equal(t, "block_hash,hash", readModelField.Tag.Get("meddler"))
+			continue
+		}
+		require.Equal(t, publicField.Tag.Get("meddler"), readModelField.Tag.Get("meddler"), publicField.Name)
+	}
 }

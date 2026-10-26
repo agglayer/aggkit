@@ -16,6 +16,7 @@ import (
 	"github.com/agglayer/aggkit/db/compatibility"
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	aggsync "github.com/agglayer/aggkit/sync"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	sqlite "github.com/mattn/go-sqlite3"
 	"github.com/russross/meddler"
@@ -72,11 +73,55 @@ const (
 		o.block_timestamp,
 		o.type`
 
-	// claimsByGERSQL is the query used by GetClaimsByGER.
-	claimsByGERSQL = "SELECT " + claimColumnsSQL +
-		" FROM claim WHERE global_exit_root = $1 AND type = $2" +
-		" ORDER BY block_num ASC, block_pos ASC"
+	// claimsByGERSQL is the query used by GetClaimsByGER. Each claim is joined with the hash of its
+	// block, read in the same statement (see claimWithBlockHash). The claim columns are unambiguous
+	// (block only has num and hash), the rest of the statement qualifies them anyway.
+	claimsByGERSQL = "SELECT " + claimColumnsSQL + ", " + blockHashColumnSQL +
+		" FROM claim c LEFT JOIN block b ON b.num = c.block_num" +
+		" WHERE c.global_exit_root = $1 AND c.type = $2" +
+		" ORDER BY c.block_num ASC, c.block_pos ASC"
+
+	// blockHashColumnSQL is the block_hash column of the queries that join a claim with its block
+	// (aliased b): empty when the block is missing or has no hash
+	blockHashColumnSQL = "COALESCE(b.hash, '') AS block_hash"
 )
+
+// claimWithBlockHash is the read model of a claim row joined with the hash of its block. It can't be
+// claimsynctypes.Claim itself: meddler.Insert writes every meddler-tagged field and block_hash is not a
+// column of the claim table, and meddler doesn't flatten embedded structs. It has exactly the fields of
+// claimsynctypes.Claim, in the same order, so that claimsynctypes.Claim(row) compiles only while both
+// match.
+type claimWithBlockHash struct {
+	BlockNum            uint64                   `meddler:"block_num"`
+	BlockPos            uint64                   `meddler:"block_pos"`
+	TxHash              common.Hash              `meddler:"tx_hash,hash"`
+	GlobalIndex         *big.Int                 `meddler:"global_index,bigint"`
+	OriginNetwork       uint32                   `meddler:"origin_network"`
+	OriginAddress       common.Address           `meddler:"origin_address"`
+	DestinationAddress  common.Address           `meddler:"destination_address"`
+	Amount              *big.Int                 `meddler:"amount,bigint"`
+	ProofLocalExitRoot  treetypes.Proof          `meddler:"proof_local_exit_root,merkleproof"`
+	ProofRollupExitRoot treetypes.Proof          `meddler:"proof_rollup_exit_root,merkleproof"`
+	MainnetExitRoot     common.Hash              `meddler:"mainnet_exit_root,hash"`
+	RollupExitRoot      common.Hash              `meddler:"rollup_exit_root,hash"`
+	GlobalExitRoot      common.Hash              `meddler:"global_exit_root,hash"`
+	DestinationNetwork  uint32                   `meddler:"destination_network"`
+	Metadata            []byte                   `meddler:"metadata"`
+	IsMessage           bool                     `meddler:"is_message"`
+	BlockTimestamp      uint64                   `meddler:"block_timestamp"`
+	Type                claimsynctypes.ClaimType `meddler:"type"`
+	BlockHash           common.Hash              `meddler:"block_hash,hash"`
+}
+
+// toClaims converts the rows read with claimWithBlockHash to claims
+func toClaims(rows []*claimWithBlockHash) []*claimsynctypes.Claim {
+	claims := make([]*claimsynctypes.Claim, len(rows))
+	for i, row := range rows {
+		claim := claimsynctypes.Claim(*row)
+		claims[i] = &claim
+	}
+	return claims
+}
 
 type claimStorage struct {
 	database       *sql.DB
@@ -355,14 +400,11 @@ func (p *claimStorage) GetClaimsByGER(
 		}
 	}()
 
-	claims := []*claimsynctypes.Claim{}
-	if err = meddler.ScanAll(rows, &claims); err != nil {
+	claimRows := []*claimWithBlockHash{}
+	if err = meddler.ScanAll(rows, &claimRows); err != nil {
 		return nil, fmt.Errorf("GetClaimsByGER: scan: %w", err)
 	}
-	if err = p.FillBlockHashes(ctx, tx, claims); err != nil {
-		return nil, fmt.Errorf("GetClaimsByGER: %w", err)
-	}
-	return claims, nil
+	return toClaims(claimRows), nil
 }
 
 // GetBlockHash returns the hash stored for the given block. found is false if the block is not
@@ -384,26 +426,6 @@ func (s *claimStorage) GetBlockHash(ctx context.Context, tx dbtypes.Querier,
 		return common.Hash{}, false, nil
 	}
 	return common.HexToHash(hashStr.String), true, nil
-}
-
-// FillBlockHashes sets Claim.BlockHash from the block table. Claims whose block has no stored hash
-// keep the zero hash.
-func (s *claimStorage) FillBlockHashes(ctx context.Context, tx dbtypes.Querier,
-	claims []*claimsynctypes.Claim) error {
-	hashes := make(map[uint64]common.Hash)
-	for _, claim := range claims {
-		hash, ok := hashes[claim.BlockNum]
-		if !ok {
-			var err error
-			hash, _, err = s.GetBlockHash(ctx, tx, claim.BlockNum)
-			if err != nil {
-				return err
-			}
-			hashes[claim.BlockNum] = hash
-		}
-		claim.BlockHash = hash
-	}
-	return nil
 }
 
 // DeleteBlocksFrom deletes all blocks with num >= firstBlock and returns the count deleted.

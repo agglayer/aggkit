@@ -1437,37 +1437,127 @@ func TestGetClaimsPaged_Compact(t *testing.T) {
 }
 
 func TestClaimQueriesFillBlockHash(t *testing.T) {
-	s, _ := newTestStorage(t)
+	s, rawDB := newTestStorage(t)
 	ctx := context.Background()
-	hash := common.HexToHash("0xb10c")
+	hash1, hash4 := common.HexToHash("0xb10c"), common.HexToHash("0xb10c4")
+	ger, otherGER := common.HexToHash("0x6e1"), common.HexToHash("0x6e2")
+	newestMER := common.HexToHash("0x3e1")
 
+	// block 1 and 4 with hash, block 2 stored with the zero hash and block 3 without hash
 	tx, err := s.NewTx(ctx)
 	require.NoError(t, err)
-	require.NoError(t, s.InsertBlock(ctx, tx, 1, hash))
+	require.NoError(t, s.InsertBlock(ctx, tx, 1, hash1))
 	require.NoError(t, s.InsertBlock(ctx, tx, 2, common.Hash{}))
-	require.NoError(t, s.InsertClaim(ctx, tx, claimsynctypes.Claim{
-		BlockNum: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1), Type: claimsynctypes.ClaimEvent,
-	}))
-	require.NoError(t, s.InsertClaim(ctx, tx, claimsynctypes.Claim{
-		BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1), Type: claimsynctypes.ClaimEvent,
+	_, err = tx.Exec(`INSERT INTO block (num) VALUES (3)`)
+	require.NoError(t, err)
+	require.NoError(t, s.InsertBlock(ctx, tx, 4, hash4))
+	for _, claim := range []claimsynctypes.Claim{
+		{BlockNum: 1, GlobalIndex: big.NewInt(1), Type: claimsynctypes.DetailedClaimEvent, GlobalExitRoot: ger},
+		{BlockNum: 2, GlobalIndex: big.NewInt(2), Type: claimsynctypes.ClaimEvent},
+		{BlockNum: 2, BlockPos: 1, GlobalIndex: big.NewInt(8), Type: claimsynctypes.DetailedClaimEvent,
+			GlobalExitRoot: ger},
+		{BlockNum: 3, GlobalIndex: big.NewInt(3), Type: claimsynctypes.DetailedClaimEvent, GlobalExitRoot: ger},
+		// claimed twice without unset: compacted into the oldest one (block 1)
+		{BlockNum: 1, BlockPos: 1, GlobalIndex: big.NewInt(5), Type: claimsynctypes.ClaimEvent},
+		{BlockNum: 4, GlobalIndex: big.NewInt(5), Type: claimsynctypes.ClaimEvent, MainnetExitRoot: newestMER},
+		// claimed twice with unset: both returned
+		{BlockNum: 3, BlockPos: 1, GlobalIndex: big.NewInt(6), Type: claimsynctypes.ClaimEvent},
+		{BlockNum: 4, BlockPos: 1, GlobalIndex: big.NewInt(6), Type: claimsynctypes.ClaimEvent},
+		{BlockNum: 4, BlockPos: 2, GlobalIndex: big.NewInt(7), Type: claimsynctypes.DetailedClaimEvent,
+			GlobalExitRoot: otherGER},
+	} {
+		claim.Amount = big.NewInt(1)
+		require.NoError(t, s.InsertClaim(ctx, tx, claim))
+	}
+	require.NoError(t, s.InsertUnsetClaim(ctx, tx, claimsynctypes.UnsetClaim{
+		BlockNum: 4, BlockPos: 3, GlobalIndex: big.NewInt(6),
 	}))
 	require.NoError(t, tx.Commit())
 
-	gotHash, found, err := s.GetBlockHash(ctx, nil, 1)
-	require.NoError(t, err)
-	require.True(t, found)
-	require.Equal(t, hash, gotHash)
-
-	_, found, err = s.GetBlockHash(ctx, nil, 99)
-	require.NoError(t, err)
-	require.False(t, found)
-
-	claims, count, err := s.GetClaimsPaged(ctx, 1, 10, nil, nil)
-	require.NoError(t, err)
-	require.Equal(t, 2, count)
-	hashByBlock := map[uint64]common.Hash{}
-	for _, claim := range claims {
-		hashByBlock[claim.BlockNum] = claim.BlockHash
+	type claimKey struct {
+		blockNum, blockPos, globalIndex uint64
+		blockHash                       common.Hash
 	}
-	require.Equal(t, map[uint64]common.Hash{1: hash, 2: {}}, hashByBlock)
+	keys := func(claims []*claimsynctypes.Claim) []claimKey {
+		result := make([]claimKey, len(claims))
+		for i, claim := range claims {
+			result[i] = claimKey{claim.BlockNum, claim.BlockPos, claim.GlobalIndex.Uint64(), claim.BlockHash}
+		}
+		return result
+	}
+
+	t.Run("GetBlockHash", func(t *testing.T) {
+		gotHash, found, err := s.GetBlockHash(ctx, nil, 1)
+		require.NoError(t, err)
+		require.True(t, found)
+		require.Equal(t, hash1, gotHash)
+
+		_, found, err = s.GetBlockHash(ctx, nil, 3)
+		require.NoError(t, err)
+		require.False(t, found)
+
+		_, found, err = s.GetBlockHash(ctx, nil, 99)
+		require.NoError(t, err)
+		require.False(t, found)
+	})
+
+	t.Run("GetClaimsPaged", func(t *testing.T) {
+		claims, count, err := s.GetClaimsPaged(ctx, 1, 20, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 8, count)
+		require.Equal(t, []claimKey{
+			{4, 2, 7, hash4},
+			{4, 1, 6, hash4},
+			{3, 1, 6, common.Hash{}},
+			{3, 0, 3, common.Hash{}},
+			{2, 1, 8, common.Hash{}},
+			{2, 0, 2, common.Hash{}},
+			{1, 1, 5, hash1}, // compacted: the oldest claim's block, the newest claim's exit roots
+			{1, 0, 1, hash1},
+		}, keys(claims))
+		require.Equal(t, newestMER, claims[6].MainnetExitRoot)
+		require.Equal(t, claimsynctypes.ClaimEvent, claims[6].Type)
+
+		claims, _, err = s.GetClaimsPaged(ctx, 1, 20, nil, big.NewInt(6))
+		require.NoError(t, err)
+		require.Equal(t, []claimKey{{4, 1, 6, hash4}, {3, 1, 6, common.Hash{}}}, keys(claims))
+	})
+
+	t.Run("GetClaimsByGER", func(t *testing.T) {
+		claims, err := s.GetClaimsByGER(ctx, nil, ger)
+		require.NoError(t, err)
+		require.Equal(t, []claimKey{
+			{1, 0, 1, hash1},
+			{2, 1, 8, common.Hash{}},
+			{3, 0, 3, common.Hash{}},
+		}, keys(claims))
+		require.Equal(t, ger, claims[0].GlobalExitRoot)
+		require.Equal(t, claimsynctypes.DetailedClaimEvent, claims[0].Type)
+
+		claims, err = s.GetClaimsByGER(ctx, rawDB, otherGER)
+		require.NoError(t, err)
+		require.Equal(t, []claimKey{{4, 2, 7, hash4}}, keys(claims))
+
+		claims, err = s.GetClaimsByGER(ctx, nil, common.HexToHash("0xdead"))
+		require.NoError(t, err)
+		require.Empty(t, claims)
+	})
+}
+
+// TestClaimWithBlockHashColumns checks that claimWithBlockHash maps the same columns as
+// claimsynctypes.Claim, besides block_hash. Field names and types are already checked by the compiler,
+// through the conversion in toClaims.
+func TestClaimWithBlockHashColumns(t *testing.T) {
+	publicType, readModelType := reflect.TypeOf(claimsynctypes.Claim{}), reflect.TypeOf(claimWithBlockHash{})
+	require.Equal(t, publicType.NumField(), readModelType.NumField())
+	for i := range publicType.NumField() {
+		publicField, readModelField := publicType.Field(i), readModelType.Field(i)
+		require.Equal(t, publicField.Name, readModelField.Name)
+		if publicField.Name == "BlockHash" {
+			require.Equal(t, "-", publicField.Tag.Get("meddler"))
+			require.Equal(t, "block_hash,hash", readModelField.Tag.Get("meddler"))
+			continue
+		}
+		require.Equal(t, publicField.Tag.Get("meddler"), readModelField.Tag.Get("meddler"), publicField.Name)
+	}
 }
