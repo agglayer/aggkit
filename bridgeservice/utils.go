@@ -273,21 +273,14 @@ func (b *BridgeService) blockFinalized(ctx context.Context, syncer blockFinality
 	return &finalized
 }
 
-// l1BlockFinalized asks the l1infotreesync syncer whether an L1 block it stored is finalized.
-// It returns nil (unknown) if the syncer can't tell or fails, so the response omits block_finalized.
-func (b *BridgeService) l1BlockFinalized(ctx context.Context, blockNum uint64) *bool {
+// l1BlockFinalized asks the l1infotreesync syncer whether an L1 block it served (identified by number and
+// hash) is finalized. It returns nil (unknown) if the syncer can't tell or fails, so the response omits
+// block_finalized.
+func (b *BridgeService) l1BlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) *bool {
 	if b.l1InfoTree == nil {
 		return nil
 	}
-	finalized, found, err := b.l1InfoTree.IsBlockFinalized(ctx, blockNum)
-	if err != nil {
-		b.logger.Warnf("unable to get the finality of L1 block %d, block_finalized will be omitted: %v", blockNum, err)
-		return nil
-	}
-	if !found {
-		return nil
-	}
-	return &finalized
+	return b.blockFinalized(ctx, b.l1InfoTree, blockNum, blockHash)
 }
 
 // andFinalized combines the finality of the blocks a response depends on: false if any of them is not

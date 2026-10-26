@@ -80,7 +80,7 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	b.claimL1.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
 	b.claimL2.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
 	b.injectedGERs.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
-	expectL1BlocksFinalized(b.l1InfoTree, nil)
+	expectL1BlocksFinalized(b.l1InfoTree, common.Hash{}, nil)
 	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs,
 		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
 	b.router = gin.New()
@@ -107,8 +107,8 @@ func clearIsBlockFinalized(bridger *mocks.Bridger) {
 }
 
 // expectL1BlocksFinalized replaces any IsBlockFinalized expectation of the l1infotreesync mock: the
-// blocks in finality get that finality, any other block is unknown (found=false).
-func expectL1BlocksFinalized(l1InfoTree *mocks.L1InfoTreeSyncer, finality map[uint64]bool) {
+// blocks in finality (with the given hash) get that finality, any other block is unknown (found=false).
+func expectL1BlocksFinalized(l1InfoTree *mocks.L1InfoTreeSyncer, blockHash common.Hash, finality map[uint64]bool) {
 	expected := l1InfoTree.ExpectedCalls[:0]
 	for _, call := range l1InfoTree.ExpectedCalls {
 		if call.Method != "IsBlockFinalized" {
@@ -117,9 +117,9 @@ func expectL1BlocksFinalized(l1InfoTree *mocks.L1InfoTreeSyncer, finality map[ui
 	}
 	l1InfoTree.ExpectedCalls = expected
 	for blockNum, finalized := range finality {
-		l1InfoTree.EXPECT().IsBlockFinalized(mock.Anything, blockNum).Return(finalized, true, nil).Maybe()
+		l1InfoTree.EXPECT().IsBlockFinalized(mock.Anything, blockNum, blockHash).Return(finalized, true, nil).Maybe()
 	}
-	l1InfoTree.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
+	l1InfoTree.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
 }
 
 // newBridgeWithMocksAndHealthCacheTTL is newBridgeWithMocks with an explicit

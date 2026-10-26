@@ -894,9 +894,9 @@ func (_c *L1InfoTreeSyncer_IsActive_Call) RunAndReturn(run func(context.Context)
 	return _c
 }
 
-// IsBlockFinalized provides a mock function with given fields: ctx, blockNum
-func (_m *L1InfoTreeSyncer) IsBlockFinalized(ctx context.Context, blockNum uint64) (bool, bool, error) {
-	ret := _m.Called(ctx, blockNum)
+// IsBlockFinalized provides a mock function with given fields: ctx, blockNum, blockHash
+func (_m *L1InfoTreeSyncer) IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (bool, bool, error) {
+	ret := _m.Called(ctx, blockNum, blockHash)
 
 	if len(ret) == 0 {
 		panic("no return value specified for IsBlockFinalized")
@@ -905,23 +905,23 @@ func (_m *L1InfoTreeSyncer) IsBlockFinalized(ctx context.Context, blockNum uint6
 	var r0 bool
 	var r1 bool
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint64) (bool, bool, error)); ok {
-		return rf(ctx, blockNum)
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, common.Hash) (bool, bool, error)); ok {
+		return rf(ctx, blockNum, blockHash)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint64) bool); ok {
-		r0 = rf(ctx, blockNum)
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, common.Hash) bool); ok {
+		r0 = rf(ctx, blockNum, blockHash)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint64) bool); ok {
-		r1 = rf(ctx, blockNum)
+	if rf, ok := ret.Get(1).(func(context.Context, uint64, common.Hash) bool); ok {
+		r1 = rf(ctx, blockNum, blockHash)
 	} else {
 		r1 = ret.Get(1).(bool)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, uint64) error); ok {
-		r2 = rf(ctx, blockNum)
+	if rf, ok := ret.Get(2).(func(context.Context, uint64, common.Hash) error); ok {
+		r2 = rf(ctx, blockNum, blockHash)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -937,13 +937,14 @@ type L1InfoTreeSyncer_IsBlockFinalized_Call struct {
 // IsBlockFinalized is a helper method to define mock.On call
 //   - ctx context.Context
 //   - blockNum uint64
-func (_e *L1InfoTreeSyncer_Expecter) IsBlockFinalized(ctx interface{}, blockNum interface{}) *L1InfoTreeSyncer_IsBlockFinalized_Call {
-	return &L1InfoTreeSyncer_IsBlockFinalized_Call{Call: _e.mock.On("IsBlockFinalized", ctx, blockNum)}
+//   - blockHash common.Hash
+func (_e *L1InfoTreeSyncer_Expecter) IsBlockFinalized(ctx interface{}, blockNum interface{}, blockHash interface{}) *L1InfoTreeSyncer_IsBlockFinalized_Call {
+	return &L1InfoTreeSyncer_IsBlockFinalized_Call{Call: _e.mock.On("IsBlockFinalized", ctx, blockNum, blockHash)}
 }
 
-func (_c *L1InfoTreeSyncer_IsBlockFinalized_Call) Run(run func(ctx context.Context, blockNum uint64)) *L1InfoTreeSyncer_IsBlockFinalized_Call {
+func (_c *L1InfoTreeSyncer_IsBlockFinalized_Call) Run(run func(ctx context.Context, blockNum uint64, blockHash common.Hash)) *L1InfoTreeSyncer_IsBlockFinalized_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint64))
+		run(args[0].(context.Context), args[1].(uint64), args[2].(common.Hash))
 	})
 	return _c
 }
@@ -953,7 +954,7 @@ func (_c *L1InfoTreeSyncer_IsBlockFinalized_Call) Return(finalized bool, found b
 	return _c
 }
 
-func (_c *L1InfoTreeSyncer_IsBlockFinalized_Call) RunAndReturn(run func(context.Context, uint64) (bool, bool, error)) *L1InfoTreeSyncer_IsBlockFinalized_Call {
+func (_c *L1InfoTreeSyncer_IsBlockFinalized_Call) RunAndReturn(run func(context.Context, uint64, common.Hash) (bool, bool, error)) *L1InfoTreeSyncer_IsBlockFinalized_Call {
 	_c.Call.Return(run)
 	return _c
 }

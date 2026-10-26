@@ -153,6 +153,9 @@ type L1InfoTreeLeaf struct {
 	RollupExitRoot    common.Hash `meddler:"rollup_exit_root,hash" json:"rollup_exit_root"`
 	GlobalExitRoot    common.Hash `meddler:"global_exit_root,hash" json:"global_exit_root"`
 	Hash              common.Hash `meddler:"hash,hash" json:"hash"`
+	// BlockHash is the hash of the block BlockNumber, as stored in the block table. It is not a column of
+	// l1info_leaf: L1InfoTreeSync fills it in when serving a leaf (zero if unknown)
+	BlockHash common.Hash `meddler:"-" json:"-"`
 }
 
 func (l *L1InfoTreeLeaf) String() string {
@@ -285,6 +288,23 @@ func (p *processor) GetLatestL1InfoGER(ctx context.Context) (common.Hash, error)
 	}
 
 	return common.HexToHash(gerHex), nil
+}
+
+// getBlockHash returns the hash stored for the given block. found is false if the block is not stored
+// or it has no hash (blocks synced before the hash column existed).
+func (p *processor) getBlockHash(ctx context.Context, blockNum uint64) (hash common.Hash, found bool, err error) {
+	var hashStr sql.NullString
+	err = p.db.QueryRowContext(ctx, `SELECT hash FROM block WHERE num = $1`, blockNum).Scan(&hashStr)
+	if errors.Is(err, sql.ErrNoRows) {
+		return common.Hash{}, false, nil
+	}
+	if err != nil {
+		return common.Hash{}, false, fmt.Errorf("failed to get the hash of block %d: %w", blockNum, err)
+	}
+	if !hashStr.Valid || hashStr.String == "" {
+		return common.Hash{}, false, nil
+	}
+	return common.HexToHash(hashStr.String), true, nil
 }
 
 // GetInfoByIndex returns the value of a leaf (not the hash) of the L1 info tree

@@ -87,7 +87,7 @@ type L1InfoTreeSyncer interface {
 	// GetLastProcessedBlock returns the last processed L1 block; 0 (nil error) if none yet.
 	// Returns sync.ErrInconsistentState while the processor is halted.
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
-	// IsBlockFinalized reports whether the L1 block was stored as finalized (so it can't be reorged).
-	// found is false when it can't be determined
-	IsBlockFinalized(ctx context.Context, blockNum uint64) (finalized, found bool, err error)
+	// IsBlockFinalized reports whether the L1 block, as read from the syncer with the given hash, is
+	// finalized (can't be reorged). found is false when it can't be determined
+	IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (finalized, found bool, err error)
 }

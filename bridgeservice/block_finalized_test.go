@@ -191,12 +191,12 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 
 	t.Run("settlements use the l1infotreesync finality", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		expectL1BlocksFinalized(bridgeMocks.l1InfoTree, map[uint64]bool{101: false, 100: true})
+		expectL1BlocksFinalized(bridgeMocks.l1InfoTree, blockHash, map[uint64]bool{101: false, 100: true})
 		bridgeMocks.l1InfoTree.EXPECT().
 			GetVerifiedBatchesPaged(l2NetworkID, DefaultPage, DefaultPageSize).
 			Return([]*l1infotreesync.VerifiedBatchWithBlockHash{
-				{BlockNumber: 101},
-				{BlockNumber: 100},
+				{BlockNumber: 101, BlockHash: &blockHash},
+				{BlockNumber: 100, BlockHash: &blockHash},
 			}, 2, nil)
 
 		w := performRequest(t, bridgeMocks.router, fmt.Sprintf("%s/settlements", BridgeV1Prefix))
@@ -211,10 +211,10 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 
 	t.Run("injected-l1-info-leaf on L1", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		expectL1BlocksFinalized(bridgeMocks.l1InfoTree, map[uint64]bool{101: false})
+		expectL1BlocksFinalized(bridgeMocks.l1InfoTree, blockHash, map[uint64]bool{101: false})
 		bridgeMocks.l1InfoTree.EXPECT().
 			GetInfoByIndex(mock.Anything, uint32(3)).
-			Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: 101}, nil)
+			Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: 101, BlockHash: blockHash}, nil)
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, "0")
@@ -266,7 +266,7 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 				if tc.l1Finalized != nil {
-					expectL1BlocksFinalized(bridgeMocks.l1InfoTree, map[uint64]bool{l1Block: *tc.l1Finalized})
+					expectL1BlocksFinalized(bridgeMocks.l1InfoTree, blockHash, map[uint64]bool{l1Block: *tc.l1Finalized})
 				}
 				bridgeMocks.injectedGERs.ExpectedCalls = nil
 				if tc.l2Finalized != nil {
@@ -282,7 +282,7 @@ func TestBlockFinalizedInResponses(t *testing.T) {
 					}, nil)
 				bridgeMocks.l1InfoTree.EXPECT().
 					GetInfoByIndex(mock.Anything, uint32(3)).
-					Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: l1Block}, nil)
+					Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: l1Block, BlockHash: blockHash}, nil)
 
 				queryParams := url.Values{}
 				queryParams.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
