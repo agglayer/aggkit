@@ -1548,7 +1548,7 @@ const docTemplate = `{
                     "example": "1000000000000000000"
                 },
                 "block_finalized": {
-                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).",
+                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when the syncer that served the item cannot determine it.",
                     "type": "boolean",
                     "example": true
                 },
@@ -1718,7 +1718,7 @@ const docTemplate = `{
                     "example": "1000000000000000000"
                 },
                 "block_finalized": {
-                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).",
+                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when the syncer that served the item cannot determine it.",
                     "type": "boolean",
                     "example": true
                 },
@@ -1952,7 +1952,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "block_finalized": {
-                    "description": "BlockFinalized reports whether the block(s) this leaf depends on are finalized (reorg-safe): the L1 block\nof the leaf and, for an L2 lookup, the L2 block where the GER was injected too. Only set by the\ninjected-l1-info-leaf endpoint; omitted when finality could not be determined (e.g. L2 chains synced by\nl2gersync in Legacy mode, where the injection block is only approximate).",
+                    "description": "BlockFinalized reports whether the block(s) this leaf depends on are finalized (reorg-safe): the L1 block\nof the leaf and, for an L2 lookup, the L2 block where the GER was injected too. Only set by the\ninjected-l1-info-leaf endpoint; omitted when the syncer that served the leaf cannot determine it (e.g. L2\nchains synced by l2gersync in Legacy mode, where the injection block is only approximate).",
                     "type": "boolean",
                     "example": true
                 },
@@ -2294,7 +2294,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "block_finalized": {
-                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).",
+                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when the syncer that served the item cannot determine it.",
                     "type": "boolean",
                     "example": true
                 },
@@ -2369,7 +2369,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "block_finalized": {
-                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).",
+                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when the syncer that served the item cannot determine it.",
                     "type": "boolean",
                     "example": true
                 },

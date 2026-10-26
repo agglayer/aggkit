@@ -21,8 +21,8 @@ For the full description of every endpoint see the swagger files in this directo
 
 Bump `CurrentAPIRevision` by one, in the same PR, whenever a change could break an existing client:
 
-- a response field added, removed or renamed (a new field that clients can safely ignore is **not** a bump,
-  unless it is the only way to tell a behaviour change);
+- a response field added, removed or renamed, even an optional one: it is how a client tells that an instance
+  has the field;
 - the set of values of an enum-like field changed;
 - a query parameter whose absence changes the response shape, or whose default changed;
 - an endpoint added, removed or renamed;
@@ -43,13 +43,17 @@ do about it.
 
 ### Revision 1
 
-The contract of the release that introduced `api_revision`; there is nothing to compare it with.
+The contract of the release that introduced `api_revision`; there is nothing to compare it with. Instances
+older than this release don't return `api_revision` at all, so for a client:
 
-Worth knowing for clients that have to deal with older instances (those that don't return `api_revision`
-at all):
+- no `api_revision` in `GET /` / `GET /health`: an instance from before this contract, which has none of the
+  fields below;
+- `api_revision` >= 1: the instance has everything listed here.
 
+What revision 1 contains that older instances don't:
+
+- `GET /` and `GET /health` return `api_revision`.
 - Responses tied to a block carry an optional `block_finalized` (`true`, `false` or absent): `/bridges`,
   `/bridge-by-deposit-count`, `/bridges-by-content`, `/claims`, `/claims-by-ger`, `/root-by-ler`,
-  `/settlements` and `/injected-l1-info-leaf`. It is absent when the syncer can't tell, so an absent value
-  must be read as "unknown", not as `false`.
-- `GET /` and `GET /health` return `api_revision`.
+  `/settlements` and `/injected-l1-info-leaf`. It is absent when the syncer that served the item can't
+  determine it, so an absent value must be read as "unknown", not as `false`.

@@ -175,7 +175,7 @@ type BridgeResponse struct {
 	ToAddress Address `json:"to_address" example:"0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0"`
 
 	// BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
-	// It is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).
+	// It is omitted when the syncer that served the item cannot determine it.
 	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
@@ -244,7 +244,7 @@ type ClaimResponse struct {
 	IsMessage bool `json:"is_message" example:"false"`
 
 	// BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
-	// It is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).
+	// It is omitted when the syncer that served the item cannot determine it.
 	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
@@ -398,8 +398,8 @@ type L1InfoTreeLeafResponse struct {
 
 	// BlockFinalized reports whether the block(s) this leaf depends on are finalized (reorg-safe): the L1 block
 	// of the leaf and, for an L2 lookup, the L2 block where the GER was injected too. Only set by the
-	// injected-l1-info-leaf endpoint; omitted when finality could not be determined (e.g. L2 chains synced by
-	// l2gersync in Legacy mode, where the injection block is only approximate).
+	// injected-l1-info-leaf endpoint; omitted when the syncer that served the leaf cannot determine it (e.g. L2
+	// chains synced by l2gersync in Legacy mode, where the injection block is only approximate).
 	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
@@ -582,7 +582,7 @@ type SettlementResponse struct {
 	BlockHash *Hash `json:"block_hash,omitempty" example:"0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890a"` //nolint:lll
 
 	// BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
-	// It is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).
+	// It is omitted when the syncer that served the item cannot determine it.
 	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
@@ -674,7 +674,7 @@ type RootByLERResponse struct {
 	BlockPosition uint64 `json:"block_position" example:"0"`
 
 	// BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
-	// It is omitted when finality could not be determined (e.g. older versions or finalized block unavailable).
+	// It is omitted when the syncer that served the item cannot determine it.
 	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 

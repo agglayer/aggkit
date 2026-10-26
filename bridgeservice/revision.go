@@ -15,6 +15,7 @@ package bridgeservice
 // with the bump.
 //
 // Revision history:
-//   - 1: first revision, the contract as of the release that introduced api_revision. Earlier changes
+//   - 1: first revision, the contract as of the release that introduced api_revision, which also
+//     introduced the optional block_finalized field on the block-related responses. Earlier changes
 //     are not back-filled
 const CurrentAPIRevision = 1
