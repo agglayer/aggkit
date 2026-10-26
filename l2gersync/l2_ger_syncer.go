@@ -2,16 +2,15 @@ package l2gersync
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
-	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -259,22 +258,6 @@ func (s *L2GERSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
 		return false, false, nil
 	}
 
-	storedHash, stored, err := s.processor.getBlockHash(ctx, blockNum)
-	if err != nil {
-		return false, false, err
-	}
-	if !stored || storedHash != blockHash {
-		return false, false, nil
-	}
-
-	_, err = s.reorgDetector.GetTrackedBlockByBlockNumber(reorgDetectorID, blockNum)
-	switch {
-	case err == nil:
-		// still tracked: its hash was not confirmed against a finalized block yet
-		return false, true, nil
-	case errors.Is(err, db.ErrNotFound):
-		return true, true, nil
-	default:
-		return false, false, fmt.Errorf("failed to check if block %d is tracked: %w", blockNum, err)
-	}
+	return reorgdetector.IsBlockFinalized(ctx, s.reorgDetector, reorgDetectorID, blockNum, blockHash,
+		s.processor.getBlockHash)
 }

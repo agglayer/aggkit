@@ -381,7 +381,8 @@ func TestGetTrackedBlockByBlockNumber(t *testing.T) {
 	header, err := reorgDetector.GetTrackedBlockByBlockNumber("non-existent-syncer", 1)
 	require.Error(t, err)
 	require.Nil(t, header)
-	require.Equal(t, db.ErrNotFound, err)
+	require.ErrorIs(t, err, ErrSubscriberNotFound)
+	require.NotErrorIs(t, err, db.ErrNotFound)
 
 	// Test block number not found for existing subscriber
 	testHeader := Header{Num: 5, Hash: common.BigToHash(big.NewInt(5))}

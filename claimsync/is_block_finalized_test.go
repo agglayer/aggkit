@@ -32,8 +32,8 @@ func TestClaimSyncIsBlockFinalized(t *testing.T) {
 
 	t.Run("stored and not tracked anymore: finalized", func(t *testing.T) {
 		s, reader, rd := newSyncer(t)
-		reader.EXPECT().GetBlockHash(mock.Anything, nil, uint64(10)).Return(hash, true, nil)
 		rd.EXPECT().GetTrackedBlockByBlockNumber(trackerID, uint64(10)).Return(nil, db.ErrNotFound)
+		reader.EXPECT().GetBlockHash(mock.Anything, nil, uint64(10)).Return(hash, true, nil)
 
 		finalized, found, err := s.IsBlockFinalized(t.Context(), 10, hash)
 		require.NoError(t, err)
@@ -42,8 +42,7 @@ func TestClaimSyncIsBlockFinalized(t *testing.T) {
 	})
 
 	t.Run("still tracked by the reorg detector: not finalized", func(t *testing.T) {
-		s, reader, rd := newSyncer(t)
-		reader.EXPECT().GetBlockHash(mock.Anything, nil, uint64(10)).Return(hash, true, nil)
+		s, _, rd := newSyncer(t)
 		rd.EXPECT().GetTrackedBlockByBlockNumber(trackerID, uint64(10)).
 			Return(&reorgdetector.Header{Num: 10, Hash: hash}, nil)
 
@@ -53,8 +52,9 @@ func TestClaimSyncIsBlockFinalized(t *testing.T) {
 		require.False(t, finalized)
 	})
 
-	t.Run("hash differs from the stored one: unknown", func(t *testing.T) {
-		s, reader, _ := newSyncer(t)
+	t.Run("not tracked and hash differs from the stored one: unknown", func(t *testing.T) {
+		s, reader, rd := newSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber(trackerID, uint64(10)).Return(nil, db.ErrNotFound)
 		reader.EXPECT().GetBlockHash(mock.Anything, nil, uint64(10)).Return(otherHash, true, nil)
 
 		finalized, found, err := s.IsBlockFinalized(t.Context(), 10, hash)
@@ -63,8 +63,9 @@ func TestClaimSyncIsBlockFinalized(t *testing.T) {
 		require.False(t, finalized)
 	})
 
-	t.Run("block without stored hash: unknown", func(t *testing.T) {
-		s, reader, _ := newSyncer(t)
+	t.Run("not tracked and block without stored hash: unknown", func(t *testing.T) {
+		s, reader, rd := newSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber(trackerID, uint64(10)).Return(nil, db.ErrNotFound)
 		reader.EXPECT().GetBlockHash(mock.Anything, nil, uint64(10)).Return(common.Hash{}, false, nil)
 
 		_, found, err := s.IsBlockFinalized(t.Context(), 10, hash)
@@ -81,7 +82,8 @@ func TestClaimSyncIsBlockFinalized(t *testing.T) {
 	})
 
 	t.Run("storage error", func(t *testing.T) {
-		s, reader, _ := newSyncer(t)
+		s, reader, rd := newSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber(trackerID, uint64(10)).Return(nil, db.ErrNotFound)
 		reader.EXPECT().GetBlockHash(mock.Anything, nil, uint64(10)).Return(common.Hash{}, false, errors.New("boom"))
 
 		_, found, err := s.IsBlockFinalized(t.Context(), 10, hash)
@@ -90,12 +92,22 @@ func TestClaimSyncIsBlockFinalized(t *testing.T) {
 	})
 
 	t.Run("reorg detector error", func(t *testing.T) {
-		s, reader, rd := newSyncer(t)
-		reader.EXPECT().GetBlockHash(mock.Anything, nil, uint64(10)).Return(hash, true, nil)
+		s, _, rd := newSyncer(t)
 		rd.EXPECT().GetTrackedBlockByBlockNumber(trackerID, uint64(10)).Return(nil, errors.New("boom"))
 
 		_, found, err := s.IsBlockFinalized(t.Context(), 10, hash)
 		require.ErrorContains(t, err, "boom")
 		require.False(t, found)
+	})
+
+	t.Run("unknown subscriber: error, never finalized", func(t *testing.T) {
+		s, _, rd := newSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber(trackerID, uint64(10)).
+			Return(nil, reorgdetector.ErrSubscriberNotFound)
+
+		finalized, found, err := s.IsBlockFinalized(t.Context(), 10, hash)
+		require.ErrorIs(t, err, reorgdetector.ErrSubscriberNotFound)
+		require.False(t, found)
+		require.False(t, finalized)
 	})
 }

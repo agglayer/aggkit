@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,21 +60,31 @@ func TestL2GERSyncIsBlockFinalized(t *testing.T) {
 		require.False(t, finalized)
 	})
 
-	t.Run("hash differs from the stored one: unknown", func(t *testing.T) {
-		s, _, _ := newBlockFinalityTestSyncer(t)
+	t.Run("not tracked and hash differs from the stored one: unknown", func(t *testing.T) {
+		s, rd, _ := newBlockFinalityTestSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber(reorgDetectorID, uint64(10)).Return(nil, db.ErrNotFound)
 
 		_, found, err := s.IsBlockFinalized(ctx, 10, common.HexToHash("0x99"))
 		require.NoError(t, err)
 		require.False(t, found)
 	})
 
-	t.Run("zero hash, block without hash or not stored: unknown", func(t *testing.T) {
-		s, _, hash := newBlockFinalityTestSyncer(t)
+	t.Run("zero hash: unknown without asking the reorg detector", func(t *testing.T) {
+		s, _, _ := newBlockFinalityTestSyncer(t)
+
+		_, found, err := s.IsBlockFinalized(ctx, 10, common.Hash{})
+		require.NoError(t, err)
+		require.False(t, found)
+	})
+
+	t.Run("not tracked, block without hash or not stored: unknown", func(t *testing.T) {
+		s, rd, hash := newBlockFinalityTestSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber(reorgDetectorID, mock.Anything).Return(nil, db.ErrNotFound).Twice()
 
 		for _, tc := range []struct {
 			blockNum uint64
 			hash     common.Hash
-		}{{10, common.Hash{}}, {11, hash}, {99, hash}} {
+		}{{11, hash}, {99, hash}} {
 			_, found, err := s.IsBlockFinalized(ctx, tc.blockNum, tc.hash)
 			require.NoError(t, err)
 			require.False(t, found)
@@ -87,6 +98,17 @@ func TestL2GERSyncIsBlockFinalized(t *testing.T) {
 		_, found, err := s.IsBlockFinalized(ctx, 10, hash)
 		require.NoError(t, err)
 		require.False(t, found)
+	})
+
+	t.Run("unknown subscriber: error, never finalized", func(t *testing.T) {
+		s, rd, hash := newBlockFinalityTestSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber(reorgDetectorID, uint64(10)).
+			Return(nil, reorgdetector.ErrSubscriberNotFound)
+
+		finalized, found, err := s.IsBlockFinalized(ctx, 10, hash)
+		require.ErrorIs(t, err, reorgdetector.ErrSubscriberNotFound)
+		require.False(t, found)
+		require.False(t, finalized)
 	})
 
 	t.Run("reorg detector error", func(t *testing.T) {

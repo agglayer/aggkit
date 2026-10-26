@@ -73,8 +73,9 @@ func TestBridgeSyncIsBlockFinalized(t *testing.T) {
 		require.False(t, finalized)
 	})
 
-	t.Run("hash differs from the stored one: unknown", func(t *testing.T) {
-		s, _ := newBlockFinalityTestSyncer(t)
+	t.Run("not tracked and hash differs from the stored one: unknown", func(t *testing.T) {
+		s, rd := newBlockFinalityTestSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber("bridge-syncer-id", uint64(1)).Return(nil, db.ErrNotFound)
 
 		// the caller read the block, then it was replaced: nothing can be said about the old one
 		finalized, found, err := s.IsBlockFinalized(ctx, 1, hash2)
@@ -83,7 +84,7 @@ func TestBridgeSyncIsBlockFinalized(t *testing.T) {
 		require.False(t, finalized)
 	})
 
-	t.Run("zero hash: unknown", func(t *testing.T) {
+	t.Run("zero hash: unknown without asking the reorg detector", func(t *testing.T) {
 		s, _ := newBlockFinalityTestSyncer(t)
 
 		_, found, err := s.IsBlockFinalized(ctx, 1, common.Hash{})
@@ -91,20 +92,33 @@ func TestBridgeSyncIsBlockFinalized(t *testing.T) {
 		require.False(t, found)
 	})
 
-	t.Run("block without stored hash: unknown", func(t *testing.T) {
-		s, _ := newBlockFinalityTestSyncer(t)
+	t.Run("not tracked, block without stored hash: unknown", func(t *testing.T) {
+		s, rd := newBlockFinalityTestSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber("bridge-syncer-id", uint64(3)).Return(nil, db.ErrNotFound)
 
 		_, found, err := s.IsBlockFinalized(ctx, 3, hash1)
 		require.NoError(t, err)
 		require.False(t, found)
 	})
 
-	t.Run("block not stored: unknown", func(t *testing.T) {
-		s, _ := newBlockFinalityTestSyncer(t)
+	t.Run("not tracked, block not stored: unknown", func(t *testing.T) {
+		s, rd := newBlockFinalityTestSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber("bridge-syncer-id", uint64(99)).Return(nil, db.ErrNotFound)
 
 		_, found, err := s.IsBlockFinalized(ctx, 99, hash1)
 		require.NoError(t, err)
 		require.False(t, found)
+	})
+
+	t.Run("unknown subscriber: error, never finalized", func(t *testing.T) {
+		s, rd := newBlockFinalityTestSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber("bridge-syncer-id", uint64(1)).
+			Return(nil, reorgdetector.ErrSubscriberNotFound)
+
+		finalized, found, err := s.IsBlockFinalized(ctx, 1, hash1)
+		require.ErrorIs(t, err, reorgdetector.ErrSubscriberNotFound)
+		require.False(t, found)
+		require.False(t, finalized)
 	})
 
 	t.Run("reorg detector error", func(t *testing.T) {

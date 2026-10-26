@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/multidownloader"
 	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
+	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -279,24 +280,8 @@ func (d *L1InfoTreeSync) isBlockFinalizedLegacy(ctx context.Context, blockNum ui
 		return false, false, sync.ErrInconsistentState
 	}
 
-	storedHash, stored, err := d.processor.getBlockHash(ctx, blockNum)
-	if err != nil {
-		return false, false, err
-	}
-	if !stored || storedHash != blockHash {
-		return false, false, nil
-	}
-
-	_, err = d.reorgDetector.GetTrackedBlockByBlockNumber(syncerID, blockNum)
-	switch {
-	case err == nil:
-		// still tracked: its hash was not confirmed against a finalized block yet
-		return false, true, nil
-	case errors.Is(err, db.ErrNotFound):
-		return true, true, nil
-	default:
-		return false, false, fmt.Errorf("failed to check if block %d is tracked: %w", blockNum, err)
-	}
+	return reorgdetector.IsBlockFinalized(ctx, d.reorgDetector, syncerID, blockNum, blockHash,
+		d.processor.getBlockHash)
 }
 
 // Finality returns the block finality this syncer syncs up to (its own BlockFinality config).

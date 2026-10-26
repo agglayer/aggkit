@@ -129,25 +129,46 @@ func TestIsBlockFinalizedLegacy(t *testing.T) {
 		require.False(t, finalized)
 	})
 
-	t.Run("hash differs from the stored one: unknown", func(t *testing.T) {
-		syncer, _, _ := newLegacyTestSyncer(t)
+	t.Run("not tracked and hash differs from the stored one: unknown", func(t *testing.T) {
+		syncer, rd, _ := newLegacyTestSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber(syncerID, uint64(10)).Return(nil, db.ErrNotFound)
 
 		_, found, err := syncer.IsBlockFinalized(ctx, 10, common.HexToHash("0x99"))
 		require.NoError(t, err)
 		require.False(t, found)
 	})
 
-	t.Run("zero hash, block without hash or not stored: unknown", func(t *testing.T) {
-		syncer, _, hash := newLegacyTestSyncer(t)
+	t.Run("zero hash: unknown without asking the reorg detector", func(t *testing.T) {
+		syncer, _, _ := newLegacyTestSyncer(t)
+
+		_, found, err := syncer.IsBlockFinalized(ctx, 10, common.Hash{})
+		require.NoError(t, err)
+		require.False(t, found)
+	})
+
+	t.Run("not tracked, block without hash or not stored: unknown", func(t *testing.T) {
+		syncer, rd, hash := newLegacyTestSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber(syncerID, mock.Anything).Return(nil, db.ErrNotFound).Twice()
 
 		for _, tc := range []struct {
 			blockNum uint64
 			hash     common.Hash
-		}{{10, common.Hash{}}, {11, hash}, {99, hash}} {
+		}{{11, hash}, {99, hash}} {
 			_, found, err := syncer.IsBlockFinalized(ctx, tc.blockNum, tc.hash)
 			require.NoError(t, err)
 			require.False(t, found)
 		}
+	})
+
+	t.Run("unknown subscriber: error, never finalized", func(t *testing.T) {
+		syncer, rd, hash := newLegacyTestSyncer(t)
+		rd.EXPECT().GetTrackedBlockByBlockNumber(syncerID, uint64(10)).
+			Return(nil, reorgdetector.ErrSubscriberNotFound)
+
+		finalized, found, err := syncer.IsBlockFinalized(ctx, 10, hash)
+		require.ErrorIs(t, err, reorgdetector.ErrSubscriberNotFound)
+		require.False(t, found)
+		require.False(t, finalized)
 	})
 
 	t.Run("reorg detector error", func(t *testing.T) {

@@ -13,9 +13,9 @@ import (
 	claimsyncStorage "github.com/agglayer/aggkit/claimsync/storage"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
@@ -381,26 +381,8 @@ func (c *ClaimSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Ha
 // same hash (unknown, no hash stored for it, or it was replaced after the caller read it).
 func (c *ClaimSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
 	blockHash common.Hash) (finalized, found bool, err error) {
-	if blockHash == (common.Hash{}) {
-		return false, false, nil
-	}
-
-	storedHash, stored, err := c.reader.GetBlockHash(ctx, nil, blockNum)
-	if err != nil {
-		return false, false, err
-	}
-	if !stored || storedHash != blockHash {
-		return false, false, nil
-	}
-
-	_, err = c.reorgDetector.GetTrackedBlockByBlockNumber(c.syncerID.String(), blockNum)
-	switch {
-	case err == nil:
-		// still tracked: its hash was not confirmed against a finalized block yet
-		return false, true, nil
-	case errors.Is(err, db.ErrNotFound):
-		return true, true, nil
-	default:
-		return false, false, fmt.Errorf("failed to check if block %d is tracked: %w", blockNum, err)
-	}
+	return reorgdetector.IsBlockFinalized(ctx, c.reorgDetector, c.syncerID.String(), blockNum, blockHash,
+		func(ctx context.Context, num uint64) (common.Hash, bool, error) {
+			return c.reader.GetBlockHash(ctx, nil, num)
+		})
 }

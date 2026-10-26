@@ -11,7 +11,6 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -142,6 +141,8 @@ func newBridgeSync(
 	initialLER common.Hash,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
+	// the same id is used by the driver and the downloader to track blocks and by IsBlockFinalized to query them
+	reorgDetectorID := syncerID.String()
 
 	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(cfg.BridgeAddr, ethClient)
 	if err != nil {
@@ -192,8 +193,8 @@ func newBridgeSync(
 		[]common.Address{cfg.BridgeAddr},
 		rh,
 		rd.GetFinalizedBlockType(),
-		rd,                // reorgDetector
-		syncerID.String(), // reorgDetectorID
+		rd,              // reorgDetector
+		reorgDetectorID, // reorgDetectorID
 	)
 	if err != nil {
 		return nil, err
@@ -215,7 +216,7 @@ func newBridgeSync(
 		},
 		processor)
 
-	driver, err := sync.NewEVMDriver(rd, processor, downloader, syncerID.String(),
+	driver, err := sync.NewEVMDriver(rd, processor, downloader, reorgDetectorID,
 		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
@@ -254,7 +255,7 @@ func newBridgeSync(
 		downloader:      downloader,
 		originNetwork:   networkID,
 		reorgDetector:   rd,
-		reorgDetectorID: syncerID.String(),
+		reorgDetectorID: reorgDetectorID,
 		ethClient:       ethClient,
 		agglayerBridge:  agglayerBridge,
 		cfg:             cfg,
@@ -431,28 +432,8 @@ func (s *BridgeSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
 	if s.processor.isHalted() {
 		return false, false, sync.ErrInconsistentState
 	}
-	if blockHash == (common.Hash{}) {
-		return false, false, nil
-	}
-
-	storedHash, stored, err := s.processor.getBlockHash(ctx, blockNum)
-	if err != nil {
-		return false, false, err
-	}
-	if !stored || storedHash != blockHash {
-		return false, false, nil
-	}
-
-	_, err = s.reorgDetector.GetTrackedBlockByBlockNumber(s.reorgDetectorID, blockNum)
-	switch {
-	case err == nil:
-		// still tracked: its hash was not confirmed against a finalized block yet
-		return false, true, nil
-	case errors.Is(err, db.ErrNotFound):
-		return true, true, nil
-	default:
-		return false, false, fmt.Errorf("failed to check if block %d is tracked: %w", blockNum, err)
-	}
+	return reorgdetector.IsBlockFinalized(ctx, s.reorgDetector, s.reorgDetectorID, blockNum, blockHash,
+		s.processor.getBlockHash)
 }
 
 // GetExitRootByIndex returns the root of the exit tree at the moment the leaf with the given index was added
