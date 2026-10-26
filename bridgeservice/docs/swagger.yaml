@@ -196,6 +196,15 @@ definitions:
   github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse:
     description: Contains basic health‐check information for the bridge service
     properties:
+      api_revision:
+        description: |-
+          APIRevision is the bridge service's wire API contract version (see
+          bridgeservice.CurrentAPIRevision), bumped whenever a change could break an existing client, so a
+          client can tell which contract shape the responding instance speaks. It is independent of the
+          bridge tracker's own api_revision. Purely informational, and always present, whatever the
+          SyncStatus.
+        example: 1
+        type: integer
       details:
         allOf:
         - $ref: '#/definitions/types.HealthCheckDetails'
@@ -225,6 +234,12 @@ definitions:
         description: Amount of tokens being bridged
         example: "1000000000000000000"
         type: string
+      block_finalized:
+        description: |-
+          BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+          It is omitted when the syncer that served the item cannot determine it.
+        example: true
+        type: boolean
       block_num:
         description: Block number where the bridge event was recorded
         example: 1234
@@ -353,6 +368,12 @@ definitions:
         description: Amount claimed
         example: "1000000000000000000"
         type: string
+      block_finalized:
+        description: |-
+          BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+          It is omitted when the syncer that served the item cannot determine it.
+        example: true
+        type: boolean
       block_num:
         description: Block number where the claim was processed
         example: 1234
@@ -538,6 +559,14 @@ definitions:
     type: object
   types.L1InfoTreeLeafResponse:
     properties:
+      block_finalized:
+        description: |-
+          BlockFinalized reports whether the block(s) this leaf depends on are finalized (reorg-safe): the L1 block
+          of the leaf and, for an L2 lookup, the L2 block where the GER was injected too. Only set by the
+          injected-l1-info-leaf endpoint; omitted when the syncer that served the leaf cannot determine it (e.g. L2
+          chains synced by l2gersync in Legacy mode, where the injection block is only approximate).
+        example: true
+        type: boolean
       block_num:
         description: Block number where the leaf was recorded
         example: 123456
@@ -821,6 +850,12 @@ definitions:
     description: The deposit-count position of a local exit root in its network's
       local exit tree
     properties:
+      block_finalized:
+        description: |-
+          BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+          It is omitted when the syncer that served the item cannot determine it.
+        example: true
+        type: boolean
       block_num:
         description: BlockNum is the block in which the leaf that produced this root
           was added
@@ -877,6 +912,12 @@ definitions:
   types.SettlementResponse:
     description: A single L1 settlement event for this network's local exit root
     properties:
+      block_finalized:
+        description: |-
+          BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+          It is omitted when the syncer that served the item cannot determine it.
+        example: true
+        type: boolean
       block_hash:
         description: L1 block's hash, when available (nil if the block table has no
           recorded hash for it).
@@ -1082,8 +1123,10 @@ paths:
   /:
     get:
       description: |-
-        Returns the health status, version information and summary bridge sync status of
-        the bridge service. Always responds 200 -- see SyncStatus/Details for sync health.
+        Returns the health status, version information, API revision and summary bridge sync
+        status of the bridge service. Always responds 200 -- see SyncStatus/Details for sync
+        health. api_revision is the bridge service wire contract version only, not the bridge
+        tracker's.
       produces:
       - application/json
       responses:
@@ -1521,8 +1564,10 @@ paths:
   /health:
     get:
       description: |-
-        Returns the health status, version information and summary bridge sync status of
-        the bridge service. Always responds 200 -- see SyncStatus/Details for sync health.
+        Returns the health status, version information, API revision and summary bridge sync
+        status of the bridge service. Always responds 200 -- see SyncStatus/Details for sync
+        health. api_revision is the bridge service wire contract version only, not the bridge
+        tracker's.
       produces:
       - application/json
       responses:

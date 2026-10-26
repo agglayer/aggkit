@@ -266,8 +266,10 @@ func (b *BridgeService) RegisterRoutes(router gin.IRouter) {
 // should inspect the SyncStatus/Details fields, not the HTTP status code.
 //
 // @Summary Get health status
-// @Description Returns the health status, version information and summary bridge sync status of
-// @Description the bridge service. Always responds 200 -- see SyncStatus/Details for sync health.
+// @Description Returns the health status, version information, API revision and summary bridge sync
+// @Description status of the bridge service. Always responds 200 -- see SyncStatus/Details for sync
+// @Description health. api_revision is the bridge service wire contract version only, not the bridge
+// @Description tracker's.
 // @Tags health
 // @Produce json
 // @Success 200 {object} types.HealthCheckResponse "Health status, version and sync status information"
@@ -290,11 +292,12 @@ func (b *BridgeService) HealthCheckHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK,
 		types.HealthCheckResponse{
-			Status:     "ok",
-			Time:       startTime.UTC(),
-			Version:    version.Version,
-			SyncStatus: syncStatus,
-			Details:    details,
+			Status:      "ok",
+			Time:        startTime.UTC(),
+			Version:     version.Version,
+			APIRevision: CurrentAPIRevision,
+			SyncStatus:  syncStatus,
+			Details:     details,
 		})
 
 	reportMetrics(metrics.GetHealthCheckReq, http.StatusOK, startTime)
@@ -432,8 +435,11 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 
 	b.logger.Debugf("successfully retrieved %d bridges for network %d", count, networkID)
 	bridgeResponses := make([]*types.BridgeResponse, 0, len(bridges))
+	bridger := b.bridgerForNetwork(networkID)
 	for _, bridge := range bridges {
-		bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block))
+		bridgeResponse := NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block)
+		bridgeResponse.BlockFinalized = b.blockFinalized(ctx, bridger, bridge.BlockNum, bridge.BlockHash)
+		bridgeResponses = append(bridgeResponses, bridgeResponse)
 	}
 
 	c.JSON(statusCode,
@@ -557,8 +563,10 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 
 	// Use conditional function to create claim responses
 	claimResponses := make([]*types.ClaimResponse, len(claims))
+	claimer := b.claimerForNetwork(networkID)
 	for i, claim := range claims {
 		claimResponses[i] = NewClaimResponse(claim, includeAllFieldsFlag)
+		claimResponses[i].BlockFinalized = b.blockFinalized(ctx, claimer, claim.BlockNum, claim.BlockHash)
 	}
 
 	c.JSON(statusCode,
@@ -1003,6 +1011,8 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	// actual block on the destination network where the GER got injected, and when), left nil for
 	// the L1 (network_id=0) case
 	var injectedL2BlockNumber, injectedL2Timestamp *uint64
+	// injectedL2Finalized is whether that L2 injection block is finalized (nil if unknown)
+	var injectedL2Finalized *bool
 
 	switch networkID {
 	case mainnetNetworkID:
@@ -1034,6 +1044,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 			return
 		}
 		injectedL2BlockNumber = &e.BlockNum
+		injectedL2Finalized = b.blockFinalized(ctx, b.injectedGERs, e.BlockNum, e.BlockHash)
 		injectedL2Timestamp = e.Timestamp
 	default:
 		b.logger.Warnf(errNetworkID, networkID)
@@ -1053,6 +1064,11 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	resp := NewL1InfoTreeLeafResponse(l1InfoLeaf)
 	resp.InjectedL2BlockNumber = injectedL2BlockNumber
 	resp.InjectedL2BlockTimestamp = injectedL2Timestamp
+	// the leaf's L1 block and, if injected on an L2, that L2 block must both be finalized
+	resp.BlockFinalized = b.l1BlockFinalized(ctx, l1InfoLeaf.BlockNumber, l1InfoLeaf.BlockHash)
+	if injectedL2BlockNumber != nil {
+		resp.BlockFinalized = andFinalized(resp.BlockFinalized, injectedL2Finalized)
+	}
 
 	statusCode = http.StatusOK
 	c.JSON(statusCode, resp)
@@ -2425,8 +2441,11 @@ func (b *BridgeService) GetClaimsByGERHandler(c *gin.Context) {
 	}
 
 	claimResponses := make([]*types.ClaimResponse, 0, len(claims))
+	claimer := b.claimerForNetwork(networkID)
 	for _, claim := range claims {
-		claimResponses = append(claimResponses, NewClaimResponse(claim, false))
+		claimResponse := NewClaimResponse(claim, false)
+		claimResponse.BlockFinalized = b.blockFinalized(ctx, claimer, claim.BlockNum, claim.BlockHash)
+		claimResponses = append(claimResponses, claimResponse)
 	}
 	c.JSON(statusCode, types.ClaimsByGERResult{
 		Claims: claimResponses,
@@ -2521,7 +2540,10 @@ func (b *BridgeService) GetBridgeByDepositCountHandler(c *gin.Context) {
 	}
 
 	etrogUpgradeL1Block := b.agglayerManagerUpgradeQuery.GetUpgradeBlock(ctx, etrogVersionID)
-	c.JSON(statusCode, NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block))
+	bridgeResponse := NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block)
+	bridgeResponse.BlockFinalized = b.blockFinalized(ctx, b.bridgerForNetwork(networkID),
+		bridge.BlockNum, bridge.BlockHash)
+	c.JSON(statusCode, bridgeResponse)
 }
 
 // GetBridgesByContentHandler retrieves bridges matching the given content fields for the specified network.
@@ -2671,8 +2693,11 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 
 	etrogUpgradeL1Block := b.agglayerManagerUpgradeQuery.GetUpgradeBlock(ctx, etrogVersionID)
 	bridgeResponses := make([]*types.BridgeResponse, 0, len(bridges))
+	bridger := b.bridgerForNetwork(networkID)
 	for _, bridge := range bridges {
-		bridgeResponses = append(bridgeResponses, NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block))
+		bridgeResponse := NewBridgeResponse(bridge, networkID, etrogUpgradeL1Block)
+		bridgeResponse.BlockFinalized = b.blockFinalized(ctx, bridger, bridge.BlockNum, bridge.BlockHash)
+		bridgeResponses = append(bridgeResponses, bridgeResponse)
 	}
 	c.JSON(statusCode, types.BridgesByContentResult{
 		Bridges: bridgeResponses,
@@ -2764,9 +2789,10 @@ func (b *BridgeService) RootByLERHandler(c *gin.Context) {
 	}
 
 	c.JSON(statusCode, types.RootByLERResponse{
-		Index:         root.Index,
-		BlockNum:      root.BlockNum,
-		BlockPosition: root.BlockPosition,
+		Index:          root.Index,
+		BlockNum:       root.BlockNum,
+		BlockPosition:  root.BlockPosition,
+		BlockFinalized: b.blockFinalized(ctx, bridger, root.BlockNum, root.BlockHash),
 	})
 }
 
@@ -2800,7 +2826,7 @@ func (b *BridgeService) GetSettlementsHandler(c *gin.Context) {
 		reportMetrics(metrics.GetSettlementsReq, statusCode, startTime)
 	}()
 
-	_, cancel, pageNumber, pageSize, err := b.setupRequest(c)
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
 	if err != nil {
 		b.logger.Warnf(errSetupRequest, err)
 		statusCode = http.StatusBadRequest
@@ -2825,10 +2851,15 @@ func (b *BridgeService) GetSettlementsHandler(c *gin.Context) {
 
 	settlements := make([]*types.SettlementResponse, 0, len(verified))
 	for _, v := range verified {
+		var blockHash common.Hash
+		if v.BlockHash != nil {
+			blockHash = *v.BlockHash
+		}
 		settlement := &types.SettlementResponse{
 			NewLocalExitRoot: types.Hash(v.ExitRoot.Hex()),
 			BlockNumber:      v.BlockNumber,
 			BlockTimestamp:   v.BlockTimestamp,
+			BlockFinalized:   b.l1BlockFinalized(ctx, v.BlockNumber, blockHash),
 		}
 		if v.TxHash != nil {
 			txHash := types.Hash(v.TxHash.Hex())

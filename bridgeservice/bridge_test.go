@@ -73,11 +73,53 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		WriteTimeout: 0,
 		NetworkID:    networkID,
 	}
+	// by default the finality is unknown, so block_finalized is omitted from responses;
+	// tests covering it override this with expectFinalizedBlock
+	b.bridgeL1.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
+	b.bridgeL2.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
+	b.claimL1.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
+	b.claimL2.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
+	b.injectedGERs.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
+	expectL1BlocksFinalized(b.l1InfoTree, common.Hash{}, nil)
 	b.bridge = New(cfg, b.upgradeQuerier, b.l1InfoTree, b.injectedGERs,
 		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
 	b.router = gin.New()
 	b.bridge.RegisterRoutes(b.router)
 	return b
+}
+
+// expectBridgeBlockFinalized replaces any IsBlockFinalized expectation of the bridger: the block with the
+// given hash gets that finality, any other block is unknown (found=false).
+func expectBridgeBlockFinalized(bridger *mocks.Bridger, blockNum uint64, blockHash common.Hash, finalized bool) {
+	clearIsBlockFinalized(bridger)
+	bridger.EXPECT().IsBlockFinalized(mock.Anything, blockNum, blockHash).Return(finalized, true, nil).Maybe()
+	bridger.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
+}
+
+func clearIsBlockFinalized(bridger *mocks.Bridger) {
+	expected := bridger.ExpectedCalls[:0]
+	for _, call := range bridger.ExpectedCalls {
+		if call.Method != "IsBlockFinalized" {
+			expected = append(expected, call)
+		}
+	}
+	bridger.ExpectedCalls = expected
+}
+
+// expectL1BlocksFinalized replaces any IsBlockFinalized expectation of the l1infotreesync mock: the
+// blocks in finality (with the given hash) get that finality, any other block is unknown (found=false).
+func expectL1BlocksFinalized(l1InfoTree *mocks.L1InfoTreeSyncer, blockHash common.Hash, finality map[uint64]bool) {
+	expected := l1InfoTree.ExpectedCalls[:0]
+	for _, call := range l1InfoTree.ExpectedCalls {
+		if call.Method != "IsBlockFinalized" {
+			expected = append(expected, call)
+		}
+	}
+	l1InfoTree.ExpectedCalls = expected
+	for blockNum, finalized := range finality {
+		l1InfoTree.EXPECT().IsBlockFinalized(mock.Anything, blockNum, blockHash).Return(finalized, true, nil).Maybe()
+	}
+	l1InfoTree.EXPECT().IsBlockFinalized(mock.Anything, mock.Anything, mock.Anything).Return(false, false, nil).Maybe()
 }
 
 // newBridgeWithMocksAndHealthCacheTTL is newBridgeWithMocks with an explicit
@@ -3949,6 +3991,8 @@ func TestHealthCheckHandler(t *testing.T) {
 			require.Equal(t, "ok", response.Status)
 			require.NotEmpty(t, response.Time)
 			require.NotEmpty(t, response.Version)
+			require.Equal(t, CurrentAPIRevision, response.APIRevision)
+			require.Contains(t, w.Body.String(), `"api_revision":`+strconv.Itoa(CurrentAPIRevision))
 
 			require.Equal(t, bridgetypes.HealthSyncStatusDone, response.SyncStatus)
 			require.NotNil(t, response.Details.L1)
@@ -4003,6 +4047,7 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 
 		var response bridgetypes.HealthCheckResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, CurrentAPIRevision, response.APIRevision, "api_revision is present in every sync_status")
 
 		require.Equal(t, bridgetypes.HealthSyncStatusPending, response.SyncStatus)
 		require.NotNil(t, response.Details.L1.IsSynced)
@@ -4030,6 +4075,7 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 
 		var response bridgetypes.HealthCheckResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, CurrentAPIRevision, response.APIRevision, "api_revision is present in every sync_status")
 
 		require.Equal(t, bridgetypes.HealthSyncStatusError, response.SyncStatus)
 		require.NotNil(t, response.Details.L1)
@@ -4066,6 +4112,7 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 
 		var response bridgetypes.HealthCheckResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, CurrentAPIRevision, response.APIRevision, "api_revision is present in every sync_status")
 
 		require.Equal(t, bridgetypes.HealthSyncStatusError, response.SyncStatus)
 		require.NotNil(t, response.Details.L1)
@@ -4101,6 +4148,7 @@ func TestHealthCheckHandler_SyncStatusDerivation(t *testing.T) {
 
 		var response bridgetypes.HealthCheckResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, CurrentAPIRevision, response.APIRevision, "api_revision is present in every sync_status")
 
 		require.Equal(t, bridgetypes.HealthSyncStatusDone, response.SyncStatus)
 		require.Nil(t, response.Details.L1, "nil-configured syncer must be omitted, not reported as inactive/error")

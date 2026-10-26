@@ -153,6 +153,29 @@ type L1InfoTreeLeaf struct {
 	RollupExitRoot    common.Hash `meddler:"rollup_exit_root,hash" json:"rollup_exit_root"`
 	GlobalExitRoot    common.Hash `meddler:"global_exit_root,hash" json:"global_exit_root"`
 	Hash              common.Hash `meddler:"hash,hash" json:"hash"`
+	// BlockHash is the hash of the block BlockNumber, as stored in the block table. It is not a column of
+	// l1info_leaf: L1InfoTreeSync.GetInfoByIndex joins it from the block table in the same statement that
+	// reads the leaf, so it is the hash of the block the leaf belonged to when it was read. Zero if that
+	// block has no hash, or when the leaf was read by any other query.
+	BlockHash common.Hash `meddler:"-" json:"-"`
+}
+
+// l1InfoTreeLeafWithBlockHash is the read model of an l1info_leaf row joined with the hash of its block
+// (see getInfoByIndexWithBlockHash). It can't be L1InfoTreeLeaf itself: meddler.Insert writes every
+// meddler-tagged field and block_hash is not a column of l1info_leaf, and meddler doesn't flatten
+// embedded structs. It has exactly the fields of L1InfoTreeLeaf, in the same order, so that
+// L1InfoTreeLeaf(row) compiles only while both match.
+type l1InfoTreeLeafWithBlockHash struct {
+	BlockNumber       uint64      `meddler:"block_num"`
+	BlockPosition     uint64      `meddler:"block_pos"`
+	L1InfoTreeIndex   uint32      `meddler:"position"`
+	PreviousBlockHash common.Hash `meddler:"previous_block_hash,hash"`
+	Timestamp         uint64      `meddler:"timestamp"`
+	MainnetExitRoot   common.Hash `meddler:"mainnet_exit_root,hash"`
+	RollupExitRoot    common.Hash `meddler:"rollup_exit_root,hash"`
+	GlobalExitRoot    common.Hash `meddler:"global_exit_root,hash"`
+	Hash              common.Hash `meddler:"hash,hash"`
+	BlockHash         common.Hash `meddler:"block_hash,hash"`
 }
 
 func (l *L1InfoTreeLeaf) String() string {
@@ -287,9 +310,48 @@ func (p *processor) GetLatestL1InfoGER(ctx context.Context) (common.Hash, error)
 	return common.HexToHash(gerHex), nil
 }
 
+// getBlockHash returns the hash stored for the given block. found is false if the block is not stored
+// or it has no hash (blocks synced before the hash column existed).
+func (p *processor) getBlockHash(ctx context.Context, blockNum uint64) (hash common.Hash, found bool, err error) {
+	var hashStr sql.NullString
+	err = p.db.QueryRowContext(ctx, `SELECT hash FROM block WHERE num = $1`, blockNum).Scan(&hashStr)
+	if errors.Is(err, sql.ErrNoRows) {
+		return common.Hash{}, false, nil
+	}
+	if err != nil {
+		return common.Hash{}, false, fmt.Errorf("failed to get the hash of block %d: %w", blockNum, err)
+	}
+	if !hashStr.Valid || hashStr.String == "" {
+		return common.Hash{}, false, nil
+	}
+	return common.HexToHash(hashStr.String), true, nil
+}
+
 // GetInfoByIndex returns the value of a leaf (not the hash) of the L1 info tree
 func (p *processor) GetInfoByIndex(ctx context.Context, index uint32) (*L1InfoTreeLeaf, error) {
 	return p.getInfoByIndexWithTx(p.db, index)
+}
+
+// getInfoByIndexWithBlockHash returns the leaf with the given index, like GetInfoByIndex, with BlockHash
+// set to the hash of its block read in the same statement (zero if that block has no hash). Both tables
+// have a hash column: the leaf's one is l.hash, the block's one is returned as block_hash.
+func (p *processor) getInfoByIndexWithBlockHash(ctx context.Context, index uint32) (*L1InfoTreeLeaf, error) {
+	rows, err := p.db.QueryContext(ctx, `
+		SELECT l.*, COALESCE(b.hash, '') AS block_hash
+		FROM l1info_leaf l
+		LEFT JOIN block b ON b.num = l.block_num
+		WHERE l.position = $1;
+	`, index)
+	if err != nil {
+		return nil, err
+	}
+	var row l1InfoTreeLeafWithBlockHash
+	// meddler.ScanRow closes rows
+	if err = meddler.ScanRow(rows, &row); err != nil {
+		return nil, db.ReturnErrNotFound(err)
+	}
+	leaf := L1InfoTreeLeaf(row)
+	return &leaf, nil
 }
 
 func (p *processor) getInfoByIndexWithTx(tx dbtypes.DBer, index uint32) (*L1InfoTreeLeaf, error) {

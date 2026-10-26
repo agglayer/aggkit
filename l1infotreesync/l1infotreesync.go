@@ -13,6 +13,8 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader"
 	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
+	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
+	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -43,10 +45,24 @@ type DriverInterface interface {
 	GetCompletionPercentage() *float64
 }
 
+// BlockFinalityQuerier tells whether the downloader stored a block as finalized
+type BlockFinalityQuerier interface {
+	// StorageHeaderByNumber returns the stored header of the block and whether it is finalized.
+	// The header is nil if the block is not stored
+	StorageHeaderByNumber(ctx context.Context,
+		number *aggkittypes.BlockNumberFinality) (*aggkittypes.BlockHeader, mdrtypes.FinalizedType, error)
+}
+
 type L1InfoTreeSync struct {
 	processor *processor
 	driver    DriverInterface
 	cfg       Config
+	// blockFinality is only set when synced through the multidownloader, which is the one
+	// that tracks the finality of the blocks
+	blockFinality BlockFinalityQuerier
+	// reorgDetector is only set for the legacy syncer, which has no finality flag: it tracks (under
+	// syncerID) the blocks that were not final when processed
+	reorgDetector sync.ReorgDetector
 }
 
 type RuntimeData = mdrsync.RuntimeData
@@ -137,9 +153,10 @@ func NewMultidownloadBased(
 		return nil, err
 	}
 	return &L1InfoTreeSync{
-		processor: processor,
-		driver:    driver,
-		cfg:       cfg,
+		processor:     processor,
+		driver:        driver,
+		cfg:           cfg,
+		blockFinality: l1Multidownloader,
 	}, nil
 }
 
@@ -215,10 +232,56 @@ func NewLegacy(
 	}
 
 	return &L1InfoTreeSync{
-		processor: processor,
-		driver:    driver,
-		cfg:       cfg,
+		processor:     processor,
+		driver:        driver,
+		cfg:           cfg,
+		reorgDetector: reorgDetector,
 	}, nil
+}
+
+// IsBlockFinalized reports whether the block with the given number and hash, as read from this syncer,
+// is finalized, i.e. it can no longer be reorged.
+// With the multidownloader, it is the IsFinal flag the multidownloader stores, which is only set once the
+// block was validated; the stored header must have the given hash.
+// The legacy syncer has no such flag, but the reorg detector tracks every block that was not final when
+// processed and only stops tracking it once its hash was checked against the canonical chain and it is
+// below the finalized block. So a processed block with the given hash that is no longer tracked is
+// finalized.
+// In both modes the hash is required: the multidownloader stores one block per number, so without the hash
+// of the block the caller read, the flag could belong to the block that replaced it after a reorg.
+// found is false when it can't be determined: no hash was given (e.g. rows written before the block table
+// had a hash), the block is not stored (or not with that hash), or the syncer is read-only.
+func (d *L1InfoTreeSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
+	blockHash common.Hash) (finalized, found bool, err error) {
+	if blockHash == (common.Hash{}) {
+		return false, false, nil
+	}
+
+	switch {
+	case d.blockFinality != nil:
+		header, isFinal, err := d.blockFinality.StorageHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNum))
+		if err != nil {
+			return false, false, fmt.Errorf("l1infotreesync: failed to get block %d finality: %w", blockNum, err)
+		}
+		if header == nil || header.Hash != blockHash {
+			return false, false, nil
+		}
+		return isFinal, true, nil
+	case d.reorgDetector != nil:
+		return d.isBlockFinalizedLegacy(ctx, blockNum, blockHash)
+	default:
+		return false, false, nil
+	}
+}
+
+func (d *L1InfoTreeSync) isBlockFinalizedLegacy(ctx context.Context, blockNum uint64,
+	blockHash common.Hash) (finalized, found bool, err error) {
+	if d.processor.isHalted() {
+		return false, false, sync.ErrInconsistentState
+	}
+
+	return reorgdetector.IsBlockFinalized(ctx, d.reorgDetector, syncerID, blockNum, blockHash,
+		d.processor.getBlockHash)
 }
 
 // Finality returns the block finality this syncer syncs up to (its own BlockFinality config).
@@ -314,7 +377,9 @@ func (s *L1InfoTreeSync) GetInfoByIndex(ctx context.Context, index uint32) (*L1I
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
 	}
-	return s.processor.GetInfoByIndex(ctx, index)
+	// the leaf and the hash of its block are read in the same statement, so the hash can't be the one of
+	// a block that replaced the leaf's block after a reorg
+	return s.processor.getInfoByIndexWithBlockHash(ctx, index)
 }
 
 // GetL1InfoTreeRootByIndex returns the root of the L1 info tree at the moment the leaf with the given index was added

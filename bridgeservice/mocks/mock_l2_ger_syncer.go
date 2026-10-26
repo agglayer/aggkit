@@ -5,10 +5,8 @@ package mocks
 import (
 	context "context"
 
-	common "github.com/ethereum/go-ethereum/common"
-
 	l2gersync "github.com/agglayer/aggkit/l2gersync"
-
+	common "github.com/ethereum/go-ethereum/common"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -250,6 +248,71 @@ func (_c *L2GERSyncer_GetRemoveGEREvents_Call) Return(_a0 []*l2gersync.RemoveGER
 }
 
 func (_c *L2GERSyncer_GetRemoveGEREvents_Call) RunAndReturn(run func(context.Context, *common.Hash, uint32) ([]*l2gersync.RemoveGEREvent, error)) *L2GERSyncer_GetRemoveGEREvents_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsBlockFinalized provides a mock function with given fields: ctx, blockNum, blockHash
+func (_m *L2GERSyncer) IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (bool, bool, error) {
+	ret := _m.Called(ctx, blockNum, blockHash)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsBlockFinalized")
+	}
+
+	var r0 bool
+	var r1 bool
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, common.Hash) (bool, bool, error)); ok {
+		return rf(ctx, blockNum, blockHash)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, common.Hash) bool); ok {
+		r0 = rf(ctx, blockNum, blockHash)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64, common.Hash) bool); ok {
+		r1 = rf(ctx, blockNum, blockHash)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, uint64, common.Hash) error); ok {
+		r2 = rf(ctx, blockNum, blockHash)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// L2GERSyncer_IsBlockFinalized_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsBlockFinalized'
+type L2GERSyncer_IsBlockFinalized_Call struct {
+	*mock.Call
+}
+
+// IsBlockFinalized is a helper method to define mock.On call
+//   - ctx context.Context
+//   - blockNum uint64
+//   - blockHash common.Hash
+func (_e *L2GERSyncer_Expecter) IsBlockFinalized(ctx interface{}, blockNum interface{}, blockHash interface{}) *L2GERSyncer_IsBlockFinalized_Call {
+	return &L2GERSyncer_IsBlockFinalized_Call{Call: _e.mock.On("IsBlockFinalized", ctx, blockNum, blockHash)}
+}
+
+func (_c *L2GERSyncer_IsBlockFinalized_Call) Run(run func(ctx context.Context, blockNum uint64, blockHash common.Hash)) *L2GERSyncer_IsBlockFinalized_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64), args[2].(common.Hash))
+	})
+	return _c
+}
+
+func (_c *L2GERSyncer_IsBlockFinalized_Call) Return(finalized bool, found bool, err error) *L2GERSyncer_IsBlockFinalized_Call {
+	_c.Call.Return(finalized, found, err)
+	return _c
+}
+
+func (_c *L2GERSyncer_IsBlockFinalized_Call) RunAndReturn(run func(context.Context, uint64, common.Hash) (bool, bool, error)) *L2GERSyncer_IsBlockFinalized_Call {
 	_c.Call.Return(run)
 	return _c
 }

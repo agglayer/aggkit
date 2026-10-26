@@ -3,6 +3,7 @@ package reorgdetector
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -142,13 +143,19 @@ func (rd *ReorgDetector) AddBlockToTrack(ctx context.Context, id string, num uin
 	return nil
 }
 
-// func to get the tracked blocks for a subscriber by block number and hash, it should be 1 or none, from headercache
+// ErrSubscriberNotFound is returned by GetTrackedBlockByBlockNumber when the id has no tracker, so it can't be
+// confused with db.ErrNotFound, which means that the block is not tracked by a known subscriber
+var ErrSubscriberNotFound = errors.New("reorgdetector: subscriber not found")
+
+// GetTrackedBlockByBlockNumber returns the tracked block of a subscriber by block number (1 or none, from
+// headercache). It returns ErrSubscriberNotFound if the id is not subscribed and db.ErrNotFound if the block
+// is not tracked
 func (rd *ReorgDetector) GetTrackedBlockByBlockNumber(id string, blockNumber uint64) (*Header, error) {
 	rd.trackedBlocksLock.RLock()
 	defer rd.trackedBlocksLock.RUnlock()
 	header, ok := rd.trackedBlocks[id]
 	if !ok {
-		return nil, db.ErrNotFound
+		return nil, fmt.Errorf("%w: %s", ErrSubscriberNotFound, id)
 	}
 	return header.get(blockNumber)
 }

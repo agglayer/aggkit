@@ -38,6 +38,9 @@ type ClaimStorager interface {
 	DeleteBlocksFrom(ctx context.Context, tx dbtypes.Querier, firstBlock uint64) (int64, error)
 	// GetClaimsByGER returns all DetailedClaimEvent claims with the given global exit root
 	GetClaimsByGER(ctx context.Context, tx dbtypes.Querier, globalExitRoot common.Hash) ([]*Claim, error)
+	// GetBlockHash returns the hash stored for the block. found is false if the block is not stored
+	// or has no hash
+	GetBlockHash(ctx context.Context, tx dbtypes.Querier, blockNum uint64) (hash common.Hash, found bool, err error)
 	// GetClaimsPaged returns claims for the given page parameters and filters,
 	// it returns:
 	// - the list of claims for the requested page

@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -34,6 +35,7 @@ type L1InfoTreeQuerier interface {
 	GetLastL1InfoTreeRoot(ctx context.Context) (treetypes.Root, error)
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetInfoByGlobalExitRoot(ger common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
+	IsUpToDate(ctx context.Context, l1Client aggkittypes.BaseEthereumClienter) (bool, error)
 }
 
 // L2GERSync is responsible for managing GER synchronization.
@@ -48,6 +50,8 @@ type L2GERSync struct {
 	// the real injection block (see evm_downloader_legacy.go), so resolving a timestamp from it
 	// would be no more accurate than not persisting one at all
 	syncMode SyncMode
+	// reorgDetector tracks (under reorgDetectorID) the blocks that were not final when processed
+	reorgDetector sync.ReorgDetector
 }
 
 // New initializes and returns a new instance of L2GERSync
@@ -119,6 +123,8 @@ func New(
 		cfg:       cfg,
 		l2Client:  l2Client,
 		syncMode:  syncMode,
+
+		reorgDetector: rdL2,
 	}, nil
 }
 
@@ -236,4 +242,22 @@ func (s *L2GERSync) GetRemoveGEREvents(
 	limit uint32,
 ) ([]*RemoveGEREvent, error) {
 	return s.processor.GetRemoveGEREvents(ctx, globalExitRoot, limit)
+}
+
+// IsBlockFinalized reports whether the block with the given number and hash, as read from this syncer,
+// is finalized, i.e. it can no longer be reorged. The syncer has no finality flag, but the reorg detector
+// tracks every block that was not final when processed and only stops tracking it once its hash was
+// checked against the canonical chain and it is below the finalized block. So a processed block with the
+// given hash that is no longer tracked is finalized.
+// found is false when it can't be determined: no hash was given, the block is not stored with that same
+// hash (unknown, no hash stored for it, or it was replaced after the caller read it), or the chain is
+// synced in Legacy mode, where the stored block number is the polling head and not the injection block.
+func (s *L2GERSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
+	blockHash common.Hash) (finalized, found bool, err error) {
+	if s.syncMode == Legacy || blockHash == (common.Hash{}) {
+		return false, false, nil
+	}
+
+	return reorgdetector.IsBlockFinalized(ctx, s.reorgDetector, reorgDetectorID, blockNum, blockHash,
+		s.processor.getBlockHash)
 }

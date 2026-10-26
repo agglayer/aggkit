@@ -173,6 +173,10 @@ type BridgeResponse struct {
 
 	// Address of the contract that was the recipient of the transaction. This may differ from the bridge contract address.
 	ToAddress Address `json:"to_address" example:"0xF9D64d54D32EE2BDceAAbFA60C4C438E224427d0"`
+
+	// BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+	// It is omitted when the syncer that served the item cannot determine it.
+	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
 // ClaimsResult contains the list of claim records and the total count
@@ -238,6 +242,10 @@ type ClaimResponse struct {
 
 	// IsMessage indicates whether this is a message claim (leaf type 1) rather than an asset claim (leaf type 0)
 	IsMessage bool `json:"is_message" example:"false"`
+
+	// BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+	// It is omitted when the syncer that served the item cannot determine it.
+	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
 // ClaimsByGERResult contains the claims matching a given global exit root and their count
@@ -387,6 +395,12 @@ type L1InfoTreeLeafResponse struct {
 	// on a later request. Always nil for L2 chains synced by l2gersync in Legacy mode, where
 	// InjectedL2BlockNumber is only approximate and no accurate timestamp can be derived from it
 	InjectedL2BlockTimestamp *uint64 `json:"injected_l2_block_timestamp,omitempty" example:"1684500123"`
+
+	// BlockFinalized reports whether the block(s) this leaf depends on are finalized (reorg-safe): the L1 block
+	// of the leaf and, for an L2 lookup, the L2 block where the GER was injected too. Only set by the
+	// injected-l1-info-leaf endpoint; omitted when the syncer that served the leaf cannot determine it (e.g. L2
+	// chains synced by l2gersync in Legacy mode, where the injection block is only approximate).
+	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
 // SyncStatus represents the bridge synchronization status for both L1 and L2 networks
@@ -442,8 +456,8 @@ type SyncerSyncInfo struct {
 
 // HealthCheckResponse represents the JSON returned by HealthCheckHandler.
 // @Description Contains basic health‐check information for the bridge service
-// including service status, current time, version, and a summary sync status.
-// @example {"status":"ok","time":"2025-06-05T07:30:00Z","version":"v0.4.0-beta9",
+// including service status, current time, version, API revision, and a summary sync status.
+// @example {"status":"ok","time":"2025-06-05T07:30:00Z","version":"v0.4.0-beta9","api_revision":1,
 // "sync_status":"pending","details":{"l1":{"is_active":true,"is_synced":false,"is_halted":false},
 // "l2":{"is_active":true,"is_synced":true,"is_halted":false},"l2_ger":{"is_active":true,"is_halted":false},
 // "l1_info_tree":{"is_active":true,"is_halted":false}}}
@@ -451,6 +465,13 @@ type HealthCheckResponse struct {
 	Status  string    `json:"status"`
 	Time    time.Time `json:"time"`
 	Version string    `json:"version"`
+
+	// APIRevision is the bridge service's wire API contract version (see
+	// bridgeservice.CurrentAPIRevision), bumped whenever a change could break an existing client, so a
+	// client can tell which contract shape the responding instance speaks. It is independent of the
+	// bridge tracker's own api_revision. Purely informational, and always present, whatever the
+	// SyncStatus.
+	APIRevision int `json:"api_revision" example:"1"`
 
 	// SyncStatus summarizes bridge synchronization health as one of "done", "pending" or
 	// "error". It never affects the HTTP status code of this endpoint (always 200) so that
@@ -559,6 +580,10 @@ type SettlementResponse struct {
 
 	// L1 block's hash, when available (nil if the block table has no recorded hash for it).
 	BlockHash *Hash `json:"block_hash,omitempty" example:"0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890a"` //nolint:lll
+
+	// BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+	// It is omitted when the syncer that served the item cannot determine it.
+	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
 // SettlementsResult contains a page of this network's L1 settlement history, most recent first,
@@ -647,6 +672,10 @@ type RootByLERResponse struct {
 
 	// BlockPosition orders same-block roots (multiple deposits in one block)
 	BlockPosition uint64 `json:"block_position" example:"0"`
+
+	// BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.
+	// It is omitted when the syncer that served the item cannot determine it.
+	BlockFinalized *bool `json:"block_finalized,omitempty" example:"true"`
 }
 
 // PublicConfigResponse is a sanitized view of the bridge service configuration: only the

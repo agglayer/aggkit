@@ -26,6 +26,9 @@ type Bridger interface {
 	GetContractDepositCount(ctx context.Context) (uint32, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
 	GetLatestNetworkBlock(ctx context.Context) (uint64, error)
+	// IsBlockFinalized reports whether the block, as read from the syncer with the given hash, is
+	// finalized (can't be reorged). found is false when it can't be determined
+	IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (finalized, found bool, err error)
 	IsActive(ctx context.Context) bool
 	GetBridgeByDepositCount(ctx context.Context, depositCount uint32) (*bridgesync.Bridge, error)
 	GetBridgesByContent(ctx context.Context, leafType uint8, originAddress common.Address,
@@ -44,6 +47,9 @@ type Claimer interface {
 	// GetLastProcessedBlock returns the last processed block and whether any block has been
 	// processed yet.
 	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
+	// IsBlockFinalized reports whether the block, as read from the syncer with the given hash, is
+	// finalized (can't be reorged). found is false when it can't be determined
+	IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (finalized, found bool, err error)
 }
 
 type L2GERSyncer interface {
@@ -55,6 +61,9 @@ type L2GERSyncer interface {
 	) ([]*l2gersync.RemoveGEREvent, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	GetLastGER(ctx context.Context) (l2gersync.GlobalExitRootInfo, error)
+	// IsBlockFinalized reports whether the block, as read from the syncer with the given hash, is
+	// finalized (can't be reorged). found is false when it can't be determined
+	IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (finalized, found bool, err error)
 }
 
 type L1InfoTreeSyncer interface {
@@ -78,4 +87,7 @@ type L1InfoTreeSyncer interface {
 	// GetLastProcessedBlock returns the last processed L1 block; 0 (nil error) if none yet.
 	// Returns sync.ErrInconsistentState while the processor is halted.
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
+	// IsBlockFinalized reports whether the L1 block, as read from the syncer with the given hash, is
+	// finalized (can't be reorged). found is false when it can't be determined
+	IsBlockFinalized(ctx context.Context, blockNum uint64, blockHash common.Hash) (finalized, found bool, err error)
 }
