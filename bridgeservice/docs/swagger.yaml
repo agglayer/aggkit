@@ -1185,7 +1185,8 @@ paths:
       description: |-
         Returns the estimated cost of bridgeAsset out of the origin network, covering only
         what the user or sponsor pays: execution gas times the gas price of the origin
-        network (chains served by this endpoint do not charge senders an L1 data fee). It
+        network. A chain served by this endpoint can still charge the sender an L1 data fee,
+        which the estimate does not include: OP-stack destinations do. It
         is coarser than the claim estimate: one estimate per bridging mechanism, with no
         per-token breakdown. The mechanism is native gas token via msg.value
         (token_address 0x0), lock of an origin-native ERC20, or burn of a wrapped token.
@@ -1352,7 +1353,9 @@ paths:
       description: |-
         Returns the estimated cost of claimAsset on the destination network, covering only
         what the user or sponsor pays: execution gas times the gas price of the destination
-        network (chains served by this endpoint do not charge senders an L1 data fee). It
+        network. A chain served by this endpoint can still charge the sender an L1 data fee,
+        which the estimate does not include: OP-stack destinations do, and claim receipts on
+        the Bali testnet networks 82 and 85 carried an l1Fee of roughly 1.4k-2.6k wei. It
         gives separate first-claim (wrapper deployment) and repeat-claim estimates; exactly
         one of them applies to the request (chosen by wrapper_exists) and the other is null
         with its reason in unavailable. The estimate fails closed: with no estimator
