@@ -410,7 +410,7 @@ func TestGRPCError_Is(t *testing.T) {
 		},
 		{
 			name: "WrappedGRPCError",
-			err1: fmt.Errorf("wrapped error: %w", &GRPCError{
+			err1: fmt.Errorf("wrapped error: %w", GRPCError{
 				Code:    codes.InvalidArgument,
 				Message: "invalid argument",
 			}),
