@@ -397,7 +397,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					&treetypes.Root{Hash: finalizedL1Root, BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, []claimsynctypes.Claim{}, nil)
 				mockL2BridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(1), uint64(10)).Return([]claimsynctypes.Unclaim{}, nil)
-				wrappedErr := fmt.Errorf("wrapped error: %w", query.ErrNoProofBuiltYet)
+				wrappedErr := fmt.Errorf("wrapped error: %w", *query.ErrNoProofBuiltYet)
 				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(0), uint64(10), mock.Anything).
 					Return(nil, wrappedErr)
 			},
