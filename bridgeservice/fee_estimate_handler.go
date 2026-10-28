@@ -51,7 +51,9 @@ func parseAddressQuery(c *gin.Context, key string) (common.Address, error) {
 // @Summary Get claim fee estimate
 // @Description Returns the estimated cost of claimAsset on the destination network, covering only
 // @Description what the user or sponsor pays: execution gas times the gas price of the destination
-// @Description network (chains served by this endpoint do not charge senders an L1 data fee). It
+// @Description network. A chain served by this endpoint can still charge the sender an L1 data fee,
+// @Description which the estimate does not include: OP-stack destinations do, and claim receipts on
+// @Description the Bali testnet networks 82 and 85 carried an l1Fee of roughly 1.4k-2.6k wei. It
 // @Description gives separate first-claim (wrapper deployment) and repeat-claim estimates; exactly
 // @Description one of them applies to the request (chosen by wrapper_exists) and the other is null
 // @Description with its reason in unavailable. The estimate fails closed: with no estimator
@@ -149,7 +151,8 @@ func (b *BridgeService) GetClaimFeeEstimateHandler(c *gin.Context) {
 // @Summary Get bridge fee estimate
 // @Description Returns the estimated cost of bridgeAsset out of the origin network, covering only
 // @Description what the user or sponsor pays: execution gas times the gas price of the origin
-// @Description network (chains served by this endpoint do not charge senders an L1 data fee). It
+// @Description network. A chain served by this endpoint can still charge the sender an L1 data fee,
+// @Description which the estimate does not include: OP-stack destinations do. It
 // @Description is coarser than the claim estimate: one estimate per bridging mechanism, with no
 // @Description per-token breakdown. The mechanism is native gas token via msg.value
 // @Description (token_address 0x0), lock of an origin-native ERC20, or burn of a wrapped token.

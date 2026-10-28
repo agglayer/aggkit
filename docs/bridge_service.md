@@ -628,10 +628,12 @@ Both endpoints work the same through the proxy: like every `/bridge/v1/*` route,
 the request to the bridge service of the network selected by the `network_id` query parameter, so no
 proxy change is needed.
 
-**What the estimates cover.** Chains served by these endpoints do not charge senders an L1 data fee
-(the sequencer or operator absorbs it), so the estimate covers only what the user or sponsor pays:
-execution gas × gas price. Every wei value in a response is a decimal string (`types.BigIntString`),
-as wei exceeds `float64` precision.
+**What the estimates cover.** The estimate covers only what the user or sponsor pays in execution
+gas × gas price. Chains served by these endpoints can still charge the sender an L1 data fee on top
+of that, and the estimate does not include it: OP-stack destinations do, and on the Bali testnet
+claim receipts on networks 82 and 85 carried an `l1Fee` of roughly 1.4k–2.6k wei. Budget for it
+separately on those destinations. Every wei value in a response is a decimal string
+(`types.BigIntString`), as wei exceeds `float64` precision.
 
 ### Claim fee estimate
 
