@@ -19,6 +19,12 @@ import (
 // Tree must only follow finalized L1 state.
 const derivedBlockFinality = "FinalizedBlock"
 
+// Certificate files the exit_certificate tool writes to its output directory (see its README).
+const (
+	signedCertificateFile = "exit-certificate-signed.json"
+	fullCertificateFile   = "exit-certificate-full.json"
+)
+
 // loadOrDeriveConfig selects the config source from the CLI flags: --exit-certificate-config
 // derives the claimer config from an exit_certificate config file, otherwise --config loads a native
 // claimer config. The two are mutually exclusive.
@@ -72,12 +78,17 @@ func DeriveFromExitCertificate(ctx context.Context, ec *exitcertificate.Config) 
 		return nil, err
 	}
 
+	// A delta run (options.deltaMode) emits two certificates: the signed one holds only its new exits,
+	// whereas the full one holds every exit issued so far with the latest new_local_exit_root — the
+	// one the claimer needs to serve claims for old and new exits alike.
+	certificateFile := certificateFileName(ec)
+
 	cfg := &Config{
 		Address:               defaultAddress,
 		Port:                  defaultPort,
 		ReadTimeoutSeconds:    defaultReadTimeoutSeconds,
 		WriteTimeoutSeconds:   defaultWriteTimeoutSeconds,
-		SignedCertificatePath: filepath.Join(outputDir, "exit-certificate-signed.json"),
+		SignedCertificatePath: filepath.Join(outputDir, certificateFile),
 		LocalExitTreeDBPath:   filepath.Join(outputDir, "step-g-l2bridgesyncerlite.sqlite"),
 		L1InfoTreeDBPath:      filepath.Join(outputDir, "L1InfoTreeSync.sqlite"),
 		StepWaitResultPath:    filepath.Join(outputDir, "step-wait-result.json"),
@@ -97,6 +108,15 @@ func DeriveFromExitCertificate(ctx context.Context, ec *exitcertificate.Config) 
 		return nil, fmt.Errorf("derived config is invalid: %w", err)
 	}
 	return cfg, nil
+}
+
+// certificateFileName returns the certificate file (inside the exit_certificate output directory) the
+// claimer must serve: the signed certificate of a regular run, the full one of a delta run.
+func certificateFileName(ec *exitcertificate.Config) string {
+	if ec.Options.DeltaMode {
+		return fullCertificateFile
+	}
+	return signedCertificateFile
 }
 
 // resolveRollupManager dials L1 and reads RollupManager() from the aggchainbase contract at

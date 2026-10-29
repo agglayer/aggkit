@@ -38,8 +38,32 @@ func buildLiteTreeFromCertificate(
 		return common.Hash{}, nil, err
 	}
 
-	leaves := make([]bridgesyncerlite.BridgeLeaf, len(exits))
+	leaves := liteLeavesFromExits(exits, forkBlock+1, nextDepositCount, gasTokenNetwork, gasTokenAddress,
+		generatedMetadata)
 	metadatas := make([][]byte, len(exits))
+	copy(metadatas, generatedMetadata)
+
+	ler, err := buildLiteTreeWithReplayed(ctx, cfg, leaves)
+	if err != nil {
+		return common.Hash{}, nil, err
+	}
+	log.Infof("Local exit root from lite tree of %d certificate exits: %s", len(exits), ler.Hex())
+	return ler, metadatas, nil
+}
+
+// liteLeavesFromExits converts bridge exits into lite-syncer leaves, in the given order, with deposit
+// counts continuing from firstDepositCount. metadata must be aligned by index with exits (the raw leaf
+// metadata the lite syncer keccak256-hashes). It is the single leaf-encoding path shared by the
+// full pipeline's Step G2 (buildLiteTreeFromCertificate) and the delta mode (appendLiteTreeLeaves).
+//
+// blockNum is the synthetic block the leaves are placed in: the leaves do not exist on a chain here.
+// BlockNum/BlockPos do not affect the tree root (only leaf hash and deposit-count order do); they just
+// need to be present and distinct.
+func liteLeavesFromExits(
+	exits []*agglayertypes.BridgeExit, blockNum uint64, firstDepositCount uint32,
+	gasTokenNetwork uint32, gasTokenAddress common.Address, metadata [][]byte,
+) []bridgesyncerlite.BridgeLeaf {
+	leaves := make([]bridgesyncerlite.BridgeLeaf, len(exits))
 	for i, be := range exits {
 		// Native (gas token) exits take the gas token as origin; every other exit — including another
 		// network's native asset wrapped on this L2 (OriginTokenAddress=0x0 but non-local
@@ -51,10 +75,7 @@ func buildLiteTreeFromCertificate(
 			originAddr = be.TokenInfo.OriginTokenAddress
 		}
 		leaves[i] = bridgesyncerlite.BridgeLeaf{
-			// Synthetic block position: the leaves do not exist on a chain here. BlockNum/BlockPos do
-			// not affect the tree root (only leaf hash and deposit-count order do); they just need to be
-			// present and distinct, so we place them all in the block right after the fork.
-			BlockNum:           forkBlock + 1,
+			BlockNum:           blockNum,
 			BlockPos:           uint64(i),
 			LeafType:           uint8(be.LeafType),
 			OriginNetwork:      originNetwork,
@@ -62,18 +83,11 @@ func buildLiteTreeFromCertificate(
 			DestinationNetwork: be.DestinationNetwork,
 			DestinationAddress: be.DestinationAddress,
 			Amount:             be.Amount,
-			Metadata:           generatedMetadata[i],
-			DepositCount:       nextDepositCount + uint32(i),
+			Metadata:           metadata[i],
+			DepositCount:       firstDepositCount + uint32(i),
 		}
-		metadatas[i] = generatedMetadata[i]
 	}
-
-	ler, err := buildLiteTreeWithReplayed(ctx, cfg, leaves)
-	if err != nil {
-		return common.Hash{}, nil, err
-	}
-	log.Infof("Local exit root from lite tree of %d certificate exits: %s", len(exits), ler.Hex())
-	return ler, metadatas, nil
+	return leaves
 }
 
 // liteForkNextDepositCount returns the deposit count the first certificate exit should get: one past
