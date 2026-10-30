@@ -28,6 +28,8 @@ func TestParseStepList(t *testing.T) {
 		{"open range from sign", "sign-", []string{"sign"}, false},
 		{"open range from submit includes wait", "submit-", []string{"submit", "wait"}, false},
 		{"open range from wait", "wait-", []string{"wait"}, false},
+		{"pending_claims is standalone", "pending_claims", []string{"pending_claims"}, false},
+		{"pending_claims next to other steps", "wait, pending_claims", []string{"wait", "pending_claims"}, false},
 		{"single-step range", "g-g", []string{"g1", "g2"}, false},
 		{"g alias expands to g1 g2", "g", []string{"g1", "g2"}, false},
 		{"g-h range expands g to g1 g2", "g-h", []string{"g1", "g2", "h"}, false},

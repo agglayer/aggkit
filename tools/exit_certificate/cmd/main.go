@@ -58,6 +58,14 @@ Pipeline steps (run in order by default):
          settled or enters an error state. Reads step-submit-result.json for
          the certificate hash. Requires agglayerClient.grpc.url in options.
 
+  PENDING_CLAIMS
+         Standalone step (--step pending_claims, not part of "all" or of any range).
+         Lists the L2→L1 asset bridges emitted before the certificate that are
+         still unclaimed on L1 (isClaimed on l1BridgeAddress) and writes
+         step-pending-l2-bridges.json, which exit_certificate_claimer serves
+         through /bridges and /claim-params. Reads the local exit tree DB and
+         step-g-new-local-exit-root.json (run step g first). Requires l1RpcUrl.
+
 Use --step to run a single step (e.g. --step a). When running steps individually
 the output files from previous steps must already exist in the output directory.`
 	app.Flags = []cli.Flag{
@@ -69,7 +77,7 @@ the output files from previous steps must already exist in the output directory.
 		},
 		&cli.StringFlag{
 			Name:  "step",
-			Usage: "Run a specific step: 0, a, b, c, d, e, f, g, sign, or all",
+			Usage: "Run a specific step: 0, a, b, c, d, e, f, g, sign, pending_claims, or all",
 			Value: "all",
 		},
 		&cli.BoolFlag{

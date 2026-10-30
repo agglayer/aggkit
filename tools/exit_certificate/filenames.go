@@ -46,4 +46,7 @@ const (
 
 	fileStepSubmitResult = "step-submit-result.json"
 	fileStepWaitResult   = "step-wait-result.json"
+
+	// FileStepPendingBridges is read by the exit_certificate_claimer, hence exported.
+	FileStepPendingBridges = "step-pending-l2-bridges.json"
 )

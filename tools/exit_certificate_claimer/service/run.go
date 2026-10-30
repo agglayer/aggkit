@@ -82,6 +82,14 @@ func run(c *cli.Context, logger *log.Logger) error {
 	}
 
 	claimer := NewClaimer(logger, cert, localTree, l1, cfg.NetworkID, waitResult)
+	if cfg.PendingBridgesPath != "" {
+		pending, err := LoadPendingBridges(cfg.PendingBridgesPath)
+		if err != nil {
+			return err
+		}
+		logger.Infof("loaded %d pending pre-certificate bridges from %s", len(pending), cfg.PendingBridgesPath)
+		claimer.WithPendingBridges(pending)
+	}
 	if err := claimer.Check(ctx); err != nil {
 		return fmt.Errorf("claimer check: %w", err)
 	}

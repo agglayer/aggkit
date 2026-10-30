@@ -120,6 +120,9 @@ var orderedSteps = []string{
 	"check", "0", "a", "b1", "b2", "b3", "c", "d", "e", "f", "g1", "g2", "h", "i", "sign", "submit", "wait",
 }
 
+// The "pending_claims" step is deliberately not in orderedSteps: it is standalone (it needs the Step G2
+// output but nothing depends on it), so it cannot be part of a range and `--step pending_claims` runs it alone.
+
 // lastAutoStep is the implicit end for open ranges (X-).
 // "submit" and "wait" must always be specified explicitly.
 const lastAutoStep = "sign"
@@ -634,9 +637,12 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 		return runSingleSubmit(ctx, cfg, dir)
 	case "wait":
 		return runSingleWait(ctx, cfg, dir)
+	case "pending_claims":
+		return runSinglePending(ctx, cfg, dir)
 	default:
 		return fmt.Errorf(
-			"unknown step: %s (use check, 0, a, b, b1, b2, b3, c, d, e, f, g, g1, g2, h, i, sign, submit, wait, or all)",
+			"unknown step: %s (use check, 0, a, b, b1, b2, b3, c, d, e, f, g, g1, g2, h, i, sign, submit, wait, "+
+				"pending_claims, or all)",
 			step,
 		)
 	}
@@ -914,6 +920,20 @@ func runSingleWait(ctx context.Context, cfg *Config, dir string) error {
 		return err
 	}
 	return saveJSON(dir, fileStepWaitResult, result)
+}
+
+// runSinglePending runs Step PENDING_CLAIMS and writes step-pending-l2-bridges.json. It needs the local exit
+// tree DB and the bridge exit count Step G2 wrote; it is not part of runAll.
+func runSinglePending(ctx context.Context, cfg *Config, dir string) error {
+	var gResult StepGResult
+	if err := loadJSON(dir, fileStepGNewLocalExitRoot, &gResult); err != nil {
+		return fmt.Errorf("load step G result (run step g first): %w", err)
+	}
+	pending, err := RunStepPending(ctx, cfg, pendingDBPath(dir), &gResult)
+	if err != nil {
+		return err
+	}
+	return saveJSON(dir, FileStepPendingBridges, pending)
 }
 
 func runSingleF(ctx context.Context, cfg *Config, dir string) error {

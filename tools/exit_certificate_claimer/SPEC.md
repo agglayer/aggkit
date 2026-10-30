@@ -180,6 +180,10 @@ claimable before fetching the heavier proof material.
 | `bridges[].metadata` | hex string | Bridge metadata (`"0x"` when empty). |
 | `bridges[].deposit_count` | number | Exit-tree leaf index of this exit. |
 
+When the claimer is given the exit_certificate PENDING_CLAIMS step output (`pendingBridgesPath`), `bridges`
+also includes, after the certificate's exits, the L2→L1 assets emitted before the certificate that were
+unclaimed on L1 when that step ran. Their `metadata` is the raw bridge metadata.
+
 ### `GET /claim-params`
 
 Returns the full `AgglayerBridge.claimAsset` argument set for the bridge exits destined to a given
@@ -239,6 +243,10 @@ contract arguments; the last three are context useful for callers and debugging.
 | `leaf_type` | number | no (context) | `0` = asset, `1` = message. |
 | `deposit_count` | number | no (context) | Exit-tree leaf index. |
 | `l1_info_tree_index` | number | no (context) | The latest L1 Info Tree leaf the proofs are anchored to. |
+
+The same pending pre-certificate bridges are returned in `claims[]` (after the certificate's exits),
+with proofs against the certificate's `new_local_exit_root` and the `global_index` of their own
+`deposit_count`; `deposit_count` selects one of them as for any other exit.
 
 ### Error responses
 
