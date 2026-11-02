@@ -168,7 +168,7 @@ func TestLiveDiscovery_IgnoredNetworkIsNeverRegistered(t *testing.T) {
 
 	_, err = f.GetURL(ignoredNetworkID)
 	require.ErrorIs(t, err, ErrURLNotFound, "an ignored network must never be discovered live")
-	require.NotContains(t, f.addrToNetworkID, newRollup.addr,
+	require.False(t, isWatchedAddr(f, newRollup.addr),
 		"an ignored network's contract must never be registered in the routing table")
 }
 
@@ -212,7 +212,7 @@ func TestLiveDiscovery_IgnoredNetworkNeverPendingEvenWithAutoRegisterDisabled(t 
 
 	_, err = f.GetURL(ignoredNetworkID)
 	require.ErrorIs(t, err, ErrURLNotFound, "an ignored network must never be discovered live")
-	require.NotContains(t, f.addrToNetworkID, newRollup.addr,
+	require.False(t, isWatchedAddr(f, newRollup.addr),
 		"an ignored network's contract must never be registered in the routing table")
 	require.Empty(t, f.PendingNetworks(),
 		"an ignored network must never be recorded pending, even with AutoRegisterNewNetworks disabled")
@@ -592,7 +592,7 @@ func TestLiveDiscovery_NewRollupPendingWhenAutoRegisterDisabled(t *testing.T) {
 	require.Equal(t, newRollup.addr, pending[0].RollupAddress)
 	require.Equal(t, PendingReasonRollupAttached, pending[0].Reason)
 
-	require.NotContains(t, f.addrToNetworkID, newRollup.addr,
+	require.False(t, isWatchedAddr(f, newRollup.addr),
 		"a pending network's contract must never be registered in the routing table")
 
 	// Re-announce the SAME rollup a second time: PendingNetworks must still list it exactly once.
@@ -688,7 +688,7 @@ func TestLiveDiscovery_AlreadyServedFromBridgeURLsNeverGoesPending(t *testing.T)
 	require.Equal(t, SourceConfig, entry.source,
 		"discovery must not downgrade a config-sourced entry to an on-chain source")
 
-	require.Contains(t, f.addrToNetworkID, newRollup.addr,
+	require.True(t, isWatchedAddr(f, newRollup.addr),
 		"the rollup contract of a network served from a static override must still be registered")
 
 	// The address being watched is what makes a later URL event observable: refresh the trusted
@@ -750,12 +750,8 @@ func TestLiveDiscovery_ConfigSourcedEntryIsNeverOverwrittenByDiscovery(t *testin
 		// discoverRollup's guard returns right after l.cache.get(rollupID) without ever reaching
 		// cache.set on this path (the entry stays config-sourced forever), so there is no cache
 		// value change to poll for; the write to addrToNetworkID is guarded by cache.mu for exactly
-		// this reason - take the read lock here instead of reading the map bare, or -race reports a
-		// read/write conflict against discoverRollup's write.
-		f.cache.mu.RLock()
-		_, known := f.addrToNetworkID[newRollup.addr]
-		f.cache.mu.RUnlock()
-		return known
+		// this reason - use isWatchedAddr (which takes the read lock) instead of reading the map bare.
+		return isWatchedAddr(f, newRollup.addr)
 	}, testEventuallyWait, testEventuallyTick, "discovery must register the attached rollup's contract")
 
 	sleepPastSeedTick(testPollInterval)

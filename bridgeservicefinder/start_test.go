@@ -530,7 +530,7 @@ func TestStart_IgnoreNetworkIDs_SkipsEnumeration(t *testing.T) {
 
 	concrete, ok := f.(*finder)
 	require.True(t, ok)
-	require.NotContains(t, concrete.addrToNetworkID, rollups[ignoredNetwork-1].addr,
+	require.False(t, isWatchedAddr(concrete, rollups[ignoredNetwork-1].addr),
 		"an ignored network's contract must never be registered in the routing table")
 	_, ok = concrete.cache.get(ignoredWithConfig)
 	require.False(t, ok, "an ignored network's config override must never even be seeded into the cache")

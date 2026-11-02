@@ -112,7 +112,7 @@ func TestStart_AllowNetworkIDs_OnlyAllowedAreResolved(t *testing.T) {
 
 	concrete, ok := f.(*finder)
 	require.True(t, ok)
-	require.NotContains(t, concrete.addrToNetworkID, rollups[notAllowed-1].addr)
+	require.False(t, isWatchedAddr(concrete, rollups[notAllowed-1].addr))
 }
 
 // TestLiveDiscovery_AllowNetworkIDs verifies live discovery against an allowlist: an allowed
@@ -159,7 +159,7 @@ func TestLiveDiscovery_AllowNetworkIDs(t *testing.T) {
 
 			_, err := f.GetURL(blockedNetworkID)
 			require.ErrorIs(t, err, ErrNetworkDisabled)
-			require.NotContains(t, f.addrToNetworkID, blocked.addr)
+			require.False(t, isWatchedAddr(f, blocked.addr))
 			for _, p := range f.PendingNetworks() {
 				require.NotEqual(t, blockedNetworkID, p.NetworkID, "a non-allowed network must never be pending")
 			}
