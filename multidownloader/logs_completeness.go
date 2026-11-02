@@ -44,12 +44,6 @@ func findSuspiciousBlockNumbers(headers []*aggkittypes.BlockHeader, logs []types
 	return suspicious
 }
 
-// uniformAddrsForBlock adapts a single, range-wide address list (as used by the safe-step LogQuery)
-// to the per-block addrsForBlock signature required by findSuspiciousBlockNumbers/verifyLogsCompleteness.
-func uniformAddrsForBlock(addrs []common.Address) func(uint64) []common.Address {
-	return func(uint64) []common.Address { return addrs }
-}
-
 // getAddrsForBlockNumbers returns, for each given block number, the addresses currently pending to
 // sync for that block. It mirrors the mutex pattern used by getUnsafeLogQueries since it reads
 // dh.state.

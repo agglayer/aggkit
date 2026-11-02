@@ -14,6 +14,11 @@ import (
 
 var errRPCUnavailable = errors.New("rpc unavailable")
 
+// uniformAddrsForBlock returns an addrsForBlock func that yields the same addresses for every block.
+func uniformAddrsForBlock(addrs []common.Address) func(uint64) []common.Address {
+	return func(uint64) []common.Address { return addrs }
+}
+
 func bloomForAddress(addr common.Address) *ethtypes.Bloom {
 	var bloom ethtypes.Bloom
 	bloom.Add(addr.Bytes())
@@ -114,65 +119,31 @@ func TestEVMMultidownloader_ArbitrateSuspiciousBlock(t *testing.T) {
 	})
 }
 
-func TestEVMMultidownloader_StepSafe_LogsCompleteness(t *testing.T) {
+// StepSafe must not fetch headers of blocks without logs nor run the logsBloom completeness check:
+// doing so made the initial sync dramatically slower (issue #1930).
+func TestEVMMultidownloader_StepSafe_NoLogsCompletenessCheck(t *testing.T) {
 	addr := common.HexToAddress("0x1")
-	hashBlock100 := common.HexToHash("0xaaa100")
 
-	setup := func(t *testing.T) *testDataEVMMultidownloader {
-		t.Helper()
-		data := newEVMMultidownloaderTestData(t, false)
-		data.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil)
-		err := data.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
-			SyncerID:          "syncer1",
-			ContractAddresses: []common.Address{addr},
-			FromBlock:         100,
-			ToBlock:           aggkittypes.FinalizedBlock,
-		})
-		require.NoError(t, err)
-		data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.FinalizedBlock).
-			Return(uint64(101), nil).Maybe()
-		err = data.mdr.Initialize(t.Context())
-		require.NoError(t, err)
-
-		// The range-wide eth_getLogs response silently omits the log for block 100.
-		data.mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.MatchedBy(func(q ethereum.FilterQuery) bool {
-			return q.BlockHash == nil
-		})).Return([]ethtypes.Log{}, nil).Once()
-
-		rpcResult := aggkittypes.NewBlockHeadersResult()
-		rpcResult.AddHeader(100, &aggkittypes.BlockHeader{Number: 100, Hash: hashBlock100, LogsBloom: bloomForAddress(addr)})
-		rpcResult.AddHeader(101, &aggkittypes.BlockHeader{Number: 101, Hash: common.HexToHash("0xaaa101")})
-		data.mockEthClient.EXPECT().
-			RetrieveBlockHeaders(mock.Anything, []uint64{100, 101}, data.mdr.cfg.MaxParallelBlockHeaderRetrieval).
-			Return(rpcResult, nil).Once()
-
-		return data
-	}
-
-	byHashQuery := func(hash common.Hash) func(q ethereum.FilterQuery) bool {
-		return func(q ethereum.FilterQuery) bool {
-			return q.BlockHash != nil && *q.BlockHash == hash
-		}
-	}
-
-	t.Run("genuine omission detected -> step returns error", func(t *testing.T) {
-		data := setup(t)
-		omittedLog := ethtypes.Log{BlockHash: hashBlock100, BlockNumber: 100, Address: addr}
-		data.mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.MatchedBy(byHashQuery(hashBlock100))).
-			Return([]ethtypes.Log{omittedLog}, nil).Once()
-
-		_, err := data.mdr.StepSafe(t.Context())
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "omitted 1 log")
+	data := newEVMMultidownloaderTestData(t, false)
+	data.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil)
+	err := data.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+		SyncerID:          "syncer1",
+		ContractAddresses: []common.Address{addr},
+		FromBlock:         100,
+		ToBlock:           aggkittypes.FinalizedBlock,
 	})
+	require.NoError(t, err)
+	data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.FinalizedBlock).
+		Return(uint64(101), nil).Maybe()
+	require.NoError(t, data.mdr.Initialize(t.Context()))
 
-	t.Run("bloom false positive -> step succeeds", func(t *testing.T) {
-		data := setup(t)
-		data.mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.MatchedBy(byHashQuery(hashBlock100))).
-			Return([]ethtypes.Log{}, nil).Twice()
+	// Range-wide eth_getLogs returns no logs. Neither RetrieveBlockHeaders nor a by-hash FilterLogs
+	// is expected (the mock fails on any unexpected call).
+	data.mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.MatchedBy(func(q ethereum.FilterQuery) bool {
+		return q.BlockHash == nil
+	})).Return([]ethtypes.Log{}, nil).Once()
 
-		finished, err := data.mdr.StepSafe(t.Context())
-		require.NoError(t, err)
-		require.True(t, finished)
-	})
+	finished, err := data.mdr.StepSafe(t.Context())
+	require.NoError(t, err)
+	require.True(t, finished)
 }
