@@ -105,6 +105,24 @@ func TestRunStepPending(t *testing.T) {
 	require.Equal(t, big.NewInt(103), pending[0].Amount)
 }
 
+func TestRunStepPendingMissingDB(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), fileStepGLiteDB)
+	cfg := &Config{L1RPCURL: "http://unused"}
+
+	_, err := RunStepPending(context.Background(), cfg, dbPath, &StepGResult{BridgeExitCount: 1})
+	require.ErrorContains(t, err, "run step g first")
+	require.NoFileExists(t, dbPath, "the step must not create a stray empty DB")
+}
+
+func TestRunStepPendingNoCertificateExits(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{L1RPCURL: "http://unused"}
+
+	_, err := RunStepPending(context.Background(), cfg, "unused.sqlite", &StepGResult{BridgeExitCount: 0})
+	require.ErrorContains(t, err, "no bridge exits")
+}
+
 func TestRunStepPendingRequiresL1RPC(t *testing.T) {
 	t.Parallel()
 	_, err := RunStepPending(context.Background(), &Config{}, "unused.sqlite", &StepGResult{})

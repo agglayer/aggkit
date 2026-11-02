@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -51,6 +52,17 @@ func RunStepPending(
 		return nil, fmt.Errorf("step pending_claims requires l1RpcUrl in parameters")
 	}
 
+	// G2 returns early (no tree DB, NewLocalExitRoot=EmptyLER) when the certificate has no bridge exits,
+	// so there is neither a DB to read nor a root the pre-certificate leaves could be proven against.
+	// Fail explicitly instead of opening (and creating) an empty DB and reporting "nothing pending".
+	if gResult.BridgeExitCount == 0 {
+		return nil, fmt.Errorf("the certificate has no bridge exits: step g builds no local exit tree, so the " +
+			"pre-certificate bridges cannot be listed or proven against its NewLocalExitRoot")
+	}
+	if _, statErr := os.Stat(dbPath); statErr != nil {
+		return nil, fmt.Errorf("local exit tree DB %q not found (run step g first): %w", dbPath, statErr)
+	}
+
 	syncer, err := bridgesyncerlite.New(ctx, bridgesyncerlite.Config{DBPath: dbPath}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("open local exit tree DB %q: %w", dbPath, err)
@@ -96,7 +108,7 @@ func selectPendingCandidates(bridges []bridgesyncerlite.BridgeLeaf, certificateE
 
 	candidates := make([]PendingBridge, 0)
 	for i := range bridges {
-		b := bridges[i]
+		b := &bridges[i]
 		if uint64(b.DepositCount) >= preCertificate {
 			continue
 		}
