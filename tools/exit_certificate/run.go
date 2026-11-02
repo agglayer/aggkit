@@ -116,12 +116,11 @@ func Run(c *cli.Context) error {
 
 // orderedSteps is the canonical pipeline order used for range expansion.
 // "b" and "g" are aliases for their sub-steps and are handled in parseStepList; not listed here.
+// "pending_claims" is deliberately absent too: it is standalone (it needs the Step G2 output but nothing
+// depends on it), so it cannot be part of a range and `--step pending_claims` runs it alone.
 var orderedSteps = []string{
 	"check", "0", "a", "b1", "b2", "b3", "c", "d", "e", "f", "g1", "g2", "h", "i", "sign", "submit", "wait",
 }
-
-// The "pending_claims" step is deliberately not in orderedSteps: it is standalone (it needs the Step G2
-// output but nothing depends on it), so it cannot be part of a range and `--step pending_claims` runs it alone.
 
 // lastAutoStep is the implicit end for open ranges (X-).
 // "submit" and "wait" must always be specified explicitly.

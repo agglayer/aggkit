@@ -105,6 +105,29 @@ func TestRunStepPending(t *testing.T) {
 	require.Equal(t, big.NewInt(103), pending[0].Amount)
 }
 
+func TestRunStepPendingInvalidIsClaimedResult(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	dbPath := filepath.Join(t.TempDir(), fileStepGLiteDB)
+	syncer, err := bridgesyncerlite.New(ctx, bridgesyncerlite.Config{DBPath: dbPath}, nil)
+	require.NoError(t, err)
+	require.NoError(t, syncer.StoreBridges(ctx, []bridgesyncerlite.BridgeLeaf{
+		pendingTestLeaf(0, 0, 0), pendingTestLeaf(1, 0, 0),
+	}))
+	require.NoError(t, syncer.Close())
+
+	// An unparseable isClaimed answer must abort the step, never be read as "unclaimed".
+	url := newBatchRPCServer(t, func(string, []json.RawMessage) any { return "not-hex" })
+	cfg := &Config{
+		L1RPCURL: url, L1BridgeAddress: common.HexToAddress("0xb1"), L2NetworkID: 7,
+		Options: Options{RPCBatchSize: 10, ConcurrencyLimit: 2},
+	}
+
+	_, err = RunStepPending(ctx, cfg, dbPath, &StepGResult{BridgeExitCount: 1})
+	require.ErrorContains(t, err, "check isClaimed on L1")
+}
+
 func TestRunStepPendingMissingDB(t *testing.T) {
 	t.Parallel()
 	dbPath := filepath.Join(t.TempDir(), fileStepGLiteDB)
