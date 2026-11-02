@@ -226,3 +226,15 @@ func testLogger() *log.Logger {
 func dummyLog() types.Log {
 	return types.Log{}
 }
+
+// isWatchedAddr reports whether addr is registered in the finder's routing table. discoverRollup
+// writes addrToNetworkID from the listener goroutine under cache.mu, so tests must read it through
+// this helper (read lock) instead of touching the map bare, or -race reports a read/write conflict.
+func isWatchedAddr(f *finder, addr common.Address) bool {
+	f.cache.mu.RLock()
+	defer f.cache.mu.RUnlock()
+
+	_, ok := f.addrToNetworkID[addr]
+
+	return ok
+}

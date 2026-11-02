@@ -166,8 +166,39 @@ if [[ "$ready" -ne 1 ]]; then
 fi
 log_info "✅ Claimer is ready: $health_url"
 
+# The PENDING_CLAIMS step output (46-check_pending_bridges.sh) sits in the certificate's output dir, so the
+# claimer must serve the pre-certificate bridge it lists alongside the certificate's exits (#1928).
+OUTPUT_DIR="$(jq -r '.options.outputDir // "./output"' "$EXIT_CERT_CONFIG")"
+[[ "$OUTPUT_DIR" = /* ]] || OUTPUT_DIR="$(dirname "$EXIT_CERT_CONFIG")/${OUTPUT_DIR}"
+PENDING_FILE="${OUTPUT_DIR}/step-pending-l2-bridges.json"
+PENDING_DEPOSIT_COUNT=""
+if [[ -f "$PENDING_FILE" ]]; then
+    PENDING_DEPOSIT_COUNT="$(jq -r '.[0].depositCount // empty' "$PENDING_FILE")"
+    PENDING_DEST="$(jq -r '.[0].destinationAddress' "$PENDING_FILE")"
+    log_info "🔎 Check the claimer lists pending bridge deposit_count=${PENDING_DEPOSIT_COUNT} for ${PENDING_DEST}"
+    if ! curl -sf --get "${CLAIMER_URL}/claimer/v1/bridges" --data-urlencode "dest_address=${PENDING_DEST}" \
+        | jq -e --argjson dc "$PENDING_DEPOSIT_COUNT" '.bridges | any(.deposit_count == $dc)' >/dev/null; then
+        log_error "claimer /bridges does not list the pending bridge deposit_count=${PENDING_DEPOSIT_COUNT}"
+        exit 1
+    fi
+fi
+
 log_info "💰 Claim all pending bridge exits"
 CLAIMER_URL="$CLAIMER_URL" ASSUME_YES=1 \
     "${CLAIMER_SCRIPT_DIR}/claim-all.sh" "$EXIT_CERT_CONFIG"
+
+if [[ -n "$PENDING_DEPOSIT_COUNT" ]]; then
+    # isClaimed(uint32 leafIndex, uint32 sourceBridgeNetwork) on the L1 bridge.
+    L1_RPC_URL="$(jq -r '.l1RpcUrl' "$EXIT_CERT_CONFIG")"
+    L1_BRIDGE_ADDRESS="$(jq -r '.l1BridgeAddress' "$EXIT_CERT_CONFIG")"
+    L2_NETWORK_ID="$(jq -r '.l2NetworkId' "$EXIT_CERT_CONFIG")"
+    claimed="$(cast call --rpc-url "$L1_RPC_URL" "$L1_BRIDGE_ADDRESS" \
+        "isClaimed(uint32,uint32)(bool)" "$PENDING_DEPOSIT_COUNT" "$L2_NETWORK_ID")"
+    if [[ "$claimed" != "true" ]]; then
+        log_error "pending bridge deposit_count=${PENDING_DEPOSIT_COUNT} is not claimed on L1"
+        exit 1
+    fi
+    log_info "✅ Pending pre-certificate bridge deposit_count=${PENDING_DEPOSIT_COUNT} claimed on L1"
+fi
 
 log_info "✅ Done, exit-certificate funds claimed."

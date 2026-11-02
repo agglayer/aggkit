@@ -40,6 +40,12 @@ type Config struct {
 	// the accompanying L1 Info Tree update), identifying the L1 info tree leaf it settled at.
 	StepWaitResultPath string `json:"stepWaitResultPath"`
 
+	// PendingBridgesPath is the optional path to step-pending-l2-bridges.json produced by the
+	// exit_certificate PENDING_CLAIMS step: the unclaimed L2→L1 bridges emitted before the certificate. When
+	// set and the file exists, they are served by /bridges and /claim-params along with the
+	// certificate's exits.
+	PendingBridgesPath string `json:"pendingBridgesPath"`
+
 	// NetworkID is the source network of the exits. Defaults to the certificate's network_id when 0.
 	NetworkID uint32 `json:"networkId"`
 
@@ -114,6 +120,7 @@ func (c *Config) resolvePaths(baseDir string) {
 	c.LocalExitTreeDBPath = resolvePath(baseDir, c.LocalExitTreeDBPath)
 	c.L1InfoTreeDBPath = resolvePath(baseDir, c.L1InfoTreeDBPath)
 	c.StepWaitResultPath = resolvePath(baseDir, c.StepWaitResultPath)
+	c.PendingBridgesPath = resolvePath(baseDir, c.PendingBridgesPath)
 }
 
 func (c *Config) validate() error {

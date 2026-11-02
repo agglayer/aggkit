@@ -63,6 +63,9 @@ run_quiet "${SCRIPT_DIR}/43-check_skip_sclocked.sh"
 log_info "🔎 Check exit certificate"
 run_quiet "${SCRIPT_DIR}/45-check_exit_certificate.sh"
 
+log_info "⏳ Check pending L2 -> L1 bridges emitted before the certificate (PENDING_CLAIMS step)"
+run_quiet "${SCRIPT_DIR}/46-check_pending_bridges.sh"
+
 log_info "📤 Submit exit certificate"
 run_quiet "${SCRIPT_DIR}/50-submit_exit_certificate.sh"
 

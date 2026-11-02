@@ -29,6 +29,17 @@ The bridge-exit list is taken from the signed certificate; each exit is matched 
 (the exit-tree leaf index) by recomputing its canonical leaf hash and looking it up in the local
 exit tree database.
 
+> **Pending pre-certificate bridges.** The certificate only lists the exits made at the target block.
+> L2→L1 asset bridges emitted earlier and never claimed on L1 are not in it, but their leaves are in
+> the local exit tree. When `pendingBridgesPath` points to the exit_certificate
+> [PENDING_CLAIMS step](../exit_certificate/README.md#step-pending_claims--unclaimed-l2l1-bridges-emitted-before-the-certificate)
+> output (`step-pending-l2-bridges.json`), `/bridges` and `/claim-params` also return them, after the
+> certificate's exits. Each is matched by the deposit count recorded in that file (not by leaf hash, which
+> is ambiguous for identical exits) and its proof is verified against `new_local_exit_root` before being
+> returned. In `/bridges` their `metadata` is the raw bridge metadata (the certificate's exits only carry
+> its hash). The claimer does not check whether they were claimed afterwards: `claimAsset` reverts with
+> `AlreadyClaimed`, so re-run the PENDING_CLAIMS step to refresh the file.
+
 > **Settlement requirement.** The certificate's `new_local_exit_root` must already be settled on L1
 > — i.e. present in the rollup exit tree of some L1 Info Tree leaf. `/claim-params` verifies this
 > against the selected leaf (latest by default) and returns HTTP `409` if it is not yet settled.
@@ -46,6 +57,7 @@ Relative paths resolve against the directory containing the config file.
 | `localExitTreeDBPath` | yes | path to `step-g-l2bridgesyncerlite.sqlite` |
 | `l1InfoTreeDBPath` | yes | path to the l1infotreesync SQLite DB |
 | `stepWaitResultPath` | yes | path to `step-wait-result.json` (the WAIT step's L1 settlement record) |
+| `pendingBridgesPath` | no | path to `step-pending-l2-bridges.json` (PENDING_CLAIMS step output); when set, those bridges are also served by `/bridges` and `/claim-params` |
 | `networkId` | no | source network; defaults to the certificate's `network_id` |
 | `l1Sync.enabled` | no | when `false` the L1 Info Tree DB is opened read-only; when `true` it is kept in sync from L1 |
 | `l1Sync.rpcUrl`, `l1Sync.globalExitRootAddr`, `l1Sync.rollupManagerAddr`, … | when `l1Sync.enabled` | L1 sync parameters |
@@ -74,6 +86,7 @@ L1 RPC, contracts and tuning, and enables L1 sync so it keeps its own L1 Info Tr
 | `localExitTreeDBPath` | `options.outputDir` + `/step-g-l2bridgesyncerlite.sqlite` |
 | `l1InfoTreeDBPath` | `options.outputDir` + `/L1InfoTreeSync.sqlite` |
 | `stepWaitResultPath` | `options.outputDir` + `/step-wait-result.json` |
+| `pendingBridgesPath` | `options.outputDir` + `/step-pending-l2-bridges.json`, only when the file exists |
 | `networkId` | `l2NetworkId` |
 | `l1Sync.enabled` | always `true` |
 | `l1Sync.rpcUrl` | `l1RpcUrl` |

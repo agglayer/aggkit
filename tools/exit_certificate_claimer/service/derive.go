@@ -3,6 +3,7 @@ package claimer
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainbase"
@@ -91,6 +92,12 @@ func DeriveFromExitCertificate(ctx context.Context, ec *exitcertificate.Config) 
 			SyncBlockChunkSize: uint64(ec.Options.BlockRange),
 			BlockFinality:      derivedBlockFinality,
 		},
+	}
+
+	// The PENDING_CLAIMS step output is optional: serve it only when the operator ran that step.
+	pendingPath := filepath.Join(outputDir, exitcertificate.FileStepPendingBridges)
+	if _, err := os.Stat(pendingPath); err == nil {
+		cfg.PendingBridgesPath = pendingPath
 	}
 
 	if err := cfg.validate(); err != nil {

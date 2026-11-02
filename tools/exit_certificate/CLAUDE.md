@@ -360,6 +360,13 @@ certificate matches the computed LER.
 - **L1 info tree updates:** in that same L1 block, reads the `l1GlobalExitRootAddress` contract's `UpdateL1InfoTree` and `UpdateL1InfoTreeV2` events (the global-exit-root update accompanying the settlement) and records the **last** occurrence of each (`updateL1InfoTree`, `updateL1InfoTreeV2`). Requires `l1GlobalExitRootAddress`; errors if either event is missing from the block.
 - **Output:** `step-wait-result.json` (`StepWaitResult`)
 
+### Step PENDING_CLAIMS — Unclaimed pre-certificate L2→L1 bridges
+
+- **Standalone, explicit only:** not in `runAll` and not in `orderedSteps` (so it cannot be part of a range); run it with `--step pending_claims`. It needs the Step G2 output.
+- **Requires:** `l1RpcUrl` (+ `l1BridgeAddress`, which defaults to `l2BridgeAddress`), `step-g-new-local-exit-root.json` and `step-g-l2bridgesyncerlite.sqlite`.
+- `RunStepPending` (`step_pending.go`) reads every leaf of the lite DB and drops the last `StepGResult.BridgeExitCount` ones (the certificate's own exits, appended after the genesis→target bridges). `selectPendingCandidates` keeps `leaf_type=0` and `destination_network=0` (messages need `claimMessage`, which the claimer does not build). `checkClaimedOnL1` calls `isClaimed(depositCount, l2NetworkId)` on `l1BridgeAddress` (batched, reusing `encodeIsClaimed`/`parseClaimedResults`); `filterPendingBridges` keeps the unclaimed.
+- **Output:** `step-pending-l2-bridges.json` (`[]PendingBridge`, exported because `exit_certificate_claimer` reads it; the file name is the exported `FileStepPendingBridges`).
+
 ## Key types (`types.go`)
 
 | Type | Description |

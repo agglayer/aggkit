@@ -521,6 +521,26 @@ Requires `agglayerClient.GRPC.URL`, `l1RpcUrl`, and `l1GlobalExitRootAddress` in
 
 **Output:** `step-wait-result.json` (final status, settlement tx hash, the L1 `VerifyBatchesTrustedAggregator` block/tx, and the `UpdateL1InfoTree` / `UpdateL1InfoTreeV2` events in that block)
 
+### Step PENDING_CLAIMS — Unclaimed L2→L1 bridges emitted before the certificate
+
+A **standalone** step: it is not part of `all` nor of any `--step` range, run it with `--step pending_claims`.
+
+The certificate only carries the balances at the target block, so the L2→L1 bridges emitted earlier
+(already part of a previously settled certificate) and never claimed on L1 are not in its
+`bridge_exits`. Their leaves are, however, in the local exit tree and provable against the
+certificate's `new_local_exit_root`. This step lists them so the claimer can serve them.
+
+1. Reads every leaf of `step-g-l2bridgesyncerlite.sqlite` and drops the last `bridgeExitCount` ones
+   (`step-g-new-local-exit-root.json`): those are the certificate's own exits.
+2. Keeps the assets (`leaf_type=0`) destined to L1 (`destination_network=0`). Messages are left out: the
+   claimer only builds `claimAsset` calls.
+3. Calls `isClaimed(depositCount, l2NetworkId)` on `l1BridgeAddress` through `l1RpcUrl` and keeps the
+   unclaimed ones.
+
+Requires `l1RpcUrl` and `l1BridgeAddress` (it defaults to `l2BridgeAddress`), and the Step G output in the output directory.
+
+**Output:** `step-pending-l2-bridges.json` (`[]PendingBridge`: `depositCount`, `blockNumber`, `leafType`, origin and destination, `amount`, raw `metadata`, `txHash`). The claimer adds them to `/bridges` and `/claim-params` when the file exists.
+
 ## Result
 
 After the full flow completes (the certificate is built and signed, then SUBMIT and WAIT succeed):
@@ -534,6 +554,7 @@ The output files the claimer needs are:
 | ---- | -------- |
 | `exit-certificate-signed.json` | The signed certificate — source of each exit's `originNetwork`, `originTokenAddress`, `destinationNetwork`, `destinationAddress`, `amount`, `metadata`. |
 | `step-g-l2bridgesyncerlite.sqlite` | The L2 local exit tree — used to build the `smtProofLocalExitRoot` proof of each leaf against `new_local_exit_root`. |
+| `step-pending-l2-bridges.json` | *Optional* (Step PENDING_CLAIMS). Unclaimed L2→L1 bridges emitted before the certificate; the claimer serves them along with the certificate's exits. |
 | `step-wait-result.json` | The WAIT step's L1 settlement record (`VerifyBatchesTrustedAggregator` + the `UpdateL1InfoTree`/`UpdateL1InfoTreeV2` events) used to anchor the claim to the settled global exit root. |
 
 ## Testing
