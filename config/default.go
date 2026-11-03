@@ -110,7 +110,7 @@ InitialBlock = {{genesisBlockNumber}}
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-LogsCompletenessCheck = false
+CheckRPCLogsAgainstBloom = false
 
 [AggOracle]
 TargetChainType = "EVM"
@@ -177,7 +177,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-LogsCompletenessCheck = false
+CheckRPCLogsAgainstBloom = false
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 SyncFromInBridges = "auto"
 EmbeddedClaimSync = "auto"
@@ -196,7 +196,7 @@ RetryAfterErrorPeriod = "{{BridgeL1Sync.RetryAfterErrorPeriod}}"
 MaxRetryAttemptsAfterError = {{BridgeL1Sync.MaxRetryAttemptsAfterError}}
 WaitForNewBlocksPeriod = "{{BridgeL1Sync.WaitForNewBlocksPeriod}}"
 RequireStorageContentCompatibility = {{BridgeL1Sync.RequireStorageContentCompatibility}}
-LogsCompletenessCheck = {{BridgeL1Sync.LogsCompletenessCheck}}
+CheckRPCLogsAgainstBloom = {{BridgeL1Sync.CheckRPCLogsAgainstBloom}}
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -208,7 +208,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-LogsCompletenessCheck = false
+CheckRPCLogsAgainstBloom = false
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 SyncFromInBridges = "auto"
 EmbeddedClaimSync = "auto"
@@ -227,7 +227,7 @@ RetryAfterErrorPeriod = "{{BridgeL2Sync.RetryAfterErrorPeriod}}"
 MaxRetryAttemptsAfterError = {{BridgeL2Sync.MaxRetryAttemptsAfterError}}
 WaitForNewBlocksPeriod = "{{BridgeL2Sync.WaitForNewBlocksPeriod}}"
 RequireStorageContentCompatibility = {{BridgeL2Sync.RequireStorageContentCompatibility}}
-LogsCompletenessCheck = {{BridgeL2Sync.LogsCompletenessCheck}}
+CheckRPCLogsAgainstBloom = {{BridgeL2Sync.CheckRPCLogsAgainstBloom}}
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"
@@ -241,7 +241,7 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "1s"
 DownloadBufferSize = 100
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-LogsCompletenessCheck = false
+CheckRPCLogsAgainstBloom = false
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"

@@ -53,7 +53,8 @@ func newDownloaderSovereign(
 	rh *sync.RetryHandler,
 	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
-	syncBlockChunkSize uint64) (*downloaderSovereign, error) {
+	syncBlockChunkSize uint64,
+	checkRPCLogsAgainstBloom bool) (*downloaderSovereign, error) {
 	l2GERManager, err := agglayergerl2.NewAgglayergerl2(
 		l2GERAddr, l2Client)
 	if err != nil {
@@ -83,6 +84,7 @@ func newDownloaderSovereign(
 		waitForNewBlocksPeriod, appender, []common.Address{l2GERAddr},
 		rh, nil, nil, "l2GERSync")
 
+	evmDownloader.SetCheckRPCLogsAgainstBloom(checkRPCLogsAgainstBloom)
 	d.EVMDownloaderImplementation = evmDownloader
 
 	return d, nil

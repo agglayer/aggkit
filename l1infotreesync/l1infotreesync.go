@@ -111,7 +111,7 @@ func NewMultidownloadBased(
 		FromBlock:         cfg.InitialBlock,
 		ToBlock:           cfg.BlockFinality,
 
-		LogsCompletenessCheck: cfg.LogsCompletenessCheck,
+		CheckRPCLogsAgainstBloom: cfg.CheckRPCLogsAgainstBloom,
 	}
 	err = l1Multidownloader.RegisterSyncer(syncerConfig)
 	if err != nil {
@@ -195,7 +195,7 @@ func NewLegacy(
 			FromBlock:         cfg.InitialBlock,
 			ToBlock:           cfg.BlockFinality,
 
-			LogsCompletenessCheck: cfg.LogsCompletenessCheck,
+			CheckRPCLogsAgainstBloom: cfg.CheckRPCLogsAgainstBloom,
 		},
 	)
 	if err != nil {
@@ -218,7 +218,7 @@ func NewLegacy(
 	if err != nil {
 		return nil, err
 	}
-	downloader.SetLogsCompletenessCheck(cfg.LogsCompletenessCheck)
+	downloader.SetCheckRPCLogsAgainstBloom(cfg.CheckRPCLogsAgainstBloom)
 	if flags&FlagStopOnFinalizedBlockReached != 0 {
 		downloader.SetStopOnFinalizedBlockReachedFlag()
 	}

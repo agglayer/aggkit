@@ -44,10 +44,12 @@ type ConfigStandalone struct {
 	//   - "false": does not start automatically; requires manual start
 	//   - "auto": automatically decides based on which component is active
 	AutoStart types.TrueFalseAutoMode `jsonschema:"enum=true, enum=false, enum=auto" mapstructure:"AutoStart"`
-	// LogsCompletenessCheck enables the eth_getLogs completeness check (a block whose logsBloom is positive
+	// CheckRPCLogsAgainstBloom enables the eth_getLogs completeness check (a block whose logsBloom is positive
 	// for the queried addresses but has no logs is re-queried by block hash). It only protects against an RPC
 	// that silently omits logs, so it is disabled by default. Enable it only if the RPC is suspected.
-	LogsCompletenessCheck bool `mapstructure:"LogsCompletenessCheck"`
+	// Coverage is partial: only the unfinalized zone near the chain tip is checked (never the finalized/safe
+	// catch-up range, since that would make the initial sync orders of magnitude slower).
+	CheckRPCLogsAgainstBloom bool `mapstructure:"CheckRPCLogsAgainstBloom"`
 }
 
 func (c ConfigEmbedded) Validate() error {

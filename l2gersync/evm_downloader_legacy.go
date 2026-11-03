@@ -56,6 +56,7 @@ func newDownloaderLegacy(
 	rh *sync.RetryHandler,
 	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
+	checkRPCLogsAgainstBloom bool,
 ) (*downloaderLegacy, error) {
 	l2GERManager, err := agglayergerl2.NewAgglayergerl2(
 		l2GERAddr, l2Client)
@@ -67,6 +68,7 @@ func newDownloaderLegacy(
 		"l2GERSync", sync.NewAdapterEthClientToMultidownloader(l2Client), blockFinality,
 		waitForNewBlocksPeriod, nil, nil,
 		rh, nil, nil, "l2GERSync")
+	evmDownloader.SetCheckRPCLogsAgainstBloom(checkRPCLogsAgainstBloom)
 
 	return &downloaderLegacy{
 		EVMDownloaderImplementation: evmDownloader,

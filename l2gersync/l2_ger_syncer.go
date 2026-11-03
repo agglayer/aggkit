@@ -90,6 +90,7 @@ func New(
 			l2Client, cfg.GlobalExitRootL2Addr,
 			l1InfoTreeSync, processor,
 			rh, cfg.BlockFinality, cfg.WaitForNewBlocksPeriod.Duration,
+			cfg.CheckRPCLogsAgainstBloom,
 		)
 
 	case SovereignChain:
@@ -97,7 +98,7 @@ func New(
 			l2Client, cfg.GlobalExitRootL2Addr,
 			l1InfoTreeSync, l1Client, cfg.GlobalExitRootL1Addr,
 			rh, cfg.BlockFinality, cfg.WaitForNewBlocksPeriod.Duration,
-			cfg.SyncBlockChunkSize,
+			cfg.SyncBlockChunkSize, cfg.CheckRPCLogsAgainstBloom,
 		)
 
 	default:
@@ -106,9 +107,6 @@ func New(
 
 	if err != nil {
 		return nil, err
-	}
-	if checker, ok := downloader.(interface{ SetLogsCompletenessCheck(enabled bool) }); ok {
-		checker.SetLogsCompletenessCheck(cfg.LogsCompletenessCheck)
 	}
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,

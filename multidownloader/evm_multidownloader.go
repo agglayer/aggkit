@@ -651,7 +651,7 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	}
 	// Verify that the logs response is not missing any log for a block whose bloom is positive for
 	// its queried addresses (see logs_completeness.go). Only the addresses of syncers that enabled
-	// LogsCompletenessCheck are verified (disabled by default). Suspicions are arbitrated before ever
+	// CheckRPCLogsAgainstBloom are verified (disabled by default). Suspicions are arbitrated before ever
 	// producing an error, so a bloom false positive never wedges the syncer in a retry loop.
 	addrsByBlock := dh.getAddrsForBlockNumbers(blocks)
 	if err = dh.verifyLogsCompleteness(ctx, blockHeaders, logs, func(bn uint64) []common.Address {
@@ -710,7 +710,7 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	// Only the headers of blocks that have logs are needed. The eth_getLogs completeness (logsBloom)
 	// check is intentionally NEVER done here: it required the header of every block in the range and
 	// made the initial sync orders of magnitude slower (see issue #1930). It is only available,
-	// opt-in per syncer (LogsCompletenessCheck), in StepUnsafe, where the headers of the whole range
+	// opt-in per syncer (CheckRPCLogsAgainstBloom), in StepUnsafe, where the headers of the whole range
 	// are already available.
 	dh.log.Debugf("Safe/Step: querying blockHeaders for %d blocks", len(blocks))
 	var blockHeaders []*aggkittypes.BlockHeader

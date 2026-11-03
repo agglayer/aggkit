@@ -35,7 +35,7 @@ const maxArbitrationAttempts = 2
 // zone for legacy syncers (bridgesync, claimsync, l2gersync) is therefore a known gap -- their
 // long-term fix is migrating to the multidownloader, which verifies both zones.
 //
-// The check is opt-in (disabled by default, see SetLogsCompletenessCheck): it only protects against
+// The check is opt-in (disabled by default, see SetCheckRPCLogsAgainstBloom): it only protects against
 // an RPC that silently omits logs.
 //
 // It returns true when at least one suspected omission was arbitrated and confirmed genuine, in
@@ -45,7 +45,7 @@ const maxArbitrationAttempts = 2
 func (d *EVMDownloaderImplementation) checkLogsCompleteness(
 	ctx context.Context, fromBlock, toBlock, lastFinalizedBlock uint64, unfilteredLogs []types.Log,
 ) bool {
-	if !d.logsCompletenessCheck {
+	if !d.checkRPCLogsAgainstBloom {
 		return false
 	}
 	verifyFrom := fromBlock

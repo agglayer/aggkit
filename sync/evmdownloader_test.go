@@ -654,7 +654,7 @@ func NewTestDownloader(t *testing.T, retryPeriod time.Duration) (*EVMDownloader,
 	)
 	require.NoError(t, err)
 	// the logs completeness check is opt-in, enabled here to keep covering it
-	d.SetLogsCompletenessCheck(true)
+	d.SetCheckRPCLogsAgainstBloom(true)
 	return d, clientMock
 }
 
@@ -1036,10 +1036,10 @@ func TestEVMDownloaderImplementation_SetLogsHook_HookInvokedInGetEventsByBlockRa
 	t.Parallel()
 	mockEthClient := aggkittypesmocks.NewMultiDownloader(t)
 	sut := EVMDownloaderImplementation{
-		ethClient:             mockEthClient,
-		addressesToQuery:      []common.Address{contractAddr},
-		log:                   log.WithFields("test", "SetLogsHook"),
-		logsCompletenessCheck: true,
+		ethClient:                mockEthClient,
+		addressesToQuery:         []common.Address{contractAddr},
+		log:                      log.WithFields("test", "SetLogsHook"),
+		checkRPCLogsAgainstBloom: true,
 		rh: &RetryHandler{
 			RetryAfterErrorPeriod:      time.Millisecond,
 			MaxRetryAttemptsAfterError: 5,

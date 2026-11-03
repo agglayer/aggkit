@@ -95,6 +95,7 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 		aggkittypes.LatestBlock,
 		time.Millisecond*10, // waitForNewBlocksPeriod
 		syncBlockChunkSize,
+		false, // logsCompletenessCheck
 	)
 	require.NoError(t, err)
 	downloadedCh := make(chan sync.EVMBlock, 10)
@@ -340,6 +341,7 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 				aggkittypes.LatestBlock,
 				time.Millisecond*10,
 				syncBlockChunkSize,
+				false, // logsCompletenessCheck
 			)
 			require.NoError(t, err)
 
@@ -440,6 +442,7 @@ func TestDownloaderSovereign_IsGERRemovedFromL2_RecoversFromMaxBlockRangeError(t
 		aggkittypes.LatestBlock,
 		time.Millisecond*10,
 		uint64(10), // syncBlockChunkSize (unrelated to the removal-scan chunking under test)
+		false,      // logsCompletenessCheck
 	)
 	require.NoError(t, err)
 
@@ -492,6 +495,7 @@ func TestDownloaderSovereign_IsGERRemovedFromL2_CachesLearnedMaxRangeAcrossCalls
 		aggkittypes.LatestBlock,
 		time.Millisecond*10, // waitForNewBlocksPeriod
 		uint64(10),          // syncBlockChunkSize (unrelated to the removal-scan chunking under test)
+		false,               // logsCompletenessCheck
 	)
 	require.NoError(t, err)
 

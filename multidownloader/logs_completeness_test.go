@@ -121,7 +121,7 @@ func TestEVMMultidownloader_ArbitrateSuspiciousBlock(t *testing.T) {
 
 // StepSafe must not fetch headers of blocks without logs nor run the logsBloom completeness check:
 // doing so made the initial sync dramatically slower (issue #1930).
-func TestEVMMultidownloader_StepSafe_NoLogsCompletenessCheck(t *testing.T) {
+func TestEVMMultidownloader_StepSafe_NoCheckRPCLogsAgainstBloom(t *testing.T) {
 	addr := common.HexToAddress("0x1")
 
 	data := newEVMMultidownloaderTestData(t, false)
@@ -159,7 +159,7 @@ func TestEVMMultidownloader_GetAddrsForBlockNumbers_OnlySyncersWithCheckEnabled(
 	for _, syncer := range []aggkittypes.SyncerConfig{
 		{
 			SyncerID: "checked", ContractAddresses: []common.Address{checkedAddr},
-			FromBlock: 100, ToBlock: aggkittypes.FinalizedBlock, LogsCompletenessCheck: true,
+			FromBlock: 100, ToBlock: aggkittypes.FinalizedBlock, CheckRPCLogsAgainstBloom: true,
 		},
 		{
 			SyncerID: "unchecked", ContractAddresses: []common.Address{uncheckedAddr},

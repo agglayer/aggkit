@@ -199,7 +199,7 @@ func newBridgeSync(
 	if err != nil {
 		return nil, err
 	}
-	downloader.SetLogsCompletenessCheck(cfg.LogsCompletenessCheck)
+	downloader.SetCheckRPCLogsAgainstBloom(cfg.CheckRPCLogsAgainstBloom)
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,
 		func(ctx context.Context) (BridgeSyncRuntimeData, error) {

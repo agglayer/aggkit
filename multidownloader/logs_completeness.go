@@ -45,12 +45,12 @@ func findSuspiciousBlockNumbers(headers []*aggkittypes.BlockHeader, logs []types
 }
 
 // getAddrsForBlockNumbers returns, for each given block number, the addresses currently pending to
-// sync for that block that belong to a syncer with LogsCompletenessCheck enabled. It mirrors the
+// sync for that block that belong to a syncer with CheckRPCLogsAgainstBloom enabled. It mirrors the
 // mutex pattern used by getUnsafeLogQueries since it reads dh.state.
 func (dh *EVMMultidownloader) getAddrsForBlockNumbers(blockNumbers []uint64) map[uint64][]common.Address {
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
-	checkedAddrs := dh.syncersConfig.AddressesWithLogsCompletenessCheck()
+	checkedAddrs := dh.syncersConfig.AddressesWithCheckRPCLogsAgainstBloom()
 	result := make(map[uint64][]common.Address, len(blockNumbers))
 	for _, bn := range blockNumbers {
 		var addrs []common.Address

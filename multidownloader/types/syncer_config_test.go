@@ -241,28 +241,28 @@ func TestContractConfig_Update_Brief(t *testing.T) {
 	})
 }
 
-func TestSetSyncerConfig_AddressesWithLogsCompletenessCheck(t *testing.T) {
+func TestSetSyncerConfig_AddressesWithCheckRPCLogsAgainstBloom(t *testing.T) {
 	addr1 := common.HexToAddress("0x1")
 	addr2 := common.HexToAddress("0x2")
 	addr3 := common.HexToAddress("0x3")
 
 	t.Run("nil config returns empty", func(t *testing.T) {
 		var sut *SetSyncerConfig
-		require.Empty(t, sut.AddressesWithLogsCompletenessCheck())
+		require.Empty(t, sut.AddressesWithCheckRPCLogsAgainstBloom())
 	})
 
 	t.Run("disabled by default", func(t *testing.T) {
 		sut := NewSetSyncerConfig()
 		sut.Add(aggkittypes.SyncerConfig{SyncerID: "syncer1", ContractAddresses: []common.Address{addr1}})
-		require.Empty(t, sut.AddressesWithLogsCompletenessCheck())
+		require.Empty(t, sut.AddressesWithCheckRPCLogsAgainstBloom())
 	})
 
 	t.Run("only addresses of syncers with the check enabled", func(t *testing.T) {
 		sut := NewSetSyncerConfig()
 		sut.Add(aggkittypes.SyncerConfig{
-			SyncerID: "syncer1", ContractAddresses: []common.Address{addr1, addr2}, LogsCompletenessCheck: true,
+			SyncerID: "syncer1", ContractAddresses: []common.Address{addr1, addr2}, CheckRPCLogsAgainstBloom: true,
 		})
 		sut.Add(aggkittypes.SyncerConfig{SyncerID: "syncer2", ContractAddresses: []common.Address{addr3}})
-		require.Equal(t, map[common.Address]struct{}{addr1: {}, addr2: {}}, sut.AddressesWithLogsCompletenessCheck())
+		require.Equal(t, map[common.Address]struct{}{addr1: {}, addr2: {}}, sut.AddressesWithCheckRPCLogsAgainstBloom())
 	})
 }

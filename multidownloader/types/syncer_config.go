@@ -61,15 +61,18 @@ func NewSetSyncerConfig() SetSyncerConfig {
 	}
 }
 
-// AddressesWithLogsCompletenessCheck returns the contract addresses of the syncers that
-// enabled LogsCompletenessCheck
-func (f *SetSyncerConfig) AddressesWithLogsCompletenessCheck() map[common.Address]struct{} {
+// AddressesWithCheckRPCLogsAgainstBloom returns the contract addresses of the syncers that
+// enabled CheckRPCLogsAgainstBloom.
+// The check is keyed by contract address, not by syncer, because logs are shared: if several
+// syncers watch the same address and at least one of them enabled the check, it is applied to
+// that address for all of them (the most restrictive setting wins).
+func (f *SetSyncerConfig) AddressesWithCheckRPCLogsAgainstBloom() map[common.Address]struct{} {
 	result := make(map[common.Address]struct{})
 	if f == nil {
 		return result
 	}
 	for _, syncerConfig := range f.filters {
-		if !syncerConfig.LogsCompletenessCheck {
+		if !syncerConfig.CheckRPCLogsAgainstBloom {
 			continue
 		}
 		for _, addr := range syncerConfig.ContractAddresses {

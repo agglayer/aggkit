@@ -17,9 +17,10 @@ type SyncerConfig struct {
 	FromBlock uint64
 	// Target for final block (e.g. LatestBlock, SafeBlock, FinalizedBlock)
 	ToBlock BlockNumberFinality
-	// LogsCompletenessCheck enables the eth_getLogs completeness (logsBloom) check for the logs
-	// of this syncer's contracts. Default false (see multidownloader StepUnsafe)
-	LogsCompletenessCheck bool
+	// CheckRPCLogsAgainstBloom enables the eth_getLogs completeness (logsBloom) check for the logs
+	// of this syncer's contracts. Default false. Only applied in the multidownloader StepUnsafe (unfinalized zone);
+	// StepSafe never runs it
+	CheckRPCLogsAgainstBloom bool
 }
 
 type MultiDownloaderLegacy interface {

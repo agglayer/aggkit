@@ -22,10 +22,10 @@ import (
 func newLogsCompletenessSUT(t *testing.T, mockEthClient *aggkittypesmocks.MultiDownloader) *EVMDownloaderImplementation {
 	t.Helper()
 	return &EVMDownloaderImplementation{
-		ethClient:             mockEthClient,
-		addressesToQuery:      []common.Address{contractAddr},
-		log:                   log.WithFields("test", "logsCompleteness"),
-		logsCompletenessCheck: true,
+		ethClient:                mockEthClient,
+		addressesToQuery:         []common.Address{contractAddr},
+		log:                      log.WithFields("test", "logsCompleteness"),
+		checkRPCLogsAgainstBloom: true,
 		rh: &RetryHandler{
 			RetryAfterErrorPeriod:      time.Millisecond,
 			MaxRetryAttemptsAfterError: 5,
@@ -242,12 +242,12 @@ func TestCheckLogsCompleteness_UnverifiableSuspicionRetriesRange(t *testing.T) {
 	mockEthClient.AssertExpectations(t)
 }
 
-// TestGetEventsByBlockRange_LogsCompletenessCheckDisabledByDefault verifies that with the default
+// TestGetEventsByBlockRange_CheckRPCLogsAgainstBloomDisabledByDefault verifies that with the default
 // config no extra RPC calls (last finalized block, headers) are done for the completeness check.
-func TestGetEventsByBlockRange_LogsCompletenessCheckDisabledByDefault(t *testing.T) {
+func TestGetEventsByBlockRange_CheckRPCLogsAgainstBloomDisabledByDefault(t *testing.T) {
 	mockEthClient := aggkittypesmocks.NewMultiDownloader(t)
 	sut := newLogsCompletenessSUT(t, mockEthClient)
-	sut.SetLogsCompletenessCheck(false)
+	sut.SetCheckRPCLogsAgainstBloom(false)
 
 	// Only the range-wide eth_getLogs is expected: any BlockNumber/HeaderByNumber/by-hash call fails the mock.
 	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]types.Log{}, nil).Once()

@@ -42,10 +42,12 @@ type Config struct {
 	// Default: "auto"
 	// SyncFromInBridges.Resolved is set programmatically after resolution; not read from config.
 	SyncFromInBridges types.TrueFalseAutoMode `jsonschema:"enum=true, enum=false, enum=auto" mapstructure:"SyncFromInBridges"` //nolint:lll
-	// LogsCompletenessCheck enables the eth_getLogs completeness check (a block whose logsBloom is positive
+	// CheckRPCLogsAgainstBloom enables the eth_getLogs completeness check (a block whose logsBloom is positive
 	// for the queried addresses but has no logs is re-queried by block hash). It only protects against an RPC
 	// that silently omits logs, so it is disabled by default. Enable it only if the RPC is suspected.
-	LogsCompletenessCheck bool `mapstructure:"LogsCompletenessCheck"`
+	// Coverage is partial: only the unfinalized zone near the chain tip is checked (never the finalized/safe
+	// catch-up range, since that would make the initial sync orders of magnitude slower).
+	CheckRPCLogsAgainstBloom bool `mapstructure:"CheckRPCLogsAgainstBloom"`
 }
 
 // Validate checks if the configuration is valid

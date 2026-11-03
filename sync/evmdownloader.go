@@ -142,11 +142,11 @@ func (d *EVMDownloader) SetLogsHook(hook LogsHookFunc) LogsHookFunc {
 	return nil
 }
 
-// SetLogsCompletenessCheck enables or disables the eth_getLogs completeness check on the underlying
+// SetCheckRPCLogsAgainstBloom enables or disables the eth_getLogs completeness check on the underlying
 // EVMDownloaderImplementation. It does nothing if the underlying implementation does not support it.
-func (d *EVMDownloader) SetLogsCompletenessCheck(enabled bool) {
+func (d *EVMDownloader) SetCheckRPCLogsAgainstBloom(enabled bool) {
 	if impl, ok := d.EVMDownloaderInterface.(*EVMDownloaderImplementation); ok {
-		impl.SetLogsCompletenessCheck(enabled)
+		impl.SetCheckRPCLogsAgainstBloom(enabled)
 	}
 }
 
@@ -364,14 +364,14 @@ type EVMDownloaderImplementation struct {
 	reorgDetector          ReorgDetector
 	reorgDetectorID        string
 	logsHook               LogsHookFunc
-	// logsCompletenessCheck enables the eth_getLogs completeness (logsBloom) check, disabled by default
-	logsCompletenessCheck bool
+	// checkRPCLogsAgainstBloom enables the eth_getLogs completeness (logsBloom) check, disabled by default
+	checkRPCLogsAgainstBloom bool
 }
 
-// SetLogsCompletenessCheck enables or disables the eth_getLogs completeness (logsBloom) check
+// SetCheckRPCLogsAgainstBloom enables or disables the eth_getLogs completeness (logsBloom) check
 // (see checkLogsCompleteness). It is disabled by default.
-func (d *EVMDownloaderImplementation) SetLogsCompletenessCheck(enabled bool) {
-	d.logsCompletenessCheck = enabled
+func (d *EVMDownloaderImplementation) SetCheckRPCLogsAgainstBloom(enabled bool) {
+	d.checkRPCLogsAgainstBloom = enabled
 }
 
 // SetLogsHook sets an optional hook that is called after fetching logs and can modify them before processing.
@@ -492,8 +492,14 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 	default:
 	}
 
-	// lastFinalizedBlock scopes the eth_getLogs completeness check (see checkLogsCompleteness) to
-	// blocks strictly above it, i.e. the unfinalized zone near the chain tip where a flaky/mixed
+	// The eth_getLogs completeness check is opt-in (see SetCheckRPCLogsAgainstBloom): when disabled no
+	// extra RPC call is made.
+	if !d.checkRPCLogsAgainstBloom {
+		return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, 0, toBlock)
+	}
+
+	// When the check is enabled, lastFinalizedBlock scopes the eth_getLogs completeness check (see
+	// checkLogsCompleteness) to blocks strictly above it, i.e. the unfinalized zone near the chain tip where a flaky/mixed
 	// RPC view can silently omit a log while header hashes stay canonical -- invisible to
 	// header-hash reorg detection by construction. Verifying a block costs one HeaderByNumber call
 	// (this package has no batch machinery), which is prohibitive across large finalized catch-up
@@ -501,9 +507,6 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 	// finalized zone for legacy syncers (bridgesync, claimsync, l2gersync) is therefore a known
 	// gap; their long-term fix is migrating to the multidownloader, which verifies both zones.
 	// It is fetched once per invocation (not per retry below) to keep that cost bounded.
-	if !d.logsCompletenessCheck {
-		return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, 0, toBlock)
-	}
 	lastFinalizedBlock, err := d.GetLastFinalizedBlock(ctx)
 	if err != nil {
 		d.log.Warnf(
