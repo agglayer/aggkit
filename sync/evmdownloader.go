@@ -142,6 +142,14 @@ func (d *EVMDownloader) SetLogsHook(hook LogsHookFunc) LogsHookFunc {
 	return nil
 }
 
+// SetLogsCompletenessCheck enables or disables the eth_getLogs completeness check on the underlying
+// EVMDownloaderImplementation. It does nothing if the underlying implementation does not support it.
+func (d *EVMDownloader) SetLogsCompletenessCheck(enabled bool) {
+	if impl, ok := d.EVMDownloaderInterface.(*EVMDownloaderImplementation); ok {
+		impl.SetLogsCompletenessCheck(enabled)
+	}
+}
+
 // RuntimeData returns the runtime data: chainID + addresses to query
 func (d *EVMDownloader) RuntimeData(ctx context.Context) (RuntimeData, error) {
 	chainID, err := d.ChainID(ctx)
@@ -356,6 +364,14 @@ type EVMDownloaderImplementation struct {
 	reorgDetector          ReorgDetector
 	reorgDetectorID        string
 	logsHook               LogsHookFunc
+	// logsCompletenessCheck enables the eth_getLogs completeness (logsBloom) check, disabled by default
+	logsCompletenessCheck bool
+}
+
+// SetLogsCompletenessCheck enables or disables the eth_getLogs completeness (logsBloom) check
+// (see checkLogsCompleteness). It is disabled by default.
+func (d *EVMDownloaderImplementation) SetLogsCompletenessCheck(enabled bool) {
+	d.logsCompletenessCheck = enabled
 }
 
 // SetLogsHook sets an optional hook that is called after fetching logs and can modify them before processing.
@@ -485,6 +501,9 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 	// finalized zone for legacy syncers (bridgesync, claimsync, l2gersync) is therefore a known
 	// gap; their long-term fix is migrating to the multidownloader, which verifies both zones.
 	// It is fetched once per invocation (not per retry below) to keep that cost bounded.
+	if !d.logsCompletenessCheck {
+		return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, 0, toBlock)
+	}
 	lastFinalizedBlock, err := d.GetLastFinalizedBlock(ctx)
 	if err != nil {
 		d.log.Warnf(

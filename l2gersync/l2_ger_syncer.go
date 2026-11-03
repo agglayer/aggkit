@@ -107,6 +107,9 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	if checker, ok := downloader.(interface{ SetLogsCompletenessCheck(enabled bool) }); ok {
+		checker.SetLogsCompletenessCheck(cfg.LogsCompletenessCheck)
+	}
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,
 		downloader.RuntimeData,

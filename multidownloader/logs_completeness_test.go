@@ -147,3 +147,31 @@ func TestEVMMultidownloader_StepSafe_NoLogsCompletenessCheck(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, finished)
 }
+
+// TestEVMMultidownloader_GetAddrsForBlockNumbers_OnlySyncersWithCheckEnabled verifies that the
+// completeness check (StepUnsafe) only considers the addresses of syncers that enabled it.
+func TestEVMMultidownloader_GetAddrsForBlockNumbers_OnlySyncersWithCheckEnabled(t *testing.T) {
+	checkedAddr := common.HexToAddress("0x1")
+	uncheckedAddr := common.HexToAddress("0x2")
+
+	data := newEVMMultidownloaderTestData(t, false)
+	data.mockEthClient.EXPECT().ChainID(mock.Anything).Return(common.Big1, nil)
+	for _, syncer := range []aggkittypes.SyncerConfig{
+		{
+			SyncerID: "checked", ContractAddresses: []common.Address{checkedAddr},
+			FromBlock: 100, ToBlock: aggkittypes.FinalizedBlock, LogsCompletenessCheck: true,
+		},
+		{
+			SyncerID: "unchecked", ContractAddresses: []common.Address{uncheckedAddr},
+			FromBlock: 100, ToBlock: aggkittypes.FinalizedBlock,
+		},
+	} {
+		require.NoError(t, data.mdr.RegisterSyncer(syncer))
+	}
+	data.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, aggkittypes.FinalizedBlock).
+		Return(uint64(101), nil).Maybe()
+	require.NoError(t, data.mdr.Initialize(t.Context()))
+
+	addrs := data.mdr.getAddrsForBlockNumbers([]uint64{100})
+	require.Equal(t, []common.Address{checkedAddr}, addrs[100])
+}

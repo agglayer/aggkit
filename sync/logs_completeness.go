@@ -35,6 +35,9 @@ const maxArbitrationAttempts = 2
 // zone for legacy syncers (bridgesync, claimsync, l2gersync) is therefore a known gap -- their
 // long-term fix is migrating to the multidownloader, which verifies both zones.
 //
+// The check is opt-in (disabled by default, see SetLogsCompletenessCheck): it only protects against
+// an RPC that silently omits logs.
+//
 // It returns true when at least one suspected omission was arbitrated and confirmed genuine, in
 // which case the caller must retry the whole range rather than accept it (see the comment at the
 // call site in getEventsByBlockRangeWithRetry for why treating it like an ordinary empty range
@@ -42,6 +45,9 @@ const maxArbitrationAttempts = 2
 func (d *EVMDownloaderImplementation) checkLogsCompleteness(
 	ctx context.Context, fromBlock, toBlock, lastFinalizedBlock uint64, unfilteredLogs []types.Log,
 ) bool {
+	if !d.logsCompletenessCheck {
+		return false
+	}
 	verifyFrom := fromBlock
 	if lastFinalizedBlock >= verifyFrom {
 		verifyFrom = lastFinalizedBlock + 1

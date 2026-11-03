@@ -60,6 +60,25 @@ func NewSetSyncerConfig() SetSyncerConfig {
 		filters: make(map[SyncerID]aggkittypes.SyncerConfig),
 	}
 }
+
+// AddressesWithLogsCompletenessCheck returns the contract addresses of the syncers that
+// enabled LogsCompletenessCheck
+func (f *SetSyncerConfig) AddressesWithLogsCompletenessCheck() map[common.Address]struct{} {
+	result := make(map[common.Address]struct{})
+	if f == nil {
+		return result
+	}
+	for _, syncerConfig := range f.filters {
+		if !syncerConfig.LogsCompletenessCheck {
+			continue
+		}
+		for _, addr := range syncerConfig.ContractAddresses {
+			result[addr] = struct{}{}
+		}
+	}
+	return result
+}
+
 func (f *SetSyncerConfig) Brief() string {
 	if f == nil || f.filters == nil {
 		return "SetSyncerConfig{<nil>}"

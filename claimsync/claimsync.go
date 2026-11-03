@@ -109,6 +109,7 @@ func NewClaimSync(
 		return nil, fmt.Errorf("claimsync: failed to create EVMDownloader: %w", err)
 	}
 	downloader.SetLogsHook(NewPreferDetailedClaimLogsHook(logger))
+	downloader.SetLogsCompletenessCheck(cfg.LogsCompletenessCheck)
 
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,

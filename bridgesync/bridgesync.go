@@ -199,6 +199,7 @@ func newBridgeSync(
 	if err != nil {
 		return nil, err
 	}
+	downloader.SetLogsCompletenessCheck(cfg.LogsCompletenessCheck)
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,
 		func(ctx context.Context) (BridgeSyncRuntimeData, error) {

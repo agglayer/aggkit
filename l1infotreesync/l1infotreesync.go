@@ -110,6 +110,8 @@ func NewMultidownloadBased(
 		ContractAddresses: addressesToQuery,
 		FromBlock:         cfg.InitialBlock,
 		ToBlock:           cfg.BlockFinality,
+
+		LogsCompletenessCheck: cfg.LogsCompletenessCheck,
 	}
 	err = l1Multidownloader.RegisterSyncer(syncerConfig)
 	if err != nil {
@@ -192,6 +194,8 @@ func NewLegacy(
 			ContractAddresses: addressesToQuery,
 			FromBlock:         cfg.InitialBlock,
 			ToBlock:           cfg.BlockFinality,
+
+			LogsCompletenessCheck: cfg.LogsCompletenessCheck,
 		},
 	)
 	if err != nil {
@@ -214,6 +218,7 @@ func NewLegacy(
 	if err != nil {
 		return nil, err
 	}
+	downloader.SetLogsCompletenessCheck(cfg.LogsCompletenessCheck)
 	if flags&FlagStopOnFinalizedBlockReached != 0 {
 		downloader.SetStopOnFinalizedBlockReachedFlag()
 	}
