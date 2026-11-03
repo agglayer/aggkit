@@ -336,11 +336,7 @@ func (d *EVMDriver) withRetry(ctx context.Context, opName string, fn func() erro
 			err := fn()
 			if err != nil {
 				attempts++
-				if aggkitcommon.ShouldLogRetryAtError(attempts) {
-					d.log.Errorf("error during %s (attempt %d): %v", opName, attempts, err)
-				} else {
-					d.log.Debugf("error during %s (attempt %d): %v", opName, attempts, err)
-				}
+				d.log.Errorf("error during %s (attempt %d): %v", opName, attempts, err)
 
 				// Stop retrying on permanent errors
 				if isStopRetryError(err) {

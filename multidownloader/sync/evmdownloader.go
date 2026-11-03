@@ -286,11 +286,7 @@ func (d *EVMDownloader) appendLog(ctx context.Context, block *sync.EVMBlock, log
 		err := appenderFn(block, log)
 		if err != nil {
 			attempts++
-			if aggkitcommon.ShouldLogRetryAtError(attempts) {
-				d.logger.Errorf("error trying to append log (attempt %d): %v", attempts, err)
-			} else {
-				d.logger.Debugf("error trying to append log (attempt %d): %v", attempts, err)
-			}
+			d.logger.Errorf("error trying to append log (attempt %d): %v", attempts, err)
 			d.rh.Handle(ctx, "appendLogs", attempts)
 			continue
 		}
