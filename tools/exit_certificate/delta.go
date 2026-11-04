@@ -270,7 +270,7 @@ func runDeltaSteps(ctx context.Context, cfg *Config, step string) error {
 	}
 	for _, s := range steps {
 		switch s {
-		case lastAutoStep, "submit", "wait": // lastAutoStep is "sign"
+		case lastAutoStep, stepSubmit, stepWait: // lastAutoStep is "sign"
 		default:
 			return fmt.Errorf("step %q is not available with options.deltaMode (only all, sign, submit, wait)", s)
 		}
