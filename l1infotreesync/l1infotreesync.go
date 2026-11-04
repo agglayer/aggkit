@@ -92,9 +92,6 @@ func NewMultidownloadBased(
 	if err != nil {
 		return nil, err
 	}
-	// Fallback target for an escalated reorg recovery (see processor.Reorg) when no verified
-	// checkpoint has ever been recorded.
-	processor.initialBlock = cfg.InitialBlock
 	rh := &sync.RetryHandler{
 		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,
 		MaxRetryAttemptsAfterError: cfg.MaxRetryAttemptsAfterError,
@@ -172,9 +169,6 @@ func NewLegacy(
 	if err != nil {
 		return nil, err
 	}
-	// Fallback target for an escalated reorg recovery (see processor.Reorg) when no verified
-	// checkpoint has ever been recorded.
-	processor.initialBlock = cfg.InitialBlock
 
 	rh := &sync.RetryHandler{
 		RetryAfterErrorPeriod:      cfg.RetryAfterErrorPeriod.Duration,

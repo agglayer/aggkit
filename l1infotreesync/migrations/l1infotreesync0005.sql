@@ -1,3 +1,5 @@
+-- NOTE: the l1info_checkpoint table is no longer used (the checkpoint-escalated reorg was reverted),
+-- but this migration shipped in v0.11.0 and must stay so already-migrated DBs remain consistent.
 -- +migrate Down
 DROP TABLE IF EXISTS l1info_checkpoint;
 
