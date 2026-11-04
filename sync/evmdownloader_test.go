@@ -1055,3 +1055,75 @@ func TestEVMDownloaderImplementation_SetLogsHook_HookInvokedInGetEventsByBlockRa
 	require.Equal(t, uint64(1), hookCalledFrom)
 	require.Equal(t, uint64(20), hookCalledTo)
 }
+
+func TestReportEmptyBlock_MissingBlock(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name         string
+		resolvedNum  uint64
+		wantReported bool
+	}{
+		{"block exists", 10, true},
+		{"missing block resolved to a previous block inside the window", 8, true},
+		{"missing block resolved to the first block of the window", 5, true},
+		{"missing block resolved before the window is not reported", 4, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			downloader, iface := newMockDownloader(t)
+			iface.EXPECT().GetBlockHeader(mock.Anything, uint64(10)).Return(blockHeader(tc.resolvedNum), false).Once()
+
+			downloadCh := make(chan EVMBlock, 1)
+			downloader.reportEmptyBlock(t.Context(), downloadCh, 10, 5, 20)
+			close(downloadCh)
+
+			received := drainChannel(downloadCh)
+			if !tc.wantReported {
+				require.Empty(t, received)
+				return
+			}
+			require.Len(t, received, 1)
+			require.Equal(t, tc.resolvedNum, received[0].Num)
+			require.True(t, received[0].IsFinalizedBlock)
+		})
+	}
+}
+
+func TestReportEmptyBlock_Canceled(t *testing.T) {
+	t.Parallel()
+	downloader, iface := newMockDownloader(t)
+	iface.EXPECT().GetBlockHeader(mock.Anything, uint64(10)).Return(EVMBlockHeader{}, true).Once()
+	downloadCh := make(chan EVMBlock, 1)
+	downloader.reportEmptyBlock(t.Context(), downloadCh, 10, 5, 20)
+	close(downloadCh)
+	require.Empty(t, drainChannel(downloadCh))
+}
+
+// TestDownload_InitialBlockMissing verifies that, when the forced first block can't be reported
+// (it is missing on the node and resolves to a block before the window), Download closes the channel
+// without sending anything.
+func TestDownload_InitialBlockMissing(t *testing.T) {
+	t.Parallel()
+	for _, finalizedBlock := range []uint64{10, 3} {
+		t.Run(fmt.Sprintf("finalized=%d", finalizedBlock), func(t *testing.T) {
+			t.Parallel()
+			downloader, iface := newMockDownloader(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+
+			lastBlock := uint64(5)
+			iface.EXPECT().WaitForNewBlocks(mock.Anything, uint64(0)).Return(uint64(10)).Once()
+			iface.EXPECT().GetLastFinalizedBlock(mock.Anything).Return(finalizedBlock, nil).Once()
+			iface.EXPECT().GetEventsByBlockRange(mock.Anything, uint64(5), uint64(5)).Return(EVMBlocks{}).Once()
+			// block 5 is missing, the client resolves it to block 4 (before the window)
+			iface.EXPECT().GetBlockHeader(mock.Anything, uint64(5)).Return(blockHeader(4), false).Once()
+
+			downloadCh := make(chan EVMBlock, 10)
+			downloader.Download(ctx, 5, downloadCh, &lastBlock, true)
+
+			require.Empty(t, drainChannel(downloadCh))
+			require.NoError(t, ctx.Err())
+		})
+	}
+}

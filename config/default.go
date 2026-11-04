@@ -53,6 +53,7 @@ defaultDBQueryTimeout = "5m"
 	BackoffMultiplier = 2.0
 	HashFromJSON = true
 	BatchBlockHeaderRetrieval = true
+	NullBlockMaxLookback = 0
 `
 
 // DefaultValues is the default configuration
@@ -85,6 +86,7 @@ BlocksChunkSize = {{L1Config.BlocksChunkSize}}
 		BackoffMultiplier = 2.0
 		HashFromJSON = true
 		BatchBlockHeaderRetrieval = true
+		NullBlockMaxLookback = 0
 
 [L2NetworkConfig]
 # InitialLER: optional override for the initial Local Exit Root (0x000...000 is a valid value).

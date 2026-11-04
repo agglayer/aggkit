@@ -231,6 +231,31 @@ func TestEVMMultidownloader_NewEVMMultidownloader(t *testing.T) {
 	require.NotNil(t, sut.storage)
 }
 
+type nullBlockLookbackClient struct {
+	aggkittypes.BaseEthereumClienter
+	lookback uint64
+}
+
+func (c nullBlockLookbackClient) NullBlockMaxLookback() uint64 { return c.lookback }
+
+func TestEVMMultidownloader_NewEVMMultidownloader_NullBlockMaxLookback(t *testing.T) {
+	logger := log.WithFields("test", "evm_multidownloader_test")
+
+	t.Run("client with NullBlockMaxLookback enabled is rejected", func(t *testing.T) {
+		cfg := NewConfigDefault("test.sqlite", t.TempDir())
+		sut, err := NewEVMMultidownloader(logger, cfg, "test", nullBlockLookbackClient{lookback: 10}, nil, nil, nil, nil)
+		require.ErrorContains(t, err, "NullBlockMaxLookback")
+		require.Nil(t, sut)
+	})
+
+	t.Run("client with NullBlockMaxLookback disabled is accepted", func(t *testing.T) {
+		cfg := NewConfigDefault("test.sqlite", t.TempDir())
+		sut, err := NewEVMMultidownloader(logger, cfg, "test", nullBlockLookbackClient{lookback: 0}, nil, nil, nil, nil)
+		require.NoError(t, err)
+		require.NotNil(t, sut)
+	})
+}
+
 func TestEVMMultidownloaderExtractSuggestedBlockRangeFromErrorMsg(t *testing.T) {
 	br := extractSuggestedBlockRangeFromErrorMsg("Query returned more than 20000 results. Try with this block range [0x852c16, 0x853273].")
 	require.NotNil(t, br)

@@ -17,6 +17,8 @@ import (
 var (
 	_                 aggkittypes.EthClienter = (*DefaultEthClient)(nil)
 	ErrNotImplemented                         = errors.New("not implemented")
+	// errNullBlock is returned when eth_getBlockByNumber answers null for the requested block
+	errNullBlock = errors.New("block is null")
 )
 
 type DefaultEthClient struct {
@@ -27,7 +29,10 @@ type DefaultEthClient struct {
 	// if false, the block Hash is getted from go-ethereum RLP hashing of header
 	HashFromJSON      bool
 	batchBlockHeaders bool
-	logger            aggkitcommon.Logger
+	// nullBlockMaxLookback is the max number of previous blocks to look for when a block below the head
+	// is missing. 0 means disabled
+	nullBlockMaxLookback uint64
+	logger               aggkitcommon.Logger
 }
 
 // DialWithRetry attempts to connect to an Ethereum client with retries and exponential backoff.
@@ -81,12 +86,18 @@ func NewDefaultEthClientWithLogger(
 	}
 
 	return &DefaultEthClient{
-		EthereumClienter:  client,
-		RPCClienter:       rpcClient,
-		HashFromJSON:      hashFromJSON,
-		batchBlockHeaders: batchBlockHeaders,
-		logger:            logger,
+		EthereumClienter:     client,
+		RPCClienter:          rpcClient,
+		HashFromJSON:         hashFromJSON,
+		batchBlockHeaders:    batchBlockHeaders,
+		nullBlockMaxLookback: cfg.NullBlockMaxLookback,
+		logger:               logger,
 	}
+}
+
+// NullBlockMaxLookback returns the max number of previous blocks used to resolve a missing block (0 = disabled)
+func (c *DefaultEthClient) NullBlockMaxLookback() uint64 {
+	return c.nullBlockMaxLookback
 }
 
 func (c *DefaultEthClient) CustomBlockNumber(ctx context.Context, number aggkittypes.BlockName) (uint64, error) {
@@ -116,7 +127,45 @@ func (c *DefaultEthClient) CustomHeaderByNumber(ctx context.Context,
 	return result, nil
 }
 
+// internalHeaderByNumber gets the header of the block numberBigInt. If NullBlockMaxLookback is set and the
+// block is missing but it is below the chain head (a hole in the block numbering), it returns the nearest
+// previous existing block (so result.Number can be lower than the requested number)
 func (c *DefaultEthClient) internalHeaderByNumber(ctx context.Context,
+	numberBigInt *big.Int) (*aggkittypes.BlockHeader, error) {
+	result, err := c.fetchHeaderByNumber(ctx, numberBigInt)
+	if err == nil || c.nullBlockMaxLookback == 0 || !isBlockNotFound(err) ||
+		numberBigInt == nil || numberBigInt.Sign() < 0 || !numberBigInt.IsUint64() {
+		return result, err
+	}
+	requested := numberBigInt.Uint64()
+	head, headErr := c.BlockNumber(ctx)
+	if headErr != nil {
+		return nil, fmt.Errorf("block %d not found and cannot get chain head: %w (original: %w)", requested, headErr, err)
+	}
+	if requested >= head {
+		// not a hole: the block doesn't exist yet
+		return nil, err
+	}
+	for i := uint64(1); i <= c.nullBlockMaxLookback && i <= requested; i++ {
+		candidate := requested - i
+		result, candErr := c.fetchHeaderByNumber(ctx, new(big.Int).SetUint64(candidate))
+		if candErr == nil {
+			c.logger.Debugf("block %d is missing (head: %d), using previous block %d", requested, head, candidate)
+			return result, nil
+		}
+		if !isBlockNotFound(candErr) {
+			return nil, candErr
+		}
+	}
+	return nil, fmt.Errorf("block %d is missing and no block found in the previous %d blocks: %w",
+		requested, c.nullBlockMaxLookback, err)
+}
+
+func isBlockNotFound(err error) bool {
+	return errors.Is(err, errNullBlock) || aggkittypes.IsErrNotFound(err)
+}
+
+func (c *DefaultEthClient) fetchHeaderByNumber(ctx context.Context,
 	numberBigInt *big.Int) (*aggkittypes.BlockHeader, error) {
 	var result *aggkittypes.BlockHeader
 	var err error
@@ -163,7 +212,7 @@ func (c *DefaultEthClient) rpcGetBlockByNumber(ctx context.Context, number *big.
 		return nil, fmt.Errorf("rpcGetBlockByNumber: CallContext error: %w", err)
 	}
 	if rawEthHeader == nil {
-		return nil, fmt.Errorf("rpcGetBlockByNumber:not found:  %s", blockArg)
+		return nil, fmt.Errorf("rpcGetBlockByNumber:not found:  %s: %w", blockArg, errNullBlock)
 	}
 	return rawEthHeader.ToBlockHeader()
 }
