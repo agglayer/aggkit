@@ -11,4 +11,5 @@
 - [Etherman](./etherman.md)
 - [Release lifecycle](./release_lifecycle.md)
 - [End-to-end tests](./e2e_tests.md)
+- [Exit certificate: adding bridge exits (delta mode)](./exit_certificate_delta.md)
 - [Common config artifacts](./common_config.md)
