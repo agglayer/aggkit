@@ -1,7 +1,18 @@
-# Adding bridge exits with the exit_certificate delta mode
+# Exit certificate of a deprecated chain: recovering SC-locked funds (delta mode)
 
-Operator guide for adding bridge exits **after** an exit certificate has been settled, and troubleshooting
-for when something does not add up. For the full reference of the tool see the
+> **Scope.** This guide is about the **exit certificate** of a chain that has been **closed (deprecated)** and is
+> leaving the Agglayer: the one produced **manually** by the
+> [`exit_certificate` tool](../tools/exit_certificate/README.md) to bridge all the value of the L2 back to L1. It has
+> **nothing to do with the regular certificates** that a live chain's [aggsender](./aggsender.md) builds and sends to
+> the agglayer automatically.
+
+When the exit certificate of a deprecated chain is generated, the **SC-locked funds** (value held by smart
+contracts, which have no private key that can sign a bridge) are not bridged to anyone: they are
+left behind (`options.skipSCLockedValue`) or sent to a single `exitAddress`. Later, the real owners of those funds
+can prove ownership (see [zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit)).
+The **delta mode** is the mechanism to **add the bridge exits that release SC-locked funds to their rightful owners**
+after the first exit certificate of the deprecated chain has settled. This guide explains exactly how to use it and
+what to do when something does not add up. For the full reference of the tool see the
 [exit_certificate README](../tools/exit_certificate/README.md#delta-mode--chain-additional-exits-on-a-previous-certificate);
 for the claimer, the [exit_certificate_claimer README](../tools/exit_certificate_claimer/README.md).
 
@@ -15,19 +26,24 @@ for the claimer, the [exit_certificate_claimer README](../tools/exit_certificate
 
 ## When to use it
 
-A full run of the tool produces **one** certificate per chain. If more exits must be issued afterwards (typically
-funds locked in smart contracts that the first certificate left behind with `skipSCLockedValue`, whose owners
-later proved ownership), do **not** re-run the full pipeline: the new certificate would have to restart from the
-already settled LER. Use the delta mode: it builds a certificate containing **only the new exits**, chained on
-the previous settled certificate. It can be repeated; the output of every delta is a valid input for the next.
+A full run of the tool produces **one** exit certificate for the deprecated chain. If more exits must be issued
+afterwards (typically **SC-locked funds** that the first exit certificate left behind with `skipSCLockedValue`,
+whose owners later proved ownership), do **not** re-run the full pipeline: the new certificate would have to
+restart from the already settled LER, and the L2 scan does not contain recovery exits. Use the delta mode: it
+builds an exit certificate containing **only the new exits**, chained on the previous settled one. It can be
+repeated; the output of every delta is a valid input for the next.
+
+It is **not** for: chains that are still operating (their certificates come from aggsender), nor for adding exits
+that are not SC-locked funds without a prior decision of the team (the tool only checks balances, not who is
+entitled to them: that verification is a manual, off-chain prerequisite).
 
 ## Concepts
 
 | Term | Meaning |
 | ---- | ------- |
 | previous run | Output dir of the last **settled** run (the first full run, or the last delta). Never modified. |
-| delta exits file | JSON with the new exits (`bridge_exits`). One run takes as many as needed. |
-| delta certificate | `exit-certificate-signed.json` of the delta run: **only** the new exits. It is what is submitted. |
+| delta exits file | JSON with the new exits (`bridge_exits`), e.g. the release of SC-locked funds to their verified owners. One run takes as many as needed. |
+| delta exit certificate | `exit-certificate-signed.json` of the delta run: **only** the new exits. It is what is submitted. |
 | full certificate | `exit-certificate-full.json`: every exit (previous + new, in leaf order) with the latest `new_local_exit_root`. Not submittable; input of the next delta and of the claimer. |
 | exit tree | `step-g-l2bridgesyncerlite.sqlite`. The delta copies the previous one and **appends** leaves: old leaves keep their deposit count, so the `globalIndex` of old exits never changes. |
 
