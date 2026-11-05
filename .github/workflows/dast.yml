@@ -1,0 +1,121 @@
+name: DAST
+
+# Fuzzes the bridge service REST API, directly and through aggkit-proxy, with nuclei's DAST
+# templates (OWASP Top 10 classes), driven by bridgeservice/docs/swagger.json, against a throwaway
+# aggkit built from this ref. The L1 is agglayer's anvil fixture, which also stands in for the L2.
+# Fails on high/critical.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  schedule:
+    - cron: "0 3 * * 1" # Mondays 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build aggkit
+        run: docker build -t aggkit .
+
+      - name: Start anvil, the bridge service and the proxy
+        run: |
+          mkdir -p dast/data && chmod 777 dast/data
+          curl -fsSL -o dast/state.json \
+            https://raw.githubusercontent.com/agglayer/agglayer/6beaae9aff4f03e3723b2a6ed85b912b2bcd273d/tests/integrations/fixtures/anvil-l1/state.json
+          docker run -d --network host -v "$PWD/dast/state.json:/state.json:ro" \
+            --entrypoint anvil ghcr.io/foundry-rs/foundry:v1.7.1 --chain-id 1337 --block-time 1 --load-state /state.json
+          curl -sf --retry 30 --retry-delay 1 --retry-all-errors -o /dev/null -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' http://localhost:8545
+          cat > dast/aggkit.toml <<'EOF'
+          PathRWData = "/data"
+          L1URL = "http://localhost:8545"
+          L2URL = "http://localhost:8545"
+          NetworkID = 1
+          rollupCreationBlockNumber = 81
+          rollupManagerCreationBlockNumber = 81
+
+          [L1Config]
+          chainId = 1337
+          polygonZkEVMGlobalExitRootAddress = "0x610178dA211FEF7D417bC0e6FeD39F05609AD788"
+          polygonRollupManagerAddress = "0x0B306BF915C4d645ff596e518fAf3F9669b97016"
+          polTokenAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+          polygonZkEVMAddress = "0x524F04724632eED237cbA3c37272e018b3A7967e"
+          BridgeAddr = "0x42686D448D1c2D3b172c637E392FE8233e03A486"
+
+          [L2Config]
+          GlobalExitRootAddr = "0x610178dA211FEF7D417bC0e6FeD39F05609AD788"
+          BridgeAddr = "0x42686D448D1c2D3b172c637E392FE8233e03A486"
+          EOF
+          cat > dast/proxy.toml <<'EOF'
+          [L1RPC]
+          URL = "http://localhost:8545"
+
+          [BridgeServiceFinder]
+          RollupManagerAddr = "0x0B306BF915C4d645ff596e518fAf3F9669b97016"
+          BlockFinality = "LatestBlock"
+          AutoRegisterNewNetworks = false
+
+          [BridgeServiceFinder.BridgeURLs]
+          0 = "http://localhost:5577"
+
+          [Prometheus]
+          Enabled = false # the bridge service already uses 9091
+          EOF
+          docker run -d --network host -v "$PWD/dast:/etc/aggkit:ro" -v "$PWD/dast/data:/data" aggkit \
+            run --cfg /etc/aggkit/aggkit.toml --components bridge
+          curl -sf --retry 30 --retry-delay 2 --retry-all-errors http://localhost:5577/bridge/v1/sync-status
+          docker run -d --network host -v "$PWD/dast:/etc/aggkit:ro" --entrypoint aggkit-proxy aggkit \
+            run --cfg /etc/aggkit/proxy.toml --components proxy
+          curl -sf --retry 30 --retry-delay 2 --retry-all-errors 'http://localhost:8080/bridge/v1/sync-status?network_id=0'
+
+      - name: Fuzz the bridge REST API, directly and through the proxy
+        run: |
+          # nuclei only generates requests for parameters that have a value.
+          z=0x0000000000000000000000000000000000000000
+          cat > dast/vars.txt <<EOF
+          amount=0
+          deposit_count=0
+          destination_address=$z
+          destination_network=1
+          from_address=$z
+          global_exit_root=${z}000000000000000000000000
+          global_index=0
+          include_all_fields=false
+          leaf_index=0
+          leaf_type=0
+          ler=${z}000000000000000000000000
+          limit=10
+          metadata=0x
+          network_id=0
+          network_ids=0
+          origin_address=$z
+          origin_network=0
+          origin_token_address=$z
+          page_number=1
+          page_size=10
+          token_address=$z
+          EOF
+          # Both targets: the proxy only forwards requests that carry network_id, which 8 endpoints lack.
+          for target in bridge=localhost:5577 proxy=localhost:8080; do
+            jq --arg host "${target#*=}" '.host = $host | .schemes = ["http"]' bridgeservice/docs/swagger.json > dast/swagger.json
+            docker run --rm --network host -v "$PWD/dast:/dast" projectdiscovery/nuclei:v3.11.1 \
+              -l /dast/swagger.json -im swagger -dast -var /dast/vars.txt -jsonl -o "/dast/results-${target%%=*}.jsonl" -silent
+          done
+
+      - name: Fail on high or critical findings
+        run: "! grep -E '\"severity\":\"(high|critical)\"' dast/results-*.jsonl"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dast-results
+          path: dast/results-*.jsonl
