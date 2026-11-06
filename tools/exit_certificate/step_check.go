@@ -40,6 +40,22 @@ var aggchainTypePP = [2]byte{0, 0}
 // All checks run regardless of individual failures. Returns a combined error listing every
 // failed check.
 func RunStepCheck(ctx context.Context, cfg *Config) (*StepCheckResult, error) {
+	return runStepCheck(ctx, cfg, nil)
+}
+
+// RunStepCheckDelta is the delta-mode variant of RunStepCheck: the L2-scan related requirements do not
+// apply (Anvil is never used) and check 9 (AET-11) is adapted to chain on the previous run — the
+// agglayer's settled LER must equal the previous certificate's new_local_exit_root instead of the L2
+// bridge's getRoot() (the halted L2 bridge never saw the previous exits).
+func RunStepCheckDelta(ctx context.Context, cfg *Config, prev *previousRun) (*StepCheckResult, error) {
+	if prev == nil {
+		return nil, fmt.Errorf("previous run is nil")
+	}
+	return runStepCheck(ctx, cfg, prev)
+}
+
+// runStepCheck is the shared core of RunStepCheck / RunStepCheckDelta (prev is nil in the full pipeline).
+func runStepCheck(ctx context.Context, cfg *Config, prev *previousRun) (*StepCheckResult, error) {
 	log.Info("═══════════════════════════════════════════")
 	log.Info(" STEP CHECK — Verify prerequisites")
 	log.Info("═══════════════════════════════════════════")
@@ -53,7 +69,7 @@ func RunStepCheck(ctx context.Context, cfg *Config) (*StepCheckResult, error) {
 	// installation status either way.
 	if _, err := exec.LookPath("anvil"); err != nil {
 		result.AnvilInstalled = false
-		if cfg.Options.VerifyNewLocalExitRootUsingShadowFork {
+		if cfg.Options.VerifyNewLocalExitRootUsingShadowFork && prev == nil {
 			log.Info("❌ anvil not found in $PATH — install the Foundry toolchain from https://getfoundry.sh")
 			failures = append(failures, "anvil not found in $PATH (required by "+
 				"verifyNewLocalExitRootUsingShadowFork=true; install from https://getfoundry.sh)")
@@ -126,7 +142,11 @@ func RunStepCheck(ctx context.Context, cfg *Config) (*StepCheckResult, error) {
 	checkNativeGasToken(ctx, cfg, &failures)
 
 	// --- 9. No unsettled L2 bridge exits at the target block (AET-11) ---
-	checkUnsettledBridgeExits(ctx, cfg, result, &failures)
+	if prev != nil {
+		checkDeltaUnsettledExits(ctx, cfg, prev, result, &failures)
+	} else {
+		checkUnsettledBridgeExits(ctx, cfg, result, &failures)
+	}
 
 	log.Info("───────────────────────────────────────────")
 	// The AET-11 check records its real outcome even when ignoreLERMismatch suppresses the

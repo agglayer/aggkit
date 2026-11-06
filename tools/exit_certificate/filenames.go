@@ -5,6 +5,10 @@ package exit_certificate
 const (
 	fileFinalCertificate  = "exit-certificate-final.json"
 	fileSignedCertificate = "exit-certificate-signed.json"
+	// fileFullCertificate is written by the delta mode: every bridge exit (previous runs + this delta) with
+	// the final new_local_exit_root. It is the input of the next delta and of the claimer.
+	fileFullCertificate = "exit-certificate-full.json"
+	fileDeltaManifest   = "delta-manifest.json"
 
 	fileStep0TargetBlock = "step-0-l2_target_block.json"
 	fileStep0LBT         = "step-0-lbt.json"

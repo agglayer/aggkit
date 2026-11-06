@@ -98,6 +98,9 @@ func Run(c *cli.Context) error {
 	}
 
 	step := c.String("step")
+	if cfg.Options.DeltaMode {
+		return runDeltaSteps(ctx, cfg, step)
+	}
 	if step == "" || step == "all" {
 		return runAll(ctx, cfg)
 	}
@@ -119,12 +122,18 @@ func Run(c *cli.Context) error {
 // "pending_claims" is deliberately absent too: it is standalone (it needs the Step G2 output but nothing
 // depends on it), so it cannot be part of a range and `--step pending_claims` runs it alone.
 var orderedSteps = []string{
-	"check", "0", "a", "b1", "b2", "b3", "c", "d", "e", "f", "g1", "g2", "h", "i", "sign", "submit", "wait",
+	"check", "0", "a", "b1", "b2", "b3", "c", "d", "e", "f", "g1", "g2", "h", "i", "sign", stepSubmit, stepWait,
 }
 
 // lastAutoStep is the implicit end for open ranges (X-).
 // "submit" and "wait" must always be specified explicitly.
 const lastAutoStep = "sign"
+
+// stepSubmit is the explicit-only step that sends the certificate to the agglayer.
+const stepSubmit = "submit"
+
+// stepWait is the explicit-only step that waits for the certificate to settle.
+const stepWait = "wait"
 
 // parseStepList splits a comma-separated step list, expanding range notation.
 // "f-i"  → ["f", "g", "h", "i"]
@@ -632,9 +641,9 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 		return runSingleI(ctx, cfg, dir)
 	case "sign":
 		return runSingleSign(ctx, cfg, dir)
-	case "submit":
+	case stepSubmit:
 		return runSingleSubmit(ctx, cfg, dir)
-	case "wait":
+	case stepWait:
 		return runSingleWait(ctx, cfg, dir)
 	case "pending_claims":
 		return runSinglePending(ctx, cfg, dir)

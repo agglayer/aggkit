@@ -247,3 +247,84 @@ func TestClassifyLogsIgnoresUnrelated(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, out)
 }
+
+func TestNextBlockNum(t *testing.T) {
+	s := newTestSyncer(t)
+	ctx := context.Background()
+
+	next, err := s.NextBlockNum(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), next)
+
+	// newTestLeaf(n) is in block 100+n → the highest stored block is 102
+	require.NoError(t, s.StoreBridges(ctx, []BridgeLeaf{newTestLeaf(2), newTestLeaf(0), newTestLeaf(1)}))
+	next, err = s.NextBlockNum(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(103), next)
+}
+
+// AppendBridges extends an already built tree: the result must equal building the whole tree at once.
+func TestAppendBridgesContinuesTree(t *testing.T) {
+	ctx := context.Background()
+
+	whole := newTestSyncer(t)
+	require.NoError(t, whole.StoreBridges(ctx, []BridgeLeaf{
+		newTestLeaf(0), newTestLeaf(1), newTestLeaf(2), newTestLeaf(3), newTestLeaf(4),
+	}))
+	wantRoot, err := whole.BuildTree(ctx)
+	require.NoError(t, err)
+
+	s := newTestSyncer(t)
+	require.NoError(t, s.StoreBridges(ctx, []BridgeLeaf{newTestLeaf(0), newTestLeaf(1), newTestLeaf(2)}))
+	_, err = s.BuildTree(ctx)
+	require.NoError(t, err)
+
+	// out-of-order input is fine, and the caller's slice is not reordered
+	delta := []BridgeLeaf{newTestLeaf(4), newTestLeaf(3)}
+	root, err := s.AppendBridges(ctx, delta)
+	require.NoError(t, err)
+	require.Equal(t, wantRoot, root)
+	require.Equal(t, uint32(4), delta[0].DepositCount)
+	got, err := s.LocalExitRoot()
+	require.NoError(t, err)
+	require.Equal(t, wantRoot, got)
+
+	count, err := s.CountBridges(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 5, count)
+
+	// nothing to append → current root
+	root, err = s.AppendBridges(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, wantRoot, root)
+}
+
+func TestAppendBridgesRejectsGapAndOverlap(t *testing.T) {
+	ctx := context.Background()
+	s := newTestSyncer(t)
+	require.NoError(t, s.StoreBridges(ctx, []BridgeLeaf{newTestLeaf(0), newTestLeaf(1)}))
+	_, err := s.BuildTree(ctx)
+	require.NoError(t, err)
+
+	rootBefore, err := s.LocalExitRoot()
+	require.NoError(t, err)
+
+	// gap: deposit count 3 while the tree ends at 1
+	_, err = s.AppendBridges(ctx, []BridgeLeaf{newTestLeaf(3)})
+	require.Error(t, err)
+
+	// atomic: neither the bridge row nor a tree leaf was committed, so the append can be retried
+	count, err := s.CountBridges(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+	next, err := s.NextDepositCount(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint32(2), next)
+	rootAfter, err := s.LocalExitRoot()
+	require.NoError(t, err)
+	require.Equal(t, rootBefore, rootAfter)
+
+	root, err := s.AppendBridges(ctx, []BridgeLeaf{newTestLeaf(2)})
+	require.NoError(t, err)
+	require.NotEqual(t, rootBefore, root)
+}

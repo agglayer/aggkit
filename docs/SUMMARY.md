@@ -11,4 +11,5 @@
 - [Etherman](./etherman.md)
 - [Release lifecycle](./release_lifecycle.md)
 - [End-to-end tests](./e2e_tests.md)
+- [Exit certificate of a deprecated chain: SC-locked funds (delta mode)](./exit_certificate_deprecated_chain_sc_locked_funds.md)
 - [Common config artifacts](./common_config.md)
