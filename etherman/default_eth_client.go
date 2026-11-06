@@ -29,10 +29,10 @@ type DefaultEthClient struct {
 	// if false, the block Hash is getted from go-ethereum RLP hashing of header
 	HashFromJSON      bool
 	batchBlockHeaders bool
-	// nullBlockMaxLookback is the max number of previous blocks to look for when a block below the head
+	// supportNonEthereumWithMaxGapsInBlocks is the max number of previous blocks to look for when a block below the head
 	// is missing. 0 means disabled
-	nullBlockMaxLookback uint64
-	logger               aggkitcommon.Logger
+	supportNonEthereumWithMaxGapsInBlocks uint64
+	logger                                aggkitcommon.Logger
 }
 
 // DialWithRetry attempts to connect to an Ethereum client with retries and exponential backoff.
@@ -86,18 +86,19 @@ func NewDefaultEthClientWithLogger(
 	}
 
 	return &DefaultEthClient{
-		EthereumClienter:     client,
-		RPCClienter:          rpcClient,
-		HashFromJSON:         hashFromJSON,
-		batchBlockHeaders:    batchBlockHeaders,
-		nullBlockMaxLookback: cfg.NullBlockMaxLookback,
-		logger:               logger,
+		EthereumClienter:                      client,
+		RPCClienter:                           rpcClient,
+		HashFromJSON:                          hashFromJSON,
+		batchBlockHeaders:                     batchBlockHeaders,
+		supportNonEthereumWithMaxGapsInBlocks: cfg.SupportNonEthereumWithMaxGapsInBlocks,
+		logger:                                logger,
 	}
 }
 
-// NullBlockMaxLookback returns the max number of previous blocks used to resolve a missing block (0 = disabled)
-func (c *DefaultEthClient) NullBlockMaxLookback() uint64 {
-	return c.nullBlockMaxLookback
+// SupportNonEthereumWithMaxGapsInBlocks returns the max number of previous blocks used to resolve
+// a missing block (0 = disabled)
+func (c *DefaultEthClient) SupportNonEthereumWithMaxGapsInBlocks() uint64 {
+	return c.supportNonEthereumWithMaxGapsInBlocks
 }
 
 func (c *DefaultEthClient) CustomBlockNumber(ctx context.Context, number aggkittypes.BlockName) (uint64, error) {
@@ -127,13 +128,13 @@ func (c *DefaultEthClient) CustomHeaderByNumber(ctx context.Context,
 	return result, nil
 }
 
-// internalHeaderByNumber gets the header of the block numberBigInt. If NullBlockMaxLookback is set and the
-// block is missing but it is below the chain head (a hole in the block numbering), it returns the nearest
+// internalHeaderByNumber gets the header of the block numberBigInt. If SupportNonEthereumWithMaxGapsInBlocks is
+// set and the block is missing but it is below the chain head (a hole in the block numbering), it returns the nearest
 // previous existing block (so result.Number can be lower than the requested number)
 func (c *DefaultEthClient) internalHeaderByNumber(ctx context.Context,
 	numberBigInt *big.Int) (*aggkittypes.BlockHeader, error) {
 	result, err := c.fetchHeaderByNumber(ctx, numberBigInt)
-	if err == nil || c.nullBlockMaxLookback == 0 || !isBlockNotFound(err) ||
+	if err == nil || c.supportNonEthereumWithMaxGapsInBlocks == 0 || !isBlockNotFound(err) ||
 		numberBigInt == nil || numberBigInt.Sign() < 0 || !numberBigInt.IsUint64() {
 		return result, err
 	}
@@ -146,7 +147,7 @@ func (c *DefaultEthClient) internalHeaderByNumber(ctx context.Context,
 		// not a hole: the block doesn't exist yet
 		return nil, err
 	}
-	for i := uint64(1); i <= c.nullBlockMaxLookback && i <= requested; i++ {
+	for i := uint64(1); i <= c.supportNonEthereumWithMaxGapsInBlocks && i <= requested; i++ {
 		candidate := requested - i
 		result, candErr := c.fetchHeaderByNumber(ctx, new(big.Int).SetUint64(candidate))
 		if candErr == nil {
@@ -158,7 +159,7 @@ func (c *DefaultEthClient) internalHeaderByNumber(ctx context.Context,
 		}
 	}
 	return nil, fmt.Errorf("block %d is missing and no block found in the previous %d blocks: %w",
-		requested, c.nullBlockMaxLookback, err)
+		requested, c.supportNonEthereumWithMaxGapsInBlocks, err)
 }
 
 func isBlockNotFound(err error) bool {

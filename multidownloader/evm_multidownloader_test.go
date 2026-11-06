@@ -236,19 +236,19 @@ type nullBlockLookbackClient struct {
 	lookback uint64
 }
 
-func (c nullBlockLookbackClient) NullBlockMaxLookback() uint64 { return c.lookback }
+func (c nullBlockLookbackClient) SupportNonEthereumWithMaxGapsInBlocks() uint64 { return c.lookback }
 
-func TestEVMMultidownloader_NewEVMMultidownloader_NullBlockMaxLookback(t *testing.T) {
+func TestEVMMultidownloader_NewEVMMultidownloader_SupportNonEthereumWithMaxGapsInBlocks(t *testing.T) {
 	logger := log.WithFields("test", "evm_multidownloader_test")
 
-	t.Run("client with NullBlockMaxLookback enabled is rejected", func(t *testing.T) {
+	t.Run("client with SupportNonEthereumWithMaxGapsInBlocks enabled is rejected", func(t *testing.T) {
 		cfg := NewConfigDefault("test.sqlite", t.TempDir())
 		sut, err := NewEVMMultidownloader(logger, cfg, "test", nullBlockLookbackClient{lookback: 10}, nil, nil, nil, nil)
-		require.ErrorContains(t, err, "NullBlockMaxLookback")
+		require.ErrorContains(t, err, "SupportNonEthereumWithMaxGapsInBlocks")
 		require.Nil(t, sut)
 	})
 
-	t.Run("client with NullBlockMaxLookback disabled is accepted", func(t *testing.T) {
+	t.Run("client with SupportNonEthereumWithMaxGapsInBlocks disabled is accepted", func(t *testing.T) {
 		cfg := NewConfigDefault("test.sqlite", t.TempDir())
 		sut, err := NewEVMMultidownloader(logger, cfg, "test", nullBlockLookbackClient{lookback: 0}, nil, nil, nil, nil)
 		require.NoError(t, err)

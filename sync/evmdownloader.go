@@ -337,7 +337,7 @@ func (d *EVMDownloader) reportBlocks(downloadedCh chan EVMBlock, blocks EVMBlock
 
 // reportEmptyBlock sends to the driver the header of blockNum as a block without events.
 // The client can resolve a missing (null) block to a previous existing one (see
-// RPCClientConfig.NullBlockMaxLookback), so the header returned can have a lower number than blockNum.
+// RPCClientConfig.SupportNonEthereumWithMaxGapsInBlocks), so the header returned can have a lower number than blockNum.
 // minBlock is the first block of the window: if the resolved header is before it, nothing is reported.
 // Returns true if a block has been sent to the driver.
 func (d *EVMDownloader) reportEmptyBlock(ctx context.Context, downloadedCh chan EVMBlock,

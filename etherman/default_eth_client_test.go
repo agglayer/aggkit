@@ -341,7 +341,7 @@ func TestDefaultEthClient_RetrieveBlockHeaders(t *testing.T) {
 	})
 }
 
-func TestDefaultEthClient_NullBlockMaxLookback(t *testing.T) {
+func TestDefaultEthClient_SupportNonEthereumWithMaxGapsInBlocks(t *testing.T) {
 	ctx := context.Background()
 	const head = uint64(200)
 
@@ -351,7 +351,7 @@ func TestDefaultEthClient_NullBlockMaxLookback(t *testing.T) {
 		mockRPCClient := mocks.NewRPCClienter(t)
 		cfg := ethermanconfig.NewDefaultRPCClientConfig()
 		cfg.HashFromJSON = true
-		cfg.NullBlockMaxLookback = lookback
+		cfg.SupportNonEthereumWithMaxGapsInBlocks = lookback
 		return NewDefaultEthClient(mockEthClient, mockRPCClient, cfg), mockEthClient, mockRPCClient
 	}
 	// expectBlock mocks eth_getBlockByNumber(blockNum): null if exists is false
@@ -460,8 +460,8 @@ func TestDefaultEthClient_NullBlockMaxLookback(t *testing.T) {
 		require.ErrorIs(t, err, errNullBlock)
 	})
 
-	t.Run("NullBlockMaxLookback getter", func(t *testing.T) {
+	t.Run("SupportNonEthereumWithMaxGapsInBlocks getter", func(t *testing.T) {
 		client, _, _ := newClient(t, 7)
-		require.Equal(t, uint64(7), client.NullBlockMaxLookback())
+		require.Equal(t, uint64(7), client.SupportNonEthereumWithMaxGapsInBlocks())
 	})
 }

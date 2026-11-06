@@ -106,11 +106,12 @@ type RPCClientConfig struct {
 	// BatchBlockHeaderRetrieval enables using JSON-RPC batch requests when fetching block headers.
 	// Disable this if the node does not support batch requests. Default: true.
 	BatchBlockHeaderRetrieval bool `mapstructure:"BatchBlockHeaderRetrieval"`
-	// NullBlockMaxLookback is the maximum number of previous blocks to look back when a block below the
-	// chain head is missing (eth_getBlockByNumber returns null), as happens on networks with non contiguous
-	// block numbers (e.g. Solana slots). The nearest previous existing block is returned instead.
+	// SupportNonEthereumWithMaxGapsInBlocks is an EXCEPTIONAL setting for non-Ethereum networks with gaps in
+	// block numbers (e.g. Solana slots). It is the maximum number of previous blocks to look back when a block
+	// below the chain head is missing (eth_getBlockByNumber returns null).
+	// The nearest previous existing block is returned instead.
 	// 0 disables this behaviour (a missing block is an error). Default: 0.
-	NullBlockMaxLookback uint64 `mapstructure:"NullBlockMaxLookback"`
+	SupportNonEthereumWithMaxGapsInBlocks uint64 `mapstructure:"SupportNonEthereumWithMaxGapsInBlocks"`
 	//
 	// Params specific per client
 	// ExtraParams contains any additional parameters that may be needed for the RPC client

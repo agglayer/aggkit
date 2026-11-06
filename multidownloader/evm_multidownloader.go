@@ -83,9 +83,11 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 		return nil, fmt.Errorf("invalid Multidownloader (%s) config: %w", name, err)
 	}
 	// Missing (null) blocks are not supported by the multidownloader yet
-	if c, ok := ethClient.(interface{ NullBlockMaxLookback() uint64 }); ok && c.NullBlockMaxLookback() != 0 {
-		return nil, fmt.Errorf("multidownloader (%s) doesn't support RPC.NullBlockMaxLookback (%d), set it to 0",
-			name, c.NullBlockMaxLookback())
+	type gapsInBlocksSupporter interface{ SupportNonEthereumWithMaxGapsInBlocks() uint64 }
+	if c, ok := ethClient.(gapsInBlocksSupporter); ok && c.SupportNonEthereumWithMaxGapsInBlocks() != 0 {
+		return nil, fmt.Errorf(
+			"multidownloader (%s) doesn't support RPC.SupportNonEthereumWithMaxGapsInBlocks (%d), set it to 0",
+			name, c.SupportNonEthereumWithMaxGapsInBlocks())
 	}
 	if storageDB == nil {
 		storageDB, err = storage.NewMultidownloaderStorage(log,
