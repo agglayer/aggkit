@@ -464,4 +464,16 @@ func TestDefaultEthClient_SupportNonEthereumWithMaxGapsInBlocks(t *testing.T) {
 		client, _, _ := newClient(t, 7)
 		require.Equal(t, uint64(7), client.SupportNonEthereumWithMaxGapsInBlocks())
 	})
+
+	t.Run("OP node decorator forwards the setting", func(t *testing.T) {
+		client, _, _ := newClient(t, 7)
+		decorated := NewRPCOpNodeDecorator(client, nil)
+		var supporter GapsInBlocksSupporter = decorated
+		require.Equal(t, uint64(7), supporter.SupportNonEthereumWithMaxGapsInBlocks())
+	})
+
+	t.Run("OP node decorator without support in the decorated client returns 0", func(t *testing.T) {
+		decorated := NewRPCOpNodeDecorator(mocks.NewEthClienter(t), nil)
+		require.Zero(t, decorated.SupportNonEthereumWithMaxGapsInBlocks())
+	})
 }

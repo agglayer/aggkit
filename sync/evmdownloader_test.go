@@ -1100,6 +1100,36 @@ func TestReportEmptyBlock_Canceled(t *testing.T) {
 	require.Empty(t, drainChannel(downloadCh))
 }
 
+// TestDownload_LastBlockMissingResolvesToReportedBlock verifies that when the end of the window is a missing block
+// that resolves to a block already reported (with events), it is not reported a second time as an empty block.
+func TestDownload_LastBlockMissingResolvesToReportedBlock(t *testing.T) {
+	t.Parallel()
+	downloader, iface := newMockDownloader(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	lastBlock := uint64(7)
+	iface.EXPECT().WaitForNewBlocks(mock.Anything, uint64(0)).Return(uint64(10)).Once()
+	iface.EXPECT().GetLastFinalizedBlock(mock.Anything).Return(uint64(10), nil).Once()
+	// Block 6 has events and block 7 is missing, so it resolves to block 6
+	eventsBlock6 := &EVMBlock{
+		IsFinalizedBlock: true,
+		EVMBlockHeader:   blockHeader(6),
+		Events:           []any{testEvent(common.HexToHash("0xBB"))},
+	}
+	iface.EXPECT().GetEventsByBlockRange(mock.Anything, uint64(5), uint64(7)).Return(EVMBlocks{eventsBlock6}).Once()
+	iface.EXPECT().GetBlockHeader(mock.Anything, uint64(7)).Return(blockHeader(6), false).Once()
+
+	downloadCh := make(chan EVMBlock, 10)
+	downloader.Download(ctx, 5, downloadCh, &lastBlock, false)
+
+	received := drainChannel(downloadCh)
+	require.Len(t, received, 1, "block 6 must be reported only once")
+	require.Equal(t, uint64(6), received[0].Num)
+	require.Equal(t, eventsBlock6.Events, received[0].Events)
+}
+
 // TestDownload_InitialBlockMissing verifies that, when the forced first block can't be reported
 // (it is missing on the node and resolves to a block before the window), Download closes the channel
 // without sending anything.

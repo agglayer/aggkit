@@ -95,6 +95,12 @@ func NewDefaultEthClientWithLogger(
 	}
 }
 
+// GapsInBlocksSupporter is implemented by the clients that can resolve a missing (null) block to a previous one.
+// Wrappers of the client must forward it, so the setting is not hidden from the components that check it.
+type GapsInBlocksSupporter interface {
+	SupportNonEthereumWithMaxGapsInBlocks() uint64
+}
+
 // SupportNonEthereumWithMaxGapsInBlocks returns the max number of previous blocks used to resolve
 // a missing block (0 = disabled)
 func (c *DefaultEthClient) SupportNonEthereumWithMaxGapsInBlocks() uint64 {
@@ -141,7 +147,7 @@ func (c *DefaultEthClient) internalHeaderByNumber(ctx context.Context,
 	requested := numberBigInt.Uint64()
 	head, headErr := c.BlockNumber(ctx)
 	if headErr != nil {
-		return nil, fmt.Errorf("block %d not found and cannot get chain head: %w (original: %w)", requested, headErr, err)
+		return nil, fmt.Errorf("block %d not found (%w) and cannot get chain head: %w", requested, err, headErr)
 	}
 	if requested >= head {
 		// not a hole: the block doesn't exist yet
@@ -149,10 +155,10 @@ func (c *DefaultEthClient) internalHeaderByNumber(ctx context.Context,
 	}
 	for i := uint64(1); i <= c.supportNonEthereumWithMaxGapsInBlocks && i <= requested; i++ {
 		candidate := requested - i
-		result, candErr := c.fetchHeaderByNumber(ctx, new(big.Int).SetUint64(candidate))
+		candHeader, candErr := c.fetchHeaderByNumber(ctx, new(big.Int).SetUint64(candidate))
 		if candErr == nil {
 			c.logger.Debugf("block %d is missing (head: %d), using previous block %d", requested, head, candidate)
-			return result, nil
+			return candHeader, nil
 		}
 		if !isBlockNotFound(candErr) {
 			return nil, candErr

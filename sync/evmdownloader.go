@@ -255,7 +255,12 @@ func (d *EVMDownloader) Download(
 			d.reportBlocks(downloadedCh, blocks, lastFinalizedBlockNumber)
 			skipEmpty := preReportedInitial && requestToBlock == initialFromBlock
 			if !skipEmpty && (blocks.Len() == 0 || blocks[blocks.Len()-1].Num < requestToBlock) {
-				d.reportEmptyBlock(ctx, downloadedCh, requestToBlock, fromBlock, lastFinalizedBlockNumber)
+				// The blocks with events were already reported: a missing block must not resolve to one of them
+				minBlock := fromBlock
+				if blocks.Len() > 0 {
+					minBlock = max(fromBlock, blocks[blocks.Len()-1].Num+1)
+				}
+				d.reportEmptyBlock(ctx, downloadedCh, requestToBlock, minBlock, lastFinalizedBlockNumber)
 			}
 			fromBlock = requestToBlock + 1
 			toBlock = fromBlock + d.syncBlockChunkSize
@@ -338,7 +343,8 @@ func (d *EVMDownloader) reportBlocks(downloadedCh chan EVMBlock, blocks EVMBlock
 // reportEmptyBlock sends to the driver the header of blockNum as a block without events.
 // The client can resolve a missing (null) block to a previous existing one (see
 // RPCClientConfig.SupportNonEthereumWithMaxGapsInBlocks), so the header returned can have a lower number than blockNum.
-// minBlock is the first block of the window: if the resolved header is before it, nothing is reported.
+// minBlock is the first block that can still be reported (the start of the window, or the one after the last
+// block already reported): if the resolved header is before it, nothing is reported.
 // Returns true if a block has been sent to the driver.
 func (d *EVMDownloader) reportEmptyBlock(ctx context.Context, downloadedCh chan EVMBlock,
 	blockNum, minBlock, lastFinalizedBlock uint64) bool {
