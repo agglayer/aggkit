@@ -236,7 +236,14 @@ func (d *EVMDownloader) Download(
 				}
 			}
 			if !initialInBlocks {
-				d.reportEmptyBlock(ctx, downloadedCh, initialFromBlock, lastFinalizedBlockNumber)
+				if !d.reportEmptyBlock(ctx, downloadedCh, initialFromBlock, initialFromBlock, lastFinalizedBlockNumber) {
+					// The first block is required as starting point: if it can't be reported (canceled or missing
+					// on the node) there is nothing to do, closing the channel is the error signal for the caller.
+					d.log.Errorf("cannot report the initial block %d (canceled or missing on the node), closing channel",
+						initialFromBlock)
+					close(downloadedCh)
+					return
+				}
 				preReportedInitial = true
 			}
 			initialBlockSent = true
@@ -248,7 +255,12 @@ func (d *EVMDownloader) Download(
 			d.reportBlocks(downloadedCh, blocks, lastFinalizedBlockNumber)
 			skipEmpty := preReportedInitial && requestToBlock == initialFromBlock
 			if !skipEmpty && (blocks.Len() == 0 || blocks[blocks.Len()-1].Num < requestToBlock) {
-				d.reportEmptyBlock(ctx, downloadedCh, requestToBlock, lastFinalizedBlockNumber)
+				// The blocks with events were already reported: a missing block must not resolve to one of them
+				minBlock := fromBlock
+				if blocks.Len() > 0 {
+					minBlock = max(fromBlock, blocks[blocks.Len()-1].Num+1)
+				}
+				d.reportEmptyBlock(ctx, downloadedCh, requestToBlock, minBlock, lastFinalizedBlockNumber)
 			}
 			fromBlock = requestToBlock + 1
 			toBlock = fromBlock + d.syncBlockChunkSize
@@ -263,7 +275,7 @@ func (d *EVMDownloader) Download(
 					emptyBlock := lastFinalizedBlockNumber
 					skipEmpty := preReportedInitial && emptyBlock == initialFromBlock
 					if !skipEmpty {
-						d.reportEmptyBlock(ctx, downloadedCh, emptyBlock, lastFinalizedBlockNumber)
+						d.reportEmptyBlock(ctx, downloadedCh, emptyBlock, fromBlock, lastFinalizedBlockNumber)
 					}
 					fromBlock = emptyBlock + 1
 					toBlock = fromBlock + d.syncBlockChunkSize
@@ -279,7 +291,7 @@ func (d *EVMDownloader) Download(
 					// non-finalized block.
 					skipEmpty := preReportedInitial && requestToBlock == initialFromBlock
 					if !skipEmpty {
-						d.reportEmptyBlock(ctx, downloadedCh, requestToBlock, lastFinalizedBlockNumber)
+						d.reportEmptyBlock(ctx, downloadedCh, requestToBlock, fromBlock, lastFinalizedBlockNumber)
 					}
 					fromBlock = requestToBlock + 1
 					toBlock = fromBlock + d.syncBlockChunkSize
@@ -328,19 +340,33 @@ func (d *EVMDownloader) reportBlocks(downloadedCh chan EVMBlock, blocks EVMBlock
 	}
 }
 
+// reportEmptyBlock sends to the driver the header of blockNum as a block without events.
+// The client can resolve a missing (null) block to a previous existing one (see
+// RPCClientConfig.SupportNonEthereumWithMaxGapsInBlocks), so the header returned can have a lower number than blockNum.
+// minBlock is the first block that can still be reported (the start of the window, or the one after the last
+// block already reported): if the resolved header is before it, nothing is reported.
+// Returns true if a block has been sent to the driver.
 func (d *EVMDownloader) reportEmptyBlock(ctx context.Context, downloadedCh chan EVMBlock,
-	blockNum, lastFinalizedBlock uint64) {
+	blockNum, minBlock, lastFinalizedBlock uint64) bool {
 	// Indicate the last downloaded block if there are not events on it
 	d.log.Debugf("sending block %d to the driver (without events)", blockNum)
 	header, isCanceled := d.GetBlockHeader(ctx, blockNum)
 	if isCanceled {
-		return
+		return false
+	}
+	if header.Num != blockNum {
+		d.log.Infof("block %d is missing on the node, using previous block %d instead", blockNum, header.Num)
+		if header.Num < minBlock {
+			d.log.Infof("block %d is before the start of the window (%d), no empty block reported", header.Num, minBlock)
+			return false
+		}
 	}
 
 	downloadedCh <- EVMBlock{
 		IsFinalizedBlock: header.Num <= lastFinalizedBlock,
 		EVMBlockHeader:   header,
 	}
+	return true
 }
 
 type EVMDownloaderImplementation struct {

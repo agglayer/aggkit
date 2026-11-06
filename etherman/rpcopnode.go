@@ -52,6 +52,15 @@ func NewRPCClientModeOp(ctx context.Context,
 	return NewRPCOpNodeDecorator(ethClient, opNodeClient), nil
 }
 
+// SupportNonEthereumWithMaxGapsInBlocks forwards the setting of the decorated client (0 if it doesn't have it),
+// so wrapping the client doesn't hide it (see GapsInBlocksSupporter)
+func (d *RPCOpNodeDecorator) SupportNonEthereumWithMaxGapsInBlocks() uint64 {
+	if c, ok := d.EthClienter.(GapsInBlocksSupporter); ok {
+		return c.SupportNonEthereumWithMaxGapsInBlocks()
+	}
+	return 0
+}
+
 func NewRPCOpNodeDecorator(client aggkittypes.EthClienter, opNodeClient OpNodeClienter) *RPCOpNodeDecorator {
 	return &RPCOpNodeDecorator{
 		EthClienter:  client,

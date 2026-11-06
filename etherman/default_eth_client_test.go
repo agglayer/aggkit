@@ -340,3 +340,140 @@ func TestDefaultEthClient_RetrieveBlockHeaders(t *testing.T) {
 		require.Len(t, result.Errors, len(blockNumbers))
 	})
 }
+
+func TestDefaultEthClient_SupportNonEthereumWithMaxGapsInBlocks(t *testing.T) {
+	ctx := context.Background()
+	const head = uint64(200)
+
+	newClient := func(t *testing.T, lookback uint64) (*DefaultEthClient, *mocks.EthereumClienter, *mocks.RPCClienter) {
+		t.Helper()
+		mockEthClient := mocks.NewEthereumClienter(t)
+		mockRPCClient := mocks.NewRPCClienter(t)
+		cfg := ethermanconfig.NewDefaultRPCClientConfig()
+		cfg.HashFromJSON = true
+		cfg.SupportNonEthereumWithMaxGapsInBlocks = lookback
+		return NewDefaultEthClient(mockEthClient, mockRPCClient, cfg), mockEthClient, mockRPCClient
+	}
+	// expectBlock mocks eth_getBlockByNumber(blockNum): null if exists is false
+	expectBlock := func(mockRPCClient *mocks.RPCClienter, blockNum uint64, exists bool) {
+		mockRPCClient.EXPECT().
+			CallContext(ctx, mock.Anything, "eth_getBlockByNumber", fmt.Sprintf("0x%x", blockNum), false).
+			Return(nil).
+			Run(func(_ context.Context, result interface{}, _ string, _ ...interface{}) {
+				if !exists {
+					return // result stays nil => null block
+				}
+				rawEth, ok := result.(**blockRawEth)
+				require.True(t, ok)
+				*rawEth = &blockRawEth{
+					Number:    fmt.Sprintf("0x%x", blockNum),
+					Hash:      "0xabc123",
+					Timestamp: "0x1",
+				}
+			}).Once()
+	}
+	expectHead := func(mockEthClient *mocks.EthereumClienter) {
+		mockEthClient.EXPECT().BlockNumber(ctx).Return(head, nil).Once()
+	}
+
+	t.Run("disabled: null block is an error and doesn't look back", func(t *testing.T) {
+		client, _, mockRPCClient := newClient(t, 0)
+		expectBlock(mockRPCClient, 100, false)
+		_, err := client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(100))
+		require.ErrorIs(t, err, errNullBlock)
+	})
+
+	t.Run("existing block is returned without extra calls", func(t *testing.T) {
+		client, _, mockRPCClient := newClient(t, 5)
+		expectBlock(mockRPCClient, 100, true)
+		header, err := client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(100))
+		require.NoError(t, err)
+		require.Equal(t, uint64(100), header.Number)
+	})
+
+	t.Run("null block below head returns the nearest previous block", func(t *testing.T) {
+		client, mockEthClient, mockRPCClient := newClient(t, 5)
+		expectBlock(mockRPCClient, 100, false)
+		expectHead(mockEthClient)
+		expectBlock(mockRPCClient, 99, false)
+		expectBlock(mockRPCClient, 98, true)
+		header, err := client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(100))
+		require.NoError(t, err)
+		require.Equal(t, uint64(98), header.Number)
+	})
+
+	t.Run("null block at or above head is not a hole", func(t *testing.T) {
+		for _, blockNum := range []uint64{head, head + 100} {
+			client, mockEthClient, mockRPCClient := newClient(t, 5)
+			expectBlock(mockRPCClient, blockNum, false)
+			expectHead(mockEthClient)
+			_, err := client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNum))
+			require.ErrorIs(t, err, errNullBlock)
+		}
+	})
+
+	t.Run("lookback exhausted returns error", func(t *testing.T) {
+		client, mockEthClient, mockRPCClient := newClient(t, 2)
+		expectBlock(mockRPCClient, 100, false)
+		expectHead(mockEthClient)
+		expectBlock(mockRPCClient, 99, false)
+		expectBlock(mockRPCClient, 98, false)
+		_, err := client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(100))
+		require.ErrorIs(t, err, errNullBlock)
+		require.ErrorContains(t, err, "previous 2 blocks")
+	})
+
+	t.Run("lookback is limited by block 0", func(t *testing.T) {
+		client, mockEthClient, mockRPCClient := newClient(t, 10)
+		expectBlock(mockRPCClient, 1, false)
+		expectHead(mockEthClient)
+		expectBlock(mockRPCClient, 0, false)
+		_, err := client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(1))
+		require.ErrorIs(t, err, errNullBlock)
+	})
+
+	t.Run("error getting the head", func(t *testing.T) {
+		client, mockEthClient, mockRPCClient := newClient(t, 5)
+		expectBlock(mockRPCClient, 100, false)
+		mockEthClient.EXPECT().BlockNumber(ctx).Return(uint64(0), errors.New("head error")).Once()
+		_, err := client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(100))
+		require.ErrorContains(t, err, "head error")
+	})
+
+	t.Run("rpc error while looking back is returned", func(t *testing.T) {
+		client, mockEthClient, mockRPCClient := newClient(t, 5)
+		expectBlock(mockRPCClient, 100, false)
+		expectHead(mockEthClient)
+		mockRPCClient.EXPECT().
+			CallContext(ctx, mock.Anything, "eth_getBlockByNumber", "0x63", false).
+			Return(errors.New("rpc down")).Once()
+		_, err := client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(100))
+		require.ErrorContains(t, err, "rpc down")
+	})
+
+	t.Run("block tags are never resolved to a previous block", func(t *testing.T) {
+		client, _, mockRPCClient := newClient(t, 5)
+		mockRPCClient.EXPECT().
+			CallContext(ctx, mock.Anything, "eth_getBlockByNumber", "latest", false).
+			Return(nil).Once()
+		_, err := client.CustomHeaderByNumber(ctx, nil)
+		require.ErrorIs(t, err, errNullBlock)
+	})
+
+	t.Run("SupportNonEthereumWithMaxGapsInBlocks getter", func(t *testing.T) {
+		client, _, _ := newClient(t, 7)
+		require.Equal(t, uint64(7), client.SupportNonEthereumWithMaxGapsInBlocks())
+	})
+
+	t.Run("OP node decorator forwards the setting", func(t *testing.T) {
+		client, _, _ := newClient(t, 7)
+		decorated := NewRPCOpNodeDecorator(client, nil)
+		var supporter GapsInBlocksSupporter = decorated
+		require.Equal(t, uint64(7), supporter.SupportNonEthereumWithMaxGapsInBlocks())
+	})
+
+	t.Run("OP node decorator without support in the decorated client returns 0", func(t *testing.T) {
+		decorated := NewRPCOpNodeDecorator(mocks.NewEthClienter(t), nil)
+		require.Zero(t, decorated.SupportNonEthereumWithMaxGapsInBlocks())
+	})
+}

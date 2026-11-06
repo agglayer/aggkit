@@ -14,6 +14,7 @@ import (
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
+	"github.com/agglayer/aggkit/etherman"
 	ethermanblocknotifier "github.com/agglayer/aggkit/etherman/block_notifier"
 	ethermantypes "github.com/agglayer/aggkit/etherman/types"
 	"github.com/agglayer/aggkit/log"
@@ -81,6 +82,12 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 	var err error
 	if err = cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid Multidownloader (%s) config: %w", name, err)
+	}
+	// Missing (null) blocks are not supported by the multidownloader yet
+	if c, ok := ethClient.(etherman.GapsInBlocksSupporter); ok && c.SupportNonEthereumWithMaxGapsInBlocks() != 0 {
+		return nil, fmt.Errorf(
+			"multidownloader (%s) doesn't support RPC.SupportNonEthereumWithMaxGapsInBlocks (%d), set it to 0",
+			name, c.SupportNonEthereumWithMaxGapsInBlocks())
 	}
 	if storageDB == nil {
 		storageDB, err = storage.NewMultidownloaderStorage(log,
