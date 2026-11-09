@@ -124,11 +124,22 @@ jobs:
         uses: bats-core/bats-action@2104b40bb7b6c2d5110b23a26b0bf265ab8027db  # 3.0.0
 
       - name: Install kurtosis cli and jq
+        env:
+          KURTOSIS_VERSION: "1.14.1"
+          KURTOSIS_SHA256: "0bdb71dc20eaadba4812324d19acb2ebb4f77889b1c8dc32867288835e59b4da"
         run: |
-          echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
-          sudo apt update
-          sudo apt install -y kurtosis-cli jq
-          kurtosis analytics disable
+          sudo apt-get update
+          sudo apt-get install -y jq
+          archive="kurtosis-cli_${KURTOSIS_VERSION}_linux_amd64.tar.gz"
+          install_dir="${RUNNER_TEMP}/kurtosis/bin"
+          mkdir -p "${install_dir}"
+          curl -fsSL -o "${RUNNER_TEMP}/${archive}" \
+            "https://github.com/kurtosis-tech/kurtosis-cli-release-artifacts/releases/download/${KURTOSIS_VERSION}/${archive}"
+          echo "${KURTOSIS_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check --strict
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${install_dir}" kurtosis
+          echo "${install_dir}" >> "${GITHUB_PATH}"
+          "${install_dir}/kurtosis" analytics disable
+          "${install_dir}/kurtosis" version
 
       - name: Write args input to a file
         run: |
