@@ -133,6 +133,10 @@ type Options struct {
 	// DeltaExitsFile is the JSON file with the new bridge exits (see DeltaExitsFile). Required with
 	// DeltaMode. Relative paths resolve from the config file directory.
 	DeltaExitsFile string `json:"deltaExitsFile"`
+	// RecoveriesPath is the input of the delta-mode step `recoveries`: a directory (searched recursively), a
+	// .tgz of the zkevm-proof-of-ownership-kit or a recovery.json with already verified recoveries. Optional;
+	// only the recoveries step needs it. Relative paths resolve from the config file directory.
+	RecoveriesPath string `json:"recoveriesPath"`
 }
 
 // Cap modes for Options.CapMode (how Step F trims exits when capping a certificate).
@@ -313,8 +317,9 @@ func validateDeltaOptions(raw *rawOpts, deltaMode bool) error {
 		return nil
 	}
 	if !deltaMode {
-		if raw.PreviousRun != "" || raw.DeltaExitsFile != "" {
-			return fmt.Errorf("options.previousRun / options.deltaExitsFile are only valid with options.deltaMode=true")
+		if raw.PreviousRun != "" || raw.DeltaExitsFile != "" || raw.RecoveriesPath != "" {
+			return fmt.Errorf("options.previousRun / options.deltaExitsFile / options.recoveriesPath are only valid " +
+				"with options.deltaMode=true")
 		}
 		return nil
 	}
@@ -532,6 +537,9 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	if raw.DeltaExitsFile != "" {
 		opts.DeltaExitsFile = resolvePath(configDir, raw.DeltaExitsFile)
 	}
+	if raw.RecoveriesPath != "" {
+		opts.RecoveriesPath = resolvePath(configDir, raw.RecoveriesPath)
+	}
 }
 
 // mergeFlagOptions overrides the boolean (tri-state *bool) option flags that were explicitly set.
@@ -640,6 +648,7 @@ type rawOpts struct {
 	DeltaMode                             *bool                  `json:"deltaMode"`
 	PreviousRun                           string                 `json:"previousRun"`
 	DeltaExitsFile                        string                 `json:"deltaExitsFile"`
+	RecoveriesPath                        string                 `json:"recoveriesPath"`
 }
 
 // --- LBT file parsing ---

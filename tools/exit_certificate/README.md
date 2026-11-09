@@ -135,6 +135,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `deltaMode` | `false` | When `true`, builds a certificate that only carries the **new** bridge exits of `deltaExitsFile`, chained on the previous run (`previousRun`). See [Delta mode](#delta-mode--chain-additional-exits-on-a-previous-certificate). `exitAddress` is not required in this mode. |
 | `previousRun` | `""` | Required with `deltaMode`: output directory of the previous (settled) run. Relative paths resolve from the config file directory. Must differ from `outputDir`. Setting it without `deltaMode` is rejected. |
 | `deltaExitsFile` | `""` | Required with `deltaMode`: JSON file with the new exits (format in [Delta mode](#delta-mode--chain-additional-exits-on-a-previous-certificate)). Relative paths resolve from the config file directory. |
+| `recoveriesPath` | `""` | Only with `deltaMode`, input of `--step recoveries`: a directory (searched recursively), a `.tgz` of the [zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit) or a `recovery.json` with already verified recoveries. See [Recoveries step](#recoveries-step--from-verified-recoveries-to-delta-exits). Relative paths resolve from the config file directory. |
 | `verifyNewLocalExitRootUsingShadowFork` | `true` | Selects the Step G2 mode. When `true` (default), Step G2 spins up an Anvil shadow-fork, replays every bridge exit against the real bridge contract, recovers the on-chain metadata, and verifies the off-chain leaf encoding against the contract's `getRoot()` (requires `anvil` in `$PATH`). When `false`, Step G2 skips Anvil — much faster, but it trusts the off-chain leaf encoding/metadata. In both modes the certificate keeps its deterministic exit order and the `NewLocalExitRoot` is the lite exit tree root in that order. See [Step G](#step-g--compute-newlocalexitroot) for details. |
 
 ### Important configuration notes
@@ -613,6 +614,48 @@ The new exits, with the same `BridgeExit` shape as a certificate's `bridge_exits
 | `delta-manifest.json` | Links previous run → this run: certificate heights/hashes, root before/after, leaf index range added, exit counts. |
 
 A delta's `previousRun` can be the output dir of a regular run (its signed certificate already holds every exit) or of a previous delta (its full certificate is used).
+
+## Recoveries step — from verified recoveries to delta exits
+
+`--step recoveries` (delta mode only, standalone) turns the recoveries that the
+[zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit) already verified into the
+`deltaExitsFile` of a delta run, and keeps the balance files of the first run up to date so the same funds are
+never released twice. Whether each case is legitimate is a **manual prerequisite** (the kit's verification); the
+step only checks that the money can be taken from the balance state we have (the L2 RPC no longer reflects
+reality and the agglayer offers no per-contract view).
+
+```bash
+./target/exit_certificate --config parameters.json --step recoveries
+```
+
+Config (besides `deltaMode`, `previousRun`, `outputDir`): `options.recoveriesPath`.
+
+Each `recovery.json` (`locked_contract`, `destination`, `funds[]` with `token` = `native` or the L2 token address,
+and `amount` in base units) becomes one Transfer exit to L1 per (destination, origin token); the L2 token is
+resolved to its origin through `step-0-lbt.json`. Checks, all or nothing (on any error nothing is written):
+
+- same validation as the kit's `validate-recovery.sh` (no unknown fields, no placeholder addresses, positive
+  amounts, no repeated token);
+- **idempotence**: a case whose case hash (the kit's: sha256 of `recovery.json` and `move.sh`) is already in the
+  ledger is skipped, not an error; a `(locked_contract, token)` already recovered by a *different* case is an error;
+- per token, the sum of the new recoveries ≤ `pendingSCLockedBalance` still left (Step C), and ≤ the
+  `skippedSCLockedAmount` of Step F.
+
+Input state: `<previousRun>/recoveries/` if a previous recoveries run left it there, else the files of
+`previousRun` when it is a first (non-delta) run. A previous delta run **without** `recoveries/` state is refused
+(its balances would be stale). The previous run is never modified. Output, in `<outputDir>/recoveries/`:
+
+| File | Content |
+| ---- | ------- |
+| `step-c-sc-locked-values.json` | `pendingSCLockedBalance` −= recovered; `recoveredSCLockedBalance` += recovered. |
+| `step-f-checks.json` | recovered amount moves from `skippedSCLockedAmount` to `certificateAmount` / `lbtAmount` (Step F reports `lbtAmount` net of the skipped SC-locked value). |
+| `step-0-lbt.json` | unchanged copy, so the directory is a complete state for the next run. |
+| `recoveries-applied.json` | ledger of every applied (case, token). |
+| `delta-exits.json` | **only the exits of this run**: set it as `options.deltaExitsFile`. |
+| `recoveries-report.md` | per token: pending before / recovered / pending after. |
+
+The state lives in a `recoveries/` subdirectory because the delta pipeline itself writes `step-f-checks.json` in
+`outputDir`. Run the step on every delta (with `previousRun` = the last settled run) so the chain keeps its state.
 
 ## Result
 

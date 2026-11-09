@@ -264,6 +264,9 @@ func runDeltaSteps(ctx context.Context, cfg *Config, step string) error {
 	if step == "" || step == "all" {
 		return runDelta(ctx, cfg)
 	}
+	if step == stepRecoveries { // standalone: it only prepares the delta exits file and the balance state
+		return runRecoveries(cfg)
+	}
 	steps, err := parseStepList(step)
 	if err != nil {
 		return err
@@ -272,7 +275,8 @@ func runDeltaSteps(ctx context.Context, cfg *Config, step string) error {
 		switch s {
 		case lastAutoStep, stepSubmit, stepWait: // lastAutoStep is "sign"
 		default:
-			return fmt.Errorf("step %q is not available with options.deltaMode (only all, sign, submit, wait)", s)
+			return fmt.Errorf("step %q is not available with options.deltaMode (only all, recoveries, sign, submit, wait)",
+				s)
 		}
 	}
 	for _, s := range steps {
