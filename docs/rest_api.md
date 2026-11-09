@@ -155,4 +155,4 @@ the reverse proxy for per-client throttling.
 | `multidownloader-l1_status` | `GET /multidownloader/v1/l1/status` | PublicREST |
 | `multidownloader-l1_reorg` | `POST /multidownloader/v1/l1/reorg?block=` | AdminREST (developer mode) |
 | `aggkit_generateAggchainProof` | `POST /aggchainproofgen/v1/aggchain-proof` | AdminREST |
-| `l1claimsync_setNextRequiredBlock`, `l2claimsync_setNextRequiredBlock` | Removed: the claim syncer's start block is set by the components that use it | — |
+| The claim syncer start-block setter methods (L1 and L2) | Removed: the claim syncer's start block is set by the components that use it | — |
