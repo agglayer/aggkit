@@ -89,7 +89,7 @@ type Config struct {
 	// DryRun is a flag to enable the dry run mode
 	// in this mode the AggSender will not send the certificates to Agglayer
 	DryRun bool `mapstructure:"DryRun"`
-	// EnableRPC is a flag to enable the RPC for aggsender
+	// EnableRPC is a flag to expose the aggsender API on the REST servers
 	EnableRPC bool `mapstructure:"EnableRPC"`
 	// AggkitProverClient is the config for the AggkitProver client
 	AggkitProverClient *grpc.ClientConfig `mapstructure:"AggkitProverClient"`

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	aggkit "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -27,6 +26,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/gin-gonic/gin"
 )
 
 type RateLimiter interface {
@@ -264,19 +264,33 @@ func (a *AggSender) ForceTriggerCertificate() {
 	a.certificateSendTrigger.ForceTriggerEvent()
 }
 
-// GetRPCServices returns the list of services that the RPC provider exposes
-func (a *AggSender) GetRPCServices() []jRPC.Service {
+// RegisterPublicRoutes registers the read-only aggsender routes on router.
+// It registers nothing unless EnableRPC is set.
+func (a *AggSender) RegisterPublicRoutes(router gin.IRouter) {
+	api := a.api()
+	if api == nil {
+		return
+	}
+	api.RegisterPublicRoutes(router)
+}
+
+// RegisterAdminRoutes registers the aggsender operator routes on router.
+// It registers nothing unless EnableRPC is set.
+func (a *AggSender) RegisterAdminRoutes(router gin.IRouter) {
+	api := a.api()
+	if api == nil {
+		return
+	}
+	api.RegisterAdminRoutes(router)
+}
+
+// api returns the aggsender REST API, or nil when it is disabled.
+func (a *AggSender) api() *aggsenderrpc.AggsenderAPI {
 	if !a.cfg.EnableRPC {
-		return []jRPC.Service{}
+		return nil
 	}
 
-	logger := log.WithFields("module", "aggsender-rpc")
-	return []jRPC.Service{
-		{
-			Name:    "aggsender",
-			Service: aggsenderrpc.NewAggsenderRPC(logger, a.storage, a),
-		},
-	}
+	return aggsenderrpc.NewAggsenderAPI(log.WithFields("module", "aggsender-rest"), a.storage, a)
 }
 
 // Start starts the AggSender
