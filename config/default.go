@@ -196,6 +196,8 @@ RetryAfterErrorPeriod = "{{BridgeL1Sync.RetryAfterErrorPeriod}}"
 MaxRetryAttemptsAfterError = {{BridgeL1Sync.MaxRetryAttemptsAfterError}}
 WaitForNewBlocksPeriod = "{{BridgeL1Sync.WaitForNewBlocksPeriod}}"
 RequireStorageContentCompatibility = {{BridgeL1Sync.RequireStorageContentCompatibility}}
+APIMaxBlockRange = 10000
+APIMaxClaims = 1000
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -225,6 +227,8 @@ RetryAfterErrorPeriod = "{{BridgeL2Sync.RetryAfterErrorPeriod}}"
 MaxRetryAttemptsAfterError = {{BridgeL2Sync.MaxRetryAttemptsAfterError}}
 WaitForNewBlocksPeriod = "{{BridgeL2Sync.WaitForNewBlocksPeriod}}"
 RequireStorageContentCompatibility = {{BridgeL2Sync.RequireStorageContentCompatibility}}
+APIMaxBlockRange = 10000
+APIMaxClaims = 1000
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"

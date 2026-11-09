@@ -13,6 +13,9 @@ type ClaimsReader interface {
 	GetFirstProcessedBlock(ctx context.Context, tx dbtypes.Querier) (uint64, bool, error)
 	GetLastProcessedBlock(ctx context.Context, tx dbtypes.Querier) (uint64, bool, error)
 	GetClaims(ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64) ([]Claim, error)
+	// GetClaimsWithLimit behaves like GetClaims but returns at most limit claims (the oldest ones);
+	// a limit of zero means no limit
+	GetClaimsWithLimit(ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock, limit uint64) ([]Claim, error)
 	GetClaimsByGlobalIndex(ctx context.Context, tx dbtypes.Querier, globalIndex *big.Int) ([]Claim, error)
 	GetClaimsByGER(ctx context.Context, tx dbtypes.Querier, globalExitRoot common.Hash) ([]*Claim, error)
 	// GetBlockHash returns the hash stored for the block. found is false if the block is not stored
