@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -20,8 +21,8 @@ func TestGenericSubscriber_Subscribe(t *testing.T) {
 
 		// Verify the channel is in the map with correct name
 		found := false
-		for subscriberCh, name := range sub.subs {
-			if subscriberCh == ch && name == "subscriber1" {
+		for subscriberCh, subscription := range sub.subs {
+			if subscriberCh == ch && subscription.name == "subscriber1" {
 				found = true
 				break
 			}
@@ -48,9 +49,9 @@ func TestGenericSubscriber_Subscribe(t *testing.T) {
 			"subscriber3": false,
 		}
 
-		for _, name := range sub.subs {
-			if _, exists := expectedNames[name]; exists {
-				expectedNames[name] = true
+		for _, subscription := range sub.subs {
+			if _, exists := expectedNames[subscription.name]; exists {
+				expectedNames[subscription.name] = true
 			}
 		}
 
@@ -72,8 +73,8 @@ func TestGenericSubscriber_Subscribe(t *testing.T) {
 
 		// Both channels should have the same name
 		count := 0
-		for _, name := range sub.subs {
-			if name == "same_name" {
+		for _, subscription := range sub.subs {
+			if subscription.name == "same_name" {
 				count++
 			}
 		}
@@ -221,4 +222,66 @@ func TestGenericSubscriber_ConcurrentAccess(t *testing.T) {
 	// Verify no race conditions occurred
 	require.Equal(t, numSubscribers, len(sub.subs),
 		"Should have exactly %d active subscribers", numSubscribers)
+}
+
+func TestGenericSubscriber_PublishDoesNotBlockOnUnreadSubscriber(t *testing.T) {
+	const numPublish = 10000
+
+	sub := NewGenericSubscriberWithBuffer[int](4)
+	ch := sub.Subscribe("slow")
+	// Subscribers that never read must not make the publisher wait nor create goroutines per value.
+	sub.Subscribe("never-reads")
+
+	runtime.GC()
+	before := runtime.NumGoroutine()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range numPublish {
+			sub.Publish(i)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Publish blocked on subscribers that do not read")
+	}
+
+	require.LessOrEqual(t, runtime.NumGoroutine()-before, 3,
+		"publishing must not grow the number of goroutines")
+
+	// The slow subscriber gets the most recent values, in publishing order.
+	received := make([]int, 0, 8)
+	for {
+		select {
+		case v := <-ch:
+			received = append(received, v)
+			continue
+		case <-time.After(200 * time.Millisecond):
+		}
+		break
+	}
+	require.NotEmpty(t, received)
+	require.LessOrEqual(t, len(received), 5, "buffer (4) plus the value held by the delivery goroutine")
+	require.Equal(t, numPublish-1, received[len(received)-1], "latest value must be delivered")
+	for i := 1; i < len(received); i++ {
+		require.Greater(t, received[i], received[i-1], "values must keep publishing order")
+	}
+}
+
+func TestGenericSubscriber_InOrderDeliveryWhenReaderKeepsUp(t *testing.T) {
+	sub := NewGenericSubscriber[int]()
+	ch := sub.Subscribe("reader")
+	for i := range DefaultSubscriberBufferSize {
+		sub.Publish(i)
+	}
+	for i := range DefaultSubscriberBufferSize {
+		select {
+		case v := <-ch:
+			require.Equal(t, i, v)
+		case <-time.After(time.Second):
+			t.Fatalf("value %d not delivered", i)
+		}
+	}
 }

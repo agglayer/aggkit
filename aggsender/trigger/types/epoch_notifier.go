@@ -35,5 +35,7 @@ type EpochNotifier interface {
 	// GetEpochStatus returns the current status of the epoch
 	GetEpochStatus() EpochStatus
 	String() string
-	ForcePublishEpochEvent()
+	// CurrentEpochEvent returns the event describing the epoch of the current block
+	// without notifying subscribers
+	CurrentEpochEvent() EpochEvent
 }
