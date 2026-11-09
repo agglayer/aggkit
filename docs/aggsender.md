@@ -180,7 +180,7 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | DelayBetweenRetries              | Duration                                                   | Delay between retries for storing certificate and initial status check                                           |
 | MaxCertSize                       | uint                                                      | The maximum size of the certificate. 0 means infinite size                                                      |
 | DryRun                            | bool                                                      | If true, AggSender will not send certificates to Agglayer (for debugging)                                       |
-| EnableRPC                         | bool                                                      | Enable the Aggsender's RPC layer                                                                                |
+| EnableRPC                         | bool                                                      | Expose the aggsender API on the REST servers (see [REST API](./rest_api.md#endpoints))                          |
 | AggkitProverClient                | [*aggkitgrpc.ClientConfig](./common_config.md#clientconfig) | Configuration for the AggkitProver gRPC client                                                                  |
 | Mode                              | string                                                    | Defines the mode of the AggSender (PessimisticProof or AggchainProof)                                           |
 | CheckStatusCertificateInterval    | Duration                                                  | Interval at which the AggSender will check the certificate status in Agglayer                                   |
@@ -401,6 +401,31 @@ This paragraph explains different use cases with outcomes:
 - Having bridges and claims, means a certificate will be built and sent.
 - If the previous certificate we sent is `InError`, we need to resend that certificate with all the previous sent data, plus new bridges and claims we saw after that.
 - If the previously sent certificate is not `InError` or `Settled`, no new certificate will be sent/resent. The `AggSender` waits for one of these two statuses on the `Agglayer`.
+
+## REST API
+
+With `[AggSender] EnableRPC = true`, the aggsender serves its API on the aggkit REST servers (see
+[REST API](./rest_api.md) for the full list and the server configuration). Read-only queries are on
+`PublicREST` (default `0.0.0.0:5577`) and the operator action that forces a trigger is on `AdminREST`
+(default `127.0.0.1:5579`).
+
+```bash
+# Status, including the aggsender mode
+curl -sS localhost:5577/aggsender/v1/status | jq .
+
+# Header of the last sent certificate, and of the certificate at height 12
+curl -sS localhost:5577/aggsender/v1/certificate-header | jq .
+curl -sS 'localhost:5577/aggsender/v1/certificate-header?height=12' | jq .
+
+# Bridge exits of the last sent certificate, and of the certificate at height 12
+curl -sS localhost:5577/aggsender/v1/certificate-bridge-exits | jq .
+curl -sS 'localhost:5577/aggsender/v1/certificate-bridge-exits?height=12' | jq .
+
+# Force a certificate trigger
+curl -sS -X POST localhost:5579/aggsender/v1/trigger-certificate
+```
+
+A certificate that does not exist is answered with `404`; an invalid `height` with `400`.
 
 ## Debugging in Local with Bats E2E Tests
 

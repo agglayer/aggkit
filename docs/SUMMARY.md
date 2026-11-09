@@ -5,6 +5,7 @@
 - [AggOracle](./aggoracle.md)
 - [Aggsender](./aggsender.md)
 - [Aggsender Validator](./aggsender_validator.md)
+- [REST API](./rest_api.md)
 - [Bridge service](./bridge_service.md)
 - [Bridge Tracker](./bridgetracker.md)
 - [EthTxManager](./ethtxmanager.md)

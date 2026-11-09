@@ -154,6 +154,13 @@ When rate limiting is enabled, if the number of requests exceeds `NumRequests` w
 that is also where it is most effective, since a service sitting behind a proxy typically sees every client as the
 proxy's single IP, making in-process per-IP limiting ineffective anyway.
 
+`AdminREST` binds `127.0.0.1` by default, while `PublicREST` binds `0.0.0.0`. To reach the admin API from
+another machine, set `[AdminREST] Host = "0.0.0.0"` (or any other interface) explicitly; do that only where
+the operator API is meant to be reachable. The proxy's `[REST]` section backs the bridge service in that
+process. The former `[RPC]` section (the JSON-RPC server config from `github.com/0xPolygon/cdk-rpc`) is no
+longer used: aggkit ignores it and logs a warning, since its endpoints are now served by `PublicREST` and
+`AdminREST` (see [REST API](./rest_api.md)).
+
 ### CORSConfig
 
 `CORSConfig` configures Cross-Origin Resource Sharing headers, so the REST service can be called from a
@@ -179,11 +186,6 @@ AllowedHeaders = ["Content-Type", "Authorization"]
 AllowCredentials = false
 MaxAge = "12h"
 ```
-
-Note that the `[RPC]` section is **not** a `RESTConfig`: it is the JSON-RPC server config from
-`github.com/0xPolygon/cdk-rpc`, whose `MaxRequestsPerIPAndSecond` **is** enforced (via tollbooth). There, `0` does
-not mean unlimited — `tollbooth.NewLimiter(0, ...)` produces a limiter with a burst of 1 and no refill, i.e. one
-request per IP ever. Its default stays `10`.
 
 ## RPCClientConfig
 
