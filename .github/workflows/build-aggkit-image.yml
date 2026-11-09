@@ -14,8 +14,12 @@ concurrency:
   group: build-aggkit-image-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   build-aggkit-image:
+    permissions:
+      contents: read
     runs-on: amd-runner-2204
     timeout-minutes: 20
     steps:

@@ -13,8 +13,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   test-unit:
+    permissions:
+      contents: read
     name: test-unit
     strategy:
       fail-fast: false

@@ -6,8 +6,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   govulncheck_job:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     name: Run govulncheck
     steps:

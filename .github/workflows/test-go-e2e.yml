@@ -11,8 +11,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   build-docker-image:
+    permissions:
+      contents: read
     name: Build Docker Image
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -34,6 +38,8 @@ jobs:
           retention-days: 1
 
   pull-docker-images:
+    permissions:
+      contents: read
     name: Pull Docker Images
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -62,6 +68,8 @@ jobs:
           retention-days: 1
 
   test-go-e2e:
+    permissions:
+      contents: read
     name: Run Go E2E Tests (${{ matrix.env }} / ${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -175,6 +183,8 @@ jobs:
           if-no-files-found: ignore
 
   test-go-e2e-force-ger-update:
+    permissions:
+      contents: read
     name: Run force_ger_update E2E (isolated)
     runs-on: ubuntu-latest
     timeout-minutes: 45

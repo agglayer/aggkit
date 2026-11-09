@@ -18,11 +18,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   test-e2e-exit-certificate:
+    permissions:
+      contents: read
     name: Exit-certificate tool E2E
     runs-on: amd-runner-2204
     steps:

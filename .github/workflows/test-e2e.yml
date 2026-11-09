@@ -16,17 +16,16 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 env:
   AGGKIT_REPORT_CHANNEL: "C092K6Z0EUT"
   KURTOSIS_CDK_COMMIT: "507e4e8e6581ab5ecbb44444f9b7f1d05e3dcd1c"
 
-permissions:
-  packages: write
-  id-token: write
-  contents: read
-
 jobs:
   get-kurtosis-cdk-commit:
+    permissions:
+      contents: read
     name: Get Kurtosis CDK Commit
     runs-on: ubuntu-latest
     outputs:
@@ -57,12 +56,16 @@ jobs:
           echo "Using kurtosis-cdk commit: ${COMMIT}"
 
   build-aggkit-image:
+    permissions:
+      contents: read
     uses: ./.github/workflows/build-aggkit-image.yml
     with:
       go-version: 1.27.3
       docker-image-name: aggkit
 
   read-aggkit-args:
+    permissions:
+      contents: read
     name: Read aggkit args
     runs-on: ubuntu-latest
     outputs:
@@ -147,6 +150,8 @@ jobs:
             ./.github/test_e2e_cdk_erigon_multi_chains_args_3.json
 
   build-tools:
+    permissions:
+      contents: read
     name: Build aggsender find imported bridge tool
     needs:
       - build-aggkit-image
@@ -176,6 +181,10 @@ jobs:
           path: ./test/e2e/kurtosis/*.template.toml
 
   test-single-l2-network-op-pessimistic:
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
     name: Single L2 chain tests (OP, pessimistic)
     needs:
       - build-aggkit-image
@@ -197,6 +206,8 @@ jobs:
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
 
   check-single-l2-network-op-pessimistic-tests-result:
+    permissions:
+      contents: read
     name: Check results for single l2 network (OP, pessimistic)
     needs:
       - test-single-l2-network-op-pessimistic
@@ -206,6 +217,10 @@ jobs:
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-pessimistic.result) }}
 
   test-single-l2-network-op-succinct:
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
     name: Single L2 chain tests (op-succinct)
     needs:
       - build-aggkit-image
@@ -227,6 +242,8 @@ jobs:
       fail-fast: ${{ github.event_name != 'schedule' }}
 
   check-single-network-op-succinct-tests-result:
+    permissions:
+      contents: read
     name: Check results for single l2 network (op-succinct)
     needs:
       - test-single-l2-network-op-succinct
@@ -236,6 +253,10 @@ jobs:
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-succinct.result) }}
 
   test-single-l2-network-op-succinct-aggoracle-committee:
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
     name: Single L2 chain tests (op-succinct with aggoracle committee)
     needs:
       - build-aggkit-image
@@ -258,6 +279,8 @@ jobs:
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
 
   check-single-l2-network-op-succinct-aggoracle-committee-tests-result:
+    permissions:
+      contents: read
     name: Check results for single l2 network (op-succinct with aggoracle committee)
     needs:
       - test-single-l2-network-op-succinct-aggoracle-committee
@@ -267,6 +290,8 @@ jobs:
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-succinct-aggoracle-committee.result) }}
 
   test-multi-l2-networks-2-chains-op-pessimistic:
+    permissions:
+      contents: read
     name: Multi chains E2E tests (OP, pessimistic, 2 chains)
     needs:
       - build-aggkit-image
@@ -286,6 +311,8 @@ jobs:
       kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-2 }}
 
   check-multi-l2-networks-2-chains-tests-result:
+    permissions:
+      contents: read
     name: Check results for multi l2 networks (OP, pessimistic, 2 chains)
     needs:
       - test-multi-l2-networks-2-chains-op-pessimistic
@@ -295,6 +322,8 @@ jobs:
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-2-chains-op-pessimistic.result) }}
 
   test-multi-l2-networks-3-chains-cdk-erigon-pessimistic:
+    permissions:
+      contents: read
     name: Multi chains E2E tests (CDK Erigon, pessimistic, 3 chains)
     needs:
       - build-aggkit-image
@@ -316,6 +345,8 @@ jobs:
       number-of-chains: 3
 
   check-multi-l2-networks-3-chains-tests-result:
+    permissions:
+      contents: read
     name: Check results for multi l2 networks (CDK Erigon, pessimisstic, 3 chains)
     needs:
       - test-multi-l2-networks-3-chains-cdk-erigon-pessimistic
@@ -325,6 +356,8 @@ jobs:
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains-cdk-erigon-pessimistic.result) }}
 
   notify-slack:
+    permissions:
+      contents: read
     name: Notify Slack
     needs:
       - test-single-l2-network-op-pessimistic

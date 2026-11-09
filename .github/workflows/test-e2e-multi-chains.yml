@@ -58,13 +58,12 @@ on:
         type: string
         default: ""
 
-permissions:
-  contents: read
-  packages: write
-  id-token: write
+permissions: {}
 
 jobs:
   test-multi-aggkit-e2e:
+    permissions:
+      contents: read
     name: Multi chains E2E test
     runs-on: ubuntu-latest
     steps:

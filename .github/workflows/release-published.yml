@@ -4,8 +4,12 @@ on:
   release:
     types: [published]
 
+permissions: {}
+
 jobs:
   notify-slack:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Notify Slack
