@@ -34,9 +34,6 @@ Environment = "development"
 Level = "info"
 Outputs = ["stderr"]
 
-[RPC]
-Port = "5576"
-
 [PublicREST]
 Port = "5577"
 

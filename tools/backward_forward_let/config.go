@@ -48,7 +48,7 @@ type BackwardForwardLETConfig struct {
 	// BridgeServiceURL is the URL of the aggkit bridge service REST API (required).
 	BridgeServiceURL string `mapstructure:"BridgeServiceURL"`
 
-	// AggsenderRPCURL is the JSON-RPC URL of the running aggsender (required for certificate queries).
+	// AggsenderRPCURL is the base URL of the aggkit PublicREST API (required for certificate queries).
 	AggsenderRPCURL string `mapstructure:"AggsenderRPCURL"`
 
 	// L2NetworkID is the network ID of the L2 chain.
@@ -56,7 +56,7 @@ type BackwardForwardLETConfig struct {
 
 	// CertificateExitsFile is an optional path to a JSON fallback file containing
 	// raw AggLayer certificates or pre-extracted bridge exits keyed by certificate
-	// height. When set, used if the aggsender RPC cannot supply bridge exits for a height.
+	// height. When set, used if the aggsender API cannot supply bridge exits for a height.
 	CertificateExitsFile string `mapstructure:"CertificateExitsFile"`
 }
 

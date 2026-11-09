@@ -237,8 +237,7 @@ services:
       - ./config/001/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
       - ./config/001/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
     ports:
-      - "11576:5576"    # RPC
-      - "11577:5577"    # REST API
+      - "11577:5577"    # PublicREST API
     depends_on:
       geth:
         condition: service_healthy
@@ -354,8 +353,7 @@ services:
       - ./config/002/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
       - ./config/002/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
     ports:
-      - "12576:5576"    # RPC
-      - "12577:5577"    # REST API
+      - "12577:5577"    # PublicREST API
     depends_on:
       geth:
         condition: service_healthy

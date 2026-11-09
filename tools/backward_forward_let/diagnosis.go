@@ -16,8 +16,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// aggsenderRPCClient is the subset of rpcclient.Client used by the tool and its tests.
-type aggsenderRPCClient interface {
+// aggsenderAPIClient is the subset of apiclient.Client used by the tool and its tests.
+type aggsenderAPIClient interface {
 	GetCertificateBridgeExits(height *uint64) ([]*agglayertypes.BridgeExit, error)
 	GetCertificateHeaderPerHeight(height *uint64) (*aggsendertypes.Certificate, error)
 }
@@ -142,7 +142,7 @@ type missingCertsError struct {
 // An error is returned only when both sources fail or the override has no entry
 // for the given height.
 func getBridgeExitsForHeight(env *Env, height uint64) ([]*agglayertypes.BridgeExit, error) {
-	exits, err := env.AggsenderRPC.GetCertificateBridgeExits(&height)
+	exits, err := env.AggsenderAPI.GetCertificateBridgeExits(&height)
 	if err == nil {
 		return exits, nil
 	}

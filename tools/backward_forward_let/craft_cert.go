@@ -217,7 +217,7 @@ func stagingExistingLeafHashes(
 }
 
 func l1InfoTreeLeafCountFromAggsender(env *Env, settledHeight uint64) (uint32, error) {
-	cert, err := env.AggsenderRPC.GetCertificateHeaderPerHeight(&settledHeight)
+	cert, err := env.AggsenderAPI.GetCertificateHeaderPerHeight(&settledHeight)
 	if err != nil {
 		return 0, err
 	}

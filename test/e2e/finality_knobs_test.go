@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"os"
@@ -10,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk-rpc/rpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/apiclient"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/log"
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
@@ -29,7 +28,7 @@ const (
 	finalityKnobsMaxTestBudget   = 12 * time.Minute
 	finalityKnobsRestartWait     = 6 * time.Minute // > envs.serviceReadyTimeout (4m)
 	finalityKnobsRestoreWait     = 6 * time.Minute
-	finalityKnobsRPCReadyWait    = 2 * time.Minute
+	finalityKnobsAPIReadyWait    = 2 * time.Minute
 	finalityKnobsLogPollInterval = 5 * time.Second
 	// finalityKnobsBlockTimeSampleBlocks is how many new L1 blocks are timed against the wall clock to
 	// estimate the block time. Header timestamps are deliberately not used: the anvil snapshot's
@@ -142,12 +141,13 @@ func TestAggsenderIndependentL1FinalityKnobs(t *testing.T) {
 			"AggSender=LatestBlock/-%d} (aggkit#1846)", n)
 	require.NoError(t, restartErr, "restart %s with asymmetric finality knobs", finalityKnobsAggkitService)
 
-	// Step 3: the aggsender RPC is up.
-	require.NoError(t, pollWithBackoff(ctx, finalityKnobsRPCReadyWait, backoffInitial, backoffMax, "aggsender-rpc",
+	// Step 3: the aggsender API is up.
+	aggsenderAPI := apiclient.NewClient(testEnv.AggsenderAPIURL)
+	require.NoError(t, pollWithBackoff(ctx, finalityKnobsAPIReadyWait, backoffInitial, backoffMax, "aggsender-api",
 		func() (bool, error) {
-			resp, err := rpc.JSONRPCCall(testEnv.AggsenderRPCURL, "aggsender_status")
-			return err == nil && resp.Error == nil, nil
-		}), "aggsender RPC did not come up within %s", finalityKnobsRPCReadyWait)
+			_, err := aggsenderAPI.GetStatus()
+			return err == nil, nil
+		}), "aggsender API did not come up within %s", finalityKnobsAPIReadyWait)
 
 	// Step 4: inject claims inside the window.
 	l1Opts, l1Key, err := testEnv.Keys.L1Keys.Checkout()
@@ -179,7 +179,7 @@ func TestAggsenderIndependentL1FinalityKnobs(t *testing.T) {
 	// Step 6: a certificate covering the claims settles.
 	require.NoError(t, pollWithBackoff(ctx, settleWait, backoffInitial, backoffMax, "settled-cert",
 		func() (bool, error) {
-			last, ok := aggsenderCertificate(t, testEnv.AggsenderRPCURL, nil)
+			last, ok := aggsenderCertificate(aggsenderAPI, nil)
 			if !ok {
 				return false, nil
 			}
@@ -189,7 +189,7 @@ func TestAggsenderIndependentL1FinalityKnobs(t *testing.T) {
 			// ASAP mode may already have a newer pending certificate on top of the settled one.
 			if last.Header.Height > 0 {
 				prevHeight := last.Header.Height - 1
-				prev, ok := aggsenderCertificate(t, testEnv.AggsenderRPCURL, &prevHeight)
+				prev, ok := aggsenderCertificate(aggsenderAPI, &prevHeight)
 				if ok && certificateSettledCovering(prev, lastClaimL2Block) {
 					return true, nil
 				}
@@ -241,28 +241,14 @@ func aggkitLogsSince(ctx context.Context, t *testing.T, since time.Time) string 
 }
 
 // aggsenderCertificate fetches the certificate at height (or the last sent one when height is nil)
-// through aggsender_getCertificateHeaderPerHeight. It returns ok=false on transient RPC errors and on
-// "certificate not found", so callers can keep polling.
-func aggsenderCertificate(t *testing.T, url string, height *uint64) (*aggsendertypes.Certificate, bool) {
-	t.Helper()
-	var (
-		resp rpc.Response
-		err  error
-	)
-	if height == nil {
-		resp, err = rpc.JSONRPCCall(url, "aggsender_getCertificateHeaderPerHeight")
-	} else {
-		resp, err = rpc.JSONRPCCall(url, "aggsender_getCertificateHeaderPerHeight", *height)
-	}
-	if err != nil || resp.Error != nil {
+// from the aggsender API. It returns ok=false on transient errors and on "certificate not found",
+// so callers can keep polling.
+func aggsenderCertificate(api *apiclient.Client, height *uint64) (*aggsendertypes.Certificate, bool) {
+	cert, err := api.GetCertificateHeaderPerHeight(height)
+	if err != nil || cert.Header == nil {
 		return nil, false
 	}
-	var cert aggsendertypes.Certificate
-	require.NoError(t, json.Unmarshal(resp.Result, &cert))
-	if cert.Header == nil {
-		return nil, false
-	}
-	return &cert, true
+	return cert, true
 }
 
 // certificateSettledCovering reports whether cert is settled and its range reaches toBlock.

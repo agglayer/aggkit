@@ -88,13 +88,13 @@ func TestParseSummary_TwoChains(t *testing.T) {
 
 	// Each network must expose its execution-client RPC and bridge-service endpoints.
 	require.NotEmpty(t, l2A.l2RPCExternal(), "L2A execution RPC should be set")
-	require.NotEmpty(t, l2A.Services.Aggkit.BridgeService.External, "L2A bridge service should be set")
+	require.NotEmpty(t, l2A.Services.Aggkit.RESTAPI.External, "L2A bridge service should be set")
 	require.NotEmpty(t, l2B.l2RPCExternal(), "L2B execution RPC should be set")
-	require.NotEmpty(t, l2B.Services.Aggkit.BridgeService.External, "L2B bridge service should be set")
+	require.NotEmpty(t, l2B.Services.Aggkit.RESTAPI.External, "L2B bridge service should be set")
 
 	// The two networks must use distinct external endpoints (separate per-chain services).
 	require.NotEqual(t, l2A.l2RPCExternal(), l2B.l2RPCExternal(), "L2A and L2B should have distinct RPC endpoints")
-	require.NotEqual(t, l2A.Services.Aggkit.BridgeService.External, l2B.Services.Aggkit.BridgeService.External,
+	require.NotEqual(t, l2A.Services.Aggkit.RESTAPI.External, l2B.Services.Aggkit.RESTAPI.External,
 		"L2A and L2B should have distinct bridge-service endpoints")
 }
 

@@ -47,10 +47,7 @@ Outputs     = ["stderr"]
 
 # ------------------------------------------------------------------------------
 # Use different ports to avoid conflicts with the running aggkit container
-# (which uses 5576/5577/9091)
-[RPC]
-Port = "5596"
-
+# (which uses 5577/9091)
 [PublicREST]
 Port = "5597"
 

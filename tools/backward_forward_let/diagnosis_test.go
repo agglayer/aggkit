@@ -42,22 +42,22 @@ func (s *stubBridgeService) GetBridgeByDepositCount(
 
 // --- stubs for findDivergencePoint unit tests ---
 
-// stubAggsenderRPC implements aggsenderRPCClient for testing.
-type stubAggsenderRPC struct {
+// stubAggsenderAPI implements aggsenderAPIClient for testing.
+type stubAggsenderAPI struct {
 	// exitsByHeight maps height → exits to return (empty slice = success with no exits).
 	exitsByHeight map[uint64][]*agglayertypes.BridgeExit
 	// failHeights are heights where GetCertificateBridgeExits returns an error.
 	failHeights map[uint64]bool
 }
 
-func (s *stubAggsenderRPC) GetCertificateBridgeExits(height *uint64) ([]*agglayertypes.BridgeExit, error) {
+func (s *stubAggsenderAPI) GetCertificateBridgeExits(height *uint64) ([]*agglayertypes.BridgeExit, error) {
 	if s.failHeights[*height] {
 		return nil, fmt.Errorf("stub: no data for height %d", *height)
 	}
 	return s.exitsByHeight[*height], nil
 }
 
-func (s *stubAggsenderRPC) GetCertificateHeaderPerHeight(_ *uint64) (*aggsendertypes.Certificate, error) {
+func (s *stubAggsenderAPI) GetCertificateHeaderPerHeight(_ *uint64) (*aggsendertypes.Certificate, error) {
 	return nil, fmt.Errorf("stub: not implemented")
 }
 
@@ -356,7 +356,7 @@ func TestFindDivergencePoint_AllHeightsFail(t *testing.T) {
 	settledCertID := common.HexToHash("0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 
 	env := &Env{
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			failHeights: map[uint64]bool{0: true, 1: true, 2: true},
 		},
 		// BridgeService is not reached when aggsender fails.
@@ -397,7 +397,7 @@ func TestFindDivergencePoint_OnlySettledHeightFails(t *testing.T) {
 
 	// Heights 1 and 0 return empty cert (no exits) — skipped without touching BridgeService.
 	env := &Env{
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			failHeights:   map[uint64]bool{2: true},
 			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{1: {}, 0: {}},
 		},
@@ -423,7 +423,7 @@ func TestFindDivergencePoint_NoFailure(t *testing.T) {
 
 	// All heights return empty exit lists — no comparison against BridgeService needed.
 	env := &Env{
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{
 				0: {},
 				1: {},
@@ -448,7 +448,7 @@ func TestFindDivergencePoint_ZeroCertIDSkipped(t *testing.T) {
 	t.Parallel()
 
 	env := &Env{
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			failHeights: map[uint64]bool{0: true},
 		},
 	}
@@ -483,7 +483,7 @@ func TestGetBridgeExitsForHeight_AggsenderSucceeds(t *testing.T) {
 
 	want := []*agglayertypes.BridgeExit{{DestinationNetwork: 42}}
 	env := &Env{
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{5: want},
 		},
 		// Override present but must not be reached.
@@ -504,7 +504,7 @@ func TestGetBridgeExitsForHeight_AggsenderFails_OverrideHit(t *testing.T) {
 
 	want := []*agglayertypes.BridgeExit{{DestinationNetwork: 7}}
 	env := &Env{
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			failHeights: map[uint64]bool{3: true},
 		},
 		BridgeExitsOverride: makeOverride(map[uint64][]*agglayertypes.BridgeExit{3: want}),
@@ -522,7 +522,7 @@ func TestGetBridgeExitsForHeight_AggsenderFails_OverrideMiss(t *testing.T) {
 	t.Parallel()
 
 	env := &Env{
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			failHeights: map[uint64]bool{8: true},
 		},
 		// Override exists but has no entry for height 8.
@@ -542,7 +542,7 @@ func TestGetBridgeExitsForHeight_AggsenderFails_NoOverride(t *testing.T) {
 	t.Parallel()
 
 	env := &Env{
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			failHeights: map[uint64]bool{2: true},
 		},
 		BridgeExitsOverride: nil,
@@ -911,7 +911,7 @@ func TestFindDivergencePoint_NonMatchingExits(t *testing.T) {
 		"0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", 2, "1000")
 
 	env := &Env{
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{
 				0: {mismatchedExit},
 			},
@@ -950,7 +950,7 @@ func TestFindDivergencePoint_AllCertsMatch(t *testing.T) {
 	exit1 := makeBridgeExitFromResponse(br1)
 
 	env := &Env{
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			// Height 0 returns 2 exits that match DCs 0 and 1.
 			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{
 				0: {exit0, exit1},
@@ -1013,7 +1013,7 @@ func TestFindDivergencePoint_MatchingThenMissingAbove(t *testing.T) {
 
 	// Height 2 fails, heights 0 and 1 have exits that match (empty).
 	env := &Env{
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			failHeights: map[uint64]bool{2: true},
 			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{
 				0: {},

@@ -7,7 +7,7 @@ import (
 	"os"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggsender/rpcclient"
+	"github.com/agglayer/aggkit/aggsender/apiclient"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
@@ -46,7 +46,7 @@ func unmarshalGlobalIndex(globalIndex string) (*agglayertypes.GlobalIndex, error
 }
 
 // This function find out the certificate for a deposit
-// It use the aggsender RPC
+// It uses the aggsender API
 func certContainsGlobalIndex(cert *types.Certificate, globalIndex *agglayertypes.GlobalIndex) (bool, error) {
 	if cert == nil {
 		return false, nil
@@ -86,10 +86,10 @@ func tryUnmarshalCertificate(cert *types.Certificate) (*agglayertypes.Certificat
 func main() {
 	if len(os.Args) != minimumNumArgs {
 		fmt.Printf("Wrong number of arguments\n")
-		fmt.Printf(" Usage: %v <aggsenderRPC> <globalIndex>\n", os.Args[0])
+		fmt.Printf(" Usage: %v <aggkitAPIURL> <globalIndex>\n", os.Args[0])
 		os.Exit(errLevelWrongParams)
 	}
-	aggsenderRPC := os.Args[1]
+	aggkitAPIURL := os.Args[1]
 	globalIndex := os.Args[2]
 	decodedGlobalIndex, err := unmarshalGlobalIndex(globalIndex)
 	if err != nil {
@@ -97,7 +97,7 @@ func main() {
 		os.Exit(errLevelWrongParams)
 	}
 	log.Debugf("decodedGlobalIndex: %v", decodedGlobalIndex)
-	aggsenderClient := rpcclient.NewClient(aggsenderRPC)
+	aggsenderClient := apiclient.NewClient(aggkitAPIURL)
 	// Get latest certificate
 	cert, err := aggsenderClient.GetCertificateHeaderPerHeight(nil)
 	if err != nil {
