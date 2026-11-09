@@ -42,7 +42,7 @@ jobs:
           echo "${install_dir}" >> "${GITHUB_PATH}"
           "${install_dir}/zizmor" --version
 
-      - name: Audit workflows
+      - name: Run workflow lint
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: zizmor --min-severity medium .github/workflows

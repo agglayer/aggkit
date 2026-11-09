@@ -1,4 +1,4 @@
-# Configuration for the workflow audit run by the Lint workflows job.
+# Configuration for the workflow lint job.
 
 rules:
   # Every action and reusable workflow must be pinned to a full commit SHA.
