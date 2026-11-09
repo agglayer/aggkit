@@ -22,15 +22,21 @@ Scripts run in order by [run_e2e_test.sh](run_e2e_test.sh) against a Kurtosis CD
 ```
 
 `--delta` (CI job *Exit-certificate tool E2E (delta mode)*): a chain of two deltas, each one the **recovery of
-one SC-locked contract** (the case of a [zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit)
-submission already verified by the team), applied with the `recoveries` step:
+one SC-locked contract**, applied with the `recoveries` step. Each recovery is a **real
+[zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit) submission**: the kit simulates
+the withdrawal on a shadow-fork of the (frozen) L2, the owner and the destination sign the ownership proof, and the
+package it validates is the input of the tool. It needs a checkout of the kit (`KIT_DIR`, default
+`../zkevm-proof-of-ownership-kit` next to this repo; the CI job checks it out) plus docker, `cast` and `jq`.
 
-1. `20` deploys **two** L2 contracts that cannot move ETH (runtime code `STOP`) and bridges ~3 ETH to the first
-   and ~2 ETH to the second. Two fresh L1 addresses are the "rightful owners" (the `destination` of each recovery).
+1. `20` deploys **two** `contracts/Vault.sol` on L2 (owner-only `withdraw`, owner = the deployer, the Kurtosis faucet
+   key) and bridges ~3 ETH to the first and ~2 ETH to the second. Two EOAs with a known (public test) key are the
+   "rightful owners" (the `destination` of each recovery): the kit requires the destination to sign.
 2. `40` generates the first certificate with `skipSCLockedValue`, so both amounts stay on the L2 (and their
    collateral in the agglayer). `42`/`43` are skipped: they assume the regular certificate.
 3. `50` settles the first certificate.
-4. `52 1` — **delta 1**: writes recovery case 1 (a kit-style `.tgz` with `recovery.json` + `move.sh`) in
+4. `52 1` — **delta 1**: builds recovery case 1 with the kit (`recovery.json`, a `move.sh` where the vault owner
+   withdraws to the destination, signatures of both, `prepare-submission.sh` and `verify-submission.sh` against a
+   fork of the L2, `--allow-test-fork` since it is not zkEVM mainnet), puts the verified `.tgz` in
    `tmp/recoveries-cases/` and runs `--step recoveries`. It checks, against the first run's files:
    `delta-exits.json` has the single exit (amount, owner, native token); `step-c` `pendingSCLockedBalance` went down
    and `recoveredSCLockedBalance` went up by exactly that amount; `step-f-checks` moved it from
@@ -41,7 +47,7 @@ submission already verified by the team), applied with the `recoveries` step:
    `exit-certificate-full.json`, manifest.
 5. `52 2` — **delta 2**: adds case 2 (a directory) next to case 1 and runs `--step recoveries` chained on delta 1's
    `recoveries/` state. Case 1 is already in the ledger, so only case 2's exit is issued (idempotence); the
-   balances continue from delta 1's (cumulative `recoveredSCLockedBalance`); a negative case (sink #1 again) is
+   balances continue from delta 1's (cumulative `recoveredSCLockedBalance`); a negative case (vault #1 again) is
    refused. Same certificate checks, chained on delta 1.
 6. `60` runs the claimer with the **last delta's** config (its `exit-certificate-full.json`) and claims on L1
    every exit — the first certificate's (EOAs) and both deltas' (owners) — against the latest root. Finally each
@@ -53,3 +59,15 @@ step: `delta-exits.json`, updated `step-c`/`step-f-checks`, ledger, report) and 
 
 Not covered: claiming some first-certificate exits *before* the delta settles and the rest after (the
 index stays the same, so it should not matter for `claimAsset`, but it is not exercised here).
+
+## Regenerating `contracts/Vault.bin`
+
+`contracts/Vault.bin` is the creation bytecode of `contracts/Vault.sol` (solc 0.8.24, `evm_version = "shanghai"`),
+committed so the e2e does not need to download a compiler:
+
+```bash
+mkdir -p /tmp/vault/src && cp test/e2e-exit_certificate/contracts/Vault.sol /tmp/vault/src/
+printf '[profile.default]\nsolc_version = "0.8.24"\nevm_version = "shanghai"\n' > /tmp/vault/foundry.toml
+(cd /tmp/vault && forge build --root .)
+jq -r '.bytecode.object' /tmp/vault/out/Vault.sol/Vault.json | sed 's/^0x//' | tr -d '\n' > test/e2e-exit_certificate/contracts/Vault.bin
+```

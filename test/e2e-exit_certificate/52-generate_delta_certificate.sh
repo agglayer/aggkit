@@ -3,22 +3,29 @@
 # run, whose exits come from a verified SC-locked-funds RECOVERY (`--step recoveries`).
 # Usage: 52-generate_delta_certificate.sh [INDEX]   (default 1)
 #
-# 20-prepare_network.sh (DELTA_SCENARIO=1) locked ETH in two smart contracts on L2 and the first
-# certificate left it behind (skipSCLockedValue=true). Each delta releases one of them to its owner,
-# like a zkevm-proof-of-ownership-kit case already verified by the team:
-#   - INDEX 1 chains on the first run and recovers sink #1 (case delivered as a kit-style .tgz);
-#   - INDEX 2 chains on delta 1 and recovers sink #2 (case delivered as a directory). The cases dir
-#     then also holds case 1, which the ledger must skip: only the new exit is issued.
+# 20-prepare_network.sh (DELTA_SCENARIO=1) locked ETH in two Vault contracts on L2 and the first
+# certificate left it behind (skipSCLockedValue=true). Each delta releases one of them to its owner, with a
+# REAL zkevm-proof-of-ownership-kit submission (the kit repo, KIT_DIR):
+#   - INDEX 1 chains on the first run and recovers vault #1 (the case reaches the tool as the kit's .tgz);
+#   - INDEX 2 chains on delta 1 and recovers vault #2 (the case reaches the tool as an unpacked directory).
+#     The cases dir then also holds case 1, which the ledger must skip: only the new exit is issued.
 #
 # For each delta it:
-#   1. writes the recovery case under tmp/recoveries-cases and a derived config
-#      (tmp/exit_certificate-kurtosis-delta-INDEX.json, output dir output-kurtosis-delta-INDEX),
-#   2. runs `--step recoveries` and checks the balance state it writes (step C / step F / ledger / delta
+#   1. builds the recovery with the kit: recovery.json + move.sh (the vault owner withdraws to the
+#      destination), signatures of the owner and the destination, `prepare-submission.sh` (simulates move.sh on
+#      a shadow-fork of the frozen L2 and packs the .tgz) and `verify-submission.sh` (what Polygon runs on it),
+#   2. writes a derived config (tmp/exit_certificate-kurtosis-delta-INDEX.json, output dir
+#      output-kurtosis-delta-INDEX) whose recoveriesPath is the kit's verified package,
+#   3. runs `--step recoveries` and checks the balance state it writes (step C / step F / ledger / delta
 #      exits file), that it is deterministic, that it never touches the previous run, and that it refuses
 #      a case that must not be applied (negative test),
-#   3. runs the tool (CHECK → F → G2 → H → I → SIGN), submits it and waits for L1 settlement,
-#   4. verifies the chaining: height, prev/new local exit root, the delta certificate carries only the
+#   4. runs the tool (CHECK → F → G2 → H → I → SIGN), submits it and waits for L1 settlement,
+#   5. verifies the chaining: height, prev/new local exit root, the delta certificate carries only the
 #      new exit, and exit-certificate-full.json carries every exit (previous + new).
+#
+# Needs the kit (it is not part of this repo): KIT_DIR (default: ../zkevm-proof-of-ownership-kit next to this
+# repo) with docker, cast and jq. The fork the kit starts reads the L2 over RPC, which is frozen (30-stop_sequencer.sh)
+# so its head is stable, as the kit requires. KIT_ANVIL_PORT (default 18546) is the port of that fork.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,6 +51,19 @@ done
 # shellcheck source=/dev/null
 source "$DELTA_STATE_FILE"
 
+KIT_DIR="${KIT_DIR:-$(cd "${AGGKIT_DIR}/.." && pwd)/zkevm-proof-of-ownership-kit}"
+KIT_ANVIL_PORT="${KIT_ANVIL_PORT:-18546}"
+for f in submission/prepare-submission.sh submission/verify-submission.sh ownership-proof/sign-message.sh; do
+    if [[ ! -f "${KIT_DIR}/${f}" ]]; then
+        log_error "zkevm-proof-of-ownership-kit not found: ${KIT_DIR}/${f} is missing"
+        log_error "Set KIT_DIR to a checkout of the kit (with submission/prepare-submission.sh)."
+        exit 1
+    fi
+done
+for bin in docker cast; do
+    command -v "$bin" >/dev/null || { log_error "$bin is required by the kit"; exit 1; }
+done
+
 # --- previous run (the base run for delta 1, delta INDEX-1 otherwise) ---
 if [[ "$INDEX" -eq 1 ]]; then
     PREV_CONFIG="$BASE_CONFIG"
@@ -67,8 +87,10 @@ if [[ "$INDEX" -eq 1 ]]; then PREV_STATE="$PREV_OUTPUT"; else PREV_STATE="${PREV
 # --- this delta's recovery: one locked contract released to its owner ---
 case "$INDEX" in
     1) LOCKED="$DELTA_SC_LOCKED_ADDRESS_1"; AMOUNT="$DELTA_SC_LOCKED_AMOUNT_1"; OWNER="$DELTA_OWNER_ADDRESS_1"
+       OWNER_KEY="$DELTA_OWNER_KEY_1"
        RECOVERED_SO_FAR="$DELTA_SC_LOCKED_AMOUNT_1" ;;
     2) LOCKED="$DELTA_SC_LOCKED_ADDRESS_2"; AMOUNT="$DELTA_SC_LOCKED_AMOUNT_2"; OWNER="$DELTA_OWNER_ADDRESS_2"
+       OWNER_KEY="$DELTA_OWNER_KEY_2"
        RECOVERED_SO_FAR="$(echo "$DELTA_SC_LOCKED_AMOUNT_1 + $DELTA_SC_LOCKED_AMOUNT_2" | bc)" ;;
     *) log_error "unsupported delta INDEX '$INDEX' (1 or 2)"; exit 1 ;;
 esac
@@ -80,7 +102,8 @@ DELTA_OUTPUT="${TMP_DIR}/output-kurtosis-delta-${INDEX}"
 RECOVERIES_OUT="${DELTA_OUTPUT}/recoveries"
 DELTA_EXITS_REL="${DELTA_OUTPUT_REL}/recoveries/delta-exits.json"
 
-# write_case <dir> <locked> <destination> <amount>: a kit-style case (recovery.json + move.sh).
+# write_case <dir> <locked> <destination> <amount>: a stub kit-style case (recovery.json + move.sh), NOT verified
+# by the kit. Only for the negative tests below: the cases the recoveries step must refuse.
 write_case() {
     mkdir -p "$1"
     jq -n --arg l "$2" --arg d "$3" --arg a "$4" \
@@ -89,16 +112,80 @@ write_case() {
     echo '[]' > "$1/signatures.json"
 }
 
+# build_kit_case <index> <locked> <destination> <destination key> <amount>: a recovery of the zkevm-proof-of-ownership-kit,
+# end to end. recovery.json + move.sh (the vault owner withdraws everything to the destination), signed by the
+# owner and by the destination (the kit demands both), then prepare-submission.sh (runs move.sh on a fresh
+# shadow-fork of the L2 and packs the .tgz) and verify-submission.sh (what Polygon runs on the package).
+# Sets KIT_PACKAGE to the verified .tgz. The forks are test forks (--allow-test-fork): the L2 is not zkEVM
+# mainnet, so the packages are valid for this e2e only.
+build_kit_case() {
+    local idx="$1" locked="$2" dest="$3" dest_key="$4" amount="$5"
+    local case_id="kurtosis-delta-${idx}"
+    local case_dir="${KIT_DIR}/cases/${case_id}"
+    local work l2_rpc fork_block nonce
+    work="$(mktemp -d)"
+    l2_rpc="$(jq -r '.l2RpcUrl' "$BASE_CONFIG")"
+    fork_block="$(cast block-number --rpc-url "$l2_rpc")"
+    # The kit only accepts a fork whose block is the head of the L2: it must be frozen.
+    sleep 3
+    if [[ "$(cast block-number --rpc-url "$l2_rpc")" != "$fork_block" ]]; then
+        log_error "the L2 is still producing blocks (30-stop_sequencer.sh not run?): the kit needs a stable head"
+        exit 1
+    fi
+
+    log_info "🧰 Kit case ${case_id}: ${locked} → ${dest} (${amount} wei), L2 fork at block ${fork_block}"
+    rm -rf "$case_dir"
+    mkdir -p "$case_dir"
+    jq -n --arg l "$locked" --arg d "$dest" --arg a "$amount" \
+        '{locked_contract: $l, destination: $d, funds: [{token: "native", amount: $a}]}' > "${case_dir}/recovery.json"
+    cat > "${case_dir}/move.sh" <<MOVE
+#!/bin/bash
+# Kit case ${case_id} of the exit_certificate delta e2e: the owner of the Vault releases its ETH.
+set -euo pipefail
+RPC_URL="\${RPC_URL:-http://127.0.0.1:8545}"
+cast rpc anvil_impersonateAccount "${DELTA_VAULT_OWNER_ADDRESS}" --rpc-url "\${RPC_URL}" >/dev/null
+cast send --unlocked --from "${DELTA_VAULT_OWNER_ADDRESS}" "${locked}" "withdraw(address,uint256)" "${dest}" "${amount}" \\
+    --json --rpc-url "\${RPC_URL}"
+MOVE
+    chmod +x "${case_dir}/move.sh"
+    echo '[]' > "${case_dir}/signatures.json"
+
+    # The signatures are bound to recovery.json and move.sh, so both are final here. Throwaway keystores.
+    nonce="e2e-delta-${idx}-$(date -u +%Y%m%d%H%M%S)"
+    cast wallet import owner --private-key "$DELTA_VAULT_OWNER_KEY" --unsafe-password pw --keystore-dir "${work}/ks" >/dev/null
+    cast wallet import dest --private-key "$dest_key" --unsafe-password pw --keystore-dir "${work}/ks" >/dev/null
+    ADDRESS="$DELTA_VAULT_OWNER_ADDRESS" NONCE="$nonce" run_quiet \
+        "${KIT_DIR}/ownership-proof/sign-message.sh" "${case_dir}/signatures.json" --keystore "${work}/ks/owner" --password pw
+    ADDRESS="$dest" NONCE="$nonce" run_quiet \
+        "${KIT_DIR}/ownership-proof/sign-message.sh" "${case_dir}/signatures.json" --keystore "${work}/ks/dest" --password pw
+
+    local -a fork_env=(L2_RPC_URL="$l2_rpc" ANVIL_PORT="$KIT_ANVIL_PORT" FORK_BLOCK="$fork_block" BLOCK_TIME=1
+        RPC_URL="http://127.0.0.1:${KIT_ANVIL_PORT}" FORK_LOG="${work}/fork.log")
+    log_info "📦 prepare-submission.sh (shadow-fork of the L2, runs move.sh, packs the .tgz)"
+    run_quiet env "${fork_env[@]}" "${KIT_DIR}/submission/prepare-submission.sh" "$case_dir" \
+        --allow-test-fork --output-dir "${work}/out" </dev/null
+    KIT_PACKAGE="$(find "${work}/out" -maxdepth 1 -name "${case_id}-*.tgz" | sort | tail -n 1)"
+    [[ -f "$KIT_PACKAGE" ]] || { log_error "prepare-submission.sh did not produce a .tgz in ${work}/out"; exit 1; }
+
+    log_info "🛂 verify-submission.sh (what Polygon runs on the package)"
+    run_quiet env "${fork_env[@]}" "${KIT_DIR}/submission/verify-submission.sh" "$KIT_PACKAGE" \
+        --allow-test-fork </dev/null
+    # Keep the verified package outside the kit tree and the tmp work dir.
+    mkdir -p "${TMP_DIR}/kit-packages"
+    cp "$KIT_PACKAGE" "${TMP_DIR}/kit-packages/"
+    KIT_PACKAGE="${TMP_DIR}/kit-packages/$(basename "$KIT_PACKAGE")"
+    rm -rf "$work"
+}
+
 log_info "📝 Delta ${INDEX}: recover ${AMOUNT} wei locked in ${LOCKED} → owner ${OWNER}, chained on ${PREV_OUTPUT}"
+build_kit_case "$INDEX" "$LOCKED" "$OWNER" "$OWNER_KEY" "$AMOUNT"
 if [[ "$INDEX" -eq 1 ]]; then
     rm -rf "$CASES_DIR"
-    STAGE="$(mktemp -d)"
-    write_case "${STAGE}/case-1" "$LOCKED" "$OWNER" "$AMOUNT"
     mkdir -p "$CASES_DIR"
-    tar -C "$STAGE" -czf "${CASES_DIR}/case-1.tgz" case-1   # delivered as the kit's .tgz
-    rm -rf "$STAGE"
+    cp "$KIT_PACKAGE" "$CASES_DIR/"                  # delivered as the kit's .tgz
 else
-    write_case "${CASES_DIR}/case-${INDEX}" "$LOCKED" "$OWNER" "$AMOUNT"   # delivered as a directory
+    mkdir -p "$CASES_DIR"
+    tar -xzf "$KIT_PACKAGE" -C "$CASES_DIR"          # delivered as an unpacked directory
 fi
 
 jq --arg prev "$PREV_OUTPUT_REL" --arg exits "$DELTA_EXITS_REL" --arg out "$DELTA_OUTPUT_REL" --arg cases "$CASES_REL" '
@@ -180,6 +267,11 @@ check "the ledger holds the $INDEX applied case(s), the last one for $LOCKED" \
     jq -e --argjson n "$INDEX" --arg l "$LOCKED" \
         'length == $n and (.[-1].lockedContract | ascii_downcase) == ($l | ascii_downcase)' \
         "${RECOVERIES_OUT}/recoveries-applied.json" >/dev/null
+check "the kit package of the case is verified and carries the expected recovery (${LOCKED} → ${OWNER}, ${AMOUNT} wei)" \
+    bash -c 'tar -xzOf "$1" --wildcards "*/manifest.json" | jq -e --arg l "$2" --arg d "$3" --arg a "$4" '"'"'
+        (.locked_contract | ascii_downcase) == ($l | ascii_downcase) and (.destination | ascii_downcase) == ($d | ascii_downcase)
+        and (.balances | length == 1) and .balances[0].amount == $a and .balances[0].locked_after == "0"
+        and (.required_signers | length == 2)'"'"' >/dev/null' _ "$KIT_PACKAGE" "$LOCKED" "$OWNER" "$AMOUNT"
 check "the previous run's balance files were not modified" \
     test "$PREV_STATE_HASH" = "$(sha256sum "${PREV_STATE}/step-c-sc-locked-values.json" "${PREV_STATE}/step-f-checks.json")"
 

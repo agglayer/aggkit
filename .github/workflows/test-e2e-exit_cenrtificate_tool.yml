@@ -3,7 +3,8 @@
 # test harness / this workflow itself). The test spins up a Kurtosis CDK
 # network, prepares a settled certificate and runs the exit_certificate tool.
 # Two jobs: the regular exit certificate, and the delta mode (a first certificate that leaves
-# smart-contract-locked funds behind, then two delta certificates recovering them on top of it).
+# smart-contract-locked funds behind, then two delta certificates recovering them on top of it, each
+# recovery being a zkevm-proof-of-ownership-kit submission built and verified by the kit).
 name: Test E2E exit-certificate tool
 
 on:
@@ -94,9 +95,20 @@ jobs:
           kurtosis analytics disable
           kurtosis version
 
+      # The delta recoveries are real zkevm-proof-of-ownership-kit submissions (prepare/verify-submission.sh).
+      # TODO: pin `ref` to the commit/tag of the kit that contains submission/prepare-submission.sh once it is
+      # published (today it only lives on a development branch of the kit).
+      - name: Checkout zkevm-proof-of-ownership-kit
+        uses: actions/checkout@v5
+        with:
+          repository: agglayer/zkevm-proof-of-ownership-kit
+          ref: feat/export-delta-exits
+          path: zkevm-proof-of-ownership-kit
+
       - name: Run exit-certificate delta E2E test
         env:
           VERBOSE: "1"
+          KIT_DIR: ${{ github.workspace }}/zkevm-proof-of-ownership-kit
           # Exercise the claimer through its docker-compose deployment (the same
           # artifact users deploy) instead of a host binary.
           CLAIMER_MODE: docker

@@ -27,21 +27,23 @@ ERC20_TRANSFER_AMOUNT="2000000000000000007"
 ERC20_BIN_FILE="${PROJECT_ROOT}/test/contracts/bin/mintableerc20.bin"
 ERC20_STATE_FILE="${PROJECT_ROOT}/tmp/exit_certificate-e2e-erc20.env"
 
-# Delta scenario (DELTA_SCENARIO=1, see run_e2e_test.sh --delta): ETH locked in TWO smart contracts on L2
-# that cannot move it. Exit certificates generated with skipSCLockedValue leave it behind, and the two
-# delta certificates recover it later, one contract per delta, through the `recoveries` step (each
-# contract is one "claim" of the zkevm-proof-of-ownership-kit). The sinks' runtime code is a single
-# STOP, so they accept ETH (the bridge claim succeeds) and have no way to spend it. Distinct odd amounts
+# Delta scenario (DELTA_SCENARIO=1, see run_e2e_test.sh --delta): ETH locked in TWO smart contracts on L2.
+# Exit certificates generated with skipSCLockedValue leave it behind, and the two delta certificates
+# recover it later, one contract per delta, through the `recoveries` step. Each recovery is a real
+# zkevm-proof-of-ownership-kit submission (52-generate_delta_certificate.sh): the kit simulates the
+# withdrawal on a shadow-fork of this L2 and the owner and the destination sign the ownership proof, so
+# the contracts must be movable by an EOA we hold the key of. They are `contracts/Vault.sol`: owner-only
+# withdraw(), the owner being the deployer (PRIVATE_KEY, the Kurtosis L1 faucet key). Distinct odd amounts
 # so a mixup between the two recoveries cannot go unnoticed.
 DELTA_SCENARIO="${DELTA_SCENARIO:-0}"
 DELTA_SC_LOCKED_AMOUNT_1="${DELTA_SC_LOCKED_AMOUNT_1:-3000000000000000011}"
 DELTA_SC_LOCKED_AMOUNT_2="${DELTA_SC_LOCKED_AMOUNT_2:-2000000000000000003}"
-# initcode: PUSH1 1, PUSH1 0x0c, PUSH1 0, CODECOPY, PUSH1 1, PUSH1 0, RETURN | runtime: STOP
-DELTA_SINK_INITCODE="0x6001600c60003960016000f300"
-# Rightful owners of the locked funds (the `destination` of each recovery): fresh L1 addresses, so after
-# the claims their L1 balance must be exactly the recovered amount.
-DELTA_OWNER_ADDRESS_1="0x00000000000000000000000000000000000000d1"
-DELTA_OWNER_ADDRESS_2="0x00000000000000000000000000000000000000d2"
+DELTA_VAULT_BIN_FILE="${SCRIPT_DIR}/contracts/Vault.bin"
+# Rightful owners of the locked funds (the `destination` of each recovery): EOAs the e2e holds the key of
+# (public test keys, worthless), since the kit requires the destination to sign. They are also L1
+# addresses: after the claims their L1 balance must be exactly the recovered amount.
+DELTA_DEST_KEY_1="${DELTA_DEST_KEY_1:-0x0000000000000000000000000000000000000000000000000000000000000001}"
+DELTA_DEST_KEY_2="${DELTA_DEST_KEY_2:-0x0000000000000000000000000000000000000000000000000000000000000002}"
 DELTA_STATE_FILE="${PROJECT_ROOT}/tmp/exit_certificate-e2e-delta.env"
 
 #
@@ -130,42 +132,63 @@ EOF
 log_info "ERC-20 scenario state saved to: $ERC20_STATE_FILE"
 
 if [[ "$DELTA_SCENARIO" == "1" ]]; then
-    # deploy_locked_sink <index> <amount>: deploys an ETH sink on L2, bridges <amount> wei to it and checks
-    # its balance. Sets DELTA_SC_LOCKED_ADDRESS_<index>.
-    deploy_locked_sink() {
-        local idx="$1" amount="$2" addr balance
-        log_info "🔒 Deploy ETH sink #${idx} on L2 (funds locked in a smart contract)"
+    DELTA_VAULT_OWNER_ADDRESS=$(cast wallet address --private-key "$PRIVATE_KEY")
+    DELTA_OWNER_ADDRESS_1=$(cast wallet address --private-key "$DELTA_DEST_KEY_1")
+    DELTA_OWNER_ADDRESS_2=$(cast wallet address --private-key "$DELTA_DEST_KEY_2")
+    # The final L1 check of the e2e expects each owner to hold exactly its recovered amount.
+    for owner in "$DELTA_OWNER_ADDRESS_1" "$DELTA_OWNER_ADDRESS_2"; do
+        if [[ "$(cast balance --rpc-url "$L1_RPC_URL" "$owner")" != "0" || "$(cast balance --rpc-url "$L2_RPC_URL" "$owner")" != "0" ]]; then
+            log_error "recovery owner $owner already holds funds on L1 or L2: the delta e2e needs it empty"
+            exit 1
+        fi
+    done
+
+    # deploy_locked_vault <index> <amount>: deploys a Vault on L2 (owner = the sender), bridges <amount> wei
+    # to it and checks its balance and owner. Sets DELTA_SC_LOCKED_ADDRESS_<index>.
+    deploy_locked_vault() {
+        local idx="$1" amount="$2" addr balance owner
+        log_info "🔒 Deploy Vault #${idx} on L2 (funds locked in a smart contract, owner-only withdraw)"
         addr=$(cast send \
             --rpc-url "$L2_RPC_URL" \
             --private-key "$PRIVATE_KEY" \
             --json \
-            --create "$DELTA_SINK_INITCODE" \
+            --create "0x$(cat "$DELTA_VAULT_BIN_FILE")" \
             | python3 -c "import sys,json; print(json.load(sys.stdin)['contractAddress'])")
-        log_info "ETH sink #${idx} deployed on L2 at: $addr"
+        log_info "Vault #${idx} deployed on L2 at: $addr"
 
-        log_info "🔗 Run L1 -> L2 bridge of ${amount} wei to sink #${idx} (autoclaimed by zkevm-bridge-service)"
+        log_info "🔗 Run L1 -> L2 bridge of ${amount} wei to vault #${idx} (autoclaimed by zkevm-bridge-service)"
         run_quiet "${EXIT_CETIFICATE_SCRIPT_DIR}/bridge_l1_to_l2.sh" \
             --dest "$addr" --amount "$amount" --key "$PRIVATE_KEY" --wait
 
         balance=$(cast balance --rpc-url "$L2_RPC_URL" "$addr")
         if [[ "$balance" != "$amount" ]]; then
-            log_error "ETH sink #${idx} $addr holds $balance wei, expected $amount"
+            log_error "Vault #${idx} $addr holds $balance wei, expected $amount"
+            exit 1
+        fi
+        owner=$(cast call --rpc-url "$L2_RPC_URL" "$addr" "owner()(address)")
+        if [[ "${owner,,}" != "${DELTA_VAULT_OWNER_ADDRESS,,}" ]]; then
+            log_error "Vault #${idx} $addr is owned by $owner, expected $DELTA_VAULT_OWNER_ADDRESS"
             exit 1
         fi
         printf -v "DELTA_SC_LOCKED_ADDRESS_${idx}" '%s' "$addr"
     }
-    deploy_locked_sink 1 "$DELTA_SC_LOCKED_AMOUNT_1"
-    deploy_locked_sink 2 "$DELTA_SC_LOCKED_AMOUNT_2"
+    deploy_locked_vault 1 "$DELTA_SC_LOCKED_AMOUNT_1"
+    deploy_locked_vault 2 "$DELTA_SC_LOCKED_AMOUNT_2"
 
     mkdir -p "$(dirname "$DELTA_STATE_FILE")"
     cat > "$DELTA_STATE_FILE" <<EOF
 # Generated by 20-prepare_network.sh (DELTA_SCENARIO=1) — consumed by 52-generate_delta_certificate.sh
+# (the keys are public test keys, worthless). The vaults are owned by DELTA_VAULT_OWNER_ADDRESS.
 DELTA_SC_LOCKED_ADDRESS_1="$DELTA_SC_LOCKED_ADDRESS_1"
 DELTA_SC_LOCKED_AMOUNT_1="$DELTA_SC_LOCKED_AMOUNT_1"
 DELTA_SC_LOCKED_ADDRESS_2="$DELTA_SC_LOCKED_ADDRESS_2"
 DELTA_SC_LOCKED_AMOUNT_2="$DELTA_SC_LOCKED_AMOUNT_2"
+DELTA_VAULT_OWNER_ADDRESS="$DELTA_VAULT_OWNER_ADDRESS"
+DELTA_VAULT_OWNER_KEY="$PRIVATE_KEY"
 DELTA_OWNER_ADDRESS_1="$DELTA_OWNER_ADDRESS_1"
+DELTA_OWNER_KEY_1="$DELTA_DEST_KEY_1"
 DELTA_OWNER_ADDRESS_2="$DELTA_OWNER_ADDRESS_2"
+DELTA_OWNER_KEY_2="$DELTA_DEST_KEY_2"
 EOF
     log_info "Delta scenario state saved to: $DELTA_STATE_FILE"
 fi
