@@ -68,6 +68,6 @@ COPY --from=builder /app/target/force_ger_update /usr/local/bin/force_ger_update
 # Composes and resolves an aggkit config file (defaults + vars + config).
 COPY --from=builder /app/target/config_render /usr/local/bin/config_render
 
-EXPOSE 5576/tcp
+EXPOSE 5577/tcp
 
 ENTRYPOINT ["/usr/local/bin/aggkit"]

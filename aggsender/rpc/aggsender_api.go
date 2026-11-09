@@ -1,6 +1,7 @@
 package aggsenderrpc
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,8 +21,21 @@ const (
 	heightQueryParam = "height"
 )
 
+// AggsenderStorer is the certificate storage required by the aggsender API.
+type AggsenderStorer interface {
+	GetCertificateByHeight(height uint64) (*types.Certificate, error)
+	GetLastSentCertificate() (*types.Certificate, error)
+	SaveLastSentCertificate(ctx context.Context, certificate types.Certificate) error
+}
+
+// AggsenderInterface is the aggsender behaviour required by the aggsender API.
+type AggsenderInterface interface {
+	Info() types.AggsenderInfo
+	ForceTriggerCertificate()
+}
+
 // notFoundError marks a query that matched nothing. The REST handlers map it
-// to HTTP 404 and the JSON-RPC wrappers to a not-found error.
+// to HTTP 404.
 type notFoundError struct {
 	msg string
 }

@@ -146,14 +146,6 @@ EnableAggOracleCommittee = false
 						L1ChainID = 0
 						HTTPHeaders = []
 
-[RPC]
-Host = "0.0.0.0"
-Port = 5576
-ReadTimeout = "2s"
-WriteTimeout = "2s"
-# Enforced (tollbooth in cdk-rpc); 0 does NOT mean unlimited here, it means burst-of-1 then 429 forever.
-MaxRequestsPerIPAndSecond = 10
-
 [PublicREST]
 Host = "0.0.0.0"
 Port = 5577
@@ -162,7 +154,7 @@ WriteTimeout = "5m"
 MaxRequestsPerIPAndSecond = 0
 
 [AdminREST]
-Host = "0.0.0.0"
+Host = "127.0.0.1"
 Port = 5579
 ReadTimeout = "5m"
 WriteTimeout = "5m"

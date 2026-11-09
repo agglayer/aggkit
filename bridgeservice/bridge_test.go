@@ -85,6 +85,7 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
 	b.router = gin.New()
 	b.bridge.RegisterRoutes(b.router)
+	b.bridge.RegisterHealthRoutes(b.router)
 	return b
 }
 
@@ -150,6 +151,7 @@ func newBridgeWithMocksAndHealthCacheTTL(t *testing.T, networkID uint32, ttl tim
 		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
 	b.router = gin.New()
 	b.bridge.RegisterRoutes(b.router)
+	b.bridge.RegisterHealthRoutes(b.router)
 	return b
 }
 
@@ -4374,6 +4376,7 @@ func TestHealthCheckHandler_ComputeTimeoutIsConfigurable(t *testing.T) {
 		b.bridgeL1, b.claimL1, b.bridgeL2, b.claimL2)
 	b.router = gin.New()
 	b.bridge.RegisterRoutes(b.router)
+	b.bridge.RegisterHealthRoutes(b.router)
 
 	b.bridgeL1.EXPECT().IsActive(mock.Anything).Return(true).Once()
 	b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
