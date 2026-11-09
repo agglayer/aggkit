@@ -95,14 +95,13 @@ jobs:
           kurtosis analytics disable
           kurtosis version
 
-      # The delta recoveries are real zkevm-proof-of-ownership-kit submissions (prepare/verify-submission.sh).
-      # TODO: pin `ref` to the commit/tag of the kit that contains submission/prepare-submission.sh once it is
-      # published (today it only lives on a development branch of the kit).
+      # The delta recoveries are real zkevm-proof-of-ownership-kit submissions (prepare/verify-submission.sh),
+      # pinned to a commit of the kit's main (bump it deliberately when the kit changes).
       - name: Checkout zkevm-proof-of-ownership-kit
         uses: actions/checkout@v5
         with:
           repository: agglayer/zkevm-proof-of-ownership-kit
-          ref: feat/export-delta-exits
+          ref: 1e2fed4eb612a48bdc5a1b142e6b6527f25ccf22
           path: zkevm-proof-of-ownership-kit
 
       - name: Run exit-certificate delta E2E test
