@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/etherman"
@@ -24,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
+	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -124,14 +124,17 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 	}, nil
 }
 
-func (dh *EVMMultidownloader) GetRPCServices() []jRPC.Service {
-	logger := log.WithFields("module", "multidownloader-rpc-"+dh.name)
-	return []jRPC.Service{
-		{
-			Name:    "multidownloader-" + dh.name,
-			Service: NewEVMMultidownloaderRPC(logger, dh),
-		},
-	}
+// RegisterPublicRoutes registers the read-only multidownloader API routes on router.
+func (dh *EVMMultidownloader) RegisterPublicRoutes(router gin.IRouter) {
+	logger := log.WithFields("module", "multidownloader-api-"+dh.name)
+	NewEVMMultidownloaderAPI(logger, dh).RegisterPublicRoutes(router)
+}
+
+// RegisterAdminRoutes registers the multidownloader operator routes on router. They are only
+// registered when the downloader runs in developer mode.
+func (dh *EVMMultidownloader) RegisterAdminRoutes(router gin.IRouter) {
+	logger := log.WithFields("module", "multidownloader-api-"+dh.name)
+	NewEVMMultidownloaderAPI(logger, dh).RegisterAdminRoutes(router)
 }
 
 // RegisterSyncer registers a new syncer config to the multidownloader.

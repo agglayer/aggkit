@@ -293,46 +293,6 @@ func TestEVMMultidownloader_RegisterSyncer(t *testing.T) {
 	})
 }
 
-func TestEVMMultidownloader_GetRPCServices(t *testing.T) {
-	t.Run("returns correct RPC service", func(t *testing.T) {
-		testData := newEVMMultidownloaderTestData(t, false)
-
-		services := testData.mdr.GetRPCServices()
-
-		require.Len(t, services, 1)
-		require.Equal(t, "multidownloader-test", services[0].Name)
-		require.NotNil(t, services[0].Service)
-
-		// Verify the service is of the correct type
-		_, ok := services[0].Service.(*EVMMultidownloaderRPC)
-		require.True(t, ok, "Service should be of type *EVMMultidownloaderRPC")
-	})
-
-	t.Run("service name includes multidownloader name", func(t *testing.T) {
-		logger := log.WithFields("test", "evm_multidownloader_test")
-		cfg := Config{
-			BlockChunkSize:                  5000,
-			MaxParallelBlockHeaderRetrieval: 50,
-			BlockFinality:                   aggkittypes.FinalizedBlock,
-			WaitPeriodToCheckCatchUp:        types.NewDuration(time.Second),
-		}
-		ethClient := mocktypes.NewBaseEthereumClienter(t)
-		db, err := storage.NewMultidownloaderStorage(logger, storage.MultidownloaderStorageConfig{
-			DBPath: cfg.StoragePath,
-		})
-		require.NoError(t, err)
-
-		customName := "custom-name"
-		mdr, err := NewEVMMultidownloader(logger, cfg, customName, ethClient, nil, db, nil, nil)
-		require.NoError(t, err)
-
-		services := mdr.GetRPCServices()
-
-		require.Len(t, services, 1)
-		require.Equal(t, "multidownloader-"+customName, services[0].Name)
-	})
-}
-
 func TestEVMMultidownloader_Initialize(t *testing.T) {
 	t.Run("successful initialization", func(t *testing.T) {
 		testData := newEVMMultidownloaderTestData(t, false)
