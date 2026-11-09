@@ -45,6 +45,7 @@ jobs:
       - name: Checkout kurtosis-cdk
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
+          persist-credentials: false
           repository: 0xPolygon/kurtosis-cdk
           ref: ${{ steps.determine-ref.outputs.ref }}
 
@@ -84,6 +85,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Read kurtosis-cdk-args from file
         id: read-args
@@ -159,6 +162,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
       - name: Install Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
         with:

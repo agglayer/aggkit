@@ -30,6 +30,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
+          persist-credentials: false
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
       - name: Install Go

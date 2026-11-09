@@ -74,6 +74,7 @@ jobs:
       - name: Checkout agglayer-e2e
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
         with:
+          persist-credentials: false
           repository: agglayer/e2e
           ref: ${{ inputs.agglayer-e2e-ref }}
           path: agglayer-e2e
@@ -81,6 +82,7 @@ jobs:
       - name: Checkout kurtosis-cdk
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
         with:
+          persist-credentials: false
           repository: 0xPolygon/kurtosis-cdk
           ref: ${{ inputs.kurtosis-cdk-ref }}
           path: kurtosis-cdk

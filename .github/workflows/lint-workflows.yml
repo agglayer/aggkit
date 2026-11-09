@@ -1,0 +1,58 @@
+name: Lint workflows
+
+on:
+  pull_request:
+    paths:
+      - ".github/**"
+  push:
+    branches:
+      - develop
+    paths:
+      - ".github/**"
+
+concurrency:
+  group: workflow-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  lint-workflows:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Install zizmor
+        env:
+          ZIZMOR_VERSION: "v1.32.0"
+          ZIZMOR_SHA256: "bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b"
+        run: |
+          install_dir="${RUNNER_TEMP}/zizmor/bin"
+          mkdir -p "${install_dir}"
+          archive="zizmor-${ZIZMOR_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "${RUNNER_TEMP}/${archive}" \
+            "https://github.com/zizmorcore/zizmor/releases/download/${ZIZMOR_VERSION}/${archive}"
+          echo "${ZIZMOR_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check --strict
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${install_dir}" zizmor
+          echo "${install_dir}" >> "${GITHUB_PATH}"
+          "${install_dir}/zizmor" --version
+
+      - name: Audit workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: zizmor --min-severity medium .github/workflows
+
+      - name: Check for unverified installs and inherited secrets
+        run: |
+          set -euo pipefail
+          if grep -rnE 'curl[^|]*\|[[:space:]]*(ba)?sh\b|trusted[[:space:]]*=[[:space:]]*yes|secrets:[[:space:]]*inherit' \
+              --include='*.yml' --include='*.yaml' --exclude='lint-workflows.yml' \
+              .github/workflows; then
+            echo "::error::workflows must not use unverified installs or inherited secrets"
+            exit 1
+          fi
