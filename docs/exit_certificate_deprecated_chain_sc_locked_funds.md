@@ -16,6 +16,8 @@ what to do when something does not add up. For the full reference of the tool se
 [exit_certificate README](../tools/exit_certificate/README.md#delta-mode--chain-additional-exits-on-a-previous-certificate);
 for the claimer, the [exit_certificate_claimer README](../tools/exit_certificate_claimer/README.md).
 
+- [Quick start](#quick-start)
+- [End-to-end flow](#end-to-end-flow)
 - [When to use it](#when-to-use-it)
 - [Concepts](#concepts)
 - [Procedure A — add one or several exits](#procedure-a--add-one-or-several-exits)
@@ -23,6 +25,124 @@ for the claimer, the [exit_certificate_claimer README](../tools/exit_certificate
 - [Verifying the result](#verifying-the-result)
 - [Updating the claimer](#updating-the-claimer)
 - [Troubleshooting](#troubleshooting)
+
+## Quick start
+
+Assumes **certificate 1** (the first full run of the tool, generated with `options.skipSCLockedValue=true`) is
+already **Settled**, and that every recovery you are about to apply was **already verified by Polygon**
+([end-to-end flow](#end-to-end-flow)). What follows creates **certificate N** (N ≥ 2) on top of the last settled
+one (N-1). Run it in order; nothing is sent to the agglayer until step 5.
+
+1. **Collect the verified cases**: put the `.tgz` files (one per client, as received) in a directory, e.g. `./cases`.
+2. **Create the config** of certificate N: copy the config of the last settled run and set
+
+   ```jsonc
+   "options": {
+       "deltaMode": true,
+       "previousRun": "./output-N-1",     // output dir of certificate N-1 (must be Settled)
+       "outputDir": "./output-N",         // new and empty
+       "recoveriesPath": "./cases",
+       "deltaExitsFile": "./output-N/recoveries/delta-exits.json"   // written by the next command
+   }
+   ```
+
+3. **Turn the cases into exits** (writes nothing outside `output-N/recoveries/`; safe to repeat):
+
+   ```bash
+   ./target/exit_certificate --config parameters.json --step recoveries
+   ```
+
+   Read `output-N/recoveries/recoveries-report.md` and `delta-exits.json`: they must be exactly the funds you expect.
+4. **Generate certificate N** (CHECK → F → G2 → H → I → SIGN; it does **not** send it):
+
+   ```bash
+   ./target/exit_certificate --config parameters.json
+   ```
+
+   Then run the [checks before submitting](#before-submitting-files-of-the-delta-output-dir).
+5. **Send it and wait for settlement** (irreversible):
+
+   ```bash
+   ./target/exit_certificate --config parameters.json --step submit,wait
+   ```
+
+   Done only when `output-N/step-wait-result.json` says `Settled`.
+6. **Point the claimer at `output-N`** and restart it ([Updating the claimer](#updating-the-claimer)): the clients
+   can now claim on L1.
+7. **More recoveries later?** Repeat from step 1 with `previousRun: "./output-N"` and a new `outputDir`. Keep every
+   old output directory.
+
+If a command fails, nothing was written (`recoveries`) or nothing was sent (steps 3–4): fix the cause and run it
+again. Failures and what to do: [Troubleshooting](#troubleshooting).
+
+## End-to-end flow
+
+Who does what, from the client's submission to the funds on L1. The first part happens **in another repository**
+([zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit)); this guide starts when a
+verified `.tgz` reaches the operator that runs the `exit_certificate` tool.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Client (stakeholder)
+    participant K as proof-of-ownership-kit
+    actor P as Polygon (zkevm-claims team)
+    actor O as Polygon operator
+    participant T as exit_certificate (delta mode)
+    participant A as Agglayer
+    participant CL as Claimer + exit UI
+    participant L1 as L1 bridge
+
+    rect rgb(240, 240, 240)
+    Note over C,P: Other repo: zkevm-proof-of-ownership-kit
+    C->>K: shadow-fork + move.sh + sign ownership message
+    K-->>C: submission .tgz (recovery.json, move.sh, signatures.json, manifest.json)
+    C->>P: email the .tgz (zkevm-claims@polygon.technology)
+    P->>P: manual inspection + verify-submission.sh
+    P-->>O: verified .tgz (funds are legitimate)
+    end
+
+    Note over O,L1: This guide: certificate N (N >= 2), on top of the settled certificate N-1
+    O->>T: --step recoveries (previous run state + verified .tgz files)
+    T-->>O: delta-exits.json + updated balances (step C / step F / ledger)
+    O->>T: --step all (CHECK, F, G2, H, I, SIGN)
+    T-->>O: exit-certificate-signed.json (only the new exits) + exit-certificate-full.json
+    O->>O: review before submitting
+    O->>T: --step submit,wait
+    T->>A: SendCertificate (certificate N)
+    A-->>T: Settled (+ VerifyBatchesTrustedAggregator on L1)
+    O->>CL: point the claimer to output-N and restart it
+    C->>CL: claim in the exit UI
+    CL->>L1: claimAsset (proof against the latest root)
+    L1-->>C: funds on the destination address
+```
+
+| # | Who | What | Where it is covered |
+| - | --- | ---- | ------------------- |
+| 1–3 | Client | Simulates the recovery on a shadow-fork, signs, and submits the `.tgz`. | kit repo (`submission/SUBMIT.md`) |
+| 4–5 | Polygon | Inspects and verifies the submission: signatures, the simulated move and `recovery.json`. Whoever passes it makes the **legitimacy** call. | kit repo (`submission/verify-submission.sh`) |
+| 6–7 | Operator | `--step recoveries`: the `.tgz` files plus the previous run's balance state become the delta exits file and the updated balances. Refuses a case applied twice and anything above what the first certificate left behind. | [Quick start 1–3](#quick-start), [exit_certificate README](../tools/exit_certificate/README.md#recoveries-step--from-verified-recoveries-to-delta-exits) |
+| 8–9 | Operator | Generates and signs certificate N (only the new exits) chained on N-1. | [Procedure A](#procedure-a--add-one-or-several-exits) |
+| 10–13 | Operator | Reviews, submits, waits for `Settled`. | [Verifying the result](#verifying-the-result) |
+| 14 | Operator | Repoints the claimer to the new output directory. | [Updating the claimer](#updating-the-claimer) |
+| 15–17 | Client | Claims on L1 through the exit UI. | [exit_certificate_claimer README](../tools/exit_certificate_claimer/README.md) |
+
+What chains from certificate to certificate (one output directory each; the previous one is never modified):
+
+```mermaid
+flowchart LR
+    C1["certificate 1<br/>output-first/<br/>first full run, skipSCLockedValue<br/>step-c, step-f-checks, tree"]
+    C2["certificate 2<br/>output-delta-1/<br/>+ recoveries/ (balances, ledger)<br/>tree + new leaves"]
+    C3["certificate 3<br/>output-delta-2/<br/>+ recoveries/<br/>tree + new leaves"]
+    CL["claimer<br/>always the LATEST output:<br/>full certificate, tree, wait result"]
+    C1 -- previousRun --> C2 -- previousRun --> C3
+    C3 -.-> CL
+```
+
+Two things travel down the chain, and both must be present in the `previousRun` of the next certificate:
+the **exit tree** (`step-g-l2bridgesyncerlite.sqlite`, which gets the new leaves appended) and the **balance state**
+of the recoveries (`recoveries/`: updated `step-c-sc-locked-values.json` and `step-f-checks.json`, plus the ledger
+that stops a case from being applied twice). The claimer only needs the latest one.
 
 ## When to use it
 
@@ -41,7 +161,8 @@ entitled to them: that verification is a manual, off-chain prerequisite).
 
 | Term | Meaning |
 | ---- | ------- |
-| previous run | Output dir of the last **settled** run (the first full run, or the last delta). Never modified. |
+| certificate N | The exit certificate this guide builds. Certificate 1 is the first full run; every delta is certificate 2, 3, … chained on the previous one (N-1). |
+| previous run | Output dir of the last **settled** run (certificate N-1: the first full run, or the last delta). Never modified. |
 | delta exits file | JSON with the new exits (`bridge_exits`), e.g. the release of SC-locked funds to their verified owners. One run takes as many as needed. |
 | delta exit certificate | `exit-certificate-signed.json` of the delta run: **only** the new exits. It is what is submitted. |
 | full certificate | `exit-certificate-full.json`: every exit (previous + new, in leaf order) with the latest `new_local_exit_root`. Not submittable; input of the next delta and of the claimer. |
@@ -57,9 +178,10 @@ Rules that always apply:
 
 ## Procedure A — add one or several exits
 
-### 1. Write the delta exits file
+### 1. Get the delta exits file
 
-All the exits of this run go in one file. Same shape as a certificate's `bridge_exits`:
+For SC-locked funds the file is **generated from the verified recoveries** (next subsection). It can also be written
+by hand. All the exits of this run go in one file, with the same shape as a certificate's `bridge_exits`:
 
 ```json
 {
@@ -95,6 +217,19 @@ Constraints (validated on load; the run fails before touching anything):
 - Per token, the sum of the new exits must be ≤ the remaining balance the agglayer holds for that token
   (`admin_getTokenBalance`, already net of previous certificates). See [troubleshooting](#step-f-delta-exits-exceed-the-agglayer-remaining-balance).
 
+#### Generating the exits from verified recoveries (the usual way)
+
+The exits are produced from the recoveries the
+[zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit) already verified. Set
+`options.recoveriesPath` (directory, `.tgz` or `recovery.json`) in the delta config and run
+`./target/exit_certificate --config parameters.json --step recoveries`. It writes
+`<outputDir>/recoveries/delta-exits.json` (use it as `deltaExitsFile`) and the updated balance state
+(`step-c-sc-locked-values.json`, `step-f-checks.json`, the ledger `recoveries-applied.json` and a report).
+It refuses to apply a case twice and checks, per token, that what is recovered fits in the SC-locked value the
+first certificate left behind. Whether each case is legitimate is **not** checked: that is the manual
+verification that must precede it. Details in the
+[exit_certificate README](../tools/exit_certificate/README.md#recoveries-step--from-verified-recoveries-to-delta-exits).
+
 ### 2. Create the delta config
 
 Copy the config of the previous run and set:
@@ -103,8 +238,9 @@ Copy the config of the previous run and set:
 "options": {
     "deltaMode": true,
     "previousRun": "./output-first",         // output dir of the LAST settled run
-    "deltaExitsFile": "./delta-exits.json",
-    "outputDir": "./output-delta-1"          // new, must differ from previousRun
+    "deltaExitsFile": "./delta-exits.json",  // with recoveries: ./output-delta-1/recoveries/delta-exits.json
+    "outputDir": "./output-delta-1",         // new, must differ from previousRun
+    "recoveriesPath": "./cases"              // only for --step recoveries: verified .tgz files
 }
 ```
 
