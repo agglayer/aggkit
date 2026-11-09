@@ -57,6 +57,10 @@ on:
         required: false
         type: string
         default: ""
+    secrets:
+      DATADOG_API_KEY:
+        description: "Datadog API key used to record the test run"
+        required: false
 
 permissions: {}
 
@@ -240,11 +244,10 @@ jobs:
         continue-on-error: true
         uses: agglayer/gha-record-e2e-test-run@3d8941f5a639c9ad00853e59990255ae08f647fe  # v1.0.13
         with:
-          enable_ai_analysis: "true"
+          enable_ai_analysis: "false"
           host: github-actions-runners
           status: ${{ job.status }}
           ref_kurtosis: ${{ inputs.kurtosis-cdk-ref }}
           ref_e2e: ${{ inputs.agglayer-e2e-ref }}
         env:
           DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
