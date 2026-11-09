@@ -55,13 +55,25 @@ func TestL1InfoTreeSyncAPI_Status(t *testing.T) {
 	assert.Equal(t, percent, *statusInfo.CompletionPercentage)
 }
 
-func TestL1InfoTreeSyncAPI_InfoByGlobalExitRoot(t *testing.T) {
+// testInfoByParam covers the subtests shared by the info-by-global-exit-root and
+// the info-by-root routes: no parameter, the parameter in the query, malformed
+// values, an unknown value and a storage error.
+func testInfoByParam(
+	t *testing.T,
+	path, paramName string,
+	expectLatest func(*L1InfoTreeSyncerMock),
+	expectByParam func(*L1InfoTreeSyncerMock),
+	expectUnknown func(*L1InfoTreeSyncerMock),
+	expectError func(*L1InfoTreeSyncerMock),
+) {
+	t.Helper()
+	target := L1InfoTreeSyncV1Prefix + "/" + path
+
 	t.Run("no parameter returns the latest leaf", func(t *testing.T) {
 		mockSyncer, engine := newL1InfoTreeSyncAPITestEngine(t)
-		mockSyncer.EXPECT().GetLatestL1InfoLeaf(mock.Anything).
-			Return(&L1InfoTreeLeaf{Hash: testHash}, nil).Once()
+		expectLatest(mockSyncer)
 
-		rec := doAPIRequest(engine, http.MethodGet, L1InfoTreeSyncV1Prefix+"/info-by-global-exit-root")
+		rec := doAPIRequest(engine, http.MethodGet, target)
 		require.Equal(t, http.StatusOK, rec.Code)
 
 		var leaf L1InfoTreeLeaf
@@ -69,13 +81,11 @@ func TestL1InfoTreeSyncAPI_InfoByGlobalExitRoot(t *testing.T) {
 		assert.Equal(t, testHash, leaf.Hash)
 	})
 
-	t.Run("global exit root in the query returns its leaf", func(t *testing.T) {
+	t.Run("parameter in the query returns its leaf", func(t *testing.T) {
 		mockSyncer, engine := newL1InfoTreeSyncAPITestEngine(t)
-		mockSyncer.EXPECT().GetInfoByGlobalExitRoot(testHash).
-			Return(&L1InfoTreeLeaf{Hash: testHash}, nil).Once()
+		expectByParam(mockSyncer)
 
-		rec := doAPIRequest(engine, http.MethodGet,
-			L1InfoTreeSyncV1Prefix+"/info-by-global-exit-root?global_exit_root="+testHash.Hex())
+		rec := doAPIRequest(engine, http.MethodGet, target+"?"+paramName+"="+testHash.Hex())
 		require.Equal(t, http.StatusOK, rec.Code)
 
 		var leaf L1InfoTreeLeaf
@@ -84,95 +94,70 @@ func TestL1InfoTreeSyncAPI_InfoByGlobalExitRoot(t *testing.T) {
 	})
 
 	for _, malformed := range []string{"0x1234", "", "not-a-hash", testHash.Hex() + "00"} {
-		t.Run(fmt.Sprintf("malformed global exit root %q is a 400", malformed), func(t *testing.T) {
+		t.Run(fmt.Sprintf("malformed %s %q is a 400", paramName, malformed), func(t *testing.T) {
 			_, engine := newL1InfoTreeSyncAPITestEngine(t)
 
-			rec := doAPIRequest(engine, http.MethodGet,
-				L1InfoTreeSyncV1Prefix+"/info-by-global-exit-root?global_exit_root="+malformed)
+			rec := doAPIRequest(engine, http.MethodGet, target+"?"+paramName+"="+malformed)
 			require.Equal(t, http.StatusBadRequest, rec.Code)
-			assert.Contains(t, rec.Body.String(), "global_exit_root")
+			assert.Contains(t, rec.Body.String(), paramName)
 		})
 	}
 
-	t.Run("unknown global exit root is a 404", func(t *testing.T) {
+	t.Run("unknown value is a 404", func(t *testing.T) {
 		mockSyncer, engine := newL1InfoTreeSyncAPITestEngine(t)
-		mockSyncer.EXPECT().GetInfoByGlobalExitRoot(testHash).Return(nil, nil).Once()
+		expectUnknown(mockSyncer)
 
-		rec := doAPIRequest(engine, http.MethodGet,
-			L1InfoTreeSyncV1Prefix+"/info-by-global-exit-root?global_exit_root="+testHash.Hex())
+		rec := doAPIRequest(engine, http.MethodGet, target+"?"+paramName+"="+testHash.Hex())
 		require.Equal(t, http.StatusNotFound, rec.Code)
 		assert.Contains(t, rec.Body.String(), "leaf not found")
 	})
 
 	t.Run("storage error is a 500", func(t *testing.T) {
 		mockSyncer, engine := newL1InfoTreeSyncAPITestEngine(t)
-		mockSyncer.EXPECT().GetInfoByGlobalExitRoot(testHash).
-			Return(nil, fmt.Errorf("storage failure")).Once()
+		expectError(mockSyncer)
 
-		rec := doAPIRequest(engine, http.MethodGet,
-			L1InfoTreeSyncV1Prefix+"/info-by-global-exit-root?global_exit_root="+testHash.Hex())
+		rec := doAPIRequest(engine, http.MethodGet, target+"?"+paramName+"="+testHash.Hex())
 		require.Equal(t, http.StatusInternalServerError, rec.Code)
 		assert.Contains(t, rec.Body.String(), "storage failure")
 	})
 }
 
+func TestL1InfoTreeSyncAPI_InfoByGlobalExitRoot(t *testing.T) {
+	testInfoByParam(t, "info-by-global-exit-root", "global_exit_root",
+		func(m *L1InfoTreeSyncerMock) {
+			m.EXPECT().GetLatestL1InfoLeaf(mock.Anything).
+				Return(&L1InfoTreeLeaf{Hash: testHash}, nil).Once()
+		},
+		func(m *L1InfoTreeSyncerMock) {
+			m.EXPECT().GetInfoByGlobalExitRoot(testHash).
+				Return(&L1InfoTreeLeaf{Hash: testHash}, nil).Once()
+		},
+		func(m *L1InfoTreeSyncerMock) {
+			m.EXPECT().GetInfoByGlobalExitRoot(testHash).Return(nil, nil).Once()
+		},
+		func(m *L1InfoTreeSyncerMock) {
+			m.EXPECT().GetInfoByGlobalExitRoot(testHash).
+				Return(nil, fmt.Errorf("storage failure")).Once()
+		},
+	)
+}
+
 func TestL1InfoTreeSyncAPI_InfoByRoot(t *testing.T) {
-	t.Run("no parameter returns the latest leaf", func(t *testing.T) {
-		mockSyncer, engine := newL1InfoTreeSyncAPITestEngine(t)
-		mockSyncer.EXPECT().GetLatestL1InfoLeaf(mock.Anything).
-			Return(&L1InfoTreeLeaf{Hash: testHash}, nil).Once()
-
-		rec := doAPIRequest(engine, http.MethodGet, L1InfoTreeSyncV1Prefix+"/info-by-root")
-		require.Equal(t, http.StatusOK, rec.Code)
-
-		var leaf L1InfoTreeLeaf
-		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &leaf))
-		assert.Equal(t, testHash, leaf.Hash)
-	})
-
-	t.Run("root in the query returns its leaf", func(t *testing.T) {
-		mockSyncer, engine := newL1InfoTreeSyncAPITestEngine(t)
-		mockSyncer.EXPECT().GetInfoByRoot(testHash).
-			Return(&L1InfoTreeLeaf{Hash: testHash}, nil).Once()
-
-		rec := doAPIRequest(engine, http.MethodGet,
-			L1InfoTreeSyncV1Prefix+"/info-by-root?root="+testHash.Hex())
-		require.Equal(t, http.StatusOK, rec.Code)
-
-		var leaf L1InfoTreeLeaf
-		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &leaf))
-		assert.Equal(t, testHash, leaf.Hash)
-	})
-
-	for _, malformed := range []string{"0x1234", "", "not-a-hash", testHash.Hex() + "00"} {
-		t.Run(fmt.Sprintf("malformed root %q is a 400", malformed), func(t *testing.T) {
-			_, engine := newL1InfoTreeSyncAPITestEngine(t)
-
-			rec := doAPIRequest(engine, http.MethodGet,
-				L1InfoTreeSyncV1Prefix+"/info-by-root?root="+malformed)
-			require.Equal(t, http.StatusBadRequest, rec.Code)
-			assert.Contains(t, rec.Body.String(), "root")
-		})
-	}
-
-	t.Run("unknown root is a 404", func(t *testing.T) {
-		mockSyncer, engine := newL1InfoTreeSyncAPITestEngine(t)
-		mockSyncer.EXPECT().GetInfoByRoot(testHash).Return(nil, nil).Once()
-
-		rec := doAPIRequest(engine, http.MethodGet,
-			L1InfoTreeSyncV1Prefix+"/info-by-root?root="+testHash.Hex())
-		require.Equal(t, http.StatusNotFound, rec.Code)
-		assert.Contains(t, rec.Body.String(), "leaf not found")
-	})
-
-	t.Run("storage error is a 500", func(t *testing.T) {
-		mockSyncer, engine := newL1InfoTreeSyncAPITestEngine(t)
-		mockSyncer.EXPECT().GetInfoByRoot(testHash).
-			Return(nil, fmt.Errorf("storage failure")).Once()
-
-		rec := doAPIRequest(engine, http.MethodGet,
-			L1InfoTreeSyncV1Prefix+"/info-by-root?root="+testHash.Hex())
-		require.Equal(t, http.StatusInternalServerError, rec.Code)
-		assert.Contains(t, rec.Body.String(), "storage failure")
-	})
+	testInfoByParam(t, "info-by-root", "root",
+		func(m *L1InfoTreeSyncerMock) {
+			m.EXPECT().GetLatestL1InfoLeaf(mock.Anything).
+				Return(&L1InfoTreeLeaf{Hash: testHash}, nil).Once()
+		},
+		func(m *L1InfoTreeSyncerMock) {
+			m.EXPECT().GetInfoByRoot(testHash).
+				Return(&L1InfoTreeLeaf{Hash: testHash}, nil).Once()
+		},
+		func(m *L1InfoTreeSyncerMock) {
+			m.EXPECT().GetInfoByRoot(testHash).Return(nil, nil).Once()
+		},
+		func(m *L1InfoTreeSyncerMock) {
+			m.EXPECT().GetInfoByRoot(testHash).
+				Return(nil, fmt.Errorf("storage failure")).Once()
+		},
+	)
 }

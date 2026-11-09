@@ -132,7 +132,7 @@ func TestGetClaims_FixtureContent(t *testing.T) {
 	got, err := s.GetClaims(ctx, nil, 2, 3)
 	require.NoError(t, err)
 	type key struct{ block, pos uint64 }
-	gotKeys := []key{}
+	gotKeys := make([]key, 0, len(got))
 	for _, c := range got {
 		gotKeys = append(gotKeys, key{c.BlockNum, c.BlockPos})
 	}
