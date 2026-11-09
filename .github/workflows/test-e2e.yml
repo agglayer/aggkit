@@ -44,7 +44,7 @@ jobs:
           fi
 
       - name: Checkout kurtosis-cdk
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
           repository: 0xPolygon/kurtosis-cdk
           ref: ${{ steps.determine-ref.outputs.ref }}
@@ -80,7 +80,7 @@ jobs:
       kurtosis-cdk-args-5: ${{ steps.read-args.outputs.kurtosis-cdk-args-5 }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
 
       - name: Read kurtosis-cdk-args from file
         id: read-args
@@ -153,15 +153,15 @@ jobs:
     runs-on: amd-runner-2204
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
       - name: Install Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
         with:
           go-version: 1.27.3
       - name: Build Aggsender Find Imported Bridge
         run: make build-tools
       - name: Upload Binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: aggsender_find_imported_bridge
           path: ./target/aggsender_find_imported_bridge
@@ -170,7 +170,7 @@ jobs:
       # agglayer/e2e reusable workflows (input: aggkit-config-artifact), so a
       # config change ships in the same PR as the code — no kurtosis-cdk PR.
       - name: Upload aggkit e2e config templates
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: aggkit-e2e-config
           path: ./test/e2e/kurtosis/*.template.toml
@@ -182,7 +182,7 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8  # agglayer/e2e main
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
@@ -212,7 +212,7 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8  # agglayer/e2e main
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
@@ -242,7 +242,7 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8  # agglayer/e2e main
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     secrets: inherit
     with:
@@ -337,7 +337,7 @@ jobs:
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     steps:
       - name: Send Slack notification
-        uses: agglayer/gha-notify-generic@v1
+        uses: agglayer/gha-notify-generic@14fab4a0e1b4b9908d187e87cee5f6d88935660f  # v1.0.0
         with:
           slack-bot-token: ${{ secrets.SLACK_APP_TOKEN_AGGLAYER_NOTIFY_GENERIC }}
           channel-id: ${{ env.AGGKIT_REPORT_CHANNEL }}

@@ -9,6 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Notify Slack
-        uses: agglayer/gha-notify-release@v1
+        uses: agglayer/gha-notify-release@893875174430f854034f3917de8b811884fd02bd  # v1.0.31
         with:
           slack-bot-token: ${{ secrets.SLACK_APP_TOKEN_AGGLAYER_NOTIFY_RELEASE }}
