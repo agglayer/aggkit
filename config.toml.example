@@ -125,10 +125,12 @@ EnableAggOracleCommittee = false
 # [PublicREST]
 # Host = "0.0.0.0"
 # Port = 5577
+# MaxRequestBodyBytes = 1048576
 #
 # [AdminREST]
 # Host = "127.0.0.1"
 # Port = 5579
+# MaxRequestBodyBytes = 1048576
 #
 [AggSender]
 # ------------------------------------------------------------------------------

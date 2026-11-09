@@ -42,6 +42,8 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.BridgeL2Sync.BlockFinality)
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.ClaimL2Sync.BlockFinality)
 	require.Equal(t, "127.0.0.1", cfg.AdminREST.Host)
+	require.Equal(t, int64(1024*1024), cfg.PublicREST.MaxRequestBodyBytes)
+	require.Equal(t, int64(1024*1024), cfg.AdminREST.MaxRequestBodyBytes)
 	require.Equal(t, uint64(10000), cfg.ClaimL1Sync.APIMaxBlockRange)
 	require.Equal(t, uint64(1000), cfg.ClaimL1Sync.APIMaxClaims)
 	require.Equal(t, uint64(10000), cfg.ClaimL2Sync.APIMaxBlockRange)

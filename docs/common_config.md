@@ -146,6 +146,7 @@ When rate limiting is enabled, if the number of requests exceeds `NumRequests` w
 | Port | int | Port number the REST service is accessible on |
 | ReadTimeout | types.Duration | HTTP server read timeout |
 | WriteTimeout | types.Duration | HTTP server write timeout |
+| MaxRequestBodyBytes | int64 | Maximum request body size in bytes; `0` applies the default (1 MiB) |
 | MaxRequestsPerIPAndSecond | float64 | Unused; kept for config compatibility. See below |
 | CORS | CORSConfig | Cross-Origin Resource Sharing settings for this REST service. See below |
 
@@ -153,6 +154,10 @@ When rate limiting is enabled, if the number of requests exceeds `NumRequests` w
 (unlimited). If you need per-IP request throttling, apply it at the fronting reverse proxy / API gateway / ingress —
 that is also where it is most effective, since a service sitting behind a proxy typically sees every client as the
 proxy's single IP, making in-process per-IP limiting ineffective anyway.
+
+`MaxRequestBodyBytes` caps how much of a request body a REST server reads, so memory use stays predictable. Its
+default is `1048576` (1 MiB) and `0` applies that default. A request that declares a larger body is answered `413`
+before its handler runs, and a handler reading a larger streamed body stops at the limit and answers `413`.
 
 `AdminREST` binds `127.0.0.1` by default, while `PublicREST` binds `0.0.0.0`. To reach the admin API from
 another machine, set `[AdminREST] Host = "0.0.0.0"` (or any other interface) explicitly; do that only where

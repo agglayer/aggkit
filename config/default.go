@@ -152,6 +152,7 @@ Port = 5577
 ReadTimeout = "5m"
 WriteTimeout = "5m"
 MaxRequestsPerIPAndSecond = 0
+MaxRequestBodyBytes = 1048576
 
 [AdminREST]
 Host = "127.0.0.1"
@@ -159,6 +160,7 @@ Port = 5579
 ReadTimeout = "5m"
 WriteTimeout = "5m"
 MaxRequestsPerIPAndSecond = 0
+MaxRequestBodyBytes = 1048576
 
 [BridgeL1Sync]
 DBPath = "{{PathRWData}}/bridgel1sync.sqlite"

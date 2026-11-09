@@ -1,6 +1,7 @@
 package prover
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -40,6 +41,13 @@ func (a *AggchainProofGenAPI) RegisterAdminRoutes(router gin.IRouter) {
 func (a *AggchainProofGenAPI) generateAggchainProof(c *gin.Context) {
 	var req aggchainProofRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{
+				"error": fmt.Sprintf("request body exceeds the %d-byte limit", maxBytesErr.Limit),
+			})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid request body: %v", err)})
 		return
 	}

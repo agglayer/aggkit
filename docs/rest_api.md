@@ -117,8 +117,21 @@ APIMaxClaims = 1000
 ## Server configuration
 
 Both servers use the `RESTConfig` fields documented in
-[common config artifacts](./common_config.md#restconfig): `Host`, `Port`, `ReadTimeout`, `WriteTimeout`
-and `[CORS]`. CORS is disabled by default.
+[common config artifacts](./common_config.md#restconfig): `Host`, `Port`, `ReadTimeout`, `WriteTimeout`,
+`MaxRequestBodyBytes` and `[CORS]`. CORS is disabled by default.
+
+Request bodies are limited in size so memory use stays predictable. `MaxRequestBodyBytes` (default
+`1048576`, i.e. 1 MiB; `0` applies the default) caps a request body on both servers: a request that
+declares a larger body is answered `413` before its handler runs, and a handler that reads a larger
+streamed body stops at the limit and answers `413`.
+
+```toml
+[PublicREST]
+MaxRequestBodyBytes = 1048576
+
+[AdminREST]
+MaxRequestBodyBytes = 1048576
+```
 
 `PublicREST` starts whenever a running component registers routes on it, and serves `/` and `/health`
 for every node that starts it. `AdminREST` starts only when a component registers operator routes:

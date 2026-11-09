@@ -7,6 +7,10 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 )
 
+// DefaultMaxRequestBodyBytes is the request body size limit a REST server
+// applies when MaxRequestBodyBytes is not set.
+const DefaultMaxRequestBodyBytes int64 = 1024 * 1024
+
 // RESTConfig contains the configuration settings for the REST service in the Aggkit application.
 type RESTConfig struct {
 	// Host specifies the hostname or IP address on which the REST service will listen.
@@ -29,10 +33,24 @@ type RESTConfig struct {
 	// at the fronting reverse proxy / API gateway / ingress if needed.
 	MaxRequestsPerIPAndSecond float64 `mapstructure:"MaxRequestsPerIPAndSecond"`
 
+	// MaxRequestBodyBytes caps the size of a request body, so memory use stays
+	// predictable regardless of what a caller sends. 0 means the default
+	// (DefaultMaxRequestBodyBytes, 1 MiB).
+	MaxRequestBodyBytes int64 `mapstructure:"MaxRequestBodyBytes"`
+
 	// CORS configures Cross-Origin Resource Sharing for this REST service.
 	// Disabled by default, which keeps the current behavior (no CORS headers,
 	// so cross-origin browser requests are rejected by the browser).
 	CORS CORSConfig `mapstructure:"CORS"`
+}
+
+// RequestBodyLimit returns the request body size limit this server applies:
+// MaxRequestBodyBytes when set, DefaultMaxRequestBodyBytes otherwise.
+func (c *RESTConfig) RequestBodyLimit() int64 {
+	if c.MaxRequestBodyBytes <= 0 {
+		return DefaultMaxRequestBodyBytes
+	}
+	return c.MaxRequestBodyBytes
 }
 
 // Address constructs and returns the address as a string in the format "host:port".
