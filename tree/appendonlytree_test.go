@@ -171,3 +171,48 @@ func TestAppendOnlyTree_PutLeafFailureKeepsCache(t *testing.T) {
 	require.Equal(t, cacheBefore, tree.lastLeftCache)
 	require.Equal(t, indexBefore, tree.lastIndex)
 }
+
+func TestAppendOnlyTree_FailedCacheRebuildIsNotReused(t *testing.T) {
+	expected := referenceRoot(t, 5)
+
+	treeDB := createTreeDBForTest(t)
+	tree := NewAppendOnlyTree(treeDB, "")
+
+	tx, err := db.NewTx(context.Background(), treeDB)
+	require.NoError(t, err)
+	putLeavesInTx(t, tree, tx, 0, 3)
+	require.NoError(t, tx.Commit())
+
+	tx, err = db.NewTx(context.Background(), treeDB)
+	require.NoError(t, err)
+	putLeavesInTx(t, tree, tx, 3, 5)
+	require.NoError(t, tx.Rollback())
+
+	// make the cache rebuild fail halfway by hiding a node of the last root
+	lastRoot, err := tree.GetLastRoot(nil)
+	require.NoError(t, err)
+	lowerNode, err := tree.getRHTNode(treeDB, lastRoot.Hash)
+	require.NoError(t, err)
+	_, err = treeDB.Exec(`UPDATE rht SET hash = $1 WHERE hash = $2`, "hidden", lowerNode.Left.Hex())
+	require.NoError(t, err)
+
+	for range 2 {
+		tx, err = db.NewTx(context.Background(), treeDB)
+		require.NoError(t, err)
+		_, err = tree.PutLeaf(tx, 3, 0, testLeaf(3))
+		require.Error(t, err)
+		require.NoError(t, tx.Rollback())
+	}
+
+	_, err = treeDB.Exec(`UPDATE rht SET hash = $1 WHERE hash = $2`, lowerNode.Left.Hex(), "hidden")
+	require.NoError(t, err)
+
+	tx, err = db.NewTx(context.Background(), treeDB)
+	require.NoError(t, err)
+	putLeavesInTx(t, tree, tx, 3, 5)
+	require.NoError(t, tx.Commit())
+
+	root, err := tree.GetLastRoot(nil)
+	require.NoError(t, err)
+	require.Equal(t, expected.Hash, root.Hash)
+}

@@ -100,6 +100,8 @@ func (t *AppendOnlyTree) PutLeaf(tx dbtypes.Txer,
 
 // initCache initializes the lastLeftCache and lastIndex values
 func (t *AppendOnlyTree) initCache(tx dbtypes.Txer) error {
+	// if the rebuild fails, the cache must not be reused on the next PutLeaf
+	t.lastIndex = cacheNotInitialized
 	siblings := [types.DefaultHeight]common.Hash{}
 	lastRoot, err := t.GetLastRoot(tx)
 	if err != nil {
@@ -110,9 +112,9 @@ func (t *AppendOnlyTree) initCache(tx dbtypes.Txer) error {
 		}
 		return err
 	}
-	t.lastIndex = int64(lastRoot.Index)
+	lastIndex := int64(lastRoot.Index)
 	currentNodeHash := lastRoot.Hash
-	index := t.lastIndex
+	index := lastIndex
 	// It starts in height-1 because 0 is the level of the leafs
 	for h := int(types.DefaultHeight - 1); h >= 0; h-- {
 		currentNode, err := t.getRHTNode(tx, currentNodeHash)
@@ -138,6 +140,8 @@ func (t *AppendOnlyTree) initCache(tx dbtypes.Txer) error {
 		siblings[i], siblings[j] = siblings[j], siblings[i]
 	}
 
+	// lastIndex and the cache are only updated together, once the cache was fully rebuilt
+	t.lastIndex = lastIndex
 	t.lastLeftCache = siblings
 	return nil
 }
