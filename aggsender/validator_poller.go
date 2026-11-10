@@ -193,10 +193,11 @@ func (vp *validatorPoller) safeGetSignatureFromValidator(
 ) (signature []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			vp.log.Errorf("recovered from panic while getting signature from validator %s: %v\n%s",
-				validator.String(), r, debug.Stack())
+			// the validator is formatted with %v, which survives a panicking String method
+			vp.log.Errorf("recovered from panic while getting signature from validator %v: %v\n%s",
+				validator, r, debug.Stack())
 			signature = nil
-			err = fmt.Errorf("panic while getting signature from validator %s: %v", validator.String(), r)
+			err = fmt.Errorf("panic while getting signature from validator %v: %v", validator, r)
 		}
 	}()
 

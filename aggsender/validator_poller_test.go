@@ -616,7 +616,7 @@ func TestExecuteRequest(t *testing.T) {
 				}
 				return validators, big.NewInt(1)
 			},
-			expectErrSubstring: "threshold not reached",
+			expectErrSubstring: "panic while getting signature from validator",
 		},
 	}
 

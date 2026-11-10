@@ -79,6 +79,7 @@ func (v *ValidatorClient) ValidateCertificate(
 	}
 
 	signature := response.GetSignature().GetValue()
+	// fail at the client boundary with a clear message instead of relying on later checks
 	if len(signature) != aggkitcommon.SignatureSize {
 		return nil, fmt.Errorf("aggsender validator returned a signature of invalid length: expected %d bytes, got %d",
 			aggkitcommon.SignatureSize, len(signature))
