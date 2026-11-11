@@ -138,6 +138,27 @@ func TestParse_InvalidConfigurations(t *testing.T) {
 	}
 }
 
+// The example configuration is documentation: it must be valid, and use only keys that exist
+func TestExampleConfigIsValid(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "config.toml.example"))
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(11155111), cfg.L1ChainID)
+	require.Equal(t, FinalityFinalized, cfg.Finality.Tag)
+	require.Equal(t, SignerMethodLocal, cfg.Signer.Method())
+	require.False(t, cfg.REST.InsecureHTTP)
+	require.NotEmpty(t, cfg.REST.TLSCertFile)
+
+	// The values of the example are the default ones, except the mandatory ones and the signer
+	defaults := Default()
+	require.Equal(t, defaults.L1RequestTimeout, cfg.L1RequestTimeout)
+	require.Equal(t, defaults.REST.Port, cfg.REST.Port)
+	require.Equal(t, defaults.REST.RequestTimeout, cfg.REST.RequestTimeout)
+	require.Equal(t, defaults.REST.MaxBodyBytes, cfg.REST.MaxBodyBytes)
+	require.Equal(t, defaults.Cache, cfg.Cache)
+	require.Equal(t, defaults.RateLimit, cfg.RateLimit)
+}
+
 func TestLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(path, []byte(validConfig), 0o600))
