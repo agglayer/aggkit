@@ -133,54 +133,54 @@ func TestResolveSubmission_ExplicitModes(t *testing.T) {
 			expectedMode: chaingersender.DirectInjectionMode,
 		},
 		{
-			name:         "committee v1 is used as configured, without reading the L2",
-			cfg:          factoryConfig(ModeCommitteeV1, factoryCommittee),
+			name:         "legacy is used as configured, without reading the L2",
+			cfg:          factoryConfig(ModeLegacy, factoryCommittee),
 			fixture:      func(f *l2Fixture) {},
 			expectedMode: chaingersender.AggOracleCommitteeMode,
 			expectedAddr: factoryCommittee,
 		},
 		{
-			name:          "committee v1 requires the address",
-			cfg:           factoryConfig(ModeCommitteeV1, common.Address{}),
+			name:          "legacy requires the address",
+			cfg:           factoryConfig(ModeLegacy, common.Address{}),
 			fixture:       func(f *l2Fixture) {},
 			expectedError: "AggOracleCommitteeAddr must be set",
 		},
 		{
-			name:         "the legacy flag with the address selects committee v1, without reading the L2",
+			name:         "the deprecated flag with the address selects legacy, without reading the L2",
 			cfg:          func() Config { c := factoryConfig("", factoryCommittee); c.EnableAggOracleCommittee = true; return c }(),
 			fixture:      func(f *l2Fixture) {},
 			expectedMode: chaingersender.AggOracleCommitteeMode,
 			expectedAddr: factoryCommittee,
 		},
 		{
-			name:         "committee v2 without address takes the GER updater",
-			cfg:          factoryConfig(ModeCommitteeV2, common.Address{}),
+			name:         "committee without address takes the GER updater",
+			cfg:          factoryConfig(ModeCommittee, common.Address{}),
 			fixture:      func(f *l2Fixture) { f.withUpdater(factoryCommittee) },
 			expectedMode: chaingersender.AggOracleCommitteeV2Mode,
 			expectedAddr: factoryCommittee,
 		},
 		{
-			name:         "committee v2 with the address of the GER updater",
-			cfg:          factoryConfig(ModeCommitteeV2, factoryCommittee),
+			name:         "committee with the address of the GER updater",
+			cfg:          factoryConfig(ModeCommittee, factoryCommittee),
 			fixture:      func(f *l2Fixture) { f.withUpdater(factoryCommittee) },
 			expectedMode: chaingersender.AggOracleCommitteeV2Mode,
 			expectedAddr: factoryCommittee,
 		},
 		{
-			name:          "committee v2 with an address that is not the GER updater",
-			cfg:           factoryConfig(ModeCommitteeV2, factoryCommittee),
+			name:          "committee with an address that is not the GER updater",
+			cfg:           factoryConfig(ModeCommittee, factoryCommittee),
 			fixture:       func(f *l2Fixture) { f.withUpdater(factoryEOA) },
 			expectedError: "configured committee is " + factoryCommittee.Hex(),
 		},
 		{
-			name:          "committee v2 but the GER updater is the zero address",
-			cfg:           factoryConfig(ModeCommitteeV2, common.Address{}),
+			name:          "committee but the GER updater is the zero address",
+			cfg:           factoryConfig(ModeCommittee, common.Address{}),
 			fixture:       func(f *l2Fixture) { f.withUpdater(common.Address{}) },
 			expectedError: "there is no committee",
 		},
 		{
-			name:          "committee v2 when the GER updater can't be read",
-			cfg:           factoryConfig(ModeCommitteeV2, common.Address{}),
+			name:          "committee when the GER updater can't be read",
+			cfg:           factoryConfig(ModeCommittee, common.Address{}),
 			fixture:       func(f *l2Fixture) {},
 			expectedError: "failed to read globalExitRootUpdater",
 		},
@@ -241,13 +241,13 @@ func TestResolveSubmission_Auto(t *testing.T) {
 			expectedMode: chaingersender.DirectInjectionMode,
 		},
 		{
-			name:         "committee v2",
+			name:         "committee",
 			fixture:      func(f *l2Fixture) { f.withUpdater(factoryCommittee).asCommitteeV2(factoryCommittee) },
 			expectedMode: chaingersender.AggOracleCommitteeV2Mode,
 			expectedAddr: factoryCommittee,
 		},
 		{
-			name:         "committee v1, with the committee address that was configured",
+			name:         "legacy, with the committee address that was configured",
 			fixture:      func(f *l2Fixture) { f.withUpdater(factoryCommittee).asCommitteeV1(factoryCommittee) },
 			committeeCfg: factoryCommittee,
 			expectedMode: chaingersender.AggOracleCommitteeMode,
@@ -344,8 +344,8 @@ func TestNewEVMChainSender(t *testing.T) {
 		require.Nil(t, sender)
 	})
 
-	t.Run("committee v2 with an invalid TLS configuration", func(t *testing.T) {
-		cfg := factoryConfig(ModeCommitteeV2, common.Address{})
+	t.Run("committee with an invalid TLS configuration", func(t *testing.T) {
+		cfg := factoryConfig(ModeCommittee, common.Address{})
 		cfg.CommitteeV2.TLS.CACertFile = "/does/not/exist.pem"
 		client := newL2Fixture(t).withUpdater(factoryCommittee).mock()
 
@@ -364,4 +364,28 @@ func TestNewEVMChainSender(t *testing.T) {
 		require.ErrorIs(t, err, chaingersender.ErrUnknownGERUpdaterContract)
 		require.Nil(t, sender)
 	})
+}
+
+func TestDeprecatedModeWarning(t *testing.T) {
+	// Only the legacy mode is deprecated, whatever the way it was selected (configured, by the deprecated flag
+	// or found by "auto"): the warning depends on the mode that was resolved
+	require.Empty(t, deprecatedModeWarning(chaingersender.DirectInjectionMode))
+	require.Empty(t, deprecatedModeWarning(chaingersender.AggOracleCommitteeV2Mode))
+
+	warning := deprecatedModeWarning(chaingersender.AggOracleCommitteeMode)
+	require.Contains(t, warning, "LEGACY")
+	require.Contains(t, warning, "DEPRECATED")
+	require.Contains(t, warning, "removed in the next one")
+	// It tells what to migrate to
+	require.Contains(t, warning, `AggOracle.Mode = "committee"`)
+}
+
+func TestDeprecatedConfigWarning(t *testing.T) {
+	require.Empty(t, deprecatedConfigWarning(Config{}))
+	require.Empty(t, deprecatedConfigWarning(Config{Mode: ModeLegacy}), "the mode has its own warning")
+
+	warning := deprecatedConfigWarning(Config{EnableAggOracleCommittee: true})
+	require.Contains(t, warning, "EnableAggOracleCommittee is deprecated")
+	require.Contains(t, warning, "removed in the next release")
+	require.Contains(t, warning, "AggOracle.Mode")
 }

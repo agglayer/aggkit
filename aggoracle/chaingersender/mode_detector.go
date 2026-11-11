@@ -103,8 +103,9 @@ func ResolveCommitteeAddress(
 
 // DetectGERMode inspects the globalExitRootUpdater of the L2 GER manager and selects the GER submission mode:
 //   - zero address, or an address without code (an EOA, or an EOA delegated with EIP-7702): direct injection
-//   - an AggOracleCommittee v2 contract (version "v2.x" pointing to the same L2 GER manager): committee v2
-//   - an AggOracleCommittee v1 contract (VERSION "v1.x" pointing to the same L2 GER manager): committee v1
+//   - an AggOracleCommittee v2 contract (version "v2.x" pointing to the same L2 GER manager): the committee mode
+//   - an AggOracleCommittee v1 contract (VERSION "v1.x" pointing to the same L2 GER manager): the legacy mode,
+//     which is deprecated and will be removed in the next release
 //   - anything else (or a contract matching both): error, the mode must be configured explicitly.
 //
 // A failure of the transport (RPC unreachable, timeout...) is returned as an error: it is never
@@ -170,7 +171,8 @@ func DetectGERMode(
 			Updater:   updater,
 			Committee: committee,
 			Version:   v1.version,
-			Reason:    fmt.Sprintf("the GER updater %s is an AggOracleCommittee v1 (version %s)", updater, v1.version),
+			Reason: fmt.Sprintf("the GER updater %s is an AggOracleCommittee v1 (version %s): legacy mode, DEPRECATED",
+				updater, v1.version),
 		}, nil
 	default:
 		return nil, fmt.Errorf("%w: GER updater %s (v2 probe: %s; v1 probe: %s): "+

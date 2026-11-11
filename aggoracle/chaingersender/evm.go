@@ -38,7 +38,8 @@ type GERMode string
 const (
 	// DirectInjectionMode injects the GER with a single tx sent by the GER updater (an EOA)
 	DirectInjectionMode GERMode = "direct_injection"
-	// AggOracleCommitteeMode proposes the GER to the legacy AggOracleCommittee (v1)
+	// AggOracleCommitteeMode proposes the GER to the legacy AggOracleCommittee (v1).
+	// It is the legacy mode, which is DEPRECATED: it will be removed in the next release
 	AggOracleCommitteeMode GERMode = "aggoracle_committee"
 	// AggOracleCommitteeV2Mode injects the GER, with the signatures of the GER validators,
 	// on the AggOracleCommittee v2
@@ -68,7 +69,8 @@ type EVMChainGERSender struct {
 }
 
 // NewEVMChainGERSender creates a sender that injects the GERs directly (DirectInjectionMode)
-// or proposes them to the legacy AggOracleCommittee v1 (AggOracleCommitteeMode).
+// or proposes them to the legacy AggOracleCommittee v1 (AggOracleCommitteeMode, deprecated: it will be removed
+// in the next release).
 // The mode must be already resolved: for AggOracleCommitteeV2Mode use NewCommitteeV2Sender.
 func NewEVMChainGERSender(
 	logger *log.Logger,
