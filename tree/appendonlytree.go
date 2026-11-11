@@ -12,6 +12,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// cacheNotInitialized is the lastIndex value that forces the cache to be rebuilt from the database
+const cacheNotInitialized int64 = -2
+
 var (
 	ErrInvalidIndex                 = errors.New("invalid index")
 	_               types.FullTreer = (*AppendOnlyTree)(nil)
@@ -31,7 +34,7 @@ func NewAppendOnlyTree(db *sql.DB, dbPrefix string) *AppendOnlyTree {
 		Tree: t,
 		// -1 is used to indicate no leafs, 0 means the first leaf is added (at index 0) and so on.
 		// In order to differentiate the "cache not initialised" we need any value smaller than -1
-		lastIndex: -2,
+		lastIndex: cacheNotInitialized,
 	}
 }
 
@@ -50,19 +53,21 @@ func (t *AppendOnlyTree) PutLeaf(tx dbtypes.Txer,
 			return common.Hash{}, ErrInvalidIndex
 		}
 	}
-	// Calculate new tree nodes
+	// Calculate new tree nodes. The cache is updated on a copy so a failure
+	// before the leaf is stored leaves the tree untouched
+	newLeftCache := t.lastLeftCache
 	currentChildHash := leaf.Hash
 	newNodes := []types.TreeNode{}
 	for h := uint8(0); h < types.DefaultHeight; h++ {
 		var parent types.TreeNode
 		if leaf.Index&(1<<h) > 0 {
 			// Add child to the right
-			parent = newTreeNode(t.lastLeftCache[h], currentChildHash)
+			parent = newTreeNode(newLeftCache[h], currentChildHash)
 		} else {
 			// Add child to the left
 			parent = newTreeNode(currentChildHash, t.zeroHashes[h])
 			// Update cache
-			t.lastLeftCache[h] = currentChildHash
+			newLeftCache[h] = currentChildHash
 		}
 		currentChildHash = parent.Hash
 		newNodes = append(newNodes, parent)
@@ -82,16 +87,21 @@ func (t *AppendOnlyTree) PutLeaf(tx dbtypes.Txer,
 	if err := t.storeNodes(tx, newNodes); err != nil {
 		return common.Hash{}, err
 	}
+	t.lastLeftCache = newLeftCache
 	t.lastIndex++
+	// The cache can't be partially undone leaf by leaf, so it is discarded and
+	// rebuilt from the database on the next PutLeaf
 	tx.AddRollbackCallback(func() {
-		log.Debugf("decreasing index due to rollback")
-		t.lastIndex--
+		log.Debugf("invalidating the cache due to rollback")
+		t.lastIndex = cacheNotInitialized
 	})
 	return currentChildHash, nil
 }
 
 // initCache initializes the lastLeftCache and lastIndex values
 func (t *AppendOnlyTree) initCache(tx dbtypes.Txer) error {
+	// if the rebuild fails, the cache must not be reused on the next PutLeaf
+	t.lastIndex = cacheNotInitialized
 	siblings := [types.DefaultHeight]common.Hash{}
 	lastRoot, err := t.GetLastRoot(tx)
 	if err != nil {
@@ -102,9 +112,9 @@ func (t *AppendOnlyTree) initCache(tx dbtypes.Txer) error {
 		}
 		return err
 	}
-	t.lastIndex = int64(lastRoot.Index)
+	lastIndex := int64(lastRoot.Index)
 	currentNodeHash := lastRoot.Hash
-	index := t.lastIndex
+	index := lastIndex
 	// It starts in height-1 because 0 is the level of the leafs
 	for h := int(types.DefaultHeight - 1); h >= 0; h-- {
 		currentNode, err := t.getRHTNode(tx, currentNodeHash)
@@ -130,6 +140,8 @@ func (t *AppendOnlyTree) initCache(tx dbtypes.Txer) error {
 		siblings[i], siblings[j] = siblings[j], siblings[i]
 	}
 
+	// lastIndex and the cache are only updated together, once the cache was fully rebuilt
+	t.lastIndex = lastIndex
 	t.lastLeftCache = siblings
 	return nil
 }
