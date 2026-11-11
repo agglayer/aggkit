@@ -93,7 +93,8 @@ type Options struct {
 	// does not match the agglayer's settled LER. The resulting certificate chains from a
 	// PrevLocalExitRoot that does not cover every emitted bridge exit, so the agglayer will most
 	// likely reject it — enable only to inspect such a snapshot knowingly. It does not affect
-	// Step H's pending-certificate guard. Defaults to false.
+	// Step H's pending-certificate guard. Defaults to false. Rejected with DeltaMode: a delta chains on
+	// PreviousRun by construction, so ignoring a mismatch would only yield a certificate that cannot chain.
 	IgnoreLERMismatch bool `json:"ignoreLERMismatch"`
 	// VerifyNewLocalExitRootUsingShadowFork, when true (the default), makes Step G2 spin up the Anvil
 	// shadow-fork, replay every bridge exit against the real bridge contract, and verify the computed
@@ -328,6 +329,13 @@ func validateDeltaOptions(raw *rawOpts, deltaMode bool) error {
 	}
 	if raw.DeltaExitsFile == "" {
 		return fmt.Errorf("missing required parameter: options.deltaExitsFile (required by options.deltaMode)")
+	}
+	// A delta chains on the previous certificate by construction (prev_local_exit_root and height come from
+	// it), so ignoring the settled-LER/height mismatch would only yield a certificate that cannot chain.
+	if raw.IgnoreLERMismatch != nil && *raw.IgnoreLERMismatch {
+		return fmt.Errorf("options.ignoreLERMismatch is not supported with options.deltaMode: the delta is " +
+			"chained on options.previousRun, so a mismatch with the agglayer's settled certificate cannot be ignored " +
+			"(point options.previousRun at the latest settled run instead)")
 	}
 	return nil
 }

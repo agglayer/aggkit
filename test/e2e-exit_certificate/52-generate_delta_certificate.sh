@@ -275,12 +275,30 @@ check "the kit package of the case is verified and carries the expected recovery
 check "the previous run's balance files were not modified" \
     test "$PREV_STATE_HASH" = "$(sha256sum "${PREV_STATE}/step-c-sc-locked-values.json" "${PREV_STATE}/step-f-checks.json")"
 
-# Deterministic: regenerating from the same previous state gives the same files (the step never reads its
-# own output, so re-running it is always safe).
+# Deterministic: regenerating from the same previous state gives the same files. It goes to ANOTHER output dir:
+# re-running into the same one is refused (it would overwrite the state and drop earlier cases), which is
+# checked right after.
 FIRST_HASH="$(sha256sum "$DELTA_EXITS" "${RECOVERIES_OUT}/step-c-sc-locked-values.json" "${RECOVERIES_OUT}/step-f-checks.json")"
-run_quiet "$BINARY" --config "$DELTA_CONFIG" --step recoveries
-check "re-running --step recoveries gives identical files" \
+RERUN_OUTPUT_REL="./output-kurtosis-delta-${INDEX}-rerun"
+RERUN_CONFIG="${TMP_DIR}/exit_certificate-kurtosis-delta-${INDEX}-rerun.json"
+rm -rf "${TMP_DIR}/output-kurtosis-delta-${INDEX}-rerun"
+jq --arg out "$RERUN_OUTPUT_REL" '.options.outputDir = $out' "$DELTA_CONFIG" > "$RERUN_CONFIG"
+run_quiet "$BINARY" --config "$RERUN_CONFIG" --step recoveries
+RERUN_OUT="${TMP_DIR}/output-kurtosis-delta-${INDEX}-rerun/recoveries"
+check "regenerating --step recoveries from the same state gives identical files" \
+    test "$FIRST_HASH" = "$(sha256sum "${RERUN_OUT}/delta-exits.json" "${RERUN_OUT}/step-c-sc-locked-values.json" "${RERUN_OUT}/step-f-checks.json" | sed "s#${RERUN_OUT}#${RECOVERIES_OUT}#")"
+RERUN_LOG="$(mktemp)"
+if "$BINARY" --config "$DELTA_CONFIG" --step recoveries >"$RERUN_LOG" 2>&1; then
+    RERUN_RC=0
+else
+    RERUN_RC=$?
+fi
+check "re-running --step recoveries into the same output dir is refused (it would drop the earlier cases)" \
+    bash -c '[[ "$1" -ne 0 ]] && grep -q -- "already holds the recoveries" "$2"' _ "$RERUN_RC" "$RERUN_LOG"
+check "... and the first output is left as it was" \
     test "$FIRST_HASH" = "$(sha256sum "$DELTA_EXITS" "${RECOVERIES_OUT}/step-c-sc-locked-values.json" "${RECOVERIES_OUT}/step-f-checks.json")"
+rm -f "$RERUN_LOG"
+rm -rf "${TMP_DIR}/output-kurtosis-delta-${INDEX}-rerun"
 
 # Negative test: a case that must NOT be applied makes the step fail and write nothing. Delta 1: more than
 # what is left pending. Delta 2: sink #1 again (already recovered by case 1, recorded in the ledger).

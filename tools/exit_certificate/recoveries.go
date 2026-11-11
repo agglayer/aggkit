@@ -98,7 +98,10 @@ type RecoveryLedgerEntry struct {
 type recoveryCase struct {
 	Source   string
 	CaseHash string
-	Recovery *RecoveryFile
+	// RecoveryHash is the sha256 of recovery.json alone, whatever the packaging: the same case delivered as a
+	// .tgz and as its extracted files has the same RecoveryHash (but a different CaseHash without move.sh).
+	RecoveryHash string
+	Recovery     *RecoveryFile
 }
 
 // recoveriesState is the balance state the step reads and writes back.
@@ -153,11 +156,18 @@ func loadRecoveryCases(p string) ([]recoveryCase, error) {
 		return nil, fmt.Errorf("no .tgz or %s found in %s", fileRecoveryJSON, p)
 	}
 	cases := make([]recoveryCase, 0, len(files))
+	bySource := make(map[string]string, len(files)) // recovery.json sha256 → file
 	for _, f := range files {
 		c, err := loadRecoveryCase(f)
 		if err != nil {
 			return nil, err
 		}
+		if other, dup := bySource[c.RecoveryHash]; dup {
+			return nil, fmt.Errorf("%s and %s carry the same %s (sha256 %s): provide each case once (a directory "+
+				"holding a kit .tgz together with its extracted files counts it twice)", other, f, fileRecoveryJSON,
+				c.RecoveryHash)
+		}
+		bySource[c.RecoveryHash] = f
 		cases = append(cases, *c)
 	}
 	return cases, nil
@@ -185,11 +195,14 @@ func loadRecoveryCase(file string) (*recoveryCase, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	return &recoveryCase{Source: file, CaseHash: recoveryCaseHash(recJSON, moveSh), Recovery: rec}, nil
+	return &recoveryCase{
+		Source: file, CaseHash: recoveryCaseHash(recJSON, moveSh), RecoveryHash: hexSHA256(recJSON), Recovery: rec,
+	}, nil
 }
 
 // readKitTarball extracts recovery.json (required) and move.sh (optional) from a kit .tgz. The archive is
-// untrusted: nothing is written to disk and only those two files are read, each capped in size.
+// untrusted: nothing is written to disk and only those two files are read, each capped in size. An archive
+// is one case: a second recovery.json or move.sh (at any depth) is an error, not something to ignore.
 func readKitTarball(file string) (recJSON, moveSh []byte, err error) {
 	f, err := os.Open(file)
 	if err != nil {
@@ -202,6 +215,7 @@ func readKitTarball(file string) (recJSON, moveSh []byte, err error) {
 	}
 	defer gz.Close()
 	tr := tar.NewReader(gz)
+	var recName, moveName string
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -215,16 +229,22 @@ func readKitTarball(file string) (recJSON, moveSh []byte, err error) {
 		}
 		switch path.Base(hdr.Name) {
 		case fileRecoveryJSON:
-			if recJSON == nil {
-				if recJSON, err = readCapped(tr); err != nil {
-					return nil, nil, err
-				}
+			if recName != "" {
+				return nil, nil, fmt.Errorf("the archive has more than one %s (%s and %s): one case per archive",
+					fileRecoveryJSON, recName, hdr.Name)
+			}
+			recName = hdr.Name
+			if recJSON, err = readCapped(tr); err != nil {
+				return nil, nil, err
 			}
 		case fileRecoveryMove:
-			if moveSh == nil {
-				if moveSh, err = readCapped(tr); err != nil {
-					return nil, nil, err
-				}
+			if moveName != "" {
+				return nil, nil, fmt.Errorf("the archive has more than one %s (%s and %s): one case per archive",
+					fileRecoveryMove, moveName, hdr.Name)
+			}
+			moveName = hdr.Name
+			if moveSh, err = readCapped(tr); err != nil {
+				return nil, nil, err
 			}
 		}
 	}
@@ -337,9 +357,12 @@ func applyRecoveries(st *recoveriesState, cases []recoveryCase) (*recoveriesOutc
 	}
 	applied := map[string]bool{}
 	recovered := map[lockedTokenKey]string{}
+	inLedger := map[lockedTokenKey]bool{}
 	for _, l := range st.Ledger {
 		applied[l.CaseHash] = true
-		recovered[lockedTokenKey{l.LockedContract, l.Token}] = l.Source
+		k := lockedTokenKey{l.LockedContract, l.Token}
+		recovered[k] = l.Source
+		inLedger[k] = true
 	}
 
 	out := &recoveriesOutcome{}
@@ -364,8 +387,14 @@ func applyRecoveries(st *recoveriesState, cases []recoveryCase) (*recoveriesOutc
 			}
 			k := lockedTokenKey{locked, l2Token}
 			if prev, dup := recovered[k]; dup {
-				errs = append(errs, fmt.Errorf("%s: %s already recovered %s in %s; a contract+token is recovered once",
-					c.Source, locked.Hex(), f.Token, prev))
+				if inLedger[k] {
+					errs = append(errs, fmt.Errorf("%s: %s already recovered %s in %s (recoveries ledger); a "+
+						"contract+token is recovered once", c.Source, locked.Hex(), f.Token, prev))
+				} else {
+					errs = append(errs, fmt.Errorf("%s: %s and %s are two different cases recovering %s from %s in "+
+						"this same batch (a contract+token is recovered once) — if they are the same case in two "+
+						"packagings, supply it once", c.Source, prev, c.Source, f.Token, locked.Hex()))
+				}
 				continue
 			}
 			recovered[k] = c.Source
@@ -601,6 +630,13 @@ func runRecoveries(cfg *Config) error {
 		return fmt.Errorf("options.outputDir and options.previousRun must be different directories (%s)",
 			cfg.Options.OutputDir)
 	}
+	outDir := filepath.Join(cfg.Options.OutputDir, dirRecoveries)
+	if fileExists(filepath.Join(outDir, fileRecoveriesLedger)) || fileExists(filepath.Join(outDir, fileRecoveriesDelta)) {
+		return fmt.Errorf("%s already holds the recoveries of an earlier --step recoveries run for this delta: "+
+			"running it again would overwrite them and drop those cases (the state is always read from "+
+			"options.previousRun). Put every case of this delta in options.recoveriesPath and remove %s to "+
+			"regenerate, or use a new options.outputDir", outDir, outDir)
+	}
 	stateDir, err := recoveriesStateDir(cfg.Options.PreviousRun)
 	if err != nil {
 		return err
@@ -631,7 +667,7 @@ func runRecoveries(cfg *Config) error {
 		log.Info("nothing to apply: every case was already in the ledger")
 		return nil
 	}
-	return writeRecoveriesOutput(filepath.Join(cfg.Options.OutputDir, dirRecoveries), st, out)
+	return writeRecoveriesOutput(outDir, st, out)
 }
 
 func writeRecoveriesOutput(dir string, st *recoveriesState, out *recoveriesOutcome) error {

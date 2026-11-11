@@ -46,18 +46,24 @@ one (N-1). Run it in order; nothing is sent to the agglayer until step 5.
    }
    ```
 
-3. **Turn the cases into exits** (writes nothing outside `output-N/recoveries/`; safe to repeat):
+3. **Turn the cases into exits** (writes only `output-N/recoveries/`):
 
    ```bash
    ./target/exit_certificate --config parameters.json --step recoveries
    ```
 
    Read `output-N/recoveries/recoveries-report.md` and `delta-exits.json`: they must be exactly the funds you expect.
+   The step **refuses to run again** into the same `output-N` (it would overwrite the state and drop the earlier
+   cases): if another `.tgz` arrives before you generate the certificate, add it to `./cases`, delete
+   `output-N/recoveries/` and run it again — every case of this certificate goes in one run.
 4. **Generate certificate N** (CHECK → F → G2 → H → I → SIGN; it does **not** send it):
 
    ```bash
    ./target/exit_certificate --config parameters.json
    ```
+
+   It needs `signerConfig` to sign: without it the run succeeds but **`exit-certificate-signed.json` is not
+   written** (the tool warns) and step 5 would fail.
 
    Then run the [checks before submitting](#before-submitting-files-of-the-delta-output-dir).
 5. **Send it and wait for settlement** (irreversible):
@@ -208,12 +214,14 @@ Constraints (validated on load; the run fails before touching anything):
 
 - Only `Transfer` exits, with `amount` > 0 and a `token_info`.
 - `dest_network` must not be the exiting network itself.
-- `metadata` is optional and is the **raw** leaf metadata (hex, no `0x`; the tool hashes it). Leave it out unless you
-  know it: the tool then derives it from the L2 bridge as `bridgeAsset` does (name/symbol/decimals of the L2 token for
-  ERC-20, gas-token metadata for native).
-- **No two identical exits** (same token, destination, amount and metadata), neither inside the file nor against an
-  exit already in the previous run: they share a leaf hash and the claimer could not tell them apart. Merge them
-  into one exit summing the amounts.
+- `metadata` is optional and is the **raw** leaf metadata (plain hex: no `0x` prefix, even length — anything else is
+  rejected; the tool hashes it). Do **not** copy the `metadata` of a certificate's `bridge_exits`: that one is the
+  keccak hash. Leave it out unless you know it: the tool then derives it from the L2 bridge as `bridgeAsset` does
+  (name/symbol/decimals of the L2 token for ERC-20, gas-token metadata for native) — which needs the L2 RPC.
+- **No two identical exits** (same token, destination, amount and metadata), neither inside the file nor against
+  **any leaf already in the exit tree** (exits of previous runs and the older L2 bridges): they share a leaf hash and
+  the claimer could not tell them apart. Merge repeated exits of the file into one summing the amounts; if it
+  equals an already settled leaf, change the amount (e.g. split it in two different amounts).
 - Per token, the sum of the new exits must be ≤ the remaining balance the agglayer holds for that token
   (`admin_getTokenBalance`, already net of previous certificates). See [troubleshooting](#step-f-delta-exits-exceed-the-agglayer-remaining-balance).
 
@@ -226,7 +234,16 @@ The exits are produced from the recoveries the
 `<outputDir>/recoveries/delta-exits.json` (use it as `deltaExitsFile`) and the updated balance state
 (`step-c-sc-locked-values.json`, `step-f-checks.json`, the ledger `recoveries-applied.json` and a report).
 It refuses to apply a case twice and checks, per token, that what is recovered fits in the SC-locked value the
-first certificate left behind. Whether each case is legitimate is **not** checked: that is the manual
+first certificate left behind. Rules worth knowing:
+
+- **One recovery per (locked contract, token), ever.** The ledger cannot tell a re-packaged copy of an applied case
+  from a new one, so a contract+token that already has a recovery is refused (also two cases for it in the same
+  batch). Consequence: a contract that holds funds of several owners (vault, pool, multisig) can be recovered once
+  per token.
+- **One case per archive**, and each case once per batch: an archive with more than one `recovery.json`/`move.sh`
+  is an error, and so is a directory that holds both a kit `.tgz` and its extracted `recovery.json` (a loose
+  `recovery.json` without `move.sh` hashes only itself, so it would not look like the same case as the `.tgz`).
+- The step **never overwrites** an earlier run into the same `outputDir` (see the quick start). Whether each case is legitimate is **not** checked: that is the manual
 verification that must precede it. Details in the
 [exit_certificate README](../tools/exit_certificate/README.md#recoveries-step--from-verified-recoveries-to-delta-exits).
 
@@ -245,7 +262,16 @@ Copy the config of the previous run and set:
 ```
 
 The usual `l2RpcUrl`, `l1RpcUrl`, `agglayerClient` (gRPC), `agglayerAdminURL` and `signerConfig` are still needed.
-`exitAddress` is not required in delta mode.
+`exitAddress` is not required in delta mode. Delta-specific rules:
+
+- **The L2 RPC must still answer** (`l2RpcUrl`): the tool reads the L2 bridge's gas token and, for every exit
+  without `metadata` (all of those produced by `--step recoveries`), the L2 token's name/symbol/decimals. Balances are
+  never read from it. Today delta mode cannot run without it: if the chain's RPC is gone, restore a node (or an
+  archive of the L2 state) before generating the delta.
+- `useAgglayerAdminToStepFCheck` must be `true` (Step F is the only check of the amounts against the agglayer).
+- `ignoreLERMismatch` is rejected (the delta is chained on `previousRun` by construction), and
+  `ignoreBalanceMismatch`/`capMode` do not apply (an excess always fails).
+- `signerConfig` is needed to get `exit-certificate-signed.json`.
 
 ### 3. Generate the delta certificate
 
@@ -303,7 +329,7 @@ Repeat Procedure A with the **latest settled run** as the base:
 
 | Check | How |
 | ----- | --- |
-| The delta carries only the new exits | `jq '.bridge_exits \| length' exit-certificate-signed.json` equals the number of exits in your delta file (or fewer if `capMode` trimmed them). |
+| The delta carries only the new exits | `jq '.bridge_exits \| length' exit-certificate-signed.json` equals the number of exits in your delta file (delta mode never trims them). |
 | Height chains | `jq .height exit-certificate-signed.json` == previous height + 1. |
 | Roots chain | `jq .prev_local_exit_root exit-certificate-signed.json` == previous `new_local_exit_root`; `new_local_exit_root` is different. |
 | Nothing old was touched | `diff <(jq -S '.bridge_exits[0:N]' exit-certificate-full.json) <(jq -S .bridge_exits <previous cert>)` is empty (N = previous exit count). |
@@ -368,7 +394,13 @@ state first (`agglayer_certificate_status.sh`).
 | `load previous run … (the previous certificate must be submitted and settled)` | `step-wait-result.json` missing in `previousRun` | The previous run never reached `wait`. Run `--step submit,wait` on it (or point `previousRun` at the right dir). |
 | `previous certificate … is not settled (status …)` | Previous certificate not settled | Wait for it, or see "Certificate InError" below. |
 | `previous run local exit tree DB … not found` | Sqlite missing in `previousRun` | Restore it from backup. If it is lost, the tree must be rebuilt from the certificate: do not guess, ask the team. |
-| `delta exit N (…) duplicates …: identical exits share a leaf hash` | Identical exit repeated, or equal to a previous one | Merge repeated exits of the delta file into one, summing the amounts. If it equals an exit of a **previous** run, the tool cannot represent it as a second leaf: decide with the team how to issue it (the previous run cannot be changed once settled). |
+| `delta exit N (…) is identical to … : identical leaves share a hash` | Identical exit repeated, or equal to a leaf already in the tree | Merge repeated exits of the delta file into one, summing the amounts. If it equals a leaf of a **previous** run or an older L2 bridge (already settled, it cannot be merged), change the amount so the leaf differs (e.g. issue it as two different amounts). |
+| `delta exit N: metadata must be plain hex without the 0x prefix` / `… is not valid hex` | `0x` prefix, odd length or non-hex `metadata` in the delta file | Write the raw metadata as plain even-length hex, or remove the field to derive it from the L2 bridge. Never paste a certificate's `metadata` (it is a hash). |
+| `options.ignoreLERMismatch is not supported with options.deltaMode` | The option is set in a delta config | Remove it. If the settled state differs from `previousRun`, fix `previousRun` instead. |
+| `step F (delta) requires options.useAgglayerAdminToStepFCheck=true` | Admin check disabled | Enable it and set `agglayerAdminURL`: delta mode does not allow skipping Step F. |
+| `… already holds the recoveries of an earlier --step recoveries run for this delta` | `--step recoveries` run twice into the same `outputDir` | Put every case of the delta in `recoveriesPath`, delete `<outputDir>/recoveries/` and run it again (or use a new `outputDir`). |
+| `the archive has more than one recovery.json` / `… carry the same recovery.json` | A kit `.tgz` with several cases, or a `.tgz` together with its extracted files | One case per archive; supply each case once. |
+| `two different cases recovering … in this same batch` / `already recovered … (recoveries ledger)` | The same locked contract + token twice (re-packaged case, or a second owner of the same vault) | See "One recovery per (locked contract, token)" above. |
 
 ### CHECK: AET-11 — "the agglayer settled LER … is not the previous certificate's new_local_exit_root"
 
@@ -377,8 +409,8 @@ The agglayer's latest settled state is not the previous run's. Causes, in order 
 1. **The previous certificate is not settled yet.** Wait: `agglayer_certificate_status.sh -n <id> --wait --expected-ler <prev new_local_exit_root>`.
 2. **`previousRun` is not the latest settled certificate.** Someone submitted another certificate (another delta, a
    regular certificate from aggsender) after it. Rebuild the delta on top of that one; if its output dir is not
-   available, get it before going on. **Never** use `ignoreLERMismatch` to bypass this: the resulting certificate
-   would be built on a root the agglayer does not have and will be rejected.
+   available, get it before going on. `ignoreLERMismatch` is rejected in delta mode on purpose: the resulting
+   certificate would be built on a root the agglayer does not have and would be rejected.
 3. **Wrong network id / wrong agglayer** in the config.
 
 The same error says "the agglayer next certificate height is X but the previous certificate has height Y" when the
@@ -398,12 +430,12 @@ reject any certificate that exits more than the chain's remaining balance of tha
    (`get-agglayer-lbt.sh`). A mismatch usually means a previous exit is being counted twice (the same funds
    requested in two deltas) or the amount in the file is wrong.
 2. If the amount is wrong, fix the file and rerun.
-3. If you really want the tool to trim the exits to what is left, set `ignoreBalanceMismatch=true` **and** a
-   trimming `capMode` (`amount` or `appearance`; the default `none` forbids it). Capping reduces what users
-   receive: review `step-f-capped-certificate.json` and tell the affected owners before submitting.
+3. **Capping is not available in delta mode** (`ignoreBalanceMismatch`/`capMode` are ignored here): the exits come
+   from `--step recoveries`, whose ledger and balance state assume every one is paid in full, so trimming them would
+   leave those files saying more was released than the certificate carries. If the agglayer genuinely cannot cover a
+   recovery, stop and decide with the team before changing amounts by hand (and fix the recoveries state too).
 
-If `useAgglayerAdminToStepFCheck=false` Step F is **skipped with a warning** and the exits are not checked against
-the agglayer balance: only do it knowingly, and compare by hand.
+Step F cannot be skipped either: `useAgglayerAdminToStepFCheck=false` is an error in delta mode.
 
 ### Step G2: "previous run is inconsistent: its local exit tree root … differs from the … new_local_exit_root"
 

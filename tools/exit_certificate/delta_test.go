@@ -67,8 +67,16 @@ func writePreviousRun(
 	t *testing.T, certFile string, nBase int, exits []*agglayertypes.BridgeExit,
 ) (string, common.Hash) {
 	t.Helper()
+	return writePreviousRunLeaves(t, certFile, baseLeaves(nBase), exits)
+}
+
+// writePreviousRunLeaves is writePreviousRun with the exact leaves of the previous tree.
+func writePreviousRunLeaves(
+	t *testing.T, certFile string, leaves []bridgesyncerlite.BridgeLeaf, exits []*agglayertypes.BridgeExit,
+) (string, common.Hash) {
+	t.Helper()
 	dir := t.TempDir()
-	root := writeLiteTree(t, filepath.Join(dir, fileStepGLiteDB), baseLeaves(nBase))
+	root := writeLiteTree(t, filepath.Join(dir, fileStepGLiteDB), leaves)
 	cert := &agglayertypes.Certificate{
 		NetworkID: deltaTestNetworkID, Height: 3, NewLocalExitRoot: root, BridgeExits: exits,
 	}
@@ -104,6 +112,28 @@ func TestLoadDeltaExits(t *testing.T) {
 		exits, err = LoadDeltaExits(write(t, exit(`"amount":"5","metadata":null`)), deltaTestNetworkID)
 		require.NoError(t, err)
 		require.Empty(t, exits[0].Metadata)
+	})
+
+	// A malformed metadata used to be dropped silently (the exit was then regenerated from the L2, changing
+	// the leaf): it must be refused.
+	t.Run("malformed metadata is refused", func(t *testing.T) {
+		t.Parallel()
+		for name, md := range map[string]string{
+			"0x prefix":    `"0xabcd"`,
+			"0X prefix":    `"0Xabcd"`,
+			"odd length":   `"abc"`,
+			"not hex":      `"zz"`,
+			"not a string": `123`,
+		} {
+			_, err := LoadDeltaExits(write(t, exit(`"amount":"5","metadata":`+md)), deltaTestNetworkID)
+			require.Error(t, err, name)
+			require.ErrorContains(t, err, "metadata", name)
+		}
+		// absent / null / empty stay valid (derived from the L2 bridge).
+		for _, extra := range []string{`"amount":"5"`, `"amount":"5","metadata":null`, `"amount":"5","metadata":""`} {
+			_, err := LoadDeltaExits(write(t, exit(extra)), deltaTestNetworkID)
+			require.NoError(t, err, extra)
+		}
 	})
 
 	t.Run("errors", func(t *testing.T) {
@@ -249,7 +279,9 @@ func TestRunStepHDelta(t *testing.T) {
 		require.ErrorIs(t, err, errUnsettledBridgeExits)
 	})
 
-	t.Run("ignoreLERMismatch downgrades to a warning", func(t *testing.T) {
+	// options.ignoreLERMismatch is a config error with deltaMode; even if it got here, H never ignores a
+	// mismatch with the previous certificate.
+	t.Run("ignoreLERMismatch does not downgrade the chain check", func(t *testing.T) {
 		t.Parallel()
 		other := common.HexToHash("0xdef")
 		client := mocks.NewAgglayerClientMock(t)
@@ -257,9 +289,8 @@ func TestRunStepHDelta(t *testing.T) {
 			SettledLER: &other, SettledHeight: ptrUint64(3),
 		}, nil)
 		ignoring := &Config{L2NetworkID: deltaTestNetworkID, Options: Options{IgnoreLERMismatch: true}}
-		res, err := runStepHDelta(context.Background(), ignoring, client, prev)
-		require.NoError(t, err)
-		require.Equal(t, prevLER, res.PreviousLocalExitRoot)
+		_, err := runStepHDelta(context.Background(), ignoring, client, prev)
+		require.ErrorIs(t, err, errUnsettledBridgeExits)
 	})
 }
 
@@ -370,15 +401,46 @@ func TestCompareDeltaBalancesAndCap(t *testing.T) {
 	})
 }
 
-func TestRunStepFDeltaSkippedWithoutAdminCheck(t *testing.T) {
+// Delta mode cannot skip the Step F check: with hand-written exits it is the only guard on the amounts.
+func TestRunStepFDeltaRequiresAdminCheck(t *testing.T) {
 	t.Parallel()
-	res, err := RunStepFDelta(context.Background(), &Config{}, &agglayertypes.Certificate{})
-	require.NoError(t, err)
-	require.True(t, res.AllMatch)
+	_, err := RunStepFDelta(context.Background(), &Config{}, &agglayertypes.Certificate{})
+	require.ErrorContains(t, err, "requires options.useAgglayerAdminToStepFCheck=true")
 
 	_, err = RunStepFDelta(context.Background(),
 		&Config{Options: Options{UseAgglayerAdminToStepFCheck: true}}, &agglayertypes.Certificate{})
 	require.ErrorContains(t, err, "agglayerAdminURL")
+}
+
+// An excess over the agglayer remaining balance always fails in delta mode: capping would desynchronise the
+// delta from the recoveries ledger, so ignoreBalanceMismatch/capMode do not apply.
+func TestRunStepFDeltaNeverCaps(t *testing.T) {
+	t.Parallel()
+	srv := newRPCStub(t, func(method string, _ []any) (json.RawMessage, *jsonRPCError) {
+		require.Equal(t, "admin_getTokenBalance", method)
+		return json.RawMessage(`{"balances":[{"originNetwork":0,"originTokenAddress":"` + deltaToken.Hex() +
+			`","amount":"79"}]}`), nil
+	})
+	cert := &agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
+		deltaExit(30, deltaToken, nil), deltaExit(50, deltaToken, nil), // 80 > 79
+	}}
+	cfg := &Config{L2NetworkID: deltaTestNetworkID, Options: Options{
+		UseAgglayerAdminToStepFCheck: true, AgglayerAdminURL: srv.URL, OutputDir: t.TempDir(),
+		IgnoreBalanceMismatch: true, CapMode: CapModeByAppearance,
+	}}
+	res, err := RunStepFDelta(context.Background(), cfg, cert)
+	require.ErrorContains(t, err, "capping is not supported in delta mode")
+	require.Nil(t, res.CappedCertificate)
+	require.Equal(t, []*agglayertypes.BridgeExit{cert.BridgeExits[0], cert.BridgeExits[1]}, cert.BridgeExits,
+		"the exits are left untouched")
+
+	// within the balance → fine.
+	cfg.Options.OutputDir = t.TempDir()
+	cert.BridgeExits[1] = deltaExit(49, deltaToken, nil)
+	res, err = RunStepFDelta(context.Background(), cfg, cert)
+	require.NoError(t, err)
+	require.True(t, res.AllMatch)
+	require.Nil(t, res.CappedCertificate)
 }
 
 // Tree continuation: appending the delta to the previous tree must give the same root as building
@@ -488,21 +550,26 @@ func TestRunStepG2DeltaErrors(t *testing.T) {
 	})
 }
 
-// Two exits with the same leaf hash would be served with the same deposit count by the claimer.
+// Two leaves with the same hash would be served with the same deposit count by the claimer. The check
+// runs against EVERY leaf of the previous tree (exits of previous runs and older L2 bridges), not only
+// against the previous certificate's exits.
 func TestRunStepG2DeltaRejectsDuplicateExits(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cfg := func() *Config { return &Config{L2RPCURL: gasTokenStubURL(t), Options: Options{OutputDir: t.TempDir()}} }
 
-	// duplicates a previous exit (metadata hash of the previous exit = keccak of the delta raw metadata)
-	prevExit := deltaExit(7, deltaToken, crypto.Keccak256(deltaRawMD1))
-	dir, _ := writePreviousRun(t, fileSignedCertificate, 2, []*agglayertypes.BridgeExit{prevExit})
+	// The previous tree holds a leaf identical to what deltaExit(7, ...) produces, but the previous
+	// certificate does not list it (an older L2 bridge): only a leaf-level check can see it.
+	histLeaf := liteLeavesFromExits([]*agglayertypes.BridgeExit{deltaExit(7, deltaToken, nil)}, 3, 2,
+		0, common.Address{}, [][]byte{deltaRawMD1})
+	dir, _ := writePreviousRunLeaves(t, fileSignedCertificate, append(baseLeaves(2), histLeaf...), nil)
 	prev, err := loadPreviousRun(dir)
 	require.NoError(t, err)
 	_, err = RunStepG2Delta(ctx, cfg(), prev, &agglayertypes.Certificate{
 		BridgeExits: []*agglayertypes.BridgeExit{deltaExit(7, deltaToken, deltaRawMD1)},
 	})
-	require.ErrorContains(t, err, "duplicates previous exit 0")
+	require.ErrorContains(t, err, "identical to the leaf already in the exit tree at deposit count 2")
+	require.ErrorContains(t, err, "cannot be merged")
 
 	// duplicates another delta exit
 	_, err = RunStepG2Delta(ctx, cfg(), prev, &agglayertypes.Certificate{
@@ -510,7 +577,7 @@ func TestRunStepG2DeltaRejectsDuplicateExits(t *testing.T) {
 			deltaExit(8, deltaToken, deltaRawMD1), deltaExit(8, deltaToken, deltaRawMD1),
 		},
 	})
-	require.ErrorContains(t, err, "duplicates delta exit 0")
+	require.ErrorContains(t, err, "identical to delta exit 0 in this run")
 
 	// a different amount is fine
 	_, err = RunStepG2Delta(ctx, cfg(), prev, &agglayertypes.Certificate{
@@ -601,6 +668,12 @@ func TestDeltaConfigValidation(t *testing.T) {
 	require.ErrorContains(t, err, "options.previousRun")
 	_, err = load(t, `,"deltaMode":true,"previousRun":"prev"`)
 	require.ErrorContains(t, err, "options.deltaExitsFile")
+
+	// ignoreLERMismatch cannot be honoured: the delta chains on previousRun by construction.
+	_, err = load(t, `,"deltaMode":true,"previousRun":"prev","deltaExitsFile":"exits.json","ignoreLERMismatch":true`)
+	require.ErrorContains(t, err, "options.ignoreLERMismatch is not supported with options.deltaMode")
+	_, err = load(t, `,"deltaMode":true,"previousRun":"prev","deltaExitsFile":"exits.json","ignoreLERMismatch":false`)
+	require.NoError(t, err)
 
 	// Without deltaMode the delta options would be silently ignored → rejected; exitAddress stays required.
 	_, err = load(t, `,"previousRun":"prev"`)

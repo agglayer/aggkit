@@ -238,11 +238,26 @@ func TestLoadRecoveryCases_TgzAndCaseHash(t *testing.T) {
 	require.NotEqual(t, hexSHA256([]byte(recDoc)), cases[0].CaseHash)
 
 	// changing move.sh changes the hash (as it invalidates the kit's signatures).
-	writeKitTgz(t, dir, "b.tgz", map[string]string{"recovery.json": recDoc, "move.sh": "#!/bin/bash\n# x\n"})
-	cases, err = loadRecoveryCases(dir)
-	require.NoError(t, err)
-	require.Len(t, cases, 2)
-	require.NotEqual(t, cases[0].CaseHash, cases[1].CaseHash)
+	require.NotEqual(t, recoveryCaseHash([]byte(recDoc), []byte("#!/bin/bash\n")),
+		recoveryCaseHash([]byte(recDoc), []byte("#!/bin/bash\n# x\n")))
+
+	// The same recovery.json delivered twice — the .tgz and its extracted file (which, without move.sh, would
+	// get another case hash) — is refused instead of tripping the contract+token guard later.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "recovery.json"), []byte(recDoc), 0o600))
+	_, err = loadRecoveryCases(dir)
+	require.ErrorContains(t, err, "carry the same recovery.json")
+}
+
+// A kit archive is one case: more than one recovery.json / move.sh is an error, not silently ignored.
+func TestReadKitTarball_OneCasePerArchive(t *testing.T) {
+	dir := t.TempDir()
+	two := writeKitTgz(t, dir, "two.tgz", map[string]string{"a/recovery.json": recDoc, "b/recovery.json": recDoc})
+	_, err := loadRecoveryCases(two)
+	require.ErrorContains(t, err, "more than one recovery.json")
+
+	moves := writeKitTgz(t, dir, "moves.tgz", map[string]string{"recovery.json": recDoc, "a/move.sh": "1", "b/move.sh": "2"})
+	_, err = loadRecoveryCases(moves)
+	require.ErrorContains(t, err, "more than one move.sh")
 }
 
 func TestLoadRecoveryCases_Errors(t *testing.T) {
@@ -316,6 +331,54 @@ func TestRunRecoveries_EndToEndAndChaining(t *testing.T) {
 	cfg2.Options.PreviousRun = cfg.Options.OutputDir
 	cfg2.Options.OutputDir = filepath.Join(root, "output-delta-2")
 	require.ErrorContains(t, runRecoveries(&cfg2), "exceeds pendingSCLockedBalance") // 901 > 900 left
+}
+
+// Two different cases for the same contract+token inside one batch (typically one case in two packagings)
+// get a message that says so, not the ledger one.
+func TestApplyRecoveries_SameContractTokenInBatchMessage(t *testing.T) {
+	st := newRecoveriesState()
+	_, err := applyRecoveries(st, []recoveryCase{
+		recCase("x.tgz", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"}),
+		recCase("y/recovery.json", "h2", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"}),
+	})
+	require.ErrorContains(t, err, "two different cases")
+	require.ErrorContains(t, err, "in this same batch")
+}
+
+// Running --step recoveries again into the same outputDir would overwrite its state (which is always read
+// from previousRun) and drop the earlier cases: it must fail instead.
+func TestRunRecoveries_RefusesToOverwriteEarlierOutput(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "output-first")
+	st := newRecoveriesState()
+	writeJSONFile(t, first, fileStep0LBT, st.LBT)
+	writeJSONFile(t, first, fileStepCSCLockedValues, st.SC)
+	writeJSONFile(t, first, fileStepFChecks, st.Checks)
+	casesDir := filepath.Join(root, "cases")
+	require.NoError(t, os.MkdirAll(casesDir, 0o755))
+	writeKitTgz(t, casesDir, "a.tgz", map[string]string{"recovery.json": recDoc, "move.sh": "m1"})
+	cfg := &Config{L2NetworkID: 7, Options: Options{
+		DeltaMode: true, PreviousRun: first, OutputDir: filepath.Join(root, "output-delta-1"), RecoveriesPath: casesDir,
+	}}
+	require.NoError(t, runRecoveries(cfg))
+	exitsFile := filepath.Join(cfg.Options.OutputDir, dirRecoveries, fileRecoveriesDelta)
+	before, err := os.ReadFile(exitsFile)
+	require.NoError(t, err)
+
+	// a second batch arrives before the delta is generated: re-running into the same dir is refused ...
+	writeKitTgz(t, casesDir, "b.tgz", map[string]string{"recovery.json": `{"locked_contract":"` + recLocked2 +
+		`","destination":"` + recDest2 + `","funds":[{"token":"native","amount":"5"}]}`, "move.sh": "m2"})
+	require.ErrorContains(t, runRecoveries(cfg), "already holds the recoveries of an earlier")
+	after, err := os.ReadFile(exitsFile)
+	require.NoError(t, err)
+	require.Equal(t, string(before), string(after), "the earlier output is left untouched")
+
+	// ... and removing the directory regenerates it with every case of the delta.
+	require.NoError(t, os.RemoveAll(filepath.Join(cfg.Options.OutputDir, dirRecoveries)))
+	require.NoError(t, runRecoveries(cfg))
+	exits, err := LoadDeltaExits(exitsFile, 7)
+	require.NoError(t, err)
+	require.Len(t, exits, 2)
 }
 
 func TestRecoveriesStateDir(t *testing.T) {

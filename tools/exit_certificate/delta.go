@@ -2,12 +2,14 @@ package exit_certificate
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -133,12 +135,57 @@ func LoadDeltaExits(path string, l2NetworkID uint32) ([]*agglayertypes.BridgeExi
 	if len(file.BridgeExits) == 0 {
 		return nil, fmt.Errorf("delta exits file %s has no bridge_exits", path)
 	}
+	// BridgeExit.UnmarshalJSON turns a malformed `metadata` (0x prefix, odd length, non-hex) into empty bytes
+	// without an error, which would make the tool regenerate it from the L2 and silently change the leaf.
+	// Check the raw text instead.
+	var rawFile struct {
+		BridgeExits []struct {
+			Metadata json.RawMessage `json:"metadata"`
+		} `json:"bridge_exits"`
+	}
+	if err := json.Unmarshal(raw, &rawFile); err != nil {
+		return nil, fmt.Errorf("parse delta exits file %s: %w", path, err)
+	}
 	for i, be := range file.BridgeExits {
 		if err := validateDeltaExit(be, l2NetworkID); err != nil {
 			return nil, fmt.Errorf("delta exit %d: %w", i, err)
 		}
+		if err := validateDeltaRawMetadata(rawFile.BridgeExits[i].Metadata); err != nil {
+			return nil, fmt.Errorf("delta exit %d: %w", i, err)
+		}
 	}
 	return file.BridgeExits, nil
+}
+
+// deltaHashLikeMetadataLen is the size of a keccak256 hash: a certificate's `metadata` is that hash, so a
+// 32-byte value in the delta file is most likely a certificate's metadata copied over by mistake.
+const deltaHashLikeMetadataLen = 32
+
+// validateDeltaRawMetadata checks the `metadata` of a delta exit as written in the file: absent, null or
+// "" (derived from the L2 bridge), or the RAW leaf metadata as plain hex — no 0x prefix, even length.
+func validateDeltaRawMetadata(raw json.RawMessage) error {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return errors.New("metadata must be a hex string or null")
+	}
+	if s == "" {
+		return nil
+	}
+	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
+		return errors.New("metadata must be plain hex without the 0x prefix")
+	}
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return fmt.Errorf("metadata is not valid hex (odd length or a non-hex character): %w", err)
+	}
+	if len(b) == deltaHashLikeMetadataLen {
+		log.Warnf("delta exit metadata is %d bytes — a certificate's `metadata` is a keccak256 hash, whereas "+
+			"this file expects the RAW leaf metadata; check it was not copied from a certificate", len(b))
+	}
+	return nil
 }
 
 func validateDeltaExit(be *agglayertypes.BridgeExit, l2NetworkID uint32) error {
@@ -226,7 +273,11 @@ func runDelta(ctx context.Context, cfg *Config) error {
 	}
 
 	submittable := certificate
-	if cfg.SignerConfig.Method != "" {
+	if cfg.SignerConfig.Method == "" {
+		log.Warn("⚠️  no signerConfig.Method: the certificate is NOT signed and " + fileSignedCertificate +
+			" is NOT written, so --step submit,wait will fail until it is signed (set signerConfig and run " +
+			"--step sign, or provide the signed file by other means)")
+	} else {
 		signed, err := RunStepSign(ctx, cfg, certificate)
 		if err != nil {
 			return fmt.Errorf("step SIGN: %w", err)
@@ -333,8 +384,8 @@ func buildFullCertificate(
 
 // --- Step F (delta) ---
 
-// runDeltaStepF runs the delta Step F, persists its outputs and returns the certificate to continue
-// with (the capped one when exits had to be trimmed).
+// runDeltaStepF runs the delta Step F and persists its outputs. The delta exits are never trimmed, so the
+// certificate it returns is the one it received.
 func runDeltaStepF(
 	ctx context.Context, cfg *Config, dir string, certificate *agglayertypes.Certificate,
 ) (*agglayertypes.Certificate, error) {
@@ -350,21 +401,15 @@ func runDeltaStepF(
 	if err := saveJSON(dir, fileStepFChecks, result.Checks); err != nil {
 		return nil, err
 	}
-	if result.CappedCertificate != nil {
-		if err := saveJSON(dir, fileStepFCappedCertificate, result.CappedCertificate); err != nil {
-			return nil, err
-		}
-		return result.CappedCertificate, nil
-	}
 	return certificate, nil
 }
 
 // RunStepFDelta verifies that, per token, the sum of the delta exits does not exceed the balance the
 // agglayer still holds for it (admin_getTokenBalance, which already reflects the previous
 // certificates). Unlike the full pipeline there is no LBT equality to check: the delta only recovers
-// part of what is left. options.ignoreBalanceMismatch and options.capMode keep their meaning: on an
-// excess the step fails, or — with ignoreBalanceMismatch and a trimming capMode — caps the exits to
-// the remaining balance.
+// part of what is left. The check cannot be skipped (options.useAgglayerAdminToStepFCheck must be true)
+// and an excess always fails: options.ignoreBalanceMismatch / options.capMode do not apply, because
+// capping would desynchronise the delta from the recoveries ledger.
 func RunStepFDelta(
 	ctx context.Context, cfg *Config, certificate *agglayertypes.Certificate,
 ) (*StepFResult, error) {
@@ -373,9 +418,8 @@ func RunStepFDelta(
 	log.Info("═══════════════════════════════════════════")
 
 	if !cfg.Options.UseAgglayerAdminToStepFCheck {
-		log.Warn("STEP F skipped: useAgglayerAdminToStepFCheck=false — the delta exits are NOT checked " +
-			"against the agglayer remaining balance")
-		return &StepFResult{AllMatch: true}, nil
+		return nil, errors.New("step F (delta) requires options.useAgglayerAdminToStepFCheck=true: it is the only check " +
+			"that the delta exits fit in what the agglayer still holds, so delta mode does not allow skipping it")
 	}
 	if cfg.Options.AgglayerAdminURL == "" {
 		return nil, fmt.Errorf("step F requires agglayerAdminURL to be set in options")
@@ -419,21 +463,11 @@ func RunStepFDelta(
 		return result, nil
 	}
 
-	if !cfg.Options.IgnoreBalanceMismatch {
-		return result, fmt.Errorf("delta exits exceed the agglayer remaining balance " +
-			"(set options.ignoreBalanceMismatch=true with a trimming options.capMode to cap them)")
-	}
-	log.Warn("Delta exceeds the remaining balance — capping (ignoreBalanceMismatch=true)")
-	cappedExits, err := capCertificateExits(certificate.BridgeExits, checks, cfg.Options.CapMode)
-	if err != nil {
-		return result, fmt.Errorf("delta exceeds the remaining balance and requires capping: %w", err)
-	}
-	capped := *certificate
-	capped.BridgeExits = cappedExits
-	result.CappedCertificate = &capped
-	log.Infof("🔧 Capped delta certificate: %d → %d bridge exits", len(certificate.BridgeExits), len(cappedExits))
-	log.Info("STEP F (delta) complete")
-	return result, nil
+	// Capping is not available in delta mode: the delta exits are exactly what --step recoveries recorded in
+	// its ledger and balance state, so trimming them here would leave those files saying more was paid out than
+	// the certificate carries (and the case could never be re-applied).
+	return result, errors.New("delta exits exceed the agglayer remaining balance; capping is not supported in " +
+		"delta mode (fix the exits or the state they come from)")
 }
 
 // compareDeltaBalances builds the per-token check for the delta: Match when the exits' sum is within
@@ -512,9 +546,6 @@ func RunStepG2Delta(
 	if err != nil {
 		return nil, err
 	}
-	if err := rejectDuplicateExits(prev.Certificate.BridgeExits, certificate.BridgeExits, rawMetadata); err != nil {
-		return nil, err
-	}
 	gasTokenNetwork, gasTokenAddress, err := fetchL2GasTokenInfo(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -557,6 +588,13 @@ func RunStepG2Delta(
 
 	leaves := liteLeavesFromExits(certificate.BridgeExits, blockNum, firstDepositCount,
 		gasTokenNetwork, gasTokenAddress, rawMetadata)
+	existing, err := syncer.GetBridges(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := rejectDuplicateLeaves(existing, leaves); err != nil {
+		return nil, err
+	}
 	newLER, err := syncer.AppendBridges(ctx, leaves)
 	if err != nil {
 		return nil, fmt.Errorf("append delta leaves to the exit tree: %w", err)
@@ -580,33 +618,28 @@ func RunStepG2Delta(
 	return result, nil
 }
 
-// rejectDuplicateExits fails when a delta exit has the same leaf hash (token, destination, amount and
-// metadata) as a previous exit or as another delta exit. Both would be distinct tree leaves with the
-// same hash, and the claimer indexes leaves by hash: the later one would overwrite the earlier
-// deposit count, so the earlier exit could no longer be claimed. Merge such exits (sum the amounts)
-// instead.
-func rejectDuplicateExits(
-	previous, delta []*agglayertypes.BridgeExit, rawMetadata [][]byte,
-) error {
-	seen := make(map[common.Hash]string, len(previous)+len(delta))
-	for i, be := range previous {
-		if h := be.Hash(); h != (common.Hash{}) {
-			seen[h] = fmt.Sprintf("previous exit %d", i)
-		}
+// rejectDuplicateLeaves fails when a new leaf has the same hash (token, destination, amount and metadata)
+// as a leaf already in the tree — an exit of a previous run or any older L2 bridge — or as another new
+// leaf. Both would be distinct tree leaves with the same hash, and the claimer indexes leaves by hash: the
+// later one overwrites the earlier deposit count, so the earlier exit could no longer be claimed.
+func rejectDuplicateLeaves(existing, leaves []bridgesyncerlite.BridgeLeaf) error {
+	seen := make(map[common.Hash]string, len(existing)+len(leaves))
+	for i := range existing {
+		seen[existing[i].Hash()] = fmt.Sprintf("the leaf already in the exit tree at deposit count %d "+
+			"(an exit of a previous run or an older L2 bridge, already settled: it cannot be merged)",
+			existing[i].DepositCount)
 	}
-	for i, be := range delta {
-		hashed := *be
-		hashed.Metadata = crypto.Keccak256(rawMetadata[i])
-		h := hashed.Hash()
-		if h == (common.Hash{}) {
-			continue
-		}
+	for i := range leaves {
+		h := leaves[i].Hash()
 		if other, dup := seen[h]; dup {
-			return fmt.Errorf("delta exit %d (token %s, dest %s, amount %s) duplicates %s: identical exits "+
-				"share a leaf hash and the claimer could not tell them apart — merge them into one exit",
-				i, be.TokenInfo, be.DestinationAddress.Hex(), be.Amount, other)
+			return fmt.Errorf("delta exit %d (origin %d/%s, dest %s, amount %s) is identical to %s: identical leaves "+
+				"share a hash and the claimer could not tell them apart — merge delta exits that are identical "+
+				"into one (sum the amounts), or change the amount so the leaf differs from a settled one (e.g. "+
+				"split it in two different amounts)",
+				i, leaves[i].OriginNetwork, leaves[i].OriginAddress.Hex(), leaves[i].DestinationAddress.Hex(),
+				leaves[i].Amount, other)
 		}
-		seen[h] = fmt.Sprintf("delta exit %d", i)
+		seen[h] = fmt.Sprintf("delta exit %d in this run", i)
 	}
 	return nil
 }
@@ -673,13 +706,12 @@ func runStepHDelta(
 	if err != nil {
 		return nil, err
 	}
+	// options.ignoreLERMismatch is rejected with deltaMode (LoadConfig): the chain on the previous certificate
+	// cannot be skipped.
 	if err := verifyChainsOnPreviousRun(prev, settledLER, nextHeight); err != nil {
-		if err := suppressUnsettledExitsError(cfg, err); err != nil {
-			return nil, err
-		}
-	} else {
-		log.Info("✅ agglayer settled LER and height match the previous certificate")
+		return nil, err
 	}
+	log.Info("✅ agglayer settled LER and height match the previous certificate")
 
 	result := &StepHResult{
 		PreviousLocalExitRoot: prev.Certificate.NewLocalExitRoot,
