@@ -18,6 +18,14 @@ packages:
   github.com/agglayer/aggkit/aggoracle/types:
     config:
       all: true
+  github.com/agglayer/aggkit/aggoracle/gervalidator:
+    config:
+      outpkg: "gervalidator"
+      inpackage: true
+      dir: "{{ .InterfaceDir }}"
+      filename: "mock_{{ .InterfaceName | snakecase }}.go"
+      mockname: "{{ .InterfaceName }}Mock"
+      all: true
   github.com/agglayer/aggkit/aggsender/db:
     config:
       all: true
