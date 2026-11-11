@@ -1,0 +1,11 @@
+issue-845-fix: true
+with-expecter: true
+resolve-type-alias: false
+dir: "{{ .InterfaceDir }}/mocks"
+outpkg: "mocks"
+filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
+mockname: "{{ .InterfaceName }}"
+packages:
+  github.com/agglayer/aggkit/tools/ger_validator_signer/service:
+    config:
+      all: true
