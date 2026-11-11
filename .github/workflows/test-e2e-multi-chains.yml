@@ -57,41 +57,46 @@ on:
         required: false
         type: string
         default: ""
+    secrets:
+      DATADOG_API_KEY:
+        description: "Datadog API key used to record the test run"
+        required: false
 
-permissions:
-  contents: read
-  packages: write
-  id-token: write
+permissions: {}
 
 jobs:
   test-multi-aggkit-e2e:
+    permissions:
+      contents: read
     name: Multi chains E2E test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout agglayer-e2e
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
         with:
+          persist-credentials: false
           repository: agglayer/e2e
           ref: ${{ inputs.agglayer-e2e-ref }}
           path: agglayer-e2e
 
       - name: Checkout kurtosis-cdk
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
         with:
+          persist-credentials: false
           repository: 0xPolygon/kurtosis-cdk
           ref: ${{ inputs.kurtosis-cdk-ref }}
           path: kurtosis-cdk
 
       - name: Download binary
         if: inputs.aggsender-find-imported-bridge-artifact != ''
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
           name: ${{ inputs.aggsender-find-imported-bridge-artifact }}
           path: /tmp
 
       - name: Download artifact
         if: inputs.docker-artifact-name != ''
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
           name: ${{ inputs.docker-artifact-name }}
           path: /tmp
@@ -121,14 +126,25 @@ jobs:
           echo "${install_dir}" >> "${GITHUB_PATH}"
 
       - name: Install bats
-        uses: bats-core/bats-action@3.0.0
+        uses: bats-core/bats-action@2104b40bb7b6c2d5110b23a26b0bf265ab8027db  # 3.0.0
 
       - name: Install kurtosis cli and jq
+        env:
+          KURTOSIS_VERSION: "1.14.1"
+          KURTOSIS_SHA256: "0bdb71dc20eaadba4812324d19acb2ebb4f77889b1c8dc32867288835e59b4da"
         run: |
-          echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
-          sudo apt update
-          sudo apt install -y kurtosis-cli jq
-          kurtosis analytics disable
+          sudo apt-get update
+          sudo apt-get install -y jq
+          archive="kurtosis-cli_${KURTOSIS_VERSION}_linux_amd64.tar.gz"
+          install_dir="${RUNNER_TEMP}/kurtosis/bin"
+          mkdir -p "${install_dir}"
+          curl -fsSL -o "${RUNNER_TEMP}/${archive}" \
+            "https://github.com/kurtosis-tech/kurtosis-cli-release-artifacts/releases/download/${KURTOSIS_VERSION}/${archive}"
+          echo "${KURTOSIS_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check --strict
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${install_dir}" kurtosis
+          echo "${install_dir}" >> "${GITHUB_PATH}"
+          "${install_dir}/kurtosis" analytics disable
+          "${install_dir}/kurtosis" version
 
       - name: Write args input to a file
         run: |
@@ -156,7 +172,7 @@ jobs:
 
       - name: Download aggkit config override
         if: inputs.aggkit-config-artifact != ''
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
           name: ${{ inputs.aggkit-config-artifact }}
           path: /tmp/aggkit-config
@@ -214,7 +230,7 @@ jobs:
 
       - name: Upload logs
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: ${{ env.ARCHIVE_NAME }}
           path: ./dump
@@ -228,13 +244,12 @@ jobs:
       - name: Record test run in Datadog
         if: always()
         continue-on-error: true
-        uses: agglayer/gha-record-e2e-test-run@v1
+        uses: agglayer/gha-record-e2e-test-run@3d8941f5a639c9ad00853e59990255ae08f647fe  # v1.0.13
         with:
-          enable_ai_analysis: "true"
+          enable_ai_analysis: "false"
           host: github-actions-runners
           status: ${{ job.status }}
           ref_kurtosis: ${{ inputs.kurtosis-cdk-ref }}
           ref_e2e: ${{ inputs.agglayer-e2e-ref }}
         env:
           DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

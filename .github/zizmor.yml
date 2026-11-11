@@ -1,0 +1,20 @@
+# Configuration for the workflow lint job.
+
+rules:
+  # Every action and reusable workflow must be pinned to a full commit SHA.
+  unpinned-uses:
+    config:
+      policies:
+        "*": hash-pin
+
+  # Pre-existing findings in these files are out of scope for this change.
+  template-injection:
+    ignore:
+      - test-e2e-multi-chains.yml
+  cache-poisoning:
+    ignore:
+      - lint.yml
+      - test-unit.yml
+  dangerous-triggers:
+    ignore:
+      - claude-interactive.yml
