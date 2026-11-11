@@ -37,8 +37,13 @@ type EVMConfig struct {
 type GERMode string
 
 const (
-	DirectInjectionMode    GERMode = "direct_injection"
+	// DirectInjectionMode injects the GER with a single tx sent by the GER updater (an EOA)
+	DirectInjectionMode GERMode = "direct_injection"
+	// AggOracleCommitteeMode proposes the GER to the legacy AggOracleCommittee (v1)
 	AggOracleCommitteeMode GERMode = "aggoracle_committee"
+	// AggOracleCommitteeV2Mode injects the GER, with the signatures of the GER validators,
+	// on the AggOracleCommittee v2
+	AggOracleCommitteeV2Mode GERMode = "aggoracle_committee_v2"
 )
 
 type EVMChainGERSender struct {
