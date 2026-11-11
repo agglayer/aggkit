@@ -43,7 +43,7 @@ jobs:
           fi
 
       - name: Checkout kurtosis-cdk
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
           repository: 0xPolygon/kurtosis-cdk
@@ -84,7 +84,7 @@ jobs:
       kurtosis-cdk-args-5: ${{ steps.read-args.outputs.kurtosis-cdk-args-5 }}
     steps:
       - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
@@ -161,17 +161,17 @@ jobs:
     runs-on: amd-runner-2204
     steps:
       - name: Checkout code
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
       - name: Install Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: 1.27.3
       - name: Build Aggsender Find Imported Bridge
         run: make build-tools
       - name: Upload Binary
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: aggsender_find_imported_bridge
           path: ./target/aggsender_find_imported_bridge
@@ -180,7 +180,7 @@ jobs:
       # agglayer/e2e reusable workflows (input: aggkit-config-artifact), so a
       # config change ships in the same PR as the code — no kurtosis-cdk PR.
       - name: Upload aggkit e2e config templates
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: aggkit-e2e-config
           path: ./test/e2e/kurtosis/*.template.toml
@@ -196,7 +196,7 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@1b0f0e29931b36af191c62c68dd273760e3a8d49  # agglayer/e2e main
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c97e11e5f90164fdd16901db11c96a5bcf8fb11f  # agglayer/e2e main
     secrets:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
@@ -233,7 +233,7 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@1b0f0e29931b36af191c62c68dd273760e3a8d49  # agglayer/e2e main
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c97e11e5f90164fdd16901db11c96a5bcf8fb11f  # agglayer/e2e main
     secrets:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
@@ -270,7 +270,7 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@1b0f0e29931b36af191c62c68dd273760e3a8d49  # agglayer/e2e main
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c97e11e5f90164fdd16901db11c96a5bcf8fb11f  # agglayer/e2e main
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     secrets:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
