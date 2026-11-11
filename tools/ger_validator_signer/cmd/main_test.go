@@ -55,8 +55,8 @@ func TestRun_Version(t *testing.T) {
 	code, stdout, stderr := execute(t, "version")
 	require.Equal(t, exitOK, code)
 	require.Empty(t, stderr)
-	require.Contains(t, stdout, "v0.0.0-dev", "the default version when it was not set at build time")
-	require.Contains(t, stdout, "git revision")
+	require.Contains(t, stdout, "Version:      v0.0.0-dev", "the default version when it was not set at build time")
+	require.Contains(t, stdout, "Git revision:")
 }
 
 func TestRun_RunCommandArguments(t *testing.T) {

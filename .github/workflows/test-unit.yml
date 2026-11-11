@@ -42,3 +42,7 @@ jobs:
 
       - name: Test
         run: make test-unit
+
+      # ger_validator_signer is its own Go module: `make test-unit` doesn't run its tests
+      - name: Test ger_validator_signer
+        run: make test-unit-ger_validator_signer
