@@ -72,14 +72,18 @@ jobs:
         run: ./test/e2e-exit_certificate/10-run_network.sh stop || true
 
   test-e2e-exit-certificate-delta:
+    permissions:
+      contents: read
     name: Exit-certificate tool E2E (delta mode)
     runs-on: amd-runner-2204
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Install Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
         with:
           go-version: 1.27.3
 
@@ -98,11 +102,12 @@ jobs:
       # The delta recoveries are real zkevm-proof-of-ownership-kit submissions (prepare/verify-submission.sh),
       # pinned to a commit of the kit's main (bump it deliberately when the kit changes).
       - name: Checkout zkevm-proof-of-ownership-kit
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
           repository: agglayer/zkevm-proof-of-ownership-kit
           ref: 1e2fed4eb612a48bdc5a1b142e6b6527f25ccf22
           path: zkevm-proof-of-ownership-kit
+          persist-credentials: false
 
       - name: Run exit-certificate delta E2E test
         env:
