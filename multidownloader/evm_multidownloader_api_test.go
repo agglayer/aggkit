@@ -1,16 +1,48 @@
 package multidownloader
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/agglayer/aggkit/log"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+// blockingResponseWriter blocks in Write until release is closed, so a test can inspect
+// what the handler holds while the response is being written.
+type blockingResponseWriter struct {
+	header     http.Header
+	entered    chan struct{}
+	release    chan struct{}
+	enterOnce  sync.Once
+	statusCode int
+	body       bytes.Buffer
+}
+
+func newBlockingResponseWriter() *blockingResponseWriter {
+	return &blockingResponseWriter{
+		header:  make(http.Header),
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (w *blockingResponseWriter) Header() http.Header { return w.header }
+
+func (w *blockingResponseWriter) WriteHeader(statusCode int) { w.statusCode = statusCode }
+
+func (w *blockingResponseWriter) Write(data []byte) (int, error) {
+	w.enterOnce.Do(func() { close(w.entered) })
+	<-w.release
+	return w.body.Write(data)
+}
 
 func newMultidownloaderAPITestEngine(t *testing.T, downloader *EVMMultidownloader) *gin.Engine {
 	t.Helper()
@@ -127,4 +159,49 @@ func TestEVMMultidownloaderAPI_Reorg(t *testing.T) {
 				"no reorg must be forced on invalid input")
 		}
 	})
+}
+
+func TestEVMMultidownloaderAPI_StatusDoesNotHoldMutexWhileWriting(t *testing.T) {
+	testData := newEVMMultidownloaderTestData(t, false)
+	testData.mdr.state = NewEmptyState()
+	testData.mockBlockNotifierManager.EXPECT().GetCurrentBlockNumber(mock.Anything, mock.Anything).
+		Return(uint64(100), nil)
+
+	engine := newMultidownloaderAPITestEngine(t, testData.mdr)
+	writer := newBlockingResponseWriter()
+	requestDone := make(chan struct{})
+	go func() {
+		defer close(requestDone)
+		engine.ServeHTTP(writer,
+			httptest.NewRequest(http.MethodGet, MultidownloaderV1Prefix+"/test/status", nil))
+	}()
+
+	select {
+	case <-writer.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the status handler did not write a response")
+	}
+
+	// While the response is being written the downloader's lock must be free: its own
+	// loop takes it, and a slow client must not stall the downloader.
+	locked := make(chan struct{})
+	go func() {
+		testData.mdr.mutex.Lock()
+		close(locked)
+		testData.mdr.mutex.Unlock()
+	}()
+
+	select {
+	case <-locked:
+	case <-time.After(5 * time.Second):
+		close(writer.release)
+		<-requestDone
+		t.Fatal("the status handler holds downloader.mutex while writing the response")
+	}
+
+	close(writer.release)
+	<-requestDone
+
+	require.Equal(t, http.StatusOK, writer.statusCode)
+	require.Contains(t, writer.body.String(), `"status":"running"`)
 }

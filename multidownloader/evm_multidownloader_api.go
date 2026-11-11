@@ -82,9 +82,14 @@ func (a *EVMMultidownloaderAPI) status(c *gin.Context) {
 		return
 	}
 
+	// Snapshot the state under the mutex, then release it before writing: a slow client must
+	// not hold the downloader's lock while the response is encoded and sent, since the
+	// downloader's own loop takes the same lock.
 	a.downloader.mutex.Lock()
-	defer a.downloader.mutex.Unlock()
 	completationPercentage := a.downloader.state.CompletionPercentage()
+	state := a.downloader.state.String()
+	a.downloader.mutex.Unlock()
+
 	minPercent := 100.0
 	for _, percent := range completationPercentage {
 		if percent < minPercent {
@@ -101,7 +106,7 @@ func (a *EVMMultidownloaderAPI) status(c *gin.Context) {
 		CompletionPercentageDetailed map[common.Address]float64 `json:"completionPercentageDetailed,omitempty"`
 	}{
 		Status:                       "running",
-		State:                        a.downloader.state.String(),
+		State:                        state,
 		FinalizedBlockNumber:         finalizedBlockNumber,
 		LatestBlockNumber:            latestBlockNumber,
 		CompletionPercentage:         minPercent,
