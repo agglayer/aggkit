@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/aggoracle"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
@@ -98,6 +99,15 @@ func TestLoadDefaultConfig(t *testing.T) {
 	cfgL2Multidownloader.Enabled = false
 	require.Equal(t, cfgL2Multidownloader, cfg.L2Multidownloader)
 	require.Nil(t, cfg.L2NetworkConfig.InitialLER)
+	// AggOracle defaults: auto mode, legacy flag off and a valid committee v2 section
+	require.Equal(t, aggoracle.ModeAuto, cfg.AggOracle.Mode)
+	require.False(t, cfg.AggOracle.EnableAggOracleCommittee)
+	require.Equal(t, 5*time.Second, cfg.AggOracle.CommitteeV2.RequestTimeout.Duration)
+	require.Equal(t, 5*time.Second, cfg.AggOracle.CommitteeV2.CollectRetryInterval.Duration)
+	require.Equal(t, 3, cfg.AggOracle.CommitteeV2.MaxInjectAttempts)
+	require.Equal(t, time.Duration(0), cfg.AggOracle.CommitteeV2.PendingGERTimeout.Duration)
+	require.Empty(t, cfg.AggOracle.CommitteeV2.ValidatorURLOverrides)
+	require.NoError(t, cfg.AggOracle.Validate())
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {
