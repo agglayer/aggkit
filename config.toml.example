@@ -118,21 +118,14 @@ genesisBlockNumber = 0
 #                 in a single transaction (AggOracleCommittee v2).
 #                 [L2Config].AggOracleCommitteeAddr is optional: when it is not set,
 #                 the contract that is the globalExitRootUpdater on the L2 is used
-#   "legacy"    - DEPRECATED: it is kept in this release and it will be REMOVED in the
-#                 next one. Migrate to "committee" (or to "direct").
-#                 Propose the GER to the legacy AggOracleCommittee (v1) contract.
-#                 Requires [L2Config].AggOracleCommitteeAddr
 #   "auto"      - inspect the contract that is the globalExitRootUpdater on the L2
-#                 and select one of the above (default). If it finds a legacy
-#                 committee (v1) it runs in the legacy mode, with a deprecation warning
+#                 and select one of the above (default)
+# The old AggOracleCommittee (v1) is NOT supported anymore: with "auto" a chain whose
+# globalExitRootUpdater is a v1 committee fails to start, and says so. Migrate the chain
+# to an AggOracleCommittee v2 ("committee"), or to an EOA as GER updater ("direct").
+# EnableAggOracleCommittee was removed with it: delete it from the configuration
 # ------------------------------------------------------------------------------
 # Mode = "auto"
-# ------------------------------------------------------------------------------
-# DEPRECATED, use Mode instead. It will be REMOVED in the next release, together
-# with the legacy mode. If true (and Mode is "auto") and
-# [L2Config].AggOracleCommitteeAddr is set, it is equivalent to Mode = "legacy"
-# ------------------------------------------------------------------------------
-EnableAggOracleCommittee = false
 # ------------------------------------------------------------------------------
 # Only used when the mode is (or resolves to) "committee"
 # ------------------------------------------------------------------------------

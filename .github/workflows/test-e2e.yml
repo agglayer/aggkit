@@ -72,8 +72,6 @@ jobs:
     outputs:
       # single l2 network (op-succinct)
       kurtosis-cdk-args-single-op-succinct: ${{ steps.read-args.outputs.op_succinct_args }}
-      # single l2 network (op-succinct with aggoracle committee)
-      kurtosis-cdk-args-single-op-succinct-aggoracle-committee: ${{ steps.read-args.outputs.op_succinct_aggoracle_committee_args }}
       # single l2 network (op, pessimistic)
       kurtosis-cdk-args-single-op-pessimistic: ${{ steps.read-args.outputs.single_op_chain_pessimistic_args }}
       # multi l2 networks
@@ -125,11 +123,6 @@ jobs:
           put_args op_succinct_args "$BASE_OP" \
             ./.github/test_e2e_op_succinct_args_base.json \
             ./.github/test_e2e_single_chain_op_succinct_args.json
-
-          # single l2 network (op-succinct with aggoracle committee)
-          put_args op_succinct_aggoracle_committee_args "$BASE_OP" \
-            ./.github/test_e2e_op_succinct_args_base.json \
-            ./.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json
 
           # single l2 network (op, pessimistic)
           put_args single_op_chain_pessimistic_args "$BASE_OP" \
@@ -259,44 +252,6 @@ jobs:
       - run: exit 1
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-succinct.result) }}
 
-  test-single-l2-network-op-succinct-aggoracle-committee:
-    permissions:
-      contents: read
-      packages: read
-      id-token: write
-    name: Single L2 chain tests (op-succinct with aggoracle committee)
-    needs:
-      - build-aggkit-image
-      - build-tools
-      - read-aggkit-args
-      - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@75202d2d38153691332b49b5424796dc5fd5b32a  # agglayer/e2e main
-    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
-    secrets:
-      DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
-    with:
-      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 75202d2d38153691332b49b5424796dc5fd5b32a # agglayer/e2e main
-      # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
-      aggkit-config-artifact: aggkit-e2e-config
-      kurtosis-cdk-enclave-name: op
-      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct-aggoracle-committee }}
-      test-name: "test-single-l2-network-op-succinct-aggoracle-committee"
-      execute-all-tests: ${{ github.event_name == 'schedule' }}
-      fail-fast: ${{ github.event_name != 'schedule' }}
-      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
-
-  check-single-l2-network-op-succinct-aggoracle-committee-tests-result:
-    permissions:
-      contents: read
-    name: Check results for single l2 network (op-succinct with aggoracle committee)
-    needs:
-      - test-single-l2-network-op-succinct-aggoracle-committee
-    runs-on: ubuntu-latest
-    steps:
-      - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-succinct-aggoracle-committee.result) }}
-
   test-multi-l2-networks-2-chains-op-pessimistic:
     permissions:
       contents: read
@@ -372,7 +327,6 @@ jobs:
     needs:
       - test-single-l2-network-op-pessimistic
       - test-single-l2-network-op-succinct
-      - test-single-l2-network-op-succinct-aggoracle-committee
       - test-multi-l2-networks-2-chains-op-pessimistic
       - test-multi-l2-networks-3-chains-cdk-erigon-pessimistic
       - get-kurtosis-cdk-commit
@@ -392,7 +346,6 @@ jobs:
             Test Results:
             • Single L2 (OP, pessimistic): ${{ needs.test-single-l2-network-op-pessimistic.result == 'success' && '🟢' || '🔴' }}
             • Single L2 (op-succinct): ${{ needs.test-single-l2-network-op-succinct.result == 'success' && '🟢' || '🔴' }}
-            • Single L2 (op-succinct with aggoracle committee): ${{ needs.test-single-l2-network-op-succinct-aggoracle-committee.result == 'success' && '🟢' || '🔴' }}
             • Multi L2 (OP, pessimistic, 2 chains): ${{ needs.test-multi-l2-networks-2-chains-op-pessimistic.result == 'success' && '🟢' || '🔴' }}
             • Multi L2 (OP, pessimistic, 3 chains): ${{ needs.test-multi-l2-networks-3-chains-cdk-erigon-pessimistic.result == 'success' && '🟢' || '🔴' }}
 

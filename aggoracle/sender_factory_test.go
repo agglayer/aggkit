@@ -133,26 +133,6 @@ func TestResolveSubmission_ExplicitModes(t *testing.T) {
 			expectedMode: chaingersender.DirectInjectionMode,
 		},
 		{
-			name:         "legacy is used as configured, without reading the L2",
-			cfg:          factoryConfig(ModeLegacy, factoryCommittee),
-			fixture:      func(f *l2Fixture) {},
-			expectedMode: chaingersender.AggOracleCommitteeMode,
-			expectedAddr: factoryCommittee,
-		},
-		{
-			name:          "legacy requires the address",
-			cfg:           factoryConfig(ModeLegacy, common.Address{}),
-			fixture:       func(f *l2Fixture) {},
-			expectedError: "AggOracleCommitteeAddr must be set",
-		},
-		{
-			name:         "the deprecated flag with the address selects legacy, without reading the L2",
-			cfg:          func() Config { c := factoryConfig("", factoryCommittee); c.EnableAggOracleCommittee = true; return c }(),
-			fixture:      func(f *l2Fixture) {},
-			expectedMode: chaingersender.AggOracleCommitteeMode,
-			expectedAddr: factoryCommittee,
-		},
-		{
 			name:         "committee without address takes the GER updater",
 			cfg:          factoryConfig(ModeCommittee, common.Address{}),
 			fixture:      func(f *l2Fixture) { f.withUpdater(factoryCommittee) },
@@ -185,14 +165,10 @@ func TestResolveSubmission_ExplicitModes(t *testing.T) {
 			expectedError: "failed to read globalExitRootUpdater",
 		},
 		{
-			name: "contradictory configuration",
-			cfg: func() Config {
-				c := factoryConfig(ModeDirect, factoryCommittee)
-				c.EnableAggOracleCommittee = true
-				return c
-			}(),
+			name:          "the legacy mode was removed",
+			cfg:           factoryConfig("legacy", factoryCommittee),
 			fixture:       func(f *l2Fixture) {},
-			expectedError: "contradicts AggOracle.Mode",
+			expectedError: "invalid AggOracle.Mode",
 		},
 		{
 			name:          "invalid mode",
@@ -247,11 +223,10 @@ func TestResolveSubmission_Auto(t *testing.T) {
 			expectedAddr: factoryCommittee,
 		},
 		{
-			name:         "legacy, with the committee address that was configured",
-			fixture:      func(f *l2Fixture) { f.withUpdater(factoryCommittee).asCommitteeV1(factoryCommittee) },
-			committeeCfg: factoryCommittee,
-			expectedMode: chaingersender.AggOracleCommitteeMode,
-			expectedAddr: factoryCommittee,
+			name:          "an AggOracleCommittee v1 is not supported anymore",
+			fixture:       func(f *l2Fixture) { f.withUpdater(factoryCommittee).asCommitteeV1(factoryCommittee) },
+			committeeCfg:  factoryCommittee,
+			expectedError: "no longer supported",
 		},
 		{
 			name: "a contract that is not a committee",
@@ -335,12 +310,21 @@ func TestNewEVMChainSender(t *testing.T) {
 	})
 
 	t.Run("an invalid configuration fails before reading anything", func(t *testing.T) {
-		cfg := factoryConfig(ModeDirect, factoryCommittee)
-		cfg.EnableAggOracleCommittee = true
+		// The legacy mode (AggOracleCommittee v1) was removed
+		cfg := factoryConfig("legacy", factoryCommittee)
 
 		sender, err := NewEVMChainSender(context.Background(), log.GetDefaultLogger(), cfg,
 			typesmocks.NewBaseEthereumClienter(t), mocks.NewL2GERManagerContract(t), mocks.NewEthTxManager(t))
-		require.ErrorContains(t, err, "contradicts AggOracle.Mode")
+		require.ErrorContains(t, err, "invalid AggOracle.Mode")
+		require.Nil(t, sender)
+	})
+
+	t.Run("auto that finds an AggOracleCommittee v1 says it is not supported", func(t *testing.T) {
+		fixture := newL2Fixture(t).withUpdater(factoryCommittee).asCommitteeV1(factoryCommittee)
+
+		sender, err := NewEVMChainSender(context.Background(), log.GetDefaultLogger(),
+			factoryConfig(ModeAuto, common.Address{}), fixture.mock(), mocks.NewL2GERManagerContract(t), mocks.NewEthTxManager(t))
+		require.ErrorIs(t, err, chaingersender.ErrLegacyCommitteeNotSupported)
 		require.Nil(t, sender)
 	})
 
@@ -364,28 +348,4 @@ func TestNewEVMChainSender(t *testing.T) {
 		require.ErrorIs(t, err, chaingersender.ErrUnknownGERUpdaterContract)
 		require.Nil(t, sender)
 	})
-}
-
-func TestDeprecatedModeWarning(t *testing.T) {
-	// Only the legacy mode is deprecated, whatever the way it was selected (configured, by the deprecated flag
-	// or found by "auto"): the warning depends on the mode that was resolved
-	require.Empty(t, deprecatedModeWarning(chaingersender.DirectInjectionMode))
-	require.Empty(t, deprecatedModeWarning(chaingersender.AggOracleCommitteeV2Mode))
-
-	warning := deprecatedModeWarning(chaingersender.AggOracleCommitteeMode)
-	require.Contains(t, warning, "LEGACY")
-	require.Contains(t, warning, "DEPRECATED")
-	require.Contains(t, warning, "removed in the next one")
-	// It tells what to migrate to
-	require.Contains(t, warning, `AggOracle.Mode = "committee"`)
-}
-
-func TestDeprecatedConfigWarning(t *testing.T) {
-	require.Empty(t, deprecatedConfigWarning(Config{}))
-	require.Empty(t, deprecatedConfigWarning(Config{Mode: ModeLegacy}), "the mode has its own warning")
-
-	warning := deprecatedConfigWarning(Config{EnableAggOracleCommittee: true})
-	require.Contains(t, warning, "EnableAggOracleCommittee is deprecated")
-	require.Contains(t, warning, "removed in the next release")
-	require.Contains(t, warning, "AggOracle.Mode")
 }

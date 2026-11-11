@@ -27,15 +27,14 @@ func TestMode_UnmarshalText(t *testing.T) {
 		wantErr  string
 	}{
 		{input: "direct", expected: ModeDirect},
-		{input: "legacy", expected: ModeLegacy},
 		{input: "committee", expected: ModeCommittee},
 		{input: "auto", expected: ModeAuto},
 		{input: "  AUTO  ", expected: ModeAuto},
 		{input: "Committee", expected: ModeCommittee},
-		{input: "LEGACY", expected: ModeLegacy},
 		{input: "", wantErr: "invalid AggOracle.Mode"},
 		{input: "unknown", wantErr: "invalid AggOracle.Mode"},
-		// These names were never released: the modes are direct, committee and legacy (and auto)
+		// The old AggOracleCommittee (v1) is not supported anymore, and these names were never released
+		{input: "legacy", wantErr: "invalid AggOracle.Mode"},
 		{input: "committee_v1", wantErr: "invalid AggOracle.Mode"},
 		{input: "committee_v2", wantErr: "invalid AggOracle.Mode"},
 	}
@@ -57,48 +56,24 @@ func TestMode_UnmarshalText(t *testing.T) {
 
 func TestConfig_ResolveMode(t *testing.T) {
 	tests := []struct {
-		name         string
-		mode         Mode
-		enableLegacy bool
-		committee    common.Address
-		expected     Mode
-		wantErr      string
+		name     string
+		mode     Mode
+		expected Mode
+		wantErr  string
 	}{
 		{name: "unset mode is auto", mode: "", expected: ModeAuto},
 		{name: "auto", mode: ModeAuto, expected: ModeAuto},
-		{name: "auto with committee address and no legacy flag", mode: ModeAuto, committee: committeeAddr, expected: ModeAuto},
 		{name: "direct", mode: ModeDirect, expected: ModeDirect},
-		{name: "legacy", mode: ModeLegacy, committee: committeeAddr, expected: ModeLegacy},
 		{name: "committee", mode: ModeCommittee, expected: ModeCommittee},
-		{
-			name: "legacy flag and address, unset mode", mode: "", enableLegacy: true,
-			committee: committeeAddr, expected: ModeLegacy,
-		},
-		{
-			name: "legacy flag and address, auto mode", mode: ModeAuto, enableLegacy: true,
-			committee: committeeAddr, expected: ModeLegacy,
-		},
-		{name: "legacy flag without address has no effect", mode: ModeAuto, enableLegacy: true, expected: ModeAuto},
-		{
-			name: "legacy flag with legacy", mode: ModeLegacy, enableLegacy: true,
-			committee: committeeAddr, expected: ModeLegacy,
-		},
-		{
-			name: "legacy flag contradicts direct", mode: ModeDirect, enableLegacy: true,
-			committee: committeeAddr, wantErr: "contradicts AggOracle.Mode",
-		},
-		{
-			name: "legacy flag contradicts committee", mode: ModeCommittee, enableLegacy: true,
-			committee: committeeAddr, wantErr: "contradicts AggOracle.Mode",
-		},
 		{name: "invalid mode", mode: "bogus", wantErr: "invalid AggOracle.Mode"},
+		{name: "legacy was removed", mode: "legacy", wantErr: "invalid AggOracle.Mode"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			// The committee address has no effect on the mode: auto detects it on the L2
 			cfg := Config{
-				Mode:                     tc.mode,
-				EnableAggOracleCommittee: tc.enableLegacy,
-				EVMSender:                chaingersender.EVMConfig{AggOracleCommitteeAddr: tc.committee},
+				Mode:      tc.mode,
+				EVMSender: chaingersender.EVMConfig{AggOracleCommitteeAddr: committeeAddr},
 			}
 			got, err := cfg.ResolveMode()
 			if tc.wantErr != "" {
@@ -121,25 +96,6 @@ func TestConfig_Validate(t *testing.T) {
 	}{
 		{name: "direct needs no committee config", cfg: Config{Mode: ModeDirect}},
 		{
-			name: "legacy with address",
-			cfg: Config{
-				Mode:      ModeLegacy,
-				EVMSender: chaingersender.EVMConfig{AggOracleCommitteeAddr: committeeAddr},
-			},
-		},
-		{
-			name:    "legacy without address",
-			cfg:     Config{Mode: ModeLegacy},
-			wantErr: "AggOracleCommitteeAddr must be set",
-		},
-		{
-			name: "legacy flag with address resolves to legacy",
-			cfg: Config{
-				EnableAggOracleCommittee: true,
-				EVMSender:                chaingersender.EVMConfig{AggOracleCommitteeAddr: committeeAddr},
-			},
-		},
-		{
 			name:    "committee with defaults",
 			cfg:     Config{Mode: ModeCommittee, CommitteeV2: validCommitteeV2Config()},
 			wantErr: "",
@@ -153,11 +109,6 @@ func TestConfig_Validate(t *testing.T) {
 			name:    "direct does not validate committee config",
 			cfg:     Config{Mode: ModeDirect},
 			wantErr: "",
-		},
-		{
-			name:    "contradiction",
-			cfg:     Config{Mode: ModeDirect, EnableAggOracleCommittee: true},
-			wantErr: "contradicts AggOracle.Mode",
 		},
 		{name: "invalid mode", cfg: Config{Mode: "bogus"}, wantErr: "invalid AggOracle.Mode"},
 		{

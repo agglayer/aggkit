@@ -2,7 +2,6 @@ package aggoracle
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
@@ -16,34 +15,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const (
-	// enableAggOracleCommitteeWarning is logged when the deprecated EnableAggOracleCommittee flag is set
-	enableAggOracleCommitteeWarning = "AggOracle.EnableAggOracleCommittee is deprecated and it will be removed " +
-		"in the next release, together with the legacy mode: use AggOracle.Mode instead"
-	// legacyModeWarning is logged every time the AggOracle starts in the legacy mode, whatever the way it was selected
-	legacyModeWarning = "AggOracle runs in the LEGACY mode (AggOracleCommittee v1), which is DEPRECATED: " +
-		"it is kept in this release and it will be removed in the next one. " +
-		"Migrate to the committee mode (AggOracleCommittee v2, AggOracle.Mode = \"committee\") or to the direct mode"
-)
-
-// deprecatedConfigWarning returns the warning to log for the deprecated configuration options in use, or an empty
-// string if there are none
-func deprecatedConfigWarning(cfg Config) string {
-	if cfg.EnableAggOracleCommittee {
-		return enableAggOracleCommitteeWarning
-	}
-	return ""
-}
-
-// deprecatedModeWarning returns the warning to log when the mode selected for the sender is deprecated, or an empty
-// string if it is not. It is the mode that was resolved, so it also covers the legacy mode found by "auto"
-func deprecatedModeWarning(mode chaingersender.GERMode) string {
-	if mode == chaingersender.AggOracleCommitteeMode {
-		return legacyModeWarning
-	}
-	return ""
-}
-
 // gerSubmission is how the GERs are submitted to the L2, once the configured mode is resolved
 type gerSubmission struct {
 	// mode is the sender to use
@@ -55,7 +26,7 @@ type gerSubmission struct {
 }
 
 // resolveSubmission decides how the GERs are submitted, from the configured Mode:
-//   - direct and legacy are used as configured, as they always were
+//   - direct is used as configured, without reading the L2
 //   - committee takes the committee from the configuration or, if it is not set, from the GER updater of the
 //     L2 GER manager, and requires them to be the same contract
 //   - auto inspects the GER updater of the L2 GER manager and detects the mode (see chaingersender.DetectGERMode)
@@ -70,14 +41,6 @@ func resolveSubmission(ctx context.Context, cfg Config, caller bind.ContractCall
 	switch requested {
 	case ModeDirect:
 		return &gerSubmission{mode: chaingersender.DirectInjectionMode, reason: "configured"}, nil
-
-	case ModeLegacy:
-		if configuredCommittee == aggkitcommon.ZeroAddress {
-			return nil, errors.New("AggOracle.EVMSender.AggOracleCommitteeAddr must be set when AggOracle.Mode is legacy")
-		}
-		return &gerSubmission{
-			mode: chaingersender.AggOracleCommitteeMode, committee: configuredCommittee, reason: "configured",
-		}, nil
 
 	case ModeCommittee:
 		committee, updater, err := chaingersender.ResolveCommitteeAddress(ctx, caller, gerManager, configuredCommittee)
@@ -118,26 +81,15 @@ func NewEVMChainSender(
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	if warning := deprecatedConfigWarning(cfg); warning != "" {
-		logger.Warn(warning)
-	}
-
 	submission, err := resolveSubmission(ctx, cfg, l2Client)
 	if err != nil {
 		return nil, err
 	}
 	logger.Infof("AggOracle mode: %s (%s)", submission.mode, submission.reason)
-	if warning := deprecatedModeWarning(submission.mode); warning != "" {
-		logger.Warn(warning)
-	}
 
 	switch submission.mode {
-	case chaingersender.DirectInjectionMode, chaingersender.AggOracleCommitteeMode:
-		evmCfg := cfg.EVMSender
-		if submission.mode == chaingersender.AggOracleCommitteeMode {
-			evmCfg.AggOracleCommitteeAddr = submission.committee
-		}
-		sender, err := chaingersender.NewEVMChainGERSender(logger, evmCfg, l2Client, l2GERManager, ethTxMan, submission.mode)
+	case chaingersender.DirectInjectionMode:
+		sender, err := chaingersender.NewEVMChainGERSender(logger, cfg.EVMSender, l2GERManager, ethTxMan)
 		if err != nil {
 			return nil, err
 		}

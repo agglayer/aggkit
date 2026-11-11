@@ -81,6 +81,10 @@ const (
 	restSectionDeprecatedHint    = "REST section is deprecated and ignored, split into PublicREST and AdminREST, update your configuration"            //nolint:lll
 	rpcSectionDeprecatedHint     = "RPC section is no longer used: the JSON-RPC API was removed; its endpoints are served by PublicREST and AdminREST" //nolint:lll
 	autoClaimRemovedHint         = "AutoClaim has been removed, delete the [AutoClaim] section from the configuration"                                 //nolint:lll
+	// The old AggOracleCommittee (v1) is not supported anymore
+	enableAggOracleCommitteeRemovedHint = "AggOracle.EnableAggOracleCommittee was removed together with the support of " +
+		"the old AggOracleCommittee (v1), remove it from the configuration. Use AggOracle.Mode (direct, committee " +
+		"or auto) and migrate the chain to an AggOracleCommittee v2 if it still uses a v1"
 )
 
 type DeprecatedFieldsError struct {
@@ -257,6 +261,13 @@ var (
 		{
 			FieldNamePattern: "AutoClaim",
 			Reason:           autoClaimRemovedHint,
+		},
+		{
+			// Only a warning: it was false (the default) in many configurations, and the tooling that generates them
+			// still emits it. A chain that still has an AggOracleCommittee v1 is detected and refused by the AggOracle
+			FieldNamePattern: "AggOracle.EnableAggOracleCommittee",
+			Reason:           enableAggOracleCommitteeRemovedHint,
+			WarnOnly:         true,
 		},
 	}
 )

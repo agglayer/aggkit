@@ -199,15 +199,6 @@ func TestDetectGERMode_Committees(t *testing.T) {
 		require.Equal(t, AggOracleCommitteeV2Mode, got.Mode)
 	})
 
-	t.Run("v1", func(t *testing.T) {
-		caller := newFixture(t).withUpdater(committeeAddr).asCommitteeV1(t, committeeAddr, gerL2Addr, "v1.0.0")
-		got, err := DetectGERMode(context.Background(), caller.mock(), gerL2Addr, common.Address{})
-		require.NoError(t, err)
-		require.Equal(t, AggOracleCommitteeMode, got.Mode)
-		require.Equal(t, committeeAddr, got.Committee)
-		require.Equal(t, "v1.0.0", got.Version)
-	})
-
 	t.Run("v2 with the committee address configured", func(t *testing.T) {
 		caller := newFixture(t).withUpdater(committeeAddr).asCommitteeV2(t, committeeAddr, gerL2Addr, "v2.0.0")
 		got, err := DetectGERMode(context.Background(), caller.mock(), gerL2Addr, committeeAddr)
@@ -217,6 +208,20 @@ func TestDetectGERMode_Committees(t *testing.T) {
 }
 
 func TestDetectGERMode_Errors(t *testing.T) {
+	// The support of the AggOracleCommittee v1 was removed: it is detected to say so, and it is not reported as
+	// an unknown contract
+	t.Run("v1 committee is not supported anymore", func(t *testing.T) {
+		caller := newFixture(t).withUpdater(committeeAddr).asCommitteeV1(t, committeeAddr, gerL2Addr, "v1.0.0")
+		got, err := DetectGERMode(context.Background(), caller.mock(), gerL2Addr, common.Address{})
+		require.ErrorIs(t, err, ErrLegacyCommitteeNotSupported)
+		require.NotErrorIs(t, err, ErrUnknownGERUpdaterContract)
+		require.Nil(t, got)
+		// It says what the contract is and how to migrate
+		require.ErrorContains(t, err, "v1.0.0")
+		require.ErrorContains(t, err, `"committee"`)
+		require.ErrorContains(t, err, `"direct"`)
+	})
+
 	t.Run("contract that is not a committee", func(t *testing.T) {
 		caller := newFixture(t).withUpdater(committeeAddr)
 		caller.code[committeeAddr] = []byte{0x60, 0x80} // e.g. a multisig: no probe answers
