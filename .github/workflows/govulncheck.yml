@@ -31,6 +31,7 @@ jobs:
     steps:
       - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f  # v1.1.0
         with:
-          go-version-input: 1.27.3
+          # Same Go as the job above, which runs the action with its default (stable)
+          go-version-input: stable
           go-package: ./...
           work-dir: tools/ger_validator_signer
