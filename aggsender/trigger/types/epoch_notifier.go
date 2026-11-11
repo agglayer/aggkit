@@ -36,6 +36,7 @@ type EpochNotifier interface {
 	GetEpochStatus() EpochStatus
 	String() string
 	// CurrentEpochEvent returns the event describing the epoch of the current block
-	// without notifying subscribers
+	// without notifying subscribers. A forced event is not published: it is read here by
+	// the trigger that requested it, so it reaches only that trigger.
 	CurrentEpochEvent() EpochEvent
 }
