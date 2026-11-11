@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -86,6 +87,21 @@ func TestClient_ValidateCertificate(t *testing.T) {
 		},
 	}
 
+	validSignature := make([]byte, aggkitcommon.SignatureSize)
+	for i := range validSignature {
+		validSignature[i] = byte(i + 1)
+	}
+
+	protoRequest := func(t *testing.T, prev *common.Hash) *v1.ValidateCertificateRequest {
+		t.Helper()
+		protoCert, err := agglayergrpc.ConvertCertToProtoCertificate(certificate)
+		require.NoError(t, err)
+		return &v1.ValidateCertificateRequest{
+			PreviousCertificateId: certIDToProtoNullable(prev),
+			Certificate:           protoCert,
+		}
+	}
+
 	testCases := []struct {
 		name                  string
 		previousCertificateID *common.Hash
@@ -116,6 +132,60 @@ func TestClient_ValidateCertificate(t *testing.T) {
 			expectedError: "aggsender validator failed to successfully validate certificate: some error",
 		},
 		{
+			name:                  "response without signature",
+			previousCertificateID: &prevCertHash,
+			certificate:           certificate,
+			mockFn: func(mockClient *mocks.AggsenderValidatorClient) {
+				mockClient.EXPECT().ValidateCertificate(ctx, protoRequest(t, &prevCertHash)).
+					Return(&v1.ValidateCertificateResponse{}, nil)
+			},
+			expectedError: "response without signature",
+		},
+		{
+			name:                  "nil response",
+			previousCertificateID: &prevCertHash,
+			certificate:           certificate,
+			mockFn: func(mockClient *mocks.AggsenderValidatorClient) {
+				mockClient.EXPECT().ValidateCertificate(ctx, protoRequest(t, &prevCertHash)).
+					Return(nil, nil)
+			},
+			expectedError: "response without signature",
+		},
+		{
+			name:                  "signature too short",
+			previousCertificateID: &prevCertHash,
+			certificate:           certificate,
+			mockFn: func(mockClient *mocks.AggsenderValidatorClient) {
+				mockClient.EXPECT().ValidateCertificate(ctx, protoRequest(t, &prevCertHash)).
+					Return(&v1.ValidateCertificateResponse{
+						Signature: &typesv1.FixedBytes65{Value: validSignature[:64]},
+					}, nil)
+			},
+			expectedError: "invalid length: expected 65 bytes, got 64",
+		},
+		{
+			name:                  "signature too long",
+			previousCertificateID: &prevCertHash,
+			certificate:           certificate,
+			mockFn: func(mockClient *mocks.AggsenderValidatorClient) {
+				mockClient.EXPECT().ValidateCertificate(ctx, protoRequest(t, &prevCertHash)).
+					Return(&v1.ValidateCertificateResponse{
+						Signature: &typesv1.FixedBytes65{Value: append(append([]byte{}, validSignature...), 0)},
+					}, nil)
+			},
+			expectedError: "invalid length: expected 65 bytes, got 66",
+		},
+		{
+			name:                  "empty signature value",
+			previousCertificateID: &prevCertHash,
+			certificate:           certificate,
+			mockFn: func(mockClient *mocks.AggsenderValidatorClient) {
+				mockClient.EXPECT().ValidateCertificate(ctx, protoRequest(t, &prevCertHash)).
+					Return(&v1.ValidateCertificateResponse{Signature: &typesv1.FixedBytes65{}}, nil)
+			},
+			expectedError: "invalid length: expected 65 bytes, got 0",
+		},
+		{
 			name:                  "Valid certificate - no previous certificate",
 			previousCertificateID: nil,
 			certificate:           certificate,
@@ -127,7 +197,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 					PreviousCertificateId: nil,
 					Certificate:           protoCert,
 				}).Return(&v1.ValidateCertificateResponse{
-					Signature: &typesv1.FixedBytes65{Value: []byte("valid-signature")},
+					Signature: &typesv1.FixedBytes65{Value: validSignature},
 				}, nil)
 			},
 			expectedError: "",
@@ -144,7 +214,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 					PreviousCertificateId: certIDToProtoNullable(&prevCertHash),
 					Certificate:           protoCert,
 				}).Return(&v1.ValidateCertificateResponse{
-					Signature: &typesv1.FixedBytes65{Value: []byte("valid-signature")},
+					Signature: &typesv1.FixedBytes65{Value: validSignature},
 				}, nil)
 			},
 			expectedError: "",
@@ -169,7 +239,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
 				require.NoError(t, err)
-				require.NotNil(t, signature)
+				require.Equal(t, validSignature, signature)
 			}
 
 			mockClient.AssertExpectations(t)
