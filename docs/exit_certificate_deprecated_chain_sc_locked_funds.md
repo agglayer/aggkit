@@ -236,10 +236,11 @@ The exits are produced from the recoveries the
 It refuses to apply a case twice and checks, per token, that what is recovered fits in the SC-locked value the
 first certificate left behind. Rules worth knowing:
 
-- **One recovery per (locked contract, token), ever.** The ledger cannot tell a re-packaged copy of an applied case
-  from a new one, so a contract+token that already has a recovery is refused (also two cases for it in the same
-  batch). Consequence: a contract that holds funds of several owners (vault, pool, multisig) can be recovered once
-  per token.
+- **One recovery per (locked contract, token, destination), ever.** The ledger cannot tell a re-packaged copy of an
+  applied case from a new one, so the same destination wallet recovering again the same token from the same
+  contract is refused (also two such cases in the same batch). A contract that holds funds of several owners
+  (vault, pool, multisig) is recovered once per owner: a different destination is accepted, always bounded by
+  the pending balance of the token.
 - **One case per archive**, and each case once per batch: an archive with more than one `recovery.json`/`move.sh`
   is an error, and so is a directory that holds both a kit `.tgz` and its extracted `recovery.json` (a loose
   `recovery.json` without `move.sh` hashes only itself, so it would not look like the same case as the `.tgz`).
@@ -400,7 +401,7 @@ state first (`agglayer_certificate_status.sh`).
 | `step F (delta) requires options.useAgglayerAdminToStepFCheck=true` | Admin check disabled | Enable it and set `agglayerAdminURL`: delta mode does not allow skipping Step F. |
 | `… already holds the recoveries of an earlier --step recoveries run for this delta` | `--step recoveries` run twice into the same `outputDir` | Put every case of the delta in `recoveriesPath`, delete `<outputDir>/recoveries/` and run it again (or use a new `outputDir`). |
 | `the archive has more than one recovery.json` / `… carry the same recovery.json` | A kit `.tgz` with several cases, or a `.tgz` together with its extracted files | One case per archive; supply each case once. |
-| `two different cases recovering … in this same batch` / `already recovered … (recoveries ledger)` | The same locked contract + token twice (re-packaged case, or a second owner of the same vault) | See "One recovery per (locked contract, token)" above. |
+| `two different cases recovering … in this same batch` / `already recovered … (recoveries ledger)` | The same locked contract + token + destination twice (typically a re-packaged copy of an applied case) | See "One recovery per (locked contract, token, destination)" above. A different owner (another destination) of the same contract is accepted. |
 
 ### CHECK: AET-11 — "the agglayer settled LER … is not the previous certificate's new_local_exit_root"
 

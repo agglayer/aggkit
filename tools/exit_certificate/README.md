@@ -638,9 +638,10 @@ resolved to its origin through `step-0-lbt.json`. Checks, all or nothing (on any
 - same validation as the kit's `validate-recovery.sh` (no unknown fields, no placeholder addresses, positive
   amounts, no repeated token);
 - **idempotence**: a case whose case hash (the kit's: sha256 of `recovery.json` and `move.sh`) is already in the
-  ledger is skipped, not an error; a `(locked_contract, token)` already recovered by a *different* case is an error
-  — one recovery per contract+token, ever, so a contract holding funds of several owners can be recovered once per
-  token (the ledger cannot tell a re-packaged copy of an applied case from a new one);
+  ledger is skipped, not an error; a `(locked_contract, token, destination)` already recovered by a *different* case is an error
+  — one recovery per contract+token+destination, ever (the ledger cannot tell a re-packaged copy of an applied case
+  from a new one); a contract holding funds of several owners is recovered once per owner (another destination is
+  accepted), always bounded by the token's pending balance;
 - **one case per archive, each case once per batch**: a `.tgz` with more than one `recovery.json`/`move.sh` is an
   error, and so is a directory holding the same `recovery.json` twice (e.g. a kit `.tgz` and its extracted files; a
   loose `recovery.json` without `move.sh` hashes only itself, so it would not look like the `.tgz`'s case);

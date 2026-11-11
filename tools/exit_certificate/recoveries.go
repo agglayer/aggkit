@@ -339,16 +339,20 @@ func recoveryAddress(field, v string) (common.Address, error) {
 
 // --- applying cases ---
 
+// lockedTokenKey is what a recovery consumes: the funds of one token that a locked contract holds for one
+// destination wallet. Several owners of the same vault/pool/multisig recover with different destinations; the
+// same destination twice for the same contract+token is what the ledger refuses (a re-packaged copy).
 type lockedTokenKey struct {
 	Locked common.Address
 	Token  common.Address
+	Dest   common.Address
 }
 
 // applyRecoveries checks the cases against the state and, only if every check passes, updates the state
 // in place and returns the new exits. On any error the state is left untouched.
 //
-// Rules: a case already in the ledger (same case hash) is skipped; a (locked contract, token) already
-// recovered by a different case is an error; per token the new recoveries must fit in the
+// Rules: a case already in the ledger (same case hash) is skipped; a (locked contract, token, destination)
+// already recovered by a different case is an error; per token the new recoveries must fit in the
 // pendingSCLockedBalance still left; and a token must be known in the LBT.
 func applyRecoveries(st *recoveriesState, cases []recoveryCase) (*recoveriesOutcome, error) {
 	wrapped := make(map[common.Address]tokenKey, len(st.LBT))
@@ -360,7 +364,7 @@ func applyRecoveries(st *recoveriesState, cases []recoveryCase) (*recoveriesOutc
 	inLedger := map[lockedTokenKey]bool{}
 	for _, l := range st.Ledger {
 		applied[l.CaseHash] = true
-		k := lockedTokenKey{l.LockedContract, l.Token}
+		k := lockedTokenKey{l.LockedContract, l.Token, l.Destination}
 		recovered[k] = l.Source
 		inLedger[k] = true
 	}
@@ -385,15 +389,17 @@ func applyRecoveries(st *recoveriesState, cases []recoveryCase) (*recoveriesOutc
 				errs = append(errs, fmt.Errorf("%s: token %s is not in the LBT (step-0-lbt.json)", c.Source, f.Token))
 				continue
 			}
-			k := lockedTokenKey{locked, l2Token}
+			dest := common.HexToAddress(c.Recovery.Destination)
+			k := lockedTokenKey{locked, l2Token, dest}
 			if prev, dup := recovered[k]; dup {
 				if inLedger[k] {
-					errs = append(errs, fmt.Errorf("%s: %s already recovered %s in %s (recoveries ledger); a "+
-						"contract+token is recovered once", c.Source, locked.Hex(), f.Token, prev))
+					errs = append(errs, fmt.Errorf("%s: %s already recovered %s for %s in %s (recoveries ledger); a "+
+						"contract+token+destination is recovered once", c.Source, locked.Hex(), f.Token, dest.Hex(), prev))
 				} else {
-					errs = append(errs, fmt.Errorf("%s: %s and %s are two different cases recovering %s from %s in "+
-						"this same batch (a contract+token is recovered once) — if they are the same case in two "+
-						"packagings, supply it once", c.Source, prev, c.Source, f.Token, locked.Hex()))
+					errs = append(errs, fmt.Errorf("%s: %s and %s are two different cases recovering %s from %s for "+
+						"%s in this same batch (a contract+token+destination is recovered once) — if they are the "+
+						"same case in two packagings, supply it once", c.Source, prev, c.Source, f.Token,
+						locked.Hex(), dest.Hex()))
 				}
 				continue
 			}

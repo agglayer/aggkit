@@ -301,7 +301,8 @@ rm -f "$RERUN_LOG"
 rm -rf "${TMP_DIR}/output-kurtosis-delta-${INDEX}-rerun"
 
 # Negative test: a case that must NOT be applied makes the step fail and write nothing. Delta 1: more than
-# what is left pending. Delta 2: sink #1 again (already recovered by case 1, recorded in the ledger).
+# what is left pending. Delta 2: sink #1 again for the same owner (already recovered by case 1, recorded in the
+# ledger; another owner of the same contract would be accepted).
 NEG_CASES="${TMP_DIR}/recoveries-cases-negative-${INDEX}"
 NEG_OUTPUT_REL="./output-kurtosis-delta-${INDEX}-negative"
 rm -rf "$NEG_CASES" "${TMP_DIR}/output-kurtosis-delta-${INDEX}-negative"
@@ -309,7 +310,7 @@ if [[ "$INDEX" -eq 1 ]]; then
     write_case "${NEG_CASES}/too-much" "0x00000000000000000000000000000000deadbeef" "$OWNER" "$(echo "$PREV_PENDING + 1" | bc)"
     NEG_EXPECT="exceeds pendingSCLockedBalance"
 else
-    write_case "${NEG_CASES}/again" "$DELTA_SC_LOCKED_ADDRESS_1" "$OWNER" "1"
+    write_case "${NEG_CASES}/again" "$DELTA_SC_LOCKED_ADDRESS_1" "$DELTA_OWNER_ADDRESS_1" "1"
     NEG_EXPECT="already recovered"
 fi
 NEG_CONFIG="${TMP_DIR}/exit_certificate-kurtosis-delta-${INDEX}-negative.json"

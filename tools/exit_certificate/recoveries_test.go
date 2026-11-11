@@ -169,10 +169,10 @@ func TestApplyRecoveries_Errors_LeaveStateUntouched(t *testing.T) {
 				RecoveryFund{Token: "0x00000000000000000000000000000000000000ff", Amount: "1"})},
 			want: "not in the LBT",
 		},
-		"same contract and token in another case": {
+		"same contract, token and destination in another case": {
 			cases: []recoveryCase{
 				recCase("a", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"}),
-				recCase("b", "h2", recLocked1, recDest2, RecoveryFund{Token: "native", Amount: "2"}),
+				recCase("b", "h2", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "2"}),
 			},
 			want: "recovered once",
 		},
@@ -193,9 +193,42 @@ func TestApplyRecoveries_RejectsContractAlreadyInLedger(t *testing.T) {
 		recCase("first", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"})})
 	require.NoError(t, err)
 	_, err = applyRecoveries(st, []recoveryCase{
-		recCase("second", "h2", recLocked1, recDest2, RecoveryFund{Token: "native", Amount: "1"})})
+		recCase("second", "h2", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"})})
 	require.ErrorContains(t, err, "already recovered")
 	require.ErrorContains(t, err, "first")
+}
+
+// A vault/pool/multisig holding funds of several owners can be recovered once per destination: another owner
+// (another destination) of the same contract+token is accepted, in the same batch or later, still bounded by
+// the pending balance of the token.
+func TestApplyRecoveries_SameContractDifferentOwners(t *testing.T) {
+	st := newRecoveriesState()
+	out, err := applyRecoveries(st, []recoveryCase{
+		recCase("owner1", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "10"}),
+		recCase("owner2", "h2", recLocked1, recDest2, RecoveryFund{Token: "native", Amount: "20"}),
+	})
+	require.NoError(t, err)
+	require.Len(t, out.Exits, 2)
+	require.Len(t, st.Ledger, 2)
+
+	// a later batch: a third owner is fine, a repeat of owner 1 is not.
+	_, err = applyRecoveries(st, []recoveryCase{
+		recCase("owner3", "h3", recLocked1, "0x5555555555555555555555555555555555555555",
+			RecoveryFund{Token: "native", Amount: "30"}),
+	})
+	require.NoError(t, err)
+	_, err = applyRecoveries(st, []recoveryCase{
+		recCase("owner1-again", "h4", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"}),
+	})
+	require.ErrorContains(t, err, "already recovered")
+
+	// the pending balance still bounds the sum over all the owners.
+	st2 := newRecoveriesState()
+	_, err = applyRecoveries(st2, []recoveryCase{
+		recCase("owner1", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "600"}),
+		recCase("owner2", "h2", recLocked1, recDest2, RecoveryFund{Token: "native", Amount: "401"}),
+	})
+	require.ErrorContains(t, err, "exceeds pendingSCLockedBalance")
 }
 
 func TestApplyRecoveries_InconsistentStepF(t *testing.T) {
