@@ -1,6 +1,6 @@
 # ==============================================================================
 # OWNERSHIP: This template is owned by the aggkit repo (test/e2e/kurtosis/, see
-# README.md). Seeded from kurtosis-cdk commit 074d0d8 — the KURTOSIS_CDK_COMMIT
+# README.md). Seeded from kurtosis-cdk commit dc901e6 — the KURTOSIS_CDK_COMMIT
 # pinned in .github/workflows/test-e2e.yml — with [REST] renamed to [PublicREST].
 # It is a Go text/template rendered by THAT kurtosis-cdk commit's _build_config_data
 # and overlaid onto kurtosis-cdk's static_files by agglayer/e2e before kurtosis run.

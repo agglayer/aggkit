@@ -20,7 +20,7 @@ permissions: {}
 
 env:
   AGGKIT_REPORT_CHANNEL: "C092K6Z0EUT"
-  KURTOSIS_CDK_COMMIT: "074d0d894ba3ef83fc35eaf38d269d6a4fa38c4d"
+  KURTOSIS_CDK_COMMIT: "dc901e68b22971613c5af8e56650b21d3ac965cb"
 
 jobs:
   get-kurtosis-cdk-commit:
