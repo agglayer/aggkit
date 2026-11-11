@@ -113,24 +113,28 @@ genesisBlockNumber = 0
 # ------------------------------------------------------------------------------
 # How the AggOracle injects the Global Exit Roots (GER) on the L2.
 # Possible values for Mode:
-#   "direct"       - the GER updater (an EOA) calls the L2 GER manager directly
-#   "committee_v1" - propose the GER to the legacy AggOracleCommittee (v1) contract.
-#                    Requires [L2Config].AggOracleCommitteeAddr
-#   "committee_v2" - collect signatures from the GER validators and inject the GER
-#                    in a single transaction (AggOracleCommittee v2).
-#                    [L2Config].AggOracleCommitteeAddr is optional: when it is not set,
-#                    the contract that is the globalExitRootUpdater on the L2 is used
-#   "auto"         - inspect the contract that is the globalExitRootUpdater on the L2
-#                    and select one of the above (default)
+#   "direct"    - the GER updater (an EOA) calls the L2 GER manager directly
+#   "committee" - collect signatures from the GER validators and inject the GER
+#                 in a single transaction (AggOracleCommittee v2).
+#                 [L2Config].AggOracleCommitteeAddr is optional: when it is not set,
+#                 the contract that is the globalExitRootUpdater on the L2 is used
+#   "legacy"    - DEPRECATED: it is kept in this release and it will be REMOVED in the
+#                 next one. Migrate to "committee" (or to "direct").
+#                 Propose the GER to the legacy AggOracleCommittee (v1) contract.
+#                 Requires [L2Config].AggOracleCommitteeAddr
+#   "auto"      - inspect the contract that is the globalExitRootUpdater on the L2
+#                 and select one of the above (default). If it finds a legacy
+#                 committee (v1) it runs in the legacy mode, with a deprecation warning
 # ------------------------------------------------------------------------------
 # Mode = "auto"
 # ------------------------------------------------------------------------------
-# DEPRECATED, use Mode instead. If true (and Mode is "auto") and
-# [L2Config].AggOracleCommitteeAddr is set, it is equivalent to Mode = "committee_v1"
+# DEPRECATED, use Mode instead. It will be REMOVED in the next release, together
+# with the legacy mode. If true (and Mode is "auto") and
+# [L2Config].AggOracleCommitteeAddr is set, it is equivalent to Mode = "legacy"
 # ------------------------------------------------------------------------------
 EnableAggOracleCommittee = false
 # ------------------------------------------------------------------------------
-# Only used when the mode is (or resolves to) "committee_v2"
+# Only used when the mode is (or resolves to) "committee"
 # ------------------------------------------------------------------------------
 # [AggOracle.CommitteeV2]
 # 	# Timeout of every request to a GER validator
