@@ -21,3 +21,15 @@ updates:
       - dependency-name: "buf.build/gen/go/agglayer/*"
     reviewers:
       - "agglayer/aggkit"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    target-branch: develop
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    reviewers:
+      - "agglayer/aggkit"

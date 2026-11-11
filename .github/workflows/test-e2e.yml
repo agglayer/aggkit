@@ -16,17 +16,16 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 env:
   AGGKIT_REPORT_CHANNEL: "C092K6Z0EUT"
   KURTOSIS_CDK_COMMIT: "507e4e8e6581ab5ecbb44444f9b7f1d05e3dcd1c"
 
-permissions:
-  packages: write
-  id-token: write
-  contents: read
-
 jobs:
   get-kurtosis-cdk-commit:
+    permissions:
+      contents: read
     name: Get Kurtosis CDK Commit
     runs-on: ubuntu-latest
     outputs:
@@ -44,8 +43,9 @@ jobs:
           fi
 
       - name: Checkout kurtosis-cdk
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
+          persist-credentials: false
           repository: 0xPolygon/kurtosis-cdk
           ref: ${{ steps.determine-ref.outputs.ref }}
 
@@ -57,12 +57,16 @@ jobs:
           echo "Using kurtosis-cdk commit: ${COMMIT}"
 
   build-aggkit-image:
+    permissions:
+      contents: read
     uses: ./.github/workflows/build-aggkit-image.yml
     with:
       go-version: 1.27.3
       docker-image-name: aggkit
 
   read-aggkit-args:
+    permissions:
+      contents: read
     name: Read aggkit args
     runs-on: ubuntu-latest
     outputs:
@@ -80,7 +84,9 @@ jobs:
       kurtosis-cdk-args-5: ${{ steps.read-args.outputs.kurtosis-cdk-args-5 }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Read kurtosis-cdk-args from file
         id: read-args
@@ -147,21 +153,25 @@ jobs:
             ./.github/test_e2e_cdk_erigon_multi_chains_args_3.json
 
   build-tools:
+    permissions:
+      contents: read
     name: Build aggsender find imported bridge tool
     needs:
       - build-aggkit-image
     runs-on: amd-runner-2204
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
       - name: Install Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
         with:
           go-version: 1.27.3
       - name: Build Aggsender Find Imported Bridge
         run: make build-tools
       - name: Upload Binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: aggsender_find_imported_bridge
           path: ./target/aggsender_find_imported_bridge
@@ -170,23 +180,28 @@ jobs:
       # agglayer/e2e reusable workflows (input: aggkit-config-artifact), so a
       # config change ships in the same PR as the code — no kurtosis-cdk PR.
       - name: Upload aggkit e2e config templates
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: aggkit-e2e-config
           path: ./test/e2e/kurtosis/*.template.toml
 
   test-single-l2-network-op-pessimistic:
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
     name: Single L2 chain tests (OP, pessimistic)
     needs:
       - build-aggkit-image
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
-    secrets: inherit
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@1b0f0e29931b36af191c62c68dd273760e3a8d49  # agglayer/e2e main
+    secrets:
+      DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: e0dcceca73cc66c1dd577da2b491887586c0d4b8 # agglayer/e2e#263 (aggkit-config-artifact support)
+      agglayer-e2e-ref: 1b0f0e29931b36af191c62c68dd273760e3a8d49 # agglayer/e2e main (aggkit-config-artifact support)
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
@@ -197,6 +212,8 @@ jobs:
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
 
   check-single-l2-network-op-pessimistic-tests-result:
+    permissions:
+      contents: read
     name: Check results for single l2 network (OP, pessimistic)
     needs:
       - test-single-l2-network-op-pessimistic
@@ -206,17 +223,22 @@ jobs:
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-pessimistic.result) }}
 
   test-single-l2-network-op-succinct:
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
     name: Single L2 chain tests (op-succinct)
     needs:
       - build-aggkit-image
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
-    secrets: inherit
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@1b0f0e29931b36af191c62c68dd273760e3a8d49  # agglayer/e2e main
+    secrets:
+      DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: e0dcceca73cc66c1dd577da2b491887586c0d4b8 # agglayer/e2e#263 (aggkit-config-artifact support)
+      agglayer-e2e-ref: 1b0f0e29931b36af191c62c68dd273760e3a8d49 # agglayer/e2e main (aggkit-config-artifact support)
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
@@ -227,6 +249,8 @@ jobs:
       fail-fast: ${{ github.event_name != 'schedule' }}
 
   check-single-network-op-succinct-tests-result:
+    permissions:
+      contents: read
     name: Check results for single l2 network (op-succinct)
     needs:
       - test-single-l2-network-op-succinct
@@ -236,18 +260,23 @@ jobs:
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-succinct.result) }}
 
   test-single-l2-network-op-succinct-aggoracle-committee:
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
     name: Single L2 chain tests (op-succinct with aggoracle committee)
     needs:
       - build-aggkit-image
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@e0dcceca73cc66c1dd577da2b491887586c0d4b8
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@1b0f0e29931b36af191c62c68dd273760e3a8d49  # agglayer/e2e main
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
-    secrets: inherit
+    secrets:
+      DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: e0dcceca73cc66c1dd577da2b491887586c0d4b8 # agglayer/e2e#263 (aggkit-config-artifact support)
+      agglayer-e2e-ref: 1b0f0e29931b36af191c62c68dd273760e3a8d49 # agglayer/e2e main (aggkit-config-artifact support)
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
@@ -258,6 +287,8 @@ jobs:
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
 
   check-single-l2-network-op-succinct-aggoracle-committee-tests-result:
+    permissions:
+      contents: read
     name: Check results for single l2 network (op-succinct with aggoracle committee)
     needs:
       - test-single-l2-network-op-succinct-aggoracle-committee
@@ -267,6 +298,8 @@ jobs:
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-succinct-aggoracle-committee.result) }}
 
   test-multi-l2-networks-2-chains-op-pessimistic:
+    permissions:
+      contents: read
     name: Multi chains E2E tests (OP, pessimistic, 2 chains)
     needs:
       - build-aggkit-image
@@ -274,10 +307,11 @@ jobs:
       - read-aggkit-args
       - get-kurtosis-cdk-commit
     uses: ./.github/workflows/test-e2e-multi-chains.yml
-    secrets: inherit
+    secrets:
+      DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: e0dcceca73cc66c1dd577da2b491887586c0d4b8 # agglayer/e2e#263 (aggkit-config-artifact support)
+      agglayer-e2e-ref: 1b0f0e29931b36af191c62c68dd273760e3a8d49 # agglayer/e2e main (aggkit-config-artifact support)
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
@@ -286,6 +320,8 @@ jobs:
       kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-2 }}
 
   check-multi-l2-networks-2-chains-tests-result:
+    permissions:
+      contents: read
     name: Check results for multi l2 networks (OP, pessimistic, 2 chains)
     needs:
       - test-multi-l2-networks-2-chains-op-pessimistic
@@ -295,6 +331,8 @@ jobs:
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-2-chains-op-pessimistic.result) }}
 
   test-multi-l2-networks-3-chains-cdk-erigon-pessimistic:
+    permissions:
+      contents: read
     name: Multi chains E2E tests (CDK Erigon, pessimistic, 3 chains)
     needs:
       - build-aggkit-image
@@ -302,10 +340,11 @@ jobs:
       - read-aggkit-args
       - get-kurtosis-cdk-commit
     uses: ./.github/workflows/test-e2e-multi-chains.yml
-    secrets: inherit
+    secrets:
+      DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: e0dcceca73cc66c1dd577da2b491887586c0d4b8 # agglayer/e2e#263 (aggkit-config-artifact support)
+      agglayer-e2e-ref: 1b0f0e29931b36af191c62c68dd273760e3a8d49 # agglayer/e2e main (aggkit-config-artifact support)
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: aggkit
@@ -316,6 +355,8 @@ jobs:
       number-of-chains: 3
 
   check-multi-l2-networks-3-chains-tests-result:
+    permissions:
+      contents: read
     name: Check results for multi l2 networks (CDK Erigon, pessimisstic, 3 chains)
     needs:
       - test-multi-l2-networks-3-chains-cdk-erigon-pessimistic
@@ -325,6 +366,8 @@ jobs:
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains-cdk-erigon-pessimistic.result) }}
 
   notify-slack:
+    permissions:
+      contents: read
     name: Notify Slack
     needs:
       - test-single-l2-network-op-pessimistic
@@ -337,7 +380,7 @@ jobs:
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     steps:
       - name: Send Slack notification
-        uses: agglayer/gha-notify-generic@v1
+        uses: agglayer/gha-notify-generic@14fab4a0e1b4b9908d187e87cee5f6d88935660f  # v1.0.0
         with:
           slack-bot-token: ${{ secrets.SLACK_APP_TOKEN_AGGLAYER_NOTIFY_GENERIC }}
           channel-id: ${{ env.AGGKIT_REPORT_CHANNEL }}

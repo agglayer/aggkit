@@ -11,48 +11,68 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
+# Permissions are granted per job: the deployment job needs the Pages and OIDC token scopes.
+permissions: {}
+
 jobs:
   # Build job
   build:
+    permissions:
+      contents: read
+      pages: read
     runs-on: amd-runner-2204
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Install mdBook and plugins
+        env:
+          MDBOOK_VERSION: "v0.5.4"
+          MDBOOK_SHA256: "5222beabd3e37dc5be0d18ff99b79058469354db5c220153a1b92db5ba12be89"
+          MDBOOK_MERMAID_VERSION: "v0.17.1"
+          MDBOOK_MERMAID_SHA256: "42aca57eea8521971cc595fe4bb853c5b8b7d9f7138a2ec9f14a0a72c210922d"
         run: |
-          curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf -y | sh
-          source "$HOME/.cargo/env"
-          rustup update
-          cargo install mdbook
-          cargo install mdbook-mermaid
+          install_dir="${RUNNER_TEMP}/mdbook/bin"
+          mkdir -p "${install_dir}"
+          mdbook_archive="mdbook-${MDBOOK_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL -o "${RUNNER_TEMP}/${mdbook_archive}" \
+            "https://github.com/rust-lang/mdBook/releases/download/${MDBOOK_VERSION}/${mdbook_archive}"
+          echo "${MDBOOK_SHA256}  ${RUNNER_TEMP}/${mdbook_archive}" | sha256sum --check --strict
+          tar -xzf "${RUNNER_TEMP}/${mdbook_archive}" -C "${install_dir}" mdbook
+          mermaid_archive="mdbook-mermaid-${MDBOOK_MERMAID_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL -o "${RUNNER_TEMP}/${mermaid_archive}" \
+            "https://github.com/badboy/mdbook-mermaid/releases/download/${MDBOOK_MERMAID_VERSION}/${mermaid_archive}"
+          echo "${MDBOOK_MERMAID_SHA256}  ${RUNNER_TEMP}/${mermaid_archive}" | sha256sum --check --strict
+          tar -xzf "${RUNNER_TEMP}/${mermaid_archive}" -C "${install_dir}" mdbook-mermaid
+          echo "${install_dir}" >> "${GITHUB_PATH}"
+          "${install_dir}/mdbook" --version
+          "${install_dir}/mdbook-mermaid" --version
 
       - name: Setup Pages
         id: pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b  # v5.0.0
 
       - name: Build with mdBook
         run: mdbook build
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa  # v3.0.1
         with:
           path: ./book
 
 # Deployment job
   deploy:
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -62,4 +82,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e  # v4.0.5

@@ -13,8 +13,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   test-unit:
+    permissions:
+      contents: read
     name: test-unit
     strategy:
       fail-fast: false
@@ -24,12 +28,13 @@ jobs:
     runs-on: amd-runner-2204
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
+          persist-credentials: false
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
       - name: Install Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
         with:
           go-version: ${{ matrix.go-version }}
         env:
