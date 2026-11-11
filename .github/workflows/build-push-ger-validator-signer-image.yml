@@ -1,0 +1,197 @@
+name: Build and Push GER Validator Signer Image
+
+# ger_validator_signer is its own Go module and has its own docker image: ghcr.io/<owner>/ger-validator-signer.
+# It is built from tools/ger_validator_signer, not from the root of the repository.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/ger-validator-signer
+  CONTEXT: tools/ger_validator_signer
+
+jobs:
+  build:
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'arm-runner-2204' || 'amd-runner-2204' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+        variant:
+          - { suffix: "", include_shell: "false", description: "production" }
+          - {
+              suffix: "-dev",
+              include_shell: "true",
+              description: "development",
+            }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          fetch-depth: 0  # the version of the image comes from git describe
+          persist-credentials: false
+
+      - name: Prepare platform-safe variable
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          VARIANT_SUFFIX: ${{ matrix.variant.suffix }}
+        run: |
+          PLATFORM_PAIR=$(echo "${PLATFORM}" | tr '/' '-')
+          PLATFORM_VARIANT="${PLATFORM_PAIR}${VARIANT_SUFFIX}"
+          echo "PLATFORM_VARIANT=$PLATFORM_VARIANT" >> "$GITHUB_ENV"
+
+      - name: Set build information
+        id: info
+        run: |
+          echo "VERSION=$(git describe --tags --always)" >> "$GITHUB_OUTPUT"
+          echo "GIT_REV=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "GIT_BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> "$GITHUB_OUTPUT"
+          echo "BUILD_DATE=$(LANG=US date +'%a, %d %b %Y %X %z')" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+
+      - name: Build and push ${{ matrix.variant.description }} image by digest
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        with:
+          context: ${{ env.CONTEXT }}
+          file: ${{ env.CONTEXT }}/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          cache-from: type=gha,scope=ger-validator-signer-${{ matrix.variant.description }}
+          cache-to: type=gha,mode=max,scope=ger-validator-signer-${{ matrix.variant.description }}
+          build-args: |
+            INCLUDE_SHELL=${{ matrix.variant.include_shell }}
+            VERSION=${{ steps.info.outputs.VERSION }}
+            GIT_REV=${{ steps.info.outputs.GIT_REV }}
+            GIT_BRANCH=${{ steps.info.outputs.GIT_BRANCH }}
+            BUILD_DATE=${{ steps.info.outputs.BUILD_DATE }}
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true
+
+      - name: Verify version in image
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          out=$(docker run --rm "${REGISTRY_IMAGE}@${DIGEST}" version) || { echo "ERROR: docker run failed"; exit 1; }
+          ver=$(echo "$out" | awk '/^Version:/{print $2}')
+          [ -n "$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }
+          echo "Version check passed: $ver"
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          echo "${REGISTRY_IMAGE}@${DIGEST}" > "/tmp/digests/${PLATFORM_VARIANT}.txt"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: digests-${{ env.PLATFORM_VARIANT }}
+          path: /tmp/digests/${{ env.PLATFORM_VARIANT }}.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    permissions:
+      contents: read
+      packages: write
+    runs-on: arm-runner-2204
+    needs: build
+    strategy:
+      matrix:
+        variant:
+          - { suffix: "", description: "production" }
+          - { suffix: "-dev", description: "development" }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Download digests for production (amd64)
+        if: matrix.variant.suffix == ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: /tmp/digests
+          pattern: digests-linux-amd64
+          merge-multiple: true
+
+      - name: Download digests for production (arm64)
+        if: matrix.variant.suffix == ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: /tmp/digests
+          pattern: digests-linux-arm64
+          merge-multiple: true
+
+      - name: Download digests for development
+        if: matrix.variant.suffix != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: /tmp/digests
+          pattern: digests-*-dev
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image tag
+        id: vars
+        env:
+          VARIANT_SUFFIX: ${{ matrix.variant.suffix }}
+        run: |
+          BRANCH_NAME=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
+          FORMATTED_BRANCH_NAME=$(echo "$BRANCH_NAME" | tr '/_' '--')
+          TIMESTAMP=$(date -u +'%Y_%m_%d_%H_%M')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          IMAGE_TAG="${FORMATTED_BRANCH_NAME}_${TIMESTAMP}_${SHORT_SHA}${VARIANT_SUFFIX}"
+          echo "FULL_IMAGE=${REGISTRY_IMAGE}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create manifest list and push ${{ matrix.variant.description }} image
+        working-directory: /tmp/digests
+        env:
+          FULL_IMAGE: ${{ steps.vars.outputs.FULL_IMAGE }}
+          VARIANT_SUFFIX: ${{ matrix.variant.suffix }}
+        run: |
+          DIGEST_ARGS=""
+          # Only include the digest files of the current variant
+          for file in *"${VARIANT_SUFFIX}".txt; do
+            DIGEST_ARGS+=" $(cat "$file")"
+          done
+          # shellcheck disable=SC2086
+          docker buildx imagetools create -t "${FULL_IMAGE}" $DIGEST_ARGS
+
+      - name: Inspect final ${{ matrix.variant.description }} image
+        env:
+          FULL_IMAGE: ${{ steps.vars.outputs.FULL_IMAGE }}
+        run: |
+          docker buildx imagetools inspect "${FULL_IMAGE}"

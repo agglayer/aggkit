@@ -2,7 +2,10 @@
 // -ldflags "-X github.com/agglayer/aggkit/tools/ger_validator_signer/version.Version=..."
 package version
 
-import "fmt"
+import (
+	"fmt"
+	"runtime"
+)
 
 // Set at build time
 var (
@@ -22,14 +25,32 @@ type Info struct {
 	GitRev    string `json:"git_rev"`
 	GitBranch string `json:"git_branch"`
 	BuildDate string `json:"build_date"`
+	GoVersion string `json:"go_version"`
+	OS        string `json:"os"`
+	Arch      string `json:"arch"`
 }
 
 // Get returns the build information
 func Get() Info {
-	return Info{Version: Version, GitRev: GitRev, GitBranch: GitBranch, BuildDate: BuildDate}
+	return Info{
+		Version:   Version,
+		GitRev:    GitRev,
+		GitBranch: GitBranch,
+		BuildDate: BuildDate,
+		GoVersion: runtime.Version(),
+		OS:        runtime.GOOS,
+		Arch:      runtime.GOARCH,
+	}
 }
 
-// String returns the build information in one line
+// String returns the build information in the same format that aggkit prints: the line that starts with
+// "Version:" is what the release workflows check in the image
 func (i Info) String() string {
-	return fmt.Sprintf("%s (git revision %s, branch %s, built %s)", i.Version, i.GitRev, i.GitBranch, i.BuildDate)
+	return fmt.Sprintf("Version:      %s\n"+
+		"Git revision: %s\n"+
+		"Git branch:   %s\n"+
+		"Go version:   %s\n"+
+		"Built:        %s\n"+
+		"OS/Arch:      %s/%s\n",
+		i.Version, i.GitRev, i.GitBranch, i.GoVersion, i.BuildDate, i.OS, i.Arch)
 }
