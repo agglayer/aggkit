@@ -9,16 +9,18 @@ The GER is indexed from the L2 smart contract by **L2GERSyncer** component and p
 The AggOracle supports three operational modes, selected with `AggOracle.Mode`:
 
 1. **Direct Injection Mode** (`direct`): Direct injection of GERs into the L2 GER Manager contract
-2. **AggOracle Committee Mode, v1** (`committee_v1`): Consensus-based GER injection through a committee of oracle members that vote on-chain. Legacy: it is deprecated and has no upgrade path to v2
-3. **AggOracle Committee Mode, v2** (`committee_v2`): A single transaction injects the GER together with the signatures of a threshold of GER validators, that sign off-chain
+2. **Committee Mode** (`committee`): A single transaction injects the GER together with the signatures of a threshold of GER validators, that sign off-chain (AggOracleCommittee v2)
+3. **Legacy Mode** (`legacy`): Consensus-based GER injection through a committee of oracle members that vote on-chain (AggOracleCommittee v1). **Deprecated: it will be removed in the next release.** It has no upgrade path to v2
 
 The mode `auto` (the default) inspects the contract that is the GER updater of the L2 and selects one of them.
+
+> **⚠️ Deprecation: the `legacy` mode will be removed.** The legacy committee (AggOracleCommittee v1) is kept in this release, but it **will be removed in the next one**, together with the deprecated `EnableAggOracleCommittee` option. A chain that uses it must migrate to the `committee` mode (AggOracleCommittee v2) or to `direct` before upgrading. Every time the AggOracle starts in the legacy mode, whether it was configured or detected by `auto`, it logs a deprecation warning.
 
 ### Key Components:
 
 - `ChainSender`: Interface for submitting GERs to the smart contract.
-- `EVMChainGERSender`: An implementation of `ChainSender` for the direct injection and the committee v1 modes.
-- `CommitteeV2Sender`: An implementation of `ChainSender` for the committee v2 mode. It collects the signatures of the GER validators.
+- `EVMChainGERSender`: An implementation of `ChainSender` for the direct injection and the legacy (deprecated) modes.
+- `CommitteeV2Sender`: An implementation of `ChainSender` for the committee mode. It collects the signatures of the GER validators.
 - `gervalidator`: The client and the signature collector of the GER validators (see [GER validator signer](./gervalidator.md)).
 - `DetectGERMode`: Detects the mode from the contract that is the GER updater of the L2.
 
@@ -46,18 +48,7 @@ In this mode, the AggOracle directly injects GERs into the L2 GER Manager contra
 3. **Direct Injection**: If missing, AggOracle directly submits the GER via the `insertGlobalExitRoot` function.
 4. **Sync Locally**: L2GERSyncer fetches and stores the GER locally for downstream use.
 
-#### 2. AggOracle Committee Mode (v1, legacy)
-
-In this mode, GER injection requires consensus from a committee of oracle members:
-
-1. **Fetch Finalized GER**: AggOracle retrieves the latest GER finalized on L1.
-2. **Check GER Status**: Confirms whether the GER is already injected or proposed.
-3. **Propose GER**: If not yet proposed, committee member submits the GER via `proposeGlobalExitRoot` function to the `AggOracleCommittee` contract.
-4. **Committee Proposals**: Other committee members submit the same GER via `proposeGlobalExitRoot` to signal agreement.
-5. **Automatic Injection**: Once quorum is reached, the GER is automatically injected into the L2 GER Manager contract.
-6. **Sync Locally**: L2GERSyncer fetches and stores the GER locally for downstream use.
-
-#### 3. AggOracle Committee v2 Mode
+#### 2. Committee Mode (AggOracleCommittee v2)
 
 In this mode there are two kinds of actors: **one AggOracle per chain**, and **many GER validators** (`ger_validator_signer`), that can serve many chains. The validators don't send transactions: only the AggOracle, with the account that is the `proposer` of the committee contract, writes on the L2.
 
@@ -83,7 +74,20 @@ What the contract requires from the signatures, and what AggOracle guarantees:
 - The signature is `keccak256(GER)`, with no chain id nor contract address: it is valid in any committee that has the validator. That is what lets the same validators serve many chains. Don't reuse the key of a validator across environments.
 - A GER that was injected by another updater and then removed from the L2 GER Manager before the committee processed it can be signed again by the validators, because they only look at L1. If it was processed by the committee it can't be injected again.
 
-### Committee Consensus Mechanism (v1)
+#### 3. Legacy Mode (AggOracleCommittee v1, deprecated)
+
+> **⚠️ Deprecated.** This mode is kept in this release and **will be removed in the next one**. Migrate to the [committee mode](#2-committee-mode-aggoraclecommittee-v2) or to the direct mode.
+
+In this mode, GER injection requires consensus from a committee of oracle members:
+
+1. **Fetch Finalized GER**: AggOracle retrieves the latest GER finalized on L1.
+2. **Check GER Status**: Confirms whether the GER is already injected or proposed.
+3. **Propose GER**: If not yet proposed, committee member submits the GER via `proposeGlobalExitRoot` function to the `AggOracleCommittee` contract.
+4. **Committee Proposals**: Other committee members submit the same GER via `proposeGlobalExitRoot` to signal agreement.
+5. **Automatic Injection**: Once quorum is reached, the GER is automatically injected into the L2 GER Manager contract.
+6. **Sync Locally**: L2GERSyncer fetches and stores the GER locally for downstream use.
+
+### Legacy Committee Consensus Mechanism (v1, deprecated)
 
 - **Committee Members**: A predefined set of authorized oracle addresses
 - **Quorum**: Minimum number of votes required for GER injection
@@ -91,7 +95,7 @@ What the contract requires from the signatures, and what AggOracle guarantees:
 - **Proposal Counting**: The committee contract track proposals for each GER
 - **Automatic Execution**: GER injection happens automatically when quorum is reached
 
-The sequence diagrams below depict the interactions in both operational modes.
+The sequence diagrams below depict the interactions in each operational mode.
 
 #### Direct Injection Mode:
 
@@ -120,50 +124,7 @@ sequenceDiagram
     AggOracle->>AggOracle: handle GER processing error
 ```
 
-#### AggOracle Committee Mode:
-
-```mermaid
-sequenceDiagram
-    participant AggOracle
-    participant ChainSender
-    participant L1InfoTreeSyncer
-    participant AggOracleCommittee
-    participant L2GERManager
-    participant OtherCommitteeMembers
-
-    AggOracle->>AggOracle: start (Committee Mode)
-    AggOracle->>AggOracle: process latest GER
-    loop trigger on preconfigured frequency
-        AggOracle->>L1InfoTreeSyncer: get latest finalized GER
-        L1InfoTreeSyncer-->>AggOracle: return GER from L1 info tree
-        AggOracle->>ChainSender: ProcessGER
-        ChainSender->>L2GERManager: check if GER injected
-        L2GERManager-->>ChainSender: GER injection status
-        alt GER already injected
-            ChainSender->>ChainSender: log GER already injected
-        else GER not injected
-            ChainSender->>AggOracleCommittee: check if GER proposed
-            AggOracleCommittee-->>ChainSender: proposal status
-            alt GER already proposed
-                ChainSender->>ChainSender: log GER already proposed
-            else GER not yet proposed
-                ChainSender->>AggOracleCommittee: proposeGlobalExitRoot(GER)
-                AggOracleCommittee->>AggOracleCommittee: record proposal
-                OtherCommitteeMembers->>AggOracleCommittee: other members proposeGlobalExitRoot(GER)
-                AggOracleCommittee->>AggOracleCommittee: record additional proposals
-                alt quorum reached
-                    AggOracleCommittee->>L2GERManager: insertGlobalExitRoot(GER)
-                    L2GERManager-->>AggOracleCommittee: injection result
-                else quorum not reached
-                    AggOracleCommittee->>AggOracleCommittee: wait for more votes
-                end
-            end
-        end
-    end
-    AggOracle->>AggOracle: handle GER processing error
-```
-
-#### AggOracle Committee v2 Mode:
+#### Committee Mode:
 
 ```mermaid
 sequenceDiagram
@@ -203,6 +164,49 @@ sequenceDiagram
     end
 ```
 
+#### Legacy Mode (deprecated):
+
+```mermaid
+sequenceDiagram
+    participant AggOracle
+    participant ChainSender
+    participant L1InfoTreeSyncer
+    participant AggOracleCommittee
+    participant L2GERManager
+    participant OtherCommitteeMembers
+
+    AggOracle->>AggOracle: start (Legacy Mode)
+    AggOracle->>AggOracle: process latest GER
+    loop trigger on preconfigured frequency
+        AggOracle->>L1InfoTreeSyncer: get latest finalized GER
+        L1InfoTreeSyncer-->>AggOracle: return GER from L1 info tree
+        AggOracle->>ChainSender: ProcessGER
+        ChainSender->>L2GERManager: check if GER injected
+        L2GERManager-->>ChainSender: GER injection status
+        alt GER already injected
+            ChainSender->>ChainSender: log GER already injected
+        else GER not injected
+            ChainSender->>AggOracleCommittee: check if GER proposed
+            AggOracleCommittee-->>ChainSender: proposal status
+            alt GER already proposed
+                ChainSender->>ChainSender: log GER already proposed
+            else GER not yet proposed
+                ChainSender->>AggOracleCommittee: proposeGlobalExitRoot(GER)
+                AggOracleCommittee->>AggOracleCommittee: record proposal
+                OtherCommitteeMembers->>AggOracleCommittee: other members proposeGlobalExitRoot(GER)
+                AggOracleCommittee->>AggOracleCommittee: record additional proposals
+                alt quorum reached
+                    AggOracleCommittee->>L2GERManager: insertGlobalExitRoot(GER)
+                    L2GERManager-->>AggOracleCommittee: injection result
+                else quorum not reached
+                    AggOracleCommittee->>AggOracleCommittee: wait for more votes
+                end
+            end
+        end
+    end
+    AggOracle->>AggOracle: handle GER processing error
+```
+
 ---
 
 ## Key Components
@@ -231,7 +235,7 @@ ProcessGER(ctx context.Context, ger common.Hash) error
 
 ---
 
-### 3. EVMChainGERSender (direct injection and committee v1)
+### 3. EVMChainGERSender (direct injection and legacy)
 
 Implements `ChainSender` using Ethereum clients and transaction management. The mode it works in is resolved by the configuration before it is created.
 
@@ -240,18 +244,18 @@ Implements `ChainSender` using Ethereum clients and transaction management. The 
 - **`IsGERInjected`**: Verifies GER presence in the L2 GER Manager contract.
 - **`ProcessGER`**: Routes to either `InjectGER` or `ProposeGER` based on the mode.
 - **`InjectGER`** (direct): Directly submits the GER using `insertGlobalExitRoot` and monitors transaction status.
-- **`ProposeGER`** (committee v1): Proposes the GER to the AggOracleCommittee using `proposeGlobalExitRoot`.
-- **`IsGERProposed`** (committee v1): Checks if the current committee member has already proposed the GER.
+- **`ProposeGER`** (legacy, deprecated): Proposes the GER to the AggOracleCommittee using `proposeGlobalExitRoot`.
+- **`IsGERProposed`** (legacy, deprecated): Checks if the current committee member has already proposed the GER.
 
 #### Validation:
 - **Direct Mode**: Validates that the sender address is authorized as `GlobalExitRootUpdater`
-- **Committee v1 Mode**: Validates that the sender is a registered committee member
+- **Legacy Mode** (deprecated): Validates that the sender is a registered committee member
 
 ---
 
 ### 4. CommitteeV2Sender
 
-Implements `ChainSender` for the AggOracleCommittee v2 (see [the flow](#3-aggoracle-committee-v2-mode)).
+Implements `ChainSender` for the AggOracleCommittee v2 (see [the flow](#2-committee-mode-aggoraclecommittee-v2)).
 
 #### Validation at startup:
 - The contract is an AggOracleCommittee v2 (`version()` starts with `v2.`) of the configured L2 GER Manager, and it is the `globalExitRootUpdater` of that L2 GER Manager.
@@ -262,18 +266,18 @@ Implements `ChainSender` for the AggOracleCommittee v2 (see [the flow](#3-aggora
 
 ### 5. Mode selection
 
-`AggOracle.Mode` selects how the GERs are injected. `direct` and `committee_v1` are used as configured. `committee_v2` takes the committee from `AggOracleCommitteeAddr` or, if it is not set, from the `globalExitRootUpdater` of the L2 GER Manager (and both must be the same contract). `auto` reads the `globalExitRootUpdater` of the L2 GER Manager and decides:
+`AggOracle.Mode` selects how the GERs are injected. `direct` and `legacy` are used as configured (`legacy` is deprecated and will be removed in the next release). `committee` takes the committee from `AggOracleCommitteeAddr` or, if it is not set, from the `globalExitRootUpdater` of the L2 GER Manager (and both must be the same contract). `auto` reads the `globalExitRootUpdater` of the L2 GER Manager and decides:
 
 | `globalExitRootUpdater` | Mode |
 |---|---|
 | The zero address (the L2 GER Manager accepts `block.coinbase`), an account without code, or an account delegated with EIP-7702 | `direct` |
-| A contract whose `version()` starts with `v2.`, with `agglayerGERL2()` pointing to the L2 GER Manager, and `threshold()` and `proposer()` | `committee_v2` |
-| A contract whose `VERSION()` starts with `v1.`, with `globalExitRootManagerL2Sovereign()` pointing to the L2 GER Manager, and `quorum()` | `committee_v1` |
+| A contract whose `version()` starts with `v2.`, with `agglayerGERL2()` pointing to the L2 GER Manager, and `threshold()` and `proposer()` | `committee` |
+| A contract whose `VERSION()` starts with `v1.`, with `globalExitRootManagerL2Sovereign()` pointing to the L2 GER Manager, and `quorum()` | `legacy` (deprecated: it logs a warning) |
 | Anything else (a multisig, a committee of another version or of another L2 GER Manager, a contract that matches both) | error: set `Mode` explicitly |
 
 An RPC failure while detecting is an error at startup: it is never interpreted as "the contract is not a v2 committee". If `AggOracleCommitteeAddr` is set it must be the `globalExitRootUpdater`; if it is only the pending updater, the error says that `acceptGlobalExitRootUpdater()` must be called first.
 
-The deprecated `EnableAggOracleCommittee` still works: with `Mode = "auto"` (or unset) and `AggOracleCommitteeAddr` set, it selects `committee_v1`; and it is an error if it contradicts `direct` or `committee_v2`.
+The deprecated `EnableAggOracleCommittee` still works: with `Mode = "auto"` (or unset) and `AggOracleCommitteeAddr` set, it selects `legacy`; and it is an error if it contradicts `direct` or `committee`. As it selects the legacy mode, it will be removed together with it, in the next release.
 
 ---
 
@@ -281,11 +285,11 @@ The deprecated `EnableAggOracleCommittee` still works: with `Mode = "auto"` (or 
 
 ### 1. L2 GER Manager Contract
 
-Used in both operational modes for final GER storage and status checking.
+Used in all the modes for final GER storage and status checking.
 
 - **Contract**: `GlobalExitRootManagerL2SovereignChain.sol`
 - **Key Functions**:
-  - `insertGlobalExitRoot`: Final GER injection (called directly in Direct Mode, or by committee contract in Committee Mode)
+  - `insertGlobalExitRoot`: Final GER injection (called directly in Direct Mode, or by the committee contract in the committee and legacy modes)
   - `GlobalExitRootMap`: Check if a GER is already injected
   - `GlobalExitRootUpdater`: Get authorized updater address (for Direct Mode validation)
 - **Source Code**: [zkevm-contracts](https://github.com/0xPolygonHermez/zkevm-contracts/blob/feature/audit-remediations/contracts/v2/sovereignChains/GlobalExitRootManagerL2SovereignChain.sol#L89-L103)
@@ -293,7 +297,7 @@ Used in both operational modes for final GER storage and status checking.
 
 ### 2. AggOracleCommittee v2 Contract
 
-Used in Committee v2 Mode. It replaces the v1 contract in the same Solidity file and with the same name, so it has its own bindings (see below).
+Used in the committee mode. It replaces the v1 contract in the same Solidity file and with the same name, so it has its own bindings (see below).
 
 - **Contract**: [`AggOracleCommittee.sol` (v2.0.0)](https://github.com/agglayer/agglayer-contracts/blob/feature/agg-oracle-committee/contracts/sovereignChains/AggOracleCommittee.sol)
 - **Key Functions**:
@@ -304,9 +308,9 @@ Used in Committee v2 Mode. It replaces the v1 contract in the same Solidity file
 - **Bindings**: [`aggoracle/contracts/aggoraclecommitteev2`](../aggoracle/contracts/aggoraclecommitteev2/README.md). The `cdk-contracts-tooling` release used by aggkit only ships v1. They are generated from a pinned commit of `agglayer-contracts`, and a test checks the selectors.
 - **Migration**: there is no upgrade from v1. A chain moves to v2 by changing the `globalExitRootUpdater` of its L2 GER Manager to the v2 committee.
 
-### 3. AggOracleCommittee Contract (v1, legacy)
+### 3. AggOracleCommittee Contract (v1, legacy, deprecated)
 
-Used exclusively in Committee v1 Mode for consensus-based GER proposals.
+Used exclusively in the legacy mode for consensus-based GER proposals. **Deprecated: the legacy mode will be removed in the next release.**
 
 > **⚠️ Implementation Note**: The client-side code only handles proposal submission via `proposeGlobalExitRoot`. The consensus mechanism, quorum handling, and automatic GER injection are handled at the smart contract level. Refer to the actual [AggOracleCommittee.sol](https://github.com/agglayer/agglayer-contracts/blob/feature/descentralized_aggoracle/contracts/v2/sovereignChains/AggOracleCommittee.sol) contract for complete implementation details.
 
@@ -332,19 +336,21 @@ Used exclusively in Committee v1 Mode for consensus-based GER proposals.
 
 ```toml
 [AggOracle]
-# direct | committee_v1 | committee_v2 | auto (default)
+# direct | committee | legacy | auto (default)
+# "legacy" is DEPRECATED and will be removed in the next release
 Mode = "auto"
-# DEPRECATED, use Mode. With Mode "auto" and AggOracleCommitteeAddr set, true selects committee_v1
+# DEPRECATED (it will be removed in the next release), use Mode.
+# With Mode "auto" and AggOracleCommitteeAddr set, true selects legacy
 EnableAggOracleCommittee = false
 ```
 
-### Committee v2 Mode Configuration
+### Committee Mode Configuration
 
 ```toml
 [AggOracle]
 TargetChainType = "EVM"
 WaitPeriodNextGER = "5s"
-Mode = "committee_v2"
+Mode = "committee"
 
 [AggOracle.EVMSender]
 GlobalExitRootL2 = "0x123...abc"        # L2 GER Manager contract address
@@ -374,7 +380,7 @@ AggOracle:
   TargetChainType: "EVM"
   URLRPCL1: "https://eth-mainnet.g.alchemy.com/v2/your-api-key"
   WaitPeriodNextGER: "5s"
-  EnableAggOracleCommittee: false
+  Mode: "direct"
   EVMSender:
     GlobalExitRootL2: "0x123...abc"  # L2 GER Manager contract address
     AggOracleCommitteeAddr: "0x000...000"  # Not used in direct mode
@@ -386,14 +392,16 @@ AggOracle:
       # ... other EthTxManager config
 ```
 
-### Committee v1 Mode Configuration
+### Legacy Mode Configuration (deprecated)
+
+> **⚠️ Deprecated.** The legacy mode will be removed in the next release. Do not use `EnableAggOracleCommittee`: it is deprecated too.
 
 ```yaml
 AggOracle:
   TargetChainType: "EVM"
   URLRPCL1: "https://eth-mainnet.g.alchemy.com/v2/your-api-key"
   WaitPeriodNextGER: "5s"
-  EnableAggOracleCommittee: true
+  Mode: "legacy"
   EVMSender:
     GlobalExitRootL2: "0x123...abc"  # L2 GER Manager contract address
     AggOracleCommitteeAddr: "0x456...def"  # AggOracleCommittee contract address
@@ -408,14 +416,14 @@ AggOracle:
 
 ### Key Configuration Differences
 
-| Configuration | Direct Injection Mode | Committee v1 Mode | Committee v2 Mode |
+| Configuration | Direct Injection Mode | Committee Mode | Legacy Mode (deprecated) |
 |---------------|---------------------|----------------|----------------|
-| `Mode` | `direct` | `committee_v1` | `committee_v2` |
-| `AggOracleCommitteeAddr` | Not required | Required (valid contract address) | Optional (defaults to the GER updater) |
-| `EthTxManager.From` | Must be authorized as `GlobalExitRootUpdater` | Must be a registered committee member | Must be the `proposer()` of the committee |
-| **GER Submission** | Direct via `insertGlobalExitRoot` | Proposal via `proposeGlobalExitRoot` | One `injectGER` with the signatures of `threshold` validators |
-| **Transactions per GER** | 1 | 1 per committee member | 1 |
-| **Other components** | None | One AggOracle per member | `ger_validator_signer` instances (no transactions) |
+| `Mode` | `direct` | `committee` | `legacy` |
+| `AggOracleCommitteeAddr` | Not required | Optional (defaults to the GER updater) | Required (valid contract address) |
+| `EthTxManager.From` | Must be authorized as `GlobalExitRootUpdater` | Must be the `proposer()` of the committee | Must be a registered committee member |
+| **GER Submission** | Direct via `insertGlobalExitRoot` | One `injectGER` with the signatures of `threshold` validators | Proposal via `proposeGlobalExitRoot` |
+| **Transactions per GER** | 1 | 1 | 1 per committee member |
+| **Other components** | None | `ger_validator_signer` instances (no transactions) | One AggOracle per member |
 
 ---
 
@@ -435,7 +443,7 @@ All metrics are registered under the namespace: `aggoracle`
 The **AggOracle** component automates the propagation of GERs from L1 to L2, enabling bridging across networks. It supports three operational modes, that can be selected or detected automatically:
 
 - **Direct Injection Mode**: Simple, single-authority GER injection
-- **Committee v1 Mode** (legacy): On-chain voting among several oracle members
-- **Committee v2 Mode**: Validators that are independent of the destination chain sign the GER off-chain, and a single transaction injects it with the signatures of a threshold of them
+- **Committee Mode**: Validators that are independent of the destination chain sign the GER off-chain, and a single transaction injects it with the signatures of a threshold of them
+- **Legacy Mode** (deprecated, it will be removed in the next release): On-chain voting among several oracle members
 
 Refer to the EVM implementations in [evm.go](https://github.com/agglayer/aggkit/blob/develop/aggoracle/chaingersender/evm.go) and [committee_v2.go](https://github.com/agglayer/aggkit/blob/develop/aggoracle/chaingersender/committee_v2.go) for guidance on building chain senders for non-EVM chains.

@@ -29,19 +29,22 @@ const (
 	// ModeDirect injects the GER with a single transaction sent by the GER updater (an EOA)
 	// directly to the L2 GER manager (AgglayerGERL2).
 	ModeDirect Mode = "direct"
-	// ModeCommitteeV1 proposes the GER to the legacy AggOracleCommittee (v1) contract,
-	// which injects it once a quorum of members proposed the same GER.
-	ModeCommitteeV1 Mode = "committee_v1"
-	// ModeCommitteeV2 collects signatures from the GER validators and injects the GER
+	// ModeCommittee collects signatures from the GER validators and injects the GER
 	// with a single transaction on the AggOracleCommittee (v2) contract.
-	ModeCommitteeV2 Mode = "committee_v2"
+	ModeCommittee Mode = "committee"
+	// ModeLegacy proposes the GER to the legacy AggOracleCommittee (v1) contract,
+	// which injects it once a quorum of members proposed the same GER.
+	//
+	// Deprecated: the legacy mode is kept in this release and it will be removed in the next one.
+	// Migrate to ModeCommittee (AggOracleCommittee v2), or to ModeDirect.
+	ModeLegacy Mode = "legacy"
 	// ModeAuto inspects the contract configured as GER updater on the L2 and picks one of the
 	// other modes accordingly.
 	ModeAuto Mode = "auto"
 )
 
 // SupportedModes lists all the valid values for Config.Mode.
-var SupportedModes = []Mode{ModeDirect, ModeCommitteeV1, ModeCommitteeV2, ModeAuto}
+var SupportedModes = []Mode{ModeDirect, ModeCommittee, ModeLegacy, ModeAuto}
 
 // UnmarshalText implements encoding.TextUnmarshaler. It is case-insensitive and trims spaces.
 func (m *Mode) UnmarshalText(text []byte) error {
@@ -87,7 +90,7 @@ type CommitteeV2TLSConfig struct {
 	ClientKeyFile  string `mapstructure:"ClientKeyFile"`
 }
 
-// CommitteeV2Config is the configuration specific to ModeCommitteeV2.
+// CommitteeV2Config is the configuration specific to ModeCommittee.
 type CommitteeV2Config struct {
 	// RequestTimeout is the timeout of each request to a GER validator
 	RequestTimeout types.Duration `mapstructure:"RequestTimeout"`
@@ -111,12 +114,14 @@ type Config struct {
 	TargetChainType   TargetChainType          `mapstructure:"TargetChainType"`
 	WaitPeriodNextGER types.Duration           `mapstructure:"WaitPeriodNextGER"`
 	EVMSender         chaingersender.EVMConfig `mapstructure:"EVMSender"`
-	// Mode selects how GERs are injected: direct, committee_v1, committee_v2 or auto
+	// Mode selects how GERs are injected: direct, committee, legacy or auto.
+	// The legacy mode (AggOracleCommittee v1) is DEPRECATED: it will be removed in the next release
 	Mode Mode `mapstructure:"Mode"`
 	// EnableAggOracleCommittee is deprecated, use Mode instead. When true (and Mode is auto or unset),
-	// it forces ModeCommitteeV1 if AggOracleCommitteeAddr is set
+	// it forces ModeLegacy if AggOracleCommitteeAddr is set. It selects the legacy mode, so it will be
+	// removed together with it, in the next release
 	EnableAggOracleCommittee bool `mapstructure:"EnableAggOracleCommittee"`
-	// CommitteeV2 is the configuration used by ModeCommitteeV2
+	// CommitteeV2 is the configuration used by ModeCommittee
 	CommitteeV2 CommitteeV2Config `mapstructure:"CommitteeV2"`
 }
 
@@ -126,11 +131,11 @@ type Config struct {
 //
 //	Mode (default is auto)  EnableAggOracleCommittee  AggOracleCommitteeAddr  Result
 //	auto / unset            false                     any                     auto
-//	auto / unset            true                      set                     committee_v1
+//	auto / unset            true                      set                     legacy
 //	auto / unset            true                      zero                    auto (the flag has no effect)
-//	committee_v1            any                       any                     committee_v1
-//	direct / committee_v2   true                      any                     error (contradiction)
-//	direct / committee_v2   false                     any                     the mode as is
+//	legacy                  any                       any                     legacy
+//	direct / committee      true                      any                     error (contradiction)
+//	direct / committee      false                     any                     the mode as is
 func (c Config) ResolveMode() (Mode, error) {
 	mode := c.Mode
 	if mode == "" {
@@ -147,12 +152,12 @@ func (c Config) ResolveMode() (Mode, error) {
 	switch mode {
 	case ModeAuto:
 		if c.EVMSender.AggOracleCommitteeAddr != aggkitcommon.ZeroAddress {
-			return ModeCommitteeV1, nil
+			return ModeLegacy, nil
 		}
 		return ModeAuto, nil
-	case ModeCommitteeV1:
+	case ModeLegacy:
 		return mode, nil
-	case ModeDirect, ModeCommitteeV2:
+	case ModeDirect, ModeCommittee:
 		return "", fmt.Errorf("AggOracle.EnableAggOracleCommittee=true (deprecated, legacy committee) "+
 			"contradicts AggOracle.Mode=%q: remove EnableAggOracleCommittee", mode)
 	default:
@@ -167,11 +172,11 @@ func (c Config) Validate() error {
 		return err
 	}
 
-	if mode == ModeCommitteeV1 && c.EVMSender.AggOracleCommitteeAddr == aggkitcommon.ZeroAddress {
-		return errors.New("AggOracle.EVMSender.AggOracleCommitteeAddr must be set when AggOracle.Mode is committee_v1")
+	if mode == ModeLegacy && c.EVMSender.AggOracleCommitteeAddr == aggkitcommon.ZeroAddress {
+		return errors.New("AggOracle.EVMSender.AggOracleCommitteeAddr must be set when AggOracle.Mode is legacy")
 	}
 
-	if mode == ModeCommitteeV2 || mode == ModeAuto {
+	if mode == ModeCommittee || mode == ModeAuto {
 		if err := c.CommitteeV2.Validate(); err != nil {
 			return fmt.Errorf("invalid AggOracle.CommitteeV2 configuration: %w", err)
 		}
