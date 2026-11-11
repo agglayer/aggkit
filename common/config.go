@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/agglayer/aggkit/config/types"
@@ -56,6 +57,17 @@ func (c *RESTConfig) RequestBodyLimit() int64 {
 // Address constructs and returns the address as a string in the format "host:port".
 func (c *RESTConfig) Address() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+// HostIsLoopback reports whether the configured Host binds only the loopback interface.
+// An empty host binds every interface and is not loopback.
+func (c *RESTConfig) HostIsLoopback() bool {
+	host := strings.Trim(c.Host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // CORSConfig configures Cross-Origin Resource Sharing (CORS) headers for a

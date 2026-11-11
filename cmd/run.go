@@ -305,6 +305,11 @@ func start(cliCtx *cli.Context) error {
 		log.Infof("Public API listening on %s", cfg.PublicREST.Address())
 	}
 	if routes.adminHasRoutes {
+		if !cfg.AdminREST.HostIsLoopback() {
+			log.Warnf("AdminREST listens on %s, which is reachable from other machines. "+
+				"The admin API has no access control of its own: restrict access at the network or "+
+				"proxy level, or set [AdminREST] Host to a loopback address.", cfg.AdminREST.Address())
+		}
 		if err := adminServer.Start(ctx); err != nil {
 			log.Fatalf("failed to start admin-api server: %v", err)
 		}
