@@ -68,7 +68,7 @@ func (m Mode) Validate() error {
 	return fmt.Errorf("invalid AggOracle.Mode %q (supported values: %v)", string(m), SupportedModes)
 }
 
-// ValidatorURLOverride sets the URL of a GER validator whose on-chain URL is empty (or must be replaced).
+// ValidatorURLOverride sets the URL of a GER validator, replacing the one registered on-chain (if any).
 type ValidatorURLOverride struct {
 	// Address is the validator address, as registered on the AggOracleCommittee contract
 	Address common.Address `mapstructure:"Address"`
@@ -100,7 +100,8 @@ type CommitteeV2Config struct {
 	// PendingGERTimeout is how long a GER is kept pending while the validators don't consider it final.
 	// 0 means keep it pending until it is injected or replaced by a newer one
 	PendingGERTimeout types.Duration `mapstructure:"PendingGERTimeout"`
-	// ValidatorURLOverrides sets the URL of validators that have no URL registered on-chain
+	// ValidatorURLOverrides sets the URL of a validator, for the validators that have no URL registered
+	// on-chain or whose registered URL must be replaced. It takes precedence over the on-chain URL
 	ValidatorURLOverrides []ValidatorURLOverride `mapstructure:"ValidatorURLOverrides"`
 	// TLS options to reach the validators
 	TLS CommitteeV2TLSConfig `mapstructure:"TLS"`
