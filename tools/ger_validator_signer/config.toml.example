@@ -1,0 +1,56 @@
+# Configuration of the GER validator signer. Run it with:
+#
+#   ger_validator_signer run --cfg config.toml
+#
+# An unknown key is an error: a typo in a security parameter must not be silently ignored.
+
+# JSON-RPC endpoint of L1. It can have a token in the path: the URL is never logged
+L1RPCURL = "https://l1.example.com/your-api-key"
+# Checked against the chain id of the endpoint at startup
+L1ChainID = 11155111
+# The AgglayerGER contract of L1: globalExitRootMap is read from it (replace this placeholder)
+AgglayerGERAddr = "0x1111111111111111111111111111111111111111"
+# Limits each request to the L1 RPC
+L1RequestTimeout = "5s"
+# debug, info, warn or error
+LogLevel = "info"
+
+# The L1 block that inserted the GER must be final: the block of the tag, minus NumBlocks.
+# Tag is latest, safe or finalized. "latest" with NumBlocks = 6 is the head minus 6 blocks
+[Finality]
+Tag = "finalized"
+NumBlocks = 0
+
+# The key that signs (github.com/agglayer/go_signer). The address of the key is the one to register
+# as a validator in the AggOracleCommittee. Method is local, GCP or AWS ("remote" can't sign a hash)
+[Signer]
+Method = "local"
+Path = "/etc/ger_validator_signer/validator.keystore"
+Password = "change-me"
+
+[REST]
+Host = "0.0.0.0"
+Port = 8080
+# TLS is required. Set both files, or InsecureHTTP = true if the TLS is terminated in front of the
+# validator (a reverse proxy), or for tests: the signatures travel in the clear otherwise
+TLSCertFile = "/etc/ger_validator_signer/tls/cert.pem"
+TLSKeyFile = "/etc/ger_validator_signer/tls/key.pem"
+InsecureHTTP = false
+# The maximum duration of a request, including the queries to L1 and the signing
+RequestTimeout = "15s"
+# Limits the size of the body of a request
+MaxBodyBytes = 4096
+
+[Cache]
+# GERs whose answer is kept (the oldest are dropped)
+MaxEntries = 10000
+# How long an answer that is not a signature (unknown GER, not canonical, not final) is kept, so a client that
+# insists on a GER that can't be signed doesn't hit the L1 RPC every time. 0 disables it
+NegativeTTL = "5s"
+
+# Limits the requests of each client (IP address of the connection)
+[RateLimit]
+# Sustained rate per client. 0 disables the limit
+RequestsPerSecond = 20
+# How many requests a client can do at once
+Burst = 40
