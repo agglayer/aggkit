@@ -1,0 +1,249 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "REST API of the validators of the AggOracleCommittee v2. The AggOracle asks a validator to sign\na Global Exit Root (GER) and sends the signatures of enough validators to the contract.\nThe validator signs a GER only if it is in the AgglayerGER contract of L1 and the L1 block that\ninserted it is canonical and final for the finality the validator is configured with.",
+        "title": "GER validator signer API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "basePath": "/",
+    "paths": {
+        "/health": {
+            "get": {
+                "description": "It doesn't query L1 or sign: it only says the process is alive.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "info"
+                ],
+                "summary": "The validator is running",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.HealthResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/ger/sign": {
+            "post": {
+                "description": "Signs keccak256(ger) if the GER is in the AgglayerGER contract of L1 and the L1 block that\ninserted it is canonical and final. The signature is what AggOracleCommittee.injectGER verifies.\nThe error code decides what to do: GER_NOT_FINAL, RATE_LIMITED and INTERNAL can be retried.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ger"
+                ],
+                "summary": "Sign a global exit root",
+                "parameters": [
+                    {
+                        "description": "The GER to sign",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.SignRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.SignResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "INVALID_REQUEST",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "GER_UNKNOWN: the GER is not in the AgglayerGER contract",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "GER_BLOCK_NOT_CANONICAL: the L1 block that inserted it is not canonical",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "INVALID_REQUEST: the body is too big",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "425": {
+                        "description": "GER_NOT_FINAL: retry later (see Retry-After)",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "RATE_LIMITED: retry later (see Retry-After)",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/info": {
+            "get": {
+                "description": "The address that signs is the one to register as a validator in the AggOracleCommittee.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "info"
+                ],
+                "summary": "Version and configuration of the validator",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.InfoResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "RATE_LIMITED",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "api.ErrorResponse": {
+            "description": "Why the request failed",
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code says what happened: INVALID_REQUEST, GER_UNKNOWN, GER_BLOCK_NOT_CANONICAL, GER_NOT_FINAL (retryable),\nRATE_LIMITED (retryable) or INTERNAL (retryable)",
+                    "type": "string",
+                    "example": "GER_NOT_FINAL"
+                },
+                "message": {
+                    "description": "Message is a description for humans",
+                    "type": "string",
+                    "example": "the L1 block that inserted the GER is not final yet"
+                }
+            }
+        },
+        "api.FinalityInfo": {
+            "type": "object",
+            "properties": {
+                "num_blocks": {
+                    "description": "NumBlocks is subtracted from the number of the block of the tag",
+                    "type": "integer",
+                    "example": 0
+                },
+                "tag": {
+                    "description": "Tag is the block tag: latest, safe or finalized",
+                    "type": "string",
+                    "example": "finalized"
+                }
+            }
+        },
+        "api.HealthResponse": {
+            "description": "The validator is running",
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "ok"
+                }
+            }
+        },
+        "api.InfoResponse": {
+            "description": "Version and configuration of the validator",
+            "type": "object",
+            "properties": {
+                "agglayer_ger": {
+                    "description": "AgglayerGER is the contract of L1 where the GERs are looked up",
+                    "type": "string",
+                    "example": "0x1111111111111111111111111111111111111111"
+                },
+                "build_date": {
+                    "type": "string",
+                    "example": "2026-11-11T10:00:00Z"
+                },
+                "finality": {
+                    "$ref": "#/definitions/api.FinalityInfo"
+                },
+                "git_branch": {
+                    "type": "string",
+                    "example": "main"
+                },
+                "git_rev": {
+                    "type": "string",
+                    "example": "5453f35"
+                },
+                "l1_chain_id": {
+                    "description": "L1ChainID is the chain id of L1",
+                    "type": "integer",
+                    "example": 11155111
+                },
+                "signer": {
+                    "description": "Signer is the address that signs: the one to register in the AggOracleCommittee",
+                    "type": "string",
+                    "example": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"
+                },
+                "version": {
+                    "type": "string",
+                    "example": "v0.10.0"
+                }
+            }
+        },
+        "api.SignRequest": {
+            "description": "GER to sign",
+            "type": "object",
+            "properties": {
+                "ger": {
+                    "description": "GER is the global exit root: 32 bytes, as a hex string with the 0x prefix",
+                    "type": "string",
+                    "example": "0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+                }
+            }
+        },
+        "api.SignResponse": {
+            "description": "Signature of a GER",
+            "type": "object",
+            "properties": {
+                "ger": {
+                    "description": "GER is the GER that was signed",
+                    "type": "string",
+                    "example": "0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+                },
+                "signature": {
+                    "description": "Signature is r, s and v (65 bytes) of the signature of keccak256(GER). v is 27 or 28 and s is in the lower\nhalf of the curve order, as AggOracleCommittee.injectGER requires",
+                    "type": "string",
+                    "example": "0x0e9eb15c213e333243b2e85294bdb204112c64d19e2cbfe3d2740e4a888147b0415ac1d65fd197e3ff38a5d3920c5d167d95cc88b28e26bc549e4d7783348a9f1c"
+                },
+                "signer": {
+                    "description": "Signer is the address of the validator, as registered in the AggOracleCommittee",
+                    "type": "string",
+                    "example": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"
+                }
+            }
+        }
+    }
+}
