@@ -18,9 +18,13 @@ The chain being deprecated must meet **all** of the following conditions for the
 - **The network's sequencer must be stopped.** Halt the sequencer before running the tool so that no new bridges (or other state changes) are produced while the certificate is being built. New activity after the target block would not be reflected in the certificate.
 - **Every L2→L1 bridge exit up to the target block must be settled by the agglayer.** Halting the sequencer is not sufficient: an ordinary bridge withdrawal made *before* the halt advances the L2 local exit root, and if no certificate settling it has been finalized, the tool cannot produce a certificate from that snapshot (the L2 LER no longer matches the agglayer's `settled_ler`). In practice: keep the aggsender running after the halt until the last certificate settles, and only then run the tool. Step CHECK verifies this (check 9, AET-11) and Step 0 re-verifies it on its resolved target block, aborting with an actionable error before the expensive scan/replay phases; Step H re-checks the same condition at the end. In single-step mode past Step 0 (`--step g2`, …) Step H remains the final safety net.
 
+- **Delta mode only:** the previous certificate must be settled and be the **latest** settled certificate of the network (no pending one), and its output directory (`options.previousRun`) must be intact — see [Delta mode](#delta-mode--chain-additional-exits-on-a-previous-certificate). The L2 does not need to be producing blocks; the RPC is only used to derive missing exit metadata and the gas-token info.
+
 ## Known limitations
 
 - **No unclaimed L1→L2 bridges are allowed.** Every bridge towards L2 must be claimed before starting the process. Outstanding (unclaimed) deposits must be claimed first; otherwise the generated certificate will not reflect them correctly.
+- **A full run covers one certificate.** Funds it leaves behind (e.g. `skipSCLockedValue`) cannot be added by re-running the pipeline: the new certificate would have to restart from the already settled LER and the L2 scan does not contain recovery exits. Use the [delta mode](#delta-mode--chain-additional-exits-on-a-previous-certificate).
+- **Delta mode has no shadow-fork verification.** The L2 bridge never saw the previous exits, so its `getRoot()` cannot anchor the tree. The previous tree's root is instead checked against the previous certificate's `new_local_exit_root`, and the leaf encoding is the same code path as the off-chain `verifyNewLocalExitRootUsingShadowFork=false` mode.
 - **`SetClaim` and `UpdatedUnsetGlobalIndexHashChain` events are not supported.** Transactions that emit these events on the bridge contract ([see contracts](https://github.com/agglayer/agglayer-contracts/tree/v12.2.3)) are not detected or accounted for. Value associated with these flows may be missing from the generated certificate.
 
 ## Quick start
@@ -127,7 +131,11 @@ The field names are identical in both formats. Pass whichever you created with `
 | `bridgeServiceType` | `"aggkit"` | Bridge service API flavour. `"aggkit"` uses `GET /bridge/v1/bridges` (aggkit bridge service); `"zkevm"` uses `GET /pending-bridges` (zkevm-bridge-service). |
 | `extraErc20Contracts` | `[]` | Optional list of ERC-20 contract addresses to decompose into individual holder balances in Step B3. Step A includes these contracts in its `Transfer`-log scan so even passive holders (no ETH/nonce/code) are discovered; Step B3 then calls `balanceOf` for every EOA collected in Step A. Example: `["0xAbc...123", "0xDef...456"]`. |
 | `ignoreUnsupportedL2Events` | `false` | When `true`, the Step G lite syncer logs a warning and continues instead of aborting when it sees an L2 event that would invalidate a BridgeEvent-only reconstruction (`SetSovereignTokenAddress`, `MigrateLegacyToken`, `RemoveLegacySovereignTokenAddress`, `BackwardLET`, `ForwardLET`). The computed `NewLocalExitRoot` may then be incorrect — enable only to knowingly inspect such a chain. |
-| `ignoreLERMismatch` | `false` | When `true`, the AET-11 unsettled-bridge-exits verification (Step CHECK check 9, the Step 0 guard, and Step H's LER cross-check) logs a warning and continues instead of aborting when the L2 bridge's LER at the target block does not match the agglayer's `settled_ler`. The certificate then chains from a `PrevLocalExitRoot` that does not cover every emitted bridge exit, so the agglayer will most likely reject it — enable only to knowingly inspect such a snapshot. Step H's pending-certificate guard is unaffected. |
+| `ignoreLERMismatch` | `false` | When `true`, the AET-11 unsettled-bridge-exits verification (Step CHECK check 9, the Step 0 guard, and Step H's LER cross-check) logs a warning and continues instead of aborting when the L2 bridge's LER at the target block does not match the agglayer's `settled_ler`. The certificate then chains from a `PrevLocalExitRoot` that does not cover every emitted bridge exit, so the agglayer will most likely reject it — enable only to knowingly inspect such a snapshot. Step H's pending-certificate guard is unaffected. Rejected with `deltaMode`. |
+| `deltaMode` | `false` | When `true`, builds a certificate that only carries the **new** bridge exits of `deltaExitsFile`, chained on the previous run (`previousRun`). See [Delta mode](#delta-mode--chain-additional-exits-on-a-previous-certificate). `exitAddress` is not required in this mode. |
+| `previousRun` | `""` | Required with `deltaMode`: output directory of the previous (settled) run. Relative paths resolve from the config file directory. Must differ from `outputDir`. Setting it without `deltaMode` is rejected. |
+| `deltaExitsFile` | `""` | Required with `deltaMode`: JSON file with the new exits (format in [Delta mode](#delta-mode--chain-additional-exits-on-a-previous-certificate)). Relative paths resolve from the config file directory. |
+| `recoveriesPath` | `""` | Only with `deltaMode`, input of `--step recoveries`: a directory (searched recursively), a `.tgz` of the [zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit) or a `recovery.json` with already verified recoveries. See [Recoveries step](#recoveries-step--from-verified-recoveries-to-delta-exits). Relative paths resolve from the config file directory. |
 | `verifyNewLocalExitRootUsingShadowFork` | `true` | Selects the Step G2 mode. When `true` (default), Step G2 spins up an Anvil shadow-fork, replays every bridge exit against the real bridge contract, recovers the on-chain metadata, and verifies the off-chain leaf encoding against the contract's `getRoot()` (requires `anvil` in `$PATH`). When `false`, Step G2 skips Anvil — much faster, but it trusts the off-chain leaf encoding/metadata. In both modes the certificate keeps its deterministic exit order and the `NewLocalExitRoot` is the lite exit tree root in that order. See [Step G](#step-g--compute-newlocalexitroot) for details. |
 
 ### Important configuration notes
@@ -541,6 +549,125 @@ Requires `l1RpcUrl` and `l1BridgeAddress` (it defaults to `l2BridgeAddress`), an
 
 **Output:** `step-pending-l2-bridges.json` (`[]PendingBridge`: `depositCount`, `blockNumber`, `leafType`, origin and destination, `amount`, raw `metadata`, `txHash`). The claimer adds them to `/bridges` and `/claim-params` when the file exists.
 
+## Delta mode — chain additional exits on a previous certificate
+
+A full run produces **one** certificate per chain. When more exits must be issued afterwards — typically funds locked in smart contracts that the first certificate left behind (`skipSCLockedValue`) and whose owners proved ownership (see [zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit)) — the **delta mode** builds a certificate containing only those new exits, chained on the previous settled certificate. It can be repeated: each delta's output is a valid input for the next one.
+
+```jsonc
+// config (besides the usual l2RpcUrl, l1RpcUrl, agglayerClient, agglayerAdminURL, signerConfig, …)
+"options": {
+    "deltaMode": true,
+    "previousRun": "./output-first",      // output dir of the previous run (or of the previous delta)
+    "deltaExitsFile": "./delta-exits.json",
+    "outputDir": "./output-delta-1"        // must differ from previousRun
+}
+```
+
+```bash
+./target/exit_certificate --config parameters.json                    # CHECK → F → G2 → H → I → SIGN
+./target/exit_certificate --config parameters.json --step submit,wait # as in a regular run
+```
+
+In delta mode only `all` (the default), `sign`, `submit` and `wait` are available; the L2 scan steps (0, A, B, C, D, E) do not exist.
+
+### Delta exits file
+
+The new exits, with the same `BridgeExit` shape as a certificate's `bridge_exits`:
+
+```json
+{
+  "bridge_exits": [
+    {
+      "leaf_type": "Transfer",
+      "token_info": { "origin_network": 0, "origin_token_address": "0x0000000000000000000000000000000000000000" },
+      "dest_network": 0,
+      "dest_address": "0x00000000000000000000000000000000000000d1",
+      "amount": "1000000000000000000",
+      "metadata": "<optional, hex without 0x>"
+    }
+  ]
+}
+```
+
+- Only `Transfer` exits are supported, with a positive `amount`, a `token_info`, and a `dest_network` other than the exiting network.
+- An exit identical to **any leaf already in the exit tree** (exits of previous runs and older L2 bridges, read from the copied lite DB) or to another delta exit — same token, destination, amount and metadata — is rejected: both would be distinct leaves with the same hash and the claimer indexes leaves by hash, so it could not tell them apart. Merge repeated delta exits into one (sum the amounts); against an already settled leaf, change the amount.
+- `metadata`, when present, is the **raw** leaf metadata as plain hex (the tool hashes it): no `0x` prefix and even length — a malformed value is rejected instead of being silently dropped (which would regenerate it from the L2 and change the leaf). A certificate's `metadata` is the keccak hash: do not copy it here (a 32-byte value logs a warning). When absent the tool derives it from the L2 bridge the way `bridgeAsset` does: the ABI-encoded name/symbol/decimals of the L2 token for ERC-20 exits, the gas-token metadata for native exits.
+- **The L2 RPC (`l2RpcUrl`) must still answer in delta mode**: it is used for the L2 bridge's gas token and for that metadata derivation (every exit produced by `--step recoveries` carries none). Balances are never read from it.
+
+### Pipeline
+
+| Step | Delta behaviour |
+| ---- | --------------- |
+| CHECK | Same prerequisites (L1, network ID, PP, threshold, gas token) minus Anvil. **AET-11 is adapted:** the agglayer's `settled_ler` must equal the previous certificate's `new_local_exit_root` (and the next height must be the previous + 1) instead of the L2 bridge `getRoot()`. Fails if a certificate is pending or the previous one is not the latest settled. `ignoreLERMismatch` is **rejected** with `deltaMode` (a delta chains on `previousRun` by construction). |
+| F | Per token, the sum of the new exits must be ≤ the remaining agglayer balance (`admin_getTokenBalance`, which already reflects the previous certificates). An excess **always fails**: `ignoreBalanceMismatch`/`capMode` do not apply in delta mode (capping would leave the recoveries ledger saying more was paid than the certificate carries). The check **cannot be skipped**: `useAgglayerAdminToStepFCheck=false` is an error in delta mode. |
+| G2 | Copies the previous run's `step-g-l2bridgesyncerlite.sqlite`, appends the new exits as leaves **continuing the deposit counts** (old leaves keep their index, so their global index does not change) and takes the new root as `new_local_exit_root`. The previous tree's root is verified against the previous certificate first. |
+| H | `prev_local_exit_root` = previous `new_local_exit_root`, `height` = previous height + 1, cross-checked against the agglayer. |
+| I, SIGN, SUBMIT, WAIT | Unchanged. SIGN needs `signerConfig`: without it `--step all` still finishes but does not write `exit-certificate-signed.json` (it warns), and `--step submit` then fails. |
+
+### Output (reusable as the input of the next delta)
+
+| File | Content |
+| ---- | ------- |
+| `exit-certificate-signed.json` | The delta certificate: **only the new exits**. This is what is submitted to the agglayer. |
+| `exit-certificate-full.json` | The same certificate shape carrying **every** exit (previous runs + this delta, in leaf order) with the latest `new_local_exit_root`. Not submittable; it is the input of the next delta and of the [claimer](../exit_certificate_claimer/README.md). |
+| `step-g-l2bridgesyncerlite.sqlite` | The exit tree with all leaves (old + new). |
+| `step-wait-result.json` | Settlement record of the delta certificate. |
+| `delta-manifest.json` | Links previous run → this run: certificate heights/hashes, root before/after, leaf index range added, exit counts. |
+
+A delta's `previousRun` can be the output dir of a regular run (its signed certificate already holds every exit) or of a previous delta (its full certificate is used).
+
+## Recoveries step — from verified recoveries to delta exits
+
+`--step recoveries` (delta mode only, standalone) turns the recoveries that the
+[zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit) already verified into the
+`deltaExitsFile` of a delta run, and keeps the balance files of the first run up to date so the same funds are
+never released twice. Whether each case is legitimate is a **manual prerequisite** (the kit's verification); the
+step only checks that the money can be taken from the balance state we have (the L2 RPC no longer reflects
+reality and the agglayer offers no per-contract view).
+
+```bash
+./target/exit_certificate --config parameters.json --step recoveries
+```
+
+Config (besides `deltaMode`, `previousRun`, `outputDir`): `options.recoveriesPath`.
+
+Each `recovery.json` (`locked_contract`, `destination`, `funds[]` with `token` = `native` or the L2 token address,
+and `amount` in base units) becomes one Transfer exit to L1 per (destination, origin token); the L2 token is
+resolved to its origin through `step-0-lbt.json`. Checks, all or nothing (on any error nothing is written):
+
+- same validation as the kit's `validate-recovery.sh` (no unknown fields, no placeholder addresses, positive
+  amounts, no repeated token);
+- **idempotence**: a case whose case hash (the kit's: sha256 of `recovery.json` and `move.sh`) is already in the
+  ledger is skipped, not an error; a `(locked_contract, token, destination)` already recovered by a *different* case is an error
+  — one recovery per contract+token+destination, ever (the ledger cannot tell a re-packaged copy of an applied case
+  from a new one); a contract holding funds of several owners is recovered once per owner (another destination is
+  accepted), always bounded by the token's pending balance;
+- **one case per archive, each case once per batch**: a `.tgz` with more than one `recovery.json`/`move.sh` is an
+  error, and so is a directory holding the same `recovery.json` twice (e.g. a kit `.tgz` and its extracted files; a
+  loose `recovery.json` without `move.sh` hashes only itself, so it would not look like the `.tgz`'s case);
+- per token, the sum of the new recoveries ≤ `pendingSCLockedBalance` still left (Step C), and ≤ the
+  `skippedSCLockedAmount` of Step F.
+
+Input state: `<previousRun>/recoveries/` if a previous recoveries run left it there, else the files of
+`previousRun` when it is a first (non-delta) run. A previous delta run **without** `recoveries/` state is refused
+(its balances would be stale). The previous run is never modified. Output, in `<outputDir>/recoveries/`:
+
+| File | Content |
+| ---- | ------- |
+| `step-c-sc-locked-values.json` | `pendingSCLockedBalance` −= recovered; `recoveredSCLockedBalance` += recovered. |
+| `step-f-checks.json` | recovered amount moves from `skippedSCLockedAmount` to `certificateAmount` / `lbtAmount` (Step F reports `lbtAmount` net of the skipped SC-locked value). |
+| `step-0-lbt.json` | unchanged copy, so the directory is a complete state for the next run. |
+| `recoveries-applied.json` | ledger of every applied (case, token). |
+| `delta-exits.json` | **only the exits of this run**: set it as `options.deltaExitsFile`. |
+| `recoveries-report.md` | per token: pending before / recovered / pending after. |
+
+The state lives in a `recoveries/` subdirectory because the delta pipeline itself writes `step-f-checks.json` in
+`outputDir`. Run the step on every delta (with `previousRun` = the last settled run) so the chain keeps its state.
+
+The step **refuses to run again into an `outputDir` that already has `recoveries/` output** (the state is always read
+from `previousRun`, so a second run would overwrite the output and drop the earlier cases). Put every case of the
+delta in `recoveriesPath` and remove `<outputDir>/recoveries/` to regenerate it.
+
 ## Result
 
 After the full flow completes (the certificate is built and signed, then SUBMIT and WAIT succeed):
@@ -552,7 +679,7 @@ The output files the claimer needs are:
 
 | File | Used for |
 | ---- | -------- |
-| `exit-certificate-signed.json` | The signed certificate — source of each exit's `originNetwork`, `originTokenAddress`, `destinationNetwork`, `destinationAddress`, `amount`, `metadata`. |
+| `exit-certificate-signed.json` | The signed certificate — source of each exit's `originNetwork`, `originTokenAddress`, `destinationNetwork`, `destinationAddress`, `amount`, `metadata`. With [delta mode](#delta-mode--chain-additional-exits-on-a-previous-certificate) the claimer uses `exit-certificate-full.json` (every exit, latest root) instead. |
 | `step-g-l2bridgesyncerlite.sqlite` | The L2 local exit tree — used to build the `smtProofLocalExitRoot` proof of each leaf against `new_local_exit_root`. |
 | `step-pending-l2-bridges.json` | *Optional* (Step PENDING_CLAIMS). Unclaimed L2→L1 bridges emitted before the certificate; the claimer serves them along with the certificate's exits. |
 | `step-wait-result.json` | The WAIT step's L1 settlement record (`VerifyBatchesTrustedAggregator` + the `UpdateL1InfoTree`/`UpdateL1InfoTreeV2` events) used to anchor the claim to the settled global exit root. |

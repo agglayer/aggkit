@@ -2,6 +2,9 @@
 # Triggers only when a PR touches files under tools/exit_certificate/** (or the
 # test harness / this workflow itself). The test spins up a Kurtosis CDK
 # network, prepares a settled certificate and runs the exit_certificate tool.
+# Two jobs: the regular exit certificate, and the delta mode (a first certificate that leaves
+# smart-contract-locked funds behind, then two delta certificates recovering them on top of it, each
+# recovery being a zkevm-proof-of-ownership-kit submission built and verified by the kit).
 name: Test E2E exit-certificate tool
 
 on:
@@ -63,6 +66,64 @@ jobs:
           # artifact users deploy) instead of a host binary.
           CLAIMER_MODE: docker
         run: ./test/e2e-exit_certificate/run_e2e_test.sh
+
+      - name: Stop Kurtosis enclave
+        if: always()
+        run: ./test/e2e-exit_certificate/10-run_network.sh stop || true
+
+  test-e2e-exit-certificate-delta:
+    permissions:
+      contents: read
+    name: Exit-certificate tool E2E (delta mode)
+    runs-on: amd-runner-2204
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Install Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version: 1.27.3
+
+      - name: Install Foundry (cast/forge)
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+
+      - name: Install Kurtosis CLI
+        env:
+          KURTOSIS_VERSION: "1.14.1"
+          KURTOSIS_SHA256: "0bdb71dc20eaadba4812324d19acb2ebb4f77889b1c8dc32867288835e59b4da"
+        run: |
+          archive="kurtosis-cli_${KURTOSIS_VERSION}_linux_amd64.tar.gz"
+          install_dir="${RUNNER_TEMP}/kurtosis/bin"
+          mkdir -p "${install_dir}"
+          curl -fsSL -o "${RUNNER_TEMP}/${archive}" \
+            "https://github.com/kurtosis-tech/kurtosis-cli-release-artifacts/releases/download/${KURTOSIS_VERSION}/${archive}"
+          echo "${KURTOSIS_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check --strict
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${install_dir}" kurtosis
+          echo "${install_dir}" >> "${GITHUB_PATH}"
+          "${install_dir}/kurtosis" analytics disable
+          "${install_dir}/kurtosis" version
+
+      # The delta recoveries are real zkevm-proof-of-ownership-kit submissions (prepare/verify-submission.sh),
+      # pinned to a commit of the kit's main (bump it deliberately when the kit changes).
+      - name: Checkout zkevm-proof-of-ownership-kit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          repository: agglayer/zkevm-proof-of-ownership-kit
+          ref: 1e2fed4eb612a48bdc5a1b142e6b6527f25ccf22
+          path: zkevm-proof-of-ownership-kit
+          persist-credentials: false
+
+      - name: Run exit-certificate delta E2E test
+        env:
+          VERBOSE: "1"
+          KIT_DIR: ${{ github.workspace }}/zkevm-proof-of-ownership-kit
+          # Exercise the claimer through its docker-compose deployment (the same
+          # artifact users deploy) instead of a host binary.
+          CLAIMER_MODE: docker
+        run: ./test/e2e-exit_certificate/run_e2e_test.sh --delta
 
       - name: Stop Kurtosis enclave
         if: always()
