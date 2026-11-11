@@ -118,7 +118,8 @@ APIMaxClaims = 1000
 
 Both servers use the `RESTConfig` fields documented in
 [common config artifacts](./common_config.md#restconfig): `Host`, `Port`, `ReadTimeout`, `WriteTimeout`,
-`MaxRequestBodyBytes` and `[CORS]`. CORS is disabled by default.
+`MaxRequestBodyBytes` and `[CORS]`. CORS is disabled by default. `MaxRequestsPerIPAndSecond` is accepted
+so existing configuration keeps loading, but it is not enforced (see below).
 
 Request bodies are limited in size so memory use stays predictable. `MaxRequestBodyBytes` (default
 `1048576`, i.e. 1 MiB; `0` applies the default) caps a request body on both servers: a request that
@@ -133,13 +134,15 @@ MaxRequestBodyBytes = 1048576
 MaxRequestBodyBytes = 1048576
 ```
 
-`PublicREST` starts whenever a running component registers routes on it, and serves `/` and `/health`
-for every node that starts it. `AdminREST` starts only when a component registers operator routes:
-the aggsender (when `[AggSender] EnableRPC = true`), the aggchain proof generation component, or the
-L1 multidownloader in developer mode.
+`PublicREST` starts whenever the node runs at least one component, and every node serves `/` and
+`/health` on it. That includes a node that runs only the aggchain proof generator, whose API routes are
+all on `AdminREST`: it still answers health checks on `PublicREST`. `AdminREST` starts only when a
+component registers operator routes: the aggsender (when `[AggSender] EnableRPC = true`), the aggchain
+proof generation component, or the L1 multidownloader in developer mode.
 
-`AdminREST` binds `127.0.0.1` by default, so operator actions are only reachable from the machine that
-runs aggkit. To reach it remotely, bind it to another interface explicitly:
+`AdminREST` is meant for local access and binds `127.0.0.1` by default, so operator actions are only
+reachable from the machine that runs aggkit. To reach it remotely, bind it to another interface
+explicitly:
 
 ```toml
 [AdminREST]
@@ -147,11 +150,19 @@ Host = "0.0.0.0"
 Port = 5579
 ```
 
-Only do that on a network where the admin API is meant to be reachable, and front it with the same
-access controls as any other operator interface. aggkit does not rate-limit requests in-process; use
-the reverse proxy for per-client throttling.
+Only do that on a network where the admin API is meant to be reachable. The admin API has no access
+control of its own, so when `Host` is not a loopback address aggkit logs one warning at startup: restrict
+access at the network or proxy level, for example with a firewall rule or a reverse proxy that only
+forwards to it from known hosts. aggkit does not rate-limit requests in-process; the fronting proxy is
+responsible for rate limiting.
 
 ## Migrating from the JSON-RPC API
+
+The former JSON-RPC server applied its own per-client request limit
+(`[RPC] MaxRequestsPerIPAndSecond`). The REST servers do not: aggkit does not rate-limit requests
+in-process, so the fronting proxy is responsible for rate limiting. If port `5576` was exposed directly,
+point the same traffic at `PublicREST` and add that limit at the proxy or API gateway in front of it.
+Setting `MaxRequestsPerIPAndSecond` in a REST section has no effect.
 
 | Former JSON-RPC method | Endpoint | Server |
 | --- | --- | --- |

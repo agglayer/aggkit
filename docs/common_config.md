@@ -161,7 +161,9 @@ before its handler runs, and a handler reading a larger streamed body stops at t
 
 `AdminREST` binds `127.0.0.1` by default, while `PublicREST` binds `0.0.0.0`. To reach the admin API from
 another machine, set `[AdminREST] Host = "0.0.0.0"` (or any other interface) explicitly; do that only where
-the operator API is meant to be reachable. The proxy's `[REST]` section backs the bridge service in that
+the operator API is meant to be reachable. The admin API has no access control of its own: when the
+configured host is not a loopback address aggkit logs one startup warning, and access should be restricted
+at the network or proxy level. The proxy's `[REST]` section backs the bridge service in that
 process. The former `[RPC]` section (the JSON-RPC server config from `github.com/0xPolygon/cdk-rpc`) is no
 longer used: aggkit ignores it and logs a warning, since its endpoints are now served by `PublicREST` and
 `AdminREST` (see [REST API](./rest_api.md)).
