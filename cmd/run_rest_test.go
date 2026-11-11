@@ -55,10 +55,23 @@ func (stubBridgeHealth) RegisterHealthRoutes(router gin.IRouter) {
 	router.GET("/health", func(c *gin.Context) { c.String(http.StatusOK, "bridge") })
 }
 
+// stubAdminOnlyRoutes registers a single admin route, as the aggchain proof generator does.
+type stubAdminOnlyRoutes struct{ adminPath string }
+
+func (s stubAdminOnlyRoutes) RegisterAdminRoutes(router gin.IRouter) {
+	router.POST(s.adminPath, func(c *gin.Context) { c.Status(http.StatusOK) })
+}
+
 func newTestRoutes() (*restRoutes, *gin.Engine, *gin.Engine) {
 	gin.SetMode(gin.TestMode)
 	public, admin := gin.New(), gin.New()
-	return newRESTRoutes(public, admin), public, admin
+	return newRESTRoutes(public, admin, true), public, admin
+}
+
+func newTestRoutesWithoutComponents() (*restRoutes, *gin.Engine, *gin.Engine) {
+	gin.SetMode(gin.TestMode)
+	public, admin := gin.New(), gin.New()
+	return newRESTRoutes(public, admin, false), public, admin
 }
 
 func routeSet(e *gin.Engine) map[string]struct{} {
@@ -121,9 +134,12 @@ func TestRESTRoutesAggsenderDisabled(t *testing.T) {
 	routes.addAggsender(api, false)
 	routes.registerHealth(nil)
 
-	require.False(t, routes.publicHasRoutes)
+	// The API is disabled, so no aggsender routes are registered, but the node still
+	// serves the health check.
+	require.True(t, routes.publicHasRoutes)
 	require.False(t, routes.adminHasRoutes)
-	require.Empty(t, public.Routes())
+	requireRoutes(t, public, "GET /", "GET /health")
+	require.NotContains(t, routeSet(public), "GET /aggsender/v1/status")
 	require.Empty(t, admin.Routes())
 }
 
@@ -144,11 +160,31 @@ func TestRESTRoutesBridge(t *testing.T) {
 }
 
 func TestRESTRoutesNoComponentNoHealth(t *testing.T) {
-	routes, public, _ := newTestRoutes()
+	routes, public, _ := newTestRoutesWithoutComponents()
 	routes.registerHealth(nil)
 
 	require.False(t, routes.publicHasRoutes)
 	require.Empty(t, public.Routes())
+}
+
+func TestRESTRoutesAggchainProofGenOnlyServesHealth(t *testing.T) {
+	routes, public, admin := newTestRoutes()
+	routes.addAdminAPI(stubAdminOnlyRoutes{adminPath: "/aggchainproofgen/v1/aggchain-proof"})
+	routes.registerHealth(nil)
+
+	// A node that runs only components with admin routes still serves health, on the public
+	// server, so the public listener must start with just those two routes.
+	require.True(t, routes.publicHasRoutes)
+	require.True(t, routes.adminHasRoutes)
+	require.Len(t, public.Routes(), 2)
+	requireRoutes(t, public, "GET /", "GET /health")
+	requireRoutes(t, admin, "POST /aggchainproofgen/v1/aggchain-proof")
+	require.NotContains(t, routeSet(admin), "GET /health")
+
+	rec := httptest.NewRecorder()
+	public.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"is_healthy": true`)
 }
 
 func TestRESTRoutesMultidownloaderAdminRoutesNeedDeveloperMode(t *testing.T) {

@@ -29,10 +29,13 @@ type restRoutes struct {
 	admin           gin.IRouter
 	publicHasRoutes bool
 	adminHasRoutes  bool
+	// runsComponents records that the node runs at least one component. Such a node always
+	// serves the health routes, even when the components it runs register only admin routes.
+	runsComponents bool
 }
 
-func newRESTRoutes(public, admin gin.IRouter) *restRoutes {
-	return &restRoutes{public: public, admin: admin}
+func newRESTRoutes(public, admin gin.IRouter, runsComponents bool) *restRoutes {
+	return &restRoutes{public: public, admin: admin, runsComponents: runsComponents}
 }
 
 // addPublic registers the routes of a component that serves a single route set on the public server.
@@ -78,17 +81,20 @@ func (r *restRoutes) addMultidownloader(c interface {
 	}
 }
 
-// registerHealth serves "/" and "/health" on the public server when it has routes. The bridge
-// service health check is used when the bridge runs, otherwise the generic one.
+// registerHealth serves "/" and "/health" on the public server for every node that runs at
+// least one component, so a node whose components register only admin routes (the aggchain
+// proof generator) still answers health checks. It marks the public server as started. The
+// bridge service health check is used when the bridge runs, otherwise the generic one.
 func (r *restRoutes) registerHealth(bridge healthRoutesRegisterer) {
-	if !r.publicHasRoutes {
+	if !r.runsComponents {
 		return
 	}
 	if bridge != nil {
 		bridge.RegisterHealthRoutes(r.public)
-		return
+	} else {
+		handler := gin.WrapH(healthcheck.NewHealthCheckHandler(log.WithFields("module", "health")))
+		r.public.GET("/", handler)
+		r.public.GET("/health", handler)
 	}
-	handler := gin.WrapH(healthcheck.NewHealthCheckHandler(log.WithFields("module", "health")))
-	r.public.GET("/", handler)
-	r.public.GET("/health", handler)
+	r.publicHasRoutes = true
 }

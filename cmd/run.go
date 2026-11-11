@@ -169,7 +169,7 @@ func start(cliCtx *cli.Context) error {
 	// registered routes on them.
 	publicServer := aggkitcommon.NewHTTPServer(cfg.PublicREST, log.WithFields("module", "public-api"))
 	adminServer := aggkitcommon.NewHTTPServer(cfg.AdminREST, log.WithFields("module", "admin-api"))
-	routes := newRESTRoutes(publicServer.Engine(), adminServer.Engine())
+	routes := newRESTRoutes(publicServer.Engine(), adminServer.Engine(), len(components) > 0)
 	var bridgeHealth healthRoutesRegisterer
 
 	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
