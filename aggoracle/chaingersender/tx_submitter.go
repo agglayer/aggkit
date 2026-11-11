@@ -56,6 +56,12 @@ func (s *txSubmitter) submitAndWait(
 			return nil
 
 		case <-ticker.C:
+			// If the context was cancelled when the ticker fired, both cases are ready and select picks one at
+			// random: the cancellation always wins, so it is always handled the same way
+			if ctx.Err() != nil {
+				s.logger.Infof("context cancelled handled in %s for tx %s", action, id.Hex())
+				return nil
+			}
 			s.logger.Debugf("waiting for %s GER tx %s to be mined", action, id.Hex())
 			res, err := s.ethTxMan.Result(ctx, id)
 			if err != nil {
