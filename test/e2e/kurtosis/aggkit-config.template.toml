@@ -391,15 +391,6 @@ MaxAttempts = 20
 # ------------------------------------------------------------------------------
 WaitPeriodNextGER = "10s"
 
-# ------------------------------------------------------------------------------
-#
-# ------------------------------------------------------------------------------
-{{- if .use_agg_oracle_committee }}
-EnableAggOracleCommittee = true
-{{- else }}
-EnableAggOracleCommittee = false
-{{- end }}
-
 [AggOracle.EVMSender]
 # ------------------------------------------------------------------------------
 # Address of the sovereign global exit root proxy contract on L2
@@ -427,23 +418,12 @@ GlobalExitRootL2 = ""
 # ------------------------------------------------------------------------------
 WaitPeriodMonitorTx = "10s"
 
-# ------------------------------------------------------------------------------
-#
-# ------------------------------------------------------------------------------
-{{- if .use_agg_oracle_committee }}
-AggOracleCommitteeAddr = "{{ .agg_oracle_committee_address }}"
-{{- end }}
-
 [AggOracle.EVMSender.EthTxManager]
 # ------------------------------------------------------------------------------
 # PrivateKeys defines all the key store files that are going
 # to be read in order to provide the private keys to sign the L1 txs
 # ------------------------------------------------------------------------------
-{{- if and .use_agg_oracle_committee .agg_oracle_committee_member_index }}
-PrivateKeys = [{Path = "/etc/aggkit/aggoracle-{{.agg_oracle_committee_member_index}}.keystore", Password = "{{.l2_keystore_password}}"}]
-{{- else }}
 PrivateKeys = [{Path = "/etc/aggkit/aggoracle.keystore", Password = "{{.l2_keystore_password}}"}]
-{{- end }}
 
 # ------------------------------------------------------------------------------
 # FrequencyToMonitorTxs frequency of the resending failed txs

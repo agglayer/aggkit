@@ -32,19 +32,13 @@ const (
 	// ModeCommittee collects signatures from the GER validators and injects the GER
 	// with a single transaction on the AggOracleCommittee (v2) contract.
 	ModeCommittee Mode = "committee"
-	// ModeLegacy proposes the GER to the legacy AggOracleCommittee (v1) contract,
-	// which injects it once a quorum of members proposed the same GER.
-	//
-	// Deprecated: the legacy mode is kept in this release and it will be removed in the next one.
-	// Migrate to ModeCommittee (AggOracleCommittee v2), or to ModeDirect.
-	ModeLegacy Mode = "legacy"
 	// ModeAuto inspects the contract configured as GER updater on the L2 and picks one of the
 	// other modes accordingly.
 	ModeAuto Mode = "auto"
 )
 
 // SupportedModes lists all the valid values for Config.Mode.
-var SupportedModes = []Mode{ModeDirect, ModeCommittee, ModeLegacy, ModeAuto}
+var SupportedModes = []Mode{ModeDirect, ModeCommittee, ModeAuto}
 
 // UnmarshalText implements encoding.TextUnmarshaler. It is case-insensitive and trims spaces.
 func (m *Mode) UnmarshalText(text []byte) error {
@@ -114,28 +108,15 @@ type Config struct {
 	TargetChainType   TargetChainType          `mapstructure:"TargetChainType"`
 	WaitPeriodNextGER types.Duration           `mapstructure:"WaitPeriodNextGER"`
 	EVMSender         chaingersender.EVMConfig `mapstructure:"EVMSender"`
-	// Mode selects how GERs are injected: direct, committee, legacy or auto.
-	// The legacy mode (AggOracleCommittee v1) is DEPRECATED: it will be removed in the next release
+	// Mode selects how GERs are injected: direct, committee or auto. The old AggOracleCommittee (v1) is not
+	// supported anymore: see the ErrLegacyCommitteeNotSupported error of the detection
 	Mode Mode `mapstructure:"Mode"`
-	// EnableAggOracleCommittee is deprecated, use Mode instead. When true (and Mode is auto or unset),
-	// it forces ModeLegacy if AggOracleCommitteeAddr is set. It selects the legacy mode, so it will be
-	// removed together with it, in the next release
-	EnableAggOracleCommittee bool `mapstructure:"EnableAggOracleCommittee"`
 	// CommitteeV2 is the configuration used by ModeCommittee
 	CommitteeV2 CommitteeV2Config `mapstructure:"CommitteeV2"`
 }
 
-// ResolveMode returns the mode requested by the configuration, taking into account the deprecated
-// EnableAggOracleCommittee flag. The result can still be ModeAuto: it is resolved at startup,
-// by inspecting the contract on the L2.
-//
-//	Mode (default is auto)  EnableAggOracleCommittee  AggOracleCommitteeAddr  Result
-//	auto / unset            false                     any                     auto
-//	auto / unset            true                      set                     legacy
-//	auto / unset            true                      zero                    auto (the flag has no effect)
-//	legacy                  any                       any                     legacy
-//	direct / committee      true                      any                     error (contradiction)
-//	direct / committee      false                     any                     the mode as is
+// ResolveMode returns the mode requested by the configuration, which is ModeAuto if it is not set. The result can
+// be ModeAuto: it is resolved at startup, by inspecting the contract on the L2.
 func (c Config) ResolveMode() (Mode, error) {
 	mode := c.Mode
 	if mode == "" {
@@ -144,25 +125,7 @@ func (c Config) ResolveMode() (Mode, error) {
 	if err := mode.Validate(); err != nil {
 		return "", err
 	}
-
-	if !c.EnableAggOracleCommittee {
-		return mode, nil
-	}
-
-	switch mode {
-	case ModeAuto:
-		if c.EVMSender.AggOracleCommitteeAddr != aggkitcommon.ZeroAddress {
-			return ModeLegacy, nil
-		}
-		return ModeAuto, nil
-	case ModeLegacy:
-		return mode, nil
-	case ModeDirect, ModeCommittee:
-		return "", fmt.Errorf("AggOracle.EnableAggOracleCommittee=true (deprecated, legacy committee) "+
-			"contradicts AggOracle.Mode=%q: remove EnableAggOracleCommittee", mode)
-	default:
-		return "", fmt.Errorf("unsupported AggOracle.Mode %q", mode)
-	}
+	return mode, nil
 }
 
 // Validate checks the AggOracle configuration.
@@ -170,10 +133,6 @@ func (c Config) Validate() error {
 	mode, err := c.ResolveMode()
 	if err != nil {
 		return err
-	}
-
-	if mode == ModeLegacy && c.EVMSender.AggOracleCommitteeAddr == aggkitcommon.ZeroAddress {
-		return errors.New("AggOracle.EVMSender.AggOracleCommitteeAddr must be set when AggOracle.Mode is legacy")
 	}
 
 	if mode == ModeCommittee || mode == ModeAuto {

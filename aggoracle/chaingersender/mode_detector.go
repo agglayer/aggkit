@@ -51,8 +51,11 @@ var (
 	// is not the globalExitRootUpdater of the L2 GER manager.
 	ErrConfiguredCommitteeMismatch = errors.New("configured AggOracle committee is not the GER updater")
 	// ErrUnknownGERUpdaterContract is returned when the GER updater is a contract that can't be
-	// identified as an AggOracleCommittee (v1 or v2), or that looks like both.
+	// identified as an AggOracleCommittee v2, or that looks like both a v1 and a v2.
 	ErrUnknownGERUpdaterContract = errors.New("GER updater is a contract that is not a known AggOracleCommittee")
+	// ErrLegacyCommitteeNotSupported is returned when the GER updater is an AggOracleCommittee v1. Its support was
+	// removed: the contract is detected only to say so, instead of reporting an unknown contract.
+	ErrLegacyCommitteeNotSupported = errors.New("the GER updater is an AggOracleCommittee v1, no longer supported")
 )
 
 // Detection is the outcome of inspecting the globalExitRootUpdater of the L2 GER manager.
@@ -61,7 +64,7 @@ type Detection struct {
 	Mode GERMode
 	// Updater is the globalExitRootUpdater of the L2 GER manager (zero if it uses block.coinbase)
 	Updater common.Address
-	// Committee is the AggOracleCommittee contract (v1 or v2). Zero in direct mode
+	// Committee is the AggOracleCommittee v2 contract. Zero in direct mode
 	Committee common.Address
 	// Version is the version reported by the committee contract. Empty in direct mode
 	Version string
@@ -104,8 +107,8 @@ func ResolveCommitteeAddress(
 // DetectGERMode inspects the globalExitRootUpdater of the L2 GER manager and selects the GER submission mode:
 //   - zero address, or an address without code (an EOA, or an EOA delegated with EIP-7702): direct injection
 //   - an AggOracleCommittee v2 contract (version "v2.x" pointing to the same L2 GER manager): the committee mode
-//   - an AggOracleCommittee v1 contract (VERSION "v1.x" pointing to the same L2 GER manager): the legacy mode,
-//     which is deprecated and will be removed in the next release
+//   - an AggOracleCommittee v1 contract (VERSION "v1.x" pointing to the same L2 GER manager): error
+//     (ErrLegacyCommitteeNotSupported), because its support was removed
 //   - anything else (or a contract matching both): error, the mode must be configured explicitly.
 //
 // A failure of the transport (RPC unreachable, timeout...) is returned as an error: it is never
@@ -166,14 +169,10 @@ func DetectGERMode(
 			Reason:    fmt.Sprintf("the GER updater %s is an AggOracleCommittee v2 (version %s)", updater, v2.version),
 		}, nil
 	case v1.matches && !v2.matches:
-		return &Detection{
-			Mode:      AggOracleCommitteeMode,
-			Updater:   updater,
-			Committee: committee,
-			Version:   v1.version,
-			Reason: fmt.Sprintf("the GER updater %s is an AggOracleCommittee v1 (version %s): legacy mode, DEPRECATED",
-				updater, v1.version),
-		}, nil
+		return nil, fmt.Errorf("%w: the GER updater %s is an AggOracleCommittee v1 (version %s). "+
+			"Migrate the chain to an AggOracleCommittee v2 (make it the GER updater of the L2 GER manager and set "+
+			"AggOracle.Mode to \"committee\"), or to a GER updater that is an EOA (AggOracle.Mode \"direct\")",
+			ErrLegacyCommitteeNotSupported, updater, v1.version)
 	default:
 		return nil, fmt.Errorf("%w: GER updater %s (v2 probe: %s; v1 probe: %s): "+
 			"set AggOracle.Mode explicitly", ErrUnknownGERUpdaterContract, updater, v2.describe(), v1.describe())
