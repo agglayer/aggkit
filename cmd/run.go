@@ -512,13 +512,18 @@ func createAggoracle(
 			log.Fatalf("failed to create binding for GER L2 manager (SC address: %s): %w", l2GERManagerAddr, err)
 		}
 
+		gerMode := chaingersender.DirectInjectionMode
+		if cfg.AggOracle.EnableAggOracleCommittee &&
+			cfg.AggOracle.EVMSender.AggOracleCommitteeAddr != aggkitcommon.ZeroAddress {
+			gerMode = chaingersender.AggOracleCommitteeMode
+		}
 		sender, err = chaingersender.NewEVMChainGERSender(
 			logger,
 			cfg.AggOracle.EVMSender,
 			l2Client,
 			l2GERManager,
 			ethTxManager,
-			cfg.AggOracle.EnableAggOracleCommittee,
+			gerMode,
 		)
 		if err != nil {
 			log.Fatal(err)

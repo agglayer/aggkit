@@ -293,9 +293,13 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 		if err != nil {
 			log.Fatalf("failed to create binding for GER L2 manager (SC address: %s): %w", gerL2Addr, err)
 		}
+		gerMode := chaingersender.DirectInjectionMode
+		if cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee && aggOracleCommitteeAddr != (common.Address{}) {
+			gerMode = chaingersender.AggOracleCommitteeMode
+		}
 		sender, err = chaingersender.NewEVMChainGERSender(
 			log.GetDefaultLogger(), evmSenderCfg, etherman.NewDefaultEthClient(l2Client.Client(), nil, nil), l2GERManager,
-			ethTxManagerMock, cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee,
+			ethTxManagerMock, gerMode,
 		)
 		require.NoError(t, err)
 

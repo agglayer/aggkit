@@ -9,7 +9,6 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggoraclecommittee"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
-	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
 	"github.com/agglayer/aggkit/aggoracle/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
@@ -68,18 +67,25 @@ type EVMChainGERSender struct {
 	waitPeriodMonitorTx time.Duration
 }
 
+// NewEVMChainGERSender creates a sender that injects the GERs directly (DirectInjectionMode)
+// or proposes them to the legacy AggOracleCommittee v1 (AggOracleCommitteeMode).
+// The mode must be already resolved: for AggOracleCommitteeV2Mode use NewCommitteeV2Sender.
 func NewEVMChainGERSender(
 	logger *log.Logger,
 	cfg EVMConfig,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERManager types.L2GERManagerContract,
 	ethTxMan types.EthTxManager,
-	enableAggOracleCommittee bool,
+	mode GERMode,
 ) (*EVMChainGERSender, error) {
-	// Determine mode based on configuration
-	mode := DirectInjectionMode
-	if enableAggOracleCommittee && cfg.AggOracleCommitteeAddr != aggkitcommon.ZeroAddress {
-		mode = AggOracleCommitteeMode
+	switch mode {
+	case DirectInjectionMode:
+	case AggOracleCommitteeMode:
+		if cfg.AggOracleCommitteeAddr == aggkitcommon.ZeroAddress {
+			return nil, errors.New("AggOracleCommitteeAddr must be set in the aggoracle committee (v1) mode")
+		}
+	default:
+		return nil, fmt.Errorf("EVMChainGERSender doesn't support the %q mode", mode)
 	}
 	logger.Infof("EVMChainGERSender initialized in %s mode", mode)
 
@@ -214,7 +220,7 @@ func (c *EVMChainGERSender) ProposeGER(ctx context.Context, ger common.Hash) err
 	return c.submitTransaction(ctx, &c.aggOracleCommitteeAddr, c.aggOracleCommitteeAbi, proposeGERFuncName, ger, "propose")
 }
 
-// submitTransaction is a generic method to submit and monitor transactions
+// submitTransaction packs the call to funcName(ger) and submits it, waiting until it is mined
 func (c *EVMChainGERSender) submitTransaction(
 	ctx context.Context,
 	targetAddr *common.Address,
@@ -223,62 +229,19 @@ func (c *EVMChainGERSender) submitTransaction(
 	ger common.Hash,
 	action string,
 ) error {
-	ticker := time.NewTicker(c.waitPeriodMonitorTx)
-	defer ticker.Stop()
-
 	// Pack the function call
 	txInput, err := abi.Pack(funcName, ger)
 	if err != nil {
 		return fmt.Errorf("failed to pack %s call: %w", funcName, err)
 	}
 
-	// Add the transaction to the transaction manager
-	id, err := c.ethTxMan.Add(ctx, targetAddr, common.Big0, txInput, c.gasOffset, nil)
-	if err == nil {
-		c.logger.Infof("%s GER transaction submitted with ID: %s. GER: %s", action, id.Hex(), ger.Hex())
-	} else if !errors.Is(err, ethtxmanager.ErrAlreadyExists) {
-		return fmt.Errorf("failed to add %s GER transaction: %w", action, err)
+	submitter := &txSubmitter{
+		logger:              c.logger,
+		ethTxMan:            c.ethTxMan,
+		gasOffset:           c.gasOffset,
+		waitPeriodMonitorTx: c.waitPeriodMonitorTx,
 	}
-	if err != nil {
-		c.logger.Infof("%s GER transaction already exists in monitoring DB with ID: %s. GER: %s", action, id.Hex(), ger.Hex())
-	}
-
-	c.logger.Debugf("monitoring every %s", c.waitPeriodMonitorTx)
-
-	// Monitor the transaction status
-	for {
-		select {
-		case <-ctx.Done():
-			c.logger.Infof("context cancelled handled in %s for tx %s", action, id.Hex())
-			return nil
-
-		case <-ticker.C:
-			c.logger.Debugf("waiting for %s GER tx %s to be mined", action, id.Hex())
-			res, err := c.ethTxMan.Result(ctx, id)
-			if err != nil {
-				c.logger.Errorf("failed to check the %s GER transaction %s status: %s", action, id.Hex(), err)
-				return err
-			}
-
-			switch res.Status {
-			case ethtxtypes.MonitoredTxStatusCreated,
-				ethtxtypes.MonitoredTxStatusSent:
-				continue
-			case ethtxtypes.MonitoredTxStatusFailed:
-				return fmt.Errorf("%s GER tx %s failed", action, id.Hex())
-			case ethtxtypes.MonitoredTxStatusEvicted:
-				c.logger.Debugf("%s GER tx %s was evicted", action, id.Hex())
-				return nil
-			case ethtxtypes.MonitoredTxStatusMined,
-				ethtxtypes.MonitoredTxStatusSafe,
-				ethtxtypes.MonitoredTxStatusFinalized:
-				c.logger.Debugf("%s GER tx %s was successfully mined at block %d", action, id.Hex(), res.MinedAtBlockNumber)
-				return nil
-			default:
-				c.logger.Error("unexpected tx status:", res.Status)
-			}
-		}
-	}
+	return submitter.submitAndWait(ctx, targetAddr, txInput, action, ger)
 }
 
 func (c *EVMChainGERSender) ProcessGER(ctx context.Context, ger common.Hash) error {
