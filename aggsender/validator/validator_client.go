@@ -2,6 +2,7 @@ package validator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	nodev1 "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
@@ -10,6 +11,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/grpc"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -72,7 +74,18 @@ func (v *ValidatorClient) ValidateCertificate(
 		return nil, fmt.Errorf("aggsender validator failed to successfully validate certificate: %w", err)
 	}
 
-	return response.Signature.Value, nil
+	if response.GetSignature() == nil {
+		return nil, errors.New("aggsender validator returned a response without signature")
+	}
+
+	signature := response.GetSignature().GetValue()
+	// fail at the client boundary with a clear message instead of relying on later checks
+	if len(signature) != aggkitcommon.SignatureSize {
+		return nil, fmt.Errorf("aggsender validator returned a signature of invalid length: expected %d bytes, got %d",
+			aggkitcommon.SignatureSize, len(signature))
+	}
+
+	return signature, nil
 }
 
 // certIDToProtoNullable converts a common.Hash pointer to a nodev1.CertificateId proto message.

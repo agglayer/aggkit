@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -168,7 +169,7 @@ func (vp *validatorPoller) executeValidation(
 			default:
 			}
 			timeStart := time.Now()
-			signature, err := vp.getSignatureFromValidator(ctx, validator, cert, lastL2BlockInCert)
+			signature, err := vp.safeGetSignatureFromValidator(ctx, validator, cert, lastL2BlockInCert)
 			resultsCh <- signResult{signature: signature, validator: validator, err: err, elapsed: time.Since(timeStart)}
 		}(validator)
 	}
@@ -180,6 +181,27 @@ func (vp *validatorPoller) executeValidation(
 	}()
 
 	return resultsCh
+}
+
+// safeGetSignatureFromValidator wraps getSignatureFromValidator so that a panic caused by a single
+// validator is reported as an error of that validator instead of terminating the process
+func (vp *validatorPoller) safeGetSignatureFromValidator(
+	ctx context.Context,
+	validator types.CertificateValidateAndSigner,
+	cert *agglayertypes.Certificate,
+	lastL2BlockInCert uint64,
+) (signature []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			// the validator is formatted with %v, which survives a panicking String method
+			vp.log.Errorf("recovered from panic while getting signature from validator %v: %v\n%s",
+				validator, r, debug.Stack())
+			signature = nil
+			err = fmt.Errorf("panic while getting signature from validator %v: %v", validator, r)
+		}
+	}()
+
+	return vp.getSignatureFromValidator(ctx, validator, cert, lastL2BlockInCert)
 }
 
 // getSignatureFromValidator gets signature from validator (either self-signing or remote validation)

@@ -572,6 +572,52 @@ func TestExecuteRequest(t *testing.T) {
 			},
 			expectErrSubstring: "threshold not reached",
 		},
+		{
+			name: "one panicking validator does not prevent reaching the threshold",
+			setupMocks: func(mockSigner *mocks.Signer) ([]types.CertificateValidateAndSigner, *big.Int) {
+				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0xdeadbeef"))
+
+				validators := make([]types.CertificateValidateAndSigner, 0, 3)
+				for i := 0; i < 3; i++ {
+					v := mocks.NewCertificateValidateAndSigner(t)
+					v.EXPECT().String().Return(fmt.Sprintf("validator-%d", i)).Maybe()
+					v.EXPECT().Index().Return(uint32(i)).Maybe()
+					v.EXPECT().Address().Return(common.HexToAddress(fmt.Sprintf("0x%d", i+1))).Maybe()
+					call := v.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything)
+					if i == 0 {
+						call.Run(func(_ context.Context, _ *agglayertypes.Certificate, _ uint64) {
+							var nilPtr *int
+							_ = *nilPtr
+						}).Return(nil, nil).Maybe()
+					} else {
+						call.Return(make([]byte, aggkitcommon.SignatureSize), nil).Maybe()
+					}
+					validators = append(validators, v)
+				}
+				return validators, big.NewInt(2)
+			},
+			expectedMinSigs: 2,
+		},
+		{
+			name: "all panicking validators end in threshold not reached",
+			setupMocks: func(mockSigner *mocks.Signer) ([]types.CertificateValidateAndSigner, *big.Int) {
+				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0xdeadbeef"))
+
+				validators := make([]types.CertificateValidateAndSigner, 0, 2)
+				for i := 0; i < 2; i++ {
+					v := mocks.NewCertificateValidateAndSigner(t)
+					v.EXPECT().String().Return(fmt.Sprintf("validator-%d", i)).Maybe()
+					v.EXPECT().Address().Return(common.HexToAddress(fmt.Sprintf("0x%d", i+1))).Maybe()
+					v.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
+						Run(func(_ context.Context, _ *agglayertypes.Certificate, _ uint64) {
+							panic("boom")
+						}).Return(nil, nil).Once()
+					validators = append(validators, v)
+				}
+				return validators, big.NewInt(1)
+			},
+			expectErrSubstring: "panic while getting signature from validator",
+		},
 	}
 
 	for _, tc := range tests {
