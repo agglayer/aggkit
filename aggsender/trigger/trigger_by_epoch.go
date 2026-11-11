@@ -23,6 +23,7 @@ import (
 type epochBasedTrigger struct {
 	epochNotifier triggertypes.EpochNotifier
 	blockNotifier ethermantypes.BlockNotifier
+	force         forceSignal
 }
 
 // newEpochBasedTrigger creates and initializes a new epochBasedTrigger instance.
@@ -86,17 +87,25 @@ func (r *epochBasedTrigger) Status() string {
 // TriggerCh returns a read-only channel of events produced by the epoch notifier.
 // Values sent through this channel are types.EpochEvent (which implement CertificateTriggerEvent).
 // The returned channel will be closed when the provided context is canceled.
+// Forced events (see ForceTriggerEvent) are coalesced: at most one is pending at any time.
 func (r *epochBasedTrigger) TriggerCh(ctx context.Context) <-chan types.CertificateTriggerEvent {
 	ch := make(chan types.CertificateTriggerEvent)
 	epochSub := r.epochNotifier.Subscribe("aggsender")
+	force := r.force.pending()
 	go func() {
+		defer close(ch)
 		for {
+			var event types.CertificateTriggerEvent
 			select {
 			case <-ctx.Done():
-				close(ch)
 				return
 			case epochEvent := <-epochSub:
-				ch <- epochEvent
+				event = epochEvent
+			case <-force:
+				event = r.epochNotifier.CurrentEpochEvent()
+			}
+			if !sendCoalescing(ctx, ch, event, force) {
+				return
 			}
 		}
 	}()
@@ -114,9 +123,10 @@ func (r *epochBasedTrigger) Setup(ctx context.Context) {
 	go r.epochNotifier.Start(ctx)
 }
 
-// ForceTriggerEvent forces the epoch notifier to publish an epoch event immediately.
+// ForceTriggerEvent requests an epoch event for the current block.
+// It never blocks: requests made while one is still pending are coalesced into a single event.
 func (r *epochBasedTrigger) ForceTriggerEvent() {
-	r.epochNotifier.ForcePublishEpochEvent()
+	r.force.request()
 }
 
 // OnIdle Aggsender is waiting for a trigger to generate a new certificate

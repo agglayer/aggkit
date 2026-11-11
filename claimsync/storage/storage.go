@@ -252,6 +252,26 @@ func (s *claimStorage) InsertSetClaim(_ context.Context, tx dbtypes.Querier, sc 
 func (s *claimStorage) GetClaims(
 	ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64,
 ) ([]claimsynctypes.Claim, error) {
+	return s.getClaims(ctx, tx, fromBlock, toBlock, 0)
+}
+
+// GetClaimsWithLimit behaves like GetClaims but returns at most limit claims (the oldest ones).
+// A limit of zero means no limit.
+func (s *claimStorage) GetClaimsWithLimit(
+	ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock, limit uint64,
+) ([]claimsynctypes.Claim, error) {
+	return s.getClaims(ctx, tx, fromBlock, toBlock, limit)
+}
+
+func (s *claimStorage) getClaims(
+	ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock, limit uint64,
+) ([]claimsynctypes.Claim, error) {
+	limitClause := ""
+	args := []any{fromBlock, toBlock}
+	if limit > 0 {
+		limitClause = "LIMIT $3"
+		args = append(args, limit)
+	}
 	query := fmt.Sprintf(`
 	WITH all_claims_ranked AS (
 		SELECT
@@ -259,6 +279,7 @@ func (s *claimStorage) GetClaims(
 			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num ASC, block_pos ASC) AS rn_oldest_global,
 			ROW_NUMBER() OVER (PARTITION BY global_index ORDER BY block_num DESC, block_pos DESC) AS rn_newest_global
 		FROM claim
+		WHERE global_index IN (SELECT global_index FROM claim WHERE block_num >= $1 AND block_num <= $2)
 	),
 	claims_in_range AS (
 		SELECT * FROM all_claims_ranked WHERE block_num >= $1 AND block_num <= $2
@@ -278,14 +299,15 @@ func (s *claimStorage) GetClaims(
 	SELECT * FROM claims_with_unset
 	UNION ALL
 	SELECT * FROM compactable_claims
-	ORDER BY block_num ASC, block_pos ASC;
-	`, claimColumnsSQL, compactedClaimsSelectSQL)
+	ORDER BY block_num ASC, block_pos ASC
+	%s;
+	`, claimColumnsSQL, compactedClaimsSelectSQL, limitClause)
 
 	// Create a context with database timeout
 	dbCtx, cancel := s.withDatabaseTimeout(ctx)
 	defer cancel()
 
-	rows, err := s.getQuerier(tx).QueryContext(dbCtx, query, fromBlock, toBlock)
+	rows, err := s.getQuerier(tx).QueryContext(dbCtx, query, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return []claimsynctypes.Claim{}, nil

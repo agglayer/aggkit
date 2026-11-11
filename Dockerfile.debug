@@ -37,7 +37,7 @@ COPY --from=builder /out/aggkit /usr/local/bin/aggkit
 # --cap-add=SYS_PTRACE so that delve can trace the target process.
 USER appuser
 
-EXPOSE 5576/tcp
+EXPOSE 5577/tcp
 EXPOSE 40000/tcp
 
 # Default: run aggkit under delve headless. App args are provided by

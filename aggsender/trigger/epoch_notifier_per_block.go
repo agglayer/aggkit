@@ -124,14 +124,16 @@ func (e *EpochNotifierPerBlock) GetEpochStatus() triggertypes.EpochStatus {
 	}
 }
 
-func (e *EpochNotifierPerBlock) ForcePublishEpochEvent() {
+// CurrentEpochEvent builds the event describing the epoch of the current block.
+// It does not notify subscribers: a forced trigger reads it directly, so a forced
+// event reaches only the trigger that requested it.
+func (e *EpochNotifierPerBlock) CurrentEpochEvent() triggertypes.EpochEvent {
 	currentBlock := e.blockNotifier.GetCurrentBlockNumber()
 	info := e.infoEpoch(currentBlock, e.epochNumber(currentBlock))
-	event := &triggertypes.EpochEvent{
+	return triggertypes.EpochEvent{
 		Epoch:     e.epochNumber(currentBlock),
 		ExtraInfo: info,
 	}
-	e.Publish(*event)
 }
 
 func (e *EpochNotifierPerBlock) startInternal(ctx context.Context,

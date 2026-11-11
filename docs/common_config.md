@@ -146,6 +146,7 @@ When rate limiting is enabled, if the number of requests exceeds `NumRequests` w
 | Port | int | Port number the REST service is accessible on |
 | ReadTimeout | types.Duration | HTTP server read timeout |
 | WriteTimeout | types.Duration | HTTP server write timeout |
+| MaxRequestBodyBytes | int64 | Maximum request body size in bytes; `0` applies the default (1 MiB) |
 | MaxRequestsPerIPAndSecond | float64 | Unused; kept for config compatibility. See below |
 | CORS | CORSConfig | Cross-Origin Resource Sharing settings for this REST service. See below |
 
@@ -153,6 +154,19 @@ When rate limiting is enabled, if the number of requests exceeds `NumRequests` w
 (unlimited). If you need per-IP request throttling, apply it at the fronting reverse proxy / API gateway / ingress —
 that is also where it is most effective, since a service sitting behind a proxy typically sees every client as the
 proxy's single IP, making in-process per-IP limiting ineffective anyway.
+
+`MaxRequestBodyBytes` caps how much of a request body a REST server reads, so memory use stays predictable. Its
+default is `1048576` (1 MiB) and `0` applies that default. A request that declares a larger body is answered `413`
+before its handler runs, and a handler reading a larger streamed body stops at the limit and answers `413`.
+
+`AdminREST` binds `127.0.0.1` by default, while `PublicREST` binds `0.0.0.0`. To reach the admin API from
+another machine, set `[AdminREST] Host = "0.0.0.0"` (or any other interface) explicitly; do that only where
+the operator API is meant to be reachable. The admin API has no access control of its own: when the
+configured host is not a loopback address aggkit logs one startup warning, and access should be restricted
+at the network or proxy level. The proxy's `[REST]` section backs the bridge service in that
+process. The former `[RPC]` section (the JSON-RPC server config from `github.com/0xPolygon/cdk-rpc`) is no
+longer used: aggkit ignores it and logs a warning, since its endpoints are now served by `PublicREST` and
+`AdminREST` (see [REST API](./rest_api.md)).
 
 ### CORSConfig
 
@@ -179,11 +193,6 @@ AllowedHeaders = ["Content-Type", "Authorization"]
 AllowCredentials = false
 MaxAge = "12h"
 ```
-
-Note that the `[RPC]` section is **not** a `RESTConfig`: it is the JSON-RPC server config from
-`github.com/0xPolygon/cdk-rpc`, whose `MaxRequestsPerIPAndSecond` **is** enforced (via tollbooth). There, `0` does
-not mean unlimited — `tollbooth.NewLimiter(0, ...)` produces a limiter with a burst of 1 and no refill, i.e. one
-request per IP ever. Its default stays `10`.
 
 ## RPCClientConfig
 

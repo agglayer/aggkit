@@ -33,6 +33,17 @@ func (e *asapTriggerEvent) String() string {
 	return res
 }
 
+// asapOutput is the state of one channel handed out by TriggerCh.
+type asapOutput struct {
+	ch    chan types.CertificateTriggerEvent
+	ctx   context.Context
+	force forceSignal
+	// closed is protected by asapTrigger.mut. Once set, no new sender is registered
+	closed bool
+	// senders counts the sends in flight, the channel is closed once they are over
+	senders sync.WaitGroup
+}
+
 // asapTrigger is a trigger implementation that executes operations as soon as possible.
 // It tries to generate a new cert after the last cert is in a final state (settled or inError).
 // An offset delay can be configured.
@@ -40,10 +51,9 @@ type asapTrigger struct {
 	log          aggkitcommon.Logger
 	l2BridgeSync types.L2BridgeSyncer
 	cfg          config.TriggerASAPConfig
-	// mut protects triggerRunning, ch, eventID, and lastEventTime
+	// mut protects triggerRunning, out, eventID, and lastEventTime
 	mut            sync.Mutex
-	ch             chan types.CertificateTriggerEvent
-	ctx            context.Context
+	out            *asapOutput
 	triggerRunning bool
 	eventID        uint
 	lastEventTime  time.Time
@@ -70,17 +80,57 @@ func (r *asapTrigger) Status() string {
 	return fmt.Sprintf("ASAP Runner: cfg: %s", r.cfg.String())
 }
 
+// TriggerCh returns the channel where the trigger events are sent.
+// The channel is closed once ctx is done.
 func (r *asapTrigger) TriggerCh(ctx context.Context) <-chan types.CertificateTriggerEvent {
 	r.mut.Lock()
 	defer r.mut.Unlock()
-	ch := make(chan types.CertificateTriggerEvent)
-	r.ch = ch
-	r.ctx = ctx
+	out := &asapOutput{
+		ch:  make(chan types.CertificateTriggerEvent),
+		ctx: ctx,
+	}
+	r.out = out
 	// Initialize lastEventTime to now so the minimum interval starts from TriggerCh creation
 	r.lastEventTime = time.Now()
-	r.fulfillMinimumInterval(nil)
+	r.fulfillMinimumInterval(out, nil)
 	r.subscribeNewBridge(ctx)
-	return ch
+	go r.closeWhenDone(out)
+	go r.forwardForced(out)
+	return out.ch
+}
+
+// activeOutput returns the current output channel state, or nil if there is none open.
+func (r *asapTrigger) activeOutput() *asapOutput {
+	r.mut.Lock()
+	defer r.mut.Unlock()
+	if r.out == nil || r.out.closed {
+		return nil
+	}
+	return r.out
+}
+
+// closeWhenDone closes the output channel once its context is done and no send is in flight.
+func (r *asapTrigger) closeWhenDone(out *asapOutput) {
+	<-out.ctx.Done()
+	r.mut.Lock()
+	out.closed = true
+	r.mut.Unlock()
+	out.senders.Wait()
+	close(out.ch)
+}
+
+// send delivers the event to the output channel, giving up when its context is done.
+// Forced requests received while waiting are absorbed (see sendCoalescing).
+func (r *asapTrigger) send(out *asapOutput, event *asapTriggerEvent, force <-chan struct{}) bool {
+	r.mut.Lock()
+	if out.closed {
+		r.mut.Unlock()
+		return false
+	}
+	out.senders.Add(1)
+	r.mut.Unlock()
+	defer out.senders.Done()
+	return sendCoalescing[types.CertificateTriggerEvent](out.ctx, out.ch, event, force)
 }
 
 func (r *asapTrigger) subscribeNewBridge(ctx context.Context) {
@@ -102,20 +152,38 @@ func (r *asapTrigger) subscribeNewBridge(ctx context.Context) {
 }
 
 // ForceTriggerEvent forces to emit a synchronization event unconditionally.
+// It never blocks: requests made while one is still pending are coalesced into a single event.
 func (r *asapTrigger) ForceTriggerEvent() {
-	if r.ch == nil {
+	out := r.activeOutput()
+	if out == nil {
 		r.log.Warnf("ASAP Trigger: channel is nil, cannot send trigger")
 		return
 	}
-	r.mut.Lock()
-	event := r.createEvent("ForceTrigger", nil)
-	r.lastEventTime = time.Now()
-	r.mut.Unlock()
-	r.ch <- event
+	out.force.request()
 }
+
+// forwardForced turns the forced requests into trigger events
+func (r *asapTrigger) forwardForced(out *asapOutput) {
+	force := out.force.pending()
+	for {
+		select {
+		case <-out.ctx.Done():
+			return
+		case <-force:
+		}
+		r.mut.Lock()
+		event := r.createEvent("ForceTrigger", nil)
+		r.lastEventTime = time.Now()
+		r.mut.Unlock()
+		if !r.send(out, event, force) {
+			return
+		}
+	}
+}
+
 func (r *asapTrigger) onNewBridge(blockNum uint64) {
-	// send an event to channel r.ch after r.delay. Also check if r.ctx is done
-	if r.ch == nil {
+	// send an event to the output channel after r.delay. Also check if its context is done
+	if r.activeOutput() == nil {
 		r.log.Warnf("ASAP Trigger: channel is nil, cannot send trigger")
 		return
 	}
@@ -133,8 +201,9 @@ func (r *asapTrigger) onNewBridge(blockNum uint64) {
 
 // OnIdle Aggsender is waiting for a trigger to generate a new certificate
 func (r *asapTrigger) OnIdle() {
-	// send an event to channel r.ch after r.delay. Also check if r.ctx is done
-	if r.ch == nil {
+	// send an event to the output channel after r.delay. Also check if its context is done
+	out := r.activeOutput()
+	if out == nil {
 		r.log.Warnf("ASAP Trigger: channel is nil, cannot send trigger")
 		return
 	}
@@ -148,11 +217,9 @@ func (r *asapTrigger) OnIdle() {
 
 	go func() {
 		select {
-		case <-r.ctx.Done():
+		case <-out.ctx.Done():
 			r.mut.Lock()
 			defer r.mut.Unlock()
-			close(r.ch)
-			r.ch = nil
 			r.triggerRunning = false
 			return
 		case <-time.After(r.cfg.DelayBetweenCertificates.Duration):
@@ -164,13 +231,17 @@ func (r *asapTrigger) OnIdle() {
 func (r *asapTrigger) trigger(source string, parent *asapTriggerEvent) {
 	r.mut.Lock()
 	r.triggerRunning = false
+	out := r.out
+	if out == nil {
+		r.mut.Unlock()
+		return
+	}
 	event := r.createEvent(source, parent)
 	r.lastEventTime = time.Now()
-	r.fulfillMinimumInterval(event)
-	ch := r.ch
+	r.fulfillMinimumInterval(out, event)
 
 	r.mut.Unlock()
-	ch <- event
+	r.send(out, event, nil)
 }
 
 // createEvent creates a new trigger event with an auto-incremental ID and the specified source.
@@ -186,13 +257,13 @@ func (r *asapTrigger) createEvent(source string, parent *asapTriggerEvent) *asap
 
 // fulfillMinimumInterval tries to send a trigger after cfg.MinimumNewCertificateInterval
 // unless there is a new trigger already programmed
-func (r *asapTrigger) fulfillMinimumInterval(event *asapTriggerEvent) {
+func (r *asapTrigger) fulfillMinimumInterval(out *asapOutput, event *asapTriggerEvent) {
 	if r.cfg.MinimumNewCertificateInterval.Duration == 0 {
 		return
 	}
 	go func() {
 		select {
-		case <-r.ctx.Done():
+		case <-out.ctx.Done():
 			return
 		case <-time.After(r.cfg.MinimumNewCertificateInterval.Duration):
 			// Check if a trigger is already programmed

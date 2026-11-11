@@ -116,10 +116,6 @@
             }
           },
           "aggkit": {
-            "rpc": {
-              "internal": "http://aggkit-001:5576",
-              "external": "http://localhost:14576"
-            },
             "rest_api": {
               "internal": "http://aggkit-001:5577",
               "external": "http://localhost:14577"
@@ -196,10 +192,6 @@
             }
           },
           "aggkit": {
-            "rpc": {
-              "internal": "http://aggkit-002:5576",
-              "external": "http://localhost:15576"
-            },
             "rest_api": {
               "internal": "http://aggkit-002:5577",
               "external": "http://localhost:15577"

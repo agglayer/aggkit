@@ -41,6 +41,13 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.ReorgDetectorL1.FinalizedBlock)
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.BridgeL2Sync.BlockFinality)
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.ClaimL2Sync.BlockFinality)
+	require.Equal(t, "127.0.0.1", cfg.AdminREST.Host)
+	require.Equal(t, int64(1024*1024), cfg.PublicREST.MaxRequestBodyBytes)
+	require.Equal(t, int64(1024*1024), cfg.AdminREST.MaxRequestBodyBytes)
+	require.Equal(t, uint64(10000), cfg.ClaimL1Sync.APIMaxBlockRange)
+	require.Equal(t, uint64(1000), cfg.ClaimL1Sync.APIMaxClaims)
+	require.Equal(t, uint64(10000), cfg.ClaimL2Sync.APIMaxBlockRange)
+	require.Equal(t, uint64(1000), cfg.ClaimL2Sync.APIMaxClaims)
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.L2GERSync.BlockFinality)
 	require.Equal(t, AggsenderrollupAddr, cfg.AggSender.RollupManagerAddr.String())
 	require.Equal(t, cfg.AggSender.AgglayerClient.Cached, false)
@@ -202,6 +209,30 @@ StoragePath = "/tmp/aggkit/autoclaim.sqlite"
 	cfg, err = LoadFile(filesData, "", true, true)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
+}
+
+func TestLoadConfigWithRemovedRPCSection(t *testing.T) {
+	// A config that still carries the removed [RPC] section loads, and the section is ignored.
+	filesData := []FileData{{Name: "rpc.toml", Content: `
+[RPC]
+Host = "0.0.0.0"
+Port = 5576
+ReadTimeout = "2s"
+WriteTimeout = "2s"
+MaxRequestsPerIPAndSecond = 10
+`}}
+	cfg, err := LoadFile(filesData, "", true, false)
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	require.Equal(t, "127.0.0.1", cfg.AdminREST.Host)
+
+	keys := []string{"rpc.host", "rpc.port", "rpc.readtimeout", "publicrest.port"}
+	require.NoError(t, checkDeprecatedFields(keys))
+	rule := getDeprecatedField("rpc.host", deprecatedFieldsOnConfig)
+	require.NotNil(t, rule)
+	require.True(t, rule.WarnOnly)
+	require.Equal(t, rpcSectionDeprecatedHint, rule.Reason)
+	require.Nil(t, getDeprecatedField("l1networkconfig.rpc.url", deprecatedFieldsOnConfig))
 }
 
 func TestLoadConfigWithDeprecatedFields(t *testing.T) {

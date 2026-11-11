@@ -45,6 +45,7 @@ func NewHTTPServer(cfg RESTConfig, logger Logger) *HTTPServer {
 	if logger != nil {
 		engine.Use(HTTPLoggerHandler(logger))
 	}
+	engine.Use(RequestBodyLimitHandler(cfg.RequestBodyLimit()))
 	return &HTTPServer{cfg: cfg, engine: engine, logger: logger}
 }
 
@@ -122,6 +123,27 @@ func corsHandler(cfg CORSConfig) *cors.Cors {
 	}
 
 	return cors.New(opts)
+}
+
+// RequestBodyLimitHandler returns a Gin middleware that keeps the memory a
+// request can take predictable: when the request declares a body larger than
+// limit it answers 413 before any handler runs, and the body a handler reads is
+// capped at limit bytes, so reads past the limit fail with *http.MaxBytesError.
+// A limit of 0 or less disables the middleware.
+func RequestBodyLimitHandler(limit int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if limit <= 0 || c.Request == nil || c.Request.Body == nil {
+			c.Next()
+			return
+		}
+		if c.Request.ContentLength > limit {
+			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge,
+				gin.H{"error": fmt.Sprintf("request body exceeds the %d-byte limit", limit)})
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
+		c.Next()
+	}
 }
 
 // HTTPLoggerHandler returns a Gin middleware that logs HTTP requests using logger at DEBUG level.

@@ -122,13 +122,15 @@ EnableAggOracleCommittee = false
 					{Method =  "local", Path = "/app/keystore/aggoracle.keystore", Password = "testonly"},
 				]
 #
-# [RPC]
-# Host = "0.0.0.0"
-# Port = 5576
-#
-# [REST]
+# [PublicREST]
 # Host = "0.0.0.0"
 # Port = 5577
+# MaxRequestBodyBytes = 1048576
+#
+# [AdminREST]
+# Host = "127.0.0.1"
+# Port = 5579
+# MaxRequestBodyBytes = 1048576
 #
 [AggSender]
 # ------------------------------------------------------------------------------
@@ -142,6 +144,7 @@ EnableAggOracleCommittee = false
 # Port = 9091
 #
 # [AggchainProofGen]
+# DeveloperMode = false
 # 	[AggchainProofGen.AggkitProverClient]
 # 		UseTLS = false
 #

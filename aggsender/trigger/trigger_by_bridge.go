@@ -13,7 +13,7 @@ import (
 type preconfTrigger struct {
 	log          aggkitcommon.Logger
 	l2BridgeSync types.L2BridgeSyncer
-	ch           chan types.CertificateTriggerEvent
+	force        forceSignal
 }
 
 // newPreconfTrigger creates and initializes a new preconfTrigger instance.
@@ -49,23 +49,37 @@ func (r *preconfTrigger) Setup(ctx context.Context) {
 
 // TriggerCh returns a read-only channel that forwards bridge sync block
 // notifications. Each value is a sync.Block (which implements CertificateTriggerEvent).
+// Forced events (see ForceTriggerEvent) are coalesced: at most one is pending at any time.
 // The returned channel will be closed when the provided context is canceled.
 func (r *preconfTrigger) TriggerCh(ctx context.Context) <-chan types.CertificateTriggerEvent {
 	syncSub := r.l2BridgeSync.SubscribeToSync("aggsender")
+	force := r.force.pending()
 
 	ch := make(chan types.CertificateTriggerEvent)
-	r.ch = ch
 
 	go func() {
+		defer close(ch)
 		for {
+			var event types.CertificateTriggerEvent
 			select {
 			case <-ctx.Done():
-				r.ch = nil
-				close(ch)
-
 				return
-			case epochEvent := <-syncSub:
-				ch <- epochEvent
+			case syncEvent := <-syncSub:
+				event = syncEvent
+			case <-force:
+				blockNumber, found, err := r.l2BridgeSync.GetLastProcessedBlock(ctx)
+				if err != nil {
+					r.log.Errorf("ForceTriggerEvent: Failed to get last processed block: %v", err)
+					continue
+				}
+				if !found {
+					r.log.Errorf("ForceTriggerEvent: No processed block found, cannot emit trigger event")
+					continue
+				}
+				event = aggkitsync.Block{Num: blockNumber}
+			}
+			if !sendCoalescing(ctx, ch, event, force) {
+				return
 			}
 		}
 	}()
@@ -73,21 +87,10 @@ func (r *preconfTrigger) TriggerCh(ctx context.Context) <-chan types.Certificate
 	return ch
 }
 
-// ForceTriggerEvent forces the preconf trigger to emit a synchronization event.
+// ForceTriggerEvent requests a synchronization event for the last processed block.
+// It never blocks: requests made while one is still pending are coalesced into a single event.
 func (r *preconfTrigger) ForceTriggerEvent() {
-	blockNumber, found, err := r.l2BridgeSync.GetLastProcessedBlock(context.Background())
-	if err != nil {
-		r.log.Errorf("ForceTriggerEvent: Failed to get last processed block: %v", err)
-		return
-	}
-	if !found {
-		r.log.Errorf("ForceTriggerEvent: No processed block found, cannot emit trigger event")
-		return
-	}
-	if r.ch == nil {
-		return
-	}
-	r.ch <- aggkitsync.Block{Num: blockNumber}
+	r.force.request()
 }
 
 // OnIdle Aggsender is waiting for a trigger to generate a new certificate

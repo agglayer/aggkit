@@ -214,13 +214,16 @@ func New(
 	return b
 }
 
+// RegisterHealthRoutes registers the bridge health check at the root path and at its
+// explicit /health alias. The node registers either this or the generic health check, once.
+func (b *BridgeService) RegisterHealthRoutes(router gin.IRouter) {
+	router.GET("/", b.HealthCheckHandler)
+	router.GET("/health", b.HealthCheckHandler)
+}
+
 // RegisterRoutes registers all bridge service routes on router.
 func (b *BridgeService) RegisterRoutes(router gin.IRouter) {
 	metrics.Register()
-
-	// Health check endpoint at root path, and its explicit /health alias (issue #1689)
-	router.GET("/", b.HealthCheckHandler)
-	router.GET("/health", b.HealthCheckHandler)
 
 	bridgeGroup := router.Group(BridgeV1Prefix)
 	{

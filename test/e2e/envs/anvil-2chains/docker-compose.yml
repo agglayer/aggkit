@@ -122,8 +122,7 @@ services:
       - ./config/001/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
       - ./aggkit-001-data:/tmp
     ports:
-      - "14576:5576"   # JSON-RPC (debug)
-      - "14577:5577"   # bridge REST API
+      - "14577:5577"   # PublicREST API
       - "14579:5579"   # admin REST API
     depends_on:
       anvil-001:
@@ -154,8 +153,7 @@ services:
       - ./config/002/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
       - ./config/002/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
     ports:
-      - "15576:5576"   # JSON-RPC (debug)
-      - "15577:5577"   # bridge REST API
+      - "15577:5577"   # PublicREST API
       - "15579:5579"   # admin REST API
     depends_on:
       anvil-001:

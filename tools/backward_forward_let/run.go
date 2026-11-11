@@ -10,7 +10,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	"github.com/agglayer/aggkit/agglayer"
-	"github.com/agglayer/aggkit/aggsender/rpcclient"
+	"github.com/agglayer/aggkit/aggsender/apiclient"
 	bridgeservice "github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/agglayer/aggkit/log"
 	signertypes "github.com/agglayer/go_signer/signer/types"
@@ -50,8 +50,8 @@ type Env struct {
 	// AgglayerClient is the gRPC client for the AggLayer node.
 	AgglayerClient agglayer.AgglayerClientInterface
 
-	// AggsenderRPC is the JSON-RPC client for the running aggsender process.
-	AggsenderRPC aggsenderRPCClient
+	// AggsenderAPI is the REST client for the running aggsender process.
+	AggsenderAPI aggsenderAPIClient
 
 	// BridgeExitsOverride is loaded from CertificateExitsFile if configured.
 	// nil when no override file is specified.
@@ -112,7 +112,7 @@ func SetupEnv(ctx context.Context, cfg *Config) (*Env, error) {
 		return nil, fmt.Errorf("create agglayer client: %w", err)
 	}
 
-	aggsenderRPC := rpcclient.NewClient(cfg.BackwardForwardLET.AggsenderRPCURL)
+	aggsenderAPI := apiclient.NewClient(cfg.BackwardForwardLET.AggsenderRPCURL)
 
 	l2Bridge, err := agglayerbridgel2.NewAgglayerbridgel2(cfg.BridgeL2Sync.BridgeAddr, l2Client)
 	if err != nil {
@@ -133,7 +133,7 @@ func SetupEnv(ctx context.Context, cfg *Config) (*Env, error) {
 		L2Client:            l2Client,
 		BridgeService:       bridgeSvc,
 		AgglayerClient:      agglayerClient,
-		AggsenderRPC:        aggsenderRPC,
+		AggsenderAPI:        aggsenderAPI,
 		BridgeExitsOverride: bridgeExitsOverride,
 		L2Bridge:            l2Bridge,
 		L2NetworkID:         cfg.BackwardForwardLET.L2NetworkID,

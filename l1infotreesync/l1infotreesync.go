@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 
-	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -21,6 +20,7 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -289,15 +289,10 @@ func (d *L1InfoTreeSync) GetCompletionPercentage() *float64 {
 	return d.driver.GetCompletionPercentage()
 }
 
-// GetRPCServices returns the list of services that the RPC provider exposes
-func (a *L1InfoTreeSync) GetRPCServices() []jRPC.Service {
-	logger := log.WithFields("module", "l1infotreesync-rpc")
-	return []jRPC.Service{
-		{
-			Name:    "l1infotreesync",
-			Service: NewL1InfoTreeSyncRPC(logger, a),
-		},
-	}
+// RegisterRoutes registers the L1 info tree API routes on router.
+func (a *L1InfoTreeSync) RegisterRoutes(router gin.IRouter) {
+	logger := log.WithFields("module", "l1infotreesync-api")
+	NewL1InfoTreeSyncAPI(logger, a).RegisterRoutes(router)
 }
 
 // Start starts the synchronization process

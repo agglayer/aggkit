@@ -290,6 +290,7 @@ func TestCreateBridgeService_NilSyncersDoNotPanic(t *testing.T) {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	b.RegisterRoutes(router)
+	b.RegisterHealthRoutes(router)
 
 	for _, path := range []string{"/bridge/v1/sync-status", "/health"} {
 		w := httptest.NewRecorder()

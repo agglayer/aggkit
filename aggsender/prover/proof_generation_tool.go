@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/query"
@@ -18,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/gin-gonic/gin"
 )
 
 // ProofGeneration is the interface for generating Aggchain proofs
@@ -51,6 +51,10 @@ type Config struct {
 
 	// AgglayerBridgeL2Addr is the address of the bridge L2 sovereign contract on L2 sovereign chain
 	AgglayerBridgeL2Addr common.Address `mapstructure:"AgglayerBridgeL2Addr"`
+
+	// DeveloperMode enables developer-mode features of the tool, such as serving the
+	// aggchain proof generation API on the admin REST server
+	DeveloperMode bool `mapstructure:"DeveloperMode"`
 }
 
 // AggchainProofGenerationTool is a tool to generate Aggchain proofs
@@ -138,14 +142,9 @@ func NewAggchainProofGenerationTool(
 	}, nil
 }
 
-// GetRPCServices returns the list of services that the RPC provider exposes
-func (a *AggchainProofGenerationTool) GetRPCServices() []rpc.Service {
-	return []rpc.Service{
-		{
-			Name:    "aggkit",
-			Service: NewAggchainProofGenerationToolRPC(a),
-		},
-	}
+// RegisterAdminRoutes registers the aggchain proof generation route on router.
+func (a *AggchainProofGenerationTool) RegisterAdminRoutes(router gin.IRouter) {
+	NewAggchainProofGenAPI(a).RegisterAdminRoutes(router)
 }
 
 // GenerateAggchainProof generates an Aggchain proof

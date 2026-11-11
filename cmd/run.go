@@ -12,7 +12,6 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayermanager"
-	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
 	"github.com/agglayer/aggkit"
@@ -35,7 +34,6 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	ethermanquierier "github.com/agglayer/aggkit/etherman/querier"
-	"github.com/agglayer/aggkit/healthcheck"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
@@ -103,13 +101,9 @@ func start(cliCtx *cli.Context) error {
 			log.Fatal("Error from ReorgDetectorL2: ", err)
 		}
 	}()
-	var rpcServices []jRPC.Service
-	l1MultiDownloader, l1mdServices, err := runL1MultiDownloaderIfNeeded(components, l1Client, cfg.L1Multidownloader)
+	l1MultiDownloader, err := runL1MultiDownloaderIfNeeded(components, l1Client, cfg.L1Multidownloader)
 	if err != nil {
 		return fmt.Errorf("failed to create L1MultiDownloader: %w", err)
-	}
-	if l1mdServices != nil {
-		rpcServices = append(rpcServices, l1mdServices...)
 	}
 
 	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, components, cfg.L1NetworkConfig, l1Client)
@@ -126,18 +120,12 @@ func start(cliCtx *cli.Context) error {
 
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, reorgDetectorL1,
 		l1Client, l1MultiDownloader)
-	if l1InfoTreeSync != nil {
-		rpcServices = append(rpcServices, l1InfoTreeSync.GetRPCServices()...)
-	}
 
 	if isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
 		runImportFromBridgeSyncerIfNeeded(ctx, cfg.BridgeL1Sync.DBPath, cfg.ClaimL1Sync.DBPath, claimsynctypes.L1ClaimSyncer)
 	}
 
 	l1ClaimSync := runClaimSyncL1IfNeeded(ctx, components, cfg.ClaimL1Sync, reorgDetectorL1, l1Client, MainnetID)
-	if l1ClaimSync != nil {
-		rpcServices = append(rpcServices, l1ClaimSync.GetRPCServices()...)
-	}
 
 	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, MainnetID, &backfillWg)
@@ -156,9 +144,6 @@ func start(cliCtx *cli.Context) error {
 
 	l2ClaimSync := runClaimSyncL2IfNeeded(
 		ctx, components, cfg.ClaimL2Sync, reorgDetectorL2, l2Client, rollupDataQuerier.RollupID)
-	if l2ClaimSync != nil {
-		rpcServices = append(rpcServices, l2ClaimSync.GetRPCServices()...)
-	}
 
 	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID, *initialLER, &backfillWg)
@@ -184,7 +169,8 @@ func start(cliCtx *cli.Context) error {
 	// registered routes on them.
 	publicServer := aggkitcommon.NewHTTPServer(cfg.PublicREST, log.WithFields("module", "public-api"))
 	adminServer := aggkitcommon.NewHTTPServer(cfg.AdminREST, log.WithFields("module", "admin-api"))
-	var publicHasRoutes, adminHasRoutes bool
+	routes := newRESTRoutes(publicServer.Engine(), adminServer.Engine(), len(components) > 0)
+	var bridgeHealth healthRoutesRegisterer
 
 	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
 		// Resolved from the concrete pointers (not the interfaces passed below) so a component
@@ -216,9 +202,21 @@ func start(cliCtx *cli.Context) error {
 			l1Client,
 			l2Client,
 		)
-		b.RegisterRoutes(publicServer.Engine())
-		publicHasRoutes = true
+		routes.addPublic(b)
+		bridgeHealth = b
 		log.Info("Bridge service routes registered")
+	}
+	if l1InfoTreeSync != nil {
+		routes.addPublic(l1InfoTreeSync)
+	}
+	if l1ClaimSync != nil {
+		routes.addPublic(l1ClaimSync)
+	}
+	if l2ClaimSync != nil {
+		routes.addPublic(l2ClaimSync)
+	}
+	if l1MultiDownloader != nil {
+		routes.addMultidownloader(l1MultiDownloader, cfg.L1Multidownloader.DeveloperMode)
 	}
 	if l1MultiDownloader != nil {
 		log.Info("starting L1 MultiDownloader...")
@@ -238,23 +236,6 @@ func start(cliCtx *cli.Context) error {
 		log.Info("starting L1 Info Tree Syncer...")
 		go l1InfoTreeSync.Start(ctx)
 	}
-	// Start binds the listener synchronously, so a failure (e.g. port already in
-	// use) aborts startup instead of leaving the process running without its API.
-	if publicHasRoutes {
-		if err := publicServer.Start(ctx); err != nil {
-			log.Fatalf("failed to start public-api server: %v", err)
-		}
-		log.Infof("Public API listening on %s", cfg.PublicREST.Address())
-	}
-	// Kept as generic infrastructure: no component registers admin routes right now, so this
-	// block is currently unreachable. A future component that needs an admin API gets one for free.
-	if adminHasRoutes {
-		if err := adminServer.Start(ctx); err != nil {
-			log.Fatalf("failed to start admin-api server: %v", err)
-		}
-		log.Infof("Admin API listening on %s", cfg.AdminREST.Address())
-	}
-
 	for _, component := range components {
 		switch component {
 		case aggkitcommon.AGGORACLE:
@@ -276,7 +257,7 @@ func start(cliCtx *cli.Context) error {
 			if err != nil {
 				log.Fatalf("failed to create AggSender: %v", err)
 			}
-			rpcServices = append(rpcServices, aggsender.GetRPCServices()...)
+			routes.addAggsender(aggsender, cfg.AggSender.EnableRPC)
 
 			go aggsender.Start(ctx)
 		case aggkitcommon.AGGCHAINPROOFGEN:
@@ -293,7 +274,7 @@ func start(cliCtx *cli.Context) error {
 				log.Fatal(err)
 			}
 
-			rpcServices = append(rpcServices, aggchainProofGen.GetRPCServices()...)
+			routes.addDeveloperAdminAPI(aggchainProofGen, cfg.AggchainProofGen.DeveloperMode)
 		case aggkitcommon.AGGSENDERVALIDATOR:
 			aggsenderValidator, err := createAggSenderValidator(
 				ctx,
@@ -313,13 +294,26 @@ func start(cliCtx *cli.Context) error {
 			go aggsenderValidator.Start(ctx)
 		}
 	}
-	if len(rpcServices) > 0 {
-		rpcServer := createRPC(cfg.RPC, rpcServices)
-		go func() {
-			if err := rpcServer.Start(); err != nil {
-				log.Fatal(err)
-			}
-		}()
+	routes.registerHealth(bridgeHealth)
+
+	// Start binds the listener synchronously, so a failure (e.g. port already
+	// in use) aborts startup instead of leaving the process running without its API.
+	if routes.publicHasRoutes {
+		if err := publicServer.Start(ctx); err != nil {
+			log.Fatalf("failed to start public-api server: %v", err)
+		}
+		log.Infof("Public API listening on %s", cfg.PublicREST.Address())
+	}
+	if routes.adminHasRoutes {
+		if !cfg.AdminREST.HostIsLoopback() {
+			log.Warnf("AdminREST listens on %s, which is reachable from other machines. "+
+				"The admin API has no access control of its own: restrict access at the network or "+
+				"proxy level, or set [AdminREST] Host to a loopback address.", cfg.AdminREST.Address())
+		}
+		if err := adminServer.Start(ctx); err != nil {
+			log.Fatalf("failed to start admin-api server: %v", err)
+		}
+		log.Infof("Admin API listening on %s", cfg.AdminREST.Address())
 	}
 
 	if cfg.Prometheus.Enabled {
@@ -726,19 +720,19 @@ func runL1MultiDownloaderIfNeeded(
 	components []string,
 	l1Client aggkittypes.EthClienter,
 	cfg multidownloader.Config,
-) (*multidownloader.EVMMultidownloader, []jRPC.Service, error) {
+) (*multidownloader.EVMMultidownloader, error) {
 	// The requirements are the same as L1Client
 	if l1Client == nil {
-		return nil, nil, nil
+		return nil, nil
 	}
 	// If it's disable It creates a direct eth client
 	if !cfg.Enabled {
 		log.Warnf("L1 MultiDownloader is disabled, don't creating the service.")
-		return nil, nil, nil
+		return nil, nil
 	}
 	if !l1InfoTreeMustRun(components) {
 		log.Infof("L1 MultiDownloader not going to run because components: %v", components)
-		return nil, nil, nil
+		return nil, nil
 	}
 	logger := log.WithFields("module", "L1MultiDownloader")
 
@@ -753,10 +747,9 @@ func runL1MultiDownloaderIfNeeded(
 		nil,      // reorgProcessor (created inside the multidownloader if nil)
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create L1 MultiDownloader: %w", err)
+		return nil, fmt.Errorf("failed to create L1 MultiDownloader: %w", err)
 	}
-	rpcServices := downloader.GetRPCServices()
-	return downloader, rpcServices, nil
+	return downloader, nil
 }
 
 func runReorgDetectorL2IfNeeded(
@@ -1063,16 +1056,6 @@ func runAggsenderMultisigCommitteeIfNeeded(
 	}
 
 	return committeeQuerier
-}
-
-func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {
-	logger := log.WithFields("module", "RPC")
-
-	healthHandler := healthcheck.NewHealthCheckHandler(logger)
-	logger.Infof("Starting RPC server at %s:%d", cfg.Host, cfg.Port)
-	return jRPC.NewServer(cfg, services,
-		jRPC.WithLogger(logger.GetSugaredLogger()),
-		jRPC.WithHealthHandler(healthHandler))
 }
 
 // createRollupDataQuerier initializes and returns the rollup data querier if any of the required components

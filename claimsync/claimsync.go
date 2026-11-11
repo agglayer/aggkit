@@ -225,6 +225,13 @@ func (c *ClaimSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 	return c.reader.GetClaims(ctx, nil, fromBlock, toBlock)
 }
 
+// GetClaimsWithLimit returns at most limit claims indexed between fromBlock and toBlock
+func (c *ClaimSync) GetClaimsWithLimit(
+	ctx context.Context, fromBlock, toBlock, limit uint64,
+) ([]claimsynctypes.Claim, error) {
+	return c.reader.GetClaimsWithLimit(ctx, nil, fromBlock, toBlock, limit)
+}
+
 func (c *ClaimSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]claimsynctypes.Claim, error) {
 	return c.reader.GetClaimsByGlobalIndex(ctx, nil, globalIndex)
 }

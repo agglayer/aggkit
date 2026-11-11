@@ -23,6 +23,9 @@ type ClaimStorager interface {
 	InsertSetClaim(ctx context.Context, tx dbtypes.Querier, s SetClaim) error
 	// GetClaims returns claims in [fromBlock, toBlock] using compaction logic
 	GetClaims(ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64) ([]Claim, error)
+	// GetClaimsWithLimit behaves like GetClaims but returns at most limit claims (the oldest ones);
+	// a limit of zero means no limit
+	GetClaimsWithLimit(ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock, limit uint64) ([]Claim, error)
 	// GetClaimsByGlobalIndex returns claims for the given global index using compaction logic
 	GetClaimsByGlobalIndex(ctx context.Context, tx dbtypes.Querier, globalIndex *big.Int) ([]Claim, error)
 	// GetFirstProcessedBlock returns the lowest block number stored if any.

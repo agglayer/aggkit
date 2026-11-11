@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	agglayermocks "github.com/agglayer/aggkit/agglayer/mocks"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -205,16 +206,21 @@ func TestBlockBeforeEpoch(t *testing.T) {
 	require.Equal(t, uint64(114), newStatus.lastBlockSeen)
 }
 
-func TestForcePublishEpochEvent(t *testing.T) {
+func TestCurrentEpochEvent(t *testing.T) {
 	testData := newNotifierPerBlockTestData(t, nil)
 	ch := testData.sut.Subscribe("test")
 	testData.blockNotifierMock.EXPECT().GetCurrentBlockNumber().Return(uint64(145))
-	testData.blockNotifierMock.EXPECT().Subscribe(mock.Anything).Return(make(chan ethermantypes.EventNewBlock))
-	testData.sut.StartAsync(testData.ctx)
-	testData.sut.ForcePublishEpochEvent()
-	epochEvent := <-ch
+
+	epochEvent := testData.sut.CurrentEpochEvent()
 	require.Equal(t, uint64(15), epochEvent.Epoch)
-	testData.ctx.Done()
+	require.NotNil(t, epochEvent.ExtraInfo)
+
+	// building the event does not notify the subscribers
+	select {
+	case <-ch:
+		t.Fatal("CurrentEpochEvent must not notify subscribers")
+	case <-time.After(50 * time.Millisecond):
+	}
 }
 
 func TestGetEpochStatus(t *testing.T) {

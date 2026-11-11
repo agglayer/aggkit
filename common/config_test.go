@@ -75,3 +75,29 @@ func TestCORSConfigOriginAllowed(t *testing.T) {
 		})
 	}
 }
+
+func TestRESTConfigHostIsLoopback(t *testing.T) {
+	tests := []struct {
+		host string
+		want bool
+	}{
+		{host: "127.0.0.1", want: true},
+		{host: "127.0.0.5", want: true},
+		{host: "::1", want: true},
+		{host: "[::1]", want: true},
+		{host: "localhost", want: true},
+		{host: "LocalHost", want: true},
+		{host: "0.0.0.0", want: false},
+		{host: "::", want: false},
+		{host: "192.168.1.10", want: false},
+		{host: "aggkit.example.com", want: false},
+		{host: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.host, func(t *testing.T) {
+			cfg := RESTConfig{Host: tt.host}
+			require.Equal(t, tt.want, cfg.HostIsLoopback())
+		})
+	}
+}
