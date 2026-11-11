@@ -9,3 +9,9 @@ packages:
   github.com/agglayer/aggkit/tools/ger_validator_signer/service:
     config:
       all: true
+  github.com/agglayer/aggkit/tools/ger_validator_signer/api:
+    config:
+      all: true
+  github.com/agglayer/aggkit/tools/ger_validator_signer/app:
+    config:
+      all: true
