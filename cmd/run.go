@@ -17,7 +17,6 @@ import (
 	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggoracle"
-	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/flows"
@@ -239,7 +238,7 @@ func start(cliCtx *cli.Context) error {
 	for _, component := range components {
 		switch component {
 		case aggkitcommon.AGGORACLE:
-			aggOracle := createAggoracle(*cfg, l1Client, l2Client, l1InfoTreeSync)
+			aggOracle := createAggoracle(ctx, *cfg, l1Client, l2Client, l1InfoTreeSync)
 			go aggOracle.Start(ctx)
 		case aggkitcommon.AGGSENDER:
 			aggsender, err := createAggSender(
@@ -479,6 +478,7 @@ func createAggSender(
 }
 
 func createAggoracle(
+	ctx context.Context,
 	cfg config.Config,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
@@ -512,18 +512,14 @@ func createAggoracle(
 			log.Fatalf("failed to create binding for GER L2 manager (SC address: %s): %w", l2GERManagerAddr, err)
 		}
 
-		gerMode := chaingersender.DirectInjectionMode
-		if cfg.AggOracle.EnableAggOracleCommittee &&
-			cfg.AggOracle.EVMSender.AggOracleCommitteeAddr != aggkitcommon.ZeroAddress {
-			gerMode = chaingersender.AggOracleCommitteeMode
-		}
-		sender, err = chaingersender.NewEVMChainGERSender(
+		// The mode (direct, committee v1, committee v2 or auto) is selected by AggOracle.Mode
+		sender, err = aggoracle.NewEVMChainSender(
+			ctx,
 			logger,
-			cfg.AggOracle.EVMSender,
+			cfg.AggOracle,
 			l2Client,
 			l2GERManager,
 			ethTxManager,
-			gerMode,
 		)
 		if err != nil {
 			log.Fatal(err)
