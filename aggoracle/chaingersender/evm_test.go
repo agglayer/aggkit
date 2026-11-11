@@ -26,10 +26,44 @@ func TestNEWEVMChainGERSender_DirectMode(t *testing.T) {
 	l2GERManagerMock := mocks.NewL2GERManagerContract(t)
 	l2GERManagerMock.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(common.HexToAddress("0x123"), nil).Once()
 
-	gerSender, err := NewEVMChainGERSender(log.GetDefaultLogger(), EVMConfig{}, nil, l2GERManagerMock, txManagerMock, false)
+	gerSender, err := NewEVMChainGERSender(log.GetDefaultLogger(), EVMConfig{}, nil, l2GERManagerMock, txManagerMock, DirectInjectionMode)
 	require.NoError(t, err)
 	require.NotNil(t, gerSender)
 	require.Equal(t, DirectInjectionMode, gerSender.mode)
+}
+
+func TestNewEVMChainGERSender_UnsupportedModes(t *testing.T) {
+	tests := []struct {
+		name        string
+		mode        GERMode
+		cfg         EVMConfig
+		expectedErr string
+	}{
+		{
+			name:        "committee v2 has its own sender",
+			mode:        AggOracleCommitteeV2Mode,
+			expectedErr: `doesn't support the "aggoracle_committee_v2" mode`,
+		},
+		{
+			name:        "unknown mode",
+			mode:        GERMode("bogus"),
+			expectedErr: `doesn't support the "bogus" mode`,
+		},
+		{
+			name:        "committee v1 requires the committee address",
+			mode:        AggOracleCommitteeMode,
+			expectedErr: "AggOracleCommitteeAddr must be set",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// No expectation on the mocks: the mode is rejected before touching the contracts
+			gerSender, err := NewEVMChainGERSender(log.GetDefaultLogger(), tc.cfg, nil,
+				mocks.NewL2GERManagerContract(t), mocks.NewEthTxManager(t), tc.mode)
+			require.ErrorContains(t, err, tc.expectedErr)
+			require.Nil(t, gerSender)
+		})
+	}
 }
 
 func TestEVMChainGERSender_InitializeAndValidateMode(t *testing.T) {
