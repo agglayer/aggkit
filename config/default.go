@@ -117,7 +117,6 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 TargetChainType = "EVM"
 WaitPeriodNextGER = "10s"
 Mode = "auto"
-EnableAggOracleCommittee = false
 	[AggOracle.CommitteeV2]
 		RequestTimeout = "5s"
 		CollectRetryInterval = "5s"
