@@ -18,6 +18,10 @@ import (
 const (
 	defaultRequestTimeout = 10 * time.Second
 
+	// maxResponseBytes caps how much of a response body the client reads, so a misconfigured
+	// or wrong endpoint cannot make it read an unbounded stream.
+	maxResponseBytes = 16 << 20
+
 	statusPath                 = "/aggsender/v1/status"
 	certificateHeaderPath      = "/aggsender/v1/certificate-header"
 	certificateBridgeExitsPath = "/aggsender/v1/certificate-bridge-exits"
@@ -97,9 +101,12 @@ func (c *Client) get(path string, query url.Values, out any) error {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return err
+	}
+	if len(body) > maxResponseBytes {
+		return fmt.Errorf("response body exceeds the %d-byte limit", maxResponseBytes)
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {

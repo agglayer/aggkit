@@ -1,6 +1,7 @@
 package apiclient
 
 import (
+	"bytes"
 	"encoding/json"
 	"math/big"
 	"net/http"
@@ -156,5 +157,17 @@ func TestGetStatus_Errors(t *testing.T) {
 
 		_, err := NewClient(server.URL).GetStatus()
 		require.Error(t, err)
+	})
+
+	t.Run("response body over the limit", func(t *testing.T) {
+		server := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, err := w.Write(bytes.Repeat([]byte("a"), maxResponseBytes+1))
+			require.NoError(t, err)
+		})
+
+		_, err := NewClient(server.URL).GetStatus()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "response body exceeds")
 	})
 }
