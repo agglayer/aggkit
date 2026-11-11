@@ -19,7 +19,7 @@ import (
 // aggsenderAPIClient is the subset of apiclient.Client used by the tool and its tests.
 type aggsenderAPIClient interface {
 	GetCertificateBridgeExits(height *uint64) ([]*agglayertypes.BridgeExit, error)
-	GetCertificateHeaderPerHeight(height *uint64) (*aggsendertypes.Certificate, error)
+	GetCertificateHeaderPerHeight(height *uint64) (*aggsendertypes.CertificateHeader, error)
 }
 
 // bridgeServiceClient is the subset of bridgeservice.Client used by the diagnosis tool.

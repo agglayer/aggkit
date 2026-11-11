@@ -187,8 +187,8 @@ func TestAggsenderIndependentL1FinalityKnobs(t *testing.T) {
 				return true, nil
 			}
 			// ASAP mode may already have a newer pending certificate on top of the settled one.
-			if last.Header.Height > 0 {
-				prevHeight := last.Header.Height - 1
+			if last.Height > 0 {
+				prevHeight := last.Height - 1
 				prev, ok := aggsenderCertificate(aggsenderAPI, &prevHeight)
 				if ok && certificateSettledCovering(prev, lastClaimL2Block) {
 					return true, nil
@@ -240,20 +240,20 @@ func aggkitLogsSince(ctx context.Context, t *testing.T, since time.Time) string 
 	return string(out)
 }
 
-// aggsenderCertificate fetches the certificate at height (or the last sent one when height is nil)
-// from the aggsender API. It returns ok=false on transient errors and on "certificate not found",
-// so callers can keep polling.
-func aggsenderCertificate(api *apiclient.Client, height *uint64) (*aggsendertypes.Certificate, bool) {
-	cert, err := api.GetCertificateHeaderPerHeight(height)
-	if err != nil || cert.Header == nil {
+// aggsenderCertificate fetches the certificate header at height (or the last sent one when
+// height is nil) from the aggsender API. It returns ok=false on transient errors and on
+// "certificate not found", so callers can keep polling.
+func aggsenderCertificate(api *apiclient.Client, height *uint64) (*aggsendertypes.CertificateHeader, bool) {
+	header, err := api.GetCertificateHeaderPerHeight(height)
+	if err != nil || header == nil {
 		return nil, false
 	}
-	return cert, true
+	return header, true
 }
 
 // certificateSettledCovering reports whether cert is settled and its range reaches toBlock.
-func certificateSettledCovering(cert *aggsendertypes.Certificate, toBlock uint64) bool {
+func certificateSettledCovering(cert *aggsendertypes.CertificateHeader, toBlock uint64) bool {
 	log.Debugf("finality knobs: certificate height=%d status=%s toBlock=%d",
-		cert.Header.Height, cert.Header.Status, cert.Header.ToBlock)
-	return cert.Header.Status == agglayertypes.Settled && cert.Header.ToBlock >= toBlock
+		cert.Height, cert.Status, cert.ToBlock)
+	return cert.Status == agglayertypes.Settled && cert.ToBlock >= toBlock
 }

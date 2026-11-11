@@ -72,20 +72,27 @@ func NewAggsenderAPI(
 //	GET /aggsender/v1/status
 //	GET /aggsender/v1/certificate-header[?height=h]
 //	GET /aggsender/v1/certificate-bridge-exits[?height=h]
+//	GET /aggsender/v1/certificate-imported-bridge-exits[?height=h]
 func (a *AggsenderAPI) RegisterPublicRoutes(router gin.IRouter) {
 	group := router.Group(AggsenderV1Prefix)
 	{
 		group.GET("/status", a.status)
 		group.GET("/certificate-header", a.certificateHeaderPerHeight)
 		group.GET("/certificate-bridge-exits", a.certificateBridgeExits)
+		group.GET("/certificate-imported-bridge-exits", a.certificateImportedBridgeExits)
 	}
 }
 
 // RegisterAdminRoutes registers the operator routes of the aggsender on router:
 //
+//	GET /aggsender/v1/certificate[?height=h]
 //	POST /aggsender/v1/trigger-certificate
 func (a *AggsenderAPI) RegisterAdminRoutes(router gin.IRouter) {
-	router.Group(AggsenderV1Prefix).POST("/trigger-certificate", a.triggerCertificate)
+	group := router.Group(AggsenderV1Prefix)
+	{
+		group.GET("/certificate", a.certificate)
+		group.POST("/trigger-certificate", a.triggerCertificate)
+	}
 }
 
 // status answers the aggsender status. The response body is the same
@@ -101,20 +108,41 @@ func (a *AggsenderAPI) triggerCertificate(c *gin.Context) {
 	c.JSON(http.StatusOK, nil)
 }
 
-// certificateHeaderPerHeight returns the certificate header at the given
-// height, or the last sent certificate when height is omitted.
+// certificate returns the full certificate at the given height, or the last
+// sent certificate when height is omitted. The certificate carries the signed
+// payload, the aggchain proof and extra data, so the route is an operator one.
+func (a *AggsenderAPI) certificate(c *gin.Context) {
+	height, ok := parseHeightQuery(c)
+	if !ok {
+		return
+	}
+
+	cert, err := certificateAtHeight(a.storage, height)
+	if err != nil {
+		writeAPIError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, cert)
+}
+
+// certificateHeaderPerHeight returns only the header of the certificate at the
+// given height, or of the last sent certificate when height is omitted.
 func (a *AggsenderAPI) certificateHeaderPerHeight(c *gin.Context) {
 	height, ok := parseHeightQuery(c)
 	if !ok {
 		return
 	}
 
-	cert, err := certificateHeaderPerHeight(a.storage, height)
+	cert, err := certificateAtHeight(a.storage, height)
 	if err != nil {
 		writeAPIError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, cert)
+	if cert.Header == nil {
+		writeAPIError(c, newNotFoundError("certificate not found"))
+		return
+	}
+	c.JSON(http.StatusOK, cert.Header)
 }
 
 // certificateBridgeExits returns the bridge exits of the certificate at the
@@ -125,12 +153,37 @@ func (a *AggsenderAPI) certificateBridgeExits(c *gin.Context) {
 		return
 	}
 
-	bridgeExits, err := certificateBridgeExits(a.storage, height)
+	cert, resolvedHeight, err := signedCertificateAtHeight(a.storage, height)
 	if err != nil {
 		writeAPIError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, bridgeExits)
+	if cert.BridgeExits == nil {
+		writeAPIError(c, newNotFoundError("certificate not found at height %d", resolvedHeight))
+		return
+	}
+	c.JSON(http.StatusOK, cert.BridgeExits)
+}
+
+// certificateImportedBridgeExits returns the imported bridge exits of the
+// certificate at the given height, or of the last sent certificate when height
+// is omitted.
+func (a *AggsenderAPI) certificateImportedBridgeExits(c *gin.Context) {
+	height, ok := parseHeightQuery(c)
+	if !ok {
+		return
+	}
+
+	cert, resolvedHeight, err := signedCertificateAtHeight(a.storage, height)
+	if err != nil {
+		writeAPIError(c, err)
+		return
+	}
+	if cert.ImportedBridgeExits == nil {
+		writeAPIError(c, newNotFoundError("certificate not found at height %d", resolvedHeight))
+		return
+	}
+	c.JSON(http.StatusOK, cert.ImportedBridgeExits)
 }
 
 // parseHeightQuery parses the optional height query parameter. It returns a nil
@@ -162,9 +215,9 @@ func writeAPIError(c *gin.Context, err error) {
 	c.JSON(code, gin.H{"error": err.Error()})
 }
 
-// certificateHeaderPerHeight resolves the certificate at height, or the last
-// sent certificate when height is nil.
-func certificateHeaderPerHeight(storage AggsenderStorer, height *uint64) (*types.Certificate, error) {
+// certificateAtHeight resolves the certificate at height, or the last sent
+// certificate when height is nil.
+func certificateAtHeight(storage AggsenderStorer, height *uint64) (*types.Certificate, error) {
 	var (
 		cert *types.Certificate
 		err  error
@@ -184,17 +237,20 @@ func certificateHeaderPerHeight(storage AggsenderStorer, height *uint64) (*types
 	return cert, nil
 }
 
-// certificateBridgeExits resolves the bridge exits of the certificate at
-// height, or of the last sent certificate when height is nil.
-func certificateBridgeExits(storage AggsenderStorer, height *uint64) ([]*agglayertypes.BridgeExit, error) {
+// signedCertificateAtHeight resolves the certificate at height (or the last
+// sent certificate when height is nil) and decodes the certificate its signed
+// payload carries. It also returns the height the certificate was read at, for
+// error messages. A certificate without a usable signed payload is reported as
+// not found: certificates recovered from agglayer keep a placeholder instead.
+func signedCertificateAtHeight(storage AggsenderStorer, height *uint64) (*agglayertypes.Certificate, uint64, error) {
 	var resolvedHeight uint64
 	if height == nil {
 		cert, err := storage.GetLastSentCertificate()
 		if err != nil {
-			return nil, fmt.Errorf("error getting last sent certificate: %w", err)
+			return nil, 0, fmt.Errorf("error getting last sent certificate: %w", err)
 		}
-		if cert == nil {
-			return nil, newNotFoundError("no certificate found")
+		if cert == nil || cert.Header == nil {
+			return nil, 0, newNotFoundError("no certificate found")
 		}
 		resolvedHeight = cert.Header.Height
 	} else {
@@ -203,24 +259,39 @@ func certificateBridgeExits(storage AggsenderStorer, height *uint64) ([]*agglaye
 
 	cert, err := storage.GetCertificateByHeight(resolvedHeight)
 	if err != nil {
-		return nil, fmt.Errorf("error getting certificate at height %d: %w", resolvedHeight, err)
+		return nil, 0, fmt.Errorf("error getting certificate at height %d: %w", resolvedHeight, err)
 	}
 	if cert == nil || cert.SignedCertificate == nil {
-		return nil, newNotFoundError("certificate not found at height %d", resolvedHeight)
+		return nil, 0, newNotFoundError("certificate not found at height %d", resolvedHeight)
 	}
-	// Certs recovered from agglayer use a placeholder signed certificate ("na/agglayer header").
-	// We don't have the actual signed cert data for these certs, so return not found.
 	if cert.Header != nil && cert.Header.CertSource == types.CertificateSourceAggLayer {
-		return nil, newNotFoundError("certificate not found at height %d", resolvedHeight)
+		return nil, 0, newNotFoundError("certificate not found at height %d", resolvedHeight)
 	}
 
-	var agglayerCert agglayertypes.Certificate
-	if err := json.Unmarshal([]byte(*cert.SignedCertificate), &agglayerCert); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal certificate at height %d: %w", resolvedHeight, err)
-	}
-	if agglayerCert.BridgeExits == nil {
-		return nil, newNotFoundError("certificate not found at height %d", resolvedHeight)
+	decoded, err := decodeSignedCertificate(*cert.SignedCertificate)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to unmarshal certificate at height %d: %w", resolvedHeight, err)
 	}
 
-	return agglayerCert.BridgeExits, nil
+	return decoded, resolvedHeight, nil
+}
+
+// decodeSignedCertificate decodes the certificate a signed payload carries.
+// Certificates sent by older aggsender versions wrap it in a SignedCertificate
+// object that also holds the signature.
+func decodeSignedCertificate(raw string) (*agglayertypes.Certificate, error) {
+	var cert agglayertypes.Certificate
+	if err := json.Unmarshal([]byte(raw), &cert); err == nil {
+		return &cert, nil
+	}
+
+	var signed agglayertypes.SignedCertificate
+	if err := json.Unmarshal([]byte(raw), &signed); err != nil {
+		return nil, err
+	}
+	if signed.Certificate == nil {
+		return nil, errors.New("signed certificate has no certificate")
+	}
+
+	return signed.Certificate, nil
 }

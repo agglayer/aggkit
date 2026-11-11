@@ -217,14 +217,14 @@ func stagingExistingLeafHashes(
 }
 
 func l1InfoTreeLeafCountFromAggsender(env *Env, settledHeight uint64) (uint32, error) {
-	cert, err := env.AggsenderAPI.GetCertificateHeaderPerHeight(&settledHeight)
+	header, err := env.AggsenderAPI.GetCertificateHeaderPerHeight(&settledHeight)
 	if err != nil {
 		return 0, err
 	}
-	if cert == nil || cert.Header == nil || cert.Header.L1InfoTreeLeafCount == 0 {
+	if header == nil || header.L1InfoTreeLeafCount == 0 {
 		return 0, fmt.Errorf("aggsender returned no L1InfoTreeLeafCount")
 	}
-	return cert.Header.L1InfoTreeLeafCount, nil
+	return header.L1InfoTreeLeafCount, nil
 }
 
 func signStagingCertificate(ctx context.Context, env *Env, cert *agglayertypes.Certificate, signerIndex uint32) error {

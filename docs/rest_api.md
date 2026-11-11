@@ -6,7 +6,7 @@ aggkit serves its component APIs over HTTP on two Gin servers, configured by the
 | Server | Default address | What it serves |
 | --- | --- | --- |
 | `PublicREST` | `0.0.0.0:5577` | Read-only queries: sync statuses, certificates, claims, L1 info tree lookups, the bridge service and the health check |
-| `AdminREST` | `127.0.0.1:5579` | Operator actions: forcing a certificate trigger, generating an aggchain proof, and developer-only helpers |
+| `AdminREST` | `127.0.0.1:5579` | Operator actions: forcing a certificate trigger, the full-certificate lookup, and the developer-mode helpers |
 
 Response bodies keep the JSON shapes the components have always returned. Errors are a JSON object
 `{"error": "..."}` with `400` for invalid input or a limit exceeded, `404` when a query matched nothing
@@ -25,8 +25,9 @@ logs a warning saying so).
 | `GET /` | Health check |
 | `GET /health` | Health check (same handler as `/`) |
 | `GET /aggsender/v1/status` | Aggsender status, including its mode |
-| `GET /aggsender/v1/certificate-header[?height=h]` | Certificate header at height `h`; without `height`, the last sent certificate |
+| `GET /aggsender/v1/certificate-header[?height=h]` | Header of the certificate at height `h`; without `height`, of the last sent certificate. It carries no signed payload, proof or extra data |
 | `GET /aggsender/v1/certificate-bridge-exits[?height=h]` | Bridge exits of the certificate at height `h`; without `height`, of the last sent certificate |
+| `GET /aggsender/v1/certificate-imported-bridge-exits[?height=h]` | Imported bridge exits of the certificate at height `h`; without `height`, of the last sent certificate |
 | `GET /l1claimsync/v1/status` | L1 claim sync status |
 | `GET /l2claimsync/v1/status` | L2 claim sync status |
 | `GET /l1claimsync/v1/claims?from_block=&to_block=` | L1 claims indexed in the block range, both ends included |
@@ -56,6 +57,7 @@ Examples:
 ```bash
 curl -sS localhost:5577/aggsender/v1/status | jq .
 curl -sS 'localhost:5577/aggsender/v1/certificate-header?height=12' | jq .
+curl -sS 'localhost:5577/aggsender/v1/certificate-imported-bridge-exits?height=12' | jq .
 curl -sS 'localhost:5577/l2claimsync/v1/claims?from_block=1000&to_block=1100' | jq .
 curl -sS 'localhost:5577/l2claimsync/v1/claims-by-global-index?global_index=123456789' | jq .
 curl -sS 'localhost:5577/l1infotreesync/v1/info-by-root?root=0x…' | jq .
@@ -65,9 +67,14 @@ curl -sS 'localhost:5577/l1infotreesync/v1/info-by-root?root=0x…' | jq .
 
 | Endpoint | Description |
 | --- | --- |
+| `GET /aggsender/v1/certificate[?height=h]` | Full certificate at height `h`; without `height`, the last sent certificate |
 | `POST /aggsender/v1/trigger-certificate` | Force a certificate trigger |
-| `POST /aggchainproofgen/v1/aggchain-proof` | Generate an aggchain proof for a block range |
+| `POST /aggchainproofgen/v1/aggchain-proof` | Generate an aggchain proof for a block range (developer mode only) |
 | `POST /multidownloader/v1/l1/reorg?block=` | Force a reorg at the given block (developer mode only) |
+
+The full certificate route returns the certificate as the aggsender stores it, including its signed
+payload, the aggchain proof and its extra data, so it is served on the admin API. For a lookup that
+only needs the certificate header, there is `GET /aggsender/v1/certificate-header` on `PublicREST`.
 
 The aggchain proof request body is:
 
@@ -82,13 +89,17 @@ Examples:
 
 ```bash
 curl -sS -X POST localhost:5579/aggsender/v1/trigger-certificate
+curl -sS 'localhost:5579/aggsender/v1/certificate?height=12' | jq .
 curl -sS -X POST localhost:5579/aggchainproofgen/v1/aggchain-proof \
   -H 'Content-Type: application/json' \
   -d '{"last_proven_block":100,"requested_end_block":200}' | jq .
 ```
 
 The multidownloader reorg route is registered only when the downloader runs with
-`[L1Multidownloader] DeveloperMode = true`; without it the route does not exist.
+`[L1Multidownloader] DeveloperMode = true`, and the aggchain proof generation route only when the
+proof generator runs with `[AggchainProofGen] DeveloperMode = true`; without it the route does not
+exist. In normal mode an aggchain-proof-gen-only node serves only `/` and `/health`, on `PublicREST`,
+and does not start `AdminREST`.
 
 ## Claims limits
 
@@ -135,10 +146,10 @@ MaxRequestBodyBytes = 1048576
 ```
 
 `PublicREST` starts whenever the node runs at least one component, and every node serves `/` and
-`/health` on it. That includes a node that runs only the aggchain proof generator, whose API routes are
-all on `AdminREST`: it still answers health checks on `PublicREST`. `AdminREST` starts only when a
-component registers operator routes: the aggsender (when `[AggSender] EnableRPC = true`), the aggchain
-proof generation component, or the L1 multidownloader in developer mode.
+`/health` on it. That includes a node that runs only the aggchain proof generator: in normal mode it
+serves only those two routes, and starts `AdminREST` only in developer mode. `AdminREST` starts only
+when a component registers operator routes: the aggsender (when `[AggSender] EnableRPC = true`), the
+L1 multidownloader in developer mode, or the aggchain proof generation component in developer mode.
 
 `AdminREST` is meant for local access and binds `127.0.0.1` by default, so operator actions are only
 reachable from the machine that runs aggkit. To reach it remotely, bind it to another interface
@@ -167,7 +178,7 @@ Setting `MaxRequestsPerIPAndSecond` in a REST section has no effect.
 | Former JSON-RPC method | Endpoint | Server |
 | --- | --- | --- |
 | `aggsender_status` | `GET /aggsender/v1/status` | PublicREST |
-| `aggsender_getCertificateHeaderPerHeight` | `GET /aggsender/v1/certificate-header` | PublicREST |
+| `aggsender_getCertificateHeaderPerHeight` | `GET /aggsender/v1/certificate-header` (header only), `GET /aggsender/v1/certificate` (full certificate) | PublicREST, AdminREST |
 | `aggsender_getCertificateBridgeExits` | `GET /aggsender/v1/certificate-bridge-exits` | PublicREST |
 | `aggsender_triggerCertificate` | `POST /aggsender/v1/trigger-certificate` | AdminREST |
 | `l1claimsync_status`, `l2claimsync_status` | `GET /l1claimsync/v1/status`, `GET /l2claimsync/v1/status` | PublicREST |
@@ -178,5 +189,5 @@ Setting `MaxRequestsPerIPAndSecond` in a REST section has no effect.
 | `l1infotreesync_getInfoByRoot` | `GET /l1infotreesync/v1/info-by-root?root=` | PublicREST |
 | `multidownloader-l1_status` | `GET /multidownloader/v1/l1/status` | PublicREST |
 | `multidownloader-l1_reorg` | `POST /multidownloader/v1/l1/reorg?block=` | AdminREST (developer mode) |
-| `aggkit_generateAggchainProof` | `POST /aggchainproofgen/v1/aggchain-proof` | AdminREST |
+| `aggkit_generateAggchainProof` | `POST /aggchainproofgen/v1/aggchain-proof` | AdminREST (developer mode) |
 | The claim syncer start-block setter methods (L1 and L2) | Removed: the claim syncer's start block is set by the components that use it | — |

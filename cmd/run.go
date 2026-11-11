@@ -274,7 +274,7 @@ func start(cliCtx *cli.Context) error {
 				log.Fatal(err)
 			}
 
-			routes.addAdminAPI(aggchainProofGen)
+			routes.addDeveloperAdminAPI(aggchainProofGen, cfg.AggchainProofGen.DeveloperMode)
 		case aggkitcommon.AGGSENDERVALIDATOR:
 			aggsenderValidator, err := createAggSenderValidator(
 				ctx,

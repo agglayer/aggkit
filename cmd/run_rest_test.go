@@ -99,6 +99,7 @@ func TestDefaultConfigHasNoJSONRPCServer(t *testing.T) {
 	require.Equal(t, "127.0.0.1", cfg.AdminREST.Host)
 	require.Equal(t, "0.0.0.0", cfg.PublicREST.Host)
 	require.True(t, cfg.AggSender.EnableRPC)
+	require.False(t, cfg.AggchainProofGen.DeveloperMode)
 }
 
 func TestRESTRoutesAggsenderOnly(t *testing.T) {
@@ -116,10 +117,16 @@ func TestRESTRoutesAggsenderOnly(t *testing.T) {
 		"GET /aggsender/v1/status",
 		"GET /aggsender/v1/certificate-header",
 		"GET /aggsender/v1/certificate-bridge-exits",
+		"GET /aggsender/v1/certificate-imported-bridge-exits",
 	)
-	requireRoutes(t, admin, "POST /aggsender/v1/trigger-certificate")
+	requireRoutes(t, admin,
+		"GET /aggsender/v1/certificate",
+		"POST /aggsender/v1/trigger-certificate",
+	)
+	require.NotContains(t, routeSet(public), "GET /aggsender/v1/certificate")
 	require.NotContains(t, routeSet(public), "POST /aggsender/v1/trigger-certificate")
 	require.NotContains(t, routeSet(admin), "GET /aggsender/v1/status")
+	require.NotContains(t, routeSet(admin), "GET /aggsender/v1/certificate-header")
 
 	rec := httptest.NewRecorder()
 	public.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
@@ -168,23 +175,36 @@ func TestRESTRoutesNoComponentNoHealth(t *testing.T) {
 }
 
 func TestRESTRoutesAggchainProofGenOnlyServesHealth(t *testing.T) {
+	proofGen := stubAdminOnlyRoutes{adminPath: "/aggchainproofgen/v1/aggchain-proof"}
+
+	// In normal mode the proof helper registers no route: the node serves health on the public
+	// server and does not start the admin server.
 	routes, public, admin := newTestRoutes()
-	routes.addAdminAPI(stubAdminOnlyRoutes{adminPath: "/aggchainproofgen/v1/aggchain-proof"})
+	routes.addDeveloperAdminAPI(proofGen, false)
 	routes.registerHealth(nil)
 
-	// A node that runs only components with admin routes still serves health, on the public
-	// server, so the public listener must start with just those two routes.
+	require.True(t, routes.publicHasRoutes)
+	require.False(t, routes.adminHasRoutes)
+	require.Len(t, public.Routes(), 2)
+	requireRoutes(t, public, "GET /", "GET /health")
+	require.Empty(t, admin.Routes())
+
+	rec := httptest.NewRecorder()
+	public.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"is_healthy": true`)
+
+	// Developer mode adds the proof generation route on the admin server.
+	routes, public, admin = newTestRoutes()
+	routes.addDeveloperAdminAPI(proofGen, true)
+	routes.registerHealth(nil)
+
 	require.True(t, routes.publicHasRoutes)
 	require.True(t, routes.adminHasRoutes)
 	require.Len(t, public.Routes(), 2)
 	requireRoutes(t, public, "GET /", "GET /health")
 	requireRoutes(t, admin, "POST /aggchainproofgen/v1/aggchain-proof")
 	require.NotContains(t, routeSet(admin), "GET /health")
-
-	rec := httptest.NewRecorder()
-	public.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
-	require.Equal(t, http.StatusOK, rec.Code)
-	require.Contains(t, rec.Body.String(), `"is_healthy": true`)
 }
 
 func TestRESTRoutesMultidownloaderAdminRoutesNeedDeveloperMode(t *testing.T) {

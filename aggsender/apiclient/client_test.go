@@ -46,7 +46,7 @@ func TestGetStatus(t *testing.T) {
 
 func TestGetCertificateHeaderPerHeight(t *testing.T) {
 	height := uint64(1)
-	expected := types.Certificate{Header: &types.CertificateHeader{Height: height}}
+	expected := types.CertificateHeader{Height: height, ToBlock: 10}
 	server := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodGet, r.Method)
 		require.Equal(t, certificateHeaderPath, r.URL.Path)
@@ -54,10 +54,10 @@ func TestGetCertificateHeaderPerHeight(t *testing.T) {
 		writeJSON(t, w, http.StatusOK, expected)
 	})
 
-	cert, err := NewClient(server.URL).GetCertificateHeaderPerHeight(&height)
+	header, err := NewClient(server.URL).GetCertificateHeaderPerHeight(&height)
 	require.NoError(t, err)
-	require.NotNil(t, cert)
-	require.Equal(t, expected, *cert)
+	require.NotNil(t, header)
+	require.Equal(t, expected, *header)
 
 	// Without a height the query parameter is absent.
 	serverNoHeight := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -91,6 +91,24 @@ func TestGetCertificateBridgeExits(t *testing.T) {
 	require.Len(t, exits, 1)
 	require.Equal(t, expected[0].DestinationNetwork, exits[0].DestinationNetwork)
 	require.Equal(t, expected[0].DestinationAddress, exits[0].DestinationAddress)
+}
+
+func TestGetCertificateImportedBridgeExits(t *testing.T) {
+	height := uint64(42)
+	expected := []*agglayertypes.ImportedBridgeExit{
+		{GlobalIndex: &agglayertypes.GlobalIndex{RollupIndex: 1, LeafIndex: 3}},
+	}
+	server := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, certificateImportedExitsPath, r.URL.Path)
+		require.Equal(t, "42", r.URL.Query().Get(heightQueryParam))
+		writeJSON(t, w, http.StatusOK, expected)
+	})
+
+	exits, err := NewClient(server.URL).GetCertificateImportedBridgeExits(&height)
+	require.NoError(t, err)
+	require.Len(t, exits, 1)
+	require.Equal(t, expected[0].GlobalIndex, exits[0].GlobalIndex)
 }
 
 func TestClientTrimsTrailingSlashOfBaseURL(t *testing.T) {
@@ -144,6 +162,7 @@ func TestGetStatus_Errors(t *testing.T) {
 
 		_, err := NewClient(server.URL).GetCertificateHeaderPerHeight(nil)
 		require.Error(t, err)
+		require.ErrorIs(t, err, ErrNotFound)
 		require.Contains(t, err.Error(), "404")
 		require.Contains(t, err.Error(), "certificate not found")
 	})

@@ -57,7 +57,7 @@ func (s *stubAggsenderAPI) GetCertificateBridgeExits(height *uint64) ([]*agglaye
 	return s.exitsByHeight[*height], nil
 }
 
-func (s *stubAggsenderAPI) GetCertificateHeaderPerHeight(_ *uint64) (*aggsendertypes.Certificate, error) {
+func (s *stubAggsenderAPI) GetCertificateHeaderPerHeight(_ *uint64) (*aggsendertypes.CertificateHeader, error) {
 	return nil, fmt.Errorf("stub: not implemented")
 }
 

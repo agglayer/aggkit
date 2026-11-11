@@ -69,6 +69,16 @@ func (r *restRoutes) addAggsender(c interface {
 	r.addAdminAPI(c)
 }
 
+// addDeveloperAdminAPI registers the operator routes of a developer-mode component on the admin
+// server. The routes only exist in developer mode, so a node whose components register nothing
+// this way does not start the admin server.
+func (r *restRoutes) addDeveloperAdminAPI(c adminRoutesRegisterer, developerMode bool) {
+	if !developerMode {
+		return
+	}
+	r.addAdminAPI(c)
+}
+
 // addMultidownloader registers the multidownloader status route on the public server. Its
 // operator routes are only registered on the admin server in developer mode.
 func (r *restRoutes) addMultidownloader(c interface {
@@ -76,9 +86,7 @@ func (r *restRoutes) addMultidownloader(c interface {
 	adminRoutesRegisterer
 }, developerMode bool) {
 	r.addPublicAPI(c)
-	if developerMode {
-		r.addAdminAPI(c)
-	}
+	r.addDeveloperAdminAPI(c, developerMode)
 }
 
 // registerHealth serves "/" and "/health" on the public server for every node that runs at

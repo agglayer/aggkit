@@ -406,8 +406,8 @@ This paragraph explains different use cases with outcomes:
 
 With `[AggSender] EnableRPC = true`, the aggsender serves its API on the aggkit REST servers (see
 [REST API](./rest_api.md) for the full list and the server configuration). Read-only queries are on
-`PublicREST` (default `0.0.0.0:5577`) and the operator action that forces a trigger is on `AdminREST`
-(default `127.0.0.1:5579`).
+`PublicREST` (default `0.0.0.0:5577`); the operator actions (forcing a trigger) and the full-certificate
+lookup are on `AdminREST` (default `127.0.0.1:5579`).
 
 ```bash
 # Status, including the aggsender mode
@@ -420,6 +420,12 @@ curl -sS 'localhost:5577/aggsender/v1/certificate-header?height=12' | jq .
 # Bridge exits of the last sent certificate, and of the certificate at height 12
 curl -sS localhost:5577/aggsender/v1/certificate-bridge-exits | jq .
 curl -sS 'localhost:5577/aggsender/v1/certificate-bridge-exits?height=12' | jq .
+
+# Imported bridge exits of the certificate at height 12
+curl -sS 'localhost:5577/aggsender/v1/certificate-imported-bridge-exits?height=12' | jq .
+
+# Full certificate at height 12 (signed payload, aggchain proof and extra data)
+curl -sS 'localhost:5579/aggsender/v1/certificate?height=12' | jq .
 
 # Force a certificate trigger
 curl -sS -X POST localhost:5579/aggsender/v1/trigger-certificate

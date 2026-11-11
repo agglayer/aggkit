@@ -3,6 +3,7 @@ package apiclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,12 +23,17 @@ const (
 	// or wrong endpoint cannot make it read an unbounded stream.
 	maxResponseBytes = 16 << 20
 
-	statusPath                 = "/aggsender/v1/status"
-	certificateHeaderPath      = "/aggsender/v1/certificate-header"
-	certificateBridgeExitsPath = "/aggsender/v1/certificate-bridge-exits"
+	statusPath                   = "/aggsender/v1/status"
+	certificateHeaderPath        = "/aggsender/v1/certificate-header"
+	certificateBridgeExitsPath   = "/aggsender/v1/certificate-bridge-exits"
+	certificateImportedExitsPath = "/aggsender/v1/certificate-imported-bridge-exits"
 
 	heightQueryParam = "height"
 )
+
+// ErrNotFound is wrapped in the error the client returns for an HTTP 404, so
+// callers can tell "nothing matched" from a transport or server failure.
+var ErrNotFound = errors.New("not found")
 
 // Client calls the aggkit PublicREST API. The base URL is the root of that
 // server, for example http://localhost:5577.
@@ -55,10 +61,11 @@ func (c *Client) GetStatus() (*types.AggsenderInfo, error) {
 	return &result, nil
 }
 
-// GetCertificateHeaderPerHeight returns the certificate at the given height.
-// When height is nil it returns the last sent certificate.
-func (c *Client) GetCertificateHeaderPerHeight(height *uint64) (*types.Certificate, error) {
-	result := types.Certificate{}
+// GetCertificateHeaderPerHeight returns the header of the certificate at the
+// given height. When height is nil it returns the header of the last sent
+// certificate.
+func (c *Client) GetCertificateHeaderPerHeight(height *uint64) (*types.CertificateHeader, error) {
+	result := types.CertificateHeader{}
 	if err := c.get(certificateHeaderPath, heightQuery(height), &result); err != nil {
 		return nil, fmt.Errorf("error calling %s: %w", certificateHeaderPath, err)
 	}
@@ -72,6 +79,17 @@ func (c *Client) GetCertificateBridgeExits(height *uint64) ([]*agglayertypes.Bri
 	var result []*agglayertypes.BridgeExit
 	if err := c.get(certificateBridgeExitsPath, heightQuery(height), &result); err != nil {
 		return nil, fmt.Errorf("error calling %s: %w", certificateBridgeExitsPath, err)
+	}
+	return result, nil
+}
+
+// GetCertificateImportedBridgeExits returns the imported bridge exits of the
+// certificate at the given height. When height is nil it returns the imported
+// bridge exits of the last sent certificate.
+func (c *Client) GetCertificateImportedBridgeExits(height *uint64) ([]*agglayertypes.ImportedBridgeExit, error) {
+	var result []*agglayertypes.ImportedBridgeExit
+	if err := c.get(certificateImportedExitsPath, heightQuery(height), &result); err != nil {
+		return nil, fmt.Errorf("error calling %s: %w", certificateImportedExitsPath, err)
 	}
 	return result, nil
 }
@@ -110,7 +128,11 @@ func (c *Client) get(path string, query url.Values, out any) error {
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, apiErrorMessage(body))
+		err := fmt.Errorf("unexpected status %d: %s", resp.StatusCode, apiErrorMessage(body))
+		if resp.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("%w: %w", ErrNotFound, err)
+		}
+		return err
 	}
 
 	return json.Unmarshal(body, out)
