@@ -93,7 +93,8 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	}, l1Client, validatorSigner, cache.New(cfg.Cache.MaxEntries))
 
 	logger.Info("GER validator signer ready",
-		"version", version.Get().String(),
+		"version", version.Get().Version,
+		"gitRev", version.Get().GitRev,
 		"signer", validatorSigner.Address(),
 		"l1", config.MaskURL(cfg.L1RPCURL),
 		"l1ChainID", cfg.L1ChainID,

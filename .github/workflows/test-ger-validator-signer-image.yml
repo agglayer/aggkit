@@ -1,0 +1,78 @@
+name: Test GER Validator Signer Image
+
+# ger_validator_signer is its own Go module and has its own docker image, separate from the aggkit one
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'release/**'
+    paths:
+      - 'tools/ger_validator_signer/**'
+      - 'Makefile'
+      - 'version.mk'
+      - '.github/workflows/test-ger-validator-signer-image.yml'
+  pull_request:
+    paths:
+      - 'tools/ger_validator_signer/**'
+      - 'Makefile'
+      - 'version.mk'
+      - '.github/workflows/test-ger-validator-signer-image.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  IMAGE: ger_validator_signer:local
+
+jobs:
+  build-image:
+    name: build and check the image
+    permissions:
+      contents: read
+    runs-on: amd-runner-2204
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          fetch-depth: 0  # the version of the image comes from git describe
+          persist-credentials: false
+
+      - name: Build the image
+        run: make build-docker-ger_validator_signer
+
+      - name: Verify version in image
+        run: |
+          out=$(docker run --rm "${IMAGE}" version) || { echo "ERROR: docker run failed"; exit 1; }
+          ver=$(echo "$out" | awk '/^Version:/{print $2}')
+          [ -n "$ver" ] || { echo "ERROR: Docker image has no version embedded"; exit 1; }
+          echo "Version check passed: $ver"
+
+      - name: Verify the image doesn't run as root
+        run: |
+          user=$(docker inspect --format '{{.Config.User}}' "${IMAGE}")
+          [ "$user" = "appuser" ] || { echo "ERROR: the image runs as '$user', expected appuser"; exit 1; }
+
+      - name: Verify the production image has no shell
+        run: |
+          if docker run --rm --entrypoint /bin/sh "${IMAGE}" -c true 2>/dev/null; then
+            echo "ERROR: the production image has a shell"; exit 1
+          fi
+
+      - name: Verify the validator refuses to start without a configuration
+        run: |
+          set +e
+          # No arguments: the default command (run --cfg /etc/ger_validator_signer/config.toml), without that file
+          out=$(docker run --rm "${IMAGE}" 2>&1)
+          code=$?
+          set -e
+          echo "$out"
+          [ "$code" -ne 0 ] || { echo "ERROR: the validator started without a configuration"; exit 1; }
+          echo "$out" | grep -q "failed to read the configuration file" \
+            || { echo "ERROR: unexpected error message"; exit 1; }
