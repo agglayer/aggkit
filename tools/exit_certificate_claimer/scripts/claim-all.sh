@@ -7,7 +7,8 @@
 # AgglayerBridge.claimAsset for each one through the sibling claim-asset.sh.
 #
 # The set of addresses is:
-#   - every EOA listed in <outputDir>/step-b-eoa-balances.json, and
+#   - every EOA listed in <outputDir>/step-b-eoa-balances.json,
+#   - every L1 destination of <outputDir>/exit-certificate-full.json when it exists (delta runs), and
 #   - the config's exitAddress (where the smart-contract-locked funds are sent).
 #
 # Usage:
@@ -25,6 +26,8 @@
 #     PRIVATE_KEY            raw hex signing key for the claimAsset transactions
 #     KEYSTORE               path to an encrypted keystore JSON
 #     KEYSTORE_PASSWORD      password for KEYSTORE
+#   EOA_FILE      EOA list to claim for (default: <outputDir>/step-b-eoa-balances.json); needed
+#                 with a delta config, whose output dir has no such file.
 #   DRY_RUN       When 1, only print the parameters / cast command for each claim.
 #   ASSUME_YES    When 1, skip the single up-front confirmation prompt.
 #
@@ -61,6 +64,8 @@ usage() {
 		  KEYSTORE_PASSWORD  Password for KEYSTORE.
 		                     If none of the above signer vars are set, the config's local
 		                     signerConfig keystore is used.
+		  EOA_FILE           EOA list to claim for (default: <outputDir>/step-b-eoa-balances.json).
+		                     Needed with a delta config, whose output dir has no such file.
 		  DRY_RUN            When 1, only print the parameters / cast command for each claim.
 		  ASSUME_YES         When 1, skip the up-front confirmation prompt.
 	EOF
@@ -114,7 +119,9 @@ BRIDGE_ADDRESS="${BRIDGE_ADDRESS:-$(jq -r '.l1BridgeAddress // empty' "$CONFIG_F
 	exit 1
 }
 OUTPUT_DIR="$(resolve_path "$OUTPUT_DIR_RAW")"
-EOA_FILE="${OUTPUT_DIR}/step-b-eoa-balances.json"
+# A delta run's output dir has no step-b-eoa-balances.json (it does not scan the L2): point EOA_FILE
+# at the one of the run that produced the first certificate.
+EOA_FILE="${EOA_FILE:-${OUTPUT_DIR}/step-b-eoa-balances.json}"
 [ -f "$EOA_FILE" ] || {
 	echo "error: EOA balances file '$EOA_FILE' not found (run the exit tool first)" >&2
 	exit 1
@@ -184,6 +191,16 @@ fi
 while IFS= read -r addr; do
 	add_address "$addr"
 done < <(jq -r '.[] | if type == "object" then .address else . end' "$EOA_FILE")
+
+# After a delta run the output dir holds exit-certificate-full.json (every exit, old and new). Its
+# destinations are claimed too: a delta may pay an address that was neither an EOA of the first scan
+# nor the exitAddress.
+FULL_CERT="${OUTPUT_DIR}/exit-certificate-full.json"
+if [ -f "$FULL_CERT" ]; then
+	while IFS= read -r addr; do
+		add_address "$addr"
+	done < <(jq -r '.bridge_exits[]? | select(.dest_network == 0) | .dest_address' "$FULL_CERT")
+fi
 
 [ "${#ADDRESSES[@]}" -gt 0 ] || [ -n "$EXIT_ADDRESS_LC" ] || {
 	echo "error: no addresses to claim for" >&2
