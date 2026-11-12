@@ -391,6 +391,14 @@ MaxAttempts = 20
 # ------------------------------------------------------------------------------
 WaitPeriodNextGER = "10s"
 
+# ------------------------------------------------------------------------------
+# AggOracleCommittee v2: the AggOracle collects the signatures of the GER validators and injects the GER with a
+# single transaction. Otherwise the mode is detected from the L2 (auto)
+# ------------------------------------------------------------------------------
+{{- if .use_agg_oracle_committee_v2 }}
+Mode = "committee"
+{{- end }}
+
 [AggOracle.EVMSender]
 # ------------------------------------------------------------------------------
 # Address of the sovereign global exit root proxy contract on L2
@@ -417,6 +425,13 @@ GlobalExitRootL2 = ""
 # Duration expressed in units: [ns, us, ms, s, m, h, d]"
 # ------------------------------------------------------------------------------
 WaitPeriodMonitorTx = "10s"
+
+# ------------------------------------------------------------------------------
+# The AggOracleCommittee v2 contract, that is the GER updater of the L2 GER manager
+# ------------------------------------------------------------------------------
+{{- if .use_agg_oracle_committee_v2 }}
+AggOracleCommitteeAddr = "{{ .agg_oracle_committee_address }}"
+{{- end }}
 
 [AggOracle.EVMSender.EthTxManager]
 # ------------------------------------------------------------------------------
