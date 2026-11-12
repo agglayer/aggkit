@@ -8,7 +8,7 @@
 # ================================
 # STAGE 1: Build binary
 # ================================
-FROM golang:1.27.3-alpine AS builder
+FROM golang:1.27.4-alpine AS builder
 
 # CGO is needed: the GCP KMS signer of go_signer (op-signer) uses the C implementation of secp256k1
 RUN apk add --no-cache gcc musl-dev git
