@@ -24,7 +24,7 @@ env:
   # The AggOracle committee v2 e2e needs a kurtosis-cdk that has the committee, and the commit above doesn't:
   # 0xPolygon/kurtosis-cdk#1044. Only that job uses this one, in every event (it doesn't follow "main" on schedule).
   # Replace it by the commit of the merge, or by "main", when the PR is merged
-  KURTOSIS_CDK_COMMITTEE_V2_COMMIT: "f070e416a3abc8e5cb9259360830951fd0b024c4"
+  KURTOSIS_CDK_COMMITTEE_V2_COMMIT: "e9b52ba86b05262a530f9fa18cd59f76e5ef8197"
 
 jobs:
   get-kurtosis-cdk-commit:
