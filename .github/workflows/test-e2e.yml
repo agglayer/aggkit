@@ -322,13 +322,14 @@ jobs:
       - build-tools
       - read-aggkit-args
     if: needs.read-aggkit-args.outputs.committee-v2-enabled == 'true'
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c97e11e5f90164fdd16901db11c96a5bcf8fb11f  # agglayer/e2e main
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@18a9d0f07e55f2ec5d58ee93bd9687598b208aad  # agglayer/e2e#277 (committee v2 tests)
     secrets:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       # The commit of kurtosis-cdk with the committee v2, not the one of the other jobs
       kurtosis-cdk-ref: ${{ needs.read-aggkit-args.outputs.committee-v2-kurtosis-ref }}
-      agglayer-e2e-ref: c97e11e5f90164fdd16901db11c96a5bcf8fb11f # agglayer/e2e main (aggkit-config-artifact support)
+      # The commit of agglayer/e2e with the committee v2 tests. Pin it to the merge commit once agglayer/e2e#277 is merged.
+      agglayer-e2e-ref: 18a9d0f07e55f2ec5d58ee93bd9687598b208aad # agglayer/e2e#277 (committee v2 tests)
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
