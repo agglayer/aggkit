@@ -5,7 +5,7 @@ package mocks
 import (
 	big "math/big"
 
-	aggoraclecommitteev2 "github.com/agglayer/aggkit/aggoracle/contracts/aggoraclecommitteev2"
+	aggoraclecommittee "github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggoraclecommittee"
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
 
@@ -86,23 +86,23 @@ func (_c *AggOracleCommitteeV2Contract_AgglayerGERL2_Call) RunAndReturn(run func
 }
 
 // GetValidatorsInfo provides a mock function with given fields: opts
-func (_m *AggOracleCommitteeV2Contract) GetValidatorsInfo(opts *bind.CallOpts) ([]aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo, error) {
+func (_m *AggOracleCommitteeV2Contract) GetValidatorsInfo(opts *bind.CallOpts) ([]aggoraclecommittee.IAggOracleCommitteeValidatorInfo, error) {
 	ret := _m.Called(opts)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetValidatorsInfo")
 	}
 
-	var r0 []aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo
+	var r0 []aggoraclecommittee.IAggOracleCommitteeValidatorInfo
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) ([]aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo, error)); ok {
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) ([]aggoraclecommittee.IAggOracleCommitteeValidatorInfo, error)); ok {
 		return rf(opts)
 	}
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) []aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo); ok {
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) []aggoraclecommittee.IAggOracleCommitteeValidatorInfo); ok {
 		r0 = rf(opts)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo)
+			r0 = ret.Get(0).([]aggoraclecommittee.IAggOracleCommitteeValidatorInfo)
 		}
 	}
 
@@ -133,12 +133,12 @@ func (_c *AggOracleCommitteeV2Contract_GetValidatorsInfo_Call) Run(run func(opts
 	return _c
 }
 
-func (_c *AggOracleCommitteeV2Contract_GetValidatorsInfo_Call) Return(_a0 []aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo, _a1 error) *AggOracleCommitteeV2Contract_GetValidatorsInfo_Call {
+func (_c *AggOracleCommitteeV2Contract_GetValidatorsInfo_Call) Return(_a0 []aggoraclecommittee.IAggOracleCommitteeValidatorInfo, _a1 error) *AggOracleCommitteeV2Contract_GetValidatorsInfo_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggOracleCommitteeV2Contract_GetValidatorsInfo_Call) RunAndReturn(run func(*bind.CallOpts) ([]aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo, error)) *AggOracleCommitteeV2Contract_GetValidatorsInfo_Call {
+func (_c *AggOracleCommitteeV2Contract_GetValidatorsInfo_Call) RunAndReturn(run func(*bind.CallOpts) ([]aggoraclecommittee.IAggOracleCommitteeValidatorInfo, error)) *AggOracleCommitteeV2Contract_GetValidatorsInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }

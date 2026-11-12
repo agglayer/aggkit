@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agglayer/aggkit/aggoracle/contracts/aggoraclecommitteev2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggoraclecommittee"
 	"github.com/agglayer/aggkit/aggoracle/gervalidator"
 	"github.com/agglayer/aggkit/aggoracle/types"
 	"github.com/agglayer/aggkit/log"
@@ -122,7 +122,7 @@ func NewCommitteeV2Sender(
 		return nil, fmt.Errorf("CollectRetryInterval must be greater than 0, got %s", cfg.CollectRetryInterval)
 	}
 
-	committeeABI, err := aggoraclecommitteev2.AggOracleCommitteeV2MetaData.GetAbi()
+	committeeABI, err := aggoraclecommittee.AggoraclecommitteeMetaData.GetAbi()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve the AggOracleCommittee v2 ABI: %w", err)
 	}
