@@ -130,8 +130,8 @@ jobs:
 
       - name: Install kurtosis cli and jq
         env:
-          KURTOSIS_VERSION: "1.14.1"
-          KURTOSIS_SHA256: "0bdb71dc20eaadba4812324d19acb2ebb4f77889b1c8dc32867288835e59b4da"
+          KURTOSIS_VERSION: "1.22.2"
+          KURTOSIS_SHA256: "789be2d263e3ba731b8bc99e7bf2162f58efa8d085e481f2aecfcccbe1b46734"
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
@@ -144,6 +144,10 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/${archive}" -C "${install_dir}" kurtosis
           echo "${install_dir}" >> "${GITHUB_PATH}"
           "${install_dir}/kurtosis" analytics disable
+          # Since 1.21 the engine starts otel + ClickHouse side containers on Docker; keep the log
+          # collector the single-chain jobs use so the runner carries no extra containers.
+          printf '%s\n' 'config-version: 9' 'should-send-metrics: false' 'kurtosis-clusters:' \
+            '  docker:' '    type: docker' '    backend-log-collector: vector' > "$("${install_dir}/kurtosis" config path)"
           "${install_dir}/kurtosis" version
 
       - name: Write args input to a file

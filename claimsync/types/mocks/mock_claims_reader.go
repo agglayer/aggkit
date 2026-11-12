@@ -342,6 +342,68 @@ func (_c *ClaimsReader_GetClaimsPaged_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
+// GetClaimsWithLimit provides a mock function with given fields: ctx, tx, fromBlock, toBlock, limit
+func (_m *ClaimsReader) GetClaimsWithLimit(ctx context.Context, tx types.Querier, fromBlock uint64, toBlock uint64, limit uint64) ([]claimsynctypes.Claim, error) {
+	ret := _m.Called(ctx, tx, fromBlock, toBlock, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetClaimsWithLimit")
+	}
+
+	var r0 []claimsynctypes.Claim
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, types.Querier, uint64, uint64, uint64) ([]claimsynctypes.Claim, error)); ok {
+		return rf(ctx, tx, fromBlock, toBlock, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, types.Querier, uint64, uint64, uint64) []claimsynctypes.Claim); ok {
+		r0 = rf(ctx, tx, fromBlock, toBlock, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]claimsynctypes.Claim)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, types.Querier, uint64, uint64, uint64) error); ok {
+		r1 = rf(ctx, tx, fromBlock, toBlock, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ClaimsReader_GetClaimsWithLimit_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetClaimsWithLimit'
+type ClaimsReader_GetClaimsWithLimit_Call struct {
+	*mock.Call
+}
+
+// GetClaimsWithLimit is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tx types.Querier
+//   - fromBlock uint64
+//   - toBlock uint64
+//   - limit uint64
+func (_e *ClaimsReader_Expecter) GetClaimsWithLimit(ctx interface{}, tx interface{}, fromBlock interface{}, toBlock interface{}, limit interface{}) *ClaimsReader_GetClaimsWithLimit_Call {
+	return &ClaimsReader_GetClaimsWithLimit_Call{Call: _e.mock.On("GetClaimsWithLimit", ctx, tx, fromBlock, toBlock, limit)}
+}
+
+func (_c *ClaimsReader_GetClaimsWithLimit_Call) Run(run func(ctx context.Context, tx types.Querier, fromBlock uint64, toBlock uint64, limit uint64)) *ClaimsReader_GetClaimsWithLimit_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(types.Querier), args[2].(uint64), args[3].(uint64), args[4].(uint64))
+	})
+	return _c
+}
+
+func (_c *ClaimsReader_GetClaimsWithLimit_Call) Return(_a0 []claimsynctypes.Claim, _a1 error) *ClaimsReader_GetClaimsWithLimit_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ClaimsReader_GetClaimsWithLimit_Call) RunAndReturn(run func(context.Context, types.Querier, uint64, uint64, uint64) ([]claimsynctypes.Claim, error)) *ClaimsReader_GetClaimsWithLimit_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetFirstProcessedBlock provides a mock function with given fields: ctx, tx
 func (_m *ClaimsReader) GetFirstProcessedBlock(ctx context.Context, tx types.Querier) (uint64, bool, error) {
 	ret := _m.Called(ctx, tx)

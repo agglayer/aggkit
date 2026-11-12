@@ -12,6 +12,7 @@ import (
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -221,14 +222,18 @@ func TestGetL1InfoTreeMerkleProofFromIndexToRoot(t *testing.T) {
 	require.True(t, errors.Is(err, sync.ErrInconsistentState))
 }
 
-func TestGetRPCServices(t *testing.T) {
-	s := L1InfoTreeSync{
-		processor: &processor{
-			halted: true,
-		},
+func TestRegisterRoutes(t *testing.T) {
+	s := L1InfoTreeSync{}
+	engine := gin.New()
+	s.RegisterRoutes(engine)
+
+	paths := make(map[string]bool, len(engine.Routes()))
+	for _, route := range engine.Routes() {
+		paths[route.Path] = true
 	}
-	services := s.GetRPCServices()
-	require.Equal(t, 1, len(services))
+	require.True(t, paths[L1InfoTreeSyncV1Prefix+"/status"])
+	require.True(t, paths[L1InfoTreeSyncV1Prefix+"/info-by-global-exit-root"])
+	require.True(t, paths[L1InfoTreeSyncV1Prefix+"/info-by-root"])
 }
 
 func TestIsUpToDate(t *testing.T) {

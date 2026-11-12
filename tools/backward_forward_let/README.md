@@ -28,11 +28,15 @@ The tool reads the same TOML config format as aggkit and requires these sections
 - `BridgeL2Sync.BridgeAddr`
 - `AgglayerClient`
 - `BackwardForwardLET.BridgeServiceURL`
-- `BackwardForwardLET.AggsenderRPCURL`
+- `BackwardForwardLET.AggsenderRPCURL` (base URL of the aggkit PublicREST API)
 - `BackwardForwardLET.L2NetworkID`
 - `BackwardForwardLET.GERRemoverKey`
 - `BackwardForwardLET.EmergencyPauserKey`
 - `BackwardForwardLET.EmergencyUnpauserKey`
+
+`AggsenderRPCURL` keeps its name so existing configs keep working; it now holds the
+base URL of the aggkit PublicREST API, so an existing invocation only needs the URL
+changed to point at the REST port instead of the old JSON-RPC port.
 
 Example:
 
@@ -51,7 +55,7 @@ UseTLS            = false
 
 [BackwardForwardLET]
 BridgeServiceURL = "http://localhost:8080/bridge/v1"
-AggsenderRPCURL  = "http://localhost:5576"
+AggsenderRPCURL  = "http://localhost:5577"
 L2NetworkID      = 1
 
 [BackwardForwardLET.GERRemoverKey]
@@ -220,7 +224,7 @@ backward-forward-let craft-cert \
   --out /tmp/malicious-cert.json
 ```
 
-If aggkit/aggsender is stopped and aggsender RPC is unavailable, add `--db-path` so the
+If aggkit/aggsender is stopped and the aggsender API is unavailable, add `--db-path` so the
 command can reconstruct prior settled bridge exits from the aggsender SQLite DB:
 
 ```bash
@@ -234,7 +238,7 @@ backward-forward-let craft-cert \
   --out /tmp/malicious-cert.json
 ```
 
-If aggsender is intentionally stopped and neither aggsender RPC nor the local DB can
+If aggsender is intentionally stopped and neither the aggsender API nor the local DB can
 provide all historical bridge exits, reuse the same fallback override file used by the
 main diagnosis command:
 
@@ -254,7 +258,7 @@ Flags:
 - `--signer-key-path`: optional local-keystore override for the signer config
 - `--signer-key-password`: password for the local-keystore override
 - `--out`: write crafted JSON to a file instead of stdout
-- `--db-path`: optional aggsender SQLite DB path when aggsender RPC is unavailable
+- `--db-path`: optional aggsender SQLite DB path when the aggsender API is unavailable
 - `--num-fake-exits`: number of fake exits to include
 - `--starting-exit-index`: start index used to derive unique destination addresses
 - `--nonce`: optional deterministic nonce used in fake destination derivation
@@ -267,7 +271,7 @@ Flags:
 Behavior:
 
 - reads the current settled state from AggLayer,
-- reconstructs the existing leaf sequence from aggsender RPC, aggsender DB, fallback
+- reconstructs the existing leaf sequence from the aggsender API, aggsender DB, fallback
   override data, and bridge service as needed,
 - builds one or more fake `BridgeExit`s,
 - computes the resulting `NewLocalExitRoot`,

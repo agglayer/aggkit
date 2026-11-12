@@ -117,6 +117,10 @@ type SCLockedValue struct {
 	// PendingSCLockedBalance is the net SC-locked value that requires a bridge exit to
 	// exitAddress: TotalSCLockedBalance − ERC20HoldersCovered.
 	PendingSCLockedBalance string `json:"pendingSCLockedBalance"`
+	// RecoveredSCLockedBalance is the part of the SC-locked value already released to its rightful owners by
+	// the recoveries step (delta mode), which has been subtracted from PendingSCLockedBalance. Empty until a
+	// recovery is applied.
+	RecoveredSCLockedBalance string `json:"recoveredSCLockedBalance,omitempty"`
 }
 
 // StepAResult holds the output of Step A (address discovery via state dump + Transfer logs).
@@ -341,6 +345,9 @@ type StepGResult struct {
 	// BridgeEvent the replay emitted for the exit). Step I applies these values to each
 	// BridgeExit.Metadata before finalising the certificate.
 	BridgeExitMetadata [][]byte `json:"bridgeExitMetadata,omitempty"`
+	// FirstDepositCount is the leaf index of the first bridge exit the delta mode appended to the
+	// previous run's tree (delta mode only; zero otherwise).
+	FirstDepositCount uint32 `json:"firstDepositCount,omitempty"`
 }
 
 // StepHResult holds the output of Step H (PreviousLocalExitRoot and next height from agglayer).

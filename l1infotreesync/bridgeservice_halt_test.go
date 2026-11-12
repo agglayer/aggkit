@@ -56,6 +56,7 @@ func TestBridgeServiceReportsL1InfoTreeHalt(t *testing.T) {
 	bs := bridgeservice.New(cfg, nil, s, nil, nil, nil, nil, nil)
 	router := gin.New()
 	bs.RegisterRoutes(router)
+	bs.RegisterHealthRoutes(router)
 
 	// outlastCache sleeps past HealthCheckCacheTTL so the next /health call recomputes instead of
 	// returning a stale cached result from before a halt/unhalt transition.

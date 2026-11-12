@@ -133,28 +133,6 @@ func TestGenerateAggchainProof(t *testing.T) {
 	}
 }
 
-func TestGetRPCServices(t *testing.T) {
-	t.Parallel()
-
-	mockLogger := log.WithFields("test", "GetRPCServices")
-	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
-	mockAggchainProofClient := mocks.NewAggchainProofClientInterface(t)
-	mockFlow := mocks.NewAggchainProofFlow(t)
-
-	tool := &AggchainProofGenerationTool{
-		logger:              mockLogger,
-		l2Syncer:            mockL2Syncer,
-		aggchainProofClient: mockAggchainProofClient,
-		flow:                mockFlow,
-	}
-
-	services := tool.GetRPCServices()
-
-	require.Len(t, services, 1)
-	require.Equal(t, "aggkit", services[0].Name)
-	require.NotNil(t, services[0].Service)
-}
-
 func TestOptimisticModeQuerierAlwaysOff(t *testing.T) {
 	t.Parallel()
 

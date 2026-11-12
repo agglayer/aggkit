@@ -44,6 +44,12 @@ type ConfigStandalone struct {
 	//   - "false": does not start automatically; requires manual start
 	//   - "auto": automatically decides based on which component is active
 	AutoStart types.TrueFalseAutoMode `jsonschema:"enum=true, enum=false, enum=auto" mapstructure:"AutoStart"`
+	// APIMaxBlockRange is the maximum number of blocks the claims endpoint accepts in a single request
+	// (zero means the default, 10000)
+	APIMaxBlockRange uint64 `mapstructure:"APIMaxBlockRange"`
+	// APIMaxClaims is the maximum number of claims the claims endpoint returns in a single response
+	// (zero means the default, 1000)
+	APIMaxClaims uint64 `mapstructure:"APIMaxClaims"`
 }
 
 func (c ConfigEmbedded) Validate() error {

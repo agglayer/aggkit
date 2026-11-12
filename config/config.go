@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggoracle"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/prover"
@@ -78,9 +77,10 @@ const (
 		"remove it from configuration, instead use AggSender.AgglayerClient.APIRateLimits"
 	networkIDDeprecatedHint      = "Common.NetworkID is deprecated, remove it from configuration"
 	urlRPCL1DeprecatedHint       = "URLRPCL1 field is deprecated, remove it from configuration"
-	aggsenderEpochPercentageHint = "AggSender.EpochNotificationPercentage moved to AggSender.TriggerEpochBased.EpochNotificationPercentage" //nolint:lll
-	restSectionDeprecatedHint    = "REST section is deprecated and ignored, split into PublicREST and AdminREST, update your configuration" //nolint:lll
-	autoClaimRemovedHint         = "AutoClaim has been removed, delete the [AutoClaim] section from the configuration"                      //nolint:lll
+	aggsenderEpochPercentageHint = "AggSender.EpochNotificationPercentage moved to AggSender.TriggerEpochBased.EpochNotificationPercentage"            //nolint:lll
+	restSectionDeprecatedHint    = "REST section is deprecated and ignored, split into PublicREST and AdminREST, update your configuration"            //nolint:lll
+	rpcSectionDeprecatedHint     = "RPC section is no longer used: the JSON-RPC API was removed; its endpoints are served by PublicREST and AdminREST" //nolint:lll
+	autoClaimRemovedHint         = "AutoClaim has been removed, delete the [AutoClaim] section from the configuration"                                 //nolint:lll
 )
 
 type DeprecatedFieldsError struct {
@@ -250,6 +250,11 @@ var (
 			Reason:           restSectionDeprecatedHint,
 		},
 		{
+			FieldNamePattern: "RPC",
+			Reason:           rpcSectionDeprecatedHint,
+			WarnOnly:         true,
+		},
+		{
 			FieldNamePattern: "AutoClaim",
 			Reason:           autoClaimRemovedHint,
 		},
@@ -280,9 +285,6 @@ type Config struct {
 
 	// AdminREST contains the configuration for the admin REST API server.
 	AdminREST common.RESTConfig
-
-	// RPC is the config for the RPC server
-	RPC jRPC.Config
 
 	// Configuration of the reorg detector service to be used for the L1
 	ReorgDetectorL1 reorgdetector.Config
@@ -519,13 +521,17 @@ func DefaultDeprecatedFields() []DeprecatedField {
 // logged; for the rest it returns a *DeprecatedFieldsError listing the matching keys.
 func CheckDeprecatedFields(keysOnConfig []string, rules []DeprecatedField) error {
 	err := NewErrDeprecatedFields()
+	warned := make(map[string]struct{})
 	for _, key := range keysOnConfig {
 		forbbidenInfo := getDeprecatedField(key, rules)
 		if forbbidenInfo == nil {
 			continue
 		}
 		if forbbidenInfo.WarnOnly {
-			log.Warnf("deprecated config field %s: %s", key, forbbidenInfo.Reason)
+			if _, ok := warned[forbbidenInfo.Reason]; !ok {
+				warned[forbbidenInfo.Reason] = struct{}{}
+				log.Warnf("deprecated config field %s: %s", key, forbbidenInfo.Reason)
+			}
 			continue
 		}
 		err.AddDeprecatedField(key, *forbbidenInfo)

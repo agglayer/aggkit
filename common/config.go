@@ -2,10 +2,15 @@ package common
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/agglayer/aggkit/config/types"
 )
+
+// DefaultMaxRequestBodyBytes is the request body size limit a REST server
+// applies when MaxRequestBodyBytes is not set.
+const DefaultMaxRequestBodyBytes int64 = 1024 * 1024
 
 // RESTConfig contains the configuration settings for the REST service in the Aggkit application.
 type RESTConfig struct {
@@ -29,15 +34,40 @@ type RESTConfig struct {
 	// at the fronting reverse proxy / API gateway / ingress if needed.
 	MaxRequestsPerIPAndSecond float64 `mapstructure:"MaxRequestsPerIPAndSecond"`
 
+	// MaxRequestBodyBytes caps the size of a request body, so memory use stays
+	// predictable regardless of what a caller sends. 0 means the default
+	// (DefaultMaxRequestBodyBytes, 1 MiB).
+	MaxRequestBodyBytes int64 `mapstructure:"MaxRequestBodyBytes"`
+
 	// CORS configures Cross-Origin Resource Sharing for this REST service.
 	// Disabled by default, which keeps the current behavior (no CORS headers,
 	// so cross-origin browser requests are rejected by the browser).
 	CORS CORSConfig `mapstructure:"CORS"`
 }
 
+// RequestBodyLimit returns the request body size limit this server applies:
+// MaxRequestBodyBytes when set, DefaultMaxRequestBodyBytes otherwise.
+func (c *RESTConfig) RequestBodyLimit() int64 {
+	if c.MaxRequestBodyBytes <= 0 {
+		return DefaultMaxRequestBodyBytes
+	}
+	return c.MaxRequestBodyBytes
+}
+
 // Address constructs and returns the address as a string in the format "host:port".
 func (c *RESTConfig) Address() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+// HostIsLoopback reports whether the configured Host binds only the loopback interface.
+// An empty host binds every interface and is not loopback.
+func (c *RESTConfig) HostIsLoopback() bool {
+	host := strings.Trim(c.Host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // CORSConfig configures Cross-Origin Resource Sharing (CORS) headers for a

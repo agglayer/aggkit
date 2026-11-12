@@ -240,7 +240,7 @@ func TestDiagnose_Case1_SingleDivergentLeaf(t *testing.T) {
 		emergency:    false,
 	}
 
-	// AggsenderRPC: height 0 returns one mismatched exit.
+	// AggsenderAPI: height 0 returns one mismatched exit.
 	mismatchedExit := &agglayertypes.BridgeExit{
 		DestinationNetwork: 99,
 		Amount:             big.NewInt(9999),
@@ -260,7 +260,7 @@ func TestDiagnose_Case1_SingleDivergentLeaf(t *testing.T) {
 		AgglayerClient: agglayerMock,
 		L2Bridge:       bridge,
 		L2NetworkID:    7,
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{
 				0: {mismatchedExit},
 			},
@@ -313,7 +313,7 @@ func TestDiagnose_Case2_WithExtraL2Bridges(t *testing.T) {
 		AgglayerClient: agglayerMock,
 		L2Bridge:       bridge,
 		L2NetworkID:    8,
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{
 				0: {mismatchedExit},
 			},
@@ -356,7 +356,7 @@ func TestDiagnose_EmergencyStateTrue(t *testing.T) {
 		AgglayerClient: agglayerMock,
 		L2Bridge:       bridge,
 		L2NetworkID:    9,
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{
 				0: {mismatchedExit},
 			},
@@ -392,7 +392,7 @@ func TestDiagnose_CollectExtraL2Bridges_Error(t *testing.T) {
 		AgglayerClient: agglayerMock,
 		L2Bridge:       bridge,
 		L2NetworkID:    10,
-		AggsenderRPC: &stubAggsenderRPC{
+		AggsenderAPI: &stubAggsenderAPI{
 			exitsByHeight: map[uint64][]*agglayertypes.BridgeExit{
 				0: {mismatchedExit},
 			},

@@ -1,8 +1,10 @@
 package common
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -331,4 +333,93 @@ func TestHTTPLoggerHandlerWithoutQueryString(t *testing.T) {
 	require.NotEmpty(t, log.debugfCalls)
 	require.Contains(t, log.debugfCalls[0], "/plain")
 	require.NotContains(t, log.debugfCalls[0], "?")
+}
+
+func TestRESTConfigRequestBodyLimit(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, DefaultMaxRequestBodyBytes, (&RESTConfig{}).RequestBodyLimit())
+	require.Equal(t, DefaultMaxRequestBodyBytes, (&RESTConfig{MaxRequestBodyBytes: 0}).RequestBodyLimit())
+	require.Equal(t, int64(2048), (&RESTConfig{MaxRequestBodyBytes: 2048}).RequestBodyLimit())
+}
+
+type unknownLengthReader struct{ r io.Reader }
+
+func (u unknownLengthReader) Read(p []byte) (int, error) { return u.r.Read(p) }
+
+func TestRequestBodyLimitHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const limit = 16
+
+	newEngine := func(t *testing.T) (*gin.Engine, *int) {
+		t.Helper()
+		calls := 0
+		engine := NewHTTPServer(RESTConfig{MaxRequestBodyBytes: limit}, nil).Engine()
+		engine.POST("/body", func(c *gin.Context) {
+			calls++
+			body, err := io.ReadAll(c.Request.Body)
+			if err != nil {
+				var maxBytesErr *http.MaxBytesError
+				require.ErrorAs(t, err, &maxBytesErr)
+				c.Status(http.StatusRequestEntityTooLarge)
+				return
+			}
+			c.String(http.StatusOK, "%d", len(body))
+		})
+		return engine, &calls
+	}
+
+	t.Run("body within the limit is served", func(t *testing.T) {
+		engine, calls := newEngine(t)
+		req := httptest.NewRequest(http.MethodPost, "/body", bytes.NewReader(bytes.Repeat([]byte("a"), limit)))
+		rec := httptest.NewRecorder()
+
+		engine.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, "16", rec.Body.String())
+		require.Equal(t, 1, *calls)
+	})
+
+	t.Run("declared body over the limit is rejected before the handler", func(t *testing.T) {
+		engine, calls := newEngine(t)
+		req := httptest.NewRequest(http.MethodPost, "/body", bytes.NewReader(bytes.Repeat([]byte("a"), limit+1)))
+		rec := httptest.NewRecorder()
+
+		engine.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		require.Contains(t, rec.Body.String(), "16-byte limit")
+		require.Zero(t, *calls)
+	})
+
+	t.Run("body of unknown length over the limit fails while read", func(t *testing.T) {
+		engine, calls := newEngine(t)
+		body := unknownLengthReader{r: bytes.NewReader(bytes.Repeat([]byte("a"), limit+1))}
+		req := httptest.NewRequest(http.MethodPost, "/body", body)
+		require.Equal(t, int64(-1), req.ContentLength)
+		rec := httptest.NewRecorder()
+
+		engine.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		require.Equal(t, 1, *calls)
+	})
+
+	t.Run("a zero limit disables the middleware", func(t *testing.T) {
+		engine := gin.New()
+		engine.Use(RequestBodyLimitHandler(0))
+		engine.POST("/body", func(c *gin.Context) {
+			body, err := io.ReadAll(c.Request.Body)
+			require.NoError(t, err)
+			c.String(http.StatusOK, "%d", len(body))
+		})
+		req := httptest.NewRequest(http.MethodPost, "/body", bytes.NewReader(bytes.Repeat([]byte("a"), limit+1)))
+		rec := httptest.NewRecorder()
+
+		engine.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+	})
 }

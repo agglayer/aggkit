@@ -64,7 +64,7 @@ type Env struct {
 	Clients          ClientsConfig
 	Keys             KeysConfig
 	EnvDir           string
-	AggsenderRPCURL  string // External URL of the aggsender JSON-RPC endpoint
+	AggsenderAPIURL  string // External URL of the aggkit PublicREST API endpoint
 	envName          ENVName
 	bridgeServiceURL string // Used by StartAggkit to wait for bridge readiness
 	aggkitDataDir    string // Host path of the aggkit container's /tmp bind-mount
@@ -117,8 +117,8 @@ type L2Config struct {
 	BridgeServiceURL string
 	// Keys is the pool of pre-funded keys for this L2 network.
 	Keys *KeyPool
-	// AggsenderRPCURL is the external aggsender JSON-RPC URL for this L2 network.
-	AggsenderRPCURL string
+	// AggsenderAPIURL is the external base URL of this L2 network's aggkit PublicREST API.
+	AggsenderAPIURL string
 }
 
 // L2Contracts contains initialized L2 contract bindings
@@ -212,10 +212,9 @@ type summaryL2Network struct {
 			} `json:"http_rpc"`
 		} `json:"op-reth"`
 		Aggkit struct {
-			RPC struct {
-				External string `json:"external"`
-			} `json:"rpc"`
-			BridgeService struct {
+			// RESTAPI is the external base URL of the aggkit REST server. It serves the
+			// bridge service, the aggsender and the claim sync APIs.
+			RESTAPI struct {
 				External string `json:"external"`
 			} `json:"rest_api"`
 		} `json:"aggkit"`
@@ -425,7 +424,7 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			SovereignAdmin: sovereignAdminKey,
 		},
 		EnvDir:           envDir,
-		AggsenderRPCURL:  l2A.AggsenderRPCURL,
+		AggsenderAPIURL:  l2A.AggsenderAPIURL,
 		envName:          envName,
 		bridgeServiceURL: l2A.BridgeServiceURL,
 		aggkitDataDir:    aggkit001DataDir(envDir),
@@ -457,7 +456,7 @@ func loadL2Config(ctx context.Context, summary summaryJSON, networkKey string) (
 
 	// Create bridge service client scoped to this L2 network
 	bridgeServiceClient := client.New(client.Config{
-		BaseURL: l2Network.Services.Aggkit.BridgeService.External,
+		BaseURL: l2Network.Services.Aggkit.RESTAPI.External,
 	})
 
 	// Initialize L2 contracts
@@ -545,9 +544,9 @@ func loadL2Config(ctx context.Context, summary summaryJSON, networkKey string) (
 		Transactor:       l2Transactor,
 		Client:           l2Client,
 		BridgeService:    bridgeServiceClient,
-		BridgeServiceURL: l2Network.Services.Aggkit.BridgeService.External,
+		BridgeServiceURL: l2Network.Services.Aggkit.RESTAPI.External,
 		Keys:             l2KeyPool,
-		AggsenderRPCURL:  l2Network.Services.Aggkit.RPC.External,
+		AggsenderAPIURL:  l2Network.Services.Aggkit.RESTAPI.External,
 	}, nil
 }
 
@@ -1014,7 +1013,7 @@ func waitForServices(ctx context.Context, summary *summaryJSON) error {
 		}
 
 		// Wait for bridge service to be ready
-		if err := waitForBridgeService(ctx, l2Network.Services.Aggkit.BridgeService.External); err != nil {
+		if err := waitForBridgeService(ctx, l2Network.Services.Aggkit.RESTAPI.External); err != nil {
 			return fmt.Errorf("wait for bridge service (network %s): %w", key, err)
 		}
 	}

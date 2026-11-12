@@ -20,7 +20,7 @@ permissions: {}
 
 env:
   AGGKIT_REPORT_CHANNEL: "C092K6Z0EUT"
-  KURTOSIS_CDK_COMMIT: "507e4e8e6581ab5ecbb44444f9b7f1d05e3dcd1c"
+  KURTOSIS_CDK_COMMIT: "dc901e68b22971613c5af8e56650b21d3ac965cb"
 
 jobs:
   get-kurtosis-cdk-commit:
@@ -196,12 +196,12 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@1b0f0e29931b36af191c62c68dd273760e3a8d49  # agglayer/e2e main
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c97e11e5f90164fdd16901db11c96a5bcf8fb11f  # agglayer/e2e main
     secrets:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 1b0f0e29931b36af191c62c68dd273760e3a8d49 # agglayer/e2e main (aggkit-config-artifact support)
+      agglayer-e2e-ref: c97e11e5f90164fdd16901db11c96a5bcf8fb11f # agglayer/e2e main (aggkit-config-artifact support)
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
@@ -233,12 +233,12 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@1b0f0e29931b36af191c62c68dd273760e3a8d49  # agglayer/e2e main
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c97e11e5f90164fdd16901db11c96a5bcf8fb11f  # agglayer/e2e main
     secrets:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 1b0f0e29931b36af191c62c68dd273760e3a8d49 # agglayer/e2e main (aggkit-config-artifact support)
+      agglayer-e2e-ref: c97e11e5f90164fdd16901db11c96a5bcf8fb11f # agglayer/e2e main (aggkit-config-artifact support)
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
@@ -270,13 +270,13 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@1b0f0e29931b36af191c62c68dd273760e3a8d49  # agglayer/e2e main
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c97e11e5f90164fdd16901db11c96a5bcf8fb11f  # agglayer/e2e main
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     secrets:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 1b0f0e29931b36af191c62c68dd273760e3a8d49 # agglayer/e2e main (aggkit-config-artifact support)
+      agglayer-e2e-ref: c97e11e5f90164fdd16901db11c96a5bcf8fb11f # agglayer/e2e main (aggkit-config-artifact support)
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
@@ -311,7 +311,7 @@ jobs:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 1b0f0e29931b36af191c62c68dd273760e3a8d49 # agglayer/e2e main (aggkit-config-artifact support)
+      agglayer-e2e-ref: c97e11e5f90164fdd16901db11c96a5bcf8fb11f # agglayer/e2e main (aggkit-config-artifact support)
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
@@ -344,7 +344,7 @@ jobs:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 1b0f0e29931b36af191c62c68dd273760e3a8d49 # agglayer/e2e main (aggkit-config-artifact support)
+      agglayer-e2e-ref: c97e11e5f90164fdd16901db11c96a5bcf8fb11f # agglayer/e2e main (aggkit-config-artifact support)
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: aggkit

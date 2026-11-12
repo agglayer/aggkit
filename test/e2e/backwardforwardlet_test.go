@@ -108,7 +108,7 @@ func TestBackwardForwardLET_NoDivergence(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg := prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err := bfl.SetupEnv(ctx, cfg)
 	require.NoError(t, err)
 	defer toolEnv.Close()
@@ -127,7 +127,7 @@ func TestBackwardForwardLET_Case1(t *testing.T) {
 	defer cancel()
 
 	// Build bfl tool environment.
-	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg := prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err := bfl.SetupEnv(ctx, cfg)
 	require.NoError(t, err)
 	defer toolEnv.Close()
@@ -151,7 +151,7 @@ func TestBackwardForwardLET_Case1(t *testing.T) {
 
 	// Re-build toolEnv with fresh state.
 	toolEnv.Close()
-	cfg2 := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg2 := prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err = bfl.SetupEnv(ctx, cfg2)
 	require.NoError(t, err)
 
@@ -194,7 +194,7 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 	defer cancel()
 
 	// Build bfl tool environment.
-	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg := prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err := bfl.SetupEnv(ctx, cfg)
 	require.NoError(t, err)
 	defer toolEnv.Close()
@@ -216,7 +216,7 @@ func TestBackwardForwardLET_Case2(t *testing.T) {
 
 	// Re-build toolEnv.
 	toolEnv.Close()
-	cfg2 := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg2 := prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err = bfl.SetupEnv(ctx, cfg2)
 	require.NoError(t, err)
 
@@ -260,7 +260,7 @@ func TestBackwardForwardLET_Case3(t *testing.T) {
 	defer cancel()
 
 	// Build first bfl tool environment.
-	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg := prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err := bfl.SetupEnv(ctx, cfg)
 	require.NoError(t, err)
 	defer toolEnv.Close()
@@ -275,7 +275,7 @@ func TestBackwardForwardLET_Case3(t *testing.T) {
 
 	// Re-query state to get the new settled LER for cert2.
 	toolEnv.Close()
-	cfg = prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg = prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err = bfl.SetupEnv(ctx, cfg)
 	require.NoError(t, err)
 
@@ -287,7 +287,7 @@ func TestBackwardForwardLET_Case3(t *testing.T) {
 
 	// Re-build toolEnv for diagnosis.
 	toolEnv.Close()
-	cfg2 := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg2 := prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err = bfl.SetupEnv(ctx, cfg2)
 	require.NoError(t, err)
 
@@ -338,7 +338,7 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 	defer cancel()
 
 	// Build bfl tool environment.
-	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg := prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err := bfl.SetupEnv(ctx, cfg)
 	require.NoError(t, err)
 	defer toolEnv.Close()
@@ -353,7 +353,7 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 
 	// Re-query state and send cert2.
 	toolEnv.Close()
-	cfg = prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg = prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err = bfl.SetupEnv(ctx, cfg)
 	require.NoError(t, err)
 
@@ -370,7 +370,7 @@ func TestBackwardForwardLET_Case4(t *testing.T) {
 
 	// Re-build toolEnv for diagnosis.
 	toolEnv.Close()
-	cfg2 := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg2 := prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err = bfl.SetupEnv(ctx, cfg2)
 	require.NoError(t, err)
 
@@ -422,7 +422,7 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 	defer cancel()
 
 	// Phase 1: Setup — same structure as TestBackwardForwardLET_Case2.
-	cfg := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg := prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err := bfl.SetupEnv(ctx, cfg)
 	require.NoError(t, err)
 	defer toolEnv.Close()
@@ -442,7 +442,7 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 	// is auto-resolved by the diagnosis tool. Pre-collecting lets us build a complete
 	// override file in Phase 4 even for unresolved heights.
 	toolEnv.Close()
-	cfgPre := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfgPre := prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err = bfl.SetupEnv(ctx, cfgPre)
 	require.NoError(t, err)
 
@@ -513,7 +513,7 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 	// Phase 3: First diagnosis — should report AggsenderAPIFailed because the aggsender DB
 	// is empty and cannot supply bridge exits for any settled height.
 	toolEnv.Close()
-	cfg3 := prepareBFLToolConfig(t, testEnv.AggsenderRPCURL)
+	cfg3 := prepareBFLToolConfig(t, testEnv.AggsenderAPIURL)
 	toolEnv, err = bfl.SetupEnv(ctx, cfg3)
 	require.NoError(t, err)
 
@@ -572,7 +572,7 @@ func TestBackwardForwardLET_AggsenderAPIFallback(t *testing.T) {
 
 	// Phase 6: Second diagnosis with override file — should classify as Case2.
 	toolEnv.Close()
-	cfg6 := prepareBFLToolConfigWithOverride(t, testEnv.AggsenderRPCURL, overridePath)
+	cfg6 := prepareBFLToolConfigWithOverride(t, testEnv.AggsenderAPIURL, overridePath)
 	toolEnv, err = bfl.SetupEnv(ctx, cfg6)
 	require.NoError(t, err)
 

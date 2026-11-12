@@ -66,6 +66,11 @@ Pipeline steps (run in order by default):
          through /bridges and /claim-params. Reads the local exit tree DB and
          step-g-new-local-exit-root.json (run step g first). Requires l1RpcUrl.
 
+  RECOVERIES
+         Delta mode only (options.deltaMode), standalone (--step recoveries). Turns verified
+         zkevm-proof-of-ownership-kit recoveries (options.recoveriesPath) into
+         <outputDir>/recoveries/delta-exits.json and updates the balance state there.
+
 Use --step to run a single step (e.g. --step a). When running steps individually
 the output files from previous steps must already exist in the output directory.`
 	app.Flags = []cli.Flag{

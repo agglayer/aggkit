@@ -101,14 +101,14 @@ default group is enumerated as a positive, anchored regex instead):
 `anvil-2chains`. It restarts `aggkit-001` with `[L1InfoTreeSync] BlockFinality = "LatestBlock"` and
 `[AggSender] BlockFinalityForL1InfoTree = "LatestBlock/-N"` while `[L1Multidownloader]` stays at its
 `FinalizedBlock` default, bridges and claims L1 -> L2 twice inside the resulting window, and asserts on the
-`aggkit-001` logs and the aggsender RPC that:
+`aggkit-001` logs and the aggsender REST API that:
 
 - `block finality misconfiguration` is **absent** (the aggsender accepts the asymmetric knobs and starts);
 - `is not yet under the selected L1 info root` is **present** (a claim whose GER is not yet under the selected
   root trims the certificate instead of failing);
 - `exists on L1 but cannot be proved against selected root` is **absent** (no hard error on that claim);
 - a certificate whose `ToBlock` covers the claims reaches `Settled`
-  (`aggsender_getCertificateHeaderPerHeight`).
+  (`GET /aggsender/v1/certificate-header`).
 
 `N` and the per-phase timeouts are derived at runtime from the L1 `latest`-to-`finalized` lag and block
 time (`N = 3*lag + ceil(120s / blockTime)`), so the test does not hardcode anvil timing. The original config

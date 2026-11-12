@@ -267,10 +267,8 @@ function common_export_ports_from_kurtosis() {
     export_portnum_from_kurtosis_or_fail l1_rpc_port el-1-geth-lighthouse rpc
     export_portnum_from_kurtosis_or_fail agglayer_grpc_port agglayer aglr-grpc
     if [ ! -z $EXPOSE_PORTS ];then
-        export_portnum_from_kurtosis_or_fail cdk_node_rpc_port $AGGKIT_SERVICE http-rpc rpc
         export_portnum_from_kurtosis_or_fail aggkit_node_rest_api_port $AGGKIT_SERVICE http-rpc rest
     else
-        export cdk_node_rpc_port=5576
         export aggkit_node_rest_api_port=5577
     fi
     export l1_rpc_url="http://localhost:${l1_rpc_port}"
