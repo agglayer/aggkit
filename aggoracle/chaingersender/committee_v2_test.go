@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggoraclecommittee"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
-	"github.com/agglayer/aggkit/aggoracle/contracts/aggoraclecommitteev2"
 	"github.com/agglayer/aggkit/aggoracle/gervalidator"
 	"github.com/agglayer/aggkit/aggoracle/mocks"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
@@ -46,18 +46,18 @@ func (e revertDataError) ErrorData() any {
 // revertWith returns the error of a call that reverts with the custom error of the committee
 func revertWith(t *testing.T, errorName string) error {
 	t.Helper()
-	committeeABI, err := aggoraclecommitteev2.AggOracleCommitteeV2MetaData.GetAbi()
+	committeeABI, err := aggoraclecommittee.AggoraclecommitteeMetaData.GetAbi()
 	require.NoError(t, err)
 	abiErr, ok := committeeABI.Errors[errorName]
 	require.True(t, ok, "error %s", errorName)
 	return revertDataError{data: hexutil.Encode(abiErr.ID[:4])}
 }
 
-func validatorInfos(urls ...string) []aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo {
+func validatorInfos(urls ...string) []aggoraclecommittee.IAggOracleCommitteeValidatorInfo {
 	addrs := []common.Address{validatorA, validatorB, validatorC}
-	infos := make([]aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo, len(urls))
+	infos := make([]aggoraclecommittee.IAggOracleCommitteeValidatorInfo, len(urls))
 	for i, url := range urls {
-		infos[i] = aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo{Addr: addrs[i], Url: url}
+		infos[i] = aggoraclecommittee.IAggOracleCommitteeValidatorInfo{Addr: addrs[i], Url: url}
 	}
 	return infos
 }
@@ -93,7 +93,7 @@ func evmTestConfig() EVMConfig {
 }
 
 // expectCommitteeState expects the reading of the committee: threshold and validators
-func (f *v2Fixture) expectCommitteeState(threshold int64, infos []aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo) {
+func (f *v2Fixture) expectCommitteeState(threshold int64, infos []aggoraclecommittee.IAggOracleCommitteeValidatorInfo) {
 	f.t.Helper()
 	f.committee.EXPECT().Threshold(mock.Anything).Return(big.NewInt(threshold), nil).Once()
 	f.committee.EXPECT().GetValidatorsInfo(mock.Anything).Return(infos, nil).Once()
@@ -110,7 +110,7 @@ func (f *v2Fixture) expectChecks() {
 }
 
 // expectValidation expects everything the constructor reads to validate the committee
-func (f *v2Fixture) expectValidation(threshold int64, infos []aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo) {
+func (f *v2Fixture) expectValidation(threshold int64, infos []aggoraclecommittee.IAggOracleCommitteeValidatorInfo) {
 	f.t.Helper()
 	f.expectChecks()
 	f.expectCommitteeState(threshold, infos)
@@ -151,7 +151,7 @@ func twoSignatures() *gervalidator.Result {
 // expectInjectTx expects the injectGER transaction to the committee and that it is mined
 func (f *v2Fixture) expectInjectTx(ger common.Hash, signatures []byte, id common.Hash, status ethtxtypes.MonitoredTxStatus) {
 	f.t.Helper()
-	committeeABI, err := aggoraclecommitteev2.AggOracleCommitteeV2MetaData.GetAbi()
+	committeeABI, err := aggoraclecommittee.AggoraclecommitteeMetaData.GetAbi()
 	require.NoError(f.t, err)
 	expectedData, err := committeeABI.Pack("injectGER", [32]byte(ger), signatures)
 	require.NoError(f.t, err)

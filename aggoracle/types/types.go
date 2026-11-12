@@ -5,8 +5,8 @@ import (
 	"math/big"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggoraclecommittee"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
-	"github.com/agglayer/aggkit/aggoracle/contracts/aggoraclecommitteev2"
 	"github.com/agglayer/aggkit/aggoracle/gervalidator"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -58,7 +58,7 @@ type AggOracleCommitteeV2Contract interface {
 	// AgglayerGERL2 returns the L2 GER manager the committee inserts the GERs on
 	AgglayerGERL2(opts *bind.CallOpts) (common.Address, error)
 	// GetValidatorsInfo returns the address and the URL of the current validators
-	GetValidatorsInfo(opts *bind.CallOpts) ([]aggoraclecommitteev2.IAggOracleCommitteeValidatorInfo, error)
+	GetValidatorsInfo(opts *bind.CallOpts) ([]aggoraclecommittee.IAggOracleCommitteeValidatorInfo, error)
 	// InjectedGERs tells if the GER was already processed by the committee. A GER can't be injected twice
 	InjectedGERs(opts *bind.CallOpts, globalExitRoot [common.HashLength]byte) (bool, error)
 	// VerifyGER returns true if the signatures are valid for the GER, and reverts otherwise
