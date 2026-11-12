@@ -25,6 +25,9 @@ env:
   # 0xPolygon/kurtosis-cdk#1044. Only that job uses this one, in every event (it doesn't follow "main" on schedule).
   # Replace it by the commit of the merge, or by "main", when the PR is merged
   KURTOSIS_CDK_COMMITTEE_V2_COMMIT: "06af11179fdd2c2a14b7b923bc0a390eb364e01a"
+  # The commit of agglayer/agglayer-contracts (branch feature/agg-oracle-committee) that the job of the committee v2
+  # builds its agglayer-contracts image from, while no image with the AggOracleCommittee v2 is published
+  AGGLAYER_CONTRACTS_COMMITTEE_V2_COMMIT: "a6b96a86f8ec6345b2fa2f618f3f8c418c6c6d92"
 
 jobs:
   get-kurtosis-cdk-commit:
@@ -138,7 +141,8 @@ jobs:
             ./.github/test_e2e_op_args_chain_1.json
 
           # single l2 network (op, AggOracle committee v2). The job runs only if the args set the image of agglayer-contracts
-          # that has the AggOracleCommittee v2 (agglayer_contracts_image): it is not published yet, so it is not set
+          # that has the AggOracleCommittee v2 (agglayer_contracts_image). It is not published yet, so the args set an
+          # image without a registry, that build-aggkit-committee-images builds
           put_args single_op_chain_aggoracle_committee_v2_args "$BASE_OP" \
             ./.github/test_e2e_op_args_chain_1.json \
             ./.github/test_e2e_op_aggoracle_committee_v2_args.json
@@ -165,7 +169,7 @@ jobs:
             ./.github/test_e2e_cdk_erigon_multi_chains_args_3.json
 
   # The agglayer/e2e workflow loads a single tar of images: the one of the committee job has aggkit and the GER validator
-  # signer, both from this commit, so no image has to be published
+  # signer, both from this commit, and the agglayer-contracts image, so no image has to be published
   build-aggkit-committee-images:
     permissions:
       contents: read
@@ -175,7 +179,7 @@ jobs:
       - read-aggkit-args
     if: needs.read-aggkit-args.outputs.committee-v2-enabled == 'true'
     runs-on: amd-runner-2204
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
@@ -195,14 +199,74 @@ jobs:
       - name: Build the GER validator signer image
         run: make build-docker-ger_validator_signer
 
-      - name: Save both images in a single archive
-        run: docker save --output /tmp/aggkit-committee.tar aggkit ger_validator_signer
+      # TEMPORARY, until an image of agglayer-contracts with the AggOracleCommittee v2 is published: an image without a
+      # registry in the args (no "/") is built here from AGGLAYER_CONTRACTS_COMMITTEE_V2_COMMIT and travels in the archive.
+      # It is cached, because it only changes with that commit or with its Dockerfile. Nothing is pushed.
+      - name: Resolve the agglayer-contracts image
+        id: contracts
+        env:
+          KURTOSIS_ARGS: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-aggoracle-committee-v2 }}
+        run: |
+          image=$(echo "$KURTOSIS_ARGS" | jq -r '.args.agglayer_contracts_image')
+          if [[ "$image" == */* ]]; then
+            echo "The agglayer-contracts image $image is published: kurtosis pulls it"
+            echo "local=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "The agglayer-contracts image $image is built here"
+            echo "local=true" >> "$GITHUB_OUTPUT"
+            echo "image=${image}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore the agglayer-contracts image from the cache
+        if: steps.contracts.outputs.local == 'true'
+        id: contracts-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25  # v5.1.0
+        with:
+          path: /tmp/agglayer-contracts.tar.gz
+          key: agglayer-contracts-${{ steps.contracts.outputs.image }}-${{ env.AGGLAYER_CONTRACTS_COMMITTEE_V2_COMMIT }}-${{ hashFiles('test/e2e/kurtosis/agglayer-contracts-committee-v2.Dockerfile') }}
+
+      - name: Checkout agglayer-contracts
+        if: steps.contracts.outputs.local == 'true' && steps.contracts-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          repository: agglayer/agglayer-contracts
+          ref: ${{ env.AGGLAYER_CONTRACTS_COMMITTEE_V2_COMMIT }}
+          path: agglayer-contracts
+          persist-credentials: false
+
+      - name: Build the agglayer-contracts image
+        if: steps.contracts.outputs.local == 'true' && steps.contracts-cache.outputs.cache-hit != 'true'
+        env:
+          CONTRACTS_IMAGE: ${{ steps.contracts.outputs.image }}
+        run: |
+          # The contracts are compiled in a container and not in the build of the image (see the Dockerfile)
+          # and the files are given back to the user of the runner, so it can clean the workspace
+          docker run --rm --volume "$PWD/agglayer-contracts:/opt/agglayer-contracts" --workdir /opt/agglayer-contracts \
+            --env OWNER="$(id -u):$(id -g)" node:24.19.0-bookworm \
+            bash -c 'npm install --global npm@10.9.0 && npm install && npx hardhat compile && chown -R "$OWNER" .'
+          mkdir /tmp/empty-context
+          docker build --tag "$CONTRACTS_IMAGE" --build-context contracts="$PWD/agglayer-contracts" \
+            --file test/e2e/kurtosis/agglayer-contracts-committee-v2.Dockerfile /tmp/empty-context
+          docker save "$CONTRACTS_IMAGE" | gzip -1 > /tmp/agglayer-contracts.tar.gz
+
+      - name: Load the agglayer-contracts image
+        if: steps.contracts.outputs.local == 'true' && steps.contracts-cache.outputs.cache-hit == 'true'
+        run: docker load --input /tmp/agglayer-contracts.tar.gz
+
+      # The archive is compressed (docker load reads it as it is) because the agglayer-contracts image has 4 GB
+      - name: Save the images in a single archive
+        env:
+          CONTRACTS_IMAGE: ${{ steps.contracts.outputs.image }}
+        run: |
+          # shellcheck disable=SC2086 # CONTRACTS_IMAGE is empty when the image is a published one
+          docker save aggkit ger_validator_signer $CONTRACTS_IMAGE | gzip -1 > /tmp/aggkit-committee.tar
 
       - name: Upload the archive
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: aggkit-committee
           path: /tmp/aggkit-committee.tar
+          compression-level: 0
 
   build-tools:
     permissions:
