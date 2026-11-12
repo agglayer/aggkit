@@ -3,6 +3,7 @@
     "use_agg_oracle_committee_v2": true,
     "agg_oracle_committee_threshold": 2,
     "agg_oracle_committee_total_validators": 3,
-    "ger_validator_signer_image": "ger_validator_signer:local"
+    "ger_validator_signer_image": "ger_validator_signer:local",
+    "agglayer_contracts_image": "agglayer-contracts:v12.2.3-aggoc-v2-a6b96a8"
   }
 }
