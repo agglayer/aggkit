@@ -235,7 +235,7 @@ Used in both modes for final GER storage and status checking.
 
 ### 2. AggOracleCommittee v2 Contract
 
-Used in the committee mode. It replaced the v1 contract in the same Solidity file and with the same name, so it has its own bindings (see below).
+Used in the committee mode. It replaced the v1 contract in the same Solidity file and with the same name, so the bindings of the v1 and of the v2 are not interchangeable: aggkit needs a version of `cdk-contracts-tooling` generated from the v2 (see below).
 
 - **Contract**: [`AggOracleCommittee.sol` (v2.0.0)](https://github.com/agglayer/agglayer-contracts/blob/feature/agg-oracle-committee/contracts/sovereignChains/AggOracleCommittee.sol)
 - **Key Functions**:
@@ -243,7 +243,7 @@ Used in the committee mode. It replaced the v1 contract in the same Solidity fil
   - `verifyGER(bytes32 ger, bytes signatures)`: the same verification as a view. It returns `true` or reverts.
   - `getValidatorsInfo()`, `threshold()`, `proposer()`, `injectedGERs(bytes32)`, `agglayerGERL2()` and `version()`.
 - **Errors AggOracle relies on**: `GERAlreadyInjected`, `InvalidSignaturesLength`, `ValidatorDoesNotExist` and `ValidatorsNotOrdered`.
-- **Bindings**: [`aggoracle/contracts/aggoraclecommitteev2`](../aggoracle/contracts/aggoraclecommitteev2/README.md). The `cdk-contracts-tooling` release used by aggkit doesn't ship the v2. They are generated from a pinned commit of `agglayer-contracts`, and a test checks the selectors.
+- **Bindings**: package `aggoraclecommittee` of [cdk-contracts-tooling](https://github.com/0xPolygon/cdk-contracts-tooling/tree/main/contracts/aggchain-multisig/aggoraclecommittee), generated from [agglayer-contracts@a6b96a8](https://github.com/agglayer/agglayer-contracts/commit/a6b96a86f8ec6345b2fa2f618f3f8c418c6c6d92). A test (`committee_v2_abi_test.go`) checks the selectors that AggOracle relies on.
 - **Migration**: there is no upgrade from v1 ([it is not supported anymore](#6-removal-of-the-aggoraclecommittee-v1)). A chain moves to v2 by changing the `globalExitRootUpdater` of its L2 GER Manager to the v2 committee.
 
 ---

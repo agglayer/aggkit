@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggoraclecommittee"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
-	"github.com/agglayer/aggkit/aggoracle/contracts/aggoraclecommitteev2"
 	"github.com/agglayer/aggkit/aggoracle/gervalidator"
 	aggoracletypes "github.com/agglayer/aggkit/aggoracle/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -127,7 +127,7 @@ func newCommitteeV2Sender(
 	}
 	collector := gervalidator.NewCollector(logger, validatorClient, v2Cfg.RequestTimeout.Duration)
 
-	committee, err := aggoraclecommitteev2.NewAggOracleCommitteeV2(committeeAddr, l2Client)
+	committee, err := aggoraclecommittee.NewAggoraclecommittee(committeeAddr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create the binding of the AggOracleCommittee v2 (SC address: %s): %w",
 			committeeAddr, err)

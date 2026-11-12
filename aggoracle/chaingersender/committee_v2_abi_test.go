@@ -1,18 +1,20 @@
-package aggoraclecommitteev2
+package chaingersender
 
 import (
 	"testing"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggoraclecommittee"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 )
 
-// TestABISelectors checks that the generated binding exposes the functions and errors that aggkit relies on
-// with the expected selectors. If the contract changes (and the binding is regenerated) and any of them
-// changes, aggkit must be adapted: the mode detector probes some of these selectors.
-func TestABISelectors(t *testing.T) {
-	parsed, err := AggOracleCommitteeV2MetaData.GetAbi()
+// TestCommitteeV2ABISelectors checks that the binding of the AggOracleCommittee v2 (cdk-contracts-tooling) exposes
+// the functions and errors that aggkit relies on with the expected selectors. If the contract changes (and the
+// binding is regenerated) and any of them changes, aggkit must be adapted: the mode detector probes some of these
+// selectors. It also catches a version of cdk-contracts-tooling whose aggoraclecommittee is still the v1.
+func TestCommitteeV2ABISelectors(t *testing.T) {
+	parsed, err := aggoraclecommittee.AggoraclecommitteeMetaData.GetAbi()
 	require.NoError(t, err)
 
 	functions := map[string]string{
@@ -57,10 +59,16 @@ func TestABISelectors(t *testing.T) {
 		require.True(t, ok, "error %s not found in the ABI", name)
 		require.Equal(t, expectedSelector, hexutil.Encode(abiErr.ID[:4]), "selector of error %s", name)
 	}
+
+	// The v1 functions are gone: it is the v2 and not the old committee
+	for _, v1Function := range []string{"proposeGlobalExitRoot", "quorum", "getAggOracleMemberIndex"} {
+		_, ok := parsed.Methods[v1Function]
+		require.False(t, ok, "%s is a function of the AggOracleCommittee v1", v1Function)
+	}
 }
 
-func TestABIInjectGERPacking(t *testing.T) {
-	parsed, err := AggOracleCommitteeV2MetaData.GetAbi()
+func TestCommitteeV2ABIInjectGERPacking(t *testing.T) {
+	parsed, err := aggoraclecommittee.AggoraclecommitteeMetaData.GetAbi()
 	require.NoError(t, err)
 
 	ger := [32]byte{0x01}
