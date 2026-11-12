@@ -2,7 +2,7 @@ module github.com/agglayer/aggkit/tools/ger_validator_signer
 
 go 1.27.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/agglayer/go_signer v0.0.7
