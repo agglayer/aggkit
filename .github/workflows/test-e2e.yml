@@ -21,6 +21,10 @@ permissions: {}
 env:
   AGGKIT_REPORT_CHANNEL: "C092K6Z0EUT"
   KURTOSIS_CDK_COMMIT: "dc901e68b22971613c5af8e56650b21d3ac965cb"
+  # The AggOracle committee v2 e2e needs a kurtosis-cdk that has the committee, and the commit above doesn't:
+  # 0xPolygon/kurtosis-cdk#1044. Only that job uses this one, in every event (it doesn't follow "main" on schedule).
+  # Replace it by the commit of the merge, or by "main", when the PR is merged
+  KURTOSIS_CDK_COMMITTEE_V2_COMMIT: "f070e416a3abc8e5cb9259360830951fd0b024c4"
 
 jobs:
   get-kurtosis-cdk-commit:
@@ -74,6 +78,10 @@ jobs:
       kurtosis-cdk-args-single-op-succinct: ${{ steps.read-args.outputs.op_succinct_args }}
       # single l2 network (op, pessimistic)
       kurtosis-cdk-args-single-op-pessimistic: ${{ steps.read-args.outputs.single_op_chain_pessimistic_args }}
+      # single l2 network (op, AggOracle committee v2). It is enabled when the args set an agglayer-contracts image
+      kurtosis-cdk-args-single-op-aggoracle-committee-v2: ${{ steps.read-args.outputs.single_op_chain_aggoracle_committee_v2_args }}
+      committee-v2-enabled: ${{ steps.read-args.outputs.committee-v2-enabled }}
+      committee-v2-kurtosis-ref: ${{ steps.read-args.outputs.committee-v2-kurtosis-ref }}
       # multi l2 networks
       kurtosis-cdk-args-1: ${{ steps.read-args.outputs.kurtosis-cdk-args-1 }}
       kurtosis-cdk-args-2: ${{ steps.read-args.outputs.kurtosis-cdk-args-2 }}
@@ -113,6 +121,7 @@ jobs:
             done
 
             content=$(jq -s 'reduce .[] as $item ({}; . * $item)' "${files[@]}" | jq -c .)
+            LAST_ARGS="$content"
 
             echo "${name}=${content}" >> "$GITHUB_OUTPUT"
             echo "### $name"
@@ -127,6 +136,16 @@ jobs:
           # single l2 network (op, pessimistic)
           put_args single_op_chain_pessimistic_args "$BASE_OP" \
             ./.github/test_e2e_op_args_chain_1.json
+
+          # single l2 network (op, AggOracle committee v2). The job runs only if the args set the image of agglayer-contracts
+          # that has the AggOracleCommittee v2 (agglayer_contracts_image): it is not published yet, so it is not set
+          put_args single_op_chain_aggoracle_committee_v2_args "$BASE_OP" \
+            ./.github/test_e2e_op_args_chain_1.json \
+            ./.github/test_e2e_op_aggoracle_committee_v2_args.json
+          committee_v2_enabled=$(echo "$LAST_ARGS" | jq -r '((.args.agglayer_contracts_image // "") != "")')
+          echo "committee-v2-enabled=${committee_v2_enabled}" >> "$GITHUB_OUTPUT"
+          echo "committee-v2-kurtosis-ref=${KURTOSIS_CDK_COMMITTEE_V2_COMMIT}" >> "$GITHUB_OUTPUT"
+          echo "AggOracle committee v2 e2e enabled: ${committee_v2_enabled}"
 
           # multi l2 networks
           put_args kurtosis-cdk-args-1 "$BASE_OP" \
@@ -144,6 +163,46 @@ jobs:
 
           put_args kurtosis-cdk-args-5 "$BASE_CDK_ERIGON" \
             ./.github/test_e2e_cdk_erigon_multi_chains_args_3.json
+
+  # The agglayer/e2e workflow loads a single tar of images: the one of the committee job has aggkit and the GER validator
+  # signer, both from this commit, so no image has to be published
+  build-aggkit-committee-images:
+    permissions:
+      contents: read
+    name: Build the images of the AggOracle committee v2
+    needs:
+      - build-aggkit-image
+      - read-aggkit-args
+    if: needs.read-aggkit-args.outputs.committee-v2-enabled == 'true'
+    runs-on: amd-runner-2204
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          fetch-depth: 0  # the version of the images comes from git describe
+          persist-credentials: false
+
+      - name: Download the aggkit image
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          name: aggkit
+          path: /tmp
+
+      - name: Load the aggkit image
+        run: docker load --input /tmp/aggkit.tar
+
+      - name: Build the GER validator signer image
+        run: make build-docker-ger_validator_signer
+
+      - name: Save both images in a single archive
+        run: docker save --output /tmp/aggkit-committee.tar aggkit ger_validator_signer
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: aggkit-committee
+          path: /tmp/aggkit-committee.tar
 
   build-tools:
     permissions:
@@ -252,6 +311,46 @@ jobs:
       - run: exit 1
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-succinct.result) }}
 
+  test-single-l2-network-op-aggoracle-committee-v2:
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    name: Single L2 chain tests (OP, AggOracle committee v2)
+    needs:
+      - build-aggkit-committee-images
+      - build-tools
+      - read-aggkit-args
+    if: needs.read-aggkit-args.outputs.committee-v2-enabled == 'true'
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c97e11e5f90164fdd16901db11c96a5bcf8fb11f  # agglayer/e2e main
+    secrets:
+      DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
+    with:
+      # The commit of kurtosis-cdk with the committee v2, not the one of the other jobs
+      kurtosis-cdk-ref: ${{ needs.read-aggkit-args.outputs.committee-v2-kurtosis-ref }}
+      agglayer-e2e-ref: c97e11e5f90164fdd16901db11c96a5bcf8fb11f # agglayer/e2e main (aggkit-config-artifact support)
+      # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
+      aggkit-config-artifact: aggkit-e2e-config
+      kurtosis-cdk-enclave-name: op
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-aggoracle-committee-v2 }}
+      # The tar with aggkit:local and ger_validator_signer:local
+      docker-artifact-name: aggkit-committee
+      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
+      test-name: "test-single-l2-network-op-aggoracle-committee-v2"
+      execute-all-tests: ${{ github.event_name == 'schedule' }}
+      fail-fast: ${{ github.event_name != 'schedule' }}
+
+  check-single-l2-network-op-aggoracle-committee-v2-tests-result:
+    permissions:
+      contents: read
+    name: Check results for single l2 network (OP, AggOracle committee v2)
+    needs:
+      - test-single-l2-network-op-aggoracle-committee-v2
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-aggoracle-committee-v2.result) }}
+
   test-multi-l2-networks-2-chains-op-pessimistic:
     permissions:
       contents: read
@@ -327,6 +426,7 @@ jobs:
     needs:
       - test-single-l2-network-op-pessimistic
       - test-single-l2-network-op-succinct
+      - test-single-l2-network-op-aggoracle-committee-v2
       - test-multi-l2-networks-2-chains-op-pessimistic
       - test-multi-l2-networks-3-chains-cdk-erigon-pessimistic
       - get-kurtosis-cdk-commit
@@ -346,6 +446,7 @@ jobs:
             Test Results:
             • Single L2 (OP, pessimistic): ${{ needs.test-single-l2-network-op-pessimistic.result == 'success' && '🟢' || '🔴' }}
             • Single L2 (op-succinct): ${{ needs.test-single-l2-network-op-succinct.result == 'success' && '🟢' || '🔴' }}
+            • Single L2 (OP, AggOracle committee v2): ${{ needs.test-single-l2-network-op-aggoracle-committee-v2.result == 'success' && '🟢' || needs.test-single-l2-network-op-aggoracle-committee-v2.result == 'skipped' && '⏭️' || '🔴' }}
             • Multi L2 (OP, pessimistic, 2 chains): ${{ needs.test-multi-l2-networks-2-chains-op-pessimistic.result == 'success' && '🟢' || '🔴' }}
             • Multi L2 (OP, pessimistic, 3 chains): ${{ needs.test-multi-l2-networks-3-chains-cdk-erigon-pessimistic.result == 'success' && '🟢' || '🔴' }}
 
