@@ -726,6 +726,11 @@ func TestCommitteeV2Sender_ProcessGER_OneAtATime(t *testing.T) {
 	// A newer GER arrives while the first one is pending: it is skipped, without touching the contracts
 	// (the mocks have no expectation for it, so any call would fail the test)
 	newerGER := common.HexToHash("0x99")
+	require.Contains(t, sender.describeSkip(v2TestGER), "is already being processed")
+	require.Contains(t, sender.describeSkip(v2TestGER), stageCollecting.String())
+	require.Contains(t, sender.describeSkip(newerGER), "GER "+v2TestGER.String()+" is still being processed")
+	require.Contains(t, sender.describeSkip(newerGER), stageCollecting.String())
+	require.NoError(t, sender.ProcessGER(context.Background(), v2TestGER))
 	for range 5 {
 		require.NoError(t, sender.ProcessGER(context.Background(), newerGER))
 	}
@@ -733,10 +738,219 @@ func TestCommitteeV2Sender_ProcessGER_OneAtATime(t *testing.T) {
 	close(release)
 	wg.Wait()
 	require.NoError(t, firstErr)
+	require.Contains(t, sender.describeSkip(newerGER), "another GER is starting (or finishing)")
 
 	// Once the first one is done, the next GER is processed
 	f.gerManager.EXPECT().GlobalExitRootMap(mock.Anything, [32]byte(newerGER)).Return(big.NewInt(1), nil).Once()
 	require.NoError(t, sender.ProcessGER(context.Background(), newerGER))
+}
+
+// The skip of a GER explains what is being done with the GER being processed
+func TestCommitteeV2Sender_DescribeSkip(t *testing.T) {
+	newerGER := common.HexToHash("0x99")
+	started := time.Now().Add(-90 * time.Second)
+
+	tests := []struct {
+		name     string
+		status   processingStatus
+		ger      common.Hash
+		expected []string
+	}{
+		{
+			name:     "nothing being processed",
+			ger:      newerGER,
+			expected: []string{"another GER is starting (or finishing) to be processed"},
+		},
+		{
+			name: "same GER, waiting for the validators",
+			status: processingStatus{
+				ger: v2TestGER, startedAt: started, stage: stageWaitingValidators,
+				stageStartedAt: time.Now().Add(-30 * time.Second), detail: "1 valid of threshold 2, 2 validators failed",
+			},
+			ger: v2TestGER,
+			expected: []string{
+				"GER " + v2TestGER.String() + " is already being processed (for 1m30s)",
+				"waiting for the validators, not enough signatures yet (for 30s, 1 valid of threshold 2",
+			},
+		},
+		{
+			name: "another GER, injectGER being mined",
+			status: processingStatus{
+				ger: v2TestGER, startedAt: started, stage: stageMining, stageStartedAt: started,
+				detail: "signed by 2 validators",
+			},
+			ger: newerGER,
+			expected: []string{
+				"GER " + newerGER.String() + " skipped: GER " + v2TestGER.String() + " is still being processed",
+				"injectGER transaction sent, waiting for it to be mined (for 1m30s, signed by 2 validators)",
+			},
+		},
+		{
+			name: "another GER, waiting to retry",
+			status: processingStatus{
+				ger: v2TestGER, startedAt: started, stage: stageWaitingRetry, stageStartedAt: started,
+				detail: "attempt 1 of 3: boom", failedAttempts: 1,
+			},
+			ger:      newerGER,
+			expected: []string{"the last attempt failed, waiting to retry", "attempt 1 of 3: boom", "1 of 3 attempts failed"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sender := &CommitteeV2Sender{cfg: defaultV2Config(), status: tt.status}
+			message := sender.describeSkip(tt.ger)
+			for _, expected := range tt.expected {
+				require.Contains(t, message, expected)
+			}
+		})
+	}
+}
+
+func TestPrefixLines(t *testing.T) {
+	require.Equal(t, "aggoracle: one line", prefixLines("one line"))
+	require.Equal(t, "aggoracle: first:\naggoracle:   second\naggoracle:     - third",
+		prefixLines("first:\n  second\n    - third"))
+}
+
+func TestDescribeValidators(t *testing.T) {
+	committee := committeeSnapshot{
+		threshold: 2,
+		onChain: []gervalidator.Validator{
+			{Address: validatorA, URL: "http://a"},
+			{Address: validatorB, URL: "http://b"},
+			{Address: validatorC},
+		},
+		validators: []gervalidator.Validator{
+			{Address: validatorA, URL: "http://a"},
+			{Address: validatorB, URL: "http://override"},
+			{Address: validatorC},
+		},
+	}
+	require.Equal(t,
+		"\n    - "+validatorA.Hex()+": http://a (on-chain)"+
+			"\n    - "+validatorB.Hex()+": http://override (ValidatorURLOverrides; on-chain: http://b)"+
+			"\n    - "+validatorC.Hex()+": no URL, it can't be asked",
+		describeValidators(committee))
+
+	t.Run("overridden a validator without a URL on-chain", func(t *testing.T) {
+		committee := committeeSnapshot{
+			threshold:  1,
+			onChain:    []gervalidator.Validator{{Address: validatorC}},
+			validators: []gervalidator.Validator{{Address: validatorC, URL: "http://c"}},
+		}
+		require.Equal(t, "\n    - "+validatorC.Hex()+": http://c (ValidatorURLOverrides; on-chain: no URL)",
+			describeValidators(committee))
+	})
+
+	t.Run("URL removed by an override", func(t *testing.T) {
+		committee := committeeSnapshot{
+			threshold:  1,
+			onChain:    []gervalidator.Validator{{Address: validatorC, URL: "http://c"}},
+			validators: []gervalidator.Validator{{Address: validatorC}},
+		}
+		require.Equal(t,
+			"\n    - "+validatorC.Hex()+": no URL, it can't be asked (ValidatorURLOverrides; on-chain: http://c)",
+			describeValidators(committee))
+	})
+}
+
+func TestCommitteeV2Sender_CommitteeState(t *testing.T) {
+	f := newV2Fixture(t)
+	cfg := defaultV2Config()
+	cfg.ValidatorURLOverrides = map[common.Address]string{validatorB: "http://override"}
+	sender := &CommitteeV2Sender{cfg: cfg, committee: f.committee}
+	f.expectCommitteeState(2, validatorInfos("http://a", "http://b"))
+
+	committee, err := sender.committeeState(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, committeeSnapshot{
+		threshold:  2,
+		onChain:    []gervalidator.Validator{{Address: validatorA, URL: "http://a"}, {Address: validatorB, URL: "http://b"}},
+		validators: []gervalidator.Validator{{Address: validatorA, URL: "http://a"}, {Address: validatorB, URL: "http://override"}},
+	}, committee, "the on-chain URLs are kept, besides the ones to use")
+}
+
+func TestDescribeCommitteeChanges(t *testing.T) {
+	a := gervalidator.Validator{Address: validatorA, URL: "http://a"}
+	b := gervalidator.Validator{Address: validatorB, URL: "http://b"}
+	c := gervalidator.Validator{Address: validatorC, URL: "http://c"}
+	snapshot := func(threshold int, validators ...gervalidator.Validator) committeeSnapshot {
+		return committeeSnapshot{threshold: threshold, onChain: validators, validators: validators}
+	}
+
+	tests := []struct {
+		name     string
+		previous committeeSnapshot
+		current  committeeSnapshot
+		want     []string
+	}{
+		{name: "nothing changed", previous: snapshot(2, a, b), current: snapshot(2, a, b), want: nil},
+		{name: "threshold", previous: snapshot(1, a, b), current: snapshot(2, a, b), want: []string{"threshold 1 -> 2"}},
+		{
+			name: "validator added and threshold", previous: snapshot(1, a, b), current: snapshot(2, a, b, c),
+			want: []string{"threshold 1 -> 2", "validators added: " + validatorC.Hex()},
+		},
+		{
+			name: "validator removed", previous: snapshot(2, a, b, c), current: snapshot(2, a, c),
+			want: []string{"validators removed: " + validatorB.Hex()},
+		},
+		{
+			name:     "URL changed",
+			previous: snapshot(2, a, b),
+			current:  snapshot(2, a, gervalidator.Validator{Address: validatorB, URL: "http://b2"}),
+			want:     []string{"on-chain URL changed: " + validatorB.Hex() + " (http://b -> http://b2)"},
+		},
+		{
+			name:     "URL removed",
+			previous: snapshot(2, a, b),
+			current:  snapshot(2, a, gervalidator.Validator{Address: validatorB}),
+			want:     []string{"on-chain URL changed: " + validatorB.Hex() + " (http://b -> no URL)"},
+		},
+		{
+			name:     "an override is not a change of the committee",
+			previous: snapshot(2, a, b),
+			current: committeeSnapshot{
+				threshold: 2, onChain: []gervalidator.Validator{a, b},
+				validators: []gervalidator.Validator{a, {Address: validatorB, URL: "http://override"}},
+			},
+			want: nil,
+		},
+		{
+			name: "only the order", previous: snapshot(2, a, b), current: snapshot(2, b, a),
+			want: []string{"the order of the validators changed"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, describeCommitteeChanges(tc.previous, tc.current))
+		})
+	}
+}
+
+func TestCommitteeV2Sender_NoteCommitteeState(t *testing.T) {
+	sender := &CommitteeV2Sender{logger: log.GetDefaultLogger(), cfg: defaultV2Config()}
+	firstValidators := []gervalidator.Validator{{Address: validatorA, URL: "http://a"}}
+	first := committeeSnapshot{threshold: 1, onChain: firstValidators, validators: firstValidators}
+	sender.noteCommitteeState(first)
+	require.Equal(t, &first, sender.lastCommittee)
+
+	secondValidators := []gervalidator.Validator{{Address: validatorA, URL: "http://a"}, {Address: validatorB}}
+	second := committeeSnapshot{threshold: 2, onChain: secondValidators, validators: secondValidators}
+	sender.noteCommitteeState(second)
+	require.Equal(t, &second, sender.lastCommittee, "the last state read is kept, to compare the next one with it")
+}
+
+func TestUnusedURLOverrides(t *testing.T) {
+	validators := []gervalidator.Validator{{Address: validatorA}, {Address: validatorB}}
+	require.Empty(t, unusedURLOverrides(nil, validators))
+	require.Empty(t, unusedURLOverrides(map[common.Address]string{validatorA: "http://a"}, validators))
+
+	unknown1 := common.HexToAddress("0x01")
+	unknown2 := common.HexToAddress("0x02")
+	require.Equal(t, []string{unknown1.Hex(), unknown2.Hex()}, unusedURLOverrides(map[common.Address]string{
+		validatorA: "http://a", unknown2: "http://x", unknown1: "http://y",
+	}, validators))
 }
 
 func TestRevertSelector(t *testing.T) {

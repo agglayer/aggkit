@@ -17,6 +17,8 @@ import (
 
 // gerSubmission is how the GERs are submitted to the L2, once the configured mode is resolved
 type gerSubmission struct {
+	// requested is the configured AggOracle.Mode (auto if it is not set)
+	requested Mode
 	// mode is the sender to use
 	mode chaingersender.GERMode
 	// committee is the AggOracleCommittee contract (zero for the direct injection)
@@ -40,10 +42,13 @@ func resolveSubmission(ctx context.Context, cfg Config, caller bind.ContractCall
 
 	switch requested {
 	case ModeDirect:
-		return &gerSubmission{mode: chaingersender.DirectInjectionMode, reason: "configured"}, nil
+		return &gerSubmission{
+			requested: requested, mode: chaingersender.DirectInjectionMode,
+			reason: "the L2 is not read: the EthTxManager account must be the GER updater",
+		}, nil
 
 	case ModeCommittee:
-		committee, updater, err := chaingersender.ResolveCommitteeAddress(ctx, caller, gerManager, configuredCommittee)
+		committee, _, err := chaingersender.ResolveCommitteeAddress(ctx, caller, gerManager, configuredCommittee)
 		if err != nil {
 			return nil, err
 		}
@@ -51,9 +56,13 @@ func resolveSubmission(ctx context.Context, cfg Config, caller bind.ContractCall
 			return nil, fmt.Errorf("AggOracle.Mode is committee but there is no committee: "+
 				"AggOracleCommitteeAddr is not set and the GER updater of the L2 GER manager %s is the zero address", gerManager)
 		}
+		source := "AggOracleCommitteeAddr, that is the GER updater of the L2 GER manager"
+		if configuredCommittee == aggkitcommon.ZeroAddress {
+			source = "the GER updater of the L2 GER manager (AggOracleCommitteeAddr not set)"
+		}
 		return &gerSubmission{
-			mode: chaingersender.AggOracleCommitteeV2Mode, committee: committee,
-			reason: fmt.Sprintf("configured (GER updater %s)", updater),
+			requested: requested, mode: chaingersender.AggOracleCommitteeV2Mode, committee: committee,
+			reason: fmt.Sprintf("committee %s, from %s", committee, source),
 		}, nil
 
 	case ModeAuto:
@@ -61,11 +70,22 @@ func resolveSubmission(ctx context.Context, cfg Config, caller bind.ContractCall
 		if err != nil {
 			return nil, fmt.Errorf("AggOracle.Mode is auto and the mode can't be detected: %w", err)
 		}
-		return &gerSubmission{mode: detection.Mode, committee: detection.Committee, reason: detection.Reason}, nil
+		return &gerSubmission{
+			requested: requested, mode: detection.Mode, committee: detection.Committee, reason: detection.Reason,
+		}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported AggOracle.Mode %q", requested)
 	}
+}
+
+// describe explains how the GERs are submitted: the configured mode, what it resolved to and why
+func (s *gerSubmission) describe(gerManager common.Address) string {
+	if s.requested == ModeAuto {
+		return fmt.Sprintf("AggOracle.Mode is %q, resolved to %s mode by reading the GER updater of the "+
+			"L2 GER manager %s: %s", s.requested, s.mode, gerManager, s.reason)
+	}
+	return fmt.Sprintf("AggOracle.Mode is %q: %s mode (%s)", s.requested, s.mode, s.reason)
 }
 
 // NewEVMChainSender creates the ChainSender that matches the configured Mode, resolving the "auto" mode (and
@@ -85,7 +105,7 @@ func NewEVMChainSender(
 	if err != nil {
 		return nil, err
 	}
-	logger.Infof("AggOracle mode: %s (%s)", submission.mode, submission.reason)
+	logger.Info(submission.describe(cfg.EVMSender.GlobalExitRootL2Addr))
 
 	switch submission.mode {
 	case chaingersender.DirectInjectionMode:

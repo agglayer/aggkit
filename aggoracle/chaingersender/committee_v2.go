@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -98,6 +99,74 @@ type CommitteeV2Sender struct {
 
 	// processing makes only one GER to be processed at the same time
 	processing sync.Mutex
+
+	// statusMu protects status, that is read by the calls to ProcessGER that skip their GER
+	statusMu sync.Mutex
+	// status is what is being done with the GER being processed (zero if none), to explain the skips
+	status processingStatus
+
+	// lastCommittee is the last state of the committee that was read, to log its changes. It is only used by
+	// the constructor and while holding processing
+	lastCommittee *committeeSnapshot
+}
+
+// committeeSnapshot is the state of the committee read at some point
+type committeeSnapshot struct {
+	threshold int
+	// onChain are the validators as registered on the contract
+	onChain []gervalidator.Validator
+	// validators are the validators to ask: onChain with the URL overrides applied (same order)
+	validators []gervalidator.Validator
+}
+
+// gerStage is what the sender is doing with the GER being processed
+type gerStage int
+
+const (
+	// stageChecking: checking if the GER is already injected and reading the committee
+	stageChecking gerStage = iota
+	// stageCollecting: asking the validators for their signatures
+	stageCollecting
+	// stageWaitingValidators: the threshold of signatures was not reached yet, waiting to ask again
+	stageWaitingValidators
+	// stageVerifying: verifying the collected signatures with the committee (verifyGER)
+	stageVerifying
+	// stageMining: the injectGER transaction was sent, waiting for it to be mined
+	stageMining
+	// stageWaitingRetry: an attempt failed, waiting before the next one
+	stageWaitingRetry
+)
+
+// String describes the stage, to be used in the logs
+func (g gerStage) String() string {
+	switch g {
+	case stageChecking:
+		return "checking if it is already injected"
+	case stageCollecting:
+		return "collecting the signatures of the validators"
+	case stageWaitingValidators:
+		return "waiting for the validators, not enough signatures yet"
+	case stageVerifying:
+		return "verifying the signatures with the committee"
+	case stageMining:
+		return "injectGER transaction sent, waiting for it to be mined"
+	case stageWaitingRetry:
+		return "the last attempt failed, waiting to retry"
+	default:
+		return fmt.Sprintf("unknown stage %d", int(g))
+	}
+}
+
+// processingStatus is the state of the GER being processed
+type processingStatus struct {
+	ger            common.Hash
+	startedAt      time.Time
+	stage          gerStage
+	stageStartedAt time.Time
+	// detail completes the stage: signatures collected, last error...
+	detail string
+	// failedAttempts is the number of attempts that failed (MaxInjectAttempts is the limit)
+	failedAttempts int
 }
 
 // NewCommitteeV2Sender creates the sender and validates, at startup, that it can work with the committee:
@@ -147,7 +216,17 @@ func NewCommitteeV2Sender(
 	if err := sender.validate(ctx, evmCfg.GlobalExitRootL2Addr); err != nil {
 		return nil, err
 	}
-	logger.Infof("CommitteeV2Sender initialized: committee %s, proposer %s", committeeAddr, sender.proposer)
+	pendingTimeout := cfg.PendingGERTimeout.String()
+	if cfg.PendingGERTimeout <= 0 {
+		pendingTimeout = "no limit"
+	}
+	logger.Info(prefixLines(fmt.Sprintf("CommitteeV2Sender initialized:"+
+		"\n  CollectRetryInterval: %s"+
+		"\n  MaxInjectAttempts: %d"+
+		"\n  PendingGERTimeout: %s"+
+		"\n  ValidatorURLOverrides: %d"+
+		"\n  the committee is read again on every attempt to inject a new GER",
+		cfg.CollectRetryInterval, cfg.MaxInjectAttempts, pendingTimeout, len(cfg.ValidatorURLOverrides))))
 
 	return sender, nil
 }
@@ -191,54 +270,218 @@ func (s *CommitteeV2Sender) validate(ctx context.Context, l2GERManagerAddr commo
 			"only the proposer can inject GERs", s.proposer, s.committeeAddr, proposer)
 	}
 
-	validators, threshold, err := s.committeeState(ctx)
+	committee, err := s.committeeState(ctx)
 	if err != nil {
 		return err
 	}
+	s.lastCommittee = &committee
+	reachable := countReachable(committee.validators)
+	s.logger.Info(prefixLines(fmt.Sprintf("AggOracleCommittee %s:"+
+		"\n  version: %s"+
+		"\n  proposer: %s (this aggoracle)"+
+		"\n  L2 GER manager: %s"+
+		"\n  threshold %d of %d validators (%d with a URL):%s",
+		s.committeeAddr, version, proposer, gerManager, committee.threshold, len(committee.validators), reachable,
+		describeValidators(committee))))
+	if unused := unusedURLOverrides(s.cfg.ValidatorURLOverrides, committee.onChain); len(unused) > 0 {
+		s.logger.Warnf("AggOracle.CommitteeV2.ValidatorURLOverrides has addresses that are not validators of the "+
+			"AggOracleCommittee %s, they are ignored: %s", s.committeeAddr, strings.Join(unused, ", "))
+	}
+	if reachable < committee.threshold {
+		return fmt.Errorf("the AggOracleCommittee has threshold %d but only %d of its %d validators have a URL: "+
+			"set the missing ones in AggOracle.CommitteeV2.ValidatorURLOverrides",
+			committee.threshold, reachable, len(committee.validators))
+	}
+	return nil
+}
+
+// committeeState reads the threshold and the validators, as registered on the contract and with the configured
+// URL overrides applied
+func (s *CommitteeV2Sender) committeeState(ctx context.Context) (committeeSnapshot, error) {
+	opts := &bind.CallOpts{Context: ctx}
+
+	rawThreshold, err := s.committee.Threshold(opts)
+	if err != nil {
+		return committeeSnapshot{}, fmt.Errorf("failed to read the threshold of the AggOracleCommittee: %w", err)
+	}
+	if !rawThreshold.IsUint64() || rawThreshold.Uint64() == 0 || rawThreshold.Uint64() > maxValidators {
+		return committeeSnapshot{}, fmt.Errorf("unexpected threshold in the AggOracleCommittee: %s", rawThreshold)
+	}
+	threshold := int(rawThreshold.Uint64())
+
+	infos, err := s.committee.GetValidatorsInfo(opts)
+	if err != nil {
+		return committeeSnapshot{}, fmt.Errorf("failed to read the validators of the AggOracleCommittee: %w", err)
+	}
+	if threshold > len(infos) {
+		return committeeSnapshot{}, fmt.Errorf(
+			"the AggOracleCommittee has a threshold (%d) greater than its validators (%d)", threshold, len(infos))
+	}
+
+	committee := committeeSnapshot{
+		threshold:  threshold,
+		onChain:    make([]gervalidator.Validator, len(infos)),
+		validators: make([]gervalidator.Validator, len(infos)),
+	}
+	for i, info := range infos {
+		committee.onChain[i] = gervalidator.Validator{Address: info.Addr, URL: info.Url}
+		url := info.Url
+		if override, ok := s.cfg.ValidatorURLOverrides[info.Addr]; ok {
+			url = override
+		}
+		committee.validators[i] = gervalidator.Validator{Address: info.Addr, URL: url}
+	}
+	return committee, nil
+}
+
+// noteCommitteeState logs the changes of the committee since the last time it was read
+func (s *CommitteeV2Sender) noteCommitteeState(current committeeSnapshot) {
+	previous := s.lastCommittee
+	s.lastCommittee = &current
+	if previous == nil {
+		return
+	}
+	changes := describeCommitteeChanges(*previous, current)
+	if len(changes) == 0 {
+		return
+	}
+	reachable := countReachable(current.validators)
+	s.logger.Warn(prefixLines(fmt.Sprintf("AggOracleCommittee %s changed:\n  - %s"+
+		"\n  now threshold %d of %d validators (%d with a URL):%s",
+		s.committeeAddr, strings.Join(changes, "\n  - "),
+		current.threshold, len(current.validators), reachable, describeValidators(current))))
+	if reachable < current.threshold {
+		s.logger.Warnf("AggOracleCommittee %s has threshold %d but only %d of its validators have a URL: "+
+			"no GER can be injected until the missing ones are set in AggOracle.CommitteeV2.ValidatorURLOverrides",
+			s.committeeAddr, current.threshold, reachable)
+	}
+}
+
+// describeCommitteeChanges describes what changed on the contract from previous to current, one item per change
+// (none if nothing did). The URL overrides are not changes of the committee: the URLs compared are the ones
+// registered on the contract
+func describeCommitteeChanges(previous, current committeeSnapshot) []string {
+	var changes []string
+	if previous.threshold != current.threshold {
+		changes = append(changes, fmt.Sprintf("threshold %d -> %d", previous.threshold, current.threshold))
+	}
+
+	previousURLs := make(map[common.Address]string, len(previous.onChain))
+	for _, validator := range previous.onChain {
+		previousURLs[validator.Address] = validator.URL
+	}
+	currentURLs := make(map[common.Address]string, len(current.onChain))
+	for _, validator := range current.onChain {
+		currentURLs[validator.Address] = validator.URL
+	}
+
+	var added, removed, urlChanged []string
+	for _, validator := range current.onChain {
+		previousURL, existed := previousURLs[validator.Address]
+		switch {
+		case !existed:
+			added = append(added, validator.Address.Hex())
+		case previousURL != validator.URL:
+			urlChanged = append(urlChanged, fmt.Sprintf("%s (%s -> %s)",
+				validator.Address, describeURL(previousURL), describeURL(validator.URL)))
+		}
+	}
+	for _, validator := range previous.onChain {
+		if _, exists := currentURLs[validator.Address]; !exists {
+			removed = append(removed, validator.Address.Hex())
+		}
+	}
+	if len(added) > 0 {
+		changes = append(changes, "validators added: "+strings.Join(added, ", "))
+	}
+	if len(removed) > 0 {
+		changes = append(changes, "validators removed: "+strings.Join(removed, ", "))
+	}
+	if len(urlChanged) > 0 {
+		changes = append(changes, "on-chain URL changed: "+strings.Join(urlChanged, ", "))
+	}
+	if len(changes) == 0 && !sameOrder(previous.onChain, current.onChain) {
+		changes = append(changes, "the order of the validators changed")
+	}
+	return changes
+}
+
+// sameOrder tells if both lists have the same validators in the same order
+func sameOrder(a, b []gervalidator.Validator) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Address != b[i].Address {
+			return false
+		}
+	}
+	return true
+}
+
+// describeURL is the URL, or a text that says there is none
+func describeURL(url string) string {
+	if url == "" {
+		return "no URL"
+	}
+	return url
+}
+
+// countReachable is the number of validators that have a URL, the only ones that can be asked
+func countReachable(validators []gervalidator.Validator) int {
 	reachable := 0
 	for _, validator := range validators {
 		if validator.URL != "" {
 			reachable++
 		}
 	}
-	if reachable < threshold {
-		return fmt.Errorf("the AggOracleCommittee requires %d signatures but only %d of its %d validators have a URL: "+
-			"set the missing ones in AggOracle.CommitteeV2.ValidatorURLOverrides", threshold, reachable, len(validators))
-	}
-	return nil
+	return reachable
 }
 
-// committeeState reads the validators (with the configured URL overrides applied) and the threshold
-func (s *CommitteeV2Sender) committeeState(ctx context.Context) ([]gervalidator.Validator, int, error) {
-	opts := &bind.CallOpts{Context: ctx}
-
-	rawThreshold, err := s.committee.Threshold(opts)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read the threshold of the AggOracleCommittee: %w", err)
+// unusedURLOverrides returns, sorted, the addresses of the overrides that are not validators of the committee
+func unusedURLOverrides(overrides map[common.Address]string, validators []gervalidator.Validator) []string {
+	isValidator := make(map[common.Address]bool, len(validators))
+	for _, validator := range validators {
+		isValidator[validator.Address] = true
 	}
-	if !rawThreshold.IsUint64() || rawThreshold.Uint64() == 0 || rawThreshold.Uint64() > maxValidators {
-		return nil, 0, fmt.Errorf("unexpected threshold in the AggOracleCommittee: %s", rawThreshold)
-	}
-	threshold := int(rawThreshold.Uint64())
-
-	infos, err := s.committee.GetValidatorsInfo(opts)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read the validators of the AggOracleCommittee: %w", err)
-	}
-	if threshold > len(infos) {
-		return nil, 0, fmt.Errorf("the AggOracleCommittee has a threshold (%d) greater than its validators (%d)",
-			threshold, len(infos))
-	}
-
-	validators := make([]gervalidator.Validator, len(infos))
-	for i, info := range infos {
-		url := info.Url
-		if override, ok := s.cfg.ValidatorURLOverrides[info.Addr]; ok {
-			url = override
+	var unused []string
+	for addr := range overrides {
+		if !isValidator[addr] {
+			unused = append(unused, addr.Hex())
 		}
-		validators[i] = gervalidator.Validator{Address: info.Addr, URL: url}
 	}
-	return validators, threshold, nil
+	sort.Strings(unused)
+	return unused
+}
+
+// logLinePrefix starts every line of the logs of several lines, so all of them are found when the logs are filtered
+const logLinePrefix = "aggoracle: "
+
+// prefixLines puts logLinePrefix at the start of every line of msg
+func prefixLines(msg string) string {
+	return logLinePrefix + strings.ReplaceAll(msg, "\n", "\n"+logLinePrefix)
+}
+
+// describeValidators describes the validators of the committee, one per line: address, URL that is used and
+// where it comes from and, when it is overridden, the URL registered on the contract
+func describeValidators(committee committeeSnapshot) string {
+	var desc strings.Builder
+	for i, validator := range committee.validators {
+		onChainURL := committee.onChain[i].URL
+		overridden := validator.URL != onChainURL
+		fmt.Fprintf(&desc, "\n    - %s: ", validator.Address)
+		switch {
+		case validator.URL == "" && overridden:
+			desc.WriteString("no URL, it can't be asked (ValidatorURLOverrides; on-chain: " + onChainURL + ")")
+		case validator.URL == "":
+			desc.WriteString("no URL, it can't be asked")
+		case overridden:
+			desc.WriteString(validator.URL + " (ValidatorURLOverrides; on-chain: " + describeURL(onChainURL) + ")")
+		default:
+			desc.WriteString(validator.URL + " (on-chain)")
+		}
+	}
+	return desc.String()
 }
 
 // IsGERInjected checks if the GER is registered on the L2 GER manager
@@ -272,10 +515,12 @@ func (s *CommitteeV2Sender) isProcessed(ctx context.Context, ger common.Hash) (b
 // If another GER is being processed it does nothing: that one has to finish (or give up) first.
 func (s *CommitteeV2Sender) ProcessGER(ctx context.Context, ger common.Hash) error {
 	if !s.processing.TryLock() {
-		s.logger.Debugf("GER %s: another GER is still being processed, skipping it", ger)
+		s.logger.Debug(s.describeSkip(ger))
 		return nil
 	}
 	defer s.processing.Unlock()
+	s.startStatus(ger)
+	defer s.clearStatus()
 
 	if s.cfg.PendingGERTimeout <= 0 {
 		return s.processGER(ctx, ger)
@@ -297,6 +542,7 @@ func (s *CommitteeV2Sender) ProcessGER(ctx context.Context, ger common.Hash) err
 func (s *CommitteeV2Sender) processGER(ctx context.Context, ger common.Hash) error {
 	failedAttempts := 0
 	for {
+		s.setStage(stageChecking, "")
 		processed, err := s.isProcessed(ctx, ger)
 		if err != nil {
 			return err
@@ -314,6 +560,8 @@ func (s *CommitteeV2Sender) processGER(ctx context.Context, ger common.Hash) err
 			return err
 		case outcomeRetry:
 			failedAttempts++
+			s.setFailedAttempts(failedAttempts)
+			s.setStage(stageWaitingRetry, fmt.Sprintf("attempt %d of %d: %s", failedAttempts, s.cfg.MaxInjectAttempts, err))
 			s.logger.Warnf("GER %s: attempt %d of %d failed: %s", ger, failedAttempts, s.cfg.MaxInjectAttempts, err)
 			if failedAttempts >= s.cfg.MaxInjectAttempts {
 				return fmt.Errorf("%w: GER %s, %d attempts, last error: %w",
@@ -330,16 +578,20 @@ func (s *CommitteeV2Sender) processGER(ctx context.Context, ger common.Hash) err
 
 // tryInject makes one attempt to inject the GER
 func (s *CommitteeV2Sender) tryInject(ctx context.Context, ger common.Hash) (attemptOutcome, error) {
-	validators, threshold, err := s.committeeState(ctx)
+	committee, err := s.committeeState(ctx)
 	if err != nil {
 		return outcomeFail, err
 	}
+	s.noteCommitteeState(committee)
+	validators, threshold := committee.validators, committee.threshold
 
+	s.setStage(stageCollecting, fmt.Sprintf("threshold %d of %d validators", threshold, len(validators)))
 	result, err := s.collector.Collect(ctx, ger, validators, threshold)
 	if err != nil {
 		return s.classifyCollectError(ger, err)
 	}
 
+	s.setStage(stageVerifying, "")
 	verified, err := s.verify(ctx, ger, result.Signatures)
 	switch verified {
 	case verificationAlreadyInjected:
@@ -369,6 +621,8 @@ func (s *CommitteeV2Sender) classifyCollectError(ger common.Hash, err error) (at
 		return outcomeFail, err
 	}
 	if notReached.Retryable() {
+		s.setStage(stageWaitingValidators, fmt.Sprintf("%d valid of threshold %d, %d validators failed",
+			notReached.Valid, notReached.Threshold, len(notReached.Failures)))
 		s.logger.Infof("GER %s is pending: %s", ger, err)
 		return outcomePending, nil
 	}
@@ -411,12 +665,76 @@ func (s *CommitteeV2Sender) submit(ctx context.Context, ger common.Hash, result 
 		return fmt.Errorf("failed to pack the %s call: %w", injectGERFuncName, err)
 	}
 
+	s.setStage(stageMining, fmt.Sprintf("signed by %d validators", len(result.Signers)))
 	s.logger.Infof("injecting GER %s with the signatures of %d validators", ger, len(result.Signers))
 	if err := s.submitter.submitAndWait(ctx, &s.committeeAddr, txInput, "inject", ger); err != nil {
 		return err
 	}
 	// submitAndWait returns nil when the context is cancelled: don't report that as injected
 	return ctx.Err()
+}
+
+// startStatus records that the GER starts being processed
+func (s *CommitteeV2Sender) startStatus(ger common.Hash) {
+	now := time.Now()
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	s.status = processingStatus{ger: ger, startedAt: now, stage: stageChecking, stageStartedAt: now}
+}
+
+// clearStatus records that no GER is being processed
+func (s *CommitteeV2Sender) clearStatus() {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	s.status = processingStatus{}
+}
+
+// setStage records the stage of the GER being processed
+func (s *CommitteeV2Sender) setStage(stage gerStage, detail string) {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	if s.status.stage != stage {
+		s.status.stageStartedAt = time.Now()
+	}
+	s.status.stage = stage
+	s.status.detail = detail
+}
+
+// setFailedAttempts records the failed attempts of the GER being processed
+func (s *CommitteeV2Sender) setFailedAttempts(failedAttempts int) {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	s.status.failedAttempts = failedAttempts
+}
+
+// describeSkip explains why the GER is skipped: which GER is being processed and what is being done with it
+func (s *CommitteeV2Sender) describeSkip(ger common.Hash) string {
+	s.statusMu.Lock()
+	status := s.status
+	s.statusMu.Unlock()
+
+	if status.ger == (common.Hash{}) {
+		// The lock was just taken (or released) and the status is not set yet (or anymore)
+		return fmt.Sprintf("GER %s skipped: another GER is starting (or finishing) to be processed", ger)
+	}
+
+	now := time.Now()
+	stage := fmt.Sprintf("%s (for %s", status.stage, now.Sub(status.stageStartedAt).Round(time.Second))
+	if status.detail != "" {
+		stage += ", " + status.detail
+	}
+	stage += ")"
+	if status.failedAttempts > 0 {
+		stage += fmt.Sprintf(", %d of %d attempts failed", status.failedAttempts, s.cfg.MaxInjectAttempts)
+	}
+	elapsed := now.Sub(status.startedAt).Round(time.Second)
+
+	if status.ger == ger {
+		return fmt.Sprintf("GER %s is already being processed (for %s), nothing new to do: %s",
+			ger, elapsed, stage)
+	}
+	return fmt.Sprintf("GER %s skipped: GER %s is still being processed (for %s): %s. "+
+		"The latest GER will be processed once it finishes", ger, status.ger, elapsed, stage)
 }
 
 // errorSelector returns the selector of a custom error of the committee

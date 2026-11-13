@@ -193,6 +193,45 @@ func TestResolveSubmission_ExplicitModes(t *testing.T) {
 			require.Equal(t, tc.expectedMode, submission.mode)
 			require.Equal(t, tc.expectedAddr, submission.committee)
 			require.NotEmpty(t, submission.reason)
+			require.Equal(t, tc.cfg.Mode, submission.requested)
+		})
+	}
+}
+
+// The log of the mode says what was configured and, for auto, what it resolved to
+func TestGERSubmission_Describe(t *testing.T) {
+	gerManager := common.HexToAddress("0x1234")
+	tests := []struct {
+		name       string
+		submission gerSubmission
+		expected   string
+	}{
+		{
+			name: "direct",
+			submission: gerSubmission{
+				requested: ModeDirect, mode: chaingersender.DirectInjectionMode, reason: "why",
+			},
+			expected: `AggOracle.Mode is "direct": direct_injection mode (why)`,
+		},
+		{
+			name: "committee",
+			submission: gerSubmission{
+				requested: ModeCommittee, mode: chaingersender.AggOracleCommitteeV2Mode, reason: "why",
+			},
+			expected: `AggOracle.Mode is "committee": aggoracle_committee_v2 mode (why)`,
+		},
+		{
+			name: "auto",
+			submission: gerSubmission{
+				requested: ModeAuto, mode: chaingersender.AggOracleCommitteeV2Mode, reason: "why",
+			},
+			expected: `AggOracle.Mode is "auto", resolved to aggoracle_committee_v2 mode by reading the GER updater ` +
+				`of the L2 GER manager ` + gerManager.Hex() + `: why`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, tc.submission.describe(gerManager))
 		})
 	}
 }
@@ -260,6 +299,7 @@ func TestResolveSubmission_Auto(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedMode, submission.mode)
 			require.Equal(t, tc.expectedAddr, submission.committee)
+			require.Equal(t, ModeAuto, submission.requested)
 		})
 	}
 }
