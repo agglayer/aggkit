@@ -42,6 +42,10 @@ type Config struct {
 	// Default: "auto"
 	// SyncFromInBridges.Resolved is set programmatically after resolution; not read from config.
 	SyncFromInBridges types.TrueFalseAutoMode `jsonschema:"enum=true, enum=false, enum=auto" mapstructure:"SyncFromInBridges"` //nolint:lll
+	// Downloader selects the block download backend: "legacy" (default) or "multidownloader".
+	// The zero value behaves as "legacy". Only the L1 syncers can use the multidownloader; the L2
+	// restriction is enforced by the startup code, since this struct is shared by both.
+	Downloader types.Downloader `jsonschema:"enum=legacy, enum=multidownloader" mapstructure:"Downloader"`
 }
 
 // Validate checks if the configuration is valid
@@ -55,6 +59,12 @@ func (c Config) Validate() error {
 		if err := m.UnmarshalText([]byte(c.SyncFromInBridges.Mode)); err != nil {
 			return fmt.Errorf("invalid SyncFromInBridges value: %w", err)
 		}
+	}
+	// Validate Downloader (empty is allowed — means legacy). Whether the multidownloader is allowed
+	// depends on the section (L1 vs L2) and is enforced by the startup code, since this struct is
+	// shared by the L1 and L2 syncers.
+	if err := c.Downloader.Validate(); err != nil {
+		return fmt.Errorf("invalid Downloader value: %w", err)
 	}
 	return nil
 }

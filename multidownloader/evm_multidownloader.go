@@ -53,12 +53,32 @@ type EVMMultidownloader struct {
 	isRunning     bool
 	wg            sync.WaitGroup
 	cancel        context.CancelFunc
+	// workerWG tracks the background workers of the current run. It is kept
+	// separate from wg (which tracks the run-loop goroutine itself) so a run can
+	// join its workers without waiting on its own goroutine.
+	workerWG sync.WaitGroup
 
 	// Debug fields
 	debug *EVMMultidownloaderDebug
+
+	// Transaction support. It is opt-in: only enabled when at least one
+	// registered syncer sets TransactionRequirements.Enabled. The fields below
+	// are only written during RegisterSyncer/Initialize (before Start), except
+	// txRequestTimeout which is a private test-injection knob.
+	transactionDemands   []transactionDemand
+	transactionStorage   mdrtypes.TransactionStorage
+	requiresTransactions bool
+	txRequestTimeout     time.Duration
+
+	// txNotify wakes the background transaction worker when new logs are
+	// committed. txInflight deduplicates concurrent transaction RPC fetches and
+	// bounds the shared HTTP concurrency.
+	txNotify   chan struct{}
+	txInflight *transactionInflight
 }
 
 var _ aggkittypes.MultiDownloaderLegacy = (*EVMMultidownloader)(nil)
+var _ aggkittypes.TransactionProvider = (*EVMMultidownloader)(nil)
 
 // NewEVMMultidownloader creates a new EVM multidownloader instance with proper validation
 func NewEVMMultidownloader(log aggkitcommon.Logger,
@@ -121,6 +141,9 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 		name:                 name,
 		reorgProcessor:       reorgProcessor,
 		debug:                debug,
+		txRequestTimeout:     defaultTransactionRequestTimeout,
+		txNotify:             make(chan struct{}, 1),
+		txInflight:           newTransactionInflight(context.Background(), cfg.MaxParallelBlockHeaderRetrieval),
 	}, nil
 }
 
@@ -147,8 +170,24 @@ func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) erro
 		return fmt.Errorf("registerSyncer: cannot add new syncer config after initialization")
 	}
 
-	dh.syncersConfig.Add(data)
+	// Store an owned copy so a caller mutating the nested slices after
+	// registration can never corrupt the registered configuration. The syncer
+	// config set is the single source of truth (there is no parallel map).
+	dh.syncersConfig.Add(cloneSyncerConfig(data))
 	return nil
+}
+
+// cloneSyncerConfig returns a deep copy of cfg, protecting the registered
+// configuration from later mutation of the caller's slices.
+func cloneSyncerConfig(cfg aggkittypes.SyncerConfig) aggkittypes.SyncerConfig {
+	out := cfg
+	if cfg.ContractAddresses != nil {
+		out.ContractAddresses = append([]common.Address(nil), cfg.ContractAddresses...)
+	}
+	if cfg.TransactionRequirements.Topic0 != nil {
+		out.TransactionRequirements.Topic0 = append([]common.Hash(nil), cfg.TransactionRequirements.Topic0...)
+	}
+	return out
 }
 
 // Initialize initializes the multidownloader. At this point all syncers
@@ -165,6 +204,20 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Resolve the optional transaction capability BEFORE any write: a
+	// transaction-enabled registration must be rejected up front when the
+	// storage backend does not implement TransactionStorage.
+	if err := dh.initializeTransactionSupport(); err != nil {
+		return err
+	}
+	// The shared transaction flight base context must honor the lifetime of the
+	// context passed to Initialize from the very start. Otherwise an early
+	// consumer (or the background worker) could trigger a fetch under the
+	// default context.Background base, which only honors the per-request timeout
+	// and not the application lifetime cancellation until Start() replaces it.
+	// Setting it here (under dh.mutex; the dh.mutex -> inflight-mutex order is
+	// never reversed) closes that window without changing any public method.
+	dh.txInflight.setBaseContext(ctx)
 	dh.log.Debugf("Saving syncer configs to storage...")
 	// Save syncer configs to storage; it overrides previous ones but keeps
 	// the synced segments
@@ -180,6 +233,29 @@ func (dh *EVMMultidownloader) Initialize(ctx context.Context) error {
 	dh.state = newState
 	dh.log.Infof("Initialization completed.configs: %s state: %s",
 		dh.syncersConfig.Brief(), dh.state.String())
+	return nil
+}
+
+// initializeTransactionSupport derives the per-registration transaction demands
+// and resolves the optional TransactionStorage capability. It must be called
+// with dh.mutex held and before any syncer config is written, so a
+// transaction-enabled registration is rejected up front when the storage
+// backend cannot store transactions. When no syncer opts in it is a no-op: no
+// transaction RPC and no background worker are ever created.
+func (dh *EVMMultidownloader) initializeTransactionSupport() error {
+	dh.transactionDemands = dh.buildTransactionDemands()
+	if len(dh.transactionDemands) == 0 {
+		dh.transactionStorage = nil
+		dh.requiresTransactions = false
+		return nil
+	}
+	ts, err := mdrtypes.AsTransactionStorage(dh.storage)
+	if err != nil {
+		return fmt.Errorf("Initialize: syncers require transactions but %w", err)
+	}
+	dh.transactionStorage = ts
+	dh.requiresTransactions = true
+	dh.log.Infof("Transaction support enabled for %d registration demand(s)", len(dh.transactionDemands))
 	return nil
 }
 func (dh *EVMMultidownloader) mapBlockTagToBlockNumber(
@@ -237,6 +313,15 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 	dh.mutex.Unlock()
 
 	defer func() {
+		// Cancel the run context so the background transaction worker (if any)
+		// stops, then join this run's workers and any shared in-flight RPC
+		// before publishing the stopped state. This prevents a new Start from
+		// racing the previous run's worker. dh.workerWG deliberately excludes the
+		// run-loop goroutine itself (tracked by dh.wg), so this join cannot
+		// deadlock on the current goroutine.
+		cancel()
+		dh.workerWG.Wait()
+		dh.txInflight.wait()
 		dh.mutex.Lock()
 		dh.isRunning = false
 		dh.stopRequested = false
@@ -252,6 +337,11 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 			return err
 		}
 	}
+
+	// The transaction backfill worker is independent from the log sync loop:
+	// log ingestion must proceed even when transaction resolution fails. It is
+	// only started when a registered syncer opted in.
+	dh.startTransactionWorker(runCtx)
 
 	dh.statistics.StartSyncing()
 	numLoops := 0
@@ -671,6 +761,8 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot store data: %w", err)
 	}
+	// New canonical logs are committed: wake the transaction backfill worker.
+	dh.notifyTransactionWorker()
 
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
@@ -744,6 +836,8 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot store data: %w", err)
 	}
+	// New canonical logs are committed: wake the transaction backfill worker.
+	dh.notifyTransactionWorker()
 	// Update in-memory synced segments (after valid commit)
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()

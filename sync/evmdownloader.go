@@ -44,6 +44,18 @@ type LogAppenderMap map[common.Hash]func(b *EVMBlock, l types.Log) error
 // It receives the block range and the original logs, and returns the (possibly modified) list.
 type LogsHookFunc func(ctx context.Context, fromBlock, toBlock uint64, logs []types.Log) []types.Log
 
+// LogsEnricherFunc is an optional hook that runs after the logs hook and before the appender
+// builds the events for each block. It allows callers to attach contextual information to the
+// fetched logs (for example resolving the transaction that produced each log) using the active
+// download context.
+//
+// Ordinary retryable errors are retried by the downloader using its RetryHandler and the download
+// context, so callers must not use it for conditions that will never succeed on retry. Returning an
+// error wrapping aggkittypes.ErrTransactionInclusionMismatch signals that the logs are stale
+// (typically because their block was reorged away): the downloader then drops the stale logs and
+// refetches the whole block range instead of retrying the same stale log.
+type LogsEnricherFunc func(ctx context.Context, logs []types.Log) error
+
 // GetTopics returns the EVM event topics that are being queried
 func (m LogAppenderMap) GetTopics() []common.Hash {
 	topics := make([]common.Hash, 0, len(m))
@@ -142,6 +154,16 @@ func (d *EVMDownloader) SetLogsHook(hook LogsHookFunc) LogsHookFunc {
 	return nil
 }
 
+// SetLogsEnricher sets an optional contextual log enricher on the underlying
+// EVMDownloaderImplementation. It returns the previous enricher, if any. Returns nil if the
+// underlying implementation does not support it.
+func (d *EVMDownloader) SetLogsEnricher(enricher LogsEnricherFunc) LogsEnricherFunc {
+	if impl, ok := d.EVMDownloaderInterface.(*EVMDownloaderImplementation); ok {
+		return impl.SetLogsEnricher(enricher)
+	}
+	return nil
+}
+
 // RuntimeData returns the runtime data: chainID + addresses to query
 func (d *EVMDownloader) RuntimeData(ctx context.Context) (RuntimeData, error) {
 	chainID, err := d.ChainID(ctx)
@@ -223,6 +245,15 @@ func (d *EVMDownloader) Download(
 		d.log.Debugf("result events from blocks [%d to %d] -> len(blocks)=%d",
 			fromBlock, requestToBlock, len(blocks))
 
+		// If the download context was canceled while fetching/enriching this range, stop
+		// before reporting any empty block or advancing progress: an empty report here would
+		// otherwise be mistaken for real sync progress.
+		if ctx.Err() != nil {
+			d.log.Info("context canceled after getting events, closing evm downloader channel")
+			close(downloadedCh)
+			return
+		}
+
 		// Force-report initialFromBlock if not yet sent (even when it has no events).
 		// preReportedInitial tracks whether we sent it as empty this iteration,
 		// so we can avoid double-reporting it in the normal reporting paths below.
@@ -252,7 +283,10 @@ func (d *EVMDownloader) Download(
 		if requestToBlock <= lastFinalizedBlockNumber {
 			d.log.Debugf("range is in a safe zone (requestToBlock: %d <= finalized: %d)",
 				requestToBlock, lastFinalizedBlockNumber)
-			d.reportBlocks(downloadedCh, blocks, lastFinalizedBlockNumber)
+			if !d.reportBlocks(ctx, downloadedCh, blocks, lastFinalizedBlockNumber) {
+				close(downloadedCh)
+				return
+			}
 			skipEmpty := preReportedInitial && requestToBlock == initialFromBlock
 			if !skipEmpty && (blocks.Len() == 0 || blocks[blocks.Len()-1].Num < requestToBlock) {
 				// The blocks with events were already reported: a missing block must not resolve to one of them
@@ -305,7 +339,10 @@ func (d *EVMDownloader) Download(
 					// If lastBlockNum is set, don't extend; stop condition below handles it
 				}
 			} else {
-				d.reportBlocks(downloadedCh, blocks, lastFinalizedBlockNumber)
+				if !d.reportBlocks(ctx, downloadedCh, blocks, lastFinalizedBlockNumber) {
+					close(downloadedCh)
+					return
+				}
 				fromBlock = blocks[blocks.Len()-1].Num + 1
 				toBlock = fromBlock + d.syncBlockChunkSize
 				if lastBlockNum != nil {
@@ -332,12 +369,22 @@ func (d *EVMDownloader) Download(
 	}
 }
 
-func (d *EVMDownloader) reportBlocks(downloadedCh chan EVMBlock, blocks EVMBlocks, lastFinalizedBlock uint64) {
+// reportBlocks sends the blocks with events to the driver. Sends are cancellation-aware so a
+// stalled or closed consumer (for example a processor that exited on a reorg) cannot strand the
+// downloader goroutine forever. It returns false if the context was canceled before all blocks
+// could be sent.
+func (d *EVMDownloader) reportBlocks(ctx context.Context, downloadedCh chan EVMBlock,
+	blocks EVMBlocks, lastFinalizedBlock uint64) bool {
 	for _, block := range blocks {
 		d.log.Debugf("sending block %d to the driver (with events)", block.Num)
 		block.IsFinalizedBlock = block.Num <= lastFinalizedBlock
-		downloadedCh <- *block
+		select {
+		case <-ctx.Done():
+			return false
+		case downloadedCh <- *block:
+		}
 	}
+	return true
 }
 
 // reportEmptyBlock sends to the driver the header of blockNum as a block without events.
@@ -362,9 +409,13 @@ func (d *EVMDownloader) reportEmptyBlock(ctx context.Context, downloadedCh chan 
 		}
 	}
 
-	downloadedCh <- EVMBlock{
+	select {
+	case <-ctx.Done():
+		return false
+	case downloadedCh <- EVMBlock{
 		IsFinalizedBlock: header.Num <= lastFinalizedBlock,
 		EVMBlockHeader:   header,
+	}:
 	}
 	return true
 }
@@ -382,6 +433,7 @@ type EVMDownloaderImplementation struct {
 	reorgDetector          ReorgDetector
 	reorgDetectorID        string
 	logsHook               LogsHookFunc
+	logsEnricher           LogsEnricherFunc
 }
 
 // SetLogsHook sets an optional hook that is called after fetching logs and can modify them before processing.
@@ -389,6 +441,14 @@ type EVMDownloaderImplementation struct {
 func (d *EVMDownloaderImplementation) SetLogsHook(hook LogsHookFunc) LogsHookFunc {
 	prev := d.logsHook
 	d.logsHook = hook
+	return prev
+}
+
+// SetLogsEnricher sets an optional enricher that is invoked after the logs hook and before the
+// appender builds the events. It returns the previous enricher, if any.
+func (d *EVMDownloaderImplementation) SetLogsEnricher(enricher LogsEnricherFunc) LogsEnricherFunc {
+	prev := d.logsEnricher
+	d.logsEnricher = enricher
 	return prev
 }
 
@@ -496,7 +556,11 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 }
 
 func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context, fromBlock, toBlock uint64) EVMBlocks {
-	return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, 0)
+	blocks, canceled := d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock)
+	if canceled {
+		return nil
+	}
+	return blocks
 }
 
 func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
@@ -504,15 +568,52 @@ func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, to
 	return d.filterLogs(unfilteredLogs)
 }
 
+// enrichLogsOutcome is the result of running the optional logs enricher.
+type enrichLogsOutcome int
+
+const (
+	enrichLogsOK enrichLogsOutcome = iota
+	enrichLogsCanceled
+	// enrichLogsRefetchRange signals the logs are stale/reorged and the whole range must be refetched.
+	enrichLogsRefetchRange
+)
+
+// appendLogsOutcome is the result of building blocks and appending events for a range.
+type appendLogsOutcome int
+
+const (
+	appendLogsOK appendLogsOutcome = iota
+	appendLogsCanceled
+	// appendLogsRefetchRange signals a stale/reorged log that requires refetching the whole range.
+	appendLogsRefetchRange
+	// appendLogsHashMismatch signals the event query and header query disagreed on a block hash.
+	appendLogsHashMismatch
+)
+
+// getEventsByBlockRangeWithRetry fetches the logs for the range, runs the optional logs hook and
+// enricher, and finally builds the blocks by appending events.
+//
+// It never reports a transient failure as an empty result: a stale inclusion
+// (aggkittypes.ErrTransactionInclusionMismatch) or an event/header hash mismatch makes it discard
+// the stale logs and refetch the whole range after a backoff, until the range resolves or the
+// context is canceled. The previous recursive retry is replaced by this loop to avoid unbounded
+// recursion.
+//
+// It returns (blocks, false) on success and (nil, true) when the context was canceled.
 func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
-	ctx context.Context,
-	fromBlock, toBlock uint64, retryCount int,
-) EVMBlocks {
-	select {
-	case <-ctx.Done():
-		return nil
-	default:
+	ctx context.Context, fromBlock, toBlock uint64,
+) (EVMBlocks, bool) {
+	hashMismatchAttempts := 0
+	for {
+		if ctx.Err() != nil {
+			return nil, true
+		}
+
 		logs := d.GetLogs(ctx, fromBlock, toBlock)
+		if ctx.Err() != nil {
+			return nil, true
+		}
+
 		if d.logsHook != nil {
 			originalCount := len(logs)
 			logs = d.logsHook(ctx, fromBlock, toBlock, logs)
@@ -521,59 +622,186 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 					originalCount, len(logs), fromBlock, toBlock)
 			}
 		}
-		blocks := make(EVMBlocks, 0, len(logs))
-		var latestBlock *EVMBlock
-		for _, l := range logs {
-			if latestBlock == nil || latestBlock.Num < l.BlockNumber {
-				b, canceled := d.GetBlockHeader(ctx, l.BlockNumber)
-				if canceled {
-					return nil
-				}
 
-				if b.Hash != l.BlockHash {
-					d.log.Infof(
-						"there has been a block hash change between the event query and the block query "+
-							"for block %d: %s vs (logs)%s. Retrying attempt %d/%d.",
-						l.BlockNumber, b.Hash, l.BlockHash, retryCount, MaxRetryCountBlockHashMismatch,
-					)
-					if retryCount >= MaxRetryCountBlockHashMismatch {
-						// Log an error and return nil if the maximum retry count is reached.
-						d.log.Errorf(
-							"max retry attempts %d reached for block hash mismatch on block %d, returning nil",
-							MaxRetryCountBlockHashMismatch, l.BlockNumber,
-						)
-						return nil
-					}
-					// Retry the operation with an incremented retry count.
-					return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, retryCount+1)
+		// Optional contextual enrichment runs after the existing logs hook and before any
+		// event is appended.
+		if d.logsEnricher != nil {
+			switch d.runLogsEnricher(ctx, fromBlock, toBlock, logs) {
+			case enrichLogsOK:
+			case enrichLogsCanceled:
+				return nil, true
+			case enrichLogsRefetchRange:
+				// The enriched source is stale (reorged): drop the stale logs and refetch
+				// the whole range instead of retrying the same stale log.
+				if !d.waitBeforeRangeRefetch(ctx) {
+					return nil, true
 				}
-				latestBlock = &EVMBlock{
-					EVMBlockHeader: EVMBlockHeader{
-						Num:        l.BlockNumber,
-						Hash:       l.BlockHash,
-						Timestamp:  b.Timestamp,
-						ParentHash: b.ParentHash,
-					},
-					Events: []interface{}{},
-				}
-				blocks = append(blocks, latestBlock)
-			}
-
-			appenderFn := d.appender[l.Topics[0]]
-			attempts := 0
-			for {
-				err := appenderFn(latestBlock, l)
-				if err == nil {
-					break
-				}
-				attempts++
-				d.log.Error("error trying to append log: ", err)
-				d.rh.Handle(ctx, "appendLogs", attempts)
+				continue
 			}
 		}
 
-		return blocks
+		blocks, outcome := d.appendLogsToBlocks(ctx, logs)
+		switch outcome {
+		case appendLogsOK:
+			return blocks, false
+		case appendLogsCanceled:
+			return nil, true
+		case appendLogsRefetchRange:
+			// The appender (through its contextual provider) resolved a stale inclusion:
+			// refetch the whole range so the stale log is dropped.
+			if !d.waitBeforeRangeRefetch(ctx) {
+				return nil, true
+			}
+			continue
+		case appendLogsHashMismatch:
+			// The event query and the header query disagreed on a block hash, so the range
+			// is not consistent and must be refetched. After the configured number of
+			// attempts keep refetching (with backoff) instead of returning nil, which the
+			// caller would interpret as an empty range and use to advance progress.
+			hashMismatchAttempts++
+			if hashMismatchAttempts >= MaxRetryCountBlockHashMismatch {
+				d.log.Errorf("block hash mismatch persisted for range [%d, %d] after %d attempts, refetching range",
+					fromBlock, toBlock, hashMismatchAttempts)
+			}
+			if !d.waitBeforeRangeRefetch(ctx) {
+				return nil, true
+			}
+			continue
+		}
 	}
+}
+
+// runLogsEnricher invokes the optional enricher, retrying ordinary (retryable) errors with the
+// RetryHandler and the download context. A stale inclusion (ErrTransactionInclusionMismatch) is
+// reported back as enrichLogsRefetchRange so the caller refetches the whole range, and
+// cancellation is reported as enrichLogsCanceled.
+func (d *EVMDownloaderImplementation) runLogsEnricher(
+	ctx context.Context, fromBlock, toBlock uint64, logs []types.Log,
+) enrichLogsOutcome {
+	attempts := 0
+	for {
+		if ctx.Err() != nil {
+			return enrichLogsCanceled
+		}
+		err := d.logsEnricher(ctx, logs)
+		if err == nil {
+			return enrichLogsOK
+		}
+		if errors.Is(err, aggkittypes.ErrTransactionInclusionMismatch) {
+			d.log.Warnf("logs enricher detected stale inclusion for range [%d, %d]: %v", fromBlock, toBlock, err)
+			return enrichLogsRefetchRange
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			// Only a cancellation of the download context itself means "canceled".
+			// A child-scoped cancellation or timeout (for example a per-RPC deadline)
+			// can surface as context.Canceled/context.DeadlineExceeded while the
+			// caller's context is still active. Reporting that as a cancellation
+			// would make GetEventsByBlockRange return a nil (empty) range, which
+			// Download would mistake for real progress and use to advance the
+			// checkpoint, losing the logs of this range. Treat it as a transient
+			// error and retry with the RetryHandler instead.
+			if ctx.Err() != nil {
+				return enrichLogsCanceled
+			}
+		}
+		attempts++
+		d.log.Errorf("error enriching logs for range [%d, %d] (attempt %d): %v", fromBlock, toBlock, attempts, err)
+		d.rh.Handle(ctx, "enrichLogs", attempts)
+	}
+}
+
+// waitBeforeRangeRefetch waits for the configured retry period before refetching a whole range,
+// returning false if the context is done first so callers can stop. It prevents a busy refetch
+// loop when the node keeps answering with a stale/reorged view.
+func (d *EVMDownloaderImplementation) waitBeforeRangeRefetch(ctx context.Context) bool {
+	period := d.rh.RetryAfterErrorPeriod
+	if period <= 0 {
+		period = DefaultWaitPeriodBlockNotFound
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(period):
+		return true
+	}
+}
+
+// appendLogsToBlocks builds the blocks for the given logs and appends the events through the
+// appender map. Ordering of the logs is preserved. It returns appendLogsHashMismatch when the
+// header resolved for a block does not match the hash carried by its log, and
+// appendLogsRefetchRange when an appender returns aggkittypes.ErrTransactionInclusionMismatch.
+func (d *EVMDownloaderImplementation) appendLogsToBlocks(
+	ctx context.Context, logs []types.Log,
+) (EVMBlocks, appendLogsOutcome) {
+	blocks := make(EVMBlocks, 0, len(logs))
+	var latestBlock *EVMBlock
+	for _, l := range logs {
+		if ctx.Err() != nil {
+			return nil, appendLogsCanceled
+		}
+		// A log without topics cannot be attributed to an appender function and would make
+		// the Topics[0] lookup panic. Skip it defensively.
+		if len(l.Topics) == 0 {
+			d.log.Warnf("skipping log without topics at block %d", l.BlockNumber)
+			continue
+		}
+
+		if latestBlock == nil || latestBlock.Num < l.BlockNumber {
+			b, canceled := d.GetBlockHeader(ctx, l.BlockNumber)
+			if canceled {
+				return nil, appendLogsCanceled
+			}
+
+			if b.Hash != l.BlockHash {
+				d.log.Warnf(
+					"there has been a block hash change between the event query and the block query "+
+						"for block %d: %s vs (logs)%s",
+					l.BlockNumber, b.Hash, l.BlockHash,
+				)
+				return nil, appendLogsHashMismatch
+			}
+
+			latestBlock = &EVMBlock{
+				EVMBlockHeader: EVMBlockHeader{
+					Num:        l.BlockNumber,
+					Hash:       l.BlockHash,
+					Timestamp:  b.Timestamp,
+					ParentHash: b.ParentHash,
+				},
+				Events: []interface{}{},
+			}
+			blocks = append(blocks, latestBlock)
+		}
+
+		appenderFn := d.appender[l.Topics[0]]
+		if appenderFn == nil {
+			d.log.Debugf("no appender function found for topic %s, ignoring log at block %d",
+				l.Topics[0].Hex(), l.BlockNumber)
+			continue
+		}
+
+		attempts := 0
+		for {
+			if ctx.Err() != nil {
+				return nil, appendLogsCanceled
+			}
+			err := appenderFn(latestBlock, l)
+			if err == nil {
+				break
+			}
+			if errors.Is(err, aggkittypes.ErrTransactionInclusionMismatch) {
+				// The appender's contextual provider resolved a stale inclusion: the caller
+				// must refetch the whole range instead of retrying this stale log.
+				d.log.Warnf("appender resolved stale inclusion for block %d: %v", l.BlockNumber, err)
+				return nil, appendLogsRefetchRange
+			}
+			attempts++
+			d.log.Error("error trying to append log: ", err)
+			d.rh.Handle(ctx, "appendLogs", attempts)
+		}
+	}
+
+	return blocks, appendLogsOK
 }
 
 func filterQueryToString(query ethereum.FilterQuery) string {
@@ -654,7 +882,7 @@ func (d *EVMDownloaderImplementation) filterLogs(unfilteredLogs []types.Log) []t
 			d.log.Warnf("log removed: %+v", l)
 			continue
 		}
-		if slices.Contains(d.topicsToQuery, l.Topics[0]) {
+		if len(l.Topics) > 0 && slices.Contains(d.topicsToQuery, l.Topics[0]) {
 			filteredLogs = append(filteredLogs, l)
 		}
 	}
@@ -685,6 +913,12 @@ func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockN
 			attempts++
 			d.log.Errorf("error getting block header for block %d, err: %v", blockNum, err)
 			d.rh.Handle(ctx, "getBlockHeader", attempts)
+			// A canceled context makes rh.Handle return immediately; without this
+			// guard the loop would spin on a client that keeps failing while the
+			// context is already done.
+			if ctx.Err() != nil {
+				return EVMBlockHeader{}, true
+			}
 			continue
 		}
 		return EVMBlockHeader{
