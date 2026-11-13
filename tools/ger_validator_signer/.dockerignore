@@ -1,6 +1,7 @@
 # Not needed to build the binary
 .git
 Dockerfile
+Dockerfile.debug
 .dockerignore
 coverage.out
 coverage.html
