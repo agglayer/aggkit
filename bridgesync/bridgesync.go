@@ -337,7 +337,15 @@ func newBridgeSync(
 		},
 		processor)
 
-	driver, err := sync.NewEVMDriver(rd, processor, downloader, reorgDetectorID,
+	// Batch processing is opt-in and multidownloader-only: only the shared multidownloader
+	// backend (deps != nil) enables the single-transaction batch path. The legacy downloader
+	// keeps the exact one-block-at-a-time behaviour.
+	driverProcessor := sync.Processor(processor)
+	if deps != nil {
+		driverProcessor = sync.EnableBlockBatching(processor, processor.processBlocks)
+	}
+
+	driver, err := sync.NewEVMDriver(rd, driverProcessor, downloader, reorgDetectorID,
 		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
