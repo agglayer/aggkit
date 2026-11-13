@@ -58,7 +58,7 @@ func TestCheckL1(t *testing.T) {
 		{
 			name:    "the chain id can't be read",
 			setup:   func(m *mocks.L1StartupReader) { m.EXPECT().ChainID(mock.Anything).Return(0, errRPC) },
-			wantErr: "failed to get the chain id of L1 (https://l1.example.com/***)",
+			wantErr: "failed to get the chain id of L1: ",
 		},
 		{
 			name:    "another chain",

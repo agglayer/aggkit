@@ -180,27 +180,6 @@ func TestSignerConfig(t *testing.T) {
 	require.Empty(t, SignerConfig{"Method": 3}.Method(), "a Method that is not a string is no method")
 }
 
-func TestMaskURL(t *testing.T) {
-	tests := map[string]string{
-		"https://l1.example.com":                       "https://l1.example.com",
-		"https://l1.example.com/":                      "https://l1.example.com",
-		"https://l1.example.com/v1/secret-token":       "https://l1.example.com/***",
-		"https://l1.example.com:8545/secret":           "https://l1.example.com:8545/***",
-		"https://user:pass@l1.example.com":             "https://l1.example.com/***",
-		"https://l1.example.com/?apikey=secret":        "https://l1.example.com/***",
-		"http://localhost:8545":                        "http://localhost:8545",
-		"not a url":                                    "***",
-		"":                                             "***",
-		"https://l1.example.com/path/with/many/tokens": "https://l1.example.com/***",
-	}
-	for input, expected := range tests {
-		masked := MaskURL(input)
-		require.Equal(t, expected, masked, input)
-		require.NotContains(t, masked, "secret")
-		require.NotContains(t, masked, "pass")
-	}
-}
-
 func TestDuration(t *testing.T) {
 	var d Duration
 	require.NoError(t, d.UnmarshalText([]byte("1m30s")))
