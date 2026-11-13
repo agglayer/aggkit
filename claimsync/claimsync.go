@@ -125,7 +125,15 @@ func newClaimSync(
 		logger.Warnf("unable to determine bridge contract type at address %s", cfg.BridgeAddr.Hex())
 	}
 
-	appender, contextualAppender, err := buildAppender(ethClient, cfg.BridgeAddr, deployment, logger)
+	// The bounded parallel root-trace prefetch is only enabled for the
+	// multidownloader-backed (L1) claim syncer; the legacy/L2 constructors keep
+	// the exact synchronous path (deps == nil => resolver == nil).
+	var resolver *TraceResolver
+	if deps != nil {
+		resolver = NewTraceResolver(ethClient, cfg.BridgeAddr, logger, ClaimTracePrefetchConcurrency)
+	}
+
+	appender, contextualAppender, err := buildAppenderWithResolver(ethClient, cfg.BridgeAddr, deployment, logger, resolver)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to build appender: %w", err)
 	}
@@ -157,6 +165,13 @@ func newClaimSync(
 		return nil, errors.New("claimsync: the downloader does not support contextual log appenders")
 	}
 	downloader.SetLogsHook(NewPreferDetailedClaimLogsHook(logger))
+	if resolver != nil {
+		// Installed after the existing hook so the prefetch runs on the logs the
+		// hook already filtered (a ClaimEvent superseded by a DetailedClaimEvent
+		// is dropped before an unnecessary/failing trace is requested). Detailed
+		// events are never traced.
+		downloader.SetLogsEnricher(resolver.EnrichLogs)
+	}
 
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,
@@ -164,7 +179,16 @@ func newClaimSync(
 		proc,
 	)
 
-	driver, err := sync.NewEVMDriver(rd, proc, downloader, syncerID.String(), downloadBufferSize, rh, compatibilityChecker)
+	// Batch processing is opt-in and multidownloader-only: only the shared multidownloader
+	// backend (deps != nil) enables the single-transaction batch path. The legacy downloader
+	// keeps the exact one-block-at-a-time behaviour.
+	driverProcessor := sync.Processor(proc)
+	if deps != nil {
+		driverProcessor = sync.EnableBlockBatching(proc, proc.processBlocks)
+	}
+
+	driver, err := sync.NewEVMDriver(rd, driverProcessor, downloader, syncerID.String(),
+		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to create EVMDriver: %w", err)
 	}
