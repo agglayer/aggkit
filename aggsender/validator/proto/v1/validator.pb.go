@@ -195,98 +195,6 @@ func (x *ValidateCertificateResponse) GetSignature() *v11.FixedBytes65 {
 	return nil
 }
 
-// Request to validate a GER.
-type ValidateGERRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// GER to be validated
-	Ger           []byte `protobuf:"bytes,1,opt,name=ger,proto3" json:"ger,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ValidateGERRequest) Reset() {
-	*x = ValidateGERRequest{}
-	mi := &file_aggsender_validator_proto_v1_validator_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ValidateGERRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ValidateGERRequest) ProtoMessage() {}
-
-func (x *ValidateGERRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aggsender_validator_proto_v1_validator_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ValidateGERRequest.ProtoReflect.Descriptor instead.
-func (*ValidateGERRequest) Descriptor() ([]byte, []int) {
-	return file_aggsender_validator_proto_v1_validator_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *ValidateGERRequest) GetGer() []byte {
-	if x != nil {
-		return x.Ger
-	}
-	return nil
-}
-
-// Response to a GER validation request.
-type ValidateGERResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// The signature provided by the aggsender validator.
-	Signature     *v11.FixedBytes65 `protobuf:"bytes,1,opt,name=signature,proto3" json:"signature,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ValidateGERResponse) Reset() {
-	*x = ValidateGERResponse{}
-	mi := &file_aggsender_validator_proto_v1_validator_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ValidateGERResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ValidateGERResponse) ProtoMessage() {}
-
-func (x *ValidateGERResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aggsender_validator_proto_v1_validator_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ValidateGERResponse.ProtoReflect.Descriptor instead.
-func (*ValidateGERResponse) Descriptor() ([]byte, []int) {
-	return file_aggsender_validator_proto_v1_validator_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *ValidateGERResponse) GetSignature() *v11.FixedBytes65 {
-	if x != nil {
-		return x.Signature
-	}
-	return nil
-}
-
 var File_aggsender_validator_proto_v1_validator_proto protoreflect.FileDescriptor
 
 const file_aggsender_validator_proto_v1_validator_proto_rawDesc = "" +
@@ -301,15 +209,10 @@ const file_aggsender_validator_proto_v1_validator_proto_rawDesc = "" +
 	"\vcertificate\x18\x02 \x01(\v2#.agglayer.node.types.v1.CertificateR\vcertificate\x120\n" +
 	"\x15last_l2_block_in_cert\x18\x03 \x01(\x04R\x11lastL2BlockInCert\"d\n" +
 	"\x1bValidateCertificateResponse\x12E\n" +
-	"\tsignature\x18\x01 \x01(\v2'.agglayer.interop.types.v1.FixedBytes65R\tsignature\"&\n" +
-	"\x12ValidateGERRequest\x12\x10\n" +
-	"\x03ger\x18\x01 \x01(\fR\x03ger\"\\\n" +
-	"\x13ValidateGERResponse\x12E\n" +
-	"\tsignature\x18\x01 \x01(\v2'.agglayer.interop.types.v1.FixedBytes65R\tsignature2\xf4\x02\n" +
+	"\tsignature\x18\x01 \x01(\v2'.agglayer.interop.types.v1.FixedBytes65R\tsignature2\xfe\x01\n" +
 	"\x12AggsenderValidator\x12Y\n" +
 	"\vHealthCheck\x12\x16.google.protobuf.Empty\x1a2.aggkit.aggsender.validator.v1.HealthCheckResponse\x12\x8c\x01\n" +
-	"\x13ValidateCertificate\x129.aggkit.aggsender.validator.v1.ValidateCertificateRequest\x1a:.aggkit.aggsender.validator.v1.ValidateCertificateResponse\x12t\n" +
-	"\vValidateGER\x121.aggkit.aggsender.validator.v1.ValidateGERRequest\x1a2.aggkit.aggsender.validator.v1.ValidateGERResponseB9Z7github.com/agglayer/aggkit/aggsender/validator/proto/v1b\x06proto3"
+	"\x13ValidateCertificate\x129.aggkit.aggsender.validator.v1.ValidateCertificateRequest\x1a:.aggkit.aggsender.validator.v1.ValidateCertificateResponseB9Z7github.com/agglayer/aggkit/aggsender/validator/proto/v1b\x06proto3"
 
 var (
 	file_aggsender_validator_proto_v1_validator_proto_rawDescOnce sync.Once
@@ -323,34 +226,29 @@ func file_aggsender_validator_proto_v1_validator_proto_rawDescGZIP() []byte {
 	return file_aggsender_validator_proto_v1_validator_proto_rawDescData
 }
 
-var file_aggsender_validator_proto_v1_validator_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_aggsender_validator_proto_v1_validator_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_aggsender_validator_proto_v1_validator_proto_goTypes = []any{
 	(*HealthCheckResponse)(nil),         // 0: aggkit.aggsender.validator.v1.HealthCheckResponse
 	(*ValidateCertificateRequest)(nil),  // 1: aggkit.aggsender.validator.v1.ValidateCertificateRequest
 	(*ValidateCertificateResponse)(nil), // 2: aggkit.aggsender.validator.v1.ValidateCertificateResponse
-	(*ValidateGERRequest)(nil),          // 3: aggkit.aggsender.validator.v1.ValidateGERRequest
-	(*ValidateGERResponse)(nil),         // 4: aggkit.aggsender.validator.v1.ValidateGERResponse
-	(*v1.CertificateId)(nil),            // 5: agglayer.node.types.v1.CertificateId
-	(*v1.Certificate)(nil),              // 6: agglayer.node.types.v1.Certificate
-	(*v11.FixedBytes65)(nil),            // 7: agglayer.interop.types.v1.FixedBytes65
-	(*emptypb.Empty)(nil),               // 8: google.protobuf.Empty
+	(*v1.CertificateId)(nil),            // 3: agglayer.node.types.v1.CertificateId
+	(*v1.Certificate)(nil),              // 4: agglayer.node.types.v1.Certificate
+	(*v11.FixedBytes65)(nil),            // 5: agglayer.interop.types.v1.FixedBytes65
+	(*emptypb.Empty)(nil),               // 6: google.protobuf.Empty
 }
 var file_aggsender_validator_proto_v1_validator_proto_depIdxs = []int32{
-	5, // 0: aggkit.aggsender.validator.v1.ValidateCertificateRequest.previous_certificate_id:type_name -> agglayer.node.types.v1.CertificateId
-	6, // 1: aggkit.aggsender.validator.v1.ValidateCertificateRequest.certificate:type_name -> agglayer.node.types.v1.Certificate
-	7, // 2: aggkit.aggsender.validator.v1.ValidateCertificateResponse.signature:type_name -> agglayer.interop.types.v1.FixedBytes65
-	7, // 3: aggkit.aggsender.validator.v1.ValidateGERResponse.signature:type_name -> agglayer.interop.types.v1.FixedBytes65
-	8, // 4: aggkit.aggsender.validator.v1.AggsenderValidator.HealthCheck:input_type -> google.protobuf.Empty
-	1, // 5: aggkit.aggsender.validator.v1.AggsenderValidator.ValidateCertificate:input_type -> aggkit.aggsender.validator.v1.ValidateCertificateRequest
-	3, // 6: aggkit.aggsender.validator.v1.AggsenderValidator.ValidateGER:input_type -> aggkit.aggsender.validator.v1.ValidateGERRequest
-	0, // 7: aggkit.aggsender.validator.v1.AggsenderValidator.HealthCheck:output_type -> aggkit.aggsender.validator.v1.HealthCheckResponse
-	2, // 8: aggkit.aggsender.validator.v1.AggsenderValidator.ValidateCertificate:output_type -> aggkit.aggsender.validator.v1.ValidateCertificateResponse
-	4, // 9: aggkit.aggsender.validator.v1.AggsenderValidator.ValidateGER:output_type -> aggkit.aggsender.validator.v1.ValidateGERResponse
-	7, // [7:10] is the sub-list for method output_type
-	4, // [4:7] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	3, // 0: aggkit.aggsender.validator.v1.ValidateCertificateRequest.previous_certificate_id:type_name -> agglayer.node.types.v1.CertificateId
+	4, // 1: aggkit.aggsender.validator.v1.ValidateCertificateRequest.certificate:type_name -> agglayer.node.types.v1.Certificate
+	5, // 2: aggkit.aggsender.validator.v1.ValidateCertificateResponse.signature:type_name -> agglayer.interop.types.v1.FixedBytes65
+	6, // 3: aggkit.aggsender.validator.v1.AggsenderValidator.HealthCheck:input_type -> google.protobuf.Empty
+	1, // 4: aggkit.aggsender.validator.v1.AggsenderValidator.ValidateCertificate:input_type -> aggkit.aggsender.validator.v1.ValidateCertificateRequest
+	0, // 5: aggkit.aggsender.validator.v1.AggsenderValidator.HealthCheck:output_type -> aggkit.aggsender.validator.v1.HealthCheckResponse
+	2, // 6: aggkit.aggsender.validator.v1.AggsenderValidator.ValidateCertificate:output_type -> aggkit.aggsender.validator.v1.ValidateCertificateResponse
+	5, // [5:7] is the sub-list for method output_type
+	3, // [3:5] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_aggsender_validator_proto_v1_validator_proto_init() }
@@ -364,7 +262,7 @@ func file_aggsender_validator_proto_v1_validator_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_aggsender_validator_proto_v1_validator_proto_rawDesc), len(file_aggsender_validator_proto_v1_validator_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
