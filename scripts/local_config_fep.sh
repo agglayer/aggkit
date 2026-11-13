@@ -1,0 +1,14 @@
+#!/bin/bash
+# Config to run the whole aggkit (aggsender, aggoracle and bridge, in one process) locally against a kurtosis enclave,
+# with the FEP template. To run one role at a time, or to replace one in the enclave, use local_config.sh.
+# Thin wrapper over local_config_helper.sh (the template-specific code is in fep_* functions of the helper).
+
+source $(dirname $0)/local_config_helper.sh
+export KURTOSIS_ENCLAVE=op
+###############################################################################
+# MAIN
+###############################################################################
+TEMPLATE_KIND=fep
+ORIG_TEMPLATE_FILE=$(template_file_for_kind $TEMPLATE_KIND)
+DEST_TEMPLATE_FILE=$DEST/test.kurtosis.toml
+main $*

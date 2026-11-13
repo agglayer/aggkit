@@ -1,0 +1,4 @@
+{
+  "code": "INVALID_REQUEST",
+  "message": "ger must be a 32 bytes hex string"
+}

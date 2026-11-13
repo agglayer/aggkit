@@ -392,12 +392,11 @@ MaxAttempts = 20
 WaitPeriodNextGER = "10s"
 
 # ------------------------------------------------------------------------------
-#
+# AggOracleCommittee v2: the AggOracle collects the signatures of the GER validators and injects the GER with a
+# single transaction. Otherwise the mode is detected from the L2 (auto)
 # ------------------------------------------------------------------------------
-{{- if .use_agg_oracle_committee }}
-EnableAggOracleCommittee = true
-{{- else }}
-EnableAggOracleCommittee = false
+{{- if .use_agg_oracle_committee_v2 }}
+Mode = "committee"
 {{- end }}
 
 [AggOracle.EVMSender]
@@ -428,9 +427,9 @@ GlobalExitRootL2 = ""
 WaitPeriodMonitorTx = "10s"
 
 # ------------------------------------------------------------------------------
-#
+# The AggOracleCommittee v2 contract, that is the GER updater of the L2 GER manager
 # ------------------------------------------------------------------------------
-{{- if .use_agg_oracle_committee }}
+{{- if .use_agg_oracle_committee_v2 }}
 AggOracleCommitteeAddr = "{{ .agg_oracle_committee_address }}"
 {{- end }}
 
@@ -439,11 +438,7 @@ AggOracleCommitteeAddr = "{{ .agg_oracle_committee_address }}"
 # PrivateKeys defines all the key store files that are going
 # to be read in order to provide the private keys to sign the L1 txs
 # ------------------------------------------------------------------------------
-{{- if and .use_agg_oracle_committee .agg_oracle_committee_member_index }}
-PrivateKeys = [{Path = "/etc/aggkit/aggoracle-{{.agg_oracle_committee_member_index}}.keystore", Password = "{{.l2_keystore_password}}"}]
-{{- else }}
 PrivateKeys = [{Path = "/etc/aggkit/aggoracle.keystore", Password = "{{.l2_keystore_password}}"}]
-{{- end }}
 
 # ------------------------------------------------------------------------------
 # FrequencyToMonitorTxs frequency of the resending failed txs

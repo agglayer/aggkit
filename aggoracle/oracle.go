@@ -17,12 +17,14 @@ type L1InfoTreeSyncer interface {
 	GetLatestL1InfoGER(ctx context.Context) (common.Hash, error)
 }
 
-// ChainSender is an interface that defines the methods required to send Global Exit Roots (GERs) to the chain
+// ChainSender is an interface that defines the methods required to send Global Exit Roots (GERs) to the chain.
+// How a GER ends up on the chain depends on the mode (direct injection, or signatures collected from the GER
+// validators for the AggOracleCommittee v2), so each mode is a different implementation, and the AggOracle only
+// needs ProcessGER.
 type ChainSender interface {
+	// IsGERInjected returns true if the GER is already registered on the chain
 	IsGERInjected(ger common.Hash) (bool, error)
-	InjectGER(ctx context.Context, ger common.Hash) error
-	ProposeGER(ctx context.Context, ger common.Hash) error
-	IsGERProposed(ger common.Hash) (bool, error)
+	// ProcessGER does what is needed to get the GER registered on the chain
 	ProcessGER(ctx context.Context, ger common.Hash) error
 }
 

@@ -1,27 +1,14 @@
 #!/bin/bash
+# Config to run the whole aggkit (aggsender, aggoracle and bridge, in one process) locally against a kurtosis enclave,
+# with the PP template. To run one role at a time, or to replace one in the enclave, use local_config.sh.
+# Thin wrapper over local_config_helper.sh (the template-specific code is in pp_* functions of the helper).
 
-source $(dirname $0)/local_config_helper
+source $(dirname $0)/local_config_helper.sh
 export KURTOSIS_ENCLAVE=aggkit
-export AGGKIT_CONFIG_ARTIFACT_NAME=${AGGKIT_CONFIG_ARTIFACT_NAME:=aggkit-config-001}
-###############################################################################
-function export_values_of_aggkit_config() {
-    local AGGKIT_CONFIG_FILE=$1
-    common_export_values_of_aggkit_config "$AGGKIT_CONFIG_FILE"
-    export_key_from_toml_file_or_fatal zkevm_bridge_l2_address $AGGKIT_CONFIG_FILE BridgeL2Sync BridgeAddr
-    export_key_from_toml_file_or_fatal zkevm_rollup_address $AGGKIT_CONFIG_FILE L1Config polygonZkEVMAddress
-    export_key_from_toml_file_or_fatal zkevm_global_exit_root_l2_address $AGGKIT_CONFIG_FILE L2Config GlobalExitRootAddr
-}
-###############################################################################
-function export_ports_from_kurtosis() {
-    common_export_ports_from_kurtosis
-    export_portnum_from_kurtosis_or_fail op_el_rpc_port op-el-1-op-geth-op-node-001 rpc
-    export op_el_rpc_url="http://localhost:${op_el_rpc_port}"
-    export l2_rpc_url=$op_el_rpc_url
-    export agglayer_grpc_url="http://localhost:${agglayer_grpc_port}"
-}
 ###############################################################################
 # MAIN
 ###############################################################################
-ORIG_TEMPLATE_FILE=test/config/pp-config.toml.template
+TEMPLATE_KIND=pp
+ORIG_TEMPLATE_FILE=$(template_file_for_kind $TEMPLATE_KIND)
 DEST_TEMPLATE_FILE=$DEST/test.kurtosis.toml
 main $*
