@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -108,16 +110,54 @@ func TestCheckL1(t *testing.T) {
 }
 
 func TestNewLogger(t *testing.T) {
-	var out bytes.Buffer
-	logger, err := NewLogger("warn", &out)
-	require.NoError(t, err)
-	logger.Info("not shown")
-	logger.Warn("shown")
-	require.NotContains(t, out.String(), "not shown")
-	require.Contains(t, out.String(), "shown")
+	logConfig := func(environment, level string, outputs ...string) config.LogConfig {
+		return config.LogConfig{Environment: environment, Level: level, Outputs: outputs}
+	}
 
-	_, err = NewLogger("trace", &out)
-	require.ErrorContains(t, err, "invalid log level trace")
+	t.Run("development: text, at the level", func(t *testing.T) {
+		var out bytes.Buffer
+		logger, err := NewLogger(logConfig(config.LogEnvironmentDevelopment, "warn", "stderr"), &out)
+		require.NoError(t, err)
+		logger.Info("not shown")
+		logger.Warn("shown", "key", "value")
+		require.NotContains(t, out.String(), "not shown")
+		require.Contains(t, out.String(), "level=WARN msg=shown key=value")
+	})
+
+	t.Run("production: JSON", func(t *testing.T) {
+		var out bytes.Buffer
+		logger, err := NewLogger(logConfig(config.LogEnvironmentProduction, "info", "stderr"), &out)
+		require.NoError(t, err)
+		logger.Info("shown", "key", "value")
+		var entry map[string]any
+		require.NoError(t, json.Unmarshal(out.Bytes(), &entry))
+		require.Equal(t, "INFO", entry["level"])
+		require.Equal(t, "shown", entry["msg"])
+		require.Equal(t, "value", entry["key"])
+	})
+
+	t.Run("to a file, appended, and to stderr", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "validator.log")
+		require.NoError(t, os.WriteFile(path, []byte("previous\n"), 0o600))
+		var out bytes.Buffer
+		logger, err := NewLogger(logConfig(config.LogEnvironmentDevelopment, "info", path, "stderr"), &out)
+		require.NoError(t, err)
+		logger.Info("shown")
+		content, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.True(t, strings.HasPrefix(string(content), "previous\n"), "the file is appended")
+		require.Contains(t, string(content), "msg=shown")
+		require.Contains(t, out.String(), "msg=shown")
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		var out bytes.Buffer
+		_, err := NewLogger(logConfig(config.LogEnvironmentDevelopment, "trace", "stderr"), &out)
+		require.ErrorContains(t, err, `invalid log level "trace"`)
+		_, err = NewLogger(logConfig(config.LogEnvironmentDevelopment, "info",
+			filepath.Join(t.TempDir(), "missing", "validator.log")), &out)
+		require.ErrorContains(t, err, "failed to open the log output")
+	})
 }
 
 // fakeL1 is an L1 node: a chain of blocks, the AgglayerGER contract and the tags of the chain
@@ -246,10 +286,10 @@ func e2eConfig(t *testing.T, l1URL, keystorePath string, finalityTag string) con
 	t.Helper()
 	cfg := testConfig()
 	cfg.L1RPCURL = l1URL
-	cfg.Finality = config.FinalityConfig{Tag: finalityTag}
+	cfg.BlockFinality = config.BlockFinality{Tag: finalityTag}
 	cfg.Signer = config.SignerConfig{"Method": "local", "Path": keystorePath, "Password": "testonly"}
-	cfg.REST.InsecureHTTP = true
-	cfg.RateLimit.RequestsPerSecond = 0
+	cfg.PublicREST.InsecureHTTP = true
+	cfg.PublicREST.MaxRequestsPerIPAndSecond = 0
 	return cfg
 }
 
@@ -330,7 +370,7 @@ func TestEndToEnd_Info(t *testing.T) {
 	_, l1Server := newFakeL1(t)
 	keystorePath, validatorAddr := writeValidatorKeystore(t)
 	cfg := e2eConfig(t, l1Server.URL, keystorePath, "latest")
-	cfg.Finality.NumBlocks = 6
+	cfg.BlockFinality.NumBlocks = 6
 	url := startValidator(t, cfg)
 
 	resp, err := http.Get(url + "/v1/info") //nolint:noctx
@@ -381,7 +421,7 @@ func TestEndToEnd_Rejections(t *testing.T) {
 		l1.tags["latest"] = 106 // the final block is 100
 		keystorePath, _ := writeValidatorKeystore(t)
 		cfg := e2eConfig(t, l1Server.URL, keystorePath, "latest")
-		cfg.Finality.NumBlocks = 6
+		cfg.BlockFinality.NumBlocks = 6
 		cfg.Cache.NegativeTTL = config.Duration{Duration: 0}
 		url := startValidator(t, cfg)
 
@@ -452,10 +492,10 @@ func TestRun_FailsToListen(t *testing.T) {
 	t.Cleanup(func() { _ = occupied.Close() })
 
 	cfg := e2eConfig(t, l1Server.URL, keystorePath, "finalized")
-	cfg.REST.Host = "127.0.0.1"
+	cfg.PublicREST.Host = "127.0.0.1"
 	tcpAddr, ok := occupied.Addr().(*net.TCPAddr)
 	require.True(t, ok)
-	cfg.REST.Port = uint16(tcpAddr.Port)
+	cfg.PublicREST.Port = uint16(tcpAddr.Port)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

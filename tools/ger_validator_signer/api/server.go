@@ -25,11 +25,10 @@ import (
 )
 
 const (
-	readHeaderTimeout  = 5 * time.Second
-	writeTimeoutMargin = 5 * time.Second
-	idleTimeout        = time.Minute
-	shutdownTimeout    = 10 * time.Second
-	maxHeaderBytes     = 1 << 14
+	readHeaderTimeout = 5 * time.Second
+	idleTimeout       = time.Minute
+	shutdownTimeout   = 10 * time.Second
+	maxHeaderBytes    = 1 << 14
 )
 
 // Service is what the API needs from the service of the validator
@@ -54,7 +53,7 @@ func New(logger *slog.Logger, cfg config.Config, svc Service) *Server {
 		logger:  logger.With("module", "api"),
 		cfg:     cfg,
 		service: svc,
-		limiter: newClientLimiter(cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst),
+		limiter: newClientLimiter(cfg.PublicREST.MaxRequestsPerIPAndSecond, cfg.PublicREST.MaxRequestsBurstPerIP),
 	}
 }
 
@@ -71,12 +70,12 @@ func (s *Server) Handler() http.Handler {
 
 // Serve serves the API on the listener, with TLS if the certificate is configured, until the context is done
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
-	rest := s.cfg.REST
+	rest := s.cfg.PublicREST
 	server := &http.Server{
 		Handler:           s.Handler(),
-		ReadHeaderTimeout: readHeaderTimeout,
-		ReadTimeout:       rest.RequestTimeout.Duration,
-		WriteTimeout:      rest.RequestTimeout.Duration + writeTimeoutMargin,
+		ReadHeaderTimeout: min(readHeaderTimeout, rest.ReadTimeout.Duration),
+		ReadTimeout:       rest.ReadTimeout.Duration,
+		WriteTimeout:      rest.WriteTimeout.Duration,
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
 		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},

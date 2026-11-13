@@ -164,6 +164,31 @@ function export_key_from_toml_file() {
     return 0
 }
 ###############################################################################
+# Exports ger_validator_block_finality with the finality of the config of a GER validator ($1), as aggkit writes it
+# ("LatestBlock/-12"). A config of a kurtosis-cdk that predates the format of aggkit has [Finality] Tag and NumBlocks
+# instead: they are converted.
+###############################################################################
+function ger_validator_block_finality() {
+    local _FILE="$1"
+    if export_key_from_toml_file ger_validator_block_finality $_FILE . BlockFinality; then
+        return 0
+    fi
+    local _TAG _NUM_BLOCKS _NAME
+    _TAG=$(get_value_from_toml_file $_FILE Finality Tag)
+    _NUM_BLOCKS=$(get_value_from_toml_file $_FILE Finality NumBlocks)
+    case "$_TAG" in
+    latest) _NAME=LatestBlock ;;
+    safe) _NAME=SafeBlock ;;
+    finalized) _NAME=FinalizedBlock ;;
+    *) log_fatal "$FUNCNAME: no BlockFinality nor a valid [Finality] Tag ('$_TAG') in $_FILE" ;;
+    esac
+    if [ -n "$_NUM_BLOCKS" ] && [ "$_NUM_BLOCKS" != "0" ]; then
+        _NAME="$_NAME/-$_NUM_BLOCKS"
+    fi
+    export ger_validator_block_finality="$_NAME"
+    log_debug "ger_validator_block_finality=$_NAME  \t\t\t# file:$_FILE converted from [Finality] Tag and NumBlocks"
+}
+###############################################################################
 # Prints the value of the variable $1, or *** if it is a password (they are never shown in the logs)
 ###############################################################################
 function mask_secret_value() {
@@ -482,8 +507,7 @@ function common_ger_validators() {
         [ -z "$_ADDRESS" ] && log_fatal "can't get the address of the keystore $ger_validator_keystore_path"
 
         # The config to run it locally: the finality of the enclave's validator, and a port of its own
-        export_key_from_toml_file_or_fatal ger_validator_finality_tag $_DIR/kurtosis.config.toml Finality Tag
-        export_key_from_toml_file_or_fatal ger_validator_finality_num_blocks $_DIR/kurtosis.config.toml Finality NumBlocks
+        ger_validator_block_finality $_DIR/kurtosis.config.toml
         export ger_validator_local_port=$((GER_VALIDATOR_LOCAL_BASE_PORT + _INDEX))
         go run scripts/run_template.go $GER_VALIDATOR_TEMPLATE_FILE >$_DIR/config.toml
         ok_or_fatal "Error generating the config of the GER validator $_INDEX"

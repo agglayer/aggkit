@@ -17,6 +17,7 @@ import (
 
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/api"
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/client"
+	"github.com/agglayer/aggkit/tools/ger_validator_signer/config"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
@@ -174,9 +175,9 @@ func clientInfo(args []string, stdout, stderr io.Writer) int {
 Signer:       %s
 AgglayerGER:  %s
 L1 chain id:  %d
-Finality:     %s, %d blocks
+Finality:     %s
 `, info.Version, info.GitRev, info.GitBranch, info.BuildDate, info.Signer.Hex(), info.AgglayerGER.Hex(),
-		info.L1ChainID, info.Finality.Tag, info.Finality.NumBlocks)
+		info.L1ChainID, config.BlockFinality{Tag: info.Finality.Tag, NumBlocks: info.Finality.NumBlocks})
 	return exitOK
 }
 

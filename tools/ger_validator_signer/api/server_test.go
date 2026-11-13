@@ -57,8 +57,8 @@ func goldenCode(t *testing.T, name string) string {
 func testConfig() config.Config {
 	cfg := config.Default()
 	cfg.L1ChainID = 11155111
-	cfg.REST.InsecureHTTP = true
-	cfg.RateLimit.RequestsPerSecond = 0 // no limit, unless a test wants it
+	cfg.PublicREST.InsecureHTTP = true
+	cfg.PublicREST.MaxRequestsPerIPAndSecond = 0 // no limit, unless a test wants it
 	return cfg
 }
 
@@ -156,7 +156,7 @@ func TestSign_InternalErrorsDoNotLeakDetails(t *testing.T) {
 func TestSign_TimeoutAndPanic(t *testing.T) {
 	t.Run("the request timeout", func(t *testing.T) {
 		cfg := testConfig()
-		cfg.REST.RequestTimeout = config.Duration{Duration: 50 * time.Millisecond}
+		cfg.PublicREST.RequestTimeout = config.Duration{Duration: 50 * time.Millisecond}
 		server, svc := newTestServer(t, cfg)
 		svc.EXPECT().SignGER(mock.Anything, testGER).
 			RunAndReturn(func(ctx context.Context, _ common.Hash) (*service.Result, error) {
@@ -218,7 +218,7 @@ func TestSign_InvalidRequests(t *testing.T) {
 
 func TestSign_BodyTooBig(t *testing.T) {
 	cfg := testConfig()
-	cfg.REST.MaxBodyBytes = 64
+	cfg.PublicREST.MaxRequestBodyBytes = 64
 	server, _ := newTestServer(t, cfg)
 
 	recorder := post(t, server, `{"ger": "`+strings.Repeat("a", 1000)+`"}`)
@@ -318,7 +318,7 @@ func TestSwaggerSpec(t *testing.T) {
 
 func TestRateLimit(t *testing.T) {
 	cfg := testConfig()
-	cfg.RateLimit = config.RateLimitConfig{RequestsPerSecond: 0.001, Burst: 2} // refills in 1000s: no refill in the test
+	cfg.PublicREST.MaxRequestsPerIPAndSecond, cfg.PublicREST.MaxRequestsBurstPerIP = 0.001, 2 // refills in 1000s: no refill in the test
 	server, svc := newTestServer(t, cfg)
 	svc.EXPECT().SignGER(mock.Anything, testGER).
 		Return(&service.Result{GER: testGER, Signature: []byte{1}, Signer: validator}, nil).Times(4)
@@ -353,7 +353,7 @@ func TestRateLimit(t *testing.T) {
 // The headers added by proxies can be sent by anybody: they must not choose the client that is limited
 func TestRateLimit_IgnoresForwardedHeaders(t *testing.T) {
 	cfg := testConfig()
-	cfg.RateLimit = config.RateLimitConfig{RequestsPerSecond: 0.001, Burst: 1}
+	cfg.PublicREST.MaxRequestsPerIPAndSecond, cfg.PublicREST.MaxRequestsBurstPerIP = 0.001, 1
 	server, svc := newTestServer(t, cfg)
 	svc.EXPECT().SignGER(mock.Anything, testGER).
 		Return(&service.Result{GER: testGER, Signature: []byte{1}, Signer: validator}, nil).Once()
@@ -371,7 +371,7 @@ func TestRateLimit_IgnoresForwardedHeaders(t *testing.T) {
 }
 
 func TestRateLimit_Disabled(t *testing.T) {
-	server, svc := newTestServer(t, testConfig()) // RequestsPerSecond is 0
+	server, svc := newTestServer(t, testConfig()) // MaxRequestsPerIPAndSecond is 0
 	svc.EXPECT().SignGER(mock.Anything, testGER).
 		Return(&service.Result{GER: testGER, Signature: []byte{1}, Signer: validator}, nil).Times(100)
 	body := string(goldenFile(t, "sign_request.json"))
@@ -540,9 +540,9 @@ func selfSignedCert(t *testing.T) (certFile, keyFile string, certPool *x509.Cert
 func TestServe_TLS(t *testing.T) {
 	certFile, keyFile, certPool := selfSignedCert(t)
 	cfg := testConfig()
-	cfg.REST.InsecureHTTP = false
-	cfg.REST.TLSCertFile = certFile
-	cfg.REST.TLSKeyFile = keyFile
+	cfg.PublicREST.InsecureHTTP = false
+	cfg.PublicREST.TLSCertFile = certFile
+	cfg.PublicREST.TLSKeyFile = keyFile
 	server, _ := newTestServer(t, cfg)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)

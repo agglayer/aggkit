@@ -79,7 +79,7 @@ func runCommand(args []string, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "error:", err)
 		return exitError
 	}
-	logger, err := app.NewLogger(cfg.LogLevel, stderr)
+	logger, err := app.NewLogger(cfg.Log, stderr)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "error:", err)
 		return exitError

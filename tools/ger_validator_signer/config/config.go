@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,11 +15,26 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// Block tags the finality can be based on
+// Block tags of the JSON-RPC API the finality can be based on
 const (
 	FinalityLatest    = "latest"
 	FinalitySafe      = "safe"
 	FinalityFinalized = "finalized"
+)
+
+// Names of the blocks in BlockFinality, the same as in the configuration of aggkit
+const (
+	LatestBlockName    = "LatestBlock"
+	SafeBlockName      = "SafeBlock"
+	FinalizedBlockName = "FinalizedBlock"
+
+	blockNameAndOffsetSeparator = "/"
+)
+
+// Log environments, the same as in aggkit: production logs JSON, development logs text
+const (
+	LogEnvironmentProduction  = "production"
+	LogEnvironmentDevelopment = "development"
 )
 
 // Signing methods that can sign a hash. The "remote" method of go_signer can't (it signs with EIP-155), and
@@ -47,13 +63,90 @@ func (d Duration) MarshalText() ([]byte, error) {
 	return []byte(d.String()), nil
 }
 
-// FinalityConfig is the finality that the L1 block that inserted the GER must have to be signed:
-// the block of the tag minus NumBlocks. For example, Tag latest with NumBlocks 6 is the head minus 6 blocks.
-type FinalityConfig struct {
-	// Tag is the block tag: latest, safe or finalized
-	Tag string `toml:"Tag"`
-	// NumBlocks is subtracted from the number of the block of the tag. It can't be negative
-	NumBlocks uint64 `toml:"NumBlocks"`
+// BlockFinality is the finality that the L1 block that inserted the GER must have to be signed, written as in the
+// configuration of aggkit: <block>[/<offset>], where block is LatestBlock, SafeBlock or FinalizedBlock and the
+// offset, if any, is negative. For example "FinalizedBlock", or "LatestBlock/-12" (the head minus 12 blocks).
+// A positive offset is not accepted: it would sign blocks that are less final than the ones of the block.
+type BlockFinality struct {
+	// Tag is the block tag of the JSON-RPC API: latest, safe or finalized
+	Tag string
+	// NumBlocks is subtracted from the number of the block of the tag (the offset, without the sign)
+	NumBlocks uint64
+}
+
+// NewBlockFinality parses a block finality ("FinalizedBlock", "LatestBlock/-12"). The name is case insensitive
+func NewBlockFinality(text string) (BlockFinality, error) {
+	name, offsetText, hasOffset := strings.Cut(text, blockNameAndOffsetSeparator)
+	var finality BlockFinality
+	switch strings.ToLower(name) {
+	case strings.ToLower(LatestBlockName):
+		finality.Tag = FinalityLatest
+	case strings.ToLower(SafeBlockName):
+		finality.Tag = FinalitySafe
+	case strings.ToLower(FinalizedBlockName):
+		finality.Tag = FinalityFinalized
+	default:
+		return BlockFinality{}, fmt.Errorf("invalid block finality %q: the block must be %s, %s or %s, "+
+			"optionally with a negative offset (e.g. %s/-12)", text, LatestBlockName, SafeBlockName, FinalizedBlockName,
+			LatestBlockName)
+	}
+	if !hasOffset {
+		return finality, nil
+	}
+	offset, err := strconv.ParseInt(offsetText, 0, 64)
+	if err != nil {
+		return BlockFinality{}, fmt.Errorf("invalid offset of the block finality %q: %w", text, err)
+	}
+	if offset > 0 {
+		return BlockFinality{}, fmt.Errorf("invalid block finality %q: the offset can't be positive, "+
+			"it would sign blocks that are not final yet", text)
+	}
+	finality.NumBlocks = uint64(-offset)
+	return finality, nil
+}
+
+// String returns the block finality as it is written in the configuration
+func (f BlockFinality) String() string {
+	var name string
+	switch f.Tag {
+	case FinalityLatest:
+		name = LatestBlockName
+	case FinalitySafe:
+		name = SafeBlockName
+	case FinalityFinalized:
+		name = FinalizedBlockName
+	default:
+		name = f.Tag
+	}
+	if f.NumBlocks == 0 {
+		return name
+	}
+	return fmt.Sprintf("%s%s-%d", name, blockNameAndOffsetSeparator, f.NumBlocks)
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler
+func (f *BlockFinality) UnmarshalText(text []byte) error {
+	parsed, err := NewBlockFinality(string(text))
+	if err != nil {
+		return err
+	}
+	*f = parsed
+	return nil
+}
+
+// MarshalText implements encoding.TextMarshaler
+func (f BlockFinality) MarshalText() ([]byte, error) {
+	return []byte(f.String()), nil
+}
+
+// LogConfig is the configuration of the logs, the same as the [Log] section of aggkit
+type LogConfig struct {
+	// Environment is the format of the logs: production (JSON) or development (text)
+	Environment string `toml:"Environment"`
+	// Level is debug, info, warn or error
+	Level string `toml:"Level"`
+	// Outputs are where the logs go: stdout, stderr or the path of a file (the logs are appended to it)
+	Outputs []string `toml:"Outputs"`
 }
 
 // SignerConfig is the configuration of the signer (github.com/agglayer/go_signer). The key Method selects
@@ -84,20 +177,40 @@ func (s SignerConfig) Params() map[string]any {
 	return params
 }
 
-// RESTConfig is the configuration of the REST API
-type RESTConfig struct {
+// PublicRESTConfig is the configuration of the REST API. The first keys are the ones of the [PublicREST] section of
+// aggkit, with the same meaning; the rest are of the validator
+type PublicRESTConfig struct {
 	Host string `toml:"Host"`
 	Port uint16 `toml:"Port"`
-	// TLSCertFile and TLSKeyFile are the PEM files of the certificate and its key. Both or none
+	// ReadTimeout is the maximum duration to read a request (net/http.Server.ReadTimeout)
+	ReadTimeout Duration `toml:"ReadTimeout"`
+	// WriteTimeout is the maximum duration to answer a request, from the end of the reading of its headers
+	// (net/http.Server.WriteTimeout). It must be greater than RequestTimeout
+	WriteTimeout Duration `toml:"WriteTimeout"`
+	// MaxRequestsPerIPAndSecond is the sustained rate of requests per client (IP address). 0 means unlimited
+	MaxRequestsPerIPAndSecond float64 `toml:"MaxRequestsPerIPAndSecond"`
+	// MaxRequestBodyBytes limits the size of the body of a request. 0 means the default (4096)
+	MaxRequestBodyBytes int64 `toml:"MaxRequestBodyBytes"`
+
+	// MaxRequestsBurstPerIP is how many requests a client can do at once, when MaxRequestsPerIPAndSecond is set
+	MaxRequestsBurstPerIP int `toml:"MaxRequestsBurstPerIP"`
+	// RequestTimeout is the maximum duration of the processing of a request: the queries to L1 and the signing
+	RequestTimeout Duration `toml:"RequestTimeout"`
+	// TLSCertFile and TLSKeyFile are the PEM files of the certificate and its key, to serve HTTPS. Both or none
 	TLSCertFile string `toml:"TLSCertFile"`
 	TLSKeyFile  string `toml:"TLSKeyFile"`
 	// InsecureHTTP allows to serve HTTP without TLS. Only when the TLS is terminated by something in front
 	// of the validator (a reverse proxy), or for tests: the signatures travel in the clear otherwise
 	InsecureHTTP bool `toml:"InsecureHTTP"`
-	// RequestTimeout is the maximum duration of a request, including the queries to L1 and the signing
-	RequestTimeout Duration `toml:"RequestTimeout"`
-	// MaxBodyBytes limits the size of the body of a request
-	MaxBodyBytes int64 `toml:"MaxBodyBytes"`
+}
+
+// RequestBodyLimit returns the limit of the size of the body of a request: MaxRequestBodyBytes when set, the
+// default otherwise
+func (r PublicRESTConfig) RequestBodyLimit() int64 {
+	if r.MaxRequestBodyBytes <= 0 {
+		return DefaultMaxRequestBodyBytes
+	}
+	return r.MaxRequestBodyBytes
 }
 
 // CacheConfig is the configuration of the cache of the answers
@@ -109,15 +222,8 @@ type CacheConfig struct {
 	NegativeTTL Duration `toml:"NegativeTTL"`
 }
 
-// RateLimitConfig limits the requests of each client (IP address)
-type RateLimitConfig struct {
-	// RequestsPerSecond is the sustained rate per client. 0 disables the limit
-	RequestsPerSecond float64 `toml:"RequestsPerSecond"`
-	// Burst is how many requests a client can do at once
-	Burst int `toml:"Burst"`
-}
-
-// Config is the configuration of the GER validator signer
+// Config is the configuration of the GER validator signer. The sections and keys that also exist in aggkit ([Log],
+// [PublicREST], BlockFinality) are written as in aggkit. The default values are in DefaultValues
 type Config struct {
 	// L1RPCURL is the JSON-RPC endpoint of L1. It can have a token in it: it is never logged
 	L1RPCURL string `toml:"L1RPCURL"`
@@ -127,44 +233,35 @@ type Config struct {
 	AgglayerGERAddr common.Address `toml:"AgglayerGERAddr"`
 	// L1RequestTimeout limits each request to the L1 RPC
 	L1RequestTimeout Duration `toml:"L1RequestTimeout"`
-	// LogLevel is debug, info, warn or error
-	LogLevel string `toml:"LogLevel"`
+	// BlockFinality is the finality the L1 block that inserted a GER needs to sign it ("LatestBlock/-12")
+	BlockFinality BlockFinality `toml:"BlockFinality"`
 
-	Finality  FinalityConfig  `toml:"Finality"`
-	Signer    SignerConfig    `toml:"Signer"`
-	REST      RESTConfig      `toml:"REST"`
-	Cache     CacheConfig     `toml:"Cache"`
-	RateLimit RateLimitConfig `toml:"RateLimit"`
+	Log        LogConfig        `toml:"Log"`
+	Signer     SignerConfig     `toml:"Signer"`
+	PublicREST PublicRESTConfig `toml:"PublicREST"`
+	Cache      CacheConfig      `toml:"Cache"`
 }
 
-// Default values
-const (
-	defaultL1RequestTimeout   = 5 * time.Second
-	defaultRESTPort           = 8080
-	defaultRESTRequestTimeout = 15 * time.Second
-	defaultMaxBodyBytes       = 4096
-	defaultCacheMaxEntries    = 10000
-	defaultNegativeTTL        = 5 * time.Second
-	defaultRequestsPerSecond  = 20
-	defaultBurst              = 40
-)
+// DefaultMaxRequestBodyBytes is the limit of the size of the body of a request when MaxRequestBodyBytes is not set
+const DefaultMaxRequestBodyBytes int64 = 4096
 
-// Default returns the configuration with the default values. The mandatory fields (L1RPCURL, L1ChainID,
-// AgglayerGERAddr and Signer) have no default.
+// renamedKeys explains the keys of the previous format of the configuration, that are now as in aggkit
+var renamedKeys = map[string]string{
+	"LogLevel": "LogLevel is now Level in the [Log] section, as in aggkit",
+	"Finality": "the [Finality] section is now BlockFinality, as in aggkit: e.g. BlockFinality = \"LatestBlock/-12\"",
+	"REST":     "the [REST] section is now [PublicREST], as in aggkit (MaxBodyBytes is MaxRequestBodyBytes)",
+	"RateLimit": "the [RateLimit] section is now PublicREST.MaxRequestsPerIPAndSecond (RequestsPerSecond) and " +
+		"PublicREST.MaxRequestsBurstPerIP (Burst)",
+}
+
+// Default returns the configuration with the default values (DefaultValues). The mandatory fields (L1RPCURL,
+// L1ChainID, AgglayerGERAddr and Signer) have no default.
 func Default() Config {
-	return Config{
-		L1RequestTimeout: Duration{defaultL1RequestTimeout},
-		LogLevel:         "info",
-		Finality:         FinalityConfig{Tag: FinalityFinalized},
-		REST: RESTConfig{
-			Host:           "0.0.0.0",
-			Port:           defaultRESTPort,
-			RequestTimeout: Duration{defaultRESTRequestTimeout},
-			MaxBodyBytes:   defaultMaxBodyBytes,
-		},
-		Cache:     CacheConfig{MaxEntries: defaultCacheMaxEntries, NegativeTTL: Duration{defaultNegativeTTL}},
-		RateLimit: RateLimitConfig{RequestsPerSecond: defaultRequestsPerSecond, Burst: defaultBurst},
+	var cfg Config
+	if err := toml.Unmarshal([]byte(DefaultValues), &cfg); err != nil {
+		panic(fmt.Sprintf("invalid DefaultValues: %v", err))
 	}
+	return cfg
 }
 
 // Load reads and validates the configuration of a TOML file. An unknown key is an error: a typo in a
@@ -185,7 +282,7 @@ func Parse(data []byte) (Config, error) {
 	if err := decoder.Decode(&cfg); err != nil {
 		var strictErr *toml.StrictMissingError
 		if errors.As(err, &strictErr) {
-			return Config{}, fmt.Errorf("invalid configuration: %s", strictErr.String())
+			return Config{}, fmt.Errorf("invalid configuration: %s%s", strictErr.String(), renamedKeyHints(strictErr))
 		}
 		return Config{}, fmt.Errorf("invalid configuration: %w", err)
 	}
@@ -193,6 +290,26 @@ func Parse(data []byte) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// renamedKeyHints explains the unknown keys that are of the previous format of the configuration
+func renamedKeyHints(strictErr *toml.StrictMissingError) string {
+	var hints []string
+	seen := make(map[string]bool)
+	for _, decodeErr := range strictErr.Errors {
+		key := decodeErr.Key()
+		if len(key) == 0 || seen[key[0]] {
+			continue
+		}
+		if hint, ok := renamedKeys[key[0]]; ok {
+			seen[key[0]] = true
+			hints = append(hints, hint)
+		}
+	}
+	if len(hints) == 0 {
+		return ""
+	}
+	return "\n" + strings.Join(hints, "\n")
 }
 
 // Validate checks the configuration
@@ -209,23 +326,19 @@ func (c Config) Validate() error {
 	if c.L1RequestTimeout.Duration <= 0 {
 		return errors.New("L1RequestTimeout must be greater than 0")
 	}
-	switch c.LogLevel {
-	case "debug", "info", "warn", "error":
-	default:
-		return fmt.Errorf("invalid LogLevel %q (debug, info, warn or error)", c.LogLevel)
+	if err := c.Log.validate(); err != nil {
+		return err
 	}
-
-	switch c.Finality.Tag {
+	switch c.BlockFinality.Tag {
 	case FinalityLatest, FinalitySafe, FinalityFinalized:
 	default:
-		return fmt.Errorf("invalid Finality.Tag %q (%s, %s or %s)",
-			c.Finality.Tag, FinalityLatest, FinalitySafe, FinalityFinalized)
+		return errors.New("BlockFinality is required (e.g. FinalizedBlock or LatestBlock/-12)")
 	}
 
 	if err := c.validateSigner(); err != nil {
 		return err
 	}
-	if err := c.REST.validate(); err != nil {
+	if err := c.PublicREST.validate(); err != nil {
 		return err
 	}
 	if c.Cache.MaxEntries < 1 {
@@ -233,12 +346,6 @@ func (c Config) Validate() error {
 	}
 	if c.Cache.NegativeTTL.Duration < 0 {
 		return errors.New("Cache.NegativeTTL must not be negative")
-	}
-	if c.RateLimit.RequestsPerSecond < 0 {
-		return errors.New("RateLimit.RequestsPerSecond must not be negative")
-	}
-	if c.RateLimit.RequestsPerSecond > 0 && c.RateLimit.Burst < 1 {
-		return errors.New("RateLimit.Burst must be at least 1 when the rate limit is enabled")
 	}
 	return nil
 }
@@ -257,22 +364,58 @@ func (c Config) validateSigner() error {
 	}
 }
 
-func (r RESTConfig) validate() error {
+func (l LogConfig) validate() error {
+	switch l.Environment {
+	case LogEnvironmentProduction, LogEnvironmentDevelopment:
+	default:
+		return fmt.Errorf("invalid Log.Environment %q (%s or %s)",
+			l.Environment, LogEnvironmentProduction, LogEnvironmentDevelopment)
+	}
+	switch l.Level {
+	case "debug", "info", "warn", "error":
+	default:
+		return fmt.Errorf("invalid Log.Level %q (debug, info, warn or error)", l.Level)
+	}
+	if len(l.Outputs) == 0 {
+		return errors.New("Log.Outputs needs at least one output (stdout, stderr or the path of a file)")
+	}
+	for _, output := range l.Outputs {
+		if output == "" {
+			return errors.New("Log.Outputs has an empty output")
+		}
+	}
+	return nil
+}
+
+func (r PublicRESTConfig) validate() error {
 	if r.Port == 0 {
-		return errors.New("REST.Port must be between 1 and 65535")
+		return errors.New("PublicREST.Port must be between 1 and 65535")
 	}
-	if (r.TLSCertFile == "") != (r.TLSKeyFile == "") {
-		return errors.New("REST.TLSCertFile and REST.TLSKeyFile must be set together")
-	}
-	if r.TLSCertFile == "" && !r.InsecureHTTP {
-		return errors.New("TLS is required: set REST.TLSCertFile and REST.TLSKeyFile, " +
-			"or REST.InsecureHTTP = true if the TLS is terminated in front of the validator (or for tests)")
+	if r.ReadTimeout.Duration <= 0 {
+		return errors.New("PublicREST.ReadTimeout must be greater than 0")
 	}
 	if r.RequestTimeout.Duration <= 0 {
-		return errors.New("REST.RequestTimeout must be greater than 0")
+		return errors.New("PublicREST.RequestTimeout must be greater than 0")
 	}
-	if r.MaxBodyBytes < 1 {
-		return errors.New("REST.MaxBodyBytes must be at least 1")
+	if r.WriteTimeout.Duration <= r.RequestTimeout.Duration {
+		return fmt.Errorf("PublicREST.WriteTimeout (%s) must be greater than PublicREST.RequestTimeout (%s): "+
+			"the answer is written after the request is processed", r.WriteTimeout.Duration, r.RequestTimeout.Duration)
+	}
+	if r.MaxRequestBodyBytes < 0 {
+		return errors.New("PublicREST.MaxRequestBodyBytes must not be negative (0 is the default)")
+	}
+	if r.MaxRequestsPerIPAndSecond < 0 {
+		return errors.New("PublicREST.MaxRequestsPerIPAndSecond must not be negative (0 is unlimited)")
+	}
+	if r.MaxRequestsPerIPAndSecond > 0 && r.MaxRequestsBurstPerIP < 1 {
+		return errors.New("PublicREST.MaxRequestsBurstPerIP must be at least 1 when MaxRequestsPerIPAndSecond is set")
+	}
+	if (r.TLSCertFile == "") != (r.TLSKeyFile == "") {
+		return errors.New("PublicREST.TLSCertFile and PublicREST.TLSKeyFile must be set together")
+	}
+	if r.TLSCertFile == "" && !r.InsecureHTTP {
+		return errors.New("TLS is required: set PublicREST.TLSCertFile and PublicREST.TLSKeyFile to serve HTTPS, " +
+			"or PublicREST.InsecureHTTP = true if the TLS is terminated in front of the validator (or for tests)")
 	}
 	return nil
 }

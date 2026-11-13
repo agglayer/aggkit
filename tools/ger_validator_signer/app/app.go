@@ -3,11 +3,11 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"strconv"
 
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/api"
@@ -24,6 +24,9 @@ import (
 // startupChecksTimeoutFactor is how many L1 requests the startup checks can take, at most, each one limited by
 // L1RequestTimeout
 const startupChecksTimeoutFactor = 3
+
+// logFileMode is the mode of the log files that are created
+const logFileMode = 0o640
 
 // L1StartupReader is what the startup checks need from L1
 type L1StartupReader interface {
@@ -86,9 +89,9 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 
 	svc := service.New(logger, service.Config{
 		AgglayerGER:    cfg.AgglayerGERAddr,
-		Finality:       finality.Rule{Tag: cfg.Finality.Tag, NumBlocks: cfg.Finality.NumBlocks},
+		Finality:       finality.Rule{Tag: cfg.BlockFinality.Tag, NumBlocks: cfg.BlockFinality.NumBlocks},
 		NegativeTTL:    cfg.Cache.NegativeTTL.Duration,
-		RequestTimeout: cfg.REST.RequestTimeout.Duration,
+		RequestTimeout: cfg.PublicREST.RequestTimeout.Duration,
 	}, l1Client, validatorSigner, cache.New(cfg.Cache.MaxEntries))
 
 	logger.Info("GER validator signer ready",
@@ -97,11 +100,10 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		"signer", validatorSigner.Address(),
 		"l1ChainID", cfg.L1ChainID,
 		"agglayerGER", cfg.AgglayerGERAddr,
-		"finalityTag", cfg.Finality.Tag,
-		"finalityNumBlocks", cfg.Finality.NumBlocks,
-		"tls", cfg.REST.TLSCertFile != "",
+		"blockFinality", cfg.BlockFinality.String(),
+		"tls", cfg.PublicREST.TLSCertFile != "",
 	)
-	if cfg.REST.InsecureHTTP {
+	if cfg.PublicREST.InsecureHTTP {
 		logger.Warn("serving HTTP without TLS: the signatures travel in the clear " +
 			"unless the TLS is terminated in front of the validator")
 	}
@@ -122,18 +124,40 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp",
-		net.JoinHostPort(cfg.REST.Host, strconv.Itoa(int(cfg.REST.Port))))
+		net.JoinHostPort(cfg.PublicREST.Host, strconv.Itoa(int(cfg.PublicREST.Port))))
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	return validator.Serve(ctx, listener)
 }
 
-// NewLogger creates the logger, at the level of the configuration (debug, info, warn or error)
-func NewLogger(level string, output io.Writer) (*slog.Logger, error) {
-	var slogLevel slog.Level
-	if err := slogLevel.UnmarshalText([]byte(level)); err != nil {
-		return nil, errors.New("invalid log level " + level)
+// NewLogger creates the logger of the [Log] section, as aggkit: JSON in production and text in development, at the
+// configured level, written to every output. The output "stderr" is the stderr writer, "stdout" the standard output
+// and any other one the path of a file, where the logs are appended.
+func NewLogger(cfg config.LogConfig, stderr io.Writer) (*slog.Logger, error) {
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(cfg.Level)); err != nil {
+		return nil, fmt.Errorf("invalid log level %q", cfg.Level)
 	}
-	return slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slogLevel})), nil
+	writers := make([]io.Writer, 0, len(cfg.Outputs))
+	for _, output := range cfg.Outputs {
+		switch output {
+		case "stderr":
+			writers = append(writers, stderr)
+		case "stdout":
+			writers = append(writers, os.Stdout)
+		default:
+			file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, logFileMode)
+			if err != nil {
+				return nil, fmt.Errorf("failed to open the log output %s: %w", output, err)
+			}
+			writers = append(writers, file)
+		}
+	}
+	output := io.MultiWriter(writers...)
+	options := &slog.HandlerOptions{Level: level}
+	if cfg.Environment == config.LogEnvironmentProduction {
+		return slog.New(slog.NewJSONHandler(output, options)), nil
+	}
+	return slog.New(slog.NewTextHandler(output, options)), nil
 }

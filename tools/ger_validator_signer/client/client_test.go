@@ -42,8 +42,8 @@ func startValidator(t *testing.T, mutate func(*config.Config)) (*Client, *mocks.
 	t.Helper()
 	cfg := config.Default()
 	cfg.L1ChainID = 11155111
-	cfg.REST.InsecureHTTP = true
-	cfg.RateLimit.RequestsPerSecond = 0
+	cfg.PublicREST.InsecureHTTP = true
+	cfg.PublicREST.MaxRequestsPerIPAndSecond = 0
 	if mutate != nil {
 		mutate(&cfg)
 	}
@@ -117,8 +117,8 @@ func TestClient_SignGER_ValidatorSaysNo(t *testing.T) {
 func TestClient_SignGER_RateLimited(t *testing.T) {
 	ger := common.HexToHash("0x01")
 	client, svc := startValidator(t, func(cfg *config.Config) {
-		cfg.RateLimit.RequestsPerSecond = 0.001
-		cfg.RateLimit.Burst = 1
+		cfg.PublicREST.MaxRequestsPerIPAndSecond = 0.001
+		cfg.PublicREST.MaxRequestsBurstPerIP = 1
 	})
 	svc.EXPECT().SignGER(mock.Anything, ger).Return(nil, service.ErrGERUnknown).Once()
 
