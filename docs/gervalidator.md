@@ -45,7 +45,7 @@ The wire format is defined by golden fixtures ([`api/testdata`](../tools/ger_val
 
 An example with every option is in [`config.toml.example`](../tools/ger_validator_signer/config.toml.example). An unknown key is an error.
 
-- `L1RPCURL`, `L1ChainID`, `AgglayerGERAddr` are mandatory. At startup the validator checks that the endpoint is the configured chain, and that the address is a contract that answers `globalExitRootMap`. If L1 is not as configured it doesn't start. The URL of L1 can have a token: it is never logged (only its host).
+- `L1RPCURL`, `L1ChainID`, `AgglayerGERAddr` are mandatory. At startup the validator checks that the endpoint is the configured chain, and that the address is a contract that answers `globalExitRootMap`. If L1 is not as configured it doesn't start. The URL of L1 can have a token: it is never logged, not even its host (also removed from the errors of L1).
 - `[Finality]`: `Tag` (`finalized` by default) and `NumBlocks`.
 - `[Signer]`: how to sign, with [go_signer](https://github.com/agglayer/go_signer). `Method` is `local` (a keystore, with `Path` and `Password`), `GCP` or `AWS` (a KMS). The method `remote` can't be used: it signs with EIP-155, so it can't sign a hash. The address of the key is the validator address to register in the committee (`GET /v1/info` shows it).
 - `[REST]`: `Host`, `Port`, the TLS files, the timeout of a request and the limit of the body.
@@ -84,6 +84,30 @@ docker run --rm -p 8080:8080 \
 The image runs as a non-root user and, in the production variant, has no shell. The binary needs CGO (the GCP KMS signer uses the C implementation of secp256k1), so it is built on Alpine as aggkit is.
 
 To register the validator in the committee, take its address from `GET /v1/info` (or from the logs at startup) and set it, with the URL of the validator, in the AggOracleCommittee contract.
+
+## Calling a validator by hand
+
+The binary has a client of the REST API, to test a validator that is running: does it answer, what does it say of a GER, is its signature right. The AggOracle doesn't use it (it has its own client, in `aggoracle/gervalidator`).
+
+```bash
+export GER_VALIDATOR_URL=http://localhost:8080   # or --url in each command. This is the default
+
+ger_validator_signer client health               # is it running
+ger_validator_signer client info                 # version, signer, finality and L1
+ger_validator_signer client sign --ger 0x<32 bytes>
+ger_validator_signer client sign --ger 0x<32 bytes> --expect-signer 0x<address>
+
+# A burst of requests, to see the rate limit and the cache: how many got each answer, and the latency
+ger_validator_signer client sign --ger 0x<32 bytes> --count 300 --parallel 30
+
+# From the docker image (the binary is its entrypoint), if you have no binary
+docker run --rm --network host ger_validator_signer:local client info --url http://127.0.0.1:8080
+```
+
+- **The signature is always verified**, as the contract does it: 65 bytes, `v` 27 or 28, `s` in the lower half of the curve, over `keccak256(GER)`. It must recover the `signer` of the answer, and with `--expect-signer` that signer must be the address registered in the committee. A validator that answers with a signature that fails is reported as `bad signature`.
+- **A GER that is not signed** prints the code of the answer (`GER_UNKNOWN`, `GER_NOT_FINAL`, ...), says if it can be retried, and exits with 1. The last GER of L1 (`cast call <AgglayerGER> "getLastGlobalExitRoot()(bytes32)"`) answers `GER_NOT_FINAL` until its block is final for the validator.
+- `--json` prints the result as JSON, for scripts. `--timeout` (20 seconds by default) is the timeout of each request, and `--ca-cert` the PEM file with the CA of a validator that serves TLS with a certificate that is not public.
+- Exit code: 0 if everything was signed, 1 if the validator didn't sign or didn't answer (in a burst: if any request wasn't signed), 2 for a wrong usage.
 
 ## Development
 

@@ -35,6 +35,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "run":
 		return runCommand(args[1:], stderr)
+	case "client":
+		return clientCommand(args[1:], stdout, stderr)
 	case "version":
 		_, _ = fmt.Fprintln(stdout, version.Get().String())
 		return exitOK
@@ -54,6 +56,7 @@ and are final, for the AggOracleCommittee v2.
 
 Usage:
   ger_validator_signer run --cfg <config.toml>   run the validator
+  ger_validator_signer client <command> [flags]  call a validator by hand (info, health, sign): client help
   ger_validator_signer version                   print the version
   ger_validator_signer help                      print this help
 `)

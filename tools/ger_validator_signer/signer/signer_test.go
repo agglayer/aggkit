@@ -122,6 +122,65 @@ func TestSigner_GoldenFixture(t *testing.T) {
 	require.Equal(t, fixture.Signer, signer.Address())
 }
 
+func TestVerifyGERSignature(t *testing.T) {
+	key := testKey(t, 1)
+	address := crypto.PubkeyToAddress(key.PublicKey)
+	canonical := signature(t, key, testGER)
+	valid := withV(canonical, canonical[vIndex]+recoveryIDOffset)
+
+	t.Run("the signature of the validator", func(t *testing.T) {
+		require.NoError(t, VerifyGERSignature(testGER, valid, address))
+	})
+
+	t.Run("the golden fixture", func(t *testing.T) {
+		data, err := os.ReadFile(filepath.Join(goldenDir, "sign_response.json"))
+		require.NoError(t, err)
+		var fixture struct {
+			GER       common.Hash    `json:"ger"`
+			Signature hexutil.Bytes  `json:"signature"`
+			Signer    common.Address `json:"signer"`
+		}
+		require.NoError(t, json.Unmarshal(data, &fixture))
+		require.NoError(t, VerifyGERSignature(fixture.GER, fixture.Signature, fixture.Signer))
+	})
+
+	t.Run("it doesn't change the order of the curve", func(t *testing.T) {
+		before := new(big.Int).Set(crypto.S256().Params().N)
+		require.NoError(t, VerifyGERSignature(testGER, valid, address))
+		require.Zero(t, before.Cmp(crypto.S256().Params().N))
+	})
+
+	failures := []struct {
+		name      string
+		ger       common.Hash
+		signature []byte
+		address   common.Address
+		wantErr   string
+	}{
+		{name: "too short", ger: testGER, signature: valid[:64], address: address, wantErr: "has 64 bytes, expected 65"},
+		{name: "too long", ger: testGER, signature: append(append([]byte(nil), valid...), 0), address: address,
+			wantErr: "has 66 bytes, expected 65"},
+		{name: "v as 0 or 1: the contract needs 27 or 28", ger: testGER, signature: canonical, address: address,
+			wantErr: "expected 27 or 28"},
+		{name: "v out of range", ger: testGER, signature: withV(valid, 29), address: address,
+			wantErr: "v is 29, expected 27 or 28"},
+		{name: "s in the upper half", ger: testGER, signature: withV(highS(canonical), highS(canonical)[vIndex]+27),
+			address: address, wantErr: "upper half of the curve order"},
+		{name: "another GER", ger: common.HexToHash("0x02"), signature: valid, address: address,
+			wantErr: "the signature is from"},
+		{name: "another signer", ger: testGER, signature: valid, address: common.HexToAddress("0x01"),
+			wantErr: "the signature is from"},
+		{name: "r and s are zero", ger: testGER, signature: withV(make([]byte, SignatureLength), 27), address: address,
+			wantErr: "not valid"},
+	}
+	for _, tc := range failures {
+		t.Run(tc.name, func(t *testing.T) {
+			err := VerifyGERSignature(tc.ger, tc.signature, tc.address)
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
 func TestSigner_Address(t *testing.T) {
 	key := testKey(t, 7)
 	signer, _ := newSigner(t, key)

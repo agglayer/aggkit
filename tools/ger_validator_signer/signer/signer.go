@@ -4,6 +4,7 @@ package signer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -90,6 +91,36 @@ func (s *Signer) SignGER(ctx context.Context, ger common.Hash) ([]byte, error) {
 	return signature, nil
 }
 
+// VerifyGERSignature checks that signature is what AggOracleCommittee.injectGER accepts from the validator with that
+// address: 65 bytes (r, s, v) with v 27 or 28 and s in the lower half of the curve order, over GERDigest(ger), that
+// recovers the address. It is what a client of the REST API checks in the response of a validator, without trusting
+// the "signer" field of it.
+func VerifyGERSignature(ger common.Hash, signature []byte, address common.Address) error {
+	if len(signature) != SignatureLength {
+		return fmt.Errorf("the signature has %d bytes, expected %d", len(signature), SignatureLength)
+	}
+	if v := signature[vIndex]; v != recoveryIDOffset && v != recoveryIDOffset+1 {
+		return fmt.Errorf("v is %d, expected 27 or 28", v)
+	}
+	if new(big.Int).SetBytes(signature[32:rsLength]).Cmp(halfCurveOrder()) > 0 {
+		return errors.New("s is in the upper half of the curve order: the contract rejects it")
+	}
+	recovered, err := recoverAddress(GERDigest(ger), signature)
+	if err != nil {
+		return err
+	}
+	if recovered != address {
+		return fmt.Errorf("the signature is from %s, not from %s", recovered, address)
+	}
+	return nil
+}
+
+// halfCurveOrder returns half of the order of secp256k1, the highest s that the contract accepts. It is a new
+// number every time: the order of the curve is shared by the whole process and must never be modified
+func halfCurveOrder() *big.Int {
+	return new(big.Int).Rsh(crypto.S256().Params().N, 1)
+}
+
 // normalize returns the signature with v as 27 or 28 and s in the lower half of the curve order
 func normalize(raw []byte) ([]byte, error) {
 	if len(raw) != SignatureLength {
@@ -105,11 +136,10 @@ func normalize(raw []byte) ([]byte, error) {
 	}
 
 	curveOrder := crypto.S256().Params().N
-	halfOrder := new(big.Int).Rsh(curveOrder, 1)
 	s := new(big.Int).SetBytes(raw[32:rsLength])
 	signature := make([]byte, SignatureLength)
 	copy(signature, raw[:rsLength])
-	if s.Cmp(halfOrder) > 0 {
+	if s.Cmp(halfCurveOrder()) > 0 {
 		// (r, n-s, v^1) is the same signature, in the canonical form
 		s.Sub(curveOrder, s)
 		s.FillBytes(signature[32:rsLength])
