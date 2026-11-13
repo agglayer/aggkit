@@ -138,10 +138,14 @@ func (s *Service) SignGER(ctx context.Context, ger common.Hash) (*Result, error)
 
 	if entry, ok := s.cache.Get(ger); ok {
 		if entry.Signature != nil {
+			s.logger.Debug("GER already signed, answering from the cache", "ger", ger)
 			return &Result{GER: ger, Signature: entry.Signature, Signer: s.signer.Address()}, nil
 		}
+		s.logger.Debug("GER recently not signed, answering from the cache", "ger", ger, "reason", entry.Err)
 		return nil, entry.Err
 	}
+
+	s.logger.Debug("checking the GER in L1 before signing it", "ger", ger)
 
 	// Detached from the context of the caller: the work is shared with the other callers, and the first
 	// one to give up must not make the others fail
