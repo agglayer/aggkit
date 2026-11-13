@@ -25,9 +25,10 @@ and aggkit doesn't import it, to keep the dependencies small and the code easy t
 
 | Package | What it does |
 |---|---|
-| `cmd` | The command: `run --cfg <file>`, `version` |
+| `cmd` | The command: `run --cfg <file>`, `client <info\|health\|sign>`, `version` |
 | `app` | Puts it together and checks L1 at startup |
 | `api` | REST API, swagger, rate limit |
+| `client` | Client of the REST API, to call a validator by hand (the `client` command). It verifies the signatures |
 | `service` | Decides if a GER can be signed, signs it and caches the answers |
 | `l1` | Minimal JSON-RPC client of L1 |
 | `finality` | The rule that decides if a block is final |
@@ -42,4 +43,7 @@ and aggkit doesn't import it, to keep the dependencies small and the code easy t
 cp config.toml.example config.toml   # edit it
 make -C ../.. build-ger_validator_signer
 ../../target/ger_validator_signer run --cfg config.toml
+
+# From another terminal: call it (see "Calling a validator by hand" in docs/gervalidator.md)
+../../target/ger_validator_signer client info --url http://localhost:8080
 ```
