@@ -60,6 +60,38 @@ func TestConfigStandalone_Validate(t *testing.T) {
 			expectedError: "",
 		},
 		{
+			name: "valid config with legacy Downloader",
+			config: ConfigStandalone{
+				BlockFinality: aggkittypes.SafeBlock,
+				Downloader:    configtypes.LegacyDownloader,
+			},
+			expectedError: "",
+		},
+		{
+			name: "valid config with multidownloader Downloader",
+			config: ConfigStandalone{
+				BlockFinality: aggkittypes.SafeBlock,
+				Downloader:    configtypes.Multidownloader,
+			},
+			expectedError: "",
+		},
+		{
+			name: "valid config with zero value Downloader",
+			config: ConfigStandalone{
+				BlockFinality: aggkittypes.SafeBlock,
+				Downloader:    configtypes.Downloader(""),
+			},
+			expectedError: "",
+		},
+		{
+			name: "invalid config with invalid Downloader",
+			config: ConfigStandalone{
+				BlockFinality: aggkittypes.SafeBlock,
+				Downloader:    configtypes.Downloader("invalid_value"),
+			},
+			expectedError: "invalid Downloader value:",
+		},
+		{
 			name: "invalid BlockFinality",
 			config: ConfigStandalone{
 				BlockFinality: aggkittypes.BlockNumberFinality{

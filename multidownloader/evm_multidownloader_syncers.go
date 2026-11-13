@@ -39,7 +39,29 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 		defer dh.log.Debugf("EVMMultidownloader.FilterLogs: finished query: %+v", query)
 	}
 	logQuery := mdrtypes.NewLogQueryFromEthereumFilter(query)
-	for !dh.IsAvailable(logQuery) {
+	for {
+		// The availability decision and the storage read must be atomic with
+		// respect to the sync state: otherwise a rollback between the check and
+		// the read could return a false-empty complete result. The mutex is
+		// released before waiting (never held across the sleep/RPC).
+		dh.mutex.Lock()
+		if dh.state == nil {
+			dh.mutex.Unlock()
+			return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: multidownloader not initialized")
+		}
+		if dh.state.IsAvailable(logQuery) {
+			logs, err := dh.storage.GetEthLogs(nil, logQuery)
+			dh.mutex.Unlock()
+			if err != nil {
+				return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: cannot get logs: %w", err)
+			}
+			if debugSyncerInterface {
+				dh.log.Debugf("EVMMultidownloader.FilterLogs(%d - %d): len(logs)= %d",
+					query.FromBlock, query.ToBlock, len(logs))
+			}
+			return logs, nil
+		}
+		dh.mutex.Unlock()
 		if debugSyncerInterface {
 			dh.log.Debugf("EVMMultidownloader.FilterLogs: waiting %s for logs to be available: %s",
 				dh.cfg.WaitPeriodToCheckCatchUp.String(), logQuery.String())
@@ -52,14 +74,6 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 				logQuery.String(), ctx.Err())
 		}
 	}
-	logs, err := dh.storage.GetEthLogs(nil, logQuery)
-	if err != nil {
-		return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: cannot get logs: %w", err)
-	}
-	if debugSyncerInterface {
-		dh.log.Debugf("EVMMultidownloader.FilterLogs(%d - %d): len(logs)= %d", query.FromBlock, query.ToBlock, len(logs))
-	}
-	return logs, nil
 }
 
 // HeaderByNumber gets the block header for the given block number from storage or ethClient

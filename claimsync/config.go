@@ -50,6 +50,10 @@ type ConfigStandalone struct {
 	// APIMaxClaims is the maximum number of claims the claims endpoint returns in a single response
 	// (zero means the default, 1000)
 	APIMaxClaims uint64 `mapstructure:"APIMaxClaims"`
+	// Downloader selects the block download backend: "legacy" (default) or "multidownloader".
+	// The zero value behaves as "legacy". Only the L1 syncers can use the multidownloader; the L2
+	// restriction is enforced by the startup code, since this struct is shared by both.
+	Downloader types.Downloader `jsonschema:"enum=legacy, enum=multidownloader" mapstructure:"Downloader"`
 }
 
 func (c ConfigEmbedded) Validate() error {
@@ -65,6 +69,12 @@ func (c ConfigStandalone) Validate() error {
 	}
 	if err := c.AutoStart.Validate("AutoStart"); err != nil {
 		return err
+	}
+	// Validate Downloader (empty is allowed — means legacy). Whether the multidownloader is allowed
+	// depends on the section (L1 vs L2) and is enforced by the startup code, since this struct is
+	// shared by the L1 and L2 claim syncers.
+	if err := c.Downloader.Validate(); err != nil {
+		return fmt.Errorf("invalid Downloader value: %w", err)
 	}
 	return nil
 }

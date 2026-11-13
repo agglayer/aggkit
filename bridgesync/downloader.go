@@ -101,12 +101,18 @@ func buildAppender(
 	syncFromInBridges bool,
 	bridgeDeployment *bridgeDeployment,
 	logger *logger.Logger,
+	resolvers ...bridgeTxnResolver,
 ) (sync.LogAppenderMap, error) {
 	appender := make(sync.LogAppenderMap)
 
+	var resolver bridgeTxnResolver
+	if len(resolvers) > 0 {
+		resolver = resolvers[0]
+	}
+
 	// Add event handlers for the bridge contract
 	appender[bridgeEventSignature] = buildBridgeEventHandler(
-		ctx, bridgeDeployment.agglayerBridge, bridgeAddr, client, syncFromInBridges, logger)
+		ctx, bridgeDeployment.agglayerBridge, bridgeAddr, client, syncFromInBridges, logger, resolver)
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(bridgeDeployment.agglayerBridge)
 
 	if bridgeDeployment.kind == SovereignChain {
@@ -163,9 +169,50 @@ func RPCTransactionByHash(client aggkittypes.EthClienter,
 	return &tx, nil
 }
 
+// legacyTransactionToRPCTransaction adapts the legacy bridgesync transaction DTO to the shared
+// aggkittypes.RPCTransaction representation, so both the legacy RPC path and the shared transaction
+// provider path can share the same address-extraction logic. It preserves the exact From()/ToAddress()
+// semantics of the legacy DTO.
+func legacyTransactionToRPCTransaction(tx *Transaction) *aggkittypes.RPCTransaction {
+	if tx == nil {
+		return nil
+	}
+	rpcTx := &aggkittypes.RPCTransaction{
+		FromRaw:     tx.FromRaw,
+		HashRaw:     tx.Hash,
+		ValueRaw:    tx.Value,
+		GasRaw:      tx.Gas,
+		GasPriceRaw: tx.GasPrice,
+		NonceRaw:    tx.Nonce,
+		InputRaw:    tx.Input,
+	}
+	if tx.To != "" {
+		to := tx.To
+		rpcTx.To = &to
+	}
+	if tx.BlockHash != "" {
+		blockHash := tx.BlockHash
+		rpcTx.BlockHashRaw = &blockHash
+	}
+	if tx.BlockNumber != "" {
+		blockNumber := tx.BlockNumber
+		rpcTx.BlockNumberRaw = &blockNumber
+	}
+	if tx.TransactionIndex != "" {
+		txIndex := tx.TransactionIndex
+		rpcTx.TransactionIndexRaw = &txIndex
+	}
+	return rpcTx
+}
+
 // ExtractTxnAddresses extracts the txn_sender, from address, and to address.
 // When syncFromInBridges is false, only extracts txnSender and toAddr using standard RPC,
 // and returns zero address for fromAddr (avoids expensive debug_traceTransaction).
+//
+// This is the legacy entry point: it always resolves the transaction through
+// eth_getTransactionByHash (RPCTransactionByHash). Callers using the shared multidownloader must
+// resolve the transaction through aggkittypes.TransactionProvider.TransactionByLog and call
+// extractTxnAddressesWithTx instead.
 func ExtractTxnAddresses(ctx context.Context,
 	client aggkittypes.EthClienter,
 	bridgeAddr common.Address,
@@ -177,6 +224,27 @@ func ExtractTxnAddresses(ctx context.Context,
 	if err != nil {
 		return common.Address{}, nil, common.Address{},
 			fmt.Errorf("extractTxnAddresses: failed to extract txn sender from tx_hash:%s: %w", txHash.Hex(), err)
+	}
+	return extractTxnAddressesWithTx(ctx, client, bridgeAddr, txHash, legacyTransactionToRPCTransaction(tx),
+		logEvent, logger, syncFromInBridges)
+}
+
+// extractTxnAddressesWithTx extracts the txn_sender, from address and to address from an
+// already-resolved transaction. It is the shared implementation used by both the legacy
+// eth_getTransactionByHash path and the multidownloader transaction-provider path. The debug
+// trace (debug_traceTransaction) is always performed through the passed client, which is unchanged
+// by the transaction source.
+func extractTxnAddressesWithTx(ctx context.Context,
+	client aggkittypes.EthClienter,
+	bridgeAddr common.Address,
+	txHash common.Hash,
+	tx *aggkittypes.RPCTransaction,
+	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent,
+	logger *logger.Logger,
+	syncFromInBridges bool) (txnSender common.Address, fromAddr *common.Address, toAddr common.Address, err error) {
+	if tx == nil {
+		return common.Address{}, nil, common.Address{},
+			fmt.Errorf("extractTxnAddresses: transaction is not available for tx_hash:%s", txHash.Hex())
 	}
 	// For Message events, FromAddress comes from OriginAddress (no tracing needed)
 	if logEvent.LeafType == bridgeLeafTypeMessage {
@@ -316,6 +384,67 @@ func nonZeroAddress(addr common.Address) *common.Address {
 		return nil
 	}
 	return &addr
+}
+
+// bridgeTxnResolver resolves the transaction that produced a bridge log. It decouples the
+// transaction lookup from the tracing client: the legacy path resolves by hash through the RPC
+// client, while the multidownloader path resolves through the shared TransactionProvider using the
+// exact original log (including its block hash, number and transaction index) so the provider can
+// validate canonical inclusion.
+type bridgeTxnResolver interface {
+	resolveTxn(ctx context.Context, l types.Log) (*aggkittypes.RPCTransaction, error)
+}
+
+// providerTxnResolver resolves transactions through the shared multidownloader transaction provider.
+// It forwards the exact original log so the provider can match it against its downloaded data and
+// return aggkittypes.ErrTransactionInclusionMismatch when the canonical inclusion is stale/reorged.
+type providerTxnResolver struct {
+	provider aggkittypes.TransactionProvider
+}
+
+var _ bridgeTxnResolver = (*providerTxnResolver)(nil)
+
+func (r *providerTxnResolver) resolveTxn(ctx context.Context, l types.Log) (*aggkittypes.RPCTransaction, error) {
+	return r.provider.TransactionByLog(ctx, l)
+}
+
+// bridgeLogsEnricher warms the multidownloader transaction cache for the bridge logs of a fetched
+// range. It filters the bridgeEventSignature logs and asks the provider to resolve the transaction
+// of each one using the active Download context, so the appender can later read them from the cache
+// without an extra network round trip. Any error (in particular
+// aggkittypes.ErrTransactionInclusionMismatch) is returned to the caller so the sync layer can
+// refetch the whole affected range.
+func bridgeLogsEnricher(provider aggkittypes.TransactionProvider) sync.LogsEnricherFunc {
+	return func(ctx context.Context, logs []types.Log) error {
+		for i := range logs {
+			l := logs[i]
+			if len(l.Topics) == 0 || l.Topics[0] != bridgeEventSignature {
+				continue
+			}
+			if _, err := provider.TransactionByLog(ctx, l); err != nil {
+				return fmt.Errorf("bridgesync: transaction prefetch failed for log block %d tx %s: %w",
+					l.BlockNumber, l.TxHash, err)
+			}
+		}
+		return nil
+	}
+}
+
+// logsEnricherSetter is the optional enrichment hook exposed by the sync downloader. It is asserted
+// on the downloader so bridgesync does not depend on the concrete downloader type.
+type logsEnricherSetter interface {
+	SetLogsEnricher(sync.LogsEnricherFunc) sync.LogsEnricherFunc
+}
+
+// registerLogsEnricher installs the enrichment hook on the downloader if it supports it. It returns
+// true when the hook was installed.
+func registerLogsEnricher(target any, enricher sync.LogsEnricherFunc) bool {
+	setter, ok := target.(logsEnricherSetter)
+	if !ok {
+		return false
+	}
+	setter.SetLogsEnricher(enricher)
+	return true
 }
 
 type bridgeCallParams struct {
@@ -480,6 +609,10 @@ func (c *logFailureCounter) reset() {
 }
 
 // buildBridgeEventHandler creates a handler for the Bridge event log.
+//
+// When no resolver is provided it preserves the legacy behaviour and resolves the transaction
+// through eth_getTransactionByHash. When a resolver is provided (multidownloader path) the
+// transaction is resolved through it using the exact original log.
 func buildBridgeEventHandler(
 	ctx context.Context,
 	contract *agglayerbridge.Agglayerbridge,
@@ -487,8 +620,13 @@ func buildBridgeEventHandler(
 	client aggkittypes.EthClienter,
 	syncFromInBridges bool,
 	logger *logger.Logger,
+	resolvers ...bridgeTxnResolver,
 ) func(*sync.EVMBlock, types.Log) error {
 	rpcFailures := &logFailureCounter{}
+	var resolver bridgeTxnResolver
+	if len(resolvers) > 0 {
+		resolver = resolvers[0]
+	}
 	return func(b *sync.EVMBlock, l types.Log) error {
 		bridgeEvent, err := contract.ParseBridgeEvent(l)
 		if err != nil {
@@ -499,13 +637,27 @@ func buildBridgeEventHandler(
 			bridgeEvent.LeafType, bridgeEvent.OriginNetwork, bridgeEvent.OriginAddress.Hex(), bridgeEvent.DestinationNetwork,
 			bridgeEvent.DestinationAddress.Hex(), bridgeEvent.DepositCount, bridgeEvent.Amount.String())
 
-		txnSender, fromAddress, toAddress, err := ExtractTxnAddresses(ctx, client, bridgeAddr, l.TxHash,
-			bridgeEvent, logger, syncFromInBridges)
+		var tx *aggkittypes.RPCTransaction
+		if resolver != nil {
+			var resolveErr error
+			tx, resolveErr = resolver.resolveTxn(ctx, l)
+			if resolveErr != nil {
+				return fmt.Errorf("failed to resolve transaction for bridge event (tx hash: %s): %w",
+					l.TxHash, resolveErr)
+			}
+		}
+		extractAddresses := func(syncFrom bool) (common.Address, *common.Address, common.Address, error) {
+			if resolver != nil {
+				return extractTxnAddressesWithTx(ctx, client, bridgeAddr, l.TxHash, tx, bridgeEvent, logger, syncFrom)
+			}
+			return ExtractTxnAddresses(ctx, client, bridgeAddr, l.TxHash, bridgeEvent, logger, syncFrom)
+		}
+
+		txnSender, fromAddress, toAddress, err := extractAddresses(syncFromInBridges)
 		if err != nil && errors.Is(err, ErrFromAddressRPC) && rpcFailures.add(l) >= maxFromAddressRPCAttempts {
 			logger.Warnf("giving up on the from address of the bridge event in tx %s (log index %d) after %d "+
 				"attempts, storing NULL: %v", l.TxHash.Hex(), l.Index, maxFromAddressRPCAttempts, err)
-			txnSender, fromAddress, toAddress, err = ExtractTxnAddresses(ctx, client, bridgeAddr, l.TxHash,
-				bridgeEvent, logger, false)
+			txnSender, fromAddress, toAddress, err = extractAddresses(false)
 		}
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)

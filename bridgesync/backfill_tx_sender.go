@@ -12,8 +12,11 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
+	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	"github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	coretypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/russross/meddler"
 )
 
@@ -25,6 +28,20 @@ const (
 	numWorkers = 5
 )
 
+// ErrBackfillBackendRequired is returned when a transaction provider is configured without the
+// multidownloader backend that supplies the canonical bridge logs. Without the backend the exact
+// original log cannot be resolved without falling back to a direct RPC FilterLogs, which the
+// provider path deliberately forbids.
+var ErrBackfillBackendRequired = errors.New(
+	"backfill: a download backend is required when a transaction provider is set")
+
+// logAvailabilityChecker is the optional capability exposed by a multidownloader backend to report
+// whether a log query is already covered by the synced data. When implemented it is used as a
+// pre-check so the backfill never blocks indefinitely waiting for coverage that will not advance.
+type logAvailabilityChecker interface {
+	IsAvailable(query mdrtypes.LogQuery) bool
+}
+
 // BackfillTxnSender handles the backfilling of txn_sender field for bridge records
 type BackfillTxnSender struct {
 	db                *sql.DB
@@ -33,6 +50,38 @@ type BackfillTxnSender struct {
 	bridgeAddr        common.Address
 	dbTimeout         time.Duration
 	syncFromInBridges bool
+	// provider, when set, resolves transactions through the shared multidownloader transaction
+	// provider instead of eth_getTransactionByHash. It is optional: a nil provider keeps the legacy
+	// behaviour.
+	provider types.TransactionProvider
+	// backend, when set, is the multidownloader used to read the canonical bridge logs for the
+	// records being backfilled. It is required whenever provider is set so the exact original log
+	// (never a synthesized one, never a direct RPC FilterLogs) is passed to the provider.
+	backend types.MultiDownloaderLegacy
+}
+
+// BackfillOption customizes BackfillTxnSender construction.
+type BackfillOption func(*BackfillTxnSender)
+
+// WithTransactionProvider makes the backfill resolve the transactions through the shared
+// multidownloader transaction provider. The exact original log is looked up through the configured
+// download backend (FilterLogs on the record's block) and passed to the provider, which resolves
+// the transaction index. There is no fallback to eth_getTransactionByHash once a provider is set.
+// A backend must also be supplied with WithDownloadBackend.
+func WithTransactionProvider(provider types.TransactionProvider) BackfillOption {
+	return func(b *BackfillTxnSender) {
+		b.provider = provider
+	}
+}
+
+// WithDownloadBackend sets the multidownloader backend used to read the canonical bridge logs. It
+// is required together with WithTransactionProvider so the backfill never issues a direct
+// FilterLogs RPC to the node: the exact original log is read from the shared multidownloader and
+// passed to the transaction provider.
+func WithDownloadBackend(backend types.MultiDownloaderLegacy) BackfillOption {
+	return func(b *BackfillTxnSender) {
+		b.backend = backend
+	}
 }
 
 // NewBackfillTxnSender creates a new instance of BackfillTxnSender
@@ -42,20 +91,39 @@ func NewBackfillTxnSender(
 	bridgeAddr common.Address,
 	syncFromInBridges bool,
 	logger *log.Logger,
+	opts ...BackfillOption,
 ) (*BackfillTxnSender, error) {
-	database, err := db.NewSQLiteDB(dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize database: %w", err)
-	}
-
-	return &BackfillTxnSender{
-		db:                database,
+	backfiller := &BackfillTxnSender{
 		log:               logger,
 		client:            client,
 		bridgeAddr:        bridgeAddr,
 		dbTimeout:         dbTimeout,
 		syncFromInBridges: syncFromInBridges,
-	}, nil
+	}
+	for _, opt := range opts {
+		opt(backfiller)
+	}
+	// Validate the options before opening the database so a misconfigured provider/backend pair does
+	// not leak a database handle.
+	if err := backfiller.validateConfiguration(); err != nil {
+		return nil, err
+	}
+
+	database, err := db.NewSQLiteDB(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize database: %w", err)
+	}
+	backfiller.db = database
+	return backfiller, nil
+}
+
+// validateConfiguration rejects option combinations that cannot work: a transaction provider always
+// needs the download backend that supplies the exact original logs.
+func (b *BackfillTxnSender) validateConfiguration() error {
+	if b.provider != nil && b.backend == nil {
+		return ErrBackfillBackendRequired
+	}
+	return nil
 }
 
 // BackfillAll processes bridge table to backfill txn_sender field
@@ -90,6 +158,7 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 
 	b.log.Infof("Found %d records in %s table that need txn_sender or from_address backfilling", totalCount, tableName)
 	pending := totalCount
+	var aggErr error
 	// Process records in batches
 	for {
 		// Check if context is cancelled before processing next batch
@@ -102,16 +171,30 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 
 		records, err := b.getRecordsNeedingBackfill(ctx, tableName, batchSize)
 		if err != nil {
-			b.log.Errorf("failed to get records for backfilling: %w", err)
-			continue
+			return fmt.Errorf("failed to get records for backfilling: %w", err)
 		}
 		if len(records) == 0 {
 			break
 		}
 
-		b.processBatch(ctx, tableName, records)
+		processed, batchErr := b.processBatch(ctx, tableName, records)
 		pending -= len(records)
 		b.log.Infof("%d records remaining to backfill in %s table", pending, tableName)
+		if batchErr != nil {
+			// Successful updates were already persisted by processBatch. Do not loop over the same
+			// rows again: the failed records stay unchanged and the caller can rerun once the cause
+			// (for example missing multidownloader coverage) is resolved.
+			if ctx.Err() != nil {
+				return batchErr
+			}
+			aggErr = errors.Join(aggErr,
+				fmt.Errorf("%d/%d records backfilled in %s: %w", processed, len(records), tableName, batchErr))
+			break
+		}
+	}
+
+	if aggErr != nil {
+		return aggErr
 	}
 
 	b.log.Infof("Completed backfilling for %s table", tableName)
@@ -232,12 +315,16 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	return records, nil
 }
 
-// processBatch processes a batch of records to backfill txn_sender using a worker pool
+// processBatch processes a batch of records to backfill txn_sender using a worker pool.
+// It returns the number of records whose update was successfully persisted and an aggregate error
+// describing the records that failed. Successful updates are persisted (bulkUpdate) before the
+// error is returned, so a caller can propagate the failure without losing the successful work and
+// without retrying the same failed rows forever.
 func (b *BackfillTxnSender) processBatch(
 	ctx context.Context,
 	tableName string,
 	records []RecordToBackfill,
-) {
+) (int, error) {
 	// Create channels for job distribution and result collection
 	jobChan := make(chan TxnSenderJob, len(records))
 	resultChan := make(chan TxnSenderResult, len(records))
@@ -270,10 +357,12 @@ func (b *BackfillTxnSender) processBatch(
 
 	// Collect results
 	updates := make([]RecordUpdate, 0, len(records))
+	var recordErrs []error
 	for result := range resultChan {
 		if result.Error != nil {
 			b.log.Errorf("Failed to extract txn_sender for tx %s: %v",
 				result.Update.String(), result.Error)
+			recordErrs = append(recordErrs, result.Error)
 			continue
 		}
 		updates = append(updates, result.Update)
@@ -283,7 +372,7 @@ func (b *BackfillTxnSender) processBatch(
 	select {
 	case <-ctx.Done():
 		b.log.Info("backfill process cancelled before bulk update, stopping gracefully")
-		return
+		return 0, ctx.Err()
 	default:
 	}
 
@@ -291,10 +380,15 @@ func (b *BackfillTxnSender) processBatch(
 	if len(updates) > 0 {
 		if err := b.bulkUpdate(ctx, tableName, updates); err != nil {
 			b.log.Errorf("Failed to bulk update txn_sender for %d records: %v", len(updates), err)
-		} else {
-			b.log.Infof("Successfully bulk updated txn_sender for %d records", len(updates))
+			return 0, fmt.Errorf("failed to bulk update txn_sender for %d records: %w", len(updates), err)
 		}
+		b.log.Infof("Successfully bulk updated txn_sender for %d records", len(updates))
 	}
+
+	if len(recordErrs) > 0 {
+		return len(updates), errors.Join(recordErrs...)
+	}
+	return len(updates), nil
 }
 
 // worker processes jobs from the job channel and sends results to the result channel
@@ -325,8 +419,18 @@ func (b *BackfillTxnSender) worker(
 			Metadata:           job.Record.Metadata,
 			Amount:             job.Record.Amount,
 		}
-		// Extract txn_sender from transaction hash
-		txnSender, fromAddr, toAddr, err := b.extractData(ctx, job.Record.TxHash, logEvent)
+		// Extract txn_sender: through the shared provider when configured, otherwise by hash.
+		var (
+			txnSender common.Address
+			fromAddr  *common.Address
+			toAddr    common.Address
+			err       error
+		)
+		if b.provider != nil {
+			txnSender, fromAddr, toAddr, err = b.extractDataViaProvider(ctx, job.Record, logEvent)
+		} else {
+			txnSender, fromAddr, toAddr, err = b.extractData(ctx, job.Record.TxHash, logEvent)
+		}
 
 		result := TxnSenderResult{
 			Update: RecordUpdate{
@@ -363,6 +467,93 @@ func (b *BackfillTxnSender) extractData(ctx context.Context,
 	txnSender, fromAddr, toAddr, err = ExtractTxnAddresses(ctx, b.client, b.bridgeAddr, txHash,
 		logEvent, b.log, b.syncFromInBridges)
 	return txnSender, fromAddr, toAddr, err
+}
+
+// extractDataViaProvider resolves the transaction through the shared multidownloader provider. It
+// looks up the exact original log of the record (so the provider can resolve the real transaction
+// index) and passes it to TransactionByLog. It never falls back to eth_getTransactionByHash: when
+// the log or the transaction is not covered by the provider a bounded, explicit error is returned.
+func (b *BackfillTxnSender) extractDataViaProvider(ctx context.Context,
+	record RecordToBackfill,
+	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (txnSender common.Address,
+	fromAddr *common.Address, toAddr common.Address, err error) {
+	select {
+	case <-ctx.Done():
+		return common.Address{}, nil, common.Address{}, ctx.Err()
+	default:
+	}
+
+	log, err := b.findBridgeLogForRecord(ctx, record)
+	if err != nil {
+		return common.Address{}, nil, common.Address{}, err
+	}
+
+	tx, err := b.provider.TransactionByLog(ctx, *log)
+	if err != nil {
+		return common.Address{}, nil, common.Address{},
+			fmt.Errorf("backfill: failed to resolve transaction for block %d tx %s: %w",
+				record.BlockNum, record.TxHash.Hex(), err)
+	}
+	if tx == nil {
+		// Defensive: a provider must never signal "not covered yet" with a nil transaction and a
+		// nil error. Wrap it in the shared sentinel so callers retry once coverage advances.
+		return common.Address{}, nil, common.Address{},
+			fmt.Errorf("%w: transaction not covered by the multidownloader for block %d tx %s",
+				types.ErrTransactionUnavailable, record.BlockNum, record.TxHash.Hex())
+	}
+
+	return extractTxnAddressesWithTx(ctx, b.client, b.bridgeAddr, record.TxHash, tx, logEvent,
+		b.log, b.syncFromInBridges)
+}
+
+// findBridgeLogForRecord finds the exact bridge log emitted in the record's block for the record's
+// transaction. It reads the canonical logs from the configured download backend (never a direct RPC
+// FilterLogs) for a single block, and matches the BridgeEvent topic locally so a backend that does
+// not apply topic filters upstream cannot silently drop the log. The returned log carries the real
+// block hash, number, log index and transaction index so the provider can validate canonical
+// inclusion instead of relying on a synthesized log.
+func (b *BackfillTxnSender) findBridgeLogForRecord(
+	ctx context.Context, record RecordToBackfill,
+) (*coretypes.Log, error) {
+	if b.backend == nil {
+		return nil, fmt.Errorf("%w: no download backend configured for block %d tx %s",
+			types.ErrTransactionUnavailable, record.BlockNum, record.TxHash.Hex())
+	}
+
+	logQuery := mdrtypes.NewLogQuery(record.BlockNum, record.BlockNum, []common.Address{b.bridgeAddr})
+	if checker, ok := b.backend.(logAvailabilityChecker); ok && !checker.IsAvailable(logQuery) {
+		// The backend reports the range as not covered yet. Fail fast with the shared
+		// "unavailable" sentinel instead of blocking until the bounded request timeout.
+		return nil, fmt.Errorf("%w: bridge log block %d address %s is not covered yet",
+			types.ErrTransactionUnavailable, record.BlockNum, b.bridgeAddr.Hex())
+	}
+
+	// Query by range and address only: no topic filter is sent upstream. The BridgeEvent topic0 is
+	// matched locally below.
+	query := ethereum.FilterQuery{
+		FromBlock: new(big.Int).SetUint64(record.BlockNum),
+		ToBlock:   new(big.Int).SetUint64(record.BlockNum),
+		Addresses: []common.Address{b.bridgeAddr},
+	}
+	// Bound the request so an uncovered range can never hang the backfill forever.
+	reqCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
+	defer cancel()
+	logs, err := b.backend.FilterLogs(reqCtx, query)
+	if err != nil {
+		return nil, fmt.Errorf("backfill: failed to filter bridge logs for block %d: %w", record.BlockNum, err)
+	}
+	for i := range logs {
+		lg := logs[i]
+		if lg.TxHash != record.TxHash {
+			continue
+		}
+		if len(lg.Topics) == 0 || lg.Topics[0] != bridgeEventSignature {
+			continue
+		}
+		return &logs[i], nil
+	}
+	return nil, fmt.Errorf("%w: bridge log not found in block %d for tx %s",
+		types.ErrTransactionUnavailable, record.BlockNum, record.TxHash.Hex())
 }
 
 // bulkUpdate performs a bulk update of multiple records

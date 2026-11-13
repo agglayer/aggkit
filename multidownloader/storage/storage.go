@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/jmoiron/sqlx"
+	sqlite3 "github.com/mattn/go-sqlite3"
 	"github.com/russross/meddler"
 )
 
@@ -159,9 +161,18 @@ func NewMultidownloaderStorage(logger aggkitcommon.Logger,
 	}, nil
 }
 
+// NewTx starts a new storage transaction.
+//
+// Lock ordering matters: with the SQLite `_txlock=immediate` DSN, db.NewTx
+// issues BEGIN IMMEDIATE and takes the SQLite writer lock. It must therefore
+// run BEFORE any storage mutex is taken. Otherwise a concurrent ingestion
+// transaction that already holds the writer lock could block on the storage
+// mutex while this NewTx blocks on the writer lock, deadlocking until the
+// SQLite busy timeout. a.db is an immutable handle whose BEGIN does not touch
+// any mutex-protected storage state, so no storage lock is needed to start the
+// transaction; the write helpers that operate on the returned transaction take
+// the storage mutex after the transaction has begun.
 func (a *MultidownloaderStorage) NewTx(ctx context.Context) (dbtypes.Txer, error) {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
 	tx, err := db.NewTx(ctx, a.db)
 	if err != nil {
 		return nil, fmt.Errorf("MultidownloaderStorage.NewTx. Error starting transaction: %w", err)
@@ -343,18 +354,155 @@ func (a *MultidownloaderStorage) saveLogsAndBlocks(tx dbtypes.Querier,
 	return nil
 }
 
+// ErrBlockHeaderIntegrityConflict is returned when an incoming block header
+// shares the immutable identity (block number + block hash) of a stored one
+// but its mutable metadata (timestamp / parent hash) contradicts the stored
+// value. It is an explicit corruption signal: the caller must surface it rather
+// than silently keeping one of the two values.
+var ErrBlockHeaderIntegrityConflict = errors.New("block header integrity conflict")
+
 func (a *MultidownloaderStorage) saveBlocksNoMutex(tx dbtypes.Querier, blockRows map[uint64]*blockRow) error {
 	if tx == nil {
 		tx = a.db
 	}
-	for _, blockRow := range blockRows {
-		a.logger.Debugf("Inserting block header row: %d %s final=%v", blockRow.BlockNumber,
-			blockRow.BlockHash.Hex(), blockRow.IsFinal)
-		if err := meddler.Insert(tx, "blocks", blockRow); err != nil {
-			return fmt.Errorf("saveBlocksNoMutex: error inserting block header row (%s): %w", blockRow.String(), err)
+	for _, incomingRow := range blockRows {
+		a.logger.Debugf("Inserting block header row: %d %s final=%v", incomingRow.BlockNumber,
+			incomingRow.BlockHash.Hex(), incomingRow.IsFinal)
+		// Fast path: a fresh block header is inserted with the original single
+		// INSERT, so the historical case (one header per new block) adds no
+		// extra SELECT cost.
+		if err := meddler.Insert(tx, "blocks", incomingRow); err != nil {
+			// The only expected benign failure is the primary-key collision on
+			// blocks.block_number, which happens when the very same header is
+			// saved again for a second address's logs. Any other error is
+			// propagated untouched.
+			if !isBlockPrimaryKeyConstraint(err) {
+				return fmt.Errorf("saveBlocksNoMutex: error inserting block header row (%s): %w", incomingRow.String(), err)
+			}
+			originalErr := fmt.Errorf("saveBlocksNoMutex: error inserting block header row (%s): %w", incomingRow.String(), err)
+			existingRows := make([]*blockRow, 0)
+			if queryErr := meddler.QueryAll(tx, &existingRows,
+				"SELECT * FROM blocks WHERE block_number = ?", incomingRow.BlockNumber); queryErr != nil {
+				return fmt.Errorf("saveBlocksNoMutex: error querying existing block header row (%d): %w",
+					incomingRow.BlockNumber, queryErr)
+			}
+			if len(existingRows) == 0 {
+				// The constraint fired but no row is readable: this is not the
+				// benign duplicate-header case, so preserve the original error.
+				return originalErr
+			}
+			if mergeErr := a.mergeBlockRowNoMutex(tx, existingRows[0], incomingRow); mergeErr != nil {
+				return mergeErr
+			}
 		}
 	}
 	return nil
+}
+
+// isBlockPrimaryKeyConstraint reports whether err is a SQLite PRIMARY KEY
+// (or UNIQUE) constraint violation, i.e. the duplicate block header case.
+func isBlockPrimaryKeyConstraint(err error) bool {
+	sqliteErr, ok := db.SQLiteErr(err)
+	if !ok || sqliteErr == nil {
+		return false
+	}
+	return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey ||
+		sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
+}
+
+// mergeBlockRowNoMutex reconciles an incoming block header with the stored row
+// that shares its block number. The block hash is the immutable identity:
+//   - a different hash is a reorg and yields a typed DetectedReorgError (never
+//     overwriting or ignoring the stored header);
+//   - the same hash merges only previously unknown metadata (timestamp 0 /
+//     nil parent) and monotonically promotes is_final, rejecting contradictory
+//     known metadata with ErrBlockHeaderIntegrityConflict.
+//
+// The caller already holds the storage mutex and an open SQL transaction, so no
+// locking or transaction management happens here.
+func (a *MultidownloaderStorage) mergeBlockRowNoMutex(tx dbtypes.Querier, existing, incoming *blockRow) error {
+	if existing.BlockHash != incoming.BlockHash {
+		return fmt.Errorf("saveBlocksNoMutex: %w", mdrtypes.NewDetectedReorgError(
+			incoming.BlockNumber,
+			mdrtypes.ReorgDetectionReason_BlockHashMismatch,
+			existing.BlockHash, incoming.BlockHash,
+			"stored block header has a different hash than the incoming header"))
+	}
+
+	merged := *existing
+
+	// Timestamp: only merge an unknown (zero) value; contradicting known values
+	// are an integrity conflict.
+	if existing.BlockTimestamp != 0 && incoming.BlockTimestamp != 0 &&
+		existing.BlockTimestamp != incoming.BlockTimestamp {
+		return fmt.Errorf("saveBlocksNoMutex: block %d: %w: timestamp %d != incoming %d",
+			existing.BlockNumber, ErrBlockHeaderIntegrityConflict,
+			existing.BlockTimestamp, incoming.BlockTimestamp)
+	}
+	if merged.BlockTimestamp == 0 {
+		merged.BlockTimestamp = incoming.BlockTimestamp
+	}
+
+	// Parent hash: only merge an unknown (nil) value; contradicting known
+	// values are an integrity conflict.
+	if existing.BlockParentHash != nil && incoming.BlockParentHash != nil &&
+		*existing.BlockParentHash != *incoming.BlockParentHash {
+		return fmt.Errorf("saveBlocksNoMutex: block %d: %w: parent %s != incoming %s",
+			existing.BlockNumber, ErrBlockHeaderIntegrityConflict,
+			existing.BlockParentHash.Hex(), incoming.BlockParentHash.Hex())
+	}
+	if merged.BlockParentHash == nil {
+		merged.BlockParentHash = incoming.BlockParentHash
+	}
+
+	// Finality is monotonic: once final, it is never downgraded.
+	merged.IsFinal = existing.IsFinal || incoming.IsFinal
+
+	if !blockRowMetadataChanged(existing, &merged) {
+		// Idempotent replay: nothing to write, so skip the UPDATE entirely.
+		return nil
+	}
+
+	// Update only mutable metadata. The (block_number, block_hash) pair in the
+	// WHERE clause is the identity guard, and the hash is never changed.
+	_, err := tx.Exec(
+		"UPDATE blocks SET block_timestamp = ?, block_parent_hash = ?, is_final = ? "+
+			"WHERE block_number = ? AND block_hash = ?",
+		merged.BlockTimestamp, blockParentHashDBValue(merged.BlockParentHash), merged.IsFinal,
+		merged.BlockNumber, merged.BlockHash.Hex())
+	if err != nil {
+		return fmt.Errorf("saveBlocksNoMutex: error updating block header row (%s): %w", merged.String(), err)
+	}
+	return nil
+}
+
+// blockRowMetadataChanged reports whether merged differs from existing in any
+// mutable metadata field (timestamp, parent hash or finality).
+func blockRowMetadataChanged(existing, merged *blockRow) bool {
+	if existing.BlockTimestamp != merged.BlockTimestamp {
+		return true
+	}
+	if existing.IsFinal != merged.IsFinal {
+		return true
+	}
+	if (existing.BlockParentHash == nil) != (merged.BlockParentHash == nil) {
+		return true
+	}
+	if existing.BlockParentHash != nil && *existing.BlockParentHash != *merged.BlockParentHash {
+		return true
+	}
+	return false
+}
+
+// blockParentHashDBValue returns the value to bind for block_parent_hash,
+// preserving the meddler pointer semantics: a known hash is stored as its hex
+// string, an unknown (nil) parent is stored as SQL NULL (which reads back as a
+// nil *common.Hash).
+func blockParentHashDBValue(parent *common.Hash) interface{} {
+	if parent == nil {
+		return nil
+	}
+	return parent.Hex()
 }
 
 func (a *MultidownloaderStorage) saveLogsNoMutex(tx dbtypes.Querier, logRows []*logRow) error {
