@@ -135,12 +135,12 @@ Outputs = ["stderr"]
 # |_| \_\_____|____/ |_|
 #
 # ------------------------------------------------------------------------------
-[REST]
+[PublicREST]
 # ------------------------------------------------------------------------------
-# Port will configure the port that the REST API HTTP server will
-# listen on
+# Port of the public REST API (bridge service, aggsender, ...). The admin endpoints are served by [AdminREST],
+# that keeps its default (127.0.0.1:5579)
 # ------------------------------------------------------------------------------
-Port = "{{.aggkit_node_rest_api_port}}"
+Port = {{.aggkit_node_rest_api_port}}
 
 # ==============================================================================
 #     _    ____  ____ ____  _____ _   _ ____  _____ ____
