@@ -1,7 +1,11 @@
 #!/bin/bash
 
 source $(dirname $0)/../test/scripts/env.sh
-export AGGKIT_SERVICE=${AGGKIT_SERVICE:=aggkit-001}
+# L2 network of the enclave, as the suffix of its services and artifacts (aggkit-001, aggkit-config-001, ...). -n/--network
+export AGGKIT_NETWORK=${AGGKIT_NETWORK:=001}
+# Overrides (from the environment) of the names derived from AGGKIT_NETWORK, see set_network_names
+_AGGKIT_SERVICE_FROM_ENV=${AGGKIT_SERVICE:-}
+_AGGKIT_CONFIG_ARTIFACT_NAME_FROM_ENV=${AGGKIT_CONFIG_ARTIFACT_NAME:-}
 export DEST=${TMP_AGGKIT_FOLDER}/local_config
 # GER validators (AggOracleCommittee v2) to run locally: comma separated indexes (1 is ger-validator-001-001)
 export LOCAL_GER_VALIDATORS=${LOCAL_GER_VALIDATORS:=1}
@@ -44,12 +48,31 @@ function export_value_from_kurtosis_or_fail() {
     log_debug "$_EXPORTED_VAR_NAME=${!_EXPORTED_VAR_NAME}  \t\t\t# Kurtosis $KURTOSIS_ENCLAVE $_SERVICE $_END_POINT"
 }
 ###############################################################################
+# Names in the enclave that depend on the L2 network (-n/--network): the service of aggkit and the artifact with its
+# config. AGGKIT_SERVICE and AGGKIT_CONFIG_ARTIFACT_NAME set in the environment win over the derived ones.
+###############################################################################
+function set_network_names() {
+    if ! [[ "$AGGKIT_NETWORK" =~ ^[0-9]+$ ]] || [ $((10#$AGGKIT_NETWORK)) -lt 1 ]; then
+        log_fatal "invalid network [$AGGKIT_NETWORK]: it must be the numeric suffix of the L2 services, like 001"
+    fi
+    export AGGKIT_SERVICE=${_AGGKIT_SERVICE_FROM_ENV:-aggkit-${AGGKIT_NETWORK}}
+    export AGGKIT_CONFIG_ARTIFACT_NAME=${_AGGKIT_CONFIG_ARTIFACT_NAME_FROM_ENV:-aggkit-config-${AGGKIT_NETWORK}}
+}
+###############################################################################
 function log_debug() {
     echo -e "\033[0;90mDebug: $*" "\033[0m"
 }
 ###############################################################################
 function log_error() {
     echo -e "\033[0;31mError: $*" "\033[0m"
+}
+###############################################################################
+function log_info() {
+    echo -e "Info: $*"
+}
+###############################################################################
+function log_warn() {
+    echo -e "\033[0;33mWarning: $*" "\033[0m"
 }
 ###############################################################################
 function log_fatal() {
@@ -137,8 +160,19 @@ function export_key_from_toml_file() {
         return 1
     fi
     export $_EXPORTED_VAR_NAME="$_VALUE"
-    log_debug "$_EXPORTED_VAR_NAME=${!_EXPORTED_VAR_NAME}  \t\t\t# file:$_FILE section:$_SECTION key:$_KEY"
+    log_debug "$_EXPORTED_VAR_NAME=$(mask_secret_value $_EXPORTED_VAR_NAME)  \t\t\t# file:$_FILE section:$_SECTION key:$_KEY"
     return 0
+}
+###############################################################################
+# Prints the value of the variable $1, or *** if it is a password (they are never shown in the logs)
+###############################################################################
+function mask_secret_value() {
+    local _NAME_LOWER="${1,,}"
+    if [[ "$_NAME_LOWER" == *password* ]]; then
+        echo "***"
+    else
+        echo "${!1}"
+    fi
 }
 ###############################################################################
 function export_obj_key_from_toml_file_or_fatal() {
@@ -177,7 +211,7 @@ function export_obj_key_from_toml_file() {
             fi
             local _RES=$(echo $_KEY_VALUE | sed 's/^[[:space:]]*"//;s/"$//')
             export $_EXPORTED_VAR_NAME="${_RES}"
-            log_debug "$_EXPORTED_VAR_NAME=${!_EXPORTED_VAR_NAME}  \t\t\t# file:$_FILE section:$_SECTION key:$_KEY obj_key:$_OBJ_KEY"
+            log_debug "$_EXPORTED_VAR_NAME=$(mask_secret_value $_EXPORTED_VAR_NAME)  \t\t\t# file:$_FILE section:$_SECTION key:$_KEY obj_key:$_OBJ_KEY"
             return 0
         fi
     done <<<"$_CLEAN_VALUE"
@@ -213,11 +247,15 @@ function export_forced_values() {
     export deployment_suffix=""
     export enable_aggkit_claim_sponsor="false"
     export zkevm_l2_claimsponsor_address="0x0000000000000000000000000000000000000000"
-    export aggkit_pprof_port="6060"
+    # The ports of the servers of aggkit (defaults of aggkit). local_config.sh sets a different set for each role, so
+    # several roles can run at the same time
+    export aggkit_pprof_port="${aggkit_pprof_port:-6060}"
     export aggkit_pprof_enabled="false"
+    export aggkit_admin_rest_port="${aggkit_admin_rest_port:-5579}"
+    export aggkit_prometheus_port="${aggkit_prometheus_port:-9091}"
 }
 ###############################################################################
-function check_requirements() {
+function check_kurtosis_installed() {
     which kurtosis >/dev/null
     if [ $? -ne 0 ]; then
         log_error "kurtosis is not installed. Please install it:"
@@ -230,7 +268,13 @@ EOF
         exit 1
 
     fi
+}
+###############################################################################
+function check_cast_installed() {
     which cast >/dev/null || log_fatal "cast (foundry) is not installed: it reads the address of the keystores of the GER validators"
+}
+###############################################################################
+function check_enclave() {
     if [ -z $TMP_AGGKIT_FOLDER -o -z $KURTOSIS_ENCLAVE ]; then
         log_fatal "TMP_AGGKIT_FOLDER or KURTOSIS_ENCLAVE is not set. Must be set on file env.sh"
     fi
@@ -243,6 +287,12 @@ EOF
 
         exit 1
     fi
+}
+###############################################################################
+function check_requirements() {
+    check_kurtosis_installed
+    check_cast_installed
+    check_enclave
 }
 ###############################################################################
 function create_dest_folder() {
@@ -289,16 +339,100 @@ function common_export_ports_from_kurtosis() {
     if [ ! -z $EXPOSE_PORTS ];then
         export_portnum_from_kurtosis_or_fail aggkit_node_rest_api_port $AGGKIT_SERVICE http-rpc rest
     else
-        export aggkit_node_rest_api_port=5577
+        # 5577 is the default of aggkit; local_config.sh sets a port per role before calling this
+        export aggkit_node_rest_api_port=${aggkit_node_rest_api_port:-5577}
     fi
     export l1_rpc_url="http://localhost:${l1_rpc_port}"
+    export agglayer_grpc_url="http://localhost:${agglayer_grpc_port}"
+}
+###############################################################################
+# Config templates. TEMPLATE_KIND (fep or pp) selects the template and how to read the values of the enclave:
+#  - fep: test/config/fep-config.toml.template. OP stack chain (op-el + op-cl services); the prover is optional (it only
+#    exists with an aggchain proof)
+#  - pp: test/config/pp-config.toml.template. It only needs the RPC of the L2 (no op-node, no prover)
+# local_config.sh chooses it from the enclave (resolve_template_kind); local_config_fep.sh and local_config_pp set it
+###############################################################################
+function template_file_for_kind() {
+    case "$1" in
+    fep) echo "test/config/fep-config.toml.template" ;;
+    pp) echo "test/config/pp-config.toml.template" ;;
+    *) return 1 ;;
+    esac
+}
+###############################################################################
+function export_values_of_aggkit_config() {
+    "${TEMPLATE_KIND}_export_values_of_aggkit_config" "$@"
+}
+###############################################################################
+function export_ports_from_kurtosis() {
+    "${TEMPLATE_KIND}_export_ports_from_kurtosis" "$@"
+}
+###############################################################################
+function fep_export_values_of_aggkit_config() {
+    local AGGKIT_CONFIG_FILE="$1"
+    common_export_values_of_aggkit_config "$AGGKIT_CONFIG_FILE"
+    export_key_from_toml_file_or_fatal sovereign_bridge_proxy_addr $AGGKIT_CONFIG_FILE BridgeL2Sync BridgeAddr
+    export_key_from_toml_file_or_fatal sovereign_rollup_addr $AGGKIT_CONFIG_FILE L1Config polygonZkEVMAddress
+    export_key_from_toml_file_or_fatal sovereign_ger_proxy_addr $AGGKIT_CONFIG_FILE L2Config GlobalExitRootAddr
+}
+###############################################################################
+# Prints the execution client of the OP stack of the L2 network (op-geth or op-reth, sequencer_type), if there is one
+###############################################################################
+function find_op_el_service() {
+    find_kurtosis_service "op-el-1-op-(geth|reth)-op-node-${AGGKIT_NETWORK}"
+}
+###############################################################################
+# Prints the op-node of the L2 network, if there is one
+###############################################################################
+function find_op_cl_service() {
+    find_kurtosis_service "op-cl-1-op-node-op-(geth|reth)-${AGGKIT_NETWORK}"
+}
+###############################################################################
+function fep_export_ports_from_kurtosis() {
+    common_export_ports_from_kurtosis
+    local _OP_EL=$(find_op_el_service)
+    local _OP_CL=$(find_op_cl_service)
+    [ -z "$_OP_EL" -o -z "$_OP_CL" ] && log_fatal "the L2 services (op-el-1-..., op-cl-1-...) are not in the enclave $KURTOSIS_ENCLAVE"
+    export_portnum_from_kurtosis_or_fail op_el_rpc_port $_OP_EL rpc
+    export_portnum_from_kurtosis_or_fail op_cl_rpc_url_port $_OP_CL rpc
+    export op_el_rpc_url="http://localhost:${op_el_rpc_port}"
+    export op_cl_rpc_url="http://localhost:${op_cl_rpc_url_port}"
+    # The prover only exists with an aggchain proof (FEP); with a multisig (ecdsa-multisig) there is none
+    if [ -n "$(find_kurtosis_service "aggkit-prover-${AGGKIT_NETWORK}")" ]; then
+        export_portnum_from_kurtosis_or_fail aggkit_prover_grpc_port aggkit-prover-${AGGKIT_NETWORK} grpc
+        export aggchain_proof_url="http://localhost:${aggkit_prover_grpc_port}"
+    else
+        log_debug "no aggkit-prover-${AGGKIT_NETWORK} in the enclave $KURTOSIS_ENCLAVE: AggchainProofGen gets a URL that is not used"
+        export aggchain_proof_url="http://localhost:0"
+    fi
+}
+###############################################################################
+function pp_export_values_of_aggkit_config() {
+    local AGGKIT_CONFIG_FILE=$1
+    common_export_values_of_aggkit_config "$AGGKIT_CONFIG_FILE"
+    export_key_from_toml_file_or_fatal zkevm_bridge_l2_address $AGGKIT_CONFIG_FILE BridgeL2Sync BridgeAddr
+    export_key_from_toml_file_or_fatal zkevm_rollup_address $AGGKIT_CONFIG_FILE L1Config polygonZkEVMAddress
+    export_key_from_toml_file_or_fatal zkevm_global_exit_root_l2_address $AGGKIT_CONFIG_FILE L2Config GlobalExitRootAddr
+}
+###############################################################################
+function pp_export_ports_from_kurtosis() {
+    common_export_ports_from_kurtosis
+    # The RPC of the L2: the OP stack, or cdk-erigon (sequencer_type)
+    local _L2_RPC=$(find_op_el_service)
+    if [ -z "$_L2_RPC" ]; then
+        _L2_RPC=$(find_kurtosis_service "cdk-erigon-rpc-${AGGKIT_NETWORK}")
+    fi
+    [ -z "$_L2_RPC" ] && log_fatal "the L2 RPC service (op-el-1-... or cdk-erigon-rpc-${AGGKIT_NETWORK}) is not in the enclave $KURTOSIS_ENCLAVE"
+    export_portnum_from_kurtosis_or_fail l2_rpc_port $_L2_RPC rpc
+    export l2_rpc_url="http://localhost:${l2_rpc_port}"
+    export op_el_rpc_url=$l2_rpc_url
     export agglayer_grpc_url="http://localhost:${agglayer_grpc_port}"
 }
 ###############################################################################
 function common_aggsender_committee_override_urls(){
     export aggsender_committee_override_urls=""
     local _VALIDATOR
-    for _VALIDATOR in $(kurtosis enclave inspect $KURTOSIS_ENCLAVE | grep aggkit-001-aggsender-validator | sed -r "s/\ +/\ /g" | cut -f 2 -d ' '); do
+    for _VALIDATOR in $(kurtosis enclave inspect $KURTOSIS_ENCLAVE | grep aggkit-${AGGKIT_NETWORK}-aggsender-validator | sed -r "s/\ +/\ /g" | cut -f 2 -d ' '); do
         export_portnum_from_kurtosis_or_fail _LOCAL_PORT_VALIDATOR $_VALIDATOR validator-grpc
         log_debug "Found validator: $_VALIDATOR port=$_LOCAL_PORT_VALIDATOR"
         aggsender_committee_override_urls="${aggsender_committee_override_urls} \"http://${_VALIDATOR}:5578\" = \"http://localhost:${_LOCAL_PORT_VALIDATOR}\","
@@ -313,7 +447,7 @@ function common_aggsender_committee_override_urls(){
 }
 ###############################################################################
 # AggOracleCommittee v2: the GER validators of the enclave (ger_validator_signer services).
-# The committee registers their URLs inside the enclave (http://ger-validator-001-00N:8080), that
+# The committee registers their URLs inside the enclave (http://ger-validator-<network>-00N:8080), that
 # can't be reached from the host, so the AggOracle gets a ValidatorURLOverride for each one:
 #  - the validators in LOCAL_GER_VALIDATORS -> the ger_validator_signer that runs locally
 #  - the rest -> the port that kurtosis publishes on the host for its service
@@ -324,7 +458,7 @@ function common_ger_validators() {
     export aggoracle_validator_url_overrides="[]"
     export GER_VALIDATORS_LOCAL_CONFIGS=""
     local _SERVICES
-    _SERVICES=$(kurtosis enclave inspect $KURTOSIS_ENCLAVE | grep -o -E 'ger-validator-001-[0-9]+' | sort -u)
+    _SERVICES=$(kurtosis enclave inspect $KURTOSIS_ENCLAVE | grep -o -E "ger-validator-${AGGKIT_NETWORK}-[0-9]+" | sort -u)
     if [ -z "$_SERVICES" ]; then
         log_debug "no GER validators in the enclave $KURTOSIS_ENCLAVE: AggOracle.Mode = auto"
         return 0
@@ -336,11 +470,11 @@ function common_ger_validators() {
         _INDEX=$((10#${_SERVICE##*-}))
         _DIR=$DEST/ger_validator_$_INDEX
         mkdir -p $_DIR
-        kurtosis files download $KURTOSIS_ENCLAVE ger-validator-config-${_INDEX}-001 $_DIR >/dev/null
-        ok_or_fatal "Error downloading kurtosis artifact ger-validator-config-${_INDEX}-001 to $_DIR"
+        kurtosis files download $KURTOSIS_ENCLAVE ger-validator-config-${_INDEX}-${AGGKIT_NETWORK} $_DIR >/dev/null
+        ok_or_fatal "Error downloading kurtosis artifact ger-validator-config-${_INDEX}-${AGGKIT_NETWORK} to $_DIR"
         mv $_DIR/config.toml $_DIR/kurtosis.config.toml
-        kurtosis files download $KURTOSIS_ENCLAVE ger-validator-${_INDEX}-keystore-001 $_DIR >/dev/null
-        ok_or_fatal "Error downloading kurtosis artifact ger-validator-${_INDEX}-keystore-001 to $_DIR"
+        kurtosis files download $KURTOSIS_ENCLAVE ger-validator-${_INDEX}-keystore-${AGGKIT_NETWORK} $_DIR >/dev/null
+        ok_or_fatal "Error downloading kurtosis artifact ger-validator-${_INDEX}-keystore-${AGGKIT_NETWORK} to $_DIR"
         export ger_validator_keystore_path=$(realpath $_DIR/gervalidator-${_INDEX}.keystore)
         # The keystores of kurtosis-cdk are made by cast, without the "address" field: decrypt it
         _ADDRESS=$(cast wallet address --keystore $ger_validator_keystore_path \
@@ -367,7 +501,28 @@ function common_ger_validators() {
         _OVERRIDES="${_OVERRIDES} {Address = \"$_ADDRESS\", URL = \"$_URL\"},"
     done
     export aggoracle_validator_url_overrides="[${_OVERRIDES%,} ]"
+    GER_VALIDATORS_TOTAL=$(echo "$_SERVICES" | wc -w)
+    ger_validators_threshold
     log_debug "aggoracle_validator_url_overrides=${aggoracle_validator_url_overrides}"
+}
+###############################################################################
+# GER_VALIDATORS_THRESHOLD: the threshold of the AggOracleCommittee v2 (the GER updater of the L2 GER, as the AggOracle
+# resolves it when AggOracleCommitteeAddr is zero). Empty if it can't be read: it is only used for a note
+###############################################################################
+function ger_validators_threshold() {
+    GER_VALIDATORS_THRESHOLD=""
+    # The names of the L2 RPC and of the L2 GER depend on the template (fep or pp)
+    local _L2_RPC=${l2_rpc_url:-$op_el_rpc_url}
+    local _L2_GER=${sovereign_ger_proxy_addr:-$zkevm_global_exit_root_l2_address}
+    local _COMMITTEE
+    [ -z "$_L2_RPC" ] || [ -z "$_L2_GER" ] && return 0
+    _COMMITTEE=$(cast call "$_L2_GER" "globalExitRootUpdater()(address)" --rpc-url "$_L2_RPC" 2>/dev/null)
+    [ -z "$_COMMITTEE" ] && return 0
+    GER_VALIDATORS_THRESHOLD=$(cast call "$_COMMITTEE" "threshold()(uint256)" --rpc-url "$_L2_RPC" 2>/dev/null)
+    # cast prints big values as "N [Ne0]"
+    GER_VALIDATORS_THRESHOLD=${GER_VALIDATORS_THRESHOLD%% *}
+    [[ "$GER_VALIDATORS_THRESHOLD" =~ ^[0-9]+$ ]] || GER_VALIDATORS_THRESHOLD=""
+    log_debug "AggOracleCommittee v2 $_COMMITTEE: threshold ${GER_VALIDATORS_THRESHOLD:-unknown} of $GER_VALIDATORS_TOTAL"
 }
 ###############################################################################
 function print_ger_validators_instructions() {
@@ -379,10 +534,26 @@ function print_ger_validators_instructions() {
     done
     for _INDEX in ${LOCAL_GER_VALIDATORS//,/ }; do
         [[ " $GER_VALIDATORS_LOCAL_CONFIGS" == *" $_INDEX:"* ]] || continue
-        echo "  The AggOracle asks the validator $_INDEX to the local one: stop the one of kurtosis"
-        echo "    kurtosis service stop $KURTOSIS_ENCLAVE ger-validator-001-00$_INDEX"
+        echo "  The local AggOracle asks the validator $_INDEX to the local one (ger-validator-${AGGKIT_NETWORK}-00$_INDEX"
+        echo "  of kurtosis keeps running, only the AggOracle of the enclave asks it)"
     done
     local _DIR
+    local _HAS_LOCAL=""
+    for _INDEX in ${LOCAL_GER_VALIDATORS//,/ }; do
+        [[ " $GER_VALIDATORS_LOCAL_CONFIGS" == *" $_INDEX:"* ]] && _HAS_LOCAL=1
+    done
+    if [ -z "$_HAS_LOCAL" ]; then
+        echo "  All the validators stay in kurtosis: the AggOracle uses the ports that kurtosis publishes for them"
+        echo "  (-g/--local-ger-validators 1,2 to run some of them locally)"
+        echo " "
+        return 0
+    fi
+    if [ -n "$GER_VALIDATORS_THRESHOLD" ] && [ -n "$GER_VALIDATORS_TOTAL" ] && \
+        [ "$GER_VALIDATORS_THRESHOLD" -lt "$GER_VALIDATORS_TOTAL" ]; then
+        echo "  Threshold $GER_VALIDATORS_THRESHOLD of $GER_VALIDATORS_TOTAL: the GER is injected without the signature of a local"
+        echo "  validator that fails or is stopped in the debugger. To make it required, deploy the enclave with"
+        echo "  agg_oracle_committee_threshold = agg_oracle_committee_total_validators"
+    fi
     echo "  Run the local GER validator with the debug image (make build-docker-debug-ger_validator_signer): dlv listens"
     echo "  on 40000 + N, attach to it with the launch.json entry below (host network: the L1 is on localhost)"
     for _INDEX in ${LOCAL_GER_VALIDATORS//,/ }; do
@@ -443,7 +614,8 @@ function check_rendered_file() {
         echo ""
         echo "missing keys in rendered template: $_RENDERED"
         echo " "
-        grep "<no value>" $_RENDERED
+        # The passwords of the keystores are on the same lines: mask them
+        grep "<no value>" $_RENDERED | sed -E 's/(Password *= *")[^"]*"/\1***"/g'
         exit 1
     fi
 }
@@ -459,6 +631,7 @@ function parse_command_line_args() {
             echo "Usage: $0"
             echo "  -h: help"
             echo "  -e: kurtosis enclave name (default $KURTOSIS_ENCLAVE) (--enclave)"
+            echo "  -n: L2 network, the suffix of its services (default $AGGKIT_NETWORK: aggkit-$AGGKIT_NETWORK) (--network)"
             echo "  -p: expose same ports as service in kurtosis (RPC and REST) (--expose-ports) "
             echo "  -s: skip setting up aggsender committee override URLs (--skip-committee-override)"
             echo "  -g: GER validators (AggOracleCommittee v2) to run locally, comma separated indexes, or \"none\""
@@ -472,6 +645,11 @@ function parse_command_line_args() {
             ;;
         -e | --enclave)
             KURTOSIS_ENCLAVE=$2
+            shift
+            shift
+            ;;
+        -n | --network)
+            AGGKIT_NETWORK=$2
             shift
             shift
             ;;
@@ -498,6 +676,7 @@ function main(){
 
     set -o pipefail # enable strict command pipe error detection
     parse_command_line_args $*
+    set_network_names
     check_requirements
     create_dest_folder
     if [ -z "$SKIP_COMMITTEE_OVERRIDE" ]; then

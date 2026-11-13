@@ -137,10 +137,21 @@ Outputs = ["stderr"]
 # ------------------------------------------------------------------------------
 [PublicREST]
 # ------------------------------------------------------------------------------
-# Port of the public REST API (bridge service, aggsender, ...). The admin endpoints are served by [AdminREST],
-# that keeps its default (127.0.0.1:5579)
+# Port of the public REST API (bridge service, aggsender, ...). The admin endpoints are served by [AdminREST]
 # ------------------------------------------------------------------------------
 Port = {{.aggkit_node_rest_api_port}}
+
+[AdminREST]
+# ------------------------------------------------------------------------------
+# Loopback only (the default Host). Each role of local_config.sh has ports of its own, so several can run at once
+# ------------------------------------------------------------------------------
+Port = {{.aggkit_admin_rest_port}}
+
+[Prometheus]
+# ------------------------------------------------------------------------------
+# Port of the metrics server (the default is 9091)
+# ------------------------------------------------------------------------------
+Port = {{.aggkit_prometheus_port}}
 
 # ==============================================================================
 #     _    ____  ____ ____  _____ _   _ ____  _____ ____
@@ -196,7 +207,7 @@ RequireKeyMatchTrustedSequencer = true
 WaitPeriodNextGER = "10s"
 
 # ------------------------------------------------------------------------------
-# direct, committee or auto. scripts/local_config_fep.sh sets committee when the enclave has GER validators
+# direct, committee or auto. The local_config scripts set committee when the enclave has GER validators
 # (AggOracleCommittee v2), and auto otherwise
 # ------------------------------------------------------------------------------
 Mode = "{{.aggoracle_mode}}"

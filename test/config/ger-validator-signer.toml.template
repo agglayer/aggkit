@@ -1,5 +1,5 @@
 # Configuration of a GER validator (tools/ger_validator_signer) to run it locally against a kurtosis enclave.
-# Rendered by scripts/local_config_helper.sh: see scripts/local_config_fep.sh. An unknown key is an error.
+# Rendered by scripts/local_config_helper.sh: see scripts/local_config.sh (aggoracle role). An unknown key is an error.
 
 # The L1 of the enclave, through the port that kurtosis publishes on the host
 L1RPCURL = "{{.l1_rpc_url}}"
