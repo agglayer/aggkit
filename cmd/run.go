@@ -31,6 +31,7 @@ import (
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config"
+	configtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	ethermanquierier "github.com/agglayer/aggkit/etherman/querier"
@@ -64,6 +65,14 @@ func start(cliCtx *cli.Context) error {
 		return err
 	}
 
+	// Validate the downloader selections using only the configuration and the active components,
+	// before opening any network connection: an invalid selector or an unsatisfiable selection (for
+	// example an active L1 syncer that selected the multidownloader while it is disabled) must abort
+	// startup without dialing L1 or L2.
+	if err := validateDownloaderSelections(*cfg, components); err != nil {
+		return err
+	}
+
 	if err := cfg.L1NetworkConfig.Validate(); err != nil {
 		return fmt.Errorf("invalid L1 network config: %w", err)
 	}
@@ -88,20 +97,21 @@ func start(cliCtx *cli.Context) error {
 	log.Debugf("Components to run: %v", components)
 	l1Client := runL1ClientIfNeeded(cliCtx.Context, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
-	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
-	go func() {
-		if err := <-errChanL1; err != nil {
-			log.Fatal("Error from ReorgDetectorL1: ", err)
-		}
-	}()
+	// Reorg detectors are started synchronously (see runReorgDetectorL1IfNeeded): Start loads the
+	// tracked headers and installs the subscription channels in one shot, so it must run before any
+	// syncer constructor subscribes. Starting it asynchronously races with Subscribe and
+	// loadTrackedHeaders would otherwise replace the channels the constructors just registered.
+	reorgDetectorL1, err := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
+	if err != nil {
+		return err
+	}
 
-	reorgDetectorL2, errChanL2 := runReorgDetectorL2IfNeeded(cliCtx.Context, components, l2Client, &cfg.ReorgDetectorL2)
-	go func() {
-		if err := <-errChanL2; err != nil {
-			log.Fatal("Error from ReorgDetectorL2: ", err)
-		}
-	}()
-	l1MultiDownloader, err := runL1MultiDownloaderIfNeeded(components, l1Client, cfg.L1Multidownloader)
+	reorgDetectorL2, err := runReorgDetectorL2IfNeeded(cliCtx.Context, components, l2Client, &cfg.ReorgDetectorL2)
+	if err != nil {
+		return err
+	}
+	l1MultiDownloader, err := runL1MultiDownloaderIfNeeded(
+		components, l1Client, cfg.L1Multidownloader, cfg.BridgeL1Sync, cfg.ClaimL1Sync)
 	if err != nil {
 		return fmt.Errorf("failed to create L1MultiDownloader: %w", err)
 	}
@@ -118,38 +128,88 @@ func start(cliCtx *cli.Context) error {
 	// Create WaitGroup for backfill goroutines synchronization
 	var backfillWg sync.WaitGroup
 
-	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, reorgDetectorL1,
-		l1Client, l1MultiDownloader)
-
-	if isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
-		runImportFromBridgeSyncerIfNeeded(ctx, cfg.BridgeL1Sync.DBPath, cfg.ClaimL1Sync.DBPath, claimsynctypes.L1ClaimSyncer)
-	}
-
-	l1ClaimSync := runClaimSyncL1IfNeeded(ctx, components, cfg.ClaimL1Sync, reorgDetectorL1, l1Client, MainnetID)
-
-	l1BridgeSync := runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
-		l1Client, MainnetID, &backfillWg)
-	initialLER, err := GetInitialLER(cfg.L2NetworkConfig.InitialLER,
-		cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier)
-	if err != nil {
-		return fmt.Errorf("failed to get initial local exit root: %w", err)
-	}
-	log.Infof("Initial Local Exit Root (LER): %s", initialLER.Hex())
-
-	if isNeeded([]string{
-		aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR, aggkitcommon.AGGCHAINPROOFGEN,
-		aggkitcommon.BRIDGE, aggkitcommon.L2CLAIMSYNC, aggkitcommon.L2BRIDGESYNC}, components) {
-		runImportFromBridgeSyncerIfNeeded(ctx, cfg.BridgeL2Sync.DBPath, cfg.ClaimL2Sync.DBPath, claimsynctypes.L2ClaimSyncer)
-	}
-
-	l2ClaimSync := runClaimSyncL2IfNeeded(
-		ctx, components, cfg.ClaimL2Sync, reorgDetectorL2, l2Client, rollupDataQuerier.RollupID)
-
-	l2BridgeSync := runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, rollupDataQuerier.RollupID, *initialLER, &backfillWg)
-	l2GERSync := runL2GERSyncIfNeeded(
-		ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
+	// Every L1 syncer is built and registered with the shared multidownloader first, then the
+	// (multidownloader-independent) L2 syncers run, then the multidownloader is initialized and
+	// started, and only then the L1 consumers and the txn_sender backfill start. Initializing the
+	// multidownloader before the L1 constructors would fail with "cannot add new syncer config after
+	// initialization"; starting the L1 consumers (or the backfill) before the multidownloader would
+	// race with initialization.
+	var (
+		l1InfoTreeSync *l1infotreesync.L1InfoTreeSync
+		l1ClaimSync    *claimsync.ClaimSync
+		l1BridgeSync   *bridgesync.BridgeSync
+		l2ClaimSync    *claimsync.ClaimSync
+		l2BridgeSync   *bridgesync.BridgeSync
+		l2GERSync      *l2gersync.L2GERSync
+		initialLER     *common.Hash
 	)
+	err = bootL1Syncers(l1MultiDownloader != nil, l1BootHooks{
+		buildL1Syncers: func() error {
+			l1InfoTreeSync = runL1InfoTreeSyncerIfNeeded(ctx, components, *cfg, reorgDetectorL1,
+				l1Client, l1MultiDownloader)
+
+			if isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
+				runImportFromBridgeSyncerIfNeeded(
+					ctx, cfg.BridgeL1Sync.DBPath, cfg.ClaimL1Sync.DBPath, claimsynctypes.L1ClaimSyncer)
+			}
+
+			l1ClaimSync = runClaimSyncL1IfNeeded(
+				ctx, components, cfg.ClaimL1Sync, reorgDetectorL1, l1Client, MainnetID, l1MultiDownloader)
+
+			l1BridgeSync = runBridgeSyncL1IfNeeded(ctx, components, cfg.BridgeL1Sync, reorgDetectorL1,
+				l1Client, MainnetID, l1MultiDownloader)
+			return nil
+		},
+		buildL2Syncers: func() error {
+			var lerr error
+			initialLER, lerr = GetInitialLER(cfg.L2NetworkConfig.InitialLER,
+				cfg.AggSender.RollupCreationBlockL1, rollupDataQuerier)
+			if lerr != nil {
+				return fmt.Errorf("failed to get initial local exit root: %w", lerr)
+			}
+			log.Infof("Initial Local Exit Root (LER): %s", initialLER.Hex())
+
+			if isNeeded([]string{
+				aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR, aggkitcommon.AGGCHAINPROOFGEN,
+				aggkitcommon.BRIDGE, aggkitcommon.L2CLAIMSYNC, aggkitcommon.L2BRIDGESYNC}, components) {
+				runImportFromBridgeSyncerIfNeeded(
+					ctx, cfg.BridgeL2Sync.DBPath, cfg.ClaimL2Sync.DBPath, claimsynctypes.L2ClaimSyncer)
+			}
+
+			l2ClaimSync = runClaimSyncL2IfNeeded(
+				ctx, components, cfg.ClaimL2Sync, reorgDetectorL2, l2Client, rollupDataQuerier.RollupID)
+
+			l2BridgeSync = runBridgeSyncL2IfNeeded(ctx, components, cfg.BridgeL2Sync, reorgDetectorL2,
+				l2Client, rollupDataQuerier.RollupID, *initialLER, &backfillWg)
+			l2GERSync = runL2GERSyncIfNeeded(
+				ctx, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync, l1Client,
+			)
+			return nil
+		},
+		initMD: func() error {
+			log.Info("starting L1 MultiDownloader...")
+			if merr := l1MultiDownloader.Initialize(ctx); merr != nil {
+				return fmt.Errorf("failed to initialize L1 MultiDownloader: %w", merr)
+			}
+			return nil
+		},
+		startMD: func() error {
+			go func() {
+				if merr := l1MultiDownloader.Start(ctx); merr != nil {
+					log.Fatalf("l1MultiDownloader stopped: %v", merr)
+				}
+			}()
+			return nil
+		},
+		startL1Consumers: func() error {
+			startL1ConsumersIfNeeded(ctx, components, *cfg, l1Client, l1MultiDownloader,
+				l1InfoTreeSync, l1ClaimSync, l1BridgeSync, &backfillWg)
+			return nil
+		},
+	})
+	if err != nil {
+		return err
+	}
 
 	committeeQuerier := runAggsenderMultisigCommitteeIfNeeded(components, cfg.L1NetworkConfig.RollupAddr, l1Client,
 		&cfg.AggSender.CommitteeOverride)
@@ -218,24 +278,6 @@ func start(cliCtx *cli.Context) error {
 	if l1MultiDownloader != nil {
 		routes.addMultidownloader(l1MultiDownloader, cfg.L1Multidownloader.DeveloperMode)
 	}
-	if l1MultiDownloader != nil {
-		log.Info("starting L1 MultiDownloader...")
-		err = l1MultiDownloader.Initialize(ctx)
-		if err != nil {
-			//nolint:gocritic
-			log.Fatalf("failed to initialize L1 MultiDownloader: %v", err)
-		}
-		go func() {
-			err := l1MultiDownloader.Start(ctx)
-			if err != nil {
-				log.Fatalf("l1MultiDownloader stopped: %v", err)
-			}
-		}()
-	}
-	if l1InfoTreeSync != nil {
-		log.Info("starting L1 Info Tree Syncer...")
-		go l1InfoTreeSync.Start(ctx)
-	}
 	for _, component := range components {
 		switch component {
 		case aggkitcommon.AGGORACLE:
@@ -255,7 +297,7 @@ func start(cliCtx *cli.Context) error {
 				*initialLER,
 			)
 			if err != nil {
-				log.Fatalf("failed to create AggSender: %v", err)
+				return fmt.Errorf("failed to create AggSender: %w", err)
 			}
 			routes.addAggsender(aggsender, cfg.AggSender.EnableRPC)
 
@@ -271,7 +313,7 @@ func start(cliCtx *cli.Context) error {
 				l2ClaimSync,
 			)
 			if err != nil {
-				log.Fatal(err)
+				return fmt.Errorf("failed to create AggchainProofGen: %w", err)
 			}
 
 			routes.addDeveloperAdminAPI(aggchainProofGen, cfg.AggchainProofGen.DeveloperMode)
@@ -289,7 +331,7 @@ func start(cliCtx *cli.Context) error {
 				*initialLER,
 			)
 			if err != nil {
-				log.Fatal(err)
+				return fmt.Errorf("failed to create AggSenderValidator: %w", err)
 			}
 			go aggsenderValidator.Start(ctx)
 		}
@@ -300,7 +342,7 @@ func start(cliCtx *cli.Context) error {
 	// in use) aborts startup instead of leaving the process running without its API.
 	if routes.publicHasRoutes {
 		if err := publicServer.Start(ctx); err != nil {
-			log.Fatalf("failed to start public-api server: %v", err)
+			return fmt.Errorf("failed to start public-api server: %w", err)
 		}
 		log.Infof("Public API listening on %s", cfg.PublicREST.Address())
 	}
@@ -311,7 +353,7 @@ func start(cliCtx *cli.Context) error {
 				"proxy level, or set [AdminREST] Host to a loopback address.", cfg.AdminREST.Address())
 		}
 		if err := adminServer.Start(ctx); err != nil {
-			log.Fatalf("failed to start admin-api server: %v", err)
+			return fmt.Errorf("failed to start admin-api server: %w", err)
 		}
 		log.Infof("Admin API listening on %s", cfg.AdminREST.Address())
 	}
@@ -610,6 +652,209 @@ func l1InfoTreeMustRun(components []string) bool {
 		aggkitcommon.L2GERSYNC, aggkitcommon.AGGCHAINPROOFGEN}, components)
 }
 
+// l1BridgeSyncMustRun reports whether the L1 bridge syncer is active.
+func l1BridgeSyncMustRun(components []string) bool {
+	return isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components)
+}
+
+// l1ClaimSyncMustRun reports whether the standalone L1 claim syncer is active. It shares the exact
+// activation set of the L1 bridge syncer: no dedicated L1CLAIMSYNC component exists.
+func l1ClaimSyncMustRun(components []string) bool {
+	return isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components)
+}
+
+// l2BridgeSyncMustRun reports whether the L2 bridge syncer is active.
+func l2BridgeSyncMustRun(components []string) bool {
+	return isNeeded([]string{
+		aggkitcommon.BRIDGE,
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.L2BRIDGESYNC,
+		aggkitcommon.AGGSENDERVALIDATOR}, components)
+}
+
+// l2ClaimSyncMustRun reports whether the standalone L2 claim syncer is active.
+func l2ClaimSyncMustRun(components []string) bool {
+	return isNeeded([]string{
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGSENDERVALIDATOR,
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.BRIDGE,
+		aggkitcommon.L2CLAIMSYNC}, components)
+}
+
+// l1MultidownloaderRequiredByActiveConsumer reports whether an active L1 syncer explicitly selected
+// the shared multidownloader. It intentionally ignores the L1 info tree syncer, which keeps its
+// historical behaviour and falls back to the legacy downloader when the service is disabled.
+func l1MultidownloaderRequiredByActiveConsumer(
+	components []string,
+	bridgeCfg bridgesync.Config,
+	claimCfg claimsync.ConfigStandalone,
+) bool {
+	if l1BridgeSyncMustRun(components) && bridgeCfg.Downloader.IsMultidownloader() {
+		return true
+	}
+	if l1ClaimSyncMustRun(components) && claimCfg.Downloader.IsMultidownloader() {
+		return true
+	}
+	return false
+}
+
+// l1MultidownloaderIsNeeded reports whether the shared L1 multidownloader must be constructed. It is
+// needed when the L1 info tree syncer runs (it uses the multidownloader whenever available) or when an
+// active L1 bridge/claim syncer explicitly selected it.
+func l1MultidownloaderIsNeeded(
+	components []string,
+	bridgeCfg bridgesync.Config,
+	claimCfg claimsync.ConfigStandalone,
+) bool {
+	if l1InfoTreeMustRun(components) {
+		return true
+	}
+	return l1MultidownloaderRequiredByActiveConsumer(components, bridgeCfg, claimCfg)
+}
+
+// validateDownloaderSelections checks the downloader selectors using only the loaded configuration and
+// the active components. It performs no network I/O, so an invalid or unsatisfiable selection aborts
+// startup before any client is dialed. Selector types are always validated, while availability and the
+// per-section restrictions only apply to sections that are actually active: an unused section may keep
+// any valid selector.
+func validateDownloaderSelections(cfg config.Config, components []string) error {
+	selectors := []struct {
+		name string
+		d    configtypes.Downloader
+	}{
+		{"BridgeL1Sync.Downloader", cfg.BridgeL1Sync.Downloader},
+		{"ClaimL1Sync.Downloader", cfg.ClaimL1Sync.Downloader},
+		{"BridgeL2Sync.Downloader", cfg.BridgeL2Sync.Downloader},
+		{"ClaimL2Sync.Downloader", cfg.ClaimL2Sync.Downloader},
+	}
+	for _, selector := range selectors {
+		if err := selector.d.Validate(); err != nil {
+			return fmt.Errorf("%s: %w", selector.name, err)
+		}
+	}
+
+	// The shared multidownloader is L1-only: an active L2 section that explicitly selected it is a
+	// configuration error.
+	if l2BridgeSyncMustRun(components) && cfg.BridgeL2Sync.Downloader.IsMultidownloader() {
+		return fmt.Errorf("BridgeL2Sync.Downloader=%q is not supported: "+
+			"the shared multidownloader is only available for L1 syncers", cfg.BridgeL2Sync.Downloader)
+	}
+	if l2ClaimSyncMustRun(components) && cfg.ClaimL2Sync.Downloader.IsMultidownloader() {
+		return fmt.Errorf("ClaimL2Sync.Downloader=%q is not supported: "+
+			"the shared multidownloader is only available for L1 syncers", cfg.ClaimL2Sync.Downloader)
+	}
+
+	// An active L1 section that explicitly selected the multidownloader requires it to be enabled.
+	// There is no silent fallback to the legacy downloader.
+	if !cfg.L1Multidownloader.Enabled {
+		if l1BridgeSyncMustRun(components) && cfg.BridgeL1Sync.Downloader.IsMultidownloader() {
+			return fmt.Errorf("BridgeL1Sync.Downloader=%q requires L1Multidownloader.Enabled=true",
+				cfg.BridgeL1Sync.Downloader)
+		}
+		if l1ClaimSyncMustRun(components) && cfg.ClaimL1Sync.Downloader.IsMultidownloader() {
+			return fmt.Errorf("ClaimL1Sync.Downloader=%q requires L1Multidownloader.Enabled=true",
+				cfg.ClaimL1Sync.Downloader)
+		}
+	}
+
+	return nil
+}
+
+// l1BootHooks bundles the ordered steps of the L1 syncer lifecycle. The indirection keeps the startup
+// ordering explicit and lets it be unit-tested without real clients: every L1 syncer must be
+// built/registered before the shared multidownloader is initialized, and no L1 consumer may start
+// before the multidownloader does.
+type l1BootHooks struct {
+	// buildL1Syncers constructs and registers every L1 syncer. It must not start them.
+	buildL1Syncers func() error
+	// buildL2Syncers constructs and starts the L2 syncers, which are independent of the L1
+	// multidownloader. It may be nil.
+	buildL2Syncers func() error
+	// initMD initializes the shared L1 multidownloader.
+	initMD func() error
+	// startMD starts the shared L1 multidownloader.
+	startMD func() error
+	// startL1Consumers starts the already built L1 syncers and the txn_sender backfill.
+	startL1Consumers func() error
+}
+
+// bootL1Syncers runs the L1 syncer lifecycle in the only order that is safe with the shared
+// multidownloader: build/register every L1 syncer, run the (independent) L2 syncers, initialize and
+// start the multidownloader, then start the L1 consumers and the txn_sender backfill. Starting an L1
+// consumer before Initialize fails with "cannot add new syncer config after initialization"; starting
+// the multidownloader after the constructors would race with the reorg-detector subscriptions.
+func bootL1Syncers(hasMD bool, hooks l1BootHooks) error {
+	if err := hooks.buildL1Syncers(); err != nil {
+		return err
+	}
+	if hooks.buildL2Syncers != nil {
+		if err := hooks.buildL2Syncers(); err != nil {
+			return err
+		}
+	}
+	if hasMD {
+		if err := hooks.initMD(); err != nil {
+			return err
+		}
+		if err := hooks.startMD(); err != nil {
+			return err
+		}
+	}
+	return hooks.startL1Consumers()
+}
+
+// startL1ConsumersIfNeeded starts the L1 syncers that were built earlier and, for the L1 bridge
+// syncer, kicks off the asynchronous txn_sender backfill. It must only be called after the shared L1
+// multidownloader has been initialized and started, so that every syncer was registered before the
+// multidownloader moved to its running state and the backfill never reads through it prematurely.
+func startL1ConsumersIfNeeded(
+	ctx context.Context,
+	components []string,
+	cfg config.Config,
+	l1Client aggkittypes.EthClienter,
+	l1MultiDownloader *multidownloader.EVMMultidownloader,
+	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
+	l1ClaimSync *claimsync.ClaimSync,
+	l1BridgeSync *bridgesync.BridgeSync,
+	wg *sync.WaitGroup,
+) {
+	if l1InfoTreeSync != nil {
+		log.Info("starting L1 Info Tree Syncer...")
+		go l1InfoTreeSync.Start(ctx)
+	}
+	if l1ClaimSync != nil {
+		log.Infof("Starting ClaimSyncL1 (autoStart=%s)", cfg.ClaimL1Sync.AutoStart.String())
+		go l1ClaimSync.Start(ctx)
+	}
+	if l1BridgeSync != nil {
+		// The txn_sender backfill resolves transactions through the same shared provider the bridge
+		// syncer uses when the multidownloader is selected, so no direct eth_getTransactionByHash
+		// lookup happens in that mode. The same multidownloader is also passed as the download
+		// backend so the backfill reads the canonical bridge logs through it (never a direct RPC
+		// FilterLogs). A nil provider/backend keeps the legacy behaviour.
+		var provider aggkittypes.TransactionProvider
+		var backend aggkittypes.MultiDownloaderLegacy
+		if cfg.BridgeL1Sync.Downloader.IsMultidownloader() && l1MultiDownloader != nil {
+			provider = l1MultiDownloader
+			backend = l1MultiDownloader
+		}
+
+		// Run txn_sender backfilling in a separate goroutine
+		wg.Add(1)
+		go func() {
+			logger := log.WithFields("module", "tx-sender-backfill-"+bridgesync.L1BridgeSyncer.String())
+			if err := runTxnSenderBackfill(ctx, cfg.BridgeL1Sync, l1Client, components,
+				bridgesync.L1BridgeSyncer, logger, wg, provider, backend); err != nil {
+				logger.Errorf("txn_sender backfilling failed: %v", err)
+				// Don't fail the entire process, just log the error and continue
+			}
+		}()
+		go l1BridgeSync.Start(ctx)
+	}
+}
+
 func runL1InfoTreeSyncerIfNeeded(
 	ctx context.Context,
 	components []string,
@@ -692,7 +937,7 @@ func runReorgDetectorL1IfNeeded(
 	components []string,
 	l1Client aggkittypes.BaseEthereumClienter,
 	cfg *reorgdetector.Config,
-) (*reorgdetector.ReorgDetector, chan error) {
+) (*reorgdetector.ReorgDetector, error) {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC, aggkitcommon.L1INFOTREESYNC,
@@ -701,37 +946,49 @@ func runReorgDetectorL1IfNeeded(
 		return nil, nil
 	}
 	if err := cfg.Validate(); err != nil {
-		log.Fatalf("invalid ReorgDetectorL1 config: %v", err)
+		return nil, fmt.Errorf("invalid ReorgDetectorL1 config: %w", err)
 	}
 
 	rd := newReorgDetector(cfg, l1Client, reorgdetector.L1)
-	errChan := make(chan error)
-	go func() {
-		if err := rd.Start(ctx); err != nil {
-			errChan <- err
-		}
-		close(errChan)
-	}()
+	// Start is called synchronously: it loads the tracked headers and installs the subscription
+	// channels, which must be in place before any syncer constructor subscribes. Starting it from a
+	// goroutine races with Subscribe, and loadTrackedHeaders would replace the channels that the
+	// constructors registered. Start itself only loads state synchronously and then spawns the
+	// polling goroutine, so this call returns quickly.
+	if err := rd.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start ReorgDetectorL1: %w", err)
+	}
 
-	return rd, errChan
+	return rd, nil
 }
 
 func runL1MultiDownloaderIfNeeded(
 	components []string,
 	l1Client aggkittypes.EthClienter,
 	cfg multidownloader.Config,
+	bridgeCfg bridgesync.Config,
+	claimCfg claimsync.ConfigStandalone,
 ) (*multidownloader.EVMMultidownloader, error) {
 	// The requirements are the same as L1Client
 	if l1Client == nil {
 		return nil, nil
 	}
-	// If it's disable It creates a direct eth client
-	if !cfg.Enabled {
-		log.Warnf("L1 MultiDownloader is disabled, don't creating the service.")
+	// No active component needs the multidownloader: neither an L1 consumer explicitly selected it
+	// nor does the L1 info tree syncer run.
+	if !l1MultidownloaderIsNeeded(components, bridgeCfg, claimCfg) {
+		log.Infof("L1 MultiDownloader not going to run because components: %v", components)
 		return nil, nil
 	}
-	if !l1InfoTreeMustRun(components) {
-		log.Infof("L1 MultiDownloader not going to run because components: %v", components)
+	// Enabling is required only when an active consumer explicitly selected the multidownloader.
+	// The L1 info tree syncer keeps its historical behaviour and silently falls back to the legacy
+	// downloader when the service is disabled.
+	if !cfg.Enabled {
+		if l1MultidownloaderRequiredByActiveConsumer(components, bridgeCfg, claimCfg) {
+			return nil, fmt.Errorf(
+				"L1 MultiDownloader is required by an active L1 syncer (Downloader=%q) "+
+					"but L1Multidownloader.Enabled=false", configtypes.Multidownloader)
+		}
+		log.Warnf("L1 MultiDownloader is disabled, don't creating the service.")
 		return nil, nil
 	}
 	logger := log.WithFields("module", "L1MultiDownloader")
@@ -757,7 +1014,7 @@ func runReorgDetectorL2IfNeeded(
 	components []string,
 	l2Client aggkittypes.BaseEthereumClienter,
 	cfg *reorgdetector.Config,
-) (*reorgdetector.ReorgDetector, chan error) {
+) (*reorgdetector.ReorgDetector, error) {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.BRIDGE,
@@ -770,16 +1027,12 @@ func runReorgDetectorL2IfNeeded(
 		return nil, nil
 	}
 	rd := newReorgDetector(cfg, l2Client, reorgdetector.L2)
+	// See runReorgDetectorL1IfNeeded: Start must run before the constructors subscribe.
+	if err := rd.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start ReorgDetectorL2: %w", err)
+	}
 
-	errChan := make(chan error)
-	go func() {
-		if err := rd.Start(ctx); err != nil {
-			errChan <- err
-		}
-		close(errChan)
-	}()
-
-	return rd, errChan
+	return rd, nil
 }
 
 func runL2GERSyncIfNeeded(
@@ -843,9 +1096,9 @@ func runBridgeSyncL1IfNeeded(
 	reorgDetectorL1 bridgesync.ReorgDetector,
 	l1Client aggkittypes.EthClienter,
 	rollupID uint32,
-	wg *sync.WaitGroup,
+	l1MultiDownloader *multidownloader.EVMMultidownloader,
 ) *bridgesync.BridgeSync {
-	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
+	if !l1BridgeSyncMustRun(components) {
 		return nil
 	}
 
@@ -855,28 +1108,35 @@ func runBridgeSyncL1IfNeeded(
 
 	resolveL1BridgeConfig(&cfg, components, "L1")
 
-	bridgeSyncL1, err := bridgesync.NewL1(
-		ctx,
-		cfg,
-		reorgDetectorL1,
-		l1Client,
-		rollupID,
+	// Constructed but not started here: the syncer must be registered with the shared
+	// multidownloader before it is initialized, so the caller starts it after the multidownloader is
+	// up (see startL1ConsumersIfNeeded / bootL1Syncers).
+	var (
+		bridgeSyncL1 *bridgesync.BridgeSync
+		err          error
 	)
+	if cfg.Downloader.IsMultidownloader() {
+		if l1MultiDownloader == nil {
+			log.Fatalf("BridgeL1Sync.Downloader=%q requires the L1 MultiDownloader but it is not available",
+				cfg.Downloader)
+		}
+		// The multidownloader is passed both as the downloader backend and as the transaction
+		// provider it implements, so the syncer resolves transaction senders through the shared
+		// service instead of a direct eth_getTransactionByHash.
+		bridgeSyncL1, err = bridgesync.NewL1WithDownloader(
+			ctx, cfg, reorgDetectorL1, l1Client, rollupID, l1MultiDownloader, l1MultiDownloader)
+	} else {
+		bridgeSyncL1, err = bridgesync.NewL1(
+			ctx,
+			cfg,
+			reorgDetectorL1,
+			l1Client,
+			rollupID,
+		)
+	}
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
 	}
-
-	// Run txn_sender backfilling in a separate goroutine
-	wg.Add(1)
-	go func() {
-		logger := log.WithFields("module", "tx-sender-backfill-"+bridgesync.L1BridgeSyncer.String())
-		if err := runTxnSenderBackfill(ctx, cfg, l1Client, components, bridgesync.L1BridgeSyncer, logger, wg); err != nil {
-			logger.Errorf("txn_sender backfilling failed: %v", err)
-			// Don't fail the entire process, just log the error and continue
-		}
-	}()
-
-	go bridgeSyncL1.Start(ctx)
 
 	return bridgeSyncL1
 }
@@ -888,29 +1148,42 @@ func runClaimSyncL1IfNeeded(
 	reorgDetectorL1 bridgesync.ReorgDetector,
 	l1Client aggkittypes.EthClienter,
 	rollupID uint32,
+	l1MultiDownloader *multidownloader.EVMMultidownloader,
 ) *claimsync.ClaimSync {
-	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
+	if !l1ClaimSyncMustRun(components) {
 		return nil
 	}
 	if err := cfg.Validate(); err != nil {
-		log.Fatalf("invalid BridgeL1Sync config: %v", err)
+		log.Fatalf("invalid ClaimL1Sync config: %v", err)
 	}
 
-	cfg.AutoStart.Resolve(isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components))
+	cfg.AutoStart.Resolve(l1ClaimSyncMustRun(components))
 
-	res, err := claimsync.NewStandaloneClaimSync(
-		ctx,
-		cfg,
-		reorgDetectorL1,
-		l1Client,
-		claimsynctypes.L1ClaimSyncer,
-		rollupID,
+	// Constructed but not started here, see runBridgeSyncL1IfNeeded.
+	var (
+		res *claimsync.ClaimSync
+		err error
 	)
+	if cfg.Downloader.IsMultidownloader() {
+		if l1MultiDownloader == nil {
+			log.Fatalf("ClaimL1Sync.Downloader=%q requires the L1 MultiDownloader but it is not available",
+				cfg.Downloader)
+		}
+		res, err = claimsync.NewStandaloneClaimSyncWithDownloader(
+			ctx, cfg, reorgDetectorL1, l1Client, claimsynctypes.L1ClaimSyncer, rollupID, l1MultiDownloader)
+	} else {
+		res, err = claimsync.NewStandaloneClaimSync(
+			ctx,
+			cfg,
+			reorgDetectorL1,
+			l1Client,
+			claimsynctypes.L1ClaimSyncer,
+			rollupID,
+		)
+	}
 	if err != nil {
 		log.Fatalf("error creating ClaimSyncL1: %s", err)
 	}
-	log.Infof("Starting ClaimSyncL1 (autoStart=%t)", *cfg.AutoStart.Resolved)
-	go res.Start(ctx)
 	return res
 }
 
@@ -924,18 +1197,18 @@ func runBridgeSyncL2IfNeeded(
 	initialLER common.Hash,
 	wg *sync.WaitGroup,
 ) *bridgesync.BridgeSync {
-	fullClaimsNeeded := isNeeded([]string{
-		aggkitcommon.BRIDGE,
-		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGCHAINPROOFGEN,
-		aggkitcommon.L2BRIDGESYNC,
-		aggkitcommon.AGGSENDERVALIDATOR}, components)
+	fullClaimsNeeded := l2BridgeSyncMustRun(components)
 
-	fullClaimsNotNeeded := isNeeded([]string{}, components)
-
-	if !fullClaimsNeeded && !fullClaimsNotNeeded {
+	if !fullClaimsNeeded {
 		// no bridge sync needed
 		return nil
+	}
+
+	// The shared multidownloader is L1-only. Rejecting it here as well as in the early validation
+	// keeps the restriction attached to the constructor.
+	if cfg.Downloader.IsMultidownloader() {
+		log.Fatalf("BridgeL2Sync.Downloader=%q is not supported: the shared multidownloader "+
+			"is only available for L1 syncers", cfg.Downloader)
 	}
 
 	// Resolve SyncFromInBridges mode based on components
@@ -958,7 +1231,9 @@ func runBridgeSyncL2IfNeeded(
 	wg.Add(1)
 	go func() {
 		logger := log.WithFields("module", "tx-sender-backfill-"+bridgesync.L2BridgeSyncer.String())
-		if err := runTxnSenderBackfill(ctx, cfg, l2Client, components, bridgesync.L2BridgeSyncer, logger, wg); err != nil {
+		err := runTxnSenderBackfill(
+			ctx, cfg, l2Client, components, bridgesync.L2BridgeSyncer, logger, wg, nil, nil)
+		if err != nil {
 			logger.Errorf("txn_sender backfilling failed: %v", err)
 			// Don't fail the entire process, just log the error and continue
 		}
@@ -977,13 +1252,15 @@ func runClaimSyncL2IfNeeded(
 	l2Client aggkittypes.EthClienter,
 	originNetwork uint32,
 ) *claimsync.ClaimSync {
-	if !isNeeded([]string{
-		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.AGGCHAINPROOFGEN,
-		aggkitcommon.BRIDGE,
-		aggkitcommon.L2CLAIMSYNC}, components) {
+	if !l2ClaimSyncMustRun(components) {
 		return nil
+	}
+
+	// The shared multidownloader is L1-only. Rejecting it here as well as in the early validation
+	// keeps the restriction attached to the constructor.
+	if cfg.Downloader.IsMultidownloader() {
+		log.Fatalf("ClaimL2Sync.Downloader=%q is not supported: the shared multidownloader "+
+			"is only available for L1 syncers", cfg.Downloader)
 	}
 
 	cfg.AutoStart.Resolve(isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2BRIDGESYNC}, components))
@@ -1097,6 +1374,8 @@ func runTxnSenderBackfill(
 	syncerID bridgesync.BridgeSyncerID,
 	logger *log.Logger,
 	wg *sync.WaitGroup,
+	provider aggkittypes.TransactionProvider,
+	backend aggkittypes.MultiDownloaderLegacy,
 ) error {
 	// Only run backfilling if we have a database path configured
 	if cfg.DBPath == "" {
@@ -1116,6 +1395,21 @@ func runTxnSenderBackfill(
 		syncerID.String(),
 		cfg.SyncFromInBridges, syncFromInBridges, hasBridgeComponent)
 
+	// When a transaction provider is given (shared multidownloader selected), the backfill resolves
+	// addresses through it instead of a direct eth_getTransactionByHash. The download backend is
+	// passed alongside it so the exact original bridge log is read from the shared multidownloader
+	// rather than through a direct RPC FilterLogs.
+	var opts []bridgesync.BackfillOption
+	if provider != nil {
+		logger.Infof("txn_sender backfilling for %s will use the shared transaction provider", syncerID.String())
+		opts = append(opts, bridgesync.WithTransactionProvider(provider))
+	}
+	if backend != nil {
+		logger.Infof("txn_sender backfilling for %s will read canonical logs from the download backend",
+			syncerID.String())
+		opts = append(opts, bridgesync.WithDownloadBackend(backend))
+	}
+
 	// Create backfill instance
 	backfiller, err := bridgesync.NewBackfillTxnSender(
 		cfg.DBPath,
@@ -1123,6 +1417,7 @@ func runTxnSenderBackfill(
 		cfg.BridgeAddr,
 		syncFromInBridges,
 		logger,
+		opts...,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create backfill instance: %w", err)

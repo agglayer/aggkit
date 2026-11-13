@@ -91,12 +91,20 @@ func (a *MultidownloaderStorage) moveReorgedBlocksAndLogsNoMutex(tx dbtypes.Quer
 	WHERE block_number >= ? AND block_number <= ?;
 	DELETE FROM logs
 	WHERE block_number >= ? AND block_number <= ?;
+	DELETE FROM transactions
+	WHERE EXISTS (
+		SELECT 1 FROM blocks b
+		WHERE b.block_number = transactions.block_number
+			AND b.block_hash = transactions.block_hash
+			AND b.block_number >= ? AND b.block_number <= ?
+	);
 	DELETE FROM blocks
 	WHERE block_number >= ? AND block_number <= ?;`
 	_, err := tx.Exec(query,
 		reorgID,
 		blockRangeAffected.FromBlock, blockRangeAffected.ToBlock,
 		reorgID,
+		blockRangeAffected.FromBlock, blockRangeAffected.ToBlock,
 		blockRangeAffected.FromBlock, blockRangeAffected.ToBlock,
 		blockRangeAffected.FromBlock, blockRangeAffected.ToBlock,
 		blockRangeAffected.FromBlock, blockRangeAffected.ToBlock)

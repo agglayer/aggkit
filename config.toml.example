@@ -157,3 +157,23 @@ EnableAggOracleCommittee = false
 # [Validator.ServerConfig]
 # 	Host = "0.0.0.0"
 # 	Port = 5578
+#
+# [BridgeL1Sync]
+# ------------------------------------------------------------------------------
+# Block download backend used by the L1 bridge syncer.
+# Possible values:
+#   "legacy"          - the dedicated EVM downloader built into the syncer (default).
+#   "multidownloader" - the shared L1 multidownloader service. Requires
+#                       [L1Multidownloader].Enabled = true: selecting it while the
+#                       service is disabled is an error, there is no silent fallback.
+# The multidownloader's planning chunking ([L1Multidownloader].BlockChunkSize) is
+# independent from this syncer's processing chunking (SyncBlockChunkSize).
+# ------------------------------------------------------------------------------
+# Downloader = "legacy"
+#
+# [ClaimL1Sync]
+# ------------------------------------------------------------------------------
+# Same selector as [BridgeL1Sync], configured independently so that both L1 syncers can
+# run with a different backend at the same time (mixed modes are supported).
+# ------------------------------------------------------------------------------
+# Downloader = "legacy"

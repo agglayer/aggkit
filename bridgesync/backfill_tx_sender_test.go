@@ -629,7 +629,7 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 			},
 		}
 
-		backfiller.processBatch(ctx, "bridge", records)
+		_, _ = backfiller.processBatch(ctx, "bridge", records)
 	})
 
 	t.Run("failed extraction", func(t *testing.T) {
@@ -658,7 +658,7 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 			},
 		}
 
-		backfiller.processBatch(ctx, "bridge", records)
+		_, _ = backfiller.processBatch(ctx, "bridge", records)
 	})
 
 	t.Run("bulk update error", func(t *testing.T) {
@@ -706,7 +706,7 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 			},
 		}
 
-		backfiller.processBatch(ctx, "bridge", records)
+		_, _ = backfiller.processBatch(ctx, "bridge", records)
 	})
 }
 
@@ -1077,7 +1077,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			},
 		}
 
-		backfiller.processBatch(ctx, "bridge", records)
+		_, _ = backfiller.processBatch(ctx, "bridge", records)
 
 		// Verify that all records were processed successfully
 		// Check that txn_sender was updated in the database
@@ -1155,7 +1155,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			},
 		}
 
-		backfiller.processBatch(ctx, "bridge", records)
+		_, _ = backfiller.processBatch(ctx, "bridge", records)
 
 		// Verify that only the successful record was updated
 		var count int
@@ -1227,7 +1227,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			},
 		}
 
-		backfiller.processBatch(ctx, "bridge", records)
+		_, _ = backfiller.processBatch(ctx, "bridge", records)
 
 		// Verify that no records were updated
 		var count int
@@ -1313,7 +1313,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			cancel()
 		}()
 
-		backfiller.processBatch(cancelCtx, "bridge", records)
+		_, _ = backfiller.processBatch(cancelCtx, "bridge", records)
 
 		// Verify that no records were updated due to cancellation
 		var count int
@@ -1340,7 +1340,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		records := []RecordToBackfill{}
 
 		// This should not panic or cause issues
-		backfiller.processBatch(ctx, "bridge", records)
+		_, _ = backfiller.processBatch(ctx, "bridge", records)
 	})
 
 	t.Run("large batch processing", func(t *testing.T) {
@@ -1404,7 +1404,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 				arg.To = common.HexToAddress("0x1234")
 			}).Return(nil).Maybe()
 
-		backfiller.processBatch(ctx, "bridge", records)
+		_, _ = backfiller.processBatch(ctx, "bridge", records)
 
 		// Verify that all records were processed successfully
 		var count int

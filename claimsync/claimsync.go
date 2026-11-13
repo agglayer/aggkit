@@ -13,6 +13,7 @@ import (
 	claimsyncStorage "github.com/agglayer/aggkit/claimsync/storage"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -27,6 +28,11 @@ const (
 	defaultDBTimeout   = 30 * time.Second
 )
 
+// ErrMultidownloaderDepsMissing indicates that the multidownloader backend is selected but the
+// explicit backend dependency was not provided to the constructor.
+var ErrMultidownloaderDepsMissing = errors.New(
+	"multidownloader selected but explicit downloader dependency is missing")
+
 // ClaimSync is the standalone implementation that independently processes claim events.
 type ClaimSync struct {
 	processor     *processor
@@ -40,7 +46,11 @@ type ClaimSync struct {
 	cfg           ConfigStandalone
 }
 
-// NewStandaloneClaimSync creates a standalone ClaimSync that indexes claim events from the bridge contract directly.
+// NewStandaloneClaimSync creates a standalone ClaimSync that indexes claim events from the bridge
+// contract directly using the legacy downloader.
+//
+// If cfg selects the multidownloader this constructor fails: the multidownloader requires an
+// explicit backend, so callers must use NewStandaloneClaimSyncWithDownloader instead.
 func NewStandaloneClaimSync(
 	ctx context.Context,
 	cfg ConfigStandalone,
@@ -50,10 +60,52 @@ func NewStandaloneClaimSync(
 	originNetwork uint32,
 ) (*ClaimSync, error) {
 	logger := log.WithFields("module", syncerID.String())
-	return NewClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger)
+	if err := cfg.Downloader.Validate(); err != nil {
+		return nil, fmt.Errorf("claimsync: invalid Downloader configuration: %w", err)
+	}
+	if cfg.Downloader.IsMultidownloader() {
+		return nil, fmt.Errorf("claimsync: %w: Downloader=%s requires NewStandaloneClaimSyncWithDownloader",
+			ErrMultidownloaderDepsMissing, cfg.Downloader)
+	}
+	return newClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger, nil)
 }
 
-// NewClaimSync creates a standalone ClaimSync that indexes claim events from the bridge contract directly.
+// NewStandaloneClaimSyncWithDownloader creates a standalone ClaimSync that downloads logs through
+// the shared multidownloader. Claims do not need transaction data, so only the downloader backend is
+// required (no transaction provider).
+//
+// It requires cfg.Downloader to select the multidownloader, backend to be non-nil and the syncer to
+// be the L1 claim syncer; the multidownloader is not supported for the L2 claims. The syncer is
+// registered into the backend synchronously, before the backend is initialized/started.
+func NewStandaloneClaimSyncWithDownloader(
+	ctx context.Context,
+	cfg ConfigStandalone,
+	rd sync.ReorgDetector,
+	ethClient aggkittypes.EthClienter,
+	syncerID claimsynctypes.ClaimSyncerID,
+	originNetwork uint32,
+	backend aggkittypes.MultiDownloaderLegacy,
+) (*ClaimSync, error) {
+	if err := cfg.Downloader.Validate(); err != nil {
+		return nil, fmt.Errorf("claimsync: invalid Downloader configuration: %w", err)
+	}
+	if !cfg.Downloader.IsMultidownloader() {
+		return nil, fmt.Errorf("claimsync: NewStandaloneClaimSyncWithDownloader requires Downloader=%s, got %q",
+			cfgtypes.Multidownloader, cfg.Downloader)
+	}
+	if backend == nil {
+		return nil, fmt.Errorf("claimsync: %w: backend is nil", ErrMultidownloaderDepsMissing)
+	}
+	if syncerID != claimsynctypes.L1ClaimSyncer {
+		return nil, fmt.Errorf("claimsync: multidownloader is only supported for the L1 claim syncer, got %s", syncerID)
+	}
+	logger := log.WithFields("module", syncerID.String())
+	return newClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger,
+		&claimMultidownloaderDeps{backend: backend})
+}
+
+// NewClaimSync creates a standalone ClaimSync that indexes claim events from the bridge contract
+// directly using the legacy downloader.
 func NewClaimSync(
 	ctx context.Context,
 	cfg ConfigStandalone,
@@ -62,6 +114,32 @@ func NewClaimSync(
 	originNetwork uint32,
 	syncerID claimsynctypes.ClaimSyncerID,
 	logger aggkitcommon.Logger,
+) (*ClaimSync, error) {
+	if err := cfg.Downloader.Validate(); err != nil {
+		return nil, fmt.Errorf("claimsync: invalid Downloader configuration: %w", err)
+	}
+	if cfg.Downloader.IsMultidownloader() {
+		return nil, fmt.Errorf("claimsync: %w: Downloader=%s requires NewStandaloneClaimSyncWithDownloader",
+			ErrMultidownloaderDepsMissing, cfg.Downloader)
+	}
+	return newClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger, nil)
+}
+
+// claimMultidownloaderDeps groups the explicit multidownloader dependencies. A nil value means the
+// legacy downloader is used.
+type claimMultidownloaderDeps struct {
+	backend aggkittypes.MultiDownloaderLegacy
+}
+
+func newClaimSync(
+	ctx context.Context,
+	cfg ConfigStandalone,
+	rd sync.ReorgDetector,
+	ethClient aggkittypes.EthClienter,
+	originNetwork uint32,
+	syncerID claimsynctypes.ClaimSyncerID,
+	logger aggkitcommon.Logger,
+	deps *claimMultidownloaderDeps,
 ) (*ClaimSync, error) {
 	dbQueryTimeout := cfg.DBQueryTimeout.Duration
 	if dbQueryTimeout == 0 {
@@ -73,6 +151,24 @@ func NewClaimSync(
 	}
 
 	proc := newProcessor(logger, store, dbQueryTimeout)
+
+	// Register the syncer in the multidownloader synchronously, before the backend is initialized.
+	// Claims never need transaction data, so no transaction requirement is registered.
+	var mdBackend aggkittypes.MultiDownloaderLegacy = sync.NewAdapterEthClientToMultidownloader(ethClient)
+	if deps != nil {
+		syncerConfig := aggkittypes.SyncerConfig{
+			SyncerID:          syncerID.String(),
+			ContractAddresses: []common.Address{cfg.BridgeAddr},
+			FromBlock:         cfg.InitialBlockNum,
+			ToBlock:           cfg.BlockFinality,
+		}
+		if err := deps.backend.RegisterSyncer(syncerConfig); err != nil {
+			return nil, fmt.Errorf("claimsync: failed to register %s in multidownloader: %w", syncerID, err)
+		}
+		logger.Infof("claimsync: registered %s in multidownloader: blockFinality=%s fromBlock=%d",
+			syncerID, cfg.BlockFinality.String(), cfg.InitialBlockNum)
+		mdBackend = deps.backend
+	}
 
 	deployment, err := resolveBridgeDeployment(ctx, cfg.BridgeAddr, ethClient)
 	if err != nil {
@@ -94,7 +190,7 @@ func NewClaimSync(
 
 	downloader, err := sync.NewEVMDownloader(
 		syncerID.String(),
-		sync.NewAdapterEthClientToMultidownloader(ethClient),
+		mdBackend,
 		cfg.SyncBlockChunkSize,
 		cfg.BlockFinality,
 		cfg.WaitForNewBlocksPeriod.Duration,

@@ -175,6 +175,7 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 SyncFromInBridges = "auto"
 EmbeddedClaimSync = "auto"
+Downloader = "legacy"
 
 [ClaimL1Sync]
 DBPath = "{{PathRWData}}/claiml1sync.sqlite"
@@ -183,6 +184,8 @@ DBQueryTimeout = "{{BridgeL1Sync.DBQueryTimeout}}"
 BlockFinality = "{{BridgeL1Sync.BlockFinality}}"
 InitialBlockNum = {{BridgeL1Sync.InitialBlockNum}}
 AutoStart = "auto"
+# Downloader is intentionally independent from BridgeL1Sync.Downloader (mixed modes are allowed)
+Downloader = "legacy"
 
 BridgeAddr = "{{BridgeL1Sync.BridgeAddr}}"
 SyncBlockChunkSize = {{BridgeL1Sync.SyncBlockChunkSize}}
@@ -206,6 +209,8 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 SyncFromInBridges = "auto"
 EmbeddedClaimSync = "auto"
+# Only "legacy" is supported for L2
+Downloader = "legacy"
 
 [ClaimL2Sync]
 DBPath = "{{PathRWData}}/claiml2sync.sqlite"
@@ -214,6 +219,8 @@ DBQueryTimeout = "{{BridgeL2Sync.DBQueryTimeout}}"
 BlockFinality = "{{BridgeL2Sync.BlockFinality}}"
 InitialBlockNum = {{BridgeL2Sync.InitialBlockNum}}
 AutoStart = "auto"
+# Only "legacy" is supported for L2
+Downloader = "legacy"
 
 BridgeAddr = "{{BridgeL2Sync.BridgeAddr}}"
 SyncBlockChunkSize = {{BridgeL2Sync.SyncBlockChunkSize}}

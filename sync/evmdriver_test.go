@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1044,6 +1045,60 @@ func TestSyncNextBlock_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestSyncNextBlock_CancelJoinsDownloaderGeneration verifies that when the bootstrap context is
+// canceled while the downloader is still running, SyncNextBlock does not return until the
+// downloader goroutine has fully terminated. The join is unbounded on purpose: a bounded wait
+// would hide a leaked generation instead of surfacing it.
+func TestSyncNextBlock_CancelJoinsDownloaderGeneration(t *testing.T) {
+	t.Parallel()
+	driver, _, pm, dm := makeDriver(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
+
+	downloadStarted := make(chan struct{})
+	downloadExited := make(chan struct{})
+	releaseDownload := make(chan struct{})
+	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, _ chan EVMBlock, _ *uint64, _ bool) {
+			close(downloadStarted)
+			<-downloadCtx.Done()
+			<-releaseDownload
+			close(downloadExited)
+		}).Once()
+
+	syncReturned := make(chan error, 1)
+	go func() { syncReturned <- driver.SyncNextBlock(ctx, 5) }()
+
+	select {
+	case <-downloadStarted:
+	case <-time.After(time.Second):
+		t.Fatal("bootstrap downloader did not start")
+	}
+
+	cancel()
+
+	// The bootstrap must not return while the downloader goroutine is still alive.
+	select {
+	case err := <-syncReturned:
+		t.Fatalf("SyncNextBlock returned before the downloader generation finished: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseDownload)
+
+	select {
+	case err := <-syncReturned:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("SyncNextBlock did not return after the downloader generation finished")
+	}
+	select {
+	case <-downloadExited:
+	default:
+		t.Fatal("the canceled bootstrap leaked the downloader generation")
+	}
+}
+
 // --- Sync with firstBlockNumber ---
 
 func TestSync_WithFirstBlockNumber_StartsFromGivenBlock(t *testing.T) {
@@ -1133,5 +1188,422 @@ func TestSync_WaitsWhenNoProcessedBlockAndNoFirstBlock(t *testing.T) {
 		// good: Sync exited cleanly after context cancellation
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("Sync did not exit after context cancellation")
+	}
+}
+
+// --- Cancellation safety: generation lifecycle ---
+
+func newSyncTestDriver(
+	t *testing.T, rh *RetryHandler,
+	reorgedBlockCh chan uint64, reorgProcessedCh chan bool,
+) (*EVMDriver, *ReorgDetectorMock, *ProcessorMock, *DownloaderMock) {
+	t.Helper()
+	rdm := NewReorgDetectorMock(t)
+	pm := NewProcessorMock(t)
+	dm := NewDownloaderMock(t)
+	compatMock := compmocks.NewCompatibilityChecker(t)
+	compatMock.EXPECT().Check(mock.Anything, mock.Anything).Return(nil)
+	rdm.EXPECT().Subscribe(reorgDetectorID).Return(&reorgdetector.Subscription{
+		ReorgedBlock:   reorgedBlockCh,
+		ReorgProcessed: reorgProcessedCh,
+	}, nil)
+
+	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatMock)
+	require.NoError(t, err)
+	return driver, rdm, pm, dm
+}
+
+// TestSync_ReorgWaitsForDownloaderBeforeRestart verifies that on a reorg the
+// rollback (processor.Reorg) is not performed until the previous downloader
+// goroutine has terminated, and that only then a new generation is started.
+func TestSync_ReorgWaitsForDownloaderBeforeRestart(t *testing.T) {
+	t.Parallel()
+
+	rh := &RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      10 * time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	reorgedBlockCh := make(chan uint64)
+	reorgProcessedCh := make(chan bool)
+	driver, _, pm, dm := newSyncTestDriver(t, rh, reorgedBlockCh, reorgProcessedCh)
+
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(3), true, nil)
+
+	firstGenStarted := make(chan struct{})
+	releaseFirstGen := make(chan struct{})
+	firstGenExited := make(chan struct{})
+	secondGenStarted := make(chan struct{})
+
+	// First generation: releases only when the test allows it, so we can check
+	// that the driver waits for it after cancelling.
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, _ chan EVMBlock, _ *uint64, _ bool) {
+			close(firstGenStarted)
+			<-downloadCtx.Done()
+			<-releaseFirstGen
+			close(firstGenExited)
+		}).Once()
+	// Second generation, started only after the reorg rollback.
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, _ chan EVMBlock, _ *uint64, _ bool) {
+			close(secondGenStarted)
+			<-downloadCtx.Done()
+		}).Once()
+
+	// The rollback must observe that the previous downloader already terminated.
+	pm.EXPECT().Reorg(mock.Anything, uint64(5)).Run(func(context.Context, uint64) {
+		select {
+		case <-firstGenExited:
+		default:
+			t.Error("reorg rollback ran before the previous downloader terminated")
+		}
+	}).Return(nil).Once()
+
+	syncReturned := make(chan struct{})
+	go func() {
+		defer close(syncReturned)
+		driver.Sync(ctx, nil)
+	}()
+
+	select {
+	case <-firstGenStarted:
+	case <-time.After(time.Second):
+		t.Fatal("first downloader generation did not start")
+	}
+
+	// Trigger a reorg while the downloader is still running (held).
+	reorgedBlockCh <- 5
+
+	// The driver must not roll back or restart while the downloader is alive.
+	select {
+	case <-reorgProcessedCh:
+		t.Fatal("reorg was processed before the previous downloader terminated")
+	case <-secondGenStarted:
+		t.Fatal("new generation started before the previous downloader terminated")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// Let the first downloader terminate; now rollback and restart may proceed.
+	close(releaseFirstGen)
+
+	select {
+	case ok := <-reorgProcessedCh:
+		require.True(t, ok)
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for the reorg to be processed")
+	}
+
+	select {
+	case <-secondGenStarted:
+	case <-time.After(time.Second):
+		t.Fatal("second downloader generation did not start after the reorg")
+	}
+
+	cancel()
+	select {
+	case <-syncReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Sync did not return after ctx cancellation")
+	}
+}
+
+// TestSync_NormalCancellationJoinsDownloader verifies that on normal context
+// cancellation Sync returns only once the downloader goroutine has terminated.
+func TestSync_NormalCancellationJoinsDownloader(t *testing.T) {
+	t.Parallel()
+
+	rh := &RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      10 * time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+
+	driver, _, pm, dm := newSyncTestDriver(t, rh, make(chan uint64), make(chan bool))
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(3), true, nil)
+
+	downloaderStarted := make(chan struct{})
+	downloaderExited := make(chan struct{})
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, _ chan EVMBlock, _ *uint64, _ bool) {
+			close(downloaderStarted)
+			<-downloadCtx.Done()
+			close(downloaderExited)
+		}).Once()
+
+	syncReturned := make(chan struct{})
+	go func() {
+		defer close(syncReturned)
+		driver.Sync(ctx, nil)
+	}()
+
+	select {
+	case <-downloaderStarted:
+	case <-time.After(time.Second):
+		t.Fatal("downloader generation did not start")
+	}
+
+	cancel()
+
+	select {
+	case <-syncReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Sync did not return after ctx cancellation")
+	}
+
+	// Sync must have joined the downloader before returning.
+	select {
+	case <-downloaderExited:
+	default:
+		t.Fatal("Sync returned before the downloader goroutine finished")
+	}
+}
+
+// TestSync_ProcessingFailureCancelsGenerationWithoutRestart verifies that a
+// permanent processing failure cancels the current generation context, joins the
+// downloader, and does not leak or restart a new generation while waiting for a
+// reorg.
+func TestSync_ProcessingFailureCancelsGenerationWithoutRestart(t *testing.T) {
+	t.Parallel()
+
+	rh := &RetryHandler{
+		MaxRetryAttemptsAfterError: -1,
+		RetryAfterErrorPeriod:      10 * time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	driver, rdm, pm, dm := newSyncTestDriver(t, rh, make(chan uint64), make(chan bool))
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(3), true, nil)
+
+	expectedBlock := EVMBlock{
+		EVMBlockHeader: EVMBlockHeader{Num: 4, Hash: common.HexToHash("0x4")},
+	}
+	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock.Num, expectedBlock.Hash).Return(nil)
+	pm.EXPECT().ProcessBlock(mock.Anything, Block{Num: expectedBlock.Num, Hash: expectedBlock.Hash}).
+		Return(ErrInconsistentState)
+
+	var downloadCalls atomic.Int32
+	var exitOnce sync.Once
+	downloaderExited := make(chan struct{})
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, ch chan EVMBlock, _ *uint64, _ bool) {
+			downloadCalls.Add(1)
+			ch <- expectedBlock
+			<-downloadCtx.Done()
+			exitOnce.Do(func() { close(downloaderExited) })
+		})
+
+	syncReturned := make(chan struct{})
+	go func() {
+		defer close(syncReturned)
+		driver.Sync(ctx, nil)
+	}()
+
+	// The processing failure must cancel the generation context so the
+	// downloader goroutine terminates instead of leaking.
+	select {
+	case <-downloaderExited:
+	case <-time.After(time.Second):
+		t.Fatal("downloader context was not cancelled after the processing failure")
+	}
+
+	// While waiting for a reorg, no new generation must be started.
+	time.Sleep(100 * time.Millisecond)
+	require.Equal(t, int32(1), downloadCalls.Load(),
+		"processing failure must not leak or restart a downloader generation")
+
+	// Sync stays alive waiting for a reorg and returns on ctx cancellation.
+	cancel()
+	select {
+	case <-syncReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Sync did not return after ctx cancellation")
+	}
+}
+
+// TestSync_AcksPendingReorgWhileWaitingForBootstrap verifies that while Sync is waiting for the
+// first checkpoint (no processed block), a reorg notified for a block tracked by the reorg
+// detector is acknowledged before an external bootstrap processes a block, so the detector is not
+// stalled; the driver then exits cleanly on cancellation.
+func TestSync_AcksPendingReorgWhileWaitingForBootstrap(t *testing.T) {
+	t.Parallel()
+
+	rh := &RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      10 * time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	reorgedBlockCh := make(chan uint64)
+	reorgProcessedCh := make(chan bool)
+	driver, rdm, pm, dm := newSyncTestDriver(t, rh, reorgedBlockCh, reorgProcessedCh)
+
+	// No processed block exists yet: Sync waits for a bootstrap.
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
+
+	var (
+		orderMu sync.Mutex
+		order   []string
+	)
+	record := func(step string) {
+		orderMu.Lock()
+		order = append(order, step)
+		orderMu.Unlock()
+	}
+
+	pm.EXPECT().Reorg(mock.Anything, uint64(3)).Run(func(context.Context, uint64) {
+		record("reorg")
+	}).Return(nil).Once()
+
+	syncReturned := make(chan struct{})
+	go func() {
+		defer close(syncReturned)
+		driver.Sync(ctx, nil)
+	}()
+
+	// A reorg arrives while there is still no checkpoint (no processed block).
+	select {
+	case reorgedBlockCh <- 3:
+	case <-time.After(time.Second):
+		t.Fatal("Sync did not read the pending reorg while waiting for the bootstrap")
+	}
+
+	select {
+	case ok := <-reorgProcessedCh:
+		require.True(t, ok)
+	case <-time.After(time.Second):
+		t.Fatal("pending reorg was not acknowledged while waiting for the bootstrap")
+	}
+
+	// External bootstrap: SyncNextBlock processes block 5.
+	expectedBlock := EVMBlock{EVMBlockHeader: EVMBlockHeader{Num: 5, Hash: common.HexToHash("0x5")}}
+	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, ch chan EVMBlock, _ *uint64, _ bool) {
+			ch <- expectedBlock
+			<-downloadCtx.Done()
+		}).Once()
+	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock.Num, expectedBlock.Hash).
+		Return(nil).Once()
+	pm.EXPECT().ProcessBlock(mock.Anything, Block{Num: expectedBlock.Num, Hash: expectedBlock.Hash}).
+		Run(func(context.Context, Block) { record("bootstrap") }).Return(nil).Once()
+
+	require.NoError(t, driver.SyncNextBlock(ctx, 5))
+
+	require.Equal(t, []string{"reorg", "bootstrap"}, order,
+		"the pending reorg must be acknowledged before the external bootstrap")
+
+	cancel()
+	select {
+	case <-syncReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Sync did not return after cancellation")
+	}
+}
+
+// TestSync_ReorgWaitsForInFlightBootstrap verifies that a reorg arriving while an external
+// bootstrap (SyncNextBlock) is processing a block is not applied concurrently: the reorg rollback
+// waits for the bootstrap processing to finish (bootstrapMu serialization).
+func TestSync_ReorgWaitsForInFlightBootstrap(t *testing.T) {
+	t.Parallel()
+
+	rh := &RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      10 * time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	reorgedBlockCh := make(chan uint64)
+	reorgProcessedCh := make(chan bool)
+	driver, rdm, pm, dm := newSyncTestDriver(t, rh, reorgedBlockCh, reorgProcessedCh)
+
+	pm.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), false, nil)
+
+	var (
+		orderMu sync.Mutex
+		order   []string
+	)
+	record := func(step string) {
+		orderMu.Lock()
+		order = append(order, step)
+		orderMu.Unlock()
+	}
+
+	syncReturned := make(chan struct{})
+	go func() {
+		defer close(syncReturned)
+		driver.Sync(ctx, nil)
+	}()
+
+	expectedBlock := EVMBlock{EVMBlockHeader: EVMBlockHeader{Num: 5, Hash: common.HexToHash("0x5")}}
+	processEntered := make(chan struct{})
+	releaseProcess := make(chan struct{})
+	dm.EXPECT().Download(mock.Anything, uint64(5), mock.Anything, mock.Anything, mock.Anything).
+		Run(func(downloadCtx context.Context, _ uint64, ch chan EVMBlock, _ *uint64, _ bool) {
+			ch <- expectedBlock
+			<-downloadCtx.Done()
+		}).Once()
+	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock.Num, expectedBlock.Hash).
+		Return(nil).Once()
+	pm.EXPECT().ProcessBlock(mock.Anything, Block{Num: expectedBlock.Num, Hash: expectedBlock.Hash}).
+		Run(func(context.Context, Block) {
+			close(processEntered)
+			<-releaseProcess
+			record("bootstrap")
+		}).Return(nil).Once()
+	pm.EXPECT().Reorg(mock.Anything, uint64(3)).Run(func(context.Context, uint64) {
+		record("reorg")
+	}).Return(nil).Once()
+
+	bootstrapReturned := make(chan error, 1)
+	go func() { bootstrapReturned <- driver.SyncNextBlock(ctx, 5) }()
+
+	// Wait until the bootstrap holds the processor (inside ProcessBlock).
+	select {
+	case <-processEntered:
+	case <-time.After(time.Second):
+		t.Fatal("bootstrap did not enter ProcessBlock")
+	}
+
+	// A reorg arrives while the bootstrap is processing: Sync must not apply it concurrently.
+	select {
+	case reorgedBlockCh <- 3:
+	case <-time.After(time.Second):
+		t.Fatal("Sync did not read the pending reorg while waiting for the bootstrap")
+	}
+
+	select {
+	case <-reorgProcessedCh:
+		t.Fatal("reorg was applied concurrently with the in-flight bootstrap")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseProcess)
+
+	select {
+	case err := <-bootstrapReturned:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("bootstrap did not finish")
+	}
+	select {
+	case ok := <-reorgProcessedCh:
+		require.True(t, ok)
+	case <-time.After(time.Second):
+		t.Fatal("reorg was not acknowledged after the bootstrap finished")
+	}
+
+	require.Equal(t, []string{"bootstrap", "reorg"}, order,
+		"the reorg must be applied only after the in-flight bootstrap finished")
+
+	cancel()
+	select {
+	case <-syncReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Sync did not return after cancellation")
 	}
 }
