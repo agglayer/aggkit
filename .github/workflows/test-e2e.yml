@@ -24,7 +24,7 @@ env:
   # The AggOracle committee v2 e2e needs a kurtosis-cdk that has the committee, and the commit above doesn't:
   # 0xPolygon/kurtosis-cdk#1044. Only that job uses this one, in every event (it doesn't follow "main" on schedule).
   # Replace it by the commit of the merge, or by "main", when the PR is merged
-  KURTOSIS_CDK_COMMITTEE_V2_COMMIT: "06af11179fdd2c2a14b7b923bc0a390eb364e01a"
+  KURTOSIS_CDK_COMMITTEE_V2_COMMIT: "c6c8e11b81f132a1566f4c827abeb31f60fa5b06"
   # The commit of agglayer/agglayer-contracts (tag v13.0.0-rc.0) that the job of the committee v2 builds its
   # agglayer-contracts image from, while no image with the AggOracleCommittee v2 is published
   AGGLAYER_CONTRACTS_COMMITTEE_V2_COMMIT: "4839628561712c7477366e79d0a280a0a546b8fe"
