@@ -1,0 +1,63 @@
+# Debug image of the GER validator signer: the binary without optimizations, run by delve (dlv) headless on :40000, so
+# a debugger can attach to it. Only for local development. The build context is this directory:
+#
+#   make build-docker-debug-ger_validator_signer
+#
+# The arguments of the validator go in CMD, as in the normal image (Dockerfile), so a `cmd` that replaces them (docker
+# run, kurtosis) works the same. dlv starts it with --continue: the validator serves requests without waiting for a
+# debugger, that can attach at any time (and detach, --accept-multiclient). The source paths of the binary are /app/...
+# (the WORKDIR of the build): a debugger has to map them to tools/ger_validator_signer.
+
+# ================================
+# STAGE 1: Build debug binary + dlv
+# ================================
+FROM golang:1.27.4-alpine AS builder
+
+# CGO is needed: the GCP KMS signer of go_signer (op-signer) uses the C implementation of secp256k1
+RUN apk add --no-cache gcc musl-dev git
+
+ARG DLV_VERSION=latest
+RUN go install github.com/go-delve/delve/cmd/dlv@${DLV_VERSION}
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ARG VERSION=v0.0.0-dev
+ARG GIT_REV=unknown
+ARG GIT_BRANCH=unknown
+ARG BUILD_DATE=unknown
+
+# No inlining nor optimizations, and no -trimpath, so the debugger can follow the code
+RUN CGO_ENABLED=1 go build -gcflags="all=-N -l" \
+    -ldflags "-X 'github.com/agglayer/aggkit/tools/ger_validator_signer/version.Version=${VERSION}' \
+              -X 'github.com/agglayer/aggkit/tools/ger_validator_signer/version.GitRev=${GIT_REV}' \
+              -X 'github.com/agglayer/aggkit/tools/ger_validator_signer/version.GitBranch=${GIT_BRANCH}' \
+              -X 'github.com/agglayer/aggkit/tools/ger_validator_signer/version.BuildDate=${BUILD_DATE}'" \
+    -o /out/ger_validator_signer ./cmd
+
+# ================================
+# STAGE 2: Debug runtime image
+# ================================
+FROM alpine:3.22
+
+RUN apk add --no-cache ca-certificates \
+    && addgroup -S appgroup \
+    && adduser -S -G appgroup -h /home/appuser appuser
+
+COPY --from=builder /go/bin/dlv /usr/local/bin/dlv
+COPY --from=builder /out/ger_validator_signer /usr/local/bin/ger_validator_signer
+
+WORKDIR /home/appuser
+USER appuser
+
+# The REST API and dlv
+EXPOSE 8080/tcp
+EXPOSE 40000/tcp
+
+ENTRYPOINT ["dlv", "exec", "/usr/local/bin/ger_validator_signer", \
+    "--headless", "--listen=:40000", "--api-version=2", "--accept-multiclient", "--continue", "--log", "--"]
+CMD ["run", "--cfg", "/etc/ger_validator_signer/config.toml"]

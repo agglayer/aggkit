@@ -26,6 +26,7 @@ LDFLAGS += -X 'github.com/agglayer/aggkit.BuildDate=$(DATE)'
 # and `go ./...` from here doesn't see it, so it has its own targets
 GER_VALIDATOR_SIGNER_DIR := tools/ger_validator_signer
 GER_VALIDATOR_SIGNER_IMAGE ?= ger_validator_signer:local
+GER_VALIDATOR_SIGNER_DEBUG_IMAGE ?= ger_validator_signer:local-debug
 GER_VALIDATOR_SIGNER_PKG := github.com/agglayer/aggkit/tools/ger_validator_signer
 GER_VALIDATOR_SIGNER_LDFLAGS += -X '$(GER_VALIDATOR_SIGNER_PKG)/version.Version=$(VERSION)'
 GER_VALIDATOR_SIGNER_LDFLAGS += -X '$(GER_VALIDATOR_SIGNER_PKG)/version.GitRev=$(GITREV)'
@@ -165,6 +166,11 @@ build-docker-ger_validator_signer: check-docker ## Builds the docker image of ge
 build-docker-ci-ger_validator_signer: check-docker ## Builds the docker image of ger_validator_signer with a shell (CI, dev)
 	docker build $(GER_VALIDATOR_SIGNER_DOCKER_ARGS) --build-arg INCLUDE_SHELL=true -t $(GER_VALIDATOR_SIGNER_IMAGE) \
 		-f $(GER_VALIDATOR_SIGNER_DIR)/Dockerfile $(GER_VALIDATOR_SIGNER_DIR)
+
+.PHONY: build-docker-debug-ger_validator_signer
+build-docker-debug-ger_validator_signer: check-docker ## Builds a debug image of ger_validator_signer (dlv headless on :40000, no optimizations)
+	docker build $(GER_VALIDATOR_SIGNER_DOCKER_ARGS) -t $(GER_VALIDATOR_SIGNER_DEBUG_IMAGE) \
+		-f $(GER_VALIDATOR_SIGNER_DIR)/Dockerfile.debug $(GER_VALIDATOR_SIGNER_DIR)
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
