@@ -25,8 +25,8 @@ cloud.google.com/go/longrunning v0.8.0 h1:LiKK77J3bx5gDLi4SMViHixjD2ohlkwBi+mKA7
 cloud.google.com/go/longrunning v0.8.0/go.mod h1:UmErU2Onzi+fKDg2gR7dusz11Pe26aknR4kHmJJqIfk=
 filippo.io/edwards25519 v1.1.0 h1:FNf4tywRC1HmFuKW5xopWpigGjJKiJSV0Cqo0cJWDaA=
 filippo.io/edwards25519 v1.1.0/go.mod h1:BxyFTGdWcka3PhytdK4V28tE5sGfRvvvRV7EaN4VDT4=
-github.com/0xPolygon/cdk-contracts-tooling v0.0.14-0.20261112093548-ca28b57cf3d9 h1:j/nR5TR7lw2qisy45t610o08G//Vx0qqpK/J0KpyGKE=
-github.com/0xPolygon/cdk-contracts-tooling v0.0.14-0.20261112093548-ca28b57cf3d9/go.mod h1:yJFXM76gfL3+fWzeJnKGxZGDXhOknDeSi2L1CtaryyI=
+github.com/0xPolygon/cdk-contracts-tooling v0.0.14-0.20261113090203-16d334a08079 h1:QS+saykkWvbTUZqS/XQHsoP+KuYx6M3z6mkrJAYu60k=
+github.com/0xPolygon/cdk-contracts-tooling v0.0.14-0.20261113090203-16d334a08079/go.mod h1:yJFXM76gfL3+fWzeJnKGxZGDXhOknDeSi2L1CtaryyI=
 github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229 h1:6YhqNQVcXkoxqs5zQVg1bREuoeKvwpffpfoL8QQT+u4=
 github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229/go.mod h1:2scWqMMufrQXu7TikDgQ3BsyaKoX8qP26D6E262vSOg=
 github.com/0xPolygon/zkevm-ethtx-manager v0.2.18 h1:V/ZLtWUSqsakcF7NxyOaLSJik+ANTn07l0hpO95mqW0=
