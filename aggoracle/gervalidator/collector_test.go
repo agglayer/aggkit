@@ -408,7 +408,7 @@ func TestThresholdNotReachedError_Message(t *testing.T) {
 		},
 	}
 	require.ErrorIs(t, err, ErrThresholdNotReached)
-	require.ErrorContains(t, err, "1 valid of 3 required")
+	require.ErrorContains(t, err, "1 valid of threshold 3")
 	require.ErrorContains(t, err, testGER.Hex())
 }
 
@@ -436,4 +436,23 @@ func TestClassifyFailure(t *testing.T) {
 	require.Equal(t, "ger-rejected", FailureGERRejected.String())
 	require.Equal(t, "invalid", FailureInvalid.String())
 	require.Equal(t, "unknown(9)", FailureKind(9).String())
+}
+
+func TestValidatorList(t *testing.T) {
+	validators := []Validator{
+		{Address: common.HexToAddress("0xa"), URL: "http://a"},
+		{Address: common.HexToAddress("0xb")},
+	}
+	require.Equal(t,
+		common.HexToAddress("0xa").Hex()+" (http://a), "+common.HexToAddress("0xb").Hex()+" (no URL)",
+		validatorList(validators))
+}
+
+func TestDescribeAnswers(t *testing.T) {
+	a, b, c := common.HexToAddress("0xa"), common.HexToAddress("0xb"), common.HexToAddress("0xc")
+	validators := []Validator{{Address: a}, {Address: b}, {Address: c}}
+	answers := map[common.Address]string{a: "signed", c: "transient (timeout)"}
+	require.Equal(t,
+		a.Hex()+": signed; "+b.Hex()+": not waited for; "+c.Hex()+": transient (timeout)",
+		describeAnswers(validators, answers))
 }

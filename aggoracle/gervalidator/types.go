@@ -162,7 +162,7 @@ type ThresholdNotReachedError struct {
 }
 
 func (e *ThresholdNotReachedError) Error() string {
-	return fmt.Sprintf("%s for GER %s: %d valid of %d required (%d validators failed: %s)",
+	return fmt.Sprintf("%s for GER %s: %d valid of threshold %d (%d validators failed: %s)",
 		ErrThresholdNotReached, e.GER, e.Valid, e.Threshold, len(e.Failures), e.summary())
 }
 

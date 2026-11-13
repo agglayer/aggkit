@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/agglayer/aggkit/log"
@@ -65,6 +66,15 @@ func (c *Collector) Collect(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel() // stops the requests that are still running once the threshold is reached
 
+	start := time.Now()
+	c.logger.Infof("requesting the signature of GER %s to %d validators (threshold %d): %s",
+		ger, len(unique), threshold, validatorList(unique))
+	answers := make(map[common.Address]string, len(unique))
+	defer func() {
+		c.logger.Infof("GER %s: answers of the validators in %s: %s",
+			ger, time.Since(start).Round(time.Millisecond), describeAnswers(unique, answers))
+	}()
+
 	results := make(chan outcome, len(unique)) // buffered: the goroutines never block, even if we returned
 	for _, validator := range unique {
 		go c.askValidator(ctx, ger, validator, results)
@@ -78,10 +88,15 @@ func (c *Collector) Collect(
 		select {
 		case out := <-results:
 			if out.err != nil {
-				failures = append(failures, c.logFailure(ger, out))
+				failure := c.logFailure(ger, out)
+				failures = append(failures, failure)
+				answers[out.validator.Address] = fmt.Sprintf("%s (%s)", failure.Kind, out.err)
 				continue
 			}
 			valid = append(valid, *out.signed)
+			answers[out.validator.Address] = "signed"
+			c.logger.Debugf("validator %s signed GER %s: %d signatures of threshold %d",
+				out.validator.Address, ger, len(valid), threshold)
 			if len(valid) == threshold {
 				signatures, signers, err := packSignatures(valid)
 				if err != nil {
@@ -129,6 +144,7 @@ func (c *Collector) requestSignature(ctx context.Context, ger common.Hash, valid
 		defer cancel()
 	}
 
+	c.logger.Debugf("asking validator %s (%s) to sign GER %s", validator.Address, validator.URL, ger)
 	resp, err := c.client.SignGER(ctx, validator.URL, ger)
 	if err != nil {
 		return outcome{validator: validator, err: err}
@@ -164,6 +180,33 @@ func (c *Collector) logFailure(ger common.Hash, out outcome) ValidatorFailure {
 		c.logger.Debugf("validator %s gave no signature for GER %s yet: %s", out.validator.Address, ger, out.err)
 	}
 	return failure
+}
+
+// validatorList describes the validators: address and URL
+func validatorList(validators []Validator) string {
+	items := make([]string, len(validators))
+	for i, validator := range validators {
+		url := validator.URL
+		if url == "" {
+			url = "no URL"
+		}
+		items[i] = fmt.Sprintf("%s (%s)", validator.Address, url)
+	}
+	return strings.Join(items, ", ")
+}
+
+// describeAnswers describes the answer of each validator, in the order they were asked. The ones without an
+// answer were not waited for: the threshold was reached before (or the collection was cancelled)
+func describeAnswers(validators []Validator, answers map[common.Address]string) string {
+	items := make([]string, len(validators))
+	for i, validator := range validators {
+		answer, ok := answers[validator.Address]
+		if !ok {
+			answer = "not waited for"
+		}
+		items[i] = fmt.Sprintf("%s: %s", validator.Address, answer)
+	}
+	return strings.Join(items, "; ")
 }
 
 // uniqueValidators removes the validators that repeat an address, keeping the first one
