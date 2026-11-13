@@ -3,9 +3,12 @@ package l1
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -309,6 +312,65 @@ func TestClient_ErrorsDoNotLeakTheURL(t *testing.T) {
 		require.ErrorIs(t, err, context.Canceled)
 		require.NotContains(t, err.Error(), secretToken)
 	})
+}
+
+func TestClient_ErrorsDoNotLeakTheHost(t *testing.T) {
+	t.Run("connection refused", func(t *testing.T) {
+		server := httptest.NewServer(http.NotFoundHandler())
+		host := strings.TrimPrefix(server.URL, "http://")
+		server.Close()
+
+		_, err := NewClient(server.URL+"/"+secretToken, time.Second).ChainID(context.Background())
+		require.Error(t, err)
+		require.NotContains(t, err.Error(), host)
+		require.NotContains(t, err.Error(), "127.0.0.1")
+		require.Contains(t, err.Error(), "dial tcp: ", "the kind of failure is kept")
+	})
+
+	t.Run("unknown host", func(t *testing.T) {
+		const host = "el-1-unknown-host.invalid"
+		_, err := NewClient("http://"+host+":8545/"+secretToken, 2*time.Second).ChainID(context.Background())
+		require.Error(t, err)
+		require.NotContains(t, err.Error(), host)
+		require.NotContains(t, err.Error(), secretToken)
+	})
+
+	t.Run("the host in any other message", func(t *testing.T) {
+		client := NewClient("https://el-1-reth-lighthouse:8545/"+secretToken, time.Second)
+		cause := errors.New("x509: certificate is valid for other, not el-1-reth-lighthouse")
+		err := client.redactTransportError(&url.Error{Op: "Post", URL: client.url, Err: cause})
+		require.Equal(t, "x509: certificate is valid for other, not "+redactedHost, err.Error())
+		require.ErrorIs(t, err, cause, "the original error is kept for errors.Is")
+	})
+}
+
+func TestDescribeTransportError(t *testing.T) {
+	addr := &net.TCPAddr{IP: net.ParseIP("10.1.2.3"), Port: 8545}
+	tests := map[string]struct {
+		err  error
+		want string
+	}{
+		"dial": {
+			err:  &net.OpError{Op: "dial", Net: "tcp", Addr: addr, Err: errors.New("connect: connection refused")},
+			want: "dial tcp: connect: connection refused",
+		},
+		"lookup": {
+			err: &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{
+				Err: "no such host", Name: "el-1-reth-lighthouse", Server: "10.0.0.53:53", IsNotFound: true,
+			}},
+			want: "dial tcp: lookup: no such host",
+		},
+		"read": {
+			err:  &net.OpError{Op: "read", Net: "tcp", Source: addr, Addr: addr, Err: errors.New("connection reset by peer")},
+			want: "read tcp: connection reset by peer",
+		},
+		"other": {err: io.ErrUnexpectedEOF, want: "unexpected EOF"},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.want, describeTransportError(tc.err))
+		})
+	}
 }
 
 func TestClient_RequestIDsIncrease(t *testing.T) {

@@ -287,16 +287,3 @@ func validateURL(name, rawURL string) error {
 	}
 	return nil
 }
-
-// MaskURL hides the path and the credentials of a URL, where tokens usually are, to log it
-func MaskURL(rawURL string) string {
-	parsed, err := url.Parse(rawURL)
-	if err != nil || parsed.Host == "" {
-		return "***"
-	}
-	masked := parsed.Scheme + "://" + parsed.Host
-	if parsed.Path != "" && parsed.Path != "/" || parsed.RawQuery != "" || parsed.User != nil {
-		masked += "/***"
-	}
-	return masked
-}

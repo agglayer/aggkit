@@ -9,7 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -28,6 +31,9 @@ const (
 
 	wordLength     = 32
 	selectorLength = 4
+
+	// redactedHost replaces the host of the endpoint in the errors
+	redactedHost = "<l1-host>"
 )
 
 // ErrBlockNotFound is returned when the node doesn't know the block
@@ -52,15 +58,26 @@ func (e *RPCError) Error() string {
 
 // Client is the JSON-RPC client of L1
 type Client struct {
-	url        string
+	url string
+	// hosts are the host[:port] and the hostname of the endpoint, to remove them from the errors
+	hosts      []string
 	httpClient *http.Client
 	nextID     atomic.Uint64
 }
 
 // NewClient creates a client of the JSON-RPC endpoint. timeout limits each request
-func NewClient(url string, timeout time.Duration) *Client {
+func NewClient(rawURL string, timeout time.Duration) *Client {
+	var hosts []string
+	if parsed, err := url.Parse(rawURL); err == nil && parsed.Host != "" {
+		// The longest first, so the host:port is replaced before its hostname
+		hosts = []string{parsed.Host}
+		if hostname := parsed.Hostname(); hostname != "" && hostname != parsed.Host {
+			hosts = append(hosts, hostname)
+		}
+	}
 	return &Client{
-		url: url,
+		url:   rawURL,
+		hosts: hosts,
 		httpClient: &http.Client{
 			Timeout: timeout,
 			// The endpoint must answer by itself
@@ -84,8 +101,8 @@ type rpcResponse struct {
 	} `json:"error"`
 }
 
-// call executes a JSON-RPC method and returns its result. The URL is not included in the errors:
-// it can have a token
+// call executes a JSON-RPC method and returns its result. Neither the URL (it can have a token) nor the
+// host of the endpoint are included in the errors
 func (c *Client) call(ctx context.Context, method string, params ...any) (json.RawMessage, error) {
 	if params == nil {
 		params = []any{}
@@ -102,14 +119,13 @@ func (c *Client) call(ctx context.Context, method string, params ...any) (json.R
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		// The error of the HTTP client includes the URL: keep only the cause
-		return nil, fmt.Errorf("%s: request failed: %w", method, unwrapURLError(err))
+		return nil, fmt.Errorf("%s: request failed: %w", method, c.redactTransportError(err))
 	}
 	defer resp.Body.Close()
 
 	payload, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("%s: failed to read the response: %w", method, unwrapURLError(err))
+		return nil, fmt.Errorf("%s: failed to read the response: %w", method, c.redactTransportError(err))
 	}
 	if len(payload) > maxResponseBytes {
 		return nil, fmt.Errorf("%s: response bigger than %d bytes", method, maxResponseBytes)
@@ -128,15 +144,47 @@ func (c *Client) call(ctx context.Context, method string, params ...any) (json.R
 	return rpcResp.Result, nil
 }
 
-// unwrapURLError returns the cause of an error of the HTTP client, without the URL
-func unwrapURLError(err error) error {
-	var urlErr interface{ Unwrap() error }
-	if errors.As(err, &urlErr) {
-		if cause := urlErr.Unwrap(); cause != nil {
-			return cause
-		}
+// transportError is an error of the HTTP client whose message doesn't say where the endpoint is. It unwraps to
+// the original error, so errors.Is(err, context.Canceled) and the like keep working
+type transportError struct {
+	msg   string
+	cause error
+}
+
+func (e *transportError) Error() string { return e.msg }
+func (e *transportError) Unwrap() error { return e.cause }
+
+// redactTransportError removes from an error of the HTTP client the URL (*url.Error), the addresses
+// (*net.OpError, that has the resolved IP, not the configured host), the name looked up (*net.DNSError) and,
+// as a last resort, any other mention of the host of the endpoint (e.g. in a TLS error)
+func (c *Client) redactTransportError(err error) error {
+	cause := err
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && urlErr.Err != nil {
+		cause = urlErr.Err
 	}
-	return err
+	msg := describeTransportError(cause)
+	for _, host := range c.hosts {
+		msg = strings.ReplaceAll(msg, host, redactedHost)
+	}
+	return &transportError{msg: msg, cause: err}
+}
+
+// describeTransportError is the message of a network error without its addresses
+func describeTransportError(err error) string {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr.Err != nil {
+		prefix := opErr.Op
+		if opErr.Net != "" {
+			prefix += " " + opErr.Net
+		}
+		return prefix + ": " + describeTransportError(opErr.Err)
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return "lookup: " + dnsErr.Err
+	}
+	return err.Error()
 }
 
 // ChainID returns the chain id of the endpoint

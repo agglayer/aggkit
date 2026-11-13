@@ -40,11 +40,10 @@ type L1StartupReader interface {
 func CheckL1(ctx context.Context, reader L1StartupReader, cfg config.Config) error {
 	chainID, err := reader.ChainID(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get the chain id of L1 (%s): %w", config.MaskURL(cfg.L1RPCURL), err)
+		return fmt.Errorf("failed to get the chain id of L1: %w", err)
 	}
 	if chainID != cfg.L1ChainID {
-		return fmt.Errorf("the L1 endpoint (%s) is the chain %d, but L1ChainID is %d",
-			config.MaskURL(cfg.L1RPCURL), chainID, cfg.L1ChainID)
+		return fmt.Errorf("the L1 endpoint is the chain %d, but L1ChainID is %d", chainID, cfg.L1ChainID)
 	}
 
 	code, err := reader.CodeAt(ctx, cfg.AgglayerGERAddr)
@@ -96,7 +95,6 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		"version", version.Get().Version,
 		"gitRev", version.Get().GitRev,
 		"signer", validatorSigner.Address(),
-		"l1", config.MaskURL(cfg.L1RPCURL),
 		"l1ChainID", cfg.L1ChainID,
 		"agglayerGER", cfg.AgglayerGERAddr,
 		"finalityTag", cfg.Finality.Tag,
