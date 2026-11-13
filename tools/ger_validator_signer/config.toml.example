@@ -2,6 +2,9 @@
 #
 #   ger_validator_signer run --cfg config.toml
 #
+# The default values are in config/default.go: a file only needs the mandatory values (L1RPCURL, L1ChainID,
+# AgglayerGERAddr and [Signer]), and any other key replaces its default. The keys that also exist in aggkit
+# ([Log], [PublicREST], BlockFinality) are written as in aggkit.
 # An unknown key is an error: a typo in a security parameter must not be silently ignored.
 
 # JSON-RPC endpoint of L1. It can have a token in the path: the URL is never logged
@@ -12,14 +15,19 @@ L1ChainID = 11155111
 AgglayerGERAddr = "0x1111111111111111111111111111111111111111"
 # Limits each request to the L1 RPC
 L1RequestTimeout = "5s"
-# debug, info, warn or error
-LogLevel = "info"
+# The finality the L1 block that inserted the GER needs, as in aggkit: <block>[/<offset>], with the block
+# LatestBlock, SafeBlock or FinalizedBlock and an optional negative offset. "LatestBlock/-12" is the head minus
+# 12 blocks. A positive offset is not accepted
+BlockFinality = "FinalizedBlock"
 
-# The L1 block that inserted the GER must be final: the block of the tag, minus NumBlocks.
-# Tag is latest, safe or finalized. "latest" with NumBlocks = 6 is the head minus 6 blocks
-[Finality]
-Tag = "finalized"
-NumBlocks = 0
+# As the [Log] section of aggkit
+[Log]
+# "production" (JSON) or "development" (text)
+Environment = "development"
+# debug, info, warn or error
+Level = "info"
+# stdout, stderr or the path of a file (the logs are appended to it)
+Outputs = ["stderr"]
 
 # The key that signs (github.com/agglayer/go_signer). The address of the key is the one to register
 # as a validator in the AggOracleCommittee. Method is local, GCP or AWS ("remote" can't sign a hash)
@@ -28,18 +36,28 @@ Method = "local"
 Path = "/etc/ger_validator_signer/validator.keystore"
 Password = "change-me"
 
-[REST]
+# The REST API. The first keys are the ones of the [PublicREST] section of aggkit, with the same meaning
+[PublicREST]
 Host = "0.0.0.0"
 Port = 8080
-# TLS is required. Set both files, or InsecureHTTP = true if the TLS is terminated in front of the
-# validator (a reverse proxy), or for tests: the signatures travel in the clear otherwise
+# Maximum duration to read a request
+ReadTimeout = "15s"
+# Maximum duration to answer a request. It must be greater than RequestTimeout
+WriteTimeout = "20s"
+# Sustained rate of requests per client (IP address of the connection). 0 is unlimited
+MaxRequestsPerIPAndSecond = 20
+# Limits the size of the body of a request. 0 is the default (4096)
+MaxRequestBodyBytes = 4096
+# The keys of the validator, that aggkit doesn't have:
+# How many requests a client can do at once, when MaxRequestsPerIPAndSecond is set
+MaxRequestsBurstPerIP = 40
+# Maximum duration of the processing of a request: the queries to L1 and the signing
+RequestTimeout = "15s"
+# HTTPS is required: set both files (PEM). Or InsecureHTTP = true to serve HTTP, if the TLS is terminated in front
+# of the validator (a reverse proxy), or for tests: the signatures travel in the clear otherwise
 TLSCertFile = "/etc/ger_validator_signer/tls/cert.pem"
 TLSKeyFile = "/etc/ger_validator_signer/tls/key.pem"
 InsecureHTTP = false
-# The maximum duration of a request, including the queries to L1 and the signing
-RequestTimeout = "15s"
-# Limits the size of the body of a request
-MaxBodyBytes = 4096
 
 [Cache]
 # GERs whose answer is kept (the oldest are dropped)
@@ -47,10 +65,3 @@ MaxEntries = 10000
 # How long an answer that is not a signature (unknown GER, not canonical, not final) is kept, so a client that
 # insists on a GER that can't be signed doesn't hit the L1 RPC every time. 0 disables it
 NegativeTTL = "5s"
-
-# Limits the requests of each client (IP address of the connection)
-[RateLimit]
-# Sustained rate per client. 0 disables the limit
-RequestsPerSecond = 20
-# How many requests a client can do at once
-Burst = 40

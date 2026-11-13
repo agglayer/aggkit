@@ -14,7 +14,7 @@ A GER is signed only if all this is true:
 
 1. **It is in L1.** `AgglayerGER.globalExitRootMap(GER)` is not zero. The contract stores there the hash of the block **previous** to the one that inserted the GER (`blockhash(block.number - 1)`).
 2. **The block is canonical.** The hash is resolved to its block `N`, and the canonical block of height `N` must have the same hash: a node can return an orphan block when asked by hash.
-3. **The block is final.** The insertion block is `N + 1`, and it must not be after the final block: the number of the block of the configured tag (`latest`, `safe` or `finalized`) minus `NumBlocks`. For example `Tag = "latest"` with `NumBlocks = 6` is the head minus 6 blocks, which is the setup AggOracle had before the validators existed.
+3. **The block is final.** The insertion block is `N + 1`, and it must not be after the final block: the number of the block of the configured `BlockFinality` (`LatestBlock`, `SafeBlock` or `FinalizedBlock`) plus its offset, that can only be negative. For example `BlockFinality = "LatestBlock/-6"` is the head minus 6 blocks, which is the setup AggOracle had before the validators existed.
 
 Each validator decides its own finality. Only block headers are needed: no historical state.
 
@@ -43,13 +43,14 @@ The wire format is defined by golden fixtures ([`api/testdata`](../tools/ger_val
 
 ## Configuration
 
-An example with every option is in [`config.toml.example`](../tools/ger_validator_signer/config.toml.example). An unknown key is an error.
+An example with every option is in [`config.toml.example`](../tools/ger_validator_signer/config.toml.example), and the default values in [`config/default.go`](../tools/ger_validator_signer/config/default.go) (`DefaultValues`, as aggkit): a file only needs the mandatory values, and any other key replaces its default. The keys that also exist in aggkit are written as in aggkit. An unknown key is an error; the keys of the previous format (`LogLevel`, `[Finality]`, `[REST]`, `[RateLimit]`) are reported with what they are now.
 
 - `L1RPCURL`, `L1ChainID`, `AgglayerGERAddr` are mandatory. At startup the validator checks that the endpoint is the configured chain, and that the address is a contract that answers `globalExitRootMap`. If L1 is not as configured it doesn't start. The URL of L1 can have a token: it is never logged, not even its host (also removed from the errors of L1).
-- `[Finality]`: `Tag` (`finalized` by default) and `NumBlocks`.
+- `BlockFinality`: as in aggkit, `<block>[/<offset>]`: `FinalizedBlock` (the default), `SafeBlock` or `LatestBlock`, with an optional negative offset (`LatestBlock/-12`). A positive offset is rejected: it would sign blocks that are less final than the block. `PendingBlock` and block numbers are rejected too.
+- `[Log]`: as in aggkit: `Environment` (`production` logs JSON, `development` text, the default), `Level` (`debug`, `info`, `warn` or `error`) and `Outputs` (`stderr`, `stdout` or the path of a file, where the logs are appended).
 - `[Signer]`: how to sign, with [go_signer](https://github.com/agglayer/go_signer). `Method` is `local` (a keystore, with `Path` and `Password`), `GCP` or `AWS` (a KMS). The method `remote` can't be used: it signs with EIP-155, so it can't sign a hash. The address of the key is the validator address to register in the committee (`GET /v1/info` shows it).
-- `[REST]`: `Host`, `Port`, the TLS files, the timeout of a request and the limit of the body.
-- `[Cache]` and `[RateLimit]`: see below.
+- `[PublicREST]`: the REST API, with the keys of the `[PublicREST]` of aggkit and the same meaning: `Host`, `Port` (8080), `ReadTimeout`, `WriteTimeout`, `MaxRequestsPerIPAndSecond` (0 is unlimited) and `MaxRequestBodyBytes` (0 is the default, 4096). Besides, the ones of the validator: `MaxRequestsBurstPerIP`, `RequestTimeout` (the processing of a request: L1 and the signing; `WriteTimeout` must be greater), and `TLSCertFile`, `TLSKeyFile` and `InsecureHTTP` (see [Security](#security)). aggkit's `CORS` doesn't exist: no browser calls a validator.
+- `[Cache]`: see below.
 
 ### Cache
 
@@ -57,8 +58,8 @@ A GER that was signed is cached (it is never queried again, nor signed again). A
 
 ### Security
 
-- **TLS is required.** Set `REST.TLSCertFile` and `REST.TLSKeyFile` (TLS 1.2 or later). Serving HTTP needs an explicit `InsecureHTTP = true`, for when the TLS is terminated in front of the validator or for tests: it logs a warning.
-- **Rate limit per client.** Requests per second and burst of each client, identified by the IP address of the connection. The headers that proxies add (`X-Forwarded-For`) are never used, because any client can send them: behind a reverse proxy every client is the proxy, so limit there. The memory of the limiter is bounded.
+- **TLS is required.** Set `PublicREST.TLSCertFile` and `PublicREST.TLSKeyFile` (PEM, TLS 1.2 or later) and the validator serves HTTPS. Serving HTTP needs an explicit `PublicREST.InsecureHTTP = true`, for when the TLS is terminated in front of the validator or for tests: it logs a warning.
+- **Rate limit per client.** Requests per second (`MaxRequestsPerIPAndSecond`) and burst (`MaxRequestsBurstPerIP`) of each client, identified by the IP address of the connection. The headers that proxies add (`X-Forwarded-For`) are never used, because any client can send them: behind a reverse proxy every client is the proxy, so limit there. The memory of the limiter is bounded.
 - **The request is small and strict.** The body is limited, it must be one JSON object with only the field `ger`, and the response of an internal error says nothing about the cause.
 - **A validator signs a GER it checked in L1.** The signature has no chain id nor contract address (it is what lets many chains share the validators), so do not reuse the key of a validator across environments.
 - **The signer is checked.** The signature that go_signer returns is normalized and must recover the address of the key before it is returned.

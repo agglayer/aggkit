@@ -109,7 +109,7 @@ Method = "local"
 Path = "/does/not/exist.keystore"
 Password = "x"
 
-[REST]
+[PublicREST]
 InsecureHTTP = true
 `)
 

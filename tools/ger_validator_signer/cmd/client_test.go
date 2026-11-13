@@ -26,8 +26,8 @@ func startValidator(t *testing.T, mutate func(*config.Config)) (string, *mocks.S
 	t.Helper()
 	cfg := config.Default()
 	cfg.L1ChainID = 11155111
-	cfg.REST.InsecureHTTP = true
-	cfg.RateLimit.RequestsPerSecond = 0
+	cfg.PublicREST.InsecureHTTP = true
+	cfg.PublicREST.MaxRequestsPerIPAndSecond = 0
 	if mutate != nil {
 		mutate(&cfg)
 	}
@@ -191,7 +191,7 @@ func TestClient_Info(t *testing.T) {
 	require.Contains(t, stdout, signer.Hex())
 	require.Contains(t, stdout, ger.Hex())
 	require.Contains(t, stdout, "11155111")
-	require.Contains(t, stdout, "safe, 3 blocks")
+	require.Contains(t, stdout, "Finality:     SafeBlock/-3")
 
 	code, stdout, _ = execute(t, "client", "info", "--url", url, "--json")
 	require.Equal(t, exitOK, code)
@@ -327,8 +327,8 @@ func TestClient_Sign_Burst(t *testing.T) {
 
 	t.Run("the rate limit says no to the rest", func(t *testing.T) {
 		url, svc := startValidator(t, func(cfg *config.Config) {
-			cfg.RateLimit.RequestsPerSecond = 0.001
-			cfg.RateLimit.Burst = 5
+			cfg.PublicREST.MaxRequestsPerIPAndSecond = 0.001
+			cfg.PublicREST.MaxRequestsBurstPerIP = 5
 		})
 		svc.EXPECT().SignGER(mock.Anything, response.GER).Return(result, nil).Times(5)
 
@@ -348,8 +348,8 @@ func TestClient_Sign_Burst(t *testing.T) {
 
 	t.Run("the outcomes are listed, the most frequent first", func(t *testing.T) {
 		url, svc := startValidator(t, func(cfg *config.Config) {
-			cfg.RateLimit.RequestsPerSecond = 0.001
-			cfg.RateLimit.Burst = 2
+			cfg.PublicREST.MaxRequestsPerIPAndSecond = 0.001
+			cfg.PublicREST.MaxRequestsBurstPerIP = 2
 		})
 		svc.EXPECT().SignGER(mock.Anything, response.GER).Return(result, nil).Times(2)
 

@@ -45,7 +45,7 @@ func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.REST.RequestTimeout.Duration)
+	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.PublicREST.RequestTimeout.Duration)
 	defer cancel()
 	result, err := s.service.SignGER(ctx, ger)
 	if err != nil {
@@ -112,7 +112,7 @@ func (s *Server) handleSpec(spec []byte, contentType string) http.HandlerFunc {
 // readSignRequest reads and validates the body of a request to sign a GER: a JSON object with only the field ger,
 // no bigger than the limit
 func (s *Server) readSignRequest(w http.ResponseWriter, r *http.Request) (common.Hash, error) {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, s.cfg.REST.MaxBodyBytes))
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, s.cfg.PublicREST.RequestBodyLimit()))
 	decoder.DisallowUnknownFields()
 
 	var request SignRequest

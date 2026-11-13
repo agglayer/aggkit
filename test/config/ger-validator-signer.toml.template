@@ -6,12 +6,11 @@ L1RPCURL = "{{.l1_rpc_url}}"
 L1ChainID = {{.l1_chain_id}}
 # The AgglayerGER contract of L1: the validator signs the GERs that are in it
 AgglayerGERAddr = "{{.zkevm_global_exit_root_address}}"
-LogLevel = "debug"
-
 # The same finality as the validator of the enclave
-[Finality]
-Tag = "{{.ger_validator_finality_tag}}"
-NumBlocks = {{.ger_validator_finality_num_blocks}}
+BlockFinality = "{{.ger_validator_block_finality}}"
+
+[Log]
+Level = "debug"
 
 # The key of the validator of the enclave, so the committee accepts its signatures
 [Signer]
@@ -19,7 +18,7 @@ Method = "local"
 Path = "{{.ger_validator_keystore_path}}"
 Password = "{{.zkevm_l2_keystore_password}}"
 
-[REST]
+[PublicREST]
 Host = "127.0.0.1"
 Port = {{.ger_validator_local_port}}
 # Only for local tests: the AggOracle reaches it through localhost
