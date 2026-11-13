@@ -237,13 +237,13 @@ Used in both modes for final GER storage and status checking.
 
 Used in the committee mode. It replaced the v1 contract in the same Solidity file and with the same name, so the bindings of the v1 and of the v2 are not interchangeable: aggkit needs a version of `cdk-contracts-tooling` generated from the v2 (see below).
 
-- **Contract**: [`AggOracleCommittee.sol` (v2.0.0)](https://github.com/agglayer/agglayer-contracts/blob/feature/agg-oracle-committee/contracts/sovereignChains/AggOracleCommittee.sol)
+- **Contract**: [`AggOracleCommittee.sol` (v2.0.0)](https://github.com/agglayer/agglayer-contracts/blob/v13.0.0-rc.0/contracts/sovereignChains/AggOracleCommittee.sol)
 - **Key Functions**:
   - `injectGER(bytes32 ger, bytes signatures)`: verifies the signatures, marks the GER as processed and inserts it in the L2 GER Manager. Only the `proposer` can call it.
   - `verifyGER(bytes32 ger, bytes signatures)`: the same verification as a view. It returns `true` or reverts.
   - `getValidatorsInfo()`, `threshold()`, `proposer()`, `injectedGERs(bytes32)`, `agglayerGERL2()` and `version()`.
 - **Errors AggOracle relies on**: `GERAlreadyInjected`, `InvalidSignaturesLength`, `ValidatorDoesNotExist` and `ValidatorsNotOrdered`.
-- **Bindings**: package `aggoraclecommittee` of [cdk-contracts-tooling](https://github.com/0xPolygon/cdk-contracts-tooling/tree/main/contracts/aggchain-multisig/aggoraclecommittee), generated from [agglayer-contracts@a6b96a8](https://github.com/agglayer/agglayer-contracts/commit/a6b96a86f8ec6345b2fa2f618f3f8c418c6c6d92). A test (`committee_v2_abi_test.go`) checks the selectors that AggOracle relies on.
+- **Bindings**: package `aggoraclecommittee` of [cdk-contracts-tooling](https://github.com/0xPolygon/cdk-contracts-tooling/tree/main/contracts/aggchain-multisig/aggoraclecommittee), generated from [agglayer-contracts v13.0.0-rc.0](https://github.com/agglayer/agglayer-contracts/releases/tag/v13.0.0-rc.0). A test (`committee_v2_abi_test.go`) checks the selectors that AggOracle relies on.
 - **Migration**: there is no upgrade from v1 ([it is not supported anymore](#6-removal-of-the-aggoraclecommittee-v1)). A chain moves to v2 by changing the `globalExitRootUpdater` of its L2 GER Manager to the v2 committee.
 
 ---
