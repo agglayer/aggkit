@@ -3,6 +3,16 @@
 source $(dirname $0)/../test/scripts/env.sh
 export AGGKIT_SERVICE=${AGGKIT_SERVICE:=aggkit-001}
 export DEST=${TMP_AGGKIT_FOLDER}/local_config
+# GER validators (AggOracleCommittee v2) to run locally: comma separated indexes (1 is ger-validator-001-001)
+export LOCAL_GER_VALIDATORS=${LOCAL_GER_VALIDATORS:=1}
+# The validator number N listens locally on GER_VALIDATOR_LOCAL_BASE_PORT + N
+export GER_VALIDATOR_LOCAL_BASE_PORT=${GER_VALIDATOR_LOCAL_BASE_PORT:=18080}
+export GER_VALIDATOR_TEMPLATE_FILE=test/config/ger-validator-signer.toml.template
+# Debug image of the GER validator (make build-docker-debug-ger_validator_signer): dlv listens on DEBUG_BASE_PORT + N
+export GER_VALIDATOR_DEBUG_IMAGE=${GER_VALIDATOR_DEBUG_IMAGE:=ger_validator_signer:local-debug}
+export GER_VALIDATOR_DEBUG_BASE_PORT=${GER_VALIDATOR_DEBUG_BASE_PORT:=40000}
+# Components of the local aggkit: the ones of aggkit-001 in kurtosis (aggsender, aggoracle) plus the bridge service
+export AGGKIT_LOCAL_COMPONENTS=${AGGKIT_LOCAL_COMPONENTS:=aggsender,aggoracle,bridge}
 
 ###############################################################################
 # params:
@@ -190,6 +200,12 @@ function export_portnum_from_kurtosis_or_fail() {
     log_debug "$_EXPORTED_VAR_NAME=${!_EXPORTED_VAR_NAME} \t\t\t# Kurtosis $KURTOSIS_ENCLAVE $2 $3"
 }
 ###############################################################################
+# Prints the first service of the enclave whose name matches the regex $1 (empty if there is none)
+###############################################################################
+function find_kurtosis_service() {
+    kurtosis enclave inspect $KURTOSIS_ENCLAVE 2>/dev/null | grep -o -E "$1" | head -n 1
+}
+###############################################################################
 function export_forced_values() {
     export global_log_level="debug"
     export l2_rpc_name="localhost"
@@ -214,6 +230,7 @@ EOF
         exit 1
 
     fi
+    which cast >/dev/null || log_fatal "cast (foundry) is not installed: it reads the address of the keystores of the GER validators"
     if [ -z $TMP_AGGKIT_FOLDER -o -z $KURTOSIS_ENCLAVE ]; then
         log_fatal "TMP_AGGKIT_FOLDER or KURTOSIS_ENCLAVE is not set. Must be set on file env.sh"
     fi
@@ -264,7 +281,10 @@ function common_export_values_of_aggkit_config() {
 
 ###############################################################################
 function common_export_ports_from_kurtosis() {
-    export_portnum_from_kurtosis_or_fail l1_rpc_port el-1-geth-lighthouse rpc
+    # The L1 execution client can be geth or reth
+    local _L1_EL=$(find_kurtosis_service 'el-1-(geth|reth)-lighthouse')
+    [ -z "$_L1_EL" ] && log_fatal "the L1 service (el-1-...-lighthouse) is not in the enclave $KURTOSIS_ENCLAVE"
+    export_portnum_from_kurtosis_or_fail l1_rpc_port $_L1_EL rpc
     export_portnum_from_kurtosis_or_fail agglayer_grpc_port agglayer aglr-grpc
     if [ ! -z $EXPOSE_PORTS ];then
         export_portnum_from_kurtosis_or_fail aggkit_node_rest_api_port $AGGKIT_SERVICE http-rpc rest
@@ -292,16 +312,144 @@ function common_aggsender_committee_override_urls(){
     log_debug "aggsender_committee_override_urls=${aggsender_committee_override_urls}"
 }
 ###############################################################################
-function check_generated_config_file() {
-    grep "<no value>" $DEST_TEMPLATE_FILE >/dev/null
+# AggOracleCommittee v2: the GER validators of the enclave (ger_validator_signer services).
+# The committee registers their URLs inside the enclave (http://ger-validator-001-00N:8080), that
+# can't be reached from the host, so the AggOracle gets a ValidatorURLOverride for each one:
+#  - the validators in LOCAL_GER_VALIDATORS -> the ger_validator_signer that runs locally
+#  - the rest -> the port that kurtosis publishes on the host for its service
+# For each validator it downloads its keystore and renders a config to run it locally.
+###############################################################################
+function common_ger_validators() {
+    export aggoracle_mode="auto"
+    export aggoracle_validator_url_overrides="[]"
+    export GER_VALIDATORS_LOCAL_CONFIGS=""
+    local _SERVICES
+    _SERVICES=$(kurtosis enclave inspect $KURTOSIS_ENCLAVE | grep -o -E 'ger-validator-001-[0-9]+' | sort -u)
+    if [ -z "$_SERVICES" ]; then
+        log_debug "no GER validators in the enclave $KURTOSIS_ENCLAVE: AggOracle.Mode = auto"
+        return 0
+    fi
+    export aggoracle_mode="committee"
+    local _OVERRIDES=""
+    local _SERVICE _INDEX _DIR _ADDRESS _URL _LOCAL_PORT
+    for _SERVICE in $_SERVICES; do
+        _INDEX=$((10#${_SERVICE##*-}))
+        _DIR=$DEST/ger_validator_$_INDEX
+        mkdir -p $_DIR
+        kurtosis files download $KURTOSIS_ENCLAVE ger-validator-config-${_INDEX}-001 $_DIR >/dev/null
+        ok_or_fatal "Error downloading kurtosis artifact ger-validator-config-${_INDEX}-001 to $_DIR"
+        mv $_DIR/config.toml $_DIR/kurtosis.config.toml
+        kurtosis files download $KURTOSIS_ENCLAVE ger-validator-${_INDEX}-keystore-001 $_DIR >/dev/null
+        ok_or_fatal "Error downloading kurtosis artifact ger-validator-${_INDEX}-keystore-001 to $_DIR"
+        export ger_validator_keystore_path=$(realpath $_DIR/gervalidator-${_INDEX}.keystore)
+        # The keystores of kurtosis-cdk are made by cast, without the "address" field: decrypt it
+        _ADDRESS=$(cast wallet address --keystore $ger_validator_keystore_path \
+            --password "$zkevm_l2_keystore_password" 2>/dev/null)
+        [ -z "$_ADDRESS" ] && log_fatal "can't get the address of the keystore $ger_validator_keystore_path"
+
+        # The config to run it locally: the finality of the enclave's validator, and a port of its own
+        export_key_from_toml_file_or_fatal ger_validator_finality_tag $_DIR/kurtosis.config.toml Finality Tag
+        export_key_from_toml_file_or_fatal ger_validator_finality_num_blocks $_DIR/kurtosis.config.toml Finality NumBlocks
+        export ger_validator_local_port=$((GER_VALIDATOR_LOCAL_BASE_PORT + _INDEX))
+        go run scripts/run_template.go $GER_VALIDATOR_TEMPLATE_FILE >$_DIR/config.toml
+        ok_or_fatal "Error generating the config of the GER validator $_INDEX"
+        check_rendered_file $GER_VALIDATOR_TEMPLATE_FILE $_DIR/config.toml
+        GER_VALIDATORS_LOCAL_CONFIGS="$GER_VALIDATORS_LOCAL_CONFIGS $_INDEX:$(realpath $_DIR/config.toml)"
+
+        if [[ ",$LOCAL_GER_VALIDATORS," == *",$_INDEX,"* ]]; then
+            _URL="http://localhost:${ger_validator_local_port}"
+            log_debug "GER validator $_INDEX ($_ADDRESS) runs locally: $_URL"
+        else
+            export_portnum_from_kurtosis_or_fail _KURTOSIS_PORT $_SERVICE rest
+            _URL="http://localhost:${_KURTOSIS_PORT}"
+            log_debug "GER validator $_INDEX ($_ADDRESS) runs in kurtosis ($_SERVICE): $_URL"
+        fi
+        _OVERRIDES="${_OVERRIDES} {Address = \"$_ADDRESS\", URL = \"$_URL\"},"
+    done
+    export aggoracle_validator_url_overrides="[${_OVERRIDES%,} ]"
+    log_debug "aggoracle_validator_url_overrides=${aggoracle_validator_url_overrides}"
+}
+###############################################################################
+function print_ger_validators_instructions() {
+    [ -z "$GER_VALIDATORS_LOCAL_CONFIGS" ] && return 0
+    local _ENTRY _INDEX
+    echo "- AggOracleCommittee v2 (AggOracle.Mode = committee). Configs of the GER validators:"
+    for _ENTRY in $GER_VALIDATORS_LOCAL_CONFIGS; do
+        echo "    validator ${_ENTRY%%:*}: ${_ENTRY#*:}"
+    done
+    for _INDEX in ${LOCAL_GER_VALIDATORS//,/ }; do
+        [[ " $GER_VALIDATORS_LOCAL_CONFIGS" == *" $_INDEX:"* ]] || continue
+        echo "  The AggOracle asks the validator $_INDEX to the local one: stop the one of kurtosis"
+        echo "    kurtosis service stop $KURTOSIS_ENCLAVE ger-validator-001-00$_INDEX"
+    done
+    local _DIR
+    echo "  Run the local GER validator with the debug image (make build-docker-debug-ger_validator_signer): dlv listens"
+    echo "  on 40000 + N, attach to it with the launch.json entry below (host network: the L1 is on localhost)"
+    for _INDEX in ${LOCAL_GER_VALIDATORS//,/ }; do
+        [[ " $GER_VALIDATORS_LOCAL_CONFIGS" == *" $_INDEX:"* ]] || continue
+        _DIR=$(realpath $DEST/ger_validator_$_INDEX)
+        echo "    docker run --rm --name ger-validator-${_INDEX}-debug --network host -v $_DIR:$_DIR:ro \\"
+        echo "      --entrypoint dlv $GER_VALIDATOR_DEBUG_IMAGE exec /usr/local/bin/ger_validator_signer \\"
+        echo "      --headless --listen=:$((GER_VALIDATOR_DEBUG_BASE_PORT + _INDEX)) --api-version=2 --accept-multiclient --continue \\"
+        echo "      -- run --cfg $_DIR/config.toml"
+    done
+    echo "  or without docker, from a terminal (or with the \"Debug ger_validator_signer\" entry of launch.json):"
+    for _INDEX in ${LOCAL_GER_VALIDATORS//,/ }; do
+        [[ " $GER_VALIDATORS_LOCAL_CONFIGS" == *" $_INDEX:"* ]] || continue
+        echo "    (cd tools/ger_validator_signer && go run ./cmd run --cfg $(realpath $DEST/ger_validator_$_INDEX/config.toml))"
+    done
+    echo " "
+}
+###############################################################################
+function print_ger_validators_launch_json() {
+    [ -z "$GER_VALIDATORS_LOCAL_CONFIGS" ] && return 0
+    local _INDEX
+    for _INDEX in ${LOCAL_GER_VALIDATORS//,/ }; do
+        [[ " $GER_VALIDATORS_LOCAL_CONFIGS" == *" $_INDEX:"* ]] || continue
+        cat <<EOF
+            {
+                "name": "Attach ger_validator_signer $_INDEX (docker debug image)",
+                "type": "go",
+                "request": "attach",
+                "mode": "remote",
+                "host": "127.0.0.1",
+                "port": $((GER_VALIDATOR_DEBUG_BASE_PORT + _INDEX)),
+                "substitutePath": [
+                    { "from": "\${workspaceFolder}/tools/ger_validator_signer", "to": "/app" },
+                ]
+            },
+            {
+                "name": "Debug ger_validator_signer $_INDEX",
+                "type": "go",
+                "request": "launch",
+                "mode": "auto",
+                "program": "\${workspaceFolder}/tools/ger_validator_signer/cmd",
+                "cwd": "\${workspaceFolder}/tools/ger_validator_signer",
+                "args":[
+                    "run",
+                    "--cfg", "$(realpath $DEST/ger_validator_$_INDEX/config.toml)",
+                ]
+            },
+EOF
+    done
+}
+###############################################################################
+function check_rendered_file() {
+    local _TEMPLATE="$1"
+    local _RENDERED="$2"
+    grep "<no value>" $_RENDERED >/dev/null
     if [ $? -ne 1 ]; then
-        log_error "some values are not set, check $ORIG_TEMPLATE_FILE"
+        log_error "some values are not set, check $_TEMPLATE"
         echo ""
-        echo "missing keys in rendered template: $DEST_TEMPLATE_FILE"
+        echo "missing keys in rendered template: $_RENDERED"
         echo " "
-        grep "<no value>" $DEST_TEMPLATE_FILE
+        grep "<no value>" $_RENDERED
         exit 1
     fi
+}
+###############################################################################
+function check_generated_config_file() {
+    check_rendered_file $ORIG_TEMPLATE_FILE $DEST_TEMPLATE_FILE
 }
 ###############################################################################
 function parse_command_line_args() {
@@ -313,7 +461,14 @@ function parse_command_line_args() {
             echo "  -e: kurtosis enclave name (default $KURTOSIS_ENCLAVE) (--enclave)"
             echo "  -p: expose same ports as service in kurtosis (RPC and REST) (--expose-ports) "
             echo "  -s: skip setting up aggsender committee override URLs (--skip-committee-override)"
+            echo "  -g: GER validators (AggOracleCommittee v2) to run locally, comma separated indexes, or \"none\""
+            echo "      (default $LOCAL_GER_VALIDATORS) (--local-ger-validators)"
             exit 0
+            ;;
+        -g | --local-ger-validators)
+            LOCAL_GER_VALIDATORS=$2
+            shift
+            shift
             ;;
         -e | --enclave)
             KURTOSIS_ENCLAVE=$2
@@ -357,6 +512,8 @@ function main(){
     export_ports_from_kurtosis
     export_values_of_aggkit_config $DEST/config.toml
     export_forced_values
+    # After the L1 RPC and the values of the aggkit config, that the GER validators use
+    common_ger_validators
     # Generate config file
     go run scripts/run_template.go $ORIG_TEMPLATE_FILE >$DEST_TEMPLATE_FILE
     ok_or_fatal "Error generating template"
@@ -367,11 +524,12 @@ function main(){
     echo "file generated at:" $DEST/test.kurtosis.toml
 
     echo "- to restart kurtosis:"
-    echo "    kurtosis clean --all; kurtosis run --enclave aggkit --args-file params.yml --image-download always ."
+    echo "    kurtosis clean --all; kurtosis run --enclave $KURTOSIS_ENCLAVE --args-file params.yml --image-download always ."
     echo " "
     echo "- Stop aggkit:"
-    echo "    kurtosis service stop aggkit aggkit-001"
+    echo "    kurtosis service stop $KURTOSIS_ENCLAVE $AGGKIT_SERVICE"
     echo " "
+    print_ger_validators_instructions
     echo "- Add next configuration to vscode launch.json"
     echo " -----------------------------------------------------------"
     cat <<EOF
@@ -385,12 +543,11 @@ function main(){
                 "args":[
                     "run",
                     "-cfg", "$DEST_TEMPLATE_FILE",
-                    "-components", "aggsender,bridge",
+                    "-components", "$AGGKIT_LOCAL_COMPONENTS",
                 ]
             },
-
 EOF
-
+    print_ger_validators_launch_json
     echo " -----------------------------------------------------------"
     echo " "
     echo " - rembember to clean previous execution data: "

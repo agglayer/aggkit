@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source $(dirname $0)/local_config_helper
+source $(dirname $0)/local_config_helper.sh
 export KURTOSIS_ENCLAVE=aggkit
 export AGGKIT_CONFIG_ARTIFACT_NAME=${AGGKIT_CONFIG_ARTIFACT_NAME:=aggkit-config-001}
 ###############################################################################
