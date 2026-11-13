@@ -25,9 +25,9 @@ env:
   # 0xPolygon/kurtosis-cdk#1044. Only that job uses this one, in every event (it doesn't follow "main" on schedule).
   # Replace it by the commit of the merge, or by "main", when the PR is merged
   KURTOSIS_CDK_COMMITTEE_V2_COMMIT: "06af11179fdd2c2a14b7b923bc0a390eb364e01a"
-  # The commit of agglayer/agglayer-contracts (branch feature/agg-oracle-committee) that the job of the committee v2
-  # builds its agglayer-contracts image from, while no image with the AggOracleCommittee v2 is published
-  AGGLAYER_CONTRACTS_COMMITTEE_V2_COMMIT: "a6b96a86f8ec6345b2fa2f618f3f8c418c6c6d92"
+  # The commit of agglayer/agglayer-contracts (tag v13.0.0-rc.0) that the job of the committee v2 builds its
+  # agglayer-contracts image from, while no image with the AggOracleCommittee v2 is published
+  AGGLAYER_CONTRACTS_COMMITTEE_V2_COMMIT: "4839628561712c7477366e79d0a280a0a546b8fe"
 
 jobs:
   get-kurtosis-cdk-commit:
