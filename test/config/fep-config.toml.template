@@ -195,6 +195,19 @@ RequireKeyMatchTrustedSequencer = true
 # ------------------------------------------------------------------------------
 WaitPeriodNextGER = "10s"
 
+# ------------------------------------------------------------------------------
+# direct, committee or auto. scripts/local_config_fep.sh sets committee when the enclave has GER validators
+# (AggOracleCommittee v2), and auto otherwise
+# ------------------------------------------------------------------------------
+Mode = "{{.aggoracle_mode}}"
+
+[AggOracle.CommitteeV2]
+# ------------------------------------------------------------------------------
+# The committee registers the URLs of the validators inside the enclave, that can't be reached from the host:
+# each one is replaced by the local ger_validator_signer or by the port that kurtosis publishes for it
+# ------------------------------------------------------------------------------
+ValidatorURLOverrides = {{.aggoracle_validator_url_overrides}}
+
 [AggOracle.EVMSender]
 # ------------------------------------------------------------------------------
 # Address of the sovereign global exit root proxy contract on L2
