@@ -47,9 +47,13 @@ type Downloader interface {
 }
 
 type EVMDriver struct {
-	reorgDetector        ReorgDetector
-	reorgSub             *reorgdetector.Subscription
-	processor            processorInterface
+	reorgDetector ReorgDetector
+	reorgSub      *reorgdetector.Subscription
+	processor     processorInterface
+	// batchProcessor is non-nil only when the processor was explicitly wrapped for
+	// batching (see EnableBlockBatching). When nil the driver keeps the legacy
+	// one-block-at-a-time path.
+	batchProcessor       BlockBatchProcessor
 	downloader           Downloader
 	reorgDetectorID      string
 	downloadBufferSize   int
@@ -102,6 +106,65 @@ type processorInterface interface {
 	Reorg(ctx context.Context, firstReorgedBlock uint64) error
 }
 
+// MaxBatchBlocks is the hard upper bound on how many blocks the driver hands to a
+// batching processor in one ProcessBlocks call. It bounds both the in-flight
+// memory and the size of the single processing transaction.
+const MaxBatchBlocks = 100
+
+// BlockBatchProcessor is an OPTIONAL processor capability. A processor that
+// implements it can process an ordered batch of blocks in a SINGLE database
+// transaction (all-or-nothing). It is deliberately not part of the mandatory
+// processorInterface: the EVMDriver uses it only when the processor was
+// explicitly wrapped for batching through EnableBlockBatching, so every existing
+// caller (and every legacy/L2 syncer) keeps the exact one-block-at-a-time path.
+type BlockBatchProcessor interface {
+	// ProcessBlocks applies the given ordered blocks atomically. On error
+	// (including context cancellation) the whole batch must be rolled back so a
+	// retried batch can never duplicate committed history.
+	ProcessBlocks(ctx context.Context, blocks []Block) error
+}
+
+// Processor is the exported form of the mandatory processor contract. It is only
+// needed so other packages can wrap a processor with the optional batching
+// capability via EnableBlockBatching; the driver keeps using processorInterface
+// internally so the generated mock and existing references stay unchanged.
+type Processor interface {
+	processorInterface
+}
+
+// BatchProcessFunc is the atomic batch implementation wrapped by
+// EnableBlockBatching.
+type BatchProcessFunc func(ctx context.Context, blocks []Block) error
+
+// batchingProcessor adapts a Processor into the optional BlockBatchProcessor
+// capability. It delegates the mandatory methods unchanged and only adds the
+// batch method, so the wrapped processor keeps behaving exactly as before for
+// every non-batch caller.
+type batchingProcessor struct {
+	Processor
+	batch BatchProcessFunc
+}
+
+func (p *batchingProcessor) ProcessBlocks(ctx context.Context, blocks []Block) error {
+	return p.batch(ctx, blocks)
+}
+
+// EnableBlockBatching wraps a processor so the EVMDriver may process blocks in
+// bounded, ordered batches through the OPTIONAL BlockBatchProcessor capability.
+// It is strictly opt-in: callers that do not wrap their processor keep the legacy
+// one-block path. The batch function MUST be atomic (single transaction) and MUST
+// preserve the per-block semantics of ProcessBlock.
+//
+// A nil batch function is a no-op: the original processor is returned unwrapped,
+// so the driver keeps the legacy one-block path instead of exposing a batch
+// capability that would panic when used.
+func EnableBlockBatching(processor Processor, batch BatchProcessFunc) Processor {
+	if batch == nil {
+		return processor
+	}
+	return &batchingProcessor{Processor: processor, batch: batch}
+}
+
 type ReorgDetector interface {
 	Subscribe(id string) (*reorgdetector.Subscription, error)
 	AddBlockToTrack(ctx context.Context, id string, blockNum uint64, blockHash common.Hash) error
@@ -125,10 +188,19 @@ func NewEVMDriver(
 		return nil, err
 	}
 
+	// The batch capability is optional and opt-in: only a processor explicitly
+	// wrapped with EnableBlockBatching exposes it, so unwrapped processors (all
+	// legacy/L2 callers) never batch accidentally.
+	var batchProcessor BlockBatchProcessor
+	if bp, ok := processor.(BlockBatchProcessor); ok {
+		batchProcessor = bp
+	}
+
 	return &EVMDriver{
 		reorgDetector:        reorgDetector,
 		reorgSub:             reorgSub,
 		processor:            processor,
+		batchProcessor:       batchProcessor,
 		downloader:           downloader,
 		reorgDetectorID:      reorgDetectorID,
 		downloadBufferSize:   downloadBufferSize,
@@ -312,12 +384,26 @@ reset:
 					return
 				}
 
-				d.log.Debugf("handleNewBlock, blockNum: %d, blockHash: %s", b.Num, b.Hash)
-				if err := d.handleNewBlock(cancellableCtx, b); err != nil {
+				// When the processor exposes the OPTIONAL batch capability, drain the
+				// blocks that are already available (bounded by MaxBatchBlocks, never
+				// waiting for more) and process them in one transaction. Otherwise keep
+				// the exact legacy one-block path.
+				batch := []EVMBlock{b}
+				closed := false
+				if d.batchProcessor != nil {
+					batch, closed = d.drainBatch(cancellableCtx, downloadCh, b)
+				}
+
+				d.log.Debugf("handleNewBlocks, batchSize: %d, firstBlock: %d", len(batch), b.Num)
+				if err := d.handleNewBlocks(cancellableCtx, batch); err != nil {
 					// Permanent processing error (e.g. inconsistent state):
 					// tear down this generation. The main loop below joins it
 					// and waits for a reorg instead of restarting on its own.
 					cancel()
+					return
+				}
+				if closed {
+					d.log.Info("downloadCh closed, stopping block processing")
 					return
 				}
 			}
@@ -390,6 +476,92 @@ func (d *EVMDriver) handleNewBlock(ctx context.Context, b EVMBlock) error {
 	}
 
 	return d.processBlock(ctx, b)
+}
+
+// drainBatch collects the blocks that are already available on downloadCh,
+// starting with first, up to MaxBatchBlocks. It never blocks waiting for more
+// blocks: it only drains what the downloader has already produced, so it cannot
+// hold a partially-filled batch while the downloader stalls. The second return
+// value reports whether downloadCh was closed while draining, so the caller stops
+// after processing the collected batch. On context cancellation it returns the
+// blocks gathered so far (the processor will roll the batch back).
+func (d *EVMDriver) drainBatch(ctx context.Context, downloadCh <-chan EVMBlock, first EVMBlock) ([]EVMBlock, bool) {
+	batch := make([]EVMBlock, 0, MaxBatchBlocks)
+	batch = append(batch, first)
+	for len(batch) < MaxBatchBlocks {
+		if ctx.Err() != nil {
+			return batch, false
+		}
+		select {
+		case b, ok := <-downloadCh:
+			if !ok {
+				return batch, true
+			}
+			batch = append(batch, b)
+		default:
+			return batch, false
+		}
+	}
+	return batch, false
+}
+
+// handleNewBlocks processes an ordered batch of blocks. It tracks every
+// non-finalized block for reorgs first (exactly like the one-block path), and
+// only then processes the batch through the OPTIONAL batch capability. It falls
+// back to the legacy per-block path when the capability is absent, keeping the
+// behaviour of every non-batching caller unchanged.
+func (d *EVMDriver) handleNewBlocks(ctx context.Context, blocks []EVMBlock) error {
+	if d.batchProcessor == nil {
+		for _, b := range blocks {
+			if err := d.handleNewBlock(ctx, b); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	for _, b := range blocks {
+		if err := d.trackNonFinalizedBlock(ctx, b); err != nil {
+			return nil
+		}
+	}
+
+	return d.processBlocks(ctx, blocks)
+}
+
+// processBlocks converts the downloaded EVM blocks into sync blocks and hands the
+// whole ordered batch to the processor in a single call. Subscribers are notified
+// for every block, in the original download order, only AFTER the batch committed:
+// if the batch fails (and is retried) nothing is published, so a failure can never
+// produce a partial notification.
+func (d *EVMDriver) processBlocks(ctx context.Context, evmBlocks []EVMBlock) error {
+	blocks := make([]Block, len(evmBlocks))
+	for i := range evmBlocks {
+		blocks[i] = Block{
+			Num:    evmBlocks[i].Num,
+			Hash:   evmBlocks[i].Hash,
+			Events: evmBlocks[i].Events,
+		}
+	}
+
+	return d.withRetry(ctx, "processBlocks", func() error {
+		err := d.batchProcessor.ProcessBlocks(ctx, blocks)
+		if errors.Is(err, ErrInconsistentState) {
+			d.log.Warn("state got inconsistent after processing this batch; halting until reorg")
+			return newStopRetryError(err)
+		}
+		if err != nil {
+			return err
+		}
+
+		// Notify subscribers about every block, in the original order, after the
+		// whole batch committed. A retried batch publishes nothing until it commits.
+		for _, block := range blocks {
+			d.blockSubscriber.Publish(block)
+		}
+
+		return nil
+	})
 }
 
 func (d *EVMDriver) trackNonFinalizedBlock(ctx context.Context, b EVMBlock) error {

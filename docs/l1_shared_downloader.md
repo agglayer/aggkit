@@ -133,6 +133,65 @@ stores transactions. Filling the cache does **not** update consumer historical r
 Keeping the two separate means a backfill can be re-run without assuming the cache is warm, and the
 cache can be filled without implying the consumer rows were updated.
 
+## Performance: trace prefetch and batched persistence (multidownloader only)
+
+These two optimizations are **opt-in and scoped to the multidownloader-backed L1 syncers**. The
+legacy downloader paths — and every L2 syncer — keep their exact one-block-at-a-time behaviour and
+the synchronous claim trace.
+
+### Bounded claim-trace prefetch
+
+- When the L1 claim syncer selects the multidownloader, the ordinary and pre-Etrog `ClaimEvent` root
+  calls of a downloaded log range are prefetched with a **bounded pool of 8 concurrent**
+  `debug_traceTransaction` (call tracer) requests, instead of one synchronous trace per log. The
+  bound is a fixed constant (`ClaimTracePrefetchConcurrency = 8`); it is not an operator-facing knob.
+- Prefetch is installed **after** the coexistence hook that drops an ordinary `ClaimEvent` superseded
+  by a `DetailedClaimEvent`, so a suppressed log is never traced. The `DetailedClaimEvent` handler
+  never traces.
+- The root traces are published **atomically** only when every needed request succeeded. The
+  canonical inclusion of the window is revalidated **twice**: once before any trace RPC and once
+  after all workers have joined, immediately before publishing. A trace carries no block hash, so
+  the second read is what ties the published snapshot to the blocks the range was revalidated
+  against. This costs **one extra canonical header read per distinct block** (2 × distinct blocks
+  for the range), read serially, on top of the trace RPCs.
+- A changed or absent header (before or after the trace RPCs) returns
+  `ErrTransactionInclusionMismatch`, so the whole range is refetched and nothing is published.
+- Every failure path purges the published snapshot, so a trace produced by an earlier generation is
+  never served for the failed range.
+- A node that answers a trace request with a nil error but no call frame (for example a JSON `null`)
+  is rejected as a **retryable** error (never an inclusion mismatch) instead of being cached as an
+  empty root forever. The check is scoped to the frame type only, so a legitimate reverted root and
+  a router/fallback wrapper whose own input is empty but which nests the bridge call both stay valid;
+  the ordinary/pre-Etrog extraction semantics are unchanged.
+
+### Atomic batched persistence
+
+- When a syncer selects the multidownloader, its EVM driver may hand an ordered batch of
+  already-available blocks to the processor in **a single SQL transaction** (all-or-nothing), instead
+  of one transaction per block. The batch is bounded to a fixed **100 blocks** (`sync.MaxBatchBlocks`);
+  the driver never waits for more blocks to fill a batch, it only drains what the downloader has
+  already produced.
+- Batching is strictly **opt-in**: the constructors wrap the processor with it only for the
+  multidownloader backend. Unwrapped processors (the legacy downloader and every L2 syncer) keep the
+  exact one-block-at-a-time path.
+- A batched block keeps **the same per-block semantics** as the single-block path: both share the
+  same inner helper, including the block row, the bridge/claim handlers, the full proof and metadata
+  fields, and the claim proof-decoder fallback. Empty blocks are handled identically.
+- Bridge subscribers and the post-commit logs are emitted only **after** the single commit, in the
+  original download order, so a failed (and retried) batch never produces a partial commit or a
+  partial notification.
+- A batch that fails (including context cancellation) is rolled back as a whole; a retried batch
+  cannot duplicate committed history.
+
+### Bridge tree-cache rollback note
+
+- On a processing failure the bridge processor rolls the transaction back and runs the explicit
+  rollback callbacks registered by `PutLeaf` (`tree.AppendOnlyTree`), which invalidate the in-memory
+  tree cache so the next batch rebuilds it from the database. **Limitation**: `db.Tx.Rollback`
+  returns early on `sql.ErrTxDone` (the underlying transaction already ended) and skips those
+  callbacks, so on that path the cache is not invalidated here. This is the only documented gap; it
+  is not an assertion that the cache is always invalidated.
+
 ## Coverage, readiness and the background worker
 
 - Per-consumer **log coverage** and derived **transaction readiness** are different. Readiness is

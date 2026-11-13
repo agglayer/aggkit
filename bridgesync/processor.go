@@ -1022,20 +1022,144 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 	}()
 
-	query := `INSERT INTO block (num, hash) VALUES ($1, $2) ON CONFLICT (num) DO UPDATE SET hash = $2`
-	if _, err := tx.Exec(query, block.Num, block.Hash.String()); err != nil {
-		p.log.Errorf("failed to insert block %d: %v", block.Num, err)
+	// The whole block is applied through the same helper used by the batched
+	// path, so a single block and a batch share exactly the same semantics.
+	hasAnyBridge, err := p.processBlockInTx(dbCtx, tx, block)
+	if err != nil {
 		return err
 	}
 
+	if err := tx.Commit(); err != nil {
+		p.log.Errorf("failed to commit db transaction (block number %d): %v", block.Num, err)
+		return err
+	}
+	shouldRollback = false
+
+	// Publish block number to bridge subscribers if this block contains any bridge
+	if hasAnyBridge {
+		p.bridgeSubscriber.Publish(block.Num)
+	}
+
+	p.logProcessedBlock(block)
+
+	return nil
+}
+
+// processBlocks applies an ordered batch of blocks into a SINGLE database
+// transaction: either the whole batch is committed or nothing is. It is the
+// atomic implementation wired into the optional batching capability of the EVM
+// driver (see sync.EnableBlockBatching / sync.BlockBatchProcessor). The driver
+// bounds the batch to sync.MaxBatchBlocks, but the limit is validated here too
+// so the helper is safe to call directly.
+//
+// Per-block semantics are exactly those of ProcessBlock: for every block the
+// exit tree is updated (persisting every intermediate root) and the
+// bridge/token/legacy tables are written through processBlockInTx. Subscribers
+// and the post-commit logs are emitted only AFTER the single commit, in the
+// original block order, so a failed (and retried) batch can never produce a
+// partial commit or a partial notification.
+func (p *processor) processBlocks(ctx context.Context, blocks []sync.Block) error {
+	if len(blocks) == 0 {
+		return nil
+	}
+	if len(blocks) > sync.MaxBatchBlocks {
+		return fmt.Errorf("cannot process %d blocks in a single batch: maximum is %d",
+			len(blocks), sync.MaxBatchBlocks)
+	}
+
+	if p.isHalted() {
+		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
+		return sync.ErrInconsistentState
+	}
+
+	// Create a context with database timeout that covers the whole batch
+	// transaction, which is committed or rolled back as a unit.
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	tx, err := db.NewTx(dbCtx, p.db)
+	if err != nil {
+		p.log.Errorf("failed to start transaction for a batch of %d blocks: %v", len(blocks), err)
+		return err
+	}
+	shouldRollback := true
+	defer func() {
+		if shouldRollback {
+			// This runs the explicit rollback callbacks registered by PutLeaf
+			// (tree.AppendOnlyTree), which invalidate the in-memory tree cache so
+			// the next batch rebuilds it from the database. Limitation:
+			// db.Tx.Rollback returns early (sql.ErrTxDone) when the underlying
+			// transaction already ended and then skips those callbacks, so on that
+			// path the cache is not invalidated here.
+			p.rollbackTransaction(tx)
+		}
+	}()
+
+	hasAnyBridge := make([]bool, len(blocks))
+	for i, block := range blocks {
+		// Fail fast on cancellation and on a halt raised by an earlier block
+		// of the same batch; in both cases the whole batch is rolled back.
+		if err := dbCtx.Err(); err != nil {
+			p.log.Errorf("batch processing cancelled before block %d: %v", block.Num, err)
+			return err
+		}
+		if p.isHalted() {
+			p.log.Errorf("processor is halted due to: %s", p.haltedReason)
+			return sync.ErrInconsistentState
+		}
+
+		blockHasAnyBridge, err := p.processBlockInTx(dbCtx, tx, block)
+		if err != nil {
+			return err
+		}
+		hasAnyBridge[i] = blockHasAnyBridge
+	}
+
+	if err := tx.Commit(); err != nil {
+		p.log.Errorf("failed to commit db transaction (batch of %d blocks): %v", len(blocks), err)
+		return err
+	}
+	shouldRollback = false
+
+	// Notify subscribers and emit the per-block logs only after the whole batch
+	// committed, in the original download order.
+	for i, block := range blocks {
+		if hasAnyBridge[i] {
+			p.bridgeSubscriber.Publish(block.Num)
+		}
+		p.logProcessedBlock(block)
+	}
+
+	return nil
+}
+
+// processBlockInTx applies the events of a single block to the exit tree and the
+// database using the provided transaction. It preserves the exact semantics of
+// the legacy one-block ProcessBlock event loop but does not own the transaction:
+// it neither commits nor rolls back, does not notify subscribers and does not
+// emit the post-commit logs. The caller owns the transaction lifecycle, which is
+// what lets processBlocks apply several blocks in a single transaction.
+//
+// It returns hasAnyBridge=true when the block contained at least one bridge
+// event, which the caller uses to decide whether to notify bridge subscribers.
+func (p *processor) processBlockInTx(
+	ctx context.Context, tx dbtypes.Txer, block sync.Block,
+) (hasAnyBridge bool, err error) {
+	query := `INSERT INTO block (num, hash) VALUES ($1, $2) ON CONFLICT (num) DO UPDATE SET hash = $2`
+	if _, execErr := tx.Exec(query, block.Num, block.Hash.String()); execErr != nil {
+		p.log.Errorf("failed to insert block %d: %v", block.Num, execErr)
+		return false, execErr
+	}
+
+	// blockPos is block-local: it is reset for every block, so forward LET
+	// positions never leak across the blocks of the same batch.
 	var blockPos *uint64
-	var hasAnyBridge bool
 	for _, e := range block.Events {
 		event, ok := e.(Event)
 		if !ok {
 			err = fmt.Errorf("ProcessBlock: failed to convert event %T to Event type in block %d", e, block.Num)
 			p.log.Errorf(err.Error())
-			return err
+			return false, err
 		}
 
 		if event.Bridge != nil {
@@ -1054,11 +1178,11 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 					p.halt(fmt.Sprintf("error adding leaf %d in block %d to the exit tree: %v",
 						event.Bridge.DepositCount, block.Num, err))
 				}
-				return sync.ErrInconsistentState
+				return false, sync.ErrInconsistentState
 			}
 			if err = meddler.Insert(tx, bridgeTableName, event.Bridge); err != nil {
 				p.log.Errorf("failed to insert bridge event at block %d: %v", block.Num, err)
-				return err
+				return false, err
 			}
 			// Mark that this block has at least one bridge
 			hasAnyBridge = true
@@ -1067,14 +1191,14 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		if event.TokenMapping != nil {
 			if err = meddler.Insert(tx, tokenMappingTableName, event.TokenMapping); err != nil {
 				p.log.Errorf("failed to insert token mapping event at block %d: %v", block.Num, err)
-				return err
+				return false, err
 			}
 		}
 
 		if event.LegacyTokenMigration != nil {
 			if err = meddler.Insert(tx, legacyTokenMigrationTableName, event.LegacyTokenMigration); err != nil {
 				p.log.Errorf("failed to insert legacy token migration event at block %d: %v", block.Num, err)
-				return err
+				return false, err
 			}
 		}
 
@@ -1082,13 +1206,13 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			_, err := tx.Exec(deleteLegacyTokenSQL, event.RemoveLegacyToken.LegacyTokenAddress.Hex())
 			if err != nil {
 				p.log.Errorf("failed to remove legacy token at block %d: %v", block.Num, err)
-				return err
+				return false, err
 			}
 		}
 
 		if event.BackwardLET != nil {
 			if err := p.insertBackwardLET(ctx, tx, block.Num, event.BackwardLET); err != nil {
-				return err
+				return false, err
 			}
 		}
 
@@ -1096,41 +1220,41 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			newBlockPos, err := p.handleForwardLETEvent(tx, event.ForwardLET, blockPos)
 			if err != nil {
 				p.log.Errorf("failed to handle forward LET event at block %d: %v", block.Num, err)
-				return err
+				return false, err
 			}
 
 			blockPos = &newBlockPos
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		p.log.Errorf("failed to commit db transaction (block number %d): %v", block.Num, err)
-		return err
+
+	return hasAnyBridge, nil
+}
+
+// logProcessedBlock emits the post-commit logs of a single processed block. It
+// must only be called once the block has been committed: it cannot fail the
+// (already committed) processing, so a defensive event type mismatch is only
+// logged. Event types are already validated by processBlockInTx before the
+// commit, so the mismatch branch is unreachable in practice.
+func (p *processor) logProcessedBlock(block sync.Block) {
+	if len(block.Events) == 0 {
+		return
 	}
-	shouldRollback = false
 
-	// Publish block number to bridge subscribers if this block contains any bridge
-	if hasAnyBridge {
-		p.bridgeSubscriber.Publish(block.Num)
+	p.log.Info(fmt.Sprintf("block %d processed with %d events", block.Num, len(block.Events)))
+
+	if !p.log.IsEnabledLogLevel(zapcore.DebugLevel) {
+		return
 	}
 
-	logMsg := fmt.Sprintf("block %d processed with %d events", block.Num, len(block.Events))
-	if len(block.Events) > 0 {
-		p.log.Info(logMsg)
-
-		if p.log.IsEnabledLogLevel(zapcore.DebugLevel) {
-			p.log.Debugf("[%s] indexed events: ", p.syncerID)
-			for _, e := range block.Events {
-				event, ok := e.(Event)
-				if !ok {
-					p.log.Errorf("failed to convert event to Event type in block %d for debug logging", block.Num)
-					return errors.New("failed to convert sync.Block.Event to Event for debug logging")
-				}
-				p.log.Debugf("%s", event.String())
-			}
+	p.log.Debugf("[%s] indexed events: ", p.syncerID)
+	for _, e := range block.Events {
+		event, ok := e.(Event)
+		if !ok {
+			p.log.Errorf("failed to convert event to Event type in block %d for debug logging", block.Num)
+			continue
 		}
+		p.log.Debugf("%s", event.String())
 	}
-
-	return nil
 }
 
 // normalizeDepositCount checks whether given depositCount can fit into the uint64 and uint32 and downcasts it.
