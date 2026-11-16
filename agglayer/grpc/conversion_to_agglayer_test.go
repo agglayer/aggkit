@@ -516,3 +516,183 @@ func TestGrpcL1LeafToAgglayer(t *testing.T) {
 		require.ErrorIs(t, err, ErrNilCertificate)
 	})
 }
+
+// TestConvertProtoCertToAgglayerRejectsNilMultisigSignature covers the certificate that
+// crashed the validator: a multisig entry whose optional signature field is omitted on the
+// wire. The conversion must return an error instead of dereferencing the nil signature.
+func TestConvertProtoCertToAgglayerRejectsNilMultisigSignature(t *testing.T) {
+	validProof := func() *v1types.AggchainProof {
+		return &v1types.AggchainProof{
+			Proof: &v1types.AggchainProof_Sp1Stark{
+				Sp1Stark: &v1types.SP1StarkProof{
+					Proof:   []byte{0x01, 0x02, 0x03},
+					Version: "1.0",
+					Vkey:    []byte{0x01, 0x02, 0x03},
+				},
+			},
+			AggchainParams: &v1types.FixedBytes32{
+				Value: common.HexToHash("0x0102030405060708090a0b0c0d0e0f1011121314151617181920212223242526").Bytes(),
+			},
+			Signature: &v1types.FixedBytes65{Value: make([]byte, aggkitcommon.SignatureSize)},
+		}
+	}
+
+	multisigWith := func(entries ...*v1types.ECDSAMultisig_ECDSAMultisigEntry) *v1types.Multisig {
+		return &v1types.Multisig{
+			Data: &v1types.Multisig_Ecdsa{
+				Ecdsa: &v1types.ECDSAMultisig{Signatures: entries},
+			},
+		}
+	}
+
+	tests := []struct {
+		name         string
+		aggchainData *v1types.AggchainData
+		errContains  string
+	}{
+		{
+			name: "multisig entry without signature",
+			aggchainData: &v1types.AggchainData{
+				Data: &v1types.AggchainData_Multisig{
+					Multisig: multisigWith(&v1types.ECDSAMultisig_ECDSAMultisigEntry{Index: 0}),
+				},
+			},
+			errContains: "signature entry at index 0 has an invalid length",
+		},
+		{
+			name: "multisig entry is nil",
+			aggchainData: &v1types.AggchainData{
+				Data: &v1types.AggchainData_Multisig{
+					Multisig: multisigWith(nil),
+				},
+			},
+			errContains: "signature entry at index 0 is nil",
+		},
+		{
+			name: "multisig entry with a short signature",
+			aggchainData: &v1types.AggchainData{
+				Data: &v1types.AggchainData_Multisig{
+					Multisig: multisigWith(&v1types.ECDSAMultisig_ECDSAMultisigEntry{
+						Index:     0,
+						Signature: &v1types.FixedBytes65{Value: make([]byte, aggkitcommon.SignatureSize-1)},
+					}),
+				},
+			},
+			errContains: "signature entry at index 0 has an invalid length",
+		},
+		{
+			name: "multisig and aggchain proof entry without signature",
+			aggchainData: &v1types.AggchainData{
+				Data: &v1types.AggchainData_MultisigAndAggchainProof{
+					MultisigAndAggchainProof: &v1types.AggchainProofWithMultisig{
+						Multisig:      multisigWith(&v1types.ECDSAMultisig_ECDSAMultisigEntry{Index: 0}),
+						AggchainProof: validProof(),
+					},
+				},
+			},
+			errContains: "signature entry at index 0 has an invalid length",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
+			require.NoError(t, err)
+			protoCert.AggchainData = tt.aggchainData
+
+			var result *agglayertypes.Certificate
+			require.NotPanics(t, func() {
+				result, err = ConvertProtoCertToAgglayer(protoCert)
+			})
+			require.Nil(t, result)
+			require.ErrorIs(t, err, ErrNilCertificate)
+			require.ErrorContains(t, err, tt.errContains)
+		})
+	}
+
+	t.Run("valid 65-byte signature still converts", func(t *testing.T) {
+		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
+		require.NoError(t, err)
+		protoCert.AggchainData = &v1types.AggchainData{
+			Data: &v1types.AggchainData_Multisig{
+				Multisig: multisigWith(&v1types.ECDSAMultisig_ECDSAMultisigEntry{
+					Index:     3,
+					Signature: &v1types.FixedBytes65{Value: make([]byte, aggkitcommon.SignatureSize)},
+				}),
+			},
+		}
+
+		result, err := ConvertProtoCertToAgglayer(protoCert)
+		require.NoError(t, err)
+		multisig, ok := result.AggchainData.(*agglayertypes.AggchainDataMultisig)
+		require.True(t, ok)
+		require.Len(t, multisig.Multisig.Signatures, 1)
+		require.Equal(t, uint32(3), multisig.Multisig.Signatures[0].Index)
+		require.Len(t, multisig.Multisig.Signatures[0].Signature, aggkitcommon.SignatureSize)
+	})
+}
+
+// TestConvertProtoCertToAgglayerRejectsNilNestedMessages covers the other optional nested
+// messages that the conversion dereferences, so a malformed request cannot panic it.
+func TestConvertProtoCertToAgglayerRejectsNilNestedMessages(t *testing.T) {
+	t.Run("nil merkle proof sibling", func(t *testing.T) {
+		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
+		require.NoError(t, err)
+		protoCert.ImportedBridgeExits[0].Claim = &v1types.ImportedBridgeExit_Mainnet{
+			Mainnet: &v1types.ClaimFromMainnet{
+				ProofLeafMer: &v1types.MerkleProof{
+					Root:     &v1types.FixedBytes32{Value: make([]byte, 32)},
+					Siblings: make([]*v1types.FixedBytes32, 32),
+				},
+				ProofGerL1Root: &v1types.MerkleProof{
+					Root:     &v1types.FixedBytes32{Value: make([]byte, 32)},
+					Siblings: make([]*v1types.FixedBytes32, 32),
+				},
+				L1Leaf: &v1types.L1InfoTreeLeafWithContext{
+					Rer: &v1types.FixedBytes32{Value: make([]byte, 32)},
+					Mer: &v1types.FixedBytes32{Value: make([]byte, 32)},
+					Inner: &v1types.L1InfoTreeLeaf{
+						GlobalExitRoot: &v1types.FixedBytes32{Value: make([]byte, 32)},
+						BlockHash:      &v1types.FixedBytes32{Value: make([]byte, 32)},
+					},
+				},
+			},
+		}
+
+		var result *agglayertypes.Certificate
+		require.NotPanics(t, func() {
+			result, err = ConvertProtoCertToAgglayer(protoCert)
+		})
+		require.Nil(t, result)
+		require.ErrorIs(t, err, ErrNilCertificate)
+		require.ErrorContains(t, err, "nil sibling")
+	})
+
+	t.Run("nil mainnet claim", func(t *testing.T) {
+		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
+		require.NoError(t, err)
+		protoCert.ImportedBridgeExits[0].Claim = &v1types.ImportedBridgeExit_Mainnet{}
+
+		var result *agglayertypes.Certificate
+		require.NotPanics(t, func() {
+			result, err = ConvertProtoCertToAgglayer(protoCert)
+		})
+		require.Nil(t, result)
+		require.ErrorIs(t, err, ErrNilCertificate)
+		require.ErrorContains(t, err, "mainnet claim is nil")
+	})
+
+	t.Run("nil rollup claim", func(t *testing.T) {
+		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
+		require.NoError(t, err)
+		protoCert.ImportedBridgeExits[1].Claim = &v1types.ImportedBridgeExit_Rollup{}
+
+		var result *agglayertypes.Certificate
+		require.NotPanics(t, func() {
+			result, err = ConvertProtoCertToAgglayer(protoCert)
+		})
+		require.Nil(t, result)
+		require.ErrorIs(t, err, ErrNilCertificate)
+		require.ErrorContains(t, err, "rollup claim is nil")
+	})
+}

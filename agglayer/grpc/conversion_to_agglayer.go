@@ -12,6 +12,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -193,6 +194,9 @@ func grpcImportedBridgeExitToAgglayer(
 func grpcClaimDataToAgglayer(claim interface{}) (agglayertypes.Claim, error) {
 	switch v := claim.(type) {
 	case *v1types.ImportedBridgeExit_Mainnet:
+		if v.Mainnet == nil {
+			return nil, fmt.Errorf("grpcClaimDataToAgglayer. mainnet claim is nil. %w", ErrNilCertificate)
+		}
 		proofs, err := grpcMerkleProofsToAgglayer(
 			v.Mainnet.ProofLeafMer,
 			v.Mainnet.ProofGerL1Root,
@@ -210,6 +214,9 @@ func grpcClaimDataToAgglayer(claim interface{}) (agglayertypes.Claim, error) {
 			L1Leaf:           l1feaf,
 		}, nil
 	case *v1types.ImportedBridgeExit_Rollup:
+		if v.Rollup == nil {
+			return nil, fmt.Errorf("grpcClaimDataToAgglayer. rollup claim is nil. %w", ErrNilCertificate)
+		}
 		proofs, err := grpcMerkleProofsToAgglayer(
 			v.Rollup.ProofLeafLer,
 			v.Rollup.ProofLerRer,
@@ -258,11 +265,15 @@ func grpcMerkleProofToAgglayer(proof *v1types.MerkleProof) (*agglayertypes.Merkl
 	}
 	siblings := [treetypes.DefaultHeight]common.Hash{}
 	for i, sibling := range proof.Siblings {
-		siblings[i] = common.BytesToHash(sibling.Value)
+		if sibling == nil {
+			return nil, fmt.Errorf("grpcMerkleProofToAgglayer. proof has a nil sibling at index %d. %w",
+				i, ErrNilCertificate)
+		}
+		siblings[i] = common.BytesToHash(sibling.GetValue())
 	}
 
 	return &agglayertypes.MerkleProof{
-		Root:  common.BytesToHash(proof.Root.Value),
+		Root:  common.BytesToHash(proof.GetRoot().GetValue()),
 		Proof: siblings,
 	}, nil
 }
@@ -362,9 +373,21 @@ func grpcMultisigToAgglayer(multisig *v1types.Multisig) (*agglayertypes.Multisig
 	}
 
 	for i, sig := range multisigEcdsa.Ecdsa.Signatures {
+		// The signature is an optional field on the wire: an omitted entry decodes to nil,
+		// so an entry must be rejected instead of dereferenced. This conversion runs on
+		// unauthenticated requests, and a nil dereference here would take the process down.
+		if sig == nil {
+			return nil, fmt.Errorf("grpcMultisigToAgglayer. signature entry at index %d is nil. %w",
+				i, ErrNilCertificate)
+		}
+		signature := sig.GetSignature().GetValue()
+		if len(signature) != aggkitcommon.SignatureSize {
+			return nil, fmt.Errorf("grpcMultisigToAgglayer. signature entry at index %d has an invalid length: "+
+				"%d. Expected: %d. %w", i, len(signature), aggkitcommon.SignatureSize, ErrNilCertificate)
+		}
 		multisigAgglayer.Signatures[i] = agglayertypes.ECDSAMultisigEntry{
-			Signature: sig.Signature.Value,
-			Index:     sig.Index,
+			Signature: signature,
+			Index:     sig.GetIndex(),
 		}
 	}
 
