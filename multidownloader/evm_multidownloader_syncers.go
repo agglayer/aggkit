@@ -44,14 +44,14 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 		// respect to the sync state: otherwise a rollback between the check and
 		// the read could return a false-empty complete result. The mutex is
 		// released before waiting (never held across the sleep/RPC).
-		dh.mutex.Lock()
+		dh.mutex.RLock()
 		if dh.state == nil {
-			dh.mutex.Unlock()
+			dh.mutex.RUnlock()
 			return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: multidownloader not initialized")
 		}
 		if dh.state.IsAvailable(logQuery) {
 			logs, err := dh.storage.GetEthLogs(nil, logQuery)
-			dh.mutex.Unlock()
+			dh.mutex.RUnlock()
 			if err != nil {
 				return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: cannot get logs: %w", err)
 			}
@@ -61,7 +61,7 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 			}
 			return logs, nil
 		}
-		dh.mutex.Unlock()
+		dh.mutex.RUnlock()
 		if debugSyncerInterface {
 			dh.log.Debugf("EVMMultidownloader.FilterLogs: waiting %s for logs to be available: %s",
 				dh.cfg.WaitPeriodToCheckCatchUp.String(), logQuery.String())
@@ -145,8 +145,8 @@ func (dh *EVMMultidownloader) LogQuery(ctx context.Context,
 	if !dh.IsInitialized() {
 		return mdrtypes.LogQueryResponse{}, fmt.Errorf("EVMMultidownloader.LogQuery: multidownloader not initialized")
 	}
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
+	dh.mutex.RLock()
+	defer dh.mutex.RUnlock()
 	isAval, availQuery := dh.state.IsPartiallyAvailable(query)
 	if !isAval {
 		return mdrtypes.LogQueryResponse{},

@@ -132,6 +132,27 @@ func buildAppender(
 	return appender, nil
 }
 
+// buildContextualAppender builds the contextual appenders used by the shared multidownloader path.
+//
+// Only the BridgeEvent handler needs context-bound work: it resolves the transaction that produced
+// the log through the shared provider, whose flight can block. Receiving the active download context
+// (instead of a constructor-time context) means a cancelled download generation unblocks it. All the
+// other bridge events are synchronous and keep their legacy appenders, so the returned map contains
+// only bridgeEventSignature.
+func buildContextualAppender(
+	bridgeAddr common.Address,
+	client aggkittypes.EthClienter,
+	syncFromInBridges bool,
+	bridgeDeployment *bridgeDeployment,
+	logger *logger.Logger,
+	resolver bridgeTxnResolver,
+) sync.ContextualLogAppenderMap {
+	return sync.ContextualLogAppenderMap{
+		bridgeEventSignature: buildBridgeEventAppender(
+			bridgeDeployment.agglayerBridge, bridgeAddr, client, syncFromInBridges, logger, resolver),
+	}
+}
+
 // Transaction represents the structure of a transaction returned by eth_getTransactionByHash
 type Transaction struct {
 	FromRaw          string `json:"from"`
@@ -430,21 +451,43 @@ func bridgeLogsEnricher(provider aggkittypes.TransactionProvider) sync.LogsEnric
 	}
 }
 
-// logsEnricherSetter is the optional enrichment hook exposed by the sync downloader. It is asserted
-// on the downloader so bridgesync does not depend on the concrete downloader type.
-type logsEnricherSetter interface {
-	SetLogsEnricher(sync.LogsEnricherFunc) sync.LogsEnricherFunc
+// logsEnricherInstaller is the optional enrichment hook exposed by the sync downloader. It is
+// asserted on the downloader so bridgesync does not depend on the concrete downloader type. The bool
+// result reports whether the underlying implementation actually supports the hook, so a caller that
+// requires enrichment can fail closed instead of silently continuing.
+type logsEnricherInstaller interface {
+	InstallLogsEnricher(sync.LogsEnricherFunc) (sync.LogsEnricherFunc, bool)
 }
 
 // registerLogsEnricher installs the enrichment hook on the downloader if it supports it. It returns
-// true when the hook was installed.
+// true only when the underlying implementation reports that the hook was installed. A target that
+// does not expose the hook (or whose implementation reports it as unsupported) returns false so the
+// caller can fail closed.
 func registerLogsEnricher(target any, enricher sync.LogsEnricherFunc) bool {
-	setter, ok := target.(logsEnricherSetter)
+	installer, ok := target.(logsEnricherInstaller)
 	if !ok {
 		return false
 	}
-	setter.SetLogsEnricher(enricher)
-	return true
+	_, installed := installer.InstallLogsEnricher(enricher)
+	return installed
+}
+
+// contextualAppenderInstaller is the optional contextual-appender hook exposed by the sync
+// downloader. The bool result reports whether the underlying implementation actually supports it, so
+// a caller that requires the context-aware appender can fail closed instead of silently falling back
+// to a constructor-time appender.
+type contextualAppenderInstaller interface {
+	InstallContextualLogAppenders(sync.ContextualLogAppenderMap) bool
+}
+
+// installContextualLogAppenders installs the contextual appenders on the downloader if it supports
+// them. It returns true only when the underlying implementation reports that they were installed.
+func installContextualLogAppenders(target any, appenders sync.ContextualLogAppenderMap) bool {
+	installer, ok := target.(contextualAppenderInstaller)
+	if !ok {
+		return false
+	}
+	return installer.InstallContextualLogAppenders(appenders)
 }
 
 type bridgeCallParams struct {
@@ -608,11 +651,12 @@ func (c *logFailureCounter) reset() {
 	c.failures = 0
 }
 
-// buildBridgeEventHandler creates a handler for the Bridge event log.
+// buildBridgeEventHandler creates the legacy LogAppenderMap handler for the Bridge event log.
 //
-// When no resolver is provided it preserves the legacy behaviour and resolves the transaction
-// through eth_getTransactionByHash. When a resolver is provided (multidownloader path) the
-// transaction is resolved through it using the exact original log.
+// It wraps the context-aware appender (buildBridgeEventAppender) with the constructor context, so
+// the legacy API and its behaviour are preserved. Callers that run inside the shared multidownloader
+// must use buildBridgeEventAppender (through buildContextualAppender) so the appender receives the
+// active download context instead of this constructor-time context.
 func buildBridgeEventHandler(
 	ctx context.Context,
 	contract *agglayerbridge.Agglayerbridge,
@@ -622,12 +666,34 @@ func buildBridgeEventHandler(
 	logger *logger.Logger,
 	resolvers ...bridgeTxnResolver,
 ) func(*sync.EVMBlock, types.Log) error {
+	appender := buildBridgeEventAppender(contract, bridgeAddr, client, syncFromInBridges, logger, resolvers...)
+	return func(b *sync.EVMBlock, l types.Log) error {
+		return appender(ctx, b, l)
+	}
+}
+
+// buildBridgeEventAppender creates the context-aware handler for the Bridge event log. The context
+// is taken from the call (the active download context) instead of being captured at construction
+// time, so a cancelled download generation can unblock a resolver whose shared flight is still
+// running. It is used by the shared multidownloader path.
+//
+// When no resolver is provided it preserves the legacy behaviour and resolves the transaction
+// through eth_getTransactionByHash. When a resolver is provided (multidownloader path) the
+// transaction is resolved through it using the exact original log.
+func buildBridgeEventAppender(
+	contract *agglayerbridge.Agglayerbridge,
+	bridgeAddr common.Address,
+	client aggkittypes.EthClienter,
+	syncFromInBridges bool,
+	logger *logger.Logger,
+	resolvers ...bridgeTxnResolver,
+) sync.ContextualLogAppender {
 	rpcFailures := &logFailureCounter{}
 	var resolver bridgeTxnResolver
 	if len(resolvers) > 0 {
 		resolver = resolvers[0]
 	}
-	return func(b *sync.EVMBlock, l types.Log) error {
+	return func(ctx context.Context, b *sync.EVMBlock, l types.Log) error {
 		bridgeEvent, err := contract.ParseBridgeEvent(l)
 		if err != nil {
 			return fmt.Errorf("error parsing BridgeEvent log %+v: %w", l, err)

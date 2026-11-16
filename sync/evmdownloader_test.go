@@ -1224,6 +1224,145 @@ func TestEVMDownloader_SetLogsEnricher_ReturnsNilForNonImplementation(t *testing
 	require.Nil(t, prev, "should return nil when underlying impl is not *EVMDownloaderImplementation")
 }
 
+// --- InstallLogsEnricher ---
+
+// TestEVMDownloaderImplementation_InstallLogsEnricher_FirstInstallReportsInstalled proves the bool
+// result reports the capability, not the previous function: a first install has no previous enricher
+// (nil) and must still report installed=true. Deriving the bool from a non-nil previous function
+// would wrongly report the first install as unsupported.
+func TestEVMDownloaderImplementation_InstallLogsEnricher_FirstInstallReportsInstalled(t *testing.T) {
+	t.Parallel()
+	sut := EVMDownloaderImplementation{log: log.WithFields("test", "InstallLogsEnricher")}
+
+	enricher := LogsEnricherFunc(func(_ context.Context, _ []types.Log) error { return nil })
+	prev, installed := sut.InstallLogsEnricher(enricher)
+
+	require.True(t, installed, "a first install must report the hook as installed even with a nil previous")
+	require.Nil(t, prev, "a first install has no previous enricher")
+	require.NotNil(t, sut.logsEnricher)
+}
+
+func TestEVMDownloaderImplementation_InstallLogsEnricher_ReplacesPreviousReportsInstalled(t *testing.T) {
+	t.Parallel()
+	sut := EVMDownloaderImplementation{log: log.WithFields("test", "InstallLogsEnricher")}
+
+	first := LogsEnricherFunc(func(_ context.Context, _ []types.Log) error { return nil })
+	second := LogsEnricherFunc(func(_ context.Context, _ []types.Log) error { return errors.New("second") })
+
+	_, _ = sut.InstallLogsEnricher(first)
+	prev, installed := sut.InstallLogsEnricher(second)
+
+	require.True(t, installed)
+	require.NotNil(t, prev, "the previous enricher must be returned")
+	require.NoError(t, prev(context.Background(), nil))
+	require.Error(t, sut.logsEnricher(context.Background(), nil))
+}
+
+func TestEVMDownloader_InstallLogsEnricher_DelegatesToImplementation(t *testing.T) {
+	t.Parallel()
+	downloader, _ := NewTestDownloader(t, time.Millisecond)
+	impl, ok := downloader.EVMDownloaderInterface.(*EVMDownloaderImplementation)
+	require.True(t, ok)
+
+	prev, installed := downloader.InstallLogsEnricher(func(_ context.Context, _ []types.Log) error { return nil })
+
+	require.True(t, installed)
+	require.Nil(t, prev)
+	require.NotNil(t, impl.logsEnricher, "enricher should be set on the underlying implementation")
+}
+
+func TestEVMDownloader_InstallLogsEnricher_UnsupportedImplReturnsFalse(t *testing.T) {
+	t.Parallel()
+	downloader, _ := newMockDownloader(t)
+
+	prev, installed := downloader.InstallLogsEnricher(func(_ context.Context, _ []types.Log) error { return nil })
+
+	require.False(t, installed,
+		"an implementation that does not expose the hook must report it as unsupported")
+	require.Nil(t, prev)
+}
+
+// --- InstallContextualLogAppenders ---
+
+func TestEVMDownloaderImplementation_InstallContextualLogAppenders_AddsTopicsDeduped(t *testing.T) {
+	t.Parallel()
+	newTopic := crypto.Keccak256Hash([]byte("bar"))
+	sut := EVMDownloaderImplementation{
+		log:           log.WithFields("test", "InstallContextual"),
+		topicsToQuery: []common.Hash{eventSignature},
+	}
+
+	appenders := ContextualLogAppenderMap{
+		eventSignature: func(context.Context, *EVMBlock, types.Log) error { return nil },
+		newTopic:       func(context.Context, *EVMBlock, types.Log) error { return nil },
+	}
+	require.True(t, sut.InstallContextualLogAppenders(appenders))
+
+	require.Equal(t, appenders, sut.contextualAppender)
+	require.Equal(t, []common.Hash{eventSignature, newTopic}, sut.topicsToQuery,
+		"an already-queried topic must not be duplicated and the new topic must be added once")
+}
+
+func TestEVMDownloader_InstallContextualLogAppenders_DelegatesToImplementation(t *testing.T) {
+	t.Parallel()
+	downloader, _ := NewTestDownloader(t, time.Millisecond)
+	impl, ok := downloader.EVMDownloaderInterface.(*EVMDownloaderImplementation)
+	require.True(t, ok)
+
+	appenders := ContextualLogAppenderMap{
+		eventSignature: func(context.Context, *EVMBlock, types.Log) error { return nil },
+	}
+	require.True(t, downloader.InstallContextualLogAppenders(appenders))
+	require.Equal(t, appenders, impl.contextualAppender)
+}
+
+func TestEVMDownloader_InstallContextualLogAppenders_UnsupportedImplReturnsFalse(t *testing.T) {
+	t.Parallel()
+	downloader, _ := newMockDownloader(t)
+
+	appenders := ContextualLogAppenderMap{
+		eventSignature: func(context.Context, *EVMBlock, types.Log) error { return nil },
+	}
+	require.False(t, downloader.InstallContextualLogAppenders(appenders),
+		"an implementation that does not expose the hook must report it as unsupported")
+}
+
+// TestEVMDownloader_ContextualAppender_ReceivesActiveDownloadContext verifies the downloader invokes
+// the contextual appender with the active download context (not a constructor-time context), which
+// is the whole point of the optional hook: a canceled download generation can unblock an appender
+// whose shared provider flight is still running.
+func TestEVMDownloader_ContextualAppender_ReceivesActiveDownloadContext(t *testing.T) {
+	t.Parallel()
+	d, clientMock := NewTestDownloader(t, time.Millisecond)
+	log5, _ := generateEvent(5)
+
+	// WaitForNewBlocks (any header) is consumed first, then GetLastFinalizedBlock, then the block
+	// header used to build the block for the fetched log.
+	clientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).
+		Return(aggkittypes.NewBlockHeader(10, common.Hash{}, 0, nil), nil).Once()
+	clientMock.EXPECT().BlockNumber(mock.Anything, mock.Anything).Return(uint64(10), nil).Once()
+	clientMock.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return([]types.Log{*log5}, nil).Once()
+	matchingBlockHeader(t, clientMock, 5)
+
+	type ctxKey struct{}
+	var gotCtx context.Context
+	require.True(t, d.InstallContextualLogAppenders(ContextualLogAppenderMap{
+		eventSignature: func(ctx context.Context, _ *EVMBlock, _ types.Log) error {
+			gotCtx = ctx
+			return nil
+		},
+	}))
+
+	ctx := context.WithValue(context.Background(), ctxKey{}, "active-download")
+	lastBlock := uint64(5)
+	downloadCh := make(chan EVMBlock, 10)
+	d.Download(ctx, 5, downloadCh, &lastBlock, false)
+
+	require.NotNil(t, gotCtx, "contextual appender must be invoked during Download")
+	require.Equal(t, "active-download", gotCtx.Value(ctxKey{}),
+		"contextual appender must receive the active download context, not a constructor-time context")
+}
+
 // matchingBlockHeader returns a block header expectation whose hash matches the block hash
 // carried by the logs generated by generateEvent for the given block number.
 func matchingBlockHeader(t *testing.T, clientMock *aggkittypesmocks.MultiDownloader, blockNum uint64) {

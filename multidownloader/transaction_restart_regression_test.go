@@ -182,10 +182,11 @@ func TestRestartRegression_DisableEnableGapsAndTopicWidening(t *testing.T) {
 	restartStored(t, stD, lg15, true)
 	ethD.AssertNotCalled(t, "FilterLogs")
 
-	availD, err := stD.TransactionAvailabilityForLogQuery(nil,
+	availD, err := mdAvailabilityForTest(mdD, nil,
 		mdrtypes.NewLogQuery(1, 20, []common.Address{txFixtureAddr}),
 		[]common.Hash{txFixtureT0, txFixtureT1})
 	require.NoError(t, err)
+	require.True(t, availD.LogCoverage, "phase D: the persisted coverage 1..20 must still be reported")
 	require.False(t, availD.Complete, "phase D: txB is still missing, the range is not complete")
 	require.Contains(t, availD.MissingTxHashes, txB)
 
@@ -201,10 +202,11 @@ func TestRestartRegression_DisableEnableGapsAndTopicWidening(t *testing.T) {
 	restartStored(t, stE, lg15, true) // cached txC unchanged
 	ethE.AssertNotCalled(t, "FilterLogs")
 
-	availE, err := stE.TransactionAvailabilityForLogQuery(nil,
+	availE, err := mdAvailabilityForTest(mdE, nil,
 		mdrtypes.NewLogQuery(1, 20, []common.Address{txFixtureAddr}),
 		[]common.Hash{txFixtureT0, txFixtureT1})
 	require.NoError(t, err)
+	require.True(t, availE.LogCoverage, "phase E: coverage 1..20 must be reported")
 	require.True(t, availE.Complete,
 		"phase E: with coverage 1..20 and all transactions stored the range is complete")
 	require.Empty(t, availE.MissingTxHashes)

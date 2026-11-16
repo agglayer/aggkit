@@ -81,11 +81,13 @@ func regrPersistCoverage(t *testing.T, td *testDataEVMMultidownloader,
 }
 
 // regrAvailability returns the transaction availability for the fixture address
-// at the given block.
+// at the given block. It is computed from the live multidownloader public API
+// through the test-only mdAvailabilityForTest helper (the production
+// TransactionAvailabilityForLogQuery was removed).
 func regrAvailability(t *testing.T, td *testDataEVMMultidownloader,
-	blockNumber uint64) mdrtypes.TransactionAvailability {
+	blockNumber uint64) transactionAvailabilityForTest {
 	t.Helper()
-	av, err := td.mdr.transactionStorage.TransactionAvailabilityForLogQuery(nil,
+	av, err := mdAvailabilityForTest(td.mdr, nil,
 		mdrtypes.NewLogQuery(blockNumber, blockNumber, []common.Address{txFixtureAddr}),
 		[]common.Hash{txFixtureT0})
 	require.NoError(t, err)

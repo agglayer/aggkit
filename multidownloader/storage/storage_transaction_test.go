@@ -2,8 +2,7 @@ package storage
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
+	"encoding/json"
 	"path"
 	"sync"
 	"testing"
@@ -17,7 +16,6 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,71 +24,6 @@ var (
 	txTopicB = common.HexToHash("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 	txTopicC = common.HexToHash("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
 )
-
-// txTestLog builds a log with the given fields. A nil topics slice produces a
-// topicless log.
-func txTestLog(addr common.Address, blockNumber uint64, blockHash, txHash common.Hash,
-	logIndex uint, topics []common.Hash) ethtypes.Log {
-	return ethtypes.Log{
-		Address:        addr,
-		BlockNumber:    blockNumber,
-		BlockHash:      blockHash,
-		BlockTimestamp: 1630000000,
-		Topics:         topics,
-		TxHash:         txHash,
-		TxIndex:        0,
-		Index:          logIndex,
-	}
-}
-
-// txTestRPC builds a mined RPC transaction. A nil to address produces a
-// contract-creation transaction (nullable `to`).
-func txTestRPC(blockNumber uint64, blockHash, txHash common.Hash, to *common.Address) aggkittypes.RPCTransaction {
-	blockNumberHex := fmt.Sprintf("0x%x", blockNumber)
-	blockHashHex := blockHash.Hex()
-	txIndexHex := "0x0"
-	tx := aggkittypes.RPCTransaction{
-		FromRaw:             exampleAddr1.Hex(),
-		HashRaw:             txHash.Hex(),
-		BlockHashRaw:        &blockHashHex,
-		BlockNumberRaw:      &blockNumberHex,
-		TransactionIndexRaw: &txIndexHex,
-		InputRaw:            "0x",
-	}
-	if to != nil {
-		toHex := to.Hex()
-		tx.To = &toHex
-	}
-	return tx
-}
-
-func saveLogsForTest(t *testing.T, storage *MultidownloaderStorage, logs ...ethtypes.Log) {
-	t.Helper()
-	require.NoError(t, storage.SaveEthLogs(nil, logs, true))
-}
-
-// setSyncedCoverageForTest persists the synced log coverage for an address so
-// that log-coverage queries can be exercised. It upserts the contract row and
-// then sets its synced range.
-func setSyncedCoverageForTest(t *testing.T, storage *MultidownloaderStorage,
-	addr common.Address, from, to uint64) {
-	t.Helper()
-	require.NoError(t, storage.UpsertSyncerConfigs(nil, []mdrtypes.ContractConfig{
-		{
-			Address:   addr,
-			FromBlock: from,
-			ToBlock:   aggkittypes.LatestBlock,
-			Syncers:   []mdrtypes.SyncerID{"test"},
-		},
-	}))
-	require.NoError(t, storage.UpdateSyncedStatus(nil, []mdrtypes.SyncSegment{
-		{
-			ContractAddr:  addr,
-			TargetToBlock: aggkittypes.LatestBlock,
-			BlockRange:    aggkitcommon.NewBlockRange(from, to),
-		},
-	}))
-}
 
 func TestStorage_TransactionStorageExtension(t *testing.T) {
 	storage := newStorageForTest(t, nil)
@@ -124,20 +57,79 @@ func TestStorage_SaveAndGetTransaction(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, uint64(1500), blockNumber)
 
-	byBlock, err := storage.GetTransactionsByBlock(nil, 1500, blockHash)
-	require.NoError(t, err)
-	require.Len(t, byBlock, 1)
+	// The inclusion is physically present exactly once.
+	require.Equal(t, 1, countTransactionsForTest(t, storage))
 
 	// Idempotent per (tx_hash, block_hash).
 	require.NoError(t, storage.SaveTransactions(nil, []aggkittypes.RPCTransaction{tx}))
-	byBlock, err = storage.GetTransactionsByBlock(nil, 1500, blockHash)
-	require.NoError(t, err)
-	require.Len(t, byBlock, 1)
+	require.Equal(t, 1, countTransactionsForTest(t, storage))
 
 	// Missing key returns nil, not an error.
 	missing, err := storage.GetTransaction(nil, txHash, exampleTestHash[9])
 	require.NoError(t, err)
 	require.Nil(t, missing)
+}
+
+// TestStorage_SaveAndGetTransactionNullRecipient pins the contract-creation
+// case: a null `to` round-trips as a nil recipient instead of collapsing to the
+// zero address.
+func TestStorage_SaveAndGetTransactionNullRecipient(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	blockHash := exampleTestHash[0]
+	txHash := exampleTestHash[1]
+	saveLogsForTest(t, storage,
+		txTestLog(exampleAddr1, 1500, blockHash, txHash, 0, []common.Hash{txTopicA}))
+
+	// A nil to address is a contract creation.
+	tx := txTestRPC(1500, blockHash, txHash, nil)
+	require.Nil(t, tx.To)
+	require.NoError(t, storage.SaveTransactions(nil, []aggkittypes.RPCTransaction{tx}))
+
+	got, err := storage.GetTransaction(nil, txHash, blockHash)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Nil(t, got.To, "null recipient must be preserved")
+	require.Nil(t, got.ToAddressPtr(), "null recipient must not collapse to the zero address")
+	require.Equal(t, common.Address{}, got.ToAddress())
+	require.Equal(t, 1, countTransactionsForTest(t, storage))
+}
+
+// TestStorage_SaveAndGetTransactionRawPayloadPreserved pins that the original
+// JSON-RPC payload (including unknown members) survives the storage round-trip.
+func TestStorage_SaveAndGetTransactionRawPayloadPreserved(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	blockHash := exampleTestHash[0]
+	txHash := exampleTestHash[1]
+	saveLogsForTest(t, storage,
+		txTestLog(exampleAddr1, 1500, blockHash, txHash, 0, []common.Hash{txTopicA}))
+
+	blockHashHex := blockHash.Hex()
+	blockNumberHex := "0x5dc"
+	txIndexHex := "0x0"
+	raw := json.RawMessage(`{"from":"` + exampleAddr1.Hex() + `","to":null,"hash":"` + txHash.Hex() +
+		`","blockHash":"` + blockHashHex + `","blockNumber":"` + blockNumberHex +
+		`","transactionIndex":"` + txIndexHex + `","input":"0x","customUnknownField":"keep-me"}`)
+	tx := aggkittypes.RPCTransaction{
+		FromRaw:             exampleAddr1.Hex(),
+		HashRaw:             txHash.Hex(),
+		BlockHashRaw:        &blockHashHex,
+		BlockNumberRaw:      &blockNumberHex,
+		TransactionIndexRaw: &txIndexHex,
+		InputRaw:            "0x",
+		Raw:                 raw,
+	}
+	require.NoError(t, storage.SaveTransactions(nil, []aggkittypes.RPCTransaction{tx}))
+
+	got, err := storage.GetTransaction(nil, txHash, blockHash)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.JSONEq(t, string(raw), string(got.Raw), "the original raw payload must be preserved")
+
+	// The unknown member survived the round-trip.
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(got.Raw, &decoded))
+	require.Equal(t, "keep-me", decoded["customUnknownField"])
+	require.Equal(t, 1, countTransactionsForTest(t, storage))
 }
 
 func TestStorage_TransactionDistinctInclusion(t *testing.T) {
@@ -163,12 +155,8 @@ func TestStorage_TransactionDistinctInclusion(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got2)
 
-	byBlock1, err := storage.GetTransactionsByBlock(nil, 1500, blockHash1)
-	require.NoError(t, err)
-	require.Len(t, byBlock1, 1)
-	byBlock2, err := storage.GetTransactionsByBlock(nil, 1501, blockHash2)
-	require.NoError(t, err)
-	require.Len(t, byBlock2, 1)
+	// Two distinct inclusions are physically stored (one row per block_hash).
+	require.Equal(t, 2, countTransactionsForTest(t, storage))
 }
 
 func TestStorage_SaveTransactionsStaleCommitRejected(t *testing.T) {
@@ -255,9 +243,8 @@ func TestStorage_TransactionOrphanRejectionAndStaleMissing(t *testing.T) {
 		`{"from":"`+exampleAddr1.Hex()+`","hash":"`+txHashStale.Hex()+`"}`)
 	require.NoError(t, err)
 
-	missing, err := storage.MissingTransactionsForLogQuery(nil,
+	missing := missingTxHashesForLogQueryForTest(t, storage, nil,
 		mdrtypes.NewLogQuery(1500, 1501, nil), nil)
-	require.NoError(t, err)
 	require.Contains(t, missing, txHashStale)
 }
 
@@ -276,44 +263,38 @@ func TestStorage_MissingTransactionsForLogQuery(t *testing.T) {
 	}))
 
 	t.Run("all logs, no topic filter", func(t *testing.T) {
-		missing, err := storage.MissingTransactionsForLogQuery(nil,
+		missing := missingTxHashesForLogQueryForTest(t, storage, nil,
 			mdrtypes.NewLogQuery(100, 200, nil), nil)
-		require.NoError(t, err)
 		require.Equal(t, []common.Hash{exampleTestHash[6], exampleTestHash[7]}, missing)
 	})
 
 	t.Run("address filter", func(t *testing.T) {
-		missing, err := storage.MissingTransactionsForLogQuery(nil,
+		missing := missingTxHashesForLogQueryForTest(t, storage, nil,
 			mdrtypes.NewLogQuery(100, 200, []common.Address{exampleAddr2}), nil)
-		require.NoError(t, err)
 		require.Equal(t, []common.Hash{exampleTestHash[6]}, missing)
 	})
 
 	t.Run("topic0 filter excludes topicless logs", func(t *testing.T) {
-		missing, err := storage.MissingTransactionsForLogQuery(nil,
+		missing := missingTxHashesForLogQueryForTest(t, storage, nil,
 			mdrtypes.NewLogQuery(100, 200, []common.Address{exampleAddr1}), []common.Hash{txTopicA})
-		require.NoError(t, err)
 		require.Empty(t, missing)
 	})
 
 	t.Run("topic0 filter with no matching logs is safe", func(t *testing.T) {
-		missing, err := storage.MissingTransactionsForLogQuery(nil,
+		missing := missingTxHashesForLogQueryForTest(t, storage, nil,
 			mdrtypes.NewLogQuery(100, 200, []common.Address{exampleAddr1}), []common.Hash{txTopicC})
-		require.NoError(t, err)
 		require.Empty(t, missing)
 	})
 
 	t.Run("or-ed topic0 filter", func(t *testing.T) {
-		missing, err := storage.MissingTransactionsForLogQuery(nil,
+		missing := missingTxHashesForLogQueryForTest(t, storage, nil,
 			mdrtypes.NewLogQuery(100, 200, nil), []common.Hash{txTopicA, txTopicB})
-		require.NoError(t, err)
 		require.Equal(t, []common.Hash{exampleTestHash[6]}, missing)
 	})
 
 	t.Run("empty interval has no gaps", func(t *testing.T) {
-		missing, err := storage.MissingTransactionsForLogQuery(nil,
+		missing := missingTxHashesForLogQueryForTest(t, storage, nil,
 			mdrtypes.NewLogQuery(1000, 1100, nil), nil)
-		require.NoError(t, err)
 		require.Empty(t, missing)
 	})
 }
@@ -330,18 +311,16 @@ func TestStorage_TransactionAvailabilityForLogQuery(t *testing.T) {
 	setSyncedCoverageForTest(t, storage, exampleAddr1, 100, 200)
 
 	// Gap on topic B: covered range, but a relevant log misses its tx.
-	av, err := storage.TransactionAvailabilityForLogQuery(nil,
+	av := transactionAvailabilityForTest(t, storage, nil,
 		mdrtypes.NewLogQuery(100, 200, []common.Address{exampleAddr1}), nil)
-	require.NoError(t, err)
 	require.True(t, av.LogCoverage)
 	require.False(t, av.Complete)
 	require.Equal(t, []common.Hash{exampleTestHash[6]}, av.MissingTxHashes)
 
 	// Toggling the requirement to the topic that is already covered reports
 	// completion without any cache invalidation.
-	av, err = storage.TransactionAvailabilityForLogQuery(nil,
+	av = transactionAvailabilityForTest(t, storage, nil,
 		mdrtypes.NewLogQuery(100, 200, []common.Address{exampleAddr1}), []common.Hash{txTopicA})
-	require.NoError(t, err)
 	require.True(t, av.LogCoverage)
 	require.True(t, av.Complete)
 	require.Empty(t, av.MissingTxHashes)
@@ -354,9 +333,8 @@ func TestStorage_TransactionAvailabilityCoverage(t *testing.T) {
 	t.Run("zero logs uncovered is not complete", func(t *testing.T) {
 		storage := newStorageForTest(t, nil)
 		// No sync_status coverage at all.
-		av, err := storage.TransactionAvailabilityForLogQuery(nil,
+		av := transactionAvailabilityForTest(t, storage, nil,
 			mdrtypes.NewLogQuery(100, 200, []common.Address{exampleAddr1}), nil)
-		require.NoError(t, err)
 		require.False(t, av.LogCoverage)
 		require.False(t, av.Complete)
 		require.Empty(t, av.MissingTxHashes)
@@ -366,9 +344,8 @@ func TestStorage_TransactionAvailabilityCoverage(t *testing.T) {
 		storage := newStorageForTest(t, nil)
 		setSyncedCoverageForTest(t, storage, exampleAddr1, 100, 200)
 
-		av, err := storage.TransactionAvailabilityForLogQuery(nil,
+		av := transactionAvailabilityForTest(t, storage, nil,
 			mdrtypes.NewLogQuery(150, 160, []common.Address{exampleAddr1}), nil)
-		require.NoError(t, err)
 		require.True(t, av.LogCoverage)
 		require.True(t, av.Complete)
 		require.Empty(t, av.MissingTxHashes)
@@ -378,9 +355,8 @@ func TestStorage_TransactionAvailabilityCoverage(t *testing.T) {
 		storage := newStorageForTest(t, nil)
 		setSyncedCoverageForTest(t, storage, exampleAddr1, 100, 150)
 
-		av, err := storage.TransactionAvailabilityForLogQuery(nil,
+		av := transactionAvailabilityForTest(t, storage, nil,
 			mdrtypes.NewLogQuery(100, 200, []common.Address{exampleAddr1}), nil)
-		require.NoError(t, err)
 		require.False(t, av.LogCoverage)
 		require.False(t, av.Complete)
 	})
@@ -389,9 +365,8 @@ func TestStorage_TransactionAvailabilityCoverage(t *testing.T) {
 		storage := newStorageForTest(t, nil)
 		setSyncedCoverageForTest(t, storage, exampleAddr1, 100, 200)
 
-		av, err := storage.TransactionAvailabilityForLogQuery(nil,
+		av := transactionAvailabilityForTest(t, storage, nil,
 			mdrtypes.NewLogQuery(100, 200, []common.Address{exampleAddr2}), nil)
-		require.NoError(t, err)
 		require.False(t, av.LogCoverage)
 		require.False(t, av.Complete)
 	})
@@ -400,18 +375,16 @@ func TestStorage_TransactionAvailabilityCoverage(t *testing.T) {
 		storage := newStorageForTest(t, nil)
 		setSyncedCoverageForTest(t, storage, exampleAddr1, 100, 200)
 
-		av, err := storage.TransactionAvailabilityForLogQuery(nil,
+		av := transactionAvailabilityForTest(t, storage, nil,
 			mdrtypes.NewLogQuery(100, 200, nil), nil)
-		require.NoError(t, err)
 		require.True(t, av.LogCoverage)
 		require.True(t, av.Complete)
 	})
 
 	t.Run("empty addresses with no registered coverage is not complete", func(t *testing.T) {
 		storage := newStorageForTest(t, nil)
-		av, err := storage.TransactionAvailabilityForLogQuery(nil,
+		av := transactionAvailabilityForTest(t, storage, nil,
 			mdrtypes.NewLogQuery(100, 200, nil), nil)
-		require.NoError(t, err)
 		require.False(t, av.LogCoverage)
 		require.False(t, av.Complete)
 	})
@@ -433,30 +406,29 @@ func TestStorage_TransactionAvailabilityBlockHashCoverage(t *testing.T) {
 	setSyncedCoverageForTest(t, storage, exampleAddr1, 100, 200)
 
 	// Canonical header matches and the address/height is covered.
-	av, err := storage.TransactionAvailabilityForLogQuery(nil,
+	av := transactionAvailabilityForTest(t, storage, nil,
 		mdrtypes.NewLogQueryBlockHash(100, blockHash, []common.Address{exampleAddr1}), nil)
-	require.NoError(t, err)
 	require.True(t, av.LogCoverage)
 	require.True(t, av.Complete)
 
-	// Unknown (non-canonical) hash is not covered.
-	av, err = storage.TransactionAvailabilityForLogQuery(nil,
+	// Unknown (non-canonical) hash is not covered: the canonical header at that
+	// height contradicts the requested hash and there are no canonical logs
+	// under it, so the missing set is empty while coverage/complete stay false.
+	av = transactionAvailabilityForTest(t, storage, nil,
 		mdrtypes.NewLogQueryBlockHash(100, otherHash, []common.Address{exampleAddr1}), nil)
-	require.NoError(t, err)
 	require.False(t, av.LogCoverage)
 	require.False(t, av.Complete)
+	require.Empty(t, av.MissingTxHashes)
 
 	// Unknown address is not covered even with a matching canonical header.
-	av, err = storage.TransactionAvailabilityForLogQuery(nil,
+	av = transactionAvailabilityForTest(t, storage, nil,
 		mdrtypes.NewLogQueryBlockHash(100, blockHash, []common.Address{exampleAddr2}), nil)
-	require.NoError(t, err)
 	require.False(t, av.LogCoverage)
 	require.False(t, av.Complete)
 
 	// A height outside the covered range is not covered.
-	av, err = storage.TransactionAvailabilityForLogQuery(nil,
+	av = transactionAvailabilityForTest(t, storage, nil,
 		mdrtypes.NewLogQueryBlockHash(300, blockHash, []common.Address{exampleAddr1}), nil)
-	require.NoError(t, err)
 	require.False(t, av.LogCoverage)
 }
 
@@ -469,8 +441,7 @@ func TestStorage_TransactionAvailabilityReorgCoverage(t *testing.T) {
 	query := mdrtypes.NewLogQuery(100, 200, []common.Address{exampleAddr1})
 
 	// Baseline: fully covered.
-	av, err := storage.TransactionAvailabilityForLogQuery(nil, query, nil)
-	require.NoError(t, err)
+	av := transactionAvailabilityForTest(t, storage, nil, query, nil)
 	require.True(t, av.Complete)
 
 	reorgData := mdrtypes.ReorgData{
@@ -488,15 +459,13 @@ func TestStorage_TransactionAvailabilityReorgCoverage(t *testing.T) {
 	require.NoError(t, err)
 	_, err = storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, reorgData)
 	require.NoError(t, err)
-	av, err = storage.TransactionAvailabilityForLogQuery(tx, query, nil)
-	require.NoError(t, err)
+	av = transactionAvailabilityForTest(t, storage, tx, query, nil)
 	require.False(t, av.LogCoverage)
 	require.False(t, av.Complete)
 	require.NoError(t, tx.Rollback())
 
 	// Rollback restores the coverage, so the old query is complete again.
-	av, err = storage.TransactionAvailabilityForLogQuery(nil, query, nil)
-	require.NoError(t, err)
+	av = transactionAvailabilityForTest(t, storage, nil, query, nil)
 	require.True(t, av.Complete)
 
 	// Committed reorg keeps the shrunken coverage.
@@ -505,8 +474,7 @@ func TestStorage_TransactionAvailabilityReorgCoverage(t *testing.T) {
 	_, err = storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, reorgData)
 	require.NoError(t, err)
 	require.NoError(t, tx.Commit())
-	av, err = storage.TransactionAvailabilityForLogQuery(nil, query, nil)
-	require.NoError(t, err)
+	av = transactionAvailabilityForTest(t, storage, nil, query, nil)
 	require.False(t, av.LogCoverage)
 	require.False(t, av.Complete)
 }
@@ -587,48 +555,6 @@ func TestStorage_Migration0003PreservesExistingData(t *testing.T) {
 	var count int
 	require.NoError(t, newStorage.db.QueryRow("SELECT COUNT(*) FROM transactions").Scan(&count))
 	require.Zero(t, count, "new transactions table must exist and be empty")
-}
-
-// newStorageForTestWithBusyTimeout builds a storage backed by a SQLite database
-// whose busy timeout is short, so a lock-ordering regression fails fast instead
-// of stalling for the production 30s busy timeout.
-func newStorageForTestWithBusyTimeout(t *testing.T, busyTimeoutMs int) *MultidownloaderStorage {
-	t.Helper()
-	logger := log.WithFields("module", "test")
-	dbPath := path.Join(t.TempDir(), "multidownloader_Storage.sqlite")
-	database, err := sql.Open("sqlite3", fmt.Sprintf(
-		"file:%s?_txlock=immediate&_foreign_keys=on&_journal_mode=WAL&_busy_timeout=%d", dbPath, busyTimeoutMs))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = database.Close() })
-	require.NoError(t, migrations.RunMigrations(logger, database))
-	return &MultidownloaderStorage{
-		db:               database,
-		logger:           logger,
-		cfg:              MultidownloaderStorageConfig{DBPath: dbPath},
-		KeyValueStorager: db.NewKeyValueStorage(database),
-	}
-}
-
-// assertStorageMutexFreeWhileBlocked asserts that, for the given window, the
-// storage mutex stays acquirable while the blocked write has not completed. It
-// fails as soon as the mutex is observed held (the lock-ordering bug) or the
-// write completes early (the writer lock was not actually held).
-func assertStorageMutexFreeWhileBlocked(t *testing.T, storage *MultidownloaderStorage,
-	blocked <-chan error, window time.Duration) {
-	t.Helper()
-	deadline := time.Now().Add(window)
-	for time.Now().Before(deadline) {
-		select {
-		case err := <-blocked:
-			t.Fatalf("blocked write completed before the writer lock was released: %v", err)
-		default:
-		}
-		if !storage.mutex.TryLock() {
-			t.Fatal("storage mutex is held while a write waits for the SQLite writer lock")
-		}
-		storage.mutex.Unlock()
-		time.Sleep(time.Millisecond)
-	}
 }
 
 // TestStorage_SaveTransactionsNilTxDoesNotBlockIngestion is a deterministic
@@ -859,9 +785,11 @@ func TestStorage_SaveTransactionsAndNewTxConcurrent(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	byBlock, err := storage.GetTransactionsByBlock(nil, blockNumber, blockHash)
+	// The concurrent saves stay idempotent: exactly one row for the inclusion.
+	got, err := storage.GetTransaction(nil, txHash, blockHash)
 	require.NoError(t, err)
-	require.Len(t, byBlock, 1)
+	require.NotNil(t, got)
+	require.Equal(t, 1, countTransactionsForTest(t, storage))
 }
 
 // TestStorage_SaveTransactionsCallerOwnedTxReorgSafe pins that SaveTransactions
@@ -945,7 +873,9 @@ func TestStorage_SaveTransactionsConcurrentNilTx(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	byBlock, err := storage.GetTransactionsByBlock(nil, blockNumber, blockHash)
+	// The concurrent saves stay idempotent: exactly one row for the inclusion.
+	got, err := storage.GetTransaction(nil, txHash, blockHash)
 	require.NoError(t, err)
-	require.Len(t, byBlock, 1)
+	require.NotNil(t, got)
+	require.Equal(t, 1, countTransactionsForTest(t, storage))
 }

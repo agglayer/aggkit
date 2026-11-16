@@ -161,6 +161,18 @@ cache can be filled without implying the consumer rows were updated.
 - Missing transaction gaps reuse the already-downloaded log cache. Adding a new topic0 requirement
   **widens the topic filter** over the shared cached logs rather than re-downloading the logs.
 
+**Migration note.** Switching an existing deployment from the legacy downloader to the shared
+downloader is **not** free of historical work. The shared address (the L1 bridge contract) is
+registered by its **earliest consumer** at that consumer's configured initial block, so the shared
+downloader starts downloading the address's log coverage from that earliest frontier — not from the
+consumer's already-committed checkpoint. The code deliberately does **not** take an `L + 1`
+shortcut for the shared address: the historical log range is still required for the address as a
+whole (old-record backfill and reorgs below the consumer checkpoint can need logs older than `L`),
+and skipping it would leave those reads waiting for coverage that is never downloaded. As a result,
+a node switched to the shared downloader may have to download the address's history once, and this
+page makes **no promise** that switching avoids historical downloads. Only the *transaction*
+requirement is future-only and starts at `L + 1` (see above); the log coverage is not.
+
 ### Transaction worker resources
 
 - The foreground resolver and the background worker share a single RPC budget: the transaction RPC

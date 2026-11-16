@@ -26,6 +26,19 @@ const (
 	dbTimeout = 2 * time.Minute
 	// Number of workers for parallel txn sender extraction
 	numWorkers = 5
+	// backfillRetryBaseDelay is the delay before the first retry of a batch whose records could
+	// not be resolved yet. It is deliberately a package constant (not an operator-facing TOML
+	// field) so the retry policy stays internal and does not add configuration surface.
+	backfillRetryBaseDelay = 1 * time.Second
+	// backfillRetryMaxDelay caps the exponential backoff between retries. Capping keeps
+	// cancellation observable within a bounded window and prevents an unbounded sleep.
+	backfillRetryMaxDelay = 30 * time.Second
+	// backfillMaxConsecutiveRetries bounds the retries of a batch for errors that are neither the
+	// "coverage not available yet" sentinel nor a permanent inclusion mismatch. Coverage
+	// unavailability is retried without a fixed cap while the context is active because the
+	// multidownloader may take hours to fill history; a transport/DB error is retried only a
+	// bounded number of times before the backfill stops with a clear error instead of spinning.
+	backfillMaxConsecutiveRetries = 5
 )
 
 // ErrBackfillBackendRequired is returned when a transaction provider is configured without the
@@ -58,6 +71,15 @@ type BackfillTxnSender struct {
 	// records being backfilled. It is required whenever provider is set so the exact original log
 	// (never a synthesized one, never a direct RPC FilterLogs) is passed to the provider.
 	backend types.MultiDownloaderLegacy
+	// retryDelay returns the delay before the next retry of a batch. It is a field (not a bare
+	// constant) so unit tests can inject a zero/fast delay instead of waiting for real backoff.
+	retryDelay func(attempt int) time.Duration
+	// sleep waits for the retry delay or until ctx is done, whichever comes first. It is a field
+	// so tests can inject a deterministic replacement and never depend on wall-clock time.
+	sleep func(ctx context.Context, d time.Duration) error
+	// maxConsecutiveRetries bounds retries of a batch for errors that are not the coverage
+	// sentinel. It defaults to backfillMaxConsecutiveRetries and is a field so tests can shrink it.
+	maxConsecutiveRetries int
 }
 
 // BackfillOption customizes BackfillTxnSender construction.
@@ -94,11 +116,14 @@ func NewBackfillTxnSender(
 	opts ...BackfillOption,
 ) (*BackfillTxnSender, error) {
 	backfiller := &BackfillTxnSender{
-		log:               logger,
-		client:            client,
-		bridgeAddr:        bridgeAddr,
-		dbTimeout:         dbTimeout,
-		syncFromInBridges: syncFromInBridges,
+		log:                   logger,
+		client:                client,
+		bridgeAddr:            bridgeAddr,
+		dbTimeout:             dbTimeout,
+		syncFromInBridges:     syncFromInBridges,
+		retryDelay:            defaultBackfillRetryDelay,
+		sleep:                 sleepWithContext,
+		maxConsecutiveRetries: backfillMaxConsecutiveRetries,
 	}
 	for _, opt := range opts {
 		opt(backfiller)
@@ -139,7 +164,15 @@ func (b *BackfillTxnSender) BackfillAll(ctx context.Context) error {
 	return nil
 }
 
-// backfillTable processes a specific table to backfill txn_sender field
+// backfillTable processes a specific table to backfill txn_sender field.
+//
+// The loop is a cancellation-aware, bounded-backoff scheduler rather than a one-shot scan: a batch
+// whose records cannot be resolved *yet* (for example because the multidownloader has not covered
+// their blocks) is retried once coverage advances instead of abandoning the whole table after the
+// first failure. Successful updates are persisted by processBatch before it returns, so the failed
+// rows are the only ones re-selected on the next pass and the successful work is never lost. This
+// matters because the backfill job is started once at startup: without the retry the historical
+// rows would stay empty until the next process restart.
 //
 //nolint:unparam // tableName is kept for future extensibility
 func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string) error {
@@ -157,16 +190,17 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 	}
 
 	b.log.Infof("Found %d records in %s table that need txn_sender or from_address backfilling", totalCount, tableName)
-	pending := totalCount
-	var aggErr error
-	// Process records in batches
+
+	var backfilled int
+	// consecutiveRetries counts the retries of the *current* failing batch. It is reset as soon as
+	// a batch makes progress, so the bound applies to a sustained failure and not to the total
+	// number of retries across the whole table.
+	consecutiveRetries := 0
 	for {
 		// Check if context is cancelled before processing next batch
-		select {
-		case <-ctx.Done():
+		if err := ctx.Err(); err != nil {
 			b.log.Info("backfill process cancelled, stopping gracefully")
-			return ctx.Err()
-		default:
+			return err
 		}
 
 		records, err := b.getRecordsNeedingBackfill(ctx, tableName, batchSize)
@@ -178,27 +212,121 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 		}
 
 		processed, batchErr := b.processBatch(ctx, tableName, records)
-		pending -= len(records)
-		b.log.Infof("%d records remaining to backfill in %s table", pending, tableName)
-		if batchErr != nil {
-			// Successful updates were already persisted by processBatch. Do not loop over the same
-			// rows again: the failed records stay unchanged and the caller can rerun once the cause
-			// (for example missing multidownloader coverage) is resolved.
-			if ctx.Err() != nil {
-				return batchErr
-			}
-			aggErr = errors.Join(aggErr,
-				fmt.Errorf("%d/%d records backfilled in %s: %w", processed, len(records), tableName, batchErr))
-			break
+		backfilled += processed
+		if batchErr == nil {
+			consecutiveRetries = 0
+			b.log.Infof("backfilled %d records in %s table so far", backfilled, tableName)
+			continue
 		}
-	}
 
-	if aggErr != nil {
-		return aggErr
+		// Successful updates were already persisted by processBatch; the failed rows stay unchanged
+		// and are re-selected on the next pass. Honour cancellation before scheduling a retry so a
+		// cancelled backfill never sleeps and never leaves a pending RPC behind.
+		if err := ctx.Err(); err != nil {
+			return batchErr
+		}
+
+		switch classifyBackfillBatchError(batchErr) {
+		case backfillBatchPermanent:
+			// Retrying the same records cannot succeed (for example a stale canonical inclusion):
+			// stop with a clear error instead of spinning on the same invalid data.
+			return fmt.Errorf("%d/%d records backfilled in %s before a permanent failure: %w",
+				processed, len(records), tableName, batchErr)
+		case backfillBatchTransient:
+			consecutiveRetries++
+			if consecutiveRetries > b.maxConsecutiveRetries {
+				// Bounded retries exhausted for a transport/DB error: return a clear error rather
+				// than retrying forever. Coverage unavailability is handled below and is not capped.
+				return fmt.Errorf(
+					"%d/%d records backfilled in %s after %d consecutive failed attempts: %w",
+					processed, len(records), tableName, consecutiveRetries-1, batchErr)
+			}
+		case backfillBatchUnavailable:
+			// The records are simply not covered yet. Retry without a fixed cap while the context
+			// is active so hour-long historical fills complete without a process restart.
+			consecutiveRetries++
+		}
+
+		delay := b.retryDelay(consecutiveRetries)
+		b.log.Warnf("backfill batch for %s failed (%d/%d records backfilled); retry %d in %s: %v",
+			tableName, processed, len(records), consecutiveRetries, delay, batchErr)
+		if err := b.sleep(ctx, delay); err != nil {
+			return err
+		}
 	}
 
 	b.log.Infof("Completed backfilling for %s table", tableName)
 	return nil
+}
+
+// backfillBatchDisposition classifies a failed batch so backfillTable knows whether to retry and
+// how the retry should be bounded.
+type backfillBatchDisposition int
+
+const (
+	// backfillBatchPermanent means retrying the same records cannot succeed (for example a stale
+	// canonical inclusion): the backfill stops with a clear error instead of spinning.
+	backfillBatchPermanent backfillBatchDisposition = iota
+	// backfillBatchUnavailable means the records are simply not covered yet (the multidownloader
+	// history is still filling): retry without a fixed cap while the context is active.
+	backfillBatchUnavailable
+	// backfillBatchTransient means a retryable transport/DB error: retry with a bounded cap.
+	backfillBatchTransient
+)
+
+// classifyBackfillBatchError maps a batch error to its disposition. The coverage sentinel is
+// retried indefinitely (bounded only by the context) because the multidownloader can take hours to
+// fill history; the inclusion-mismatch sentinel is permanent because the same stale log can never
+// resolve; every other error is treated as a bounded transient retry.
+func classifyBackfillBatchError(err error) backfillBatchDisposition {
+	switch {
+	case errors.Is(err, types.ErrTransactionInclusionMismatch):
+		return backfillBatchPermanent
+	case errors.Is(err, types.ErrTransactionUnavailable):
+		return backfillBatchUnavailable
+	default:
+		return backfillBatchTransient
+	}
+}
+
+// defaultBackfillRetryDelay returns an exponentially growing delay capped at backfillRetryMaxDelay.
+// It uses the existing common retry policy shape (a growing delay with a maximum) without adding a
+// new operator-facing configuration knob.
+func defaultBackfillRetryDelay(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	delay := backfillRetryBaseDelay
+	for i := 1; i < attempt; i++ {
+		if delay >= backfillRetryMaxDelay/2 {
+			return backfillRetryMaxDelay
+		}
+		delay *= 2
+	}
+	return delay
+}
+
+// sleepWithContext waits for d or until ctx is done, whichever comes first. It uses a single timer
+// (no goroutine per sleep) and always stops it, so a cancelled backfill returns promptly without
+// leaking a timer or leaving a pending RPC behind. A non-positive delay yields to the scheduler
+// through a non-blocking context check so a zero delay cannot busy-spin.
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // RecordToBackfill represents a record that needs txn_sender backfilling

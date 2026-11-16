@@ -1891,3 +1891,52 @@ func TestBackfillTxnSenderIntegration(t *testing.T) {
 		t.Logf("Backfilling failed as expected (transaction not found): %v", err)
 	}
 }
+
+// TestBackfillTxnSender_TransientLegacyErrorThenHealthy verifies that a single transient legacy RPC
+// error (for example a 429) no longer aborts the whole table: the failed batch is retried with
+// backoff and the row is filled once the RPC recovers.
+func TestBackfillTxnSender_TransientLegacyErrorThenHealthy(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test.db")
+	require.NoError(t, migrations.RunMigrations(dbPath))
+
+	database, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	defer database.Close()
+
+	ctx := t.Context()
+	tx, err := db.NewTx(ctx, database)
+	require.NoError(t, err)
+	_, err = tx.Exec(`INSERT INTO block (num) VALUES (1)`)
+	require.NoError(t, err)
+	require.NoError(t, meddler.Insert(tx, bridgeTableName, newTestBridge(1, 0,
+		"0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")))
+	require.NoError(t, tx.Commit())
+	_, err = database.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1 AND block_pos = 0")
+	require.NoError(t, err)
+
+	mockClient := mocks.NewEthClienter(t)
+	// First attempt fails with a transient transport error; the retry succeeds.
+	mockClient.EXPECT().Call(mock.Anything, GetTransactionByHashEndpoint, mock.Anything).
+		Return(errors.New("429 too many requests")).Once()
+	mockClient.EXPECT().Call(mock.Anything, GetTransactionByHashEndpoint, mock.Anything).
+		Run(func(result any, method string, args ...any) {
+			arg, ok := result.(*Transaction)
+			require.True(t, ok)
+			arg.FromRaw = testAddress
+			arg.To = "0x1234"
+		}).Return(nil).Maybe()
+
+	backfiller, err := NewBackfillTxnSender(dbPath, mockClient, common.HexToAddress("0x1234"), true,
+		log.WithFields("module", "test"))
+	require.NoError(t, err)
+	defer backfiller.Close()
+	backfiller.retryDelay = func(int) time.Duration { return 0 }
+
+	require.NoError(t, backfiller.backfillTable(ctx, bridgeTableName))
+
+	var sender string
+	require.NoError(t, database.QueryRow(
+		"SELECT txn_sender FROM bridge WHERE block_num = 1 AND block_pos = 0").Scan(&sender))
+	require.Equal(t, testAddress, sender, "the retry after a transient error must fill the row")
+}

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -44,7 +45,7 @@ type EVMMultidownloader struct {
 	syncersConfig        mdrtypes.SetSyncerConfig
 	reorgProcessor       mdrtypes.ReorgProcessor
 
-	mutex      sync.Mutex
+	mutex      sync.RWMutex
 	state      *State // current state of synced and pending segments if nil not initialized
 	statistics *Statistics
 
@@ -75,6 +76,51 @@ type EVMMultidownloader struct {
 	// bounds the shared HTTP concurrency.
 	txNotify   chan struct{}
 	txInflight *transactionInflight
+
+	// txScheduler holds the incremental per-registration backfill cursors so the
+	// worker never rescans already completed history. It is created in the
+	// constructor and reset on every Start/reorg.
+	txScheduler *transactionScheduler
+
+	// txStats are bounded, cheap diagnostic counters proving the incremental
+	// work reduction. They are never logged per row.
+	txStats transactionWorkerStats
+}
+
+// transactionWorkerStats is a set of bounded, lock-free diagnostic counters for
+// the background transaction worker. They exist to prove the incremental work
+// reduction (completed history is not re-read) without emitting per-row logs.
+type transactionWorkerStats struct {
+	scans        atomic.Uint64
+	pagesScanned atomic.Uint64
+	retryPages   atomic.Uint64
+	logsExamined atomic.Uint64
+	cacheLookups atomic.Uint64
+	failures     atomic.Uint64
+}
+
+// TransactionWorkerDiagnostics is the immutable snapshot of the background
+// transaction worker counters. It is exposed for profiling and unit tests; it
+// never performs I/O and never includes any RPC URL.
+type TransactionWorkerDiagnostics struct {
+	Scans        uint64 `json:"scans"`
+	PagesScanned uint64 `json:"pagesScanned"`
+	RetryPages   uint64 `json:"retryPages"`
+	LogsExamined uint64 `json:"logsExamined"`
+	CacheLookups uint64 `json:"cacheLookups"`
+	Failures     uint64 `json:"failures"`
+}
+
+// TransactionWorkerDiagnostics returns a snapshot of the worker counters.
+func (dh *EVMMultidownloader) TransactionWorkerDiagnostics() TransactionWorkerDiagnostics {
+	return TransactionWorkerDiagnostics{
+		Scans:        dh.txStats.scans.Load(),
+		PagesScanned: dh.txStats.pagesScanned.Load(),
+		RetryPages:   dh.txStats.retryPages.Load(),
+		LogsExamined: dh.txStats.logsExamined.Load(),
+		CacheLookups: dh.txStats.cacheLookups.Load(),
+		Failures:     dh.txStats.failures.Load(),
+	}
 }
 
 var _ aggkittypes.MultiDownloaderLegacy = (*EVMMultidownloader)(nil)
@@ -144,6 +190,7 @@ func NewEVMMultidownloader(log aggkitcommon.Logger,
 		txRequestTimeout:     defaultTransactionRequestTimeout,
 		txNotify:             make(chan struct{}, 1),
 		txInflight:           newTransactionInflight(context.Background(), cfg.MaxParallelBlockHeaderRetrieval),
+		txScheduler:          newTransactionScheduler(),
 	}, nil
 }
 
@@ -173,21 +220,8 @@ func (dh *EVMMultidownloader) RegisterSyncer(data aggkittypes.SyncerConfig) erro
 	// Store an owned copy so a caller mutating the nested slices after
 	// registration can never corrupt the registered configuration. The syncer
 	// config set is the single source of truth (there is no parallel map).
-	dh.syncersConfig.Add(cloneSyncerConfig(data))
+	dh.syncersConfig.Add(mdrtypes.CopySyncerConfig(data))
 	return nil
-}
-
-// cloneSyncerConfig returns a deep copy of cfg, protecting the registered
-// configuration from later mutation of the caller's slices.
-func cloneSyncerConfig(cfg aggkittypes.SyncerConfig) aggkittypes.SyncerConfig {
-	out := cfg
-	if cfg.ContractAddresses != nil {
-		out.ContractAddresses = append([]common.Address(nil), cfg.ContractAddresses...)
-	}
-	if cfg.TransactionRequirements.Topic0 != nil {
-		out.TransactionRequirements.Topic0 = append([]common.Hash(nil), cfg.TransactionRequirements.Topic0...)
-	}
-	return out
 }
 
 // Initialize initializes the multidownloader. At this point all syncers
@@ -423,6 +457,12 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 				continue
 			}
 			dh.state = newState
+			// Reorg: rewind the incremental transaction scheduler from the
+			// first reorged block so new canonical logs re-downloaded behind
+			// the cursor are never skipped. Rewinding the cursor (not the
+			// cached rows) is what preserves correctness: unchanged blocks
+			// stay a cache hit and only the reorged region is re-examined.
+			dh.rewindTransactionSchedulerFrom(reorgErr.OffendingBlockNumber)
 			dh.mutex.Unlock()
 			break
 		}
@@ -653,8 +693,8 @@ func getBlockNumbers(logs []types.Log) []uint64 {
 	return result
 }
 func (dh *EVMMultidownloader) IsInitialized() bool {
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
+	dh.mutex.RLock()
+	defer dh.mutex.RUnlock()
 	return dh.state != nil
 }
 
@@ -663,30 +703,30 @@ func (dh *EVMMultidownloader) isInitializedNoMutex() bool {
 }
 
 func (dh *EVMMultidownloader) IsAvailable(query mdrtypes.LogQuery) bool {
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
+	dh.mutex.RLock()
+	defer dh.mutex.RUnlock()
 	return dh.state.IsAvailable(query)
 }
 
 // Check if the given log query is partially available
 func (dh *EVMMultidownloader) IsPartiallyAvailable(query mdrtypes.LogQuery) (bool, *mdrtypes.LogQuery) {
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
+	dh.mutex.RLock()
+	defer dh.mutex.RUnlock()
 	return dh.state.IsPartiallyAvailable(query)
 }
 
 // getTotalPendingBlockRange returns the full pending block range without taking in
 // consideration addrs
 func (dh *EVMMultidownloader) getTotalPendingBlockRange() *aggkitcommon.BlockRange {
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
+	dh.mutex.RLock()
+	defer dh.mutex.RUnlock()
 	br := dh.state.GetTotalPendingBlockRange()
 	return br
 }
 
 func (dh *EVMMultidownloader) getUnsafeLogQueries(blockHeaders []*aggkittypes.BlockHeader) []mdrtypes.LogQuery {
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
+	dh.mutex.RLock()
+	defer dh.mutex.RUnlock()
 	logQueries := make([]mdrtypes.LogQuery, 0, len(blockHeaders))
 	for _, bh := range blockHeaders {
 		logQueries = append(logQueries, mdrtypes.NewLogQueryBlockHash(
@@ -699,9 +739,9 @@ func (dh *EVMMultidownloader) getUnsafeLogQueries(blockHeaders []*aggkittypes.Bl
 }
 
 func (dh *EVMMultidownloader) newStateAftersLogQueries(queries []mdrtypes.LogQuery) (*State, error) {
-	dh.mutex.Lock()
+	dh.mutex.RLock()
 	state := dh.state.Clone()
-	dh.mutex.Unlock()
+	dh.mutex.RUnlock()
 	for _, logQueryData := range queries {
 		err := state.Synced.AddLogQuery(&logQueryData)
 		if err != nil {
@@ -799,12 +839,15 @@ func (dh *EVMMultidownloader) StepUnsafe(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("Safe/Step: cannot store data: %w", err)
 	}
 	// New canonical logs are committed: wake the transaction backfill worker.
-	dh.notifyTransactionWorker()
 
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 	dh.log.Debugf("Unsafe/Step: updating state in memory %s", pendingBlockRange.String())
 	dh.state = newState
+	// New canonical logs are committed: wake the transaction backfill worker
+	// AFTER the in-memory state is updated, so an incremental scan resumes at
+	// the new frontier instead of observing a stale (not yet extended) coverage.
+	dh.notifyTransactionWorker()
 	finished := dh.state.IsSyncFinished()
 	totalBlocksPendingToSync := dh.state.TotalBlocksPendingToSync()
 	dh.log.Debugf("Unsafe/Step: elapsed=%s finished br=%s logs=%d blocksHeaders=%d pendingBlocks=%d ETA=%s ",
@@ -857,9 +900,9 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	}
 
 	// Calculate new state (not set in memory until commit is successful)
-	dh.mutex.Lock()
+	dh.mutex.RLock()
 	newState := dh.state.Clone()
-	dh.mutex.Unlock()
+	dh.mutex.RUnlock()
 	// Update synced segments
 	err = newState.OnNewSyncedLogQuery(logQueryData)
 	if err != nil {
@@ -873,12 +916,14 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("Safe/Step: cannot store data: %w", err)
 	}
-	// New canonical logs are committed: wake the transaction backfill worker.
-	dh.notifyTransactionWorker()
 	// Update in-memory synced segments (after valid commit)
 	dh.mutex.Lock()
 	defer dh.mutex.Unlock()
 	dh.state = newState
+	// New canonical logs are committed: wake the transaction backfill worker
+	// AFTER the in-memory state is updated, so an incremental scan resumes at
+	// the new frontier instead of observing a stale (not yet extended) coverage.
+	dh.notifyTransactionWorker()
 	finished := dh.state.IsSyncFinished()
 	totalBlocksPendingToSync := dh.state.TotalBlocksPendingToSync()
 	dh.log.Debugf("Safe/Step: elapsed=%s finished br=%s logs=%d blocksHeaders=%d pendingBlocks=%d ETA=%s ",

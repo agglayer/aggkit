@@ -56,6 +56,25 @@ type LogsHookFunc func(ctx context.Context, fromBlock, toBlock uint64, logs []ty
 // refetches the whole block range instead of retrying the same stale log.
 type LogsEnricherFunc func(ctx context.Context, logs []types.Log) error
 
+// ContextualLogAppender builds the events of a single log into the block that is being
+// assembled, using the context of the download that is actually running.
+//
+// It is the context-aware counterpart of the legacy LogAppenderMap function type. It exists so
+// that callers whose appender must perform context-bound work (for example resolving the
+// transaction that produced the log through a shared provider whose WaitTx/flight can block)
+// receive the active download context instead of a constructor-time context that may already be
+// canceled. A legacy LogAppenderMap function captures its context at construction time, so a
+// download generation cancelled after construction would leave it blocked until that stale context
+// itself expired.
+//
+// It is an OPTIONAL capability: when a topic has a contextual appender installed the downloader
+// calls it with the active download context; otherwise it falls back to the legacy LogAppenderMap
+// function for that topic.
+type ContextualLogAppender func(ctx context.Context, b *EVMBlock, l types.Log) error
+
+// ContextualLogAppenderMap maps an EVM event topic to its optional contextual appender.
+type ContextualLogAppenderMap map[common.Hash]ContextualLogAppender
+
 // GetTopics returns the EVM event topics that are being queried
 func (m LogAppenderMap) GetTopics() []common.Hash {
 	topics := make([]common.Hash, 0, len(m))
@@ -157,11 +176,37 @@ func (d *EVMDownloader) SetLogsHook(hook LogsHookFunc) LogsHookFunc {
 // SetLogsEnricher sets an optional contextual log enricher on the underlying
 // EVMDownloaderImplementation. It returns the previous enricher, if any. Returns nil if the
 // underlying implementation does not support it.
+//
+// It preserves the legacy API and cannot distinguish a successful first install from an
+// unsupported implementation (both return nil). Callers that must fail closed when the hook was
+// not installed should use InstallLogsEnricher instead.
 func (d *EVMDownloader) SetLogsEnricher(enricher LogsEnricherFunc) LogsEnricherFunc {
+	prev, _ := d.InstallLogsEnricher(enricher)
+	return prev
+}
+
+// InstallLogsEnricher installs an optional contextual log enricher on the underlying
+// EVMDownloaderImplementation and reports whether the underlying implementation actually supports
+// it. Unlike SetLogsEnricher it distinguishes a successful install (installed=true) from a
+// downloader whose underlying implementation does not expose the hook (installed=false), so callers
+// that require the enrichment (for example the multidownloader transaction cache warm-up) can fail
+// closed instead of silently continuing.
+func (d *EVMDownloader) InstallLogsEnricher(enricher LogsEnricherFunc) (LogsEnricherFunc, bool) {
 	if impl, ok := d.EVMDownloaderInterface.(*EVMDownloaderImplementation); ok {
-		return impl.SetLogsEnricher(enricher)
+		return impl.InstallLogsEnricher(enricher)
 	}
-	return nil
+	return nil, false
+}
+
+// InstallContextualLogAppenders installs the optional contextual appenders on the underlying
+// EVMDownloaderImplementation and reports whether the underlying implementation actually supports
+// them. It returns false when the underlying implementation is not an *EVMDownloaderImplementation,
+// so callers can fail closed instead of silently falling back to a constructor-time appender.
+func (d *EVMDownloader) InstallContextualLogAppenders(appenders ContextualLogAppenderMap) bool {
+	if impl, ok := d.EVMDownloaderInterface.(*EVMDownloaderImplementation); ok {
+		return impl.InstallContextualLogAppenders(appenders)
+	}
+	return false
 }
 
 // RuntimeData returns the runtime data: chainID + addresses to query
@@ -434,22 +479,43 @@ type EVMDownloaderImplementation struct {
 	reorgDetectorID        string
 	logsHook               LogsHookFunc
 	logsEnricher           LogsEnricherFunc
+	contextualAppender     ContextualLogAppenderMap
 }
 
-// SetLogsHook sets an optional hook that is called after fetching logs and can modify them before processing.
-// It returns the previous hook, if any.
+// SetLogsHook sets an optional hook that is called after fetching logs and can modify them before
+// processing. It returns the previous hook, if any.
 func (d *EVMDownloaderImplementation) SetLogsHook(hook LogsHookFunc) LogsHookFunc {
 	prev := d.logsHook
 	d.logsHook = hook
 	return prev
 }
 
-// SetLogsEnricher sets an optional enricher that is invoked after the logs hook and before the
-// appender builds the events. It returns the previous enricher, if any.
-func (d *EVMDownloaderImplementation) SetLogsEnricher(enricher LogsEnricherFunc) LogsEnricherFunc {
+// InstallLogsEnricher installs an optional enricher that is invoked after the logs hook and before
+// the appender builds the events. It returns the previous enricher, if any, and reports whether the
+// concrete implementation supports the hook (always true here).
+func (d *EVMDownloaderImplementation) InstallLogsEnricher(enricher LogsEnricherFunc) (LogsEnricherFunc, bool) {
 	prev := d.logsEnricher
 	d.logsEnricher = enricher
+	return prev, true
+}
+
+// SetLogsEnricher preserves the legacy API and returns the previous enricher, if any.
+func (d *EVMDownloaderImplementation) SetLogsEnricher(enricher LogsEnricherFunc) LogsEnricherFunc {
+	prev, _ := d.InstallLogsEnricher(enricher)
 	return prev
+}
+
+// InstallContextualLogAppenders installs the optional contextual appenders, keyed by event topic.
+// The concrete implementation always supports them and reports true. Topics that are only present in
+// the contextual map are added to the queried topics so their logs are still fetched.
+func (d *EVMDownloaderImplementation) InstallContextualLogAppenders(appenders ContextualLogAppenderMap) bool {
+	d.contextualAppender = appenders
+	for topic := range appenders {
+		if !slices.Contains(d.topicsToQuery, topic) {
+			d.topicsToQuery = append(d.topicsToQuery, topic)
+		}
+	}
+	return true
 }
 
 // NewEVMDownloaderImplementation creates a new EVMDownloaderImplementation
@@ -773,8 +839,9 @@ func (d *EVMDownloaderImplementation) appendLogsToBlocks(
 			blocks = append(blocks, latestBlock)
 		}
 
-		appenderFn := d.appender[l.Topics[0]]
-		if appenderFn == nil {
+		legacyAppenderFn := d.appender[l.Topics[0]]
+		contextualAppenderFn := d.contextualAppender[l.Topics[0]]
+		if legacyAppenderFn == nil && contextualAppenderFn == nil {
 			d.log.Debugf("no appender function found for topic %s, ignoring log at block %d",
 				l.Topics[0].Hex(), l.BlockNumber)
 			continue
@@ -785,7 +852,7 @@ func (d *EVMDownloaderImplementation) appendLogsToBlocks(
 			if ctx.Err() != nil {
 				return nil, appendLogsCanceled
 			}
-			err := appenderFn(latestBlock, l)
+			err := d.appendLog(ctx, latestBlock, l, legacyAppenderFn, contextualAppenderFn)
 			if err == nil {
 				break
 			}
@@ -803,6 +870,20 @@ func (d *EVMDownloaderImplementation) appendLogsToBlocks(
 	}
 
 	return blocks, appendLogsOK
+}
+
+// appendLog appends a single log to the block being built. When a contextual appender is installed
+// for the log topic it is used with the active download context passed explicitly; otherwise the
+// legacy LogAppenderMap function is used. The context is passed per call so the appender is never
+// bound to a mutable receiver context that a concurrent generation could overwrite.
+func (d *EVMDownloaderImplementation) appendLog(
+	ctx context.Context, b *EVMBlock, l types.Log,
+	legacy func(*EVMBlock, types.Log) error, contextual ContextualLogAppender,
+) error {
+	if contextual != nil {
+		return contextual(ctx, b, l)
+	}
+	return legacy(b, l)
 }
 
 func filterQueryToString(query ethereum.FilterQuery) string {

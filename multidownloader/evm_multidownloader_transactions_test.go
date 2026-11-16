@@ -453,6 +453,9 @@ func TestTransactionByLog_ReplayBelowFrontierAllowed(t *testing.T) {
 // Demand derivation
 // ---------------------------------------------------------------------------
 
+// TestBuildTransactionDemands_NonLossy pins that one demand is derived per
+// (registration, address): distinct registrations keep their own topic0 and
+// target finality and are never lossily merged per address.
 func TestBuildTransactionDemands_NonLossy(t *testing.T) {
 	td := newEVMMultidownloaderTestData(t, false)
 	addr := txFixtureAddr
@@ -485,6 +488,8 @@ func TestBuildTransactionDemands_NonLossy(t *testing.T) {
 	for _, d := range demands {
 		bySyncer[d.SyncerID] = d
 	}
+	require.Equal(t, txFixtureAddr, bySyncer["s1"].Address)
+	require.Equal(t, txFixtureAddr, bySyncer["s2"].Address)
 	require.Equal(t, uint64(100), bySyncer["s1"].FromBlock, "max(FromBlock, tr.FromBlock)")
 	require.Equal(t, uint64(200), bySyncer["s2"].FromBlock)
 	require.Equal(t, aggkittypes.FinalizedBlock, bySyncer["s1"].ToBlock)
@@ -493,6 +498,88 @@ func TestBuildTransactionDemands_NonLossy(t *testing.T) {
 	require.Equal(t, []common.Hash{txFixtureT1}, bySyncer["s2"].Topic0)
 }
 
+// TestBuildTransactionDemands_ClampFrontier pins that the effective from-block
+// is max(syncer.FromBlock, TransactionRequirements.FromBlock), in both
+// directions.
+func TestBuildTransactionDemands_ClampFrontier(t *testing.T) {
+	t.Run("requirement later than syncer", func(t *testing.T) {
+		td := newEVMMultidownloaderTestData(t, false)
+		require.NoError(t, td.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+			SyncerID:          "s1",
+			ContractAddresses: []common.Address{txFixtureAddr},
+			FromBlock:         10,
+			ToBlock:           aggkittypes.LatestBlock,
+			TransactionRequirements: aggkittypes.TransactionRequirement{
+				Enabled:   true,
+				FromBlock: 100,
+			},
+		}))
+
+		demands := td.mdr.buildTransactionDemands()
+		require.Len(t, demands, 1)
+		require.Equal(t, uint64(100), demands[0].FromBlock)
+	})
+
+	t.Run("syncer later than requirement", func(t *testing.T) {
+		td := newEVMMultidownloaderTestData(t, false)
+		require.NoError(t, td.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+			SyncerID:          "s1",
+			ContractAddresses: []common.Address{txFixtureAddr},
+			FromBlock:         500,
+			ToBlock:           aggkittypes.LatestBlock,
+			TransactionRequirements: aggkittypes.TransactionRequirement{
+				Enabled:   true,
+				FromBlock: 100,
+			},
+		}))
+
+		demands := td.mdr.buildTransactionDemands()
+		require.Len(t, demands, 1)
+		require.Equal(t, uint64(500), demands[0].FromBlock)
+	})
+}
+
+// TestBuildTransactionDemands_ToBlockPreserved pins that the target finality of
+// each registration is carried through verbatim (numeric and tag): the runtime
+// does not clamp the demand's upper bound.
+func TestBuildTransactionDemands_ToBlockPreserved(t *testing.T) {
+	t.Run("numeric", func(t *testing.T) {
+		td := newEVMMultidownloaderTestData(t, false)
+		require.NoError(t, td.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+			SyncerID:          "s1",
+			ContractAddresses: []common.Address{txFixtureAddr},
+			FromBlock:         1,
+			ToBlock:           *aggkittypes.NewBlockNumber(150),
+			TransactionRequirements: aggkittypes.TransactionRequirement{
+				Enabled: true,
+			},
+		}))
+
+		demands := td.mdr.buildTransactionDemands()
+		require.Len(t, demands, 1)
+		require.Equal(t, *aggkittypes.NewBlockNumber(150), demands[0].ToBlock)
+	})
+
+	t.Run("tag", func(t *testing.T) {
+		td := newEVMMultidownloaderTestData(t, false)
+		require.NoError(t, td.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+			SyncerID:          "s1",
+			ContractAddresses: []common.Address{txFixtureAddr},
+			FromBlock:         1,
+			ToBlock:           aggkittypes.LatestBlock,
+			TransactionRequirements: aggkittypes.TransactionRequirement{
+				Enabled: true,
+			},
+		}))
+
+		demands := td.mdr.buildTransactionDemands()
+		require.Len(t, demands, 1)
+		require.Equal(t, aggkittypes.LatestBlock, demands[0].ToBlock)
+	})
+}
+
+// TestBuildTransactionDemands_DisabledProducesNothing pins that a disabled
+// (zero-value) requirement yields no demand at all.
 func TestBuildTransactionDemands_DisabledProducesNothing(t *testing.T) {
 	td := newEVMMultidownloaderTestData(t, false)
 	require.NoError(t, td.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
@@ -502,6 +589,51 @@ func TestBuildTransactionDemands_DisabledProducesNothing(t *testing.T) {
 		ToBlock:           aggkittypes.LatestBlock,
 	}))
 	require.Empty(t, td.mdr.buildTransactionDemands())
+}
+
+// TestBuildTransactionDemands_Immutable pins that the derived demands are
+// insulated from later mutation of both the caller-owned config and the
+// snapshot returned by SyncerConfigs, and that the demand's own Topic0 is a
+// copy.
+func TestBuildTransactionDemands_Immutable(t *testing.T) {
+	td := newEVMMultidownloaderTestData(t, false)
+	addrs := []common.Address{txFixtureAddr}
+	topics := []common.Hash{txFixtureT0}
+	require.NoError(t, td.mdr.RegisterSyncer(aggkittypes.SyncerConfig{
+		SyncerID:          "s1",
+		ContractAddresses: addrs,
+		FromBlock:         1,
+		ToBlock:           aggkittypes.LatestBlock,
+		TransactionRequirements: aggkittypes.TransactionRequirement{
+			Enabled: true,
+			Topic0:  topics,
+		},
+	}))
+
+	// Mutating the caller-owned slices after registration must not change the
+	// derived demands (RegisterSyncer stores an owned copy).
+	addrs[0] = txFixtureFrom
+	topics[0] = txFixtureT1
+	demands := td.mdr.buildTransactionDemands()
+	require.Len(t, demands, 1)
+	require.Equal(t, txFixtureAddr, demands[0].Address)
+	require.Equal(t, []common.Hash{txFixtureT0}, demands[0].Topic0)
+
+	// Mutating the snapshot returned by SyncerConfigs must not change them
+	// either (the snapshot is a deep copy).
+	snapshot := td.mdr.syncersConfig.SyncerConfigs()
+	require.Len(t, snapshot, 1)
+	snapshot[0].ContractAddresses[0] = txFixtureFrom
+	snapshot[0].TransactionRequirements.Topic0[0] = txFixtureT1
+	demands = td.mdr.buildTransactionDemands()
+	require.Len(t, demands, 1)
+	require.Equal(t, txFixtureAddr, demands[0].Address)
+	require.Equal(t, []common.Hash{txFixtureT0}, demands[0].Topic0)
+
+	// Mutating the demand's own Topic0 must not leak back into the config.
+	demands[0].Topic0[0] = txFixtureT1
+	fresh := td.mdr.buildTransactionDemands()
+	require.Equal(t, []common.Hash{txFixtureT0}, fresh[0].Topic0)
 }
 
 // ---------------------------------------------------------------------------

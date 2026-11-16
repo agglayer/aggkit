@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -70,6 +71,14 @@ var (
 func errTransactionUnavailable(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", aggkittypes.ErrTransactionUnavailable, fmt.Sprintf(format, args...))
 }
+
+// testHookAfterCoverageBeforePlan, when non-nil, is invoked by the transaction
+// worker while it holds the multidownloader read lock, after reading the synced
+// coverage and before stamping the plan. It exists only so tests can
+// deterministically interleave a reorg with the coverage read (proving that the
+// coverage read and the plan are atomic with respect to a reorg publication); it
+// is nil in production and never performs work there.
+var testHookAfterCoverageBeforePlan func()
 
 // transactionDemand is the non-lossy, per-registration transaction requirement
 // of a single syncer. It is intentionally NOT flattened/merged across syncers:
@@ -218,10 +227,10 @@ func (dh *EVMMultidownloader) TransactionByLog(ctx context.Context,
 //     stale log forever.
 func (dh *EVMMultidownloader) checkLogBlockCoverage(lg *ethtypes.Log) error {
 	// Verify the state's full single-block/address coverage under the mutex.
-	dh.mutex.Lock()
+	dh.mutex.RLock()
 	covered := dh.state != nil &&
 		dh.state.IsAvailable(mdrtypes.NewLogQuery(lg.BlockNumber, lg.BlockNumber, []common.Address{lg.Address}))
-	dh.mutex.Unlock()
+	dh.mutex.RUnlock()
 
 	header, _, err := dh.storage.GetBlockHeaderByNumber(nil, lg.BlockNumber)
 	if err != nil {
@@ -490,6 +499,15 @@ func (dh *EVMMultidownloader) startTransactionWorker(ctx context.Context) {
 		return
 	}
 	dh.txInflight.setBaseContext(ctx)
+	// Start every run from a clean incremental state: discard the ephemeral
+	// cursors, then reconcile them with the current immutable demand set. The
+	// frontier of each schedule is therefore reconstructed from the coverage
+	// currently known in storage on the first plan of the run (so a restart
+	// re-derives what is already cached and never refetches it), and a
+	// disabled/widened/newly enabled registration is neither conflated with nor
+	// served by a stale schedule.
+	dh.txScheduler.resetAll()
+	dh.txScheduler.syncDemands(dh.transactionDemands)
 	dh.workerWG.Add(1)
 	go func() {
 		defer dh.workerWG.Done()
@@ -497,10 +515,23 @@ func (dh *EVMMultidownloader) startTransactionWorker(ctx context.Context) {
 	}()
 }
 
+// logTransactionWorkerDiagnostics emits a single bounded diagnostic JSON line
+// with the worker counters. It is meant to be called once when the worker
+// stops; the payload is a fixed struct and deliberately contains no RPC URL or
+// any other endpoint/credential.
+func (dh *EVMMultidownloader) logTransactionWorkerDiagnostics() {
+	payload, err := json.Marshal(dh.TransactionWorkerDiagnostics())
+	if err != nil {
+		return
+	}
+	dh.log.Infof("transaction worker stopped: %s", string(payload))
+}
+
 // runTransactionWorker periodically scans the covered log ranges and backfills
 // missing canonical transactions. It also wakes immediately when new logs are
 // committed (notifyTransactionWorker).
 func (dh *EVMMultidownloader) runTransactionWorker(ctx context.Context) {
+	defer dh.logTransactionWorkerDiagnostics()
 	ticker := time.NewTicker(dh.transactionWorkerPeriod())
 	defer ticker.Stop()
 	dh.scanMissingTransactions(ctx)
@@ -528,11 +559,31 @@ func (dh *EVMMultidownloader) notifyTransactionWorker() {
 	}
 }
 
-// snapshotSyncedSegment returns a copy of the synced block range currently
-// registered for the given address, taken under the multidownloader mutex.
-func (dh *EVMMultidownloader) snapshotSyncedSegment(addr common.Address) (aggkitcommon.BlockRange, bool) {
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
+// rewindTransactionSchedulerFrom rewinds the incremental transaction scheduler
+// after a successful reorg so the region at/after firstReorgedBlock is
+// re-examined against the new canonical chain.
+//
+// The cursor — not the cached transaction rows — is what is rewound: every block
+// below the reorg stays behind the frontier and remains a cache hit, while the
+// reorged region is re-scanned so canonical logs re-downloaded behind the cursor
+// are never skipped. Any queued failed page is dropped because the rewind
+// re-covers it from scratch, and the immutable demand set is reconciled first so
+// a registration that was disabled/widened/newly enabled is reconstructed (from
+// the current coverage) instead of being served by a stale schedule.
+func (dh *EVMMultidownloader) rewindTransactionSchedulerFrom(firstReorgedBlock uint64) {
+	if dh.txScheduler == nil {
+		return
+	}
+	dh.txScheduler.syncDemands(dh.transactionDemands)
+	dh.txScheduler.rewindFrom(firstReorgedBlock)
+}
+
+// snapshotSyncedSegmentLocked returns a copy of the synced block range currently
+// registered for the given address. The caller MUST already hold dh.mutex (read
+// or write). It deliberately does not lock so a caller can read the coverage AND
+// stamp a plan under the same critical section without re-entering the RWMutex
+// (a nested RLock while a writer is pending would deadlock).
+func (dh *EVMMultidownloader) snapshotSyncedSegmentLocked(addr common.Address) (aggkitcommon.BlockRange, bool) {
 	if dh.state == nil {
 		return aggkitcommon.BlockRange{}, false
 	}
@@ -543,13 +594,26 @@ func (dh *EVMMultidownloader) snapshotSyncedSegment(addr common.Address) (aggkit
 	return segment.BlockRange, true
 }
 
+// snapshotSyncedSegment returns a copy of the synced block range currently
+// registered for the given address, taken under the multidownloader mutex. It is
+// the locking wrapper around snapshotSyncedSegmentLocked for callers that do not
+// already hold the mutex.
+func (dh *EVMMultidownloader) snapshotSyncedSegment(addr common.Address) (aggkitcommon.BlockRange, bool) {
+	dh.mutex.RLock()
+	defer dh.mutex.RUnlock()
+	return dh.snapshotSyncedSegmentLocked(addr)
+}
+
 // scanMissingTransactions performs one bounded background scan. It only looks
 // at ranges that are already covered (present in the in-memory synced state),
 // so an uncovered query is never treated as complete.
 //
-// It scans page by page and fetches each page with a fixed worker pool, so the
-// memory used is O(page size) and the number of goroutines is O(max
-// concurrency), never O(history).
+// It is INCREMENTAL: for every immutable demand it plans only the pages that
+// are still relevant — the bounded queue of previously failed pages plus the
+// brand new pages that start at the schedule frontier — and commits each page's
+// outcome so a fully enriched page is never read again on a later tick. A page
+// whose transactions could not all be resolved advances the frontier but is
+// retained in the bounded retry queue, so no gap is silently lost.
 func (dh *EVMMultidownloader) scanMissingTransactions(ctx context.Context) {
 	if !dh.transactionsEnabled() {
 		return
@@ -558,6 +622,11 @@ func (dh *EVMMultidownloader) scanMissingTransactions(ctx context.Context) {
 	if len(demands) == 0 {
 		return
 	}
+	dh.txStats.scans.Add(1)
+	// Reconcile the incremental schedules with the current demand set so a
+	// dropped registration is forgotten and a newly enabled/widened one is
+	// constructed (and reconstructed from the current coverage) exactly once.
+	dh.txScheduler.syncDemands(demands)
 	pageSize := uint64(dh.cfg.BlockChunkSize)
 	if pageSize == 0 {
 		pageSize = 1
@@ -566,55 +635,94 @@ func (dh *EVMMultidownloader) scanMissingTransactions(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		// The RPC head lookup stays OUTSIDE the multidownloader lock: it can block
+		// on the network and must never stall a reorg publication.
 		toBlock, err := dh.blockNotifierManager.GetCurrentBlockNumber(ctx, demand.ToBlock)
 		if err != nil {
 			dh.log.Warnf("transaction worker: cannot resolve ToBlock %s for syncer %s: %v",
 				demand.ToBlock.String(), demand.SyncerID, err)
 			continue
 		}
-		synced, ok := dh.snapshotSyncedSegment(demand.Address)
-		if !ok || synced.IsEmpty() {
+		// Read the covered range AND stamp the plan under the SAME read lock. A
+		// reorg publishes the new state and rewinds the scheduler under the write
+		// lock, so holding the read lock across both guarantees the plan is built
+		// from the coverage the rewind already accounted for (and is stamped with
+		// the generation consistent with it). This closes the window where a
+		// shrunken coverage could be observed after the read but before the plan,
+		// which would let an empty (removed) range be stamped with the NEW
+		// generation and then marked complete, skipping the canonical logs
+		// re-downloaded there later.
+		dh.mutex.RLock()
+		synced, ok := dh.snapshotSyncedSegmentLocked(demand.Address)
+		var plan transactionPagePlan
+		if ok && !synced.IsEmpty() {
+			scanRange := synced.Intersect(aggkitcommon.NewBlockRange(demand.FromBlock, toBlock))
+			if !scanRange.IsEmpty() {
+				if testHookAfterCoverageBeforePlan != nil {
+					testHookAfterCoverageBeforePlan()
+				}
+				plan = dh.txScheduler.plan(demand, scanRange.FromBlock, scanRange.ToBlock, pageSize)
+			}
+		}
+		dh.mutex.RUnlock()
+		if len(plan.retries) == 0 && len(plan.pages) == 0 {
 			continue
 		}
-		scanRange := synced.Intersect(aggkitcommon.NewBlockRange(demand.FromBlock, toBlock))
-		if scanRange.IsEmpty() {
-			continue
+		// Retries first (bounded), then brand new pages, so a failed page is
+		// never forgotten while a large first replay still makes progress. Every
+		// page is committed under the plan's generation so a reorg rewind that
+		// happens while these pages are processed discards the now-stale result
+		// instead of advancing the cursor past the reorged region.
+		dh.processTransactionPages(ctx, demand, plan.retries, plan.generation)
+		dh.processTransactionPages(ctx, demand, plan.pages, plan.generation)
+	}
+}
+
+// processTransactionPages processes the given pages in order and commits each
+// page's outcome under the generation they were planned in. A canceled scan
+// never advances the cursor: a page that may only be partially processed is left
+// at the frontier so it is re-planned (and re-attempted) on the next tick. A
+// reorg rewind (or a retry-queue overflow rewind) that lands while the pages are
+// processed bumps the scheduler generation, so every remaining commit is
+// rejected; the loop then stops early instead of scanning the rest of a
+// superseded plan whose results would all be discarded.
+func (dh *EVMMultidownloader) processTransactionPages(ctx context.Context,
+	demand transactionDemand, pages []transactionPageRange, expectedGeneration uint64) {
+	for _, page := range pages {
+		if ctx.Err() != nil {
+			return
 		}
-		for pageStart := scanRange.FromBlock; pageStart <= scanRange.ToBlock; {
-			if ctx.Err() != nil {
-				return
-			}
-			pageEnd := pageStart + pageSize - 1
-			// Guard against uint64 overflow: if the addition wrapped, fall back
-			// to the end of the scan range.
-			if pageEnd < pageStart {
-				pageEnd = scanRange.ToBlock
-			}
-			if pageEnd > scanRange.ToBlock {
-				pageEnd = scanRange.ToBlock
-			}
-			dh.scanAndFetchPage(ctx, demand, pageStart, pageEnd)
-			if pageEnd >= scanRange.ToBlock {
-				break
-			}
-			pageStart = pageEnd + 1
+		complete := dh.scanAndFetchPage(ctx, demand, page.from, page.to)
+		if ctx.Err() != nil {
+			return
+		}
+		if !complete {
+			dh.txStats.retryPages.Add(1)
+		}
+		if !dh.txScheduler.commit(demand, page.from, page.to, !complete, expectedGeneration) {
+			// The plan was superseded while it was being processed. Every
+			// remaining page belongs to that superseded epoch, so stop: the next
+			// tick re-plans from the rewound cursor and re-covers the region.
+			return
 		}
 	}
 }
 
 // collectMissingTransactionsForPage returns the logs of one page that still
 // miss a canonical transaction, deduplicated by (tx hash, block hash) within the
-// page. Duplicates across pages are naturally avoided because the transaction
-// row (or the shared flight) is reused.
+// page. It is only ever called for a brand new page or a queued retry page, so
+// a fully enriched page is never read here. A storage/cache read error is
+// returned so the caller marks the page as failed instead of silently treating
+// an unreadable page as complete.
 func (dh *EVMMultidownloader) collectMissingTransactionsForPage(_ context.Context,
-	demand transactionDemand, fromBlock, toBlock uint64) []ethtypes.Log {
+	demand transactionDemand, fromBlock, toBlock uint64) ([]ethtypes.Log, error) {
 	query := mdrtypes.NewLogQuery(fromBlock, toBlock, []common.Address{demand.Address})
 	logs, err := dh.storage.GetEthLogs(nil, query)
 	if err != nil {
-		dh.log.Warnf("transaction worker: cannot read logs for %s [%d-%d]: %v",
+		return nil, fmt.Errorf("transaction worker: cannot read logs for %s [%d-%d]: %w",
 			demand.Address.Hex(), fromBlock, toBlock, err)
-		return nil
 	}
+	dh.txStats.logsExamined.Add(uint64(len(logs)))
 	result := make([]ethtypes.Log, 0, len(logs))
 	seen := make(map[string]struct{}, len(logs))
 	for _, lg := range logs {
@@ -629,34 +737,48 @@ func (dh *EVMMultidownloader) collectMissingTransactionsForPage(_ context.Contex
 			continue
 		}
 		seen[key] = struct{}{}
+		dh.txStats.cacheLookups.Add(1)
 		stored, err := dh.transactionStorage.GetTransaction(nil, lg.TxHash, lg.BlockHash)
 		if err != nil {
-			dh.log.Warnf("transaction worker: cannot read transaction %s: %v", lg.TxHash.Hex(), err)
-			continue
+			return nil, fmt.Errorf("transaction worker: cannot read transaction %s: %w", lg.TxHash.Hex(), err)
 		}
 		if stored != nil {
 			continue
 		}
 		result = append(result, lg)
 	}
-	return result
+	return result, nil
 }
 
 // scanAndFetchPage resolves the missing transactions of one page with a fixed
 // pool of at most txMaxConcurrency() workers. Each distinct transaction is
 // fetched at most once thanks to the shared flight (and the shared HTTP
-// limiter). A transaction failure never blocks log ingestion: it is only logged
-// and retried on the next scan.
+// limiter). A transaction failure never blocks log ingestion.
+//
+// It returns true only when the page is verifiably COMPLETE: every relevant log
+// of the page now has its canonical transaction stored (the missing set was
+// emptied). Any RPC/cache/validation failure — or a canceled context that could
+// leave a log unresolved — returns false, so the caller keeps the page in the
+// bounded retry queue instead of recording a false "complete" that would skip
+// the gap forever.
 func (dh *EVMMultidownloader) scanAndFetchPage(ctx context.Context,
-	demand transactionDemand, fromBlock, toBlock uint64) {
-	missing := dh.collectMissingTransactionsForPage(ctx, demand, fromBlock, toBlock)
+	demand transactionDemand, fromBlock, toBlock uint64) bool {
+	dh.txStats.pagesScanned.Add(1)
+	missing, err := dh.collectMissingTransactionsForPage(ctx, demand, fromBlock, toBlock)
+	if err != nil {
+		dh.log.Warnf("transaction worker: cannot collect missing transactions for %s [%d-%d]: %v",
+			demand.Address.Hex(), fromBlock, toBlock, err)
+		dh.txStats.failures.Add(1)
+		return false
+	}
 	if len(missing) == 0 {
-		return
+		return true
 	}
 	limit := dh.txMaxConcurrency()
 	if limit > len(missing) {
 		limit = len(missing)
 	}
+	var failed atomic.Bool
 	queue := make(chan ethtypes.Log)
 	var wg sync.WaitGroup
 	for i := 0; i < limit; i++ {
@@ -668,6 +790,7 @@ func (dh *EVMMultidownloader) scanAndFetchPage(ctx context.Context,
 					return
 				}
 				if _, err := dh.resolveAndCacheTransaction(ctx, lg.TxHash, &lg); err != nil {
+					failed.Store(true)
 					dh.log.Warnf("transaction worker: cannot resolve transaction %s (block %d): %v",
 						lg.TxHash.Hex(), lg.BlockNumber, err)
 				}
@@ -685,6 +808,15 @@ func (dh *EVMMultidownloader) scanAndFetchPage(ctx context.Context,
 	}
 	close(queue)
 	wg.Wait()
+	// Verify completeness: a page is complete only when nothing failed AND the
+	// scan was not cut short by cancellation (which could leave a log
+	// unresolved without setting the failure flag). The caller additionally
+	// refuses to advance the cursor on a canceled context.
+	if failed.Load() || ctx.Err() != nil {
+		dh.txStats.failures.Add(1)
+		return false
+	}
+	return true
 }
 
 // resolveAndCacheTransaction resolves a single log's transaction through the

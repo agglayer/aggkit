@@ -127,15 +127,47 @@ func (f *fakeTransactionProvider) callCount() int {
 	return len(f.calls)
 }
 
-// fakeEnricherSetter mimics the optional SetLogsEnricher hook of the sync downloader.
-type fakeEnricherSetter struct {
-	installed aggsync.LogsEnricherFunc
+// fakeEnricherInstaller mimics the optional downloader hooks used by the multidownloader path. The
+// bool results are configurable so the fail-closed cases (an implementation that reports the hook as
+// unsupported) can be exercised. installContextual records whether the contextual appender hook was
+// requested on the same target.
+type fakeEnricherInstaller struct {
+	installed         aggsync.LogsEnricherFunc
+	supported         bool
+	installContextual bool
 }
 
-func (f *fakeEnricherSetter) SetLogsEnricher(enricher aggsync.LogsEnricherFunc) aggsync.LogsEnricherFunc {
+func (f *fakeEnricherInstaller) InstallLogsEnricher(
+	enricher aggsync.LogsEnricherFunc,
+) (aggsync.LogsEnricherFunc, bool) {
+	if !f.supported {
+		return nil, false
+	}
 	prev := f.installed
 	f.installed = enricher
-	return prev
+	return prev, true
+}
+
+func (f *fakeEnricherInstaller) InstallContextualLogAppenders(aggsync.ContextualLogAppenderMap) bool {
+	f.installContextual = true
+	return f.supported
+}
+
+// blockingTransactionProvider blocks until the context it is called with is done and then returns the
+// context error. It simulates a shared provider flight that only unblocks when the active download
+// context is canceled.
+type blockingTransactionProvider struct {
+	entered chan struct{}
+}
+
+var _ aggkittypes.TransactionProvider = (*blockingTransactionProvider)(nil)
+
+func (f *blockingTransactionProvider) TransactionByLog(
+	ctx context.Context, _ types.Log,
+) (*aggkittypes.RPCTransaction, error) {
+	close(f.entered)
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func mdTestConfig(t *testing.T, bridge common.Address, downloader cfgtypes.Downloader) Config {
@@ -504,14 +536,95 @@ func TestBridgeLogsEnricher(t *testing.T) {
 	})
 }
 
+// TestBuildBridgeEventAppender_CanceledDownloadContextUnblocks proves the context-aware appender
+// uses the active download context, not a constructor-time context: an appender whose shared
+// provider flight only returns once the context is done unblocks as soon as the download generation
+// is canceled, instead of staying blocked on a stale context.
+func TestBuildBridgeEventAppender_CanceledDownloadContextUnblocks(t *testing.T) {
+	bridge := common.HexToAddress("0x10")
+	// No expectations on the eth client: the resolver must return before any RPC is attempted.
+	ethClient := mocksethclient.NewEthClienter(t)
+	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(bridge, ethClient)
+	require.NoError(t, err)
+
+	provider := &blockingTransactionProvider{entered: make(chan struct{})}
+	appender := buildBridgeEventAppender(agglayerBridge, bridge, ethClient, false,
+		log.WithFields("module", "test"), &providerTxnResolver{provider: provider})
+
+	l := mustBridgeEventLog(t, bridgeLeafTypeAsset, common.HexToAddress("0x50"),
+		common.HexToAddress("0x30"), common.HexToHash("0xdef"))
+	block := &aggsync.EVMBlock{EVMBlockHeader: aggsync.EVMBlockHeader{Num: 1}}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() { errCh <- appender(ctx, block, l) }()
+
+	select {
+	case <-provider.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("appender never reached the blocking provider")
+	}
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		require.ErrorIs(t, err, context.Canceled,
+			"a canceled download context must unblock the appender")
+	case <-time.After(5 * time.Second):
+		t.Fatal("appender stayed blocked after the download context was canceled")
+	}
+}
+
+// TestRegisterLogsEnricher verifies the fail-closed contract of registerLogsEnricher: it reports the
+// capability of the target (the bool returned by InstallLogsEnricher), not whether a previous
+// enricher happened to exist. A first install on a supported target returns true even though the
+// previous enricher is nil.
 func TestRegisterLogsEnricher(t *testing.T) {
 	enricher := bridgeLogsEnricher(&fakeTransactionProvider{})
 
-	setter := &fakeEnricherSetter{}
-	require.True(t, registerLogsEnricher(setter, enricher))
-	require.NotNil(t, setter.installed)
+	t.Run("supported target reports installed", func(t *testing.T) {
+		installer := &fakeEnricherInstaller{supported: true}
+		require.True(t, registerLogsEnricher(installer, enricher))
+		require.NotNil(t, installer.installed)
+	})
 
-	require.False(t, registerLogsEnricher(struct{}{}, enricher))
+	t.Run("unsupported implementation reports not installed", func(t *testing.T) {
+		installer := &fakeEnricherInstaller{supported: false}
+		require.False(t, registerLogsEnricher(installer, enricher),
+			"a target that reports the hook as unsupported must fail closed")
+		require.Nil(t, installer.installed)
+	})
+
+	t.Run("target without the method reports not installed", func(t *testing.T) {
+		require.False(t, registerLogsEnricher(struct{}{}, enricher))
+	})
+}
+
+// TestInstallContextualLogAppenders verifies the fail-closed contract of
+// installContextualLogAppenders with the same three target shapes used by TestRegisterLogsEnricher.
+func TestInstallContextualLogAppenders(t *testing.T) {
+	appenders := aggsync.ContextualLogAppenderMap{
+		bridgeEventSignature: func(context.Context, *aggsync.EVMBlock, types.Log) error { return nil },
+	}
+
+	t.Run("supported target reports installed", func(t *testing.T) {
+		installer := &fakeEnricherInstaller{supported: true}
+		require.True(t, installContextualLogAppenders(installer, appenders))
+		require.True(t, installer.installContextual)
+	})
+
+	t.Run("unsupported implementation reports not installed", func(t *testing.T) {
+		installer := &fakeEnricherInstaller{supported: false}
+		require.False(t, installContextualLogAppenders(installer, appenders),
+			"a target that reports the hook as unsupported must fail closed")
+		require.True(t, installer.installContextual)
+	})
+
+	t.Run("target without the method reports not installed", func(t *testing.T) {
+		require.False(t, installContextualLogAppenders(struct{}{}, appenders))
+	})
 }
 
 func TestBackfillTxnSender_WithTransactionProvider(t *testing.T) {

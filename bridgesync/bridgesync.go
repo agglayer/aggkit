@@ -75,6 +75,18 @@ var (
 	// explicit downloader/transaction dependencies were not provided to the constructor.
 	ErrMultidownloaderDepsMissing = errors.New(
 		"multidownloader selected but explicit downloader/transaction dependencies are missing")
+
+	// ErrContextualAppendersUnsupported indicates that the multidownloader path was selected but the
+	// downloader does not expose the contextual appender hook. The shared provider appender must not
+	// be silently replaced by a constructor-time appender, so the constructor fails closed.
+	ErrContextualAppendersUnsupported = errors.New(
+		"multidownloader selected but the downloader does not support contextual log appenders")
+
+	// ErrLogsEnricherUnsupported indicates that the multidownloader path was selected but the
+	// downloader does not expose the logs enricher hook. Without it the transaction cache is not
+	// warmed with the active download context, so the constructor fails closed.
+	ErrLogsEnricherUnsupported = errors.New(
+		"multidownloader selected but the downloader does not support the logs enricher")
 )
 
 type ReorgDetector interface {
@@ -264,8 +276,17 @@ func newBridgeSync(
 	processor.initialLER = initialLER
 
 	// Register the syncer in the multidownloader synchronously, before the backend is initialized.
-	// The historical FromBlock stays cfg.InitialBlockNum; the transaction requirement starts after the
-	// first not-yet-processed block so only future transactions are fetched.
+	//
+	// The *log* range (FromBlock) stays at cfg.InitialBlockNum on purpose: it is the historical
+	// coverage the shared address needs, and it is what the shared downloader starts downloading
+	// from for this address. The bridge backfill resolves old records and the reorg detector can
+	// inspect blocks below the consumer's committed checkpoint L, so logs older than L must remain
+	// covered. Taking an L+1 shortcut here would leave those reads waiting for coverage that is
+	// never downloaded.
+	//
+	// The *transaction* requirement is a separate, future-only concern: its FromBlock is the first
+	// not-yet-processed block (L+1) so only future transactions are fetched. The log frontier and
+	// the transaction frontier are deliberately different.
 	var txResolver bridgeTxnResolver
 	var mdBackend aggkittypes.MultiDownloaderLegacy = sync.NewAdapterEthClientToMultidownloader(ethClient)
 	if deps != nil {
@@ -324,12 +345,17 @@ func newBridgeSync(
 		return nil, err
 	}
 	if deps != nil {
-		// Warm the transaction cache with the active Download context so the appender can read the
-		// transactions from the cache normally. If the downloader does not expose the enrichment hook
-		// (yet) the appender still resolves transactions lazily through the provider.
+		// Install the context-aware appender for the Bridge event so the shared provider flight is
+		// resolved with the active download context, and warm the transaction cache with the same
+		// context. Both hooks are required on the multidownloader path: if the downloader does not
+		// expose them the constructor fails closed instead of silently falling back to a
+		// constructor-time appender or to lazy resolution.
+		if !installContextualLogAppenders(downloader, buildContextualAppender(
+			cfg.BridgeAddr, ethClient, syncFromInBridges, bridgeDeployment, logger, txResolver)) {
+			return nil, ErrContextualAppendersUnsupported
+		}
 		if !registerLogsEnricher(downloader, bridgeLogsEnricher(deps.provider)) {
-			logger.Debugf("downloader does not expose SetLogsEnricher; " +
-				"transactions will be warmed lazily by the appender")
+			return nil, ErrLogsEnricherUnsupported
 		}
 	}
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
