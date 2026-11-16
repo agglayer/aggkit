@@ -39,3 +39,30 @@ func TestRule_IsFinal(t *testing.T) {
 	require.False(t, rule.IsFinal(100, 100))
 	require.False(t, rule.IsFinal(0, 5), "no block is final in a short chain")
 }
+
+func TestRule_BlocksToFinal(t *testing.T) {
+	tests := []struct {
+		name   string
+		rule   Rule
+		block  uint64
+		tagged uint64
+		want   uint64
+	}{
+		{name: "already final", rule: Rule{Tag: TagFinalized}, block: 100, tagged: 100, want: 0},
+		{name: "finalized behind", rule: Rule{Tag: TagFinalized}, block: 4305, tagged: 4290, want: 15},
+		{name: "head minus 12", rule: Rule{Tag: TagLatest, NumBlocks: 12}, block: 4305, tagged: 4310, want: 7},
+		{name: "chain shorter than NumBlocks", rule: Rule{Tag: TagLatest, NumBlocks: 12}, block: 3, tagged: 5, want: 10},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, tc.rule.BlocksToFinal(tc.block, tc.tagged))
+			require.Equal(t, tc.want == 0, tc.rule.IsFinal(tc.block, tc.tagged))
+		})
+	}
+}
+
+func TestRule_String(t *testing.T) {
+	require.Equal(t, "FinalizedBlock", Rule{Tag: TagFinalized}.String())
+	require.Equal(t, "SafeBlock", Rule{Tag: TagSafe}.String())
+	require.Equal(t, "LatestBlock/-12", Rule{Tag: TagLatest, NumBlocks: 12}.String())
+}

@@ -35,7 +35,7 @@ The **code** of the body of an error decides what the AggOracle does, not the HT
 | `INVALID_REQUEST` | Malformed request (a bad or zero GER, an unknown field, a body too big) | no | 400, 413 |
 | `GER_UNKNOWN` | The GER is not in L1: `globalExitRootMap` of the L1 contract `AgglayerGER` (`AgglayerGERAddr`) has no entry for it. The message says the contract and the L1 chain | no | 404 |
 | `GER_BLOCK_NOT_CANONICAL` | The L1 block that inserted the GER is not in the canonical chain | no | 409 |
-| `GER_NOT_FINAL` | The block is not final for this validator yet | yes (`Retry-After`) | 425 |
+| `GER_NOT_FINAL` | The block is not final for this validator yet: the message says the insertion block, `BlockFinality`, the final and the latest block, and how many blocks to go | yes (`Retry-After`) | 425 |
 | `RATE_LIMITED` | The rate limit of the client was reached | yes (`Retry-After`) | 429 |
 | `INTERNAL` | A failure of the validator, of L1 or of the signer. The details are logged, not sent | yes | 500 |
 

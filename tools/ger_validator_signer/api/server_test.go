@@ -27,6 +27,7 @@ import (
 
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/api/mocks"
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/config"
+	"github.com/agglayer/aggkit/tools/ger_validator_signer/finality"
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/service"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -124,7 +125,9 @@ func TestSign_ErrorsFollowTheGoldenFixtures(t *testing.T) {
 		}, http.StatusNotFound, "error_ger_unknown.json", ""},
 		{"block not canonical", fmt.Errorf("%w: the block 5 is another", service.ErrGERBlockNotCanonical),
 			http.StatusConflict, "error_ger_block_not_canonical.json", ""},
-		{"not final", &service.NotFinalError{InsertionBlock: 101, FinalBlock: 100, HasFinalBlock: true},
+		{"not final", &service.NotFinalError{
+			InsertionBlock: 101, Finality: finality.Rule{Tag: "finalized"}, TaggedBlock: 100, LatestBlock: 110,
+		},
 			http.StatusTooEarly, "error_ger_not_final.json", "5"},
 		{"invalid GER", fmt.Errorf("%w: it is the zero hash", service.ErrInvalidGER),
 			http.StatusBadRequest, "error_invalid_request.json", ""},

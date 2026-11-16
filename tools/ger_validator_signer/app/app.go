@@ -13,7 +13,6 @@ import (
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/api"
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/cache"
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/config"
-	"github.com/agglayer/aggkit/tools/ger_validator_signer/finality"
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/l1"
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/service"
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/signer"
@@ -90,7 +89,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	svc := service.New(logger, service.Config{
 		AgglayerGER:    cfg.AgglayerGERAddr,
 		L1ChainID:      cfg.L1ChainID,
-		Finality:       finality.Rule{Tag: cfg.BlockFinality.Tag, NumBlocks: cfg.BlockFinality.NumBlocks},
+		Finality:       cfg.BlockFinality.Rule(),
 		NegativeTTL:    cfg.Cache.NegativeTTL.Duration,
 		RequestTimeout: cfg.PublicREST.RequestTimeout.Duration,
 	}, l1Client, validatorSigner, cache.New(cfg.Cache.MaxEntries))

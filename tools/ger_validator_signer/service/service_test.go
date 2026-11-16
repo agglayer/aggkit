@@ -1,9 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"sync"
 	"testing"
@@ -37,13 +37,16 @@ type fixture struct {
 	l1      *mocks.L1Reader
 	signer  *mocks.GERSigner
 	service *Service
+	// logs has what the service logged, at debug level
+	logs *bytes.Buffer
 }
 
 func newFixture(t *testing.T, rule finality.Rule, negativeTTL time.Duration) *fixture {
 	t.Helper()
-	f := &fixture{t: t, l1: mocks.NewL1Reader(t), signer: mocks.NewGERSigner(t)}
+	f := &fixture{t: t, l1: mocks.NewL1Reader(t), signer: mocks.NewGERSigner(t), logs: &bytes.Buffer{}}
 	f.signer.EXPECT().Address().Return(validator).Maybe()
-	f.service = New(slog.New(slog.NewTextHandler(io.Discard, nil)), Config{
+	logger := slog.New(slog.NewTextHandler(f.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	f.service = New(logger, Config{
 		AgglayerGER:    agglayerGER,
 		L1ChainID:      11155111,
 		Finality:       rule,
@@ -86,6 +89,59 @@ func TestService_SignGER(t *testing.T) {
 	require.Equal(t, &Result{GER: testGER, Signature: signature, Signer: validator}, result)
 }
 
+// TestService_SignGER_DebugLogsTheChecks checks that the debug logs show each check on the GER and its data
+func TestService_SignGER_DebugLogsTheChecks(t *testing.T) {
+	tests := []struct {
+		name   string
+		setup  func(f *fixture)
+		expect []string
+	}{
+		{
+			name: "signed",
+			setup: func(f *fixture) {
+				f.expectInserted()
+				f.expectTag("latest", 107)
+				f.expectSigning()
+			},
+			expect: []string{
+				`"GER check 1/3 (in L1?): yes`, "agglayerGER=" + agglayerGER.Hex(), "parentBlockHash=" + parentHash.Hex(),
+				`"GER check 2/3 (canonical?): yes`, "parentBlock=100", "insertionBlock=101",
+				`"GER check 3/3 (final?): yes`, "tag=latest", "taggedBlock=107", "numBlocks=6", "finalBlock=101",
+			},
+		},
+		{
+			name: "not final",
+			setup: func(f *fixture) {
+				f.expectInserted()
+				f.expectTag("latest", 104)
+			},
+			expect: []string{
+				`"GER check 3/3 (final?): no: the insertion block is after the final block"`,
+				"blockFinality=LatestBlock/-6", "taggedBlock=104", "latestBlock=104", "finalBlock=98",
+				"blocksToFinal=3",
+			},
+		},
+		{
+			name: "not in L1",
+			setup: func(f *fixture) {
+				f.l1.EXPECT().GlobalExitRootMap(mock.Anything, agglayerGER, testGER).Return(common.Hash{}, nil).Once()
+			},
+			expect: []string{`"GER check 1/3 (in L1?): no`, "l1ChainID=11155111"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t, finality.Rule{Tag: "latest", NumBlocks: 6}, time.Minute)
+			tc.setup(f)
+
+			_, _ = f.service.SignGER(context.Background(), testGER)
+			for _, want := range tc.expect {
+				require.Contains(t, f.logs.String(), want)
+			}
+		})
+	}
+}
+
 func TestService_SignGER_ZeroGER(t *testing.T) {
 	f := newFixture(t, finalized(), time.Minute) // the mocks have no expectation: nothing is queried
 
@@ -116,6 +172,9 @@ func TestService_SignGER_FinalityBoundaries(t *testing.T) {
 			f := newFixture(t, tc.rule, time.Minute)
 			f.expectInserted()
 			f.expectTag(tc.rule.Tag, tc.tagged)
+			if !tc.wantSign && tc.rule.Tag != "latest" {
+				f.expectTag("latest", tc.tagged+10)
+			}
 			if tc.wantSign {
 				f.expectSigning()
 			}
@@ -130,20 +189,57 @@ func TestService_SignGER_FinalityBoundaries(t *testing.T) {
 			var notFinal *NotFinalError
 			require.ErrorAs(t, err, &notFinal)
 			require.Equal(t, parentNumber+1, notFinal.InsertionBlock)
-			require.Equal(t, tc.wantFinal, notFinal.FinalBlock)
-			require.Equal(t, tc.hasFinal, notFinal.HasFinalBlock)
+			require.Equal(t, tc.rule, notFinal.Finality)
+			require.Equal(t, tc.tagged, notFinal.TaggedBlock)
+			finalBlock, hasFinal := notFinal.FinalBlock()
+			require.Equal(t, tc.wantFinal, finalBlock)
+			require.Equal(t, tc.hasFinal, hasFinal)
 			require.Nil(t, result)
 		})
 	}
 }
 
 func TestNotFinalError_Message(t *testing.T) {
-	withFinal := &NotFinalError{InsertionBlock: 101, FinalBlock: 100, HasFinalBlock: true}
-	require.ErrorIs(t, withFinal, ErrGERNotFinal)
-	require.ErrorContains(t, withFinal, "inserted in L1 block 101 and the final block is 100")
-
-	noFinal := &NotFinalError{InsertionBlock: 101}
-	require.ErrorContains(t, noFinal, "no block is final yet")
+	tests := []struct {
+		name string
+		err  *NotFinalError
+		want string
+	}{
+		{
+			name: "finalized",
+			err: &NotFinalError{InsertionBlock: 4305, Finality: finality.Rule{Tag: "finalized"},
+				TaggedBlock: 4290, LatestBlock: 4310},
+			want: "it was inserted in L1 block 4305 and, with BlockFinality FinalizedBlock, the final block is 4290 " +
+				"(finalized block 4290, latest block 4310): 15 blocks to go",
+		},
+		{
+			name: "safe with an offset",
+			err: &NotFinalError{InsertionBlock: 4305, Finality: finality.Rule{Tag: "safe", NumBlocks: 2},
+				TaggedBlock: 4300, LatestBlock: 4310},
+			want: "it was inserted in L1 block 4305 and, with BlockFinality SafeBlock/-2, the final block is 4298 " +
+				"(safe block 4300 - 2, latest block 4310): 7 blocks to go",
+		},
+		{
+			name: "latest with an offset",
+			err: &NotFinalError{InsertionBlock: 4305, Finality: finality.Rule{Tag: "latest", NumBlocks: 12},
+				TaggedBlock: 4310, LatestBlock: 4310},
+			want: "it was inserted in L1 block 4305 and, with BlockFinality LatestBlock/-12, the final block is " +
+				"4298 (latest block 4310 - 12): 7 blocks to go",
+		},
+		{
+			name: "no block is final yet",
+			err: &NotFinalError{InsertionBlock: 3, Finality: finality.Rule{Tag: "latest", NumBlocks: 12},
+				TaggedBlock: 5, LatestBlock: 5},
+			want: "it was inserted in L1 block 3 and, with BlockFinality LatestBlock/-12, no block is final yet " +
+				"(latest block 5 - 12): 10 blocks to go",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.ErrorIs(t, tc.err, ErrGERNotFinal)
+			require.EqualError(t, tc.err, ErrGERNotFinal.Error()+": "+tc.want)
+		})
+	}
 }
 
 func TestService_SignGER_Rejections(t *testing.T) {
@@ -305,12 +401,15 @@ func TestService_SignGER_NegativeAnswersAreCached(t *testing.T) {
 		f := newFixture(t, finalized(), time.Minute)
 		f.expectInserted()
 		f.expectTag("finalized", 90)
+		f.expectTag("latest", 120)
 
 		for range 3 {
 			_, err := f.service.SignGER(context.Background(), testGER)
 			var notFinal *NotFinalError
 			require.ErrorAs(t, err, &notFinal)
 			require.Equal(t, uint64(101), notFinal.InsertionBlock)
+			require.Equal(t, uint64(120), notFinal.LatestBlock)
+			require.Equal(t, uint64(11), notFinal.BlocksToFinal())
 		}
 	})
 
@@ -318,6 +417,7 @@ func TestService_SignGER_NegativeAnswersAreCached(t *testing.T) {
 		f := newFixture(t, finalized(), 0)
 		f.expectInserted()
 		f.expectTag("finalized", 90)
+		f.expectTag("latest", 120)
 		_, err := f.service.SignGER(context.Background(), testGER)
 		require.ErrorIs(t, err, ErrGERNotFinal)
 

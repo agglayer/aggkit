@@ -11,24 +11,25 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agglayer/aggkit/tools/ger_validator_signer/finality"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/pelletier/go-toml/v2"
 )
 
 // Block tags of the JSON-RPC API the finality can be based on
 const (
-	FinalityLatest    = "latest"
-	FinalitySafe      = "safe"
-	FinalityFinalized = "finalized"
+	FinalityLatest    = finality.TagLatest
+	FinalitySafe      = finality.TagSafe
+	FinalityFinalized = finality.TagFinalized
 )
 
 // Names of the blocks in BlockFinality, the same as in the configuration of aggkit
 const (
-	LatestBlockName    = "LatestBlock"
-	SafeBlockName      = "SafeBlock"
-	FinalizedBlockName = "FinalizedBlock"
+	LatestBlockName    = finality.LatestBlockName
+	SafeBlockName      = finality.SafeBlockName
+	FinalizedBlockName = finality.FinalizedBlockName
 
-	blockNameAndOffsetSeparator = "/"
+	blockNameAndOffsetSeparator = finality.NameAndOffsetSeparator
 )
 
 // Log environments, the same as in aggkit: production logs JSON, development logs text
@@ -77,21 +78,21 @@ type BlockFinality struct {
 // NewBlockFinality parses a block finality ("FinalizedBlock", "LatestBlock/-12"). The name is case insensitive
 func NewBlockFinality(text string) (BlockFinality, error) {
 	name, offsetText, hasOffset := strings.Cut(text, blockNameAndOffsetSeparator)
-	var finality BlockFinality
+	var parsed BlockFinality
 	switch strings.ToLower(name) {
 	case strings.ToLower(LatestBlockName):
-		finality.Tag = FinalityLatest
+		parsed.Tag = FinalityLatest
 	case strings.ToLower(SafeBlockName):
-		finality.Tag = FinalitySafe
+		parsed.Tag = FinalitySafe
 	case strings.ToLower(FinalizedBlockName):
-		finality.Tag = FinalityFinalized
+		parsed.Tag = FinalityFinalized
 	default:
 		return BlockFinality{}, fmt.Errorf("invalid block finality %q: the block must be %s, %s or %s, "+
 			"optionally with a negative offset (e.g. %s/-12)", text, LatestBlockName, SafeBlockName, FinalizedBlockName,
 			LatestBlockName)
 	}
 	if !hasOffset {
-		return finality, nil
+		return parsed, nil
 	}
 	offset, err := strconv.ParseInt(offsetText, 0, 64)
 	if err != nil {
@@ -101,27 +102,18 @@ func NewBlockFinality(text string) (BlockFinality, error) {
 		return BlockFinality{}, fmt.Errorf("invalid block finality %q: the offset can't be positive, "+
 			"it would sign blocks that are not final yet", text)
 	}
-	finality.NumBlocks = uint64(-offset)
-	return finality, nil
+	parsed.NumBlocks = uint64(-offset)
+	return parsed, nil
 }
 
 // String returns the block finality as it is written in the configuration
 func (f BlockFinality) String() string {
-	var name string
-	switch f.Tag {
-	case FinalityLatest:
-		name = LatestBlockName
-	case FinalitySafe:
-		name = SafeBlockName
-	case FinalityFinalized:
-		name = FinalizedBlockName
-	default:
-		name = f.Tag
-	}
-	if f.NumBlocks == 0 {
-		return name
-	}
-	return fmt.Sprintf("%s%s-%d", name, blockNameAndOffsetSeparator, f.NumBlocks)
+	return f.Rule().String()
+}
+
+// Rule returns the finality rule of the block finality
+func (f BlockFinality) Rule() finality.Rule {
+	return finality.Rule{Tag: f.Tag, NumBlocks: f.NumBlocks}
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler

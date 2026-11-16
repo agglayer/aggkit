@@ -29,21 +29,48 @@ var (
 	ErrGERNotFinal = errors.New("the L1 block that inserted the global exit root is not final yet")
 )
 
-// NotFinalError is the detail of ErrGERNotFinal
+// NotFinalError is the detail of ErrGERNotFinal: where the GER was inserted, the finality it needs and how far
+// it is from it
 type NotFinalError struct {
 	// InsertionBlock is the L1 block that inserted the GER
 	InsertionBlock uint64
-	// FinalBlock is the highest L1 block that is final now. Only if HasFinalBlock
-	FinalBlock    uint64
-	HasFinalBlock bool
+	// Finality is the finality the insertion block needs (BlockFinality in the configuration)
+	Finality finality.Rule
+	// TaggedBlock is the L1 block of the tag of the finality now (the latest, safe or finalized block)
+	TaggedBlock uint64
+	// LatestBlock is the latest L1 block now
+	LatestBlock uint64
+}
+
+// FinalBlock returns the highest L1 block that is final now. ok is false if no block is final yet
+func (e *NotFinalError) FinalBlock() (finalBlock uint64, ok bool) {
+	return e.Finality.FinalBlock(e.TaggedBlock)
+}
+
+// BlocksToFinal returns how many blocks the block of the tag has to advance for the insertion block to be final
+func (e *NotFinalError) BlocksToFinal() uint64 {
+	return e.Finality.BlocksToFinal(e.InsertionBlock, e.TaggedBlock)
 }
 
 func (e *NotFinalError) Error() string {
-	if !e.HasFinalBlock {
-		return fmt.Sprintf("%s: it was inserted in L1 block %d and no block is final yet", ErrGERNotFinal, e.InsertionBlock)
+	var finalBlock string
+	if block, ok := e.FinalBlock(); ok {
+		finalBlock = fmt.Sprintf("the final block is %d", block)
+	} else {
+		finalBlock = "no block is final yet"
 	}
-	return fmt.Sprintf("%s: it was inserted in L1 block %d and the final block is %d",
-		ErrGERNotFinal, e.InsertionBlock, e.FinalBlock)
+	var howFinal string
+	switch {
+	case e.Finality.Tag != finality.TagLatest && e.Finality.NumBlocks > 0:
+		howFinal = fmt.Sprintf("%s block %d - %d, latest block %d",
+			e.Finality.Tag, e.TaggedBlock, e.Finality.NumBlocks, e.LatestBlock)
+	case e.Finality.Tag != finality.TagLatest:
+		howFinal = fmt.Sprintf("%s block %d, latest block %d", e.Finality.Tag, e.TaggedBlock, e.LatestBlock)
+	default:
+		howFinal = fmt.Sprintf("latest block %d - %d", e.LatestBlock, e.Finality.NumBlocks)
+	}
+	return fmt.Sprintf("%s: it was inserted in L1 block %d and, with BlockFinality %s, %s (%s): "+
+		"%d blocks to go", ErrGERNotFinal, e.InsertionBlock, e.Finality, finalBlock, howFinal, e.BlocksToFinal())
 }
 
 // Is makes errors.Is(err, ErrGERNotFinal) work
@@ -220,11 +247,18 @@ func (s *Service) checkGER(ctx context.Context, ger common.Hash) error {
 		return fmt.Errorf("failed to read globalExitRootMap: %w", err)
 	}
 	if parentHash == (common.Hash{}) {
+		s.logger.Debug("GER check 1/3 (in L1?): no: AgglayerGER.globalExitRootMap(ger) is zero at the latest block",
+			"ger", ger, "agglayerGER", s.cfg.AgglayerGER, "l1ChainID", s.cfg.L1ChainID)
 		return &UnknownGERError{AgglayerGER: s.cfg.AgglayerGER, L1ChainID: s.cfg.L1ChainID}
 	}
+	s.logger.Debug("GER check 1/3 (in L1?): yes: AgglayerGER.globalExitRootMap(ger) at the latest block "+
+		"holds the hash of the block before the insertion",
+		"ger", ger, "agglayerGER", s.cfg.AgglayerGER, "l1ChainID", s.cfg.L1ChainID, "parentBlockHash", parentHash)
 
 	parent, err := s.l1.BlockByHash(ctx, parentHash)
 	if errors.Is(err, l1.ErrBlockNotFound) {
+		s.logger.Debug("GER check 2/3 (canonical?): no: the node doesn't know the block of the hash",
+			"ger", ger, "parentBlockHash", parentHash)
 		return fmt.Errorf("%w: block %s is unknown to the node", ErrGERBlockNotCanonical, parentHash)
 	}
 	if err != nil {
@@ -233,26 +267,58 @@ func (s *Service) checkGER(ctx context.Context, ger common.Hash) error {
 
 	canonical, err := s.l1.BlockByNumber(ctx, parent.Number)
 	if errors.Is(err, l1.ErrBlockNotFound) {
+		s.logger.Debug("GER check 2/3 (canonical?): no: the canonical chain has no block with the number "+
+			"of the block of the hash", "ger", ger, "parentBlock", parent.Number, "parentBlockHash", parentHash)
 		return fmt.Errorf("%w: block %d is unknown to the node", ErrGERBlockNotCanonical, parent.Number)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to get the block %d: %w", parent.Number, err)
 	}
 	if canonical.Hash != parent.Hash {
+		s.logger.Debug("GER check 2/3 (canonical?): no: the canonical block with that number has another hash "+
+			"(the block of the hash is an orphan)", "ger", ger, "parentBlock", parent.Number,
+			"parentBlockHash", parent.Hash, "canonicalBlockHash", canonical.Hash)
 		return fmt.Errorf("%w: the block %d is %s, not %s", ErrGERBlockNotCanonical,
 			parent.Number, canonical.Hash, parent.Hash)
 	}
+	insertionBlock := parent.Number + 1
+	s.logger.Debug("GER check 2/3 (canonical?): yes: the block before the insertion is the canonical one "+
+		"with its number", "ger", ger, "parentBlock", parent.Number, "parentBlockHash", parent.Hash,
+		"insertionBlock", insertionBlock)
 
 	tagged, err := s.l1.BlockNumberByTag(ctx, s.cfg.Finality.Tag)
 	if err != nil {
 		return fmt.Errorf("failed to get the block of the tag %s: %w", s.cfg.Finality.Tag, err)
 	}
-	insertionBlock := parent.Number + 1
-	finalBlock, hasFinalBlock := s.cfg.Finality.FinalBlock(tagged)
-	if !hasFinalBlock || insertionBlock > finalBlock {
-		return &NotFinalError{InsertionBlock: insertionBlock, FinalBlock: finalBlock, HasFinalBlock: hasFinalBlock}
+	attrs := []any{"ger", ger, "insertionBlock", insertionBlock, "blockFinality", s.cfg.Finality.String(),
+		"tag", s.cfg.Finality.Tag, "taggedBlock", tagged, "numBlocks", s.cfg.Finality.NumBlocks,
+		"rule", "final if insertionBlock <= taggedBlock - numBlocks"}
+	if s.cfg.Finality.IsFinal(insertionBlock, tagged) {
+		finalBlock, _ := s.cfg.Finality.FinalBlock(tagged)
+		s.logger.Debug("GER check 3/3 (final?): yes: the insertion block is not after the final block",
+			append(attrs, "finalBlock", finalBlock)...)
+		return nil
 	}
-	return nil
+
+	// Not final: the latest block says how far the chain is, for the error
+	latest := tagged
+	if s.cfg.Finality.Tag != finality.TagLatest {
+		if latest, err = s.l1.BlockNumberByTag(ctx, finality.TagLatest); err != nil {
+			return fmt.Errorf("failed to get the latest block: %w", err)
+		}
+	}
+	notFinal := &NotFinalError{
+		InsertionBlock: insertionBlock, Finality: s.cfg.Finality, TaggedBlock: tagged, LatestBlock: latest,
+	}
+	attrs = append(attrs, "latestBlock", latest, "blocksToFinal", notFinal.BlocksToFinal())
+	if finalBlock, ok := notFinal.FinalBlock(); ok {
+		s.logger.Debug("GER check 3/3 (final?): no: the insertion block is after the final block",
+			append(attrs, "finalBlock", finalBlock)...)
+	} else {
+		s.logger.Debug("GER check 3/3 (final?): no: the chain is shorter than numBlocks, no block is final yet",
+			attrs...)
+	}
+	return notFinal
 }
 
 // isRejection returns true for the errors that say the GER can't be signed (now), as opposed to a failure
