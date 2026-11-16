@@ -97,9 +97,14 @@ func (e *UnknownGERError) Is(target error) bool {
 
 // L1Reader is what the service needs to know from L1
 type L1Reader interface {
-	// GlobalExitRootMap returns what AgglayerGER.globalExitRootMap holds for the GER: the hash of the block
-	// previous to the one that inserted it, or zero if it was never inserted
+	// GlobalExitRootMap returns what AgglayerGER.globalExitRootMap holds for the GER in the latest block: the hash
+	// of the block previous to the one that inserted it, or zero if it was never inserted
 	GlobalExitRootMap(ctx context.Context, agglayerGER common.Address, ger common.Hash) (common.Hash, error)
+	// GlobalExitRootMapAt is GlobalExitRootMap in the state of the block with the hash. It fails if that block is
+	// not in the canonical chain
+	GlobalExitRootMapAt(
+		ctx context.Context, agglayerGER common.Address, ger common.Hash, blockHash common.Hash,
+	) (common.Hash, error)
 	// BlockByHash returns the block (that can be an orphan) or l1.ErrBlockNotFound
 	BlockByHash(ctx context.Context, hash common.Hash) (*l1.Block, error)
 	// BlockByNumber returns the block of the canonical chain or l1.ErrBlockNotFound
@@ -237,27 +242,32 @@ func (s *Service) signAndCache(ctx context.Context, ger common.Hash) (*Result, e
 
 // checkGER returns nil if the GER is in AgglayerGER and the L1 block that inserted it is canonical and final.
 // The contract holds the hash of the previous block of the insertion block, so:
-//  1. the hash is resolved to its block (the parent, N), and N must be in the canonical chain: a node can return an
-//     orphan block when asked by hash, so the canonical block of that height must have the same hash
-//  2. the insertion block is N+1 and it must not be after the final block: the block of the finality tag minus
+//  1. the GER is read in the latest block: the hash of the block before the insertion (the parent, N)
+//  2. the hash is resolved to its block, and N must be in the canonical chain: a node can return an orphan block when
+//     asked by hash, so the canonical block of that height must have the same hash
+//  3. the insertion block is N+1 and it must not be after the final block: the block of the finality tag minus
 //     the configured number of blocks
+//  4. the GER is read again in the state of the final block, pinned by its hash, and it must hold the same parent.
+//     Steps 1 to 3 look at the chain at different moments: a reorg between them could replace the insertion block
+//     (keeping N) and the height N+1 would look final although the block that inserted the GER is an orphan. Only
+//     the state of a final block of the canonical chain says that the GER is there to stay
 func (s *Service) checkGER(ctx context.Context, ger common.Hash) error {
 	parentHash, err := s.l1.GlobalExitRootMap(ctx, s.cfg.AgglayerGER, ger)
 	if err != nil {
 		return fmt.Errorf("failed to read globalExitRootMap: %w", err)
 	}
 	if parentHash == (common.Hash{}) {
-		s.logger.Debug("GER check 1/3 (in L1?): no: AgglayerGER.globalExitRootMap(ger) is zero at the latest block",
+		s.logger.Debug("GER check 1/4 (in L1?): no: AgglayerGER.globalExitRootMap(ger) is zero at the latest block",
 			"ger", ger, "agglayerGER", s.cfg.AgglayerGER, "l1ChainID", s.cfg.L1ChainID)
 		return &UnknownGERError{AgglayerGER: s.cfg.AgglayerGER, L1ChainID: s.cfg.L1ChainID}
 	}
-	s.logger.Debug("GER check 1/3 (in L1?): yes: AgglayerGER.globalExitRootMap(ger) at the latest block "+
+	s.logger.Debug("GER check 1/4 (in L1?): yes: AgglayerGER.globalExitRootMap(ger) at the latest block "+
 		"holds the hash of the block before the insertion",
 		"ger", ger, "agglayerGER", s.cfg.AgglayerGER, "l1ChainID", s.cfg.L1ChainID, "parentBlockHash", parentHash)
 
 	parent, err := s.l1.BlockByHash(ctx, parentHash)
 	if errors.Is(err, l1.ErrBlockNotFound) {
-		s.logger.Debug("GER check 2/3 (canonical?): no: the node doesn't know the block of the hash",
+		s.logger.Debug("GER check 2/4 (canonical?): no: the node doesn't know the block of the hash",
 			"ger", ger, "parentBlockHash", parentHash)
 		return fmt.Errorf("%w: block %s is unknown to the node", ErrGERBlockNotCanonical, parentHash)
 	}
@@ -267,7 +277,7 @@ func (s *Service) checkGER(ctx context.Context, ger common.Hash) error {
 
 	canonical, err := s.l1.BlockByNumber(ctx, parent.Number)
 	if errors.Is(err, l1.ErrBlockNotFound) {
-		s.logger.Debug("GER check 2/3 (canonical?): no: the canonical chain has no block with the number "+
+		s.logger.Debug("GER check 2/4 (canonical?): no: the canonical chain has no block with the number "+
 			"of the block of the hash", "ger", ger, "parentBlock", parent.Number, "parentBlockHash", parentHash)
 		return fmt.Errorf("%w: block %d is unknown to the node", ErrGERBlockNotCanonical, parent.Number)
 	}
@@ -275,14 +285,14 @@ func (s *Service) checkGER(ctx context.Context, ger common.Hash) error {
 		return fmt.Errorf("failed to get the block %d: %w", parent.Number, err)
 	}
 	if canonical.Hash != parent.Hash {
-		s.logger.Debug("GER check 2/3 (canonical?): no: the canonical block with that number has another hash "+
+		s.logger.Debug("GER check 2/4 (canonical?): no: the canonical block with that number has another hash "+
 			"(the block of the hash is an orphan)", "ger", ger, "parentBlock", parent.Number,
 			"parentBlockHash", parent.Hash, "canonicalBlockHash", canonical.Hash)
 		return fmt.Errorf("%w: the block %d is %s, not %s", ErrGERBlockNotCanonical,
 			parent.Number, canonical.Hash, parent.Hash)
 	}
 	insertionBlock := parent.Number + 1
-	s.logger.Debug("GER check 2/3 (canonical?): yes: the block before the insertion is the canonical one "+
+	s.logger.Debug("GER check 2/4 (canonical?): yes: the block before the insertion is the canonical one "+
 		"with its number", "ger", ger, "parentBlock", parent.Number, "parentBlockHash", parent.Hash,
 		"insertionBlock", insertionBlock)
 
@@ -295,9 +305,9 @@ func (s *Service) checkGER(ctx context.Context, ger common.Hash) error {
 		"rule", "final if insertionBlock <= taggedBlock - numBlocks"}
 	if s.cfg.Finality.IsFinal(insertionBlock, tagged) {
 		finalBlock, _ := s.cfg.Finality.FinalBlock(tagged)
-		s.logger.Debug("GER check 3/3 (final?): yes: the insertion block is not after the final block",
+		s.logger.Debug("GER check 3/4 (final?): yes: the insertion block is not after the final block",
 			append(attrs, "finalBlock", finalBlock)...)
-		return nil
+		return s.checkGERInFinalState(ctx, ger, parentHash, finalBlock)
 	}
 
 	// Not final: the latest block says how far the chain is, for the error
@@ -312,13 +322,43 @@ func (s *Service) checkGER(ctx context.Context, ger common.Hash) error {
 	}
 	attrs = append(attrs, "latestBlock", latest, "blocksToFinal", notFinal.BlocksToFinal())
 	if finalBlock, ok := notFinal.FinalBlock(); ok {
-		s.logger.Debug("GER check 3/3 (final?): no: the insertion block is after the final block",
+		s.logger.Debug("GER check 3/4 (final?): no: the insertion block is after the final block",
 			append(attrs, "finalBlock", finalBlock)...)
 	} else {
-		s.logger.Debug("GER check 3/3 (final?): no: the chain is shorter than numBlocks, no block is final yet",
+		s.logger.Debug("GER check 3/4 (final?): no: the chain is shorter than numBlocks, no block is final yet",
 			attrs...)
 	}
 	return notFinal
+}
+
+// checkGERInFinalState checks that, in the state of the final block, AgglayerGER holds the GER with the same parent
+// block that was read in the latest block (step 4 of checkGER)
+func (s *Service) checkGERInFinalState(ctx context.Context, ger, parentHash common.Hash, finalBlock uint64) error {
+	pinned, err := s.l1.BlockByNumber(ctx, finalBlock)
+	if err != nil {
+		return fmt.Errorf("failed to get the final block %d: %w", finalBlock, err)
+	}
+	// It fails if the block stopped being canonical meanwhile: an error, not a rejection, so it is asked again
+	atFinal, err := s.l1.GlobalExitRootMapAt(ctx, s.cfg.AgglayerGER, ger, pinned.Hash)
+	if err != nil {
+		return fmt.Errorf("failed to read globalExitRootMap in the final block %d (%s): %w",
+			finalBlock, pinned.Hash, err)
+	}
+	attrs := []any{"ger", ger, "finalBlock", finalBlock, "finalBlockHash", pinned.Hash,
+		"parentBlockHash", parentHash, "parentBlockHashAtFinal", atFinal}
+	if atFinal != parentHash {
+		s.logger.Debug("GER check 4/4 (in the final state?): no: in the state of the final block AgglayerGER "+
+			"doesn't hold the GER with the same parent block (an L1 reorg)", attrs...)
+		if atFinal == (common.Hash{}) {
+			return fmt.Errorf("%w: the GER is not in AgglayerGER in the state of the final block %d (%s): "+
+				"the block that inserted it was reorganized", ErrGERBlockNotCanonical, finalBlock, pinned.Hash)
+		}
+		return fmt.Errorf("%w: in the state of the final block %d (%s) the GER was inserted after block %s, "+
+			"not %s: the chain was reorganized", ErrGERBlockNotCanonical, finalBlock, pinned.Hash, atFinal, parentHash)
+	}
+	s.logger.Debug("GER check 4/4 (in the final state?): yes: in the state of the final block AgglayerGER holds "+
+		"the GER with the same parent block", attrs...)
+	return nil
 }
 
 // isRejection returns true for the errors that say the GER can't be signed (now), as opposed to a failure

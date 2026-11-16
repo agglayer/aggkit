@@ -260,6 +260,67 @@ func (_c *L1Reader_GlobalExitRootMap_Call) RunAndReturn(run func(context.Context
 	return _c
 }
 
+// GlobalExitRootMapAt provides a mock function with given fields: ctx, agglayerGER, ger, blockHash
+func (_m *L1Reader) GlobalExitRootMapAt(ctx context.Context, agglayerGER common.Address, ger common.Hash, blockHash common.Hash) (common.Hash, error) {
+	ret := _m.Called(ctx, agglayerGER, ger, blockHash)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GlobalExitRootMapAt")
+	}
+
+	var r0 common.Hash
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, common.Address, common.Hash, common.Hash) (common.Hash, error)); ok {
+		return rf(ctx, agglayerGER, ger, blockHash)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, common.Address, common.Hash, common.Hash) common.Hash); ok {
+		r0 = rf(ctx, agglayerGER, ger, blockHash)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(common.Hash)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, common.Address, common.Hash, common.Hash) error); ok {
+		r1 = rf(ctx, agglayerGER, ger, blockHash)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L1Reader_GlobalExitRootMapAt_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GlobalExitRootMapAt'
+type L1Reader_GlobalExitRootMapAt_Call struct {
+	*mock.Call
+}
+
+// GlobalExitRootMapAt is a helper method to define mock.On call
+//   - ctx context.Context
+//   - agglayerGER common.Address
+//   - ger common.Hash
+//   - blockHash common.Hash
+func (_e *L1Reader_Expecter) GlobalExitRootMapAt(ctx interface{}, agglayerGER interface{}, ger interface{}, blockHash interface{}) *L1Reader_GlobalExitRootMapAt_Call {
+	return &L1Reader_GlobalExitRootMapAt_Call{Call: _e.mock.On("GlobalExitRootMapAt", ctx, agglayerGER, ger, blockHash)}
+}
+
+func (_c *L1Reader_GlobalExitRootMapAt_Call) Run(run func(ctx context.Context, agglayerGER common.Address, ger common.Hash, blockHash common.Hash)) *L1Reader_GlobalExitRootMapAt_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(common.Address), args[2].(common.Hash), args[3].(common.Hash))
+	})
+	return _c
+}
+
+func (_c *L1Reader_GlobalExitRootMapAt_Call) Return(_a0 common.Hash, _a1 error) *L1Reader_GlobalExitRootMapAt_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L1Reader_GlobalExitRootMapAt_Call) RunAndReturn(run func(context.Context, common.Address, common.Hash, common.Hash) (common.Hash, error)) *L1Reader_GlobalExitRootMapAt_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewL1Reader creates a new instance of L1Reader. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewL1Reader(t interface {

@@ -128,6 +128,27 @@ func TestClient_GlobalExitRootMap(t *testing.T) {
 	require.Equal(t, blockHsh, got)
 }
 
+// GlobalExitRootMapAt reads the state of a block pinned by its hash, that must be canonical (EIP-1898)
+func TestClient_GlobalExitRootMapAt(t *testing.T) {
+	selector := crypto.Keccak256([]byte("globalExitRootMap(bytes32)"))[:4]
+	srv := newRPCServer(t, func(call rpcCall) (any, *RPCError) {
+		require.Equal(t, "eth_call", call.Method)
+		var msg struct {
+			To   common.Address `json:"to"`
+			Data string         `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(call.Params[0], &msg))
+		require.Equal(t, gerAddr, msg.To)
+		require.Equal(t, "0x"+common.Bytes2Hex(selector)+common.Bytes2Hex(testGER.Bytes()), msg.Data)
+		require.JSONEq(t, `{"blockHash": "`+parentHs.Hex()+`", "requireCanonical": true}`, string(call.Params[1]))
+		return blockHsh.Hex(), nil
+	})
+
+	got, err := srv.client().GlobalExitRootMapAt(context.Background(), gerAddr, testGER, parentHs)
+	require.NoError(t, err)
+	require.Equal(t, blockHsh, got)
+}
+
 func TestClient_GlobalExitRootMap_Unknown(t *testing.T) {
 	srv := newRPCServer(t, func(rpcCall) (any, *RPCError) { return common.Hash{}.Hex(), nil })
 	got, err := srv.client().GlobalExitRootMap(context.Background(), gerAddr, testGER)

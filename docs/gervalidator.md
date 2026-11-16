@@ -15,8 +15,9 @@ A GER is signed only if all this is true:
 1. **It is in L1.** `AgglayerGER.globalExitRootMap(GER)` is not zero. The contract stores there the hash of the block **previous** to the one that inserted the GER (`blockhash(block.number - 1)`).
 2. **The block is canonical.** The hash is resolved to its block `N`, and the canonical block of height `N` must have the same hash: a node can return an orphan block when asked by hash.
 3. **The block is final.** The insertion block is `N + 1`, and it must not be after the final block: the number of the block of the configured `BlockFinality` (`LatestBlock`, `SafeBlock` or `FinalizedBlock`) plus its offset, that can only be negative. For example `BlockFinality = "LatestBlock/-6"` is the head minus 6 blocks, which is the setup AggOracle had before the validators existed.
+4. **It is in the final state.** `globalExitRootMap(GER)` is read again in the state of the final block, pinned by its hash (EIP-1898, `requireCanonical`), and it must hold the same parent block. Checks 1 to 3 read L1 at different moments: a reorg between them could replace the insertion block while keeping `N`, and the height `N + 1` would look final although the block that inserted the GER is an orphan. If the final block stops being canonical during the query, the node fails it and the request fails (it is not cached: the AggOracle asks again).
 
-Each validator decides its own finality. Only block headers are needed: no historical state.
+Each validator decides its own finality. The L1 RPC needs the state of the final block for the call of check 4: a full node keeps the state of the recent blocks (geth, the last 128), which covers `FinalizedBlock` and small offsets. A `BlockFinality` further back needs an archive node.
 
 ## REST API
 

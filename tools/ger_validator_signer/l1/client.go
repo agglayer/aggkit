@@ -220,13 +220,37 @@ func (c *Client) GlobalExitRootMap(
 	agglayerGER common.Address,
 	ger common.Hash,
 ) (common.Hash, error) {
+	return c.globalExitRootMap(ctx, agglayerGER, ger, "latest")
+}
+
+// GlobalExitRootMapAt reads AgglayerGER.globalExitRootMap(ger) in the state of the block with the hash (EIP-1898).
+// The node fails if that block is not in the canonical chain (requireCanonical), so the answer is the one of the
+// canonical chain and not of an orphan block.
+func (c *Client) GlobalExitRootMapAt(
+	ctx context.Context,
+	agglayerGER common.Address,
+	ger common.Hash,
+	blockHash common.Hash,
+) (common.Hash, error) {
+	return c.globalExitRootMap(ctx, agglayerGER, ger, map[string]any{
+		"blockHash":        blockHash,
+		"requireCanonical": true,
+	})
+}
+
+func (c *Client) globalExitRootMap(
+	ctx context.Context,
+	agglayerGER common.Address,
+	ger common.Hash,
+	block any,
+) (common.Hash, error) {
 	data := make([]byte, 0, selectorLength+common.HashLength)
 	data = append(data, crypto.Keccak256([]byte(globalExitRootMapSignature))[:selectorLength]...)
 	data = append(data, ger.Bytes()...)
 	result, err := c.call(ctx, "eth_call", map[string]any{
 		"to":   agglayerGER,
 		"data": hexutil.Bytes(data),
-	}, "latest")
+	}, block)
 	if err != nil {
 		return common.Hash{}, err
 	}

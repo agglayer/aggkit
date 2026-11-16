@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math/big"
 	"sync"
 	"testing"
 	"time"
@@ -34,6 +35,7 @@ const parentNumber = uint64(100)
 
 type fixture struct {
 	t       *testing.T
+	rule    finality.Rule
 	l1      *mocks.L1Reader
 	signer  *mocks.GERSigner
 	service *Service
@@ -43,7 +45,7 @@ type fixture struct {
 
 func newFixture(t *testing.T, rule finality.Rule, negativeTTL time.Duration) *fixture {
 	t.Helper()
-	f := &fixture{t: t, l1: mocks.NewL1Reader(t), signer: mocks.NewGERSigner(t), logs: &bytes.Buffer{}}
+	f := &fixture{t: t, rule: rule, l1: mocks.NewL1Reader(t), signer: mocks.NewGERSigner(t), logs: &bytes.Buffer{}}
 	f.signer.EXPECT().Address().Return(validator).Maybe()
 	logger := slog.New(slog.NewTextHandler(f.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	f.service = New(logger, Config{
@@ -73,6 +75,29 @@ func (f *fixture) expectTag(tag string, number uint64) {
 	f.l1.EXPECT().BlockNumberByTag(mock.Anything, tag).Return(number, nil).Once()
 }
 
+// finalBlockHash is the hash of the final block number in the tests
+func finalBlockHash(number uint64) common.Hash {
+	return common.BigToHash(new(big.Int).SetUint64(0xf1a1<<32 | number))
+}
+
+// expectFinalState expects the GER to be read in the state of the final block, pinned by its hash, and to have
+// there the parent block parentAtFinal
+func (f *fixture) expectFinalState(finalBlock uint64, parentAtFinal common.Hash) {
+	f.t.Helper()
+	f.l1.EXPECT().BlockByNumber(mock.Anything, finalBlock).
+		Return(&l1.Block{Number: finalBlock, Hash: finalBlockHash(finalBlock)}, nil).Once()
+	f.l1.EXPECT().GlobalExitRootMapAt(mock.Anything, agglayerGER, testGER, finalBlockHash(finalBlock)).
+		Return(parentAtFinal, nil).Once()
+}
+
+// expectFinal expects the block of the tag, that makes the insertion block final, and the GER in the state of the
+// final block (the same parent block)
+func (f *fixture) expectFinal(tag string, tagged uint64) {
+	f.t.Helper()
+	f.expectTag(tag, tagged)
+	f.expectFinalState(tagged-f.rule.NumBlocks, parentHash)
+}
+
 func (f *fixture) expectSigning() {
 	f.t.Helper()
 	f.signer.EXPECT().SignGER(mock.Anything, testGER).Return(signature, nil).Once()
@@ -81,7 +106,7 @@ func (f *fixture) expectSigning() {
 func TestService_SignGER(t *testing.T) {
 	f := newFixture(t, finalized(), time.Minute)
 	f.expectInserted()
-	f.expectTag("finalized", 105)
+	f.expectFinal("finalized", 105)
 	f.expectSigning()
 
 	result, err := f.service.SignGER(context.Background(), testGER)
@@ -100,13 +125,14 @@ func TestService_SignGER_DebugLogsTheChecks(t *testing.T) {
 			name: "signed",
 			setup: func(f *fixture) {
 				f.expectInserted()
-				f.expectTag("latest", 107)
+				f.expectFinal("latest", 107)
 				f.expectSigning()
 			},
 			expect: []string{
-				`"GER check 1/3 (in L1?): yes`, "agglayerGER=" + agglayerGER.Hex(), "parentBlockHash=" + parentHash.Hex(),
-				`"GER check 2/3 (canonical?): yes`, "parentBlock=100", "insertionBlock=101",
-				`"GER check 3/3 (final?): yes`, "tag=latest", "taggedBlock=107", "numBlocks=6", "finalBlock=101",
+				`"GER check 1/4 (in L1?): yes`, "agglayerGER=" + agglayerGER.Hex(), "parentBlockHash=" + parentHash.Hex(),
+				`"GER check 2/4 (canonical?): yes`, "parentBlock=100", "insertionBlock=101",
+				`"GER check 3/4 (final?): yes`, "tag=latest", "taggedBlock=107", "numBlocks=6", "finalBlock=101",
+				`"GER check 4/4 (in the final state?): yes`, "finalBlockHash=" + finalBlockHash(101).Hex(),
 			},
 		},
 		{
@@ -116,7 +142,7 @@ func TestService_SignGER_DebugLogsTheChecks(t *testing.T) {
 				f.expectTag("latest", 104)
 			},
 			expect: []string{
-				`"GER check 3/3 (final?): no: the insertion block is after the final block"`,
+				`"GER check 3/4 (final?): no: the insertion block is after the final block"`,
 				"blockFinality=LatestBlock/-6", "taggedBlock=104", "latestBlock=104", "finalBlock=98",
 				"blocksToFinal=3",
 			},
@@ -126,7 +152,16 @@ func TestService_SignGER_DebugLogsTheChecks(t *testing.T) {
 			setup: func(f *fixture) {
 				f.l1.EXPECT().GlobalExitRootMap(mock.Anything, agglayerGER, testGER).Return(common.Hash{}, nil).Once()
 			},
-			expect: []string{`"GER check 1/3 (in L1?): no`, "l1ChainID=11155111"},
+			expect: []string{`"GER check 1/4 (in L1?): no`, "l1ChainID=11155111"},
+		},
+		{
+			name: "reorganized",
+			setup: func(f *fixture) {
+				f.expectInserted()
+				f.expectTag("latest", 107)
+				f.expectFinalState(101, common.Hash{})
+			},
+			expect: []string{`"GER check 4/4 (in the final state?): no`, "finalBlock=101"},
 		},
 	}
 	for _, tc := range tests {
@@ -176,6 +211,7 @@ func TestService_SignGER_FinalityBoundaries(t *testing.T) {
 				f.expectTag("latest", tc.tagged+10)
 			}
 			if tc.wantSign {
+				f.expectFinalState(tc.tagged-tc.rule.NumBlocks, parentHash)
 				f.expectSigning()
 			}
 
@@ -302,6 +338,28 @@ func TestService_SignGER_Rejections(t *testing.T) {
 	})
 }
 
+// A reorg between the reads of L1 could make the height of the insertion block final while the block that inserted
+// the GER is an orphan: the GER must be in the state of the final block, with the same parent block
+func TestService_SignGER_ReorganizedInsertionIsNotSigned(t *testing.T) {
+	tests := map[string]common.Hash{
+		"the GER is not in the final state":                     {},
+		"the GER was inserted after another block in the final": otherHash,
+	}
+	for name, parentAtFinal := range tests {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t, finalized(), time.Minute)
+			f.expectInserted()
+			f.expectTag("finalized", 105)
+			f.expectFinalState(105, parentAtFinal)
+			// No signing expected: calling the signer fails the test
+
+			result, err := f.service.SignGER(context.Background(), testGER)
+			require.ErrorIs(t, err, ErrGERBlockNotCanonical)
+			require.Nil(t, result)
+		})
+	}
+}
+
 func TestService_SignGER_FailuresAreNotRejections(t *testing.T) {
 	steps := map[string]func(f *fixture){
 		"reading the contract": func(f *fixture) {
@@ -321,6 +379,20 @@ func TestService_SignGER_FailuresAreNotRejections(t *testing.T) {
 			f.expectInserted()
 			f.l1.EXPECT().BlockNumberByTag(mock.Anything, "finalized").Return(0, errL1).Once()
 		},
+		"getting the final block": func(f *fixture) {
+			f.expectInserted()
+			f.expectTag("finalized", 105)
+			f.l1.EXPECT().BlockByNumber(mock.Anything, uint64(105)).Return(nil, errL1).Once()
+		},
+		// Also when the node refuses it because the final block stopped being canonical (requireCanonical)
+		"reading the contract in the final block": func(f *fixture) {
+			f.expectInserted()
+			f.expectTag("finalized", 105)
+			f.l1.EXPECT().BlockByNumber(mock.Anything, uint64(105)).
+				Return(&l1.Block{Number: 105, Hash: finalBlockHash(105)}, nil).Once()
+			f.l1.EXPECT().GlobalExitRootMapAt(mock.Anything, agglayerGER, testGER, finalBlockHash(105)).
+				Return(common.Hash{}, errL1).Once()
+		},
 	}
 	for step, setup := range steps {
 		t.Run(step, func(t *testing.T) {
@@ -335,7 +407,7 @@ func TestService_SignGER_FailuresAreNotRejections(t *testing.T) {
 
 			// A failure is not cached: the next request asks L1 again, and it can succeed
 			f.expectInserted()
-			f.expectTag("finalized", 105)
+			f.expectFinal("finalized", 105)
 			f.expectSigning()
 			result, err := f.service.SignGER(context.Background(), testGER)
 			require.NoError(t, err)
@@ -347,7 +419,7 @@ func TestService_SignGER_FailuresAreNotRejections(t *testing.T) {
 func TestService_SignGER_SignerFailure(t *testing.T) {
 	f := newFixture(t, finalized(), time.Minute)
 	f.expectInserted()
-	f.expectTag("finalized", 105)
+	f.expectFinal("finalized", 105)
 	f.signer.EXPECT().SignGER(mock.Anything, testGER).Return(nil, errKMS).Once()
 
 	result, err := f.service.SignGER(context.Background(), testGER)
@@ -356,7 +428,7 @@ func TestService_SignGER_SignerFailure(t *testing.T) {
 
 	// It is not cached: when the signer works again the GER is signed
 	f.expectInserted()
-	f.expectTag("finalized", 105)
+	f.expectFinal("finalized", 105)
 	f.expectSigning()
 	result, err = f.service.SignGER(context.Background(), testGER)
 	require.NoError(t, err)
@@ -366,7 +438,7 @@ func TestService_SignGER_SignerFailure(t *testing.T) {
 func TestService_SignGER_SignaturesAreCached(t *testing.T) {
 	f := newFixture(t, finalized(), time.Minute)
 	f.expectInserted() // every expectation is Once: a second query to L1 or the signer would fail the test
-	f.expectTag("finalized", 105)
+	f.expectFinal("finalized", 105)
 	f.expectSigning()
 
 	for range 5 {
@@ -390,7 +462,7 @@ func TestService_SignGER_NegativeAnswersAreCached(t *testing.T) {
 		// After the TTL L1 is asked again, and now the GER is there
 		time.Sleep(150 * time.Millisecond)
 		f.expectInserted()
-		f.expectTag("finalized", 105)
+		f.expectFinal("finalized", 105)
 		f.expectSigning()
 		result, err := f.service.SignGER(context.Background(), testGER)
 		require.NoError(t, err)
@@ -423,7 +495,7 @@ func TestService_SignGER_NegativeAnswersAreCached(t *testing.T) {
 
 		// The block became final: the next request is not answered with the cached rejection
 		f.expectInserted()
-		f.expectTag("finalized", 105)
+		f.expectFinal("finalized", 105)
 		f.expectSigning()
 		_, err = f.service.SignGER(context.Background(), testGER)
 		require.NoError(t, err)
@@ -445,7 +517,7 @@ func TestService_SignGER_ConcurrentRequestsShareTheWork(t *testing.T) {
 		Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
 	f.l1.EXPECT().BlockByNumber(mock.Anything, parentNumber).
 		Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
-	f.expectTag("finalized", 105)
+	f.expectFinal("finalized", 105)
 	f.expectSigning()
 
 	const requests = 20
@@ -488,7 +560,7 @@ func TestService_SignGER_ACallerGivingUpDoesNotAffectTheOthers(t *testing.T) {
 		Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
 	f.l1.EXPECT().BlockByNumber(mock.Anything, parentNumber).
 		Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
-	f.expectTag("finalized", 105)
+	f.expectFinal("finalized", 105)
 	f.expectSigning()
 
 	firstCtx, cancelFirst := context.WithCancel(context.Background())
