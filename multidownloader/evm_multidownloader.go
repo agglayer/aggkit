@@ -284,6 +284,11 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 			}
 			continue
 		}
+		if runCtx.Err() != nil {
+			// stopping: the step failed because it was cancelled, it is not a failure to retry
+			dh.log.Infof("EVMMultidownloader.Start: context done, exiting...")
+			return runCtx.Err()
+		}
 		reorgErr := mdrtypes.CastDetectedReorgError(err)
 		if reorgErr == nil {
 			delay, mustLog := stepBackoff.Failed()
