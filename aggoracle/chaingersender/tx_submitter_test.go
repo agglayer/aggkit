@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
 	"github.com/agglayer/aggkit/aggoracle/mocks"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
@@ -43,5 +44,31 @@ func TestTxSubmitter_CancellationWinsOverTheTicker(t *testing.T) {
 
 		require.NoError(t, submitter.submitAndWait(ctx, &to, []byte{0x01}, "inject", common.Hash{}))
 		cancel()
+	}
+}
+
+// A failed or evicted transaction was not mined: it is an error, never a success
+func TestTxSubmitter_FailedAndEvicted(t *testing.T) {
+	to := common.HexToAddress("0x1")
+	txID := common.HexToHash("0xabc1")
+	for status, expected := range map[ethtxtypes.MonitoredTxStatus]error{
+		ethtxtypes.MonitoredTxStatusFailed:  ErrTxFailed,
+		ethtxtypes.MonitoredTxStatusEvicted: ErrTxEvicted,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			ethTxMan := mocks.NewEthTxManager(t)
+			submitter := &txSubmitter{
+				logger:              log.GetDefaultLogger(),
+				ethTxMan:            ethTxMan,
+				waitPeriodMonitorTx: time.Millisecond,
+			}
+			ethTxMan.EXPECT().Add(mock.Anything, &to, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(txID, nil).Once()
+			ethTxMan.EXPECT().Result(mock.Anything, txID).
+				Return(ethtxtypes.MonitoredTxResult{ID: txID, Status: status}, nil).Once()
+
+			err := submitter.submitAndWait(context.Background(), &to, []byte{0x01}, "inject", common.Hash{})
+			require.ErrorIs(t, err, expected)
+		})
 	}
 }

@@ -94,8 +94,10 @@ type CommitteeV2Config struct {
 	// MaxInjectAttempts is how many times signatures are collected again when the
 	// committee changes (validators or threshold) between collecting and mining the transaction
 	MaxInjectAttempts int `mapstructure:"MaxInjectAttempts"`
-	// PendingGERTimeout is how long a GER is kept pending while the validators don't consider it final.
-	// 0 means keep it pending until it is injected or replaced by a newer one
+	// PendingGERTimeout is how long a GER is processed (waiting for the validators to consider it final, collecting
+	// the signatures and mining the transaction) before giving up on it. While a GER is processed the newer GERs are
+	// skipped: when it gives up, the next round processes the latest GER. 0 means no limit: the GER is processed until
+	// it is injected or it can't be
 	PendingGERTimeout types.Duration `mapstructure:"PendingGERTimeout"`
 	// ValidatorURLOverrides sets the URL of a validator, for the validators that have no URL registered
 	// on-chain or whose registered URL must be replaced. It takes precedence over the on-chain URL

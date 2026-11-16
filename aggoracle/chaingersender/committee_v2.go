@@ -83,6 +83,12 @@ const (
 // would restart the collection) until it is injected, it can't be injected (the validators reject it) or
 // PendingGERTimeout expires. Skipping the intermediate GERs is safe: a later GER includes the exits of the
 // previous ones.
+// inFlightTx is an injectGER transaction that is in the transaction manager and was not seen mined yet
+type inFlightTx struct {
+	ger common.Hash
+	id  common.Hash
+}
+
 type CommitteeV2Sender struct {
 	logger *log.Logger
 	cfg    CommitteeV2Config
@@ -104,6 +110,12 @@ type CommitteeV2Sender struct {
 	statusMu sync.Mutex
 	// status is what is being done with the GER being processed (zero if none), to explain the skips
 	status processingStatus
+
+	// inFlight is the injectGER transaction that was left in the transaction manager when the processing of its
+	// GER was cancelled or timed out (PendingGERTimeout) while it was being mined. The next attempt with the same GER
+	// monitors it again instead of collecting the signatures again: a second transaction would revert with
+	// GERAlreadyInjected and waste its gas. It is only used while holding processing
+	inFlight *inFlightTx
 
 	// lastCommittee is the last state of the committee that was read, to log its changes. It is only used by
 	// the constructor and while holding processing
@@ -486,7 +498,13 @@ func describeValidators(committee committeeSnapshot) string {
 
 // IsGERInjected checks if the GER is registered on the L2 GER manager
 func (s *CommitteeV2Sender) IsGERInjected(ger common.Hash) (bool, error) {
-	gerIndex, err := s.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, ger)
+	return s.isGERInjected(context.Background(), ger)
+}
+
+// isGERInjected is IsGERInjected bound to ctx: ProcessGER holds the processing lock while it runs, so a hung L2 RPC
+// must not keep it forever (PendingGERTimeout and the shutdown cancel ctx)
+func (s *CommitteeV2Sender) isGERInjected(ctx context.Context, ger common.Hash) (bool, error) {
+	gerIndex, err := s.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false, Context: ctx}, ger)
 	if err != nil {
 		return false, fmt.Errorf("failed to check if global exit root is injected %s: %w", ger, err)
 	}
@@ -497,7 +515,7 @@ func (s *CommitteeV2Sender) IsGERInjected(ger common.Hash) (bool, error) {
 // or the committee already processed it. The committee never processes a GER twice, not even
 // if it was removed from the L2 GER manager afterwards, so retrying it would be useless.
 func (s *CommitteeV2Sender) isProcessed(ctx context.Context, ger common.Hash) (bool, error) {
-	injected, err := s.IsGERInjected(ger)
+	injected, err := s.isGERInjected(ctx, ger)
 	if err != nil {
 		return false, err
 	}
@@ -549,6 +567,7 @@ func (s *CommitteeV2Sender) processGER(ctx context.Context, ger common.Hash) err
 		}
 		if processed {
 			s.logger.Debugf("GER %s is already processed", ger)
+			s.inFlight = nil
 			return nil
 		}
 
@@ -578,6 +597,19 @@ func (s *CommitteeV2Sender) processGER(ctx context.Context, ger common.Hash) err
 
 // tryInject makes one attempt to inject the GER
 func (s *CommitteeV2Sender) tryInject(ctx context.Context, ger common.Hash) (attemptOutcome, error) {
+	if s.inFlight != nil {
+		if s.inFlight.ger == ger {
+			s.setStage(stageMining, "transaction "+s.inFlight.id.Hex()+" of a previous attempt")
+			s.logger.Infof("GER %s: monitoring again its injectGER transaction %s, left by a previous attempt",
+				ger, s.inFlight.id.Hex())
+			return s.submitOutcome(ctx, s.waitInjectTx(ctx, ger, s.inFlight.id))
+		}
+		// The transaction manager keeps handling it: it injects a GER older than this one
+		s.logger.Infof("the injectGER transaction %s of GER %s is not monitored anymore: GER %s is newer",
+			s.inFlight.id.Hex(), s.inFlight.ger, ger)
+		s.inFlight = nil
+	}
+
 	committee, err := s.committeeState(ctx)
 	if err != nil {
 		return outcomeFail, err
@@ -603,15 +635,20 @@ func (s *CommitteeV2Sender) tryInject(ctx context.Context, ger common.Hash) (att
 	case verificationValid:
 	}
 
-	if err := s.submit(ctx, ger, result); err != nil {
-		if ctx.Err() != nil {
-			return outcomeFail, err
-		}
-		// The transaction failed: the GER may have been injected anyway (processGER checks it), if not it is
-		// worth collecting the signatures again
-		return outcomeRetry, err
+	return s.submitOutcome(ctx, s.submit(ctx, ger, result))
+}
+
+// submitOutcome classifies the result of sending (or monitoring again) the injectGER transaction
+func (s *CommitteeV2Sender) submitOutcome(ctx context.Context, err error) (attemptOutcome, error) {
+	if err == nil {
+		return outcomeDone, nil
 	}
-	return outcomeDone, nil
+	if ctx.Err() != nil {
+		return outcomeFail, err
+	}
+	// The transaction failed or was evicted: the GER may have been injected anyway (processGER checks it), if not
+	// it is worth collecting the signatures again. If its status couldn't be read, the next attempt monitors it again
+	return outcomeRetry, err
 }
 
 // classifyCollectError decides what to do after failing to collect the signatures
@@ -667,11 +704,29 @@ func (s *CommitteeV2Sender) submit(ctx context.Context, ger common.Hash, result 
 
 	s.setStage(stageMining, fmt.Sprintf("signed by %d validators", len(result.Signers)))
 	s.logger.Infof("injecting GER %s with the signatures of %d validators", ger, len(result.Signers))
-	if err := s.submitter.submitAndWait(ctx, &s.committeeAddr, txInput, "inject", ger); err != nil {
+	id, err := s.submitter.add(ctx, &s.committeeAddr, txInput, "inject", ger)
+	if err != nil {
 		return err
 	}
-	// submitAndWait returns nil when the context is cancelled: don't report that as injected
-	return ctx.Err()
+	return s.waitInjectTx(ctx, ger, id)
+}
+
+// waitInjectTx monitors the injectGER transaction id of the GER until it is mined. While it is not seen mined, failed
+// or evicted it is kept as inFlight: if the context ends (shutdown, PendingGERTimeout) or its status can't be read,
+// the next attempt with this GER monitors it again
+func (s *CommitteeV2Sender) waitInjectTx(ctx context.Context, ger, id common.Hash) error {
+	s.inFlight = &inFlightTx{ger: ger, id: id}
+	err := s.submitter.wait(ctx, id, "inject", ger)
+	if ctx.Err() != nil {
+		// wait returns nil when the context is cancelled: don't report that as injected
+		s.logger.Infof("GER %s: its injectGER transaction %s is left in the transaction manager (%s)",
+			ger, id.Hex(), ctx.Err())
+		return ctx.Err()
+	}
+	if err == nil || errors.Is(err, ErrTxFailed) || errors.Is(err, ErrTxEvicted) {
+		s.inFlight = nil
+	}
+	return err
 }
 
 // startStatus records that the GER starts being processed

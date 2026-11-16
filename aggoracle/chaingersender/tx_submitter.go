@@ -22,9 +22,16 @@ type txSubmitter struct {
 	waitPeriodMonitorTx time.Duration
 }
 
+var (
+	// ErrTxFailed is returned when the transaction manager reports that the transaction failed
+	ErrTxFailed = errors.New("the transaction failed")
+	// ErrTxEvicted is returned when the transaction manager evicted the transaction: it was not mined
+	ErrTxEvicted = errors.New("the transaction was evicted by the transaction manager")
+)
+
 // submitAndWait adds the transaction (to, data) to the transaction manager and waits until it is mined.
 // action ("inject", "propose"...) and ger are only used to log. If the transaction already exists in the
-// monitoring DB, the existing one is monitored. It returns nil if the context is cancelled or the tx is evicted.
+// monitoring DB, the existing one is monitored. It returns nil if the context is cancelled (see wait).
 func (s *txSubmitter) submitAndWait(
 	ctx context.Context,
 	to *common.Address,
@@ -32,23 +39,43 @@ func (s *txSubmitter) submitAndWait(
 	action string,
 	ger common.Hash,
 ) error {
-	ticker := time.NewTicker(s.waitPeriodMonitorTx)
-	defer ticker.Stop()
+	id, err := s.add(ctx, to, data, action, ger)
+	if err != nil {
+		return err
+	}
+	return s.wait(ctx, id, action, ger)
+}
 
-	// Add the transaction to the transaction manager
+// add adds the transaction (to, data) to the transaction manager and returns its ID. If the transaction already
+// exists in the monitoring DB, it returns the ID of the existing one.
+func (s *txSubmitter) add(
+	ctx context.Context,
+	to *common.Address,
+	data []byte,
+	action string,
+	ger common.Hash,
+) (common.Hash, error) {
 	id, err := s.ethTxMan.Add(ctx, to, common.Big0, data, s.gasOffset, nil)
 	if err == nil {
 		s.logger.Infof("%s GER transaction submitted with ID: %s. GER: %s", action, id.Hex(), ger.Hex())
-	} else if !errors.Is(err, ethtxmanager.ErrAlreadyExists) {
-		return fmt.Errorf("failed to add %s GER transaction: %w", action, err)
+		return id, nil
 	}
-	if err != nil {
-		s.logger.Infof("%s GER transaction already exists in monitoring DB with ID: %s. GER: %s", action, id.Hex(), ger.Hex())
+	if !errors.Is(err, ethtxmanager.ErrAlreadyExists) {
+		return common.Hash{}, fmt.Errorf("failed to add %s GER transaction: %w", action, err)
 	}
+	s.logger.Infof("%s GER transaction already exists in monitoring DB with ID: %s. GER: %s", action, id.Hex(), ger.Hex())
+	return id, nil
+}
 
-	s.logger.Debugf("monitoring every %s", s.waitPeriodMonitorTx)
+// wait monitors the transaction id until it is mined (nil), fails (ErrTxFailed) or is evicted (ErrTxEvicted).
+// It returns nil if the context is cancelled: the transaction stays in the transaction manager, and the caller
+// must check ctx.Err() to tell it from a mined one.
+func (s *txSubmitter) wait(ctx context.Context, id common.Hash, action string, ger common.Hash) error {
+	ticker := time.NewTicker(s.waitPeriodMonitorTx)
+	defer ticker.Stop()
 
-	// Monitor the transaction status
+	s.logger.Debugf("monitoring %s GER tx %s (GER %s) every %s", action, id.Hex(), ger.Hex(), s.waitPeriodMonitorTx)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -74,10 +101,10 @@ func (s *txSubmitter) submitAndWait(
 				ethtxtypes.MonitoredTxStatusSent:
 				continue
 			case ethtxtypes.MonitoredTxStatusFailed:
-				return fmt.Errorf("%s GER tx %s failed", action, id.Hex())
+				return fmt.Errorf("%w: %s GER tx %s", ErrTxFailed, action, id.Hex())
 			case ethtxtypes.MonitoredTxStatusEvicted:
-				s.logger.Debugf("%s GER tx %s was evicted", action, id.Hex())
-				return nil
+				s.logger.Warnf("%s GER tx %s was evicted: GER %s was not submitted", action, id.Hex(), ger.Hex())
+				return fmt.Errorf("%w: %s GER tx %s", ErrTxEvicted, action, id.Hex())
 			case ethtxtypes.MonitoredTxStatusMined,
 				ethtxtypes.MonitoredTxStatusSafe,
 				ethtxtypes.MonitoredTxStatusFinalized:

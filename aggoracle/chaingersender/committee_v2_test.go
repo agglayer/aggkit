@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle/mocks"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -557,25 +559,30 @@ func TestCommitteeV2Sender_ProcessGER_CollectionErrors(t *testing.T) {
 }
 
 func TestCommitteeV2Sender_ProcessGER_TransactionFailures(t *testing.T) {
-	t.Run("the transaction fails: collects again and succeeds", func(t *testing.T) {
-		f := newV2Fixture(t)
-		sender := f.newSender(defaultV2Config())
-		result := twoSignatures()
+	// A failed or evicted transaction is not injected: it is not reported as done, the next attempt collects again
+	for _, status := range []ethtxtypes.MonitoredTxStatus{
+		ethtxtypes.MonitoredTxStatusFailed, ethtxtypes.MonitoredTxStatusEvicted,
+	} {
+		t.Run("the transaction is "+string(status)+": collects again and succeeds", func(t *testing.T) {
+			f := newV2Fixture(t)
+			sender := f.newSender(defaultV2Config())
+			result := twoSignatures()
 
-		f.expectNotProcessed(v2TestGER)
-		f.expectCommitteeState(2, validatorInfos("http://a", "http://b", "http://c"))
-		f.collector.EXPECT().Collect(mock.Anything, v2TestGER, mock.Anything, 2).Return(result, nil).Once()
-		f.committee.EXPECT().VerifyGER(mock.Anything, [32]byte(v2TestGER), result.Signatures).Return(true, nil).Once()
-		f.expectInjectTx(v2TestGER, result.Signatures, injectTxID, ethtxtypes.MonitoredTxStatusFailed)
+			for _, attempt := range []struct {
+				id     common.Hash
+				status ethtxtypes.MonitoredTxStatus
+			}{{injectTxID, status}, {injectTxID2, ethtxtypes.MonitoredTxStatusMined}} {
+				f.expectNotProcessed(v2TestGER)
+				f.expectCommitteeState(2, validatorInfos("http://a", "http://b", "http://c"))
+				f.collector.EXPECT().Collect(mock.Anything, v2TestGER, mock.Anything, 2).Return(result, nil).Once()
+				f.committee.EXPECT().VerifyGER(mock.Anything, [32]byte(v2TestGER), result.Signatures).
+					Return(true, nil).Once()
+				f.expectInjectTx(v2TestGER, result.Signatures, attempt.id, attempt.status)
+			}
 
-		f.expectNotProcessed(v2TestGER)
-		f.expectCommitteeState(2, validatorInfos("http://a", "http://b", "http://c"))
-		f.collector.EXPECT().Collect(mock.Anything, v2TestGER, mock.Anything, 2).Return(result, nil).Once()
-		f.committee.EXPECT().VerifyGER(mock.Anything, [32]byte(v2TestGER), result.Signatures).Return(true, nil).Once()
-		f.expectInjectTx(v2TestGER, result.Signatures, injectTxID2, ethtxtypes.MonitoredTxStatusMined)
-
-		require.NoError(t, sender.ProcessGER(context.Background(), v2TestGER))
-	})
+			require.NoError(t, sender.ProcessGER(context.Background(), v2TestGER))
+		})
+	}
 
 	t.Run("the transaction fails but the GER ended up injected", func(t *testing.T) {
 		f := newV2Fixture(t)
@@ -688,6 +695,102 @@ func TestCommitteeV2Sender_ProcessGER_PendingTimeout(t *testing.T) {
 	err := sender.ProcessGER(context.Background(), v2TestGER)
 	require.ErrorIs(t, err, ErrGERPendingTimeout)
 	require.Less(t, time.Since(start), v2TestTimeout)
+}
+
+// A hung L2 RPC while checking if the GER is injected must not keep the processing lock forever
+func TestCommitteeV2Sender_ProcessGER_PendingTimeoutStopsAHungL2(t *testing.T) {
+	f := newV2Fixture(t)
+	cfg := defaultV2Config()
+	cfg.PendingGERTimeout = 60 * time.Millisecond
+	sender := f.newSender(cfg)
+
+	f.gerManager.EXPECT().GlobalExitRootMap(mock.Anything, [32]byte(v2TestGER)).
+		RunAndReturn(func(opts *bind.CallOpts, _ [32]byte) (*big.Int, error) {
+			<-opts.Context.Done()
+			return nil, opts.Context.Err()
+		}).Once()
+
+	start := time.Now()
+	err := sender.ProcessGER(context.Background(), v2TestGER)
+	require.ErrorIs(t, err, ErrGERPendingTimeout)
+	require.Less(t, time.Since(start), v2TestTimeout)
+	// The lock was released
+	require.True(t, sender.processing.TryLock())
+	sender.processing.Unlock()
+}
+
+// The injectGER transaction left in the transaction manager by a timeout is monitored again, not sent twice
+func TestCommitteeV2Sender_ProcessGER_InFlightTransaction(t *testing.T) {
+	// sendAndTimeout makes the first call to ProcessGER send the transaction and time out while it is mined
+	sendAndTimeout := func(t *testing.T, f *v2Fixture, sender *CommitteeV2Sender, mined *atomic.Bool) {
+		t.Helper()
+		result := twoSignatures()
+		f.expectNotProcessed(v2TestGER)
+		f.expectCommitteeState(2, validatorInfos("http://a", "http://b", "http://c"))
+		f.collector.EXPECT().Collect(mock.Anything, v2TestGER, mock.Anything, 2).Return(result, nil).Once()
+		f.committee.EXPECT().VerifyGER(mock.Anything, [32]byte(v2TestGER), result.Signatures).Return(true, nil).Once()
+		f.ethTxMan.EXPECT().Add(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(injectTxID, nil).Once()
+		f.ethTxMan.EXPECT().Result(mock.Anything, injectTxID).
+			RunAndReturn(func(context.Context, common.Hash) (ethtxtypes.MonitoredTxResult, error) {
+				status := ethtxtypes.MonitoredTxStatusSent
+				if mined.Load() {
+					status = ethtxtypes.MonitoredTxStatusMined
+				}
+				return ethtxtypes.MonitoredTxResult{ID: injectTxID, Status: status, MinedAtBlockNumber: big.NewInt(1)}, nil
+			})
+
+		require.ErrorIs(t, sender.ProcessGER(context.Background(), v2TestGER), ErrGERPendingTimeout)
+		require.NotNil(t, sender.inFlight)
+	}
+
+	t.Run("the same GER monitors the transaction again", func(t *testing.T) {
+		f := newV2Fixture(t)
+		cfg := defaultV2Config()
+		cfg.PendingGERTimeout = 60 * time.Millisecond
+		sender := f.newSender(cfg)
+		var mined atomic.Bool
+		sendAndTimeout(t, f, sender, &mined)
+
+		// The signatures are not collected again (Collect and Add expected once): the transaction is mined
+		mined.Store(true)
+		f.expectNotProcessed(v2TestGER)
+		require.NoError(t, sender.ProcessGER(context.Background(), v2TestGER))
+		require.Nil(t, sender.inFlight)
+	})
+
+	t.Run("the GER got injected meanwhile", func(t *testing.T) {
+		f := newV2Fixture(t)
+		cfg := defaultV2Config()
+		cfg.PendingGERTimeout = 60 * time.Millisecond
+		sender := f.newSender(cfg)
+		var mined atomic.Bool
+		sendAndTimeout(t, f, sender, &mined)
+
+		f.gerManager.EXPECT().GlobalExitRootMap(mock.Anything, [32]byte(v2TestGER)).Return(big.NewInt(4), nil).Once()
+		require.NoError(t, sender.ProcessGER(context.Background(), v2TestGER))
+		require.Nil(t, sender.inFlight)
+	})
+
+	t.Run("a newer GER doesn't wait for it", func(t *testing.T) {
+		f := newV2Fixture(t)
+		cfg := defaultV2Config()
+		cfg.PendingGERTimeout = 60 * time.Millisecond
+		sender := f.newSender(cfg)
+		var mined atomic.Bool
+		sendAndTimeout(t, f, sender, &mined)
+
+		newerGER := common.HexToHash("0x99")
+		result := twoSignatures()
+		f.expectNotProcessed(newerGER)
+		f.expectCommitteeState(2, validatorInfos("http://a", "http://b", "http://c"))
+		f.collector.EXPECT().Collect(mock.Anything, newerGER, mock.Anything, 2).Return(result, nil).Once()
+		f.committee.EXPECT().VerifyGER(mock.Anything, [32]byte(newerGER), result.Signatures).Return(true, nil).Once()
+		f.expectInjectTx(newerGER, result.Signatures, injectTxID2, ethtxtypes.MonitoredTxStatusMined)
+
+		require.NoError(t, sender.ProcessGER(context.Background(), newerGER))
+		require.Nil(t, sender.inFlight)
+	})
 }
 
 // While a GER is being processed, the new ones are skipped
