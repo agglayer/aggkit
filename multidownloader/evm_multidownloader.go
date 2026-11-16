@@ -283,7 +283,7 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 		}
 		reorgErr := mdrtypes.CastDetectedReorgError(err)
 		if reorgErr == nil {
-			delay, mustLog := stepBackoff.Failed(err)
+			delay, mustLog := stepBackoff.Failed()
 			if mustLog {
 				dh.log.Warnf("Error running multidownloader (consecutive failures: %d, retrying in %s): %s",
 					stepBackoff.Failures(), delay, err.Error())
@@ -332,7 +332,7 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 // delay before the next attempt. If runCtx is done it returns at once: the caller loop checks it and exits
 func (dh *EVMMultidownloader) retryReorgProcessingAfter(runCtx context.Context, backoff *retryBackoff,
 	msg string, err error) {
-	delay, mustLog := backoff.Failed(err)
+	delay, mustLog := backoff.Failed()
 	if mustLog {
 		dh.log.Warnf("%s (consecutive failures: %d, retrying in %s): %s", msg, backoff.Failures(), delay, err.Error())
 	}

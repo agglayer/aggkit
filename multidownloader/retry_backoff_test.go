@@ -3,6 +3,7 @@ package multidownloader
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -16,21 +17,20 @@ func fullDelay(d time.Duration) time.Duration { return d }
 func TestRetryBackoff_GrowsUpToTheCapAndResets(t *testing.T) {
 	b := newRetryBackoff(100*time.Millisecond, time.Second)
 	b.jitter = fullDelay
-	errRPC := errors.New("429 Too Many Requests")
 
 	expected := []time.Duration{
 		100 * time.Millisecond, 200 * time.Millisecond, 400 * time.Millisecond, 800 * time.Millisecond,
 		time.Second, time.Second, time.Second,
 	}
 	for i, want := range expected {
-		delay, _ := b.Failed(errRPC)
+		delay, _ := b.Failed()
 		require.Equal(t, want, delay, "failure %d", i+1)
 	}
 	require.Equal(t, len(expected), b.Failures())
 
 	require.Equal(t, len(expected), b.Succeeded())
 	require.Equal(t, 0, b.Failures())
-	delay, mustLog := b.Failed(errRPC)
+	delay, mustLog := b.Failed()
 	require.Equal(t, 100*time.Millisecond, delay, "the delay must start again after a success")
 	require.True(t, mustLog, "the first failure after a success must be logged")
 }
@@ -38,40 +38,46 @@ func TestRetryBackoff_GrowsUpToTheCapAndResets(t *testing.T) {
 func TestRetryBackoff_JitterKeepsTheDelayBetweenHalfAndFull(t *testing.T) {
 	b := newRetryBackoff(time.Second, 8*time.Second)
 	for range 4 {
-		delay, _ := b.Failed(errors.New("boom"))
+		delay, _ := b.Failed()
 		full := b.initial << (b.Failures() - 1)
 		require.GreaterOrEqual(t, delay, full/2)
 		require.LessOrEqual(t, delay, full)
 	}
 }
 
-func TestRetryBackoff_DefaultsAndInvalidValues(t *testing.T) {
-	b := newRetryBackoff(0, 0)
-	require.Equal(t, defaultRetryAfterErrorInitialDelay, b.initial)
-	require.Equal(t, defaultRetryAfterErrorInitialDelay, b.max, "max can't be lower than initial")
-
+func TestRetryBackoff_ConfigDelays(t *testing.T) {
 	cfg := Config{}
-	b = cfg.newRetryBackoff()
+	b := cfg.newRetryBackoff()
 	require.Equal(t, defaultRetryAfterErrorInitialDelay, b.initial)
 	require.Equal(t, defaultRetryAfterErrorMaxDelay, b.max)
+
+	// Setting only a max delay lower than the default initial one caps the initial delay
+	cfg.RetryAfterErrorMaxDelay = types.NewDuration(200 * time.Millisecond)
+	b = cfg.newRetryBackoff()
+	require.Equal(t, 200*time.Millisecond, b.initial)
+	require.Equal(t, 200*time.Millisecond, b.max)
+}
+
+func TestRetryBackoff_HugeMaxDoesNotOverflow(t *testing.T) {
+	b := newRetryBackoff(time.Second, time.Duration(math.MaxInt64))
+	b.jitter = fullDelay
+	for range 100 {
+		delay, _ := b.Failed()
+		require.Positive(t, delay)
+	}
+	require.Equal(t, time.Duration(math.MaxInt64), b.delay())
 }
 
 func TestRetryBackoff_LogsAreBounded(t *testing.T) {
 	b := newRetryBackoff(time.Millisecond, time.Millisecond)
-	errA := errors.New("error A")
 	logged := []int{}
 	for i := 1; i <= 100; i++ {
-		if _, mustLog := b.Failed(errA); mustLog {
+		if _, mustLog := b.Failed(); mustLog {
 			logged = append(logged, i)
 		}
 	}
 	// first, powers of two and every logEveryNFailures
 	require.Equal(t, []int{1, 2, 4, 8, 16, 20, 32, 40, 60, 64, 80, 100}, logged)
-
-	_, mustLog := b.Failed(errors.New("error B"))
-	require.True(t, mustLog, "a different error must be logged")
-	_, mustLog = b.Failed(errors.New("error B"))
-	require.False(t, mustLog, "the same error again must not be logged")
 }
 
 func TestWaitOrDone(t *testing.T) {

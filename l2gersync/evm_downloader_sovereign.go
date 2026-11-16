@@ -43,13 +43,19 @@ type downloaderSovereign struct {
 	// touched from the single Download() goroutine, so a plain field is safe.
 	removalScanMaxRange uint64
 
-	// missingGER is the last GER found missing from the L1 info tree and missingGERHits how many times in a
-	// row it has been retried, to bound the logging of the retries (see logGERMissingFromL1InfoTree). Only
-	// touched from the single Download() goroutine, so plain fields are safe.
-	missingGER     common.Hash
-	missingGERHits int
+	// missingGER is the last GER found missing from the L1 info tree, missingGERHits how many times in a row it
+	// has been retried (to bound the logging of the retries), missingGERSince when it was first found missing
+	// and missingGERInL1 if it is known to exist in the L1 contract (a GER on L1 doesn't go away, so the L1 read
+	// is not repeated). See logGERMissingFromL1InfoTree. Only touched from the single Download() goroutine, so
+	// plain fields are safe.
+	missingGER      common.Hash
+	missingGERHits  int
+	missingGERSince time.Time
+	missingGERInL1  bool
 
 	logger aggkitcommon.Logger
+	// now returns the current time; it can be replaced in tests
+	now func() time.Time
 }
 
 func newDownloaderSovereign(
@@ -83,6 +89,7 @@ func newDownloaderSovereign(
 		rh:                 rh,
 		syncBlockChunkSize: syncBlockChunkSize,
 		logger:             log.WithFields("module", "l2gersync"),
+		now:                time.Now,
 	}
 
 	appender := d.buildAppender(l2GERManager)
@@ -169,7 +176,7 @@ func (d *downloaderSovereign) buildAppender(
 			gerHash := common.Hash(insertGEREvent.NewGlobalExitRoot)
 			ctx := context.Background()
 
-			d.logGERMissingFromL1InfoTree(ctx, gerHash, b.Num, err)
+			expectedRace := d.logGERMissingFromL1InfoTree(ctx, gerHash, b.Num, err)
 
 			if d.isGERRemovedFromL2(ctx, b.Num, gerHash) {
 				d.logger.Infof("GER %s got removed from L2, skipping stale insert event", gerHash.Hex())
@@ -177,6 +184,11 @@ func (d *downloaderSovereign) buildAppender(
 				return nil
 			}
 
+			if expectedRace {
+				// the downloader logs the retries of the expected race at WARN, not ERROR
+				return fmt.Errorf("failed to fetch l1 info tree for global exit root %s (%w): %w",
+					gerHash.Hex(), sync.ErrAppendNotReadyYet, err)
+			}
 			return fmt.Errorf("failed to fetch l1 info tree for global exit root %s: %w",
 				gerHash.Hex(), err)
 		}
@@ -224,48 +236,84 @@ func (d *downloaderSovereign) missingGERCauseFromL1(ctx context.Context,
 	return missingGERL1InfoTreeBehind, nil
 }
 
-// logGERMissingFromL1InfoTree logs that gerHash (inserted on L2 at blockNum) is missing from the L1 info tree.
-// The level depends on the L1 contract: if the GER exists on L1 the L1 info tree syncer is just behind
-// (WARN); if it doesn't exist on L1 it may be a fake GER (ERROR). If the L1 contract can't be read, it falls
-// back to the L1 info tree sync status (WARN if it is not synced yet, ERROR otherwise).
+// missingGERStuckAfter is how long a GER that exists in the L1 contract can be missing from the L1 info tree
+// before it is no longer considered the expected race (the L1 info tree syncer may be stuck or misconfigured).
+// It is well above the lag of an L1 info tree syncer that follows the finalized block
+const missingGERStuckAfter = 30 * time.Minute
+
+// logGERMissingFromL1InfoTree logs that gerHash (inserted on L2 at blockNum) is missing from the L1 info tree,
+// and returns true if it is the expected race (the GER exists in the L1 contract and the L1 info tree syncer is
+// just behind, or the L1 contract can't be read and the L1 info tree is not synced yet).
+// The level depends on the L1 contract: if the GER exists on L1 the syncer is behind (WARN), unless it has been
+// missing for more than missingGERStuckAfter (ERROR); if it doesn't exist on L1 it may be a fake GER (ERROR). If
+// the L1 contract can't be read, it falls back to the L1 info tree sync status (WARN if it is not synced yet,
+// ERROR otherwise).
 // The lookup is retried until it resolves, so only the first retries and then one of every
-// aggkitcommon.RetryErrorLogInterval are logged at that level; the rest are logged at DEBUG.
+// aggkitcommon.RetryErrorLogInterval are logged at that level; the rest are logged at DEBUG, without reading
+// the L1 contract again unless it is needed.
 // This only decides the logging: the skip decision is entirely L2-side (see isGERRemovedFromL2).
 func (d *downloaderSovereign) logGERMissingFromL1InfoTree(ctx context.Context, gerHash common.Hash,
-	blockNum uint64, lookupErr error) {
+	blockNum uint64, lookupErr error) bool {
+	now := d.now()
 	if gerHash != d.missingGER {
+		d.resetMissingGER()
 		d.missingGER = gerHash
-		d.missingGERHits = 0
+		d.missingGERSince = now
 	}
 	d.missingGERHits++
 	attempt := d.missingGERHits
+	missingFor := now.Sub(d.missingGERSince).Round(time.Second)
+	mustLog := aggkitcommon.ShouldLogRetryAtError(attempt)
 	warnf, errorf := d.logger.Warnf, d.logger.Errorf
-	if !aggkitcommon.ShouldLogRetryAtError(attempt) {
+	if !mustLog {
 		warnf, errorf = d.logger.Debugf, d.logger.Debugf
 	}
 
-	cause, l1Err := d.missingGERCauseFromL1(ctx, gerHash)
+	cause := missingGERL1InfoTreeBehind
+	var l1Err error
+	if !d.missingGERInL1 {
+		if !mustLog {
+			// Not worth an L1 call just to log at DEBUG
+			d.logger.Debugf("global exit root %s (block: %d) is not in the l1 info tree yet (attempt %d): %v",
+				gerHash.Hex(), blockNum, attempt, lookupErr)
+			return false
+		}
+		cause, l1Err = d.missingGERCauseFromL1(ctx, gerHash)
+		d.missingGERInL1 = cause == missingGERL1InfoTreeBehind
+	}
+
 	switch cause {
 	case missingGERL1InfoTreeBehind:
+		if missingFor > missingGERStuckAfter {
+			errorf("global exit root %s (block: %d) exists in the L1 contract but is still not in the l1 info "+
+				"tree after %s: the l1 info tree syncer may be stuck or misconfigured (attempt %d): %v",
+				gerHash.Hex(), blockNum, missingFor, attempt, lookupErr)
+			return false
+		}
 		warnf("l1 info tree not synced yet, cannot resolve global exit root %s (block: %d), it exists in "+
 			"the L1 contract, will retry (attempt %d): %v", gerHash.Hex(), blockNum, attempt, lookupErr)
+		return true
 	case missingGERNotInL1:
 		errorf("failed to fetch l1 info tree for global exit root %s (block: %d), GER not found in L1 contract "+
 			"globalExitRootMap either (attempt %d): %v", gerHash.Hex(), blockNum, attempt, lookupErr)
-	case missingGERUnknown:
-		errorf("GER lookup for %s failed in L1 contract: %v", gerHash.Hex(), l1Err)
+		return false
+	default: // missingGERUnknown
 		upToDate, syncErr := d.l1InfoTreeSync.IsUpToDate(ctx, d.l1Client)
 		switch {
 		case syncErr != nil:
-			warnf("could not check whether the l1 info tree is synced: %v", syncErr)
-			errorf("failed to fetch l1 info tree for global exit root %s (block: %d) (attempt %d): %v",
-				gerHash.Hex(), blockNum, attempt, lookupErr)
+			errorf("failed to fetch l1 info tree for global exit root %s (block: %d); GER lookup failed in L1 "+
+				"contract (%v) and could not check whether the l1 info tree is synced (%v) (attempt %d): %v",
+				gerHash.Hex(), blockNum, l1Err, syncErr, attempt, lookupErr)
+			return false
 		case !upToDate:
-			warnf("l1 info tree not synced yet, cannot resolve global exit root %s (block: %d), "+
-				"will retry (attempt %d): %v", gerHash.Hex(), blockNum, attempt, lookupErr)
+			warnf("l1 info tree not synced yet, cannot resolve global exit root %s (block: %d), will retry; "+
+				"GER lookup failed in L1 contract: %v (attempt %d): %v",
+				gerHash.Hex(), blockNum, l1Err, attempt, lookupErr)
+			return true
 		default:
-			errorf("failed to fetch l1 info tree for global exit root %s (block: %d) (attempt %d): %v",
-				gerHash.Hex(), blockNum, attempt, lookupErr)
+			errorf("failed to fetch l1 info tree for global exit root %s (block: %d); GER lookup failed in L1 "+
+				"contract: %v (attempt %d): %v", gerHash.Hex(), blockNum, l1Err, attempt, lookupErr)
+			return false
 		}
 	}
 }
@@ -274,6 +322,8 @@ func (d *downloaderSovereign) logGERMissingFromL1InfoTree(ctx context.Context, g
 func (d *downloaderSovereign) resetMissingGER() {
 	d.missingGER = common.Hash{}
 	d.missingGERHits = 0
+	d.missingGERSince = time.Time{}
+	d.missingGERInL1 = false
 }
 
 // isGERRemovedFromL2 reports whether ger has genuinely been removed on-chain. Two corroborating signals,

@@ -117,8 +117,9 @@ type RPCClientConfig struct {
 	// syncer retries the same block every RetryAfterErrorPeriod (forever with MaxRetryAttemptsAfterError = -1).
 	// It only applies to the single header retrieval: the batch retrieval (BatchBlockHeaderRetrieval) still
 	// fails on a missing block.
-	// Only set it on the L2 RPC ([Common.L2RPC]): the L1 multidownloader (default L1 sync) refuses a non-zero
-	// value at startup.
+	// Only set it on the L2 RPC ([Common.L2RPC]) and keep the L2 multidownloader disabled
+	// ([L2Multidownloader] Enabled = false, the default): the multidownloader (the default L1 sync, and the L2
+	// one if enabled) refuses a non-zero value at startup.
 	// 0 disables this behaviour (a missing block is an error). Default: 0.
 	SupportNonEthereumWithMaxGapsInBlocks uint64 `mapstructure:"SupportNonEthereumWithMaxGapsInBlocks"`
 	//

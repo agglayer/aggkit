@@ -376,6 +376,7 @@ func TestURLSchemeHost(t *testing.T) {
 		{name: "empty", input: "", expected: RedactedURLPlaceholder},
 		{name: "no scheme", input: "rpc.example.com/v3/KEY", expected: RedactedURLPlaceholder},
 		{name: "unparseable", input: "http://[::1/KEY", expected: RedactedURLPlaceholder},
+		{name: "scheme-less host:port", input: "localhost:8545/KEY", expected: RedactedURLPlaceholder},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

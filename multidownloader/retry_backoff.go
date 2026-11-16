@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// logEveryNFailures is how often a persistent error is logged again, besides the first occurrence,
-// a change of error and every power of two of consecutive failures
+// logEveryNFailures is how often a persistent error is logged again, besides the first occurrence and every
+// power of two of consecutive failures
 const logEveryNFailures = 20
 
 // retryBackoff spaces the retries of an operation that keeps failing: the delay starts at initial, doubles
@@ -21,18 +21,13 @@ type retryBackoff struct {
 	max     time.Duration
 	// failures is the number of consecutive failures since the last success
 	failures int
-	lastErr  string
 	// jitter returns a random duration in [0, d]; it can be replaced in tests
 	jitter func(d time.Duration) time.Duration
 }
 
+// newRetryBackoff returns a backoff from initial up to maxDelay. It trusts its inputs (0 < initial <= maxDelay):
+// the defaults and limits are resolved by Config (see Config.newRetryBackoff)
 func newRetryBackoff(initial, maxDelay time.Duration) *retryBackoff {
-	if initial <= 0 {
-		initial = defaultRetryAfterErrorInitialDelay
-	}
-	if maxDelay < initial {
-		maxDelay = initial
-	}
 	return &retryBackoff{
 		initial: initial,
 		max:     maxDelay,
@@ -45,18 +40,13 @@ func newRetryBackoff(initial, maxDelay time.Duration) *retryBackoff {
 	}
 }
 
-// Failed records a failure with error err and returns how long to wait before retrying and if this
-// failure must be logged (first failure, the error changed, or a power of two / every logEveryNFailures
-// consecutive failures)
-func (b *retryBackoff) Failed(err error) (time.Duration, bool) {
+// Failed records a failure and returns how long to wait before retrying and if this failure must be logged:
+// the first one, every power of two and every logEveryNFailures consecutive failures. The error text is not
+// taken into account on purpose: errors that embed changing details (request ids, block numbers) would
+// otherwise bypass the limit
+func (b *retryBackoff) Failed() (time.Duration, bool) {
 	b.failures++
-	errMsg := ""
-	if err != nil {
-		errMsg = err.Error()
-	}
-	mustLog := b.failures == 1 || errMsg != b.lastErr ||
-		b.failures&(b.failures-1) == 0 || b.failures%logEveryNFailures == 0
-	b.lastErr = errMsg
+	mustLog := b.failures&(b.failures-1) == 0 || b.failures%logEveryNFailures == 0
 	return b.delay(), mustLog
 }
 
@@ -64,6 +54,11 @@ func (b *retryBackoff) Failed(err error) (time.Duration, bool) {
 func (b *retryBackoff) delay() time.Duration {
 	d := b.initial
 	for i := 1; i < b.failures && d < b.max; i++ {
+		if d > b.max/2 {
+			// doubling would reach the cap (and could overflow with a huge max)
+			d = b.max
+			break
+		}
 		d *= 2
 	}
 	if d > b.max {
@@ -77,7 +72,6 @@ func (b *retryBackoff) delay() time.Duration {
 func (b *retryBackoff) Succeeded() int {
 	failures := b.failures
 	b.failures = 0
-	b.lastErr = ""
 	return failures
 }
 

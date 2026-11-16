@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -31,7 +32,7 @@ func newCaptureLogger(t *testing.T) (*commonmocks.Logger, *[]capturedLog) {
 			*lines = append(*lines, capturedLog{level: level, msg: fmt.Sprintf(format, args...)})
 		}
 	}
-	for n := 0; n <= 5; n++ {
+	for n := 0; n <= 8; n++ {
 		args := make([]interface{}, n)
 		for i := range args {
 			args[i] = mock.Anything
@@ -80,6 +81,7 @@ func newMissingGERLogTestData(t *testing.T, l1Timestamp *big.Int, l1Err error) *
 			l1GERManager:   l1GERManager,
 			l1Client:       l1Client,
 			logger:         logger,
+			now:            time.Now,
 		},
 		lines:          lines,
 		l1InfoTreeSync: l1InfoTreeSync,
@@ -95,7 +97,7 @@ func TestLogGERMissingFromL1InfoTree_Level(t *testing.T) {
 		// This is the case of a syncer that follows a finality more recent than finalized (e.g. LatestBlock/-6):
 		// IsUpToDate would answer true, so it must not be used to pick the level
 		td := newMissingGERLogTestData(t, big.NewInt(1234567890), nil)
-		td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr)
+		require.True(t, td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr), "expected race")
 		require.Len(t, *td.lines, 1)
 		require.Equal(t, "WARN", (*td.lines)[0].level)
 		require.Contains(t, (*td.lines)[0].msg, "l1 info tree not synced yet")
@@ -105,7 +107,7 @@ func TestLogGERMissingFromL1InfoTree_Level(t *testing.T) {
 
 	t.Run("GER not in the L1 contract: possible fake GER, ERROR", func(t *testing.T) {
 		td := newMissingGERLogTestData(t, big.NewInt(0), nil)
-		td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr)
+		require.False(t, td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr))
 		require.Len(t, *td.lines, 1)
 		require.Equal(t, "ERROR", (*td.lines)[0].level)
 		require.Contains(t, (*td.lines)[0].msg, "failed to fetch l1 info tree for global exit root")
@@ -116,30 +118,31 @@ func TestLogGERMissingFromL1InfoTree_Level(t *testing.T) {
 	t.Run("L1 read error and l1 info tree not synced: WARN", func(t *testing.T) {
 		td := newMissingGERLogTestData(t, nil, errors.New("L1 RPC unavailable"))
 		td.l1InfoTreeSync.EXPECT().IsUpToDate(mock.Anything, td.l1Client).Return(false, nil).Once()
-		td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr)
-		require.Equal(t, []string{"ERROR", "WARN"}, []string{(*td.lines)[0].level, (*td.lines)[1].level})
-		require.Contains(t, (*td.lines)[0].msg, "failed in L1 contract")
-		require.Contains(t, (*td.lines)[1].msg, "l1 info tree not synced yet")
+		require.True(t, td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr), "expected race")
+		require.Len(t, *td.lines, 1, "a single line, no extra ERROR for the L1 read")
+		require.Equal(t, "WARN", (*td.lines)[0].level)
+		require.Contains(t, (*td.lines)[0].msg, "l1 info tree not synced yet")
+		require.Contains(t, (*td.lines)[0].msg, "L1 RPC unavailable")
 	})
 
 	t.Run("L1 read error and l1 info tree synced: ERROR", func(t *testing.T) {
 		td := newMissingGERLogTestData(t, nil, errors.New("L1 RPC unavailable"))
 		td.l1InfoTreeSync.EXPECT().IsUpToDate(mock.Anything, td.l1Client).Return(true, nil).Once()
-		td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr)
-		require.Len(t, *td.lines, 2)
-		require.Equal(t, 2, countLevel(*td.lines, "ERROR"))
-		require.Contains(t, (*td.lines)[1].msg, "failed to fetch l1 info tree for global exit root")
+		require.False(t, td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr))
+		require.Len(t, *td.lines, 1)
+		require.Equal(t, "ERROR", (*td.lines)[0].level)
+		require.Contains(t, (*td.lines)[0].msg, "failed to fetch l1 info tree for global exit root")
+		require.Contains(t, (*td.lines)[0].msg, "L1 RPC unavailable")
 	})
 
 	t.Run("L1 read error and unknown sync status: ERROR", func(t *testing.T) {
 		td := newMissingGERLogTestData(t, nil, errors.New("L1 RPC unavailable"))
 		td.l1InfoTreeSync.EXPECT().IsUpToDate(mock.Anything, td.l1Client).
 			Return(false, errors.New("finalized block unavailable")).Once()
-		td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr)
-		require.Len(t, *td.lines, 3)
-		require.Equal(t, "WARN", (*td.lines)[1].level)
-		require.Contains(t, (*td.lines)[1].msg, "could not check whether the l1 info tree is synced")
-		require.Equal(t, "ERROR", (*td.lines)[2].level)
+		require.False(t, td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr))
+		require.Len(t, *td.lines, 1)
+		require.Equal(t, "ERROR", (*td.lines)[0].level)
+		require.Contains(t, (*td.lines)[0].msg, "could not check whether the l1 info tree is synced")
 	})
 }
 
@@ -157,6 +160,8 @@ func TestLogGERMissingFromL1InfoTree_RetriesAreBounded(t *testing.T) {
 	// the first RetryErrorLogBurst and then one of every RetryErrorLogInterval
 	require.Equal(t, aggkitcommon.RetryErrorLogBurst+2, countLevel(*td.lines, "WARN"))
 	require.Equal(t, retries-aggkitcommon.RetryErrorLogBurst-2, countLevel(*td.lines, "DEBUG"))
+	// a GER on L1 doesn't go away: the L1 contract is read only once
+	td.l1Client.AssertNumberOfCalls(t, "CallContract", 1)
 
 	// A different GER starts its own count
 	*td.lines = nil
@@ -169,4 +174,36 @@ func TestLogGERMissingFromL1InfoTree_RetriesAreBounded(t *testing.T) {
 	*td.lines = nil
 	td.d.logGERMissingFromL1InfoTree(t.Context(), otherGER, 101, lookupErr)
 	require.Contains(t, (*td.lines)[0].msg, "attempt 1")
+}
+
+func TestLogGERMissingFromL1InfoTree_EscalatesWhenStuck(t *testing.T) {
+	ger := common.HexToHash("0xabcd")
+	lookupErr := errors.New("not found")
+	td := newMissingGERLogTestData(t, big.NewInt(1234567890), nil)
+	start := time.Now()
+	now := start
+	td.d.now = func() time.Time { return now }
+
+	require.True(t, td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr))
+	require.Equal(t, "WARN", (*td.lines)[0].level)
+
+	// Still missing well after an L1 info tree syncer following finalized would have indexed it
+	now = start.Add(missingGERStuckAfter + time.Minute)
+	require.False(t, td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr),
+		"no longer the expected race")
+	require.Equal(t, "ERROR", (*td.lines)[1].level)
+	require.Contains(t, (*td.lines)[1].msg, "may be stuck or misconfigured")
+}
+
+func TestLogGERMissingFromL1InfoTree_NoL1ReadForDebugLines(t *testing.T) {
+	ger := common.HexToHash("0xabcd")
+	lookupErr := errors.New("not found")
+	// GER not in L1: the cause is not cached, so it is re-read, but only for the lines that are not DEBUG
+	td := newMissingGERLogTestData(t, big.NewInt(0), nil)
+	const retries = aggkitcommon.RetryErrorLogInterval
+	for range retries {
+		require.False(t, td.d.logGERMissingFromL1InfoTree(t.Context(), ger, 100, lookupErr))
+	}
+	require.Equal(t, aggkitcommon.RetryErrorLogBurst+1, countLevel(*td.lines, "ERROR"))
+	td.l1Client.AssertNumberOfCalls(t, "CallContract", aggkitcommon.RetryErrorLogBurst+1)
 }

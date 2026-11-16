@@ -70,10 +70,17 @@ func TestConfig_Validate(t *testing.T) {
 			errorMsg:    "MultidownloaderConfig.RetryAfterErrorInitialDelay",
 		},
 		{
-			name: "RetryAfterErrorMaxDelay lower than RetryAfterErrorInitialDelay",
+			name: "RetryAfterErrorMaxDelay lower than RetryAfterErrorInitialDelay caps it",
 			modifyConfig: func(cfg *Config) {
 				cfg.RetryAfterErrorInitialDelay = types.NewDuration(time.Minute)
 				cfg.RetryAfterErrorMaxDelay = types.NewDuration(time.Second)
+			},
+			expectError: false,
+		},
+		{
+			name: "negative RetryAfterErrorMaxDelay",
+			modifyConfig: func(cfg *Config) {
+				cfg.RetryAfterErrorMaxDelay = types.NewDuration(-time.Second)
 			},
 			expectError: true,
 			errorMsg:    "RetryAfterErrorMaxDelay",

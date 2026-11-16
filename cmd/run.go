@@ -660,7 +660,7 @@ func runL1ClientIfNeeded(ctx context.Context,
 	logger := log.WithFields("module", "l1client")
 	ethClient, err := etherman.NewRPCClient(ctx, logger, rpcClientCfg)
 	if err != nil {
-		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", rpcClientCfg.URL, err)
+		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", aggkitcommon.URLSchemeHost(rpcClientCfg.URL), err)
 	}
 
 	return ethClient
@@ -682,7 +682,7 @@ func runL2ClientIfNeeded(ctx context.Context,
 	logger := log.WithFields("module", "l2client")
 	l2Client, err := etherman.NewRPCClient(ctx, logger, urlRPCL2)
 	if err != nil {
-		log.Fatalf("failed to create client for L2 using URL: %s. Err:%v", urlRPCL2, err)
+		log.Fatalf("failed to create client for L2 using URL: %s. Err:%v", aggkitcommon.URLSchemeHost(urlRPCL2.URL), err)
 	}
 
 	return l2Client

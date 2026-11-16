@@ -2,6 +2,7 @@ package l2gersync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"testing"
@@ -174,6 +175,8 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 		l2ContractError      error
 		expectError          bool
 		expectedErrorMessage string
+		// expectNotReadyYet: the error is the expected race (wraps sync.ErrAppendNotReadyYet, logged at WARN)
+		expectNotReadyYet bool
 	}{
 		{
 			// With no removal event on L2 (S-log empty), the appender stays blocked.
@@ -191,6 +194,7 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			l1InfoTreeNotSynced:  true,
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
+			expectNotReadyYet:    true,
 		},
 		{
 			// L1 info tree not synced and the GER was removed from L2: the stale insert is skipped.
@@ -222,6 +226,7 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			l1ContractTimestamp:  big.NewInt(1234567890), // timestamp > 0 means GER exists
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
+			expectNotReadyYet:    true,
 		},
 		{
 			// Both S-log (removal event found) and S-map (L2 map reads 0) agree: removed. The
@@ -365,6 +370,7 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			if tt.expectError {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.expectedErrorMessage)
+				require.Equal(t, tt.expectNotReadyYet, errors.Is(err, sync.ErrAppendNotReadyYet))
 			} else {
 				require.NoError(t, err, "Expected no error when GER is removed from L2")
 			}

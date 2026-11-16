@@ -61,16 +61,19 @@ This is the one that points to an invalid GER (e.g. a fake GER injected on L2).
 l1 info tree not synced yet, cannot resolve global exit root <GER_HASH> (block: <N>), it exists in the L1 contract, will retry (attempt <A>): ...
 ```
 
-This is the expected race while the L1 info tree syncer catches up (whatever its `BlockFinality`, e.g. `LatestBlock/-6`): it resolves by itself and needs no action.
-
-**3. GER lookup failed in L1 contract (`ERROR`)**
+This is the expected race while the L1 info tree syncer catches up (whatever its `BlockFinality`, e.g. `LatestBlock/-6`): it resolves by itself and needs no action. If the GER is still missing 30 minutes after it was first found missing, it is no longer considered the race and is logged at `ERROR`:
 ```
-GER lookup for <GER_HASH> failed in L1 contract: ...
+global exit root <GER_HASH> (block: <N>) exists in the L1 contract but is still not in the l1 info tree after <DURATION>: the l1 info tree syncer may be stuck or misconfigured (attempt <A>): ...
 ```
 
-When the L1 contract can't be read, the level falls back to the L1 info tree sync status (`IsUpToDate`, against the finalized L1 block): `WARN` `l1 info tree not synced yet, cannot resolve global exit root <GER_HASH> (block: <N>), will retry (attempt <A>): ...` while it is catching up, and `ERROR` `failed to fetch l1 info tree for global exit root <GER_HASH> (block: <N>) (attempt <A>): ...` when it is synced (preceded by a `WARN` line `could not check whether the l1 info tree is synced` if the sync status can't be determined either).
+**3. GER lookup failed in L1 contract**
 
-The lookup is retried while the GER is missing. To avoid flooding the logs, only the first 5 attempts for the same GER and then one of every 100 are logged at the levels above (the rest at `DEBUG`); `<A>` is the attempt number. The generic `error trying to append log (attempt <A>): ...` line of the downloader follows the same policy. The L1 contract read only chooses the log level; it does not gate the recovery decision, which is entirely L2-side — see "Blocking and automatic recovery" below.
+When the L1 contract can't be read, the level falls back to the L1 info tree sync status (`IsUpToDate`, against the finalized L1 block), in a single line that includes the L1 read error:
+- `WARN` while it is catching up: `l1 info tree not synced yet, cannot resolve global exit root <GER_HASH> (block: <N>), will retry; GER lookup failed in L1 contract: ... (attempt <A>): ...`
+- `ERROR` when it is synced: `failed to fetch l1 info tree for global exit root <GER_HASH> (block: <N>); GER lookup failed in L1 contract: ... (attempt <A>): ...`
+- `ERROR` when the sync status can't be determined either: `... GER lookup failed in L1 contract (...) and could not check whether the l1 info tree is synced (...) (attempt <A>): ...`
+
+The lookup is retried while the GER is missing. To avoid flooding the logs, only the first 5 attempts for the same GER and then one of every 100 are logged at the levels above (the rest at `DEBUG`, without reading the L1 contract again); `<A>` is the attempt number. A GER known to exist in the L1 contract is not read again. The generic `error trying to append log (attempt <A>): ...` line of the downloader follows the same policy, at `WARN` for the expected race (cases 2 and 3-`WARN`) and at `ERROR` otherwise. The L1 contract read only chooses the log level; it does not gate the recovery decision, which is entirely L2-side — see "Blocking and automatic recovery" below.
 
 #### Blocking and automatic recovery
 

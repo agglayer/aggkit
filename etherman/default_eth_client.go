@@ -56,6 +56,8 @@ func DialWithRetry(ctx context.Context,
 		func() (aggkittypes.EthClienter, error) {
 			client, err := ethclient.Dial(cfg.URL)
 			if err != nil {
+				// The error chain is dropped on purpose: the original error can echo the URL (and its key),
+				// and an Unwrap() would expose it again. No caller matches on the dial error
 				return nil, errors.New(aggkitcommon.RedactError(err))
 			}
 			return NewDefaultEthClientWithLogger(logger, client, client.Client(), cfg), nil

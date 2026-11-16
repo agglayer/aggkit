@@ -19,9 +19,9 @@ var (
 	// ErrInvalidWaitPeriodToCheckCatchUp is returned when the wait period to check catch up is invalid
 	ErrInvalidWaitPeriodToCheckCatchUp = errors.New("MultidownloaderConfig.WaitPeriodToCheckCatchUp: " +
 		"wait period to check catch up must be greater than 0")
-	// ErrInvalidRetryAfterErrorDelay is returned when the retry delays are negative or max < initial
+	// ErrInvalidRetryAfterErrorDelay is returned when a retry delay is negative
 	ErrInvalidRetryAfterErrorDelay = errors.New("MultidownloaderConfig.RetryAfterErrorInitialDelay/" +
-		"RetryAfterErrorMaxDelay: delays can't be negative and the max delay can't be lower than the initial one")
+		"RetryAfterErrorMaxDelay: delays can't be negative")
 )
 
 type Config struct {
@@ -44,7 +44,7 @@ type Config struct {
 	DeveloperMode bool
 	// RetryAfterErrorInitialDelay is the delay before retrying a step (or a reorg processing) that failed.
 	// It doubles on each consecutive failure (with jitter) up to RetryAfterErrorMaxDelay and resets on success.
-	// 0 means the default (500ms)
+	// 0 means the default (500ms). It is capped by RetryAfterErrorMaxDelay
 	RetryAfterErrorInitialDelay types.Duration
 	// RetryAfterErrorMaxDelay is the maximum delay between retries of a step that keeps failing
 	// (e.g. the RPC is down or rate limiting). 0 means the default (30s)
@@ -92,35 +92,29 @@ func (cfg *Config) Validate() error {
 	if cfg.RetryAfterErrorInitialDelay.Duration < 0 || cfg.RetryAfterErrorMaxDelay.Duration < 0 {
 		return ErrInvalidRetryAfterErrorDelay
 	}
-	if cfg.RetryAfterErrorMaxDelay.Duration != 0 &&
-		cfg.RetryAfterErrorMaxDelay.Duration < cfg.retryAfterErrorInitialDelay() {
-		return ErrInvalidRetryAfterErrorDelay
-	}
 	if cfg.BlockFinality.IsEmpty() {
 		return fmt.Errorf("MultidownloaderConfig.BlockFinality: block finality cannot be empty")
 	}
 	return nil
 }
 
-// retryAfterErrorInitialDelay returns RetryAfterErrorInitialDelay, or its default if it is not set
-func (cfg *Config) retryAfterErrorInitialDelay() time.Duration {
-	if cfg.RetryAfterErrorInitialDelay.Duration <= 0 {
-		return defaultRetryAfterErrorInitialDelay
+// retryAfterErrorDelays resolves the retry delays: an unset (0) value takes its default, and the initial delay
+// is capped by the max delay (so setting only a small max delay is valid)
+func (cfg *Config) retryAfterErrorDelays() (initial, maxDelay time.Duration) {
+	initial = cfg.RetryAfterErrorInitialDelay.Duration
+	if initial <= 0 {
+		initial = defaultRetryAfterErrorInitialDelay
 	}
-	return cfg.RetryAfterErrorInitialDelay.Duration
-}
-
-// retryAfterErrorMaxDelay returns RetryAfterErrorMaxDelay, or its default if it is not set
-func (cfg *Config) retryAfterErrorMaxDelay() time.Duration {
-	if cfg.RetryAfterErrorMaxDelay.Duration <= 0 {
-		return max(defaultRetryAfterErrorMaxDelay, cfg.retryAfterErrorInitialDelay())
+	maxDelay = cfg.RetryAfterErrorMaxDelay.Duration
+	if maxDelay <= 0 {
+		maxDelay = defaultRetryAfterErrorMaxDelay
 	}
-	return cfg.RetryAfterErrorMaxDelay.Duration
+	return min(initial, maxDelay), maxDelay
 }
 
 // newRetryBackoff returns the backoff used to space the retries of a failing step
 func (cfg *Config) newRetryBackoff() *retryBackoff {
-	return newRetryBackoff(cfg.retryAfterErrorInitialDelay(), cfg.retryAfterErrorMaxDelay())
+	return newRetryBackoff(cfg.retryAfterErrorDelays())
 }
 
 func (cfg *Config) String() string {

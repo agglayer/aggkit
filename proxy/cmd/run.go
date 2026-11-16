@@ -112,7 +112,7 @@ func runL1Client(ctx context.Context, rpcClientCfg ethermanconfig.RPCClientConfi
 	logger := log.WithFields("module", "l1client")
 	ethClient, err := etherman.NewRPCClient(ctx, logger, rpcClientCfg)
 	if err != nil {
-		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", rpcClientCfg.URL, err)
+		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", aggkitcommon.URLSchemeHost(rpcClientCfg.URL), err)
 	}
 
 	return ethClient
