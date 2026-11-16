@@ -46,6 +46,13 @@ type Block struct {
 	ParentHash common.Hash
 }
 
+// Log is a log of a block: the address that emitted it and its topics (the data is not needed)
+type Log struct {
+	Address   common.Address
+	Topics    []common.Hash
+	BlockHash common.Hash
+}
+
 // RPCError is an error returned by the node in the JSON-RPC response
 type RPCError struct {
 	Code    int
@@ -220,37 +227,13 @@ func (c *Client) GlobalExitRootMap(
 	agglayerGER common.Address,
 	ger common.Hash,
 ) (common.Hash, error) {
-	return c.globalExitRootMap(ctx, agglayerGER, ger, "latest")
-}
-
-// GlobalExitRootMapAt reads AgglayerGER.globalExitRootMap(ger) in the state of the block with the hash (EIP-1898).
-// The node fails if that block is not in the canonical chain (requireCanonical), so the answer is the one of the
-// canonical chain and not of an orphan block.
-func (c *Client) GlobalExitRootMapAt(
-	ctx context.Context,
-	agglayerGER common.Address,
-	ger common.Hash,
-	blockHash common.Hash,
-) (common.Hash, error) {
-	return c.globalExitRootMap(ctx, agglayerGER, ger, map[string]any{
-		"blockHash":        blockHash,
-		"requireCanonical": true,
-	})
-}
-
-func (c *Client) globalExitRootMap(
-	ctx context.Context,
-	agglayerGER common.Address,
-	ger common.Hash,
-	block any,
-) (common.Hash, error) {
 	data := make([]byte, 0, selectorLength+common.HashLength)
 	data = append(data, crypto.Keccak256([]byte(globalExitRootMapSignature))[:selectorLength]...)
 	data = append(data, ger.Bytes()...)
 	result, err := c.call(ctx, "eth_call", map[string]any{
 		"to":   agglayerGER,
 		"data": hexutil.Bytes(data),
-	}, block)
+	}, "latest")
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -294,6 +277,49 @@ func (c *Client) BlockByHash(ctx context.Context, hash common.Hash) (*Block, err
 		return nil, err
 	}
 	return decodeBlock("eth_getBlockByHash", result)
+}
+
+type rpcLog struct {
+	Address   *common.Address `json:"address"`
+	Topics    []common.Hash   `json:"topics"`
+	BlockHash *common.Hash    `json:"blockHash"`
+}
+
+// LogsByBlockHash returns the logs that address emitted with topic0 as the first topic in the block with the hash
+// (eth_getLogs with blockHash, EIP-234). The node can return the logs of a block that is not canonical anymore: the
+// caller decides if the block is the one it wants. It fails if the node answers logs of another block or address.
+func (c *Client) LogsByBlockHash(
+	ctx context.Context,
+	blockHash common.Hash,
+	address common.Address,
+	topic0 common.Hash,
+) ([]Log, error) {
+	result, err := c.call(ctx, "eth_getLogs", map[string]any{
+		"blockHash": blockHash,
+		"address":   address,
+		"topics":    []common.Hash{topic0},
+	})
+	if err != nil {
+		return nil, err
+	}
+	var raw []rpcLog
+	if err := json.Unmarshal(result, &raw); err != nil {
+		return nil, fmt.Errorf("eth_getLogs: invalid result: %w", err)
+	}
+	logs := make([]Log, 0, len(raw))
+	for i, entry := range raw {
+		if entry.Address == nil || entry.BlockHash == nil {
+			return nil, fmt.Errorf("eth_getLogs: log %d has no address or block hash", i)
+		}
+		// The filter is the node's job: an answer outside of it is a broken node, not a missing log
+		if *entry.BlockHash != blockHash || *entry.Address != address || len(entry.Topics) == 0 ||
+			entry.Topics[0] != topic0 {
+			return nil, fmt.Errorf("eth_getLogs: log %d doesn't match the filter (block %s, address %s, topic %s)",
+				i, entry.BlockHash, entry.Address, topic0)
+		}
+		logs = append(logs, Log{Address: *entry.Address, Topics: entry.Topics, BlockHash: *entry.BlockHash})
+	}
+	return logs, nil
 }
 
 // BlockByNumber returns the block of the canonical chain with the number, or ErrBlockNotFound

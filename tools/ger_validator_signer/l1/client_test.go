@@ -128,27 +128,6 @@ func TestClient_GlobalExitRootMap(t *testing.T) {
 	require.Equal(t, blockHsh, got)
 }
 
-// GlobalExitRootMapAt reads the state of a block pinned by its hash, that must be canonical (EIP-1898)
-func TestClient_GlobalExitRootMapAt(t *testing.T) {
-	selector := crypto.Keccak256([]byte("globalExitRootMap(bytes32)"))[:4]
-	srv := newRPCServer(t, func(call rpcCall) (any, *RPCError) {
-		require.Equal(t, "eth_call", call.Method)
-		var msg struct {
-			To   common.Address `json:"to"`
-			Data string         `json:"data"`
-		}
-		require.NoError(t, json.Unmarshal(call.Params[0], &msg))
-		require.Equal(t, gerAddr, msg.To)
-		require.Equal(t, "0x"+common.Bytes2Hex(selector)+common.Bytes2Hex(testGER.Bytes()), msg.Data)
-		require.JSONEq(t, `{"blockHash": "`+parentHs.Hex()+`", "requireCanonical": true}`, string(call.Params[1]))
-		return blockHsh.Hex(), nil
-	})
-
-	got, err := srv.client().GlobalExitRootMapAt(context.Background(), gerAddr, testGER, parentHs)
-	require.NoError(t, err)
-	require.Equal(t, blockHsh, got)
-}
-
 func TestClient_GlobalExitRootMap_Unknown(t *testing.T) {
 	srv := newRPCServer(t, func(rpcCall) (any, *RPCError) { return common.Hash{}.Hex(), nil })
 	got, err := srv.client().GlobalExitRootMap(context.Background(), gerAddr, testGER)
@@ -161,6 +140,49 @@ func TestClient_GlobalExitRootMap_NotTheContract(t *testing.T) {
 		srv := newRPCServer(t, func(rpcCall) (any, *RPCError) { return result, nil })
 		_, err := srv.client().GlobalExitRootMap(context.Background(), gerAddr, testGER)
 		require.ErrorContains(t, err, "is "+gerAddr.Hex()+" the AgglayerGER contract?", result)
+	}
+}
+
+func TestClient_LogsByBlockHash(t *testing.T) {
+	topic0 := crypto.Keccak256Hash([]byte("UpdateL1InfoTree(bytes32,bytes32)"))
+	logJSON := func(address common.Address, block common.Hash, topics ...common.Hash) map[string]any {
+		return map[string]any{"address": address, "blockHash": block, "topics": topics}
+	}
+
+	t.Run("the filter and the logs", func(t *testing.T) {
+		srv := newRPCServer(t, func(call rpcCall) (any, *RPCError) {
+			require.Equal(t, "eth_getLogs", call.Method)
+			require.Len(t, call.Params, 1)
+			require.JSONEq(t, `{"blockHash": "`+blockHsh.Hex()+`", "address": "`+strings.ToLower(gerAddr.Hex())+
+				`", "topics": ["`+topic0.Hex()+`"]}`, string(call.Params[0]))
+			return []any{logJSON(gerAddr, blockHsh, topic0, testGER, parentHs)}, nil
+		})
+		logs, err := srv.client().LogsByBlockHash(context.Background(), blockHsh, gerAddr, topic0)
+		require.NoError(t, err)
+		require.Equal(t, []Log{{Address: gerAddr, Topics: []common.Hash{topic0, testGER, parentHs}, BlockHash: blockHsh}},
+			logs)
+	})
+
+	t.Run("no logs", func(t *testing.T) {
+		srv := newRPCServer(t, func(rpcCall) (any, *RPCError) { return []any{}, nil })
+		logs, err := srv.client().LogsByBlockHash(context.Background(), blockHsh, gerAddr, topic0)
+		require.NoError(t, err)
+		require.Empty(t, logs)
+	})
+
+	// The filter is the node's job: a log outside of it is a broken answer, never taken as valid
+	otherAddr := common.HexToAddress("0x9999999999999999999999999999999999999999")
+	for name, log := range map[string]map[string]any{
+		"another block":   logJSON(gerAddr, parentHs, topic0),
+		"another address": logJSON(otherAddr, blockHsh, topic0),
+		"another topic":   logJSON(gerAddr, blockHsh, testGER),
+		"no topics":       logJSON(gerAddr, blockHsh),
+	} {
+		t.Run("a log of "+name, func(t *testing.T) {
+			srv := newRPCServer(t, func(rpcCall) (any, *RPCError) { return []any{log}, nil })
+			_, err := srv.client().LogsByBlockHash(context.Background(), blockHsh, gerAddr, topic0)
+			require.ErrorContains(t, err, "doesn't match the filter")
+		})
 	}
 }
 

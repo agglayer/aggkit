@@ -28,8 +28,13 @@ import (
 
 var (
 	agglayerGER = common.HexToAddress("0x1111111111111111111111111111111111111111")
-	testGER     = common.HexToHash("0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
-	errRPC      = errors.New("rpc down")
+	mainnetRoot = common.HexToHash("0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
+	rollupRoot  = common.HexToHash("0x2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40")
+	// testGER is the GER of mainnetRoot and rollupRoot, as AgglayerGER computes it
+	testGER = crypto.Keccak256Hash(mainnetRoot.Bytes(), rollupRoot.Bytes())
+	errRPC  = errors.New("rpc down")
+	// updateL1InfoTreeTopic is the topic of UpdateL1InfoTree(bytes32 indexed, bytes32 indexed) of AgglayerGER
+	updateL1InfoTreeTopic = crypto.Keccak256Hash([]byte("UpdateL1InfoTree(bytes32,bytes32)"))
 )
 
 func testConfig() config.Config {
@@ -167,9 +172,11 @@ type fakeL1 struct {
 	gers      map[common.Hash]common.Hash // GER -> hash of the block previous to the one that inserted it
 	blocks    map[common.Hash]fakeBlock   // by hash: orphans included
 	canonical map[uint64]common.Hash
-	tags      map[string]uint64
-	mu        sync.Mutex
-	calls     map[string]int
+	// insertions are the UpdateL1InfoTree events of AgglayerGER, by block hash: the roots of the GER inserted
+	insertions map[common.Hash][2]common.Hash
+	tags       map[string]uint64
+	mu         sync.Mutex
+	calls      map[string]int
 }
 
 type fakeBlock struct {
@@ -186,13 +193,14 @@ func blockHash(n uint64, fork byte) common.Hash {
 func newFakeL1(t *testing.T) (*fakeL1, *httptest.Server) {
 	t.Helper()
 	l1 := &fakeL1{
-		chainID:   11155111,
-		code:      map[common.Address][]byte{agglayerGER: {0x60, 0x80}},
-		gers:      map[common.Hash]common.Hash{},
-		blocks:    map[common.Hash]fakeBlock{},
-		canonical: map[uint64]common.Hash{},
-		tags:      map[string]uint64{"latest": 120, "safe": 112, "finalized": 104},
-		calls:     map[string]int{},
+		chainID:    11155111,
+		code:       map[common.Address][]byte{agglayerGER: {0x60, 0x80}},
+		gers:       map[common.Hash]common.Hash{},
+		blocks:     map[common.Hash]fakeBlock{},
+		canonical:  map[uint64]common.Hash{},
+		insertions: map[common.Hash][2]common.Hash{},
+		tags:       map[string]uint64{"latest": 120, "safe": 112, "finalized": 104},
+		calls:      map[string]int{},
 	}
 	for n := uint64(0); n <= 120; n++ {
 		block := fakeBlock{number: n, hash: blockHash(n, 1)}
@@ -203,10 +211,23 @@ func newFakeL1(t *testing.T) (*fakeL1, *httptest.Server) {
 		l1.canonical[n] = block.hash
 	}
 	l1.gers[testGER] = blockHash(100, 1) // inserted in the block 101
+	l1.insertions[blockHash(101, 1)] = [2]common.Hash{mainnetRoot, rollupRoot}
 
 	server := httptest.NewServer(http.HandlerFunc(l1.serve))
 	t.Cleanup(server.Close)
 	return l1, server
+}
+
+// reorgFrom replaces the canonical chain from the block `from` on by another fork, with no events: the old blocks
+// are orphans that the node still knows. The block before `from` is kept
+func (l *fakeL1) reorgFrom(from uint64) {
+	parent := l.canonical[from-1]
+	for n := from; n <= 120; n++ {
+		block := fakeBlock{number: n, hash: blockHash(n, 2), parent: parent}
+		l.blocks[block.hash] = block
+		l.canonical[n] = block.hash
+		parent = block.hash
+	}
 }
 
 func (l *fakeL1) blockJSON(b fakeBlock) map[string]any {
@@ -265,6 +286,22 @@ func (l *fakeL1) handle(method string, params []json.RawMessage) any {
 			return l.blockJSON(l.blocks[hash])
 		}
 		return nil
+	case "eth_getLogs":
+		var filter struct {
+			BlockHash common.Hash    `json:"blockHash"`
+			Address   common.Address `json:"address"`
+			Topics    []common.Hash  `json:"topics"`
+		}
+		_ = json.Unmarshal(params[0], &filter)
+		logs := []map[string]any{}
+		roots, ok := l.insertions[filter.BlockHash]
+		if ok && filter.Address == agglayerGER && len(filter.Topics) == 1 && filter.Topics[0] == updateL1InfoTreeTopic {
+			logs = append(logs, map[string]any{
+				"address": agglayerGER, "blockHash": filter.BlockHash,
+				"topics": []common.Hash{updateL1InfoTreeTopic, roots[0], roots[1]},
+			})
+		}
+		return logs
 	default:
 		return nil
 	}
@@ -435,18 +472,24 @@ func TestEndToEnd_Rejections(t *testing.T) {
 		require.Equal(t, http.StatusOK, status)
 	})
 
-	t.Run("the block of the GER was reorged out", func(t *testing.T) {
-		l1, l1Server := newFakeL1(t)
-		// The chain of the node changed: the block 100 is another one now. The old one is an orphan the node still knows
-		l1.canonical[100] = blockHash(100, 2)
-		l1.blocks[blockHash(100, 2)] = fakeBlock{number: 100, hash: blockHash(100, 2), parent: blockHash(99, 1)}
-		keystorePath, _ := writeValidatorKeystore(t)
-		url := startValidator(t, e2eConfig(t, l1Server.URL, keystorePath, "latest"))
+	// AgglayerGER was read before the reorg: it still says that the GER was inserted after the block 100 of the old
+	// fork. The blocks of the old fork are orphans that the node still knows
+	for name, from := range map[string]uint64{
+		"the block before the insertion was reorged out": 100,
+		// The height 101 is final, and the block 100 is the same: only the event says it is not the insertion block
+		"only the insertion block was reorged out": 101,
+	} {
+		t.Run(name, func(t *testing.T) {
+			l1, l1Server := newFakeL1(t)
+			l1.reorgFrom(from)
+			keystorePath, _ := writeValidatorKeystore(t)
+			url := startValidator(t, e2eConfig(t, l1Server.URL, keystorePath, "latest"))
 
-		status, body, _ := sign(t, url, testGER)
-		require.Equal(t, http.StatusConflict, status)
-		require.Equal(t, "GER_BLOCK_NOT_CANONICAL", body["code"])
-	})
+			status, body, _ := sign(t, url, testGER)
+			require.Equal(t, http.StatusConflict, status, body)
+			require.Equal(t, "GER_BLOCK_NOT_CANONICAL", body["code"])
+		})
+	}
 }
 
 func TestNew_StartupFailures(t *testing.T) {

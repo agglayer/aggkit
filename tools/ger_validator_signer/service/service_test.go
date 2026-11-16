@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"math/big"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/l1"
 	"github.com/agglayer/aggkit/tools/ger_validator_signer/service/mocks"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -22,12 +22,16 @@ import (
 var (
 	agglayerGER = common.HexToAddress("0x1111111111111111111111111111111111111111")
 	validator   = common.HexToAddress("0x2222222222222222222222222222222222222222")
-	testGER     = common.HexToHash("0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
-	parentHash  = common.HexToHash("0xaaaa000000000000000000000000000000000000000000000000000000000001")
-	otherHash   = common.HexToHash("0xcccc000000000000000000000000000000000000000000000000000000000003")
-	signature   = append(make([]byte, 64), 27)
-	errL1       = errors.New("l1 rpc down")
-	errKMS      = errors.New("kms unavailable")
+	mainnetRoot = common.HexToHash("0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
+	rollupRoot  = common.HexToHash("0x2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40")
+	// testGER is the GER of mainnetRoot and rollupRoot, as AgglayerGER computes it
+	testGER       = crypto.Keccak256Hash(mainnetRoot.Bytes(), rollupRoot.Bytes())
+	parentHash    = common.HexToHash("0xaaaa000000000000000000000000000000000000000000000000000000000001")
+	insertionHash = common.HexToHash("0xbbbb000000000000000000000000000000000000000000000000000000000002")
+	otherHash     = common.HexToHash("0xcccc000000000000000000000000000000000000000000000000000000000003")
+	signature     = append(make([]byte, 64), 27)
+	errL1         = errors.New("l1 rpc down")
+	errKMS        = errors.New("kms unavailable")
 )
 
 // parentNumber is the number of the block previous to the one that inserted the GER. The insertion block is 101
@@ -35,7 +39,6 @@ const parentNumber = uint64(100)
 
 type fixture struct {
 	t       *testing.T
-	rule    finality.Rule
 	l1      *mocks.L1Reader
 	signer  *mocks.GERSigner
 	service *Service
@@ -45,7 +48,7 @@ type fixture struct {
 
 func newFixture(t *testing.T, rule finality.Rule, negativeTTL time.Duration) *fixture {
 	t.Helper()
-	f := &fixture{t: t, rule: rule, l1: mocks.NewL1Reader(t), signer: mocks.NewGERSigner(t), logs: &bytes.Buffer{}}
+	f := &fixture{t: t, l1: mocks.NewL1Reader(t), signer: mocks.NewGERSigner(t), logs: &bytes.Buffer{}}
 	f.signer.EXPECT().Address().Return(validator).Maybe()
 	logger := slog.New(slog.NewTextHandler(f.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	f.service = New(logger, Config{
@@ -60,42 +63,46 @@ func newFixture(t *testing.T, rule finality.Rule, negativeTTL time.Duration) *fi
 
 func finalized() finality.Rule { return finality.Rule{Tag: "finalized"} }
 
-// expectInserted expects the GER to be in AgglayerGER, inserted in the block after parentNumber, which is canonical
+// expectInserted expects the GER to be in AgglayerGER, inserted in the block after parentNumber
 func (f *fixture) expectInserted() {
 	f.t.Helper()
 	f.l1.EXPECT().GlobalExitRootMap(mock.Anything, agglayerGER, testGER).Return(parentHash, nil).Once()
 	f.l1.EXPECT().BlockByHash(mock.Anything, parentHash).
 		Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
-	f.l1.EXPECT().BlockByNumber(mock.Anything, parentNumber).
-		Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
+}
+
+// updateL1InfoTreeLog is the event UpdateL1InfoTree that AgglayerGER emits when it inserts the GER of the two roots
+func updateL1InfoTreeLog(mainnet, rollup common.Hash) l1.Log {
+	return l1.Log{
+		Address:   agglayerGER,
+		Topics:    []common.Hash{crypto.Keccak256Hash([]byte("UpdateL1InfoTree(bytes32,bytes32)")), mainnet, rollup},
+		BlockHash: insertionHash,
+	}
+}
+
+// expectInsertionBlock expects the canonical block after parentNumber, a child of parent, with the logs
+func (f *fixture) expectInsertionBlock(parent common.Hash, logs []l1.Log) {
+	f.t.Helper()
+	f.l1.EXPECT().BlockByNumber(mock.Anything, parentNumber+1).
+		Return(&l1.Block{Number: parentNumber + 1, Hash: insertionHash, ParentHash: parent}, nil).Once()
+	if parent != parentHash {
+		return // not a child of the block that AgglayerGER holds: its logs are not asked
+	}
+	f.l1.EXPECT().LogsByBlockHash(mock.Anything, insertionHash, agglayerGER, updateL1InfoTreeTopic).
+		Return(logs, nil).Once()
+}
+
+// expectFinal expects the block of the tag, that makes the insertion block final, and the canonical insertion
+// block, that inserted the GER
+func (f *fixture) expectFinal(tag string, tagged uint64) {
+	f.t.Helper()
+	f.expectTag(tag, tagged)
+	f.expectInsertionBlock(parentHash, []l1.Log{updateL1InfoTreeLog(mainnetRoot, rollupRoot)})
 }
 
 func (f *fixture) expectTag(tag string, number uint64) {
 	f.t.Helper()
 	f.l1.EXPECT().BlockNumberByTag(mock.Anything, tag).Return(number, nil).Once()
-}
-
-// finalBlockHash is the hash of the final block number in the tests
-func finalBlockHash(number uint64) common.Hash {
-	return common.BigToHash(new(big.Int).SetUint64(0xf1a1<<32 | number))
-}
-
-// expectFinalState expects the GER to be read in the state of the final block, pinned by its hash, and to have
-// there the parent block parentAtFinal
-func (f *fixture) expectFinalState(finalBlock uint64, parentAtFinal common.Hash) {
-	f.t.Helper()
-	f.l1.EXPECT().BlockByNumber(mock.Anything, finalBlock).
-		Return(&l1.Block{Number: finalBlock, Hash: finalBlockHash(finalBlock)}, nil).Once()
-	f.l1.EXPECT().GlobalExitRootMapAt(mock.Anything, agglayerGER, testGER, finalBlockHash(finalBlock)).
-		Return(parentAtFinal, nil).Once()
-}
-
-// expectFinal expects the block of the tag, that makes the insertion block final, and the GER in the state of the
-// final block (the same parent block)
-func (f *fixture) expectFinal(tag string, tagged uint64) {
-	f.t.Helper()
-	f.expectTag(tag, tagged)
-	f.expectFinalState(tagged-f.rule.NumBlocks, parentHash)
 }
 
 func (f *fixture) expectSigning() {
@@ -130,9 +137,9 @@ func TestService_SignGER_DebugLogsTheChecks(t *testing.T) {
 			},
 			expect: []string{
 				`"GER check 1/4 (in L1?): yes`, "agglayerGER=" + agglayerGER.Hex(), "parentBlockHash=" + parentHash.Hex(),
-				`"GER check 2/4 (canonical?): yes`, "parentBlock=100", "insertionBlock=101",
+				`"GER check 2/4 (insertion block?)`, "parentBlock=100", "insertionBlock=101",
 				`"GER check 3/4 (final?): yes`, "tag=latest", "taggedBlock=107", "numBlocks=6", "finalBlock=101",
-				`"GER check 4/4 (in the final state?): yes`, "finalBlockHash=" + finalBlockHash(101).Hex(),
+				`"GER check 4/4 (inserted in the canonical block?): yes`, "insertionBlockHash=" + insertionHash.Hex(),
 			},
 		},
 		{
@@ -159,9 +166,9 @@ func TestService_SignGER_DebugLogsTheChecks(t *testing.T) {
 			setup: func(f *fixture) {
 				f.expectInserted()
 				f.expectTag("latest", 107)
-				f.expectFinalState(101, common.Hash{})
+				f.expectInsertionBlock(parentHash, nil)
 			},
-			expect: []string{`"GER check 4/4 (in the final state?): no`, "finalBlock=101"},
+			expect: []string{`"GER check 4/4 (inserted in the canonical block?): no`, "updateL1InfoTreeEvents=0"},
 		},
 	}
 	for _, tc := range tests {
@@ -211,7 +218,7 @@ func TestService_SignGER_FinalityBoundaries(t *testing.T) {
 				f.expectTag("latest", tc.tagged+10)
 			}
 			if tc.wantSign {
-				f.expectFinalState(tc.tagged-tc.rule.NumBlocks, parentHash)
+				f.expectInsertionBlock(parentHash, []l1.Log{updateL1InfoTreeLog(mainnetRoot, rollupRoot)})
 				f.expectSigning()
 			}
 
@@ -299,65 +306,46 @@ func TestService_SignGER_Rejections(t *testing.T) {
 		require.ErrorIs(t, err, ErrGERBlockNotCanonical)
 	})
 
-	t.Run("the canonical block of that height is another one (an orphan was returned by hash)", func(t *testing.T) {
-		f := newFixture(t, finalized(), time.Minute)
-		f.l1.EXPECT().GlobalExitRootMap(mock.Anything, agglayerGER, testGER).Return(parentHash, nil).Once()
-		f.l1.EXPECT().BlockByHash(mock.Anything, parentHash).
-			Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
-		f.l1.EXPECT().BlockByNumber(mock.Anything, parentNumber).
-			Return(&l1.Block{Number: parentNumber, Hash: otherHash}, nil).Once()
-
-		_, err := f.service.SignGER(context.Background(), testGER)
-		require.ErrorIs(t, err, ErrGERBlockNotCanonical)
-		require.ErrorContains(t, err, otherHash.Hex())
-	})
-
-	t.Run("there is no canonical block of that height", func(t *testing.T) {
-		f := newFixture(t, finalized(), time.Minute)
-		f.l1.EXPECT().GlobalExitRootMap(mock.Anything, agglayerGER, testGER).Return(parentHash, nil).Once()
-		f.l1.EXPECT().BlockByHash(mock.Anything, parentHash).
-			Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
-		f.l1.EXPECT().BlockByNumber(mock.Anything, parentNumber).Return(nil, l1.ErrBlockNotFound).Once()
-
-		_, err := f.service.SignGER(context.Background(), testGER)
-		require.ErrorIs(t, err, ErrGERBlockNotCanonical)
-	})
-
-	t.Run("not canonical wins over not final", func(t *testing.T) {
-		f := newFixture(t, finalized(), time.Minute)
-		f.l1.EXPECT().GlobalExitRootMap(mock.Anything, agglayerGER, testGER).Return(parentHash, nil).Once()
-		f.l1.EXPECT().BlockByHash(mock.Anything, parentHash).
-			Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
-		f.l1.EXPECT().BlockByNumber(mock.Anything, parentNumber).
-			Return(&l1.Block{Number: parentNumber, Hash: otherHash}, nil).Once()
-		// BlockNumberByTag is not even asked
-
-		_, err := f.service.SignGER(context.Background(), testGER)
-		require.ErrorIs(t, err, ErrGERBlockNotCanonical)
-		require.NotErrorIs(t, err, ErrGERNotFinal)
-	})
-}
-
-// A reorg between the reads of L1 could make the height of the insertion block final while the block that inserted
-// the GER is an orphan: the GER must be in the state of the final block, with the same parent block
-func TestService_SignGER_ReorganizedInsertionIsNotSigned(t *testing.T) {
-	tests := map[string]common.Hash{
-		"the GER is not in the final state":                     {},
-		"the GER was inserted after another block in the final": otherHash,
+	// A reorg replaced the insertion block: the height is final, but the canonical block of that height didn't
+	// insert the GER
+	reorganized := map[string]func(f *fixture){
+		"the canonical insertion block is a child of another block": func(f *fixture) {
+			f.expectInsertionBlock(otherHash, nil)
+		},
+		"the canonical insertion block has no event": func(f *fixture) {
+			f.expectInsertionBlock(parentHash, nil)
+		},
+		"the canonical insertion block has only the event of another GER": func(f *fixture) {
+			f.expectInsertionBlock(parentHash, []l1.Log{updateL1InfoTreeLog(rollupRoot, mainnetRoot)})
+		},
 	}
-	for name, parentAtFinal := range tests {
+	for name, setup := range reorganized {
 		t.Run(name, func(t *testing.T) {
 			f := newFixture(t, finalized(), time.Minute)
 			f.expectInserted()
 			f.expectTag("finalized", 105)
-			f.expectFinalState(105, parentAtFinal)
+			setup(f)
 			// No signing expected: calling the signer fails the test
 
 			result, err := f.service.SignGER(context.Background(), testGER)
 			require.ErrorIs(t, err, ErrGERBlockNotCanonical)
+			require.ErrorContains(t, err, "the chain was reorganized")
 			require.Nil(t, result)
 		})
 	}
+
+	t.Run("the event of the GER among others", func(t *testing.T) {
+		f := newFixture(t, finalized(), time.Minute)
+		f.expectInserted()
+		f.expectTag("finalized", 105)
+		f.expectInsertionBlock(parentHash, []l1.Log{
+			updateL1InfoTreeLog(rollupRoot, mainnetRoot), updateL1InfoTreeLog(mainnetRoot, rollupRoot),
+		})
+		f.expectSigning()
+
+		_, err := f.service.SignGER(context.Background(), testGER)
+		require.NoError(t, err)
+	})
 }
 
 func TestService_SignGER_FailuresAreNotRejections(t *testing.T) {
@@ -369,29 +357,22 @@ func TestService_SignGER_FailuresAreNotRejections(t *testing.T) {
 			f.l1.EXPECT().GlobalExitRootMap(mock.Anything, agglayerGER, testGER).Return(parentHash, nil).Once()
 			f.l1.EXPECT().BlockByHash(mock.Anything, parentHash).Return(nil, errL1).Once()
 		},
-		"getting the block by number": func(f *fixture) {
-			f.l1.EXPECT().GlobalExitRootMap(mock.Anything, agglayerGER, testGER).Return(parentHash, nil).Once()
-			f.l1.EXPECT().BlockByHash(mock.Anything, parentHash).
-				Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
-			f.l1.EXPECT().BlockByNumber(mock.Anything, parentNumber).Return(nil, errL1).Once()
+		"getting the insertion block": func(f *fixture) {
+			f.expectInserted()
+			f.expectTag("finalized", 105)
+			f.l1.EXPECT().BlockByNumber(mock.Anything, parentNumber+1).Return(nil, errL1).Once()
+		},
+		"getting the logs of the insertion block": func(f *fixture) {
+			f.expectInserted()
+			f.expectTag("finalized", 105)
+			f.l1.EXPECT().BlockByNumber(mock.Anything, parentNumber+1).
+				Return(&l1.Block{Number: parentNumber + 1, Hash: insertionHash, ParentHash: parentHash}, nil).Once()
+			f.l1.EXPECT().LogsByBlockHash(mock.Anything, insertionHash, agglayerGER, updateL1InfoTreeTopic).
+				Return(nil, errL1).Once()
 		},
 		"getting the tag": func(f *fixture) {
 			f.expectInserted()
 			f.l1.EXPECT().BlockNumberByTag(mock.Anything, "finalized").Return(0, errL1).Once()
-		},
-		"getting the final block": func(f *fixture) {
-			f.expectInserted()
-			f.expectTag("finalized", 105)
-			f.l1.EXPECT().BlockByNumber(mock.Anything, uint64(105)).Return(nil, errL1).Once()
-		},
-		// Also when the node refuses it because the final block stopped being canonical (requireCanonical)
-		"reading the contract in the final block": func(f *fixture) {
-			f.expectInserted()
-			f.expectTag("finalized", 105)
-			f.l1.EXPECT().BlockByNumber(mock.Anything, uint64(105)).
-				Return(&l1.Block{Number: 105, Hash: finalBlockHash(105)}, nil).Once()
-			f.l1.EXPECT().GlobalExitRootMapAt(mock.Anything, agglayerGER, testGER, finalBlockHash(105)).
-				Return(common.Hash{}, errL1).Once()
 		},
 	}
 	for step, setup := range steps {
@@ -515,8 +496,6 @@ func TestService_SignGER_ConcurrentRequestsShareTheWork(t *testing.T) {
 		}).Once()
 	f.l1.EXPECT().BlockByHash(mock.Anything, parentHash).
 		Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
-	f.l1.EXPECT().BlockByNumber(mock.Anything, parentNumber).
-		Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
 	f.expectFinal("finalized", 105)
 	f.expectSigning()
 
@@ -557,8 +536,6 @@ func TestService_SignGER_ACallerGivingUpDoesNotAffectTheOthers(t *testing.T) {
 			}
 		}).Once()
 	f.l1.EXPECT().BlockByHash(mock.Anything, parentHash).
-		Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
-	f.l1.EXPECT().BlockByNumber(mock.Anything, parentNumber).
 		Return(&l1.Block{Number: parentNumber, Hash: parentHash}, nil).Once()
 	f.expectFinal("finalized", 105)
 	f.expectSigning()

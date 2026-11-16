@@ -12,12 +12,12 @@ It signs `keccak256(GER)`, the hash of the 32 bytes of the GER with no EIP-191 p
 
 A GER is signed only if all this is true:
 
-1. **It is in L1.** `AgglayerGER.globalExitRootMap(GER)` is not zero. The contract stores there the hash of the block **previous** to the one that inserted the GER (`blockhash(block.number - 1)`).
-2. **The block is canonical.** The hash is resolved to its block `N`, and the canonical block of height `N` must have the same hash: a node can return an orphan block when asked by hash.
+1. **It is in L1.** `AgglayerGER.globalExitRootMap(GER)` is not zero in the latest block. The contract stores there the hash of the block **previous** to the one that inserted the GER (`blockhash(block.number - 1)`): a contract can't know the hash of its own block, so this is the only reference to the insertion that the contract keeps.
+2. **The insertion block.** The hash is resolved to its block `N`, and the insertion block is `N + 1`.
 3. **The block is final.** The insertion block is `N + 1`, and it must not be after the final block: the number of the block of the configured `BlockFinality` (`LatestBlock`, `SafeBlock` or `FinalizedBlock`) plus its offset, that can only be negative. For example `BlockFinality = "LatestBlock/-6"` is the head minus 6 blocks, which is the setup AggOracle had before the validators existed.
-4. **It is in the final state.** `globalExitRootMap(GER)` is read again in the state of the final block, pinned by its hash (EIP-1898, `requireCanonical`), and it must hold the same parent block. Checks 1 to 3 read L1 at different moments: a reorg between them could replace the insertion block while keeping `N`, and the height `N + 1` would look final although the block that inserted the GER is an orphan. If the final block stops being canonical during the query, the node fails it and the request fails (it is not cached: the AggOracle asks again).
+4. **The canonical block `N + 1` inserted it.** The canonical block of height `N + 1` must be a child of `N` (the hash that the contract holds) and must have the event `UpdateL1InfoTree(mainnetExitRoot, rollupExitRoot)` of AgglayerGER with this GER (`keccak256(mainnetExitRoot ‖ rollupExitRoot)`), that the contract emits only when it inserts a GER. Checks 1 to 3 read L1 at different moments: a reorg between them could replace `N + 1` by a block that is also a child of `N` but doesn't insert the GER, and the height `N + 1` would look final although the block that inserted it is an orphan. The parent alone doesn't tell them apart: the event does.
 
-Each validator decides its own finality. The L1 RPC needs the state of the final block for the call of check 4: a full node keeps the state of the recent blocks (geth, the last 128), which covers `FinalizedBlock` and small offsets. A `BlockFinality` further back needs an archive node.
+Each validator decides its own finality. Only block headers and the logs of the insertion block are needed (`eth_getLogs` by block hash): no historical state, so a full node is enough for any `BlockFinality`.
 
 ## REST API
 
