@@ -256,7 +256,10 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 	dh.statistics.StartSyncing()
 	numLoops := 0
 	// stepBackoff spaces the retries of a failing step, so a failing or rate-limiting RPC isn't hammered
-	stepBackoff := dh.cfg.newRetryBackoff()
+	stepBackoff, err := dh.cfg.newRetryBackoff()
+	if err != nil {
+		return err
+	}
 	for {
 		// This is for debug, when reach the number of loops it returns to allow testing
 		if numLoops == numLoopsToExecute {
@@ -297,7 +300,10 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 		// A reorg is not a failure of the step
 		stepBackoff.Succeeded()
 		dh.log.Warnf("Reorg detected: %s", reorgErr.Error())
-		reorgBackoff := dh.cfg.newRetryBackoff()
+		reorgBackoff, err := dh.cfg.newRetryBackoff()
+		if err != nil {
+			return err
+		}
 		for {
 			dh.mutex.Lock()
 			// check if context is done during reorg processing

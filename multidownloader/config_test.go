@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
@@ -18,8 +19,7 @@ func TestNewConfigDefault(t *testing.T) {
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.BlockFinality, "BlockFinality should be FinalizedBlock")
 	require.Equal(t, types.NewDuration(defaultWaitPeriodToCheckCatchUp), cfg.WaitPeriodToCheckCatchUp, "WaitPeriodToCheckCatchUp should be 10 seconds")
 	require.Equal(t, types.NewDuration(defaultPeriodToCheckReorgs), cfg.PeriodToCheckReorgs, "PeriodToCheckReorgs should be 5 seconds")
-	require.Equal(t, types.NewDuration(defaultRetryAfterErrorInitialDelay), cfg.RetryAfterErrorInitialDelay)
-	require.Equal(t, types.NewDuration(defaultRetryAfterErrorMaxDelay), cfg.RetryAfterErrorMaxDelay)
+	require.Equal(t, newDefaultRetryAfterError(), cfg.RetryAfterError)
 
 	require.True(t, cfg.Enabled, "Enabled should be true by default")
 }
@@ -54,36 +54,41 @@ func TestConfig_Validate(t *testing.T) {
 			errorMsg:    "MultidownloaderConfig.BlockChunkSize",
 		},
 		{
-			name: "zero retry delays use the defaults",
+			name: "unset RetryAfterError uses the default",
 			modifyConfig: func(cfg *Config) {
-				cfg.RetryAfterErrorInitialDelay = types.NewDuration(0)
-				cfg.RetryAfterErrorMaxDelay = types.NewDuration(0)
+				cfg.RetryAfterError = aggkitcommon.RetryPolicyGenericConfig{}
 			},
 			expectError: false,
 		},
 		{
-			name: "negative RetryAfterErrorInitialDelay",
+			name: "RetryAfterError with finite MaxRetries",
 			modifyConfig: func(cfg *Config) {
-				cfg.RetryAfterErrorInitialDelay = types.NewDuration(-time.Second)
+				cfg.RetryAfterError.MaxRetries = 3
 			},
 			expectError: true,
-			errorMsg:    "MultidownloaderConfig.RetryAfterErrorInitialDelay",
+			errorMsg:    "MultidownloaderConfig.RetryAfterError: MaxRetries must be -1",
 		},
 		{
-			name: "RetryAfterErrorMaxDelay lower than RetryAfterErrorInitialDelay caps it",
+			name: "RetryAfterError delays mode without delays",
 			modifyConfig: func(cfg *Config) {
-				cfg.RetryAfterErrorInitialDelay = types.NewDuration(time.Minute)
-				cfg.RetryAfterErrorMaxDelay = types.NewDuration(time.Second)
-			},
-			expectError: false,
-		},
-		{
-			name: "negative RetryAfterErrorMaxDelay",
-			modifyConfig: func(cfg *Config) {
-				cfg.RetryAfterErrorMaxDelay = types.NewDuration(-time.Second)
+				cfg.RetryAfterError.Delays = nil
 			},
 			expectError: true,
-			errorMsg:    "RetryAfterErrorMaxDelay",
+			errorMsg:    "MultidownloaderConfig.RetryAfterError",
+		},
+		{
+			name: "RetryAfterError backoff mode with invalid multiplier",
+			modifyConfig: func(cfg *Config) {
+				cfg.RetryAfterError = aggkitcommon.RetryPolicyGenericConfig{
+					Mode:              aggkitcommon.RetryConfigModeBackoff,
+					MaxRetries:        aggkitcommon.MaxAttemptsInfinite,
+					InitialBackoff:    types.NewDuration(time.Second),
+					MaxBackoff:        types.NewDuration(time.Minute),
+					BackoffMultiplier: 1,
+				}
+			},
+			expectError: true,
+			errorMsg:    "MultidownloaderConfig.RetryAfterError",
 		},
 		{
 			name: "zero MaxParallelBlockHeaderRetrieval",

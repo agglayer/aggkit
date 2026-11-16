@@ -6,6 +6,7 @@ import (
 	"path"
 	"time"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
@@ -19,9 +20,8 @@ var (
 	// ErrInvalidWaitPeriodToCheckCatchUp is returned when the wait period to check catch up is invalid
 	ErrInvalidWaitPeriodToCheckCatchUp = errors.New("MultidownloaderConfig.WaitPeriodToCheckCatchUp: " +
 		"wait period to check catch up must be greater than 0")
-	// ErrInvalidRetryAfterErrorDelay is returned when a retry delay is negative
-	ErrInvalidRetryAfterErrorDelay = errors.New("MultidownloaderConfig.RetryAfterErrorInitialDelay/" +
-		"RetryAfterErrorMaxDelay: delays can't be negative")
+	// ErrInvalidRetryAfterError is returned when the RetryAfterError policy is invalid
+	ErrInvalidRetryAfterError = errors.New("MultidownloaderConfig.RetryAfterError")
 )
 
 type Config struct {
@@ -42,13 +42,12 @@ type Config struct {
 	PeriodToCheckReorgs types.Duration
 	// DeveloperMode enables developer mode features like forcing reorgs
 	DeveloperMode bool
-	// RetryAfterErrorInitialDelay is the delay before retrying a step (or a reorg processing) that failed.
-	// It doubles on each consecutive failure (with jitter) up to RetryAfterErrorMaxDelay and resets on success.
-	// 0 means the default (500ms). It is capped by RetryAfterErrorMaxDelay
-	RetryAfterErrorInitialDelay types.Duration
-	// RetryAfterErrorMaxDelay is the maximum delay between retries of a step that keeps failing
-	// (e.g. the RPC is down or rate limiting). 0 means the default (30s)
-	RetryAfterErrorMaxDelay types.Duration
+	// RetryAfterError is the policy that spaces the retries of a step (or a reorg processing) that keeps
+	// failing (e.g. the RPC is down or rate limiting), reset on success: RetryMode = "delays" (Delays, a list
+	// of concrete delays, the last one is reused) or "backoff" (InitialBackoff * BackoffMultiplier^n up to
+	// MaxBackoff). MaxRetries must be -1: the multidownloader never gives up. If RetryMode is not set, the
+	// default is used: delays 500ms, 1s, 2s, 4s, 8s, 16s, 30s
+	RetryAfterError aggkitcommon.RetryPolicyGenericConfig `mapstructure:"RetryAfterError"`
 }
 
 const (
@@ -56,9 +55,27 @@ const (
 	defaultMaxParallelBlockHeaderRetrieval = 30
 	defaultWaitPeriodToCheckCatchUp        = time.Second * 10
 	defaultPeriodToCheckReorgs             = time.Second * 5
-	defaultRetryAfterErrorInitialDelay     = time.Millisecond * 500
-	defaultRetryAfterErrorMaxDelay         = time.Second * 30
 )
+
+// defaultRetryAfterErrorDelays are the default delays between retries of a failing step: exponential (x2)
+// from 500ms, capped at 30s (the last one is reused)
+var defaultRetryAfterErrorDelays = []time.Duration{
+	500 * time.Millisecond, time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second,
+	16 * time.Second, 30 * time.Second,
+}
+
+// newDefaultRetryAfterError returns the default RetryAfterError policy
+func newDefaultRetryAfterError() aggkitcommon.RetryPolicyGenericConfig {
+	delays := make([]types.Duration, len(defaultRetryAfterErrorDelays))
+	for i, d := range defaultRetryAfterErrorDelays {
+		delays[i] = types.NewDuration(d)
+	}
+	return aggkitcommon.RetryPolicyGenericConfig{
+		Mode:       aggkitcommon.RetryConfigModeDelays,
+		MaxRetries: aggkitcommon.MaxAttemptsInfinite,
+		Delays:     delays,
+	}
+}
 
 func NewConfigDefault(name string, basePathDB string) Config {
 	if basePathDB == "" {
@@ -74,8 +91,7 @@ func NewConfigDefault(name string, basePathDB string) Config {
 		WaitPeriodToCheckCatchUp:        types.NewDuration(defaultWaitPeriodToCheckCatchUp),
 		PeriodToCheckReorgs:             types.NewDuration(defaultPeriodToCheckReorgs),
 		DeveloperMode:                   false,
-		RetryAfterErrorInitialDelay:     types.NewDuration(defaultRetryAfterErrorInitialDelay),
-		RetryAfterErrorMaxDelay:         types.NewDuration(defaultRetryAfterErrorMaxDelay),
+		RetryAfterError:                 newDefaultRetryAfterError(),
 	}
 }
 
@@ -89,8 +105,8 @@ func (cfg *Config) Validate() error {
 	if cfg.WaitPeriodToCheckCatchUp.Duration <= 0 {
 		return ErrInvalidWaitPeriodToCheckCatchUp
 	}
-	if cfg.RetryAfterErrorInitialDelay.Duration < 0 || cfg.RetryAfterErrorMaxDelay.Duration < 0 {
-		return ErrInvalidRetryAfterErrorDelay
+	if _, err := cfg.newRetryBackoff(); err != nil {
+		return err
 	}
 	if cfg.BlockFinality.IsEmpty() {
 		return fmt.Errorf("MultidownloaderConfig.BlockFinality: block finality cannot be empty")
@@ -98,35 +114,38 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-// retryAfterErrorDelays resolves the retry delays: an unset (0) value takes its default, and the initial delay
-// is capped by the max delay (so setting only a small max delay is valid)
-func (cfg *Config) retryAfterErrorDelays() (initial, maxDelay time.Duration) {
-	initial = cfg.RetryAfterErrorInitialDelay.Duration
-	if initial <= 0 {
-		initial = defaultRetryAfterErrorInitialDelay
+// retryAfterError returns the RetryAfterError policy, or the default one if RetryMode is not set
+func (cfg *Config) retryAfterError() *aggkitcommon.RetryPolicyGenericConfig {
+	if cfg.RetryAfterError.Mode == aggkitcommon.RetryConfigModeNoRetries {
+		def := newDefaultRetryAfterError()
+		return &def
 	}
-	maxDelay = cfg.RetryAfterErrorMaxDelay.Duration
-	if maxDelay <= 0 {
-		maxDelay = defaultRetryAfterErrorMaxDelay
-	}
-	return min(initial, maxDelay), maxDelay
+	return &cfg.RetryAfterError
 }
 
 // newRetryBackoff returns the backoff used to space the retries of a failing step
-func (cfg *Config) newRetryBackoff() *retryBackoff {
-	return newRetryBackoff(cfg.retryAfterErrorDelays())
+func (cfg *Config) newRetryBackoff() (*retryBackoff, error) {
+	policy := cfg.retryAfterError()
+	if policy.MaxRetries != aggkitcommon.MaxAttemptsInfinite {
+		return nil, fmt.Errorf("%w: MaxRetries must be %d (the multidownloader never gives up), got %d",
+			ErrInvalidRetryAfterError, aggkitcommon.MaxAttemptsInfinite, policy.MaxRetries)
+	}
+	handler, err := policy.NewRetryHandler()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRetryAfterError, err)
+	}
+	return newRetryBackoff(handler), nil
 }
 
 func (cfg *Config) String() string {
 	return fmt.Sprintf("MultidownloaderConfig{Enabled:%t, BlockChunkSize:%d, "+
 		"MaxParallelBlockHeaderRetrieval:%d, BlockFinality:%s, WaitPeriodToCheckCatchUp:%s, "+
-		"PeriodToCheckReorgs:%s, RetryAfterErrorInitialDelay:%s, RetryAfterErrorMaxDelay:%s}",
+		"PeriodToCheckReorgs:%s, RetryAfterError:%s}",
 		cfg.Enabled,
 		cfg.BlockChunkSize,
 		cfg.MaxParallelBlockHeaderRetrieval,
 		cfg.BlockFinality.String(),
 		cfg.WaitPeriodToCheckCatchUp.String(),
 		cfg.PeriodToCheckReorgs.String(),
-		cfg.RetryAfterErrorInitialDelay.String(),
-		cfg.RetryAfterErrorMaxDelay.String())
+		cfg.retryAfterError().String())
 }
