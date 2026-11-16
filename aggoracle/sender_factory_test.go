@@ -276,10 +276,11 @@ func TestResolveSubmission_Auto(t *testing.T) {
 			expectedError: "the mode can't be detected",
 		},
 		{
-			name:          "the configured committee is not the GER updater",
-			fixture:       func(f *l2Fixture) { f.withUpdater(factoryEOA) },
-			committeeCfg:  factoryCommittee,
-			expectedError: "configured committee is",
+			// A leftover AggOracleCommitteeAddr (e.g. of a v1 committee) doesn't stop a chain with direct injection
+			name:         "a committee is configured but the GER updater is an EOA",
+			fixture:      func(f *l2Fixture) { f.withUpdater(factoryEOA) },
+			committeeCfg: factoryCommittee,
+			expectedMode: chaingersender.DirectInjectionMode,
 		},
 		{
 			name:          "the L2 can't be read",

@@ -269,25 +269,48 @@ func TestDetectGERMode_Errors(t *testing.T) {
 		require.ErrorIs(t, err, ErrUnknownGERUpdaterContract)
 	})
 
-	t.Run("configured committee is not the GER updater", func(t *testing.T) {
+	// A leftover AggOracleCommitteeAddr (e.g. of a v1 committee) must not stop a chain with direct injection
+	t.Run("configured committee but the updater is an EOA", func(t *testing.T) {
 		caller := newFixture(t).withUpdater(eoaAddr)
+		got, err := DetectGERMode(context.Background(), caller.mock(), gerL2Addr, committeeAddr)
+		require.NoError(t, err)
+		require.Equal(t, DirectInjectionMode, got.Mode)
+		require.Contains(t, got.Reason, "AggOracleCommitteeAddr "+committeeAddr.Hex()+" is ignored")
+		require.NotContains(t, got.Reason, "acceptGlobalExitRootUpdater")
+	})
+
+	t.Run("configured committee is the pending GER updater, the updater is an EOA", func(t *testing.T) {
+		caller := newFixture(t).withUpdater(eoaAddr).
+			on(gerL2Addr, sigPendingGlobalExitRootUpdater, addressWord(committeeAddr))
+		got, err := DetectGERMode(context.Background(), caller.mock(), gerL2Addr, committeeAddr)
+		require.NoError(t, err)
+		require.Equal(t, DirectInjectionMode, got.Mode)
+		require.Contains(t, got.Reason, "acceptGlobalExitRootUpdater")
+	})
+
+	t.Run("configured committee but the updater is zero", func(t *testing.T) {
+		caller := newFixture(t).withUpdater(common.Address{})
+		got, err := DetectGERMode(context.Background(), caller.mock(), gerL2Addr, committeeAddr)
+		require.NoError(t, err)
+		require.Equal(t, DirectInjectionMode, got.Mode)
+		require.Contains(t, got.Reason, "is ignored")
+	})
+
+	t.Run("configured committee is not the GER updater, that is a contract", func(t *testing.T) {
+		otherCommittee := common.HexToAddress("0x0000000000000000000000000000000000c0ffee")
+		caller := newFixture(t).withUpdater(otherCommittee).asCommitteeV2(t, otherCommittee, gerL2Addr, "v2.0.0")
 		_, err := DetectGERMode(context.Background(), caller.mock(), gerL2Addr, committeeAddr)
 		require.ErrorIs(t, err, ErrConfiguredCommitteeMismatch)
 		require.NotContains(t, err.Error(), "acceptGlobalExitRootUpdater")
 	})
 
-	t.Run("configured committee is the pending GER updater", func(t *testing.T) {
-		caller := newFixture(t).withUpdater(eoaAddr).
+	t.Run("configured committee is the pending GER updater, the updater is a contract", func(t *testing.T) {
+		otherCommittee := common.HexToAddress("0x0000000000000000000000000000000000c0ffee")
+		caller := newFixture(t).withUpdater(otherCommittee).asCommitteeV2(t, otherCommittee, gerL2Addr, "v2.0.0").
 			on(gerL2Addr, sigPendingGlobalExitRootUpdater, addressWord(committeeAddr))
 		_, err := DetectGERMode(context.Background(), caller.mock(), gerL2Addr, committeeAddr)
 		require.ErrorIs(t, err, ErrConfiguredCommitteeMismatch)
 		require.ErrorContains(t, err, "acceptGlobalExitRootUpdater")
-	})
-
-	t.Run("configured committee but the updater is zero", func(t *testing.T) {
-		caller := newFixture(t).withUpdater(common.Address{})
-		_, err := DetectGERMode(context.Background(), caller.mock(), gerL2Addr, committeeAddr)
-		require.ErrorIs(t, err, ErrConfiguredCommitteeMismatch)
 	})
 
 	t.Run("globalExitRootUpdater reverts", func(t *testing.T) {

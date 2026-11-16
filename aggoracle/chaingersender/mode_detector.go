@@ -80,20 +80,43 @@ func ResolveCommitteeAddress(
 	l2GERManager common.Address,
 	configuredCommittee common.Address,
 ) (committee common.Address, updater common.Address, err error) {
-	updater, err = callAddress(ctx, caller, l2GERManager, sigGlobalExitRootUpdater)
+	updater, err = readGERUpdater(ctx, caller, l2GERManager)
 	if err != nil {
-		return common.Address{}, common.Address{},
+		return common.Address{}, common.Address{}, err
+	}
+	committee, err = committeeForUpdater(ctx, caller, l2GERManager, configuredCommittee, updater)
+	return committee, updater, err
+}
+
+// readGERUpdater reads the globalExitRootUpdater of the L2 GER manager
+func readGERUpdater(
+	ctx context.Context, caller bind.ContractCaller, l2GERManager common.Address,
+) (common.Address, error) {
+	updater, err := callAddress(ctx, caller, l2GERManager, sigGlobalExitRootUpdater)
+	if err != nil {
+		return common.Address{},
 			fmt.Errorf("failed to read globalExitRootUpdater from the L2 GER manager %s: %w", l2GERManager, err)
 	}
+	return updater, nil
+}
 
+// committeeForUpdater returns the committee to use given the GER updater: the configured one, that must be the
+// updater, or the updater if none is configured
+func committeeForUpdater(
+	ctx context.Context,
+	caller bind.ContractCaller,
+	l2GERManager common.Address,
+	configuredCommittee common.Address,
+	updater common.Address,
+) (common.Address, error) {
 	if configuredCommittee == aggkitcommon.ZeroAddress {
-		return updater, updater, nil
+		return updater, nil
 	}
 	if configuredCommittee == updater {
-		return configuredCommittee, updater, nil
+		return configuredCommittee, nil
 	}
 
-	err = fmt.Errorf("%w: configured committee is %s but the globalExitRootUpdater of the L2 GER manager %s is %s",
+	err := fmt.Errorf("%w: configured committee is %s but the globalExitRootUpdater of the L2 GER manager %s is %s",
 		ErrConfiguredCommitteeMismatch, configuredCommittee, l2GERManager, updater)
 	// A committee that is only the pending updater needs one more step: give a hint about it
 	pending, pendingErr := callAddress(ctx, caller, l2GERManager, sigPendingGlobalExitRootUpdater)
@@ -101,7 +124,7 @@ func ResolveCommitteeAddress(
 		err = fmt.Errorf("%w: the committee is the pending GER updater, "+
 			"acceptGlobalExitRootUpdater() must be called on it first", err)
 	}
-	return common.Address{}, updater, err
+	return common.Address{}, err
 }
 
 // DetectGERMode inspects the globalExitRootUpdater of the L2 GER manager and selects the GER submission mode:
@@ -113,41 +136,35 @@ func ResolveCommitteeAddress(
 //
 // A failure of the transport (RPC unreachable, timeout...) is returned as an error: it is never
 // interpreted as "the contract doesn't implement the function".
+//
+// configuredCommittee (AggOracleCommitteeAddr) is only checked when the GER updater is a contract: in direct
+// injection there is no committee, and a leftover address in the config (e.g. of a v1 committee, that used to be
+// ignored without EnableAggOracleCommittee) must not stop the AggOracle.
 func DetectGERMode(
 	ctx context.Context,
 	caller bind.ContractCaller,
 	l2GERManager common.Address,
 	configuredCommittee common.Address,
 ) (*Detection, error) {
-	committee, updater, err := ResolveCommitteeAddress(ctx, caller, l2GERManager, configuredCommittee)
+	updater, err := readGERUpdater(ctx, caller, l2GERManager)
 	if err != nil {
 		return nil, err
 	}
 
-	if updater == aggkitcommon.ZeroAddress {
-		return &Detection{
-			Mode:   DirectInjectionMode,
-			Reason: "the GER updater is the zero address (the L2 GER manager accepts block.coinbase)",
-		}, nil
+	direct, err := detectDirectInjection(ctx, caller, updater)
+	if err != nil {
+		return nil, err
+	}
+	if direct != nil {
+		if configuredCommittee != aggkitcommon.ZeroAddress {
+			direct.Reason += ignoredCommitteeNote(ctx, caller, l2GERManager, configuredCommittee)
+		}
+		return direct, nil
 	}
 
-	code, err := caller.CodeAt(ctx, updater, nil)
+	committee, err := committeeForUpdater(ctx, caller, l2GERManager, configuredCommittee, updater)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read the code of the GER updater %s: %w", updater, err)
-	}
-	if len(code) == 0 {
-		return &Detection{
-			Mode:    DirectInjectionMode,
-			Updater: updater,
-			Reason:  fmt.Sprintf("the GER updater %s is an EOA", updater),
-		}, nil
-	}
-	if len(code) == eip7702DelegateLen && bytes.HasPrefix(code, eip7702DelegationPrefix) {
-		return &Detection{
-			Mode:    DirectInjectionMode,
-			Updater: updater,
-			Reason:  fmt.Sprintf("the GER updater %s is an EOA delegated with EIP-7702", updater),
-		}, nil
+		return nil, err
 	}
 
 	v2, err := probeCommitteeV2(ctx, caller, committee, l2GERManager)
@@ -177,6 +194,52 @@ func DetectGERMode(
 		return nil, fmt.Errorf("%w: GER updater %s (v2 probe: %s; v1 probe: %s): "+
 			"set AggOracle.Mode explicitly", ErrUnknownGERUpdaterContract, updater, v2.describe(), v1.describe())
 	}
+}
+
+// ignoredCommitteeNote explains that the configured committee is not used in direct injection, with a hint if it is
+// the pending GER updater (a migration to the committee that is not finished)
+func ignoredCommitteeNote(
+	ctx context.Context, caller bind.ContractCaller, l2GERManager, configuredCommittee common.Address,
+) string {
+	pending, err := callAddress(ctx, caller, l2GERManager, sigPendingGlobalExitRootUpdater)
+	if err == nil && pending == configuredCommittee {
+		return fmt.Sprintf(". AggOracleCommitteeAddr %s is ignored: it is the pending GER updater, "+
+			"acceptGlobalExitRootUpdater() must be called on it to switch to the committee", configuredCommittee)
+	}
+	return fmt.Sprintf(". AggOracleCommitteeAddr %s is ignored", configuredCommittee)
+}
+
+// detectDirectInjection returns the direct injection mode if the GER updater is not a contract (zero address, EOA,
+// or EOA delegated with EIP-7702), and nil otherwise
+func detectDirectInjection(
+	ctx context.Context, caller bind.ContractCaller, updater common.Address,
+) (*Detection, error) {
+	if updater == aggkitcommon.ZeroAddress {
+		return &Detection{
+			Mode:   DirectInjectionMode,
+			Reason: "the GER updater is the zero address (the L2 GER manager accepts block.coinbase)",
+		}, nil
+	}
+
+	code, err := caller.CodeAt(ctx, updater, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the code of the GER updater %s: %w", updater, err)
+	}
+	if len(code) == 0 {
+		return &Detection{
+			Mode:    DirectInjectionMode,
+			Updater: updater,
+			Reason:  fmt.Sprintf("the GER updater %s is an EOA", updater),
+		}, nil
+	}
+	if len(code) == eip7702DelegateLen && bytes.HasPrefix(code, eip7702DelegationPrefix) {
+		return &Detection{
+			Mode:    DirectInjectionMode,
+			Updater: updater,
+			Reason:  fmt.Sprintf("the GER updater %s is an EOA delegated with EIP-7702", updater),
+		}, nil
+	}
+	return nil, nil
 }
 
 // ValidateCommitteeV2 checks that the contract at committee is an AggOracleCommittee v2
