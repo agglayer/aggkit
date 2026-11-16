@@ -45,36 +45,36 @@ These errors occur when aggsender attempts to build a certificate that includes 
 
 #### L2 GER Sync
 
-Location: [l2gersync/evm_downloader_sovereign.go:147-182](https://github.com/agglayer/aggkit/blob/develop/l2gersync/evm_downloader_sovereign.go#L147-L182)
+Location: [l2gersync/evm_downloader_sovereign.go](https://github.com/agglayer/aggkit/blob/develop/l2gersync/evm_downloader_sovereign.go) (`logGERMissingFromL1InfoTree`)
 
-The l2gersync component detects invalid GERs during synchronization when it tries to fetch the L1 info tree data for a GER injected into L2. Look for these error patterns:
+The l2gersync component detects invalid GERs during synchronization when it tries to fetch the L1 info tree data for a GER injected into L2. When the GER is missing from the local L1 info tree, it reads the L1 GER manager `globalExitRootMap` to choose the log level. Look for these patterns:
 
-**1. Failed to fetch L1 info tree for GER**
+**1. GER not in the L1 info tree, nor in the L1 contract (`ERROR`)**
 ```
-failed to fetch l1 info tree for global exit root <GER_HASH> (block: <N>): ...
-```
-
-This is logged at `ERROR` level only when the L1 info tree syncer is up to date (`IsUpToDate`), which is when it points to an invalid GER. While the L1 info tree syncer is still catching up with the finalized L1 block, a missing GER is expected and the same lookup is logged at `WARN` level instead and retried:
-```
-l1 info tree not synced yet, cannot resolve global exit root <GER_HASH> (block: <N>), will retry: ...
-```
-If the sync status cannot be determined, the `ERROR` line is logged (preceded by a `WARN` line `could not check whether the l1 info tree is synced`).
-
-**2. GER not found in L1 contract**
-```
-GER <GER_HASH> not found in L1 contract globalExitRootMap
+failed to fetch l1 info tree for global exit root <GER_HASH> (block: <N>), GER not found in L1 contract globalExitRootMap either (attempt <A>): ...
 ```
 
-**3. GER lookup failed in L1 contract**
+This is the one that points to an invalid GER (e.g. a fake GER injected on L2).
+
+**2. GER in the L1 contract but not yet in the L1 info tree (`WARN`)**
+```
+l1 info tree not synced yet, cannot resolve global exit root <GER_HASH> (block: <N>), it exists in the L1 contract, will retry (attempt <A>): ...
+```
+
+This is the expected race while the L1 info tree syncer catches up (whatever its `BlockFinality`, e.g. `LatestBlock/-6`): it resolves by itself and needs no action.
+
+**3. GER lookup failed in L1 contract (`ERROR`)**
 ```
 GER lookup for <GER_HASH> failed in L1 contract: ...
 ```
 
-These errors are logged on **every retry** while an invalid GER is present — the direct `globalExitRootMap` lookup against the L1 contract is an informational-only log line from here on; it does not gate the recovery decision, which is entirely L2-side — see "Blocking and automatic recovery" below.
+When the L1 contract can't be read, the level falls back to the L1 info tree sync status (`IsUpToDate`, against the finalized L1 block): `WARN` `l1 info tree not synced yet, cannot resolve global exit root <GER_HASH> (block: <N>), will retry (attempt <A>): ...` while it is catching up, and `ERROR` `failed to fetch l1 info tree for global exit root <GER_HASH> (block: <N>) (attempt <A>): ...` when it is synced (preceded by a `WARN` line `could not check whether the l1 info tree is synced` if the sync status can't be determined either).
+
+The lookup is retried while the GER is missing. To avoid flooding the logs, only the first 5 attempts for the same GER and then one of every 100 are logged at the levels above (the rest at `DEBUG`); `<A>` is the attempt number. The generic `error trying to append log (attempt <A>): ...` line of the downloader follows the same policy. The L1 contract read only chooses the log level; it does not gate the recovery decision, which is entirely L2-side — see "Blocking and automatic recovery" below.
 
 #### Blocking and automatic recovery
 
-Once l2gersync hits an invalid GER (an `UpdateHashChainValue` insert event whose GER cannot be found in the local L1 info tree), **it blocks**: it does not skip the block, does not crash on its own, and retries the same block, logging the error patterns above on every attempt. This goes through the same `RetryHandler` as any other appender error: with `MaxRetryAttemptsAfterError` set to `-1` (the default), it retries indefinitely; with a positive value configured, l2gersync will `Fatal` once that many consecutive attempts are exhausted, same as it would for any other sync error. It is safe to leave l2gersync running in this state while performing the "Remove GER" step below — no restart or config change is required, as long as the removal happens before the configured retry budget (if any) runs out.
+Once l2gersync hits an invalid GER (an `UpdateHashChainValue` insert event whose GER cannot be found in the local L1 info tree), **it blocks**: it does not skip the block, does not crash on its own, and retries the same block, logging the error patterns above (bounded: first attempts, then one of every 100). This goes through the same `RetryHandler` as any other appender error: with `MaxRetryAttemptsAfterError` set to `-1` (the default), it retries indefinitely; with a positive value configured, l2gersync will `Fatal` once that many consecutive attempts are exhausted, same as it would for any other sync error. It is safe to leave l2gersync running in this state while performing the "Remove GER" step below — no restart or config change is required, as long as the removal happens before the configured retry budget (if any) runs out.
 
 Once the operator calls `removeGlobalExitRoots` (step 2 of the Reaction section), **l2gersync recovers automatically** on its next retry of the blocked insert: it re-checks two L2-only signals, both read at the current L2 head, and only skips the stale insert when BOTH agree the GER was actually removed:
 

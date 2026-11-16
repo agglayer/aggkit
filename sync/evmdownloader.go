@@ -567,7 +567,13 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 					break
 				}
 				attempts++
-				d.log.Error("error trying to append log: ", err)
+				// The same log can be retried for a long time (e.g. a GER not yet in the l1 info tree):
+				// bound the error-level logging of the retries
+				if aggkitcommon.ShouldLogRetryAtError(attempts) {
+					d.log.Errorf("error trying to append log (attempt %d): %v", attempts, err)
+				} else {
+					d.log.Debugf("error trying to append log (attempt %d): %v", attempts, err)
+				}
 				d.rh.Handle(ctx, "appendLogs", attempts)
 			}
 		}
