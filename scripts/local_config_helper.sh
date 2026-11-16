@@ -558,7 +558,7 @@ function print_ger_validators_instructions() {
     done
     for _INDEX in ${LOCAL_GER_VALIDATORS//,/ }; do
         [[ " $GER_VALIDATORS_LOCAL_CONFIGS" == *" $_INDEX:"* ]] || continue
-        echo "  The local AggOracle asks the validator $_INDEX to the local one (ger-validator-${AGGKIT_NETWORK}-00$_INDEX"
+        echo "  The local AggOracle asks the validator $_INDEX to the local one (ger-validator-${AGGKIT_NETWORK}-$(printf %03d "$_INDEX")"
         echo "  of kurtosis keeps running, only the AggOracle of the enclave asks it)"
     done
     local _DIR
