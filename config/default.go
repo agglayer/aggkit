@@ -378,10 +378,17 @@ UnsetClaimsMaxLogBlockRange = {{AggSender.UnsetClaimsMaxLogBlockRange}}
 GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 [Validator.ServerConfig]
-	Host = "0.0.0.0"
+	# Loopback by default. Set it to "0.0.0.0" (or another interface) when the proposer
+	# connects from another machine, and protect that address with the infrastructure.
+	Host = "127.0.0.1"
 	Port = 5578
-	EnableReflection = true
-	MaxDecodingMessageSize = 26214400  # 25Mb
+	EnableReflection = false
+	# MaxCertSize (8Mb) plus protobuf overhead
+	MaxDecodingMessageSize = 9437184
+	MaxConcurrentRequests = 8
+	MaxConcurrentStreams = 100
+	MaxRequestsPerSecondPerPeer = 5
+	MaxRequestsBurstPerPeer = 20
 [Validator.LerQuerierConfig]
 	RollupManagerAddr = "{{AggSender.RollupManagerAddr}}"
 	RollupCreationBlockL1 = "{{AggSender.RollupCreationBlockL1}}"

@@ -173,6 +173,39 @@ The validator is configured using a `.toml` file. Check the default values in th
 | MaxL2BlockRange               | uint64  | Maximum L2 block range allowed in a certificate, computed as `ToBlock - FromBlock`. 0 means disabled                                     |
 | UnsetClaimsMaxLogBlockRange   | uint64  | Proactive max block range for `eth_getLogs` queries when fetching unset claims. 0 means disabled (fallback to reactive chunking on error) |
 
+#### `[Validator.ServerConfig]`
+
+| Name                          | Type    | Default   | Description                                                                                                       |
+|-------------------------------|---------|-----------|-------------------------------------------------------------------------------------------------------------------|
+| Host                          | string  | `127.0.0.1` | Address the gRPC server binds. Set `0.0.0.0` (or another interface) when the proposer connects from another host |
+| Port                          | int     | `5578`    | gRPC port                                                                                                         |
+| EnableReflection              | bool    | `false`   | Serves gRPC server reflection, so a caller can enumerate the service. Keep it off outside development             |
+| MaxDecodingMessageSize        | int     | `9437184` | Maximum size of a received message. It must be at least `Validator.MaxCertSize`                                   |
+| MaxConcurrentRequests         | int     | `8`       | Validations executed at the same time. Further requests fail with `ResourceExhausted`                             |
+| MaxConcurrentStreams          | uint32  | `100`     | Concurrent HTTP/2 streams per connection                                                                          |
+| MaxRequestsPerSecondPerPeer   | float64 | `5`       | Request rate allowed for a single peer address. A request above it fails with `ResourceExhausted`                 |
+| MaxRequestsBurstPerPeer       | int     | `20`      | Burst of the per-peer rate limit                                                                                  |
+
+#### Network exposure and authentication
+
+The server listens on loopback by default, so nothing outside the host can reach it until
+`Host` says otherwise. There is no TLS in the process: when the server is exposed to the
+network, terminate TLS in the infrastructure in front of it (a proxy or load balancer) and
+restrict which addresses can reach the port. The server logs a warning when it binds a
+non-loopback address.
+
+`ValidateCertificate` only serves the chain's proposer: the request must carry the
+signature of the aggsender over the certificate hash (the same hash the validator signs),
+and the validator compares the recovered address with the first member of the current
+multisig committee. A request without a valid signature is rejected with
+`Unauthenticated` before the validator queries agglayer or the chain. `HealthCheck` stays
+open so infrastructure health checks keep working, and both are bounded by the limits
+above.
+
+Upgrading from a version that does not sign the request: upgrade the aggsender first (it
+starts signing the request and older validators ignore the extra field), then the
+validators. A validator that requires the signature rejects an older aggsender.
+
 ### Running the Validator
 
 #### As a Standalone Component
@@ -226,7 +259,7 @@ sequenceDiagram
     participant AV as AggSender Validator
     participant AL as AggLayer
     
-    AP->>AV: ValidateCertificate(cert, prevCertID)
+    AP->>AV: ValidateCertificate(cert, prevCertID, proposerSignature)
     AV->>AV: Reconstruct certificate
     AV->>AV: Compare certificates
     AV->>AV: Sign certificate
@@ -274,8 +307,13 @@ message ValidateCertificateRequest {
   agglayer.node.types.v1.CertificateId previous_certificate_id = 1;
   agglayer.node.types.v1.Certificate certificate = 2;
   uint64 last_l2_block_in_cert = 3;
+  // Signature of the certificate hash by the aggsender that proposes the certificate
+  agglayer.interop.types.v1.FixedBytes65 proposer_signature = 4;
 }
 ```
+
+`proposer_signature` is mandatory: an unsigned request, or one signed by any other key,
+is rejected with `Unauthenticated`.
 
 **Response:**
 
