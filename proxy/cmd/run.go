@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/bridgetracker"
 	bridgetrackerdb "github.com/agglayer/aggkit/bridgetracker/db"
 	"github.com/agglayer/aggkit/bridgetracker/sources"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
@@ -102,7 +103,7 @@ func start(cliCtx *cli.Context) error {
 // runL1Client dials the L1 JSON-RPC endpoint. It is always required: the bridge service finder
 // enumerates the rollup manager's networks and polls its events through it.
 func runL1Client(ctx context.Context, rpcClientCfg ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
-	log.Debugf("dialing L1 client at: %s", rpcClientCfg.URL)
+	log.Debugf("dialing L1 client at: %s", aggkitcommon.URLSchemeHost(rpcClientCfg.URL))
 
 	if rpcClientCfg.Mode != ethermanconfig.RPCModeBasic {
 		log.Fatalf("only basic RPC mode is supported for L1 client, got: %s", rpcClientCfg.Mode)

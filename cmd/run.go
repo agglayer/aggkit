@@ -652,7 +652,7 @@ func runL1InfoTreeSyncerIfNeeded(
 func runL1ClientIfNeeded(ctx context.Context,
 	rpcClientCfg ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
 	// Always is required because is used to create a L1InfoTreeDataQuerier
-	log.Debugf("dialing L1 client at: %s", rpcClientCfg.URL)
+	log.Debugf("dialing L1 client at: %s", aggkitcommon.URLSchemeHost(rpcClientCfg.URL))
 
 	if rpcClientCfg.Mode != ethermanconfig.RPCModeBasic {
 		log.Fatalf("only basic RPC mode is supported for L1 client, got: %s", rpcClientCfg.Mode)

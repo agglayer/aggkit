@@ -1,6 +1,7 @@
 package common
 
 import (
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -111,4 +112,16 @@ func RedactSensitiveSlice(in []string) []string {
 		out[i] = RedactSensitive(v)
 	}
 	return out
+}
+
+// URLSchemeHost returns only the scheme and host[:port] of rawURL ("https://rpc.example.com"), dropping the
+// user info, path, query and fragment, which is where RPC providers usually put their API key. It is meant
+// to identify an endpoint in log output without leaking its credentials. If rawURL can't be parsed or has
+// no host, it returns RedactedURLPlaceholder.
+func URLSchemeHost(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return RedactedURLPlaceholder
+	}
+	return u.Scheme + "://" + u.Host
 }

@@ -23,7 +23,7 @@ func NewRPCClient(ctx context.Context,
 	}
 	switch mode {
 	case ethermanconfig.RPCModeBasic:
-		log.Debugf("Creating basic RPC client with URL %s", cfg.URL)
+		log.Debugf("Creating basic RPC client with URL %s", aggkitcommon.URLSchemeHost(cfg.URL))
 		ethClient, err := DialWithRetry(ctx, logger, &cfg)
 		if err != nil {
 			return nil, fmt.Errorf("fails to create basic RPC client. Err: %w", err)
