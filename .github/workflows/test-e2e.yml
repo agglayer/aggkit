@@ -22,9 +22,9 @@ env:
   AGGKIT_REPORT_CHANNEL: "C092K6Z0EUT"
   KURTOSIS_CDK_COMMIT: "ad6f8769bf45ac115eefc2d22efb0701d0df729c"
   # The AggOracle committee v2 e2e needs a kurtosis-cdk that has the committee, and the commit above doesn't:
-  # 0xPolygon/kurtosis-cdk#1044. Only that job uses this one, in every event (it doesn't follow "main" on schedule).
-  # Replace it by the commit of the merge, or by "main", when the PR is merged
-  KURTOSIS_CDK_COMMITTEE_V2_COMMIT: "3841bccb5bdc8247e4eca5751b7eb2a1380e4afe"
+  # the merge commit of 0xPolygon/kurtosis-cdk#1044 in main. Only that job uses this one, in every event (it doesn't
+  # follow "main" on schedule). It can be dropped once KURTOSIS_CDK_COMMIT includes the committee v2
+  KURTOSIS_CDK_COMMITTEE_V2_COMMIT: "85fcdea024297e62328f1af7aa42ff2807988c5e"
   # The commit of agglayer/agglayer-contracts (tag v13.0.0-rc.0) that the job of the committee v2 builds its
   # agglayer-contracts image from, while no image with the AggOracleCommittee v2 is published
   AGGLAYER_CONTRACTS_COMMITTEE_V2_COMMIT: "4839628561712c7477366e79d0a280a0a546b8fe"
@@ -386,14 +386,14 @@ jobs:
       - build-tools
       - read-aggkit-args
     if: needs.read-aggkit-args.outputs.committee-v2-enabled == 'true'
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@31e5c74d00393ee1878801ef7a8b1a0ccf8229d9  # agglayer/e2e#277 (committee v2 tests)
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@a5e723bbb53eda9a0458c92a4064ec4094549325  # agglayer/e2e main (merge of #277)
     secrets:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       # The commit of kurtosis-cdk with the committee v2, not the one of the other jobs
       kurtosis-cdk-ref: ${{ needs.read-aggkit-args.outputs.committee-v2-kurtosis-ref }}
-      # The commit of agglayer/e2e with the committee v2 tests. Pin it to the merge commit once agglayer/e2e#277 is merged.
-      agglayer-e2e-ref: 31e5c74d00393ee1878801ef7a8b1a0ccf8229d9 # agglayer/e2e#277 (committee v2 tests)
+      # The commit of agglayer/e2e with the committee v2 tests: the merge commit of agglayer/e2e#277 in main
+      agglayer-e2e-ref: a5e723bbb53eda9a0458c92a4064ec4094549325 # agglayer/e2e main (merge of #277)
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
