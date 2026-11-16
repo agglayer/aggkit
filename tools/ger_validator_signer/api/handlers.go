@@ -49,6 +49,12 @@ func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	result, err := s.service.SignGER(ctx, ger)
 	if err != nil {
+		if r.Context().Err() != nil {
+			// The client gave up (the AggOracle cancels the requests it doesn't need once it has enough signatures,
+			// or its timeout expired): not an error of the validator, and nobody reads the answer
+			s.logger.Debug("the client cancelled the request to sign a GER", "ger", ger, "error", err)
+			return
+		}
 		apiErr := toAPIError(err)
 		if apiErr.code == CodeInternal {
 			// The client is told nothing about the cause: it can have details of L1 or of the signer

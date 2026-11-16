@@ -188,6 +188,29 @@ func TestSign_TimeoutAndPanic(t *testing.T) {
 	})
 }
 
+func TestSign_ClientCancelledIsNotAnError(t *testing.T) {
+	var logs strings.Builder
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	svc := mocks.NewService(t)
+	server := New(logger, testConfig(), svc)
+	svc.EXPECT().SignGER(mock.Anything, testGER).
+		RunAndReturn(func(ctx context.Context, _ common.Hash) (*service.Result, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}).Once()
+
+	// The AggOracle cancels the requests it doesn't need once it has enough signatures
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/v1/ger/sign",
+		strings.NewReader(string(goldenFile(t, "sign_request.json"))))
+	req.RemoteAddr = "192.0.2.1:1234"
+	cancel()
+	server.Handler().ServeHTTP(httptest.NewRecorder(), req)
+
+	require.NotContains(t, logs.String(), "level=ERROR")
+	require.Contains(t, logs.String(), "the client cancelled the request to sign a GER")
+}
+
 func TestSign_InvalidRequests(t *testing.T) {
 	const validGER = `"0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"`
 	tests := []struct {
