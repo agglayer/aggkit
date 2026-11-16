@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -20,10 +19,9 @@ import (
 // maxResponseBytes limits how much of the response of a validator is read
 const maxResponseBytes = 1 << 20
 
-// ClientConfig is the configuration of the HTTP client of the GER validators
+// ClientConfig is the configuration of the HTTP client of the GER validators. It has no timeout: the context of
+// each request sets it (the Collector applies CommitteeV2.RequestTimeout)
 type ClientConfig struct {
-	// RequestTimeout is the timeout of each request. 0 means no timeout (the context rules)
-	RequestTimeout time.Duration
 	// CACertFile is an optional PEM file with the CA(s) used to verify the validators certificate,
 	// instead of the system trust store
 	CACertFile string
@@ -75,7 +73,6 @@ func NewHTTPClient(cfg ClientConfig) (*HTTPClient, error) {
 
 	return &HTTPClient{
 		httpClient: &http.Client{
-			Timeout:   cfg.RequestTimeout,
 			Transport: transport,
 			// A validator must answer by itself: never follow a redirect to another place
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },

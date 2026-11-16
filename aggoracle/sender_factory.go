@@ -137,7 +137,6 @@ func newCommitteeV2Sender(
 	v2Cfg := cfg.CommitteeV2
 
 	validatorClient, err := gervalidator.NewHTTPClient(gervalidator.ClientConfig{
-		RequestTimeout: v2Cfg.RequestTimeout.Duration,
 		CACertFile:     v2Cfg.TLS.CACertFile,
 		ClientCertFile: v2Cfg.TLS.ClientCertFile,
 		ClientKeyFile:  v2Cfg.TLS.ClientKeyFile,

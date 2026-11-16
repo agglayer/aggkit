@@ -70,7 +70,7 @@ func TestHTTPClient_SignGER(t *testing.T) {
 		serveJSON(http.StatusOK, readGoldenRaw(t, "sign_response.json"))(w, r)
 	}))
 
-	client := newHTTPClient(t, ClientConfig{RequestTimeout: testTimeout})
+	client := newHTTPClient(t, ClientConfig{})
 	resp, err := client.SignGER(context.Background(), server.URL, expectedResp.GER)
 	require.NoError(t, err)
 	require.Equal(t, &expectedResp, resp)
@@ -249,15 +249,6 @@ func TestHTTPClient_SignGER_Timeouts(t *testing.T) {
 		}
 	}))
 	t.Cleanup(func() { close(release) })
-
-	t.Run("request timeout", func(t *testing.T) {
-		client := newHTTPClient(t, ClientConfig{RequestTimeout: 50 * time.Millisecond})
-		start := time.Now()
-		_, err := client.SignGER(context.Background(), server.URL, testGER)
-		require.Error(t, err)
-		require.Less(t, time.Since(start), testTimeout)
-		require.Equal(t, FailureTransient, ClassifyFailure(err))
-	})
 
 	t.Run("cancelled context", func(t *testing.T) {
 		client := newHTTPClient(t, ClientConfig{})

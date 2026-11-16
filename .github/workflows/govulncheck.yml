@@ -31,7 +31,8 @@ jobs:
     steps:
       - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f  # v1.1.0
         with:
-          # Same Go as the job above, which runs the action with its default (stable)
+          # Same Go as the job above. There govulncheck runs with the default of the action (stable): its "with" is
+          # on the setup-go step, that runs after it and has no go-version-input input
           go-version-input: stable
           go-package: ./...
           work-dir: tools/ger_validator_signer

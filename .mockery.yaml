@@ -18,12 +18,14 @@ packages:
   github.com/agglayer/aggkit/aggoracle/types:
     config:
       all: true
+  # In the package (the tests of the package use it, a mocks package would import it back) but in a _test.go
+  # file, so the mock is not part of the binary
   github.com/agglayer/aggkit/aggoracle/gervalidator:
     config:
       outpkg: "gervalidator"
       inpackage: true
       dir: "{{ .InterfaceDir }}"
-      filename: "mock_{{ .InterfaceName | snakecase }}.go"
+      filename: "mock_{{ .InterfaceName | snakecase }}_test.go"
       mockname: "{{ .InterfaceName }}Mock"
       all: true
   github.com/agglayer/aggkit/aggsender/db:
