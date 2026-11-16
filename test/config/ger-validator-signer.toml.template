@@ -1,0 +1,25 @@
+# Configuration of a GER validator (tools/ger_validator_signer) to run it locally against a kurtosis enclave.
+# Rendered by scripts/local_config_helper.sh: see scripts/local_config.sh (aggoracle role). An unknown key is an error.
+
+# The L1 of the enclave, through the port that kurtosis publishes on the host
+L1RPCURL = "{{.l1_rpc_url}}"
+L1ChainID = {{.l1_chain_id}}
+# The AgglayerGER contract of L1: the validator signs the GERs that are in it
+AgglayerGERAddr = "{{.zkevm_global_exit_root_address}}"
+# The same finality as the validator of the enclave
+BlockFinality = "{{.ger_validator_block_finality}}"
+
+[Log]
+Level = "debug"
+
+# The key of the validator of the enclave, so the committee accepts its signatures
+[Signer]
+Method = "local"
+Path = "{{.ger_validator_keystore_path}}"
+Password = "{{.zkevm_l2_keystore_password}}"
+
+[PublicREST]
+Host = "127.0.0.1"
+Port = {{.ger_validator_local_port}}
+# Only for local tests: the AggOracle reaches it through localhost
+InsecureHTTP = true

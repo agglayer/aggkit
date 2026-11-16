@@ -1,0 +1,4 @@
+{
+  "code": "GER_UNKNOWN",
+  "message": "global exit root not found in L1: it has no entry in globalExitRootMap of the L1 contract AgglayerGER 0x1111111111111111111111111111111111111111 (L1 chain 11155111)"
+}

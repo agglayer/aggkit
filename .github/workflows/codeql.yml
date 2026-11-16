@@ -40,7 +40,7 @@ jobs:
         if: ${{ matrix.language == 'go' }}
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
         with:
-          go-version: 1.27.3
+          go-version: 1.27.4
 
       - name: Verify Go version
         if: ${{ matrix.language == 'go' }}
@@ -60,7 +60,7 @@ jobs:
       # Build project
       - name: Build Go project
         if: ${{ matrix.language == 'go' }}
-        run: make build-aggkit
+        run: make build-aggkit build-ger_validator_signer
 
       # Perform CodeQL Analysis
       - name: Perform CodeQL Analysis

@@ -19,5 +19,20 @@ jobs:
         uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f  # v1.1.0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
         with:
-          go-version-input: 1.27.3
+          go-version-input: 1.27.4
           go-package: ./...
+
+  # ger_validator_signer is its own Go module: the job above doesn't see it
+  govulncheck_ger_validator_signer:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    name: Run govulncheck on ger_validator_signer
+    steps:
+      - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f  # v1.1.0
+        with:
+          # Same Go as the job above. There govulncheck runs with the default of the action (stable): its "with" is
+          # on the setup-go step, that runs after it and has no go-version-input input
+          go-version-input: stable
+          go-package: ./...
+          work-dir: tools/ger_validator_signer

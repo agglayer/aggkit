@@ -1,0 +1,4 @@
+{
+  "code": "GER_BLOCK_NOT_CANONICAL",
+  "message": "the L1 block that inserted the GER is not in the canonical chain"
+}

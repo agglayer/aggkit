@@ -20,3 +20,7 @@ debug
 bin
 .claude/
 test.env
+
+# Local go.work (it lets the IDE see the nested modules, for example tools/ger_validator_signer)
+go.work
+go.work.sum

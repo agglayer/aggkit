@@ -5,7 +5,9 @@ import (
 	"math/big"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggoraclecommittee"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
+	"github.com/agglayer/aggkit/aggoracle/gervalidator"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -45,11 +47,28 @@ type L2GERManagerContract interface {
 	GlobalExitRootUpdater(opts *bind.CallOpts) (common.Address, error)
 }
 
-// AggOracleCommitteeContract is an interface to interact with the AggOracleCommittee contract
-type AggOracleCommitteeContract interface {
-	// View method to check oracle manager state
-	GetAggOracleMemberIndex(opts *bind.CallOpts, oracleMember common.Address) (*big.Int, error)
+// AggOracleCommitteeV2Contract is an interface to interact with the AggOracleCommittee v2 contract
+type AggOracleCommitteeV2Contract interface {
+	// Version returns the version of the contract ("v2.x.y")
+	Version(opts *bind.CallOpts) (string, error)
+	// Threshold returns the number of signatures that injectGER requires
+	Threshold(opts *bind.CallOpts) (*big.Int, error)
+	// Proposer returns the only address allowed to call injectGER
+	Proposer(opts *bind.CallOpts) (common.Address, error)
+	// AgglayerGERL2 returns the L2 GER manager the committee inserts the GERs on
+	AgglayerGERL2(opts *bind.CallOpts) (common.Address, error)
+	// GetValidatorsInfo returns the address and the URL of the current validators
+	GetValidatorsInfo(opts *bind.CallOpts) ([]aggoraclecommittee.IAggOracleCommitteeValidatorInfo, error)
+	// InjectedGERs tells if the GER was already processed by the committee. A GER can't be injected twice
+	InjectedGERs(opts *bind.CallOpts, globalExitRoot [common.HashLength]byte) (bool, error)
+	// VerifyGER returns true if the signatures are valid for the GER, and reverts otherwise
+	VerifyGER(opts *bind.CallOpts, globalExitRoot [common.HashLength]byte, signatures []byte) (bool, error)
+}
 
-	// View method to check the last proposed GER by an oracle member
-	AddressToLastProposedGER(opts *bind.CallOpts, oracleMember common.Address) ([common.HashLength]byte, error)
+// GERSignatureCollector collects the signatures that AggOracleCommittee v2 requires to inject a GER
+type GERSignatureCollector interface {
+	// Collect asks the validators to sign the GER and returns exactly threshold signatures,
+	// ordered as the contract requires
+	Collect(ctx context.Context, ger common.Hash, validators []gervalidator.Validator,
+		threshold int) (*gervalidator.Result, error)
 }

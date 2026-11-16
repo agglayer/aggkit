@@ -1,0 +1,4 @@
+{
+  "code": "GER_NOT_FINAL",
+  "message": "the L1 block that inserted the global exit root is not final yet: it was inserted in L1 block 4305 and, with BlockFinality FinalizedBlock, the final block is 4290 (finalized block 4290, latest block 4310): 15 blocks to go"
+}
