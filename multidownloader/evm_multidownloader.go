@@ -255,6 +255,8 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 
 	dh.statistics.StartSyncing()
 	numLoops := 0
+	// stepBackoff spaces the retries of a failing step, so a failing or rate-limiting RPC isn't hammered
+	stepBackoff := dh.cfg.newRetryBackoff()
 	for {
 		// This is for debug, when reach the number of loops it returns to allow testing
 		if numLoops == numLoopsToExecute {
@@ -273,44 +275,68 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 		} else {
 			err = dh.StartStep(runCtx)
 		}
-		if err != nil {
-			reorgErr := mdrtypes.CastDetectedReorgError(err)
-			if reorgErr == nil {
-				dh.log.Warnf("Error running multidownloader: %s ", err.Error())
-				time.Sleep(time.Millisecond) // Brief pause before retry
+		if err == nil {
+			if failures := stepBackoff.Succeeded(); failures > 0 {
+				dh.log.Infof("multidownloader step succeeded after %d consecutive failures", failures)
+			}
+			continue
+		}
+		reorgErr := mdrtypes.CastDetectedReorgError(err)
+		if reorgErr == nil {
+			delay, mustLog := stepBackoff.Failed(err)
+			if mustLog {
+				dh.log.Warnf("Error running multidownloader (consecutive failures: %d, retrying in %s): %s",
+					stepBackoff.Failures(), delay, err.Error())
+			}
+			if waitErr := waitOrDone(runCtx, delay); waitErr != nil {
+				dh.log.Infof("EVMMultidownloader.Start: context done while waiting to retry, exiting...")
+				return waitErr
+			}
+			continue
+		}
+		// A reorg is not a failure of the step
+		stepBackoff.Succeeded()
+		dh.log.Warnf("Reorg detected: %s", reorgErr.Error())
+		reorgBackoff := dh.cfg.newRetryBackoff()
+		for {
+			dh.mutex.Lock()
+			// check if context is done during reorg processing
+			if runCtx.Err() != nil {
+				dh.mutex.Unlock()
+				dh.log.Infof("EVMMultidownloader.Start: context done during reorg processing, exiting...")
+				return runCtx.Err()
+			}
+
+			dh.log.Infof("Processing reorg at block number %d...", reorgErr.OffendingBlockNumber)
+			err = dh.reorgProcessor.ProcessReorg(runCtx, *reorgErr, dh.cfg.BlockFinality)
+			if err != nil {
+				dh.mutex.Unlock()
+				dh.retryReorgProcessingAfter(runCtx, reorgBackoff, "Error running reorg multidownloader", err)
 				continue
 			}
-			dh.log.Warnf("Reorg detected: %s", reorgErr.Error())
-			for {
-				dh.mutex.Lock()
-				// check if context is done during reorg processing
-				if runCtx.Err() != nil {
-					dh.mutex.Unlock()
-					dh.log.Infof("EVMMultidownloader.Start: context done during reorg processing, exiting...")
-					return runCtx.Err()
-				}
-
-				dh.log.Infof("Processing reorg at block number %d...", reorgErr.OffendingBlockNumber)
-				err = dh.reorgProcessor.ProcessReorg(runCtx, *reorgErr, dh.cfg.BlockFinality)
-				if err != nil {
-					dh.mutex.Unlock()
-					dh.log.Warnf("Error running reorg multidownloader: %s", err.Error())
-					time.Sleep(1 * time.Second)
-					continue
-				}
-				newState, err := dh.newStateFromStorage(ctx)
-				if err != nil {
-					dh.mutex.Unlock()
-					dh.log.Warnf("Error recreating state after reorg processing: %s", err.Error())
-					time.Sleep(1 * time.Second)
-					continue
-				}
-				dh.state = newState
+			newState, err := dh.newStateFromStorage(ctx)
+			if err != nil {
 				dh.mutex.Unlock()
-				break
+				dh.retryReorgProcessingAfter(runCtx, reorgBackoff,
+					"Error recreating state after reorg processing", err)
+				continue
 			}
+			dh.state = newState
+			dh.mutex.Unlock()
+			break
 		}
 	}
+}
+
+// retryReorgProcessingAfter logs (rate limited) the error of a reorg processing attempt and waits the backoff
+// delay before the next attempt. If runCtx is done it returns at once: the caller loop checks it and exits
+func (dh *EVMMultidownloader) retryReorgProcessingAfter(runCtx context.Context, backoff *retryBackoff,
+	msg string, err error) {
+	delay, mustLog := backoff.Failed(err)
+	if mustLog {
+		dh.log.Warnf("%s (consecutive failures: %d, retrying in %s): %s", msg, backoff.Failures(), delay, err.Error())
+	}
+	_ = waitOrDone(runCtx, delay)
 }
 
 // Stop gracefully stops the multidownloader if it's running

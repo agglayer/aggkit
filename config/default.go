@@ -423,6 +423,8 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 	BlockFinality = "FinalizedBlock"
 	WaitPeriodToCheckCatchUp = "10s"
 	PeriodToCheckReorgs = "5s"
+	RetryAfterErrorInitialDelay = "500ms"
+	RetryAfterErrorMaxDelay = "30s"
 
 [L2Multidownloader]
 	Enabled = false
@@ -433,4 +435,6 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 	BlockFinality = "LatestBlock"
 	WaitPeriodToCheckCatchUp = "10s"
 	PeriodToCheckReorgs = "5s"
+	RetryAfterErrorInitialDelay = "500ms"
+	RetryAfterErrorMaxDelay = "30s"
 `

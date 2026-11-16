@@ -2,6 +2,7 @@ package multidownloader
 
 import (
 	"testing"
+	"time"
 
 	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -17,6 +18,8 @@ func TestNewConfigDefault(t *testing.T) {
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.BlockFinality, "BlockFinality should be FinalizedBlock")
 	require.Equal(t, types.NewDuration(defaultWaitPeriodToCheckCatchUp), cfg.WaitPeriodToCheckCatchUp, "WaitPeriodToCheckCatchUp should be 10 seconds")
 	require.Equal(t, types.NewDuration(defaultPeriodToCheckReorgs), cfg.PeriodToCheckReorgs, "PeriodToCheckReorgs should be 5 seconds")
+	require.Equal(t, types.NewDuration(defaultRetryAfterErrorInitialDelay), cfg.RetryAfterErrorInitialDelay)
+	require.Equal(t, types.NewDuration(defaultRetryAfterErrorMaxDelay), cfg.RetryAfterErrorMaxDelay)
 
 	require.True(t, cfg.Enabled, "Enabled should be true by default")
 }
@@ -49,6 +52,31 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectError: true,
 			errorMsg:    "MultidownloaderConfig.BlockChunkSize",
+		},
+		{
+			name: "zero retry delays use the defaults",
+			modifyConfig: func(cfg *Config) {
+				cfg.RetryAfterErrorInitialDelay = types.NewDuration(0)
+				cfg.RetryAfterErrorMaxDelay = types.NewDuration(0)
+			},
+			expectError: false,
+		},
+		{
+			name: "negative RetryAfterErrorInitialDelay",
+			modifyConfig: func(cfg *Config) {
+				cfg.RetryAfterErrorInitialDelay = types.NewDuration(-time.Second)
+			},
+			expectError: true,
+			errorMsg:    "MultidownloaderConfig.RetryAfterErrorInitialDelay",
+		},
+		{
+			name: "RetryAfterErrorMaxDelay lower than RetryAfterErrorInitialDelay",
+			modifyConfig: func(cfg *Config) {
+				cfg.RetryAfterErrorInitialDelay = types.NewDuration(time.Minute)
+				cfg.RetryAfterErrorMaxDelay = types.NewDuration(time.Second)
+			},
+			expectError: true,
+			errorMsg:    "RetryAfterErrorMaxDelay",
 		},
 		{
 			name: "zero MaxParallelBlockHeaderRetrieval",
