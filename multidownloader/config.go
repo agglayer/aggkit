@@ -46,7 +46,7 @@ type Config struct {
 	// failing (e.g. the RPC is down or rate limiting), reset on success: RetryMode = "delays" (Delays, a list
 	// of concrete delays, the last one is reused) or "backoff" (InitialBackoff * BackoffMultiplier^n up to
 	// MaxBackoff). MaxRetries must be -1: the multidownloader never gives up. If RetryMode is not set, the
-	// default is used: delays 500ms, 1s, 2s, 4s, 8s, 16s, 30s
+	// default is used: delays 1s, 2s, 4s, 8s, 16s, 32s, 1m4s, 2m8s, 4m16s, 5m
 	RetryAfterError aggkitcommon.RetryPolicyGenericConfig `mapstructure:"RetryAfterError"`
 }
 
@@ -58,10 +58,10 @@ const (
 )
 
 // defaultRetryAfterErrorDelays are the default delays between retries of a failing step: exponential (x2)
-// from 500ms, capped at 30s (the last one is reused)
+// from 1s, capped at 5m (the last one is reused)
 var defaultRetryAfterErrorDelays = []time.Duration{
-	500 * time.Millisecond, time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second,
-	16 * time.Second, 30 * time.Second,
+	time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 32 * time.Second,
+	64 * time.Second, 128 * time.Second, 256 * time.Second, 5 * time.Minute,
 }
 
 // newDefaultRetryAfterError returns the default RetryAfterError policy

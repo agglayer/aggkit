@@ -424,11 +424,11 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 	WaitPeriodToCheckCatchUp = "10s"
 	PeriodToCheckReorgs = "5s"
 	# Delays between retries of a failing step (e.g. the RPC is down or rate limiting), exponential (x2) up to
-	# 30s; the last one is reused and it resets on success. RetryMode = "backoff" (InitialBackoff,
+	# 5m; the last one is reused and it resets on success. RetryMode = "backoff" (InitialBackoff,
 	# BackoffMultiplier, MaxBackoff) is also supported. MaxRetries must be -1: it never gives up
 	[L1Multidownloader.RetryAfterError]
 		RetryMode = "delays"
-		Delays = ["500ms", "1s", "2s", "4s", "8s", "16s", "30s"]
+		Delays = ["1s", "2s", "4s", "8s", "16s", "32s", "1m4s", "2m8s", "4m16s", "5m"]
 		MaxRetries = -1
 
 [L2Multidownloader]
@@ -441,10 +441,10 @@ BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
 	WaitPeriodToCheckCatchUp = "10s"
 	PeriodToCheckReorgs = "5s"
 	# Delays between retries of a failing step (e.g. the RPC is down or rate limiting), exponential (x2) up to
-	# 30s; the last one is reused and it resets on success. RetryMode = "backoff" (InitialBackoff,
+	# 5m; the last one is reused and it resets on success. RetryMode = "backoff" (InitialBackoff,
 	# BackoffMultiplier, MaxBackoff) is also supported. MaxRetries must be -1: it never gives up
 	[L2Multidownloader.RetryAfterError]
 		RetryMode = "delays"
-		Delays = ["500ms", "1s", "2s", "4s", "8s", "16s", "30s"]
+		Delays = ["1s", "2s", "4s", "8s", "16s", "32s", "1m4s", "2m8s", "4m16s", "5m"]
 		MaxRetries = -1
 `

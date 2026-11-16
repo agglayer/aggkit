@@ -23,8 +23,9 @@ func TestRetryBackoff_DefaultDelaysAreExponentialAndReset(t *testing.T) {
 	b := newTestRetryBackoff(t, newDefaultRetryAfterError())
 
 	expected := []time.Duration{
-		500 * time.Millisecond, time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second,
-		16 * time.Second, 30 * time.Second, 30 * time.Second, 30 * time.Second, // the last one is reused
+		time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 32 * time.Second,
+		64 * time.Second, 128 * time.Second, 256 * time.Second,
+		5 * time.Minute, 5 * time.Minute, 5 * time.Minute, // the last one is reused
 	}
 	for i, want := range expected {
 		delay, _ := b.Failed()
@@ -35,7 +36,7 @@ func TestRetryBackoff_DefaultDelaysAreExponentialAndReset(t *testing.T) {
 	require.Equal(t, len(expected), b.Succeeded())
 	require.Equal(t, 0, b.Failures())
 	delay, mustLog := b.Failed()
-	require.Equal(t, 500*time.Millisecond, delay, "the delays must start again after a success")
+	require.Equal(t, time.Second, delay, "the delays must start again after a success")
 	require.True(t, mustLog, "the first failure after a success must be logged")
 }
 
