@@ -89,6 +89,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 
 	svc := service.New(logger, service.Config{
 		AgglayerGER:    cfg.AgglayerGERAddr,
+		L1ChainID:      cfg.L1ChainID,
 		Finality:       finality.Rule{Tag: cfg.BlockFinality.Tag, NumBlocks: cfg.BlockFinality.NumBlocks},
 		NegativeTTL:    cfg.Cache.NegativeTTL.Duration,
 		RequestTimeout: cfg.PublicREST.RequestTimeout.Duration,

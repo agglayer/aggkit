@@ -14,7 +14,7 @@ other, so the fixtures are what keeps them compatible: the tests of each side re
 | code                      | meaning                                                   | retryable | suggested HTTP status |
 | ------------------------- | --------------------------------------------------------- | --------- | --------------------- |
 | `INVALID_REQUEST`         | malformed request (bad or zero GER)                       | no        | 400                   |
-| `GER_UNKNOWN`             | GER not found in `AgglayerGER.globalExitRootMap` on L1    | no        | 404                   |
+| `GER_UNKNOWN`             | GER not in L1: no entry in `globalExitRootMap` of the L1 contract `AgglayerGER` | no        | 404                   |
 | `GER_BLOCK_NOT_CANONICAL` | the L1 block that inserted the GER is not canonical       | no        | 409                   |
 | `GER_NOT_FINAL`           | the GER does not meet the validator finality yet          | yes       | 425                   |
 | `RATE_LIMITED`            | rate limit reached                                        | yes       | 429                   |

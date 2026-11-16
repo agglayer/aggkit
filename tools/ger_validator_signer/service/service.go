@@ -19,8 +19,10 @@ import (
 var (
 	// ErrInvalidGER is returned for a GER that can't be signed whatever L1 says (the zero hash)
 	ErrInvalidGER = errors.New("invalid global exit root")
-	// ErrGERUnknown is returned when the GER is not in AgglayerGERs globalExitRootMap
-	ErrGERUnknown = errors.New("global exit root not found in AgglayerGER.globalExitRootMap")
+	// ErrGERUnknown is returned when the GER is not in L1: globalExitRootMap of the L1 contract AgglayerGER has no
+	// entry for it. The detail (which contract, which chain) is in UnknownGERError
+	ErrGERUnknown = errors.New("global exit root not found in L1: " +
+		"it has no entry in globalExitRootMap of the L1 contract AgglayerGER")
 	// ErrGERBlockNotCanonical is returned when the L1 block that inserted the GER is not in the canonical chain
 	ErrGERBlockNotCanonical = errors.New("the L1 block that inserted the global exit root is not in the canonical chain")
 	// ErrGERNotFinal is returned when the L1 block that inserted the GER is not final yet. It is retryable
@@ -49,6 +51,23 @@ func (e *NotFinalError) Is(target error) bool {
 	return target == ErrGERNotFinal
 }
 
+// UnknownGERError is the detail of ErrGERUnknown: the L1 contract and chain where the GER was looked up
+type UnknownGERError struct {
+	// AgglayerGER is the AgglayerGER contract of L1
+	AgglayerGER common.Address
+	// L1ChainID is the chain id of L1
+	L1ChainID uint64
+}
+
+func (e *UnknownGERError) Error() string {
+	return fmt.Sprintf("%s %s (L1 chain %d)", ErrGERUnknown, e.AgglayerGER, e.L1ChainID)
+}
+
+// Is makes errors.Is(err, ErrGERUnknown) work
+func (e *UnknownGERError) Is(target error) bool {
+	return target == ErrGERUnknown
+}
+
 // L1Reader is what the service needs to know from L1
 type L1Reader interface {
 	// GlobalExitRootMap returns what AgglayerGER.globalExitRootMap holds for the GER: the hash of the block
@@ -74,6 +93,8 @@ type GERSigner interface {
 type Config struct {
 	// AgglayerGER is the AgglayerGER contract of L1
 	AgglayerGER common.Address
+	// L1ChainID is the chain id of L1, to say where a GER was looked up
+	L1ChainID uint64
 	// Finality is the finality the L1 block that inserted the GER needs
 	Finality finality.Rule
 	// NegativeTTL is how long the cache keeps that a GER can't be signed. 0 disables it
@@ -199,7 +220,7 @@ func (s *Service) checkGER(ctx context.Context, ger common.Hash) error {
 		return fmt.Errorf("failed to read globalExitRootMap: %w", err)
 	}
 	if parentHash == (common.Hash{}) {
-		return ErrGERUnknown
+		return &UnknownGERError{AgglayerGER: s.cfg.AgglayerGER, L1ChainID: s.cfg.L1ChainID}
 	}
 
 	parent, err := s.l1.BlockByHash(ctx, parentHash)

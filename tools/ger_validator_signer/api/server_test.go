@@ -119,7 +119,9 @@ func TestSign_ErrorsFollowTheGoldenFixtures(t *testing.T) {
 		fixture    string
 		retryAfter string
 	}{
-		{"unknown GER", service.ErrGERUnknown, http.StatusNotFound, "error_ger_unknown.json", ""},
+		{"unknown GER", &service.UnknownGERError{
+			AgglayerGER: common.HexToAddress("0x1111111111111111111111111111111111111111"), L1ChainID: 11155111,
+		}, http.StatusNotFound, "error_ger_unknown.json", ""},
 		{"block not canonical", fmt.Errorf("%w: the block 5 is another", service.ErrGERBlockNotCanonical),
 			http.StatusConflict, "error_ger_block_not_canonical.json", ""},
 		{"not final", &service.NotFinalError{InsertionBlock: 101, FinalBlock: 100, HasFinalBlock: true},

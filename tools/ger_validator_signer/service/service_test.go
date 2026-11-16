@@ -45,6 +45,7 @@ func newFixture(t *testing.T, rule finality.Rule, negativeTTL time.Duration) *fi
 	f.signer.EXPECT().Address().Return(validator).Maybe()
 	f.service = New(slog.New(slog.NewTextHandler(io.Discard, nil)), Config{
 		AgglayerGER:    agglayerGER,
+		L1ChainID:      11155111,
 		Finality:       rule,
 		NegativeTTL:    negativeTTL,
 		RequestTimeout: 5 * time.Second,
@@ -152,6 +153,9 @@ func TestService_SignGER_Rejections(t *testing.T) {
 
 		_, err := f.service.SignGER(context.Background(), testGER)
 		require.ErrorIs(t, err, ErrGERUnknown)
+		require.EqualError(t, err, "global exit root not found in L1: it has no entry in globalExitRootMap of "+
+			"the L1 contract AgglayerGER "+agglayerGER.Hex()+" (L1 chain 11155111)",
+			"it says that it is the contract of L1, and which one")
 	})
 
 	t.Run("the block of the hash is unknown to the node", func(t *testing.T) {
