@@ -58,17 +58,23 @@ func (v *ValidatorClient) ValidateCertificate(
 	previousCertificateID *common.Hash, // can be nil if there is no previous certificate
 	certificate *agglayertypes.Certificate,
 	lastL2BlockInCert uint64,
+	proposerSignature []byte,
 ) ([]byte, error) {
 	protoCert, err := agglayergrpc.ConvertCertToProtoCertificate(certificate)
 	if err != nil {
 		return nil, err
 	}
 
-	response, err := v.client.ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
+	request := &v1.ValidateCertificateRequest{
 		PreviousCertificateId: certIDToProtoNullable(previousCertificateID),
 		Certificate:           protoCert,
 		LastL2BlockInCert:     lastL2BlockInCert,
-	})
+	}
+	if len(proposerSignature) > 0 {
+		request.ProposerSignature = &typesv1.FixedBytes65{Value: proposerSignature}
+	}
+
+	response, err := v.client.ValidateCertificate(ctx, request)
 
 	if err != nil {
 		return nil, fmt.Errorf("aggsender validator failed to successfully validate certificate: %w", err)

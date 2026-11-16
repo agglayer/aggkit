@@ -100,6 +100,14 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid agglayer client config: %w", err)
 	}
 
+	if c.MaxCertSize > 0 && c.ServerConfig.MaxDecodingMessageSize > 0 &&
+		uint64(c.ServerConfig.MaxDecodingMessageSize) < uint64(c.MaxCertSize) {
+		return fmt.Errorf(
+			"invalid server config: Validator.ServerConfig.MaxDecodingMessageSize (%d) is smaller than "+
+				"Validator.MaxCertSize (%d), so a certificate of the maximum size cannot reach the validator",
+			c.ServerConfig.MaxDecodingMessageSize, c.MaxCertSize)
+	}
+
 	if err := c.BlockFinalityForL1InfoTree.Validate(); err != nil {
 		return fmt.Errorf("invalid BlockFinalityForL1InfoTree configuration: %w", err)
 	}

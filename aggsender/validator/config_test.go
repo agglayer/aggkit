@@ -47,6 +47,22 @@ func TestValidatorConfigValidate(t *testing.T) {
 			},
 		},
 		{
+			name: "Server receive limit smaller than the maximum certificate size",
+			config: Config{
+				Mode: aggsendertypes.PessimisticProofMode,
+				ServerConfig: grpc.ServerConfig{
+					MaxDecodingMessageSize: 1024,
+				},
+				MaxCertSize: 8 * 1024 * 1024,
+				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
+					URL:               "http://localhost:9090",
+					MinConnectTimeout: types.NewDuration(5 * time.Second),
+				}},
+				BlockFinalityForL1InfoTree: aggkittypes.FinalizedBlock,
+			},
+			expectedErr: "MaxDecodingMessageSize (1024) is smaller than",
+		},
+		{
 			name: "Invalid AggchainProof mode",
 			config: Config{
 				Mode: aggsendertypes.AggchainProofMode,

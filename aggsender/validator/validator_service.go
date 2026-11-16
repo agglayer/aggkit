@@ -15,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -27,6 +28,7 @@ type ValidatorService struct {
 	validator      types.CertificateValidator
 	agglayerClient agglayer.AggLayerClientCertificateIDQuerier
 	signer         signertypes.Signer
+	proposerQuery  ProposerAddressProvider
 	log            aggkitcommon.Logger
 }
 
@@ -34,12 +36,14 @@ func NewValidatorService(
 	logger aggkitcommon.Logger,
 	validator types.CertificateValidator,
 	agglayerClient agglayer.AggLayerClientCertificateIDQuerier,
-	signer signertypes.Signer) *ValidatorService {
+	signer signertypes.Signer,
+	proposerQuery ProposerAddressProvider) *ValidatorService {
 	return &ValidatorService{
 		log:            logger,
 		validator:      validator,
 		agglayerClient: agglayerClient,
 		signer:         signer,
+		proposerQuery:  proposerQuery,
 	}
 }
 
@@ -65,6 +69,21 @@ func (s *ValidatorService) ValidateCertificate(
 
 	s.log.Infof("Received certificate network:%d,  height: %d", req.Certificate.NetworkId, req.Certificate.Height)
 
+	cert, err := agglayergrpc.ConvertProtoCertToAgglayer(req.Certificate)
+	if err != nil {
+		s.log.Errorf("Error converting certificate: %v", err)
+		return nil, grpc.GRPCError{
+			Code:    codes.InvalidArgument,
+			Message: "Invalid certificate conversion: " + err.Error(),
+		}
+	}
+
+	// The caller is authenticated before any expensive work: an unknown caller cannot make
+	// the validator query agglayer or the chain.
+	if err := s.authenticateProposer(ctx, req, cert); err != nil {
+		return nil, err
+	}
+
 	params := types.VerifyIncomingRequest{}
 	if req.PreviousCertificateId != nil && req.PreviousCertificateId.Value != nil {
 		previousCertificateID := common.BytesToHash(req.PreviousCertificateId.Value.Value)
@@ -87,14 +106,6 @@ func (s *ValidatorService) ValidateCertificate(
 			}
 		}
 		params.PreviousCertificate = certHeader
-	}
-	cert, err := agglayergrpc.ConvertProtoCertToAgglayer(req.Certificate)
-	if err != nil {
-		s.log.Errorf("Error converting certificate: %v", err)
-		return nil, grpc.GRPCError{
-			Code:    codes.InvalidArgument,
-			Message: "Invalid certificate conversion: " + err.Error(),
-		}
 	}
 	params.Certificate = cert
 	params.LastL2BlockInCert = req.LastL2BlockInCert
@@ -139,4 +150,64 @@ func (s *ValidatorService) signCertificate(ctx context.Context, cert *agglayerty
 		}
 	}
 	return s.signer.SignHash(ctx, hashToSign)
+}
+
+// authenticateProposer checks that the request carries the signature of the chain's
+// proposer over the certificate hash, so only the aggsender can ask for a validation.
+func (s *ValidatorService) authenticateProposer(
+	ctx context.Context, req *v1.ValidateCertificateRequest, cert *agglayertypes.Certificate) error {
+	signature := req.GetProposerSignature().GetValue()
+	if len(signature) != aggkitcommon.SignatureSize {
+		s.log.Warnf("Rejected ValidateCertificate request with a missing or malformed proposer signature "+
+			"(length %d) for network %d", len(signature), req.GetCertificate().GetNetworkId())
+		return grpc.GRPCError{
+			Code:    codes.Unauthenticated,
+			Message: "missing or malformed proposer signature",
+		}
+	}
+
+	if s.proposerQuery == nil {
+		return grpc.GRPCError{
+			Code:    codes.Internal,
+			Message: "proposer address provider is not configured",
+		}
+	}
+
+	hashToSign, err := HashCertificateToSign(cert)
+	if err != nil {
+		return grpc.GRPCError{
+			Code:    codes.InvalidArgument,
+			Message: "Invalid certificate: " + err.Error(),
+		}
+	}
+
+	publicKey, err := crypto.SigToPub(hashToSign[:], signature)
+	if err != nil {
+		s.log.Warnf("Rejected ValidateCertificate request with an unusable proposer signature: %v", err)
+		return grpc.GRPCError{
+			Code:    codes.Unauthenticated,
+			Message: "invalid proposer signature",
+		}
+	}
+	recovered := crypto.PubkeyToAddress(*publicKey)
+
+	proposer, err := s.proposerQuery.GetProposerAddress(ctx)
+	if err != nil {
+		s.log.Errorf("Cannot authenticate the proposer, rejecting the request: %v", err)
+		return grpc.GRPCError{
+			Code:    codes.Unavailable,
+			Message: "cannot resolve the proposer address",
+		}
+	}
+
+	if recovered != proposer {
+		s.log.Warnf("Rejected ValidateCertificate request from %s, the proposer is %s",
+			recovered.Hex(), proposer.Hex())
+		return grpc.GRPCError{
+			Code:    codes.Unauthenticated,
+			Message: "the request is not signed by the proposer",
+		}
+	}
+
+	return nil
 }

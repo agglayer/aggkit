@@ -43,14 +43,14 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 	testCases := []struct {
 		name          string
 		certificate   *agglayertypes.Certificate
-		mockFn        func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage)
+		mockFn        func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage, mockSigner *mocks.Signer)
 		expectedSig   []byte
 		expectedError string
 	}{
 		{
 			name:        "storage returns an error",
 			certificate: &certAtHeight11,
-			mockFn: func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage, mockSigner *mocks.Signer) {
 				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(10)).Return(nil, errors.New("storage error"))
 			},
 			expectedError: "error getting previous certificate header by height 10: storage error",
@@ -58,12 +58,13 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 		{
 			name:        "client returns an error",
 			certificate: &certAtHeight0,
-			mockFn: func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage, mockSigner *mocks.Signer) {
 				var previousCertificateID *common.Hash
 				mockClient.EXPECT().ValidateCertificate(
 					ctx,
 					previousCertificateID,
 					&certAtHeight0,
+					mock.Anything,
 					mock.Anything,
 				).Return(nil, errors.New("client error"))
 			},
@@ -72,12 +73,13 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 		{
 			name:        "success, no previous certificate",
 			certificate: &certAtHeight0,
-			mockFn: func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage, mockSigner *mocks.Signer) {
 				var previousCertificateID *common.Hash
 				mockClient.EXPECT().ValidateCertificate(
 					ctx,
 					previousCertificateID,
 					&certAtHeight0,
+					mock.Anything,
 					mock.Anything,
 				).Return(certAtHeight0Sig, nil)
 			},
@@ -86,12 +88,13 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 		{
 			name:        "fail, invalid signature",
 			certificate: &certAtHeight0,
-			mockFn: func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage, mockSigner *mocks.Signer) {
 				var previousCertificateID *common.Hash
 				mockClient.EXPECT().ValidateCertificate(
 					ctx,
 					previousCertificateID,
 					&certAtHeight0,
+					mock.Anything,
 					mock.Anything,
 				).Return(certAtHeight11Sig, nil)
 			},
@@ -100,12 +103,13 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 		{
 			name:        "fail, empty signature",
 			certificate: &certAtHeight0,
-			mockFn: func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage, mockSigner *mocks.Signer) {
 				var previousCertificateID *common.Hash
 				mockClient.EXPECT().ValidateCertificate(
 					ctx,
 					previousCertificateID,
 					&certAtHeight0,
+					mock.Anything,
 					mock.Anything,
 				).Return(make([]byte, crypto.SignatureLength), nil)
 			},
@@ -114,7 +118,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 		{
 			name:        "success, with previous certificate",
 			certificate: &certAtHeight11,
-			mockFn: func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockClient *mocks.ValidatorClient, mockStorage *mocks.AggSenderStorage, mockSigner *mocks.Signer) {
 				previousCertID := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
 				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(10)).Return(
 					&types.CertificateHeader{
@@ -125,6 +129,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 					ctx,
 					&previousCertID,
 					&certAtHeight11,
+					mock.Anything,
 					mock.Anything,
 				).Return(certAtHeight11Sig, nil)
 			},
@@ -138,15 +143,18 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 
 			mockClient := mocks.NewValidatorClient(t)
 			mockStorage := mocks.NewAggSenderStorage(t)
+			mockSigner := mocks.NewSigner(t)
+			mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return(certAtHeight0Sig, nil).Maybe()
 
 			if tc.mockFn != nil {
-				tc.mockFn(mockClient, mockStorage)
+				tc.mockFn(mockClient, mockStorage, mockSigner)
 			}
 
 			remoteValidator := &RemoteValidator{
 				client:  mockClient,
 				storage: mockStorage,
 				address: common.HexToAddress(VALIDATOR_ADDR),
+				signer:  mockSigner,
 			}
 
 			signature, err := remoteValidator.ValidateAndSignCertificate(ctx, tc.certificate, 0)

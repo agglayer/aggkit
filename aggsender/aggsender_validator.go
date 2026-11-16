@@ -36,7 +36,8 @@ func NewAggsenderValidator(ctx context.Context,
 	aggchainFEPQuerier types.AggchainFEPRollupQuerier,
 	initialLER ethcommon.Hash,
 	signer signertypes.Signer,
-	initialBlockClaimSyncerSetter types.InitialBlockClaimSyncerSetter) (*AggsenderValidator, error) {
+	initialBlockClaimSyncerSetter types.InitialBlockClaimSyncerSetter,
+	committeeQuerier types.MultisigQuerier) (*AggsenderValidator, error) {
 	validatorCert := validator.NewAggsenderValidator(
 		logger, flow, l1InfoTreeDataQuerier, certQuerier, initialLER)
 	grpcServer, err := grpc.NewServer(cfg.ServerConfig)
@@ -44,11 +45,13 @@ func NewAggsenderValidator(ctx context.Context,
 		return nil, err
 	}
 
+	proposerQuery := validator.NewCommitteeProposerAddressProvider(committeeQuerier)
 	v1.RegisterAggsenderValidatorServer(grpcServer.GRPC(), validator.NewValidatorService(
 		logger,
 		validatorCert,
 		aggLayerClient,
 		signer,
+		proposerQuery,
 	))
 	return &AggsenderValidator{
 		log:                           logger,

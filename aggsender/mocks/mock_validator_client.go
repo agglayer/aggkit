@@ -84,9 +84,9 @@ func (_c *ValidatorClient_HealthCheck_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
-// ValidateCertificate provides a mock function with given fields: ctx, previousCertificateID, certificate, lastL2BlockInCert
-func (_m *ValidatorClient) ValidateCertificate(ctx context.Context, previousCertificateID *common.Hash, certificate *agglayertypes.Certificate, lastL2BlockInCert uint64) ([]byte, error) {
-	ret := _m.Called(ctx, previousCertificateID, certificate, lastL2BlockInCert)
+// ValidateCertificate provides a mock function with given fields: ctx, previousCertificateID, certificate, lastL2BlockInCert, proposerSignature
+func (_m *ValidatorClient) ValidateCertificate(ctx context.Context, previousCertificateID *common.Hash, certificate *agglayertypes.Certificate, lastL2BlockInCert uint64, proposerSignature []byte) ([]byte, error) {
+	ret := _m.Called(ctx, previousCertificateID, certificate, lastL2BlockInCert, proposerSignature)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ValidateCertificate")
@@ -94,19 +94,19 @@ func (_m *ValidatorClient) ValidateCertificate(ctx context.Context, previousCert
 
 	var r0 []byte
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *common.Hash, *agglayertypes.Certificate, uint64) ([]byte, error)); ok {
-		return rf(ctx, previousCertificateID, certificate, lastL2BlockInCert)
+	if rf, ok := ret.Get(0).(func(context.Context, *common.Hash, *agglayertypes.Certificate, uint64, []byte) ([]byte, error)); ok {
+		return rf(ctx, previousCertificateID, certificate, lastL2BlockInCert, proposerSignature)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *common.Hash, *agglayertypes.Certificate, uint64) []byte); ok {
-		r0 = rf(ctx, previousCertificateID, certificate, lastL2BlockInCert)
+	if rf, ok := ret.Get(0).(func(context.Context, *common.Hash, *agglayertypes.Certificate, uint64, []byte) []byte); ok {
+		r0 = rf(ctx, previousCertificateID, certificate, lastL2BlockInCert, proposerSignature)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]byte)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *common.Hash, *agglayertypes.Certificate, uint64) error); ok {
-		r1 = rf(ctx, previousCertificateID, certificate, lastL2BlockInCert)
+	if rf, ok := ret.Get(1).(func(context.Context, *common.Hash, *agglayertypes.Certificate, uint64, []byte) error); ok {
+		r1 = rf(ctx, previousCertificateID, certificate, lastL2BlockInCert, proposerSignature)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -124,13 +124,14 @@ type ValidatorClient_ValidateCertificate_Call struct {
 //   - previousCertificateID *common.Hash
 //   - certificate *agglayertypes.Certificate
 //   - lastL2BlockInCert uint64
-func (_e *ValidatorClient_Expecter) ValidateCertificate(ctx interface{}, previousCertificateID interface{}, certificate interface{}, lastL2BlockInCert interface{}) *ValidatorClient_ValidateCertificate_Call {
-	return &ValidatorClient_ValidateCertificate_Call{Call: _e.mock.On("ValidateCertificate", ctx, previousCertificateID, certificate, lastL2BlockInCert)}
+//   - proposerSignature []byte
+func (_e *ValidatorClient_Expecter) ValidateCertificate(ctx interface{}, previousCertificateID interface{}, certificate interface{}, lastL2BlockInCert interface{}, proposerSignature interface{}) *ValidatorClient_ValidateCertificate_Call {
+	return &ValidatorClient_ValidateCertificate_Call{Call: _e.mock.On("ValidateCertificate", ctx, previousCertificateID, certificate, lastL2BlockInCert, proposerSignature)}
 }
 
-func (_c *ValidatorClient_ValidateCertificate_Call) Run(run func(ctx context.Context, previousCertificateID *common.Hash, certificate *agglayertypes.Certificate, lastL2BlockInCert uint64)) *ValidatorClient_ValidateCertificate_Call {
+func (_c *ValidatorClient_ValidateCertificate_Call) Run(run func(ctx context.Context, previousCertificateID *common.Hash, certificate *agglayertypes.Certificate, lastL2BlockInCert uint64, proposerSignature []byte)) *ValidatorClient_ValidateCertificate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*common.Hash), args[2].(*agglayertypes.Certificate), args[3].(uint64))
+		run(args[0].(context.Context), args[1].(*common.Hash), args[2].(*agglayertypes.Certificate), args[3].(uint64), args[4].([]byte))
 	})
 	return _c
 }
@@ -140,7 +141,7 @@ func (_c *ValidatorClient_ValidateCertificate_Call) Return(_a0 []byte, _a1 error
 	return _c
 }
 
-func (_c *ValidatorClient_ValidateCertificate_Call) RunAndReturn(run func(context.Context, *common.Hash, *agglayertypes.Certificate, uint64) ([]byte, error)) *ValidatorClient_ValidateCertificate_Call {
+func (_c *ValidatorClient_ValidateCertificate_Call) RunAndReturn(run func(context.Context, *common.Hash, *agglayertypes.Certificate, uint64, []byte) ([]byte, error)) *ValidatorClient_ValidateCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }

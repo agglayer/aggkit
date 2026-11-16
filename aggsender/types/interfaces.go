@@ -282,6 +282,7 @@ type ValidatorClient interface {
 		previousCertificateID *common.Hash, // can be nil if there is no previous certificate
 		certificate *agglayertypes.Certificate,
 		lastL2BlockInCert uint64,
+		proposerSignature []byte,
 	) ([]byte, error)
 }
 

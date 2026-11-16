@@ -22,6 +22,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 
 	ctx := context.Background()
 	prevCertHash := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+	proposerSignature := []byte("proposer-signature")
 	certificate := &agglayertypes.Certificate{
 		NetworkID:         12,
 		Height:            11,
@@ -99,6 +100,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 		return &v1.ValidateCertificateRequest{
 			PreviousCertificateId: certIDToProtoNullable(prev),
 			Certificate:           protoCert,
+			ProposerSignature:     &typesv1.FixedBytes65{Value: proposerSignature},
 		}
 	}
 
@@ -127,6 +129,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 				mockClient.EXPECT().ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
 					PreviousCertificateId: certIDToProtoNullable(&prevCertHash),
 					Certificate:           protoCert,
+					ProposerSignature:     &typesv1.FixedBytes65{Value: proposerSignature},
 				}).Return(nil, errors.New("some error"))
 			},
 			expectedError: "aggsender validator failed to successfully validate certificate: some error",
@@ -196,6 +199,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 				mockClient.EXPECT().ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
 					PreviousCertificateId: nil,
 					Certificate:           protoCert,
+					ProposerSignature:     &typesv1.FixedBytes65{Value: proposerSignature},
 				}).Return(&v1.ValidateCertificateResponse{
 					Signature: &typesv1.FixedBytes65{Value: validSignature},
 				}, nil)
@@ -213,6 +217,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 				mockClient.EXPECT().ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
 					PreviousCertificateId: certIDToProtoNullable(&prevCertHash),
 					Certificate:           protoCert,
+					ProposerSignature:     &typesv1.FixedBytes65{Value: proposerSignature},
 				}).Return(&v1.ValidateCertificateResponse{
 					Signature: &typesv1.FixedBytes65{Value: validSignature},
 				}, nil)
@@ -234,7 +239,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 				client: mockClient,
 			}
 
-			signature, err := validatorClient.ValidateCertificate(ctx, tc.previousCertificateID, tc.certificate, 0)
+			signature, err := validatorClient.ValidateCertificate(ctx, tc.previousCertificateID, tc.certificate, 0, proposerSignature)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

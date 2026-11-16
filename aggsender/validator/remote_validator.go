@@ -8,6 +8,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/grpc"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -22,6 +23,7 @@ type RemoteValidator struct {
 	client  types.ValidatorClient
 	storage db.AggSenderStorage
 	index   uint32
+	signer  signertypes.Signer
 }
 
 // NewRemoteValidator initializes a new RemoteValidator with the provided gRPC client configuration.
@@ -31,7 +33,12 @@ func NewRemoteValidator(
 	storage db.AggSenderStorage,
 	address common.Address,
 	index uint32,
+	proposerSigner signertypes.Signer,
 ) (*RemoteValidator, error) {
+	if proposerSigner == nil {
+		return nil, fmt.Errorf("a proposer signer is required to call the aggsender validator")
+	}
+
 	client, err := NewValidatorClient(cfg)
 	if err != nil {
 		return nil, err
@@ -43,6 +50,7 @@ func NewRemoteValidator(
 		storage: storage,
 		address: address,
 		index:   index,
+		signer:  proposerSigner,
 	}, nil
 }
 
@@ -94,11 +102,19 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 		previousCertificateID = &previousCertificate.CertificateID
 	}
 
+	// Sign the certificate with the proposer key: the validator only serves the chain's
+	// proposer, so it needs to tell this request apart from any other caller's.
+	proposerSignature, err := v.signer.SignHash(ctx, certificateHash)
+	if err != nil {
+		return nil, fmt.Errorf("error signing the certificate as proposer: %w", err)
+	}
+
 	signature, err := v.client.ValidateCertificate(
 		ctx,
 		previousCertificateID,
 		certificate,
 		lastL2BlockInCert,
+		proposerSignature,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error validating certificate on aggsender validator service: %w", err)
