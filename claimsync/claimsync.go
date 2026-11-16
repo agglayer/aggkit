@@ -33,6 +33,44 @@ const (
 var ErrMultidownloaderDepsMissing = errors.New(
 	"multidownloader selected but explicit downloader dependency is missing")
 
+// ErrLogsEnricherUnsupported indicates that the multidownloader path was selected but the
+// downloader does not expose the logs enricher hook. The trace prefetch publishes the root call
+// traces of the current downloaded log range; without it the ordinary/pre-Etrog claim handlers
+// cannot resolve a trace and would refetch the range forever, so the constructor fails closed
+// instead of starting a syncer that can never make progress.
+var ErrLogsEnricherUnsupported = errors.New(
+	"multidownloader selected but the downloader does not support the logs enricher")
+
+// claimLogsEnricherInstaller is the optional enrichment hook exposed by the sync downloader. It is
+// asserted on the downloader so claimsync does not depend on the concrete downloader type. The bool
+// result reports whether the underlying implementation actually supports the hook, so the
+// multidownloader-backed constructor can fail closed instead of silently skipping the prefetch.
+type claimLogsEnricherInstaller interface {
+	InstallLogsEnricher(sync.LogsEnricherFunc) (sync.LogsEnricherFunc, bool)
+}
+
+// installClaimLogsEnricher installs the trace-prefetch enricher on the downloader when the
+// multidownloader path is active (resolver != nil) and fails closed when the downloader does not
+// support the hook. A nil resolver (legacy/L2 path) needs no enricher, so nothing is installed and
+// no error is returned.
+//
+// It is a small seam over the downloader's optional hook: it accepts any downloader so the
+// unsupported case can be exercised with a fake, and it reports ErrLogsEnricherUnsupported both when
+// the target does not implement the hook and when its implementation reports it as unsupported.
+func installClaimLogsEnricher(downloader any, resolver *TraceResolver) error {
+	if resolver == nil {
+		return nil
+	}
+	installer, ok := downloader.(claimLogsEnricherInstaller)
+	if !ok {
+		return ErrLogsEnricherUnsupported
+	}
+	if _, installed := installer.InstallLogsEnricher(resolver.EnrichLogs); !installed {
+		return ErrLogsEnricherUnsupported
+	}
+	return nil
+}
+
 // ClaimSync is the standalone implementation that independently processes claim events.
 type ClaimSync struct {
 	processor *processor
@@ -165,12 +203,14 @@ func newClaimSync(
 		return nil, errors.New("claimsync: the downloader does not support contextual log appenders")
 	}
 	downloader.SetLogsHook(NewPreferDetailedClaimLogsHook(logger))
-	if resolver != nil {
-		// Installed after the existing hook so the prefetch runs on the logs the
-		// hook already filtered (a ClaimEvent superseded by a DetailedClaimEvent
-		// is dropped before an unnecessary/failing trace is requested). Detailed
-		// events are never traced.
-		downloader.SetLogsEnricher(resolver.EnrichLogs)
+	// The trace-prefetch enricher is installed after the existing hook so the prefetch runs on the
+	// logs the hook already filtered (a ClaimEvent superseded by a DetailedClaimEvent is dropped
+	// before an unnecessary/failing trace is requested). Detailed events are never traced. It is
+	// only needed on the multidownloader path (resolver != nil); a downloader that does not support
+	// the hook fails construction instead of starting a syncer whose handlers can never resolve a
+	// prefetched trace.
+	if err := installClaimLogsEnricher(downloader, resolver); err != nil {
+		return nil, fmt.Errorf("claimsync: failed to install logs enricher: %w", err)
 	}
 
 	compatibilityChecker := compatibility.NewCompatibilityCheck(

@@ -34,49 +34,26 @@ func newProcessor(
 	}
 }
 
-// maxBlocksPerBatch is the hard upper bound on the number of blocks handled by a
-// single processBlocks transaction. It mirrors the driver's cap (sync.MaxBatchBlocks),
-// which guarantees the driver never hands a larger batch to a batching processor,
-// so the single transaction stays bounded in memory and duration.
-const maxBlocksPerBatch = sync.MaxBatchBlocks
-
 // ProcessBlock stores the block and its claim-related events atomically.
+//
+// It is exactly a single-element batch of the shared lifecycle: it delegates to
+// processBlocks, so the legacy one-block path keeps one transaction per call (the
+// driver batch capability stays opt-in) while sharing the transaction, rollback,
+// cancellation and post-commit logging logic with the batched path. This
+// guarantees a single block and a batch of one are byte-for-byte identical.
 func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
-	dbCtx, cancel := p.withDatabaseTimeout(ctx)
-	defer cancel()
-
-	tx, err := p.storage.NewTx(dbCtx)
-	if err != nil {
-		p.log.Errorf("failed to start transaction for block %d: %v", block.Num, err)
-		return err
-	}
-	shouldRollback := true
-	defer func() {
-		if shouldRollback {
-			p.rollbackTx(tx)
-		}
-	}()
-
-	if err := p.processBlockInTx(dbCtx, tx, block); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		p.log.Errorf("failed to commit block %d: %v", block.Num, err)
-		return err
-	}
-	shouldRollback = false
-	p.log.Debugf("claimSyncer: successfully processed block %d with %d events", block.Num, len(block.Events))
-	return nil
+	return p.processBlocks(ctx, []sync.Block{block})
 }
 
 // processBlocks stores an ordered batch of blocks and their claim-related events
 // atomically in a SINGLE SQL transaction: either every block in the batch is
 // committed, or the whole batch is rolled back. This is the OPTIONAL batch
 // capability of the claimsync processor, wired by the syncer constructor through
-// sync.EnableBlockBatching; the legacy one-block ProcessBlock path is untouched.
+// sync.EnableBlockBatching; the legacy one-block ProcessBlock delegates here.
 //
-// The batch must be ordered and bounded to maxBlocksPerBatch blocks (the driver
-// guarantees both). Cancellation is checked before every block and before the
+// The batch must be ordered and bounded to sync.MaxBatchBlocks blocks (the driver
+// guarantees both, and the limit is validated here too so the helper is safe to
+// call directly). Cancellation is checked before every block and before the
 // commit, so a cancelled batch is rolled back without any partial insert. The
 // per-block semantics are exactly those of ProcessBlock, because both paths share
 // processBlockInTx (block row, claim/unset_claim/set_claim handlers, full proof and
@@ -85,9 +62,9 @@ func (p *processor) processBlocks(ctx context.Context, blocks []sync.Block) erro
 	if len(blocks) == 0 {
 		return nil
 	}
-	if len(blocks) > maxBlocksPerBatch {
+	if len(blocks) > sync.MaxBatchBlocks {
 		return fmt.Errorf("claimsync processBlocks: batch of %d blocks exceeds the %d-block limit",
-			len(blocks), maxBlocksPerBatch)
+			len(blocks), sync.MaxBatchBlocks)
 	}
 	if err := ctx.Err(); err != nil {
 		return err

@@ -66,6 +66,17 @@ type traceFakeClient struct {
 
 	headerCalls int
 	headerReqs  []uint64
+
+	// headerStarted, when non-nil, receives each block number as its
+	// CustomHeaderByNumber begins; headerRelease, when non-nil, gates every
+	// header read until it is closed (or the request context is canceled). They
+	// let a test observe header revalidation overlap without racing on the
+	// counters. headerInFlight/maxHeaderInFlight track the concurrent header
+	// reads so the header pool bound can be asserted.
+	headerStarted     chan uint64
+	headerRelease     chan struct{}
+	headerInFlight    int
+	maxHeaderInFlight int
 }
 
 func newTraceFakeClient() *traceFakeClient {
@@ -193,14 +204,45 @@ func (f *traceFakeClient) CallContext(ctx context.Context, result interface{}, m
 }
 
 func (f *traceFakeClient) CustomHeaderByNumber(
-	_ context.Context, number *aggkittypes.BlockNumberFinality,
+	ctx context.Context, number *aggkittypes.BlockNumberFinality,
 ) (*aggkittypes.BlockHeader, error) {
+	num := number.Specific
+
 	f.mu.Lock()
 	f.headerCalls++
-	num := number.Specific
+	f.headerInFlight++
+	if f.headerInFlight > f.maxHeaderInFlight {
+		f.maxHeaderInFlight = f.headerInFlight
+	}
+	f.headerReqs = append(f.headerReqs, num)
+	started := f.headerStarted
+	release := f.headerRelease
+	f.mu.Unlock()
+
+	defer func() {
+		f.mu.Lock()
+		f.headerInFlight--
+		f.mu.Unlock()
+	}()
+
+	if started != nil {
+		select {
+		case started <- num:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	if release != nil {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	f.mu.Lock()
 	h := f.headers[num]
 	err := f.headerErrs[num]
-	f.headerReqs = append(f.headerReqs, num)
 	f.mu.Unlock()
 	if err != nil {
 		return nil, err
@@ -214,11 +256,13 @@ func (f *traceFakeClient) CustomHeaderByNumber(
 // traceFakeSnapshot is an immutable copy of the fake's observations, read under
 // the lock so the test goroutine never races with worker goroutines.
 type traceFakeSnapshot struct {
-	callCount   int
-	maxInFlight int
-	headerCalls int
-	inFlight    int
-	completed   []common.Hash
+	callCount         int
+	maxInFlight       int
+	headerCalls       int
+	headerInFlight    int
+	maxHeaderInFlight int
+	inFlight          int
+	completed         []common.Hash
 }
 
 func (f *traceFakeClient) snapshot() traceFakeSnapshot {
@@ -227,11 +271,13 @@ func (f *traceFakeClient) snapshot() traceFakeSnapshot {
 	out := make([]common.Hash, len(f.completed))
 	copy(out, f.completed)
 	return traceFakeSnapshot{
-		callCount:   f.callCount,
-		maxInFlight: f.maxInFlight,
-		headerCalls: f.headerCalls,
-		inFlight:    f.inFlight,
-		completed:   out,
+		callCount:         f.callCount,
+		maxInFlight:       f.maxInFlight,
+		headerCalls:       f.headerCalls,
+		headerInFlight:    f.headerInFlight,
+		maxHeaderInFlight: f.maxHeaderInFlight,
+		inFlight:          f.inFlight,
+		completed:         out,
 	}
 }
 
@@ -871,6 +917,10 @@ func TestTracePrefetch_RevalidateCanonical(t *testing.T) {
 
 		err := resolver.EnrichLogs(t.Context(), []types.Log{logA, logB})
 		require.ErrorIs(t, err, aggkittypes.ErrTransactionInclusionMismatch)
+		snap := fake.snapshot()
+		require.Zero(t, snap.headerCalls,
+			"a contradictory hash for one height must be rejected before any header RPC")
+		require.Zero(t, snap.callCount, "and before any trace request")
 	})
 
 	t.Run("synthetic zero-hash log skips revalidation", func(t *testing.T) {
@@ -885,6 +935,164 @@ func TestTracePrefetch_RevalidateCanonical(t *testing.T) {
 		snap := fake.snapshot()
 		require.Zero(t, snap.headerCalls)
 		require.Equal(t, 1, snap.callCount, "the trace is still prefetched without a header prevalidation")
+	})
+}
+
+// traceHeaderLogs builds logs that map to distinct trace targets but only
+// `distinct` distinct block heights, registering a canonical header and a trace
+// for each. It lets the header-revalidation tests exercise deduplication: the
+// number of header reads must depend on distinct blocks, not on log count.
+func traceHeaderLogs(
+	t *testing.T, fake *traceFakeClient, count, distinct int, base uint64,
+) []types.Log {
+	t.Helper()
+	logs := make([]types.Log, 0, count)
+	for i := 0; i < count; i++ {
+		blockNum := base + uint64(i%distinct)
+		blockHash := common.BigToHash(big.NewInt(int64(base + uint64(i%distinct))))
+		txHash := common.BigToHash(big.NewInt(int64(9000 + i)))
+		claim := defaultEtrogClaim(big.NewInt(int64(9000 + i)))
+		fake.traces[txHash] = nestedRoot(Call{
+			Type: CallTypeCall, To: traceBridgeAddr, From: traceFromAddr,
+			Input: etrogClaimInput(t, "claimAsset", claim),
+		})
+		fake.headers[blockNum] = aggkittypes.NewBlockHeader(blockNum, blockHash, 0, nil)
+		logs = append(logs, etrogClaimEventLog(t, claim, txHash, blockNum, blockHash))
+	}
+	return logs
+}
+
+// TestTracePrefetch_BoundedHeaderRevalidation covers the bounded parallel
+// canonical-header revalidation: the header pool overlaps, never exceeds
+// ClaimTracePrefetchConcurrency, and reads exactly two headers per distinct
+// block (one in each phase) no matter how many logs share that height.
+func TestTracePrefetch_BoundedHeaderRevalidation(t *testing.T) {
+	lg := log.WithFields("module", "test-prefetch")
+	fake := newTraceFakeClient()
+	fake.headerRelease = make(chan struct{})
+	fake.headerStarted = make(chan uint64, 128)
+
+	const (
+		logCount = 20
+		distinct = 12
+	)
+	logs := traceHeaderLogs(t, fake, logCount, distinct, 3000)
+
+	resolver := NewTraceResolver(fake, traceBridgeAddr, lg, ClaimTracePrefetchConcurrency)
+
+	done := make(chan error, 1)
+	go func() { done <- resolver.EnrichLogs(t.Context(), logs) }()
+
+	// The pre-validation pool must fill to the bound and block there.
+	for i := 0; i < ClaimTracePrefetchConcurrency; i++ {
+		select {
+		case <-fake.headerStarted:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("only %d of %d header workers started", i, ClaimTracePrefetchConcurrency)
+		}
+	}
+	snap := fake.snapshot()
+	require.Equal(t, ClaimTracePrefetchConcurrency, snap.maxHeaderInFlight,
+		"header pool must reach the configured bound")
+	require.Zero(t, snap.callCount, "no trace may start before the pre-validation completes")
+
+	close(fake.headerRelease)
+	require.NoError(t, <-done)
+
+	snap = fake.snapshot()
+	require.Equal(t, logCount, snap.callCount, "every distinct target must be traced exactly once")
+	require.Equal(t, 2*distinct, snap.headerCalls,
+		"exactly one header read per distinct block per phase, deduplicated across logs")
+	require.LessOrEqual(t, snap.maxHeaderInFlight, ClaimTracePrefetchConcurrency,
+		"header pool must never exceed the bound")
+	require.GreaterOrEqual(t, snap.maxHeaderInFlight, 2, "header reads must overlap, not run serially")
+	require.Zero(t, snap.headerInFlight, "every header worker must have joined")
+	require.Zero(t, snap.inFlight, "every trace worker must have joined")
+
+	for _, logEntry := range logs {
+		root, err := resolver.ResolveRoot(logEntry)
+		require.NoError(t, err)
+		require.NotNil(t, root)
+	}
+}
+
+// TestTracePrefetch_HeaderErrorCancelJoins covers failure of the header
+// revalidation phase: a first error aborts before any trace RPC and a canceled
+// download context joins every in-flight header worker, in both cases without
+// publishing a partial snapshot.
+func TestTracePrefetch_HeaderErrorCancelJoins(t *testing.T) {
+	lg := log.WithFields("module", "test-prefetch")
+
+	requireNoSnapshot := func(t *testing.T, resolver *TraceResolver, logs []types.Log) {
+		t.Helper()
+		for _, logEntry := range logs {
+			root, err := resolver.ResolveRoot(logEntry)
+			require.Nil(t, root)
+			require.ErrorIs(t, err, ErrTraceUnavailable)
+		}
+	}
+
+	t.Run("first error aborts before any trace", func(t *testing.T) {
+		fake := newTraceFakeClient()
+		logs := traceHeaderLogs(t, fake, 12, 12, 3100)
+		fake.headerErrs[3100] = errors.New("header rpc timeout")
+		resolver := NewTraceResolver(fake, traceBridgeAddr, lg, ClaimTracePrefetchConcurrency)
+
+		err := resolver.EnrichLogs(t.Context(), logs)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "header rpc timeout")
+		require.False(t, errors.Is(err, aggkittypes.ErrTransactionInclusionMismatch),
+			"a header transport failure must stay retryable")
+
+		snap := fake.snapshot()
+		require.Zero(t, snap.callCount, "no trace may be requested once header revalidation fails")
+		require.Zero(t, snap.headerInFlight, "the header pool must have joined")
+		require.LessOrEqual(t, snap.maxHeaderInFlight, ClaimTracePrefetchConcurrency)
+		requireNoSnapshot(t, resolver, logs)
+	})
+
+	t.Run("missing header is an inclusion mismatch and aborts", func(t *testing.T) {
+		fake := newTraceFakeClient()
+		logs := traceHeaderLogs(t, fake, 12, 12, 3200)
+		// No header registered for the first block => ethereum.NotFound.
+		delete(fake.headers, 3200)
+		resolver := NewTraceResolver(fake, traceBridgeAddr, lg, ClaimTracePrefetchConcurrency)
+
+		err := resolver.EnrichLogs(t.Context(), logs)
+		require.ErrorIs(t, err, aggkittypes.ErrTransactionInclusionMismatch)
+		snap := fake.snapshot()
+		require.Zero(t, snap.callCount)
+		require.Zero(t, snap.headerInFlight)
+		requireNoSnapshot(t, resolver, logs)
+	})
+
+	t.Run("parent context cancellation joins every header worker", func(t *testing.T) {
+		fake := newTraceFakeClient()
+		fake.headerRelease = make(chan struct{}) // never closed: forces header workers to wait
+		fake.headerStarted = make(chan uint64, 128)
+		logs := traceHeaderLogs(t, fake, 12, 12, 3300)
+		resolver := NewTraceResolver(fake, traceBridgeAddr, lg, ClaimTracePrefetchConcurrency)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() { done <- resolver.EnrichLogs(ctx, logs) }()
+
+		for i := 0; i < ClaimTracePrefetchConcurrency; i++ {
+			select {
+			case <-fake.headerStarted:
+			case <-time.After(5 * time.Second):
+				t.Fatalf("only %d header workers started before cancellation", i)
+			}
+		}
+		cancel()
+
+		err := <-done
+		require.Error(t, err)
+		require.ErrorIs(t, err, context.Canceled)
+		snap := fake.snapshot()
+		require.Zero(t, snap.headerInFlight, "cancellation must join every in-flight header read")
+		require.Zero(t, snap.callCount, "no trace may start once the header phase is canceled")
+		requireNoSnapshot(t, resolver, logs)
 	})
 }
 

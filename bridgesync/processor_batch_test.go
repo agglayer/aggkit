@@ -3,16 +3,21 @@ package bridgesync
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"errors"
 	"fmt"
 	"math/big"
 	"path"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/bridgesync/migrations"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum/common"
+	sqlite3 "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -346,5 +351,279 @@ func TestProcessorProcessBlocks_NotificationsOnlyAfterCommit(t *testing.T) {
 
 		require.NoError(t, proc.processBlocks(context.Background(), batchFixtureBlocks()))
 		require.Equal(t, []uint64{1, 3}, rec.blocks)
+	})
+}
+
+// --- Legacy single-block path is a batch of one: regression coverage ---
+
+// batchStandaloneBlocks returns single blocks that are each valid on their own
+// (leaf indices start at 0), so they can be fed either to ProcessBlock or to a
+// one-element processBlocks batch.
+func batchStandaloneBlocks() []sync.Block {
+	return []sync.Block{
+		{
+			Num:  1,
+			Hash: common.HexToHash("0x1"),
+			Events: []any{
+				Event{Bridge: batchTestBridge(1, 0, 0, 1)},
+				Event{TokenMapping: batchTestTokenMapping(1, 2, 1)},
+			},
+		},
+		{
+			Num:  3,
+			Hash: common.HexToHash("0x3"),
+			Events: []any{
+				Event{Bridge: batchTestBridge(3, 0, 0, 2)},
+				Event{Bridge: batchTestBridge(3, 1, 1, 3)},
+				Event{TokenMapping: batchTestTokenMapping(3, 2, 4)},
+			},
+		},
+		{
+			Num:    4,
+			Hash:   common.HexToHash("0x4"),
+			Events: []any{},
+		},
+	}
+}
+
+// TestProcessorProcessBlock_MatchesBatchOfOne proves the legacy single-block
+// ProcessBlock and a one-element processBlocks batch are byte-for-byte identical:
+// every block, bridge, exit-tree root (all intermediate roots) and token_mapping
+// row is the same on both paths, including the empty checkpoint block.
+func TestProcessorProcessBlock_MatchesBatchOfOne(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		block sync.Block
+	}{
+		{"bridge+token", batchStandaloneBlocks()[0]},
+		{"two bridges+token", batchStandaloneBlocks()[1]},
+		{"empty checkpoint", batchStandaloneBlocks()[2]},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			single := newBatchTestProcessor(t)
+			require.NoError(t, single.ProcessBlock(context.Background(), tc.block))
+			want := snapshotBatchBridgeDB(t, single.db)
+
+			batched := newBatchTestProcessor(t)
+			require.NoError(t, batched.processBlocks(context.Background(), []sync.Block{tc.block}))
+			got := snapshotBatchBridgeDB(t, batched.db)
+
+			require.Equal(t, want, got)
+			require.Len(t, got.Blocks, 1)
+		})
+	}
+}
+
+// txCountingDriverNameSeq gives every counting driver a unique registered name so
+// parallel tests never collide in the global sql driver registry.
+var txCountingDriverNameSeq atomic.Int32
+
+var errInjectedCommitFailure = errors.New("injected commit failure")
+
+// txCountingDriver wraps the real sqlite3 driver to observe the transaction
+// lifecycle without touching the processor: it counts Begin calls and can inject a
+// commit failure on the resulting transactions.
+type txCountingDriver struct {
+	inner      driver.Driver
+	begins     *atomic.Int32
+	failCommit *atomic.Bool
+}
+
+func (d *txCountingDriver) Open(name string) (driver.Conn, error) {
+	conn, err := d.inner.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return &txCountingConn{Conn: conn, begins: d.begins, failCommit: d.failCommit}, nil
+}
+
+type txCountingConn struct {
+	driver.Conn
+	begins     *atomic.Int32
+	failCommit *atomic.Bool
+}
+
+func (c *txCountingConn) Begin() (driver.Tx, error) {
+	c.begins.Add(1)
+	//nolint:staticcheck // the wrapped sqlite3 driver only implements the deprecated Begin.
+	tx, err := c.Conn.Begin()
+	if err != nil {
+		return nil, err
+	}
+	return &txCountingTx{Tx: tx, failCommit: c.failCommit}, nil
+}
+
+func (c *txCountingConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	c.begins.Add(1)
+	if beginTx, ok := c.Conn.(driver.ConnBeginTx); ok {
+		tx, err := beginTx.BeginTx(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+		return &txCountingTx{Tx: tx, failCommit: c.failCommit}, nil
+	}
+	//nolint:staticcheck // the wrapped sqlite3 driver only implements the deprecated Begin.
+	tx, err := c.Conn.Begin()
+	if err != nil {
+		return nil, err
+	}
+	return &txCountingTx{Tx: tx, failCommit: c.failCommit}, nil
+}
+
+type txCountingTx struct {
+	driver.Tx
+	failCommit *atomic.Bool
+}
+
+func (t *txCountingTx) Commit() error {
+	if t.failCommit != nil && t.failCommit.Load() {
+		// End the transaction underneath before surfacing the injected failure, so
+		// database/sql does not return the connection to the pool with an open
+		// transaction (which would make the uncommitted rows visible to readers).
+		_ = t.Rollback()
+		return errInjectedCommitFailure
+	}
+	return t.Tx.Commit()
+}
+
+// newBatchTestProcessorWithTxHook builds a real migrated SQLite processor whose
+// transactions are observed (and optionally failed) by a wrapping sqlite driver.
+func newBatchTestProcessorWithTxHook(
+	t *testing.T, begins *atomic.Int32, failCommit *atomic.Bool,
+) *processor {
+	t.Helper()
+	dbPath := path.Join(t.TempDir(), "bridgesync-processor-txhook.sqlite")
+	require.NoError(t, migrations.RunMigrations(dbPath))
+
+	driverName := fmt.Sprintf("sqlite3-txcount-%d", txCountingDriverNameSeq.Add(1))
+	sql.Register(driverName, &txCountingDriver{
+		inner:      &sqlite3.SQLiteDriver{},
+		begins:     begins,
+		failCommit: failCommit,
+	})
+
+	database, err := sql.Open(driverName, fmt.Sprintf(
+		"file:%s?_txlock=immediate&_foreign_keys=on&_journal_mode=WAL&_busy_timeout=30000", dbPath))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = database.Close() })
+
+	logger := log.WithFields("module", "test-batch-txhook")
+	p, err := newProcessor(database, "bridge-syncer", logger, dbQueryTimeout)
+	require.NoError(t, err)
+	return p
+}
+
+// TestProcessorProcessBlock_SingleTransaction proves the delegation keeps the
+// legacy one-transaction-per-call guarantee: a single ProcessBlock, a one-element
+// batch and a three-block batch each open exactly one transaction.
+func TestProcessorProcessBlock_SingleTransaction(t *testing.T) {
+	t.Parallel()
+
+	t.Run("legacy single block opens one transaction", func(t *testing.T) {
+		t.Parallel()
+		var begins atomic.Int32
+		proc := newBatchTestProcessorWithTxHook(t, &begins, nil)
+
+		require.NoError(t, proc.ProcessBlock(context.Background(), batchFixtureBlocks()[0]))
+		require.Equal(t, int32(1), begins.Load())
+	})
+
+	t.Run("batch of one opens one transaction", func(t *testing.T) {
+		t.Parallel()
+		var begins atomic.Int32
+		proc := newBatchTestProcessorWithTxHook(t, &begins, nil)
+
+		require.NoError(t, proc.processBlocks(context.Background(), []sync.Block{batchFixtureBlocks()[0]}))
+		require.Equal(t, int32(1), begins.Load())
+	})
+
+	t.Run("batch of three opens one transaction", func(t *testing.T) {
+		t.Parallel()
+		var begins atomic.Int32
+		proc := newBatchTestProcessorWithTxHook(t, &begins, nil)
+
+		require.NoError(t, proc.processBlocks(context.Background(), batchFixtureBlocks()))
+		require.Equal(t, int32(1), begins.Load())
+	})
+}
+
+// TestProcessorProcessBlock_CancellationMatchesBatchOfOne proves a cancelled
+// context behaves identically on both paths: the error keeps its identity
+// (context.Canceled), no row is inserted and no subscriber notification is
+// emitted.
+func TestProcessorProcessBlock_CancellationMatchesBatchOfOne(t *testing.T) {
+	t.Parallel()
+
+	t.Run("legacy single block", func(t *testing.T) {
+		t.Parallel()
+		proc := newBatchTestProcessor(t)
+		rec := &recordingBridgeSubscriber{}
+		proc.bridgeSubscriber = rec
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := proc.ProcessBlock(ctx, batchFixtureBlocks()[0])
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, batchBridgeDBSnapshot{}, snapshotBatchBridgeDB(t, proc.db))
+		require.Empty(t, rec.blocks)
+	})
+
+	t.Run("batch of one", func(t *testing.T) {
+		t.Parallel()
+		proc := newBatchTestProcessor(t)
+		rec := &recordingBridgeSubscriber{}
+		proc.bridgeSubscriber = rec
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := proc.processBlocks(ctx, []sync.Block{batchFixtureBlocks()[0]})
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, batchBridgeDBSnapshot{}, snapshotBatchBridgeDB(t, proc.db))
+		require.Empty(t, rec.blocks)
+	})
+}
+
+// TestProcessorProcessBlock_CommitFailureRollsBackAndDoesNotPublish proves a
+// commit failure on both the legacy single-block path and a one-element batch
+// rolls the transaction back (no rows) and never notifies subscribers, even though
+// the block carried a bridge.
+func TestProcessorProcessBlock_CommitFailureRollsBackAndDoesNotPublish(t *testing.T) {
+	t.Parallel()
+
+	t.Run("legacy single block", func(t *testing.T) {
+		t.Parallel()
+		var begins atomic.Int32
+		var failCommit atomic.Bool
+		failCommit.Store(true)
+		proc := newBatchTestProcessorWithTxHook(t, &begins, &failCommit)
+		rec := &recordingBridgeSubscriber{}
+		proc.bridgeSubscriber = rec
+
+		err := proc.ProcessBlock(context.Background(), batchFixtureBlocks()[0])
+		require.ErrorIs(t, err, errInjectedCommitFailure)
+		require.Equal(t, batchBridgeDBSnapshot{}, snapshotBatchBridgeDB(t, proc.db))
+		require.Empty(t, rec.blocks)
+	})
+
+	t.Run("batch of one", func(t *testing.T) {
+		t.Parallel()
+		var begins atomic.Int32
+		var failCommit atomic.Bool
+		failCommit.Store(true)
+		proc := newBatchTestProcessorWithTxHook(t, &begins, &failCommit)
+		rec := &recordingBridgeSubscriber{}
+		proc.bridgeSubscriber = rec
+
+		err := proc.processBlocks(context.Background(), []sync.Block{batchFixtureBlocks()[0]})
+		require.ErrorIs(t, err, errInjectedCommitFailure)
+		require.Equal(t, batchBridgeDBSnapshot{}, snapshotBatchBridgeDB(t, proc.db))
+		require.Empty(t, rec.blocks)
 	})
 }

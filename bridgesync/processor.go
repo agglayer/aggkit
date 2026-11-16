@@ -999,50 +999,16 @@ func loadReorgedDepositCounts(tx dbtypes.Txer, fromBlock uint64) (map[uint32]str
 }
 
 // ProcessBlock process the events of the block to build the exit tree
-// and updates the last processed block (can be called without events for that purpose)
+// and updates the last processed block (can be called without events for that purpose).
+//
+// It is exactly a single-element batch of the shared lifecycle: it delegates to
+// processBlocks, so the legacy one-block path keeps one transaction per call (the
+// driver batch capability stays opt-in) while sharing the transaction, halt,
+// rollback, subscriber-notification and post-commit logging logic with the batched
+// path. This guarantees a single block and a batch of one are byte-for-byte
+// identical, including a halted processor returning sync.ErrInconsistentState.
 func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
-	if p.isHalted() {
-		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
-		return sync.ErrInconsistentState
-	}
-
-	// Create a context with database timeout for the transaction
-	dbCtx, cancel := p.withDatabaseTimeout(ctx)
-	defer cancel()
-
-	tx, err := db.NewTx(dbCtx, p.db)
-	if err != nil {
-		p.log.Errorf("failed to start transaction for block %d: %v", block.Num, err)
-		return err
-	}
-	shouldRollback := true
-	defer func() {
-		if shouldRollback {
-			p.rollbackTransaction(tx)
-		}
-	}()
-
-	// The whole block is applied through the same helper used by the batched
-	// path, so a single block and a batch share exactly the same semantics.
-	hasAnyBridge, err := p.processBlockInTx(dbCtx, tx, block)
-	if err != nil {
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		p.log.Errorf("failed to commit db transaction (block number %d): %v", block.Num, err)
-		return err
-	}
-	shouldRollback = false
-
-	// Publish block number to bridge subscribers if this block contains any bridge
-	if hasAnyBridge {
-		p.bridgeSubscriber.Publish(block.Num)
-	}
-
-	p.logProcessedBlock(block)
-
-	return nil
+	return p.processBlocks(ctx, []sync.Block{block})
 }
 
 // processBlocks applies an ordered batch of blocks into a SINGLE database

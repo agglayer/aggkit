@@ -3,6 +3,7 @@ package claimsync
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/big"
 	"path"
@@ -420,7 +421,7 @@ func TestProcessorProcessBlocks_RejectsOversizedBatch(t *testing.T) {
 	t.Parallel()
 	proc, database := newBatchTestProcessor(t)
 
-	blocks := make([]sync.Block, maxBlocksPerBatch+1)
+	blocks := make([]sync.Block, sync.MaxBatchBlocks+1)
 	for i := range blocks {
 		blocks[i] = sync.Block{Num: uint64(i + 1), Hash: common.BigToHash(big.NewInt(int64(i + 1)))}
 	}
@@ -428,4 +429,165 @@ func TestProcessorProcessBlocks_RejectsOversizedBatch(t *testing.T) {
 	err := proc.processBlocks(context.Background(), blocks)
 	require.ErrorContains(t, err, "exceeds")
 	require.Equal(t, batchDBSnapshot{}, snapshotBatchDB(t, database))
+}
+
+// --- Legacy single-block path is a batch of one: regression coverage ---
+
+// TestProcessorProcessBlock_MatchesBatchOfOne proves the legacy single-block
+// ProcessBlock and a one-element processBlocks batch are byte-for-byte identical:
+// every block, claim, unset_claim and set_claim row (with both full proof arrays,
+// exit roots, metadata, type and isMessage) is the same on both paths, including
+// the empty checkpoint block.
+func TestProcessorProcessBlock_MatchesBatchOfOne(t *testing.T) {
+	t.Parallel()
+	blocks := batchTestBlocks()
+
+	for _, tc := range []struct {
+		name  string
+		block sync.Block
+	}{
+		{"claim+unset_claim", blocks[0]},
+		{"set_claim+claim", blocks[1]},
+		{"empty checkpoint", blocks[2]},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			single, singleDB := newBatchTestProcessor(t)
+			require.NoError(t, single.ProcessBlock(context.Background(), tc.block))
+			want := snapshotBatchDB(t, singleDB)
+
+			batched, batchedDB := newBatchTestProcessor(t)
+			require.NoError(t, batched.processBlocks(context.Background(), []sync.Block{tc.block}))
+			got := snapshotBatchDB(t, batchedDB)
+
+			require.Equal(t, want, got)
+			require.Len(t, got.Blocks, 1)
+		})
+	}
+}
+
+// TestProcessorProcessBlock_SingleTransaction proves the delegation keeps the
+// legacy one-transaction-per-call guarantee: a single ProcessBlock and a
+// one-element processBlocks batch each open exactly one transaction and commit it
+// exactly once.
+func TestProcessorProcessBlock_SingleTransaction(t *testing.T) {
+	t.Parallel()
+	lg := logger.WithFields("module", "test-batch-count-one")
+	block := batchTestBlocks()[0]
+
+	singleStore, _ := newBatchTestStorage(t)
+	singleCounting := &txCountingStorager{ClaimStorager: singleStore}
+	singleProc := newProcessor(lg, singleCounting, processorTestDBQueryTimeout)
+	require.NoError(t, singleProc.ProcessBlock(context.Background(), block))
+	require.Equal(t, int32(1), singleCounting.begins.Load())
+	require.Equal(t, int32(1), singleCounting.commits.Load())
+
+	batchStore, _ := newBatchTestStorage(t)
+	batchCounting := &txCountingStorager{ClaimStorager: batchStore}
+	batchProc := newProcessor(lg, batchCounting, processorTestDBQueryTimeout)
+	require.NoError(t, batchProc.processBlocks(context.Background(), []sync.Block{block}))
+	require.Equal(t, int32(1), batchCounting.begins.Load())
+	require.Equal(t, int32(1), batchCounting.commits.Load())
+}
+
+// TestProcessorProcessBlock_CancellationMatchesBatchOfOne proves a cancelled
+// context behaves identically on both paths: the error keeps its identity
+// (context.Canceled) and no row is ever inserted, whether the cancellation is
+// already set before the call or arrives in the middle of the single block.
+func TestProcessorProcessBlock_CancellationMatchesBatchOfOne(t *testing.T) {
+	t.Parallel()
+
+	t.Run("legacy single block, cancelled before start", func(t *testing.T) {
+		t.Parallel()
+		proc, database := newBatchTestProcessor(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := proc.ProcessBlock(ctx, batchTestBlocks()[0])
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, batchDBSnapshot{}, snapshotBatchDB(t, database))
+	})
+
+	t.Run("batch of one, cancelled before start", func(t *testing.T) {
+		t.Parallel()
+		proc, database := newBatchTestProcessor(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := proc.processBlocks(ctx, []sync.Block{batchTestBlocks()[0]})
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, batchDBSnapshot{}, snapshotBatchDB(t, database))
+	})
+
+	t.Run("legacy single block, cancelled mid-block", func(t *testing.T) {
+		t.Parallel()
+		proc, database := newBatchTestProcessor(t)
+		parent, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		proc.embeddedProcessor = &cancelAfterFirstEventEmbedded{
+			EmbeddedProcessor: proc.embeddedProcessor,
+			cancel:            cancel,
+		}
+
+		err := proc.ProcessBlock(parent, batchTestBlocks()[0])
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, batchDBSnapshot{}, snapshotBatchDB(t, database))
+	})
+}
+
+// commitFailingTx wraps a transaction and fails every commit, so the caller's
+// rollback path is exercised with a real transaction still open underneath.
+type commitFailingTx struct {
+	dbtypes.Txer
+}
+
+func (c *commitFailingTx) Commit() error { return errInjectedCommitFailure }
+
+// commitFailingStorager hands out commit-failing transactions.
+type commitFailingStorager struct {
+	claimsynctypes.ClaimStorager
+}
+
+func (c *commitFailingStorager) NewTx(ctx context.Context) (dbtypes.Txer, error) {
+	tx, err := c.ClaimStorager.NewTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &commitFailingTx{Txer: tx}, nil
+}
+
+var errInjectedCommitFailure = errors.New("injected commit failure")
+
+func newCommitFailingProcessor(t *testing.T) (*processor, *sql.DB) {
+	t.Helper()
+	store, database := newBatchTestStorage(t)
+	lg := logger.WithFields("module", "test-batch-commit-fail")
+	return newProcessor(lg, &commitFailingStorager{ClaimStorager: store}, processorTestDBQueryTimeout), database
+}
+
+// TestProcessorProcessBlock_CommitFailureRollsBack proves a commit failure on both
+// the legacy single-block path and a one-element batch leaves no rows behind: the
+// whole transaction is rolled back, so nothing is partially persisted.
+func TestProcessorProcessBlock_CommitFailureRollsBack(t *testing.T) {
+	t.Parallel()
+
+	t.Run("legacy single block", func(t *testing.T) {
+		t.Parallel()
+		proc, database := newCommitFailingProcessor(t)
+
+		err := proc.ProcessBlock(context.Background(), batchTestBlocks()[0])
+		require.ErrorIs(t, err, errInjectedCommitFailure)
+		require.Equal(t, batchDBSnapshot{}, snapshotBatchDB(t, database))
+	})
+
+	t.Run("batch of one", func(t *testing.T) {
+		t.Parallel()
+		proc, database := newCommitFailingProcessor(t)
+
+		err := proc.processBlocks(context.Background(), []sync.Block{batchTestBlocks()[0]})
+		require.ErrorIs(t, err, errInjectedCommitFailure)
+		require.Equal(t, batchDBSnapshot{}, snapshotBatchDB(t, database))
+	})
 }

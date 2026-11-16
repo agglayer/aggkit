@@ -136,11 +136,12 @@ func (e *traceUnavailableError) Is(target error) bool {
 // atomically only when every needed request succeeded.
 //
 // The canonical revalidation runs twice: once before the trace RPCs and once
-// after every worker has joined, immediately before publishing. A trace result
-// carries no block hash, so the second read is what ties the published snapshot
-// to the blocks the range was revalidated against. Read serially, it adds one
-// extra canonical header lookup per distinct block (2 * distinct blocks for the
-// range) on top of the trace RPCs.
+// after every worker has joined, immediately before publishing. Each phase uses
+// its own bounded worker pool, so the header lookups overlap too; every phase
+// reads exactly one header per distinct block, so a range costs 2 * distinct
+// block lookups on top of the trace RPCs. A trace result carries no block hash,
+// so the second read is what ties the published snapshot to the blocks the
+// range was revalidated against.
 //
 // Failure behavior:
 //   - a request error aborts without publishing (the downloader retries it);
@@ -219,43 +220,86 @@ func collectTraceTargets(logs []types.Log) []traceTarget {
 	return targets
 }
 
-// revalidateCanonical re-reads the header of every block referenced by the
-// targets and requires it to still have the hash carried by the log. The root
-// trace result does not carry a block hash itself, so this is what ties a
-// prefetched trace back to the exact log inclusion; a changed or missing header
-// is reported as an inclusion mismatch so the whole range is refetched.
-func (r *TraceResolver) revalidateCanonical(ctx context.Context, targets []traceTarget) error {
-	checked := make(map[uint64]common.Hash, len(targets))
+// blockExpectation is one distinct canonical header to re-read: the expected
+// hash is the block hash carried by the log(s) of that height in the range.
+type blockExpectation struct {
+	blockNum uint64
+	hash     common.Hash
+}
+
+// distinctBlockExpectations folds the targets to exactly one expectation per
+// distinct block height. A range carrying two different expected hashes for the
+// same height is internally inconsistent and is rejected before any header RPC,
+// since no single canonical header could satisfy both. A zero block hash can
+// only come from a synthetic log (real FilterLogs results always carry one); the
+// downloader's own header check still guards the append, so it is skipped. The
+// order is stable (first-seen) so the number of header lookups is deterministic.
+func distinctBlockExpectations(targets []traceTarget) ([]blockExpectation, error) {
+	seen := make(map[uint64]common.Hash, len(targets))
+	order := make([]uint64, 0, len(targets))
 	for _, t := range targets {
-		// A zero block hash can only come from a synthetic log (real
-		// FilterLogs results always carry one); the downloader's own header
-		// check still guards the append, so there is nothing to revalidate.
 		if t.key.BlockHash == (common.Hash{}) {
 			continue
 		}
-		if prev, ok := checked[t.blockNum]; ok {
+		if prev, ok := seen[t.blockNum]; ok {
 			if prev != t.key.BlockHash {
-				return fmt.Errorf("claimsync: inconsistent block hash for block %d in one range: %w",
+				return nil, fmt.Errorf("claimsync: inconsistent block hash for block %d in one range: %w",
 					t.blockNum, aggkittypes.ErrTransactionInclusionMismatch)
 			}
 			continue
 		}
-		header, err := r.client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(t.blockNum))
-		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			if errors.Is(err, ethereum.NotFound) {
-				return fmt.Errorf("claimsync: block %d not found while prefetching traces: %w",
-					t.blockNum, aggkittypes.ErrTransactionInclusionMismatch)
-			}
-			return fmt.Errorf("claimsync: failed to revalidate block %d before trace prefetch: %w", t.blockNum, err)
+		seen[t.blockNum] = t.key.BlockHash
+		order = append(order, t.blockNum)
+	}
+	out := make([]blockExpectation, 0, len(order))
+	for _, num := range order {
+		out = append(out, blockExpectation{blockNum: num, hash: seen[num]})
+	}
+	return out, nil
+}
+
+// revalidateCanonical re-reads, with a bounded worker pool, the header of every
+// distinct block referenced by the targets and requires it to still have the
+// hash carried by the log. The root trace result does not carry a block hash
+// itself, so this is what ties a prefetched trace back to the exact log
+// inclusion; a changed or missing header is reported as an inclusion mismatch so
+// the whole range is refetched.
+//
+// Exactly one lookup is made per distinct block per call, so running it once
+// before the trace RPCs and once after every worker has joined performs two
+// header lookups per distinct block. The pool is bounded by
+// ClaimTracePrefetchConcurrency, so the header phase can never fan out more
+// RPCs than the trace phase. On the first error the remaining work is canceled,
+// every worker is joined and that error is returned; a canceled download context
+// returns the context error after joining.
+func (r *TraceResolver) revalidateCanonical(ctx context.Context, targets []traceTarget) error {
+	jobs, err := distinctBlockExpectations(targets)
+	if err != nil {
+		return err
+	}
+	return runBoundedPool(ctx, r.headerWorkers(), jobs, func(runCtx context.Context, job blockExpectation) error {
+		return r.checkCanonicalHeader(runCtx, job)
+	})
+}
+
+// checkCanonicalHeader reads one block header and requires it to match the
+// expected hash. A transport error stays retryable unless the request context
+// was canceled; an absent header is an inclusion mismatch.
+func (r *TraceResolver) checkCanonicalHeader(ctx context.Context, job blockExpectation) error {
+	header, err := r.client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(job.blockNum))
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
-		checked[t.blockNum] = t.key.BlockHash
-		if header == nil || header.Hash != t.key.BlockHash {
-			return fmt.Errorf("claimsync: block %d header hash changed while prefetching traces: %w",
-				t.blockNum, aggkittypes.ErrTransactionInclusionMismatch)
+		if errors.Is(err, ethereum.NotFound) {
+			return fmt.Errorf("claimsync: block %d not found while prefetching traces: %w",
+				job.blockNum, aggkittypes.ErrTransactionInclusionMismatch)
 		}
+		return fmt.Errorf("claimsync: failed to revalidate block %d before trace prefetch: %w", job.blockNum, err)
+	}
+	if header == nil || header.Hash != job.hash {
+		return fmt.Errorf("claimsync: block %d header hash changed while prefetching traces: %w",
+			job.blockNum, aggkittypes.ErrTransactionInclusionMismatch)
 	}
 	return nil
 }
@@ -265,9 +309,50 @@ func (r *TraceResolver) revalidateCanonical(ctx context.Context, targets []trace
 // joins every worker and returns the error without publishing anything. When
 // the download context is canceled it returns the context error after joining.
 func (r *TraceResolver) prefetch(ctx context.Context, targets []traceTarget, out map[traceKey]*Call) error {
+	var mu sync.Mutex
+	return runBoundedPool(ctx, r.workers, targets, func(runCtx context.Context, t traceTarget) error {
+		root, err := r.traceRoot(runCtx, t.key.TxHash)
+		if err != nil {
+			return err
+		}
+		mu.Lock()
+		out[t.key] = root
+		mu.Unlock()
+		return nil
+	})
+}
+
+// headerWorkers is the size of the canonical-header revalidation pool. It is
+// never larger than the fixed ClaimTracePrefetchConcurrency bound, nor than the
+// resolver's configured trace pool, so the header phase can never fan out more
+// RPCs than the trace phase. The actual pool is additionally bounded by the
+// number of distinct blocks via runBoundedPool.
+func (r *TraceResolver) headerWorkers() int {
 	workers := r.workers
-	if workers > len(targets) {
-		workers = len(targets)
+	if workers > ClaimTracePrefetchConcurrency {
+		workers = ClaimTracePrefetchConcurrency
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	return workers
+}
+
+// runBoundedPool runs fn for every item with at most workers concurrent
+// goroutines. It returns the first error a worker reports, after canceling the
+// remaining work and joining every worker; otherwise it returns the parent
+// context error (if the download context was canceled) once every worker has
+// joined. runCtx is the per-run context handed to fn so an in-flight RPC is
+// canceled together with the pool. The pool is always bounded by the number of
+// items.
+func runBoundedPool[T any](
+	ctx context.Context, workers int, items []T, fn func(context.Context, T) error,
+) error {
+	if len(items) == 0 {
+		return ctx.Err()
+	}
+	if workers > len(items) {
+		workers = len(items)
 	}
 	if workers < 1 {
 		workers = 1
@@ -276,7 +361,7 @@ func (r *TraceResolver) prefetch(ctx context.Context, targets []traceTarget, out
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	jobs := make(chan traceTarget)
+	jobs := make(chan T)
 	var (
 		wg       sync.WaitGroup
 		mu       sync.Mutex
@@ -300,29 +385,25 @@ func (r *TraceResolver) prefetch(ctx context.Context, targets []traceTarget, out
 				select {
 				case <-runCtx.Done():
 					return
-				case t, ok := <-jobs:
+				case item, ok := <-jobs:
 					if !ok {
 						return
 					}
-					root, err := r.traceRoot(runCtx, t.key.TxHash)
-					if err != nil {
+					if err := fn(runCtx, item); err != nil {
 						recordErr(err)
 						return
 					}
-					mu.Lock()
-					out[t.key] = root
-					mu.Unlock()
 				}
 			}
 		}()
 	}
 
 feed:
-	for _, t := range targets {
+	for _, item := range items {
 		select {
 		case <-runCtx.Done():
 			break feed
-		case jobs <- t:
+		case jobs <- item:
 		}
 	}
 	close(jobs)
@@ -331,10 +412,7 @@ feed:
 	if firstErr != nil {
 		return firstErr
 	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return nil
+	return ctx.Err()
 }
 
 // traceRoot fetches a single root call through CallContext so the download
