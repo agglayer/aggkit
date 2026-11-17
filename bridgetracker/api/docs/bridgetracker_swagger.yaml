@@ -28,13 +28,22 @@ definitions:
       claim_status:
         description: |-
           ClaimStatus is a simplified claim-readiness summary, one of "pending", "readyToClaim",
-          "claimed" or "error" — the same vocabulary and field name as TrackingData.ClaimStatus (see
-          domain.TrackingData.ClaimStatus for exactly how it is derived). "error" reports the
-          destination bridge contract's isClaimed() call itself failing (e.g. no bridge contract
-          address configured for the destination network) — callers must not read it as "pending".
-          While unclaimed, "readyToClaim" vs "pending" is resolved from the tracker's own snapshot
-          when Tracking is present, or directly against the bridge-service endpoints otherwise (see
-          domain.ActivityClaimChecker.IsReadyToClaim)
+          "claimed", "claimed_finalized" or "error" — the same vocabulary and field name as
+          TrackingData.ClaimStatus (see domain.TrackingData.ClaimStatus for exactly how it is
+          derived). "claimed_finalized" is the only final state: "claimed" can still go back to
+          "readyToClaim" or "pending" if a reorg removes the claim. "error" reports the destination
+          bridge contract's isClaimed() call itself failing (e.g. no bridge contract address
+          configured for the destination network) — callers must not read it as "pending". While
+          unclaimed, "readyToClaim" vs "pending" is resolved from the tracker's own snapshot when
+          Tracking is present, or directly against the bridge-service endpoints otherwise (see
+          domain.ActivityClaimChecker.IsReadyToClaim). "claimed_finalized" is not produced yet (see
+          Finalized)
+        enum:
+        - pending
+        - readyToClaim
+        - claimed
+        - claimed_finalized
+        - error
         type: string
       creation_timestamp:
         description: |-
@@ -49,6 +58,13 @@ definitions:
           Errors holds the message of whatever check failed the last time this item was refreshed,
           keyed by which check it was — currently only "claim", present when ClaimStatus is "error"
         type: object
+      finalized:
+        description: |-
+          Finalized is true when this item can no longer be changed by a reorg: its bridge is final
+          and, if it is claimed, its claim is final too. Always serialized. It is false for every
+          item until the activity finality follow-ups populate it (agglayer/aggkit#1968, #1969).
+          Going from false to true does not change the response's Revision
+        type: boolean
       last_updated_timestamp:
         description: |-
           LastUpdatedTimestamp is when this item's claim/tracking state was last (re)checked (unix
@@ -89,6 +105,21 @@ definitions:
         items:
           type: integer
         type: array
+      revision:
+        description: |-
+          Revision is FromAddress's revision (see domain.ActivityRevisionReader), an opaque string
+          that is a hash of the address's activity (e.g. "v1:" followed by hex), present in every
+          response whatever filterBridges/page_number/page_size say: it covers all of the address's
+          bridges, not just this page. It changes when a bridge is added or removed, changes
+          claim_status or is corrected after a reorg — wherever it sits in the sorted result — and it
+          does NOT change when an item only goes from finalized=false to finalized=true. It is the
+          same after a restart and on every instance holding the same data. A client polls it with a
+          cheap request (page_size=1), reloads the pages it has loaded when it differs from the one
+          it holds, and checks it again after the last page; compare it for equality only. Always
+          serialized; until the follow-up that computes it lands (agglayer/aggkit#1968, #1969) it is
+          the empty-activity value "v1:" followed by 64 zeros
+        example: v1:0000000000000000000000000000000000000000000000000000000000000000
+        type: string
       warnings:
         description: |-
           Warnings lists every network whose bridge service could not be scanned this call; absent
@@ -164,6 +195,13 @@ definitions:
     type: object
   api.BridgeStatus:
     properties:
+      block_finalized:
+        description: |-
+          BlockFinalized is whether BlockNumber is final on the origin network, i.e. it can no
+          longer be removed by a reorg. Always serialized (no omitempty): false means "not final yet
+          (or not known)" — the client keeps polling until it turns true. It is false for every
+          bridge until the tracker follow-up populates it (agglayer/aggkit#1970)
+        type: boolean
       block_number:
         description: BlockNumber is the block, on the origin network, where the BridgeEvent
           was emitted
@@ -248,10 +286,19 @@ definitions:
       claim_status:
         description: |-
           ClaimStatus is a simplified claim-readiness summary, one of "pending",
-          "readyToClaim", "claimed" or "error" — see domain.TrackingData.ClaimStatus for exactly
-          how it is derived from TrackingStatus and the current step. For most clients this is all
-          that is needed to know whether the bridge can be claimed; TrackingStatus/AllSteps remain
-          for anything that needs the full detail
+          "readyToClaim", "claimed", "claimed_finalized" or "error" — see
+          domain.TrackingData.ClaimStatus for exactly how it is derived from TrackingStatus and the
+          current step. "claimed_finalized" is the only final state: "claimed" can still go back to
+          "readyToClaim" or "pending" if a reorg removes the claim. It is not produced yet
+          (agglayer/aggkit#1970). For most clients this is all that is needed to know whether the
+          bridge can be claimed; TrackingStatus/AllSteps remain for anything that needs the full
+          detail
+        enum:
+        - pending
+        - readyToClaim
+        - claimed
+        - claimed_finalized
+        - error
         type: string
       error:
         allOf:
@@ -665,7 +712,13 @@ paths:
         whole request. Bridges are sorted most recent first and paginated via
         page_number/page_size (same names and 1-based numbering as the bridge service's
         own paginated endpoints); "count" reports how many bridges matched in total,
-        across every page.
+        across every page. "revision" is an opaque string, a hash of the address's
+        activity: it changes when a bridge is added or removed, changes claim_status or is
+        corrected after a reorg, wherever it sits in the sorted result, and does not change
+        when an item only becomes finalized. It is the same after a restart and on every
+        instance holding the same data. Poll it with a cheap request (page_size=1), reload
+        the loaded pages when it changed, and check it again after the last page. Compare
+        it only for equality.
       parameters:
       - description: Address that sent the bridges to look up
         in: path

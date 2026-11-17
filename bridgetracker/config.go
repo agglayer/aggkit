@@ -2,6 +2,7 @@ package bridgetracker
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/agglayer/aggkit/agglayer"
@@ -33,6 +34,11 @@ var DefaultL1BlockFinality = aggkittypes.LatestBlock
 // only accepted once its receipt reaches this finality, so a reorg cannot leave the tracker
 // permanently following an orphaned deposit/block
 var DefaultL2BlockFinality = aggkittypes.LatestBlock
+
+// DefaultFinalizedBlock is the default Config.L1FinalizedBlock / Config.L2FinalizedBlock: the
+// block the proxy considers finalized when it has to decide by itself whether a bridge or a claim
+// is final (see finality.RPCResolver). It is the only value the reorg guarantee is given for
+var DefaultFinalizedBlock = aggkittypes.FinalizedBlock
 
 // DefaultMaxTrackedBridges is the default Config.MaxTrackedBridges: how many distinct bridges
 // the in-memory registry accepts before refusing new ones (see registry.go's memoryRegistry).
@@ -136,6 +142,27 @@ type Config struct {
 	// L2BlockFinality is the finality level a bridge's creating tx receipt must reach on any
 	// L2 (non-zero network) before the tracker accepts it; see L1BlockFinality for the reasoning
 	L2BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=PendingBlock,enum=LatestBlock,enum=SafeBlock,enum=FinalizedBlock,enum=EarliestBlock" mapstructure:"L2BlockFinality"` //nolint:lll
+
+	// L1FinalizedBlock is the block the proxy considers finalized on L1 (network 0): a bridge or
+	// claim mined in a block at or below it is final. It is only used when the bridge service does
+	// not say whether an entry is final (block_finalized omitted); an explicit value always wins
+	// (see finality.RPCResolver). Accepts FinalizedBlock, SafeBlock or LatestBlock/-N; empty falls
+	// back to DefaultFinalizedBlock.
+	//
+	// It is NOT L1BlockFinality, which only decides when a receipt is accepted. Using anything
+	// other than the plain `finalized` tag is not recommended: the guarantee that a final entry
+	// is not reorged out is only given for it (it is given at another level, not by the proxy)
+	L1FinalizedBlock aggkittypes.BlockNumberFinality `jsonschema:"enum=FinalizedBlock,enum=SafeBlock,enum=LatestBlock" mapstructure:"L1FinalizedBlock"` //nolint:lll
+
+	// L2FinalizedBlock is L1FinalizedBlock for any L2 (non-zero network)
+	L2FinalizedBlock aggkittypes.BlockNumberFinality `jsonschema:"enum=FinalizedBlock,enum=SafeBlock,enum=LatestBlock" mapstructure:"L2FinalizedBlock"` //nolint:lll
+
+	// FinalizedBlockByNetwork overrides L1FinalizedBlock / L2FinalizedBlock for the networks it
+	// lists (networkID -> block), e.g. an L2 whose RPC does not serve the `finalized` tag. A
+	// network absent from this map (the default, empty map) uses L1FinalizedBlock (network 0) or
+	// L2FinalizedBlock. Same recommendation as L1FinalizedBlock: do not use anything but
+	// FinalizedBlock
+	FinalizedBlockByNetwork map[uint32]aggkittypes.BlockNumberFinality `mapstructure:"FinalizedBlockByNetwork"`
 
 	// BridgeAddrs is the static networkID -> canonical bridge contract address override used
 	// to reject a BridgeEvent log emitted by a contract other than the origin network's real
@@ -352,6 +379,92 @@ func (c *Config) Validate() error {
 	}
 	if err := c.ActivitySourceRPC.Validate(); err != nil {
 		return err
+	}
+	if err := c.validateFinalizedBlocks(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// FinalizedBlockFor returns the block the proxy considers finalized on networkID (see
+// L1FinalizedBlock): its FinalizedBlockByNetwork entry if any, else L1FinalizedBlock for L1
+// (network 0) or L2FinalizedBlock for any other network, else DefaultFinalizedBlock for a value
+// left empty
+func (c *Config) FinalizedBlockFor(networkID uint32) aggkittypes.BlockNumberFinality {
+	if f, ok := c.FinalizedBlockByNetwork[networkID]; ok && !f.IsEmpty() {
+		return f
+	}
+	f := c.L2FinalizedBlock
+	if networkID == l1NetworkID {
+		f = c.L1FinalizedBlock
+	}
+	if f.IsEmpty() {
+		return DefaultFinalizedBlock
+	}
+	return f
+}
+
+// l1NetworkID is the network id of L1 (mainnet), see FinalizedBlockFor
+const l1NetworkID = uint32(0)
+
+// FinalizedBlockWarnings returns one message per configured finalized-block setting that is not
+// the plain FinalizedBlock tag, which is not recommended (see L1FinalizedBlock): the binary logs
+// them at startup
+func (c *Config) FinalizedBlockWarnings() []string {
+	var warnings []string
+	check := func(name string, f aggkittypes.BlockNumberFinality) {
+		if f.IsEmpty() || f.Equal(DefaultFinalizedBlock) {
+			return
+		}
+		warnings = append(warnings, fmt.Sprintf(
+			"%s = %q: using anything but %q to decide if a bridge or claim is final is not recommended, "+
+				"the reorg guarantee is only given for the %s tag",
+			name, f.String(), DefaultFinalizedBlock.String(), DefaultFinalizedBlock.String()))
+	}
+	check("[Tracker].L1FinalizedBlock", c.L1FinalizedBlock)
+	check("[Tracker].L2FinalizedBlock", c.L2FinalizedBlock)
+	networkIDs := make([]uint32, 0, len(c.FinalizedBlockByNetwork))
+	for networkID := range c.FinalizedBlockByNetwork {
+		networkIDs = append(networkIDs, networkID)
+	}
+	slices.Sort(networkIDs)
+	for _, networkID := range networkIDs {
+		check(fmt.Sprintf("[Tracker.FinalizedBlockByNetwork].%d", networkID), c.FinalizedBlockByNetwork[networkID])
+	}
+	return warnings
+}
+
+// validateFinalizedBlocks checks L1FinalizedBlock, L2FinalizedBlock and FinalizedBlockByNetwork
+func (c *Config) validateFinalizedBlocks() error {
+	if err := validateFinalizedBlock(c.L1FinalizedBlock); err != nil {
+		return fmt.Errorf("[Tracker].L1FinalizedBlock: %w", err)
+	}
+	if err := validateFinalizedBlock(c.L2FinalizedBlock); err != nil {
+		return fmt.Errorf("[Tracker].L2FinalizedBlock: %w", err)
+	}
+	for networkID, f := range c.FinalizedBlockByNetwork {
+		if f.IsEmpty() {
+			return fmt.Errorf("[Tracker.FinalizedBlockByNetwork].%d: empty block", networkID)
+		}
+		if err := validateFinalizedBlock(f); err != nil {
+			return fmt.Errorf("[Tracker.FinalizedBlockByNetwork].%d: %w", networkID, err)
+		}
+	}
+	return nil
+}
+
+// validateFinalizedBlock checks one finalized-block setting: FinalizedBlock, SafeBlock or
+// LatestBlock with an optional offset. A fixed block number and PendingBlock make no sense as the
+// block below which everything is final. An empty value is valid (it means the default)
+func validateFinalizedBlock(f aggkittypes.BlockNumberFinality) error {
+	if f.IsEmpty() {
+		return nil
+	}
+	if err := f.Validate(); err != nil {
+		return err
+	}
+	if f.Block == aggkittypes.Pending {
+		return fmt.Errorf("%s cannot be used: use FinalizedBlock, SafeBlock or LatestBlock/-N", f.String())
 	}
 	return nil
 }
