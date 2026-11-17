@@ -94,8 +94,16 @@ type ValidateCertificateRequest struct {
 	Certificate *v1.Certificate `protobuf:"bytes,2,opt,name=certificate,proto3" json:"certificate,omitempty"`
 	// Last L2 block number included in the certificate
 	LastL2BlockInCert uint64 `protobuf:"varint,3,opt,name=last_l2_block_in_cert,json=lastL2BlockInCert,proto3" json:"last_l2_block_in_cert,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Signature by the aggsender that proposes the certificate of the request digest:
+	// keccak256(domain tag || certificate hash || previous certificate id || last L2 block ||
+	// validator address || request timestamp). See ProposerRequestDigest. The validator only
+	// serves the chain's proposer, and the digest binds the signature to this request, this
+	// validator and a short time window.
+	ProposerSignature *v11.FixedBytes65 `protobuf:"bytes,4,opt,name=proposer_signature,json=proposerSignature,proto3" json:"proposer_signature,omitempty"`
+	// Unix time, in seconds, at which the proposer signed the request
+	RequestTimestamp uint64 `protobuf:"varint,5,opt,name=request_timestamp,json=requestTimestamp,proto3" json:"request_timestamp,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ValidateCertificateRequest) Reset() {
@@ -145,6 +153,20 @@ func (x *ValidateCertificateRequest) GetCertificate() *v1.Certificate {
 func (x *ValidateCertificateRequest) GetLastL2BlockInCert() uint64 {
 	if x != nil {
 		return x.LastL2BlockInCert
+	}
+	return 0
+}
+
+func (x *ValidateCertificateRequest) GetProposerSignature() *v11.FixedBytes65 {
+	if x != nil {
+		return x.ProposerSignature
+	}
+	return nil
+}
+
+func (x *ValidateCertificateRequest) GetRequestTimestamp() uint64 {
+	if x != nil {
+		return x.RequestTimestamp
 	}
 	return 0
 }
@@ -203,11 +225,13 @@ const file_aggsender_validator_proto_v1_validator_proto_rawDesc = "" +
 	"\x13HealthCheckResponse\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"\xf4\x01\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\xf9\x02\n" +
 	"\x1aValidateCertificateRequest\x12]\n" +
 	"\x17previous_certificate_id\x18\x01 \x01(\v2%.agglayer.node.types.v1.CertificateIdR\x15previousCertificateId\x12E\n" +
 	"\vcertificate\x18\x02 \x01(\v2#.agglayer.node.types.v1.CertificateR\vcertificate\x120\n" +
-	"\x15last_l2_block_in_cert\x18\x03 \x01(\x04R\x11lastL2BlockInCert\"d\n" +
+	"\x15last_l2_block_in_cert\x18\x03 \x01(\x04R\x11lastL2BlockInCert\x12V\n" +
+	"\x12proposer_signature\x18\x04 \x01(\v2'.agglayer.interop.types.v1.FixedBytes65R\x11proposerSignature\x12+\n" +
+	"\x11request_timestamp\x18\x05 \x01(\x04R\x10requestTimestamp\"d\n" +
 	"\x1bValidateCertificateResponse\x12E\n" +
 	"\tsignature\x18\x01 \x01(\v2'.agglayer.interop.types.v1.FixedBytes65R\tsignature2\xfe\x01\n" +
 	"\x12AggsenderValidator\x12Y\n" +
@@ -239,16 +263,17 @@ var file_aggsender_validator_proto_v1_validator_proto_goTypes = []any{
 var file_aggsender_validator_proto_v1_validator_proto_depIdxs = []int32{
 	3, // 0: aggkit.aggsender.validator.v1.ValidateCertificateRequest.previous_certificate_id:type_name -> agglayer.node.types.v1.CertificateId
 	4, // 1: aggkit.aggsender.validator.v1.ValidateCertificateRequest.certificate:type_name -> agglayer.node.types.v1.Certificate
-	5, // 2: aggkit.aggsender.validator.v1.ValidateCertificateResponse.signature:type_name -> agglayer.interop.types.v1.FixedBytes65
-	6, // 3: aggkit.aggsender.validator.v1.AggsenderValidator.HealthCheck:input_type -> google.protobuf.Empty
-	1, // 4: aggkit.aggsender.validator.v1.AggsenderValidator.ValidateCertificate:input_type -> aggkit.aggsender.validator.v1.ValidateCertificateRequest
-	0, // 5: aggkit.aggsender.validator.v1.AggsenderValidator.HealthCheck:output_type -> aggkit.aggsender.validator.v1.HealthCheckResponse
-	2, // 6: aggkit.aggsender.validator.v1.AggsenderValidator.ValidateCertificate:output_type -> aggkit.aggsender.validator.v1.ValidateCertificateResponse
-	5, // [5:7] is the sub-list for method output_type
-	3, // [3:5] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	5, // 2: aggkit.aggsender.validator.v1.ValidateCertificateRequest.proposer_signature:type_name -> agglayer.interop.types.v1.FixedBytes65
+	5, // 3: aggkit.aggsender.validator.v1.ValidateCertificateResponse.signature:type_name -> agglayer.interop.types.v1.FixedBytes65
+	6, // 4: aggkit.aggsender.validator.v1.AggsenderValidator.HealthCheck:input_type -> google.protobuf.Empty
+	1, // 5: aggkit.aggsender.validator.v1.AggsenderValidator.ValidateCertificate:input_type -> aggkit.aggsender.validator.v1.ValidateCertificateRequest
+	0, // 6: aggkit.aggsender.validator.v1.AggsenderValidator.HealthCheck:output_type -> aggkit.aggsender.validator.v1.HealthCheckResponse
+	2, // 7: aggkit.aggsender.validator.v1.AggsenderValidator.ValidateCertificate:output_type -> aggkit.aggsender.validator.v1.ValidateCertificateResponse
+	6, // [6:8] is the sub-list for method output_type
+	4, // [4:6] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_aggsender_validator_proto_v1_validator_proto_init() }
