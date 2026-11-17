@@ -284,7 +284,8 @@ func TestBridgeTrackerL1ToL2(t *testing.T) {
 	require.NoError(t, err, "tracker never reached finished")
 
 	require.Nil(t, tracking.Error, "a successfully claimed bridge must carry no error")
-	require.Equal(t, "claimed", tracking.ClaimStatus)
+	// finished is only reached once the claim is final, which claim_status reports as claimed_finalized
+	require.Equal(t, "claimed_finalized", tracking.ClaimStatus)
 	require.NotEmpty(t, tracking.AllSteps)
 	last := tracking.AllSteps[len(tracking.AllSteps)-1]
 	require.Equal(t, "Claimed", last.StepName)
