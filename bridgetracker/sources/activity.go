@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/agglayer/aggkit/bridgeservice/client"
@@ -470,8 +471,9 @@ type bridgeServiceScan struct {
 // correct it if a reorg moved it, and remove it if the listing went past its position without
 // it. When more than one page was read, page 1 is read again at the end, to pick up bridges
 // added while the scan paged. When the listing changed while it was paged (its count differs
-// between the pages read, or the scan read the whole listing but saw fewer bridges than it
-// counts), a bridge may have shifted onto a page already read and been missed — and a missed
+// between the pages read, page 1 re-read shows a bridge the pass had not listed or listed at
+// another location, or the scan read the whole listing but saw fewer bridges than it counts), a
+// bridge may have shifted onto a page already read and been missed — and a missed
 // non-final bridge would be read as removed — so the scan is run once more. If the listing still
 // changed during that second pass, the scan fails with errBridgeListShifted: a partial result could
 // remove a bridge that still exists, or return a newer final bridge while an older one was skipped,
@@ -548,6 +550,7 @@ func scanBridgeServiceOnce(
 			break
 		}
 	}
+	headChanged := false
 	if pages > 1 {
 		// bridges added while the scan paged land on page 1, which was read first
 		res, err := getPage(1)
@@ -556,11 +559,17 @@ func scanBridgeServiceOnce(
 		}
 		observeCount(res.Count)
 		for _, b := range res.Bridges {
+			if list.changedSinceListed(b) {
+				headChanged = true
+			}
 			list.visit(b)
 		}
 	}
 
-	complete := !countChanged && (!reachedEnd || len(list.listed) >= count)
+	// A reorg rewrites the newest bridges first, so one that replaced bridges while the scan paged
+	// shows on page 1 even when the count did not change: a bridge may then have shifted onto a
+	// page already read
+	complete := !countChanged && !headChanged && (!reachedEnd || len(list.listed) >= count)
 	return bridgeServiceScan{
 		bridges: list.bridges, listed: list.listed, removed: list.removedEntries(), corrected: list.corrected,
 	}, complete, nil
@@ -634,6 +643,22 @@ func (l *bridgeListScan) visit(b *bridgeservicetypes.BridgeResponse) bool {
 	l.emitted[key] = len(l.bridges)
 	l.bridges = append(l.bridges, scanned)
 	return false
+}
+
+// changedSinceListed reports whether b, read again on page 1 at the end of a pass, was not listed
+// by the pass yet or was listed at another location (tx_hash / block_num): the listing changed
+// while the pass paged. Call it before visit(b)
+func (l *bridgeListScan) changedSinceListed(b *bridgeservicetypes.BridgeResponse) bool {
+	key := string(b.GlobalIndex)
+	if _, ok := l.listed[key]; !ok {
+		return true
+	}
+	i, ok := l.emitted[key]
+	if !ok {
+		return false // a known final bridge the pass stopped at: not re-read
+	}
+	prev := l.bridges[i].Bridge
+	return !strings.EqualFold(string(prev.TxHash), string(b.TxHash)) || prev.BlockNum != b.BlockNum
 }
 
 // pendingBelow reports whether a non-final known bridge of this network that has not been listed

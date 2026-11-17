@@ -262,6 +262,34 @@ func TestBridgesFrom_ShiftedListingIsScannedAgain(t *testing.T) {
 		"global index 3 shifted onto page 2 after it was read, the second pass finds it")
 }
 
+// TestBridgesFrom_HeadReplacedWithSameCountIsScannedAgain verifies a reorg that replaces the head
+// of the listing while the scan pages, without changing its count, is caught by the page 1
+// re-read: with page size 1, [5, 4, 3, 2, 1] becomes [7, 6, 3, 2, 1] after pages 1 and 2 were
+// read, so 6 never shows up in that pass; the pass is run again and finds it
+func TestBridgesFrom_HeadReplacedWithSameCountIsScannedAgain(t *testing.T) {
+	f := newReorgScanFixture(t, 1)
+	f.known = nil // first scan
+	b7 := bridgeResponse(1, 2, 4, testFromAddress, 7)
+	b6 := bridgeResponse(1, 2, 3, testFromAddress, 6)
+	b7.BlockNum, b6.BlockNum = 710, 610
+	replaced := false
+	f.svc.mu.Lock()
+	f.svc.beforeBridges = func(page int) {
+		if page == 3 && !replaced {
+			replaced = true
+			f.svc.bridgesByNetwork[1] = append([]*bridgeservicetypes.BridgeResponse{b7, b6},
+				f.svc.bridgesByNetwork[1][2:]...)
+		}
+	}
+	f.svc.mu.Unlock()
+
+	items, invalidated, warnings := f.scan(t)
+	require.Empty(t, warnings)
+	require.Empty(t, invalidated)
+	require.ElementsMatch(t, []int64{7, 6, 3, 2, 1}, keysOf(byGlobalIndex(items)),
+		"6 was shifted onto a page already read; the second pass finds it and 5, 4 are not returned")
+}
+
 // TestBridgesFrom_ListingShiftedInBothPassesKeepsTheCache verifies that when the listing changes
 // during both passes, the scan fails like any bridge-service error: nothing of the network is
 // returned or invalidated (a partial pass could invalidate a bridge that still exists), a warning is

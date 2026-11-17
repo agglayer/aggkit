@@ -245,7 +245,8 @@ The activity endpoint (`GET /tracker/v1/activity/from/{from_address}`) uses the 
   network); deeper pages are never read again. Every cached non-final bridge is re-read on each
   refresh: a different `tx_hash` / `block_num` / `block_timestamp` corrects the entry, and its
   absence (once the scan went past its position) removes it. A multi-page scan re-reads page 1 at
-  the end, and runs once more if the listing's count changed while it was paged; if it changed
+  the end, and runs once more if the listing changed while it was paged (its count changed, or the
+  re-read page 1 shows a bridge the pass had not listed or listed elsewhere); if it changed
   again during that second pass, the scan counts as failed (see below).
 - **Failures.** A bridge service that cannot be read — unreachable, any transient error, a `503`
   while it resolves a reorg, or a listing that kept changing in both passes — never removes anything: its cached entries are kept as they are, a
