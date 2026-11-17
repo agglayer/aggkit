@@ -51,8 +51,9 @@ func testAllSteps(claimed bool) []domain.BridgeStepPath {
 	step := types.StepPendingInclusion
 	stepStatus := types.StepStatusInProgress
 	if claimed {
-		step = types.StepClaimed
-		stepStatus = types.StepStatusDone
+		// a final claim: the only state a tracking is Finished (terminal) in, see
+		// domain.TrackingData.IsFinal
+		return []domain.BridgeStepPath{{Step: types.StepClaimed, Status: types.StepStatusDone, BlockFinalized: true}}
 	}
 	return []domain.BridgeStepPath{{Step: step, Status: stepStatus}}
 }

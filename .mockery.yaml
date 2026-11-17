@@ -35,6 +35,14 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
+  # Ports of the tracker's reorg re-evaluation (see bridgetracker/domain/reorg.go), mocked for the engine tests
+  github.com/agglayer/aggkit/bridgetracker/domain:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+    interfaces:
+      OriginBlockSource:
+      InjectedGERChecker:
+      SettlementHistorySource:
   # Resolver is mocked for its consumers (activity scan, tracker); ClientResolver for the tests of the package
   github.com/agglayer/aggkit/bridgetracker/finality:
     config:
