@@ -562,6 +562,10 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 			appenderFn := d.appender[l.Topics[0]]
 			attempts := 0
 			for {
+				if ctx.Err() != nil {
+					// Shutting down: return instead of retrying the cancellation error forever.
+					return nil
+				}
 				err := appenderFn(latestBlock, l)
 				if err == nil {
 					break
@@ -603,17 +607,22 @@ func (d *EVMDownloaderImplementation) getUnfilteredLogs(ctx context.Context, fro
 
 		var attempts int
 		for {
-			ctx, cancel := context.WithTimeout(ctx, DefaultFilterLogsTimeout)
-			defer cancel()
+			// The per-request timeout only bounds this single RPC call; it must not be confused
+			// with the parent (syncer) context. Passing the timeout context to the retry handler
+			// would make a request timeout look like a shutdown (and skip the backoff and the
+			// retry budget), so the handler gets the parent context and a request timeout keeps
+			// its bounded retries.
+			reqCtx, cancel := context.WithTimeout(ctx, DefaultFilterLogsTimeout)
+			logs, err := d.ethClient.FilterLogs(reqCtx, query)
+			cancel()
 
-			logs, err := d.ethClient.FilterLogs(ctx, query)
 			if err == nil {
 				results = append(results, logs...)
 				break
 			}
 
-			if errors.Is(err, context.Canceled) {
-				// context is canceled, we don't want to fatal on max attempts in this case
+			if ctx.Err() != nil {
+				// The parent (syncer) context is done: shutting down, do not retry.
 				d.log.Errorf("context is canceled getUnfilteredLogs, returning nil")
 				return nil
 			}
