@@ -130,8 +130,8 @@ jobs:
 
       - name: Install kurtosis cli and jq
         env:
-          KURTOSIS_VERSION: "1.22.2"
-          KURTOSIS_SHA256: "789be2d263e3ba731b8bc99e7bf2162f58efa8d085e481f2aecfcccbe1b46734"
+          KURTOSIS_VERSION: "1.23.0"
+          KURTOSIS_SHA256: "985bffafb6c76e6a6ed12c37a6b2d52b12fe0ccea659f93be4af1e9852b9bd4c"
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
