@@ -3,8 +3,10 @@ package bridgesync
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
+	gosync "sync"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
@@ -63,6 +65,18 @@ const (
 	bridgeLeafTypeMessage = uint8(bridgesynctypes.LeafTypeMessage)
 	bridgeLeafTypeAsset   = uint8(bridgesynctypes.LeafTypeAsset)
 )
+
+const (
+	// maxFromAddressRPCAttempts is how many times in a row a bridge event is retried when the RPC calls that
+	// resolve its from address fail. After that the event is stored with a NULL from address, so a tx that the
+	// node cannot trace (or a node without the debug API) does not halt the syncer.
+	maxFromAddressRPCAttempts = 5
+)
+
+// ErrFromAddressRPC is returned (wrapped) by ExtractTxnAddresses when an RPC call needed to resolve the from
+// address of an asset bridge event fails. The from address is optional, so callers may retry a bounded number
+// of times and then store the event without it.
+var ErrFromAddressRPC = errors.New("from address RPC failure")
 
 const (
 	// CallTypeCall is a callTracer CALL frame.
@@ -189,33 +203,117 @@ func ExtractTxnAddresses(ctx context.Context,
 		return txnSender, nil, toAddr, nil
 	}
 
-	// Extract FromAddress via debug_traceTransaction for Asset events
-	// When syncFromInBridges==true, use the original behavior (get txnSender and toAddr from rootCall)
-	foundCalls, rootCall, err := extractCallData(client, bridgeAddr, txHash, logger, func(c Call) (bool, error) {
-		if logEvent.LeafType == bridgeLeafTypeAsset {
-			return bytes.HasPrefix(c.Input, BridgeAssetMethodID), nil
-		}
-		return false, nil
-	})
+	// Extract FromAddress via debug_traceTransaction for Asset events.
+	// FromAddress is optional metadata: only RPC failures are returned (wrapped in ErrFromAddressRPC) so the
+	// caller can retry them. Anything the tx itself makes unresolvable leaves FromAddress nil (NULL) instead of
+	// failing, because the same tx would fail the same way forever and halt the syncer.
+	rootCall, err := extractRootCall(client, bridgeAddr, txHash)
 	if err != nil {
 		return common.Address{}, nil, common.Address{},
-			fmt.Errorf("extractTxnAddresses:failed to extract bridge event data (tx hash: %s): %w", txHash, err)
+			fmt.Errorf("extractTxnAddresses: %w: failed to trace tx_hash:%s: %w", ErrFromAddressRPC, txHash.Hex(), err)
 	}
 	txnSender = rootCall.From
 	toAddr = rootCall.To
-	fromAddrValue, err := ExtractFromAddrFromCalls(foundCalls, logEvent)
+
+	var foundCalls []*Call
+	if logEvent.LeafType == bridgeLeafTypeAsset {
+		foundCalls, err = findCall(*rootCall, bridgeAddr, func(c Call) (bool, error) {
+			return bytes.HasPrefix(c.Input, BridgeAssetMethodID), nil
+		}, logger)
+		if err != nil && !errors.Is(err, db.ErrNotFound) {
+			return common.Address{}, nil, common.Address{},
+				fmt.Errorf("extractTxnAddresses: failed to find bridge calls in tx_hash:%s trace: %w", txHash.Hex(), err)
+		}
+	}
+
+	fromAddr, err = resolveFromAddr(ctx, client, bridgeAddr, txHash, foundCalls, logEvent, logger)
 	if err != nil {
-		return common.Address{}, nil, common.Address{},
-			fmt.Errorf("extractTxnAddresses: failed to extract fromAddr from tx_hash:%s calls: %w",
-				txHash.Hex(), err)
+		return common.Address{}, nil, common.Address{}, err
+	}
+	return txnSender, fromAddr, toAddr, nil
+}
+
+// resolveFromAddr picks the bridgeAsset call, among the non-reverted calls to the bridge found in the trace,
+// that emitted logEvent, and returns its caller. It returns nil when the caller cannot be determined, and an
+// error (wrapping ErrFromAddressRPC) only when an RPC call fails.
+func resolveFromAddr(ctx context.Context,
+	client aggkittypes.EthClienter,
+	bridgeAddr common.Address,
+	txHash common.Hash,
+	foundCalls []*Call,
+	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent,
+	logger *logger.Logger) (*common.Address, error) {
+	if len(foundCalls) == 0 {
+		logger.Warnf("no bridgeAsset call to the bridge found in tx %s, storing a NULL from address", txHash.Hex())
+		return nil, nil
+	}
+	if from, ok := haveCommonFromForCalls(foundCalls); ok {
+		return nonZeroAddress(from), nil
 	}
 
-	// If extraction returned zero address, treat as nil (NULL in database)
-	if fromAddrValue == (common.Address{}) {
-		return txnSender, nil, toAddr, nil
+	// Several callers: pair the event with its call by position. Only bridgeAsset emits an asset BridgeEvent,
+	// once per successful call, and it is non-reentrant, so the N-th asset BridgeEvent of the tx was emitted by
+	// the N-th non-reverted bridgeAsset call in execution order. This needs the event's log index, which is only
+	// known when the event comes from a log of this tx.
+	if logEvent.LeafType == bridgeLeafTypeAsset && logEvent.Raw.TxHash == txHash {
+		position, total, err := assetBridgeEventPosition(ctx, client, bridgeAddr, txHash, logEvent.Raw.Index)
+		if err != nil {
+			return nil, fmt.Errorf("extractTxnAddresses: %w: failed to get receipt of tx_hash:%s: %w",
+				ErrFromAddressRPC, txHash.Hex(), err)
+		}
+		if position >= 0 && total == len(foundCalls) {
+			return nonZeroAddress(foundCalls[position].From), nil
+		}
+		logger.Warnf("tx %s has %d asset bridge events (this one at position %d) but %d bridgeAsset calls, "+
+			"falling back to matching the call parameters", txHash.Hex(), total, position, len(foundCalls))
 	}
 
-	return txnSender, &fromAddrValue, toAddr, nil
+	from, err := ExtractFromAddrFromCalls(foundCalls, logEvent)
+	if err != nil {
+		logger.Warnf("cannot determine the from address of the bridge event in tx %s, storing NULL: %v",
+			txHash.Hex(), err)
+		return nil, nil
+	}
+	return nonZeroAddress(from), nil
+}
+
+// assetBridgeEventPosition returns the position of the log at logIndex among the asset-leaf BridgeEvent logs that
+// bridgeAddr emitted in the tx (-1 if it is not one of them), and how many there are.
+func assetBridgeEventPosition(ctx context.Context,
+	client aggkittypes.EthClienter,
+	bridgeAddr common.Address,
+	txHash common.Hash,
+	logIndex uint) (position, total int, err error) {
+	receipt, err := client.TransactionReceipt(ctx, txHash)
+	if err != nil {
+		return 0, 0, err
+	}
+	if receipt == nil {
+		return 0, 0, fmt.Errorf("empty receipt")
+	}
+	position = -1
+	for _, l := range receipt.Logs {
+		if l == nil || l.Address != bridgeAddr || len(l.Topics) == 0 || l.Topics[0] != bridgeEventSignature {
+			continue
+		}
+		// leafType is the first, non-indexed, field: the last byte of the first data word
+		if len(l.Data) < common.HashLength || l.Data[common.HashLength-1] != bridgeLeafTypeAsset {
+			continue
+		}
+		if l.Index == logIndex {
+			position = total
+		}
+		total++
+	}
+	return position, total, nil
+}
+
+// nonZeroAddress returns nil for the zero address (stored as NULL) and a pointer to addr otherwise.
+func nonZeroAddress(addr common.Address) *common.Address {
+	if addr == (common.Address{}) {
+		return nil
+	}
+	return &addr
 }
 
 type bridgeCallParams struct {
@@ -357,6 +455,32 @@ func ExtractFromAddrFromCalls(foundCalls []*Call,
 	}
 }
 
+// logFailureCounter counts the consecutive failures of the same log. The downloader retries a failing log
+// until it succeeds before moving to the next one, so tracking the last log is enough.
+type logFailureCounter struct {
+	mu       gosync.Mutex
+	txHash   common.Hash
+	logIndex uint
+	failures int
+}
+
+// add records a failure of l and returns the number of consecutive failures of l.
+func (c *logFailureCounter) add(l types.Log) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.failures == 0 || c.txHash != l.TxHash || c.logIndex != l.Index {
+		c.txHash, c.logIndex, c.failures = l.TxHash, l.Index, 0
+	}
+	c.failures++
+	return c.failures
+}
+
+func (c *logFailureCounter) reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.failures = 0
+}
+
 // buildBridgeEventHandler creates a handler for the Bridge event log.
 func buildBridgeEventHandler(
 	ctx context.Context,
@@ -366,6 +490,7 @@ func buildBridgeEventHandler(
 	syncFromInBridges bool,
 	logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
+	rpcFailures := &logFailureCounter{}
 	return func(b *sync.EVMBlock, l types.Log) error {
 		bridgeEvent, err := contract.ParseBridgeEvent(l)
 		if err != nil {
@@ -378,9 +503,16 @@ func buildBridgeEventHandler(
 
 		txnSender, fromAddress, toAddress, err := ExtractTxnAddresses(ctx, client, bridgeAddr, l.TxHash,
 			bridgeEvent, logger, syncFromInBridges)
+		if err != nil && errors.Is(err, ErrFromAddressRPC) && rpcFailures.add(l) >= maxFromAddressRPCAttempts {
+			logger.Warnf("giving up on the from address of the bridge event in tx %s (log index %d) after %d "+
+				"attempts, storing NULL: %v", l.TxHash.Hex(), l.Index, maxFromAddressRPCAttempts, err)
+			txnSender, fromAddress, toAddress, err = ExtractTxnAddresses(ctx, client, bridgeAddr, l.TxHash,
+				bridgeEvent, logger, false)
+		}
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event data (tx hash: %s): %w", l.TxHash, err)
 		}
+		rpcFailures.reset()
 
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
 			BlockNum:           b.Num,
@@ -552,7 +684,8 @@ type tracerCfg struct {
 	Tracer string `json:"tracer"`
 }
 
-// findCall traverses the call trace using DFS and either returns the call or stops when a callback succeeds.
+// findCall traverses the call trace depth first and returns, in execution order, the non-reverted calls to
+// targetAddr accepted by the callback.
 func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (bool, error), logger *logger.Logger,
 ) ([]*Call, error) {
 	callStack := stack.New()
@@ -586,9 +719,9 @@ func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (boo
 			}
 		}
 
-		// Add non-reverted calls to the stack
-		for _, c := range currentCall.Calls {
-			if c.Err == nil {
+		// Add non-reverted calls to the stack, last first, so they are visited in execution order
+		for i := len(currentCall.Calls) - 1; i >= 0; i-- {
+			if c := currentCall.Calls[i]; c.Err == nil {
 				callStack.Push(c)
 			}
 		}
