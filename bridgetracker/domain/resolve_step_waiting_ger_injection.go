@@ -78,7 +78,16 @@ func (r *WaitingGERInjectionResolver) Resolve(
 func (r *WaitingGERInjectionResolver) getLeafIndexFromPreviousStep(
 	tracking *TrackingData, idx int,
 ) (uint32, error) {
-	steps := tracking.AllSteps()
+	return injectionLeafIndex(tracking.AllSteps(), idx)
+}
+
+// injectionLeafIndex returns the L1 info tree leaf index the StepWaitingGERInjection at idx waits
+// for on the destination network, read off the step right before it. Shared by the resolver and
+// by ReverifySteps, which re-checks that same leaf is still injected
+func injectionLeafIndex(steps []BridgeStepPath, idx int) (uint32, error) {
+	if idx < 1 || idx >= len(steps) {
+		return 0, fmt.Errorf("no step before StepWaitingGERInjection at index %d", idx)
+	}
 	switch steps[idx-1].Step {
 	case types.StepWaitL1SettledGER:
 		settlement := steps[idx-1].ResultL1SettledGer

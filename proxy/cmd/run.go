@@ -299,11 +299,9 @@ func runTracker(
 		log.WithFields("module", "bridgetracker-gersource"))
 
 	// Decides whether a bridge or claim reported by a bridge service is final (see finality.Resolver):
-	// block_finalized when the bridge service sends it, a receipt lookup otherwise. It will be
-	// consumed by the activity scan (#1968), the settled rule (#1969) and the tracker (#1970); until
-	// they are wired it is only built, so a wrong setting is rejected and warned about at startup.
+	// block_finalized when the bridge service sends it, a receipt lookup otherwise. The tracker engine
+	// uses it for the finality of the origin bridge and of the claim, which closes a tracking (#1970).
 	finalityResolver := newFinalityResolver(trackerCfg, rpcClients)
-	_ = finalityResolver
 
 	// GET /activity/from/{from_address} scans every network the finder knows about (via
 	// finder.NetworkIDs) for bridges sent by an address, and resolves their claim state through
@@ -372,6 +370,9 @@ func runTracker(
 				Settlement: sources.NewSettlementSource(
 					rpcClients, trackerCfg.L1BlockFinality, trackerCfg.L1GlobalExitRootAddress),
 				SettlementHistory: certificateSource,
+				OriginBlocks:      rpcClientsBlockHashVerifier{clients: rpcClients},
+				Finality:          finalityResolver,
+				InjectedGERs:      gerSource,
 			}
 		}(),
 	)

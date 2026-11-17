@@ -179,7 +179,8 @@ func (r *memoryRegistry) UpdateTrackingBridgeTx(id TrackingID, tx domain.Trackin
 		return domain.ErrTrackingNotFound
 	}
 	if entry.tracking.TrackingBridgeTx().String() != tx.String() {
-		entry.tracking = domain.NewTrackingData(id, tx, entry.tracking.AllSteps())
+		// a tx without Info has no path: its steps are dropped (see domain.ResetBridgeTx)
+		entry.tracking = domain.NewTrackingData(id, tx, domain.StepsForTx(tx, entry.tracking.AllSteps()))
 	}
 	// every batch of changes ends in this call (see UpdateTrackingStep), so this is the single
 	// place where an entry can be seen turning terminal, whichever field did it
@@ -231,7 +232,7 @@ func (r *memoryRegistry) UpdateTracking(id TrackingID, tx domain.TrackingBridgeT
 	if !entry.tracking.TerminallyFailed() {
 		steps = domain.MergeSteps(steps, allSteps)
 	}
-	entry.tracking = domain.NewTrackingData(id, tx, steps)
+	entry.tracking = domain.NewTrackingData(id, tx, domain.StepsForTx(tx, steps))
 	if entry.terminalSince.IsZero() && entry.tracking.IsTerminal() {
 		entry.terminalSince = r.now()
 	}
@@ -240,7 +241,8 @@ func (r *memoryRegistry) UpdateTracking(id TrackingID, tx domain.TrackingBridgeT
 }
 
 // GetTrackerActives implements SupervisedStore: snapshots of the entries that never failed
-// to resolve whose TrackingStatus is not yet Finished, optionally filtered to one network
+// to resolve whose TrackingStatus is not yet Finished, optionally filtered to one network. A
+// claimed bridge whose claim is not final yet is still active (see domain.TrackingData.IsFinal)
 func (r *memoryRegistry) GetTrackerActives(networkID *uint32) ([]*domain.TrackingData, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

@@ -394,6 +394,11 @@ type fakeBridgeService struct {
 	claimTxHash         string
 	claimBlockNum       uint64
 	claimBlockTimestamp uint64
+	// claimBlockFinalized, when set, is served as the claim's block_finalized (omitted otherwise)
+	claimBlockFinalized *bool
+	// injectedLeafStatus, when non-zero, is the HTTP status injected-l1-info-leaf answers with
+	// instead of the leaf (e.g. 503 while the bridge service resolves a reorg)
+	injectedLeafStatus int
 
 	// lastLeafIndexQuery records the leaf_index of the last injected-l1-info-leaf request
 	lastLeafIndexQuery string
@@ -426,6 +431,11 @@ func (f *fakeBridgeService) startAt(t *testing.T, networkID uint32) staticURLs {
 	mux.HandleFunc("/bridge/v1/injected-l1-info-leaf", func(w http.ResponseWriter, r *http.Request) {
 		f.lastLeafIndexQuery = r.URL.Query().Get("leaf_index")
 		f.lastNetworkIDQuery = r.URL.Query().Get("network_id")
+		if f.injectedLeafStatus != 0 {
+			w.WriteHeader(f.injectedLeafStatus)
+			fmt.Fprint(w, `{"error":"a syncer is temporarily inconsistent (reorg being resolved)"}`)
+			return
+		}
 		if f.injectedLeaf == nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprint(w, `{"error":"error getting injected info after index: not found"}`)
@@ -439,8 +449,12 @@ func (f *fakeBridgeService) startAt(t *testing.T, networkID uint32) staticURLs {
 			fmt.Fprint(w, `{"claims":[],"count":0}`)
 			return
 		}
-		fmt.Fprintf(w, `{"claims":[{"tx_hash":"%s","block_num":%d,"block_timestamp":%d}],"count":%d}`,
-			f.claimTxHash, f.claimBlockNum, f.claimBlockTimestamp, f.claimsCount)
+		finalized := ""
+		if f.claimBlockFinalized != nil {
+			finalized = fmt.Sprintf(`,"block_finalized":%t`, *f.claimBlockFinalized)
+		}
+		fmt.Fprintf(w, `{"claims":[{"tx_hash":"%s","block_num":%d,"block_timestamp":%d%s}],"count":%d}`,
+			f.claimTxHash, f.claimBlockNum, f.claimBlockTimestamp, finalized, f.claimsCount)
 	})
 
 	server := httptest.NewServer(mux)
@@ -898,6 +912,48 @@ func TestClaimSourceClaimFor(t *testing.T) {
 	require.Equal(t, common.HexToHash("0x0d"), claim.ClaimTx)
 	require.Equal(t, uint64(50), claim.BlockNumber)
 	require.Equal(t, uint64(1700000000), claim.BlockTimestamp)
+	require.Nil(t, claim.ReportedFinalized, "block_finalized omitted")
+
+	// block_finalized is carried to the finality check that closes the tracking (#1970)
+	finalized := true
+	fake.claimBlockFinalized = &finalized
+	claim, err = source.ClaimFor(t.Context(), l1ToL2Bridge())
+	require.NoError(t, err)
+	require.NotNil(t, claim.ReportedFinalized)
+	require.True(t, *claim.ReportedFinalized)
+}
+
+// TestGERSourceInjectedGERPresent pins the cheap re-check of a completed GER injection (#1970):
+// one injected-l1-info-leaf request, no L2 scan; a 404 is "gone", a 503 (reorg being resolved by
+// the bridge service) is an error the caller keeps the step through
+func TestGERSourceInjectedGERPresent(t *testing.T) {
+	fake := &fakeBridgeService{}
+	// strict mock without expectations: the L2 must never be scanned here
+	source := NewGERSource(fake.start(t), StaticClients{1: mocks.NewBaseEthereumClienter(t)}, common.Address{},
+		aggkittypes.FinalizedBlock, nil, 0, log.WithFields("module", "sources_test"))
+
+	present, finalized, err := source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	require.NoError(t, err)
+	require.False(t, present)
+	require.False(t, finalized)
+	require.Equal(t, "42", fake.lastLeafIndexQuery)
+	require.Equal(t, "1", fake.lastNetworkIDQuery)
+
+	fake.injectedLeaf = map[string]any{"l1_info_tree_index": 42, "global_exit_root": "0x0a"}
+	present, finalized, err = source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	require.NoError(t, err)
+	require.True(t, present)
+	require.False(t, finalized, "block_finalized omitted: not final")
+
+	fake.injectedLeaf["block_finalized"] = true
+	present, finalized, err = source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	require.NoError(t, err)
+	require.True(t, present)
+	require.True(t, finalized)
+
+	fake.injectedLeafStatus = http.StatusServiceUnavailable
+	_, _, err = source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	require.Error(t, err)
 }
 
 // rootCallOutput ABI-encodes the bridge contract's getRoot() return value, like a JSON-RPC

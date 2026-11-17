@@ -654,7 +654,8 @@ func TestResolveStepsOnTerminalStepErrorIsRescuedWhenClaimed(t *testing.T) {
 	require.Equal(t, types.StepStatusDone, claimedStep.Status)
 	require.Equal(t, claim, claimedStep.Result())
 
-	require.Equal(t, types.TrackingStatusFinished, result.TrackingStatus())
+	// ResolveSteps alone never closes a tracking: the claim is not known final yet (#1970)
+	require.Equal(t, types.TrackingStatusRunning, result.TrackingStatus())
 	require.Equal(t, types.TrackerClaimStatusClaimed, result.ClaimStatus())
 }
 
@@ -703,7 +704,8 @@ func TestResolveStepsSkipsOnAlreadyClaimed(t *testing.T) {
 	require.Equal(t, types.StepStatusDone, claimed.Status, "StepClaimed is resolved for real, never skipped")
 	require.Equal(t, claim, claimed.Result())
 
-	require.Equal(t, types.TrackingStatusFinished, result.TrackingStatus())
+	// ResolveSteps alone never closes a tracking: the claim is not known final yet (#1970)
+	require.Equal(t, types.TrackingStatusRunning, result.TrackingStatus())
 	require.Equal(t, types.TrackerClaimStatusClaimed, result.ClaimStatus())
 }
 
@@ -779,7 +781,7 @@ func TestResolveStepsRecoversAfterResolverTimeout(t *testing.T) {
 	require.Equal(t, types.StepErrorTransient, recovered.AllSteps()[0].Error.ErrorType,
 		"keeps its own real error type, not StepErrorSkipped")
 	require.Contains(t, recovered.AllSteps()[0].Error.Description[0], context.DeadlineExceeded.Error())
-	require.Equal(t, types.TrackingStatusFinished, recovered.TrackingStatus())
+	require.Equal(t, types.TrackerClaimStatusClaimed, recovered.ClaimStatus())
 	require.Equal(t, claim, recovered.AllSteps()[len(recovered.AllSteps())-1].Result())
 }
 

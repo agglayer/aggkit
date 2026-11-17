@@ -132,14 +132,20 @@ func isTerminalStepError(step BridgeStepPath) bool {
 // anything else (including a transient failure still being retried) as Registered. A step in
 // StepStatusError follows the same rule as the tx-level one: only a terminal cause
 // (permanent, or exhausted) reads as Error, a still-retryable transient one reads as Running,
-// same as an in-progress step (see isTransientStepError)
+// same as an in-progress step (see isTransientStepError). Every step done (Claimed reached)
+// only reads as Finished once the claim is final (see IsFinal): until then a reorg can still
+// move the bridge back, so it reads as Running and stays supervised (agglayer/aggkit#1970)
 func (t *TrackingData) TrackingStatus() types.TrackingStatus {
 	if t == nil {
 		return types.TrackingStatusError
 	}
 	stepIndex := t.StepIndex()
 	if stepIndex != nil {
-		return convertStepStatusToTrackingStatus(t.allSteps[*stepIndex])
+		status := convertStepStatusToTrackingStatus(t.allSteps[*stepIndex])
+		if status == types.TrackingStatusFinished && !t.IsFinal() {
+			return types.TrackingStatusRunning
+		}
+		return status
 	}
 	if t.trackingBridgeTx.IsInTerminalError() {
 		return types.TrackingStatusError
@@ -154,7 +160,8 @@ func (t *TrackingData) TrackingStatus() types.TrackingStatus {
 // that only care about "is this claimable" without walking AllSteps themselves:
 // TrackingStatusError takes priority (types.TrackerClaimStatusError, whether the tracker gave
 // up resolving the bridge at all or one of its steps reached an error); otherwise the current
-// step decides — types.TrackerClaimStatusClaimed for StepClaimed only once that step is done,
+// step decides — for StepClaimed, once that step is done, types.TrackerClaimStatusClaimedFinalized
+// if the claim's block is final (see IsFinal) and types.TrackerClaimStatusClaimed otherwise,
 // types.TrackerClaimStatusReadyToClaim for StepWaitingClaim, and types.TrackerClaimStatusPending
 // for every other step, including before the bridge resolves (StepIndex nil)
 func (t *TrackingData) ClaimStatus() types.TrackerClaimStatus {
@@ -167,6 +174,9 @@ func (t *TrackingData) ClaimStatus() types.TrackerClaimStatus {
 		case types.StepClaimed:
 			if step.Status != types.StepStatusDone {
 				return types.TrackerClaimStatusPending
+			}
+			if step.BlockFinalized {
+				return types.TrackerClaimStatusClaimedFinalized
 			}
 			return types.TrackerClaimStatusClaimed
 		case types.StepWaitingClaim:
@@ -209,12 +219,37 @@ func (t *TrackingData) Failed() bool {
 	return t.TrackingStatus() == types.TrackingStatusError && t.Info() == nil
 }
 
-// IsTerminal reports whether the snapshot will never change again: the bridge finished, or the
-// tracker gave up resolving it. It is exactly the predicate a SupervisedStore's active-list
-// query (GetTrackerActives) excludes by — an entry out of the active list is never updated
-// again, so a store is free to forget it once its own retention window elapses
+// IsTerminal reports whether the snapshot will never change again: the bridge finished (its
+// claim is final, see IsFinal), or the tracker gave up resolving it. It is exactly the
+// predicate a SupervisedStore's active-list query (GetTrackerActives) excludes by — an entry out
+// of the active list is never updated again, so a store is free to forget it once its own
+// retention window elapses. A claimed bridge whose claim is not final yet is not terminal: it
+// stays in the active list, re-evaluated on every tick in case a reorg moves it back
 func (t *TrackingData) IsTerminal() bool {
 	return t.Failed() || t.TrackingStatus() == types.TrackingStatusFinished
+}
+
+// IsFinal reports whether the tracking is closed for good: its StepClaimed is done and backed
+// by a claim whose block is final (BridgeStepPath.BlockFinalized). It is the closing rule of
+// agglayer/aggkit#1970 — a final claim implies every fact before it (the claim runs on the same
+// chain as the GER injection, at or after its block), so nothing of a final tracking is ever
+// re-evaluated again. Until then completed steps can be re-checked and the tracking can move
+// backwards (see ReverifySteps)
+func (t *TrackingData) IsFinal() bool {
+	if t == nil {
+		return false
+	}
+	idx := indexOfStep(t.allSteps, types.StepClaimed)
+	return idx >= 0 && t.allSteps[idx].Status == types.StepStatusDone && t.allSteps[idx].BlockFinalized
+}
+
+// ClaimDone reports whether StepClaimed is done, final or not
+func (t *TrackingData) ClaimDone() bool {
+	if t == nil {
+		return false
+	}
+	idx := indexOfStep(t.allSteps, types.StepClaimed)
+	return idx >= 0 && t.allSteps[idx].Status == types.StepStatusDone
 }
 
 // TerminallyFailed reports whether the tracker gave up resolving the bridge's tx at all: a

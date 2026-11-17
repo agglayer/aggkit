@@ -201,8 +201,9 @@ definitions:
         description: |-
           BlockFinalized is whether BlockNumber is final on the origin network, i.e. it can no
           longer be removed by a reorg. Always serialized (no omitempty): false means "not final yet
-          (or not known)" — the client keeps polling until it turns true. It is false for every
-          bridge until the tracker follow-up populates it (agglayer/aggkit#1970)
+          (or not known)" — the client keeps polling until it turns true. The tracker sets it once it
+          proves the bridge tx final in BlockNumber (finality resolver), or once the claim is final,
+          which implies it; it never goes back to false
         type: boolean
       block_number:
         description: BlockNumber is the block, on the origin network, where the BridgeEvent
@@ -292,10 +293,10 @@ definitions:
           "readyToClaim", "claimed", "claimed_finalized" or "error" — see
           domain.TrackingData.ClaimStatus for exactly how it is derived from TrackingStatus and the
           current step. "claimed_finalized" is the only final state: "claimed" can still go back to
-          "readyToClaim" or "pending" if a reorg removes the claim. It is not produced yet
-          (agglayer/aggkit#1970). For most clients this is all that is needed to know whether the
-          bridge can be claimed; TrackingStatus/AllSteps remain for anything that needs the full
-          detail
+          "readyToClaim" or "pending" if a reorg removes the claim, and TrackingStatus only reads
+          "finished" once it is "claimed_finalized". For most clients this is all that is needed to
+          know whether the bridge can be claimed; TrackingStatus/AllSteps remain for anything that
+          needs the full detail
         enum:
         - pending
         - readyToClaim
@@ -352,12 +353,27 @@ definitions:
         - 1000000000
         - 60000000000
         - 3600000000000
+        - -9223372036854775808
+        - 9223372036854775807
         - 1
         - 1000
         - 1000000
         - 1000000000
         - 60000000000
         - 3600000000000
+        - -9223372036854775808
+        - 9223372036854775807
+        - 1
+        - 1000
+        - 1000000
+        - 1000000000
+        - 60000000000
+        - 3600000000000
+        - 1
+        - 1000
+        - 1000000
+        - 1000000000
+        - 60000000000
         - 1
         - 1000
         - 1000000
@@ -383,12 +399,27 @@ definitions:
         - Second
         - Minute
         - Hour
+        - minDuration
+        - maxDuration
         - Nanosecond
         - Microsecond
         - Millisecond
         - Second
         - Minute
         - Hour
+        - minDuration
+        - maxDuration
+        - Nanosecond
+        - Microsecond
+        - Millisecond
+        - Second
+        - Minute
+        - Hour
+        - Nanosecond
+        - Microsecond
+        - Millisecond
+        - Second
+        - Minute
         - Nanosecond
         - Microsecond
         - Millisecond

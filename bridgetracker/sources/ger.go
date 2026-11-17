@@ -367,6 +367,32 @@ func (s *GERSource) InjectedGERAtIndex(
 	return gerData, nil
 }
 
+// InjectedGERPresent implements domain.InjectedGERChecker: whether leafIndex (or a later leaf) is
+// still injected on bridge's destination network, per one GET injected-l1-info-leaf — unlike
+// InjectedGERAtIndex it never falls back to scanning the L2 for the injection block, so it stays
+// cheap enough to re-check a completed StepWaitingGERInjection on every tick. finalized is the
+// block_finalized the bridge service reports for the leaf (the L1 block of the leaf and the L2
+// injection block), false when omitted. A 404 is the injection gone; any other error (a 503
+// while the bridge service resolves a reorg included) is returned as is: the caller keeps the
+// step as it is and asks again later
+func (s *GERSource) InjectedGERPresent(
+	ctx context.Context, bridge *bridgetracker.BridgeInfo, leafIndex uint32,
+) (present, finalized bool, err error) {
+	svc, err := s.services.aggkitBridgeClientFor(bridge.DestinationNetwork)
+	if err != nil {
+		return false, false, err
+	}
+	leaf, err := svc.GetInjectedL1InfoLeaf(ctx, int(bridge.DestinationNetwork), int(leafIndex))
+	if isNotFound(err) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, fmt.Errorf("fetching injected L1 info leaf %d on network %d: %w",
+			leafIndex, bridge.DestinationNetwork, err)
+	}
+	return true, leaf.BlockFinalized != nil && *leaf.BlockFinalized, nil
+}
+
 // l2BlockTimestamp resolves blockNumber's own timestamp on networkID via a single header
 // lookup — used by InjectedGERAtIndex once the bridge-service already reports the L2 injection
 // block itself, just not (yet) its own timestamp
