@@ -86,6 +86,18 @@ type ActivityEngine struct {
 	// ticking is true while a tick is in flight; guards against Start's loop stacking overlapping
 	// ticks (see startTick)
 	ticking atomic.Bool
+
+	// addrLocksMu guards addrLocks, the per-address locks that serialize RefreshAddress calls of
+	// one address (see lockAddress)
+	addrLocksMu sync.Mutex
+	addrLocks   map[common.Address]*addressLock
+}
+
+// addressLock is the lock of one address (a 1-slot channel, so waiting on it can be cancelled),
+// with the number of refreshes holding or waiting for it: the entry is dropped when it reaches 0
+type addressLock struct {
+	slot chan struct{}
+	refs int
 }
 
 // NewActivityEngine returns an activity engine over the given store
@@ -98,7 +110,8 @@ func NewActivityEngine(
 	cfg = cfg.withDefaults()
 	return &ActivityEngine{
 		logger: logger, cfg: cfg, store: store, now: time.Now,
-		sem: make(chan struct{}, cfg.MaxConcurrentRefreshes),
+		sem:       make(chan struct{}, cfg.MaxConcurrentRefreshes),
+		addrLocks: make(map[common.Address]*addressLock),
 	}, nil
 }
 
@@ -157,8 +170,20 @@ func (e *ActivityEngine) startTick(ctx context.Context) {
 // ActivityEngineConfig.MaxConcurrentRefreshes) and runs one refresh for addr, bounded by
 // ActivityEngineConfig.RefreshTimeout so one hung network scan or RPC client cannot occupy that
 // slot indefinitely. Shared by both tick's regular sweep and the trigger fast-path. Errors are
-// logged, never fatal to the loop
+// logged, never fatal to the loop.
+//
+// Refreshes of the same address never overlap: a trigger can arrive while a tick is refreshing
+// that address, and a refresh applies a plan computed from the entries it read before scanning
+// (see domain.PlanActivityRefresh), so an older plan applied after a newer one could overwrite or
+// remove what the newer one just settled. The second refresh waits for the first (before taking a
+// concurrency slot) and then reads the entries afresh
 func (e *ActivityEngine) refreshOne(ctx context.Context, fromAddress common.Address) {
+	unlock, ok := e.lockAddress(ctx, fromAddress)
+	if !ok {
+		return
+	}
+	defer unlock()
+
 	select {
 	case e.sem <- struct{}{}:
 	case <-ctx.Done():
@@ -173,6 +198,38 @@ func (e *ActivityEngine) refreshOne(ctx context.Context, fromAddress common.Addr
 	defer cancel()
 	if err := e.store.RefreshAddress(refreshCtx, fromAddress); err != nil {
 		e.logger.Warnf("failed to refresh activity address %s: %v", fromAddress, err)
+	}
+}
+
+// lockAddress waits until no other refresh of fromAddress is running and returns the function
+// that releases it; ok is false when ctx ends first
+func (e *ActivityEngine) lockAddress(ctx context.Context, fromAddress common.Address) (unlock func(), ok bool) {
+	e.addrLocksMu.Lock()
+	lock, exists := e.addrLocks[fromAddress]
+	if !exists {
+		lock = &addressLock{slot: make(chan struct{}, 1)}
+		e.addrLocks[fromAddress] = lock
+	}
+	lock.refs++
+	e.addrLocksMu.Unlock()
+
+	release := func() {
+		e.addrLocksMu.Lock()
+		lock.refs--
+		if lock.refs == 0 {
+			delete(e.addrLocks, fromAddress)
+		}
+		e.addrLocksMu.Unlock()
+	}
+	select {
+	case lock.slot <- struct{}{}:
+		return func() {
+			<-lock.slot
+			release()
+		}, true
+	case <-ctx.Done():
+		release()
+		return nil, false
 	}
 }
 

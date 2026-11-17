@@ -361,7 +361,9 @@ type ActivitySupervisedStore interface {
 	// RefreshAddress performs the actual scan (ActivityBridgeScanner.BridgesFrom) plus
 	// claim/tracking recheck for fromAddress — what GetActivity itself used to do inline — and
 	// notifies whoever is blocked in RegisterAndAwait for it. Only ever called by ActivityEngine,
-	// never directly by an HTTP handler
+	// never directly by an HTTP handler, and never twice at once for the same fromAddress (the
+	// plan a refresh applies is computed from the entries it read before scanning, see
+	// PlanActivityRefresh, so overlapping refreshes of one address could apply a stale plan)
 	RefreshAddress(ctx context.Context, fromAddress common.Address) error
 
 	// PruneIdle forgets addresses whose cache has not been accessed (GetActivity/
