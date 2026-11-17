@@ -2,7 +2,9 @@ package multidownloader
 
 import (
 	"testing"
+	"time"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
@@ -17,6 +19,7 @@ func TestNewConfigDefault(t *testing.T) {
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.BlockFinality, "BlockFinality should be FinalizedBlock")
 	require.Equal(t, types.NewDuration(defaultWaitPeriodToCheckCatchUp), cfg.WaitPeriodToCheckCatchUp, "WaitPeriodToCheckCatchUp should be 10 seconds")
 	require.Equal(t, types.NewDuration(defaultPeriodToCheckReorgs), cfg.PeriodToCheckReorgs, "PeriodToCheckReorgs should be 5 seconds")
+	require.Equal(t, newDefaultRetryAfterError(), cfg.RetryAfterError)
 
 	require.True(t, cfg.Enabled, "Enabled should be true by default")
 }
@@ -49,6 +52,43 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectError: true,
 			errorMsg:    "MultidownloaderConfig.BlockChunkSize",
+		},
+		{
+			name: "unset RetryAfterError uses the default",
+			modifyConfig: func(cfg *Config) {
+				cfg.RetryAfterError = aggkitcommon.RetryPolicyGenericConfig{}
+			},
+			expectError: false,
+		},
+		{
+			name: "RetryAfterError with finite MaxRetries",
+			modifyConfig: func(cfg *Config) {
+				cfg.RetryAfterError.MaxRetries = 3
+			},
+			expectError: true,
+			errorMsg:    "MultidownloaderConfig.RetryAfterError: MaxRetries must be -1",
+		},
+		{
+			name: "RetryAfterError delays mode without delays",
+			modifyConfig: func(cfg *Config) {
+				cfg.RetryAfterError.Delays = nil
+			},
+			expectError: true,
+			errorMsg:    "MultidownloaderConfig.RetryAfterError",
+		},
+		{
+			name: "RetryAfterError backoff mode with invalid multiplier",
+			modifyConfig: func(cfg *Config) {
+				cfg.RetryAfterError = aggkitcommon.RetryPolicyGenericConfig{
+					Mode:              aggkitcommon.RetryConfigModeBackoff,
+					MaxRetries:        aggkitcommon.MaxAttemptsInfinite,
+					InitialBackoff:    types.NewDuration(time.Second),
+					MaxBackoff:        types.NewDuration(time.Minute),
+					BackoffMultiplier: 1,
+				}
+			},
+			expectError: true,
+			errorMsg:    "MultidownloaderConfig.RetryAfterError",
 		},
 		{
 			name: "zero MaxParallelBlockHeaderRetrieval",

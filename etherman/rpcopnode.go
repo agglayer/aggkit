@@ -39,11 +39,13 @@ func NewRPCClientModeOp(ctx context.Context,
 	if err != nil {
 		opNodeURL, err = cfg.GetString(strings.ToLower(ExtraParamFieldName))
 		if err != nil {
-			return nil, fmt.Errorf("field %s not found in extra params (%+v). Err: %w", ExtraParamFieldName, cfg, err)
+			return nil, fmt.Errorf("field %s not found in extra params of RPC client %s. Err: %w",
+				ExtraParamFieldName, aggkitcommon.URLSchemeHost(cfg.URL), err)
 		}
 	}
 
-	log.Debugf("Creating OPNode RPC client with URL %s %s:%s", cfg.URL, ExtraParamFieldName, opNodeURL)
+	log.Debugf("Creating OPNode RPC client with URL %s %s:%s", aggkitcommon.URLSchemeHost(cfg.URL),
+		ExtraParamFieldName, aggkitcommon.URLSchemeHost(opNodeURL))
 	ethClient, err := DialWithRetry(ctx, logger, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("fails to create RPC client. Err: %w", err)

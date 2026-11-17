@@ -552,8 +552,10 @@ func TestFindCallWithMixedMethods(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, founds)
 	require.Equal(t, bridgeAddr, founds[0].To)
-	// Note: DFS traversal processes calls in reverse order (stack), so it finds claimMessage first
-	require.Equal(t, claimMessageEtrogMethodID, []byte(founds[0].Input[:4])) // Should find the first claim method in DFS order
+	// Calls are returned in execution order
+	require.Len(t, founds, 2)
+	require.Equal(t, claimAssetEtrogMethodID, []byte(founds[0].Input[:4]))
+	require.Equal(t, claimMessageEtrogMethodID, []byte(founds[1].Input[:4]))
 }
 
 func TestFindCallWithOnlyUnrecognizedMethods(t *testing.T) {
@@ -788,7 +790,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 			expectedTo:        common.HexToAddress("0x2222222222222222222222222222222222222222"),
 		},
 		{
-			name: "assetLeaf: error can't find From from calls",
+			name: "assetLeaf: no bridgeAsset call in the trace stores a nil From",
 			logEvent: &agglayerbridge.AgglayerbridgeBridgeEvent{
 				LeafType:           bridgeLeafTypeAsset,
 				DestinationNetwork: 1,
@@ -812,7 +814,7 @@ func TestExtractTxnAddresses(t *testing.T) {
 					},
 				},
 			},
-			expectErr: "failed to extract",
+			expectedFrom: nil,
 		},
 		{
 			name: "assetLeaf: successful extraction with to address from rootCall",
@@ -937,4 +939,285 @@ func TestExtractParamFromCallData(t *testing.T) {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+// multiCallerFixture is a tx in which two contracts (0x1 and 0x2) each call bridgeAsset with the same arguments,
+// which the from address extraction cannot tell apart from the call parameters alone.
+type multiCallerFixture struct {
+	bridgeAddr common.Address
+	txHash     common.Hash
+	txnSender  common.Address
+	txTo       common.Address
+	callerA    common.Address
+	callerB    common.Address
+	token      common.Address
+	trace      Call
+}
+
+func newMultiCallerFixture(t *testing.T) multiCallerFixture {
+	t.Helper()
+	bridgeABI, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
+	require.NoError(t, err)
+	f := multiCallerFixture{
+		bridgeAddr: common.HexToAddress("0x10"),
+		txHash:     common.HexToHash("0xabc1"),
+		txnSender:  common.HexToAddress("0xe0a"),
+		txTo:       common.HexToAddress("0xc0de"),
+		callerA:    common.HexToAddress("0x1"),
+		callerB:    common.HexToAddress("0x2"),
+		token:      common.HexToAddress("0x70"),
+	}
+	input, err := bridgeABI.Pack("bridgeAsset", uint32(1), common.HexToAddress("0x30"), big.NewInt(100),
+		f.token, true, []byte{})
+	require.NoError(t, err)
+	f.trace = Call{
+		Type: CallTypeCall,
+		From: f.txnSender,
+		To:   f.txTo,
+		Calls: []Call{
+			{Type: CallTypeCall, From: f.txTo, To: f.callerA, Calls: []Call{
+				{Type: CallTypeCall, From: f.callerA, To: f.bridgeAddr, Input: input},
+			}},
+			{Type: CallTypeCall, From: f.txTo, To: f.callerB, Calls: []Call{
+				{Type: CallTypeCall, From: f.callerB, To: f.bridgeAddr, Input: input},
+			}},
+		},
+	}
+	return f
+}
+
+// bridgeEventLog builds a BridgeEvent log of the fixture tx emitted by the bridge at logIndex.
+func (f multiCallerFixture) bridgeEventLog(t *testing.T, leafType uint8, originAddr common.Address,
+	amount int64, logIndex uint) types.Log {
+	t.Helper()
+	bridgeABI, err := agglayerbridge.AgglayerbridgeMetaData.GetAbi()
+	require.NoError(t, err)
+	data, err := bridgeABI.Events["BridgeEvent"].Inputs.Pack(leafType, uint32(0), originAddr, uint32(1),
+		common.HexToAddress("0x30"), big.NewInt(amount), []byte{}, uint32(logIndex))
+	require.NoError(t, err)
+	return types.Log{
+		Address: f.bridgeAddr,
+		Topics:  []common.Hash{bridgeEventSignature},
+		Data:    data,
+		TxHash:  f.txHash,
+		Index:   logIndex,
+	}
+}
+
+func (f multiCallerFixture) mockClient(t *testing.T, traceErr error, receipt *types.Receipt,
+	receiptErr error) *mocks.EthClienter {
+	t.Helper()
+	ethClient := mocks.NewEthClienter(t)
+	ethClient.EXPECT().Call(mock.Anything, GetTransactionByHashEndpoint, mock.Anything).
+		Run(func(result any, method string, args ...any) {
+			tx, ok := result.(*Transaction)
+			require.True(t, ok)
+			tx.FromRaw = f.txnSender.Hex()
+			tx.To = f.txTo.Hex()
+		}).Return(nil).Maybe()
+	ethClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(result any, method string, args ...any) {
+			if traceErr != nil {
+				return
+			}
+			call, ok := result.(*Call)
+			require.True(t, ok)
+			*call = f.trace
+		}).Return(traceErr).Maybe()
+	ethClient.EXPECT().TransactionReceipt(mock.Anything, f.txHash).Return(receipt, receiptErr).Maybe()
+	return ethClient
+}
+
+func TestExtractTxnAddressesMultipleCallers(t *testing.T) {
+	f := newMultiCallerFixture(t)
+	wrappedOrigin := common.HexToAddress("0x99") // differs from the token the calls pass
+	logger := logger.WithFields("module", "test")
+	parse := func(t *testing.T, l types.Log) *agglayerbridge.AgglayerbridgeBridgeEvent {
+		t.Helper()
+		contract, err := agglayerbridge.NewAgglayerbridgeFilterer(f.bridgeAddr, nil)
+		require.NoError(t, err)
+		ev, err := contract.ParseBridgeEvent(l)
+		require.NoError(t, err)
+		return ev
+	}
+	withoutRaw := func(ev *agglayerbridge.AgglayerbridgeBridgeEvent) *agglayerbridge.AgglayerbridgeBridgeEvent {
+		ev.Raw = types.Log{}
+		return ev
+	}
+	// The receipt of the tx: an unrelated log, the two asset events, and a message event of the bridge.
+	receipt := &types.Receipt{Logs: []*types.Log{
+		{Address: common.HexToAddress("0x77"), Topics: []common.Hash{bridgeEventSignature}, Index: 1},
+		ptrLog(f.bridgeEventLog(t, bridgeLeafTypeAsset, wrappedOrigin, 99, 3)),
+		ptrLog(f.bridgeEventLog(t, bridgeLeafTypeMessage, common.Address{}, 0, 4)),
+		ptrLog(f.bridgeEventLog(t, bridgeLeafTypeAsset, wrappedOrigin, 99, 6)),
+	}}
+
+	tests := []struct {
+		name         string
+		event        *agglayerbridge.AgglayerbridgeBridgeEvent
+		traceErr     error
+		receipt      *types.Receipt
+		receiptErr   error
+		expectedFrom *common.Address
+		expectErr    error
+	}{
+		{
+			name:  "wrapped token, no log position: ambiguous calls store a nil From",
+			event: withoutRaw(parse(t, f.bridgeEventLog(t, bridgeLeafTypeAsset, wrappedOrigin, 100, 3))),
+		},
+		{
+			name:  "fee-on-transfer token, no log position: no matching call stores a nil From",
+			event: withoutRaw(parse(t, f.bridgeEventLog(t, bridgeLeafTypeAsset, f.token, 99, 3))),
+		},
+		{
+			name:         "first asset event of the tx is paired with the first call",
+			event:        parse(t, f.bridgeEventLog(t, bridgeLeafTypeAsset, wrappedOrigin, 99, 3)),
+			receipt:      receipt,
+			expectedFrom: &f.callerA,
+		},
+		{
+			name:         "second asset event of the tx is paired with the second call",
+			event:        parse(t, f.bridgeEventLog(t, bridgeLeafTypeAsset, wrappedOrigin, 99, 6)),
+			receipt:      receipt,
+			expectedFrom: &f.callerB,
+		},
+		{
+			name:  "receipt and trace disagree: falls back to the call parameters, nil From",
+			event: parse(t, f.bridgeEventLog(t, bridgeLeafTypeAsset, wrappedOrigin, 99, 3)),
+			receipt: &types.Receipt{Logs: []*types.Log{
+				ptrLog(f.bridgeEventLog(t, bridgeLeafTypeAsset, wrappedOrigin, 99, 3)),
+			}},
+		},
+		{
+			name:  "event not in the receipt: falls back to the call parameters, nil From",
+			event: parse(t, f.bridgeEventLog(t, bridgeLeafTypeAsset, wrappedOrigin, 99, 9)),
+			// same number of asset events as calls, but none at the event's log index
+			receipt: receipt,
+		},
+		{
+			name:       "receipt RPC failure is returned as retryable",
+			event:      parse(t, f.bridgeEventLog(t, bridgeLeafTypeAsset, wrappedOrigin, 99, 3)),
+			receiptErr: fmt.Errorf("connection refused"),
+			expectErr:  ErrFromAddressRPC,
+		},
+		{
+			name:      "trace RPC failure is returned as retryable",
+			event:     parse(t, f.bridgeEventLog(t, bridgeLeafTypeAsset, wrappedOrigin, 99, 3)),
+			traceErr:  fmt.Errorf("execution timeout"),
+			expectErr: ErrFromAddressRPC,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ethClient := f.mockClient(t, tt.traceErr, tt.receipt, tt.receiptErr)
+			txnSender, from, to, err := ExtractTxnAddresses(t.Context(), ethClient, f.bridgeAddr, f.txHash,
+				tt.event, logger, true)
+			if tt.expectErr != nil {
+				require.ErrorIs(t, err, tt.expectErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, f.txnSender, txnSender)
+			require.Equal(t, f.txTo, to)
+			require.Equal(t, tt.expectedFrom, from)
+		})
+	}
+}
+
+func TestExtractTxnAddressesThreeCallsTwoCallers(t *testing.T) {
+	f := newMultiCallerFixture(t)
+	// callerA bridges twice and callerB once, in the order A, B, A.
+	callA := f.trace.Calls[0].Calls[0]
+	f.trace.Calls = append(f.trace.Calls, Call{Type: CallTypeCall, From: f.txTo, To: f.callerA, Calls: []Call{callA}})
+	origin := common.HexToAddress("0x99")
+	receipt := &types.Receipt{Logs: []*types.Log{
+		ptrLog(f.bridgeEventLog(t, bridgeLeafTypeAsset, origin, 99, 2)),
+		ptrLog(f.bridgeEventLog(t, bridgeLeafTypeAsset, origin, 99, 5)),
+		ptrLog(f.bridgeEventLog(t, bridgeLeafTypeAsset, origin, 99, 8)),
+	}}
+	contract, err := agglayerbridge.NewAgglayerbridgeFilterer(f.bridgeAddr, nil)
+	require.NoError(t, err)
+	logger := logger.WithFields("module", "test")
+	for logIndex, expected := range map[uint]common.Address{2: f.callerA, 5: f.callerB, 8: f.callerA} {
+		ev, err := contract.ParseBridgeEvent(f.bridgeEventLog(t, bridgeLeafTypeAsset, origin, 99, logIndex))
+		require.NoError(t, err)
+		_, from, _, err := ExtractTxnAddresses(t.Context(), f.mockClient(t, nil, receipt, nil), f.bridgeAddr,
+			f.txHash, ev, logger, true)
+		require.NoError(t, err)
+		require.Equal(t, &expected, from, "log index %d", logIndex)
+	}
+}
+
+func ptrLog(l types.Log) *types.Log {
+	return &l
+}
+
+// TestBridgeEventHandlerMultipleCallersDoesNotHalt reproduces the halt: the handler used to return an error for
+// these events, and the downloader retries a failing log forever.
+func TestBridgeEventHandlerMultipleCallersDoesNotHalt(t *testing.T) {
+	f := newMultiCallerFixture(t)
+	logger := logger.WithFields("module", "test")
+	contract, err := agglayerbridge.NewAgglayerbridge(f.bridgeAddr, nil)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name       string
+		originAddr common.Address
+		amount     int64
+	}{
+		{
+			name:       "wrapped token: event OriginAddress differs from the call token",
+			originAddr: common.HexToAddress("0x99"),
+			amount:     100,
+		},
+		{
+			name:       "fee-on-transfer token: event amount differs from the call amount",
+			originAddr: f.token,
+			amount:     99,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// The receipt has no asset bridge event for the 2 calls, so pairing by position is skipped and the
+			// call parameters, which are ambiguous, are the fallback.
+			ethClient := f.mockClient(t, nil, &types.Receipt{}, nil)
+			handler := buildBridgeEventHandler(t.Context(), contract, f.bridgeAddr, ethClient, true, logger)
+			block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: 1}}
+			require.NoError(t, handler(block, f.bridgeEventLog(t, bridgeLeafTypeAsset, tc.originAddr, tc.amount, 3)))
+			require.Len(t, block.Events, 1)
+			event, ok := block.Events[0].(Event)
+			require.True(t, ok)
+			bridge := event.Bridge
+			require.NotNil(t, bridge)
+			require.Nil(t, bridge.FromAddress)
+			require.Equal(t, f.txnSender, bridge.TxnSender)
+			require.Equal(t, f.txTo, bridge.ToAddress)
+		})
+	}
+}
+
+func TestBridgeEventHandlerGivesUpOnFromAddressAfterRPCFailures(t *testing.T) {
+	f := newMultiCallerFixture(t)
+	logger := logger.WithFields("module", "test")
+	contract, err := agglayerbridge.NewAgglayerbridge(f.bridgeAddr, nil)
+	require.NoError(t, err)
+	ethClient := f.mockClient(t, fmt.Errorf("execution timeout"), nil, nil)
+	handler := buildBridgeEventHandler(t.Context(), contract, f.bridgeAddr, ethClient, true, logger)
+	block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: 1}}
+	l := f.bridgeEventLog(t, bridgeLeafTypeAsset, f.token, 100, 3)
+
+	for range maxFromAddressRPCAttempts - 1 {
+		require.ErrorIs(t, handler(block, l), ErrFromAddressRPC)
+		require.Empty(t, block.Events)
+	}
+	require.NoError(t, handler(block, l))
+	require.Len(t, block.Events, 1)
+	event, ok := block.Events[0].(Event)
+	require.True(t, ok)
+	bridge := event.Bridge
+	require.Nil(t, bridge.FromAddress)
+	require.Equal(t, f.txnSender, bridge.TxnSender)
+	require.Equal(t, f.txTo, bridge.ToAddress)
+
+	// The count starts again for the next log.
+	require.ErrorIs(t, handler(block, f.bridgeEventLog(t, bridgeLeafTypeAsset, f.token, 100, 6)), ErrFromAddressRPC)
 }

@@ -256,6 +256,7 @@ func TestE2E_TipReorgHaltRecovery(t *testing.T) {
 		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(time.Millisecond),
 	}
 	cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
+	cfgMD.RetryAfterError = fastRetryAfterError()
 	cfgMD.Enabled = true
 	finality, err := aggkittypes.NewBlockNumberFinality("latestBlock/-5")
 	require.NoError(t, err)

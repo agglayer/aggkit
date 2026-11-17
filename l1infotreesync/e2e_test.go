@@ -91,6 +91,7 @@ func TestE2E(t *testing.T) {
 	var evmMultidownloader *multidownloader.EVMMultidownloader
 	if useMultidownloaderForTests {
 		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
+		cfgMD.RetryAfterError = fastRetryAfterError()
 		cfgMD.Enabled = true
 		finality, err := aggkittypes.NewBlockNumberFinality("latestBlock/-2")
 		require.NoError(t, err)
@@ -210,6 +211,7 @@ func TestWithReorgs(t *testing.T) {
 			var evmMultidownloader *multidownloader.EVMMultidownloader
 			if tt.useMultidownloaderForTest {
 				cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
+				cfgMD.RetryAfterError = fastRetryAfterError()
 				cfgMD.Enabled = true
 				finality, err := aggkittypes.NewBlockNumberFinality("latestBlock/-2")
 				require.NoError(t, err)
@@ -425,6 +427,7 @@ func TestStressAndReorgs(t *testing.T) {
 	var multidownloaderClient aggkittypes.MultiDownloaderLegacy
 	if useMultidownloaderForTests {
 		cfgMD := multidownloader.NewConfigDefault("l1", t.TempDir())
+		cfgMD.RetryAfterError = fastRetryAfterError()
 		cfgMD.Enabled = true
 		multidownloaderClient, err = multidownloader.NewEVMMultidownloader(
 			log.WithFields("module", "multidownloader"),

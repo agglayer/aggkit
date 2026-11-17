@@ -44,14 +44,21 @@ func DialWithRetry(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("failed to create retry handler: %w", err)
 	}
+	dialLogf := log.Infof
 	if logger == nil {
 		logger = log.NewLoggerNil()
+	} else {
+		dialLogf = logger.Infof
 	}
-	return aggkitcommon.Execute(retryHandler, ctx, log.Infof, fmt.Sprintf("dial %s rpc", cfg.URL),
+	// The URL can carry a provider API key (path, query or user info): never log it, nor an error that echoes it
+	endpoint := aggkitcommon.URLSchemeHost(cfg.URL)
+	return aggkitcommon.Execute(retryHandler, ctx, dialLogf, fmt.Sprintf("dial %s rpc", endpoint),
 		func() (aggkittypes.EthClienter, error) {
 			client, err := ethclient.Dial(cfg.URL)
 			if err != nil {
-				return nil, err
+				// The error chain is dropped on purpose: the original error can echo the URL (and its key),
+				// and an Unwrap() would expose it again. No caller matches on the dial error
+				return nil, errors.New(aggkitcommon.RedactError(err))
 			}
 			return NewDefaultEthClientWithLogger(logger, client, client.Client(), cfg), nil
 		})

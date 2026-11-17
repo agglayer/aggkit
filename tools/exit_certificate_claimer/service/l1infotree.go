@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	configtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/etherman"
@@ -94,7 +95,7 @@ func OpenL1InfoTree(
 		Mode: ethermanconfig.RPCModeBasic,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("dialing L1 RPC %q: %w", cfg.RPCURL, err)
+		return nil, fmt.Errorf("dialing L1 RPC %q: %w", aggkitcommon.URLSchemeHost(cfg.RPCURL), err)
 	}
 
 	// The multidownloader keeps its own storage and reorg processor next to the L1 Info Tree DB,
