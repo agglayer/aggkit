@@ -4,10 +4,21 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/agglayer/aggkit/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
+)
+
+const (
+	// keepaliveMinTime is the minimum time a client must wait between keepalive pings.
+	keepaliveMinTime = 10 * time.Second
+	// keepaliveTime is how often the server pings an idle client.
+	keepaliveTime = 2 * time.Hour
+	// keepaliveTimeout is how long the server waits for a keepalive ack.
+	keepaliveTimeout = 20 * time.Second
 )
 
 type ServerConfig struct {
@@ -20,6 +31,18 @@ type ServerConfig struct {
 	EnableReflection bool `mapstructure:"EnableReflection"`
 	// MaxDecodingMessageSize is the maximum size of a message that the server can receive.
 	MaxDecodingMessageSize int `mapstructure:"MaxDecodingMessageSize"`
+	// MaxConcurrentRequests is the maximum number of RPCs the server executes at the same time.
+	// Further requests are rejected with ResourceExhausted. 0 means DefaultMaxConcurrentRequests.
+	MaxConcurrentRequests int `mapstructure:"MaxConcurrentRequests"`
+	// MaxConcurrentStreams is the maximum number of concurrent streams per HTTP/2 connection.
+	// 0 means DefaultMaxConcurrentStreams.
+	MaxConcurrentStreams uint32 `mapstructure:"MaxConcurrentStreams"`
+	// MaxRequestsPerSecondPerPeer limits the request rate of a single peer address.
+	// 0 means DefaultMaxRequestsPerSecondPerPeer.
+	MaxRequestsPerSecondPerPeer float64 `mapstructure:"MaxRequestsPerSecondPerPeer"`
+	// MaxRequestsBurstPerPeer is the burst of the per-peer rate limit.
+	// 0 means four times MaxRequestsPerSecondPerPeer.
+	MaxRequestsBurstPerPeer int `mapstructure:"MaxRequestsBurstPerPeer"`
 }
 
 // Server encapsulates a gRPC server instance, its network listener, and the address it listens on.
@@ -33,8 +56,10 @@ type Server struct {
 }
 
 // NewServer creates and returns a new gRPC Server instance listening on the specified address.
-// It accepts an address string, a boolean to enable server reflection, and optional gRPC server options.
-// If enableReflection is true, the server will register the reflection service for introspection.
+// Every server recovers from handler panics and limits concurrent requests, the request rate
+// per peer and the concurrent streams per connection. TLS is not configured here: when the
+// server listens on a non-loopback address, the connection must be protected by the
+// infrastructure that exposes it.
 // Returns a pointer to the Server and an error if the listener cannot be created.
 func NewServer(cfg ServerConfig, opts ...grpc.ServerOption) (*Server, error) {
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
@@ -42,6 +67,41 @@ func NewServer(cfg ServerConfig, opts ...grpc.ServerOption) (*Server, error) {
 	if cfg.MaxDecodingMessageSize > 0 {
 		opts = append(opts, grpc.MaxRecvMsgSize(cfg.MaxDecodingMessageSize))
 	}
+
+	maxConcurrentRequests := cfg.MaxConcurrentRequests
+	if maxConcurrentRequests <= 0 {
+		maxConcurrentRequests = DefaultMaxConcurrentRequests
+	}
+
+	maxConcurrentStreams := cfg.MaxConcurrentStreams
+	if maxConcurrentStreams == 0 {
+		maxConcurrentStreams = DefaultMaxConcurrentStreams
+	}
+
+	requestsPerSecond := cfg.MaxRequestsPerSecondPerPeer
+	if requestsPerSecond <= 0 {
+		requestsPerSecond = DefaultMaxRequestsPerSecondPerPeer
+	}
+
+	limiter := newPerPeerRateLimiter(requestsPerSecond, cfg.MaxRequestsBurstPerPeer)
+	opts = append(opts,
+		grpc.MaxConcurrentStreams(maxConcurrentStreams),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             keepaliveMinTime,
+			PermitWithoutStream: false,
+		}),
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:    keepaliveTime,
+			Timeout: keepaliveTimeout,
+		}),
+		grpc.ChainUnaryInterceptor(
+			recoveryUnaryInterceptor(),
+			rateLimitUnaryInterceptor(limiter),
+			concurrencyLimitUnaryInterceptor(make(chan struct{}, maxConcurrentRequests)),
+		),
+		grpc.ChainStreamInterceptor(recoveryStreamInterceptor()),
+	)
+
 	listener, err := net.Listen("tcp", serverAddr)
 	if err != nil {
 		return nil, err
@@ -51,6 +111,11 @@ func NewServer(cfg ServerConfig, opts ...grpc.ServerOption) (*Server, error) {
 
 	if cfg.EnableReflection {
 		reflection.Register(server) // Register reflection service on gRPC server
+	}
+
+	if !isLoopback(cfg.Host) {
+		log.Warnf("gRPC server on %s is reachable from the network: put it behind an "+
+			"infrastructure that terminates TLS and restrict who can reach it", serverAddr)
 	}
 
 	return &Server{
@@ -92,4 +157,15 @@ func (s *Server) Addr() string {
 // GRPC returns the underlying gRPC server instance.
 func (s *Server) GRPC() *grpc.Server {
 	return s.grpcServer
+}
+
+// isLoopback reports whether a bind address only accepts connections from the local machine.
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+
+	ip := net.ParseIP(host)
+
+	return ip != nil && ip.IsLoopback()
 }

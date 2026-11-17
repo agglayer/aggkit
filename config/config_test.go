@@ -78,7 +78,16 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.Profiling.ProfilingHost, "localhost")
 	require.Equal(t, cfg.Profiling.ProfilingPort, 6060)
 	require.Equal(t, cfg.Validator.EnableRPC, false)
-	require.Equal(t, cfg.Validator.ServerConfig.EnableReflection, true)
+	require.Equal(t, "127.0.0.1", cfg.Validator.ServerConfig.Host,
+		"the validator gRPC server must only listen on loopback by default")
+	require.Equal(t, false, cfg.Validator.ServerConfig.EnableReflection,
+		"gRPC reflection must be disabled by default")
+	require.Equal(t, 9437184, cfg.Validator.ServerConfig.MaxDecodingMessageSize)
+	require.Equal(t, 8, cfg.Validator.ServerConfig.MaxConcurrentRequests)
+	require.Equal(t, uint32(100), cfg.Validator.ServerConfig.MaxConcurrentStreams)
+	require.Equal(t, 5.0, cfg.Validator.ServerConfig.MaxRequestsPerSecondPerPeer)
+	require.Equal(t, 20, cfg.Validator.ServerConfig.MaxRequestsBurstPerPeer)
+	require.Equal(t, time.Minute, cfg.Validator.ProposerRequestMaxClockSkew.Duration)
 	require.Equal(t, cfg.Validator.AgglayerClient.Cached, true)
 	require.Equal(t, cfg.Validator.AgglayerClient.ConfigurationCache.Capacity, uint64(100))
 	require.Equal(t,

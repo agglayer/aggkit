@@ -124,7 +124,7 @@ func (vp *validatorPoller) getValidators(ctx context.Context) ([]types.Certifica
 	validators := make([]types.CertificateValidateAndSigner, 0, committee.Size())
 	for i, signer := range committee.Signers() {
 		clientCfg := vp.validatorClientCfg.WithURL(signer.URL)
-		validator, err := validator.NewRemoteValidator(&clientCfg, vp.storage, signer.Address, uint32(i))
+		validator, err := validator.NewRemoteValidator(&clientCfg, vp.storage, signer.Address, uint32(i), vp.proposerSigner)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to create a remote validator for committee signer (Address=%s, URL=%s): %w",
 				signer.Address, signer.URL, err)
