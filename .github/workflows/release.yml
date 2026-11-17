@@ -219,7 +219,7 @@ jobs:
       packages: write
       id-token: write
       attestations: write
-    runs-on: arm-runner-2204
+    runs-on: ubuntu-latest
     needs:
       - preflight
       - build

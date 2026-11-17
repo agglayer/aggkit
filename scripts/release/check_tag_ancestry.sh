@@ -15,8 +15,20 @@ if [[ -z "$ref" ]]; then
   exit 1
 fi
 
-if [[ ! "$ref" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-  echo "error: '$ref' is not a release tag (expected refs/tags/vX.Y.Z or refs/tags/vX.Y.Z-<pre>)" >&2
+# Strict semver: no leading zeros in X.Y.Z, dot-separated prerelease
+# identifiers (numeric ones without leading zeros).
+num='(0|[1-9][0-9]*)'
+ident='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+re="^refs/tags/v${num}\\.${num}\\.${num}(-${ident}(\\.${ident})*)?\$"
+if [[ ! "$ref" =~ $re ]]; then
+  echo "error: '$ref' is not a release tag (expected refs/tags/vX.Y.Z or refs/tags/vX.Y.Z-<pre>, semver without leading zeros)" >&2
+  exit 1
+fi
+
+# A prerelease named dev or ending in -dev would produce an image tag that
+# collides with the dev variant of another version.
+if [[ "$ref" =~ (-|\.)dev$ ]]; then
+  echo "error: '$ref' has a prerelease that is or ends in 'dev', which is reserved for dev images" >&2
   exit 1
 fi
 

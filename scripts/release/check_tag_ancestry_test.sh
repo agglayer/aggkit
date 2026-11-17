@@ -63,6 +63,10 @@ run "tag on unrelated branch" 1 refs/tags/v9.9.9
 run "malformed tag" 1 refs/tags/v1.2
 run "malformed tag prefix" 1 refs/tags/1.1.0
 run "malformed prerelease" 1 'refs/tags/v1.1.0-bad_pre'
+run "leading zero in major" 1 refs/tags/v01.2.3
+run "leading zero in prerelease" 1 refs/tags/v1.2.3-rc.01
+run "dev prerelease" 1 refs/tags/v1.2.3-dev
+run "prerelease ending in dev" 1 refs/tags/v1.2.3-rc-dev
 run "branch ref" 1 refs/heads/develop
 run "empty ref" 1 ""
 
