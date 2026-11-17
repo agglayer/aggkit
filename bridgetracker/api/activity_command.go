@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,14 +71,22 @@ type ActivityItem struct {
 	// not indexed this bridge yet, or could not be reached — see domain.ActivitySourceKind)
 	Source string `json:"source"`
 	// ClaimStatus is a simplified claim-readiness summary, one of "pending", "readyToClaim",
-	// "claimed" or "error" — the same vocabulary and field name as TrackingData.ClaimStatus (see
-	// domain.TrackingData.ClaimStatus for exactly how it is derived). "error" reports the
-	// destination bridge contract's isClaimed() call itself failing (e.g. no bridge contract
-	// address configured for the destination network) — callers must not read it as "pending".
-	// While unclaimed, "readyToClaim" vs "pending" is resolved from the tracker's own snapshot
-	// when Tracking is present, or directly against the bridge-service endpoints otherwise (see
-	// domain.ActivityClaimChecker.IsReadyToClaim)
-	ClaimStatus string `json:"claim_status"`
+	// "claimed", "claimed_finalized" or "error" — the same vocabulary and field name as
+	// TrackingData.ClaimStatus (see domain.TrackingData.ClaimStatus for exactly how it is
+	// derived). "claimed_finalized" is the only final state: "claimed" can still go back to
+	// "readyToClaim" or "pending" if a reorg removes the claim. "error" reports the destination
+	// bridge contract's isClaimed() call itself failing (e.g. no bridge contract address
+	// configured for the destination network) — callers must not read it as "pending". While
+	// unclaimed, "readyToClaim" vs "pending" is resolved from the tracker's own snapshot when
+	// Tracking is present, or directly against the bridge-service endpoints otherwise (see
+	// domain.ActivityClaimChecker.IsReadyToClaim). "claimed_finalized" is not produced yet (see
+	// Finalized)
+	ClaimStatus string `json:"claim_status" enums:"pending,readyToClaim,claimed,claimed_finalized,error"`
+	// Finalized is true when this item can no longer be changed by a reorg: its bridge is final
+	// and, if it is claimed, its claim is final too. Always serialized. It is false for every
+	// item until the activity finality follow-ups populate it (agglayer/aggkit#1968, #1969).
+	// Going from false to true does not change the response's Revision
+	Finalized bool `json:"finalized"`
 	// ClaimNetworkID is the network whose bridge service reported Claim (the bridge's
 	// destination network); only present alongside Claim
 	ClaimNetworkID uint32 `json:"claim_network_id,omitempty"`
@@ -155,6 +164,17 @@ type ActivityResponse struct {
 	// Count is how many bridges matched filterBridges in total, across every page — not just
 	// len(Bridges) — mirroring bridgeservice's BridgesResult/ClaimsResult "count" field
 	Count int `json:"count"`
+	// Revision is FromAddress's revision (see domain.ActivityRevisionReader), present in every
+	// response whatever filterBridges/page_number/page_size say: it covers all of the address's
+	// bridges, not just this page. It increases when a bridge is added or removed, changes state
+	// (claim_status) or is corrected after a reorg — wherever it sits in the sorted result — and
+	// it does NOT increase when an item only goes from finalized=false to finalized=true. A client
+	// polls it with a cheap request (page_size=1), reloads the pages it has loaded when it
+	// differs from the one it holds, and checks it again after the last page; compare it for
+	// equality only, as an opaque token (it may restart from a lower value if the server rebuilds
+	// the address's cache). Always serialized; 0 until the follow-up that computes it lands
+	// (agglayer/aggkit#1968, #1969)
+	Revision uint64 `json:"revision"`
 	// Warnings lists every network whose bridge service could not be scanned this call; absent
 	// when every configured network was scanned successfully. Bridges may be incomplete for the
 	// networks listed here, but is still valid for every other network
@@ -207,7 +227,11 @@ type ActivityResponse struct {
 // @Description whole request. Bridges are sorted most recent first and paginated via
 // @Description page_number/page_size (same names and 1-based numbering as the bridge service's
 // @Description own paginated endpoints); "count" reports how many bridges matched in total,
-// @Description across every page.
+// @Description across every page. "revision" is a per-address counter that increases when a
+// @Description bridge is added or removed, changes state or is corrected after a reorg, wherever
+// @Description it sits in the sorted result, and does not increase when an item only becomes
+// @Description finalized: poll it with a cheap request (page_size=1), reload the loaded pages when
+// @Description it changed, and check it again after the last page. Compare it only for equality.
 // @Tags bridge-tracker
 // @Produce json
 // @Param from_address path string true "Address that sent the bridges to look up"
@@ -276,6 +300,13 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 		}
 	}
 
+	// the revision is read BEFORE the entries (see domain.ActivityRevisionReader): a refresh landing
+	// in between can only make the entries newer than the revision reported, never older
+	revision, err := cmd.activityRevision(c.Request.Context(), fromAddress)
+	if err != nil {
+		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: aggkitcommon.RedactError(err)}
+	}
+
 	entries, warnings, err := cmd.registry.GetActivity(c.Request.Context(), fromAddress, includeTracking, filter)
 	if err != nil {
 		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: aggkitcommon.RedactError(err)}
@@ -285,8 +316,19 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 		FromAddress: fromAddress,
 		Bridges:     newActivityItems(paginateActivityEntries(entries, pageNumber, pageSize)),
 		Count:       len(entries),
+		Revision:    revision,
 		Warnings:    newActivityWarningItems(warnings),
 	}, nil
+}
+
+// activityRevision is fromAddress's revision as served by the registry when it implements
+// domain.ActivityRevisionReader, and 0 when it does not
+func (cmd *activityCommand) activityRevision(ctx context.Context, fromAddress common.Address) (uint64, error) {
+	reader, ok := cmd.registry.(domain.ActivityRevisionReader)
+	if !ok {
+		return 0, nil
+	}
+	return reader.GetActivityRevision(ctx, fromAddress)
 }
 
 // parseActivityPageParams parses and validates the activity endpoint's page_number/page_size
@@ -384,6 +426,7 @@ func newActivityItems(entries []*domain.ActivityEntry) []ActivityItem {
 			BridgeNetworkID:      e.BridgeNetworkID,
 			Source:               string(e.Source),
 			ClaimStatus:          e.TrackerClaimStatus.String(),
+			Finalized:            e.Finalized,
 			Errors:               e.Errors,
 			CreationTimestamp:    uint64(e.CreatedAt.Unix()),
 			LastUpdatedTimestamp: uint64(e.UpdatedAt.Unix()),

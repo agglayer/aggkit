@@ -38,4 +38,14 @@ package api
 //     Bridges are now returned most recent first (creation_timestamp descending). A client that
 //     sends neither parameter used to receive every bridge and now receives only the first 20,
 //     so it must page through the result using count
-const CurrentAPIRevision = 6
+//   - 7: reorg support (agglayer/pm#445, agglayer/aggkit#1971). claim_status, on both the
+//     tracker's TrackingData and GET /activity/from/{from_address}'s ActivityItem, gained a new
+//     "claimed_finalized" value, the only final state — "claimed" can now go back to
+//     "readyToClaim" or "pending" after a reorg, so a client that matched claim_status against a
+//     closed set of values must accept it; filterBridges=claimed returns both "claimed" and
+//     "claimed_finalized". New always-serialized fields: ActivityItem.finalized (its bridge and,
+//     if claimed, its claim are final), BridgeStatus.block_finalized (the bridge's origin block
+//     is final) and ActivityResponse.revision, a per-address counter a client polls with a
+//     cheap request (page_size=1) to detect changes beyond page 1; it increases on an addition,
+//     removal, state change or reorg correction, not when an entry only becomes final
+const CurrentAPIRevision = 7

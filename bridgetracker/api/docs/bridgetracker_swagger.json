@@ -17,7 +17,7 @@
     "paths": {
         "/activity/from/{from_address}": {
             "get": {
-                "description": "Registers from_address as supervised and reports whatever the activity engine's\nbackground refresh has cached for it so far — on a first-time address, this\nrequest waits briefly for that first refresh before answering, and answers 503\nwith a Retry-After header (the engine's poll interval) if it is still not ready\nby then, instead of an empty 200 indistinguishable from \"no activity\" (see\nRegisterResolveTimeout-equivalent config). Results are cached: a bridge already\nknown to be claimed, with its claim record already fetched, is not rechecked on a\nlater refresh. Passing includeTracking=true additionally marks the address so a\nfollowing background refresh registers every still-unclaimed bridge with the\nbridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). flush_cache=true discards\nwhatever is already cached for from_address, so the next background refresh\nrechecks everything from scratch. A network whose bridge service could not be\nscanned is skipped and reported in the \"warnings\" field instead of failing the\nwhole request. Bridges are sorted most recent first and paginated via\npage_number/page_size (same names and 1-based numbering as the bridge service's\nown paginated endpoints); \"count\" reports how many bridges matched in total,\nacross every page.",
+                "description": "Registers from_address as supervised and reports whatever the activity engine's\nbackground refresh has cached for it so far — on a first-time address, this\nrequest waits briefly for that first refresh before answering, and answers 503\nwith a Retry-After header (the engine's poll interval) if it is still not ready\nby then, instead of an empty 200 indistinguishable from \"no activity\" (see\nRegisterResolveTimeout-equivalent config). Results are cached: a bridge already\nknown to be claimed, with its claim record already fetched, is not rechecked on a\nlater refresh. Passing includeTracking=true additionally marks the address so a\nfollowing background refresh registers every still-unclaimed bridge with the\nbridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). flush_cache=true discards\nwhatever is already cached for from_address, so the next background refresh\nrechecks everything from scratch. A network whose bridge service could not be\nscanned is skipped and reported in the \"warnings\" field instead of failing the\nwhole request. Bridges are sorted most recent first and paginated via\npage_number/page_size (same names and 1-based numbering as the bridge service's\nown paginated endpoints); \"count\" reports how many bridges matched in total,\nacross every page. \"revision\" is a per-address counter that increases when a\nbridge is added or removed, changes state or is corrected after a reorg, wherever\nit sits in the sorted result, and does not increase when an item only becomes\nfinalized: poll it with a cheap request (page_size=1), reload the loaded pages when\nit changed, and check it again after the last page. Compare it only for equality.",
                 "produces": [
                     "application/json"
                 ],
@@ -319,8 +319,15 @@
                     "type": "integer"
                 },
                 "claim_status": {
-                    "description": "ClaimStatus is a simplified claim-readiness summary, one of \"pending\", \"readyToClaim\",\n\"claimed\" or \"error\" — the same vocabulary and field name as TrackingData.ClaimStatus (see\ndomain.TrackingData.ClaimStatus for exactly how it is derived). \"error\" reports the\ndestination bridge contract's isClaimed() call itself failing (e.g. no bridge contract\naddress configured for the destination network) — callers must not read it as \"pending\".\nWhile unclaimed, \"readyToClaim\" vs \"pending\" is resolved from the tracker's own snapshot\nwhen Tracking is present, or directly against the bridge-service endpoints otherwise (see\ndomain.ActivityClaimChecker.IsReadyToClaim)",
-                    "type": "string"
+                    "description": "ClaimStatus is a simplified claim-readiness summary, one of \"pending\", \"readyToClaim\",\n\"claimed\", \"claimed_finalized\" or \"error\" — the same vocabulary and field name as\nTrackingData.ClaimStatus (see domain.TrackingData.ClaimStatus for exactly how it is\nderived). \"claimed_finalized\" is the only final state: \"claimed\" can still go back to\n\"readyToClaim\" or \"pending\" if a reorg removes the claim. \"error\" reports the destination\nbridge contract's isClaimed() call itself failing (e.g. no bridge contract address\nconfigured for the destination network) — callers must not read it as \"pending\". While\nunclaimed, \"readyToClaim\" vs \"pending\" is resolved from the tracker's own snapshot when\nTracking is present, or directly against the bridge-service endpoints otherwise (see\ndomain.ActivityClaimChecker.IsReadyToClaim). \"claimed_finalized\" is not produced yet (see\nFinalized)",
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "readyToClaim",
+                        "claimed",
+                        "claimed_finalized",
+                        "error"
+                    ]
                 },
                 "creation_timestamp": {
                     "description": "CreationTimestamp is when this bridge was created (unix seconds): its origin deposit block\ntimestamp, or when the activity endpoint first cached it if the bridge service had not\npopulated that timestamp yet; it never changes after that",
@@ -332,6 +339,10 @@
                     "additionalProperties": {
                         "type": "string"
                     }
+                },
+                "finalized": {
+                    "description": "Finalized is true when this item can no longer be changed by a reorg: its bridge is final\nand, if it is claimed, its claim is final too. Always serialized. It is false for every\nitem until the activity finality follow-ups populate it (agglayer/aggkit#1968, #1969).\nGoing from false to true does not change the response's Revision",
+                    "type": "boolean"
                 },
                 "last_updated_timestamp": {
                     "description": "LastUpdatedTimestamp is when this item's claim/tracking state was last (re)checked (unix\nseconds), whether or not anything about it actually changed. Stops advancing once the\nbridge is claimed with its claim record fetched — nothing left to recheck",
@@ -371,6 +382,10 @@
                     "items": {
                         "type": "integer"
                     }
+                },
+                "revision": {
+                    "description": "Revision is FromAddress's revision (see domain.ActivityRevisionReader), present in every\nresponse whatever filterBridges/page_number/page_size say: it covers all of the address's\nbridges, not just this page. It increases when a bridge is added or removed, changes state\n(claim_status) or is corrected after a reorg — wherever it sits in the sorted result — and\nit does NOT increase when an item only goes from finalized=false to finalized=true. A client\npolls it with a cheap request (page_size=1), reloads the pages it has loaded when it\ndiffers from the one it holds, and checks it again after the last page; compare it for\nequality only, as an opaque token (it may restart from a lower value if the server rebuilds\nthe address's cache). Always serialized; 0 until the follow-up that computes it lands\n(agglayer/aggkit#1968, #1969)",
+                    "type": "integer"
                 },
                 "warnings": {
                     "description": "Warnings lists every network whose bridge service could not be scanned this call; absent\nwhen every configured network was scanned successfully. Bridges may be incomplete for the\nnetworks listed here, but is still valid for every other network",
@@ -464,6 +479,10 @@
         "api.BridgeStatus": {
             "type": "object",
             "properties": {
+                "block_finalized": {
+                    "description": "BlockFinalized is whether BlockNumber is final on the origin network, i.e. it can no\nlonger be removed by a reorg. Always serialized (no omitempty): false means \"not final yet\n(or not known)\" — the client keeps polling until it turns true. It is false for every\nbridge until the tracker follow-up populates it (agglayer/aggkit#1970)",
+                    "type": "boolean"
+                },
                 "block_number": {
                     "description": "BlockNumber is the block, on the origin network, where the BridgeEvent was emitted",
                     "type": "integer"
@@ -546,8 +565,15 @@
                     ]
                 },
                 "claim_status": {
-                    "description": "ClaimStatus is a simplified claim-readiness summary, one of \"pending\",\n\"readyToClaim\", \"claimed\" or \"error\" — see domain.TrackingData.ClaimStatus for exactly\nhow it is derived from TrackingStatus and the current step. For most clients this is all\nthat is needed to know whether the bridge can be claimed; TrackingStatus/AllSteps remain\nfor anything that needs the full detail",
-                    "type": "string"
+                    "description": "ClaimStatus is a simplified claim-readiness summary, one of \"pending\",\n\"readyToClaim\", \"claimed\", \"claimed_finalized\" or \"error\" — see\ndomain.TrackingData.ClaimStatus for exactly how it is derived from TrackingStatus and the\ncurrent step. \"claimed_finalized\" is the only final state: \"claimed\" can still go back to\n\"readyToClaim\" or \"pending\" if a reorg removes the claim. It is not produced yet\n(agglayer/aggkit#1970). For most clients this is all that is needed to know whether the\nbridge can be claimed; TrackingStatus/AllSteps remain for anything that needs the full\ndetail",
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "readyToClaim",
+                        "claimed",
+                        "claimed_finalized",
+                        "error"
+                    ]
                 },
                 "error": {
                     "description": "Error mirrors whatever currently explains the bridge not progressing, if anything: a\nterminal give-up to even resolve it (e.g. the tx does not exist on the network or is\nnot a bridge transaction — TrackingStatus is Error and BridgeStatus/StepIndex/AllSteps\nstay nil forever), a transient FindBridge failure still being retried (TrackingStatus\nis unaffected), or the same error already nested in AllSteps[StepIndex].Error once the\nbridge is otherwise resolved. nil while nothing has failed",
