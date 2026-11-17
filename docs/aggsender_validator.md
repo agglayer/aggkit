@@ -226,9 +226,18 @@ connection's peer address: behind a proxy or NAT every caller shares one address
 bucket, so limit who can reach the port at the network level. `HealthCheck` stays
 open so infrastructure health checks keep working, and it is exempt from both limits.
 
-Upgrading from a version that does not sign the request: upgrade the aggsender first (it
-starts signing the request and older validators ignore the extra field), then the
-validators. A validator that requires the signature rejects an older aggsender.
+Upgrading from a version that does not sign the request: **a validator running this
+version needs an aggsender running this version too.**
+
+| Aggsender | Validator | Result |
+|-----------|-----------|--------|
+| new       | old       | Works. The old validator ignores `proposer_signature` and `request_timestamp` and does not authenticate the caller |
+| new       | new       | Works if the clocks are within `ProposerRequestMaxClockSkew` and the aggsender's signer is the first member of the multisig committee |
+| old       | new       | **Does not work.** The old aggsender sends no signature, so the new validator rejects every `ValidateCertificate` with `Unauthenticated`. That validator cannot sign certificates, and certificate signing stalls if the remaining validators do not reach the multisig threshold |
+| old       | old       | Unchanged |
+
+Upgrade the aggsender first, then the validators. They can be upgraded one at a time,
+because the new aggsender works with both old and new validators.
 
 ### Running the Validator
 
