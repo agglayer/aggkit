@@ -35,6 +35,13 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
+  # Resolver is mocked for its consumers (activity scan, tracker); ClientResolver for the tests of the package
+  github.com/agglayer/aggkit/bridgetracker/finality:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+    interfaces:
+      Resolver:
+      ClientResolver:
   github.com/agglayer/aggkit/types:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
