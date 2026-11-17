@@ -7,6 +7,7 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/bridgetracker/api"
+	"github.com/agglayer/aggkit/bridgetracker/finality"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -248,6 +249,12 @@ type Config struct {
 	ActivityScanner ActivityBridgeScanner `mapstructure:"-"`
 	ActivityClaims  ActivityClaimChecker  `mapstructure:"-"`
 
+	// ActivityFinality decides whether a bridge or claim the activity endpoint serves is final
+	// (see ActivityEntryRefresher, finality.Resolver): an entry settles — claimed_finalized,
+	// finalized, never refreshed again — only once both blocks are final. Wired
+	// programmatically by the binary; nil means nothing is ever final.
+	ActivityFinality finality.Resolver `mapstructure:"-"`
+
 	// Activity, when set, is used as the activity endpoint's ActivityRegistry as-is instead of
 	// building an in-memory ActivityCache from ActivityScanner/ActivityClaims — the same
 	// override pattern as Registry, so a caller can plug in a persisted implementation (see
@@ -317,7 +324,7 @@ type Config struct {
 // ActivitySourceBridgeServiceConfig is [Tracker.ActivitySourceBridgeService].
 type ActivitySourceBridgeServiceConfig struct {
 	// PageSize is the page size used while paging through a network's own
-	// GET /bridge/v1/bridges scanning for a from_address (see fetchNewBridgesFrom). A value <= 0
+	// GET /bridge/v1/bridges scanning for a from_address (see scanBridgeService). A value <= 0
 	// falls back to DefaultActivitySourceBridgeServicePageSize.
 	PageSize uint32 `mapstructure:"PageSize"`
 
@@ -325,7 +332,7 @@ type ActivitySourceBridgeServiceConfig struct {
 	// service (GetBridges, GetClaims, GetSyncStatus, GetL1InfoTreeIndex,
 	// GetInjectedL1InfoLeaf — see bridgeservice/client.Client) — not the overall GET
 	// /activity/from/{from_address} request itself, which can still issue several such calls per
-	// bridge (see fetchNewBridgesFrom, ActivityCache.refresh). A value <= 0 falls back to
+	// bridge (see scanBridgeService, ActivityEntryRefresher.Refresh). A value <= 0 falls back to
 	// DefaultActivitySourceBridgeServiceTimeout.
 	Timeout types.Duration `mapstructure:"Timeout"`
 
