@@ -317,13 +317,15 @@ func TestWithReorgs(t *testing.T) {
 			// Commit block 7, 8, 9 after the fork
 			helpers.CommitBlocks(t, client, 5, time.Millisecond*100)
 
+			// The fork re-commits the same heights with different content, so the syncer must
+			// have processed the reorg before we read the roots: reading too early can observe
+			// the pre-reorg state, or "not found" for a height that has not been re-indexed yet.
+			// Wait unconditionally instead of relying on a sleep that only the legacy branch had.
+			helpers.WaitForSyncerToCatchUp(ctx, t, syncer, client)
+
 			// Assert rollup exit root after committing new blocks on the fork
 			expectedRollupExitRoot, err = verifySC.GetRollupExitRoot(&bind.CallOpts{Pending: false})
 			require.NoError(t, err)
-			// TODO: Remove ths sleep
-			if !tt.useMultidownloaderForTest {
-				time.Sleep(time.Second * 1) // wait for syncer to process the reorg
-			}
 			checkBlocks(t, ctx, client.Client(), evmMultidownloader, 0, 10)
 
 			lastProcessedBlock, err := syncer.GetLastProcessedBlock(ctx)

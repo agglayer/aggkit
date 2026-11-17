@@ -3,6 +3,7 @@ package aggoracle
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/agglayer/aggkit/aggoracle/metrics"
@@ -34,6 +35,10 @@ type AggOracle struct {
 	l1Client          types.EthChainReader
 	l1Info            L1InfoTreeSyncer
 	chainSender       ChainSender
+	// injections tracks the GER injections started in the background so Start can drain them
+	// before returning. A caller that tears down resources right after cancelling the context
+	// (e.g. a test closing its simulated backend) must not race an injection still using them.
+	injections sync.WaitGroup
 }
 
 // New creates a new AggOracle instance that will monitor the L1 info tree for new Global Exit Roots (GERs)
@@ -57,6 +62,10 @@ func New(
 func (a *AggOracle) Start(ctx context.Context) {
 	// Register metrics
 	metrics.Register()
+
+	// Drain outstanding injections before returning, so once Start has returned no injection is
+	// still using the resources the caller may now tear down.
+	defer a.injections.Wait()
 
 	for {
 		if err := a.processLatestGER(ctx); err != nil {
@@ -86,7 +95,9 @@ func (a *AggOracle) processLatestGER(ctx context.Context) error {
 
 	a.logger.Debugf("latest GER retrieved: %s", latestGER.String())
 
+	a.injections.Add(1)
 	go func() {
+		defer a.injections.Done()
 		start := time.Now()
 		err := a.chainSender.ProcessGER(ctx, latestGER)
 		metrics.ObserveGERProcessDuration(time.Since(start))

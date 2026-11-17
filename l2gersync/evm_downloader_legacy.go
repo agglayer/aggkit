@@ -101,6 +101,11 @@ func (d *downloaderLegacy) Download(
 
 	// Determine the next index to start fetching GERs
 	for {
+		if ctx.Err() != nil {
+			// Shutting down: return instead of retrying the cancellation error forever.
+			close(downloadedCh)
+			return
+		}
 		latestL1InfoTreeIndex, err := d.processor.getLatestL1InfoTreeIndex()
 		if errors.Is(err, db.ErrNotFound) {
 			nextL1InfoTreeIndex = 0
@@ -136,6 +141,11 @@ func (d *downloaderLegacy) Download(
 			gers     []*GlobalExitRootInfo
 		)
 		for {
+			if ctx.Err() != nil {
+				// Shutting down: return instead of retrying the cancellation error forever.
+				close(downloadedCh)
+				return
+			}
 			gers, err = d.getGERsFromIndex(ctx, fromBlock, nextL1InfoTreeIndex)
 			if err != nil {
 				log.Errorf("error getting GERs: %v", err)
@@ -224,6 +234,10 @@ func (d *downloaderLegacy) findLatestInjectedGER(
 		gerInfo := gerInfos[i]
 		attempts := 0
 		for {
+			if ctx.Err() != nil {
+				// Shutting down: return instead of retrying the cancellation error forever.
+				return nil
+			}
 			blockHash, err := d.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerInfo.GlobalExitRoot)
 			if err != nil {
 				attempts++

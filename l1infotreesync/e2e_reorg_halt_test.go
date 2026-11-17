@@ -2,7 +2,6 @@ package l1infotreesync_test
 
 import (
 	"context"
-	"errors"
 	"math/big"
 	"path"
 	gosync "sync"
@@ -14,7 +13,6 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/multidownloader"
-	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/test/helpers"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
@@ -118,8 +116,8 @@ func (c *tipReorgEthClient) FilterLogs(ctx context.Context, q ethereum.FilterQue
 // The test asserts the DESIRED behavior: once the RPC view becomes consistent again (the
 // decorator is disarmed) and the chain advances, the syncer must self-recover — catch up to the
 // tip and converge its L1 info tree root with the contract's latest root. On pre-fix code this
-// test fails by timeout on the recovery assertion: the halt is observed, but the driver spins
-// on the poisoned in-memory batch and every getter keeps returning sync.ErrInconsistentState.
+// test fails by timeout on the recovery assertion: the poisoned batch is delivered, but the
+// driver spins on it and every getter keeps returning sync.ErrInconsistentState.
 func TestE2E_TipReorgHaltRecovery(t *testing.T) {
 	ctx := t.Context()
 	dbPath := path.Join(t.TempDir(), "l1infotreesyncTipReorgHaltRecovery.sqlite")
@@ -276,6 +274,21 @@ func TestE2E_TipReorgHaltRecovery(t *testing.T) {
 	require.NoError(t, err)
 	syncer, err := l1infotreesync.NewMultidownloadBased(ctx, cfg, evmMultidownloader, l1infotreesync.FlagAllowWrongContractsAddrs)
 	require.NoError(t, err)
+
+	// Observe the halt from the processor itself, registered before anything starts. A signal
+	// sourced from the RPC decorator (e.g. from FilterLogs) would only prove the poisoned logs
+	// were requested, which happens before the batch is stored or delivered to the processor: the
+	// multidownloader could still replace that data before the processor consumes it, and the test
+	// would pass without ever exercising the halt. Processor-side evidence is what proves the
+	// incident was reproduced. Buffered so the callback never blocks the processor.
+	halted := make(chan string, 1)
+	syncer.OnHaltForTest(func(reason string) {
+		select {
+		case halted <- reason:
+		default:
+		}
+	})
+
 	go func() {
 		// Always returns an error at the end of the test, when the context is cancelled
 		mdErr := evmMultidownloader.Start(ctx)
@@ -285,14 +298,23 @@ func TestE2E_TipReorgHaltRecovery(t *testing.T) {
 
 	// --- Phase 8: the halt (the incident repro). The syncer processes the warm-up blocks and
 	// then hits the poisoned batch at height N: leaf from the orphan event, checkpoint from the
-	// canonical one -> computed root != event root with equal leaf counts -> processor halts.
-	// This assertion passes both pre- and post-fix (post-fix the halt still happens; it just
-	// recovers afterwards).
-	require.Eventually(t, func() bool {
-		_, lastErr := syncer.GetLastProcessedBlock(ctx)
-		return errors.Is(lastErr, sync.ErrInconsistentState)
-	}, 30*time.Second, 50*time.Millisecond,
-		"processor never halted on the poisoned tip-reorg batch — fixture broken")
+	// canonical one -> computed root != event root with equal leaf counts -> the processor halts.
+	//
+	// We must NOT poll the halted getter for this: the driver immediately reorgs and unhalts, so
+	// the halted state is visible for well under a polling interval (the halt/unhalt cycle repeats
+	// every ~100ms with a sub-millisecond halted window) and polling it is inherently racy.
+	// Instead we observe the halt through the processor's test hook, which fires exactly when it
+	// halts, and only then disarm the RPC decorator (Phase 9). Waiting for processor-side evidence
+	// is what guarantees the fixture actually exercised the halt instead of recovering through
+	// ordinary synchronization. This passes both pre- and post-fix (post-fix the halt still
+	// happens; it just recovers afterwards).
+	select {
+	case reason := <-halted:
+		require.Contains(t, reason, "UpdateL1InfoTreeV2",
+			"the halt must come from the poisoned batch's V2 sanity check")
+	case <-time.After(30 * time.Second):
+		require.Fail(t, "processor never halted on the poisoned tip-reorg batch — fixture broken")
+	}
 
 	// --- Phase 9: consolidation. The RPC view becomes consistent again (fork A fully
 	// abandoned) and the chain advances with a fresh GER update, so a recovered syncer will
