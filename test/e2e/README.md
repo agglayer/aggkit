@@ -20,7 +20,7 @@ This package contains tests run against a dockerized environment, loaded from `t
 
 ### Driving a chain: `AnvilChain`
 
-`NewAnvilChain(name, ethclient)` wraps the anvil node behind any client of the env (`testEnv.Clients.L1`, `testEnv.L2.Client`, `testEnv.L2B.Client`). `Supported(ctx)` tells whether the node answers the `anvil_*` RPCs, to skip a test on any other env.
+`NewAnvilChain(name, ethclient)` wraps the anvil node behind any client of the env (`testEnv.Clients.L1`, `testEnv.L2.Client`, `testEnv.L2B.Client`). `Supported(ctx)` tells whether the node answers the `anvil_*` RPCs, to skip a test on any other env: it returns `false` only when the node says the method does not exist, and an error for any other failure, so an unhealthy env fails the test instead of skipping it.
 
 | Need | Helper | anvil RPC |
 | --- | --- | --- |
@@ -34,6 +34,8 @@ This package contains tests run against a dockerized environment, loaded from `t
 `anvil_reorg` keeps the head number and changes the hashes of the last `depth` blocks. The transactions of the replaced blocks are dropped unless they are re-included; the raw transaction goes as a plain hex string (an object would be read as a call request). Prefer `ReorgKeepingTxs` on chains other actors also send transactions to (agglayer on L1, the aggoracle on the L2s): an empty `Reorg` would drop theirs too.
 
 A reorg must build blocks different from the replaced ones, and anvil builds them deterministically: the first replacement block is timestamped like the common ancestor, so replaying the same transactions in a block that was mined in the same second as its ancestor gives back the very same block (same hash, nothing happened). `Reorg` fails with `ErrReorgNoop` in that case instead of silently doing nothing. Drop a transaction, move it to another block offset, or mine the block to be replaced with `MineSpaced(ctx, 1, 2)` (the smoke test does) for a reorg that always changes the hashes.
+
+`MineSpaced` moves the chain clock forward and nothing moves it back: block timestamps stay ahead of the wall clock (up to the spacing for every spaced block that is not reorged away; the smoke test leaves a few seconds per chain). The CI group `reorg-detection` runs the smoke test on a stack of its own; on a local run that shares the stack with other tests (`make test-e2e` without `TEST_RUN`), keep that drift in mind for tests that compare block time with wall-clock time.
 
 ### Holding data in a non-final state
 

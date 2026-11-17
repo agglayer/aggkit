@@ -47,6 +47,12 @@ const (
 
 	// waitStatusLogInterval controls how often the Wait* helpers log that they are still waiting.
 	waitStatusLogInterval = 10 * time.Second
+
+	// jsonRPCMethodNotFound is the JSON-RPC error code of a method the node does not implement.
+	jsonRPCMethodNotFound = -32601
+
+	// listServedBridgesPageSize is the page size ListServedBridges asks for (the bridge-service maximum).
+	listServedBridgesPageSize = uint32(200)
 )
 
 // ChainHead identifies a block of a chain by number and hash.
@@ -110,10 +116,19 @@ func (a *AnvilChain) Name() string {
 	return a.name
 }
 
-// Supported reports whether the node answers the anvil_* RPCs the helpers rely on.
-func (a *AnvilChain) Supported(ctx context.Context) bool {
+// Supported reports whether the node answers the anvil_* RPCs the helpers rely on. It returns false only
+// when the node answers that the method does not exist (JSON-RPC -32601); any other failure (connection
+// refused, timeout...) is returned as an error, so an unhealthy env fails the test instead of skipping it.
+func (a *AnvilChain) Supported(ctx context.Context) (bool, error) {
 	_, err := a.MiningMode(ctx)
-	return err == nil
+	if err == nil {
+		return true, nil
+	}
+	var rpcErr rpc.Error
+	if errors.As(err, &rpcErr) && rpcErr.ErrorCode() == jsonRPCMethodNotFound {
+		return false, nil
+	}
+	return false, err
 }
 
 // Head returns the latest block.
@@ -173,7 +188,8 @@ func (a *AnvilChain) Mine(ctx context.Context, blocks uint64) error {
 // one (anvil_mine's interval argument), so every block is timestamped at least spacing seconds after the
 // previous one. Mine the block that a later reorg replaces with spacing >= 2 to be sure the replacement
 // differs from it (see Reorg). The clock jump stays: block timestamps run ahead of the wall clock until the
-// chain is reorged or rolled back.
+// chain is reorged or rolled back below the spaced block, and nothing resets it afterwards (see the e2e
+// README: tests that depend on block time vs wall clock should not share a stack run with this).
 func (a *AnvilChain) MineSpaced(ctx context.Context, blocks, spacing uint64) error {
 	if blocks == 0 {
 		return nil
@@ -199,7 +215,10 @@ func (a *AnvilChain) MineUntilFinalized(ctx context.Context, number uint64) (uin
 	if head.Number >= target {
 		return 0, nil
 	}
-	return target - head.Number, a.Mine(ctx, target-head.Number)
+	if err := a.Mine(ctx, target-head.Number); err != nil {
+		return 0, err
+	}
+	return target - head.Number, nil
 }
 
 // MiningMode returns the current block production mode (anvil_getAutomine, anvil_getIntervalMining).
@@ -681,22 +700,30 @@ type ServedBridge struct {
 	TxHash   common.Hash
 }
 
-// ListServedBridges returns the bridges (up to the first 100, which is far above what the env has) a
-// bridge-service serves for networkID, keyed by deposit count.
+// ListServedBridges returns every bridge a bridge-service serves for networkID, keyed by deposit count. It
+// walks all the pages of GET /bridge/v1/bridges (served newest first), so it also works on a long-lived
+// stack where earlier tests left many bridges.
 func ListServedBridges(
 	ctx context.Context, bs *client.Client, networkID uint32,
 ) (map[uint32]ServedBridge, error) {
-	pageSize := uint32(100)
-	result, err := bs.GetBridges(ctx, client.GetBridgesParams{NetworkID: networkID, PageSize: &pageSize})
-	if err != nil {
-		return nil, fmt.Errorf("list bridges of network %d: %w", networkID, err)
-	}
-	served := make(map[uint32]ServedBridge, len(result.Bridges))
-	for _, bridge := range result.Bridges {
-		served[bridge.DepositCount] = ServedBridge{
-			BlockNum: bridge.BlockNum,
-			TxHash:   common.HexToHash(string(bridge.TxHash)),
+	pageSize := listServedBridgesPageSize
+	served := make(map[uint32]ServedBridge)
+	for page := uint32(1); ; page++ {
+		pageNumber := page
+		result, err := bs.GetBridges(ctx, client.GetBridgesParams{
+			NetworkID: networkID, PageNumber: &pageNumber, PageSize: &pageSize,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list bridges of network %d (page %d): %w", networkID, page, err)
+		}
+		for _, bridge := range result.Bridges {
+			served[bridge.DepositCount] = ServedBridge{
+				BlockNum: bridge.BlockNum,
+				TxHash:   common.HexToHash(string(bridge.TxHash)),
+			}
+		}
+		if len(result.Bridges) == 0 || uint64(page)*uint64(pageSize) >= uint64(result.Count) {
+			return served, nil
 		}
 	}
-	return served, nil
 }

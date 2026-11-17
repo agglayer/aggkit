@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -91,7 +92,9 @@ func TestReorgDetectionSmoke(t *testing.T) {
 	l1 := NewAnvilChain("L1", testEnv.Clients.L1)
 	l2 := NewAnvilChain("L2", testEnv.L2.Client)
 	for _, chain := range []*AnvilChain{l1, l2} {
-		if !chain.Supported(ctx) {
+		supported, err := chain.Supported(ctx)
+		require.NoError(t, err, "probe the anvil_* RPCs of %s", chain.Name())
+		if !supported {
 			t.Skipf("%s is not an anvil node: the reorg helpers need the anvil_* RPCs (env anvil-2chains)", chain.Name())
 		}
 	}
@@ -289,7 +292,7 @@ func runReorgScenario(ctx context.Context, t *testing.T, s reorgScenario) {
 	// 3. A reorg that drops the transaction: the bridge must stop being served.
 	require.NoError(t, chain.ReorgKeepingTxs(ctx, reorgSmokeDepth, bridge.tx.Hash()))
 	_, err = s.client.TransactionReceipt(ctx, bridge.tx.Hash())
-	require.Error(t, err, "the reorg must drop the bridge transaction")
+	require.ErrorIs(t, err, ethereum.NotFound, "the reorg must drop the bridge transaction")
 
 	event2, err := WaitForReorgEvent(ctx, s.bs, s.networkID, event, reorgSmokeDetectTimeout)
 	require.NoError(t, err, "aggkit-001 did not report the second reorg of %s", chain.Name())
@@ -304,6 +307,8 @@ func runReorgScenario(ctx context.Context, t *testing.T, s reorgScenario) {
 
 	// 4. block_finalized goes false -> true as blocks are mined on top.
 	next := s.mineBridge(ctx, t)
+	// The dropped bridge's deposit count is reused only because nobody else bridges on this chain meanwhile
+	// (mining is paused and the CI group runs this test alone): a second bridging actor breaks this check.
 	require.Equal(t, bridge.depositCount, next.depositCount, "the dropped bridge's deposit count is reused")
 	served, err = WaitForBridgeBlockFinalized(ctx, s.bs, s.networkID, next.depositCount, false, reorgSmokeServeTimeout)
 	require.NoError(t, err)
