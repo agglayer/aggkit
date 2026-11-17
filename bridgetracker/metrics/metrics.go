@@ -11,11 +11,16 @@ const (
 	cacheSizeBytes  = "cache_size_bytes"
 	aliveTrackers   = "alive_trackers"
 	aliveActivities = "alive_activities"
+
+	activityReorgsDetected   = "activity_reorgs_detected_total"
+	activityEntriesCorrected = "activity_entries_corrected_total"
+	activityEntriesRemoved   = "activity_entries_removed_total"
 )
 
-// Register the metrics for the bridgetracker package. aliveActivities is only registered when
-// the activity endpoint is configured (withActivity), so it is absent from /metrics otherwise
-// instead of being reported as a misleading zero
+// Register the metrics for the bridgetracker package. The activity metrics (aliveActivities and
+// the activity reorg counters) are only registered when the activity endpoint is configured
+// (withActivity), so they are absent from /metrics otherwise instead of being reported as a
+// misleading zero
 func Register(withActivity bool) {
 	gauges := []prometheusClient.GaugeOpts{
 		{
@@ -37,6 +42,26 @@ func Register(withActivity bool) {
 		})
 	}
 	prometheus.RegisterGauges(gauges...)
+	if withActivity {
+		prometheus.RegisterCounters(
+			prometheusClient.CounterOpts{
+				Namespace: namespace,
+				Name:      activityReorgsDetected,
+				Help: "Number of activity scans of one network's bridge service that found a reorg " +
+					"(a known non-final bridge moved or gone)",
+			},
+			prometheusClient.CounterOpts{
+				Namespace: namespace,
+				Name:      activityEntriesCorrected,
+				Help:      "Number of activity entries re-read at a different block or transaction and corrected",
+			},
+			prometheusClient.CounterOpts{
+				Namespace: namespace,
+				Name:      activityEntriesRemoved,
+				Help:      "Number of activity entries removed because a reorg dropped their bridge",
+			},
+		)
+	}
 
 	log.Info("Registered prometheus bridgetracker metrics")
 }
@@ -54,4 +79,19 @@ func SetAliveTrackers(value int) {
 // SetAliveActivities sets the number of supervised from_addresses
 func SetAliveActivities(value int) {
 	prometheus.GaugeSet(aliveActivities, float64(value))
+}
+
+// IncActivityReorgsDetected counts one network scan of the activity endpoint that found a reorg
+func IncActivityReorgsDetected() {
+	prometheus.CounterInc(activityReorgsDetected)
+}
+
+// AddActivityEntriesCorrected counts activity entries corrected after a reorg moved their bridge
+func AddActivityEntriesCorrected(n int) {
+	prometheus.CounterAdd(activityEntriesCorrected, float64(n))
+}
+
+// AddActivityEntriesRemoved counts activity entries removed after a reorg dropped their bridge
+func AddActivityEntriesRemoved(n int) {
+	prometheus.CounterAdd(activityEntriesRemoved, float64(n))
 }
