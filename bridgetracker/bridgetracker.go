@@ -41,7 +41,8 @@ func New(cfg *Config) *BridgeTracker {
 	// a caller can plug in a persisted implementation (see bridgetracker/db.NewSQLiteActivityStore)
 	activity := cfg.Activity
 	if activity == nil && cfg.ActivityScanner != nil && cfg.ActivityClaims != nil {
-		activity = NewActivityCache(cfg.ActivityScanner, cfg.ActivityClaims, supervised, cfg.Logger)
+		activity = NewActivityCache(
+			cfg.ActivityScanner, cfg.ActivityClaims, supervised, cfg.ActivityFinality, cfg.Logger)
 	}
 
 	// The actual value ActivityEngine will poll at once started (see NewActivityEngine's own

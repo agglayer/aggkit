@@ -29,7 +29,7 @@ type bridgeAddressResolver interface {
 // directly via RPC over a small, configurable, recent block window for BridgeEvent logs sent by
 // a given address — a safety net for a bridge that network's own bridge-service instance has not
 // indexed yet. ActivitySource.BridgesFrom runs this in parallel with, and merges its result into,
-// the existing bridge-service-backed scan (see fetchNewBridgesFrom).
+// the existing bridge-service-backed scan (see scanBridgeService).
 //
 // Known limitation: it never calls debug_traceTransaction, so an Asset bridge routed through an
 // intermediate contract (not sent directly to the bridge contract) can't have its real sender

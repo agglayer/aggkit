@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/domain"
+	"github.com/agglayer/aggkit/bridgetracker/finality"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
@@ -41,10 +42,10 @@ type activityAddrCache struct {
 	// overwritten every call rather than accumulated, so a recovered network's warning clears
 	// promptly
 	warnings []domain.ActivityWarning
-	// revision accumulates the hash of every entry of the address (see domain.ActivityRevision,
-	// domain.HashActivityEntry, domain.ActivityRevisionReader). Its zero value is the empty
-	// activity, which is all it holds until the follow-up that maintains it as entries are
-	// added, removed or changed lands (agglayer/aggkit#1968, #1969)
+	// revision accumulates the hash of every entry in entries (see domain.ActivityRevision,
+	// domain.HashActivityEntry, domain.ActivityRevisionReader): every write to entries goes
+	// through storeEntry/removeEntry, which keep it in step (Remove(old hash).Add(new hash)). Its
+	// zero value is the empty activity
 	revision domain.ActivityRevision
 	// waiters holds one channel per RegisterAndAwait call currently blocked on this address's
 	// next refresh; closed and cleared by RefreshAddress once it completes
@@ -56,13 +57,15 @@ type activityAddrCache struct {
 }
 
 // ActivityCache implements domain.ActivityRegistry: for a given from_address it scans every
-// configured bridge service (via ActivityBridgeScanner) for bridges it has not already cached,
-// and keeps a running per-address cache of the resulting bridges, so:
-//   - a bridge already known is never re-scanned from the bridge service again (see
-//     ActivityBridgeScanner.BridgesFrom's known parameter);
-//   - once a bridge is confirmed claimed, isClaimed() is never asked again for it, even if its
-//     claim record has not been fetched yet;
-//   - once a bridge's claim record has been fetched, it is never asked for again;
+// configured bridge service (via ActivityBridgeScanner) and keeps a running per-address cache of
+// the resulting bridges, so:
+//   - a bridge already known and final is never re-read from the bridge service again, while
+//     the non-final ones are re-read on every refresh and corrected or removed when a reorg
+//     moved or dropped them (see ActivityBridgeScanner.BridgesFrom's known parameter,
+//     PlanActivityRefresh);
+//   - isClaimed() and the claim record are re-checked on every refresh until the entry is
+//     settled — claimed, claim record fetched, bridge and claim blocks final (see
+//     ActivityEntrySettled) — and never again after that;
 //   - an address nobody has asked about in idleTimeout is forgotten entirely, freeing everything
 //     cached for it (see PruneIdle, mirroring SupervisedStore.PruneIdle, driven by
 //     ActivityEngine's poll tick instead of a sweep-on-every-request).
@@ -73,10 +76,9 @@ type activityAddrCache struct {
 //
 // Safe for concurrent use.
 type ActivityCache struct {
-	scanner    ActivityBridgeScanner
-	claims     ActivityClaimChecker
-	supervised SupervisedStore
-	logger     aggkitcommon.Logger
+	scanner   ActivityBridgeScanner
+	refresher *ActivityEntryRefresher
+	logger    aggkitcommon.Logger
 
 	// now is the clock lastAccess is stamped with and the idle sweep compares against,
 	// injectable for tests (mirrors memoryRegistry.now, registry.go)
@@ -90,22 +92,22 @@ type ActivityCache struct {
 }
 
 // NewActivityCache returns an ActivityCache resolving bridges through scanner, claim state
-// through claims, and (when asked) tracker registration through supervised. Idle eviction is
-// entirely driven by whoever wires an ActivityEngine over the returned cache (see
-// ActivityEngineConfig.IdleTimeout, PruneIdle) — this constructor has no idleTimeout of its own
-// to fall back to
+// through claims, (when asked) tracker registration through supervised, and whether a bridge or
+// claim served by a bridge service is final through resolver (nil: nothing is ever final, so no
+// entry ever settles). Idle eviction is entirely driven by whoever wires an ActivityEngine over
+// the returned cache (see ActivityEngineConfig.IdleTimeout, PruneIdle) — this constructor has no
+// idleTimeout of its own to fall back to
 func NewActivityCache(
 	scanner ActivityBridgeScanner, claims ActivityClaimChecker, supervised SupervisedStore,
-	logger aggkitcommon.Logger,
+	resolver finality.Resolver, logger aggkitcommon.Logger,
 ) *ActivityCache {
 	return &ActivityCache{
-		scanner:    scanner,
-		claims:     claims,
-		supervised: supervised,
-		logger:     logger,
-		now:        time.Now,
-		byAddr:     make(map[common.Address]*activityAddrCache),
-		trigger:    make(chan common.Address, triggerBufferSize),
+		scanner:   scanner,
+		refresher: NewActivityEntryRefresher(claims, supervised, resolver, logger),
+		logger:    logger,
+		now:       time.Now,
+		byAddr:    make(map[common.Address]*activityAddrCache),
+		trigger:   make(chan common.Address, triggerBufferSize),
 	}
 }
 
@@ -216,13 +218,15 @@ func (a *ActivityCache) Triggers() <-chan common.Address {
 	return a.trigger
 }
 
-// RefreshAddress implements domain.ActivitySupervisedStore: it rechecks every bridge already
-// cached for fromAddress that is not yet settled (see settled), scans for bridges not seen
-// before (see ActivityBridgeScanner.BridgesFrom), forgets whatever the scan reports as
-// invalidated, records the scan's warnings, and finally wakes every RegisterAndAwait call
-// currently blocked on fromAddress. This is what used to run inline inside GetActivity; it is
-// now only ever called by ActivityEngine. A missing cache (address not currently registered) is
-// a silent no-op — the regular tick already only iterates GetActiveAddresses
+// RefreshAddress implements domain.ActivitySupervisedStore: it scans fromAddress's bridges
+// (see ActivityBridgeScanner.BridgesFrom: new bridges plus a fresh read of every non-final one),
+// merges the result into the cache (see PlanActivityRefresh: corrections overwrite, invalidated
+// non-final entries are forgotten, every entry not settled yet is rechecked through
+// ActivityEntryRefresher), keeps the address's revision in step with every change, records the
+// scan's warnings, and finally wakes every RegisterAndAwait call currently blocked on
+// fromAddress. A failed scan still rechecks the cached entries (keeping them all) before the
+// error is returned. Only ever called by ActivityEngine. A missing cache (address not currently
+// registered) is a silent no-op — the regular tick already only iterates GetActiveAddresses
 func (a *ActivityCache) RefreshAddress(ctx context.Context, fromAddress common.Address) error {
 	a.mu.Lock()
 	cache, ok := a.byAddr[fromAddress]
@@ -232,42 +236,36 @@ func (a *ActivityCache) RefreshAddress(ctx context.Context, fromAddress common.A
 	}
 	includeTracking := cache.wantsTracking
 	known := make(map[string]domain.KnownBridge, len(cache.entries))
-	cached := make([]*domain.ActivityEntry, 0, len(cache.entries))
+	cached := make(map[string]*domain.ActivityEntry, len(cache.entries))
 	for key, entry := range cache.entries {
-		known[key] = domain.KnownBridge{
-			TxHash: entry.Bridge.TxHash, BlockNum: entry.Bridge.BlockNum,
-			Source: entry.Source, NetworkID: entry.BridgeNetworkID,
-		}
-		cached = append(cached, entry)
+		known[key] = KnownBridgeOf(entry)
+		cached[key] = entry
 	}
 	a.mu.Unlock()
 
-	for _, entry := range cached {
-		// Source is carried forward from the cached entry, not rediscovered — this is a claim/
-		// tracking recheck of data already cached, not a new scan result, so it must not reset an
-		// entry's Source back to its zero value
-		scanned := &domain.ScannedBridge{Bridge: entry.Bridge, NetworkID: entry.BridgeNetworkID, Source: entry.Source}
-		a.upsert(ctx, cache, scanned, includeTracking)
+	found, invalidated, warnings, scanErr := a.scanner.BridgesFrom(ctx, fromAddress, known)
+	if scanErr != nil {
+		// nothing the failed scan returned can be trusted: keep every entry, just recheck them
+		found, invalidated = nil, nil
 	}
+	plan := PlanActivityRefresh(cached, found, invalidated)
 
-	newItems, invalidated, warnings, err := a.scanner.BridgesFrom(ctx, fromAddress, known)
-	if err != nil {
-		a.finishRefresh(cache)
-		return fmt.Errorf("scanning bridges from %s: %w", fromAddress, err)
+	a.mu.Lock()
+	for _, key := range plan.Removed {
+		cache.removeEntry(key)
 	}
-	if len(invalidated) > 0 {
-		// forget these before upserting newItems (not after): a GlobalIndex the scanner reports
-		// as both found and invalidated in the very same call (it should never, but this way a
-		// bug in that regard fails toward losing a stale entry rather than a fresh one) must end
-		// up cached, not forgotten
+	a.mu.Unlock()
+
+	for _, work := range plan.Items {
+		entry := a.refresher.Refresh(ctx, work.Item, work.Existing, includeTracking, a.now())
 		a.mu.Lock()
-		for _, key := range invalidated {
-			delete(cache.entries, key)
-		}
+		cache.storeEntry(string(work.Item.Bridge.GlobalIndex), entry)
 		a.mu.Unlock()
 	}
-	for _, item := range newItems {
-		a.upsert(ctx, cache, item, includeTracking)
+
+	if scanErr != nil {
+		a.finishRefresh(cache)
+		return fmt.Errorf("scanning bridges from %s: %w", fromAddress, scanErr)
 	}
 
 	a.mu.Lock()
@@ -276,6 +274,27 @@ func (a *ActivityCache) RefreshAddress(ctx context.Context, fromAddress common.A
 
 	a.finishRefresh(cache)
 	return nil
+}
+
+// storeEntry stores entry under key, keeping revision in step: the hash of the entry it replaces
+// (if any) is removed and entry's is added. Callers must hold ActivityCache.mu
+func (c *activityAddrCache) storeEntry(key string, entry *domain.ActivityEntry) {
+	if old, ok := c.entries[key]; ok {
+		c.revision = c.revision.Remove(domain.HashActivityEntry(old))
+	}
+	c.revision = c.revision.Add(domain.HashActivityEntry(entry))
+	c.entries[key] = entry
+}
+
+// removeEntry forgets the entry under key, if any, taking its hash out of revision. Callers must
+// hold ActivityCache.mu
+func (c *activityAddrCache) removeEntry(key string) {
+	old, ok := c.entries[key]
+	if !ok {
+		return
+	}
+	c.revision = c.revision.Remove(domain.HashActivityEntry(old))
+	delete(c.entries, key)
 }
 
 // finishRefresh marks cache as having completed at least one refresh (see activityAddrCache.
@@ -321,7 +340,7 @@ func (a *ActivityCache) GetActivity(
 
 	out := make([]*domain.ActivityEntry, 0, len(cache.entries))
 	for _, entry := range cache.entries {
-		if matchesFilter(entry, filter) {
+		if MatchesActivityFilter(entry, filter) {
 			out = append(out, entry)
 		}
 	}
@@ -354,37 +373,15 @@ func (a *ActivityCache) FlushActivity(fromAddress common.Address) {
 	delete(a.byAddr, fromAddress)
 }
 
-// upsert (re)computes item's entry via refresh and stores it, unless it is already cached and
-// settled — in which case it is left untouched. Safe to call with an item the caller cannot be
-// sure is genuinely new (e.g. a defensive re-check, or a pagination-boundary duplicate): settled
-// entries are never redundantly refreshed regardless of where item came from
-func (a *ActivityCache) upsert(
-	ctx context.Context, addrCache *activityAddrCache, item *domain.ScannedBridge, includeTracking bool,
-) {
-	key := string(item.Bridge.GlobalIndex)
-
-	a.mu.Lock()
-	existing := addrCache.entries[key]
-	a.mu.Unlock()
-
-	if existing != nil && settled(existing) {
-		return
-	}
-
-	entry := a.refresh(ctx, item, existing, includeTracking)
-
-	a.mu.Lock()
-	addrCache.entries[key] = entry
-	a.mu.Unlock()
-}
-
-// matchesFilter reports whether entry belongs in a GetActivity result under filter:
-// ActivityFilterAll always matches; the other filters match exactly one TrackerClaimStatus each
-// — see ActivityFilter's doc for what each one means. TrackerClaimStatus (rather than the
+// MatchesActivityFilter reports whether entry belongs in a GetActivity result under filter:
+// ActivityFilterAll always matches, ActivityFilterClaimed matches both "claimed" and
+// "claimed_finalized" (see types.TrackerClaimStatus.IsClaimed), and the other filters match
+// exactly one TrackerClaimStatus each — see ActivityFilter's doc for what each one means. Shared
+// by both activity stores (ActivityCache and the SQLite one). TrackerClaimStatus (rather than the
 // coarser ClaimStatus) is what distinguishes ActivityFilterPending from
 // ActivityFilterReadyToClaim; it mirrors ClaimStatus directly for the claimed/error cases (see
 // domain.ActivityEntry.TrackerClaimStatus)
-func matchesFilter(entry *domain.ActivityEntry, filter types.ActivityFilter) bool {
+func MatchesActivityFilter(entry *domain.ActivityEntry, filter types.ActivityFilter) bool {
 	switch filter {
 	case types.ActivityFilterClaimed:
 		return entry.TrackerClaimStatus.IsClaimed()
@@ -399,119 +396,4 @@ func matchesFilter(entry *domain.ActivityEntry, filter types.ActivityFilter) boo
 	default:
 		return true
 	}
-}
-
-// settled reports whether entry is done being rechecked: claimed, with the claim record
-// already fetched. Anything else (unclaimed, the isClaimed() check itself having failed, or
-// claimed but the destination bridge service has not indexed the claim yet) is re-verified on
-// every background refresh
-func settled(entry *domain.ActivityEntry) bool {
-	return entry.ClaimStatus == types.ClaimStatusClaimed && entry.Claim != nil
-}
-
-// BlockTimeOrNow converts ts, a block's unix-second timestamp, to a UTC time.Time, or returns
-// now when ts is zero — the sentinel BridgeResponse.BlockTimestamp effectively uses for "not
-// resolved yet" (a real on-chain block at exactly the unix epoch does not happen in practice).
-// Exported so bridgetracker/db.sqliteActivityStore.refresh, a deliberate byte-for-byte mirror of
-// ActivityCache.refresh below (see its own doc), stamps ActivityEntry.CreatedAt the same way
-func BlockTimeOrNow(ts uint64, now time.Time) time.Time {
-	if ts == 0 {
-		return now
-	}
-	return time.Unix(int64(ts), 0).UTC()
-}
-
-// refresh (re)computes the claim/tracking state of a single bridge item, stamping
-// ActivityEntry.CreatedAt (carried forward from existing, or item.Bridge's own origin deposit
-// block timestamp — falling back to now only if the bridge service has not populated that yet,
-// see BlockTimeOrNow — the first time this bridge is seen) and UpdatedAt (always now — every
-// call to refresh counts as an update, whether or not anything about the entry actually changed;
-// deliberately not a deterministic fact like CreatedAt, since it reports the last time the
-// tracker checked the network, not the last time this bridge's own state actually changed — see
-// ActivityEntry.UpdatedAt's own doc, agglayer/aggkit#1840). existing is the previously cached
-// entry for this same bridge, or nil if it has never been seen before:
-//   - if existing is already confirmed claimed, isClaimed() is not asked again — that result
-//     never reverts — and refresh goes straight to the claim-record step;
-//   - otherwise the on-chain isClaimed() call runs as usual (unclaimed and error states must
-//     keep being re-verified, since only a confirmed claim is permanent).
-//
-// Once claimed, the destination bridge service's claim record is always fetched: unlike before
-// RefreshAddress ran independently of any particular request's filter, there is no longer a
-// per-call filter to skip it for — a background refresh must fetch it eventually regardless of
-// which filter happens to be requested next (see settled) — or, only if includeTracking, the
-// tracker's current snapshot is attached for the still-unclaimed tx. A failure at any step is
-// logged and left for the next call to retry; it never fails the whole RefreshAddress call,
-// since one bad network should not hide every other bridge found
-func (a *ActivityCache) refresh(
-	ctx context.Context, item *domain.ScannedBridge, existing *domain.ActivityEntry, includeTracking bool,
-) *domain.ActivityEntry {
-	entry := &domain.ActivityEntry{Bridge: item.Bridge, BridgeNetworkID: item.NetworkID, Source: item.Source}
-	if existing != nil {
-		entry.CreatedAt = existing.CreatedAt
-	} else {
-		entry.CreatedAt = BlockTimeOrNow(item.Bridge.BlockTimestamp, a.now())
-	}
-	entry.UpdatedAt = a.now()
-
-	if existing != nil && existing.ClaimStatus == types.ClaimStatusClaimed {
-		entry.ClaimStatus = types.ClaimStatusClaimed
-	} else {
-		claimed, err := a.claims.IsClaimed(ctx, item)
-		if err != nil {
-			a.logger.Warnf("activity: checking claim state of bridge tx=%s (network=%d, deposit=%d): %v",
-				item.Bridge.TxHash, item.NetworkID, item.Bridge.DepositCount, err)
-			entry.ClaimStatus = types.ClaimStatusError
-			entry.TrackerClaimStatus = types.TrackerClaimStatusError
-			entry.Errors = map[string]string{"claim": err.Error()}
-			return entry
-		}
-		if claimed {
-			entry.ClaimStatus = types.ClaimStatusClaimed
-		} else {
-			entry.ClaimStatus = types.ClaimStatusUnclaimed
-		}
-	}
-
-	if entry.ClaimStatus == types.ClaimStatusClaimed {
-		entry.TrackerClaimStatus = types.TrackerClaimStatusClaimed
-		claim, err := a.claims.ClaimInfo(ctx, item)
-		if err != nil {
-			a.logger.Warnf("activity: fetching claim record of bridge tx=%s: %v", item.Bridge.TxHash, err)
-		}
-		entry.Claim = claim
-		return entry
-	}
-
-	// Unclaimed: conservatively "pending" until proven otherwise, either by the tracker's own
-	// snapshot (includeTracking) or the direct readiness check below
-	entry.TrackerClaimStatus = types.TrackerClaimStatusPending
-
-	if includeTracking {
-		id := domain.TrackingID{NetworkID: item.NetworkID, TxHash: common.HexToHash(string(item.Bridge.TxHash))}
-		tracking, err := a.supervised.Get(id, true)
-		if err != nil {
-			a.logger.Warnf("activity: registering bridge tx=%s with the tracker: %v", item.Bridge.TxHash, err)
-		} else {
-			entry.Tracking = tracking
-			entry.TrackerClaimStatus = domain.UnclaimedTrackerClaimStatus(tracking)
-			return entry
-		}
-	}
-
-	// includeTracking was not requested, or registering with the tracker failed: fall back to
-	// asking the bridge-service endpoints directly whether the bridge is already ready to claim
-	// (see ActivityClaimChecker.IsReadyToClaim), without the cost of registering it with the
-	// tracker
-	ready, err := a.claims.IsReadyToClaim(ctx, item)
-	if err != nil {
-		a.logger.Warnf("activity: checking claim readiness of bridge tx=%s (network=%d, deposit=%d): %v",
-			item.Bridge.TxHash, item.NetworkID, item.Bridge.DepositCount, err)
-		if entry.Errors == nil {
-			entry.Errors = make(map[string]string)
-		}
-		entry.Errors["readiness"] = err.Error()
-	} else if ready {
-		entry.TrackerClaimStatus = types.TrackerClaimStatusReadyToClaim
-	}
-	return entry
 }
