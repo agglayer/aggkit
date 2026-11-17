@@ -215,7 +215,11 @@ it returns. The proxy turns it into a plain "is final" answer (`finality.Resolve
   unavailable, or a reorg is in progress.
 - Finality is monotonic: once an entry has been seen final it is kept final, even if another
   bridge-service instance omits the field (or reports `false`) later. Only final answers are
-  remembered, in a bounded cache.
+  remembered, in a bounded cache. A `false` that arrives after the entry was seen final is logged
+  as a warning: it is expected from an instance that is lagging behind, and otherwise points at a
+  reorg deeper than the finality in use.
+- There is no negative cache: while the receipt does not match, it is fetched again on every
+  refresh, so the entry is corrected as soon as the bridge-service catches up.
 - Fallback, only for bridges and claims whose `block_finalized` is omitted: the proxy fetches the
   receipt of the entry's `tx_hash` from the RPC of that network and checks that it is mined in the
   entry's `block_num` and that this block is at or below the block configured by
