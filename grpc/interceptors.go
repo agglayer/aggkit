@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,6 +84,10 @@ func concurrencyLimitUnaryInterceptor(slots chan struct{}) grpc.UnaryServerInter
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
+		if isHealthCheckMethod(info.FullMethod) {
+			return handler(ctx, req)
+		}
+
 		select {
 		case slots <- struct{}{}:
 		default:
@@ -170,6 +175,10 @@ func rateLimitUnaryInterceptor(limiter *perPeerRateLimiter) grpc.UnaryServerInte
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
+		if isHealthCheckMethod(info.FullMethod) {
+			return handler(ctx, req)
+		}
+
 		if !limiter.allow(ctx) {
 			return nil, status.Errorf(codes.ResourceExhausted,
 				"rate limit exceeded, retry later")
@@ -177,6 +186,15 @@ func rateLimitUnaryInterceptor(limiter *perPeerRateLimiter) grpc.UnaryServerInte
 
 		return handler(ctx, req)
 	}
+}
+
+// isHealthCheckMethod reports whether a method is a health check. Health checks are cheap,
+// so they are exempt from the rate and concurrency limits: probes and the caller's own
+// health checks do not take capacity from real requests, and a flood of other requests does
+// not make the service look down.
+func isHealthCheckMethod(fullMethod string) bool {
+	return strings.HasSuffix(fullMethod, "/HealthCheck") ||
+		fullMethod == "/grpc.health.v1.Health/Check"
 }
 
 // peerKey returns the address of the peer that sent the request, without its port, so

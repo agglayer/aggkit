@@ -238,3 +238,29 @@ func TestServerRateLimitsPerPeer(t *testing.T) {
 	require.Equal(t, codes.ResourceExhausted, status.Code(err),
 		"a request above the per-peer rate must be rejected")
 }
+
+func TestLimitsDoNotApplyToHealthChecks(t *testing.T) {
+	t.Parallel()
+
+	handler := func(context.Context, interface{}) (interface{}, error) { return "ok", nil }
+	healthInfo := &grpc.UnaryServerInfo{FullMethod: "/aggkit.aggsender.validator.v1.AggsenderValidator/HealthCheck"}
+	otherInfo := &grpc.UnaryServerInfo{FullMethod: "/aggkit.aggsender.validator.v1.AggsenderValidator/ValidateCertificate"}
+
+	// No concurrency slot is free and the peer has no rate left.
+	slots := make(chan struct{}, 1)
+	slots <- struct{}{}
+	limiter := newPerPeerRateLimiter(1, 1)
+	require.True(t, limiter.allow(t.Context()))
+
+	concurrency := concurrencyLimitUnaryInterceptor(slots)
+	rateLimit := rateLimitUnaryInterceptor(limiter)
+
+	for _, interceptor := range []grpc.UnaryServerInterceptor{concurrency, rateLimit} {
+		resp, err := interceptor(t.Context(), nil, healthInfo, handler)
+		require.NoError(t, err)
+		require.Equal(t, "ok", resp)
+
+		_, err = interceptor(t.Context(), nil, otherInfo, handler)
+		require.Equal(t, codes.ResourceExhausted, status.Code(err))
+	}
+}
