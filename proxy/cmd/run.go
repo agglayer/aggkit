@@ -13,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
 	bridgetrackerdb "github.com/agglayer/aggkit/bridgetracker/db"
+	"github.com/agglayer/aggkit/bridgetracker/finality"
 	"github.com/agglayer/aggkit/bridgetracker/sources"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
@@ -201,6 +202,24 @@ func (v rpcClientsBlockHashVerifier) CanonicalBlockHash(
 	return common.Hash{}, fmt.Errorf("no header or error reported for block %d on network %d", blockNumber, networkID)
 }
 
+// newFinalityResolver builds the finality.Resolver of the tracker: the block the proxy considers
+// finalized on each network comes from the [Tracker] L1FinalizedBlock / L2FinalizedBlock /
+// FinalizedBlockByNetwork settings (see bridgetracker.Config.FinalizedBlockFor), and every value
+// other than the recommended FinalizedBlock is warned about
+func newFinalityResolver(cfg bridgetracker.Config, clients sources.EthClientResolver) *finality.RPCResolver {
+	for _, warning := range cfg.FinalizedBlockWarnings() {
+		log.Warn(warning)
+	}
+	resolver, err := finality.NewRPCResolver(clients, finality.Config{
+		FinalizedBlock: cfg.FinalizedBlockFor,
+		Logger:         log.WithFields("module", "bridgetracker-finality"),
+	})
+	if err != nil {
+		log.Fatalf("failed to create block finality resolver: %v", err)
+	}
+	return resolver
+}
+
 // closeOnShutdown closes v once ctx is done, if v implements io.Closer — a no-op for the
 // in-memory adapters (bridgetracker.NewMemoryRegistry, a nil trackerCfg.Activity), and for the
 // closer's own zero value (a nil interface, e.g. trackerCfg.Activity when DBPath is unset)
@@ -278,6 +297,13 @@ func runTracker(
 	gerSource := sources.NewGERSource(finder, rpcClients, trackerCfg.L1GlobalExitRootAddress,
 		trackerCfg.L1BlockFinality, trackerCfg.L2GlobalExitRootAddress, trackerCfg.L2InjectionLookbackBlocks,
 		log.WithFields("module", "bridgetracker-gersource"))
+
+	// Decides whether a bridge or claim reported by a bridge service is final (see finality.Resolver):
+	// block_finalized when the bridge service sends it, a receipt lookup otherwise. It will be
+	// consumed by the activity scan (#1968), the settled rule (#1969) and the tracker (#1970); until
+	// they are wired it is only built, so a wrong setting is rejected and warned about at startup.
+	finalityResolver := newFinalityResolver(trackerCfg, rpcClients)
+	_ = finalityResolver
 
 	// GET /activity/from/{from_address} scans every network the finder knows about (via
 	// finder.NetworkIDs) for bridges sent by an address, and resolves their claim state through

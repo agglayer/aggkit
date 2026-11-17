@@ -116,6 +116,8 @@ IdleTimeout = "30m"
 RegisterResolveTimeout = "3s"
 L1BlockFinality = "LatestBlock"
 L2BlockFinality = "LatestBlock"
+L1FinalizedBlock = "FinalizedBlock"
+L2FinalizedBlock = "FinalizedBlock"
 MaxTrackedBridges = 100000
 L2InjectionLookbackBlocks = 10000000
 
@@ -151,6 +153,20 @@ UseTLS = false
 - `L1BlockFinality` / `L2BlockFinality`: the finality a bridge's creating tx receipt must reach
   before the tracker accepts it, so a later reorg cannot leave it permanently following an
   orphaned deposit (a resolved bridge is never re-checked).
+- `L1FinalizedBlock` / `L2FinalizedBlock` (default `"FinalizedBlock"` for both): the block the proxy
+  considers finalized on L1 (network 0) / on any L2 when it has to decide by itself whether a bridge
+  or a claim is final — a bridge or claim mined in a block at or below it is final. It is **not**
+  `L1BlockFinality` / `L2BlockFinality`, which only decide when a creating tx's receipt is accepted
+  (default `LatestBlock`); the two are independent. Accepted values: `FinalizedBlock`, `SafeBlock`
+  and `LatestBlock/-N` (N blocks behind the latest one). See [Block finality of bridges and
+  claims](#block-finality-of-bridges-and-claims). **Using anything but `FinalizedBlock` is not
+  recommended**: the guarantee that a final bridge or claim is not reorged out is only given for the
+  `finalized` tag (it is given at another level, not by the proxy). Any other value makes the proxy
+  log a warning at startup.
+- `FinalizedBlockByNetwork`: optional networkID → block map overriding `L1FinalizedBlock` /
+  `L2FinalizedBlock` for the networks it lists (e.g. an L2 whose RPC does not serve the `finalized`
+  tag: `[Tracker.FinalizedBlockByNetwork]` with `3 = "SafeBlock"`). Empty by default; same
+  recommendation as above.
 - `BridgeAddrs`: a static networkID → canonical bridge contract address **override**, checked before
   falling back to the bridge service finder's on-chain resolution — it is not the only source of the
   address `FindBridge` checks a `BridgeEvent` log's emitter against (see [How it
@@ -185,6 +201,34 @@ UseTLS = false
   agglayer — the tracker only ever reads agglayer state, so `SendCertificate` is forbidden here).
   `GetLatestSettledCertificateHeader` is intentionally left unset (passthrough): its "latest"
   answer must always be fresh.
+
+### Block finality of bridges and claims
+
+The bridge service reports `block_finalized` (`true`, `false`, or omitted) on each bridge and claim
+it returns. The proxy turns it into a plain "is final" answer (`finality.Resolver` in
+`bridgetracker/finality`) with these rules:
+
+- An explicit `true` / `false` from the bridge service always wins, and the fallback below is never
+  used for it.
+- Omitted means **not final**. The field is omitted when the bridge service cannot tell: it is
+  older than agglayer/aggkit#1921, the block was stored without its hash, the syncer is
+  unavailable, or a reorg is in progress.
+- Finality is monotonic: once an entry has been seen final it is kept final, even if another
+  bridge-service instance omits the field (or reports `false`) later. Only final answers are
+  remembered, in a bounded cache.
+- Fallback, only for bridges and claims whose `block_finalized` is omitted: the proxy fetches the
+  receipt of the entry's `tx_hash` from the RPC of that network and checks that it is mined in the
+  entry's `block_num` and that this block is at or below the block configured by
+  `L1FinalizedBlock` / `L2FinalizedBlock` (`FinalizedBlockByNetwork`). That is one RPC call per
+  entry, once: the receipt is not fetched while the block is above the finalized one, and a final
+  answer is cached. A receipt that is not found, an RPC error, or a receipt mined in another block
+  than `block_num` leaves the entry **not final** — it never removes anything. Block number alone is
+  never enough: a stored block can have been replaced by another one with the same number.
+- The finalized block of each network is fetched at most once every 5 seconds, not once per
+  request.
+
+Bridges found through the RPC log scan fallback of the activity endpoint never carry
+`block_finalized`; they stay not final until the bridge service reports them.
 
 ## `[BridgeServiceFinder]` configuration
 
