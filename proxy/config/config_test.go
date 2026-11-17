@@ -48,6 +48,10 @@ func TestLoadFilesDefaults(t *testing.T) {
 	require.Equal(t, 10*time.Minute, cfg.Tracker.RetentionPeriod.Duration)
 	require.Equal(t, aggkittypes.LatestBlock, cfg.Tracker.L1BlockFinality)
 	require.Equal(t, aggkittypes.LatestBlock, cfg.Tracker.L2BlockFinality)
+	// what the proxy considers finalized is separate from the receipt-acceptance finality above
+	require.Equal(t, aggkittypes.FinalizedBlock, cfg.Tracker.L1FinalizedBlock)
+	require.Equal(t, aggkittypes.FinalizedBlock, cfg.Tracker.L2FinalizedBlock)
+	require.Empty(t, cfg.Tracker.FinalizedBlockByNetwork)
 	require.Equal(t, 100000, cfg.Tracker.MaxTrackedBridges)
 	require.Equal(t, uint64(10000000), cfg.Tracker.L2InjectionLookbackBlocks)
 	// URL is left unset by default: it must be supplied per-environment (see proxy/scripts)
@@ -114,4 +118,46 @@ func TestValidateComponents(t *testing.T) {
 func TestLoadFilesMissingFile(t *testing.T) {
 	_, err := LoadFiles([]string{"non-existing-file.toml"})
 	require.Error(t, err)
+}
+
+func TestLoadFilesFinalizedBlockOverrides(t *testing.T) {
+	cfgFile := filepath.Join(t.TempDir(), "proxy.toml")
+	cfgContent := `
+[Tracker]
+L2FinalizedBlock = "SafeBlock"
+
+[Tracker.FinalizedBlockByNetwork]
+3 = "LatestBlock/-5"
+7 = "FinalizedBlock"
+`
+	require.NoError(t, os.WriteFile(cfgFile, []byte(cfgContent), 0600))
+
+	cfg, err := LoadFiles([]string{cfgFile})
+	require.NoError(t, err)
+	require.Equal(t, aggkittypes.FinalizedBlock, cfg.Tracker.L1FinalizedBlock, "not overridden: the default")
+	require.Equal(t, aggkittypes.SafeBlock, cfg.Tracker.L2FinalizedBlock)
+	require.Equal(t, map[uint32]aggkittypes.BlockNumberFinality{
+		3: {Block: aggkittypes.Latest, Offset: -5},
+		7: aggkittypes.FinalizedBlock,
+	}, cfg.Tracker.FinalizedBlockByNetwork)
+
+	require.Equal(t, aggkittypes.FinalizedBlock, cfg.Tracker.FinalizedBlockFor(0))
+	require.Equal(t, aggkittypes.SafeBlock, cfg.Tracker.FinalizedBlockFor(1))
+	require.Equal(t, aggkittypes.BlockNumberFinality{Block: aggkittypes.Latest, Offset: -5}, cfg.Tracker.FinalizedBlockFor(3))
+	require.Equal(t, aggkittypes.FinalizedBlock, cfg.Tracker.FinalizedBlockFor(7))
+	require.Len(t, cfg.Tracker.FinalizedBlockWarnings(), 2)
+
+	// CDK_PROXY_* environment overrides work like for any other [Tracker] setting
+	t.Setenv("CDK_PROXY_TRACKER_L1FINALIZEDBLOCK", "SafeBlock")
+	cfgWithEnvOverride, err := LoadFiles([]string{cfgFile})
+	require.NoError(t, err)
+	require.Equal(t, aggkittypes.SafeBlock, cfgWithEnvOverride.Tracker.L1FinalizedBlock)
+}
+
+func TestLoadFilesInvalidFinalizedBlock(t *testing.T) {
+	cfgFile := filepath.Join(t.TempDir(), "proxy.toml")
+	require.NoError(t, os.WriteFile(cfgFile, []byte("[Tracker]\nL1FinalizedBlock = \"NotABlock\"\n"), 0600))
+
+	_, err := LoadFiles([]string{cfgFile})
+	require.ErrorContains(t, err, "NotABlock")
 }
