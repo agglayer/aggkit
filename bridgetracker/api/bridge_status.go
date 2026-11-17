@@ -16,6 +16,11 @@ type BridgeStatus struct {
 	LogIndex uint32 `json:"log_index"`
 	// BlockTimestamp is the timestamp of the block, on the origin network, where the BridgeEvent was emitted
 	BlockTimestamp uint64 `json:"block_timestamp"`
+	// BlockFinalized is whether BlockNumber is final on the origin network, i.e. it can no
+	// longer be removed by a reorg. Always serialized (no omitempty): false means "not final yet
+	// (or not known)" — the client keeps polling until it turns true. It is false for every
+	// bridge until the tracker follow-up populates it (agglayer/aggkit#1970)
+	BlockFinalized bool `json:"block_finalized"`
 	// Event holds the facts unpacked directly from the on-chain BridgeEvent log
 	Event BridgeEventData `json:"event"`
 }
@@ -53,6 +58,7 @@ func newBridgeStatus(info *domain.BridgeInfo) *BridgeStatus {
 		BlockNumber:    info.BlockNumber,
 		LogIndex:       info.LogIndex,
 		BlockTimestamp: info.BlockTimestamp,
+		BlockFinalized: info.BlockFinalized,
 		Event: BridgeEventData{
 			LeafType:           info.LeafType.String(),
 			OriginNetwork:      info.OriginNetwork,
