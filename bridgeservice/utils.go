@@ -3,6 +3,7 @@ package bridgeservice
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -131,23 +132,23 @@ func parseAmountParam(s string) (*big.Int, error) {
 // leading zeros (other than "0" itself) are rejected; so is a value above maxValue.
 func parseBoundedUnsignedDecimal(s string, maxDigits int, maxValue *big.Int) (*big.Int, error) {
 	if s == "" {
-		return nil, fmt.Errorf("empty value")
+		return nil, errors.New("empty value")
 	}
 	if len(s) > maxDigits {
 		return nil, fmt.Errorf("too many digits: maximum %d allowed", maxDigits)
 	}
 	for i := 0; i < len(s); i++ {
 		if s[i] < '0' || s[i] > '9' {
-			return nil, fmt.Errorf("only decimal digits are allowed")
+			return nil, errors.New("only decimal digits are allowed")
 		}
 	}
 	if len(s) > 1 && s[0] == '0' {
-		return nil, fmt.Errorf("leading zeros are not allowed")
+		return nil, errors.New("leading zeros are not allowed")
 	}
 
 	value, ok := new(big.Int).SetString(s, decimalBase)
 	if !ok {
-		return nil, fmt.Errorf("not a decimal integer")
+		return nil, errors.New("not a decimal integer")
 	}
 	if value.Cmp(maxValue) > 0 {
 		return nil, fmt.Errorf("value out of range: maximum %s", maxValue.String())

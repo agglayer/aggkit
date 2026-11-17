@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -429,9 +430,9 @@ func TestHTTPServerStartRejectsOversizedRequestLine(t *testing.T) {
 	t.Setenv("GIN_MODE", gin.TestMode)
 	cfg := testRESTConfig(t)
 	srv := NewHTTPServer(cfg, nil)
-	handlerCalled := false
+	var handlerCalled atomic.Bool
 	srv.Engine().GET("/q", func(c *gin.Context) {
-		handlerCalled = true
+		handlerCalled.Store(true)
 		c.Status(http.StatusOK)
 	})
 
@@ -445,14 +446,14 @@ func TestHTTPServerStartRejectsOversizedRequestLine(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.True(t, handlerCalled)
+	require.True(t, handlerCalled.Load())
 
 	// A ~1 MB query string, accepted under Go's 1 MiB default, is rejected
 	// before it reaches the router.
-	handlerCalled = false
+	handlerCalled.Store(false)
 	resp, err = http.Get(base + strings.Repeat("9", 1_000_000))
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, http.StatusRequestHeaderFieldsTooLarge, resp.StatusCode)
-	require.False(t, handlerCalled)
+	require.False(t, handlerCalled.Load())
 }
