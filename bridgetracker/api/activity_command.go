@@ -79,13 +79,14 @@ type ActivityItem struct {
 	// configured for the destination network) — callers must not read it as "pending". While
 	// unclaimed, "readyToClaim" vs "pending" is resolved from the tracker's own snapshot when
 	// Tracking is present, or directly against the bridge-service endpoints otherwise (see
-	// domain.ActivityClaimChecker.IsReadyToClaim). "claimed_finalized" is not produced yet (see
-	// Finalized)
+	// domain.ActivityClaimChecker.IsReadyToClaim). "claimed_finalized" is "claimed" once the
+	// bridge's and the claim's blocks are both final (see Finalized)
 	ClaimStatus string `json:"claim_status" enums:"pending,readyToClaim,claimed,claimed_finalized,error"`
 	// Finalized is true when this item can no longer be changed by a reorg: its bridge is final
-	// and, if it is claimed, its claim is final too. Always serialized. It is false for every
-	// item until the activity finality follow-ups populate it (agglayer/aggkit#1968, #1969).
-	// Going from false to true does not change the response's Revision
+	// and, if it is claimed, its claim is final too (claim_status "claimed_finalized"). Always
+	// serialized. Going from false to true does not change the response's Revision. An unclaimed
+	// item with a final bridge is finalized too, and goes back to false if it gets claimed, until
+	// that claim is final
 	Finalized bool `json:"finalized"`
 	// ClaimNetworkID is the network whose bridge service reported Claim (the bridge's
 	// destination network); only present alongside Claim
@@ -95,11 +96,12 @@ type ActivityItem struct {
 	Claim *bridgeservicetypes.ClaimResponse `json:"claim,omitempty"`
 	// CreationTimestamp is when this bridge was created (unix seconds): its origin deposit block
 	// timestamp, or when the activity endpoint first cached it if the bridge service had not
-	// populated that timestamp yet; it never changes after that
+	// populated that timestamp yet; it only changes again if a reorg moves the bridge to another
+	// block or transaction
 	CreationTimestamp uint64 `json:"creation_timestamp"`
 	// LastUpdatedTimestamp is when this item's claim/tracking state was last (re)checked (unix
-	// seconds), whether or not anything about it actually changed. Stops advancing once the
-	// bridge is claimed with its claim record fetched — nothing left to recheck
+	// seconds), whether or not anything about it actually changed. Stops advancing once the item
+	// is settled (claim_status "claimed_finalized") — nothing left to recheck
 	LastUpdatedTimestamp uint64 `json:"last_updated_timestamp"`
 	// Tracking is the bridge tracker's current status for this bridge; only present when the
 	// request set includeTracking=true and the bridge is still unclaimed
@@ -173,8 +175,8 @@ type ActivityResponse struct {
 	// same after a restart and on every instance holding the same data. A client polls it with a
 	// cheap request (page_size=1), reloads the pages it has loaded when it differs from the one
 	// it holds, and checks it again after the last page; compare it for equality only. Always
-	// serialized; until the follow-up that computes it lands (agglayer/aggkit#1968, #1969) it is
-	// the empty-activity value "v1:" followed by 64 zeros
+	// serialized; the empty-activity value "v1:" followed by 64 zeros for an address with no
+	// bridges
 	Revision string `json:"revision" example:"v1:0000000000000000000000000000000000000000000000000000000000000000"`
 	// Warnings lists every network whose bridge service could not be scanned this call; absent
 	// when every configured network was scanned successfully. Bridges may be incomplete for the
