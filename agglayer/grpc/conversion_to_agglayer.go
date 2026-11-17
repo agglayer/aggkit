@@ -19,6 +19,8 @@ import (
 
 var (
 	ErrNilCertificate = errors.New("aggsender-validator nil certificate")
+	// ErrInvalidCertificate is returned when a field of the certificate is present but malformed
+	ErrInvalidCertificate = errors.New("aggsender-validator invalid certificate")
 )
 
 // ConvertProtoCertToAgglayer Convert a certificate from the gRPC (PROTO) format to the agglayer format
@@ -273,7 +275,7 @@ func grpcMerkleProofToAgglayer(proof *v1types.MerkleProof) (*agglayertypes.Merkl
 	}
 
 	return &agglayertypes.MerkleProof{
-		Root:  common.BytesToHash(proof.GetRoot().GetValue()),
+		Root:  common.BytesToHash(proof.Root.Value),
 		Proof: siblings,
 	}, nil
 }
@@ -373,9 +375,7 @@ func grpcMultisigToAgglayer(multisig *v1types.Multisig) (*agglayertypes.Multisig
 	}
 
 	for i, sig := range multisigEcdsa.Ecdsa.Signatures {
-		// The signature is an optional field on the wire: an omitted entry decodes to nil,
-		// so an entry must be rejected instead of dereferenced. This conversion runs on
-		// unauthenticated requests, and a nil dereference here would take the process down.
+		// An omitted optional field decodes to nil; reject it instead of dereferencing.
 		if sig == nil {
 			return nil, fmt.Errorf("grpcMultisigToAgglayer. signature entry at index %d is nil. %w",
 				i, ErrNilCertificate)
@@ -383,7 +383,7 @@ func grpcMultisigToAgglayer(multisig *v1types.Multisig) (*agglayertypes.Multisig
 		signature := sig.GetSignature().GetValue()
 		if len(signature) != aggkitcommon.SignatureSize {
 			return nil, fmt.Errorf("grpcMultisigToAgglayer. signature entry at index %d has an invalid length: "+
-				"%d. Expected: %d. %w", i, len(signature), aggkitcommon.SignatureSize, ErrNilCertificate)
+				"%d. Expected: %d. %w", i, len(signature), aggkitcommon.SignatureSize, ErrInvalidCertificate)
 		}
 		multisigAgglayer.Signatures[i] = agglayertypes.ECDSAMultisigEntry{
 			Signature: signature,

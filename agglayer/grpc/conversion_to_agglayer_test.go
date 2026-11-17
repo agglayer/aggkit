@@ -549,6 +549,7 @@ func TestConvertProtoCertToAgglayerRejectsNilMultisigSignature(t *testing.T) {
 		name         string
 		aggchainData *v1types.AggchainData
 		errContains  string
+		wantErr      error
 	}{
 		{
 			name: "multisig entry without signature",
@@ -558,6 +559,7 @@ func TestConvertProtoCertToAgglayerRejectsNilMultisigSignature(t *testing.T) {
 				},
 			},
 			errContains: "signature entry at index 0 has an invalid length",
+			wantErr:     ErrInvalidCertificate,
 		},
 		{
 			name: "multisig entry is nil",
@@ -567,6 +569,7 @@ func TestConvertProtoCertToAgglayerRejectsNilMultisigSignature(t *testing.T) {
 				},
 			},
 			errContains: "signature entry at index 0 is nil",
+			wantErr:     ErrNilCertificate,
 		},
 		{
 			name: "multisig entry with a short signature",
@@ -579,6 +582,7 @@ func TestConvertProtoCertToAgglayerRejectsNilMultisigSignature(t *testing.T) {
 				},
 			},
 			errContains: "signature entry at index 0 has an invalid length",
+			wantErr:     ErrInvalidCertificate,
 		},
 		{
 			name: "multisig and aggchain proof entry without signature",
@@ -591,6 +595,7 @@ func TestConvertProtoCertToAgglayerRejectsNilMultisigSignature(t *testing.T) {
 				},
 			},
 			errContains: "signature entry at index 0 has an invalid length",
+			wantErr:     ErrInvalidCertificate,
 		},
 	}
 
@@ -605,7 +610,7 @@ func TestConvertProtoCertToAgglayerRejectsNilMultisigSignature(t *testing.T) {
 				result, err = ConvertProtoCertToAgglayer(protoCert)
 			})
 			require.Nil(t, result)
-			require.ErrorIs(t, err, ErrNilCertificate)
+			require.ErrorIs(t, err, tt.wantErr)
 			require.ErrorContains(t, err, tt.errContains)
 		})
 	}

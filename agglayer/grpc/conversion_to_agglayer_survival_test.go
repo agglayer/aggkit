@@ -21,7 +21,8 @@ import (
 
 // survivalServer mirrors the conversion and error mapping of the validator's
 // ValidateCertificate handler: it converts the incoming certificate and answers an
-// invalid argument when the conversion fails.
+// invalid argument when the conversion fails. It covers ConvertProtoCertToAgglayer and the
+// gRPC error mapping, not the real validator service.
 type survivalServer struct {
 	validatorv1.UnimplementedAggsenderValidatorServer
 }
