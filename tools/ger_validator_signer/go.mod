@@ -6,11 +6,11 @@ toolchain go1.27.4
 
 require (
 	github.com/agglayer/go_signer v0.0.7
-	github.com/ethereum/go-ethereum v1.17.7
+	github.com/ethereum/go-ethereum v1.17.10
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/stretchr/testify v1.12.1
-	golang.org/x/sync v0.23.0
-	golang.org/x/time v0.14.0
+	golang.org/x/sync v0.25.0
+	golang.org/x/time v0.16.0
 )
 
 require (
