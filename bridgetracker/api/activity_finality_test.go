@@ -19,11 +19,11 @@ import (
 // before GetActivity
 type fakeRevisionActivityRegistry struct {
 	*fakeActivityRegistry
-	revision    uint64
+	revision    string
 	revisionErr error
 }
 
-func (f *fakeRevisionActivityRegistry) GetActivityRevision(context.Context, common.Address) (uint64, error) {
+func (f *fakeRevisionActivityRegistry) GetActivityRevision(context.Context, common.Address) (string, error) {
 	f.calls = append(f.calls, "GetActivityRevision")
 	return f.revision, f.revisionErr
 }
@@ -86,9 +86,10 @@ func TestNewActivityItems_CarriesFinalizedAndClaimedFinalized(t *testing.T) {
 }
 
 // TestActivityResponseMarshalJSON_RevisionIsAlwaysSerialized verifies revision is on the wire
-// even at its zero value (no omitempty)
+// as a JSON string, even for the empty-activity value (no omitempty)
 func TestActivityResponseMarshalJSON_RevisionIsAlwaysSerialized(t *testing.T) {
-	for _, revision := range []uint64{0, 42} {
+	const otherRevision = "v1:00000000000000000000000000000000000000000000000000000000000000ff"
+	for _, revision := range []string{domain.EmptyActivityRevision, otherRevision} {
 		data, err := json.Marshal(ActivityResponse{Bridges: []ActivityItem{}, Revision: revision})
 		require.NoError(t, err)
 
@@ -96,7 +97,7 @@ func TestActivityResponseMarshalJSON_RevisionIsAlwaysSerialized(t *testing.T) {
 		require.NoError(t, json.Unmarshal(data, &raw))
 		value, present := raw["revision"]
 		require.True(t, present, "revision must always be serialized")
-		require.EqualValues(t, revision, value)
+		require.Equal(t, revision, value, "revision is an opaque string, not a number")
 	}
 }
 
@@ -104,7 +105,8 @@ func TestActivityResponseMarshalJSON_RevisionIsAlwaysSerialized(t *testing.T) {
 // revision in every response and reads it BEFORE the entries (see domain.ActivityRevisionReader:
 // the opposite order could report a revision newer than the entries beside it and hide a change)
 func TestActivityCommandExecute_RevisionReadBeforeEntries(t *testing.T) {
-	registry := &fakeRevisionActivityRegistry{fakeActivityRegistry: newFakeActivityRegistry(), revision: 7}
+	const revision = "v1:00000000000000000000000000000000000000000000000000000000000000ab"
+	registry := &fakeRevisionActivityRegistry{fakeActivityRegistry: newFakeActivityRegistry(), revision: revision}
 	registry.getActivityEntries = []*domain.ActivityEntry{activityEntryAt("1", time.Now())}
 	cmd := &activityCommand{registry: registry}
 
@@ -117,14 +119,15 @@ func TestActivityCommandExecute_RevisionReadBeforeEntries(t *testing.T) {
 		require.Equal(t, http.StatusOK, code)
 		body, ok := obj.(ActivityResponse)
 		require.True(t, ok)
-		require.EqualValues(t, 7, body.Revision)
+		require.Equal(t, revision, body.Revision)
 		require.Equal(t, []string{"RegisterAndAwait", "GetActivityRevision", "GetActivity"}, registry.calls)
 	}
 }
 
-// TestActivityCommandExecute_RevisionZeroWithoutReader verifies a registry that does not
-// implement domain.ActivityRevisionReader is served as revision 0, not as an error
-func TestActivityCommandExecute_RevisionZeroWithoutReader(t *testing.T) {
+// TestActivityCommandExecute_EmptyRevisionWithoutReader verifies a registry that does not
+// implement domain.ActivityRevisionReader is served as the empty-activity revision, not as an
+// error
+func TestActivityCommandExecute_EmptyRevisionWithoutReader(t *testing.T) {
 	cmd := &activityCommand{registry: newFakeActivityRegistry()}
 
 	code, obj, errData := cmd.Execute(newActivityTestContext(""))
@@ -132,7 +135,7 @@ func TestActivityCommandExecute_RevisionZeroWithoutReader(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 	body, ok := obj.(ActivityResponse)
 	require.True(t, ok)
-	require.Zero(t, body.Revision)
+	require.Equal(t, domain.EmptyActivityRevision, body.Revision)
 }
 
 // TestActivityCommandExecute_RevisionErrorIs500 verifies a failure reading the revision maps to

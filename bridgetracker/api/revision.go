@@ -45,7 +45,11 @@ package api
 //     closed set of values must accept it; filterBridges=claimed returns both "claimed" and
 //     "claimed_finalized". New always-serialized fields: ActivityItem.finalized (its bridge and,
 //     if claimed, its claim are final), BridgeStatus.block_finalized (the bridge's origin block
-//     is final) and ActivityResponse.revision, a per-address counter a client polls with a
-//     cheap request (page_size=1) to detect changes beyond page 1; it increases on an addition,
-//     removal, state change or reorg correction, not when an entry only becomes final
+//     is final) and ActivityResponse.revision, an opaque string — a "v1:"-prefixed hash of the
+//     address's activity (per bridge: global_index, the bridge's tx_hash and block_num, the
+//     claim_status with claimed_finalized counted as claimed, the claim's tx_hash) — a client
+//     polls with a cheap request (page_size=1) to detect changes beyond page 1. It changes on
+//     an addition, removal, claim_status change or reorg correction, not when an entry only
+//     becomes final, and being a hash it is the same after a restart and on every instance
+//     holding the same data; clients compare it for equality only
 const CurrentAPIRevision = 7

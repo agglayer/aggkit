@@ -41,9 +41,11 @@ type activityAddrCache struct {
 	// overwritten every call rather than accumulated, so a recovered network's warning clears
 	// promptly
 	warnings []domain.ActivityWarning
-	// revision is the address's revision counter (see domain.ActivityRevisionReader). Always 0
-	// until the follow-up that computes it lands (agglayer/aggkit#1968, #1969)
-	revision uint64
+	// revision accumulates the hash of every entry of the address (see domain.ActivityRevision,
+	// domain.HashActivityEntry, domain.ActivityRevisionReader). Its zero value is the empty
+	// activity, which is all it holds until the follow-up that maintains it as entries are
+	// added, removed or changed lands (agglayer/aggkit#1968, #1969)
+	revision domain.ActivityRevision
 	// waiters holds one channel per RegisterAndAwait call currently blocked on this address's
 	// next refresh; closed and cleared by RefreshAddress once it completes
 	waiters map[chan struct{}]struct{}
@@ -327,18 +329,18 @@ func (a *ActivityCache) GetActivity(
 }
 
 // GetActivityRevision implements domain.ActivityRevisionReader: the address's current revision
-// (activityAddrCache.revision), 0 for an address with nothing cached. It does not count as an
-// access (unlike GetActivity, it does not touch lastAccess): the caller reads the entries right
-// after, through GetActivity
-func (a *ActivityCache) GetActivityRevision(_ context.Context, fromAddress common.Address) (uint64, error) {
+// (activityAddrCache.revision), domain.EmptyActivityRevision for an address with nothing cached.
+// It does not count as an access (unlike GetActivity, it does not touch lastAccess): the caller
+// reads the entries right after, through GetActivity
+func (a *ActivityCache) GetActivityRevision(_ context.Context, fromAddress common.Address) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	cache, ok := a.byAddr[fromAddress]
 	if !ok {
-		return 0, nil
+		return domain.EmptyActivityRevision, nil
 	}
-	return cache.revision, nil
+	return cache.revision.String(), nil
 }
 
 // FlushActivity implements domain.ActivityQuerier: it discards fromAddress's whole per-address

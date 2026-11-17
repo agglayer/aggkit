@@ -90,7 +90,7 @@ stateDiagram-v2
 - `error` is not final either: it clears as soon as the failing check works again.
 - Clients that decode `claim_status` into a closed set of values must accept `claimed_finalized` (added in `api_revision` 7).
 
-> **Availability.** `claimed_finalized`, `finalized`, `block_finalized` and `revision` are part of the contract since `api_revision` 7, but they are populated by follow-up work (agglayer/aggkit#1967 to #1970). Until then `claim_status` never takes the value `claimed_finalized`, `finalized` and `block_finalized` are always `false`, and `revision` is always `0`.
+> **Availability.** `claimed_finalized`, `finalized`, `block_finalized` and `revision` are part of the contract since `api_revision` 7, but they are populated by follow-up work (agglayer/aggkit#1967 to #1970). Until then `claim_status` never takes the value `claimed_finalized`, `finalized` and `block_finalized` are always `false`, and `revision` is always the empty-activity value (`"v1:"` followed by 64 zeros).
 
 Example (unresolved, just registered):
 
@@ -510,14 +510,30 @@ Clients that need the complete list must deduplicate by `bridge.global_index` (u
 
 ### Revision
 
-`count` only changes when a bridge is added or removed, and says nothing about an entry that changes state or is corrected after a reorg, so it cannot tell a client that the pages it already loaded went stale. `last_updated_timestamp` cannot either: it advances on every refresh, even when nothing changed. Every response therefore carries `revision`, a per-`from_address` counter (uint64) that answers exactly that question.
+`count` only changes when a bridge is added or removed, and says nothing about an entry that changes state or is corrected after a reorg, so it cannot tell a client that the pages it already loaded went stale. `last_updated_timestamp` cannot either: it advances on every refresh, even when nothing changed. Every response therefore carries `revision`, a per-`from_address` **opaque string** that answers exactly that question. It is a hash of the address's activity, not a counter.
 
 #### Rules
 
-- `revision` **increases** whenever any of the address's bridges is added, removed, changes state (a `claim_status` change) or is corrected after a reorg — wherever the entry sits in the sorted result, not just on page 1.
-- `revision` **does not increase** when an entry only goes from not final to final (`finalized` from `false` to `true`, which includes `claim_status` going from `"claimed"` to `"claimed_finalized"`), nor on a refresh that changes nothing. So it stays stable while nothing relevant happens, and finality alone never forces a client to reload.
+- `revision` **changes** whenever any of the address's bridges is added, removed, changes `claim_status` or is corrected after a reorg (the bridge or its claim is re-included in another block or transaction) — wherever the entry sits in the sorted result, not just on page 1.
+- `revision` **does not change** when an entry only goes from not final to final (`finalized` from `false` to `true`, which includes `claim_status` going from `"claimed"` to `"claimed_finalized"`), nor on a refresh that changes nothing. So it stays stable while nothing relevant happens, and finality alone never forces a client to reload.
 - It covers all of the address's bridges. It is the same whatever `filterBridges`, `page_number` and `page_size` the request used: a single value per address at a given moment.
-- It is **always present** (never omitted). Compare it for equality only and treat it as an opaque token: the server can rebuild an address's state (idle eviction, `flush_cache=true`, restart), so the value is not guaranteed to be monotonic across those events — any difference means "reload".
+- It is **always present** (never omitted). It is a string such as `"v1:"` followed by 64 lowercase hex characters; the prefix is the version of the hashing scheme, so two instances that hash different fields never agree by accident. Treat it as opaque and **compare the whole string for equality only**: it has no order, so do not parse it or check whether it grew.
+- It is a pure function of the address's bridges, with nothing stored: the value is the same after a restart, after the server rebuilds the address's cache (idle eviction, `flush_cache=true`) and on every instance that holds the same data. An address with no bridges has the value `"v1:"` followed by 64 zeros.
+
+What goes into the hash, per bridge of the address:
+
+| hashed | not hashed |
+| ------|------|
+| `bridge.global_index` | the finality flag (`finalized`, `bridge.block_finalized`, `claim_status` being `"claimed"` or `"claimed_finalized"`: both count as `"claimed"`) |
+| `bridge.tx_hash` and `bridge.block_num` | `creation_timestamp` and `last_updated_timestamp` (the latter advances on every refresh) |
+| `claim_status` (`"pending"`, `"readyToClaim"`, `"claimed"` or `"error"`) | `warnings`, `errors` and any other transient error |
+| `claim.tx_hash` (empty while there is no `claim` yet, so the claim record being indexed changes it) | the tracker's current step in `tracking` (step progress has its own [WebSocket](#websocket) channel) |
+| | every other field of `bridge` and `claim` (amounts, the claim's block, ...) and `source` |
+
+Two consequences follow from it being a hash of the content:
+
+- **Lagging instances.** Two instances behind a load balancer may answer different `revision`s for the same address while one has refreshed and the other has not yet. A client that lands on another instance can therefore see `revision` change (and change back later). That is harmless: reloading is always correct, you just get that instance's view. Equal `revision`s mean equal content in the hashed fields, not that both instances have caught up on everything else.
+- **Back to a previous state.** If the activity goes back to a previous content (e.g. a bridge disappears in a reorg and comes back in the same block and transaction, or a claim is removed and re-included with the same transaction hash), `revision` goes back to the earlier value too. A client that missed the intermediate state and holds the earlier value correctly sees "unchanged": the hashed content is identical. `revision` says "the content is the same as when you loaded it", not "nothing happened in between".
 
 #### Client flow
 
@@ -527,7 +543,7 @@ Clients that need the complete list must deduplicate by `bridge.global_index` (u
 4. After the last page of a traversal, check the `revision` again (the last response already carries it): if it changed during the traversal, restart from page 1, since a bridge added or changed meanwhile may have shifted entries between pages.
 5. `revision` does not announce an entry becoming final (`finalized` `false` to `true`, `"claimed"` to `"claimed_finalized"`): those fields are as of the moment each page was loaded, so reload a page to see whether its items became final.
 
-> `revision` is always `0` until the follow-up work that computes it lands (agglayer/aggkit#1968 and #1969); see the availability note in [claim_status states](#claim_status-states).
+> `revision` is always the empty-activity value (`"v1:"` followed by 64 zeros) until the follow-up work that computes it lands (agglayer/aggkit#1968 and #1969); see the availability note in [claim_status states](#claim_status-states).
 
 ### ActivityResponse
 
@@ -536,7 +552,7 @@ Clients that need the complete list must deduplicate by `bridge.global_index` (u
 | from_address | Address | the address requested |
 | bridges | ActivityItem [] | this page of the bridges found for `from_address`, across every configured bridge service, matching `filterBridges` — sorted most recent first and sliced per `page_number`/`page_size` |
 | count | int | how many bridges matched `filterBridges` in total, across every page — not just `len(bridges)` |
-| revision | uint64 | per-`from_address` change counter, **always present**: increases on an addition, removal, state change or reorg correction of any bridge of the address, and does **not** increase when an entry only goes from not final to final. Identical for every page and every `filterBridges` of the same address; see [Revision](#revision) for the rules and the client flow |
+| revision | string | opaque hash of the address's activity (e.g. `"v1:"` followed by 64 hex characters), **always present**: changes on an addition, removal, `claim_status` change or reorg correction of any bridge of the address, and does **not** change when an entry only goes from not final to final. Identical for every page and every `filterBridges` of the same address, and the same after a restart and on every instance with the same data. Compare it for equality only; see [Revision](#revision) for the rules, what is hashed and the client flow |
 | warnings | ActivityWarningItem [] | every network whose bridge service could not be scanned this call; **omitted** (no key) when every configured network was scanned successfully |
 
 ### ActivityWarningItem
@@ -620,7 +636,7 @@ Example (one claimed bridge whose claim is final, one still-pending bridge with 
 {
   "from_address": "0x1111111111111111111111111111111111111111",
   "count": 2,
-  "revision": 4,
+  "revision": "v1:1ab162228afe25b74655b2bfb280cae4926372f5ac13646f341a30053c4a92f1",
   "bridges": [
     {
       "bridge": {

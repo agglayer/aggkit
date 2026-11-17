@@ -164,17 +164,18 @@ type ActivityResponse struct {
 	// Count is how many bridges matched filterBridges in total, across every page — not just
 	// len(Bridges) — mirroring bridgeservice's BridgesResult/ClaimsResult "count" field
 	Count int `json:"count"`
-	// Revision is FromAddress's revision (see domain.ActivityRevisionReader), present in every
+	// Revision is FromAddress's revision (see domain.ActivityRevisionReader), an opaque string
+	// that is a hash of the address's activity (e.g. "v1:" followed by hex), present in every
 	// response whatever filterBridges/page_number/page_size say: it covers all of the address's
-	// bridges, not just this page. It increases when a bridge is added or removed, changes state
-	// (claim_status) or is corrected after a reorg — wherever it sits in the sorted result — and
-	// it does NOT increase when an item only goes from finalized=false to finalized=true. A client
-	// polls it with a cheap request (page_size=1), reloads the pages it has loaded when it
-	// differs from the one it holds, and checks it again after the last page; compare it for
-	// equality only, as an opaque token (it may restart from a lower value if the server rebuilds
-	// the address's cache). Always serialized; 0 until the follow-up that computes it lands
-	// (agglayer/aggkit#1968, #1969)
-	Revision uint64 `json:"revision"`
+	// bridges, not just this page. It changes when a bridge is added or removed, changes
+	// claim_status or is corrected after a reorg — wherever it sits in the sorted result — and it
+	// does NOT change when an item only goes from finalized=false to finalized=true. It is the
+	// same after a restart and on every instance holding the same data. A client polls it with a
+	// cheap request (page_size=1), reloads the pages it has loaded when it differs from the one
+	// it holds, and checks it again after the last page; compare it for equality only. Always
+	// serialized; until the follow-up that computes it lands (agglayer/aggkit#1968, #1969) it is
+	// the empty-activity value "v1:" followed by 64 zeros
+	Revision string `json:"revision" example:"v1:0000000000000000000000000000000000000000000000000000000000000000"`
 	// Warnings lists every network whose bridge service could not be scanned this call; absent
 	// when every configured network was scanned successfully. Bridges may be incomplete for the
 	// networks listed here, but is still valid for every other network
@@ -227,11 +228,13 @@ type ActivityResponse struct {
 // @Description whole request. Bridges are sorted most recent first and paginated via
 // @Description page_number/page_size (same names and 1-based numbering as the bridge service's
 // @Description own paginated endpoints); "count" reports how many bridges matched in total,
-// @Description across every page. "revision" is a per-address counter that increases when a
-// @Description bridge is added or removed, changes state or is corrected after a reorg, wherever
-// @Description it sits in the sorted result, and does not increase when an item only becomes
-// @Description finalized: poll it with a cheap request (page_size=1), reload the loaded pages when
-// @Description it changed, and check it again after the last page. Compare it only for equality.
+// @Description across every page. "revision" is an opaque string, a hash of the address's
+// @Description activity: it changes when a bridge is added or removed, changes claim_status or is
+// @Description corrected after a reorg, wherever it sits in the sorted result, and does not change
+// @Description when an item only becomes finalized. It is the same after a restart and on every
+// @Description instance holding the same data. Poll it with a cheap request (page_size=1), reload
+// @Description the loaded pages when it changed, and check it again after the last page. Compare
+// @Description it only for equality.
 // @Tags bridge-tracker
 // @Produce json
 // @Param from_address path string true "Address that sent the bridges to look up"
@@ -322,11 +325,11 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 }
 
 // activityRevision is fromAddress's revision as served by the registry when it implements
-// domain.ActivityRevisionReader, and 0 when it does not
-func (cmd *activityCommand) activityRevision(ctx context.Context, fromAddress common.Address) (uint64, error) {
+// domain.ActivityRevisionReader, and domain.EmptyActivityRevision when it does not
+func (cmd *activityCommand) activityRevision(ctx context.Context, fromAddress common.Address) (string, error) {
 	reader, ok := cmd.registry.(domain.ActivityRevisionReader)
 	if !ok {
-		return 0, nil
+		return domain.EmptyActivityRevision, nil
 	}
 	return reader.GetActivityRevision(ctx, fromAddress)
 }

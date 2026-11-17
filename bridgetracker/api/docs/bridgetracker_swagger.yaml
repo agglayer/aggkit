@@ -107,17 +107,19 @@ definitions:
         type: array
       revision:
         description: |-
-          Revision is FromAddress's revision (see domain.ActivityRevisionReader), present in every
+          Revision is FromAddress's revision (see domain.ActivityRevisionReader), an opaque string
+          that is a hash of the address's activity (e.g. "v1:" followed by hex), present in every
           response whatever filterBridges/page_number/page_size say: it covers all of the address's
-          bridges, not just this page. It increases when a bridge is added or removed, changes state
-          (claim_status) or is corrected after a reorg — wherever it sits in the sorted result — and
-          it does NOT increase when an item only goes from finalized=false to finalized=true. A client
-          polls it with a cheap request (page_size=1), reloads the pages it has loaded when it
-          differs from the one it holds, and checks it again after the last page; compare it for
-          equality only, as an opaque token (it may restart from a lower value if the server rebuilds
-          the address's cache). Always serialized; 0 until the follow-up that computes it lands
-          (agglayer/aggkit#1968, #1969)
-        type: integer
+          bridges, not just this page. It changes when a bridge is added or removed, changes
+          claim_status or is corrected after a reorg — wherever it sits in the sorted result — and it
+          does NOT change when an item only goes from finalized=false to finalized=true. It is the
+          same after a restart and on every instance holding the same data. A client polls it with a
+          cheap request (page_size=1), reloads the pages it has loaded when it differs from the one
+          it holds, and checks it again after the last page; compare it for equality only. Always
+          serialized; until the follow-up that computes it lands (agglayer/aggkit#1968, #1969) it is
+          the empty-activity value "v1:" followed by 64 zeros
+        example: v1:0000000000000000000000000000000000000000000000000000000000000000
+        type: string
       warnings:
         description: |-
           Warnings lists every network whose bridge service could not be scanned this call; absent
@@ -710,11 +712,13 @@ paths:
         whole request. Bridges are sorted most recent first and paginated via
         page_number/page_size (same names and 1-based numbering as the bridge service's
         own paginated endpoints); "count" reports how many bridges matched in total,
-        across every page. "revision" is a per-address counter that increases when a
-        bridge is added or removed, changes state or is corrected after a reorg, wherever
-        it sits in the sorted result, and does not increase when an item only becomes
-        finalized: poll it with a cheap request (page_size=1), reload the loaded pages when
-        it changed, and check it again after the last page. Compare it only for equality.
+        across every page. "revision" is an opaque string, a hash of the address's
+        activity: it changes when a bridge is added or removed, changes claim_status or is
+        corrected after a reorg, wherever it sits in the sorted result, and does not change
+        when an item only becomes finalized. It is the same after a restart and on every
+        instance holding the same data. Poll it with a cheap request (page_size=1), reload
+        the loaded pages when it changed, and check it again after the last page. Compare
+        it only for equality.
       parameters:
       - description: Address that sent the bridges to look up
         in: path

@@ -94,8 +94,8 @@ type ActivityEntry struct {
 	// final and, if the bridge is claimed, the claim's block is final too. Always false until the
 	// activity finality follow-ups populate it (agglayer/aggkit#1968, #1969) — it is part of the
 	// contract already so the API (ActivityItem.Finalized) has a stable source. A change of this
-	// value alone (false -> true) does not bump the address's revision (see
-	// ActivityRevisionReader)
+	// value alone (false -> true) does not change the address's revision (see
+	// ActivityRevisionReader, HashActivityEntry)
 	Finalized bool
 	// Errors holds the message of whatever check failed the last time this entry was
 	// refreshed, keyed by which check it was — "claim" when ClaimStatus is Error (the
@@ -327,28 +327,30 @@ type ActivityTriggerable interface {
 // ActivityRevisionReader is an optional capability of an ActivityQuerier (like
 // ActivityTriggerable is for an ActivitySupervisedStore): it serves the address's revision, so
 // the activity HTTP command can report it as api.ActivityResponse.Revision. A querier that does
-// not implement it is served as revision 0.
+// not implement it is served as EmptyActivityRevision.
 //
-// The revision is a per-from_address counter that increases whenever the set of bridges or the
-// state of any of them changes — an addition, a removal, a state change or a reorg correction,
-// wherever the entry sits in the sorted result — and that does NOT increase when an entry only
-// goes from not final to final (ActivityEntry.Finalized false -> true). It lets a client that has
-// loaded several pages detect a change beyond page 1 with one cheap request. It covers the
-// address's whole cache, independent of the filterBridges/page of the request. Consumers must
-// treat it as an opaque token compared only for equality: it can restart from a lower value
-// whenever the address's cache is rebuilt (idle eviction, flush_cache, restart).
+// The revision is an opaque string, a hash of the address's activity (see ActivityRevision and
+// HashActivityEntry for exactly what is hashed), not a counter: it changes whenever a bridge is
+// added or removed, changes claim_status or is corrected after a reorg, wherever the entry sits
+// in the sorted result, and it does NOT change when an entry only goes from not final to final
+// (ActivityEntry.Finalized false -> true, claimed -> claimed_finalized). It lets a client that
+// has loaded several pages detect a change beyond page 1 with one cheap request. It covers all
+// the bridges of the address, independent of the filterBridges/page of the request. Being a pure
+// function of the entries it needs no persistence: it is the same after a restart, after the
+// address's cache is rebuilt and on every instance holding the same data. Consumers must compare
+// it for equality only.
 //
 // Callers that also read the entries must call GetActivityRevision BEFORE
 // ActivityQuerier.GetActivity: a refresh landing between the two calls then yields entries newer
 // than the returned revision, so the client merely sees one more change on its next poll,
 // instead of a revision newer than the data it holds (which would hide that change for good).
 //
-// It is zero everywhere until the follow-up that computes it lands (agglayer/aggkit#1968, #1969):
-// implementations hold the value, none computes it yet
+// It is EmptyActivityRevision everywhere until the follow-up that computes it lands
+// (agglayer/aggkit#1968, #1969): implementations hold the value, none computes it yet
 type ActivityRevisionReader interface {
-	// GetActivityRevision returns fromAddress's current revision: 0, not an error, for an
-	// address with nothing cached
-	GetActivityRevision(ctx context.Context, fromAddress common.Address) (uint64, error)
+	// GetActivityRevision returns fromAddress's current revision: EmptyActivityRevision, not an
+	// error, for an address with nothing cached
+	GetActivityRevision(ctx context.Context, fromAddress common.Address) (string, error)
 }
 
 // ActivityRegistry is the full activity subsystem: state (ActivitySupervisedStore) plus reads
