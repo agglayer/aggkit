@@ -12,8 +12,9 @@
 //  3. Monotonic: once an entry has been seen final it stays final, even if a later answer (another
 //     bridge-service instance, a lagging one) says false or omits the field.
 //  4. Fallback, only when the field is omitted: fetch the receipt of the entry's tx from the RPC of
-//     its network, check that it is mined in the block the entry reports, and that this block is
-//     at or below the block the proxy considers finalized on that network (see Config.FinalizedBlock).
+//     its network, check that it is mined, successful, in the block the entry reports, and that this
+//     block is at or below the block the proxy considers finalized on that network (see
+//     Config.FinalizedBlock). A reverted receipt emitted no event, so it never makes the entry final.
 //     Deciding by block number alone is NOT done: a stored block can have been replaced by another
 //     one with the same number, so the tx itself must be found in that block.
 //
@@ -34,6 +35,7 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -190,7 +192,8 @@ func (r *RPCResolver) IsFinal(
 }
 
 // resolveFromReceipt is the fallback for an omitted block_finalized: the entry is final when its
-// tx is found mined in key.blockNum and that block is at or below the network's finalized head.
+// tx is found mined, successful, in key.blockNum and that block is at or below the network's
+// finalized head.
 // The head is checked first: it is cached, so an entry that cannot be final yet costs no RPC call,
 // and the one receipt call is only made when it can change the answer — once per entry, since a
 // final answer is cached
@@ -219,6 +222,11 @@ func (r *RPCResolver) resolveFromReceipt(ctx context.Context, key entryKey) (boo
 	// another one with the same number, and the tx re-mined elsewhere
 	if receipt == nil || receipt.BlockNumber == nil || !receipt.BlockNumber.IsUint64() ||
 		receipt.BlockNumber.Uint64() != key.blockNum {
+		return false, nil
+	}
+	// A tx re-mined at the same height by a reorg can revert under the replacement block's state: it
+	// then emitted no event, so the entry does not exist on chain and must never be cached as final
+	if receipt.Status != gethtypes.ReceiptStatusSuccessful {
 		return false, nil
 	}
 
