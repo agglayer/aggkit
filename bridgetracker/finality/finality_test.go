@@ -10,6 +10,7 @@ import (
 	"time"
 
 	finalitymocks "github.com/agglayer/aggkit/bridgetracker/finality/mocks"
+	commonmocks "github.com/agglayer/aggkit/common/mocks"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
@@ -336,6 +337,26 @@ func TestIsFinal_Monotonic(t *testing.T) {
 
 		// e.g. an instance that is lagging behind
 		final, err := e.isFinal(testTx, testBlockNum, boolPtr(false))
+		require.NoError(t, err)
+		require.True(t, final)
+	})
+
+	t.Run("a false after a true is logged as a warning, an omitted one is not", func(t *testing.T) {
+		logger := commonmocks.NewLogger(t)
+		e := newTestEnvWith(t, Config{
+			FinalizedBlock: func(uint32) aggkittypes.BlockNumberFinality { return aggkittypes.FinalizedBlock },
+			Logger:         logger,
+		})
+		_, err := e.isFinal(testTx, testBlockNum, boolPtr(true))
+		require.NoError(t, err)
+
+		// omitted: still final, nothing logged (any Warnf call fails the test)
+		final, err := e.isFinal(testTx, testBlockNum, nil)
+		require.NoError(t, err)
+		require.True(t, final)
+
+		logger.EXPECT().Warnf(mock.Anything, testTx, testBlockNum, testNetwork).Once()
+		final, err = e.isFinal(testTx, testBlockNum, boolPtr(false))
 		require.NoError(t, err)
 		require.True(t, final)
 	})

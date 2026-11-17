@@ -167,6 +167,13 @@ func (r *RPCResolver) IsFinal(
 
 	// Monotonic: once seen final, whatever is reported later (false, omitted) cannot undo it
 	if r.final.contains(key) {
+		if reported != nil && !*reported {
+			// Expected only from a bridge-service instance that is lagging behind. Otherwise it
+			// points at a reorg deeper than the finality in use (e.g. a lax FinalizedBlock setting)
+			r.warnf("finality: tx %s in block %d of network %d is reported as not finalized after "+
+				"having been seen as finalized: keeping it as finalized",
+				txHash, blockNum, networkID)
+		}
 		return true, nil
 	}
 
@@ -280,6 +287,12 @@ func (r *RPCResolver) fetchHead(ctx context.Context, networkID uint32) (uint64, 
 	r.heads[networkID] = headEntry{number: header.Number, fetchedAt: r.now()}
 	r.mu.Unlock()
 	return header.Number, nil
+}
+
+func (r *RPCResolver) warnf(format string, args ...any) {
+	if r.logger != nil {
+		r.logger.Warnf(format, args...)
+	}
 }
 
 func (r *RPCResolver) debugf(format string, args ...any) {
