@@ -17,9 +17,7 @@ import (
 const ActivityRevisionPrefix = "v1:"
 
 // EmptyActivityRevision is the revision of an address with no bridges under the v1 scheme: the
-// scheme prefix followed by 256 zero bits (ActivityRevision's zero value). It is also what an
-// implementation serves until the follow-up that computes the revision lands (agglayer/aggkit#1968,
-// #1969) — so, for now, every address reads as empty
+// scheme prefix followed by 256 zero bits (ActivityRevision's zero value)
 const EmptyActivityRevision = ActivityRevisionPrefix +
 	"0000000000000000000000000000000000000000000000000000000000000000"
 

@@ -15,7 +15,7 @@ import (
 // the empty-activity value for an address with nothing cached, and whatever the address's cache
 // holds otherwise (the follow-up issues are the ones that maintain it)
 func TestActivityCache_GetActivityRevision(t *testing.T) {
-	cache := NewActivityCache(nil, nil, nil, nil)
+	cache := NewActivityCache(nil, nil, nil, nil, nil)
 
 	revision, err := cache.GetActivityRevision(t.Context(), testFromAddress)
 	require.NoError(t, err)
@@ -47,7 +47,7 @@ func TestActivityCache_GetActivityRevision(t *testing.T) {
 // TestActivityCache_GetActivityRevisionIsNotAnAccess verifies reading the revision does not
 // refresh the address's lastAccess: only the GetActivity read that follows it counts
 func TestActivityCache_GetActivityRevisionIsNotAnAccess(t *testing.T) {
-	cache := NewActivityCache(nil, nil, nil, nil)
+	cache := NewActivityCache(nil, nil, nil, nil, nil)
 	start := time.Unix(1_700_000_000, 0)
 	cache.now = func() time.Time { return start }
 	_, err := cache.RegisterAndAwait(testFromAddress, false, 0)
@@ -69,12 +69,12 @@ func TestMatchesFilter_ClaimedIncludesClaimedFinalized(t *testing.T) {
 		return &domain.ActivityEntry{TrackerClaimStatus: status}
 	}
 
-	require.True(t, matchesFilter(entry(types.TrackerClaimStatusClaimed), types.ActivityFilterClaimed))
-	require.True(t, matchesFilter(entry(types.TrackerClaimStatusClaimedFinalized), types.ActivityFilterClaimed))
-	require.True(t, matchesFilter(entry(types.TrackerClaimStatusClaimedFinalized), types.ActivityFilterAll))
+	require.True(t, MatchesActivityFilter(entry(types.TrackerClaimStatusClaimed), types.ActivityFilterClaimed))
+	require.True(t, MatchesActivityFilter(entry(types.TrackerClaimStatusClaimedFinalized), types.ActivityFilterClaimed))
+	require.True(t, MatchesActivityFilter(entry(types.TrackerClaimStatusClaimedFinalized), types.ActivityFilterAll))
 	for _, filter := range []types.ActivityFilter{
 		types.ActivityFilterPending, types.ActivityFilterReadyToClaim, types.ActivityFilterError,
 	} {
-		require.False(t, matchesFilter(entry(types.TrackerClaimStatusClaimedFinalized), filter), filter.String())
+		require.False(t, MatchesActivityFilter(entry(types.TrackerClaimStatusClaimedFinalized), filter), filter.String())
 	}
 }

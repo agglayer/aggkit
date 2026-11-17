@@ -317,12 +317,15 @@ func runTracker(
 	}
 	trackerCfg.ActivityScanner = activitySource
 	trackerCfg.ActivityClaims = activitySource
+	// The activity entries settle (claimed_finalized, finalized) only once the bridge and claim
+	// blocks are final, as decided by the finality resolver (agglayer/aggkit#1968, #1969)
+	trackerCfg.ActivityFinality = finalityResolver
 	// Same DBPath switch as newTrackerRegistry: a SQLite-backed activity store survives a
 	// restart instead of re-scanning/re-checking every bridge's claim state from scratch. It
 	// shares registry as its supervised store (see bridgetrackerdb.NewSQLiteActivityStore).
 	if trackerCfg.DBPath != "" {
 		activity, err := bridgetrackerdb.NewSQLiteActivityStore(
-			trackerCfg.DBPath, activitySource, activitySource, registry, trackerCfg.Logger)
+			trackerCfg.DBPath, activitySource, activitySource, registry, finalityResolver, trackerCfg.Logger)
 		if err != nil {
 			log.Fatalf("failed to create sqlite-backed activity store at %s: %v", trackerCfg.DBPath, err)
 		}

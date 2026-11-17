@@ -235,6 +235,40 @@ it returns. The proxy turns it into a plain "is final" answer (`finality.Resolve
 Bridges found through the RPC log scan fallback of the activity endpoint never carry
 `block_finalized`; they stay not final until the bridge service reports them.
 
+### Activity endpoint and reorgs
+
+The activity endpoint (`GET /tracker/v1/activity/from/{from_address}`) uses the same resolver
+(see [API.md](bridgetracker/API.md#caching-and-eviction) for the client-facing behaviour):
+
+- **Scan.** Each network's `GET /bridge/v1/bridges` listing is read newest first down to the first
+  bridge that is already cached **and final** (and past every cached non-final bridge of that
+  network); deeper pages are never read again. Every cached non-final bridge is re-read on each
+  refresh: a different `tx_hash` / `block_num` / `block_timestamp` corrects the entry, and its
+  absence (once the scan went past its position) removes it. A multi-page scan re-reads page 1 at
+  the end, and runs once more if the listing changed while it was paged (its count changed, or the
+  re-read page 1 shows a bridge the pass had not listed or listed elsewhere); if it changed
+  again during that second pass, the scan counts as failed (see below).
+- **Failures.** A bridge service that cannot be read — unreachable, any transient error, a `503`
+  while it resolves a reorg, or a listing that kept changing in both passes — never removes anything: its cached entries are kept as they are, a
+  warning is added to the response, and the next refresh retries. A failed `isClaimed()` or
+  claim-record fetch on a claimed entry keeps the last known claim; a resolver error means "not
+  final yet".
+- **RPC fallback.** It keeps scanning its recent window on every refresh and is ignored for every
+  bridge the bridge service lists (or has cached). An entry it alone found is never final; it is
+  removed when the window no longer has it or once the bridge service lists a later deposit of the
+  same sender without it.
+- **Settled.** An entry stops being refreshed only once it is claimed, its claim record is fetched,
+  and both the bridge's block (origin network) and the claim's block (destination network) are
+  final; it is then `claimed_finalized` / `finalized`. Until then `isClaimed()` and the claim record
+  are checked again on every refresh, and readiness (`l1-info-tree-index` +
+  `injected-l1-info-leaf`) is re-checked on every refresh while unclaimed. The finality of the
+  injected L1 info leaf is not needed: a final claim implies a final injection.
+- **Revision.** Both stores keep the per-address revision up to date on every addition, removal or
+  change of an entry (the SQLite store keeps one hash per row and sums them, nothing else is
+  persisted), so both give the same value for the same entries, also after a restart. A restart of
+  the SQLite store in the middle of a non-final state resumes it: finality flags are stored with
+  each entry.
+
 ## `[BridgeServiceFinder]` configuration
 
 The `aggkit-proxy` binary shares one `[BridgeServiceFinder]` instance across the `PROXY` request
@@ -294,8 +328,11 @@ The tracker exposes (unless `[Prometheus] Enabled = false`, it is enabled by def
 | `bridgetracker_cache_size_bytes`    | Gauge    | On-disk size of the SQLite cache (main file plus `-wal`/`-shm`); `0` when `Tracker.DBPath` is empty (in-memory) |
 | `bridgetracker_alive_trackers`      | Gauge    | Supervised bridges not yet in a terminal state                                                       |
 | `bridgetracker_alive_activities`    | Gauge    | `from_address`es currently supervised by the activity subsystem (only present when the activity endpoint is configured) |
+| `bridgetracker_activity_reorgs_detected_total`   | Counter  | Activity scans of one network's bridge service (or RPC fallback window) that found a reorg: a cached non-final bridge corrected or removed (only present when the activity endpoint is configured) |
+| `bridgetracker_activity_entries_corrected_total` | Counter  | Activity entries re-read at a different block or transaction and corrected in place |
+| `bridgetracker_activity_entries_removed_total`   | Counter  | Activity entries removed because a reorg dropped their bridge |
 
-A failed read keeps the gauge's previous value (and logs a warning) instead of reporting a misleading zero.
+A failed read keeps the gauge's previous value (and logs a warning) instead of reporting a misleading zero. The activity counters are incremented as the scans happen, not sampled.
 
 ```toml
 [Prometheus]

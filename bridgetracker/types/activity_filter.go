@@ -3,12 +3,9 @@ package types
 import "fmt"
 
 // ActivityFilter selects which bridges GetActivity (see domain.ActivityQuerier) returns for a
-// from_address, based on TrackerClaimStatus, and doubles as a hint to skip fetching data the
-// caller does not want: requesting ActivityFilterPending, ActivityFilterReadyToClaim or
-// ActivityFilterError skips the destination bridge service's claim record for a bridge found to
-// be claimed, since it would be filtered out of the result anyway — that bridge's cache entry
-// simply stays unsettled and is fetched normally the next time a filter that needs it is used
-// (see bridgetracker.ActivityCache.refresh)
+// from_address, based on TrackerClaimStatus. It only filters what is already cached: the
+// background refresh fetches everything (claim records included) whatever filter is requested
+// (see bridgetracker.ActivityEntryRefresher.Refresh)
 type ActivityFilter int
 
 const (
