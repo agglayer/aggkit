@@ -99,10 +99,12 @@ func (e *testEnv) expectHead(head uint64) *mocks.BaseEthereumClienter_CustomHead
 		Return(&aggkittypes.BlockHeader{Number: head}, nil)
 }
 
-// expectReceipt makes the receipt of tx be found in block
+// expectReceipt makes the receipt of tx be found, successful, in block
 func (e *testEnv) expectReceipt(tx common.Hash, block uint64) *mocks.BaseEthereumClienter_TransactionReceipt_Call {
 	return e.client.EXPECT().TransactionReceipt(mock.Anything, tx).
-		Return(&gethtypes.Receipt{TxHash: tx, BlockNumber: new(big.Int).SetUint64(block)}, nil)
+		Return(&gethtypes.Receipt{
+			TxHash: tx, BlockNumber: new(big.Int).SetUint64(block), Status: gethtypes.ReceiptStatusSuccessful,
+		}, nil)
 }
 
 func (e *testEnv) isFinal(tx common.Hash, block uint64, reported *bool) (bool, error) {
@@ -199,6 +201,23 @@ func TestIsFinal_OmittedNotResolvedByTheFallback(t *testing.T) {
 		e.expectReceipt(testTx, testBlockNum+1).Once()
 
 		final, err := e.isFinal(testTx, testBlockNum, nil)
+		require.NoError(t, err)
+		require.False(t, final)
+	})
+
+	t.Run("receipt reverted in block_num (re-mined by a reorg): not final and not cached", func(t *testing.T) {
+		e := newTestEnv(t, aggkittypes.FinalizedBlock)
+		e.expectHead(testBlockNum + 10).Once()
+		e.client.EXPECT().TransactionReceipt(mock.Anything, testTx).Return(&gethtypes.Receipt{
+			TxHash: testTx, BlockNumber: new(big.Int).SetUint64(testBlockNum), Status: gethtypes.ReceiptStatusFailed,
+		}, nil).Twice()
+
+		final, err := e.isFinal(testTx, testBlockNum, nil)
+		require.NoError(t, err)
+		require.False(t, final)
+
+		// not cached as final: the receipt is asked again (the mock expects exactly two calls)
+		final, err = e.isFinal(testTx, testBlockNum, nil)
 		require.NoError(t, err)
 		require.False(t, final)
 	})

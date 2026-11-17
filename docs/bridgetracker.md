@@ -221,11 +221,12 @@ it returns. The proxy turns it into a plain "is final" answer (`finality.Resolve
 - There is no negative cache: while the receipt does not match, it is fetched again on every
   refresh, so the entry is corrected as soon as the bridge-service catches up.
 - Fallback, only for bridges and claims whose `block_finalized` is omitted: the proxy fetches the
-  receipt of the entry's `tx_hash` from the RPC of that network and checks that it is mined in the
-  entry's `block_num` and that this block is at or below the block configured by
+  receipt of the entry's `tx_hash` from the RPC of that network and checks that it is mined, with a
+  successful status, in the entry's `block_num` and that this block is at or below the block configured by
   `L1FinalizedBlock` / `L2FinalizedBlock` (`FinalizedBlockByNetwork`). That is one RPC call per
   entry, once: the receipt is not fetched while the block is above the finalized one, and a final
-  answer is cached. A receipt that is not found, an RPC error, or a receipt mined in another block
+  answer is cached. A receipt that is not found, an RPC error, a reverted receipt (a tx re-mined at the
+  same height by a reorg can revert and then emits no event), or a receipt mined in another block
   than `block_num` leaves the entry **not final** — it never removes anything. Block number alone is
   never enough: a stored block can have been replaced by another one with the same number.
 - The finalized block of each network is fetched at most once every 5 seconds, not once per
