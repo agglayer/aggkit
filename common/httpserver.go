@@ -14,7 +14,13 @@ import (
 	"github.com/rs/cors"
 )
 
-const httpServerShutdownTimeout = 5 * time.Second
+const (
+	httpServerShutdownTimeout = 5 * time.Second
+	// httpServerMaxHeaderBytes bounds the request line plus headers. Go's default
+	// (http.DefaultMaxHeaderBytes, 1 MiB) lets a single GET carry ~1 MB of query
+	// string; no endpoint needs anywhere near that.
+	httpServerMaxHeaderBytes = 64 << 10 // 64 KiB
+)
 
 // RoutesRegisterer can register HTTP routes on a Gin router.
 type RoutesRegisterer interface {
@@ -69,9 +75,10 @@ func (s *HTTPServer) Start(ctx context.Context) error {
 	}
 
 	srv := &http.Server{
-		Handler:      handler,
-		ReadTimeout:  s.cfg.ReadTimeout.Duration,
-		WriteTimeout: s.cfg.WriteTimeout.Duration,
+		Handler:        handler,
+		ReadTimeout:    s.cfg.ReadTimeout.Duration,
+		WriteTimeout:   s.cfg.WriteTimeout.Duration,
+		MaxHeaderBytes: httpServerMaxHeaderBytes,
 	}
 
 	go func() {
