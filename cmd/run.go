@@ -442,6 +442,7 @@ func createAggSenderValidator(ctx context.Context,
 		flowParams.InitialLER,
 		flowParams.Signer,
 		nextBlockQuerier,
+		committeeQuerier,
 	)
 }
 
