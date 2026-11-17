@@ -3,6 +3,7 @@
 - [Getting Started](./getting_started.md)
 - [Local Debug](./local_debug.md)
 - [AggOracle](./aggoracle.md)
+- [GER validator signer](./gervalidator.md)
 - [Aggsender](./aggsender.md)
 - [Aggsender Validator](./aggsender_validator.md)
 - [REST API](./rest_api.md)

@@ -116,7 +116,12 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 [AggOracle]
 TargetChainType = "EVM"
 WaitPeriodNextGER = "10s"
-EnableAggOracleCommittee = false
+Mode = "auto"
+	[AggOracle.CommitteeV2]
+		RequestTimeout = "5s"
+		CollectRetryInterval = "5s"
+		MaxInjectAttempts = 3
+		PendingGERTimeout = "0s"
 	[AggOracle.EVMSender]
 		GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 		AggOracleCommitteeAddr = "{{L2Config.AggOracleCommitteeAddr}}"

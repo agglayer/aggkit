@@ -22,6 +22,17 @@ LDFLAGS += -X 'github.com/agglayer/aggkit.GitRev=$(GITREV)'
 LDFLAGS += -X 'github.com/agglayer/aggkit.GitBranch=$(GITBRANCH)'
 LDFLAGS += -X 'github.com/agglayer/aggkit.BuildDate=$(DATE)'
 
+# ger_validator_signer is its own Go module (and its own docker image): it doesn't share the dependencies of aggkit,
+# and `go ./...` from here doesn't see it, so it has its own targets
+GER_VALIDATOR_SIGNER_DIR := tools/ger_validator_signer
+GER_VALIDATOR_SIGNER_IMAGE ?= ger_validator_signer:local
+GER_VALIDATOR_SIGNER_DEBUG_IMAGE ?= ger_validator_signer:local-debug
+GER_VALIDATOR_SIGNER_PKG := github.com/agglayer/aggkit/tools/ger_validator_signer
+GER_VALIDATOR_SIGNER_LDFLAGS += -X '$(GER_VALIDATOR_SIGNER_PKG)/version.Version=$(VERSION)'
+GER_VALIDATOR_SIGNER_LDFLAGS += -X '$(GER_VALIDATOR_SIGNER_PKG)/version.GitRev=$(GITREV)'
+GER_VALIDATOR_SIGNER_LDFLAGS += -X '$(GER_VALIDATOR_SIGNER_PKG)/version.GitBranch=$(GITBRANCH)'
+GER_VALIDATOR_SIGNER_LDFLAGS += -X '$(GER_VALIDATOR_SIGNER_PKG)/version.BuildDate=$(DATE)'
+
 # Check dependencies
 .PHONY: check-go
 check-go: ## Check if golang is installed
@@ -76,7 +87,7 @@ generate-code-from-proto: check-protoc ## Generate Go code from proto files in-p
 	buf generate
 
 .PHONY: build ## Builds the binaries locally into ./target
-build: build-aggkit build-aggkit-proxy build-tools
+build: build-aggkit build-aggkit-proxy build-tools build-ger_validator_signer
 
 .PHONY: build-aggkit
 build-aggkit: ## Builds aggkit binary
@@ -138,6 +149,29 @@ $(GOBIN)/force_ger_update:
 $(GOBIN)/config_render:
 	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/config_render ./tools/config_render/cmd
 
+.PHONY: build-ger_validator_signer
+build-ger_validator_signer: check-go ## Builds the ger_validator_signer binary (its own Go module)
+	cd $(GER_VALIDATOR_SIGNER_DIR) && $(GOENVVARS) go build -trimpath \
+		-ldflags "all=$(GER_VALIDATOR_SIGNER_LDFLAGS)" -o $(GOBIN)/ger_validator_signer ./cmd
+
+GER_VALIDATOR_SIGNER_DOCKER_ARGS = --build-arg VERSION=$(VERSION) --build-arg GIT_REV=$(GITREV) \
+	--build-arg GIT_BRANCH=$(GITBRANCH) --build-arg BUILD_DATE="$(DATE)"
+
+.PHONY: build-docker-ger_validator_signer
+build-docker-ger_validator_signer: check-docker ## Builds the docker image of ger_validator_signer (no shell)
+	docker build $(GER_VALIDATOR_SIGNER_DOCKER_ARGS) -t $(GER_VALIDATOR_SIGNER_IMAGE) \
+		-f $(GER_VALIDATOR_SIGNER_DIR)/Dockerfile $(GER_VALIDATOR_SIGNER_DIR)
+
+.PHONY: build-docker-ci-ger_validator_signer
+build-docker-ci-ger_validator_signer: check-docker ## Builds the docker image of ger_validator_signer with a shell (CI, dev)
+	docker build $(GER_VALIDATOR_SIGNER_DOCKER_ARGS) --build-arg INCLUDE_SHELL=true -t $(GER_VALIDATOR_SIGNER_IMAGE) \
+		-f $(GER_VALIDATOR_SIGNER_DIR)/Dockerfile $(GER_VALIDATOR_SIGNER_DIR)
+
+.PHONY: build-docker-debug-ger_validator_signer
+build-docker-debug-ger_validator_signer: check-docker ## Builds a debug image of ger_validator_signer (dlv headless on :40000, no optimizations)
+	docker build $(GER_VALIDATOR_SIGNER_DOCKER_ARGS) -t $(GER_VALIDATOR_SIGNER_DEBUG_IMAGE) \
+		-f $(GER_VALIDATOR_SIGNER_DIR)/Dockerfile.debug $(GER_VALIDATOR_SIGNER_DIR)
+
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
 	docker build -t aggkit:local -t aggkit:local-no_shell -f ./Dockerfile .
@@ -158,6 +192,11 @@ build-docker-debug: ## Builds a debug docker image (dlv headless on :40000, no o
 test-unit: ## Runs the unit tests
 	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out -timeout 15m ./...
 
+.PHONY: test-unit-ger_validator_signer
+test-unit-ger_validator_signer: check-go ## Runs the unit tests of ger_validator_signer
+	cd $(GER_VALIDATOR_SIGNER_DIR) && MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic \
+		-coverprofile=coverage.out -timeout 15m ./...
+
 TEST_RUN ?=
 .PHONY: test-e2e
 test-e2e: ## Runs the e2e tests
@@ -172,6 +211,19 @@ test-e2e-force_ger_update: ## Runs the isolated force_ger_update e2e test (dedic
 .PHONY: lint
 lint: ## Runs the linter
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/golangci-lint run --timeout 5m
+
+.PHONY: lint-ger_validator_signer
+lint-ger_validator_signer: check-go check-golangci-lint ## Runs the linter on ger_validator_signer
+	cd $(GER_VALIDATOR_SIGNER_DIR) && export "GOROOT=$$(go env GOROOT)" && \
+		$$(go env GOPATH)/bin/golangci-lint run --config ../../.golangci.yml --timeout 5m
+
+.PHONY: generate-swagger-docs-ger_validator_signer
+generate-swagger-docs-ger_validator_signer: check-swag ## Generates the swagger docs of ger_validator_signer
+	@echo "Generating swagger docs of ger_validator_signer"
+	@cd $(GER_VALIDATOR_SIGNER_DIR) && $(SWAG) init -g server.go -d api -o api/docs --outputTypes json,yaml --parseDependency=false
+	@mkdir -p docs/assets/swagger/ger_validator_signer
+	@cp $(GER_VALIDATOR_SIGNER_DIR)/api/docs/swagger.json docs/assets/swagger/ger_validator_signer/swagger.json
+	@echo "Copied swagger.json to docs/assets/swagger/ger_validator_signer/"
 
 .PHONY: generate-swagger-docs
 generate-swagger-docs: ## Generates the swagger docs
@@ -193,10 +245,16 @@ vulncheck: ## Runs the vulnerability checker tool
 	}
 	@echo "Running govulncheck on all packages..."
 	@go list ./... | xargs -n1 govulncheck
+	@echo "Running govulncheck on ger_validator_signer (its own Go module)..."
+	@cd $(GER_VALIDATOR_SIGNER_DIR) && govulncheck ./...
 
 .PHONY: generate-mocks
 generate-mocks: ## Generates the mocks using mockery
 	@cd test && $(MAKE) generate-mocks
+
+.PHONY: generate-mocks-ger_validator_signer
+generate-mocks-ger_validator_signer: ## Generates the mocks of ger_validator_signer using mockery
+	@cd $(GER_VALIDATOR_SIGNER_DIR) && mockery --disable-version-string --with-expecter --exported
 
 ## Help display.
 ## Pulls comments from beside commands and prints a nicely formatted

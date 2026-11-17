@@ -1,0 +1,12 @@
+# Not needed to build the binary
+.git
+Dockerfile
+Dockerfile.debug
+.dockerignore
+coverage.out
+coverage.html
+**/*_test.go
+**/testdata
+**/mocks
+.mockery.yaml
+README.md
