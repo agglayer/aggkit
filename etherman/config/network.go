@@ -109,10 +109,17 @@ type RPCClientConfig struct {
 	// SupportNonEthereumWithMaxGapsInBlocks is an EXCEPTIONAL setting for non-Ethereum networks with gaps in
 	// block numbers (e.g. Solana slots). It is the maximum number of previous blocks to look back when a block
 	// below the chain head is missing (eth_getBlockByNumber returns null).
-	// The nearest previous existing block is returned instead. Each missing block costs up to N extra
-	// eth_getBlockByNumber calls, so keep it small (it only has to cover the longest run of missing blocks).
+	// The nearest previous existing block is returned instead.
+	// Set it above the longest run of consecutive missing blocks of the network (e.g. on Solana skipped slots
+	// mostly come in whole 4-slot leader windows, with occasional runs of 8-16). A larger value costs nothing
+	// extra: the lookback stops at the first existing block, so it only adds calls when a run is that long.
+	// If a run is longer than N, the header retrieval fails ("no block found in the previous N blocks") and the
+	// syncer retries the same block every RetryAfterErrorPeriod (forever with MaxRetryAttemptsAfterError = -1).
 	// It only applies to the single header retrieval: the batch retrieval (BatchBlockHeaderRetrieval) still
 	// fails on a missing block.
+	// Only set it on the L2 RPC ([Common.L2RPC]) and keep the L2 multidownloader disabled
+	// ([L2Multidownloader] Enabled = false, the default): the multidownloader (the default L1 sync, and the L2
+	// one if enabled) refuses a non-zero value at startup.
 	// 0 disables this behaviour (a missing block is an error). Default: 0.
 	SupportNonEthereumWithMaxGapsInBlocks uint64 `mapstructure:"SupportNonEthereumWithMaxGapsInBlocks"`
 	//

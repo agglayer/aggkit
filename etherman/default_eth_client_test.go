@@ -8,6 +8,7 @@ import (
 	"os"
 	"testing"
 
+	commonmocks "github.com/agglayer/aggkit/common/mocks"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -475,5 +476,61 @@ func TestDefaultEthClient_SupportNonEthereumWithMaxGapsInBlocks(t *testing.T) {
 	t.Run("OP node decorator without support in the decorated client returns 0", func(t *testing.T) {
 		decorated := NewRPCOpNodeDecorator(mocks.NewEthClienter(t), nil)
 		require.Zero(t, decorated.SupportNonEthereumWithMaxGapsInBlocks())
+	})
+}
+
+// newCaptureLogger returns a Logger mock that records every Infof line, formatted
+func newCaptureLogger(t *testing.T) (*commonmocks.Logger, *[]string) {
+	t.Helper()
+	logger := commonmocks.NewLogger(t)
+	lines := &[]string{}
+	capture := func(format string, args ...interface{}) {
+		*lines = append(*lines, fmt.Sprintf(format, args...))
+	}
+	for n := 0; n <= 5; n++ {
+		args := make([]interface{}, n)
+		for i := range args {
+			args[i] = mock.Anything
+		}
+		logger.EXPECT().Infof(mock.Anything, args...).Run(capture).Maybe()
+	}
+	return logger, lines
+}
+
+func TestDialWithRetryDoesNotLogTheURLSecrets(t *testing.T) {
+	secrets := []string{"SECRETPW", "SECRETKEY", "SECRETQ"}
+
+	t.Run("success logs only scheme and host", func(t *testing.T) {
+		logger, lines := newCaptureLogger(t)
+		cfg := &ethermanconfig.RPCClientConfig{URL: "http://user:SECRETPW@127.0.0.1:1/SECRETKEY?apikey=SECRETQ"}
+
+		client, err := DialWithRetry(t.Context(), logger, cfg)
+		require.NoError(t, err)
+		require.NotNil(t, client)
+		require.NotEmpty(t, *lines)
+		require.Contains(t, (*lines)[0], "dial http://127.0.0.1:1 rpc")
+		for _, line := range *lines {
+			for _, secret := range secrets {
+				require.NotContains(t, line, secret)
+			}
+		}
+	})
+
+	t.Run("failure redacts the logs and the returned error", func(t *testing.T) {
+		logger, lines := newCaptureLogger(t)
+		cfg := &ethermanconfig.RPCClientConfig{URL: "ws://user:SECRETPW@127.0.0.1:1/SECRETKEY?apikey=SECRETQ"}
+
+		_, err := DialWithRetry(t.Context(), logger, cfg)
+		require.Error(t, err)
+		require.NotEmpty(t, *lines)
+		for _, line := range *lines {
+			for _, secret := range secrets {
+				require.NotContains(t, line, secret)
+			}
+		}
+		for _, secret := range secrets {
+			require.NotContains(t, err.Error(), secret)
+		}
+		require.NotContains(t, err.Error(), "127.0.0.1:1/")
 	})
 }

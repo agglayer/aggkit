@@ -2,6 +2,7 @@ package l2gersync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"testing"
@@ -159,8 +160,8 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 	tests := []struct {
 		name              string
 		getInfoByGERError error
-		// l1InfoTreeNotSynced / isUpToDateError simulate the answer of l1InfoTreeSync.IsUpToDate. The
-		// zero values mean "synced, no error", so a missing GER is a real (error-level) problem.
+		// l1InfoTreeNotSynced / isUpToDateError simulate the answer of l1InfoTreeSync.IsUpToDate, only asked
+		// when the L1 contract read fails (l1ContractError). The zero values mean "synced, no error".
 		l1InfoTreeNotSynced bool
 		isUpToDateError     error
 		l1ContractTimestamp *big.Int
@@ -174,6 +175,8 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 		l2ContractError      error
 		expectError          bool
 		expectedErrorMessage string
+		// expectNotReadyYet: the error is the expected race (wraps sync.ErrAppendNotReadyYet, logged at WARN)
+		expectNotReadyYet bool
 	}{
 		{
 			// With no removal event on L2 (S-log empty), the appender stays blocked.
@@ -187,14 +190,17 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			// appender must still fail so the lookup is retried once the syncer catches up.
 			name:                 "l1_info_tree_not_synced_stays_blocked_to_retry",
 			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
+			l1ContractError:      fmt.Errorf("L1 RPC unavailable"),
 			l1InfoTreeNotSynced:  true,
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
+			expectNotReadyYet:    true,
 		},
 		{
 			// L1 info tree not synced and the GER was removed from L2: the stale insert is skipped.
 			name:                "l1_info_tree_not_synced_removal_event_unsticks",
 			getInfoByGERError:   fmt.Errorf("GER lookup failed"),
+			l1ContractError:     fmt.Errorf("L1 RPC unavailable"),
 			l1InfoTreeNotSynced: true,
 			l1ContractTimestamp: big.NewInt(0),
 			removalLogFound:     true,
@@ -206,6 +212,7 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			// blocked.
 			name:                 "is_up_to_date_error_stays_blocked",
 			getInfoByGERError:    fmt.Errorf("GER lookup failed"),
+			l1ContractError:      fmt.Errorf("L1 RPC unavailable"),
 			isUpToDateError:      fmt.Errorf("finalized block unavailable"),
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
@@ -219,6 +226,7 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			l1ContractTimestamp:  big.NewInt(1234567890), // timestamp > 0 means GER exists
 			expectError:          true,
 			expectedErrorMessage: "failed to fetch l1 info tree for global exit root",
+			expectNotReadyYet:    true,
 		},
 		{
 			// Both S-log (removal event found) and S-map (L2 map reads 0) agree: removed. The
@@ -286,8 +294,11 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
 
 			mockL1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(testGER).Return(nil, tt.getInfoByGERError).Maybe()
-			mockL1InfoTreeSync.EXPECT().IsUpToDate(mock.Anything, mockL1Client).
-				Return(!tt.l1InfoTreeNotSynced, tt.isUpToDateError).Once()
+			// The sync status is only the fallback used to pick the log level when the L1 contract can't be read
+			if tt.l1ContractError != nil {
+				mockL1InfoTreeSync.EXPECT().IsUpToDate(mock.Anything, mockL1Client).
+					Return(!tt.l1InfoTreeNotSynced, tt.isUpToDateError).Once()
+			}
 
 			// The L1 contract read is now unconditional (informational only, does not gate the
 			// skip decision), so it must always be mocked.
@@ -359,6 +370,7 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			if tt.expectError {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.expectedErrorMessage)
+				require.Equal(t, tt.expectNotReadyYet, errors.Is(err, sync.ErrAppendNotReadyYet))
 			} else {
 				require.NoError(t, err, "Expected no error when GER is removed from L2")
 			}

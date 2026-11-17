@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/aggchainbase"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	exitcertificate "github.com/agglayer/aggkit/tools/exit_certificate"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -138,7 +139,7 @@ func resolveRollupManager(ctx context.Context, ec *exitcertificate.Config) (stri
 
 	l1Client, err := ethclient.DialContext(ctx, ec.L1RPCURL)
 	if err != nil {
-		return "", fmt.Errorf("dialing L1 RPC %q: %w", ec.L1RPCURL, err)
+		return "", fmt.Errorf("dialing L1 RPC %q: %w", aggkitcommon.URLSchemeHost(ec.L1RPCURL), err)
 	}
 	defer l1Client.Close()
 

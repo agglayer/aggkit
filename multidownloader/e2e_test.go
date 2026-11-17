@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	configtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
@@ -219,6 +220,12 @@ func buildL1Simulated(t *testing.T) *mdrE2ESimulatedEnv {
 func newMultidownloader(t *testing.T, testData *mdrE2ESimulatedEnv) *EVMMultidownloader {
 	t.Helper()
 	cfg := NewConfigDefault("e2e_test", t.TempDir())
+	// A step that fails while the simulated chain is being forked is retried almost at once
+	cfg.RetryAfterError = aggkitcommon.RetryPolicyGenericConfig{
+		Mode:       aggkitcommon.RetryConfigModeDelays,
+		MaxRetries: aggkitcommon.MaxAttemptsInfinite,
+		Delays:     []configtypes.Duration{configtypes.NewDuration(10 * time.Millisecond)},
+	}
 	// This log logger will only log errors to avoid cluttering the test output
 	logger, _, err := log.NewLogger(log.Config{
 		Level:       "error",

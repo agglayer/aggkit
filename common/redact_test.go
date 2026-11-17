@@ -361,3 +361,28 @@ var (
 	ipv4Regexp          = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
 	bracketedPortRegexp = regexp.MustCompile(`\[[^\]]*\](?::\d{1,5})?`)
 )
+
+func TestURLSchemeHost(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "api key in path", input: "https://rpc.example.com/v3/KEY", expected: "https://rpc.example.com"},
+		{name: "api key in query", input: "https://rpc.example.com/?apikey=KEY", expected: "https://rpc.example.com"},
+		{name: "user info", input: "https://user:KEY@rpc.example.com:8545/x", expected: "https://rpc.example.com:8545"},
+		{name: "websocket with port", input: "ws://127.0.0.1:8546/KEY#frag", expected: "ws://127.0.0.1:8546"},
+		{name: "no key", input: "http://localhost:8545", expected: "http://localhost:8545"},
+		{name: "empty", input: "", expected: RedactedURLPlaceholder},
+		{name: "no scheme", input: "rpc.example.com/v3/KEY", expected: RedactedURLPlaceholder},
+		{name: "unparseable", input: "http://[::1/KEY", expected: RedactedURLPlaceholder},
+		{name: "scheme-less host:port", input: "localhost:8545/KEY", expected: RedactedURLPlaceholder},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := URLSchemeHost(tt.input)
+			require.Equal(t, tt.expected, got)
+			require.NotContains(t, got, "KEY")
+		})
+	}
+}
