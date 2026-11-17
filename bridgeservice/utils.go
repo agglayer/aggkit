@@ -3,6 +3,7 @@ package bridgeservice
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -24,6 +25,25 @@ const (
 	DefaultPage = uint32(1)
 	// MaxNetworkIDs is the maximum number of network IDs allowed in a single request
 	MaxNetworkIDs = 5
+
+	// maxGlobalIndexDigits is the maximum number of decimal digits of a global_index
+	// query parameter. The largest valid global index (see maxGlobalIndex) has 20 digits.
+	maxGlobalIndexDigits = 20
+	// maxAmountDigits is the maximum number of decimal digits of an amount query
+	// parameter. 2^256-1 has 78 digits.
+	maxAmountDigits = 78
+)
+
+var (
+	// maxGlobalIndex is the largest valid global index: the mainnet flag (bit 64)
+	// plus a 32-bit deposit count, i.e. 2^64 + 2^32 - 1. Rollup-origin indexes
+	// (rollup index in bits 32-63, deposit count in bits 0-31) are all below it.
+	maxGlobalIndex = new(big.Int).Sub(
+		new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 64), new(big.Int).Lsh(big.NewInt(1), 32)), //nolint:mnd
+		big.NewInt(1),
+	)
+	// maxAmount is the largest value of a uint256, 2^256 - 1.
+	maxAmount = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1)) //nolint:mnd
 )
 
 // validatePaginationParams validates the page number and page size
@@ -82,19 +102,59 @@ func parseUintQuery[T UintParam](c *gin.Context, key string, mandatory bool, def
 
 // parseBigIntQuery parses the global_index query parameter from the request context.
 // Returns nil if the parameter is not provided (empty string).
-// Returns an error if the parameter is provided but cannot be parsed as a big.Int.
+// Returns an error if the parameter is provided but is not a valid global index:
+// it must be an unsigned decimal integer without leading zeros, of at most
+// maxGlobalIndexDigits digits and not above maxGlobalIndex.
 func parseBigIntQuery(c *gin.Context) (*big.Int, error) {
 	paramStr := c.Query(globalIndexParam)
 	if paramStr == "" {
 		return nil, nil
 	}
 
-	globalIndex, ok := new(big.Int).SetString(paramStr, 0)
-	if !ok {
-		return nil, fmt.Errorf("invalid %s parameter, it should be a numeric", globalIndexParam)
+	globalIndex, err := parseBoundedUnsignedDecimal(paramStr, maxGlobalIndexDigits, maxGlobalIndex)
+	if err != nil {
+		return nil, fmt.Errorf("invalid %s parameter, it should be a numeric: %w", globalIndexParam, err)
 	}
 
 	return globalIndex, nil
+}
+
+// parseAmountParam parses an amount: an unsigned decimal integer without leading
+// zeros, of at most maxAmountDigits digits and not above 2^256-1.
+func parseAmountParam(s string) (*big.Int, error) {
+	return parseBoundedUnsignedDecimal(s, maxAmountDigits, maxAmount)
+}
+
+// parseBoundedUnsignedDecimal parses s as an unsigned base-10 integer.
+// The length and the character set are checked before any big.Int decoding,
+// whose cost is super-linear in the number of digits, so an oversized input is
+// rejected in constant time. Signs, base prefixes (0x, 0b, 0o), underscores and
+// leading zeros (other than "0" itself) are rejected; so is a value above maxValue.
+func parseBoundedUnsignedDecimal(s string, maxDigits int, maxValue *big.Int) (*big.Int, error) {
+	if s == "" {
+		return nil, errors.New("empty value")
+	}
+	if len(s) > maxDigits {
+		return nil, fmt.Errorf("too many digits: maximum %d allowed", maxDigits)
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return nil, errors.New("only decimal digits are allowed")
+		}
+	}
+	if len(s) > 1 && s[0] == '0' {
+		return nil, errors.New("leading zeros are not allowed")
+	}
+
+	value, ok := new(big.Int).SetString(s, decimalBase)
+	if !ok {
+		return nil, errors.New("not a decimal integer")
+	}
+	if value.Cmp(maxValue) > 0 {
+		return nil, fmt.Errorf("value out of range: maximum %s", maxValue.String())
+	}
+
+	return value, nil
 }
 
 // parseNetworkIDSliceParam parses a slice of uint32 parameters from the request context

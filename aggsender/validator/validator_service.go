@@ -3,6 +3,8 @@ package validator
 import (
 	"context"
 	"fmt"
+	"math"
+	"time"
 
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit"
@@ -15,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -27,6 +30,9 @@ type ValidatorService struct {
 	validator      types.CertificateValidator
 	agglayerClient agglayer.AggLayerClientCertificateIDQuerier
 	signer         signertypes.Signer
+	proposerQuery  ProposerAddressProvider
+	maxClockSkew   time.Duration
+	now            func() time.Time
 	log            aggkitcommon.Logger
 }
 
@@ -34,12 +40,20 @@ func NewValidatorService(
 	logger aggkitcommon.Logger,
 	validator types.CertificateValidator,
 	agglayerClient agglayer.AggLayerClientCertificateIDQuerier,
-	signer signertypes.Signer) *ValidatorService {
+	signer signertypes.Signer,
+	proposerQuery ProposerAddressProvider,
+	maxClockSkew time.Duration) *ValidatorService {
+	if maxClockSkew <= 0 {
+		maxClockSkew = DefaultProposerRequestMaxClockSkew
+	}
 	return &ValidatorService{
 		log:            logger,
 		validator:      validator,
 		agglayerClient: agglayerClient,
 		signer:         signer,
+		proposerQuery:  proposerQuery,
+		maxClockSkew:   maxClockSkew,
+		now:            time.Now,
 	}
 }
 
@@ -63,7 +77,24 @@ func (s *ValidatorService) ValidateCertificate(
 		}
 	}
 
-	s.log.Infof("Received certificate network:%d,  height: %d", req.Certificate.NetworkId, req.Certificate.Height)
+	s.log.Debugf("Received certificate network:%d,  height: %d", req.Certificate.NetworkId, req.Certificate.Height)
+
+	cert, err := agglayergrpc.ConvertProtoCertToAgglayer(req.Certificate)
+	if err != nil {
+		s.log.Errorf("Error converting certificate: %v", err)
+		return nil, grpc.GRPCError{
+			Code:    codes.InvalidArgument,
+			Message: "Invalid certificate conversion: " + err.Error(),
+		}
+	}
+
+	// The caller is authenticated before any expensive work: an unknown caller cannot make
+	// the validator query agglayer or the chain.
+	if err := s.authenticateProposer(ctx, req, cert); err != nil {
+		return nil, err
+	}
+
+	s.log.Infof("Received certificate from the proposer: %s", cert.Brief())
 
 	params := types.VerifyIncomingRequest{}
 	if req.PreviousCertificateId != nil && req.PreviousCertificateId.Value != nil {
@@ -87,14 +118,6 @@ func (s *ValidatorService) ValidateCertificate(
 			}
 		}
 		params.PreviousCertificate = certHeader
-	}
-	cert, err := agglayergrpc.ConvertProtoCertToAgglayer(req.Certificate)
-	if err != nil {
-		s.log.Errorf("Error converting certificate: %v", err)
-		return nil, grpc.GRPCError{
-			Code:    codes.InvalidArgument,
-			Message: "Invalid certificate conversion: " + err.Error(),
-		}
 	}
 	params.Certificate = cert
 	params.LastL2BlockInCert = req.LastL2BlockInCert
@@ -139,4 +162,111 @@ func (s *ValidatorService) signCertificate(ctx context.Context, cert *agglayerty
 		}
 	}
 	return s.signer.SignHash(ctx, hashToSign)
+}
+
+// authenticateProposer checks that the request carries the signature of the chain's
+// proposer over the request digest (see ProposerRequestDigest), addressed to this validator
+// and made within the allowed clock skew, so only the aggsender can ask for a validation.
+func (s *ValidatorService) authenticateProposer(
+	ctx context.Context, req *v1.ValidateCertificateRequest, cert *agglayertypes.Certificate) error {
+	signature := req.GetProposerSignature().GetValue()
+	if len(signature) != aggkitcommon.SignatureSize {
+		s.log.Warnf("Rejected ValidateCertificate request with a missing or malformed proposer signature "+
+			"(length %d) for network %d", len(signature), req.GetCertificate().GetNetworkId())
+		return grpc.GRPCError{
+			Code:    codes.Unauthenticated,
+			Message: "missing or malformed proposer signature",
+		}
+	}
+
+	if s.proposerQuery == nil {
+		return grpc.GRPCError{
+			Code:    codes.Internal,
+			Message: "proposer address provider is not configured",
+		}
+	}
+
+	if s.signer == nil {
+		return grpc.GRPCError{
+			Code:    codes.Internal,
+			Message: "Signer is not initialized",
+		}
+	}
+
+	if err := s.checkRequestTimestamp(req.GetRequestTimestamp()); err != nil {
+		return err
+	}
+
+	certificateHash, err := HashCertificateToSign(cert)
+	if err != nil {
+		return grpc.GRPCError{
+			Code:    codes.InvalidArgument,
+			Message: "Invalid certificate: " + err.Error(),
+		}
+	}
+
+	var previousCertificateID *common.Hash
+	if req.PreviousCertificateId != nil && req.PreviousCertificateId.Value != nil {
+		id := common.BytesToHash(req.PreviousCertificateId.Value.Value)
+		previousCertificateID = &id
+	}
+
+	digest := ProposerRequestDigest(certificateHash, previousCertificateID, req.GetLastL2BlockInCert(),
+		s.signer.PublicAddress(), req.GetRequestTimestamp())
+
+	publicKey, err := crypto.SigToPub(digest[:], normalizeRecoveryID(signature))
+	if err != nil {
+		s.log.Warnf("Rejected ValidateCertificate request with an unusable proposer signature: %v", err)
+		return grpc.GRPCError{
+			Code:    codes.Unauthenticated,
+			Message: "invalid proposer signature",
+		}
+	}
+	recovered := crypto.PubkeyToAddress(*publicKey)
+
+	proposer, err := s.proposerQuery.GetProposerAddress(ctx)
+	if err != nil {
+		s.log.Errorf("Cannot authenticate the proposer, rejecting the request: %v", err)
+		return grpc.GRPCError{
+			Code:    codes.Unavailable,
+			Message: "cannot resolve the proposer address",
+		}
+	}
+
+	if recovered != proposer {
+		s.log.Warnf("Rejected ValidateCertificate request from %s, the proposer is %s",
+			recovered.Hex(), proposer.Hex())
+		return grpc.GRPCError{
+			Code:    codes.Unauthenticated,
+			Message: "the request is not signed by the proposer",
+		}
+	}
+
+	return nil
+}
+
+// checkRequestTimestamp rejects a request signed too long ago or too far in the future, so
+// a captured request cannot be reused outside a short window.
+func (s *ValidatorService) checkRequestTimestamp(requestTimestamp uint64) error {
+	if requestTimestamp == 0 || requestTimestamp > math.MaxInt64 {
+		return grpc.GRPCError{
+			Code:    codes.Unauthenticated,
+			Message: "missing or invalid request timestamp",
+		}
+	}
+
+	skew := s.now().Sub(time.Unix(int64(requestTimestamp), 0))
+	if skew < 0 {
+		skew = -skew
+	}
+	if skew > s.maxClockSkew {
+		s.log.Warnf("Rejected ValidateCertificate request with timestamp %d, %s away from the local clock",
+			requestTimestamp, skew)
+		return grpc.GRPCError{
+			Code:    codes.Unauthenticated,
+			Message: "request timestamp outside the allowed window",
+		}
+	}
+
+	return nil
 }
