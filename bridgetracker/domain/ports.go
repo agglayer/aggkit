@@ -40,8 +40,10 @@ type SupervisedStore interface {
 
 	// UpdateTrackingBridgeTx overwrites the tx-level facts of a supervised bridge (Error,
 	// Info, StartDate, Timeout) and notifies subscribers with the resulting snapshot;
-	// AllSteps is untouched by this call (see UpdateTrackingStep) and TrackingStatus needs no
-	// writing at all, it is derived from the snapshot (see TrackingData.TrackingStatus). It
+	// AllSteps is untouched by this call (see UpdateTrackingStep) — except that a tx without
+	// Info has no path, so its steps are dropped (see StepsForTx and ResetBridgeTx) — and
+	// TrackingStatus needs no writing at all, it is derived from the snapshot (see
+	// TrackingData.TrackingStatus). It
 	// is a no-op if tx is identical to what is already stored. Returns ErrTrackingNotFound if
 	// the bridge is not in the supervised list — unlike Get, it never creates the entry
 	UpdateTrackingBridgeTx(id TrackingID, tx TrackingBridgeTx) error
@@ -59,14 +61,14 @@ type SupervisedStore interface {
 	// UpdateTrackingBridgeTx, but a concurrent Get never observes the steps half-written (e.g.
 	// one step done while the next one is still the stored pending, which would read as a
 	// different status than either the old or the new snapshot). Steps beyond len(allSteps)
-	// are kept, and steps are left untouched if the stored tx is a terminal give-up (see
-	// TrackingData.TerminallyFailed). Returns ErrTrackingNotFound if the bridge is not in the
-	// supervised list
+	// are kept, steps are left untouched if the stored tx is a terminal give-up (see
+	// TrackingData.TerminallyFailed), and dropped if tx has no Info (see StepsForTx). Returns
+	// ErrTrackingNotFound if the bridge is not in the supervised list
 	UpdateTracking(id TrackingID, tx TrackingBridgeTx, allSteps []BridgeStepPath) error
 
 	// GetTrackerActives returns the snapshots of the supervised bridges that still need
-	// tracking (never failed to resolve and not yet Finished), optionally filtered to a
-	// single network
+	// tracking (never failed to resolve and not yet Finished — a claim that is not final is not
+	// Finished, see TrackingData.IsFinal), optionally filtered to a single network
 	GetTrackerActives(networkID *uint32) ([]*TrackingData, error)
 
 	// GetNetworks returns the networks that have at least one supervised bridge, optionally

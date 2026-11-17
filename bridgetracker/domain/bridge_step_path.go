@@ -47,6 +47,14 @@ type BridgeStepPath struct {
 	// data of its own (see StepResolver.Warning, e.g. WaitingGERInjectionResolver) — informational
 	// only, not a reason this step failed. nil for every other status
 	Error *types.ErrorStep
+	// BlockFinalized is whether the fact this Done step stands on can no longer be removed by a
+	// reorg (agglayer/aggkit#1970). Domain-internal: persisted with the step, never served (the
+	// API exposes it only through claim_status). On StepClaimed it is the closing rule of the
+	// whole tracking: the claim's block is final, so ClaimStatus is claimed_finalized and the
+	// tracking is never re-evaluated again (see TrackingData.IsFinal). On
+	// StepWaitingGERInjection / StepWaitingL1InfoLeafAvailable it only saves re-checking that step
+	// (see ReverifySteps). Reset to false whenever the step is reopened
+	BlockFinalized bool
 }
 
 // SetResult replaces whichever typed Result field currently holds a value with result: at most

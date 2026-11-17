@@ -382,6 +382,11 @@ type ClaimResult struct {
 	ClaimTx        common.Hash `json:"claim_tx"`
 	BlockNumber    uint64      `json:"block_number"`
 	BlockTimestamp uint64      `json:"block_timestamp"`
+	// ReportedFinalized is the block_finalized the destination bridge service reported for this
+	// claim (nil when omitted). Input of the finality check that closes the tracking
+	// (domain.FinalizeClaim): it is never served nor persisted, whether the claim is final is
+	// kept on the step itself (domain.BridgeStepPath.BlockFinalized)
+	ReportedFinalized *bool `json:"-"`
 }
 
 // L1SettledGERResult is the result of StepWaitL1SettledGER once it completes: the evidence,

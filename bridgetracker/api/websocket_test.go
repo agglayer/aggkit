@@ -93,13 +93,23 @@ func TestWSTerminalReason(t *testing.T) {
 			expectedDone:   true,
 		},
 		{
-			name:     "claimed",
+			name:     "claimed, claim final",
+			resolved: true,
+			steps: []domain.BridgeStepPath{{
+				Step: types.StepClaimed, Status: types.StepStatusDone, BlockFinalized: true,
+			}},
+			expectedReason: "bridge claimed",
+			expectedDone:   true,
+		},
+		{
+			// a reorg can still move it back: the connection stays open (#1970)
+			name:     "claimed, claim not final",
 			resolved: true,
 			steps: []domain.BridgeStepPath{{
 				Step: types.StepClaimed, Status: types.StepStatusDone,
 			}},
-			expectedReason: "bridge claimed",
-			expectedDone:   true,
+			expectedReason: "",
+			expectedDone:   false,
 		},
 	}
 

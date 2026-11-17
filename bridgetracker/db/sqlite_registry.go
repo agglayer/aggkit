@@ -247,18 +247,26 @@ func (r *sqliteRegistry) selectFreshRow(id domain.TrackingID) (*trackedBridgeRow
 // it as a cache miss self-heals it on the next registration instead of wedging every caller
 // that reads it forever), or, once resolved and with a BlockHashVerifier configured, its
 // persisted origin block hash no longer matches the chain's current canonical hash at
-// origin_block_number — a bridge accepted on a block since reorged out. A verifier error (e.g.
+// origin_block_number — a bridge accepted on a block since reorged out. A row whose origin block
+// is already known final (BridgeInfo.BlockFinalized) is never checked. This is the check on
+// reload; while a bridge is supervised the engine itself re-checks its origin on every tick
+// (domain.CheckOrigin), with either registry. A verifier error (e.g.
 // the origin RPC briefly unreachable) is not itself evidence of a reorg, so it is logged and row
 // is trusted as fresh rather than discarding the whole cache over a transient hiccup
 func (r *sqliteRegistry) rowIsStale(id domain.TrackingID, row *trackedBridgeRow) bool {
 	if row.staleSchema() {
 		return true
 	}
-	if _, _, err := row.decode(); err != nil {
+	tx, _, err := row.decode()
+	if err != nil {
 		r.logger.Warnf("bridgetracker: row for %s failed to decode, discarding: %v", id, err)
 		return true
 	}
 	if r.verifier == nil || row.OriginBlockNumber == 0 {
+		return false
+	}
+	if tx.Info != nil && tx.Info.BlockFinalized {
+		// the origin block is final (see domain.CheckOrigin): no reorg can remove it, no need to ask
 		return false
 	}
 
@@ -574,7 +582,8 @@ func (r *sqliteRegistry) UpdateTrackingBridgeTx(id domain.TrackingID, tx domain.
 	if err != nil {
 		return err
 	}
-	return r.writeTracking(id, row, tx, steps)
+	// a tx without Info has no path: its steps are dropped (see domain.ResetBridgeTx)
+	return r.writeTracking(id, row, tx, domain.StepsForTx(tx, steps))
 }
 
 // UpdateTracking implements domain.SupervisedStore: the merged steps and tx are written with a
@@ -601,7 +610,7 @@ func (r *sqliteRegistry) UpdateTracking(
 		// rule as UpdateTrackingStep)
 		steps = domain.MergeSteps(steps, allSteps)
 	}
-	return r.writeTracking(id, row, tx, steps)
+	return r.writeTracking(id, row, tx, domain.StepsForTx(tx, steps))
 }
 
 // writeTracking overwrites row's tx and steps with one UPDATE, recomputing claim_status and
@@ -619,8 +628,15 @@ func (r *sqliteRegistry) writeTracking(
 
 	now := r.now()
 	terminalSince := row.TerminalSince
-	if terminalSince == 0 && tracking.IsTerminal() {
+	switch {
+	case terminalSince == 0 && tracking.IsTerminal():
 		terminalSince = now.Unix()
+	case !tracking.IsTerminal():
+		// only a row written before agglayer/aggkit#1970 can get here with terminal_since set: a
+		// claim that is not final was terminal back then, and is supervised again now (see
+		// GetTrackerActives). Clearing it keeps "terminal_since != 0 iff terminal" true afterwards,
+		// also if a reorg moves the bridge back
+		terminalSince = 0
 	}
 	var originBlockNumber uint64
 	originBlockHash := common.Hash{}
@@ -695,15 +711,20 @@ func (r *sqliteRegistry) UpdateTrackingStep(id domain.TrackingID, stepIndex uint
 // (terminal_since = 0), optionally filtered to one network. A row that fails to decode (stale
 // schema, or corrupted data — see rowIsStale) is skipped and logged rather than failing the
 // whole call: the engine's poll tick calls this every tick, so one bad row must never wedge
-// resolution for every other bridge forever
+// resolution for every other bridge forever. Rows with claim_status "claimed" are active too,
+// whatever their terminal_since: a claim that is not final is supervised until it is (see
+// domain.TrackingData.IsFinal), but rows written before agglayer/aggkit#1970 stamped it terminal
+// (writeTracking clears it on their next write)
 func (r *sqliteRegistry) GetTrackerActives(networkID *uint32) ([]*domain.TrackingData, error) {
+	const activeRows = "(terminal_since = 0 OR claim_status = ?)"
+	claimed := types.TrackerClaimStatusClaimed.String()
 	var rows []*trackedBridgeRow
 	var err error
 	if networkID != nil {
 		err = meddler.QueryAll(r.db, &rows,
-			"SELECT * FROM tracked_bridge WHERE terminal_since = 0 AND network_id = ?", *networkID)
+			"SELECT * FROM tracked_bridge WHERE "+activeRows+" AND network_id = ?", claimed, *networkID)
 	} else {
-		err = meddler.QueryAll(r.db, &rows, "SELECT * FROM tracked_bridge WHERE terminal_since = 0")
+		err = meddler.QueryAll(r.db, &rows, "SELECT * FROM tracked_bridge WHERE "+activeRows, claimed)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("listing active tracked bridges: %w", err)

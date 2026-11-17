@@ -38,8 +38,10 @@ type BridgeInfo struct {
 	BlockTimestamp uint64
 	// BlockFinalized is whether BlockNumber is final on the origin network (it can no longer be
 	// removed by a reorg). Unlike every other field here it is not an immutable fact resolved
-	// once: it starts false and only the tracker flips it to true later (agglayer/aggkit#1970) —
-	// until that follow-up lands it is always false. Served as BridgeStatus.block_finalized
+	// once: it starts false and the engine flips it to true (never back) once the finality
+	// resolver proves the bridge tx final in BlockNumber (see CheckOrigin), or once the claim is
+	// final, which implies it (see FinalizeClaim). While it is false the engine re-checks on every
+	// tick that BlockHash is still canonical. Served as BridgeStatus.block_finalized
 	BlockFinalized bool
 }
 
