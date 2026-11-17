@@ -72,7 +72,7 @@ UI: Repository (or Organization) -> Settings -> Rules -> Rulesets -> New tag rul
 
 - Enforcement: Active. Target: tags matching `refs/tags/v*` (include pattern `v*`).
 - Rules: restrict creations, restrict updates, restrict deletions, block force pushes (non-fast-forward).
-- Bypass list: only the team `release-manager`; organization admins may be added as "Always" only if their use is audited (the audit log records ruleset bypasses).
+- Bypass list: the team `release-manager`. Organization admins may also bypass this ruleset (as "Always"): this is accepted on purpose, and every bypass is recorded in the organization audit log, which should be reviewed. The settings check fails for any other bypass actor.
 
 ```bash
 RELEASE_MANAGER_ID=$(gh api orgs/agglayer/teams/release-manager --jq .id)
@@ -94,10 +94,10 @@ Confirm: `gh api repos/agglayer/aggkit/rulesets --jq '.[] | {name, target, enfor
 
 ### 4. Protect `develop` and `release/*`
 
-UI: Repository -> Settings -> Rules -> Rulesets -> New branch ruleset, targeting `develop` and `release/**` (or the equivalent classic branch protection rules).
+UI: Repository -> Settings -> Rules -> Rulesets -> New branch ruleset, targeting `develop` and `release/**`. The settings check only reads rulesets, not classic branch protection rules, so use rulesets here: a repository protected only by classic branch protection is reported as failing.
 
 - Require a pull request before merging, with at least 1 approving review.
-- No direct pushes (do not add bypass actors).
+- No direct pushes (do not add bypass actors; the settings check fails when a ruleset that applies to these branches has any).
 - Restrict deletions and block force pushes.
 
 ```bash
@@ -117,7 +117,7 @@ gh api -X POST repos/agglayer/aggkit/rulesets --input - <<'JSON'
 JSON
 ```
 
-Confirm: `gh api repos/agglayer/aggkit/rules/branches/develop --jq '.[].type'` lists `pull_request`, `deletion` and `non_fast_forward`; repeat with a `release/...` branch.
+Confirm: `gh api repos/agglayer/aggkit/rules/branches/develop --jq '.[].type'` lists `pull_request`, `deletion` and `non_fast_forward`; repeat with a `release/...` branch. The settings check covers `develop` and every `release/*` branch.
 
 ### 5. Restrict the `aggkit` package
 
@@ -125,6 +125,7 @@ UI: Organization -> Packages -> `aggkit` -> Package settings.
 
 - Manage Actions access: only `agglayer/aggkit` with role Write.
 - Disable "Inherit access from source repository" (so repository roles do not grant push to the package).
+- Visibility: keep the package public. The `preflight` job checks whether a version already exists without logging in, so a private or internal package makes every release fail there.
 - Manage access: remove any individual user or team that has Write or Admin, except the package admins.
 
 The API does not expose the Actions access list or inheritance, so this step is checked by hand. Confirm by reading the settings page and by listing direct grants: `gh api orgs/agglayer/packages/container/aggkit --jq '{visibility, repository: .repository.full_name}'`.
@@ -160,6 +161,12 @@ Before the first real release, push a pre-release tag (for example `v0.0.0-rc.1`
 4. After approval and a green run, verify the result as described in [Verifying release images](./release_verification.md): `cosign verify` succeeds for the new tags, and `gh attestation verify` succeeds.
 
 Tag names are immutable once published, so use a throwaway version for the dry run and do not reuse it.
+
+## When publishing fails part way
+
+The `publish` job pushes the manifest lists first and then signs them and creates the attestation. If signing or the attestation fails after the manifests were pushed, the version is already visible in the registry but is not signed. Do not trust or use an unsigned published version. Either use "Re-run failed jobs" on the run, which skips `preflight` and finishes signing, or cut a new version. A full re-run of the whole workflow fails in `preflight` because the version is already published.
+
+Besides the version tags, the package also lists signature and attestation artifacts (tags such as `sha256-<digest>.sig` and referrers of the images). These are expected and are not extra releases.
 
 ## Residual risks
 

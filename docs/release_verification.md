@@ -12,7 +12,9 @@ Release images are published to `ghcr.io/agglayer/aggkit`, one set of tags per r
 | `X.Y.Z-no_shell` | Alias of `X.Y.Z` (same image). |
 | `X.Y.Z-dev` | Development image that includes a shell, for debugging. Not recommended for production. |
 
-Only exact versions are published and a published version is never overwritten.
+Only exact versions are published and a published version is never overwritten. The package also lists signature and attestation artifacts next to these tags (for example `sha256-<digest>.sig` tags and referrers of the images); they are not extra versions.
+
+If signing or attestation fails after the manifests were pushed, the version is visible but unsigned. Treat an unsigned version as unusable: it is either completed by re-running the failed jobs or replaced by a new version. Always verify the signature before using an image.
 
 **Change:** the moving `X.Y` tags (for example `1.2`, `1.2-no_shell`, `1.2-dev`) and the `latest` tag are no longer published. Pin an exact version. Existing `X.Y` and `latest` tags in the registry are not updated any more, so a deployment that follows them silently stays on an old image.
 
