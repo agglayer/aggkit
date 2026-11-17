@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	typesmocks "github.com/agglayer/aggkit/types/mocks"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -84,11 +85,15 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mockSC := new(mocks.MultisigContract)
 			th := big.NewInt(int64(tc.threshold))
-			mockSC.EXPECT().Threshold(mock.Anything).
+			ctx := t.Context()
+			withCallContext := mock.MatchedBy(func(opts *bind.CallOpts) bool {
+				return opts != nil && opts.Context == ctx
+			})
+			mockSC.EXPECT().Threshold(withCallContext).
 				Return(th, tc.thresholdErr)
 
 			if tc.thresholdErr == nil {
-				mockSC.EXPECT().GetAggchainSignerInfos(mock.Anything).
+				mockSC.EXPECT().GetAggchainSignerInfos(withCallContext).
 					Return(tc.signerInfos, tc.getSignersErr)
 			}
 
@@ -99,7 +104,7 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 			}
 
 			blockNum := big.NewInt(100)
-			committee, err := q.GetMultisigCommittee(t.Context(), blockNum)
+			committee, err := q.GetMultisigCommittee(ctx, blockNum)
 
 			if tc.expectedErr != "" {
 				require.Error(t, err)

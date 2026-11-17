@@ -172,6 +172,72 @@ The validator is configured using a `.toml` file. Check the default values in th
 |-------------------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------|
 | MaxL2BlockRange               | uint64  | Maximum L2 block range allowed in a certificate, computed as `ToBlock - FromBlock`. 0 means disabled                                     |
 | UnsetClaimsMaxLogBlockRange   | uint64  | Proactive max block range for `eth_getLogs` queries when fetching unset claims. 0 means disabled (fallback to reactive chunking on error) |
+| ProposerRequestMaxClockSkew   | duration | How far the timestamp of a `ValidateCertificate` request may be from the validator's clock, in either direction. Default `1m`; 0 means `1m` |
+
+#### `[Validator.ServerConfig]`
+
+| Name                          | Type    | Default   | Description                                                                                                       |
+|-------------------------------|---------|-----------|-------------------------------------------------------------------------------------------------------------------|
+| Host                          | string  | `127.0.0.1` | Address the gRPC server binds. Set `0.0.0.0` (or another interface) when the proposer connects from another host |
+| Port                          | int     | `5578`    | gRPC port                                                                                                         |
+| EnableReflection              | bool    | `false`   | Serves gRPC server reflection, so a caller can enumerate the service. Keep it off outside development             |
+| MaxDecodingMessageSize        | int     | `9437184` | Maximum size of a received message. It must be at least `Validator.MaxCertSize`                                   |
+| MaxConcurrentRequests         | int     | `8`       | Validations executed at the same time. Further requests fail with `ResourceExhausted`                             |
+| MaxConcurrentStreams          | uint32  | `100`     | Concurrent HTTP/2 streams per connection                                                                          |
+| MaxRequestsPerSecondPerPeer   | float64 | `5`       | Request rate allowed for a single peer address. A request above it fails with `ResourceExhausted`                 |
+| MaxRequestsBurstPerPeer       | int     | `20`      | Burst of the per-peer rate limit                                                                                  |
+
+#### Network exposure and authentication
+
+The server listens on loopback by default, so nothing outside the host can reach it until
+`Host` says otherwise. There is no TLS in the process: when the server is exposed to the
+network, terminate TLS in the infrastructure in front of it (a proxy or load balancer) and
+restrict which addresses can reach the port. The server logs a warning when it binds a
+non-loopback address.
+
+`ValidateCertificate` only serves the chain's proposer. The aggsender signs, with its
+proposer key, a request digest:
+
+```text
+keccak256("aggkit.aggsender.validator.v1.ValidateCertificate" || certificate hash ||
+          previous certificate id (32 zero bytes when absent) || last_l2_block_in_cert (uint64, big endian) ||
+          validator address || request_timestamp (uint64, big endian))
+```
+
+The validator rebuilds the digest with its own signer address, recovers the signer and
+compares it with the first member of the current multisig committee. The digest is not the
+certificate hash the committee signs, so a signature taken from a certificate does not
+authenticate a request; it names the validator, so one validator cannot replay a request
+it received against another; and `request_timestamp` must be within
+`ProposerRequestMaxClockSkew` of the validator's clock, so a captured request is only
+reusable for that long, and only to repeat the same validation. Keep the clocks of the
+aggsender and the validators synchronised (NTP).
+
+A request with a missing, malformed, stale or foreign signature is rejected with
+`Unauthenticated`. The committee lookup happens only for a request whose signature
+recovers to some address; it is cached for a minute (so after a committee rotation the
+previous proposer is accepted for up to a minute), concurrent requests share one lookup,
+the lookup gives up after ten seconds, and a failed lookup is remembered for five seconds, during which requests fail with
+`Unavailable` without querying the chain again.
+
+The concurrency and per-peer rate limits apply before authentication, so an
+unauthenticated caller that can reach the port can use up capacity. They are keyed on the
+connection's peer address: behind a proxy or NAT every caller shares one address and one
+bucket, so limit who can reach the port at the network level. `HealthCheck` stays
+open so infrastructure health checks keep working, and it is exempt from both limits.
+
+Upgrading from a version that does not sign the request: **a validator running this
+version needs an aggsender running this version too.**
+
+| Aggsender | Validator | Result |
+|-----------|-----------|--------|
+| new       | old       | Works. The old validator ignores `proposer_signature` and `request_timestamp` and does not authenticate the caller |
+| new       | new       | Works if the clocks are within `ProposerRequestMaxClockSkew` and the aggsender's signer is the first member of the multisig committee |
+| old       | new       | **Does not work.** The old aggsender sends no signature, so the new validator rejects every `ValidateCertificate` with `Unauthenticated`. That validator cannot sign certificates, and certificate signing stalls if the remaining validators do not reach the multisig threshold |
+| old       | old       | Unchanged |
+
+Upgrade the aggsender first, then the validators. They can be upgraded one at a time,
+because the new aggsender works with both old and new validators.
 
 ### Running the Validator
 
@@ -226,7 +292,7 @@ sequenceDiagram
     participant AV as AggSender Validator
     participant AL as AggLayer
     
-    AP->>AV: ValidateCertificate(cert, prevCertID)
+    AP->>AV: ValidateCertificate(cert, prevCertID, proposerSignature)
     AV->>AV: Reconstruct certificate
     AV->>AV: Compare certificates
     AV->>AV: Sign certificate
@@ -274,8 +340,16 @@ message ValidateCertificateRequest {
   agglayer.node.types.v1.CertificateId previous_certificate_id = 1;
   agglayer.node.types.v1.Certificate certificate = 2;
   uint64 last_l2_block_in_cert = 3;
+  // Signature of the request digest by the aggsender that proposes the certificate
+  agglayer.interop.types.v1.FixedBytes65 proposer_signature = 4;
+  // Unix time, in seconds, at which the proposer signed the request
+  uint64 request_timestamp = 5;
 }
 ```
+
+`proposer_signature` and `request_timestamp` are mandatory: an unsigned request, one
+signed by any other key, addressed to another validator or outside the allowed clock skew
+is rejected with `Unauthenticated`.
 
 **Response:**
 
