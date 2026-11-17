@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	stdsync "sync"
 	"testing"
 	"time"
@@ -7891,4 +7892,60 @@ func TestGetSettlementsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.router, fmt.Sprintf("%s/settlements", BridgeV1Prefix))
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 	})
+}
+
+// TestOversizedBigIntQueryParamsRejected checks that oversized or malformed
+// global_index and amount query parameters are rejected with 400 before they
+// reach a syncer: decimal big.Int decoding is super-linear in the input length.
+func TestOversizedBigIntQueryParamsRejected(t *testing.T) {
+	thousandNines := strings.Repeat("9", 1000)
+
+	for _, endpoint := range []string{"claims", "unset-claims", "set-claims"} {
+		for name, globalIndex := range map[string]string{
+			"1000 digits":     thousandNines,
+			"negative":        "-1",
+			"hex prefix":      "0x10",
+			"leading zero":    "010",
+			"above max index": "18446744078004518912", // 2^64 + 2^32
+		} {
+			t.Run(endpoint+" global_index "+name, func(t *testing.T) {
+				// Mocks are strict: any call into a syncer fails the test.
+				bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+				queryParams := url.Values{
+					networkIDParam:   []string{fmt.Sprintf("%d", mainnetNetworkID)},
+					globalIndexParam: []string{globalIndex},
+				}
+				w := performRequest(t, bridgeMocks.router,
+					fmt.Sprintf("%s/%s?%s", BridgeV1Prefix, endpoint, queryParams.Encode()))
+				require.Equal(t, http.StatusBadRequest, w.Code)
+				require.Contains(t, w.Body.String(), "invalid global_index parameter")
+			})
+		}
+	}
+
+	for name, amount := range map[string]string{
+		"1000 digits":  thousandNines,
+		"2^256":        new(big.Int).Lsh(big.NewInt(1), 256).String(),
+		"negative":     "-1",
+		"hex prefix":   "0x10",
+		"leading zero": "01",
+	} {
+		t.Run("bridges-by-content amount "+name, func(t *testing.T) {
+			bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+			q := url.Values{}
+			q.Set(networkIDParam, strconv.Itoa(int(l2NetworkID)))
+			q.Set("leaf_type", "0")
+			q.Set("origin_address", "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+			q.Set("destination_network", strconv.Itoa(int(l2NetworkID)))
+			q.Set("destination_address", "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
+			q.Set("amount", amount)
+
+			w := performRequest(t, bridgeMocks.router,
+				fmt.Sprintf("%s/bridges-by-content?%s", BridgeV1Prefix, q.Encode()))
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.Contains(t, w.Body.String(), "invalid amount parameter")
+		})
+	}
 }

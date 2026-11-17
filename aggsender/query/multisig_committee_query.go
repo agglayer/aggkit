@@ -77,7 +77,7 @@ func NewBaseMultisigCommitteeQuery(sovereignRollupAddr common.Address,
 // GetMultisigCommittee reads the multisig committee from the smart contract for a certain block
 func (m *BaseMultisigCommitteeQuery) GetMultisigCommittee(
 	ctx context.Context, blockNum *big.Int) (*types.MultisigCommittee, error) {
-	callOpts := &bind.CallOpts{Pending: false, BlockNumber: blockNum}
+	callOpts := &bind.CallOpts{Pending: false, BlockNumber: blockNum, Context: ctx}
 	threshold, err := m.sovereignRollupSC.Threshold(callOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query the signatures threshold for block %d (rollupAddr %s): %w",

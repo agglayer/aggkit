@@ -57,7 +57,9 @@ type Config struct {
 	GlobalExitRootL1Addr ethCommon.Address `mapstructure:"GlobalExitRootL1Addr"`
 	// BlockFinalityForL1InfoTree indicates the block finality to use when querying for L1InfoRoot to use
 	BlockFinalityForL1InfoTree aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinalityForL1InfoTree"` //nolint:lll
-
+	// ProposerRequestMaxClockSkew is how far the timestamp of a ValidateCertificate request
+	// may be from the validator's clock, in either direction. 0 means one minute.
+	ProposerRequestMaxClockSkew types.Duration `mapstructure:"ProposerRequestMaxClockSkew"`
 }
 
 type PPConfig struct {
@@ -98,6 +100,14 @@ func (c *Config) Validate() error {
 
 	if err := c.AgglayerClient.Validate(); err != nil {
 		return fmt.Errorf("invalid agglayer client config: %w", err)
+	}
+
+	if c.MaxCertSize > 0 && c.ServerConfig.MaxDecodingMessageSize > 0 &&
+		uint64(c.ServerConfig.MaxDecodingMessageSize) < uint64(c.MaxCertSize) {
+		return fmt.Errorf(
+			"invalid server config: Validator.ServerConfig.MaxDecodingMessageSize (%d) is smaller than "+
+				"Validator.MaxCertSize (%d), so a certificate of the maximum size cannot reach the validator",
+			c.ServerConfig.MaxDecodingMessageSize, c.MaxCertSize)
 	}
 
 	if err := c.BlockFinalityForL1InfoTree.Validate(); err != nil {
