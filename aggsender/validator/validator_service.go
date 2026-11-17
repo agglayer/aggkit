@@ -3,6 +3,8 @@ package validator
 import (
 	"context"
 	"fmt"
+	"math"
+	"time"
 
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit"
@@ -29,6 +31,8 @@ type ValidatorService struct {
 	agglayerClient agglayer.AggLayerClientCertificateIDQuerier
 	signer         signertypes.Signer
 	proposerQuery  ProposerAddressProvider
+	maxClockSkew   time.Duration
+	now            func() time.Time
 	log            aggkitcommon.Logger
 }
 
@@ -37,13 +41,19 @@ func NewValidatorService(
 	validator types.CertificateValidator,
 	agglayerClient agglayer.AggLayerClientCertificateIDQuerier,
 	signer signertypes.Signer,
-	proposerQuery ProposerAddressProvider) *ValidatorService {
+	proposerQuery ProposerAddressProvider,
+	maxClockSkew time.Duration) *ValidatorService {
+	if maxClockSkew <= 0 {
+		maxClockSkew = DefaultProposerRequestMaxClockSkew
+	}
 	return &ValidatorService{
 		log:            logger,
 		validator:      validator,
 		agglayerClient: agglayerClient,
 		signer:         signer,
 		proposerQuery:  proposerQuery,
+		maxClockSkew:   maxClockSkew,
+		now:            time.Now,
 	}
 }
 
@@ -67,7 +77,7 @@ func (s *ValidatorService) ValidateCertificate(
 		}
 	}
 
-	s.log.Infof("Received certificate network:%d,  height: %d", req.Certificate.NetworkId, req.Certificate.Height)
+	s.log.Debugf("Received certificate network:%d,  height: %d", req.Certificate.NetworkId, req.Certificate.Height)
 
 	cert, err := agglayergrpc.ConvertProtoCertToAgglayer(req.Certificate)
 	if err != nil {
@@ -83,6 +93,8 @@ func (s *ValidatorService) ValidateCertificate(
 	if err := s.authenticateProposer(ctx, req, cert); err != nil {
 		return nil, err
 	}
+
+	s.log.Infof("Received certificate from the proposer: %s", cert.Brief())
 
 	params := types.VerifyIncomingRequest{}
 	if req.PreviousCertificateId != nil && req.PreviousCertificateId.Value != nil {
@@ -153,7 +165,8 @@ func (s *ValidatorService) signCertificate(ctx context.Context, cert *agglayerty
 }
 
 // authenticateProposer checks that the request carries the signature of the chain's
-// proposer over the certificate hash, so only the aggsender can ask for a validation.
+// proposer over the request digest (see ProposerRequestDigest), addressed to this validator
+// and made within the allowed clock skew, so only the aggsender can ask for a validation.
 func (s *ValidatorService) authenticateProposer(
 	ctx context.Context, req *v1.ValidateCertificateRequest, cert *agglayertypes.Certificate) error {
 	signature := req.GetProposerSignature().GetValue()
@@ -173,7 +186,18 @@ func (s *ValidatorService) authenticateProposer(
 		}
 	}
 
-	hashToSign, err := HashCertificateToSign(cert)
+	if s.signer == nil {
+		return grpc.GRPCError{
+			Code:    codes.Internal,
+			Message: "Signer is not initialized",
+		}
+	}
+
+	if err := s.checkRequestTimestamp(req.GetRequestTimestamp()); err != nil {
+		return err
+	}
+
+	certificateHash, err := HashCertificateToSign(cert)
 	if err != nil {
 		return grpc.GRPCError{
 			Code:    codes.InvalidArgument,
@@ -181,7 +205,16 @@ func (s *ValidatorService) authenticateProposer(
 		}
 	}
 
-	publicKey, err := crypto.SigToPub(hashToSign[:], signature)
+	var previousCertificateID *common.Hash
+	if req.PreviousCertificateId != nil && req.PreviousCertificateId.Value != nil {
+		id := common.BytesToHash(req.PreviousCertificateId.Value.Value)
+		previousCertificateID = &id
+	}
+
+	digest := ProposerRequestDigest(certificateHash, previousCertificateID, req.GetLastL2BlockInCert(),
+		s.signer.PublicAddress(), req.GetRequestTimestamp())
+
+	publicKey, err := crypto.SigToPub(digest[:], normalizeRecoveryID(signature))
 	if err != nil {
 		s.log.Warnf("Rejected ValidateCertificate request with an unusable proposer signature: %v", err)
 		return grpc.GRPCError{
@@ -206,6 +239,32 @@ func (s *ValidatorService) authenticateProposer(
 		return grpc.GRPCError{
 			Code:    codes.Unauthenticated,
 			Message: "the request is not signed by the proposer",
+		}
+	}
+
+	return nil
+}
+
+// checkRequestTimestamp rejects a request signed too long ago or too far in the future, so
+// a captured request cannot be reused outside a short window.
+func (s *ValidatorService) checkRequestTimestamp(requestTimestamp uint64) error {
+	if requestTimestamp == 0 || requestTimestamp > math.MaxInt64 {
+		return grpc.GRPCError{
+			Code:    codes.Unauthenticated,
+			Message: "missing or invalid request timestamp",
+		}
+	}
+
+	skew := s.now().Sub(time.Unix(int64(requestTimestamp), 0))
+	if skew < 0 {
+		skew = -skew
+	}
+	if skew > s.maxClockSkew {
+		s.log.Warnf("Rejected ValidateCertificate request with timestamp %d, %s away from the local clock",
+			requestTimestamp, skew)
+		return grpc.GRPCError{
+			Code:    codes.Unauthenticated,
+			Message: "request timestamp outside the allowed window",
 		}
 	}
 

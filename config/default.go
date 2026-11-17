@@ -377,6 +377,8 @@ AgglayerBridgeL2Addr = "{{L2Config.BridgeAddr}}"
 UnsetClaimsMaxLogBlockRange = {{AggSender.UnsetClaimsMaxLogBlockRange}}
 GlobalExitRootL1Addr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 BlockFinalityForL1InfoTree = "{{AggSender.BlockFinalityForL1InfoTree}}"
+# How far the timestamp of a ValidateCertificate request may be from the local clock
+ProposerRequestMaxClockSkew = "1m"
 [Validator.ServerConfig]
 	# Loopback by default. Set it to "0.0.0.0" (or another interface) when the proposer
 	# connects from another machine, and protect that address with the infrastructure.

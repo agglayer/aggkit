@@ -172,6 +172,7 @@ The validator is configured using a `.toml` file. Check the default values in th
 |-------------------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------|
 | MaxL2BlockRange               | uint64  | Maximum L2 block range allowed in a certificate, computed as `ToBlock - FromBlock`. 0 means disabled                                     |
 | UnsetClaimsMaxLogBlockRange   | uint64  | Proactive max block range for `eth_getLogs` queries when fetching unset claims. 0 means disabled (fallback to reactive chunking on error) |
+| ProposerRequestMaxClockSkew   | duration | How far the timestamp of a `ValidateCertificate` request may be from the validator's clock, in either direction. Default `1m`; 0 means `1m` |
 
 #### `[Validator.ServerConfig]`
 
@@ -194,13 +195,36 @@ network, terminate TLS in the infrastructure in front of it (a proxy or load bal
 restrict which addresses can reach the port. The server logs a warning when it binds a
 non-loopback address.
 
-`ValidateCertificate` only serves the chain's proposer: the request must carry the
-signature of the aggsender over the certificate hash (the same hash the validator signs),
-and the validator compares the recovered address with the first member of the current
-multisig committee. A request without a valid signature is rejected with
-`Unauthenticated` before the validator queries agglayer or the chain. `HealthCheck` stays
-open so infrastructure health checks keep working, and both are bounded by the limits
-above.
+`ValidateCertificate` only serves the chain's proposer. The aggsender signs, with its
+proposer key, a request digest:
+
+```text
+keccak256("aggkit.aggsender.validator.v1.ValidateCertificate" || certificate hash ||
+          previous certificate id (32 zero bytes when absent) || last_l2_block_in_cert (uint64, big endian) ||
+          validator address || request_timestamp (uint64, big endian))
+```
+
+The validator rebuilds the digest with its own signer address, recovers the signer and
+compares it with the first member of the current multisig committee. The digest is not the
+certificate hash the committee signs, so a signature taken from a certificate does not
+authenticate a request; it names the validator, so one validator cannot replay a request
+it received against another; and `request_timestamp` must be within
+`ProposerRequestMaxClockSkew` of the validator's clock, so a captured request is only
+reusable for that long, and only to repeat the same validation. Keep the clocks of the
+aggsender and the validators synchronised (NTP).
+
+A request with a missing, malformed, stale or foreign signature is rejected with
+`Unauthenticated`. The committee lookup happens only for a request whose signature
+recovers to some address; it is cached for a minute (so after a committee rotation the
+previous proposer is accepted for up to a minute), concurrent requests share one lookup,
+and a failed lookup is remembered for five seconds, during which requests fail with
+`Unavailable` without querying the chain again.
+
+The concurrency and per-peer rate limits apply before authentication, so an
+unauthenticated caller that can reach the port can use up capacity. They are keyed on the
+connection's peer address: behind a proxy or NAT every caller shares one address and one
+bucket, so limit who can reach the port at the network level. `HealthCheck` stays
+open so infrastructure health checks keep working, and it is exempt from both limits.
 
 Upgrading from a version that does not sign the request: upgrade the aggsender first (it
 starts signing the request and older validators ignore the extra field), then the
@@ -307,12 +331,15 @@ message ValidateCertificateRequest {
   agglayer.node.types.v1.CertificateId previous_certificate_id = 1;
   agglayer.node.types.v1.Certificate certificate = 2;
   uint64 last_l2_block_in_cert = 3;
-  // Signature of the certificate hash by the aggsender that proposes the certificate
+  // Signature of the request digest by the aggsender that proposes the certificate
   agglayer.interop.types.v1.FixedBytes65 proposer_signature = 4;
+  // Unix time, in seconds, at which the proposer signed the request
+  uint64 request_timestamp = 5;
 }
 ```
 
-`proposer_signature` is mandatory: an unsigned request, or one signed by any other key,
+`proposer_signature` and `request_timestamp` are mandatory: an unsigned request, one
+signed by any other key, addressed to another validator or outside the allowed clock skew
 is rejected with `Unauthenticated`.
 
 **Response:**

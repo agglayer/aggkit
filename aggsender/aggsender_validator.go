@@ -52,6 +52,7 @@ func NewAggsenderValidator(ctx context.Context,
 		aggLayerClient,
 		signer,
 		proposerQuery,
+		cfg.ProposerRequestMaxClockSkew.Duration,
 	))
 	return &AggsenderValidator{
 		log:                           logger,

@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 	"testing"
+	"time"
 
 	nodev1 "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
 	typesv1 "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
@@ -29,6 +30,8 @@ var (
 		Signature: &typesv1.FixedBytes65{Value: []byte("test_signature")},
 	}
 	errTestGenericError = errors.New("generic error")
+	testValidatorAddr   = common.HexToAddress("0x00000000000000000000000000000000000000aa")
+	testNow             = time.Unix(1_700_000_000, 0)
 )
 
 func TestValidatorService(t *testing.T) {
@@ -183,6 +186,89 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 		_, err := testData.sut.ValidateCertificate(t.Context(), req)
 		require.ErrorContains(t, err, "Code: Unavailable")
 	})
+	t.Run("rejects the proposer's committee signature of the certificate hash", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		req := &v1.ValidateCertificateRequest{
+			Certificate:      newGRPCCertificateForTest(t),
+			RequestTimestamp: uint64(testNow.Unix()),
+		}
+		cert, err := agglayergrpc.ConvertProtoCertToAgglayer(req.Certificate)
+		require.NoError(t, err)
+		certificateHash, err := HashCertificateToSign(cert)
+		require.NoError(t, err)
+		committeeSignature, err := crypto.Sign(certificateHash.Bytes(), testData.proposerKey)
+		require.NoError(t, err)
+		req.ProposerSignature = &typesv1.FixedBytes65{Value: committeeSignature}
+		_, err = testData.sut.ValidateCertificate(t.Context(), req)
+		require.ErrorContains(t, err, "Code: Unauthenticated")
+	})
+	t.Run("rejects a request addressed to another validator", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		req := signRequest(t, &v1.ValidateCertificateRequest{
+			Certificate: newGRPCCertificateForTest(t),
+		}, testData.proposerKey, common.HexToAddress("0xbb"))
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.ErrorContains(t, err, "Code: Unauthenticated")
+	})
+	t.Run("rejects a request whose fields changed after signing", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		req := testData.signedRequest(t, &v1.ValidateCertificateRequest{
+			Certificate:       newGRPCCertificateForTest(t),
+			LastL2BlockInCert: 10,
+		})
+		req.LastL2BlockInCert = 11
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.ErrorContains(t, err, "Code: Unauthenticated")
+	})
+	t.Run("rejects a request with no timestamp", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		req := testData.signedRequest(t, &v1.ValidateCertificateRequest{
+			Certificate: newGRPCCertificateForTest(t),
+		})
+		req.RequestTimestamp = 0
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.ErrorContains(t, err, "Code: Unauthenticated")
+	})
+	t.Run("rejects a stale request", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		req := testData.signedRequest(t, &v1.ValidateCertificateRequest{
+			Certificate:      newGRPCCertificateForTest(t),
+			RequestTimestamp: uint64(testNow.Add(-2 * DefaultProposerRequestMaxClockSkew).Unix()),
+		})
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.ErrorContains(t, err, "outside the allowed window")
+	})
+	t.Run("rejects a request from the future", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		req := testData.signedRequest(t, &v1.ValidateCertificateRequest{
+			Certificate:      newGRPCCertificateForTest(t),
+			RequestTimestamp: uint64(testNow.Add(2 * DefaultProposerRequestMaxClockSkew).Unix()),
+		})
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.ErrorContains(t, err, "outside the allowed window")
+	})
+	t.Run("accepts a request within the clock skew", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		req := testData.signedRequest(t, &v1.ValidateCertificateRequest{
+			Certificate:      newGRPCCertificateForTest(t),
+			RequestTimestamp: uint64(testNow.Add(-DefaultProposerRequestMaxClockSkew / 2).Unix()),
+		})
+		testData.mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+		testData.mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil).Once()
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.NoError(t, err)
+	})
+	t.Run("accepts a signature with a legacy recovery id", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		req := testData.signedRequest(t, &v1.ValidateCertificateRequest{
+			Certificate: newGRPCCertificateForTest(t),
+		})
+		req.ProposerSignature.Value[crypto.RecoveryIDOffset] += 27
+		testData.mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+		testData.mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil).Once()
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.NoError(t, err)
+	})
 	t.Run("an invalid certificate fails conversion before authentication", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
 		cert := newGRPCCertificateForTest(t)
@@ -225,9 +311,12 @@ func newValidatorServiceTestData(t *testing.T) *testValidatorServiceData {
 	require.NoError(t, err)
 	proposer := &stubProposerAddressProvider{address: crypto.PubkeyToAddress(proposerKey.PublicKey)}
 
+	mockSigner.EXPECT().PublicAddress().Return(testValidatorAddr).Maybe()
+
 	sut := NewValidatorService(
 		log.WithFields("module", "aggsender-validator"),
-		mockValidator, mockAgglayerClient, mockSigner, proposer)
+		mockValidator, mockAgglayerClient, mockSigner, proposer, 0)
+	sut.now = func() time.Time { return testNow }
 	return &testValidatorServiceData{
 		mockValidator:      mockValidator,
 		mockAgglayerClient: mockAgglayerClient,
@@ -238,7 +327,8 @@ func newValidatorServiceTestData(t *testing.T) *testValidatorServiceData {
 	}
 }
 
-// signedRequest adds the signature of the test proposer to the request.
+// signedRequest adds the signature of the test proposer to the request, addressed to the
+// test validator and timestamped now unless the request already carries a timestamp.
 func (d *testValidatorServiceData) signedRequest(
 	t *testing.T, req *v1.ValidateCertificateRequest) *v1.ValidateCertificateRequest {
 	t.Helper()
@@ -248,11 +338,27 @@ func (d *testValidatorServiceData) signedRequest(
 func (d *testValidatorServiceData) signedRequestWithKey(
 	t *testing.T, req *v1.ValidateCertificateRequest, key *ecdsa.PrivateKey) *v1.ValidateCertificateRequest {
 	t.Helper()
+	return signRequest(t, req, key, testValidatorAddr)
+}
+
+func signRequest(t *testing.T, req *v1.ValidateCertificateRequest, key *ecdsa.PrivateKey,
+	validatorAddr common.Address) *v1.ValidateCertificateRequest {
+	t.Helper()
+	if req.RequestTimestamp == 0 {
+		req.RequestTimestamp = uint64(testNow.Unix())
+	}
 	cert, err := agglayergrpc.ConvertProtoCertToAgglayer(req.Certificate)
 	require.NoError(t, err)
-	hashToSign, err := HashCertificateToSign(cert)
+	certificateHash, err := HashCertificateToSign(cert)
 	require.NoError(t, err)
-	signature, err := crypto.Sign(hashToSign.Bytes(), key)
+	var previousCertificateID *common.Hash
+	if req.PreviousCertificateId != nil {
+		id := common.BytesToHash(req.PreviousCertificateId.Value.Value)
+		previousCertificateID = &id
+	}
+	digest := ProposerRequestDigest(certificateHash, previousCertificateID, req.LastL2BlockInCert,
+		validatorAddr, req.RequestTimestamp)
+	signature, err := crypto.Sign(digest.Bytes(), key)
 	require.NoError(t, err)
 	req.ProposerSignature = &typesv1.FixedBytes65{Value: signature}
 

@@ -94,11 +94,16 @@ type ValidateCertificateRequest struct {
 	Certificate *v1.Certificate `protobuf:"bytes,2,opt,name=certificate,proto3" json:"certificate,omitempty"`
 	// Last L2 block number included in the certificate
 	LastL2BlockInCert uint64 `protobuf:"varint,3,opt,name=last_l2_block_in_cert,json=lastL2BlockInCert,proto3" json:"last_l2_block_in_cert,omitempty"`
-	// Signature of the certificate hash by the aggsender that proposes the certificate,
-	// so the validator only serves the chain's proposer
+	// Signature by the aggsender that proposes the certificate of the request digest:
+	// keccak256(domain tag || certificate hash || previous certificate id || last L2 block ||
+	// validator address || request timestamp). See ProposerRequestDigest. The validator only
+	// serves the chain's proposer, and the digest binds the signature to this request, this
+	// validator and a short time window.
 	ProposerSignature *v11.FixedBytes65 `protobuf:"bytes,4,opt,name=proposer_signature,json=proposerSignature,proto3" json:"proposer_signature,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Unix time, in seconds, at which the proposer signed the request
+	RequestTimestamp uint64 `protobuf:"varint,5,opt,name=request_timestamp,json=requestTimestamp,proto3" json:"request_timestamp,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ValidateCertificateRequest) Reset() {
@@ -159,6 +164,13 @@ func (x *ValidateCertificateRequest) GetProposerSignature() *v11.FixedBytes65 {
 	return nil
 }
 
+func (x *ValidateCertificateRequest) GetRequestTimestamp() uint64 {
+	if x != nil {
+		return x.RequestTimestamp
+	}
+	return 0
+}
+
 // Type used as response to a certificate validation request.
 type ValidateCertificateResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -213,12 +225,13 @@ const file_aggsender_validator_proto_v1_validator_proto_rawDesc = "" +
 	"\x13HealthCheckResponse\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"\xcc\x02\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\xf9\x02\n" +
 	"\x1aValidateCertificateRequest\x12]\n" +
 	"\x17previous_certificate_id\x18\x01 \x01(\v2%.agglayer.node.types.v1.CertificateIdR\x15previousCertificateId\x12E\n" +
 	"\vcertificate\x18\x02 \x01(\v2#.agglayer.node.types.v1.CertificateR\vcertificate\x120\n" +
 	"\x15last_l2_block_in_cert\x18\x03 \x01(\x04R\x11lastL2BlockInCert\x12V\n" +
-	"\x12proposer_signature\x18\x04 \x01(\v2'.agglayer.interop.types.v1.FixedBytes65R\x11proposerSignature\"d\n" +
+	"\x12proposer_signature\x18\x04 \x01(\v2'.agglayer.interop.types.v1.FixedBytes65R\x11proposerSignature\x12+\n" +
+	"\x11request_timestamp\x18\x05 \x01(\x04R\x10requestTimestamp\"d\n" +
 	"\x1bValidateCertificateResponse\x12E\n" +
 	"\tsignature\x18\x01 \x01(\v2'.agglayer.interop.types.v1.FixedBytes65R\tsignature2\xfe\x01\n" +
 	"\x12AggsenderValidator\x12Y\n" +

@@ -3,6 +3,7 @@ package validator
 import (
 	"context"
 	"fmt"
+	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
@@ -24,6 +25,7 @@ type RemoteValidator struct {
 	storage db.AggSenderStorage
 	index   uint32
 	signer  signertypes.Signer
+	now     func() time.Time
 }
 
 // NewRemoteValidator initializes a new RemoteValidator with the provided gRPC client configuration.
@@ -51,6 +53,7 @@ func NewRemoteValidator(
 		address: address,
 		index:   index,
 		signer:  proposerSigner,
+		now:     time.Now,
 	}, nil
 }
 
@@ -102,11 +105,15 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 		previousCertificateID = &previousCertificate.CertificateID
 	}
 
-	// Sign the certificate with the proposer key: the validator only serves the chain's
-	// proposer, so it needs to tell this request apart from any other caller's.
-	proposerSignature, err := v.signer.SignHash(ctx, certificateHash)
+	// Sign the request with the proposer key: the validator only serves the chain's
+	// proposer. The digest binds the signature to this request, this validator and this
+	// moment, so it differs from the committee signature of the certificate hash.
+	requestTimestamp := uint64(v.now().Unix())
+	digest := ProposerRequestDigest(certificateHash, previousCertificateID, lastL2BlockInCert,
+		v.address, requestTimestamp)
+	proposerSignature, err := v.signer.SignHash(ctx, digest)
 	if err != nil {
-		return nil, fmt.Errorf("error signing the certificate as proposer: %w", err)
+		return nil, fmt.Errorf("error signing the request as proposer: %w", err)
 	}
 
 	signature, err := v.client.ValidateCertificate(
@@ -115,6 +122,7 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 		certificate,
 		lastL2BlockInCert,
 		proposerSignature,
+		requestTimestamp,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error validating certificate on aggsender validator service: %w", err)

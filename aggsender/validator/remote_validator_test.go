@@ -3,6 +3,7 @@ package validator
 import (
 	"errors"
 	"testing"
+	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
@@ -66,6 +67,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 					&certAtHeight0,
 					mock.Anything,
 					mock.Anything,
+					mock.Anything,
 				).Return(nil, errors.New("client error"))
 			},
 			expectedError: "error validating certificate on aggsender validator service: client error",
@@ -79,6 +81,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 					ctx,
 					previousCertificateID,
 					&certAtHeight0,
+					mock.Anything,
 					mock.Anything,
 					mock.Anything,
 				).Return(certAtHeight0Sig, nil)
@@ -96,6 +99,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 					&certAtHeight0,
 					mock.Anything,
 					mock.Anything,
+					mock.Anything,
 				).Return(certAtHeight11Sig, nil)
 			},
 			expectedError: "error validating remote validator signature, mismatch expected:0x9D36c7795cC5F041010F1eb74f3e70306Ab9Ede5 current:0x38996100B11d9637C61c2d903A8dE79F26B01A9a",
@@ -109,6 +113,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 					ctx,
 					previousCertificateID,
 					&certAtHeight0,
+					mock.Anything,
 					mock.Anything,
 					mock.Anything,
 				).Return(make([]byte, crypto.SignatureLength), nil)
@@ -129,6 +134,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 					ctx,
 					&previousCertID,
 					&certAtHeight11,
+					mock.Anything,
 					mock.Anything,
 					mock.Anything,
 				).Return(certAtHeight11Sig, nil)
@@ -155,6 +161,7 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 				storage: mockStorage,
 				address: common.HexToAddress(VALIDATOR_ADDR),
 				signer:  mockSigner,
+				now:     time.Now,
 			}
 
 			signature, err := remoteValidator.ValidateAndSignCertificate(ctx, tc.certificate, 0)
@@ -170,4 +177,43 @@ func TestRemoteClient_ValidateCertificate(t *testing.T) {
 			mockStorage.AssertExpectations(t)
 		})
 	}
+}
+
+func TestRemoteClient_ValidateCertificate_SignsTheRequestDigest(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	cert := &agglayertypes.Certificate{Height: 11}
+	certSig := signCertificate(t, cert)
+	certHash, err := HashCertificateToSign(cert)
+	require.NoError(t, err)
+
+	previousCertID := common.HexToHash("0xabcdef")
+	validatorAddr := common.HexToAddress(VALIDATOR_ADDR)
+	now := time.Unix(1_700_000_000, 0)
+	const lastL2Block = uint64(42)
+	expectedDigest := ProposerRequestDigest(certHash, &previousCertID, lastL2Block, validatorAddr, uint64(now.Unix()))
+	require.NotEqual(t, certHash, expectedDigest, "the proposer must not sign the committee hash")
+	proposerSig := []byte("proposer-signature")
+
+	mockClient := mocks.NewValidatorClient(t)
+	mockStorage := mocks.NewAggSenderStorage(t)
+	mockSigner := mocks.NewSigner(t)
+	mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(10)).Return(
+		&types.CertificateHeader{CertificateID: previousCertID}, nil)
+	mockSigner.EXPECT().SignHash(mock.Anything, expectedDigest).Return(proposerSig, nil)
+	mockClient.EXPECT().ValidateCertificate(ctx, &previousCertID, cert, lastL2Block, proposerSig,
+		uint64(now.Unix())).Return(certSig, nil)
+
+	remoteValidator := &RemoteValidator{
+		client:  mockClient,
+		storage: mockStorage,
+		address: validatorAddr,
+		signer:  mockSigner,
+		now:     func() time.Time { return now },
+	}
+
+	signature, err := remoteValidator.ValidateAndSignCertificate(ctx, cert, lastL2Block)
+	require.NoError(t, err)
+	require.Equal(t, certSig, signature)
 }

@@ -87,6 +87,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, uint32(100), cfg.Validator.ServerConfig.MaxConcurrentStreams)
 	require.Equal(t, 5.0, cfg.Validator.ServerConfig.MaxRequestsPerSecondPerPeer)
 	require.Equal(t, 20, cfg.Validator.ServerConfig.MaxRequestsBurstPerPeer)
+	require.Equal(t, time.Minute, cfg.Validator.ProposerRequestMaxClockSkew.Duration)
 	require.Equal(t, cfg.Validator.AgglayerClient.Cached, true)
 	require.Equal(t, cfg.Validator.AgglayerClient.ConfigurationCache.Capacity, uint64(100))
 	require.Equal(t,

@@ -1,13 +1,16 @@
 package validator
 
 import (
+	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -96,5 +99,80 @@ func TestCommitteeProposerAddressProvider(t *testing.T) {
 		_, err := provider.GetProposerAddress(t.Context())
 
 		require.ErrorContains(t, err, "l1 down")
+	})
+
+	t.Run("remembers a failed lookup for a short time", func(t *testing.T) {
+		t.Parallel()
+
+		querier := mocks.NewMultisigQuerier(t)
+		querier.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).
+			Return(nil, errors.New("l1 down")).Once()
+		querier.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).
+			Return(newTestCommittee(t, proposer, second), nil).Once()
+
+		provider := NewCommitteeProposerAddressProvider(querier)
+		now := time.Now()
+		provider.now = func() time.Time { return now }
+
+		for i := 0; i < 3; i++ {
+			_, err := provider.GetProposerAddress(t.Context())
+			require.ErrorContains(t, err, "l1 down")
+		}
+
+		now = now.Add(provider.errTTL + time.Second)
+		address, err := provider.GetProposerAddress(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, proposer, address)
+	})
+
+	t.Run("concurrent callers share one lookup", func(t *testing.T) {
+		t.Parallel()
+
+		release := make(chan time.Time)
+		querier := mocks.NewMultisigQuerier(t)
+		querier.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).
+			WaitUntil(release).
+			Return(newTestCommittee(t, proposer, second), nil).Once()
+
+		provider := NewCommitteeProposerAddressProvider(querier)
+
+		const callers = 8
+		var wg sync.WaitGroup
+		results := make(chan common.Address, callers)
+		for i := 0; i < callers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				address, err := provider.GetProposerAddress(t.Context())
+				assert.NoError(t, err)
+				results <- address
+			}()
+		}
+
+		time.Sleep(50 * time.Millisecond)
+		close(release)
+		wg.Wait()
+		close(results)
+		for address := range results {
+			require.Equal(t, proposer, address)
+		}
+	})
+
+	t.Run("a caller stops waiting when its context is done", func(t *testing.T) {
+		t.Parallel()
+
+		release := make(chan time.Time)
+		defer close(release)
+		querier := mocks.NewMultisigQuerier(t)
+		querier.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).
+			WaitUntil(release).
+			Return(newTestCommittee(t, proposer, second), nil).Maybe()
+
+		provider := NewCommitteeProposerAddressProvider(querier)
+		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+		defer cancel()
+
+		_, err := provider.GetProposerAddress(ctx)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
 }

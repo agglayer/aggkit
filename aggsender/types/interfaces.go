@@ -283,6 +283,7 @@ type ValidatorClient interface {
 		certificate *agglayertypes.Certificate,
 		lastL2BlockInCert uint64,
 		proposerSignature []byte,
+		requestTimestamp uint64,
 	) ([]byte, error)
 }
 
