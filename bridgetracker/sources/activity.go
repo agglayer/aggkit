@@ -440,6 +440,11 @@ func (s *ActivitySource) warnf(networkID uint32, format string, args ...any) dom
 	return domain.ActivityWarning{NetworkID: networkID, Message: message}
 }
 
+// errBridgeListShifted is the scan error when a network's bridge listing kept changing while it was
+// paged, in both passes of scanBridgeService
+var errBridgeListShifted = errors.New(
+	"the bridge listing kept changing while it was read: keeping the last known activity, retrying on the next refresh")
+
 // bridgeServiceScan is what scanBridgeService read from one network's bridge service
 type bridgeServiceScan struct {
 	// bridges is every bridge to hand back to the caller: new ones, a fresh read of every known
@@ -467,7 +472,10 @@ type bridgeServiceScan struct {
 // added while the scan paged. When the listing changed while it was paged (its count differs
 // between the pages read, or the scan read the whole listing but saw fewer bridges than it
 // counts), a bridge may have shifted onto a page already read and been missed — and a missed
-// non-final bridge would be read as removed — so the scan is run once more.
+// non-final bridge would be read as removed — so the scan is run once more. If the listing still
+// changed during that second pass, the scan fails with errBridgeListShifted: a partial result could
+// remove a bridge that still exists, or return a newer final bridge while an older one was skipped,
+// which the next refresh would then stop at and never find the skipped one.
 //
 // Any error fails the whole scan (nothing partial is returned): the caller must then keep this
 // network's entries as they are, never read the failure as the bridges being gone
@@ -482,11 +490,14 @@ func scanBridgeService(
 	logger.Infof("activity: the bridges of %s on network %d shifted while they were read, scanning again",
 		fromAddress, networkID)
 	scan, complete, err = scanBridgeServiceOnce(ctx, svc, networkID, fromAddress, pageSize, known, logger)
-	if err == nil && !complete {
-		logger.Warnf("activity: the bridges of %s on network %d still shifted while they were read; "+
-			"the next refresh reads the non-final ones again", fromAddress, networkID)
+	if err != nil {
+		return bridgeServiceScan{}, err
 	}
-	return scan, err
+	if !complete {
+		return bridgeServiceScan{}, fmt.Errorf("bridges of %s on network %d: %w", fromAddress, networkID,
+			errBridgeListShifted)
+	}
+	return scan, nil
 }
 
 // scanBridgeServiceOnce is one pass of scanBridgeService; complete is false when the listing

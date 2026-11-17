@@ -226,9 +226,11 @@ func TestBridgesFrom_LongScanRereadsPageOne(t *testing.T) {
 	f := newReorgScanFixture(t, 2)
 	f.known = nil // first scan
 	newest := bridgeResponse(1, 2, 5, testFromAddress, 6)
+	inserted := false
 	f.svc.mu.Lock()
 	f.svc.beforeBridges = func(page int) {
-		if page == 3 {
+		if page == 3 && !inserted {
+			inserted = true
 			f.svc.bridgesByNetwork[1] = append([]*bridgeservicetypes.BridgeResponse{newest}, f.svc.bridgesByNetwork[1]...)
 		}
 	}
@@ -258,6 +260,37 @@ func TestBridgesFrom_ShiftedListingIsScannedAgain(t *testing.T) {
 	items, _, _ := f.scan(t)
 	require.ElementsMatch(t, []int64{4, 3, 2, 1}, keysOf(byGlobalIndex(items)),
 		"global index 3 shifted onto page 2 after it was read, the second pass finds it")
+}
+
+// TestBridgesFrom_ListingShiftedInBothPassesKeepsTheCache verifies that when the listing changes
+// during both passes, the scan fails like any bridge-service error: nothing of the network is
+// returned or invalidated (a partial pass could invalidate a bridge that still exists), a warning is
+// reported, and the next refresh, with a stable listing, corrects the cache
+func TestBridgesFrom_ListingShiftedInBothPassesKeepsTheCache(t *testing.T) {
+	f := newReorgScanFixture(t, 1)
+	removals := 0
+	f.svc.mu.Lock()
+	f.svc.beforeBridges = func(page int) {
+		if page == 3 && removals < 2 {
+			removals++
+			f.svc.bridgesByNetwork[1] = f.svc.bridgesByNetwork[1][1:] // the head bridge is reorged out
+		}
+	}
+	f.svc.mu.Unlock()
+
+	items, invalidated, warnings := f.scan(t)
+	require.Equal(t, 2, removals, "the listing changed in both passes")
+	require.Empty(t, items)
+	require.Empty(t, invalidated, "nothing is invalidated from an inconsistent listing")
+	require.Len(t, warnings, 1)
+	require.Equal(t, uint32(1), warnings[0].NetworkID)
+	require.Contains(t, warnings[0].Message, "kept changing while it was read")
+
+	// stable listing (3, 2, 1): global indexes 5 and 4 are now proven gone
+	items, invalidated, warnings = f.scan(t)
+	require.Empty(t, warnings)
+	require.Equal(t, []string{"4", "5"}, invalidated)
+	require.ElementsMatch(t, []int64{3}, keysOf(byGlobalIndex(items)))
 }
 
 // TestBridgesFrom_RPCOnlyEntryRemovedOnceIndexedPast verifies an entry only found through the RPC
