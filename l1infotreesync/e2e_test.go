@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"path"
 	"strconv"
+	gosync "sync"
 	"testing"
 	"time"
 
@@ -183,7 +184,17 @@ func TestWithReorgs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := context.Background()
+			// A cancellable context plus a joined worker set: the syncer, the multidownloader and
+			// the reorg detector must stop before this subtest returns. Otherwise every run (e.g.
+			// under -count) leaks goroutines that keep polling a simulated backend the test has
+			// already closed, and enough of them starve the runs that follow.
+			ctx, cancel := context.WithCancel(t.Context())
+			var workers gosync.WaitGroup
+			t.Cleanup(func() {
+				cancel()
+				workers.Wait()
+			})
+
 			suffix := "legacy"
 			if tt.useMultidownloaderForTest {
 				suffix = "multidownloader"
@@ -231,9 +242,14 @@ func TestWithReorgs(t *testing.T) {
 				require.NoError(t, err)
 				syncer, err = l1infotreesync.NewMultidownloadBased(ctx, cfg, evmMultidownloader, l1infotreesync.FlagAllowWrongContractsAddrs)
 				require.NoError(t, err)
+				workers.Add(1)
 				go func() {
-					err = evmMultidownloader.Start(ctx)
-					require.NoError(t, err)
+					defer workers.Done()
+					// Start returns when the context is cancelled (including from the cleanup
+					// above); that is not a test failure.
+					if mdErr := evmMultidownloader.Start(ctx); mdErr != nil {
+						log.Infof("multidownloader exited: %v", mdErr)
+					}
 				}()
 			} else {
 				rdConfig := reorgdetector.Config{
@@ -248,7 +264,11 @@ func TestWithReorgs(t *testing.T) {
 				syncer, err = l1infotreesync.NewLegacy(ctx, cfg, multidownloaderClient, rd, l1infotreesync.FlagAllowWrongContractsAddrs)
 				require.NoError(t, err)
 			}
-			go syncer.Start(ctx)
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				syncer.Start(ctx)
+			}()
 
 			// Commit block 6
 			header, err := client.Client().HeaderByHash(ctx, client.Commit())
