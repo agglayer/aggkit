@@ -21,6 +21,10 @@ const (
 	// defaultProposerAddressErrorTTL is how long a failed committee lookup is remembered, so
 	// requests that arrive while the chain cannot be read do not each query it again.
 	defaultProposerAddressErrorTTL = 5 * time.Second
+	// defaultProposerAddressLookupTimeout bounds the shared committee lookup, so a stalled L1
+	// call fails, is remembered as an error and the next request after the error TTL tries
+	// again, instead of every request waiting on the same stuck call.
+	defaultProposerAddressLookupTimeout = 10 * time.Second
 )
 
 // ProposerAddressProvider resolves the address of the aggsender allowed to call the
@@ -37,6 +41,7 @@ type CommitteeProposerAddressProvider struct {
 	committeeQuerier types.MultisigQuerier
 	ttl              time.Duration
 	errTTL           time.Duration
+	lookupTimeout    time.Duration
 	now              func() time.Time
 
 	group singleflight.Group
@@ -55,6 +60,7 @@ func NewCommitteeProposerAddressProvider(
 		committeeQuerier: committeeQuerier,
 		ttl:              defaultProposerAddressCacheTTL,
 		errTTL:           defaultProposerAddressErrorTTL,
+		lookupTimeout:    defaultProposerAddressLookupTimeout,
 		now:              time.Now,
 	}
 }
@@ -67,8 +73,11 @@ func (p *CommitteeProposerAddressProvider) GetProposerAddress(ctx context.Contex
 	}
 
 	resultCh := p.group.DoChan("proposer", func() (interface{}, error) {
-		// The lookup is shared, so it must not be cancelled by the first caller's context.
-		addr, err := p.lookup(context.WithoutCancel(ctx))
+		// The lookup is shared, so it must not be cancelled by the first caller's context,
+		// but it has its own deadline so a stalled L1 call cannot hold every later request.
+		lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), p.lookupTimeout)
+		defer cancel()
+		addr, err := p.lookup(lookupCtx)
 		p.store(addr, err)
 		return addr, err
 	})

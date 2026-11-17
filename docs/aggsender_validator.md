@@ -217,7 +217,7 @@ A request with a missing, malformed, stale or foreign signature is rejected with
 `Unauthenticated`. The committee lookup happens only for a request whose signature
 recovers to some address; it is cached for a minute (so after a committee rotation the
 previous proposer is accepted for up to a minute), concurrent requests share one lookup,
-and a failed lookup is remembered for five seconds, during which requests fail with
+the lookup gives up after ten seconds, and a failed lookup is remembered for five seconds, during which requests fail with
 `Unavailable` without querying the chain again.
 
 The concurrency and per-peer rate limits apply before authentication, so an

@@ -3,6 +3,7 @@ package validator
 import (
 	"context"
 	"errors"
+	"math/big"
 	"sync"
 	"testing"
 	"time"
@@ -174,5 +175,44 @@ func TestCommitteeProposerAddressProvider(t *testing.T) {
 
 		_, err := provider.GetProposerAddress(ctx)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
+	})
+
+	t.Run("a stalled lookup times out and a later request reads the committee again", func(t *testing.T) {
+		t.Parallel()
+
+		querier := mocks.NewMultisigQuerier(t)
+		// The first lookup only returns when its context is done, like a hung RPC that
+		// honours the call context.
+		querier.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).
+			RunAndReturn(func(ctx context.Context, _ *big.Int) (*types.MultisigCommittee, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}).Once()
+		querier.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).
+			Return(newTestCommittee(t, proposer, second), nil).Once()
+
+		provider := NewCommitteeProposerAddressProvider(querier)
+		provider.lookupTimeout = 20 * time.Millisecond
+		var mu sync.Mutex
+		now := time.Now()
+		provider.now = func() time.Time {
+			mu.Lock()
+			defer mu.Unlock()
+			return now
+		}
+
+		_, err := provider.GetProposerAddress(t.Context())
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+
+		// Within the error TTL the failure is answered from the cache.
+		_, err = provider.GetProposerAddress(t.Context())
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+
+		mu.Lock()
+		now = now.Add(provider.errTTL + time.Second)
+		mu.Unlock()
+		address, err := provider.GetProposerAddress(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, proposer, address)
 	})
 }
