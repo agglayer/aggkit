@@ -2638,10 +2638,10 @@ func (b *BridgeService) GetBridgesByContentHandler(c *gin.Context) {
 		c.JSON(statusCode, gin.H{"error": "amount is mandatory"})
 		return
 	}
-	amount, ok := new(big.Int).SetString(amountStr, decimalBase)
-	if !ok {
+	amount, err := parseAmountParam(amountStr)
+	if err != nil {
 		statusCode = http.StatusBadRequest
-		c.JSON(statusCode, gin.H{"error": "invalid amount parameter, must be a decimal integer"})
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("invalid amount parameter, must be a decimal integer: %v", err)})
 		return
 	}
 
