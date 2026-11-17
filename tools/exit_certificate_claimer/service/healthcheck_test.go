@@ -18,9 +18,13 @@ func TestHealthCheckURL(t *testing.T) {
 	require.Equal(t, "http://[::1]:9000/claimer/v1/health", HealthCheckURL("::1", 9000))
 }
 
+// The tests below deliberately do not call t.Parallel: httptest.Server.Close calls
+// http.DefaultTransport.CloseIdleConnections, and HealthCheck uses http.DefaultClient. A server
+// closed by a test running in parallel can therefore break an in-flight request in another one,
+// surfacing as "http: CloseIdleConnections called" instead of the expected response. Keeping
+// them non-parallel runs them before the package's parallel tests, so no other test can close
+// the shared transport out from under them.
 func TestHealthCheckOK(t *testing.T) {
-	t.Parallel()
-
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, apiBasePath+"/health", r.URL.Path)
 		w.WriteHeader(http.StatusOK)
@@ -32,8 +36,6 @@ func TestHealthCheckOK(t *testing.T) {
 }
 
 func TestHealthCheckNonOKStatus(t *testing.T) {
-	t.Parallel()
-
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
@@ -44,8 +46,6 @@ func TestHealthCheckNonOKStatus(t *testing.T) {
 }
 
 func TestHealthCheckUnreachable(t *testing.T) {
-	t.Parallel()
-
 	// Nothing listens here: httptest server closed before probing.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	url := srv.URL
@@ -64,8 +64,6 @@ func TestHealthCheckInvalidURL(t *testing.T) {
 
 // TestHealthCheckAgainstServer probes a real claimer Server end to end.
 func TestHealthCheckAgainstServer(t *testing.T) {
-	t.Parallel()
-
 	cert, err := LoadCertificate(writeSampleCert(t))
 	require.NoError(t, err)
 	claimer, _ := buildTestClaimer(t, cert.NewLocalExitRoot)
