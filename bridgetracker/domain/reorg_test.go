@@ -468,6 +468,31 @@ func TestReverifyStepsClaimReincludedInAnotherBlock(t *testing.T) {
 		"the previous snapshot is never modified in place")
 }
 
+// TestReverifyStepsClaimReincludedAtSameHeight pins that the claim tx re-included at the same
+// height but in a block with another timestamp also replaces the stored claim, so the step dates
+// do not keep the orphaned block's timestamp
+func TestReverifyStepsClaimReincludedAtSameHeight(t *testing.T) {
+	checkers := newReorgCheckers(t)
+	tracking := claimedTracking(types.BridgeTypeL1ToL2)
+	final := true
+	moved := &types.ClaimResult{
+		ClaimTx: reorgClaimTx, BlockNumber: 3000, BlockTimestamp: 1700003007, ReportedFinalized: &final,
+	}
+	checkers.claimed.EXPECT().IsClaimed(mock.Anything, mock.Anything).Return(true, nil).Once()
+	checkers.claims.EXPECT().ClaimFor(mock.Anything, mock.Anything).Return(moved, nil).Once()
+	checkers.finality.EXPECT().IsFinal(mock.Anything, uint32(1), reorgClaimTx, uint64(3000), &final).
+		Return(true, nil).Once()
+
+	updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
+	claimed := stepOf(t, updated, types.StepClaimed)
+	require.Equal(t, uint64(1700003007), claimed.ResultClaim.BlockTimestamp)
+	require.Equal(t, time.Unix(1700003007, 0).UTC(), *claimed.StartDate)
+	require.Equal(t, time.Unix(1700003007, 0).UTC(), *claimed.EndDate)
+	require.Equal(t, types.TrackerClaimStatusClaimedFinalized, updated.ClaimStatus())
+	require.Equal(t, uint64(1700003000), stepOf(t, tracking, types.StepClaimed).ResultClaim.BlockTimestamp,
+		"the previous snapshot is never modified in place")
+}
+
 // TestReverifyStepsClaimOpenedButGone pins the claim fallback's half-way state: StepClaimed opened
 // (isClaimed was true) but its record not fetched yet, and the claim reorged out meanwhile
 func TestReverifyStepsClaimOpenedButGone(t *testing.T) {

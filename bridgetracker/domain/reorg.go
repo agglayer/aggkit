@@ -211,9 +211,13 @@ func reverifyClaim(
 		logger.Debugf("%s: claimed on-chain but the claim record is not indexed (anymore), kept", id)
 		return tracking, false
 	}
-	if claim.ClaimTx != stored.ResultClaim.ClaimTx || claim.BlockNumber != stored.ResultClaim.BlockNumber {
-		logger.Infof("%s: the claim moved from tx %s in block %d to tx %s in block %d",
-			id, stored.ResultClaim.ClaimTx, stored.ResultClaim.BlockNumber, claim.ClaimTx, claim.BlockNumber)
+	// a re-inclusion at the same height lands in another block, whose timestamp may differ: the
+	// timestamp is compared too so the step dates never keep the orphaned block's time
+	if claim.ClaimTx != stored.ResultClaim.ClaimTx || claim.BlockNumber != stored.ResultClaim.BlockNumber ||
+		claim.BlockTimestamp != stored.ResultClaim.BlockTimestamp {
+		logger.Infof("%s: the claim moved from tx %s in block %d (ts %d) to tx %s in block %d (ts %d)",
+			id, stored.ResultClaim.ClaimTx, stored.ResultClaim.BlockNumber, stored.ResultClaim.BlockTimestamp,
+			claim.ClaimTx, claim.BlockNumber, claim.BlockTimestamp)
 		tracking = replaceClaim(tracking, claimedIdx, claim)
 	}
 	return finalizeClaim(ctx, logger, checkers.Finality, tracking, claimedIdx, claim.ReportedFinalized), false
