@@ -14,7 +14,9 @@ type ActivityFilter int
 const (
 	// ActivityFilterAll returns every bridge found, regardless of claim state (the default)
 	ActivityFilterAll ActivityFilter = iota
-	// ActivityFilterClaimed returns only bridges confirmed claimed
+	// ActivityFilterClaimed returns only bridges confirmed claimed, final or not
+	// (TrackerClaimStatusClaimed and TrackerClaimStatusClaimedFinalized, see
+	// TrackerClaimStatus.IsClaimed)
 	ActivityFilterClaimed
 	// ActivityFilterPending returns only bridges still unclaimed and not yet ready to claim
 	// (TrackerClaimStatusPending) — a bridge whose claim state could not be checked is not

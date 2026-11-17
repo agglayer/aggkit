@@ -36,6 +36,11 @@ type BridgeInfo struct {
 	Amount *big.Int
 	// BlockTimestamp is the timestamp of the block, on the origin network, where the BridgeEvent was emitted
 	BlockTimestamp uint64
+	// BlockFinalized is whether BlockNumber is final on the origin network (it can no longer be
+	// removed by a reorg). Unlike every other field here it is not an immutable fact resolved
+	// once: it starts false and only the tracker flips it to true later (agglayer/aggkit#1970) —
+	// until that follow-up lands it is always false. Served as BridgeStatus.block_finalized
+	BlockFinalized bool
 }
 
 // BridgeType derives the direction of the bridge from its origin and destination networks
