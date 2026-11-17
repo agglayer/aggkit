@@ -93,6 +93,25 @@ tests, exactly like `op-pp`/`op-pp-2chains`.
 | `aggkit-proxy-001` | 8080 | 15601 |
 | `aggkit-proxy-002` | 8080 | 15602 |
 
+## Finality and block production (reorg tests)
+
+The anvil images bake their entrypoint (`/snapshot/entrypoint.sh`); the node runs with
+`--block-time 1 --slots-in-an-epoch 1` (read from the running containers, anvil 1.5.1, 2026-11-17: the
+flags are not in this repo). anvil computes the tags as `safe = latest - slots_in_an_epoch` and
+`finalized = latest - 2 * slots_in_an_epoch`, so `finalized` trails `latest` by **2 blocks**, always, as a
+function of the head number and not of time.
+
+- `aggkit-001` syncs its L2 (and the L1 bridge syncer of both aggkits) at `LatestBlock`: it serves data of
+  blocks that are not final yet, with `block_finalized=false`. `aggkit-002` syncs its L2 at
+  `FinalizedBlock`. `ReorgDetectorL2` is on `FinalizedBlock` in both, the L1 syncers that matter for the
+  L1 info tree (`L1InfoTreeSync`, `L1Multidownloader`, `ReorgDetectorL1`) too.
+- Because the lag is fixed, a test holds data in a non-final state without changing the env: pause
+  interval mining (`evm_setIntervalMining 0`, reverted with `evm_setIntervalMining 1`), mine by hand
+  (`anvil_mine`) and mine the lag to make it final. The anvil RPCs `anvil_reorg`, `anvil_rollback`,
+  `evm_snapshot`/`evm_revert`, `anvil_mine`, `anvil_getIntervalMining` and `anvil_getAutomine` are all
+  available from the host ports. See the "Reorg helpers" section of `test/e2e/README.md`
+  (`test/e2e/reorg_utils.go`) and `TestReorgDetectionSmoke`.
+
 ## Known deviations from the design note
 
 `config/agglayer/config.toml`'s `[full-node-rpcs]` / `[proof-signers]` here has entries for
