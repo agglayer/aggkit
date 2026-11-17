@@ -485,6 +485,39 @@ func TestReverifyStepsClaimOpenedButGone(t *testing.T) {
 	require.Same(t, tracking, domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow))
 }
 
+// TestReverifyStepsClaimGoneReopensSkippedSteps pins a claim found through the claimed-bridge
+// fallback (the readiness steps Skipped, StepClaimed opened) and then reorged out: the skipped
+// steps were only inferred from the claim, so the tracking goes back to the first of them instead
+// of staying readyToClaim with nothing verified
+func TestReverifyStepsClaimGoneReopensSkippedSteps(t *testing.T) {
+	for _, bridgeType := range allBridgeTypes {
+		t.Run(bridgeType.String(), func(t *testing.T) {
+			checkers := newReorgCheckers(t)
+			base := trackingAt(bridgeType, types.StepClaimed, false)
+			steps := append([]domain.BridgeStepPath(nil), base.AllSteps()...)
+			skipping := false
+			for i, step := range steps {
+				if step.Step == readinessStep(bridgeType) {
+					skipping = true
+				}
+				if step.Step == types.StepClaimed {
+					break
+				}
+				if skipping {
+					steps[i] = domain.BridgeStepPath{Step: step.Step, Status: types.StepStatusSkipped}
+				}
+			}
+			tracking := domain.NewTrackingData(base.ID(), base.BridgeTx(), steps)
+			checkers.claimed.EXPECT().IsClaimed(mock.Anything, tracking.Info()).Return(false, nil).Once()
+
+			// no readiness check is asked: the skipped steps are resolved again by the forward path
+			updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
+			requireRewoundTo(t, updated, readinessStep(bridgeType))
+			require.Equal(t, types.TrackerClaimStatusPending, updated.ClaimStatus())
+		})
+	}
+}
+
 func TestReverifyStepsBeforeReadyToClaimChecksNothing(t *testing.T) {
 	checkers := newReorgCheckers(t)
 	tracking := trackingAt(types.BridgeTypeL2ToL2, types.StepWaitingL1InfoLeafAvailable, false)

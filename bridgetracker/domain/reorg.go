@@ -130,7 +130,9 @@ func ResetBridgeTx(tracking *TrackingData) *TrackingData {
 // later one Pending). Only what the current position depends on is checked, cheapest first:
 //
 //   - StepClaimed seen (Done, or opened by the claim fallback): isClaimed() on the destination.
-//     False moves it back to StepWaitingClaim (claimed -> readyToClaim). True and Done: the
+//     False moves it back to StepWaitingClaim (claimed -> readyToClaim), or to the earliest step
+//     the claimed-bridge fallback skipped, if any: those were only inferred from the claim (->
+//     pending, they are resolved again). True and Done: the
 //     claim record (GET /bridge/v1/claims) is fetched again — the claim tx re-included in
 //     another block replaces the stored one — and FinalizeClaim decides whether it is final.
 //     A claim implies everything before it, so nothing else is checked then.
@@ -182,9 +184,15 @@ func reverifyClaim(
 		return tracking, false
 	}
 	if !claimed {
+		// Steps the claimed-bridge fallback skipped were only inferred from the claim: with the
+		// claim gone they are reopened from the earliest one, so their facts are resolved again
+		backTo := waitIdx
+		if skipped := firstSkipped(tracking.AllSteps(), waitIdx); skipped >= 0 {
+			backTo = skipped
+		}
 		logger.Infof("%s: the claim is gone (isClaimed() is false on network %d): back to %s",
-			id, info.DestinationNetwork, types.StepWaitingClaim)
-		return rewindTo(tracking, waitIdx, now), true
+			id, info.DestinationNetwork, tracking.AllSteps()[backTo].Step)
+		return rewindTo(tracking, backTo, now), true
 	}
 
 	stored := tracking.AllSteps()[claimedIdx]
@@ -209,6 +217,16 @@ func reverifyClaim(
 		tracking = replaceClaim(tracking, claimedIdx, claim)
 	}
 	return finalizeClaim(ctx, logger, checkers.Finality, tracking, claimedIdx, claim.ReportedFinalized), false
+}
+
+// firstSkipped returns the index of the first StepStatusSkipped step at or before upTo, or -1
+func firstSkipped(steps []BridgeStepPath, upTo int) int {
+	for i := 0; i <= upTo && i < len(steps); i++ {
+		if steps[i].Status == types.StepStatusSkipped {
+			return i
+		}
+	}
+	return -1
 }
 
 // reverifyReadiness is ReverifySteps for a tracking at StepWaitingClaim: it re-checks the Done,

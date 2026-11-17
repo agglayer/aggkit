@@ -91,7 +91,7 @@ is gone:
 | What is re-checked | When | Call | Gone means |
 | --- | --- | --- | --- |
 | The origin block of the bridge tx | While `bridge_status.block_finalized` is `false` | The canonical block hash at `block_number` (one header), then the finality resolver for the bridge tx | The hash changed: the resolved bridge is discarded (`tracking_status` back to `registered`, `bridge_status`/`all_steps` `null`) and `FindBridge` resolves the tx again, in the same tick, wherever it was re-included (or gives up after `UnresolvedTimeout` if it never is) |
-| The claim | `Claimed` reached, claim not final | `isClaimed()` on the destination; while it is true, `GET /bridge/v1/claims` (a claim tx re-included in another block replaces the stored one) and the finality resolver | `isClaimed()` false: back to `WaitingClaim` (`claimed` → `readyToClaim`) |
+| The claim | `Claimed` reached, claim not final | `isClaimed()` on the destination; while it is true, `GET /bridge/v1/claims` (a claim tx re-included in another block replaces the stored one) and the finality resolver | `isClaimed()` false: back to `WaitingClaim` (`claimed` → `readyToClaim`), or to the earliest step the claimed-bridge fallback skipped, since those were only inferred from the claim (→ `pending`) |
 | The GER injection | At `WaitingClaim` (`readyToClaim`), L1 → L2 and L2 → L2, until the bridge service reports it final | `GET /bridge/v1/injected-l1-info-leaf` (never the L2 scan fallback) | Back to `WaitingGERInjection` (→ `pending`) |
 | The L1 info leaf | At `WaitingClaim`, every route, until the injection before it is final (L2 → L1 has none: always) | `GET /bridge/v1/l1-info-tree-index` | Back to `WaitingL1InfoLeafAvailable` (→ `pending`) |
 
