@@ -31,6 +31,14 @@ message ValidateCertificateRequest {
   agglayer.node.types.v1.Certificate certificate = 2;
   // Last L2 block number included in the certificate
   uint64 last_l2_block_in_cert = 3;
+  // Signature by the aggsender that proposes the certificate of the request digest:
+  // keccak256(domain tag || certificate hash || previous certificate id || last L2 block ||
+  // validator address || request timestamp). See ProposerRequestDigest. The validator only
+  // serves the chain's proposer, and the digest binds the signature to this request, this
+  // validator and a short time window.
+  agglayer.interop.types.v1.FixedBytes65 proposer_signature = 4;
+  // Unix time, in seconds, at which the proposer signed the request
+  uint64 request_timestamp = 5;
 }
 
 // Type used as response to a certificate validation request.
