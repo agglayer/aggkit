@@ -38,7 +38,7 @@ outcome as a receipt with no matching log at all, since neither can ever change 
 | `WaitingGERInjection` | L1 → L2 and L2 → L2 only: waiting for the covering Global Exit Root's injection tx to land on the destination network — an L2-side fact; skipped for L2 → L1, since mainnet needs no injection. |
 | `WaitingL1InfoLeafAvailable` | Always right before `WaitingClaim`, on every route: waiting for the bridge-service instance that will build the claim proof — the origin network's own instance, or the destination's when the origin is mainnet (which has no bridge-service deployment of its own) — to have its L1 info tree sync caught up to this deposit (`GET /bridge/v1/l1-info-tree-index`). Unlike `WaitingGERInjection`, this is never skipped or inferred from a sibling step: injecting a GER on the destination is not the same fact as the proof-building instance having caught up, and that sync can lag behind the finality this tracker uses elsewhere (see [#1823](https://github.com/agglayer/aggkit/issues/1823)). |
 | `WaitingClaim` | The bridge is claimable: the proof-building instance has the bridge's L1 info tree index. |
-| `Claimed` | Terminal: the bridge has been claimed on the destination network. |
+| `Claimed` | The bridge has been claimed on the destination network. Terminal only once the claim's block is final (see [Reorgs](#reorgs-re-evaluation-and-backward-transitions)). |
 
 Which steps apply, and in which order, depends on the bridge's direction:
 
@@ -51,7 +51,9 @@ will walk through before any milestone has been checked — not just the current
 
 `TrackingStatus` summarizes the bridge's lifecycle for a client that only needs the high-level
 state: `registered` (added to the list, not resolved yet), `running`, `error` (a step, or the
-initial resolution itself, failed terminally), or `finished` (claimed).
+initial resolution itself, failed terminally), or `finished` (claimed, and the claim's block is
+final: `claim_status` `claimed_finalized`). A bridge claimed with a claim that is not final yet is
+still `running`, with `claim_status` `claimed`.
 
 ### Step dates
 
@@ -64,11 +66,63 @@ completes normally; it just explains why via its own `error`, with `error_type` 
 
 This only ever applies going forward: a bridge whose steps were already `"done"` before an
 upgrade to this behavior keeps whatever dates were recorded under the previous, observation-time
-implementation — a step already `"done"` is never resolved again (see "How it works" above), so
-there is nothing left to recompute it from. A bridge still in flight at the time of the upgrade
+implementation — a step already `"done"` is never resolved again (see "How it works" above; a
+reorg can only reopen it, see below), so there is nothing left to recompute it from. A bridge still in flight at the time of the upgrade
 will show a mixed timeline: earlier, already-completed steps keep their old observation-time
 dates, later ones get the new on-chain-derived ones. This is expected, not a bug — treat it as an
 artifact of the moment a given bridge was resolved, not something to backfill.
+
+### Reorgs: re-evaluation and backward transitions
+
+A tracking is **final** only when its `Claimed` step is backed by a claim whose block is final on
+the destination network: the finality resolver (see
+[Block finality of bridges and claims](#block-finality-of-bridges-and-claims)) is asked about the
+claim's `tx_hash` and `block_num`, with the `block_finalized` that `GET /bridge/v1/claims` reported
+for it. Then `claim_status` is `claimed_finalized`, `tracking_status` is `finished`, the bridge
+leaves the active list and **nothing of it is ever re-evaluated again**. A final claim implies every
+fact before it (the claim runs on the same chain as the GER injection, at or after its block), so
+intermediate steps never need a finality of their own to close a tracking, and the origin bridge is
+marked final too.
+
+Until then, on every engine tick (`PollInterval`, 10 s by default) the tracker re-checks what a
+reorg can undo, before advancing the current step, and moves the tracking **backwards** when a fact
+is gone:
+
+| What is re-checked | When | Call | Gone means |
+| --- | --- | --- | --- |
+| The origin block of the bridge tx | While `bridge_status.block_finalized` is `false` | The canonical block hash at `block_number` (one header), then the finality resolver for the bridge tx | The hash changed: the resolved bridge is discarded (`tracking_status` back to `registered`, `bridge_status`/`all_steps` `null`) and `FindBridge` resolves the tx again, in the same tick, wherever it was re-included (or gives up after `UnresolvedTimeout` if it never is) |
+| The claim | `Claimed` reached, claim not final | `isClaimed()` on the destination; while it is true, `GET /bridge/v1/claims` (a claim tx re-included in another block replaces the stored one) and the finality resolver | `isClaimed()` false: back to `WaitingClaim` (`claimed` → `readyToClaim`) |
+| The GER injection | At `WaitingClaim` (`readyToClaim`), L1 → L2 and L2 → L2, until the bridge service reports it final | `GET /bridge/v1/injected-l1-info-leaf` (never the L2 scan fallback) | Back to `WaitingGERInjection` (→ `pending`) |
+| The L1 info leaf | At `WaitingClaim`, every route, until the injection before it is final (L2 → L1 has none: always) | `GET /bridge/v1/l1-info-tree-index` | Back to `WaitingL1InfoLeafAvailable` (→ `pending`) |
+
+Moving back reopens that step (`in_progress`, keeping its `start_date`) and sets every later step
+back to `pending`, as if never reached; the forward resolution then runs again from there in the
+same tick. So `claimed` can go back to `readyToClaim` (only the claim was removed) or to `pending`
+(the GER injection or the leaf was removed as well). A backward move is persisted and pushed to
+WebSocket subscribers exactly like a forward one.
+
+`bridge_status.block_finalized` is the finality of the origin bridge block: set once the finality
+resolver proves the bridge tx final in `block_number` (the tracker resolves the bridge from its
+receipt, so there is no bridge-service value to start from), or once the claim is final. It never
+goes back to `false`, and the origin is not re-checked anymore once it is `true`.
+
+An error of any of these checks — an RPC failure, or the bridge service answering `503` while it
+resolves a reorg of its own — never moves anything backwards: the state is kept and checked again on
+the next tick. An error of the forward resolution is still recorded as a transient step error, as
+before.
+
+Cost: a tracking that is not final costs, per tick, on top of its forward resolution: one header
+call while its origin block is not final (plus at most one receipt, once, when it becomes final);
+at `readyToClaim`, one `injected-l1-info-leaf` (until final) and one `l1-info-tree-index` request;
+once claimed, one `isClaimed()` call and one `GET /bridge/v1/claims` (the finality resolver costs
+no call when the bridge service reports `block_finalized`, otherwise one receipt once the claim's
+block is at or below the finalized head, which is fetched at most once every 5 s per network). A
+final tracking costs nothing. Idle trackings (`IdleTimeout`) are still forgotten whatever their
+state.
+
+With the SQLite registry, rows written before this behavior that hold a claim that is not final
+are supervised again after the upgrade. On reload (`DBPath`), a row whose origin block is already
+known final is not checked against the chain anymore.
 
 ## Endpoints
 
@@ -88,8 +142,9 @@ The response, both over REST and as each WebSocket `status` message, is a `Track
 found in, not the event's own fields.
 
 The WebSocket connection closes normally (code 1000) once the bridge reaches a terminal state —
-`Claimed`, or the tracker giving up trying to resolve the creating tx at all (invalid tx / not a
-bridge transaction). A step-level error on an otherwise-resolved bridge is reported in
+`Claimed` with a final claim (`claim_status` `claimed_finalized`), or the tracker giving up trying
+to resolve the creating tx at all (invalid tx / not a bridge transaction). A claim that is not
+final yet keeps the connection open: a reorg can still move the bridge back. A step-level error on an otherwise-resolved bridge is reported in
 `TrackingData.error` but is not terminal: the engine keeps retrying it.
 
 Every error string these endpoints return to a client — a step's `error.description[]`, the
@@ -141,8 +196,10 @@ URL = "https://agglayer-dev.polygon.technology"
 UseTLS = false
 ```
 
-- `RetentionPeriod`: how long a terminal bridge (finished, or failed to ever resolve) stays
-  queryable before the tracker forgets it and a later request re-registers it from scratch.
+- `RetentionPeriod`: how long a terminal bridge (finished — claimed with a final claim —, or failed
+  to ever resolve) stays queryable before the tracker forgets it and a later request re-registers it
+  from scratch. A claimed bridge whose claim is not final is not terminal: the window does not start
+  until it is.
 - `IdleTimeout`: how long a bridge — terminal or still active — stays supervised once nobody has
   read it (REST poll) and it has no active WebSocket subscriber. Unlike `RetentionPeriod`, this
   applies regardless of status: a bridge that never resolves and that nobody is watching would
@@ -151,8 +208,9 @@ UseTLS = false
   engine's immediate resolution attempt before answering, so it has a shot at real progress
   instead of the bare `registered` state; a lookup of an already-registered tx never waits.
 - `L1BlockFinality` / `L2BlockFinality`: the finality a bridge's creating tx receipt must reach
-  before the tracker accepts it, so a later reorg cannot leave it permanently following an
-  orphaned deposit (a resolved bridge is never re-checked).
+  before the tracker accepts it. A resolved bridge whose origin block is not final yet is re-checked
+  on every tick anyway (see [Reorgs](#reorgs-re-evaluation-and-backward-transitions)), so the
+  default `LatestBlock` no longer risks following an orphaned deposit.
 - `L1FinalizedBlock` / `L2FinalizedBlock` (default `"FinalizedBlock"` for both): the block the proxy
   considers finalized on L1 (network 0) / on any L2 when it has to decide by itself whether a bridge
   or a claim is final — a bridge or claim mined in a block at or below it is final. It is **not**

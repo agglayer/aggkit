@@ -16,10 +16,10 @@ type TrackingData struct {
 	// "readyToClaim", "claimed", "claimed_finalized" or "error" — see
 	// domain.TrackingData.ClaimStatus for exactly how it is derived from TrackingStatus and the
 	// current step. "claimed_finalized" is the only final state: "claimed" can still go back to
-	// "readyToClaim" or "pending" if a reorg removes the claim. It is not produced yet
-	// (agglayer/aggkit#1970). For most clients this is all that is needed to know whether the
-	// bridge can be claimed; TrackingStatus/AllSteps remain for anything that needs the full
-	// detail
+	// "readyToClaim" or "pending" if a reorg removes the claim, and TrackingStatus only reads
+	// "finished" once it is "claimed_finalized". For most clients this is all that is needed to
+	// know whether the bridge can be claimed; TrackingStatus/AllSteps remain for anything that
+	// needs the full detail
 	ClaimStatus string `json:"claim_status" enums:"pending,readyToClaim,claimed,claimed_finalized,error"`
 	// NetworkID is the network of the request (0 -> Mainnet)
 	NetworkID uint32 `json:"network_id"`
