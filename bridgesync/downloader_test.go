@@ -1089,6 +1089,12 @@ func TestExtractTxnAddressesMultipleCallers(t *testing.T) {
 			}},
 		},
 		{
+			name:  "event not in the receipt: falls back to the call parameters, nil From",
+			event: parse(t, f.bridgeEventLog(t, bridgeLeafTypeAsset, wrappedOrigin, 99, 9)),
+			// same number of asset events as calls, but none at the event's log index
+			receipt: receipt,
+		},
+		{
 			name:       "receipt RPC failure is returned as retryable",
 			event:      parse(t, f.bridgeEventLog(t, bridgeLeafTypeAsset, wrappedOrigin, 99, 3)),
 			receiptErr: fmt.Errorf("connection refused"),
@@ -1115,6 +1121,30 @@ func TestExtractTxnAddressesMultipleCallers(t *testing.T) {
 			require.Equal(t, f.txTo, to)
 			require.Equal(t, tt.expectedFrom, from)
 		})
+	}
+}
+
+func TestExtractTxnAddressesThreeCallsTwoCallers(t *testing.T) {
+	f := newMultiCallerFixture(t)
+	// callerA bridges twice and callerB once, in the order A, B, A.
+	callA := f.trace.Calls[0].Calls[0]
+	f.trace.Calls = append(f.trace.Calls, Call{Type: CallTypeCall, From: f.txTo, To: f.callerA, Calls: []Call{callA}})
+	origin := common.HexToAddress("0x99")
+	receipt := &types.Receipt{Logs: []*types.Log{
+		ptrLog(f.bridgeEventLog(t, bridgeLeafTypeAsset, origin, 99, 2)),
+		ptrLog(f.bridgeEventLog(t, bridgeLeafTypeAsset, origin, 99, 5)),
+		ptrLog(f.bridgeEventLog(t, bridgeLeafTypeAsset, origin, 99, 8)),
+	}}
+	contract, err := agglayerbridge.NewAgglayerbridgeFilterer(f.bridgeAddr, nil)
+	require.NoError(t, err)
+	logger := logger.WithFields("module", "test")
+	for logIndex, expected := range map[uint]common.Address{2: f.callerA, 5: f.callerB, 8: f.callerA} {
+		ev, err := contract.ParseBridgeEvent(f.bridgeEventLog(t, bridgeLeafTypeAsset, origin, 99, logIndex))
+		require.NoError(t, err)
+		_, from, _, err := ExtractTxnAddresses(t.Context(), f.mockClient(t, nil, receipt, nil), f.bridgeAddr,
+			f.txHash, ev, logger, true)
+		require.NoError(t, err)
+		require.Equal(t, &expected, from, "log index %d", logIndex)
 	}
 }
 
@@ -1147,7 +1177,8 @@ func TestBridgeEventHandlerMultipleCallersDoesNotHalt(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// The receipt is unavailable, so only the call parameters can be used: they are ambiguous.
+			// The receipt has no asset bridge event for the 2 calls, so pairing by position is skipped and the
+			// call parameters, which are ambiguous, are the fallback.
 			ethClient := f.mockClient(t, nil, &types.Receipt{}, nil)
 			handler := buildBridgeEventHandler(t.Context(), contract, f.bridgeAddr, ethClient, true, logger)
 			block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: 1}}

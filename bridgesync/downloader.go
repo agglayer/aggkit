@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	gosync "sync"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
@@ -255,6 +254,9 @@ func resolveFromAddr(ctx context.Context,
 	// once per successful call, and it is non-reentrant, so the N-th asset BridgeEvent of the tx was emitted by
 	// the N-th non-reverted bridgeAsset call in execution order. This needs the event's log index, which is only
 	// known when the event comes from a log of this tx.
+	// This relies on bridgeAsset being the only function of the bridge (agglayerbridge and agglayerbridgel2) that
+	// emits an asset-leaf BridgeEvent: revisit it if a contract upgrade adds another one. A count mismatch between
+	// the receipt and the trace falls back to matching the call parameters, and then to a NULL from address.
 	if logEvent.LeafType == bridgeLeafTypeAsset && logEvent.Raw.TxHash == txHash {
 		position, total, err := assetBridgeEventPosition(ctx, client, bridgeAddr, txHash, logEvent.Raw.Index)
 		if err != nil {
@@ -455,10 +457,10 @@ func ExtractFromAddrFromCalls(foundCalls []*Call,
 	}
 }
 
-// logFailureCounter counts the consecutive failures of the same log. The downloader retries a failing log
-// until it succeeds before moving to the next one, so tracking the last log is enough.
+// logFailureCounter counts the consecutive failures of the same log. The downloader calls the handler
+// sequentially and retries a failing log until it succeeds before moving to the next one, so tracking the last
+// log is enough.
 type logFailureCounter struct {
-	mu       gosync.Mutex
 	txHash   common.Hash
 	logIndex uint
 	failures int
@@ -466,8 +468,6 @@ type logFailureCounter struct {
 
 // add records a failure of l and returns the number of consecutive failures of l.
 func (c *logFailureCounter) add(l types.Log) int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.failures == 0 || c.txHash != l.TxHash || c.logIndex != l.Index {
 		c.txHash, c.logIndex, c.failures = l.TxHash, l.Index, 0
 	}
@@ -476,8 +476,6 @@ func (c *logFailureCounter) add(l types.Log) int {
 }
 
 func (c *logFailureCounter) reset() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.failures = 0
 }
 
