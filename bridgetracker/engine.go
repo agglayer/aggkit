@@ -109,7 +109,8 @@ type EngineSources struct {
 	// Finality decides whether the origin bridge and the claim are final (see
 	// finality.Resolver). A tracking is only closed once its claim is final
 	Finality domain.FinalityResolver
-	// InjectedGERs re-checks a completed StepWaitingGERInjection without scanning the L2 (see
+	// InjectedGERs re-checks a completed StepWaitingGERInjection without scanning the L2, and
+	// tells whether an L1 info leaf is final where there is no injection (see
 	// domain.ReverifySteps). In practice the same instance as GERs
 	InjectedGERs domain.InjectedGERChecker
 }

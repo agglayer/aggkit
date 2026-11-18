@@ -175,6 +175,10 @@ func (c *reorgCheckers) expectReadinessPresent(bridgeType types.BridgeType) {
 	}
 	index := uint32(5)
 	c.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, mock.Anything).Return(&index, nil).Once()
+	if bridgeType == types.BridgeTypeL2ToL1 {
+		// no injection to vouch for the leaf: its own finality is asked (#1987)
+		c.injected.EXPECT().L1InfoLeafFinalized(mock.Anything, mock.Anything, index).Return(false, nil).Once()
+	}
 }
 
 func TestCheckOrigin(t *testing.T) {
@@ -350,6 +354,145 @@ func TestReverifyStepsFinalInjectionIsNotCheckedAgain(t *testing.T) {
 	// strict mocks: no further expectation, any check would fail the test
 	again := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), updated, reorgNow)
 	require.Same(t, updated, again)
+}
+
+// TestReverifyStepsL2ToL1LeafFinality pins #1987: on the path with no GER injection step the L1
+// info leaf is asked for its own finality, with the index l1-info-tree-index just returned, and
+// is never re-checked once final
+func TestReverifyStepsL2ToL1LeafFinality(t *testing.T) {
+	// the index stored in the step when it completed (see trackingAt)
+	currentIndex := uint32(5)
+
+	t.Run("final: marked and never re-checked", func(t *testing.T) {
+		checkers := newReorgCheckers(t)
+		tracking := trackingAt(types.BridgeTypeL2ToL1, types.StepWaitingClaim, false)
+		checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).Return(&currentIndex, nil).Once()
+		checkers.injected.EXPECT().L1InfoLeafFinalized(mock.Anything, tracking.Info(), currentIndex).Return(true, nil).Once()
+
+		updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
+		require.NotSame(t, tracking, updated)
+		leaf := stepOf(t, updated, types.StepWaitingL1InfoLeafAvailable)
+		require.True(t, leaf.BlockFinalized)
+		require.Equal(t, types.StepStatusDone, leaf.Status)
+		before := stepOf(t, tracking, types.StepWaitingL1InfoLeafAvailable)
+		require.Equal(t, before.Result(), leaf.Result(), "the stored result is kept as it was")
+		require.Equal(t, types.StepWaitingClaim, currentStepOf(t, updated))
+		require.Equal(t, types.TrackerClaimStatusReadyToClaim, updated.ClaimStatus())
+		require.False(t, before.BlockFinalized, "the previous snapshot is not modified in place")
+
+		// strict mocks: no further expectation, any check on a later tick would fail the test
+		for range 3 {
+			require.Same(t, updated, domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), updated, reorgNow))
+		}
+	})
+
+	notFinal := map[string]struct {
+		finalized bool
+		err       error
+	}{
+		// block_finalized false, or omitted (a bridge service that predates it): the adapter
+		// answers false for both
+		"not final or omitted": {finalized: false},
+		"finality check fails": {finalized: false, err: errReorgInProgress},
+		// an error never proves anything, whatever comes with it
+		"finality check fails with a value": {finalized: true, err: errReorgInProgress},
+	}
+	for name, answer := range notFinal {
+		t.Run(name+": kept, re-checked on every tick", func(t *testing.T) {
+			checkers := newReorgCheckers(t)
+			tracking := trackingAt(types.BridgeTypeL2ToL1, types.StepWaitingClaim, false)
+			const ticks = 3
+			checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).
+				Return(&currentIndex, nil).Times(ticks)
+			checkers.injected.EXPECT().L1InfoLeafFinalized(mock.Anything, tracking.Info(), currentIndex).
+				Return(answer.finalized, answer.err).Times(ticks)
+
+			for range ticks {
+				updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
+				require.Same(t, tracking, updated, "nothing moves, back or forward")
+			}
+		})
+	}
+
+	t.Run("leaf answered at another index: finality not asked, re-checked on every tick", func(t *testing.T) {
+		checkers := newReorgCheckers(t)
+		tracking := trackingAt(types.BridgeTypeL2ToL1, types.StepWaitingClaim, false)
+		movedIndex := uint32(9)
+		const ticks = 3
+		checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).
+			Return(&movedIndex, nil).Times(ticks)
+
+		for range ticks {
+			// strict mocks: an L1InfoLeafFinalized call would fail the test
+			require.Same(t, tracking, domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow))
+		}
+	})
+
+	t.Run("leaf gone: back to it, its finality is not asked", func(t *testing.T) {
+		checkers := newReorgCheckers(t)
+		tracking := trackingAt(types.BridgeTypeL2ToL1, types.StepWaitingClaim, false)
+		checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).Return(nil, nil).Once()
+
+		updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
+		requireRewoundTo(t, updated, types.StepWaitingL1InfoLeafAvailable)
+	})
+
+	t.Run("index check fails: kept, its finality is not asked", func(t *testing.T) {
+		checkers := newReorgCheckers(t)
+		tracking := trackingAt(types.BridgeTypeL2ToL1, types.StepWaitingClaim, false)
+		checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).
+			Return(&currentIndex, errReorgInProgress).Once()
+
+		require.Same(t, tracking, domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow))
+	})
+
+	t.Run("claim gone, leaf final: back to readyToClaim with the leaf final", func(t *testing.T) {
+		checkers := newReorgCheckers(t)
+		tracking := claimedTracking(types.BridgeTypeL2ToL1)
+		checkers.claimed.EXPECT().IsClaimed(mock.Anything, tracking.Info()).Return(false, nil).Once()
+		checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).Return(&currentIndex, nil).Once()
+		checkers.injected.EXPECT().L1InfoLeafFinalized(mock.Anything, tracking.Info(), currentIndex).Return(true, nil).Once()
+
+		updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
+		require.Equal(t, types.StepWaitingClaim, currentStepOf(t, updated))
+		require.Equal(t, types.TrackerClaimStatusReadyToClaim, updated.ClaimStatus())
+		require.True(t, stepOf(t, updated, types.StepWaitingL1InfoLeafAvailable).BlockFinalized)
+	})
+}
+
+// TestReverifyStepsLeafFinalityOnlyWithoutInjectionStep pins that #1987 changes nothing where the
+// path has a GER injection step (L1->L2, L2->L2): the leaf's own finality is never asked there,
+// the injection's is what settles the leaf step. The mocks are strict, so an L1InfoLeafFinalized
+// call would fail the test
+func TestReverifyStepsLeafFinalityOnlyWithoutInjectionStep(t *testing.T) {
+	for _, bridgeType := range []types.BridgeType{types.BridgeTypeL1ToL2, types.BridgeTypeL2ToL2} {
+		t.Run(bridgeType.String()+"/injection not final: leaf re-checked on every tick, as before", func(t *testing.T) {
+			checkers := newReorgCheckers(t)
+			tracking := trackingAt(bridgeType, types.StepWaitingClaim, false)
+			index := uint32(5)
+			const ticks = 3
+			checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), index).
+				Return(true, false, nil).Times(ticks)
+			checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).Return(&index, nil).Times(ticks)
+
+			for range ticks {
+				require.Same(t, tracking,
+					domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow))
+			}
+		})
+
+		t.Run(bridgeType.String()+"/injection final: leaf final with it, as before", func(t *testing.T) {
+			checkers := newReorgCheckers(t)
+			tracking := trackingAt(bridgeType, types.StepWaitingClaim, false)
+			checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), uint32(5)).
+				Return(true, true, nil).Once()
+
+			updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
+			require.True(t, stepOf(t, updated, types.StepWaitingGERInjection).BlockFinalized)
+			require.True(t, stepOf(t, updated, types.StepWaitingL1InfoLeafAvailable).BlockFinalized)
+			require.Same(t, updated, domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), updated, reorgNow))
+		})
+	}
 }
 
 func TestReverifyStepsTransientErrorsKeepState(t *testing.T) {

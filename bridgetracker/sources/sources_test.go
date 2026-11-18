@@ -956,6 +956,46 @@ func TestGERSourceInjectedGERPresent(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestGERSourceL1InfoLeafFinalized pins the finality check of an L1 info leaf on the routes with
+// no GER injection (#1987): one injected-l1-info-leaf request with network_id 0 and the leaf
+// index, sent to the instance that answers l1-info-tree-index for the bridge (the origin's own
+// for an L2 origin); block_finalized omitted and a 404 both read "not final", a 503 is an error
+func TestGERSourceL1InfoLeafFinalized(t *testing.T) {
+	origin, destination := &fakeBridgeService{}, &fakeBridgeService{}
+	bridge := l2ToL1Bridge()
+	urls := origin.startAt(t, bridge.NetworkID).merge(destination.startAt(t, bridge.DestinationNetwork))
+	source := NewGERSource(urls, StaticClients{}, common.Address{},
+		aggkittypes.FinalizedBlock, nil, 0, log.WithFields("module", "sources_test"))
+
+	// the instance does not have the leaf (404): not final, and not an error
+	finalized, err := source.L1InfoLeafFinalized(t.Context(), bridge, 42)
+	require.NoError(t, err)
+	require.False(t, finalized)
+	require.Equal(t, "42", origin.lastLeafIndexQuery)
+	require.Equal(t, "0", origin.lastNetworkIDQuery, "the leaf itself (network_id 0), not an injection")
+	require.Empty(t, destination.lastLeafIndexQuery, "asked to the instance that answered l1-info-tree-index")
+
+	origin.injectedLeaf = map[string]any{"l1_info_tree_index": 42, "global_exit_root": "0x0a"}
+	finalized, err = source.L1InfoLeafFinalized(t.Context(), bridge, 42)
+	require.NoError(t, err)
+	require.False(t, finalized, "block_finalized omitted (old bridge service): not final")
+
+	origin.injectedLeaf["block_finalized"] = false
+	finalized, err = source.L1InfoLeafFinalized(t.Context(), bridge, 42)
+	require.NoError(t, err)
+	require.False(t, finalized)
+
+	origin.injectedLeaf["block_finalized"] = true
+	finalized, err = source.L1InfoLeafFinalized(t.Context(), bridge, 42)
+	require.NoError(t, err)
+	require.True(t, finalized)
+
+	origin.injectedLeafStatus = http.StatusServiceUnavailable
+	finalized, err = source.L1InfoLeafFinalized(t.Context(), bridge, 42)
+	require.Error(t, err)
+	require.False(t, finalized)
+}
+
 // rootCallOutput ABI-encodes the bridge contract's getRoot() return value, like a JSON-RPC
 // eth_call response would
 func rootCallOutput(t *testing.T, root common.Hash) []byte {
