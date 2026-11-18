@@ -520,7 +520,10 @@ Clients that need the complete list must deduplicate by `bridge.global_index` (u
 
 #### Rules
 
-- `revision` **changes** whenever any of the address's bridges is added, removed, changes `claim_status` or is corrected after a reorg (the bridge or its claim is re-included in another block or transaction) — wherever the entry sits in the sorted result, not just on page 1.
+- `revision` **changes** whenever any of the address's bridges is added, removed, changes `claim_status` or is corrected after a reorg — wherever the entry sits in the sorted result, not just on page 1.
+- What counts as a reorg correction follows from what is hashed (see the table below):
+  - a **bridge** re-included in another block or in another transaction changes `revision` (`bridge.block_num` and `bridge.tx_hash` are hashed);
+  - a **claim** changes `revision` only when its transaction changes (only `claim.tx_hash` is hashed). The same claim transaction re-included in another block does **not** change it.
 - `revision` **does not change** when an entry only goes from not final to final (`finalized` from `false` to `true`, which includes `claim_status` going from `"claimed"` to `"claimed_finalized"`), nor on a refresh that changes nothing. So it stays stable while nothing relevant happens, and finality alone never forces a client to reload.
 - It covers all of the address's bridges. It is the same whatever `filterBridges`, `page_number` and `page_size` the request used: a single value per address at a given moment.
 - It is **always present** (never omitted). It is a string such as `"v1:"` followed by 64 lowercase hex characters; the prefix is the version of the hashing scheme, so two instances that hash different fields never agree by accident. Treat it as opaque and **compare the whole string for equality only**: it has no order, so do not parse it or check whether it grew.
@@ -567,7 +570,9 @@ A request that sends that value back in `If-None-Match` is answered `304 Not Mod
 - It only replaces a `200`. `400`, `500` and `503` (with `Retry-After`) are answered as without the header, and carry no `ETag`. The rest of the request is processed as usual: `flush_cache=true` still flushes, and `includeTracking=true` still marks the address.
 - **A `304` means that nothing the `revision` covers changed, not that the body would be identical.** `finalized`, `claim_status` going from `"claimed"` to `"claimed_finalized"`, `last_updated_timestamp`, `tracking` and `warnings` can differ from the response the client holds (see [Rules](#rules)). A client that needs them reloads the page without `If-None-Match`.
 - `Cache-Control: no-store` is there for that reason: an HTTP cache (a browser's, mainly) must not store the `200` and revalidate it on its own, because it would then hand its stored body to a client that never asked for a conditional request. Conditional requests are an explicit choice of the client, which sends `If-None-Match` itself.
-- Browsers, cross-origin: `If-None-Match` is not a CORS-safelisted request header, so it must be listed in `[REST.CORS].AllowedHeaders` (see `docs/common_config.md`) for the preflight to pass. The `ETag` response header is not exposed to cross-origin scripts; a script builds the value from the `revision` of the body it holds (`'"' + revision + '"'`).
+- **Browser clients on another origin** (see `[REST.CORS]` in `docs/common_config.md`):
+  - `If-None-Match` is not a CORS-safelisted request header, so the browser sends a preflight and the proxy must allow the header in `[REST.CORS].AllowedHeaders`. The proxy's default is `AllowedHeaders = ["*"]`, which allows it, so nothing has to be added once CORS is enabled with the defaults (CORS itself is disabled by default). A deployment that sets an explicit list instead (e.g. `["Content-Type", "Authorization"]`) must add `"If-None-Match"` to it, or the preflight fails and the browser never sends the request.
+  - The `ETag` response header is **not** exposed to cross-origin scripts (the CORS configuration has no exposed-headers setting, and `ETag` is not CORS-safelisted). Such a client does not read the header: it builds the tag from the `revision` of the body it holds (`'"' + revision + '"'`).
 
 Client flow with conditional requests: keep the `revision` of the pages loaded (step 1), poll with `page_size=1` and `If-None-Match: "<revision>"` (step 2); a `304` is "unchanged", and a `200` carries the new `revision`, so continue at step 3. A client that does not send `If-None-Match` never receives a `304`.
 
