@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
@@ -25,6 +26,27 @@ var _ command = (*activityCommand)(nil)
 // retryAfterHeader is the standard HTTP header telling the client how long to wait before
 // retrying a 503 response (RFC 9110 §10.2.3), expressed here in whole seconds
 const retryAfterHeader = "Retry-After"
+
+// HTTP conditional request support of the activity endpoint (RFC 9110 §8.8.3, §13.1.2): the
+// address's revision is also sent as the ETag header, and a request whose If-None-Match holds
+// it is answered 304 Not Modified with no body (see activityCommand.Execute)
+const (
+	etagHeader        = "ETag"
+	ifNoneMatchHeader = "If-None-Match"
+	// cacheControlHeader is sent as cacheControlNoStore next to every ETag. The revision does
+	// not cover everything in the body (finalized, last_updated_timestamp, tracking, warnings),
+	// so a 304 means "nothing the revision covers changed", not "the body is byte for byte the
+	// same". no-store keeps an HTTP cache (a browser's, mainly) from storing the 200 and then
+	// revalidating it on its own: it would serve its stored body for every 304, and a client that
+	// never asked for conditional requests would stop seeing those fields change. A client that
+	// sends If-None-Match itself gets the 304 and decides what to do with it
+	cacheControlHeader  = "Cache-Control"
+	cacheControlNoStore = "no-store"
+	// ifNoneMatchAny is the If-None-Match value matching any current representation
+	ifNoneMatchAny = "*"
+	// weakETagPrefix marks a weak entity tag; If-None-Match compares weakly, so it is ignored
+	weakETagPrefix = "W/"
+)
 
 // Pagination defaults/limits for the activity endpoint, matching the bridge service's own
 // paginated endpoints (see bridgeservice.DefaultPage/DefaultPageSize/MaxPageSize) — same
@@ -209,7 +231,15 @@ type ActivityResponse struct {
 // skipped and reported in the "warnings" field instead, so Bridges is still whatever every other
 // network reported. 200 OK unless: invalid from_address/filterBridges (ErrorData/400), the
 // address registry is at capacity or from_address is not ready yet (ErrorData/503, the latter
-// with Retry-After), or registering otherwise failed (ErrorData/500)
+// with Retry-After), or registering otherwise failed (ErrorData/500).
+//
+// Conditional requests: the response's revision is also sent as its ETag header (the revision
+// between double quotes, a strong entity tag). A request carrying it in If-None-Match (or "*") is
+// answered 304 Not Modified with the ETag and no body, once from_address is ready, without
+// reading the entries. Like the revision, the ETag is the same whatever filterBridges/
+// page_number/page_size say, and a 304 only tells that nothing the revision covers changed (see
+// cacheControlHeader). Everything before that point (validation, flush_cache, registering
+// from_address with includeTracking) runs exactly as for a 200
 //
 // @Summary Get bridge activity by sender address
 // @Description Registers from_address as supervised and reports whatever the activity engine's
@@ -236,7 +266,10 @@ type ActivityResponse struct {
 // @Description when an item only becomes finalized. It is the same after a restart and on every
 // @Description instance holding the same data. Poll it with a cheap request (page_size=1), reload
 // @Description the loaded pages when it changed, and check it again after the last page. Compare
-// @Description it only for equality.
+// @Description it only for equality. The same value is sent as the ETag response header (between
+// @Description double quotes): a request carrying it in If-None-Match is answered 304 Not Modified
+// @Description with no body while the revision is unchanged, whatever the filter or the page. A 304
+// @Description does not tell whether finalized, last_updated_timestamp, tracking or warnings changed.
 // @Tags bridge-tracker
 // @Produce json
 // @Param from_address path string true "Address that sent the bridges to look up"
@@ -245,7 +278,11 @@ type ActivityResponse struct {
 // @Param flush_cache query bool false "Discard cached activity for from_address before answering"
 // @Param page_number query uint32 false "Page number, 1-based (default 1)"
 // @Param page_size query uint32 false "Page size (default 20, max 200)"
+// @Param If-None-Match header string false "ETag of a previous response (the revision between double quotes)"
 // @Success 200 {object} ActivityResponse
+// @Success 304 "Not Modified: the revision is the one sent in If-None-Match, no body"
+// @Header 200,304 {string} ETag "The revision between double quotes (strong entity tag)"
+// @Header 200,304 {string} Cache-Control "no-store"
 // @Failure 400 {object} types.ErrorData "Invalid from_address or filterBridges"
 // @Failure 500 {object} types.ErrorData "Registering from_address failed"
 // @Failure 503 {object} types.ErrorData "Registry at capacity, or from_address not ready yet (see Retry-After)"
@@ -307,9 +344,19 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 
 	// the revision is read BEFORE the entries (see domain.ActivityRevisionReader): a refresh landing
 	// in between can only make the entries newer than the revision reported, never older
-	revision, err := cmd.activityRevision(c.Request.Context(), fromAddress)
+	revision, hasRevision, err := cmd.activityRevision(c.Request.Context(), fromAddress)
 	if err != nil {
 		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: aggkitcommon.RedactError(err)}
+	}
+	// without a real revision (a registry that keeps none) there is no validator to offer: the
+	// constant empty revision would answer 304 forever
+	if hasRevision {
+		etag := activityETag(revision)
+		c.Header(etagHeader, etag)
+		c.Header(cacheControlHeader, cacheControlNoStore)
+		if ifNoneMatchHolds(c.Request.Header.Values(ifNoneMatchHeader), etag) {
+			return http.StatusNotModified, nil, nil
+		}
 	}
 
 	entries, warnings, err := cmd.registry.GetActivity(c.Request.Context(), fromAddress, includeTracking, filter)
@@ -327,13 +374,41 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 }
 
 // activityRevision is fromAddress's revision as served by the registry when it implements
-// domain.ActivityRevisionReader, and domain.EmptyActivityRevision when it does not
-func (cmd *activityCommand) activityRevision(ctx context.Context, fromAddress common.Address) (string, error) {
+// domain.ActivityRevisionReader (kept true), and domain.EmptyActivityRevision with kept false
+// when it does not: that constant says nothing about the address's activity
+func (cmd *activityCommand) activityRevision(
+	ctx context.Context, fromAddress common.Address,
+) (revision string, kept bool, err error) {
 	reader, ok := cmd.registry.(domain.ActivityRevisionReader)
 	if !ok {
-		return domain.EmptyActivityRevision, nil
+		return domain.EmptyActivityRevision, false, nil
 	}
-	return reader.GetActivityRevision(ctx, fromAddress)
+	revision, err = reader.GetActivityRevision(ctx, fromAddress)
+	return revision, true, err
+}
+
+// activityETag is revision as an entity tag: the opaque string between double quotes, a strong
+// validator in RFC 9110 terms (see cacheControlHeader for what it does and does not cover)
+func activityETag(revision string) string {
+	return `"` + revision + `"`
+}
+
+// ifNoneMatchHolds reports whether the If-None-Match header lines of a request hold etag, so the
+// request is answered 304: any of the listed entity tags is etag, compared weakly as RFC 9110
+// §13.1.2 mandates for this header (a W/ prefix is ignored), or the header is "*" (any current
+// representation; there always is one at this point). No header, or only other tags, is false
+func ifNoneMatchHolds(headerLines []string, etag string) bool {
+	for _, line := range headerLines {
+		// an entity tag of this endpoint has no comma, so splitting the list on commas cannot
+		// make a foreign tag look like etag
+		for _, candidate := range strings.Split(line, ",") {
+			candidate = strings.TrimSpace(candidate)
+			if candidate == ifNoneMatchAny || strings.TrimPrefix(candidate, weakETagPrefix) == etag {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // parseActivityPageParams parses and validates the activity endpoint's page_number/page_size

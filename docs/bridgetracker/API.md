@@ -92,7 +92,7 @@ stateDiagram-v2
 
 On the tracker, until the claim is final every tick re-checks what a reorg can undo (the origin bridge block, the claim, and at `readyToClaim` the GER injection and the L1 info leaf) and moves the bridge back when one is gone; a WebSocket subscriber receives those backward moves like any other change. A transient failure of those checks (an RPC error, or a bridge service answering `503` while it resolves a reorg) never moves the bridge back. Which calls are made and when: see [Reorgs](../bridgetracker.md#reorgs-re-evaluation-and-backward-transitions).
 
-> **Availability.** `claimed_finalized`, `finalized`, `block_finalized` and `revision` are part of the contract since `api_revision` 7, and all of them are populated.
+> **Availability.** `claimed_finalized`, `finalized`, `block_finalized` and `revision` are part of the contract since `api_revision` 7, and all of them are populated. `api_revision` 8 adds the `ETag` / `If-None-Match` support of the activity endpoint (see [Conditional requests](#conditional-requests-etag-and-304)); nothing else changes.
 > - Activity endpoint: an item becomes `claimed_finalized` / `finalized` once the bridge's block (origin network) and the claim's block (destination network) are both final, and `revision` is kept up to date (agglayer/aggkit#1968, #1969).
 > - Tracker endpoints ([TrackingData](#trackingdata)): `claim_status` becomes `claimed_finalized` once the claim's block is final, and `bridge_status.block_finalized` follows the origin bridge block (agglayer/aggkit#1970).
 
@@ -450,7 +450,7 @@ Example:
 ```json
 {
   "status": "ok",
-  "api_revision": 7,
+  "api_revision": 8,
   "instance_id": "3f1c9a2e-8b4d-4f6a-9c0e-5d7b2a1e4c8f",
   "start_date": "2026-09-22T10:30:00Z",
   "config_sha1": "2ef7bde608ce5404e97d5f042f95f89f1c232871",
@@ -484,10 +484,12 @@ Request:
 | filterBridges | query | string | no | one of `"all"` (default), `"claimed"`, `"pending"`, `"readyToClaim"`, `"error"` — restricts the result to bridges with only that `claim_status`; `"claimed"` matches both `claim_status` `"claimed"` and `"claimed_finalized"` |
 | page_number | query | uint32 | no | 1-based page number. Default `1` — same parameter name and numbering as the bridge service's own paginated endpoints |
 | page_size | query | uint32 | no | page size. Default `20`, max `200` |
+| If-None-Match | header | string | no | the `ETag` of a previous response, i.e. the [`revision`](#revision) between double quotes. While the revision is still that one the answer is `304 Not Modified` with no body — see [Conditional requests](#conditional-requests-etag-and-304). Since `api_revision` 8 |
 
 ### Behavior
 
-- `200 OK` — the body is an [ActivityResponse](#activityresponse).
+- `200 OK` — the body is an [ActivityResponse](#activityresponse). The response carries the `ETag` header (the body's `revision` between double quotes) and `Cache-Control: no-store`.
+- `304 Not Modified` — only for a request with `If-None-Match`, when the address's `revision` is the one it holds: no body, same `ETag` and `Cache-Control` headers. See [Conditional requests](#conditional-requests-etag-and-304).
 - `400 Bad Request` — invalid `from_address`, an unrecognized `filterBridges` value, or an invalid `page_number`/`page_size` (zero, non-numeric, or `page_size` over `200`): the body is an [ErrorData](#errordata).
 - `500 Internal Server Error` — scanning the configured bridge services failed: the body is an [ErrorData](#errordata).
 - **This endpoint is opt-in**: it only exists if the binary is configured with both an activity bridge scanner and claim checker (`Config.ActivityScanner`/`ActivityClaims`); otherwise the route is not registered at all (plain `404`).
@@ -548,6 +550,26 @@ Two consequences follow from it being a hash of the content:
 5. `revision` does not announce an entry becoming final (`finalized` `false` to `true`, `"claimed"` to `"claimed_finalized"`): those fields are as of the moment each page was loaded, so reload a page to see whether its items became final.
 
 > An address with no bridges has the empty-activity `revision`: `"v1:"` followed by 64 zeros.
+
+#### Conditional requests (ETag and 304)
+
+Since `api_revision` 8 the poll of step 2 can skip the body. Every `200` carries the `revision` of its body as the `ETag` header, between double quotes (a strong entity tag, [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-8.8.3)):
+
+```
+ETag: "v1:1ab162228afe25b74655b2bfb280cae4926372f5ac13646f341a30053c4a92f1"
+Cache-Control: no-store
+```
+
+A request that sends that value back in `If-None-Match` is answered `304 Not Modified`, with the same headers and **no body**, as long as the address's `revision` is still that one; otherwise it gets the normal `200` with the new `ETag`.
+
+- The `ETag` is the `revision`, so it is the same for every `filterBridges`, `page_number` and `page_size` of an address: the `ETag` taken from any response can be sent with any other request for the same `from_address`.
+- `If-None-Match` accepts a list of entity tags and `*` (always `304`), and a weak tag (`W/"..."`) matches like a strong one, as RFC 9110 defines for this header. The value must be quoted: the bare `revision` does not match.
+- It only replaces a `200`. `400`, `500` and `503` (with `Retry-After`) are answered as without the header, and carry no `ETag`. The rest of the request is processed as usual: `flush_cache=true` still flushes, and `includeTracking=true` still marks the address.
+- **A `304` means that nothing the `revision` covers changed, not that the body would be identical.** `finalized`, `claim_status` going from `"claimed"` to `"claimed_finalized"`, `last_updated_timestamp`, `tracking` and `warnings` can differ from the response the client holds (see [Rules](#rules)). A client that needs them reloads the page without `If-None-Match`.
+- `Cache-Control: no-store` is there for that reason: an HTTP cache (a browser's, mainly) must not store the `200` and revalidate it on its own, because it would then hand its stored body to a client that never asked for a conditional request. Conditional requests are an explicit choice of the client, which sends `If-None-Match` itself.
+- Browsers, cross-origin: `If-None-Match` is not a CORS-safelisted request header, so it must be listed in `[REST.CORS].AllowedHeaders` (see `docs/common_config.md`) for the preflight to pass. The `ETag` response header is not exposed to cross-origin scripts; a script builds the value from the `revision` of the body it holds (`'"' + revision + '"'`).
+
+Client flow with conditional requests: keep the `revision` of the pages loaded (step 1), poll with `page_size=1` and `If-None-Match: "<revision>"` (step 2); a `304` is "unchanged", and a `200` carries the new `revision`, so continue at step 3. A client that does not send `If-None-Match` never receives a `304`.
 
 ### ActivityResponse
 
