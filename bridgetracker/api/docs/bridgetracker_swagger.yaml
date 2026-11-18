@@ -764,7 +764,10 @@ paths:
         when an item only becomes finalized. It is the same after a restart and on every
         instance holding the same data. Poll it with a cheap request (page_size=1), reload
         the loaded pages when it changed, and check it again after the last page. Compare
-        it only for equality.
+        it only for equality. The same value is sent as the ETag response header (between
+        double quotes): a request carrying it in If-None-Match is answered 304 Not Modified
+        with no body while the revision is unchanged, whatever the filter or the page. A 304
+        does not tell whether finalized, last_updated_timestamp, tracking or warnings changed.
       parameters:
       - description: Address that sent the bridges to look up
         in: path
@@ -800,13 +803,34 @@ paths:
         in: query
         name: page_size
         type: integer
+      - description: ETag of a previous response (the revision between double quotes)
+        in: header
+        name: If-None-Match
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: OK
+          headers:
+            Cache-Control:
+              description: no-store
+              type: string
+            ETag:
+              description: The revision between double quotes (strong entity tag)
+              type: string
           schema:
             $ref: '#/definitions/api.ActivityResponse'
+        "304":
+          description: 'Not Modified: the revision is the one sent in If-None-Match,
+            no body'
+          headers:
+            Cache-Control:
+              description: no-store
+              type: string
+            ETag:
+              description: The revision between double quotes (strong entity tag)
+              type: string
         "400":
           description: Invalid from_address or filterBridges
           schema:

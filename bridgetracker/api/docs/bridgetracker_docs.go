@@ -24,7 +24,7 @@ const docTemplatebridgetracker = `{
     "paths": {
         "/activity/from/{from_address}": {
             "get": {
-                "description": "Registers from_address as supervised and reports whatever the activity engine's\nbackground refresh has cached for it so far — on a first-time address, this\nrequest waits briefly for that first refresh before answering, and answers 503\nwith a Retry-After header (the engine's poll interval) if it is still not ready\nby then, instead of an empty 200 indistinguishable from \"no activity\" (see\nRegisterResolveTimeout-equivalent config). Results are cached: a bridge already\nknown to be claimed, with its claim record already fetched, is not rechecked on a\nlater refresh. Passing includeTracking=true additionally marks the address so a\nfollowing background refresh registers every still-unclaimed bridge with the\nbridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). flush_cache=true discards\nwhatever is already cached for from_address, so the next background refresh\nrechecks everything from scratch. A network whose bridge service could not be\nscanned is skipped and reported in the \"warnings\" field instead of failing the\nwhole request. Bridges are sorted most recent first and paginated via\npage_number/page_size (same names and 1-based numbering as the bridge service's\nown paginated endpoints); \"count\" reports how many bridges matched in total,\nacross every page. \"revision\" is an opaque string, a hash of the address's\nactivity: it changes when a bridge is added or removed, changes claim_status or is\ncorrected after a reorg, wherever it sits in the sorted result, and does not change\nwhen an item only becomes finalized. It is the same after a restart and on every\ninstance holding the same data. Poll it with a cheap request (page_size=1), reload\nthe loaded pages when it changed, and check it again after the last page. Compare\nit only for equality.",
+                "description": "Registers from_address as supervised and reports whatever the activity engine's\nbackground refresh has cached for it so far — on a first-time address, this\nrequest waits briefly for that first refresh before answering, and answers 503\nwith a Retry-After header (the engine's poll interval) if it is still not ready\nby then, instead of an empty 200 indistinguishable from \"no activity\" (see\nRegisterResolveTimeout-equivalent config). Results are cached: a bridge already\nknown to be claimed, with its claim record already fetched, is not rechecked on a\nlater refresh. Passing includeTracking=true additionally marks the address so a\nfollowing background refresh registers every still-unclaimed bridge with the\nbridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). flush_cache=true discards\nwhatever is already cached for from_address, so the next background refresh\nrechecks everything from scratch. A network whose bridge service could not be\nscanned is skipped and reported in the \"warnings\" field instead of failing the\nwhole request. Bridges are sorted most recent first and paginated via\npage_number/page_size (same names and 1-based numbering as the bridge service's\nown paginated endpoints); \"count\" reports how many bridges matched in total,\nacross every page. \"revision\" is an opaque string, a hash of the address's\nactivity: it changes when a bridge is added or removed, changes claim_status or is\ncorrected after a reorg, wherever it sits in the sorted result, and does not change\nwhen an item only becomes finalized. It is the same after a restart and on every\ninstance holding the same data. Poll it with a cheap request (page_size=1), reload\nthe loaded pages when it changed, and check it again after the last page. Compare\nit only for equality. The same value is sent as the ETag response header (between\ndouble quotes): a request carrying it in If-None-Match is answered 304 Not Modified\nwith no body while the revision is unchanged, whatever the filter or the page. A 304\ndoes not tell whether finalized, last_updated_timestamp, tracking or warnings changed.",
                 "produces": [
                     "application/json"
                 ],
@@ -79,6 +79,12 @@ const docTemplatebridgetracker = `{
                         "description": "Page size (default 20, max 200)",
                         "name": "page_size",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ETag of a previous response (the revision between double quotes)",
+                        "name": "If-None-Match",
+                        "in": "header"
                     }
                 ],
                 "responses": {
@@ -86,6 +92,29 @@ const docTemplatebridgetracker = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/api.ActivityResponse"
+                        },
+                        "headers": {
+                            "Cache-Control": {
+                                "type": "string",
+                                "description": "no-store"
+                            },
+                            "ETag": {
+                                "type": "string",
+                                "description": "The revision between double quotes (strong entity tag)"
+                            }
+                        }
+                    },
+                    "304": {
+                        "description": "Not Modified: the revision is the one sent in If-None-Match, no body",
+                        "headers": {
+                            "Cache-Control": {
+                                "type": "string",
+                                "description": "no-store"
+                            },
+                            "ETag": {
+                                "type": "string",
+                                "description": "The revision between double quotes (strong entity tag)"
+                            }
                         }
                     },
                     "400": {
