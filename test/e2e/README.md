@@ -13,6 +13,37 @@ This package contains tests run against a dockerized environment, loaded from `t
 - `test/e2e/claim_fee_estimate_test.go`: `TestClaimFeeEstimateViaProxy` requires `GET /bridge/v1/claim-fee-estimate`, answered through the aggkit-proxy, to serve first-claim (wrapper deployment) and repeat-claim estimates with the documented shape (`cost == gas_units × gas_price`, first claim costing more gas than a repeat) and to fail closed with 503 for buckets with no samples; unsupported networks and missing/invalid parameters must answer 4xx.
 - `test/e2e/removeger_test.go`: test the remove GER tool (`tools/remove_ger`)
 - `test/e2e/reorg_detection_test.go`: `TestReorgDetectionSmoke` provokes reorgs on L1 and on the L2 of `aggkit-001` (which syncs at `LatestBlock`, so it serves non-final data) and requires its bridge-service to serve a bridge of a non-final block with `block_finalized=false`, to report each reorg through `GET /bridge/v1/last-reorg-event` while serving the bridge unchanged (reorg that keeps the transaction) or no longer (reorg that drops it), to stay consistent and in sync, and to switch `block_finalized` to `true` once enough blocks are mined. Anvil envs only (skipped otherwise). It pauses block production, so it runs in its own CI group (`reorg-detection`).
+- `test/e2e/proxy_reorg_*_test.go`: the reorg acceptance scenarios of the aggkit-proxy (`TestProxyReorgActivity`, `TestProxyReorgClaims`, `TestProxyReorgTracker`, `TestProxyReorgRevision`, `TestProxyReorgResilience`), see [Proxy reorg scenarios](#proxy-reorg-scenarios-anvil-envs).
+
+## Proxy reorg scenarios (anvil envs)
+
+The `proxy_reorg_*_test.go` files check how the aggkit-proxy reacts to real reorgs (agglayer/aggkit#1972): what `GET /tracker/v1/activity/from/{address}` and the tracker endpoints report before and after a reorg removes, moves or replaces a bridge, a claim or a GER injection that was not final yet. The contract they assert is `docs/bridgetracker/API.md`.
+
+Every scenario goes in the same order, so a failure points at the right component: the fact under test is mined by hand on a paused chain, in a block that is not final; aggkit's bridge service must serve it and the proxy must report it as not final; the reorg is provoked and **aggkit must report it first** (`last-reorg-event`, asked directly, not through the proxy); only then the proxy is required to converge to what the chain holds. Waits poll a condition with a timeout, never a fixed time. Each scenario uses a sender created for it, so counts and revisions are exact.
+
+| Test (CI group) | Scenarios |
+| --- | --- |
+| `TestProxyReorgActivity` (`proxy-reorg-activity`) | A1 bridge from network 1 reorged out; A2 same bridge re-included in another block; A3 bridge replaced by another one with the same deposit count; A4 L1 -> L2 bridge reorged out of L1; A5 bridge of network 2 seen only through the RPC fallback, reorged out; A6 final bridge, shallower reorg |
+| `TestProxyReorgClaims` (`proxy-reorg-claims`) | B1 claim reorged out, claimed again, final; B2 reorg removes the claim and the GER injection; B3 final claim stays `claimed_finalized` and is not rechecked; B4 claim re-included in another block; C1 reorg removes only the GER injection |
+| `TestProxyReorgTracker` (`proxy-reorg-tracker-revision`) | D1 origin transaction moves and then disappears while tracked; D2 `Claimed` goes back to `WaitingClaim` and a WebSocket subscriber is told, then the connection closes once the claim is final |
+| `TestProxyReorgRevision` (`proxy-reorg-tracker-revision`) | E1 `revision` unchanged by refreshes and by a not-final -> final transition; E2 and E3 a claim on page 2 reorged out while a client paginates; E4 same `revision` on `aggkit-proxy-001` and `-002`, and after a restart |
+| `TestProxyReorgResilience` (`proxy-reorg-resilience`) | F1 bridge service answers `503` during the reorg; F2 proxy with `DBPath` down during the reorg; F3 bridge service omits `block_finalized`; F4 burst of reorgs with bridges in flight |
+
+Run one group against a fresh stack (build the image first, the env runs `aggkit:local`):
+
+```bash
+make build-docker
+make test-e2e TEST_RUN='^TestProxyReorgActivity$'
+```
+
+Things to know before adding a scenario:
+
+- The non-final window of the anvil chains is two blocks (`finalized = latest - 2`), whatever the pause. A scenario that needs two facts to be reorged together (B2: the GER injection and the claim) mines them in consecutive blocks. `captureGERInjection` mines the aggoracle's injection by hand: pause the L2 **before** sending the bridge on L1.
+- A bridge from an L2 moves to `readyToClaim` on its own when its certificate settles, and one from L1 when the aggoracle injects its GER; both change `revision` legitimately. A scenario that asserts that `revision` does **not** change must first bring the bridge to a state nothing else can move (A6 waits for `readyToClaim` of a bridge nobody claims; E1 pauses the L2 so that no injection is mined).
+- `aggkit-002` syncs network 2 at `FinalizedBlock`: it neither serves nor tracks non-final blocks, so in A5 there is no reorg for aggkit to report. The test asserts that instead (the bridge service never served the bridge, `last-reorg-event` did not change) and that the proxy forgot the bridge on its own.
+- The bridge service cannot be made to answer `503` or to omit `block_finalized` on demand. F1 and F3 inject both on the wire: the test runs a reverse proxy on the host (`bridgeServiceInterposer`) and points `aggkit-proxy-002` at it (it reaches the host as `host.docker.internal`, see `docker-compose.yml`). It changes a status code or removes one JSON field; every other byte is aggkit's answer. F2 uses the same instance with `DBPath` set, and reads the SQLite file out of the stopped container to check that the stale entry really was persisted.
+- The env sets `ActivityPollInterval = "5s"` for both proxies (the default is 30s), so the activity scenarios wait one short refresh. The tracker tick (10s) and its `UnresolvedTimeout` (30s) are not configurable.
+- Not covered: D3 (L1 reorg of the settlement transaction of an L2 -> L1 bridge, optional in the issue), and an L1 reorg that removes an L1 info tree leaf (not observable here: `L1InfoTreeSync` follows `FinalizedBlock`).
 
 ## Reorg helpers (anvil envs)
 
