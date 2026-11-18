@@ -21,6 +21,7 @@ import (
 
 	"github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/agglayer/aggkit/log"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	_ "github.com/mattn/go-sqlite3"
@@ -222,6 +223,7 @@ func TestProxyReorgResilience(t *testing.T) {
 
 	l2 := NewAnvilChain("L2", testEnv.L2.Client)
 	requireProxyReorgEnv(ctx, t, l2)
+	holdAggsender(ctx, t, l2)
 	interposer := startBridgeServiceInterposer(t, testEnv.L2.BridgeServiceURL)
 	reconfigureProxy002(ctx, t, interposer)
 
@@ -286,8 +288,10 @@ func TestProxyReorgResilience(t *testing.T) {
 
 		// down, with the non-final bridge persisted
 		require.NoError(t, testEnv.StopService(ctx, aggkitProxy002Service))
-		require.Equal(t, 1, persistedActivityBridges(ctx, t, s.sender.addr),
+		persistedBridges, persistedTrackings := persistedState(ctx, t, s.sender.addr, s.tx.Hash())
+		require.Equal(t, 1, persistedBridges,
 			"the stopped proxy must hold the non-final bridge in its SQLite store: without it the scenario proves nothing")
+		require.Equal(t, 1, persistedTrackings, "the stopped proxy must hold the tracking in its SQLite store")
 		moved := reorgMoving(ctx, t, l2, testEnv.L2.Client, s.receipt.TxHash, 1)
 		s.requireReorgDetected(ctx, t)
 		requireBridgeServed(ctx, t, s.bs, s.networkID, s.depositCount, moved, false)
@@ -295,6 +299,10 @@ func TestProxyReorgResilience(t *testing.T) {
 		// back: the persisted entry and tracking are corrected, not served stale nor duplicated
 		require.NoError(t, testEnv.StartService(ctx, aggkitProxy002Service))
 		require.NoError(t, waitForProxyReady(ctx, proxyReorgProxy2URL))
+		// the address is known from the store: the first request is answered at once, not with the 503 of
+		// an address registered from scratch
+		_, err := fetchActivity(ctx, proxyReorgProxy2URL, s.sender.addr)
+		require.NoError(t, err, "the restarted proxy must know the address from its SQLite store")
 		corrected := listedOnProxy2(t, s, moved)
 		control := s.waitForActivity(ctx, t, "the first proxy lists the bridge at its new block", func(a *proxyActivityResponse) bool {
 			return itemMatchesReceipt(a.find(s.networkID, s.depositCount), moved)
@@ -307,13 +315,16 @@ func TestProxyReorgResilience(t *testing.T) {
 		require.NoError(t, l2.Mine(ctx, 1)) // the bridge block is head-1 again, still not final
 		requireNonFinal(ctx, t, l2, moved.BlockNumber.Uint64())
 		require.NoError(t, testEnv.StopService(ctx, aggkitProxy002Service))
-		require.Equal(t, 1, persistedActivityBridges(ctx, t, s.sender.addr))
+		persistedBridges, _ = persistedState(ctx, t, s.sender.addr, s.tx.Hash())
+		require.Equal(t, 1, persistedBridges)
 		reorgDropping(ctx, t, l2, testEnv.L2.Client, s.receipt.TxHash)
 		s.requireReorgDetected(ctx, t)
 		require.NoError(t, WaitForBridgeAbsent(ctx, s.bs, s.networkID, s.depositCount, proxyReorgServeTimeout))
 
 		require.NoError(t, testEnv.StartService(ctx, aggkitProxy002Service))
 		require.NoError(t, waitForProxyReady(ctx, proxyReorgProxy2URL))
+		_, err = fetchActivity(ctx, proxyReorgProxy2URL, s.sender.addr)
+		require.NoError(t, err, "the restarted proxy must know the address from its SQLite store")
 		gone, err := waitForActivity(ctx, proxyReorgProxy2URL, s.sender.addr, "the persisted bridge is removed on start",
 			proxyReorgConvergeTimeout, func(a *proxyActivityResponse) bool { return a.Count == 0 })
 		require.NoError(t, err)
@@ -356,8 +367,13 @@ func TestProxyReorgResilience(t *testing.T) {
 		bridger := newL2Bridger(ctx, t, &testEnv.L2, sender)
 		bs := testEnv.L2.BridgeService
 		networkID := testEnv.L2.NetworkID
+		// the address is registered with the proxy BEFORE the burst, so that its background refresh runs
+		// while the bridges come and go, and has stale entries to correct
+		empty, err := waitForActivity(ctx, proxyTrackerBaseURL, sender.addr, "empty before the burst",
+			proxyReorgConvergeTimeout, func(a *proxyActivityResponse) bool { return a.Count == 0 })
+		require.NoError(t, err)
+		require.Equal(t, emptyActivityRevision, empty.Revision)
 		l2.PauseMiningForTest(ctx, t)
-		baseline := reorgBaseline(ctx, t, bs, networkID)
 
 		// Each round sends a bridge, mines it with a block on top and, without waiting for aggkit or the
 		// proxy, reorgs it out, moves it to the next block or leaves it. A dropped bridge frees its nonce
@@ -376,27 +392,24 @@ func TestProxyReorgResilience(t *testing.T) {
 			default: // left where it was mined
 			}
 		}
-		// the last reorg follows the deterministic recipe, so that aggkit must report at least this one
+		// The last reorg follows the deterministic recipe and must be reported by itself: first aggkit
+		// catches up with the burst (it serves exactly what the chain holds, so it has no reorg left to
+		// resolve), and the baseline is read again.
+		require.NoError(t, WaitForBridgeSynced(ctx, bs, networkID, proxyReorgServeTimeout))
+		require.NoError(t, waitForServedBridgesOf(ctx, bs, networkID, sender.addr, bridgesOnChain(ctx, t, bridger, sent)),
+			"aggkit does not serve what the chain holds after the burst: a syncer problem, not a proxy one")
+		baseline := reorgBaseline(ctx, t, bs, networkID)
 		last := bridger.send(t, proxyReorgBridgeAmount+burstRounds)
 		sent = append(sent, last)
 		lastReceipt := mineTxPlusOne(ctx, t, l2, testEnv.L2.Client, last)
 		requireBridgeServed(ctx, t, bs, networkID, bridger.depositCount(t, lastReceipt), lastReceipt, false)
 		lastReceipt = reorgMoving(ctx, t, l2, testEnv.L2.Client, last.Hash(), 1)
 		requireReorgDetected(ctx, t, bs, networkID, baseline)
-		_, err := l2.MineUntilFinalized(ctx, lastReceipt.BlockNumber.Uint64())
+		_, err = l2.MineUntilFinalized(ctx, lastReceipt.BlockNumber.Uint64())
 		require.NoError(t, err)
 
 		// what the chain holds: the bridges whose transaction has a receipt, by deposit count
-		onChain := make(map[uint32]*ethtypes.Receipt)
-		for _, tx := range sent {
-			receipt, err := testEnv.L2.Client.TransactionReceipt(ctx, tx.Hash())
-			if err != nil {
-				continue // reorged out
-			}
-			depositCount := bridger.depositCount(t, receipt)
-			require.NotContains(t, onChain, depositCount, "two transactions on chain with the same deposit count")
-			onChain[depositCount] = receipt
-		}
+		onChain := bridgesOnChain(ctx, t, bridger, sent)
 		require.NotEmpty(t, onChain)
 		require.Less(t, len(onChain), len(sent), "the burst must have dropped some bridges")
 		log.Infof("F4: %d bridges sent, %d on chain after the burst", len(sent), len(onChain))
@@ -426,9 +439,10 @@ func TestProxyReorgResilience(t *testing.T) {
 	})
 }
 
-// persistedActivityBridges returns how many bridges of from the STOPPED aggkit-proxy-002 holds in its
-// SQLite store, read from a copy of the database file taken out of the container.
-func persistedActivityBridges(ctx context.Context, t *testing.T, from common.Address) int {
+// persistedState returns how many bridges of from, and how many trackings of txHash, the STOPPED
+// aggkit-proxy-002 holds in its SQLite store, read from a copy of the database file taken out of the
+// container.
+func persistedState(ctx context.Context, t *testing.T, from common.Address, txHash common.Hash) (bridges, trackings int) {
 	t.Helper()
 	dir := t.TempDir()
 	dbFile := filepath.Join(dir, filepath.Base(proxy002DBPath))
@@ -438,10 +452,31 @@ func persistedActivityBridges(ctx context.Context, t *testing.T, from common.Add
 	db, err := sql.Open("sqlite3", dbFile)
 	require.NoError(t, err)
 	defer db.Close()
-	var count int
 	require.NoError(t, db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM activity_bridge WHERE LOWER(from_address) = LOWER(?)", from.Hex()).Scan(&count))
-	return count
+		"SELECT COUNT(*) FROM activity_bridge WHERE LOWER(from_address) = LOWER(?)", from.Hex()).Scan(&bridges))
+	require.NoError(t, db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM tracked_bridge WHERE LOWER(tx_hash) = LOWER(?)", txHash.Hex()).Scan(&trackings))
+	return bridges, trackings
+}
+
+// bridgesOnChain returns, by deposit count, the receipts of the transactions of sent that are on chain now
+// (the others were reorged out).
+func bridgesOnChain(
+	ctx context.Context, t *testing.T, bridger *l2Bridger, sent []*ethtypes.Transaction,
+) map[uint32]*ethtypes.Receipt {
+	t.Helper()
+	onChain := make(map[uint32]*ethtypes.Receipt)
+	for _, tx := range sent {
+		receipt, err := bridger.l2.Client.TransactionReceipt(ctx, tx.Hash())
+		if err != nil {
+			require.ErrorIs(t, err, ethereum.NotFound)
+			continue // reorged out
+		}
+		depositCount := bridger.depositCount(t, receipt)
+		require.NotContains(t, onChain, depositCount, "two transactions on chain with the same deposit count")
+		onChain[depositCount] = receipt
+	}
+	return onChain
 }
 
 // waitForServedBridgesOf waits until the bridge service serves, for the sender from, exactly the bridges of
