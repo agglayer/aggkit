@@ -224,17 +224,21 @@ func TestActivityCommandExecute_IfNoneMatchNeverHidesAnError(t *testing.T) {
 	}
 }
 
-// TestActivityCommandExecute_EntriesErrorAfterETag verifies a request that does not match still
-// fails with 500 when the entries cannot be read
-func TestActivityCommandExecute_EntriesErrorAfterETag(t *testing.T) {
+// TestActivityCommandExecute_EntriesErrorCarriesNoETag verifies a request that is not answered 304
+// still fails with 500 when the entries cannot be read, and that this error carries no ETag
+func TestActivityCommandExecute_EntriesErrorCarriesNoETag(t *testing.T) {
 	registry := newETagTestRegistry(etagTestRevision)
 	registry.getActivityErr = errBoom
 	cmd := &activityCommand{registry: registry}
 
-	code, obj, errCode, _ := executeActivity(cmd, "", `"`+etagTestOtherRevision+`"`)
-	require.Equal(t, http.StatusInternalServerError, errCode)
-	require.Zero(t, code)
-	require.Nil(t, obj)
+	for _, ifNoneMatch := range [][]string{nil, {`"` + etagTestOtherRevision + `"`}} {
+		code, obj, errCode, header := executeActivity(cmd, "", ifNoneMatch...)
+		require.Equal(t, http.StatusInternalServerError, errCode)
+		require.Zero(t, code)
+		require.Nil(t, obj)
+		require.Empty(t, header.Values(etagHeader), "no ETag for a body that was never sent")
+		require.Empty(t, header.Values(cacheControlHeader))
+	}
 }
 
 // TestActivityCommandExecute_NoETagWithoutRevisionReader verifies a registry that keeps no

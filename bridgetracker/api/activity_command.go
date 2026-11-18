@@ -236,7 +236,7 @@ type ActivityResponse struct {
 // Conditional requests: the response's revision is also sent as its ETag header (the revision
 // between double quotes, a strong entity tag). A request carrying it in If-None-Match (or "*") is
 // answered 304 Not Modified with the ETag and no body, once from_address is ready, without
-// reading the entries. Like the revision, the ETag is the same whatever filterBridges/
+// calling GetActivity (RegisterAndAwait has already counted the request as an access). Like the revision, the ETag is the same whatever filterBridges/
 // page_number/page_size say, and a 304 only tells that nothing the revision covers changed (see
 // cacheControlHeader). Everything before that point (validation, flush_cache, registering
 // from_address with includeTracking) runs exactly as for a 200
@@ -350,13 +350,9 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 	}
 	// without a real revision (a registry that keeps none) there is no validator to offer: the
 	// constant empty revision would answer 304 forever
-	if hasRevision {
-		etag := activityETag(revision)
-		c.Header(etagHeader, etag)
-		c.Header(cacheControlHeader, cacheControlNoStore)
-		if ifNoneMatchHolds(c.Request.Header.Values(ifNoneMatchHeader), etag) {
-			return http.StatusNotModified, nil, nil
-		}
+	if hasRevision && ifNoneMatchHolds(c.Request.Header.Values(ifNoneMatchHeader), activityETag(revision)) {
+		setActivityValidatorHeaders(c, revision)
+		return http.StatusNotModified, nil, nil
 	}
 
 	entries, warnings, err := cmd.registry.GetActivity(c.Request.Context(), fromAddress, includeTracking, filter)
@@ -364,6 +360,10 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: aggkitcommon.RedactError(err)}
 	}
 
+	// only now: an error response must not carry the ETag of a body the client never received
+	if hasRevision {
+		setActivityValidatorHeaders(c, revision)
+	}
 	return http.StatusOK, ActivityResponse{
 		FromAddress: fromAddress,
 		Bridges:     newActivityItems(paginateActivityEntries(entries, pageNumber, pageSize)),
@@ -391,6 +391,13 @@ func (cmd *activityCommand) activityRevision(
 // validator in RFC 9110 terms (see cacheControlHeader for what it does and does not cover)
 func activityETag(revision string) string {
 	return `"` + revision + `"`
+}
+
+// setActivityValidatorHeaders sets the headers a 200 and a 304 of the activity endpoint share:
+// revision as the ETag, and Cache-Control: no-store (see cacheControlHeader)
+func setActivityValidatorHeaders(c *gin.Context, revision string) {
+	c.Header(etagHeader, activityETag(revision))
+	c.Header(cacheControlHeader, cacheControlNoStore)
 }
 
 // ifNoneMatchHolds reports whether the If-None-Match header lines of a request hold etag, so the

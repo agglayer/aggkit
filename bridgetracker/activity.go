@@ -349,8 +349,9 @@ func (a *ActivityCache) GetActivity(
 
 // GetActivityRevision implements domain.ActivityRevisionReader: the address's current revision
 // (activityAddrCache.revision), domain.EmptyActivityRevision for an address with nothing cached.
-// It does not count as an access (unlike GetActivity, it does not touch lastAccess): the caller
-// reads the entries right after, through GetActivity
+// It does not count as an access (unlike GetActivity, it does not touch lastAccess): the HTTP
+// command has already counted one through RegisterAndAwait, and may not call GetActivity at all
+// (a 304 Not Modified)
 func (a *ActivityCache) GetActivityRevision(_ context.Context, fromAddress common.Address) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
