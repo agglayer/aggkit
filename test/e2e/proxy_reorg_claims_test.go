@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/log"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,6 +27,7 @@ func TestProxyReorgClaims(t *testing.T) {
 
 	l2 := NewAnvilChain("L2", testEnv.L2.Client)
 	requireProxyReorgEnv(ctx, t, l2)
+	holdAggsender(ctx, t, l2)
 	bs := testEnv.L2.BridgeService
 	networkID := testEnv.L2.NetworkID
 	// the destination of every bridge, and the sender of the first claim
@@ -60,7 +62,7 @@ func TestProxyReorgClaims(t *testing.T) {
 		require.NotEqual(t, claimed.Revision, back.Revision, "going back to readyToClaim must change the revision")
 		require.Equal(t, ready.Revision, back.Revision, "same content as before the claim, same revision")
 
-		// claimed again, by another account, and this time the claim becomes final
+		// claimed again, from a key of the pool (a different transaction), and this time the claim becomes final
 		claimer2, key2, err := testEnv.L2.Keys.Checkout()
 		require.NoError(t, err)
 		t.Cleanup(func() { testEnv.L2.Keys.Return(key2) })
@@ -96,14 +98,16 @@ func TestProxyReorgClaims(t *testing.T) {
 		// the bridge service has indexed its record yet
 		claimed, _ := bridge.waitForStatus(ctx, t, proxyTrackerBaseURL, claimStatusClaimed, nil)
 
-		reorgDropping(ctx, t, l2, testEnv.L2.Client, claimTx.Hash(), injection.tx)
+		reorgDropping(ctx, t, l2, testEnv.L2.Client, append([]common.Hash{claimTx.Hash()}, injection.txs...)...)
 		requireReorgDetected(ctx, t, bs, networkID, baseline)
 
 		pending, item := bridge.waitForStatus(ctx, t, proxyTrackerBaseURL, claimStatusPending, nil)
 		require.Nil(t, item.Claim, "the claim record must be gone with the claim: %s", item)
 		require.NotEqual(t, claimed.Revision, pending.Revision, "going back to pending must change the revision")
 
-		// the aggoracle injects the GER again: the bridge recovers
+		// a later GER is injected (the aggoracle does not inject the removed one again, agglayer/aggkit#1992: see forceNewGER):
+		// the bridge recovers
+		forceNewGER(ctx, t)
 		captureGERInjection(ctx, t, l2, bridge)
 		require.NoError(t, l2.Mine(ctx, 1))
 		bridge.waitInjected(ctx, t)
@@ -126,7 +130,14 @@ func TestProxyReorgClaims(t *testing.T) {
 		secondTx := sendL1Bridge(t, opts, networkID, claimer.From, proxyReorgBridgeAmount)
 		secondDeposit := l1DepositCount(t, requireMined(ctx, t, testEnv.Clients.L1, secondTx, "second L1 bridge"))
 		bridge.waitInjected(ctx, t)
-		bridge.waitForStatus(ctx, t, proxyTrackerBaseURL, claimStatusReadyToClaim, nil)
+		// both ready to claim before anything is compared: the second bridge must not change state later
+		_, err := waitForActivity(ctx, proxyTrackerBaseURL, bridge.sender.addr, "both bridges ready to claim",
+			proxyReorgConvergeTimeout, func(a *proxyActivityResponse) bool {
+				first, second := a.find(0, bridge.depositCount), a.find(0, secondDeposit)
+				return first != nil && second != nil && first.ClaimStatus == claimStatusReadyToClaim &&
+					second.ClaimStatus == claimStatusReadyToClaim
+			})
+		require.NoError(t, err)
 
 		claimTx := bridge.sendClaim(ctx, t, &claimer)
 		claimReceipt := requireMined(ctx, t, testEnv.L2.Client, claimTx, "claim")
@@ -145,13 +156,15 @@ func TestProxyReorgClaims(t *testing.T) {
 		require.Greater(t, other.receipt.BlockNumber.Uint64(), claimReceipt.BlockNumber.Uint64()+proxyReorgDepth)
 		baseline := reorgBaseline(ctx, t, bs, networkID)
 		reorgDropping(ctx, t, l2, testEnv.L2.Client, other.receipt.TxHash)
-		reorgedAt := time.Now()
 		requireReorgDetected(ctx, t, bs, networkID, baseline)
+		require.NoError(t, WaitForBridgeAbsent(ctx, bs, networkID, other.depositCount, proxyReorgServeTimeout))
+		// taken once aggkit has resolved the reorg: a refresh after it read the bridge service as it is now
+		resolvedAt := time.Now()
 
 		// the proxy refreshed the address after the reorg (the unclaimed bridge says so) and the settled
 		// entry was not touched: last_updated_timestamp stops advancing once an item is claimed_finalized,
 		// which is how the API shows that it is not checked again (no isClaimed() call)
-		after := requireActivityRefreshedAfter(ctx, t, proxyTrackerBaseURL, bridge.sender.addr, 0, secondDeposit, reorgedAt)
+		after := requireActivityRefreshedAfter(ctx, t, proxyTrackerBaseURL, bridge.sender.addr, 0, secondDeposit, resolvedAt)
 		requireActivityWellFormed(t, after)
 		item := after.find(0, bridge.depositCount)
 		require.NotNil(t, item)
@@ -160,7 +173,7 @@ func TestProxyReorgClaims(t *testing.T) {
 		require.Equal(t, settled.LastUpdatedTimestamp, item.LastUpdatedTimestamp,
 			"a settled entry must not be rechecked: last_updated_timestamp must not advance")
 		require.Equal(t, final.Revision, after.Revision)
-		tracking, err := fetchTrackingDataFrom(ctx, proxyTrackerBaseURL, 0, txHash)
+		tracking, err = fetchTrackingDataFrom(ctx, proxyTrackerBaseURL, 0, txHash)
 		require.NoError(t, err)
 		require.Equal(t, "finished", tracking.TrackingStatus)
 		require.Equal(t, claimStatusClaimedFinalized, tracking.ClaimStatus)
@@ -213,7 +226,7 @@ func TestProxyReorgClaims(t *testing.T) {
 		bridge.waitInjected(ctx, t)
 		ready, _ := bridge.waitForStatus(ctx, t, proxyTrackerBaseURL, claimStatusReadyToClaim, nil)
 
-		reorgDropping(ctx, t, l2, testEnv.L2.Client, injection.tx)
+		reorgDropping(ctx, t, l2, testEnv.L2.Client, injection.txs...)
 		requireReorgDetected(ctx, t, bs, networkID, baseline)
 		injected, err := waitForInjectionGone(ctx, bridge)
 		require.NoError(t, err, "aggkit must stop serving the injection the reorg removed (still injected: %t)", injected)
@@ -221,12 +234,14 @@ func TestProxyReorgClaims(t *testing.T) {
 		pending, _ := bridge.waitForStatus(ctx, t, proxyTrackerBaseURL, claimStatusPending, nil)
 		require.NotEqual(t, ready.Revision, pending.Revision, "going back to pending must change the revision")
 
-		// the aggoracle injects the GER again
+		// a later GER is injected (the aggoracle does not inject the removed one again, agglayer/aggkit#1992: see forceNewGER)
+		forceNewGER(ctx, t)
 		captureGERInjection(ctx, t, l2, bridge)
 		require.NoError(t, l2.Mine(ctx, 1))
 		bridge.waitInjected(ctx, t)
 		again, _ := bridge.waitForStatus(ctx, t, proxyTrackerBaseURL, claimStatusReadyToClaim, nil)
 		require.Equal(t, ready.Revision, again.Revision, "same content as before the reorg, same revision")
+		require.Equal(t, 1, again.Count)
 	})
 }
 

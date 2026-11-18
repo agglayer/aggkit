@@ -37,6 +37,7 @@ func TestProxyReorgActivity(t *testing.T) {
 	l1 := NewAnvilChain("L1", testEnv.Clients.L1)
 	l2 := NewAnvilChain("L2", testEnv.L2.Client)
 	requireProxyReorgEnv(ctx, t, l1, l2)
+	holdAggsender(ctx, t, l2)
 	l2b := NewAnvilChain("L2B", testEnv.L2B.Client)
 	requireAnvilChains(ctx, t, l2b)
 
@@ -222,13 +223,17 @@ func TestProxyReorgActivity(t *testing.T) {
 		requireBridgeServed(ctx, t, bs, l1NetworkID, otherDeposit, otherReceipt, false)
 
 		reorgDropping(ctx, t, l1, testEnv.Clients.L1, otherTx.Hash())
-		reorgedAt := time.Now()
 		requireReorgDetected(ctx, t, bs, l1NetworkID, baseline)
 		require.NoError(t, WaitForBridgeAbsent(ctx, bs, l1NetworkID, otherDeposit, proxyReorgServeTimeout))
+		// taken once aggkit has resolved the reorg: a refresh after it read the bridge service as it is now
+		resolvedAt := time.Now()
 
-		// the proxy refreshed the address of the final bridge after the reorg, and nothing changed
+		// The proxy refreshed the address of the final bridge after the reorg, and nothing changed. "Not
+		// re-read" in the issue is about the bridge-service listing, which the scan does not read below
+		// the first final bridge; that is not observable through the API. The entry itself is still
+		// refreshed (isClaimed) while it is unclaimed, which is what makes last_updated_timestamp advance.
 		after := requireActivityRefreshedAfter(ctx, t, proxyTrackerBaseURL, bridge.sender.addr, l1NetworkID,
-			bridge.depositCount, reorgedAt)
+			bridge.depositCount, resolvedAt)
 		requireActivityWellFormed(t, after)
 		require.Equal(t, 1, after.Count)
 		item := after.find(l1NetworkID, bridge.depositCount)
@@ -260,13 +265,11 @@ type l2ActivityScenario struct {
 	item   *proxyActivityItem
 }
 
-// startL2ActivityScenario creates the sender, checks its activity is empty, pauses the chain (restored
+// startL2ActivityScenario (the chain must be mining) creates the sender, checks its activity is empty, pauses the chain (restored
 // when the test ends), mines one bridge of the sender with a block on top and waits until aggkit serves it
 // and the proxy lists it, from the bridge service, as not final.
 func startL2ActivityScenario(ctx context.Context, t *testing.T, chain *AnvilChain, l2 *envs.L2Config) *l2ActivityScenario {
 	t.Helper()
-	// a previous scenario of the same test may have left the chain paused: the setup needs it mining
-	require.NoError(t, chain.SetMiningMode(ctx, MiningMode{IntervalSeconds: 1}))
 	sender := newProxyReorgSender(t)
 	s := &l2ActivityScenario{
 		chain: chain, bs: l2.BridgeService, networkID: l2.NetworkID, sender: sender,

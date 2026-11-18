@@ -30,6 +30,7 @@ func TestProxyReorgTracker(t *testing.T) {
 
 	l2 := NewAnvilChain("L2", testEnv.L2.Client)
 	requireProxyReorgEnv(ctx, t, l2)
+	holdAggsender(ctx, t, l2)
 	bs := testEnv.L2.BridgeService
 	networkID := testEnv.L2.NetworkID
 

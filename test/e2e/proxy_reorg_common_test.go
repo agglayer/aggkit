@@ -10,6 +10,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -135,6 +136,9 @@ func (i *proxyActivityItem) isFinalized() bool {
 
 // String summarizes the item for logs and failure messages.
 func (i *proxyActivityItem) String() string {
+	if i.Bridge == nil {
+		return "{item without bridge}"
+	}
 	claim := "none"
 	if i.Claim != nil {
 		claim = fmt.Sprintf("%s@%d", i.Claim.TxHash, i.Claim.BlockNum)
@@ -516,6 +520,58 @@ func requireProxyReorgEnv(ctx context.Context, t *testing.T, chains ...*AnvilCha
 	require.NoError(t, waitForTrackerReady(ctx), "aggkit-proxy health check never succeeded")
 }
 
+// aggsenderConfigAnchor is a setting of the [AggSender] section of aggkit-001's config, as is, after
+// which holdAggsender adds MaxL2BlockNumber (the section does not set it: 0, no limit).
+const aggsenderConfigAnchor = "\nTriggerCertMode = \"ASAP\"\n"
+
+// holdAggsender keeps the aggsender of aggkit-001 from certifying the L2 blocks the test mines, until the
+// test ends: it restarts aggkit-001 with [AggSender] MaxL2BlockNumber set to the current L2 head, and
+// restores the config (and restarts it again) in a cleanup.
+//
+// aggkit-001 syncs its L2 bridges at LatestBlock, which is what lets it serve non-final data, and its
+// aggsender builds certificates from that same data as soon as there is a bridge or a claim. Left alone,
+// it settles a certificate that carries a bridge of a non-final block; when the scenario then reorgs that
+// bridge out, the settled local exit root no longer exists on the L2 and the aggsender cannot build
+// another certificate, ever ("failed to get local exit root by hash ... not found"). The network 1 -> L1
+// settlement is then dead for the rest of the run, which the post-test bridge check of TestMain reports.
+// Nothing the scenarios assert needs a certificate, so the aggsender waits until the chain is settled.
+func holdAggsender(ctx context.Context, t *testing.T, l2 *AnvilChain) {
+	t.Helper()
+	configPath := testEnv.GetAggkitConfigPath()
+	original, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(string(original), aggsenderConfigAnchor),
+		"the [AggSender] section of aggkit-001's config must set TriggerCertMode exactly once")
+	require.NotContains(t, string(original), "\nMaxL2BlockNumber", "aggkit-001's config already sets MaxL2BlockNumber")
+	head, err := l2.Head(ctx)
+	require.NoError(t, err)
+	held := strings.Replace(string(original), aggsenderConfigAnchor,
+		fmt.Sprintf("%sMaxL2BlockNumber = %d\n", aggsenderConfigAnchor, head.Number), 1)
+
+	restart := func(ctx context.Context, config []byte) error {
+		if err := testEnv.RestartAggkitWithConfig(ctx, func(path string) error {
+			return os.WriteFile(path, config, 0o600)
+		}); err != nil {
+			return err
+		}
+		for _, networkID := range []uint32{0, testEnv.L2.NetworkID} {
+			if err := WaitForBridgeSynced(ctx, testEnv.L2.BridgeService, networkID, proxyReorgConvergeTimeout); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	t.Cleanup(func() {
+		restoreCtx, cancel := context.WithTimeout(context.Background(), 2*proxyReorgConvergeTimeout)
+		defer cancel()
+		if err := restart(restoreCtx, original); err != nil {
+			t.Errorf("restore the config of aggkit-001 and restart it: %v", err)
+		}
+	})
+	require.NoError(t, restart(ctx, []byte(held)), "restart aggkit-001 with the aggsender held at L2 block %d", head.Number)
+	log.Infof("aggsender of aggkit-001 held at L2 block %d until the test ends", head.Number)
+}
+
 // reorgDropping reorgs the last proxyReorgDepth blocks of chain, re-including every transaction they held
 // except drop, and checks that the dropped transactions are gone from the chain.
 func reorgDropping(
@@ -815,12 +871,14 @@ type rpcBlockTxs struct {
 	} `json:"transactions"`
 }
 
-// gerInjection is a GER injection mined by captureGERInjection.
+// gerInjection is what captureGERInjection mined.
 type gerInjection struct {
-	// tx is the aggoracle transaction and block the L2 block that holds it
-	tx    common.Hash
+	// txs are the aggoracle's insertGlobalExitRoot transactions of the block (every one that was waiting in
+	// the pool, so that a reorg can drop them all) and block the L2 block that holds them
+	txs   []common.Hash
 	block uint64
-	// ger is the injected GER and leafIndex its L1 info tree leaf: the one a claim proof is built against
+	// ger is the injected GER that covers the bridge, with the highest L1 info tree leaf, and leafIndex that
+	// leaf: the one a claim proof is built against
 	ger       common.Hash
 	leafIndex uint32
 }
@@ -843,14 +901,15 @@ func pendingGERInjections(ctx context.Context, l2 *envs.L2Config, gerAddr common
 	return injections, nil
 }
 
-// captureGERInjection mines, by hand, the block in which the aggoracle injects on network 1 the GER that
+// captureGERInjection mines, by hand, the block in which the aggoracle injects on network 1 a GER that
 // makes the bridge claimable, and returns it: the injection is then in the head block, not final, and a
-// reorg can remove it. The L2 must be PAUSED since before the bridge was sent on L1 (so the injection
+// reorg can remove it. The L2 must be PAUSED since before the GER was created on L1 (so its injection
 // cannot have been mined already) and L1 must be mining.
 //
 // The aggoracle sends insertGlobalExitRoot(ger) to the paused L2, where it waits in the pool. The GER of
 // each waiting injection is looked up in the L1 info tree (a fact of L1, served by aggkit from final L1
-// blocks): the first one whose leaf covers the bridge's is the one. It is mined alone in a block.
+// blocks): once one of them has a leaf that covers the bridge's, the pool is mined in one block. Every
+// injection of that block is returned, covering or not, so that the reorg leaves none behind.
 //
 // aggkit does not serve an injection of the head block: its GER syncer processes a block once there is
 // another one on top (measured on this env). Mine one more block and use waitInjected for that.
@@ -861,7 +920,7 @@ func captureGERInjection(ctx context.Context, t *testing.T, chain *AnvilChain, b
 	require.NoError(t, err)
 	already, err := b.injected(ctx)
 	require.NoError(t, err)
-	require.False(t, already, "the GER of the bridge is already injected: the L2 must be paused before the bridge is sent")
+	require.False(t, already, "a GER covering the bridge is already injected: the L2 must be paused before it is created")
 
 	var captured gerInjection
 	state := "not polled yet"
@@ -873,31 +932,53 @@ func captureGERInjection(ctx context.Context, t *testing.T, chain *AnvilChain, b
 				return false, err
 			}
 			state = fmt.Sprintf("%d injection(s) in the pool, none covering the leaf", len(pending))
+			captured = gerInjection{}
+			covered := false
 			for txHash, ger := range pending {
+				captured.txs = append(captured.txs, txHash)
 				leaf, err := l2.BridgeService.GetL1InfoTreeLeafByGER(ctx, ger.Hex())
 				if err != nil {
 					state = fmt.Sprintf("leaf of GER %s: %v", ger.Hex(), err)
 					continue
 				}
-				if leaf.L1InfoTreeIndex >= b.result.L1InfoTreeIndex {
-					captured = gerInjection{tx: txHash, ger: ger, leafIndex: leaf.L1InfoTreeIndex}
-					return true, nil
+				if leaf.L1InfoTreeIndex >= b.result.L1InfoTreeIndex && (!covered || leaf.L1InfoTreeIndex > captured.leafIndex) {
+					covered = true
+					captured.ger, captured.leafIndex = ger, leaf.L1InfoTreeIndex
 				}
 			}
-			return false, nil
+			return covered, nil
 		}, func() string { return state }))
 
 	require.NoError(t, chain.MineSpaced(ctx, 1, proxyReorgBlockSpacing))
-	receipt, err := l2.Client.TransactionReceipt(ctx, captured.tx)
-	require.NoError(t, err, "the injection %s was not mined by the manual block", captured.tx.Hex())
-	require.Equal(t, ethtypes.ReceiptStatusSuccessful, receipt.Status, "the injection %s reverted", captured.tx.Hex())
-	captured.block = receipt.BlockNumber.Uint64()
+	head, err := chain.Head(ctx)
+	require.NoError(t, err)
+	captured.block = head.Number
+	for _, txHash := range captured.txs {
+		receipt, err := l2.Client.TransactionReceipt(ctx, txHash)
+		require.NoError(t, err, "the injection %s was not mined by the manual block", txHash.Hex())
+		require.Equal(t, captured.block, receipt.BlockNumber.Uint64())
+	}
 	timestamp, err := l2.Contracts.GlobalExitRoot.GlobalExitRootMap(&bind.CallOpts{Context: ctx}, captured.ger)
 	require.NoError(t, err)
 	require.Positive(t, timestamp.Sign(), "GER %s must be in the L2 GER contract after the injection", captured.ger.Hex())
-	log.Infof("[%s] injection of GER %s (L1 info tree leaf %d, covering leaf %d) mined at block %d by tx %s",
-		chain.Name(), captured.ger.Hex(), captured.leafIndex, b.result.L1InfoTreeIndex, captured.block, captured.tx.Hex())
+	log.Infof("[%s] injection of GER %s (L1 info tree leaf %d, covering leaf %d) mined at block %d (injections: %v)",
+		chain.Name(), captured.ger.Hex(), captured.leafIndex, b.result.L1InfoTreeIndex, captured.block, captured.txs)
 	return captured
+}
+
+// forceNewGER makes L1 produce a new GER (and L1 info tree leaf) with a bridge of a throwaway sender, and
+// waits for the leaf. The aggoracle then has a GER to inject that covers every earlier bridge.
+//
+// It is how the scenarios recover a bridge whose GER injection a reorg removed. The aggoracle does not
+// inject the same GER twice: its transaction manager keeps the first injection as "mined" and answers
+// "inject GER transaction already exists in monitoring DB" (agglayer/aggkit#1992), so the bridge stays
+// unclaimable until the next GER is injected. This works around #1992: once it is fixed, the scenarios
+// can wait for the same GER to be injected again instead.
+func forceNewGER(ctx context.Context, t *testing.T) {
+	t.Helper()
+	bridge := startL1ToL2Bridge(ctx, t, testEnv.L2.Transactor.From)
+	log.Infof("new GER forced on L1 by bridge deposit_count=%d (L1 info tree leaf %d)",
+		bridge.depositCount, bridge.result.L1InfoTreeIndex)
 }
 
 // sendClaimAtLeaf is sendClaim with the proof built against the L1 info tree leaf leafIndex, for a claim
@@ -1010,7 +1091,11 @@ func dialTrackerWS(ctx context.Context, t *testing.T, baseURL string, networkID 
 	require.NoError(t, err, "subscribe to %s", url)
 	resp.Body.Close()
 	ws := &trackerWS{conn: conn, messages: make(chan trackerWSMessage, trackerWSBuffer)}
-	t.Cleanup(func() { conn.Close() })
+	done := make(chan struct{})
+	t.Cleanup(func() {
+		close(done) // releases the reader if nobody reads its messages anymore
+		conn.Close()
+	})
 	go func() {
 		defer close(ws.messages)
 		for {
@@ -1024,7 +1109,11 @@ func dialTrackerWS(ctx context.Context, t *testing.T, baseURL string, networkID 
 				ws.closeErr = fmt.Errorf("decode WebSocket message %s: %w", payload, err)
 				return
 			}
-			ws.messages <- message
+			select {
+			case ws.messages <- message:
+			case <-done:
+				return
+			}
 		}
 	}()
 	return ws
@@ -1040,7 +1129,9 @@ func (ws *trackerWS) waitFor(t *testing.T, what string, match func(*trackerTrack
 	for {
 		select {
 		case message, open := <-ws.messages:
-			require.True(t, open, "the WebSocket was closed (%v) while waiting for %s; last message: %s", ws.closeErr, what, last)
+			if !open { // closeErr is only read once the reader has closed the channel
+				require.FailNow(t, "the WebSocket was closed", "(%v) while waiting for %s; last message: %s", ws.closeErr, what, last)
+			}
 			require.Equal(t, "status", message.Type)
 			last = message.Data.String()
 			log.Infof("WebSocket status: %s", last)

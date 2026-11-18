@@ -27,6 +27,7 @@ func TestProxyReorgRevision(t *testing.T) {
 	l1 := NewAnvilChain("L1", testEnv.Clients.L1)
 	l2 := NewAnvilChain("L2", testEnv.L2.Client)
 	requireProxyReorgEnv(ctx, t, l1, l2)
+	holdAggsender(ctx, t, l2)
 	bs := testEnv.L2.BridgeService
 	networkID := testEnv.L2.NetworkID
 	const l1NetworkID = 0
