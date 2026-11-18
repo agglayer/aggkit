@@ -236,8 +236,9 @@ type ActivityResponse struct {
 // Conditional requests: the response's revision is also sent as its ETag header (the revision
 // between double quotes, a strong entity tag). A request carrying it in If-None-Match (or "*") is
 // answered 304 Not Modified with the ETag and no body, once from_address is ready, without
-// calling GetActivity (RegisterAndAwait has already counted the request as an access). Like the revision, the ETag is the same whatever filterBridges/
-// page_number/page_size say, and a 304 only tells that nothing the revision covers changed (see
+// calling GetActivity (RegisterAndAwait has already counted the request as an access). Like the
+// revision, the ETag is the same whatever filterBridges/page_number/page_size say, and a 304 only
+// tells that nothing the revision covers changed (see
 // cacheControlHeader). Everything before that point (validation, flush_cache, registering
 // from_address with includeTracking) runs exactly as for a 200
 //
