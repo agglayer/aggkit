@@ -360,7 +360,8 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	t.Log("✅ Test completed successfully - syncer handled reorg correctly")
 }
 
-// TestReorgWithSameHashEdgeCase tests reorg detection when blocks have same hash
+// TestReorgWithSameHashEdgeCase tests reorg detection when the chain is forked to a shorter one and it does not
+// grow back: the blocks up to the fork point keep their hash and the ones above it don't exist anymore
 func TestReorgWithSameHashEdgeCase(t *testing.T) {
 	ctx := context.Background()
 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestSameHashReorg_sync.sqlite")
@@ -469,11 +470,16 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 	err = client.Fork(forkBlockHash)
 	require.NoError(t, err)
 
-	// Check if we have a reorg event
-	time.Sleep(time.Millisecond * 100) // Allow time for reorg detection
-	reorgCount := getReorgCount()
-	require.Equal(t, 0, reorgCount)
-	t.Logf("  Reorg count after identical transaction: %d", reorgCount)
+	// The chain is now shorter than the blocks tracked by the syncer and no block is built in their place:
+	// it is reported as a reorg of the blocks above the fork point, once
+	require.Eventually(t, func() bool { return getReorgCount() > 0 }, 5*time.Second, 10*time.Millisecond)
+	time.Sleep(time.Millisecond * 100) // Allow time for further (unexpected) reorg detections
+	require.Equal(t, 1, getReorgCount())
+	reorgEvent, err := syncer.GetLastReorgEvent(ctx)
+	require.NoError(t, err)
+	require.Greater(t, reorgEvent.FromBlock, forkBlockNum)
+	require.LessOrEqual(t, reorgEvent.ToBlock, forkBlockNum+5)
+	t.Logf("  Reorg detected from block %d to block %d", reorgEvent.FromBlock, reorgEvent.ToBlock)
 
 	t.Log("✅ Same hash reorg edge case test completed successfully")
 }
