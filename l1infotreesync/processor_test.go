@@ -5,13 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"math/rand"
 	"path"
-	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -370,30 +367,39 @@ func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
 	defer cancel()
 
 	const maxBlockNum = 30
+
+	// reorgBlock is the first block the reorg must purge. Keeping it in the middle of the range
+	// leaves blocks below it (which must survive) and above it (which must be purged).
+	reorgBlock := uint64(rand.Intn(int(maxBlockNum/2)) + int(maxBlockNum/4)) // middle 50%
+	t.Logf("📍 Chosen reorg block: %d", reorgBlock)
+
 	var (
 		wg    sync.WaitGroup
 		errCh = make(chan error, 2)
 	)
 
-	reorgBlock := uint64(rand.Intn(int(maxBlockNum/2)) + int(maxBlockNum/4)) // middle 50%
-	t.Logf("📍 Chosen reorg block: %d", reorgBlock)
+	// blockMu serializes the cancellation against an in-flight ProcessBlock: the reorg goroutine
+	// cancels while holding it, so a transaction is never rolled back underneath a running
+	// statement. Without that, cancelling mid-ProcessBlock makes database/sql roll the
+	// transaction back and the next statement fails with sql.ErrTxDone, which meddler wraps in a
+	// private type without an Unwrap method, so it cannot be told apart from a real failure.
+	var blockMu sync.Mutex
 
-	var maxAllowedBlock atomic.Uint64
-	maxAllowedBlock.Store(math.MaxUint64)
+	// processingDone is closed when the block-processing goroutine returns. The reorg goroutine
+	// drains it before reorging, mirroring the production order (cancel -> wait -> reorg) used by
+	// the sync driver. Reorging while a ProcessBlock could still commit would race with the purge
+	// and make the final "no block >= reorgBlock" assertion flap.
+	processingDone := make(chan struct{})
 
 	// Block processing goroutine
 	wg.Go(func() {
+		defer close(processingDone)
 		for i := uint64(0); i <= maxBlockNum; i++ {
 			select {
 			case <-ctx.Done():
 				t.Logf("🛑 Stopping block processing at block %d", i)
 				return
 			default:
-			}
-
-			if i >= maxAllowedBlock.Load() {
-				t.Logf("🚫 Skipping ProcessBlock(%d) due to reorg limit", i)
-				return
 			}
 
 			block := aggkitsync.Block{Num: i}
@@ -407,7 +413,16 @@ func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
 				},
 			}
 
-			if err := p.ProcessBlock(ctx, block); err != nil && !strings.Contains(err.Error(), "context canceled") {
+			blockMu.Lock()
+			if ctx.Err() != nil {
+				blockMu.Unlock()
+				t.Logf("🛑 Stopping block processing at block %d (canceled)", i)
+				return
+			}
+			err := p.ProcessBlock(ctx, block)
+			blockMu.Unlock()
+
+			if err != nil {
 				errCh <- fmt.Errorf("❌ ProcessBlock(%d) failed: %w", i, err)
 				return
 			}
@@ -421,18 +436,20 @@ func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
 	wg.Go(func() {
 		time.Sleep(time.Duration(rand.Intn(200)+50) * time.Millisecond)
 
+		// Cancel while holding blockMu so no ProcessBlock is in flight, then drain processing and
+		// reorg with a still-live context (the processing context was just canceled).
+		blockMu.Lock()
+		cancel()
+		blockMu.Unlock()
+
+		<-processingDone
+
 		t.Logf("🔄 Starting Reorg to block %d", reorgBlock)
-		if err := p.Reorg(ctx, reorgBlock); err != nil {
+		if err := p.Reorg(t.Context(), reorgBlock); err != nil {
 			errCh <- fmt.Errorf("❌ Reorg to block %d failed: %w", reorgBlock, err)
 			return
-		} else {
-			t.Logf("✅ Reorg to %d succeeded", reorgBlock)
 		}
-
-		maxAllowedBlock.Store(reorgBlock)
-
-		// Cancel context to stop block processing
-		cancel()
+		t.Logf("✅ Reorg to %d succeeded", reorgBlock)
 	})
 
 	wg.Wait()
@@ -442,7 +459,8 @@ func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Assert DB state
+	// Assert DB state: the reorg purged every block at or past reorgBlock and, because the
+	// processing goroutine was drained before it ran, nothing was committed afterwards.
 	rows, err := p.db.QueryContext(context.Background(), `SELECT num FROM block`)
 	require.NoError(t, err)
 	defer rows.Close()

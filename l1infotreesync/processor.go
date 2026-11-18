@@ -34,7 +34,13 @@ type processor struct {
 	mu             mutex.RWMutex
 	halted         bool
 	haltedReason   string
-	log            *log.Logger
+	// haltedObserverForTest, when set, is called (without the lock held) every time the processor
+	// enters the halted state. It exists only so tests can observe a halt deterministically: the
+	// halt is transient (the sync driver reorgs and unhalts within the same millisecond), so
+	// polling a public getter can miss it. Production leaves it nil; tests set it through
+	// export_test.go.
+	haltedObserverForTest func(reason string)
+	log                   *log.Logger
 }
 
 // UpdateL1InfoTree representation of the UpdateL1InfoTree event
@@ -747,15 +753,20 @@ func (p *processor) isHalted() bool {
 // halt sets the processor to a halted state with a reason
 func (p *processor) halt(reason string) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	if p.halted {
+		p.mu.Unlock()
 		return
 	}
 
 	p.halted = true
 	p.haltedReason = reason
+	observer := p.haltedObserverForTest
+	p.mu.Unlock()
+
 	p.log.Errorf("processor is halted, due to the following reason: %s", reason)
+	if observer != nil {
+		observer(reason)
+	}
 }
 
 // unhalt sets the processor to an unhalted state

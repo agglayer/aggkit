@@ -179,6 +179,12 @@ reset:
 		found              bool
 	)
 	for {
+		// A canceled context means the caller is shutting us down: retrying would only spin
+		// (and eventually trip the fatal retry limit) instead of exiting cleanly.
+		if ctx.Err() != nil {
+			d.log.Info("context done while checking compatibility, exiting sync")
+			return
+		}
 		if err = d.compatibilityChecker.Check(ctx, nil); err != nil {
 			attempts++
 			d.log.Error("error checking compatibility data between downloader (runtime) and processor (db): ", err)
@@ -189,6 +195,11 @@ reset:
 	}
 	var nextBlock uint64
 	for {
+		// See above: bail out on cancellation instead of retrying the error it produces.
+		if ctx.Err() != nil {
+			d.log.Info("context done while getting the last processed block, exiting sync")
+			return
+		}
 		// Now we let to have no processed block and wait until appears
 		lastProcessedBlock, found, err = d.processor.GetLastProcessedBlock(ctx)
 		if err == nil && found {
