@@ -393,6 +393,32 @@ func (s *GERSource) InjectedGERPresent(
 	return true, leaf.BlockFinalized != nil && *leaf.BlockFinalized, nil
 }
 
+// L1InfoLeafFinalized implements domain.InjectedGERChecker: whether the L1 block of the L1 info
+// tree leaf leafIndex is final, per one GET injected-l1-info-leaf with network_id 0 (the leaf
+// itself, read from l1infotreesync, with block_finalized set from its L1 block). It asks the same
+// bridge-service instance L1InfoTreeIndexForBridge got leafIndex from (see
+// bridgeServiceClients.l1InfoTreeIndexClientFor), so both answers come from one L1 info tree
+// sync. finalized is false when block_finalized is omitted (unknown, or a bridge service that
+// predates it) and on a 404 (that instance does not have the leaf, anymore or yet): neither
+// proves the leaf final, and whether it is gone is L1InfoTreeIndexForBridge's call. Any other
+// error (a 503 while the bridge service resolves a reorg included) is returned as is
+func (s *GERSource) L1InfoLeafFinalized(
+	ctx context.Context, bridge *bridgetracker.BridgeInfo, leafIndex uint32,
+) (bool, error) {
+	svc, err := s.services.l1InfoTreeIndexClientFor(bridge.NetworkID, bridge.DestinationNetwork)
+	if err != nil {
+		return false, err
+	}
+	leaf, err := svc.GetInjectedL1InfoLeaf(ctx, int(MainnetNetworkID), int(leafIndex))
+	if isNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("fetching L1 info leaf %d (network %d): %w", leafIndex, MainnetNetworkID, err)
+	}
+	return leaf.BlockFinalized != nil && *leaf.BlockFinalized, nil
+}
+
 // l2BlockTimestamp resolves blockNumber's own timestamp on networkID via a single header
 // lookup — used by InjectedGERAtIndex once the bridge-service already reports the L2 injection
 // block itself, just not (yet) its own timestamp

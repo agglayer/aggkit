@@ -87,6 +87,64 @@ func (_c *InjectedGERChecker_InjectedGERPresent_Call) RunAndReturn(run func(cont
 	return _c
 }
 
+// L1InfoLeafFinalized provides a mock function with given fields: ctx, bridge, leafIndex
+func (_m *InjectedGERChecker) L1InfoLeafFinalized(ctx context.Context, bridge *domain.BridgeInfo, leafIndex uint32) (bool, error) {
+	ret := _m.Called(ctx, bridge, leafIndex)
+
+	if len(ret) == 0 {
+		panic("no return value specified for L1InfoLeafFinalized")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *domain.BridgeInfo, uint32) (bool, error)); ok {
+		return rf(ctx, bridge, leafIndex)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *domain.BridgeInfo, uint32) bool); ok {
+		r0 = rf(ctx, bridge, leafIndex)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *domain.BridgeInfo, uint32) error); ok {
+		r1 = rf(ctx, bridge, leafIndex)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// InjectedGERChecker_L1InfoLeafFinalized_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'L1InfoLeafFinalized'
+type InjectedGERChecker_L1InfoLeafFinalized_Call struct {
+	*mock.Call
+}
+
+// L1InfoLeafFinalized is a helper method to define mock.On call
+//   - ctx context.Context
+//   - bridge *domain.BridgeInfo
+//   - leafIndex uint32
+func (_e *InjectedGERChecker_Expecter) L1InfoLeafFinalized(ctx interface{}, bridge interface{}, leafIndex interface{}) *InjectedGERChecker_L1InfoLeafFinalized_Call {
+	return &InjectedGERChecker_L1InfoLeafFinalized_Call{Call: _e.mock.On("L1InfoLeafFinalized", ctx, bridge, leafIndex)}
+}
+
+func (_c *InjectedGERChecker_L1InfoLeafFinalized_Call) Run(run func(ctx context.Context, bridge *domain.BridgeInfo, leafIndex uint32)) *InjectedGERChecker_L1InfoLeafFinalized_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*domain.BridgeInfo), args[2].(uint32))
+	})
+	return _c
+}
+
+func (_c *InjectedGERChecker_L1InfoLeafFinalized_Call) Return(finalized bool, err error) *InjectedGERChecker_L1InfoLeafFinalized_Call {
+	_c.Call.Return(finalized, err)
+	return _c
+}
+
+func (_c *InjectedGERChecker_L1InfoLeafFinalized_Call) RunAndReturn(run func(context.Context, *domain.BridgeInfo, uint32) (bool, error)) *InjectedGERChecker_L1InfoLeafFinalized_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewInjectedGERChecker creates a new instance of InjectedGERChecker. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewInjectedGERChecker(t interface {

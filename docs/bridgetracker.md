@@ -93,7 +93,12 @@ is gone:
 | The origin block of the bridge tx | While `bridge_status.block_finalized` is `false` | The canonical block hash at `block_number` (one header), then the finality resolver for the bridge tx | The hash changed: the resolved bridge is discarded (`tracking_status` back to `registered`, `bridge_status`/`all_steps` `null`) and `FindBridge` resolves the tx again, in the same tick, wherever it was re-included (or gives up after `UnresolvedTimeout` if it never is) |
 | The claim | `Claimed` reached, claim not final | `isClaimed()` on the destination; while it is true, `GET /bridge/v1/claims` (a claim tx re-included in another block replaces the stored one) and the finality resolver | `isClaimed()` false: back to `WaitingClaim` (`claimed` → `readyToClaim`), or to the earliest step the claimed-bridge fallback skipped, since those were only inferred from the claim (→ `pending`) |
 | The GER injection | At `WaitingClaim` (`readyToClaim`), L1 → L2 and L2 → L2, until the bridge service reports it final | `GET /bridge/v1/injected-l1-info-leaf` (never the L2 scan fallback) | Back to `WaitingGERInjection` (→ `pending`) |
-| The L1 info leaf | At `WaitingClaim`, every route, until the injection before it is final (L2 → L1 has none: always) | `GET /bridge/v1/l1-info-tree-index` | Back to `WaitingL1InfoLeafAvailable` (→ `pending`) |
+| The L1 info leaf | At `WaitingClaim`, every route, until it is known final: on L1 → L2 and L2 → L2, once the injection before it is final; on L2 → L1, which has no injection, once the bridge service reports the leaf's own L1 block final | `GET /bridge/v1/l1-info-tree-index`; on L2 → L1, while the leaf is still there, also `GET /bridge/v1/injected-l1-info-leaf` with `network_id=0` and the index just returned, on the same bridge-service instance, for its `block_finalized` | Back to `WaitingL1InfoLeafAvailable` (→ `pending`) |
+
+On L2 → L1 the leaf is final when that `block_finalized` is `true`. A bridge service that omits
+it (unknown, or a version that predates the field) leaves the leaf not final, so it keeps being
+re-checked on every tick until the claim is final. The finality request never moves anything back:
+whether the leaf is gone is only decided by `l1-info-tree-index`.
 
 Moving back reopens that step (`in_progress`, keeping its `start_date`) and sets every later step
 back to `pending`, as if never reached; the forward resolution then runs again from there in the
@@ -113,7 +118,9 @@ before.
 
 Cost: a tracking that is not final costs, per tick, on top of its forward resolution: one header
 call while its origin block is not final (plus at most one receipt, once, when it becomes final);
-at `readyToClaim`, one `injected-l1-info-leaf` (until final) and one `l1-info-tree-index` request;
+at `readyToClaim`, one `injected-l1-info-leaf` and one `l1-info-tree-index` request, on every
+route, and only until they report it final: the injection on L1 → L2 and L2 → L2, the leaf itself
+on L2 → L1 (then none);
 once claimed, one `isClaimed()` call and one `GET /bridge/v1/claims` (the finality resolver costs
 no call when the bridge service reports `block_finalized`, otherwise one receipt once the claim's
 block is at or below the finalized head, which is fetched at most once every 5 s per network). A

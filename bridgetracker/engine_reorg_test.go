@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	domainmocks "github.com/agglayer/aggkit/bridgetracker/domain/mocks"
 	finalitymocks "github.com/agglayer/aggkit/bridgetracker/finality/mocks"
@@ -38,6 +39,10 @@ type reorgFacts struct {
 	injectedGone  bool
 	injectedFinal bool
 	injectedErr   error
+	// leafFinal/leafFinalErr answer L1InfoLeafFinalized; leafFinalCalls counts its calls
+	leafFinal      bool
+	leafFinalErr   error
+	leafFinalCalls int
 
 	finality *finalitymocks.Resolver
 }
@@ -81,6 +86,13 @@ func (r *reorgFacts) sources(t *testing.T, f *fakeSources) EngineSources {
 			r.mu.Lock()
 			defer r.mu.Unlock()
 			return !r.injectedGone, r.injectedFinal, r.injectedErr
+		}).Maybe()
+	injected.EXPECT().L1InfoLeafFinalized(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(context.Context, *domain.BridgeInfo, uint32) (bool, error) {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			r.leafFinalCalls++
+			return r.leafFinal, r.leafFinalErr
 		}).Maybe()
 
 	sources.OriginBlocks, sources.Finality, sources.InjectedGERs = origin, r.finality, injected
@@ -196,6 +208,78 @@ func TestEngineReorgMovesBackwardsAndNotifies(t *testing.T) {
 	require.Equal(t, types.TrackingStatusFinished, tracking.TrackingStatus())
 	require.True(t, tracking.Info().BlockFinalized, "a final claim implies a final origin bridge")
 	require.Empty(t, mustGetTrackerActives(t, store))
+}
+
+// TestEngineL2ToL1FinalLeafIsNotCheckedAgain pins #1987 through the engine: at readyToClaim an
+// L2->L1 bridge asks whether its L1 info leaf is final on every tick, the answer is persisted and
+// published once it is, and from then on the leaf is not looked at anymore
+func TestEngineL2ToL1FinalLeafIsNotCheckedAgain(t *testing.T) {
+	id := TrackingID{NetworkID: 1, TxHash: testHash}
+	f := &fakeSources{bridge: l2ToL1Bridge()}
+	facts := &reorgFacts{}
+	store := newMemoryRegistry(0)
+	engine, _ := newReorgTestEngine(t, store, f, facts)
+	mustRegister(t, store, id)
+
+	f.originLER = &types.LERUpdateResult{NetworkID: 1, LER: common.HexToHash("0x0a"), BlockNumber: 10}
+	settledBlockNumber, settledBlockTimestamp := uint64(1500), uint64(1700001500)
+	f.cert = &types.CertificateInclusionData{
+		CertificateData: types.CertificateData{
+			CertificateID: common.HexToHash("0x01"), Status: agglayertypes.Settled,
+			SettlementTxHash: &settlementTxHash,
+			BlockNumber:      &settledBlockNumber, BlockTimestamp: &settledBlockTimestamp,
+		},
+	}
+	leafIndex := uint32(7)
+	f.settlement = &types.L1SettledGERResult{
+		TxHash: settlementTxHash, SettlementBlockNumber: 2000, GER: common.HexToHash("0x0b"),
+		L1InfoTreeIndex:                   &leafIndex,
+		HasVerifyBatchesTrustedAggregator: true, HasUpdateL1InfoTree: true,
+	}
+	f.l1InfoTreeIndexForBridge = &leafIndex
+	leafStep := func() domain.BridgeStepPath {
+		for _, step := range mustGetFrom(t, store, id).AllSteps() {
+			if step.Step == types.StepWaitingL1InfoLeafAvailable {
+				return step
+			}
+		}
+		require.FailNow(t, "no L1 info leaf step")
+		return domain.BridgeStepPath{}
+	}
+
+	engine.tick(t.Context())
+	require.Equal(t, types.TrackerClaimStatusReadyToClaim, mustGetFrom(t, store, id).ClaimStatus())
+
+	// not final, then a failing check: asked on every tick, nothing moves
+	engine.tick(t.Context())
+	facts.set(func(r *reorgFacts) { r.leafFinalErr = errBridgeServiceReorg })
+	engine.tick(t.Context())
+	require.False(t, leafStep().BlockFinalized)
+	require.Equal(t, types.TrackerClaimStatusReadyToClaim, mustGetFrom(t, store, id).ClaimStatus())
+	facts.set(func(r *reorgFacts) {
+		require.GreaterOrEqual(t, r.leafFinalCalls, 2)
+		r.leafFinal, r.leafFinalErr = true, nil
+	})
+
+	updates, unsubscribe, err := store.Subscribe(id)
+	require.NoError(t, err)
+	defer unsubscribe()
+	engine.tick(t.Context())
+	published := receiveUpdate(t, updates)
+	require.Same(t, mustGetFrom(t, store, id), published, "the leaf turning final is persisted and published")
+	require.True(t, leafStep().BlockFinalized)
+	var callsWhenFinal int
+	facts.set(func(r *reorgFacts) { callsWhenFinal = r.leafFinalCalls })
+
+	// final: neither the index nor the finality is asked again, so a leaf that "disappears"
+	// from the answers moves nothing
+	f.l1InfoTreeIndexForBridge, f.l1InfoTreeIndexForBridgeErr = nil, errBridgeServiceReorg
+	for range 3 {
+		engine.tick(t.Context())
+	}
+	require.Equal(t, types.TrackerClaimStatusReadyToClaim, mustGetFrom(t, store, id).ClaimStatus())
+	require.True(t, leafStep().BlockFinalized)
+	facts.set(func(r *reorgFacts) { require.Equal(t, callsWhenFinal, r.leafFinalCalls) })
 }
 
 // TestEngineFinalTrackingIsNeverReevaluated pins the closing rule: once claimed_finalized, nothing

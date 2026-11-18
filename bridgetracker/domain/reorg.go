@@ -41,14 +41,21 @@ type OriginBlockSource interface {
 	CanonicalBlockHash(ctx context.Context, networkID uint32, blockNumber uint64) (common.Hash, error)
 }
 
-// InjectedGERChecker is the driven port re-checking a completed StepWaitingGERInjection. Unlike
-// WaitingGERInjectionSource.InjectedGERAtIndex it only asks the destination bridge service
-// (one GET injected-l1-info-leaf), never scans the L2 for the injection block
+// InjectedGERChecker is the driven port re-checking the completed readiness steps through GET
+// injected-l1-info-leaf, one request per call. Unlike
+// WaitingGERInjectionSource.InjectedGERAtIndex it never scans the L2 for the injection block
 type InjectedGERChecker interface {
-	// InjectedGERPresent reports whether leafIndex (or a later leaf) is still injected on
-	// bridge's destination network, and whether the bridge service reports that injection as
-	// final (block_finalized true)
+	// InjectedGERPresent re-checks a completed StepWaitingGERInjection: it reports whether
+	// leafIndex (or a later leaf) is still injected on bridge's destination network, and whether
+	// the bridge service reports that injection as final (block_finalized true)
 	InjectedGERPresent(ctx context.Context, bridge *BridgeInfo, leafIndex uint32) (present, finalized bool, err error)
+	// L1InfoLeafFinalized reports whether the bridge service that answered
+	// L1InfoLeafAvailableSource.L1InfoTreeIndexForBridge for bridge reports the L1 block of the
+	// L1 info tree leaf leafIndex as final (network_id 0, block_finalized true). False when it
+	// does not say (block_finalized omitted, as bridge services before it existed do) or does
+	// not have the leaf (anymore): it only tells whether the leaf can stop being re-checked,
+	// never that it is gone (agglayer/aggkit#1987)
+	L1InfoLeafFinalized(ctx context.Context, bridge *BridgeInfo, leafIndex uint32) (finalized bool, err error)
 }
 
 // ReorgCheckers groups the driven ports CheckOrigin, ReverifySteps and FinalizeClaim use
@@ -139,7 +146,9 @@ func ResetBridgeTx(tracking *TrackingData) *TrackingData {
 //   - At StepWaitingClaim (readyToClaim, including right after moving back from StepClaimed):
 //     the Done StepWaitingGERInjection (one GET injected-l1-info-leaf) and
 //     StepWaitingL1InfoLeafAvailable (one GET l1-info-tree-index), skipping the ones already
-//     known final. A gone injection or leaf moves the tracking back there (-> pending).
+//     known final. A gone injection or leaf moves the tracking back there (-> pending). On a
+//     route with no injection step (L2 -> L1) a leaf still there is also asked for its own
+//     finality (one more GET injected-l1-info-leaf, network_id 0), until it is final.
 //
 // A source error (bridge service 503 while it resolves a reorg, RPC failure...) never moves
 // anything: the checks stop there and run again on the next tick
@@ -237,7 +246,8 @@ func firstSkipped(steps []BridgeStepPath, upTo int) int {
 // not yet final, injection and leaf steps before waitIdx in path order and moves the tracking
 // back to the first one found gone. Steps found final are marked so (BlockFinalized) and never
 // checked again; a final injection also finalizes the L1 info leaf step after it, since the
-// injected leaf's L1 block being final makes every earlier leaf final too
+// injected leaf's L1 block being final makes every earlier leaf final too. Where the path has no
+// injection step (L2 -> L1) the leaf is asked for its own finality instead (see l1InfoLeafFinal)
 func reverifyReadiness(
 	ctx context.Context, logger aggkitcommon.Logger, checkers ReorgCheckers, tracking *TrackingData,
 	waitIdx int, now time.Time,
@@ -271,6 +281,9 @@ func reverifyReadiness(
 			var index *uint32
 			index, err = checkers.Leaves.L1InfoTreeIndexForBridge(ctx, info)
 			present = index != nil
+			if err == nil && present && indexOfStep(steps, types.StepWaitingGERInjection) < 0 {
+				final = l1InfoLeafFinal(ctx, logger, checkers, tracking, *index)
+			}
 		default:
 			continue
 		}
@@ -293,6 +306,23 @@ func reverifyReadiness(
 		}
 	}
 	return updated()
+}
+
+// l1InfoLeafFinal reports whether the L1 info tree leaf leafIndex, just found still covering
+// tracking's bridge, sits in a final L1 block. It is only asked on the paths with no GER
+// injection step (L2 -> L1): elsewhere the final injection settles the leaf step too. An error
+// only means "could not tell this time": the leaf is still there, the step is kept not final and
+// asked again on the next tick
+func l1InfoLeafFinal(
+	ctx context.Context, logger aggkitcommon.Logger, checkers ReorgCheckers, tracking *TrackingData, leafIndex uint32,
+) bool {
+	final, err := checkers.InjectedGERs.L1InfoLeafFinalized(ctx, tracking.Info(), leafIndex)
+	if err != nil {
+		logger.Debugf("%s: L1 info leaf %d not proven final: %v (kept, asked again next tick)",
+			tracking.ID(), leafIndex, err)
+		return false
+	}
+	return final
 }
 
 // FinalizeClaim closes a tracking whose StepClaimed is Done with a claim not known final yet: it
