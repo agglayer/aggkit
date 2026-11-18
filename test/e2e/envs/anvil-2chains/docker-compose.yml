@@ -210,6 +210,10 @@ services:
       - ./config/aggkit-proxy/aggkit-proxy-noautoreg.toml:/etc/aggkit-proxy/config.toml:ro
     ports:
       - "15602:8080"   # bridge + tracker REST
+    # Lets TestProxyReorgResilience (#1972) point this instance at a fault-injecting reverse proxy
+    # that the test runs on the host in front of aggkit-001's bridge service.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       agglayer:
         condition: service_healthy

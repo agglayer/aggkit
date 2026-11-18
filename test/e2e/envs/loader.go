@@ -901,6 +901,38 @@ func (e *Env) RestartService(ctx context.Context, service string) error {
 	return nil
 }
 
+// StopService stops a single compose service of this environment, keeping its container (and so
+// whatever it wrote inside it) for a later StartService.
+func (e *Env) StopService(ctx context.Context, service string) error {
+	return e.composeServiceCmd(ctx, "stop", service)
+}
+
+// StartService starts a compose service stopped with StopService. Like RestartService, it does not
+// wait for the service to become ready.
+func (e *Env) StartService(ctx context.Context, service string) error {
+	return e.composeServiceCmd(ctx, "start", service)
+}
+
+// CopyFromService copies a file out of the container of a compose service (running or stopped) to
+// hostPath, with "docker compose cp".
+func (e *Env) CopyFromService(ctx context.Context, service, containerPath, hostPath string) error {
+	return e.composeServiceCmd(ctx, "cp", service+":"+containerPath, hostPath)
+}
+
+// composeServiceCmd runs "docker compose <args>" for this environment and returns its output in the
+// error when it fails.
+func (e *Env) composeServiceCmd(ctx context.Context, args ...string) error {
+	cmd := newDockerComposeCmd(ctx, e.EnvDir, args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker compose %s: %w\nOutput:\n%s", strings.Join(args, " "), err, string(output))
+	}
+	if len(output) > 0 {
+		log.Debugf("docker compose %s output:\n%s\n", strings.Join(args, " "), string(output))
+	}
+	return nil
+}
+
 // RestartAggkitProxyWithConfig rewrites the aggkit-proxy config with editFn and restarts the
 // aggkit-proxy service so it picks the change up. It does not wait for readiness: callers poll the
 // tracker health endpoint (see waitForTrackerReady in the e2e test package).
