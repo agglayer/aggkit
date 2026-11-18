@@ -360,9 +360,9 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	t.Log("✅ Test completed successfully - syncer handled reorg correctly")
 }
 
-// TestReorgWithSameHashEdgeCase tests reorg detection when the chain is forked to a shorter one and it does not
+// TestReorgToShorterChain tests reorg detection when the chain is forked to a shorter one and it does not
 // grow back: the blocks up to the fork point keep their hash and the ones above it don't exist anymore
-func TestReorgWithSameHashEdgeCase(t *testing.T) {
+func TestReorgToShorterChain(t *testing.T) {
 	ctx := context.Background()
 	dbPathSyncer := path.Join(t.TempDir(), "bridgesyncTestSameHashReorg_sync.sqlite")
 	dbPathReorg := path.Join(t.TempDir(), "bridgesyncTestSameHashReorg_reorg.sqlite")
@@ -481,7 +481,7 @@ func TestReorgWithSameHashEdgeCase(t *testing.T) {
 	require.LessOrEqual(t, reorgEvent.ToBlock, forkBlockNum+5)
 	t.Logf("  Reorg detected from block %d to block %d", reorgEvent.FromBlock, reorgEvent.ToBlock)
 
-	t.Log("✅ Same hash reorg edge case test completed successfully")
+	t.Log("✅ Reorg to a shorter chain test completed successfully")
 }
 
 // TestBridgeL1SyncerWithMultipleReorgs tests the bridge L1 syncer with multiple reorgs

@@ -245,6 +245,124 @@ func TestDetectReorgs_RollbackToShorterChain(t *testing.T) {
 		requireTrackedBlocks(t, rd, 9)
 	})
 
+	t.Run("a head that contradicts the finalized block is not a reorg", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		client := aggkittypesmocks.NewBaseEthereumClienter(t)
+		// The finalized block is 9 and then 12, but the node that answers the rest is at block 8
+		client.EXPECT().CustomHeaderByNumber(ctx, &aggkittypes.FinalizedBlock).Return(header(block9), nil).Times(2)
+		client.EXPECT().CustomHeaderByNumber(ctx, &aggkittypes.FinalizedBlock).
+			Return(&aggkittypes.BlockHeader{Number: 12}, nil).Times(2)
+		client.EXPECT().CustomHeaderByNumber(ctx, blockNumber(9)).Return(nil, ethereum.NotFound).Times(4)
+		client.EXPECT().BlockNumber(ctx).Return(uint64(8), nil).Times(4)
+
+		rd, notified := newRollbackTestDetector(t, client, block9, block10)
+
+		for range 4 {
+			err := rd.detectReorgInTrackedList(ctx)
+			require.ErrorIs(t, err, ethereum.NotFound)
+			require.ErrorContains(t, err, "inconsistent chain head 8")
+		}
+		requireNoNotification(t, notified)
+		requireReorgEvents(t, rd, 0)
+		requireTrackedBlocks(t, rd, 9, 10)
+	})
+
+	t.Run("a non final block above the head of a lagging node in two consecutive passes is a reorg", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		// Known trade-off: the detector cannot tell a rollback from a node that stays behind the one used by the
+		// subscriber for two consecutive passes, as long as its head is not below the finalized block
+		client := aggkittypesmocks.NewBaseEthereumClienter(t)
+		client.EXPECT().CustomHeaderByNumber(ctx, &aggkittypes.FinalizedBlock).Return(finalized, nil).Times(2)
+		client.EXPECT().CustomHeaderByNumber(ctx, blockNumber(10)).Return(nil, ethereum.NotFound).Times(2)
+		client.EXPECT().BlockNumber(ctx).Return(uint64(9), nil).Times(2)
+
+		rd, notified := newRollbackTestDetector(t, client, block10)
+
+		require.NoError(t, rd.detectReorgInTrackedList(ctx))
+		require.NoError(t, rd.detectReorgInTrackedList(ctx))
+		require.Equal(t, uint64(10), <-notified)
+		requireReorgEvents(t, rd, 1)
+	})
+
+	t.Run("a hash mismatch below the block missing in the previous pass", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+		reorgedBlock9 := &aggkittypes.BlockHeader{Number: 9, Hash: common.HexToHash("0x99")}
+
+		client := aggkittypesmocks.NewBaseEthereumClienter(t)
+		client.EXPECT().CustomHeaderByNumber(ctx, &aggkittypes.FinalizedBlock).Return(finalized, nil).Times(3)
+		// First pass: block 9 matches and block 10 is above the head. Second pass: block 9 has another hash
+		client.EXPECT().CustomHeaderByNumber(ctx, blockNumber(9)).Return(header(block9), nil).Once()
+		client.EXPECT().CustomHeaderByNumber(ctx, blockNumber(10)).Return(nil, ethereum.NotFound).Once()
+		client.EXPECT().BlockNumber(ctx).Return(uint64(9), nil).Once()
+
+		rd, notified := newRollbackTestDetector(t, client, block9, block10)
+
+		require.NoError(t, rd.detectReorgInTrackedList(ctx))
+		requireReorgEvents(t, rd, 0)
+
+		// The header of block 9 is cached with the tracked hash, so the mismatch is seen with the new one
+		client.EXPECT().CustomHeaderByNumber(ctx, blockNumber(9)).Return(reorgedBlock9, nil).Once()
+		require.NoError(t, rd.detectReorgInTrackedList(ctx))
+		require.Equal(t, uint64(9), <-notified)
+		events := requireReorgEvents(t, rd, 1)
+		require.Equal(t, uint64(9), events[0].FromBlock)
+		require.Equal(t, uint64(10), events[0].ToBlock)
+		require.Equal(t, reorgedBlock9.Hash, events[0].CurrentHash)
+		requireTrackedBlocks(t, rd)
+
+		// Block 10 is tracked again and it is missing: the pending confirmation of the first pass doesn't count
+		require.NoError(t, rd.AddBlockToTrack(ctx, rollbackTestSubscriber, block10.Num, block10.Hash))
+		client.EXPECT().CustomHeaderByNumber(ctx, blockNumber(10)).Return(nil, ethereum.NotFound).Once()
+		client.EXPECT().BlockNumber(ctx).Return(uint64(9), nil).Once()
+		require.NoError(t, rd.detectReorgInTrackedList(ctx))
+		requireNoNotification(t, notified)
+		requireReorgEvents(t, rd, 1)
+		requireTrackedBlocks(t, rd, 10)
+	})
+
+	t.Run("each subscriber confirms its own missing block", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+		const otherSubscriber = "other-syncer"
+
+		client := aggkittypesmocks.NewBaseEthereumClienter(t)
+		client.EXPECT().CustomHeaderByNumber(ctx, &aggkittypes.FinalizedBlock).Return(finalized, nil).Times(2)
+		// One request per subscriber and pass for block 8, that exists. The chain head is block 9:
+		// block 10, tracked only by rollbackTestSubscriber, is missing
+		client.EXPECT().CustomHeaderByNumber(ctx, blockNumber(8)).Return(header(block8), nil).Times(4)
+		client.EXPECT().CustomHeaderByNumber(ctx, blockNumber(9)).Return(header(block9), nil).Times(2)
+		client.EXPECT().CustomHeaderByNumber(ctx, blockNumber(10)).Return(nil, ethereum.NotFound).Times(2)
+		client.EXPECT().BlockNumber(ctx).Return(uint64(9), nil).Times(2)
+
+		rd, notified := newRollbackTestDetector(t, client, block8, block10)
+		otherSub, err := rd.Subscribe(otherSubscriber)
+		require.NoError(t, err)
+		require.NoError(t, rd.AddBlockToTrack(ctx, otherSubscriber, block8.Num, block8.Hash))
+		require.NoError(t, rd.AddBlockToTrack(ctx, otherSubscriber, block9.Num, block9.Hash))
+
+		require.NoError(t, rd.detectReorgInTrackedList(ctx))
+		requireReorgEvents(t, rd, 0)
+		require.NoError(t, rd.detectReorgInTrackedList(ctx))
+		require.Equal(t, uint64(10), <-notified)
+		select {
+		case blockNum := <-otherSub.ReorgedBlock:
+			t.Fatalf("unexpected reorg notification for the other subscriber, block %d", blockNum)
+		default:
+		}
+		events := requireReorgEvents(t, rd, 1)
+		require.Equal(t, rollbackTestSubscriber, events[0].SubscriberID)
+		requireTrackedBlocks(t, rd, 8)
+
+		other, err := rd.GetLastReorgEventBySubscriber(ctx, otherSubscriber)
+		require.NoError(t, err)
+		require.Equal(t, ReorgEvent{}, other)
+	})
+
 	t.Run("a different missing block restarts the confirmation", func(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()

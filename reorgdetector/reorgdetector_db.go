@@ -96,7 +96,9 @@ func (rd *ReorgDetector) insertReorgEvent(event ReorgEvent) error {
 }
 
 // GetLastReorgEvent returns the last ReorgEvent stored in reorg_event table, of any subscriber. The events
-// detected in the same pass have the same detected_at, so the last one inserted among them is returned
+// detected in the same pass have the same detected_at, so the last one inserted among them is returned: the
+// answer is stable for a given DB, but which subscriber it belongs to depends on the order in which the
+// subscribers were checked. Use GetLastReorgEventBySubscriber to get the event of a specific subscriber
 func (rd *ReorgDetector) GetLastReorgEvent(ctx context.Context) (ReorgEvent, error) {
 	return rd.queryLastReorgEvent(ctx,
 		`SELECT * FROM reorg_event ORDER BY detected_at DESC, rowid DESC LIMIT 1;`)

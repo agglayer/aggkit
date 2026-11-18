@@ -224,6 +224,11 @@ func (rd *ReorgDetector) detectReorgForSubscriber(ctx context.Context, id string
 			if !aboveHead {
 				return fmt.Errorf("failed to get the header %d: %w", hdr.Num, err)
 			}
+			if hdr.Num <= lastFinalizedBlockNum || head < lastFinalizedBlockNum {
+				// The chain cannot be shorter than its finalized block: the head comes from a node that is behind
+				return fmt.Errorf("failed to get the header %d: inconsistent chain head %d (finalized block %d): %w",
+					hdr.Num, head, lastFinalizedBlockNum, err)
+			}
 			if !hadPreviousMissing || previousMissing != hdr {
 				// It could be a node that is behind the one used by the subscriber: wait for the next pass
 				rd.setMissingBlock(id, hdr)
