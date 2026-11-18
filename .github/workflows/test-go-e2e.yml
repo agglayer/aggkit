@@ -122,6 +122,21 @@ jobs:
           - env: anvil-2chains
             group: reorg-detection
             run: "^TestReorgDetectionSmoke$"
+          # aggkit-proxy reorg acceptance scenarios (#1972). Like the smoke test above they pause block
+          # production and rewrite history; the resilience group also reconfigures and restarts
+          # aggkit-proxy-002. One stack per group keeps each one short and its failures independent.
+          - env: anvil-2chains
+            group: proxy-reorg-activity
+            run: "^TestProxyReorgActivity$"
+          - env: anvil-2chains
+            group: proxy-reorg-claims
+            run: "^TestProxyReorgClaims$"
+          - env: anvil-2chains
+            group: proxy-reorg-tracker-revision
+            run: "^(TestProxyReorgTracker|TestProxyReorgRevision)$"
+          - env: anvil-2chains
+            group: proxy-reorg-resilience
+            run: "^TestProxyReorgResilience$"
           # Fee estimation endpoints (agglayer/issues#38, agglayer/issues#40): the tests create
           # their own bridge/claim traffic (ERC20 deployments, bridges, claims and burns) and read
           # statistics through the aggkit-proxy, so they run in their own stack rather than

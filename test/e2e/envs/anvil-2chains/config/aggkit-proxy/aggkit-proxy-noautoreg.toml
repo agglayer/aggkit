@@ -84,6 +84,9 @@ MaxRequestsPerIPAndSecond = 0
 # /tracker/v1 instead of falling out of the registry mid-demo.
 RetentionPeriod = "30m"
 IdleTimeout = "30m"
+# ActivityPollInterval lowered from the binary's 30s default so the e2e tests that wait for the
+# activity cache to follow the chain (reorg scenarios, #1972) wait one short refresh, not 30s.
+ActivityPollInterval = "5s"
 RegisterResolveTimeout = "3s"
 L1BlockFinality = "LatestBlock"
 L2BlockFinality = "LatestBlock"
