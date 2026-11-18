@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/db"
@@ -98,23 +99,11 @@ func (rd *ReorgDetector) insertReorgEvent(event ReorgEvent) error {
 // GetLastReorgEvent returns the last ReorgEvent stored in reorg_event table, of any subscriber. The events
 // detected in the same pass have the same detected_at, so the last one inserted among them is returned: the
 // answer is stable for a given DB, but which subscriber it belongs to depends on the order in which the
-// subscribers were checked. Use GetLastReorgEventBySubscriber to get the event of a specific subscriber
+// subscribers were checked. Use GetLastReorgEventBySubscribers to get the event of specific subscribers
 func (rd *ReorgDetector) GetLastReorgEvent(ctx context.Context) (ReorgEvent, error) {
-	return rd.queryLastReorgEvent(ctx,
-		`SELECT * FROM reorg_event ORDER BY detected_at DESC, rowid DESC LIMIT 1;`)
-}
-
-// GetLastReorgEventBySubscriber returns the last ReorgEvent stored in reorg_event table for the subscriber
-// subscriberID, or an empty ReorgEvent if it has none
-func (rd *ReorgDetector) GetLastReorgEventBySubscriber(ctx context.Context, subscriberID string) (ReorgEvent, error) {
-	return rd.queryLastReorgEvent(ctx,
-		`SELECT * FROM reorg_event WHERE subscriber_id = $1 ORDER BY detected_at DESC, rowid DESC LIMIT 1;`,
-		subscriberID)
-}
-
-func (rd *ReorgDetector) queryLastReorgEvent(_ context.Context, query string, args ...any) (ReorgEvent, error) {
+	query := `SELECT * FROM reorg_event ORDER BY detected_at DESC, rowid DESC LIMIT 1;`
 	var rEvent ReorgEvent
-	if err := meddler.QueryRow(rd.db, &rEvent, query, args...); err != nil {
+	if err := meddler.QueryRow(rd.db, &rEvent, query); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ReorgEvent{}, nil
 		}
@@ -122,4 +111,47 @@ func (rd *ReorgDetector) queryLastReorgEvent(_ context.Context, query string, ar
 	}
 
 	return rEvent, nil
+}
+
+// GetLastReorgEventBySubscribers returns the reorg of the last detection pass in which any of the given
+// subscribers has an event, or an empty ReorgEvent if they have none. The events of a pass share detected_at.
+// If more than one of the subscribers has an event in that pass, they are merged into one: FromBlock is the
+// lowest and ToBlock the highest of them, and the rest of the fields (SubscriberID, TrackedHash, CurrentHash,
+// Version) are the ones of the last event inserted in that pass (highest rowid)
+func (rd *ReorgDetector) GetLastReorgEventBySubscribers(ctx context.Context,
+	subscriberIDs ...string) (ReorgEvent, error) {
+	if len(subscriberIDs) == 0 {
+		return ReorgEvent{}, nil
+	}
+	placeholders := make([]string, len(subscriberIDs))
+	args := make([]any, len(subscriberIDs))
+	for i, id := range subscriberIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	in := strings.Join(placeholders, ", ")
+	// The placeholders are numbered, so the same arguments serve both IN clauses
+	query := fmt.Sprintf(`SELECT * FROM reorg_event
+		WHERE subscriber_id IN (%s)
+			AND detected_at = (SELECT MAX(detected_at) FROM reorg_event WHERE subscriber_id IN (%s))
+		ORDER BY rowid DESC;`, in, in)
+
+	var events []*ReorgEvent
+	if err := meddler.QueryAll(rd.db, &events, query, args...); err != nil {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, db.ErrNotFound) {
+			return ReorgEvent{}, nil
+		}
+		return ReorgEvent{}, err
+	}
+	if len(events) == 0 {
+		return ReorgEvent{}, nil
+	}
+
+	merged := *events[0]
+	for _, event := range events[1:] {
+		merged.FromBlock = min(merged.FromBlock, event.FromBlock)
+		merged.ToBlock = max(merged.ToBlock, event.ToBlock)
+	}
+
+	return merged, nil
 }

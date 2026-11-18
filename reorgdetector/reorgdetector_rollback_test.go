@@ -150,7 +150,7 @@ func TestDetectReorgs_RollbackToShorterChain(t *testing.T) {
 			requireTrackedBlocks(t, rd, 8)
 
 			// The subscriber's event is the one returned
-			last, err := rd.GetLastReorgEventBySubscriber(ctx, rollbackTestSubscriber)
+			last, err := rd.GetLastReorgEventBySubscribers(ctx, rollbackTestSubscriber)
 			require.NoError(t, err)
 			require.Equal(t, *events[0], last)
 		})
@@ -358,7 +358,7 @@ func TestDetectReorgs_RollbackToShorterChain(t *testing.T) {
 		require.Equal(t, rollbackTestSubscriber, events[0].SubscriberID)
 		requireTrackedBlocks(t, rd, 8)
 
-		other, err := rd.GetLastReorgEventBySubscriber(ctx, otherSubscriber)
+		other, err := rd.GetLastReorgEventBySubscribers(ctx, otherSubscriber)
 		require.NoError(t, err)
 		require.Equal(t, ReorgEvent{}, other)
 	})
@@ -441,7 +441,7 @@ func Test_ReorgDetector_RollbackToShorterChain(t *testing.T) {
 		return reorgDetector.trackedBlocks[subID].len() == 2 // only blocks 1 and 2 left
 	}, 5*time.Second, 10*time.Millisecond)
 
-	event, err := reorgDetector.GetLastReorgEventBySubscriber(ctx, subID)
+	event, err := reorgDetector.GetLastReorgEventBySubscribers(ctx, subID)
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), event.FromBlock)
 	require.Equal(t, uint64(4), event.ToBlock)

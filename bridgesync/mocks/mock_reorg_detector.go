@@ -121,27 +121,34 @@ func (_c *ReorgDetector_GetFinalizedBlockType_Call) RunAndReturn(run func() type
 	return _c
 }
 
-// GetLastReorgEventBySubscriber provides a mock function with given fields: ctx, subscriberID
-func (_m *ReorgDetector) GetLastReorgEventBySubscriber(ctx context.Context, subscriberID string) (reorgdetector.ReorgEvent, error) {
-	ret := _m.Called(ctx, subscriberID)
+// GetLastReorgEventBySubscribers provides a mock function with given fields: ctx, subscriberIDs
+func (_m *ReorgDetector) GetLastReorgEventBySubscribers(ctx context.Context, subscriberIDs ...string) (reorgdetector.ReorgEvent, error) {
+	_va := make([]interface{}, len(subscriberIDs))
+	for _i := range subscriberIDs {
+		_va[_i] = subscriberIDs[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetLastReorgEventBySubscriber")
+		panic("no return value specified for GetLastReorgEventBySubscribers")
 	}
 
 	var r0 reorgdetector.ReorgEvent
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (reorgdetector.ReorgEvent, error)); ok {
-		return rf(ctx, subscriberID)
+	if rf, ok := ret.Get(0).(func(context.Context, ...string) (reorgdetector.ReorgEvent, error)); ok {
+		return rf(ctx, subscriberIDs...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) reorgdetector.ReorgEvent); ok {
-		r0 = rf(ctx, subscriberID)
+	if rf, ok := ret.Get(0).(func(context.Context, ...string) reorgdetector.ReorgEvent); ok {
+		r0 = rf(ctx, subscriberIDs...)
 	} else {
 		r0 = ret.Get(0).(reorgdetector.ReorgEvent)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, subscriberID)
+	if rf, ok := ret.Get(1).(func(context.Context, ...string) error); ok {
+		r1 = rf(ctx, subscriberIDs...)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -149,31 +156,38 @@ func (_m *ReorgDetector) GetLastReorgEventBySubscriber(ctx context.Context, subs
 	return r0, r1
 }
 
-// ReorgDetector_GetLastReorgEventBySubscriber_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastReorgEventBySubscriber'
-type ReorgDetector_GetLastReorgEventBySubscriber_Call struct {
+// ReorgDetector_GetLastReorgEventBySubscribers_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastReorgEventBySubscribers'
+type ReorgDetector_GetLastReorgEventBySubscribers_Call struct {
 	*mock.Call
 }
 
-// GetLastReorgEventBySubscriber is a helper method to define mock.On call
+// GetLastReorgEventBySubscribers is a helper method to define mock.On call
 //   - ctx context.Context
-//   - subscriberID string
-func (_e *ReorgDetector_Expecter) GetLastReorgEventBySubscriber(ctx interface{}, subscriberID interface{}) *ReorgDetector_GetLastReorgEventBySubscriber_Call {
-	return &ReorgDetector_GetLastReorgEventBySubscriber_Call{Call: _e.mock.On("GetLastReorgEventBySubscriber", ctx, subscriberID)}
+//   - subscriberIDs ...string
+func (_e *ReorgDetector_Expecter) GetLastReorgEventBySubscribers(ctx interface{}, subscriberIDs ...interface{}) *ReorgDetector_GetLastReorgEventBySubscribers_Call {
+	return &ReorgDetector_GetLastReorgEventBySubscribers_Call{Call: _e.mock.On("GetLastReorgEventBySubscribers",
+		append([]interface{}{ctx}, subscriberIDs...)...)}
 }
 
-func (_c *ReorgDetector_GetLastReorgEventBySubscriber_Call) Run(run func(ctx context.Context, subscriberID string)) *ReorgDetector_GetLastReorgEventBySubscriber_Call {
+func (_c *ReorgDetector_GetLastReorgEventBySubscribers_Call) Run(run func(ctx context.Context, subscriberIDs ...string)) *ReorgDetector_GetLastReorgEventBySubscribers_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
+		variadicArgs := make([]string, len(args)-1)
+		for i, a := range args[1:] {
+			if a != nil {
+				variadicArgs[i] = a.(string)
+			}
+		}
+		run(args[0].(context.Context), variadicArgs...)
 	})
 	return _c
 }
 
-func (_c *ReorgDetector_GetLastReorgEventBySubscriber_Call) Return(_a0 reorgdetector.ReorgEvent, _a1 error) *ReorgDetector_GetLastReorgEventBySubscriber_Call {
+func (_c *ReorgDetector_GetLastReorgEventBySubscribers_Call) Return(_a0 reorgdetector.ReorgEvent, _a1 error) *ReorgDetector_GetLastReorgEventBySubscribers_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *ReorgDetector_GetLastReorgEventBySubscriber_Call) RunAndReturn(run func(context.Context, string) (reorgdetector.ReorgEvent, error)) *ReorgDetector_GetLastReorgEventBySubscriber_Call {
+func (_c *ReorgDetector_GetLastReorgEventBySubscribers_Call) RunAndReturn(run func(context.Context, ...string) (reorgdetector.ReorgEvent, error)) *ReorgDetector_GetLastReorgEventBySubscribers_Call {
 	_c.Call.Return(run)
 	return _c
 }

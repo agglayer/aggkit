@@ -10,6 +10,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
+	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
@@ -48,6 +49,15 @@ func (b BridgeSyncerID) String() string {
 	return [...]string{"L1BridgeSyncer", "L2BridgeSyncer"}[b]
 }
 
+// claimReorgDetectorID returns the id used in the reorg detector by the standalone claim syncer of the same
+// network as the bridge syncer syncerID
+func claimReorgDetectorID(syncerID BridgeSyncerID) string {
+	if syncerID == L1BridgeSyncer {
+		return claimsynctypes.L1ClaimSyncer.String()
+	}
+	return claimsynctypes.L2ClaimSyncer.String()
+}
+
 const (
 	downloadBufferSize = 1000
 )
@@ -62,7 +72,7 @@ var (
 
 type ReorgDetector interface {
 	sync.ReorgDetector
-	GetLastReorgEventBySubscriber(ctx context.Context, subscriberID string) (reorgdetector.ReorgEvent, error)
+	GetLastReorgEventBySubscribers(ctx context.Context, subscriberIDs ...string) (reorgdetector.ReorgEvent, error)
 }
 
 // BridgeSync manages the state of the exit tree for the bridge contract by processing Ethereum blockchain events.
@@ -75,9 +85,11 @@ type BridgeSync struct {
 	reorgDetector ReorgDetector
 	// reorgDetectorID is the id this syncer is subscribed with in the reorg detector
 	reorgDetectorID string
-	ethClient       aggkittypes.EthClienter
-	agglayerBridge  *agglayerbridge.Agglayerbridge
-	cfg             Config
+	// claimReorgDetectorID is the id the claim syncer of the same network is subscribed with in the reorg detector
+	claimReorgDetectorID string
+	ethClient            aggkittypes.EthClienter
+	agglayerBridge       *agglayerbridge.Agglayerbridge
+	cfg                  Config
 }
 
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
@@ -250,15 +262,16 @@ func newBridgeSync(
 	)
 
 	return &BridgeSync{
-		processor:       processor,
-		driver:          driver,
-		downloader:      downloader,
-		originNetwork:   networkID,
-		reorgDetector:   rd,
-		reorgDetectorID: reorgDetectorID,
-		ethClient:       ethClient,
-		agglayerBridge:  agglayerBridge,
-		cfg:             cfg,
+		processor:            processor,
+		driver:               driver,
+		downloader:           downloader,
+		originNetwork:        networkID,
+		reorgDetector:        rd,
+		reorgDetectorID:      reorgDetectorID,
+		claimReorgDetectorID: claimReorgDetectorID(syncerID),
+		ethClient:            ethClient,
+		agglayerBridge:       agglayerBridge,
+		cfg:                  cfg,
 	}, nil
 }
 
@@ -465,10 +478,12 @@ type LastReorg struct {
 	ToBlock    uint64 `json:"to_block"`
 }
 
-// GetLastReorgEvent returns the last reorg detected for this syncer (and not the ones of the other syncers
-// that share the reorg detector)
+// GetLastReorgEvent returns the reorg of the last detection pass of the reorg detector in which this syncer or
+// the claim syncer of the same network has an event (and not the ones of the other syncers that share the
+// reorg detector). If both have an event in that pass, the range returned covers both: FromBlock is the lowest
+// and ToBlock the highest
 func (s *BridgeSync) GetLastReorgEvent(ctx context.Context) (*LastReorg, error) {
-	rEvent, err := s.reorgDetector.GetLastReorgEventBySubscriber(ctx, s.reorgDetectorID)
+	rEvent, err := s.reorgDetector.GetLastReorgEventBySubscribers(ctx, s.reorgDetectorID, s.claimReorgDetectorID)
 	if err != nil {
 		s.processor.log.Errorf("failed to get last reorg event: %v", err)
 		return nil, err
