@@ -95,11 +95,24 @@ func (rd *ReorgDetector) insertReorgEvent(event ReorgEvent) error {
 	return meddler.Insert(rd.db, "reorg_event", &event)
 }
 
-// GetLastReorgEvent returns the the last ReorgEvent stored in reorg_event table
+// GetLastReorgEvent returns the last ReorgEvent stored in reorg_event table, of any subscriber. The events
+// detected in the same pass have the same detected_at, so the last one inserted among them is returned
 func (rd *ReorgDetector) GetLastReorgEvent(ctx context.Context) (ReorgEvent, error) {
-	query := `SELECT * FROM reorg_event ORDER BY detected_at DESC LIMIT 1;`
+	return rd.queryLastReorgEvent(ctx,
+		`SELECT * FROM reorg_event ORDER BY detected_at DESC, rowid DESC LIMIT 1;`)
+}
+
+// GetLastReorgEventBySubscriber returns the last ReorgEvent stored in reorg_event table for the subscriber
+// subscriberID, or an empty ReorgEvent if it has none
+func (rd *ReorgDetector) GetLastReorgEventBySubscriber(ctx context.Context, subscriberID string) (ReorgEvent, error) {
+	return rd.queryLastReorgEvent(ctx,
+		`SELECT * FROM reorg_event WHERE subscriber_id = $1 ORDER BY detected_at DESC, rowid DESC LIMIT 1;`,
+		subscriberID)
+}
+
+func (rd *ReorgDetector) queryLastReorgEvent(_ context.Context, query string, args ...any) (ReorgEvent, error) {
 	var rEvent ReorgEvent
-	if err := meddler.QueryRow(rd.db, &rEvent, query); err != nil {
+	if err := meddler.QueryRow(rd.db, &rEvent, query, args...); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ReorgEvent{}, nil
 		}

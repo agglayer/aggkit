@@ -597,15 +597,19 @@ func TestBridgeSync_GetLastReorgEvent(t *testing.T) {
 	}
 	ctx := context.Background()
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+	const reorgDetectorID = "L2BridgeSyncer"
 	s := BridgeSync{
-		reorgDetector: mockReorgDetector,
+		reorgDetector:   mockReorgDetector,
+		reorgDetectorID: reorgDetectorID,
 		processor: &processor{
 			log: log.WithFields("module", "L2BridgeSyncer"),
 		},
 	}
 
 	t.Run("retrieve last reorg event successfully", func(t *testing.T) {
-		mockReorgDetector.EXPECT().GetLastReorgEvent(mock.Anything).Return(expectedReorgEvent, nil).Once()
+		// the event requested is the one of this syncer, not the last one of any subscriber
+		mockReorgDetector.EXPECT().GetLastReorgEventBySubscriber(mock.Anything, reorgDetectorID).
+			Return(expectedReorgEvent, nil).Once()
 
 		reorgEvent, err := s.GetLastReorgEvent(ctx)
 		require.NoError(t, err)
@@ -616,7 +620,8 @@ func TestBridgeSync_GetLastReorgEvent(t *testing.T) {
 	})
 
 	t.Run("error retrieving last reorg event", func(t *testing.T) {
-		mockReorgDetector.EXPECT().GetLastReorgEvent(mock.Anything).Return(reorgdetector.ReorgEvent{}, errors.New("reorg event not found")).Once()
+		mockReorgDetector.EXPECT().GetLastReorgEventBySubscriber(mock.Anything, reorgDetectorID).
+			Return(reorgdetector.ReorgEvent{}, errors.New("reorg event not found")).Once()
 
 		reorgEvent, err := s.GetLastReorgEvent(ctx)
 		require.Error(t, err)

@@ -62,7 +62,7 @@ var (
 
 type ReorgDetector interface {
 	sync.ReorgDetector
-	GetLastReorgEvent(ctx context.Context) (reorgdetector.ReorgEvent, error)
+	GetLastReorgEventBySubscriber(ctx context.Context, subscriberID string) (reorgdetector.ReorgEvent, error)
 }
 
 // BridgeSync manages the state of the exit tree for the bridge contract by processing Ethereum blockchain events.
@@ -465,8 +465,10 @@ type LastReorg struct {
 	ToBlock    uint64 `json:"to_block"`
 }
 
+// GetLastReorgEvent returns the last reorg detected for this syncer (and not the ones of the other syncers
+// that share the reorg detector)
 func (s *BridgeSync) GetLastReorgEvent(ctx context.Context) (*LastReorg, error) {
-	rEvent, err := s.reorgDetector.GetLastReorgEvent(ctx)
+	rEvent, err := s.reorgDetector.GetLastReorgEventBySubscriber(ctx, s.reorgDetectorID)
 	if err != nil {
 		s.processor.log.Errorf("failed to get last reorg event: %v", err)
 		return nil, err
