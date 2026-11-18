@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -524,9 +525,33 @@ func requireProxyReorgEnv(ctx context.Context, t *testing.T, chains ...*AnvilCha
 // which holdAggsender adds MaxL2BlockNumber (the section does not set it: 0, no limit).
 const aggsenderConfigAnchor = "\nTriggerCertMode = \"ASAP\"\n"
 
+const (
+	// aggkit001Service and its compose variable for a config rendered outside the repo.
+	aggkit001Service   = "aggkit-001"
+	aggkit001ConfigEnv = "AGGKIT_001_CONFIG"
+	// renderedConfigDirMode / renderedConfigFileMode let the user of any container read a rendered config.
+	renderedConfigDirMode  os.FileMode = 0o755
+	renderedConfigFileMode os.FileMode = 0o644
+)
+
+// renderConfig writes content as name in a new directory outside the repo, readable from any container,
+// and returns its path. The directory is removed when the test ends. The tests never write to the config
+// files tracked in the repo: a test that is killed must not leave them modified.
+func renderConfig(t *testing.T, name, content string) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "aggkit-e2e-config-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	require.NoError(t, os.Chmod(dir, renderedConfigDirMode))
+	path := filepath.Join(dir, name)
+	require.NoError(t, os.WriteFile(path, []byte(content), renderedConfigFileMode))
+	require.NoError(t, os.Chmod(path, renderedConfigFileMode))
+	return path
+}
+
 // holdAggsender keeps the aggsender of aggkit-001 from certifying the L2 blocks the test mines, until the
-// test ends: it restarts aggkit-001 with [AggSender] MaxL2BlockNumber set to the current L2 head, and
-// restores the config (and restarts it again) in a cleanup.
+// test ends: it runs aggkit-001 with a copy of its config that sets [AggSender] MaxL2BlockNumber to the
+// current L2 head, and puts it back on its own config in a cleanup. The copy lives outside the repo.
 //
 // aggkit-001 syncs its L2 bridges at LatestBlock, which is what lets it serve non-final data, and its
 // aggsender builds certificates from that same data as soon as there is a bridge or a claim. Left alone,
@@ -537,21 +562,21 @@ const aggsenderConfigAnchor = "\nTriggerCertMode = \"ASAP\"\n"
 // Nothing the scenarios assert needs a certificate, so the aggsender waits until the chain is settled.
 func holdAggsender(ctx context.Context, t *testing.T, l2 *AnvilChain) {
 	t.Helper()
-	configPath := testEnv.GetAggkitConfigPath()
-	original, err := os.ReadFile(configPath)
+	original, err := os.ReadFile(testEnv.GetAggkitConfigPath())
 	require.NoError(t, err)
 	require.Equal(t, 1, strings.Count(string(original), aggsenderConfigAnchor),
 		"the [AggSender] section of aggkit-001's config must set TriggerCertMode exactly once")
 	require.NotContains(t, string(original), "\nMaxL2BlockNumber", "aggkit-001's config already sets MaxL2BlockNumber")
 	head, err := l2.Head(ctx)
 	require.NoError(t, err)
-	held := strings.Replace(string(original), aggsenderConfigAnchor,
-		fmt.Sprintf("%sMaxL2BlockNumber = %d\n", aggsenderConfigAnchor, head.Number), 1)
+	held := renderConfig(t, "aggkit-config.toml", strings.Replace(string(original), aggsenderConfigAnchor,
+		fmt.Sprintf("%sMaxL2BlockNumber = %d\n", aggsenderConfigAnchor, head.Number), 1))
 
-	restart := func(ctx context.Context, config []byte) error {
-		if err := testEnv.RestartAggkitWithConfig(ctx, func(path string) error {
-			return os.WriteFile(path, config, 0o600)
-		}); err != nil {
+	recreate := func(ctx context.Context, composeEnv ...string) error {
+		if err := testEnv.RecreateService(ctx, aggkit001Service, composeEnv...); err != nil {
+			return err
+		}
+		if err := testEnv.WaitForBridgeServiceOfAggkit(ctx); err != nil {
 			return err
 		}
 		for _, networkID := range []uint32{0, testEnv.L2.NetworkID} {
@@ -564,11 +589,12 @@ func holdAggsender(ctx context.Context, t *testing.T, l2 *AnvilChain) {
 	t.Cleanup(func() {
 		restoreCtx, cancel := context.WithTimeout(context.Background(), 2*proxyReorgConvergeTimeout)
 		defer cancel()
-		if err := restart(restoreCtx, original); err != nil {
-			t.Errorf("restore the config of aggkit-001 and restart it: %v", err)
+		if err := recreate(restoreCtx); err != nil {
+			t.Errorf("put aggkit-001 back on its own config: %v", err)
 		}
 	})
-	require.NoError(t, restart(ctx, []byte(held)), "restart aggkit-001 with the aggsender held at L2 block %d", head.Number)
+	require.NoError(t, recreate(ctx, aggkit001ConfigEnv+"="+held),
+		"run aggkit-001 with the aggsender held at L2 block %d", head.Number)
 	log.Infof("aggsender of aggkit-001 held at L2 block %d until the test ends", head.Number)
 }
 
@@ -883,12 +909,14 @@ type gerInjection struct {
 	leafIndex uint32
 }
 
-// pendingGERInjections returns the GERs of the insertGlobalExitRoot transactions waiting in the pool of
-// the L2, by transaction hash.
-func pendingGERInjections(ctx context.Context, l2 *envs.L2Config, gerAddr common.Address) (map[common.Hash]common.Hash, error) {
+// gerInjectionsOf returns the GERs of the insertGlobalExitRoot transactions of a block of the L2 (a number,
+// or "pending" for the ones waiting in the pool), by transaction hash.
+func gerInjectionsOf(
+	ctx context.Context, l2 *envs.L2Config, gerAddr common.Address, block string,
+) (map[common.Hash]common.Hash, error) {
 	var pending rpcBlockTxs
-	if err := l2.Client.Client().CallContext(ctx, &pending, "eth_getBlockByNumber", "pending", true); err != nil {
-		return nil, fmt.Errorf("eth_getBlockByNumber pending: %w", err)
+	if err := l2.Client.Client().CallContext(ctx, &pending, "eth_getBlockByNumber", block, true); err != nil {
+		return nil, fmt.Errorf("eth_getBlockByNumber %s: %w", block, err)
 	}
 	injections := make(map[common.Hash]common.Hash)
 	for _, tx := range pending.Transactions {
@@ -927,7 +955,7 @@ func captureGERInjection(ctx context.Context, t *testing.T, chain *AnvilChain, b
 	require.NoError(t, waitUntil(ctx, proxyReorgConvergeTimeout,
 		fmt.Sprintf("the aggoracle to send the injection of a GER covering L1 info tree leaf %d", b.result.L1InfoTreeIndex),
 		func() (bool, error) {
-			pending, err := pendingGERInjections(ctx, l2, gerAddr)
+			pending, err := gerInjectionsOf(ctx, l2, gerAddr, "pending")
 			if err != nil {
 				return false, err
 			}
@@ -953,11 +981,17 @@ func captureGERInjection(ctx context.Context, t *testing.T, chain *AnvilChain, b
 	head, err := chain.Head(ctx)
 	require.NoError(t, err)
 	captured.block = head.Number
-	for _, txHash := range captured.txs {
-		receipt, err := l2.Client.TransactionReceipt(ctx, txHash)
-		require.NoError(t, err, "the injection %s was not mined by the manual block", txHash.Hex())
-		require.Equal(t, captured.block, receipt.BlockNumber.Uint64())
+	// the injections are read from the block itself, not from the last look at the pool: one more may
+	// have arrived before the block was mined
+	mined, err := gerInjectionsOf(ctx, l2, gerAddr, hexutil.EncodeUint64(head.Number))
+	require.NoError(t, err)
+	captured.txs = captured.txs[:0]
+	covering := false
+	for txHash, ger := range mined {
+		captured.txs = append(captured.txs, txHash)
+		covering = covering || ger == captured.ger
 	}
+	require.True(t, covering, "the injection of GER %s is not in block %d", captured.ger.Hex(), head.Number)
 	timestamp, err := l2.Contracts.GlobalExitRoot.GlobalExitRootMap(&bind.CallOpts{Context: ctx}, captured.ger)
 	require.NoError(t, err)
 	require.Positive(t, timestamp.Sign(), "GER %s must be in the L2 GER contract after the injection", captured.ger.Hex())

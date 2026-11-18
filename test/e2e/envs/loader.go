@@ -919,6 +919,29 @@ func (e *Env) CopyFromService(ctx context.Context, service, containerPath, hostP
 	return e.composeServiceCmd(ctx, "cp", service+":"+containerPath, hostPath)
 }
 
+// RecreateService recreates the container of a single compose service ("docker compose up -d
+// --no-deps --force-recreate") with composeEnv ("NAME=value") added to the environment compose
+// resolves the variables of docker-compose.yml with. It is how a test runs a service with a config
+// file rendered outside the repo (see AGGKIT_001_CONFIG / AGGKIT_PROXY_002_CONFIG in the
+// anvil-2chains compose file) without touching the tracked one; called with no composeEnv it puts
+// the service back on its defaults. Whatever the old container wrote inside itself is lost; bind
+// mounts are kept. It does not wait for the service to become ready.
+func (e *Env) RecreateService(ctx context.Context, service string, composeEnv ...string) error {
+	cmd := newDockerComposeCmd(ctx, e.EnvDir, "up", "-d", "--no-deps", "--force-recreate", service)
+	cmd.Env = append(cmd.Env, composeEnv...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker compose up --force-recreate %s: %w\nOutput:\n%s", service, err, string(output))
+	}
+	return nil
+}
+
+// WaitForBridgeServiceOfAggkit waits until the bridge service of aggkit-001 answers, e.g. after
+// RecreateService.
+func (e *Env) WaitForBridgeServiceOfAggkit(ctx context.Context) error {
+	return waitForBridgeService(ctx, e.bridgeServiceURL)
+}
+
 // composeServiceCmd runs "docker compose <args>" for this environment and returns its output in the
 // error when it fails.
 func (e *Env) composeServiceCmd(ctx context.Context, args ...string) error {

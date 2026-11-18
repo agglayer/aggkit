@@ -116,7 +116,9 @@ services:
       - "--cfg=/etc/aggkit/config.toml"
       - "--components=aggsender,aggoracle,bridge"
     volumes:
-      - ./config/001/aggkit-config.toml:/etc/aggkit/config.toml:ro
+      # AGGKIT_001_CONFIG lets a test run this service with a config rendered outside the repo
+      # (Env.RecreateService) instead of rewriting the tracked file.
+      - ${AGGKIT_001_CONFIG:-./config/001/aggkit-config.toml}:/etc/aggkit/config.toml:ro
       - ./config/001/sequencer.keystore:/etc/aggkit/sequencer.keystore:ro
       - ./config/001/aggoracle.keystore:/etc/aggkit/aggoracle.keystore:ro
       - ./config/001/sovereignadmin.keystore:/etc/aggkit/sovereignadmin.keystore:ro
@@ -207,7 +209,8 @@ services:
       - "--cfg=/etc/aggkit-proxy/config.toml"
       - "--components=proxy,tracker"
     volumes:
-      - ./config/aggkit-proxy/aggkit-proxy-noautoreg.toml:/etc/aggkit-proxy/config.toml:ro
+      # AGGKIT_PROXY_002_CONFIG: same idea as AGGKIT_001_CONFIG above.
+      - ${AGGKIT_PROXY_002_CONFIG:-./config/aggkit-proxy/aggkit-proxy-noautoreg.toml}:/etc/aggkit-proxy/config.toml:ro
     ports:
       - "15602:8080"   # bridge + tracker REST
     # Lets TestProxyReorgResilience (#1972) point this instance at a fault-injecting reverse proxy

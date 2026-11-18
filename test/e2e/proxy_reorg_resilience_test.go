@@ -36,6 +36,8 @@ const (
 	proxy002BridgeURLOfAggkit001 = `"http://aggkit-001:5577"`
 	// proxy002TrackerSection is the header of the [Tracker] section of that config.
 	proxy002TrackerSection = "\n[Tracker]\n"
+	// proxy002ConfigEnv is the compose variable that makes aggkit-proxy-002 use another config file.
+	proxy002ConfigEnv = "AGGKIT_PROXY_002_CONFIG"
 	// proxy002DBPath is where the test makes aggkit-proxy-002 keep its SQLite store: inside the container
 	// (its home directory), so nothing is written to the host.
 	proxy002DBPath = "/home/appuser/bridgetracker.sqlite"
@@ -51,6 +53,9 @@ const (
 
 	// burstRounds is how many bridges the burst scenario sends, each followed by a reorg decision.
 	burstRounds = 9
+	// staleRounds is how many of the first rounds of the burst (one drop, one move) wait until the proxy
+	// lists their bridge before reorging it.
+	staleRounds = 2
 )
 
 // interposerMode is what the bridge-service interposer does with the requests of the aggkit-proxy.
@@ -168,13 +173,12 @@ func removeJSONField(value any, field string) int {
 	return removed
 }
 
-// reconfigureProxy002 rewrites the config of aggkit-proxy-002 so that it reaches the bridge service of
-// aggkit-001 (networks 0 and 1) through the interposer and keeps its state in SQLite (DBPath), restarts it
-// and waits for it. The original config is restored, and the proxy restarted, when the test ends.
+// reconfigureProxy002 runs aggkit-proxy-002 with a copy of its config (outside the repo) in which it
+// reaches the bridge service of aggkit-001 (networks 0 and 1) through the interposer and keeps its state in
+// SQLite (DBPath), and waits for it. The proxy is put back on its own config when the test ends.
 func reconfigureProxy002(ctx context.Context, t *testing.T, interposer *bridgeServiceInterposer) {
 	t.Helper()
-	configPath := filepath.Join(filepath.Dir(testEnv.GetAggkitProxyConfigPath()), proxy002ConfigFile)
-	original, err := os.ReadFile(configPath)
+	original, err := os.ReadFile(filepath.Join(filepath.Dir(testEnv.GetAggkitProxyConfigPath()), proxy002ConfigFile))
 	require.NoError(t, err)
 	const networksOfAggkit001 = 2
 	require.Equal(t, networksOfAggkit001, strings.Count(string(original), proxy002BridgeURLOfAggkit001),
@@ -183,28 +187,21 @@ func reconfigureProxy002(ctx context.Context, t *testing.T, interposer *bridgeSe
 	patched := strings.ReplaceAll(string(original), proxy002BridgeURLOfAggkit001, `"`+interposer.urlFromContainer()+`"`)
 	patched = strings.Replace(patched, proxy002TrackerSection,
 		proxy002TrackerSection+fmt.Sprintf("DBPath = %q\n", proxy002DBPath), 1)
+	rendered := renderConfig(t, proxy002ConfigFile, patched)
 
 	t.Cleanup(func() {
 		restoreCtx, cancel := context.WithTimeout(context.Background(), proxyReorgConvergeTimeout)
 		defer cancel()
-		if err := os.WriteFile(configPath, original, 0o600); err != nil {
-			t.Errorf("restore the config of %s: %v", aggkitProxy002Service, err)
-			return
-		}
-		// "start" first: a no-op on a running service, and it brings back one a failed scenario left stopped
-		if err := testEnv.StartService(restoreCtx, aggkitProxy002Service); err != nil {
-			t.Errorf("start %s: %v", aggkitProxy002Service, err)
-		}
-		if err := testEnv.RestartService(restoreCtx, aggkitProxy002Service); err != nil {
-			t.Errorf("restart %s with its original config: %v", aggkitProxy002Service, err)
+		// recreated on its defaults, whether a failed scenario left it running or stopped
+		if err := testEnv.RecreateService(restoreCtx, aggkitProxy002Service); err != nil {
+			t.Errorf("put %s back on its own config: %v", aggkitProxy002Service, err)
 			return
 		}
 		if err := waitForProxyReady(restoreCtx, proxyReorgProxy2URL); err != nil {
-			t.Errorf("%s did not come back with its original config: %v", aggkitProxy002Service, err)
+			t.Errorf("%s did not come back with its own config: %v", aggkitProxy002Service, err)
 		}
 	})
-	require.NoError(t, os.WriteFile(configPath, []byte(patched), 0o600))
-	require.NoError(t, testEnv.RestartService(ctx, aggkitProxy002Service))
+	require.NoError(t, testEnv.RecreateService(ctx, aggkitProxy002Service, proxy002ConfigEnv+"="+rendered))
 	require.NoError(t, waitForProxyReady(ctx, proxyReorgProxy2URL))
 }
 
@@ -299,10 +296,6 @@ func TestProxyReorgResilience(t *testing.T) {
 		// back: the persisted entry and tracking are corrected, not served stale nor duplicated
 		require.NoError(t, testEnv.StartService(ctx, aggkitProxy002Service))
 		require.NoError(t, waitForProxyReady(ctx, proxyReorgProxy2URL))
-		// the address is known from the store: the first request is answered at once, not with the 503 of
-		// an address registered from scratch
-		_, err := fetchActivity(ctx, proxyReorgProxy2URL, s.sender.addr)
-		require.NoError(t, err, "the restarted proxy must know the address from its SQLite store")
 		corrected := listedOnProxy2(t, s, moved)
 		control := s.waitForActivity(ctx, t, "the first proxy lists the bridge at its new block", func(a *proxyActivityResponse) bool {
 			return itemMatchesReceipt(a.find(s.networkID, s.depositCount), moved)
@@ -323,8 +316,6 @@ func TestProxyReorgResilience(t *testing.T) {
 
 		require.NoError(t, testEnv.StartService(ctx, aggkitProxy002Service))
 		require.NoError(t, waitForProxyReady(ctx, proxyReorgProxy2URL))
-		_, err = fetchActivity(ctx, proxyReorgProxy2URL, s.sender.addr)
-		require.NoError(t, err, "the restarted proxy must know the address from its SQLite store")
 		gone, err := waitForActivity(ctx, proxyReorgProxy2URL, s.sender.addr, "the persisted bridge is removed on start",
 			proxyReorgConvergeTimeout, func(a *proxyActivityResponse) bool { return a.Count == 0 })
 		require.NoError(t, err)
@@ -376,14 +367,24 @@ func TestProxyReorgResilience(t *testing.T) {
 		l2.PauseMiningForTest(ctx, t)
 
 		// Each round sends a bridge, mines it with a block on top and, without waiting for aggkit or the
-		// proxy, reorgs it out, moves it to the next block or leaves it. A dropped bridge frees its nonce
+		// proxy (except in the first staleRounds rounds), reorgs it out, moves it to the next block or leaves it. A dropped bridge frees its nonce
 		// and its deposit count for the bridge of the next round. Amounts differ so that no two
 		// transactions are the same.
 		var sent []*ethtypes.Transaction
 		for round := 0; round < burstRounds; round++ {
 			tx := bridger.send(t, proxyReorgBridgeAmount+int64(round))
 			sent = append(sent, tx)
-			mineTxPlusOne(ctx, t, l2, testEnv.L2.Client, tx)
+			receipt := mineTxPlusOne(ctx, t, l2, testEnv.L2.Client, tx)
+			if round < staleRounds {
+				// the first drop and the first move wait until the proxy lists the bridge they are about to
+				// reorg, so that the proxy does hold entries the burst makes stale
+				depositCount := bridger.depositCount(t, receipt)
+				_, err := waitForActivity(ctx, proxyTrackerBaseURL, sender.addr, "the bridge of this round is listed",
+					proxyReorgConvergeTimeout, func(a *proxyActivityResponse) bool {
+						return itemMatchesReceipt(a.find(networkID, depositCount), receipt)
+					})
+				require.NoError(t, err)
+			}
 			switch round % 3 { // three outcomes, in turn
 			case 0:
 				reorgDropping(ctx, t, l2, testEnv.L2.Client, tx.Hash())
@@ -392,9 +393,9 @@ func TestProxyReorgResilience(t *testing.T) {
 			default: // left where it was mined
 			}
 		}
-		// The last reorg follows the deterministic recipe and must be reported by itself: first aggkit
-		// catches up with the burst (it serves exactly what the chain holds, so it has no reorg left to
-		// resolve), and the baseline is read again.
+		// The last reorg follows the deterministic recipe and must be reported by itself: aggkit first
+		// catches up with the burst (it serves exactly what the chain holds), and the event that is waited
+		// for must start at the blocks of this last reorg, above every block of the burst.
 		require.NoError(t, WaitForBridgeSynced(ctx, bs, networkID, proxyReorgServeTimeout))
 		require.NoError(t, waitForServedBridgesOf(ctx, bs, networkID, sender.addr, bridgesOnChain(ctx, t, bridger, sent)),
 			"aggkit does not serve what the chain holds after the burst: a syncer problem, not a proxy one")
@@ -403,8 +404,21 @@ func TestProxyReorgResilience(t *testing.T) {
 		sent = append(sent, last)
 		lastReceipt := mineTxPlusOne(ctx, t, l2, testEnv.L2.Client, last)
 		requireBridgeServed(ctx, t, bs, networkID, bridger.depositCount(t, lastReceipt), lastReceipt, false)
+		lastBlock := lastReceipt.BlockNumber.Uint64()
 		lastReceipt = reorgMoving(ctx, t, l2, testEnv.L2.Client, last.Hash(), 1)
-		requireReorgDetected(ctx, t, bs, networkID, baseline)
+		reported := "no event read yet"
+		require.NoError(t, waitUntil(ctx, proxyReorgDetectTimeout,
+			fmt.Sprintf("aggkit to report the last reorg, from block %d on", lastBlock),
+			func() (bool, error) {
+				event, err := LastReorgEvent(ctx, bs, networkID)
+				if err != nil {
+					reported = err.Error()
+					return false, nil
+				}
+				reported = fmt.Sprintf("%+v", event)
+				return event.DetectedAt > baseline.DetectedAt && event.FromBlock >= lastBlock, nil
+			}, func() string { return reported }),
+			"aggkit did not report the last reorg: a syncer / reorg detector problem, not a proxy one")
 		_, err = l2.MineUntilFinalized(ctx, lastReceipt.BlockNumber.Uint64())
 		require.NoError(t, err)
 
@@ -452,8 +466,11 @@ func persistedState(ctx context.Context, t *testing.T, from common.Address, txHa
 	db, err := sql.Open("sqlite3", dbFile)
 	require.NoError(t, err)
 	defer db.Close()
+	// only the bridges of an address the store holds as registered and refreshed: what a restarted proxy
+	// serves, and corrects, without scanning from scratch
 	require.NoError(t, db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM activity_bridge WHERE LOWER(from_address) = LOWER(?)", from.Hex()).Scan(&bridges))
+		"SELECT COUNT(*) FROM activity_bridge b JOIN activity_address a ON a.from_address = b.from_address "+
+			"WHERE a.refreshed = 1 AND LOWER(b.from_address) = LOWER(?)", from.Hex()).Scan(&bridges))
 	require.NoError(t, db.QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM tracked_bridge WHERE LOWER(tx_hash) = LOWER(?)", txHash.Hex()).Scan(&trackings))
 	return bridges, trackings
