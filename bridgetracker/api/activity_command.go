@@ -403,15 +403,20 @@ func setActivityValidatorHeaders(c *gin.Context, revision string) {
 
 // ifNoneMatchHolds reports whether the If-None-Match header lines of a request hold etag, so the
 // request is answered 304: any of the listed entity tags is etag, compared weakly as RFC 9110
-// §13.1.2 mandates for this header (a W/ prefix is ignored), or the header is "*" (any current
-// representation; there always is one at this point). No header, or only other tags, is false
+// §13.1.2 mandates for this header (a W/ prefix is ignored), or a header line is exactly "*" (any
+// current representation; there always is one at this point). No header, or only other tags, is
+// false
 func ifNoneMatchHolds(headerLines []string, etag string) bool {
 	for _, line := range headerLines {
-		// an entity tag of this endpoint has no comma, so splitting the list on commas cannot
-		// make a foreign tag look like etag
+		// "*" is only the wildcard as the whole field value (If-None-Match = "*" / #entity-tag):
+		// inside a list it can only be part of a quoted tag that holds commas
+		if strings.TrimSpace(line) == ifNoneMatchAny {
+			return true
+		}
+		// an entity tag of this endpoint has no comma, and a quoted tag cannot hold a double
+		// quote, so splitting the list on commas cannot make a foreign tag look like etag
 		for _, candidate := range strings.Split(line, ",") {
-			candidate = strings.TrimSpace(candidate)
-			if candidate == ifNoneMatchAny || strings.TrimPrefix(candidate, weakETagPrefix) == etag {
+			if strings.TrimPrefix(strings.TrimSpace(candidate), weakETagPrefix) == etag {
 				return true
 			}
 		}
