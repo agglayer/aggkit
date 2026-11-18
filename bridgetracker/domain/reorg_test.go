@@ -360,9 +360,8 @@ func TestReverifyStepsFinalInjectionIsNotCheckedAgain(t *testing.T) {
 // info leaf is asked for its own finality, with the index l1-info-tree-index just returned, and
 // is never re-checked once final
 func TestReverifyStepsL2ToL1LeafFinality(t *testing.T) {
-	// the bridge service may answer another index than the one stored when the step completed
-	// (5): the finality asked is the one of the leaf it answers now
-	currentIndex := uint32(9)
+	// the index stored in the step when it completed (see trackingAt)
+	currentIndex := uint32(5)
 
 	t.Run("final: marked and never re-checked", func(t *testing.T) {
 		checkers := newReorgCheckers(t)
@@ -414,6 +413,20 @@ func TestReverifyStepsL2ToL1LeafFinality(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("leaf answered at another index: finality not asked, re-checked on every tick", func(t *testing.T) {
+		checkers := newReorgCheckers(t)
+		tracking := trackingAt(types.BridgeTypeL2ToL1, types.StepWaitingClaim, false)
+		movedIndex := uint32(9)
+		const ticks = 3
+		checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).
+			Return(&movedIndex, nil).Times(ticks)
+
+		for range ticks {
+			// strict mocks: an L1InfoLeafFinalized call would fail the test
+			require.Same(t, tracking, domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow))
+		}
+	})
 
 	t.Run("leaf gone: back to it, its finality is not asked", func(t *testing.T) {
 		checkers := newReorgCheckers(t)

@@ -148,7 +148,8 @@ func ResetBridgeTx(tracking *TrackingData) *TrackingData {
 //     StepWaitingL1InfoLeafAvailable (one GET l1-info-tree-index), skipping the ones already
 //     known final. A gone injection or leaf moves the tracking back there (-> pending). On a
 //     route with no injection step (L2 -> L1) a leaf still there is also asked for its own
-//     finality (one more GET injected-l1-info-leaf, network_id 0), until it is final.
+//     finality (one more GET injected-l1-info-leaf, network_id 0), until it is final. A leaf
+//     answered at another index than the one stored is not asked: it stays not final.
 //
 // A source error (bridge service 503 while it resolves a reorg, RPC failure...) never moves
 // anything: the checks stop there and run again on the next tick
@@ -281,7 +282,8 @@ func reverifyReadiness(
 			var index *uint32
 			index, err = checkers.Leaves.L1InfoTreeIndexForBridge(ctx, info)
 			present = index != nil
-			if err == nil && present && indexOfStep(steps, types.StepWaitingGERInjection) < 0 {
+			if err == nil && present && indexOfStep(steps, types.StepWaitingGERInjection) < 0 &&
+				sameLeafIndex(step, *index) {
 				final = l1InfoLeafFinal(ctx, logger, checkers, tracking, *index)
 			}
 		default:
@@ -306,6 +308,15 @@ func reverifyReadiness(
 		}
 	}
 	return updated()
+}
+
+// sameLeafIndex reports whether leafIndex, the leaf the bridge service answers now, is the one
+// stored in step when it completed. A different one means the leaf moved (an L1 reorg put the
+// settlement in another leaf): the step is then not settled on the new leaf's finality, which
+// would freeze the stored index for good, and keeps being re-checked on every tick as before
+func sameLeafIndex(step BridgeStepPath, leafIndex uint32) bool {
+	stored := step.ResultL1InfoLeafAvailable
+	return stored != nil && stored.L1InfoTreeIndex == leafIndex
 }
 
 // l1InfoLeafFinal reports whether the L1 info tree leaf leafIndex, just found still covering
