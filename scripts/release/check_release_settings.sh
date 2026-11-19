@@ -5,7 +5,9 @@
 #
 # Usage: check_release_settings.sh [--json]
 # Env:   REPO (agglayer/aggkit), ORG (owner of REPO), APPROVERS_TEAM
-#        (release-approvers), RELEASE_TEAM (release-manager), ENVIRONMENT (release)
+#        (release-approvers), RELEASE_TEAM (release-manager), ENVIRONMENT (release),
+#        REGISTRY_SECRETS (space separated names of the environment secrets that
+#        hold the production registry credential)
 # Output: one line per control: PASS|FAIL|MANUAL <control>: <detail>
 # Exit:   1 when any control FAILs, otherwise 0.
 set -uo pipefail
@@ -15,6 +17,7 @@ ORG="${ORG:-${REPO%%/*}}"
 APPROVERS_TEAM="${APPROVERS_TEAM:-release-approvers}"
 RELEASE_TEAM="${RELEASE_TEAM:-release-manager}"
 ENVIRONMENT="${ENVIRONMENT:-release}"
+REGISTRY_SECRETS="${REGISTRY_SECRETS:-RELEASE_REGISTRY_USER RELEASE_REGISTRY_TOKEN}"
 TAG_PATTERN='v*'
 
 JSON=0
@@ -161,6 +164,24 @@ check_environment() {
   fi
 }
 
+# The credential for the production package must exist only as secrets of the
+# release environment. Secret values are never readable; only the names are.
+check_environment_secrets() {
+  local name missing=""
+  if ! api "repos/$REPO/environments/$ENVIRONMENT/secrets"; then
+    report MANUAL environment-secrets "cannot read the secrets of environment $ENVIRONMENT (HTTP $API_STATUS); check https://github.com/$REPO/settings/environments that ${REGISTRY_SECRETS// /, } exist there"
+    return
+  fi
+  for name in $REGISTRY_SECRETS; do
+    jq -e --arg n "$name" 'any(.secrets[]?; .name == $n)' <<<"$API_BODY" >/dev/null || missing="$missing $name"
+  done
+  if [ -z "$missing" ]; then
+    report PASS environment-secrets "environment $ENVIRONMENT has the secrets ${REGISTRY_SECRETS// /, }; also check that they are not repository or organization secrets"
+  else
+    report FAIL environment-secrets "environment $ENVIRONMENT is missing the secrets:${missing// /, }"
+  fi
+}
+
 # --- 3 ---------------------------------------------------------------------
 # Only rulesets are inspected (rules/branches returns ruleset rules); classic
 # branch protection is not read and is reported as missing rules.
@@ -212,13 +233,14 @@ check_package() {
   else
     extra=" (package not readable, HTTP $API_STATUS; the token may lack read:packages)"
   fi
-  report MANUAL ghcr-package-acl "the API does not expose package Actions access or inheritance; check https://github.com/orgs/$ORG/packages/container/$name/settings -> Manage Actions access: only $REPO with role Write, and 'Inherit access from source repository' as intended$extra"
+  report MANUAL ghcr-package-acl "the API does not expose package Actions access or inheritance; check https://github.com/orgs/$ORG/packages/container/$name/settings: 'Inherit access from source repository' must be off and Manage Actions access must not list $REPO, so that besides the package admins only the credential held by environment $ENVIRONMENT can write$extra"
 }
 
 
 check_teams
 check_tag_ruleset
 check_environment
+check_environment_secrets
 check_branch_rules
 check_package
 

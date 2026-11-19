@@ -39,6 +39,7 @@ expect "all-pass: exit 0" "$([ "$RC" -eq 0 ]; echo $?)"
 expect "all-pass: no FAIL lines" "$(has '^FAIL' && echo 1 || echo 0)"
 expect "all-pass: tag ruleset PASS" "$(has '^PASS tag-ruleset' ; echo $?)"
 expect "all-pass: environment PASS" "$(has '^PASS environment'; echo $?)"
+expect "all-pass: environment secrets PASS" "$(has '^PASS environment-secrets'; echo $?)"
 expect "all-pass: teams PASS" "$(has '^PASS teams'; echo $?)"
 expect "all-pass: both branch checks PASS" "$(has '^PASS branch-rules\[develop\]' && has '^PASS branch-rules\[release/1.1\]' && has '^PASS branch-rules\[release/1.2\]' && has '^PASS branch-rules\[release/1.10\]'; echo $?)"
 expect "package ACL is MANUAL" "$(has '^MANUAL ghcr-package-acl'; echo $?)"
@@ -51,6 +52,10 @@ expect "missing tag ruleset: exit 1" "$([ "$RC" -eq 1 ]; echo $?)"
 run no_self_review
 expect "no prevent-self-review: FAIL line" "$(has '^FAIL environment.*prevent_self_review'; echo $?)"
 expect "no prevent-self-review: exit 1" "$([ "$RC" -eq 1 ]; echo $?)"
+
+run no_secrets
+expect "missing environment secret: FAIL line" "$(has '^FAIL environment-secrets.*RELEASE_REGISTRY_TOKEN'; echo $?)"
+expect "missing environment secret: exit 1" "$([ "$RC" -eq 1 ]; echo $?)"
 
 run admin_bypass
 expect "admin bypass on environment: FAIL line" "$(has '^FAIL environment.*can_admins_bypass'; echo $?)"

@@ -3,15 +3,18 @@ name: Release
 # Release images are published only from a release tag, after the tag passes
 # the preflight checks and a reviewer approves the `release` environment.
 #
-#   preflight -> build -> approve (environment: release) -> publish
+#   preflight -> build -> publish (environment: release, needs approval)
 #
 # `build` pushes the per-platform images by digest to the staging package
 # ghcr.io/<repo>-dev (the same package used by branch builds), never to the
 # production package ghcr.io/<repo>. The reviewer approves the images that were
 # actually built (their digests are in the job summaries). Only `publish`, which
-# runs after the approval, writes to the production package: it assembles the
-# tagged manifest lists from the staged digests of this run, then signs and
-# attests them. Nothing reaches ghcr.io/<repo> before `approve` succeeds.
+# runs after the approval of the `release` environment, writes to the production
+# package: it assembles the tagged manifest lists from the staged digests of
+# this run, then signs and attests them. It logs in to ghcr.io with a credential
+# that exists only as a secret of the `release` environment; the workflow token
+# (GITHUB_TOKEN) is used only for the staging package. Nothing reaches
+# ghcr.io/<repo> before the approval.
 
 on:
   workflow_dispatch:
@@ -30,7 +33,8 @@ permissions: {}
 
 env:
   REGISTRY: ghcr.io
-  # Production package: written only by `publish`, after approval.
+  # Production package: written only by `publish`, after approval, with the
+  # credential held by the `release` environment.
   REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
   # Staging package: `build` pushes the per-platform images here, by digest.
   STAGING_IMAGE: ghcr.io/${{ github.repository }}-dev
@@ -76,8 +80,9 @@ jobs:
           done
 
   # Builds the platform images and stages them by digest in the staging package
-  # (STAGING_IMAGE); nothing is written to the production package here. The
-  # digests of what was built are listed in each job summary for the reviewer.
+  # (STAGING_IMAGE) with the workflow token; nothing is written to the production
+  # package here. The digests of what was built are listed in each job summary
+  # for the reviewer.
   build:
     needs: preflight
     permissions:
@@ -159,7 +164,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
-      - name: Login to Docker Hub
+      - name: Login to the container registry (staging package)
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550  # v4.8.0
         with:
           registry: ${{ env.REGISTRY }}
@@ -194,7 +199,7 @@ jobs:
           echo "Version check passed: $ver"
           echo "VERSION_IN_IMAGE=$ver" >> "$GITHUB_ENV"
 
-      # The digest files are what `approve` lists and `publish` promotes.
+      # The digest files are what `publish` lists and promotes.
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
@@ -218,16 +223,32 @@ jobs:
           # days) and a re-run of `publish`.
           retention-days: 30
 
-  # Gate 2: deployment review. The `release` environment requires approval by
-  # a release approver other than the person who triggered the run. The
-  # reviewer decides on the images staged by `build` (digests in the build job
-  # summaries); the job itself runs after the approval and records what was
-  # approved. `publish` promotes exactly these digests.
-  approve:
+  # Gate 2: deployment review, and the only job that can write the production
+  # package. The `release` environment requires approval by a release approver
+  # other than the person who triggered the run, and it is the only place that
+  # holds the credential for ghcr.io/<repo> (secrets RELEASE_REGISTRY_USER and
+  # RELEASE_REGISTRY_TOKEN). The workflow token is never used for that package,
+  # so no other job, and no other workflow, can write to it. The reviewer
+  # decides on the images staged by `build` (digests in the build job
+  # summaries); this job runs after the approval and promotes exactly these
+  # digests.
+  #
+  # Creates the tagged multi-platform manifest lists in the production package
+  # from the staged digests built in this run (taken from the build artifacts,
+  # not looked up by tag), then signs each one with cosign (keyless, bound to
+  # this workflow's identity) and pushes a GitHub build-provenance attestation
+  # for it to the registry. The signatures and attestations are pushed with the
+  # same release credential. Both variants are handled in this one job so that
+  # a release needs a single approval.
+  publish:
     needs:
       - preflight
       - build
-    permissions: {}
+    # No packages permission: the workflow token cannot write any package here.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     environment: release
     runs-on: ubuntu-latest
     steps:
@@ -257,116 +278,118 @@ jobs:
             done
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
-  # Runs only after the approval. Creates the tagged multi-platform manifest
-  # lists in the production package from the staged digests built in this run
-  # (taken from the build artifacts, not looked up by tag), then signs each one
-  # with cosign (keyless, bound to this workflow's identity) and pushes a GitHub
-  # build-provenance attestation for it to the registry.
-  publish:
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
-    runs-on: ubuntu-latest
-    needs:
-      - preflight
-      - build
-      - approve
-    strategy:
-      matrix:
-        variant:
-          - { suffix: "", description: "production" }
-          - { suffix: "-dev", description: "development" }
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
-        with:
-          path: /tmp/digests
-          pattern: digests-*${{ matrix.variant.suffix }}
-          merge-multiple: true
+      - name: Check the release registry credential
+        env:
+          REGISTRY_USER: ${{ secrets.RELEASE_REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.RELEASE_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$REGISTRY_USER" ] || [ -z "$REGISTRY_TOKEN" ]; then
+            echo "::error::the secrets RELEASE_REGISTRY_USER and RELEASE_REGISTRY_TOKEN must be set in the release environment"
+            exit 1
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
-      - name: Login to Docker Hub
+      # The credential for the production package. It is stored only as secrets
+      # of the `release` environment, and it also serves the cosign signature
+      # and the attestation pushes below (both read the registry login).
+      - name: Login to the container registry with the release credential
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550  # v4.8.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.RELEASE_REGISTRY_USER }}
+          password: ${{ secrets.RELEASE_REGISTRY_TOKEN }}
 
-      # Sources are the staged per-platform digests of this run; the manifest
+      # Sources are the staged per-platform digests of this run; each manifest
       # list is created in the production package under the final tags. The
       # source images keep their SBOM and provenance attestation manifests.
-      - name: Create manifest list from staged digests and push
+      - name: Create manifest lists from staged digests and push
+        id: manifest
         working-directory: /tmp/digests
+        env:
+          IMAGE_NAME_PROD: ${{ needs.build.outputs.IMAGE_NAME_PROD }}
+          TAGS_PROD: ${{ needs.build.outputs.TAGS_PROD }}
+          IMAGE_NAME_DEV: ${{ needs.build.outputs.IMAGE_NAME_DEV }}
+          TAGS_DEV: ${{ needs.build.outputs.TAGS_DEV }}
         run: |
-          IMAGE_NAME="${{ (matrix.variant.suffix == '') && needs.build.outputs.IMAGE_NAME_PROD || needs.build.outputs.IMAGE_NAME_DEV }}"
-          TAGS="${{ (matrix.variant.suffix == '') && needs.build.outputs.TAGS_PROD || needs.build.outputs.TAGS_DEV }}"
-          SUFFIX="${{ matrix.variant.suffix }}"
-          args=()
-          while IFS= read -r tag; do
-            tag="${tag//[[:space:]]/}"
-            if [ -n "$tag" ]; then args+=(-t "$tag"); fi
-          done <<< "$TAGS"
-          [ "${#args[@]}" -gt 0 ] || { echo "::error::no tags to publish"; exit 1; }
-          # Digest files are named <digest>.<os>-<arch><suffix>; take only the
-          # platform images of this variant (the prod pattern also downloads -dev).
-          sources=0
-          for f in *; do
-            case "$f" in
-              *-dev) [ "$SUFFIX" = "-dev" ] || continue ;;
-              *) [ -z "$SUFFIX" ] || continue ;;
-            esac
-            digest="${f%%.*}"
-            if ! [[ "$digest" =~ ^[0-9a-f]{64}$ ]]; then
-              echo "::error::unexpected digest file name: $f"
+          promote() {
+            local variant="$1" suffix="$2" image="$3" tags="$4"
+            local args=() tag first_tag="" f digest manifest_digest sources=0
+            while IFS= read -r tag; do
+              tag="${tag//[[:space:]]/}"
+              if [ -n "$tag" ]; then
+                args+=(-t "$tag")
+                [ -n "$first_tag" ] || first_tag="$tag"
+              fi
+            done <<< "$tags"
+            [ "${#args[@]}" -gt 0 ] || { echo "::error::no tags to publish for the ${variant} variant"; exit 1; }
+            # Digest files are named <digest>.<os>-<arch><suffix>; take only the
+            # platform images of this variant.
+            for f in *; do
+              case "$f" in
+                *-dev) [ "$suffix" = "-dev" ] || continue ;;
+                *) [ -z "$suffix" ] || continue ;;
+              esac
+              digest="${f%%.*}"
+              if ! [[ "$digest" =~ ^[0-9a-f]{64}$ ]]; then
+                echo "::error::unexpected digest file name: $f"
+                exit 1
+              fi
+              args+=("${STAGING_IMAGE}@sha256:${digest}")
+              sources=$((sources + 1))
+            done
+            # One image per platform (linux/amd64 and linux/arm64).
+            if [ "$sources" -ne 2 ]; then
+              echo "::error::expected 2 staged platform images for the ${variant} variant, found ${sources}"
               exit 1
             fi
-            args+=("${STAGING_IMAGE}@sha256:${digest}")
-            sources=$((sources + 1))
-          done
-          # One image per platform (linux/amd64 and linux/arm64).
-          if [ "$sources" -ne 2 ]; then
-            echo "::error::expected 2 staged platform images for this variant, found ${sources}"
-            exit 1
-          fi
-          echo "Promoting ${sources} staged images of ${STAGING_IMAGE} to ${IMAGE_NAME}"
-          docker buildx imagetools create "${args[@]}"
-
-      - name: Resolve manifest list digest
-        id: manifest
-        run: |
-          IMAGE_NAME="${{ (matrix.variant.suffix == '') && needs.build.outputs.IMAGE_NAME_PROD || needs.build.outputs.IMAGE_NAME_DEV }}"
-          TAGS="${{ (matrix.variant.suffix == '') && needs.build.outputs.TAGS_PROD || needs.build.outputs.TAGS_DEV }}"
-          FIRST_TAG=$(echo "$TAGS" | head -n1)
-          DIGEST=$(docker buildx imagetools inspect "$FIRST_TAG" --format '{{json .Manifest}}' | jq -er .digest)
-          echo "Manifest list of ${FIRST_TAG}: ${DIGEST}"
-          echo "image=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+            echo "Promoting ${sources} staged images of ${STAGING_IMAGE} to ${image}"
+            docker buildx imagetools create "${args[@]}"
+            manifest_digest=$(docker buildx imagetools inspect "$first_tag" --format '{{json .Manifest}}' | jq -er .digest)
+            echo "Manifest list of ${first_tag}: ${manifest_digest}"
+            {
+              echo "image_${variant}=${image}"
+              echo "digest_${variant}=${manifest_digest}"
+            } >> "$GITHUB_OUTPUT"
+          }
+          promote prod "" "$IMAGE_NAME_PROD" "$TAGS_PROD"
+          promote dev "-dev" "$IMAGE_NAME_DEV" "$TAGS_DEV"
 
       - name: Install cosign
         uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532  # v4.1.3
 
       # Keyless signature: the certificate identity is this workflow at the
       # release tag, issued through GitHub's OIDC token.
-      - name: Sign manifest list
+      - name: Sign manifest lists
         env:
-          IMAGE: ${{ steps.manifest.outputs.image }}
-          DIGEST: ${{ steps.manifest.outputs.digest }}
-        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+          IMAGE_PROD: ${{ steps.manifest.outputs.image_prod }}
+          DIGEST_PROD: ${{ steps.manifest.outputs.digest_prod }}
+          IMAGE_DEV: ${{ steps.manifest.outputs.image_dev }}
+          DIGEST_DEV: ${{ steps.manifest.outputs.digest_dev }}
+        run: |
+          cosign sign --yes "${IMAGE_PROD}@${DIGEST_PROD}"
+          cosign sign --yes "${IMAGE_DEV}@${DIGEST_DEV}"
 
-      - name: Attest build provenance
+      - name: Attest build provenance (prod)
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:
-          subject-name: ${{ steps.manifest.outputs.image }}
-          subject-digest: ${{ steps.manifest.outputs.digest }}
+          subject-name: ${{ steps.manifest.outputs.image_prod }}
+          subject-digest: ${{ steps.manifest.outputs.digest_prod }}
           push-to-registry: true
 
-      - name: Inspect image
+      - name: Attest build provenance (dev)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-name: ${{ steps.manifest.outputs.image_dev }}
+          subject-digest: ${{ steps.manifest.outputs.digest_dev }}
+          push-to-registry: true
+
+      - name: Inspect images
+        env:
+          TAGS_PROD: ${{ needs.build.outputs.TAGS_PROD }}
+          TAGS_DEV: ${{ needs.build.outputs.TAGS_DEV }}
         run: |
-          TAGS="${{ (matrix.variant.suffix == '') && needs.build.outputs.TAGS_PROD || needs.build.outputs.TAGS_DEV }}"
-          # Use the first tag for inspection
-          FIRST_TAG=$(echo "$TAGS" | head -n1)
-          docker buildx imagetools inspect "$FIRST_TAG"
+          # Use the first tag of each variant for inspection
+          docker buildx imagetools inspect "$(head -n1 <<< "$TAGS_PROD")"
+          docker buildx imagetools inspect "$(head -n1 <<< "$TAGS_DEV")"

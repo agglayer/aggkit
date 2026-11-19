@@ -14,7 +14,7 @@ Release images are published to `ghcr.io/agglayer/aggkit`, one set of tags per r
 
 Only exact versions are published and a published version is never overwritten. The package also lists signature and attestation artifacts next to these tags (for example `sha256-<digest>.sig` tags and referrers of the images); they are not extra versions.
 
-Release images reach `ghcr.io/agglayer/aggkit` only through the release workflow, in this order: the platform images are built and staged in `ghcr.io/agglayer/aggkit-dev` (see below), a reviewer approves them, and only then are the tags above created in `aggkit` from those exact images and signed. A release that fails to build or is not approved never appears in `aggkit`.
+Release images reach `ghcr.io/agglayer/aggkit` only through the release workflow, in this order: the platform images are built and staged in `ghcr.io/agglayer/aggkit-dev` (see below), a reviewer approves them, and only then are the tags above created in `aggkit` from those exact images and signed. A release that fails to build or is not approved never appears in `aggkit`. The credential that can write to `aggkit` is stored only as secrets of the release environment that the reviewer approves; the workflow token of the repository, which builds and stages the images, cannot write to `aggkit`.
 
 If signing or attestation fails after the manifests were pushed, the version is visible but unsigned. Treat an unsigned version as unusable: it is either completed by re-running the failed jobs or replaced by a new version. Always verify the signature before using an image.
 
