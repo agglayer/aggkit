@@ -132,10 +132,11 @@ func buildAppender(
 	return appender, nil
 }
 
-// buildContextualAppender builds the contextual appenders used by the shared multidownloader path.
+// buildContextualAppender builds the contextual appenders installed on the bridge downloader.
 //
 // Only the BridgeEvent handler needs context-bound work: it resolves the transaction that produced
-// the log through the shared provider, whose flight can block. Receiving the active download context
+// the log (through the shared provider on the multidownloader path, or eth_getTransactionByHash) and
+// may trace it (debug_traceTransaction); any of those can block. Receiving the active download context
 // (instead of a constructor-time context) means a cancelled download generation unblocks it. All the
 // other bridge events are synchronous and keep their legacy appenders, so the returned map contains
 // only bridgeEventSignature.
@@ -179,11 +180,19 @@ func (t *Transaction) ToAddress() common.Address {
 	return common.HexToAddress(t.To)
 }
 
+// RPCTransactionByHash fetches the transaction details using eth_getTransactionByHash. It is not
+// bound to any context; callers that run inside a download use rpcTransactionByHashContext.
 func RPCTransactionByHash(client aggkittypes.EthClienter,
 	txHash common.Hash) (*Transaction, error) {
-	// Use client.Call to fetch transaction details using eth_getTransactionByHash
+	return rpcTransactionByHashContext(context.Background(), client, txHash)
+}
+
+// rpcTransactionByHashContext fetches the transaction details using eth_getTransactionByHash with
+// ctx, so a cancelled download generation never stays blocked on a stalled RPC.
+func rpcTransactionByHashContext(ctx context.Context, client aggkittypes.EthClienter,
+	txHash common.Hash) (*Transaction, error) {
 	var tx Transaction
-	err := client.Call(&tx, GetTransactionByHashEndpoint, txHash.Hex())
+	err := client.CallContext(ctx, &tx, GetTransactionByHashEndpoint, txHash.Hex())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch transaction by hash: %w", err)
 	}
@@ -241,7 +250,7 @@ func ExtractTxnAddresses(ctx context.Context,
 	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent,
 	logger *logger.Logger,
 	syncFromInBridges bool) (txnSender common.Address, fromAddr *common.Address, toAddr common.Address, err error) {
-	tx, err := RPCTransactionByHash(client, txHash)
+	tx, err := rpcTransactionByHashContext(ctx, client, txHash)
 	if err != nil {
 		return common.Address{}, nil, common.Address{},
 			fmt.Errorf("extractTxnAddresses: failed to extract txn sender from tx_hash:%s: %w", txHash.Hex(), err)
@@ -295,7 +304,7 @@ func extractTxnAddressesWithTx(ctx context.Context,
 	// FromAddress is optional metadata: only RPC failures are returned (wrapped in ErrFromAddressRPC) so the
 	// caller can retry them. Anything the tx itself makes unresolvable leaves FromAddress nil (NULL) instead of
 	// failing, because the same tx would fail the same way forever and halt the syncer.
-	rootCall, err := extractRootCall(client, bridgeAddr, txHash)
+	rootCall, err := extractRootCall(ctx, client, bridgeAddr, txHash)
 	if err != nil {
 		return common.Address{}, nil, common.Address{},
 			fmt.Errorf("extractTxnAddresses: %w: failed to trace tx_hash:%s: %w", ErrFromAddressRPC, txHash.Hex(), err)
@@ -948,10 +957,12 @@ func findCall(rootCall Call, targetAddr common.Address, callback func(Call) (boo
 	return nil, db.ErrNotFound
 }
 
-// extractRootCall extracts the root call for a transaction using debug_traceTransaction.
-func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*Call, error) {
+// extractRootCall extracts the root call for a transaction using debug_traceTransaction. The call is
+// bound to ctx so a cancelled download generation never stays blocked on a stalled trace.
+func extractRootCall(ctx context.Context, client aggkittypes.RPCClienter, contractAddr common.Address,
+	txHash common.Hash) (*Call, error) {
 	rootCall := &Call{To: contractAddr}
-	err := client.Call(rootCall, DebugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
+	err := client.CallContext(ctx, rootCall, DebugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
 		return nil, err
 	}
@@ -959,6 +970,7 @@ func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address
 }
 
 func extractCallData(
+	ctx context.Context,
 	client aggkittypes.RPCClienter,
 	bridgeAddr common.Address,
 	txHash common.Hash,
@@ -966,7 +978,7 @@ func extractCallData(
 	callback func(c Call) (bool, error),
 ) (foundCalls []*Call, rootCall *Call, err error) {
 	// Extract root call first
-	rootCall, err = extractRootCall(client, bridgeAddr, txHash)
+	rootCall, err = extractRootCall(ctx, client, bridgeAddr, txHash)
 	if err != nil {
 		return nil, nil, err
 	}

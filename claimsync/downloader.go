@@ -109,25 +109,31 @@ type bridgeDeployment struct {
 	agglayerBridgeL2 *agglayerbridgel2.Agglayerbridgel2
 }
 
-// buildAppender creates the LogAppenderMap for claim events from the bridge contract.
+// buildAppender creates the appenders for claim events from the bridge contract. The handlers that
+// trace the claim transaction (ClaimEvent and pre-Etrog ClaimEvent, through debug_traceTransaction) are
+// returned in the contextual map so they run with the active download context: a cancelled download
+// generation, which the driver joins before a rollback, must never stay blocked on a stalled trace. The
+// other handlers are synchronous and are returned in the legacy map.
 func buildAppender(
 	ethClient aggkittypes.EthClienter,
 	bridgeAddr common.Address,
 	deployment *bridgeDeployment,
 	log aggkitcommon.Logger,
-) (sync.LogAppenderMap, error) {
+) (sync.LogAppenderMap, sync.ContextualLogAppenderMap, error) {
 	legacyBridge, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, ethClient)
 	if err != nil {
-		return nil, fmt.Errorf("claimsync: failed to create PolygonZkEVMBridge binding: %w", err)
+		return nil, nil, fmt.Errorf("claimsync: failed to create PolygonZkEVMBridge binding: %w", err)
 	}
 	// TODO: Check syncfullclaims
 	syncFullClaims := true
-	appender := make(sync.LogAppenderMap)
-	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
-		legacyBridge, ethClient, bridgeAddr, syncFullClaims, log)
+	contextual := sync.ContextualLogAppenderMap{
+		claimEventSignaturePreEtrog: buildClaimEventHandlerPreEtrog(
+			legacyBridge, ethClient, bridgeAddr, syncFullClaims, log),
+		claimEventSignature: buildClaimEventHandler(
+			deployment.agglayerBridge, ethClient, bridgeAddr, syncFullClaims, log),
+	}
 
-	appender[claimEventSignature] = buildClaimEventHandler(
-		deployment.agglayerBridge, ethClient, bridgeAddr, syncFullClaims, log)
+	appender := make(sync.LogAppenderMap)
 
 	appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(deployment.agglayerBridgeL2)
 	appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(deployment.agglayerBridgeL2)
@@ -141,7 +147,7 @@ func buildAppender(
 	log.Debugf("unsetClaimEventSignature:            %s", unsetClaimEventSignature.Hex())
 	log.Debugf("setClaimEventSignature:              %s", setClaimEventSignature.Hex())
 
-	return appender, nil
+	return appender, contextual, nil
 }
 
 // resolveBridgeDeployment resolves which bridge contract flavor is deployed:
@@ -222,8 +228,8 @@ func buildClaimEventHandler(
 	bridgeAddr common.Address,
 	syncFullClaims bool,
 	log aggkitcommon.Logger,
-) func(*sync.EVMBlock, types.Log) error {
-	return func(b *sync.EVMBlock, l types.Log) error {
+) sync.ContextualLogAppender {
+	return func(ctx context.Context, b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := contract.ParseClaimEvent(l)
 		if err != nil {
 			return fmt.Errorf("claimsync: error parsing ClaimEvent log: %w", err)
@@ -243,7 +249,7 @@ func buildClaimEventHandler(
 		}
 
 		// Extract root call for txn_sender and error checking
-		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, log, nil)
+		_, rootCall, err := extractCallData(ctx, client, bridgeAddr, l.TxHash, log, nil)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -316,8 +322,8 @@ func buildClaimEventHandlerPreEtrog(
 	bridgeAddr common.Address,
 	syncFullClaims bool,
 	logger aggkitcommon.Logger,
-) func(*sync.EVMBlock, types.Log) error {
-	return func(b *sync.EVMBlock, l types.Log) error {
+) sync.ContextualLogAppender {
+	return func(ctx context.Context, b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := contract.ParseClaimEvent(l)
 		if err != nil {
 			return fmt.Errorf("claimsync: error parsing pre-Etrog ClaimEvent log: %w", err)
@@ -336,7 +342,7 @@ func buildClaimEventHandlerPreEtrog(
 			Amount:             claimEvent.Amount,
 		}
 		// Extract root call for txn_sender and error checking
-		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, nil)
+		_, rootCall, err := extractCallData(ctx, client, bridgeAddr, l.TxHash, logger, nil)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -492,10 +498,12 @@ func findCall(rootCall Call,
 	return nil, db.ErrNotFound
 }
 
-// extractRootCall extracts the root call for a transaction using debug_traceTransaction.
-func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*Call, error) {
+// extractRootCall extracts the root call for a transaction using debug_traceTransaction. The call is
+// bound to ctx so a cancelled download generation never stays blocked on a stalled trace.
+func extractRootCall(ctx context.Context, client aggkittypes.RPCClienter, contractAddr common.Address,
+	txHash common.Hash) (*Call, error) {
 	rootCall := &Call{To: contractAddr}
-	err := client.Call(rootCall, DebugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
+	err := client.CallContext(ctx, rootCall, DebugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
 		return nil, err
 	}
@@ -504,6 +512,7 @@ func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address
 
 //nolint:unparam // foundCalls is part of the public API and may be used by callers
 func extractCallData(
+	ctx context.Context,
 	client aggkittypes.RPCClienter,
 	bridgeAddr common.Address,
 	txHash common.Hash,
@@ -511,7 +520,7 @@ func extractCallData(
 	callback func(c Call) (bool, error),
 ) (foundCalls []*Call, rootCall *Call, err error) {
 	// Extract root call first
-	rootCall, err = extractRootCall(client, bridgeAddr, txHash)
+	rootCall, err = extractRootCall(ctx, client, bridgeAddr, txHash)
 	if err != nil {
 		return nil, nil, err
 	}

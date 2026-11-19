@@ -246,7 +246,8 @@ func (d *downloaderLegacy) findLatestInjectedGER(
 				// Shutting down: return instead of retrying the cancellation error forever.
 				return nil
 			}
-			blockHash, err := d.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerInfo.GlobalExitRoot)
+			blockHash, err := d.l2GERManager.GlobalExitRootMap(
+				&bind.CallOpts{Pending: false, Context: ctx}, gerInfo.GlobalExitRoot)
 			if err != nil {
 				attempts++
 				log.Errorf("failed to check if global exit root %s is injected on L2: %s", gerInfo.GlobalExitRoot.Hex(), err)

@@ -481,8 +481,8 @@ func TestBridgeAppender_ProviderPath_IndirectSkipFrom(t *testing.T) {
 func TestBridgeAppender_ProviderPath_IndirectTrace(t *testing.T) {
 	bridge := common.HexToAddress("0x10")
 	ethClient := mocksethclient.NewEthClienter(t)
-	ethClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-		Run(func(result any, _ string, _ ...any) {
+	ethClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, result any, _ string, _ ...any) {
 			arg, ok := result.(*Call)
 			require.True(t, ok)
 			*arg = Call{

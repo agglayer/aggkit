@@ -344,14 +344,17 @@ func newBridgeSync(
 	if err != nil {
 		return nil, err
 	}
+	// Install the context-aware appender for the Bridge event so its RPCs (transaction lookup and
+	// debug trace, and on the multidownloader path the shared provider flight) run with the active
+	// download context: a cancelled download generation, which the driver joins before a rollback,
+	// must never stay blocked on a stalled RPC.
+	contextualInstalled := installContextualLogAppenders(downloader, buildContextualAppender(
+		cfg.BridgeAddr, ethClient, syncFromInBridges, bridgeDeployment, logger, txResolver))
 	if deps != nil {
-		// Install the context-aware appender for the Bridge event so the shared provider flight is
-		// resolved with the active download context, and warm the transaction cache with the same
-		// context. Both hooks are required on the multidownloader path: if the downloader does not
-		// expose them the constructor fails closed instead of silently falling back to a
-		// constructor-time appender or to lazy resolution.
-		if !installContextualLogAppenders(downloader, buildContextualAppender(
-			cfg.BridgeAddr, ethClient, syncFromInBridges, bridgeDeployment, logger, txResolver)) {
+		// Both hooks are required on the multidownloader path: if the downloader does not expose them
+		// the constructor fails closed instead of silently falling back to a constructor-time appender
+		// or to lazy resolution. The logs enricher warms the transaction cache with the same context.
+		if !contextualInstalled {
 			return nil, ErrContextualAppendersUnsupported
 		}
 		if !registerLogsEnricher(downloader, bridgeLogsEnricher(deps.provider)) {

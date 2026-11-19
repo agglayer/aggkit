@@ -46,7 +46,7 @@ func mockClientCallGetTransactionByHash(t *testing.T,
 	expectedTxHash common.Hash) {
 	t.Helper()
 	const zeroAddress = "0x0000000000000000000000000000000000000000000"
-	mockClient.EXPECT().Call(mock.Anything, bridgesync.GetTransactionByHashEndpoint, mock.Anything).Run(func(result any, method string, args ...any) {
+	mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, bridgesync.GetTransactionByHashEndpoint, mock.Anything).Run(func(_ context.Context, result any, method string, args ...any) {
 		arg, ok := result.(*bridgesync.Transaction)
 		require.True(t, ok)
 		arg.FromRaw = zeroAddress
@@ -68,8 +68,8 @@ func TestBridgeEventE2E(t *testing.T) {
 	mockClientCallGetTransactionByHash(t, rpcClient,
 		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
 
-	rpcClient.EXPECT().Call(mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-		Run(func(result any, method string, args ...any) {
+	rpcClient.EXPECT().CallContext(mock.Anything, mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
 			arg.Type = bridgesync.CallTypeCall
@@ -214,8 +214,8 @@ func TestBridgeL1SyncerWithReorgDetector(t *testing.T) {
 	mockClientCallGetTransactionByHash(t, rpcClient,
 		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
 
-	rpcClient.EXPECT().Call(mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-		Run(func(result any, method string, args ...any) {
+	rpcClient.EXPECT().CallContext(mock.Anything, mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
 			arg.Type = bridgesync.CallTypeCall
@@ -401,8 +401,8 @@ func TestReorgToShorterChain(t *testing.T) {
 	mockClientCallGetTransactionByHash(t, rpcClient,
 		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
 
-	rpcClient.EXPECT().Call(mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-		Run(func(result any, method string, args ...any) {
+	rpcClient.EXPECT().CallContext(mock.Anything, mock.Anything, bridgesync.DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
 			arg.Type = bridgesync.CallTypeCall
@@ -522,8 +522,8 @@ func TestBridgeL1SyncerWithMultipleReorgs(t *testing.T) {
 	mockClientCallGetTransactionByHash(t, rpcClient,
 		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
 
-	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Run(func(result any, method string, args ...any) {
+	rpcClient.EXPECT().CallContext(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, result any, method string, args ...any) {
 			arg, ok := result.(*bridgesync.Call)
 			require.True(t, ok)
 			arg.Type = bridgesync.CallTypeCall

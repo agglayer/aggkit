@@ -178,7 +178,7 @@ func newClaimSync(
 		logger.Warnf("unable to determine bridge contract type at address %s", cfg.BridgeAddr.Hex())
 	}
 
-	appender, err := buildAppender(ethClient, cfg.BridgeAddr, deployment, logger)
+	appender, contextualAppender, err := buildAppender(ethClient, cfg.BridgeAddr, deployment, logger)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to build appender: %w", err)
 	}
@@ -203,6 +203,11 @@ func newClaimSync(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to create EVMDownloader: %w", err)
+	}
+	// The claim handlers that trace their transaction run with the active download context (see
+	// buildAppender). sync.EVMDownloader always supports contextual appenders.
+	if !downloader.InstallContextualLogAppenders(contextualAppender) {
+		return nil, errors.New("claimsync: the downloader does not support contextual log appenders")
 	}
 	downloader.SetLogsHook(NewPreferDetailedClaimLogsHook(logger))
 

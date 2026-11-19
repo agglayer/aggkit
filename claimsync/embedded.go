@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type claimEmbeddedProcessor struct {
@@ -92,9 +93,16 @@ func NewEmbedded(
 		return nil, fmt.Errorf("claimsync embedded: failed to detect chain type: %w", err)
 	}
 
-	appender, err := buildAppender(ethClient, bridgeAddr, deployment, logger)
+	appender, contextualAppender, err := buildAppender(ethClient, bridgeAddr, deployment, logger)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync embedded: failed to build appender: %w", err)
+	}
+	// The embedded processor exposes a plain LogAppenderMap, so its contextual handlers are bound to
+	// the constructor context.
+	for topic, fn := range contextualAppender {
+		appender[topic] = func(b *sync.EVMBlock, l types.Log) error {
+			return fn(ctx, b, l)
+		}
 	}
 
 	logger.Infof("claimsync embedded created: bridgeAddr=%s sovereign=%t",

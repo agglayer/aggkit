@@ -193,9 +193,9 @@ func TestBackfillTxnSender_BackfillAll(t *testing.T) {
 
 		// Mock the extractTxnSender function behavior (via eth_getTransactionByHash)
 		// leaf_type=1 = bridgeLeafTypeMessage, so RPCTransactionByHash is used
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+		mockClient.On("CallContext", mock.Anything, mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			// Simulate the transaction structure that would be returned
-			tx, ok := args.Get(0).(*Transaction)
+			tx, ok := args.Get(1).(*Transaction)
 			if !ok {
 				return
 			}
@@ -288,8 +288,8 @@ func TestBackfillTxnSender_backfillTable(t *testing.T) {
 
 		// Mock the extractTxnSender function behavior (via eth_getTransactionByHash)
 		// leaf_type=1 = bridgeLeafTypeMessage, so RPCTransactionByHash is used
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			tx, ok := args.Get(0).(*Transaction)
+		mockClient.On("CallContext", mock.Anything, mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+			tx, ok := args.Get(1).(*Transaction)
 			if !ok {
 				return
 			}
@@ -585,7 +585,7 @@ func mockClientCallGetTransactionByHash(t *testing.T,
 	expectedTxHash common.Hash) {
 	t.Helper()
 	const toAddress = "0x0000000000000000000000000000000000000000000"
-	mockClient.EXPECT().Call(mock.Anything, GetTransactionByHashEndpoint, mock.Anything).Run(func(result any, method string, args ...any) {
+	mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, GetTransactionByHashEndpoint, mock.Anything).Run(func(_ context.Context, result any, method string, args ...any) {
 		arg, ok := result.(*Transaction)
 		require.True(t, ok)
 		arg.FromRaw = testAddress
@@ -612,8 +612,8 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 		// txReceipt To is not bridgeAddr, so must call debugTrace
 		mockClientCallGetTransactionByHash(t, mockClient,
 			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
-		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-			Run(func(result any, method string, args ...any) {
+		mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(_ context.Context, result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
 				arg.Type = CallTypeCall
@@ -648,7 +648,7 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 		// txReceipt To is not bridgeAddr, so must call debugTrace
 		mockClientCallGetTransactionByHash(t, mockClient,
 			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
-		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
+		mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
 		ctx := context.Background()
 		records := []RecordToBackfill{
 			{
@@ -677,15 +677,15 @@ func TestBackfillTxnSender_processBatch(t *testing.T) {
 		// txReceipt To is not bridgeAddr, so must call debugTrace
 		mockClientCallGetTransactionByHash(t, mockClient,
 			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
-		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-			Run(func(result any, method string, args ...any) {
+		mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(_ context.Context, result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
 				arg.Type = CallTypeCall
 				arg.Input = BridgeAssetMethodID
 			}).Return(nil).Maybe()
-		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-			Run(func(result any, method string, args ...any) {
+		mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(_ context.Context, result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
 				arg.Type = CallTypeCall
@@ -729,8 +729,8 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		// txReceipt To is not bridgeAddr, so must call debugTrace
 		mockClientCallGetTransactionByHash(t, mockClient,
 			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
-		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-			Run(func(result any, method string, args ...any) {
+		mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(_ context.Context, result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
 				arg.Type = CallTypeCall
@@ -764,7 +764,7 @@ func TestBackfillTxnSender_extractTxnSender(t *testing.T) {
 		// txReceipt To is not bridgeAddr, so must call debugTrace
 		mockClientCallGetTransactionByHash(t, mockClient,
 			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
-		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
+		mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
 
 		txHash := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
 		sender, _, _, err := backfiller.extractData(t.Context(), txHash, &agglayerbridge.AgglayerbridgeBridgeEvent{
@@ -1049,8 +1049,8 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		// txReceipt To is not bridgeAddr, so must call debugTrace
 		mockClientCallGetTransactionByHash(t, mockClient,
 			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
-		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-			Run(func(result any, method string, args ...any) {
+		mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(_ context.Context, result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
 				arg.Type = CallTypeCall
@@ -1129,8 +1129,8 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
 		// Mock mixed results: first call succeeds, second fails
 
-		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-			Run(func(result any, method string, args ...any) {
+		mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(_ context.Context, result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
 				arg.Type = CallTypeCall
@@ -1140,7 +1140,7 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 			}).Return(nil).Once()
 
 		// Mock the second call to fail
-		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
+		mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Once()
 
 		records := []RecordToBackfill{
 			{
@@ -1211,8 +1211,8 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		mockClientCallGetTransactionByHash(t, mockClient,
 			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
 		// Mock all calls to fail
-		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(errors.New("network error")).Maybe()
+		mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).Return(errors.New("error")).Maybe()
+		mockClient.On("CallContext", mock.Anything, mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(errors.New("network error")).Maybe()
 
 		records := []RecordToBackfill{
 			{
@@ -1285,8 +1285,8 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		// txReceipt To is not bridgeAddr, so must call debugTrace
 		mockClientCallGetTransactionByHash(t, mockClient,
 			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
-		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-			Run(func(result any, method string, args ...any) {
+		mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(_ context.Context, result any, method string, args ...any) {
 				time.Sleep(10 * time.Millisecond)
 				arg, ok := result.(*Call)
 				require.True(t, ok)
@@ -1394,8 +1394,8 @@ func TestBackfillTxnSender_processBatch_Comprehensive(t *testing.T) {
 		// txReceipt To is not bridgeAddr, so must call debugTrace
 		mockClientCallGetTransactionByHash(t, mockClient,
 			common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
-		mockClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-			Run(func(result any, method string, args ...any) {
+		mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+			Run(func(_ context.Context, result any, method string, args ...any) {
 				arg, ok := result.(*Call)
 				require.True(t, ok)
 				arg.Type = CallTypeCall
@@ -1469,8 +1469,8 @@ func TestBackfillTxnSender_BackfillAll_WithDifferentRecordCounts(t *testing.T) {
 
 			// Mock successful extractions for all records
 			// leaf_type=1 = bridgeLeafTypeMessage, so RPCTransactionByHash is used
-			mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-				tx, ok := args.Get(0).(*Transaction)
+			mockClient.On("CallContext", mock.Anything, mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+				tx, ok := args.Get(1).(*Transaction)
 				if !ok {
 					return
 				}
@@ -1544,8 +1544,8 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 
 		// Mock successful extractions for all records
 		// leaf_type=1 = bridgeLeafTypeMessage, so RPCTransactionByHash is used
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-			tx, ok := args.Get(0).(*Transaction)
+		mockClient.On("CallContext", mock.Anything, mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+			tx, ok := args.Get(1).(*Transaction)
 			if !ok {
 				return
 			}
@@ -1615,7 +1615,7 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 		// Mock calls with some delay
 		// leaf_type=1 = bridgeLeafTypeMessage, so RPCTransactionByHash is used
 		var callCount int64
-		mockClient.On("Call", mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+		mockClient.On("CallContext", mock.Anything, mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 			count := atomic.AddInt64(&callCount, 1)
 			// Cancel after processing about 150 records (1.5 batches)
 			if count == 150 {
@@ -1623,7 +1623,7 @@ func TestBackfillTxnSender_MultipleBatches(t *testing.T) {
 			}
 
 			time.Sleep(1 * time.Millisecond) // Small delay to allow cancellation
-			tx, ok := args.Get(0).(*Transaction)
+			tx, ok := args.Get(1).(*Transaction)
 			if !ok {
 				return
 			}
@@ -1917,10 +1917,10 @@ func TestBackfillTxnSender_TransientLegacyErrorThenHealthy(t *testing.T) {
 
 	mockClient := mocks.NewEthClienter(t)
 	// First attempt fails with a transient transport error; the retry succeeds.
-	mockClient.EXPECT().Call(mock.Anything, GetTransactionByHashEndpoint, mock.Anything).
+	mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, GetTransactionByHashEndpoint, mock.Anything).
 		Return(errors.New("429 too many requests")).Once()
-	mockClient.EXPECT().Call(mock.Anything, GetTransactionByHashEndpoint, mock.Anything).
-		Run(func(result any, method string, args ...any) {
+	mockClient.EXPECT().CallContext(mock.Anything, mock.Anything, GetTransactionByHashEndpoint, mock.Anything).
+		Run(func(_ context.Context, result any, method string, args ...any) {
 			arg, ok := result.(*Transaction)
 			require.True(t, ok)
 			arg.FromRaw = testAddress
