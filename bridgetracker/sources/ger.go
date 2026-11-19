@@ -8,6 +8,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerger"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayergerl2"
+	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
@@ -300,29 +301,7 @@ func (s *GERSource) InjectedGERAtIndex(
 			leafIndex, bridge.DestinationNetwork, err)
 	}
 
-	// bridgeservice types.Hash is a hex string
-	ger := common.HexToHash(string(leaf.GlobalExitRoot))
-	mer := common.HexToHash(string(leaf.MainnetExitRoot))
-	rer := common.HexToHash(string(leaf.RollupExitRoot))
-
-	// leaf.BlockNumber/Timestamp are always the L1 event that produced the leaf, even for this L2
-	// lookup (see InjectedL1InfoLeafHandler) — they never describe the L2 injection block, and
-	// must not be presented as if they did (that conflation was #1818). The actual L2 injection
-	// block/timestamp, when the destination's bridge-service instance reports them, go on the
-	// separate L2BlockNumber/L2BlockTimestamp fields instead — left nil otherwise, rather than
-	// falling back to the L1 block, so WaitingGERInjectionResolver can honestly report
-	// InjectedGERResult.L2InjectedGER as absent instead of a wrong value
-	blockNumber := leaf.BlockNumber
-	timestamp := leaf.Timestamp
-	gerData := &trackertypes.GERData{
-		NetworkID:      bridge.DestinationNetwork,
-		GER:            &ger,
-		MER:            &mer,
-		RER:            &rer,
-		LERType:        trackertypes.LERTypeNA,
-		BlockNumber:    &blockNumber,
-		BlockTimestamp: &timestamp,
-	}
+	gerData := injectedLeafGERData(bridge.DestinationNetwork, leaf)
 	if leaf.InjectedL2BlockNumber != nil {
 		l2BlockNumber := *leaf.InjectedL2BlockNumber
 		gerData.L2BlockNumber = &l2BlockNumber
@@ -356,6 +335,7 @@ func (s *GERSource) InjectedGERAtIndex(
 	// configured at all; it must never fail InjectedGERAtIndex itself over this. reason always
 	// explains why, whether or not err is also set — a partial result (block found, its own
 	// timestamp resolution failed) is still worth keeping, not discarded just because err is set
+	ger := *gerData.GER
 	l2BlockNumber, l2Timestamp, reason, err := s.findL2InjectionBlockBackwards(ctx, bridge.DestinationNetwork, ger)
 	if err != nil {
 		s.logger.Warnf("finding L2 injection block for GER %s on network %d: %v",
@@ -367,30 +347,72 @@ func (s *GERSource) InjectedGERAtIndex(
 	return gerData, nil
 }
 
-// InjectedGERPresent implements domain.InjectedGERChecker: whether leafIndex (or a later leaf) is
-// still injected on bridge's destination network, per one GET injected-l1-info-leaf — unlike
-// InjectedGERAtIndex it never falls back to scanning the L2 for the injection block, so it stays
-// cheap enough to re-check a completed StepWaitingGERInjection on every tick. finalized is the
-// block_finalized the bridge service reports for the leaf (the L1 block of the leaf and the L2
-// injection block), false when omitted. A 404 is the injection gone; any other error (a 503
-// while the bridge service resolves a reorg included) is returned as is: the caller keeps the
-// step as it is and asks again later
+// InjectedGERPresent implements domain.InjectedGERChecker: the injection of leafIndex (or a later
+// leaf) still found on bridge's destination network, per one GET injected-l1-info-leaf, or nil
+// when it is gone (a 404). Unlike InjectedGERAtIndex it never falls back to scanning the L2 for
+// the injection block nor looks up its timestamp, so it stays cheap enough to re-check a
+// completed StepWaitingGERInjection on every tick: L2BlockNumber/L2BlockTimestamp are exactly
+// what the bridge service reports (nil when it does not), with L2InjectionUnresolvedReason saying
+// why when either is missing. finalized is the block_finalized the bridge service reports for the
+// leaf (the L1 block of the leaf and the L2 injection block), false when omitted. Any error other
+// than a 404 (a 503 while the bridge service resolves a reorg included) is returned as is: the
+// caller keeps the step as it is and asks again later
 func (s *GERSource) InjectedGERPresent(
 	ctx context.Context, bridge *bridgetracker.BridgeInfo, leafIndex uint32,
-) (present, finalized bool, err error) {
+) (injection *trackertypes.GERData, finalized bool, err error) {
 	svc, err := s.services.aggkitBridgeClientFor(bridge.DestinationNetwork)
 	if err != nil {
-		return false, false, err
+		return nil, false, err
 	}
 	leaf, err := svc.GetInjectedL1InfoLeaf(ctx, int(bridge.DestinationNetwork), int(leafIndex))
 	if isNotFound(err) {
-		return false, false, nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return false, false, fmt.Errorf("fetching injected L1 info leaf %d on network %d: %w",
+		return nil, false, fmt.Errorf("fetching injected L1 info leaf %d on network %d: %w",
 			leafIndex, bridge.DestinationNetwork, err)
 	}
-	return true, leaf.BlockFinalized != nil && *leaf.BlockFinalized, nil
+	injection = injectedLeafGERData(bridge.DestinationNetwork, leaf)
+	switch {
+	case leaf.InjectedL2BlockNumber == nil:
+		injection.L2InjectionUnresolvedReason = "destination bridge-service did not report the L2 injection block"
+	case leaf.InjectedL2BlockTimestamp == nil:
+		l2BlockNumber := *leaf.InjectedL2BlockNumber
+		injection.L2BlockNumber = &l2BlockNumber
+		injection.L2InjectionUnresolvedReason = fmt.Sprintf(
+			"destination bridge-service reported the L2 injection block (%d) but not its timestamp", l2BlockNumber)
+	default:
+		l2BlockNumber, l2Timestamp := *leaf.InjectedL2BlockNumber, *leaf.InjectedL2BlockTimestamp
+		injection.L2BlockNumber, injection.L2BlockTimestamp = &l2BlockNumber, &l2Timestamp
+	}
+	return injection, leaf.BlockFinalized != nil && *leaf.BlockFinalized, nil
+}
+
+// injectedLeafGERData is the GERData of leaf, a GET injected-l1-info-leaf answer for networkID,
+// without its L2 injection block: GER/MER/RER and the L1 block/timestamp of the leaf. Those are
+// always the L1 event that produced the leaf, even for an L2 lookup (see
+// InjectedL1InfoLeafHandler) — they never describe the L2 injection block, and must not be
+// presented as if they did (that conflation was #1818). The actual L2 injection block/timestamp,
+// when the destination's bridge-service instance reports them, go on the separate
+// L2BlockNumber/L2BlockTimestamp fields, set by the callers — left nil otherwise, rather than
+// falling back to the L1 block, so WaitingGERInjectionResolver can honestly report
+// InjectedGERResult.L2InjectedGER as absent instead of a wrong value
+func injectedLeafGERData(networkID uint32, leaf *bridgeservicetypes.L1InfoTreeLeafResponse) *trackertypes.GERData {
+	// bridgeservice types.Hash is a hex string
+	ger := common.HexToHash(string(leaf.GlobalExitRoot))
+	mer := common.HexToHash(string(leaf.MainnetExitRoot))
+	rer := common.HexToHash(string(leaf.RollupExitRoot))
+	blockNumber := leaf.BlockNumber
+	timestamp := leaf.Timestamp
+	return &trackertypes.GERData{
+		NetworkID:      networkID,
+		GER:            &ger,
+		MER:            &mer,
+		RER:            &rer,
+		LERType:        trackertypes.LERTypeNA,
+		BlockNumber:    &blockNumber,
+		BlockTimestamp: &timestamp,
+	}
 }
 
 // L1InfoLeafFinalized implements domain.InjectedGERChecker: whether the L1 block of the L1 info

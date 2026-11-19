@@ -56,8 +56,16 @@ func (r *WaitingGERInjectionResolver) Resolve(
 		return nil, ErrStepPending
 	}
 
-	result := &types.InjectedGERResult{
-		L1InfoTreeLeaf: types.InjectedGERL1Leaf{GER: *injected.GER},
+	return newInjectedGERResult(injected), nil
+}
+
+// newInjectedGERResult is the StepWaitingGERInjection result for injected, the GER injection
+// found on the destination network. Shared by the resolver and by ReverifySteps, which refreshes
+// the stored result when the injection moved (see replaceInjection)
+func newInjectedGERResult(injected *types.GERData) *types.InjectedGERResult {
+	result := &types.InjectedGERResult{}
+	if injected.GER != nil {
+		result.L1InfoTreeLeaf.GER = *injected.GER
 	}
 	if injected.BlockNumber != nil {
 		result.L1InfoTreeLeaf.BlockNumber = *injected.BlockNumber
@@ -72,7 +80,7 @@ func (r *WaitingGERInjectionResolver) Resolve(
 		result.L2InjectedGER.BlockTimestamp = injected.L2BlockTimestamp
 	}
 	result.L2InjectionWarning = injected.L2InjectionUnresolvedReason
-	return result, nil
+	return result
 }
 
 func (r *WaitingGERInjectionResolver) getLeafIndexFromPreviousStep(

@@ -82,10 +82,14 @@ func (r *reorgFacts) sources(t *testing.T, f *fakeSources) EngineSources {
 
 	injected := domainmocks.NewInjectedGERChecker(t)
 	injected.EXPECT().InjectedGERPresent(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(context.Context, *domain.BridgeInfo, uint32) (bool, bool, error) {
+		func(context.Context, *domain.BridgeInfo, uint32) (*types.GERData, bool, error) {
 			r.mu.Lock()
 			defer r.mu.Unlock()
-			return !r.injectedGone, r.injectedFinal, r.injectedErr
+			if r.injectedGone {
+				return nil, r.injectedFinal, r.injectedErr
+			}
+			// where it is is not reported: never told moved, the stored injection stays
+			return &types.GERData{}, r.injectedFinal, r.injectedErr
 		}).Maybe()
 	injected.EXPECT().L1InfoLeafFinalized(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
 		func(context.Context, *domain.BridgeInfo, uint32) (bool, error) {

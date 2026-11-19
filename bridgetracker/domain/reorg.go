@@ -2,6 +2,8 @@ package domain
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
@@ -45,10 +47,16 @@ type OriginBlockSource interface {
 // injected-l1-info-leaf, one request per call. Unlike
 // WaitingGERInjectionSource.InjectedGERAtIndex it never scans the L2 for the injection block
 type InjectedGERChecker interface {
-	// InjectedGERPresent re-checks a completed StepWaitingGERInjection: it reports whether
-	// leafIndex (or a later leaf) is still injected on bridge's destination network, and whether
-	// the bridge service reports that injection as final (block_finalized true)
-	InjectedGERPresent(ctx context.Context, bridge *BridgeInfo, leafIndex uint32) (present, finalized bool, err error)
+	// InjectedGERPresent re-checks a completed StepWaitingGERInjection: it returns the injection
+	// of leafIndex (or a later leaf) still found on bridge's destination network, nil when it is
+	// gone, and whether the bridge service reports it as final (block_finalized true). The
+	// injection carries where it is now (GER, L2BlockNumber/L2BlockTimestamp as the bridge service
+	// reports them, nil when it does not, with L2InjectionUnresolvedReason saying why), so a
+	// re-inclusion in another block is seen and the stored result refreshed (see
+	// injectionMoved)
+	InjectedGERPresent(
+		ctx context.Context, bridge *BridgeInfo, leafIndex uint32,
+	) (injection *types.GERData, finalized bool, err error)
 	// L1InfoLeafFinalized reports whether the bridge service that answered
 	// L1InfoLeafAvailableSource.L1InfoTreeIndexForBridge for bridge reports the L1 block of the
 	// L1 info tree leaf leafIndex as final (network_id 0, block_finalized true). False when it
@@ -270,6 +278,7 @@ func reverifyReadiness(
 			continue
 		}
 		var present, final bool
+		var injection *types.GERData
 		var err error
 		switch step.Step {
 		case types.StepWaitingGERInjection:
@@ -277,7 +286,8 @@ func reverifyReadiness(
 			if idxErr != nil {
 				continue // inconsistent read: there is no leaf to re-check
 			}
-			present, final, err = checkers.InjectedGERs.InjectedGERPresent(ctx, info, leafIndex)
+			injection, final, err = checkers.InjectedGERs.InjectedGERPresent(ctx, info, leafIndex)
+			present = injection != nil
 		case types.StepWaitingL1InfoLeafAvailable:
 			var index *uint32
 			index, err = checkers.Leaves.L1InfoTreeIndexForBridge(ctx, info)
@@ -297,6 +307,15 @@ func reverifyReadiness(
 			logger.Infof("%s: %s is gone (reorg): back to it", id, step.Step)
 			return rewindTo(NewTrackingData(id, tracking.BridgeTx(), steps), i, now)
 		}
+		// a destination reorg may have re-included the injection in another block (or a later
+		// leaf's injection now covers the bridge) before this tick: the stored result is
+		// refreshed first, so a step frozen final never keeps the orphaned block and timestamp
+		if step.Step == types.StepWaitingGERInjection && injectionMoved(step.ResultInjectedGer, injection) {
+			logger.Infof("%s: the GER injection moved (%s) to %s", id,
+				describeInjection(step.ResultInjectedGer), describeInjection(newInjectedGERResult(injection)))
+			changed = true
+			steps[i] = replaceInjection(step, injection, now)
+		}
 		if final {
 			changed = true
 			steps[i].BlockFinalized = true
@@ -308,6 +327,65 @@ func reverifyReadiness(
 		}
 	}
 	return updated()
+}
+
+// injectionMoved reports whether injection, the GER injection the bridge service reports now,
+// is not the one stored: another GER (a later leaf's injection now covers the bridge), or another
+// L2 block or block timestamp (re-included elsewhere by a destination reorg; a re-inclusion at
+// the same height lands in another block whose timestamp may differ). What the bridge service
+// does not report (no L2 block, no timestamp) cannot tell a move and is never compared
+func injectionMoved(stored *types.InjectedGERResult, injection *types.GERData) bool {
+	if stored == nil || injection == nil {
+		return false
+	}
+	if injection.GER != nil && *injection.GER != stored.L1InfoTreeLeaf.GER {
+		return true
+	}
+	if injection.L2BlockNumber == nil {
+		return false
+	}
+	if stored.L2InjectedGER == nil || stored.L2InjectedGER.BlockNumber != *injection.L2BlockNumber {
+		return true
+	}
+	return injection.L2BlockTimestamp != nil && (stored.L2InjectedGER.BlockTimestamp == nil ||
+		*stored.L2InjectedGER.BlockTimestamp != *injection.L2BlockTimestamp)
+}
+
+// replaceInjection returns step, a Done StepWaitingGERInjection, with injection as its result in
+// place of the one it had, not final, and its EndDate and warning set the way
+// WaitingGERInjectionResolver sets them when the step completes: the L2 injection block's own
+// timestamp (now when not reported) and the reason the L2 block or timestamp is unknown, if any.
+// StartDate is kept: it is when the step was opened, not a fact of the injection
+func replaceInjection(step BridgeStepPath, injection *types.GERData, now time.Time) BridgeStepPath {
+	result := newInjectedGERResult(injection)
+	resolver := &WaitingGERInjectionResolver{}
+	step.SetResult(result)
+	step.BlockFinalized = false
+	endDate := now
+	if d := resolver.EndDate(result); d != nil {
+		endDate = *d
+	}
+	step.EndDate = &endDate
+	step.Error = nil
+	if w := resolver.Warning(result); w != nil {
+		step.Error = &types.ErrorStep{ErrorType: types.StepErrorWarning, Description: []string{*w}}
+	}
+	return step
+}
+
+// describeInjection renders where result says the GER was injected, for the logs
+func describeInjection(result *types.InjectedGERResult) string {
+	if result == nil {
+		return "unknown"
+	}
+	if result.L2InjectedGER == nil {
+		return fmt.Sprintf("GER %s, L2 block unknown", result.L1InfoTreeLeaf.GER)
+	}
+	ts := "unknown"
+	if result.L2InjectedGER.BlockTimestamp != nil {
+		ts = strconv.FormatUint(*result.L2InjectedGER.BlockTimestamp, 10)
+	}
+	return fmt.Sprintf("GER %s, L2 block %d, ts %s", result.L1InfoTreeLeaf.GER, result.L2InjectedGER.BlockNumber, ts)
 }
 
 // sameLeafIndex reports whether leafIndex, the leaf the bridge service answers now, is the one

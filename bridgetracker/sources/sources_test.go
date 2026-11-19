@@ -924,31 +924,46 @@ func TestClaimSourceClaimFor(t *testing.T) {
 }
 
 // TestGERSourceInjectedGERPresent pins the cheap re-check of a completed GER injection (#1970):
-// one injected-l1-info-leaf request, no L2 scan; a 404 is "gone", a 503 (reorg being resolved by
-// the bridge service) is an error the caller keeps the step through
+// one injected-l1-info-leaf request, no L2 scan nor header lookup; a 404 is "gone", a 503 (reorg
+// being resolved by the bridge service) is an error the caller keeps the step through. The
+// injection carries where the bridge service says it is now, so a re-inclusion elsewhere is seen
 func TestGERSourceInjectedGERPresent(t *testing.T) {
 	fake := &fakeBridgeService{}
-	// strict mock without expectations: the L2 must never be scanned here
+	// strict mock without expectations: the L2 must never be scanned nor asked for a header here
 	source := NewGERSource(fake.start(t), StaticClients{1: mocks.NewBaseEthereumClienter(t)}, common.Address{},
 		aggkittypes.FinalizedBlock, nil, 0, log.WithFields("module", "sources_test"))
 
-	present, finalized, err := source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	injection, finalized, err := source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
 	require.NoError(t, err)
-	require.False(t, present)
+	require.Nil(t, injection)
 	require.False(t, finalized)
 	require.Equal(t, "42", fake.lastLeafIndexQuery)
 	require.Equal(t, "1", fake.lastNetworkIDQuery)
 
 	fake.injectedLeaf = map[string]any{"l1_info_tree_index": 42, "global_exit_root": "0x0a"}
-	present, finalized, err = source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	injection, finalized, err = source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
 	require.NoError(t, err)
-	require.True(t, present)
+	require.NotNil(t, injection)
+	require.Equal(t, common.HexToHash("0x0a"), *injection.GER)
+	require.Nil(t, injection.L2BlockNumber, "L2 block not reported: unknown, never the L1 block")
+	require.Nil(t, injection.L2BlockTimestamp)
+	require.NotEmpty(t, injection.L2InjectionUnresolvedReason)
 	require.False(t, finalized, "block_finalized omitted: not final")
 
-	fake.injectedLeaf["block_finalized"] = true
-	present, finalized, err = source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	fake.injectedLeaf["injected_l2_block_num"] = 2005
+	injection, _, err = source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
 	require.NoError(t, err)
-	require.True(t, present)
+	require.Equal(t, uint64(2005), *injection.L2BlockNumber)
+	require.Nil(t, injection.L2BlockTimestamp, "timestamp not reported: not looked up")
+	require.Contains(t, injection.L2InjectionUnresolvedReason, "2005")
+
+	fake.injectedLeaf["injected_l2_block_timestamp"] = 1700002007
+	fake.injectedLeaf["block_finalized"] = true
+	injection, finalized, err = source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2005), *injection.L2BlockNumber)
+	require.Equal(t, uint64(1700002007), *injection.L2BlockTimestamp)
+	require.Empty(t, injection.L2InjectionUnresolvedReason)
 	require.True(t, finalized)
 
 	fake.injectedLeafStatus = http.StatusServiceUnavailable

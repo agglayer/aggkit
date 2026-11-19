@@ -169,7 +169,8 @@ func finalReorgPorts() (*domainmocks.OriginBlockSource, *finalitymocks.Resolver,
 	finality.EXPECT().IsFinal(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(true, nil).Maybe()
 	injected := &domainmocks.InjectedGERChecker{}
-	injected.EXPECT().InjectedGERPresent(mock.Anything, mock.Anything, mock.Anything).Return(true, true, nil).Maybe()
+	injected.EXPECT().InjectedGERPresent(mock.Anything, mock.Anything, mock.Anything).
+		Return(&types.GERData{}, true, nil).Maybe()
 	injected.EXPECT().L1InfoLeafFinalized(mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
 	return origin, finality, injected
 }

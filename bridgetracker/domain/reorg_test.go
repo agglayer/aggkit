@@ -110,6 +110,12 @@ func trackingAt(bridgeType types.BridgeType, current types.BridgeStep, claimDone
 		domain.TrackingID{NetworkID: info.NetworkID, TxHash: reorgTxHash}, domain.TrackingBridgeTx{Info: info}, steps)
 }
 
+// stillInjected is an InjectedGERPresent answer that the injection is still there, reporting
+// nothing about where (no GER, no L2 block): it can never be told moved, the stored result stays
+func stillInjected() *types.GERData {
+	return &types.GERData{}
+}
+
 func claimedTracking(bridgeType types.BridgeType) *domain.TrackingData {
 	return trackingAt(bridgeType, types.StepClaimed, true)
 }
@@ -171,7 +177,8 @@ func readinessStep(bridgeType types.BridgeType) types.BridgeStep {
 // that everything is still there, not final
 func (c *reorgCheckers) expectReadinessPresent(bridgeType types.BridgeType) {
 	if bridgeType != types.BridgeTypeL2ToL1 {
-		c.injected.EXPECT().InjectedGERPresent(mock.Anything, mock.Anything, uint32(5)).Return(true, false, nil).Once()
+		c.injected.EXPECT().InjectedGERPresent(mock.Anything, mock.Anything, uint32(5)).
+			Return(stillInjected(), false, nil).Once()
 	}
 	index := uint32(5)
 	c.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, mock.Anything).Return(&index, nil).Once()
@@ -283,7 +290,7 @@ func TestReverifyStepsClaimAndReadinessGoneBackToPending(t *testing.T) {
 				checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).Return(nil, nil).Once()
 			} else {
 				checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), uint32(5)).
-					Return(false, false, nil).Once()
+					Return(nil, false, nil).Once()
 			}
 
 			updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
@@ -303,7 +310,7 @@ func TestReverifyStepsReadyToClaimInjectionOrLeafGone(t *testing.T) {
 				checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).Return(nil, nil).Once()
 			} else {
 				checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), uint32(5)).
-					Return(false, false, nil).Once()
+					Return(nil, false, nil).Once()
 			}
 
 			updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
@@ -317,7 +324,7 @@ func TestReverifyStepsReadyToClaimInjectionOrLeafGone(t *testing.T) {
 			checkers := newReorgCheckers(t)
 			tracking := trackingAt(bridgeType, types.StepWaitingClaim, false)
 			checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), uint32(5)).
-				Return(true, false, nil).Once()
+				Return(stillInjected(), false, nil).Once()
 			checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).Return(nil, nil).Once()
 
 			updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
@@ -344,7 +351,8 @@ func TestReverifyStepsReadyToClaimStillThere(t *testing.T) {
 func TestReverifyStepsFinalInjectionIsNotCheckedAgain(t *testing.T) {
 	checkers := newReorgCheckers(t)
 	tracking := trackingAt(types.BridgeTypeL1ToL2, types.StepWaitingClaim, false)
-	checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), uint32(5)).Return(true, true, nil).Once()
+	checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), uint32(5)).
+		Return(stillInjected(), true, nil).Once()
 
 	updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
 	require.True(t, stepOf(t, updated, types.StepWaitingGERInjection).BlockFinalized)
@@ -354,6 +362,128 @@ func TestReverifyStepsFinalInjectionIsNotCheckedAgain(t *testing.T) {
 	// strict mocks: no further expectation, any check would fail the test
 	again := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), updated, reorgNow)
 	require.Same(t, updated, again)
+}
+
+// TestReverifyStepsInjectionReincludedElsewhere pins that a GER injection a destination reorg
+// re-included in another block (or at the same height in a block with another timestamp) before
+// the tick has its stored result and dates refreshed before the step is marked final, so the
+// snapshots never keep the orphaned block number and timestamp
+func TestReverifyStepsInjectionReincludedElsewhere(t *testing.T) {
+	ger := common.HexToHash("0x9e")
+	storedTs := uint64(1700002000)
+	// trackingWithInjection is a readyToClaim L1 -> L2 tracking whose injection was found at L2
+	// block 2000 (ts storedTs)
+	trackingWithInjection := func() *domain.TrackingData {
+		tracking := trackingAt(types.BridgeTypeL1ToL2, types.StepWaitingClaim, false)
+		steps := append([]domain.BridgeStepPath(nil), tracking.AllSteps()...)
+		for i := range steps {
+			if steps[i].Step == types.StepWaitingGERInjection {
+				ts := storedTs
+				steps[i].SetResult(&types.InjectedGERResult{
+					L1InfoTreeLeaf: types.InjectedGERL1Leaf{GER: ger, BlockNumber: 100, BlockTimestamp: 1700000100},
+					L2InjectedGER:  &types.InjectedL2GERBlock{BlockNumber: 2000, BlockTimestamp: &ts},
+				})
+				end := time.Unix(int64(storedTs), 0).UTC()
+				steps[i].EndDate = &end
+			}
+		}
+		return domain.NewTrackingData(tracking.ID(), tracking.BridgeTx(), steps)
+	}
+	injectionAt := func(l2Block uint64, l2Ts *uint64, reason string) *types.GERData {
+		l1Block, l1Ts := uint64(100), uint64(1700000100)
+		return &types.GERData{
+			GER: &ger, BlockNumber: &l1Block, BlockTimestamp: &l1Ts,
+			L2BlockNumber: &l2Block, L2BlockTimestamp: l2Ts, L2InjectionUnresolvedReason: reason,
+		}
+	}
+	u64 := func(v uint64) *uint64 { return &v }
+
+	t.Run("another block, reported final: refreshed, then final", func(t *testing.T) {
+		checkers := newReorgCheckers(t)
+		tracking := trackingWithInjection()
+		checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), uint32(5)).
+			Return(injectionAt(2005, u64(1700002007), ""), true, nil).Once()
+
+		updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
+		injection := stepOf(t, updated, types.StepWaitingGERInjection)
+		require.Equal(t, uint64(2005), injection.ResultInjectedGer.L2InjectedGER.BlockNumber)
+		require.Equal(t, uint64(1700002007), *injection.ResultInjectedGer.L2InjectedGER.BlockTimestamp)
+		require.Equal(t, time.Unix(1700002007, 0).UTC(), *injection.EndDate)
+		require.Equal(t, stepOf(t, tracking, types.StepWaitingGERInjection).StartDate, injection.StartDate)
+		require.Nil(t, injection.Error)
+		require.True(t, injection.BlockFinalized)
+		require.True(t, stepOf(t, updated, types.StepWaitingL1InfoLeafAvailable).BlockFinalized)
+		require.Equal(t, types.StepWaitingClaim, currentStepOf(t, updated))
+		require.Equal(t, uint64(2000), stepOf(t, tracking, types.StepWaitingGERInjection).
+			ResultInjectedGer.L2InjectedGER.BlockNumber, "the previous snapshot is never modified in place")
+	})
+
+	t.Run("same height, another timestamp, not final: refreshed", func(t *testing.T) {
+		checkers := newReorgCheckers(t)
+		tracking := trackingWithInjection()
+		checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), uint32(5)).
+			Return(injectionAt(2000, u64(1700002003), ""), false, nil).Once()
+		index := uint32(5)
+		checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).Return(&index, nil).Once()
+
+		updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
+		injection := stepOf(t, updated, types.StepWaitingGERInjection)
+		require.Equal(t, uint64(1700002003), *injection.ResultInjectedGer.L2InjectedGER.BlockTimestamp)
+		require.Equal(t, time.Unix(1700002003, 0).UTC(), *injection.EndDate)
+		require.False(t, injection.BlockFinalized)
+	})
+
+	t.Run("another block, timestamp not reported: refreshed with the warning", func(t *testing.T) {
+		checkers := newReorgCheckers(t)
+		tracking := trackingWithInjection()
+		const reason = "destination bridge-service reported the L2 injection block (2005) but not its timestamp"
+		checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), uint32(5)).
+			Return(injectionAt(2005, nil, reason), true, nil).Once()
+
+		updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
+		injection := stepOf(t, updated, types.StepWaitingGERInjection)
+		require.Equal(t, uint64(2005), injection.ResultInjectedGer.L2InjectedGER.BlockNumber)
+		require.Nil(t, injection.ResultInjectedGer.L2InjectedGER.BlockTimestamp)
+		require.Equal(t, reorgNow, *injection.EndDate, "no orphaned timestamp kept: now, as when the step completes")
+		require.NotNil(t, injection.Error)
+		require.Equal(t, types.StepErrorWarning, injection.Error.ErrorType)
+		require.Equal(t, []string{reason}, injection.Error.Description)
+		require.Equal(t, types.StepStatusDone, injection.Status)
+		require.True(t, injection.BlockFinalized)
+	})
+
+	t.Run("same place, or location not reported: kept as is", func(t *testing.T) {
+		for name, answer := range map[string]*types.GERData{
+			"same block and timestamp": injectionAt(2000, u64(storedTs), ""),
+			"timestamp not reported":   injectionAt(2000, nil, "no timestamp"),
+			"L2 block not reported":    {GER: &ger, L2InjectionUnresolvedReason: "no L2 block"},
+		} {
+			t.Run(name, func(t *testing.T) {
+				checkers := newReorgCheckers(t)
+				tracking := trackingWithInjection()
+				checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), uint32(5)).
+					Return(answer, false, nil).Once()
+				index := uint32(5)
+				checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).Return(&index, nil).Once()
+
+				require.Same(t, tracking,
+					domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow))
+			})
+		}
+	})
+
+	t.Run("another GER now covers the bridge: refreshed", func(t *testing.T) {
+		checkers := newReorgCheckers(t)
+		tracking := trackingWithInjection()
+		later := common.HexToHash("0x9f")
+		answer := injectionAt(2000, u64(storedTs), "")
+		answer.GER = &later
+		checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), uint32(5)).
+			Return(answer, true, nil).Once()
+
+		updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
+		require.Equal(t, later, stepOf(t, updated, types.StepWaitingGERInjection).ResultInjectedGer.L1InfoTreeLeaf.GER)
+	})
 }
 
 // TestReverifyStepsL2ToL1LeafFinality pins #1987: on the path with no GER injection step the L1
@@ -472,7 +602,7 @@ func TestReverifyStepsLeafFinalityOnlyWithoutInjectionStep(t *testing.T) {
 			index := uint32(5)
 			const ticks = 3
 			checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), index).
-				Return(true, false, nil).Times(ticks)
+				Return(stillInjected(), false, nil).Times(ticks)
 			checkers.leaves.EXPECT().L1InfoTreeIndexForBridge(mock.Anything, tracking.Info()).Return(&index, nil).Times(ticks)
 
 			for range ticks {
@@ -485,7 +615,7 @@ func TestReverifyStepsLeafFinalityOnlyWithoutInjectionStep(t *testing.T) {
 			checkers := newReorgCheckers(t)
 			tracking := trackingAt(bridgeType, types.StepWaitingClaim, false)
 			checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, tracking.Info(), uint32(5)).
-				Return(true, true, nil).Once()
+				Return(stillInjected(), true, nil).Once()
 
 			updated := domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow)
 			require.True(t, stepOf(t, updated, types.StepWaitingGERInjection).BlockFinalized)
@@ -528,7 +658,7 @@ func TestReverifyStepsTransientErrorsKeepState(t *testing.T) {
 		checkers := newReorgCheckers(t)
 		tracking := trackingAt(types.BridgeTypeL2ToL2, types.StepWaitingClaim, false)
 		checkers.injected.EXPECT().InjectedGERPresent(mock.Anything, mock.Anything, uint32(5)).
-			Return(false, false, errReorgInProgress).Once()
+			Return(nil, false, errReorgInProgress).Once()
 
 		require.Same(t, tracking, domain.ReverifySteps(t.Context(), reorgLogger, checkers.ports(), tracking, reorgNow))
 	})
