@@ -113,3 +113,9 @@ func (dh *EVMMultidownloader) GetReorgedDataByReorgID(ctx context.Context,
 	reorgID uint64) (*mdrtypes.ReorgData, error) {
 	return dh.storage.GetReorgedDataByReorgID(nil, reorgID)
 }
+
+// GetLastReorgData returns the most recent reorg detected by the multidownloader,
+// or nil if no reorg has been detected yet.
+func (dh *EVMMultidownloader) GetLastReorgData(ctx context.Context) (*mdrtypes.ReorgData, error) {
+	return dh.storage.GetLastReorgData(nil)
+}

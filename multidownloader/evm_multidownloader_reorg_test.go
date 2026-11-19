@@ -346,3 +346,21 @@ func TestEVMMultidownloader_GetReorgedDataByReorgID(t *testing.T) {
 		require.Nil(t, result)
 	})
 }
+
+func TestEVMMultidownloader_GetLastReorgData(t *testing.T) {
+	testData := newEVMMultidownloaderTestData(t, true)
+	expectedReorgData := &mdrtypes.ReorgData{
+		ReorgID:            42,
+		BlockRangeAffected: aggkitcommon.NewBlockRange(100, 200),
+	}
+	testData.mockStorage.EXPECT().GetLastReorgData(mock.Anything).Return(expectedReorgData, nil).Once()
+
+	result, err := testData.mdr.GetLastReorgData(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, expectedReorgData, result)
+
+	expectedErr := fmt.Errorf("database error")
+	testData.mockStorage.EXPECT().GetLastReorgData(mock.Anything).Return(nil, expectedErr).Once()
+	_, err = testData.mdr.GetLastReorgData(context.Background())
+	require.ErrorIs(t, err, expectedErr)
+}

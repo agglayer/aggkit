@@ -2,9 +2,10 @@
 
 > **Status — initial integration scope for issue #1224.** This page describes the normative
 > behaviour of the L1 shared downloader ("multidownloader") and of the optional
-> transaction-inclusion support for the L1 synchronizers. The initial scope **retains the legacy
-> sync drivers**: they are not replaced. The source implementation for this initial scope is
-> complete locally; real-node end-to-end validation is handled separately and is not claimed here.
+> transaction-inclusion support for the L1 synchronizers. A synchronizer that selects the
+> multidownloader runs on the **native multidownloader sync driver**, which also relies on the
+> multidownloader to detect reorgs; the legacy sync driver and the legacy reorg detector are only
+> used by the synchronizers that select `legacy`. The source implementation is complete locally; real-node end-to-end validation is handled separately and is not claimed here.
 
 ## Overview
 
@@ -13,7 +14,9 @@ Aggkit can download L1 blocks and logs for the L1 synchronizers in two ways:
 - **Legacy** (`legacy`, the default): each synchronizer uses its own dedicated EVM downloader,
   as it does today.
 - **Multidownloader** (`multidownloader`): the L1 synchronizers share the L1 multidownloader
-  service, which downloads block headers and logs once and serves them to every L1 consumer.
+  service, which downloads block headers and logs once and serves them to every L1 consumer. The
+  multidownloader is also the one that detects the reorgs and tracks the finality of the blocks
+  for them (see [Reorg tracking](#reorg-tracking)).
 
 The two L1 synchronizers — the L1 bridge syncer and the L1 claim syncer — select the backend
 **independently**:
@@ -218,13 +221,43 @@ requirement is future-only and starts at `L + 1` (see above); the log coverage i
 
 ## Reorg tracking
 
-- Reorg tracking stays with the current drivers, which keep using the **current legacy reorg
-  detector**; the multidownloader is used as the shared download backend.
-- The **bridge** syncer's **post-commit subscriptions are preserved**.
-- The **claim** syncer's **lazy/bootstrap** behaviour is preserved.
-- This is **not** a migration to a native multidownloader reorg driver.
+A syncer that selects the multidownloader does **not** use the legacy reorg detector: it runs on
+the native multidownloader sync driver, so the multidownloader is the single source of truth for
+the data it downloads, for the reorgs and for the finality of the blocks.
+
+- **Detection.** Before and after downloading each range, the driver asks the multidownloader
+  whether the last block the syncer processed (number and hash) is still valid. If the
+  multidownloader moved it to its reorged blocks, the syncer rolls back from the first block of
+  that reorg and syncs the new blocks. A last processed block without a stored hash (rows written
+  before the hash was stored, or the empty block that closes a finalized range) cannot be checked.
+- **Finality.** `IsBlockFinalized` is answered with the finality flag the multidownloader stores
+  for the block with that number **and** hash, instead of the blocks tracked by the reorg detector.
+- **Last reorg.** The bridge service `last-reorg-event` endpoint reports, for L1, the last reorg
+  the multidownloader detected.
+- **Stale logs.** If a downloaded bridge log belongs to a block that was reorged away and the
+  multidownloader has not replaced it yet (`ErrTransactionInclusionMismatch`), the syncer discards
+  the range, waits `RetryAfterErrorPeriod` and downloads it again.
+- The **bridge** syncer's **post-commit subscriptions are preserved**: each block is committed and
+  notified one by one.
+- The **claim** syncer's **lazy/bootstrap** behaviour is preserved: with `AutoStart = false` it
+  waits for the explicit bootstrap block, which is served by the multidownloader, and continues
+  from the block after it.
 - Reorged rows — including transaction inclusions — are removed together with the affected blocks
   and logs.
+
+**Migration note.** When a syncer is switched from `legacy` to `multidownloader`:
+
+- The blocks it was tracking in the L1 reorg detector are removed on start, so the reorg detector
+  never notifies a syncer that no longer listens to it.
+- Its last processed block was downloaded by the legacy downloader and may be unknown to the
+  multidownloader. If it is at or below the finalized block it is validated against L1 by hash;
+  if it is above, the syncer waits (logging an error on each retry) until the multidownloader
+  stores that block or it becomes final. If the multidownloader stores a **different** block at
+  that height (a reorg that happened right at the switch), the syncer cannot resolve it on its
+  own and it needs a manual intervention, as it already happens with the L1 info tree syncer.
+
+The L2 syncers, and the L1 syncers that select `legacy`, keep using the legacy sync driver and
+the reorg detector.
 
 ## Minimal TOML examples
 
@@ -287,4 +320,3 @@ make build
   rewrite existing consumer rows. (Resolving older logs on demand is supported; see above.)
 - A shared trace cache.
 - Live (no-restart) hot update of transaction requirements.
-- Migrating to a native multidownloader reorg driver.

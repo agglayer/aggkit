@@ -13,9 +13,9 @@ import (
 	claimsyncStorage "github.com/agglayer/aggkit/claimsync/storage"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
+	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -35,15 +35,25 @@ var ErrMultidownloaderDepsMissing = errors.New(
 
 // ClaimSync is the standalone implementation that independently processes claim events.
 type ClaimSync struct {
-	processor     *processor
-	driver        *sync.EVMDriver
-	reader        claimsynctypes.ClaimsReader
+	processor *processor
+	driver    syncDriver
+	reader    claimsynctypes.ClaimsReader
+	// reorgDetector is only set for the legacy syncer
 	reorgDetector sync.ReorgDetector
-	ethClient     aggkittypes.EthClienter
-	logger        aggkitcommon.Logger
-	originNetwork uint32
-	syncerID      claimsynctypes.ClaimSyncerID
-	cfg           ConfigStandalone
+	// multidownloader is only set when synced through the multidownloader, which is the one that
+	// detects the reorgs and tracks the finality of the blocks
+	multidownloader MultidownloaderBackend
+	ethClient       aggkittypes.EthClienter
+	logger          aggkitcommon.Logger
+	originNetwork   uint32
+	syncerID        claimsynctypes.ClaimSyncerID
+	cfg             ConfigStandalone
+}
+
+// syncDriver is the driver that runs the synchronization loop
+type syncDriver interface {
+	Sync(ctx context.Context, firstBlockNumber *uint64)
+	SyncNextBlock(ctx context.Context, blockNum uint64) error
 }
 
 // NewStandaloneClaimSync creates a standalone ClaimSync that indexes claim events from the bridge
@@ -67,41 +77,7 @@ func NewStandaloneClaimSync(
 		return nil, fmt.Errorf("claimsync: %w: Downloader=%s requires NewStandaloneClaimSyncWithDownloader",
 			ErrMultidownloaderDepsMissing, cfg.Downloader)
 	}
-	return newClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger, nil)
-}
-
-// NewStandaloneClaimSyncWithDownloader creates a standalone ClaimSync that downloads logs through
-// the shared multidownloader. Claims do not need transaction data, so only the downloader backend is
-// required (no transaction provider).
-//
-// It requires cfg.Downloader to select the multidownloader, backend to be non-nil and the syncer to
-// be the L1 claim syncer; the multidownloader is not supported for the L2 claims. The syncer is
-// registered into the backend synchronously, before the backend is initialized/started.
-func NewStandaloneClaimSyncWithDownloader(
-	ctx context.Context,
-	cfg ConfigStandalone,
-	rd sync.ReorgDetector,
-	ethClient aggkittypes.EthClienter,
-	syncerID claimsynctypes.ClaimSyncerID,
-	originNetwork uint32,
-	backend aggkittypes.MultiDownloaderLegacy,
-) (*ClaimSync, error) {
-	if err := cfg.Downloader.Validate(); err != nil {
-		return nil, fmt.Errorf("claimsync: invalid Downloader configuration: %w", err)
-	}
-	if !cfg.Downloader.IsMultidownloader() {
-		return nil, fmt.Errorf("claimsync: NewStandaloneClaimSyncWithDownloader requires Downloader=%s, got %q",
-			cfgtypes.Multidownloader, cfg.Downloader)
-	}
-	if backend == nil {
-		return nil, fmt.Errorf("claimsync: %w: backend is nil", ErrMultidownloaderDepsMissing)
-	}
-	if syncerID != claimsynctypes.L1ClaimSyncer {
-		return nil, fmt.Errorf("claimsync: multidownloader is only supported for the L1 claim syncer, got %s", syncerID)
-	}
-	logger := log.WithFields("module", syncerID.String())
-	return newClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger,
-		&claimMultidownloaderDeps{backend: backend})
+	return newClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger)
 }
 
 // NewClaimSync creates a standalone ClaimSync that indexes claim events from the bridge contract
@@ -122,13 +98,7 @@ func NewClaimSync(
 		return nil, fmt.Errorf("claimsync: %w: Downloader=%s requires NewStandaloneClaimSyncWithDownloader",
 			ErrMultidownloaderDepsMissing, cfg.Downloader)
 	}
-	return newClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger, nil)
-}
-
-// claimMultidownloaderDeps groups the explicit multidownloader dependencies. A nil value means the
-// legacy downloader is used.
-type claimMultidownloaderDeps struct {
-	backend aggkittypes.MultiDownloaderLegacy
+	return newClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger)
 }
 
 func newClaimSync(
@@ -139,36 +109,13 @@ func newClaimSync(
 	originNetwork uint32,
 	syncerID claimsynctypes.ClaimSyncerID,
 	logger aggkitcommon.Logger,
-	deps *claimMultidownloaderDeps,
 ) (*ClaimSync, error) {
-	dbQueryTimeout := cfg.DBQueryTimeout.Duration
-	if dbQueryTimeout == 0 {
-		dbQueryTimeout = defaultDBTimeout
-	}
-	store, err := claimsyncStorage.NewStandalone(logger, cfg.DBPath, syncerID.String(), cfg.DBQueryTimeout.Duration)
+	store, proc, err := newStorageAndProcessor(cfg, syncerID, logger)
 	if err != nil {
-		return nil, fmt.Errorf("claimsync: failed to create storage: %w", err)
+		return nil, err
 	}
 
-	proc := newProcessor(logger, store, dbQueryTimeout)
-
-	// Register the syncer in the multidownloader synchronously, before the backend is initialized.
-	// Claims never need transaction data, so no transaction requirement is registered.
-	var mdBackend aggkittypes.MultiDownloaderLegacy = sync.NewAdapterEthClientToMultidownloader(ethClient)
-	if deps != nil {
-		syncerConfig := aggkittypes.SyncerConfig{
-			SyncerID:          syncerID.String(),
-			ContractAddresses: []common.Address{cfg.BridgeAddr},
-			FromBlock:         cfg.InitialBlockNum,
-			ToBlock:           cfg.BlockFinality,
-		}
-		if err := deps.backend.RegisterSyncer(syncerConfig); err != nil {
-			return nil, fmt.Errorf("claimsync: failed to register %s in multidownloader: %w", syncerID, err)
-		}
-		logger.Infof("claimsync: registered %s in multidownloader: blockFinality=%s fromBlock=%d",
-			syncerID, cfg.BlockFinality.String(), cfg.InitialBlockNum)
-		mdBackend = deps.backend
-	}
+	mdBackend := sync.NewAdapterEthClientToMultidownloader(ethClient)
 
 	deployment, err := resolveBridgeDeployment(ctx, cfg.BridgeAddr, ethClient)
 	if err != nil {
@@ -238,6 +185,24 @@ func newClaimSync(
 		syncerID:      syncerID,
 		cfg:           cfg,
 	}, nil
+}
+
+// newStorageAndProcessor creates the storage of the syncer and the processor over it
+func newStorageAndProcessor(
+	cfg ConfigStandalone,
+	syncerID claimsynctypes.ClaimSyncerID,
+	logger aggkitcommon.Logger,
+) (claimsynctypes.ClaimStorager, *processor, error) {
+	dbQueryTimeout := cfg.DBQueryTimeout.Duration
+	if dbQueryTimeout == 0 {
+		dbQueryTimeout = defaultDBTimeout
+	}
+	store, err := claimsyncStorage.NewStandalone(logger, cfg.DBPath, syncerID.String(), cfg.DBQueryTimeout.Duration)
+	if err != nil {
+		return nil, nil, fmt.Errorf("claimsync: failed to create storage: %w", err)
+	}
+
+	return store, newProcessor(logger, store, dbQueryTimeout), nil
 }
 
 // Start starts the synchronization process.
@@ -481,7 +446,9 @@ func (c *ClaimSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Ha
 }
 
 // IsBlockFinalized reports whether the block with the given number and hash, as read from this syncer,
-// is finalized, i.e. it can no longer be reorged. The syncer has no finality flag, but the reorg detector
+// is finalized, i.e. it can no longer be reorged.
+// With the multidownloader, it is the IsFinal flag the multidownloader stores for the block with that hash.
+// The legacy syncer has no finality flag, but the reorg detector
 // tracks every block that was not final when processed and only stops tracking it once its hash was
 // checked against the canonical chain and it is below the finalized block. So a processed block with the
 // given hash that is no longer tracked is finalized.
@@ -489,6 +456,9 @@ func (c *ClaimSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Ha
 // same hash (unknown, no hash stored for it, or it was replaced after the caller read it).
 func (c *ClaimSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
 	blockHash common.Hash) (finalized, found bool, err error) {
+	if c.multidownloader != nil {
+		return mdrsync.IsBlockFinalized(ctx, c.multidownloader, blockNum, blockHash)
+	}
 	return reorgdetector.IsBlockFinalized(ctx, c.reorgDetector, c.syncerID.String(), blockNum, blockHash,
 		func(ctx context.Context, num uint64) (common.Hash, bool, error) {
 			return c.reader.GetBlockHash(ctx, nil, num)

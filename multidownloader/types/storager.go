@@ -44,6 +44,8 @@ type Storager interface {
 		blockNumber uint64, blockHash common.Hash) (uint64, bool, error)
 	GetReorgedDataByReorgID(tx dbtypes.Querier,
 		reorgID uint64) (*ReorgData, error)
+	// GetLastReorgData returns the most recent reorg stored, or nil if there is none
+	GetLastReorgData(tx dbtypes.Querier) (*ReorgData, error)
 }
 
 type StoragerForReorg interface {

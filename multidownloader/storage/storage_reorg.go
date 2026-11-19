@@ -144,6 +144,25 @@ func (a *MultidownloaderStorage) GetBlockReorgedReorgID(tx dbtypes.Querier,
 
 func (a *MultidownloaderStorage) GetReorgedDataByReorgID(tx dbtypes.Querier,
 	reorgID uint64) (*mdrtypes.ReorgData, error) {
+	query := `SELECT reorg_id, detected_at_block, reorged_from_block, reorged_to_block,
+		detected_timestamp, network_latest_block, network_finalized_block, network_finalized_block_name, description
+		FROM reorgs WHERE reorg_id = ? LIMIT 1;`
+	return a.queryReorgData(tx, "GetReorgedDataByReorgID", query, reorgID)
+}
+
+// GetLastReorgData returns the most recent reorg stored (the one with the highest reorg_id),
+// or nil if no reorg has been stored yet.
+func (a *MultidownloaderStorage) GetLastReorgData(tx dbtypes.Querier) (*mdrtypes.ReorgData, error) {
+	query := `SELECT reorg_id, detected_at_block, reorged_from_block, reorged_to_block,
+		detected_timestamp, network_latest_block, network_finalized_block, network_finalized_block_name, description
+		FROM reorgs ORDER BY reorg_id DESC LIMIT 1;`
+	return a.queryReorgData(tx, "GetLastReorgData", query)
+}
+
+// queryReorgData runs a query that returns at most one row of the reorgs table.
+// It returns nil if the query returns no rows.
+func (a *MultidownloaderStorage) queryReorgData(tx dbtypes.Querier, opName, query string,
+	args ...any) (*mdrtypes.ReorgData, error) {
 	if tx == nil {
 		tx = a.db
 	}
@@ -151,22 +170,18 @@ func (a *MultidownloaderStorage) GetReorgedDataByReorgID(tx dbtypes.Querier,
 	defer a.mutex.RUnlock()
 
 	var row reorgRow
-	query := `SELECT reorg_id, detected_at_block, reorged_from_block, reorged_to_block,
-		detected_timestamp, network_latest_block, network_finalized_block, network_finalized_block_name, description
-		FROM reorgs WHERE reorg_id = ? LIMIT 1;`
-
-	err := meddler.QueryRow(tx, &row, query, reorgID)
+	err := meddler.QueryRow(tx, &row, query, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("GetReorgedDataByReorgID: error querying reorgs table: %w", err)
+		return nil, fmt.Errorf("%s: error querying reorgs table: %w", opName, err)
 	}
 
 	// Convert string to BlockNumberFinality
 	blockFinality, err := aggkittypes.NewBlockNumberFinality(row.NetworkFinalizedBlockName)
 	if err != nil {
-		return nil, fmt.Errorf("GetReorgedDataByReorgID: error parsing NetworkFinalizedBlockName: %w", err)
+		return nil, fmt.Errorf("%s: error parsing NetworkFinalizedBlockName: %w", opName, err)
 	}
 
 	reorgData := &mdrtypes.ReorgData{

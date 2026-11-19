@@ -41,7 +41,7 @@ func TestClaimConstructors_RejectInvalidDownloader(t *testing.T) {
 	t.Run("NewStandaloneClaimSyncWithDownloader reports exact validation not requireMD", func(t *testing.T) {
 		cfg := mdStandaloneConfig(t, bridge, invalidDownloader)
 		cs, err := NewStandaloneClaimSyncWithDownloader(
-			ctx, cfg, nil, nil, claimsynctypes.L1ClaimSyncer, 0, &fakeMultidownloader{})
+			ctx, cfg, nil, claimsynctypes.L1ClaimSyncer, 0, &fakeMultidownloader{})
 		require.Nil(t, cs)
 		require.ErrorContains(t, err, "invalid Downloader")
 		require.NotContains(t, err.Error(), "requires Downloader=multidownloader")
@@ -59,7 +59,7 @@ func TestClaimConstructors_ZeroDownloaderIsLegacy(t *testing.T) {
 	cfg := mdStandaloneConfig(t, bridge, "")
 
 	cs, err := NewStandaloneClaimSyncWithDownloader(
-		ctx, cfg, nil, nil, claimsynctypes.L1ClaimSyncer, 0, &fakeMultidownloader{})
+		ctx, cfg, nil, claimsynctypes.L1ClaimSyncer, 0, &fakeMultidownloader{})
 	require.Nil(t, cs)
 	require.ErrorContains(t, err, "requires Downloader=multidownloader")
 	require.NotContains(t, err.Error(), "invalid Downloader")
