@@ -36,12 +36,14 @@ type trackerBridgeEventData struct {
 	DepositCount       uint32         `json:"deposit_count"`
 }
 
-// trackerBridgeStatus mirrors api.BridgeStatus.
+// trackerBridgeStatus mirrors api.BridgeStatus. BlockFinalized is a pointer so that a test can tell
+// false from omitted.
 type trackerBridgeStatus struct {
 	BridgeType     string                 `json:"bridge_type"`
 	BlockNumber    uint64                 `json:"block_number"`
 	LogIndex       uint32                 `json:"log_index"`
 	BlockTimestamp uint64                 `json:"block_timestamp"`
+	BlockFinalized *bool                  `json:"block_finalized"`
 	Event          trackerBridgeEventData `json:"event"`
 }
 
@@ -80,7 +82,14 @@ type trackerTrackingData struct {
 // registers the bridge in the supervised list on first call and reports its current TrackingData
 // from then on.
 func fetchTrackingData(ctx context.Context, networkID uint32, txHash common.Hash) (*trackerTrackingData, error) {
-	url := fmt.Sprintf("%s/tracker/v1/network/%d/tx/%s", proxyTrackerBaseURL, networkID, txHash.Hex())
+	return fetchTrackingDataFrom(ctx, proxyTrackerBaseURL, networkID, txHash)
+}
+
+// fetchTrackingDataFrom is fetchTrackingData against the aggkit-proxy instance at baseURL.
+func fetchTrackingDataFrom(
+	ctx context.Context, baseURL string, networkID uint32, txHash common.Hash,
+) (*trackerTrackingData, error) {
+	url := fmt.Sprintf("%s/tracker/v1/network/%d/tx/%s", baseURL, networkID, txHash.Hex())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -128,10 +137,28 @@ func stepNames(steps []trackerBridgeStepPath) []string {
 }
 
 // claimL1ToL2 claims, on L2, an L1->L2 bridge previously sent (and left unclaimed) via
-// BridgeL1NoClaim. Mirrors the claim tail of BridgeL1ToL2 (bridge_utils.go).
+// BridgeL1NoClaim, and waits for the claim to be mined. Mirrors the claim tail of BridgeL1ToL2
+// (bridge_utils.go).
 func claimL1ToL2(ctx context.Context, env *envs.Env, l2Opts *bind.TransactOpts, result *bridgeResult) (common.Hash, error) {
-	callOpts := &bind.CallOpts{Context: ctx}
+	claimTx, err := sendClaimL1ToL2(ctx, env, l2Opts, result)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	claimReceipt, err := bind.WaitMined(ctx, env.Clients.L2, claimTx)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("failed to wait for claim tx: %w", err)
+	}
+	if claimReceipt.Status != ethtypes.ReceiptStatusSuccessful {
+		return common.Hash{}, errors.New("claim transaction failed")
+	}
+	return claimTx.Hash(), nil
+}
 
+// sendClaimL1ToL2 builds and sends the claim of claimL1ToL2 WITHOUT waiting for it to be mined, for
+// the tests that mine it by hand on a paused chain (the reorg scenarios).
+func sendClaimL1ToL2(
+	ctx context.Context, env *envs.Env, l2Opts *bind.TransactOpts, result *bridgeResult,
+) (*ethtypes.Transaction, error) {
 	// The aggoracle may have injected a later leaf than our deposit's own L1InfoTreeIndex (index
 	// >= our own); the claim proof must be built against the leaf actually on L2, not the
 	// deposit's index (see BridgeL1ToL2's identical comment in bridge_utils.go).
@@ -139,13 +166,22 @@ func claimL1ToL2(ctx context.Context, env *envs.Env, l2Opts *bind.TransactOpts, 
 		ctx, int(result.Bridge.DestinationNetwork), int(result.L1InfoTreeIndex),
 	)
 	if err != nil || injectedLeaf == nil {
-		return common.Hash{}, fmt.Errorf("failed to get injected L1 info leaf: %w", err)
+		return nil, fmt.Errorf("failed to get injected L1 info leaf: %w", err)
 	}
-	claimL1InfoTreeIndex := injectedLeaf.L1InfoTreeIndex
+	return sendClaimL1ToL2AtLeaf(ctx, env, l2Opts, result, injectedLeaf.L1InfoTreeIndex)
+}
+
+// sendClaimL1ToL2AtLeaf is sendClaimL1ToL2 with the claim proof built against the L1 info tree leaf
+// claimL1InfoTreeIndex, whose GER the caller knows to be on L2 (for a test that claims before the
+// bridge service has indexed the injection).
+func sendClaimL1ToL2AtLeaf(
+	ctx context.Context, env *envs.Env, l2Opts *bind.TransactOpts, result *bridgeResult, claimL1InfoTreeIndex uint32,
+) (*ethtypes.Transaction, error) {
+	callOpts := &bind.CallOpts{Context: ctx}
 
 	claimProof, err := env.Clients.BridgeService.GetClaimProof(ctx, 0, claimL1InfoTreeIndex, result.DepositCount)
 	if err != nil || claimProof == nil {
-		return common.Hash{}, fmt.Errorf("failed to get claim proof: %w", err)
+		return nil, fmt.Errorf("failed to get claim proof: %w", err)
 	}
 
 	var smtProofLocalExitRoot [32][32]byte
@@ -184,16 +220,9 @@ func claimL1ToL2(ctx context.Context, env *envs.Env, l2Opts *bind.TransactOpts, 
 		result.DestinationAddr, result.BridgeAmount, metadata,
 	)
 	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to send claim transaction: %w", err)
+		return nil, fmt.Errorf("failed to send claim transaction: %w", err)
 	}
-	claimReceipt, err := bind.WaitMined(ctx, env.Clients.L2, claimTx)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to wait for claim tx: %w", err)
-	}
-	if claimReceipt.Status != ethtypes.ReceiptStatusSuccessful {
-		return common.Hash{}, errors.New("claim transaction failed")
-	}
-	return claimTx.Hash(), nil
+	return claimTx, nil
 }
 
 // TestBridgeTrackerL1ToL2 bridges an asset L1->L2 and follows it through the bridge tracker
@@ -284,7 +313,8 @@ func TestBridgeTrackerL1ToL2(t *testing.T) {
 	require.NoError(t, err, "tracker never reached finished")
 
 	require.Nil(t, tracking.Error, "a successfully claimed bridge must carry no error")
-	require.Equal(t, "claimed", tracking.ClaimStatus)
+	// finished is only reached once the claim is final, which claim_status reports as claimed_finalized
+	require.Equal(t, "claimed_finalized", tracking.ClaimStatus)
 	require.NotEmpty(t, tracking.AllSteps)
 	last := tracking.AllSteps[len(tracking.AllSteps)-1]
 	require.Equal(t, "Claimed", last.StepName)

@@ -394,6 +394,11 @@ type fakeBridgeService struct {
 	claimTxHash         string
 	claimBlockNum       uint64
 	claimBlockTimestamp uint64
+	// claimBlockFinalized, when set, is served as the claim's block_finalized (omitted otherwise)
+	claimBlockFinalized *bool
+	// injectedLeafStatus, when non-zero, is the HTTP status injected-l1-info-leaf answers with
+	// instead of the leaf (e.g. 503 while the bridge service resolves a reorg)
+	injectedLeafStatus int
 
 	// lastLeafIndexQuery records the leaf_index of the last injected-l1-info-leaf request
 	lastLeafIndexQuery string
@@ -426,6 +431,11 @@ func (f *fakeBridgeService) startAt(t *testing.T, networkID uint32) staticURLs {
 	mux.HandleFunc("/bridge/v1/injected-l1-info-leaf", func(w http.ResponseWriter, r *http.Request) {
 		f.lastLeafIndexQuery = r.URL.Query().Get("leaf_index")
 		f.lastNetworkIDQuery = r.URL.Query().Get("network_id")
+		if f.injectedLeafStatus != 0 {
+			w.WriteHeader(f.injectedLeafStatus)
+			fmt.Fprint(w, `{"error":"a syncer is temporarily inconsistent (reorg being resolved)"}`)
+			return
+		}
 		if f.injectedLeaf == nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprint(w, `{"error":"error getting injected info after index: not found"}`)
@@ -439,8 +449,12 @@ func (f *fakeBridgeService) startAt(t *testing.T, networkID uint32) staticURLs {
 			fmt.Fprint(w, `{"claims":[],"count":0}`)
 			return
 		}
-		fmt.Fprintf(w, `{"claims":[{"tx_hash":"%s","block_num":%d,"block_timestamp":%d}],"count":%d}`,
-			f.claimTxHash, f.claimBlockNum, f.claimBlockTimestamp, f.claimsCount)
+		finalized := ""
+		if f.claimBlockFinalized != nil {
+			finalized = fmt.Sprintf(`,"block_finalized":%t`, *f.claimBlockFinalized)
+		}
+		fmt.Fprintf(w, `{"claims":[{"tx_hash":"%s","block_num":%d,"block_timestamp":%d%s}],"count":%d}`,
+			f.claimTxHash, f.claimBlockNum, f.claimBlockTimestamp, finalized, f.claimsCount)
 	})
 
 	server := httptest.NewServer(mux)
@@ -898,6 +912,103 @@ func TestClaimSourceClaimFor(t *testing.T) {
 	require.Equal(t, common.HexToHash("0x0d"), claim.ClaimTx)
 	require.Equal(t, uint64(50), claim.BlockNumber)
 	require.Equal(t, uint64(1700000000), claim.BlockTimestamp)
+	require.Nil(t, claim.ReportedFinalized, "block_finalized omitted")
+
+	// block_finalized is carried to the finality check that closes the tracking (#1970)
+	finalized := true
+	fake.claimBlockFinalized = &finalized
+	claim, err = source.ClaimFor(t.Context(), l1ToL2Bridge())
+	require.NoError(t, err)
+	require.NotNil(t, claim.ReportedFinalized)
+	require.True(t, *claim.ReportedFinalized)
+}
+
+// TestGERSourceInjectedGERPresent pins the cheap re-check of a completed GER injection (#1970):
+// one injected-l1-info-leaf request, no L2 scan nor header lookup; a 404 is "gone", a 503 (reorg
+// being resolved by the bridge service) is an error the caller keeps the step through. The
+// injection carries where the bridge service says it is now, so a re-inclusion elsewhere is seen
+func TestGERSourceInjectedGERPresent(t *testing.T) {
+	fake := &fakeBridgeService{}
+	// strict mock without expectations: the L2 must never be scanned nor asked for a header here
+	source := NewGERSource(fake.start(t), StaticClients{1: mocks.NewBaseEthereumClienter(t)}, common.Address{},
+		aggkittypes.FinalizedBlock, nil, 0, log.WithFields("module", "sources_test"))
+
+	injection, finalized, err := source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	require.NoError(t, err)
+	require.Nil(t, injection)
+	require.False(t, finalized)
+	require.Equal(t, "42", fake.lastLeafIndexQuery)
+	require.Equal(t, "1", fake.lastNetworkIDQuery)
+
+	fake.injectedLeaf = map[string]any{"l1_info_tree_index": 42, "global_exit_root": "0x0a"}
+	injection, finalized, err = source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	require.NoError(t, err)
+	require.NotNil(t, injection)
+	require.Equal(t, common.HexToHash("0x0a"), *injection.GER)
+	require.Nil(t, injection.L2BlockNumber, "L2 block not reported: unknown, never the L1 block")
+	require.Nil(t, injection.L2BlockTimestamp)
+	require.NotEmpty(t, injection.L2InjectionUnresolvedReason)
+	require.False(t, finalized, "block_finalized omitted: not final")
+
+	fake.injectedLeaf["injected_l2_block_num"] = 2005
+	injection, _, err = source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2005), *injection.L2BlockNumber)
+	require.Nil(t, injection.L2BlockTimestamp, "timestamp not reported: not looked up")
+	require.Contains(t, injection.L2InjectionUnresolvedReason, "2005")
+
+	fake.injectedLeaf["injected_l2_block_timestamp"] = 1700002007
+	fake.injectedLeaf["block_finalized"] = true
+	injection, finalized, err = source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2005), *injection.L2BlockNumber)
+	require.Equal(t, uint64(1700002007), *injection.L2BlockTimestamp)
+	require.Empty(t, injection.L2InjectionUnresolvedReason)
+	require.True(t, finalized)
+
+	fake.injectedLeafStatus = http.StatusServiceUnavailable
+	_, _, err = source.InjectedGERPresent(t.Context(), l1ToL2Bridge(), 42)
+	require.Error(t, err)
+}
+
+// TestGERSourceL1InfoLeafFinalized pins the finality check of an L1 info leaf on the routes with
+// no GER injection (#1987): one injected-l1-info-leaf request with network_id 0 and the leaf
+// index, sent to the instance that answers l1-info-tree-index for the bridge (the origin's own
+// for an L2 origin); block_finalized omitted and a 404 both read "not final", a 503 is an error
+func TestGERSourceL1InfoLeafFinalized(t *testing.T) {
+	origin, destination := &fakeBridgeService{}, &fakeBridgeService{}
+	bridge := l2ToL1Bridge()
+	urls := origin.startAt(t, bridge.NetworkID).merge(destination.startAt(t, bridge.DestinationNetwork))
+	source := NewGERSource(urls, StaticClients{}, common.Address{},
+		aggkittypes.FinalizedBlock, nil, 0, log.WithFields("module", "sources_test"))
+
+	// the instance does not have the leaf (404): not final, and not an error
+	finalized, err := source.L1InfoLeafFinalized(t.Context(), bridge, 42)
+	require.NoError(t, err)
+	require.False(t, finalized)
+	require.Equal(t, "42", origin.lastLeafIndexQuery)
+	require.Equal(t, "0", origin.lastNetworkIDQuery, "the leaf itself (network_id 0), not an injection")
+	require.Empty(t, destination.lastLeafIndexQuery, "asked to the instance that answered l1-info-tree-index")
+
+	origin.injectedLeaf = map[string]any{"l1_info_tree_index": 42, "global_exit_root": "0x0a"}
+	finalized, err = source.L1InfoLeafFinalized(t.Context(), bridge, 42)
+	require.NoError(t, err)
+	require.False(t, finalized, "block_finalized omitted (old bridge service): not final")
+
+	origin.injectedLeaf["block_finalized"] = false
+	finalized, err = source.L1InfoLeafFinalized(t.Context(), bridge, 42)
+	require.NoError(t, err)
+	require.False(t, finalized)
+
+	origin.injectedLeaf["block_finalized"] = true
+	finalized, err = source.L1InfoLeafFinalized(t.Context(), bridge, 42)
+	require.NoError(t, err)
+	require.True(t, finalized)
+
+	origin.injectedLeafStatus = http.StatusServiceUnavailable
+	finalized, err = source.L1InfoLeafFinalized(t.Context(), bridge, 42)
+	require.Error(t, err)
+	require.False(t, finalized)
 }
 
 // rootCallOutput ABI-encodes the bridge contract's getRoot() return value, like a JSON-RPC

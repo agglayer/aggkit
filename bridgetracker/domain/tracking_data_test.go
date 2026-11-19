@@ -61,12 +61,20 @@ func TestTrackingStatusDerivation(t *testing.T) {
 			expected: types.TrackingStatusRunning,
 		},
 		{
-			name:     "steps rule once present: claimed -> Finished",
+			name:     "steps rule once present: claimed, claim final -> Finished",
+			bridgeTx: TrackingBridgeTx{Info: info},
+			allSteps: []BridgeStepPath{
+				{Step: types.StepClaimed, Status: types.StepStatusDone, BlockFinalized: true},
+			},
+			expected: types.TrackingStatusFinished,
+		},
+		{
+			name:     "steps rule once present: claimed, claim not final -> Running (still supervised, #1970)",
 			bridgeTx: TrackingBridgeTx{Info: info},
 			allSteps: []BridgeStepPath{
 				{Step: types.StepClaimed, Status: types.StepStatusDone},
 			},
-			expected: types.TrackingStatusFinished,
+			expected: types.TrackingStatusRunning,
 		},
 		{
 			name:     "steps rule once present: step in error -> Error",
@@ -345,8 +353,17 @@ func TestStepIndexPicksFirstPendingWhenNothingInProgress(t *testing.T) {
 	for i := range allSteps {
 		allSteps[i].Status = types.StepStatusDone
 	}
+	claimed := NewTrackingData(TrackingID{NetworkID: 1}, TrackingBridgeTx{Info: &BridgeInfo{NetworkID: 1}}, allSteps)
+	require.Equal(t, len(allSteps)-1, *claimed.StepIndex(), "every step done -> the last one (Claimed)")
+	require.Equal(t, types.TrackingStatusRunning, claimed.TrackingStatus(), "claim not final yet: still supervised")
+	require.Equal(t, types.TrackerClaimStatusClaimed, claimed.ClaimStatus())
+	require.False(t, claimed.IsTerminal())
+
+	allSteps[len(allSteps)-1].BlockFinalized = true
 	finished := NewTrackingData(TrackingID{NetworkID: 1}, TrackingBridgeTx{Info: &BridgeInfo{NetworkID: 1}}, allSteps)
-	require.Equal(t, len(allSteps)-1, *finished.StepIndex(), "every step done -> the last one (Claimed)")
+	require.Equal(t, len(allSteps)-1, *finished.StepIndex())
 	require.Equal(t, types.TrackingStatusFinished, finished.TrackingStatus())
-	require.Equal(t, types.TrackerClaimStatusClaimed, finished.ClaimStatus())
+	require.Equal(t, types.TrackerClaimStatusClaimedFinalized, finished.ClaimStatus())
+	require.True(t, finished.IsFinal())
+	require.True(t, finished.IsTerminal())
 }

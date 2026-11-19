@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
@@ -82,20 +83,29 @@ type ActivityEntry struct {
 	// (see TrackingData.ClaimStatus) so the activity endpoint reports the same vocabulary —
 	// "pending"/"readyToClaim"/"claimed"/"claimed_finalized"/"error" — instead of ClaimStatus's
 	// plain tri-state. Derived from ClaimStatus: TrackerClaimStatusClaimed/Error mirror
-	// ClaimStatus directly (TrackerClaimStatusClaimedFinalized is that same "claimed" once the
-	// claim's block is final — nothing produces it yet, see Finalized); while ClaimStatus is
-	// Unclaimed, it is taken from Tracking.ClaimStatus() when Tracking is populated — except that
-	// a tracker "claimed" is never served against an on-chain "unclaimed" (see
+	// ClaimStatus directly, and TrackerClaimStatusClaimedFinalized is that same "claimed" once the
+	// entry is settled (claim record fetched, BridgeFinal and ClaimFinal, see Finalized); while
+	// ClaimStatus is Unclaimed, it is taken from Tracking.ClaimStatus() when Tracking is populated
+	// — except that a tracker "claimed" is never served against an on-chain "unclaimed" (see
 	// UnclaimedTrackerClaimStatus) — or otherwise resolved directly against the bridge-service
 	// endpoints (see ActivityClaimChecker.IsReadyToClaim) without registering the bridge with the
 	// tracker
 	TrackerClaimStatus types.TrackerClaimStatus
+	// BridgeFinal is whether Bridge's block is final on its origin network (BridgeNetworkID), as
+	// resolved from Bridge.BlockFinalized with a receipt fallback (see finality.Resolver). Always
+	// false for a bridge only found through the RPC fallback (Source == ActivitySourceRPC): it
+	// becomes final once the bridge service reports it. Monotonic while Bridge stays at the same
+	// location (tx_hash, block_num, block_timestamp). Not part of the wire contract on its own
+	BridgeFinal bool
+	// ClaimFinal is whether Claim's block is final on the destination network, resolved the same
+	// way from Claim.BlockFinalized. Only meaningful while Claim is set
+	ClaimFinal bool
 	// Finalized is whether this entry can no longer be changed by a reorg: Bridge's block is
-	// final and, if the bridge is claimed, the claim's block is final too. Always false until the
-	// activity finality follow-ups populate it (agglayer/aggkit#1968, #1969) — it is part of the
-	// contract already so the API (ActivityItem.Finalized) has a stable source. A change of this
-	// value alone (false -> true) does not change the address's revision (see
-	// ActivityRevisionReader, HashActivityEntry)
+	// final (BridgeFinal) and, if the bridge is claimed, its claim record is known and the claim's
+	// block is final too (ClaimFinal). A claimed entry that is Finalized is settled: it is served
+	// as TrackerClaimStatusClaimedFinalized and never refreshed again. A change of this value
+	// alone (false -> true) does not change the address's revision (see ActivityRevisionReader,
+	// HashActivityEntry)
 	Finalized bool
 	// Errors holds the message of whatever check failed the last time this entry was
 	// refreshed, keyed by which check it was — "claim" when ClaimStatus is Error (the
@@ -106,19 +116,45 @@ type ActivityEntry struct {
 	// api.ActivityItem.MarshalJSON)
 	Errors map[string]string
 	// CreatedAt is when this bridge was created: Bridge's own origin deposit block timestamp,
-	// via bridgetracker.BlockTimeOrNow (see ActivityCache.refresh and its SQLite-backed mirror,
-	// sqliteActivityStore.refresh — both call it the same way), falling back to the first
-	// successful refresh only if that is ever unavailable (BlockTimestamp not yet populated by
-	// the bridge service). Set once and never changes after that
+	// via bridgetracker.BlockTimeOrNow (see bridgetracker.ActivityEntryRefresher.Refresh, shared
+	// by both activity stores), falling back to the first successful refresh only if that is ever
+	// unavailable (BlockTimestamp not yet populated by the bridge service). Set once, and only
+	// changed again if a reorg moves the bridge to another block or transaction
 	CreatedAt time.Time
 	// UpdatedAt is when this entry's claim/tracking state was last (re)computed — the last time
 	// refresh ran for it, whether or not anything about it actually changed. Deliberately always
 	// now, never a deterministic on-chain fact (agglayer/aggkit#1840): unlike CreatedAt, this is
 	// not "the last time this entry's state actually changed", it is "the last time the tracker
 	// checked the network for it" — a fact about the tracker's own polling, not the bridge.
-	// Frozen once the entry settles (see ActivityCache's settled), since a settled entry is
-	// never refreshed again
+	// Frozen once the entry settles (see bridgetracker.ActivityEntrySettled), since a settled
+	// entry is never refreshed again
 	UpdatedAt time.Time
+}
+
+// SameBridgeLocation reports whether a and b are the same bridge at the same on-chain location:
+// same tx_hash (compared case-insensitively), block_num and block_timestamp. A zero
+// block_timestamp on either side (the bridge service has not populated it yet) matches any value,
+// so a timestamp being filled in is not read as the bridge having moved
+func SameBridgeLocation(a, b *bridgeservicetypes.BridgeResponse) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return sameLocation(a.TxHash, a.BlockNum, a.BlockTimestamp, b)
+}
+
+func sameLocation(txHash bridgeservicetypes.Hash, blockNum, blockTimestamp uint64,
+	b *bridgeservicetypes.BridgeResponse) bool {
+	return strings.EqualFold(string(txHash), string(b.TxHash)) && blockNum == b.BlockNum &&
+		(blockTimestamp == 0 || b.BlockTimestamp == 0 || blockTimestamp == b.BlockTimestamp)
+}
+
+// SameClaimLocation reports whether a and b are the same claim record at the same on-chain
+// location: same tx_hash (compared case-insensitively) and block_num
+func SameClaimLocation(a, b *bridgeservicetypes.ClaimResponse) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return strings.EqualFold(string(a.TxHash), string(b.TxHash)) && a.BlockNum == b.BlockNum
 }
 
 // UnclaimedTrackerClaimStatus is ActivityEntry.TrackerClaimStatus for a bridge the destination
@@ -150,25 +186,35 @@ type ActivityWarning struct {
 	Message string
 }
 
-// KnownBridge is the on-chain location (TxHash/BlockNum) the caller last cached a bridge's data
-// at, keyed by its GlobalIndex in the known map ActivityBridgeScanner.BridgesFrom takes. A
-// source whose own data is not otherwise reorg-protected (see sources.activityRPCScanner, which
-// reads a recent, possibly-unfinalized block range directly via RPC) can compare this against
-// what it currently observes on-chain for the same GlobalIndex: an unchanged location means
-// nothing to do, but a different one means the deposit has since been re-included in a different
-// block (or, more rarely, the same deposit count reused by a different bridge) — either way the
-// caller's cached data is now stale and must be corrected, not silently trusted forever just
-// because the GlobalIndex was seen before.
+// KnownBridge is the on-chain location (TxHash/BlockNum/BlockTimestamp) the caller last cached a
+// bridge's data at, keyed by its GlobalIndex in the known map ActivityBridgeScanner.BridgesFrom
+// takes, plus whether that location is already final. A scanner compares it against what it
+// currently observes for the same GlobalIndex: an unchanged location means nothing to correct,
+// but a different one means the deposit has since been re-included in a different block (or the
+// same deposit count reused by a different bridge) — either way the caller's cached data is now
+// stale and must be corrected, not silently trusted forever just because the GlobalIndex was seen
+// before. Only a Final entry can be trusted without being read again.
 type KnownBridge struct {
 	// TxHash is the transaction hash the bridge was last reported at.
 	TxHash bridgeservicetypes.Hash
 	// BlockNum is the block number the bridge was last reported at.
 	BlockNum uint64
+	// BlockTimestamp is the block timestamp the bridge was last reported with (0 if the bridge
+	// service had not populated it yet).
+	BlockTimestamp uint64
+	// DepositCount is the bridge's deposit count on NetworkID: the bridge service lists bridges by
+	// deposit_count descending, so it tells a scanner how far down the list it must read to have
+	// passed this bridge's position.
+	DepositCount uint32
+	// Final is whether the caller has seen this location final (see ActivityEntry.BridgeFinal): a
+	// final bridge cannot be reorged out any more, so a scan can stop as soon as it reaches one
+	// (every older bridge of the same network is final too) and never needs to read it again.
+	Final bool
 	// Source is which system supplied it the last time it was cached (see ActivitySourceKind).
 	// A bridge-service scanner uses this to upgrade an entry it once had to report via the RPC
 	// fallback: once the bridge service itself reports the same bridge, Source should become
 	// ActivitySourceBridgeService and stay that way, even though nothing about the bridge's
-	// on-chain location changed (see sources.fetchNewBridgesFrom).
+	// on-chain location changed (see sources.scanBridgeService).
 	Source ActivitySourceKind
 	// NetworkID is the network whose bridge service reported it last time (see
 	// ScannedBridge.NetworkID) — lets an implementation scanning one network at a time tell
@@ -177,41 +223,53 @@ type KnownBridge struct {
 	NetworkID uint32
 }
 
+// SameLocation reports whether b is still at the location k was cached at (see
+// SameBridgeLocation for how block_timestamp is compared)
+func (k KnownBridge) SameLocation(b *bridgeservicetypes.BridgeResponse) bool {
+	if b == nil {
+		return false
+	}
+	return sameLocation(k.TxHash, k.BlockNum, k.BlockTimestamp, b)
+}
+
 // ActivityBridgeScanner is the driven port to the raw bridge-service data behind the
 // GET /activity/from/{from_address} endpoint: it scans every bridge service the tracker knows
 // about for bridges sent by fromAddress
 type ActivityBridgeScanner interface {
 	// BridgesFrom returns every bridge whose sender is fromAddress, across every configured
-	// bridge service: every bridge not yet in known (a genuinely new one), plus any bridge that
-	// is in known but whose on-chain location no longer matches what known has cached for it
-	// (see KnownBridge) — a source scanning only finalized/indexed data (the bridge-service REST
-	// scan) never has the latter case, since its data cannot un-happen once indexed; a source
-	// reading a recent, possibly-unfinalized block range directly via RPC (see
-	// sources.activityRPCScanner) can, whenever a reorg re-included the same deposit at a
-	// different block.
+	// bridge service: every bridge not yet in known (a genuinely new one), every bridge in known
+	// that is not final yet (KnownBridge.Final false), re-read with the data the bridge service
+	// serves now — whether or not its location changed, so the caller always works with the
+	// latest block_finalized — and any bridge whose on-chain location no longer matches what
+	// known has cached for it (see KnownBridge): a reorg re-included the same deposit at a
+	// different block or transaction, or a different bridge took its deposit count. The caller
+	// overwrites its entry with the returned data (a correction never duplicates an entry: they
+	// share the GlobalIndex).
 	//
 	// known is the caller's full set of already-cached bridges for fromAddress, keyed by
 	// GlobalIndex as a decimal string (any network — a GlobalIndex is unique across the whole
-	// system); implementations may use plain existence in known (ignoring the cached
-	// TxHash/BlockNum) to stop scanning a network as soon as an already-known bridge is reached,
-	// since each network's own bridge service reports bridges newest-first and is append-only,
-	// so anything after the first known bridge is guaranteed already known too (see
+	// system). Each network's bridge service lists bridges by deposit_count descending and
+	// finality is monotonic, so only the non-final head of that list can still change: an
+	// implementation stops reading a network at the first bridge that is known AND final (and
+	// past every non-final known bridge of that network), never reading deeper pages again (see
 	// sources.ActivitySource).
 	//
 	// invalidated lists the GlobalIndex (as a decimal string, same encoding as known's keys) of
-	// every entry in known that should be forgotten instead of trusted: known.Source ==
-	// ActivitySourceRPC, its BlockNum still falls inside the range this call actually scanned via
-	// RPC for its own network (see KnownBridge.NetworkID), yet the bridge no longer shows up
-	// there at all — the deposit was reorged out and nothing has re-included it (yet). A caller
-	// must remove these from its cache rather than keep serving their last known (now unverified)
-	// data; if the bridge is re-included later, at the same or a different block, it is
-	// discovered again as new. A bridge cached from the bridge service (Source ==
-	// ActivitySourceBridgeService) is never invalidated this way — that data is presumed
-	// reorg-safe already (the bridge service's own sync pipeline is responsible for that).
+	// every entry in known that should be forgotten instead of trusted: a non-final entry that
+	// the bridge service no longer reports although the scan went past its position, or an
+	// entry found through the RPC fallback (Source == ActivitySourceRPC) whose BlockNum still
+	// falls inside the range this call scanned via RPC for its own network (see
+	// KnownBridge.NetworkID) yet no longer shows up there at all. Either way the deposit was
+	// reorged out and nothing has re-included it (yet). A caller must remove these from its cache
+	// rather than keep serving their last known (now unverified) data; if the bridge is
+	// re-included later, at the same or a different block, it is discovered again as new. A
+	// final entry is never invalidated.
 	//
-	// A network whose bridge service cannot be scanned does not fail the call: it is skipped and
-	// reported back as an ActivityWarning instead, so one misbehaving network never hides every
-	// other network's activity.
+	// A network whose bridge service cannot be scanned (unreachable, any transient error, or a
+	// 503 while it resolves a reorg) does not fail the call and never invalidates anything of
+	// that network: it is skipped and reported back as an ActivityWarning instead, its entries
+	// kept as they are until a later call can scan it, so one misbehaving network never hides
+	// every other network's activity.
 	BridgesFrom(
 		ctx context.Context, fromAddress common.Address, known map[string]KnownBridge,
 	) (found []*ScannedBridge, invalidated []string, warnings []ActivityWarning, err error)
@@ -303,7 +361,9 @@ type ActivitySupervisedStore interface {
 	// RefreshAddress performs the actual scan (ActivityBridgeScanner.BridgesFrom) plus
 	// claim/tracking recheck for fromAddress — what GetActivity itself used to do inline — and
 	// notifies whoever is blocked in RegisterAndAwait for it. Only ever called by ActivityEngine,
-	// never directly by an HTTP handler
+	// never directly by an HTTP handler, and never twice at once for the same fromAddress (the
+	// plan a refresh applies is computed from the entries it read before scanning, see
+	// PlanActivityRefresh, so overlapping refreshes of one address could apply a stale plan)
 	RefreshAddress(ctx context.Context, fromAddress common.Address) error
 
 	// PruneIdle forgets addresses whose cache has not been accessed (GetActivity/
@@ -345,8 +405,8 @@ type ActivityTriggerable interface {
 // than the returned revision, so the client merely sees one more change on its next poll,
 // instead of a revision newer than the data it holds (which would hide that change for good).
 //
-// It is EmptyActivityRevision everywhere until the follow-up that computes it lands
-// (agglayer/aggkit#1968, #1969): implementations hold the value, none computes it yet
+// Both implementations (bridgetracker.ActivityCache and the SQLite store) keep it up to date on
+// every addition, removal and change of an entry, and give the same value for the same entries
 type ActivityRevisionReader interface {
 	// GetActivityRevision returns fromAddress's current revision: EmptyActivityRevision, not an
 	// error, for an address with nothing cached

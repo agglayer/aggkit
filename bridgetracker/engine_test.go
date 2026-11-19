@@ -10,9 +10,12 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
+	domainmocks "github.com/agglayer/aggkit/bridgetracker/domain/mocks"
+	finalitymocks "github.com/agglayer/aggkit/bridgetracker/finality/mocks"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -146,10 +149,30 @@ func (f *fakeSources) EarliestSettlementTxCovering(
 }
 
 func (f *fakeSources) engineSources() EngineSources {
+	origin, finality, injected := finalReorgPorts()
 	return EngineSources{
 		Bridges: f, Certificates: f, GERs: f, LERs: f, ClaimChecker: f, Claims: f, Settlement: f,
 		WaitingGERUpdateSource: f, SettlementHistory: f,
+		OriginBlocks: origin, Finality: finality, InjectedGERs: injected,
 	}
+}
+
+// finalReorgPorts returns the reorg re-evaluation ports (agglayer/aggkit#1970) for the tests that
+// are not about reorgs: everything is final as soon as it is seen, so a bridge closes on its
+// first claim exactly like before #1970. The origin block is never checked (test bridges carry
+// no BlockHash) and an injection is always present
+func finalReorgPorts() (*domainmocks.OriginBlockSource, *finalitymocks.Resolver, *domainmocks.InjectedGERChecker) {
+	origin := &domainmocks.OriginBlockSource{}
+	origin.EXPECT().CanonicalBlockHash(mock.Anything, mock.Anything, mock.Anything).
+		Return(common.Hash{}, errors.New("origin block not checked in this test")).Maybe()
+	finality := &finalitymocks.Resolver{}
+	finality.EXPECT().IsFinal(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil).Maybe()
+	injected := &domainmocks.InjectedGERChecker{}
+	injected.EXPECT().InjectedGERPresent(mock.Anything, mock.Anything, mock.Anything).
+		Return(&types.GERData{}, true, nil).Maybe()
+	injected.EXPECT().L1InfoLeafFinalized(mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	return origin, finality, injected
 }
 
 // newTestEngine wires an engine over a fresh in-memory registry, a fake clock and the fakes
@@ -250,6 +273,21 @@ func TestEngineNewValidation(t *testing.T) {
 	sources.Settlement = nil
 	_, err = NewEngine(EngineConfig{}, logger, newMemoryRegistry(0), sources)
 	require.ErrorContains(t, err, "SettlementSource")
+
+	sources = f.engineSources()
+	sources.OriginBlocks = nil
+	_, err = NewEngine(EngineConfig{}, logger, newMemoryRegistry(0), sources)
+	require.ErrorContains(t, err, "OriginBlockSource")
+
+	sources = f.engineSources()
+	sources.Finality = nil
+	_, err = NewEngine(EngineConfig{}, logger, newMemoryRegistry(0), sources)
+	require.ErrorContains(t, err, "FinalityResolver")
+
+	sources = f.engineSources()
+	sources.InjectedGERs = nil
+	_, err = NewEngine(EngineConfig{}, logger, newMemoryRegistry(0), sources)
+	require.ErrorContains(t, err, "InjectedGERChecker")
 }
 
 // TestEngineResolveTriggeredResolvesImmediately pins that resolveTriggered (the handler for a
@@ -812,7 +850,8 @@ func TestEngineStepPermanentErrorStaysActiveAndIsRescuedOnceClaimed(t *testing.T
 	engine.tick(t.Context())
 	tracking = mustGet(t, store, id)
 	require.Equal(t, types.TrackingStatusFinished, tracking.TrackingStatus())
-	require.Equal(t, types.TrackerClaimStatusClaimed, tracking.ClaimStatus())
+	require.Equal(t, types.TrackerClaimStatusClaimedFinalized, tracking.ClaimStatus(),
+		"the claim is final as soon as it is found (finalReorgPorts)")
 
 	for _, sp := range tracking.AllSteps() {
 		switch sp.Step {

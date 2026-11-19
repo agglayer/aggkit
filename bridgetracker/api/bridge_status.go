@@ -18,8 +18,9 @@ type BridgeStatus struct {
 	BlockTimestamp uint64 `json:"block_timestamp"`
 	// BlockFinalized is whether BlockNumber is final on the origin network, i.e. it can no
 	// longer be removed by a reorg. Always serialized (no omitempty): false means "not final yet
-	// (or not known)" — the client keeps polling until it turns true. It is false for every
-	// bridge until the tracker follow-up populates it (agglayer/aggkit#1970)
+	// (or not known)" — the client keeps polling until it turns true. The tracker sets it once it
+	// proves the bridge tx final in BlockNumber (finality resolver), or once the claim is final,
+	// which implies it; it never goes back to false
 	BlockFinalized bool `json:"block_finalized"`
 	// Event holds the facts unpacked directly from the on-chain BridgeEvent log
 	Event BridgeEventData `json:"event"`

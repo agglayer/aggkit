@@ -52,4 +52,12 @@ package api
 //     an addition, removal, claim_status change or reorg correction, not when an entry only
 //     becomes final, and being a hash it is the same after a restart and on every instance
 //     holding the same data; clients compare it for equality only
-const CurrentAPIRevision = 7
+//   - 8: GET /activity/from/{from_address} supports HTTP conditional requests
+//     (agglayer/aggkit#1971). Its 200 response carries the revision as the ETag header (the
+//     revision between double quotes, a strong entity tag) and Cache-Control: no-store; a request
+//     carrying that value in If-None-Match (or "*") is answered 304 Not Modified, with the ETag
+//     and no body, while the revision is unchanged, whatever filterBridges/page_number/page_size
+//     say. Additive: the body is unchanged and a client that sends no If-None-Match never
+//     receives a 304. A 304 says nothing about what the revision does not cover (finalized,
+//     last_updated_timestamp, tracking, warnings)
+const CurrentAPIRevision = 8

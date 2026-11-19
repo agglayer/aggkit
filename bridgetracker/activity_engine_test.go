@@ -183,6 +183,87 @@ func TestActivityEngineTickBoundsConcurrentRefreshes(t *testing.T) {
 	<-done
 }
 
+// TestActivityEngineSerializesRefreshesOfOneAddress verifies two refreshes of the same address
+// (a trigger arriving while a tick refreshes it) never overlap, while refreshes of different
+// addresses still run concurrently
+func TestActivityEngineSerializesRefreshesOfOneAddress(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu          sync.Mutex
+		inFlight    int
+		maxObserved int
+		calls       int
+	)
+	release := make(chan struct{})
+	scanner := &hookedActivityScanner{hook: func() {
+		mu.Lock()
+		inFlight++
+		calls++
+		if inFlight > maxObserved {
+			maxObserved = inFlight
+		}
+		mu.Unlock()
+
+		<-release
+
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+	}}
+	cache := newTestActivityCache(scanner, &fakeActivityClaims{})
+	engine, err := NewActivityEngine(ActivityEngineConfig{MaxConcurrentRefreshes: 4},
+		log.WithFields("module", "activity_engine_test"), cache)
+	require.NoError(t, err)
+	other := common.HexToAddress("0x2222222222222222222222222222222222222222")
+	mustRegisterActivity(t, cache, testFromAddress, 0)
+	mustRegisterActivity(t, cache, other, 0)
+
+	var wg sync.WaitGroup
+	for _, addr := range []common.Address{testFromAddress, testFromAddress, other} {
+		wg.Add(1)
+		go func(addr common.Address) {
+			defer wg.Done()
+			engine.refreshOne(t.Context(), addr)
+		}(addr)
+	}
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return inFlight == 2
+	}, time.Second, time.Millisecond, "one refresh per address in flight")
+	time.Sleep(20 * time.Millisecond) // give an overlapping refresh of the same address a chance to start
+	mu.Lock()
+	require.Equal(t, 2, maxObserved, "the second refresh of the same address waits for the first")
+	mu.Unlock()
+
+	close(release)
+	wg.Wait()
+	require.Equal(t, 3, calls, "the waiting refresh runs once the first one is done")
+	engine.addrLocksMu.Lock()
+	require.Empty(t, engine.addrLocks, "per-address locks are dropped once released")
+	engine.addrLocksMu.Unlock()
+}
+
+// TestActivityEngineRefreshOneGivesUpWaitingWhenCancelled verifies a refresh waiting for another
+// refresh of the same address returns when its context ends, without refreshing
+func TestActivityEngineRefreshOneGivesUpWaitingWhenCancelled(t *testing.T) {
+	engine, _ := newTestActivityEngine(t, ActivityEngineConfig{}, &fakeActivityScanner{}, &fakeActivityClaims{})
+	unlock, ok := engine.lockAddress(t.Context(), testFromAddress)
+	require.True(t, ok)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, ok = engine.lockAddress(ctx, testFromAddress)
+	require.False(t, ok)
+
+	unlock()
+	engine.addrLocksMu.Lock()
+	require.Empty(t, engine.addrLocks)
+	engine.addrLocksMu.Unlock()
+}
+
 // TestActivityEnginePruneIdleCalledEachTick verifies tick forgets addresses idle past
 // IdleTimeout, proven indirectly by observing isClaimed() being asked again for a bridge that
 // had already settled — which would not happen if its cached state had survived

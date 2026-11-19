@@ -55,6 +55,46 @@ type fakeActivityBridgeService struct {
 	// syncStatusCalls counts GET /bridge/v1/sync-status requests received, so tests can assert it
 	// is (not) called (see scanNetwork's "skip when the RPC fallback is disabled" behavior)
 	syncStatusCalls atomic.Int32
+
+	// mu guards bridgesByNetwork (for tests that change it between scans), bridgesStatus and
+	// pages
+	mu sync.Mutex
+	// bridgesStatus, when non-zero, is the HTTP status GET /bridge/v1/bridges answers with
+	// instead of the listing (e.g. 503 while the bridge service resolves a reorg)
+	bridgesStatus int
+	// pages counts GET /bridge/v1/bridges requests per page number
+	pages map[int]int
+	// beforeBridges, if set, runs (holding mu) before each GET /bridge/v1/bridges request is
+	// served, with the requested page number: lets a test change the listing in the middle of a
+	// scan by writing bridgesByNetwork directly
+	beforeBridges func(page int)
+}
+
+// setBridges replaces the listing served for networkID
+func (f *fakeActivityBridgeService) setBridges(networkID uint32, bridges ...*bridgeservicetypes.BridgeResponse) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.bridgesByNetwork == nil {
+		f.bridgesByNetwork = make(map[uint32][]*bridgeservicetypes.BridgeResponse)
+	}
+	f.bridgesByNetwork[networkID] = bridges
+}
+
+// setBridgesStatus makes GET /bridge/v1/bridges answer status (0 restores the listing)
+func (f *fakeActivityBridgeService) setBridgesStatus(status int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.bridgesStatus = status
+}
+
+// pageRequests returns how many times each page of GET /bridge/v1/bridges was requested since
+// the last call, and resets the counters
+func (f *fakeActivityBridgeService) pageRequests() map[int]int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	pages := f.pages
+	f.pages = nil
+	return pages
 }
 
 func (f *fakeActivityBridgeService) start(t *testing.T) string {
@@ -69,6 +109,21 @@ func (f *fakeActivityBridgeService) start(t *testing.T) string {
 		require.NoError(t, err)
 		pageSize, err := strconv.Atoi(q.Get("page_size"))
 		require.NoError(t, err)
+
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.pages == nil {
+			f.pages = make(map[int]int)
+		}
+		f.pages[pageNumber]++
+		if f.beforeBridges != nil {
+			f.beforeBridges(pageNumber)
+		}
+		if f.bridgesStatus != 0 {
+			w.WriteHeader(f.bridgesStatus)
+			_, _ = w.Write([]byte(`{"error":"a syncer is temporarily inconsistent (reorg being resolved), retry later"}`))
+			return
+		}
 
 		var matching []*bridgeservicetypes.BridgeResponse
 		for _, b := range f.bridgesByNetwork[uint32(networkID)] {
@@ -139,6 +194,14 @@ func (f fakeNetworkLister) BridgeAddress(_ context.Context, networkID uint32) (c
 		return common.Address{}, f.bridgeAddrErr
 	}
 	return common.Address{}, fmt.Errorf("no bridge contract address configured for network %d", networkID)
+}
+
+// knownBridge is the domain.KnownBridge of b as a cache holding it from source would report it
+func knownBridge(b *bridgeservicetypes.BridgeResponse, source domain.ActivitySourceKind, final bool) domain.KnownBridge {
+	return domain.KnownBridge{
+		TxHash: b.TxHash, BlockNum: b.BlockNum, BlockTimestamp: b.BlockTimestamp, DepositCount: b.DepositCount,
+		Source: source, NetworkID: b.OriginNetwork, Final: final,
+	}
 }
 
 func bridgeResponse(networkID, destNetwork, depositCount uint32, from string, globalIndex int64) *bridgeservicetypes.BridgeResponse {
@@ -335,15 +398,15 @@ func (f fakeMixedNetworkLister) BridgeAddress(context.Context, uint32) (common.A
 	return common.Address{}, errors.New("not implemented")
 }
 
-// TestFetchNewBridgesFrom_Pagination exercises the pagination loop directly with a small page
-// size, so a short page (fewer results than requested) stops the loop.
-func TestFetchNewBridgesFrom_Pagination(t *testing.T) {
+// TestScanBridgeService_Pagination verifies a first scan (nothing known) pages through the whole
+// listing until a short page and returns every bridge
+func TestScanBridgeService_Pagination(t *testing.T) {
 	svc := &fakeActivityBridgeService{
 		bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
 			1: {
-				bridgeResponse(1, 2, 0, testFromAddress, 1),
-				bridgeResponse(1, 2, 1, testFromAddress, 2),
 				bridgeResponse(1, 2, 2, testFromAddress, 3),
+				bridgeResponse(1, 2, 1, testFromAddress, 2),
+				bridgeResponse(1, 2, 0, testFromAddress, 1),
 			},
 		},
 	}
@@ -353,22 +416,25 @@ func TestFetchNewBridgesFrom_Pagination(t *testing.T) {
 	client, err := source.services.aggkitBridgeClientFor(1)
 	require.NoError(t, err)
 
-	items, err := fetchNewBridgesFrom(t.Context(), client, 1, testFromAddress, 2, nil)
+	scan, err := scanBridgeService(t.Context(), client, 1, testFromAddress, 2, nil, testLogger)
 	require.NoError(t, err)
-	require.Len(t, items, 3)
+	require.Len(t, scan.bridges, 3)
+	require.Empty(t, scan.removed)
+	require.Zero(t, scan.corrected)
 }
 
-// TestFetchNewBridgesFrom_StopsAtFirstKnownBridge verifies pagination stops as soon as an
-// already-known bridge is reached, without walking further pages, and returns only the bridges
-// found before it (the newer ones, per the server's newest-first order).
-func TestFetchNewBridgesFrom_StopsAtFirstKnownBridge(t *testing.T) {
+// TestScanBridgeService_StopsAtFirstKnownFinalBridge verifies pagination stops as soon as an
+// already-known FINAL bridge is reached, without walking further pages, and returns only the
+// bridges found before it (the newer ones, per the server's newest-first order).
+func TestScanBridgeService_StopsAtFirstKnownFinalBridge(t *testing.T) {
 	// bridgesByNetwork is given newest-first (global index 3, then 2, then 1), matching the real
 	// bridge service's own deposit_count DESC order
+	known2 := bridgeResponse(1, 2, 1, testFromAddress, 2)
 	svc := &fakeActivityBridgeService{
 		bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
 			1: {
 				bridgeResponse(1, 2, 2, testFromAddress, 3),
-				bridgeResponse(1, 2, 1, testFromAddress, 2), // already known: pagination stops here
+				known2, // already known and final: pagination stops here
 				bridgeResponse(1, 2, 0, testFromAddress, 1), // must never be fetched
 			},
 		},
@@ -379,24 +445,26 @@ func TestFetchNewBridgesFrom_StopsAtFirstKnownBridge(t *testing.T) {
 	client, err := source.services.aggkitBridgeClientFor(1)
 	require.NoError(t, err)
 
-	known := map[string]domain.KnownBridge{"2": {Source: domain.ActivitySourceBridgeService}}
-	items, err := fetchNewBridgesFrom(t.Context(), client, 1, testFromAddress, 1, known)
+	known := map[string]domain.KnownBridge{"2": knownBridge(known2, domain.ActivitySourceBridgeService, true)}
+	scan, err := scanBridgeService(t.Context(), client, 1, testFromAddress, 1, known, testLogger)
 	require.NoError(t, err)
-	require.Len(t, items, 1)
-	require.Equal(t, int64(3), items[0].Bridge.GlobalIndex.ToBigInt().Int64())
+	require.Len(t, scan.bridges, 1)
+	require.Equal(t, int64(3), scan.bridges[0].Bridge.GlobalIndex.ToBigInt().Int64())
+	require.Equal(t, map[int]int{1: 2, 2: 1}, svc.pageRequests(), "page 3 is never read; page 1 is re-read")
 }
 
-// TestFetchNewBridgesFrom_UpgradesSourceOnceBridgeServiceCatchesUp verifies a bridge known only
+// TestScanBridgeService_UpgradesSourceOnceBridgeServiceCatchesUp verifies a bridge known only
 // from the RPC fallback (Source: domain.ActivitySourceRPC — the bridge service had not indexed
 // it yet) is re-emitted, relabeled domain.ActivitySourceBridgeService, once the bridge service
-// itself reports it — so the cache is upgraded to reflect it is now the source of record —
-// while pagination still stops right there, exactly as for an already bridge-sourced bridge.
-func TestFetchNewBridgesFrom_UpgradesSourceOnceBridgeServiceCatchesUp(t *testing.T) {
+// itself reports it — so the cache is upgraded to reflect it is now the source of record — while
+// pagination still stops at the first known final bridge below it.
+func TestScanBridgeService_UpgradesSourceOnceBridgeServiceCatchesUp(t *testing.T) {
+	finalBridge := bridgeResponse(1, 2, 0, testFromAddress, 1)
 	svc := &fakeActivityBridgeService{
 		bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
 			1: {
 				bridgeResponse(1, 2, 1, testFromAddress, 2), // known, but only via the RPC fallback so far
-				bridgeResponse(1, 2, 0, testFromAddress, 1), // must never be fetched
+				finalBridge, // known and final: the scan stops here
 			},
 		},
 	}
@@ -406,12 +474,16 @@ func TestFetchNewBridgesFrom_UpgradesSourceOnceBridgeServiceCatchesUp(t *testing
 	client, err := source.services.aggkitBridgeClientFor(1)
 	require.NoError(t, err)
 
-	known := map[string]domain.KnownBridge{"2": {Source: domain.ActivitySourceRPC}}
-	items, err := fetchNewBridgesFrom(t.Context(), client, 1, testFromAddress, 1, known)
+	known := map[string]domain.KnownBridge{
+		"2": {Source: domain.ActivitySourceRPC, NetworkID: 1, DepositCount: 1, TxHash: "0x2"},
+		"1": knownBridge(finalBridge, domain.ActivitySourceBridgeService, true),
+	}
+	scan, err := scanBridgeService(t.Context(), client, 1, testFromAddress, 10, known, testLogger)
 	require.NoError(t, err)
-	require.Len(t, items, 1, "the older, already bridge-sourced bridge (index 1) is never fetched")
-	require.Equal(t, int64(2), items[0].Bridge.GlobalIndex.ToBigInt().Int64())
-	require.Equal(t, domain.ActivitySourceBridgeService, items[0].Source)
+	require.Len(t, scan.bridges, 1, "the older, final bridge (index 1) is not returned again")
+	require.Equal(t, int64(2), scan.bridges[0].Bridge.GlobalIndex.ToBigInt().Int64())
+	require.Equal(t, domain.ActivitySourceBridgeService, scan.bridges[0].Source)
+	require.Empty(t, scan.removed)
 }
 
 // TestInvalidatedBridges verifies invalidatedBridges reports exactly the known entries that:

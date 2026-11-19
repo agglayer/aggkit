@@ -145,18 +145,28 @@ func (f *fakeActivityClaims) IsReadyToClaim(context.Context, *domain.ScannedBrid
 func newTestSQLiteActivityStore(t *testing.T, scanner domain.ActivityBridgeScanner, claims domain.ActivityClaimChecker,
 ) *sqliteActivityStore {
 	t.Helper()
+	store, _ := newTestSQLiteActivityStoreWithSupervised(t, scanner, claims)
+	return store
+}
+
+// newTestSQLiteActivityStoreWithSupervised is newTestSQLiteActivityStore also returning the
+// supervised store it shares, for tests that set up tracker snapshots directly
+func newTestSQLiteActivityStoreWithSupervised(
+	t *testing.T, scanner domain.ActivityBridgeScanner, claims domain.ActivityClaimChecker,
+) (*sqliteActivityStore, domain.SupervisedStore) {
+	t.Helper()
 
 	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
 	logger := log.WithFields("module", "activity_test")
 	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
-	store, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
+	store, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	s, ok := store.(*sqliteActivityStore)
 	require.True(t, ok)
 	t.Cleanup(func() { require.NoError(t, s.Close()) })
-	return s
+	return s, supervised
 }
 
 // mustRegisterActivity registers addr (with includeTracking=false — no test using this helper
@@ -266,17 +276,17 @@ func TestSQLiteActivityStoreTrackerClaimedNeedsOnChainConfirmation(t *testing.T)
 		bridges: []*domain.ScannedBridge{activityScannedBridge(bridge, testScannedNetworkID)},
 	}
 	claims := &fakeActivityClaims{isClaimed: []bool{false}}
-	store := newTestSQLiteActivityStore(t, scanner, claims)
+	store, supervised := newTestSQLiteActivityStoreWithSupervised(t, scanner, claims)
 
 	id := domain.TrackingID{NetworkID: testScannedNetworkID, TxHash: common.HexToHash(string(bridge.TxHash))}
-	_, err := store.supervised.Get(id, true)
+	_, err := supervised.Get(id, true)
 	require.NoError(t, err)
 	tx := domain.TrackingBridgeTx{Info: testBridgeInfo()}
-	require.NoError(t, store.supervised.UpdateTracking(id, tx, []domain.BridgeStepPath{
+	require.NoError(t, supervised.UpdateTracking(id, tx, []domain.BridgeStepPath{
 		{Step: types.StepWaitingClaim, Status: types.StepStatusDone},
 		{Step: types.StepClaimed, Status: types.StepStatusDone},
 	}))
-	snapshot, err := store.supervised.Get(id, false)
+	snapshot, err := supervised.Get(id, false)
 	require.NoError(t, err)
 	require.Equal(t, types.TrackerClaimStatusClaimed, snapshot.ClaimStatus(), "precondition: the tracker says claimed")
 
@@ -292,12 +302,12 @@ func TestSQLiteActivityStoreTrackerClaimedNeedsOnChainConfirmation(t *testing.T)
 	require.Empty(t, claimedOnly, "an on-chain unclaimed bridge must not be listed as claimed")
 }
 
-// TestSQLiteActivityStoreClaimedAndIndexedBridgeIsNeverRechecked verifies a bridge that is
-// claimed with its claim record already fetched is never rechecked on a later refresh —
-// settled, and persisted as such across refreshes
-func TestSQLiteActivityStoreClaimedAndIndexedBridgeIsNeverRechecked(t *testing.T) {
-	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
-	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
+// TestSQLiteActivityStoreSettledBridgeIsNeverRechecked verifies a bridge that is settled —
+// claimed, claim record fetched, bridge and claim blocks final — is never rechecked on a later
+// refresh, persisted as such across refreshes and served as claimed_finalized / finalized
+func TestSQLiteActivityStoreSettledBridgeIsNeverRechecked(t *testing.T) {
+	claim := finalClaim(&bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"})
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{finalScannedBridge(1)}}
 	// only one IsClaimed/ClaimInfo entry: a second consultation would panic on out-of-range
 	claims := &fakeActivityClaims{isClaimed: []bool{true}, claimInfo: []*bridgeservicetypes.ClaimResponse{claim}}
 	store := newTestSQLiteActivityStore(t, scanner, claims)
@@ -308,6 +318,8 @@ func TestSQLiteActivityStoreClaimedAndIndexedBridgeIsNeverRechecked(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusClaimed, entries[0].ClaimStatus)
 	require.Equal(t, claim, entries[0].Claim)
+	require.Equal(t, types.TrackerClaimStatusClaimedFinalized, entries[0].TrackerClaimStatus)
+	require.True(t, entries[0].Finalized)
 
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
@@ -365,7 +377,7 @@ func TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstance
 	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
-	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	entries, _, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
@@ -379,7 +391,7 @@ func TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstance
 	// second store, second scanner/claims that would panic if consulted again: proves the value
 	// served back comes off the disk and not from a fresh IsClaimed call
 	second, err := NewSQLiteActivityStore(
-		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
+		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	secondSQLite, ok := second.(*sqliteActivityStore)
 	require.True(t, ok)
@@ -410,7 +422,7 @@ func TestSQLiteActivityStoreReadinessFailureRedactsSensitiveTokensAcrossInstance
 	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
-	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	entries, _, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
@@ -424,7 +436,7 @@ func TestSQLiteActivityStoreReadinessFailureRedactsSensitiveTokensAcrossInstance
 	// second store, second scanner/claims that would panic if consulted again: proves the value
 	// served back comes off the disk and not from a fresh IsReadyToClaim call
 	second, err := NewSQLiteActivityStore(
-		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
+		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	secondSQLite, ok := second.(*sqliteActivityStore)
 	require.True(t, ok)
@@ -463,7 +475,7 @@ func TestSQLiteActivityStoreLastWarningsRedactsSensitiveTokensAcrossInstances(t 
 	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
-	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	_, warnings, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
@@ -477,7 +489,7 @@ func TestSQLiteActivityStoreLastWarningsRedactsSensitiveTokensAcrossInstances(t 
 	// second store, second scanner/claims that would panic if consulted again: proves the value
 	// served back comes off the disk and not from a fresh scan
 	second, err := NewSQLiteActivityStore(
-		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
+		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	secondSQLite, ok := second.(*sqliteActivityStore)
 	require.True(t, ok)
@@ -797,7 +809,7 @@ func TestSQLiteActivityStorePersistsAcrossInstances(t *testing.T) {
 	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
-	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	entries, _, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
@@ -809,7 +821,7 @@ func TestSQLiteActivityStorePersistsAcrossInstances(t *testing.T) {
 	// second store, second scanner/claims that would panic if consulted again: proves the
 	// second instance served the result straight from the DB, without rescanning/rechecking
 	second, err := NewSQLiteActivityStore(
-		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
+		dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	secondSQLite, ok := second.(*sqliteActivityStore)
 	require.True(t, ok)
@@ -838,7 +850,7 @@ func TestSQLiteActivityStorePersistsSource(t *testing.T) {
 	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
-	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	entries, _, err := refreshAndGet(t, first, testFromAddress, false, types.ActivityFilterAll)
 	require.NoError(t, err)
@@ -849,7 +861,7 @@ func TestSQLiteActivityStorePersistsSource(t *testing.T) {
 
 	// second store, second scanner that would panic if consulted again: proves the second
 	// instance served the entry straight from the DB, Source included, without rescanning
-	second, err := NewSQLiteActivityStore(dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, logger)
+	second, err := NewSQLiteActivityStore(dbPath, &fakeActivityScanner{}, &fakeActivityClaims{}, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	secondSQLite, ok := second.(*sqliteActivityStore)
 	require.True(t, ok)
@@ -919,7 +931,7 @@ func TestSQLiteActivityStoreIncludeTrackingPersistsAcrossRestart(t *testing.T) {
 	supervised, err := NewSQLiteRegistry(dbPath, 10, logger, nil)
 	require.NoError(t, err)
 
-	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
+	first, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	mustRegisterActivity(t, first, testFromAddress, 0)
 	// prime the sticky flag without refreshing yet, exactly like activityCommand.Execute's
@@ -930,7 +942,7 @@ func TestSQLiteActivityStoreIncludeTrackingPersistsAcrossRestart(t *testing.T) {
 	require.True(t, ok)
 	require.NoError(t, firstSQLite.Close())
 
-	second, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, logger)
+	second, err := NewSQLiteActivityStore(dbPath, scanner, claims, supervised, reportedFinality(), logger)
 	require.NoError(t, err)
 	secondSQLite, ok := second.(*sqliteActivityStore)
 	require.True(t, ok)

@@ -24,7 +24,7 @@ const docTemplatebridgetracker = `{
     "paths": {
         "/activity/from/{from_address}": {
             "get": {
-                "description": "Registers from_address as supervised and reports whatever the activity engine's\nbackground refresh has cached for it so far — on a first-time address, this\nrequest waits briefly for that first refresh before answering, and answers 503\nwith a Retry-After header (the engine's poll interval) if it is still not ready\nby then, instead of an empty 200 indistinguishable from \"no activity\" (see\nRegisterResolveTimeout-equivalent config). Results are cached: a bridge already\nknown to be claimed, with its claim record already fetched, is not rechecked on a\nlater refresh. Passing includeTracking=true additionally marks the address so a\nfollowing background refresh registers every still-unclaimed bridge with the\nbridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). flush_cache=true discards\nwhatever is already cached for from_address, so the next background refresh\nrechecks everything from scratch. A network whose bridge service could not be\nscanned is skipped and reported in the \"warnings\" field instead of failing the\nwhole request. Bridges are sorted most recent first and paginated via\npage_number/page_size (same names and 1-based numbering as the bridge service's\nown paginated endpoints); \"count\" reports how many bridges matched in total,\nacross every page. \"revision\" is an opaque string, a hash of the address's\nactivity: it changes when a bridge is added or removed, changes claim_status or is\ncorrected after a reorg, wherever it sits in the sorted result, and does not change\nwhen an item only becomes finalized. It is the same after a restart and on every\ninstance holding the same data. Poll it with a cheap request (page_size=1), reload\nthe loaded pages when it changed, and check it again after the last page. Compare\nit only for equality.",
+                "description": "Registers from_address as supervised and reports whatever the activity engine's\nbackground refresh has cached for it so far — on a first-time address, this\nrequest waits briefly for that first refresh before answering, and answers 503\nwith a Retry-After header (the engine's poll interval) if it is still not ready\nby then, instead of an empty 200 indistinguishable from \"no activity\" (see\nRegisterResolveTimeout-equivalent config). Results are cached: a bridge already\nknown to be claimed, with its claim record already fetched, is not rechecked on a\nlater refresh. Passing includeTracking=true additionally marks the address so a\nfollowing background refresh registers every still-unclaimed bridge with the\nbridge tracker and includes its current tracking snapshot. filterBridges\nrestricts the result to bridges with only that claim state (claimed / still\npending / ready to claim / errored while checking). flush_cache=true discards\nwhatever is already cached for from_address, so the next background refresh\nrechecks everything from scratch. A network whose bridge service could not be\nscanned is skipped and reported in the \"warnings\" field instead of failing the\nwhole request. Bridges are sorted most recent first and paginated via\npage_number/page_size (same names and 1-based numbering as the bridge service's\nown paginated endpoints); \"count\" reports how many bridges matched in total,\nacross every page. \"revision\" is an opaque string, a hash of the address's\nactivity: it changes when a bridge is added or removed, changes claim_status or is\ncorrected after a reorg, wherever it sits in the sorted result, and does not change\nwhen an item only becomes finalized. It is the same after a restart and on every\ninstance holding the same data. Poll it with a cheap request (page_size=1), reload\nthe loaded pages when it changed, and check it again after the last page. Compare\nit only for equality. The same value is sent as the ETag response header (between\ndouble quotes): a request carrying it in If-None-Match is answered 304 Not Modified\nwith no body while the revision is unchanged, whatever the filter or the page. A 304\ndoes not tell whether finalized, last_updated_timestamp, tracking or warnings changed.",
                 "produces": [
                     "application/json"
                 ],
@@ -79,6 +79,12 @@ const docTemplatebridgetracker = `{
                         "description": "Page size (default 20, max 200)",
                         "name": "page_size",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ETag of a previous response (the revision between double quotes)",
+                        "name": "If-None-Match",
+                        "in": "header"
                     }
                 ],
                 "responses": {
@@ -86,6 +92,29 @@ const docTemplatebridgetracker = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/api.ActivityResponse"
+                        },
+                        "headers": {
+                            "Cache-Control": {
+                                "type": "string",
+                                "description": "no-store"
+                            },
+                            "ETag": {
+                                "type": "string",
+                                "description": "The revision between double quotes (strong entity tag)"
+                            }
+                        }
+                    },
+                    "304": {
+                        "description": "Not Modified: the revision is the one sent in If-None-Match, no body",
+                        "headers": {
+                            "Cache-Control": {
+                                "type": "string",
+                                "description": "no-store"
+                            },
+                            "ETag": {
+                                "type": "string",
+                                "description": "The revision between double quotes (strong entity tag)"
+                            }
                         }
                     },
                     "400": {
@@ -326,7 +355,7 @@ const docTemplatebridgetracker = `{
                     "type": "integer"
                 },
                 "claim_status": {
-                    "description": "ClaimStatus is a simplified claim-readiness summary, one of \"pending\", \"readyToClaim\",\n\"claimed\", \"claimed_finalized\" or \"error\" — the same vocabulary and field name as\nTrackingData.ClaimStatus (see domain.TrackingData.ClaimStatus for exactly how it is\nderived). \"claimed_finalized\" is the only final state: \"claimed\" can still go back to\n\"readyToClaim\" or \"pending\" if a reorg removes the claim. \"error\" reports the destination\nbridge contract's isClaimed() call itself failing (e.g. no bridge contract address\nconfigured for the destination network) — callers must not read it as \"pending\". While\nunclaimed, \"readyToClaim\" vs \"pending\" is resolved from the tracker's own snapshot when\nTracking is present, or directly against the bridge-service endpoints otherwise (see\ndomain.ActivityClaimChecker.IsReadyToClaim). \"claimed_finalized\" is not produced yet (see\nFinalized)",
+                    "description": "ClaimStatus is a simplified claim-readiness summary, one of \"pending\", \"readyToClaim\",\n\"claimed\", \"claimed_finalized\" or \"error\" — the same vocabulary and field name as\nTrackingData.ClaimStatus (see domain.TrackingData.ClaimStatus for exactly how it is\nderived). \"claimed_finalized\" is the only final state: \"claimed\" can still go back to\n\"readyToClaim\" or \"pending\" if a reorg removes the claim. \"error\" reports the destination\nbridge contract's isClaimed() call itself failing (e.g. no bridge contract address\nconfigured for the destination network) — callers must not read it as \"pending\". While\nunclaimed, \"readyToClaim\" vs \"pending\" is resolved from the tracker's own snapshot when\nTracking is present, or directly against the bridge-service endpoints otherwise (see\ndomain.ActivityClaimChecker.IsReadyToClaim). \"claimed_finalized\" is \"claimed\" once the\nbridge's and the claim's blocks are both final (see Finalized)",
                     "type": "string",
                     "enum": [
                         "pending",
@@ -337,7 +366,7 @@ const docTemplatebridgetracker = `{
                     ]
                 },
                 "creation_timestamp": {
-                    "description": "CreationTimestamp is when this bridge was created (unix seconds): its origin deposit block\ntimestamp, or when the activity endpoint first cached it if the bridge service had not\npopulated that timestamp yet; it never changes after that",
+                    "description": "CreationTimestamp is when this bridge was created (unix seconds): its origin deposit block\ntimestamp, or when the activity endpoint first cached it if the bridge service had not\npopulated that timestamp yet; it only changes again if a reorg moves the bridge to another\nblock or transaction",
                     "type": "integer"
                 },
                 "errors": {
@@ -348,11 +377,11 @@ const docTemplatebridgetracker = `{
                     }
                 },
                 "finalized": {
-                    "description": "Finalized is true when this item can no longer be changed by a reorg: its bridge is final\nand, if it is claimed, its claim is final too. Always serialized. It is false for every\nitem until the activity finality follow-ups populate it (agglayer/aggkit#1968, #1969).\nGoing from false to true does not change the response's Revision",
+                    "description": "Finalized is true when this item can no longer be changed by a reorg: its bridge is final\nand, if it is claimed, its claim is final too (claim_status \"claimed_finalized\"). Always\nserialized. Going from false to true does not change the response's Revision. An unclaimed\nitem with a final bridge is finalized too, and goes back to false if it gets claimed, until\nthat claim is final",
                     "type": "boolean"
                 },
                 "last_updated_timestamp": {
-                    "description": "LastUpdatedTimestamp is when this item's claim/tracking state was last (re)checked (unix\nseconds), whether or not anything about it actually changed. Stops advancing once the\nbridge is claimed with its claim record fetched — nothing left to recheck",
+                    "description": "LastUpdatedTimestamp is when this item's claim/tracking state was last (re)checked (unix\nseconds), whether or not anything about it actually changed. Stops advancing once the item\nis settled (claim_status \"claimed_finalized\") — nothing left to recheck",
                     "type": "integer"
                 },
                 "source": {
@@ -391,7 +420,7 @@ const docTemplatebridgetracker = `{
                     }
                 },
                 "revision": {
-                    "description": "Revision is FromAddress's revision (see domain.ActivityRevisionReader), an opaque string\nthat is a hash of the address's activity (e.g. \"v1:\" followed by hex), present in every\nresponse whatever filterBridges/page_number/page_size say: it covers all of the address's\nbridges, not just this page. It changes when a bridge is added or removed, changes\nclaim_status or is corrected after a reorg — wherever it sits in the sorted result — and it\ndoes NOT change when an item only goes from finalized=false to finalized=true. It is the\nsame after a restart and on every instance holding the same data. A client polls it with a\ncheap request (page_size=1), reloads the pages it has loaded when it differs from the one\nit holds, and checks it again after the last page; compare it for equality only. Always\nserialized; until the follow-up that computes it lands (agglayer/aggkit#1968, #1969) it is\nthe empty-activity value \"v1:\" followed by 64 zeros",
+                    "description": "Revision is FromAddress's revision (see domain.ActivityRevisionReader), an opaque string\nthat is a hash of the address's activity (e.g. \"v1:\" followed by hex), present in every\nresponse whatever filterBridges/page_number/page_size say: it covers all of the address's\nbridges, not just this page. It changes when a bridge is added or removed, changes\nclaim_status or is corrected after a reorg — wherever it sits in the sorted result — and it\ndoes NOT change when an item only goes from finalized=false to finalized=true. It is the\nsame after a restart and on every instance holding the same data. A client polls it with a\ncheap request (page_size=1), reloads the pages it has loaded when it differs from the one\nit holds, and checks it again after the last page; compare it for equality only. Always\nserialized; the empty-activity value \"v1:\" followed by 64 zeros for an address with no\nbridges",
                     "type": "string",
                     "example": "v1:0000000000000000000000000000000000000000000000000000000000000000"
                 },
@@ -488,7 +517,7 @@ const docTemplatebridgetracker = `{
             "type": "object",
             "properties": {
                 "block_finalized": {
-                    "description": "BlockFinalized is whether BlockNumber is final on the origin network, i.e. it can no\nlonger be removed by a reorg. Always serialized (no omitempty): false means \"not final yet\n(or not known)\" — the client keeps polling until it turns true. It is false for every\nbridge until the tracker follow-up populates it (agglayer/aggkit#1970)",
+                    "description": "BlockFinalized is whether BlockNumber is final on the origin network, i.e. it can no\nlonger be removed by a reorg. Always serialized (no omitempty): false means \"not final yet\n(or not known)\" — the client keeps polling until it turns true. The tracker sets it once it\nproves the bridge tx final in BlockNumber (finality resolver), or once the claim is final,\nwhich implies it; it never goes back to false",
                     "type": "boolean"
                 },
                 "block_number": {
@@ -535,7 +564,7 @@ const docTemplatebridgetracker = `{
                     "$ref": "#/definitions/github_com_agglayer_aggkit_bridgetracker_types.Duration"
                 },
                 "result": {
-                    "description": "Result is the data the step has produced so far; its shape depends on Step:\n*types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult\n(StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),\n*types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData\n(StepCertificatePending), *types.L1SettledGERResult (StepWaitL1SettledGER),\n*types.L1InfoLeafAvailableResult (StepWaitingL1InfoLeafAvailable) or *types.ClaimResult\n(StepClaimed). nil until\nthe step produces one, and for steps that never do. Most steps only set this once Done,\nbut StepCertificatePending (Status still InProgress) may already carry the certificate's\ncurrent, not yet settled, status — see domain.ErrCertificateNotSettled"
+                    "description": "Result is the data the step has produced so far; its shape depends on Step:\n*types.GERUpdateResult (StepWaitingGERUpdate), *types.InjectedGERResult\n(StepWaitingGERInjection), *types.LERUpdateResult (StepWaitingLERUpdate),\n*types.PendingInclusionResult (StepPendingInclusion), *types.CertificateData\n(StepCertificatePending), *types.L1SettledGERResult or, while its own backwards search is\nstill in progress, *types.SettlementSearchProgress (StepWaitL1SettledGER),\n*types.L1InfoLeafAvailableResult (StepWaitingL1InfoLeafAvailable) or *types.ClaimResult\n(StepClaimed). nil until\nthe step produces one, and for steps that never do. Most steps only set this once Done,\nbut StepCertificatePending (Status still InProgress) may already carry the certificate's\ncurrent, not yet settled, status — see domain.ErrCertificateNotSettled"
                 },
                 "start_date": {
                     "type": "string"
@@ -573,7 +602,7 @@ const docTemplatebridgetracker = `{
                     ]
                 },
                 "claim_status": {
-                    "description": "ClaimStatus is a simplified claim-readiness summary, one of \"pending\",\n\"readyToClaim\", \"claimed\", \"claimed_finalized\" or \"error\" — see\ndomain.TrackingData.ClaimStatus for exactly how it is derived from TrackingStatus and the\ncurrent step. \"claimed_finalized\" is the only final state: \"claimed\" can still go back to\n\"readyToClaim\" or \"pending\" if a reorg removes the claim. It is not produced yet\n(agglayer/aggkit#1970). For most clients this is all that is needed to know whether the\nbridge can be claimed; TrackingStatus/AllSteps remain for anything that needs the full\ndetail",
+                    "description": "ClaimStatus is a simplified claim-readiness summary, one of \"pending\",\n\"readyToClaim\", \"claimed\", \"claimed_finalized\" or \"error\" — see\ndomain.TrackingData.ClaimStatus for exactly how it is derived from TrackingStatus and the\ncurrent step. \"claimed_finalized\" is the only final state: \"claimed\" can still go back to\n\"readyToClaim\" or \"pending\" if a reorg removes the claim, and TrackingStatus only reads\n\"finished\" once it is \"claimed_finalized\". For most clients this is all that is needed to\nknow whether the bridge can be claimed; TrackingStatus/AllSteps remain for anything that\nneeds the full detail",
                     "type": "string",
                     "enum": [
                         "pending",
@@ -643,10 +672,25 @@ const docTemplatebridgetracker = `{
                         1000000000,
                         60000000000,
                         3600000000000,
+                        -9223372036854775808,
+                        9223372036854775807,
                         1,
                         1000,
                         1000000,
-                        1000000000
+                        1000000000,
+                        60000000000,
+                        3600000000000,
+                        1,
+                        1000,
+                        1000000,
+                        1000000000,
+                        60000000000,
+                        1,
+                        1000,
+                        1000000,
+                        1000000000,
+                        60000000000,
+                        3600000000000
                     ],
                     "x-enum-varnames": [
                         "minDuration",
@@ -673,10 +717,25 @@ const docTemplatebridgetracker = `{
                         "Second",
                         "Minute",
                         "Hour",
+                        "minDuration",
+                        "maxDuration",
                         "Nanosecond",
                         "Microsecond",
                         "Millisecond",
-                        "Second"
+                        "Second",
+                        "Minute",
+                        "Hour",
+                        "Nanosecond",
+                        "Microsecond",
+                        "Millisecond",
+                        "Second",
+                        "Minute",
+                        "Nanosecond",
+                        "Microsecond",
+                        "Millisecond",
+                        "Second",
+                        "Minute",
+                        "Hour"
                     ]
                 }
             }
@@ -689,6 +748,11 @@ const docTemplatebridgetracker = `{
                     "description": "Amount of tokens being bridged",
                     "type": "string",
                     "example": "1000000000000000000"
+                },
+                "block_finalized": {
+                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when the syncer that served the item cannot determine it.",
+                    "type": "boolean",
+                    "example": true
                 },
                 "block_num": {
                     "description": "Block number where the bridge event was recorded",
@@ -780,6 +844,11 @@ const docTemplatebridgetracker = `{
                     "description": "Amount claimed",
                     "type": "string",
                     "example": "1000000000000000000"
+                },
+                "block_finalized": {
+                    "description": "BlockFinalized reports whether the block of this item is finalized (reorg-safe) on its network.\nIt is omitted when the syncer that served the item cannot determine it.",
+                    "type": "boolean",
+                    "example": true
                 },
                 "block_num": {
                     "description": "Block number where the claim was processed",
