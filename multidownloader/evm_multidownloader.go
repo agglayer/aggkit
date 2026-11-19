@@ -443,7 +443,8 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 			}
 
 			dh.log.Infof("Processing reorg at block number %d...", reorgErr.OffendingBlockNumber)
-			err = dh.reorgProcessor.ProcessReorg(runCtx, *reorgErr, dh.cfg.BlockFinality)
+			var firstReorgedBlock uint64
+			firstReorgedBlock, err = dh.reorgProcessor.ProcessReorg(runCtx, *reorgErr, dh.cfg.BlockFinality)
 			if err != nil {
 				dh.mutex.Unlock()
 				dh.retryReorgProcessingAfter(runCtx, reorgBackoff, "Error running reorg multidownloader", err)
@@ -462,7 +463,10 @@ func (dh *EVMMultidownloader) startNumLoops(ctx context.Context, numLoopsToExecu
 			// the cursor are never skipped. Rewinding the cursor (not the
 			// cached rows) is what preserves correctness: unchanged blocks
 			// stay a cache hit and only the reorged region is re-examined.
-			dh.rewindTransactionSchedulerFrom(reorgErr.OffendingBlockNumber)
+			// The rollback boundary (block after the common ancestor) can be
+			// lower than the block where the reorg was detected, so rewind
+			// from whichever is lower.
+			dh.rewindTransactionSchedulerFrom(min(firstReorgedBlock, reorgErr.OffendingBlockNumber))
 			dh.mutex.Unlock()
 			break
 		}

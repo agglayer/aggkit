@@ -39,20 +39,23 @@ func NewReorgProcessor(log aggkitcommon.Logger,
 //   - detectedReorgError: the error returned by the reorg detection logic, containing the
 //     offending block number and the reason for the reorg detection
 //   - finalizedBlockTag: the block tag to consider as finalized (typically finalizedBlock)
+//
+// It returns the first block removed by the reorg (firstUnaffectedBlock+1), which can be
+// lower than detectedReorgError.OffendingBlockNumber when the reorg started earlier.
 func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 	detectedReorgError mdtypes.DetectedReorgError,
-	finalizedBlockTag aggkittypes.BlockNumberFinality) error {
+	finalizedBlockTag aggkittypes.BlockNumberFinality) (uint64, error) {
 	var err error
 	// We known that offendingBlockNumber is affected, so we go backwards until we find
 	// the first unaffected block
 	offendingBlockNumber := detectedReorgError.OffendingBlockNumber
 	if offendingBlockNumber == 0 {
-		return fmt.Errorf("ProcessReorg: reorg detected at block 0, " +
+		return 0, fmt.Errorf("ProcessReorg: reorg detected at block 0, " +
 			"this should never happen, check the reorg detection logic")
 	}
 	tx, err := rm.port.NewTx(ctx)
 	if err != nil {
-		return fmt.Errorf("ProcessReorg: error starting new tx: %w", err)
+		return 0, fmt.Errorf("ProcessReorg: error starting new tx: %w", err)
 	}
 	committed := false
 	defer func() {
@@ -65,7 +68,7 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 	}()
 	firstUnaffectedBlock, err := rm.findFirstUnaffectedBlock(ctx, tx, offendingBlockNumber-1)
 	if err != nil {
-		return fmt.Errorf("ProcessReorg: error finding first unaffected block: %w", err)
+		return 0, fmt.Errorf("ProcessReorg: error finding first unaffected block: %w", err)
 	}
 	if detectedReorgError.ReorgDetectionReason == mdtypes.ReorgDetectionReason_Forced {
 		if rm.developerMode {
@@ -85,15 +88,15 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 
 	lastBlockNumberInStorage, err := rm.port.GetLastBlockNumberInStorage(tx)
 	if err != nil {
-		return fmt.Errorf("ProcessReorg: error getting last block number in storage: %w", err)
+		return 0, fmt.Errorf("ProcessReorg: error getting last block number in storage: %w", err)
 	}
 	latestBlockNumberInRPC, err := rm.port.GetBlockNumberInRPC(ctx, aggkittypes.LatestBlock)
 	if err != nil {
-		return fmt.Errorf("ProcessReorg: error getting latest block number in RPC: %w", err)
+		return 0, fmt.Errorf("ProcessReorg: error getting latest block number in RPC: %w", err)
 	}
 	finalizedBlockNumberInRPC, err := rm.port.GetBlockNumberInRPC(ctx, finalizedBlockTag)
 	if err != nil {
-		return fmt.Errorf("ProcessReorg: error getting finalized block number in RPC: %w", err)
+		return 0, fmt.Errorf("ProcessReorg: error getting finalized block number in RPC: %w", err)
 	}
 	rm.log.Infof("ProcessReorg: reorg detected from block %d to block %d",
 		firstUnaffectedBlock+1, lastBlockNumberInStorage)
@@ -109,15 +112,15 @@ func (rm *ReorgProcessor) ProcessReorg(ctx context.Context,
 	}
 	reorgID, err := rm.port.MoveReorgedBlocks(tx, reorgData)
 	if err != nil {
-		return fmt.Errorf("ProcessReorg: error moving reorged blocks: %w", err)
+		return 0, fmt.Errorf("ProcessReorg: error moving reorged blocks: %w", err)
 	}
 	reorgData.ReorgID = reorgID
 	committed = true
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("ProcessReorg: cannot commit tx: %w", err)
+		return 0, fmt.Errorf("ProcessReorg: cannot commit tx: %w", err)
 	}
 	rm.log.Warnf("ProcessReorg: finalized reorgProcess: %s", reorgData.String())
-	return nil
+	return firstUnaffectedBlock + 1, nil
 }
 
 func (rm *ReorgProcessor) findFirstUnaffectedBlock(ctx context.Context,

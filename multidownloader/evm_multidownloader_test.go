@@ -413,11 +413,42 @@ func TestEVMMultidownloader_Start(t *testing.T) {
 		ctx := context.Background()
 		testData.mdr.debug.ForceReorg(1234)
 
-		testData.mockReorgProcessor.EXPECT().ProcessReorg(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+		testData.mockReorgProcessor.EXPECT().ProcessReorg(mock.Anything, mock.Anything, mock.Anything).
+			Return(uint64(1234), nil).Once()
 		// It starts, execute 1 loop that do a reorg and then return
 		err := testData.mdr.startNumLoops(ctx, 1)
 		// Should return no error
 		require.NoError(t, err)
+	})
+
+	t.Run("reorg rewinds the transaction scheduler to the rollback boundary", func(t *testing.T) {
+		testData := newEVMMultidownloaderTestData(t, false)
+		testData.mdr.debug = &EVMMultidownloaderDebug{}
+		testData.mdr.state = NewEmptyState()
+		ctx := context.Background()
+
+		// An already advanced schedule: blocks below 200 were scanned.
+		demand := incrDemand()
+		testData.mdr.transactionDemands = []transactionDemand{demand}
+		testData.mdr.txScheduler.syncDemands(testData.mdr.transactionDemands)
+		sched := testData.mdr.txScheduler.schedules[transactionDemandSignature(demand)]
+		require.NotNil(t, sched)
+		sched.initialized = true
+		sched.frontier = 200
+
+		// The reorg is detected at block 100, but the common ancestor is 89:
+		// blocks 90..100 were replaced, so the scheduler must resume at 90.
+		const detectedAt, firstReorgedBlock = uint64(100), uint64(90)
+		testData.mdr.debug.ForceReorg(detectedAt)
+		testData.mockReorgProcessor.EXPECT().ProcessReorg(mock.Anything, mock.Anything, mock.Anything).
+			Return(firstReorgedBlock, nil).Once()
+
+		require.NoError(t, testData.mdr.startNumLoops(ctx, 1))
+
+		testData.mdr.txScheduler.mu.Lock()
+		defer testData.mdr.txScheduler.mu.Unlock()
+		require.Equal(t, firstReorgedBlock, sched.frontier,
+			"replacement logs below the detection block must be re-scanned")
 	})
 }
 

@@ -26,21 +26,31 @@ func (_m *ReorgProcessor) EXPECT() *ReorgProcessor_Expecter {
 }
 
 // ProcessReorg provides a mock function with given fields: ctx, detectedReorgError, finalizedBlockTag
-func (_m *ReorgProcessor) ProcessReorg(ctx context.Context, detectedReorgError types.DetectedReorgError, finalizedBlockTag aggkittypes.BlockNumberFinality) error {
+func (_m *ReorgProcessor) ProcessReorg(ctx context.Context, detectedReorgError types.DetectedReorgError, finalizedBlockTag aggkittypes.BlockNumberFinality) (uint64, error) {
 	ret := _m.Called(ctx, detectedReorgError, finalizedBlockTag)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ProcessReorg")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, types.DetectedReorgError, aggkittypes.BlockNumberFinality) error); ok {
+	var r0 uint64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, types.DetectedReorgError, aggkittypes.BlockNumberFinality) (uint64, error)); ok {
+		return rf(ctx, detectedReorgError, finalizedBlockTag)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, types.DetectedReorgError, aggkittypes.BlockNumberFinality) uint64); ok {
 		r0 = rf(ctx, detectedReorgError, finalizedBlockTag)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(uint64)
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, types.DetectedReorgError, aggkittypes.BlockNumberFinality) error); ok {
+		r1 = rf(ctx, detectedReorgError, finalizedBlockTag)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // ReorgProcessor_ProcessReorg_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProcessReorg'
@@ -63,12 +73,12 @@ func (_c *ReorgProcessor_ProcessReorg_Call) Run(run func(ctx context.Context, de
 	return _c
 }
 
-func (_c *ReorgProcessor_ProcessReorg_Call) Return(_a0 error) *ReorgProcessor_ProcessReorg_Call {
-	_c.Call.Return(_a0)
+func (_c *ReorgProcessor_ProcessReorg_Call) Return(_a0 uint64, _a1 error) *ReorgProcessor_ProcessReorg_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *ReorgProcessor_ProcessReorg_Call) RunAndReturn(run func(context.Context, types.DetectedReorgError, aggkittypes.BlockNumberFinality) error) *ReorgProcessor_ProcessReorg_Call {
+func (_c *ReorgProcessor_ProcessReorg_Call) RunAndReturn(run func(context.Context, types.DetectedReorgError, aggkittypes.BlockNumberFinality) (uint64, error)) *ReorgProcessor_ProcessReorg_Call {
 	_c.Call.Return(run)
 	return _c
 }
