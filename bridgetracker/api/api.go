@@ -178,14 +178,22 @@ func (a *API) RegisterRoutes(router gin.IRouter) {
 // logic against the request and returns the HTTP status code and body to write, or the
 // ErrorData to write instead
 type command interface {
+	// Execute returns the status and the body to write (obj nil: no body), or errData
 	Execute(c *gin.Context) (code int, obj any, errData *types.ErrorData)
 }
 
-// runCommand executes cmd and writes its result (or error) as the gin response
+// runCommand executes cmd and writes its result (or error) as the gin response. A nil obj with
+// no error is a response with no body (e.g. the activity endpoint's 304 Not Modified): only the
+// status and the headers the command set are written
 func runCommand(c *gin.Context, cmd command) {
 	code, obj, errData := cmd.Execute(c)
 	if errData != nil {
 		c.JSON(errData.Code, errData)
+		return
+	}
+	if obj == nil {
+		c.Status(code)
+		c.Writer.WriteHeaderNow()
 		return
 	}
 	c.JSON(code, obj)

@@ -1,6 +1,8 @@
 package bridgetracker
 
 import (
+	"context"
+
 	"github.com/agglayer/aggkit/bridgetracker/domain"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 )
@@ -11,4 +13,10 @@ func SampleMetricsOnce(
 	logger aggkitcommon.Logger, store domain.SupervisedStore, activity domain.ActivityRegistry,
 ) {
 	(&metricsSampler{logger: logger, supervised: store, activity: activity}).sample()
+}
+
+// TickOnce runs a single engine resolution round over the supervised list, for tests in package
+// bridgetracker_test (e.g. the engine over the SQLite registry, which imports this package)
+func TickOnce(ctx context.Context, engine *Engine) {
+	engine.tick(ctx)
 }

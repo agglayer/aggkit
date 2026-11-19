@@ -103,6 +103,16 @@ type EngineSources struct {
 	// #1817): in practice the same concrete instance as Certificates, which also implements
 	// domain.SettlementHistorySource
 	SettlementHistory domain.SettlementHistorySource
+	// OriginBlocks re-checks that the origin block of a resolved bridge is still canonical while
+	// it is not final (see domain.CheckOrigin, agglayer/aggkit#1970)
+	OriginBlocks domain.OriginBlockSource
+	// Finality decides whether the origin bridge and the claim are final (see
+	// finality.Resolver). A tracking is only closed once its claim is final
+	Finality domain.FinalityResolver
+	// InjectedGERs re-checks a completed StepWaitingGERInjection without scanning the L2, and
+	// tells whether an L1 info leaf is final where there is no injection (see
+	// domain.ReverifySteps). In practice the same instance as GERs
+	InjectedGERs domain.InjectedGERChecker
 }
 
 // Engine is the tracking engine: it watches the supervised list, resolves the status of
@@ -118,6 +128,9 @@ type Engine struct {
 	// now is the clock, injectable for tests
 	now       func() time.Time
 	resolvers map[types.BridgeStep]domain.StepResolver
+	// checkers are the ports re-evaluating a tracking that is not final yet (see
+	// resolveBridgeStep and domain.ReverifySteps)
+	checkers domain.ReorgCheckers
 }
 
 // NewEngine returns a tracking engine over the given store and fact sources
@@ -146,6 +159,12 @@ func NewEngine(
 		return nil, errors.New("engine requires a SettlementHistorySource")
 	case sources.Settlement == nil:
 		return nil, errors.New("engine requires a SettlementSource")
+	case sources.OriginBlocks == nil:
+		return nil, errors.New("engine requires an OriginBlockSource")
+	case sources.Finality == nil:
+		return nil, errors.New("engine requires a FinalityResolver")
+	case sources.InjectedGERs == nil:
+		return nil, errors.New("engine requires an InjectedGERChecker")
 	}
 	resolvers := createResolvers(logger, sources)
 
@@ -156,6 +175,14 @@ func NewEngine(
 		sources:   sources,
 		now:       time.Now,
 		resolvers: resolvers,
+		checkers: domain.ReorgCheckers{
+			OriginBlocks: sources.OriginBlocks,
+			Finality:     sources.Finality,
+			ClaimChecker: sources.ClaimChecker,
+			Claims:       sources.Claims,
+			InjectedGERs: sources.InjectedGERs,
+			Leaves:       sources.GERs,
+		},
 	}, nil
 }
 
@@ -274,36 +301,65 @@ func (e *Engine) tick(ctx context.Context) {
 // resolveBridgeStep resolves one step of progress for a bridge, incrementally: FindBridge
 // only if its facts are not yet known (once resolved they are persisted and skipped on later
 // ticks), then domain.ResolveSteps for whichever step is currently unmet — milestones already
-// persisted as done are not re-queried, only the pending ones are (it naturally stops at the
-// first unmet one). A source failure is persisted as a step-level error instead of
+// persisted as done are not re-queried by it, only the pending ones are (it naturally stops at
+// the first unmet one). A source failure is persisted as a step-level error instead of
 // only being logged — see persistStepError. On success, all mutations for the tick — including
 // the bridge's tx-level facts (Info) the first time FindBridge resolves it — are merged into a
 // single tx, committed together with the steps through exactly one atomic UpdateTracking call
 // (see persist) so subscribers only ever see one consistent, fully-merged snapshot:
 // never one where BridgeStatus is already populated but AllSteps still reflects the bare,
-// just-seeded pending path instead of what ResolveSteps actually computed for it
+// just-seeded pending path instead of what ResolveSteps actually computed for it.
+//
+// Until the tracking is final (its claim's block is final, see domain.TrackingData.IsFinal —
+// a final tracking is no longer in the active list at all) every tick also re-evaluates what a
+// reorg can undo (agglayer/aggkit#1970), before the forward resolution:
+//   - domain.CheckOrigin, while the origin block is not final: an origin block reorged out
+//     discards the resolved facts (domain.ResetBridgeTx) and FindBridge resolves the tx again
+//     in the same tick, wherever it was re-included (a bridge FindBridge just resolved only gets
+//     its finality checked, domain.OriginFinality);
+//   - domain.ReverifySteps: the claim, and at readyToClaim the GER injection and the L1 info
+//     leaf, moving the tracking back when one is gone.
+//
+// A claim found by the forward resolution is checked for finality right away
+// (domain.FinalizeClaim). A backward move is persisted and published like any other change
 func (e *Engine) resolveBridgeStep(ctx context.Context, tracking *domain.TrackingData) error {
 	ctx, cancel := context.WithTimeout(ctx, e.cfg.ResolveTimeout)
 	defer cancel()
 
 	id := tracking.ID()
 	originalTx := tracking.BridgeTx()
+	originalSteps := tracking.AllSteps()
+
+	wasResolved := originalTx.IsDone()
+	tracking, reorged := domain.CheckOrigin(ctx, e.logger, e.checkers, tracking)
+	if reorged {
+		tracking = domain.ResetBridgeTx(tracking)
+	}
 
 	resolved, err := e.resolveBridgeTx(ctx, tracking)
 	if err != nil {
 		e.logger.Debugf("resolving bridge %s fails", id)
 		return err
 	}
-	lastSteps := resolved.AllSteps()
+	if !wasResolved || reorged {
+		// just (re)resolved by FindBridge: its block hash is fresh, only its finality is unknown
+		resolved = domain.OriginFinality(ctx, e.logger, e.checkers, resolved)
+	}
 
-	stepped, err := e.computeAllSteps(ctx, resolved)
+	checked := domain.ReverifySteps(ctx, e.logger, e.checkers, resolved, e.now())
+	claimedBefore := checked.ClaimDone()
+
+	stepped, err := e.computeAllSteps(ctx, checked)
 	if err != nil {
 		e.persistStepError(id, err, stepped)
 		return err
 	}
+	if !claimedBefore && stepped.ClaimDone() {
+		stepped = domain.FinalizeClaim(ctx, e.logger, e.checkers, stepped)
+	}
 
 	txChanged := originalTx.String() != stepped.BridgeTx().String()
-	if txChanged || !reflect.DeepEqual(lastSteps, stepped.AllSteps()) {
+	if txChanged || !reflect.DeepEqual(originalSteps, stepped.AllSteps()) {
 		return e.persist(id, stepped.BridgeTx(), stepped.AllSteps())
 	}
 	return nil

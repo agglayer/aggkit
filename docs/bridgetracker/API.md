@@ -49,12 +49,12 @@ Body of every REST response (always `200 OK`) and of every WebSocket `status` me
 
 | field | type | desc |
 | ------|------|------|
-| tracking_status | string | bare string, one of `"registered"` (added to the supervised list, `bridge_status`/`step_index`/`all_steps`/`error` still `null`), `"running"` (resolved, alive), `"error"` (either a step reached an error on an otherwise-resolved bridge, or the tracker gave up resolving the bridge at all — see `error`), `"finished"` (resolved, reached `Claimed`) |
+| tracking_status | string | bare string, one of `"registered"` (added to the supervised list, `bridge_status`/`step_index`/`all_steps`/`error` still `null`), `"running"` (resolved, alive), `"error"` (either a step reached an error on an otherwise-resolved bridge, or the tracker gave up resolving the bridge at all — see `error`), `"finished"` (resolved, reached `Claimed` and the claim's block is final: `claim_status` is `"claimed_finalized"`). A bridge claimed with a claim that is not final yet is still `"running"`: a reorg can move it back |
 | claim_status | string | bare string, one of `"pending"`, `"readyToClaim"`, `"claimed"`, `"claimed_finalized"`, `"error"` — a simplified claim-readiness summary, computed the same moment as the rest of the response: `"error"` whenever `tracking_status` is `"error"` (this takes priority over everything else); otherwise `"readyToClaim"` if the current step (per `step_index`) is `WaitingClaim`, `"claimed"` if it is `Claimed` and that step is `done`; `"pending"` for every other step, including while `tracking_status` is still `"registered"`. `"claimed_finalized"` is `"claimed"` once the claim's block can no longer be reorged out: it is **the only final state**, whereas `"claimed"` can still go back to `"readyToClaim"` or `"pending"` (see [claim_status states](#claim_status-states)). For most clients this is all that's needed to know whether the bridge can be claimed — `tracking_status`/`all_steps` remain for anything that needs the full detail |
 | network_id | uint32 | network of the request |
 | tx_hash | Hash | transaction hash of the request |
 | bridge_status | *BridgeStatus | `null` while tracking_status is `registered`, and forever `null` if the tracker gives up resolving the bridge (`error` is set instead); see [BridgeStatus](#bridgestatus) |
-| step_index | *int | `null` under the same conditions as `bridge_status`; from then on, the index into `all_steps` of the step that explains `tracking_status`: the step in progress when `running` (or, if none is in progress, the first step still `pending`), the step in error when `error`, or the last step (`Claimed`) when `finished` |
+| step_index | *int | `null` under the same conditions as `bridge_status`; from then on, the index into `all_steps` of the step that explains `tracking_status`: the step in progress when `running` (or, if none is in progress, the first step still `pending`), the step in error when `error`, or the last step (`Claimed`) once every step is done (`finished`, or `running` while the claim is not final yet) |
 | all_steps | BridgeStepPath [] | `null` under the same conditions as `bridge_status`; from then on, all expected steps of the bridge's route — GER/LER, certificate and claim data are reported per step in each entry's `result` (see [StepResult](#stepresult)) |
 | error | *ErrorStep | `null` unless the tracker gave up trying to resolve the bridge at all (e.g. the tx does not exist on the network or is not a bridge transaction); see [ErrorStep](#errorstep). Unrelated to per-step errors, which live in `all_steps[i].error` instead |
 
@@ -90,7 +90,11 @@ stateDiagram-v2
 - `error` is not final either: it clears as soon as the failing check works again.
 - Clients that decode `claim_status` into a closed set of values must accept `claimed_finalized` (added in `api_revision` 7).
 
-> **Availability.** `claimed_finalized`, `finalized`, `block_finalized` and `revision` are part of the contract since `api_revision` 7, but they are populated by follow-up work (agglayer/aggkit#1967 to #1970). Until then `claim_status` never takes the value `claimed_finalized`, `finalized` and `block_finalized` are always `false`, and `revision` is always the empty-activity value (`"v1:"` followed by 64 zeros).
+On the tracker, until the claim is final every tick re-checks what a reorg can undo (the origin bridge block, the claim, and at `readyToClaim` the GER injection and the L1 info leaf) and moves the bridge back when one is gone; a WebSocket subscriber receives those backward moves like any other change. A transient failure of those checks (an RPC error, or a bridge service answering `503` while it resolves a reorg) never moves the bridge back. Which calls are made and when: see [Reorgs](../bridgetracker.md#reorgs-re-evaluation-and-backward-transitions).
+
+> **Availability.** `claimed_finalized`, `finalized`, `block_finalized` and `revision` are part of the contract since `api_revision` 7, and all of them are populated. `api_revision` 8 adds the `ETag` / `If-None-Match` support of the activity endpoint (see [Conditional requests](#conditional-requests-etag-and-304)); nothing else changes.
+> - Activity endpoint: an item becomes `claimed_finalized` / `finalized` once the bridge's block (origin network) and the claim's block (destination network) are both final, and `revision` is kept up to date (agglayer/aggkit#1968, #1969).
+> - Tracker endpoints ([TrackingData](#trackingdata)): `claim_status` becomes `claimed_finalized` once the claim's block is final, and `bridge_status.block_finalized` follows the origin bridge block (agglayer/aggkit#1970).
 
 Example (unresolved, just registered):
 
@@ -170,7 +174,7 @@ block-level context (block number/index/timestamp) around that event.
 | block_number | uint64 | block, on the origin network, where the `BridgeEvent` (`bridgeAsset`/`bridgeMessage`) was emitted |
 | log_index | uint32 | position of the `BridgeEvent` log within `block_number` |
 | block_timestamp | uint64 | timestamp of the block, on the origin network, where the `BridgeEvent` was emitted |
-| block_finalized | bool | `true` once `block_number` is final on the origin network, i.e. it can no longer be removed by a reorg; `false` while it is not final yet (or not known). **Always present** (never omitted), so a client keeps polling until it turns `true`. Always `false` until the tracker follow-up populates it (agglayer/aggkit#1970) |
+| block_finalized | bool | `true` once `block_number` is final on the origin network, i.e. it can no longer be removed by a reorg; `false` while it is not final yet (or not known). **Always present** (never omitted), so a client keeps polling until it turns `true`. Set once the tracker proves the bridge tx final in `block_number` (receipt in that block, at or below the configured finalized block), or once the claim is final, which implies it; it never goes back to `false`. While it is `false`, the tracker re-checks on every tick that the origin block is still canonical |
 | event | BridgeEventData | facts unpacked directly from the on-chain `BridgeEvent` log, see [BridgeEventData](#bridgeeventdata) |
 
 ### BridgeEventData
@@ -446,7 +450,7 @@ Example:
 ```json
 {
   "status": "ok",
-  "api_revision": 7,
+  "api_revision": 8,
   "instance_id": "3f1c9a2e-8b4d-4f6a-9c0e-5d7b2a1e4c8f",
   "start_date": "2026-09-22T10:30:00Z",
   "config_sha1": "2ef7bde608ce5404e97d5f042f95f89f1c232871",
@@ -480,15 +484,17 @@ Request:
 | filterBridges | query | string | no | one of `"all"` (default), `"claimed"`, `"pending"`, `"readyToClaim"`, `"error"` — restricts the result to bridges with only that `claim_status`; `"claimed"` matches both `claim_status` `"claimed"` and `"claimed_finalized"` |
 | page_number | query | uint32 | no | 1-based page number. Default `1` — same parameter name and numbering as the bridge service's own paginated endpoints |
 | page_size | query | uint32 | no | page size. Default `20`, max `200` |
+| If-None-Match | header | string | no | the `ETag` of a previous response, i.e. the [`revision`](#revision) between double quotes. While the revision is still that one the answer is `304 Not Modified` with no body — see [Conditional requests](#conditional-requests-etag-and-304). Since `api_revision` 8 |
 
 ### Behavior
 
-- `200 OK` — the body is an [ActivityResponse](#activityresponse).
+- `200 OK` — the body is an [ActivityResponse](#activityresponse). The response carries the `ETag` header (the body's `revision` between double quotes) and `Cache-Control: no-store`.
+- `304 Not Modified` — only for a request with `If-None-Match`, when the address's `revision` is the one it holds: no body, same `ETag` and `Cache-Control` headers. See [Conditional requests](#conditional-requests-etag-and-304).
 - `400 Bad Request` — invalid `from_address`, an unrecognized `filterBridges` value, or an invalid `page_number`/`page_size` (zero, non-numeric, or `page_size` over `200`): the body is an [ErrorData](#errordata).
 - `500 Internal Server Error` — scanning the configured bridge services failed: the body is an [ErrorData](#errordata).
 - **This endpoint is opt-in**: it only exists if the binary is configured with both an activity bridge scanner and claim checker (`Config.ActivityScanner`/`ActivityClaims`); otherwise the route is not registered at all (plain `404`).
-- Requesting `filterBridges=pending`, `filterBridges=readyToClaim` or `filterBridges=error` **skips fetching the claim record** of a bridge found to be claimed, since it would be filtered out of that result anyway — its cache entry simply has no `claim` yet, and is fetched normally the next time `filterBridges=all`/`claimed` is used for that address.
-- A network whose bridge service could not be scanned **never fails the request**: it is skipped and reported in `warnings` instead, so `bridges` is still whatever every other network reported (possibly incomplete for the networks listed in `warnings`).
+- `filterBridges` only filters what is cached: the background refresh fetches everything (claim records included) whatever filter is requested.
+- A network whose bridge service could not be scanned **never fails the request**: it is skipped and reported in `warnings` instead, so `bridges` is still whatever every other network reported (possibly incomplete for the networks listed in `warnings`). This includes a bridge service answering `503` while it resolves a reorg: the bridges already cached for that network are kept exactly as they were (never read as gone) and the next refresh tries again.
 - When the RPC-based fallback (`Tracker.ActivitySourceRPC`) is enabled, it never calls `debug_traceTransaction` — so it works against any standard JSON-RPC endpoint — but as a result it cannot resolve the sender of an Asset bridge routed through an intermediate contract (i.e. the transaction was not sent directly to the bridge contract); such a bridge is silently skipped by the fallback and only appears once the network's own bridge-service indexer (which does trace) has caught up with it.
 
 ### Pagination
@@ -514,7 +520,10 @@ Clients that need the complete list must deduplicate by `bridge.global_index` (u
 
 #### Rules
 
-- `revision` **changes** whenever any of the address's bridges is added, removed, changes `claim_status` or is corrected after a reorg (the bridge or its claim is re-included in another block or transaction) — wherever the entry sits in the sorted result, not just on page 1.
+- `revision` **changes** whenever any of the address's bridges is added, removed, changes `claim_status` or is corrected after a reorg — wherever the entry sits in the sorted result, not just on page 1.
+- What counts as a reorg correction follows from what is hashed (see the table below):
+  - a **bridge** re-included in another block or in another transaction changes `revision` (`bridge.block_num` and `bridge.tx_hash` are hashed);
+  - a **claim** changes `revision` only when its transaction changes (only `claim.tx_hash` is hashed). The same claim transaction re-included in another block does **not** change it.
 - `revision` **does not change** when an entry only goes from not final to final (`finalized` from `false` to `true`, which includes `claim_status` going from `"claimed"` to `"claimed_finalized"`), nor on a refresh that changes nothing. So it stays stable while nothing relevant happens, and finality alone never forces a client to reload.
 - It covers all of the address's bridges. It is the same whatever `filterBridges`, `page_number` and `page_size` the request used: a single value per address at a given moment.
 - It is **always present** (never omitted). It is a string such as `"v1:"` followed by 64 lowercase hex characters; the prefix is the version of the hashing scheme, so two instances that hash different fields never agree by accident. Treat it as opaque and **compare the whole string for equality only**: it has no order, so do not parse it or check whether it grew.
@@ -543,7 +552,29 @@ Two consequences follow from it being a hash of the content:
 4. After the last page of a traversal, check the `revision` again (the last response already carries it): if it changed during the traversal, restart from page 1, since a bridge added or changed meanwhile may have shifted entries between pages.
 5. `revision` does not announce an entry becoming final (`finalized` `false` to `true`, `"claimed"` to `"claimed_finalized"`): those fields are as of the moment each page was loaded, so reload a page to see whether its items became final.
 
-> `revision` is always the empty-activity value (`"v1:"` followed by 64 zeros) until the follow-up work that computes it lands (agglayer/aggkit#1968 and #1969); see the availability note in [claim_status states](#claim_status-states).
+> An address with no bridges has the empty-activity `revision`: `"v1:"` followed by 64 zeros.
+
+#### Conditional requests (ETag and 304)
+
+Since `api_revision` 8 the poll of step 2 can skip the body. Every `200` carries the `revision` of its body as the `ETag` header, between double quotes (a strong entity tag, [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-8.8.3)):
+
+```
+ETag: "v1:1ab162228afe25b74655b2bfb280cae4926372f5ac13646f341a30053c4a92f1"
+Cache-Control: no-store
+```
+
+A request that sends that value back in `If-None-Match` is answered `304 Not Modified`, with the same headers and **no body**, as long as the address's `revision` is still that one; otherwise it gets the normal `200` with the new `ETag`.
+
+- The `ETag` is the `revision`, so it is the same for every `filterBridges`, `page_number` and `page_size` of an address: the `ETag` taken from any response can be sent with any other request for the same `from_address`.
+- `If-None-Match` accepts a list of entity tags and `*` (always `304`), and a weak tag (`W/"..."`) matches like a strong one, as RFC 9110 defines for this header. The value must be quoted: the bare `revision` does not match.
+- It only replaces a `200`. `400`, `500` and `503` (with `Retry-After`) are answered as without the header, and carry no `ETag`. The rest of the request is processed as usual: `flush_cache=true` still flushes, and `includeTracking=true` still marks the address.
+- **A `304` means that nothing the `revision` covers changed, not that the body would be identical.** `finalized`, `claim_status` going from `"claimed"` to `"claimed_finalized"`, `last_updated_timestamp`, `tracking` and `warnings` can differ from the response the client holds (see [Rules](#rules)). A client that needs them reloads the page without `If-None-Match`.
+- `Cache-Control: no-store` is there for that reason: an HTTP cache (a browser's, mainly) must not store the `200` and revalidate it on its own, because it would then hand its stored body to a client that never asked for a conditional request. Conditional requests are an explicit choice of the client, which sends `If-None-Match` itself.
+- **Browser clients on another origin** (see `[REST.CORS]` in `docs/common_config.md`):
+  - `If-None-Match` is not a CORS-safelisted request header, so the browser sends a preflight and the proxy must allow the header in `[REST.CORS].AllowedHeaders`. The proxy's default is `AllowedHeaders = ["*"]`, which allows it, so nothing has to be added once CORS is enabled with the defaults (CORS itself is disabled by default). A deployment that sets an explicit list instead (e.g. `["Content-Type", "Authorization"]`) must add `"If-None-Match"` to it, or the preflight fails and the browser never sends the request.
+  - The `ETag` response header is **not** exposed to cross-origin scripts (the CORS configuration has no exposed-headers setting, and `ETag` is not CORS-safelisted). Such a client does not read the header: it builds the tag from the `revision` of the body it holds (`'"' + revision + '"'`).
+
+Client flow with conditional requests: keep the `revision` of the pages loaded (step 1), poll with `page_size=1` and `If-None-Match: "<revision>"` (step 2); a `304` is "unchanged", and a `200` carries the new `revision`, so continue at step 3. A client that does not send `If-None-Match` never receives a `304`.
 
 ### ActivityResponse
 
@@ -574,11 +605,11 @@ sit alongside them (not nested inside) so the caller knows which bridge service 
 | bridge | BridgeResponse | raw bridge event, exactly as returned by the bridge service that reported it |
 | bridge_network_id | uint32 | the network whose bridge service returned `bridge` — i.e. the network the bridge-creating tx was actually sent to. **Not** the same as `bridge.origin_network`, which is the origin network of the bridged *asset* and can differ when re-bridging an asset that itself originated on a third network |
 | claim_status | string | bare string, one of `"pending"`, `"readyToClaim"`, `"claimed"`, `"claimed_finalized"`, `"error"` — the same vocabulary and field name as `claim_status` on [TrackingData](#trackingdata), with the same state diagram (see [claim_status states](#claim_status-states)): `"claimed_finalized"` is the only final state, `"claimed"` can still go back to `"readyToClaim"` or `"pending"`. `"claimed"`/`"error"` are derived straight from the destination bridge contract's `isClaimed()` call the last time it was checked — `"error"` if the check itself failed (e.g. no bridge contract address configured for the destination network), callers must **not** read it as `"pending"`. While unclaimed, `"readyToClaim"` vs `"pending"` is copied from the tracker's own snapshot when `tracking` is present, or resolved directly against `l1-info-tree-index`/`injected-l1-info-leaf` otherwise |
-| finalized | bool | `true` when this item can no longer be changed by a reorg: its bridge is final and, if it is claimed, its claim is final too (so a `claim_status` of `"claimed_finalized"` implies `true`). **Always present** (never omitted). Going from `false` to `true` does not change the response's [`revision`](#revision). Always `false` until the activity follow-up work populates it (agglayer/aggkit#1968 and #1969). Not to be confused with `bridge.block_finalized`, which is the bridge service's own flag for the bridge's block alone |
+| finalized | bool | `true` when this item can no longer be changed by a reorg: its bridge is final and, if it is claimed, its claim is final too (so a `claim_status` of `"claimed_finalized"` implies `true`). **Always present** (never omitted). Going from `false` to `true` does not change the response's [`revision`](#revision). An unclaimed item whose bridge is final is `true` as well; it goes back to `false` if the bridge gets claimed, until that claim is final. A bridge only found through the RPC fallback (`source` `"rpc"`) is never final until its bridge service reports it. Not to be confused with `bridge.block_finalized`, which is the bridge service's own flag for the bridge's block alone |
 | claim_network_id | uint32 | network whose bridge service reported `claim` (the bridge's destination network); **omitted** (no key) until `claim` is present |
 | claim | ClaimResponse | raw claim record, exactly as returned by the destination network's bridge service, once `claim_status` is `"claimed"` or `"claimed_finalized"` and the indexer has recorded it; **omitted** (no key) until then |
-| creation_timestamp | uint64 | unix seconds; when this bridge was created: its origin deposit block timestamp, or, only if the bridge service had not populated that timestamp yet, when this endpoint first cached it — never changes after that. It is the sort key of `bridges` |
-| last_updated_timestamp | uint64 | unix seconds; when this item's claim/tracking state was last (re)checked, whether or not anything about it actually changed. Stops advancing once the bridge is claimed with its claim record fetched, since it is never rechecked again from that point on |
+| creation_timestamp | uint64 | unix seconds; when this bridge was created: its origin deposit block timestamp, or, only if the bridge service had not populated that timestamp yet, when this endpoint first cached it — it only changes again if a reorg moves the bridge to another block or transaction. It is the sort key of `bridges` |
+| last_updated_timestamp | uint64 | unix seconds; when this item's claim/tracking state was last (re)checked, whether or not anything about it actually changed. Stops advancing once the item is settled (`claim_status` `"claimed_finalized"`), since it is never rechecked again from that point on |
 | tracking | TrackingData | the bridge tracker's current status for this bridge (see [TrackingData](#trackingdata)); **omitted** (no key) unless the request set `includeTracking=true` and the bridge is still unclaimed |
 | errors | map[string]string | message of whatever check failed the last time this item was refreshed, keyed by which check it was — `"claim"` when the `isClaimed()` check itself failed, `"readiness"` when resolving `"readyToClaim"` vs `"pending"` itself failed (`claim_status` then conservatively stays `"pending"`). **Omitted** (no key) while nothing has failed. Any URL, `host:port` or bare IP address in a value is redacted (replaced with `<redacted-url>` / `<redacted-host>`); the rest of the message is kept |
 
@@ -722,7 +753,8 @@ Example (one claimed bridge whose claim is final, one still-pending bridge with 
 
 ### Caching and eviction
 
-- **Opt-in and always-on caching**: the endpoint only exists when configured (see [Behavior](#behavior-1) above); when it does, results for a given `from_address` are cached in memory across calls: a bridge already confirmed claimed, with its claim record already fetched, is never re-verified again. Every other bridge (new, still unclaimed, claimed but not yet indexed, or errored) is rechecked on every call — without re-walking already-scanned pages of the underlying bridge services, since each network's scan stops as soon as it reaches a bridge already in the cache.
+- **Opt-in and always-on caching**: the endpoint only exists when configured (see [Behavior](#behavior-1) above); when it does, results for a given `from_address` are cached across calls (in memory, or in SQLite when `Tracker.DBPath` is set). A bridge is **settled** — never re-verified again — once it is claimed, its claim record is fetched, and both the bridge's block (origin network) and the claim's block (destination network) are final: it is then served with `claim_status` `"claimed_finalized"` and `finalized` `true`. Every other bridge (new, still unclaimed, claimed but not final yet, claimed but not indexed yet, or errored) is rechecked on every refresh, `isClaimed()` included, so a claim removed by a reorg sends it back to `"readyToClaim"` or `"pending"`.
+- **Reorgs**: each network's bridge-service listing is ordered by deposit count, newest first, and finality is monotonic, so only its non-final head can still change. Every refresh re-reads that head, down to the first bridge already cached **and final** (deeper pages are never read again): a cached bridge that is listed at another block or transaction is corrected in place (no duplicate), and one that is no longer listed although the scan went past its position is removed. A long scan re-reads page 1 at the end, and is run again if the listing changed while it was paged (its count, or what page 1 holds); if it changes again during that second pass, the network's cached entries are kept as they are, a warning is added and the next refresh retries. A bridge found only through the RPC fallback is never final; it is removed once the RPC window no longer has it, or once the bridge service has indexed a later deposit of the same sender without it. These corrections and removals change `revision`.
 - **Idle eviction**: a `from_address` nobody has asked about in `Tracker.ActivityIdleTimeout` (default 30 minutes, same idea as the main endpoint's `IdleTimeout`) is forgotten entirely on the next request for it — everything cached for it (bridges, claim state) is freed, and it starts fresh exactly as if it were being queried for the first time.
 - **`includeTracking=true` registers, it does not wait**: unlike the main tracker endpoint, this does not wait for the tracking engine's first resolution attempt — it registers the bridge (if not already registered) and reports whatever `TrackingData` snapshot is available right away, which may still be the bare `"registered"` state.
 
@@ -803,7 +835,7 @@ All messages are JSON text frames with an envelope:
 - Connecting adds the bridge to the list of supervised bridges, same as the REST endpoint.
 - On connect, the server immediately sends a `status` message with the current [TrackingData](#trackingdata) — `bridge_status`/`step_index`/`all_steps` are `null` if the tracker has no information yet, or populated if it does.
 - After that, a new `status` message is pushed every time something changes: `tracking_status` moves, `bridge_status`/`step_index`/`all_steps` go from `null` to populated, `step_index` moves, a step status/date in `all_steps` changes, or the certificate status changes. Each message carries the full `TrackingData`, not a delta.
-- When the bridge reaches a terminal state — `Claimed` (`tracking_status == "finished"`), or the tracker giving up trying to resolve it at all (`tracking_status == "error"` with `bridge_status: null` and `error` set) — the server sends the final `status` message and closes the connection with code `1000` (normal closure). A step-level error on an otherwise-resolved bridge (`tracking_status == "error"` with `bridge_status` populated) is **not** terminal: the connection stays open and the engine keeps polling in case it clears.
+- When the bridge reaches a terminal state — `Claimed` with a final claim (`tracking_status == "finished"`, `claim_status == "claimed_finalized"`), or the tracker giving up trying to resolve it at all (`tracking_status == "error"` with `bridge_status: null` and `error` set) — the server sends the final `status` message and closes the connection with code `1000` (normal closure). A step-level error on an otherwise-resolved bridge (`tracking_status == "error"` with `bridge_status` populated) is **not** terminal: the connection stays open and the engine keeps polling in case it clears. A claim that is not final yet (`claim_status == "claimed"`) is not terminal either: the connection stays open, and if a reorg removes the claim (or the GER injection / leaf) the bridge goes back to `readyToClaim` / `pending` in a new `status` message.
 
 ### Errors
 
@@ -830,4 +862,4 @@ default), any origin can connect, same as before `[REST.CORS]` existed.
   - A WebSocket connection is tied to the instance that accepted it; on reconnect, the client may land on a different instance and be registered again from scratch.
   - Mitigations to consider: a single instance, sticky sessions (affinity by `tx_hash`) on the proxy, or a shared store for the supervised-bridges list so any instance can answer for any registered tx.
 - The `instance_id` / `config_sha1` fields of the [health endpoint](#health) help diagnosing the multi-instance issues above (they identify which instance/configuration answered each request).
-- **Terminal bridges are eventually forgotten**: once a bridge reaches a terminal state — `finished`, or `error` because the tracker gave up resolving the tx at all — its status stays queryable for a retention period (default 10 minutes), after which the tracker forgets it to bound memory. Polling or subscribing within that window observes the terminal `tracking_status` normally. Asking about the tx **after** it was forgotten registers it again from scratch (`tracking_status: registered`, `bridge_status: null`) and tracking restarts. This is also how a client **retries** a tx the tracker gave up on (e.g. it was not mined yet back then): wait out the retention and request it again — the new attempt either resolves normally this time or fails again after the unresolved timeout.
+- **Terminal bridges are eventually forgotten**: once a bridge reaches a terminal state — `finished` (final claim), or `error` because the tracker gave up resolving the tx at all — its status stays queryable for a retention period (default 10 minutes), after which the tracker forgets it to bound memory. Polling or subscribing within that window observes the terminal `tracking_status` normally. Asking about the tx **after** it was forgotten registers it again from scratch (`tracking_status: registered`, `bridge_status: null`) and tracking restarts. This is also how a client **retries** a tx the tracker gave up on (e.g. it was not mined yet back then): wait out the retention and request it again — the new attempt either resolves normally this time or fails again after the unresolved timeout.

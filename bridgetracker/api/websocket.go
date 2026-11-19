@@ -169,9 +169,11 @@ func (w *wsHandler) wsSendTracking(conn *websocket.Conn, tracking *domain.Tracki
 }
 
 // wsTerminalReason reports whether the given snapshot is a terminal state the connection
-// should close normally after, and the reason to close with: the bridge reached Claimed, or
-// its tx or a step failed terminally. Transient errors remain open while the engine retries,
-// matching the registry's terminal-state predicate.
+// should close normally after, and the reason to close with: the bridge reached Claimed with a
+// final claim (claim_status claimed_finalized: a claim that is not final yet keeps the
+// connection open, a reorg can still move the bridge back), or its tx or a step failed
+// terminally. Transient errors remain open while the engine retries, matching the registry's
+// terminal-state predicate.
 func wsTerminalReason(tracking *domain.TrackingData) (reason string, done bool) {
 	switch tracking.TrackingStatus() {
 	case types.TrackingStatusFinished:

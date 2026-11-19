@@ -113,7 +113,8 @@ func (f *fakeActivityScanner) BridgesFrom(
 // consulted in FIFO order per call, one entry per expected IsClaimed/ClaimInfo invocation, so a
 // test can assert exactly how many times each was called (and fail loudly if called more).
 // isClaimedErrs, if non-nil, is consulted alongside isClaimed: a non-nil entry makes that call
-// fail instead of returning the paired isClaimed value. lastIsClaimedNetworkID records the
+// fail instead of returning the paired isClaimed value; claimInfoErrs does the same for
+// ClaimInfo and claimInfo. lastIsClaimedNetworkID records the
 // NetworkID of the last ScannedBridge IsClaimed was called with. readyToClaim/readyToClaimErr
 // configure IsReadyToClaim's own (single, reused) result, defaulting to "not ready, no error"
 // for tests that don't care about it; readyToClaims/readyToClaimErrs, if non-nil, are consulted
@@ -125,6 +126,7 @@ type fakeActivityClaims struct {
 	isClaimed        []bool
 	isClaimedErrs    []error
 	claimInfo        []*bridgeservicetypes.ClaimResponse
+	claimInfoErrs    []error
 	readyToClaim     bool
 	readyToClaimErr  error
 	readyToClaims    []bool
@@ -156,9 +158,12 @@ func (f *fakeActivityClaims) ClaimInfo(
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	claim := f.claimInfo[f.claimInfoCalls]
+	i := f.claimInfoCalls
 	f.claimInfoCalls++
-	return claim, nil
+	if i < len(f.claimInfoErrs) && f.claimInfoErrs[i] != nil {
+		return nil, f.claimInfoErrs[i]
+	}
+	return f.claimInfo[i], nil
 }
 
 func (f *fakeActivityClaims) IsReadyToClaim(context.Context, *domain.ScannedBridge) (bool, error) {
@@ -183,7 +188,7 @@ func (f *fakeActivityClaims) IsReadyToClaim(context.Context, *domain.ScannedBrid
 // Idle eviction is entirely owned by whichever ActivityEngine (if any) a test wires separately.
 func newTestActivityCache(scanner ActivityBridgeScanner, claims ActivityClaimChecker) *ActivityCache {
 	supervised := NewMemoryRegistry(10)
-	return NewActivityCache(scanner, claims, supervised, log.WithFields("module", "activity_test"))
+	return NewActivityCache(scanner, claims, supervised, reportedFinality(), log.WithFields("module", "activity_test"))
 }
 
 // mustRegisterActivity registers addr (with includeTracking=false — no test using this helper
@@ -398,10 +403,10 @@ func TestActivityCache_TrackerClaimedNeedsOnChainConfirmation(t *testing.T) {
 			cache := newTestActivityCache(scanner, claims)
 
 			id := TrackingID{NetworkID: testScannedNetworkID, TxHash: common.HexToHash(string(bridge.TxHash))}
-			_, err := cache.supervised.Get(id, true)
+			_, err := cache.refresher.supervised.Get(id, true)
 			require.NoError(t, err)
 			tx := domain.TrackingBridgeTx{Info: &BridgeInfo{NetworkID: testScannedNetworkID}}
-			require.NoError(t, cache.supervised.UpdateTracking(id, tx, tc.steps))
+			require.NoError(t, cache.refresher.supervised.UpdateTracking(id, tx, tc.steps))
 
 			entries, _, err := refreshAndGet(t, cache, testFromAddress, true, types.ActivityFilterAll)
 			require.NoError(t, err)
@@ -430,11 +435,12 @@ func TestActivityCache_ReadyToClaimFailureLeavesPendingAndReportsError(t *testin
 	require.Equal(t, wantErr.Error(), entries[0].Errors["readiness"])
 }
 
-// TestActivityCache_ClaimedAndIndexedBridgeIsNeverRechecked verifies a bridge that is claimed
-// with its claim record already fetched is never rechecked on a later refresh.
-func TestActivityCache_ClaimedAndIndexedBridgeIsNeverRechecked(t *testing.T) {
-	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
-	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
+// TestActivityCache_SettledBridgeIsNeverRechecked verifies a bridge that is settled — claimed,
+// claim record fetched, bridge and claim blocks final — is never rechecked on a later refresh,
+// and is served as claimed_finalized / finalized.
+func TestActivityCache_SettledBridgeIsNeverRechecked(t *testing.T) {
+	claim := finalClaim(&bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"})
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{finalScannedBridge(1)}}
 	// only one IsClaimed/ClaimInfo entry: a second consultation would panic on out-of-range
 	claims := &fakeActivityClaims{isClaimed: []bool{true}, claimInfo: []*bridgeservicetypes.ClaimResponse{claim}}
 
@@ -446,6 +452,8 @@ func TestActivityCache_ClaimedAndIndexedBridgeIsNeverRechecked(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusClaimed, entries[0].ClaimStatus)
 	require.Equal(t, claim, entries[0].Claim)
+	require.Equal(t, types.TrackerClaimStatusClaimedFinalized, entries[0].TrackerClaimStatus)
+	require.True(t, entries[0].Finalized)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
@@ -460,8 +468,8 @@ func TestActivityCache_ClaimedAndIndexedBridgeIsNeverRechecked(t *testing.T) {
 // FlushActivity discards a settled (claimed + indexed) entry entirely, so the next refresh
 // re-verifies it from scratch instead of reusing it untouched (see settled)
 func TestActivityCache_FlushActivityForcesRecheck(t *testing.T) {
-	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
-	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
+	claim := finalClaim(&bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"})
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{finalScannedBridge(1)}}
 	// two isClaimed/claimInfo entries: a third consultation would panic on out-of-range, proving
 	// FlushActivity causes exactly one extra recheck, not unbounded rechecks
 	claims := &fakeActivityClaims{
@@ -491,15 +499,14 @@ func TestActivityCache_FlushActivityForcesRecheck(t *testing.T) {
 
 // TestActivityCache_ClaimedButNotYetIndexedBridgeIsRetried verifies a bridge reported as claimed
 // on-chain, but whose claim record the destination bridge service has not indexed yet (ClaimInfo
-// returns nil), has its claim record retried on the next refresh — without asking isClaimed()
-// again, since a confirmed claim never reverts (see ActivityCache.refresh).
+// returns nil), has its claim record retried on the next refresh — isClaimed() is asked again
+// too, since a claim that is not final yet can still be reorged out (see
+// ActivityEntryRefresher.Refresh).
 func TestActivityCache_ClaimedButNotYetIndexedBridgeIsRetried(t *testing.T) {
 	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
 	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
-	// a single isClaimed entry: a second consultation would panic on out-of-range, proving it is
-	// never asked again once confirmed claimed
 	claims := &fakeActivityClaims{
-		isClaimed: []bool{true},
+		isClaimed: []bool{true, true},
 		claimInfo: []*bridgeservicetypes.ClaimResponse{nil, claim},
 	}
 
@@ -517,7 +524,7 @@ func TestActivityCache_ClaimedButNotYetIndexedBridgeIsRetried(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusClaimed, entries[0].ClaimStatus)
 	require.Equal(t, claim, entries[0].Claim)
-	require.Equal(t, 1, claims.isClaimedCalls, "isClaimed must not be asked again once confirmed claimed")
+	require.Equal(t, 2, claims.isClaimedCalls, "isClaimed is asked again while the claim is not final")
 	require.Equal(t, 2, claims.claimInfoCalls)
 }
 
@@ -786,7 +793,7 @@ func TestActivityCache_PruneIdleForgetsUnaccessedAddresses(t *testing.T) {
 	}
 
 	supervised := NewMemoryRegistry(10)
-	cache := NewActivityCache(scanner, claims, supervised, log.WithFields("module", "activity_test"))
+	cache := NewActivityCache(scanner, claims, supervised, reportedFinality(), log.WithFields("module", "activity_test"))
 	now := time.Now()
 	cache.now = func() time.Time { return now }
 
@@ -955,10 +962,11 @@ func TestActivityCache_CreatedAtUsesBridgeBlockTimestamp(t *testing.T) {
 }
 
 // TestActivityCache_TimestampsFreezeOnceSettled verifies UpdatedAt stops advancing once a bridge
-// settles (claimed with its claim record fetched), since a settled entry is never refreshed again.
+// settles (claimed with its claim record fetched, bridge and claim final), since a settled entry
+// is never refreshed again.
 func TestActivityCache_TimestampsFreezeOnceSettled(t *testing.T) {
-	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"}
-	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{testScannedBridge(1)}}
+	claim := finalClaim(&bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx"})
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{finalScannedBridge(1)}}
 	// a single isClaimed/claimInfo entry: a second consultation would panic on out-of-range
 	claims := &fakeActivityClaims{isClaimed: []bool{true}, claimInfo: []*bridgeservicetypes.ClaimResponse{claim}}
 
