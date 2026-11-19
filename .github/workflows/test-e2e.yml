@@ -1,6 +1,7 @@
 # This workflow runs the Bats E2E tests for aggkit.
-# - On push: uses hardcoded kurtosis-cdk commit
-# - On schedule: uses latest kurtosis-cdk main commit with Slack notifications
+# - Every job and every event (push, schedule, workflow_dispatch) uses the same pinned kurtosis-cdk commit
+#   (KURTOSIS_CDK_COMMIT), so the nightly run tests the commit the other runs use
+# - On schedule: runs every test and sends a Slack notification
 name: Bats E2E Tests
 
 on:
@@ -20,11 +21,9 @@ permissions: {}
 
 env:
   AGGKIT_REPORT_CHANNEL: "C092K6Z0EUT"
-  KURTOSIS_CDK_COMMIT: "ad6f8769bf45ac115eefc2d22efb0701d0df729c"
-  # The AggOracle committee v2 e2e needs a kurtosis-cdk that has the committee, and the commit above doesn't:
-  # the merge commit of 0xPolygon/kurtosis-cdk#1044 in main. Only that job uses this one, in every event (it doesn't
-  # follow "main" on schedule). It can be dropped once KURTOSIS_CDK_COMMIT includes the committee v2
-  KURTOSIS_CDK_COMMITTEE_V2_COMMIT: "85fcdea024297e62328f1af7aa42ff2807988c5e"
+  # The kurtosis-cdk commit of every e2e job: the merge commit of 0xPolygon/kurtosis-cdk#1044 in main, which has the
+  # AggOracle committee v2. The kurtosis CLI pinned in test-e2e-multi-chains.yml must match the version it expects
+  KURTOSIS_CDK_COMMIT: "85fcdea024297e62328f1af7aa42ff2807988c5e"
   # The commit of agglayer/agglayer-contracts (tag v13.0.0-rc.0) that the job of the committee v2 builds its
   # agglayer-contracts image from, while no image with the AggOracleCommittee v2 is published
   AGGLAYER_CONTRACTS_COMMITTEE_V2_COMMIT: "4839628561712c7477366e79d0a280a0a546b8fe"
@@ -38,29 +37,18 @@ jobs:
     outputs:
       kurtosis-commit: ${{ steps.get-commit.outputs.commit }}
     steps:
-      - name: Determine kurtosis-cdk ref
-        id: determine-ref
-        run: |
-          if [[ "${{ github.event_name }}" == "schedule" ]]; then
-            echo "ref=main" >> $GITHUB_OUTPUT
-            echo "Using latest kurtosis-cdk main branch"
-          else
-            echo "ref=${{ env.KURTOSIS_CDK_COMMIT }}" >> $GITHUB_OUTPUT
-            echo "Using fixed kurtosis-cdk commit: ${{ env.KURTOSIS_CDK_COMMIT }}"
-          fi
-
       - name: Checkout kurtosis-cdk
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
           repository: 0xPolygon/kurtosis-cdk
-          ref: ${{ steps.determine-ref.outputs.ref }}
+          ref: ${{ env.KURTOSIS_CDK_COMMIT }}
 
       - name: Get kurtosis-cdk commit SHA
         id: get-commit
         run: |
           COMMIT=$(git rev-parse HEAD)
-          echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
+          echo "commit=${COMMIT}" >> "$GITHUB_OUTPUT"
           echo "Using kurtosis-cdk commit: ${COMMIT}"
 
   build-aggkit-image:
@@ -84,7 +72,6 @@ jobs:
       # single l2 network (op, AggOracle committee v2). It is enabled when the args set an agglayer-contracts image
       kurtosis-cdk-args-single-op-aggoracle-committee-v2: ${{ steps.read-args.outputs.single_op_chain_aggoracle_committee_v2_args }}
       committee-v2-enabled: ${{ steps.read-args.outputs.committee-v2-enabled }}
-      committee-v2-kurtosis-ref: ${{ steps.read-args.outputs.committee-v2-kurtosis-ref }}
       # multi l2 networks
       kurtosis-cdk-args-1: ${{ steps.read-args.outputs.kurtosis-cdk-args-1 }}
       kurtosis-cdk-args-2: ${{ steps.read-args.outputs.kurtosis-cdk-args-2 }}
@@ -148,7 +135,6 @@ jobs:
             ./.github/test_e2e_op_aggoracle_committee_v2_args.json
           committee_v2_enabled=$(echo "$LAST_ARGS" | jq -r '((.args.agglayer_contracts_image // "") != "")')
           echo "committee-v2-enabled=${committee_v2_enabled}" >> "$GITHUB_OUTPUT"
-          echo "committee-v2-kurtosis-ref=${KURTOSIS_CDK_COMMITTEE_V2_COMMIT}" >> "$GITHUB_OUTPUT"
           echo "AggOracle committee v2 e2e enabled: ${committee_v2_enabled}"
 
           # multi l2 networks
@@ -317,11 +303,14 @@ jobs:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 75202d2d38153691332b49b5424796dc5fd5b32a # agglayer/e2e main
+      agglayer-e2e-ref: a5e723bbb53eda9a0458c92a4064ec4094549325 # agglayer/e2e main
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-pessimistic }}
+      # Optional Google Cloud identity kurtosis-pre-run uses to pull images. Empty (variables not set) uses its default
+      gcp-workload-identity-provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      gcp-service-account: ${{ vars.KURTOSIS_GCP_SERVICE_ACCOUNT }}
       test-name: "test-single-l2-network-op-pessimistic"
       execute-all-tests: ${{ github.event_name == 'schedule' }}
       fail-fast: ${{ github.event_name != 'schedule' }}
@@ -354,12 +343,15 @@ jobs:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 75202d2d38153691332b49b5424796dc5fd5b32a # agglayer/e2e main
+      agglayer-e2e-ref: a5e723bbb53eda9a0458c92a4064ec4094549325 # agglayer/e2e main
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct }}
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
+      # Optional Google Cloud identity kurtosis-pre-run uses to pull images. Empty (variables not set) uses its default
+      gcp-workload-identity-provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      gcp-service-account: ${{ vars.KURTOSIS_GCP_SERVICE_ACCOUNT }}
       test-name: "test-single-l2-network-op-succinct"
       execute-all-tests: ${{ github.event_name == 'schedule' }}
       fail-fast: ${{ github.event_name != 'schedule' }}
@@ -385,15 +377,14 @@ jobs:
       - build-aggkit-committee-images
       - build-tools
       - read-aggkit-args
+      - get-kurtosis-cdk-commit
     if: needs.read-aggkit-args.outputs.committee-v2-enabled == 'true'
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@a5e723bbb53eda9a0458c92a4064ec4094549325  # agglayer/e2e main (merge of #277)
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@a5e723bbb53eda9a0458c92a4064ec4094549325  # agglayer/e2e main
     secrets:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
-      # The commit of kurtosis-cdk with the committee v2, not the one of the other jobs
-      kurtosis-cdk-ref: ${{ needs.read-aggkit-args.outputs.committee-v2-kurtosis-ref }}
-      # The commit of agglayer/e2e with the committee v2 tests: the merge commit of agglayer/e2e#277 in main
-      agglayer-e2e-ref: a5e723bbb53eda9a0458c92a4064ec4094549325 # agglayer/e2e main (merge of #277)
+      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
+      agglayer-e2e-ref: a5e723bbb53eda9a0458c92a4064ec4094549325 # agglayer/e2e main
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
@@ -401,6 +392,9 @@ jobs:
       # The tar with aggkit:local and ger_validator_signer:local
       docker-artifact-name: aggkit-committee
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
+      # Optional Google Cloud identity kurtosis-pre-run uses to pull images. Empty (variables not set) uses its default
+      gcp-workload-identity-provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      gcp-service-account: ${{ vars.KURTOSIS_GCP_SERVICE_ACCOUNT }}
       test-name: "test-single-l2-network-op-aggoracle-committee-v2"
       execute-all-tests: ${{ github.event_name == 'schedule' }}
       fail-fast: ${{ github.event_name != 'schedule' }}
@@ -430,7 +424,7 @@ jobs:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 75202d2d38153691332b49b5424796dc5fd5b32a # agglayer/e2e main
+      agglayer-e2e-ref: a5e723bbb53eda9a0458c92a4064ec4094549325 # agglayer/e2e main
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: op
@@ -463,7 +457,7 @@ jobs:
       DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY_GHA_RECORD_E2E_TEST_RUN }}
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 75202d2d38153691332b49b5424796dc5fd5b32a # agglayer/e2e main
+      agglayer-e2e-ref: a5e723bbb53eda9a0458c92a4064ec4094549325 # agglayer/e2e main
       # aggkit-owned config templates overlaid onto kurtosis-cdk before it runs.
       aggkit-config-artifact: aggkit-e2e-config
       kurtosis-cdk-enclave-name: aggkit
