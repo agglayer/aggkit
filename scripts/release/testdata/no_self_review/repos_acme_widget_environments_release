@@ -1,0 +1,2 @@
+{"name":"release","can_admins_bypass":false,"protection_rules":[{"id":1,"type":"required_reviewers","prevent_self_review":false,"reviewers":[{"type":"Team","reviewer":{"id":1002,"slug":"release-approvers","name":"release-approvers"}}]}],
+ "deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}
