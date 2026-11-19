@@ -11,9 +11,9 @@
 
 Aggkit can download L1 blocks and logs for the L1 synchronizers in two ways:
 
-- **Legacy** (`legacy`, the default): each synchronizer uses its own dedicated EVM downloader,
-  as it does today.
-- **Multidownloader** (`multidownloader`): the L1 synchronizers share the L1 multidownloader
+- **Legacy** (`legacy`): each synchronizer uses its own dedicated EVM downloader and the reorg
+  detector.
+- **Multidownloader** (`multidownloader`, the default for the L1 synchronizers): the L1 synchronizers share the L1 multidownloader
   service, which downloads block headers and logs once and serves them to every L1 consumer. The
   multidownloader is also the one that detects the reorgs and tracks the finality of the blocks
   for them (see [Reorg tracking](#reorg-tracking)).
@@ -25,9 +25,10 @@ The two L1 synchronizers — the L1 bridge syncer and the L1 claim syncer — se
 - `[ClaimL1Sync].Downloader`
 
 Both accept `legacy` or `multidownloader` (case-insensitive, surrounding whitespace trimmed) and
-both default to `legacy`. The empty value behaves as `legacy`, so a configuration that does not
-set the field keeps the historical behaviour. Mixed modes are supported: for example the bridge
-syncer on `multidownloader` while the claim syncer stays on `legacy`.
+both default to `multidownloader` in the default configuration, so a configuration that does not
+set the field uses the shared multidownloader. An explicitly empty value (`Downloader = ""`)
+behaves as `legacy`. Mixed modes are supported: for example the bridge syncer on `multidownloader`
+while the claim syncer stays on `legacy`.
 
 The selection is **per section**: setting a value in one L1 section does not change the other.
 
@@ -38,7 +39,9 @@ The selection is **per section**: setting a value in one L1 section does not cha
 - Selecting `multidownloader` for an L1 syncer is only valid when the L1 multidownloader service
   is active, that is, `[L1Multidownloader].Enabled = true`. If a syncer selects the
   multidownloader while `[L1Multidownloader].Enabled = false`, **startup fails with an error**.
-  There is no silent fallback to the legacy downloader.
+  There is no silent fallback to the legacy downloader. Since `multidownloader` is the default, a
+  configuration that sets `[L1Multidownloader].Enabled = false` must also set
+  `Downloader = "legacy"` in `[BridgeL1Sync]` and `[ClaimL1Sync]`.
 - The L2 synchronizers (`[BridgeL2Sync]`, `[ClaimL2Sync]`) do **not** support the multidownloader:
   only `legacy` is valid for them. Because the check is per section, an L2 section cannot select
   the shared downloader.
@@ -289,7 +292,8 @@ Enabled = true
 
 Notes:
 
-- `Downloader` defaults to `legacy`, so writing `Downloader = "legacy"` is optional. The field is
+- `Downloader` defaults to `multidownloader` for the L1 sections (and `[L1Multidownloader].Enabled`
+  defaults to `true`), so the second snippet is the default configuration. The field is
   independent per section.
 - The L2 sections (`[BridgeL2Sync]`, `[ClaimL2Sync]`) must keep `legacy`.
 - These snippets only show the downloader selector. The remaining multidownloader options keep

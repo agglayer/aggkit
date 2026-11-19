@@ -107,9 +107,10 @@ func TestLoadDefaultConfig(t *testing.T) {
 	cfgL2Multidownloader.BlockFinality = aggkittypes.LatestBlock
 	cfgL2Multidownloader.Enabled = false
 	require.Equal(t, cfgL2Multidownloader, cfg.L2Multidownloader)
-	// Downloader defaults to legacy in every synchronizer section, independently per section
-	require.Equal(t, types.LegacyDownloader, cfg.BridgeL1Sync.Downloader)
-	require.Equal(t, types.LegacyDownloader, cfg.ClaimL1Sync.Downloader)
+	// Downloader defaults to the multidownloader in the L1 synchronizers and to legacy in the L2
+	// ones (the only one they support), independently per section
+	require.Equal(t, types.Multidownloader, cfg.BridgeL1Sync.Downloader)
+	require.Equal(t, types.Multidownloader, cfg.ClaimL1Sync.Downloader)
 	require.Equal(t, types.LegacyDownloader, cfg.BridgeL2Sync.Downloader)
 	require.Equal(t, types.LegacyDownloader, cfg.ClaimL2Sync.Downloader)
 	require.Nil(t, cfg.L2NetworkConfig.InitialLER)
