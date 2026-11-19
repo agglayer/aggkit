@@ -4,13 +4,20 @@ This page is for organization owners and repository admins. It describes the Git
 
 ## Purpose
 
-A production image must not be publishable by a single account. The release workflow (`.github/workflows/release.yml`) only runs for a `v*` tag, checks that the tagged commit is on `develop` or a `release/*` branch, and then waits for a reviewer other than the person who started it to approve the `release` environment before anything is pushed. These checks only hold if the settings below are in place: otherwise one account could move a tag, change a protected branch, or push to the package directly.
+A production image must not be publishable by a single account. The release workflow (`.github/workflows/release.yml`) only runs for a `v*` tag and has four jobs, in this order:
+
+1. `preflight` checks that the tagged commit is on `develop` or a `release/*` branch and that the version is not published yet.
+2. `build` builds the per-platform images (with SBOM and build provenance) and pushes them by digest to the staging package `ghcr.io/agglayer/aggkit-dev`. It writes nothing to the production package `ghcr.io/agglayer/aggkit`. Its job summaries list the staged digests.
+3. `approve` waits for a reviewer other than the person who started the run to approve the `release` environment, so the reviewer decides on images that were actually built. After the approval it prints the tag, the commit, the version and the staged digests.
+4. `publish` runs only after the approval. It creates the tagged manifest lists in `ghcr.io/agglayer/aggkit` from the approved staged digests of the same run (the digests come from the build job artifacts, not from a tag lookup), then signs them and creates the attestations. It is the only job with `id-token` and `attestations` write permissions.
+
+Nothing reaches `aggkit` before the approval. These checks only hold if the settings below are in place: otherwise one account could move a tag, change a protected branch, or push to the packages directly.
 
 ## Prerequisites
 
 - Organization owner: create teams, org-level rulesets, manage package settings.
 - Repository admin on `agglayer/aggkit`: environments, rulesets, branch rules.
-- Package admin on the `aggkit` container package.
+- Package admin on the `aggkit` and `aggkit-dev` container packages.
 - GitHub CLI (`gh`) logged in with `repo`, `admin:org` and `read:packages` scopes for the `gh api` commands.
 
 Names used below: org `agglayer`, repository `agglayer/aggkit`, teams `release-approvers` and `release-manager`, environment `release`.
@@ -130,14 +137,18 @@ UI: Organization -> Packages -> `aggkit` -> Package settings.
 
 The API does not expose the Actions access list or inheritance, so this step is checked by hand. Confirm by reading the settings page and by listing direct grants: `gh api orgs/agglayer/packages/container/aggkit --jq '{visibility, repository: .repository.full_name}'`.
 
-### 6. Configure `aggkit-dev` after the first branch build
+Note what the workflow permissions mean for this package. The `build` job has `packages: write`, because it has to push to `aggkit-dev`; `GITHUB_TOKEN` permissions are not scoped per package, so the token of `build` can also write to any package that grants the repository Actions write, `aggkit` included. What keeps `build` out of `aggkit` is what its steps do: they push only to `ghcr.io/agglayer/aggkit-dev`, and the job never creates a tag in `aggkit`. The reviewers of the release approve the images that `build` staged; `publish` is the only job that writes to `aggkit`. See the residual risks for the optional hardening that removes the token-level write access.
 
-The `aggkit-dev` package is created the first time `Build and Push Docker Image` runs for a branch. After that run, open Organization -> Packages -> `aggkit-dev` -> Package settings and set:
+### 6. Configure `aggkit-dev` before the first release
 
+Release builds push their per-platform images to `aggkit-dev`, so the package settings must exist and be right before the first release is tagged. The package is created the first time an image is pushed to it, for example by running `Build and Push Docker Image` on a branch once. After that, open Organization -> Packages -> `aggkit-dev` -> Package settings and set:
+
+- Manage Actions access: `agglayer/aggkit` with role Write. The `build` job needs it to stage the images, and `publish` needs to read the staged images (Write includes it).
 - Visibility: as wanted for test images (public or internal).
-- Manage Actions access: `agglayer/aggkit` with role Write.
+- Manage access: do not grant individual users or other teams Write beyond the package admins, and do not add other repositories to Actions access. `publish` promotes the digests recorded by the `build` job of the same run, so nothing that someone else pushes to `aggkit-dev` is promoted, but keeping the package tight limits pollution and confusion.
+- Do not enable a cleanup policy that deletes untagged versions: the staged release images are untagged digests, and they must still exist when the approval is given and `publish` runs.
 
-`aggkit-dev` is not a release channel and nothing in it is signed as a release.
+`aggkit-dev` is not a release channel and nothing in it is signed as a release. It holds branch builds and the staged, not yet approved, release images. The `Build and Push Docker Image` workflow keeps writing branch builds there with the same permission.
 
 ### 7. Run the settings check
 
@@ -155,21 +166,26 @@ Expected: every line is `PASS`, except the package control, which prints `MANUAL
 
 Before the first real release, push a pre-release tag (for example `v0.0.0-rc.1`, from a commit on `develop` or a `release/*` branch) and check each control:
 
-1. The `Release` run finishes `preflight` and then waits on the `approve` job for review.
+1. The `Release` run finishes `preflight` and `build`, and then waits on the `approve` job for review. The `build` job summaries show the staged image digests in `ghcr.io/agglayer/aggkit-dev`, and nothing exists yet in `ghcr.io/agglayer/aggkit` for the version (`docker buildx imagetools inspect ghcr.io/agglayer/aggkit:<version>` reports not found).
 2. The person who pushed the tag cannot approve the run, and a user outside `release-approvers` cannot either.
-3. A `v*` tag on a commit that is not on `develop` or a `release/*` branch fails in `preflight` and never reaches `approve`.
-4. After approval and a green run, verify the result as described in [Verifying release images](./release_verification.md): `cosign verify` succeeds for the new tags, and `gh attestation verify` succeeds.
+3. A `v*` tag on a commit that is not on `develop` or a `release/*` branch fails in `preflight` and never reaches `build` or `approve`.
+4. After approval, `approve` prints the tag, the commit, the version and the same digests, and `publish` creates the tags in `aggkit`. The platform image digests inside the published manifest list match the staged digests.
+5. After a green run, verify the result as described in [Verifying release images](./release_verification.md): `cosign verify` succeeds for the new tags, and `gh attestation verify` succeeds.
 
 Tag names are immutable once published, so use a throwaway version for the dry run and do not reuse it.
 
 ## When publishing fails part way
 
-The `publish` job pushes the manifest lists first and then signs them and creates the attestation. If signing or the attestation fails after the manifests were pushed, the version is already visible in the registry but is not signed. Do not trust or use an unsigned published version. Either use "Re-run failed jobs" on the run, which skips `preflight` and finishes signing, or cut a new version. A full re-run of the whole workflow fails in `preflight` because the version is already published.
+If `preflight` or `build` fails, nothing was written to `aggkit`; only untagged staged digests may remain in `aggkit-dev`, and a re-run after fixing the cause is safe. If a run is not approved or is rejected, the staged images stay in `aggkit-dev` unreferenced and are not published. The staged digests that `publish` needs are kept as run artifacts for 30 days, which is also the longest a run can wait for approval; a run approved or re-run after the artifacts expired fails in `publish` without writing anything, so tag a new version instead.
+
+The `publish` job pushes the manifest lists first and then signs them and creates the attestation. If signing or the attestation fails after the manifests were pushed, the version is already visible in the registry but is not signed. Do not trust or use an unsigned published version. Either use "Re-run failed jobs" on the run, which skips `preflight`, `build` and `approve` and finishes the publication with the same staged digests, or cut a new version. A full re-run of the whole workflow fails in `preflight` because the version is already published.
 
 Besides the version tags, the package also lists signature and attestation artifacts (tags such as `sha256-<digest>.sig` and referrers of the images). These are expected and are not extra releases.
 
 ## Residual risks
 
 - Two colluding maintainers (one starting the run, one in `release-approvers`) can still publish an image. Keep the approver team small and review membership regularly.
-- Any workflow in the repository that has `packages: write` can push to the package while the package grants Actions write to the repository. Review workflow changes with that in mind. Optional hardening: use a push credential stored only as a `release` environment secret, and have the package grant no Actions write access to the repository, so only jobs that passed the environment approval can push.
+- Any workflow in the repository that has `packages: write` can push to the packages while they grant Actions write to the repository. This includes the `build` job of the release workflow, which writes to `aggkit-dev` and, because the token is not scoped per package, could write to `aggkit` if its steps were changed. Review workflow changes with that in mind. Optional hardening: use a push credential for `aggkit` stored only as a `release` environment secret, and have `aggkit` grant no Actions write access to the repository, so only jobs that passed the environment approval can push to it.
+- A staged image can be tampered with only in a bounded way. `publish` promotes the exact digests recorded by the `build` job of the same run, and a digest is the hash of the content, so a different image pushed to `aggkit-dev` cannot take their place and is never promoted. Anyone with write access to `aggkit-dev` can still add or delete versions there (for example delete a staged image, which makes `publish` fail), but cannot change what is promoted. For that reason `aggkit-dev` should grant write access only to the repository and the package admins, but it is not part of the trust base of a published image.
+- The reviewer sees the staged digests in the `build` job summaries before approving, not a human-readable review of the code in the images. The approval confirms the tag, the commit and that the build succeeded, including the version check inside the image.
 - The ancestry check in `preflight` relies on steps 3 and 4. Tag-triggered runs use the workflow file from the tagged commit, so someone who can push a tag could also push a modified workflow. Protecting tags (step 3) and the branches the tags must come from (step 4) is what keeps this check meaningful.

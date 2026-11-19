@@ -14,6 +14,8 @@ Release images are published to `ghcr.io/agglayer/aggkit`, one set of tags per r
 
 Only exact versions are published and a published version is never overwritten. The package also lists signature and attestation artifacts next to these tags (for example `sha256-<digest>.sig` tags and referrers of the images); they are not extra versions.
 
+Release images reach `ghcr.io/agglayer/aggkit` only through the release workflow, in this order: the platform images are built and staged in `ghcr.io/agglayer/aggkit-dev` (see below), a reviewer approves them, and only then are the tags above created in `aggkit` from those exact images and signed. A release that fails to build or is not approved never appears in `aggkit`.
+
 If signing or attestation fails after the manifests were pushed, the version is visible but unsigned. Treat an unsigned version as unusable: it is either completed by re-running the failed jobs or replaced by a new version. Always verify the signature before using an image.
 
 **Change:** the moving `X.Y` tags (for example `1.2`, `1.2-no_shell`, `1.2-dev`) and the `latest` tag are no longer published. Pin an exact version. Existing `X.Y` and `latest` tags in the registry are not updated any more, so a deployment that follows them silently stays on an old image.
@@ -25,6 +27,10 @@ The production tag `X.Y.Z` resolves to a manifest list that contains the product
 ### Branch builds
 
 `ghcr.io/agglayer/aggkit-dev` holds images built manually from a branch, tagged with the branch name, a timestamp and the commit. They are for testing only, are not release candidates and are not signed as releases. Do not use them in production.
+
+### Staged release candidates
+
+`aggkit-dev` is also the staging area of the release workflow. While a release is built and waiting for approval, its per-platform images are pushed there by digest, without a tag, next to the branch builds. These images are not published releases: they are unsigned, may belong to a release that is never approved, and can be written to by anyone who has write access to `aggkit-dev`. Use only the tags in `ghcr.io/agglayer/aggkit`, and verify them as described below. The approved images are copied to `aggkit` by digest, so the platform images in a published version are the ones that were built and reviewed in the same run.
 
 ### Images published before this change
 
