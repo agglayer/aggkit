@@ -174,7 +174,8 @@ func BlockTimeOrNow(ts uint64, now time.Time) time.Time {
 //     or IsReadyToClaim, re-checked on every refresh (readiness stays tentative while unclaimed).
 //
 // A transient failure never discards known state: a claimed entry whose isClaimed() / claim
-// record fetch fails keeps its last known claim, and a resolver error just means "not final yet".
+// record fetch fails keeps its last known claim, not newly final (only a fetched record is proven
+// final), and a resolver error just means "not final yet".
 // Failures are logged and retried on the next refresh; they never fail the caller's refresh
 func (r *ActivityEntryRefresher) Refresh(
 	ctx context.Context, item *domain.ScannedBridge, existing *domain.ActivityEntry, includeTracking bool,
@@ -209,8 +210,7 @@ func (r *ActivityEntryRefresher) Refresh(
 		if existingClaimed {
 			// keep the last known claim: a failed check is not evidence the claim is gone
 			entry.ClaimStatus = types.ClaimStatusClaimed
-			entry.Claim = existing.Claim
-			entry.ClaimFinal = r.claimFinal(ctx, item, existing, existing.Claim)
+			keepCachedClaim(entry, existing)
 			return finishActivityEntry(entry)
 		}
 		entry.ClaimStatus = types.ClaimStatusError
@@ -225,7 +225,9 @@ func (r *ActivityEntryRefresher) Refresh(
 		if err != nil {
 			r.logger.Warnf("activity: fetching claim record of bridge tx=%s: %v", item.Bridge.TxHash, err)
 			if existingClaimed {
-				claim = existing.Claim // keep the last known record until it can be fetched again
+				// keep the last known record until it can be fetched again
+				keepCachedClaim(entry, existing)
+				return finishActivityEntry(entry)
 			}
 		}
 		entry.Claim = claim
@@ -263,6 +265,17 @@ func (r *ActivityEntryRefresher) Refresh(
 		entry.TrackerClaimStatus = types.TrackerClaimStatusReadyToClaim
 	}
 	return finishActivityEntry(entry)
+}
+
+// keepCachedClaim sets entry's claim to existing's, the last known one, when it could not be
+// refreshed (isClaimed() or the claim record fetch failed), with existing's finality as is: a
+// record not fetched again is never newly proven final. It may be an orphaned record (re-included
+// at the same height in another block, with another timestamp) that the receipt fallback of the
+// finality resolver would prove final by hash and height alone, after which the final-claim
+// shortcut would never fetch the corrected record again
+func keepCachedClaim(entry, existing *domain.ActivityEntry) {
+	entry.Claim = existing.Claim
+	entry.ClaimFinal = existing.ClaimFinal
 }
 
 // finishActivityEntry derives Finalized and, for a claimed entry, TrackerClaimStatus from the

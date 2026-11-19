@@ -117,3 +117,40 @@ func TestActivityEntryRefresher_ResolverErrorIsNotFinal(t *testing.T) {
 	require.False(t, entry.BridgeFinal)
 	require.Equal(t, types.TrackerClaimStatusPending, entry.TrackerClaimStatus)
 }
+
+// TestActivityEntryRefresher_FailedClaimRefreshKeepsCachedFinality pins that a cached claim that
+// could not be refreshed (isClaimed() or the claim record fetch failed) is kept with its cached
+// finality and never newly proven final: the cached record may be orphaned (re-included at the
+// same height with another timestamp), which the receipt fallback of the finality resolver would
+// prove final by hash and height alone, after which it would never be fetched again
+func TestActivityEntryRefresher_FailedClaimRefreshKeepsCachedFinality(t *testing.T) {
+	cachedClaim := &bridgeservicetypes.ClaimResponse{TxHash: "0xc1", BlockNum: 3000, BlockTimestamp: 1700003000}
+	cached := func(item *domain.ScannedBridge) *domain.ActivityEntry {
+		return &domain.ActivityEntry{
+			Bridge: item.Bridge, BridgeNetworkID: item.NetworkID, BridgeFinal: true,
+			ClaimStatus: types.ClaimStatusClaimed, Claim: cachedClaim,
+		}
+	}
+	for name, claims := range map[string]*fakeActivityClaims{
+		"isClaimed fails": {isClaimed: []bool{false}, isClaimedErrs: []error{errors.New("rpc down")}},
+		"claim record fetch fails": {
+			isClaimed: []bool{true}, claimInfo: []*bridgeservicetypes.ClaimResponse{nil},
+			claimInfoErrs: []error{errors.New("503")},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			// strict, no expectation: the claim's finality must not even be asked
+			resolver := finalitymocks.NewResolver(t)
+			refresher := NewActivityEntryRefresher(claims, nil, resolver, log.WithFields("module", "activity_test"))
+			item := finalScannedBridge(1)
+
+			entry := refresher.Refresh(t.Context(), item, cached(item), false, time.Now())
+			require.Equal(t, types.ClaimStatusClaimed, entry.ClaimStatus)
+			require.Same(t, cachedClaim, entry.Claim, "the last known claim is kept")
+			require.False(t, entry.ClaimFinal, "not refreshed: not newly final")
+			require.False(t, entry.Finalized)
+			require.Equal(t, types.TrackerClaimStatusClaimed, entry.TrackerClaimStatus)
+			require.Equal(t, 1, claims.isClaimedCalls)
+		})
+	}
+}

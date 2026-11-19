@@ -113,7 +113,8 @@ func (f *fakeActivityScanner) BridgesFrom(
 // consulted in FIFO order per call, one entry per expected IsClaimed/ClaimInfo invocation, so a
 // test can assert exactly how many times each was called (and fail loudly if called more).
 // isClaimedErrs, if non-nil, is consulted alongside isClaimed: a non-nil entry makes that call
-// fail instead of returning the paired isClaimed value. lastIsClaimedNetworkID records the
+// fail instead of returning the paired isClaimed value; claimInfoErrs does the same for
+// ClaimInfo and claimInfo. lastIsClaimedNetworkID records the
 // NetworkID of the last ScannedBridge IsClaimed was called with. readyToClaim/readyToClaimErr
 // configure IsReadyToClaim's own (single, reused) result, defaulting to "not ready, no error"
 // for tests that don't care about it; readyToClaims/readyToClaimErrs, if non-nil, are consulted
@@ -125,6 +126,7 @@ type fakeActivityClaims struct {
 	isClaimed        []bool
 	isClaimedErrs    []error
 	claimInfo        []*bridgeservicetypes.ClaimResponse
+	claimInfoErrs    []error
 	readyToClaim     bool
 	readyToClaimErr  error
 	readyToClaims    []bool
@@ -156,9 +158,12 @@ func (f *fakeActivityClaims) ClaimInfo(
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	claim := f.claimInfo[f.claimInfoCalls]
+	i := f.claimInfoCalls
 	f.claimInfoCalls++
-	return claim, nil
+	if i < len(f.claimInfoErrs) && f.claimInfoErrs[i] != nil {
+		return nil, f.claimInfoErrs[i]
+	}
+	return f.claimInfo[i], nil
 }
 
 func (f *fakeActivityClaims) IsReadyToClaim(context.Context, *domain.ScannedBridge) (bool, error) {
