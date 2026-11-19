@@ -283,6 +283,10 @@ func (d *EVMDownloader) appendLog(ctx context.Context, block *sync.EVMBlock, log
 	}
 	attempts := 0
 	for {
+		if ctx.Err() != nil {
+			// Shutting down: return instead of retrying the cancellation error forever.
+			return
+		}
 		err := appenderFn(block, log)
 		if err != nil {
 			attempts++

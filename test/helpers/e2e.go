@@ -103,11 +103,91 @@ func NewSimulatedEVMEnvironment(t *testing.T, cfg *EnvironmentConfig) (*L1Enviro
 	return l1Setup, l2Setup
 }
 
+// helperShutdownTimeout bounds how long Shutdown waits for the tracked services to observe
+// cancellation. On timeout the owning test is failed instead of the wait being ignored.
+const helperShutdownTimeout = 30 * time.Second
+
+// helperLifecycle owns the background services started by L1Setup and L2Setup so they can be
+// stopped and joined before the temporary directories backing their databases are removed.
+//
+// Without this a service keeps polling a SQLite file that t.TempDir has already deleted,
+// exhausts its retry budget and calls log.Fatalf from a goroutine, killing the whole test binary.
+type helperLifecycle struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+}
+
+// newHelperLifecycle derives a cancellable context from the test context. t.Context is canceled
+// just before Cleanup functions run, so cancellation reaches the services before any temporary
+// directory is removed.
+func newHelperLifecycle(t *testing.T) *helperLifecycle {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	return &helperLifecycle{ctx: ctx, cancel: cancel}
+}
+
+// startBlocking runs a blocking Start method in a goroutine and tracks it, so waitShutdown only
+// returns after that method has observed cancellation and returned. It must only be used for
+// Start methods that actually block; a non-blocking one would be marked done immediately and
+// joined wrongly.
+func (h *helperLifecycle) startBlocking(start func(ctx context.Context)) {
+	h.wg.Add(1)
+	go func() {
+		defer h.wg.Done()
+		start(h.ctx)
+	}()
+}
+
+// waitShutdown blocks until every tracked service has returned or timeout elapses, reporting
+// whether they all stopped.
+func (h *helperLifecycle) waitShutdown(timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		h.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+// Shutdown cancels the shared context and waits, bounded, for every tracked service to stop. It
+// is meant to run from a t.Cleanup callback registered after the temporary directories were
+// created, so LIFO ordering stops the services before those directories are removed.
+func (h *helperLifecycle) Shutdown(t *testing.T) {
+	t.Helper()
+
+	h.cancel()
+	if !h.waitShutdown(helperShutdownTimeout) {
+		t.Errorf("helper services did not stop within %s", helperShutdownTimeout)
+	}
+}
+
+// startReorgDetector starts a reorg detector worker.
+//
+// ReorgDetector.Start is non-blocking: it returns immediately after spawning an internal
+// goroutine that watches ctx. The reorgdetector package exposes no Done/Wait hook, so there is
+// nothing here to join and it is deliberately not tracked in helperLifecycle.wg (doing so would
+// falsely suggest the internal worker had stopped). Cancelling the shared context is the only
+// stop signal we can give it. Starting it synchronously at least surfaces its startup errors.
+func startReorgDetector(t *testing.T, rd *reorgdetector.ReorgDetector, ctx context.Context) {
+	t.Helper()
+
+	require.NoError(t, rd.Start(ctx))
+}
+
 // L1Setup creates a new L1 environment.
 func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	t.Helper()
 
-	ctx := context.Background()
+	lifecycle := newHelperLifecycle(t)
+	ctx := lifecycle.ctx
 
 	// Simulated L1
 	l1Client, authL1,
@@ -124,7 +204,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	}, reorgdetector.L1)
 	require.NoError(t, err)
-	go rdL1.Start(ctx) //nolint:errcheck
+	startReorgDetector(t, rdL1, ctx)
 
 	// L1 info tree sync
 	dbPathL1InfoTreeSync := path.Join(t.TempDir(), "L1InfoTreeSync.sqlite")
@@ -172,7 +252,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	)
 	require.NoError(t, err)
 
-	go l1InfoTreeSync.Start(ctx)
+	lifecycle.startBlocking(l1InfoTreeSync.Start)
 
 	const (
 		waitForNewBlocksPeriod = time.Millisecond * 10
@@ -203,7 +283,17 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	bridgeL1Sync, err := bridgesync.NewL1(ctx, bridgeSyncCfg, rdL1, testClient, originNetwork)
 	require.NoError(t, err)
 
-	go bridgeL1Sync.Start(ctx)
+	lifecycle.startBlocking(bridgeL1Sync.Start)
+
+	// Registered after every t.TempDir above. Because cleanups run last in first out, this stops
+	// the services and closes the simulated backend before those directories (and the SQLite
+	// files inside them) are removed.
+	t.Cleanup(func() {
+		lifecycle.Shutdown(t)
+		if err := l1Client.Close(); err != nil {
+			t.Errorf("failed to close L1 simulated backend: %v", err)
+		}
+	})
 
 	return &L1Environment{
 		CommonEnvironment: CommonEnvironment{
@@ -225,7 +315,8 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2Environment {
 	t.Helper()
 
-	ctx := context.Background()
+	lifecycle := newHelperLifecycle(t)
+	ctx := lifecycle.ctx
 
 	var (
 		l2Client              *simulated.Backend
@@ -287,7 +378,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 			gerInjectionFrequency,
 		)
 		require.NoError(t, err)
-		go oracle.Start(ctx)
+		lifecycle.startBlocking(oracle.Start)
 	}
 
 	// Reorg detector
@@ -300,7 +391,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 		reorgdetector.L2,
 	)
 	require.NoError(t, err)
-	go rdL2.Start(ctx) //nolint:errcheck
+	startReorgDetector(t, rdL2, ctx)
 
 	// Bridge sync
 	dbPathBridgeSyncL2 := path.Join(t.TempDir(), "BridgeSyncL2.sqlite")
@@ -329,7 +420,16 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 	bridgeL2Sync, err := bridgesync.NewL2(ctx, bridgeSyncCfg, rdL2, testClient, originNetwork, false, bridgesynctypes.EmptyLER)
 	require.NoError(t, err)
 
-	go bridgeL2Sync.Start(ctx)
+	lifecycle.startBlocking(bridgeL2Sync.Start)
+
+	// Registered last: cleanups run in reverse order, so this stops the L2 services and closes
+	// the L2 simulated backend before the directories their databases live in are removed.
+	t.Cleanup(func() {
+		lifecycle.Shutdown(t)
+		if err := l2Client.Close(); err != nil {
+			t.Errorf("failed to close L2 simulated backend: %v", err)
+		}
+	})
 
 	l2Setup := &L2Environment{
 		CommonEnvironment: CommonEnvironment{

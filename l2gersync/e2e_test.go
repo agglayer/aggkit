@@ -26,6 +26,9 @@ const (
 	syncBlockChunkSize         = 10
 	testIterations             = 3
 	syncDelay                  = 1 * time.Second
+	// l2GERSyncShutdownTimeout bounds how long the cleanup below waits for the syncer to
+	// observe cancellation before failing the test.
+	l2GERSyncShutdownTimeout = 30 * time.Second
 )
 
 func TestL2GERSyncE2E(t *testing.T) {
@@ -132,7 +135,7 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(t.Context())
 	l1Setup, l2Setup := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.LegacyL2GERContract))
 
 	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
@@ -158,20 +161,54 @@ func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	go l2GERSyncer.Start(ctx)
+	syncerDone := make(chan struct{})
+	go func() {
+		defer close(syncerDone)
+		l2GERSyncer.Start(ctx)
+	}()
+
+	// Registered after the t.TempDir above. Cleanups run last in first out, so the syncer
+	// observes cancellation and is joined before that directory (and the SQLite file inside it)
+	// is removed. The bound turns a service that never stops into an explicit test failure
+	// instead of a fatal compatibility check on a deleted database.
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-syncerDone:
+		case <-time.After(l2GERSyncShutdownTimeout):
+			t.Errorf("l2GERSync did not stop within %s", l2GERSyncShutdownTimeout)
+		}
+	})
 
 	startBlockNumber, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
+
+	// The legacy downloader only ever records the latest GER injected on L2 (see
+	// evm_downloader_legacy.go: findLatestInjectedGER). If two L1 info tree leaves become visible
+	// before the first is injected on L2, it advances past the first and never records it, so the
+	// total count comes up short. Wait for the L1 info tree to index each update before injecting
+	// it on L2, and wait for each GER to be recorded before starting the next iteration, instead
+	// of sleeping a fixed amount and hoping the timing works out.
 	for i := range testIterations {
 		updateL1GlobalExitRoot(t, l1Setup, i)
-		updateL2GlobalExitRoot(t, l2Setup, i)
-		// wait for the GER to be indexed
-		time.Sleep(syncDelay)
-	}
+		helpers.WaitForSyncerToCatchUp(ctx, t, l1Setup.InfoTreeSync, l1Setup.SimBackend)
 
-	l1Setup.SimBackend.Commit()
-	l2Setup.SimBackend.Commit()
-	time.Sleep(1 * time.Second)
+		expectedGER := updateL2GlobalExitRoot(t, l2Setup, i)
+
+		require.Eventuallyf(t, func() bool {
+			lb, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
+			if err != nil {
+				return false
+			}
+			gers, err := l2GERSyncer.GetInjectedGERsForRange(ctx, startBlockNumber, lb)
+			if err != nil {
+				return false
+			}
+			_, ok := gers[expectedGER]
+			return ok
+		}, 30*time.Second, 50*time.Millisecond,
+			"iteration %d: injected GER %s was not indexed", i, expectedGER)
+	}
 
 	endBlockNumber, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)

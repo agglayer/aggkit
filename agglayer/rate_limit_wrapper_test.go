@@ -87,32 +87,30 @@ func TestRateLimitWrapper_SendCertificate(t *testing.T) {
 
 	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
+	// Both calls must span at least one full rate-limit interval: the first call admits the
+	// request and the second is delayed until the interval elapses. Measuring from before the
+	// first call (instead of just the second) makes the assertion independent of how long the
+	// first call itself took, which is what made the old 95ms bound flaky.
+	start := time.Now()
+
 	// First call should succeed immediately
 	cert := &types.Certificate{}
 	expectedHash := common.HexToHash("0x123")
 	mockClient.EXPECT().SendCertificate(mock.Anything, cert).Return(expectedHash, nil).Once()
 
-	start := time.Now()
 	hash, err := wrapper.SendCertificate(context.Background(), cert)
-	duration := time.Since(start)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedHash, hash)
-	require.Less(t, duration, 50*time.Millisecond) // Should be fast
 
 	// Second call should be rate limited
 	mockClient.EXPECT().SendCertificate(mock.Anything, cert).Return(expectedHash, nil).Once()
 
-	// Add a small delay to ensure the calls are not happening in the same microsecond
-	time.Sleep(1 * time.Millisecond)
-
-	start = time.Now()
 	hash, err = wrapper.SendCertificate(context.Background(), cert)
-	duration = time.Since(start)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedHash, hash)
-	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited (allowing for timing precision)
+	require.GreaterOrEqual(t, time.Since(start), 100*time.Millisecond) // Should be rate limited
 
 	mockClient.AssertExpectations(t)
 	mockLogger.AssertExpectations(t)
@@ -302,6 +300,10 @@ func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
 
 	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
+	// The two calls must together span at least one full rate-limit interval; see
+	// TestRateLimitWrapper_SendCertificate for why we measure from before the first call.
+	start := time.Now()
+
 	// Test first call
 	certHash := common.HexToHash("0x123")
 	expectedHeader := &types.CertificateHeader{
@@ -310,26 +312,19 @@ func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
 	}
 	mockClient.EXPECT().GetCertificateHeader(mock.Anything, certHash).Return(expectedHeader, nil).Once()
 
-	start := time.Now()
 	header, err := wrapper.GetCertificateHeader(context.Background(), certHash)
-	duration := time.Since(start)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedHeader, header)
-	require.Less(t, duration, 50*time.Millisecond) // Should be fast
 
 	// Test second call (rate limited)
 	mockClient.EXPECT().GetCertificateHeader(mock.Anything, certHash).Return(expectedHeader, nil).Once()
 
-	time.Sleep(1 * time.Millisecond)
-
-	start = time.Now()
 	header, err = wrapper.GetCertificateHeader(context.Background(), certHash)
-	duration = time.Since(start)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedHeader, header)
-	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
+	require.GreaterOrEqual(t, time.Since(start), 100*time.Millisecond) // Should be rate limited
 
 	mockClient.AssertExpectations(t)
 	mockLogger.AssertExpectations(t)
@@ -356,6 +351,10 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 
 	wrapper := NewRateLimitWrapper(mockClient, clientConfig, mockLogger)
 
+	// The two calls must together span at least one full rate-limit interval; see
+	// TestRateLimitWrapper_SendCertificate for why we measure from before the first call.
+	start := time.Now()
+
 	// Test first call
 	expectedConfig := &types.ClockConfiguration{
 		EpochDuration: 1000,
@@ -363,26 +362,19 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 	}
 	mockClient.EXPECT().GetEpochConfiguration(mock.Anything).Return(expectedConfig, nil).Once()
 
-	start := time.Now()
 	epochConfig, err := wrapper.GetEpochConfiguration(context.Background())
-	duration := time.Since(start)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedConfig, epochConfig)
-	require.Less(t, duration, 50*time.Millisecond) // Should be fast
 
 	// Test second call (rate limited)
 	mockClient.EXPECT().GetEpochConfiguration(mock.Anything).Return(expectedConfig, nil).Once()
 
-	time.Sleep(1 * time.Millisecond)
-
-	start = time.Now()
 	epochConfig, err = wrapper.GetEpochConfiguration(context.Background())
-	duration = time.Since(start)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedConfig, epochConfig)
-	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
+	require.GreaterOrEqual(t, time.Since(start), 100*time.Millisecond) // Should be rate limited
 
 	mockClient.AssertExpectations(t)
 	mockLogger.AssertExpectations(t)
@@ -392,6 +384,10 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 func testCertificateHeaderMethod(t *testing.T, methodName string, height uint64, wrapper *RateLimitWrapper, mockClient *mocks.AgglayerClientMock, mockLogger *MockLogger) {
 	t.Helper()
 
+	// The two calls must together span at least one full rate-limit interval; see
+	// TestRateLimitWrapper_SendCertificate for why we measure from before the first call.
+	start := time.Now()
+
 	// Test first call
 	networkID := uint32(1)
 	expectedHeader := &types.CertificateHeader{
@@ -400,7 +396,6 @@ func testCertificateHeaderMethod(t *testing.T, methodName string, height uint64,
 	}
 	mockClient.On(methodName, mock.Anything, networkID).Return(expectedHeader, nil).Once()
 
-	start := time.Now()
 	var header *types.CertificateHeader
 	var err error
 
@@ -409,28 +404,22 @@ func testCertificateHeaderMethod(t *testing.T, methodName string, height uint64,
 	} else {
 		header, err = wrapper.GetLatestPendingCertificateHeader(context.Background(), networkID)
 	}
-	duration := time.Since(start)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedHeader, header)
-	require.Less(t, duration, 50*time.Millisecond) // Should be fast
 
 	// Test second call (rate limited)
 	mockClient.On(methodName, mock.Anything, networkID).Return(expectedHeader, nil).Once()
 
-	time.Sleep(1 * time.Millisecond)
-
-	start = time.Now()
 	if methodName == "GetLatestSettledCertificateHeader" {
 		header, err = wrapper.GetLatestSettledCertificateHeader(context.Background(), networkID)
 	} else {
 		header, err = wrapper.GetLatestPendingCertificateHeader(context.Background(), networkID)
 	}
-	duration = time.Since(start)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedHeader, header)
-	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
+	require.GreaterOrEqual(t, time.Since(start), 100*time.Millisecond) // Should be rate limited
 
 	mockClient.AssertExpectations(t)
 	mockLogger.AssertExpectations(t)

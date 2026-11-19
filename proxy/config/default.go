@@ -136,6 +136,27 @@ RegisterResolveTimeout = "3s"
 L1BlockFinality = "LatestBlock"
 L2BlockFinality = "LatestBlock"
 
+# L1FinalizedBlock / L2FinalizedBlock: the block the proxy considers finalized on L1/L2, i.e. a
+# bridge or claim mined in a block at or below it is final. Only used when the bridge service does
+# not say whether an entry is final (block_finalized omitted: bridge service older than #1921,
+# block stored without hash, syncer unavailable or mid-reorg...): the proxy then looks up the
+# receipt of the entry's tx and checks it is in the reported block and that block is at or below
+# this one. An explicit block_finalized from the bridge service always wins over it.
+# Separate from L1BlockFinality / L2BlockFinality above, which only decide when a receipt is
+# accepted. Accepts "FinalizedBlock", "SafeBlock" or "LatestBlock/-N".
+#
+# NOT RECOMMENDED: anything other than "FinalizedBlock". The guarantee that a final bridge or claim
+# is never reorged out is only given for the "finalized" tag (it is given at another level, not by
+# the proxy); the proxy logs a warning at startup for any other value.
+L1FinalizedBlock = "FinalizedBlock"
+L2FinalizedBlock = "FinalizedBlock"
+
+# FinalizedBlockByNetwork (optional): overrides L1FinalizedBlock / L2FinalizedBlock for the listed
+# networks (networkID = block), e.g. an L2 whose RPC does not serve the "finalized" tag. Same
+# recommendation: do not use anything but "FinalizedBlock". Example, in its own table:
+#   [Tracker.FinalizedBlockByNetwork]
+#   3 = "SafeBlock"
+
 # MaxTrackedBridges: caps the supervised list (in-memory or SQLite-backed, see DBPath); a
 # request beyond it fails instead of registering the bridge -- reaching the cap never evicts an
 # existing entry to make room. On the default in-memory adapter, RetentionPeriod and IdleTimeout
