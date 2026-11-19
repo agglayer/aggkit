@@ -142,11 +142,18 @@ func buildAppenderWithResolver(
 	}
 	// TODO: Check syncfullclaims
 	syncFullClaims := true
-	contextual := sync.ContextualLogAppenderMap{
-		claimEventSignaturePreEtrog: newClaimEventHandlerPreEtrog(
-			legacyBridge, ethClient, bridgeAddr, syncFullClaims, log, resolver),
-		claimEventSignature: newClaimEventHandler(
-			deployment.agglayerBridge, ethClient, bridgeAddr, syncFullClaims, log, resolver),
+	contextual := make(sync.ContextualLogAppenderMap)
+	if resolver == nil {
+		// Legacy synchronous path: use the legacy wrapper constructors verbatim.
+		contextual[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
+			legacyBridge, ethClient, bridgeAddr, syncFullClaims, log)
+		contextual[claimEventSignature] = buildClaimEventHandler(
+			deployment.agglayerBridge, ethClient, bridgeAddr, syncFullClaims, log)
+	} else {
+		contextual[claimEventSignaturePreEtrog] = newClaimEventHandlerPreEtrog(
+			legacyBridge, ethClient, bridgeAddr, syncFullClaims, log, resolver)
+		contextual[claimEventSignature] = newClaimEventHandler(
+			deployment.agglayerBridge, ethClient, bridgeAddr, syncFullClaims, log, resolver)
 	}
 
 	appender := make(sync.LogAppenderMap)

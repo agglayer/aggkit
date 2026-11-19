@@ -451,8 +451,8 @@ func newTraceDeployment(t *testing.T, client aggkittypes.EthClienter) *bridgeDep
 // debug_traceTransaction call with the supplied call tree.
 func expectLegacyTraces(t *testing.T, c *mocks.EthClienter, traces map[common.Hash]*Call) {
 	t.Helper()
-	c.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-		Run(func(result any, method string, args ...any) {
+	c.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, result any, method string, args ...any) {
 			arg, ok := result.(*Call)
 			require.True(t, ok)
 			txHash, ok := args[0].(common.Hash)
@@ -497,7 +497,7 @@ func TestTracePrefetch_MatchesLegacy_FullClaim(t *testing.T) {
 
 		legacyClient := mocks.NewEthClienter(t)
 		expectLegacyTraces(t, legacyClient, map[common.Hash]*Call{txHash: root})
-		legacyAppender, err := buildAppender(legacyClient, traceBridgeAddr, newTraceDeployment(t, legacyClient), lg)
+		_, legacyAppender, err := buildAppender(legacyClient, traceBridgeAddr, newTraceDeployment(t, legacyClient), lg)
 		require.NoError(t, err)
 
 		fake := newTraceFakeClient()
@@ -506,7 +506,7 @@ func TestTracePrefetch_MatchesLegacy_FullClaim(t *testing.T) {
 		// The prefetch client must never see a raw legacy Call.
 		prefetchClient := mocks.NewEthClienter(t)
 		resolver := NewTraceResolver(fake, traceBridgeAddr, lg, ClaimTracePrefetchConcurrency)
-		prefetchAppender, err := buildAppenderWithResolver(
+		_, prefetchAppender, err := buildAppenderWithResolver(
 			prefetchClient, traceBridgeAddr, newTraceDeployment(t, prefetchClient), lg, resolver)
 		require.NoError(t, err)
 
@@ -514,8 +514,8 @@ func TestTracePrefetch_MatchesLegacy_FullClaim(t *testing.T) {
 
 		legacyBlock := &aggsync.EVMBlock{EVMBlockHeader: aggsync.EVMBlockHeader{Num: blockNum, Timestamp: 42}}
 		prefetchBlock := &aggsync.EVMBlock{EVMBlockHeader: aggsync.EVMBlockHeader{Num: blockNum, Timestamp: 42}}
-		require.NoError(t, legacyAppender[claimEventSignature](legacyBlock, logEntry))
-		require.NoError(t, prefetchAppender[claimEventSignature](prefetchBlock, logEntry))
+		require.NoError(t, legacyAppender[claimEventSignature](t.Context(), legacyBlock, logEntry))
+		require.NoError(t, prefetchAppender[claimEventSignature](t.Context(), prefetchBlock, logEntry))
 
 		require.Equal(t, legacyBlock.Events, prefetchBlock.Events, "prefetch must equal legacy byte-for-byte")
 
@@ -549,14 +549,14 @@ func TestTracePrefetch_MatchesLegacy_FullClaim(t *testing.T) {
 
 		legacyClient := mocks.NewEthClienter(t)
 		expectLegacyTraces(t, legacyClient, map[common.Hash]*Call{txHash: root})
-		legacyAppender, err := buildAppender(legacyClient, traceBridgeAddr, newTraceDeployment(t, legacyClient), lg)
+		_, legacyAppender, err := buildAppender(legacyClient, traceBridgeAddr, newTraceDeployment(t, legacyClient), lg)
 		require.NoError(t, err)
 
 		fake := newTraceFakeClient()
 		fake.traces[txHash] = root
 		fake.headers[blockNum] = aggkittypes.NewBlockHeader(blockNum, blockHash, 0, nil)
 		resolver := NewTraceResolver(fake, traceBridgeAddr, lg, ClaimTracePrefetchConcurrency)
-		prefetchAppender, err := buildAppenderWithResolver(
+		_, prefetchAppender, err := buildAppenderWithResolver(
 			mocks.NewEthClienter(t), traceBridgeAddr, newTraceDeployment(t, mocks.NewEthClienter(t)), lg, resolver)
 		require.NoError(t, err)
 
@@ -564,8 +564,8 @@ func TestTracePrefetch_MatchesLegacy_FullClaim(t *testing.T) {
 
 		legacyBlock := &aggsync.EVMBlock{EVMBlockHeader: aggsync.EVMBlockHeader{Num: blockNum}}
 		prefetchBlock := &aggsync.EVMBlock{EVMBlockHeader: aggsync.EVMBlockHeader{Num: blockNum}}
-		require.NoError(t, legacyAppender[claimEventSignature](legacyBlock, logEntry))
-		require.NoError(t, prefetchAppender[claimEventSignature](prefetchBlock, logEntry))
+		require.NoError(t, legacyAppender[claimEventSignature](t.Context(), legacyBlock, logEntry))
+		require.NoError(t, prefetchAppender[claimEventSignature](t.Context(), prefetchBlock, logEntry))
 
 		require.Equal(t, legacyBlock.Events, prefetchBlock.Events)
 		require.True(t, claimFromBlock(t, prefetchBlock, 0).IsMessage)
@@ -586,14 +586,14 @@ func TestTracePrefetch_MatchesLegacy_FullClaim(t *testing.T) {
 
 		legacyClient := mocks.NewEthClienter(t)
 		expectLegacyTraces(t, legacyClient, map[common.Hash]*Call{txHash: root})
-		legacyAppender, err := buildAppender(legacyClient, traceBridgeAddr, newTraceDeployment(t, legacyClient), lg)
+		_, legacyAppender, err := buildAppender(legacyClient, traceBridgeAddr, newTraceDeployment(t, legacyClient), lg)
 		require.NoError(t, err)
 
 		fake := newTraceFakeClient()
 		fake.traces[txHash] = root
 		fake.headers[blockNum] = aggkittypes.NewBlockHeader(blockNum, blockHash, 0, nil)
 		resolver := NewTraceResolver(fake, traceBridgeAddr, lg, ClaimTracePrefetchConcurrency)
-		prefetchAppender, err := buildAppenderWithResolver(
+		_, prefetchAppender, err := buildAppenderWithResolver(
 			mocks.NewEthClienter(t), traceBridgeAddr, newTraceDeployment(t, mocks.NewEthClienter(t)), lg, resolver)
 		require.NoError(t, err)
 
@@ -601,8 +601,8 @@ func TestTracePrefetch_MatchesLegacy_FullClaim(t *testing.T) {
 
 		legacyBlock := &aggsync.EVMBlock{EVMBlockHeader: aggsync.EVMBlockHeader{Num: blockNum}}
 		prefetchBlock := &aggsync.EVMBlock{EVMBlockHeader: aggsync.EVMBlockHeader{Num: blockNum}}
-		require.NoError(t, legacyAppender[claimEventSignaturePreEtrog](legacyBlock, logEntry))
-		require.NoError(t, prefetchAppender[claimEventSignaturePreEtrog](prefetchBlock, logEntry))
+		require.NoError(t, legacyAppender[claimEventSignaturePreEtrog](t.Context(), legacyBlock, logEntry))
+		require.NoError(t, prefetchAppender[claimEventSignaturePreEtrog](t.Context(), prefetchBlock, logEntry))
 
 		require.Equal(t, legacyBlock.Events, prefetchBlock.Events)
 		got := claimFromBlock(t, prefetchBlock, 0)
@@ -638,21 +638,21 @@ func TestTracePrefetch_AmbiguityMatchesLegacy(t *testing.T) {
 
 	legacyClient := mocks.NewEthClienter(t)
 	expectLegacyTraces(t, legacyClient, map[common.Hash]*Call{txHash: root})
-	legacyAppender, err := buildAppender(legacyClient, traceBridgeAddr, newTraceDeployment(t, legacyClient), lg)
+	_, legacyAppender, err := buildAppender(legacyClient, traceBridgeAddr, newTraceDeployment(t, legacyClient), lg)
 	require.NoError(t, err)
 
 	fake := newTraceFakeClient()
 	fake.traces[txHash] = root
 	fake.headers[blockNum] = aggkittypes.NewBlockHeader(blockNum, blockHash, 0, nil)
 	resolver := NewTraceResolver(fake, traceBridgeAddr, lg, ClaimTracePrefetchConcurrency)
-	prefetchAppender, err := buildAppenderWithResolver(
+	_, prefetchAppender, err := buildAppenderWithResolver(
 		mocks.NewEthClienter(t), traceBridgeAddr, newTraceDeployment(t, mocks.NewEthClienter(t)), lg, resolver)
 	require.NoError(t, err)
 	require.NoError(t, resolver.EnrichLogs(t.Context(), []types.Log{logEntry}))
 
-	legacyErr := legacyAppender[claimEventSignature](
+	legacyErr := legacyAppender[claimEventSignature](t.Context(),
 		&aggsync.EVMBlock{EVMBlockHeader: aggsync.EVMBlockHeader{Num: blockNum}}, logEntry)
-	prefetchErr := prefetchAppender[claimEventSignature](
+	prefetchErr := prefetchAppender[claimEventSignature](t.Context(),
 		&aggsync.EVMBlock{EVMBlockHeader: aggsync.EVMBlockHeader{Num: blockNum}}, logEntry)
 	require.Error(t, legacyErr)
 	require.Error(t, prefetchErr)
@@ -1254,11 +1254,11 @@ func TestTracePrefetch_EmptyRootResponseRetried(t *testing.T) {
 
 	require.NoError(t, resolver.EnrichLogs(t.Context(), []types.Log{logEntry}))
 
-	prefetchAppender, err := buildAppenderWithResolver(
+	_, prefetchAppender, err := buildAppenderWithResolver(
 		mocks.NewEthClienter(t), traceBridgeAddr, newTraceDeployment(t, mocks.NewEthClienter(t)), lg, resolver)
 	require.NoError(t, err)
 	block := &aggsync.EVMBlock{EVMBlockHeader: aggsync.EVMBlockHeader{Num: blockNum}}
-	require.NoError(t, prefetchAppender[claimEventSignature](block, logEntry))
+	require.NoError(t, prefetchAppender[claimEventSignature](t.Context(), block, logEntry))
 	require.Len(t, block.Events, 1)
 	require.False(t, claimFromBlock(t, block, 0).IsMessage)
 }
@@ -1350,13 +1350,13 @@ func TestTracePrefetch_EventOrderPreserved(t *testing.T) {
 	require.Equal(t, []common.Hash{txHashes[2], txHashes[1], txHashes[0]}, snap.completed,
 		"prefetch must complete out of the input order for this assertion to be meaningful")
 
-	prefetchAppender, err := buildAppenderWithResolver(
+	_, prefetchAppender, err := buildAppenderWithResolver(
 		mocks.NewEthClienter(t), traceBridgeAddr, newTraceDeployment(t, mocks.NewEthClienter(t)), lg, resolver)
 	require.NoError(t, err)
 
 	block := &aggsync.EVMBlock{EVMBlockHeader: aggsync.EVMBlockHeader{Num: blockNum}}
 	for _, logEntry := range logs {
-		require.NoError(t, prefetchAppender[claimEventSignature](block, logEntry))
+		require.NoError(t, prefetchAppender[claimEventSignature](t.Context(), block, logEntry))
 	}
 	require.Len(t, block.Events, len(logs))
 	for i, logEntry := range logs {
