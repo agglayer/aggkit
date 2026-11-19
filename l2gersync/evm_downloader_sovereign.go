@@ -135,7 +135,15 @@ func (d *downloaderSovereign) Download(
 
 		blocks := d.GetEventsByBlockRange(ctx, fromBlock, toBlock)
 		for _, block := range blocks {
-			downloadedCh <- *block
+			// The send must be cancellation-aware: the driver cancels a generation (e.g. on a reorg)
+			// and then waits for this goroutine to return, while the consumer has already stopped.
+			select {
+			case <-ctx.Done():
+				log.Debug("aborting the l2GERSync downloader while sending a block...")
+				close(downloadedCh)
+				return
+			case downloadedCh <- *block:
+			}
 		}
 
 		fromBlock = toBlock + 1
