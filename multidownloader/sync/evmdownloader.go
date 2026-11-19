@@ -63,11 +63,23 @@ func (d *EVMDownloader) SetLogsHook(hook sync.LogsHookFunc) {
 	d.logsHook = hook
 }
 
+// InstallLogsEnricher installs an optional enricher that is invoked with the active download context
+// after the logs hook and before the appenders build the events. It returns the previous enricher,
+// if any, and reports whether this downloader supports the hook (always true: the concrete
+// multidownloader downloader implements it). It must be called before the downloader is used. If the
+// enricher fails the whole download step fails and is retried by the driver.
+func (d *EVMDownloader) InstallLogsEnricher(enricher sync.LogsEnricherFunc) (sync.LogsEnricherFunc, bool) {
+	prev := d.logsEnricher
+	d.logsEnricher = enricher
+	return prev, true
+}
+
 // SetLogsEnricher sets an optional enricher that is invoked with the active download context after
 // the logs hook and before the appenders build the events. It must be called before the downloader
-// is used. If the enricher fails the whole download step fails and is retried by the driver.
+// is used. It preserves the legacy API and delegates to InstallLogsEnricher, discarding the
+// previous enricher.
 func (d *EVMDownloader) SetLogsEnricher(enricher sync.LogsEnricherFunc) {
-	d.logsEnricher = enricher
+	d.InstallLogsEnricher(enricher)
 }
 
 // SetContextualLogAppenders sets the optional context-aware appenders, keyed by event topic. A

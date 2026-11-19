@@ -161,8 +161,10 @@ func newBridgeSyncMultidownloader(
 		},
 		processor)
 
-	// The processor stores the blocks one by one and the post-commit subscriptions are preserved
-	blockProcessor := mdrsync.NewBlockByBlockProcessor(processor, processor.getBlockHash)
+	// The processor commits the downloaded blocks atomically through the bridge processor's batch,
+	// bounded to sync.MaxBatchBlocks, and the post-commit subscriptions are preserved.
+	blockProcessor := mdrsync.NewBlockByBlockProcessorWithBatch(processor, processor.getBlockHash,
+		processor.processBlocks)
 	reorgsFinality := backend.Finality()
 	driver := mdrsync.NewEVMDriver(logger, blockProcessor, downloader, syncerConfig,
 		cfg.SyncBlockChunkSize, rh, compatibilityChecker)
@@ -178,7 +180,8 @@ func newBridgeSyncMultidownloader(
 			"  syncBlockChunkSize: %d\n"+
 			"  downloader: multidownloader (reorgs finality: %s)\n"+
 			"  waitForNewBlocksPeriod: %s\n"+
-			"  syncFromInBridges: %t",
+			"  syncFromInBridges: %t\n"+
+			"  batchedPersistence: on",
 		syncerID,
 		cfg.DBPath,
 		cfg.InitialBlockNum,

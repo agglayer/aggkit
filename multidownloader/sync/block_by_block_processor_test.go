@@ -159,6 +159,107 @@ func TestBlockByBlockProcessor_ProcessBlocks(t *testing.T) {
 	})
 }
 
+func TestBlockByBlockProcessor_ProcessBlocksWithBatch(t *testing.T) {
+	ctx := t.Context()
+
+	t.Run("a whole chunk is committed once and published after the commit", func(t *testing.T) {
+		fake := &fakeSingleBlockProcessor{}
+		var calls [][]sync.Block
+		batch := func(_ context.Context, blocks []sync.Block) error {
+			calls = append(calls, blocks)
+			fake.blocks = append(fake.blocks, blocks...)
+			return nil
+		}
+		processor := NewBlockByBlockProcessorWithBatch(fake, fake.getBlockHash, batch)
+		blocksCh := processor.SubscribeToNewBlocks("test")
+
+		require.NoError(t, processor.ProcessBlocks(ctx, newBlocksResultForTest(10, 11, 12)))
+
+		require.Len(t, calls, 1, "the whole chunk must be handed to the batch in a single call")
+		require.Len(t, calls[0], 3)
+		require.Equal(t, uint64(10), calls[0][0].Num)
+		require.Equal(t, uint64(11), calls[0][1].Num)
+		require.Equal(t, uint64(12), calls[0][2].Num)
+		// the chunk was committed as a whole before any block was published
+		require.Len(t, fake.blocks, 3)
+		for _, expectedNum := range []uint64{10, 11, 12} {
+			select {
+			case block := <-blocksCh:
+				require.Equal(t, expectedNum, block.Num)
+				require.Equal(t, []any{expectedNum}, block.Events)
+			case <-time.After(5 * time.Second):
+				require.Fail(t, "block not notified")
+			}
+		}
+	})
+
+	t.Run("a failing chunk is not committed, does not publish and propagates", func(t *testing.T) {
+		expectedErr := errors.New("batch error")
+		fake := &fakeSingleBlockProcessor{}
+		batchCalls := 0
+		batch := func(context.Context, []sync.Block) error {
+			batchCalls++
+			return expectedErr
+		}
+		processor := NewBlockByBlockProcessorWithBatch(fake, fake.getBlockHash, batch)
+		blocksCh := processor.SubscribeToNewBlocks("test")
+
+		err := processor.ProcessBlocks(ctx, newBlocksResultForTest(10, 11))
+		require.ErrorIs(t, err, expectedErr)
+		require.Equal(t, 1, batchCalls)
+		require.Empty(t, fake.blocks, "ProcessBlock must not be used when a batch is installed")
+		select {
+		case block := <-blocksCh:
+			require.Failf(t, "unexpected publish", "block %d must not be published", block.Num)
+		default:
+		}
+	})
+
+	t.Run("more than MaxBatchBlocks is split into bounded chunks", func(t *testing.T) {
+		fake := &fakeSingleBlockProcessor{}
+		var calls [][]sync.Block
+		batch := func(_ context.Context, blocks []sync.Block) error {
+			calls = append(calls, blocks)
+			fake.blocks = append(fake.blocks, blocks...)
+			return nil
+		}
+		processor := NewBlockByBlockProcessorWithBatch(fake, fake.getBlockHash, batch)
+
+		total := sync.MaxBatchBlocks + 2
+		nums := make([]uint64, 0, total)
+		for i := 0; i < total; i++ {
+			nums = append(nums, uint64(1+i))
+		}
+		require.NoError(t, processor.ProcessBlocks(ctx, newBlocksResultForTest(nums...)))
+
+		require.Len(t, calls, 2, "the downloaded blocks are split, never padded into a single oversized batch")
+		require.Len(t, calls[0], sync.MaxBatchBlocks)
+		require.Len(t, calls[1], 2)
+		require.Equal(t, uint64(1), calls[0][0].Num)
+		require.Equal(t, uint64(sync.MaxBatchBlocks), calls[0][sync.MaxBatchBlocks-1].Num)
+		require.Equal(t, uint64(sync.MaxBatchBlocks+1), calls[1][0].Num)
+		require.Equal(t, uint64(sync.MaxBatchBlocks+2), calls[1][1].Num)
+	})
+
+	t.Run("already processed blocks are skipped before batching", func(t *testing.T) {
+		fake := &fakeSingleBlockProcessor{blocks: []sync.Block{{Num: 10}}}
+		var calls [][]sync.Block
+		batch := func(_ context.Context, blocks []sync.Block) error {
+			calls = append(calls, blocks)
+			fake.blocks = append(fake.blocks, blocks...)
+			return nil
+		}
+		processor := NewBlockByBlockProcessorWithBatch(fake, fake.getBlockHash, batch)
+
+		require.NoError(t, processor.ProcessBlocks(ctx, newBlocksResultForTest(10, 11, 12)))
+
+		require.Len(t, calls, 1)
+		require.Len(t, calls[0], 2)
+		require.Equal(t, uint64(11), calls[0][0].Num)
+		require.Equal(t, uint64(12), calls[0][1].Num)
+	})
+}
+
 func TestBlockByBlockProcessor_Reorg(t *testing.T) {
 	fake := &fakeSingleBlockProcessor{}
 	require.NoError(t, NewBlockByBlockProcessor(fake, fake.getBlockHash).Reorg(t.Context(), 15))

@@ -133,6 +133,40 @@ func TestLogQueryResponseToEVMBlocks_LogsEnricher(t *testing.T) {
 	})
 }
 
+func TestInstallLogsEnricher(t *testing.T) {
+	downloader := newDownloaderForHooksTest(sync.LogAppenderMap{testTopicA: appenderOfTopic("A")})
+	firstCalled := false
+	first := func(context.Context, []types.Log) error {
+		firstCalled = true
+		return nil
+	}
+	second := func(context.Context, []types.Log) error { return nil }
+
+	prev, installed := downloader.InstallLogsEnricher(first)
+	require.True(t, installed, "the native multidownloader downloader supports the hook")
+	require.Nil(t, prev, "the first install has no previous enricher")
+
+	prev, installed = downloader.InstallLogsEnricher(second)
+	require.True(t, installed)
+	require.NotNil(t, prev, "the previous enricher is returned")
+	require.NoError(t, prev(t.Context(), nil), "the returned enricher is the previously installed one")
+	require.True(t, firstCalled, "the returned enricher is the previously installed one")
+}
+
+func TestSetLogsEnricherStillWorks(t *testing.T) {
+	downloader := newDownloaderForHooksTest(sync.LogAppenderMap{testTopicA: appenderOfTopic("A")})
+	enriched := false
+	downloader.SetLogsEnricher(func(context.Context, []types.Log) error {
+		enriched = true
+		return nil
+	})
+
+	blocks, err := downloader.logQueryResponseToEVMBlocks(t.Context(), newResponseForHooksTest())
+	require.NoError(t, err)
+	require.True(t, enriched, "SetLogsEnricher must still install the enricher")
+	require.Len(t, blocks, 2)
+}
+
 func TestAppendLog_ContextualAppender(t *testing.T) {
 	type ctxKey struct{}
 	ctx := context.WithValue(t.Context(), ctxKey{}, "download-ctx")

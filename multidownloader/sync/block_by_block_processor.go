@@ -27,6 +27,12 @@ type SingleBlockProcessor interface {
 // found is false if the block is not stored or it has no hash.
 type BlockHashGetter func(ctx context.Context, blockNum uint64) (hash common.Hash, found bool, err error)
 
+// BlockBatchFunc commits an ordered batch of blocks atomically in a single database transaction.
+// It is the optional batch capability the native multidownloader driver can use through
+// NewBlockByBlockProcessorWithBatch. It must be bounded to aggkitsync.MaxBatchBlocks and preserve
+// the per-block semantics of SingleBlockProcessor.ProcessBlock.
+type BlockBatchFunc func(ctx context.Context, blocks []aggkitsync.Block) error
+
 var _ mdrsynctypes.ProcessorInterface = (*BlockByBlockProcessor)(nil)
 
 // BlockByBlockProcessor adapts a SingleBlockProcessor to the processor that the multidownloader
@@ -36,14 +42,28 @@ type BlockByBlockProcessor struct {
 	processor       SingleBlockProcessor
 	getBlockHash    BlockHashGetter
 	blockSubscriber aggkitcommon.PubSub[aggkitsync.Block]
+	// batch, when non-nil, commits an ordered chunk of the downloaded blocks atomically
+	// instead of one block per transaction. When nil the processor keeps the legacy
+	// one-block-at-a-time path.
+	batch BlockBatchFunc
 }
 
-// NewBlockByBlockProcessor creates a BlockByBlockProcessor
+// NewBlockByBlockProcessor creates a BlockByBlockProcessor that stores the blocks one by one, each
+// one in its own transaction.
 func NewBlockByBlockProcessor(processor SingleBlockProcessor, getBlockHash BlockHashGetter) *BlockByBlockProcessor {
+	return NewBlockByBlockProcessorWithBatch(processor, getBlockHash, nil)
+}
+
+// NewBlockByBlockProcessorWithBatch creates a BlockByBlockProcessor that commits the downloaded
+// blocks atomically through batch, in chunks of at most aggkitsync.MaxBatchBlocks. A nil batch
+// behaves exactly like NewBlockByBlockProcessor (one block per transaction).
+func NewBlockByBlockProcessorWithBatch(processor SingleBlockProcessor, getBlockHash BlockHashGetter,
+	batch BlockBatchFunc) *BlockByBlockProcessor {
 	return &BlockByBlockProcessor{
 		processor:       processor,
 		getBlockHash:    getBlockHash,
 		blockSubscriber: aggkitcommon.NewGenericSubscriber[aggkitsync.Block](),
+		batch:           batch,
 	}
 }
 
@@ -74,9 +94,18 @@ func (p *BlockByBlockProcessor) GetLastProcessedBlockHeader(ctx context.Context)
 	return &aggkittypes.BlockHeader{Number: blockNum, Hash: hash}, nil
 }
 
-// ProcessBlocks processes the blocks one by one, each one is committed (and notified to the
-// subscribers) before processing the next one. If it fails the previous blocks of the batch stay
-// committed, so the blocks that are already processed are skipped: the same batch can be retried.
+// ProcessBlocks processes the downloaded blocks, skipping the ones that are already processed. Each
+// block is notified to the subscribers only after it has been committed.
+//
+// Without a batch callback each block is committed (and notified) before processing the next one: if
+// it fails the previous blocks stay committed, so the blocks that are already processed are skipped
+// and the same batch can be retried.
+//
+// With a batch callback the remaining blocks are split into chunks of at most
+// aggkitsync.MaxBatchBlocks and each chunk is committed atomically before the next one is attempted.
+// It never waits to fill a chunk, it only splits the already-downloaded blocks. A chunk that fails is
+// not published and a retry of the same DownloadResult skips the chunks already committed through
+// the last processed block.
 func (p *BlockByBlockProcessor) ProcessBlocks(ctx context.Context, blocks *mdrsynctypes.DownloadResult) error {
 	if blocks == nil || len(blocks.Data) == 0 {
 		return nil
@@ -85,20 +114,37 @@ func (p *BlockByBlockProcessor) ProcessBlocks(ctx context.Context, blocks *mdrsy
 	if err != nil {
 		return fmt.Errorf("getting last processed block: %w", err)
 	}
+	pending := make([]aggkitsync.Block, 0, len(blocks.Data))
 	for _, b := range blocks.Data {
 		if found && b.Num <= lastProcessedBlock {
 			continue
 		}
-		block := aggkitsync.Block{
+		pending = append(pending, aggkitsync.Block{
 			Num:    b.Num,
 			Hash:   b.Hash,
 			Events: b.Events,
+		})
+	}
+	if p.batch == nil {
+		for _, block := range pending {
+			if err := p.processor.ProcessBlock(ctx, block); err != nil {
+				return fmt.Errorf("processing block %d: %w", block.Num, err)
+			}
+			// Notify subscribers about the new block after successful processing
+			p.blockSubscriber.Publish(block)
 		}
-		if err := p.processor.ProcessBlock(ctx, block); err != nil {
-			return fmt.Errorf("processing block %d: %w", b.Num, err)
+		return nil
+	}
+	for start := 0; start < len(pending); start += aggkitsync.MaxBatchBlocks {
+		end := min(start+aggkitsync.MaxBatchBlocks, len(pending))
+		chunk := pending[start:end]
+		if err := p.batch(ctx, chunk); err != nil {
+			return fmt.Errorf("processing batch of %d blocks (first %d): %w", len(chunk), chunk[0].Num, err)
 		}
-		// Notify subscribers about the new block after successful processing
-		p.blockSubscriber.Publish(block)
+		// Notify subscribers about each block only after the chunk has been committed
+		for _, block := range chunk {
+			p.blockSubscriber.Publish(block)
+		}
 	}
 	return nil
 }

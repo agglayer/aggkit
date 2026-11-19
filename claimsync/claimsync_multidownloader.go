@@ -93,7 +93,10 @@ func newClaimSyncMultidownloader(
 		logger.Warnf("unable to determine bridge contract type at address %s", cfg.BridgeAddr.Hex())
 	}
 
-	appender, contextualAppender, err := buildAppender(ethClient, cfg.BridgeAddr, deployment, logger)
+	// The bounded parallel root-trace prefetch is enabled for the multidownloader-backed (L1) claim
+	// syncer: the ordinary/pre-Etrog handlers resolve their root call from the prefetched snapshot.
+	resolver := NewTraceResolver(ethClient, cfg.BridgeAddr, logger, ClaimTracePrefetchConcurrency)
+	appender, contextualAppender, err := buildAppenderWithResolver(ethClient, cfg.BridgeAddr, deployment, logger, resolver)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to build appender: %w", err)
 	}
@@ -114,6 +117,13 @@ func newClaimSyncMultidownloader(
 	// The handlers that trace the claim transaction run with the active download context
 	downloader.SetContextualLogAppenders(contextualAppender)
 	downloader.SetLogsHook(NewPreferDetailedClaimLogsHook(logger))
+	// The trace-prefetch enricher is installed after the hook so the prefetch runs on the logs the
+	// hook already filtered (a ClaimEvent superseded by a DetailedClaimEvent is dropped before an
+	// unnecessary/failing trace is requested). A downloader that does not support the hook fails
+	// construction instead of starting a syncer whose handlers can never resolve a prefetched trace.
+	if err := installClaimLogsEnricher(downloader, resolver); err != nil {
+		return nil, fmt.Errorf("claimsync: failed to install logs enricher: %w", err)
+	}
 
 	addresses := []common.Address{cfg.BridgeAddr}
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
@@ -128,17 +138,20 @@ func newClaimSyncMultidownloader(
 		proc,
 	)
 
-	// The processor stores the blocks one by one
-	blockProcessor := mdrsync.NewBlockByBlockProcessor(proc,
+	// The processor commits the downloaded blocks atomically through the claim processor's batch,
+	// bounded to sync.MaxBatchBlocks, and the subscribers are notified after the single commit.
+	blockProcessor := mdrsync.NewBlockByBlockProcessorWithBatch(proc,
 		func(ctx context.Context, blockNum uint64) (common.Hash, bool, error) {
 			return store.GetBlockHash(ctx, nil, blockNum)
-		})
+		},
+		proc.processBlocks,
+	)
 	driver := mdrsync.NewEVMDriver(logger, blockProcessor, downloader, syncerConfig,
 		cfg.SyncBlockChunkSize, rh, compatibilityChecker)
 
 	logger.Infof(
 		"claimsync created through the multidownloader: dbPath=%s initialBlock=%d blockFinality=%s bridgeAddr=%s "+
-			"bridgeKind=%s",
+			"bridgeKind=%s tracePrefetch=on batchedPersistence=on",
 		cfg.DBPath, cfg.InitialBlockNum, cfg.BlockFinality.String(), cfg.BridgeAddr.String(), deployment.kind.String(),
 	)
 

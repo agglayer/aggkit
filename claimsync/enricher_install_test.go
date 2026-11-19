@@ -3,6 +3,7 @@ package claimsync
 import (
 	"testing"
 
+	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
 	aggsync "github.com/agglayer/aggkit/sync"
 	"github.com/stretchr/testify/require"
 )
@@ -10,6 +11,10 @@ import (
 // The multidownloader-backed constructor installs the enricher on the real downloader, so the
 // concrete EVMDownloader must expose the optional hook asserted by installClaimLogsEnricher.
 var _ claimLogsEnricherInstaller = (*aggsync.EVMDownloader)(nil)
+
+// The L1 multidownloader constructor installs the trace-prefetch enricher on the native
+// multidownloader downloader, so that concrete downloader must expose the same optional hook.
+var _ claimLogsEnricherInstaller = (*mdrsync.EVMDownloader)(nil)
 
 // fakeLogsEnricherInstaller mimics the optional downloader enrichment hook. The supported flag is
 // configurable so both the happy path and the fail-closed path can be exercised, and installs

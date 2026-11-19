@@ -187,25 +187,34 @@ the synchronous claim trace.
   empty root forever. The check is scoped to the frame type only, so a legitimate reverted root and
   a router/fallback wrapper whose own input is empty but which nests the bridge call both stay valid;
   the ordinary/pre-Etrog extraction semantics are unchanged.
+- The enricher is installed on the **native `multidownloader/sync.EVMDownloader`** (after the
+  coexistence hook), not on the legacy downloader. The legacy/L2 constructors install no enricher and
+  keep the synchronous per-log trace.
 
 ### Atomic batched persistence
 
-- When a syncer selects the multidownloader, its EVM driver may hand an ordered batch of
-  already-available blocks to the processor in **a single SQL transaction** (all-or-nothing), instead
-  of one transaction per block. The batch is bounded to a fixed **100 blocks** (`sync.MaxBatchBlocks`);
-  the driver never waits for more blocks to fill a batch, it only drains what the downloader has
-  already produced.
-- Batching is strictly **opt-in**: the constructors wrap the processor with it only for the
-  multidownloader backend. Unwrapped processors (the legacy downloader and every L2 syncer) keep the
-  exact one-block-at-a-time path.
+- When a syncer selects the multidownloader it runs on the **native multidownloader driver**. The
+  driver hands each downloaded `DownloadResult` chunk to `BlockByBlockProcessor`.
+- For the L1 bridge and claim syncers the adapter is constructed with the processor's atomic
+  `processBlocks` (`NewBlockByBlockProcessorWithBatch`), so the ordered downloaded blocks are
+  committed in **a single SQL transaction** (all-or-nothing) instead of one transaction per block.
+  The batch is bounded to a fixed **100 blocks** (`sync.MaxBatchBlocks`); it never waits for more
+  blocks to fill a batch, it only splits the already-downloaded chunk.
+- Batching is strictly **opt-in**: only the L1 multidownloader constructors install the batch
+  callback. The legacy downloader and every L2 syncer keep the exact one-block-at-a-time path
+  (`NewBlockByBlockProcessor` without a batch callback, or the legacy `sync.EVMDriver` without
+  `EnableBlockBatching`).
 - A batched block keeps **the same per-block semantics** as the single-block path: both share the
   same inner helper, including the block row, the bridge/claim handlers, the full proof and metadata
   fields, and the claim proof-decoder fallback. Empty blocks are handled identically.
 - Bridge subscribers and the post-commit logs are emitted only **after** the single commit, in the
   original download order, so a failed (and retried) batch never produces a partial commit or a
-  partial notification.
+  partial notification. A later chunk is only attempted after the previous one committed, so a retry
+  of the same downloaded chunk skips the blocks already committed through the last processed block.
 - A batch that fails (including context cancellation) is rolled back as a whole; a retried batch
   cannot duplicate committed history.
+- The leftover legacy `sync.EVMDriver` batching helpers (`EnableBlockBatching`, `drainBatch`) remain
+  in the codebase for the legacy driver but are **not** used by the default L1 multidownloader path.
 
 ### Bridge tree-cache rollback note
 
