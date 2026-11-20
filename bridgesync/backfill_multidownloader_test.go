@@ -2,10 +2,12 @@ package bridgesync
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/russross/meddler"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -442,4 +445,152 @@ func TestBackfillTxnSender_PermanentFailureStopsWithoutBusySpin(t *testing.T) {
 	err = backfiller.backfillTable(t.Context(), bridgeTableName)
 	require.ErrorIs(t, err, aggkittypes.ErrTransactionInclusionMismatch)
 	require.Contains(t, err.Error(), "permanent failure")
+}
+
+// TestBackfillTxnSender_CompletedNilFromAddressDoesNotLoop reproduces the no-progress loop: with
+// syncFromInBridges=true the selection requires from_address, but an asset event whose trace has no
+// bridgeAsset call legitimately resolves a NULL from_address. The successful update fills
+// txn_sender but leaves from_address NULL, so the record still matches the selection. Without a
+// completed set the backfill re-selects and re-resolves the same record forever (a busy loop); the
+// record must be processed exactly once and the loop must terminate.
+func TestBackfillTxnSender_CompletedNilFromAddressDoesNotLoop(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "backfill_nil_from.sqlite")
+	txHash := common.HexToHash("0xabc")
+	seedBackfillRecords(t, dbPath, []RecordToBackfill{{BlockNum: 1, BlockPos: 0, TxHash: txHash}})
+
+	// Make the record an asset event with a NULL from_address: the extraction will legitimately
+	// resolve no caller and leave from_address NULL.
+	database, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	_, err = database.Exec(
+		"UPDATE bridge SET leaf_type = ?, from_address = NULL, txn_sender = NULL "+
+			"WHERE block_num = 1 AND block_pos = 0", bridgeLeafTypeAsset)
+	require.NoError(t, err)
+	require.NoError(t, database.Close())
+
+	bridge := common.HexToAddress("0x1234")
+	notBridge := "0x9999999999999999999999999999999999999999"
+	provider := &fakeTransactionProvider{tx: &aggkittypes.RPCTransaction{
+		FromRaw: "0x1111111111111111111111111111111111111111",
+		To:      &notBridge,
+	}}
+	backend := &fakeBackendMD{
+		fakeMultidownloader: &fakeMultidownloader{},
+		available:           true,
+		logs:                []types.Log{bridgeLogForBackfill(bridge, txHash, 0)},
+	}
+
+	ethClient := mocksethclient.NewEthClienter(t)
+	var traceCalls atomic.Int64
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	// The trace resolves no bridgeAsset call, so from_address stays NULL. Bound the loop: without
+	// the completed-set fix the backfill re-selects the same record forever and keeps tracing.
+	ethClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, result any, _ string, _ ...any) {
+			if traceCalls.Add(1) > 20 {
+				cancel()
+			}
+			arg, ok := result.(*Call)
+			require.True(t, ok)
+			arg.Type = CallTypeCall
+			arg.From = common.HexToAddress("0x1111111111111111111111111111111111111111")
+			// No BridgeAssetMethodID input: findCall reports ErrNotFound and the caller is
+			// legitimately unresolved.
+		}).Return(nil).Maybe()
+
+	backfiller, err := NewBackfillTxnSender(dbPath, ethClient, bridge, true,
+		log.WithFields("module", "test"),
+		WithTransactionProvider(provider), WithDownloadBackend(backend))
+	require.NoError(t, err)
+	defer backfiller.Close()
+
+	require.NoError(t, backfiller.backfillTable(ctx, bridgeTableName),
+		"a record whose from_address legitimately stays NULL must not loop forever")
+	require.Equal(t, int64(1), traceCalls.Load(), "the record must be processed exactly once")
+
+	database, err = db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	defer database.Close()
+	var sender string
+	var from sql.NullString
+	require.NoError(t, database.QueryRow(
+		"SELECT txn_sender, from_address FROM bridge WHERE block_num = 1 AND block_pos = 0").
+		Scan(&sender, &from))
+	require.Equal(t, "0x1111111111111111111111111111111111111111", sender,
+		"the successful update must be persisted")
+	require.False(t, from.Valid, "from_address must legitimately remain NULL")
+}
+
+// TestBackfillTxnSender_FailedRowStaysRetryableWhenFromAddressStaysNil verifies that a record whose
+// extraction FAILS is never marked completed (it stays eligible for retry), while a record that
+// succeeds with a legitimately NULL from_address is processed once and not re-resolved.
+func TestBackfillTxnSender_FailedRowStaysRetryableWhenFromAddressStaysNil(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "backfill_nil_from_retry.sqlite")
+	txHashOK := common.HexToHash("0xaaaa")
+	txHashLate := common.HexToHash("0xbbbb")
+	seedBackfillRecords(t, dbPath, []RecordToBackfill{
+		{BlockNum: 1, BlockPos: 0, TxHash: txHashOK},
+		{BlockNum: 1, BlockPos: 1, TxHash: txHashLate},
+	})
+
+	database, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	_, err = database.Exec(
+		"UPDATE bridge SET leaf_type = ?, from_address = NULL, txn_sender = NULL", bridgeLeafTypeAsset)
+	require.NoError(t, err)
+	require.NoError(t, database.Close())
+
+	bridge := common.HexToAddress("0x1234")
+	notBridge := "0x9999999999999999999999999999999999999999"
+	provider := &failOnceTransactionProvider{
+		failTx: txHashLate,
+		tx: &aggkittypes.RPCTransaction{
+			FromRaw: "0x1111111111111111111111111111111111111111",
+			To:      &notBridge,
+		},
+	}
+	backend := &fakeBackendMD{
+		fakeMultidownloader: &fakeMultidownloader{},
+		available:           true,
+		logs: []types.Log{
+			bridgeLogForBackfill(bridge, txHashOK, 0),
+			bridgeLogForBackfill(bridge, txHashLate, 1),
+		},
+	}
+
+	ethClient := mocksethclient.NewEthClienter(t)
+	ethClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, result any, _ string, _ ...any) {
+			arg, ok := result.(*Call)
+			require.True(t, ok)
+			arg.Type = CallTypeCall
+			arg.From = common.HexToAddress("0x1111111111111111111111111111111111111111")
+		}).Return(nil).Maybe()
+
+	backfiller, err := NewBackfillTxnSender(dbPath, ethClient, bridge, true,
+		log.WithFields("module", "test"),
+		WithTransactionProvider(provider), WithDownloadBackend(backend))
+	require.NoError(t, err)
+	defer backfiller.Close()
+	backfiller.retryDelay = func(int) time.Duration { return 0 }
+
+	require.NoError(t, backfiller.backfillTable(t.Context(), bridgeTableName))
+
+	database, err = db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	defer database.Close()
+	for _, pos := range []uint64{0, 1} {
+		var sender string
+		var from sql.NullString
+		require.NoError(t, database.QueryRow(
+			"SELECT txn_sender, from_address FROM bridge WHERE block_num = 1 AND block_pos = ?", pos).
+			Scan(&sender, &from))
+		require.Equal(t, "0x1111111111111111111111111111111111111111", sender)
+		require.False(t, from.Valid, "from_address must legitimately remain NULL")
+	}
+	require.Equal(t, 1, provider.callsFor(txHashOK),
+		"the successful record must not be re-resolved on the retry")
+	require.Equal(t, 2, provider.callsFor(txHashLate),
+		"the failed record must be resolved once (failed) and once (retried with success)")
 }

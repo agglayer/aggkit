@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,6 +81,70 @@ type BackfillTxnSender struct {
 	// maxConsecutiveRetries bounds retries of a batch for errors that are not the coverage
 	// sentinel. It defaults to backfillMaxConsecutiveRetries and is a field so tests can shrink it.
 	maxConsecutiveRetries int
+
+	// completed tracks the records that were successfully processed but whose
+	// from_address legitimately stays NULL (for example an asset event whose trace has no
+	// bridgeAsset call, or a non-zero caller that cannot be determined). Such a record still
+	// matches missingFieldsCondition (from_address IS NULL) after its txn_sender is persisted,
+	// so without this set it would be re-selected forever and turn the retry loop into a
+	// no-progress busy loop. The set is scoped to a single backfillTable run and is NOT
+	// persisted: a restart simply re-attempts each such record once and re-marks it. A record
+	// whose extraction failed is never added, so it stays eligible for retry.
+	completedMu sync.Mutex
+	completed   map[recordKey]struct{}
+}
+
+// recordKey identifies one bridge record within a table run.
+type recordKey struct {
+	blockNum uint64
+	blockPos uint64
+}
+
+// resetCompleted starts a fresh completed set for a table run.
+func (b *BackfillTxnSender) resetCompleted() {
+	b.completedMu.Lock()
+	b.completed = make(map[recordKey]struct{})
+	b.completedMu.Unlock()
+}
+
+// markCompleted records that a record was successfully processed and its from_address will
+// legitimately stay NULL, so it must not be re-selected in this run.
+func (b *BackfillTxnSender) markCompleted(blockNum, blockPos uint64) {
+	b.completedMu.Lock()
+	if b.completed == nil {
+		b.completed = make(map[recordKey]struct{})
+	}
+	b.completed[recordKey{blockNum: blockNum, blockPos: blockPos}] = struct{}{}
+	b.completedMu.Unlock()
+}
+
+// completedSnapshot returns a copy of the completed set for building an exclusion clause.
+func (b *BackfillTxnSender) completedSnapshot() map[recordKey]struct{} {
+	b.completedMu.Lock()
+	defer b.completedMu.Unlock()
+	if len(b.completed) == 0 {
+		return nil
+	}
+	out := make(map[recordKey]struct{}, len(b.completed))
+	for k := range b.completed {
+		out[k] = struct{}{}
+	}
+	return out
+}
+
+// completedExclusionSQL builds a WHERE fragment that excludes the completed records. The keys
+// are inlined as unsigned integers (never user input), so the parameter list of the enclosing
+// query is unchanged. The number of completed records is bounded by the (rare) records whose
+// from_address legitimately stays NULL.
+func completedExclusionSQL(completed map[recordKey]struct{}) string {
+	if len(completed) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for k := range completed {
+		fmt.Fprintf(&sb, " AND NOT (block_num = %d AND block_pos = %d)", k.blockNum, k.blockPos)
+	}
+	return sb.String()
 }
 
 // BackfillOption customizes BackfillTxnSender construction.
@@ -177,6 +242,10 @@ func (b *BackfillTxnSender) BackfillAll(ctx context.Context) error {
 //nolint:unparam // tableName is kept for future extensibility
 func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string) error {
 	b.log.Infof("Starting backfill for %s table, syncFromInBridges: %v", tableName, b.syncFromInBridges)
+
+	// Start the run with an empty completed set: the records whose from_address legitimately
+	// stays NULL are tracked for the lifetime of this run so they are not re-selected forever.
+	b.resetCompleted()
 
 	// Get total count of records that need backfilling
 	totalCount, err := b.getRecordsNeedingBackfillCount(ctx, tableName)
@@ -414,14 +483,18 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	limit int,
 ) ([]RecordToBackfill, error) {
 	missingFieldsCond := b.missingFieldsCondition()
+	// Exclude the records already processed in this run whose from_address legitimately stays
+	// NULL: they still match missingFieldsCond, so re-selecting them would loop forever.
+	exclusion := completedExclusionSQL(b.completedSnapshot())
 	//nolint:gosec
 	query := fmt.Sprintf(`
 		SELECT *
 		FROM %s
 		WHERE (%s)
 		AND (source IS NULL OR (source != $1 AND source != $2))
+		%s
 		LIMIT $3
-	`, tableName, missingFieldsCond)
+	`, tableName, missingFieldsCond, exclusion)
 
 	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
 	defer cancel()
@@ -509,6 +582,15 @@ func (b *BackfillTxnSender) processBatch(
 		if err := b.bulkUpdate(ctx, tableName, updates); err != nil {
 			b.log.Errorf("Failed to bulk update txn_sender for %d records: %v", len(updates), err)
 			return 0, fmt.Errorf("failed to bulk update txn_sender for %d records: %w", len(updates), err)
+		}
+		// The update is persisted: a record whose from_address legitimately stays NULL will still
+		// match missingFieldsCond, so mark it completed for this run to avoid re-selecting it
+		// forever. Records whose from_address was written do not need the marker (they no longer
+		// match), and records that failed extraction are never marked, so they stay retryable.
+		for i := range updates {
+			if updates[i].FromAddr == nil {
+				b.markCompleted(updates[i].BlockNum, updates[i].BlockPos)
+			}
 		}
 		b.log.Infof("Successfully bulk updated txn_sender for %d records", len(updates))
 	}
