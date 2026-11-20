@@ -778,18 +778,12 @@ func getContracts(logQueries []mdrtypes.LogQuery) []common.Address {
 
 func (dh *EVMMultidownloader) checkIntegrityNewLogsBlockHeaders(logs []types.Log,
 	blockHeaders aggkittypes.ListBlockHeaders) error {
-	blockMap := blockHeaders.ToMap()
-	for _, lg := range logs {
-		bh, exists := blockMap[lg.BlockNumber]
-		if !exists {
-			return fmt.Errorf("checkIntegrityNewLogsBlockHeaders: "+
-				"block header for log block number %d not found", lg.BlockNumber)
-		}
-		if bh.Hash != lg.BlockHash {
-			return fmt.Errorf("checkIntegrityNewLogsBlockHeaders: "+
-				"log block hash %s does not match block header hash %s for block number %d",
-				lg.BlockHash.String(), bh.Hash.String(), lg.BlockNumber)
-		}
+	// Delegate to the shared helper so the step logic and the storage write
+	// paths apply exactly the same guard, while keeping the historical
+	// "checkIntegrityNewLogsBlockHeaders: " prefix and the original error
+	// substrings.
+	if err := mdrtypes.CheckLogsMatchBlockHeaders(logs, blockHeaders); err != nil {
+		return fmt.Errorf("checkIntegrityNewLogsBlockHeaders: %w", err)
 	}
 	return nil
 }
@@ -901,6 +895,15 @@ func (dh *EVMMultidownloader) StepSafe(ctx context.Context) (bool, error) {
 				len(blockHeadersResult.Headers), len(blocks))
 		}
 		blockHeaders = blockHeadersResult.GetOrderedHeaders(blocks)
+	}
+
+	// Fail closed before any state/storage mutation: every retrieved log must
+	// match the block header for its block number. A partial header result (a
+	// block whose header failed to retrieve) or a hash mismatch is rejected
+	// here, so an invalid batch never advances the in-memory state or reaches
+	// storage. With no logs the check is a no-op and remains valid.
+	if err := dh.checkIntegrityNewLogsBlockHeaders(logs, aggkittypes.ListBlockHeaders(blockHeaders)); err != nil {
+		return false, err
 	}
 
 	// Calculate new state (not set in memory until commit is successful)

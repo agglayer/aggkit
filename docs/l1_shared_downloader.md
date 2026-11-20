@@ -58,6 +58,17 @@ multidownloader's own storage and **falls back to an RPC call** when a header is
 storage. The multidownloader's planning chunking (`[L1Multidownloader].BlockChunkSize`) is
 independent from a syncer's processing chunking (`SyncBlockChunkSize`).
 
+### Log/header integrity guard
+
+A log is canonical only within the block identified by `(block number, block hash)`. Before a
+downloaded batch is used or persisted, every log is validated against the block header for its block
+number: a log whose block number has no header (including a nil header entry), or whose block hash
+contradicts the header hash, is rejected as a corruption signal (`ErrLogBlockHeaderMismatch`) and the
+whole batch is discarded with **no** state or storage write. The same single guard is applied by the
+safe-step logic and by the storage write paths (`SaveEthLogs`, `SaveEthLogsWithHeaders`), so a
+partial or contradictory download can never be persisted. Two headers that share a block number but
+carry different hashes are rejected rather than silently letting the last one win.
+
 ## Transaction inclusion (optional, library level)
 
 The full transaction that produced a log is an **optional** capability that a consumer must
