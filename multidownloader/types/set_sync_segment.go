@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -246,27 +247,37 @@ func (f *SetSyncSegment) IsPartiallyAvailable(query LogQuery) (bool, *LogQuery) 
 	return true, availableQuery
 }
 
-// NextQuery generates the next LogQuery to sync based on the lowest FromBlock pending
-// to synchronize
+// NextQuery generates the next LogQuery to sync.
+//
+// It plans along the boundaries of the active contract set instead of always
+// starting a fixed-size chunk at the lowest pending FromBlock:
+//
+//   - the query starts at the lowest NON-EMPTY pending FromBlock;
+//   - the query ends before the next boundary where the active set changes:
+//     before the next later FromBlock (a new address joins) and at the earliest
+//     pending ToBlock among the addresses already active at that start (an
+//     address leaves);
+//   - the query is additionally bounded by syncBlockChunkSize and, when
+//     applyMaxBlockNumber is true, by maxBlockNumber.
+//
+// Every returned address is pending for the whole returned range, so no address
+// is asked to re-sync an already-synced prefix nor for blocks past the end of
+// its pending range.
 func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32,
 	maxBlockNumber uint64, applyMaxBlockNumber bool) (*LogQuery, error) {
 	if f == nil || len(f.segments) == 0 {
 		return nil, ErrFinished
 	}
-	lowestSegment := f.GetLowestFromBlockSegment()
-	if lowestSegment == nil {
+	from, found := f.lowestPendingFromBlock()
+	if !found {
+		// Every segment is empty: nothing left to sync.
 		return nil, ErrFinished
 	}
-	br := lowestSegment.BlockRange.Intersect(aggkitcommon.NewBlockRange(
-		lowestSegment.BlockRange.FromBlock,
-		lowestSegment.BlockRange.FromBlock+uint64(syncBlockChunkSize)-1,
-	))
-	if applyMaxBlockNumber {
-		br = br.Cap(maxBlockNumber)
-	}
-	if br.IsEmpty() {
+	to := f.pendingQueryEndBlock(from, syncBlockChunkSize, maxBlockNumber, applyMaxBlockNumber)
+	if to < from {
 		return nil, ErrFinished
 	}
+	br := aggkitcommon.NewBlockRange(from, to)
 	addrs := f.GetAddressesForBlockRange(br)
 	if len(addrs) == 0 {
 		return nil, fmt.Errorf("INTERNAL ERROR: no addresses found for block range: %s", br.String())
@@ -275,6 +286,67 @@ func (f *SetSyncSegment) NextQuery(syncBlockChunkSize uint32,
 		Addrs:      addrs,
 		BlockRange: br,
 	}, nil
+}
+
+// lowestPendingFromBlock returns the lowest FromBlock among the non-empty
+// segments and whether at least one non-empty segment exists. Empty segments are
+// skipped so a finished address cannot shadow pending work in another segment.
+func (f *SetSyncSegment) lowestPendingFromBlock() (uint64, bool) {
+	if f == nil {
+		return 0, false
+	}
+	var lowest uint64
+	found := false
+	for _, segment := range f.segments {
+		if segment == nil || segment.IsEmpty() {
+			continue
+		}
+		if !found || segment.BlockRange.FromBlock < lowest {
+			lowest = segment.BlockRange.FromBlock
+			found = true
+		}
+	}
+	return lowest, found
+}
+
+// pendingQueryEndBlock computes the last block of a query that starts at `from`
+// without crossing any boundary where the active contract set changes. It never
+// underflows or overflows.
+func (f *SetSyncSegment) pendingQueryEndBlock(from uint64, syncBlockChunkSize uint32,
+	maxBlockNumber uint64, applyMaxBlockNumber bool) uint64 {
+	to := addChunkSize(from, syncBlockChunkSize)
+	if applyMaxBlockNumber && maxBlockNumber < to {
+		to = maxBlockNumber
+	}
+	for _, segment := range f.segments {
+		if segment == nil || segment.IsEmpty() {
+			continue
+		}
+		// An address whose pending range starts after `from` joins the active
+		// set at its FromBlock: stop right before it.
+		if segment.BlockRange.FromBlock > from && segment.BlockRange.FromBlock-1 < to {
+			to = segment.BlockRange.FromBlock - 1
+		}
+		// An address already active at `from` leaves the active set after its
+		// pending ToBlock: never query past it.
+		if segment.BlockRange.ContainsBlockNumber(from) && segment.BlockRange.ToBlock < to {
+			to = segment.BlockRange.ToBlock
+		}
+	}
+	return to
+}
+
+// addChunkSize returns from + chunkSize - 1, saturating at math.MaxUint64 so the
+// planner never wraps around on overflow.
+func addChunkSize(from uint64, chunkSize uint32) uint64 {
+	if chunkSize == 0 {
+		return from
+	}
+	increment := uint64(chunkSize) - 1
+	if increment > math.MaxUint64-from {
+		return math.MaxUint64
+	}
+	return from + increment
 }
 func (f *SetSyncSegment) GetHighestBlockNumber() (uint64, aggkittypes.BlockNumberFinality) {
 	if f == nil || len(f.segments) == 0 {
