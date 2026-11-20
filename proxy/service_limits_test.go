@@ -1,16 +1,22 @@
 package proxy
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/agglayer/aggkit/config/types"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -84,6 +90,23 @@ func readBody(t *testing.T, resp *http.Response) string {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	return string(body)
+}
+
+// doRawRequest sends rawRequest as is over a new connection and returns the response, for the
+// requests an http.Client does not build (e.g. a GET with an empty chunked body)
+func doRawRequest(t *testing.T, server *httptest.Server, rawRequest string) *http.Response {
+	t.Helper()
+	conn, err := net.DialTimeout("tcp", server.Listener.Addr().String(), testWait)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	require.NoError(t, conn.SetDeadline(time.Now().Add(testWait)))
+
+	_, err = conn.Write([]byte(rawRequest))
+	require.NoError(t, err)
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	return resp
 }
 
 func TestUpstreamHeaderStallAnswers504(t *testing.T) {
@@ -202,6 +225,18 @@ func TestUpstreamResponseWithinLimitsIsRelayedUnchanged(t *testing.T) {
 	require.Equal(t, http.StatusAccepted, resp.StatusCode)
 	require.Equal(t, "yes", resp.Header.Get("X-Backend"))
 	require.JSONEq(t, `{"bridges":[]}`, readBody(t, resp))
+}
+
+func TestHeadIsForwarded(t *testing.T) {
+	backend := newBackend(t, func(w http.ResponseWriter, r *http.Request, _ <-chan struct{}) {
+		require.Equal(t, http.MethodHead, r.Method)
+		w.Header().Set("X-Backend", "yes")
+	})
+	server, _ := newTestProxy(t, fakeResolver{1: backend.URL})
+
+	resp := doRequest(t, http.MethodHead, server.URL+"/bridge/v1/bridges?network_id=1")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "yes", resp.Header.Get("X-Backend"))
 }
 
 // TestStreamingResponseIsNotBuffered pins that the deadline does not turn the proxy into a
@@ -362,6 +397,149 @@ func TestProxyDoesNotAddAcceptEncoding(t *testing.T) {
 		_ = resp.Body.Close()
 		require.Equal(t, acceptEncoding, <-seen)
 	}
+}
+
+// hitCounter is a backend that counts the requests it gets and the body bytes in them
+type hitCounter struct {
+	server *httptest.Server
+	hits   atomic.Int32
+	bytes  atomic.Int64
+}
+
+func newHitCounter(t *testing.T) *hitCounter {
+	t.Helper()
+	h := &hitCounter{}
+	h.server = newBackend(t, func(w http.ResponseWriter, r *http.Request, _ <-chan struct{}) {
+		h.hits.Add(1)
+		n, _ := io.Copy(io.Discard, r.Body)
+		h.bytes.Add(n)
+		w.WriteHeader(http.StatusOK)
+	})
+	return h
+}
+
+func TestOnlyGetAndHeadAreForwarded(t *testing.T) {
+	backend := newHitCounter(t)
+	server, svc := newTestProxy(t, fakeResolver{1: backend.server.URL})
+
+	for _, method := range []string{
+		http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete,
+		http.MethodOptions, http.MethodTrace, http.MethodConnect,
+	} {
+		resp := doRequest(t, method, server.URL+"/bridge/v1/bridges?network_id=1")
+		require.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode, method)
+		require.Equal(t, "GET, HEAD", resp.Header.Get("Allow"), method)
+		if method != http.MethodHead {
+			require.Contains(t, readBody(t, resp), "method not allowed", method)
+		}
+	}
+
+	// a method no route knows is never forwarded either
+	resp := doRequest(t, "FOO", server.URL+"/bridge/v1/bridges?network_id=1")
+	require.GreaterOrEqual(t, resp.StatusCode, http.StatusBadRequest)
+
+	require.Zero(t, backend.hits.Load(), "a rejected method must not reach the backend")
+	require.Empty(t, svc.proxies, "a rejected method must not even resolve the backend")
+}
+
+func TestRequestWithBodyIsRejected(t *testing.T) {
+	tests := []struct {
+		name string
+		body func(t *testing.T) io.Reader
+	}{
+		{"one byte", func(*testing.T) io.Reader { return strings.NewReader("x") }},
+		{"bigger than the shared server limit", func(*testing.T) io.Reader {
+			return bytes.NewReader(make([]byte, 2<<20))
+		}},
+		{"unbounded stream of unknown length", func(t *testing.T) io.Reader {
+			t.Helper()
+			pr, pw := io.Pipe()
+			t.Cleanup(func() { _ = pr.Close() })
+			go func() {
+				defer pw.Close()
+				chunk := bytes.Repeat([]byte("a"), 4096)
+				for {
+					if _, err := pw.Write(chunk); err != nil {
+						return
+					}
+				}
+			}()
+			return pr
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			backend := newHitCounter(t)
+			server, _ := newTestProxy(t, fakeResolver{1: backend.server.URL})
+
+			req, err := http.NewRequest(http.MethodGet, server.URL+"/bridge/v1/bridges?network_id=1", tc.body(t))
+			require.NoError(t, err)
+			resp, err := testClient.Do(req)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = resp.Body.Close() })
+
+			require.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+			require.Zero(t, backend.hits.Load(), "the backend must not be contacted")
+			require.Zero(t, backend.bytes.Load(), "no byte of the body must reach the backend")
+		})
+	}
+}
+
+func TestRejectedRequestBodyAnswerClosesConnection(t *testing.T) {
+	backend := newHitCounter(t)
+	server, _ := newTestProxy(t, fakeResolver{1: backend.server.URL})
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/bridge/v1/bridges?network_id=1", strings.NewReader("x"))
+	require.NoError(t, err)
+	resp, err := testClient.Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	require.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+	// the server must not read what the client keeps sending: it closes the connection
+	require.True(t, resp.Close, "Connection: close expected")
+	require.Contains(t, readBody(t, resp), "request body not allowed")
+}
+
+func TestChunkedRequestBody(t *testing.T) {
+	t.Run("with data is rejected before reaching the backend", func(t *testing.T) {
+		backend := newHitCounter(t)
+		server, _ := newTestProxy(t, fakeResolver{1: backend.server.URL})
+
+		resp := doRawRequest(t, server, "GET /bridge/v1/bridges?network_id=1 HTTP/1.1\r\n"+
+			"Host: proxy\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n")
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+		require.Zero(t, backend.hits.Load())
+		require.Zero(t, backend.bytes.Load())
+	})
+
+	t.Run("empty is forwarded without a body", func(t *testing.T) {
+		var forwarded atomic.Bool
+		backend := newBackend(t, func(w http.ResponseWriter, r *http.Request, _ <-chan struct{}) {
+			forwarded.Store(true)
+			require.Zero(t, r.ContentLength)
+			require.Empty(t, r.TransferEncoding)
+			w.WriteHeader(http.StatusOK)
+		})
+		server, _ := newTestProxy(t, fakeResolver{1: backend.URL})
+
+		resp := doRawRequest(t, server, "GET /bridge/v1/bridges?network_id=1 HTTP/1.1\r\n"+
+			"Host: proxy\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n")
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.True(t, forwarded.Load())
+	})
+}
+
+func TestRequireNoBodyUnreadableBody(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/bridge/v1/bridges", iotest.ErrReader(errors.New("boom")))
+	c.Request.ContentLength = -1
+
+	require.False(t, requireNoBody(c))
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
 }
 
 func TestConfigValidate(t *testing.T) {

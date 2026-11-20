@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/agglayer/aggkit/bridgeservice"
@@ -110,25 +109,6 @@ func TestForwardHandlerPreservesBackendStatusAndBody(t *testing.T) {
 	status, body := doGet(t, server, "/bridge/v1/claims?network_id=1")
 	require.Equal(t, http.StatusNotFound, status)
 	require.JSONEq(t, `{"error":"claim not found"}`, body)
-}
-
-func TestForwardHandlerForwardsNonGETMethodsAndBody(t *testing.T) {
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		require.Equal(t, `{"key":"value"}`, string(body))
-		w.WriteHeader(http.StatusCreated)
-	}))
-	defer backend.Close()
-
-	server, _ := newTestProxy(t, fakeResolver{2: backend.URL})
-
-	resp, err := http.Post(server.URL+"/bridge/v1/future-endpoint?network_id=2",
-		"application/json", strings.NewReader(`{"key":"value"}`))
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusCreated, resp.StatusCode)
 }
 
 func TestForwardHandlerMissingNetworkID(t *testing.T) {

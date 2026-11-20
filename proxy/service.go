@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -33,11 +34,22 @@ const (
 	decimalBase   = 10
 	uint32BitSize = 32
 
+	// allowedMethods is the value of the Allow header of a 405: the bridge service API is read-only,
+	// so GET (and HEAD, its bodiless twin) are the only methods the proxy forwards
+	allowedMethods = http.MethodGet + ", " + http.MethodHead
+
 	// Used only when http.DefaultTransport is not an *http.Transport (something replaced it), so
 	// there is nothing to clone: the values mirror net/http's own default transport
 	fallbackTLSHandshakeTimeout = 10 * time.Second
 	fallbackIdleConnTimeout     = 90 * time.Second
 )
+
+// rejectedMethods are the methods the proxy answers 405 to without contacting any backend:
+// every method gin's Any accepts other than the forwarded GET and HEAD
+var rejectedMethods = []string{
+	http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete,
+	http.MethodOptions, http.MethodConnect, http.MethodTrace,
+}
 
 // NetworkURLResolver is the slice of the bridgeservicefinder.Finder the proxy needs: the
 // per-network bridge service URL
@@ -157,17 +169,69 @@ func newUpstreamTransport(cfg Config) *http.Transport {
 	return transport
 }
 
-// RegisterRoutes registers the proxied bridge service API on router
+// RegisterRoutes registers the proxied bridge service API on router. Only GET and HEAD are
+// forwarded: the bridge service API is read-only (see bridgeservice.RegisterRoutes), so any other
+// method is answered 405 here, without contacting a backend. A CORS preflight (OPTIONS) never gets
+// here: the CORS handler wrapping the engine (see common.HTTPServer) answers it
 func (s *Service) RegisterRoutes(router gin.IRouter) {
-	router.Any(BridgeV1Prefix+"/*any", s.ForwardHandler)
+	path := BridgeV1Prefix + "/*any"
+	router.GET(path, s.ForwardHandler)
+	router.HEAD(path, s.ForwardHandler)
+	router.Match(rejectedMethods, path, methodNotAllowedHandler)
+}
+
+// methodNotAllowedHandler answers 405 with the methods the proxy does forward
+func methodNotAllowedHandler(c *gin.Context) {
+	c.Header("Allow", allowedMethods)
+	c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "method not allowed: only " + allowedMethods})
+}
+
+// requireNoBody answers 413 and returns false when the request carries a body. The bridge service
+// API takes none, so none is forwarded: it is rejected before anything else (no network lookup, no
+// upstream request) and no byte of it is relayed. A request of unknown length (chunked) is probed
+// by reading one byte, so that one with an empty body still goes through
+func requireNoBody(c *gin.Context) bool {
+	req := c.Request
+	if req.Body == nil || req.Body == http.NoBody {
+		return true
+	}
+	if req.ContentLength == 0 {
+		return true
+	}
+
+	if req.ContentLength < 0 {
+		var probe [1]byte
+		_, err := io.ReadFull(req.Body, probe[:])
+		switch {
+		case errors.Is(err, io.EOF):
+			// an empty chunked body: nothing to reject, and nothing to forward
+			req.Body = http.NoBody
+			req.ContentLength = 0
+			req.TransferEncoding = nil
+			return true
+		case err != nil:
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+			return false
+		}
+	}
+
+	// Close the connection after the answer, so the server does not read the rest of the body
+	c.Header("Connection", "close")
+	c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge,
+		gin.H{"error": "request body not allowed: the bridge service API takes no request body"})
+	return false
 }
 
 // ForwardHandler forwards the request to the bridge service of the network selected by the
-// network_id query parameter, preserving method, path, query and body. It answers 400 on a
-// missing/invalid network_id, 404 when no bridge service is known for the network, 502 when the
-// backend is unreachable and 504 when it does not answer in time (see
+// network_id query parameter, preserving method, path and query. It answers 413 to a request with
+// a body, 400 on a missing/invalid network_id, 404 when no bridge service is known for the
+// network, 502 when the backend is unreachable and 504 when it does not answer in time (see
 // Config.UpstreamResponseHeaderTimeout and Config.UpstreamRequestTimeout)
 func (s *Service) ForwardHandler(c *gin.Context) {
+	if !requireNoBody(c) {
+		return
+	}
+
 	rawNetworkID := c.Query(networkIDParam)
 	if rawNetworkID == "" {
 		c.JSON(http.StatusBadRequest,
