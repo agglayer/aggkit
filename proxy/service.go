@@ -215,7 +215,10 @@ func requireNoBody(c *gin.Context) bool {
 		}
 	}
 
-	// Close the connection after the answer, so the server does not read the rest of the body
+	// Close the connection after the answer, so the server does not wait for another request on it.
+	// net/http still reads (and discards) up to 256 KiB of a chunked body, or of a declared remainder
+	// of up to that size, before closing it: that is bounded by the REST ReadTimeout, and none of it
+	// is forwarded
 	c.Header("Connection", "close")
 	c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge,
 		gin.H{"error": "request body not allowed: the bridge service API takes no request body"})
@@ -307,8 +310,15 @@ func (s *Service) serveProxied(
 	proxy.ServeHTTP(w, req)
 }
 
-// closeConnection closes the client connection of w abruptly
+// closeConnection closes the client connection of w abruptly, after sending what was written to it
 func closeConnection(w http.ResponseWriter) error {
+	// What the handler wrote may still sit in a buffer: gin delays the status line until the first
+	// body write, and ReverseProxy only flushes a response of known length when the copy is over.
+	// A hijack discards that buffer, so the client would get no response at all (and gin would then
+	// write the status to the hijacked connection). Flushed, it gets the status and the partial body
+	// before the connection is cut. An error just means the client is gone already
+	_ = http.NewResponseController(w).Flush()
+
 	// gin's writer refuses to hijack once body bytes are written, which is the case that matters
 	// here: get to the net/http one under it
 	for {
