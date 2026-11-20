@@ -139,6 +139,13 @@ func NewBlockRowsFromLogs(logs []types.Log, isFinal bool) map[uint64]*blockRow {
 func NewBlockRowsFromAggkitBlock(blockHeaders aggkittypes.ListBlockHeaders, isFinal bool) map[uint64]*blockRow {
 	blockMap := make(map[uint64]*blockRow)
 	for _, header := range blockHeaders {
+		if header == nil {
+			// A nil entry is an absent header (for example a block whose header
+			// failed to retrieve in a partial result). It must not be
+			// dereferenced here: the shared guard treats it as a missing header
+			// and skips it too.
+			continue
+		}
 		blockMap[header.Number] = newBlockRowFromAggkitBlock(header, isFinal)
 	}
 	return blockMap
@@ -380,10 +387,13 @@ func checkLogsMatchBlockRows(logs []types.Log, blockRows map[uint64]*blockRow) e
 	return mdrtypes.CheckLogsMatchBlockHeaderMap(logs, headerMap)
 }
 
-// saveLogsAndBlocks writes the given block rows and log rows in one unit of
-// work. Callers must have already validated that the logs match the block rows
-// (see SaveEthLogs / SaveEthLogsWithHeaders): this function only persists, it
-// does not re-check log/header integrity.
+// saveLogsAndBlocks writes the given block rows and log rows. It does not open
+// or manage its own transaction: when tx is nil the writes run directly on the
+// database handle and are therefore not atomic, so a caller that needs the two
+// writes to succeed or fail together must pass its own transaction. Callers must
+// also have already validated that the logs match the block rows (see
+// SaveEthLogs / SaveEthLogsWithHeaders): this function only persists, it does
+// not re-check log/header integrity.
 func (a *MultidownloaderStorage) saveLogsAndBlocks(tx dbtypes.Querier,
 	blockRows map[uint64]*blockRow, logRows []*logRow) error {
 	if tx == nil {

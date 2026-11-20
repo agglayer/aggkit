@@ -58,6 +58,13 @@ multidownloader's own storage and **falls back to an RPC call** when a header is
 storage. The multidownloader's planning chunking (`[L1Multidownloader].BlockChunkSize`) is
 independent from a syncer's processing chunking (`SyncBlockChunkSize`).
 
+The planner splits the pending range at the boundaries where the active contract set changes —
+the next later `FromBlock` where a new address joins, and the earliest pending `ToBlock` among the
+addresses already active at the start — instead of always starting a fixed-size chunk at the
+lowest pending block. Every address in a returned query is therefore pending for the whole
+returned range: an address is never asked to re-sync an already-covered prefix, nor for blocks
+past the end of its pending range.
+
 ### Log/header integrity guard
 
 A log is canonical only within the block identified by `(block number, block hash)`. Before a

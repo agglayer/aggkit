@@ -109,8 +109,9 @@ func TestStorage_SaveEthLogsWithHeadersRejectsInconsistentDuplicateHeaders(t *te
 	require.Zero(t, countStorageRowsForTest(t, storage, "logs"))
 }
 
-// TestStorage_SaveEthLogsWithHeadersRejectsWholeBatch pins atomicity: a batch
-// with one valid pair and one contradictory pair writes nothing at all.
+// TestStorage_SaveEthLogsWithHeadersRejectsWholeBatch pins that the guard
+// rejects the whole batch before any write: a batch with one valid pair and one
+// contradictory pair writes nothing at all.
 func TestStorage_SaveEthLogsWithHeadersRejectsWholeBatch(t *testing.T) {
 	storage := newStorageForTest(t, nil)
 	headers := aggkittypes.ListBlockHeaders{
@@ -165,4 +166,75 @@ func TestStorage_SaveEthLogsValidBatchStillPersists(t *testing.T) {
 	require.Len(t, readLogs, 3)
 	require.Equal(t, 2, countStorageRowsForTest(t, storage, "blocks"))
 	require.Equal(t, 3, countStorageRowsForTest(t, storage, "logs"))
+}
+
+// TestStorage_SaveEthLogsWithHeadersSkipsNilHeaderEntries pins that the header
+// converter skips a nil entry the same way the shared guard does: a batch with
+// one valid header, one nil entry and a log that matches the valid header is
+// accepted (no nil dereference) and persists exactly one block and one log.
+func TestStorage_SaveEthLogsWithHeadersSkipsNilHeaderEntries(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	const blockNumber = uint64(9010)
+	headers := aggkittypes.ListBlockHeaders{
+		aggkittypes.NewBlockHeader(blockNumber, exampleTestHash[0], 1630000000, nil),
+		nil,
+	}
+	lg := idempotencyLog(exampleAddr1, blockNumber, exampleTestHash[0], 1630000000, 0)
+
+	require.NotPanics(t, func() {
+		require.NoError(t, storage.SaveEthLogsWithHeaders(nil, headers, []types.Log{lg}, true))
+	})
+
+	require.Equal(t, 1, countStorageRowsForTest(t, storage, "blocks"),
+		"only the non-nil header must be persisted")
+	require.Equal(t, 1, countStorageRowsForTest(t, storage, "logs"))
+}
+
+// TestStorage_SaveEthLogsWithHeadersAllNilHeadersNoLogs pins the degenerate
+// case: a header list made only of nil entries with no logs is valid (the guard
+// skips nil and there is nothing to validate) and must not panic nor write
+// anything.
+func TestStorage_SaveEthLogsWithHeadersAllNilHeadersNoLogs(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+
+	require.NotPanics(t, func() {
+		require.NoError(t, storage.SaveEthLogsWithHeaders(nil, aggkittypes.ListBlockHeaders{nil}, nil, true))
+	})
+
+	require.Zero(t, countStorageRowsForTest(t, storage, "blocks"))
+	require.Zero(t, countStorageRowsForTest(t, storage, "logs"))
+}
+
+// TestStorage_SaveEthLogsWithHeadersRejectsDuplicateReplayWithWrongLogHash pins
+// that a duplicate replay (same address, block number and log index as a stored
+// row) whose log carries a wrong block hash is rejected by the header guard when
+// the canonical header is supplied, before the duplicate/merge path: the error
+// is ErrLogBlockHeaderMismatch and the original canonical row is left untouched.
+func TestStorage_SaveEthLogsWithHeadersRejectsDuplicateReplayWithWrongLogHash(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	const blockNumber = uint64(9011)
+	headerHash := exampleTestHash[0]
+	wrongLogHash := exampleTestHash[5]
+	require.NotEqual(t, headerHash, wrongLogHash, "fixture requires two distinct hashes")
+
+	canonicalHeader := aggkittypes.NewBlockHeader(blockNumber, headerHash, 1630000000, nil)
+	original := idempotencyLog(exampleAddr1, blockNumber, headerHash, 1630000000, 0)
+	require.NoError(t, storage.SaveEthLogsWithHeaders(nil,
+		aggkittypes.ListBlockHeaders{canonicalHeader}, []types.Log{original}, true))
+
+	// The replay shares the primary key of the stored row but carries a
+	// contradictory block hash, while the canonical header is supplied.
+	replay := idempotencyLog(exampleAddr1, blockNumber, wrongLogHash, 1630000000, 0)
+	err := storage.SaveEthLogsWithHeaders(nil,
+		aggkittypes.ListBlockHeaders{canonicalHeader}, []types.Log{replay}, true)
+	require.ErrorIs(t, err, mdrtypes.ErrLogBlockHeaderMismatch)
+
+	require.Equal(t, 1, countStorageRowsForTest(t, storage, "blocks"))
+	require.Equal(t, 1, countStorageRowsForTest(t, storage, "logs"))
+	stored, err := storage.GetEthLogs(nil,
+		mdrtypes.NewLogQuery(blockNumber, blockNumber, []common.Address{exampleAddr1}))
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	require.Equal(t, headerHash, stored[0].BlockHash,
+		"the original canonical row must stay unchanged")
 }
