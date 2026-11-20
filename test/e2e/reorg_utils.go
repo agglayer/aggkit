@@ -626,6 +626,35 @@ func WaitForBridgeSynced(
 		func() string { return state })
 }
 
+// WaitForClaimL2Processed waits until the L2 claim syncer (claim_l2_info) of bs is active, not halted and
+// error-free, and has processed at least block (GET /bridge/v1/sync-status).
+//
+// The reorg detector only tracks, and can therefore only report a reorg of, the blocks a syncer has already
+// processed (see "What aggkit detects" in the e2e README). The L2 claim syncer processes every L2 block,
+// whether or not it carries a claim, so waiting for its last_processed_block to reach the chain head
+// guarantees the detector has tracked the head before the test reorgs it. Use it before reorging L2 blocks
+// that no other syncer tracks, e.g. a GER injection with no bridge and no claim (proxy_reorg_claims C1).
+func WaitForClaimL2Processed(
+	ctx context.Context, bs *client.Client, block uint64, timeout time.Duration,
+) error {
+	state := "not polled yet"
+	return waitUntil(ctx, timeout, fmt.Sprintf("the L2 claim syncer to process block %d", block),
+		func() (bool, error) {
+			status, err := bs.GetSyncStatus(ctx)
+			if err != nil {
+				state = err.Error() // transient: keep polling
+				return false, nil
+			}
+			info := status.ClaimL2Info
+			if info == nil {
+				return false, errors.New("sync-status carries no claim_l2_info for the L2 claim syncer")
+			}
+			state = fmt.Sprintf("%+v", *info)
+			return info.IsActive && !info.IsHalted && info.Error == "" && info.LastProcessedBlock >= block, nil
+		},
+		func() string { return state })
+}
+
 // formatBoolPtr renders an optional boolean for logs: "true", "false" or "<nil>" (omitted by the server).
 func formatBoolPtr(b *bool) string {
 	if b == nil {
