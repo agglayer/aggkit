@@ -14,6 +14,8 @@ Request (BridgeRequest):
 | ------|----------|------|-----------|------|
 | network_id | path | uint32 | yes | network where the bridge transaction was sent (0 -> Mainnet) |
 | tx_hash | path | Hash | yes | hash of the transaction that created the bridge (bridgeAsset or bridgeMessage) |
+| log_index | query | uint32 | no | index of the `BridgeEvent` log to track (the bridge's `bridge_status.log_index`, i.e. bridge-service `block_pos`). Only needed when the tx emitted several `BridgeEvent`s (see [Transactions with several bridges](#transactions-with-several-bridges)) |
+| flush_cache | query | bool | no | `true` discards whatever the tracker already has for this tx (and `log_index`) first |
 
 ## Behavior
 
@@ -21,7 +23,16 @@ Calling this endpoint **adds the bridge to the list of supervised bridges** (if 
 
 - `200 OK` — the body is a [TrackingData](#trackingdata). `tracking_status` is `registered` and `bridge_status`/`step_index`/`all_steps` are `null` until the tracker resolves the bridge; from then on `tracking_status` mirrors the bridge's lifecycle (`running`/`error`/`finished`) and those fields carry the full picture (see [BridgeStatus](#bridgestatus)). If the tracker instead gives up trying to resolve the bridge at all — the transaction **does not exist on the network or is not a bridge transaction** (no `BridgeEvent`) — `tracking_status` becomes `error`, `bridge_status`/`step_index`/`all_steps` stay `null` forever, and `error` carries why (see [ErrorStep](#errorstep)). That determination is asynchronous, so a tx may answer with `tracking_status: registered` on the first few polls and `error` only once the tracking engine gives up. When polling, the client keeps calling the endpoint until `tracking_status` moves off `registered`. Over the [WebSocket](#websocket) no polling is needed: every `status` message carries the same `TrackingData`, and the client just watches it evolve.
   - **First-registration head start**: the very first time a tx is registered, the tracker wakes its resolution engine immediately instead of waiting for the next poll round, and this request waits up to `RegisterResolveTimeout` (default `3s`, configurable, `0` disables the wait) for that attempt to land. So the very first response has a real chance of already carrying real progress instead of the bare `registered` state — though it may still come back `registered` if resolution takes longer than the timeout. A lookup of an already-registered tx never waits, regardless of this setting.
-- `400 Bad Request` — invalid path parameters (`network_id` not a uint32, `tx_hash` not a valid hash): the body is an [ErrorData](#errordata). Nothing is registered.
+- `400 Bad Request` — invalid parameters (`network_id` not a uint32, `tx_hash` not a valid hash, `log_index` present but not a uint32): the body is an [ErrorData](#errordata). Nothing is registered.
+
+### Transactions with several bridges
+
+One transaction can create several bridges, e.g. a router or multicall performing two bridge calls: its receipt carries one canonical `BridgeEvent` log per bridge, each with its own `deposit_count`. The tracker tracks **one bridge at a time**, identified by the log index of its `BridgeEvent`:
+
+- With `log_index`, the request tracks exactly that bridge. If the tx has no canonical `BridgeEvent` at that index, the tracker gives up on it (`tracking_status: error`, `error.error_type` permanent) and `error.description` lists the log indexes that do hold one.
+- Without `log_index`, a tx with a single `BridgeEvent` is tracked exactly as before. A tx with several fails the same way, permanently, with a description listing the candidate log indexes, instead of reporting the first bridge's status for all of them. Repeat the request with one of them as `log_index`.
+
+Each `log_index` (and the request without it) is a separate entry in the supervised list, with its own snapshot. The [Activity](#activity) endpoint's `includeTracking` always tracks each bridge by its own log index, so two bridges of the same tx get two independent `tracking` objects.
 
 ## Response types
 
@@ -53,6 +64,7 @@ Body of every REST response (always `200 OK`) and of every WebSocket `status` me
 | claim_status | string | bare string, one of `"pending"`, `"readyToClaim"`, `"claimed"`, `"claimed_finalized"`, `"error"` — a simplified claim-readiness summary, computed the same moment as the rest of the response: `"error"` whenever `tracking_status` is `"error"` (this takes priority over everything else); otherwise `"readyToClaim"` if the current step (per `step_index`) is `WaitingClaim`, `"claimed"` if it is `Claimed` and that step is `done`; `"pending"` for every other step, including while `tracking_status` is still `"registered"`. `"claimed_finalized"` is `"claimed"` once the claim's block can no longer be reorged out: it is **the only final state**, whereas `"claimed"` can still go back to `"readyToClaim"` or `"pending"` (see [claim_status states](#claim_status-states)). For most clients this is all that's needed to know whether the bridge can be claimed — `tracking_status`/`all_steps` remain for anything that needs the full detail |
 | network_id | uint32 | network of the request |
 | tx_hash | Hash | transaction hash of the request |
+| log_index | uint32 | the `log_index` of the request (in activity results, the bridge's own log index); omitted for a request without `log_index` |
 | bridge_status | *BridgeStatus | `null` while tracking_status is `registered`, and forever `null` if the tracker gives up resolving the bridge (`error` is set instead); see [BridgeStatus](#bridgestatus) |
 | step_index | *int | `null` under the same conditions as `bridge_status`; from then on, the index into `all_steps` of the step that explains `tracking_status`: the step in progress when `running` (or, if none is in progress, the first step still `pending`), the step in error when `error`, or the last step (`Claimed`) once every step is done (`finished`, or `running` while the claim is not final yet) |
 | all_steps | BridgeStepPath [] | `null` under the same conditions as `bridge_status`; from then on, all expected steps of the bridge's route — GER/LER, certificate and claim data are reported per step in each entry's `result` (see [StepResult](#stepresult)) |
@@ -821,7 +833,7 @@ Endpoint to subscribe to a bridge and receive its status updates as they happen,
 
 GET /tracker/v1/network/{network_id}/tx/{tx_hash}/ws
 
-Same path parameters as the REST endpoint (`network_id`, `tx_hash`). The request is upgraded to a WebSocket connection (`Upgrade: websocket`).
+Same path parameters as the REST endpoint (`network_id`, `tx_hash`), and the same optional `log_index` and `flush_cache` query parameters. The request is upgraded to a WebSocket connection (`Upgrade: websocket`).
 
 ### Server messages
 
@@ -839,7 +851,7 @@ All messages are JSON text frames with an envelope:
 
 ### Errors
 
-An `error` message ([ErrorData](#errordata)) is sent, followed by the closure of the connection with code `1008` (policy violation), only when the path parameters themselves are invalid (`code=400`) — mirrors the REST `400`. This happens before any bridge is registered, so there is no [TrackingData](#trackingdata) yet. Once a bridge is registered, giving up on it (tx not found / not a bridge transaction) is reported as a normal `status` message instead (see [Server messages](#server-messages) above), not as an `error` message.
+An `error` message ([ErrorData](#errordata)) is sent, followed by the closure of the connection with code `1008` (policy violation), only when the request parameters themselves are invalid (`code=400`) — mirrors the REST `400`. This happens before any bridge is registered, so there is no [TrackingData](#trackingdata) yet. Once a bridge is registered, giving up on it (tx not found / not a bridge transaction) is reported as a normal `status` message instead (see [Server messages](#server-messages) above), not as an `error` message.
 
 ### Keepalive
 

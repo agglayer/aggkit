@@ -24,7 +24,8 @@ type getTxStatusCommand struct {
 	resolveTimeout time.Duration
 }
 
-// Execute implements command: it parses the network_id/tx_hash path params, registers the
+// Execute implements command: it parses the network_id/tx_hash path params (plus the optional
+// log_index query param selecting one of the tx's BridgeEvents), registers the
 // bridge in the supervised registry, and reports its TrackingData — BridgeStatus nil until
 // the tracker resolves the bridge, or Error set if it gave up trying to resolve it at all. The
 // first time a tx is registered, it waits up to resolveTimeout for the tracking engine's
@@ -42,14 +43,18 @@ type getTxStatusCommand struct {
 // @Description null until the tracker resolves the bridge, so the client keeps polling (or
 // @Description subscribes over the WebSocket) until it is populated. flush_cache=true discards
 // @Description whatever is already cached for this tx first, forcing it to be re-registered and
-// @Description resolved from scratch
+// @Description resolved from scratch. A tx that emitted several BridgeEvents (e.g. a router
+// @Description performing two bridge calls) is tracked one bridge at a time: log_index selects
+// @Description which one; without it such a tx ends in a permanent error listing the candidate
+// @Description log indexes instead of reporting one of them for all
 // @Tags bridge-tracker
 // @Produce json
 // @Param network_id path uint32 true "Network where the bridge transaction was sent (0 -> Mainnet)"
 // @Param tx_hash path string true "Hash of the transaction that created the bridge (bridgeAsset or bridgeMessage)"
+// @Param log_index query uint32 false "BridgeEvent log index to track; needed only if the tx emitted several"
 // @Param flush_cache query bool false "Discard the tracker's cached state for this tx before answering"
 // @Success 200 {object} TrackingData "Bridge registered; bridge_status/error fill in once resolved"
-// @Failure 400 {object} types.ErrorData "Invalid transaction hash or network id"
+// @Failure 400 {object} types.ErrorData "Invalid transaction hash, network id or log index"
 // @Failure 503 {object} types.ErrorData "Supervised registry is at capacity"
 // @Router /network/{network_id}/tx/{tx_hash} [get]
 func (cmd *getTxStatusCommand) Execute(c *gin.Context) (int, any, *types.ErrorData) {
@@ -58,7 +63,7 @@ func (cmd *getTxStatusCommand) Execute(c *gin.Context) (int, any, *types.ErrorDa
 		return 0, nil, &types.ErrorData{Code: http.StatusBadRequest, Message: aggkitcommon.RedactError(err)}
 	}
 
-	id := domain.TrackingID{NetworkID: req.NetworkID, TxHash: req.TxHash}
+	id := trackingIDFrom(req)
 	if c.Query(flushCacheQueryParam) == queryValueTrue {
 		cmd.supervised.Forget(id)
 	}

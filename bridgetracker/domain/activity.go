@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"time"
 
@@ -18,6 +19,20 @@ import (
 // addresses, each staying supervised — and periodically rescanned by the ActivityEngine — until
 // its idle timeout elapses)
 var ErrActivityRegistryFull = errors.New("activity registry is full")
+
+// BridgeTrackingID is the TrackingID of one bridge reported by networkID's bridge service (or
+// its RPC fallback): its tx plus its own BridgeEvent log (bridge.BlockPos, the log's index
+// within its block, same value as BridgeInfo.LogIndex), so every bridge of a tx that emitted
+// several gets its own tracking instead of sharing (or failing as ambiguous on) the tx-only
+// one. A BlockPos beyond uint32, which no real block reaches, falls back
+// to the tx-only identity
+func BridgeTrackingID(networkID uint32, bridge *bridgeservicetypes.BridgeResponse) TrackingID {
+	id := TrackingID{NetworkID: networkID, TxHash: common.HexToHash(string(bridge.TxHash))}
+	if bridge.BlockPos <= math.MaxUint32 {
+		id.Log = LogIndex(uint32(bridge.BlockPos))
+	}
+	return id
+}
 
 // ActivitySourceKind identifies which system supplied a ScannedBridge/ActivityEntry's current
 // data: the network's own bridge service (ActivitySourceBridgeService — the source of record) or

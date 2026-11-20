@@ -144,7 +144,8 @@ func (row *activityBridgeRow) staleSchema() bool {
 // activityBridgeData.Tracking: TrackingData's own fields are private, so it is decomposed into
 // its tx/steps parts exactly like trackedBridgeData does for tracked_bridge, and rebuilt via
 // domain.NewTrackingData on read — TrackingData.ID() is not stored, since it is always the
-// bridge's own origin network/tx hash, already available as this row's OriginNetworkID/TxHash
+// bridge's own origin network/tx hash/log index, already available as this row's
+// OriginNetworkID/TxHash and its Bridge's BlockPos (see domain.BridgeTrackingID)
 type activityTrackingSnapshot struct {
 	Tx    domain.TrackingBridgeTx
 	Steps []domain.BridgeStepPath
@@ -198,6 +199,9 @@ func (row *activityBridgeRow) entry() (*domain.ActivityEntry, error) {
 	}
 	if data.Tracking != nil {
 		id := domain.TrackingID{NetworkID: row.OriginNetworkID, TxHash: common.HexToHash(row.TxHash)}
+		if data.Bridge != nil {
+			id = domain.BridgeTrackingID(row.OriginNetworkID, data.Bridge)
+		}
 		entry.Tracking = domain.NewTrackingData(id, data.Tracking.Tx, data.Tracking.Steps)
 	}
 	return entry, nil

@@ -7,15 +7,39 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// TrackingID identifies a supervised bridge: the network the creating tx was sent to plus
-// its hash
+// LogSelector optionally narrows a TrackingID down to one BridgeEvent of its tx: the index of
+// that event's log (BridgeInfo.LogIndex, the log's position within its block — the same value
+// bridgesync keeps as BlockPos). The zero value selects nothing ("tx-only"): the tx must then
+// emit exactly one canonical BridgeEvent (see ErrAmbiguousBridgeTx). Comparable, since
+// TrackingID is a map key
+type LogSelector struct {
+	// Set reports whether Index selects a log at all
+	Set bool
+	// Index is the selected log's index; meaningless unless Set
+	Index uint32
+}
+
+// LogIndex returns the LogSelector picking the BridgeEvent log at index
+func LogIndex(index uint32) LogSelector {
+	return LogSelector{Set: true, Index: index}
+}
+
+// TrackingID identifies a supervised bridge: the network the creating tx was sent to, its
+// hash and, optionally, which of the tx's BridgeEvents (Log). A tx can create several bridges
+// (e.g. a router or multicall performing two bridge calls), each one tracked independently
+// under its own Log; the zero Log is the tx-only identity, only resolvable when the tx emits a
+// single BridgeEvent
 type TrackingID struct {
 	NetworkID uint32
 	TxHash    common.Hash
+	Log       LogSelector
 }
 
 // String implements fmt.Stringer, for use in logs/traces
 func (id TrackingID) String() string {
+	if id.Log.Set {
+		return fmt.Sprintf("network=%d/tx=%s/log=%d", id.NetworkID, id.TxHash, id.Log.Index)
+	}
 	return fmt.Sprintf("network=%d/tx=%s", id.NetworkID, id.TxHash)
 }
 

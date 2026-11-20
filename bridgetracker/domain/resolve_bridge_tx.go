@@ -26,13 +26,27 @@ var ErrBridgeTxNotABridge = Permanent(errors.New("tx is not a bridge transaction
 // that retrying cannot change, so it is wrapped as Permanent too
 var ErrSourceUnavailable = Permanent(errors.New("bridge source unavailable"))
 
+// ErrAmbiguousBridgeTx is returned by BridgeEventSource.FindBridge for a tx-only TrackingID
+// (no LogSelector) whose tx emitted more than one canonical BridgeEvent: tracking any one of
+// them under the tx alone would attribute it to the others too, so the caller must pick one by
+// its log index instead. The receipt is final by then, so this is
+// permanent like ErrBridgeTxNotABridge; the wrapping error lists the candidate log indexes
+var ErrAmbiguousBridgeTx = Permanent(errors.New("tx emitted several BridgeEvents, select one by log_index"))
+
+// ErrBridgeLogNotFound is returned by BridgeEventSource.FindBridge when the TrackingID selects
+// a log index at which the tx emitted no canonical BridgeEvent. Permanent, same reasoning as
+// ErrAmbiguousBridgeTx; the wrapping error lists the log indexes that do hold one
+var ErrBridgeLogNotFound = Permanent(errors.New("tx emitted no BridgeEvent at the selected log_index"))
+
 // BridgeEventSource is the driven port resolving the BridgeEvent behind a supervised tx on its
 // origin network (RPC receipt or bridge service, resolved per network via the finder)
 type BridgeEventSource interface {
-	// FindBridge returns the facts of the bridge created by the tx, ErrBridgeTxNotFound if
-	// the tx does not exist yet, ErrBridgeTxNotABridge if it exists but is definitely not
-	// a bridge transaction, or ErrSourceUnavailable if the origin network has no source
-	// configured to resolve it. Other errors are transient
+	// FindBridge returns the facts of the bridge created by the tx — the BridgeEvent at
+	// id.Log if set, else the tx's only one —, ErrBridgeTxNotFound if the tx does not exist
+	// yet, ErrBridgeTxNotABridge if it exists but is definitely not a bridge transaction,
+	// ErrAmbiguousBridgeTx if id.Log is not set and the tx emitted several BridgeEvents,
+	// ErrBridgeLogNotFound if id.Log is set but selects none of them, or ErrSourceUnavailable
+	// if the origin network has no source configured to resolve it. Other errors are transient
 	FindBridge(ctx context.Context, id TrackingID) (*BridgeInfo, error)
 }
 

@@ -314,6 +314,11 @@ definitions:
           stay nil forever), a transient FindBridge failure still being retried (TrackingStatus
           is unaffected), or the same error already nested in AllSteps[StepIndex].Error once the
           bridge is otherwise resolved. nil while nothing has failed
+      log_index:
+        description: |-
+          LogIndex is the log index of the BridgeEvent the request selected (?log_index, or the
+          bridge's own block_pos in activity results); omitted for a tx-only request
+        type: integer
       network_id:
         description: NetworkID is the network of the request (0 -> Mainnet)
         type: integer
@@ -924,7 +929,10 @@ paths:
         null until the tracker resolves the bridge, so the client keeps polling (or
         subscribes over the WebSocket) until it is populated. flush_cache=true discards
         whatever is already cached for this tx first, forcing it to be re-registered and
-        resolved from scratch
+        resolved from scratch. A tx that emitted several BridgeEvents (e.g. a router
+        performing two bridge calls) is tracked one bridge at a time: log_index selects
+        which one; without it such a tx ends in a permanent error listing the candidate
+        log indexes instead of reporting one of them for all
       parameters:
       - description: Network where the bridge transaction was sent (0 -> Mainnet)
         format: int32
@@ -938,6 +946,12 @@ paths:
         name: tx_hash
         required: true
         type: string
+      - description: BridgeEvent log index to track; needed only if the tx emitted
+          several
+        format: int32
+        in: query
+        name: log_index
+        type: integer
       - description: Discard the tracker's cached state for this tx before answering
         in: query
         name: flush_cache
@@ -950,7 +964,7 @@ paths:
           schema:
             $ref: '#/definitions/api.TrackingData'
         "400":
-          description: Invalid transaction hash or network id
+          description: Invalid transaction hash, network id or log index
           schema:
             $ref: '#/definitions/types.ErrorData'
         "503":
@@ -967,7 +981,8 @@ paths:
         status as it changes, instead of polling the REST endpoint. Connecting adds
         the bridge to the list of supervised bridges. flush_cache=true discards
         whatever is already cached for this tx first, forcing it to be re-registered and
-        resolved from scratch
+        resolved from scratch. log_index selects one BridgeEvent of a tx that emitted
+        several, exactly as on the REST endpoint
       parameters:
       - description: Network where the bridge transaction was sent (0 -> Mainnet)
         format: int32
@@ -981,6 +996,12 @@ paths:
         name: tx_hash
         required: true
         type: string
+      - description: BridgeEvent log index to track; needed only if the tx emitted
+          several
+        format: int32
+        in: query
+        name: log_index
+        type: integer
       - description: Discard the tracker's cached state for this tx before answering
         in: query
         name: flush_cache

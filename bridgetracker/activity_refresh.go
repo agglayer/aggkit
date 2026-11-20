@@ -241,8 +241,7 @@ func (r *ActivityEntryRefresher) Refresh(
 	entry.TrackerClaimStatus = types.TrackerClaimStatusPending
 
 	if includeTracking {
-		id := domain.TrackingID{NetworkID: item.NetworkID, TxHash: common.HexToHash(string(item.Bridge.TxHash))}
-		tracking, err := r.supervised.Get(id, true)
+		tracking, err := r.supervised.Get(domain.BridgeTrackingID(item.NetworkID, item.Bridge), true)
 		if err != nil {
 			r.logger.Warnf("activity: registering bridge tx=%s with the tracker: %v", item.Bridge.TxHash, err)
 		} else {

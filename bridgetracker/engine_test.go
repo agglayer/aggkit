@@ -67,9 +67,16 @@ type fakeSources struct {
 	// findBridgeHook, when set, runs synchronously inside FindBridge before it returns — tests
 	// use it to observe/gate concurrent resolutions (see TestEngineTickBoundsConcurrentResolutions)
 	findBridgeHook func()
+
+	// findBridgeMu guards findBridgeIDs, every id FindBridge was asked for, in call order
+	findBridgeMu  sync.Mutex
+	findBridgeIDs []TrackingID
 }
 
-func (f *fakeSources) FindBridge(_ context.Context, _ TrackingID) (*BridgeInfo, error) {
+func (f *fakeSources) FindBridge(_ context.Context, id TrackingID) (*BridgeInfo, error) {
+	f.findBridgeMu.Lock()
+	f.findBridgeIDs = append(f.findBridgeIDs, id)
+	f.findBridgeMu.Unlock()
 	if f.findBridgeHook != nil {
 		f.findBridgeHook()
 	}

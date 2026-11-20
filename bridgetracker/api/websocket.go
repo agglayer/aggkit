@@ -59,17 +59,19 @@ func newWSHandler(
 //     tracker giving up trying to resolve it at all (TrackingData.Error set) — followed by a
 //     normal closure (code 1000);
 //   - an "error" message (ErrorData) followed by the closure of the connection only if the
-//     request itself is invalid (bad network_id/tx_hash path parameters).
+//     request itself is invalid (bad network_id/tx_hash path parameters or log_index).
 //
 // @Summary Subscribe to bridge status updates by transaction hash
 // @Description Upgrades the request to a WebSocket connection that receives the bridge
 // @Description status as it changes, instead of polling the REST endpoint. Connecting adds
 // @Description the bridge to the list of supervised bridges. flush_cache=true discards
 // @Description whatever is already cached for this tx first, forcing it to be re-registered and
-// @Description resolved from scratch
+// @Description resolved from scratch. log_index selects one BridgeEvent of a tx that emitted
+// @Description several, exactly as on the REST endpoint
 // @Tags bridge-tracker
 // @Param network_id path uint32 true "Network where the bridge transaction was sent (0 -> Mainnet)"
 // @Param tx_hash path string true "Hash of the transaction that created the bridge (bridgeAsset or bridgeMessage)"
+// @Param log_index query uint32 false "BridgeEvent log index to track; needed only if the tx emitted several"
 // @Param flush_cache query bool false "Discard the tracker's cached state for this tx before answering"
 // @Success 101 {string} string "Switching Protocols"
 // @Router /network/{network_id}/tx/{tx_hash}/ws [get]
@@ -88,7 +90,7 @@ func (w *wsHandler) TxStatusWSHandler(c *gin.Context) {
 		return
 	}
 
-	id := domain.TrackingID{NetworkID: req.NetworkID, TxHash: req.TxHash}
+	id := trackingIDFrom(req)
 	if c.Query(flushCacheQueryParam) == queryValueTrue {
 		w.supervised.Forget(id)
 	}
