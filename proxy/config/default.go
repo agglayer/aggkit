@@ -48,6 +48,22 @@ AllowNetworkIDs = []
 
 [BridgeServiceFinder.BridgeAddress]
 
+# Limits of the requests the PROXY component forwards to the bridge services. Without them a
+# backend that accepts a request and never answers holds the request (and its connections) for as
+# long as the client stays connected. A request over a limit is answered 504 (or, if its response
+# already started, its connection is aborted).
+[Proxy]
+# UpstreamResponseHeaderTimeout: how long to wait, once the request is sent to a bridge service, for
+# its response headers. 0 disables it.
+UpstreamResponseHeaderTimeout = "30s"
+# UpstreamRequestTimeout: total budget of a proxied request, from connecting to the last byte of the
+# response body (so it also bounds a backend that stalls halfway through its answer). Keep it below
+# [REST] WriteTimeout, and above the slowest legitimate bridge service response. 0 disables it.
+UpstreamRequestTimeout = "2m"
+# UpstreamMaxConnsPerHost: maximum connections (idle, dialing and in use) to each bridge service;
+# more requests wait for a free one, up to UpstreamRequestTimeout. 0 means no limit.
+UpstreamMaxConnsPerHost = 256
+
 [REST]
 Host = "0.0.0.0"
 Port = 8080

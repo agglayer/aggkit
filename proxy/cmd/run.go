@@ -147,11 +147,20 @@ func runBridgeServiceFinder(
 // the per-network bridge service resolved by the finder.
 func runProxy(
 	_ context.Context,
-	_ *proxyconfig.Config,
+	cfg *proxyconfig.Config,
 	finder bridgeservicefinder.Finder,
 	restServer *proxy.RESTServer,
 ) {
-	svc := proxy.New(proxy.Config{Logger: log.WithFields("module", "proxy")}, finder)
+	proxyCfg := cfg.Proxy
+	if err := proxyCfg.Validate(); err != nil {
+		log.Fatalf("invalid proxy config: %v", err)
+	}
+	for _, warning := range proxyCfg.Warnings(cfg.REST.WriteTimeout.Duration) {
+		log.Warn(warning)
+	}
+	proxyCfg.Logger = log.WithFields("module", "proxy")
+
+	svc := proxy.New(proxyCfg, finder)
 	restServer.Register(svc)
 	log.Info("proxy component started")
 }

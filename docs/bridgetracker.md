@@ -387,6 +387,30 @@ one field that changes what the tracker's health endpoint reports:
 AutoRegisterNewNetworks = true
 ```
 
+## `[Proxy]` configuration
+
+The `PROXY` component forwards every `/bridge/v1/*` request to the bridge service of the network
+selected by `network_id`. The upstream side is bounded by these keys, so a bridge service that
+accepts a request and never answers cannot hold it (and its connections) for as long as the client
+stays connected:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `UpstreamResponseHeaderTimeout` | `30s` | How long to wait, once the request is sent to a bridge service, for its response headers. A request over it is answered `504`. `0` disables it. |
+| `UpstreamRequestTimeout` | `2m` | Total budget of a proxied request: connecting, response headers and the streaming of the response body, so it also covers a backend that stalls halfway through its answer. A request over it is answered `504`; if the response had already started (the status is sent), the connection is closed instead, so the client sees a truncated body as an error. Keep it **below** `[REST] WriteTimeout` (the server closes the connection at that point, before the proxy can answer; the proxy warns at startup if it is not below), and **above** the slowest legitimate bridge service response. `0` disables it. |
+| `UpstreamMaxConnsPerHost` | `256` | Maximum connections (idle, dialing and in use) to each bridge service. More requests wait for a free one, up to `UpstreamRequestTimeout`. `0` means no limit. |
+
+All networks' bridge services share these limits. Responses are streamed, not buffered, and the proxy
+no longer adds `Accept-Encoding: gzip` on its own to the upstream request (a client's own
+`Accept-Encoding` is still relayed, and the response passed through as the bridge service sent it).
+
+```toml
+[Proxy]
+UpstreamResponseHeaderTimeout = "30s"
+UpstreamRequestTimeout = "2m"
+UpstreamMaxConnsPerHost = 256
+```
+
 ## Prometheus Metrics
 
 The tracker exposes (unless `[Prometheus] Enabled = false`, it is enabled by default) the following Prometheus metrics, refreshed every `[Tracker] MetricsSampleInterval` (default `15s`):

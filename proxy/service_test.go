@@ -10,8 +10,8 @@ import (
 
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,16 +39,27 @@ func (f fakeErrResolver) GetURL(_ uint32) (bridgeservicefinder.NetworkURLs, erro
 	return bridgeservicefinder.NetworkURLs{}, f.err
 }
 
-// newTestProxy starts an HTTP server running the proxy service and returns it together with
-// the service. A real server (instead of a bare ResponseRecorder) is required because
-// httputil.ReverseProxy needs a ResponseWriter with the full http.Server surface
+// newTestProxy starts an HTTP server running the proxy service with no upstream limits (the zero
+// Config) and returns it together with the service
 func newTestProxy(t *testing.T, finder NetworkURLResolver) (*httptest.Server, *Service) {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	svc := New(Config{Logger: log.WithFields("module", "proxy-test")}, finder)
-	svc.RegisterRoutes(router)
-	server := httptest.NewServer(router)
+	return newTestProxyWithConfig(t, Config{}, finder)
+}
+
+// newTestProxyWithConfig starts an HTTP server running the proxy service configured with cfg and
+// returns it together with the service. A real server (instead of a bare ResponseRecorder) is
+// required because httputil.ReverseProxy needs a ResponseWriter with the full http.Server surface.
+// It serves the engine of the real shared HTTP server (recovery and body limit middlewares
+// included), so the tests see what a client of the binary sees
+func newTestProxyWithConfig(t *testing.T, cfg Config, finder NetworkURLResolver) (*httptest.Server, *Service) {
+	t.Helper()
+	if cfg.Logger == nil {
+		cfg.Logger = log.WithFields("module", "proxy-test")
+	}
+	engine := aggkitcommon.NewHTTPServer(aggkitcommon.RESTConfig{}, nil).Engine()
+	svc := New(cfg, finder)
+	svc.RegisterRoutes(engine)
+	server := httptest.NewServer(engine)
 	t.Cleanup(server.Close)
 	return server, svc
 }
