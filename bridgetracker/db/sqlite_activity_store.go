@@ -241,7 +241,7 @@ func parseTrackerClaimStatus(s string) types.TrackerClaimStatus {
 }
 
 // revisionHash is the row's contribution to its address's revision: the stored revision_hash, or
-// for a row written before that column existed, the hash recomputed from its data
+// for a row with none (see backfillRevisionHashes), the hash recomputed from its data
 func (row *activityBridgeRow) revisionHash() (domain.ActivityEntryHash, error) {
 	var hash domain.ActivityEntryHash
 	if len(row.RevisionHash) == len(hash) {
@@ -253,6 +253,69 @@ func (row *activityBridgeRow) revisionHash() (domain.ActivityEntryHash, error) {
 		return hash, err
 	}
 	return domain.HashActivityEntry(entry), nil
+}
+
+// revisionBackfillBatch is how many rows backfillRevisionHashes reads and updates per transaction
+const revisionBackfillBatch = 500
+
+// backfillRevisionHashes stores the revision hash of every current-schema activity_bridge row that
+// has none: a row written before bridgetracker0005, or any row when bridgetracker0008 dropped the
+// hashes of an older scheme. Otherwise GetActivityRevision would decode such a row on every
+// request until it is written again — never, for a settled one. Rows are read in key order,
+// revisionBackfillBatch at a time, so memory stays bounded; a row whose data cannot be decoded is
+// left as it is (and logged): GetActivityRevision reports it as it always did
+func backfillRevisionHashes(sqlDB *sql.DB, logger aggkitcommon.Logger) error {
+	type rowKey struct {
+		addr                  string
+		network, depositCount uint32
+	}
+	var after rowKey
+	filled, undecodable := 0, 0
+	for {
+		var rows []*activityBridgeRow
+		if err := meddler.QueryAll(sqlDB, &rows,
+			`SELECT * FROM activity_bridge
+			  WHERE revision_hash IS NULL AND schema_version = ?
+			    AND (from_address, origin_network_id, deposit_count) > (?, ?, ?)
+			  ORDER BY from_address, origin_network_id, deposit_count LIMIT ?`,
+			activitySchemaVersion, after.addr, after.network, after.depositCount, revisionBackfillBatch); err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			break
+		}
+		tx, err := sqlDB.Begin()
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			entry, err := row.entry()
+			if err != nil {
+				undecodable++
+				logger.Warnf("activity: cannot compute the revision hash of activity_bridge row %s of %s: %v",
+					row.key(), row.FromAddress, err)
+				continue
+			}
+			hash := domain.HashActivityEntry(entry)
+			if _, err := tx.Exec(`UPDATE activity_bridge SET revision_hash = ?
+				WHERE from_address = ? AND origin_network_id = ? AND deposit_count = ? AND revision_hash IS NULL`,
+				hash[:], row.FromAddress, row.OriginNetworkID, row.DepositCount); err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+			filled++
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		last := rows[len(rows)-1]
+		after = rowKey{addr: last.FromAddress, network: last.OriginNetworkID, depositCount: last.DepositCount}
+	}
+	if filled > 0 || undecodable > 0 {
+		logger.Infof("activity: stored the revision hash of %d activity_bridge rows (%d undecodable)",
+			filled, undecodable)
+	}
+	return nil
 }
 
 // sqliteActivityStore is the SQLite-backed implementation of domain.ActivityRegistry: it
@@ -322,6 +385,9 @@ func NewSQLiteActivityStore(
 	var numAddresses int
 	if err := sqlDB.QueryRow("SELECT COUNT(*) FROM activity_address").Scan(&numAddresses); err != nil {
 		return nil, fmt.Errorf("counting activity_address rows: %w", err)
+	}
+	if err := backfillRevisionHashes(sqlDB, logger); err != nil {
+		return nil, fmt.Errorf("backfilling activity revision hashes: %w", err)
 	}
 
 	return &sqliteActivityStore{
@@ -1031,7 +1097,7 @@ func (s *sqliteActivityStore) GetActivity(
 // entries. Computed from the stored rows (no address-level counter is persisted), so it is the
 // same after a restart and after the address's rows are rebuilt. domain.EmptyActivityRevision for
 // an address with nothing stored. Like ActivityCache's, it does not count as an access. Only a row
-// written before revision_hash existed has its data read (and decoded, see revisionHash); every
+// with no revision_hash has its data read (and decoded, see revisionHash, backfillRevisionHashes); every
 // other row contributes its stored hash without its data being read. Runs under ctx
 func (s *sqliteActivityStore) GetActivityRevision(ctx context.Context, fromAddress common.Address) (string, error) {
 	var rows []*activityBridgeRow

@@ -86,7 +86,7 @@ const (
 	activityMaxPageSize uint32 = 200
 
 	// emptyActivityRevision is the documented revision of an address with no bridges.
-	emptyActivityRevision = "v1:0000000000000000000000000000000000000000000000000000000000000000"
+	emptyActivityRevision = "v2:0000000000000000000000000000000000000000000000000000000000000000"
 
 	claimStatusPending          = "pending"
 	claimStatusReadyToClaim     = "readyToClaim"
@@ -102,7 +102,7 @@ const (
 var insertGERSelector = crypto.Keccak256([]byte("insertGlobalExitRoot(bytes32)"))[:4]
 
 // activityRevisionFormat is the documented shape of ActivityResponse.revision.
-var activityRevisionFormat = regexp.MustCompile(`^v1:[0-9a-f]{64}$`)
+var activityRevisionFormat = regexp.MustCompile(`^v2:[0-9a-f]{64}$`)
 
 // errActivityNotReady is returned by fetchActivity while the proxy answers 503: the address was just
 // registered and its first background refresh has not finished.
@@ -269,7 +269,7 @@ func waitForActivity(
 // well-formed revision, finalized always present, and no bridge listed twice.
 func requireActivityWellFormed(t *testing.T, activity *proxyActivityResponse) {
 	t.Helper()
-	require.Regexp(t, activityRevisionFormat, activity.Revision, "revision must be v1: plus 64 hex characters")
+	require.Regexp(t, activityRevisionFormat, activity.Revision, "revision must be v2: plus 64 hex characters")
 	seen := make(map[string]bool, len(activity.Bridges))
 	for i := range activity.Bridges {
 		item := &activity.Bridges[i]

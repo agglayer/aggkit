@@ -187,7 +187,7 @@ type ActivityResponse struct {
 	// len(Bridges) — mirroring bridgeservice's BridgesResult/ClaimsResult "count" field
 	Count int `json:"count"`
 	// Revision is FromAddress's revision (see domain.ActivityRevisionReader), an opaque string
-	// that is a hash of the address's activity (e.g. "v1:" followed by hex), present in every
+	// that is a hash of the address's activity (e.g. "v2:" followed by hex), present in every
 	// response whatever filterBridges/page_number/page_size say: it covers all of the address's
 	// bridges, not just this page. It changes when a bridge is added or removed, changes
 	// claim_status or is corrected after a reorg — wherever it sits in the sorted result — and it
@@ -195,9 +195,9 @@ type ActivityResponse struct {
 	// same after a restart and on every instance holding the same data. A client polls it with a
 	// cheap request (page_size=1), reloads the pages it has loaded when it differs from the one
 	// it holds, and checks it again after the last page; compare it for equality only. Always
-	// serialized; the empty-activity value "v1:" followed by 64 zeros for an address with no
+	// serialized; the empty-activity value "v2:" followed by 64 zeros for an address with no
 	// bridges
-	Revision string `json:"revision" example:"v1:0000000000000000000000000000000000000000000000000000000000000000"`
+	Revision string `json:"revision" example:"v2:0000000000000000000000000000000000000000000000000000000000000000"`
 	// Warnings lists every network whose bridge service could not be scanned this call; absent
 	// when every configured network was scanned successfully. Bridges may be incomplete for the
 	// networks listed here, but is still valid for every other network

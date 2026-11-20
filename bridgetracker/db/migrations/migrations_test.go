@@ -2,6 +2,7 @@ package migrations
 
 import (
 	"database/sql"
+	"fmt"
 	"path"
 	"testing"
 
@@ -227,4 +228,36 @@ func TestMigration0007BackfillsGlobalIndexSortKey(t *testing.T) {
 	}
 	require.Contains(t, indexNames(t, sqlDB), "idx_activity_bridge_page")
 	requireNoForeignKeyViolations(t, sqlDB)
+}
+
+// TestMigration0008DropsV1RevisionHashes verifies every stored revision hash (v1 scheme) is
+// dropped, for the store to recompute it with the current one, and that going down drops them too
+func TestMigration0008DropsV1RevisionHashes(t *testing.T) {
+	dbPath, sqlDB := openMigratedUpTo(t, "bridgetracker0008")
+	insertAddress(t, sqlDB, addrA)
+	for i := range 3 {
+		_, err := sqlDB.Exec(`INSERT INTO activity_bridge (global_index, from_address, schema_version,
+			origin_network_id, deposit_count, destination_network, tx_hash, claim_status, tracker_claim_status,
+			block_timestamp, created_at, updated_at, data, revision_hash) VALUES (?, ?, 1, 0, ?, 1, '0x', 'unclaimed',
+			'pending', 0, 0, 0, '{}', ?)`, fmt.Sprint(i), addrA, i, make([]byte, 32))
+		require.NoError(t, err)
+	}
+	countHashes := func() int {
+		var n int
+		require.NoError(t, sqlDB.QueryRow("SELECT COUNT(*) FROM activity_bridge WHERE revision_hash IS NOT NULL").
+			Scan(&n))
+		return n
+	}
+	require.Equal(t, 3, countHashes())
+
+	require.NoError(t, RunMigrations(dbPath))
+	require.Zero(t, countHashes())
+	var rows int
+	require.NoError(t, sqlDB.QueryRow("SELECT COUNT(*) FROM activity_bridge").Scan(&rows))
+	require.Equal(t, 3, rows, "only the hashes are dropped")
+
+	_, err := sqlDB.Exec("UPDATE activity_bridge SET revision_hash = x'01'")
+	require.NoError(t, err)
+	require.NoError(t, db.RunMigrationsDown(dbPath, all(), nil, 1))
+	require.Zero(t, countHashes())
 }

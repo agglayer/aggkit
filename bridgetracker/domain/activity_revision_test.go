@@ -13,16 +13,25 @@ import (
 const (
 	revisionTestBridgeTx = "0xaaaa000000000000000000000000000000000000000000000000000000000001"
 	revisionTestClaimTx  = "0xbbbb000000000000000000000000000000000000000000000000000000000002"
+	revisionTestHash     = "0xCCCC000000000000000000000000000000000000000000000000000000000003"
+	revisionTestDest     = "0x00000000000000000000000000000000000000D0"
 )
 
 // revisionTestEntry is a claimed bridge with its claim record: every hashed field has a value
 func revisionTestEntry() *ActivityEntry {
 	return &ActivityEntry{
 		Bridge: &bridgeservicetypes.BridgeResponse{
-			GlobalIndex: "4294967296",
-			TxHash:      revisionTestBridgeTx,
-			BlockNum:    1000,
+			GlobalIndex:        "4294967296",
+			TxHash:             revisionTestBridgeTx,
+			BlockNum:           1000,
+			BlockPos:           2,
+			DepositCount:       3,
+			Amount:             "100",
+			DestinationNetwork: 2,
+			DestinationAddress: revisionTestDest,
+			BridgeHash:         revisionTestHash,
 		},
+		BridgeNetworkID:    1,
 		TrackerClaimStatus: types.TrackerClaimStatusClaimed,
 		Claim:              &bridgeservicetypes.ClaimResponse{TxHash: revisionTestClaimTx},
 	}
@@ -53,10 +62,10 @@ func revisionTestEntries() []*ActivityEntry {
 	return entries
 }
 
-// TestEmptyActivityRevision pins the empty-activity value of the v1 scheme: the prefix followed
+// TestEmptyActivityRevision pins the empty-activity value of the v2 scheme: the prefix followed
 // by 256 zero bits, which is the zero value of ActivityRevision too
 func TestEmptyActivityRevision(t *testing.T) {
-	require.Equal(t, "v1:"+strings.Repeat("0", 64), EmptyActivityRevision)
+	require.Equal(t, "v2:"+strings.Repeat("0", 64), EmptyActivityRevision)
 	require.Equal(t, EmptyActivityRevision, ActivityRevision{}.String())
 	require.True(t, strings.HasPrefix(EmptyActivityRevision, ActivityRevisionPrefix))
 }
@@ -72,14 +81,16 @@ func TestActivityRevisionStringFormat(t *testing.T) {
 	require.NotEqual(t, EmptyActivityRevision, revision)
 }
 
-// TestHashActivityEntryGolden pins the v1 hash of a fixed entry: every instance, and the
+// TestHashActivityEntryGolden pins the v2 hash of a fixed entry: every instance, and the
 // in-memory and SQLite stores, must produce this exact value, so any change to the hashed fields
 // or their encoding fails here and has to bump ActivityRevisionPrefix instead
 func TestHashActivityEntryGolden(t *testing.T) {
-	// sha256 of: len4+"aggkit/bridgetracker/activity-revision/v1", len4+global_index, len4+bridge tx_hash,
-	// block_num as 8 bytes big-endian, len4+"claimed", len4+claim tx_hash (len4 = uint32 big-endian
-	// length), checked independently of the Go code with printf/xxd/sha256sum
-	require.Equal(t, "v1:1ab162228afe25b74655b2bfb280cae4926372f5ac13646f341a30053c4a92f1",
+	// sha256 of: len4+"aggkit/bridgetracker/activity-revision/v2", bridge network id and deposit_count
+	// (4 bytes each), len4+global_index, len4+bridge tx_hash, block_num and block_pos (8 bytes each),
+	// len4+amount, destination_network (4 bytes), len4+lower-cased destination_address,
+	// len4+lower-cased bridge_hash, len4+"claimed", len4+claim tx_hash (every number big-endian,
+	// len4 = uint32 big-endian length), checked independently of the Go code (Python hashlib)
+	require.Equal(t, "v2:b47e19d3b428b7cf144fc3bcc4b57513e438d9bb5327b7bb6a1aacfab08995a7",
 		revisionOf(revisionTestEntry()).String())
 }
 
@@ -122,8 +133,15 @@ func TestHashActivityEntryHashedFieldsChangeIt(t *testing.T) {
 		"bridge tx_hash": func(e *ActivityEntry) {
 			e.Bridge.TxHash = "0xaaaa000000000000000000000000000000000000000000000000000000000009"
 		},
-		"bridge block_num": func(e *ActivityEntry) { e.Bridge.BlockNum++ },
-		"claim_status":     func(e *ActivityEntry) { e.TrackerClaimStatus = types.TrackerClaimStatusReadyToClaim },
+		"bridge block_num":           func(e *ActivityEntry) { e.Bridge.BlockNum++ },
+		"bridge block_pos":           func(e *ActivityEntry) { e.Bridge.BlockPos++ },
+		"bridge network id":          func(e *ActivityEntry) { e.BridgeNetworkID = 7 },
+		"bridge deposit_count":       func(e *ActivityEntry) { e.Bridge.DepositCount++ },
+		"bridge amount":              func(e *ActivityEntry) { e.Bridge.Amount = "42" },
+		"bridge destination_network": func(e *ActivityEntry) { e.Bridge.DestinationNetwork++ },
+		"bridge destination_address": func(e *ActivityEntry) { e.Bridge.DestinationAddress = "0xd1" },
+		"bridge bridge_hash":         func(e *ActivityEntry) { e.Bridge.BridgeHash = "0xdd" },
+		"claim_status":               func(e *ActivityEntry) { e.TrackerClaimStatus = types.TrackerClaimStatusReadyToClaim },
 		"claim tx_hash": func(e *ActivityEntry) {
 			e.Claim.TxHash = "0xbbbb0000000000000000000000000000000000000000000000000000000000ff"
 		},
@@ -151,14 +169,17 @@ func TestHashActivityEntryNonHashedFieldsDoNotChangeIt(t *testing.T) {
 			e.Tracking = NewTrackingData(TrackingID{NetworkID: 1}, TrackingBridgeTx{}, nil)
 		},
 		"source":            func(e *ActivityEntry) { e.Source = ActivitySourceRPC },
-		"bridge network id": func(e *ActivityEntry) { e.BridgeNetworkID = 7 },
 		"claim_status raw":  func(e *ActivityEntry) { e.ClaimStatus = types.ClaimStatusClaimed },
-		"bridge amount":     func(e *ActivityEntry) { e.Bridge.Amount = "42" },
+		"block_finalized":   func(e *ActivityEntry) { yes := true; e.Bridge.BlockFinalized = &yes },
 		"bridge timestamp":  func(e *ActivityEntry) { e.Bridge.BlockTimestamp = 1_700_000_000 },
 		"claim block_num":   func(e *ActivityEntry) { e.Claim.BlockNum = 1234 },
 		"claimed_finalized": func(e *ActivityEntry) { e.TrackerClaimStatus = types.TrackerClaimStatusClaimedFinalized },
 		"hash letter case": func(e *ActivityEntry) {
 			e.Bridge.TxHash = bridgeservicetypes.Hash(strings.ToUpper(revisionTestBridgeTx))
+		},
+		"address letter case": func(e *ActivityEntry) {
+			e.Bridge.DestinationAddress = bridgeservicetypes.Address(strings.ToLower(revisionTestDest))
+			e.Bridge.BridgeHash = bridgeservicetypes.Hash(strings.ToLower(revisionTestHash))
 		},
 		"claim hash letter case": func(e *ActivityEntry) { e.Claim.TxHash = bridgeservicetypes.Hash(strings.ToUpper(revisionTestClaimTx)) },
 	} {
@@ -277,10 +298,10 @@ func TestActivityRevisionCarryAndBorrow(t *testing.T) {
 	// carry through every byte: 0xff..ff + 1 wraps to zero
 	require.Equal(t, ActivityRevision{}, ActivityRevision{}.Add(allOnes).Add(one))
 	// borrow through every byte: 0 - 1 wraps to 0xff..ff
-	require.Equal(t, "v1:"+strings.Repeat("f", 64), ActivityRevision{}.Remove(one).String())
+	require.Equal(t, "v2:"+strings.Repeat("f", 64), ActivityRevision{}.Remove(one).String())
 	// 0x00ff + 0x0001 carries one byte up
 	var low ActivityEntryHash
 	low[len(low)-1] = 0xff
-	require.Equal(t, "v1:"+strings.Repeat("0", 60)+"0100", ActivityRevision{}.Add(low).Add(one).String())
+	require.Equal(t, "v2:"+strings.Repeat("0", 60)+"0100", ActivityRevision{}.Add(low).Add(one).String())
 	require.Equal(t, ActivityRevision{}.Add(low), ActivityRevision{}.Add(low).Add(one).Remove(one))
 }
