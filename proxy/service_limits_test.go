@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/log"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -573,4 +575,28 @@ func TestConfigWarnings(t *testing.T) {
 	require.Len(t, warnings, 1)
 	require.Contains(t, warnings[0], "UpstreamRequestTimeout")
 	require.Contains(t, warnings[0], "WriteTimeout")
+}
+
+// TestServeProxiedOnlySwallowsAbortsItCanCloseTheConnectionOf pins what serveProxied does not
+// recover: a panic other than http.ErrAbortHandler, and an abort on a writer it cannot hijack (it
+// is left to net/http, which closes the connection itself)
+func TestServeProxiedOnlySwallowsAbortsItCanCloseTheConnectionOf(t *testing.T) {
+	svc := New(Config{Logger: log.WithFields("module", "proxy-test")}, fakeResolver{})
+	panicking := func(value any) *httputil.ReverseProxy {
+		return &httputil.ReverseProxy{
+			Rewrite: func(*httputil.ProxyRequest) {},
+			Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+				return nil, errors.New("backend down")
+			}),
+			ErrorHandler: func(http.ResponseWriter, *http.Request, error) { panic(value) },
+		}
+	}
+	errOther := errors.New("not an abort")
+	for _, value := range []any{"not an error", errOther, http.ErrAbortHandler} {
+		req := httptest.NewRequest(http.MethodGet, "/bridge/v1/bridges", nil)
+		require.PanicsWithValue(t, value, func() {
+			// a ResponseRecorder cannot be hijacked
+			svc.serveProxied(panicking(value), "http://backend", httptest.NewRecorder(), req)
+		})
+	}
 }
