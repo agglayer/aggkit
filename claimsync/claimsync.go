@@ -15,6 +15,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
+	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -27,20 +28,77 @@ const (
 	defaultDBTimeout   = 30 * time.Second
 )
 
-// ClaimSync is the standalone implementation that independently processes claim events.
-type ClaimSync struct {
-	processor     *processor
-	driver        *sync.EVMDriver
-	reader        claimsynctypes.ClaimsReader
-	reorgDetector sync.ReorgDetector
-	ethClient     aggkittypes.EthClienter
-	logger        aggkitcommon.Logger
-	originNetwork uint32
-	syncerID      claimsynctypes.ClaimSyncerID
-	cfg           ConfigStandalone
+// ErrMultidownloaderDepsMissing indicates that the multidownloader backend is selected but the
+// explicit backend dependency was not provided to the constructor.
+var ErrMultidownloaderDepsMissing = errors.New(
+	"multidownloader selected but explicit downloader dependency is missing")
+
+// ErrLogsEnricherUnsupported indicates that the multidownloader path was selected but the
+// downloader does not expose the logs enricher hook. The trace prefetch publishes the root call
+// traces of the current downloaded log range; without it the ordinary/pre-Etrog claim handlers
+// cannot resolve a trace and would refetch the range forever, so the constructor fails closed
+// instead of starting a syncer that can never make progress.
+var ErrLogsEnricherUnsupported = errors.New(
+	"multidownloader selected but the downloader does not support the logs enricher")
+
+// claimLogsEnricherInstaller is the optional enrichment hook exposed by the sync downloader. It is
+// asserted on the downloader so claimsync does not depend on the concrete downloader type. The bool
+// result reports whether the underlying implementation actually supports the hook, so the
+// multidownloader-backed constructor can fail closed instead of silently skipping the prefetch.
+type claimLogsEnricherInstaller interface {
+	InstallLogsEnricher(sync.LogsEnricherFunc) (sync.LogsEnricherFunc, bool)
 }
 
-// NewStandaloneClaimSync creates a standalone ClaimSync that indexes claim events from the bridge contract directly.
+// installClaimLogsEnricher installs the trace-prefetch enricher on the downloader when the
+// multidownloader path is active (resolver != nil) and fails closed when the downloader does not
+// support the hook. A nil resolver (legacy/L2 path) needs no enricher, so nothing is installed and
+// no error is returned.
+//
+// It is a small seam over the downloader's optional hook: it accepts any downloader so the
+// unsupported case can be exercised with a fake, and it reports ErrLogsEnricherUnsupported both when
+// the target does not implement the hook and when its implementation reports it as unsupported.
+func installClaimLogsEnricher(downloader any, resolver *TraceResolver) error {
+	if resolver == nil {
+		return nil
+	}
+	installer, ok := downloader.(claimLogsEnricherInstaller)
+	if !ok {
+		return ErrLogsEnricherUnsupported
+	}
+	if _, installed := installer.InstallLogsEnricher(resolver.EnrichLogs); !installed {
+		return ErrLogsEnricherUnsupported
+	}
+	return nil
+}
+
+// ClaimSync is the standalone implementation that independently processes claim events.
+type ClaimSync struct {
+	processor *processor
+	driver    syncDriver
+	reader    claimsynctypes.ClaimsReader
+	// reorgDetector is only set for the legacy syncer
+	reorgDetector sync.ReorgDetector
+	// multidownloader is only set when synced through the multidownloader, which is the one that
+	// detects the reorgs and tracks the finality of the blocks
+	multidownloader MultidownloaderBackend
+	ethClient       aggkittypes.EthClienter
+	logger          aggkitcommon.Logger
+	originNetwork   uint32
+	syncerID        claimsynctypes.ClaimSyncerID
+	cfg             ConfigStandalone
+}
+
+// syncDriver is the driver that runs the synchronization loop
+type syncDriver interface {
+	Sync(ctx context.Context, firstBlockNumber *uint64)
+	SyncNextBlock(ctx context.Context, blockNum uint64) error
+}
+
+// NewStandaloneClaimSync creates a standalone ClaimSync that indexes claim events from the bridge
+// contract directly using the legacy downloader.
+//
+// If cfg selects the multidownloader this constructor fails: the multidownloader requires an
+// explicit backend, so callers must use NewStandaloneClaimSyncWithDownloader instead.
 func NewStandaloneClaimSync(
 	ctx context.Context,
 	cfg ConfigStandalone,
@@ -50,10 +108,18 @@ func NewStandaloneClaimSync(
 	originNetwork uint32,
 ) (*ClaimSync, error) {
 	logger := log.WithFields("module", syncerID.String())
-	return NewClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger)
+	if err := cfg.Downloader.Validate(); err != nil {
+		return nil, fmt.Errorf("claimsync: invalid Downloader configuration: %w", err)
+	}
+	if cfg.Downloader.IsMultidownloader() {
+		return nil, fmt.Errorf("claimsync: %w: Downloader=%s requires NewStandaloneClaimSyncWithDownloader",
+			ErrMultidownloaderDepsMissing, cfg.Downloader)
+	}
+	return newClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger)
 }
 
-// NewClaimSync creates a standalone ClaimSync that indexes claim events from the bridge contract directly.
+// NewClaimSync creates a standalone ClaimSync that indexes claim events from the bridge contract
+// directly using the legacy downloader.
 func NewClaimSync(
 	ctx context.Context,
 	cfg ConfigStandalone,
@@ -63,16 +129,31 @@ func NewClaimSync(
 	syncerID claimsynctypes.ClaimSyncerID,
 	logger aggkitcommon.Logger,
 ) (*ClaimSync, error) {
-	dbQueryTimeout := cfg.DBQueryTimeout.Duration
-	if dbQueryTimeout == 0 {
-		dbQueryTimeout = defaultDBTimeout
+	if err := cfg.Downloader.Validate(); err != nil {
+		return nil, fmt.Errorf("claimsync: invalid Downloader configuration: %w", err)
 	}
-	store, err := claimsyncStorage.NewStandalone(logger, cfg.DBPath, syncerID.String(), cfg.DBQueryTimeout.Duration)
+	if cfg.Downloader.IsMultidownloader() {
+		return nil, fmt.Errorf("claimsync: %w: Downloader=%s requires NewStandaloneClaimSyncWithDownloader",
+			ErrMultidownloaderDepsMissing, cfg.Downloader)
+	}
+	return newClaimSync(ctx, cfg, rd, ethClient, originNetwork, syncerID, logger)
+}
+
+func newClaimSync(
+	ctx context.Context,
+	cfg ConfigStandalone,
+	rd sync.ReorgDetector,
+	ethClient aggkittypes.EthClienter,
+	originNetwork uint32,
+	syncerID claimsynctypes.ClaimSyncerID,
+	logger aggkitcommon.Logger,
+) (*ClaimSync, error) {
+	store, proc, err := newStorageAndProcessor(cfg, syncerID, logger)
 	if err != nil {
-		return nil, fmt.Errorf("claimsync: failed to create storage: %w", err)
+		return nil, err
 	}
 
-	proc := newProcessor(logger, store, dbQueryTimeout)
+	mdBackend := sync.NewAdapterEthClientToMultidownloader(ethClient)
 
 	deployment, err := resolveBridgeDeployment(ctx, cfg.BridgeAddr, ethClient)
 	if err != nil {
@@ -82,7 +163,10 @@ func NewClaimSync(
 		logger.Warnf("unable to determine bridge contract type at address %s", cfg.BridgeAddr.Hex())
 	}
 
-	appender, err := buildAppender(ethClient, cfg.BridgeAddr, deployment, logger)
+	// The legacy/L2 constructors keep the exact synchronous path: a nil resolver makes the
+	// ordinary/pre-Etrog handlers resolve their root call with a per-log debug_traceTransaction
+	// call, and no trace-prefetch enricher is installed.
+	appender, contextualAppender, err := buildAppender(ethClient, cfg.BridgeAddr, deployment, logger)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to build appender: %w", err)
 	}
@@ -94,7 +178,7 @@ func NewClaimSync(
 
 	downloader, err := sync.NewEVMDownloader(
 		syncerID.String(),
-		sync.NewAdapterEthClientToMultidownloader(ethClient),
+		mdBackend,
 		cfg.SyncBlockChunkSize,
 		cfg.BlockFinality,
 		cfg.WaitForNewBlocksPeriod.Duration,
@@ -108,6 +192,11 @@ func NewClaimSync(
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to create EVMDownloader: %w", err)
 	}
+	// The claim handlers that trace their transaction run with the active download context (see
+	// buildAppender). sync.EVMDownloader always supports contextual appenders.
+	if !downloader.InstallContextualLogAppenders(contextualAppender) {
+		return nil, errors.New("claimsync: the downloader does not support contextual log appenders")
+	}
 	downloader.SetLogsHook(NewPreferDetailedClaimLogsHook(logger))
 
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
@@ -116,7 +205,10 @@ func NewClaimSync(
 		proc,
 	)
 
-	driver, err := sync.NewEVMDriver(rd, proc, downloader, syncerID.String(), downloadBufferSize, rh, compatibilityChecker)
+	// The legacy downloader keeps the exact one-block-at-a-time behaviour: the processor is passed
+	// straight to the driver without the optional batch wrapper.
+	driver, err := sync.NewEVMDriver(rd, proc, downloader, syncerID.String(),
+		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, fmt.Errorf("claimsync: failed to create EVMDriver: %w", err)
 	}
@@ -137,6 +229,24 @@ func NewClaimSync(
 		syncerID:      syncerID,
 		cfg:           cfg,
 	}, nil
+}
+
+// newStorageAndProcessor creates the storage of the syncer and the processor over it
+func newStorageAndProcessor(
+	cfg ConfigStandalone,
+	syncerID claimsynctypes.ClaimSyncerID,
+	logger aggkitcommon.Logger,
+) (claimsynctypes.ClaimStorager, *processor, error) {
+	dbQueryTimeout := cfg.DBQueryTimeout.Duration
+	if dbQueryTimeout == 0 {
+		dbQueryTimeout = defaultDBTimeout
+	}
+	store, err := claimsyncStorage.NewStandalone(logger, cfg.DBPath, syncerID.String(), cfg.DBQueryTimeout.Duration)
+	if err != nil {
+		return nil, nil, fmt.Errorf("claimsync: failed to create storage: %w", err)
+	}
+
+	return store, newProcessor(logger, store, dbQueryTimeout), nil
 }
 
 // Start starts the synchronization process.
@@ -380,7 +490,9 @@ func (c *ClaimSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Ha
 }
 
 // IsBlockFinalized reports whether the block with the given number and hash, as read from this syncer,
-// is finalized, i.e. it can no longer be reorged. The syncer has no finality flag, but the reorg detector
+// is finalized, i.e. it can no longer be reorged.
+// With the multidownloader, it is the IsFinal flag the multidownloader stores for the block with that hash.
+// The legacy syncer has no finality flag, but the reorg detector
 // tracks every block that was not final when processed and only stops tracking it once its hash was
 // checked against the canonical chain and it is below the finalized block. So a processed block with the
 // given hash that is no longer tracked is finalized.
@@ -388,6 +500,9 @@ func (c *ClaimSync) GetClaimsByGER(ctx context.Context, globalExitRoot common.Ha
 // same hash (unknown, no hash stored for it, or it was replaced after the caller read it).
 func (c *ClaimSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
 	blockHash common.Hash) (finalized, found bool, err error) {
+	if c.multidownloader != nil {
+		return mdrsync.IsBlockFinalized(ctx, c.multidownloader, blockNum, blockHash)
+	}
 	return reorgdetector.IsBlockFinalized(ctx, c.reorgDetector, c.syncerID.String(), blockNum, blockHash,
 		func(ctx context.Context, num uint64) (common.Hash, bool, error) {
 			return c.reader.GetBlockHash(ctx, nil, num)

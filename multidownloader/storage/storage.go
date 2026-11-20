@@ -1,9 +1,11 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/jmoiron/sqlx"
+	sqlite3 "github.com/mattn/go-sqlite3"
 	"github.com/russross/meddler"
 )
 
@@ -136,6 +139,13 @@ func NewBlockRowsFromLogs(logs []types.Log, isFinal bool) map[uint64]*blockRow {
 func NewBlockRowsFromAggkitBlock(blockHeaders aggkittypes.ListBlockHeaders, isFinal bool) map[uint64]*blockRow {
 	blockMap := make(map[uint64]*blockRow)
 	for _, header := range blockHeaders {
+		if header == nil {
+			// A nil entry is an absent header (for example a block whose header
+			// failed to retrieve in a partial result). It must not be
+			// dereferenced here: the shared guard treats it as a missing header
+			// and skips it too.
+			continue
+		}
 		blockMap[header.Number] = newBlockRowFromAggkitBlock(header, isFinal)
 	}
 	return blockMap
@@ -159,9 +169,18 @@ func NewMultidownloaderStorage(logger aggkitcommon.Logger,
 	}, nil
 }
 
+// NewTx starts a new storage transaction.
+//
+// Lock ordering matters: with the SQLite `_txlock=immediate` DSN, db.NewTx
+// issues BEGIN IMMEDIATE and takes the SQLite writer lock. It must therefore
+// run BEFORE any storage mutex is taken. Otherwise a concurrent ingestion
+// transaction that already holds the writer lock could block on the storage
+// mutex while this NewTx blocks on the writer lock, deadlocking until the
+// SQLite busy timeout. a.db is an immutable handle whose BEGIN does not touch
+// any mutex-protected storage state, so no storage lock is needed to start the
+// transaction; the write helpers that operate on the returned transaction take
+// the storage mutex after the transaction has begun.
 func (a *MultidownloaderStorage) NewTx(ctx context.Context) (dbtypes.Txer, error) {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
 	tx, err := db.NewTx(ctx, a.db)
 	if err != nil {
 		return nil, fmt.Errorf("MultidownloaderStorage.NewTx. Error starting transaction: %w", err)
@@ -314,16 +333,67 @@ func (a *MultidownloaderStorage) LogQuery(tx dbtypes.Querier,
 	}, nil
 }
 
-// tx dbtypes.Txer
+// SaveEthLogs persists logs together with the block rows derived from the logs
+// themselves (one row per block number, taken from the first log of that block).
+//
+// Before any write, every log is validated against the derived block rows: a
+// batch whose logs contradict each other for the same block number (a later log
+// carrying a different BlockHash) is rejected with
+// mdrtypes.ErrLogBlockHeaderMismatch, so a mixed/contradictory download batch is
+// never persisted. The guard runs outside the storage lock and before
+// saveLogsAndBlocks, so an invalid batch performs no write at all.
 func (a *MultidownloaderStorage) SaveEthLogs(tx dbtypes.Querier, logs []types.Log, isFinal bool) error {
-	return a.saveLogsAndBlocks(tx, NewBlockRowsFromLogs(logs, isFinal), NewLogRowsFromEthLogs(logs))
+	blockRows := NewBlockRowsFromLogs(logs, isFinal)
+	if err := checkLogsMatchBlockRows(logs, blockRows); err != nil {
+		return err
+	}
+	return a.saveLogsAndBlocks(tx, blockRows, NewLogRowsFromEthLogs(logs))
 }
 
+// SaveEthLogsWithHeaders persists logs together with the block headers retrieved
+// for them.
+//
+// Before any write, every log is validated against the provided headers: a log
+// whose block number has no header (including a nil header entry), or whose
+// BlockHash contradicts the header hash for that block, is rejected with
+// mdrtypes.ErrLogBlockHeaderMismatch. Inconsistent duplicate headers for the
+// same block number are rejected too. The guard runs outside the storage lock
+// and before saveLogsAndBlocks, so an invalid batch performs no write at all.
 func (a *MultidownloaderStorage) SaveEthLogsWithHeaders(tx dbtypes.Querier,
 	blockHeaders aggkittypes.ListBlockHeaders, logs []types.Log, isFinal bool) error {
+	if err := mdrtypes.CheckLogsMatchBlockHeaders(logs, blockHeaders); err != nil {
+		return err
+	}
 	return a.saveLogsAndBlocks(tx, NewBlockRowsFromAggkitBlock(blockHeaders, isFinal), NewLogRowsFromEthLogs(logs))
 }
 
+// checkLogsMatchBlockRows validates logs against the block rows that will be
+// persisted for them. It converts the rows into the aggkittypes header map
+// expected by the shared guard so the storage write path and the step logic
+// apply exactly the same rule.
+func checkLogsMatchBlockRows(logs []types.Log, blockRows map[uint64]*blockRow) error {
+	headerMap := aggkittypes.NewMapBlockHeadersEmpty(len(blockRows))
+	for number, row := range blockRows {
+		if row == nil {
+			continue
+		}
+		headerMap[number] = &aggkittypes.BlockHeader{
+			Number:     row.BlockNumber,
+			Hash:       row.BlockHash,
+			Time:       row.BlockTimestamp,
+			ParentHash: row.BlockParentHash,
+		}
+	}
+	return mdrtypes.CheckLogsMatchBlockHeaderMap(logs, headerMap)
+}
+
+// saveLogsAndBlocks writes the given block rows and log rows. It does not open
+// or manage its own transaction: when tx is nil the writes run directly on the
+// database handle and are therefore not atomic, so a caller that needs the two
+// writes to succeed or fail together must pass its own transaction. Callers must
+// also have already validated that the logs match the block rows (see
+// SaveEthLogs / SaveEthLogsWithHeaders): this function only persists, it does
+// not re-check log/header integrity.
 func (a *MultidownloaderStorage) saveLogsAndBlocks(tx dbtypes.Querier,
 	blockRows map[uint64]*blockRow, logRows []*logRow) error {
 	if tx == nil {
@@ -339,32 +409,223 @@ func (a *MultidownloaderStorage) saveLogsAndBlocks(tx dbtypes.Querier,
 	if err := a.saveLogsNoMutex(tx, logRows); err != nil {
 		return fmt.Errorf("saveLogsAndBlocks: error saving logs: %w", err)
 	}
-	// TODO: Sanity check logs match blockHash match with headers
 	return nil
 }
+
+// ErrBlockHeaderIntegrityConflict is returned when an incoming block header
+// shares the immutable identity (block number + block hash) of a stored one
+// but its mutable metadata (timestamp / parent hash) contradicts the stored
+// value. It is an explicit corruption signal: the caller must surface it rather
+// than silently keeping one of the two values.
+var ErrBlockHeaderIntegrityConflict = errors.New("block header integrity conflict")
+
+// ErrLogIntegrityConflict is returned when an incoming log shares the primary
+// key (address, block_number, log_index) of a stored one but its payload
+// (topics, data, tx hash or tx index) contradicts the stored value. Logs are
+// immutable: a conflicting replay is a corruption signal and must not overwrite
+// the stored row.
+var ErrLogIntegrityConflict = errors.New("log integrity conflict")
 
 func (a *MultidownloaderStorage) saveBlocksNoMutex(tx dbtypes.Querier, blockRows map[uint64]*blockRow) error {
 	if tx == nil {
 		tx = a.db
 	}
-	for _, blockRow := range blockRows {
-		a.logger.Debugf("Inserting block header row: %d %s final=%v", blockRow.BlockNumber,
-			blockRow.BlockHash.Hex(), blockRow.IsFinal)
-		if err := meddler.Insert(tx, "blocks", blockRow); err != nil {
-			return fmt.Errorf("saveBlocksNoMutex: error inserting block header row (%s): %w", blockRow.String(), err)
+	for _, incomingRow := range blockRows {
+		a.logger.Debugf("Inserting block header row: %d %s final=%v", incomingRow.BlockNumber,
+			incomingRow.BlockHash.Hex(), incomingRow.IsFinal)
+		// Fast path: a fresh block header is inserted with the original single
+		// INSERT, so the historical case (one header per new block) adds no
+		// extra SELECT cost.
+		if err := meddler.Insert(tx, "blocks", incomingRow); err != nil {
+			// The only expected benign failure is the primary-key collision on
+			// blocks.block_number, which happens when the very same header is
+			// saved again for a second address's logs. Any other error is
+			// propagated untouched.
+			if !isPrimaryKeyOrUniqueConstraint(err) {
+				return fmt.Errorf("saveBlocksNoMutex: error inserting block header row (%s): %w", incomingRow.String(), err)
+			}
+			originalErr := fmt.Errorf("saveBlocksNoMutex: error inserting block header row (%s): %w", incomingRow.String(), err)
+			existingRows := make([]*blockRow, 0)
+			if queryErr := meddler.QueryAll(tx, &existingRows,
+				"SELECT * FROM blocks WHERE block_number = ?", incomingRow.BlockNumber); queryErr != nil {
+				return fmt.Errorf("saveBlocksNoMutex: error querying existing block header row (%d): %w",
+					incomingRow.BlockNumber, queryErr)
+			}
+			if len(existingRows) == 0 {
+				// The constraint fired but no row is readable: this is not the
+				// benign duplicate-header case, so preserve the original error.
+				return originalErr
+			}
+			if mergeErr := a.mergeBlockRowNoMutex(tx, existingRows[0], incomingRow); mergeErr != nil {
+				return mergeErr
+			}
 		}
 	}
 	return nil
+}
+
+// mergeBlockRowNoMutex reconciles an incoming block header with the stored row
+// that shares its block number. The block hash is the immutable identity:
+//   - a different hash is a reorg and yields a typed DetectedReorgError (never
+//     overwriting or ignoring the stored header);
+//   - the same hash merges only previously unknown metadata (timestamp 0 /
+//     nil parent) and monotonically promotes is_final, rejecting contradictory
+//     known metadata with ErrBlockHeaderIntegrityConflict.
+//
+// The caller already holds the storage mutex and an open SQL transaction, so no
+// locking or transaction management happens here.
+func (a *MultidownloaderStorage) mergeBlockRowNoMutex(tx dbtypes.Querier, existing, incoming *blockRow) error {
+	if existing.BlockHash != incoming.BlockHash {
+		return fmt.Errorf("saveBlocksNoMutex: %w", mdrtypes.NewDetectedReorgError(
+			incoming.BlockNumber,
+			mdrtypes.ReorgDetectionReason_BlockHashMismatch,
+			existing.BlockHash, incoming.BlockHash,
+			"stored block header has a different hash than the incoming header"))
+	}
+
+	merged := *existing
+
+	// Timestamp: only merge an unknown (zero) value; contradicting known values
+	// are an integrity conflict.
+	if existing.BlockTimestamp != 0 && incoming.BlockTimestamp != 0 &&
+		existing.BlockTimestamp != incoming.BlockTimestamp {
+		return fmt.Errorf("saveBlocksNoMutex: block %d: %w: timestamp %d != incoming %d",
+			existing.BlockNumber, ErrBlockHeaderIntegrityConflict,
+			existing.BlockTimestamp, incoming.BlockTimestamp)
+	}
+	if merged.BlockTimestamp == 0 {
+		merged.BlockTimestamp = incoming.BlockTimestamp
+	}
+
+	// Parent hash: only merge an unknown (nil) value; contradicting known
+	// values are an integrity conflict.
+	if existing.BlockParentHash != nil && incoming.BlockParentHash != nil &&
+		*existing.BlockParentHash != *incoming.BlockParentHash {
+		return fmt.Errorf("saveBlocksNoMutex: block %d: %w: parent %s != incoming %s",
+			existing.BlockNumber, ErrBlockHeaderIntegrityConflict,
+			existing.BlockParentHash.Hex(), incoming.BlockParentHash.Hex())
+	}
+	if merged.BlockParentHash == nil {
+		merged.BlockParentHash = incoming.BlockParentHash
+	}
+
+	// Finality is monotonic: once final, it is never downgraded.
+	merged.IsFinal = existing.IsFinal || incoming.IsFinal
+
+	if !blockRowMetadataChanged(existing, &merged) {
+		// Idempotent replay: nothing to write, so skip the UPDATE entirely.
+		return nil
+	}
+
+	// Update only mutable metadata. The (block_number, block_hash) pair in the
+	// WHERE clause is the identity guard, and the hash is never changed.
+	_, err := tx.Exec(
+		"UPDATE blocks SET block_timestamp = ?, block_parent_hash = ?, is_final = ? "+
+			"WHERE block_number = ? AND block_hash = ?",
+		merged.BlockTimestamp, blockParentHashDBValue(merged.BlockParentHash), merged.IsFinal,
+		merged.BlockNumber, merged.BlockHash.Hex())
+	if err != nil {
+		return fmt.Errorf("saveBlocksNoMutex: error updating block header row (%s): %w", merged.String(), err)
+	}
+	return nil
+}
+
+// blockRowMetadataChanged reports whether merged differs from existing in any
+// mutable metadata field (timestamp, parent hash or finality).
+func blockRowMetadataChanged(existing, merged *blockRow) bool {
+	if existing.BlockTimestamp != merged.BlockTimestamp {
+		return true
+	}
+	if existing.IsFinal != merged.IsFinal {
+		return true
+	}
+	if (existing.BlockParentHash == nil) != (merged.BlockParentHash == nil) {
+		return true
+	}
+	if existing.BlockParentHash != nil && *existing.BlockParentHash != *merged.BlockParentHash {
+		return true
+	}
+	return false
+}
+
+// blockParentHashDBValue returns the value to bind for block_parent_hash,
+// preserving the meddler pointer semantics: a known hash is stored as its hex
+// string, an unknown (nil) parent is stored as SQL NULL (which reads back as a
+// nil *common.Hash).
+func blockParentHashDBValue(parent *common.Hash) interface{} {
+	if parent == nil {
+		return nil
+	}
+	return parent.Hex()
 }
 
 func (a *MultidownloaderStorage) saveLogsNoMutex(tx dbtypes.Querier, logRows []*logRow) error {
 	if tx == nil {
 		tx = a.db
 	}
-	for _, log := range logRows {
-		if err := meddler.Insert(tx, "logs", log); err != nil {
-			return fmt.Errorf("saveLogsNoMutex: error inserting eth log (%s): %w", log.String(), err)
+	for _, incoming := range logRows {
+		// Fast path: a fresh log is inserted with the original single INSERT, so
+		// the historical case (one row per new log) adds no extra SELECT cost.
+		if err := meddler.Insert(tx, "logs", incoming); err != nil {
+			if !isPrimaryKeyOrUniqueConstraint(err) {
+				return fmt.Errorf("saveLogsNoMutex: error inserting eth log (%s): %w", incoming.String(), err)
+			}
+			originalErr := fmt.Errorf("saveLogsNoMutex: error inserting eth log (%s): %w", incoming.String(), err)
+			existingRows := make([]*logRow, 0)
+			if queryErr := meddler.QueryAll(tx, &existingRows,
+				"SELECT * FROM logs WHERE address = ? AND block_number = ? AND log_index = ?",
+				incoming.Address.Hex(), incoming.BlockNumber, incoming.Index); queryErr != nil {
+				return fmt.Errorf("saveLogsNoMutex: error querying existing eth log (%s): %w",
+					incoming.String(), queryErr)
+			}
+			if len(existingRows) == 0 {
+				// The constraint fired but no row is readable: this is not the
+				// benign duplicate-log case, so preserve the original error.
+				return originalErr
+			}
+			if mergeErr := mergeLogRow(existingRows[0], incoming); mergeErr != nil {
+				return mergeErr
+			}
 		}
 	}
 	return nil
+}
+
+// isPrimaryKeyOrUniqueConstraint reports whether err is a SQLite PRIMARY KEY
+// or UNIQUE constraint violation. Used for the duplicate block-header case
+// (blocks.block_number) and the duplicate log case
+// (logs.address, logs.block_number, logs.log_index).
+func isPrimaryKeyOrUniqueConstraint(err error) bool {
+	sqliteErr, ok := db.SQLiteErr(err)
+	if !ok || sqliteErr == nil {
+		return false
+	}
+	return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey ||
+		sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
+}
+
+// mergeLogRow reconciles an incoming log with the stored row that shares its
+// primary key. Logs are immutable: an identical payload is a benign idempotent
+// replay (the stored row is kept, nothing is written); a contradictory payload
+// is ErrLogIntegrityConflict and never overwrites the stored row.
+func mergeLogRow(existing, incoming *logRow) error {
+	if logRowPayloadEqual(existing, incoming) {
+		return nil
+	}
+	return fmt.Errorf("saveLogsNoMutex: log address=%s block=%d index=%d: %w: stored %s != incoming %s",
+		existing.Address.Hex(), existing.BlockNumber, existing.Index,
+		ErrLogIntegrityConflict, existing.String(), incoming.String())
+}
+
+// logRowPayloadEqual reports whether the two rows carry the same immutable
+// payload. The primary key (address, block_number, log_index) is assumed to
+// already match; this compares topics, data, tx hash and tx index.
+func logRowPayloadEqual(a, b *logRow) bool {
+	if a.TxHash != b.TxHash || a.TxIndex != b.TxIndex {
+		return false
+	}
+	if a.Topics != b.Topics {
+		return false
+	}
+	return bytes.Equal(a.Data, b.Data)
 }

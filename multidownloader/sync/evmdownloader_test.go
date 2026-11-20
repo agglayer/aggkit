@@ -1047,7 +1047,7 @@ func TestAppendLog_Success(t *testing.T) {
 		},
 	}
 
-	download.appendLog(ctx, block, log)
+	require.NoError(t, download.appendLog(ctx, block, log))
 
 	require.Equal(t, 1, callCount)
 	require.Len(t, block.Events, 1)
@@ -1096,7 +1096,7 @@ func TestAppendLog_RetryOnError(t *testing.T) {
 		},
 	}
 
-	download.appendLog(ctx, block, log)
+	require.NoError(t, download.appendLog(ctx, block, log))
 
 	require.Equal(t, 3, callCount)
 	require.Len(t, block.Events, 1)

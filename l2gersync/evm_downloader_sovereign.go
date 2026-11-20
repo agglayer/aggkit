@@ -92,12 +92,14 @@ func newDownloaderSovereign(
 		now:                time.Now,
 	}
 
-	appender := d.buildAppender(l2GERManager)
-
 	evmDownloader := sync.NewEVMDownloaderImplementation(
 		"l2GERSync", sync.NewAdapterEthClientToMultidownloader(l2Client), blockFinality,
-		waitForNewBlocksPeriod, appender, []common.Address{l2GERAddr},
+		waitForNewBlocksPeriod, nil, []common.Address{l2GERAddr},
 		rh, nil, nil, "l2GERSync")
+	// The appenders are contextual: the insert handler performs L1/L2 RPCs (L1 GER map, removal scan,
+	// L2 GER map) that must observe the active download context, so a cancelled download generation
+	// (e.g. on a reorg, which the driver joins before rolling back) never blocks on a stalled RPC.
+	evmDownloader.InstallContextualLogAppenders(d.buildAppender(l2GERManager))
 
 	d.EVMDownloaderImplementation = evmDownloader
 
@@ -135,21 +137,29 @@ func (d *downloaderSovereign) Download(
 
 		blocks := d.GetEventsByBlockRange(ctx, fromBlock, toBlock)
 		for _, block := range blocks {
-			downloadedCh <- *block
+			// The send must be cancellation-aware: the driver cancels a generation (e.g. on a reorg)
+			// and then waits for this goroutine to return, while the consumer has already stopped.
+			select {
+			case <-ctx.Done():
+				log.Debug("aborting the l2GERSync downloader while sending a block...")
+				close(downloadedCh)
+				return
+			case downloadedCh <- *block:
+			}
 		}
 
 		fromBlock = toBlock + 1
 	}
 }
 
-// buildAppender creates a log appender for the downloader
+// buildAppender creates the contextual log appenders for the downloader.
 // It parses the logs emitted by the L2 GER manager and populates the block events
-// with the corresponding events.
+// with the corresponding events. The appenders receive the active download context.
 func (d *downloaderSovereign) buildAppender(
-	l2GERManager *agglayergerl2.Agglayergerl2) sync.LogAppenderMap {
-	appender := make(sync.LogAppenderMap)
+	l2GERManager *agglayergerl2.Agglayergerl2) sync.ContextualLogAppenderMap {
+	appender := make(sync.ContextualLogAppenderMap)
 
-	appender[removeGEREventSignature] = func(b *sync.EVMBlock, l types.Log) error {
+	appender[removeGEREventSignature] = func(_ context.Context, b *sync.EVMBlock, l types.Log) error {
 		removeGEREvent, err := l2GERManager.ParseUpdateRemovalHashChainValue(l)
 		if err != nil {
 			return fmt.Errorf("error parsing UpdateRemovalHashChainValue event log %+v: %w", l, err)
@@ -165,7 +175,7 @@ func (d *downloaderSovereign) buildAppender(
 		return nil
 	}
 
-	appender[insertGEREventSignature] = func(b *sync.EVMBlock, l types.Log) error {
+	appender[insertGEREventSignature] = func(ctx context.Context, b *sync.EVMBlock, l types.Log) error {
 		insertGEREvent, err := l2GERManager.ParseUpdateHashChainValue(l)
 		if err != nil {
 			return fmt.Errorf("error parsing UpdateHashChainValue event log %+v: %w", l, err)
@@ -174,7 +184,6 @@ func (d *downloaderSovereign) buildAppender(
 		l1InfoTreeLeaf, err := d.l1InfoTreeSync.GetInfoByGlobalExitRoot(insertGEREvent.NewGlobalExitRoot)
 		if err != nil {
 			gerHash := common.Hash(insertGEREvent.NewGlobalExitRoot)
-			ctx := context.Background()
 
 			expectedRace := d.logGERMissingFromL1InfoTree(ctx, gerHash, b.Num, err)
 
@@ -347,7 +356,7 @@ func (d *downloaderSovereign) isGERRemovedFromL2(ctx context.Context, fromBlock 
 		return false
 	}
 
-	timestampL2, err := d.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, ger)
+	timestampL2, err := d.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false, Context: ctx}, ger)
 	if err != nil || timestampL2 == nil {
 		log.Errorf("failed to read L2 globalExitRootMap for GER %s: %v", ger.Hex(), err)
 		return false

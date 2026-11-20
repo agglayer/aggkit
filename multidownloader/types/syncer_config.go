@@ -108,6 +108,55 @@ func (f *SetSyncerConfig) Addresses(blockRange aggkitcommon.BlockRange) []common
 	return addresses
 }
 
+// SyncerConfigs returns an immutable snapshot of the registered syncer configs,
+// sorted by SyncerID for deterministic ordering. The returned slice and every
+// nested slice are copied so callers cannot mutate the internal filters.
+func (f *SetSyncerConfig) SyncerConfigs() []aggkittypes.SyncerConfig {
+	if f == nil || f.filters == nil {
+		return []aggkittypes.SyncerConfig{}
+	}
+	result := make([]aggkittypes.SyncerConfig, 0, len(f.filters))
+	for _, cfg := range f.filters {
+		result = append(result, CopySyncerConfig(cfg))
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].SyncerID < result[j].SyncerID
+	})
+	return result
+}
+
+// CopySyncerConfig returns a deep copy of cfg so callers cannot mutate the
+// nested ContractAddresses/Topic0 slices held by SetSyncerConfig. It is
+// nil-safe: nil slices are preserved as nil and no allocation is performed.
+func CopySyncerConfig(cfg aggkittypes.SyncerConfig) aggkittypes.SyncerConfig {
+	out := cfg
+	if cfg.ContractAddresses != nil {
+		out.ContractAddresses = append([]common.Address(nil), cfg.ContractAddresses...)
+	}
+	if cfg.TransactionRequirements.Topic0 != nil {
+		out.TransactionRequirements.Topic0 = append([]common.Hash(nil), cfg.TransactionRequirements.Topic0...)
+	}
+	return out
+}
+
+// Topic0Match returns true when requiredTopics is empty (match any log,
+// including topicless) or when the log carries a topic0 contained in
+// requiredTopics. Entries in requiredTopics are OR-ed.
+func Topic0Match(requiredTopics []common.Hash, logTopics []common.Hash) bool {
+	if len(requiredTopics) == 0 {
+		return true
+	}
+	if len(logTopics) == 0 {
+		return false
+	}
+	for _, required := range requiredTopics {
+		if required == logTopics[0] {
+			return true
+		}
+	}
+	return false
+}
+
 func elementMatch(slice []SyncerID, element SyncerID) bool {
 	for _, e := range slice {
 		if e == element {

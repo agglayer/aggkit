@@ -8,10 +8,12 @@ import (
 	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -498,4 +500,119 @@ func TestEVMMultidownloader_StorageHeaderByNumber(t *testing.T) {
 		require.Contains(t, err.Error(), "cannot get BlockHeader number=555")
 		require.ErrorIs(t, err, errStorageExample)
 	})
+}
+
+// blockingFilterLogsStorage overrides GetEthLogs so a test can hold the
+// downloader read lock deterministically: every call signals entered and then
+// blocks until release is closed.
+type blockingFilterLogsStorage struct {
+	mdrtypes.Storager
+	entered chan struct{}
+	release chan struct{}
+	logs    []ethtypes.Log
+}
+
+func (b *blockingFilterLogsStorage) GetEthLogs(_ dbtypes.Querier, _ mdrtypes.LogQuery) ([]ethtypes.Log, error) {
+	b.entered <- struct{}{}
+	<-b.release
+	return b.logs, nil
+}
+
+// TestEVMMultidownloader_FilterLogs_ReadLockExcludesRollback pins that FilterLogs
+// performs the availability decision and the storage read under the read lock.
+// Two concurrent readers must both reach the storage read before a rollback
+// writer can take the write lock, so the rollback cannot interleave and turn a
+// covered query into a false-empty result. After the rollback the query is no
+// longer covered and must report unavailable (an error), never a false-empty
+// success.
+func TestEVMMultidownloader_FilterLogs_ReadLockExcludesRollback(t *testing.T) {
+	td := newEVMMultidownloaderTestData(t, true)
+	td.FakeInitialized(t)
+
+	query := ethereum.FilterQuery{
+		Addresses: []common.Address{addr1},
+		FromBlock: big.NewInt(100),
+		ToBlock:   big.NewInt(100),
+	}
+	mdQuery := mdrtypes.NewLogQueryFromEthereumFilter(query)
+	// Mark the exact query as covered so both readers enter the storage read.
+	require.NoError(t, td.mdr.state.OnNewSyncedLogQuery(&mdQuery))
+
+	expectedLogs := []ethtypes.Log{{BlockNumber: 100, Address: addr1}}
+	blocking := &blockingFilterLogsStorage{
+		Storager: td.usedStorage,
+		entered:  make(chan struct{}, 2),
+		release:  make(chan struct{}),
+		logs:     expectedLogs,
+	}
+	td.mdr.storage = blocking
+
+	type filterResult struct {
+		logs []ethtypes.Log
+		err  error
+	}
+	results := make(chan filterResult, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			logs, err := td.mdr.FilterLogs(context.Background(), query)
+			results <- filterResult{logs: logs, err: err}
+		}()
+	}
+	// Both readers hold the read lock once they are inside GetEthLogs.
+	for i := 0; i < 2; i++ {
+		select {
+		case <-blocking.entered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("FilterLogs reader never reached the storage read")
+		}
+	}
+
+	// A rollback writer must not be able to mutate the state while any reader
+	// holds the read lock.
+	writerAcquired := make(chan struct{})
+	writerDone := make(chan struct{})
+	go func() {
+		td.mdr.mutex.Lock()
+		close(writerAcquired)
+		// Rollback: drop all coverage so the query is no longer available.
+		td.mdr.state = NewEmptyState()
+		td.mdr.mutex.Unlock()
+		close(writerDone)
+	}()
+
+	// Guard (not a synchronization point): with both readers provably holding
+	// the read lock, the writer's write lock cannot be granted yet.
+	select {
+	case <-writerAcquired:
+		t.Fatal("rollback writer acquired the write lock while readers held the read lock")
+	case <-time.After(250 * time.Millisecond):
+	}
+
+	// Release the readers: they must return the stored logs, not a false-empty
+	// result, because the rollback could not interleave between the availability
+	// decision and the storage read.
+	close(blocking.release)
+	for i := 0; i < 2; i++ {
+		select {
+		case res := <-results:
+			require.NoError(t, res.err)
+			require.Equal(t, expectedLogs, res.logs)
+		case <-time.After(5 * time.Second):
+			t.Fatal("FilterLogs reader did not finish")
+		}
+	}
+
+	// Only after all readers finished can the writer roll back.
+	select {
+	case <-writerDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("rollback writer never acquired the lock after the readers finished")
+	}
+
+	// The query is no longer covered: it must report unavailable, never a
+	// false-empty success.
+	resp, err := td.mdr.LogQuery(context.Background(), mdQuery)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "logs not synced for query")
+	require.Equal(t, mdrtypes.LogQueryResponse{}, resp)
 }

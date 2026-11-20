@@ -11,6 +11,7 @@
 - [Bridge Tracker](./bridgetracker.md)
 - [EthTxManager](./ethtxmanager.md)
 - [Etherman](./etherman.md)
+- [L1 shared downloader](./l1_shared_downloader.md)
 - [Release lifecycle](./release_lifecycle.md)
   - [Verifying release images](./release_verification.md)
   - [Release settings runbook](./release_admin_runbook.md)

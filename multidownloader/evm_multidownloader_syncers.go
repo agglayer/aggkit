@@ -39,7 +39,29 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 		defer dh.log.Debugf("EVMMultidownloader.FilterLogs: finished query: %+v", query)
 	}
 	logQuery := mdrtypes.NewLogQueryFromEthereumFilter(query)
-	for !dh.IsAvailable(logQuery) {
+	for {
+		// The availability decision and the storage read must be atomic with
+		// respect to the sync state: otherwise a rollback between the check and
+		// the read could return a false-empty complete result. The mutex is
+		// released before waiting (never held across the sleep/RPC).
+		dh.mutex.RLock()
+		if dh.state == nil {
+			dh.mutex.RUnlock()
+			return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: multidownloader not initialized")
+		}
+		if dh.state.IsAvailable(logQuery) {
+			logs, err := dh.storage.GetEthLogs(nil, logQuery)
+			dh.mutex.RUnlock()
+			if err != nil {
+				return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: cannot get logs: %w", err)
+			}
+			if debugSyncerInterface {
+				dh.log.Debugf("EVMMultidownloader.FilterLogs(%d - %d): len(logs)= %d",
+					query.FromBlock, query.ToBlock, len(logs))
+			}
+			return logs, nil
+		}
+		dh.mutex.RUnlock()
 		if debugSyncerInterface {
 			dh.log.Debugf("EVMMultidownloader.FilterLogs: waiting %s for logs to be available: %s",
 				dh.cfg.WaitPeriodToCheckCatchUp.String(), logQuery.String())
@@ -52,14 +74,6 @@ func (dh *EVMMultidownloader) FilterLogs(ctx context.Context, query ethereum.Fil
 				logQuery.String(), ctx.Err())
 		}
 	}
-	logs, err := dh.storage.GetEthLogs(nil, logQuery)
-	if err != nil {
-		return nil, fmt.Errorf("EVMMultidownloader.FilterLogs: cannot get logs: %w", err)
-	}
-	if debugSyncerInterface {
-		dh.log.Debugf("EVMMultidownloader.FilterLogs(%d - %d): len(logs)= %d", query.FromBlock, query.ToBlock, len(logs))
-	}
-	return logs, nil
 }
 
 // HeaderByNumber gets the block header for the given block number from storage or ethClient
@@ -131,8 +145,8 @@ func (dh *EVMMultidownloader) LogQuery(ctx context.Context,
 	if !dh.IsInitialized() {
 		return mdrtypes.LogQueryResponse{}, fmt.Errorf("EVMMultidownloader.LogQuery: multidownloader not initialized")
 	}
-	dh.mutex.Lock()
-	defer dh.mutex.Unlock()
+	dh.mutex.RLock()
+	defer dh.mutex.RUnlock()
 	isAval, availQuery := dh.state.IsPartiallyAvailable(query)
 	if !isAval {
 		return mdrtypes.LogQueryResponse{},

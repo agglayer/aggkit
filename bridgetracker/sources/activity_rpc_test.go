@@ -54,14 +54,14 @@ func expectRange(client *mocks.EthClienter, from, to uint64) {
 		Return(&aggkittypes.BlockHeader{Number: to}, nil)
 }
 
-// expectTxSender stubs client's eth_getTransactionByHash Call so ExtractTxnAddresses' fast path
+// expectTxSender stubs client's eth_getTransactionByHash CallContext so ExtractTxnAddresses' fast path
 // resolves sender straight off the transaction (one sent directly to the bridge contract), with
 // no debug_traceTransaction needed.
 func expectTxSender(t *testing.T, client *mocks.EthClienter, sender common.Address) {
 	t.Helper()
 	client.EXPECT().
-		Call(mock.Anything, bridgesync.GetTransactionByHashEndpoint, mock.Anything).
-		Run(func(result any, _ string, _ ...any) {
+		CallContext(mock.Anything, mock.Anything, bridgesync.GetTransactionByHashEndpoint, mock.Anything).
+		Run(func(_ context.Context, result any, _ string, _ ...any) {
 			tx, ok := result.(*bridgesync.Transaction)
 			require.True(t, ok)
 			tx.FromRaw = sender.Hex()

@@ -15,6 +15,9 @@ type ReorgProcessor interface {
 	// - detectedReorgError: the error returned by the reorg detection logic, containing
 	//   the offending block number and the reason for the reorg detection
 	// - finalizedBlockTag: the block tag to consider as finalized (typically finalizedBlock)
+	// It returns the first block number removed by the reorg (the block after the common
+	// ancestor). It can be lower than detectedReorgError.OffendingBlockNumber when the
+	// reorg started before the block where it was detected.
 	ProcessReorg(ctx context.Context, detectedReorgError DetectedReorgError,
-		finalizedBlockTag aggkittypes.BlockNumberFinality) error
+		finalizedBlockTag aggkittypes.BlockNumberFinality) (uint64, error)
 }
