@@ -100,7 +100,7 @@ func TestBackfillTxnSender(t *testing.T) {
 	require.Equal(t, 1, bridgeCount)
 
 	// Test getting records needing backfill
-	bridgeRecords, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
+	bridgeRecords, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10, nil)
 	require.NoError(t, err)
 	require.Len(t, bridgeRecords, 1)
 	require.Equal(t, uint64(1), bridgeRecords[0].BlockNum)
@@ -451,7 +451,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfillCount(t *testing.T) {
 		require.Equal(t, 2, count)
 
 		// Verify getRecordsNeedingBackfill also excludes these sources
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10, nil)
 		require.NoError(t, err)
 		require.Len(t, records, 2)
 
@@ -523,7 +523,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		require.NoError(t, err)
 		defer backfiller.Close()
 
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10, nil)
 		require.NoError(t, err)
 		require.Len(t, records, 1)
 		require.Equal(t, uint64(1), records[0].BlockNum)
@@ -549,7 +549,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		backfiller.db.Close()
 
 		ctx := context.Background()
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10, nil)
 		require.Error(t, err)
 		require.Nil(t, records)
 		require.Contains(t, err.Error(), "failed to query records needing backfill")
@@ -573,7 +573,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill(t *testing.T) {
 		backfiller.db.Close()
 
 		ctx := context.Background()
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, "bridge", 10, nil)
 		require.Error(t, err)
 		require.Nil(t, records)
 		require.Contains(t, err.Error(), "failed to query records needing backfill")
@@ -1701,7 +1701,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill_Cases(t *testing.T) {
 
 	t.Run("empty database returns no records", func(t *testing.T) {
 		backfiller, _, ctx := setup(t)
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10, nil)
 		require.NoError(t, err)
 		require.Empty(t, records)
 	})
@@ -1713,7 +1713,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill_Cases(t *testing.T) {
 		_, err := sqlDB.Exec("UPDATE bridge SET txn_sender = NULL WHERE block_num = 1 AND block_pos = 0")
 		require.NoError(t, err)
 
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10, nil)
 		require.NoError(t, err)
 		require.Len(t, records, 1)
 		require.Equal(t, uint64(1), records[0].BlockNum)
@@ -1727,7 +1727,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill_Cases(t *testing.T) {
 		_, err := sqlDB.Exec("UPDATE bridge SET txn_sender = '' WHERE block_num = 1 AND block_pos = 0")
 		require.NoError(t, err)
 
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10, nil)
 		require.NoError(t, err)
 		require.Len(t, records, 1)
 	})
@@ -1739,7 +1739,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill_Cases(t *testing.T) {
 		_, err := sqlDB.Exec("UPDATE bridge SET from_address = NULL WHERE block_num = 1 AND block_pos = 0")
 		require.NoError(t, err)
 
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10, nil)
 		require.NoError(t, err)
 		require.Len(t, records, 1)
 		require.Nil(t, records[0].FromAddress)
@@ -1752,7 +1752,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill_Cases(t *testing.T) {
 		_, err := sqlDB.Exec("UPDATE bridge SET from_address = '' WHERE block_num = 1 AND block_pos = 0")
 		require.NoError(t, err)
 
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10, nil)
 		require.NoError(t, err)
 		require.Len(t, records, 1)
 	})
@@ -1764,7 +1764,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill_Cases(t *testing.T) {
 		insertBlock(t, sqlDB, 1)
 		insertBridge(t, sqlDB, newBridge(1, 0))
 
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10, nil)
 		require.NoError(t, err)
 		require.Empty(t, records)
 	})
@@ -1778,9 +1778,67 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill_Cases(t *testing.T) {
 		_, err := sqlDB.Exec("UPDATE bridge SET txn_sender = NULL")
 		require.NoError(t, err)
 
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 2)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 2, nil)
 		require.NoError(t, err)
 		require.Len(t, records, 2)
+	})
+
+	t.Run("nil cursor includes block 0 and returns key order", func(t *testing.T) {
+		backfiller, sqlDB, ctx := setup(t)
+		insertBlock(t, sqlDB, 0)
+		insertBlock(t, sqlDB, 1)
+		insertBridge(t, sqlDB, newBridge(0, 0))
+		insertBridge(t, sqlDB, newBridge(0, 1))
+		insertBridge(t, sqlDB, newBridge(1, 0))
+		_, err := sqlDB.Exec("UPDATE bridge SET txn_sender = NULL")
+		require.NoError(t, err)
+
+		// A nil cursor must select from the very beginning, so the record at (0,0) - the
+		// smallest possible key - is included and the page is ordered by (block_num, block_pos).
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10, nil)
+		require.NoError(t, err)
+		require.Len(t, records, 3)
+		require.Equal(t, []recordKey{
+			{blockNum: 0, blockPos: 0},
+			{blockNum: 0, blockPos: 1},
+			{blockNum: 1, blockPos: 0},
+		}, []recordKey{
+			{blockNum: records[0].BlockNum, blockPos: records[0].BlockPos},
+			{blockNum: records[1].BlockNum, blockPos: records[1].BlockPos},
+			{blockNum: records[2].BlockNum, blockPos: records[2].BlockPos},
+		})
+	})
+
+	t.Run("cursor advances strictly past the last read key without reprocessing", func(t *testing.T) {
+		backfiller, sqlDB, ctx := setup(t)
+		insertBlock(t, sqlDB, 0)
+		insertBlock(t, sqlDB, 1)
+		insertBridge(t, sqlDB, newBridge(0, 0))
+		insertBridge(t, sqlDB, newBridge(0, 1))
+		insertBridge(t, sqlDB, newBridge(1, 0))
+		_, err := sqlDB.Exec("UPDATE bridge SET txn_sender = NULL")
+		require.NoError(t, err)
+
+		first, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 2, nil)
+		require.NoError(t, err)
+		require.Len(t, first, 2)
+		require.Equal(t, uint64(0), first[0].BlockNum)
+		require.Equal(t, uint64(0), first[0].BlockPos)
+		require.Equal(t, uint64(0), first[1].BlockNum)
+		require.Equal(t, uint64(1), first[1].BlockPos)
+
+		cursor := &recordKey{blockNum: first[1].BlockNum, blockPos: first[1].BlockPos}
+		second, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 2, cursor)
+		require.NoError(t, err)
+		require.Len(t, second, 1)
+		require.Equal(t, uint64(1), second[0].BlockNum)
+		require.Equal(t, uint64(0), second[0].BlockPos)
+
+		// The next page is empty: the strict (>) predicate never returns a record already read.
+		cursor = &recordKey{blockNum: second[0].BlockNum, blockPos: second[0].BlockPos}
+		third, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 2, cursor)
+		require.NoError(t, err)
+		require.Empty(t, third)
 	})
 
 	t.Run("context cancelled returns error", func(t *testing.T) {
@@ -1793,7 +1851,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill_Cases(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err = backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		_, err = backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10, nil)
 		require.Error(t, err)
 	})
 
@@ -1811,7 +1869,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill_Cases(t *testing.T) {
 		require.NoError(t, err)
 		// Block 3: both fields populated → excluded
 
-		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		records, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10, nil)
 		require.NoError(t, err)
 		require.Len(t, records, 2)
 
@@ -1824,7 +1882,7 @@ func TestBackfillTxnSender_getRecordsNeedingBackfill_Cases(t *testing.T) {
 		backfiller.db.Close()
 
 		ctx := context.Background()
-		_, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10)
+		_, err := backfiller.getRecordsNeedingBackfill(ctx, bridgeTableName, 10, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to query records needing backfill")
 	})

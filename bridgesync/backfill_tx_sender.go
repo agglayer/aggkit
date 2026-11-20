@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 	"sync"
 	"time"
 
@@ -82,69 +81,39 @@ type BackfillTxnSender struct {
 	// sentinel. It defaults to backfillMaxConsecutiveRetries and is a field so tests can shrink it.
 	maxConsecutiveRetries int
 
-	// completed tracks the records that were successfully processed but whose
+	// completed tracks the records successfully processed in the current run whose
 	// from_address legitimately stays NULL (for example an asset event whose trace has no
-	// bridgeAsset call, or a non-zero caller that cannot be determined). Such a record still
-	// matches missingFieldsCondition (from_address IS NULL) after its txn_sender is persisted,
-	// so without this set it would be re-selected forever and turn the retry loop into a
-	// no-progress busy loop. The set is scoped to a single backfillTable run and is NOT
-	// persisted: a restart simply re-attempts each such record once and re-marks it. A record
-	// whose extraction failed is never added, so it stays eligible for retry.
-	completedMu sync.Mutex
-	completed   map[recordKey]struct{}
+	// bridgeAsset call). Such a record still matches missingFieldsCondition after its
+	// txn_sender is persisted, so when a failed batch is retried at the same keyset cursor it
+	// would be re-selected and re-resolved. The keyset cursor - not this set - guarantees the
+	// run makes forward progress; the set only keeps an in-place batch retry from re-resolving
+	// a record that already succeeded. It is scoped to a single backfillTable run, is not
+	// persisted, and is only touched from the single backfillTable goroutine (never from the
+	// extraction workers), so it needs no synchronization. A record whose extraction failed is
+	// never added, so it stays eligible for retry.
+	completed map[recordKey]struct{}
 }
 
-// recordKey identifies one bridge record within a table run.
+// recordKey identifies one bridge record within a table run. It mirrors the (block_num,
+// block_pos) primary key used as the keyset pagination cursor.
 type recordKey struct {
 	blockNum uint64
 	blockPos uint64
 }
 
-// resetCompleted starts a fresh completed set for a table run.
-func (b *BackfillTxnSender) resetCompleted() {
-	b.completedMu.Lock()
-	b.completed = make(map[recordKey]struct{})
-	b.completedMu.Unlock()
-}
-
 // markCompleted records that a record was successfully processed and its from_address will
-// legitimately stay NULL, so it must not be re-selected in this run.
+// legitimately stay NULL, so it must not be re-resolved if its batch is retried in place.
 func (b *BackfillTxnSender) markCompleted(blockNum, blockPos uint64) {
-	b.completedMu.Lock()
 	if b.completed == nil {
 		b.completed = make(map[recordKey]struct{})
 	}
 	b.completed[recordKey{blockNum: blockNum, blockPos: blockPos}] = struct{}{}
-	b.completedMu.Unlock()
 }
 
-// completedSnapshot returns a copy of the completed set for building an exclusion clause.
-func (b *BackfillTxnSender) completedSnapshot() map[recordKey]struct{} {
-	b.completedMu.Lock()
-	defer b.completedMu.Unlock()
-	if len(b.completed) == 0 {
-		return nil
-	}
-	out := make(map[recordKey]struct{}, len(b.completed))
-	for k := range b.completed {
-		out[k] = struct{}{}
-	}
-	return out
-}
-
-// completedExclusionSQL builds a WHERE fragment that excludes the completed records. The keys
-// are inlined as unsigned integers (never user input), so the parameter list of the enclosing
-// query is unchanged. The number of completed records is bounded by the (rare) records whose
-// from_address legitimately stays NULL.
-func completedExclusionSQL(completed map[recordKey]struct{}) string {
-	if len(completed) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	for k := range completed {
-		fmt.Fprintf(&sb, " AND NOT (block_num = %d AND block_pos = %d)", k.blockNum, k.blockPos)
-	}
-	return sb.String()
+// isCompleted reports whether a record was already successfully processed in this run.
+func (b *BackfillTxnSender) isCompleted(blockNum, blockPos uint64) bool {
+	_, ok := b.completed[recordKey{blockNum: blockNum, blockPos: blockPos}]
+	return ok
 }
 
 // BackfillOption customizes BackfillTxnSender construction.
@@ -231,21 +200,27 @@ func (b *BackfillTxnSender) BackfillAll(ctx context.Context) error {
 
 // backfillTable processes a specific table to backfill txn_sender field.
 //
+// Selection uses keyset pagination over the (block_num, block_pos) primary key: the cursor starts
+// unset and each page is fetched with a strict "greater than the last read key" predicate ordered
+// by (block_num, block_pos). This is bounded in SQL (no growing NOT IN list) and guarantees the run
+// makes forward progress even for a record whose from_address legitimately stays NULL and therefore
+// keeps matching the selection after its txn_sender is persisted.
+//
 // The loop is a cancellation-aware, bounded-backoff scheduler rather than a one-shot scan: a batch
 // whose records cannot be resolved *yet* (for example because the multidownloader has not covered
 // their blocks) is retried once coverage advances instead of abandoning the whole table after the
-// first failure. Successful updates are persisted by processBatch before it returns, so the failed
-// rows are the only ones re-selected on the next pass and the successful work is never lost. This
-// matters because the backfill job is started once at startup: without the retry the historical
-// rows would stay empty until the next process restart.
+// first failure. Successful updates are persisted by processBatch before it returns, so on a retry
+// the cursor is deliberately not advanced and only the failed rows are re-processed; the
+// successfully completed rows whose from_address stays NULL are skipped via the in-memory completed
+// set. This matters because the backfill job is started once at startup: without the retry the
+// historical rows would stay empty until the next process restart.
 //
 //nolint:unparam // tableName is kept for future extensibility
 func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string) error {
 	b.log.Infof("Starting backfill for %s table, syncFromInBridges: %v", tableName, b.syncFromInBridges)
 
-	// Start the run with an empty completed set: the records whose from_address legitimately
-	// stays NULL are tracked for the lifetime of this run so they are not re-selected forever.
-	b.resetCompleted()
+	// The completed set is scoped to this run and is not persisted.
+	b.completed = nil
 
 	// Get total count of records that need backfilling
 	totalCount, err := b.getRecordsNeedingBackfillCount(ctx, tableName)
@@ -265,6 +240,10 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 	// a batch makes progress, so the bound applies to a sustained failure and not to the total
 	// number of retries across the whole table.
 	consecutiveRetries := 0
+	// cursor is the (block_num, block_pos) of the last record read in the previous page. A nil
+	// cursor selects from the beginning; the keyset predicate is strict (>) so a record is never
+	// read twice within a successful pass and the run always advances.
+	var cursor *recordKey
 	for {
 		// Check if context is cancelled before processing next batch
 		if err := ctx.Err(); err != nil {
@@ -272,7 +251,7 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 			return err
 		}
 
-		records, err := b.getRecordsNeedingBackfill(ctx, tableName, batchSize)
+		records, err := b.getRecordsNeedingBackfill(ctx, tableName, batchSize, cursor)
 		if err != nil {
 			return fmt.Errorf("failed to get records for backfilling: %w", err)
 		}
@@ -280,17 +259,43 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 			break
 		}
 
-		processed, batchErr := b.processBatch(ctx, tableName, records)
+		// The page's upper bound is the last record READ, not the last record processed: a record
+		// whose from_address legitimately stays NULL is filtered out of the processing set below
+		// but must still advance the cursor so it is never re-selected.
+		lastRead := recordKey{
+			blockNum: records[len(records)-1].BlockNum,
+			blockPos: records[len(records)-1].BlockPos,
+		}
+
+		// Skip records already completed in this run: they only survive in the selection because
+		// their from_address stays NULL, and re-resolving them would duplicate work.
+		pending := make([]RecordToBackfill, 0, len(records))
+		for i := range records {
+			if b.isCompleted(records[i].BlockNum, records[i].BlockPos) {
+				continue
+			}
+			pending = append(pending, records[i])
+		}
+		if len(pending) == 0 {
+			// The whole page was already completed: advance and keep scanning instead of
+			// re-processing it.
+			cursor = &lastRead
+			continue
+		}
+
+		processed, batchErr := b.processBatch(ctx, tableName, pending)
 		backfilled += processed
 		if batchErr == nil {
 			consecutiveRetries = 0
+			cursor = &lastRead
 			b.log.Infof("backfilled %d records in %s table so far", backfilled, tableName)
 			continue
 		}
 
 		// Successful updates were already persisted by processBatch; the failed rows stay unchanged
-		// and are re-selected on the next pass. Honour cancellation before scheduling a retry so a
-		// cancelled backfill never sleeps and never leaves a pending RPC behind.
+		// and are retried in place because the cursor is deliberately not advanced. Honour
+		// cancellation before scheduling a retry so a cancelled backfill never sleeps and never
+		// leaves a pending RPC behind.
 		if err := ctx.Err(); err != nil {
 			return batchErr
 		}
@@ -300,7 +305,7 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 			// Retrying the same records cannot succeed (for example a stale canonical inclusion):
 			// stop with a clear error instead of spinning on the same invalid data.
 			return fmt.Errorf("%d/%d records backfilled in %s before a permanent failure: %w",
-				processed, len(records), tableName, batchErr)
+				processed, len(pending), tableName, batchErr)
 		case backfillBatchTransient:
 			consecutiveRetries++
 			if consecutiveRetries > b.maxConsecutiveRetries {
@@ -308,7 +313,7 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 				// than retrying forever. Coverage unavailability is handled below and is not capped.
 				return fmt.Errorf(
 					"%d/%d records backfilled in %s after %d consecutive failed attempts: %w",
-					processed, len(records), tableName, consecutiveRetries-1, batchErr)
+					processed, len(pending), tableName, consecutiveRetries-1, batchErr)
 			}
 		case backfillBatchUnavailable:
 			// The records are simply not covered yet. Retry without a fixed cap while the context
@@ -318,7 +323,7 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 
 		delay := b.retryDelay(consecutiveRetries)
 		b.log.Warnf("backfill batch for %s failed (%d/%d records backfilled); retry %d in %s: %v",
-			tableName, processed, len(records), consecutiveRetries, delay, batchErr)
+			tableName, processed, len(pending), consecutiveRetries, delay, batchErr)
 		if err := b.sleep(ctx, delay); err != nil {
 			return err
 		}
@@ -476,30 +481,43 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfillCount(ctx context.Context, 
 	return count, nil
 }
 
-// getRecordsNeedingBackfill retrieves records that need txn_sender backfilling
+// getRecordsNeedingBackfill retrieves records that need txn_sender backfilling using keyset
+// pagination over the (block_num, block_pos) primary key. after, when non-nil, is the last key read
+// by the previous page: only records strictly greater than it are returned, ordered by
+// (block_num, block_pos). A nil after selects from the beginning (so a record at (0,0) is not
+// skipped). The result is bounded by limit and the query has no growing exclusion list.
 func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	ctx context.Context,
 	tableName string,
 	limit int,
+	after *recordKey,
 ) ([]RecordToBackfill, error) {
 	missingFieldsCond := b.missingFieldsCondition()
-	// Exclude the records already processed in this run whose from_address legitimately stays
-	// NULL: they still match missingFieldsCond, so re-selecting them would loop forever.
-	exclusion := completedExclusionSQL(b.completedSnapshot())
+	// The placeholders are positional (?) rather than numbered ($N) on purpose: SQLite treats $N
+	// as a *named* parameter whose index follows the order of first appearance, not the number
+	// written, so mixing $N with a predicate that appears before the LIMIT silently binds the
+	// arguments to the wrong parameters. Positional placeholders keep the binding unambiguous.
+	keysetCond := ""
+	args := []any{BridgeSourceBackwardLET, BridgeSourceForwardLET}
+	if after != nil {
+		keysetCond = "AND (block_num > ? OR (block_num = ? AND block_pos > ?))"
+		args = append(args, after.blockNum, after.blockNum, after.blockPos)
+	}
+	args = append(args, limit)
 	//nolint:gosec
 	query := fmt.Sprintf(`
 		SELECT *
 		FROM %s
 		WHERE (%s)
-		AND (source IS NULL OR (source != $1 AND source != $2))
+		AND (source IS NULL OR (source != ? AND source != ?))
 		%s
-		LIMIT $3
-	`, tableName, missingFieldsCond, exclusion)
+		ORDER BY block_num ASC, block_pos ASC
+		LIMIT ?
+	`, tableName, missingFieldsCond, keysetCond)
 
 	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
 	defer cancel()
-	rows, err := b.db.QueryContext(dbCtx, query,
-		BridgeSourceBackwardLET, BridgeSourceForwardLET, limit)
+	rows, err := b.db.QueryContext(dbCtx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query records needing backfill: %w", err)
 	}
@@ -584,9 +602,10 @@ func (b *BackfillTxnSender) processBatch(
 			return 0, fmt.Errorf("failed to bulk update txn_sender for %d records: %w", len(updates), err)
 		}
 		// The update is persisted: a record whose from_address legitimately stays NULL will still
-		// match missingFieldsCond, so mark it completed for this run to avoid re-selecting it
-		// forever. Records whose from_address was written do not need the marker (they no longer
-		// match), and records that failed extraction are never marked, so they stay retryable.
+		// match missingFieldsCond, so mark it completed for this run. That keeps an in-place batch
+		// retry (same keyset cursor) from re-resolving it. Records whose from_address was written
+		// no longer match, and records that failed extraction are never marked, so they stay
+		// retryable.
 		for i := range updates {
 			if updates[i].FromAddr == nil {
 				b.markCompleted(updates[i].BlockNum, updates[i].BlockPos)
