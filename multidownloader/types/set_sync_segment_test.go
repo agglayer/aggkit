@@ -1,6 +1,7 @@
 package types
 
 import (
+	"errors"
 	"math"
 	"testing"
 
@@ -1412,7 +1413,7 @@ func collectPlannedQueries(t *testing.T, set *SetSyncSegment, chunkSize uint32,
 	queries := []LogQuery{}
 	for i := 0; i < 10000; i++ {
 		query, err := set.NextQuery(chunkSize, maxBlockNumber, applyMaxBlockNumber)
-		if err == ErrFinished {
+		if errors.Is(err, ErrFinished) {
 			return queries
 		}
 		require.NoError(t, err, "unexpected planner error at iteration %d", i)
