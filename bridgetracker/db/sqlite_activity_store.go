@@ -353,6 +353,10 @@ type sqliteActivityStore struct {
 	// caller can never miss the notification its own registration provokes
 	subMu   sync.Mutex
 	waiters map[common.Address]map[chan struct{}]struct{}
+
+	// revisions caches each address's revision between writes to its rows (see
+	// GetActivityRevision); every write path below invalidates it
+	revisions *activityRevisionCache
 }
 
 // compile-time check: the SQLite adapter fulfils the full port
@@ -398,6 +402,7 @@ func NewSQLiteActivityStore(
 		now:          time.Now,
 		numAddresses: numAddresses,
 		trigger:      make(chan common.Address, triggerBufferSize),
+		revisions:    newActivityRevisionCache(),
 		waiters:      make(map[common.Address]map[chan struct{}]struct{}),
 	}, nil
 }
@@ -742,6 +747,7 @@ func (s *sqliteActivityStore) PruneIdle(olderThan time.Time) (int, error) {
 	}
 
 	res, err := s.db.Exec(query, args...)
+	s.revisions.reset() // which addresses went is not known: drop every cached revision
 	if err != nil {
 		return 0, fmt.Errorf("pruning idle activity addresses: %w", err)
 	}
@@ -870,6 +876,11 @@ func (s *sqliteActivityStore) bridgeRows(addr string) ([]*activityBridgeRow, err
 // (addr, network, deposit count): a row another address holds for the same bridge, or another
 // bridge sharing the global index, is never touched
 func (s *sqliteActivityStore) forgetBridges(addr string, keys []domain.BridgeKey) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	s.revisions.invalidate(addr)
+	defer s.revisions.invalidate(addr)
 	for _, key := range keys {
 		if _, err := s.db.Exec(
 			"DELETE FROM activity_bridge WHERE from_address = ? AND origin_network_id = ? AND deposit_count = ?",
@@ -888,7 +899,9 @@ func (s *sqliteActivityStore) forgetBridges(addr string, keys []domain.BridgeKey
 // address with nothing cached (no-op); a failure is logged, not propagated, same as
 // registerAddress/sqliteRegistry's own best-effort bookkeeping writes
 func (s *sqliteActivityStore) FlushActivity(fromAddress common.Address) {
+	s.revisions.invalidate(fromAddress.Hex())
 	res, err := s.db.Exec("DELETE FROM activity_address WHERE from_address = ?", fromAddress.Hex())
+	s.revisions.forget(fromAddress.Hex())
 	if err != nil {
 		s.logger.Warnf("bridgetracker: flushing activity cache for %s: %v", fromAddress, err)
 		return
@@ -953,6 +966,8 @@ func (s *sqliteActivityStore) saveBridgeRow(
 	}
 	revisionHash := domain.HashActivityEntry(entry)
 
+	s.revisions.invalidate(addr)
+	defer s.revisions.invalidate(addr)
 	_, err = s.db.Exec(
 		`INSERT INTO activity_bridge
 			(global_index, from_address, schema_version, origin_network_id, deposit_count, destination_network,
@@ -1098,15 +1113,25 @@ func (s *sqliteActivityStore) GetActivity(
 // same after a restart and after the address's rows are rebuilt. domain.EmptyActivityRevision for
 // an address with nothing stored. Like ActivityCache's, it does not count as an access. Only a row
 // with no revision_hash has its data read (and decoded, see revisionHash, backfillRevisionHashes); every
-// other row contributes its stored hash without its data being read. Runs under ctx
+// other row contributes its stored hash without its data being read. Runs under ctx. The result is
+// cached until the next write to the address's rows (see activityRevisionCache): the rows are read
+// once per change, not once per request
 func (s *sqliteActivityStore) GetActivityRevision(ctx context.Context, fromAddress common.Address) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	addr := fromAddress.Hex()
+	if revision, ok := s.revisions.get(addr); ok {
+		return revision, nil
+	}
+	gen := s.revisions.begin(addr)
 	var rows []*activityBridgeRow
 	if err := meddler.QueryAll(contextDB{ctx: ctx, db: s.db}, &rows,
 		`SELECT global_index, from_address, schema_version, origin_network_id, deposit_count, destination_network,
 			tx_hash, claim_status, tracker_claim_status, block_timestamp, created_at, updated_at, revision_hash,
 			gi_sort, CASE WHEN length(revision_hash) = ? THEN x'' ELSE data END AS data
 		 FROM activity_bridge WHERE from_address = ? AND schema_version = ?`,
-		len(domain.ActivityEntryHash{}), fromAddress.Hex(), activitySchemaVersion); err != nil {
+		len(domain.ActivityEntryHash{}), addr, activitySchemaVersion); err != nil {
 		return "", fmt.Errorf("listing cached bridges for %s: %w", fromAddress, err)
 	}
 	var revision domain.ActivityRevision
@@ -1117,5 +1142,6 @@ func (s *sqliteActivityStore) GetActivityRevision(ctx context.Context, fromAddre
 		}
 		revision = revision.Add(hash)
 	}
+	s.revisions.store(addr, gen, revision.String())
 	return revision.String(), nil
 }

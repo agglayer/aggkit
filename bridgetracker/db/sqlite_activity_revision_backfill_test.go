@@ -54,6 +54,7 @@ func TestSQLiteActivityStoreBackfillsRevisionHashes(t *testing.T) {
 	require.NoError(t, err)
 	_, err = store.db.Exec("UPDATE activity_bridge SET data = x'00'") // nothing may be decoded any more
 	require.NoError(t, err)
+	store.revisions.reset() // the rows were changed behind the store's back
 	got, err = store.GetActivityRevision(t.Context(), testFromAddress)
 	require.NoError(t, err)
 	var wantWithout3 domain.ActivityRevision
