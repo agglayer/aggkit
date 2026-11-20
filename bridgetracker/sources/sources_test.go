@@ -92,6 +92,7 @@ func bridgeEventLog(t *testing.T, destinationNetwork, depositCount uint32) *geth
 		Data:        data,
 		BlockNumber: 12345,
 		BlockHash:   testBlockHash,
+		TxHash:      testTxHash,
 		Index:       3,
 	}
 }
@@ -151,10 +152,11 @@ func TestBridgeEventSourceFindBridge(t *testing.T) {
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
 		Status:      gethtypes.ReceiptStatusSuccessful,
 		BlockNumber: big.NewInt(12345),
+		BlockHash:   testBlockHash,
 		Logs:        []*gethtypes.Log{bridgeEventLog(t, 1, 7)},
 	}, nil)
 	expectFinalized(client, 12345)
-	expectBlockTimestamp(client)
+	expectBridgeBlockHeader(client)
 
 	source := newBridgeEventSource(t, client)
 	info, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})
@@ -254,10 +256,11 @@ func TestBridgeEventSourceOverrideAcceptsCanonicalEmitter(t *testing.T) {
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
 		Status:      gethtypes.ReceiptStatusSuccessful,
 		BlockNumber: big.NewInt(12345),
+		BlockHash:   testBlockHash,
 		Logs:        []*gethtypes.Log{realLog},
 	}, nil)
 	expectFinalized(client, 12345)
-	expectBlockTimestamp(client)
+	expectBridgeBlockHeader(client)
 
 	source, err := NewBridgeEventSource(
 		StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock,
@@ -354,10 +357,11 @@ func TestBridgeEventSourceMatchesCanonicalAmongMultipleLogs(t *testing.T) {
 			client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
 				Status:      gethtypes.ReceiptStatusSuccessful,
 				BlockNumber: big.NewInt(12345),
+				BlockHash:   testBlockHash,
 				Logs:        logs,
 			}, nil)
 			expectFinalized(client, 12345)
-			expectBlockTimestamp(client)
+			expectBridgeBlockHeader(client)
 
 			source, err := NewBridgeEventSource(
 				StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock, nil,

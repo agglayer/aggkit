@@ -28,6 +28,18 @@ does not match the resolved bridge — including the case where the *only* signa
 the receipt fail the address check — falls through to the same permanent `ErrBridgeTxNotABridge`
 outcome as a receipt with no matching log at all, since neither can ever change on retry.
 
+The accepted `BridgeEvent` log must also be coherent with the rest of the upstream's answer, or
+`FindBridge` fails closed with `ErrInvalidUpstreamData` and records nothing: the log's block hash
+and number must be its receipt's, its tx hash must be the tracked tx, and the header the RPC
+reports at the receipt's block number (the same lookup that provides `block_timestamp`) must have
+that number and the receipt's block hash. The hash compared is the one the RPC client reports, i.e.
+the RPC's own `hash` field when `HashFromJSON` is enabled (the default of the proxy), so chains with
+non-standard headers are not rejected. Unlike `ErrBridgeTxNotABridge` this error is transient: a
+defective or out-of-sync endpoint, or a reorg between the calls, is retried until the upstream
+answers coherently or `UnresolvedTimeout` elapses.
+A fully coherent lying endpoint is out of scope: this is a defense against inconsistent data, not a
+substitute for trusting the configured RPC.
+
 | Step | Meaning |
 | --- | --- |
 | `WaitingGERUpdate` | L1-originated bridge: the L1 Global Exit Root has not been updated with this deposit yet. |
