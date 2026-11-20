@@ -111,8 +111,8 @@ type hookedActivityScanner struct {
 }
 
 func (h *hookedActivityScanner) BridgesFrom(
-	context.Context, common.Address, map[string]domain.KnownBridge,
-) ([]*domain.ScannedBridge, []string, []domain.ActivityWarning, error) {
+	context.Context, common.Address, map[domain.BridgeKey]domain.KnownBridge,
+) ([]*domain.ScannedBridge, []domain.BridgeKey, []domain.ActivityWarning, error) {
 	h.hook()
 	return nil, nil, nil, nil
 }

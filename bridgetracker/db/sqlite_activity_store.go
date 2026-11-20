@@ -655,7 +655,7 @@ func (s *sqliteActivityStore) RefreshAddress(ctx context.Context, fromAddress co
 	// A stale-schema row is deliberately excluded from known too (see cachedEntries): otherwise
 	// the scanner's own dedup would treat it as already seen and never return it again, leaving
 	// it neither refreshed nor ever overwritten
-	known := make(map[string]domain.KnownBridge, len(cached))
+	known := make(map[domain.BridgeKey]domain.KnownBridge, len(cached))
 	for key, entry := range cached {
 		known[key] = bridgetracker.KnownBridgeOf(entry)
 	}
@@ -694,15 +694,15 @@ func (s *sqliteActivityStore) RefreshAddress(ctx context.Context, fromAddress co
 	return nil
 }
 
-// cachedEntries decodes every current-schema activity_bridge row of addr, keyed by global index
-// (stale-schema rows are skipped: they are neither served nor refreshed, only overwritten once
-// the scanner reports the bridge again, see activitySchemaVersion)
-func (s *sqliteActivityStore) cachedEntries(addr string) (map[string]*domain.ActivityEntry, error) {
+// cachedEntries decodes every current-schema activity_bridge row of addr, keyed by
+// domain.BridgeKey (stale-schema rows are skipped: they are neither served nor refreshed, only
+// overwritten once the scanner reports the bridge again, see activitySchemaVersion)
+func (s *sqliteActivityStore) cachedEntries(addr string) (map[domain.BridgeKey]*domain.ActivityEntry, error) {
 	rows, err := s.bridgeRows(addr)
 	if err != nil {
 		return nil, err
 	}
-	cached := make(map[string]*domain.ActivityEntry, len(rows))
+	cached := make(map[domain.BridgeKey]*domain.ActivityEntry, len(rows))
 	for _, row := range rows {
 		if row.staleSchema() {
 			continue
@@ -711,7 +711,7 @@ func (s *sqliteActivityStore) cachedEntries(addr string) (map[string]*domain.Act
 		if err != nil {
 			return nil, err
 		}
-		cached[row.GlobalIndex] = entry
+		cached[entry.Key()] = entry
 	}
 	return cached, nil
 }
@@ -725,16 +725,19 @@ func (s *sqliteActivityStore) bridgeRows(addr string) ([]*activityBridgeRow, err
 	return rows, nil
 }
 
-// forgetBridges deletes addr's activity_bridge rows keyed by one of globalIndexes — the
-// invalidated bridges bridgetracker.PlanActivityRefresh decided to remove (see RefreshAddress),
-// mirroring ActivityCache's own delete-from-cache handling of the same list. Scoped to addr, so a
-// row another address holds under the same global index is never touched
-func (s *sqliteActivityStore) forgetBridges(addr string, globalIndexes []string) error {
-	for _, globalIndex := range globalIndexes {
+// forgetBridges deletes addr's activity_bridge rows of keys — the invalidated bridges
+// bridgetracker.PlanActivityRefresh decided to remove (see RefreshAddress), mirroring
+// ActivityCache's own delete-from-cache handling of the same list. Scoped to addr, so a row another
+// address holds for the same bridge is never touched, and matched by domain.BridgeKey (the
+// reporting network and the deposit count), never by global index alone
+func (s *sqliteActivityStore) forgetBridges(addr string, keys []domain.BridgeKey) error {
+	for _, key := range keys {
 		if _, err := s.db.Exec(
-			"DELETE FROM activity_bridge WHERE global_index = ? AND from_address = ?", globalIndex, addr,
+			`DELETE FROM activity_bridge WHERE from_address = ? AND origin_network_id = ?
+				AND json_extract(data, '$.Bridge.deposit_count') = ?`,
+			addr, key.NetworkID, key.DepositCount,
 		); err != nil {
-			return fmt.Errorf("forgetting activity_bridge row %s: %w", globalIndex, err)
+			return fmt.Errorf("forgetting activity_bridge row %s: %w", key, err)
 		}
 	}
 	return nil

@@ -505,6 +505,8 @@ Pagination works exactly like the bridge service's paginated endpoints: `page_nu
 - a page is the last one if `page_number * page_size >= count` (or `bridges` has fewer than `page_size` items)
 - a `page_number` past the last page answers `200 OK` with an empty `bridges` and the real `count`
 
+`bridge.global_index` is **not** unique per bridge: under the legacy pre-Etrog encoding, an L1 bridge to network 1 has the bare deposit count as its global index, the same value as a bridge emitted on network 1 with that deposit count. Both are listed, each with its own `bridge_network_id`.
+
 Bridges are sorted most recent first (`creation_timestamp` descending). A bridge whose block timestamp the bridge service has not populated yet is stamped with the time it was first cached, so it appears at the top until then. Bridges sharing the same `creation_timestamp` are ordered by `bridge.global_index` descending (compared numerically), so their relative order is the same on every request.
 
 **Pages are not a consistent snapshot.** Every request reads the cache as it is at that moment, and the background refresh can add new bridges between two requests of the same traversal. Because newest bridges come first, a new bridge shifts every older one down, so a client paging through the whole result can see:
@@ -512,7 +514,7 @@ Bridges are sorted most recent first (`creation_timestamp` descending). A bridge
 - **duplicates**: a bridge already received at the end of page N reappears at the start of page N+1
 - **missed new bridges**: a bridge created after page 1 was read lands on page 1, which the client no longer fetches, so it is not seen until the traversal is repeated. The hint is that `revision` (and, for an addition, `count`) changed between responses — see [Revision](#revision)
 
-Clients that need the complete list must deduplicate by `bridge.global_index` (unique per bridge) and, if `revision` (or `count`) changes during the traversal, fetch the first page again to pick up the new bridges — see [Revision](#revision) for the full client flow.
+Clients that need the complete list must deduplicate by `bridge_network_id` plus `bridge.deposit_count` (unique per bridge: the leaf the bridge occupies in the exit tree of the network that emitted it) and, if `revision` (or `count`) changes during the traversal, fetch the first page again to pick up the new bridges — see [Revision](#revision) for the full client flow.
 
 ### Revision
 

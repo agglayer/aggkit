@@ -29,7 +29,9 @@ const DefaultMaxActivityAddresses = 100_000
 // the warnings from its last background refresh, and whoever is currently blocked in
 // RegisterAndAwait waiting for that refresh to complete.
 type activityAddrCache struct {
-	entries map[string]*domain.ActivityEntry // key: string(bridge.GlobalIndex)
+	// entries is keyed by domain.BridgeKey (emitting network + deposit count), never by the
+	// bridge's GlobalIndex, which two different bridges can share (see domain.BridgeKey)
+	entries map[domain.BridgeKey]*domain.ActivityEntry
 	// lastAccess is when this address was last requested (RegisterAndAwait/GetActivity);
 	// addresses idle past idleTimeout are forgotten (see ActivityCache.PruneIdle, the same
 	// lastAccess/PruneIdle idea memoryRegistry uses for tracking, see registry.go's bridgeEntry)
@@ -130,7 +132,7 @@ func (a *ActivityCache) RegisterAndAwait(
 			return false, domain.ErrActivityRegistryFull
 		}
 		cache = &activityAddrCache{
-			entries: make(map[string]*domain.ActivityEntry),
+			entries: make(map[domain.BridgeKey]*domain.ActivityEntry),
 			waiters: make(map[chan struct{}]struct{}),
 		}
 		a.byAddr[fromAddress] = cache
@@ -235,8 +237,8 @@ func (a *ActivityCache) RefreshAddress(ctx context.Context, fromAddress common.A
 		return nil
 	}
 	includeTracking := cache.wantsTracking
-	known := make(map[string]domain.KnownBridge, len(cache.entries))
-	cached := make(map[string]*domain.ActivityEntry, len(cache.entries))
+	known := make(map[domain.BridgeKey]domain.KnownBridge, len(cache.entries))
+	cached := make(map[domain.BridgeKey]*domain.ActivityEntry, len(cache.entries))
 	for key, entry := range cache.entries {
 		known[key] = KnownBridgeOf(entry)
 		cached[key] = entry
@@ -259,7 +261,7 @@ func (a *ActivityCache) RefreshAddress(ctx context.Context, fromAddress common.A
 	for _, work := range plan.Items {
 		entry := a.refresher.Refresh(ctx, work.Item, work.Existing, includeTracking, a.now())
 		a.mu.Lock()
-		cache.storeEntry(string(work.Item.Bridge.GlobalIndex), entry)
+		cache.storeEntry(work.Item.Key(), entry)
 		a.mu.Unlock()
 	}
 
@@ -278,7 +280,7 @@ func (a *ActivityCache) RefreshAddress(ctx context.Context, fromAddress common.A
 
 // storeEntry stores entry under key, keeping revision in step: the hash of the entry it replaces
 // (if any) is removed and entry's is added. Callers must hold ActivityCache.mu
-func (c *activityAddrCache) storeEntry(key string, entry *domain.ActivityEntry) {
+func (c *activityAddrCache) storeEntry(key domain.BridgeKey, entry *domain.ActivityEntry) {
 	if old, ok := c.entries[key]; ok {
 		c.revision = c.revision.Remove(domain.HashActivityEntry(old))
 	}
@@ -288,7 +290,7 @@ func (c *activityAddrCache) storeEntry(key string, entry *domain.ActivityEntry) 
 
 // removeEntry forgets the entry under key, if any, taking its hash out of revision. Callers must
 // hold ActivityCache.mu
-func (c *activityAddrCache) removeEntry(key string) {
+func (c *activityAddrCache) removeEntry(key domain.BridgeKey) {
 	old, ok := c.entries[key]
 	if !ok {
 		return

@@ -63,26 +63,26 @@ type fakeActivityScanner struct {
 	bridges     []*domain.ScannedBridge
 	err         error
 	warnings    []domain.ActivityWarning
-	invalidated []string
+	invalidated []domain.BridgeKey
 	hook        func(call int)
 	results     []activityScanResult
 
 	mu        sync.Mutex
 	calls     int
-	lastKnown map[string]domain.KnownBridge
+	lastKnown map[domain.BridgeKey]domain.KnownBridge
 }
 
 // activityScanResult is one fakeActivityScanner.results entry — see its own doc
 type activityScanResult struct {
 	bridges     []*domain.ScannedBridge
-	invalidated []string
+	invalidated []domain.BridgeKey
 	warnings    []domain.ActivityWarning
 	err         error
 }
 
 func (f *fakeActivityScanner) BridgesFrom(
-	_ context.Context, _ common.Address, known map[string]domain.KnownBridge,
-) ([]*domain.ScannedBridge, []string, []domain.ActivityWarning, error) {
+	_ context.Context, _ common.Address, known map[domain.BridgeKey]domain.KnownBridge,
+) ([]*domain.ScannedBridge, []domain.BridgeKey, []domain.ActivityWarning, error) {
 	f.mu.Lock()
 	f.calls++
 	call := f.calls
@@ -101,7 +101,7 @@ func (f *fakeActivityScanner) BridgesFrom(
 	}
 	out := make([]*domain.ScannedBridge, 0, len(f.bridges))
 	for _, b := range f.bridges {
-		if _, ok := known[string(b.Bridge.GlobalIndex)]; ok {
+		if _, ok := known[b.Key()]; ok {
 			continue
 		}
 		out = append(out, b)
@@ -720,7 +720,7 @@ func TestActivityCache_ScannerReceivesGrowingKnownSet(t *testing.T) {
 	require.Empty(t, scanner.lastKnown, "nothing cached yet on the first refresh")
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	require.Contains(t, scanner.lastKnown, string(bridge.Bridge.GlobalIndex))
+	require.Contains(t, scanner.lastKnown, bridge.Key())
 }
 
 // TestActivityCache_SourceIsCarriedForwardAcrossRechecks verifies a bridge's Source (which
@@ -772,7 +772,7 @@ func TestActivityCache_ForgetsInvalidatedBridges(t *testing.T) {
 
 	// second refresh: the scanner no longer finds it at all, and reports it invalidated instead
 	scanner.bridges = nil
-	scanner.invalidated = []string{string(bridge.Bridge.GlobalIndex)}
+	scanner.invalidated = []domain.BridgeKey{bridge.Key()}
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
 	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)

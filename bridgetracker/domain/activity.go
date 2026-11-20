@@ -1,8 +1,10 @@
 package domain
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -55,6 +57,50 @@ type ScannedBridge struct {
 	Source ActivitySourceKind
 }
 
+// BridgeKey identifies one bridge within one from_address's activity: the leaf it occupies in the
+// local exit tree of the network that emitted it — the network whose bridge service (or RPC
+// fallback) reported it (ScannedBridge.NetworkID, ActivityEntry.BridgeNetworkID), never
+// Bridge.OriginNetwork — and its deposit count there. Every activity cache, the change detection
+// of ActivityBridgeScanner.BridgesFrom and the SQLite store key entries by it.
+//
+// Bridge.GlobalIndex is NOT an identity, only a data field served as is: it encodes the same pair,
+// but ambiguously under the legacy pre-Etrog exception (see bridgesync.GlobalIndexForBridge, which
+// returns the bare deposit count for a pre-Etrog L1 bridge destined to network 1 — the very value
+// a modern bridge with the same deposit count emitted on network 1 encodes to). Two such bridges
+// share a GlobalIndex but never a BridgeKey.
+//
+// The key stays the same when a reorg re-includes the bridge at another block or transaction, or
+// when another bridge takes its deposit count: either is a correction of the same entry, told apart
+// from "nothing changed" by SameBridge
+type BridgeKey struct {
+	// NetworkID is the network whose local exit tree holds the bridge (see ScannedBridge.NetworkID)
+	NetworkID uint32
+	// DepositCount is the bridge's deposit count (leaf index) in that network's local exit tree
+	DepositCount uint32
+}
+
+// String is "network:deposit_count", for logs and error messages
+func (k BridgeKey) String() string {
+	return fmt.Sprintf("%d:%d", k.NetworkID, k.DepositCount)
+}
+
+// Compare orders keys by network, then deposit count: -1 if k sorts before o, 0 if equal, +1 after
+func (k BridgeKey) Compare(o BridgeKey) int {
+	if c := cmp.Compare(k.NetworkID, o.NetworkID); c != 0 {
+		return c
+	}
+	return cmp.Compare(k.DepositCount, o.DepositCount)
+}
+
+// Key is b's BridgeKey: the network that reported it and its deposit count there
+func (b *ScannedBridge) Key() BridgeKey {
+	key := BridgeKey{NetworkID: b.NetworkID}
+	if b.Bridge != nil {
+		key.DepositCount = b.Bridge.DepositCount
+	}
+	return key
+}
+
 // ActivityEntry is one bridge found for a from_address, as of the last time it was (re)checked
 // (see ActivityQuerier). Bridge and Claim are stored exactly as the bridge service returned
 // them — this feature is a cache over that data, not a reinterpretation of it (see
@@ -94,8 +140,8 @@ type ActivityEntry struct {
 	// BridgeFinal is whether Bridge's block is final on its origin network (BridgeNetworkID), as
 	// resolved from Bridge.BlockFinalized with a receipt fallback (see finality.Resolver). Always
 	// false for a bridge only found through the RPC fallback (Source == ActivitySourceRPC): it
-	// becomes final once the bridge service reports it. Monotonic while Bridge stays at the same
-	// location (tx_hash, block_num, block_timestamp). Not part of the wire contract on its own
+	// becomes final once the bridge service reports it. Monotonic while Bridge stays the very same
+	// event (see SameBridge). Not part of the wire contract on its own
 	BridgeFinal bool
 	// ClaimFinal is whether Claim's block is final on the destination network, resolved the same
 	// way from Claim.BlockFinalized. Only meaningful while Claim is set
@@ -129,6 +175,34 @@ type ActivityEntry struct {
 	// Frozen once the entry settles (see bridgetracker.ActivityEntrySettled), since a settled
 	// entry is never refreshed again
 	UpdatedAt time.Time
+}
+
+// Key is e's BridgeKey: the network that reported its bridge and its deposit count there
+func (e *ActivityEntry) Key() BridgeKey {
+	key := BridgeKey{NetworkID: e.BridgeNetworkID}
+	if e.Bridge != nil {
+		key.DepositCount = e.Bridge.DepositCount
+	}
+	return key
+}
+
+// SameBridge reports whether a and b are the very same bridge event, so data cached for a (its
+// claim state, finality, creation time) can be carried over to b: the same on-chain location (see
+// SameBridgeLocation), the same position in the block (block_pos, the log index) and the same
+// contents (global_index, amount, destination network and address, and bridge_hash). Two
+// observations of one BridgeKey that differ in any of these are different events — a reorg moved
+// it, another bridge took its deposit count, or a source reported contradictory data — and nothing
+// cached for one may be reused for the other without being checked again.
+// An empty bridge_hash on either side (a source that does not report it) is read as "unknown", not
+// as a mismatch; every other field compares exactly (addresses case-insensitively)
+func SameBridge(a, b *bridgeservicetypes.BridgeResponse) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return SameBridgeLocation(a, b) && a.BlockPos == b.BlockPos && a.GlobalIndex == b.GlobalIndex &&
+		a.Amount == b.Amount && a.DestinationNetwork == b.DestinationNetwork &&
+		strings.EqualFold(string(a.DestinationAddress), string(b.DestinationAddress)) &&
+		(a.BridgeHash == "" || b.BridgeHash == "" || strings.EqualFold(string(a.BridgeHash), string(b.BridgeHash)))
 }
 
 // SameBridgeLocation reports whether a and b are the same bridge at the same on-chain location:
@@ -186,14 +260,16 @@ type ActivityWarning struct {
 	Message string
 }
 
-// KnownBridge is the on-chain location (TxHash/BlockNum/BlockTimestamp) the caller last cached a
-// bridge's data at, keyed by its GlobalIndex in the known map ActivityBridgeScanner.BridgesFrom
-// takes, plus whether that location is already final. A scanner compares it against what it
-// currently observes for the same GlobalIndex: an unchanged location means nothing to correct,
-// but a different one means the deposit has since been re-included in a different block (or the
-// same deposit count reused by a different bridge) — either way the caller's cached data is now
-// stale and must be corrected, not silently trusted forever just because the GlobalIndex was seen
-// before. Only a Final entry can be trusted without being read again.
+// KnownBridge is what the caller last cached for one bridge, keyed by its BridgeKey in the known
+// map ActivityBridgeScanner.BridgesFrom takes: its on-chain location (TxHash/BlockNum/
+// BlockTimestamp), its position in the block and contents (BlockPos, GlobalIndex, BridgeHash,
+// Amount, DestinationNetwork, DestinationAddress), plus whether that location is already final. A
+// scanner compares it against what it currently observes for the same BridgeKey (see SameBridge):
+// the very same event means nothing to correct, but a different location or different contents
+// mean the deposit has since been re-included in a different block, the same deposit count was
+// reused by a different bridge, or a source reported contradictory data — either way the caller's
+// cached data is now stale and must be corrected, not silently trusted forever just because the
+// key was seen before. Only a Final entry can be trusted without being read again.
 type KnownBridge struct {
 	// TxHash is the transaction hash the bridge was last reported at.
 	TxHash bridgeservicetypes.Hash
@@ -221,6 +297,20 @@ type KnownBridge struct {
 	// which known entries are its own, e.g. to decide whether one of them has gone missing from
 	// its own recent scan window (see ActivityBridgeScanner.BridgesFrom's invalidated return).
 	NetworkID uint32
+	// BlockPos is the position (log index) in its block the bridge was last reported at.
+	BlockPos uint64
+	// GlobalIndex, BridgeHash, Amount, DestinationNetwork and DestinationAddress are the contents
+	// the bridge was last reported with (see SameBridge).
+	GlobalIndex        bridgeservicetypes.BigIntString
+	BridgeHash         bridgeservicetypes.Hash
+	Amount             bridgeservicetypes.BigIntString
+	DestinationNetwork uint32
+	DestinationAddress bridgeservicetypes.Address
+}
+
+// Key is k's BridgeKey (see BridgeKey): its NetworkID and DepositCount
+func (k KnownBridge) Key() BridgeKey {
+	return BridgeKey{NetworkID: k.NetworkID, DepositCount: k.DepositCount}
 }
 
 // SameLocation reports whether b is still at the location k was cached at (see
@@ -232,6 +322,20 @@ func (k KnownBridge) SameLocation(b *bridgeservicetypes.BridgeResponse) bool {
 	return sameLocation(k.TxHash, k.BlockNum, k.BlockTimestamp, b)
 }
 
+// SameBridge reports whether b is the very bridge event k was cached as: same location, block
+// position and contents (see SameBridge)
+func (k KnownBridge) SameBridge(b *bridgeservicetypes.BridgeResponse) bool {
+	if b == nil {
+		return false
+	}
+	cached := bridgeservicetypes.BridgeResponse{
+		TxHash: k.TxHash, BlockNum: k.BlockNum, BlockTimestamp: k.BlockTimestamp, BlockPos: k.BlockPos,
+		DepositCount: k.DepositCount, GlobalIndex: k.GlobalIndex, BridgeHash: k.BridgeHash, Amount: k.Amount,
+		DestinationNetwork: k.DestinationNetwork, DestinationAddress: k.DestinationAddress,
+	}
+	return SameBridge(&cached, b)
+}
+
 // ActivityBridgeScanner is the driven port to the raw bridge-service data behind the
 // GET /activity/from/{from_address} endpoint: it scans every bridge service the tracker knows
 // about for bridges sent by fromAddress
@@ -239,31 +343,35 @@ type ActivityBridgeScanner interface {
 	// BridgesFrom returns every bridge whose sender is fromAddress, across every configured
 	// bridge service: every bridge not yet in known (a genuinely new one), every bridge in known
 	// that is not final yet (KnownBridge.Final false), re-read with the data the bridge service
-	// serves now — whether or not its location changed, so the caller always works with the
-	// latest block_finalized — and any bridge whose on-chain location no longer matches what
-	// known has cached for it (see KnownBridge): a reorg re-included the same deposit at a
-	// different block or transaction, or a different bridge took its deposit count. The caller
-	// overwrites its entry with the returned data (a correction never duplicates an entry: they
-	// share the GlobalIndex).
+	// serves now — whether or not it changed, so the caller always works with the latest
+	// block_finalized — and any bridge that is no longer the very event known has cached for it
+	// (see KnownBridge.SameBridge): a reorg re-included the same deposit at a different block or
+	// transaction, a different bridge took its deposit count, or a source now reports different
+	// contents for it. The caller overwrites its entry with the returned data (a correction never
+	// duplicates an entry: they share the BridgeKey).
 	//
-	// known is the caller's full set of already-cached bridges for fromAddress, keyed by
-	// GlobalIndex as a decimal string (any network — a GlobalIndex is unique across the whole
-	// system). Each network's bridge service lists bridges by deposit_count descending and
-	// finality is monotonic, so only the non-final head of that list can still change: an
-	// implementation stops reading a network at the first bridge that is known AND final (and
-	// past every non-final known bridge of that network), never reading deeper pages again (see
-	// sources.ActivitySource).
+	// known is the caller's full set of already-cached bridges for fromAddress, keyed by BridgeKey
+	// (the emitting network and deposit count — never the GlobalIndex, which is ambiguous under the
+	// legacy pre-Etrog encoding, see BridgeKey). Each network's bridge service lists bridges by
+	// deposit_count descending and finality is monotonic, so only the non-final head of that list
+	// can still change: an implementation stops reading a network at the first bridge that is known
+	// AND final (and past every non-final known bridge of that network), never reading deeper pages
+	// again (see sources.ActivitySource).
 	//
-	// invalidated lists the GlobalIndex (as a decimal string, same encoding as known's keys) of
-	// every entry in known that should be forgotten instead of trusted: a non-final entry that
-	// the bridge service no longer reports although the scan went past its position, or an
-	// entry found through the RPC fallback (Source == ActivitySourceRPC) whose BlockNum still
-	// falls inside the range this call scanned via RPC for its own network (see
-	// KnownBridge.NetworkID) yet no longer shows up there at all. Either way the deposit was
+	// invalidated lists the BridgeKey of every entry in known that should be forgotten instead of
+	// trusted: a non-final entry that the bridge service no longer reports although the scan went
+	// past its position, or an entry found through the RPC fallback (Source == ActivitySourceRPC)
+	// whose BlockNum still falls inside the range this call scanned via RPC for its own network
+	// (see KnownBridge.NetworkID) yet no longer shows up there at all. Either way the deposit was
 	// reorged out and nothing has re-included it (yet). A caller must remove these from its cache
 	// rather than keep serving their last known (now unverified) data; if the bridge is
 	// re-included later, at the same or a different block, it is discovered again as new. A
 	// final entry is never invalidated.
+	//
+	// A bridge the bridge service lists always wins over a contradictory RPC observation of the
+	// same BridgeKey (the bridge service is the source of record): the RPC one is logged as a
+	// conflict and dropped. The RPC fallback only ever fills keys the bridge service does not
+	// account for.
 	//
 	// A network whose bridge service cannot be scanned (unreachable, any transient error, or a
 	// 503 while it resolves a reorg) does not fail the call and never invalidates anything of
@@ -271,8 +379,8 @@ type ActivityBridgeScanner interface {
 	// kept as they are until a later call can scan it, so one misbehaving network never hides
 	// every other network's activity.
 	BridgesFrom(
-		ctx context.Context, fromAddress common.Address, known map[string]KnownBridge,
-	) (found []*ScannedBridge, invalidated []string, warnings []ActivityWarning, err error)
+		ctx context.Context, fromAddress common.Address, known map[BridgeKey]KnownBridge,
+	) (found []*ScannedBridge, invalidated []BridgeKey, warnings []ActivityWarning, err error)
 }
 
 // ActivityClaimChecker is the driven port to a bridge's claim state on its destination

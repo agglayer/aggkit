@@ -90,7 +90,8 @@ func writeRevisionField(h hash.Hash, s string) {
 // incremental — adding an entry is Add, removing it is Remove, changing it is
 // Remove(old hash).Add(new hash) — without recomputing over every entry, and Add then Remove of
 // the same entry gives back the exact previous value. Entries are unique per address (one per
-// global_index), so a duplicated hash never cancels out the way it would with XOR.
+// BridgeKey — two of them may share a global_index, see BridgeKey), so a duplicated hash never
+// cancels out the way it would with XOR.
 //
 // The zero value is the empty activity (EmptyActivityRevision). It is a value type: Add/Remove
 // return the new accumulator and leave the receiver untouched. There is no persistence by design:

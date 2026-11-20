@@ -200,8 +200,16 @@ func (f fakeNetworkLister) BridgeAddress(_ context.Context, networkID uint32) (c
 func knownBridge(b *bridgeservicetypes.BridgeResponse, source domain.ActivitySourceKind, final bool) domain.KnownBridge {
 	return domain.KnownBridge{
 		TxHash: b.TxHash, BlockNum: b.BlockNum, BlockTimestamp: b.BlockTimestamp, DepositCount: b.DepositCount,
-		Source: source, NetworkID: b.OriginNetwork, Final: final,
+		Source: source, NetworkID: b.OriginNetwork, Final: final, BlockPos: b.BlockPos, GlobalIndex: b.GlobalIndex,
+		BridgeHash: b.BridgeHash, Amount: b.Amount, DestinationNetwork: b.DestinationNetwork,
+		DestinationAddress: b.DestinationAddress,
 	}
+}
+
+// keyOf is the domain.BridgeKey of b, a bridge built by bridgeResponse (reported by its
+// OriginNetwork's own bridge service)
+func keyOf(b *bridgeservicetypes.BridgeResponse) domain.BridgeKey {
+	return domain.BridgeKey{NetworkID: b.OriginNetwork, DepositCount: b.DepositCount}
 }
 
 func bridgeResponse(networkID, destNetwork, depositCount uint32, from string, globalIndex int64) *bridgeservicetypes.BridgeResponse {
@@ -445,7 +453,9 @@ func TestScanBridgeService_StopsAtFirstKnownFinalBridge(t *testing.T) {
 	client, err := source.services.aggkitBridgeClientFor(1)
 	require.NoError(t, err)
 
-	known := map[string]domain.KnownBridge{"2": knownBridge(known2, domain.ActivitySourceBridgeService, true)}
+	known := map[domain.BridgeKey]domain.KnownBridge{
+		keyOf(known2): knownBridge(known2, domain.ActivitySourceBridgeService, true),
+	}
 	scan, err := scanBridgeService(t.Context(), client, 1, testFromAddress, 1, known, testLogger)
 	require.NoError(t, err)
 	require.Len(t, scan.bridges, 1)
@@ -474,9 +484,9 @@ func TestScanBridgeService_UpgradesSourceOnceBridgeServiceCatchesUp(t *testing.T
 	client, err := source.services.aggkitBridgeClientFor(1)
 	require.NoError(t, err)
 
-	known := map[string]domain.KnownBridge{
-		"2": {Source: domain.ActivitySourceRPC, NetworkID: 1, DepositCount: 1, TxHash: "0x2"},
-		"1": knownBridge(finalBridge, domain.ActivitySourceBridgeService, true),
+	known := map[domain.BridgeKey]domain.KnownBridge{
+		{NetworkID: 1, DepositCount: 1}: {Source: domain.ActivitySourceRPC, NetworkID: 1, DepositCount: 1, TxHash: "0x2"},
+		keyOf(finalBridge):              knownBridge(finalBridge, domain.ActivitySourceBridgeService, true),
 	}
 	scan, err := scanBridgeService(t.Context(), client, 1, testFromAddress, 10, known, testLogger)
 	require.NoError(t, err)
@@ -493,17 +503,22 @@ func TestScanBridgeService_UpgradesSourceOnceBridgeServiceCatchesUp(t *testing.T
 // or that has simply aged out of the window (BlockNum below the window's own FromBlock, which
 // just means it is no longer being watched, not that anything is wrong).
 func TestInvalidatedBridges(t *testing.T) {
-	known := map[string]domain.KnownBridge{
-		"1": {NetworkID: 1, Source: domain.ActivitySourceRPC, BlockNum: 150},           // in window, missing -> invalidated
-		"2": {NetworkID: 1, Source: domain.ActivitySourceRPC, BlockNum: 150},           // in window, found -> kept
-		"3": {NetworkID: 1, Source: domain.ActivitySourceRPC, BlockNum: 50},            // aged out of window -> kept
-		"4": {NetworkID: 1, Source: domain.ActivitySourceBridgeService, BlockNum: 150}, // bridge-sourced -> never invalidated
-		"5": {NetworkID: 2, Source: domain.ActivitySourceRPC, BlockNum: 150},           // different network -> kept
+	key := func(networkID, depositCount uint32) domain.BridgeKey {
+		return domain.BridgeKey{NetworkID: networkID, DepositCount: depositCount}
 	}
-	foundThisCall := map[string]struct{}{"2": {}}
+	known := map[domain.BridgeKey]domain.KnownBridge{
+		key(1, 1): {NetworkID: 1, DepositCount: 1, Source: domain.ActivitySourceRPC, BlockNum: 150}, // in window, missing -> invalidated
+		key(1, 2): {NetworkID: 1, DepositCount: 2, Source: domain.ActivitySourceRPC, BlockNum: 150}, // in window, found -> kept
+		key(1, 3): {NetworkID: 1, DepositCount: 3, Source: domain.ActivitySourceRPC, BlockNum: 50},  // aged out of window -> kept
+		// bridge-sourced -> never invalidated
+		key(1, 4): {NetworkID: 1, DepositCount: 4, Source: domain.ActivitySourceBridgeService, BlockNum: 150},
+		// different network (same deposit count as the invalidated one) -> kept
+		key(2, 1): {NetworkID: 2, DepositCount: 1, Source: domain.ActivitySourceRPC, BlockNum: 150},
+	}
+	foundThisCall := map[domain.BridgeKey]struct{}{key(1, 2): {}}
 
 	invalidated := invalidatedBridges(1, known, 100, foundThisCall)
-	require.ElementsMatch(t, []string{"1"}, invalidated)
+	require.ElementsMatch(t, []domain.BridgeKey{key(1, 1)}, invalidated)
 }
 
 // TestIsNetworkSynced verifies isNetworkSynced reads only its own side of the sync-status pair
@@ -815,7 +830,7 @@ func TestActivitySource_BridgesFrom_RPCMerge(t *testing.T) {
 		url := svc.start(t)
 		lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
 		source := activitySourceWithRPC(lister, stubRPCScanner{}) // RPC finds nothing new this time
-		known := map[string]domain.KnownBridge{"1": {Source: domain.ActivitySourceRPC}}
+		known := map[domain.BridgeKey]domain.KnownBridge{{NetworkID: 1}: {Source: domain.ActivitySourceRPC, NetworkID: 1}}
 
 		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
 		require.NoError(t, err)
@@ -841,7 +856,9 @@ func TestActivitySource_BridgesFrom_RPCMerge(t *testing.T) {
 		source := activitySourceWithRPC(lister, rpc)
 		// caller's cache has global index 2 (not reported by REST this call) at its original,
 		// now reorged-out block
-		known := map[string]domain.KnownBridge{"2": {TxHash: moved.TxHash, BlockNum: 100}}
+		known := map[domain.BridgeKey]domain.KnownBridge{
+			keyOf(moved): {TxHash: moved.TxHash, BlockNum: 100, NetworkID: 1, DepositCount: moved.DepositCount},
+		}
 
 		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
 		require.NoError(t, err)
@@ -888,9 +905,7 @@ func TestActivitySource_BridgesFrom_RPCMerge(t *testing.T) {
 		source := activitySourceWithRPC(lister, rpc)
 		// caller's cache has global index 3 at exactly the same TxHash/BlockNum the RPC scan
 		// still reports it at
-		known := map[string]domain.KnownBridge{
-			"3": {TxHash: unchanged.TxHash, BlockNum: unchanged.BlockNum},
-		}
+		known := map[domain.BridgeKey]domain.KnownBridge{keyOf(unchanged): knownBridge(unchanged, "", false)}
 
 		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
 		require.NoError(t, err)
@@ -908,8 +923,8 @@ func TestActivitySource_BridgesFrom_RPCMerge(t *testing.T) {
 		}}
 		source := activitySourceWithRPC(lister, rpc)
 		// caller's cache still has global index 3 at its original (now reorged-out) block
-		known := map[string]domain.KnownBridge{
-			"3": {TxHash: moved.TxHash, BlockNum: 100},
+		known := map[domain.BridgeKey]domain.KnownBridge{
+			keyOf(moved): {TxHash: moved.TxHash, BlockNum: 100, NetworkID: 2, DepositCount: moved.DepositCount},
 		}
 
 		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
@@ -955,24 +970,26 @@ func TestActivitySource_BridgesFrom_RPCMerge(t *testing.T) {
 		lister := fakeMixedNetworkLister{networkIDs: []uint32{2}, urls: map[uint32]string{}}
 		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{}, fromBlock: 100} // scans from 100, finds nothing
 		source := activitySourceWithRPC(lister, rpc)
-		known := map[string]domain.KnownBridge{
+		gone := domain.BridgeKey{NetworkID: 2, DepositCount: 9}
+		known := map[domain.BridgeKey]domain.KnownBridge{
 			// still within [100, ...) but no longer found there: reorged out, nothing has
 			// re-included it (yet)
-			"9": {NetworkID: 2, Source: domain.ActivitySourceRPC, BlockNum: 150},
+			gone: {NetworkID: 2, DepositCount: 9, Source: domain.ActivitySourceRPC, BlockNum: 150},
 		}
 
 		items, invalidated, _, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
 		require.NoError(t, err)
 		require.Empty(t, items)
-		require.Equal(t, []string{"9"}, invalidated)
+		require.Equal(t, []domain.BridgeKey{gone}, invalidated)
 	})
 
 	t.Run("RPC bridge previously known has aged out of the scanned window -> not invalidated", func(t *testing.T) {
 		lister := fakeMixedNetworkLister{networkIDs: []uint32{2}, urls: map[uint32]string{}}
 		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{}, fromBlock: 200} // window moved past block 150
 		source := activitySourceWithRPC(lister, rpc)
-		known := map[string]domain.KnownBridge{
-			"9": {NetworkID: 2, Source: domain.ActivitySourceRPC, BlockNum: 150}, // below the window's FromBlock now
+		known := map[domain.BridgeKey]domain.KnownBridge{
+			// below the window's FromBlock now
+			{NetworkID: 2, DepositCount: 9}: {NetworkID: 2, DepositCount: 9, Source: domain.ActivitySourceRPC, BlockNum: 150},
 		}
 
 		_, invalidated, _, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)

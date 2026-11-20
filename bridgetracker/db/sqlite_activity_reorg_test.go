@@ -77,6 +77,11 @@ func reorgClaim(blockNum uint64, txHash string, final bool) *bridgeservicetypes.
 	return c
 }
 
+// testBridgeKey is the domain.BridgeKey of testScannedBridge(globalIndex)
+func testBridgeKey(globalIndex int64) domain.BridgeKey {
+	return domain.BridgeKey{NetworkID: testScannedNetworkID, DepositCount: uint32(globalIndex)}
+}
+
 // activityHarness drives one activity store (in-memory ActivityCache or SQLite) through scripted
 // refreshes: every bridge-service scan and claim check is a mockery expectation, so an
 // unexpected call (e.g. isClaimed() on a settled entry) fails the test
@@ -126,7 +131,7 @@ func runOnBothStores(t *testing.T, scenario func(h *activityHarness)) {
 }
 
 // scan scripts the next BridgesFrom call
-func (h *activityHarness) scan(found []*domain.ScannedBridge, invalidated ...string) {
+func (h *activityHarness) scan(found []*domain.ScannedBridge, invalidated ...domain.BridgeKey) {
 	h.scanner.EXPECT().BridgesFrom(mock.Anything, testFromAddress, mock.Anything).
 		Return(found, invalidated, nil, nil).Once()
 }
@@ -188,7 +193,7 @@ func TestActivityReorg_BridgeRemoved(t *testing.T) {
 		require.Len(t, entries, 1)
 		require.NotEqual(t, domain.EmptyActivityRevision, h.revision(), "an addition changes the revision")
 
-		h.scan(nil, "1")
+		h.scan(nil, testBridgeKey(1))
 		require.Empty(t, h.refresh())
 		require.Equal(t, domain.EmptyActivityRevision, h.revision(), "a removal changes it back")
 	})
@@ -259,8 +264,8 @@ func TestActivityReorg_FinalBridgeIsHandedToTheScannerAsFinal(t *testing.T) {
 		require.Equal(t, before, after, "becoming final does not change the revision")
 
 		h.scanner.EXPECT().BridgesFrom(mock.Anything, testFromAddress,
-			mock.MatchedBy(func(known map[string]domain.KnownBridge) bool {
-				k, ok := known["1"]
+			mock.MatchedBy(func(known map[domain.BridgeKey]domain.KnownBridge) bool {
+				k, ok := known[testBridgeKey(1)]
 				return ok && k.Final && k.BlockNum == 100 && k.DepositCount == 1
 			})).Return(nil, nil, nil, nil).Once()
 		h.unclaimed(false) // still unclaimed: readiness keeps being checked
@@ -481,7 +486,9 @@ func TestSQLiteActivityStoreRestartInTheMiddleOfANonFinalState(t *testing.T) {
 	require.Equal(t, before, after, "same revision after a restart, without persisting it")
 
 	h.scanner.EXPECT().BridgesFrom(mock.Anything, testFromAddress,
-		mock.MatchedBy(func(known map[string]domain.KnownBridge) bool { return known["1"].Final })).
+		mock.MatchedBy(func(known map[domain.BridgeKey]domain.KnownBridge) bool {
+			return known[testBridgeKey(1)].Final
+		})).
 		Return(nil, nil, nil, nil).Once()
 	h.claimed(reorgClaim(300, "0xc1", true))
 	entries = h.refresh()
@@ -528,7 +535,7 @@ func TestSQLiteActivityStoreForgetIsScopedToTheAddress(t *testing.T) {
 	h.unclaimed(false)
 	h.refresh()
 
-	require.NoError(t, store.forgetBridges(common.HexToAddress("0x2222").Hex(), []string{"1"}))
+	require.NoError(t, store.forgetBridges(common.HexToAddress("0x2222").Hex(), []domain.BridgeKey{testBridgeKey(1)}))
 	require.Len(t, h.entries(), 1)
 }
 
