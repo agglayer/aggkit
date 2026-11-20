@@ -176,8 +176,10 @@ the synchronous claim trace.
   canonical inclusion of the window is revalidated **twice**: once before any trace RPC and once
   after all workers have joined, immediately before publishing. A trace carries no block hash, so
   the second read is what ties the published snapshot to the blocks the range was revalidated
-  against. This costs **one extra canonical header read per distinct block** (2 × distinct blocks
-  for the range), read serially, on top of the trace RPCs.
+  against. This costs **one canonical header read per distinct block in each phase** — `2N` header
+  reads for a range of `N` distinct blocks — on top of the trace RPCs. Each phase uses its own
+  bounded pool of at most `ClaimTracePrefetchConcurrency` (8) concurrent header reads, so the header
+  lookups never fan out more than the trace phase.
 - A changed or absent header (before or after the trace RPCs) returns
   `ErrTransactionInclusionMismatch`, so the whole range is refetched and nothing is published.
 - Every failure path purges the published snapshot, so a trace produced by an earlier generation is
