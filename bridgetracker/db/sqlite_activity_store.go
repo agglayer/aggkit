@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -342,11 +343,19 @@ func (s *sqliteActivityStore) Close() error {
 	return s.db.Close()
 }
 
-// contextDB is the meddler.DB of a *sql.DB that runs every statement under ctx, so a cancelled
-// ctx (a client gone away) stops the query and returns context.Canceled
+// contextQuerier is what contextDB runs statements on: a *sql.DB, or a *sql.Conn holding a read
+// transaction (see readSnapshot)
+type contextQuerier interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// contextDB is the meddler.DB of a *sql.DB (or *sql.Conn) that runs every statement under ctx, so
+// a cancelled ctx (a client gone away) stops the query and returns context.Canceled
 type contextDB struct {
 	ctx context.Context //nolint:containedctx // bound to one call, never stored past it
-	db  *sql.DB
+	db  contextQuerier
 }
 
 func (c contextDB) Exec(query string, args ...any) (sql.Result, error) {
@@ -359,6 +368,34 @@ func (c contextDB) Query(query string, args ...any) (*sql.Rows, error) {
 
 func (c contextDB) QueryRow(query string, args ...any) *sql.Row {
 	return c.db.QueryRowContext(c.ctx, query, args...)
+}
+
+// readSnapshot runs read on one connection inside a deferred read transaction: every statement
+// read runs sees the same snapshot of the database (SQLite in WAL mode keeps a read transaction's
+// snapshot from its first read until it ends), whatever is committed meanwhile, without taking the
+// write lock — a refresh writing at the same time is neither blocked nor seen. The transaction is
+// opened explicitly (BEGIN DEFERRED): sql.DB.BeginTx would open it IMMEDIATE (the _txlock of
+// aggkitdb.NewSQLiteDB), taking the write lock for a read. It is always rolled back (nothing is
+// written), also when ctx is cancelled, so the connection goes back to the pool with no
+// transaction open
+func (s *sqliteActivityStore) readSnapshot(ctx context.Context, read func(q contextQuerier) error) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "BEGIN DEFERRED"); err != nil {
+		return err
+	}
+	readErr := read(conn)
+	if _, err := conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK"); err != nil {
+		// never hand back to the pool a connection that may still hold the transaction
+		_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		if readErr == nil {
+			readErr = fmt.Errorf("ending read transaction: %w", err)
+		}
+	}
+	return readErr
 }
 
 // selectAddressRow returns addr's row, or db.ErrNotFound if there is none
@@ -911,9 +948,11 @@ func activityFilterClause(addr string, filter types.ActivityFilter) (string, []a
 // total number of matching entries. Filtering, counting, ordering and paging all happen in SQL
 // (see activityFilterClause, activityPageOrder, idx_activity_bridge_page): only the page's rows
 // are read and JSON-decoded, whatever the address's history. The count and
-// the page are two statements, not one snapshot: a refresh landing in between can make them
-// disagree by that refresh, which the endpoint already documents (pages are not a consistent
-// snapshot). Every statement runs under ctx: a cancelled ctx returns context.Canceled.
+// the page are read in one read transaction (see readSnapshot), so they always agree with each
+// other even while a refresh writes the address's rows: the total is the number of entries of the
+// very table state the page is cut from. Successive pages are still separate reads (see the
+// endpoint's documentation). Every statement runs under ctx: a cancelled ctx returns
+// context.Canceled.
 // includeTracking additionally sets the sticky include_tracking column for future refreshes — it
 // does not itself fetch anything. An address never registered returns an empty result, not an
 // error
@@ -949,21 +988,28 @@ func (s *sqliteActivityStore) GetActivity(
 	}
 
 	where, args := activityFilterClause(addr, filter)
-	var total int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM activity_bridge WHERE "+where, args...).
-		Scan(&total); err != nil {
-		return nil, 0, nil, fmt.Errorf("counting cached bridges for %s: %w", fromAddress, err)
-	}
-	offset := page.Offset()
-	if offset >= uint64(total) || page.PageSize == 0 {
-		return []*domain.ActivityEntry{}, total, warnings, nil
-	}
-
-	var rows []*activityBridgeRow
-	if err := meddler.QueryAll(contextDB{ctx: ctx, db: s.db}, &rows,
-		"SELECT * FROM activity_bridge WHERE "+where+" ORDER BY "+activityPageOrder+" LIMIT ? OFFSET ?",
-		append(args, page.PageSize, offset)...); err != nil {
-		return nil, 0, nil, fmt.Errorf("listing cached bridges for %s: %w", fromAddress, err)
+	var (
+		total int
+		rows  []*activityBridgeRow
+	)
+	err = s.readSnapshot(ctx, func(q contextQuerier) error {
+		if err := q.QueryRowContext(ctx, "SELECT COUNT(*) FROM activity_bridge WHERE "+where, args...).
+			Scan(&total); err != nil {
+			return fmt.Errorf("counting cached bridges for %s: %w", fromAddress, err)
+		}
+		offset := page.Offset()
+		if offset >= uint64(total) || page.PageSize == 0 {
+			return nil
+		}
+		if err := meddler.QueryAll(contextDB{ctx: ctx, db: q}, &rows,
+			"SELECT * FROM activity_bridge WHERE "+where+" ORDER BY "+activityPageOrder+" LIMIT ? OFFSET ?",
+			append(args, page.PageSize, offset)...); err != nil {
+			return fmt.Errorf("listing cached bridges for %s: %w", fromAddress, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, 0, nil, err
 	}
 	entries := make([]*domain.ActivityEntry, 0, len(rows))
 	for _, row := range rows {
