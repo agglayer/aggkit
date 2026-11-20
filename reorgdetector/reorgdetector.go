@@ -358,10 +358,7 @@ func (rd *ReorgDetector) loadTrackedHeaders() (err error) {
 	defer rd.subscriptionsLock.Unlock()
 	// Go over tracked blocks and create subscription for each tracker
 	for id := range rd.trackedBlocks {
-		rd.subscriptions[id] = &Subscription{
-			ReorgedBlock:   make(chan uint64),
-			ReorgProcessed: make(chan bool),
-		}
+		rd.subscriptions[id] = newSubscription()
 	}
 
 	return nil
