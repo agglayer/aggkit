@@ -515,6 +515,81 @@ func TestTransactionScheduler_OverflowInvalidatesOutstandingPlan(t *testing.T) {
 		"a fresh plan must restart at the rewound frontier to recover the dropped gaps")
 }
 
+// TestTransactionScheduler_OverflowSparseFailuresKeepNoHoles pins the fix for the
+// retry-overflow cursor jump. When the bounded retry queue overflows it rewinds the
+// cursor to the OLDEST queued page and clears the queue, but the page that triggered
+// the overflow is re-queued ABOVE that rewound cursor. Committing that retry must not
+// advance the cursor past the rewound region: doing so would skip every gap between
+// the rewind and the overflow page (whose queue entries were just cleared) and lose
+// them silently. The scenario uses sparse failures spread over more than one
+// maxNewPagesPerScan window, so a single plan's brand new pages cannot re-cover the
+// whole rewound region in one tick.
+func TestTransactionScheduler_OverflowSparseFailuresKeepNoHoles(t *testing.T) {
+	s := newTransactionScheduler()
+	d := incrDemand()
+	s.syncDemands([]transactionDemand{d})
+
+	const oldPage = uint64(0)
+	// A very old page fails and stays queued for the whole run.
+	s.commit(d, oldPage, oldPage, true, s.generation)
+
+	// A long run of successes advances the cursor far beyond one scan window.
+	const farStart = uint64(2 * maxNewPagesPerScan)
+	for p := oldPage + 1; p < farStart; p++ {
+		s.commit(d, p, p, false, s.generation)
+	}
+
+	// A cluster of failures near the cursor fills the bounded retry queue...
+	for p := farStart; p < farStart+maxRetryPages-1; p++ {
+		s.commit(d, p, p, true, s.generation)
+	}
+	// ...and the next failure overflows: the cursor is rewound to the oldest queued
+	// page and the queue restarts with only the overflow page (which sits far above
+	// the rewound cursor).
+	overflowPage := farStart + maxRetryPages - 1
+	s.commit(d, overflowPage, overflowPage, true, s.generation)
+
+	s.mu.Lock()
+	sched := s.schedules[transactionDemandSignature(d)]
+	require.Equal(t, oldPage, sched.frontier,
+		"the overflow must rewind the cursor to the oldest queued page")
+	require.Contains(t, sched.retry, overflowPage)
+	s.mu.Unlock()
+
+	// Next worker tick: the retry is processed FIRST, then the brand new pages. Process
+	// the retry (it fails again) and then the whole first scan window as successes.
+	plan := s.plan(d, 0, overflowPage, 1)
+	require.Equal(t, []transactionPageRange{{overflowPage, overflowPage}}, plan.retries)
+	require.NotEmpty(t, plan.pages)
+	require.Equal(t, oldPage, plan.pages[0].from,
+		"the new pages must restart at the rewound cursor")
+
+	require.True(t, s.commit(d, overflowPage, overflowPage, true, plan.generation),
+		"the retry commit belongs to the current epoch")
+	for _, p := range plan.pages {
+		s.commit(d, p.from, p.to, false, plan.generation)
+	}
+
+	// No hole: every page that is still pending (a queued failure) must be either retained
+	// in the retry queue or at/after the cursor, so a later plan re-covers it. A pending
+	// page BELOW the cursor that is no longer queued is a silent loss.
+	s.mu.Lock()
+	frontier := sched.frontier
+	retry := make(map[uint64]struct{}, len(sched.retry))
+	for k := range sched.retry {
+		retry[k] = struct{}{}
+	}
+	s.mu.Unlock()
+
+	for p := farStart; p <= overflowPage; p++ {
+		if _, queued := retry[p]; queued {
+			continue
+		}
+		require.False(t, p < frontier,
+			"page %d is below the cursor %d and was neither re-scanned nor queued: a hole", p, frontier)
+	}
+}
+
 // TestTransactionScheduler_RewindRetainsSubReorgRetries pins the fix for the
 // rewind gap loss: a reorg rewind drops only the retry pages it re-covers (those
 // at/after the reorg). A queued page strictly below the reorg stays canonical

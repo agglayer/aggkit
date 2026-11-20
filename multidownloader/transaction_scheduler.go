@@ -239,10 +239,12 @@ func (s *transactionSchedule) planRetriesLocked() []transactionPageRange {
 	return result
 }
 
-// commit records the outcome of one processed page. The cursor always advances
-// to pageEnd+1, but a page that still has unresolved transactions is retained
-// in the retry queue so the advance is never lossy. A completed page is removed
-// from the retry queue.
+// commit records the outcome of one processed page. A brand new page advances
+// the cursor to pageEnd+1, but a page that is already queued for retry never
+// advances it (see the comment below): the cursor must not move past a region
+// the retry queue still has to re-cover. A page that still has unresolved
+// transactions is retained in the retry queue so the advance is never lossy. A
+// completed page is removed from the retry queue.
 //
 // expectedGeneration is the generation the page was planned under (see
 // transactionPagePlan.generation). If the scheduler generation has changed since
@@ -268,12 +270,20 @@ func (s *transactionScheduler) commit(demand transactionDemand,
 	if !ok || sched == nil {
 		return false
 	}
-	if !sched.initialized || to >= sched.frontier {
-		sched.frontier = to + 1
-		sched.initialized = true
-	}
 	if sched.retry == nil {
 		sched.retry = make(map[uint64]transactionRetryPage)
+	}
+	// A page that is already queued for retry must NEVER advance the frontier.
+	// Below the frontier the cursor already accounts for it; ABOVE the frontier
+	// it only ever appears after a retry-queue overflow rewound the cursor below
+	// the page (the queue that recorded every gap in between was just cleared).
+	// Advancing the cursor on its commit would then skip every gap between the
+	// rewind and the page, silently losing them. Only a brand new page — one not
+	// queued for retry — may advance the cursor.
+	_, alreadyQueued := sched.retry[from]
+	if !sched.initialized || (!alreadyQueued && to >= sched.frontier) {
+		sched.frontier = to + 1
+		sched.initialized = true
 	}
 	if !failed {
 		delete(sched.retry, from)
