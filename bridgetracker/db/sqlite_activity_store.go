@@ -117,12 +117,15 @@ func encodeWarnings(warnings []domain.ActivityWarning) ([]byte, error) {
 }
 
 // activityBridgeRow is the activity_bridge row shape (see migrations/bridgetracker0002.sql,
-// bridgetracker0005.sql)
+// bridgetracker0005.sql, bridgetracker0006.sql). A row is keyed by its owner and its bridge:
+// (FromAddress, OriginNetworkID, DepositCount) — see key; GlobalIndex is a plain column, since two
+// different bridges can share one (see domain.BridgeKey)
 type activityBridgeRow struct {
 	GlobalIndex        string `meddler:"global_index"`
 	FromAddress        string `meddler:"from_address"`
 	SchemaVersion      int    `meddler:"schema_version"`
 	OriginNetworkID    uint32 `meddler:"origin_network_id"`
+	DepositCount       uint32 `meddler:"deposit_count"`
 	DestinationNetwork uint32 `meddler:"destination_network"`
 	TxHash             string `meddler:"tx_hash"`
 	ClaimStatus        string `meddler:"claim_status"`
@@ -138,6 +141,11 @@ type activityBridgeRow struct {
 
 func (row *activityBridgeRow) staleSchema() bool {
 	return row.SchemaVersion != activitySchemaVersion
+}
+
+// key is the domain.BridgeKey of the bridge row holds, within its owner FromAddress
+func (row *activityBridgeRow) key() domain.BridgeKey {
+	return domain.BridgeKey{NetworkID: row.OriginNetworkID, DepositCount: row.DepositCount}
 }
 
 // activityTrackingSnapshot is the JSON shape of ActivityEntry.Tracking persisted inside
@@ -180,7 +188,7 @@ type activityBridgeData struct {
 func (row *activityBridgeRow) entry() (*domain.ActivityEntry, error) {
 	var data activityBridgeData
 	if err := json.Unmarshal(row.Data, &data); err != nil {
-		return nil, fmt.Errorf("decoding activity_bridge row %s: %w", row.GlobalIndex, err)
+		return nil, fmt.Errorf("decoding activity_bridge row %s of %s: %w", row.key(), row.FromAddress, err)
 	}
 	entry := &domain.ActivityEntry{
 		Bridge:             data.Bridge,
@@ -711,7 +719,7 @@ func (s *sqliteActivityStore) cachedEntries(addr string) (map[domain.BridgeKey]*
 		if err != nil {
 			return nil, err
 		}
-		cached[entry.Key()] = entry
+		cached[row.key()] = entry
 	}
 	return cached, nil
 }
@@ -727,14 +735,13 @@ func (s *sqliteActivityStore) bridgeRows(addr string) ([]*activityBridgeRow, err
 
 // forgetBridges deletes addr's activity_bridge rows of keys — the invalidated bridges
 // bridgetracker.PlanActivityRefresh decided to remove (see RefreshAddress), mirroring
-// ActivityCache's own delete-from-cache handling of the same list. Scoped to addr, so a row another
-// address holds for the same bridge is never touched, and matched by domain.BridgeKey (the
-// reporting network and the deposit count), never by global index alone
+// ActivityCache's own delete-from-cache handling of the same list. Matched by the full primary key
+// (addr, network, deposit count): a row another address holds for the same bridge, or another
+// bridge sharing the global index, is never touched
 func (s *sqliteActivityStore) forgetBridges(addr string, keys []domain.BridgeKey) error {
 	for _, key := range keys {
 		if _, err := s.db.Exec(
-			`DELETE FROM activity_bridge WHERE from_address = ? AND origin_network_id = ?
-				AND json_extract(data, '$.Bridge.deposit_count') = ?`,
+			"DELETE FROM activity_bridge WHERE from_address = ? AND origin_network_id = ? AND deposit_count = ?",
 			addr, key.NetworkID, key.DepositCount,
 		); err != nil {
 			return fmt.Errorf("forgetting activity_bridge row %s: %w", key, err)
@@ -792,7 +799,10 @@ func (s *sqliteActivityStore) recordScanWarnings(addr string, warnings []domain.
 	return err
 }
 
-// saveBridgeRow upserts entry as addr's row for item's global index
+// saveBridgeRow upserts entry as addr's row for item's domain.BridgeKey. The conflict target is the
+// whole primary key, owner included, and the update never touches the key columns: a refresh of one
+// address can only ever rewrite that address's own row for that very bridge, never move another
+// address's row to it nor overwrite another bridge sharing the global index
 func (s *sqliteActivityStore) saveBridgeRow(
 	addr string, item *domain.ScannedBridge, entry *domain.ActivityEntry,
 ) error {
@@ -814,23 +824,23 @@ func (s *sqliteActivityStore) saveBridgeRow(
 
 	_, err = s.db.Exec(
 		`INSERT INTO activity_bridge
-			(global_index, from_address, schema_version, origin_network_id, destination_network,
+			(global_index, from_address, schema_version, origin_network_id, deposit_count, destination_network,
 			 tx_hash, claim_status, tracker_claim_status, block_timestamp, created_at, updated_at, data,
 			 revision_hash)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT (global_index) DO UPDATE SET
-			from_address = excluded.from_address, schema_version = excluded.schema_version,
-			origin_network_id = excluded.origin_network_id, destination_network = excluded.destination_network,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (from_address, origin_network_id, deposit_count) DO UPDATE SET
+			global_index = excluded.global_index, schema_version = excluded.schema_version,
+			destination_network = excluded.destination_network,
 			tx_hash = excluded.tx_hash, claim_status = excluded.claim_status,
 			tracker_claim_status = excluded.tracker_claim_status, block_timestamp = excluded.block_timestamp,
 			created_at = excluded.created_at, updated_at = excluded.updated_at, data = excluded.data,
 			revision_hash = excluded.revision_hash`,
-		string(item.Bridge.GlobalIndex), addr, activitySchemaVersion, item.NetworkID, item.Bridge.DestinationNetwork,
-		string(item.Bridge.TxHash), entry.ClaimStatus.String(), entry.TrackerClaimStatus.String(),
-		int64(item.Bridge.BlockTimestamp), entry.CreatedAt.UnixNano(), entry.UpdatedAt.UnixNano(), data,
-		revisionHash[:])
+		string(item.Bridge.GlobalIndex), addr, activitySchemaVersion, item.NetworkID, item.Bridge.DepositCount,
+		item.Bridge.DestinationNetwork, string(item.Bridge.TxHash), entry.ClaimStatus.String(),
+		entry.TrackerClaimStatus.String(), int64(item.Bridge.BlockTimestamp), entry.CreatedAt.UnixNano(),
+		entry.UpdatedAt.UnixNano(), data, revisionHash[:])
 	if err != nil {
-		return fmt.Errorf("saving activity_bridge row %s: %w", item.Bridge.GlobalIndex, err)
+		return fmt.Errorf("saving activity_bridge row %s of %s: %w", item.Key(), addr, err)
 	}
 	return nil
 }
