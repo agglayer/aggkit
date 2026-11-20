@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -361,6 +362,13 @@ func (a *MultidownloaderStorage) saveLogsAndBlocks(tx dbtypes.Querier,
 // than silently keeping one of the two values.
 var ErrBlockHeaderIntegrityConflict = errors.New("block header integrity conflict")
 
+// ErrLogIntegrityConflict is returned when an incoming log shares the primary
+// key (address, block_number, log_index) of a stored one but its payload
+// (topics, data, tx hash or tx index) contradicts the stored value. Logs are
+// immutable: a conflicting replay is a corruption signal and must not overwrite
+// the stored row.
+var ErrLogIntegrityConflict = errors.New("log integrity conflict")
+
 func (a *MultidownloaderStorage) saveBlocksNoMutex(tx dbtypes.Querier, blockRows map[uint64]*blockRow) error {
 	if tx == nil {
 		tx = a.db
@@ -376,7 +384,7 @@ func (a *MultidownloaderStorage) saveBlocksNoMutex(tx dbtypes.Querier, blockRows
 			// blocks.block_number, which happens when the very same header is
 			// saved again for a second address's logs. Any other error is
 			// propagated untouched.
-			if !isBlockPrimaryKeyConstraint(err) {
+			if !isPrimaryKeyOrUniqueConstraint(err) {
 				return fmt.Errorf("saveBlocksNoMutex: error inserting block header row (%s): %w", incomingRow.String(), err)
 			}
 			originalErr := fmt.Errorf("saveBlocksNoMutex: error inserting block header row (%s): %w", incomingRow.String(), err)
@@ -397,17 +405,6 @@ func (a *MultidownloaderStorage) saveBlocksNoMutex(tx dbtypes.Querier, blockRows
 		}
 	}
 	return nil
-}
-
-// isBlockPrimaryKeyConstraint reports whether err is a SQLite PRIMARY KEY
-// (or UNIQUE) constraint violation, i.e. the duplicate block header case.
-func isBlockPrimaryKeyConstraint(err error) bool {
-	sqliteErr, ok := db.SQLiteErr(err)
-	if !ok || sqliteErr == nil {
-		return false
-	}
-	return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey ||
-		sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
 }
 
 // mergeBlockRowNoMutex reconciles an incoming block header with the stored row
@@ -509,10 +506,69 @@ func (a *MultidownloaderStorage) saveLogsNoMutex(tx dbtypes.Querier, logRows []*
 	if tx == nil {
 		tx = a.db
 	}
-	for _, log := range logRows {
-		if err := meddler.Insert(tx, "logs", log); err != nil {
-			return fmt.Errorf("saveLogsNoMutex: error inserting eth log (%s): %w", log.String(), err)
+	for _, incoming := range logRows {
+		// Fast path: a fresh log is inserted with the original single INSERT, so
+		// the historical case (one row per new log) adds no extra SELECT cost.
+		if err := meddler.Insert(tx, "logs", incoming); err != nil {
+			if !isPrimaryKeyOrUniqueConstraint(err) {
+				return fmt.Errorf("saveLogsNoMutex: error inserting eth log (%s): %w", incoming.String(), err)
+			}
+			originalErr := fmt.Errorf("saveLogsNoMutex: error inserting eth log (%s): %w", incoming.String(), err)
+			existingRows := make([]*logRow, 0)
+			if queryErr := meddler.QueryAll(tx, &existingRows,
+				"SELECT * FROM logs WHERE address = ? AND block_number = ? AND log_index = ?",
+				incoming.Address.Hex(), incoming.BlockNumber, incoming.Index); queryErr != nil {
+				return fmt.Errorf("saveLogsNoMutex: error querying existing eth log (%s): %w",
+					incoming.String(), queryErr)
+			}
+			if len(existingRows) == 0 {
+				// The constraint fired but no row is readable: this is not the
+				// benign duplicate-log case, so preserve the original error.
+				return originalErr
+			}
+			if mergeErr := mergeLogRow(existingRows[0], incoming); mergeErr != nil {
+				return mergeErr
+			}
 		}
 	}
 	return nil
+}
+
+// isPrimaryKeyOrUniqueConstraint reports whether err is a SQLite PRIMARY KEY
+// or UNIQUE constraint violation. Used for the duplicate block-header case
+// (blocks.block_number) and the duplicate log case
+// (logs.address, logs.block_number, logs.log_index).
+func isPrimaryKeyOrUniqueConstraint(err error) bool {
+	sqliteErr, ok := db.SQLiteErr(err)
+	if !ok || sqliteErr == nil {
+		return false
+	}
+	return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey ||
+		sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
+}
+
+// mergeLogRow reconciles an incoming log with the stored row that shares its
+// primary key. Logs are immutable: an identical payload is a benign idempotent
+// replay (the stored row is kept, nothing is written); a contradictory payload
+// is ErrLogIntegrityConflict and never overwrites the stored row.
+func mergeLogRow(existing, incoming *logRow) error {
+	if logRowPayloadEqual(existing, incoming) {
+		return nil
+	}
+	return fmt.Errorf("saveLogsNoMutex: log address=%s block=%d index=%d: %w: stored %s != incoming %s",
+		existing.Address.Hex(), existing.BlockNumber, existing.Index,
+		ErrLogIntegrityConflict, existing.String(), incoming.String())
+}
+
+// logRowPayloadEqual reports whether the two rows carry the same immutable
+// payload. The primary key (address, block_number, log_index) is assumed to
+// already match; this compares topics, data, tx hash and tx index.
+func logRowPayloadEqual(a, b *logRow) bool {
+	if a.TxHash != b.TxHash || a.TxIndex != b.TxIndex {
+		return false
+	}
+	if a.Topics != b.Topics {
+		return false
+	}
+	return bytes.Equal(a.Data, b.Data)
 }
