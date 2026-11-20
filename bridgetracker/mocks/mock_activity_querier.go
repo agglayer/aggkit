@@ -60,43 +60,50 @@ func (_c *ActivityQuerier_FlushActivity_Call) RunAndReturn(run func(common.Addre
 	return _c
 }
 
-// GetActivity provides a mock function with given fields: ctx, fromAddress, includeTracking, filter
-func (_m *ActivityQuerier) GetActivity(ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
-	ret := _m.Called(ctx, fromAddress, includeTracking, filter)
+// GetActivity provides a mock function with given fields: ctx, fromAddress, includeTracking, filter, page
+func (_m *ActivityQuerier) GetActivity(ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter, page domain.ActivityPage) ([]*domain.ActivityEntry, int, []domain.ActivityWarning, error) {
+	ret := _m.Called(ctx, fromAddress, includeTracking, filter, page)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetActivity")
 	}
 
 	var r0 []*domain.ActivityEntry
-	var r1 []domain.ActivityWarning
-	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, common.Address, bool, types.ActivityFilter) ([]*domain.ActivityEntry, []domain.ActivityWarning, error)); ok {
-		return rf(ctx, fromAddress, includeTracking, filter)
+	var r1 int
+	var r2 []domain.ActivityWarning
+	var r3 error
+	if rf, ok := ret.Get(0).(func(context.Context, common.Address, bool, types.ActivityFilter, domain.ActivityPage) ([]*domain.ActivityEntry, int, []domain.ActivityWarning, error)); ok {
+		return rf(ctx, fromAddress, includeTracking, filter, page)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, common.Address, bool, types.ActivityFilter) []*domain.ActivityEntry); ok {
-		r0 = rf(ctx, fromAddress, includeTracking, filter)
+	if rf, ok := ret.Get(0).(func(context.Context, common.Address, bool, types.ActivityFilter, domain.ActivityPage) []*domain.ActivityEntry); ok {
+		r0 = rf(ctx, fromAddress, includeTracking, filter, page)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*domain.ActivityEntry)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, common.Address, bool, types.ActivityFilter) []domain.ActivityWarning); ok {
-		r1 = rf(ctx, fromAddress, includeTracking, filter)
+	if rf, ok := ret.Get(1).(func(context.Context, common.Address, bool, types.ActivityFilter, domain.ActivityPage) int); ok {
+		r1 = rf(ctx, fromAddress, includeTracking, filter, page)
 	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).([]domain.ActivityWarning)
+		r1 = ret.Get(1).(int)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, common.Address, bool, types.ActivityFilter, domain.ActivityPage) []domain.ActivityWarning); ok {
+		r2 = rf(ctx, fromAddress, includeTracking, filter, page)
+	} else {
+		if ret.Get(2) != nil {
+			r2 = ret.Get(2).([]domain.ActivityWarning)
 		}
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, common.Address, bool, types.ActivityFilter) error); ok {
-		r2 = rf(ctx, fromAddress, includeTracking, filter)
+	if rf, ok := ret.Get(3).(func(context.Context, common.Address, bool, types.ActivityFilter, domain.ActivityPage) error); ok {
+		r3 = rf(ctx, fromAddress, includeTracking, filter, page)
 	} else {
-		r2 = ret.Error(2)
+		r3 = ret.Error(3)
 	}
 
-	return r0, r1, r2
+	return r0, r1, r2, r3
 }
 
 // ActivityQuerier_GetActivity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetActivity'
@@ -109,23 +116,24 @@ type ActivityQuerier_GetActivity_Call struct {
 //   - fromAddress common.Address
 //   - includeTracking bool
 //   - filter types.ActivityFilter
-func (_e *ActivityQuerier_Expecter) GetActivity(ctx interface{}, fromAddress interface{}, includeTracking interface{}, filter interface{}) *ActivityQuerier_GetActivity_Call {
-	return &ActivityQuerier_GetActivity_Call{Call: _e.mock.On("GetActivity", ctx, fromAddress, includeTracking, filter)}
+//   - page domain.ActivityPage
+func (_e *ActivityQuerier_Expecter) GetActivity(ctx interface{}, fromAddress interface{}, includeTracking interface{}, filter interface{}, page interface{}) *ActivityQuerier_GetActivity_Call {
+	return &ActivityQuerier_GetActivity_Call{Call: _e.mock.On("GetActivity", ctx, fromAddress, includeTracking, filter, page)}
 }
 
-func (_c *ActivityQuerier_GetActivity_Call) Run(run func(ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter)) *ActivityQuerier_GetActivity_Call {
+func (_c *ActivityQuerier_GetActivity_Call) Run(run func(ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter, page domain.ActivityPage)) *ActivityQuerier_GetActivity_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(common.Address), args[2].(bool), args[3].(types.ActivityFilter))
+		run(args[0].(context.Context), args[1].(common.Address), args[2].(bool), args[3].(types.ActivityFilter), args[4].(domain.ActivityPage))
 	})
 	return _c
 }
 
-func (_c *ActivityQuerier_GetActivity_Call) Return(_a0 []*domain.ActivityEntry, _a1 []domain.ActivityWarning, _a2 error) *ActivityQuerier_GetActivity_Call {
-	_c.Call.Return(_a0, _a1, _a2)
+func (_c *ActivityQuerier_GetActivity_Call) Return(entries []*domain.ActivityEntry, total int, warnings []domain.ActivityWarning, err error) *ActivityQuerier_GetActivity_Call {
+	_c.Call.Return(entries, total, warnings, err)
 	return _c
 }
 
-func (_c *ActivityQuerier_GetActivity_Call) RunAndReturn(run func(context.Context, common.Address, bool, types.ActivityFilter) ([]*domain.ActivityEntry, []domain.ActivityWarning, error)) *ActivityQuerier_GetActivity_Call {
+func (_c *ActivityQuerier_GetActivity_Call) RunAndReturn(run func(context.Context, common.Address, bool, types.ActivityFilter, domain.ActivityPage) ([]*domain.ActivityEntry, int, []domain.ActivityWarning, error)) *ActivityQuerier_GetActivity_Call {
 	_c.Call.Return(run)
 	return _c
 }

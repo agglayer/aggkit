@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"math/big"
 	"path"
 	"sync"
@@ -19,6 +20,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
+
+// allActivity is a GetActivity page holding every entry, for tests that read the whole activity
+var allActivity = domain.ActivityPage{PageNumber: 1, PageSize: math.MaxUint32}
 
 var testFromAddress = common.HexToAddress("0x1111111111111111111111111111111111111111")
 
@@ -199,7 +203,8 @@ func refreshAndGet(
 	if err := store.RefreshAddress(ctx, addr); err != nil {
 		return nil, nil, err
 	}
-	return store.GetActivity(ctx, addr, includeTracking, filter)
+	entries, _, warnings, err := store.GetActivity(ctx, addr, includeTracking, filter, allActivity)
+	return entries, warnings, err
 }
 
 // TestSQLiteActivityStoreUnclaimedBridgeIsRecheckedEveryCall verifies an unclaimed bridge's
@@ -213,7 +218,7 @@ func TestSQLiteActivityStoreUnclaimedBridgeIsRecheckedEveryCall(t *testing.T) {
 
 	for range 2 {
 		require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
-		entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+		entries, _, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 		require.NoError(t, err)
 		require.Len(t, entries, 1)
 		require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
@@ -232,7 +237,7 @@ func TestSQLiteActivityStoreGetActivityIsCacheOnly(t *testing.T) {
 	store := newTestSQLiteActivityStore(t, scanner, claims)
 	mustRegisterActivity(t, store, testFromAddress, 0)
 
-	entries, _, err := store.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
+	entries, _, _, err := store.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Empty(t, entries, "nothing has been refreshed yet")
 	require.Equal(t, 0, scanner.calls, "GetActivity must never scan")
@@ -240,7 +245,7 @@ func TestSQLiteActivityStoreGetActivityIsCacheOnly(t *testing.T) {
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
 	require.Equal(t, 1, scanner.calls, "RefreshAddress is the one that scans")
 
-	entries, _, err = store.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
+	entries, _, _, err = store.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, 1, scanner.calls, "a later GetActivity must still never scan")
@@ -297,7 +302,7 @@ func TestSQLiteActivityStoreTrackerClaimedNeedsOnChainConfirmation(t *testing.T)
 	require.NotNil(t, entries[0].Tracking)
 	require.Equal(t, types.TrackerClaimStatusPending, entries[0].TrackerClaimStatus)
 
-	claimedOnly, _, err := store.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterClaimed)
+	claimedOnly, _, _, err := store.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterClaimed, allActivity)
 	require.NoError(t, err)
 	require.Empty(t, claimedOnly, "an on-chain unclaimed bridge must not be listed as claimed")
 }
@@ -314,7 +319,7 @@ func TestSQLiteActivityStoreSettledBridgeIsNeverRechecked(t *testing.T) {
 	mustRegisterActivity(t, store, testFromAddress, 0)
 
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusClaimed, entries[0].ClaimStatus)
 	require.Equal(t, claim, entries[0].Claim)
@@ -322,7 +327,7 @@ func TestSQLiteActivityStoreSettledBridgeIsNeverRechecked(t *testing.T) {
 	require.True(t, entries[0].Finalized)
 
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, claim, entries[0].Claim)
 	require.Equal(t, 1, claims.isClaimedCalls)
@@ -343,13 +348,13 @@ func TestSQLiteActivityStoreIsClaimedFailureReportsErrorStatus(t *testing.T) {
 	mustRegisterActivity(t, store, testFromAddress, 0)
 
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusError, entries[0].ClaimStatus)
 	require.Equal(t, "no bridge contract address configured for network 2", entries[0].Errors["claim"])
 
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
 	require.Equal(t, 2, claims.isClaimedCalls)
@@ -397,7 +402,7 @@ func TestSQLiteActivityStoreIsClaimedFailureRedactsSensitiveTokensAcrossInstance
 	require.True(t, ok)
 	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
 
-	entries, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, rawErr, entries[0].Errors["claim"], "in-memory value read back from disk")
@@ -442,7 +447,7 @@ func TestSQLiteActivityStoreReadinessFailureRedactsSensitiveTokensAcrossInstance
 	require.True(t, ok)
 	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
 
-	entries, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, rawErr, entries[0].Errors["readiness"], "in-memory value read back from disk")
@@ -495,7 +500,7 @@ func TestSQLiteActivityStoreLastWarningsRedactsSensitiveTokensAcrossInstances(t 
 	require.True(t, ok)
 	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
 
-	_, warnings, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	_, _, warnings, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, warnings, 1)
 	require.Equal(t, rawWarning, warnings[0].Message, "in-memory value read back from disk")
@@ -633,7 +638,7 @@ func TestSQLiteActivityStoreTimestampsTrackCreationAndLastUpdate(t *testing.T) {
 	t1 := time.Now()
 	store.now = func() time.Time { return t1 }
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.True(t, entries[0].CreatedAt.Equal(t1))
 	require.True(t, entries[0].UpdatedAt.Equal(t1))
@@ -641,7 +646,7 @@ func TestSQLiteActivityStoreTimestampsTrackCreationAndLastUpdate(t *testing.T) {
 	t2 := t1.Add(time.Minute)
 	store.now = func() time.Time { return t2 }
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.True(t, entries[0].CreatedAt.Equal(t1), "creation time must not change")
 	require.True(t, entries[0].UpdatedAt.Equal(t2), "update time must advance on every recheck")
@@ -663,7 +668,7 @@ func TestSQLiteActivityStoreCreatedAtUsesBridgeBlockTimestamp(t *testing.T) {
 	now := time.Now()
 	store.now = func() time.Time { return now }
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.True(t, entries[0].CreatedAt.Equal(time.Unix(int64(bridge.BlockTimestamp), 0)),
 		"the deposit's own block timestamp, not the tick's now")
@@ -792,7 +797,7 @@ func TestSQLiteActivityStoreRegisterAndAwaitWaitsForRefresh(t *testing.T) {
 		t.Fatal("RegisterAndAwait never returned after the refresh completed")
 	}
 
-	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 }
@@ -827,7 +832,7 @@ func TestSQLiteActivityStorePersistsAcrossInstances(t *testing.T) {
 	require.True(t, ok)
 	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
 
-	entries, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, claim, entries[0].Claim)
@@ -867,7 +872,7 @@ func TestSQLiteActivityStorePersistsSource(t *testing.T) {
 	require.True(t, ok)
 	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
 
-	entries, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, domain.ActivitySourceRPC, entries[0].Source)
@@ -906,14 +911,14 @@ func TestSQLiteActivityStoreWarningsReflectLastRefresh(t *testing.T) {
 
 	// a later GetActivity call on its own (no refresh in between) still reports the same
 	// last-persisted warnings, since GetActivity is a cache-only read
-	_, warnings, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	_, _, warnings, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, []domain.ActivityWarning{warning}, warnings)
 
 	// a subsequent clean refresh overwrites last_warnings with the new (empty) result
 	scanner.warnings = nil
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
-	_, warnings, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	_, _, warnings, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Empty(t, warnings)
 }
@@ -936,8 +941,9 @@ func TestSQLiteActivityStoreIncludeTrackingPersistsAcrossRestart(t *testing.T) {
 	mustRegisterActivity(t, first, testFromAddress, 0)
 	// prime the sticky flag without refreshing yet, exactly like activityCommand.Execute's
 	// RegisterAndAwait-then-GetActivity ordering
-	_, _, err = first.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
+	primed, _, _, err := first.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
+	require.Empty(t, primed, "nothing refreshed yet")
 	firstSQLite, ok := first.(*sqliteActivityStore)
 	require.True(t, ok)
 	require.NoError(t, firstSQLite.Close())
@@ -949,7 +955,7 @@ func TestSQLiteActivityStoreIncludeTrackingPersistsAcrossRestart(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, secondSQLite.Close()) })
 
 	require.NoError(t, second.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := second.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.NotNil(t, entries[0].Tracking, "include_tracking must survive the restart")
@@ -984,7 +990,7 @@ func TestSQLiteActivityStoreSchemaVersionMismatchIsAMiss(t *testing.T) {
 	mustRegisterActivity(t, store, testFromAddress, 0)
 
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusClaimed, entries[0].ClaimStatus)
 
@@ -994,7 +1000,7 @@ func TestSQLiteActivityStoreSchemaVersionMismatchIsAMiss(t *testing.T) {
 	// a settled (claimed) bridge whose row is now stale must be re-scanned/re-refreshed from
 	// scratch, not read back as claimed straight from the stale row
 	require.NoError(t, store.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)

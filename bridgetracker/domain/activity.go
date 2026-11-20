@@ -412,19 +412,26 @@ type ActivityClaimChecker interface {
 // ActivitySupervisedStore.RefreshAddress, driven by ActivityEngine), the same way
 // SupervisedStore.Get never resolves a tracker bridge on the caller's behalf either
 type ActivityQuerier interface {
-	// GetActivity returns whatever is currently cached for fromAddress, filtered per filter (see
-	// types.ActivityFilter). includeTracking additionally marks fromAddress as wanting tracking
-	// enrichment (see ActivityEntry.Tracking) for future background refreshes — the very first
-	// response after this flag flips may still be missing Tracking for a given bridge until the
-	// next refresh populates it, the same "poll again" precedent the tracker itself established
-	// for a freshly registered bridge's BridgeStatus. The returned []ActivityWarning is whatever
-	// the last background refresh recorded for a network it could not scan — the result is still
-	// whatever every other network reported, just possibly incomplete for the networks listed.
-	// Returns an empty result, not an error, for an address that is not (yet) supervised — callers
-	// reach this port only after ActivitySupervisedStore.RegisterAndAwait
+	// GetActivity returns page of whatever is currently cached for fromAddress, filtered per filter
+	// (see types.ActivityFilter), in CompareActivityEntries order, plus total: how many cached
+	// entries match filter across every page. A page past the end is an empty slice with the real
+	// total. The store applies the page itself: the work of one request is
+	// bounded by the page, not by the address's whole history — the SQLite store filters, counts,
+	// orders and pages in SQL and decodes only the page's rows. ctx bounds the read: a cancelled ctx
+	// returns its error (context.Canceled) instead of finishing the work. includeTracking
+	// additionally marks fromAddress as wanting tracking enrichment (see ActivityEntry.Tracking) for
+	// future background refreshes — the very first response after this flag flips may still be
+	// missing Tracking for a given bridge until the next refresh populates it, the same "poll
+	// again" precedent the tracker itself established for a freshly registered bridge's
+	// BridgeStatus. The returned []ActivityWarning is whatever the last background refresh
+	// recorded for a network it could not scan — the result is still whatever every other network
+	// reported, just possibly incomplete for the networks listed. Returns an empty result, not an
+	// error, for an address that is not (yet) supervised — callers reach this port only after
+	// ActivitySupervisedStore.RegisterAndAwait
 	GetActivity(
 		ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
-	) ([]*ActivityEntry, []ActivityWarning, error)
+		page ActivityPage,
+	) (entries []*ActivityEntry, total int, warnings []ActivityWarning, err error)
 
 	// FlushActivity discards whatever is cached for fromAddress, forcing every bridge found for
 	// it to be freshly rechecked (claim state re-verified, tracker re-consulted) on the next

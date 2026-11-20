@@ -5,6 +5,8 @@ import (
 	"path"
 	"testing"
 
+	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/db"
 	"github.com/stretchr/testify/require"
 )
@@ -121,7 +123,7 @@ func TestMigration0006RekeysActivityBridgePerOwner(t *testing.T) {
 	insertOldBridgeRow(t, sqlDB, "9", addrA, 0, `{"Bridge":{"amount":"1"}}`, nil) // no deposit_count: dropped
 	require.NoError(t, sqlDB.Close())
 
-	require.NoError(t, RunMigrations(dbPath))
+	require.NoError(t, db.RunMigrations(dbPath, all()[:migrationIndex(t, "bridgetracker0006")+1]))
 	sqlDB, err := db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
@@ -194,4 +196,35 @@ func TestMigration0006Down(t *testing.T) {
 	require.Equal(t, []string{"5"}, globalIndexes)
 	_, err = sqlDB.Exec("SELECT deposit_count FROM activity_bridge")
 	require.Error(t, err, "the column is gone")
+}
+
+// TestMigration0007BackfillsGlobalIndexSortKey verifies existing rows get the same gi_sort the
+// store writes (domain.GlobalIndexSortKey) and the page index is created
+func TestMigration0007BackfillsGlobalIndexSortKey(t *testing.T) {
+	dbPath, sqlDB := openMigratedUpTo(t, "bridgetracker0007")
+	insertAddress(t, sqlDB, addrA)
+	globalIndexes := []string{"7", "007", "0", "18446744073709551616", "36893488147419103231", "not a number"}
+	for i, gi := range globalIndexes {
+		_, err := sqlDB.Exec(`INSERT INTO activity_bridge (global_index, from_address, schema_version,
+			origin_network_id, deposit_count, destination_network, tx_hash, claim_status, tracker_claim_status,
+			block_timestamp, created_at, updated_at, data) VALUES (?, ?, 1, 0, ?, 1, '0x', 'unclaimed', 'pending',
+			0, 0, 0, '{}')`, gi, addrA, i)
+		require.NoError(t, err)
+	}
+	require.NoError(t, sqlDB.Close())
+
+	require.NoError(t, RunMigrations(dbPath))
+	sqlDB, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+
+	for _, gi := range globalIndexes {
+		var giSort string
+		require.NoError(t, sqlDB.QueryRow("SELECT gi_sort FROM activity_bridge WHERE global_index = ?", gi).
+			Scan(&giSort))
+		require.Len(t, giSort, domain.GlobalIndexSortWidth)
+		require.Equal(t, domain.GlobalIndexSortKey(bridgeservicetypes.BigIntString(gi)), giSort, gi)
+	}
+	require.Contains(t, indexNames(t, sqlDB), "idx_activity_bridge_page")
+	requireNoForeignKeyViolations(t, sqlDB)
 }

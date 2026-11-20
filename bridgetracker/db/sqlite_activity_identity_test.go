@@ -25,7 +25,7 @@ func (h *activityHarness) scanFor(addr common.Address, found []*domain.ScannedBr
 // entriesOf refreshes nothing: it returns what the store serves for addr
 func (h *activityHarness) entriesOf(addr common.Address) []*domain.ActivityEntry {
 	h.t.Helper()
-	entries, _, err := h.store.GetActivity(h.t.Context(), addr, false, types.ActivityFilterAll)
+	entries, _, _, err := h.store.GetActivity(h.t.Context(), addr, false, types.ActivityFilterAll, allActivity)
 	require.NoError(h.t, err)
 	return entries
 }

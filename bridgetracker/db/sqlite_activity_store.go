@@ -137,6 +137,9 @@ type activityBridgeRow struct {
 	// RevisionHash is domain.HashActivityEntry of the entry this row holds (32 bytes), written
 	// together with it; nil for a row written before bridgetracker0005 (see revisionHash)
 	RevisionHash []byte `meddler:"revision_hash"`
+	// GISort is domain.GlobalIndexSortKey(GlobalIndex): the column GetActivity orders and pages by
+	// (see bridgetracker0007.sql)
+	GISort string `meddler:"gi_sort"`
 }
 
 func (row *activityBridgeRow) staleSchema() bool {
@@ -339,10 +342,35 @@ func (s *sqliteActivityStore) Close() error {
 	return s.db.Close()
 }
 
+// contextDB is the meddler.DB of a *sql.DB that runs every statement under ctx, so a cancelled
+// ctx (a client gone away) stops the query and returns context.Canceled
+type contextDB struct {
+	ctx context.Context //nolint:containedctx // bound to one call, never stored past it
+	db  *sql.DB
+}
+
+func (c contextDB) Exec(query string, args ...any) (sql.Result, error) {
+	return c.db.ExecContext(c.ctx, query, args...)
+}
+
+func (c contextDB) Query(query string, args ...any) (*sql.Rows, error) {
+	return c.db.QueryContext(c.ctx, query, args...)
+}
+
+func (c contextDB) QueryRow(query string, args ...any) *sql.Row {
+	return c.db.QueryRowContext(c.ctx, query, args...)
+}
+
 // selectAddressRow returns addr's row, or db.ErrNotFound if there is none
 func (s *sqliteActivityStore) selectAddressRow(addr string) (*activityAddressRow, error) {
+	return s.selectAddressRowContext(context.Background(), addr)
+}
+
+// selectAddressRowContext is selectAddressRow under ctx
+func (s *sqliteActivityStore) selectAddressRowContext(ctx context.Context, addr string) (*activityAddressRow, error) {
 	var row activityAddressRow
-	err := meddler.QueryRow(s.db, &row, "SELECT * FROM activity_address WHERE from_address = ?", addr)
+	err := meddler.QueryRow(contextDB{ctx: ctx, db: s.db}, &row, "SELECT * FROM activity_address WHERE from_address = ?",
+		addr)
 	if err != nil {
 		return nil, aggkitdb.ReturnErrNotFound(err)
 	}
@@ -444,7 +472,7 @@ func (s *sqliteActivityStore) RegisterAndAwait(
 		return false, fmt.Errorf("registering activity address %s: %w", fromAddress, err)
 	}
 	if includeTracking {
-		if err := s.setIncludeTracking(addr); err != nil {
+		if err := s.setIncludeTracking(context.Background(), addr); err != nil {
 			return false, fmt.Errorf("setting include_tracking for %s: %w", fromAddress, err)
 		}
 	}
@@ -541,8 +569,8 @@ func (s *sqliteActivityStore) markRefreshed(addr string, generation int64) {
 // setIncludeTracking sets addr's sticky include_tracking flag, if not already set — used both by
 // RegisterAndAwait (so even the very first triggered refresh sees it) and GetActivity (for a
 // caller that only asks for tracking on a later request)
-func (s *sqliteActivityStore) setIncludeTracking(addr string) error {
-	_, err := s.db.Exec(
+func (s *sqliteActivityStore) setIncludeTracking(ctx context.Context, addr string) error {
+	_, err := s.db.ExecContext(ctx,
 		"UPDATE activity_address SET include_tracking = 1 WHERE from_address = ? AND include_tracking = 0", addr,
 	)
 	return err
@@ -826,10 +854,10 @@ func (s *sqliteActivityStore) saveBridgeRow(
 		`INSERT INTO activity_bridge
 			(global_index, from_address, schema_version, origin_network_id, deposit_count, destination_network,
 			 tx_hash, claim_status, tracker_claim_status, block_timestamp, created_at, updated_at, data,
-			 revision_hash)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 revision_hash, gi_sort)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (from_address, origin_network_id, deposit_count) DO UPDATE SET
-			global_index = excluded.global_index, schema_version = excluded.schema_version,
+			global_index = excluded.global_index, gi_sort = excluded.gi_sort, schema_version = excluded.schema_version,
 			destination_network = excluded.destination_network,
 			tx_hash = excluded.tx_hash, claim_status = excluded.claim_status,
 			tracker_claim_status = excluded.tracker_claim_status, block_timestamp = excluded.block_timestamp,
@@ -838,66 +866,117 @@ func (s *sqliteActivityStore) saveBridgeRow(
 		string(item.Bridge.GlobalIndex), addr, activitySchemaVersion, item.NetworkID, item.Bridge.DepositCount,
 		item.Bridge.DestinationNetwork, string(item.Bridge.TxHash), entry.ClaimStatus.String(),
 		entry.TrackerClaimStatus.String(), int64(item.Bridge.BlockTimestamp), entry.CreatedAt.UnixNano(),
-		entry.UpdatedAt.UnixNano(), data, revisionHash[:])
+		entry.UpdatedAt.UnixNano(), data, revisionHash[:], domain.GlobalIndexSortKey(item.Bridge.GlobalIndex))
 	if err != nil {
 		return fmt.Errorf("saving activity_bridge row %s of %s: %w", item.Key(), addr, err)
 	}
 	return nil
 }
 
-// GetActivity implements domain.ActivityQuerier: a cache-only read of whatever the last
-// background refresh (see RefreshAddress) computed for fromAddress, filtered per filter.
-// includeTracking additionally sets the sticky include_tracking column for future refreshes —
-// it does not itself fetch anything. An address never registered returns an empty result, not
-// an error
+// activityPageOrder is domain.CompareActivityEntries in SQL: created_at is the exact UnixNano of
+// ActivityEntry.CreatedAt and gi_sort the fixed-width domain.GlobalIndexSortKey, so both compare
+// exactly as the Go comparator does; the bridge key makes the order total. idx_activity_bridge_page
+// (bridgetracker0007.sql) serves it
+const activityPageOrder = "created_at DESC, gi_sort DESC, origin_network_id DESC, deposit_count DESC"
+
+// activityFilterClause is the WHERE clause GetActivity reads under: addr's current-schema rows
+// (a stale-schema row is neither counted nor served, see activitySchemaVersion) matching filter on
+// the tracker_claim_status column — exactly bridgetracker.MatchesActivityFilter, which reads the
+// same value: "error" also matches any status this build does not know, since such a row decodes
+// as error (see parseTrackerClaimStatus)
+func activityFilterClause(addr string, filter types.ActivityFilter) (string, []any) {
+	where := "from_address = ? AND schema_version = ?"
+	args := []any{addr, activitySchemaVersion}
+	switch filter {
+	case types.ActivityFilterClaimed:
+		where += " AND tracker_claim_status IN (?, ?)"
+		args = append(args, types.TrackerClaimStatusClaimed.String(), types.TrackerClaimStatusClaimedFinalized.String())
+	case types.ActivityFilterPending:
+		where += " AND tracker_claim_status = ?"
+		args = append(args, types.TrackerClaimStatusPending.String())
+	case types.ActivityFilterReadyToClaim:
+		where += " AND tracker_claim_status = ?"
+		args = append(args, types.TrackerClaimStatusReadyToClaim.String())
+	case types.ActivityFilterError:
+		where += " AND tracker_claim_status NOT IN (?, ?, ?, ?)"
+		args = append(args, types.TrackerClaimStatusPending.String(), types.TrackerClaimStatusReadyToClaim.String(),
+			types.TrackerClaimStatusClaimed.String(), types.TrackerClaimStatusClaimedFinalized.String())
+	case types.ActivityFilterAll:
+	}
+	return where, args
+}
+
+// GetActivity implements domain.ActivityQuerier: a cache-only read of page of whatever the last
+// background refresh (see RefreshAddress) computed for fromAddress, filtered per filter, plus the
+// total number of matching entries. Filtering, counting, ordering and paging all happen in SQL
+// (see activityFilterClause, activityPageOrder, idx_activity_bridge_page): only the page's rows
+// are read and JSON-decoded, whatever the address's history. The count and
+// the page are two statements, not one snapshot: a refresh landing in between can make them
+// disagree by that refresh, which the endpoint already documents (pages are not a consistent
+// snapshot). Every statement runs under ctx: a cancelled ctx returns context.Canceled.
+// includeTracking additionally sets the sticky include_tracking column for future refreshes — it
+// does not itself fetch anything. An address never registered returns an empty result, not an
+// error
 func (s *sqliteActivityStore) GetActivity(
-	_ context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
-) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
+	ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
+	page domain.ActivityPage,
+) ([]*domain.ActivityEntry, int, []domain.ActivityWarning, error) {
 	addr := fromAddress.Hex()
 
-	addrRow, err := s.selectAddressRow(addr)
+	addrRow, err := s.selectAddressRowContext(ctx, addr)
 	if err != nil {
 		if errors.Is(err, aggkitdb.ErrNotFound) {
-			return nil, nil, nil
+			return []*domain.ActivityEntry{}, 0, nil, nil
 		}
-		return nil, nil, fmt.Errorf("loading activity address %s: %w", fromAddress, err)
+		return nil, 0, nil, fmt.Errorf("loading activity address %s: %w", fromAddress, err)
 	}
 
 	now := s.now()
-	if _, err := s.db.Exec(
+	if _, err := s.db.ExecContext(ctx,
 		"UPDATE activity_address SET last_access = ? WHERE from_address = ?", now.Unix(), addr,
 	); err != nil {
-		return nil, nil, fmt.Errorf("touching last_access for %s: %w", fromAddress, err)
+		return nil, 0, nil, fmt.Errorf("touching last_access for %s: %w", fromAddress, err)
 	}
 	if includeTracking {
-		if err := s.setIncludeTracking(addr); err != nil {
-			return nil, nil, fmt.Errorf("setting include_tracking for %s: %w", fromAddress, err)
+		if err := s.setIncludeTracking(ctx, addr); err != nil {
+			return nil, 0, nil, fmt.Errorf("setting include_tracking for %s: %w", fromAddress, err)
 		}
 	}
 
 	warnings, err := decodeWarnings(addrRow.LastWarnings)
 	if err != nil {
-		return nil, nil, err
+		return nil, 0, nil, err
 	}
 
-	rows, err := s.bridgeRows(addr)
-	if err != nil {
-		return nil, nil, fmt.Errorf("listing cached bridges for %s: %w", fromAddress, err)
+	where, args := activityFilterClause(addr, filter)
+	var total int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM activity_bridge WHERE "+where, args...).
+		Scan(&total); err != nil {
+		return nil, 0, nil, fmt.Errorf("counting cached bridges for %s: %w", fromAddress, err)
 	}
-	out := make([]*domain.ActivityEntry, 0, len(rows))
+	offset := page.Offset()
+	if offset >= uint64(total) || page.PageSize == 0 {
+		return []*domain.ActivityEntry{}, total, warnings, nil
+	}
+
+	var rows []*activityBridgeRow
+	if err := meddler.QueryAll(contextDB{ctx: ctx, db: s.db}, &rows,
+		"SELECT * FROM activity_bridge WHERE "+where+" ORDER BY "+activityPageOrder+" LIMIT ? OFFSET ?",
+		append(args, page.PageSize, offset)...); err != nil {
+		return nil, 0, nil, fmt.Errorf("listing cached bridges for %s: %w", fromAddress, err)
+	}
+	entries := make([]*domain.ActivityEntry, 0, len(rows))
 	for _, row := range rows {
-		if row.staleSchema() {
-			continue
+		if err := ctx.Err(); err != nil {
+			return nil, 0, nil, err
 		}
 		entry, err := row.entry()
 		if err != nil {
-			return nil, nil, err
+			return nil, 0, nil, err
 		}
-		if bridgetracker.MatchesActivityFilter(entry, filter) {
-			out = append(out, entry)
-		}
+		entries = append(entries, entry)
 	}
-	return out, warnings, nil
+	return entries, total, warnings, nil
 }
 
 // GetActivityRevision implements domain.ActivityRevisionReader: the sum (see
@@ -905,17 +984,21 @@ func (s *sqliteActivityStore) GetActivity(
 // the entries GetActivity serves, so it is the same value ActivityCache gives for the same
 // entries. Computed from the stored rows (no address-level counter is persisted), so it is the
 // same after a restart and after the address's rows are rebuilt. domain.EmptyActivityRevision for
-// an address with nothing stored. Like ActivityCache's, it does not count as an access
-func (s *sqliteActivityStore) GetActivityRevision(_ context.Context, fromAddress common.Address) (string, error) {
-	rows, err := s.bridgeRows(fromAddress.Hex())
-	if err != nil {
+// an address with nothing stored. Like ActivityCache's, it does not count as an access. Only a row
+// written before revision_hash existed has its data read (and decoded, see revisionHash); every
+// other row contributes its stored hash without its data being read. Runs under ctx
+func (s *sqliteActivityStore) GetActivityRevision(ctx context.Context, fromAddress common.Address) (string, error) {
+	var rows []*activityBridgeRow
+	if err := meddler.QueryAll(contextDB{ctx: ctx, db: s.db}, &rows,
+		`SELECT global_index, from_address, schema_version, origin_network_id, deposit_count, destination_network,
+			tx_hash, claim_status, tracker_claim_status, block_timestamp, created_at, updated_at, revision_hash,
+			gi_sort, CASE WHEN length(revision_hash) = ? THEN x'' ELSE data END AS data
+		 FROM activity_bridge WHERE from_address = ? AND schema_version = ?`,
+		len(domain.ActivityEntryHash{}), fromAddress.Hex(), activitySchemaVersion); err != nil {
 		return "", fmt.Errorf("listing cached bridges for %s: %w", fromAddress, err)
 	}
 	var revision domain.ActivityRevision
 	for _, row := range rows {
-		if row.staleSchema() {
-			continue
-		}
 		hash, err := row.revisionHash()
 		if err != nil {
 			return "", err

@@ -507,7 +507,7 @@ Pagination works exactly like the bridge service's paginated endpoints: `page_nu
 
 `bridge.global_index` is **not** unique per bridge: under the legacy pre-Etrog encoding, an L1 bridge to network 1 has the bare deposit count as its global index, the same value as a bridge emitted on network 1 with that deposit count. Both are listed, each with its own `bridge_network_id`.
 
-Bridges are sorted most recent first (`creation_timestamp` descending). A bridge whose block timestamp the bridge service has not populated yet is stamped with the time it was first cached, so it appears at the top until then. Bridges sharing the same `creation_timestamp` are ordered by `bridge.global_index` descending (compared numerically), so their relative order is the same on every request.
+Bridges are sorted most recent first (`creation_timestamp` descending). A bridge whose block timestamp the bridge service has not populated yet is stamped with the time it was first cached, so it appears at the top until then. Bridges sharing the same `creation_timestamp` are ordered by `bridge.global_index` descending (compared numerically), and bridges sharing both by `bridge_network_id` and then `bridge.deposit_count`, descending, so their relative order is the same on every request.
 
 **Pages are not a consistent snapshot.** Every request reads the cache as it is at that moment, and the background refresh can add new bridges between two requests of the same traversal. Because newest bridges come first, a new bridge shifts every older one down, so a client paging through the whole result can see:
 

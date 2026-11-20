@@ -45,7 +45,7 @@ func TestActivityEngineRefreshOneResolvesImmediately(t *testing.T) {
 
 	engine.refreshOne(t.Context(), testFromAddress)
 
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1, "refreshOne must refresh the address, not just be a no-op")
 }
@@ -77,7 +77,7 @@ func TestActivityEngineStartResolvesTriggeredAddressBeforeNextPoll(t *testing.T)
 	engine.Start(ctx)
 
 	mustRegisterActivity(t, cache, testFromAddress, time.Second)
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1,
 		"the engine must refresh a freshly registered address via the trigger channel, not wait out PollInterval")
@@ -97,7 +97,7 @@ func TestActivityEngineTickRefreshesAllRegisteredAddresses(t *testing.T) {
 	engine.tick(t.Context())
 
 	for _, addr := range []common.Address{testFromAddress, other} {
-		entries, _, err := cache.GetActivity(t.Context(), addr, false, types.ActivityFilterAll)
+		entries, _, _, err := cache.GetActivity(t.Context(), addr, false, types.ActivityFilterAll, allActivity)
 		require.NoError(t, err)
 		require.Len(t, entries, 1, "tick must refresh %s", addr)
 	}
@@ -285,7 +285,7 @@ func TestActivityEnginePruneIdleCalledEachTick(t *testing.T) {
 
 	mustRegisterActivity(t, cache, testFromAddress, 0)
 	engine.tick(t.Context())
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, claim, entries[0].Claim)
 	require.Equal(t, 1, claims.isClaimedCalls, "settled after the first tick")

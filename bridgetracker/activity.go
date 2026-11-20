@@ -319,34 +319,41 @@ func (a *ActivityCache) finishRefresh(cache *activityAddrCache) {
 	cache.waiters = make(map[chan struct{}]struct{})
 }
 
-// GetActivity implements domain.ActivityQuerier: a cache-only read of whatever the last
-// background refresh (see RefreshAddress) computed for fromAddress, filtered per filter.
-// includeTracking additionally marks fromAddress as wanting tracking enrichment for future
-// refreshes (see activityAddrCache.wantsTracking) — it does not itself fetch anything. An
-// address with no cache yet (never registered, or registered but not refreshed even once)
-// returns an empty result, not an error
+// GetActivity implements domain.ActivityQuerier: a cache-only read of page of whatever the last
+// background refresh (see RefreshAddress) computed for fromAddress, filtered per filter, plus the
+// total number of matching entries. The page is picked with a bounded selection
+// (domain.ActivityPageSelector) instead of copying and sorting every entry. includeTracking
+// additionally marks fromAddress as wanting tracking enrichment for future refreshes (see
+// activityAddrCache.wantsTracking) — it does not itself fetch anything. An address with no cache
+// yet (never registered, or registered but not refreshed even once) returns an empty result, not
+// an error; a cancelled ctx returns its error
 func (a *ActivityCache) GetActivity(
-	_ context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
-) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
+	ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
+	page domain.ActivityPage,
+) ([]*domain.ActivityEntry, int, []domain.ActivityWarning, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, 0, nil, err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	cache, ok := a.byAddr[fromAddress]
 	if !ok {
-		return nil, nil, nil
+		return []*domain.ActivityEntry{}, 0, nil, nil
 	}
 	cache.lastAccess = a.now()
 	if includeTracking {
 		cache.wantsTracking = true
 	}
 
-	out := make([]*domain.ActivityEntry, 0, len(cache.entries))
+	selector := domain.NewActivityPageSelector(page, len(cache.entries))
 	for _, entry := range cache.entries {
 		if MatchesActivityFilter(entry, filter) {
-			out = append(out, entry)
+			selector.Offer(entry)
 		}
 	}
-	return out, cache.warnings, nil
+	entries, total := selector.Page()
+	return entries, total, cache.warnings, nil
 }
 
 // GetActivityRevision implements domain.ActivityRevisionReader: the address's current revision

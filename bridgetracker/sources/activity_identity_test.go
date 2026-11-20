@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"math"
 	"math/big"
 	"testing"
 
@@ -15,6 +16,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+// allActivity is a GetActivity page holding every entry, for tests that read the whole activity
+var allActivity = domain.ActivityPage{PageNumber: 1, PageSize: math.MaxUint32}
 
 // TestActivity_LegacyGlobalIndexCollisionKeepsBothBridges drives two real bridge-service
 // responses whose global index collides under the legacy pre-Etrog encoding (the production
@@ -57,7 +61,7 @@ func TestActivity_LegacyGlobalIndexCollisionKeepsBothBridges(t *testing.T) {
 			_, err = cache.RegisterAndAwait(from, false, 0)
 			require.NoError(t, err)
 			require.NoError(t, cache.RefreshAddress(t.Context(), from))
-			entries, _, err := cache.GetActivity(t.Context(), from, false, types.ActivityFilterAll)
+			entries, _, _, err := cache.GetActivity(t.Context(), from, false, types.ActivityFilterAll, allActivity)
 			require.NoError(t, err)
 			require.Len(t, entries, 2)
 			byNetwork := map[uint32]*bridgeservicetypes.BridgeResponse{}

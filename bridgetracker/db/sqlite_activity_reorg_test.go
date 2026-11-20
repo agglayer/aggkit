@@ -158,7 +158,7 @@ func (h *activityHarness) refresh() []*domain.ActivityEntry {
 
 func (h *activityHarness) entries() []*domain.ActivityEntry {
 	h.t.Helper()
-	entries, _, err := h.store.GetActivity(h.t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := h.store.GetActivity(h.t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(h.t, err)
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Bridge.GlobalIndex.ToBigInt().Cmp(entries[j].Bridge.GlobalIndex.ToBigInt()) < 0
@@ -297,7 +297,7 @@ func TestActivityReorg_ScanFailureKeepsState(t *testing.T) {
 			Return(nil, nil, []domain.ActivityWarning{warning}, nil).Once()
 		h.unclaimed(true)
 		require.NoError(t, h.store.RefreshAddress(t.Context(), testFromAddress))
-		entries, warnings, err := h.store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+		entries, _, warnings, err := h.store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 		require.NoError(t, err)
 		require.Len(t, entries, 1)
 		require.Equal(t, []domain.ActivityWarning{warning}, warnings)
@@ -386,7 +386,7 @@ func TestActivityReorg_FinalClaimSettles(t *testing.T) {
 		require.True(t, entries[0].Finalized)
 		settledAt := entries[0].UpdatedAt
 
-		claimedOnly, _, err := h.store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterClaimed)
+		claimedOnly, _, _, err := h.store.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterClaimed, allActivity)
 		require.NoError(t, err)
 		require.Len(t, claimedOnly, 1, "filterBridges=claimed includes claimed_finalized")
 
