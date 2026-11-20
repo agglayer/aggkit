@@ -1,6 +1,8 @@
 package types
 
 import (
+	"errors"
+	"math"
 	"testing"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -1399,6 +1401,366 @@ func TestSetSyncSegment_NextQuery_PositiveCases(t *testing.T) {
 		require.Equal(t, ErrFinished, err)
 		require.Nil(t, query)
 	})
+}
+
+// collectPlannedQueries drives NextQuery to completion, subtracting every
+// returned query from the pending set (the same way OnNewSyncedLogQuery does in
+// production) and returning the planned queries in order. It fails the test if
+// the planner never finishes, returns an empty range or returns no addresses.
+func collectPlannedQueries(t *testing.T, set *SetSyncSegment, chunkSize uint32,
+	maxBlockNumber uint64, applyMaxBlockNumber bool) []LogQuery {
+	t.Helper()
+	queries := []LogQuery{}
+	for i := 0; i < 10000; i++ {
+		query, err := set.NextQuery(chunkSize, maxBlockNumber, applyMaxBlockNumber)
+		if errors.Is(err, ErrFinished) {
+			return queries
+		}
+		require.NoError(t, err, "unexpected planner error at iteration %d", i)
+		require.NotNil(t, query, "iteration %d", i)
+		require.False(t, query.BlockRange.IsEmpty(), "iteration %d returned an empty range", i)
+		require.NotEmpty(t, query.Addrs, "iteration %d returned no addresses", i)
+		queries = append(queries, *query)
+		require.NoError(t, set.SubtractLogQuery(query), "subtracting query at iteration %d", i)
+	}
+	t.Fatalf("planner did not finish after 10000 iterations (%d queries)", len(queries))
+	return queries
+}
+
+// requireQueriesCoverExactly asserts that the planned queries are pairwise
+// disjoint (no block is planned twice) and that their union is exactly want.
+func requireQueriesCoverExactly(t *testing.T, queries []LogQuery, want aggkitcommon.BlockRange) {
+	t.Helper()
+	covered := aggkitcommon.BlockRangeZero
+	for i, query := range queries {
+		for j := 0; j < i; j++ {
+			require.False(t, query.BlockRange.Overlaps(queries[j].BlockRange),
+				"query %d (%s) overlaps query %d (%s)",
+				i, query.BlockRange.String(), j, queries[j].BlockRange.String())
+		}
+		covered = covered.Extend(query.BlockRange)
+	}
+	require.Equal(t, want.String(), covered.String())
+}
+
+// TestSetSyncSegment_NextQuery_Regression1224 reproduces the pending-boundary
+// fixture of issue #1224 with the exact production block numbers.
+//
+// Two contracts are fully pending over adjacent ranges:
+//
+//	pendingAddr: [26414042, 26414124]  (the "pending" contract, from 26414042)
+//	bridgeAddr:  [26414125, 26414125]  (the "bridge" contract,  from 26414125)
+//
+// Before the fix the planner used GetLowestFromBlockSegment, which returns the
+// empty segment (BlockRangeZero has FromBlock 0) once pendingAddr is fully
+// synced. The initial query was [26414042, 26414124] over pendingAddr, but the
+// follow-up returned ErrFinished, so bridgeAddr was never synced.
+func TestSetSyncSegment_NextQuery_Regression1224(t *testing.T) {
+	pendingAddr := common.HexToAddress("0x1000000000000000000000000000000000000001")
+	bridgeAddr := common.HexToAddress("0x1000000000000000000000000000000000000002")
+
+	newSet := func() *SetSyncSegment {
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{
+			ContractAddr: pendingAddr,
+			BlockRange:   aggkitcommon.NewBlockRange(26414042, 26414124),
+		})
+		set.Add(SyncSegment{
+			ContractAddr: bridgeAddr,
+			BlockRange:   aggkitcommon.NewBlockRange(26414125, 26414125),
+		})
+		return &set
+	}
+
+	t.Run("initial query is exactly the pending range of the first address", func(t *testing.T) {
+		set := newSet()
+		query, err := set.NextQuery(1000, 0, false)
+		require.NoError(t, err)
+		require.NotNil(t, query)
+		require.Equal(t, "From: 26414042, To: 26414124 (83)", query.BlockRange.String())
+		require.Equal(t, []common.Address{pendingAddr}, query.Addrs,
+			"the initial query must only contain the address pending over the whole range")
+	})
+
+	t.Run("a finished address does not shadow the remaining pending address", func(t *testing.T) {
+		set := newSet()
+		query, err := set.NextQuery(1000, 0, false)
+		require.NoError(t, err)
+		require.NoError(t, set.SubtractLogQuery(query))
+
+		next, err := set.NextQuery(1000, 0, false)
+		require.NoError(t, err, "bridgeAddr must still be planned after pendingAddr is finished")
+		require.NotNil(t, next)
+		require.Equal(t, "From: 26414125, To: 26414125 (1)", next.BlockRange.String())
+		require.Equal(t, []common.Address{bridgeAddr}, next.Addrs)
+	})
+
+	t.Run("loop covers the whole pending range exactly once", func(t *testing.T) {
+		set := newSet()
+		queries := collectPlannedQueries(t, set, 1000, 0, false)
+		require.Len(t, queries, 2)
+		requireQueriesCoverExactly(t, queries, aggkitcommon.NewBlockRange(26414042, 26414125))
+		require.True(t, set.Finished())
+	})
+}
+
+// TestSetSyncSegment_NextQuery_NoOverqueryPastPendingEnd covers the second half
+// of the #1224 fixture: the first address is still pending past the point where
+// the second one joins, so the planner must split the query at that boundary
+// instead of asking the second address to re-download blocks it already has.
+//
+//	pendingAddr: [26414042, 26414125]
+//	bridgeAddr:  [26414125, 26414125]
+//
+// Before the fix the first query was [26414042, 26414125] and included
+// bridgeAddr, which already had [26414042, 26414124] synced.
+func TestSetSyncSegment_NextQuery_NoOverqueryPastPendingEnd(t *testing.T) {
+	pendingAddr := common.HexToAddress("0x1000000000000000000000000000000000000001")
+	bridgeAddr := common.HexToAddress("0x1000000000000000000000000000000000000002")
+
+	set := NewSetSyncSegment()
+	set.Add(SyncSegment{
+		ContractAddr: pendingAddr,
+		BlockRange:   aggkitcommon.NewBlockRange(26414042, 26414125),
+	})
+	set.Add(SyncSegment{
+		ContractAddr: bridgeAddr,
+		BlockRange:   aggkitcommon.NewBlockRange(26414125, 26414125),
+	})
+
+	query, err := set.NextQuery(1000, 0, false)
+	require.NoError(t, err)
+	require.NotNil(t, query)
+	require.Equal(t, "From: 26414042, To: 26414124 (83)", query.BlockRange.String())
+	require.Equal(t, []common.Address{pendingAddr}, query.Addrs,
+		"bridgeAddr is not pending before 26414125 and must not be queried there")
+
+	require.NoError(t, set.SubtractLogQuery(query))
+	next, err := set.NextQuery(1000, 0, false)
+	require.NoError(t, err)
+	require.NotNil(t, next)
+	require.Equal(t, "From: 26414125, To: 26414125 (1)", next.BlockRange.String())
+	require.ElementsMatch(t, []common.Address{pendingAddr, bridgeAddr}, next.Addrs)
+}
+
+// TestSetSyncSegment_NextQuery_MixedEmptySegments checks that empty segments
+// (fully synced addresses) never shadow the work of a non-empty segment,
+// independently of their position in the set.
+func TestSetSyncSegment_NextQuery_MixedEmptySegments(t *testing.T) {
+	emptyAddr := common.HexToAddress("0x2000000000000000000000000000000000000001")
+	otherEmptyAddr := common.HexToAddress("0x2000000000000000000000000000000000000002")
+	pendingAddr := common.HexToAddress("0x2000000000000000000000000000000000000003")
+
+	t.Run("empty segment inserted first", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{ContractAddr: emptyAddr, BlockRange: aggkitcommon.BlockRangeZero})
+		set.Add(SyncSegment{
+			ContractAddr: pendingAddr,
+			BlockRange:   aggkitcommon.NewBlockRange(100, 110),
+		})
+
+		query, err := set.NextQuery(1000, 0, false)
+		require.NoError(t, err)
+		require.NotNil(t, query)
+		require.Equal(t, "From: 100, To: 110 (11)", query.BlockRange.String())
+		require.Equal(t, []common.Address{pendingAddr}, query.Addrs)
+	})
+
+	t.Run("empty segment inserted last", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{
+			ContractAddr: pendingAddr,
+			BlockRange:   aggkitcommon.NewBlockRange(100, 110),
+		})
+		set.Add(SyncSegment{ContractAddr: emptyAddr, BlockRange: aggkitcommon.BlockRangeZero})
+
+		query, err := set.NextQuery(1000, 0, false)
+		require.NoError(t, err)
+		require.NotNil(t, query)
+		require.Equal(t, "From: 100, To: 110 (11)", query.BlockRange.String())
+		require.Equal(t, []common.Address{pendingAddr}, query.Addrs)
+	})
+
+	t.Run("several empty segments around the pending one", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{ContractAddr: emptyAddr, BlockRange: aggkitcommon.BlockRangeZero})
+		set.Add(SyncSegment{
+			ContractAddr: pendingAddr,
+			BlockRange:   aggkitcommon.NewBlockRange(100, 110),
+		})
+		set.Add(SyncSegment{ContractAddr: otherEmptyAddr, BlockRange: aggkitcommon.BlockRangeZero})
+
+		query, err := set.NextQuery(1000, 0, false)
+		require.NoError(t, err)
+		require.NotNil(t, query)
+		require.Equal(t, []common.Address{pendingAddr}, query.Addrs)
+	})
+}
+
+// TestSetSyncSegment_NextQuery_AllEmptySegments checks that a set whose
+// segments are all empty reports ErrFinished and never an empty query.
+func TestSetSyncSegment_NextQuery_AllEmptySegments(t *testing.T) {
+	t.Run("single empty segment", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{
+			ContractAddr: common.HexToAddress("0x3000000000000000000000000000000000000001"),
+			BlockRange:   aggkitcommon.BlockRangeZero,
+		})
+
+		query, err := set.NextQuery(1000, 0, false)
+		require.ErrorIs(t, err, ErrFinished)
+		require.Nil(t, query)
+	})
+
+	t.Run("several empty segments", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{
+			ContractAddr: common.HexToAddress("0x3000000000000000000000000000000000000001"),
+			BlockRange:   aggkitcommon.BlockRangeZero,
+		})
+		set.Add(SyncSegment{
+			ContractAddr: common.HexToAddress("0x3000000000000000000000000000000000000002"),
+			BlockRange:   aggkitcommon.BlockRangeZero,
+		})
+
+		query, err := set.NextQuery(1000, 0, false)
+		require.ErrorIs(t, err, ErrFinished)
+		require.Nil(t, query)
+	})
+}
+
+// TestSetSyncSegment_NextQuery_StartEndBoundaries checks that the planner walks
+// the exact start/end boundaries of staggered pending segments.
+func TestSetSyncSegment_NextQuery_StartEndBoundaries(t *testing.T) {
+	addrA := common.HexToAddress("0x4000000000000000000000000000000000000001")
+	addrB := common.HexToAddress("0x4000000000000000000000000000000000000002")
+	addrC := common.HexToAddress("0x4000000000000000000000000000000000000003")
+
+	set := NewSetSyncSegment()
+	set.Add(SyncSegment{ContractAddr: addrA, BlockRange: aggkitcommon.NewBlockRange(10, 50)})
+	set.Add(SyncSegment{ContractAddr: addrB, BlockRange: aggkitcommon.NewBlockRange(20, 40)})
+	set.Add(SyncSegment{ContractAddr: addrC, BlockRange: aggkitcommon.NewBlockRange(30, 60)})
+
+	type expected struct {
+		blockRange string
+		addrs      []common.Address
+	}
+	expectedQueries := []expected{
+		{"From: 10, To: 19 (10)", []common.Address{addrA}},
+		{"From: 20, To: 29 (10)", []common.Address{addrA, addrB}},
+		{"From: 30, To: 40 (11)", []common.Address{addrA, addrB, addrC}},
+		{"From: 41, To: 50 (10)", []common.Address{addrA, addrC}},
+		{"From: 51, To: 60 (10)", []common.Address{addrC}},
+	}
+
+	queries := collectPlannedQueries(t, &set, 1000, 0, false)
+	require.Len(t, queries, len(expectedQueries))
+	for i, want := range expectedQueries {
+		require.Equal(t, want.blockRange, queries[i].BlockRange.String(), "query %d range", i)
+		require.ElementsMatch(t, want.addrs, queries[i].Addrs, "query %d addresses", i)
+	}
+	requireQueriesCoverExactly(t, queries, aggkitcommon.NewBlockRange(10, 60))
+}
+
+// TestSetSyncSegment_NextQuery_ChunkAndMaxBounds covers the chunk-size and
+// maxBlockNumber limits, including the overflow edge cases.
+func TestSetSyncSegment_NextQuery_ChunkAndMaxBounds(t *testing.T) {
+	addr := common.HexToAddress("0x5000000000000000000000000000000000000001")
+
+	t.Run("chunk size limits the query", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{ContractAddr: addr, BlockRange: aggkitcommon.NewBlockRange(10, 1000)})
+
+		query, err := set.NextQuery(10, 0, false)
+		require.NoError(t, err)
+		require.Equal(t, "From: 10, To: 19 (10)", query.BlockRange.String())
+	})
+
+	t.Run("chunk size zero plans a single block", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{ContractAddr: addr, BlockRange: aggkitcommon.NewBlockRange(10, 1000)})
+
+		// Defensive: a zero chunk used to underflow the old arithmetic; the
+		// planner must still make progress one block at a time instead of
+		// stalling or wrapping.
+		query, err := set.NextQuery(0, 0, false)
+		require.NoError(t, err)
+		require.Equal(t, "From: 10, To: 10 (1)", query.BlockRange.String())
+	})
+
+	t.Run("maxBlockNumber caps the query", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{ContractAddr: addr, BlockRange: aggkitcommon.NewBlockRange(10, 1000)})
+
+		query, err := set.NextQuery(1000, 50, true)
+		require.NoError(t, err)
+		require.Equal(t, "From: 10, To: 50 (41)", query.BlockRange.String())
+	})
+
+	t.Run("maxBlockNumber below from returns ErrFinished", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{ContractAddr: addr, BlockRange: aggkitcommon.NewBlockRange(100, 200)})
+
+		query, err := set.NextQuery(1000, 50, true)
+		require.ErrorIs(t, err, ErrFinished)
+		require.Nil(t, query)
+	})
+
+	t.Run("maxBlockNumber ignored when not applied", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{ContractAddr: addr, BlockRange: aggkitcommon.NewBlockRange(10, 1000)})
+
+		query, err := set.NextQuery(10, 1, false)
+		require.NoError(t, err)
+		require.Equal(t, "From: 10, To: 19 (10)", query.BlockRange.String())
+	})
+
+	t.Run("chunk overflow saturates at MaxUint64", func(t *testing.T) {
+		from := uint64(math.MaxUint64) - 2
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{ContractAddr: addr, BlockRange: aggkitcommon.NewBlockRange(from, math.MaxUint64)})
+
+		query, err := set.NextQuery(100, 0, false)
+		require.NoError(t, err)
+		require.NotNil(t, query)
+		require.Equal(t, from, query.BlockRange.FromBlock)
+		require.Equal(t, uint64(math.MaxUint64), query.BlockRange.ToBlock)
+	})
+
+	t.Run("from at MaxUint64 does not wrap", func(t *testing.T) {
+		set := NewSetSyncSegment()
+		set.Add(SyncSegment{ContractAddr: addr, BlockRange: aggkitcommon.NewBlockRange(math.MaxUint64, math.MaxUint64)})
+
+		query, err := set.NextQuery(5, 0, false)
+		require.NoError(t, err)
+		require.NotNil(t, query)
+		require.Equal(t, uint64(math.MaxUint64), query.BlockRange.FromBlock)
+		require.Equal(t, uint64(math.MaxUint64), query.BlockRange.ToBlock)
+	})
+}
+
+// TestSetSyncSegment_NextQuery_LoopCoverageNoRepeats drives a set of
+// overlapping and staggered segments through the full planner loop and checks
+// that every block is planned exactly once and that the loop terminates.
+func TestSetSyncSegment_NextQuery_LoopCoverageNoRepeats(t *testing.T) {
+	addrA := common.HexToAddress("0x6000000000000000000000000000000000000001")
+	addrB := common.HexToAddress("0x6000000000000000000000000000000000000002")
+	addrC := common.HexToAddress("0x6000000000000000000000000000000000000003")
+	addrD := common.HexToAddress("0x6000000000000000000000000000000000000004")
+
+	set := NewSetSyncSegment()
+	set.Add(SyncSegment{ContractAddr: addrA, BlockRange: aggkitcommon.NewBlockRange(10, 100)})
+	set.Add(SyncSegment{ContractAddr: addrB, BlockRange: aggkitcommon.NewBlockRange(5, 80)})
+	set.Add(SyncSegment{ContractAddr: addrC, BlockRange: aggkitcommon.NewBlockRange(90, 150)})
+	set.Add(SyncSegment{ContractAddr: addrD, BlockRange: aggkitcommon.NewBlockRange(10, 10)})
+
+	queries := collectPlannedQueries(t, &set, 17, 0, false)
+	require.NotEmpty(t, queries)
+	requireQueriesCoverExactly(t, queries, aggkitcommon.NewBlockRange(5, 150))
+	require.True(t, set.Finished())
+
+	_, err := set.NextQuery(17, 0, false)
+	require.ErrorIs(t, err, ErrFinished)
 }
 
 func TestSetSyncSegment_SubtractLogQuery_EdgeCases(t *testing.T) {

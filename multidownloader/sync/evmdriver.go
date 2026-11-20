@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -30,6 +32,12 @@ type EVMDriver struct {
 	// can be nil is there are no information yet
 	// 0 -> 0%, 100, -> 100%
 	completionPercentage *float64
+	// waitForFirstBlock is set when Sync is called without a first block number (lazy mode): the
+	// driver doesn't start downloading until the processor has a processed block, that is
+	// created by SyncNextBlock
+	waitForFirstBlock atomic.Bool
+	// bootstrapMutex serializes the calls to SyncNextBlock
+	bootstrapMutex sync.Mutex
 }
 
 func NewEVMDriver(
@@ -53,7 +61,8 @@ func NewEVMDriver(
 }
 func (d *EVMDriver) checkFirstBlockNumberParams(firstBlockNumber *uint64) error {
 	if firstBlockNumber == nil {
-		return fmt.Errorf("multidownloader doesnt support firstBlockNumber==nil")
+		// Lazy mode: the starting point is set by SyncNextBlock
+		return nil
 	}
 	if *firstBlockNumber != d.syncerConfig.FromBlock {
 		return fmt.Errorf("multidownloader doesnt support firstBlockNumber different than FromBlock, got %d, expected %d",
@@ -61,12 +70,17 @@ func (d *EVMDriver) checkFirstBlockNumberParams(firstBlockNumber *uint64) error 
 	}
 	return nil
 }
+
+// Sync runs the synchronization loop until the context is done.
+//   - firstBlockNumber != nil: it must be equal to syncerConfig.FromBlock, the syncer starts from it
+//     if there are no processed blocks.
+//   - firstBlockNumber == nil (lazy mode): if there are no processed blocks the syncer waits until
+//     SyncNextBlock creates the starting point, and continues from the block after it.
 func (d *EVMDriver) Sync(ctx context.Context, firstBlockNumber *uint64) {
-	// firstBlockNumber is unused and not support in the current implementation
-	// it just check that is equal to syncerConfig.InitialBlockNum
 	if err := d.checkFirstBlockNumberParams(firstBlockNumber); err != nil {
 		d.logger.Fatalf("error in firstBlockNumber parameter: %v", err)
 	}
+	d.waitForFirstBlock.Store(firstBlockNumber == nil)
 	attempts := 0
 	for {
 		if ctx.Err() != nil {
@@ -79,6 +93,67 @@ func (d *EVMDriver) Sync(ctx context.Context, firstBlockNumber *uint64) {
 			d.rh.Handle(ctx, "Sync", attempts)
 			continue
 		}
+		attempts = 0
+	}
+}
+
+// SyncNextBlock downloads and processes the given blockNum as a bootstrap step: it creates the
+// starting point of a syncer that runs in lazy mode (see Sync).
+// It requires that no block has been processed yet, otherwise it returns
+// aggkitsync.ErrAlreadyBootstrapped, that callers may safely ignore.
+// It waits until the multidownloader has the block available or the context is done.
+func (d *EVMDriver) SyncNextBlock(ctx context.Context, blockNum uint64) error {
+	d.bootstrapMutex.Lock()
+	defer d.bootstrapMutex.Unlock()
+
+	lastBlockHeader, err := d.processor.GetLastProcessedBlockHeader(ctx)
+	if err != nil {
+		return fmt.Errorf("SyncNextBlock: getting last processed block: %w", err)
+	}
+	if lastBlockHeader != nil {
+		return aggkitsync.ErrAlreadyBootstrapped
+	}
+	// The downloader returns the blocks after the given header. A zero hash marks it as a
+	// header that must not be checked for reorgs
+	syncerConfig := d.syncerConfig
+	var previousBlockHeader *aggkittypes.BlockHeader
+	if blockNum > 0 {
+		previousBlockHeader = &aggkittypes.BlockHeader{Number: blockNum - 1, Hash: aggkitcommon.ZeroHash}
+	} else {
+		syncerConfig.FromBlock = 0
+	}
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		blocks, err := d.downloader.DownloadNextBlocks(ctx, previousBlockHeader, 1, syncerConfig)
+		if errors.Is(err, ErrLogsNotAvailable) {
+			d.logger.Debugf("SyncNextBlock: block %d is not available yet, waiting", blockNum)
+			if !d.wait(ctx, d.rh.RetryAfterErrorPeriod) {
+				return ctx.Err()
+			}
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("SyncNextBlock: downloading block %d: %w", blockNum, err)
+		}
+		if blocks == nil || len(blocks.Data) != 1 || blocks.Data[0].Num != blockNum {
+			return fmt.Errorf("SyncNextBlock: unexpected download result for block %d", blockNum)
+		}
+		if err := d.processor.ProcessBlocks(ctx, blocks); err != nil {
+			return fmt.Errorf("SyncNextBlock: processing block %d: %w", blockNum, err)
+		}
+		return nil
+	}
+}
+
+// wait waits the given period, it returns false if the context is done before
+func (d *EVMDriver) wait(ctx context.Context, period time.Duration) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(period):
+		return true
 	}
 }
 
@@ -96,6 +171,12 @@ func (d *EVMDriver) syncStep(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("Multidownloader_EVMDriver: error getting last processed block from processor: %w", err)
 	}
+	if lastBlockHeader == nil && d.waitForFirstBlock.Load() {
+		d.logger.Debugf("Multidownloader_EVMDriver: no processed blocks found, waiting %s for the starting point",
+			d.rh.RetryAfterErrorPeriod)
+		d.wait(ctx, d.rh.RetryAfterErrorPeriod)
+		return nil
+	}
 	d.logger.Debugf("Multidownloader_EVMDriver: starting sync from last processed block: %s", lastBlockHeader.Brief())
 	blocks, err := d.downloader.DownloadNextBlocks(ctx,
 		lastBlockHeader,
@@ -112,6 +193,13 @@ func (d *EVMDriver) syncStep(ctx context.Context) error {
 			return nil
 		case errors.Is(err, ErrLogsNotAvailable):
 			d.logger.Debug("Multidownloader_EVMDriver: no logs available yet, waiting to retry")
+			return nil
+		case errors.Is(err, aggkittypes.ErrTransactionInclusionMismatch):
+			// The downloaded logs are stale: their block was reorged away and the multidownloader
+			// has not replaced it yet. It is not a failure of this syncer, wait and download again
+			d.logger.Warnf("Multidownloader_EVMDriver: stale logs downloaded, waiting %s to retry: %v",
+				d.rh.RetryAfterErrorPeriod, err)
+			d.wait(ctx, d.rh.RetryAfterErrorPeriod)
 			return nil
 		default:
 			return fmt.Errorf("Multidownloader_EVMDriver: error downloading blocks: %w", err)

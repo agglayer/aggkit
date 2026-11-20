@@ -10,8 +10,7 @@ import (
 
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	configtypes "github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/reorgdetector"
-	aggsync "github.com/agglayer/aggkit/sync"
+	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
@@ -21,17 +20,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeMultidownloader is a minimal aggkittypes.MultiDownloaderLegacy used to assert the syncer
-// registration performed by NewStandaloneClaimSyncWithDownloader without spinning up a real
-// multidownloader. RegisterSyncer records the configs it receives; every other method is a stub.
+// fakeMultidownloader is a minimal multidownloader used to assert the syncer registration performed
+// by NewStandaloneClaimSyncWithDownloader without spinning up a real multidownloader.
+// RegisterSyncer records the configs it receives; every other method is a stub and the methods of
+// the embedded interface that are not overridden must not be called.
 type fakeMultidownloader struct {
+	mdrsynctypes.MultidownloaderInterface
 	mu          sync.Mutex
 	registered  []aggkittypes.SyncerConfig
 	registerErr error
 	started     bool
 }
 
-var _ aggkittypes.MultiDownloaderLegacy = (*fakeMultidownloader)(nil)
+var _ MultidownloaderBackend = (*fakeMultidownloader)(nil)
 
 func (f *fakeMultidownloader) ChainID(context.Context) (uint64, error) { return 0, nil }
 
@@ -109,20 +110,6 @@ func expectSovereignBridgeDeployment(t *testing.T, ethClient *mocksethclient.Eth
 		Return(common.LeftPadBytes(bridge.Bytes(), common.HashLength), nil).Once()
 }
 
-// expectMDReorgDetector wires the reorg detector calls performed while building the standalone
-// ClaimSync: the finalized block type and the subscription done by the EVM driver.
-func expectMDReorgDetector(t *testing.T) *aggsync.ReorgDetectorMock {
-	t.Helper()
-	rd := aggsync.NewReorgDetectorMock(t)
-	rd.EXPECT().GetFinalizedBlockType().Return(aggkittypes.FinalizedBlock)
-	rd.EXPECT().Subscribe(claimsynctypes.L1ClaimSyncer.String()).
-		Return(&reorgdetector.Subscription{
-			ReorgedBlock:   make(chan uint64),
-			ReorgProcessed: make(chan bool),
-		}, nil)
-	return rd
-}
-
 // TestMDConstructor_RegistersSyncer verifies that NewStandaloneClaimSyncWithDownloader registers the
 // L1 claim syncer in the provided multidownloader synchronously (before the backend is started) with
 // the expected contract address, historical frontier, target finality and no transaction requirement.
@@ -133,12 +120,11 @@ func TestMDConstructor_RegistersSyncer(t *testing.T) {
 
 	ethClient := mocksethclient.NewEthClienter(t)
 	expectSovereignBridgeDeployment(t, ethClient, bridge)
-	rd := expectMDReorgDetector(t)
 
 	backend := &fakeMultidownloader{}
 
 	cs, err := NewStandaloneClaimSyncWithDownloader(
-		ctx, cfg, rd, ethClient, claimsynctypes.L1ClaimSyncer, 0, backend)
+		ctx, cfg, ethClient, claimsynctypes.L1ClaimSyncer, 0, backend)
 	require.NoError(t, err)
 	require.NotNil(t, cs)
 
@@ -151,6 +137,10 @@ func TestMDConstructor_RegistersSyncer(t *testing.T) {
 	require.Equal(t, cfg.BlockFinality, got.ToBlock)
 	require.False(t, got.TransactionRequirements.Enabled,
 		"claims do not need transaction data, so the requirement must stay disabled")
+
+	// The syncer relies on the multidownloader to detect the reorgs, not on the legacy reorg detector
+	require.Equal(t, backend, cs.multidownloader)
+	require.Nil(t, cs.reorgDetector)
 
 	// Registration must happen during construction, before the backend is started.
 	require.False(t, backend.isStarted(), "backend must not be started by the constructor")
@@ -170,7 +160,7 @@ func TestMDConstructor_RegisterSyncerError(t *testing.T) {
 	backend := &fakeMultidownloader{registerErr: registerErr}
 
 	cs, err := NewStandaloneClaimSyncWithDownloader(
-		ctx, cfg, nil, nil, claimsynctypes.L1ClaimSyncer, 0, backend)
+		ctx, cfg, nil, claimsynctypes.L1ClaimSyncer, 0, backend)
 	require.Nil(t, cs)
 	require.ErrorIs(t, err, registerErr)
 	require.ErrorContains(t, err, "failed to register")
@@ -186,7 +176,7 @@ func TestMultidownloaderConstructor_Validation(t *testing.T) {
 	t.Run("rejects legacy selector", func(t *testing.T) {
 		cfg := mdStandaloneConfig(t, bridge, configtypes.LegacyDownloader)
 		cs, err := NewStandaloneClaimSyncWithDownloader(
-			ctx, cfg, nil, nil, claimsynctypes.L1ClaimSyncer, 0, nil)
+			ctx, cfg, nil, claimsynctypes.L1ClaimSyncer, 0, nil)
 		require.Nil(t, cs)
 		require.ErrorContains(t, err, "requires Downloader=multidownloader")
 	})
@@ -194,7 +184,7 @@ func TestMultidownloaderConstructor_Validation(t *testing.T) {
 	t.Run("rejects empty selector", func(t *testing.T) {
 		cfg := mdStandaloneConfig(t, bridge, "")
 		cs, err := NewStandaloneClaimSyncWithDownloader(
-			ctx, cfg, nil, nil, claimsynctypes.L1ClaimSyncer, 0, nil)
+			ctx, cfg, nil, claimsynctypes.L1ClaimSyncer, 0, nil)
 		require.Nil(t, cs)
 		require.ErrorContains(t, err, "requires Downloader=multidownloader")
 	})
@@ -202,7 +192,7 @@ func TestMultidownloaderConstructor_Validation(t *testing.T) {
 	t.Run("rejects nil backend", func(t *testing.T) {
 		cfg := mdStandaloneConfig(t, bridge, configtypes.Multidownloader)
 		cs, err := NewStandaloneClaimSyncWithDownloader(
-			ctx, cfg, nil, nil, claimsynctypes.L1ClaimSyncer, 0, nil)
+			ctx, cfg, nil, claimsynctypes.L1ClaimSyncer, 0, nil)
 		require.Nil(t, cs)
 		require.ErrorIs(t, err, ErrMultidownloaderDepsMissing)
 		require.ErrorContains(t, err, "backend is nil")
@@ -212,7 +202,7 @@ func TestMultidownloaderConstructor_Validation(t *testing.T) {
 		cfg := mdStandaloneConfig(t, bridge, configtypes.Multidownloader)
 		// Non-nil backend so the L2 check (not the nil-backend guard) is exercised.
 		cs, err := NewStandaloneClaimSyncWithDownloader(
-			ctx, cfg, nil, nil, claimsynctypes.L2ClaimSyncer, 0, &fakeMultidownloader{})
+			ctx, cfg, nil, claimsynctypes.L2ClaimSyncer, 0, &fakeMultidownloader{})
 		require.Nil(t, cs)
 		require.ErrorContains(t, err, "only supported for the L1 claim syncer")
 	})

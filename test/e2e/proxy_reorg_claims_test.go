@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/bridgeservice/client"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -98,6 +99,9 @@ func TestProxyReorgClaims(t *testing.T) {
 		// the bridge service has indexed its record yet
 		claimed, _ := bridge.waitForStatus(ctx, t, proxyTrackerBaseURL, claimStatusClaimed, nil)
 
+		// aggkit must have tracked the head (the claim's block) before the reorg removes it, or the
+		// detection races the claim syncer: see requireClaimSyncedToHead.
+		requireClaimSyncedToHead(ctx, t, l2, bs)
 		reorgDropping(ctx, t, l2, testEnv.L2.Client, append([]common.Hash{claimTx.Hash()}, injection.txs...)...)
 		requireReorgDetected(ctx, t, bs, networkID, baseline)
 
@@ -226,6 +230,9 @@ func TestProxyReorgClaims(t *testing.T) {
 		bridge.waitInjected(ctx, t)
 		ready, _ := bridge.waitForStatus(ctx, t, proxyTrackerBaseURL, claimStatusReadyToClaim, nil)
 
+		// no bridge and no claim tracks the injection's block here: only the claim syncer does, so
+		// wait for it before reorging the block away (see requireClaimSyncedToHead).
+		requireClaimSyncedToHead(ctx, t, l2, bs)
 		reorgDropping(ctx, t, l2, testEnv.L2.Client, injection.txs...)
 		requireReorgDetected(ctx, t, bs, networkID, baseline)
 		injected, err := waitForInjectionGone(ctx, bridge)
@@ -243,6 +250,23 @@ func TestProxyReorgClaims(t *testing.T) {
 		require.Equal(t, ready.Revision, again.Revision, "same content as before the reorg, same revision")
 		require.Equal(t, 1, again.Count)
 	})
+}
+
+// requireClaimSyncedToHead waits until the L2 claim syncer of aggkit-001 (claim_l2_info) has processed
+// the current head of l2 (the chain is paused, so the head is stable). The reorg detector only reports a
+// reorg of blocks a syncer has already tracked (see "What aggkit detects" in the e2e README), and of the
+// syncers merged into the L2 network's last-reorg-event only the claim syncer processes every L2 block:
+// without this wait, reorging the head can race the claim syncer and the reorg is never reported.
+//
+// waitInjected is not enough on its own: it reads l2gersync's injected-GER answer, and l2gersync does not
+// feed this network's reorg event. waitForStatus is not enough either: the proxy answers claimStatusClaimed
+// from the chain (isClaimed), whether or not the bridge service has indexed the block yet.
+func requireClaimSyncedToHead(ctx context.Context, t *testing.T, l2 *AnvilChain, bs *client.Client) {
+	t.Helper()
+	head, err := l2.Head(ctx)
+	require.NoError(t, err)
+	require.NoError(t, WaitForClaimL2Processed(ctx, bs, head.Number, proxyReorgServeTimeout),
+		"the L2 claim syncer must have processed head block %d before the reorg", head.Number)
 }
 
 // waitForInjectionGone waits until aggkit no longer serves a GER injection covering the bridge.

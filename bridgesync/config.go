@@ -42,7 +42,8 @@ type Config struct {
 	// Default: "auto"
 	// SyncFromInBridges.Resolved is set programmatically after resolution; not read from config.
 	SyncFromInBridges types.TrueFalseAutoMode `jsonschema:"enum=true, enum=false, enum=auto" mapstructure:"SyncFromInBridges"` //nolint:lll
-	// Downloader selects the block download backend: "legacy" (default) or "multidownloader".
+	// Downloader selects the block download backend: "legacy" or "multidownloader". The default
+	// configuration selects "multidownloader" for the L1 syncers and "legacy" for the L2 ones.
 	// The zero value behaves as "legacy". Only the L1 syncers can use the multidownloader; the L2
 	// restriction is enforced by the startup code, since this struct is shared by both.
 	Downloader types.Downloader `jsonschema:"enum=legacy, enum=multidownloader" mapstructure:"Downloader"`

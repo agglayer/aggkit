@@ -460,45 +460,6 @@ func bridgeLogsEnricher(provider aggkittypes.TransactionProvider) sync.LogsEnric
 	}
 }
 
-// logsEnricherInstaller is the optional enrichment hook exposed by the sync downloader. It is
-// asserted on the downloader so bridgesync does not depend on the concrete downloader type. The bool
-// result reports whether the underlying implementation actually supports the hook, so a caller that
-// requires enrichment can fail closed instead of silently continuing.
-type logsEnricherInstaller interface {
-	InstallLogsEnricher(sync.LogsEnricherFunc) (sync.LogsEnricherFunc, bool)
-}
-
-// registerLogsEnricher installs the enrichment hook on the downloader if it supports it. It returns
-// true only when the underlying implementation reports that the hook was installed. A target that
-// does not expose the hook (or whose implementation reports it as unsupported) returns false so the
-// caller can fail closed.
-func registerLogsEnricher(target any, enricher sync.LogsEnricherFunc) bool {
-	installer, ok := target.(logsEnricherInstaller)
-	if !ok {
-		return false
-	}
-	_, installed := installer.InstallLogsEnricher(enricher)
-	return installed
-}
-
-// contextualAppenderInstaller is the optional contextual-appender hook exposed by the sync
-// downloader. The bool result reports whether the underlying implementation actually supports it, so
-// a caller that requires the context-aware appender can fail closed instead of silently falling back
-// to a constructor-time appender.
-type contextualAppenderInstaller interface {
-	InstallContextualLogAppenders(sync.ContextualLogAppenderMap) bool
-}
-
-// installContextualLogAppenders installs the contextual appenders on the downloader if it supports
-// them. It returns true only when the underlying implementation reports that they were installed.
-func installContextualLogAppenders(target any, appenders sync.ContextualLogAppenderMap) bool {
-	installer, ok := target.(contextualAppenderInstaller)
-	if !ok {
-		return false
-	}
-	return installer.InstallContextualLogAppenders(appenders)
-}
-
 type bridgeCallParams struct {
 	LeafType           uint8
 	DestinationNetwork uint32

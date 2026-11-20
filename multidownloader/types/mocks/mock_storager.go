@@ -335,6 +335,64 @@ func (_c *Storager_GetHighestBlockNumber_Call) RunAndReturn(run func(types.Queri
 	return _c
 }
 
+// GetLastReorgData provides a mock function with given fields: tx
+func (_m *Storager) GetLastReorgData(tx types.Querier) (*multidownloadertypes.ReorgData, error) {
+	ret := _m.Called(tx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLastReorgData")
+	}
+
+	var r0 *multidownloadertypes.ReorgData
+	var r1 error
+	if rf, ok := ret.Get(0).(func(types.Querier) (*multidownloadertypes.ReorgData, error)); ok {
+		return rf(tx)
+	}
+	if rf, ok := ret.Get(0).(func(types.Querier) *multidownloadertypes.ReorgData); ok {
+		r0 = rf(tx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*multidownloadertypes.ReorgData)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(types.Querier) error); ok {
+		r1 = rf(tx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Storager_GetLastReorgData_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastReorgData'
+type Storager_GetLastReorgData_Call struct {
+	*mock.Call
+}
+
+// GetLastReorgData is a helper method to define mock.On call
+//   - tx types.Querier
+func (_e *Storager_Expecter) GetLastReorgData(tx interface{}) *Storager_GetLastReorgData_Call {
+	return &Storager_GetLastReorgData_Call{Call: _e.mock.On("GetLastReorgData", tx)}
+}
+
+func (_c *Storager_GetLastReorgData_Call) Run(run func(tx types.Querier)) *Storager_GetLastReorgData_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(types.Querier))
+	})
+	return _c
+}
+
+func (_c *Storager_GetLastReorgData_Call) Return(_a0 *multidownloadertypes.ReorgData, _a1 error) *Storager_GetLastReorgData_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Storager_GetLastReorgData_Call) RunAndReturn(run func(types.Querier) (*multidownloadertypes.ReorgData, error)) *Storager_GetLastReorgData_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetRangeBlockHeader provides a mock function with given fields: tx, isFinal
 func (_m *Storager) GetRangeBlockHeader(tx types.Querier, isFinal multidownloadertypes.FinalizedType) (*aggkittypes.BlockHeader, *aggkittypes.BlockHeader, error) {
 	ret := _m.Called(tx, isFinal)

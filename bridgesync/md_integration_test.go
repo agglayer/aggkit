@@ -11,10 +11,10 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
-	bridgesyncmocks "github.com/agglayer/aggkit/bridgesync/mocks"
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
+	mdrsynctypes "github.com/agglayer/aggkit/multidownloader/sync/types"
 	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	aggsync "github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -26,15 +26,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeMultidownloader is a minimal aggkittypes.MultiDownloaderLegacy used to assert the registration
-// performed by the constructors without spinning up a real multidownloader.
+// fakeMultidownloader is a minimal multidownloader used to assert the registration performed by the
+// constructors without spinning up a real multidownloader. It implements both the backend of the
+// syncer (MultidownloaderBackend) and the one of the backfill (aggkittypes.MultiDownloaderLegacy).
+// The methods of the embedded interface that are not overridden must not be called.
 type fakeMultidownloader struct {
+	mdrsynctypes.MultidownloaderInterface
 	mu          sync.Mutex
 	registered  []aggkittypes.SyncerConfig
 	registerErr error
 }
 
-var _ aggkittypes.MultiDownloaderLegacy = (*fakeMultidownloader)(nil)
+var (
+	_ aggkittypes.MultiDownloaderLegacy = (*fakeMultidownloader)(nil)
+	_ MultidownloaderBackend            = (*fakeMultidownloader)(nil)
+)
+
+func (f *fakeMultidownloader) Finality() aggkittypes.BlockNumberFinality {
+	return aggkittypes.FinalizedBlock
+}
+
+func (f *fakeMultidownloader) GetLastReorgData(context.Context) (*mdrtypes.ReorgData, error) {
+	return nil, nil
+}
 
 func (f *fakeMultidownloader) ChainID(context.Context) (uint64, error) { return 0, nil }
 
@@ -127,32 +141,6 @@ func (f *fakeTransactionProvider) callCount() int {
 	return len(f.calls)
 }
 
-// fakeEnricherInstaller mimics the optional downloader hooks used by the multidownloader path. The
-// bool results are configurable so the fail-closed cases (an implementation that reports the hook as
-// unsupported) can be exercised. installContextual records whether the contextual appender hook was
-// requested on the same target.
-type fakeEnricherInstaller struct {
-	installed         aggsync.LogsEnricherFunc
-	supported         bool
-	installContextual bool
-}
-
-func (f *fakeEnricherInstaller) InstallLogsEnricher(
-	enricher aggsync.LogsEnricherFunc,
-) (aggsync.LogsEnricherFunc, bool) {
-	if !f.supported {
-		return nil, false
-	}
-	prev := f.installed
-	f.installed = enricher
-	return prev, true
-}
-
-func (f *fakeEnricherInstaller) InstallContextualLogAppenders(aggsync.ContextualLogAppenderMap) bool {
-	f.installContextual = true
-	return f.supported
-}
-
 // blockingTransactionProvider blocks until the context it is called with is done and then returns the
 // context error. It simulates a shared provider flight that only unblocks when the active download
 // context is canceled.
@@ -202,15 +190,6 @@ func expectBridgeDeploymentAndSanity(t *testing.T, ethClient *mocksethclient.Eth
 		Return(common.LeftPadBytes(common.Hex2Bytes("2a"), common.HashLength), nil).Once()
 }
 
-func expectReorgDetector(t *testing.T) *bridgesyncmocks.ReorgDetector {
-	t.Helper()
-	rd := bridgesyncmocks.NewReorgDetector(t)
-	rd.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
-	rd.EXPECT().GetFinalizedBlockType().Return(aggkittypes.SafeBlock)
-	rd.EXPECT().String().Return("mockReorgDetector")
-	return rd
-}
-
 func TestNewL1WithDownloader_RegistersSyncer(t *testing.T) {
 	ctx := t.Context()
 	bridge := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
@@ -218,12 +197,11 @@ func TestNewL1WithDownloader_RegistersSyncer(t *testing.T) {
 
 	ethClient := mocksethclient.NewEthClienter(t)
 	expectBridgeDeploymentAndSanity(t, ethClient, bridge)
-	rd := expectReorgDetector(t)
 
 	backend := &fakeMultidownloader{}
 	provider := &fakeTransactionProvider{}
 
-	bs, err := NewL1WithDownloader(ctx, cfg, rd, ethClient, 1, backend, provider)
+	bs, err := NewL1WithDownloader(ctx, cfg, ethClient, 1, backend, provider)
 	require.NoError(t, err)
 	require.NotNil(t, bs)
 
@@ -239,8 +217,10 @@ func TestNewL1WithDownloader_RegistersSyncer(t *testing.T) {
 		"fresh DB: tx frontier starts at InitialBlockNum")
 	require.Equal(t, []common.Hash{bridgeEventSignature}, got.TransactionRequirements.Topic0)
 
-	// The optional tx warm-up hook must be installed on the downloader.
-	require.NotNil(t, bs.downloader.SetLogsEnricher(nil), "enricher should have been installed")
+	// The syncer relies on the multidownloader to detect the reorgs, not on the legacy reorg detector
+	require.Equal(t, backend, bs.multidownloader)
+	require.Nil(t, bs.reorgDetector)
+	require.Nil(t, bs.downloader)
 }
 
 func TestNewL1WithDownloader_RegistersFutureTxFrontier(t *testing.T) {
@@ -257,10 +237,9 @@ func TestNewL1WithDownloader_RegistersFutureTxFrontier(t *testing.T) {
 
 	ethClient := mocksethclient.NewEthClienter(t)
 	expectBridgeDeploymentAndSanity(t, ethClient, bridge)
-	rd := expectReorgDetector(t)
 
 	backend := &fakeMultidownloader{}
-	bs, err := NewL1WithDownloader(ctx, cfg, rd, ethClient, 1, backend, &fakeTransactionProvider{})
+	bs, err := NewL1WithDownloader(ctx, cfg, ethClient, 1, backend, &fakeTransactionProvider{})
 	require.NoError(t, err)
 	require.NotNil(t, bs)
 
@@ -340,20 +319,20 @@ func TestConstructors_RejectMultidownloaderWithoutDeps(t *testing.T) {
 
 	t.Run("NewL1WithDownloader requires multidownloader config", func(t *testing.T) {
 		cfg := mdTestConfig(t, bridge, cfgtypes.LegacyDownloader)
-		_, err := NewL1WithDownloader(ctx, cfg, nil, nil, 1, &fakeMultidownloader{}, &fakeTransactionProvider{})
+		_, err := NewL1WithDownloader(ctx, cfg, nil, 1, &fakeMultidownloader{}, &fakeTransactionProvider{})
 		require.ErrorContains(t, err, "requires Downloader=multidownloader")
 	})
 
 	t.Run("NewL1WithDownloader requires backend", func(t *testing.T) {
 		cfg := mdTestConfig(t, bridge, cfgtypes.Multidownloader)
-		_, err := NewL1WithDownloader(ctx, cfg, nil, nil, 1, nil, &fakeTransactionProvider{})
+		_, err := NewL1WithDownloader(ctx, cfg, nil, 1, nil, &fakeTransactionProvider{})
 		require.ErrorIs(t, err, ErrMultidownloaderDepsMissing)
 		require.ErrorContains(t, err, "backend is nil")
 	})
 
 	t.Run("NewL1WithDownloader requires provider", func(t *testing.T) {
 		cfg := mdTestConfig(t, bridge, cfgtypes.Multidownloader)
-		_, err := NewL1WithDownloader(ctx, cfg, nil, nil, 1, &fakeMultidownloader{}, nil)
+		_, err := NewL1WithDownloader(ctx, cfg, nil, 1, &fakeMultidownloader{}, nil)
 		require.ErrorIs(t, err, ErrMultidownloaderDepsMissing)
 		require.ErrorContains(t, err, "transaction provider is nil")
 	})
@@ -575,56 +554,6 @@ func TestBuildBridgeEventAppender_CanceledDownloadContextUnblocks(t *testing.T) 
 	case <-time.After(5 * time.Second):
 		t.Fatal("appender stayed blocked after the download context was canceled")
 	}
-}
-
-// TestRegisterLogsEnricher verifies the fail-closed contract of registerLogsEnricher: it reports the
-// capability of the target (the bool returned by InstallLogsEnricher), not whether a previous
-// enricher happened to exist. A first install on a supported target returns true even though the
-// previous enricher is nil.
-func TestRegisterLogsEnricher(t *testing.T) {
-	enricher := bridgeLogsEnricher(&fakeTransactionProvider{})
-
-	t.Run("supported target reports installed", func(t *testing.T) {
-		installer := &fakeEnricherInstaller{supported: true}
-		require.True(t, registerLogsEnricher(installer, enricher))
-		require.NotNil(t, installer.installed)
-	})
-
-	t.Run("unsupported implementation reports not installed", func(t *testing.T) {
-		installer := &fakeEnricherInstaller{supported: false}
-		require.False(t, registerLogsEnricher(installer, enricher),
-			"a target that reports the hook as unsupported must fail closed")
-		require.Nil(t, installer.installed)
-	})
-
-	t.Run("target without the method reports not installed", func(t *testing.T) {
-		require.False(t, registerLogsEnricher(struct{}{}, enricher))
-	})
-}
-
-// TestInstallContextualLogAppenders verifies the fail-closed contract of
-// installContextualLogAppenders with the same three target shapes used by TestRegisterLogsEnricher.
-func TestInstallContextualLogAppenders(t *testing.T) {
-	appenders := aggsync.ContextualLogAppenderMap{
-		bridgeEventSignature: func(context.Context, *aggsync.EVMBlock, types.Log) error { return nil },
-	}
-
-	t.Run("supported target reports installed", func(t *testing.T) {
-		installer := &fakeEnricherInstaller{supported: true}
-		require.True(t, installContextualLogAppenders(installer, appenders))
-		require.True(t, installer.installContextual)
-	})
-
-	t.Run("unsupported implementation reports not installed", func(t *testing.T) {
-		installer := &fakeEnricherInstaller{supported: false}
-		require.False(t, installContextualLogAppenders(installer, appenders),
-			"a target that reports the hook as unsupported must fail closed")
-		require.True(t, installer.installContextual)
-	})
-
-	t.Run("target without the method reports not installed", func(t *testing.T) {
-		require.False(t, installContextualLogAppenders(struct{}{}, appenders))
-	})
 }
 
 func TestBackfillTxnSender_WithTransactionProvider(t *testing.T) {

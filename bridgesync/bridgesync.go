@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"strings"
 
@@ -13,9 +12,9 @@ import (
 	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
+	mdrsync "github.com/agglayer/aggkit/multidownloader/sync"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	tree "github.com/agglayer/aggkit/tree/types"
@@ -75,18 +74,6 @@ var (
 	// explicit downloader/transaction dependencies were not provided to the constructor.
 	ErrMultidownloaderDepsMissing = errors.New(
 		"multidownloader selected but explicit downloader/transaction dependencies are missing")
-
-	// ErrContextualAppendersUnsupported indicates that the multidownloader path was selected but the
-	// downloader does not expose the contextual appender hook. The shared provider appender must not
-	// be silently replaced by a constructor-time appender, so the constructor fails closed.
-	ErrContextualAppendersUnsupported = errors.New(
-		"multidownloader selected but the downloader does not support contextual log appenders")
-
-	// ErrLogsEnricherUnsupported indicates that the multidownloader path was selected but the
-	// downloader does not expose the logs enricher hook. Without it the transaction cache is not
-	// warmed with the active download context, so the constructor fails closed.
-	ErrLogsEnricherUnsupported = errors.New(
-		"multidownloader selected but the downloader does not support the logs enricher")
 )
 
 type ReorgDetector interface {
@@ -94,21 +81,38 @@ type ReorgDetector interface {
 	GetLastReorgEventBySubscribers(ctx context.Context, subscriberIDs ...string) (reorgdetector.ReorgEvent, error)
 }
 
+// syncDriver is the driver that runs the synchronization loop
+type syncDriver interface {
+	Sync(ctx context.Context, firstBlockNumber *uint64)
+}
+
+// blockSubscriber allows to subscribe to the blocks that the syncer processes
+type blockSubscriber interface {
+	SubscribeToNewBlocks(subscriberName string) <-chan sync.Block
+}
+
 // BridgeSync manages the state of the exit tree for the bridge contract by processing Ethereum blockchain events.
 type BridgeSync struct {
-	processor  *processor
-	driver     *sync.EVMDriver
+	processor *processor
+	driver    syncDriver
+	// blockSubscriber notifies the blocks once they are processed
+	blockSubscriber blockSubscriber
+	// downloader is only set for the legacy syncer
 	downloader *sync.EVMDownloader
 
 	originNetwork uint32
+	// reorgDetector is only set for the legacy syncer
 	reorgDetector ReorgDetector
 	// reorgDetectorID is the id this syncer is subscribed with in the reorg detector
 	reorgDetectorID string
 	// claimReorgDetectorID is the id the claim syncer of the same network is subscribed with in the reorg detector
 	claimReorgDetectorID string
-	ethClient            aggkittypes.EthClienter
-	agglayerBridge       *agglayerbridge.Agglayerbridge
-	cfg                  Config
+	// multidownloader is only set when synced through the multidownloader, which is the one that
+	// detects the reorgs and tracks the finality of the blocks
+	multidownloader MultidownloaderBackend
+	ethClient       aggkittypes.EthClienter
+	agglayerBridge  *agglayerbridge.Agglayerbridge
+	cfg             Config
 }
 
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree using the legacy downloader.
@@ -141,52 +145,6 @@ func NewL1(
 		false,
 		syncFromInBridges,
 		bridgesynctypes.EmptyLER,
-		nil,
-	)
-}
-
-// NewL1WithDownloader creates an L1 bridge syncer that downloads logs and headers through the shared
-// multidownloader and resolves bridge transactions through the shared transaction provider.
-//
-// It requires cfg.Downloader to select the multidownloader and both backend and provider to be
-// non-nil; there is no silent fallback to direct RPC. The syncer is registered into the backend
-// synchronously, before the backend is initialized/started, so the backend knows which contract,
-// block range and (optional) transaction topics to download.
-func NewL1WithDownloader(
-	ctx context.Context,
-	cfg Config,
-	rd ReorgDetector,
-	ethClient aggkittypes.EthClienter,
-	originNetwork uint32,
-	backend aggkittypes.MultiDownloaderLegacy,
-	provider aggkittypes.TransactionProvider,
-) (*BridgeSync, error) {
-	if err := cfg.Downloader.Validate(); err != nil {
-		return nil, fmt.Errorf("bridgesync: invalid Downloader configuration: %w", err)
-	}
-	if !cfg.Downloader.IsMultidownloader() {
-		return nil, fmt.Errorf("bridgesync: NewL1WithDownloader requires Downloader=%s in config, got %q",
-			cfgtypes.Multidownloader, cfg.Downloader)
-	}
-	if backend == nil {
-		return nil, fmt.Errorf("bridgesync: %w: backend is nil", ErrMultidownloaderDepsMissing)
-	}
-	if provider == nil {
-		return nil, fmt.Errorf("bridgesync: %w: transaction provider is nil", ErrMultidownloaderDepsMissing)
-	}
-	syncFromInBridges := cfg.SyncFromInBridges.Resolved != nil && *cfg.SyncFromInBridges.Resolved
-	return newBridgeSync(
-		ctx,
-		cfg,
-		cfg.BlockFinality,
-		rd,
-		ethClient,
-		L1BridgeSyncer,
-		originNetwork,
-		false,
-		syncFromInBridges,
-		bridgesynctypes.EmptyLER,
-		&multidownloaderDeps{backend: backend, provider: provider},
 	)
 }
 
@@ -222,15 +180,7 @@ func NewL2(
 		syncFullClaims,
 		syncFromInBridges,
 		initialLER,
-		nil,
 	)
-}
-
-// multidownloaderDeps groups the explicit multidownloader dependencies. A nil value means the
-// legacy downloader is used.
-type multidownloaderDeps struct {
-	backend  aggkittypes.MultiDownloaderLegacy
-	provider aggkittypes.TransactionProvider
 }
 
 func newBridgeSync(
@@ -244,75 +194,20 @@ func newBridgeSync(
 	syncFullClaims bool,
 	syncFromInBridges bool,
 	initialLER common.Hash,
-	deps *multidownloaderDeps,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 	// the same id is used by the driver and the downloader to track blocks and by IsBlockFinalized to query them
 	reorgDetectorID := syncerID.String()
 
-	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(cfg.BridgeAddr, ethClient)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create binding for AgglayerBridge contract: %w", err)
-	}
-
 	logger.Infof("Bridge sync %s, syncing full claims: %t, syncFromInBridges: %t",
 		syncerID.String(), syncFullClaims, syncFromInBridges)
 
-	err = sanityCheckContract(logger, cfg.BridgeAddr, agglayerBridge)
-	if err != nil {
-		logger.Errorf("bridge contract on %s address fails sanity check. Err: %w",
-			cfg.BridgeAddr.String(), err)
-		return nil, err
-	}
-	database, err := newSqliteDB(cfg.DBPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create sqlite database  %s: %w", cfg.DBPath, err)
-	}
-
-	processor, err := newProcessor(database, "bridge_sync_"+syncerID.String(), logger, cfg.DBQueryTimeout.Duration)
+	agglayerBridge, processor, err := newBridgeContractAndProcessor(cfg, ethClient, syncerID, initialLER, logger)
 	if err != nil {
 		return nil, err
 	}
-	processor.initialLER = initialLER
 
-	// Register the syncer in the multidownloader synchronously, before the backend is initialized.
-	//
-	// The *log* range (FromBlock) stays at cfg.InitialBlockNum on purpose: it is the historical
-	// coverage the shared address needs, and it is what the shared downloader starts downloading
-	// from for this address. The bridge backfill resolves old records and the reorg detector can
-	// inspect blocks below the consumer's committed checkpoint L, so logs older than L must remain
-	// covered. Taking an L+1 shortcut here would leave those reads waiting for coverage that is
-	// never downloaded.
-	//
-	// The *transaction* requirement is a separate, future-only concern: its FromBlock is the first
-	// not-yet-processed block (L+1) so only future transactions are fetched. The log frontier and
-	// the transaction frontier are deliberately different.
-	var txResolver bridgeTxnResolver
-	var mdBackend aggkittypes.MultiDownloaderLegacy = sync.NewAdapterEthClientToMultidownloader(ethClient)
-	if deps != nil {
-		txFromBlock, err := computeTransactionFromBlock(ctx, processor, cfg.InitialBlockNum)
-		if err != nil {
-			return nil, err
-		}
-		syncerConfig := aggkittypes.SyncerConfig{
-			SyncerID:          reorgDetectorID,
-			ContractAddresses: []common.Address{cfg.BridgeAddr},
-			FromBlock:         cfg.InitialBlockNum,
-			ToBlock:           blockFinality,
-			TransactionRequirements: aggkittypes.TransactionRequirement{
-				Enabled:   true,
-				FromBlock: txFromBlock,
-				Topic0:    []common.Hash{bridgeEventSignature},
-			},
-		}
-		if err := deps.backend.RegisterSyncer(syncerConfig); err != nil {
-			return nil, fmt.Errorf("failed to register %s in multidownloader: %w", reorgDetectorID, err)
-		}
-		logger.Infof("registered %s in multidownloader: blockFinality=%s fromBlock=%d txFromBlock=%d",
-			reorgDetectorID, blockFinality.String(), cfg.InitialBlockNum, txFromBlock)
-		mdBackend = deps.backend
-		txResolver = &providerTxnResolver{provider: deps.provider}
-	}
+	mdBackend := sync.NewAdapterEthClientToMultidownloader(ethClient)
 
 	rh := &sync.RetryHandler{
 		MaxRetryAttemptsAfterError: cfg.MaxRetryAttemptsAfterError,
@@ -324,7 +219,7 @@ func newBridgeSync(
 		return nil, fmt.Errorf("failed to resolve bridge deployment. Reason: %w", err)
 	}
 
-	appender, err := buildAppender(ctx, ethClient, cfg.BridgeAddr, syncFromInBridges, bridgeDeployment, logger, txResolver)
+	appender, err := buildAppender(ctx, ethClient, cfg.BridgeAddr, syncFromInBridges, bridgeDeployment, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -345,21 +240,11 @@ func newBridgeSync(
 		return nil, err
 	}
 	// Install the context-aware appender for the Bridge event so its RPCs (transaction lookup and
-	// debug trace, and on the multidownloader path the shared provider flight) run with the active
-	// download context: a cancelled download generation, which the driver joins before a rollback,
-	// must never stay blocked on a stalled RPC.
-	contextualInstalled := installContextualLogAppenders(downloader, buildContextualAppender(
-		cfg.BridgeAddr, ethClient, syncFromInBridges, bridgeDeployment, logger, txResolver))
-	if deps != nil {
-		// Both hooks are required on the multidownloader path: if the downloader does not expose them
-		// the constructor fails closed instead of silently falling back to a constructor-time appender
-		// or to lazy resolution. The logs enricher warms the transaction cache with the same context.
-		if !contextualInstalled {
-			return nil, ErrContextualAppendersUnsupported
-		}
-		if !registerLogsEnricher(downloader, bridgeLogsEnricher(deps.provider)) {
-			return nil, ErrLogsEnricherUnsupported
-		}
+	// debug trace) run with the active download context: a cancelled download generation, which the
+	// driver joins before a rollback, must never stay blocked on a stalled RPC.
+	if !downloader.InstallContextualLogAppenders(buildContextualAppender(
+		cfg.BridgeAddr, ethClient, syncFromInBridges, bridgeDeployment, logger, nil)) {
+		return nil, errors.New("bridgesync: the downloader does not support contextual log appenders")
 	}
 	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,
@@ -378,6 +263,8 @@ func newBridgeSync(
 		},
 		processor)
 
+	// The legacy downloader keeps the exact one-block-at-a-time behaviour: the processor is passed
+	// straight to the driver without the optional batch wrapper.
 	driver, err := sync.NewEVMDriver(rd, processor, downloader, reorgDetectorID,
 		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
@@ -414,6 +301,7 @@ func newBridgeSync(
 	return &BridgeSync{
 		processor:            processor,
 		driver:               driver,
+		blockSubscriber:      driver,
 		downloader:           downloader,
 		originNetwork:        networkID,
 		reorgDetector:        rd,
@@ -425,36 +313,37 @@ func newBridgeSync(
 	}, nil
 }
 
-// lastProcessedBlockReader exposes the processor checkpoint needed to compute the transaction frontier.
-// The concrete *processor satisfies it; tests can substitute lightweight fakes to exercise checkpoint
-// values a real storage driver would reject (for example block numbers with the high bit set).
-type lastProcessedBlockReader interface {
-	GetLastProcessedBlock(ctx context.Context) (uint64, bool, error)
-}
-
-// computeTransactionFromBlock returns the first block for which the multidownloader must fetch the
-// transactions of the synced bridge logs. The processor storage is committed and inclusive up to the
-// last processed block L, which is materialized processed history: those blocks and their transactions
-// already belong to the synced state. Only the blocks after L are future-only, so L+1 is the first
-// block whose transactions still have to be fetched. This does not mean the multidownloader transaction
-// cache already holds the history up to L: switching to that backend does not retroactively enrich the
-// transactions of already processed blocks, so the requirement must not start before L+1. When no block
-// has been processed yet (fresh database) the configured InitialBlockNum is used as the starting point.
-func computeTransactionFromBlock(
-	ctx context.Context, proc lastProcessedBlockReader, initialBlockNum uint64,
-) (uint64, error) {
-	lastProcessed, found, err := proc.GetLastProcessedBlock(ctx)
+// newBridgeContractAndProcessor creates the binding of the bridge contract (checking that it is the
+// expected contract) and the processor of the syncer over its database.
+func newBridgeContractAndProcessor(
+	cfg Config,
+	ethClient aggkittypes.EthClienter,
+	syncerID BridgeSyncerID,
+	initialLER common.Hash,
+	logger *log.Logger,
+) (*agglayerbridge.Agglayerbridge, *processor, error) {
+	agglayerBridge, err := agglayerbridge.NewAgglayerbridge(cfg.BridgeAddr, ethClient)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read last processed block for transaction requirement: %w", err)
+		return nil, nil, fmt.Errorf("failed to create binding for AgglayerBridge contract: %w", err)
 	}
-	if !found {
-		return initialBlockNum, nil
+
+	err = sanityCheckContract(logger, cfg.BridgeAddr, agglayerBridge)
+	if err != nil {
+		logger.Errorf("bridge contract on %s address fails sanity check. Err: %w",
+			cfg.BridgeAddr.String(), err)
+		return nil, nil, err
 	}
-	if lastProcessed == math.MaxUint64 {
-		return 0, fmt.Errorf("last processed block %d overflows the transaction requirement from block",
-			lastProcessed)
+	database, err := newSqliteDB(cfg.DBPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create sqlite database  %s: %w", cfg.DBPath, err)
 	}
-	return lastProcessed + 1, nil
+
+	processor, err := newProcessor(database, "bridge_sync_"+syncerID.String(), logger, cfg.DBQueryTimeout.Duration)
+	if err != nil {
+		return nil, nil, err
+	}
+	processor.initialLER = initialLER
+	return agglayerBridge, processor, nil
 }
 
 type bridgeDeployment struct {
@@ -616,16 +505,21 @@ func (s *BridgeSync) GetRootByLER(ctx context.Context, ler common.Hash) (*tree.R
 }
 
 // IsBlockFinalized reports whether the block with the given number and hash, as read from this syncer,
-// is finalized, i.e. it can no longer be reorged. The legacy syncer doesn't store a finality flag, but the
-// reorg detector tracks every block that was not final when processed and only stops tracking it once its
-// hash was checked against the canonical chain and it is below the finalized block. So a processed block
-// that is not tracked anymore is a finalized one.
+// is finalized, i.e. it can no longer be reorged.
+// With the multidownloader, it is the IsFinal flag the multidownloader stores for the block with that hash.
+// The legacy syncer doesn't store a finality flag, but the reorg detector tracks every block that was
+// not final when processed and only stops tracking it once its hash was checked against the canonical
+// chain and it is below the finalized block. So a processed block that is not tracked anymore is a
+// finalized one.
 // found is false when it can't be determined: no hash was given, or the block is not stored with that
 // same hash (unknown, no hash stored for it, or it was replaced after the caller read it).
 func (s *BridgeSync) IsBlockFinalized(ctx context.Context, blockNum uint64,
 	blockHash common.Hash) (finalized, found bool, err error) {
 	if s.processor.isHalted() {
 		return false, false, sync.ErrInconsistentState
+	}
+	if s.multidownloader != nil {
+		return mdrsync.IsBlockFinalized(ctx, s.multidownloader, blockNum, blockHash)
 	}
 	return reorgdetector.IsBlockFinalized(ctx, s.reorgDetector, s.reorgDetectorID, blockNum, blockHash,
 		s.processor.getBlockHash)
@@ -646,7 +540,7 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 
 // SubscribeToSync allows a subscriber to receive block notifications
 func (s *BridgeSync) SubscribeToSync(subscriberID string) <-chan sync.Block {
-	return s.driver.SubscribeToNewBlocks(subscriberID)
+	return s.blockSubscriber.SubscribeToNewBlocks(subscriberID)
 }
 
 // SubscribeToNewBridge allows a subscriber to receive block number notifications when new bridge events occur
@@ -663,8 +557,12 @@ type LastReorg struct {
 // GetLastReorgEvent returns the reorg of the last detection pass of the reorg detector in which this syncer or
 // the claim syncer of the same network has an event (and not the ones of the other syncers that share the
 // reorg detector). If both have an event in that pass, the range returned covers both: FromBlock is the lowest
-// and ToBlock the highest
+// and ToBlock the highest. When synced through the multidownloader it is the last reorg the multidownloader
+// detected, which is shared by the bridge and the claim syncers of the network.
 func (s *BridgeSync) GetLastReorgEvent(ctx context.Context) (*LastReorg, error) {
+	if s.multidownloader != nil {
+		return s.getLastReorgEventFromMultidownloader(ctx)
+	}
 	rEvent, err := s.reorgDetector.GetLastReorgEventBySubscribers(ctx, s.reorgDetectorID, s.claimReorgDetectorID)
 	if err != nil {
 		s.processor.log.Errorf("failed to get last reorg event: %v", err)

@@ -50,7 +50,8 @@ type ConfigStandalone struct {
 	// APIMaxClaims is the maximum number of claims the claims endpoint returns in a single response
 	// (zero means the default, 1000)
 	APIMaxClaims uint64 `mapstructure:"APIMaxClaims"`
-	// Downloader selects the block download backend: "legacy" (default) or "multidownloader".
+	// Downloader selects the block download backend: "legacy" or "multidownloader". The default
+	// configuration selects "multidownloader" for the L1 syncers and "legacy" for the L2 ones.
 	// The zero value behaves as "legacy". Only the L1 syncers can use the multidownloader; the L2
 	// restriction is enforced by the startup code, since this struct is shared by both.
 	Downloader types.Downloader `jsonschema:"enum=legacy, enum=multidownloader" mapstructure:"Downloader"`

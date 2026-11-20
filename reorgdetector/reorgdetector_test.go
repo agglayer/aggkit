@@ -418,3 +418,43 @@ func TestGetDB(t *testing.T) {
 	err = db.Ping()
 	require.NoError(t, err)
 }
+
+func TestUnsubscribe(t *testing.T) {
+	ctx := context.Background()
+	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
+	cfg := Config{
+		DBPath:              path.Join(t.TempDir(), "reorgdetectorTestUnsubscribe.sqlite"),
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
+	}
+	reorgDetector, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil, nil), cfg, L1)
+	require.NoError(t, err)
+
+	const removedID, keptID = "removed-syncer", "kept-syncer"
+	for _, id := range []string{removedID, keptID} {
+		_, err = reorgDetector.Subscribe(id)
+		require.NoError(t, err)
+		require.NoError(t, reorgDetector.AddBlockToTrack(ctx, id, 5, common.BigToHash(big.NewInt(5))))
+	}
+
+	require.NoError(t, reorgDetector.Unsubscribe(removedID))
+	// It is a no-op for an id that is not subscribed
+	require.NoError(t, reorgDetector.Unsubscribe(removedID))
+	require.NoError(t, reorgDetector.Unsubscribe("unknown-syncer"))
+
+	_, err = reorgDetector.GetTrackedBlockByBlockNumber(removedID, 5)
+	require.ErrorIs(t, err, ErrSubscriberNotFound)
+	require.NotContains(t, reorgDetector.getSubscriberIDs(), removedID)
+	header, err := reorgDetector.GetTrackedBlockByBlockNumber(keptID, 5)
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), header.Num)
+
+	// The tracked blocks are also removed from the DB, so they are not loaded as a subscription again
+	reloaded, err := New(etherman.NewDefaultEthClient(clientL1.Client(), nil, nil), cfg, L1)
+	require.NoError(t, err)
+	require.NoError(t, reloaded.loadTrackedHeaders())
+	require.Equal(t, []string{keptID}, reloaded.getSubscriberIDs())
+
+	// A nil reorg detector has nothing to remove
+	var nilReorgDetector *ReorgDetector
+	require.NoError(t, nilReorgDetector.Unsubscribe(removedID))
+}

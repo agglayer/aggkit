@@ -180,7 +180,9 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 SyncFromInBridges = "auto"
 EmbeddedClaimSync = "auto"
-Downloader = "legacy"
+# Downloader selects the download backend: "multidownloader" (shared L1 multidownloader, that also
+# detects the reorgs; it requires L1Multidownloader.Enabled = true) or "legacy"
+Downloader = "multidownloader"
 
 [ClaimL1Sync]
 DBPath = "{{PathRWData}}/claiml1sync.sqlite"
@@ -190,7 +192,7 @@ BlockFinality = "{{BridgeL1Sync.BlockFinality}}"
 InitialBlockNum = {{BridgeL1Sync.InitialBlockNum}}
 AutoStart = "auto"
 # Downloader is intentionally independent from BridgeL1Sync.Downloader (mixed modes are allowed)
-Downloader = "legacy"
+Downloader = "multidownloader"
 
 BridgeAddr = "{{BridgeL1Sync.BridgeAddr}}"
 SyncBlockChunkSize = {{BridgeL1Sync.SyncBlockChunkSize}}

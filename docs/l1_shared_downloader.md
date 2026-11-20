@@ -2,18 +2,21 @@
 
 > **Status — initial integration scope for issue #1224.** This page describes the normative
 > behaviour of the L1 shared downloader ("multidownloader") and of the optional
-> transaction-inclusion support for the L1 synchronizers. The initial scope **retains the legacy
-> sync drivers**: they are not replaced. The source implementation for this initial scope is
-> complete locally; real-node end-to-end validation is handled separately and is not claimed here.
+> transaction-inclusion support for the L1 synchronizers. A synchronizer that selects the
+> multidownloader runs on the **native multidownloader sync driver**, which also relies on the
+> multidownloader to detect reorgs; the legacy sync driver and the legacy reorg detector are only
+> used by the synchronizers that select `legacy`. The source implementation is complete locally; real-node end-to-end validation is handled separately and is not claimed here.
 
 ## Overview
 
 Aggkit can download L1 blocks and logs for the L1 synchronizers in two ways:
 
-- **Legacy** (`legacy`, the default): each synchronizer uses its own dedicated EVM downloader,
-  as it does today.
-- **Multidownloader** (`multidownloader`): the L1 synchronizers share the L1 multidownloader
-  service, which downloads block headers and logs once and serves them to every L1 consumer.
+- **Legacy** (`legacy`): each synchronizer uses its own dedicated EVM downloader and the reorg
+  detector.
+- **Multidownloader** (`multidownloader`, the default for the L1 synchronizers): the L1 synchronizers share the L1 multidownloader
+  service, which downloads block headers and logs once and serves them to every L1 consumer. The
+  multidownloader is also the one that detects the reorgs and tracks the finality of the blocks
+  for them (see [Reorg tracking](#reorg-tracking)).
 
 The two L1 synchronizers — the L1 bridge syncer and the L1 claim syncer — select the backend
 **independently**:
@@ -22,9 +25,10 @@ The two L1 synchronizers — the L1 bridge syncer and the L1 claim syncer — se
 - `[ClaimL1Sync].Downloader`
 
 Both accept `legacy` or `multidownloader` (case-insensitive, surrounding whitespace trimmed) and
-both default to `legacy`. The empty value behaves as `legacy`, so a configuration that does not
-set the field keeps the historical behaviour. Mixed modes are supported: for example the bridge
-syncer on `multidownloader` while the claim syncer stays on `legacy`.
+both default to `multidownloader` in the default configuration, so a configuration that does not
+set the field uses the shared multidownloader. An explicitly empty value (`Downloader = ""`)
+behaves as `legacy`. Mixed modes are supported: for example the bridge syncer on `multidownloader`
+while the claim syncer stays on `legacy`.
 
 The selection is **per section**: setting a value in one L1 section does not change the other.
 
@@ -35,7 +39,9 @@ The selection is **per section**: setting a value in one L1 section does not cha
 - Selecting `multidownloader` for an L1 syncer is only valid when the L1 multidownloader service
   is active, that is, `[L1Multidownloader].Enabled = true`. If a syncer selects the
   multidownloader while `[L1Multidownloader].Enabled = false`, **startup fails with an error**.
-  There is no silent fallback to the legacy downloader.
+  There is no silent fallback to the legacy downloader. Since `multidownloader` is the default, a
+  configuration that sets `[L1Multidownloader].Enabled = false` must also set
+  `Downloader = "legacy"` in `[BridgeL1Sync]` and `[ClaimL1Sync]`.
 - The L2 synchronizers (`[BridgeL2Sync]`, `[ClaimL2Sync]`) do **not** support the multidownloader:
   only `legacy` is valid for them. Because the check is per section, an L2 section cannot select
   the shared downloader.
@@ -51,6 +57,24 @@ Headers are served through the multidownloader's `HeaderByNumber`, which reads f
 multidownloader's own storage and **falls back to an RPC call** when a header is not present in
 storage. The multidownloader's planning chunking (`[L1Multidownloader].BlockChunkSize`) is
 independent from a syncer's processing chunking (`SyncBlockChunkSize`).
+
+The planner splits the pending range at the boundaries where the active contract set changes —
+the next later `FromBlock` where a new address joins, and the earliest pending `ToBlock` among the
+addresses already active at the start — instead of always starting a fixed-size chunk at the
+lowest pending block. Every address in a returned query is therefore pending for the whole
+returned range: an address is never asked to re-sync an already-covered prefix, nor for blocks
+past the end of its pending range.
+
+### Log/header integrity guard
+
+A log is canonical only within the block identified by `(block number, block hash)`. Before a
+downloaded batch is used or persisted, every log is validated against the block header for its block
+number: a log whose block number has no header (including a nil header entry), or whose block hash
+contradicts the header hash, is rejected as a corruption signal (`ErrLogBlockHeaderMismatch`) and the
+whole batch is discarded with **no** state or storage write. The same single guard is applied by the
+safe-step logic and by the storage write paths (`SaveEthLogs`, `SaveEthLogsWithHeaders`), so a
+partial or contradictory download can never be persisted. Two headers that share a block number but
+carry different hashes are rejected rather than silently letting the last one win.
 
 ## Transaction inclusion (optional, library level)
 
@@ -132,6 +156,76 @@ already-materialized bridge records (the consumer rows), whereas filling the tra
 stores transactions. Filling the cache does **not** update consumer historical rows automatically.
 Keeping the two separate means a backfill can be re-run without assuming the cache is warm, and the
 cache can be filled without implying the consumer rows were updated.
+
+## Performance: trace prefetch and batched persistence (multidownloader only)
+
+These two optimizations are **opt-in and scoped to the multidownloader-backed L1 syncers**. The
+legacy downloader paths — and every L2 syncer — keep their exact one-block-at-a-time behaviour and
+the synchronous claim trace.
+
+### Bounded claim-trace prefetch
+
+- When the L1 claim syncer selects the multidownloader, the ordinary and pre-Etrog `ClaimEvent` root
+  calls of a downloaded log range are prefetched with a **bounded pool of 8 concurrent**
+  `debug_traceTransaction` (call tracer) requests, instead of one synchronous trace per log. The
+  bound is a fixed constant (`ClaimTracePrefetchConcurrency = 8`); it is not an operator-facing knob.
+- Prefetch is installed **after** the coexistence hook that drops an ordinary `ClaimEvent` superseded
+  by a `DetailedClaimEvent`, so a suppressed log is never traced. The `DetailedClaimEvent` handler
+  never traces.
+- The root traces are published **atomically** only when every needed request succeeded. The
+  canonical inclusion of the window is revalidated **twice**: once before any trace RPC and once
+  after all workers have joined, immediately before publishing. A trace carries no block hash, so
+  the second read is what ties the published snapshot to the blocks the range was revalidated
+  against. This costs **one canonical header read per distinct block in each phase** — `2N` header
+  reads for a range of `N` distinct blocks — on top of the trace RPCs. Each phase uses its own
+  bounded pool of at most `ClaimTracePrefetchConcurrency` (8) concurrent header reads, so the header
+  lookups never fan out more than the trace phase.
+- A changed or absent header (before or after the trace RPCs) returns
+  `ErrTransactionInclusionMismatch`, so the whole range is refetched and nothing is published.
+- Every failure path purges the published snapshot, so a trace produced by an earlier generation is
+  never served for the failed range.
+- A node that answers a trace request with a nil error but no call frame (for example a JSON `null`)
+  is rejected as a **retryable** error (never an inclusion mismatch) instead of being cached as an
+  empty root forever. The check is scoped to the frame type only, so a legitimate reverted root and
+  a router/fallback wrapper whose own input is empty but which nests the bridge call both stay valid;
+  the ordinary/pre-Etrog extraction semantics are unchanged.
+- The enricher is installed on the **native `multidownloader/sync.EVMDownloader`** (after the
+  coexistence hook), not on the legacy downloader. The legacy/L2 constructors install no enricher and
+  keep the synchronous per-log trace.
+
+### Atomic batched persistence
+
+- When a syncer selects the multidownloader it runs on the **native multidownloader driver**. The
+  driver hands each downloaded `DownloadResult` chunk to `BlockByBlockProcessor`.
+- For the L1 bridge and claim syncers the adapter is constructed with the processor's atomic
+  `processBlocks` (`NewBlockByBlockProcessorWithBatch`), so the ordered downloaded blocks are
+  committed in **a single SQL transaction** (all-or-nothing) instead of one transaction per block.
+  The batch is bounded to a fixed **100 blocks** (`sync.MaxBatchBlocks`); it never waits for more
+  blocks to fill a batch, it only splits the already-downloaded chunk.
+- Batching is strictly **opt-in**: only the L1 multidownloader constructors install the batch
+  callback. The legacy downloader and every L2 syncer keep the exact one-block-at-a-time path
+  (`NewBlockByBlockProcessor` without a batch callback, or the legacy `sync.EVMDriver` without
+  `EnableBlockBatching`).
+- A batched block keeps **the same per-block semantics** as the single-block path: both share the
+  same inner helper, including the block row, the bridge/claim handlers, the full proof and metadata
+  fields, and the claim proof-decoder fallback. Empty blocks are handled identically.
+- Bridge subscribers and the post-commit logs are emitted only **after** the single commit, in the
+  original download order, so a failed (and retried) batch never produces a partial commit or a
+  partial notification. A later chunk is only attempted after the previous one committed, so a retry
+  of the same downloaded chunk skips the blocks already committed through the last processed block.
+- A batch that fails (including context cancellation) is rolled back as a whole; a retried batch
+  cannot duplicate committed history.
+- The leftover legacy `sync.EVMDriver` batching helpers (`EnableBlockBatching`, `drainBatch`) remain
+  in the codebase for the legacy driver but are **not** used by the default L1 multidownloader path.
+
+### Bridge tree-cache rollback note
+
+- On a processing failure the bridge processor rolls the transaction back and runs the explicit
+  rollback callbacks registered by `PutLeaf` (`tree.AppendOnlyTree`), which invalidate the in-memory
+  tree cache so the next batch rebuilds it from the database. **Limitation**: `db.Tx.Rollback`
+  returns early on `sql.ErrTxDone` (the underlying transaction already ended) and skips those
+  callbacks, so on that path the cache is not invalidated here. This is the only documented gap; it
+  is not an assertion that the cache is always invalidated.
 
 ## Coverage, readiness and the background worker
 
@@ -218,13 +312,43 @@ requirement is future-only and starts at `L + 1` (see above); the log coverage i
 
 ## Reorg tracking
 
-- Reorg tracking stays with the current drivers, which keep using the **current legacy reorg
-  detector**; the multidownloader is used as the shared download backend.
-- The **bridge** syncer's **post-commit subscriptions are preserved**.
-- The **claim** syncer's **lazy/bootstrap** behaviour is preserved.
-- This is **not** a migration to a native multidownloader reorg driver.
+A syncer that selects the multidownloader does **not** use the legacy reorg detector: it runs on
+the native multidownloader sync driver, so the multidownloader is the single source of truth for
+the data it downloads, for the reorgs and for the finality of the blocks.
+
+- **Detection.** Before and after downloading each range, the driver asks the multidownloader
+  whether the last block the syncer processed (number and hash) is still valid. If the
+  multidownloader moved it to its reorged blocks, the syncer rolls back from the first block of
+  that reorg and syncs the new blocks. A last processed block without a stored hash (rows written
+  before the hash was stored, or the empty block that closes a finalized range) cannot be checked.
+- **Finality.** `IsBlockFinalized` is answered with the finality flag the multidownloader stores
+  for the block with that number **and** hash, instead of the blocks tracked by the reorg detector.
+- **Last reorg.** The bridge service `last-reorg-event` endpoint reports, for L1, the last reorg
+  the multidownloader detected.
+- **Stale logs.** If a downloaded bridge log belongs to a block that was reorged away and the
+  multidownloader has not replaced it yet (`ErrTransactionInclusionMismatch`), the syncer discards
+  the range, waits `RetryAfterErrorPeriod` and downloads it again.
+- The **bridge** syncer's **post-commit subscriptions are preserved**: each block is committed and
+  notified one by one.
+- The **claim** syncer's **lazy/bootstrap** behaviour is preserved: with `AutoStart = false` it
+  waits for the explicit bootstrap block, which is served by the multidownloader, and continues
+  from the block after it.
 - Reorged rows — including transaction inclusions — are removed together with the affected blocks
   and logs.
+
+**Migration note.** When a syncer is switched from `legacy` to `multidownloader`:
+
+- The blocks it was tracking in the L1 reorg detector are removed on start, so the reorg detector
+  never notifies a syncer that no longer listens to it.
+- Its last processed block was downloaded by the legacy downloader and may be unknown to the
+  multidownloader. If it is at or below the finalized block it is validated against L1 by hash;
+  if it is above, the syncer waits (logging an error on each retry) until the multidownloader
+  stores that block or it becomes final. If the multidownloader stores a **different** block at
+  that height (a reorg that happened right at the switch), the syncer cannot resolve it on its
+  own and it needs a manual intervention, as it already happens with the L1 info tree syncer.
+
+The L2 syncers, and the L1 syncers that select `legacy`, keep using the legacy sync driver and
+the reorg detector.
 
 ## Minimal TOML examples
 
@@ -256,7 +380,8 @@ Enabled = true
 
 Notes:
 
-- `Downloader` defaults to `legacy`, so writing `Downloader = "legacy"` is optional. The field is
+- `Downloader` defaults to `multidownloader` for the L1 sections (and `[L1Multidownloader].Enabled`
+  defaults to `true`), so the second snippet is the default configuration. The field is
   independent per section.
 - The L2 sections (`[BridgeL2Sync]`, `[ClaimL2Sync]`) must keep `legacy`.
 - These snippets only show the downloader selector. The remaining multidownloader options keep
@@ -287,4 +412,3 @@ make build
   rewrite existing consumer rows. (Resolving older logs on demand is supported; see above.)
 - A shared trace cache.
 - Live (no-restart) hot update of transaction requirements.
-- Migrating to a native multidownloader reorg driver.

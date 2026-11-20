@@ -51,6 +51,12 @@ type reorgScenario struct {
 	bs *client.Client
 	// networkID is the id of the chain in the bridge-service API: 0 for L1, the L2 network id.
 	networkID uint32
+	// nativeMD is true when the bridge syncer of this chain runs on the multidownloader (the L1
+	// bridge and claim syncers do, see bridgesync_multidownloader.go): its reported reorg range is
+	// the range of headers it had stored, not exactly the reorged blocks, so requireReorgEventWithin
+	// only requires it to cover the reorged blocks instead of lying within them. It is false for the
+	// legacy L2 syncer, which reports the exact reorged range.
+	nativeMD bool
 	// client is the chain's RPC client.
 	client interface {
 		TransactionReceipt(ctx context.Context, txHash common.Hash) (*ethtypes.Receipt, error)
@@ -161,7 +167,10 @@ func l1BridgeScenario(ctx context.Context, t *testing.T, chain *AnvilChain) reor
 		chain:     chain,
 		bs:        testEnv.L2.BridgeService,
 		networkID: 0,
-		client:    testEnv.Clients.L1,
+		// the L1 bridge syncer is registered in the multidownloader (bridgesync_multidownloader.go),
+		// so its reorg range can be wider than the reorged blocks: see nativeMD.
+		nativeMD: true,
+		client:   testEnv.Clients.L1,
 		sendBridge: func(ctx context.Context) (*ethtypes.Transaction, error) {
 			amount := big.NewInt(reorgSmokeBridgeAmount)
 			opts.Value = amount
@@ -281,7 +290,7 @@ func runReorgScenario(ctx context.Context, t *testing.T, s reorgScenario) {
 	event, err := WaitForReorgEvent(ctx, s.bs, s.networkID, baselineEvent, reorgSmokeDetectTimeout)
 	require.NoError(t, err, "aggkit-001 did not report the reorg of %s (a syncer problem, not a proxy one)", chain.Name())
 	log.Infof("[%s] reorg #1 reported: %+v", chain.Name(), event)
-	requireReorgEventWithin(t, event, bridge.block, bridge.block+reorgSmokeDepth-1)
+	requireReorgEventWithin(t, event, bridge.block, bridge.block+reorgSmokeDepth-1, s.nativeMD)
 	require.NoError(t, WaitForBridgeStable(ctx, s.bs, s.networkID, bridge.depositCount,
 		func(b *types.BridgeResponse) bool { return bridge.served(b, false) },
 		reorgSmokeStableFor, reorgSmokeServeTimeout),
@@ -297,7 +306,7 @@ func runReorgScenario(ctx context.Context, t *testing.T, s reorgScenario) {
 	event2, err := WaitForReorgEvent(ctx, s.bs, s.networkID, event, reorgSmokeDetectTimeout)
 	require.NoError(t, err, "aggkit-001 did not report the second reorg of %s", chain.Name())
 	log.Infof("[%s] reorg #2 reported: %+v", chain.Name(), event2)
-	requireReorgEventWithin(t, event2, bridge.block, bridge.block+reorgSmokeDepth-1)
+	requireReorgEventWithin(t, event2, bridge.block, bridge.block+reorgSmokeDepth-1, s.nativeMD)
 	require.NoError(t, WaitForBridgeAbsent(ctx, s.bs, s.networkID, bridge.depositCount, reorgSmokeServeTimeout),
 		"the bridge of a dropped transaction must stop being served")
 	require.NoError(t, RequireBridgeStaysAbsent(ctx, s.bs, s.networkID, bridge.depositCount, reorgSmokeAbsentFor))
@@ -323,14 +332,50 @@ func runReorgScenario(ctx context.Context, t *testing.T, s reorgScenario) {
 	s.requireServedBeforeUnchanged(ctx, t, servedBefore)
 }
 
-// requireReorgEventWithin checks that the reported event lies in the blocks the test reorged. It does not
-// require it to start at the bridge block: GET /bridge/v1/last-reorg-event returns one row of the reorg
-// detector's reorg_event table, which holds one event per subscribed syncer (the bridge syncer's starts at
-// the bridge block, the claim syncer's at the head it tracked) and orders them by detection second only, so
-// which of the events of one detection the endpoint returns is arbitrary.
-func requireReorgEventWithin(t *testing.T, event bridgesync.LastReorg, first, last uint64) {
+// requireReorgEventWithin checks that the reported event is an acceptable report of the reorg of the blocks
+// [first, last]. It does not require it to start at the bridge block: GET /bridge/v1/last-reorg-event
+// returns one row of the reorg detector's reorg_event table, which holds one event per subscribed syncer
+// (the bridge syncer's starts at the bridge block, the claim syncer's at the head it tracked) and orders
+// them by detection second only, so which of the events of one detection the endpoint returns is arbitrary.
+//
+// nativeMD selects the multidownloader semantics (the L1 bridge and claim syncers): the detector walks back
+// from the offending block to the first STORED header that still matches the chain, so when headers are
+// sparse (only the blocks with events plus the polled head are stored) the rollback can widen FromBlock
+// below the first reorged block, and ToBlock is the last stored block, at or above the last reorged block.
+// The reorg is verified by the detector's own hash comparison (TrackedHash vs CurrentHash), so the range
+// only has to cover the reorged blocks there, not lie within them. The legacy L2 syncer stores every header
+// it tracks and reports the exact reorged range, which keeps the strict "within" check.
+func requireReorgEventWithin(t *testing.T, event bridgesync.LastReorg, first, last uint64, nativeMD bool) {
 	t.Helper()
-	require.GreaterOrEqual(t, event.FromBlock, first, "the reported reorg starts before the reorged blocks")
-	require.LessOrEqual(t, event.ToBlock, last, "the reported reorg ends after the reorged blocks")
-	require.LessOrEqual(t, event.FromBlock, event.ToBlock)
+	if problem := reorgEventRangeProblem(event, first, last, nativeMD); problem != "" {
+		t.Fatalf("last reorg event %+v is not an acceptable report of the reorg of blocks [%d, %d]: %s",
+			event, first, last, problem)
+	}
+}
+
+// reorgEventRangeProblem returns "" when event is an acceptable report of the reorg of the blocks
+// [first, last], or a description of why not. See requireReorgEventWithin for what nativeMD changes.
+func reorgEventRangeProblem(event bridgesync.LastReorg, first, last uint64, nativeMD bool) string {
+	if event.FromBlock > event.ToBlock {
+		return fmt.Sprintf("from_block %d is above to_block %d", event.FromBlock, event.ToBlock)
+	}
+	if nativeMD {
+		// Cover the reorged blocks: the sparse rollback may start lower and the stored range may end
+		// higher, but the reported range must still contain every reorged block.
+		if event.FromBlock > first {
+			return fmt.Sprintf("from_block %d starts after the first reorged block %d", event.FromBlock, first)
+		}
+		if event.ToBlock < last {
+			return fmt.Sprintf("to_block %d ends before the last reorged block %d", event.ToBlock, last)
+		}
+		return ""
+	}
+	// Legacy syncer: the exact reorged range.
+	if event.FromBlock < first {
+		return fmt.Sprintf("from_block %d starts before the first reorged block %d", event.FromBlock, first)
+	}
+	if event.ToBlock > last {
+		return fmt.Sprintf("to_block %d ends after the last reorged block %d", event.ToBlock, last)
+	}
+	return ""
 }

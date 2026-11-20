@@ -2,132 +2,27 @@ package claimsync
 
 import (
 	"context"
-	"math/big"
-	"sync"
 	"testing"
 	"time"
 
 	claimsynctypes "github.com/agglayer/aggkit/claimsync/types"
 	configtypes "github.com/agglayer/aggkit/config/types"
-	aggsync "github.com/agglayer/aggkit/sync"
+	"github.com/agglayer/aggkit/multidownloader/sync/mdrsynctest"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-// mdLazyTip is the fake chain tip the backend reports for any block tag.
-const mdLazyTip uint64 = 15
+const mdTestWaitTimeout = 15 * time.Second
 
-// mdLazyChainID is the fake local chain ID exposed by the backend.
-const mdLazyChainID uint64 = 1337
-
-// mdLazyFilterRange is an inclusive block range recorded for a FilterLogs call.
-type mdLazyFilterRange struct {
-	from uint64
-	to   uint64
-}
-
-// mdLazyBackend is the fake multidownloader backend used by the lazy integration test. It embeds the
-// existing fakeMultidownloader (for RegisterSyncer/EthClient/Start) and overrides the RPC surface so
-// the real legacy EVMDriver + EVMDownloader can run against it: the chain has a fixed tip and no
-// logs, and every height has a valid, deterministic header.
-//
-// The multidownloader is supposed to have already downloaded/preloaded the historical logs before the
-// syncer is wired up, so the backend answers FilterLogs for any range but never implies that the
-// syncer has a processed checkpoint: the checkpoint must be created lazily.
-type mdLazyBackend struct {
-	fakeMultidownloader
-
-	mu           sync.Mutex
-	chainIDCalls int
-	filters      []mdLazyFilterRange
-
-	chainIDOnce  sync.Once
-	chainIDReady chan struct{}
-}
-
-var _ aggkittypes.MultiDownloaderLegacy = (*mdLazyBackend)(nil)
-
-func newMDLazyBackend() *mdLazyBackend {
-	return &mdLazyBackend{chainIDReady: make(chan struct{})}
-}
-
-// mdLazyHash returns a deterministic, non-zero hash for the given height.
-func mdLazyHash(height uint64) common.Hash {
-	return common.BigToHash(new(big.Int).SetUint64(height + 1))
-}
-
-// headerFor builds a valid header for the given numeric height, including a non-nil parent hash.
-func (b *mdLazyBackend) headerFor(height uint64) *aggkittypes.BlockHeader {
-	parent := mdLazyHash(0)
-	if height > 0 {
-		parent = mdLazyHash(height - 1)
-	}
-	return &aggkittypes.BlockHeader{
-		Number:     height,
-		Hash:       mdLazyHash(height),
-		Time:       1_700_000_000 + height,
-		ParentHash: &parent,
-	}
-}
-
-// ChainID is called by the real compatibility check; it closes the ready signal once so the test can
-// deterministically wait for the driver to start without sleeping.
-func (b *mdLazyBackend) ChainID(context.Context) (uint64, error) {
-	b.mu.Lock()
-	b.chainIDCalls++
-	b.mu.Unlock()
-	b.chainIDOnce.Do(func() { close(b.chainIDReady) })
-	return mdLazyChainID, nil
-}
-
-// BlockNumber resolves every finality to the fixed tip.
-func (b *mdLazyBackend) BlockNumber(context.Context, aggkittypes.BlockNumberFinality) (uint64, error) {
-	return mdLazyTip, nil
-}
-
-// HeaderByNumber resolves tags to the fixed tip and numeric references to their concrete height.
-func (b *mdLazyBackend) HeaderByNumber(
-	_ context.Context, number *aggkittypes.BlockNumberFinality,
-) (*aggkittypes.BlockHeader, error) {
-	if number == nil {
-		return b.headerFor(mdLazyTip), nil
-	}
-	if number.Block == aggkittypes.Constant {
-		return b.headerFor(number.Specific), nil
-	}
-	return b.headerFor(mdLazyTip), nil
-}
-
-// FilterLogs records the inclusive range and returns no logs, emulating a history that was already
-// downloaded by the multidownloader.
-func (b *mdLazyBackend) FilterLogs(_ context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.filters = append(b.filters, mdLazyFilterRange{from: q.FromBlock.Uint64(), to: q.ToBlock.Uint64()})
-	return nil, nil
-}
-
-func (b *mdLazyBackend) filterRanges() []mdLazyFilterRange {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	out := make([]mdLazyFilterRange, len(b.filters))
-	copy(out, b.filters)
-	return out
-}
-
-// TestMDLazyIntegration_BootstrapsOnDemand verifies the end-to-end lazy integration between the
-// multidownloader backend and the real legacy EVMDriver: a preloaded (empty) history must not imply a
-// processed checkpoint, the first explicit bootstrap processes exactly the requested block instead of
-// cfg.InitialBlockNum, and the incremental sync then resumes right after that bootstrap.
-func TestMDLazyIntegration_BootstrapsOnDemand(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-
+// newMDSyncerForTest creates an L1 claim syncer over an in-memory multidownloader whose chain has
+// the blocks [1, lastBlock], all of them without logs. There is no legacy reorg detector at all.
+func newMDSyncerForTest(
+	t *testing.T, ctx context.Context, autoStart configtypes.TrueFalseAutoMode, lastBlock int,
+) (*ClaimSync, *mdrsynctest.FakeMultidownloader, *mocksethclient.EthClienter) {
+	t.Helper()
 	bridge := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	cfg := mdStandaloneConfig(t, bridge, configtypes.Multidownloader)
 	cfg.InitialBlockNum = 1
@@ -135,108 +30,138 @@ func TestMDLazyIntegration_BootstrapsOnDemand(t *testing.T) {
 	cfg.RetryAfterErrorPeriod = configtypes.NewDuration(time.Millisecond)
 	cfg.WaitForNewBlocksPeriod = configtypes.NewDuration(time.Millisecond)
 	cfg.RequireStorageContentCompatibility = true
+	cfg.AutoStart = autoStart
 
 	ethClient := mocksethclient.NewEthClienter(t)
 	expectSovereignBridgeDeployment(t, ethClient, bridge)
 
-	// Constructor-time reorg detector wiring (finalized block type + subscription) plus the
-	// reorg-detector calls the downloader makes while it tracks the tip. Tracking is best-effort, so
-	// the extra expectations are optional.
-	rd := expectMDReorgDetector(t)
-	rd.EXPECT().AddBlockToTrack(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil).Maybe()
-	rd.EXPECT().GetTrackedBlockByBlockNumber(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	backend := mdrsynctest.NewFakeMultidownloader(cfg.InitialBlockNum)
+	backend.AddEmptyBlocks(lastBlock)
 
-	backend := newMDLazyBackend()
-
-	cs, err := NewStandaloneClaimSyncWithDownloader(
-		ctx, cfg, rd, ethClient, claimsynctypes.L1ClaimSyncer, 0, backend)
+	cs, err := NewStandaloneClaimSyncWithDownloader(ctx, cfg, ethClient, claimsynctypes.L1ClaimSyncer, 0, backend)
 	require.NoError(t, err)
 	require.NotNil(t, cs)
+	return cs, backend, ethClient
+}
 
-	// Subscribe before starting so no post-commit publication is missed.
-	blocksCh := cs.driver.SubscribeToNewBlocks("md-lazy-test")
-
+// startMDSyncerForTest starts the syncer, it returns a function that stops it and waits until it
+// has stopped
+func startMDSyncerForTest(t *testing.T, ctx context.Context, cs *ClaimSync) func() {
+	t.Helper()
+	ctx, cancel := context.WithCancel(ctx)
 	startDone := make(chan struct{})
 	go func() {
 		defer close(startDone)
 		cs.Start(ctx)
 	}()
-
-	const waitTimeout = 15 * time.Second
-
-	// Wait for the real compatibility check to reach the backend (ChainID). This is a signal, not a
-	// sleep: it guarantees the real driver has started and is running its bootstrap-wait loop.
-	select {
-	case <-backend.chainIDReady:
-	case <-time.After(waitTimeout):
-		t.Fatal("timed out waiting for the driver to start (backend ChainID was never called)")
+	return func() {
+		cancel()
+		select {
+		case <-startDone:
+		case <-time.After(mdTestWaitTimeout):
+			require.Fail(t, "ClaimSync.Start did not return after context cancellation")
+		}
 	}
+}
 
-	// The multidownloader's preloaded history must not be mistaken for a processed checkpoint.
-	lastProcessed, found, err := cs.processor.GetLastProcessedBlock(ctx)
-	require.NoError(t, err)
-	require.False(t, found, "preloaded history must not imply a processed checkpoint")
-	require.Zero(t, lastProcessed)
-	require.Empty(t, backend.filterRanges(),
-		"the driver must not download logs before an explicit bootstrap creates a checkpoint")
+func requireMDLastProcessedBlock(t *testing.T, cs *ClaimSync, expected uint64) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		last, found, err := cs.GetLastProcessedBlock(t.Context())
+		return err == nil && found && last == expected
+	}, mdTestWaitTimeout, time.Millisecond, "last processed block must be %d", expected)
+}
+
+// TestMDLazyIntegration_BootstrapsOnDemand verifies the end-to-end lazy integration between the
+// multidownloader and the syncer: a preloaded (empty) history must not imply a processed checkpoint,
+// the first explicit bootstrap processes exactly the requested block instead of cfg.InitialBlockNum,
+// and the incremental sync then resumes right after that bootstrap.
+func TestMDLazyIntegration_BootstrapsOnDemand(t *testing.T) {
+	ctx := t.Context()
+	const tip = 15
+	cs, backend, ethClient := newMDSyncerForTest(t, ctx, configtypes.FalseMode, tip)
+	stop := startMDSyncerForTest(t, ctx, cs)
+	defer stop()
+
+	// The multidownloader's preloaded history must not be mistaken for a processed checkpoint: the
+	// syncer waits for an explicit bootstrap
+	require.Never(t, func() bool {
+		_, found, err := cs.GetLastProcessedBlock(ctx)
+		return err != nil || found
+	}, 100*time.Millisecond, 5*time.Millisecond, "preloaded history must not imply a processed checkpoint")
 
 	// Lazy bootstrap: the first required block is 10, not cfg.InitialBlockNum (1).
 	require.NoError(t, cs.SetNextRequiredBlock(ctx, 10))
 
-	recvBlock := func() aggsync.Block {
-		t.Helper()
-		select {
-		case b := <-blocksCh:
-			return b
-		case <-time.After(waitTimeout):
-			t.Fatal("timed out waiting for a processed block publication")
-			return aggsync.Block{}
-		}
-	}
-
-	first := recvBlock()
-	require.Equal(t, uint64(10), first.Num,
-		"the bootstrap must process the requested block, not cfg.InitialBlockNum")
-	require.Equal(t, mdLazyHash(10), first.Hash)
-
-	second := recvBlock()
-	require.Equal(t, mdLazyTip, second.Num, "the incremental sync must reach the chain tip")
-	require.Equal(t, mdLazyHash(mdLazyTip), second.Hash,
-		"the checkpoint hash must match the chain header for that height")
-
-	// The first processed block is the bootstrap block; the incremental sync resumes at 11 (not 1).
-	lastProcessed, found, err = cs.processor.GetLastProcessedBlock(ctx)
+	// The incremental sync resumes after the bootstrap block and reaches the chain tip
+	requireMDLastProcessedBlock(t, cs, tip)
+	firstBlock, found, err := cs.GetFirstProcessedBlock(ctx)
 	require.NoError(t, err)
 	require.True(t, found)
-	require.Equal(t, mdLazyTip, lastProcessed)
+	require.Equal(t, uint64(10), firstBlock,
+		"the bootstrap must process the requested block, not cfg.InitialBlockNum")
 
-	ranges := backend.filterRanges()
-	require.Len(t, ranges, 2, "exactly the bootstrap range and the incremental range must be downloaded")
-	require.Equal(t, mdLazyFilterRange{from: 10, to: 10}, ranges[0],
-		"the first download must be the bootstrap block only")
-	require.Equal(t, uint64(11), ranges[1].from,
-		"the incremental sync must resume after the bootstrap, not at cfg.InitialBlockNum")
+	// The stored hashes are the ones of the chain
+	for _, blockNum := range []uint64{10, tip} {
+		header, _, err := backend.StorageHeaderByNumber(ctx, aggkittypes.NewBlockNumber(blockNum))
+		require.NoError(t, err)
+		hash, found, err := cs.reader.GetBlockHash(ctx, nil, blockNum)
+		require.NoError(t, err)
+		require.True(t, found)
+		require.Equal(t, header.Hash, hash)
+	}
+
+	// A second bootstrap is a no-op
+	require.NoError(t, cs.SetNextRequiredBlock(ctx, 12))
+	require.NoError(t, cs.SyncNextBlock(ctx, 12))
 
 	// Only the constructor probe (eth_call) may reach the original client: no raw RPC, no debug
-	// tracing and no direct FilterLogs on the client (logs come from the multidownloader backend).
+	// tracing and no direct FilterLogs on the client (logs come from the multidownloader).
 	ethClient.AssertNumberOfCalls(t, "CallContract", 1)
 	ethClient.AssertNotCalled(t, "Call", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	ethClient.AssertNotCalled(t, "FilterLogs", mock.Anything, mock.Anything)
+}
 
-	// Cancel and join the Start goroutine: the driver must stop cleanly and leak no worker.
-	cancel()
-	select {
-	case <-startDone:
-	case <-time.After(waitTimeout):
-		t.Fatal("ClaimSync.Start did not return after context cancellation")
-	}
+// TestMDIntegration_ReorgAndFinality verifies that a syncer that is synced through the
+// multidownloader rolls back the blocks of a reorg that the multidownloader detects, syncs the new
+// ones, and reads the finality of the blocks from the multidownloader.
+func TestMDIntegration_ReorgAndFinality(t *testing.T) {
+	ctx := t.Context()
+	cs, backend, _ := newMDSyncerForTest(t, ctx, configtypes.TrueMode, 5)
+	backend.SetFinalizedBlock(5)
+	stop := startMDSyncerForTest(t, ctx, cs)
+	defer stop()
 
-	require.Len(t, backend.filterRanges(), 2, "no log download may happen after cancellation")
+	// Each step processes the last block of the downloaded range: 5, then 8
+	requireMDLastProcessedBlock(t, cs, 5)
+	block5, _, err := backend.StorageHeaderByNumber(ctx, aggkittypes.NewBlockNumber(5))
+	require.NoError(t, err)
+	backend.AddEmptyBlocks(3)
+	requireMDLastProcessedBlock(t, cs, 8)
+	block8, _, err := backend.StorageHeaderByNumber(ctx, aggkittypes.NewBlockNumber(8))
+	require.NoError(t, err)
 
-	select {
-	case b := <-blocksCh:
-		t.Fatalf("unexpected publication after cancellation: %v", b)
-	default:
-	}
+	finalized, found, err := cs.IsBlockFinalized(ctx, 5, block5.Hash)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.True(t, finalized)
+	finalized, found, err = cs.IsBlockFinalized(ctx, 8, block8.Hash)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.False(t, finalized)
+
+	// The multidownloader detects a reorg from block 7: the block 8 is removed and the syncer
+	// stays at the last block that is still available
+	backend.Reorg(7)
+	requireMDLastProcessedBlock(t, cs, 6)
+	_, found, err = cs.reader.GetBlockHash(ctx, nil, 8)
+	require.NoError(t, err)
+	require.False(t, found)
+
+	// The new chain is synced
+	backend.AddEmptyBlocks(3)
+	requireMDLastProcessedBlock(t, cs, 9)
+	_, found, err = cs.IsBlockFinalized(ctx, 8, block8.Hash)
+	require.NoError(t, err)
+	require.False(t, found, "the reorged block is unknown")
 }

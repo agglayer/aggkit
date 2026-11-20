@@ -1122,11 +1122,13 @@ func runBridgeSyncL1IfNeeded(
 			log.Fatalf("BridgeL1Sync.Downloader=%q requires the L1 MultiDownloader but it is not available",
 				cfg.Downloader)
 		}
+		// The syncer relies on the multidownloader to detect the reorgs, not on the L1 reorg detector
+		stopLegacyReorgTracking(reorgDetectorL1, bridgesync.L1BridgeSyncer.String())
 		// The multidownloader is passed both as the downloader backend and as the transaction
 		// provider it implements, so the syncer resolves transaction senders through the shared
 		// service instead of a direct eth_getTransactionByHash.
 		bridgeSyncL1, err = bridgesync.NewL1WithDownloader(
-			ctx, cfg, reorgDetectorL1, l1Client, rollupID, l1MultiDownloader, l1MultiDownloader)
+			ctx, cfg, l1Client, rollupID, l1MultiDownloader, l1MultiDownloader)
 	} else {
 		bridgeSyncL1, err = bridgesync.NewL1(
 			ctx,
@@ -1141,6 +1143,25 @@ func runBridgeSyncL1IfNeeded(
 	}
 
 	return bridgeSyncL1
+}
+
+// legacyReorgUnsubscriber is implemented by the legacy reorg detector
+type legacyReorgUnsubscriber interface {
+	Unsubscribe(id string) error
+}
+
+// stopLegacyReorgTracking removes the syncer from the legacy reorg detector. A syncer that is synced
+// through the multidownloader relies on it to detect the reorgs, but if it ran before with the legacy
+// downloader the reorg detector can still have tracked blocks of it, and a reorg of one of them would
+// be notified to a subscription that nobody reads, which blocks the reorg detector.
+func stopLegacyReorgTracking(reorgDetector any, syncerID string) {
+	unsubscriber, ok := reorgDetector.(legacyReorgUnsubscriber)
+	if !ok {
+		return
+	}
+	if err := unsubscriber.Unsubscribe(syncerID); err != nil {
+		log.Fatalf("error removing %s from the L1 reorg detector: %v", syncerID, err)
+	}
 }
 
 func runClaimSyncL1IfNeeded(
@@ -1171,8 +1192,10 @@ func runClaimSyncL1IfNeeded(
 			log.Fatalf("ClaimL1Sync.Downloader=%q requires the L1 MultiDownloader but it is not available",
 				cfg.Downloader)
 		}
+		// The syncer relies on the multidownloader to detect the reorgs, not on the L1 reorg detector
+		stopLegacyReorgTracking(reorgDetectorL1, claimsynctypes.L1ClaimSyncer.String())
 		res, err = claimsync.NewStandaloneClaimSyncWithDownloader(
-			ctx, cfg, reorgDetectorL1, l1Client, claimsynctypes.L1ClaimSyncer, rollupID, l1MultiDownloader)
+			ctx, cfg, l1Client, claimsynctypes.L1ClaimSyncer, rollupID, l1MultiDownloader)
 	} else {
 		res, err = claimsync.NewStandaloneClaimSync(
 			ctx,

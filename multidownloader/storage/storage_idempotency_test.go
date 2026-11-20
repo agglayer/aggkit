@@ -211,3 +211,86 @@ func TestStorage_SaveBlocksHashMismatchRollsBackCallerTx(t *testing.T) {
 	require.NotNil(t, canonical)
 	require.Equal(t, canonicalHash, canonical.Hash)
 }
+
+// TestStorage_SaveLogsIdenticalReplayIdempotent is the resume case that stalled
+// mainnet H5: Safe/Step re-downloads a range whose logs are already stored and
+// must treat the primary-key collision as a benign replay (one row, no error).
+func TestStorage_SaveLogsIdenticalReplayIdempotent(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	const blockNumber = uint64(26414064)
+	blockHash := exampleTestHash[0]
+	header := aggkittypes.NewBlockHeader(blockNumber, blockHash, 1630000000, &exampleTestHash[1])
+	lg := idempotencyLog(exampleAddr1, blockNumber, blockHash, 1630000000, 37)
+
+	require.NoError(t, storage.SaveEthLogsWithHeaders(nil, aggkittypes.ListBlockHeaders{header},
+		[]types.Log{lg}, true))
+
+	// Identical replay: the UNIQUE (address, block_number, log_index) fires and
+	// must be skipped, not returned as an error.
+	require.NoError(t, storage.SaveEthLogsWithHeaders(nil, aggkittypes.ListBlockHeaders{header},
+		[]types.Log{lg}, true))
+
+	logs, err := storage.GetEthLogs(nil,
+		mdrtypes.NewLogQuery(blockNumber, blockNumber, []common.Address{exampleAddr1}))
+	require.NoError(t, err)
+	require.Len(t, logs, 1, "identical replay must not duplicate the log")
+	require.Equal(t, lg.TxHash, logs[0].TxHash)
+	require.Equal(t, lg.Index, logs[0].Index)
+	require.Equal(t, lg.Data, logs[0].Data)
+
+	var logCount int
+	require.NoError(t, storage.db.QueryRow("SELECT COUNT(*) FROM logs").Scan(&logCount))
+	require.Equal(t, 1, logCount)
+}
+
+// TestStorage_SaveLogsMixedBatchIdempotent pins that a batch with some already
+// stored logs and some new ones commits the new ones and skips the duplicates.
+func TestStorage_SaveLogsMixedBatchIdempotent(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	const blockNumber = uint64(6000)
+	blockHash := exampleTestHash[0]
+	header := aggkittypes.NewBlockHeader(blockNumber, blockHash, 1630000000, &exampleTestHash[1])
+	existing := idempotencyLog(exampleAddr1, blockNumber, blockHash, 1630000000, 0)
+	fresh := idempotencyLog(exampleAddr1, blockNumber, blockHash, 1630000000, 1)
+
+	require.NoError(t, storage.SaveEthLogsWithHeaders(nil, aggkittypes.ListBlockHeaders{header},
+		[]types.Log{existing}, true))
+
+	require.NoError(t, storage.SaveEthLogsWithHeaders(nil, aggkittypes.ListBlockHeaders{header},
+		[]types.Log{existing, fresh}, true))
+
+	logs, err := storage.GetEthLogs(nil,
+		mdrtypes.NewLogQuery(blockNumber, blockNumber, []common.Address{exampleAddr1}))
+	require.NoError(t, err)
+	require.Len(t, logs, 2)
+	require.Equal(t, uint(0), logs[0].Index)
+	require.Equal(t, uint(1), logs[1].Index)
+}
+
+// TestStorage_SaveLogsPayloadConflictDoesNotOverwrite pins that a same-key
+// different payload is ErrLogIntegrityConflict and never overwrites the stored
+// row (logs are immutable).
+func TestStorage_SaveLogsPayloadConflictDoesNotOverwrite(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+	const blockNumber = uint64(7000)
+	blockHash := exampleTestHash[0]
+	header := aggkittypes.NewBlockHeader(blockNumber, blockHash, 1630000000, &exampleTestHash[1])
+	stored := idempotencyLog(exampleAddr1, blockNumber, blockHash, 1630000000, 37)
+	require.NoError(t, storage.SaveEthLogsWithHeaders(nil, aggkittypes.ListBlockHeaders{header},
+		[]types.Log{stored}, true))
+
+	conflicting := stored
+	conflicting.TxHash = exampleTestHash[8]
+	conflicting.Data = []byte{0xff}
+
+	err := storage.SaveEthLogsWithHeaders(nil, aggkittypes.ListBlockHeaders{header},
+		[]types.Log{conflicting}, true)
+	require.ErrorIs(t, err, ErrLogIntegrityConflict)
+
+	logs, err := storage.GetEthLogs(nil,
+		mdrtypes.NewLogQuery(blockNumber, blockNumber, []common.Address{exampleAddr1}))
+	require.NoError(t, err)
+	require.Len(t, logs, 1)
+	require.Equal(t, stored.TxHash, logs[0].TxHash, "conflicting payload must not overwrite")
+	require.Equal(t, stored.Data, logs[0].Data)
+}

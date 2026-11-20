@@ -30,6 +30,13 @@ type EVMDownloader struct {
 	// Maximum duration to wait to catch up the maximum request
 	waitPeriodToCatchUpMaximumLogRange time.Duration
 	pullingPeriod                      time.Duration
+	// Optional hooks. They must be set before the downloader is used (they are not thread-safe).
+	// logsHook can modify the list of logs of a response before they are processed
+	logsHook sync.LogsHookFunc
+	// logsEnricher runs after logsHook and before the appenders build the events
+	logsEnricher sync.LogsEnricherFunc
+	// contextualAppender takes precedence over appender for the topics it contains
+	contextualAppender sync.ContextualLogAppenderMap
 }
 
 func NewEVMDownloader(
@@ -48,6 +55,38 @@ func NewEVMDownloader(
 		waitPeriodToCatchUpMaximumLogRange: waitPeriodToCatchUpMaximumLogRange,
 		pullingPeriod:                      pullingPeriod,
 	}
+}
+
+// SetLogsHook sets an optional hook that is called with the logs of each response and can modify
+// them before they are processed. It must be called before the downloader is used.
+func (d *EVMDownloader) SetLogsHook(hook sync.LogsHookFunc) {
+	d.logsHook = hook
+}
+
+// InstallLogsEnricher installs an optional enricher that is invoked with the active download context
+// after the logs hook and before the appenders build the events. It returns the previous enricher,
+// if any, and reports whether this downloader supports the hook (always true: the concrete
+// multidownloader downloader implements it). It must be called before the downloader is used. If the
+// enricher fails the whole download step fails and is retried by the driver.
+func (d *EVMDownloader) InstallLogsEnricher(enricher sync.LogsEnricherFunc) (sync.LogsEnricherFunc, bool) {
+	prev := d.logsEnricher
+	d.logsEnricher = enricher
+	return prev, true
+}
+
+// SetLogsEnricher sets an optional enricher that is invoked with the active download context after
+// the logs hook and before the appenders build the events. It must be called before the downloader
+// is used. It preserves the legacy API and delegates to InstallLogsEnricher, discarding the
+// previous enricher.
+func (d *EVMDownloader) SetLogsEnricher(enricher sync.LogsEnricherFunc) {
+	d.InstallLogsEnricher(enricher)
+}
+
+// SetContextualLogAppenders sets the optional context-aware appenders, keyed by event topic. A
+// contextual appender takes precedence over the plain appender of the same topic and receives the
+// active download context. It must be called before the downloader is used.
+func (d *EVMDownloader) SetContextualLogAppenders(appenders sync.ContextualLogAppenderMap) {
+	d.contextualAppender = appenders
 }
 
 func (d *EVMDownloader) Finality() aggkittypes.BlockNumberFinality {
@@ -140,8 +179,13 @@ func (d *EVMDownloader) executeLogQuery(ctx context.Context,
 	if err != nil {
 		d.logger.Warn(err.Error())
 	}
+	blocks, err := d.logQueryResponseToEVMBlocks(ctx, logQueryResponse)
+	if err != nil {
+		return nil, fmt.Errorf("Multidownloader_EVMDownloader.executeLogQuery: building blocks for range %s: %w",
+			logQuery.BlockRange.String(), err)
+	}
 	result := &mdrsynctypes.DownloadResult{
-		Data:                 d.logQueryResponseToEVMBlocks(ctx, logQueryResponse),
+		Data:                 blocks,
 		CompletionPercentage: percentComplete,
 	}
 	err = d.addLastBlockIfNotIncluded(ctx, result,
@@ -239,9 +283,13 @@ func (d *EVMDownloader) addLastBlockIfNotIncluded(ctx context.Context,
 }
 
 func (d *EVMDownloader) logQueryResponseToEVMBlocks(
-	ctx context.Context, response mdrtypes.LogQueryResponse) sync.EVMBlocks {
+	ctx context.Context, response mdrtypes.LogQueryResponse) (sync.EVMBlocks, error) {
+	logsPerBlock, err := d.responseLogsPerBlock(ctx, response)
+	if err != nil {
+		return nil, err
+	}
 	blocks := make(sync.EVMBlocks, 0, len(response.Blocks))
-	for _, blockWithLogs := range response.Blocks {
+	for i, blockWithLogs := range response.Blocks {
 		evmBlock := &sync.EVMBlock{
 			EVMBlockHeader: sync.EVMBlockHeader{
 				Num:       blockWithLogs.Header.Number,
@@ -254,9 +302,27 @@ func (d *EVMDownloader) logQueryResponseToEVMBlocks(
 		if blockWithLogs.Header.ParentHash != nil {
 			evmBlock.ParentHash = *blockWithLogs.Header.ParentHash
 		}
-		// Convert mdrtypes.Log to types.Log and append
+		for _, ethLog := range logsPerBlock[i] {
+			if err := d.appendLog(ctx, evmBlock, ethLog); err != nil {
+				return nil, err
+			}
+		}
+		blocks = append(blocks, evmBlock)
+	}
+	return blocks, nil
+}
+
+// responseLogsPerBlock converts the logs of the response to types.Log, grouped by block in the
+// same order as response.Blocks, after running the optional logs hook and logs enricher over them.
+func (d *EVMDownloader) responseLogsPerBlock(
+	ctx context.Context, response mdrtypes.LogQueryResponse) ([][]types.Log, error) {
+	logsPerBlock := make([][]types.Log, len(response.Blocks))
+	totalLogs := 0
+	for i, blockWithLogs := range response.Blocks {
+		blockLogs := make([]types.Log, 0, len(blockWithLogs.Logs))
+		// Convert mdrtypes.Log to types.Log
 		for _, mdrLog := range blockWithLogs.Logs {
-			ethLog := types.Log{
+			blockLogs = append(blockLogs, types.Log{
 				Address:        mdrLog.Address,
 				Topics:         mdrLog.Topics,
 				Data:           mdrLog.Data,
@@ -267,34 +333,84 @@ func (d *EVMDownloader) logQueryResponseToEVMBlocks(
 				Index:          mdrLog.Index,
 				Removed:        mdrLog.Removed,
 				BlockTimestamp: mdrLog.BlockTimestamp,
-			}
-			d.appendLog(ctx, evmBlock, ethLog)
+			})
 		}
-		blocks = append(blocks, evmBlock)
+		logsPerBlock[i] = blockLogs
+		totalLogs += len(blockLogs)
 	}
-	return blocks
+	if d.logsHook == nil && d.logsEnricher == nil {
+		return logsPerBlock, nil
+	}
+
+	// The hooks work over the flat list of logs of the whole response
+	allLogs := make([]types.Log, 0, totalLogs)
+	for _, blockLogs := range logsPerBlock {
+		allLogs = append(allLogs, blockLogs...)
+	}
+	if d.logsHook != nil {
+		allLogs = d.logsHook(ctx, response.ResponseRange.FromBlock, response.ResponseRange.ToBlock, allLogs)
+	}
+	if d.logsEnricher != nil {
+		if err := d.logsEnricher(ctx, allLogs); err != nil {
+			return nil, fmt.Errorf("Multidownloader_EVMDownloader: error enriching logs: %w", err)
+		}
+	}
+	// Group them again by block. The hook can drop logs but they keep their relative order
+	blockIndex := make(map[uint64]int, len(response.Blocks))
+	for i, blockWithLogs := range response.Blocks {
+		blockIndex[blockWithLogs.Header.Number] = i
+		logsPerBlock[i] = logsPerBlock[i][:0]
+	}
+	for _, ethLog := range allLogs {
+		i, ok := blockIndex[ethLog.BlockNumber]
+		if !ok {
+			return nil, fmt.Errorf("Multidownloader_EVMDownloader: logs hook returned a log of block %d "+
+				"that is not part of the response %s", ethLog.BlockNumber, response.ResponseRange.String())
+		}
+		logsPerBlock[i] = append(logsPerBlock[i], ethLog)
+	}
+	return logsPerBlock, nil
 }
 
-func (d *EVMDownloader) appendLog(ctx context.Context, block *sync.EVMBlock, log types.Log) {
+// appendLog builds the events of the log into the block through the appender of its topic.
+// The contextual appender of the topic, if any, takes precedence over the plain one.
+// Errors are retried, except:
+//   - aggkittypes.ErrTransactionInclusionMismatch: the log is stale (its block was reorged away), so
+//     retrying the same log can never succeed. It is returned for the caller to download the range again.
+//   - a canceled context: its error is returned.
+func (d *EVMDownloader) appendLog(ctx context.Context, block *sync.EVMBlock, log types.Log) error {
+	// A log without topics cannot be attributed to an appender function
+	if len(log.Topics) == 0 {
+		d.logger.Warnf("skipping log without topics at block %d", log.BlockNumber)
+		return nil
+	}
+	contextualAppenderFn := d.contextualAppender[log.Topics[0]]
 	appenderFn := d.appender[log.Topics[0]]
-	if appenderFn == nil {
+	if contextualAppenderFn == nil && appenderFn == nil {
 		// d.logger.Debugf("no appender function found for topic: %s", log.Topics[0].Hex())
-		return
+		return nil
 	}
 	attempts := 0
 	for {
 		if ctx.Err() != nil {
-			// Shutting down: return instead of retrying the cancellation error forever.
-			return
+			return ctx.Err()
 		}
-		err := appenderFn(block, log)
-		if err != nil {
-			attempts++
-			sync.LogAppendRetry(d.logger, attempts, err)
-			d.rh.Handle(ctx, "appendLogs", attempts)
-			continue
+		var err error
+		if contextualAppenderFn != nil {
+			err = contextualAppenderFn(ctx, block, log)
+		} else {
+			err = appenderFn(block, log)
 		}
-		break
+		if err == nil {
+			return nil
+		}
+		if errors.Is(err, aggkittypes.ErrTransactionInclusionMismatch) {
+			return fmt.Errorf("Multidownloader_EVMDownloader: stale log at block %d (tx %s): %w",
+				log.BlockNumber, log.TxHash.Hex(), err)
+		}
+		attempts++
+		sync.LogAppendRetry(d.logger, attempts, err)
+		d.rh.Handle(ctx, "appendLogs", attempts)
 	}
 }
 

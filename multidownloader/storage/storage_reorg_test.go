@@ -260,3 +260,32 @@ func TestStorage_GetReorgedDataByReorgID(t *testing.T) {
 		require.Equal(t, reorgData2.NetworkFinalizedBlockName, retrieved2.NetworkFinalizedBlockName)
 	})
 }
+
+func TestStorage_GetLastReorgData(t *testing.T) {
+	storage := newStorageForTest(t, nil)
+
+	// No reorgs stored
+	reorgData, err := storage.GetLastReorgData(nil)
+	require.NoError(t, err)
+	require.Nil(t, reorgData)
+
+	for _, fromBlock := range []uint64{2000, 1000} {
+		tx, err := storage.NewTx(t.Context())
+		require.NoError(t, err)
+		_, err = storage.InsertReorgAndMoveReorgedBlocksAndLogs(tx, mdrtypes.ReorgData{
+			BlockRangeAffected:        aggkitcommon.NewBlockRange(fromBlock, fromBlock+10),
+			DetectedTimestamp:         fromBlock,
+			NetworkFinalizedBlockName: aggkittypes.FinalizedBlock,
+		})
+		require.NoError(t, err)
+		require.NoError(t, tx.Commit())
+	}
+
+	// The last one is the last inserted, not the one of the highest block
+	reorgData, err = storage.GetLastReorgData(nil)
+	require.NoError(t, err)
+	require.NotNil(t, reorgData)
+	require.Equal(t, uint64(2), reorgData.ReorgID)
+	require.Equal(t, aggkitcommon.NewBlockRange(1000, 1010), reorgData.BlockRangeAffected)
+	require.Equal(t, uint64(1000), reorgData.DetectedTimestamp)
+}

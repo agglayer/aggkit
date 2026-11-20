@@ -40,7 +40,7 @@ func TestBridgeConstructors_RejectInvalidDownloader(t *testing.T) {
 
 	t.Run("NewL1WithDownloader reports exact validation not requireMD", func(t *testing.T) {
 		cfg := mdTestConfig(t, bridge, invalidDownloader)
-		bs, err := NewL1WithDownloader(ctx, cfg, nil, nil, 1, &fakeMultidownloader{}, &fakeTransactionProvider{})
+		bs, err := NewL1WithDownloader(ctx, cfg, nil, 1, &fakeMultidownloader{}, &fakeTransactionProvider{})
 		require.Nil(t, bs)
 		require.ErrorContains(t, err, "invalid Downloader")
 		require.NotContains(t, err.Error(), "requires Downloader=multidownloader")
@@ -57,7 +57,7 @@ func TestBridgeConstructors_ZeroDownloaderIsLegacy(t *testing.T) {
 	bridge := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	cfg := mdTestConfig(t, bridge, "")
 
-	bs, err := NewL1WithDownloader(ctx, cfg, nil, nil, 1, &fakeMultidownloader{}, &fakeTransactionProvider{})
+	bs, err := NewL1WithDownloader(ctx, cfg, nil, 1, &fakeMultidownloader{}, &fakeTransactionProvider{})
 	require.Nil(t, bs)
 	require.ErrorContains(t, err, "requires Downloader=multidownloader")
 	require.NotContains(t, err.Error(), "invalid Downloader")
