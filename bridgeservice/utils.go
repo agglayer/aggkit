@@ -100,6 +100,19 @@ func parseUintQuery[T UintParam](c *gin.Context, key string, mandatory bool, def
 	return result, nil
 }
 
+// parseOptionalAddressQuery returns the raw value of an optional hex address query parameter.
+// An absent or empty parameter returns "", meaning that no filter was requested.
+// A non-empty value that is not a hex address returns an error, so that a malformed
+// filter is rejected instead of being silently dropped.
+func parseOptionalAddressQuery(c *gin.Context, key string) (string, error) {
+	paramStr := c.Query(key)
+	if paramStr != "" && !common.IsHexAddress(paramStr) {
+		return "", fmt.Errorf("invalid %s parameter, it should be a hex address", key)
+	}
+
+	return paramStr, nil
+}
+
 // parseBigIntQuery parses the global_index query parameter from the request context.
 // Returns nil if the parameter is not provided (empty string).
 // Returns an error if the parameter is provided but is not a valid global index:

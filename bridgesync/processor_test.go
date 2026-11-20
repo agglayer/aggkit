@@ -950,6 +950,14 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedBridges: []*Bridge{bridges[6]},
 			expectedError:   "",
 		},
+		{
+			name:          "t14 malformed from address is rejected instead of ignored",
+			pageSize:      10,
+			page:          1,
+			fromAddress:   "not-an-address",
+			depositCount:  nil,
+			expectedError: "invalid from address",
+		},
 	}
 
 	for _, tc := range testCases {

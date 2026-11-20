@@ -580,6 +580,12 @@ func (p *processor) GetBridgesPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	depositCount *uint64, networkIDs []uint32, fromAddress string,
 ) ([]*Bridge, int, error) {
+	// An empty fromAddress means "no filter". A non-empty value that is not a hex address is
+	// rejected instead of being dropped, so the caller never gets an unfiltered page back.
+	if fromAddress != "" && !common.IsHexAddress(fromAddress) {
+		return nil, 0, fmt.Errorf("invalid from address %q: not a hex address", fromAddress)
+	}
+
 	whereClause, whereArgs := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
 	orderByClause := "deposit_count DESC"
 
@@ -652,7 +658,7 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 		clauses = append(clauses, fmt.Sprintf("destination_network IN (%s)", strings.Join(placeholders, ", ")))
 	}
 
-	if fromAddress != "" && common.IsHexAddress(fromAddress) {
+	if fromAddress != "" {
 		// Only match non-NULL from_address values with the specified address
 		// NULL values will not match this filter (intentional - explicit filtering)
 		// Use UPPER for case-insensitive comparison (addresses stored in checksum format)
