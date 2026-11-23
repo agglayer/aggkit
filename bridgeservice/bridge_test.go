@@ -923,6 +923,113 @@ func TestGetBridgesHandler(t *testing.T) {
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDsParam))
 	})
 
+	t.Run("GetBridges invalid from address parameter", func(t *testing.T) {
+		invalidAddresses := []string{
+			"not-an-address",
+			"0x123",
+			"0x",
+			"0x12345678901234567890123456789012345678", // hex, but 19 bytes instead of 20
+			"0xZZZZaF64b29273B7D567FCFc40544c014EEe9970",
+			"0xE34aaF64b29273B7D567FCFc40544c014EEe99700",
+		}
+
+		for _, networkID := range []uint32{mainnetNetworkID, l2NetworkID} {
+			for _, invalidAddress := range invalidAddresses {
+				t.Run(fmt.Sprintf("network %d, from_address %q", networkID, invalidAddress), func(t *testing.T) {
+					bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+					queryParams := url.Values{
+						networkIDParam:   []string{strconv.Itoa(int(networkID))},
+						fromAddressParam: []string{invalidAddress},
+					}
+					w := performRequest(t, bridgeMocks.router,
+						fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()))
+					require.Equal(t, http.StatusBadRequest, w.Code)
+
+					var response gin.H
+					require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+					require.Contains(t, response["error"], fmt.Sprintf("invalid %s parameter", fromAddressParam))
+
+					bridgeMocks.bridgeL1.AssertNotCalled(t, "GetBridgesPaged",
+						mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+					bridgeMocks.bridgeL2.AssertNotCalled(t, "GetBridgesPaged",
+						mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+				})
+			}
+		}
+	})
+
+	t.Run("GetBridges valid from address parameter is forwarded to the syncer", func(t *testing.T) {
+		fromAddresses := []string{
+			"0xE34aaF64b29273B7D567FCFc40544c014EEe9970", // mixed case
+			"0xe34aaf64b29273b7d567fcfc40544c014eee9970", // lower case
+			"E34aaF64b29273B7D567FCFc40544c014EEe9970",   // without the 0x prefix
+		}
+
+		for _, fromAddress := range fromAddresses {
+			t.Run(fromAddress, func(t *testing.T) {
+				bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+				bridgeMocks.bridgeL1.EXPECT().
+					GetBridgesPaged(mock.Anything, uint32(1), uint32(10), mock.Anything, mock.Anything, fromAddress).
+					Return([]*bridgesync.Bridge{}, 0, nil).
+					Once()
+				bridgeMocks.upgradeQuerier.EXPECT().
+					GetUpgradeBlock(mock.Anything, mock.Anything).
+					Return(uint64(0)).
+					Once()
+
+				queryParams := url.Values{
+					networkIDParam:   []string{strconv.Itoa(mainnetNetworkID)},
+					pageNumberParam:  []string{"1"},
+					pageSizeParam:    []string{"10"},
+					fromAddressParam: []string{fromAddress},
+				}
+				w := performRequest(t, bridgeMocks.router,
+					fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()))
+				require.Equal(t, http.StatusOK, w.Code)
+			})
+		}
+	})
+
+	t.Run("GetBridges omitted or empty from address parameter performs an unfiltered query", func(t *testing.T) {
+		testCases := []struct {
+			name        string
+			queryParams url.Values
+		}{
+			{
+				name: "omitted",
+				queryParams: url.Values{
+					networkIDParam: []string{strconv.Itoa(mainnetNetworkID)},
+				},
+			},
+			{
+				name: "empty",
+				queryParams: url.Values{
+					networkIDParam:   []string{strconv.Itoa(mainnetNetworkID)},
+					fromAddressParam: []string{""},
+				},
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+				bridgeMocks.bridgeL1.EXPECT().
+					GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "").
+					Return([]*bridgesync.Bridge{}, 0, nil).
+					Once()
+				bridgeMocks.upgradeQuerier.EXPECT().
+					GetUpgradeBlock(mock.Anything, mock.Anything).
+					Return(uint64(0)).
+					Once()
+
+				w := performRequest(t, bridgeMocks.router,
+					fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, tc.queryParams.Encode()))
+				require.Equal(t, http.StatusOK, w.Code)
+			})
+		}
+	})
+
 	t.Run("GetBridges for L1 network with nil L1 syncer", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridge.bridgeL1 = nil
@@ -2215,6 +2322,43 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		require.Equal(t, common.HexToAddress(originTokenAddr).String(), string(response.TokenMappings[0].OriginTokenAddress))
 
 		bridgeMocks.bridgeL2.AssertExpectations(t)
+	})
+
+	t.Run("GetTokenMappingsHandler invalid origin_token_address parameter", func(t *testing.T) {
+		for _, networkID := range []string{"0", "10"} {
+			t.Run("network "+networkID, func(t *testing.T) {
+				bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+				query := url.Values{}
+				query.Set(networkIDParam, networkID)
+				query.Set(originTokenAddrParam, "not-an-address")
+
+				w := performRequest(t, bridgeMocks.router, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()))
+				require.Equal(t, http.StatusBadRequest, w.Code)
+				require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", originTokenAddrParam))
+
+				bridgeMocks.bridgeL1.AssertNotCalled(t, "GetTokenMappings",
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+				bridgeMocks.bridgeL2.AssertNotCalled(t, "GetTokenMappings",
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			})
+		}
+	})
+
+	t.Run("GetTokenMappingsHandler empty origin_token_address parameter performs an unfiltered query", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, uint32(1), uint32(10), "").
+			Return([]*bridgesync.TokenMapping{}, 0, nil).
+			Once()
+
+		query := url.Values{}
+		query.Set(networkIDParam, "0")
+		query.Set(pageNumberParam, "1")
+		query.Set(pageSizeParam, "10")
+		query.Set(originTokenAddrParam, "")
+
+		w := performRequest(t, bridgeMocks.router, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()))
+		require.Equal(t, http.StatusOK, w.Code)
 	})
 
 	t.Run("GetTokenMappings for L1 network with nil L1 syncer", func(t *testing.T) {

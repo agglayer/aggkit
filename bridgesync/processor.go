@@ -580,6 +580,10 @@ func (p *processor) GetBridgesPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
 	depositCount *uint64, networkIDs []uint32, fromAddress string,
 ) ([]*Bridge, int, error) {
+	if err := validateOptionalAddress("from address", fromAddress); err != nil {
+		return nil, 0, err
+	}
+
 	whereClause, whereArgs := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
 	orderByClause := "deposit_count DESC"
 
@@ -652,7 +656,7 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 		clauses = append(clauses, fmt.Sprintf("destination_network IN (%s)", strings.Join(placeholders, ", ")))
 	}
 
-	if fromAddress != "" && common.IsHexAddress(fromAddress) {
+	if fromAddress != "" {
 		// Only match non-NULL from_address values with the specified address
 		// NULL values will not match this filter (intentional - explicit filtering)
 		// Use UPPER for case-insensitive comparison (addresses stored in checksum format)
@@ -666,8 +670,20 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 	return "", nil
 }
 
+// validateOptionalAddress validates an optional address filter. An empty value means "no filter".
+// A non-empty value that is not a hex address is rejected instead of being dropped, so the caller
+// never gets an unfiltered page back. name is the label of the filter in the error message.
+func validateOptionalAddress(name, value string) error {
+	if value != "" && !common.IsHexAddress(value) {
+		return fmt.Errorf("invalid %s %q: not a hex address", name, value)
+	}
+
+	return nil
+}
+
 // buildTokenMappingsFilterClause builds the WHERE clause for the token_mapping table
-// based on the provided originTokenAddress
+// based on the provided originTokenAddress. The value is interpolated in the clause, so only a
+// hex address is accepted; GetTokenMappings rejects any other non-empty value before getting here.
 func (p *processor) buildTokenMappingsFilterClause(originTokenAddress string) string {
 	if common.IsHexAddress(originTokenAddress) {
 		return fmt.Sprintf(" WHERE UPPER(origin_token_address) LIKE '%s'", strings.ToUpper(originTokenAddress))
@@ -1465,9 +1481,14 @@ func (p *processor) GetTotalNumberOfRecordsWithParams(ctx context.Context, table
 	return count, nil
 }
 
-// GetTokenMappings returns the paged token mappings from the database
+// GetTokenMappings returns the paged token mappings from the database.
+// An empty originTokenAddress means "no filter"; a non-empty one that is not a hex address is an error.
 func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32, originTokenAddress string,
 ) ([]*TokenMapping, int, error) {
+	if err := validateOptionalAddress("origin token address", originTokenAddress); err != nil {
+		return nil, 0, err
+	}
+
 	whereClause := p.buildTokenMappingsFilterClause(originTokenAddress)
 	totalTokenMappings, err := p.GetTotalNumberOfRecords(ctx, tokenMappingTableName, whereClause)
 	if err != nil {
