@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 
 	"github.com/agglayer/aggkit"
@@ -48,6 +49,14 @@ func start(cliCtx *cli.Context) error {
 
 	if err := cfg.L1RPC.Validate(); err != nil {
 		return fmt.Errorf("invalid L1RPC config: %w", err)
+	}
+
+	// Validated here, with the rest of the configuration, so an invalid [Proxy] section stops the
+	// binary before any component starts
+	if slices.Contains(components, proxyconfig.PROXY) {
+		if err := cfg.Proxy.Validate(); err != nil {
+			return fmt.Errorf("invalid Proxy config: %w", err)
+		}
 	}
 
 	log.Init(cfg.Log)
@@ -147,11 +156,17 @@ func runBridgeServiceFinder(
 // the per-network bridge service resolved by the finder.
 func runProxy(
 	_ context.Context,
-	_ *proxyconfig.Config,
+	cfg *proxyconfig.Config,
 	finder bridgeservicefinder.Finder,
 	restServer *proxy.RESTServer,
 ) {
-	svc := proxy.New(proxy.Config{Logger: log.WithFields("module", "proxy")}, finder)
+	proxyCfg := cfg.Proxy // validated by start
+	for _, warning := range proxyCfg.Warnings(cfg.REST.WriteTimeout.Duration) {
+		log.Warn(warning)
+	}
+	proxyCfg.Logger = log.WithFields("module", "proxy")
+
+	svc := proxy.New(proxyCfg, finder)
 	restServer.Register(svc)
 	log.Info("proxy component started")
 }

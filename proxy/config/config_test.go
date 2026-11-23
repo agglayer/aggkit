@@ -45,6 +45,13 @@ func TestLoadFilesDefaults(t *testing.T) {
 	require.Empty(t, cfg.BridgeServiceFinder.IgnoreNetworkIDs)
 	require.Empty(t, cfg.BridgeServiceFinder.AllowNetworkIDs)
 
+	// the proxy bounds its upstream requests by default, below the REST write timeout
+	require.Equal(t, 30*time.Second, cfg.Proxy.UpstreamResponseHeaderTimeout.Duration)
+	require.Equal(t, 2*time.Minute, cfg.Proxy.UpstreamRequestTimeout.Duration)
+	require.Equal(t, 256, cfg.Proxy.UpstreamMaxConnsPerHost)
+	require.NoError(t, cfg.Proxy.Validate())
+	require.Empty(t, cfg.Proxy.Warnings(cfg.REST.WriteTimeout.Duration))
+
 	require.Equal(t, 10*time.Minute, cfg.Tracker.RetentionPeriod.Duration)
 	require.Equal(t, aggkittypes.LatestBlock, cfg.Tracker.L1BlockFinality)
 	require.Equal(t, aggkittypes.LatestBlock, cfg.Tracker.L2BlockFinality)
@@ -101,6 +108,34 @@ RetentionPeriod = "1h"
 	require.NoError(t, err)
 	require.False(t, cfgWithEnvOverride.BridgeServiceFinder.AutoRegisterNewNetworks,
 		"CDK_PROXY_BRIDGESERVICEFINDER_AUTOREGISTERNEWNETWORKS=false must override the true TOML default")
+}
+
+func TestLoadFilesProxyOverrides(t *testing.T) {
+	cfgFile := filepath.Join(t.TempDir(), "proxy.toml")
+	cfgContent := `
+[Proxy]
+UpstreamResponseHeaderTimeout = "5s"
+UpstreamRequestTimeout = "0s"
+`
+	require.NoError(t, os.WriteFile(cfgFile, []byte(cfgContent), 0600))
+
+	cfg, err := LoadFiles([]string{cfgFile})
+	require.NoError(t, err)
+	require.Equal(t, 5*time.Second, cfg.Proxy.UpstreamResponseHeaderTimeout.Duration)
+	require.Zero(t, cfg.Proxy.UpstreamRequestTimeout.Duration, "0 disables the total deadline")
+	require.NoError(t, cfg.Proxy.Validate())
+	// not overridden fields keep the default value
+	require.Equal(t, 256, cfg.Proxy.UpstreamMaxConnsPerHost)
+
+	// CDK_PROXY_* environment overrides are applied on top of file + defaults
+	t.Setenv("CDK_PROXY_PROXY_UPSTREAMMAXCONNSPERHOST", "8")
+	t.Setenv("CDK_PROXY_PROXY_UPSTREAMREQUESTTIMEOUT", "45s")
+
+	cfgWithEnvOverride, err := LoadFiles([]string{cfgFile})
+	require.NoError(t, err)
+	require.Equal(t, 8, cfgWithEnvOverride.Proxy.UpstreamMaxConnsPerHost)
+	require.Equal(t, 45*time.Second, cfgWithEnvOverride.Proxy.UpstreamRequestTimeout.Duration)
+	require.Equal(t, 5*time.Second, cfgWithEnvOverride.Proxy.UpstreamResponseHeaderTimeout.Duration)
 }
 
 func TestValidateComponents(t *testing.T) {

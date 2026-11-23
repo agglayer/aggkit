@@ -16,6 +16,7 @@ import (
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/prometheus"
+	"github.com/agglayer/aggkit/proxy"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 	"github.com/urfave/cli/v2"
@@ -56,6 +57,10 @@ type Config struct {
 	// BridgeServiceFinder configures the networkID -> bridge service URL / JSON-RPC resolver shared
 	// by the proxy and tracker components
 	BridgeServiceFinder bridgeservicefinder.Config `mapstructure:"BridgeServiceFinder"`
+
+	// Proxy configures the bridge-service proxy component (only its file-borne fields; the
+	// logger is wired by the binary, see cmd)
+	Proxy proxy.Config `mapstructure:"Proxy"`
 
 	// REST configures the shared HTTP server where every component of this binary registers
 	// its routes (tracker REST/WS endpoints, proxy routes)
