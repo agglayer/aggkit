@@ -50,6 +50,12 @@ var ErrBridgeTxNotABridge = domain.ErrBridgeTxNotABridge
 // that retrying cannot change, so it is wrapped as domain.Permanent too
 var ErrSourceUnavailable = domain.ErrSourceUnavailable
 
+// ErrInvalidUpstreamData is returned by BridgeEventSource.FindBridge when the origin network's
+// JSON-RPC answers with a receipt, BridgeEvent log and block header that do not describe one
+// same block. It is transient (not wrapped as domain.Permanent): the engine keeps retrying until
+// the upstream answers coherently or the bridge exhausts its unresolved timeout
+var ErrInvalidUpstreamData = domain.ErrInvalidUpstreamData
+
 // BridgeInfo holds the immutable facts of a bridge, resolved once from its creation tx
 type BridgeInfo = domain.BridgeInfo
 

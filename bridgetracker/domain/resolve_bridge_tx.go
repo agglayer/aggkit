@@ -26,13 +26,23 @@ var ErrBridgeTxNotABridge = Permanent(errors.New("tx is not a bridge transaction
 // that retrying cannot change, so it is wrapped as Permanent too
 var ErrSourceUnavailable = Permanent(errors.New("bridge source unavailable"))
 
+// ErrInvalidUpstreamData is returned by BridgeEventSource.FindBridge when the origin network's
+// JSON-RPC answers with data that contradicts itself (e.g. a BridgeEvent log mined in another
+// block than its receipt, or a block header that is not the receipt's block). Unlike
+// ErrBridgeTxNotABridge it is deliberately not Permanent: a defective or briefly out-of-sync
+// endpoint (or a reorg between two of the calls) may answer coherently on a later attempt, so
+// ResolveBridgeTx retries it like any other transient failure, bounded by the unresolved timeout
+var ErrInvalidUpstreamData = errors.New("inconsistent upstream data")
+
 // BridgeEventSource is the driven port resolving the BridgeEvent behind a supervised tx on its
 // origin network (RPC receipt or bridge service, resolved per network via the finder)
 type BridgeEventSource interface {
 	// FindBridge returns the facts of the bridge created by the tx, ErrBridgeTxNotFound if
 	// the tx does not exist yet, ErrBridgeTxNotABridge if it exists but is definitely not
 	// a bridge transaction, or ErrSourceUnavailable if the origin network has no source
-	// configured to resolve it. Other errors are transient
+	// configured to resolve it. Other errors are transient, including ErrInvalidUpstreamData
+	// (the upstream's receipt, log and block header do not describe one same block): no
+	// BridgeInfo is returned for it
 	FindBridge(ctx context.Context, id TrackingID) (*BridgeInfo, error)
 }
 
