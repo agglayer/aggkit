@@ -171,6 +171,9 @@ func (c *Client) GetBridges(ctx context.Context, params GetBridgesParams) (*type
 	if err := c.doRequest(ctx, "/bridge/v1/bridges?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
+	if err := requireNoNullEntries("bridges", resp.Bridges); err != nil {
+		return nil, err
+	}
 	return &resp, nil
 }
 
@@ -203,6 +206,9 @@ func (c *Client) GetClaims(ctx context.Context, params GetClaimsParams) (*types.
 	if err := c.doRequest(ctx, "/bridge/v1/claims?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
+	if err := requireNoNullEntries("claims", resp.Claims); err != nil {
+		return nil, err
+	}
 	return &resp, nil
 }
 
@@ -224,6 +230,9 @@ func (c *Client) GetUnsetClaims(ctx context.Context, params GetUnsetClaimsParams
 	if err := c.doRequest(ctx, "/bridge/v1/unset-claims?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
+	if err := requireNoNullEntries("unset_claims", resp.UnsetClaims); err != nil {
+		return nil, err
+	}
 	return &resp, nil
 }
 
@@ -243,6 +252,9 @@ func (c *Client) GetSetClaims(ctx context.Context, params GetSetClaimsParams) (*
 
 	var resp types.SetClaimsResult
 	if err := c.doRequest(ctx, "/bridge/v1/set-claims?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	if err := requireNoNullEntries("set_claims", resp.SetClaims); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -269,6 +281,9 @@ func (c *Client) GetTokenMappings(
 	if err := c.doRequest(ctx, "/bridge/v1/token-mappings?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
+	if err := requireNoNullEntries("token_mappings", resp.TokenMappings); err != nil {
+		return nil, err
+	}
 	return &resp, nil
 }
 
@@ -288,6 +303,9 @@ func (c *Client) GetLegacyTokenMigrations(
 
 	var resp types.LegacyTokenMigrationsResult
 	if err := c.doRequest(ctx, "/bridge/v1/legacy-token-migrations?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	if err := requireNoNullEntries("legacy_token_migrations", resp.TokenMigrations); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -405,6 +423,9 @@ func (c *Client) GetSettlements(ctx context.Context, params GetSettlementsParams
 	if err := c.doRequestAllowNotFound(ctx, "/bridge/v1/settlements?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
+	if err := requireNoNullEntries("settlements", resp.Settlements); err != nil {
+		return nil, err
+	}
 	return &resp, nil
 }
 
@@ -446,6 +467,9 @@ func (c *Client) GetRemoveGEREvents(
 	if err := c.doRequest(ctx, "/bridge/v1/removed-gers?"+query.Encode(), &resp); err != nil {
 		return nil, err
 	}
+	if err := requireNoNullEntries("remove_ger_events", resp.RemoveGEREvents); err != nil {
+		return nil, err
+	}
 	return &resp, nil
 }
 
@@ -469,6 +493,9 @@ func (c *Client) GetClaimsByGER(ctx context.Context, networkID uint32, ger strin
 
 	var resp types.ClaimsByGERResult
 	if err := c.doRequest(ctx, "/bridge/v1/claims-by-ger?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	if err := requireNoNullEntries("claims", resp.Claims); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -511,6 +538,9 @@ func (c *Client) GetBridgesByContent(
 
 	var resp types.BridgesByContentResult
 	if err := c.doRequest(ctx, "/bridge/v1/bridges-by-content?"+query.Encode(), &resp); err != nil {
+		return nil, err
+	}
+	if err := requireNoNullEntries("bridges", resp.Bridges); err != nil {
 		return nil, err
 	}
 	return &resp, nil
