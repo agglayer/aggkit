@@ -221,7 +221,9 @@ func TestProxyActivityPagination(t *testing.T) {
 			revision := full.pages[0].Revision
 			consistent := true
 			for filter, statuses := range statusesOf {
-				var want []activityPaginationKey
+				// not nil: keysOfItems returns an empty, non-nil slice when nothing matches the
+				// filter, and require.Equal tells nil and empty slices apart
+				want := []activityPaginationKey{}
 				for _, item := range full.items() {
 					if slices.Contains(statuses, item.ClaimStatus) {
 						want = append(want, activityPaginationKey{item.BridgeNetworkID, item.Bridge.DepositCount})
