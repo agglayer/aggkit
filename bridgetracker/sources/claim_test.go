@@ -3,11 +3,13 @@ package sources
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/agglayer/aggkit/bridgeservice/client"
+	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/bridgetracker"
 	"github.com/agglayer/aggkit/bridgetracker/domain"
@@ -452,4 +454,35 @@ func TestEngine_InvalidClaimsResponseKeepsTheBridgeTracked(t *testing.T) {
 		require.Equal(t, common.HexToHash("0x0d"), step.ResultClaim.ClaimTx)
 		require.Equal(t, uint64(50), step.ResultClaim.BlockNumber)
 	})
+}
+
+// TestParseGlobalIndex pins how a global index is read: as bridgeservicetypes.BigIntString.ToBigInt
+// reads it, except that a value that is not a valid global index is reported as such
+func TestParseGlobalIndex(t *testing.T) {
+	valid := map[string]int64{
+		"7":    7,
+		"0x10": 16,
+		// base-prefix parsing, as ToBigInt does: a leading zero reads as octal
+		"010": 8,
+	}
+	for in, want := range valid {
+		t.Run(in, func(t *testing.T) {
+			got, ok := parseGlobalIndex(bridgeservicetypes.BigIntString(in))
+			require.True(t, ok)
+			require.Equal(t, big.NewInt(want), got)
+			require.Equal(t, bridgeservicetypes.BigIntString(in).ToBigInt(), got)
+		})
+	}
+
+	got, ok := parseGlobalIndex(mainnetBridgeGlobalIndex)
+	require.True(t, ok)
+	require.Equal(t, mainnetBridgeGlobalIndex, got.String())
+
+	for _, in := range []string{"", "garbage", "0x", "-1", "-0x10"} {
+		t.Run(fmt.Sprintf("invalid %q", in), func(t *testing.T) {
+			got, ok := parseGlobalIndex(bridgeservicetypes.BigIntString(in))
+			require.False(t, ok)
+			require.Nil(t, got)
+		})
+	}
 }

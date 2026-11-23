@@ -1231,14 +1231,17 @@ func TestActivitySource_ClaimInfo_ValidatesTheResponse(t *testing.T) {
 		require.Nil(t, claim)
 	})
 
-	t.Run("a bridge with an invalid global index has no claim to look for", func(t *testing.T) {
-		invalid := &domain.ScannedBridge{Bridge: bridgeResponse(0, destination, 7, testFromAddress, 0), NetworkID: 0}
-		invalid.Bridge.GlobalIndex = "garbage"
-		url := rawBridgeService(t, nil, claimsBody(1, claimJSON(quoted("0"), destination, "0x0d", 50)))
-		source := mustNewActivitySource(t, fakeNetworkLister{networkIDs: []uint32{destination}, url: url}, nil, testLogger)
+	for _, globalIndex := range []bridgeservicetypes.BigIntString{"garbage", "-1"} {
+		t.Run(fmt.Sprintf("a bridge with the invalid global index %q has no claim to look for", globalIndex),
+			func(t *testing.T) {
+				invalid := &domain.ScannedBridge{Bridge: bridgeResponse(0, destination, 7, testFromAddress, 0), NetworkID: 0}
+				invalid.Bridge.GlobalIndex = globalIndex
+				url := rawBridgeService(t, nil, claimsBody(1, claimJSON(quoted("0"), destination, "0x0d", 50)))
+				source := mustNewActivitySource(t, fakeNetworkLister{networkIDs: []uint32{destination}, url: url}, nil, testLogger)
 
-		claim, err := source.ClaimInfo(t.Context(), invalid)
-		require.ErrorContains(t, err, "invalid global index")
-		require.Nil(t, claim)
-	})
+				claim, err := source.ClaimInfo(t.Context(), invalid)
+				require.ErrorContains(t, err, "invalid global index")
+				require.Nil(t, claim)
+			})
+	}
 }
