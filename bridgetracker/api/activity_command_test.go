@@ -44,6 +44,7 @@ type fakeActivityRegistry struct {
 	lastFlushAddress            common.Address
 	lastGetIncludeTrack         bool
 	lastGetFilter               types.ActivityFilter
+	lastGetPage                 domain.ActivityPage
 }
 
 // newFakeActivityRegistry returns a fakeActivityRegistry whose RegisterAndAwait reports ready,
@@ -68,13 +69,20 @@ func (f *fakeActivityRegistry) RefreshAddress(context.Context, common.Address) e
 
 func (f *fakeActivityRegistry) PruneIdle(time.Time) (int, error) { return 0, nil }
 
+// GetActivity serves page of getActivityEntries the way every store does, through the shared
+// domain.SelectActivityPage (the stores' own paging is covered by their tests)
 func (f *fakeActivityRegistry) GetActivity(
-	_ context.Context, _ common.Address, includeTracking bool, filter types.ActivityFilter,
-) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
+	_ context.Context, _ common.Address, includeTracking bool, filter types.ActivityFilter, page domain.ActivityPage,
+) ([]*domain.ActivityEntry, int, []domain.ActivityWarning, error) {
 	f.calls = append(f.calls, "GetActivity")
 	f.lastGetIncludeTrack = includeTracking
 	f.lastGetFilter = filter
-	return f.getActivityEntries, f.getActivityWarnings, f.getActivityErr
+	f.lastGetPage = page
+	if f.getActivityErr != nil {
+		return nil, 0, nil, f.getActivityErr
+	}
+	entries, total := domain.SelectActivityPage(f.getActivityEntries, page)
+	return entries, total, f.getActivityWarnings, nil
 }
 
 func (f *fakeActivityRegistry) FlushActivity(fromAddress common.Address) {
@@ -372,7 +380,7 @@ func TestActivityResponseMarshalJSON_NoRemainingURLs(t *testing.T) {
 }
 
 // activityEntryAt builds a bare domain.ActivityEntry for pagination tests: only CreatedAt (the
-// sort key, see paginateActivityEntries) and TrackerClaimStatus (read by newActivityItems) need
+// sort key, see domain.CompareActivityEntries) and TrackerClaimStatus (read by newActivityItems) need
 // to be set, globalIndex only distinguishes entries in assertions
 func activityEntryAt(globalIndex string, createdAt time.Time) *domain.ActivityEntry {
 	return &domain.ActivityEntry{
@@ -391,10 +399,10 @@ func bridgeGlobalIndexes(bridges []ActivityItem) []string {
 	return out
 }
 
-// TestActivityCommandExecute_SortsMostRecentFirst verifies GetActivity's result is sorted by
-// CreatedAt descending before being returned, regardless of the order the registry reports it
-// in — the activity engine's map-backed cache (ActivityCache) and the SQLite store's row order
-// are both otherwise unspecified.
+// TestActivityCommandExecute_SortsMostRecentFirst verifies the response serves bridges by
+// CreatedAt descending, whatever order they were cached in. The store applies the order (see
+// domain.CompareActivityEntries); the fake registry pages through the same shared selection the
+// in-memory store uses, and each store's own paging is covered by its tests.
 func TestActivityCommandExecute_SortsMostRecentFirst(t *testing.T) {
 	now := time.Now()
 	registry := newFakeActivityRegistry()
@@ -416,8 +424,8 @@ func TestActivityCommandExecute_SortsMostRecentFirst(t *testing.T) {
 }
 
 // TestActivityCommandExecute_TiedCreatedAtOrderedByGlobalIndex verifies entries sharing a
-// CreatedAt are ordered by global index descending (numerically, not as text) whatever order the
-// registry reports them in, so paging never moves a tied entry across a page boundary.
+// CreatedAt are ordered by global index descending (numerically, not as text) whatever order they
+// were cached in, so paging never moves a tied entry across a page boundary.
 func TestActivityCommandExecute_TiedCreatedAtOrderedByGlobalIndex(t *testing.T) {
 	now := time.Now()
 	orders := [][]string{{"9", "10", "2"}, {"2", "10", "9"}, {"10", "2", "9"}}
@@ -482,6 +490,8 @@ func TestActivityCommandExecute_ExplicitPageNumberAndSize(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 	body, ok := obj.(ActivityResponse)
 	require.True(t, ok)
+	require.Equal(t, domain.ActivityPage{PageNumber: 2, PageSize: 2}, registry.lastGetPage,
+		"the page is handed to the store, which applies it")
 
 	require.Equal(t, []string{"2", "3"}, bridgeGlobalIndexes(body.Bridges))
 	require.Equal(t, 5, body.Count)

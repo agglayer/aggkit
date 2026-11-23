@@ -505,14 +505,16 @@ Pagination works exactly like the bridge service's paginated endpoints: `page_nu
 - a page is the last one if `page_number * page_size >= count` (or `bridges` has fewer than `page_size` items)
 - a `page_number` past the last page answers `200 OK` with an empty `bridges` and the real `count`
 
-Bridges are sorted most recent first (`creation_timestamp` descending). A bridge whose block timestamp the bridge service has not populated yet is stamped with the time it was first cached, so it appears at the top until then. Bridges sharing the same `creation_timestamp` are ordered by `bridge.global_index` descending (compared numerically), so their relative order is the same on every request.
+`bridge.global_index` is **not** unique per bridge: under the legacy pre-Etrog encoding, an L1 bridge to network 1 has the bare deposit count as its global index, the same value as a bridge emitted on network 1 with that deposit count. Both are listed, each with its own `bridge_network_id`.
+
+Bridges are sorted most recent first (`creation_timestamp` descending). A bridge whose block timestamp the bridge service has not populated yet is stamped with the time it was first cached, so it appears at the top until then. Bridges sharing the same `creation_timestamp` are ordered by `bridge.global_index` descending (compared numerically), and bridges sharing both by `bridge_network_id` and then `bridge.deposit_count`, descending, so their relative order is the same on every request.
 
 **Pages are not a consistent snapshot.** Every request reads the cache as it is at that moment, and the background refresh can add new bridges between two requests of the same traversal. Because newest bridges come first, a new bridge shifts every older one down, so a client paging through the whole result can see:
 
 - **duplicates**: a bridge already received at the end of page N reappears at the start of page N+1
 - **missed new bridges**: a bridge created after page 1 was read lands on page 1, which the client no longer fetches, so it is not seen until the traversal is repeated. The hint is that `revision` (and, for an addition, `count`) changed between responses — see [Revision](#revision)
 
-Clients that need the complete list must deduplicate by `bridge.global_index` (unique per bridge) and, if `revision` (or `count`) changes during the traversal, fetch the first page again to pick up the new bridges — see [Revision](#revision) for the full client flow.
+Clients that need the complete list must deduplicate by `bridge_network_id` plus `bridge.deposit_count` (unique per bridge: the leaf the bridge occupies in the exit tree of the network that emitted it) and, if `revision` (or `count`) changes during the traversal, fetch the first page again to pick up the new bridges — see [Revision](#revision) for the full client flow.
 
 ### Revision
 
@@ -522,22 +524,23 @@ Clients that need the complete list must deduplicate by `bridge.global_index` (u
 
 - `revision` **changes** whenever any of the address's bridges is added, removed, changes `claim_status` or is corrected after a reorg — wherever the entry sits in the sorted result, not just on page 1.
 - What counts as a reorg correction follows from what is hashed (see the table below):
-  - a **bridge** re-included in another block or in another transaction changes `revision` (`bridge.block_num` and `bridge.tx_hash` are hashed);
+  - a **bridge** re-included in another block or in another transaction changes `revision` (`bridge.block_num` and `bridge.tx_hash` are hashed), and so does a bridge corrected in the same block and transaction: another log position (`bridge.block_pos`) or other contents (`bridge.amount`, `bridge.destination_network`, `bridge.destination_address`, `bridge.bridge_hash`);
   - a **claim** changes `revision` only when its transaction changes (only `claim.tx_hash` is hashed). The same claim transaction re-included in another block does **not** change it.
 - `revision` **does not change** when an entry only goes from not final to final (`finalized` from `false` to `true`, which includes `claim_status` going from `"claimed"` to `"claimed_finalized"`), nor on a refresh that changes nothing. So it stays stable while nothing relevant happens, and finality alone never forces a client to reload.
 - It covers all of the address's bridges. It is the same whatever `filterBridges`, `page_number` and `page_size` the request used: a single value per address at a given moment.
-- It is **always present** (never omitted). It is a string such as `"v1:"` followed by 64 lowercase hex characters; the prefix is the version of the hashing scheme, so two instances that hash different fields never agree by accident. Treat it as opaque and **compare the whole string for equality only**: it has no order, so do not parse it or check whether it grew.
-- It is a pure function of the address's bridges, with nothing stored: the value is the same after a restart, after the server rebuilds the address's cache (idle eviction, `flush_cache=true`) and on every instance that holds the same data. An address with no bridges has the value `"v1:"` followed by 64 zeros.
+- It is **always present** (never omitted). It is a string such as `"v2:"` followed by 64 lowercase hex characters; the prefix is the version of the hashing scheme, so two instances that hash different fields never agree by accident. Treat it as opaque and **compare the whole string for equality only**: it has no order, so do not parse it or check whether it grew.
+- It is a pure function of the address's bridges, with nothing stored: the value is the same after a restart, after the server rebuilds the address's cache (idle eviction, `flush_cache=true`) and on every instance that holds the same data. An address with no bridges has the value `"v2:"` followed by 64 zeros.
 
 What goes into the hash, per bridge of the address:
 
 | hashed | not hashed |
 | ------|------|
-| `bridge.global_index` | the finality flag (`finalized`, `bridge.block_finalized`, `claim_status` being `"claimed"` or `"claimed_finalized"`: both count as `"claimed"`) |
-| `bridge.tx_hash` and `bridge.block_num` | `creation_timestamp` and `last_updated_timestamp` (the latter advances on every refresh) |
+| `bridge_network_id` and `bridge.deposit_count` (the bridge's identity), and `bridge.global_index` | the finality flag (`finalized`, `bridge.block_finalized`, `claim_status` being `"claimed"` or `"claimed_finalized"`: both count as `"claimed"`) |
+| `bridge.tx_hash`, `bridge.block_num` and `bridge.block_pos` | `creation_timestamp` and `last_updated_timestamp` (the latter advances on every refresh) |
+| `bridge.amount`, `bridge.destination_network`, `bridge.destination_address` and `bridge.bridge_hash` | `bridge.block_timestamp` (the bridge service may fill it in later for the same bridge) |
 | `claim_status` (`"pending"`, `"readyToClaim"`, `"claimed"` or `"error"`) | `warnings`, `errors` and any other transient error |
 | `claim.tx_hash` (empty while there is no `claim` yet, so the claim record being indexed changes it) | the tracker's current step in `tracking` (step progress has its own [WebSocket](#websocket) channel) |
-| | every other field of `bridge` and `claim` (amounts, the claim's block, ...) and `source` |
+| | every other field of `bridge` and `claim` (metadata, the claim's block, ...) and `source` |
 
 Two consequences follow from it being a hash of the content:
 
@@ -552,14 +555,14 @@ Two consequences follow from it being a hash of the content:
 4. After the last page of a traversal, check the `revision` again (the last response already carries it): if it changed during the traversal, restart from page 1, since a bridge added or changed meanwhile may have shifted entries between pages.
 5. `revision` does not announce an entry becoming final (`finalized` `false` to `true`, `"claimed"` to `"claimed_finalized"`): those fields are as of the moment each page was loaded, so reload a page to see whether its items became final.
 
-> An address with no bridges has the empty-activity `revision`: `"v1:"` followed by 64 zeros.
+> An address with no bridges has the empty-activity `revision`: `"v2:"` followed by 64 zeros.
 
 #### Conditional requests (ETag and 304)
 
 Since `api_revision` 8 the poll of step 2 can skip the body. Every `200` carries the `revision` of its body as the `ETag` header, between double quotes (a strong entity tag, [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#section-8.8.3)):
 
 ```
-ETag: "v1:1ab162228afe25b74655b2bfb280cae4926372f5ac13646f341a30053c4a92f1"
+ETag: "v2:b47e19d3b428b7cf144fc3bcc4b57513e438d9bb5327b7bb6a1aacfab08995a7"
 Cache-Control: no-store
 ```
 
@@ -583,7 +586,7 @@ Client flow with conditional requests: keep the `revision` of the pages loaded (
 | from_address | Address | the address requested |
 | bridges | ActivityItem [] | this page of the bridges found for `from_address`, across every configured bridge service, matching `filterBridges` — sorted most recent first and sliced per `page_number`/`page_size` |
 | count | int | how many bridges matched `filterBridges` in total, across every page — not just `len(bridges)` |
-| revision | string | opaque hash of the address's activity (e.g. `"v1:"` followed by 64 hex characters), **always present**: changes on an addition, removal, `claim_status` change or reorg correction of any bridge of the address, and does **not** change when an entry only goes from not final to final. Identical for every page and every `filterBridges` of the same address, and the same after a restart and on every instance with the same data. Compare it for equality only; see [Revision](#revision) for the rules, what is hashed and the client flow |
+| revision | string | opaque hash of the address's activity (e.g. `"v2:"` followed by 64 hex characters), **always present**: changes on an addition, removal, `claim_status` change or reorg correction of any bridge of the address, and does **not** change when an entry only goes from not final to final. Identical for every page and every `filterBridges` of the same address, and the same after a restart and on every instance with the same data. Compare it for equality only; see [Revision](#revision) for the rules, what is hashed and the client flow |
 | warnings | ActivityWarningItem [] | every network whose bridge service could not be scanned this call; **omitted** (no key) when every configured network was scanned successfully |
 
 ### ActivityWarningItem
@@ -667,7 +670,7 @@ Example (one claimed bridge whose claim is final, one still-pending bridge with 
 {
   "from_address": "0x1111111111111111111111111111111111111111",
   "count": 2,
-  "revision": "v1:1ab162228afe25b74655b2bfb280cae4926372f5ac13646f341a30053c4a92f1",
+  "revision": "v2:b47e19d3b428b7cf144fc3bcc4b57513e438d9bb5327b7bb6a1aacfab08995a7",
   "bridges": [
     {
       "bridge": {
