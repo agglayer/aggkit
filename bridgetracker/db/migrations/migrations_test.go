@@ -261,3 +261,14 @@ func TestMigration0008DropsV1RevisionHashes(t *testing.T) {
 	require.NoError(t, db.RunMigrationsDown(dbPath, all(), nil, len(all())-migrationIndex(t, "bridgetracker0008")))
 	require.Zero(t, countHashes())
 }
+
+// TestGetUpTo checks GetUpTo cuts the list at lastID and fails loudly on an unknown ID instead of
+// returning every migration
+func TestGetUpTo(t *testing.T) {
+	got := GetUpTo("bridgetracker0005")
+	require.Len(t, got, migrationIndex(t, "bridgetracker0005")+1)
+	require.Equal(t, "bridgetracker0005", got[len(got)-1].ID)
+	require.Equal(t, all(), GetUpTo(all()[len(all())-1].ID))
+	require.Panics(t, func() { GetUpTo("bridgetracker0005 ") })
+	require.Panics(t, func() { GetUpTo("bridgetracker9999") })
+}

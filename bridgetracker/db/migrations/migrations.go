@@ -5,6 +5,7 @@ package migrations
 
 import (
 	_ "embed"
+	"fmt"
 
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/types"
@@ -62,7 +63,9 @@ func all() []types.Migration {
 }
 
 // GetUpTo returns the bridgetracker migrations up to and including lastID, in order: for tests
-// that need a DB at an older schema, to check a later migration carries its rows over
+// that need a DB at an older schema, to check a later migration carries its rows over. It panics
+// on an unknown lastID rather than silently returning the full schema, which would let such a
+// test pass without ever exercising the migration it means to
 func GetUpTo(lastID string) []types.Migration {
 	migrations := all()
 	for i, m := range migrations {
@@ -70,5 +73,5 @@ func GetUpTo(lastID string) []types.Migration {
 			return migrations[:i+1]
 		}
 	}
-	return migrations
+	panic(fmt.Sprintf("unknown bridgetracker migration %q", lastID))
 }
