@@ -296,7 +296,8 @@ func (s *Service) serveProxied(
 			panic(rec)
 		}
 		if errors.Is(req.Context().Err(), context.DeadlineExceeded) {
-			s.logger.Warnf("response of %s %s from %s aborted: UpstreamRequestTimeout expired after its headers were sent",
+			// same level as a timeout before the headers (see the ErrorHandler of proxyFor)
+			s.logger.Errorf("response of %s %s from %s aborted: UpstreamRequestTimeout expired after its headers were sent",
 				req.Method, req.URL.Path, bridgeURL)
 		} else {
 			s.logger.Debugf("response of %s %s from %s aborted after its headers were sent",
@@ -306,7 +307,10 @@ func (s *Service) serveProxied(
 			// Not a connection we can hijack: let the abort propagate as ReverseProxy meant. It does not
 			// happen on the shared server, which serves HTTP/1.1 only (plain TCP, no TLS nor h2c), so its
 			// connections can always be hijacked. Were it ever to serve HTTP/2, the recovery middleware
-			// would swallow this panic as well, and the stream would need resetting some other way
+			// would swallow this panic as well, and the stream would need resetting some other way: log it
+			// loudly, so that change cannot go unnoticed
+			s.logger.Errorf("response of %s %s from %s aborted, but its connection could not be closed: %v",
+				req.Method, req.URL.Path, bridgeURL, err)
 			panic(rec)
 		}
 	}()
