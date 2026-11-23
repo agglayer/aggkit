@@ -221,6 +221,40 @@ func TestActivityReorg_BridgeReincludedInAnotherBlock(t *testing.T) {
 	})
 }
 
+// TestActivityReorg_BridgeReincludedBecomesFinal: the finality of a bridge re-included in another
+// block is the one of its new block. The entry is not final while that block is not, becomes
+// final with it (still a single entry, at the new location), and that last step alone does not
+// change the revision
+func TestActivityReorg_BridgeReincludedBecomesFinal(t *testing.T) {
+	runOnBothStores(t, func(h *activityHarness) {
+		t := h.t
+		h.scan([]*domain.ScannedBridge{reorgBridge(1, 100, "0xb1", false)})
+		h.unclaimed(false)
+		entries := h.refresh()
+		require.False(t, entries[0].Finalized)
+
+		h.scan([]*domain.ScannedBridge{reorgBridge(1, 200, "0xb2", false)})
+		h.unclaimed(false)
+		entries = h.refresh()
+		require.Len(t, entries, 1)
+		require.Equal(t, uint64(200), entries[0].Bridge.BlockNum)
+		require.False(t, entries[0].Finalized, "the new block is not final either")
+
+		h.scan([]*domain.ScannedBridge{reorgBridge(1, 200, "0xb2", true)})
+		h.unclaimed(false)
+		entries = h.refresh()
+		require.Len(t, entries, 1, "no duplicate left behind at the old block")
+		require.Equal(t, uint64(200), entries[0].Bridge.BlockNum)
+		require.Equal(t, bridgeservicetypes.Hash("0xb2"), entries[0].Bridge.TxHash)
+		require.True(t, entries[0].Finalized, "final once the block it was re-included in is final")
+		require.Equal(t, types.TrackerClaimStatusPending, entries[0].TrackerClaimStatus)
+
+		require.Len(t, h.revisions, 3)
+		require.NotEqual(t, h.revisions[0], h.revisions[1], "the correction changes the revision")
+		require.Equal(t, h.revisions[1], h.revisions[2], "becoming final does not")
+	})
+}
+
 // TestActivityReorg_BridgeReplacedBySameGlobalIndex: a different bridge taking the same deposit
 // count (so global index) replaces the entry's data
 func TestActivityReorg_BridgeReplacedBySameGlobalIndex(t *testing.T) {
