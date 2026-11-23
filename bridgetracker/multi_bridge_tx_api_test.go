@@ -144,10 +144,11 @@ func newTrackerUnderTest(t *testing.T, dbPath string, logs []*gethtypes.Log) *tr
 			BlockNumber: new(big.Int).SetUint64(multiBridgeBlock),
 			Logs:        logs,
 		}, nil).Maybe()
+		// the finality gate and the receipt's own block header: both report multiBridgeBlock
 		client.EXPECT().CustomHeaderByNumber(mock.Anything, mock.Anything).
-			Return(&aggkittypes.BlockHeader{Number: multiBridgeBlock}, nil).Maybe()
-		client.EXPECT().HeaderByHash(mock.Anything, multiBridgeBlockHash).
-			Return(&gethtypes.Header{Time: multiBridgeBlockTime}, nil).Maybe()
+			Return(&aggkittypes.BlockHeader{
+				Number: multiBridgeBlock, Hash: multiBridgeBlockHash, Time: multiBridgeBlockTime,
+			}, nil).Maybe()
 	}
 	bridges, err := sources.NewBridgeEventSource(
 		sources.StaticClients{multiBridgeNetwork: client},

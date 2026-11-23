@@ -38,6 +38,14 @@ var ErrAmbiguousBridgeTx = Permanent(errors.New("tx emitted several BridgeEvents
 // ErrAmbiguousBridgeTx; the wrapping error lists the log indexes that do hold one
 var ErrBridgeLogNotFound = Permanent(errors.New("tx emitted no BridgeEvent at the selected log_index"))
 
+// ErrInvalidUpstreamData is returned by BridgeEventSource.FindBridge when the origin network's
+// JSON-RPC answers with data that contradicts itself (e.g. a BridgeEvent log mined in another
+// block than its receipt, or a block header that is not the receipt's block). Unlike
+// ErrBridgeTxNotABridge it is deliberately not Permanent: a defective or briefly out-of-sync
+// endpoint (or a reorg between two of the calls) may answer coherently on a later attempt, so
+// ResolveBridgeTx retries it like any other transient failure, bounded by the unresolved timeout
+var ErrInvalidUpstreamData = errors.New("inconsistent upstream data")
+
 // BridgeEventSource is the driven port resolving the BridgeEvent behind a supervised tx on its
 // origin network (RPC receipt or bridge service, resolved per network via the finder)
 type BridgeEventSource interface {
@@ -46,7 +54,9 @@ type BridgeEventSource interface {
 	// yet, ErrBridgeTxNotABridge if it exists but is definitely not a bridge transaction,
 	// ErrAmbiguousBridgeTx if id.Log is not set and the tx emitted several BridgeEvents,
 	// ErrBridgeLogNotFound if id.Log is set but selects none of them, or ErrSourceUnavailable
-	// if the origin network has no source configured to resolve it. Other errors are transient
+	// if the origin network has no source configured to resolve it. Other errors are transient,
+	// including ErrInvalidUpstreamData (the upstream's receipt, log and block header do not
+	// describe one same block): no BridgeInfo is returned for it
 	FindBridge(ctx context.Context, id TrackingID) (*BridgeInfo, error)
 }
 

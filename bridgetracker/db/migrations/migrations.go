@@ -25,20 +25,17 @@ var mig004 string
 //go:embed bridgetracker0005.sql
 var mig005 string
 
+//go:embed bridgetracker0006.sql
+var mig006 string
+
+//go:embed bridgetracker0007.sql
+var mig007 string
+
+//go:embed bridgetracker0008.sql
+var mig008 string
+
 //go:embed bridgetracker0009.sql
 var mig009 string
-
-// all lists every bridgetracker migration, in the order they apply
-func all() []types.Migration {
-	return []types.Migration{
-		{ID: "bridgetracker0001", SQL: mig001},
-		{ID: "bridgetracker0002", SQL: mig002},
-		{ID: "bridgetracker0003", SQL: mig003},
-		{ID: "bridgetracker0004", SQL: mig004},
-		{ID: "bridgetracker0005", SQL: mig005},
-		{ID: "bridgetracker0009", SQL: mig009},
-	}
-}
 
 // RunMigrations applies every bridgetracker migration to dbPath, creating the DB file first if
 // it does not exist yet. Shared by every store in this package (sqliteRegistry,
@@ -47,6 +44,21 @@ func all() []types.Migration {
 // other's tables missing.
 func RunMigrations(dbPath string) error {
 	return db.RunMigrations(dbPath, all())
+}
+
+// all is every bridgetracker migration, in order
+func all() []types.Migration {
+	return []types.Migration{
+		{ID: "bridgetracker0001", SQL: mig001},
+		{ID: "bridgetracker0002", SQL: mig002},
+		{ID: "bridgetracker0003", SQL: mig003},
+		{ID: "bridgetracker0004", SQL: mig004},
+		{ID: "bridgetracker0005", SQL: mig005},
+		{ID: "bridgetracker0006", SQL: mig006},
+		{ID: "bridgetracker0007", SQL: mig007},
+		{ID: "bridgetracker0008", SQL: mig008},
+		{ID: "bridgetracker0009", SQL: mig009},
+	}
 }
 
 // GetUpTo returns the bridgetracker migrations up to and including lastID, in order: for tests

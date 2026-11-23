@@ -93,6 +93,7 @@ func bridgeEventLog(t *testing.T, destinationNetwork, depositCount uint32) *geth
 		Data:        data,
 		BlockNumber: 12345,
 		BlockHash:   testBlockHash,
+		TxHash:      testTxHash,
 		Index:       3,
 	}
 }
@@ -152,10 +153,11 @@ func TestBridgeEventSourceFindBridge(t *testing.T) {
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
 		Status:      gethtypes.ReceiptStatusSuccessful,
 		BlockNumber: big.NewInt(12345),
+		BlockHash:   testBlockHash,
 		Logs:        []*gethtypes.Log{bridgeEventLog(t, 1, 7)},
 	}, nil)
 	expectFinalized(client, 12345)
-	expectBlockTimestamp(client)
+	expectBridgeBlockHeader(client)
 
 	source := newBridgeEventSource(t, client)
 	info, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})
@@ -255,10 +257,11 @@ func TestBridgeEventSourceOverrideAcceptsCanonicalEmitter(t *testing.T) {
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
 		Status:      gethtypes.ReceiptStatusSuccessful,
 		BlockNumber: big.NewInt(12345),
+		BlockHash:   testBlockHash,
 		Logs:        []*gethtypes.Log{realLog},
 	}, nil)
 	expectFinalized(client, 12345)
-	expectBlockTimestamp(client)
+	expectBridgeBlockHeader(client)
 
 	source, err := NewBridgeEventSource(
 		StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock,
@@ -355,10 +358,11 @@ func TestBridgeEventSourceMatchesCanonicalAmongMultipleLogs(t *testing.T) {
 			client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
 				Status:      gethtypes.ReceiptStatusSuccessful,
 				BlockNumber: big.NewInt(12345),
+				BlockHash:   testBlockHash,
 				Logs:        logs,
 			}, nil)
 			expectFinalized(client, 12345)
-			expectBlockTimestamp(client)
+			expectBridgeBlockHeader(client)
 
 			source, err := NewBridgeEventSource(
 				StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock, nil,
@@ -388,11 +392,13 @@ func multiBridgeReceiptLogs(t *testing.T, reversed bool) []*gethtypes.Log {
 	return []*gethtypes.Log{first, second}
 }
 
-// expectMultiBridgeReceipt stubs client to return a final receipt carrying logs
+// expectMultiBridgeReceipt stubs client to return a final receipt carrying logs, mined in the
+// block the logs report (bridgeEventLog's testBlockHash at 12345)
 func expectMultiBridgeReceipt(client *mocks.BaseEthereumClienter, logs []*gethtypes.Log) {
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
 		Status:      gethtypes.ReceiptStatusSuccessful,
 		BlockNumber: big.NewInt(12345),
+		BlockHash:   testBlockHash,
 		Logs:        logs,
 	}, nil)
 	expectFinalized(client, 12345)
@@ -415,7 +421,7 @@ func TestBridgeEventSourceSelectsBridgeEventByLogIndex(t *testing.T) {
 			t.Run(fmt.Sprintf("log=%d/reversed=%t", tc.logIndex, reversed), func(t *testing.T) {
 				client := mocks.NewBaseEthereumClienter(t)
 				expectMultiBridgeReceipt(client, multiBridgeReceiptLogs(t, reversed))
-				expectBlockTimestamp(client)
+				expectBridgeBlockHeader(client)
 
 				source := newBridgeEventSource(t, client)
 				info, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{
@@ -491,11 +497,34 @@ func TestBridgeEventSourceSingleBridgeTxOnlyOrSelected(t *testing.T) {
 		t.Run(id.String(), func(t *testing.T) {
 			client := mocks.NewBaseEthereumClienter(t)
 			expectMultiBridgeReceipt(client, []*gethtypes.Log{bridgeEventLog(t, 1, 7)})
-			expectBlockTimestamp(client)
+			expectBridgeBlockHeader(client)
 
 			info, err := newBridgeEventSource(t, client).FindBridge(t.Context(), id)
 			require.NoError(t, err)
 			require.Equal(t, l1ToL2Bridge(), info)
+		})
+	}
+}
+
+// TestBridgeEventSourceChecksEveryCandidateBridgeEvent pins that every canonical BridgeEvent of
+// the receipt must belong to the receipt's block, not only the selected one: the others decide
+// the ambiguity and the log indexes listed, so an incoherent one fails the whole answer as
+// ErrInvalidUpstreamData (transient) instead of resolving the selected bridge
+func TestBridgeEventSourceChecksEveryCandidateBridgeEvent(t *testing.T) {
+	for _, id := range []bridgetracker.TrackingID{
+		{NetworkID: 0, TxHash: testTxHash},
+		{NetworkID: 0, TxHash: testTxHash, Log: domain.LogIndex(3)},
+	} {
+		t.Run(id.String(), func(t *testing.T) {
+			logs := multiBridgeReceiptLogs(t, false)
+			logs[1].BlockHash = testOtherBlockHash
+			client := mocks.NewBaseEthereumClienter(t)
+			expectMultiBridgeReceipt(client, logs)
+
+			info, err := newBridgeEventSource(t, client).FindBridge(t.Context(), id)
+			require.Nil(t, info)
+			require.ErrorIs(t, err, bridgetracker.ErrInvalidUpstreamData)
+			require.False(t, domain.IsPermanent(err))
 		})
 	}
 }
