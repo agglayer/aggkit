@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/bridgetracker"
@@ -164,7 +165,7 @@ func (s *BridgeEventSource) FindBridge(
 			DepositCount:       event.DepositCount,
 			BlockNumber:        receipt.BlockNumber.Uint64(),
 			BlockHash:          receipt.BlockHash,
-			LogIndex:           uint32(l.Index),
+			LogIndex:           uint32(l.Index), // checkBridgeLogBlock bounds it
 			OriginNetwork:      event.OriginNetwork,
 			OriginAddress:      event.OriginAddress,
 			DestinationAddress: event.DestinationAddress,
@@ -178,7 +179,8 @@ func (s *BridgeEventSource) FindBridge(
 
 // checkBridgeLogBlock fails closed with ErrInvalidUpstreamData unless the BridgeEvent log l is
 // really one of receipt's logs: mined in the receipt's block (hash and number) by the tx the
-// receipt is for. receipt.BlockNumber must be set (FindBridge's finality gate checks it)
+// receipt is for, at a log index that fits BridgeInfo.LogIndex. receipt.BlockNumber must be
+// set (FindBridge's finality gate checks it)
 func checkBridgeLogBlock(id bridgetracker.TrackingID, receipt *gethtypes.Receipt, l *gethtypes.Log) error {
 	switch {
 	case !receipt.BlockNumber.IsUint64():
@@ -193,6 +195,9 @@ func checkBridgeLogBlock(id bridgetracker.TrackingID, receipt *gethtypes.Receipt
 	case l.TxHash != id.TxHash:
 		return fmt.Errorf("%s: BridgeEvent log tx hash %s is not the tracked tx: %w",
 			id, l.TxHash, bridgetracker.ErrInvalidUpstreamData)
+	case l.Index > math.MaxUint32:
+		return fmt.Errorf("%s: BridgeEvent log index %d does not fit a uint32: %w",
+			id, l.Index, bridgetracker.ErrInvalidUpstreamData)
 	}
 	return nil
 }

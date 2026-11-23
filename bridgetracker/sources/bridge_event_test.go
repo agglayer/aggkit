@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -113,6 +114,12 @@ func TestBridgeEventSourceRejectsInconsistentUpstreamData(t *testing.T) {
 			name: "log tx hash is not the tracked tx",
 			mutate: func(receipt *gethtypes.Receipt) {
 				receipt.Logs[0].TxHash = common.HexToHash("0xdead")
+			},
+		},
+		{
+			name: "log index does not fit a uint32",
+			mutate: func(receipt *gethtypes.Receipt) {
+				receipt.Logs[0].Index = math.MaxUint32 + 1
 			},
 		},
 		{
