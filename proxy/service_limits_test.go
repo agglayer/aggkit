@@ -332,7 +332,15 @@ func TestNewUpstreamTransportWhenDefaultTransportWasReplaced(t *testing.T) {
 	require.Equal(t, time.Second, transport.ResponseHeaderTimeout)
 	require.Equal(t, 3, transport.MaxConnsPerHost)
 	require.True(t, transport.DisableCompression)
+	require.Equal(t, 3, transport.MaxIdleConnsPerHost)
+	// what net/http's own default transport sets, so a dial to an unreachable backend is bounded too
+	require.NotNil(t, transport.DialContext)
+	require.NotNil(t, transport.Proxy)
+	require.True(t, transport.ForceAttemptHTTP2)
+	require.NotZero(t, transport.MaxIdleConns)
+	require.NotZero(t, transport.IdleConnTimeout)
 	require.NotZero(t, transport.TLSHandshakeTimeout)
+	require.NotZero(t, transport.ExpectContinueTimeout)
 }
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)

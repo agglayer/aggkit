@@ -40,8 +40,12 @@ const (
 
 	// Used only when http.DefaultTransport is not an *http.Transport (something replaced it), so
 	// there is nothing to clone: the values mirror net/http's own default transport
-	fallbackTLSHandshakeTimeout = 10 * time.Second
-	fallbackIdleConnTimeout     = 90 * time.Second
+	fallbackDialTimeout           = 30 * time.Second
+	fallbackDialKeepAlive         = 30 * time.Second
+	fallbackMaxIdleConns          = 100
+	fallbackTLSHandshakeTimeout   = 10 * time.Second
+	fallbackIdleConnTimeout       = 90 * time.Second
+	fallbackExpectContinueTimeout = 1 * time.Second
 )
 
 // rejectedMethods are the methods the proxy answers 405 to without contacting any backend:
@@ -167,9 +171,16 @@ func newUpstreamTransport(cfg Config) *http.Transport {
 		transport = base.Clone()
 	} else {
 		transport = &http.Transport{
-			Proxy:               http.ProxyFromEnvironment,
-			TLSHandshakeTimeout: fallbackTLSHandshakeTimeout,
-			IdleConnTimeout:     fallbackIdleConnTimeout,
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   fallbackDialTimeout,
+				KeepAlive: fallbackDialKeepAlive,
+			}).DialContext,
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          fallbackMaxIdleConns,
+			IdleConnTimeout:       fallbackIdleConnTimeout,
+			TLSHandshakeTimeout:   fallbackTLSHandshakeTimeout,
+			ExpectContinueTimeout: fallbackExpectContinueTimeout,
 		}
 	}
 	transport.ResponseHeaderTimeout = cfg.UpstreamResponseHeaderTimeout.Duration
