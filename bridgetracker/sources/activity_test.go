@@ -1154,8 +1154,8 @@ func TestActivitySource_BridgesFrom_MalformedNetworkDoesNotAffectHealthyOne(t *t
 	source := mustNewActivitySource(t, lister, nil, testLogger)
 
 	cached := bridgeResponse(1, 2, 0, testFromAddress, 1)
-	known := map[string]domain.KnownBridge{
-		string(cached.GlobalIndex): knownBridge(cached, domain.ActivitySourceBridgeService, false),
+	known := map[domain.BridgeKey]domain.KnownBridge{
+		keyOf(cached): knownBridge(cached, domain.ActivitySourceBridgeService, false),
 	}
 
 	items, invalidated, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
