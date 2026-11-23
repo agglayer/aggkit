@@ -99,16 +99,28 @@ func (c *Config) Validate() error {
 }
 
 // Warnings returns the settings that are valid but likely not what the operator wants. The REST
-// server drops a connection at its WriteTimeout, so an UpstreamRequestTimeout that is not below it
-// never gets to answer 504: the client just sees the connection closed
+// server sets the write deadline of a connection (its WriteTimeout) as soon as it has read the
+// request headers, so an upstream timeout that is not below it never gets to answer 504: the client
+// just sees the connection closed. That holds for UpstreamRequestTimeout and for
+// UpstreamResponseHeaderTimeout alike (the latter only starts once the upstream request is written)
 func (c *Config) Warnings(restWriteTimeout time.Duration) []string {
+	if restWriteTimeout <= 0 {
+		return nil
+	}
 	var warnings []string
-	if c.UpstreamRequestTimeout.Duration > 0 && restWriteTimeout > 0 &&
-		c.UpstreamRequestTimeout.Duration >= restWriteTimeout {
-		warnings = append(warnings, fmt.Sprintf(
-			"[Proxy] UpstreamRequestTimeout (%s) is not below [REST] WriteTimeout (%s): the server will "+
-				"close the connection of a stalled request before the proxy can answer 504",
-			c.UpstreamRequestTimeout.Duration, restWriteTimeout))
+	for _, limit := range []struct {
+		key   string
+		value time.Duration
+	}{
+		{"UpstreamResponseHeaderTimeout", c.UpstreamResponseHeaderTimeout.Duration},
+		{"UpstreamRequestTimeout", c.UpstreamRequestTimeout.Duration},
+	} {
+		if limit.value > 0 && limit.value >= restWriteTimeout {
+			warnings = append(warnings, fmt.Sprintf(
+				"[Proxy] %s (%s) is not below [REST] WriteTimeout (%s): the server will close the "+
+					"connection of a stalled request before the proxy can answer 504",
+				limit.key, limit.value, restWriteTimeout))
+		}
 	}
 	return warnings
 }

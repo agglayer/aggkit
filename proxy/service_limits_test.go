@@ -577,6 +577,20 @@ func TestConfigWarnings(t *testing.T) {
 	require.Len(t, warnings, 1)
 	require.Contains(t, warnings[0], "UpstreamRequestTimeout")
 	require.Contains(t, warnings[0], "WriteTimeout")
+
+	// the response-header timeout has the same dead zone: the write deadline is already set when it
+	// starts counting
+	headerCfg := Config{UpstreamResponseHeaderTimeout: duration(30 * time.Second)}
+	require.Empty(t, headerCfg.Warnings(time.Minute))
+	warnings = headerCfg.Warnings(30 * time.Second)
+	require.Len(t, warnings, 1, "equal to the write timeout is not below it")
+	require.Contains(t, warnings[0], "UpstreamResponseHeaderTimeout")
+
+	both := Config{
+		UpstreamResponseHeaderTimeout: duration(2 * time.Minute),
+		UpstreamRequestTimeout:        duration(3 * time.Minute),
+	}
+	require.Len(t, both.Warnings(time.Minute), 2)
 }
 
 // TestServeProxiedOnlySwallowsAbortsItCanCloseTheConnectionOf pins what serveProxied does not

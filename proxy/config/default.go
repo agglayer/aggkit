@@ -54,7 +54,7 @@ AllowNetworkIDs = []
 # already started, its connection is aborted).
 [Proxy]
 # UpstreamResponseHeaderTimeout: how long to wait, once the request is sent to a bridge service, for
-# its response headers. 0 disables it.
+# its response headers. Keep it below [REST] WriteTimeout. 0 disables it.
 UpstreamResponseHeaderTimeout = "30s"
 # UpstreamRequestTimeout: total budget of a proxied request, from connecting to the last byte of the
 # response body (so it also bounds a backend that stalls halfway through its answer). Keep it below

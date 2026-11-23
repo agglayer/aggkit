@@ -402,7 +402,7 @@ answers cannot hold it (and its connections) for as long as the client stays con
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `UpstreamResponseHeaderTimeout` | `30s` | How long to wait, once the request is sent to a bridge service, for its response headers. A request over it is answered `504`. `0` disables it. |
+| `UpstreamResponseHeaderTimeout` | `30s` | How long to wait, once the request is sent to a bridge service, for its response headers. Its clock starts only once the request is written: connecting (and a TLS handshake) is bounded by `UpstreamRequestTimeout` and by the transport's own 30s dial timeout, not by this key. A request over it is answered `504`. Keep it **below** `[REST] WriteTimeout`, for the same reason as `UpstreamRequestTimeout` (the proxy warns at startup if it is not). `0` disables it. |
 | `UpstreamRequestTimeout` | `2m` | Total budget of a proxied request: connecting, response headers and the streaming of the response body, so it also covers a backend that stalls halfway through its answer. A request over it is answered `504`; if the response had already started (the status is sent), the connection is closed instead, so the client sees a truncated body as an error. Keep it **below** `[REST] WriteTimeout` (the server closes the connection at that point, before the proxy can answer; the proxy warns at startup if it is not below), and **above** the slowest legitimate bridge service response. `0` disables it. |
 | `UpstreamMaxConnsPerHost` | `256` | Maximum connections (idle, dialing and in use) to each bridge service. More requests wait for a free one, up to `UpstreamRequestTimeout`. `0` means no limit. |
 
