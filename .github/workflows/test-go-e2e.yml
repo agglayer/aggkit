@@ -85,9 +85,11 @@ jobs:
           # Keep stateful suites in separate stacks. The backward/forward LET tests restart
           # services and mutate chain/AggLayer state, so sharing one go-test process makes a
           # primary failure cascade into otherwise unrelated bridge tests.
+          # TestProxyUpstreamLimitsOnRealBinary only reads through aggkit-proxy-001 (one GET, the
+          # 405/413 rejections) and restarts nothing, so it shares the bridge stack.
           - env: anvil-2chains
             group: bridge
-            run: "^(TestJustBridge|TestBridgeL2ToL2|TestBridgeTrackerL1ToL2)$"
+            run: "^(TestJustBridge|TestBridgeL2ToL2|TestBridgeTrackerL1ToL2|TestProxyUpstreamLimitsOnRealBinary)$"
           # Stateful aggkit-proxy suites (#1845/#1855): they rewrite aggkit-proxy's bind-mounted
           # config and restart it, and mutate L1 rollup-manager state, so they must not share a
           # stack with the default/bridge groups.
