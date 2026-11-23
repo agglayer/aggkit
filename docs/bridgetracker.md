@@ -28,6 +28,30 @@ does not match the resolved bridge — including the case where the *only* signa
 the receipt fail the address check — falls through to the same permanent `ErrBridgeTxNotABridge`
 outcome as a receipt with no matching log at all, since neither can ever change on retry.
 
+The accepted `BridgeEvent` log must also be coherent with the rest of the upstream's answer, or
+`FindBridge` fails closed with `ErrInvalidUpstreamData` and records nothing: the log's block hash
+and number must be its receipt's, its tx hash must be the tracked tx, and the header the RPC
+reports at the receipt's block number (the same lookup that provides `block_timestamp`) must have
+that number and the receipt's block hash. The hash compared is the one the RPC client reports, i.e.
+the RPC's own `hash` field when `HashFromJSON` is enabled (the default of the proxy), so chains with
+non-standard headers are not rejected. Unlike `ErrBridgeTxNotABridge` this error is transient: a
+defective or out-of-sync endpoint, or a reorg between the calls, is retried until the upstream
+answers coherently or `UnresolvedTimeout` elapses.
+Two RPC client settings can make the check fail on every retry, so the engine gives up on the
+affected bridges after `UnresolvedTimeout` instead of resolving them:
+
+- With `HashFromJSON = false` (the generic default in [common_config.md](common_config.md)) the
+  compared hash is recomputed from the RLP header. On a chain whose node-reported hash differs from
+  that, no header ever matches its receipt, so no bridge on that chain resolves. This is why the
+  proxy defaults `HashFromJSON` to `true`.
+- With `SupportNonEthereumWithMaxGapsInBlocks > 0`, if the node answers the receipt's height as
+  missing, the client serves the nearest previous block instead, whose number differs from the
+  receipt's. That bridge is refused rather than stamped with another block's timestamp: without the
+  node serving the receipt's block by number it cannot be proven canonical.
+
+A fully coherent lying endpoint is out of scope: this is a defense against inconsistent data, not a
+substitute for trusting the configured RPC.
+
 | Step | Meaning |
 | --- | --- |
 | `WaitingGERUpdate` | L1-originated bridge: the L1 Global Exit Root has not been updated with this deposit yet. |
