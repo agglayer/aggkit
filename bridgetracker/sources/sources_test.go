@@ -387,6 +387,9 @@ type fakeBridgeService struct {
 	l1InfoTreeIndex *uint32
 	// injectedLeaf is served by /bridge/v1/injected-l1-info-leaf; nil -> not injected (500)
 	injectedLeaf map[string]any
+	// claimsBody, when set, is served verbatim as the /bridge/v1/claims response (it takes
+	// precedence over claimsCount), whatever the global_index requested
+	claimsBody string
 	// claimsCount is served by /bridge/v1/claims
 	claimsCount int
 	// claimTxHash, claimBlockNum and claimBlockTimestamp populate the single claim served when
@@ -445,6 +448,10 @@ func (f *fakeBridgeService) startAt(t *testing.T, networkID uint32) staticURLs {
 	})
 	mux.HandleFunc("/bridge/v1/claims", func(w http.ResponseWriter, r *http.Request) {
 		f.lastGlobalIndexQuery = r.URL.Query().Get("global_index")
+		if f.claimsBody != "" {
+			fmt.Fprint(w, f.claimsBody)
+			return
+		}
 		if f.claimsCount == 0 {
 			fmt.Fprint(w, `{"claims":[],"count":0}`)
 			return
@@ -453,8 +460,12 @@ func (f *fakeBridgeService) startAt(t *testing.T, networkID uint32) staticURLs {
 		if f.claimBlockFinalized != nil {
 			finalized = fmt.Sprintf(`,"block_finalized":%t`, *f.claimBlockFinalized)
 		}
-		fmt.Fprintf(w, `{"claims":[{"tx_hash":"%s","block_num":%d,"block_timestamp":%d%s}],"count":%d}`,
-			f.claimTxHash, f.claimBlockNum, f.claimBlockTimestamp, finalized, f.claimsCount)
+		// like the real service, the claim carries the global index it was requested by and the
+		// network it was made on
+		fmt.Fprintf(w, `{"claims":[{"tx_hash":"%s","block_num":%d,"block_timestamp":%d,`+
+			`"global_index":"%s","destination_network":%d%s}],"count":%d}`,
+			f.claimTxHash, f.claimBlockNum, f.claimBlockTimestamp, f.lastGlobalIndexQuery, networkID, finalized,
+			f.claimsCount)
 	})
 
 	server := httptest.NewServer(mux)
