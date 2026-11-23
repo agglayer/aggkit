@@ -393,7 +393,9 @@ The `PROXY` component forwards every `/bridge/v1/*` request to the bridge servic
 selected by `network_id`. It forwards **only `GET` and `HEAD`** (the bridge service API is
 read-only) and **no request body**: any other method is answered `405` with `Allow: GET, HEAD`, and
 a request carrying a body (also a chunked one) is answered `413` and its connection closed, both
-before any bridge service is contacted. A CORS preflight (`OPTIONS`) is answered by the CORS handler
+before any bridge service is contacted. (To tell an empty chunked body from a non-empty one, the
+proxy reads one byte of it: a chunked request whose first chunk never arrives is held until
+`[REST] ReadTimeout`.) A CORS preflight (`OPTIONS`) is answered by the CORS handler
 of the shared REST server, not forwarded. These two rules are not configurable; the shared REST
 server's `MaxRequestBodyBytes` still applies to every request as a backstop.
 

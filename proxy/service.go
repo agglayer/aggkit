@@ -229,6 +229,10 @@ func requireNoBody(c *gin.Context) bool {
 	}
 
 	if req.ContentLength < 0 {
+		// The probe has no deadline of its own: a chunked request whose first chunk never arrives holds
+		// this handler (and its connection) until the REST ReadTimeout, and the answer to it can no
+		// longer be written by then. That is the price of letting an empty chunked body through, and it
+		// is bounded: one handler and one connection per such request, nothing forwarded
 		var probe [1]byte
 		_, err := io.ReadFull(req.Body, probe[:])
 		switch {
