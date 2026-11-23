@@ -89,7 +89,9 @@ jobs:
           # sender's activity through aggkit-proxy: it neither pauses chains nor restarts services.
           - env: anvil-2chains
             group: bridge
-            run: "^(TestJustBridge|TestBridgeL2ToL2|TestBridgeTrackerL1ToL2|TestProxyActivityPagination)$"
+            # TestBridgesMalformedAddressFilterIsRejected only issues GETs against the bridge service
+            # (and the aggkit-proxy), so it does not change the state the other tests of the group use.
+            run: "^(TestJustBridge|TestBridgeL2ToL2|TestBridgeTrackerL1ToL2|TestBridgesMalformedAddressFilterIsRejected|TestProxyActivityPagination)$"
           # Stateful aggkit-proxy suites (#1845/#1855): they rewrite aggkit-proxy's bind-mounted
           # config and restart it, and mutate L1 rollup-manager state, so they must not share a
           # stack with the default/bridge groups.
