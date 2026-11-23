@@ -12,8 +12,11 @@ import (
 )
 
 // NewSeededBridgeSyncForTest returns a BridgeSync backed by a real SQLite database (all the migrations
-// applied) that holds the given bridges and token mappings, so tests of other packages (the bridge
-// service HTTP handlers, for instance) can run against the real query code instead of a mock.
+// applied) that holds the given bridges and token mappings, so the bridgesync_test package can run the
+// bridge service HTTP handlers against the real query code instead of a mock.
+//
+// Being in an export_test.go file, it is compiled only when the bridgesync package is tested: it is
+// visible to the bridgesync and bridgesync_test test files, and to no other package.
 //
 // The BridgeSync is not started: it only serves reads. It has no real reorg detector, so the finality
 // of a block is never reported (the reorg detector mock fails the test if it is ever asked).
