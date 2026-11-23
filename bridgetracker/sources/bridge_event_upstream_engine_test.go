@@ -110,7 +110,9 @@ func TestEngineDoesNotTrackBridgeFromInconsistentUpstreamJSON(t *testing.T) {
 	require.NotEmpty(t, tracking.AllSteps())
 	require.Equal(t, trackertypes.StepWaitingLERUpdate, tracking.AllSteps()[0].Step)
 
-	// the subscriber was only ever told about the bridge once it was coherent
+	// the subscriber also got updates while the upstream contradicted itself (each tick persists
+	// the transient error, with no Info); what matters is that every update carrying an Info
+	// carries the coherent block's facts, never the contradictory upstream's
 	cancel()
 	var published []*domain.TrackingData
 	for drained := false; !drained; {
