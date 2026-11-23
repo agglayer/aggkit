@@ -303,7 +303,10 @@ func (s *Service) serveProxied(
 				req.Method, req.URL.Path, bridgeURL)
 		}
 		if err := closeConnection(w); err != nil {
-			// not an HTTP/1 connection we can close: let the abort propagate as ReverseProxy meant
+			// Not a connection we can hijack: let the abort propagate as ReverseProxy meant. It does not
+			// happen on the shared server, which serves HTTP/1.1 only (plain TCP, no TLS nor h2c), so its
+			// connections can always be hijacked. Were it ever to serve HTTP/2, the recovery middleware
+			// would swallow this panic as well, and the stream would need resetting some other way
 			panic(rec)
 		}
 	}()
