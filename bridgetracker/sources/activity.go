@@ -540,12 +540,24 @@ func scanBridgeServiceOnce(
 		pageSize = bridgetracker.DefaultActivitySourceBridgeServicePageSize
 	}
 	getPage := func(page uint32) (*bridgeservicetypes.BridgesResult, error) {
-		return svc.GetBridges(ctx, client.GetBridgesParams{
+		res, err := svc.GetBridges(ctx, client.GetBridgesParams{
 			NetworkID:   networkID,
 			FromAddress: &fromAddress,
 			PageNumber:  &page,
 			PageSize:    &pageSize,
 		})
+		if errors.Is(err, client.ErrInvalidResponse) {
+			return nil, fmt.Errorf("network %d page %d: %w", networkID, page, err)
+		}
+		if err != nil {
+			return nil, err
+		}
+		// the client already rejects a null entry: checked again so a page is only ever read
+		// whole and valid, whatever produced it
+		if err := checkBridgesPage(networkID, page, res.Bridges); err != nil {
+			return nil, err
+		}
+		return res, nil
 	}
 
 	list := newBridgeListScan(networkID, known, logger)
@@ -601,6 +613,18 @@ func scanBridgeServiceOnce(
 	return bridgeServiceScan{
 		bridges: list.bridges, listed: list.listed, removed: list.removedEntries(), corrected: list.corrected,
 	}, complete, nil
+}
+
+// checkBridgesPage rejects a page of a network's bridge listing holding a null entry, so the scan
+// never reads, nor returns, a partially valid page
+func checkBridgesPage(networkID, page uint32, bridges []*bridgeservicetypes.BridgeResponse) error {
+	for i, b := range bridges {
+		if b == nil {
+			return fmt.Errorf("network %d page %d entry %d: %w: the bridge is null",
+				networkID, page, i, client.ErrInvalidResponse)
+		}
+	}
+	return nil
 }
 
 // bridgeListScan is the state of one pass over a network's bridge listing (see
@@ -743,9 +767,14 @@ func (s *ActivitySource) ClaimInfo(
 		return nil, err
 	}
 
+	globalIndex, ok := parseGlobalIndex(bridge.Bridge.GlobalIndex)
+	if !ok {
+		return nil, fmt.Errorf("bridge tx=%s has an invalid global index %q",
+			bridge.Bridge.TxHash, bridge.Bridge.GlobalIndex)
+	}
 	res, err := svc.GetClaims(ctx, client.GetClaimsParams{
 		NetworkID:   bridge.Bridge.DestinationNetwork,
-		GlobalIndex: bridge.Bridge.GlobalIndex.ToBigInt(),
+		GlobalIndex: globalIndex,
 	})
 	if isNotFound(err) {
 		return nil, nil
@@ -754,10 +783,17 @@ func (s *ActivitySource) ClaimInfo(
 		return nil, fmt.Errorf("fetching claim of global index %s on network %d: %w",
 			bridge.Bridge.GlobalIndex, bridge.Bridge.DestinationNetwork, err)
 	}
-	if res.Count == 0 || len(res.Claims) == 0 {
-		return nil, nil
+	claim, err := selectClaim(res, claimQuery{
+		globalIndex:        globalIndex,
+		networkID:          bridge.NetworkID,
+		destinationNetwork: bridge.Bridge.DestinationNetwork,
+		depositCount:       bridge.Bridge.DepositCount,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("claims of global index %s on network %d: %w",
+			bridge.Bridge.GlobalIndex, bridge.Bridge.DestinationNetwork, err)
 	}
-	return res.Claims[0], nil
+	return claim, nil
 }
 
 // IsReadyToClaim implements bridgetracker.ActivityClaimChecker: it resolves the L1 info tree
