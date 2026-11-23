@@ -300,6 +300,7 @@ func TestAllProxiesShareTheConfiguredTransport(t *testing.T) {
 	}
 	require.Equal(t, testStallTimeout, svc.transport.ResponseHeaderTimeout)
 	require.Equal(t, 7, svc.transport.MaxConnsPerHost)
+	require.Equal(t, 7, svc.transport.MaxIdleConnsPerHost, "the whole cap can be reused")
 	require.True(t, svc.transport.DisableCompression)
 
 	// the shared default transport is cloned, never changed
@@ -308,7 +309,13 @@ func TestAllProxiesShareTheConfiguredTransport(t *testing.T) {
 	require.NotSame(t, defaultTransport, svc.transport)
 	require.Zero(t, defaultTransport.ResponseHeaderTimeout)
 	require.Zero(t, defaultTransport.MaxConnsPerHost)
+	require.Zero(t, defaultTransport.MaxIdleConnsPerHost)
 	require.False(t, defaultTransport.DisableCompression)
+
+	// no cap: the idle pool per host keeps net/http's default
+	unlimited := newUpstreamTransport(Config{})
+	require.Zero(t, unlimited.MaxConnsPerHost)
+	require.Zero(t, unlimited.MaxIdleConnsPerHost)
 }
 
 func TestNewUpstreamTransportWhenDefaultTransportWasReplaced(t *testing.T) {

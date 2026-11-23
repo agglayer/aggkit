@@ -174,6 +174,12 @@ func newUpstreamTransport(cfg Config) *http.Transport {
 	}
 	transport.ResponseHeaderTimeout = cfg.UpstreamResponseHeaderTimeout.Duration
 	transport.MaxConnsPerHost = cfg.UpstreamMaxConnsPerHost
+	if cfg.UpstreamMaxConnsPerHost > 0 {
+		// net/http keeps only 2 idle connections per host by default: under a burst, every connection
+		// above that would be dialed and closed again for each request to what is a single, well-known
+		// backend. Keep as many as the cap allows (MaxIdleConns still bounds the idle total)
+		transport.MaxIdleConnsPerHost = cfg.UpstreamMaxConnsPerHost
+	}
 	// A reverse proxy relays the client's own Accept-Encoding and the response as is: left enabled,
 	// the transport would add gzip on its own and decompress whatever the backend answers, so the
 	// proxy would spend CPU and memory on a response whose size the backend alone controls

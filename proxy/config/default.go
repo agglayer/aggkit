@@ -61,7 +61,8 @@ UpstreamResponseHeaderTimeout = "30s"
 # [REST] WriteTimeout, and above the slowest legitimate bridge service response. 0 disables it.
 UpstreamRequestTimeout = "2m"
 # UpstreamMaxConnsPerHost: maximum connections (idle, dialing and in use) to each bridge service;
-# more requests wait for a free one, up to UpstreamRequestTimeout. 0 means no limit.
+# more requests wait for a free one, up to UpstreamRequestTimeout. Up to this many idle ones are kept for
+# reuse. 0 means no limit.
 UpstreamMaxConnsPerHost = 256
 
 [REST]
