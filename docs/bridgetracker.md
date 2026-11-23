@@ -411,6 +411,38 @@ one field that changes what the tracker's health endpoint reports:
 AutoRegisterNewNetworks = true
 ```
 
+## `[Proxy]` configuration
+
+The `PROXY` component forwards every `/bridge/v1/*` request to the bridge service of the network
+selected by `network_id`. It forwards **only `GET` and `HEAD`** (the bridge service API is
+read-only) and **no request body**: any other method is answered `405` with `Allow: GET, HEAD`, and
+a request carrying a body (also a chunked one) is answered `413` and its connection closed, both
+before any bridge service is contacted. (To tell an empty chunked body from a non-empty one, the
+proxy reads one byte of it: a chunked request whose first chunk never arrives is held until
+`[REST] ReadTimeout`.) A CORS preflight (`OPTIONS`) is answered by the CORS handler
+of the shared REST server, not forwarded. These two rules are not configurable; the shared REST
+server's `MaxRequestBodyBytes` still applies to every request as a backstop.
+
+The upstream side is bounded by these keys, so a bridge service that accepts a request and never
+answers cannot hold it (and its connections) for as long as the client stays connected:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `UpstreamResponseHeaderTimeout` | `30s` | How long to wait, once the request is sent to a bridge service, for its response headers. Its clock starts only once the request is written: connecting (and a TLS handshake) is bounded by `UpstreamRequestTimeout` and by the transport's own 30s dial timeout, not by this key. A request over it is answered `504`. Keep it **below** `[REST] WriteTimeout`, for the same reason as `UpstreamRequestTimeout` (the proxy warns at startup if it is not). `0` disables it. |
+| `UpstreamRequestTimeout` | `2m` | Total budget of a proxied request: connecting, response headers and the streaming of the response body, so it also covers a backend that stalls halfway through its answer. A request over it is answered `504`; if the response had already started (the status is sent), the connection is closed instead, so the client sees a truncated body as an error. Keep it **below** `[REST] WriteTimeout` (the server closes the connection at that point, before the proxy can answer; the proxy warns at startup if it is not below), and **above** the slowest legitimate bridge service response. `0` disables it. |
+| `UpstreamMaxConnsPerHost` | `256` | Maximum connections (idle, dialing and in use) to each bridge service. More requests wait for a free one, up to `UpstreamRequestTimeout`. Up to this many idle connections are kept for reuse (net/http keeps 2 otherwise). `0` means no limit. |
+
+All networks' bridge services share these limits. Responses are streamed, not buffered, and the proxy
+no longer adds `Accept-Encoding: gzip` on its own to the upstream request (a client's own
+`Accept-Encoding` is still relayed, and the response passed through as the bridge service sent it).
+
+```toml
+[Proxy]
+UpstreamResponseHeaderTimeout = "30s"
+UpstreamRequestTimeout = "2m"
+UpstreamMaxConnsPerHost = 256
+```
+
 ## Prometheus Metrics
 
 The tracker exposes (unless `[Prometheus] Enabled = false`, it is enabled by default) the following Prometheus metrics, refreshed every `[Tracker] MetricsSampleInterval` (default `15s`):
