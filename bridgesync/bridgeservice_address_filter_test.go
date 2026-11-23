@@ -52,6 +52,8 @@ var (
 	addressFilterMalformed = []string{
 		"not-an-address",
 		"0x123",
+		"0x", // the prefix alone
+		"0x12345678901234567890123456789012345678",    // hex, but 19 bytes instead of 20
 		"0xZZZZaF64b29273B7D567FCFc40544c014EEe9970",  // right length, not hex
 		"0xE34aaF64b29273B7D567FCFc40544c014EEe99700", // one char too long
 		" ", // whitespace is not "no filter"

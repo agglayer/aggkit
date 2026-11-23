@@ -927,6 +927,8 @@ func TestGetBridgesHandler(t *testing.T) {
 		invalidAddresses := []string{
 			"not-an-address",
 			"0x123",
+			"0x",
+			"0x12345678901234567890123456789012345678", // hex, but 19 bytes instead of 20
 			"0xZZZZaF64b29273B7D567FCFc40544c014EEe9970",
 			"0xE34aaF64b29273B7D567FCFc40544c014EEe99700",
 		}
