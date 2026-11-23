@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -189,7 +187,7 @@ type ActivityResponse struct {
 	// len(Bridges) — mirroring bridgeservice's BridgesResult/ClaimsResult "count" field
 	Count int `json:"count"`
 	// Revision is FromAddress's revision (see domain.ActivityRevisionReader), an opaque string
-	// that is a hash of the address's activity (e.g. "v1:" followed by hex), present in every
+	// that is a hash of the address's activity (e.g. "v2:" followed by hex), present in every
 	// response whatever filterBridges/page_number/page_size say: it covers all of the address's
 	// bridges, not just this page. It changes when a bridge is added or removed, changes
 	// claim_status or is corrected after a reorg — wherever it sits in the sorted result — and it
@@ -197,9 +195,9 @@ type ActivityResponse struct {
 	// same after a restart and on every instance holding the same data. A client polls it with a
 	// cheap request (page_size=1), reloads the pages it has loaded when it differs from the one
 	// it holds, and checks it again after the last page; compare it for equality only. Always
-	// serialized; the empty-activity value "v1:" followed by 64 zeros for an address with no
+	// serialized; the empty-activity value "v2:" followed by 64 zeros for an address with no
 	// bridges
-	Revision string `json:"revision" example:"v1:0000000000000000000000000000000000000000000000000000000000000000"`
+	Revision string `json:"revision" example:"v2:0000000000000000000000000000000000000000000000000000000000000000"`
 	// Warnings lists every network whose bridge service could not be scanned this call; absent
 	// when every configured network was scanned successfully. Bridges may be incomplete for the
 	// networks listed here, but is still valid for every other network
@@ -356,7 +354,10 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 		return http.StatusNotModified, nil, nil
 	}
 
-	entries, warnings, err := cmd.registry.GetActivity(c.Request.Context(), fromAddress, includeTracking, filter)
+	// the store applies the page itself: it returns only this page, in order,
+	// plus the total number of matching bridges
+	entries, total, warnings, err := cmd.registry.GetActivity(c.Request.Context(), fromAddress, includeTracking,
+		filter, domain.ActivityPage{PageNumber: pageNumber, PageSize: pageSize})
 	if err != nil {
 		return 0, nil, &types.ErrorData{Code: http.StatusInternalServerError, Message: aggkitcommon.RedactError(err)}
 	}
@@ -367,8 +368,8 @@ func (cmd *activityCommand) Execute(c *gin.Context) (int, any, *types.ErrorData)
 	}
 	return http.StatusOK, ActivityResponse{
 		FromAddress: fromAddress,
-		Bridges:     newActivityItems(paginateActivityEntries(entries, pageNumber, pageSize)),
-		Count:       len(entries),
+		Bridges:     newActivityItems(entries),
+		Count:       total,
 		Revision:    revision,
 		Warnings:    newActivityWarningItems(warnings),
 	}, nil
@@ -461,53 +462,6 @@ func parseActivityUintQuery(c *gin.Context, key string, defaultVal uint32) (uint
 		return 0, fmt.Errorf("invalid %s parameter: %w", key, err)
 	}
 	return uint32(val), nil
-}
-
-// paginateActivityEntries sorts entries most recent first (by CreatedAt, descending — see
-// domain.ActivityEntry.CreatedAt — then by global index, descending, so entries sharing a
-// CreatedAt keep the same relative order across requests) and returns the pageNumber-th page
-// of pageSize entries (both 1-based/positive, as validated by parseActivityPageParams). A
-// pageNumber past the end of entries returns an empty, non-nil slice rather than an error: the
-// caller already has the true total in ActivityResponse.Count to tell "no more pages" from "no
-// activity at all"
-func paginateActivityEntries(entries []*domain.ActivityEntry, pageNumber, pageSize uint32) []*domain.ActivityEntry {
-	sortActivityEntries(entries)
-
-	offset := uint64(pageNumber-1) * uint64(pageSize)
-	if offset >= uint64(len(entries)) {
-		return []*domain.ActivityEntry{}
-	}
-	end := min(offset+uint64(pageSize), uint64(len(entries)))
-	return entries[offset:end]
-}
-
-// sortActivityEntries sorts entries in place by CreatedAt descending, breaking ties by bridge
-// global index descending — compared numerically, since it can exceed 2^64 — so entries sharing
-// a CreatedAt have the same relative order on every request. Each global index is parsed once,
-// before sorting, rather than on every comparison
-func sortActivityEntries(entries []*domain.ActivityEntry) {
-	type keyed struct {
-		entry       *domain.ActivityEntry
-		globalIndex *big.Int
-	}
-	keyedEntries := make([]keyed, len(entries))
-	for i, e := range entries {
-		gi, ok := new(big.Int).SetString(string(e.Bridge.GlobalIndex), decimalBase)
-		if !ok {
-			gi = new(big.Int)
-		}
-		keyedEntries[i] = keyed{entry: e, globalIndex: gi}
-	}
-	sort.Slice(keyedEntries, func(i, j int) bool {
-		a, b := keyedEntries[i], keyedEntries[j]
-		if !a.entry.CreatedAt.Equal(b.entry.CreatedAt) {
-			return a.entry.CreatedAt.After(b.entry.CreatedAt)
-		}
-		return a.globalIndex.Cmp(b.globalIndex) > 0
-	})
-	for i, k := range keyedEntries {
-		entries[i] = k.entry
-	}
 }
 
 // newActivityItems builds the wire ActivityItems from the resolved activity entries
