@@ -71,6 +71,23 @@ func TestProxyReorgActivity(t *testing.T) {
 		require.Equal(t, s.item.Bridge.GlobalIndex, item.Bridge.GlobalIndex)
 		require.False(t, item.isFinalized(), "the new block is not final either")
 		require.NotEqual(t, s.before.Revision, after.Revision, "a bridge moved to another block must change the revision")
+
+		// finality is the one of the new block: once that block is final the same single entry is final,
+		// and that alone does not change the revision.
+		// NOTE: an unclaimed bridge in a final block reads finalized=true (open decision (b) of #1986: the
+		// assertion follows the current behaviour)
+		_, err := l2.MineUntilFinalized(ctx, moved.BlockNumber.Uint64())
+		require.NoError(t, err)
+		requireBridgeServed(ctx, t, s.bs, s.networkID, s.depositCount, moved, true)
+		final := s.waitForActivity(ctx, t, "the bridge is final at its new block",
+			func(a *proxyActivityResponse) bool {
+				item := a.find(s.networkID, s.depositCount)
+				return itemMatchesReceipt(item, moved) && item.isFinalized()
+			})
+		require.Equal(t, 1, final.Count, "a corrected bridge must stay a single entry: %s", final)
+		require.Equal(t, claimStatusPending, final.find(s.networkID, s.depositCount).ClaimStatus,
+			"with the aggsender held the bridge cannot become claimable")
+		require.Equal(t, after.Revision, final.Revision, "going from not final to final must not change the revision")
 	})
 
 	t.Run("A3 bridge replaced by a different one with the same deposit count", func(t *testing.T) {

@@ -25,7 +25,7 @@ Every scenario goes in the same order, so a failure points at the right componen
 
 | Test (CI group) | Scenarios |
 | --- | --- |
-| `TestProxyReorgActivity` (`proxy-reorg-activity`) | A1 bridge from network 1 reorged out; A2 same bridge re-included in another block; A3 bridge replaced by another one with the same deposit count; A4 L1 -> L2 bridge reorged out of L1; A5 bridge of network 2 seen only through the RPC fallback, reorged out; A6 final bridge, shallower reorg |
+| `TestProxyReorgActivity` (`proxy-reorg-activity`) | A1 bridge from network 1 reorged out; A2 same bridge re-included in another block, then final there; A3 bridge replaced by another one with the same deposit count; A4 L1 -> L2 bridge reorged out of L1; A5 bridge of network 2 seen only through the RPC fallback, reorged out; A6 final bridge, shallower reorg |
 | `TestProxyReorgClaims` (`proxy-reorg-claims`) | B1 claim reorged out, claimed again, final; B2 reorg removes the claim and the GER injection; B3 final claim stays `claimed_finalized` and is not rechecked; B4 claim re-included in another block; C1 reorg removes only the GER injection |
 | `TestProxyReorgTracker` (`proxy-reorg-tracker-revision`) | D1 origin transaction moves and then disappears while tracked; D2 `Claimed` goes back to `WaitingClaim` and a WebSocket subscriber is told, then the connection closes once the claim is final |
 | `TestProxyReorgRevision` (`proxy-reorg-tracker-revision`) | E1 `revision` unchanged by refreshes and by a not-final -> final transition; E2 and E3 a claim on page 2 reorged out while a client paginates; E4 same `revision` on `aggkit-proxy-001` and `-002`, and after a restart |
