@@ -16,9 +16,11 @@ import (
 	"testing/iotest"
 	"time"
 
+	"github.com/agglayer/aggkit/common/mocks"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -599,4 +601,53 @@ func TestServeProxiedOnlySwallowsAbortsItCanCloseTheConnectionOf(t *testing.T) {
 			svc.serveProxied(panicking(value), "http://backend", httptest.NewRecorder(), req)
 		})
 	}
+}
+
+// TestUpstreamErrorLogLevel pins that a client going away is logged at debug level (it is no
+// bridge service failure), while a real upstream failure, a cancellation the client did not cause
+// included, stays an error
+func TestUpstreamErrorLogLevel(t *testing.T) {
+	newProxy := func(t *testing.T) (*httputil.ReverseProxy, *mocks.Logger) {
+		t.Helper()
+		logger := mocks.NewLogger(t)
+		logger.EXPECT().Info(mock.Anything).Once()
+		svc := New(Config{Logger: logger}, fakeResolver{})
+		p, err := svc.proxyFor("http://backend")
+		require.NoError(t, err)
+		return p, logger
+	}
+	request := func(ctx context.Context) *http.Request {
+		return httptest.NewRequest(http.MethodGet, "/bridge/v1/bridges", nil).WithContext(ctx)
+	}
+
+	t.Run("the client went away", func(t *testing.T) {
+		p, logger := newProxy(t)
+		// format, method, path and backend URL
+		logger.EXPECT().Debugf(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Once()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		p.ErrorHandler(httptest.NewRecorder(), request(ctx), context.Canceled)
+	})
+
+	t.Run("the upstream request timed out", func(t *testing.T) {
+		p, logger := newProxy(t)
+		// format, method, path, backend URL, status and error
+		logger.EXPECT().Errorf(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything).Once()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+		defer cancel()
+		<-ctx.Done()
+		recorder := httptest.NewRecorder()
+		p.ErrorHandler(recorder, request(ctx), context.DeadlineExceeded)
+		require.Equal(t, http.StatusGatewayTimeout, recorder.Code)
+	})
+
+	t.Run("a cancellation the client did not cause", func(t *testing.T) {
+		p, logger := newProxy(t)
+		logger.EXPECT().Errorf(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything).Once()
+		recorder := httptest.NewRecorder()
+		p.ErrorHandler(recorder, request(context.Background()), context.Canceled)
+		require.Equal(t, http.StatusBadGateway, recorder.Code)
+	})
 }

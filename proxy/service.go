@@ -367,7 +367,12 @@ func (s *Service) proxyFor(bridgeURL string) (*httputil.ReverseProxy, error) {
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			status, body := upstreamErrorResponse(err)
-			s.logger.Errorf("forwarding %s %s to %s failed (%d): %v", r.Method, r.URL.Path, bridgeURL, status, err)
+			if errors.Is(err, context.Canceled) && errors.Is(r.Context().Err(), context.Canceled) {
+				// the client went away: not a bridge service failure, and nobody reads this answer
+				s.logger.Debugf("forwarding %s %s to %s cancelled: the client went away", r.Method, r.URL.Path, bridgeURL)
+			} else {
+				s.logger.Errorf("forwarding %s %s to %s failed (%d): %v", r.Method, r.URL.Path, bridgeURL, status, err)
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(status)
 			_, _ = w.Write([]byte(body))
