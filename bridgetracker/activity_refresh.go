@@ -49,14 +49,21 @@ func ActivityEntrySettled(entry *domain.ActivityEntry) bool {
 }
 
 // KnownBridgeOf is the domain.KnownBridge a store hands to ActivityBridgeScanner.BridgesFrom for
-// entry: where its bridge was last cached and whether that location is already final
+// entry, under entry.Key(): where its bridge was last cached, its block position and contents (see
+// domain.SameBridge) and whether that location is already final
 func KnownBridgeOf(entry *domain.ActivityEntry) domain.KnownBridge {
 	known := domain.KnownBridge{Source: entry.Source, NetworkID: entry.BridgeNetworkID, Final: entry.BridgeFinal}
-	if entry.Bridge != nil {
-		known.TxHash = entry.Bridge.TxHash
-		known.BlockNum = entry.Bridge.BlockNum
-		known.BlockTimestamp = entry.Bridge.BlockTimestamp
-		known.DepositCount = entry.Bridge.DepositCount
+	if b := entry.Bridge; b != nil {
+		known.TxHash = b.TxHash
+		known.BlockNum = b.BlockNum
+		known.BlockTimestamp = b.BlockTimestamp
+		known.DepositCount = b.DepositCount
+		known.BlockPos = b.BlockPos
+		known.GlobalIndex = b.GlobalIndex
+		known.BridgeHash = b.BridgeHash
+		known.Amount = b.Amount
+		known.DestinationNetwork = b.DestinationNetwork
+		known.DestinationAddress = b.DestinationAddress
 	}
 	return known
 }
@@ -70,19 +77,20 @@ type ActivityRefreshItem struct {
 }
 
 // ActivityRefreshPlan is what one refresh of an address does to its cached entries, computed by
-// PlanActivityRefresh: Removed are the keys (GlobalIndex) to forget, Items the entries to
-// (re)compute through ActivityEntryRefresher.Refresh and store
+// PlanActivityRefresh: Removed are the keys to forget, Items the entries to (re)compute through
+// ActivityEntryRefresher.Refresh and store (each under Item.Key())
 type ActivityRefreshPlan struct {
-	Removed []string
+	Removed []domain.BridgeKey
 	Items   []ActivityRefreshItem
 }
 
-// PlanActivityRefresh merges an address's cached entries (keyed by GlobalIndex) with the result
-// of one ActivityBridgeScanner.BridgesFrom call (found, invalidated; both nil when the scan
+// PlanActivityRefresh merges an address's cached entries (keyed by domain.BridgeKey) with the
+// result of one ActivityBridgeScanner.BridgesFrom call (found, invalidated; both nil when the scan
 // failed, so every cached entry is kept as it is and only rechecked):
 //   - a cached entry the scan returned again is refreshed with the scan's fresh data (a
-//     correction when its location changed: same key, so never a duplicate) — unless it is
-//     settled and still at the same location, which is left untouched;
+//     correction when its location or contents changed: same key, so never a duplicate) — unless
+//     it is settled and still the very same bridge event (see domain.SameBridge), which is left
+//     untouched;
 //   - a cached entry the scan invalidated, and did not return again, is removed — unless it is
 //     settled (a final entry cannot be reorged out, so it is never removed);
 //   - any other cached entry that is not settled is rechecked with its cached data;
@@ -90,33 +98,33 @@ type ActivityRefreshPlan struct {
 //
 // Cached entries come first, in key order, then new bridges in the order the scan returned them
 func PlanActivityRefresh(
-	cached map[string]*domain.ActivityEntry, found []*domain.ScannedBridge, invalidated []string,
+	cached map[domain.BridgeKey]*domain.ActivityEntry, found []*domain.ScannedBridge, invalidated []domain.BridgeKey,
 ) ActivityRefreshPlan {
-	foundByKey := make(map[string]*domain.ScannedBridge, len(found))
-	newKeys := make([]string, 0, len(found))
+	foundByKey := make(map[domain.BridgeKey]*domain.ScannedBridge, len(found))
+	newKeys := make([]domain.BridgeKey, 0, len(found))
 	for _, item := range found {
-		key := string(item.Bridge.GlobalIndex)
+		key := item.Key()
 		if _, dup := foundByKey[key]; !dup {
 			newKeys = append(newKeys, key)
 		}
 		foundByKey[key] = item // the last one reported wins
 	}
-	removed := make(map[string]struct{}, len(invalidated))
+	removed := make(map[domain.BridgeKey]struct{}, len(invalidated))
 	for _, key := range invalidated {
 		removed[key] = struct{}{}
 	}
 
 	var plan ActivityRefreshPlan
-	keys := make([]string, 0, len(cached))
+	keys := make([]domain.BridgeKey, 0, len(cached))
 	for key := range cached {
 		keys = append(keys, key)
 	}
-	slices.Sort(keys)
+	slices.SortFunc(keys, domain.BridgeKey.Compare)
 	for _, key := range keys {
 		existing := cached[key]
 		settled := ActivityEntrySettled(existing)
 		if fresh, ok := foundByKey[key]; ok {
-			if settled && domain.SameBridgeLocation(existing.Bridge, fresh.Bridge) {
+			if settled && domain.SameBridge(existing.Bridge, fresh.Bridge) {
 				continue
 			}
 			plan.Items = append(plan.Items, ActivityRefreshItem{Item: fresh, Existing: existing})
@@ -156,15 +164,19 @@ func BlockTimeOrNow(ts uint64, now time.Time) time.Time {
 }
 
 // Refresh (re)computes the state of item, stamped at now. existing is the entry currently cached
-// for the same GlobalIndex, or nil if it has never been seen before.
+// for the same domain.BridgeKey, or nil if it has never been seen before. Nothing of existing (its
+// creation time, finality or claim state) is carried over unless item is the very same bridge
+// event (see domain.SameBridge): a different location or different contents under the same key —
+// a reorg, a reused deposit count or a contradictory source — are rechecked from scratch, so a
+// replacement never inherits the claim of the bridge it replaces.
 //
 //   - CreatedAt is carried forward from existing, or item.Bridge's own block timestamp (falling
 //     back to now while the bridge service has not populated it, see BlockTimeOrNow) for a new
-//     bridge or one a reorg moved to another block/tx. UpdatedAt is always now: it reports the
-//     last time the network was checked, not the last time the entry changed
-//     (agglayer/aggkit#1840).
-//   - BridgeFinal: false for a bridge only found via RPC; otherwise kept once seen final at the
-//     same location, else resolved through the finality resolver with the block_finalized the
+//     bridge or one that is no longer the same event (another block/tx, position or contents).
+//     UpdatedAt is always now: it reports the last time the network was checked, not the last
+//     time the entry changed (agglayer/aggkit#1840).
+//   - BridgeFinal: false for a bridge only found via RPC; otherwise kept once seen final for the
+//     same bridge event, else resolved through the finality resolver with the block_finalized the
 //     bridge service served for it.
 //   - Claim: isClaimed() is called on every refresh until the claim is final — the claim can be
 //     reorged out, sending the entry back to "readyToClaim" or "pending". Once claimed, the
@@ -181,7 +193,7 @@ func (r *ActivityEntryRefresher) Refresh(
 	ctx context.Context, item *domain.ScannedBridge, existing *domain.ActivityEntry, includeTracking bool,
 	now time.Time,
 ) *domain.ActivityEntry {
-	sameBridge := existing != nil && domain.SameBridgeLocation(existing.Bridge, item.Bridge)
+	sameBridge := existing != nil && domain.SameBridge(existing.Bridge, item.Bridge)
 	entry := &domain.ActivityEntry{
 		Bridge: item.Bridge, BridgeNetworkID: item.NetworkID, Source: item.Source, UpdatedAt: now,
 	}

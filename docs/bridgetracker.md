@@ -28,6 +28,30 @@ does not match the resolved bridge — including the case where the *only* signa
 the receipt fail the address check — falls through to the same permanent `ErrBridgeTxNotABridge`
 outcome as a receipt with no matching log at all, since neither can ever change on retry.
 
+The accepted `BridgeEvent` log must also be coherent with the rest of the upstream's answer, or
+`FindBridge` fails closed with `ErrInvalidUpstreamData` and records nothing: the log's block hash
+and number must be its receipt's, its tx hash must be the tracked tx, and the header the RPC
+reports at the receipt's block number (the same lookup that provides `block_timestamp`) must have
+that number and the receipt's block hash. The hash compared is the one the RPC client reports, i.e.
+the RPC's own `hash` field when `HashFromJSON` is enabled (the default of the proxy), so chains with
+non-standard headers are not rejected. Unlike `ErrBridgeTxNotABridge` this error is transient: a
+defective or out-of-sync endpoint, or a reorg between the calls, is retried until the upstream
+answers coherently or `UnresolvedTimeout` elapses.
+Two RPC client settings can make the check fail on every retry, so the engine gives up on the
+affected bridges after `UnresolvedTimeout` instead of resolving them:
+
+- With `HashFromJSON = false` (the generic default in [common_config.md](common_config.md)) the
+  compared hash is recomputed from the RLP header. On a chain whose node-reported hash differs from
+  that, no header ever matches its receipt, so no bridge on that chain resolves. This is why the
+  proxy defaults `HashFromJSON` to `true`.
+- With `SupportNonEthereumWithMaxGapsInBlocks > 0`, if the node answers the receipt's height as
+  missing, the client serves the nearest previous block instead, whose number differs from the
+  receipt's. That bridge is refused rather than stamped with another block's timestamp: without the
+  node serving the receipt's block by number it cannot be proven canonical.
+
+A fully coherent lying endpoint is out of scope: this is a defense against inconsistent data, not a
+substitute for trusting the configured RPC.
+
 | Step | Meaning |
 | --- | --- |
 | `WaitingGERUpdate` | L1-originated bridge: the L1 Global Exit Root has not been updated with this deposit yet. |
@@ -385,6 +409,38 @@ one field that changes what the tracker's health endpoint reports:
 ```toml
 [BridgeServiceFinder]
 AutoRegisterNewNetworks = true
+```
+
+## `[Proxy]` configuration
+
+The `PROXY` component forwards every `/bridge/v1/*` request to the bridge service of the network
+selected by `network_id`. It forwards **only `GET` and `HEAD`** (the bridge service API is
+read-only) and **no request body**: any other method is answered `405` with `Allow: GET, HEAD`, and
+a request carrying a body (also a chunked one) is answered `413` and its connection closed, both
+before any bridge service is contacted. (To tell an empty chunked body from a non-empty one, the
+proxy reads one byte of it: a chunked request whose first chunk never arrives is held until
+`[REST] ReadTimeout`.) A CORS preflight (`OPTIONS`) is answered by the CORS handler
+of the shared REST server, not forwarded. These two rules are not configurable; the shared REST
+server's `MaxRequestBodyBytes` still applies to every request as a backstop.
+
+The upstream side is bounded by these keys, so a bridge service that accepts a request and never
+answers cannot hold it (and its connections) for as long as the client stays connected:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `UpstreamResponseHeaderTimeout` | `30s` | How long to wait, once the request is sent to a bridge service, for its response headers. Its clock starts only once the request is written: connecting (and a TLS handshake) is bounded by `UpstreamRequestTimeout` and by the transport's own 30s dial timeout, not by this key. A request over it is answered `504`. Keep it **below** `[REST] WriteTimeout`, for the same reason as `UpstreamRequestTimeout` (the proxy warns at startup if it is not). `0` disables it. |
+| `UpstreamRequestTimeout` | `2m` | Total budget of a proxied request: connecting, response headers and the streaming of the response body, so it also covers a backend that stalls halfway through its answer. A request over it is answered `504`; if the response had already started (the status is sent), the connection is closed instead, so the client sees a truncated body as an error. Keep it **below** `[REST] WriteTimeout` (the server closes the connection at that point, before the proxy can answer; the proxy warns at startup if it is not below), and **above** the slowest legitimate bridge service response. `0` disables it. |
+| `UpstreamMaxConnsPerHost` | `256` | Maximum connections (idle, dialing and in use) to each bridge service. More requests wait for a free one, up to `UpstreamRequestTimeout`. Up to this many idle connections are kept for reuse (net/http keeps 2 otherwise). `0` means no limit. |
+
+All networks' bridge services share these limits. Responses are streamed, not buffered, and the proxy
+no longer adds `Accept-Encoding: gzip` on its own to the upstream request (a client's own
+`Accept-Encoding` is still relayed, and the response passed through as the bridge service sent it).
+
+```toml
+[Proxy]
+UpstreamResponseHeaderTimeout = "30s"
+UpstreamRequestTimeout = "2m"
+UpstreamMaxConnsPerHost = 256
 ```
 
 ## Prometheus Metrics

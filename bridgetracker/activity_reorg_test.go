@@ -63,29 +63,32 @@ func TestPlanActivityRefresh(t *testing.T) {
 		b.BlockNum = 999
 		return scannedBridge(b, testScannedNetworkID)
 	}
-	cached := map[string]*domain.ActivityEntry{
-		"1": entry(1, false, false), // non-final, not returned: rechecked from cache
-		"2": entry(2, false, false), // non-final, invalidated: removed
-		"3": entry(3, true, true),   // settled, invalidated by mistake: never removed, untouched
-		"4": entry(4, true, true),   // settled, returned at the same location: untouched
-		"5": entry(5, true, true),   // settled, returned elsewhere (deep reorg): refreshed
-		"6": entry(6, false, false), // invalidated but returned again: refreshed with the fresh data
+	key := func(gi int64) domain.BridgeKey {
+		return domain.BridgeKey{NetworkID: testScannedNetworkID, DepositCount: uint32(gi)}
+	}
+	cached := map[domain.BridgeKey]*domain.ActivityEntry{
+		key(1): entry(1, false, false), // non-final, not returned: rechecked from cache
+		key(2): entry(2, false, false), // non-final, invalidated: removed
+		key(3): entry(3, true, true),   // settled, invalidated by mistake: never removed, untouched
+		key(4): entry(4, true, true),   // settled, returned at the same location: untouched
+		key(5): entry(5, true, true),   // settled, returned elsewhere (deep reorg): refreshed
+		key(6): entry(6, false, false), // invalidated but returned again: refreshed with the fresh data
 	}
 	found := []*domain.ScannedBridge{
 		testScannedBridge(7), testScannedBridge(4), movedBridge(5), movedBridge(6), testScannedBridge(7),
 	}
 
-	plan := PlanActivityRefresh(cached, found, []string{"2", "3", "6"})
+	plan := PlanActivityRefresh(cached, found, []domain.BridgeKey{key(2), key(3), key(6)})
 
-	require.Equal(t, []string{"2"}, plan.Removed)
+	require.Equal(t, []domain.BridgeKey{key(2)}, plan.Removed)
 	keys := make([]string, 0, len(plan.Items))
 	for _, item := range plan.Items {
 		keys = append(keys, string(item.Item.Bridge.GlobalIndex))
 	}
 	require.Equal(t, []string{"1", "5", "6", "7"}, keys, "cached first in key order, then new ones once")
-	require.Same(t, cached["1"].Bridge, plan.Items[0].Item.Bridge, "rechecked with its cached data")
+	require.Same(t, cached[key(1)].Bridge, plan.Items[0].Item.Bridge, "rechecked with its cached data")
 	require.Equal(t, uint64(999), plan.Items[1].Item.Bridge.BlockNum)
-	require.Same(t, cached["5"], plan.Items[1].Existing)
+	require.Same(t, cached[key(5)], plan.Items[1].Existing)
 	require.Equal(t, uint64(999), plan.Items[2].Item.Bridge.BlockNum)
 	require.Nil(t, plan.Items[3].Existing)
 }

@@ -29,7 +29,9 @@ const DefaultMaxActivityAddresses = 100_000
 // the warnings from its last background refresh, and whoever is currently blocked in
 // RegisterAndAwait waiting for that refresh to complete.
 type activityAddrCache struct {
-	entries map[string]*domain.ActivityEntry // key: string(bridge.GlobalIndex)
+	// entries is keyed by domain.BridgeKey (emitting network + deposit count), never by the
+	// bridge's GlobalIndex, which two different bridges can share (see domain.BridgeKey)
+	entries map[domain.BridgeKey]*domain.ActivityEntry
 	// lastAccess is when this address was last requested (RegisterAndAwait/GetActivity);
 	// addresses idle past idleTimeout are forgotten (see ActivityCache.PruneIdle, the same
 	// lastAccess/PruneIdle idea memoryRegistry uses for tracking, see registry.go's bridgeEntry)
@@ -130,7 +132,7 @@ func (a *ActivityCache) RegisterAndAwait(
 			return false, domain.ErrActivityRegistryFull
 		}
 		cache = &activityAddrCache{
-			entries: make(map[string]*domain.ActivityEntry),
+			entries: make(map[domain.BridgeKey]*domain.ActivityEntry),
 			waiters: make(map[chan struct{}]struct{}),
 		}
 		a.byAddr[fromAddress] = cache
@@ -235,8 +237,8 @@ func (a *ActivityCache) RefreshAddress(ctx context.Context, fromAddress common.A
 		return nil
 	}
 	includeTracking := cache.wantsTracking
-	known := make(map[string]domain.KnownBridge, len(cache.entries))
-	cached := make(map[string]*domain.ActivityEntry, len(cache.entries))
+	known := make(map[domain.BridgeKey]domain.KnownBridge, len(cache.entries))
+	cached := make(map[domain.BridgeKey]*domain.ActivityEntry, len(cache.entries))
 	for key, entry := range cache.entries {
 		known[key] = KnownBridgeOf(entry)
 		cached[key] = entry
@@ -259,7 +261,7 @@ func (a *ActivityCache) RefreshAddress(ctx context.Context, fromAddress common.A
 	for _, work := range plan.Items {
 		entry := a.refresher.Refresh(ctx, work.Item, work.Existing, includeTracking, a.now())
 		a.mu.Lock()
-		cache.storeEntry(string(work.Item.Bridge.GlobalIndex), entry)
+		cache.storeEntry(work.Item.Key(), entry)
 		a.mu.Unlock()
 	}
 
@@ -278,7 +280,7 @@ func (a *ActivityCache) RefreshAddress(ctx context.Context, fromAddress common.A
 
 // storeEntry stores entry under key, keeping revision in step: the hash of the entry it replaces
 // (if any) is removed and entry's is added. Callers must hold ActivityCache.mu
-func (c *activityAddrCache) storeEntry(key string, entry *domain.ActivityEntry) {
+func (c *activityAddrCache) storeEntry(key domain.BridgeKey, entry *domain.ActivityEntry) {
 	if old, ok := c.entries[key]; ok {
 		c.revision = c.revision.Remove(domain.HashActivityEntry(old))
 	}
@@ -288,7 +290,7 @@ func (c *activityAddrCache) storeEntry(key string, entry *domain.ActivityEntry) 
 
 // removeEntry forgets the entry under key, if any, taking its hash out of revision. Callers must
 // hold ActivityCache.mu
-func (c *activityAddrCache) removeEntry(key string) {
+func (c *activityAddrCache) removeEntry(key domain.BridgeKey) {
 	old, ok := c.entries[key]
 	if !ok {
 		return
@@ -317,34 +319,41 @@ func (a *ActivityCache) finishRefresh(cache *activityAddrCache) {
 	cache.waiters = make(map[chan struct{}]struct{})
 }
 
-// GetActivity implements domain.ActivityQuerier: a cache-only read of whatever the last
-// background refresh (see RefreshAddress) computed for fromAddress, filtered per filter.
-// includeTracking additionally marks fromAddress as wanting tracking enrichment for future
-// refreshes (see activityAddrCache.wantsTracking) — it does not itself fetch anything. An
-// address with no cache yet (never registered, or registered but not refreshed even once)
-// returns an empty result, not an error
+// GetActivity implements domain.ActivityQuerier: a cache-only read of page of whatever the last
+// background refresh (see RefreshAddress) computed for fromAddress, filtered per filter, plus the
+// total number of matching entries. The page is picked with a bounded selection
+// (domain.ActivityPageSelector) instead of copying and sorting every entry. includeTracking
+// additionally marks fromAddress as wanting tracking enrichment for future refreshes (see
+// activityAddrCache.wantsTracking) — it does not itself fetch anything. An address with no cache
+// yet (never registered, or registered but not refreshed even once) returns an empty result, not
+// an error; a cancelled ctx returns its error
 func (a *ActivityCache) GetActivity(
-	_ context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
-) ([]*domain.ActivityEntry, []domain.ActivityWarning, error) {
+	ctx context.Context, fromAddress common.Address, includeTracking bool, filter types.ActivityFilter,
+	page domain.ActivityPage,
+) ([]*domain.ActivityEntry, int, []domain.ActivityWarning, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, 0, nil, err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	cache, ok := a.byAddr[fromAddress]
 	if !ok {
-		return nil, nil, nil
+		return []*domain.ActivityEntry{}, 0, nil, nil
 	}
 	cache.lastAccess = a.now()
 	if includeTracking {
 		cache.wantsTracking = true
 	}
 
-	out := make([]*domain.ActivityEntry, 0, len(cache.entries))
+	selector := domain.NewActivityPageSelector(page, len(cache.entries))
 	for _, entry := range cache.entries {
 		if MatchesActivityFilter(entry, filter) {
-			out = append(out, entry)
+			selector.Offer(entry)
 		}
 	}
-	return out, cache.warnings, nil
+	entries, total := selector.Page()
+	return entries, total, cache.warnings, nil
 }
 
 // GetActivityRevision implements domain.ActivityRevisionReader: the address's current revision
