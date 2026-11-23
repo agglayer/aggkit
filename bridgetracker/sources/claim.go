@@ -134,7 +134,8 @@ func (q claimQuery) isLegacyZkEVMBridge() bool {
 }
 
 // parseGlobalIndex reads a global index the way bridgeservicetypes.BigIntString.ToBigInt does
-// (decimal, or 0x-prefixed hex), but reports whether the value is a valid global index at all:
+// (big.Int.SetString with base 0: decimal, or a 0x, 0o, 0b or leading-zero octal prefix), but
+// reports whether the value is a valid global index at all:
 // ToBigInt reads an invalid one as zero, which would match the bare deposit count 0 of a legacy
 // bridge, and a global index is never negative
 func parseGlobalIndex(globalIndex bridgeservicetypes.BigIntString) (*big.Int, bool) {
