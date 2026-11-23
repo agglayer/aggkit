@@ -104,8 +104,9 @@ func parseUintQuery[T UintParam](c *gin.Context, key string, mandatory bool, def
 // An absent or empty parameter returns "", meaning that no filter was requested.
 // A non-empty value that is not a hex address returns an error, so that a malformed
 // filter is rejected instead of being silently dropped.
-// bridgesync.GetBridgesPaged applies the same check to its fromAddress argument, so a caller other
-// than the handlers still cannot get an unfiltered page back: keep both checks in step.
+// The bridgesync syncers apply the same check to their address arguments (GetBridgesPaged to
+// fromAddress, GetTokenMappings to originTokenAddress), so a caller other than the handlers still
+// cannot get an unfiltered page back: keep both checks in step.
 func parseOptionalAddressQuery(c *gin.Context, key string) (string, error) {
 	paramStr := c.Query(key)
 	if paramStr != "" && !common.IsHexAddress(paramStr) {

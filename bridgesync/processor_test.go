@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -1948,6 +1949,74 @@ func TestProcessor_ErrorPathLogging(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, mappings, 1)
 		require.Equal(t, 1, count)
+	})
+}
+
+// TestProcessor_GetTokenMappings_OriginTokenAddress checks that a non-empty origin token address that
+// is not a hex address is an error and never the unfiltered page, mirroring GetBridgesPaged.
+func TestProcessor_GetTokenMappings_OriginTokenAddress(t *testing.T) {
+	t.Parallel()
+
+	p := createTestProcessor(t, "GetTokenMappingsOriginTokenAddress")
+	testBlock := sync.Block{
+		Num:  1,
+		Hash: common.HexToHash("0x1"),
+		Events: []any{
+			Event{TokenMapping: createTestTokenMapping(1, 0)},
+		},
+	}
+	require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
+	storedAddress := createTestTokenMapping(1, 0).OriginTokenAddress
+
+	for _, malformed := range []string{
+		"not-an-address",
+		"0x123",
+		"0x",
+		"0x12345678901234567890123456789012345678",    // hex, but 19 bytes instead of 20
+		"0xZZZZ567890123456789012345678901234567890",  // right length, not hex
+		"0x12345678901234567890123456789012345678900", // one char too long
+		" ",
+		storedAddress.Hex() + " ",
+		"'; DROP TABLE token_mapping; --",
+		storedAddress.Hex() + "' OR 1",
+	} {
+		t.Run(fmt.Sprintf("malformed %q", malformed), func(t *testing.T) {
+			t.Parallel()
+
+			mappings, count, err := p.GetTokenMappings(context.Background(), 1, 5, malformed)
+			require.ErrorContains(t, err, "invalid origin token address")
+			require.Nil(t, mappings)
+			require.Zero(t, count)
+		})
+	}
+
+	t.Run("empty address is the no-filter case", func(t *testing.T) {
+		t.Parallel()
+
+		mappings, count, err := p.GetTokenMappings(context.Background(), 1, 5, "")
+		require.NoError(t, err)
+		require.Len(t, mappings, 1)
+		require.Equal(t, 1, count)
+	})
+
+	t.Run("valid address filters, whatever its case", func(t *testing.T) {
+		t.Parallel()
+
+		for _, address := range []string{storedAddress.Hex(), strings.ToLower(storedAddress.Hex())} {
+			mappings, count, err := p.GetTokenMappings(context.Background(), 1, 5, address)
+			require.NoError(t, err)
+			require.Len(t, mappings, 1)
+			require.Equal(t, 1, count)
+		}
+	})
+
+	t.Run("valid address that matches nothing is an empty result", func(t *testing.T) {
+		t.Parallel()
+
+		mappings, count, err := p.GetTokenMappings(context.Background(), 1, 5, common.HexToAddress("0x1111").Hex())
+		require.NoError(t, err)
+		require.Empty(t, mappings)
+		require.Zero(t, count)
 	})
 }
 
