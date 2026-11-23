@@ -25,8 +25,8 @@ var mig004 string
 //go:embed bridgetracker0005.sql
 var mig005 string
 
-//go:embed bridgetracker0006.sql
-var mig006 string
+//go:embed bridgetracker0009.sql
+var mig009 string
 
 // all lists every bridgetracker migration, in the order they apply
 func all() []types.Migration {
@@ -36,7 +36,7 @@ func all() []types.Migration {
 		{ID: "bridgetracker0003", SQL: mig003},
 		{ID: "bridgetracker0004", SQL: mig004},
 		{ID: "bridgetracker0005", SQL: mig005},
-		{ID: "bridgetracker0006", SQL: mig006},
+		{ID: "bridgetracker0009", SQL: mig009},
 	}
 }
 

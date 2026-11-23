@@ -62,7 +62,7 @@ type BlockHashVerifier interface {
 }
 
 // txOnlyLogIndex is the tracked_bridge.log_index of a tx-only TrackingID (no LogSelector set,
-// see domain.LogSelector) — and of every row written before bridgetracker0006 added the column
+// see domain.LogSelector) — and of every row written before bridgetracker0009 added the column
 const txOnlyLogIndex int64 = -1
 
 // logIndexColumn is the tracked_bridge.log_index id is stored under: its selected log index, or
@@ -76,7 +76,7 @@ func logIndexColumn(id domain.TrackingID) int64 {
 }
 
 // trackedBridgeRow is the tracked_bridge row shape (see migrations/bridgetracker0001.sql,
-// bridgetracker0006.sql), mapped through meddler like the rest of the repo's SQLite storage
+// bridgetracker0009.sql), mapped through meddler like the rest of the repo's SQLite storage
 type trackedBridgeRow struct {
 	NetworkID         uint32      `meddler:"network_id"`
 	TxHash            common.Hash `meddler:"tx_hash,hash"`

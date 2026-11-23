@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestMultiBridgeTxMigratedTxOnlyRowServedThroughAPI pins bridgetracker0006 end to end: a
+// TestMultiBridgeTxMigratedTxOnlyRowServedThroughAPI pins bridgetracker0009 end to end: a
 // tracked_bridge row an instance at bridgetracker0005 (one row per tx) persisted for a resolved
 // bridge survives the upgrade as a tx-only row (log_index -1). The same tx-only request is still
 // served it as-is, through the REST API and without resolving the tx again, while the same tx's
@@ -39,7 +39,7 @@ func TestMultiBridgeTxMigratedTxOnlyRowServedThroughAPI(t *testing.T) {
 			&updatedAt, &lastAccess, &terminalSince, &data))
 	require.NoError(t, sourceDB.Close())
 
-	// a DB at bridgetracker0005 holding that row, under the pre-0006 key (network_id, tx_hash)
+	// a DB at bridgetracker0005 holding that row, under the pre-0009 key (network_id, tx_hash)
 	dbPath := filepath.Join(t.TempDir(), "tracker.sqlite")
 	require.NoError(t, aggkitdb.RunMigrations(dbPath, migrations.GetUpTo("bridgetracker0005")))
 	oldDB, err := aggkitdb.NewSQLiteDB(dbPath)
@@ -53,7 +53,7 @@ func TestMultiBridgeTxMigratedTxOnlyRowServedThroughAPI(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, oldDB.Close())
 
-	// the upgraded instance applies bridgetracker0006; its JSON-RPC client has no expectations,
+	// the upgraded instance applies bridgetracker0009; its JSON-RPC client has no expectations,
 	// so the migrated row must be served without resolving the tx again
 	tracker := newTrackerUnderTest(t, dbPath, nil)
 	txOnly := tracker.get(t, nil)

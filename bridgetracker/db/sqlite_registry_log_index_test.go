@@ -82,11 +82,11 @@ func TestSQLiteRegistryTracksEachBridgeEventOfATx(t *testing.T) {
 	require.Equal(t, 2, r.GetNumTracker())
 }
 
-// TestSQLiteRegistryMigration0006KeepsTxOnlyRows pins bridgetracker0006: a tracked_bridge row
+// TestSQLiteRegistryMigration0009KeepsTxOnlyRows pins bridgetracker0009: a tracked_bridge row
 // written before log_index existed survives the table rebuild as a tx-only row (log_index -1),
 // still served to the same tx-only request, while the same tx's events can now be registered
 // next to it. Rolling the migration back keeps the tx-only rows and drops the per-event ones
-func TestSQLiteRegistryMigration0006KeepsTxOnlyRows(t *testing.T) {
+func TestSQLiteRegistryMigration0009KeepsTxOnlyRows(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "bridgetracker_test.sqlite")
 	logger := log.WithFields("module", "bridgetracker_test")
 
@@ -107,7 +107,7 @@ func TestSQLiteRegistryMigration0006KeepsTxOnlyRows(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, oldDB.Close())
 
-	// NewSQLiteRegistry applies the remaining migration, bridgetracker0006
+	// NewSQLiteRegistry applies the remaining migrations, bridgetracker0009 among them
 	registry, err := NewSQLiteRegistry(dbPath, 0, logger, nil)
 	require.NoError(t, err)
 	r, ok := registry.(*sqliteRegistry)
@@ -133,7 +133,7 @@ func TestSQLiteRegistryMigration0006KeepsTxOnlyRows(t *testing.T) {
 	require.Equal(t, 2, r.GetNumTracker())
 	require.NoError(t, r.Close())
 
-	require.NoError(t, aggkitdb.RunMigrationsDown(dbPath, migrations.GetUpTo("bridgetracker0006"), nil, 1))
+	require.NoError(t, aggkitdb.RunMigrationsDown(dbPath, migrations.GetUpTo("bridgetracker0009"), nil, 1))
 	downDB, err := aggkitdb.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
 	defer downDB.Close()
