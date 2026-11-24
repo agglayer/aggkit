@@ -713,3 +713,54 @@ func TestRegistrySubscribeRefusesNewEntryPastCapacity(t *testing.T) {
 	require.Nil(t, unsubscribe)
 	require.Equal(t, 1, r.GetNumTracker())
 }
+
+// TestRegistryTracksEachBridgeEventOfATx pins per-event tracking on the in-memory adapter: the
+// tx-only id and one id per BridgeEvent log of the same tx are independent entries — a publish,
+// an error or a Forget on one never reaches the others. TestSQLiteRegistryTracksEachBridgeEventOfATx
+// pins the same behavior on the SQLite adapter
+func TestRegistryTracksEachBridgeEventOfATx(t *testing.T) {
+	r := newMemoryRegistry(0)
+	txOnly := TrackingID{NetworkID: 1, TxHash: testHash}
+	first := TrackingID{NetworkID: 1, TxHash: testHash, Log: domain.LogIndex(3)}
+	second := TrackingID{NetworkID: 1, TxHash: testHash, Log: domain.LogIndex(9)}
+	for _, id := range []TrackingID{txOnly, first, second} {
+		_, err := r.Get(id, true)
+		require.NoError(t, err)
+	}
+	require.Equal(t, 3, r.GetNumTracker())
+
+	firstInfo, secondInfo := testBridgeInfo(), testBridgeInfo()
+	firstInfo.LogIndex, firstInfo.DepositCount = 3, 7
+	secondInfo.LogIndex, secondInfo.DepositCount = 9, 8
+	require.NoError(t, publishStatus(r, first, firstInfo, testAllSteps(false)))
+	require.NoError(t, publishStatus(r, second, secondInfo, testAllSteps(false)))
+	require.NoError(t, publishError(r, txOnly, &types.ErrorStep{ErrorType: types.StepErrorPermanent}))
+
+	tracking, err := r.Get(first, false)
+	require.NoError(t, err)
+	require.Equal(t, first, tracking.ID())
+	require.Equal(t, uint32(7), tracking.Info().DepositCount)
+	tracking, err = r.Get(second, false)
+	require.NoError(t, err)
+	require.Equal(t, second, tracking.ID())
+	require.Equal(t, uint32(8), tracking.Info().DepositCount)
+	tracking, err = r.Get(txOnly, false)
+	require.NoError(t, err)
+	require.True(t, tracking.Failed(), "the tx-only id fails on its own, its events keep running")
+
+	active, err := r.GetTrackerActives(nil)
+	require.NoError(t, err)
+	activeIDs := make([]TrackingID, 0, len(active))
+	for _, a := range active {
+		activeIDs = append(activeIDs, a.ID())
+	}
+	require.ElementsMatch(t, []TrackingID{first, second}, activeIDs)
+
+	r.Forget(first)
+	_, err = r.Get(first, false)
+	require.ErrorIs(t, err, domain.ErrTrackingNotFound)
+	_, err = r.Get(second, false)
+	require.NoError(t, err, "forgetting one event of the tx must not forget the others")
+	_, err = r.Get(txOnly, false)
+	require.NoError(t, err)
+}

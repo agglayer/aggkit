@@ -17,3 +17,4 @@ gen bridgeeventimpostor
 gen mintableerc20
 gen rollupmanagermock
 gen aggchainrollupmock
+gen multibridgerouter

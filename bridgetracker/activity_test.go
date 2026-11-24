@@ -293,8 +293,53 @@ func TestActivityCache_IncludeTrackingRegistersUnclaimedBridge(t *testing.T) {
 	require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
 	require.NotNil(t, entries[0].Tracking)
 
-	wantID := domain.TrackingID{NetworkID: testScannedNetworkID, TxHash: common.HexToHash(string(bridge.TxHash))}
+	wantID := domain.TrackingID{
+		NetworkID: testScannedNetworkID, TxHash: common.HexToHash(string(bridge.TxHash)),
+		Log: domain.LogIndex(uint32(bridge.BlockPos)),
+	}
 	require.Equal(t, wantID, entries[0].Tracking.ID())
+}
+
+// TestActivityCache_SameTxBridgesTrackedIndependently pins per-event tracking: two bridges
+// created by the same tx (different global indexes and log positions) are registered with the
+// tracker under their own event identity, so each gets its own snapshot instead of both sharing
+// the tx's
+func TestActivityCache_SameTxBridgesTrackedIndependently(t *testing.T) {
+	first, second := testBridge(1), testBridge(2)
+	first.BlockPos, second.BlockPos = 3, 9
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{
+		scannedBridge(first, testScannedNetworkID), scannedBridge(second, testScannedNetworkID),
+	}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
+	cache := newTestActivityCache(scanner, claims)
+	supervised := cache.refresher.supervised
+
+	// the tracker already resolved the second bridge only, to readyToClaim
+	secondID := domain.BridgeTrackingID(testScannedNetworkID, second)
+	_, err := supervised.Get(secondID, true)
+	require.NoError(t, err)
+	require.NoError(t, supervised.UpdateTracking(secondID,
+		domain.TrackingBridgeTx{Info: &BridgeInfo{NetworkID: testScannedNetworkID, LogIndex: 9}},
+		[]BridgeStepPath{
+			{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress},
+			{Step: types.StepClaimed, Status: types.StepStatusPending},
+		}))
+
+	entries, _, err := refreshAndGet(t, cache, testFromAddress, true, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	byPos := make(map[uint64]*domain.ActivityEntry, len(entries))
+	for _, entry := range entries {
+		require.NotNil(t, entry.Tracking)
+		byPos[entry.Bridge.BlockPos] = entry
+	}
+	require.Equal(t, domain.LogIndex(3), byPos[3].Tracking.ID().Log)
+	require.Equal(t, domain.LogIndex(9), byPos[9].Tracking.ID().Log)
+	require.Nil(t, byPos[3].Tracking.Info(), "the first bridge must not inherit the second one's facts")
+	require.Equal(t, types.TrackerClaimStatusPending, byPos[3].TrackerClaimStatus)
+	require.NotNil(t, byPos[9].Tracking.Info())
+	require.Equal(t, types.TrackerClaimStatusReadyToClaim, byPos[9].TrackerClaimStatus)
+	require.Equal(t, 2, supervised.GetNumTracker(), "one tracker entry per bridge, not per tx")
 }
 
 // TestActivityCache_TrackerClaimStatusMirrorsClaimState pins how ActivityEntry.TrackerClaimStatus
@@ -407,7 +452,7 @@ func TestActivityCache_TrackerClaimedNeedsOnChainConfirmation(t *testing.T) {
 			claims := &fakeActivityClaims{isClaimed: []bool{false}}
 			cache := newTestActivityCache(scanner, claims)
 
-			id := TrackingID{NetworkID: testScannedNetworkID, TxHash: common.HexToHash(string(bridge.TxHash))}
+			id := domain.BridgeTrackingID(testScannedNetworkID, bridge)
 			_, err := cache.refresher.supervised.Get(id, true)
 			require.NoError(t, err)
 			tx := domain.TrackingBridgeTx{Info: &BridgeInfo{NetworkID: testScannedNetworkID}}

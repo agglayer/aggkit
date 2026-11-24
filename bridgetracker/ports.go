@@ -8,7 +8,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// TrackingID identifies a supervised bridge: the network the creating tx was sent to plus its hash
+// TrackingID identifies a supervised bridge: the network the creating tx was sent to, its hash
+// and, optionally, which of the tx's BridgeEvents (see domain.LogSelector)
 type TrackingID = domain.TrackingID
 
 // SupervisedStore is the driven port to the supervised-bridges state. The HTTP handlers use
@@ -49,6 +50,14 @@ var ErrBridgeTxNotABridge = domain.ErrBridgeTxNotABridge
 // statically-configured network): like ErrBridgeTxNotABridge, this is a permanent condition
 // that retrying cannot change, so it is wrapped as domain.Permanent too
 var ErrSourceUnavailable = domain.ErrSourceUnavailable
+
+// ErrAmbiguousBridgeTx is returned by BridgeEventSource.FindBridge for a tx-only TrackingID
+// whose tx emitted several canonical BridgeEvents (see domain.ErrAmbiguousBridgeTx)
+var ErrAmbiguousBridgeTx = domain.ErrAmbiguousBridgeTx
+
+// ErrBridgeLogNotFound is returned by BridgeEventSource.FindBridge when the TrackingID's log
+// index holds no canonical BridgeEvent (see domain.ErrBridgeLogNotFound)
+var ErrBridgeLogNotFound = domain.ErrBridgeLogNotFound
 
 // ErrInvalidUpstreamData is returned by BridgeEventSource.FindBridge when the origin network's
 // JSON-RPC answers with a receipt, BridgeEvent log and block header that do not describe one

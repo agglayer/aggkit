@@ -5,6 +5,7 @@ package migrations
 
 import (
 	_ "embed"
+	"fmt"
 
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/types"
@@ -34,6 +35,9 @@ var mig007 string
 //go:embed bridgetracker0008.sql
 var mig008 string
 
+//go:embed bridgetracker0009.sql
+var mig009 string
+
 // RunMigrations applies every bridgetracker migration to dbPath, creating the DB file first if
 // it does not exist yet. Shared by every store in this package (sqliteRegistry,
 // sqliteActivityStore): each may open its own connection to the same dbPath, but all migrations
@@ -54,5 +58,20 @@ func all() []types.Migration {
 		{ID: "bridgetracker0006", SQL: mig006},
 		{ID: "bridgetracker0007", SQL: mig007},
 		{ID: "bridgetracker0008", SQL: mig008},
+		{ID: "bridgetracker0009", SQL: mig009},
 	}
+}
+
+// GetUpTo returns the bridgetracker migrations up to and including lastID, in order: for tests
+// that need a DB at an older schema, to check a later migration carries its rows over. It panics
+// on an unknown lastID rather than silently returning the full schema, which would let such a
+// test pass without ever exercising the migration it means to
+func GetUpTo(lastID string) []types.Migration {
+	migrations := all()
+	for i, m := range migrations {
+		if m.ID == lastID {
+			return migrations[:i+1]
+		}
+	}
+	panic(fmt.Sprintf("unknown bridgetracker migration %q", lastID))
 }

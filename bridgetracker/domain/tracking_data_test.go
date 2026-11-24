@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/bridgetracker/types"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -366,4 +367,16 @@ func TestStepIndexPicksFirstPendingWhenNothingInProgress(t *testing.T) {
 	require.Equal(t, types.TrackerClaimStatusClaimedFinalized, finished.ClaimStatus())
 	require.True(t, finished.IsFinal())
 	require.True(t, finished.IsTerminal())
+}
+
+// TestTrackingIDString pins the log rendering of a TrackingID: a tx-only id reads exactly as it
+// did before log selectors existed, a selected one names its log index
+func TestTrackingIDString(t *testing.T) {
+	txOnly := TrackingID{NetworkID: 2, TxHash: common.HexToHash("0x01")}
+	require.Equal(t, "network=2/tx="+txOnly.TxHash.Hex(), txOnly.String())
+
+	selected := txOnly
+	selected.Log = LogIndex(0)
+	require.Equal(t, "network=2/tx="+txOnly.TxHash.Hex()+"/log=0", selected.String())
+	require.NotEqual(t, txOnly, selected, "log index 0 is a selector, not the tx-only identity")
 }

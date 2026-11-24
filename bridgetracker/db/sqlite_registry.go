@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"sync"
@@ -60,11 +61,26 @@ type BlockHashVerifier interface {
 	CanonicalBlockHash(ctx context.Context, networkID uint32, blockNumber uint64) (common.Hash, error)
 }
 
-// trackedBridgeRow is the tracked_bridge row shape (see migrations/bridgetracker0001.sql),
-// mapped through meddler like the rest of the repo's SQLite storage
+// txOnlyLogIndex is the tracked_bridge.log_index of a tx-only TrackingID (no LogSelector set,
+// see domain.LogSelector) — and of every row written before bridgetracker0009 added the column
+const txOnlyLogIndex int64 = -1
+
+// logIndexColumn is the tracked_bridge.log_index id is stored under: its selected log index, or
+// txOnlyLogIndex for a tx-only id. Part of the primary key, so the bridges of a tx that emitted
+// several BridgeEvents each get their own row
+func logIndexColumn(id domain.TrackingID) int64 {
+	if id.Log.Set {
+		return int64(id.Log.Index)
+	}
+	return txOnlyLogIndex
+}
+
+// trackedBridgeRow is the tracked_bridge row shape (see migrations/bridgetracker0001.sql,
+// bridgetracker0009.sql), mapped through meddler like the rest of the repo's SQLite storage
 type trackedBridgeRow struct {
 	NetworkID         uint32      `meddler:"network_id"`
 	TxHash            common.Hash `meddler:"tx_hash,hash"`
+	LogIndex          int64       `meddler:"log_index"`
 	SchemaVersion     int         `meddler:"schema_version"`
 	ClaimStatus       string      `meddler:"claim_status"`
 	OriginBlockNumber uint64      `meddler:"origin_block_number"`
@@ -82,9 +98,13 @@ type trackedBridgeData struct {
 	Steps []domain.BridgeStepPath
 }
 
-// id reconstructs the TrackingID the row was stored under
+// id reconstructs the TrackingID the row was stored under (see logIndexColumn)
 func (row *trackedBridgeRow) id() domain.TrackingID {
-	return domain.TrackingID{NetworkID: row.NetworkID, TxHash: row.TxHash}
+	id := domain.TrackingID{NetworkID: row.NetworkID, TxHash: row.TxHash}
+	if row.LogIndex >= 0 && row.LogIndex <= math.MaxUint32 {
+		id.Log = domain.LogIndex(uint32(row.LogIndex))
+	}
+	return id
 }
 
 // decode unmarshals Data into its tx/steps parts
@@ -214,7 +234,8 @@ func (r *sqliteRegistry) Close() error {
 func (r *sqliteRegistry) selectRow(id domain.TrackingID) (*trackedBridgeRow, error) {
 	var row trackedBridgeRow
 	err := meddler.QueryRow(r.db, &row,
-		"SELECT * FROM tracked_bridge WHERE network_id = ? AND tx_hash = ?", id.NetworkID, id.TxHash.Hex())
+		"SELECT * FROM tracked_bridge WHERE network_id = ? AND tx_hash = ? AND log_index = ?",
+		id.NetworkID, id.TxHash.Hex(), logIndexColumn(id))
 	if err != nil {
 		return nil, aggkitdb.ReturnErrNotFound(err)
 	}
@@ -296,6 +317,7 @@ func (r *sqliteRegistry) freshRow(id domain.TrackingID, now time.Time) (*tracked
 	return &trackedBridgeRow{
 		NetworkID:     id.NetworkID,
 		TxHash:        id.TxHash,
+		LogIndex:      logIndexColumn(id),
 		SchemaVersion: trackedBridgeSchemaVersion,
 		ClaimStatus:   tracking.ClaimStatus().String(),
 		UpdatedAt:     now.Unix(),
@@ -364,10 +386,10 @@ func (r *sqliteRegistry) create(id domain.TrackingID) (*trackedBridgeRow, error)
 	}
 	_, insertErr := r.db.Exec(
 		`INSERT INTO tracked_bridge
-			(network_id, tx_hash, schema_version, claim_status,
+			(network_id, tx_hash, log_index, schema_version, claim_status,
 			 origin_block_number, origin_block_hash, updated_at, last_access, terminal_since, data)
-		 VALUES (?, ?, ?, ?, 0, ?, ?, ?, 0, ?)`,
-		row.NetworkID, row.TxHash.Hex(), row.SchemaVersion, row.ClaimStatus,
+		 VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 0, ?)`,
+		row.NetworkID, row.TxHash.Hex(), row.LogIndex, row.SchemaVersion, row.ClaimStatus,
 		common.Hash{}.Hex(), row.UpdatedAt, row.LastAccess, row.Data)
 	if insertErr == nil {
 		r.numEntries++
@@ -398,9 +420,9 @@ func (r *sqliteRegistry) overwriteStaleRow(id domain.TrackingID, row *trackedBri
 		`UPDATE tracked_bridge SET
 			schema_version = ?, claim_status = ?, origin_block_number = 0, origin_block_hash = ?,
 			updated_at = ?, last_access = ?, terminal_since = 0, data = ?
-		 WHERE network_id = ? AND tx_hash = ?`,
+		 WHERE network_id = ? AND tx_hash = ? AND log_index = ?`,
 		row.SchemaVersion, row.ClaimStatus, common.Hash{}.Hex(), row.UpdatedAt, row.LastAccess, row.Data,
-		id.NetworkID, id.TxHash.Hex(),
+		id.NetworkID, id.TxHash.Hex(), logIndexColumn(id),
 	); err != nil {
 		return fmt.Errorf("replacing stale tracked_bridge row for %s: %w", id, err)
 	}
@@ -412,7 +434,8 @@ func (r *sqliteRegistry) overwriteStaleRow(id domain.TrackingID, row *trackedBri
 func (r *sqliteRegistry) selectRowIgnoringSchema(id domain.TrackingID) (*trackedBridgeRow, error) {
 	var row trackedBridgeRow
 	err := meddler.QueryRow(r.db, &row,
-		"SELECT * FROM tracked_bridge WHERE network_id = ? AND tx_hash = ?", id.NetworkID, id.TxHash.Hex())
+		"SELECT * FROM tracked_bridge WHERE network_id = ? AND tx_hash = ? AND log_index = ?",
+		id.NetworkID, id.TxHash.Hex(), logIndexColumn(id))
 	if err != nil {
 		return nil, aggkitdb.ReturnErrNotFound(err)
 	}
@@ -423,8 +446,8 @@ func (r *sqliteRegistry) selectRowIgnoringSchema(id domain.TrackingID) (*tracked
 // how little Get callers can do about a bookkeeping write failing when the read itself succeeded
 func (r *sqliteRegistry) touchLastAccess(id domain.TrackingID, now time.Time) {
 	if _, err := r.db.Exec(
-		"UPDATE tracked_bridge SET last_access = ? WHERE network_id = ? AND tx_hash = ?",
-		now.Unix(), id.NetworkID, id.TxHash.Hex(),
+		"UPDATE tracked_bridge SET last_access = ? WHERE network_id = ? AND tx_hash = ? AND log_index = ?",
+		now.Unix(), id.NetworkID, id.TxHash.Hex(), logIndexColumn(id),
 	); err != nil {
 		r.logger.Warnf("bridgetracker: touching last_access of %s: %v", id, err)
 	}
@@ -654,10 +677,10 @@ func (r *sqliteRegistry) writeTracking(
 		`UPDATE tracked_bridge SET
 			claim_status = ?, origin_block_number = ?, origin_block_hash = ?,
 			updated_at = ?, terminal_since = ?, data = ?
-		 WHERE network_id = ? AND tx_hash = ?`,
+		 WHERE network_id = ? AND tx_hash = ? AND log_index = ?`,
 		tracking.ClaimStatus().String(), originBlockNumber, originBlockHash.Hex(),
 		now.Unix(), terminalSince, data,
-		id.NetworkID, id.TxHash.Hex(),
+		id.NetworkID, id.TxHash.Hex(), logIndexColumn(id),
 	); err != nil {
 		return fmt.Errorf("updating tracked_bridge row for %s: %w", id, err)
 	}
@@ -699,8 +722,8 @@ func (r *sqliteRegistry) UpdateTrackingStep(id domain.TrackingID, stepIndex uint
 	}
 	now := r.now()
 	if _, err := r.db.Exec(
-		"UPDATE tracked_bridge SET data = ?, updated_at = ? WHERE network_id = ? AND tx_hash = ?",
-		data, now.Unix(), id.NetworkID, id.TxHash.Hex(),
+		"UPDATE tracked_bridge SET data = ?, updated_at = ? WHERE network_id = ? AND tx_hash = ? AND log_index = ?",
+		data, now.Unix(), id.NetworkID, id.TxHash.Hex(), logIndexColumn(id),
 	); err != nil {
 		return fmt.Errorf("updating tracked_bridge row for %s: %w", id, err)
 	}
@@ -809,7 +832,8 @@ func (r *sqliteRegistry) PruneIdle(time.Time) (int, error) {
 // call for an id that is not currently registered (no-op); a failure is logged, not propagated,
 // same as touchLastAccess's own best-effort bookkeeping writes
 func (r *sqliteRegistry) Forget(id domain.TrackingID) {
-	res, err := r.db.Exec("DELETE FROM tracked_bridge WHERE network_id = ? AND tx_hash = ?", id.NetworkID, id.TxHash.Hex())
+	res, err := r.db.Exec("DELETE FROM tracked_bridge WHERE network_id = ? AND tx_hash = ? AND log_index = ?",
+		id.NetworkID, id.TxHash.Hex(), logIndexColumn(id))
 	if err != nil {
 		r.logger.Warnf("bridgetracker: forgetting %s: %v", id, err)
 		return

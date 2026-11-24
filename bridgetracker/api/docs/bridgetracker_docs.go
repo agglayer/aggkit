@@ -232,7 +232,7 @@ const docTemplatebridgetracker = `{
         },
         "/network/{network_id}/tx/{tx_hash}": {
             "get": {
-                "description": "Returns the current step of the bridge and the full path it is expected to\nfollow. Calling this endpoint adds the bridge to the list of supervised\nbridges. The response is always a TrackingData: its bridge_status field is\nnull until the tracker resolves the bridge, so the client keeps polling (or\nsubscribes over the WebSocket) until it is populated. flush_cache=true discards\nwhatever is already cached for this tx first, forcing it to be re-registered and\nresolved from scratch",
+                "description": "Returns the current step of the bridge and the full path it is expected to\nfollow. Calling this endpoint adds the bridge to the list of supervised\nbridges. The response is always a TrackingData: its bridge_status field is\nnull until the tracker resolves the bridge, so the client keeps polling (or\nsubscribes over the WebSocket) until it is populated. flush_cache=true discards\nwhatever is already cached for this tx first, forcing it to be re-registered and\nresolved from scratch. A tx that emitted several BridgeEvents (e.g. a router\nperforming two bridge calls) is tracked one bridge at a time: log_index selects\nwhich one; without it such a tx ends in a permanent error listing the candidate\nlog indexes instead of reporting one of them for all",
                 "produces": [
                     "application/json"
                 ],
@@ -257,6 +257,13 @@ const docTemplatebridgetracker = `{
                         "required": true
                     },
                     {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "BridgeEvent log index to track; needed only if the tx emitted several",
+                        "name": "log_index",
+                        "in": "query"
+                    },
+                    {
                         "type": "boolean",
                         "description": "Discard the tracker's cached state for this tx before answering",
                         "name": "flush_cache",
@@ -271,7 +278,7 @@ const docTemplatebridgetracker = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid transaction hash or network id",
+                        "description": "Invalid transaction hash, network id or log index",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorData"
                         }
@@ -287,7 +294,7 @@ const docTemplatebridgetracker = `{
         },
         "/network/{network_id}/tx/{tx_hash}/ws": {
             "get": {
-                "description": "Upgrades the request to a WebSocket connection that receives the bridge\nstatus as it changes, instead of polling the REST endpoint. Connecting adds\nthe bridge to the list of supervised bridges. flush_cache=true discards\nwhatever is already cached for this tx first, forcing it to be re-registered and\nresolved from scratch",
+                "description": "Upgrades the request to a WebSocket connection that receives the bridge\nstatus as it changes, instead of polling the REST endpoint. Connecting adds\nthe bridge to the list of supervised bridges. flush_cache=true discards\nwhatever is already cached for this tx first, forcing it to be re-registered and\nresolved from scratch. log_index selects one BridgeEvent of a tx that emitted\nseveral, exactly as on the REST endpoint",
                 "tags": [
                     "bridge-tracker"
                 ],
@@ -307,6 +314,13 @@ const docTemplatebridgetracker = `{
                         "name": "tx_hash",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int32",
+                        "description": "BridgeEvent log index to track; needed only if the tx emitted several",
+                        "name": "log_index",
+                        "in": "query"
                     },
                     {
                         "type": "boolean",
@@ -619,6 +633,10 @@ const docTemplatebridgetracker = `{
                             "$ref": "#/definitions/types.ErrorStep"
                         }
                     ]
+                },
+                "log_index": {
+                    "description": "LogIndex is the log index of the BridgeEvent the request selected (?log_index, or the\nbridge's own block_pos in activity results); omitted for a tx-only request",
+                    "type": "integer"
                 },
                 "network_id": {
                     "description": "NetworkID is the network of the request (0 -\u003e Mainnet)",

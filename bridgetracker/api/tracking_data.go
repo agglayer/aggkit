@@ -25,6 +25,9 @@ type TrackingData struct {
 	NetworkID uint32 `json:"network_id"`
 	// TxHash is the transaction hash of the request
 	TxHash common.Hash `json:"tx_hash"`
+	// LogIndex is the log index of the BridgeEvent the request selected (?log_index, or the
+	// bridge's own block_pos in activity results); omitted for a tx-only request
+	LogIndex *uint32 `json:"log_index,omitempty"`
 	// BridgeStatus is nil until the tracker resolves the bridge; from then on it carries
 	// the full BridgeStatus. Marshaled explicitly as null while unresolved (no omitempty)
 	// so clients can poll on its presence without an extra field to check
@@ -48,11 +51,17 @@ type TrackingData struct {
 // trackingDataFrom builds the wire TrackingData from a supervised-registry snapshot
 func trackingDataFrom(t *domain.TrackingData) TrackingData {
 	id := t.ID()
+	var logIndex *uint32
+	if id.Log.Set {
+		index := id.Log.Index
+		logIndex = &index
+	}
 	return TrackingData{
 		TrackingStatus: t.TrackingStatus().String(),
 		ClaimStatus:    t.ClaimStatus().String(),
 		NetworkID:      id.NetworkID,
 		TxHash:         id.TxHash,
+		LogIndex:       logIndex,
 		BridgeStatus:   newBridgeStatus(t.Info()),
 		StepIndex:      t.StepIndex(),
 		AllSteps:       newBridgeStepPaths(t.AllSteps()),

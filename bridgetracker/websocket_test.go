@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/bridgetracker/api"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	"github.com/agglayer/aggkit/bridgetracker/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
@@ -297,4 +298,48 @@ func TestWSCORSOriginCheck(t *testing.T) {
 			require.Equal(t, types.WSTypeStatus, msg.Type)
 		})
 	}
+}
+
+// TestWSLogIndexSubscribesToOneBridgeEvent pins ?log_index on the WebSocket endpoint:
+// the subscription follows that one BridgeEvent of the tx — echoed back as
+// log_index — and is not woken by a publish on another event of the same tx
+func TestWSLogIndexSubscribesToOneBridgeEvent(t *testing.T) {
+	tracker, router := newTestTracker(t)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") +
+		api.TrackerV1Prefix + "/network/1/tx/" + testTxHash + "/ws?log_index=9"
+	conn, dialResp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.NoError(t, err)
+	if dialResp != nil && dialResp.Body != nil {
+		dialResp.Body.Close()
+	}
+	t.Cleanup(func() { conn.Close() })
+
+	var tracking struct {
+		TrackingStatus string  `json:"tracking_status"`
+		LogIndex       *uint32 `json:"log_index"`
+	}
+	msg := readEnvelope(t, conn)
+	require.Equal(t, types.WSTypeStatus, msg.Type)
+	require.NoError(t, json.Unmarshal(msg.Data, &tracking))
+	require.Equal(t, "registered", tracking.TrackingStatus)
+	require.NotNil(t, tracking.LogIndex)
+	require.Equal(t, uint32(9), *tracking.LogIndex)
+
+	txHash := common.HexToHash(testTxHash)
+	other := TrackingID{NetworkID: 1, TxHash: txHash, Log: domain.LogIndex(3)}
+	resp := performRequest(t, router, http.MethodGet, api.TrackerV1Prefix+"/network/1/tx/"+testTxHash+"?log_index=3")
+	require.Equal(t, http.StatusOK, resp.Code)
+	tracker.Publish(other, testBridgeInfo(), testAllSteps(false))
+	tracker.Publish(TrackingID{NetworkID: 1, TxHash: txHash, Log: domain.LogIndex(9)}, testBridgeInfo(),
+		testAllSteps(true))
+
+	// the first push this subscription gets is its own event's (finished), never log 3's (running)
+	msg = readEnvelope(t, conn)
+	require.NoError(t, json.Unmarshal(msg.Data, &tracking))
+	require.Equal(t, "finished", tracking.TrackingStatus)
+	require.Equal(t, uint32(9), *tracking.LogIndex)
+	require.Equal(t, websocket.CloseNormalClosure, expectClose(t, conn))
 }

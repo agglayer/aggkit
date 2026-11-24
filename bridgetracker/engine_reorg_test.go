@@ -532,3 +532,43 @@ func TestEngineOriginBlockFinalized(t *testing.T) {
 	require.NotNil(t, tracking.Info())
 	require.Equal(t, uint64(500), tracking.Info().BlockNumber)
 }
+
+// TestEngineOriginReorgedOutKeepsLogSelector pins that the reorg paths work per bridge event:
+// a tracking selecting one BridgeEvent of its tx is reset when its origin
+// is reorged out and re-resolved under the very same selector, never falling back to the tx-only
+// identity (which would fail as ambiguous on a multi-bridge tx)
+func TestEngineOriginReorgedOutKeepsLogSelector(t *testing.T) {
+	id := TrackingID{NetworkID: 0, TxHash: testHash, Log: domain.LogIndex(1)}
+	f := &fakeSources{bridge: l1ToL2ReorgBridge()}
+	facts := &reorgFacts{}
+	store := newMemoryRegistry(0)
+	engine, _ := newReorgTestEngine(t, store, f, facts)
+	mustRegister(t, store, id)
+	driveToReadyToClaim(f)
+	engine.tick(t.Context())
+	require.Equal(t, types.TrackerClaimStatusReadyToClaim, mustGetFrom(t, store, id).ClaimStatus())
+
+	// the origin block is replaced and the tx is not mined again (yet): reset, same id
+	newHash := common.HexToHash("0xa5")
+	facts.set(func(r *reorgFacts) { r.canonical = newHash })
+	f.bridge, f.bridgeErr = nil, ErrBridgeTxNotFound
+	engine.tick(t.Context())
+	tracking := mustGetFrom(t, store, id)
+	require.Equal(t, id, tracking.ID())
+	require.Nil(t, tracking.Info())
+
+	moved := l1ToL2ReorgBridge()
+	moved.BlockNumber, moved.BlockHash = 503, newHash
+	f.bridge, f.bridgeErr = moved, nil
+	engine.tick(t.Context())
+	tracking = mustGetFrom(t, store, id)
+	require.Equal(t, uint64(503), tracking.Info().BlockNumber)
+	require.Equal(t, 1, store.GetNumTracker(), "no tx-only entry was created along the way")
+
+	f.findBridgeMu.Lock()
+	defer f.findBridgeMu.Unlock()
+	require.NotEmpty(t, f.findBridgeIDs)
+	for _, asked := range f.findBridgeIDs {
+		require.Equal(t, id, asked, "every (re-)resolution asks for the selected event")
+	}
+}

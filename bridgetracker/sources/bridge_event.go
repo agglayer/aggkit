@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/bridgetracker"
@@ -82,17 +83,21 @@ func (s *BridgeEventSource) finalityFor(networkID uint32) aggkittypes.BlockNumbe
 // has not reached finality yet, is ErrBridgeTxNotFound (the engine retries — the tx may simply
 // not be mined, or not final, yet); a reverted tx or a mined receipt without BridgeEvent logs
 // are both ErrBridgeTxNotABridge, since neither can ever change on retry (the engine fails the
-// bridge immediately for those). Finality is checked before either of those outcomes is decided:
-// a reverted or eventless receipt can be reorged away just as much as a successful one, and a
-// resolved bridge is never re-checked afterward (see TrackingBridgeTx.IsDone), so accepting any
-// outcome from a non-final receipt could leave the tracker permanently wrong.
+// bridge immediately for those). A tx with several canonical BridgeEvents is tracked one event at
+// a time: id.Log selects which, and a tx-only id is ErrAmbiguousBridgeTx for it rather than
+// silently resolving to the first one (see selectBridgeEventLog). Finality is checked before
+// either of those outcomes is decided: a reverted or eventless receipt can be reorged away just as
+// much as a successful one, and a resolved bridge is never re-checked afterward (see
+// TrackingBridgeTx.IsDone), so accepting any outcome from a non-final receipt could leave the
+// tracker permanently wrong.
 //
-// The BridgeEvent log is only accepted when the upstream describes one coherent block: the log
-// must be the receipt's own (same block hash and number, same tx hash) and the header of the
-// block at the receipt's number must be the receipt's block (see checkBridgeLogBlock and
-// checkReceiptHeader). Any contradiction is ErrInvalidUpstreamData with no BridgeInfo — transient,
-// since a defective endpoint may recover — and nothing in the answer is trusted partially. The
-// header is also the source of the timestamp, so BridgeInfo never mixes facts of two blocks
+// The BridgeEvent logs are only accepted when the upstream describes one coherent block: every
+// canonical BridgeEvent log must be the receipt's own (same block hash and number, same tx hash)
+// and the header of the block at the receipt's number must be the receipt's block (see
+// checkBridgeLogBlock and checkReceiptHeader). Any contradiction is ErrInvalidUpstreamData with no
+// BridgeInfo — transient, since a defective endpoint may recover — and nothing in the answer is
+// trusted partially. The header is also the source of the timestamp, so BridgeInfo never mixes
+// facts of two blocks
 func (s *BridgeEventSource) FindBridge(
 	ctx context.Context, id bridgetracker.TrackingID,
 ) (*bridgetracker.BridgeInfo, error) {
@@ -131,50 +136,99 @@ func (s *BridgeEventSource) FindBridge(
 		}
 	}
 
+	// every canonical BridgeEvent of the receipt is checked, not only the selected one: the
+	// candidates also decide ErrAmbiguousBridgeTx/ErrBridgeLogNotFound and the log indexes listed
 	for _, l := range receipt.Logs {
-		if len(l.Topics) == 0 || l.Topics[0] != bridgeEventSignature {
-			continue
+		if isBridgeEventLog(l, wantAddr) {
+			if err := checkBridgeLogBlock(id, receipt, l); err != nil {
+				return nil, err
+			}
 		}
-		if l.Address != wantAddr {
-			continue
-		}
-		if err := checkBridgeLogBlock(id, receipt, l); err != nil {
-			return nil, err
-		}
-		event, err := s.parser.ParseBridgeEvent(*l)
-		if err != nil {
-			return nil, fmt.Errorf("parsing BridgeEvent log of %s: %w", id, err)
-		}
-		// Fetched by number, like the finality gate and the engine's origin re-check
-		// (CheckOrigin), not by hash: CustomHeaderByNumber reports the block hash as the RPC
-		// sent it when the client has HashFromJSON, whereas HeaderByHash returns a geth header
-		// whose Hash() is recomputed from its fields and so differs from the RPC-reported one
-		// on chains with non-standard headers. It also proves the receipt's block is the
-		// canonical one at its height, not a stale or forked block
-		header, err := client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(receipt.BlockNumber.Uint64()))
-		if err != nil {
-			return nil, fmt.Errorf("fetching header of block %d of %s: %w", receipt.BlockNumber.Uint64(), id, err)
-		}
-		if err := checkReceiptHeader(id, receipt, header); err != nil {
-			return nil, err
-		}
-		return &bridgetracker.BridgeInfo{
-			NetworkID:          id.NetworkID,
-			LeafType:           trackertypes.BridgeLeafType(event.LeafType),
-			DestinationNetwork: event.DestinationNetwork,
-			DepositCount:       event.DepositCount,
-			BlockNumber:        receipt.BlockNumber.Uint64(),
-			BlockHash:          receipt.BlockHash,
-			LogIndex:           uint32(l.Index), // checkBridgeLogBlock bounds it
-			OriginNetwork:      event.OriginNetwork,
-			OriginAddress:      event.OriginAddress,
-			DestinationAddress: event.DestinationAddress,
-			Amount:             event.Amount,
-			BlockTimestamp:     header.Time,
-		}, nil
 	}
+	l, err := selectBridgeEventLog(id, receipt.Logs, wantAddr)
+	if err != nil {
+		return nil, err
+	}
+	event, err := s.parser.ParseBridgeEvent(*l)
+	if err != nil {
+		return nil, fmt.Errorf("parsing BridgeEvent log of %s: %w", id, err)
+	}
+	// Fetched by number, like the finality gate and the engine's origin re-check
+	// (CheckOrigin), not by hash: CustomHeaderByNumber reports the block hash as the RPC
+	// sent it when the client has HashFromJSON, whereas HeaderByHash returns a geth header
+	// whose Hash() is recomputed from its fields and so differs from the RPC-reported one
+	// on chains with non-standard headers. It also proves the receipt's block is the
+	// canonical one at its height, not a stale or forked block
+	header, err := client.CustomHeaderByNumber(ctx, aggkittypes.NewBlockNumber(receipt.BlockNumber.Uint64()))
+	if err != nil {
+		return nil, fmt.Errorf("fetching header of block %d of %s: %w", receipt.BlockNumber.Uint64(), id, err)
+	}
+	if err := checkReceiptHeader(id, receipt, header); err != nil {
+		return nil, err
+	}
+	return &bridgetracker.BridgeInfo{
+		NetworkID:          id.NetworkID,
+		LeafType:           trackertypes.BridgeLeafType(event.LeafType),
+		DestinationNetwork: event.DestinationNetwork,
+		DepositCount:       event.DepositCount,
+		BlockNumber:        receipt.BlockNumber.Uint64(),
+		BlockHash:          receipt.BlockHash,
+		LogIndex:           uint32(l.Index), // checkBridgeLogBlock bounds it
+		OriginNetwork:      event.OriginNetwork,
+		OriginAddress:      event.OriginAddress,
+		DestinationAddress: event.DestinationAddress,
+		Amount:             event.Amount,
+		BlockTimestamp:     header.Time,
+	}, nil
+}
 
-	return nil, fmt.Errorf("%s emitted no BridgeEvent: %w", id, bridgetracker.ErrBridgeTxNotABridge)
+// isBridgeEventLog reports whether l is a BridgeEvent emitted by the canonical bridge contract
+// bridgeAddr
+func isBridgeEventLog(l *gethtypes.Log, bridgeAddr common.Address) bool {
+	return l != nil && len(l.Topics) > 0 && l.Topics[0] == bridgeEventSignature && l.Address == bridgeAddr
+}
+
+// selectBridgeEventLog picks, among logs, the BridgeEvent emitted by the canonical bridge
+// contract (bridgeAddr) that id identifies: the one at id.Log.Index if id selects a log
+// (ErrBridgeLogNotFound if none is there), else the only one (ErrAmbiguousBridgeTx if there are
+// several). Selection is by log index, never by position in logs. A tx with none at all is
+// ErrBridgeTxNotABridge either way. Both errors list the candidates' log indexes, so the caller
+// can pick one
+func selectBridgeEventLog(
+	id bridgetracker.TrackingID, logs []*gethtypes.Log, bridgeAddr common.Address,
+) (*gethtypes.Log, error) {
+	var candidates []*gethtypes.Log
+	for _, l := range logs {
+		if !isBridgeEventLog(l, bridgeAddr) {
+			continue
+		}
+		if id.Log.Set && l.Index == uint(id.Log.Index) {
+			return l, nil
+		}
+		candidates = append(candidates, l)
+	}
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("%s emitted no BridgeEvent: %w", id, bridgetracker.ErrBridgeTxNotABridge)
+	}
+	if id.Log.Set {
+		return nil, fmt.Errorf("%s emitted BridgeEvents only at log_index %s: %w",
+			id, logIndexes(candidates), bridgetracker.ErrBridgeLogNotFound)
+	}
+	if len(candidates) > 1 {
+		return nil, fmt.Errorf("%s emitted BridgeEvents at log_index %s: %w",
+			id, logIndexes(candidates), bridgetracker.ErrAmbiguousBridgeTx)
+	}
+	return candidates[0], nil
+}
+
+// logIndexes renders the log indexes of logs, sorted, as e.g. "[3 9]"
+func logIndexes(logs []*gethtypes.Log) string {
+	indexes := make([]uint, 0, len(logs))
+	for _, l := range logs {
+		indexes = append(indexes, l.Index)
+	}
+	slices.Sort(indexes)
+	return fmt.Sprint(indexes)
 }
 
 // checkBridgeLogBlock fails closed with ErrInvalidUpstreamData unless the BridgeEvent log l is

@@ -97,6 +97,8 @@ type L1Config struct {
 type L1Contracts struct {
 	RollupManager *agglayermanager.Agglayermanager
 	Bridge        *agglayerbridge.Agglayerbridge
+	// BridgeAddress is the address of Bridge, the canonical L1 bridge contract
+	BridgeAddress common.Address
 }
 
 // L2Config contains L2 network configuration
@@ -405,6 +407,7 @@ func LoadEnv(ctx context.Context, envName ENVName) (*Env, error) {
 			Contracts: L1Contracts{
 				RollupManager: rollupManager,
 				Bridge:        bridgeContract,
+				BridgeAddress: bridgeAddr,
 			},
 			Transactor: l1Transactor,
 		},
