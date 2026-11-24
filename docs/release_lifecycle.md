@@ -34,13 +34,6 @@ As a quick reference this is the diagram of the branching cycle:
 
 ![image.png](assets/gitflow.png)
 
-## Publishing and verifying images
-
-Release images are published only from a release tag, after the tagged commit passes the release checks and the images are built and staged, and a reviewer approves them. The approved images are then promoted by digest to the release package. Each image is signed and has build provenance and an SBOM.
-
-- [Verifying release images](./release_verification.md): published tags, signature and provenance verification, pinning by digest.
-- [Release settings runbook](./release_admin_runbook.md): the repository and organization settings that protect the release process, and how to check them.
-
 ## FAQ
 
 ### Should I cherry pick commits made to a release branch while it’s still unmerged?
