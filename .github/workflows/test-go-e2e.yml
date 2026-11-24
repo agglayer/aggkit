@@ -156,6 +156,14 @@ jobs:
           - env: anvil-2chains
             group: fee-estimate
             run: "^(TestClaimFeeEstimateViaProxy|TestBridgeFeeEstimateViaProxy)$"
+          # Bridge-service status and tracker checks that were not run by any group: the health and
+          # sync-status reporting of every syncer (#1689, #1861) and the tracker's rejection of a log
+          # that copies BridgeEvent from a non-bridge address (#1751). The sync-status test leaves an
+          # unclaimed L1->L2 bridge to force syncer progress and the tracker test deploys a contract on
+          # L1, so they get their own stack instead of shifting the deposit counts the bridge group sees.
+          - env: anvil-2chains
+            group: bridge-service-status
+            run: "^(TestBridgeServiceHealthSyncStatus|TestBridgeTrackerNotABridge|TestBridgeServiceSyncStatusAllSyncers)$"
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
