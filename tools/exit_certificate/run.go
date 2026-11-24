@@ -13,6 +13,7 @@ import (
 	aggkit "github.com/agglayer/aggkit"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/tools/exit_certificate/runarchive"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/urfave/cli/v2"
 )
@@ -647,10 +648,12 @@ func runSingleStep(ctx context.Context, step string, cfg *Config) error {
 		return runSingleWait(ctx, cfg, dir)
 	case "pending_claims":
 		return runSinglePending(ctx, cfg, dir)
+	case stepUpload:
+		return runUpload(ctx, cfg, runarchive.Open)
 	default:
 		return fmt.Errorf(
 			"unknown step: %s (use check, 0, a, b, b1, b2, b3, c, d, e, f, g, g1, g2, h, i, sign, submit, wait, "+
-				"pending_claims, or all)",
+				"pending_claims, upload, or all)",
 			step,
 		)
 	}
@@ -940,6 +943,11 @@ func runSinglePending(ctx context.Context, cfg *Config, dir string) error {
 	pending, err := RunStepPending(ctx, cfg, pendingDBPath(dir), &gResult)
 	if err != nil {
 		return err
+	}
+	if fileExists(filepath.Join(dir, runarchive.ManifestFile)) {
+		log.Warnf("⚠️  %s was already archived (--step %s): %s is NOT in that archive, which cannot be changed; "+
+			"run pending_claims before uploading, or upload this output dir to a new prefix",
+			dir, stepUpload, FileStepPendingBridges)
 	}
 	return saveJSON(dir, FileStepPendingBridges, pending)
 }

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/agglayer/aggkit/tools/exit_certificate/runarchive"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -17,6 +18,8 @@ const (
 	defaultPort                = 7080
 	defaultReadTimeoutSeconds  = 30
 	defaultWriteTimeoutSeconds = 30
+	// defaultRunDataDir is the default runDataDir, relative to the config file.
+	defaultRunDataDir = "archive-cache"
 )
 
 // Config configures the exit certificate claimer backend.
@@ -45,6 +48,16 @@ type Config struct {
 	// set and the file exists, they are served by /bridges and /claim-params along with the
 	// certificate's exits.
 	PendingBridgesPath string `json:"pendingBridgesPath"`
+
+	// RunSource is the archive of the exit_certificate run to serve (gs://<bucket>/<prefix>, uploaded by
+	// its --step upload). When set, the run data (certificate, local exit tree DB, WAIT result and pending
+	// bridges) is downloaded from it into RunDataDir and verified on startup, so signedCertificatePath,
+	// localExitTreeDBPath, stepWaitResultPath and pendingBridgesPath must be left empty. Read access to the
+	// bucket is enough.
+	RunSource string `json:"runSource"`
+	// RunDataDir is the base directory RunSource is downloaded into (one subdirectory per bucket/prefix).
+	// Defaults to "archive-cache" next to the config file.
+	RunDataDir string `json:"runDataDir"`
 
 	// NetworkID is the source network of the exits. Defaults to the certificate's network_id when 0.
 	NetworkID uint32 `json:"networkId"`
@@ -87,8 +100,14 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	cfg.applyDefaults()
+	if cfg.RunSource != "" && cfg.RunDataDir == "" {
+		cfg.RunDataDir = defaultRunDataDir
+	}
 	cfg.resolvePaths(filepath.Dir(path))
 
+	if err := cfg.checkRunSourcePaths(); err != nil {
+		return nil, err
+	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
@@ -121,20 +140,60 @@ func (c *Config) resolvePaths(baseDir string) {
 	c.L1InfoTreeDBPath = resolvePath(baseDir, c.L1InfoTreeDBPath)
 	c.StepWaitResultPath = resolvePath(baseDir, c.StepWaitResultPath)
 	c.PendingBridgesPath = resolvePath(baseDir, c.PendingBridgesPath)
+	c.RunDataDir = resolvePath(baseDir, c.RunDataDir)
 }
 
+// validate checks the config. With RunSource the run data paths are only filled in by FetchRunSource, so
+// they are validated before it (validateRunSource) and after it (here, with the paths set).
 func (c *Config) validate() error {
+	if c.RunSource != "" {
+		if err := c.validateRunSource(); err != nil {
+			return err
+		}
+		if c.SignedCertificatePath == "" { // not fetched yet
+			return c.validateL1()
+		}
+	}
 	if c.SignedCertificatePath == "" {
 		return fmt.Errorf("signedCertificatePath is required")
 	}
 	if c.LocalExitTreeDBPath == "" {
 		return fmt.Errorf("localExitTreeDBPath is required")
 	}
-	if c.L1InfoTreeDBPath == "" {
-		return fmt.Errorf("l1InfoTreeDBPath is required")
-	}
 	if c.StepWaitResultPath == "" {
 		return fmt.Errorf("stepWaitResultPath is required")
+	}
+	return c.validateL1()
+}
+
+// checkRunSourcePaths rejects run data paths set together with runSource: they come from the archive.
+func (c *Config) checkRunSourcePaths() error {
+	if c.RunSource == "" {
+		return nil
+	}
+	if c.SignedCertificatePath != "" || c.LocalExitTreeDBPath != "" || c.StepWaitResultPath != "" ||
+		c.PendingBridgesPath != "" {
+		return fmt.Errorf("runSource is set: leave signedCertificatePath, localExitTreeDBPath, stepWaitResultPath " +
+			"and pendingBridgesPath empty (they point at the files downloaded from runSource)")
+	}
+	return nil
+}
+
+// validateRunSource checks runSource and runDataDir.
+func (c *Config) validateRunSource() error {
+	if _, err := runarchive.ParseURI(c.RunSource); err != nil {
+		return fmt.Errorf("invalid runSource: %w", err)
+	}
+	if c.RunDataDir == "" {
+		return fmt.Errorf("runDataDir is required with runSource")
+	}
+	return nil
+}
+
+// validateL1 checks the L1 Info Tree settings.
+func (c *Config) validateL1() error {
+	if c.L1InfoTreeDBPath == "" {
+		return fmt.Errorf("l1InfoTreeDBPath is required")
 	}
 	if c.L1Sync.Enabled {
 		if c.L1Sync.RPCURL == "" {

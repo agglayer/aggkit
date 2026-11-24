@@ -50,6 +50,9 @@ func loadOrDeriveConfig(ctx context.Context, c *cli.Context, logger *log.Logger)
 func selectConfig(ctx context.Context, c *cli.Context, logger *log.Logger) (*Config, error) {
 	ecConfigPath := c.String("exit-certificate-config")
 	if ecConfigPath == "" {
+		if c.String("run-source") != "" {
+			return nil, fmt.Errorf("--run-source needs --exit-certificate-config; with --config set runSource in the file")
+		}
 		return LoadConfig(c.String("config"))
 	}
 	if c.IsSet("config") {
@@ -61,7 +64,33 @@ func selectConfig(ctx context.Context, c *cli.Context, logger *log.Logger) (*Con
 	if err != nil {
 		return nil, fmt.Errorf("loading exit_certificate config %q: %w", ecConfigPath, err)
 	}
-	return DeriveFromExitCertificate(ctx, ecCfg)
+	cfg, err := DeriveFromExitCertificate(ctx, ecCfg)
+	if err != nil {
+		return nil, err
+	}
+	if runSource := c.String("run-source"); runSource != "" {
+		if err := cfg.UseRunSource(runSource, ecCfg); err != nil {
+			return nil, err
+		}
+	}
+	return cfg, nil
+}
+
+// UseRunSource makes a derived config serve the run archived at runSource instead of the files of the
+// exit_certificate output directory: the run data is downloaded into the exit_certificate's archive cache
+// (options.archiveCacheDir, by default "archive-cache" next to options.outputDir), while the L1 Info Tree
+// DB stays in options.outputDir.
+func (c *Config) UseRunSource(runSource string, ec *exitcertificate.Config) error {
+	c.RunSource = runSource
+	c.RunDataDir = exitcertificate.ArchiveCacheDir(ec.Options)
+	c.SignedCertificatePath = ""
+	c.LocalExitTreeDBPath = ""
+	c.StepWaitResultPath = ""
+	c.PendingBridgesPath = ""
+	if err := c.validate(); err != nil {
+		return fmt.Errorf("--run-source: %w", err)
+	}
+	return nil
 }
 
 // DeriveFromExitCertificate builds a claimer Config from the exit_certificate tool's Config so both
@@ -91,9 +120,9 @@ func DeriveFromExitCertificate(ctx context.Context, ec *exitcertificate.Config) 
 		ReadTimeoutSeconds:    defaultReadTimeoutSeconds,
 		WriteTimeoutSeconds:   defaultWriteTimeoutSeconds,
 		SignedCertificatePath: filepath.Join(outputDir, certificateFile),
-		LocalExitTreeDBPath:   filepath.Join(outputDir, "step-g-l2bridgesyncerlite.sqlite"),
-		L1InfoTreeDBPath:      filepath.Join(outputDir, "L1InfoTreeSync.sqlite"),
-		StepWaitResultPath:    filepath.Join(outputDir, "step-wait-result.json"),
+		LocalExitTreeDBPath:   filepath.Join(outputDir, localExitTreeDBFile),
+		L1InfoTreeDBPath:      filepath.Join(outputDir, exitcertificate.FileClaimerL1InfoTreeDB),
+		StepWaitResultPath:    filepath.Join(outputDir, stepWaitResultFile),
 		NetworkID:             ec.L2NetworkID,
 		L1Sync: L1SyncConfig{
 			Enabled:            true,

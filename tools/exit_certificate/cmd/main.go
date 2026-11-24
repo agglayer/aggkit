@@ -66,6 +66,12 @@ Pipeline steps (run in order by default):
          through /bridges and /claim-params. Reads the local exit tree DB and
          step-g-new-local-exit-root.json (run step g first). Requires l1RpcUrl.
 
+  UPLOAD Standalone step (--step upload, not part of "all" or of any range). Archives
+         the output dir of a settled run in options.archiveURI (gs://<bucket>/<prefix>,
+         a write-once GCS bucket) with a manifest of SHA-256/CRC32C checksums, never
+         overwriting; re-running resumes a partial upload. A delta's options.previousRun
+         can then be that URI: the run is downloaded and verified before use.
+
   RECOVERIES
          Delta mode only (options.deltaMode), standalone (--step recoveries). Turns verified
          zkevm-proof-of-ownership-kit recoveries (options.recoveriesPath) into
@@ -81,8 +87,9 @@ the output files from previous steps must already exist in the output directory.
 			Value:   "parameters.json",
 		},
 		&cli.StringFlag{
-			Name:  "step",
-			Usage: "Run a specific step: 0, a, b, c, d, e, f, g, sign, pending_claims, or all",
+			Name: "step",
+			Usage: "Run a specific step: 0, a, b, c, d, e, f, g, sign, submit, wait, pending_claims, upload, " +
+				"recoveries (delta mode), or all",
 			Value: "all",
 		},
 		&cli.BoolFlag{

@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/agglayer/aggkit/log"
 	"github.com/urfave/cli/v2"
 )
+
+// dirPermissions is the mode of the directories the claimer creates.
+const dirPermissions = 0o755
 
 // Run is the urfave/cli action entry point: it initializes logging and runs the service. A fatal
 // error is emitted through the configured logger — honoring --log-json — rather than returned to
@@ -45,6 +49,15 @@ func run(c *cli.Context, logger *log.Logger) error {
 	cfg, err := loadOrDeriveConfig(ctx, c, logger)
 	if err != nil {
 		return err
+	}
+	if cfg.RunSource != "" {
+		if err := FetchRunSource(ctx, cfg, logger); err != nil {
+			return err
+		}
+		// The L1 Info Tree DB stays local: make sure its directory exists on a fresh machine.
+		if err := os.MkdirAll(filepath.Dir(cfg.L1InfoTreeDBPath), dirPermissions); err != nil {
+			return fmt.Errorf("create the directory of l1InfoTreeDBPath: %w", err)
+		}
 	}
 
 	cert, err := LoadCertificate(cfg.SignedCertificatePath)

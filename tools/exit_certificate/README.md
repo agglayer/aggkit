@@ -133,9 +133,11 @@ The field names are identical in both formats. Pass whichever you created with `
 | `ignoreUnsupportedL2Events` | `false` | When `true`, the Step G lite syncer logs a warning and continues instead of aborting when it sees an L2 event that would invalidate a BridgeEvent-only reconstruction (`SetSovereignTokenAddress`, `MigrateLegacyToken`, `RemoveLegacySovereignTokenAddress`, `BackwardLET`, `ForwardLET`). The computed `NewLocalExitRoot` may then be incorrect — enable only to knowingly inspect such a chain. |
 | `ignoreLERMismatch` | `false` | When `true`, the AET-11 unsettled-bridge-exits verification (Step CHECK check 9, the Step 0 guard, and Step H's LER cross-check) logs a warning and continues instead of aborting when the L2 bridge's LER at the target block does not match the agglayer's `settled_ler`. The certificate then chains from a `PrevLocalExitRoot` that does not cover every emitted bridge exit, so the agglayer will most likely reject it — enable only to knowingly inspect such a snapshot. Step H's pending-certificate guard is unaffected. Rejected with `deltaMode`. |
 | `deltaMode` | `false` | When `true`, builds a certificate that only carries the **new** bridge exits of `deltaExitsFile`, chained on the previous run (`previousRun`). See [Delta mode](#delta-mode--chain-additional-exits-on-a-previous-certificate). `exitAddress` is not required in this mode. |
-| `previousRun` | `""` | Required with `deltaMode`: output directory of the previous (settled) run. Relative paths resolve from the config file directory. Must differ from `outputDir`. Setting it without `deltaMode` is rejected. |
+| `previousRun` | `""` | Required with `deltaMode`: output directory of the previous (settled) run, or its archive `gs://<bucket>/<prefix>` (see [Archiving runs](#archiving-runs-in-a-gcs-bucket)). Relative paths resolve from the config file directory. Must differ from `outputDir`. Setting it without `deltaMode` is rejected. |
 | `deltaExitsFile` | `""` | Required with `deltaMode`: JSON file with the new exits (format in [Delta mode](#delta-mode--chain-additional-exits-on-a-previous-certificate)). Relative paths resolve from the config file directory. |
 | `recoveriesPath` | `""` | Only with `deltaMode`, input of `--step recoveries`: a directory (searched recursively), a `.tgz` of the [zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit) or a `recovery.json` with already verified recoveries. See [Recoveries step](#recoveries-step--from-verified-recoveries-to-delta-exits). Relative paths resolve from the config file directory. |
+| `archiveURI` | `""` | Where `--step upload` archives `outputDir`: `gs://<bucket>/<prefix>`, one new prefix per run (e.g. `gs://polygonlabs-zkevm-prod-let-archive/runs/2026-11-24-delta-1`). Only the upload step needs it. See [Archiving runs](#archiving-runs-in-a-gcs-bucket). |
+| `archiveCacheDir` | `"archive-cache"` next to `outputDir` | Base directory archived runs are downloaded into (`<archiveCacheDir>/<bucket>/<prefix>/`): the `gs://` `previousRun` of a delta, and the claimer's `--run-source`. Relative paths resolve from the config file directory. |
 | `verifyNewLocalExitRootUsingShadowFork` | `true` | Selects the Step G2 mode. When `true` (default), Step G2 spins up an Anvil shadow-fork, replays every bridge exit against the real bridge contract, recovers the on-chain metadata, and verifies the off-chain leaf encoding against the contract's `getRoot()` (requires `anvil` in `$PATH`). When `false`, Step G2 skips Anvil — much faster, but it trusts the off-chain leaf encoding/metadata. In both modes the certificate keeps its deterministic exit order and the `NewLocalExitRoot` is the lite exit tree root in that order. See [Step G](#step-g--compute-newlocalexitroot) for details. |
 
 ### Important configuration notes
@@ -244,8 +246,9 @@ This produces and signs the certificate but **does not submit it**. SUBMIT and W
 | SIGN | Sign certificate | Hashes the certificate and signs it with the configured keystore; wraps the signature in `AggchainDataMultisig`. |
 | SUBMIT | Send to agglayer | Sends the signed certificate to the agglayer via gRPC. **Not part of the default pipeline.** |
 | WAIT | Wait for settlement | Polls `GetCertificateHeader` every 5 s until the certificate is `Settled` or `InError`, then confirms the settlement on L1 (`VerifyBatchesTrustedAggregator` on the RollupManager + the accompanying `UpdateL1InfoTree`/`UpdateL1InfoTreeV2` events). **Not part of the default pipeline.** |
+| UPLOAD | Archive the run | Uploads the output directory of a settled run to `archiveURI` (write-once GCS bucket). **Not part of the default pipeline**; see [Archiving runs](#archiving-runs-in-a-gcs-bucket). |
 
-Steps SUBMIT and WAIT are **not** part of the default pipeline — they must be triggered explicitly.
+Steps SUBMIT, WAIT and UPLOAD are **not** part of the default pipeline — they must be triggered explicitly.
 
 ### Run one or more steps
 
@@ -273,7 +276,7 @@ Ranges use `from-to` (inclusive). An open-ended `from-` runs through `sign`; `su
 | Flag | Short | Default | Description |
 | :--: | :---: | :-----: | :---------: |
 | `--config` | `-c` | `parameters.json` | Path to the config file. |
-| `--step` | — | `all` | Step(s) to run. Accepts `all`; a single step name; a comma-separated list (e.g. `h,i,sign`); or a range `from-to` (inclusive, e.g. `a-c` → `a,b,c`). An **open-ended** range `from-` runs through `sign` (e.g. `g-` → `g,h,i,sign`); `submit`/`wait` are excluded from open ranges and must be named explicitly — use `0-wait` to run every step. Valid names: `check`, `0`, `a`, `b`/`b1`/`b2`/`b3`, `c`–`f`, `g`/`g1`/`g2`, `h`, `i`, `sign`, `submit`, `wait`. The aliases `b` and `g` expand to their sub-steps and also work as range bounds. |
+| `--step` | — | `all` | Step(s) to run. Accepts `all`; a single step name; a comma-separated list (e.g. `h,i,sign`); or a range `from-to` (inclusive, e.g. `a-c` → `a,b,c`). An **open-ended** range `from-` runs through `sign` (e.g. `g-` → `g,h,i,sign`); `submit`/`wait` are excluded from open ranges and must be named explicitly — use `0-wait` to run every step. Valid names: `check`, `0`, `a`, `b`/`b1`/`b2`/`b3`, `c`–`f`, `g`/`g1`/`g2`, `h`, `i`, `sign`, `submit`, `wait`; `pending_claims` and `upload` (standalone, never part of a range); `recoveries` (delta mode only). The aliases `b` and `g` expand to their sub-steps and also work as range bounds. |
 | `--verbose` | — | `false` | Enable debug logging. Without this flag only `info`, `warn` and `error` messages are shown. |
 
 ## Pipeline steps
@@ -568,7 +571,7 @@ A full run produces **one** certificate per chain. When more exits must be issue
 ./target/exit_certificate --config parameters.json --step submit,wait # as in a regular run
 ```
 
-In delta mode only `all` (the default), `sign`, `submit` and `wait` are available; the L2 scan steps (0, A, B, C, D, E) do not exist.
+In delta mode only `all` (the default), `recoveries`, `sign`, `submit`, `wait` and `upload` are available; the L2 scan steps (0, A, B, C, D, E) do not exist.
 
 ### Delta exits file
 
@@ -612,9 +615,102 @@ The new exits, with the same `BridgeExit` shape as a certificate's `bridge_exits
 | `exit-certificate-full.json` | The same certificate shape carrying **every** exit (previous runs + this delta, in leaf order) with the latest `new_local_exit_root`. Not submittable; it is the input of the next delta and of the [claimer](../exit_certificate_claimer/README.md). |
 | `step-g-l2bridgesyncerlite.sqlite` | The exit tree with all leaves (old + new). |
 | `step-wait-result.json` | Settlement record of the delta certificate. |
-| `delta-manifest.json` | Links previous run → this run: certificate heights/hashes, root before/after, leaf index range added, exit counts. |
+| `delta-manifest.json` | Links previous run → this run: certificate heights/hashes, root before/after, leaf index range added, exit counts. When `previousRun` was an archive, also `previousRunArchive` (its URI) and `previousRunArchiveManifestSha256`. |
 
-A delta's `previousRun` can be the output dir of a regular run (its signed certificate already holds every exit) or of a previous delta (its full certificate is used).
+A delta's `previousRun` can be the output dir of a regular run (its signed certificate already holds every exit) or of a previous delta (its full certificate is used), or the [archive](#archiving-runs-in-a-gcs-bucket) of either.
+
+## Archiving runs in a GCS bucket
+
+Each run (full or delta) is the input of the next delta and of the claimer, so its output directory must be
+kept intact. The tool can archive it in a **write-once** GCS bucket and read it back from there:
+
+| Bucket | Environment |
+| ------ | ----------- |
+| `polygonlabs-zkevm-prod-let-archive` | zkEVM mainnet |
+| `polygonlabs-zkevm-bali-let-archive` | Bali (to rehearse the process) |
+
+Objects in these buckets can be created but never deleted or overwritten (retention policy). Writers need
+`roles/storage.objectCreator` + `roles/storage.objectViewer`; readers (a delta's `previousRun`, the claimer)
+only `roles/storage.objectViewer`.
+
+**Credentials:** Application Default Credentials — `gcloud auth application-default login` on a laptop
+(workforce identity via Okta), the workload identity / service account of a pod, or
+`GOOGLE_APPLICATION_CREDENTIALS`. `STORAGE_EMULATOR_HOST` points the client at a GCS emulator instead.
+
+### Layout
+
+One prefix per run, e.g. `runs/<YYYY-MM-DD>-<label>/`, holding the files of the output directory under their
+relative paths plus `archive-manifest.json`:
+
+```text
+gs://polygonlabs-zkevm-prod-let-archive/
+└── runs/
+    ├── 2026-07-21-full/
+    │   ├── archive-manifest.json
+    │   ├── exit-certificate-signed.json
+    │   ├── step-g-l2bridgesyncerlite.sqlite
+    │   ├── step-wait-result.json
+    │   └── ...                              (every other file of the output dir)
+    └── 2026-11-24-delta-1/
+        ├── archive-manifest.json
+        ├── exit-certificate-full.json
+        ├── delta-manifest.json
+        ├── recoveries/...
+        └── ...
+```
+
+`archive-manifest.json` lists every archived file with its size, SHA-256 and CRC32C, plus some run info
+(tool version, `full`/`delta`, network ID, certificate hash, and for a delta the archive of its previous run).
+It is uploaded **last**: a prefix without it is an incomplete upload and is never read.
+
+### Upload — `--step upload`
+
+```bash
+# after --step submit,wait (and --step pending_claims, if you want it archived)
+./target/exit_certificate --config parameters.toml --step upload
+```
+
+Set `options.archiveURI` to a **new** prefix. The step:
+
+- archives only a **settled** run (`step-wait-result.json` with status `Settled`) that has its certificate
+  (`exit-certificate-signed.json`, or `exit-certificate-full.json` in delta mode);
+- uploads every file of `outputDir` except the claimer's L1 Info Tree DBs (`L1InfoTreeSync.sqlite`,
+  `l1infotree_multidownloader.sqlite`), SQLite side files (`-wal`/`-shm`/`-journal`) and `archiveCacheDir` if
+  it is inside `outputDir`. Each SQLite DB is checkpointed first, so its main file is complete (it fails if a
+  process — e.g. a running claimer — still holds it busy);
+- never overwrites: each object is created with a "does not exist" precondition. An object already there with
+  the same size and CRC32C is kept, so **re-running after a failed upload resumes it**; one with different
+  content is an error. If the prefix already has a manifest, the step succeeds without uploading when it lists
+  the same files, and fails otherwise (use a new prefix);
+- writes a local copy of the manifest (`archive-manifest.json`) in `outputDir`.
+
+Upload is the last step of a run: the archive cannot be changed, so files written afterwards (e.g. a late
+`--step pending_claims`, which warns about it) can only go to a new prefix.
+
+### Delta from an archived run
+
+Set the delta's `options.previousRun` to the archive of the previous run:
+
+```toml
+[options]
+deltaMode = true
+previousRun = "gs://polygonlabs-zkevm-prod-let-archive/runs/2026-07-21-full"
+deltaExitsFile = "./delta-exits.json"
+outputDir = "./output-delta-1"
+archiveURI = "gs://polygonlabs-zkevm-prod-let-archive/runs/2026-11-24-delta-1"   # for --step upload
+```
+
+`--step all` and `--step recoveries` download what a delta reads — the certificate (full, else signed),
+`step-wait-result.json`, `step-g-l2bridgesyncerlite.sqlite`, `delta-manifest.json`, the balance state
+(`step-0-lbt.json`, `step-c-sc-locked-values.json`, `step-f-checks.json`) and `recoveries/` — into
+`<archiveCacheDir>/<bucket>/<prefix>/`, verify each file's size, SHA-256 and CRC32C against the manifest, and
+then run exactly as with a local directory. Files already in the cache with the right content are not
+downloaded again. The cache directory belongs to that one archived run: a different manifest or a file the
+manifest does not list there is an error (remove the directory). The delta records the archive URI and its
+manifest SHA-256 in `delta-manifest.json`. Read access to the bucket is enough.
+
+The claimer can serve an archived run too: `runSource` in its config, or `--run-source` — see the
+[claimer README](../exit_certificate_claimer/README.md#serving-an-archived-run).
 
 ## Recoveries step — from verified recoveries to delta exits
 
@@ -683,6 +779,9 @@ The output files the claimer needs are:
 | `step-g-l2bridgesyncerlite.sqlite` | The L2 local exit tree — used to build the `smtProofLocalExitRoot` proof of each leaf against `new_local_exit_root`. |
 | `step-pending-l2-bridges.json` | *Optional* (Step PENDING_CLAIMS). Unclaimed L2→L1 bridges emitted before the certificate; the claimer serves them along with the certificate's exits. |
 | `step-wait-result.json` | The WAIT step's L1 settlement record (`VerifyBatchesTrustedAggregator` + the `UpdateL1InfoTree`/`UpdateL1InfoTreeV2` events) used to anchor the claim to the settled global exit root. |
+
+Archive the output directory with [`--step upload`](#archiving-runs-in-a-gcs-bucket) once the run is complete:
+the next delta and the claimer can then read these files from the bucket.
 
 ## Testing
 
