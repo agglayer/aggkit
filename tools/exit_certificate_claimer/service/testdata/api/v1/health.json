@@ -1,0 +1,17 @@
+{
+  "status": "ok",
+  "network_id": 1,
+  "version": {
+    "version": "v0.0.0-golden",
+    "git_rev": "0000000",
+    "git_branch": "golden",
+    "build_date": "1970-01-01T00:00:00Z",
+    "go_version": "go0.0.0",
+    "os": "linux",
+    "arch": "amd64"
+  },
+  "api_versions": [
+    1,
+    2
+  ]
+}

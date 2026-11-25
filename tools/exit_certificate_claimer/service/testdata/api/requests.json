@@ -1,0 +1,156 @@
+[
+  {
+    "name": "v1 health",
+    "method": "GET",
+    "path": "/claimer/v1/health",
+    "status": 200,
+    "file": "v1/health.json"
+  },
+  {
+    "name": "v1 bridges of a holder: Transfer exits only",
+    "method": "GET",
+    "path": "/claimer/v1/bridges?dest_address=0xa11ce00000000000000000000000000000000001",
+    "status": 200,
+    "file": "v1/bridges.json"
+  },
+  {
+    "name": "v1 bridges of the message destination contract: none",
+    "method": "GET",
+    "path": "/claimer/v1/bridges?dest_address=0x70E70e58ed7B1Cec0D8ef7464072ED8A52d755eB",
+    "status": 200,
+    "file": "v1/bridges-empty.json"
+  },
+  {
+    "name": "v1 claim-params of a holder: every Transfer exit",
+    "method": "GET",
+    "path": "/claimer/v1/claim-params?dest_address=0xa11ce00000000000000000000000000000000001",
+    "status": 200,
+    "file": "v1/claim-params.json"
+  },
+  {
+    "name": "v1 claim-params of one deposit",
+    "method": "GET",
+    "path": "/claimer/v1/claim-params?dest_address=0xa11ce00000000000000000000000000000000001\u0026deposit_count=3",
+    "status": 200,
+    "file": "v1/claim-params-deposit.json"
+  },
+  {
+    "name": "v1 missing dest_address",
+    "method": "GET",
+    "path": "/claimer/v1/bridges",
+    "status": 400,
+    "file": "v1/error-400-missing-dest-address.json"
+  },
+  {
+    "name": "v1 invalid dest_address",
+    "method": "GET",
+    "path": "/claimer/v1/bridges?dest_address=0x1234",
+    "status": 400,
+    "file": "v1/error-400-invalid-dest-address.json"
+  },
+  {
+    "name": "v1 invalid deposit_count",
+    "method": "GET",
+    "path": "/claimer/v1/claim-params?dest_address=0xa11ce00000000000000000000000000000000001\u0026deposit_count=abc",
+    "status": 400,
+    "file": "v1/error-400-invalid-deposit-count.json"
+  },
+  {
+    "name": "v1 certificate not settled",
+    "method": "GET",
+    "path": "/claimer/v1/claim-params?dest_address=0xa11ce00000000000000000000000000000000001",
+    "status": 409,
+    "file": "v1/error-409-not-settled.json"
+  },
+  {
+    "name": "v2 health",
+    "method": "GET",
+    "path": "/claimer/v2/health",
+    "status": 200,
+    "file": "v2/health.json"
+  },
+  {
+    "name": "v2 bridges of a holder: Transfer, decoded Message, pending Message, pending Transfer",
+    "method": "GET",
+    "path": "/claimer/v2/bridges?address=0xa11ce00000000000000000000000000000000001",
+    "status": 200,
+    "file": "v2/bridges.json"
+  },
+  {
+    "name": "v2 bridges of a message of a route that is not configured",
+    "method": "GET",
+    "path": "/claimer/v2/bridges?address=0xc0fFEE0000000000000000000000000000000003",
+    "status": 200,
+    "file": "v2/bridges-unknown-route.json"
+  },
+  {
+    "name": "v2 bridges of an address without exits",
+    "method": "GET",
+    "path": "/claimer/v2/bridges?address=0x00000000000000000000000000000000000000EE",
+    "status": 200,
+    "file": "v2/bridges-empty.json"
+  },
+  {
+    "name": "v2 claim-params of a Transfer exit (claimAsset)",
+    "method": "GET",
+    "path": "/claimer/v2/claim-params?address=0xa11ce00000000000000000000000000000000001\u0026deposit_count=3",
+    "status": 200,
+    "file": "v2/claim-params-claim-asset.json"
+  },
+  {
+    "name": "v2 claim-params of a Message exit (claimMessage)",
+    "method": "GET",
+    "path": "/claimer/v2/claim-params?address=0xa11ce00000000000000000000000000000000001\u0026deposit_count=4",
+    "status": 200,
+    "file": "v2/claim-params-claim-message.json"
+  },
+  {
+    "name": "v2 claim-params of a pending Message (claimMessage)",
+    "method": "GET",
+    "path": "/claimer/v2/claim-params?address=0xa11ce00000000000000000000000000000000001\u0026deposit_count=1",
+    "status": 200,
+    "file": "v2/claim-params-pending-message.json"
+  },
+  {
+    "name": "v2 claim-params of a holder: every exit",
+    "method": "GET",
+    "path": "/claimer/v2/claim-params?address=0xa11ce00000000000000000000000000000000001",
+    "status": 200,
+    "file": "v2/claim-params-all.json"
+  },
+  {
+    "name": "v2 claim-params of a deposit of another address: none",
+    "method": "GET",
+    "path": "/claimer/v2/claim-params?address=0xa11ce00000000000000000000000000000000001\u0026deposit_count=5",
+    "status": 200,
+    "file": "v2/claim-params-empty.json"
+  },
+  {
+    "name": "v2 missing address",
+    "method": "GET",
+    "path": "/claimer/v2/bridges",
+    "status": 400,
+    "file": "v2/error-400-missing-address.json"
+  },
+  {
+    "name": "v2 invalid address",
+    "method": "GET",
+    "path": "/claimer/v2/bridges?address=0x1234",
+    "status": 400,
+    "file": "v2/error-400-invalid-address.json"
+  },
+  {
+    "name": "v2 invalid deposit_count",
+    "method": "GET",
+    "path": "/claimer/v2/claim-params?address=0xa11ce00000000000000000000000000000000001\u0026deposit_count=abc",
+    "status": 400,
+    "file": "v2/error-400-invalid-deposit-count.json"
+  },
+  {
+    "name": "v2 certificate not settled",
+    "method": "GET",
+    "path": "/claimer/v2/claim-params?address=0xa11ce00000000000000000000000000000000001",
+    "status": 409,
+    "file": "v2/error-409-not-settled.json"
+  }
+]

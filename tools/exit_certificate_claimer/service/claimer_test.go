@@ -2,6 +2,7 @@ package claimer
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -12,26 +13,52 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeLocalTree is an in-memory LocalExitTreeReader: it maps the certificate leaves to deposit
-// counts by their position in the certificate.
+// fakeLocalTree is an in-memory LocalExitTreeReader: a list of leaf hashes and raw metadata indexed
+// by deposit count. A leaf without metadata (nil entry beyond the slice) reports no metadata.
 type fakeLocalTree struct {
-	depositByHash  map[common.Hash]uint32
-	metadataByHash map[common.Hash][]byte
-	proof          treetypes.Proof
+	hashes   []common.Hash
+	metadata [][]byte
+	proof    treetypes.Proof
+	proofErr error
 }
 
-func (f *fakeLocalTree) DepositCount(leafHash common.Hash) (uint32, bool) {
-	dc, ok := f.depositByHash[leafHash]
-	return dc, ok
+func (f *fakeLocalTree) LeafCount() uint32 { return uint32(len(f.hashes)) }
+
+func (f *fakeLocalTree) LeafHash(depositCount uint32) (common.Hash, bool) {
+	if int(depositCount) >= len(f.hashes) {
+		return common.Hash{}, false
+	}
+	return f.hashes[depositCount], true
 }
 
-func (f *fakeLocalTree) Metadata(leafHash common.Hash) ([]byte, bool) {
-	m, ok := f.metadataByHash[leafHash]
-	return m, ok
+func (f *fakeLocalTree) Metadata(depositCount uint32) ([]byte, bool) {
+	if int(depositCount) >= len(f.metadata) {
+		return nil, false
+	}
+	return f.metadata[depositCount], true
 }
 
 func (f *fakeLocalTree) Proof(_ context.Context, _ uint32, _ common.Hash) (treetypes.Proof, error) {
-	return f.proof, nil
+	return f.proof, f.proofErr
+}
+
+// testHistoricalLeaves is the number of leaves the fake tree holds before the certificate's exits, to
+// prove the deposit count is the position in the tree and not the position in the certificate.
+const testHistoricalLeaves = 5
+
+// fakeTreeForCert builds a fake tree with testHistoricalLeaves older leaves followed by the
+// certificate's exits, each with raw metadata 0xabcd.
+func fakeTreeForCert(cert *Certificate) *fakeLocalTree {
+	f := &fakeLocalTree{}
+	for i := range testHistoricalLeaves {
+		f.hashes = append(f.hashes, common.BigToHash(big.NewInt(int64(i+1))))
+		f.metadata = append(f.metadata, nil)
+	}
+	for _, leaf := range cert.Leaves {
+		f.hashes = append(f.hashes, leaf.Hash())
+		f.metadata = append(f.metadata, []byte{0xab, 0xcd})
+	}
+	return f
 }
 
 // fakeL1 is a fake L1InfoTreeQuerier returning a fixed leaf and proof.
@@ -61,14 +88,7 @@ func buildTestClaimer(t *testing.T, settledRoot common.Hash) (*Claimer, common.A
 	cert, err := LoadCertificate(writeSampleCert(t))
 	require.NoError(t, err)
 
-	depositByHash := make(map[common.Hash]uint32, len(cert.Leaves))
-	metadataByHash := make(map[common.Hash][]byte, len(cert.Leaves))
-	for i, leaf := range cert.Leaves {
-		depositByHash[leaf.Hash()] = uint32(i + 5) // offset to prove the count is carried through
-		metadataByHash[leaf.Hash()] = []byte{0xab, 0xcd}
-	}
-
-	localTree := &fakeLocalTree{depositByHash: depositByHash, metadataByHash: metadataByHash}
+	localTree := fakeTreeForCert(cert)
 	l1 := &fakeL1{
 		leaf: &l1infotreesync.L1InfoTreeLeaf{
 			L1InfoTreeIndex: 9,

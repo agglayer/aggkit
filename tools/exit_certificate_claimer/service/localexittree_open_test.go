@@ -55,14 +55,15 @@ func TestOpenLocalExitTree(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, lt.Close()) })
 
-	// Each persisted bridge is indexed by its leaf hash → deposit count and raw metadata.
+	// Each persisted bridge is indexed by its deposit count, with its leaf hash and raw metadata.
+	require.Equal(t, uint32(len(bridges)), lt.LeafCount())
 	for _, b := range bridges {
 		bb := b
-		dc, ok := lt.DepositCount(bb.Hash())
+		h, ok := lt.LeafHash(bb.DepositCount)
 		require.True(t, ok)
-		require.Equal(t, bb.DepositCount, dc)
+		require.Equal(t, bb.Hash(), h)
 
-		meta, ok := lt.Metadata(bb.Hash())
+		meta, ok := lt.Metadata(bb.DepositCount)
 		require.True(t, ok)
 		require.Equal(t, bb.Metadata, meta)
 	}

@@ -13,9 +13,21 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// API major versions. A new one is only added for a breaking change, and the previous one keeps
+// being served for at least one release (see SPEC.md, "API versioning").
+const (
+	apiVersion1 = 1
+	apiVersion2 = 2
+)
+
+// supportedAPIVersions returns the API major versions this claimer serves.
+func supportedAPIVersions() []int { return []int{apiVersion1, apiVersion2} }
+
 const (
 	apiBasePath       = "/claimer/v1"
+	apiBasePathV2     = "/claimer/v2"
 	destAddressParam  = "dest_address"
+	addressParam      = "address"
 	depositCountParam = "deposit_count"
 	shutdownTimeout   = 5 * time.Second
 )
@@ -28,6 +40,8 @@ type Server struct {
 	writeTimeout time.Duration
 	claimer      *Claimer
 	router       *gin.Engine
+	// version is the build version reported by /health.
+	version VersionInfo
 }
 
 // NewServer builds the HTTP server and registers the routes.
@@ -43,12 +57,18 @@ func NewServer(cfg *Config, claimer *Claimer, logger *log.Logger) *Server {
 		writeTimeout: time.Duration(cfg.WriteTimeoutSeconds) * time.Second,
 		claimer:      claimer,
 		router:       router,
+		version:      versionInfo(),
 	}
 
 	v1 := router.Group(apiBasePath)
 	v1.GET("/health", s.handleHealth)
 	v1.GET("/bridges", s.handleBridges)
 	v1.GET("/claim-params", s.handleClaimParams)
+
+	v2 := router.Group(apiBasePathV2)
+	v2.GET("/health", s.handleHealthV2)
+	v2.GET("/bridges", s.handleBridgesV2)
+	v2.GET("/claim-params", s.handleClaimParamsV2)
 
 	return s
 }
@@ -64,7 +84,8 @@ func (s *Server) Start(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		s.logger.Infof("claimer backend listening on %s (base path %s)", s.address, apiBasePath)
+		s.logger.Infof("claimer backend listening on %s (base paths %s, %s)",
+			s.address, apiBasePath, apiBasePathV2)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
@@ -80,32 +101,47 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 }
 
-func (s *Server) handleHealth(c *gin.Context) {
+func versionInfo() VersionInfo {
 	v := aggkit.GetVersion()
+	return VersionInfo{
+		Version:   v.Version,
+		GitRev:    v.GitRev,
+		GitBranch: v.GitBranch,
+		BuildDate: v.BuildDate,
+		GoVersion: v.GoVersion,
+		OS:        v.OS,
+		Arch:      v.Arch,
+	}
+}
+
+func (s *Server) handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, HealthResponse{
-		Status:    "ok",
-		NetworkID: s.claimer.NetworkID(),
-		Version: VersionInfo{
-			Version:   v.Version,
-			GitRev:    v.GitRev,
-			GitBranch: v.GitBranch,
-			BuildDate: v.BuildDate,
-			GoVersion: v.GoVersion,
-			OS:        v.OS,
-			Arch:      v.Arch,
-		},
+		Status:      "ok",
+		NetworkID:   s.claimer.NetworkID(),
+		Version:     s.version,
+		APIVersions: supportedAPIVersions(),
+	})
+}
+
+func (s *Server) handleHealthV2(c *gin.Context) {
+	c.JSON(http.StatusOK, HealthResponseV2{
+		APIVersion:  apiVersion2,
+		Status:      "ok",
+		NetworkID:   s.claimer.NetworkID(),
+		Version:     s.version,
+		APIVersions: supportedAPIVersions(),
 	})
 }
 
 func (s *Server) handleBridges(c *gin.Context) {
-	destAddr, ok := s.parseDestAddress(c)
+	destAddr, ok := parseAddress(c, destAddressParam, respondErrorV1)
 	if !ok {
 		return
 	}
 
 	bridges, err := s.claimer.ListBridges(destAddr)
 	if err != nil {
-		s.respondError(c, http.StatusInternalServerError, err)
+		respondErrorV1(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -117,12 +153,12 @@ func (s *Server) handleBridges(c *gin.Context) {
 }
 
 func (s *Server) handleClaimParams(c *gin.Context) {
-	destAddr, ok := s.parseDestAddress(c)
+	destAddr, ok := parseAddress(c, destAddressParam, respondErrorV1)
 	if !ok {
 		return
 	}
 
-	depositCount, ok := s.parseDepositCount(c)
+	depositCount, ok := parseDepositCount(c, respondErrorV1)
 	if !ok {
 		return
 	}
@@ -133,7 +169,7 @@ func (s *Server) handleClaimParams(c *gin.Context) {
 		if errors.Is(err, ErrLocalExitRootNotSettled) {
 			status = http.StatusConflict
 		}
-		s.respondError(c, status, err)
+		respondErrorV1(c, status, err.Error())
 		return
 	}
 
@@ -144,15 +180,67 @@ func (s *Server) handleClaimParams(c *gin.Context) {
 	})
 }
 
-// parseDestAddress reads and validates the dest_address query param, writing a 400 on failure.
-func (s *Server) parseDestAddress(c *gin.Context) (common.Address, bool) {
-	raw := c.Query(destAddressParam)
+func (s *Server) handleBridgesV2(c *gin.Context) {
+	address, ok := parseAddress(c, addressParam, respondErrorV2)
+	if !ok {
+		return
+	}
+
+	bridges, err := s.claimer.ListBridgesV2(address)
+	if err != nil {
+		respondErrorV2(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, BridgesResponseV2{
+		APIVersion: apiVersion2,
+		NetworkID:  s.claimer.NetworkID(),
+		Address:    address.Hex(),
+		Bridges:    bridges,
+	})
+}
+
+func (s *Server) handleClaimParamsV2(c *gin.Context) {
+	address, ok := parseAddress(c, addressParam, respondErrorV2)
+	if !ok {
+		return
+	}
+
+	depositCount, ok := parseDepositCount(c, respondErrorV2)
+	if !ok {
+		return
+	}
+
+	claims, err := s.claimer.BuildClaimParamsV2(c.Request.Context(), address, depositCount)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, ErrLocalExitRootNotSettled) {
+			status = http.StatusConflict
+		}
+		respondErrorV2(c, status, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, ClaimParamsResponseV2{
+		APIVersion: apiVersion2,
+		NetworkID:  s.claimer.NetworkID(),
+		Address:    address.Hex(),
+		Claims:     claims,
+	})
+}
+
+// errorResponder writes an error body in the form of one API version.
+type errorResponder func(c *gin.Context, status int, msg string)
+
+// parseAddress reads and validates the address query param called name, writing a 400 on failure.
+func parseAddress(c *gin.Context, name string, respond errorResponder) (common.Address, bool) {
+	raw := c.Query(name)
 	if raw == "" {
-		s.respondErrorMsg(c, http.StatusBadRequest, destAddressParam+" query parameter is required")
+		respond(c, http.StatusBadRequest, name+" query parameter is required")
 		return common.Address{}, false
 	}
 	if !common.IsHexAddress(raw) {
-		s.respondErrorMsg(c, http.StatusBadRequest, "invalid "+destAddressParam+": "+raw)
+		respond(c, http.StatusBadRequest, "invalid "+name+": "+raw)
 		return common.Address{}, false
 	}
 	return common.HexToAddress(raw), true
@@ -160,24 +248,24 @@ func (s *Server) parseDestAddress(c *gin.Context) (common.Address, bool) {
 
 // parseDepositCount reads the optional deposit_count query param. Returns (nil, true) when absent
 // (all matching exits are returned), writing a 400 only on a malformed value.
-func (s *Server) parseDepositCount(c *gin.Context) (*uint32, bool) {
+func parseDepositCount(c *gin.Context, respond errorResponder) (*uint32, bool) {
 	raw := c.Query(depositCountParam)
 	if raw == "" {
 		return nil, true
 	}
 	v, err := strconv.ParseUint(raw, 10, 32)
 	if err != nil {
-		s.respondErrorMsg(c, http.StatusBadRequest, "invalid "+depositCountParam+": "+raw)
+		respond(c, http.StatusBadRequest, "invalid "+depositCountParam+": "+raw)
 		return nil, false
 	}
 	dc := uint32(v)
 	return &dc, true
 }
 
-func (s *Server) respondError(c *gin.Context, status int, err error) {
-	s.respondErrorMsg(c, status, err.Error())
+func respondErrorV1(c *gin.Context, status int, msg string) {
+	c.JSON(status, errorResponse{Error: msg})
 }
 
-func (s *Server) respondErrorMsg(c *gin.Context, status int, msg string) {
-	c.JSON(status, errorResponse{Error: msg})
+func respondErrorV2(c *gin.Context, status int, msg string) {
+	c.JSON(status, errorResponseV2{APIVersion: apiVersion2, Error: msg})
 }

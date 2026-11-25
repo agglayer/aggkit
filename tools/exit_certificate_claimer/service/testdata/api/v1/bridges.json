@@ -1,0 +1,26 @@
+{
+  "network_id": 1,
+  "destination_address": "0xa11ce00000000000000000000000000000000001",
+  "bridges": [
+    {
+      "leaf_type": 0,
+      "origin_network": 0,
+      "origin_token_address": "0x0000000000000000000000000000000000000000",
+      "destination_network": 0,
+      "destination_address": "0xa11ce00000000000000000000000000000000001",
+      "amount": "2000000000000000000",
+      "metadata": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+      "deposit_count": 3
+    },
+    {
+      "leaf_type": 0,
+      "origin_network": 0,
+      "origin_token_address": "0x0000000000000000000000000000000000000000",
+      "destination_network": 0,
+      "destination_address": "0xa11ce00000000000000000000000000000000001",
+      "amount": "100000000000000000",
+      "metadata": "0x",
+      "deposit_count": 2
+    }
+  ]
+}

@@ -80,11 +80,15 @@ func TestClaimerServesOldAndNewExitsAfterDelta(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, lt.Close()) }()
 
+	// The full certificate lists every leaf of the tree, so its first exit is the leaf 0.
+	require.Equal(t, uint32(len(cert.Leaves)), lt.LeafCount())
 	for i, l := range cert.Leaves {
-		depositCount, ok := lt.DepositCount(l.Hash())
+		// Old exits keep the deposit count they had before the delta (same global index): the exit at
+		// position i is the leaf at position i.
+		depositCount := uint32(i)
+		treeHash, ok := lt.LeafHash(depositCount)
 		require.True(t, ok, "exit %d not found in the tree", i)
-		// Old exits keep the deposit count they had before the delta (same global index).
-		require.Equal(t, uint32(i), depositCount)
+		require.Equal(t, l.Hash(), treeHash)
 
 		// Old and new exits are proven against the latest root.
 		proof, err := lt.Proof(ctx, depositCount, finalRoot)
@@ -92,7 +96,7 @@ func TestClaimerServesOldAndNewExitsAfterDelta(t *testing.T) {
 		require.NoError(t, tree.VerifyProof(l.Hash(), proof, depositCount, finalRoot), "exit %d", i)
 
 		// The claim needs the raw metadata the leaf was built from.
-		md, ok := lt.Metadata(l.Hash())
+		md, ok := lt.Metadata(depositCount)
 		require.True(t, ok)
 		require.Equal(t, all[i].Metadata, md)
 	}

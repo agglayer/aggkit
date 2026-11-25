@@ -25,6 +25,7 @@ func newCLIContext(t *testing.T, args []string) *cli.Context {
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	fs.String("config", "", "")
 	fs.String("exit-certificate-config", "", "")
+	fs.String("message-routes", "", "")
 	fs.String("address", "", "")
 	fs.Int("port", 0, "")
 	require.NoError(t, fs.Parse(args))
@@ -163,4 +164,45 @@ func TestDeriveFromExitCertificateSuccess(t *testing.T) {
 	require.Equal(t, rollupManager.Hex(), cfg.L1Sync.RollupManagerAddr)
 	require.Equal(t, uint32(2), cfg.NetworkID)
 	require.Equal(t, fmt.Sprintf("%d", ec.Options.L1StartBlock), fmt.Sprintf("%d", cfg.L1Sync.InitialBlock))
+}
+
+func TestLoadOrDeriveConfigMessageRoutesFlag(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	routesPath := filepath.Join(t.TempDir(), "routes.toml")
+	require.NoError(t, os.WriteFile(routesPath, []byte(circleRoutesTOML), 0o600))
+
+	// --message-routes sets the routes of a config that has none.
+	c := newCLIContext(t, []string{"--config", writeNativeClaimerConfig(t), "--message-routes", routesPath})
+	cfg, err := loadOrDeriveConfig(ctx, c, log.GetDefaultLogger())
+	require.NoError(t, err)
+	require.Equal(t, []MessageRoute{circleRoute()}, cfg.MessageRoutes)
+
+	// It replaces (does not merge with) the routes of the config file.
+	other := circleRoute()
+	other.OriginNetwork = 9
+	rawCfg, err := json.Marshal(map[string]any{
+		"signedCertificatePath": "/c.json", "localExitTreeDBPath": "/l.sqlite",
+		"l1InfoTreeDBPath": "/i.sqlite", "stepWaitResultPath": "/w.json",
+		"messageRoutes": []MessageRoute{other},
+	})
+	require.NoError(t, err)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, os.WriteFile(cfgPath, rawCfg, 0o600))
+	c = newCLIContext(t, []string{"--config", cfgPath})
+	cfg, err = loadOrDeriveConfig(ctx, c, log.GetDefaultLogger())
+	require.NoError(t, err)
+	require.Equal(t, []MessageRoute{other}, cfg.MessageRoutes)
+	c = newCLIContext(t, []string{"--config", cfgPath, "--message-routes", routesPath})
+	cfg, err = loadOrDeriveConfig(ctx, c, log.GetDefaultLogger())
+	require.NoError(t, err)
+	require.Equal(t, []MessageRoute{circleRoute()}, cfg.MessageRoutes)
+
+	// An invalid file is refused.
+	badPath := filepath.Join(t.TempDir(), "routes.json")
+	require.NoError(t, os.WriteFile(badPath, []byte(`{"messageRoutes": [{"metadataLayout": "x"}]}`), 0o600))
+	c = newCLIContext(t, []string{"--config", cfgPath, "--message-routes", badPath})
+	_, err = loadOrDeriveConfig(ctx, c, log.GetDefaultLogger())
+	require.ErrorContains(t, err, "--message-routes")
+	require.ErrorContains(t, err, "messageRoutes[0]")
 }

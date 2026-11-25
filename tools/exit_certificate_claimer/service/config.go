@@ -62,6 +62,10 @@ type Config struct {
 	// NetworkID is the source network of the exits. Defaults to the certificate's network_id when 0.
 	NetworkID uint32 `json:"networkId"`
 
+	// MessageRoutes tells API v2 how to decode the beneficiary of Message exits (see MessageRoute).
+	// A Message exit of a route that is not listed is only found by its destination address.
+	MessageRoutes []MessageRoute `json:"messageRoutes"`
+
 	// L1Sync controls optional background synchronization of the L1 Info Tree from L1.
 	L1Sync L1SyncConfig `json:"l1Sync"`
 }
@@ -146,6 +150,9 @@ func (c *Config) resolvePaths(baseDir string) {
 // validate checks the config. With RunSource the run data paths are only filled in by FetchRunSource, so
 // they are validated before it (validateRunSource) and after it (here, with the paths set).
 func (c *Config) validate() error {
+	if err := validateMessageRoutes(c.MessageRoutes); err != nil {
+		return err
+	}
 	if c.RunSource != "" {
 		if err := c.validateRunSource(); err != nil {
 			return err

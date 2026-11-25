@@ -1,0 +1,4 @@
+{
+  "api_version": 2,
+  "error": "invalid deposit_count: abc"
+}

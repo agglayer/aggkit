@@ -3,6 +3,7 @@ package claimer
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -177,4 +178,49 @@ func TestListenAddress(t *testing.T) {
 
 	cfg := &Config{Address: "127.0.0.1", Port: 7080}
 	require.Equal(t, "127.0.0.1:7080", cfg.ListenAddress())
+}
+
+const nativeConfigTOMLPaths = `
+signedCertificatePath = "/abs/exit-certificate-signed.json"
+localExitTreeDBPath = "/abs/tree.sqlite"
+l1InfoTreeDBPath = "/abs/l1.sqlite"
+stepWaitResultPath = "/abs/step-wait-result.json"
+`
+
+func TestLoadConfigMessageRoutes(t *testing.T) {
+	t.Parallel()
+
+	// TOML ([[messageRoutes]] must come after the top-level keys).
+	cfg, err := LoadConfig(writeConfig(t, "config.toml", nativeConfigTOMLPaths+circleRoutesTOML))
+	require.NoError(t, err)
+	require.Equal(t, []MessageRoute{circleRoute()}, cfg.MessageRoutes)
+
+	// JSON.
+	jsonConfig := `{
+  "signedCertificatePath": "/c.json", "localExitTreeDBPath": "/l.sqlite",
+  "l1InfoTreeDBPath": "/i.sqlite", "stepWaitResultPath": "/w.json",
+  "messageRoutes": ` + circleRoutesJSON[len(`{"messageRoutes": `):len(circleRoutesJSON)-1] + `}`
+	cfg, err = LoadConfig(writeConfig(t, "config.json", jsonConfig))
+	require.NoError(t, err)
+	require.Equal(t, []MessageRoute{circleRoute()}, cfg.MessageRoutes)
+
+	// No routes is valid: Message exits are then only found by destination address.
+	cfg, err = LoadConfig(writeConfig(t, "config.toml", nativeConfigTOMLPaths))
+	require.NoError(t, err)
+	require.Empty(t, cfg.MessageRoutes)
+}
+
+func TestLoadConfigInvalidMessageRoute(t *testing.T) {
+	t.Parallel()
+
+	for name, c := range map[string]struct{ old, new, want string }{
+		"address":  {`"0x70E70e58ed7B1Cec0D8ef7464072ED8A52d755eB"`, `"L1Escrow"`, "messageRoutes[0]: destinationAddress"},
+		"layout":   {`"address,uint256"`, `"address,uint256,bytes"`, "messageRoutes[0]: unsupported metadataLayout"},
+		"decimals": {"decimals = 6", "decimals = 100", "messageRoutes[0]: displayToken.decimals 100 out of range"},
+	} {
+		routes := strings.Replace(circleRoutesTOML, c.old, c.new, 1)
+		require.NotEqual(t, circleRoutesTOML, routes, name)
+		_, err := LoadConfig(writeConfig(t, "config.toml", nativeConfigTOMLPaths+routes))
+		require.ErrorContains(t, err, c.want, name)
+	}
 }

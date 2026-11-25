@@ -52,6 +52,69 @@ type ClaimAssetParams struct {
 	L1InfoTreeIndex uint32 `json:"l1_info_tree_index"`
 }
 
+// Claim methods of AgglayerBridge, as returned by API v2 (claim_method).
+const (
+	ClaimMethodAsset   = "claimAsset"
+	ClaimMethodMessage = "claimMessage"
+)
+
+// claimMethod returns the AgglayerBridge function that claims a leaf of the given type.
+func claimMethod(leafType uint8) string {
+	if leafType == leafTypeMessage {
+		return ClaimMethodMessage
+	}
+	return ClaimMethodAsset
+}
+
+// BridgeExitViewV2 is a bridge exit as returned by API v2: the v1 fields plus the claim method and,
+// for a Message exit decoded through a configured message route, its beneficiary, the amount it is
+// paid and the token it is paid in.
+type BridgeExitViewV2 struct {
+	BridgeExitView
+	ClaimMethod   string        `json:"claim_method"`
+	Beneficiary   string        `json:"beneficiary,omitempty"`
+	DecodedAmount string        `json:"decoded_amount,omitempty"`
+	DisplayToken  *DisplayToken `json:"display_token,omitempty"`
+}
+
+// ClaimParamsV2 holds the claim arguments of one exit as returned by API v2: the v1 fields (claimAsset
+// and claimMessage take the same 11 arguments, in the same order) plus the method to call.
+type ClaimParamsV2 struct {
+	ClaimAssetParams
+	ClaimMethod string `json:"claim_method"`
+}
+
+// BridgesResponseV2 is the body returned by GET /claimer/v2/bridges.
+type BridgesResponseV2 struct {
+	APIVersion int                `json:"api_version"`
+	NetworkID  uint32             `json:"network_id"`
+	Address    string             `json:"address"`
+	Bridges    []BridgeExitViewV2 `json:"bridges"`
+}
+
+// ClaimParamsResponseV2 is the body returned by GET /claimer/v2/claim-params.
+type ClaimParamsResponseV2 struct {
+	APIVersion int             `json:"api_version"`
+	NetworkID  uint32          `json:"network_id"`
+	Address    string          `json:"address"`
+	Claims     []ClaimParamsV2 `json:"claims"`
+}
+
+// HealthResponseV2 is the body returned by GET /claimer/v2/health.
+type HealthResponseV2 struct {
+	APIVersion  int         `json:"api_version"`
+	Status      string      `json:"status"`
+	NetworkID   uint32      `json:"network_id"`
+	Version     VersionInfo `json:"version"`
+	APIVersions []int       `json:"api_versions"`
+}
+
+// errorResponseV2 is the JSON body API v2 returns on error.
+type errorResponseV2 struct {
+	APIVersion int    `json:"api_version"`
+	Error      string `json:"error"`
+}
+
 // BridgesResponse is the body returned by GET /bridges.
 type BridgesResponse struct {
 	NetworkID          uint32           `json:"network_id"`
@@ -82,6 +145,8 @@ type HealthResponse struct {
 	Status    string      `json:"status"`
 	NetworkID uint32      `json:"network_id"`
 	Version   VersionInfo `json:"version"`
+	// APIVersions lists the API major versions this claimer serves (/claimer/v<N>/).
+	APIVersions []int `json:"api_versions"`
 }
 
 // errorResponse is the JSON body returned on error.

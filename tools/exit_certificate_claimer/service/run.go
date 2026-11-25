@@ -103,6 +103,10 @@ func run(c *cli.Context, logger *log.Logger) error {
 		logger.Infof("loaded %d pending pre-certificate bridges from %s", len(pending), cfg.PendingBridgesPath)
 		claimer.WithPendingBridges(pending)
 	}
+	if _, err := claimer.WithMessageRoutes(cfg.MessageRoutes); err != nil {
+		return err
+	}
+	logger.Infof("message routes configured: %d", len(cfg.MessageRoutes))
 	if err := claimer.Check(ctx); err != nil {
 		return fmt.Errorf("claimer check: %w", err)
 	}

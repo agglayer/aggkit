@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -16,10 +17,15 @@ import (
 )
 
 // LocalExitTreeReader is the subset of LocalExitTree the claimer depends on. *LocalExitTree
-// satisfies it; tests can supply a fake.
+// satisfies it; tests can supply a fake. Leaves are addressed by deposit count (their position in
+// the tree), never by hash: identical bridges share a leaf hash but not a deposit count.
 type LocalExitTreeReader interface {
-	DepositCount(leafHash common.Hash) (uint32, bool)
-	Metadata(leafHash common.Hash) ([]byte, bool)
+	// LeafCount returns the number of leaves of the tree.
+	LeafCount() uint32
+	// LeafHash returns the hash of the leaf at depositCount.
+	LeafHash(depositCount uint32) (common.Hash, bool)
+	// Metadata returns the raw bridge metadata of the leaf at depositCount.
+	Metadata(depositCount uint32) ([]byte, bool)
 	Proof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (treetypes.Proof, error)
 }
 
@@ -28,8 +34,8 @@ type LocalExitTreeReader interface {
 // settled on L1 yet (or the chosen leaf predates settlement).
 var ErrLocalExitRootNotSettled = errors.New("certificate new local exit root not settled in L1 info tree")
 
-// Claimer assembles claimAsset parameters for the bridge exits of a settled exit certificate,
-// combining the signed certificate, the L2 local exit tree, and the L1 Info Tree.
+// Claimer assembles claimAsset / claimMessage parameters for the bridge exits of a settled exit
+// certificate, combining the signed certificate, the L2 local exit tree, and the L1 Info Tree.
 type Claimer struct {
 	logger     *log.Logger
 	networkID  uint32
@@ -40,6 +46,8 @@ type Claimer struct {
 	// pending holds the unclaimed L2→L1 bridges emitted before the certificate (see
 	// exitcertificate.RunStepPending). They are not in cert.Leaves but are in the local exit tree.
 	pending []exitcertificate.PendingBridge
+	// routes are the configured message routes: how API v2 decodes the beneficiary of a Message exit.
+	routes messageRoutes
 }
 
 // NewClaimer wires the data sources. networkID defaults to the certificate's network when 0.
@@ -71,6 +79,17 @@ func (c *Claimer) WithPendingBridges(pending []exitcertificate.PendingBridge) *C
 	return c
 }
 
+// WithMessageRoutes sets the message routes API v2 uses to decode the beneficiary of Message exits.
+// It fails when a route is not valid (see MessageRoute).
+func (c *Claimer) WithMessageRoutes(routes []MessageRoute) (*Claimer, error) {
+	indexed, err := indexMessageRoutes(routes)
+	if err != nil {
+		return nil, err
+	}
+	c.routes = indexed
+	return c, nil
+}
+
 // NetworkID returns the source network the claimer serves.
 func (c *Claimer) NetworkID() uint32 { return c.networkID }
 
@@ -79,44 +98,250 @@ func (c *Claimer) NetworkID() uint32 { return c.networkID }
 // update). It may be nil if no wait result was loaded.
 func (c *Claimer) SettlementWaitResult() *exitcertificate.StepWaitResult { return c.waitResult }
 
-// ListBridges returns the certificate bridge exits destined to destAddr, enriched with the deposit
-// count resolved from the local exit tree, followed by the pre-certificate pending bridges.
-func (c *Claimer) ListBridges(destAddr common.Address) ([]BridgeExitView, error) {
-	views := make([]BridgeExitView, 0)
-	certDepositCounts := make(map[uint32]struct{})
-	for i := range c.cert.Leaves {
-		leaf := c.cert.Leaves[i]
-		if leaf.DestinationAddress != destAddr {
-			continue
-		}
-		depositCount, ok := c.localTree.DepositCount(leaf.Hash())
-		if !ok {
-			return nil, fmt.Errorf("error: bridge exit[%d]  (leaf %s) not found in local exit tree",
-				i, leaf.Hash().Hex())
-		}
-		certDepositCounts[depositCount] = struct{}{}
-		views = append(views, leaf.view(depositCount))
+// exitSelection says which exits a request is after.
+type exitSelection struct {
+	// address is the address the exits are looked up by.
+	address common.Address
+	// depositCount, when set, keeps only the exit with that deposit count.
+	depositCount *uint32
+	// withMessages is false for API v1: only Transfer exits, matched by destination address. With it
+	// (API v2) Message exits are returned too, matched by destination address or by the beneficiary
+	// decoded through a configured message route.
+	withMessages bool
+}
+
+// selectedExit is a bridge exit (of the certificate or pending) matched by a request.
+type selectedExit struct {
+	leafType           uint8
+	originNetwork      uint32
+	originAddress      common.Address
+	destinationNetwork uint32
+	destinationAddress common.Address
+	amount             *big.Int
+	depositCount       uint32
+	// viewMetadata is the metadata /bridges shows: the certificate's metadata hash for a certificate
+	// exit, the raw bridge metadata for a pending one.
+	viewMetadata []byte
+	// rawMetadata is the raw bridge metadata, the one a claim needs.
+	rawMetadata []byte
+	// pending is non-nil for a pre-certificate pending bridge.
+	pending *exitcertificate.PendingBridge
+	// decoded is non-nil for a Message exit decoded through a configured message route.
+	decoded *decodedMessage
+}
+
+// certificateFirstDepositCount returns the deposit count of the certificate's first bridge exit. The
+// certificate's exits are the last leaves of the local exit tree, in the certificate's order, so exit
+// i is the leaf at (leaves of the tree − exits of the certificate) + i.
+func (c *Claimer) certificateFirstDepositCount() (uint32, error) {
+	leafCount := uint64(c.localTree.LeafCount())
+	exits := uint64(len(c.cert.Leaves))
+	if exits > leafCount {
+		return 0, fmt.Errorf("the certificate has %d bridge exits but the local exit tree has only %d leaves",
+			exits, leafCount)
 	}
-	for i := range c.pending {
-		p := c.pending[i]
-		if _, inCertificate := certDepositCounts[p.DepositCount]; inCertificate || p.DestinationAddress != destAddr {
+	return uint32(leafCount - exits), nil
+}
+
+// matches reports whether an exit belongs to the selection's address: it is its destination address
+// or, with messages, the beneficiary of the decoded message.
+func (sel *exitSelection) matches(destinationAddress common.Address, decoded *decodedMessage) bool {
+	if destinationAddress == sel.address {
+		return true
+	}
+	return sel.withMessages && decoded != nil && decoded.beneficiary == sel.address
+}
+
+// selectExits returns the certificate's exits matching the selection, in certificate order, followed
+// by the matching pre-certificate pending bridges.
+//
+// A certificate exit is matched to its leaf by position (see certificateFirstDepositCount), not by
+// leaf hash, so identical exits (or an exit identical to an older leaf) each keep their own deposit
+// count. The leaf hash is only a cross-check: the exit's hash must be the hash of the leaf at its
+// position.
+func (c *Claimer) selectExits(sel exitSelection) ([]selectedExit, error) {
+	first, err := c.certificateFirstDepositCount()
+	if err != nil {
+		return nil, err
+	}
+
+	selected := make([]selectedExit, 0)
+	for i := range c.cert.Leaves {
+		leaf := &c.cert.Leaves[i]
+		depositCount := first + uint32(i)
+		if sel.depositCount != nil && *sel.depositCount != depositCount {
 			continue
 		}
-		views = append(views, pendingView(p))
+		if !sel.withMessages && leaf.LeafType != leafTypeAsset {
+			continue
+		}
+		// Only a message that is not addressed to the requested address needs its metadata decoded.
+		var decoded *decodedMessage
+		if sel.withMessages && leaf.LeafType == leafTypeMessage {
+			if rawMetadata, ok := c.localTree.Metadata(depositCount); ok {
+				decoded, _ = c.routes.decode(leaf.LeafType, leaf.OriginNetwork, leaf.OriginTokenAddress,
+					leaf.DestinationNetwork, leaf.DestinationAddress, rawMetadata)
+			}
+		}
+		if !sel.matches(leaf.DestinationAddress, decoded) {
+			continue
+		}
+
+		leafHash := leaf.Hash()
+		treeHash, ok := c.localTree.LeafHash(depositCount)
+		if !ok {
+			return nil, fmt.Errorf("bridge exit %d (leaf %s) not found in local exit tree at deposit count %d",
+				i, leafHash.Hex(), depositCount)
+		}
+		if treeHash != leafHash {
+			return nil, fmt.Errorf("bridge exit %d (leaf %s) does not match the local exit tree leaf at "+
+				"deposit count %d (%s)", i, leafHash.Hex(), depositCount, treeHash.Hex())
+		}
+		// The claim needs the raw metadata (the bridge contract hashes it itself); the certificate
+		// only carries its hash, so take the on-chain bytes recorded in the local exit tree.
+		rawMetadata, ok := c.localTree.Metadata(depositCount)
+		if !ok {
+			return nil, fmt.Errorf("bridge exit %d (leaf %s) has no metadata in local exit tree",
+				i, leafHash.Hex())
+		}
+		selected = append(selected, selectedExit{
+			leafType:           leaf.LeafType,
+			originNetwork:      leaf.OriginNetwork,
+			originAddress:      leaf.OriginTokenAddress,
+			destinationNetwork: leaf.DestinationNetwork,
+			destinationAddress: leaf.DestinationAddress,
+			amount:             leaf.Amount,
+			depositCount:       depositCount,
+			viewMetadata:       leaf.MetadataHash,
+			rawMetadata:        rawMetadata,
+			decoded:            decoded,
+		})
+	}
+
+	for i := range c.pending {
+		p := &c.pending[i]
+		// A pending entry whose deposit count the certificate already serves is not listed twice.
+		if p.DepositCount >= first {
+			continue
+		}
+		if sel.depositCount != nil && *sel.depositCount != p.DepositCount {
+			continue
+		}
+		if !sel.withMessages && p.LeafType != leafTypeAsset {
+			continue
+		}
+		var decoded *decodedMessage
+		if sel.withMessages {
+			decoded, _ = c.routes.decode(p.LeafType, p.OriginNetwork, p.OriginAddress,
+				p.DestinationNetwork, p.DestinationAddress, p.Metadata)
+		}
+		if !sel.matches(p.DestinationAddress, decoded) {
+			continue
+		}
+		selected = append(selected, selectedExit{
+			leafType:           p.LeafType,
+			originNetwork:      p.OriginNetwork,
+			originAddress:      p.OriginAddress,
+			destinationNetwork: p.DestinationNetwork,
+			destinationAddress: p.DestinationAddress,
+			amount:             p.Amount,
+			depositCount:       p.DepositCount,
+			viewMetadata:       p.Metadata,
+			rawMetadata:        p.Metadata,
+			pending:            p,
+			decoded:            decoded,
+		})
+	}
+	return selected, nil
+}
+
+// view renders the exit for /bridges (API v1 form).
+func (e *selectedExit) view() BridgeExitView {
+	return BridgeExitView{
+		LeafType:           e.leafType,
+		OriginNetwork:      e.originNetwork,
+		OriginTokenAddress: addrHex(e.originAddress),
+		DestinationNetwork: e.destinationNetwork,
+		DestinationAddress: addrHex(e.destinationAddress),
+		Amount:             bigToString(e.amount),
+		Metadata:           metadataHex(e.viewMetadata),
+		DepositCount:       e.depositCount,
+	}
+}
+
+// viewV2 renders the exit for /bridges (API v2 form).
+func (e *selectedExit) viewV2() BridgeExitViewV2 {
+	v := BridgeExitViewV2{BridgeExitView: e.view(), ClaimMethod: claimMethod(e.leafType)}
+	if e.decoded != nil {
+		token := e.decoded.token
+		v.Beneficiary = addrHex(e.decoded.beneficiary)
+		v.DecodedAmount = bigToString(e.decoded.amount)
+		v.DisplayToken = &token
+	}
+	return v
+}
+
+// ListBridges returns, for API v1, the certificate's Transfer exits destined to destAddr, enriched
+// with their deposit count, followed by the pre-certificate pending Transfer bridges. Message exits
+// are never returned: a v1 client cannot claim them.
+func (c *Claimer) ListBridges(destAddr common.Address) ([]BridgeExitView, error) {
+	exits, err := c.selectExits(exitSelection{address: destAddr})
+	if err != nil {
+		return nil, err
+	}
+	views := make([]BridgeExitView, 0, len(exits))
+	for i := range exits {
+		views = append(views, exits[i].view())
 	}
 	return views, nil
 }
 
-// BuildClaimParams returns the set of claimAsset arguments for the bridge exits destined to
-// destAddr. The proofs are anchored to the L1 info tree leaf the certificate settled at (the leaf
-// carrying the GER recorded by the WAIT step), not the latest leaf: the certificate's
-// NewLocalExitRoot is only present in the rollup exit tree of that settlement leaf, and a later leaf
-// would carry a newer rollup exit root that no longer contains it. When depositCount is non-nil only
-// the exit with that deposit count is returned (an address may have more than one pending deposit);
-// when nil every matching exit is returned.
+// ListBridgesV2 returns, for API v2, the exits of address: the Transfer and Message exits destined to
+// it, and the Message exits whose beneficiary (decoded through a configured message route) it is.
+// Certificate exits come first, then the pre-certificate pending bridges.
+func (c *Claimer) ListBridgesV2(address common.Address) ([]BridgeExitViewV2, error) {
+	exits, err := c.selectExits(exitSelection{address: address, withMessages: true})
+	if err != nil {
+		return nil, err
+	}
+	views := make([]BridgeExitViewV2, 0, len(exits))
+	for i := range exits {
+		views = append(views, exits[i].viewV2())
+	}
+	return views, nil
+}
+
+// BuildClaimParams returns, for API v1, the set of claimAsset arguments for the Transfer exits
+// destined to destAddr (see buildClaims). Message exits are never returned.
 func (c *Claimer) BuildClaimParams(
 	ctx context.Context, destAddr common.Address, depositCount *uint32,
 ) ([]ClaimAssetParams, error) {
+	claims, err := c.buildClaims(ctx, exitSelection{address: destAddr, depositCount: depositCount})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ClaimAssetParams, 0, len(claims))
+	for i := range claims {
+		out = append(out, claims[i].ClaimAssetParams)
+	}
+	return out, nil
+}
+
+// BuildClaimParamsV2 returns, for API v2, the claim arguments of the exits of address (same selection
+// as ListBridgesV2), each with the AgglayerBridge method to call: claimAsset or claimMessage.
+func (c *Claimer) BuildClaimParamsV2(
+	ctx context.Context, address common.Address, depositCount *uint32,
+) ([]ClaimParamsV2, error) {
+	return c.buildClaims(ctx, exitSelection{address: address, depositCount: depositCount, withMessages: true})
+}
+
+// buildClaims returns the claim arguments of the selected exits. The proofs are anchored to the L1
+// info tree leaf the certificate settled at (the leaf carrying the GER recorded by the WAIT step),
+// not the latest leaf: the certificate's NewLocalExitRoot is only present in the rollup exit tree of
+// that settlement leaf, and a later leaf would carry a newer rollup exit root that no longer contains
+// it. When the selection has a deposit count only that exit is returned (an address may have more
+// than one pending deposit); otherwise every matching exit is returned.
+func (c *Claimer) buildClaims(ctx context.Context, sel exitSelection) ([]ClaimParamsV2, error) {
 	leaf, err := c.settlementLeaf()
 	if err != nil {
 		return nil, err
@@ -140,81 +365,44 @@ func (c *Claimer) BuildClaimParams(
 		return nil, fmt.Errorf("building rollup exit tree proof for network %d: %w", c.networkID, err)
 	}
 
-	claims := make([]ClaimAssetParams, 0)
-	certDepositCounts := make(map[uint32]struct{})
-	for i := range c.cert.Leaves {
-		certLeaf := c.cert.Leaves[i]
-		if certLeaf.DestinationAddress != destAddr {
-			continue
-		}
-
-		leafHash := certLeaf.Hash()
-		dc, ok := c.localTree.DepositCount(leafHash)
-		if !ok {
-			return nil, fmt.Errorf("bridge exit %d (leaf %s) not found in local exit tree",
-				i, leafHash.Hex())
-		}
-
-		certDepositCounts[dc] = struct{}{}
-		if depositCount != nil && dc != *depositCount {
-			continue
-		}
-
-		// The claim needs the raw metadata (the bridge contract hashes it itself); the certificate
-		// only carries its hash, so take the on-chain bytes recorded in the local exit tree.
-		rawMetadata, ok := c.localTree.Metadata(leafHash)
-		if !ok {
-			return nil, fmt.Errorf("bridge exit %d (leaf %s) has no metadata in local exit tree",
-				i, leafHash.Hex())
-		}
-
-		localProof, err := c.localTree.Proof(ctx, dc, c.cert.NewLocalExitRoot)
-		if err != nil {
-			return nil, fmt.Errorf("building local exit tree proof for deposit %d: %w", dc, err)
-		}
-
-		claims = append(claims, c.anchorClaim(ClaimAssetParams{
-			OriginNetwork:      certLeaf.OriginNetwork,
-			OriginTokenAddress: addrHex(certLeaf.OriginTokenAddress),
-			DestinationNetwork: certLeaf.DestinationNetwork,
-			DestinationAddress: addrHex(certLeaf.DestinationAddress),
-			Amount:             bigToString(certLeaf.Amount),
-			Metadata:           metadataHex(rawMetadata),
-			LeafType:           certLeaf.LeafType,
-			DepositCount:       dc,
-		}, leaf, localProof, rollupProof))
+	exits, err := c.selectExits(sel)
+	if err != nil {
+		return nil, err
 	}
 
-	for i := range c.pending {
-		p := c.pending[i]
-		if p.DestinationAddress != destAddr || (depositCount != nil && p.DepositCount != *depositCount) {
-			continue
-		}
-		if _, inCertificate := certDepositCounts[p.DepositCount]; inCertificate {
-			continue
-		}
-		claim, err := c.pendingClaim(ctx, p, leaf, rollupProof)
+	claims := make([]ClaimParamsV2, 0, len(exits))
+	for i := range exits {
+		e := &exits[i]
+		localProof, err := c.localTree.Proof(ctx, e.depositCount, c.cert.NewLocalExitRoot)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("building local exit tree proof for deposit %d: %w", e.depositCount, err)
 		}
-		claims = append(claims, claim)
+		if e.pending != nil {
+			if err := c.verifyPending(e.pending, localProof); err != nil {
+				return nil, err
+			}
+		}
+		claims = append(claims, ClaimParamsV2{
+			ClaimAssetParams: c.anchorClaim(ClaimAssetParams{
+				OriginNetwork:      e.originNetwork,
+				OriginTokenAddress: addrHex(e.originAddress),
+				DestinationNetwork: e.destinationNetwork,
+				DestinationAddress: addrHex(e.destinationAddress),
+				Amount:             bigToString(e.amount),
+				Metadata:           metadataHex(e.rawMetadata),
+				LeafType:           e.leafType,
+				DepositCount:       e.depositCount,
+			}, leaf, localProof, rollupProof),
+			ClaimMethod: claimMethod(e.leafType),
+		})
 	}
-
 	return claims, nil
 }
 
-// pendingClaim builds the claimAsset arguments of a pre-certificate pending bridge. Its leaf is
-// looked up by deposit count (not by leaf hash, which is ambiguous for identical exits) and the proof
-// is verified against the certificate's new local exit root before being returned.
-func (c *Claimer) pendingClaim(
-	ctx context.Context, p exitcertificate.PendingBridge,
-	leaf *l1infotreesync.L1InfoTreeLeaf, rollupProof treetypes.Proof,
-) (ClaimAssetParams, error) {
-	localProof, err := c.localTree.Proof(ctx, p.DepositCount, c.cert.NewLocalExitRoot)
-	if err != nil {
-		return ClaimAssetParams{}, fmt.Errorf("building local exit tree proof for pending deposit %d: %w",
-			p.DepositCount, err)
-	}
+// verifyPending checks a pre-certificate pending bridge against the local exit tree: its content
+// comes from a file, so the leaf it hashes to must be the one proven at its deposit count against the
+// certificate's new local exit root.
+func (c *Claimer) verifyPending(p *exitcertificate.PendingBridge, localProof treetypes.Proof) error {
 	leafHash := (&bridgesyncerlite.BridgeLeaf{
 		LeafType:           p.LeafType,
 		OriginNetwork:      p.OriginNetwork,
@@ -225,19 +413,9 @@ func (c *Claimer) pendingClaim(
 		Metadata:           p.Metadata,
 	}).Hash()
 	if err := tree.VerifyProof(leafHash, localProof, p.DepositCount, c.cert.NewLocalExitRoot); err != nil {
-		return ClaimAssetParams{}, fmt.Errorf("pending deposit %d does not match the local exit tree: %w",
-			p.DepositCount, err)
+		return fmt.Errorf("pending deposit %d does not match the local exit tree: %w", p.DepositCount, err)
 	}
-	return c.anchorClaim(ClaimAssetParams{
-		OriginNetwork:      p.OriginNetwork,
-		OriginTokenAddress: addrHex(p.OriginAddress),
-		DestinationNetwork: p.DestinationNetwork,
-		DestinationAddress: addrHex(p.DestinationAddress),
-		Amount:             bigToString(p.Amount),
-		Metadata:           metadataHex(p.Metadata),
-		LeafType:           p.LeafType,
-		DepositCount:       p.DepositCount,
-	}, leaf, localProof, rollupProof), nil
+	return nil
 }
 
 // anchorClaim completes a claim with the proofs, the global index and the L1 info tree leaf it is
@@ -252,21 +430,6 @@ func (c *Claimer) anchorClaim(
 	claim.RollupExitRoot = leaf.RollupExitRoot.Hex()
 	claim.L1InfoTreeIndex = leaf.L1InfoTreeIndex
 	return claim
-}
-
-// pendingView renders a pending bridge for /bridges. Its metadata is the raw bridge metadata (the
-// certificate's exits only carry its hash).
-func pendingView(p exitcertificate.PendingBridge) BridgeExitView {
-	return BridgeExitView{
-		LeafType:           p.LeafType,
-		OriginNetwork:      p.OriginNetwork,
-		OriginTokenAddress: addrHex(p.OriginAddress),
-		DestinationNetwork: p.DestinationNetwork,
-		DestinationAddress: addrHex(p.DestinationAddress),
-		Amount:             bigToString(p.Amount),
-		Metadata:           metadataHex(p.Metadata),
-		DepositCount:       p.DepositCount,
-	}
 }
 
 // settlementLeaf returns the L1 info tree leaf the certificate settled at — the leaf carrying the
@@ -309,7 +472,32 @@ func (c *Claimer) Check(ctx context.Context) error {
 			settledLER.Hex(), c.cert.NewLocalExitRoot.Hex())
 	}
 
+	// Every certificate exit must be the leaf at its position in the local exit tree.
+	if err := c.checkCertificateLeaves(); err != nil {
+		return err
+	}
+
 	c.logger.Infof("✅ settlement check OK: network %d new local exit root %s settled in rollup exit root %s",
 		c.networkID, c.cert.NewLocalExitRoot.Hex(), rollupExitRoot.Hex())
+	return nil
+}
+
+// checkCertificateLeaves verifies that the certificate's bridge exits are the last leaves of the local
+// exit tree, in order: the hash of exit i must be the hash of the leaf at its position. The claimer
+// derives every deposit count (and so every global index) from that position.
+func (c *Claimer) checkCertificateLeaves() error {
+	first, err := c.certificateFirstDepositCount()
+	if err != nil {
+		return err
+	}
+	for i := range c.cert.Leaves {
+		depositCount := first + uint32(i)
+		leafHash := c.cert.Leaves[i].Hash()
+		treeHash, ok := c.localTree.LeafHash(depositCount)
+		if !ok || treeHash != leafHash {
+			return fmt.Errorf("bridge exit %d (leaf %s) does not match the local exit tree leaf at deposit count %d (%s)",
+				i, leafHash.Hex(), depositCount, treeHash.Hex())
+		}
+	}
 	return nil
 }

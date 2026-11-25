@@ -78,7 +78,7 @@ func TestListBridgesLeafNotFound(t *testing.T) {
 	cert, err := LoadCertificate(writeSampleCert(t))
 	require.NoError(t, err)
 
-	// An empty local tree resolves no deposit counts.
+	// An empty local tree cannot hold the certificate's exits.
 	l1 := &fakeL1{
 		leaf: &l1infotreesync.L1InfoTreeLeaf{},
 	}
@@ -88,7 +88,7 @@ func TestListBridgesLeafNotFound(t *testing.T) {
 	claimer := NewClaimer(log.GetDefaultLogger(), cert, &fakeLocalTree{}, l1, 0, waitResult)
 
 	_, err = claimer.ListBridges(cert.Leaves[0].DestinationAddress)
-	require.ErrorContains(t, err, "not found in local exit tree")
+	require.ErrorContains(t, err, "the local exit tree has only 0 leaves")
 }
 
 func TestNetworkIDOverride(t *testing.T) {

@@ -1,0 +1,4 @@
+{
+  "api_version": 2,
+  "error": "certificate new local exit root not settled in L1 info tree: network 1 L1 info leaf 123456 has local exit root 0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757, certificate has 0x1b016a8e810c92cb03e842538327a03d830da3b31428c3baf7515daa32ee9876"
+}
