@@ -1,0 +1,1 @@
+[{"id":20,"name":"Merge only PR ruleset","target":"branch","enforcement":"active","source_type":"Repository"},{"id":21,"name":"release-tags","target":"tag","enforcement":"active","source_type":"Repository"}]

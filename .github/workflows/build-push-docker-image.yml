@@ -11,7 +11,8 @@ permissions: {}
 
 env:
   REGISTRY: ghcr.io
-  REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
+  # Branch builds go to the -dev package; production images are published only by release.yml.
+  REGISTRY_IMAGE: ghcr.io/${{ github.repository }}-dev
 
 jobs:
   build:

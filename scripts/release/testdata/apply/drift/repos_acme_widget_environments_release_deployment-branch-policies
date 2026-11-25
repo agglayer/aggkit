@@ -1,0 +1,1 @@
+{"total_count":2,"branch_policies":[{"id":5,"name":"main","type":"branch"},{"id":6,"name":"v*","type":"tag"}]}
